@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>BuPulse dashboard</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#2F6BFF}a:hover{color:#7B5CFF}
+.bp{--bg:#F5F5F7;--glass:rgba(255,255,255,.6);--glass-strong:rgba(255,255,255,.85);--line:rgba(210,210,215,.75);--text:#1D1D1F;--muted:#5E5E63;--soft:rgba(47,107,255,.09);--shadow:0 1px 0 rgba(255,255,255,.9) inset,0 18px 44px -22px rgba(29,29,31,.28);--blobA:rgba(47,107,255,.32);--blobB:rgba(123,92,255,.3);background:var(--bg);color:var(--text);font-family:'Geist',system-ui,sans-serif;min-height:100vh;position:relative;overflow:hidden;transition:background .5s,color .5s}
+.bp.dark{--bg:#0B0B0F;--glass:rgba(255,255,255,.06);--glass-strong:rgba(28,28,34,.8);--line:rgba(255,255,255,.12);--text:#F5F5F7;--muted:#A1A1A6;--soft:rgba(123,92,255,.16);--shadow:0 1px 0 rgba(255,255,255,.07) inset,0 22px 56px -22px rgba(0,0,0,.75)}
+.glass{background:var(--glass);border:1px solid var(--line);box-shadow:var(--shadow);backdrop-filter:blur(22px) saturate(1.6);-webkit-backdrop-filter:blur(22px) saturate(1.6)}
+.glass-strong{background:var(--glass-strong);border:1px solid var(--line);box-shadow:var(--shadow);backdrop-filter:blur(26px) saturate(1.7);-webkit-backdrop-filter:blur(26px) saturate(1.7)}
+.blob{position:absolute;filter:blur(70px);animation:morph 16s ease-in-out infinite;pointer-events:none}
+@keyframes morph{0%,100%{border-radius:42% 58% 63% 37%/41% 44% 56% 59%;transform:translate(0,0)}50%{border-radius:68% 32% 41% 59%/58% 63% 37% 42%;transform:translate(40px,-30px)}}
+.nav-item{font:inherit;font-size:14px;font-weight:500;color:var(--muted);background:transparent;border:1px solid transparent;border-radius:14px;min-height:44px;padding:0 12px;display:flex;align-items:center;gap:12px;cursor:pointer;width:100%;text-align:left;position:relative;transition:background .3s,color .3s}
+.nav-item:hover{color:var(--text);background:var(--soft)}
+.nav-item.on{color:var(--text);background:var(--glass-strong);border-color:var(--line)}
+.nav-item.on::before{content:"";position:absolute;left:-1px;top:10px;bottom:10px;width:3px;border-radius:3px;background:linear-gradient(#2F6BFF,#7B5CFF)}
+.btn{font:inherit;font-weight:600;font-size:14px;min-height:44px;padding:0 18px;border-radius:999px;border:0;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none;transition:transform .25s,border-radius .4s}
+.btn-primary{color:#fff;background:linear-gradient(120deg,#2F6BFF,#7B5CFF);box-shadow:0 10px 26px -10px rgba(47,107,255,.7)}
+.btn-primary:hover{color:#fff;transform:translateY(-2px);border-radius:14px}
+.icon-btn{width:44px;height:44px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text);background:var(--glass);border:1px solid var(--line)}
+.meter{height:8px;border-radius:8px;background:var(--line);overflow:hidden}
+.meter>span{display:block;height:100%;border-radius:8px;background:linear-gradient(90deg,#2F6BFF,#7B5CFF);transform-origin:left;animation:grow 1.4s cubic-bezier(.2,.8,.2,1) both}
+@keyframes grow{from{transform:scaleX(0)}}
+.rise{animation:rise .7s cubic-bezier(.2,.8,.2,1) both}
+.rise.r2{animation-delay:.08s}.rise.r3{animation-delay:.16s}.rise.r4{animation-delay:.24s}
+@keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.row{transition:background .25s,transform .25s}.row:hover{background:var(--soft);transform:translateX(4px)}
+.chip{font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px}
+.chip.ok{background:rgba(47,107,255,.12);color:#1F55D6}
+.chip.new{background:rgba(123,92,255,.14);color:#5B3FD9}
+.bp.dark .chip.ok{color:#8DB0FF}.bp.dark .chip.new{color:#B7A6FF}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#2F6BFF;animation:ping 1.8s infinite}
+@keyframes ping{0%{box-shadow:0 0 0 0 rgba(47,107,255,.6)}70%{box-shadow:0 0 0 10px rgba(47,107,255,0)}100%{box-shadow:0 0 0 0 rgba(47,107,255,0)}}
+@media (prefers-reduced-motion:reduce){.bp *{animation:none!important;transition:none!important}}
+</style>
+</helmet>
+<div class="{{rootClass}}">
+<div class="blob" aria-hidden="true" style="width: 520px; height: 480px; top: -160px; right: 10%; background: var(--blobA);"></div>
+<div class="blob" aria-hidden="true" style="width: 460px; height: 420px; bottom: -160px; left: 20%; background: var(--blobB); animation-direction: reverse;"></div>
+<div style="position: relative; display: flex; flex-wrap: wrap; gap: 20px; padding: 20px; box-sizing: border-box;">
+
+<aside class="glass" style="flex: 1 1 232px; max-width: 260px; border-radius: 28px; padding: 20px 14px; display: flex; flex-direction: column; gap: 18px; box-sizing: border-box; min-height: 920px;">
+<div style="padding: 4px 8px;">
+<sc-if value="{{dark}}" hint-placeholder-val="{{false}}"><img src="/_blob/b0a28e8ee1c1b5c8b4787a9f9ba54365" alt="BuPulse" style="height: 28px; width: auto; display: block;"></sc-if>
+<sc-if value="{{light}}" hint-placeholder-val="{{true}}"><img src="/_blob/0f879b948612a33f8541e55413f8647d" alt="BuPulse" style="height: 28px; width: auto; display: block;"></sc-if>
+</div>
+<nav aria-label="App" style="display: flex; flex-direction: column; gap: 4px;">
+<sc-for list="{{nav}}" as="n" hint-placeholder-count="8">
+<button type="button" class="{{n.cls}}" aria-current="{{n.current}}" onClick="{{n.pick}}">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.icon}}"></path></svg>{{n.label}}</button>
+</sc-for>
+</nav>
+<div class="glass-strong" style="margin-top: auto; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; justify-content: space-between; font-size: 13px;"><strong>Standard plan</strong><span style="color: var(--muted);">Trial: 9 days left</span></div>
+<div class="meter"><span style="width: 36%;"></span></div>
+<span style="font-size: 12px; color: var(--muted);">36 of 100 generations used</span>
+</div>
+</aside>
+
+<main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 20px;">
+<header class="rise" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; padding: 8px 4px;">
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<h1 style="margin: 0; font-size: 30px; letter-spacing: -0.03em;">Good morning, [Name]</h1>
+<span style="color: var(--muted); font-size: 15px;">[Business name] · [Your industry]</span>
+</div>
+<div style="display: flex; align-items: center; gap: 10px;">
+<button type="button" class="icon-btn" aria-label="Switch light or dark mode" onClick="{{toggleTheme}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg></button>
+<button type="button" class="icon-btn" aria-label="Notifications"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path></svg></button>
+<a class="btn btn-primary" href="#new"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>New project</a>
+</div>
+</header>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+<div class="glass rise" style="border-radius: 24px; padding: 20px; display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 13px; color: var(--muted);">Projects</span><strong style="font-size: 32px; letter-spacing: -0.03em;">8</strong><span style="font-size: 12px; color: var(--muted);">3 active campaigns</span></div>
+<div class="glass rise r2" style="border-radius: 24px; padding: 20px; display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 13px; color: var(--muted);">Content pieces</span><strong style="font-size: 32px; letter-spacing: -0.03em;">24</strong><span style="font-size: 12px; color: var(--muted);">This month</span></div>
+<div class="glass rise r3" style="border-radius: 24px; padding: 20px; display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 13px; color: var(--muted);">New leads</span><strong style="font-size: 32px; letter-spacing: -0.03em;">11</strong><span style="font-size: 12px; color: var(--muted);">From your chat widget</span></div>
+<div class="glass rise r4" style="border-radius: 24px; padding: 20px; display: flex; flex-direction: column; gap: 6px;"><span style="font-size: 13px; color: var(--muted);">Designs</span><strong style="font-size: 32px; letter-spacing: -0.03em;">15</strong><span style="font-size: 12px; color: var(--muted);">Brand posts made</span></div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px;">
+<section class="glass rise r2" style="flex: 1.5 1 420px; min-width: 0; border-radius: 28px; padding: 22px;" aria-labelledby="rp">
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;"><h2 id="rp" style="margin: 0; font-size: 18px;">Recent projects</h2><a href="#projects" style="font-size: 14px; font-weight: 600;">View all</a></div>
+<div class="row" style="display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: 16px;"><div style="width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(140deg,#2F6BFF,#7B5CFF); flex: none;"></div><div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><strong style="font-size: 15px;">[New arrivals]</strong><span style="font-size: 13px; color: var(--muted);">Product · [Price]</span></div><span class="chip ok">Content ready</span></div>
+<div class="row" style="display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: 16px;"><div style="width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(140deg,#7B5CFF,#2F6BFF); flex: none;"></div><div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><strong style="font-size: 15px;">[Weekend sale]</strong><span style="font-size: 13px; color: var(--muted);">Offer · [Discount]</span></div><span class="chip new">Generating</span></div>
+<div class="row" style="display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: 16px;"><div style="width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(140deg,#2F6BFF,#0B0B0F); flex: none;"></div><div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;"><strong style="font-size: 15px;">[Open day Saturday]</strong><span style="font-size: 13px; color: var(--muted);">Event · Design only</span></div><span class="chip ok">Posted</span></div>
+</section>
+
+<section class="glass rise r3" style="flex: 1 1 320px; min-width: 0; border-radius: 28px; padding: 22px;" aria-labelledby="ld">
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;"><h2 id="ld" style="margin: 0; font-size: 18px; display: flex; align-items: center; gap: 10px;"><span class="live-dot"></span>New leads</h2><a href="#leads" style="font-size: 14px; font-weight: 600;">All leads</a></div>
+<div class="row" style="padding: 12px; border-radius: 16px; display: flex; flex-direction: column; gap: 2px;"><strong style="font-size: 15px;">[Visitor name]</strong><span style="font-size: 13px; color: var(--muted);">Asked for a price quote · 5 min ago</span></div>
+<div class="row" style="padding: 12px; border-radius: 16px; display: flex; flex-direction: column; gap: 2px;"><strong style="font-size: 15px;">[Visitor name]</strong><span style="font-size: 13px; color: var(--muted);">Asked about opening hours · 1 h ago</span></div>
+<div class="row" style="padding: 12px; border-radius: 16px; display: flex; flex-direction: column; gap: 2px;"><strong style="font-size: 15px;">[Visitor name]</strong><span style="font-size: 13px; color: var(--muted);">Wants a callback tomorrow · Yesterday</span></div>
+</section>
+</div>
+
+<section class="glass rise r4" style="border-radius: 28px; padding: 22px;" aria-labelledby="us">
+<h2 id="us" style="margin: 0 0 16px; font-size: 18px;">Usage this month</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px;">
+<div style="display: flex; flex-direction: column; gap: 8px;"><div style="display: flex; justify-content: space-between; font-size: 14px;"><span>Text generations</span><span style="color: var(--muted);">36 / 100</span></div><div class="meter"><span style="width: 36%;"></span></div></div>
+<div style="display: flex; flex-direction: column; gap: 8px;"><div style="display: flex; justify-content: space-between; font-size: 14px;"><span>Images</span><span style="color: var(--muted);">15 / 50</span></div><div class="meter"><span style="width: 30%;"></span></div></div>
+<div style="display: flex; flex-direction: column; gap: 8px; opacity: .6;"><div style="display: flex; justify-content: space-between; font-size: 14px;"><span>Video seconds</span><span style="color: var(--muted);">Coming soon</span></div><div class="meter"><span style="width: 0%;"></span></div></div>
+<div style="display: flex; flex-direction: column; gap: 8px; opacity: .6;"><div style="display: flex; justify-content: space-between; font-size: 14px;"><span>Voice characters</span><span style="color: var(--muted);">Coming soon</span></div><div class="meter"><span style="width: 0%;"></span></div></div>
+</div>
+</section>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Theme"},"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { dark: null, active: 'home' }; }
+  renderVals() {
+    const dark = this.state.dark === null ? !!this.props.dark : this.state.dark;
+    const items = [
+      ['home', 'Home', 'M3 11 12 3l9 8v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z'],
+      ['projects', 'Projects', 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],
+      ['content', 'Content', 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z'],
+      ['designs', 'Designs', 'M3 3h18v18H3zM3 15l5-5 4 4 3-3 6 6'],
+      ['leads', 'Leads', 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8'],
+      ['brand', 'Brand', 'M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z'],
+      ['usage', 'Usage', 'M3 3v18h18M7 15l4-4 3 3 5-6'],
+      ['billing', 'Billing', 'M2 6h20v12H2zM2 10h20']
+    ];
+    const nav = items.map(([id, label, icon]) => ({
+      label, icon, cls: this.state.active === id ? 'nav-item on' : 'nav-item',
+      current: this.state.active === id ? 'page' : 'false',
+      pick: () => this.setState({ active: id })
+    }));
+    return { dark, light: !dark, rootClass: dark ? 'bp dark' : 'bp', nav, toggleTheme: () => this.setState({ dark: !dark }) };
+  }
+}
+</script>
+</body>
+</html>
