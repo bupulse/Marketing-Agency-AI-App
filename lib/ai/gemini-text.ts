@@ -22,6 +22,8 @@ export class GeminiTextProvider implements TextProvider {
         contents: prompt,
         config: {
           systemInstruction: system,
+          maxOutputTokens: 4096,
+          ...(this.model.includes("2.5") ? { thinkingConfig: { thinkingBudget: 512 } } : {}),
           ...(jsonSchema
             ? { responseMimeType: "application/json", responseJsonSchema: jsonSchema }
             : {}),
@@ -42,7 +44,7 @@ export class GeminiTextProvider implements TextProvider {
         status === 429 || (status !== undefined && status >= 500),
       );
     }
-    if (!text) throw new AIProviderError("Gemini returned no text", this.name);
+    if (!text) throw new AIProviderError("Gemini returned no text", this.name, false, usage, this.model);
     return { text, provider: this.name, model: this.model, usage };
   }
 }

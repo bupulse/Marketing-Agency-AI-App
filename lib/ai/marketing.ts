@@ -106,7 +106,13 @@ export async function generateMarketingContent(
   try {
     parsed = marketingContentSchema.parse(JSON.parse(result.text));
   } catch {
-    throw new AIProviderError("The AI returned content in an unexpected format", result.provider, true);
+    throw new AIProviderError(
+      "The AI returned content in an unexpected format",
+      result.provider,
+      true,
+      result.usage,
+      result.model,
+    );
   }
 
   return {

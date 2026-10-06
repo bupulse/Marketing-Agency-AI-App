@@ -3,12 +3,13 @@ import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { withLedger } from "@/lib/ai/ledger";
 import { getImageProvider } from "@/lib/ai/image";
+import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { refundUsage, consumeUsage } from "@/lib/usage";
 import { createClient } from "@/lib/supabase/server";
-import { designObjectPath, imageSize, isOwnDesignPath, isOwnObjectPath, toDataUrl } from "./assets";
+import { designObjectPath, imageSize, isOwnDesignPath, isOwnObjectPath, isOwnProjectPhotoPath, toDataUrl } from "./assets";
 import { ASPECT_SIZES, type AspectRatio } from "./layout";
 import { buildImagePrompt } from "./prompt";
-import { isTemplateId, renderTemplate } from "./templates";
+import { isTemplateId, renderTemplate, TEMPLATES } from "./templates";
 
 /** A problem the user can read and act on. Anything else is an unexpected failure. */
 export class DesignError extends Error {}
@@ -29,30 +30,47 @@ async function requireOwned({ userId, businessId, projectId }: Owner) {
   return business;
 }
 
-/** Reads an own file from Storage as a data URL (Satori and Gemini cannot use private URLs). */
-async function loadImage(bucket: "media" | "brand", path: string, options: { maxBytes: number; resize?: boolean }) {
+const TEMPLATE_TYPES = ["image/png", "image/jpeg"];
+const AI_TYPES = ["image/png", "image/jpeg", "image/webp"];
+
+/**
+ * Reads an own file from Storage as a data URL (Satori and Gemini cannot use private URLs).
+ * The size and type are checked on the object's metadata first, so an oversized file is never downloaded.
+ */
+async function loadImage(bucket: "media" | "brand", path: string, options: { maxBytes: number; types: string[]; resize?: boolean }) {
   const storage = (await createClient()).storage.from(bucket);
-  // Resizing needs Supabase's image transformations; without them the original is used.
+  const info = await storage.info(path);
+  if (info.error || !info.data) return null;
+  const { size, contentType } = info.data;
+  if (!contentType || !options.types.includes(contentType)) throw new DesignError(UNSUPPORTED_PHOTO);
+  if (size === undefined || size > options.maxBytes) throw new DesignError("That photo is too large. Please use one under 12 MB.");
+
+  // Resizing needs Supabase's image transformations; without them the original (within the cap) is used.
   let result = options.resize ? await storage.download(path, { transform: { width: 1600, quality: 82 } }) : await storage.download(path);
   if (result.error && options.resize) result = await storage.download(path);
   if (result.error || !result.data) return null;
-  if (result.data.size > options.maxBytes) throw new DesignError("That photo is too large. Please use one under 12 MB.");
   const bytes = new Uint8Array(await result.data.arrayBuffer());
-  return toDataUrl(bytes, result.data.type || "image/png");
+  if (bytes.length > options.maxBytes) throw new DesignError("That photo is too large. Please use one under 12 MB.");
+  // Satori cannot decode WebP, whatever the stored content type says.
+  const isWebp = bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+  if (isWebp && !options.types.includes("image/webp")) throw new DesignError(UNSUPPORTED_PHOTO);
+  return toDataUrl(bytes, isWebp ? "image/webp" : result.data.type || contentType);
 }
 
-async function loadPhoto(userId: string, photoPath: string | null | undefined) {
+const UNSUPPORTED_PHOTO = "Templates need a JPG or PNG photo. Please pick or upload a different one.";
+
+async function loadPhoto(userId: string, photoPath: string | null | undefined, types: string[]) {
   if (!photoPath) return null;
-  if (!isOwnObjectPath(userId, photoPath)) throw new DesignError("That photo could not be used.");
-  const photo = await loadImage("media", photoPath, { maxBytes: PHOTO_MAX_BYTES, resize: true });
+  if (!isOwnProjectPhotoPath(userId, photoPath)) throw new DesignError("That photo could not be used.");
+  const photo = await loadImage("media", photoPath, { maxBytes: PHOTO_MAX_BYTES, types, resize: true });
   if (!photo) throw new DesignError("That photo could not be loaded. Please pick it again.");
   return photo;
 }
 
-async function loadLogo(userId: string, logoPath: string | null) {
+async function loadLogo(userId: string, logoPath: string | null, types = ["image/png", "image/jpeg", "image/svg+xml"]) {
   if (!logoPath || !isOwnObjectPath(userId, logoPath)) return null;
   try {
-    return await loadImage("brand", logoPath, { maxBytes: 5 * 1024 * 1024 });
+    return await loadImage("brand", logoPath, { maxBytes: 5 * 1024 * 1024, types });
   } catch {
     return null;
   }
@@ -83,8 +101,9 @@ export async function createTemplateDesign(input: Owner & {
   photoPath?: string | null;
 }): Promise<CreatedDesign> {
   if (!isTemplateId(input.template)) throw new DesignError("Pick one of the templates.");
+  await rateLimit(`design:${input.userId}`, RATE_LIMITS.templateDesign);
   const business = await requireOwned(input);
-  const [photoDataUrl, logoDataUrl] = await Promise.all([loadPhoto(input.userId, input.photoPath), loadLogo(input.userId, business.logoUrl)]);
+  const [photoDataUrl, logoDataUrl] = await Promise.all([loadPhoto(input.userId, input.photoPath, TEMPLATE_TYPES), loadLogo(input.userId, business.logoUrl)]);
 
   let png: ArrayBuffer;
   try {
@@ -128,15 +147,16 @@ export async function createAiDesign(input: Owner & {
   useLogo?: boolean;
   usePhotoPath?: string | null;
 }): Promise<CreatedDesign> {
+  await rateLimit(`design:${input.userId}`, RATE_LIMITS.templateDesign);
   const business = await requireOwned(input);
-  if (input.usePhotoPath && !isOwnObjectPath(input.userId, input.usePhotoPath)) throw new DesignError("That photo could not be used.");
+  if (input.usePhotoPath && !isOwnProjectPhotoPath(input.userId, input.usePhotoPath)) throw new DesignError("That photo could not be used.");
 
   // Throws UsageLimitError when the plan has no image credits left.
   const { periodStart } = await consumeUsage(input.userId, "image");
   try {
     const [logo, photo] = await Promise.all([
-      input.useLogo ? loadLogo(input.userId, business.logoUrl) : null,
-      loadPhoto(input.userId, input.usePhotoPath),
+      input.useLogo ? loadLogo(input.userId, business.logoUrl, [...AI_TYPES, "image/svg+xml"]) : null,
+      loadPhoto(input.userId, input.usePhotoPath, AI_TYPES),
     ]);
     const references = [photo, logo].filter((r): r is string => !!r);
     const prompt = buildImagePrompt({ business, prompt: input.prompt, aspectRatio: input.aspectRatio, hasLogo: !!logo, hasPhoto: !!photo });
@@ -162,7 +182,12 @@ export async function createAiDesign(input: Owner & {
     }
     return { id, path };
   } catch (error) {
-    await refundUsage(input.userId, "image", periodStart);
+    // Giving the credit back must never hide the original error.
+    try {
+      await refundUsage(input.userId, "image", periodStart);
+    } catch (refundError) {
+      await logError(refundError, { source: "designs.refund", userId: input.userId });
+    }
     throw error;
   }
 }
@@ -220,18 +245,25 @@ export async function listDesigns(userId: string, options: { projectId?: string;
   });
 }
 
-/** A template drawn with the business's own name, logo and colours, for the picker. Nothing is stored or charged. */
-export async function previewTemplate(
-  userId: string,
-  template: string,
-  aspectRatio: AspectRatio,
-  text: { headline: string; subline?: string | null; chip?: string | null },
-): Promise<ArrayBuffer | null> {
-  if (!isTemplateId(template)) return null;
+/** A template drawn with the business's own name, logo and colours and sample text, for the picker. Nothing is stored or charged. */
+export async function previewTemplate(userId: string, template: string, aspectRatio: AspectRatio): Promise<ArrayBuffer | null> {
+  const info = TEMPLATES.find((t) => t.id === template);
+  if (!info) return null;
   const business = await prisma.business.findUnique({ where: { userId } });
   if (!business) return null;
   const logoDataUrl = await loadLogo(userId, business.logoUrl);
-  return renderTemplate(template, { businessName: business.name, logoDataUrl, colors: business.brandColors, ...text }, aspectRatio);
+  return renderTemplate(
+    info.id,
+    {
+      businessName: business.name,
+      logoDataUrl,
+      colors: business.brandColors,
+      headline: info.fields.headline.placeholder,
+      subline: info.fields.subline.placeholder,
+      chip: info.fields.chip.placeholder,
+    },
+    aspectRatio,
+  );
 }
 
 /** Signed URLs for a project's photos (media bucket), same order as `paths`; own files only, "" for any that fail. */

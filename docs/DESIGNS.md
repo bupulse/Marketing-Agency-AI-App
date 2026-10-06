@@ -57,7 +57,8 @@ font, so a design is still produced (Latin only).
 - Arabic: Cairo is loaded only when the text contains Arabic. Letters are joined and run right to left, but the text block stays left-aligned (no RTL layout). Noto Sans Arabic and Noto Naskh crash Satori's font parser, so Cairo it is.
 - Not supported: Hebrew, Chinese, Japanese, Korean, Thai and Indic scripts (they show empty boxes). CJK fonts are several MB each; add one with the same loading pattern if a market needs it.
 - Emoji render through Twemoji (fetched by next/og).
-- Photos should be JPG or PNG; the service downloads a resized copy when Supabase image transformations are enabled, otherwise the original (max 12 MB).
+- Template photos must be JPG or PNG: Satori cannot decode WebP, so the service rejects it with a clear message (AI designs accept WebP as a reference). Photos must live under `<userId>/projects/`; size and type are checked from object metadata before download (max 12 MB), then a resized copy is fetched when Supabase image transformations are enabled.
+- Font URLs are pinned to Fontsource 5.3.0 (`FONTSOURCE_VERSION` in `fonts.ts`); bump it deliberately.
 
 ## Costs and limits
 

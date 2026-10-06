@@ -84,7 +84,7 @@ function Editor({ draft, onChange, errors }: { draft: Draft; onChange: (d: Draft
             <Input
               aria-label={`Headline ${i + 1}`}
               value={h}
-              maxLength={120}
+              maxLength={100}
               onChange={(e) => onChange({ ...draft, headlines: draft.headlines.map((x, j) => (j === i ? e.target.value : x)) })}
             />
             <Button

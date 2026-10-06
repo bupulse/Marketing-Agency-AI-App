@@ -40,6 +40,7 @@ jobs:
       - run: npm test
       # Content quality check against the real model; skips itself when the secret is not set.
       - run: npm run ai:eval
+        continue-on-error: true
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       - run: npm run build

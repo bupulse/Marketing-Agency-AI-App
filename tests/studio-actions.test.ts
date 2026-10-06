@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prisma = vi.hoisted(() => ({
   business: { findUnique: vi.fn() },
-  project: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
-  generatedContent: { findFirst: vi.fn(), create: vi.fn() },
+  project: { count: vi.fn().mockResolvedValue(0), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+  generatedContent: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn().mockResolvedValue([]), deleteMany: vi.fn() },
 }));
 const service = vi.hoisted(() => ({ generateForProject: vi.fn() }));
 const usage = vi.hoisted(() => {
@@ -17,9 +17,14 @@ const usage = vi.hoisted(() => {
   }
   return { UsageLimitError };
 });
+const rateLimitMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const remove = vi.hoisted(() => vi.fn().mockResolvedValue({}));
 
 vi.mock("@/lib/db", () => ({ prisma }));
+vi.mock("@/lib/rate-limit", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/rate-limit")>("@/lib/rate-limit");
+  return { ...actual, rateLimit: rateLimitMock };
+});
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
 vi.mock("@/lib/usage", () => usage);
 vi.mock("@/lib/auth/require-user", () => ({ requireActiveUser: async () => ({ id: "u1" }) }));
@@ -52,6 +57,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   prisma.business.findUnique.mockResolvedValue({ id: "b1" });
   prisma.project.create.mockResolvedValue({ id: "p1" });
+  prisma.project.count.mockResolvedValue(0);
+  prisma.generatedContent.findMany.mockResolvedValue([]);
 });
 
 describe("authorisation", () => {
@@ -138,6 +145,27 @@ describe("saveEditedContent", () => {
       hashtags: ["#pain", "#bio"],
     });
     expect(service.generateForProject).not.toHaveBeenCalled();
+  });
+});
+
+describe("limits", () => {
+  it("answers a rate limit with a friendly error", async () => {
+    const { RateLimitError } = await import("@/lib/rate-limit");
+    rateLimitMock.mockRejectedValueOnce(new RateLimitError(120));
+    const result = await createProject(fields);
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("2 minutes") });
+    expect(prisma.project.create).not.toHaveBeenCalled();
+  });
+
+  it("stops at the project cap", async () => {
+    prisma.project.count.mockResolvedValue(500);
+    expect((await createProject(fields)).ok).toBe(false);
+    expect(prisma.project.create).not.toHaveBeenCalled();
+  });
+
+  it("keys edit field errors by field", async () => {
+    const result = await saveEditedContent("c1", { caption: "x", hashtags: [], videoScript: "", adHeadlines: ["h".repeat(101)] });
+    expect(result).toMatchObject({ ok: false, fieldErrors: { adHeadlines: expect.any(String) } });
   });
 });
 

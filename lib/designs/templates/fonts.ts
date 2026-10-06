@@ -5,6 +5,9 @@
 
 export type OgFont = { name: string; data: ArrayBuffer; weight: 500 | 800; style: "normal" };
 
+// Pinned so a CDN update can never change or break renders; bump after checking the output.
+const FONTSOURCE_VERSION = "5.3.0";
+const INTER_VERSION = FONTSOURCE_VERSION;
 const BASE = "https://cdn.jsdelivr.net/fontsource/fonts";
 const WEIGHTS = [500, 800] as const;
 // Subsets Satori can fall back across glyph by glyph (same family name).
@@ -28,7 +31,7 @@ function loadInter(): Promise<OgFont[]> {
   interPromise ??= (async () => {
     const jobs = INTER_SUBSETS.flatMap((subset) =>
       WEIGHTS.map(async (weight) => {
-        const data = await fetchFont(`${BASE}/inter@latest/${subset}-${weight}-normal.woff`);
+        const data = await fetchFont(`${BASE}/inter@${INTER_VERSION}/${subset}-${weight}-normal.woff`);
         return data ? ({ name: "Inter", data, weight, style: "normal" } as OgFont) : null;
       }),
     );
@@ -45,7 +48,7 @@ let arabicPromise: Promise<OgFont[]> | undefined;
 function loadArabic(): Promise<OgFont[]> {
   arabicPromise ??= (async () => {
     const jobs = WEIGHTS.map(async (weight) => {
-      const data = await fetchFont(`${BASE}/${ARABIC_FONT}@latest/arabic-${weight}-normal.woff`);
+      const data = await fetchFont(`${BASE}/${ARABIC_FONT}@${FONTSOURCE_VERSION}/arabic-${weight}-normal.woff`);
       return data ? ({ name: "Cairo", data, weight, style: "normal" } as OgFont) : null;
     });
     const fonts = (await Promise.all(jobs)).filter((f): f is OgFont => f !== null);

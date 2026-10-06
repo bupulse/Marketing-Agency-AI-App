@@ -7,6 +7,7 @@ import { readKnowledge } from "@/lib/brand/schemas";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { logError } from "@/lib/errors";
 import { consumeUsage, refundUsage } from "@/lib/usage";
+import { MAX_VERSIONS_PER_PROJECT } from "./schemas";
 import { buildVariants, type VariantSource } from "./variants";
 
 export class StudioNotFoundError extends Error {
@@ -16,6 +17,24 @@ export class StudioNotFoundError extends Error {
 }
 
 export type GenerateFeature = "content" | "regenerate";
+
+/** The model name the configured provider will use, for ledger rows of calls that fail before a result. */
+export function configuredModel(provider: string) {
+  return provider === "claude"
+    ? (process.env.CLAUDE_TEXT_MODEL ?? "claude-opus-5-5")
+    : (process.env.GEMINI_TEXT_MODEL ?? "gemini-2.5-flash");
+}
+
+/** Keeps at most MAX_VERSIONS_PER_PROJECT versions: deletes the oldest ones beyond that. */
+export async function pruneVersions(projectId: string) {
+  const old = await prisma.generatedContent.findMany({
+    where: { projectId },
+    orderBy: { createdAt: "desc" },
+    skip: MAX_VERSIONS_PER_PROJECT,
+    select: { id: true },
+  });
+  if (old.length > 0) await prisma.generatedContent.deleteMany({ where: { id: { in: old.map((c) => c.id) } } });
+}
 
 export function variantsJson(source: VariantSource) {
   return buildVariants(source) as unknown as Prisma.InputJsonValue;
@@ -41,24 +60,31 @@ export async function generateForProject(args: {
   projectId: string;
   instruction?: string;
   feature: GenerateFeature;
+  /** A credit the caller already reserved (consumeUsage); it is refunded on any failure here. */
+  reservation?: { periodStart: Date };
 }) {
   const { userId, businessId, projectId, instruction, feature } = args;
+  let reservation = args.reservation;
 
   // Scoped to the business, so another account's project is simply "not found".
   const project = await prisma.project.findFirst({
     where: { id: projectId, businessId },
     include: { business: true, contents: { orderBy: { createdAt: "desc" }, take: 1 } },
   });
-  if (!project) throw new StudioNotFoundError();
+  if (!project) {
+    if (reservation) await refundUsage(userId, "text", reservation.periodStart).catch(() => {});
+    throw new StudioNotFoundError();
+  }
   const { business } = project;
 
-  const reservation = await consumeUsage(userId, "text");
+  reservation ??= await consumeUsage(userId, "text");
+  const reserved = reservation;
   try {
     const knowledge = readKnowledge(business.knowledge);
     const configured = (process.env.AI_TEXT_PROVIDER ?? "gemini").toLowerCase();
     const result = await withLedger(
       { userId, businessId, feature },
-      { provider: configured, model: "unknown" },
+      { provider: configured, model: configuredModel(configured) },
       () =>
         generateMarketingContent(
           getTextProvider(),
@@ -85,7 +111,7 @@ export async function generateForProject(args: {
       (r) => ({ provider: r.provider, model: r.model, usage: r.usage }),
     );
 
-    return await prisma.generatedContent.create({
+    const saved = await prisma.generatedContent.create({
       data: {
         projectId: project.id,
         ...result.content,
@@ -96,9 +122,11 @@ export async function generateForProject(args: {
         model: result.model,
       },
     });
+    await pruneVersions(project.id).catch((e) => logError(e, { source: "studio.prune", level: "warn" }));
+    return saved;
   } catch (error) {
     try {
-      await refundUsage(userId, "text", reservation.periodStart);
+      await refundUsage(userId, "text", reserved.periodStart);
     } catch (refundError) {
       await logError(refundError, { source: "studio.refund", level: "error" });
     }

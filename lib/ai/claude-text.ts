@@ -21,7 +21,7 @@ export class ClaudeTextProvider implements TextProvider {
     try {
       response = await this.client.beta.messages.create({
         model: this.model,
-        max_tokens: 16000,
+        max_tokens: 4096,
         system,
         messages: [{ role: "user", content: prompt }],
         output_config: {
@@ -43,18 +43,19 @@ export class ClaudeTextProvider implements TextProvider {
       throw new AIProviderError("Claude request failed", this.name, true);
     }
 
+    const usage = { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens };
     if (response.stop_reason === "refusal") {
-      throw new AIProviderError("Claude declined this request", this.name);
+      throw new AIProviderError("Claude declined this request", this.name, false, usage, response.model);
     }
     const text = response.content
       .flatMap((block) => (block.type === "text" ? [block.text] : []))
       .join("");
-    if (!text) throw new AIProviderError("Claude returned no text", this.name);
+    if (!text) throw new AIProviderError("Claude returned no text", this.name, false, usage, response.model);
     return {
       text,
       provider: this.name,
       model: response.model,
-      usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
+      usage,
     };
   }
 }

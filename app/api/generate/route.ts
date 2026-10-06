@@ -3,9 +3,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { AIProviderError } from "@/lib/ai/types";
 import { getCurrentUser } from "@/lib/supabase/server";
-import { projectInputSchema } from "@/lib/studio/schemas";
+import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
+import { MAX_PROJECTS_PER_BUSINESS, projectInputSchema } from "@/lib/studio/schemas";
 import { generateForProject } from "@/lib/studio/service";
-import { UsageLimitError } from "@/lib/usage";
+import { consumeUsage, refundUsage, UsageLimitError } from "@/lib/usage";
 
 // Creates a project and generates its caption, hashtags, video script and ad headlines.
 // Costs 1 text generation from the user's plan. Body: the project fields (type, title, price,
@@ -24,35 +25,69 @@ export async function POST(request: Request) {
   }
   const { details, ...input } = parsed.data;
 
+  const account = await prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true } });
+  if (account?.deletionScheduledFor) return NextResponse.json({ error: "account_locked" }, { status: 403 });
+
+  try {
+    await rateLimit(`project:${user.id}`, RATE_LIMITS.projectCreate);
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return NextResponse.json(
+        { error: "rate_limited", message: rateLimitMessage(error) },
+        { status: 429, headers: { "Retry-After": String(error.retryAfterSeconds) } },
+      );
+    }
+    throw error;
+  }
+
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (!business) return NextResponse.json({ error: "Business profile not found" }, { status: 409 });
+  if ((await prisma.project.count({ where: { businessId: business.id } })) >= MAX_PROJECTS_PER_BUSINESS) {
+    return NextResponse.json({ error: "project_limit", message: "Project limit reached." }, { status: 409 });
+  }
 
-  const project = await prisma.project.create({
-    data: { ...input, businessId: business.id, details: details ? { notes: details } : undefined },
-    select: { id: true },
-  });
+  // Reserve the credit first, so a blocked call leaves no project behind.
+  let reservation;
+  try {
+    reservation = await consumeUsage(user.id, "text");
+  } catch (error) {
+    if (error instanceof UsageLimitError) {
+      return NextResponse.json({ error: "usage_blocked", reason: error.reason }, { status: 402 });
+    }
+    throw error;
+  }
+
+  let projectId: string;
+  try {
+    const project = await prisma.project.create({
+      data: { ...input, businessId: business.id, details: details ? { notes: details } : undefined },
+      select: { id: true },
+    });
+    projectId = project.id;
+  } catch (error) {
+    await refundUsage(user.id, "text", reservation.periodStart).catch(() => {});
+    throw error;
+  }
 
   try {
     const content = await generateForProject({
       userId: user.id,
       businessId: business.id,
-      projectId: project.id,
+      projectId,
       feature: "content",
+      reservation,
     });
-    return NextResponse.json({ projectId: project.id, content });
+    return NextResponse.json({ projectId, content });
   } catch (error) {
-    if (error instanceof UsageLimitError) {
-      return NextResponse.json({ error: "usage_blocked", reason: error.reason, projectId: project.id }, { status: 402 });
-    }
     if (error instanceof AIProviderError) {
       return NextResponse.json(
-        { error: "ai_failed", message: error.message, retryable: error.retryable, projectId: project.id },
+        { error: "ai_failed", message: error.message, retryable: error.retryable, projectId },
         { status: 502 },
       );
     }
     console.error("Generation failed", error);
     return NextResponse.json(
-      { error: "server_error", message: "Content generation is not available right now.", projectId: project.id },
+      { error: "server_error", message: "Content generation is not available right now.", projectId },
       { status: 500 },
     );
   }

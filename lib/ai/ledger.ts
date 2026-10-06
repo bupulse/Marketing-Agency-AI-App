@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { estimateCostUsd } from "./pricing";
-import type { TokenUsage } from "./types";
+import { AIProviderError, type TokenUsage } from "./types";
 
 export type LedgerContext = { userId?: string | null; businessId?: string | null; feature: string };
 
@@ -23,10 +23,12 @@ export async function withLedger<T>(
     await record(context, { ...info, success: true, durationMs: Date.now() - started });
     return result;
   } catch (error) {
+    // A provider that billed tokens before failing (blocked, unparsable) reports them on the error.
+    const billed = error instanceof AIProviderError ? error : undefined;
     await record(context, {
       provider: meta.provider,
-      model: meta.model,
-      usage: { inputTokens: 0, outputTokens: 0 },
+      model: billed?.model ?? meta.model,
+      usage: billed?.usage ?? { inputTokens: 0, outputTokens: 0 },
       success: false,
       error: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
       durationMs: Date.now() - started,

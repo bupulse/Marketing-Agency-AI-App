@@ -119,6 +119,11 @@ describe("template rendering", () => {
     expect(bytes.byteLength).toBeGreaterThan(2000);
   }, 30_000);
 
+  it("documents that Satori cannot decode WebP (the service rejects WebP template photos)", async () => {
+    const webp = "data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==";
+    await expect(renderTemplate("offer", { ...base, photoDataUrl: webp }, "1:1")).rejects.toThrow();
+  }, 30_000);
+
   it("renders Cyrillic and Arabic text without failing", async () => {
     for (const headline of ["Свежий хлеб каждое утро", "خبز طازج كل صباح"]) {
       const bytes = await renderTemplate("new-arrival", { ...base, headline, subline: headline, chip: null }, "1:1");

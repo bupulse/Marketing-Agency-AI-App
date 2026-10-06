@@ -5,19 +5,21 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { AIProviderError } from "@/lib/ai/types";
 import { requireActiveUser } from "@/lib/auth/require-user";
-import { flatErrors } from "@/lib/brand/schemas";
 import { logError } from "@/lib/errors";
+import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError, type RateLimitRule } from "@/lib/rate-limit";
+import type { ZodError } from "zod";
 import {
   editedContentSchema,
   instructionSchema,
   isOwnPhotoPath,
   MAX_PROJECT_PHOTOS,
+  MAX_PROJECTS_PER_BUSINESS,
   PHOTO_MAX_BYTES,
   PHOTO_TYPES,
   projectInputSchema,
   type ProjectInput,
 } from "@/lib/studio/schemas";
-import { generateForProject, StudioNotFoundError, variantsJson } from "@/lib/studio/service";
+import { generateForProject, pruneVersions, StudioNotFoundError, variantsJson } from "@/lib/studio/service";
 import { buildObjectPath, createSignedDownloadUrl, createSignedUploadUrl } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { UsageLimitError, type UsageBlockReason } from "@/lib/usage";
@@ -41,6 +43,27 @@ const GENERATE_FAILED = "We could not write your content just now. You were not 
 
 /** Every action re-checks the signed-in user and only touches their own business. */
 const requireUser = requireActiveUser;
+
+/** Field errors keyed by the top-level field, so "adHeadlines.2" highlights "adHeadlines". */
+function flatErrors(error: ZodError): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const issue of error.issues) {
+    const key = issue.path.length ? String(issue.path[0]) : "form";
+    if (!(key in out)) out[key] = issue.message;
+  }
+  return out;
+}
+
+/** Null when allowed, else the failure to return. */
+async function limited(key: string, rule: RateLimitRule): Promise<ActionFailure | null> {
+  try {
+    await rateLimit(key, rule);
+    return null;
+  } catch (error) {
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    throw error;
+  }
+}
 
 async function ownBusiness(userId: string) {
   return prisma.business.findUnique({ where: { userId }, select: { id: true } });
@@ -77,6 +100,8 @@ export async function createPhotoUpload(input: { fileName: string; type: string;
   const user = await requireUser();
   if (!(PHOTO_TYPES as readonly string[]).includes(input.type)) return { ok: false, error: "Use a PNG, JPG or WebP photo." };
   if (!(input.size > 0) || input.size > PHOTO_MAX_BYTES) return { ok: false, error: "Each photo must be 10 MB or smaller." };
+  const blocked = await limited(`upload:${user.id}`, RATE_LIMITS.photoUpload);
+  if (blocked) return blocked;
   try {
     const { path, token } = await createSignedUploadUrl("media", buildObjectPath(user.id, input.fileName, "projects"));
     return { ok: true, path, token };
@@ -91,6 +116,11 @@ export async function createProject(input: ProjectInput): Promise<ProjectResult>
   if (!parsed.success) return { ok: false, error: "Check the highlighted fields.", fieldErrors: flatErrors(parsed.error) };
   const business = await ownBusiness(user.id);
   if (!business) return { ok: false, error: "Set up your business first." };
+  const blocked = await limited(`project:${user.id}`, RATE_LIMITS.projectCreate);
+  if (blocked) return blocked;
+  if ((await prisma.project.count({ where: { businessId: business.id } })) >= MAX_PROJECTS_PER_BUSINESS) {
+    return { ok: false, error: `You have reached the limit of ${MAX_PROJECTS_PER_BUSINESS} projects. Delete some to add more.` };
+  }
 
   const { details, ...data } = parsed.data;
   let projectId: string;
@@ -189,6 +219,8 @@ export async function saveEditedContent(
   if (!parsed.success) return { ok: false, error: "Check the highlighted fields.", fieldErrors: flatErrors(parsed.error) };
   const business = await ownBusiness(user.id);
   if (!business) return NOT_FOUND;
+  const blocked = await limited(`edit:${user.id}`, RATE_LIMITS.contentEdit);
+  if (blocked) return blocked;
   const base = await prisma.generatedContent.findFirst({
     where: { id: contentId, project: { businessId: business.id } },
     select: { projectId: true, language: true },
@@ -213,6 +245,7 @@ export async function saveEditedContent(
       },
       select: { id: true },
     });
+    await pruneVersions(base.projectId).catch(() => {});
     refresh(base.projectId);
     return { ok: true, contentId: saved.id };
   } catch {

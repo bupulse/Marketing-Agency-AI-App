@@ -5,6 +5,10 @@ export const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
 export const PHOTO_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
 
 export const MAX_HEADLINE_LENGTH = 40;
+/** What the owner may write in an edited headline (the AI is held to MAX_HEADLINE_LENGTH). */
+export const MAX_EDITED_HEADLINE_LENGTH = 100;
+export const MAX_VERSIONS_PER_PROJECT = 50;
+export const MAX_PROJECTS_PER_BUSINESS = 500;
 
 /** Photos live in the "media" bucket under `<userId>/projects/`. */
 export function photoPrefix(userId: string) {
@@ -32,7 +36,11 @@ export function projectInputSchema(userId: string) {
     features: z
       .array(z.string().trim().min(1).max(200, "Use 200 characters or fewer."))
       .max(20, "Add up to 20 features.")
-      .default([]),
+      .default([])
+      .transform((list) => {
+        const seen = new Set<string>();
+        return list.filter((f) => !seen.has(f.toLowerCase()) && seen.add(f.toLowerCase()));
+      }),
     details: optionalText(2000),
     photoPaths: z
       .array(z.string().refine((p) => isOwnPhotoPath(userId, p), "That photo could not be used."))
@@ -54,5 +62,5 @@ export const editedContentSchema = z.object({
   caption: z.string().trim().min(1, "The caption cannot be empty.").max(5000),
   hashtags: z.array(z.string().trim().max(100)).max(30).default([]),
   videoScript: z.string().trim().max(8000).default(""),
-  adHeadlines: z.array(z.string().trim().min(1).max(100)).max(5).default([]),
+  adHeadlines: z.array(z.string().trim().min(1).max(MAX_EDITED_HEADLINE_LENGTH)).max(5).default([]),
 });

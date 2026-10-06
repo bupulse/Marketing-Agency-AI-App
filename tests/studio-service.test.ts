@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prisma = vi.hoisted(() => ({
   project: { findFirst: vi.fn() },
-  generatedContent: { create: vi.fn() },
+  generatedContent: { create: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn() },
   aiCall: { create: vi.fn() },
 }));
 const usage = vi.hoisted(() => {
@@ -53,6 +53,7 @@ beforeEach(() => {
   prisma.project.findFirst.mockResolvedValue(project);
   usage.consumeUsage.mockResolvedValue({ periodStart });
   generate.mockResolvedValue({ text: aiJson, provider: "gemini", model: "gemini-2.5-flash", usage: { inputTokens: 100, outputTokens: 50 } });
+  prisma.generatedContent.findMany.mockResolvedValue([]);
   prisma.generatedContent.create.mockImplementation(async ({ data }) => ({ id: "c1", ...data }));
 });
 
@@ -123,5 +124,31 @@ describe("generateForProject", () => {
     prisma.project.findFirst.mockResolvedValue(null);
     await expect(generateForProject(args)).rejects.toBeInstanceOf(StudioNotFoundError);
     expect(usage.consumeUsage).not.toHaveBeenCalled();
+  });
+});
+
+describe("ledger detail", () => {
+  it("records tokens billed by a failed call and the configured model", async () => {
+    const { AIProviderError } = await import("@/lib/ai/types");
+    generate.mockRejectedValue(new AIProviderError("no text", "gemini", false, { inputTokens: 7, outputTokens: 9 }, "gemini-2.5-flash"));
+    await expect(generateForProject(args)).rejects.toThrow();
+    expect(prisma.aiCall.create.mock.calls[0][0].data).toMatchObject({ success: false, inputTokens: 7, outputTokens: 9, model: "gemini-2.5-flash" });
+  });
+
+  it("records billed tokens when the JSON cannot be parsed", async () => {
+    generate.mockResolvedValue({ text: "nope", provider: "gemini", model: "gemini-2.5-flash", usage: { inputTokens: 5, outputTokens: 6 } });
+    await expect(generateForProject(args)).rejects.toThrow();
+    expect(prisma.aiCall.create.mock.calls[0][0].data).toMatchObject({ inputTokens: 5, outputTokens: 6 });
+  });
+
+  it("uses a pre-reserved credit without consuming another", async () => {
+    await generateForProject({ ...args, reservation: { periodStart } });
+    expect(usage.consumeUsage).not.toHaveBeenCalled();
+  });
+
+  it("deletes the oldest versions beyond 50", async () => {
+    prisma.generatedContent.findMany.mockResolvedValue([{ id: "old1" }]);
+    await generateForProject(args);
+    expect(prisma.generatedContent.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["old1"] } } });
   });
 });

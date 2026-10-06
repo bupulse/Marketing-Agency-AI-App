@@ -14,11 +14,14 @@ const mocks = vi.hoisted(() => ({
   upload: vi.fn(),
   download: vi.fn(),
   remove: vi.fn(),
+  info: vi.fn(),
+  rateLimit: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
 vi.mock("@/lib/usage", () => ({ consumeUsage: mocks.consumeUsage, refundUsage: mocks.refundUsage }));
+vi.mock("@/lib/rate-limit", () => ({ rateLimit: mocks.rateLimit, RATE_LIMITS: { templateDesign: { limit: 60, windowSeconds: 3600 } } }));
 vi.mock("@/lib/ai/ledger", () => ({ withLedger: mocks.withLedger }));
 vi.mock("@/lib/ai/image", () => ({ getImageProvider: () => ({ name: "gemini", generate: mocks.generate }) }));
 vi.mock("@/lib/designs/templates", async (importOriginal) => ({
@@ -27,7 +30,7 @@ vi.mock("@/lib/designs/templates", async (importOriginal) => ({
 }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
-    storage: { from: () => ({ upload: mocks.upload, download: mocks.download, remove: mocks.remove }) },
+    storage: { from: () => ({ upload: mocks.upload, download: mocks.download, remove: mocks.remove, info: mocks.info }) },
   }),
 }));
 
@@ -71,11 +74,29 @@ describe("template designs", () => {
     expect(mocks.prisma.business.findFirst).toHaveBeenLastCalledWith({ where: { id: "biz1", userId: USER } });
   });
 
-  it("only reads photos from the user's own folder", async () => {
-    for (const photoPath of ["22222222-2222-2222-2222-222222222222/projects/a.jpg", `${USER}/../other/a.jpg`, `/${USER}/a.jpg`]) {
+  it("only reads photos from the user's own projects folder", async () => {
+    for (const photoPath of ["22222222-2222-2222-2222-222222222222/projects/a.jpg", `${USER}/../other/a.jpg`, `/${USER}/a.jpg`, `${USER}/media/a.jpg`]) {
       await expect(createTemplateDesign({ ...owner, template: "offer", aspectRatio: "1:1", headline: "x", photoPath })).rejects.toThrow(DesignError);
     }
     expect(mocks.download).not.toHaveBeenCalled();
+  });
+
+  it("refuses an oversized or unsupported photo without downloading it", async () => {
+    const photoPath = `${USER}/projects/a.jpg`;
+    mocks.info.mockResolvedValue({ data: { size: 40 * 1024 * 1024, contentType: "image/jpeg" }, error: null });
+    await expect(createTemplateDesign({ ...owner, template: "offer", aspectRatio: "1:1", headline: "x", photoPath })).rejects.toThrow(/too large/);
+    mocks.info.mockResolvedValue({ data: { size: 1000, contentType: "image/webp" }, error: null });
+    await expect(createTemplateDesign({ ...owner, template: "offer", aspectRatio: "1:1", headline: "x", photoPath })).rejects.toThrow(/JPG or PNG/);
+    mocks.info.mockResolvedValue({ data: { size: 1000, contentType: "application/pdf" }, error: null });
+    await expect(createTemplateDesign({ ...owner, template: "offer", aspectRatio: "1:1", headline: "x", photoPath })).rejects.toThrow(DesignError);
+    expect(mocks.download).not.toHaveBeenCalled();
+  });
+
+  it("is rate limited per user", async () => {
+    mocks.rateLimit.mockRejectedValue(new Error("limited"));
+    await expect(createTemplateDesign({ ...owner, template: "offer", aspectRatio: "1:1", headline: "x" })).rejects.toThrow("limited");
+    expect(mocks.rateLimit).toHaveBeenCalledWith(`design:${USER}`, expect.anything());
+    expect(mocks.renderTemplate).not.toHaveBeenCalled();
   });
 
   it("removes the stored file when the row cannot be saved", async () => {
@@ -106,6 +127,12 @@ describe("AI designs", () => {
     await expect(createAiDesign({ ...owner, prompt: "fresh bread", aspectRatio: "1:1" })).rejects.toThrow("provider down");
     expect(mocks.refundUsage).toHaveBeenCalledWith(USER, "image", periodStart);
     expect(mocks.upload).not.toHaveBeenCalled();
+  });
+
+  it("keeps the original error when the refund itself fails", async () => {
+    mocks.withLedger.mockRejectedValue(new Error("provider down"));
+    mocks.refundUsage.mockRejectedValue(new Error("db down"));
+    await expect(createAiDesign({ ...owner, prompt: "fresh bread", aspectRatio: "1:1" })).rejects.toThrow("provider down");
   });
 
   it("refunds when storing the image fails", async () => {

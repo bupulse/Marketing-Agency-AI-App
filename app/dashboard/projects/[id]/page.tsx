@@ -33,8 +33,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
             <h1 className="break-words text-[28px] font-semibold leading-tight tracking-[-0.03em] sm:text-[30px]">{project.title}</h1>
             {project.features.length > 0 && (
               <ul aria-label="Key features" className="flex flex-wrap gap-2 text-[13px] text-muted">
-                {project.features.map((f) => (
-                  <li key={f} className="rounded-full bg-soft px-3 py-1">
+                {project.features.map((f, i) => (
+                  <li key={`${i}-${f}`} className="rounded-full bg-soft px-3 py-1">
                     {f}
                   </li>
                 ))}

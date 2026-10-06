@@ -93,6 +93,9 @@ export class AIProviderError extends Error {
     message: string,
     public provider: string,
     public retryable = false,
+    /** Tokens the provider billed before the call failed, for the cost ledger. */
+    public usage?: TokenUsage,
+    public model?: string,
   ) {
     super(message);
   }

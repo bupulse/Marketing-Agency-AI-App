@@ -5,10 +5,11 @@ import { z } from "zod";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
-import { isOwnObjectPath } from "@/lib/designs/assets";
+import { isOwnProjectPhotoPath } from "@/lib/designs/assets";
 import { ASPECT_RATIOS } from "@/lib/designs/layout";
 import { createAiDesign as makeAiDesign, createTemplateDesign as makeTemplateDesign, DesignError, deleteDesign as removeDesign, designDownloadUrl, designUrl } from "@/lib/designs/service";
 import { isTemplateId } from "@/lib/designs/templates";
+import { RateLimitError, rateLimitMessage } from "@/lib/rate-limit";
 import { UsageLimitError, type UsageBlockReason } from "@/lib/usage";
 
 export type DesignResult =
@@ -58,6 +59,7 @@ function revalidate(projectId: string | null) {
 
 function failure(error: unknown, userId: string): DesignResult {
   if (error instanceof UsageLimitError) return { ok: false, error: "You have used your image credits.", blocked: error.reason };
+  if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
   if (error instanceof DesignError) return { ok: false, error: error.message };
   void logError(error, { source: "designs.action", userId });
   return { ok: false, error: FAILED };
@@ -68,7 +70,7 @@ export async function createTemplateDesign(input: z.input<typeof templateSchema>
   const parsed = templateSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? FAILED };
   const data = parsed.data;
-  if (data.photoPath && !isOwnObjectPath(user.id, data.photoPath)) return { ok: false, error: "That photo could not be used." };
+  if (data.photoPath && !isOwnProjectPhotoPath(user.id, data.photoPath)) return { ok: false, error: "That photo could not be used." };
 
   const business = await businessOf(user.id);
   if (!business) return { ok: false, error: "Set up your business first." };
@@ -86,7 +88,7 @@ export async function createAiDesign(input: z.input<typeof aiSchema>): Promise<D
   const parsed = aiSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? FAILED };
   const data = parsed.data;
-  if (data.usePhotoPath && !isOwnObjectPath(user.id, data.usePhotoPath)) return { ok: false, error: "That photo could not be used." };
+  if (data.usePhotoPath && !isOwnProjectPhotoPath(user.id, data.usePhotoPath)) return { ok: false, error: "That photo could not be used." };
 
   const business = await businessOf(user.id);
   if (!business) return { ok: false, error: "Set up your business first." };

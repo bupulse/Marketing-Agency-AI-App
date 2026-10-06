@@ -47,13 +47,12 @@ const RATIO_SHAPE: Record<AspectRatio, string> = { "1:1": "h-5 w-5", "4:5": "h-6
 
 function RatioPicker({ value, onChange }: { value: AspectRatio; onChange: (v: AspectRatio) => void }) {
   return (
-    <div role="radiogroup" aria-label="Shape" className="flex flex-wrap gap-2">
+    <div role="group" aria-label="Shape" className="flex flex-wrap gap-2">
       {ASPECT_RATIOS.map((r) => (
         <button
           key={r}
           type="button"
-          role="radio"
-          aria-checked={value === r}
+          aria-pressed={value === r}
           onClick={() => onChange(r)}
           className={cn(
             "inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border px-4 text-sm font-semibold",
@@ -167,13 +166,12 @@ function TemplateTab({ projectId, defaults, order }: Pick<DesignStudioProps, "pr
 
   return (
     <div className="flex flex-col gap-6">
-      <div role="radiogroup" aria-label="Template" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div role="group" aria-label="Template" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {templates.map((t) => (
           <button
             key={t.id}
             type="button"
-            role="radio"
-            aria-checked={template === t.id}
+            aria-pressed={template === t.id}
             onClick={() => setTemplate(t.id)}
             className={cn("flex cursor-pointer flex-col gap-2 rounded-2xl border-2 p-2 text-left", template === t.id ? "border-pulse-blue bg-ok-bg" : "border-transparent hover:bg-soft")}
           >

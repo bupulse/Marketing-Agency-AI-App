@@ -7,6 +7,11 @@ export function isOwnObjectPath(userId: string, path: string): boolean {
   return path.startsWith(`${userId}/`) && path.length > userId.length + 1;
 }
 
+/** A project photo in the media bucket: `<userId>/projects/...`. */
+export function isOwnProjectPhotoPath(userId: string, path: string): boolean {
+  return isOwnObjectPath(userId, path) && path.startsWith(`${userId}/projects/`);
+}
+
 /** Where a design file lives in the private "designs" bucket. */
 export function designObjectPath(userId: string, designId: string, mimeType: string): string {
   const ext = mimeType === "image/jpeg" ? "jpg" : mimeType === "image/webp" ? "webp" : "png";
