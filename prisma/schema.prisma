@@ -36,6 +36,9 @@ model User {
   email        String        @unique
   name         String?
   signUpMethod SignUpMethod  @default(PASSWORD)
+  // Set when the owner asks to delete the account; everything is erased after this date
+  // unless they sign in and cancel (30-day grace period).
+  deletionScheduledFor DateTime?
   createdAt    DateTime      @default(now())
   business     Business?
   subscription Subscription?
@@ -50,17 +53,19 @@ model Business {
   user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name                    String
   industry                String? // e.g. "Phone store", "School", "Construction"
-  description             String? // what they sell and to whom
-  tone                    String? // brand voice, e.g. "friendly, professional"
-  logoUrl                 String?
+  description             String? // what they sell
+  audience                String? // who their customers are
+  tone                    String? // brand voice preset id from lib/brand/voices.ts, e.g. "friendly"
+  logoUrl                 String? // object path in the private "brand" bucket (<userId>/logo/...)
   brandColors             String[]
   website                 String?
   ceoName                 String? // from the sign-up form
   country                 String? // from the sign-up form
   phone                   String? // from the sign-up form
   detailsCompletedAt      DateTime? // set once the organisation details are filled in; Google sign-ups do it on /welcome
+  onboardedAt             DateTime? // set when the brand onboarding (/onboarding) is finished
   instagramHandle         String?
-  knowledge               Json? // facts the chat widget may answer from: hours, area, FAQs
+  knowledge               Json? // facts the chat widget may answer from (lib/brand/schemas.ts knowledgeSchema)
   widgetKey               String   @unique @default(cuid()) // public id used by the embed snippet
   composioApiKeyEncrypted String? // Pro users' own Composio key, encrypted with lib/crypto.ts
   createdAt               DateTime @default(now())

@@ -23,8 +23,12 @@ export const getAppContext = cache(async () => {
     prisma.business.findUnique({ where: { userId: user.id } }),
     getUsageSummary(user.id),
   ]);
-  // Google sign-ups fill in their organisation details before using the app.
+  // Order matters: a pending deletion locks the account, Google sign-ups give their
+  // organisation details first, then everyone completes the brand onboarding.
+  const account = await prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true } });
+  if (account?.deletionScheduledFor) redirect("/account/deletion");
   if (!business?.detailsCompletedAt) redirect("/welcome");
+  if (!business.onboardedAt) redirect("/onboarding");
 
   const meta = user.user_metadata as { full_name?: string; name?: string } | undefined;
   const fullName = meta?.full_name ?? meta?.name ?? null;

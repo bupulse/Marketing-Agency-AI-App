@@ -38,5 +38,5 @@ export async function saveOrganisation(_prev: WelcomeState, formData: FormData):
       detailsCompletedAt: new Date(),
     },
   });
-  redirect("/dashboard");
+  redirect("/onboarding");
 }
