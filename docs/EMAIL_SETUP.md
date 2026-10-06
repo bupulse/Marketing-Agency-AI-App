@@ -27,7 +27,7 @@ If you don't already have one, add a DMARC record in Cloudflare too: TXT `_dmarc
 | Sender name | `BuPulse` |
 | Host | `smtp.resend.com` |
 | Port | `465` |
-| Username | `resend` |
+| Username | `resend` (all lowercase — `Resend` makes every email fail with "Error sending confirmation email") |
 | Password | the `re_…` API key |
 | Minimum interval between emails | 60 seconds |
 
