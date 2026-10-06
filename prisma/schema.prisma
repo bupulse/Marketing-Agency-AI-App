@@ -350,3 +350,14 @@ model AiCall {
   @@index([createdAt])
   @@index([businessId, createdAt])
 }
+
+// Fixed-window rate limits (lib/rate-limit.ts): one row per key and window, e.g.
+// "design:<userId>" for the current hour.
+model RateLimit {
+  key         String
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+  @@index([windowStart])
+}
