@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { usageWindowEnd, usageWindowStart } from "@/lib/billing/period";
 import { PLANS, type UsageMetric } from "@/lib/plans";
 
 const FIELD = {
@@ -9,7 +10,7 @@ const FIELD = {
   voiceCharacters: "voiceCharacters",
 } as const satisfies Record<UsageMetric, string>;
 
-export type UsageBlockReason = "no_subscription" | "trial_expired" | "inactive" | "limit_reached";
+export type UsageBlockReason = "no_subscription" | "trial_expired" | "inactive" | "past_due" | "limit_reached";
 
 export class UsageLimitError extends Error {
   constructor(
@@ -36,13 +37,16 @@ export async function consumeUsage(userId: string, metric: UsageMetric, amount =
   if (sub.plan === "TRIAL" && sub.trialEndsAt && sub.trialEndsAt < now) {
     throw new UsageLimitError("trial_expired", metric);
   }
+  // A failed payment limits the account: everything stays, but nothing new is generated.
+  if (sub.status === "PAST_DUE") throw new UsageLimitError("past_due", metric);
   if (sub.status !== "TRIALING" && sub.status !== "ACTIVE") {
     throw new UsageLimitError("inactive", metric);
   }
 
   const limit = PLANS[sub.plan].limits[metric];
   const field = FIELD[metric];
-  const periodStart = sub.currentPeriodStart;
+  // Usage resets monthly, also inside a yearly billing period.
+  const periodStart = usageWindowStart(sub.currentPeriodStart, now);
 
   await prisma.usageRecord.upsert({
     where: { userId_periodStart: { userId, periodStart } },
@@ -69,8 +73,10 @@ export async function refundUsage(userId: string, metric: UsageMetric, periodSta
 
 export async function getUsageSummary(userId: string) {
   const sub = await activePeriod(userId);
+  const now = new Date();
+  const periodStart = usageWindowStart(sub.currentPeriodStart, now);
   const record = await prisma.usageRecord.findUnique({
-    where: { userId_periodStart: { userId, periodStart: sub.currentPeriodStart } },
+    where: { userId_periodStart: { userId, periodStart } },
   });
   const limits = PLANS[sub.plan].limits;
   return {
@@ -83,5 +89,7 @@ export async function getUsageSummary(userId: string) {
       voiceCharacters: record?.voiceCharacters ?? 0,
     },
     limits,
+    /** When usage next resets (trial: when the trial ends). */
+    resetsAt: sub.plan === "TRIAL" ? sub.trialEndsAt : usageWindowEnd(sub.currentPeriodStart, now),
   };
 }

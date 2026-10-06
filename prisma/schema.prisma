@@ -125,20 +125,52 @@ model Lead {
   @@index([businessId, createdAt])
 }
 
+// Payment providers BuPulse can bill through. Paddle first; others plug into lib/billing.
+enum BillingProvider {
+  PADDLE
+  STRIPE
+  PAYPAL
+}
+
+enum BillingInterval {
+  MONTH
+  YEAR
+}
+
 model Subscription {
-  id                   String             @id @default(cuid())
-  userId               String             @unique @db.Uuid
-  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan                 Plan               @default(TRIAL)
-  status               SubscriptionStatus @default(TRIALING)
-  stripeCustomerId     String?            @unique
-  stripeSubscriptionId String?            @unique
-  stripePriceId        String?
-  trialEndsAt          DateTime?
-  currentPeriodStart   DateTime           @default(now())
-  currentPeriodEnd     DateTime?
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+  id                     String             @id @default(cuid())
+  userId                 String             @unique @db.Uuid
+  user                   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                   Plan               @default(TRIAL)
+  status                 SubscriptionStatus @default(TRIALING)
+  provider               BillingProvider? // null while on the free trial
+  providerCustomerId     String?
+  providerSubscriptionId String?            @unique
+  providerPriceId        String?
+  interval               BillingInterval    @default(MONTH)
+  cancelAtPeriodEnd      Boolean            @default(false) // stays active until currentPeriodEnd
+  trialEndsAt            DateTime?
+  // Start of the billing period. Usage resets monthly from here (yearly plans too).
+  currentPeriodStart     DateTime           @default(now())
+  currentPeriodEnd       DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+}
+
+// Every payment webhook received, for idempotency (providers retry) and auditing.
+model BillingEvent {
+  id          String          @id @default(cuid())
+  provider    BillingProvider
+  eventId     String // the provider's own event id
+  type        String
+  userId      String?         @db.Uuid
+  payload     Json
+  processedAt DateTime?
+  error       String?
+  createdAt   DateTime        @default(now())
+
+  @@unique([provider, eventId])
+  @@index([userId])
 }
 
 // One row per user per billing period. Limits per plan live in lib/plans.ts.
