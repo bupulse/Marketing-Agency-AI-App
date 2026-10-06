@@ -1,9 +1,10 @@
-import { ArrowRight, CircleCheck, Circle, FolderKanban, Image as ImageIcon, PenLine, Sparkles, Users } from "lucide-react";
+import { ArrowRight, CircleCheck, Circle, FolderKanban, Image as ImageIcon, Palette, PenLine, Users } from "lucide-react";
 import Link from "next/link";
 import { getAppContext } from "@/components/app/context";
-import { Badge, Button, GlassCard, Meter } from "@/components/ui";
+import { Badge, GlassCard, Meter } from "@/components/ui";
 import { prisma } from "@/lib/db";
 import { cn } from "@/lib/cn";
+import { isHexColor } from "@/lib/color-contrast";
 
 export const metadata = { title: "Dashboard" };
 
@@ -18,7 +19,7 @@ function timeAgo(date: Date) {
 }
 
 export default async function DashboardPage() {
-  const { business, usage, isTrial, trialDaysLeft, firstName } = await getAppContext();
+  const { business, usage, firstName, logoUrl, brandColors, voiceLabel, businessName } = await getAppContext();
 
   const businessId = business?.id;
   const [projectCount, contentCount, leadCount, connectionCount, recentProjects, recentLeads] = businessId
@@ -33,7 +34,8 @@ export default async function DashboardPage() {
     : [0, 0, 0, 0, [], []];
 
   const { used, limits } = usage;
-  const brandDone = Boolean(business?.industry && business.description);
+  const brandDone = Boolean(business?.onboardedAt);
+  const swatches = brandColors.filter(isHexColor).slice(0, 5);
 
   const checklist = [
     { label: "Complete your brand profile", done: brandDone, href: "/dashboard/brand" },
@@ -64,33 +66,44 @@ export default async function DashboardPage() {
           Welcome, {firstName}
         </h1>
         <p className="text-[15px] text-muted">Here is how your marketing is doing.</p>
+        <div
+          aria-hidden
+          className="mt-2 h-1 w-24 rounded-full"
+          style={{ background: "linear-gradient(90deg, var(--brand-1), var(--brand-2))" }}
+        />
       </header>
 
-      {isTrial && (
-        <GlassCard
-          strong
-          padding="md"
-          className="flex flex-wrap items-center justify-between gap-4 border-pulse-blue/30"
-          role="status"
-        >
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="inline-flex size-11 shrink-0 items-center justify-center rounded-2xl bg-brand-gradient text-white">
-              <Sparkles aria-hidden className="size-5" />
-            </span>
-            <div className="min-w-0">
-              <p className="font-semibold">
-                {trialDaysLeft === 0
-                  ? "Your free trial has ended"
-                  : `${trialDaysLeft} ${trialDaysLeft === 1 ? "day" : "days"} left in your free trial`}
-              </p>
-              <p className="text-sm text-muted">Upgrade to keep creating content without limits on your trial.</p>
-            </div>
+      <GlassCard as="section" aria-labelledby="yb" className="flex flex-wrap items-center gap-x-5 gap-y-3 p-4 sm:p-5">
+        {logoUrl ? (
+          // Signed Supabase URL: plain img, no remotePatterns needed.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logoUrl} alt={`${businessName} logo`} width={48} height={48} className="size-12 shrink-0 rounded-2xl bg-white object-contain p-1" />
+        ) : (
+          <span aria-hidden className="inline-flex size-12 shrink-0 items-center justify-center rounded-2xl bg-soft text-muted">
+            <Palette className="size-5" />
+          </span>
+        )}
+        <div className="flex min-w-0 flex-[1_1_200px] flex-col gap-1.5">
+          <h2 id="yb" className="truncate text-base font-semibold">Your brand</h2>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            {swatches.length > 0 ? (
+              <ul aria-label="Brand colours" className="flex gap-1.5">
+                {swatches.map((c) => (
+                  <li key={c} title={c} className="size-6 rounded-full border border-line" style={{ background: c }}>
+                    <span className="sr-only">{c}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span className="text-[13px] text-muted">No colours yet</span>
+            )}
+            <span className="text-[13px] text-muted">{voiceLabel ? `Voice: ${voiceLabel}` : "No voice chosen yet"}</span>
           </div>
-          <Button href="/dashboard/billing" size="sm" trailing={<ArrowRight aria-hidden className="size-4" />}>
-            Upgrade
-          </Button>
-        </GlassCard>
-      )}
+        </div>
+        <Link href="/dashboard/brand" className="inline-flex min-h-11 items-center text-sm font-semibold">
+          Edit brand
+        </Link>
+      </GlassCard>
 
       <section aria-label="Overview" className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-4">
         {stats.map(({ label, value, note, icon: Icon }) => (

@@ -30,6 +30,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           {params.notice === "exists-google" ? "It was created with Google, so use Continue with Google." : "Sign in below."}
         </p>
       )}
+      {params.notice === "deletion-scheduled" && (
+        <p role="status" className="rounded-2xl bg-ok-bg px-4 py-3 text-sm font-medium text-ok">
+          Your account is scheduled for deletion in 30 days. Sign in any time before then to keep it.
+        </p>
+      )}
       {params.error === "confirm" ? (
         <ResendByEmail />
       ) : params.error === "use_password" ? (

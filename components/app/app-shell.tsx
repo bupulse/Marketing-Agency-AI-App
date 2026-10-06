@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bell, ChevronDown, LogOut, Menu, Plus, Settings, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Logo } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme";
 import { Avatar, Button, Meter, useToast } from "@/components/ui";
+import { readableTextColor } from "@/lib/color-contrast";
 import { cn } from "@/lib/cn";
 import { NAV_ITEMS } from "./nav";
 
@@ -18,7 +19,17 @@ export type ShellPlan = {
   max: number;
 };
 
+export type ShellBrand = {
+  /** Signed URL of the business logo, if one was uploaded. */
+  logoUrl: string | null;
+  /** Three validated hex colours, already padded with BuPulse defaults. */
+  colors: [string, string, string];
+  /** True when the business set at least one colour of its own. */
+  hasColors: boolean;
+};
+
 type ShellProps = {
+  brand: ShellBrand;
   displayName: string;
   firstName: string;
   email: string;
@@ -31,7 +42,52 @@ function isActive(pathname: string, href: string) {
   return href === "/dashboard" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function Sidebar({ pathname, plan, onNavigate }: { pathname: string; plan: ShellPlan; onNavigate?: () => void }) {
+function BrandMark({ name, brand, size }: { name: string; brand: ShellBrand; size: number }) {
+  if (brand.logoUrl) {
+    return (
+      // Signed Supabase URL: a plain img avoids needing remotePatterns for a rotating host.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={brand.logoUrl}
+        alt={`${name} logo`}
+        width={size}
+        height={size}
+        className="shrink-0 rounded-xl bg-white object-contain p-0.5"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+  if (!brand.hasColors) return <Avatar name={name} size={size} className="rounded-xl" />;
+  return (
+    <span
+      aria-hidden
+      className="inline-flex shrink-0 items-center justify-center rounded-xl font-semibold"
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.max(11, size * 0.38),
+        background: "var(--brand-1)",
+        color: "var(--brand-1-text)",
+      }}
+    >
+      {name.trim().charAt(0).toUpperCase() || "?"}
+    </span>
+  );
+}
+
+function Sidebar({
+  pathname,
+  plan,
+  businessName,
+  brand,
+  onNavigate,
+}: {
+  pathname: string;
+  plan: ShellPlan;
+  businessName: string;
+  brand: ShellBrand;
+  onNavigate?: () => void;
+}) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5">
       <div className="px-2 pt-1">
@@ -39,6 +95,14 @@ function Sidebar({ pathname, plan, onNavigate }: { pathname: string; plan: Shell
           <Logo height={28} />
         </Link>
       </div>
+      <Link
+        href="/dashboard/brand"
+        onClick={onNavigate}
+        className="flex min-h-12 items-center gap-2.5 rounded-2xl bg-soft px-2.5 py-1.5 no-underline"
+      >
+        <BrandMark name={businessName} brand={brand} size={36} />
+        <span className="min-w-0 truncate text-sm font-semibold">{businessName}</span>
+      </Link>
       <nav aria-label="App" className="flex flex-col gap-1">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const active = isActive(pathname, href);
@@ -54,7 +118,10 @@ function Sidebar({ pathname, plan, onNavigate }: { pathname: string; plan: Shell
               )}
             >
               {active && (
-                <span aria-hidden className="absolute inset-y-2 left-0 w-1 rounded-full bg-brand-gradient" />
+                <span
+                  aria-hidden className="absolute inset-y-2 left-0 w-1 rounded-full"
+                  style={{ background: "linear-gradient(180deg, var(--brand-1), var(--brand-2))" }}
+                />
               )}
               <Icon aria-hidden className={cn("size-[18px] shrink-0", active && "text-pulse-blue")} />
               {label}
@@ -142,7 +209,19 @@ function UserMenu({ displayName, email }: { displayName: string; email: string }
   );
 }
 
-function Drawer({ pathname, plan, onClose }: { pathname: string; plan: ShellPlan; onClose: () => void }) {
+function Drawer({
+  pathname,
+  plan,
+  businessName,
+  brand,
+  onClose,
+}: {
+  pathname: string;
+  plan: ShellPlan;
+  businessName: string;
+  brand: ShellBrand;
+  onClose: () => void;
+}) {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -191,13 +270,13 @@ function Drawer({ pathname, plan, onClose }: { pathname: string; plan: ShellPlan
         >
           <X aria-hidden className="size-5" />
         </button>
-        <Sidebar pathname={pathname} plan={plan} onNavigate={onClose} />
+        <Sidebar pathname={pathname} plan={plan} businessName={businessName} brand={brand} onNavigate={onClose} />
       </div>
     </div>
   );
 }
 
-export function AppShell({ displayName, firstName, email, businessName, plan, children }: ShellProps) {
+export function AppShell({ brand, displayName, firstName, email, businessName, plan, children }: ShellProps) {
   const pathname = usePathname();
   const { toast } = useToast();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -209,7 +288,19 @@ export function AppShell({ displayName, firstName, email, businessName, plan, ch
   }, []);
 
   return (
-    <div className="relative flex min-h-dvh w-full flex-wrap items-start gap-5 p-3 sm:p-5">
+    <div
+      className="relative flex min-h-dvh w-full flex-wrap items-start gap-5 p-3 sm:p-5"
+      style={
+        {
+          "--brand-1": brand.colors[0],
+          "--brand-2": brand.colors[1],
+          "--brand-3": brand.colors[2],
+          "--brand-1-text": readableTextColor(brand.colors[0]),
+          "--brand-2-text": readableTextColor(brand.colors[1]),
+          "--brand-3-text": readableTextColor(brand.colors[2]),
+        } as CSSProperties
+      }
+    >
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-surface focus:px-4 focus:py-2"
@@ -221,10 +312,10 @@ export function AppShell({ displayName, firstName, email, businessName, plan, ch
         aria-label="Sidebar"
         className="glass-strong hidden w-[248px] shrink-0 flex-col rounded-[28px] p-3.5 lg:sticky lg:top-5 lg:flex lg:max-h-[calc(100dvh-2.5rem)] lg:self-start lg:overflow-y-auto"
       >
-        <Sidebar pathname={pathname} plan={plan} />
+        <Sidebar pathname={pathname} plan={plan} businessName={businessName} brand={brand} />
       </aside>
 
-      {drawerOpen && <Drawer pathname={pathname} plan={plan} onClose={closeDrawer} />}
+      {drawerOpen && <Drawer pathname={pathname} plan={plan} businessName={businessName} brand={brand} onClose={closeDrawer} />}
 
       <div className="flex min-w-0 flex-1 basis-[min(100%,560px)] flex-col gap-5">
         <div className="flex flex-wrap items-center justify-between gap-3 px-1">
@@ -239,9 +330,12 @@ export function AppShell({ displayName, firstName, email, businessName, plan, ch
             >
               <Menu aria-hidden className="size-5" />
             </button>
-            <div className="flex min-w-0 flex-col">
-              <span className="truncate text-[15px] font-semibold">Welcome back, {firstName}</span>
-              <span className="truncate text-[13px] text-muted">{businessName}</span>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <BrandMark name={businessName} brand={brand} size={36} />
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate text-[15px] font-semibold">Welcome back, {firstName}</span>
+                <span className="truncate text-[13px] text-muted">{businessName}</span>
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2.5">

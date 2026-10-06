@@ -2,17 +2,14 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { ensureAccount } from "@/lib/account";
+import { requireActiveUser } from "@/lib/auth/require-user";
 import { fieldErrors, welcomeSchema, type FieldErrors } from "@/lib/auth/schemas";
-import { getCurrentUser } from "@/lib/supabase/server";
 
 export type WelcomeState = { error?: string; fieldErrors?: FieldErrors };
 
 // Google sign-ups: save the organisation details, then open the dashboard.
 export async function saveOrganisation(_prev: WelcomeState, formData: FormData): Promise<WelcomeState> {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  if (!(await ensureAccount(user))) redirect("/login?error=confirm");
+  const user = await requireActiveUser();
 
   const parsed = welcomeSchema.safeParse({
     organisationName: formData.get("organisationName") ?? "",

@@ -65,3 +65,12 @@ The domain's DNS must be on Cloudflare. For staging, create a second worker (cop
 - Bundle size: the Worker is about 4.7 MiB gzipped. The free Workers plan allows 3 MiB, so production needs the Workers Paid plan (10 MiB limit).
 - `pg-cloudflare` is pinned to 1.3.0 in `package.json` (`overrides`) because 1.4.1 is published without the files the bundler needs. Remove the pin once a fixed version ships.
 - `proxy.ts` runs as Node.js middleware, which OpenNext marks experimental on Cloudflare. Check sign-in and the `/dashboard` redirect on staging.
+
+## Account deletion (30-day grace period)
+
+Deleting an account locks it for 30 days; the owner can sign in and cancel. A daily GitHub Actions job (`.github/workflows/purge-accounts.yml`) calls `POST /api/cron/purge-accounts`, which erases accounts past the date, including their files in Storage. It needs two more secrets:
+
+- `SUPABASE_SECRET_KEY`: Supabase, Project Settings, API keys, the secret key. Set it in Cloudflare (`wrangler secret put SUPABASE_SECRET_KEY`). Server only. Without it accounts are still erased but their Storage files are left behind.
+- `CRON_SECRET`: any long random string (for example `openssl rand -base64 32`). Set the same value in Cloudflare and as a GitHub Actions secret.
+
+You can run the job by hand from the Actions tab (Run workflow). `/api/cron` is not behind the sign-in redirect in `proxy.ts`; the route checks the bearer token itself.

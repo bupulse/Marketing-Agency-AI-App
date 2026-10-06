@@ -17,7 +17,11 @@ export default async function WelcomePage() {
   if (!user) redirect("/login?next=/welcome");
   if (!(await ensureAccount(user))) redirect("/login?error=confirm");
 
-  const business = await prisma.business.findUnique({ where: { userId: user.id } });
+  const [business, account] = await Promise.all([
+    prisma.business.findUnique({ where: { userId: user.id } }),
+    prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true } }),
+  ]);
+  if (account?.deletionScheduledFor) redirect("/account/deletion");
   if (business?.detailsCompletedAt) redirect("/dashboard");
 
   const meta = user.user_metadata as { full_name?: string; name?: string } | undefined;

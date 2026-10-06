@@ -110,7 +110,10 @@ describe("safeNext", () => {
   it("allows same-site paths", () => {
     expect(safeNext("/dashboard/settings")).toBe("/dashboard/settings");
   });
-  it.each([null, "", "//evil.com", "https://evil.com", "evil.com", "/\\evil.com"])("falls back for %j", (v) => {
+  it("keeps the query string", () => {
+    expect(safeNext("/dashboard/brand?tab=voice")).toBe("/dashboard/brand?tab=voice");
+  });
+  it.each([null, "", "//evil.com", "https://evil.com", "evil.com", "/\\evil.com", "/\t/evil.com", "/\n/evil.com", "/%09/evil.com".replace("%09", "\t")])("falls back for %j", (v) => {
     expect(safeNext(v)).toBe("/dashboard");
   });
 });

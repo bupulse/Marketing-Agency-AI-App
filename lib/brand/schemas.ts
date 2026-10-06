@@ -61,3 +61,57 @@ export function readKnowledge(value: unknown): Knowledge {
   const parsed = knowledgeSchema.safeParse(value);
   return parsed.success ? parsed.data : { hours: undefined, area: undefined, contact: undefined, faqs: [] };
 }
+
+// No SVG: an SVG can carry scripts, and logos may later be shown inline (widget, designs, emails).
+export const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
+export const LOGO_MAX_BYTES = 5 * 1024 * 1024;
+export const MAX_COLORS = 3;
+export const MAX_ONBOARDING_FAQS = 3;
+
+/** Like fieldErrors, but keeps nested paths ("faqs.0.question") so list rows can show their own errors. */
+export function flatErrors(error: z.ZodError): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const issue of error.issues) {
+    const key = issue.path.length ? issue.path.join(".") : "form";
+    if (!(key in out)) out[key] = issue.message;
+  }
+  return out;
+}
+
+/** Drops question/answer pairs that are completely blank, so an empty row is not an error. */
+export function prepareFaqs<T extends { question: string; answer: string }>(faqs: T[]): T[] {
+  return faqs.filter((f) => f.question.trim() || f.answer.trim());
+}
+
+/** Whether a stored logo path belongs to this user's logo folder in the brand bucket. */
+export function isOwnLogoPath(userId: string, path: string): boolean {
+  return path.startsWith(`${userId}/logo/`) && !path.includes("..");
+}
+
+/**
+ * Validates step 4. Completely blank FAQ rows are ignored, and errors keep the row's
+ * position in the form ("faqs.1.answer") so they show under the right inputs.
+ */
+export function validateKnowledge(input: {
+  hours?: string;
+  area?: string;
+  contact?: string;
+  faqs?: { question: string; answer: string }[];
+}): { ok: true; data: Knowledge } | { ok: false; errors: Record<string, string> } {
+  const rows = (input.faqs ?? []).map((faq, index) => ({ faq, index })).filter(({ faq }) => faq.question.trim() || faq.answer.trim());
+  const parsed = knowledgeSchema.safeParse({
+    hours: input.hours ?? "",
+    area: input.area ?? "",
+    contact: input.contact ?? "",
+    faqs: rows.map((r) => r.faq),
+  });
+  if (parsed.success) return { ok: true, data: parsed.data };
+  const errors: Record<string, string> = {};
+  for (const issue of parsed.error.issues) {
+    const path = [...issue.path];
+    if (path[0] === "faqs" && typeof path[1] === "number") path[1] = rows[path[1]]?.index ?? path[1];
+    const key = path.length ? path.join(".") : "form";
+    if (!(key in errors)) errors[key] = issue.message;
+  }
+  return { ok: false, errors };
+}
