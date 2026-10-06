@@ -53,7 +53,7 @@ type PaddleSubscription = {
   canceled_at?: unknown;
   updated_at?: unknown;
   items?: { price?: { id?: unknown } | null }[] | null;
-  custom_data?: { userId?: unknown } | null;
+  custom_data?: { userId?: unknown; sig?: unknown } | null;
   current_billing_period?: { starts_at?: unknown; ends_at?: unknown } | null;
   scheduled_change?: { action?: unknown; effective_at?: unknown } | null;
 };
@@ -86,6 +86,7 @@ export function mapSubscription(data: unknown, now: Date = new Date()): Provider
     providerCustomerId: sub.customer_id,
     providerPriceId: priceId,
     userId: isUuid(sub.custom_data?.userId) ? sub.custom_data.userId : null,
+    userIdSignature: typeof sub.custom_data?.sig === "string" ? sub.custom_data.sig : null,
     status,
     currentPeriodStart: start,
     currentPeriodEnd: end,

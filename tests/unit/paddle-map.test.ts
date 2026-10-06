@@ -32,6 +32,7 @@ describe("mapSubscription", () => {
       providerCustomerId: "ctm_1",
       providerPriceId: "pri_1",
       userId: USER,
+      userIdSignature: null,
       status: "ACTIVE",
       currentPeriodStart: new Date("2026-10-01T00:00:00Z"),
       currentPeriodEnd: new Date("2026-11-01T00:00:00Z"),

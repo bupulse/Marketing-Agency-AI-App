@@ -2,6 +2,7 @@ import "server-only";
 import { siteUrl } from "@/lib/auth/site-url";
 import { priceIdFor } from "./catalog";
 import { formatMoney, isUuid, mapSubscription, verifySignature } from "./paddle-map";
+import { signCheckoutUser } from "./signing";
 import type { BillingAdapter, BillingWebhook, Invoice, ProviderSubscription } from "./types";
 
 function environment(): "sandbox" | "production" {
@@ -73,8 +74,9 @@ export const paddle: BillingAdapter = {
       priceId,
       customerEmail: email,
       customerId: providerCustomerId ?? null,
-      customData: { userId, plan, interval },
-      successUrl: `${siteUrl()}/dashboard/billing?checkout=success`,
+      customData: { userId, sig: await signCheckoutUser(userId), plan, interval },
+      // `since` lets the billing page wait for this purchase, not an older plan change.
+      successUrl: `${siteUrl()}/dashboard/billing?checkout=success&since=${Date.now()}`,
     };
   },
 
@@ -90,6 +92,14 @@ export const paddle: BillingAdapter = {
     const data = await api(`/subscriptions/${encodeURIComponent(id)}/cancel`, {
       method: "POST",
       body: { effective_from: "next_billing_period" },
+    });
+    return subscriptionOrThrow(data);
+  },
+
+  async cancelNow(id) {
+    const data = await api(`/subscriptions/${encodeURIComponent(id)}/cancel`, {
+      method: "POST",
+      body: { effective_from: "immediately" },
     });
     return subscriptionOrThrow(data);
   },

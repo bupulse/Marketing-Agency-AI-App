@@ -15,7 +15,10 @@ export function PricingPlans() {
 
   return (
     <div className="flex flex-col items-center gap-8">
-      <IntervalToggle value={interval} onChange={setInterval} />
+      {/* Wrapped so the toggle centres here (it aligns to the start on the billing page). */}
+      <div>
+        <IntervalToggle value={interval} onChange={setInterval} />
+      </div>
       <div className="mx-auto grid w-full max-w-4xl gap-6 md:grid-cols-2">
         {pricingPlans.map((plan) => (
           <GlassCard

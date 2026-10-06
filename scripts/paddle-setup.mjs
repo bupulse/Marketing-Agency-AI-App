@@ -96,7 +96,15 @@ async function ensurePrice(productId, label, interval, dollars) {
 async function ensureNotificationSetting(url) {
   const settings = await api("/notification-settings?per_page=200");
   const found = settings.find((s) => s.destination === url && s.type === "url");
-  if (found) return { secret: found.endpoint_secret_key ?? null, created: false };
+  if (found) {
+    // Keep an existing endpoint's events in step with what the webhook handles.
+    const missing = EVENTS.filter((e) => !(found.subscribed_events ?? []).some((s) => (s.name ?? s) === e));
+    if (missing.length) {
+      await api(`/notification-settings/${found.id}`, "PATCH", { subscribed_events: EVENTS });
+      console.log(`Updated the webhook's events (added ${missing.join(", ")}).`);
+    }
+    return { secret: found.endpoint_secret_key ?? null, created: false };
+  }
   const created = await api("/notification-settings", "POST", {
     description: "BuPulse billing webhooks",
     type: "url",

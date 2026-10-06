@@ -6,8 +6,9 @@ export type ProviderSubscription = {
   providerSubscriptionId: string;
   providerCustomerId: string;
   providerPriceId: string;
-  /** Our user id, sent to the provider as custom data at checkout. */
+  /** Our user id from the checkout custom data. Not trusted until `userIdSignature` verifies. */
   userId: string | null;
+  userIdSignature: string | null;
   status: SubscriptionStatus;
   currentPeriodStart: Date;
   currentPeriodEnd: Date | null;
@@ -35,7 +36,8 @@ export type CheckoutConfig = {
   customerEmail: string;
   /** The provider's customer when they bought before, so a second customer isn't created. */
   customerId: string | null;
-  customData: { userId: string; plan: PaidPlan; interval: BillingInterval };
+  /** `sig` is the server's signature of userId (lib/billing/signing.ts). */
+  customData: { userId: string; sig: string; plan: PaidPlan; interval: BillingInterval };
   successUrl: string;
 };
 
@@ -64,6 +66,8 @@ export interface BillingAdapter {
   /** A link to the provider's page where the customer updates their card or cancels. */
   portalUrl(input: { providerCustomerId: string; providerSubscriptionId?: string | null }): Promise<string>;
   cancelAtPeriodEnd(providerSubscriptionId: string): Promise<ProviderSubscription>;
+  /** Ends a subscription straight away (used for an accidental second subscription). */
+  cancelNow(providerSubscriptionId: string): Promise<ProviderSubscription>;
   resume(providerSubscriptionId: string): Promise<ProviderSubscription>;
   /** Switch plan or interval; charges/credits the difference now. */
   changePlan(providerSubscriptionId: string, priceId: string): Promise<ProviderSubscription>;

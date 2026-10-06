@@ -18,8 +18,8 @@ export default function RefundPolicyPage() {
       <LegalSection title="1. 14-day money-back guarantee">
         <p>
           If you are not happy with BuPulse, ask for a refund within 14 days of your first payment for a plan and we will refund that payment in full.
-          This applies to your first payment for Standard or Pro, monthly or yearly. If you later move to a different plan, the 14 days count from the
-          first payment for that new plan.
+          This applies once per account, to your first payment for Standard or Pro, monthly or yearly. Switching plans later does not start a new
+          14 days; if you switch, only the extra amount charged for the switch can be refunded, within 14 days of that charge.
         </p>
       </LegalSection>
 
@@ -36,7 +36,7 @@ export default function RefundPolicyPage() {
 
       <LegalSection title="3. How to ask for a refund">
         <p>
-          Email <a className={link} href={`mailto:${site.email}`}>{site.email}</a> from the address on your account within 14 days of your payment, and
+          Email <a className={link} href={`mailto:${site.email}`}>{site.email}</a> from the address on your account within 14 days of your first payment, and
           tell us which payment it is. We will reply within 2 business days. Approved refunds go back to the original payment method and usually appear
           within 5 to 10 business days, depending on your bank.
         </p>
@@ -44,8 +44,8 @@ export default function RefundPolicyPage() {
 
       <LegalSection title="4. Who processes your payment">
         <p>
-          Our payments are processed by our reseller and merchant of record, which handles checkout, taxes, receipts and refunds on our behalf. Its name
-          appears on your card statement, so the charge may not say BuPulse. Your receipt shows the exact name and has a link to their support if you
+          Our order process is conducted by our online reseller and merchant of record, Paddle.com, which handles checkout, taxes, receipts and refunds
+          on our behalf. Paddle&apos;s name appears on your card statement, so the charge may not say BuPulse. Your receipt shows the exact name and has a link to their support if you
           need help with a payment.
         </p>
       </LegalSection>

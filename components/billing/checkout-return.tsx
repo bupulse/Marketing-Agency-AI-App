@@ -10,9 +10,9 @@ const MAX_POLLS = 15; // about 30 seconds
 
 /**
  * Shown after checkout (?checkout=success). The payment provider confirms the purchase by webhook,
- * so refresh the page every 2 seconds until the plan is no longer the trial.
+ * so refresh the page every 2 seconds until the page says this purchase is active (`waiting` false).
  */
-export function CheckoutReturn({ stillTrial }: { stillTrial: boolean }) {
+export function CheckoutReturn({ waiting }: { waiting: boolean }) {
   const router = useRouter();
   const { toast } = useToast();
   const [timedOut, setTimedOut] = useState(false);
@@ -20,7 +20,7 @@ export function CheckoutReturn({ stillTrial }: { stillTrial: boolean }) {
   const announced = useRef(false);
 
   useEffect(() => {
-    if (!stillTrial) {
+    if (!waiting) {
       if (!announced.current) {
         announced.current = true;
         toast("You are all set. Your plan is active.", "success");
@@ -38,9 +38,9 @@ export function CheckoutReturn({ stillTrial }: { stillTrial: boolean }) {
       router.refresh();
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [stillTrial, router, toast]);
+  }, [waiting, router, toast]);
 
-  if (!stillTrial) return null;
+  if (!waiting) return null;
 
   return (
     <GlassCard role="status" className="flex items-start gap-3 border border-pulse-blue/30 p-5">

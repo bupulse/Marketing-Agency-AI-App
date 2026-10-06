@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { findMany, findFirst, executeRaw, logError, list, remove, createClient } = vi.hoisted(() => ({
+const { subFindUnique, findMany, findFirst, executeRaw, logError, list, remove, createClient } = vi.hoisted(() => ({
+  subFindUnique: vi.fn(),
   findMany: vi.fn(),
   findFirst: vi.fn(),
   executeRaw: vi.fn(),
@@ -10,7 +11,7 @@ const { findMany, findFirst, executeRaw, logError, list, remove, createClient } 
   createClient: vi.fn(),
 }));
 
-vi.mock("@/lib/db", () => ({ prisma: { user: { findMany, findFirst }, $executeRaw: executeRaw } }));
+vi.mock("@/lib/db", () => ({ prisma: { user: { findMany, findFirst }, subscription: { findUnique: subFindUnique }, $executeRaw: executeRaw } }));
 vi.mock("@/lib/errors", () => ({ logError }));
 vi.mock("@supabase/supabase-js", () => ({ createClient }));
 
@@ -20,13 +21,14 @@ const now = new Date("2026-11-01T00:00:00Z");
 
 describe("purgeDueAccounts", () => {
   beforeEach(() => {
-    for (const m of [findMany, findFirst, executeRaw, logError, list, remove, createClient]) m.mockReset();
+    for (const m of [subFindUnique, findMany, findFirst, executeRaw, logError, list, remove, createClient]) m.mockReset();
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://x.supabase.co";
     process.env.SUPABASE_SECRET_KEY = "secret";
     createClient.mockReturnValue({ storage: { from: () => ({ list, remove }) } });
     list.mockResolvedValue({ data: [], error: null });
     remove.mockResolvedValue({ error: null });
     executeRaw.mockResolvedValue(1);
+    subFindUnique.mockResolvedValue(null);
     findFirst.mockImplementation(async ({ where }: { where: { id: string } }) => ({ id: where.id }));
   });
 
@@ -90,5 +92,20 @@ describe("purgeDueAccounts", () => {
     findMany.mockResolvedValue([{ id: "u1" }, { id: "u2" }]);
     executeRaw.mockRejectedValueOnce(new Error("db")).mockResolvedValueOnce(1);
     expect(await purgeDueAccounts(now)).toMatchObject({ deleted: 1, failed: 1 });
+  });
+
+  it("keeps an account whose paid plan would still charge, and alerts", async () => {
+    findMany.mockResolvedValue([{ id: "u1" }]);
+    subFindUnique.mockResolvedValue({ providerSubscriptionId: "sub_1", status: "ACTIVE", cancelAtPeriodEnd: false });
+    const result = await purgeDueAccounts(now);
+    expect(executeRaw).not.toHaveBeenCalled();
+    expect(list).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ deleted: 0, failed: 1 });
+  });
+
+  it("erases an account whose plan is cancelled at period end", async () => {
+    findMany.mockResolvedValue([{ id: "u1" }]);
+    subFindUnique.mockResolvedValue({ providerSubscriptionId: "sub_1", status: "ACTIVE", cancelAtPeriodEnd: true });
+    expect(await purgeDueAccounts(now)).toMatchObject({ deleted: 1 });
   });
 });

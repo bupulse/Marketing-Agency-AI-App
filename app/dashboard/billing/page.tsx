@@ -31,6 +31,11 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
 
   const invoices = paid || subscription.providerCustomerId ? await getInvoices() : [];
   const checkoutSuccess = query.checkout === "success";
+  // Wait for this purchase specifically: the plan is active and was updated after checkout began.
+  const since = Number(query.since);
+  const activated =
+    !isTrial && status === "ACTIVE" && (!Number.isFinite(since) || subscription.updatedAt.getTime() >= since);
+  const waitingForCheckout = checkoutSuccess && !activated;
 
   const meters = [
     { label: "Text generations", used: used.text, max: limits.text },
@@ -44,7 +49,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       <CheckoutScript />
       <PageHeader title="Billing" description="Your plan, your usage and your receipts." />
 
-      {checkoutSuccess && <CheckoutReturn stillTrial={isTrial} />}
+      {checkoutSuccess && <CheckoutReturn waiting={waitingForCheckout} />}
 
       {pastDue && (
         <GlassCard role="alert" className="flex items-start gap-3 border border-danger/40 p-5">
@@ -98,7 +103,10 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
         </div>
       </GlassCard>
 
-      <PlanPicker current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue }} />
+      {/* Hidden while a purchase is being confirmed, so nobody buys a second plan by accident. */}
+      {!waitingForCheckout && (
+        <PlanPicker current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue }} />
+      )}
 
       {(paid || invoices.length > 0) && <InvoiceList invoices={invoices} />}
 

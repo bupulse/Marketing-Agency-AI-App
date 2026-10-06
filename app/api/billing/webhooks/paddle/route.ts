@@ -36,8 +36,28 @@ export async function POST(request: NextRequest) {
   try {
     let note: string | null = null;
     if (webhook.subscription) {
-      const applied = await applyProviderSubscription("PADDLE", webhook.subscription);
-      if (!applied) note = "ignored: unknown user or price";
+      const outcome = await applyProviderSubscription("PADDLE", webhook.subscription);
+      if (outcome === "unknown_price") {
+        // Probably a missing or wrong PADDLE_PRICE_* setting. Don't mark it processed: Paddle
+        // retries, and once the setting is fixed the customer gets their plan.
+        throw new Error(`Unknown Paddle price ${webhook.subscription.providerPriceId}`);
+      }
+      if (outcome === "duplicate") {
+        // A second live subscription for an account that already pays: stop it charging again
+        // and flag it so the payment is refunded by hand.
+        await paddle.cancelNow(webhook.subscription.providerSubscriptionId).catch((error) =>
+          logError(error, { source: "billing.webhook.paddle.duplicate-cancel", subscriptionId: webhook.subscription?.providerSubscriptionId }),
+        );
+        await logError(new Error("Duplicate subscription cancelled; refund the payment in Paddle"), {
+          source: "billing.duplicate",
+          level: "error",
+          userId: webhook.userId ?? undefined,
+          subscriptionId: webhook.subscription.providerSubscriptionId,
+        });
+        note = "duplicate subscription: cancelled, refund needed";
+      }
+      if (outcome === "unknown_user") note = "ignored: no matching account";
+      if (outcome === "stale") note = "ignored: older than the stored state";
     }
     await prisma.billingEvent.update({ where: { id: event.id }, data: { processedAt: new Date(), error: note } });
     return NextResponse.json({ ok: true });

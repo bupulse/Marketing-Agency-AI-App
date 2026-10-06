@@ -53,6 +53,15 @@ async function stillDue(id: string, now: Date) {
   return user !== null;
 }
 
+/** A paid subscription that will charge again: erasing the account would orphan it at the provider. */
+async function stillBilling(id: string) {
+  const sub = await prisma.subscription.findUnique({
+    where: { userId: id },
+    select: { providerSubscriptionId: true, status: true, cancelAtPeriodEnd: true },
+  });
+  return Boolean(sub?.providerSubscriptionId && !sub.cancelAtPeriodEnd && (sub.status === "ACTIVE" || sub.status === "PAST_DUE"));
+}
+
 /**
  * Erases accounts whose 30-day grace period has ended: their Storage files, then the auth user,
  * which cascades to the User row and everything under it.
@@ -80,6 +89,15 @@ export async function purgeDueAccounts(now = new Date()): Promise<PurgeResult> {
     try {
       // Re-check right before erasing, so someone who just pressed "Keep my account" is safe.
       if (!(await stillDue(id, now))) continue;
+      if (await stillBilling(id)) {
+        // Deletion cancels billing up front; if that ever didn't stick, keep the account and alert.
+        result.failed += 1;
+        await logError(new Error("Account due for deletion still has an active paid subscription"), {
+          source: "account-deletion.billing",
+          userId: id,
+        });
+        continue;
+      }
       result.filesRemoved += await removeUserFiles(admin, id);
       const deleted = await prisma.$executeRaw`
         DELETE FROM auth.users a USING public."User" u

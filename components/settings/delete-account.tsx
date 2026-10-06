@@ -35,7 +35,7 @@ export function DeleteAccount({ email }: { email: string }) {
         open={open}
         onOpenChange={setOpen}
         title="Delete your account?"
-        description="You have 30 days to change your mind. After that everything is erased and cannot be recovered."
+        description="You have 30 days to change your mind. After that everything is erased and cannot be recovered. A paid plan is cancelled now, so you will not be charged again; it stays usable until its period ends."
       >
         <form action={formAction} noValidate className="flex flex-col gap-4">
           <Field label={`Type ${email} to confirm`} required error={state.fieldErrors?.confirmEmail}>

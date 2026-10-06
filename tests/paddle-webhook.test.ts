@@ -2,22 +2,25 @@ import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { upsert, update, findFirst, subUpdate, logError } = vi.hoisted(() => ({
+const { upsert, update, findFirst, findUnique, subUpdate, logError } = vi.hoisted(() => ({
   upsert: vi.fn(),
   update: vi.fn(),
   findFirst: vi.fn(),
+  findUnique: vi.fn(),
   subUpdate: vi.fn(),
   logError: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({
-  prisma: { billingEvent: { upsert, update }, subscription: { findFirst, update: subUpdate } },
+  prisma: { billingEvent: { upsert, update }, subscription: { findFirst, findUnique, updateMany: subUpdate } },
 }));
 vi.mock("@/lib/errors", () => ({ logError }));
 
 import { POST } from "@/app/api/billing/webhooks/paddle/route";
+import { signCheckoutUser } from "@/lib/billing/signing";
 
 const SECRET = "pdl_ntfset_test";
 const USER = "11111111-1111-4111-8111-111111111111";
+let SIG = "";
 
 function event(subscription: Record<string, unknown> = {}, type = "subscription.updated", id = "evt_1") {
   return JSON.stringify({
@@ -28,7 +31,7 @@ function event(subscription: Record<string, unknown> = {}, type = "subscription.
       status: "active",
       customer_id: "ctm_1",
       items: [{ price: { id: "pri_std_m" } }],
-      custom_data: { userId: USER },
+      custom_data: { userId: USER, sig: SIG },
       current_billing_period: { starts_at: "2026-10-01T00:00:00Z", ends_at: "2026-11-01T00:00:00Z" },
       scheduled_change: null,
       ...subscription,
@@ -45,14 +48,17 @@ function call(body: string, opts: { ts?: number; signature?: string | null } = {
 }
 
 describe("paddle webhook route", () => {
-  beforeEach(() => {
-    for (const m of [upsert, update, findFirst, subUpdate, logError]) m.mockReset();
+  beforeEach(async () => {
+    for (const m of [upsert, update, findFirst, findUnique, subUpdate, logError]) m.mockReset();
+    process.env.ENCRYPTION_KEY = "test-key";
+    SIG = await signCheckoutUser(USER);
     process.env.PADDLE_WEBHOOK_SECRET = SECRET;
     process.env.PADDLE_PRICE_STANDARD_MONTH = "pri_std_m";
     upsert.mockResolvedValue({ id: "be_1", processedAt: null });
     update.mockResolvedValue({});
-    findFirst.mockResolvedValue({ userId: USER, providerSubscriptionId: null, status: "TRIALING" });
-    subUpdate.mockResolvedValue({});
+    findFirst.mockResolvedValue(null);
+    findUnique.mockResolvedValue({ userId: USER, providerSubscriptionId: null, status: "TRIALING" });
+    subUpdate.mockResolvedValue({ count: 1 });
   });
 
   it("rejects missing, invalid and stale signatures with 401", async () => {
@@ -72,7 +78,7 @@ describe("paddle webhook route", () => {
     expect(response.status).toBe(200);
     expect(subUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { userId: USER },
+        where: expect.objectContaining({ userId: USER, providerSubscriptionId: null }),
         data: expect.objectContaining({ plan: "STANDARD", interval: "MONTH", status: "ACTIVE", cancelAtPeriodEnd: false, providerSubscriptionId: "sub_1" }),
       }),
     );
@@ -97,17 +103,36 @@ describe("paddle webhook route", () => {
     expect(subUpdate).not.toHaveBeenCalled();
   });
 
-  it("ignores an unknown price without failing", async () => {
+  it("keeps an unknown price for a retry (likely a missing price setting)", async () => {
     const response = await call(event({ items: [{ price: { id: "pri_other" } }] }));
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(500);
     expect(subUpdate).not.toHaveBeenCalled();
-    expect(update.mock.calls[0][0].data.error).toMatch(/ignored/);
+    expect(update.mock.calls[0][0].data).toEqual({ error: expect.stringMatching(/Unknown Paddle price/) });
   });
 
   it("ignores an unknown user without failing", async () => {
-    findFirst.mockResolvedValue(null);
+    findUnique.mockResolvedValue(null);
     expect((await call(event())).status).toBe(200);
     expect(subUpdate).not.toHaveBeenCalled();
+  });
+
+  it("ignores a forged user id", async () => {
+    expect((await call(event({ custom_data: { userId: USER, sig: "0".repeat(64) } }))).status).toBe(200);
+    expect(findUnique).not.toHaveBeenCalled();
+    expect(subUpdate).not.toHaveBeenCalled();
+  });
+
+  it("cancels a second live subscription straight away and flags it for a refund", async () => {
+    findUnique.mockResolvedValue({ userId: USER, providerSubscriptionId: "sub_0", status: "ACTIVE" });
+    process.env.PADDLE_API_KEY = "pdl_test";
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: JSON.parse(event()).data }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await call(event())).status).toBe(200);
+    vi.unstubAllGlobals();
+    expect(subUpdate).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/subscriptions\/sub_1\/cancel$/);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ effective_from: "immediately" });
+    expect(logError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ source: "billing.duplicate" }));
   });
 
   it("stores non-subscription events without applying anything", async () => {

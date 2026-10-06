@@ -6,6 +6,9 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { fieldErrors, organisationSchema, type FieldErrors } from "@/lib/auth/schemas";
 import { requireActiveUser } from "@/lib/auth/require-user";
+import { billingAdapter } from "@/lib/billing";
+import { applyProviderSubscription } from "@/lib/billing/apply";
+import { logError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 
 export type SettingsState = { error?: string; saved?: boolean; fieldErrors?: FieldErrors };
@@ -51,13 +54,24 @@ export async function saveBusiness(_prev: SettingsState, formData: FormData): Pr
 }
 
 // Locks the account for 30 days, then signs out. The purge job (lib/account-deletion.ts) erases it after that.
-// TODO(Phase 3): cancel or hand off the active subscription's billing here.
+// A paid plan is cancelled at the end of its period first, so nobody is charged after asking to leave.
 export async function scheduleAccountDeletion(_prev: SettingsState, formData: FormData): Promise<SettingsState> {
   const user = await requireActiveUser();
 
   const typed = String(formData.get("confirmEmail") ?? "").trim().toLowerCase();
   if (!user.email || typed !== user.email.toLowerCase()) {
     return { fieldErrors: { confirmEmail: "Type your email address exactly as shown." } };
+  }
+
+  const sub = await prisma.subscription.findUnique({ where: { userId: user.id } });
+  if (sub?.provider && sub.providerSubscriptionId && !sub.cancelAtPeriodEnd && (sub.status === "ACTIVE" || sub.status === "PAST_DUE")) {
+    try {
+      const updated = await billingAdapter(sub.provider).cancelAtPeriodEnd(sub.providerSubscriptionId);
+      await applyProviderSubscription(sub.provider, updated);
+    } catch (error) {
+      await logError(error, { source: "settings.delete.cancel-billing", userId: user.id });
+      return { error: "We could not cancel your plan's billing just now, so nothing was changed. Please try again in a few minutes." };
+    }
   }
 
   await prisma.user.update({

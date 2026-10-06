@@ -20,6 +20,8 @@ Decisions:
 - Plan changes are prorated and charged immediately; if the payment fails the change is not applied.
 - A failed payment (`past_due`) limits the account: nothing is deleted, no new generations.
   A Paddle `paused` subscription is treated the same way (PAST_DUE) and recovers on resume.
+  **Never pause subscriptions** in the Paddle dashboard: updating the card does not resume a paused
+  subscription, and the app has no "resume paused" button. Cancel (at period end) instead.
 - Webhooks older than 5 minutes, or with a bad signature, get 401. Events for unknown users or
   prices are stored and acknowledged (200) with an "ignored" note. Processing errors return 500 so
   Paddle retries.
@@ -70,3 +72,14 @@ npm run paddle:setup -- --webhook-url https://<tunnel-host>/api/billing/webhooks
 
 Paddle's webhook simulator (Developer tools > Simulations) can also replay events. Each distinct
 destination URL gets its own secret, so keep the matching `PADDLE_WEBHOOK_SECRET` locally.
+
+## Known behaviour
+- Usage windows are counted from `currentPeriodStart`. If Paddle starts a new billing period when a
+  customer switches between monthly and yearly, their monthly usage starts again from zero. They pay the
+  prorated difference at that moment, so this is accepted; check it in the sandbox before going live.
+- A second paid subscription for the same account (two checkouts at once) is cancelled immediately by the
+  webhook and logged in `ErrorLog` with source `billing.duplicate`: refund that payment in Paddle.
+- A webhook with a price BuPulse doesn't know (usually a missing `PADDLE_PRICE_*` setting) is not marked
+  processed and returns 500, so Paddle retries it after the setting is fixed.
+- Checkout custom data carries a server signature of the user id (`lib/billing/signing.ts`, key
+  `BILLING_SIGNING_SECRET` or `ENCRYPTION_KEY`); webhooks ignore user ids without a valid signature.
