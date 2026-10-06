@@ -1,15 +1,49 @@
 import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-function createClient() {
-  const connectionString = process.env.DATABASE_URL;
+// On Cloudflare Workers the connection comes from the Hyperdrive binding.
+// Locally and at build time there is no binding, so DATABASE_URL is used.
+function workersContext() {
+  try {
+    const { env, ctx } = getCloudflareContext();
+    return env.HYPERDRIVE ? { connectionString: env.HYPERDRIVE.connectionString, ctx } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function createClient(connectionString: string | undefined) {
   if (!connectionString) throw new Error("DATABASE_URL is not set");
   return new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 }
 
-// Reuse one client across hot reloads in development.
-export const prisma = globalForPrisma.prisma ?? createClient();
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+// Workers cannot reuse database sockets across requests, so each request gets
+// its own client (cached on the request's execution context).
+const workerClients = new WeakMap<object, PrismaClient>();
+
+function getClient(): PrismaClient {
+  const workers = workersContext();
+  if (workers) {
+    let client = workerClients.get(workers.ctx);
+    if (!client) {
+      client = createClient(workers.connectionString);
+      workerClients.set(workers.ctx, client);
+    }
+    return client;
+  }
+  // Reuse one client across hot reloads in development.
+  globalForPrisma.prisma ??= createClient(process.env.DATABASE_URL);
+  return globalForPrisma.prisma;
+}
+
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    const client = getClient();
+    const value = Reflect.get(client, prop, client);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});

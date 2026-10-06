@@ -100,6 +100,7 @@ Each phase ends with something you can open and test. A phase is accepted by you
 ### Phase 2 — App shell, sign-in and onboarding
 
 - Branded sign-in and sign-up (email link + Google), custom SMTP emails, sign-out, session handling.
+- Password sign-in for platform reviewers only (Meta, TikTok and others cannot use email links): a dedicated reviewer account enabled by an admin.
 - Guided onboarding (4 steps): business name and industry, what you sell and who to, brand voice (pick + examples), logo and colours (upload; colours suggested from the logo), plus knowledge for the chat widget (hours, area, FAQs).
 - App layout with the glass sidebar: Home, Projects, Content, Calendar, Designs, Leads, Connections, Brand, Usage, Billing, Settings.
 - Settings: profile, business, brand, team placeholder, delete account (required by Meta).
@@ -222,7 +223,8 @@ About **$13/month while building, ~$40/month after launch** before AI usage, wit
 
 - **Platform reviews decide the launch date.** Meta, TikTok and Google reviews can take 2–6 weeks and can be rejected. Mitigation: submit in Phase 0; launch with networks as they are approved.
 - **Building every connection ourselves is more work than Composio** (OAuth, token refresh, API changes per platform). Mitigation: one shared provider test suite; the direct-API engineers own one platform family each.
-- **YouTube's free API quota** allows only about 6 uploads per day for the whole app by default. Mitigation: request a free quota increase in Phase 0; queue uploads.
+- **YouTube uploads** are limited to 100 per day per project (own quota bucket since June 2026) and stay private until the YouTube API audit passes. Mitigation: submit the audit in Phase 0; queue uploads. Details in `docs/PLATFORM_APPS.md`.
+- **TikTok** posts are private-only until its Direct Post audit passes. Mitigation: launch with "send to TikTok drafts", switch on direct posting after the audit.
 - **Direct tokens are ours to protect.** Encrypted at rest, never sent to the browser, refreshed by a job, revoked on disconnect and account deletion.
 - **Next.js 16 on Cloudflare Workers** is newer than on Vercel. Mitigation: deploy to staging from day one; if a blocker appears, Vercel Pro is the fallback.
 - **AI cost per trial user**: limits and the cost ledger keep this visible; Jarvis watches profit daily.

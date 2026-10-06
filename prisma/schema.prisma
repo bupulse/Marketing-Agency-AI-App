@@ -37,25 +37,26 @@ model User {
 // One business per user for now. Industry-neutral: a phone shop, a school,
 // a builder and an estate agent all use the same fields.
 model Business {
-  id              String   @id @default(cuid())
-  userId          String   @unique @db.Uuid
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name            String
-  industry        String? // e.g. "Phone store", "School", "Construction"
-  description     String? // what they sell and to whom
-  tone            String? // brand voice, e.g. "friendly, professional"
-  logoUrl         String?
-  brandColors     String[]
-  website         String?
-  instagramHandle String?
-  knowledge       Json? // facts the chat widget may answer from: hours, area, FAQs
-  widgetKey       String   @unique @default(cuid()) // public id used by the embed snippet
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                      String   @id @default(cuid())
+  userId                  String   @unique @db.Uuid
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                    String
+  industry                String? // e.g. "Phone store", "School", "Construction"
+  description             String? // what they sell and to whom
+  tone                    String? // brand voice, e.g. "friendly, professional"
+  logoUrl                 String?
+  brandColors             String[]
+  website                 String?
+  instagramHandle         String?
+  knowledge               Json? // facts the chat widget may answer from: hours, area, FAQs
+  widgetKey               String   @unique @default(cuid()) // public id used by the embed snippet
+  composioApiKeyEncrypted String? // Pro users' own Composio key, encrypted with lib/crypto.ts
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
-  projects       Project[]
-  leads          Lead[]
-  socialAccounts SocialAccount[]
+  projects    Project[]
+  leads       Lead[]
+  connections Connection[]
 }
 
 // Anything the business wants to promote. A real estate "listing" is just one type.
@@ -140,34 +141,62 @@ model UsageRecord {
 
 // ---- Phase 2: performance learning (tables exist now so nothing needs reworking later) ----
 
-model SocialAccount {
-  id           String    @id @default(cuid())
-  businessId   String
-  business     Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  platform     String // "instagram"
-  externalId   String
-  handle       String?
-  accessToken  String? // store encrypted
-  tokenExpires DateTime?
-  createdAt    DateTime  @default(now())
-  posts        Post[]
+enum ConnectionKind {
+  SOCIAL
+  APP
+}
 
-  @@unique([platform, externalId])
+enum ConnectionMethod {
+  DIRECT // BuPulse's own developer app and OAuth tokens
+  OWN_COMPOSIO // the user's own Composio account (Pro)
+}
+
+enum ConnectionStatus {
+  ACTIVE
+  EXPIRING
+  EXPIRED
+  REVOKED
+  ERROR
+}
+
+// A connected social account or app. Tokens are encrypted with lib/crypto.ts.
+model Connection {
+  id                         String           @id @default(cuid())
+  businessId                 String
+  business                   Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  kind                       ConnectionKind
+  provider                   String // "instagram" | "facebook" | "tiktok" | "linkedin" | "youtube" | "google_drive" | "dropbox" | "canva" | "shopify" | "woocommerce" | "cloudflare" ...
+  method                     ConnectionMethod @default(DIRECT)
+  externalAccountId          String
+  displayName                String?
+  accessTokenEncrypted       String?
+  refreshTokenEncrypted      String?
+  scopes                     String[]
+  status                     ConnectionStatus @default(ACTIVE)
+  expiresAt                  DateTime?
+  lastCheckedAt              DateTime?
+  composioConnectedAccountId String?
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
+  posts                      Post[]
+
+  @@unique([businessId, provider, externalAccountId])
+  @@index([status, expiresAt])
 }
 
 model Post {
-  id              String        @id @default(cuid())
-  socialAccountId String
-  socialAccount   SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
-  projectId       String?
-  project         Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  contentId       String? // GeneratedContent it came from
-  externalId      String
-  permalink       String?
-  publishedAt     DateTime
-  metrics         PostMetrics[]
+  id           String        @id @default(cuid())
+  connectionId String
+  connection   Connection    @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  projectId    String?
+  project      Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  contentId    String? // GeneratedContent it came from
+  externalId   String
+  permalink    String?
+  publishedAt  DateTime
+  metrics      PostMetrics[]
 
-  @@unique([socialAccountId, externalId])
+  @@unique([connectionId, externalId])
 }
 
 model PostMetrics {
@@ -183,4 +212,19 @@ model PostMetrics {
   shares     Int?
 
   @@index([postId, capturedAt])
+}
+
+// Server-side errors, written by lib/errors.ts and read by the admin console and Jarvis.
+model ErrorLog {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  level      String   @default("error") // "error" | "warn"
+  source     String // route, job or module name
+  message    String
+  stack      String?
+  userId     String?
+  businessId String?
+  context    Json?
+
+  @@index([createdAt])
 }

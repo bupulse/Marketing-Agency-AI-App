@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bupulse",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      // Self-reference, the service name must match "name" above.
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "bupulse"
+    }
+  ],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      // TODO: replace with the id from `wrangler hyperdrive create` (see docs/DEPLOY.md).
+      "id": "TODO_HYPERDRIVE_CONFIG_ID",
+      // Used by `npm run preview` so the local worker can reach the database.
+      "localConnectionString": "postgresql://postgres:postgres@localhost:5432/postgres"
+    }
+  ],
+  "observability": { "enabled": true }
+  // Custom domains (bupulse.com, staging.bupulse.com) are added later, see docs/DEPLOY.md.
+}

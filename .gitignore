@@ -43,3 +43,12 @@ next-env.d.ts
 /lib/generated/prisma
 
 !.env.example
+
+# cloudflare
+/.open-next
+.wrangler
+.dev.vars
+
+# playwright
+/test-results
+/playwright-report
