@@ -24,7 +24,7 @@ export function Logo({ height = 36, priority = false, className }: LogoProps) {
         height={height}
         priority={priority}
         className="block dark:hidden"
-        style={{ width: "auto", height }}
+        style={{ width, height }}
       />
       <Image
         src="/brand/logo-white.png"
@@ -33,7 +33,7 @@ export function Logo({ height = 36, priority = false, className }: LogoProps) {
         height={height}
         priority={priority}
         className="hidden dark:block"
-        style={{ width: "auto", height }}
+        style={{ width, height }}
       />
     </span>
   );

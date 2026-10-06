@@ -24,7 +24,7 @@ export function AuthShell({ children, wide }: { children: ReactNode; wide?: bool
       >
         <div className="flex items-center justify-between">
           <Link href="/" aria-label="BuPulse home" className="inline-flex min-h-11 items-center">
-            <Image src="/brand/logo-white.png" alt="BuPulse" width={107} height={32} priority style={{ width: "auto", height: 32 }} />
+            <Image src="/brand/logo-white.png" alt="BuPulse" width={107} height={32} priority style={{ width: 107, height: 32 }} />
           </Link>
         </div>
         <div className="flex flex-col gap-6">
