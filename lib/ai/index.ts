@@ -1,0 +1,44 @@
+import "server-only";
+import { ClaudeTextProvider } from "./claude-text";
+import { GeminiTextProvider } from "./gemini-text";
+import type { TextProvider } from "./types";
+
+export * from "./types";
+
+function required(name: string) {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is not set (see .env.example)`);
+  return value;
+}
+
+let textProvider: TextProvider | undefined;
+
+// AI_TEXT_PROVIDER=gemini (free tier, development) or claude.
+export function getTextProvider(): TextProvider {
+  if (textProvider) return textProvider;
+  const choice = (process.env.AI_TEXT_PROVIDER ?? "gemini").toLowerCase();
+
+  switch (choice) {
+    case "gemini":
+      textProvider = new GeminiTextProvider(
+        required("GEMINI_API_KEY"),
+        process.env.GEMINI_TEXT_MODEL ?? "gemini-2.5-flash",
+      );
+      break;
+    case "claude": {
+      const effort = (process.env.CLAUDE_EFFORT ?? "medium") as "low" | "medium" | "high";
+      textProvider = new ClaudeTextProvider(
+        required("ANTHROPIC_API_KEY"),
+        process.env.CLAUDE_TEXT_MODEL ?? "claude-opus-5-5",
+        effort,
+      );
+      break;
+    }
+    default:
+      throw new Error(`Unknown AI_TEXT_PROVIDER "${choice}" (use "gemini" or "claude")`);
+  }
+  return textProvider;
+}
+
+// ImageProvider (Gemini image model), VideoProvider (Veo) and VoiceProvider
+// (ElevenLabs) get their factories here when those features are built.

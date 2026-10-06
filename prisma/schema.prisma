@@ -1,0 +1,186 @@
+// BuPulse database schema (Supabase Postgres).
+// Auth users live in Supabase's own `auth.users` table; `User.id` is that same UUID.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Plan {
+  TRIAL
+  STANDARD
+  PRO
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+model User {
+  id           String        @id @db.Uuid
+  email        String        @unique
+  name         String?
+  createdAt    DateTime      @default(now())
+  business     Business?
+  subscription Subscription?
+  usage        UsageRecord[]
+}
+
+// One business per user for now. Industry-neutral: a phone shop, a school,
+// a builder and an estate agent all use the same fields.
+model Business {
+  id              String   @id @default(cuid())
+  userId          String   @unique @db.Uuid
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  industry        String? // e.g. "Phone store", "School", "Construction"
+  description     String? // what they sell and to whom
+  tone            String? // brand voice, e.g. "friendly, professional"
+  logoUrl         String?
+  brandColors     String[]
+  website         String?
+  instagramHandle String?
+  knowledge       Json? // facts the chat widget may answer from: hours, area, FAQs
+  widgetKey       String   @unique @default(cuid()) // public id used by the embed snippet
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  projects       Project[]
+  leads          Lead[]
+  socialAccounts SocialAccount[]
+}
+
+// Anything the business wants to promote. A real estate "listing" is just one type.
+model Project {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  type       String // "product" | "service" | "event" | "offer" | "listing" | "project" ...
+  title      String // product name, address, event name...
+  price      String? // free text: "$485,000", "10% off", "From $49"
+  features   String[]
+  details    Json? // type-specific fields (bedrooms, colors, dates...)
+  photoUrls  String[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  contents GeneratedContent[]
+  posts    Post[]
+}
+
+// Every generation is kept, so users can regenerate and compare versions.
+model GeneratedContent {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  caption     String
+  hashtags    String[]
+  videoScript String
+  adHeadlines String[]
+  provider    String // "gemini" | "claude"
+  model       String
+  createdAt   DateTime @default(now())
+
+  @@index([projectId, createdAt])
+}
+
+model Lead {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String?
+  email      String?
+  phone      String?
+  interest   String?
+  message    String?
+  source     String   @default("website_chat") // "website_chat", "instagram", "contact_form"
+  createdAt  DateTime @default(now())
+
+  @@index([businessId, createdAt])
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String             @unique @db.Uuid
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                 Plan               @default(TRIAL)
+  status               SubscriptionStatus @default(TRIALING)
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  stripePriceId        String?
+  trialEndsAt          DateTime?
+  currentPeriodStart   DateTime           @default(now())
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+}
+
+// One row per user per billing period. Limits per plan live in lib/plans.ts.
+model UsageRecord {
+  id               String   @id @default(cuid())
+  userId           String   @db.Uuid
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  periodStart      DateTime
+  textGenerations  Int      @default(0)
+  imageGenerations Int      @default(0)
+  videoSeconds     Int      @default(0)
+  voiceCharacters  Int      @default(0)
+  updatedAt        DateTime @updatedAt
+
+  @@unique([userId, periodStart])
+}
+
+// ---- Phase 2: performance learning (tables exist now so nothing needs reworking later) ----
+
+model SocialAccount {
+  id           String    @id @default(cuid())
+  businessId   String
+  business     Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  platform     String // "instagram"
+  externalId   String
+  handle       String?
+  accessToken  String? // store encrypted
+  tokenExpires DateTime?
+  createdAt    DateTime  @default(now())
+  posts        Post[]
+
+  @@unique([platform, externalId])
+}
+
+model Post {
+  id              String        @id @default(cuid())
+  socialAccountId String
+  socialAccount   SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  projectId       String?
+  project         Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  contentId       String? // GeneratedContent it came from
+  externalId      String
+  permalink       String?
+  publishedAt     DateTime
+  metrics         PostMetrics[]
+
+  @@unique([socialAccountId, externalId])
+}
+
+model PostMetrics {
+  id         String   @id @default(cuid())
+  postId     String
+  post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  capturedAt DateTime @default(now())
+  views      Int?
+  reach      Int?
+  likes      Int?
+  comments   Int?
+  saves      Int?
+  shares     Int?
+
+  @@index([postId, capturedAt])
+}
