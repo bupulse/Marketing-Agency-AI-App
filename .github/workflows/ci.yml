@@ -38,6 +38,10 @@ jobs:
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm test
+      # Content quality check against the real model; skips itself when the secret is not set.
+      - run: npm run ai:eval
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       - run: npm run build
       - uses: actions/cache@v4
         with:

@@ -348,7 +348,7 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
             >
               <Bell aria-hidden className="size-5" />
             </button>
-            <Button href="/dashboard/projects" size="sm" leading={<Plus aria-hidden className="size-[18px]" />}>
+            <Button href="/dashboard/projects/new" size="sm" leading={<Plus aria-hidden className="size-[18px]" />}>
               New project
             </Button>
             <UserMenu displayName={displayName} email={email} />

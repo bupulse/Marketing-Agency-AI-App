@@ -40,7 +40,7 @@ export default async function DashboardPage() {
   const checklist = [
     { label: "Complete your brand profile", done: brandDone, href: "/dashboard/brand" },
     { label: "Connect a social account", done: connectionCount > 0, href: "/dashboard/connections" },
-    { label: "Create your first project", done: projectCount > 0, href: "/dashboard/projects" },
+    { label: "Create your first project", done: projectCount > 0, href: projectCount > 0 ? "/dashboard/projects" : "/dashboard/projects/new" },
     { label: "Install the chat widget", done: false, href: "/dashboard/settings" },
   ];
   const doneCount = checklist.filter((c) => c.done).length;

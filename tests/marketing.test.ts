@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { generateMarketingContent } from "@/lib/ai/marketing";
 import { AIProviderError, type TextProvider } from "@/lib/ai/types";
 
-const brand = { businessName: "Sunrise Bakery", industry: "Food", tone: "warm" };
+const brand = { businessName: "Sunrise Bakery", industry: "Food", tone: "friendly" };
 const input = { type: "product", title: "Sourdough loaf", price: "$8", features: ["slow fermented"] };
 
 function fakeProvider(text: string): TextProvider & { prompts: string[] } {
@@ -12,7 +12,7 @@ function fakeProvider(text: string): TextProvider & { prompts: string[] } {
     prompts,
     async generate(request) {
       prompts.push(request.prompt);
-      return { text, provider: "fake", model: "fake-1" };
+      return { text, provider: "fake", model: "fake-1", usage: { inputTokens: 10, outputTokens: 20 } };
     },
   };
 }
@@ -27,8 +27,9 @@ describe("generateMarketingContent", () => {
         adHeadlines: ["a", "b", "c", "d"],
       }),
     );
-    const { content, provider: name, model } = await generateMarketingContent(provider, brand, input);
+    const { content, provider: name, model, usage } = await generateMarketingContent(provider, brand, input);
     expect(content.hashtags).toEqual(["#bakery", "#sourdough"]);
+    expect(usage).toEqual({ inputTokens: 10, outputTokens: 20 });
     expect(content.adHeadlines).toEqual(["a", "b", "c"]);
     expect(name).toBe("fake");
     expect(model).toBe("fake-1");
@@ -42,6 +43,48 @@ describe("generateMarketingContent", () => {
     expect(provider.prompts[0]).toContain("Business: Sunrise Bakery");
     expect(provider.prompts[0]).toContain("Price or offer: $8");
     expect(provider.prompts[0]).toContain("- slow fermented");
+  });
+
+  it("puts the voice guide, language, audience and knowledge in the prompt", async () => {
+    const provider = fakeProvider(
+      JSON.stringify({ caption: "c", hashtags: [], videoScript: "s", adHeadlines: ["h"] }),
+    );
+    await generateMarketingContent(
+      provider,
+      {
+        ...brand,
+        tone: "luxury",
+        contentLanguage: "French",
+        audience: "Families nearby",
+        website: "https://sunrise.example",
+        knowledge: { hours: "Mon-Sat 7-18", area: "Kigali", contact: "+250 788 000 000" },
+      },
+      { ...input, instruction: "mention free delivery" },
+    );
+    const prompt = provider.prompts[0];
+    expect(prompt).toContain("Write all content in French");
+    expect(prompt).toContain("Elegant, calm and refined");
+    expect(prompt).toContain("Its customers: Families nearby");
+    expect(prompt).toContain("Opening hours: Mon-Sat 7-18");
+    expect(prompt).toContain("Contact: +250 788 000 000");
+    expect(prompt).toContain("The owner asks: mention free delivery");
+  });
+
+  it("defaults to English", async () => {
+    const provider = fakeProvider(
+      JSON.stringify({ caption: "c", hashtags: [], videoScript: "s", adHeadlines: ["h"] }),
+    );
+    await generateMarketingContent(provider, brand, input);
+    expect(provider.prompts[0]).toContain("Write all content in English");
+  });
+
+  it("keeps ad headlines within 40 characters", async () => {
+    const long = "A very long headline that goes on and on and on forever";
+    const provider = fakeProvider(
+      JSON.stringify({ caption: "c", hashtags: [], videoScript: "s", adHeadlines: [long] }),
+    );
+    const { content } = await generateMarketingContent(provider, brand, input);
+    expect(content.adHeadlines[0].length).toBeLessThanOrEqual(40);
   });
 
   it("throws a retryable AIProviderError for non-JSON output", async () => {
