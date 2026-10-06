@@ -6,13 +6,16 @@ type RotatingWordsProps = {
   /** Seconds each word stays on screen. */
   hold?: number;
   className?: string;
+  /** Applied to each word. Put text effects such as `text-gradient` here: on the wrapper,
+   * background-clip:text would paint through the hidden words too. */
+  wordClassName?: string;
 };
 
 /**
  * Hero word rotator. Screen readers get one static sentence fragment (all words, comma-separated);
  * the animated copy is aria-hidden. Reduced motion shows only the first word.
  */
-export function RotatingWords({ words, hold = 2.4, className }: RotatingWordsProps) {
+export function RotatingWords({ words, hold = 2.4, className, wordClassName }: RotatingWordsProps) {
   const n = words.length;
   const total = n * hold;
   const slot = 100 / n;
@@ -37,7 +40,7 @@ export function RotatingWords({ words, hold = 2.4, className }: RotatingWordsPro
       >
         {words.map((w, i) => (
           <span key={w + i} style={{ animationDelay: `${i * hold}s` }}>
-            {w}
+            <span className={wordClassName}>{w}</span>
           </span>
         ))}
       </span>

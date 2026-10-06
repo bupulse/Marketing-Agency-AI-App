@@ -1,0 +1,79 @@
+import { ArrowRight, Sparkles } from "lucide-react";
+import { PageHero } from "@/components/marketing/pages/page-hero";
+import { PlanCards } from "@/components/marketing/pages/plan-cards";
+import { PlanComparison } from "@/components/marketing/pages/plan-comparison";
+import { pageMetadata } from "@/components/marketing/pages/seo";
+import { Accordion, Button, Container, GlassCard, SectionHeading } from "@/components/ui";
+import { Reveal } from "@/components/motion";
+import { faqs, trial } from "@/lib/content/site";
+
+export const metadata = pageMetadata({
+  title: "Pricing",
+  description: "Start free for 7 days, no card needed. Then $49 a month for Standard or $99 a month for Pro. Marketing help for every small business.",
+  path: "/pricing",
+});
+
+export default function PricingPage() {
+  const pricingFaqs = faqs.filter((f) => /trial|marketing experience|type of business|done-for-you/i.test(f.q));
+  return (
+    <>
+      <PageHero
+        eyebrow="Pricing"
+        title="Simple pricing for every small business"
+        text={`Try everything free for ${trial.days} days. No card needed. Pick a plan when you are ready to keep going.`}
+      />
+
+      <Container className="pb-16">
+        <PlanCards />
+        <p className="mx-auto mt-6 max-w-2xl text-center text-sm text-muted">
+          Prices are in US dollars per month. Cancel any time; your plan stays active until the end of the period you paid for.
+        </p>
+      </Container>
+
+      <Container size="narrow" className="pb-20">
+        <Reveal>
+          <GlassCard padding="lg" className="flex flex-col gap-3">
+            <h2 className="text-2xl font-bold tracking-tight">How the {trial.days}-day free trial works</h2>
+            <p className="text-muted">
+              Sign up and use BuPulse free for {trial.days} days. You get {trial.text} AI text generations and {trial.images} brand designs
+              to try on your own business. There is no card to enter, and nothing is charged when the trial ends. If you do nothing, the
+              trial simply stops. Your work stays saved so you can pick a plan and carry on.
+            </p>
+            <div>
+              <Button href="/login" trailing={<ArrowRight aria-hidden className="size-4" />}>
+                Start free trial
+              </Button>
+            </div>
+          </GlassCard>
+        </Reveal>
+      </Container>
+
+      <Container className="pb-20">
+        <SectionHeading title="Compare plans" text="Everything in each plan, side by side." className="mb-10" />
+        <PlanComparison />
+      </Container>
+
+      <Container size="narrow" className="pb-20">
+        <Reveal>
+          <GlassCard strong padding="lg" className="flex flex-col gap-4">
+            <Sparkles aria-hidden className="size-8 text-pulse-violet" />
+            <h2 className="text-2xl font-bold tracking-tight">Rather not do it yourself?</h2>
+            <p className="text-muted">
+              Our done-for-you service runs your social content and lead capture for you, using BuPulse, from $300 a month.
+            </p>
+            <div>
+              <Button href="/done-for-you" variant="outline">
+                See done-for-you
+              </Button>
+            </div>
+          </GlassCard>
+        </Reveal>
+      </Container>
+
+      <Container size="narrow" className="pb-24">
+        <SectionHeading title="Pricing questions" className="mb-10" />
+        <Accordion items={pricingFaqs.map((f) => ({ question: f.q, answer: f.a }))} />
+      </Container>
+    </>
+  );
+}

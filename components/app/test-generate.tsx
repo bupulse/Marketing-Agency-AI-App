@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 // Temporary developer check that auth, usage limits, the AI provider and the
 // database all work together. Replaced by the real content generator UI later.
-export default function TestGenerate() {
+export function TestGenerate() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [output, setOutput] = useState<string>("");
@@ -37,10 +37,10 @@ export default function TestGenerate() {
 
   return (
     <section className="flex flex-col gap-2">
-      <button type="button" onClick={run} disabled={busy} className="self-start rounded border px-4 py-2">
+      <button type="button" onClick={run} disabled={busy} className="self-start rounded-full border border-line px-4 py-2 min-h-11">
         {busy ? "Generating…" : "Run a test generation (uses 1 credit)"}
       </button>
-      {output && <pre className="overflow-x-auto whitespace-pre-wrap rounded border p-3 text-sm">{output}</pre>}
+      {output && <pre className="overflow-x-auto whitespace-pre-wrap rounded-2xl border border-line p-3 text-sm">{output}</pre>}
     </section>
   );
 }

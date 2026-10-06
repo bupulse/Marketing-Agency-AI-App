@@ -228,3 +228,21 @@ model ErrorLog {
 
   @@index([createdAt])
 }
+
+// Messages from the public site: contact form, done-for-you call requests and
+// Meta data-deletion callbacks. Read by admins only (server-side).
+model ContactRequest {
+  id           String   @id @default(cuid())
+  kind         String // "contact" | "done_for_you" | "meta_data_deletion"
+  name         String
+  email        String
+  phone        String?
+  businessName String?
+  industry     String?
+  message      String
+  createdAt    DateTime @default(now())
+  handled      Boolean  @default(false)
+
+  @@index([kind, createdAt])
+  @@index([email, createdAt])
+}
