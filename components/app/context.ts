@@ -16,7 +16,9 @@ export const getAppContext = cache(async () => {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  await ensureAccount(user);
+  // Safety net only: sessions are normally created after email confirmation,
+  // and ensureAccount never starts a trial for an unconfirmed address.
+  if (!(await ensureAccount(user))) redirect("/login?error=confirm");
   const [business, usage] = await Promise.all([
     prisma.business.findUnique({ where: { userId: user.id } }),
     getUsageSummary(user.id),

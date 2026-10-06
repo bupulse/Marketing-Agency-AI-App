@@ -34,7 +34,7 @@ export function PlanCards() {
               </li>
             ))}
           </ul>
-          <Button href="/login" size="lg" variant={plan.highlighted ? "primary" : "ghost"}>
+          <Button href="/signup" size="lg" variant={plan.highlighted ? "primary" : "ghost"}>
             Start free trial
           </Button>
         </GlassCard>

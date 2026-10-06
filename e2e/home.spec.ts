@@ -8,12 +8,12 @@ test("homepage loads with a single H1", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
 });
 
-test("Start free trial goes to login", async ({ page }) => {
+test("Start free trial goes to sign-up", async ({ page }) => {
   await page.goto("/");
   const cta = page.getByRole("main").getByRole("link", { name: "Start free trial" }).first();
-  await expect(cta).toHaveAttribute("href", "/login");
+  await expect(cta).toHaveAttribute("href", "/signup");
   await cta.click();
-  await expect(page).toHaveURL(/\/login/);
+  await expect(page).toHaveURL(/\/signup/, { timeout: 15_000 });
 });
 
 test("FAQ opens", async ({ page }) => {

@@ -82,7 +82,7 @@ export default async function BlogPostPage({ params }: PageProps<"/blog/[slug]">
       </div>
       <div className="mt-14 flex flex-col items-start gap-4 border-t border-line pt-8">
         <p className="text-lg font-semibold">Want help putting this into practice?</p>
-        <Button href="/login">Try BuPulse free for 7 days</Button>
+        <Button href="/signup">Try BuPulse free for 7 days</Button>
       </div>
     </Container>
   );

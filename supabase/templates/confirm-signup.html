@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>Confirm your email for BuPulse</title>
+</head>
+<body style="margin:0;padding:0;background-color:#F5F5F7;-webkit-text-size-adjust:100%;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#F5F5F7;">One click to confirm your email and start your 7-day free trial.&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F5F5F7;">
+<tr>
+<td align="center" style="padding:32px 16px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+
+<tr>
+<td bgcolor="#2F6BFF" style="background-color:#2F6BFF;background-image:linear-gradient(120deg,#2F6BFF,#7B5CFF);border-radius:24px 24px 0 0;padding:28px 36px;">
+<img src="https://bupulse.com/brand/logo-white.png" width="140" height="42" alt="BuPulse" style="display:block;border:0;width:140px;height:auto;color:#FFFFFF;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:22px;font-weight:700;">
+</td>
+</tr>
+
+<tr>
+<td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:40px 36px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1D1D1F;">
+<h1 style="margin:0 0 16px;font-size:26px;line-height:1.25;font-weight:700;letter-spacing:-0.02em;color:#1D1D1F;">Confirm your email</h1>
+<p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#1D1D1F;">Hi{{ if .Data.ceo_name }} {{ .Data.ceo_name }}{{ end }},</p>
+<p style="margin:0 0 28px;font-size:16px;line-height:1.6;color:#1D1D1F;">Welcome to BuPulse{{ if .Data.organisation_name }}, and thanks for creating an account for <strong>{{ .Data.organisation_name }}</strong>{{ end }}. Please confirm that <strong>{{ .Email }}</strong> is your email address to activate your account.</p>
+
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 28px;">
+<tr>
+<td align="center" bgcolor="#2F6BFF" style="border-radius:999px;background-color:#2F6BFF;background-image:linear-gradient(120deg,#2F6BFF,#7B5CFF);">
+<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email&amp;next=/dashboard" target="_blank" style="display:inline-block;padding:16px 36px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;color:#FFFFFF;text-decoration:none;border-radius:999px;">Confirm my email</a>
+</td>
+</tr>
+</table>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 28px;background-color:#F5F5F7;border-radius:16px;">
+<tr>
+<td style="padding:20px 22px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<p style="margin:0 0 10px;font-size:14px;font-weight:700;color:#1D1D1F;">What happens next</p>
+<p style="margin:0 0 6px;font-size:14px;line-height:1.55;color:#4A4A50;">&#10003;&nbsp; Your 7-day free trial starts as soon as you confirm.</p>
+<p style="margin:0 0 6px;font-size:14px;line-height:1.55;color:#4A4A50;">&#10003;&nbsp; Set up your brand once: logo, colors and voice.</p>
+<p style="margin:0;font-size:14px;line-height:1.55;color:#4A4A50;">&#10003;&nbsp; Create your first posts, designs and ad headlines.</p>
+</td>
+</tr>
+</table>
+
+<p style="margin:0 0 8px;font-size:13px;line-height:1.6;color:#5E5E63;">Button not working? Copy and paste this link into your browser:</p>
+<p style="margin:0 0 24px;font-size:13px;line-height:1.6;word-break:break-all;"><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email&amp;next=/dashboard" style="color:#2F6BFF;text-decoration:underline;">{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email&amp;next=/dashboard</a></p>
+
+<p style="margin:0;font-size:13px;line-height:1.6;color:#5E5E63;">This link expires in 24 hours. If you didn't create a BuPulse account, you can safely ignore this email.</p>
+</td>
+</tr>
+
+<tr>
+<td bgcolor="#FFFFFF" style="background-color:#FFFFFF;border-top:1px solid #E5E5EA;border-radius:0 0 24px 24px;padding:22px 36px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<p style="margin:0 0 6px;font-size:13px;line-height:1.6;color:#5E5E63;"><strong style="color:#1D1D1F;">BuPulse</strong> &middot; The marketing team for every small business.</p>
+<p style="margin:0;font-size:12px;line-height:1.6;color:#8E8E93;">Questions? Email <a href="mailto:hello@bupulse.com" style="color:#5E5E63;">hello@bupulse.com</a> &middot; <a href="https://bupulse.com/privacy" style="color:#5E5E63;">Privacy</a> &middot; <a href="https://bupulse.com/terms" style="color:#5E5E63;">Terms</a></p>
+</td>
+</tr>
+
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>

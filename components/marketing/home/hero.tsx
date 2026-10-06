@@ -26,7 +26,7 @@ export function Hero() {
           visitors, so you can get back to running the business.
         </p>
         <div className="animate-rise flex flex-wrap gap-3 [animation-delay:360ms]">
-          <Button href="/login" size="lg" trailing={<ArrowRight aria-hidden className="size-[18px]" />}>
+          <Button href="/signup" size="lg" trailing={<ArrowRight aria-hidden className="size-[18px]" />}>
             Start free trial
           </Button>
           <Button href="#how" variant="ghost" size="lg">

@@ -2,38 +2,43 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { fieldErrors, signInSchema, type FieldErrors } from "@/lib/auth/schemas";
+import { safeNext } from "@/lib/auth/safe-next";
+import { siteUrl } from "@/lib/auth/site-url";
 
-export type LoginState = { message?: string; error?: string };
+export type LoginState = {
+  error?: string;
+  fieldErrors?: FieldErrors;
+  /** Set when Supabase says the address has not been confirmed yet. */
+  unconfirmedEmail?: string;
+};
 
-function siteUrl() {
-  return process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
-}
-
-function callbackUrl(next: string) {
-  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
-  return `${siteUrl()}/auth/callback?next=${encodeURIComponent(safeNext)}`;
-}
-
-export async function sendMagicLink(_prev: LoginState, formData: FormData): Promise<LoginState> {
-  const email = String(formData.get("email") ?? "").trim();
-  const next = String(formData.get("next") ?? "/dashboard");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "Enter a valid email address." };
+export async function signInWithPassword(_prev: LoginState, formData: FormData): Promise<LoginState> {
+  const parsed = signInSchema.safeParse({
+    email: formData.get("email") ?? "",
+    password: formData.get("password") ?? "",
+  });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: callbackUrl(next) },
-  });
-  if (error) return { error: "Could not send the sign-in email. Please try again." };
-  return { message: "Check your email for a sign-in link." };
+  const { error } = await supabase.auth.signInWithPassword(parsed.data);
+  if (error) {
+    if (error.code === "email_not_confirmed") return { unconfirmedEmail: parsed.data.email };
+    if (error.status === 429 || error.code === "over_request_rate_limit") {
+      return { error: "Too many attempts. Please wait a few minutes and try again." };
+    }
+    if (error.code === "invalid_credentials") return { error: "Incorrect email or password." };
+    return { error: "We could not sign you in. Please try again." };
+  }
+  redirect(safeNext(String(formData.get("next") ?? "")));
 }
 
 export async function signInWithGoogle(formData: FormData) {
-  const next = String(formData.get("next") ?? "/dashboard");
+  const next = safeNext(String(formData.get("next") ?? ""));
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo: callbackUrl(next) },
+    options: { redirectTo: `${siteUrl()}/auth/callback?next=${encodeURIComponent(next)}` },
   });
   if (error || !data.url) redirect("/login?error=google");
   redirect(data.url);

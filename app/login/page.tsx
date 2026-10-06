@@ -1,11 +1,8 @@
 import type { Metadata } from "next";
-import Image from "next/image";
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CalendarCheck, CreditCard, Sparkles } from "lucide-react";
-import { BackgroundBlobs } from "@/components/motion";
-import { ThemeToggle } from "@/components/theme";
-import { GlassCard } from "@/components/ui";
+import { AuthShell } from "@/components/auth/auth-shell";
+import { ResendByEmail } from "@/components/auth/resend-by-email";
+import { safeNext } from "@/lib/auth/safe-next";
 import { getCurrentUser } from "@/lib/supabase/server";
 import LoginForm from "./LoginForm";
 
@@ -14,69 +11,26 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const FACTS = [
-  { icon: CalendarCheck, text: "7-day free trial" },
-  { icon: CreditCard, text: "No credit card needed to start" },
-  { icon: Sparkles, text: "Posts, images and ads in your brand voice" },
-];
-
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const params = await searchParams;
-  const next = typeof params.next === "string" ? params.next : "/dashboard";
-  if (await getCurrentUser()) redirect(next);
+  const next = safeNext(typeof params.next === "string" ? params.next : null);
+  const user = await getCurrentUser();
+  if (user?.email_confirmed_at) redirect(next);
 
   return (
-    <div className="relative grid min-h-dvh w-full lg:grid-cols-[1.05fr_1fr]">
-      <BackgroundBlobs />
-
-      <section
-        aria-label="About BuPulse"
-        className="relative flex flex-col justify-between gap-10 overflow-hidden bg-brand-gradient px-6 py-8 text-white sm:px-10 lg:px-14 lg:py-12"
-      >
-        <div className="flex items-center justify-between">
-          <Link href="/" aria-label="BuPulse home" className="inline-flex min-h-11 items-center">
-            <Image src="/brand/logo-white.png" alt="BuPulse" width={107} height={32} priority style={{ width: "auto", height: 32 }} />
-          </Link>
-        </div>
-        <div className="flex flex-col gap-6">
-          <p className="max-w-md text-3xl font-semibold leading-tight tracking-[-0.03em] sm:text-4xl">
-            The marketing team for every small business.
-          </p>
-          <ul className="flex flex-col gap-3">
-            {FACTS.map(({ icon: Icon, text }) => (
-              <li key={text} className="flex items-center gap-3 text-[15px] font-medium">
-                <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/20">
-                  <Icon aria-hidden className="size-[18px]" />
-                </span>
-                {text}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <p className="hidden text-sm text-white/80 lg:block">Shops, schools, salons, builders and more.</p>
-      </section>
-
-      <main className="relative flex flex-col items-center justify-center gap-6 px-4 pb-10 pt-20 sm:px-8 lg:py-10">
-        <div className="absolute right-4 top-4 sm:right-8 sm:top-6">
-          <ThemeToggle />
-        </div>
-        <GlassCard strong padding="lg" className="flex w-full max-w-md flex-col gap-6 p-6 sm:p-8">
-          <div className="flex flex-col gap-1.5">
-            <h1 className="text-2xl font-semibold tracking-[-0.03em]">Sign in to BuPulse</h1>
-            <p className="text-[15px] text-muted">New here? Signing in starts your 7-day free trial.</p>
-          </div>
-          {params.error && (
-            <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
-              Sign-in failed. Please try again.
-            </p>
-          )}
-          <LoginForm next={next} />
-          <p className="text-xs text-muted">
-            By continuing you agree to our <Link href="/terms" className="underline">Terms</Link> and{" "}
-            <Link href="/privacy" className="underline">Privacy Policy</Link>.
-          </p>
-        </GlassCard>
-      </main>
-    </div>
+    <AuthShell>
+      <div className="flex flex-col gap-1.5">
+        <h1 className="text-2xl font-semibold tracking-[-0.03em]">Sign in to BuPulse</h1>
+        <p className="text-[15px] text-muted">Welcome back. Pick up where you left off.</p>
+      </div>
+      {params.error === "confirm" ? (
+        <ResendByEmail />
+      ) : params.error ? (
+        <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
+          Sign-in failed. Please try again.
+        </p>
+      ) : null}
+      <LoginForm next={next} />
+    </AuthShell>
   );
 }

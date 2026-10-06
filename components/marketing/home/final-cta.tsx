@@ -13,7 +13,7 @@ export function FinalCta() {
             </h2>
             <p className="relative m-0 text-lg">Plans from $49 a month, or let our team run it for you.</p>
             <div className="relative flex flex-wrap justify-center gap-3">
-              <Button href="/login" variant="white" size="lg">
+              <Button href="/signup" variant="white" size="lg">
                 Start free trial
               </Button>
               <Button

@@ -47,6 +47,9 @@ model Business {
   logoUrl                 String?
   brandColors             String[]
   website                 String?
+  ceoName                 String? // from the sign-up form
+  country                 String? // from the sign-up form
+  phone                   String? // from the sign-up form
   instagramHandle         String?
   knowledge               Json? // facts the chat widget may answer from: hours, area, FAQs
   widgetKey               String   @unique @default(cuid()) // public id used by the embed snippet

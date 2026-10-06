@@ -33,7 +33,7 @@ export function SiteHeader() {
           <Button href="/login" variant="ghost" size="sm" className="hidden md:inline-flex">
             Log in
           </Button>
-          <Button href="/login" size="sm" className="hidden md:inline-flex">
+          <Button href="/signup" size="sm" className="hidden md:inline-flex">
             Start free trial
           </Button>
           <MobileMenu links={navLinks} />

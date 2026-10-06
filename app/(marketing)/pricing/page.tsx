@@ -40,7 +40,7 @@ export default function PricingPage() {
               trial simply stops. Your work stays saved so you can pick a plan and carry on.
             </p>
             <div>
-              <Button href="/login" trailing={<ArrowRight aria-hidden className="size-4" />}>
+              <Button href="/signup" trailing={<ArrowRight aria-hidden className="size-4" />}>
                 Start free trial
               </Button>
             </div>

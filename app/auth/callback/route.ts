@@ -1,13 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ensureAccount } from "@/lib/account";
+import { safeNext } from "@/lib/auth/safe-next";
 import { createClient } from "@/lib/supabase/server";
 
-// Supabase sends users here from the magic link email and from Google.
+// Supabase sends users here from Google.
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get("code");
-  const nextParam = searchParams.get("next") ?? "/dashboard";
-  const next = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/dashboard";
+  const next = safeNext(searchParams.get("next"));
 
   if (code) {
     const supabase = await createClient();

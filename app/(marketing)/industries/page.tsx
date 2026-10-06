@@ -45,7 +45,7 @@ export default function IndustriesPage() {
         <GlassCard strong padding="lg" className="mt-12 flex flex-col items-center gap-4 text-center">
           <h2 className="text-2xl font-bold tracking-tight">Do not see your business?</h2>
           <p className="max-w-xl text-muted">BuPulse is not limited to this list. If you can describe what you offer, it can help you promote it.</p>
-          <Button href="/login" size="lg" trailing={<ArrowRight aria-hidden className="size-4" />}>
+          <Button href="/signup" size="lg" trailing={<ArrowRight aria-hidden className="size-4" />}>
             Start free trial
           </Button>
         </GlassCard>
