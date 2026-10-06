@@ -10,8 +10,8 @@ type RevealProps = {
 };
 
 /**
- * Scroll reveal. Where `animation-timeline: view()` is supported the CSS does everything
- * (no JS work). Otherwise an IntersectionObserver fades in elements that start below the fold.
+ * Scroll reveal: an IntersectionObserver fades in elements that start below the fold, once.
+ * (Scroll-linked CSS animations were dropped: they stutter with Safari's momentum scrolling.)
  * Content is always visible without JS and under reduced motion; no layout shift (transform only).
  */
 export function Reveal({ children, as, className }: RevealProps) {
@@ -21,7 +21,6 @@ export function Reveal({ children, as, className }: RevealProps) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (CSS.supports("animation-timeline: view()")) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     if (el.getBoundingClientRect().top < window.innerHeight) return; // already on screen
 

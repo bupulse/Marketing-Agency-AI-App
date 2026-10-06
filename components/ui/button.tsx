@@ -25,9 +25,9 @@ export function buttonClasses({
   className,
 }: { variant?: ButtonVariant; size?: ButtonSize; className?: string } = {}) {
   return cn(
-    "inline-flex cursor-pointer select-none items-center justify-center gap-2 rounded-full font-semibold no-underline",
+    "inline-flex cursor-pointer select-none items-center justify-center gap-2 rounded-[28px] font-semibold no-underline",
     "transition-[transform,box-shadow,border-radius,background-color] duration-300 ease-out-soft",
-    "hover:-translate-y-0.5 hover:rounded-2xl active:translate-y-0 motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+    "hover:-translate-y-0.5 hover:rounded-2xl active:translate-y-0 [backface-visibility:hidden] motion-reduce:transition-none motion-reduce:hover:translate-y-0",
     "disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50",
     variants[variant],
     sizes[size],

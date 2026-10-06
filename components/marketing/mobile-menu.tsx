@@ -42,7 +42,7 @@ export function MobileMenu({ links }: MobileMenuProps) {
       <div
         id={panelId}
         hidden={!open}
-        className="glass-strong absolute inset-x-0 top-full mt-2 flex flex-col gap-1 rounded-3xl p-3"
+        className="glass-strong animate-pop absolute inset-x-0 top-full mt-2 flex flex-col gap-1 rounded-3xl p-3"
       >
         {links.map((l) => (
           <Link

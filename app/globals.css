@@ -179,16 +179,13 @@ body {
 @keyframes bp-morph {
   0%,
   100% {
-    border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%;
-    transform: translate(0, 0) rotate(0);
+    transform: translate3d(0, 0, 0) scale(1, 1) rotate(0deg);
   }
   33% {
-    border-radius: 68% 32% 41% 59% / 58% 63% 37% 42%;
-    transform: translate(40px, -30px) rotate(60deg);
+    transform: translate3d(40px, -30px, 0) scale(1.12, 0.92) rotate(40deg);
   }
   66% {
-    border-radius: 35% 65% 52% 48% / 66% 35% 65% 34%;
-    transform: translate(-30px, 25px) rotate(-40deg);
+    transform: translate3d(-30px, 25px, 0) scale(0.92, 1.1) rotate(-30deg);
   }
 }
 @keyframes bp-draw {
@@ -214,13 +211,11 @@ body {
 @keyframes bp-rise {
   from {
     opacity: 0;
-    transform: translateY(24px);
-    filter: blur(6px);
+    transform: translate3d(0, 24px, 0);
   }
   to {
     opacity: 1;
     transform: none;
-    filter: none;
   }
 }
 @keyframes bp-sheen {
@@ -234,8 +229,11 @@ body {
   }
 }
 @keyframes bp-slide {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
   to {
-    transform: translateX(-50%);
+    transform: translate3d(-50%, 0, 0);
   }
 }
 @keyframes bp-ping {
@@ -264,32 +262,28 @@ body {
     transform: none;
   }
 }
-@keyframes bp-reveal {
-  from {
-    opacity: 0;
-    transform: translateY(60px) scale(0.96);
-    filter: blur(8px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-    filter: none;
-  }
-}
 
 /* ---------- Motion component styles ---------- */
 .bp-blob {
   position: absolute;
-  filter: blur(60px);
+  border-radius: 50%;
   opacity: 0.9;
   animation: bp-morph 14s ease-in-out infinite;
-  will-change: border-radius, transform;
+  will-change: transform;
+  backface-visibility: hidden;
+  /* Soft edges come from the gradient, not filter: blur(), which Safari repaints every frame. */
+  background: radial-gradient(
+    closest-side,
+    var(--bp-blob-color, rgba(255, 255, 255, 0.25)) 0%,
+    var(--bp-blob-color, rgba(255, 255, 255, 0.25)) 38%,
+    transparent 100%
+  );
 }
 .bp-blob-a {
-  background: var(--bp-blob-a);
+  --bp-blob-color: var(--bp-blob-a);
 }
 .bp-blob-b {
-  background: var(--bp-blob-b);
+  --bp-blob-color: var(--bp-blob-b);
   animation-duration: 18s;
   animation-direction: reverse;
 }
@@ -309,6 +303,8 @@ body {
   display: flex;
   width: max-content;
   animation: bp-slide var(--bp-marquee-duration, 40s) linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 .bp-marquee-group {
   display: flex;
@@ -340,6 +336,11 @@ body {
   animation-timing-function: cubic-bezier(0.7, 0, 0.2, 1);
   animation-iteration-count: infinite;
   animation-fill-mode: both;
+  will-change: transform, opacity;
+}
+/* A moving gradient inside moving words makes Safari redraw the text every frame. */
+.bp-rotator .text-gradient {
+  animation: none;
 }
 
 .bp-tilt {
@@ -362,24 +363,16 @@ body {
   grid-template-rows: 1fr;
 }
 
-/* Scroll reveal: native scroll-driven where supported, IntersectionObserver fallback otherwise. */
-@supports (animation-timeline: view()) {
-  .bp-reveal {
-    animation: bp-reveal linear both;
-    animation-timeline: view();
-    animation-range: entry 0% cover 28%;
-  }
+/* Scroll reveal: a one-time fade-up when the element enters the screen (IntersectionObserver).
+   Not scroll-linked, so it stays smooth with Safari's momentum scrolling. */
+.bp-reveal[data-state="hidden"] {
+  opacity: 0;
+  transform: translate3d(0, 32px, 0);
 }
-@supports not (animation-timeline: view()) {
-  .bp-reveal[data-state="hidden"] {
-    opacity: 0;
-    transform: translateY(40px) scale(0.97);
-  }
-  .bp-reveal[data-state="shown"] {
-    transition:
-      opacity 0.8s var(--ease-out-soft),
-      transform 0.8s var(--ease-out-soft);
-  }
+.bp-reveal[data-state="shown"] {
+  transition:
+    opacity 0.7s var(--ease-out-soft),
+    transform 0.7s var(--ease-out-soft);
 }
 
 dialog.bp-dialog {
@@ -391,6 +384,24 @@ dialog.bp-dialog::backdrop {
 }
 dialog.bp-dialog[open] {
   animation: bp-pop 0.35s var(--ease-out-soft) both;
+}
+
+@keyframes bp-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes bp-drawer {
+  from {
+    transform: translate3d(-24px, 0, 0);
+    opacity: 0;
+  }
+}
+.bp-fade-in {
+  animation: bp-fade 0.25s ease-out both;
+}
+.bp-drawer-in {
+  animation: bp-drawer 0.35s var(--ease-out-soft) both;
 }
 
 /* ---------- Reduced motion ---------- */

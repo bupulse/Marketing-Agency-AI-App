@@ -34,22 +34,18 @@
   }
 }
 
-.hp-parallax {
-  will-change: transform;
+/* Inside a preserve-3d scene Safari cannot render backdrop-filter and flattens or flickers the
+   cards, so the scene uses near-opaque surfaces instead of real blur. */
+.hs-scene .glass,
+.hs-scene .glass-strong {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: var(--bp-scene-card, rgba(255, 255, 255, 0.92));
+  backface-visibility: hidden;
 }
-@supports (animation-timeline: view()) {
-  .hp-parallax {
-    animation: hp-par linear both;
-    animation-timeline: view();
-  }
-  @keyframes hp-par {
-    from {
-      transform: translateY(40px);
-    }
-    to {
-      transform: translateY(-40px);
-    }
-  }
+.dark .hs-scene .glass,
+.dark .hs-scene .glass-strong {
+  --bp-scene-card: rgba(30, 30, 38, 0.94);
 }
 @media (prefers-reduced-motion: reduce) {
   .hs-scene {

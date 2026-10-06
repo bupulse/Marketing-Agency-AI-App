@@ -15,7 +15,7 @@ export function HowItWorks() {
         <ol className="m-0 grid list-none grid-cols-1 gap-6 p-0 md:grid-cols-3">
           {steps.map((s, i) => (
             <li key={s.title} className="flex">
-              <GlassCard padding="none" className="hp-parallax flex w-full flex-col gap-3 p-7">
+              <GlassCard padding="none" className="flex w-full flex-col gap-3 p-7">
                 <span aria-hidden className="text-gradient text-[44px] leading-none font-bold tracking-[-0.04em]">
                   {String(i + 1).padStart(2, "0")}
                 </span>

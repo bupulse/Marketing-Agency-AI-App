@@ -175,13 +175,13 @@ function Drawer({ pathname, plan, onClose }: { pathname: string; plan: ShellPlan
 
   return (
     <div className="fixed inset-0 z-50 lg:hidden" onKeyDown={onKeyDown}>
-      <div aria-hidden onClick={onClose} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div aria-hidden onClick={onClose} className="bp-fade-in absolute inset-0 bg-black/40 backdrop-blur-sm" />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="Menu"
-        className="glass-strong absolute inset-y-3 left-3 flex w-[min(86vw,300px)] flex-col gap-3 overflow-y-auto rounded-[28px] p-3.5"
+        className="glass-strong bp-drawer-in absolute inset-y-3 left-3 flex w-[min(86vw,300px)] flex-col gap-3 overflow-y-auto rounded-[28px] p-3.5"
       >
         <button
           type="button"
