@@ -3,7 +3,10 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+const globalForPrisma = globalThis as unknown as {
+  prisma?: PrismaClient;
+  prismaClass?: typeof PrismaClient;
+};
 
 // On Cloudflare Workers the connection comes from the Hyperdrive binding.
 // Locally and at build time there is no binding, so DATABASE_URL is used.
@@ -35,8 +38,14 @@ function getClient(): PrismaClient {
     }
     return client;
   }
-  // Reuse one client across hot reloads in development.
-  globalForPrisma.prisma ??= createClient(process.env.DATABASE_URL);
+  // Reuse one client across hot reloads in development. After `prisma generate` the dev
+  // server reloads this module with a new PrismaClient class; a client made from the old
+  // class would not know new fields ("Unknown field …"), so it is replaced.
+  if (!globalForPrisma.prisma || globalForPrisma.prismaClass !== PrismaClient) {
+    void globalForPrisma.prisma?.$disconnect().catch(() => {});
+    globalForPrisma.prisma = createClient(process.env.DATABASE_URL);
+    globalForPrisma.prismaClass = PrismaClient;
+  }
   return globalForPrisma.prisma;
 }
 
