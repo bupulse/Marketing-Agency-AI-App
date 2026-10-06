@@ -54,6 +54,11 @@ export async function ensureAccount(authUser: AuthUser): Promise<boolean> {
   if (!email) throw new Error("Signed-in user has no email address");
   if (!authUser.email_confirmed_at) return false;
 
+  // Hot path (every page and action): a returning user only needs a cheap lookup. The upsert
+  // below runs a transaction, so it is kept for the first visit and for email changes.
+  const existing = await prisma.user.findUnique({ where: { id: authUser.id }, select: { email: true } });
+  if (existing && existing.email === email) return true;
+
   const details = signUpDetails(authUser.user_metadata);
   const name =
     text(authUser.user_metadata?.full_name, 100) ??

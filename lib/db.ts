@@ -21,7 +21,18 @@ function workersContext() {
 
 function createClient(connectionString: string | undefined) {
   if (!connectionString) throw new Error("DATABASE_URL is not set");
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+  return new PrismaClient({
+    adapter: new PrismaPg({
+      connectionString,
+      // Close idle connections before Supabase's pooler drops them, so no request picks up a
+      // dead connection and hangs.
+      idleTimeoutMillis: 20_000,
+      keepAlive: true,
+    }),
+    // Opening a pooled connection far from the database (e.g. developing from Africa to us-east-1)
+    // can take ~2 s, Prisma's default wait for a transaction to start. Give it more room.
+    transactionOptions: { maxWait: 10_000, timeout: 20_000 },
+  });
 }
 
 // Workers cannot reuse database sockets across requests, so each request gets
