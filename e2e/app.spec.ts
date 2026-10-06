@@ -19,7 +19,7 @@ test("login page has no horizontal scroll on a phone", async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(0);
 });
 
-for (const path of ["/dashboard", "/dashboard/projects"]) {
+for (const path of ["/dashboard", "/dashboard/projects", "/welcome"]) {
   test(`${path} redirects to login when signed out`, async ({ page }) => {
     await page.goto(path);
     await expect(page).toHaveURL(new RegExp(`/login\\?next=${encodeURIComponent(path)}$`));

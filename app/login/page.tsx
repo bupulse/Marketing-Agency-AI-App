@@ -16,6 +16,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const next = safeNext(typeof params.next === "string" ? params.next : null);
   const user = await getCurrentUser();
   if (user?.email_confirmed_at) redirect(next);
+  const email = typeof params.email === "string" ? params.email.slice(0, 254) : undefined;
 
   return (
     <AuthShell>
@@ -23,19 +24,25 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         <h1 className="text-2xl font-semibold tracking-[-0.03em]">Sign in to BuPulse</h1>
         <p className="text-[15px] text-muted">Welcome back. Pick up where you left off.</p>
       </div>
-      {params.notice === "exists" && (
+      {(params.notice === "exists" || params.notice === "exists-google") && (
         <p role="status" className="rounded-2xl bg-ok-bg px-4 py-3 text-sm font-medium text-ok">
-          You already have a BuPulse account{typeof params.email === "string" ? ` with ${params.email}` : ""}. Sign in below.
+          You already have a BuPulse account{email ? ` with ${email}` : ""}.{" "}
+          {params.notice === "exists-google" ? "It was created with Google, so use Continue with Google." : "Sign in below."}
         </p>
       )}
       {params.error === "confirm" ? (
         <ResendByEmail />
+      ) : params.error === "use_password" ? (
+        <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
+          {email ? `${email} was` : "This account was"} created with an email and password, so Google sign-in
+          can’t be used for it. Sign in with your password below, or choose “Forgot password?”.
+        </p>
       ) : params.error ? (
         <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
           Sign-in failed. Please try again.
         </p>
       ) : null}
-      <LoginForm next={next} defaultEmail={typeof params.email === "string" ? params.email.slice(0, 254) : undefined} />
+      <LoginForm next={next} defaultEmail={email} />
     </AuthShell>
   );
 }

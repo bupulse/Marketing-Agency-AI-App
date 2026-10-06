@@ -8,6 +8,7 @@ import {
   resetPasswordSchema,
   signInSchema,
   signUpSchema,
+  welcomeSchema,
 } from "@/lib/auth/schemas";
 
 const org = { organisationName: "Sunrise Phones", ceoName: "Ana Silva", industry: "Other", country: "Kenya", phone: "", website: "" };
@@ -77,6 +78,18 @@ describe("signUpSchema", () => {
   it("requires accepting the terms", () => {
     expect(signUpSchema.safeParse({ ...valid, terms: false }).success).toBe(false);
     expect(fieldErrors(signUpSchema.safeParse({ ...valid, terms: false }).error!).terms).toMatch(/Terms/);
+  });
+});
+
+describe("welcomeSchema", () => {
+  it("accepts organisation details with the terms and no password", () => {
+    expect(welcomeSchema.safeParse({ ...org, terms: true }).success).toBe(true);
+  });
+
+  it("requires the terms and the required organisation fields", () => {
+    const r = welcomeSchema.safeParse({ ...org, organisationName: "", terms: false });
+    expect(r.success).toBe(false);
+    expect(Object.keys(fieldErrors(r.error!)).sort()).toEqual(["organisationName", "terms"]);
   });
 });
 

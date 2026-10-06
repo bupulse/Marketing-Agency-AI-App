@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
+import { findAccountByEmail } from "@/lib/account";
 import { logError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 import { emailSchema, fieldErrors, signUpSchema, type FieldErrors } from "@/lib/auth/schemas";
@@ -35,24 +35,18 @@ function friendlySignUpError(error: AuthErrorLike): string {
   }
 }
 
-function signInUrl(email: string) {
-  return `/login?notice=exists&email=${encodeURIComponent(email)}`;
-}
-
-// Accounts appear in our User table once their email is confirmed (or via Google).
-async function isRegistered(email: string) {
-  const user = await prisma.user.findFirst({
-    where: { email: { equals: email, mode: "insensitive" } },
-    select: { id: true },
-  });
-  return user !== null;
+function signInUrl(email: string, google = false) {
+  return `/login?notice=${google ? "exists-google" : "exists"}&email=${encodeURIComponent(email)}`;
 }
 
 // Step 1 of /signup: the owner asked that a known address goes straight to sign in.
-export async function checkEmail(email: string): Promise<{ registered: boolean }> {
+// Accounts appear in our User table once their email is confirmed (or via Google).
+export async function checkEmail(email: string): Promise<{ registered: boolean; signInUrl?: string }> {
   const parsed = emailSchema.safeParse(email);
   if (!parsed.success) return { registered: false };
-  return { registered: await isRegistered(parsed.data) };
+  const account = await findAccountByEmail(parsed.data);
+  if (!account) return { registered: false };
+  return { registered: true, signInUrl: signInUrl(parsed.data, account.method === "GOOGLE") };
 }
 
 export async function signUp(_prev: SignUpState, formData: FormData): Promise<SignUpState> {
@@ -71,7 +65,8 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
   if (!parsed.success) return { status: "error", fieldErrors: fieldErrors(parsed.error) };
   const v = parsed.data;
 
-  if (await isRegistered(v.email)) redirect(signInUrl(v.email));
+  const existing = await findAccountByEmail(v.email);
+  if (existing) redirect(signInUrl(v.email, existing.method === "GOOGLE"));
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({

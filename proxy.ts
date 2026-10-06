@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED = ["/dashboard"];
+const PROTECTED = ["/dashboard", "/welcome"];
 
 // Refreshes the Supabase session cookie on every request and keeps
 // signed-out visitors out of the dashboard.

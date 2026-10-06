@@ -78,6 +78,11 @@ export const organisationSchema = z.object({
   website: websiteSchema,
 });
 
+// /welcome: Google sign-ups give the organisation details and accept the terms (no password).
+export const welcomeSchema = organisationSchema.extend({
+  terms: z.literal(true, { error: "Agree to the Terms and Privacy Policy to continue." }),
+});
+
 // Zod skips object-level checks when a field already failed; run the match check regardless
 // so a mismatch is reported alongside other problems.
 const always = { when: () => true } as const;

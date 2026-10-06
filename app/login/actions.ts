@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { findAccountByEmail } from "@/lib/account";
 import { createClient } from "@/lib/supabase/server";
 import { fieldErrors, signInSchema, type FieldErrors } from "@/lib/auth/schemas";
 import { safeNext } from "@/lib/auth/safe-next";
@@ -27,7 +28,17 @@ export async function signInWithPassword(_prev: LoginState, formData: FormData):
     if (error.status === 429 || error.code === "over_request_rate_limit") {
       return { error: "Too many attempts. Please wait a few minutes and try again." };
     }
-    if (error.code === "invalid_credentials") return { error: "Incorrect email or password." };
+    if (error.code === "invalid_credentials") {
+      // Google accounts have no password until they set one with "Forgot password?".
+      const account = await findAccountByEmail(parsed.data.email);
+      if (account?.method === "GOOGLE" && !account.hasPassword) {
+        return {
+          error:
+            "This account was created with Google. Use Continue with Google, or choose “Forgot password?” to add a password.",
+        };
+      }
+      return { error: "Incorrect email or password." };
+    }
     return { error: "We could not sign you in. Please try again." };
   }
   redirect(safeNext(String(formData.get("next") ?? "")));

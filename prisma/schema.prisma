@@ -24,10 +24,18 @@ enum SubscriptionStatus {
   EXPIRED
 }
 
+// How the account was created. Password accounts sign in with their password only;
+// Google accounts sign in with Google (or a password too, once they set one by resetting it).
+enum SignUpMethod {
+  PASSWORD
+  GOOGLE
+}
+
 model User {
   id           String        @id @db.Uuid
   email        String        @unique
   name         String?
+  signUpMethod SignUpMethod  @default(PASSWORD)
   createdAt    DateTime      @default(now())
   business     Business?
   subscription Subscription?
@@ -50,6 +58,7 @@ model Business {
   ceoName                 String? // from the sign-up form
   country                 String? // from the sign-up form
   phone                   String? // from the sign-up form
+  detailsCompletedAt      DateTime? // set once the organisation details are filled in; Google sign-ups do it on /welcome
   instagramHandle         String?
   knowledge               Json? // facts the chat widget may answer from: hours, area, FAQs
   widgetKey               String   @unique @default(cuid()) // public id used by the embed snippet

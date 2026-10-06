@@ -1,12 +1,17 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const exchangeCodeForSession = vi.fn();
+const { exchangeCodeForSession, signOut, ensureAccount, allowGoogleSignIn } = vi.hoisted(() => ({
+  exchangeCodeForSession: vi.fn(),
+  signOut: vi.fn(),
+  ensureAccount: vi.fn(),
+  allowGoogleSignIn: vi.fn(),
+}));
 
 vi.mock("@/lib/supabase/server", () => ({
-  createClient: async () => ({ auth: { exchangeCodeForSession } }),
+  createClient: async () => ({ auth: { exchangeCodeForSession, signOut } }),
 }));
-vi.mock("@/lib/account", () => ({ ensureAccount: vi.fn() }));
+vi.mock("@/lib/account", () => ({ ensureAccount, allowGoogleSignIn }));
 
 import { GET } from "@/app/auth/callback/route";
 
@@ -18,7 +23,20 @@ async function callback(query: string) {
 describe("auth callback redirect", () => {
   beforeEach(() => {
     exchangeCodeForSession.mockReset();
-    exchangeCodeForSession.mockResolvedValue({ data: { user: { id: "u1" } }, error: null });
+    exchangeCodeForSession.mockResolvedValue({ data: { user: { id: "u1", email: "ana@example.com" } }, error: null });
+    signOut.mockReset();
+    ensureAccount.mockReset();
+    allowGoogleSignIn.mockReset();
+    allowGoogleSignIn.mockResolvedValue(true);
+  });
+
+  it("refuses Google for an account created with a password", async () => {
+    allowGoogleSignIn.mockResolvedValue(false);
+    expect(await callback("?code=abc")).toBe(
+      "https://bupulse.test/login?error=use_password&email=ana%40example.com",
+    );
+    expect(signOut).toHaveBeenCalled();
+    expect(ensureAccount).not.toHaveBeenCalled();
   });
 
   it("goes to the dashboard by default", async () => {

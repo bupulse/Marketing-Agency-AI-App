@@ -4,12 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { Button, Field, Input, Select } from "@/components/ui";
-import { countries } from "@/lib/content/countries";
+import { Button, Field, Input } from "@/components/ui";
 import {
   emailStepSchema,
   fieldErrors,
-  industryOptions,
   organisationSchema,
   passwordStepSchema,
   type FieldErrors,
@@ -19,6 +17,7 @@ import { checkEmail, signUp, type SignUpState } from "@/app/signup/actions";
 import { cn } from "@/lib/cn";
 import { ConfirmEmail } from "./confirm-email";
 import { GoogleIcon } from "./google-icon";
+import { OrganisationFields, TermsField } from "./organisation-fields";
 import { PasswordChecks } from "./password-checks";
 import { PasswordInput } from "./password-input";
 
@@ -142,10 +141,10 @@ export default function SignupForm() {
     if (!validate(step)) return;
     if (step === 1) {
       setCheckingEmail(true);
-      const { registered } = await checkEmail(values.email).catch(() => ({ registered: false }));
+      const { registered, signInUrl } = await checkEmail(values.email).catch(() => ({ registered: false, signInUrl: undefined }));
       setCheckingEmail(false);
       if (registered) {
-        router.push(`/login?notice=exists&email=${encodeURIComponent(values.email.trim())}`);
+        router.push(signInUrl ?? `/login?notice=exists&email=${encodeURIComponent(values.email.trim())}`);
         return;
       }
     }
@@ -228,62 +227,7 @@ export default function SignupForm() {
           </Field>
         )}
 
-        {step === 2 && (
-          <>
-            <Field label="Organisation name" required error={errors.organisationName}>
-              <Input
-                name="organisationName"
-                autoComplete="organization"
-                value={values.organisationName}
-                onChange={(e) => set("organisationName", e.target.value)}
-              />
-            </Field>
-            <Field label="CEO name" required error={errors.ceoName}>
-              <Input name="ceoName" autoComplete="name" value={values.ceoName} onChange={(e) => set("ceoName", e.target.value)} />
-            </Field>
-            <Field label="Industry" required error={errors.industry}>
-              <Select name="industry" value={values.industry} onChange={(e) => set("industry", e.target.value)}>
-                <option value="">Select your industry</option>
-                {industryOptions.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Country" required error={errors.country}>
-              <Select name="country" autoComplete="country-name" value={values.country} onChange={(e) => set("country", e.target.value)}>
-                <option value="">Select your country</option>
-                {countries.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Phone (optional)" error={errors.phone}>
-              <Input
-                name="phone"
-                type="tel"
-                autoComplete="tel"
-                placeholder="+1 555 123 4567"
-                value={values.phone}
-                onChange={(e) => set("phone", e.target.value)}
-              />
-            </Field>
-            <Field label="Website (optional)" error={errors.website}>
-              <Input
-                name="website"
-                type="url"
-                inputMode="url"
-                autoComplete="url"
-                placeholder="yourbusiness.com"
-                value={values.website}
-                onChange={(e) => set("website", e.target.value)}
-              />
-            </Field>
-          </>
-        )}
+        {step === 2 && <OrganisationFields values={values} errors={errors} onChange={set} />}
 
         {step === 3 && (
           <>
@@ -304,35 +248,7 @@ export default function SignupForm() {
                 onChange={(e) => set("confirmPassword", e.target.value)}
               />
             </Field>
-            <div className="flex flex-col gap-1.5">
-              <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-text">
-                <input
-                  type="checkbox"
-                  name="terms"
-                  checked={values.terms}
-                  onChange={(e) => set("terms", e.target.checked)}
-                  aria-invalid={errors.terms ? true : undefined}
-                  aria-describedby={errors.terms ? "terms-error" : undefined}
-                  className="mt-0.5 size-5 shrink-0 cursor-pointer accent-pulse-blue"
-                />
-                <span>
-                  I agree to the{" "}
-                  <Link href="/terms" target="_blank" className="font-semibold underline">
-                    Terms
-                  </Link>{" "}
-                  and{" "}
-                  <Link href="/privacy" target="_blank" className="font-semibold underline">
-                    Privacy Policy
-                  </Link>
-                  .
-                </span>
-              </label>
-              {errors.terms && (
-                <p id="terms-error" role="alert" className="text-[13px] font-medium text-danger">
-                  {errors.terms}
-                </p>
-              )}
-            </div>
+            <TermsField checked={values.terms} error={errors.terms} onChange={(v) => set("terms", v)} />
           </>
         )}
 

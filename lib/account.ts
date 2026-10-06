@@ -1,6 +1,7 @@
 import "server-only";
 import type { User as AuthUser } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db";
+import type { SignUpMethod } from "@/lib/generated/prisma/client";
 import { TRIAL_DAYS } from "@/lib/plans";
 
 type SignUpDetails = {
@@ -30,6 +31,19 @@ function signUpDetails(meta: AuthUser["user_metadata"] | undefined): SignUpDetai
   };
 }
 
+// True when the required sign-up details are all there. Email sign-ups always have
+// them; Google sign-ups don't and complete them on /welcome.
+function hasRequiredDetails(d: SignUpDetails) {
+  return Boolean(d.organisationName && d.ceoName && d.industry && d.country);
+}
+
+// Google-only accounts have just a "google" identity; anything with an email identity
+// was created through the sign-up form.
+function signUpMethodOf(authUser: AuthUser): SignUpMethod {
+  const providers = authUser.identities?.map((i) => i.provider) ?? authUser.app_metadata?.providers ?? [];
+  return providers.includes("google") && !providers.includes("email") ? "GOOGLE" : "PASSWORD";
+}
+
 // Called after email confirmation and after Google sign-in. Creates the app's
 // User row, the Business (from the sign-up details when there are any) and the
 // 7-day trial the first time; does nothing for returning users. Returns false
@@ -56,6 +70,7 @@ export async function ensureAccount(authUser: AuthUser): Promise<boolean> {
       id: authUser.id,
       email,
       name,
+      signUpMethod: signUpMethodOf(authUser),
       business: {
         create: {
           name: details.organisationName ?? "My business",
@@ -64,6 +79,7 @@ export async function ensureAccount(authUser: AuthUser): Promise<boolean> {
           ceoName: details.ceoName,
           country: details.country,
           phone: details.phone,
+          detailsCompletedAt: hasRequiredDetails(details) ? now : null,
         },
       },
       subscription: {
@@ -78,4 +94,28 @@ export async function ensureAccount(authUser: AuthUser): Promise<boolean> {
     },
   });
   return true;
+}
+
+export type AccountByEmail = { method: SignUpMethod; hasPassword: boolean };
+
+/** The registered account for an address (any letter case), with whether it has a password. */
+export async function findAccountByEmail(email: string): Promise<AccountByEmail | null> {
+  const rows = await prisma.$queryRaw<{ method: SignUpMethod; has_password: boolean }[]>`
+    SELECT u."signUpMethod" AS method, COALESCE(a.encrypted_password, '') <> '' AS has_password
+    FROM public."User" u JOIN auth.users a ON a.id = u.id
+    WHERE lower(u.email) = lower(${email})
+    LIMIT 1`;
+  return rows[0] ? { method: rows[0].method, hasPassword: rows[0].has_password } : null;
+}
+
+/**
+ * Accounts created with a password sign in with their password only. Supabase links a
+ * Google login to an existing account with the same email automatically, so when that
+ * happens this removes the Google login again and returns false.
+ */
+export async function allowGoogleSignIn(authUser: AuthUser): Promise<boolean> {
+  const existing = await prisma.user.findUnique({ where: { id: authUser.id }, select: { signUpMethod: true } });
+  if (existing?.signUpMethod !== "PASSWORD") return true;
+  await prisma.$executeRaw`DELETE FROM auth.identities WHERE user_id = ${authUser.id}::uuid AND provider = 'google'`;
+  return false;
 }

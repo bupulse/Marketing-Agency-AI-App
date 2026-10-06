@@ -23,6 +23,8 @@ export const getAppContext = cache(async () => {
     prisma.business.findUnique({ where: { userId: user.id } }),
     getUsageSummary(user.id),
   ]);
+  // Google sign-ups fill in their organisation details before using the app.
+  if (!business?.detailsCompletedAt) redirect("/welcome");
 
   const meta = user.user_metadata as { full_name?: string; name?: string } | undefined;
   const fullName = meta?.full_name ?? meta?.name ?? null;
