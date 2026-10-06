@@ -15,6 +15,7 @@ export class GeminiTextProvider implements TextProvider {
 
   async generate({ system, prompt, jsonSchema }: TextRequest): Promise<TextResult> {
     let text: string | undefined;
+    let usage = { inputTokens: 0, outputTokens: 0 };
     try {
       const response = await this.ai.models.generateContent({
         model: this.model,
@@ -27,6 +28,12 @@ export class GeminiTextProvider implements TextProvider {
         },
       });
       text = response.text;
+      const meta = response.usageMetadata;
+      usage = {
+        inputTokens: meta?.promptTokenCount ?? 0,
+        // Thinking tokens are billed as output.
+        outputTokens: (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0),
+      };
     } catch (error) {
       const status = (error as { status?: number }).status;
       throw new AIProviderError(
@@ -36,6 +43,6 @@ export class GeminiTextProvider implements TextProvider {
       );
     }
     if (!text) throw new AIProviderError("Gemini returned no text", this.name);
-    return { text, provider: this.name, model: this.model };
+    return { text, provider: this.name, model: this.model, usage };
   }
 }

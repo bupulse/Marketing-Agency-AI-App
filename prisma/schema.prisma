@@ -56,6 +56,7 @@ model Business {
   description             String? // what they sell
   audience                String? // who their customers are
   tone                    String? // brand voice preset id from lib/brand/voices.ts, e.g. "friendly"
+  contentLanguage         String   @default("English") // language the AI writes in (lib/brand/languages.ts)
   logoUrl                 String? // object path in the private "brand" bucket (<userId>/logo/...)
   brandColors             String[]
   website                 String?
@@ -72,6 +73,7 @@ model Business {
   updatedAt               DateTime @updatedAt
 
   projects    Project[]
+  designs     Design[]
   leads       Lead[]
   connections Connection[]
 }
@@ -86,12 +88,15 @@ model Project {
   price      String? // free text: "$485,000", "10% off", "From $49"
   features   String[]
   details    Json? // type-specific fields (bedrooms, colors, dates...)
-  photoUrls  String[]
+  photoPaths String[] // object paths in the private "media" bucket (<userId>/projects/...)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   contents GeneratedContent[]
+  designs  Design[]
   posts    Post[]
+
+  @@index([businessId, createdAt])
 }
 
 // Every generation is kept, so users can regenerate and compare versions.
@@ -103,7 +108,11 @@ model GeneratedContent {
   hashtags    String[]
   videoScript String
   adHeadlines String[]
-  provider    String // "gemini" | "claude"
+  language    String   @default("English")
+  // Per-network versions (caption length, hashtags, aspect ratio) prepared for publishing.
+  variants    Json?
+  edited      Boolean  @default(false) // true once the owner changed the AI's text
+  provider    String // "gemini" | "claude" | "edit"
   model       String
   createdAt   DateTime @default(now())
 
@@ -295,4 +304,49 @@ model ContactRequest {
 
   @@index([kind, createdAt])
   @@index([email, createdAt])
+}
+
+enum DesignKind {
+  TEMPLATE // a BuPulse layout filled with the brand's logo, colours, photo and text (free)
+  AI // an image generated from a description (counts against the plan's image limit)
+}
+
+// A branded image, stored as a PNG in the private "designs" bucket.
+model Design {
+  id          String     @id @default(cuid())
+  businessId  String
+  business    Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  kind        DesignKind
+  template    String? // template id from lib/designs/templates, for TEMPLATE
+  prompt      String? // the description, for AI
+  aspectRatio String // "1:1" | "4:5" | "9:16" | "16:9"
+  path        String // <userId>/designs/<id>.png in the "designs" bucket
+  width       Int
+  height      Int
+  createdAt   DateTime   @default(now())
+
+  @@index([businessId, createdAt])
+}
+
+// AI cost ledger: one row per call to an AI provider, successful or not.
+model AiCall {
+  id           String   @id @default(cuid())
+  userId       String?  @db.Uuid
+  businessId   String?
+  feature      String // "content" | "regenerate" | "image" | "eval" ...
+  provider     String // "gemini" | "claude"
+  model        String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  images       Int      @default(0)
+  costUsd      Decimal  @default(0) @db.Decimal(12, 6) // estimated from lib/ai/pricing.ts
+  durationMs   Int      @default(0)
+  success      Boolean
+  error        String?
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([businessId, createdAt])
 }

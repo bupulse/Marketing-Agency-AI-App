@@ -8,10 +8,17 @@ export interface TextRequest {
   jsonSchema?: Record<string, unknown>;
 }
 
+/** Token counts reported by the provider, for the cost ledger. */
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
 export interface TextResult {
   text: string;
   provider: string;
   model: string;
+  usage: TokenUsage;
 }
 
 export interface TextProvider {
@@ -32,6 +39,7 @@ export interface ImageResult {
   mimeType: string;
   provider: string;
   model: string;
+  usage: TokenUsage;
 }
 
 export interface ImageProvider {

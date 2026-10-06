@@ -50,6 +50,11 @@ export class ClaudeTextProvider implements TextProvider {
       .flatMap((block) => (block.type === "text" ? [block.text] : []))
       .join("");
     if (!text) throw new AIProviderError("Claude returned no text", this.name);
-    return { text, provider: this.name, model: response.model };
+    return {
+      text,
+      provider: this.name,
+      model: response.model,
+      usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
+    };
   }
 }
