@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
+import { assertWithinBudget } from "./budget";
 import { estimateCostUsd } from "./pricing";
 import { AIProviderError, type TokenUsage } from "./types";
 
@@ -16,6 +17,8 @@ export async function withLedger<T>(
   call: () => Promise<T>,
   describe: (result: T) => { provider: string; model: string; usage: TokenUsage; images?: number },
 ): Promise<T> {
+  // Over the monthly cap: refuse before calling (and paying) the provider. Not recorded as a call.
+  await assertWithinBudget(meta.provider);
   const started = Date.now();
   try {
     const result = await call();

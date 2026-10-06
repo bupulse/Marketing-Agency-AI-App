@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const prisma = vi.hoisted(() => ({
   project: { findFirst: vi.fn() },
   generatedContent: { create: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn() },
-  aiCall: { create: vi.fn() },
+  aiCall: { create: vi.fn(), aggregate: vi.fn().mockResolvedValue({ _sum: { costUsd: 0 } }) },
 }));
 const usage = vi.hoisted(() => {
   class UsageLimitError extends Error {
@@ -50,6 +50,7 @@ const args = { userId: "u1", businessId: "b1", projectId: "p1", feature: "conten
 
 beforeEach(() => {
   vi.resetAllMocks();
+  prisma.aiCall.aggregate.mockResolvedValue({ _sum: { costUsd: 0 } }); // under the monthly AI budget
   prisma.project.findFirst.mockResolvedValue(project);
   usage.consumeUsage.mockResolvedValue({ periodStart });
   generate.mockResolvedValue({ text: aiJson, provider: "gemini", model: "gemini-2.5-flash", usage: { inputTokens: 100, outputTokens: 50 } });
