@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useUsageBlock } from "@/components/billing/upgrade-dialog";
 
 // Temporary developer check that auth, usage limits, the AI provider and the
 // database all work together. Replaced by the real content generator UI later.
-export function TestGenerate() {
+export function TestGenerate({ limit, resetsAt }: { limit?: number; resetsAt?: string | null } = {}) {
   const router = useRouter();
+  const { handleBody, dialog } = useUsageBlock({ limit, resetsAt });
   const [busy, setBusy] = useState(false);
   const [output, setOutput] = useState<string>("");
 
@@ -26,7 +28,10 @@ export function TestGenerate() {
     const body = await res.text();
     let shown = `HTTP ${res.status}: ${body || "(empty response)"}`;
     try {
-      shown = JSON.stringify(JSON.parse(body), null, 2);
+      const json = JSON.parse(body);
+      shown = JSON.stringify(json, null, 2);
+      // A blocked generation (trial ended, limit reached, payment failed) opens the upgrade screen.
+      if (res.status === 402 && handleBody(json)) shown = "";
     } catch {
       // Not JSON; show the raw text.
     }
@@ -41,6 +46,7 @@ export function TestGenerate() {
         {busy ? "Generating…" : "Run a test generation (uses 1 credit)"}
       </button>
       {output && <pre className="overflow-x-auto whitespace-pre-wrap rounded-2xl border border-line p-3 text-sm">{output}</pre>}
+      {dialog}
     </section>
   );
 }

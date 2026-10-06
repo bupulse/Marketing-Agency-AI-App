@@ -35,7 +35,7 @@ export default function PrivacyPage() {
             <><strong>Content you create:</strong> projects, photos you upload, and the text and designs BuPulse generates for you.</>,
             <><strong>Connected accounts:</strong> if you connect Instagram, Facebook Pages, TikTok, LinkedIn or YouTube, we receive your account or Page identifier, display name, profile picture, the permissions you granted, and an access token (and refresh token where the network provides one). We also read the performance numbers of posts made through BuPulse, such as views, reach, likes, comments and shares.</>,
             <><strong>Website chat leads:</strong> if you install our chat widget, we store the conversations and any name, email, phone number or request your visitors share, on your behalf.</>,
-            <><strong>Billing data:</strong> your plan and subscription status. Card details are collected and held by Stripe; we never see or store full card numbers.</>,
+            <><strong>Billing data:</strong> your plan and subscription status. Card details are collected and held by our payment provider, Paddle; we never see or store full card numbers.</>,
             <><strong>Messages to us:</strong> anything you send through our contact or call-booking forms.</>,
             <><strong>Technical data:</strong> basic logs such as IP address, browser type and error reports, used to keep the Service secure and working.</>,
           ]}
@@ -123,7 +123,7 @@ export default function PrivacyPage() {
           items={[
             "Supabase: database, sign-in and file storage (hosted in the United States).",
             "Cloudflare: hosting and network security.",
-            "Stripe: payment processing.",
+            "Paddle: payment processing and sales tax, as our reseller and merchant of record.",
             "Google and Anthropic: AI processing, as described above.",
             "The social networks you connect, when you ask us to publish or read results.",
             "Email delivery providers, to send sign-in links and service emails.",

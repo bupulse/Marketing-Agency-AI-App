@@ -22,6 +22,7 @@ import {
   Video,
   type LucideIcon,
 } from "lucide-react";
+import { PRICES } from "@/lib/billing/catalog";
 
 export const site = {
   name: "BuPulse",
@@ -47,6 +48,7 @@ export const footerLinks = [
   { label: "Blog", href: "/blog" },
   { label: "Privacy", href: "/privacy" },
   { label: "Terms", href: "/terms" },
+  { label: "Refund policy", href: "/refund-policy" },
   { label: "Data deletion", href: "/data-deletion" },
 ];
 
@@ -129,14 +131,14 @@ export const pricingPlans: PricingPlan[] = [
   {
     id: "STANDARD",
     name: "Standard",
-    price: 49,
+    price: PRICES.STANDARD.MONTH,
     description: "For owners who want steady, on-brand content every week.",
     features: ["100 AI text generations a month", "50 brand designs a month", "Post to 5 social networks", "Lead-capturing chat widget", "Content calendar and scheduling"],
   },
   {
     id: "PRO",
     name: "Pro",
-    price: 99,
+    price: PRICES.PRO.MONTH,
     description: "For busy businesses that post often and want every connection.",
     features: ["300 AI text generations a month", "150 brand designs a month", "Everything in Standard", "App connectors and API access", "Use your own Composio account", "Video and voiceover when released"],
     highlighted: true,

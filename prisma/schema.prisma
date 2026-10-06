@@ -149,6 +149,7 @@ model Subscription {
   providerPriceId        String?
   interval               BillingInterval    @default(MONTH)
   cancelAtPeriodEnd      Boolean            @default(false) // stays active until currentPeriodEnd
+  providerUpdatedAt      DateTime? // the provider's last change; older webhooks arriving late are ignored
   trialEndsAt            DateTime?
   // Start of the billing period. Usage resets monthly from here (yearly plans too).
   currentPeriodStart     DateTime           @default(now())

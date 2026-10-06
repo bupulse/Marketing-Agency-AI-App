@@ -44,6 +44,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           isTrial={isTrial}
           trialDaysLeft={trialDaysLeft}
           subscriptionActive={status === "TRIALING" || status === "ACTIVE"}
+          pastDue={status === "PAST_DUE"}
           text={{ used: usage.used.text, max: usage.limits.text }}
           image={{ used: usage.used.image, max: usage.limits.image }}
         />

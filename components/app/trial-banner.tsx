@@ -12,6 +12,8 @@ export type TrialBannerProps = {
   trialDaysLeft: number | null;
   /** Subscription status is trialing or active. */
   subscriptionActive: boolean;
+  /** Subscription status is PAST_DUE: the last payment failed and the account is limited. */
+  pastDue?: boolean;
   text: { used: number; max: number };
   image: { used: number; max: number };
 };
@@ -36,9 +38,10 @@ function subscribe(cb: () => void) {
 
 const pct = (u: { used: number; max: number }) => (u.max > 0 ? (u.used / u.max) * 100 : 0);
 
-export type BannerState = "normal" | "warning" | "ended" | "usage" | "hidden";
+export type BannerState = "normal" | "warning" | "ended" | "usage" | "pastDue" | "hidden";
 
 export function bannerState(p: TrialBannerProps): BannerState {
+  if (p.pastDue) return "pastDue";
   const nearLimit = pct(p.text) >= 80 || pct(p.image) >= 80;
   if (!p.isTrial) return nearLimit ? "usage" : "hidden";
   if (p.trialDaysLeft === 0 || !p.subscriptionActive) return "ended";
@@ -65,16 +68,18 @@ export function TrialBanner(props: TrialBannerProps) {
   };
 
   const { trialDaysLeft: days, text, image } = props;
-  const alert = state === "ended" || state === "warning" || state === "usage";
+  const alert = state !== "normal";
   const Icon = alert ? AlertTriangle : Sparkles;
 
   let title: string;
-  if (state === "ended") title = "Your trial has ended — choose a plan to keep creating";
+  if (state === "pastDue") title = "Payment failed — update your payment method";
+  else if (state === "ended") title = "Your trial has ended — choose a plan to keep creating";
   else if (state === "usage") title = "You are close to a plan limit";
   else title = `${days} ${days === 1 ? "day" : "days"} left in your free trial`;
 
   const href = state === "usage" ? "/dashboard/usage" : "/dashboard/billing";
-  const cta = state === "usage" ? "View usage" : state === "ended" ? "Choose a plan" : "See plans";
+  const cta =
+    state === "usage" ? "View usage" : state === "ended" ? "Choose a plan" : state === "pastDue" ? "Update payment" : "See plans";
 
   const meters = [
     { label: "Text generations", ...text },
@@ -86,14 +91,14 @@ export function TrialBanner(props: TrialBannerProps) {
       role="status"
       className={cn(
         "glass-strong flex flex-wrap items-center gap-x-4 gap-y-3 rounded-[20px] border p-3.5 pr-3 sm:px-4",
-        state === "ended" || state === "usage" ? "border-danger/40" : state === "warning" ? "border-pulse-violet/40" : "border-pulse-blue/30",
+        state === "ended" || state === "usage" || state === "pastDue" ? "border-danger/40" : state === "warning" ? "border-pulse-violet/40" : "border-pulse-blue/30",
       )}
     >
       <span
         aria-hidden
         className={cn(
           "inline-flex size-10 shrink-0 items-center justify-center rounded-2xl",
-          state === "ended" || state === "usage" ? "bg-danger-bg text-danger" : "bg-brand-gradient text-white",
+          state === "ended" || state === "usage" || state === "pastDue" ? "bg-danger-bg text-danger" : "bg-brand-gradient text-white",
         )}
       >
         <Icon className="size-5" />

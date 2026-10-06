@@ -40,9 +40,9 @@ export default function TermsPage() {
         <LegalList
           items={[
             "The free trial lasts 7 days and includes 10 AI text generations and 5 brand designs. No card is needed.",
-            "Standard costs $49 per month and Pro costs $99 per month, in US dollars. Each plan has monthly usage limits shown on our pricing page.",
-            "Paid plans renew every month until cancelled. Payments are processed by Stripe.",
-            "You can cancel at any time. Your plan stays active until the end of the period you have paid for. Except where the law requires, we do not give refunds for partial periods.",
+            "Standard costs $49 per month or $490 per year, and Pro costs $99 per month or $990 per year, in US dollars. Each plan has monthly usage limits shown on our pricing page; on yearly plans they reset every month.",
+            "Paid plans renew at the end of each month or year until cancelled. Payments are processed by our reseller and merchant of record, Paddle.com, which appears on your card statement.",
+            "You can cancel at any time. Your plan stays active until the end of the period you have paid for. Refunds follow our Refund Policy (bupulse.com/refund-policy).",
             "If a payment fails, we may limit your account until it is resolved.",
             "Done-for-you service is offered separately, from $300 per month, under a written order or invoice that describes the scope.",
             "We may change prices with at least 30 days' notice before your next renewal.",

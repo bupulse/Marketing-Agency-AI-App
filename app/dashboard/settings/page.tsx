@@ -10,7 +10,7 @@ import { prisma } from "@/lib/db";
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
-  const { user, email, displayName, business } = await getAppContext();
+  const { user, email, displayName, business, usage } = await getAppContext();
   const account = await prisma.user.findUnique({ where: { id: user.id }, select: { name: true, signUpMethod: true } });
 
   return (
@@ -37,7 +37,7 @@ export default async function SettingsPage() {
         <GlassCard as="section" aria-labelledby="devchecks" className="flex flex-col gap-3 p-5 sm:p-6">
           <h2 id="devchecks" className="text-lg font-semibold">Developer checks</h2>
           <p className="text-sm text-muted">Only shown outside production.</p>
-          <TestGenerate />
+          <TestGenerate limit={usage.limits.text} resetsAt={usage.resetsAt?.toISOString() ?? null} />
         </GlassCard>
       )}
     </>

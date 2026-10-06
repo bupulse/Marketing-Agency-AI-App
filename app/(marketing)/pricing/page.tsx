@@ -1,15 +1,16 @@
+import Link from "next/link";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { PageHero } from "@/components/marketing/pages/page-hero";
-import { PlanCards } from "@/components/marketing/pages/plan-cards";
 import { PlanComparison } from "@/components/marketing/pages/plan-comparison";
 import { pageMetadata } from "@/components/marketing/pages/seo";
 import { Accordion, Button, Container, GlassCard, SectionHeading } from "@/components/ui";
 import { Reveal } from "@/components/motion";
+import { PricingPlans } from "./pricing-plans";
 import { faqs, trial } from "@/lib/content/site";
 
 export const metadata = pageMetadata({
   title: "Pricing",
-  description: "Start free for 7 days, no card needed. Then $49 a month for Standard or $99 a month for Pro. Marketing help for every small business.",
+  description: "Start free for 7 days, no card needed. Then Standard or Pro, monthly or yearly with 2 months free. Marketing help for every small business.",
   path: "/pricing",
 });
 
@@ -24,9 +25,9 @@ export default function PricingPage() {
       />
 
       <Container className="pb-16">
-        <PlanCards />
+        <PricingPlans />
         <p className="mx-auto mt-6 max-w-2xl text-center text-sm text-muted">
-          Prices are in US dollars per month. Cancel any time; your plan stays active until the end of the period you paid for.
+          Prices are in US dollars. Pay yearly and get 2 months free. Cancel any time; your plan stays active until the end of the period you paid for. See our <Link href="/refund-policy" className="font-semibold text-[color:var(--bp-link)] underline">refund policy</Link>.
         </p>
       </Container>
 

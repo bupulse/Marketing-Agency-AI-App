@@ -16,7 +16,7 @@ export async function applyProviderSubscription(provider: BillingProvider, sub: 
   // Find the owner: by subscription id once known, else by the user id from checkout.
   const existing = await prisma.subscription.findFirst({
     where: { OR: [{ providerSubscriptionId: sub.providerSubscriptionId }, ...(sub.userId ? [{ userId: sub.userId }] : [])] },
-    select: { userId: true, providerSubscriptionId: true, status: true },
+    select: { userId: true, providerSubscriptionId: true, providerUpdatedAt: true },
   });
   if (!existing) return false;
 
@@ -26,6 +26,16 @@ export async function applyProviderSubscription(provider: BillingProvider, sub: 
     existing.providerSubscriptionId &&
     existing.providerSubscriptionId !== sub.providerSubscriptionId &&
     (sub.status === "CANCELED" || sub.status === "EXPIRED")
+  ) {
+    return true;
+  }
+
+  // Providers don't guarantee webhook order: never let an older state overwrite a newer one.
+  if (
+    existing.providerSubscriptionId === sub.providerSubscriptionId &&
+    existing.providerUpdatedAt &&
+    sub.updatedAt &&
+    sub.updatedAt < existing.providerUpdatedAt
   ) {
     return true;
   }
@@ -43,6 +53,7 @@ export async function applyProviderSubscription(provider: BillingProvider, sub: 
       cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
       currentPeriodStart: sub.currentPeriodStart,
       currentPeriodEnd: sub.currentPeriodEnd,
+      providerUpdatedAt: sub.updatedAt,
       trialEndsAt: null,
     },
   });

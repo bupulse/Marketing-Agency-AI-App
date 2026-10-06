@@ -12,6 +12,8 @@ export type ProviderSubscription = {
   currentPeriodStart: Date;
   currentPeriodEnd: Date | null;
   cancelAtPeriodEnd: boolean;
+  /** When the provider last changed it; older updates arriving late are ignored. */
+  updatedAt: Date | null;
 };
 
 /** A verified webhook, translated to what BuPulse needs to do. */
@@ -31,6 +33,8 @@ export type CheckoutConfig = {
   clientToken: string;
   priceId: string;
   customerEmail: string;
+  /** The provider's customer when they bought before, so a second customer isn't created. */
+  customerId: string | null;
   customData: { userId: string; plan: PaidPlan; interval: BillingInterval };
   successUrl: string;
 };
