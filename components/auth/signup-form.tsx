@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState, type FormEvent } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button, Field, Input, Select } from "@/components/ui";
@@ -14,7 +15,7 @@ import {
   type FieldErrors,
 } from "@/lib/auth/schemas";
 import { signInWithGoogle } from "@/app/login/actions";
-import { signUp, type SignUpState } from "@/app/signup/actions";
+import { checkEmail, signUp, type SignUpState } from "@/app/signup/actions";
 import { cn } from "@/lib/cn";
 import { ConfirmEmail } from "./confirm-email";
 import { GoogleIcon } from "./google-icon";
@@ -84,6 +85,8 @@ function Progress({ step }: { step: Step }) {
 
 export default function SignupForm() {
   const [step, setStep] = useState<Step>(1);
+  const [checkingEmail, setCheckingEmail] = useState(false);
+  const router = useRouter();
   const [values, setValues] = useState<Values>(empty);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [state, formAction, pending] = useActionState<SignUpState, FormData>(signUp, { status: "idle" });
@@ -135,10 +138,24 @@ export default function SignupForm() {
     return result.success;
   }
 
+  async function goNext() {
+    if (!validate(step)) return;
+    if (step === 1) {
+      setCheckingEmail(true);
+      const { registered } = await checkEmail(values.email).catch(() => ({ registered: false }));
+      setCheckingEmail(false);
+      if (registered) {
+        router.push(`/login?notice=exists&email=${encodeURIComponent(values.email.trim())}`);
+        return;
+      }
+    }
+    setStep((step + 1) as Step);
+  }
+
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     if (step < 3) {
       e.preventDefault();
-      if (validate(step)) setStep((step + 1) as Step);
+      if (!checkingEmail) void goNext();
       return;
     }
     if (!validate(3)) e.preventDefault();
@@ -336,11 +353,11 @@ export default function SignupForm() {
           )}
           <Button
             type="submit"
-            disabled={pending}
+            disabled={pending || checkingEmail}
             className={step > 1 ? "sm:flex-1" : "w-full"}
             trailing={step < 3 ? <ArrowRight aria-hidden className="size-4" /> : undefined}
           >
-            {step < 3 ? "Continue" : pending ? "Creating account…" : "Create account"}
+            {checkingEmail ? "Checking…" : step < 3 ? "Continue" : pending ? "Creating account…" : "Create account"}
           </Button>
         </div>
       </form>

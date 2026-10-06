@@ -23,6 +23,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         <h1 className="text-2xl font-semibold tracking-[-0.03em]">Sign in to BuPulse</h1>
         <p className="text-[15px] text-muted">Welcome back. Pick up where you left off.</p>
       </div>
+      {params.notice === "exists" && (
+        <p role="status" className="rounded-2xl bg-ok-bg px-4 py-3 text-sm font-medium text-ok">
+          You already have a BuPulse account{typeof params.email === "string" ? ` with ${params.email}` : ""}. Sign in below.
+        </p>
+      )}
       {params.error === "confirm" ? (
         <ResendByEmail />
       ) : params.error ? (
@@ -30,7 +35,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
           Sign-in failed. Please try again.
         </p>
       ) : null}
-      <LoginForm next={next} />
+      <LoginForm next={next} defaultEmail={typeof params.email === "string" ? params.email.slice(0, 254) : undefined} />
     </AuthShell>
   );
 }

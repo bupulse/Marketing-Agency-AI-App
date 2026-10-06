@@ -8,7 +8,7 @@ import { ResendButton } from "@/components/auth/resend-button";
 import { Button, Field, Input } from "@/components/ui";
 import { signInWithGoogle, signInWithPassword, type LoginState } from "./actions";
 
-export default function LoginForm({ next }: { next: string }) {
+export default function LoginForm({ next, defaultEmail }: { next: string; defaultEmail?: string }) {
   const [state, formAction, pending] = useActionState<LoginState, FormData>(signInWithPassword, {});
 
   return (
@@ -40,7 +40,7 @@ export default function LoginForm({ next }: { next: string }) {
           </div>
         )}
         <Field label="Email" required error={state.fieldErrors?.email}>
-          <Input name="email" type="email" autoComplete="email" placeholder="you@yourbusiness.com" />
+          <Input name="email" type="email" autoComplete="email" placeholder="you@yourbusiness.com" defaultValue={defaultEmail} />
         </Field>
         <Field label="Password" required error={state.fieldErrors?.password}>
           <PasswordInput name="password" autoComplete="current-password" />
