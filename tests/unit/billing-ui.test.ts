@@ -64,3 +64,11 @@ describe("misc", () => {
     expect(bannerState({ ...base, subscriptionActive: true })).toBe("hidden");
   });
 });
+
+describe("yearlyDiscountPercent", () => {
+  it("compares the yearly price with 12 monthly payments", async () => {
+    const { yearlyDiscountPercent } = await import("@/components/billing/helpers");
+    expect(yearlyDiscountPercent("STANDARD")).toBe(17); // $588 → $490
+    expect(yearlyDiscountPercent("PRO")).toBe(17); // $1,188 → $990
+  });
+});

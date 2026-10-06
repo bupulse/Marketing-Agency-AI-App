@@ -15,6 +15,11 @@ export function yearlySavings(plan: PaidPlan) {
   return PRICES[plan].MONTH * 12 - PRICES[plan].YEAR;
 }
 
+/** The yearly discount against paying monthly for 12 months, rounded (e.g. 17 for 17% off). */
+export function yearlyDiscountPercent(plan: PaidPlan) {
+  return Math.round((yearlySavings(plan) / (PRICES[plan].MONTH * 12)) * 100);
+}
+
 export const intervalWord = (interval: BillingInterval) => (interval === "YEAR" ? "year" : "month");
 
 export function formatDate(date: Date | string | null | undefined) {

@@ -4,15 +4,16 @@ import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GlassCard, useToast } from "@/components/ui";
+import { checkoutActivated } from "@/app/dashboard/billing/actions";
 
 const POLL_MS = 2000;
-const MAX_POLLS = 15; // about 30 seconds
+const MAX_POLLS = 60; // about 2 minutes; the provider usually confirms within 30 seconds
 
 /**
  * Shown after checkout (?checkout=success). The payment provider confirms the purchase by webhook,
  * so refresh the page every 2 seconds until the page says this purchase is active (`waiting` false).
  */
-export function CheckoutReturn({ waiting }: { waiting: boolean }) {
+export function CheckoutReturn({ waiting, since }: { waiting: boolean; since: number }) {
   const router = useRouter();
   const { toast } = useToast();
   const [timedOut, setTimedOut] = useState(false);
@@ -28,17 +29,30 @@ export function CheckoutReturn({ waiting }: { waiting: boolean }) {
       }
       return;
     }
-    const timer = setInterval(() => {
+    // Poll a small status check (not the whole page) and refresh once the plan is active.
+    let busy = false;
+    const timer = setInterval(async () => {
+      if (busy) return;
       polls.current += 1;
       if (polls.current >= MAX_POLLS) {
         clearInterval(timer);
         setTimedOut(true);
         return;
       }
-      router.refresh();
+      busy = true;
+      try {
+        if (await checkoutActivated(since)) {
+          clearInterval(timer);
+          router.refresh();
+        }
+      } catch {
+        // Network hiccup: try again on the next tick.
+      } finally {
+        busy = false;
+      }
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [waiting, router, toast]);
+  }, [waiting, since, router, toast]);
 
   if (!waiting) return null;
 

@@ -167,3 +167,14 @@ export async function getInvoiceUrl(id: string): Promise<BillingResult<{ url: st
     return { ok: false, error: "We could not open that receipt. Please try again." };
   }
 }
+
+// Cheap check the page polls after checkout: is a paid plan active that changed after `since`?
+export async function checkoutActivated(since: number): Promise<boolean> {
+  const user = await requireActiveUser();
+  const sub = await prisma.subscription.findUnique({
+    where: { userId: user.id },
+    select: { plan: true, status: true, updatedAt: true },
+  });
+  if (!sub || sub.plan === "TRIAL" || sub.status !== "ACTIVE") return false;
+  return !Number.isFinite(since) || sub.updatedAt.getTime() >= since;
+}

@@ -3,7 +3,8 @@
 import { Check } from "lucide-react";
 import { useState } from "react";
 import { IntervalToggle } from "@/components/billing/interval-toggle";
-import { formatUsd, intervalWord, priceFor, yearlySavings } from "@/components/billing/helpers";
+import { formatUsd, yearlySavings } from "@/components/billing/helpers";
+import { PriceTag } from "@/components/billing/price-tag";
 import { Badge, Button, GlassCard } from "@/components/ui";
 import { pricingPlans } from "@/lib/content/site";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
@@ -37,12 +38,9 @@ export function PricingPlans() {
               <p className="text-muted">{plan.description}</p>
             </div>
             <div>
-              <p className="flex items-baseline gap-1.5">
-                <span className="text-5xl font-bold tracking-[-0.04em]">{formatUsd(priceFor(plan.id, interval))}</span>
-                <span className="text-muted">/ {intervalWord(interval)}</span>
-              </p>
+              <PriceTag plan={plan.id} interval={interval} />
               <p className="mt-1 min-h-5 text-sm text-muted">
-                {interval === "YEAR" ? `2 months free. You save ${formatUsd(yearlySavings(plan.id))} a year.` : "Billed every month"}
+                {interval === "YEAR" ? `Billed yearly. You save ${formatUsd(yearlySavings(plan.id))}, that's 2 months free.` : "Billed every month"}
               </p>
             </div>
             <ul className="flex flex-1 flex-col gap-3">

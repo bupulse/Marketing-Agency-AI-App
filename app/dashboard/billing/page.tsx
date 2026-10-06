@@ -49,7 +49,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       <CheckoutScript />
       <PageHeader title="Billing" description="Your plan, your usage and your receipts." />
 
-      {checkoutSuccess && <CheckoutReturn waiting={waitingForCheckout} />}
+      {checkoutSuccess && <CheckoutReturn waiting={waitingForCheckout} since={since} />}
 
       {pastDue && (
         <GlassCard role="alert" className="flex items-start gap-3 border border-danger/40 p-5">

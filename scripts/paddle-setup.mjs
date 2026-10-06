@@ -89,6 +89,7 @@ async function ensurePrice(productId, label, interval, dollars) {
       unit_price: { amount, currency_code: "USD" },
       billing_cycle: { interval: unit, frequency: 1 },
       trial_period: null,
+      quantity: { minimum: 1, maximum: 1 }, // one plan per account: hides the quantity picker
     })
   ).id;
 }

@@ -12,6 +12,7 @@ import type { BillingInterval, Plan } from "@/lib/generated/prisma/client";
 import { PLANS } from "@/lib/plans";
 import { openCheckout } from "./checkout";
 import { formatUsd, intervalWord, planButtonAction, planFeatures, priceFor, yearlySavings } from "./helpers";
+import { PriceTag } from "./price-tag";
 
 type Props = {
   current: { plan: Plan; interval: BillingInterval; paid: boolean; pastDue: boolean };
@@ -86,12 +87,9 @@ export function PlanPicker({ current }: Props) {
                 {key === "PRO" && <Badge tone="violet">Most complete</Badge>}
               </div>
               <div>
-                <p>
-                  <span className="text-4xl font-semibold tracking-[-0.03em]">{formatUsd(priceFor(key, interval))}</span>
-                  <span className="text-muted"> / {intervalWord(interval)}</span>
-                </p>
+                <PriceTag plan={key} interval={interval} size="md" />
                 <p className="mt-1 min-h-5 text-sm text-muted">
-                  {interval === "YEAR" ? `You save ${formatUsd(yearlySavings(key))} a year` : "Billed every month"}
+                  {interval === "YEAR" ? `Billed yearly. You save ${formatUsd(yearlySavings(key))}, that's 2 months free.` : "Billed every month"}
                 </p>
               </div>
               <ul className="flex flex-1 flex-col gap-2 text-[15px]">
