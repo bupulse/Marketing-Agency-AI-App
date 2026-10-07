@@ -498,6 +498,7 @@ model AutopilotSettings {
   connectionIds String[] // accounts Autopilot writes for
   postingTimes  String[] @default(["09:00", "18:00"]) // local times (Business.timezone) it may use
   useAiImages   Boolean  @default(false) // false: gallery photos and free templates only
+  skipReligiousHolidays Boolean @default(false) // true: no greetings or posts for religious holidays
   updatedAt     DateTime @updatedAt
 }
 

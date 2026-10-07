@@ -1,4 +1,5 @@
 // Pure helpers for design files: paths, data URLs and image sizes. No I/O.
+import { isOwnGalleryPath } from "@/lib/media/rules";
 import { ASPECT_SIZES, type AspectRatio } from "./layout";
 
 /** A media/brand object path that belongs to the user: `<userId>/...`, no traversal. */
@@ -10,6 +11,11 @@ export function isOwnObjectPath(userId: string, path: string): boolean {
 /** A project photo in the media bucket: `<userId>/projects/...`. */
 export function isOwnProjectPhotoPath(userId: string, path: string): boolean {
   return isOwnObjectPath(userId, path) && path.startsWith(`${userId}/projects/`);
+}
+
+/** A photo a design may use: a project photo or one from the gallery (`<userId>/gallery/<id>.<ext>`). */
+export function isOwnPhotoPath(userId: string, path: string): boolean {
+  return isOwnProjectPhotoPath(userId, path) || (isOwnObjectPath(userId, path) && isOwnGalleryPath(userId, path));
 }
 
 /** Where a design file lives in the private "designs" bucket. */

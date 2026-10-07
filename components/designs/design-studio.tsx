@@ -20,14 +20,17 @@
  *   pack        The style pack that matches the business (lib/designs/packs.ts recommendPack), marked
  *               "Matches your brand" and chosen by default; "clean" when omitted.
  *   hasLogo     Whether the business has a logo (default true); hides the "use my logo" toggle when false.
+ *   galleryPhoto A gallery photo to preselect as the template photo and the AI reference: { path, url }
+ *               (the Designs page passes it for ?photo=<assetId>, validated server-side).
  *   showGallery Show the gallery under the studio (default true).
  */
 
 import { createContext, useContext, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Download, ImageIcon, Sparkles, Trash2 } from "lucide-react";
+import { Download, ImageIcon, Images, Sparkles, Trash2 } from "lucide-react";
 import { Button, Field, GlassCard, Input, Tabs, Textarea, useToast } from "@/components/ui";
 import { useUsageBlock } from "@/components/billing/upgrade-dialog";
+import { MediaPicker, type PickedPhoto } from "@/components/media/media-picker";
 import { EditInCanva } from "./edit-in-canva";
 import { createAiDesign, createAiPhotoDesign, createTemplateDesign, deleteDesign, getDesignDownloadUrl } from "@/app/dashboard/designs/actions";
 import { cn } from "@/lib/cn";
@@ -58,6 +61,7 @@ export type DesignStudioProps = {
   hasLogo?: boolean;
   pack?: PackId;
   showGallery?: boolean;
+  galleryPhoto?: { path: string; url: string } | null;
   /** Pass `isCanvaEnabled()` from the server page to show "Edit in Canva" on designs. */
   canva?: boolean;
 };
@@ -101,14 +105,28 @@ function PhotoPicker({
   value,
   onChange,
   hint,
+  gallery,
 }: {
   paths: string[];
   urls: string[];
   value: string | null;
   onChange: (v: string | null) => void;
   hint?: string;
+  gallery?: { path: string; url: string } | null;
 }) {
-  if (paths.length === 0) return null;
+  // Photos taken from "From my gallery" stay in the list, so the choice can be changed back and forth.
+  const [picks, setPicks] = useState<{ path: string; url: string }[]>(gallery ? [gallery] : []);
+  const [open, setOpen] = useState(false);
+  const tile = (selected: boolean) =>
+    cn("flex size-16 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 text-xs font-semibold", selected ? "border-pulse-blue" : "border-transparent hover:border-line");
+
+  function pick(photos: PickedPhoto[]) {
+    const photo = photos[0];
+    if (!photo) return;
+    setPicks((cur) => (cur.some((p) => p.path === photo.path) ? cur : [...cur, { path: photo.path, url: photo.url }]));
+    onChange(photo.path);
+  }
+
   return (
     <fieldset className="flex flex-col gap-2">
       <legend className="text-sm font-semibold">Photo</legend>
@@ -126,17 +144,7 @@ function PhotoPicker({
           No photo
         </button>
         {paths.map((path, i) => (
-          <button
-            key={path}
-            type="button"
-            aria-pressed={value === path}
-            aria-label={`Photo ${i + 1}`}
-            onClick={() => onChange(path)}
-            className={cn(
-              "flex size-16 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 text-xs font-semibold",
-              value === path ? "border-pulse-blue" : "border-transparent hover:border-line",
-            )}
-          >
+          <button key={path} type="button" aria-pressed={value === path} aria-label={`Photo ${i + 1}`} onClick={() => onChange(path)} className={tile(value === path)}>
             {urls[i] ? (
               // eslint-disable-next-line @next/next/no-img-element -- signed Storage URL
               <img src={urls[i]} alt="" className="size-full object-cover" />
@@ -145,7 +153,18 @@ function PhotoPicker({
             )}
           </button>
         ))}
+        {picks.map((p, i) => (
+          <button key={p.path} type="button" aria-pressed={value === p.path} aria-label={`Gallery photo ${i + 1}`} onClick={() => onChange(p.path)} className={tile(value === p.path)}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
+            <img src={p.url} alt="" className="size-full object-cover" />
+          </button>
+        ))}
+        <button type="button" onClick={() => setOpen(true)} className="inline-flex min-h-16 cursor-pointer items-center gap-2 rounded-2xl border border-dashed border-line px-4 text-sm font-semibold hover:bg-soft">
+          <Images aria-hidden className="size-4" />
+          From my gallery
+        </button>
       </div>
+      <MediaPicker open={open} onOpenChange={setOpen} onPick={pick} />
     </fieldset>
   );
 }
@@ -274,7 +293,8 @@ function TemplateTab({
   order,
   pack: matchingPack = "clean",
   credits,
-}: Pick<DesignStudioProps, "projectId" | "defaults" | "credits"> & {
+  galleryPhoto,
+}: Pick<DesignStudioProps, "projectId" | "defaults" | "credits" | "galleryPhoto"> & {
   order: string[];
   pack?: PackId;
 }) {
@@ -296,8 +316,8 @@ function TemplateTab({
   const [headline, setHeadline] = useState(defaults?.headline ?? "");
   const [subline, setSubline] = useState(defaults?.subline ?? "");
   const [chip, setChip] = useState(defaults?.chip ?? "");
-  const [photo, setPhoto] = useState<string | null>(photoPaths[0] ?? null);
-  const [reference, setReference] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<string | null>(galleryPhoto?.path ?? photoPaths[0] ?? null);
+  const [reference, setReference] = useState<string | null>(galleryPhoto?.path ?? null);
   const [scene, setScene] = useState("");
   const [includePeople, setIncludePeople] = useState(true);
   const [error, setError] = useState<string | undefined>();
@@ -406,10 +426,11 @@ function TemplateTab({
           urls={defaults?.photoUrls ?? []}
           value={reference}
           onChange={setReference}
+          gallery={galleryPhoto}
           hint="Optional: the AI keeps this product faithful in the new photo."
         />
       ) : (
-        <PhotoPicker paths={photoPaths} urls={defaults?.photoUrls ?? []} value={photo} onChange={setPhoto} />
+        <PhotoPicker paths={photoPaths} urls={defaults?.photoUrls ?? []} value={photo} onChange={setPhoto} gallery={galleryPhoto} />
       )}
       <RatioPicker value={ratio} onChange={setRatio} />
       {mode === "photo" && (
@@ -443,7 +464,7 @@ function TemplateTab({
   );
 }
 
-function AiTab({ projectId, defaults, credits, hasLogo }: Pick<DesignStudioProps, "projectId" | "defaults" | "credits" | "hasLogo">) {
+function AiTab({ projectId, defaults, credits, hasLogo, galleryPhoto }: Pick<DesignStudioProps, "projectId" | "defaults" | "credits" | "hasLogo" | "galleryPhoto">) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
@@ -456,7 +477,7 @@ function AiTab({ projectId, defaults, credits, hasLogo }: Pick<DesignStudioProps
   const [ratio, setRatio] = useState<AspectRatio>("1:1");
   const [useLogo, setUseLogo] = useState(false);
   const [includePeople, setIncludePeople] = useState(true);
-  const [photo, setPhoto] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<string | null>(galleryPhoto?.path ?? null);
   const [error, setError] = useState<string | undefined>();
   const [created, setCreated] = useState<Created | null>(null);
 
@@ -495,7 +516,7 @@ function AiTab({ projectId, defaults, credits, hasLogo }: Pick<DesignStudioProps
           placeholder="A warm morning scene: fresh loaves on a wooden table, soft sunlight, cosy bakery feel"
         />
       </Field>
-      <PhotoPicker paths={photoPaths} urls={defaults?.photoUrls ?? []} value={photo} onChange={setPhoto} />
+      <PhotoPicker paths={photoPaths} urls={defaults?.photoUrls ?? []} value={photo} onChange={setPhoto} gallery={galleryPhoto} />
       <RatioPicker value={ratio} onChange={setRatio} />
       <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-semibold">
         <input
@@ -581,7 +602,7 @@ function Gallery({ designs }: { designs: StudioDesign[] }) {
   );
 }
 
-export function DesignStudio({ projectId, defaults, designs, credits, hasLogo, pack, showGallery = true, canva = false }: DesignStudioProps) {
+export function DesignStudio({ projectId, defaults, designs, credits, hasLogo, pack, showGallery = true, galleryPhoto = null, canva = false }: DesignStudioProps) {
   const order = useMemo(() => templatesForProjectType(defaults?.projectType ?? ""), [defaults?.projectType]);
   return (
     <CanvaEnabled value={canva}>
@@ -593,12 +614,12 @@ export function DesignStudio({ projectId, defaults, designs, credits, hasLogo, p
               {
                 value: "template",
                 label: "From a template",
-                content: <TemplateTab projectId={projectId} defaults={defaults} order={order} pack={pack} credits={credits} />,
+                content: <TemplateTab projectId={projectId} defaults={defaults} order={order} pack={pack} credits={credits} galleryPhoto={galleryPhoto} />,
               },
               {
                 value: "ai",
                 label: "Describe an image",
-                content: <AiTab projectId={projectId} defaults={defaults} credits={credits} hasLogo={hasLogo} />,
+                content: <AiTab projectId={projectId} defaults={defaults} credits={credits} hasLogo={hasLogo} galleryPhoto={galleryPhoto} />,
               },
             ]}
           />

@@ -1,0 +1,41 @@
+name: Publish scheduled posts (fallback)
+
+# The main schedule is the Cloudflare Cron Trigger in wrangler.jsonc (every minute). This is the safety net
+# if that trigger is ever paused or misconfigured: GitHub's schedule is best effort, so expect 5 to 15 minutes.
+# Running both is safe, posts are claimed atomically and never published twice.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  publish:
+    if: github.event.schedule != '23 * * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Publish posts that are due
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 280 -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            https://bupulse.com/api/cron/publish
+
+  metrics:
+    # Hourly safety net for /api/cron/metrics (the Cloudflare trigger is the main one).
+    if: github.event.schedule == '23 * * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Collect post metrics
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 280 -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            https://bupulse.com/api/cron/metrics

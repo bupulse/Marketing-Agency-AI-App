@@ -44,13 +44,27 @@ Sources: https://developers.facebook.com/docs/instagram-platform/content-publish
 4. In App Settings > Basic fill in: app name, privacy policy URL, terms URL, app icon 1024x1024, category, contact email, and **User data deletion** (see below).
 5. Connect the app to the Business portfolio, then start Business Verification.
 
+### What the code implements (as built)
+
+BuPulse uses **both** logins, because Instagram Login needs no Facebook Page:
+
+| Connection | Login | App keys (env) | Scopes requested |
+|---|---|---|---|
+| Instagram (default, "Professional") | Instagram API with Instagram Login | `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` (the Instagram app ID and secret under Instagram > API setup with Instagram login) | `instagram_business_basic`, `instagram_business_content_publish`, `instagram_business_manage_insights` |
+| Instagram "through Facebook" (secondary link) | Facebook Login | `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET` | `pages_show_list`, `pages_read_engagement`, `instagram_basic`, `instagram_content_publish`, `instagram_manage_insights` |
+| Facebook Pages | Facebook Login | `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET` | `pages_show_list`, `pages_read_engagement`, `pages_manage_posts` |
+| Instagram "Personal" | none (reminder posting, no API) | none | none |
+
+`read_insights` is not requested: Facebook likes, comments and shares come from the post itself. The Graph API version is the constant `GRAPH_VERSION` in `lib/social/graph.ts`. A Connect button shows only when the keys for that network are set; otherwise the page says "Coming soon". `META_APP_SECRET` (older name) is still accepted when verifying `signed_request`.
+
 ### Redirect URIs (Valid OAuth Redirect URIs)
 
-- `https://bupulse.com/api/connections/meta/callback`
-- `http://localhost:3000/api/connections/meta/callback` (development only; Meta allows localhost for apps in development mode. Unverified for exact current rule.)
-- Add `https://staging.bupulse.com/api/connections/meta/callback` too.
+Built from `NEXT_PUBLIC_SITE_URL` + `/api/social/<network>/callback`. Register exactly:
 
-If the code uses separate provider names for Instagram and Facebook (e.g. `/instagram/callback`), register both.
+- Instagram Login (Instagram product > API setup with Instagram login > Business login settings > OAuth redirect URIs): `https://bupulse.com/api/social/instagram/callback`
+- Facebook Login (Facebook Login > Settings > Valid OAuth Redirect URIs), for both Pages and "Instagram through Facebook": `https://bupulse.com/api/social/facebook/callback` **and** `https://bupulse.com/api/social/instagram/callback`
+- Staging: the same two paths on `https://staging.bupulse.com`.
+- Development: `http://localhost:3000/api/social/instagram/callback` and `/facebook/callback` (Meta allows localhost for apps in development mode; unverified for the exact current rule).
 
 ### Permissions to request
 
@@ -94,10 +108,12 @@ Source: https://developers.facebook.com/docs/instagram-platform/content-publishi
 
 - Privacy policy URL: `https://bupulse.com/privacy` (must be public, no login, mention Meta data, how users delete it).
 - Data deletion: choose ONE of these in App Settings > Basic:
-  - **Data deletion request callback URL**: `https://bupulse.com/api/meta/data-deletion`. Meta POSTs a `signed_request`. You verify it with the app secret, delete the user's Meta tokens and data, and answer with JSON `{ "url": "<status page>", "confirmation_code": "<code>" }`.
+  - **Data deletion request callback URL**: `https://bupulse.com/api/meta/data-deletion` (built). Meta POSTs a `signed_request`; BuPulse verifies it (HMAC-SHA256 with the Facebook or Instagram app secret, Web Crypto), deletes that person's Facebook and Instagram connections and tokens, records the request, and answers `{ "url": "https://bupulse.com/data-deletion?code=<code>", "confirmation_code": "<code>" }`. Set the same URL in both the Facebook app (App settings > Basic) and the Instagram app settings.
   - Or **instructions URL**: `https://bupulse.com/data-deletion` explaining step by step how to delete.
   Recommended: do both (the page and the endpoint).
-- Also set a **Deauthorize callback URL**: `https://bupulse.com/api/meta/deauthorize` (removes the connection when a user removes the app in Facebook).
+- Also set a **Deauthorize callback URL**: `https://bupulse.com/api/meta/deauthorize` (built; removes the person's connections when they remove the app in Facebook or Instagram).
+- How a connection is matched to Meta's `user_id`: each connection stores a `meta_uid:<id>` entry in `Connection.scopes` (no schema change). Instagram Login connections also match on their own account id. Unverified until tested with real keys: that the `user_id` Meta sends in the Instagram app's callbacks equals the `user_id` returned at login.
+- Public instructions page (built): `https://bupulse.com/data-deletion` (also shows request status for `?code=`).
 - Exact callback format: the official page returned 404 for me, so confirm at https://developers.facebook.com/docs/development/create-an-app/app-dashboard/data-deletion-callback (unverified URL).
 
 ### App Review: what to submit
@@ -123,7 +139,7 @@ Source: https://developers.facebook.com/docs/permissions (verified), https://bun
 
 - Do not request `instagram_manage_comments`, messaging or ads permissions in Stage 1. Ask only for what the screencast shows.
 - Submit all publishing permissions in one submission so reviewers see the whole story.
-- Long-lived tokens last about 60 days; refresh before expiry (token refresh job in the plan). Page tokens obtained from a long-lived user token do not expire (unverified for current rules).
+- Long-lived tokens last about 60 days; refresh before expiry (built: `/api/cron/social-refresh`, daily via `.github/workflows/social-refresh.yml`, refreshes anything expiring within 7 days; Instagram Login tokens only refresh once they are 24 hours old). Page tokens obtained from a long-lived user token do not expire (unverified for current rules).
 - Reviewers need BuPulse to work with sign-up; give them a pre-made account because sign-up is gated by email links.
 
 ---
@@ -140,8 +156,19 @@ Source: https://developers.facebook.com/docs/permissions (verified), https://bun
 
 ### Redirect URIs
 
-- `https://bupulse.com/api/connections/tiktok/callback`
-- Development: TikTok may not accept `http://localhost`. Use a tunnel with HTTPS (e.g. Cloudflare Tunnel) or the staging URL `https://staging.bupulse.com/api/connections/tiktok/callback`. Unverified whether localhost is accepted.
+- `https://bupulse.com/api/social/tiktok/callback`
+- Development: TikTok does **not** accept `http://localhost` (verified: redirect URIs must be HTTPS, static, no query or fragment, under 512 characters, at most 10 per app; https://developers.tiktok.com/doc/login-kit-web). Use an HTTPS tunnel (e.g. Cloudflare Tunnel) or `https://staging.bupulse.com/api/social/tiktok/callback`, and set the same URL as the redirect URI in the app.
+
+### Request these scopes and products
+Products: **Login Kit** and **Content Posting API** (enable Direct Post in the Content Posting API settings). Scopes in code: `user.info.basic,video.publish,video.upload`. Env: `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`.
+
+### What the code does (lib/social/providers/tiktok.ts)
+- OAuth: authorize at `https://www.tiktok.com/v2/auth/authorize/`, tokens at `https://open.tiktokapis.com/v2/oauth/token/` (access token 24 hours, refresh token 365 days, refresh may return a new refresh token), profile via `/v2/user/info/` (name and avatar), revoke via `/v2/oauth/revoke/`.
+- Stage 1 posts are SCRIPT reminders; the publisher never calls publish for them.
+- Photo carousels (`/v2/post/publish/content/init/`, PHOTO, PULL_FROM_URL, up to 35 photos) are implemented but advertised in `rules.formats` only when `TIKTOK_PHOTO_POSTING=true`. Reason: TikTok only pulls from a verified domain or URL prefix, and signed Supabase storage URLs cannot be verified. Set the flag once images are served from a verified `bupulse.com` path (verify the prefix in the TikTok portal under URL properties).
+- Privacy is the constant `TIKTOK_PRIVACY_LEVEL = "SELF_ONLY"`: unaudited apps can only post privately. Change it after the audit passes.
+- Verified against the docs: error codes `access_token_invalid`, `scope_not_authorized` (auth), `rate_limit_exceeded`, `spam_risk_too_many_posts`, `reached_active_user_cap` (rate limit), `url_ownership_unverified`, `unaudited_client_can_only_post_to_private_accounts`, `privacy_level_option_mismatch` (rejected post).
+- Not verifiable without real keys: accepted image formats for photos (the docs do not list them), and whether Direct Post is enabled before the audit for a brand-new app.
 
 ### Scopes
 
@@ -222,8 +249,18 @@ Limits:
 Sources: https://learn.microsoft.com/en-us/linkedin/marketing/community-management-app-review (verified), development tier limits from https://learn.microsoft.com/en-us/linkedin/marketing/increasing-access (via search result, partly unverified).
 
 ### Redirect URIs
-- `https://bupulse.com/api/connections/linkedin/callback`
-- `http://localhost:3000/api/connections/linkedin/callback` (LinkedIn allows http localhost; unverified).
+- `https://bupulse.com/api/social/linkedin/callback`
+- `http://localhost:3000/api/social/linkedin/callback` (the docs only say "add the redirect URL via HTTPS" and that URLs must be absolute with no `#`; whether http localhost is accepted is unverified, so use the staging HTTPS URL if the portal rejects it). Redirect URLs are added in the app's Auth tab.
+
+### What the code does (lib/social/providers/linkedin.ts)
+- Env: `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`. Two variants through `variant`: `member` (scopes `openid profile w_member_social`, products Share on LinkedIn and Sign In with LinkedIn using OpenID Connect) and `organization` (scopes `w_organization_social r_organization_social rw_organization_admin`, product Community Management API; the connecting member must be a Page ADMINISTRATOR).
+- LinkedIn invalidates a member's earlier tokens when the same app is authorized with a different scope set (verified in the authorization code flow doc). So both variants request the same union of scopes once `LINKEDIN_COMMUNITY_MANAGEMENT=true` (set it after the Community Management API product is approved; before that only the member scopes are requested and Page connections answer "No LinkedIn Pages available"). The member id is saved as a `li_member:<id>` scope entry, and `saveConnections` copies the newest token to every other LinkedIn connection of the business from the same member.
+- Posts API (`POST /rest/posts`) with headers `Linkedin-Version: 202609` (constant `LINKEDIN_VERSION`; bump before LinkedIn retires it) and `X-Restli-Protocol-Version: 2.0.0`. Text, link (article card), one image and multi-image (2 to 20). Images go through `POST /rest/images?action=initializeUpload`, then a PUT of the bytes with the member's token.
+- Commentary uses LinkedIn's "little" format, so reserved characters are backslash-escaped and hashtags become `{hashtag|\#|tag}`.
+- ARTICLE cannot create a native newsletter article through the API, so it publishes as a long-form post: title, blank line, text. 3000 characters maximum.
+- Tokens last 60 days. Refresh tokens exist only for approved Marketing Developer Platform partners (365 days); without one `refresh` throws an `auth` error and the connection layer should mark the connection EXPIRING near the 60-day expiry.
+- Metrics: Page posts only, via `organizationalEntityShareStatistics` (impressions, unique impressions, likes, comments, shares). Member post analytics need `r_member_social`, which LinkedIn restricts to approved apps, so members get no metrics.
+- Not verifiable without real keys: the `ugcPosts=List(...)` form of the statistics query (the docs show `shares=List(...)` and an indexed form for ugcPosts), whether the `article` content needs a thumbnail, and the token revoke endpoint (not found in the docs, so `revoke` is not implemented).
 
 ### Cost and timing
 - Cost: $0.
@@ -249,9 +286,15 @@ Sources: https://learn.microsoft.com/en-us/linkedin/marketing/community-manageme
 5. Credentials > Create OAuth client ID > Web application.
 
 ### Redirect URIs
-- `https://bupulse.com/api/connections/youtube/callback`
-- `http://localhost:3000/api/connections/youtube/callback` (Google allows http localhost)
-- `https://staging.bupulse.com/api/connections/youtube/callback`
+- `https://bupulse.com/api/social/youtube/callback`
+- `http://localhost:3000/api/social/youtube/callback` (Google allows http localhost)
+- `https://staging.bupulse.com/api/social/youtube/callback`
+
+### What the code does (lib/social/providers/youtube.ts)
+- Env: `GOOGLE_YOUTUBE_CLIENT_ID`, `GOOGLE_YOUTUBE_CLIENT_SECRET` (a separate OAuth client from the Supabase Google sign-in).
+- Authorize with `access_type=offline` and `prompt=consent` so Google returns a refresh token every time. Scopes `youtube.upload` and `youtube.readonly`. Channels come from `channels.list?part=snippet&mine=true` (1 quota unit).
+- Refresh uses `https://oauth2.googleapis.com/token`; Google keeps the same refresh token. A revoked or expired one (`invalid_grant`) is an `auth` error.
+- Publish always throws `invalid` in Stage 1. Metrics: `videos.list?part=statistics&id=...` (views, likes, comments; 1 quota unit). 403 `quotaExceeded` is a `rate_limit`, not an auth failure.
 - Use `https://bupulse.com/api/connections/google-drive/callback` for Drive (section 5). Keep them separate so scopes are requested separately.
 
 ### Scopes

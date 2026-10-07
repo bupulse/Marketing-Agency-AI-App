@@ -13,6 +13,7 @@ export const RATE_LIMITS = {
   contentEdit: { limit: 120, windowSeconds: 60 * 60 },
   canvaOpen: { limit: 20, windowSeconds: 60 * 60 },
   canvaReturn: { limit: 30, windowSeconds: 60 * 60 },
+  socialConnect: { limit: 30, windowSeconds: 60 * 60 }, // starting a social connection (OAuth or reminder account)
 } satisfies Record<string, RateLimitRule>;
 
 export class RateLimitError extends Error {

@@ -1,7 +1,8 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "bupulse",
-  "main": ".open-next/worker.js",
+  // Wraps .open-next/worker.js and adds the scheduled handler for the cron triggers below.
+  "main": "worker.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {
@@ -24,6 +25,13 @@
       "localConnectionString": "postgresql://postgres:postgres@localhost:5432/postgres"
     }
   ],
+  // Converting big photos to JPEG for Instagram is CPU heavy. The default is 30 s per invocation; this allows 2 minutes
+  // (Workers Paid, max 300000). Cron runs may also wait on networks for a while: they are not limited by wall time.
+  "limits": { "cpu_ms": 120000 },
+  "triggers": {
+    // Every minute: publish due posts. Hourly at :23: collect post metrics (METRICS_CRON in worker.ts); each post is measured at most once every 20 hours. Every 3 hours on Fridays and Saturdays: Autopilot plans next week (AUTOPILOT_CRON).
+    "crons": ["* * * * *", "23 4 * * *", "11 */3 * * 5,6"]
+  },
   "observability": { "enabled": true }
   // Custom domains (bupulse.com, staging.bupulse.com) are added later, see docs/DEPLOY.md.
 }

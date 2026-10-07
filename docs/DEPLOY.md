@@ -74,3 +74,32 @@ Deleting an account locks it for 30 days; the owner can sign in and cancel. A da
 - `CRON_SECRET`: any long random string (for example `openssl rand -base64 32`). Set the same value in Cloudflare and as a GitHub Actions secret.
 
 You can run the job by hand from the Actions tab (Run workflow). `/api/cron` is not behind the sign-in redirect in `proxy.ts`; the route checks the bearer token itself.
+
+## Publishing scheduled posts
+
+Posts scheduled in the calendar are published by `lib/publishing/engine.ts`. Three things call it, and any of them may run at the same time as another because posts are claimed atomically (a post is never published twice):
+
+| What | How often | Calls |
+| --- | --- | --- |
+| Cloudflare Cron Trigger (main) | every minute | `POST /api/cron/publish` |
+| Cloudflare Cron Trigger | hourly at :23 | `POST /api/cron/metrics` (reads views and likes of posts from the last 30 days; each post at most once every 20 hours, so a run only does what is left) |
+| GitHub Actions `.github/workflows/publish-posts.yml` (fallback) | about every 5 minutes for publish, hourly for metrics (GitHub is best effort) | `POST /api/cron/publish`, `POST /api/cron/metrics` |
+
+How the Cloudflare trigger is wired: `wrangler.jsonc` points `main` at `worker.ts`, a small worker that re-exports the one OpenNext generates (`.open-next/worker.js`) and adds a `scheduled` handler. The handler calls the app's own routes through the `WORKER_SELF_REFERENCE` binding with `Authorization: Bearer $CRON_SECRET`. The crons are listed under `triggers.crons`; if you change the metrics schedule, change `METRICS_CRON` in `worker.ts` too. Cron Triggers deploy with the Worker (`npm run deploy`), nothing else to switch on.
+
+What it needs, all set once:
+
+- `CRON_SECRET` in Cloudflare (`wrangler secret put CRON_SECRET`) and as a GitHub Actions secret, the same value as for the account purge.
+- `SUPABASE_SECRET_KEY` in Cloudflare. The publisher has no signed-in user, so it signs photo links with this key (1 hour for networks, 7 days for reminder emails). Without it, posts with photos fail to send.
+- `RESEND_API_KEY` in Cloudflare (docs/EMAIL_SETUP.md). Reminder emails for accounts set to "remind me" (and TikTok or YouTube script posts) and failure notices go out through Resend from `register@bupulse.com`. Optional `RESEND_FROM` overrides the sender. Without the key reminders are not sent, so the post is retried and then marked failed.
+- `NEXT_PUBLIC_SITE_URL`, used for the "I posted it" and "Reconnect" links in emails. The "I posted it" link is signed with a key derived (HKDF) from `ENCRYPTION_KEY`, so there is no extra secret, and works for 30 days.
+
+Check it by hand: `curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://bupulse.com/api/cron/publish` answers with how many posts were claimed, published, sent as reminders, set to retry or failed. Failed posts wait 1, 5, 15 and 60 minutes between tries (5 tries in all), then show as Failed in the calendar and the owner gets an email.
+
+Time budget: a run stops claiming new posts after about 45 seconds, but posts already in flight finish, and an Instagram publish can wait up to about a minute for Meta to process the images. So one run can take up to about 2 minutes. Cloudflare Cron Triggers allow that on the Workers Paid plan, and the GitHub fallback waits up to 280 seconds for the answer.
+
+Instagram only accepts JPEG. When a post for Instagram has PNG or WebP images (all Designs are PNG), the publisher converts each once to a JPEG (transparency flattened on white, quality 88) with the `@jsquash` WebAssembly codecs and stores it next to the original as `<path>.jpg` in the same bucket. Later posts reuse that copy. The copy is deleted with the original (deleting a design or a Gallery photo) and by the account purge, which removes the whole user folder. `worker.ts` imports the three `.wasm` files so wrangler bundles them (about 570 KB, roughly 250 KB gzipped).
+
+Safety rules of the publisher: a post is never sent twice when we cannot be sure. A post stuck in "publishing" for over 10 minutes (a run crashed), and a post whose final call to the network timed out or failed with a server error, become "Post it yourself" (NEEDS_ACTION) with "We could not confirm this post went out" and the owner gets an email to check the network and press "Mark as posted" or retry. Only failures that clearly happened before anything was created (auth, validation, image upload, rate limit) are retried by themselves. A post stops after 5 attempts. Posts of accounts that are scheduled for deletion are not published.
+
+CPU limit: `wrangler.jsonc` sets `limits.cpu_ms` to 120000 (2 minutes of CPU, Workers Paid), because converting a large photo to JPEG for Instagram needs more than the 30 second default. Photos over 4096 pixels on a side are refused with a friendly message (the upload screen shrinks photos to 2048 px). Instagram images are also padded with white to 4:5 or 1.91:1 when their shape is outside that range, and kept under 8 MB.

@@ -111,7 +111,31 @@ export class SocialError extends Error {
     public network: Network,
     /** Seconds to wait before retrying, when the network says so. */
     public retryAfter?: number,
+    /**
+     * "final" when the error came from the call that creates the post (media_publish, /feed, /rest/posts...):
+     * the network may have made the post anyway, so the publisher must not retry it by itself.
+     * Default "before": nothing was created yet.
+     */
+    public stage: "before" | "final" = "before",
   ) {
     super(message);
+  }
+}
+
+/**
+ * Wraps the provider call that actually creates the post. A timeout, a 5xx or any unexpected error there
+ * leaves it unknown whether the post exists, so it is marked stage "final". Clear rejections (auth, invalid,
+ * rate limit) mean nothing was created and pass through unchanged.
+ */
+export async function finalStage<T>(network: Network, call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    if (error instanceof SocialError) {
+      if (error.kind === "temporary") error.stage = "final";
+      throw error;
+    }
+    const wrapped = new SocialError(error instanceof Error ? error.message : "The network did not answer", "temporary", network, undefined, "final");
+    throw wrapped;
   }
 }

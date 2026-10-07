@@ -42,8 +42,8 @@ export function Dialog({ open, onOpenChange, title, description, children, class
         className,
       )}
     >
-      <div className="p-6 sm:p-8">
-        <div className="mb-4 flex items-start justify-between gap-4">
+      <div className="flex max-h-[inherit] flex-col p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:p-8">
+        <div className="mb-4 flex shrink-0 items-start justify-between gap-4">
           <div>
             <h2 id={`${uid}-t`} className="text-xl font-bold tracking-tight">
               {title}
@@ -63,7 +63,8 @@ export function Dialog({ open, onOpenChange, title, description, children, class
             <X aria-hidden className="size-5" />
           </button>
         </div>
-        {children}
+        {/* The header and close button stay put; long content scrolls inside the sheet. */}
+        <div className="-mx-4 -mb-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6">{children}</div>
       </div>
     </dialog>
   );

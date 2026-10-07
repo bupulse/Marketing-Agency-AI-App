@@ -48,11 +48,9 @@ export async function consumeUsage(userId: string, metric: UsageMetric, amount =
   // Usage resets monthly, also inside a yearly billing period.
   const periodStart = usageWindowStart(sub.currentPeriodStart, now);
 
-  await prisma.usageRecord.upsert({
-    where: { userId_periodStart: { userId, periodStart } },
-    create: { userId, periodStart },
-    update: {},
-  });
+  // INSERT … ON CONFLICT DO NOTHING: parallel first reservations of a period must not fail on the
+  // unique key, which an upsert (select, then insert) can.
+  await prisma.usageRecord.createMany({ data: [{ userId, periodStart }], skipDuplicates: true });
 
   const { count } = await prisma.usageRecord.updateMany({
     where: { userId, periodStart, [field]: { lte: limit - amount } },

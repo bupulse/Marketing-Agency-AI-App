@@ -102,6 +102,8 @@ export async function loadContentLibrary(businessId: string) {
             projectType: p.type,
             caption: c.caption,
             hashtags: c.hashtags,
+            videoScript: c.videoScript,
+            variants: parseVariants(c.variants),
             language: c.language,
             edited: c.edited,
             createdAt: c.createdAt.toISOString(),

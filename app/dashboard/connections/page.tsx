@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { cookies } from "next/headers";
 import { Plug } from "lucide-react";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
@@ -7,16 +8,16 @@ import { CanvaCard } from "@/components/settings/canva-card";
 import { isCanvaEnabled } from "@/lib/canva/config";
 import { CanvaReturnToast } from "@/components/designs/canva-return-toast";
 import { prisma } from "@/lib/db";
+import { AccountPicker } from "@/components/connections/account-picker";
+import { ChannelList } from "@/components/connections/channel-list";
+import { ConnectToast } from "@/components/connections/connect-toast";
+import type { AccountInfo, ChannelInfo } from "@/components/connections/types";
+import { listConnections } from "@/lib/social/connections";
+import { openPending } from "@/lib/social/oauth";
+import { isInstagramViaFacebookConfigured } from "@/lib/social/providers/instagram";
+import { allProviders, isNetwork } from "@/lib/social/registry";
 
 export const metadata = { title: "Connections" };
-
-const SOCIAL = [
-  { provider: "instagram", name: "Instagram", note: "Business or Creator accounts" },
-  { provider: "facebook", name: "Facebook", note: "Pages" },
-  { provider: "tiktok", name: "TikTok", note: "Videos" },
-  { provider: "linkedin", name: "LinkedIn", note: "Pages and profiles" },
-  { provider: "youtube", name: "YouTube", note: "Videos and Shorts" },
-];
 
 const APPS = [
   { provider: "canva", name: "Canva", note: "Open and export designs" },
@@ -27,7 +28,7 @@ const APPS = [
   { provider: "cloudflare", name: "Cloudflare", note: "Website and widget setup" },
 ];
 
-function Group({ title, items, connected }: { title: string; items: typeof SOCIAL; connected: Set<string> }) {
+function Group({ title, items, connected }: { title: string; items: typeof APPS; connected: Set<string> }) {
   return (
     <section aria-label={title} className="flex flex-col gap-3">
       <h2 className="px-1 text-lg font-semibold">{title}</h2>
@@ -54,12 +55,34 @@ function Group({ title, items, connected }: { title: string; items: typeof SOCIA
   );
 }
 
-export default async function ConnectionsPage() {
+const NOTES: Record<string, string> = {
+  instagram: "Business, Creator or personal accounts",
+  facebook: "Facebook Pages",
+  linkedin: "Profiles and Pages",
+  tiktok: "Videos",
+  youtube: "Videos and Shorts",
+};
+
+export default async function ConnectionsPage({ searchParams }: PageProps<"/dashboard/connections">) {
   const { user, business } = await getAppContext();
-  const rows = business
-    ? await prisma.connection.findMany({ where: { businessId: business.id }, select: { provider: true } })
-    : [];
-  const connected = new Set(rows.map((r) => r.provider));
+  const social = business ? await listConnections(business.id) : [];
+  const apps = business ? await prisma.connection.findMany({ where: { businessId: business.id, kind: "APP" }, select: { provider: true } }) : [];
+  const connected = new Set(apps.map((r) => r.provider));
+
+  const channels: ChannelInfo[] = allProviders().map((p) => ({
+    network: p.network,
+    label: p.rules.label,
+    note: NOTES[p.network] ?? "",
+    configured: p.isConfigured(),
+    viaFacebook: p.network === "instagram" ? isInstagramViaFacebookConfigured() : undefined,
+  }));
+  const accounts: AccountInfo[] = social.map((a) => ({ id: a.id, network: a.network, displayName: a.displayName, externalAccountId: a.externalAccountId, accountType: a.accountType, avatarUrl: a.avatarUrl, status: a.status, postingMode: a.postingMode }));
+
+  // After OAuth with several accounts, the encrypted cookie holds them until the user picks.
+  const pick = (await searchParams).pick;
+  const store = await cookies();
+  const pending = typeof pick === "string" && isNetwork(pick) ? await openPending((name) => store.get(name)?.value, user.id) : null;
+  const picking = pending && pending.network === pick ? pending : null;
 
   return (
     <>
@@ -67,7 +90,16 @@ export default async function ConnectionsPage() {
         title="Connections"
         description="Connect your social accounts to publish, and your apps to bring in photos and products."
       />
-      <Group title="Social accounts" items={SOCIAL} connected={connected} />
+      <Suspense>
+        <ConnectToast />
+      </Suspense>
+      {picking && (
+        <AccountPicker network={picking.network} label={channels.find((c) => c.network === picking.network)?.label ?? ""} accounts={picking.result.accounts} />
+      )}
+      <section aria-label="Social accounts" className="flex flex-col gap-3">
+        <h2 className="px-1 text-lg font-semibold">Social accounts</h2>
+        <ChannelList channels={channels} accounts={accounts} />
+      </section>
       <Suspense>
         <CanvaReturnToast />
       </Suspense>

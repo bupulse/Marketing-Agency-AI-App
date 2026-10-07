@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { History, PenLine, Plus, RefreshCw, X } from "lucide-react";
 import { Badge, Button, Chip, Field, GlassCard, Input, Tabs, Textarea, useToast } from "@/components/ui";
 import { saveEditedContent } from "@/app/dashboard/projects/actions";
+import { prefillFromContent } from "@/components/publishing/prefill";
+import { ScheduleButton } from "@/components/publishing/schedule-button";
 import { CopyButton } from "./copy-button";
 import { GenerateProgress } from "./generate-progress";
 import { NetworkPreviews } from "./network-previews";
@@ -170,8 +172,11 @@ export function ContentCard({
   contents,
   used,
   limit,
+  photos,
 }: {
   projectId: string;
+  /** The project's photos, offered with the post when scheduling. */
+  photos?: { path: string; url: string }[];
   /** Newest first. */
   contents: StudioContent[];
   used?: number;
@@ -261,9 +266,12 @@ export function ContentCard({
             <Meta content={viewing} />
           </div>
           {!editing && !generating && (
-            <Button variant="ghost" size="sm" onClick={startEdit} leading={<PenLine aria-hidden className="size-4" />}>
-              Edit
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <ScheduleButton prefill={{ ...prefillFromContent(viewing, projectId), media: photos?.slice(0, 4) }} />
+              <Button variant="ghost" size="sm" onClick={startEdit} leading={<PenLine aria-hidden className="size-4" />}>
+                Edit
+              </Button>
+            </div>
           )}
         </div>
 

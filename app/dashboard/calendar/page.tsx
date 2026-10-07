@@ -1,24 +1,20 @@
-import { CalendarDays } from "lucide-react";
-import { EmptyState } from "@/components/app/empty-state";
+import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
+import { Calendar } from "@/components/publishing/calendar";
+import { loadCalendarPosts, loadComposerContext } from "@/lib/publishing/queries";
+import { dayKey } from "@/lib/publishing/time";
 
 export const metadata = { title: "Calendar" };
 
-export default function CalendarPage() {
+export default async function CalendarPage() {
+  const { business } = await getAppContext();
+  const now = new Date();
+  const [posts, context] = await Promise.all([loadCalendarPosts(business.id, now), loadComposerContext(business.id)]);
+
   return (
     <>
       <PageHeader title="Calendar" description="See what is planned, what is live and what needs attention." />
-      <EmptyState
-        comingSoon
-        icon={CalendarDays}
-        title="Plan your posts on a calendar"
-        text="Schedule content for your connected accounts and watch it go out at the right time."
-        points={[
-          "Drag posts to reschedule",
-          "See scheduled, published and failed posts at a glance",
-          "Retry or edit a post before it goes out",
-        ]}
-      />
+      <Calendar posts={posts} context={context} todayKey={dayKey(now, context.timezone)} nowIso={now.toISOString()} />
     </>
   );
 }

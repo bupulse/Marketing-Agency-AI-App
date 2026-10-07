@@ -6,8 +6,9 @@ import { getImageProvider } from "@/lib/ai/image";
 import { DEFAULT_GEMINI_IMAGE_MODEL } from "@/lib/ai/gemini-image";
 import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { refundUsage, consumeUsage } from "@/lib/usage";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { designObjectPath, imageSize, isOwnDesignPath, isOwnObjectPath, isOwnProjectPhotoPath, toDataUrl } from "./assets";
+import { designObjectPath, imageSize, isOwnDesignPath, isOwnObjectPath, isOwnPhotoPath, toDataUrl } from "./assets";
 import { ASPECT_SIZES, type AspectRatio } from "./layout";
 import { edgeGet, edgePut, hashKey } from "./edge-cache";
 import { isPackId, recommendPack, type PackId } from "./packs";
@@ -22,7 +23,18 @@ const PHOTO_MAX_BYTES = 12 * 1024 * 1024;
 const DOWNLOAD_SECONDS = 60 * 60;
 const IMAGE_FEATURE = "image";
 
-type Owner = { userId: string; businessId: string; projectId?: string | null };
+type Owner = {
+  userId: string;
+  businessId: string;
+  projectId?: string | null;
+  /** Background jobs (Autopilot's cron) have no session: use the service key for Storage. Ownership is still checked. */
+  service?: boolean;
+};
+
+/** Storage for the signed-in user (policies apply), or the service client for background jobs. */
+async function storageClient(service?: boolean) {
+  return service ? createAdminClient() : await createClient();
+}
 
 async function requireOwned({ userId, businessId, projectId }: Owner) {
   const business = await prisma.business.findFirst({ where: { id: businessId, userId } });
@@ -41,8 +53,8 @@ const AI_TYPES = ["image/png", "image/jpeg", "image/webp"];
  * Reads an own file from Storage as a data URL (Satori and Gemini cannot use private URLs).
  * The size and type are checked on the object's metadata first, so an oversized file is never downloaded.
  */
-async function loadImage(bucket: "media" | "brand", path: string, options: { maxBytes: number; types: string[]; resize?: boolean }) {
-  const storage = (await createClient()).storage.from(bucket);
+async function loadImage(bucket: "media" | "brand", path: string, options: { maxBytes: number; types: string[]; resize?: boolean; service?: boolean }) {
+  const storage = (await storageClient(options.service)).storage.from(bucket);
   const info = await storage.info(path);
   if (info.error || !info.data) return null;
   const { size, contentType } = info.data;
@@ -63,33 +75,33 @@ async function loadImage(bucket: "media" | "brand", path: string, options: { max
 
 const UNSUPPORTED_PHOTO = "Templates need a JPG or PNG photo. Please pick or upload a different one.";
 
-async function loadPhoto(userId: string, photoPath: string | null | undefined, types: string[]) {
+async function loadPhoto(userId: string, photoPath: string | null | undefined, types: string[], service?: boolean) {
   if (!photoPath) return null;
-  if (!isOwnProjectPhotoPath(userId, photoPath)) throw new DesignError("That photo could not be used.");
-  const photo = await loadImage("media", photoPath, { maxBytes: PHOTO_MAX_BYTES, types, resize: true });
+  if (!isOwnPhotoPath(userId, photoPath)) throw new DesignError("That photo could not be used.");
+  const photo = await loadImage("media", photoPath, { maxBytes: PHOTO_MAX_BYTES, types, resize: true, service });
   if (!photo) throw new DesignError("That photo could not be loaded. Please pick it again.");
   return photo;
 }
 
-async function loadLogo(userId: string, logoPath: string | null, types = ["image/png", "image/jpeg", "image/svg+xml"]) {
+async function loadLogo(userId: string, logoPath: string | null, types = ["image/png", "image/jpeg", "image/svg+xml"], service?: boolean) {
   if (!logoPath || !isOwnObjectPath(userId, logoPath)) return null;
   try {
-    return await loadImage("brand", logoPath, { maxBytes: 5 * 1024 * 1024, types });
+    return await loadImage("brand", logoPath, { maxBytes: 5 * 1024 * 1024, types, service });
   } catch {
     return null;
   }
 }
 
-async function store(userId: string, designId: string, bytes: Uint8Array, mimeType: string) {
+async function store(userId: string, designId: string, bytes: Uint8Array, mimeType: string, service?: boolean) {
   const path = designObjectPath(userId, designId, mimeType);
-  const { error } = await (await createClient()).storage.from("designs").upload(path, bytes, { contentType: mimeType, upsert: false });
+  const { error } = await (await storageClient(service)).storage.from("designs").upload(path, bytes, { contentType: mimeType, upsert: false });
   if (error) throw new Error(`Could not store the design: ${error.message}`);
   return path;
 }
 
-async function removeFile(path: string) {
+async function removeFile(path: string, service?: boolean) {
   try {
-    await (await createClient()).storage.from("designs").remove([path]);
+    await (await storageClient(service)).storage.from("designs").remove([path]);
   } catch {}
 }
 
@@ -114,7 +126,7 @@ export async function createTemplateDesign(input: Owner & {
   if (!isTemplateId(input.template)) throw new DesignError("Pick one of the templates.");
   await rateLimit(`design:${input.userId}`, RATE_LIMITS.templateDesign);
   const business = await requireOwned(input);
-  const [photoDataUrl, logoDataUrl] = await Promise.all([loadPhoto(input.userId, input.photoPath, TEMPLATE_TYPES), loadLogo(input.userId, business.logoUrl)]);
+  const [photoDataUrl, logoDataUrl] = await Promise.all([loadPhoto(input.userId, input.photoPath, TEMPLATE_TYPES, input.service), loadLogo(input.userId, business.logoUrl, undefined, input.service)]);
 
   let png: ArrayBuffer;
   try {
@@ -140,14 +152,14 @@ export async function createTemplateDesign(input: Owner & {
   }
 
   const id = globalThis.crypto.randomUUID();
-  const path = await store(input.userId, id, new Uint8Array(png), "image/png");
+  const path = await store(input.userId, id, new Uint8Array(png), "image/png", input.service);
   const { width, height } = ASPECT_SIZES[input.aspectRatio];
   try {
     await prisma.design.create({
       data: { id, businessId: business.id, projectId: input.projectId ?? null, kind: "TEMPLATE", template: input.template, aspectRatio: input.aspectRatio, path, width, height },
     });
   } catch (error) {
-    await removeFile(path);
+    await removeFile(path, input.service);
     throw error;
   }
   return { id, path };
@@ -163,14 +175,14 @@ export async function createAiDesign(input: Owner & {
 }): Promise<CreatedDesign> {
   await rateLimit(`aiimage:${input.userId}`, RATE_LIMITS.aiImage);
   const business = await requireOwned(input);
-  if (input.usePhotoPath && !isOwnProjectPhotoPath(input.userId, input.usePhotoPath)) throw new DesignError("That photo could not be used.");
+  if (input.usePhotoPath && !isOwnPhotoPath(input.userId, input.usePhotoPath)) throw new DesignError("That photo could not be used.");
 
   // Throws UsageLimitError when the plan has no image credits left.
   const { periodStart } = await consumeUsage(input.userId, "image");
   try {
     const [logo, photo] = await Promise.all([
-      input.useLogo ? loadLogo(input.userId, business.logoUrl, [...AI_TYPES, "image/svg+xml"]) : null,
-      loadPhoto(input.userId, input.usePhotoPath, AI_TYPES),
+      input.useLogo ? loadLogo(input.userId, business.logoUrl, [...AI_TYPES, "image/svg+xml"], input.service) : null,
+      loadPhoto(input.userId, input.usePhotoPath, AI_TYPES, input.service),
     ]);
     const references = [photo, logo].filter((r): r is string => !!r);
     const prompt = buildImagePrompt({ business, prompt: input.prompt, aspectRatio: input.aspectRatio, hasLogo: !!logo, hasPhoto: !!photo, includePeople: input.includePeople });
@@ -184,14 +196,14 @@ export async function createAiDesign(input: Owner & {
     );
 
     const id = globalThis.crypto.randomUUID();
-    const path = await store(input.userId, id, image.data, image.mimeType);
+    const path = await store(input.userId, id, image.data, image.mimeType, input.service);
     const { width, height } = imageSize(image.data, input.aspectRatio);
     try {
       await prisma.design.create({
         data: { id, businessId: business.id, projectId: input.projectId ?? null, kind: "AI", prompt: input.prompt, aspectRatio: input.aspectRatio, path, width, height },
       });
     } catch (error) {
-      await removeFile(path);
+      await removeFile(path, input.service);
       throw error;
     }
     return { id, path };
@@ -227,7 +239,7 @@ export async function createAiPhotoDesign(input: Owner & {
   usePhotoPath?: string | null;
 }): Promise<CreatedDesign> {
   if (!isTemplateId(input.template) || input.template === "quote") throw new DesignError("Pick one of the templates.");
-  if (input.usePhotoPath && !isOwnProjectPhotoPath(input.userId, input.usePhotoPath)) throw new DesignError("That photo could not be used.");
+  if (input.usePhotoPath && !isOwnPhotoPath(input.userId, input.usePhotoPath)) throw new DesignError("That photo could not be used.");
   // Each call pays for a Gemini image, so it shares the tighter AI limit, not the template one.
   await rateLimit(`aiimage:${input.userId}`, RATE_LIMITS.aiImage);
   const business = await requireOwned(input);
@@ -235,7 +247,7 @@ export async function createAiPhotoDesign(input: Owner & {
   // Throws UsageLimitError when the plan has no image credits left.
   const { periodStart } = await consumeUsage(input.userId, "image");
   try {
-    const [logoDataUrl, reference] = await Promise.all([loadLogo(input.userId, business.logoUrl), loadPhoto(input.userId, input.usePhotoPath, AI_TYPES)]);
+    const [logoDataUrl, reference] = await Promise.all([loadLogo(input.userId, business.logoUrl, undefined, input.service), loadPhoto(input.userId, input.usePhotoPath, AI_TYPES, input.service)]);
     const scene = buildSceneBrief({ template: input.template, aspectRatio: input.aspectRatio, scene: input.scene, headline: input.headline });
     const prompt = buildImagePrompt({ business, prompt: scene, aspectRatio: input.aspectRatio, hasPhoto: !!reference, language: business.contentLanguage, includePeople: input.includePeople });
 
@@ -281,14 +293,14 @@ export async function createAiPhotoDesign(input: Owner & {
     }
 
     const id = globalThis.crypto.randomUUID();
-    const path = await store(input.userId, id, new Uint8Array(png), "image/png");
+    const path = await store(input.userId, id, new Uint8Array(png), "image/png", input.service);
     const { width, height } = ASPECT_SIZES[input.aspectRatio];
     try {
       await prisma.design.create({
         data: { id, businessId: business.id, projectId: input.projectId ?? null, kind: "AI", template: input.template, prompt: input.scene?.trim() || input.headline, aspectRatio: input.aspectRatio, path, width, height },
       });
     } catch (error) {
-      await removeFile(path);
+      await removeFile(path, input.service);
       throw error;
     }
     return { id, path };
@@ -313,6 +325,8 @@ export async function deleteDesign(userId: string, designId: string): Promise<bo
   const design = await ownDesign(userId, designId);
   if (!design) return false;
   await removeFile(design.path);
+  // The JPEG copy the publisher makes for Instagram (lib/publishing/media.ts), if there is one.
+  await removeFile(`${design.path}.jpg`);
   await prisma.design.delete({ where: { id: design.id } });
   return true;
 }

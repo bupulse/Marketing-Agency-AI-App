@@ -65,7 +65,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       {contents.length === 0 ? (
         <WriteContentCta projectId={project.id} used={used} limit={limit} />
       ) : (
-        <ContentCard projectId={project.id} contents={contents} used={used} limit={limit} />
+        <ContentCard projectId={project.id} contents={contents} used={used} limit={limit} photos={photos} />
       )}
 
       <DesignStudio

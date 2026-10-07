@@ -1,0 +1,30 @@
+name: Autopilot plans next week
+
+on:
+  schedule:
+    # Friday and Saturday every three hours (UTC): each business is planned from its own Friday on, a few per call.
+    - cron: "17 */3 * * 5,6"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Plan next week for businesses that have not been planned yet
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          # A few businesses per call; keep calling with the cursor until every enabled business was reached.
+          cursor=""
+          for i in $(seq 1 40); do
+            url="https://bupulse.com/api/cron/autopilot"
+            if [ -n "$cursor" ]; then url="${url}?cursor=${cursor}"; fi
+            body=$(curl --fail-with-body --silent --show-error --max-time 290 -X POST \
+              -H "Authorization: Bearer ${CRON_SECRET}" "$url")
+            echo "$body"
+            cursor=$(echo "$body" | jq -r '.nextCursor // empty')
+            [ -z "$cursor" ] && break
+          done

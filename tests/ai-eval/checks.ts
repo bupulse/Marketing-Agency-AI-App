@@ -1,7 +1,7 @@
 import type { MarketingContent } from "@/lib/ai/marketing";
 import type { EvalCase } from "./businesses";
 
-const LANGUAGE_WORDS: Record<string, { words: string[]; min: number }> = {
+export const LANGUAGE_WORDS: Record<string, { words: string[]; min: number }> = {
   English: { words: ["the", "and", "for", "with", "your", "you", "our", "to", "a", "of"], min: 3 },
   French: { words: ["le", "la", "les", "de", "des", "et", "pour", "un", "une", "vous", "nous", "avec", "votre"], min: 3 },
   Spanish: { words: ["el", "la", "los", "las", "de", "para", "con", "y", "que", "un", "una", "tu", "su"], min: 3 },
@@ -9,15 +9,15 @@ const LANGUAGE_WORDS: Record<string, { words: string[]; min: number }> = {
   Kinyarwanda: { words: ["ni", "mu", "na", "ku", "kandi", "cyane", "muri", "ubu", "bwa", "rwa", "yacu", "dufite", "twe", "murakaza", "mwiza", "nziza"], min: 2 },
 };
 
-const wordsOf = (text: string) => text.toLowerCase().match(/[\p{L}']+/gu) ?? [];
+export const wordsOf = (text: string) => text.toLowerCase().match(/[\p{L}']+/gu) ?? [];
 
 /** Digit groups with separators removed: "485,000" and "485.000" both become "485000". */
-function numbers(text: string): string[] {
+export function numbers(text: string): string[] {
   return (text.match(/\d+(?:[.,\s]\d{3})*(?:[.,]\d+)?|\d+/g) ?? []).map((n) => n.replace(/[.,\s]/g, ""));
 }
 
 // Timestamps and the 30-second length are part of the script format, not facts.
-function withoutScriptNumbers(script: string) {
+export function withoutScriptNumbers(script: string) {
   return script
     .replace(/\d{1,2}:\d{2}/g, " ")
     .replace(/\d+\s*[-–—]\s*\d+\s*(?:s\b|sec\w*|seconds?|secondes|segundos|sekunde\w*|sekunde|saa)?/gi, " ")

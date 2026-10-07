@@ -4,8 +4,10 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { Badge, Chip, GlassCard, Input } from "@/components/ui";
+import { prefillFromContent } from "@/components/publishing/prefill";
+import { ScheduleButton } from "@/components/publishing/schedule-button";
 import { CopyButton } from "./copy-button";
-import { PROJECT_TYPES, formatCopyText, formatWhen, typeLabel } from "./helpers";
+import { PROJECT_TYPES, formatCopyText, formatWhen, typeLabel, type StudioVariant } from "./helpers";
 
 export type LibraryItem = {
   id: string;
@@ -14,6 +16,8 @@ export type LibraryItem = {
   projectType: string;
   caption: string;
   hashtags: string[];
+  videoScript: string;
+  variants: StudioVariant[];
   language: string;
   edited: boolean;
   createdAt: string;
@@ -79,6 +83,7 @@ export function ContentLibrary({ items }: { items: LibraryItem[] }) {
                 {i.hashtags.length > 0 && <p className="line-clamp-1 text-[13px] font-medium text-pulse-blue">{i.hashtags.join(" ")}</p>}
                 <div className="flex flex-wrap gap-2">
                   <CopyButton text={formatCopyText(i.caption, i.hashtags)} label="Copy" ariaLabel={`Copy caption for ${i.projectTitle}`} />
+                  <ScheduleButton prefill={prefillFromContent(i, i.projectId)} />
                   <Link href={`/dashboard/projects/${i.projectId}`} className="inline-flex min-h-11 items-center px-2 text-sm font-semibold">
                     Open project
                   </Link>
