@@ -32,33 +32,33 @@ enum SignUpMethod {
 }
 
 model User {
-  id           String        @id @db.Uuid
-  email        String        @unique
-  name         String?
-  signUpMethod SignUpMethod  @default(PASSWORD)
+  id                   String           @id @db.Uuid
+  email                String           @unique
+  name                 String?
+  signUpMethod         SignUpMethod     @default(PASSWORD)
   // Set when the owner asks to delete the account; everything is erased after this date
   // unless they sign in and cancel (30-day grace period).
   deletionScheduledFor DateTime?
-  createdAt    DateTime      @default(now())
-  business     Business?
-  subscription Subscription?
-  usage        UsageRecord[]
-  canva        CanvaConnection?
-  canvaEdits   CanvaEdit[]
+  createdAt            DateTime         @default(now())
+  business             Business?
+  subscription         Subscription?
+  usage                UsageRecord[]
+  canva                CanvaConnection?
+  canvaEdits           CanvaEdit[]
 }
 
 // One business per user for now. Industry-neutral: a phone shop, a school,
 // a builder and an estate agent all use the same fields.
 model Business {
-  id                      String   @id @default(cuid())
-  userId                  String   @unique @db.Uuid
-  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                      String    @id @default(cuid())
+  userId                  String    @unique @db.Uuid
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   name                    String
   industry                String? // e.g. "Phone store", "School", "Construction"
   description             String? // what they sell
   audience                String? // who their customers are
   tone                    String? // brand voice preset id from lib/brand/voices.ts, e.g. "friendly"
-  contentLanguage         String   @default("English") // language the AI writes in (lib/brand/languages.ts)
+  contentLanguage         String    @default("English") // language the AI writes in (lib/brand/languages.ts)
   logoUrl                 String? // object path in the private "brand" bucket (<userId>/logo/...)
   brandColors             String[]
   website                 String?
@@ -69,15 +69,21 @@ model Business {
   onboardedAt             DateTime? // set when the brand onboarding (/onboarding) is finished
   instagramHandle         String?
   knowledge               Json? // facts the chat widget may answer from (lib/brand/schemas.ts knowledgeSchema)
-  widgetKey               String   @unique @default(cuid()) // public id used by the embed snippet
+  widgetKey               String    @unique @default(cuid()) // public id used by the embed snippet
   composioApiKeyEncrypted String? // Pro users' own Composio key, encrypted with lib/crypto.ts
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  timezone                String    @default("UTC") // IANA zone for the calendar and posting times, e.g. "Africa/Kigali"
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
-  projects    Project[]
-  designs     Design[]
-  leads       Lead[]
-  connections Connection[]
+  projects      Project[]
+  designs       Design[]
+  leads         Lead[]
+  connections   Connection[]
+  posts         Post[]
+  mediaFolders  MediaFolder[]
+  mediaAssets   MediaAsset[]
+  autopilot     AutopilotSettings?
+  autopilotRuns AutopilotRun[]
 }
 
 // Anything the business wants to promote. A real estate "listing" is just one type.
@@ -212,6 +218,13 @@ enum ConnectionMethod {
   OWN_COMPOSIO // the user's own Composio account (Pro)
 }
 
+// How posts reach the network: AUTO publishes through the API; NOTIFY (e.g. a personal Instagram
+// account, which the API cannot post to) reminds the owner with everything ready to post by hand.
+enum PostingMode {
+  AUTO
+  NOTIFY
+}
+
 enum ConnectionStatus {
   ACTIVE
   EXPIRING
@@ -237,6 +250,10 @@ model Connection {
   expiresAt                  DateTime?
   lastCheckedAt              DateTime?
   composioConnectedAccountId String?
+  postingMode                PostingMode      @default(AUTO)
+  accountType                String? // network-specific, e.g. "business" | "creator" | "personal" | "page" | "organization"
+  avatarUrl                  String?
+  lastError                  String?
   createdAt                  DateTime         @default(now())
   updatedAt                  DateTime         @updatedAt
   posts                      Post[]
@@ -245,19 +262,69 @@ model Connection {
   @@index([status, expiresAt])
 }
 
+enum PostStatus {
+  DRAFT
+  PENDING_APPROVAL // made by Autopilot, waiting for the owner's OK
+  SCHEDULED
+  PUBLISHING // claimed by the publisher
+  PUBLISHED
+  NEEDS_ACTION // NOTIFY connections: the owner was reminded to post it by hand
+  FAILED
+  CANCELLED
+}
+
+enum PostFormat {
+  POST // text with optional images (one network post)
+  CAROUSEL // several images
+  ARTICLE // long-form (LinkedIn)
+  THREAD // reserved for X later
+  SCRIPT // video script only until Stage 2 video (TikTok, Reels, YouTube)
+}
+
+enum PostSource {
+  MANUAL
+  AUTOPILOT
+}
+
+// One post for one connected account. Posts written together for several accounts share a groupId.
 model Post {
-  id           String        @id @default(cuid())
-  connectionId String
-  connection   Connection    @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  projectId    String?
-  project      Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  contentId    String? // GeneratedContent it came from
-  externalId   String
-  permalink    String?
-  publishedAt  DateTime
-  metrics      PostMetrics[]
+  id             String        @id @default(cuid())
+  businessId     String
+  business       Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  connectionId   String? // null for a draft without an account, or after the account was disconnected
+  connection     Connection?   @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  network        String // "instagram" | "facebook" | "linkedin" | "tiktok" | "youtube"; kept if the connection goes
+  groupId        String?
+  projectId      String?
+  project        Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  contentId      String? // GeneratedContent it came from
+  status         PostStatus    @default(DRAFT)
+  format         PostFormat    @default(POST)
+  source         PostSource    @default(MANUAL)
+  title          String? // ARTICLE title
+  text           String        @default("")
+  hashtags       String[]
+  mediaPaths     String[] // storage object paths ("media" or "designs" bucket), in order
+  link           String?
+  scheduledAt    DateTime?
+  publishedAt    DateTime?
+  externalId     String?
+  permalink      String?
+  attempts       Int           @default(0)
+  nextAttemptAt  DateTime?
+  lockedAt       DateTime? // set while the publisher works on it; stale locks are retaken
+  lastError      String?
+  autopilotRunId String?
+  autopilotRun   AutopilotRun? @relation(fields: [autopilotRunId], references: [id], onDelete: SetNull)
+  playbookId     String? // the playbook idea Autopilot used, for learning what works
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  metrics        PostMetrics[]
 
   @@unique([connectionId, externalId])
+  @@index([status, scheduledAt])
+  @@index([businessId, scheduledAt])
+  @@index([groupId])
 }
 
 model PostMetrics {
@@ -381,7 +448,7 @@ model CanvaConnection {
 // One open Canva editing session. `id` is the random correlation state sent to Canva (max 50 chars)
 // and comes back in the return-navigation token. Kept until it is pruned (2 days) so "Return to BuPulse" can be pressed again.
 model CanvaEdit {
-  id            String   @id
+  id            String    @id
   userId        String    @db.Uuid
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   designId      String
@@ -390,4 +457,60 @@ model CanvaEdit {
   createdAt     DateTime  @default(now())
 
   @@index([createdAt])
+}
+
+// The business's own photos ("Gallery"), loose or in folders, stored in the "media" bucket.
+model MediaFolder {
+  id         String       @id @default(cuid())
+  businessId String
+  business   Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  createdAt  DateTime     @default(now())
+  assets     MediaAsset[]
+
+  @@unique([businessId, name])
+}
+
+model MediaAsset {
+  id         String       @id @default(cuid())
+  businessId String
+  business   Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  folderId   String? // null = not in a folder
+  folder     MediaFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  path       String       @unique // <userId>/gallery/<id>.<ext> in the "media" bucket
+  name       String
+  mimeType   String
+  bytes      Int
+  width      Int?
+  height     Int?
+  createdAt  DateTime     @default(now())
+
+  @@index([businessId, folderId, createdAt])
+}
+
+// Autopilot: AI plans and writes next week's posts. Off until the owner turns it on.
+model AutopilotSettings {
+  businessId    String   @id
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  enabled       Boolean  @default(false)
+  autoPublish   Boolean  @default(false) // false: posts wait as PENDING_APPROVAL for "Approve all"
+  postsPerWeek  Int      @default(3)
+  connectionIds String[] // accounts Autopilot writes for
+  postingTimes  String[] @default(["09:00", "18:00"]) // local times (Business.timezone) it may use
+  useAiImages   Boolean  @default(false) // false: gallery photos and free templates only
+  updatedAt     DateTime @updatedAt
+}
+
+model AutopilotRun {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  weekStart  DateTime // Monday 00:00 in the business's time zone, stored as UTC
+  status     String   @default("RUNNING") // RUNNING | DONE | FAILED
+  postCount  Int      @default(0)
+  error      String?
+  createdAt  DateTime @default(now())
+  posts      Post[]
+
+  @@unique([businessId, weekStart])
 }

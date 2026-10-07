@@ -137,6 +137,26 @@ Each phase ends with something you can open and test. A phase is accepted by you
 - Results: pull basic metrics (views, likes, comments, shares, saves) into `PostMetrics` daily where the network allows.
 - **Done when:** one user connects all five networks, schedules a post to each for the same time, they publish on time (TikTok may be private until its audit passes), and metrics appear the next day; and the same test passes with LinkedIn connected through a test user's own Composio key.
 
+**Additions decided 7 October 2026** (owner wants it as simple as Buffer, publish.buffer.com):
+- **Media gallery:** clients upload their own photos, loose or in folders (e.g. one per event). Every post, design and AI image can use them; AI makes new branded images from gallery photos. For clients who want to spend little on AI.
+- **Autopilot:**
+  - Each week the AI plans and writes the next week's posts from the brand templates, the gallery and the proven-trends sources.
+  - **The client chooses:** by default posts arrive as drafts with one-tap "Approve all"; "Post without asking" is a setting.
+  - Proven trends come from:
+    - a built-in playbook of proven post types per industry;
+    - a holiday and local-event calendar per country;
+    - learning from which of the client's own posts did best (PostMetrics);
+    - Instagram hashtag top media once Meta approves the app.
+  - TikTok and Facebook have no official trends API; more sources plug in later behind one interface.
+- **Per-network versions:**
+  - LinkedIn: a longer business post, or an article.
+  - Instagram and Facebook: caption plus image or carousel.
+  - TikTok and Reels: a script only until Stage 2 video.
+- **Buffer-style connecting:** one Connect button per network.
+  - Instagram offers **Professional** (automatic posting through Instagram Login, no Facebook Page needed) or **Personal**.
+  - Personal accounts get notification-based posting: a reminder with the caption and media ready, finished by the client in the Instagram app.
+- **X/Twitter: later.** It charges per post since 2026 (about 1.5¢, 20¢ with a link).
+
 ### Phase 6 — Lead-capturing chat widget
 
 - One-line embed (`<script src="https://bupulse.com/widget.js" data-key="…">`) served from Workers, isolated in its own frame so it never breaks the host site.

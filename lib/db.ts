@@ -6,6 +6,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
   prismaClass?: typeof PrismaClient;
+  clients?: Map<typeof PrismaClient, PrismaClient>;
 };
 
 // On Cloudflare Workers the connection comes from the Hyperdrive binding.
@@ -46,6 +47,18 @@ function getClient(): PrismaClient {
     if (!client) {
       client = createClient(workers.connectionString);
       workerClients.set(workers.ctx, client);
+    }
+    return client;
+  }
+  // A production build can bundle the generated client into several chunks, each with its own
+  // PrismaClient class. Each class keeps its own client; none may close another's pool while
+  // its queries run ("Cannot use a pool after calling end on the pool").
+  if (process.env.NODE_ENV === "production") {
+    globalForPrisma.clients ??= new Map();
+    let client = globalForPrisma.clients.get(PrismaClient);
+    if (!client) {
+      client = createClient(process.env.DATABASE_URL);
+      globalForPrisma.clients.set(PrismaClient, client);
     }
     return client;
   }
