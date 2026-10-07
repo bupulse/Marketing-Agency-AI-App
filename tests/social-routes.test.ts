@@ -17,6 +17,7 @@ vi.mock("@opennextjs/cloudflare", () => ({ getCloudflareContext: () => { throw n
 import { GET as connect } from "@/app/api/social/[network]/connect/route";
 import { GET as callback } from "@/app/api/social/[network]/callback/route";
 import { sealState, STATE_COOKIE } from "@/lib/social/oauth";
+import { CONNECT_ERRORS } from "@/lib/social/connect-errors";
 import { RateLimitError } from "@/lib/rate-limit";
 
 const USER = "11111111-1111-1111-1111-111111111111";
@@ -114,6 +115,43 @@ describe("callback error paths", () => {
   it("clears the state cookie on every exit", async () => {
     const response = await cb("?error=access_denied&state=s", { state: "s" });
     expect(response.headers.get("set-cookie")).toContain(`${STATE_COOKIE}=;`);
+  });
+});
+
+describe("Instagram through Facebook", () => {
+  const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+  const fb = (accounts: unknown[]) => vi.stubGlobal("fetch", vi.fn(async (input: string | URL) => {
+    const url = String(input);
+    if (url.includes("fb_exchange_token")) return json({ access_token: "long" });
+    if (url.includes("/oauth/access_token")) return json({ access_token: "short" });
+    if (url.includes("/me/accounts")) return json({ data: accounts });
+    return json({ id: "fbuser" });
+  }));
+
+  it("works with only the Facebook keys and requests the five permissions", async () => {
+    delete process.env.INSTAGRAM_APP_ID;
+    const url = location(await connect(new Request(`${SITE}/api/social/instagram/connect?variant=facebook`), params("instagram")));
+    expect(url.hostname).toBe("www.facebook.com");
+    expect(url.searchParams.get("scope")!.split(",").sort()).toEqual(["instagram_basic", "instagram_content_publish", "instagram_manage_insights", "pages_read_engagement", "pages_show_list"]);
+  });
+
+  it("lists only Instagram accounts linked to the user's Pages and saves a single one directly", async () => {
+    fb([{ id: "p1", name: "No IG", access_token: "t1" }, { id: "p2", name: "Shop", access_token: "t2", instagram_business_account: { id: "ig9", username: "shop" } }]);
+    mocks.saveConnections.mockResolvedValue(["c1"]);
+    const response = await cb("?code=abc&state=s", { state: "s", variant: "facebook" });
+    expect(location(response).searchParams.get("connected")).toBe("instagram");
+    const [, , oauth, ids] = mocks.saveConnections.mock.calls[0];
+    expect(oauth.accounts.map((a: { externalAccountId: string }) => a.externalAccountId)).toEqual(["ig9"]);
+    expect(oauth.accountTokens.ig9.accessToken).toBe("t2");
+    expect(ids).toEqual(["ig9"]);
+  });
+
+  it("tells the user how to fix it when no Page has an Instagram account", async () => {
+    fb([{ id: "p1", name: "No IG", access_token: "t1" }]);
+    const response = await cb("?code=abc&state=s", { state: "s", variant: "facebook" });
+    expect(location(response).searchParams.get("error")).toBe("no_accounts");
+    expect(CONNECT_ERRORS.no_accounts).toContain("linked to a Facebook Page");
+    expect(mocks.saveConnections).not.toHaveBeenCalled();
   });
 });
 

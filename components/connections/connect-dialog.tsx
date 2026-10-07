@@ -6,7 +6,7 @@ import { connectReminderAction, type ReminderState } from "@/app/dashboard/conne
 import { Button, buttonClasses, Dialog, Field, Input } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { NetworkIcon } from "./network-icon";
-import { connectHref, type ChannelInfo } from "./types";
+import { automaticAvailable, connectHref, primaryVariant, showFacebookLink, type ChannelInfo } from "./types";
 
 const PROFESSIONAL = ["Posts automatically at the time you choose", "Photos and carousels of up to 10 images", "Reach, likes and saves in your reports", "For Business and Creator accounts"];
 const PERSONAL = ["We remind you when it is time to post", "Caption and photos ready to copy", "No Instagram login needed", "You press post in the Instagram app"];
@@ -72,13 +72,19 @@ function ReminderForm({ onDone }: { onDone: () => void }) {
 
 function InstagramBody({ channel, onDone }: { channel: ChannelInfo; onDone: () => void }) {
   // Without Meta app keys automatic posting is not available yet; Personal (reminders) still works.
-  const automatic = channel.configured;
+  const automatic = automaticAvailable(channel);
+  const viaFacebookOnly = automatic && !channel.configured;
   const [kind, setKind] = useState<"professional" | "personal">(automatic ? "professional" : "personal");
   return (
     <>
       <div role="radiogroup" aria-label="Account type" className="grid gap-3 sm:grid-cols-2">
         <ChoiceCard selected={kind === "professional"} onSelect={() => setKind("professional")} title="Professional" badge={automatic ? "Business and Creator, automatic posting" : "Coming soon — automatic posting is being approved by Meta"} disabled={!automatic}>
           <Checklist items={PROFESSIONAL} />
+          {viaFacebookOnly && (
+            <p className="mt-3 text-sm text-muted">
+              Log in with Facebook and choose your Instagram account. It must be a Business or Creator account linked to a Facebook Page.
+            </p>
+          )}
         </ChoiceCard>
         <ChoiceCard selected={kind === "personal"} onSelect={() => setKind("personal")} title="Personal" badge="Reminder posting">
           <Checklist items={PERSONAL} />
@@ -86,10 +92,14 @@ function InstagramBody({ channel, onDone }: { channel: ChannelInfo; onDone: () =
       </div>
       {kind === "professional" && automatic ? (
         <div className="mt-5 flex animate-pop flex-col items-stretch gap-3">
-          <a href={connectHref("instagram", "instagram")} className={buttonClasses({ size: "lg", className: "w-full" })}>
-            Connect Instagram
+          <a href={connectHref("instagram", primaryVariant(channel))} className={buttonClasses({ size: "lg", className: "w-full" })}>
+            {viaFacebookOnly ? "Continue with Facebook" : "Connect Instagram"}
           </a>
-          {channel.viaFacebook ? (
+          {viaFacebookOnly ? (
+            <p className="text-center text-xs text-muted">
+              Not linked yet? In the Instagram app open your profile settings, choose Business tools (or Account type and tools), and connect your Facebook Page.
+            </p>
+          ) : showFacebookLink(channel) ? (
             <a href={connectHref("instagram", "facebook")} className="min-h-11 py-3 text-center text-sm font-semibold text-pulse-blue underline-offset-4 hover:underline">
               Connect Instagram through Facebook
             </a>

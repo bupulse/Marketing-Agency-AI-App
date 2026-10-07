@@ -98,7 +98,7 @@ async function finishFacebookLogin(code: string, redirectUri: string): Promise<O
     accounts.push({ externalAccountId: ig.id, displayName: ig.username ? `@${ig.username}` : (ig.name ?? ig.id), avatarUrl: ig.profile_picture_url, accountType: "business" });
     accountTokens[ig.id] = { accessToken: page.access_token };
   }
-  if (!accounts.length) throw new SocialError("No Instagram professional account is linked to your Facebook Pages", "invalid", E);
+  if (!accounts.length) throw new SocialError("No Instagram Business account linked to your Facebook Pages", "invalid", E);
   return { accessToken: long.access_token, scopes: [...INSTAGRAM_VIA_FACEBOOK_SCOPES, `meta_uid:${me.id}`], accounts, accountTokens };
 }
 

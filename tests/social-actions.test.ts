@@ -19,7 +19,7 @@ vi.mock("next/navigation", () => ({ redirect: (to: string) => { throw new Error(
 vi.mock("@opennextjs/cloudflare", () => ({ getCloudflareContext: () => { throw new Error("no"); } }));
 
 import { connectReminderAction, disconnectAction, savePickedAccountsAction } from "@/app/dashboard/connections/actions";
-import { canConnect } from "@/components/connections/types";
+import { automaticAvailable, canConnect, primaryVariant, showFacebookLink } from "@/components/connections/types";
 import { deleteMetaConnections } from "@/lib/social/meta-callbacks";
 
 const form = (fields: Record<string, string>) => {
@@ -55,6 +55,16 @@ describe("connections actions", () => {
     expect(canConnect({ ...base, network: "instagram" })).toBe(true);
     for (const network of ["facebook", "linkedin", "tiktok", "youtube"] as const) expect(canConnect({ ...base, network })).toBe(false);
     expect(canConnect({ ...base, network: "facebook", configured: true })).toBe(true);
+  });
+
+  it("Instagram connect variants follow which Meta keys are set", () => {
+    const base = { network: "instagram" as const, label: "Instagram", note: "" };
+    const both = { ...base, configured: true, viaFacebook: true };
+    const fbOnly = { ...base, configured: false, viaFacebook: true };
+    const none = { ...base, configured: false, viaFacebook: false };
+    expect([primaryVariant(both), showFacebookLink(both), automaticAvailable(both)]).toEqual(["instagram", true, true]);
+    expect([primaryVariant(fbOnly), showFacebookLink(fbOnly), automaticAvailable(fbOnly)]).toEqual(["facebook", false, true]);
+    expect([showFacebookLink(none), automaticAvailable(none), canConnect(none)]).toEqual([false, false, true]);
   });
 
   it("sends the user back when the account picker's cookie is gone or expired", async () => {

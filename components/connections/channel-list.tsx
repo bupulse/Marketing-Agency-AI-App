@@ -6,7 +6,7 @@ import { Badge, Button, GlassCard, type BadgeTone } from "@/components/ui";
 import { ConnectDialog } from "./connect-dialog";
 import { DisconnectButton } from "./disconnect-button";
 import { NetworkIcon } from "./network-icon";
-import { canConnect, connectHref, type AccountInfo, type ChannelInfo } from "./types";
+import { canConnect, connectHref, primaryVariant, type AccountInfo, type ChannelInfo } from "./types";
 
 const TYPE_LABEL: Record<string, string> = { business: "Business", creator: "Creator", personal: "Personal", page: "Page", member: "Profile", organization: "Organization", channel: "Channel" };
 
@@ -29,7 +29,7 @@ function AccountAvatar({ account, name }: { account: AccountInfo; name: string }
   );
 }
 
-function AccountRow({ account }: { account: AccountInfo }) {
+function AccountRow({ account, variant }: { account: AccountInfo; variant?: string }) {
   const name = account.displayName ?? account.externalAccountId;
   const s = status(account);
   return (
@@ -42,7 +42,7 @@ function AccountRow({ account }: { account: AccountInfo }) {
       <Badge tone={s.tone}>{s.label}</Badge>
       <div className="flex items-center gap-2">
         {s.reconnect && (
-          <Button href={connectHref(account.network, account.network === "instagram" ? "instagram" : undefined)} size="sm">
+          <Button href={connectHref(account.network, account.network === "instagram" ? variant : undefined)} size="sm">
             Reconnect
           </Button>
         )}
@@ -81,7 +81,7 @@ export function ChannelList({ channels, accounts }: { channels: ChannelInfo[]; a
               {mine.length > 0 && (
                 <ul className="flex flex-col gap-3" aria-label={`${channel.label} accounts`}>
                   {mine.map((a) => (
-                    <AccountRow key={a.id} account={a} />
+                    <AccountRow key={a.id} account={a} variant={channel.network === "instagram" ? primaryVariant(channel) : undefined} />
                   ))}
                 </ul>
               )}
