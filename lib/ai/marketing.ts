@@ -87,7 +87,7 @@ export function buildPrompt(brand: BrandContext, input: PromotionInput): string 
     "",
     "Create:",
     "1. caption: a social media caption without hashtags. Open with a hook, say what is on offer and why it matters, and end with a clear, friendly call to action.",
-    "2. hashtags: 8 to 15 relevant hashtags, each starting with #.",
+    "2. hashtags: 8 to 15 relevant hashtags, each starting with #. No years, dates or other numbers in hashtags unless they appear in the details above.",
     "3. videoScript: a 30-second vertical video script. Use timestamps (for example 0-5s), a scene direction and a voiceover line for each part.",
     `4. adHeadlines: 2 or 3 ad headlines, each at most ${MAX_HEADLINE_LENGTH} characters.`,
   ]

@@ -48,7 +48,7 @@ export function checkContent(c: EvalCase, content: MarketingContent): string[] {
   if (/#\S/.test(content.caption)) problems.push("caption contains hashtags");
 
   // Numbers must come from the input.
-  const allowed = numbers(inputText(c));
+  const allowed = [...numbers(inputText(c)), ...(c.impliedNumbers ?? [])];
   const written = numbers([content.caption, withoutScriptNumbers(content.videoScript), ...content.adHeadlines, ...content.hashtags].join("\n"));
   for (const n of written) {
     if (!allowed.some((a) => a === n || a.includes(n))) problems.push(`number "${n}" is not in the input`);

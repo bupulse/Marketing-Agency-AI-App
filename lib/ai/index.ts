@@ -1,6 +1,6 @@
 import "server-only";
 import { ClaudeTextProvider } from "./claude-text";
-import { GeminiTextProvider } from "./gemini-text";
+import { DEFAULT_GEMINI_TEXT_FALLBACK, DEFAULT_GEMINI_TEXT_MODEL, GeminiTextProvider } from "./gemini-text";
 import type { TextProvider } from "./types";
 
 export * from "./types";
@@ -13,7 +13,7 @@ function required(name: string) {
 
 let textProvider: TextProvider | undefined;
 
-// AI_TEXT_PROVIDER=gemini (free tier, development) or claude.
+// AI_TEXT_PROVIDER=gemini (default) or claude.
 export function getTextProvider(): TextProvider {
   if (textProvider) return textProvider;
   const choice = (process.env.AI_TEXT_PROVIDER ?? "gemini").toLowerCase();
@@ -22,7 +22,8 @@ export function getTextProvider(): TextProvider {
     case "gemini":
       textProvider = new GeminiTextProvider(
         required("GEMINI_API_KEY"),
-        process.env.GEMINI_TEXT_MODEL ?? "gemini-2.5-flash",
+        process.env.GEMINI_TEXT_MODEL ?? DEFAULT_GEMINI_TEXT_MODEL,
+        process.env.GEMINI_TEXT_FALLBACK_MODEL ?? DEFAULT_GEMINI_TEXT_FALLBACK,
       );
       break;
     case "claude": {

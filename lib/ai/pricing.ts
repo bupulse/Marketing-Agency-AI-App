@@ -5,6 +5,11 @@
 type ModelPrice = { input: number; output: number; perImage?: number };
 
 export const MODEL_PRICES: Record<string, ModelPrice> = {
+  // Gemini 3.8 Flash doubles to 1.5 / 7.5 on 2027-01-01.
+  "gemini-3.8-flash": { input: 0.75, output: 3.75 },
+  "gemini-3.5-flash": { input: 1.5, output: 9 },
+  "gemini-3.1-flash-lite": { input: 0.25, output: 1.5 },
+  "gemini-3.1-flash-image": { input: 0.5, output: 60, perImage: 0.067 },
   "gemini-2.5-flash": { input: 0.3, output: 2.5 },
   "gemini-2.5-flash-lite": { input: 0.1, output: 0.4 },
   "gemini-2.5-flash-image": { input: 0.3, output: 30, perImage: 0.039 },

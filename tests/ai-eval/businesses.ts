@@ -5,6 +5,8 @@ export interface EvalCase {
   id: string;
   brand: BrandContext;
   project: PromotionInput;
+  /** Numbers that follow directly from the input (e.g. "trimestriel" is 3 months), so writing them is not inventing. */
+  impliedNumbers?: string[];
 }
 
 export const evalCases: EvalCase[] = [
@@ -52,6 +54,7 @@ export const evalCases: EvalCase[] = [
     id: "gym",
     brand: { businessName: "Iron Pulse Fitness", industry: "Gym", description: "Strength and conditioning gym with group classes", audience: "Adults who want to get fitter", tone: "bold", contentLanguage: "French" },
     project: { type: "offer", title: "Abonnement trimestriel", price: "-20 %", features: ["Accès illimité aux cours collectifs", "Évaluation physique offerte"] },
+    impliedNumbers: ["3"],
   },
   {
     id: "hotel",

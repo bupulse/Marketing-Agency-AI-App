@@ -1,8 +1,12 @@
 import "server-only";
-import { GoogleGenAI, type Part } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { AIProviderError, type ImageProvider, type ImageRequest, type ImageResult } from "./types";
 
 const MAX_REFERENCE_BYTES = 6 * 1024 * 1024;
+
+export const DEFAULT_GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image";
+
+type ImageInput = { type: "image"; data: string; mime_type: string };
 
 function toBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -18,14 +22,14 @@ function fromBase64(base64: string): Uint8Array {
 }
 
 /** A reference image as an inline part: data URLs are decoded, http(s) URLs (signed) are fetched. */
-async function referencePart(url: string): Promise<Part> {
+async function referencePart(url: string): Promise<ImageInput> {
   const data = /^data:([^;,]+);base64,([\s\S]*)$/.exec(url);
-  if (data) return { inlineData: { mimeType: data[1], data: data[2] } };
+  if (data) return { type: "image", mime_type: data[1], data: data[2] };
   const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`reference image fetch failed (${res.status})`);
   const bytes = new Uint8Array(await res.arrayBuffer());
   if (bytes.length > MAX_REFERENCE_BYTES) throw new Error("reference image too large");
-  return { inlineData: { mimeType: res.headers.get("content-type")?.split(";")[0] || "image/png", data: toBase64(bytes) } };
+  return { type: "image", mime_type: res.headers.get("content-type")?.split(";")[0] || "image/png", data: toBase64(bytes) };
 }
 
 /** Gemini image model ("Nano Banana"): text, plus optional reference images, in; one image out. */
@@ -41,7 +45,7 @@ export class GeminiImageProvider implements ImageProvider {
   }
 
   async generate({ prompt, referenceImageUrls = [], aspectRatio }: ImageRequest): Promise<ImageResult> {
-    let references: Part[];
+    let references: ImageInput[];
     try {
       references = await Promise.all(referenceImageUrls.map(referencePart));
     } catch {
@@ -49,43 +53,46 @@ export class GeminiImageProvider implements ImageProvider {
       references = [];
     }
 
-    let response;
+    let interaction;
     try {
-      response = await this.ai.models.generateContent({
-        model: this.model,
-        contents: [{ role: "user", parts: [...references, { text: prompt }] }],
-        config: {
-          responseModalities: ["IMAGE"],
-          ...(aspectRatio ? { imageConfig: { aspectRatio } } : {}),
+      interaction = await this.ai.interactions.create(
+        {
+          model: this.model,
+          input: [...references, { type: "text", text: prompt }],
+          store: false,
+          response_format: { type: "image", ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}) },
         },
-      });
+        { timeout: 120_000 },
+      );
     } catch (error) {
       const status = (error as { status?: number }).status;
       throw new AIProviderError(
         `Gemini image request failed${status ? ` (${status})` : ""}`,
         this.name,
         status === 429 || (status !== undefined && status >= 500),
+        undefined,
+        this.model,
       );
     }
 
-    const parts = response.candidates?.[0]?.content?.parts ?? [];
-    const image = parts.find((part) => part.inlineData?.data && part.inlineData.mimeType?.startsWith("image/"));
-    if (!image?.inlineData?.data) {
-      const reason = response.promptFeedback?.blockReason ?? response.candidates?.[0]?.finishReason;
-      throw new AIProviderError(`Gemini returned no image${reason ? ` (${reason})` : ""}`, this.name);
+    const usage = {
+      inputTokens: interaction.usage?.total_input_tokens ?? 0,
+      // Generated images are billed as output tokens.
+      outputTokens: (interaction.usage?.total_output_tokens ?? 0) + (interaction.usage?.total_thought_tokens ?? 0),
+    };
+    const image = (interaction.steps ?? [])
+      .flatMap((step) => (step.type === "model_output" ? (step.content ?? []) : []))
+      .find((content) => content.type === "image" && content.data);
+    if (!image || image.type !== "image" || !image.data) {
+      throw new AIProviderError(`Gemini returned no image (${interaction.status})`, this.name, false, usage, this.model);
     }
 
-    const meta = response.usageMetadata;
     return {
-      data: fromBase64(image.inlineData.data),
-      mimeType: image.inlineData.mimeType ?? "image/png",
+      data: fromBase64(image.data),
+      mimeType: image.mime_type ?? "image/png",
       provider: this.name,
       model: this.model,
-      usage: {
-        inputTokens: meta?.promptTokenCount ?? 0,
-        // Generated images are billed as output tokens.
-        outputTokens: (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0),
-      },
+      usage,
     };
   }
 }

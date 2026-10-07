@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { withLedger } from "@/lib/ai/ledger";
 import { getImageProvider } from "@/lib/ai/image";
+import { DEFAULT_GEMINI_IMAGE_MODEL } from "@/lib/ai/gemini-image";
 import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { refundUsage, consumeUsage } from "@/lib/usage";
 import { createClient } from "@/lib/supabase/server";
@@ -164,7 +165,7 @@ export async function createAiDesign(input: Owner & {
     const provider = getImageProvider();
     const image = await withLedger(
       { userId: input.userId, businessId: business.id, feature: IMAGE_FEATURE },
-      { provider: provider.name, model: process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image" },
+      { provider: provider.name, model: process.env.GEMINI_IMAGE_MODEL ?? DEFAULT_GEMINI_IMAGE_MODEL },
       () => provider.generate({ prompt, aspectRatio: input.aspectRatio, referenceImageUrls: references }),
       (r) => ({ provider: r.provider, model: r.model, usage: r.usage, images: 1 }),
     );

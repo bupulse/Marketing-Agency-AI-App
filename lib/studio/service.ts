@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { getTextProvider } from "@/lib/ai";
+import { DEFAULT_GEMINI_TEXT_MODEL } from "@/lib/ai/gemini-text";
 import { withLedger } from "@/lib/ai/ledger";
 import { generateMarketingContent } from "@/lib/ai/marketing";
 import { readKnowledge } from "@/lib/brand/schemas";
@@ -22,7 +23,7 @@ export type GenerateFeature = "content" | "regenerate";
 export function configuredModel(provider: string) {
   return provider === "claude"
     ? (process.env.CLAUDE_TEXT_MODEL ?? "claude-opus-5-5")
-    : (process.env.GEMINI_TEXT_MODEL ?? "gemini-2.5-flash");
+    : (process.env.GEMINI_TEXT_MODEL ?? DEFAULT_GEMINI_TEXT_MODEL);
 }
 
 /** Keeps at most MAX_VERSIONS_PER_PROJECT versions: deletes the oldest ones beyond that. */

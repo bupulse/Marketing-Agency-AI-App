@@ -16,7 +16,7 @@ Branded images for posts. Two ways to make one, both stored in the private `desi
 - `lib/designs/templates/`: `registry.ts` (client-safe metadata), `shared.tsx` (layout families), one file per template, `fonts.ts`, `index.ts` (`renderTemplate`).
 - `lib/designs/service.ts`: `createTemplateDesign`, `createAiDesign`, `deleteDesign`, `designUrl`, `listDesigns`, `previewTemplate`, `photoPreviewUrls`.
 - `lib/designs/prompt.ts`: brand-aware prompt for the image model (no text in the image unless the user asks for it).
-- `lib/ai/gemini-image.ts` + `lib/ai/image.ts`: `ImageProvider` for Gemini. `GEMINI_IMAGE_MODEL` (default `gemini-2.5-flash-image`), `GEMINI_API_KEY` shared with text.
+- `lib/ai/gemini-image.ts` + `lib/ai/image.ts`: `ImageProvider` for Gemini, through the Interactions API. `GEMINI_IMAGE_MODEL` (default `gemini-2.5-flash-image`), `GEMINI_API_KEY` shared with text.
 - `app/dashboard/designs/actions.ts`: server actions. `app/api/designs/preview`: template thumbnails.
 - `components/designs/design-studio.tsx`: the UI; its props are documented at the top of the file.
 
