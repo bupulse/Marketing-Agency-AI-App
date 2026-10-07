@@ -43,6 +43,8 @@ model User {
   business     Business?
   subscription Subscription?
   usage        UsageRecord[]
+  canva        CanvaConnection?
+  canvaEdits   CanvaEdit[]
 }
 
 // One business per user for now. Industry-neutral: a phone shop, a school,
@@ -360,4 +362,32 @@ model RateLimit {
 
   @@id([key, windowStart])
   @@index([windowStart])
+}
+
+// The user's linked Canva account ("Edit in Canva", docs/CANVA.md). Tokens are AES-GCM encrypted
+// with ENCRYPTION_KEY (lib/crypto.ts). One per user.
+model CanvaConnection {
+  id                    String   @id @default(cuid())
+  userId                String   @unique @db.Uuid
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessTokenEncrypted  String
+  refreshTokenEncrypted String
+  expiresAt             DateTime
+  canvaUserId           String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// One open Canva editing session. `id` is the random correlation state sent to Canva (max 50 chars)
+// and comes back in the return-navigation token. Kept until it is pruned (2 days) so "Return to BuPulse" can be pressed again.
+model CanvaEdit {
+  id            String   @id
+  userId        String    @db.Uuid
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  designId      String
+  canvaDesignId String
+  processingAt  DateTime? // set while a return is being saved; stops two returns saving at once (stale after 2 min)
+  createdAt     DateTime  @default(now())
+
+  @@index([createdAt])
 }

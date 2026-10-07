@@ -45,7 +45,7 @@ export function GenerateProgress({ title = "Writing your content" }: { title?: s
           style={{ width: `${percent}%` }}
         />
       </div>
-      <p className="text-[13px] text-muted">This usually takes a few seconds.</p>
+      <p className="text-[13px] text-muted">This usually takes 10 to 20 seconds.</p>
     </div>
   );
 }

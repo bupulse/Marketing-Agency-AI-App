@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
 vi.mock("@/lib/usage", () => ({ consumeUsage: mocks.consumeUsage, refundUsage: mocks.refundUsage }));
-vi.mock("@/lib/rate-limit", () => ({ rateLimit: mocks.rateLimit, RATE_LIMITS: { templateDesign: { limit: 60, windowSeconds: 3600 } } }));
+vi.mock("@/lib/rate-limit", () => ({ rateLimit: mocks.rateLimit, RATE_LIMITS: { templateDesign: { limit: 60, windowSeconds: 3600 }, aiImage: { limit: 10, windowSeconds: 3600 } } }));
 vi.mock("@/lib/ai/ledger", () => ({ withLedger: mocks.withLedger }));
 vi.mock("@/lib/ai/image", () => ({ getImageProvider: () => ({ name: "gemini", generate: mocks.generate }) }));
 vi.mock("@/lib/designs/templates", async (importOriginal) => ({
@@ -34,11 +34,11 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
-import { createAiDesign, createTemplateDesign, DesignError, deleteDesign } from "@/lib/designs/service";
+import { createAiDesign, createAiPhotoDesign, createTemplateDesign, DesignError, deleteDesign } from "@/lib/designs/service";
 
 const USER = "11111111-1111-1111-1111-111111111111";
 const owner = { userId: USER, businessId: "biz1" };
-const business = { id: "biz1", userId: USER, name: "Sunrise Bakery", industry: "Food", description: null, audience: null, logoUrl: null, brandColors: ["#E4572E"] };
+const business = { id: "biz1", userId: USER, name: "Sunrise Bakery", industry: "Food", description: null, audience: null, logoUrl: null, brandColors: ["#E4572E"], tone: "luxury", contentLanguage: "French" };
 const periodStart = new Date("2026-10-01");
 
 beforeEach(() => {
@@ -151,6 +151,80 @@ describe("AI designs", () => {
   it("rejects a photo outside the user's folder before using a credit", async () => {
     await expect(createAiDesign({ ...owner, prompt: "fresh bread", aspectRatio: "1:1", usePhotoPath: "someone-else/a.jpg" })).rejects.toThrow(DesignError);
     expect(mocks.consumeUsage).not.toHaveBeenCalled();
+  });
+});
+
+describe("template style packs", () => {
+  it("uses the requested pack, else the one matching the business voice, and the content language", async () => {
+    await createTemplateDesign({ ...owner, template: "offer", aspectRatio: "1:1", headline: "Sale", pack: "bold" });
+    expect(mocks.renderTemplate.mock.calls[0][1]).toMatchObject({ pack: "bold", language: "French" });
+    await createTemplateDesign({ ...owner, template: "offer", aspectRatio: "1:1", headline: "Sale" });
+    expect(mocks.renderTemplate.mock.calls[1][1]).toMatchObject({ pack: "elegant" });
+    await createTemplateDesign({ ...owner, template: "offer", aspectRatio: "1:1", headline: "Sale", pack: "nope" });
+    expect(mocks.renderTemplate.mock.calls[2][1]).toMatchObject({ pack: "elegant" });
+  });
+});
+
+describe("AI photo designs", () => {
+  const photo = { ...owner, template: "new-arrival", pack: "warm", aspectRatio: "4:5" as const, headline: "Fresh sourdough", chip: "From $8" };
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 9, 9]);
+
+  it("consumes one image credit, asks for a scene without text, lays the template over it and stores an AI design", async () => {
+    mocks.generate.mockResolvedValue({ data: PNG, mimeType: "image/png", provider: "gemini", model: "m", usage: { inputTokens: 1, outputTokens: 1290 } });
+    const { id, path } = await createAiPhotoDesign({ ...photo, scene: 'Loaves with the headline "Fresh" in text' });
+    expect(mocks.consumeUsage).toHaveBeenCalledWith(USER, "image");
+    expect(mocks.withLedger.mock.calls[0][0]).toEqual({ userId: USER, businessId: "biz1", feature: "image" });
+    const prompt = mocks.generate.mock.calls[0][0].prompt as string;
+    expect(prompt).toContain("Do not put any text");
+    expect(prompt).toContain("calm");
+    expect(mocks.renderTemplate).toHaveBeenCalledWith("new-arrival", expect.objectContaining({ pack: "warm", headline: "Fresh sourdough", chip: "From $8", photoDataUrl: expect.stringMatching(/^data:image\/png;base64,/) }), "4:5");
+    expect(path).toBe(`${USER}/designs/${id}.png`);
+    expect(mocks.prisma.design.create).toHaveBeenCalledWith({ data: expect.objectContaining({ kind: "AI", template: "new-arrival", aspectRatio: "4:5", width: 1080, height: 1350 }) });
+    expect(mocks.refundUsage).not.toHaveBeenCalled();
+  });
+
+  it("refunds when the provider fails or the layout cannot be drawn at all", async () => {
+    mocks.withLedger.mockRejectedValue(new Error("provider down"));
+    await expect(createAiPhotoDesign(photo)).rejects.toThrow("provider down");
+    expect(mocks.refundUsage).toHaveBeenCalledTimes(1);
+
+    mocks.withLedger.mockImplementation(async (_c, _m, call) => call());
+    mocks.generate.mockResolvedValue({ data: PNG, mimeType: "image/png", provider: "gemini", model: "m", usage: { inputTokens: 1, outputTokens: 1 } });
+    mocks.renderTemplate.mockRejectedValue(new Error("satori"));
+    await expect(createAiPhotoDesign(photo)).rejects.toThrow(/credit was returned/);
+    expect(mocks.refundUsage).toHaveBeenCalledTimes(2);
+    expect(mocks.upload).not.toHaveBeenCalled();
+  });
+
+  it("keeps the paid design, drawn without the photo, when the photo is WebP or cannot be decoded", async () => {
+    mocks.generate.mockResolvedValue({ data: PNG, mimeType: "image/webp", provider: "gemini", model: "m", usage: { inputTokens: 1, outputTokens: 1 } });
+    await createAiPhotoDesign(photo);
+    expect(mocks.renderTemplate).toHaveBeenCalledTimes(1);
+    expect(mocks.renderTemplate.mock.calls[0][1].photoDataUrl).toBeNull();
+    expect(mocks.refundUsage).not.toHaveBeenCalled();
+
+    mocks.renderTemplate.mockReset();
+    mocks.renderTemplate.mockRejectedValueOnce(new Error("bad png")).mockResolvedValue(new Uint8Array([1]).buffer);
+    mocks.generate.mockResolvedValue({ data: PNG, mimeType: "image/png", provider: "gemini", model: "m", usage: { inputTokens: 1, outputTokens: 1 } });
+    await createAiPhotoDesign(photo);
+    expect(mocks.renderTemplate.mock.calls[1][1].photoDataUrl).toBeNull();
+    expect(mocks.refundUsage).not.toHaveBeenCalled();
+  });
+
+  it("uses the tighter AI rate limit, not the template one", async () => {
+    await createAiPhotoDesign(photo);
+    await createAiDesign({ ...owner, prompt: "fresh bread", aspectRatio: "1:1" });
+    expect(mocks.rateLimit).toHaveBeenCalledWith(`aiimage:${USER}`, { limit: 10, windowSeconds: 3600 });
+    expect(mocks.rateLimit).not.toHaveBeenCalledWith(`design:${USER}`, expect.anything());
+  });
+
+  it("does not call the AI without credits, for quotes, or for a photo outside the user's folder", async () => {
+    mocks.consumeUsage.mockRejectedValue(new Error("limit"));
+    await expect(createAiPhotoDesign(photo)).rejects.toThrow("limit");
+    expect(mocks.generate).not.toHaveBeenCalled();
+    await expect(createAiPhotoDesign({ ...photo, template: "quote" })).rejects.toThrow(DesignError);
+    await expect(createAiPhotoDesign({ ...photo, usePhotoPath: "someone-else/a.jpg" })).rejects.toThrow(DesignError);
+    expect(mocks.consumeUsage).toHaveBeenCalledTimes(1);
   });
 });
 

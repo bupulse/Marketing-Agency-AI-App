@@ -1,3 +1,4 @@
-import { cardLayout, type LayoutProps } from "./shared";
+import { renderPack } from "./packs";
+import type { LayoutProps } from "./shared";
 
-export const event = (props: LayoutProps) => cardLayout(props, { badge: "block" });
+export const event = (props: LayoutProps) => renderPack(props, { mode: "card", badge: "block" });

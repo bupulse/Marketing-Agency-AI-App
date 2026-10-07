@@ -7,7 +7,7 @@ export type TemplateInfo = {
   id: TemplateId;
   name: string;
   description: string;
-  /** Label above the headline when the user gives none; "" means none. */
+  /** English label above the headline when the user gives none; "" means none. Translated in lib/designs/labels.ts. */
   defaultKicker: string;
   fields: { headline: FieldHint; subline: FieldHint; chip: FieldHint };
   /** Project types (Project.type) this template suits, best first. */

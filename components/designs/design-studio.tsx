@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * <DesignStudio> makes branded designs: from a template (free, unlimited) or from a
- * description (AI, uses the plan's image credits). Embed it on a project page or use it alone.
+ * <DesignStudio> makes branded designs: from a template in one of five style packs (free,
+ * unlimited), from a template over an AI-made photo (1 image credit), or from a description
+ * (AI, 1 image credit). Embed it on a project page or use it alone.
  *
  * Props (all optional except `designs`):
  *   projectId   Attach new designs to this project. Omit on the Designs page.
@@ -16,34 +17,61 @@
  *   designs     Existing designs to show in the gallery: { id, url, kind, aspectRatio, template }[]
  *               (lib/designs/service.ts listDesigns returns exactly this).
  *   credits     { used, limit, resetsAt? } of the plan's image credits, for "Uses 1 of your N" and the paywall.
+ *   pack        The style pack that matches the business (lib/designs/packs.ts recommendPack), marked
+ *               "Matches your brand" and chosen by default; "clean" when omitted.
  *   hasLogo     Whether the business has a logo (default true); hides the "use my logo" toggle when false.
  *   showGallery Show the gallery under the studio (default true).
  */
 
-import { useMemo, useState, useTransition } from "react";
+import { createContext, useContext, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Download, ImageIcon, Sparkles, Trash2 } from "lucide-react";
 import { Button, Field, GlassCard, Input, Tabs, Textarea, useToast } from "@/components/ui";
 import { useUsageBlock } from "@/components/billing/upgrade-dialog";
-import { createAiDesign, createTemplateDesign, deleteDesign, getDesignDownloadUrl } from "@/app/dashboard/designs/actions";
+import { EditInCanva } from "./edit-in-canva";
+import { createAiDesign, createAiPhotoDesign, createTemplateDesign, deleteDesign, getDesignDownloadUrl } from "@/app/dashboard/designs/actions";
 import { cn } from "@/lib/cn";
 import { ASPECT_LABELS, ASPECT_RATIOS, type AspectRatio } from "@/lib/designs/layout";
+import { PACKS, type PackId } from "@/lib/designs/packs";
 import { TEMPLATES, templatesForProjectType } from "@/lib/designs/templates/registry";
 
-export type StudioDesign = { id: string; url: string; kind: string; aspectRatio: string; template: string | null };
+export type StudioDesign = {
+  id: string;
+  url: string;
+  kind: string;
+  aspectRatio: string;
+  template: string | null;
+};
 
 export type DesignStudioProps = {
   projectId?: string;
-  defaults?: { headline?: string; subline?: string; chip?: string; photoPaths?: string[]; photoUrls?: string[]; projectType?: string };
+  defaults?: {
+    headline?: string;
+    subline?: string;
+    chip?: string;
+    photoPaths?: string[];
+    photoUrls?: string[];
+    projectType?: string;
+  };
   designs: StudioDesign[];
   credits?: { used: number; limit: number; resetsAt?: string | null };
   hasLogo?: boolean;
+  pack?: PackId;
   showGallery?: boolean;
+  /** Pass `isCanvaEnabled()` from the server page to show "Edit in Canva" on designs. */
+  canva?: boolean;
 };
+
+const CanvaEnabled = createContext(false);
 
 type Created = { designId: string; url: string };
 
-const RATIO_SHAPE: Record<AspectRatio, string> = { "1:1": "h-5 w-5", "4:5": "h-6 w-[19px]", "9:16": "h-6 w-[13px]", "16:9": "h-[13px] w-6" };
+const RATIO_SHAPE: Record<AspectRatio, string> = {
+  "1:1": "h-5 w-5",
+  "4:5": "h-6 w-[19px]",
+  "9:16": "h-6 w-[13px]",
+  "16:9": "h-[13px] w-6",
+};
 
 function RatioPicker({ value, onChange }: { value: AspectRatio; onChange: (v: AspectRatio) => void }) {
   return (
@@ -67,13 +95,34 @@ function RatioPicker({ value, onChange }: { value: AspectRatio; onChange: (v: As
   );
 }
 
-function PhotoPicker({ paths, urls, value, onChange }: { paths: string[]; urls: string[]; value: string | null; onChange: (v: string | null) => void }) {
+function PhotoPicker({
+  paths,
+  urls,
+  value,
+  onChange,
+  hint,
+}: {
+  paths: string[];
+  urls: string[];
+  value: string | null;
+  onChange: (v: string | null) => void;
+  hint?: string;
+}) {
   if (paths.length === 0) return null;
   return (
     <fieldset className="flex flex-col gap-2">
       <legend className="text-sm font-semibold">Photo</legend>
+      {hint && <p className="text-sm text-muted">{hint}</p>}
       <div className="flex flex-wrap gap-2">
-        <button type="button" aria-pressed={value === null} onClick={() => onChange(null)} className={cn("min-h-16 cursor-pointer rounded-2xl border px-4 text-sm font-semibold", value === null ? "border-pulse-blue bg-ok-bg text-ok" : "border-line hover:bg-soft")}>
+        <button
+          type="button"
+          aria-pressed={value === null}
+          onClick={() => onChange(null)}
+          className={cn(
+            "min-h-16 cursor-pointer rounded-2xl border px-4 text-sm font-semibold",
+            value === null ? "border-pulse-blue bg-ok-bg text-ok" : "border-line hover:bg-soft",
+          )}
+        >
           No photo
         </button>
         {paths.map((path, i) => (
@@ -83,7 +132,10 @@ function PhotoPicker({ paths, urls, value, onChange }: { paths: string[]; urls: 
             aria-pressed={value === path}
             aria-label={`Photo ${i + 1}`}
             onClick={() => onChange(path)}
-            className={cn("flex size-16 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 text-xs font-semibold", value === path ? "border-pulse-blue" : "border-transparent hover:border-line")}
+            className={cn(
+              "flex size-16 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 text-xs font-semibold",
+              value === path ? "border-pulse-blue" : "border-transparent hover:border-line",
+            )}
           >
             {urls[i] ? (
               // eslint-disable-next-line @next/next/no-img-element -- signed Storage URL
@@ -102,9 +154,14 @@ function Result({ created, ratio, onAgain }: { created: Created; ratio: string; 
   return (
     <div className="flex flex-col gap-4">
       {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
-      <img src={created.url} alt="Your new design" className={cn("w-full rounded-2xl border border-line object-contain", ratio === "9:16" ? "max-h-[70vh] self-center" : "")} />
+      <img
+        src={created.url}
+        alt="Your new design"
+        className={cn("w-full rounded-2xl border border-line object-contain", ratio === "9:16" ? "max-h-[70vh] self-center" : "")}
+      />
       <div className="flex flex-wrap gap-3">
         <DownloadButton id={created.designId} />
+        <EditInCanva designId={created.designId} enabled={useContext(CanvaEnabled)} />
         <Button variant="ghost" onClick={onAgain}>
           Make another
         </Button>
@@ -134,31 +191,148 @@ function DownloadButton({ id, size = "md", label = "Download" }: { id: string; s
   );
 }
 
-function TemplateTab({ projectId, defaults, order }: Pick<DesignStudioProps, "projectId" | "defaults"> & { order: string[] }) {
+type Mode = "free" | "photo";
+
+function ModePicker({ value, onChange, creditNote }: { value: Mode; onChange: (v: Mode) => void; creditNote: string }) {
+  const options: { id: Mode; title: string; text: string }[] = [
+    {
+      id: "free",
+      title: "Free template",
+      text: "Uses your own photo, or your brand colours. No credits.",
+    },
+    {
+      id: "photo",
+      title: "With AI photo (1 image credit)",
+      text: `A realistic photo is made for you, then your headline, price and logo are added on top. ${creditNote}`,
+    },
+  ];
+  return (
+    <div role="group" aria-label="How to make it" className="grid gap-3 sm:grid-cols-2">
+      {options.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          aria-pressed={value === o.id}
+          onClick={() => onChange(o.id)}
+          className={cn(
+            "flex min-h-11 cursor-pointer flex-col gap-1 rounded-2xl border-2 p-4 text-left",
+            value === o.id ? "border-pulse-blue bg-ok-bg" : "border-line hover:bg-soft",
+          )}
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold">
+            {o.id === "photo" ? <Sparkles aria-hidden className="size-4" /> : <ImageIcon aria-hidden className="size-4" />}
+            {o.title}
+          </span>
+          <span className="text-sm text-muted">{o.text}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// The style thumbnails always show the same template, so switching templates never re-renders them.
+const STYLE_PREVIEW_TEMPLATE = "offer";
+
+function StylePicker({ value, onChange, matches }: { value: PackId; onChange: (v: PackId) => void; matches: PackId }) {
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="text-sm font-semibold">Style</legend>
+      <div role="group" aria-label="Style" className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+        {PACKS.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            aria-pressed={value === p.id}
+            onClick={() => onChange(p.id)}
+            className={cn(
+              "flex cursor-pointer flex-col gap-2 rounded-2xl border-2 p-2 text-left",
+              value === p.id ? "border-pulse-blue bg-ok-bg" : "border-transparent hover:bg-soft",
+            )}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element -- rendered by /api/designs/preview */}
+            <img
+              src={`/api/designs/preview?template=${STYLE_PREVIEW_TEMPLATE}&ratio=1:1&pack=${p.id}`}
+              alt=""
+              loading="lazy"
+              width={200}
+              height={200}
+              className="aspect-square w-full rounded-xl bg-soft object-cover"
+            />
+            <span className="px-1 text-sm font-semibold">{p.name}</span>
+            {p.id === matches && <span className="px-1 text-xs font-semibold text-ok">Matches your brand</span>}
+          </button>
+        ))}
+      </div>
+      <p className="text-sm text-muted">{PACKS.find((p) => p.id === value)?.description}</p>
+    </fieldset>
+  );
+}
+
+function TemplateTab({
+  projectId,
+  defaults,
+  order,
+  pack: matchingPack = "clean",
+  credits,
+}: Pick<DesignStudioProps, "projectId" | "defaults" | "credits"> & {
+  order: string[];
+  pack?: PackId;
+}) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
+  const { handleBody, dialog } = useUsageBlock({
+    limit: credits?.limit,
+    resetsAt: credits?.resetsAt,
+  });
   const photoPaths = defaults?.photoPaths ?? [];
-  const templates = useMemo(() => order.map((id) => TEMPLATES.find((t) => t.id === id)!), [order]);
-  const [template, setTemplate] = useState(templates[0].id);
+  const allTemplates = useMemo(() => order.map((id) => TEMPLATES.find((t) => t.id === id)!), [order]);
+  const [mode, setMode] = useState<Mode>("free");
+  // Quotes are text only, so they are not offered over an AI photo.
+  const templates = useMemo(() => (mode === "photo" ? allTemplates.filter((t) => t.id !== "quote") : allTemplates), [allTemplates, mode]);
+  const [template, setTemplate] = useState(allTemplates[0].id);
+  const [pack, setPack] = useState<PackId>(matchingPack);
   const [ratio, setRatio] = useState<AspectRatio>("1:1");
   const [headline, setHeadline] = useState(defaults?.headline ?? "");
   const [subline, setSubline] = useState(defaults?.subline ?? "");
   const [chip, setChip] = useState(defaults?.chip ?? "");
   const [photo, setPhoto] = useState<string | null>(photoPaths[0] ?? null);
+  const [reference, setReference] = useState<string | null>(null);
+  const [scene, setScene] = useState("");
+  const [includePeople, setIncludePeople] = useState(true);
   const [error, setError] = useState<string | undefined>();
   const [created, setCreated] = useState<Created | null>(null);
-  const current = templates.find((t) => t.id === template)!;
+  const activeId = templates.some((t) => t.id === template) ? template : templates[0].id;
+  const current = templates.find((t) => t.id === activeId)!;
+  const note = credits ? `${Math.max(0, credits.limit - credits.used)} of ${credits.limit} left.` : "";
 
   function create() {
     setError(undefined);
     start(async () => {
-      const res = await createTemplateDesign({ projectId, template, aspectRatio: ratio, headline, subline, chip: template === "quote" ? "" : chip, photoPath: photo });
+      const text = {
+        projectId,
+        template: activeId,
+        pack,
+        aspectRatio: ratio,
+        headline,
+        subline,
+        chip: activeId === "quote" ? "" : chip,
+      };
+      const res =
+        mode === "photo"
+          ? await createAiPhotoDesign({
+              ...text,
+              scene,
+              includePeople,
+              usePhotoPath: reference,
+            })
+          : await createTemplateDesign({ ...text, photoPath: photo });
       if (res.ok) {
         setCreated({ designId: res.designId, url: res.url });
         toast("Design created", "success");
-        router.refresh();
-      } else setError(res.error);
+      } else if (res.blocked) handleBody({ error: "usage_blocked", reason: res.blocked });
+      else setError(res.error);
+      router.refresh();
     });
   }
 
@@ -166,22 +340,36 @@ function TemplateTab({ projectId, defaults, order }: Pick<DesignStudioProps, "pr
 
   return (
     <div className="flex flex-col gap-6">
+      <ModePicker value={mode} onChange={setMode} creditNote={note} />
+
       <div role="group" aria-label="Template" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {templates.map((t) => (
           <button
             key={t.id}
             type="button"
-            aria-pressed={template === t.id}
+            aria-pressed={activeId === t.id}
             onClick={() => setTemplate(t.id)}
-            className={cn("flex cursor-pointer flex-col gap-2 rounded-2xl border-2 p-2 text-left", template === t.id ? "border-pulse-blue bg-ok-bg" : "border-transparent hover:bg-soft")}
+            className={cn(
+              "flex cursor-pointer flex-col gap-2 rounded-2xl border-2 p-2 text-left",
+              activeId === t.id ? "border-pulse-blue bg-ok-bg" : "border-transparent hover:bg-soft",
+            )}
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- rendered by /api/designs/preview */}
-            <img src={`/api/designs/preview?template=${t.id}&ratio=1:1`} alt="" loading="lazy" width={240} height={240} className="aspect-square w-full rounded-xl bg-soft object-cover" />
+            <img
+              src={`/api/designs/preview?template=${t.id}&ratio=1:1&pack=${pack}`}
+              alt=""
+              loading="lazy"
+              width={240}
+              height={240}
+              className="aspect-square w-full rounded-xl bg-soft object-cover"
+            />
             <span className="px-1 text-sm font-semibold">{t.name}</span>
           </button>
         ))}
       </div>
       <p className="text-sm text-muted">{current.description}</p>
+
+      <StylePicker value={pack} onChange={setPack} matches={matchingPack} />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label={current.fields.headline.label} required className="sm:col-span-2">
@@ -190,28 +378,67 @@ function TemplateTab({ projectId, defaults, order }: Pick<DesignStudioProps, "pr
         <Field label={current.fields.subline.label}>
           <Input value={subline} onChange={(e) => setSubline(e.target.value)} maxLength={180} placeholder={current.fields.subline.placeholder} />
         </Field>
-        {template !== "quote" && (
+        {activeId !== "quote" && (
           <Field label={current.fields.chip.label}>
             <Input value={chip} onChange={(e) => setChip(e.target.value)} maxLength={40} placeholder={current.fields.chip.placeholder} />
           </Field>
         )}
+        {mode === "photo" && (
+          <Field
+            label="What should the photo show?"
+            hint="Optional. Without it, the photo is made from your headline. No text is put in the photo itself."
+            className="sm:col-span-2"
+          >
+            <Textarea
+              value={scene}
+              onChange={(e) => setScene(e.target.value)}
+              maxLength={400}
+              rows={2}
+              placeholder="Fresh loaves on a wooden table in warm morning light"
+            />
+          </Field>
+        )}
       </div>
 
-      <PhotoPicker paths={photoPaths} urls={defaults?.photoUrls ?? []} value={photo} onChange={setPhoto} />
+      {mode === "photo" ? (
+        <PhotoPicker
+          paths={photoPaths}
+          urls={defaults?.photoUrls ?? []}
+          value={reference}
+          onChange={setReference}
+          hint="Optional: the AI keeps this product faithful in the new photo."
+        />
+      ) : (
+        <PhotoPicker paths={photoPaths} urls={defaults?.photoUrls ?? []} value={photo} onChange={setPhoto} />
+      )}
       <RatioPicker value={ratio} onChange={setRatio} />
+      {mode === "photo" && (
+        <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-semibold">
+          <input
+            type="checkbox"
+            checked={includePeople}
+            onChange={(e) => setIncludePeople(e.target.checked)}
+            className="size-5 accent-[var(--color-pulse-blue)]"
+          />
+          Include people (customers using the product)
+        </label>
+      )}
 
       {error && (
         <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4">
         <Button onClick={create} disabled={pending || !headline.trim()}>
-          <ImageIcon aria-hidden className="size-4" />
-          {pending ? "Creating…" : "Create design"}
+          {mode === "photo" ? <Sparkles aria-hidden className="size-4" /> : <ImageIcon aria-hidden className="size-4" />}
+          {pending ? (mode === "photo" ? "Creating… this can take a moment" : "Creating…") : mode === "photo" ? "Create with AI photo" : "Create design"}
         </Button>
-        <span className="text-sm text-muted">Free, no credits used.</span>
+        <span className="text-sm text-muted">
+          {mode === "photo" ? `Uses 1 image credit${note ? ` (${note.replace(/\.$/, "")})` : ""}. Returned if it fails.` : "Free, no credits used."}
+        </span>
       </div>
+      {dialog}
     </div>
   );
 }
@@ -220,11 +447,15 @@ function AiTab({ projectId, defaults, credits, hasLogo }: Pick<DesignStudioProps
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
-  const { handleBody, dialog } = useUsageBlock({ limit: credits?.limit, resetsAt: credits?.resetsAt });
+  const { handleBody, dialog } = useUsageBlock({
+    limit: credits?.limit,
+    resetsAt: credits?.resetsAt,
+  });
   const photoPaths = defaults?.photoPaths ?? [];
   const [prompt, setPrompt] = useState("");
   const [ratio, setRatio] = useState<AspectRatio>("1:1");
   const [useLogo, setUseLogo] = useState(false);
+  const [includePeople, setIncludePeople] = useState(true);
   const [photo, setPhoto] = useState<string | null>(null);
   const [error, setError] = useState<string | undefined>();
   const [created, setCreated] = useState<Created | null>(null);
@@ -234,7 +465,14 @@ function AiTab({ projectId, defaults, credits, hasLogo }: Pick<DesignStudioProps
   function create() {
     setError(undefined);
     start(async () => {
-      const res = await createAiDesign({ projectId, prompt, aspectRatio: ratio, useLogo, usePhotoPath: photo });
+      const res = await createAiDesign({
+        projectId,
+        prompt,
+        aspectRatio: ratio,
+        useLogo,
+        includePeople,
+        usePhotoPath: photo,
+      });
       if (res.ok) {
         setCreated({ designId: res.designId, url: res.url });
         toast("Image created", "success");
@@ -249,10 +487,25 @@ function AiTab({ projectId, defaults, credits, hasLogo }: Pick<DesignStudioProps
   return (
     <div className="flex flex-col gap-6">
       <Field label="Describe the image" hint="Say what should be in the picture. Text in the image is only added if you ask for it." required>
-        <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} maxLength={800} rows={4} placeholder="A warm morning scene: fresh loaves on a wooden table, soft sunlight, cosy bakery feel" />
+        <Textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          maxLength={800}
+          rows={4}
+          placeholder="A warm morning scene: fresh loaves on a wooden table, soft sunlight, cosy bakery feel"
+        />
       </Field>
       <PhotoPicker paths={photoPaths} urls={defaults?.photoUrls ?? []} value={photo} onChange={setPhoto} />
       <RatioPicker value={ratio} onChange={setRatio} />
+      <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-semibold">
+        <input
+          type="checkbox"
+          checked={includePeople}
+          onChange={(e) => setIncludePeople(e.target.checked)}
+          className="size-5 accent-[var(--color-pulse-blue)]"
+        />
+        Include people (customers using the product)
+      </label>
       {hasLogo !== false && (
         <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-semibold">
           <input type="checkbox" checked={useLogo} onChange={(e) => setUseLogo(e.target.checked)} className="size-5 accent-[var(--color-pulse-blue)]" />
@@ -277,6 +530,7 @@ function AiTab({ projectId, defaults, credits, hasLogo }: Pick<DesignStudioProps
 }
 
 function Gallery({ designs }: { designs: StudioDesign[] }) {
+  const canva = useContext(CanvaEnabled);
   const router = useRouter();
   const { toast } = useToast();
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -299,10 +553,18 @@ function Gallery({ designs }: { designs: StudioDesign[] }) {
         <li key={d.id} className="flex flex-col gap-2">
           <div className="flex aspect-square items-center justify-center overflow-hidden rounded-2xl border border-line bg-soft">
             {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
-            <img src={d.url} alt={`${d.kind === "AI" ? "AI image" : "Template design"}, ${d.aspectRatio}`} loading="lazy" className="max-h-full max-w-full object-contain" />
+            <img
+              src={d.url}
+              alt={`${d.kind === "AI" ? "AI image" : "Template design"}, ${d.aspectRatio}`}
+              loading="lazy"
+              className="max-h-full max-w-full object-contain"
+            />
           </div>
           <div className="flex items-center justify-between gap-2">
-            <DownloadButton id={d.id} size="sm" label="Save" />
+            <div className="flex flex-wrap items-center gap-1">
+              <DownloadButton id={d.id} size="sm" label="Save" />
+              <EditInCanva designId={d.id} enabled={canva} />
+            </div>
             {confirming === d.id ? (
               <Button size="sm" variant="outline" disabled={pending} onClick={() => remove(d.id)}>
                 Delete?
@@ -319,25 +581,35 @@ function Gallery({ designs }: { designs: StudioDesign[] }) {
   );
 }
 
-export function DesignStudio({ projectId, defaults, designs, credits, hasLogo, showGallery = true }: DesignStudioProps) {
+export function DesignStudio({ projectId, defaults, designs, credits, hasLogo, pack, showGallery = true, canva = false }: DesignStudioProps) {
   const order = useMemo(() => templatesForProjectType(defaults?.projectType ?? ""), [defaults?.projectType]);
   return (
-    <div className="flex flex-col gap-8">
-      <GlassCard strong padding="lg">
-        <Tabs
-          label="Design type"
-          items={[
-            { value: "template", label: "From a template", content: <TemplateTab projectId={projectId} defaults={defaults} order={order} /> },
-            { value: "ai", label: "Describe an image", content: <AiTab projectId={projectId} defaults={defaults} credits={credits} hasLogo={hasLogo} /> },
-          ]}
-        />
-      </GlassCard>
-      {showGallery && (
-        <section aria-label="Your designs" className="flex flex-col gap-4">
-          <h2 className="px-1 text-lg font-semibold">Your designs</h2>
-          <Gallery designs={designs} />
-        </section>
-      )}
-    </div>
+    <CanvaEnabled value={canva}>
+      <div className="flex flex-col gap-8">
+        <GlassCard strong padding="lg">
+          <Tabs
+            label="Design type"
+            items={[
+              {
+                value: "template",
+                label: "From a template",
+                content: <TemplateTab projectId={projectId} defaults={defaults} order={order} pack={pack} credits={credits} />,
+              },
+              {
+                value: "ai",
+                label: "Describe an image",
+                content: <AiTab projectId={projectId} defaults={defaults} credits={credits} hasLogo={hasLogo} />,
+              },
+            ]}
+          />
+        </GlassCard>
+        {showGallery && (
+          <section aria-label="Your designs" className="flex flex-col gap-4">
+            <h2 className="px-1 text-lg font-semibold">Your designs</h2>
+            <Gallery designs={designs} />
+          </section>
+        )}
+      </div>
+    </CanvaEnabled>
   );
 }

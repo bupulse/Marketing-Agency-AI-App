@@ -1,3 +1,4 @@
-import { overlayLayout, type LayoutProps } from "./shared";
+import { renderPack } from "./packs";
+import type { LayoutProps } from "./shared";
 
-export const newArrival = (props: LayoutProps) => overlayLayout(props);
+export const newArrival = (props: LayoutProps) => renderPack(props, { mode: "photo", badge: "pill" });

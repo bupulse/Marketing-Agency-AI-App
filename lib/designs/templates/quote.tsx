@@ -1,3 +1,4 @@
-import { quoteLayout, type LayoutProps } from "./shared";
+import { renderPack } from "./packs";
+import type { LayoutProps } from "./shared";
 
-export const quote = (props: LayoutProps) => quoteLayout(props);
+export const quote = (props: LayoutProps) => renderPack(props, { mode: "quote" });

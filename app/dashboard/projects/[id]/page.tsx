@@ -6,6 +6,8 @@ import { ContentCard } from "@/components/studio/content-card";
 import { DeleteProjectButton } from "@/components/studio/delete-project";
 import { WriteContentCta } from "@/components/studio/write-content-cta";
 import { DesignStudio } from "@/components/designs/design-studio";
+import { isCanvaEnabled } from "@/lib/canva/config";
+import { recommendPack } from "@/lib/designs/packs";
 import { loadProjectDetail } from "@/components/studio/queries";
 import { typeLabel } from "@/components/studio/helpers";
 
@@ -67,6 +69,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
       )}
 
       <DesignStudio
+        pack={recommendPack(business)}
+        canva={isCanvaEnabled()}
         projectId={project.id}
         defaults={{
           headline: project.title,

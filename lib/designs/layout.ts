@@ -1,4 +1,5 @@
 // Pure layout helpers shared by the templates. No rendering and no I/O, so they are unit-testable.
+import type { PackId } from "./packs";
 import { brandPalette, contrastRatio, PULSE_BLUE } from "@/lib/color-contrast";
 
 export const ASPECT_RATIOS = ["1:1", "4:5", "9:16", "16:9"] as const;
@@ -42,6 +43,10 @@ export type TemplateInput = {
   chip?: string | null;
   /** Small label above the headline. Defaults to the template's own ("New arrival"); "" hides it. */
   kicker?: string | null;
+  /** Style pack; defaults to "clean". */
+  pack?: PackId;
+  /** Business.contentLanguage, for the default kicker text. */
+  language?: string | null;
 };
 
 // ---- colour ----
@@ -122,11 +127,13 @@ export type FitOptions = {
   weight?: "bold" | "regular";
   /** Never more lines than this (the text is ellipsised by the caller if it still does not fit). */
   maxLines?: number;
+  /** Average glyph advance as a fraction of the font size, for fonts narrower or wider than Inter. */
+  charWidth?: number;
 };
 
 /** Greedy word wrap using estimated glyph widths. Returns the line count. */
-export function estimateLines(text: string, fontSize: number, boxWidth: number, weight: "bold" | "regular" = "bold"): number {
-  const unit = fontSize * CHAR_WIDTH[weight];
+export function estimateLines(text: string, fontSize: number, boxWidth: number, weight: "bold" | "regular" = "bold", charWidth?: number): number {
+  const unit = fontSize * (charWidth ?? CHAR_WIDTH[weight]);
   const perLine = Math.max(1, Math.floor(boxWidth / unit));
   let lines = 1;
   let used = 0;
@@ -151,9 +158,9 @@ export function estimateLines(text: string, fontSize: number, boxWidth: number, 
 
 /** Largest font size (step 2px) from maxSize down to minSize so the text fits the box. */
 export function fitFontSize(text: string, boxWidth: number, boxHeight: number, options: FitOptions): number {
-  const { maxSize, minSize, lineHeight = 1.08, weight = "bold", maxLines } = options;
+  const { maxSize, minSize, lineHeight = 1.08, weight = "bold", maxLines, charWidth } = options;
   for (let size = maxSize; size > minSize; size -= 2) {
-    const lines = estimateLines(text, size, boxWidth, weight);
+    const lines = estimateLines(text, size, boxWidth, weight, charWidth);
     if (lines * size * lineHeight <= boxHeight && (!maxLines || lines <= maxLines)) return size;
   }
   return minSize;

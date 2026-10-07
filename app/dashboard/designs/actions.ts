@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { isOwnProjectPhotoPath } from "@/lib/designs/assets";
 import { ASPECT_RATIOS } from "@/lib/designs/layout";
-import { createAiDesign as makeAiDesign, createTemplateDesign as makeTemplateDesign, DesignError, deleteDesign as removeDesign, designDownloadUrl, designUrl } from "@/lib/designs/service";
+import { createAiDesign as makeAiDesign, createAiPhotoDesign as makeAiPhotoDesign, createTemplateDesign as makeTemplateDesign, DesignError, deleteDesign as removeDesign, designDownloadUrl, designUrl } from "@/lib/designs/service";
 import { isTemplateId } from "@/lib/designs/templates";
 import { RateLimitError, rateLimitMessage } from "@/lib/rate-limit";
 import { UsageLimitError, type UsageBlockReason } from "@/lib/usage";
@@ -38,6 +38,21 @@ const templateSchema = z.object({
   chip: optionalText(40),
   kicker: optionalText(30),
   photoPath: optionalText(500),
+  pack: optionalText(20),
+});
+
+const aiPhotoSchema = z.object({
+  projectId,
+  template: z.string().refine((v) => isTemplateId(v) && v !== "quote", "Pick one of the templates."),
+  pack: optionalText(20),
+  aspectRatio: ratio,
+  headline: z.string().trim().min(1, "Add a headline.").max(140, "Keep the headline under 140 characters."),
+  subline: optionalText(180),
+  chip: optionalText(40),
+  kicker: optionalText(30),
+  scene: optionalText(400),
+  includePeople: z.boolean().optional(),
+  usePhotoPath: optionalText(500),
 });
 
 const aiSchema = z.object({
@@ -45,6 +60,7 @@ const aiSchema = z.object({
   prompt: z.string().trim().min(5, "Describe the image in a few words.").max(800, "Keep the description under 800 characters."),
   aspectRatio: ratio,
   useLogo: z.boolean().optional(),
+  includePeople: z.boolean().optional(),
   usePhotoPath: optionalText(500),
 });
 
@@ -94,6 +110,25 @@ export async function createAiDesign(input: z.input<typeof aiSchema>): Promise<D
   if (!business) return { ok: false, error: "Set up your business first." };
   try {
     const { id, path } = await makeAiDesign({ userId: user.id, businessId: business.id, ...data });
+    revalidate(data.projectId);
+    return { ok: true, designId: id, url: await designUrl(path) };
+  } catch (error) {
+    return failure(error, user.id);
+  }
+}
+
+/** Uses one image credit: an AI photo with the headline, chip and logo laid over it in the chosen style. */
+export async function createAiPhotoDesign(input: z.input<typeof aiPhotoSchema>): Promise<DesignResult> {
+  const user = await requireActiveUser();
+  const parsed = aiPhotoSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? FAILED };
+  const data = parsed.data;
+  if (data.usePhotoPath && !isOwnProjectPhotoPath(user.id, data.usePhotoPath)) return { ok: false, error: "That photo could not be used." };
+
+  const business = await businessOf(user.id);
+  if (!business) return { ok: false, error: "Set up your business first." };
+  try {
+    const { id, path } = await makeAiPhotoDesign({ userId: user.id, businessId: business.id, ...data });
     revalidate(data.projectId);
     return { ok: true, designId: id, url: await designUrl(path) };
   } catch (error) {

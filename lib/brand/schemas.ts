@@ -57,9 +57,19 @@ export type Look = z.infer<typeof lookSchema>;
 export type Knowledge = z.infer<typeof knowledgeSchema>;
 
 /** Reads Business.knowledge safely (it is stored as JSON). */
+// Empty fields are dropped when saved, so stored knowledge may lack any of them.
+const storedKnowledgeSchema = knowledgeSchema.extend({
+  hours: optionalText(200).optional(),
+  area: optionalText(200).optional(),
+  contact: optionalText(200).optional(),
+  faqs: knowledgeSchema.shape.faqs.default([]),
+});
+
 export function readKnowledge(value: unknown): Knowledge {
-  const parsed = knowledgeSchema.safeParse(value);
-  return parsed.success ? parsed.data : { hours: undefined, area: undefined, contact: undefined, faqs: [] };
+  const parsed = storedKnowledgeSchema.safeParse(value);
+  if (!parsed.success) return { hours: undefined, area: undefined, contact: undefined, faqs: [] };
+  const { hours, area, contact, faqs } = parsed.data;
+  return { hours, area, contact, faqs };
 }
 
 // No SVG: an SVG can carry scripts, and logos may later be shown inline (widget, designs, emails).

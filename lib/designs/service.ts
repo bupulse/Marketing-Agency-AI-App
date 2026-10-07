@@ -9,6 +9,9 @@ import { refundUsage, consumeUsage } from "@/lib/usage";
 import { createClient } from "@/lib/supabase/server";
 import { designObjectPath, imageSize, isOwnDesignPath, isOwnObjectPath, isOwnProjectPhotoPath, toDataUrl } from "./assets";
 import { ASPECT_SIZES, type AspectRatio } from "./layout";
+import { edgeGet, edgePut, hashKey } from "./edge-cache";
+import { isPackId, recommendPack, type PackId } from "./packs";
+import { buildSceneBrief } from "./photo-scene";
 import { buildImagePrompt } from "./prompt";
 import { isTemplateId, renderTemplate, TEMPLATES } from "./templates";
 
@@ -92,6 +95,11 @@ async function removeFile(path: string) {
 
 export type CreatedDesign = { id: string; path: string };
 
+/** The requested pack if it is one of ours, else the one that matches the business's voice and industry. */
+function packFor(business: { tone: string | null; industry: string | null }, requested?: string | null): PackId {
+  return isPackId(requested) ? requested : recommendPack(business);
+}
+
 export async function createTemplateDesign(input: Owner & {
   template: string;
   aspectRatio: AspectRatio;
@@ -100,6 +108,8 @@ export async function createTemplateDesign(input: Owner & {
   chip?: string | null;
   kicker?: string | null;
   photoPath?: string | null;
+  /** Style pack id; the business's matching pack when missing or unknown. */
+  pack?: string | null;
 }): Promise<CreatedDesign> {
   if (!isTemplateId(input.template)) throw new DesignError("Pick one of the templates.");
   await rateLimit(`design:${input.userId}`, RATE_LIMITS.templateDesign);
@@ -119,6 +129,8 @@ export async function createTemplateDesign(input: Owner & {
         subline: input.subline,
         chip: input.chip,
         kicker: input.kicker,
+        pack: packFor(business, input.pack),
+        language: business.contentLanguage,
       },
       input.aspectRatio,
     );
@@ -147,8 +159,9 @@ export async function createAiDesign(input: Owner & {
   aspectRatio: AspectRatio;
   useLogo?: boolean;
   usePhotoPath?: string | null;
+  includePeople?: boolean;
 }): Promise<CreatedDesign> {
-  await rateLimit(`design:${input.userId}`, RATE_LIMITS.templateDesign);
+  await rateLimit(`aiimage:${input.userId}`, RATE_LIMITS.aiImage);
   const business = await requireOwned(input);
   if (input.usePhotoPath && !isOwnProjectPhotoPath(input.userId, input.usePhotoPath)) throw new DesignError("That photo could not be used.");
 
@@ -160,7 +173,7 @@ export async function createAiDesign(input: Owner & {
       loadPhoto(input.userId, input.usePhotoPath, AI_TYPES),
     ]);
     const references = [photo, logo].filter((r): r is string => !!r);
-    const prompt = buildImagePrompt({ business, prompt: input.prompt, aspectRatio: input.aspectRatio, hasLogo: !!logo, hasPhoto: !!photo });
+    const prompt = buildImagePrompt({ business, prompt: input.prompt, aspectRatio: input.aspectRatio, hasLogo: !!logo, hasPhoto: !!photo, includePeople: input.includePeople });
 
     const provider = getImageProvider();
     const image = await withLedger(
@@ -176,6 +189,103 @@ export async function createAiDesign(input: Owner & {
     try {
       await prisma.design.create({
         data: { id, businessId: business.id, projectId: input.projectId ?? null, kind: "AI", prompt: input.prompt, aspectRatio: input.aspectRatio, path, width, height },
+      });
+    } catch (error) {
+      await removeFile(path);
+      throw error;
+    }
+    return { id, path };
+  } catch (error) {
+    // Giving the credit back must never hide the original error.
+    try {
+      await refundUsage(input.userId, "image", periodStart);
+    } catch (refundError) {
+      await logError(refundError, { source: "designs.refund", userId: input.userId });
+    }
+    throw error;
+  }
+}
+
+/**
+ * "AI photo + brand layout": Gemini paints a photo scene (1 image credit), then the chosen template and
+ * style pack lay the headline, subline, chip and logo over it. The credit is given back when no design
+ * could be made, whether the photo or the layout failed.
+ */
+export async function createAiPhotoDesign(input: Owner & {
+  template: string;
+  pack?: string | null;
+  aspectRatio: AspectRatio;
+  headline: string;
+  subline?: string | null;
+  chip?: string | null;
+  kicker?: string | null;
+  /** What the photo should show; made from the headline when empty. */
+  scene?: string | null;
+  /** Realistic people using the product in the photo (default true). */
+  includePeople?: boolean;
+  /** A project photo for Gemini to use as the subject. */
+  usePhotoPath?: string | null;
+}): Promise<CreatedDesign> {
+  if (!isTemplateId(input.template) || input.template === "quote") throw new DesignError("Pick one of the templates.");
+  if (input.usePhotoPath && !isOwnProjectPhotoPath(input.userId, input.usePhotoPath)) throw new DesignError("That photo could not be used.");
+  // Each call pays for a Gemini image, so it shares the tighter AI limit, not the template one.
+  await rateLimit(`aiimage:${input.userId}`, RATE_LIMITS.aiImage);
+  const business = await requireOwned(input);
+
+  // Throws UsageLimitError when the plan has no image credits left.
+  const { periodStart } = await consumeUsage(input.userId, "image");
+  try {
+    const [logoDataUrl, reference] = await Promise.all([loadLogo(input.userId, business.logoUrl), loadPhoto(input.userId, input.usePhotoPath, AI_TYPES)]);
+    const scene = buildSceneBrief({ template: input.template, aspectRatio: input.aspectRatio, scene: input.scene, headline: input.headline });
+    const prompt = buildImagePrompt({ business, prompt: scene, aspectRatio: input.aspectRatio, hasPhoto: !!reference, language: business.contentLanguage, includePeople: input.includePeople });
+
+    const provider = getImageProvider();
+    const image = await withLedger(
+      { userId: input.userId, businessId: business.id, feature: IMAGE_FEATURE },
+      { provider: provider.name, model: process.env.GEMINI_IMAGE_MODEL ?? DEFAULT_GEMINI_IMAGE_MODEL },
+      () => provider.generate({ prompt, aspectRatio: input.aspectRatio, referenceImageUrls: reference ? [reference] : [] }),
+      (r) => ({ provider: r.provider, model: r.model, usage: r.usage, images: 1 }),
+    );
+    // Satori decodes JPG and PNG only. The photo is already paid for, so a WebP (or a photo Satori
+    // chokes on) is not refunded: the design is drawn without it, on the pack's brand backdrop.
+    const draw = (photoDataUrl: string | null) =>
+      renderTemplate(
+        input.template,
+        {
+          businessName: business.name,
+          logoDataUrl,
+          colors: business.brandColors,
+          photoDataUrl,
+          headline: input.headline,
+          subline: input.subline,
+          chip: input.chip,
+          kicker: input.kicker,
+          pack: packFor(business, input.pack),
+          language: business.contentLanguage,
+        },
+        input.aspectRatio,
+      );
+    const usable = image.mimeType === "image/png" || image.mimeType === "image/jpeg";
+    let png: ArrayBuffer;
+    try {
+      try {
+        if (!usable) throw new Error(`unsupported photo type ${image.mimeType}`);
+        png = await draw(toDataUrl(image.data, image.mimeType));
+      } catch (error) {
+        await logError(error, { source: "designs.render.photo", userId: input.userId, template: input.template });
+        png = await draw(null);
+      }
+    } catch (error) {
+      await logError(error, { source: "designs.render", userId: input.userId, template: input.template });
+      throw new DesignError("We could not lay out that design. Your credit was returned. Please try again.");
+    }
+
+    const id = globalThis.crypto.randomUUID();
+    const path = await store(input.userId, id, new Uint8Array(png), "image/png");
+    const { width, height } = ASPECT_SIZES[input.aspectRatio];
+    try {
+      await prisma.design.create({
+        data: { id, businessId: business.id, projectId: input.projectId ?? null, kind: "AI", template: input.template, prompt: input.scene?.trim() || input.headline, aspectRatio: input.aspectRatio, path, width, height },
       });
     } catch (error) {
       await removeFile(path);
@@ -246,14 +356,23 @@ export async function listDesigns(userId: string, options: { projectId?: string;
   });
 }
 
-/** A template drawn with the business's own name, logo and colours and sample text, for the picker. Nothing is stored or charged. */
-export async function previewTemplate(userId: string, template: string, aspectRatio: AspectRatio): Promise<ArrayBuffer | null> {
+/**
+ * A template drawn with the business's own name, logo, colours, style pack and sample text, for the picker.
+ * Nothing is stored or charged. Renders are cached at the edge by everything that shapes them, so
+ * repeat views and other isolates reuse them; `beforeRender` (the rate limit) only runs on a miss.
+ */
+export async function previewTemplate(userId: string, template: string, aspectRatio: AspectRatio, pack?: string | null, beforeRender?: () => Promise<void>): Promise<ArrayBuffer | null> {
   const info = TEMPLATES.find((t) => t.id === template);
   if (!info) return null;
   const business = await prisma.business.findUnique({ where: { userId } });
   if (!business) return null;
+  const chosen = packFor(business, pack);
+  const key = `preview/${await hashKey([PREVIEW_VERSION, business.name, business.logoUrl, business.brandColors, business.contentLanguage, info.id, chosen, aspectRatio])}`;
+  const hit = await edgeGet(key);
+  if (hit) return hit;
+  await beforeRender?.();
   const logoDataUrl = await loadLogo(userId, business.logoUrl);
-  return renderTemplate(
+  const png = await renderTemplate(
     info.id,
     {
       businessName: business.name,
@@ -262,10 +381,17 @@ export async function previewTemplate(userId: string, template: string, aspectRa
       headline: info.fields.headline.placeholder,
       subline: info.fields.subline.placeholder,
       chip: info.fields.chip.placeholder,
+      pack: chosen,
+      language: business.contentLanguage,
     },
     aspectRatio,
   );
+  await edgePut(key, png, "image/png", 60 * 60 * 24 * 7);
+  return png;
 }
+
+// Bump when a layout changes so cached previews are drawn again.
+const PREVIEW_VERSION = 1;
 
 /** Signed URLs for a project's photos (media bucket), same order as `paths`; own files only, "" for any that fail. */
 export async function photoPreviewUrls(userId: string, paths: string[]): Promise<string[]> {

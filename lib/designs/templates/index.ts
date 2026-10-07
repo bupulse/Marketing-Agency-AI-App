@@ -1,5 +1,7 @@
 import type { ReactElement } from "react";
 import { ImageResponse } from "next/og";
+import { defaultKicker } from "@/lib/designs/labels";
+import type { PackId } from "@/lib/designs/packs";
 import { ASPECT_SIZES, buildTheme, orientationOf, type AspectRatio, type TemplateInput } from "@/lib/designs/layout";
 import { announcement } from "./announcement";
 import { event } from "./event";
@@ -13,6 +15,8 @@ import { isTemplateId, TEMPLATES, type TemplateId } from "./registry";
 import type { LayoutProps } from "./shared";
 
 export { TEMPLATES, isTemplateId, templatesForProjectType, type TemplateId, type TemplateInfo } from "./registry";
+
+const DEFAULT_PACK: PackId = "clean";
 
 const LAYOUTS: Record<TemplateId, (props: LayoutProps) => ReactElement> = {
   "new-arrival": newArrival,
@@ -36,7 +40,8 @@ export function buildTemplateElement(id: string, input: TemplateInput, ratio: As
     height,
     orientation: orientationOf(ratio),
     theme: buildTheme(input.colors),
-    kicker: input.kicker ?? template.defaultKicker,
+    kicker: input.kicker ?? defaultKicker(template.id, input.language),
+    pack: input.pack ?? DEFAULT_PACK,
   });
 }
 
@@ -44,8 +49,8 @@ export function buildTemplateElement(id: string, input: TemplateInput, ratio: As
 export async function renderTemplate(id: string, input: TemplateInput, ratio: AspectRatio): Promise<ArrayBuffer> {
   const element = buildTemplateElement(id, input, ratio);
   const { width, height } = ASPECT_SIZES[ratio];
-  const text = [input.businessName, input.headline, input.subline, input.chip, input.kicker].filter(Boolean).join(" ");
-  const fonts = await loadFonts(text);
+  const text = [input.businessName, input.headline, input.subline, input.chip, input.kicker, defaultKicker(isTemplateId(id) ? id : "offer", input.language)].filter(Boolean).join(" ");
+  const fonts = await loadFonts(text, input.pack ?? DEFAULT_PACK);
   const response = new ImageResponse(element, { width, height, ...(fonts.length ? { fonts } : {}) });
   return response.arrayBuffer();
 }

@@ -1,7 +1,11 @@
+import { Suspense } from "react";
 import { Plug } from "lucide-react";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { Badge, Button, GlassCard } from "@/components/ui";
+import { CanvaCard } from "@/components/settings/canva-card";
+import { isCanvaEnabled } from "@/lib/canva/config";
+import { CanvaReturnToast } from "@/components/designs/canva-return-toast";
 import { prisma } from "@/lib/db";
 
 export const metadata = { title: "Connections" };
@@ -15,9 +19,9 @@ const SOCIAL = [
 ];
 
 const APPS = [
+  { provider: "canva", name: "Canva", note: "Open and export designs" },
   { provider: "google_drive", name: "Google Drive", note: "Import photos and files" },
   { provider: "dropbox", name: "Dropbox", note: "Import photos and files" },
-  { provider: "canva", name: "Canva", note: "Open and export designs" },
   { provider: "shopify", name: "Shopify", note: "Import products" },
   { provider: "woocommerce", name: "WooCommerce", note: "Import products" },
   { provider: "cloudflare", name: "Cloudflare", note: "Website and widget setup" },
@@ -51,7 +55,7 @@ function Group({ title, items, connected }: { title: string; items: typeof SOCIA
 }
 
 export default async function ConnectionsPage() {
-  const { business } = await getAppContext();
+  const { user, business } = await getAppContext();
   const rows = business
     ? await prisma.connection.findMany({ where: { businessId: business.id }, select: { provider: true } })
     : [];
@@ -64,7 +68,11 @@ export default async function ConnectionsPage() {
         description="Connect your social accounts to publish, and your apps to bring in photos and products."
       />
       <Group title="Social accounts" items={SOCIAL} connected={connected} />
-      <Group title="Apps" items={APPS} connected={connected} />
+      <Suspense>
+        <CanvaReturnToast />
+      </Suspense>
+      <CanvaCard userId={user.id} next="/dashboard/connections" />
+      <Group title="Apps" items={isCanvaEnabled() ? APPS.filter((a) => a.provider !== "canva") : APPS} connected={connected} />
       <GlassCard className="flex flex-wrap items-center gap-3 p-5 text-[15px]">
         <Badge tone="violet">Pro</Badge>
         <p className="min-w-0 flex-1 basis-64 text-muted">

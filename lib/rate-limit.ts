@@ -6,10 +6,13 @@ export type RateLimitRule = { limit: number; windowSeconds: number };
 /** Limits for actions that are free to the user but cost storage or compute. Per user. */
 export const RATE_LIMITS = {
   templateDesign: { limit: 60, windowSeconds: 60 * 60 }, // 60 template designs an hour
-  designPreview: { limit: 120, windowSeconds: 60 * 60 },
+  aiImage: { limit: 10, windowSeconds: 60 * 60 }, // paid Gemini images (describe an image, AI photo): 10 an hour
+  designPreview: { limit: 400, windowSeconds: 60 * 60 },
   photoUpload: { limit: 60, windowSeconds: 60 * 60 },
   projectCreate: { limit: 30, windowSeconds: 60 * 60 },
   contentEdit: { limit: 120, windowSeconds: 60 * 60 },
+  canvaOpen: { limit: 20, windowSeconds: 60 * 60 },
+  canvaReturn: { limit: 30, windowSeconds: 60 * 60 },
 } satisfies Record<string, RateLimitRule>;
 
 export class RateLimitError extends Error {

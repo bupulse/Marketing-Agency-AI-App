@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { TestGenerate } from "@/components/app/test-generate";
@@ -5,6 +6,8 @@ import { GlassCard } from "@/components/ui";
 import { BusinessSection, ProfileSection } from "@/components/settings/settings-form";
 import { DeleteAccount } from "@/components/settings/delete-account";
 import { TeamCard } from "@/components/settings/team-card";
+import { CanvaCard } from "@/components/settings/canva-card";
+import { CanvaReturnToast } from "@/components/designs/canva-return-toast";
 import { prisma } from "@/lib/db";
 
 export const metadata = { title: "Settings" };
@@ -16,6 +19,9 @@ export default async function SettingsPage() {
   return (
     <>
       <PageHeader title="Settings" description="Your account and business details." />
+      <Suspense>
+        <CanvaReturnToast />
+      </Suspense>
       <ProfileSection
         name={account?.name ?? displayName}
         email={email}
@@ -31,6 +37,7 @@ export default async function SettingsPage() {
           website: business.website ?? "",
         }}
       />
+      <CanvaCard userId={user.id} />
       <TeamCard />
       <DeleteAccount email={email} />
       {process.env.NODE_ENV !== "production" && (

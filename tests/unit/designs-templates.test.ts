@@ -4,6 +4,10 @@ import { describe, expect, it } from "vitest";
 import { ImageResponse } from "next/og";
 import { createElement } from "react";
 import { ASPECT_RATIOS, ASPECT_SIZES, buildTheme, clampText, estimateLines, fitFontSize, orientationOf, type TemplateInput } from "@/lib/designs/layout";
+import { buildImagePrompt } from "@/lib/designs/prompt";
+import { buildSceneBrief } from "@/lib/designs/photo-scene";
+import { defaultKicker } from "@/lib/designs/labels";
+import { PACKS, recommendPack, type PackId } from "@/lib/designs/packs";
 import { buildTemplateElement, renderTemplate, TEMPLATES, templatesForProjectType } from "@/lib/designs/templates";
 
 const IDS = ["new-arrival", "offer", "event", "just-listed", "project-done", "quote", "announcement"];
@@ -85,30 +89,30 @@ describe("template rendering", () => {
   });
 
   // next/og runs in vitest's node env; fonts come from a CDN and fall back to the built-in one offline.
-  it("renders PNG bytes for 7 templates x 4 ratios, with and without a photo", async () => {
+  it("renders PNG bytes for 5 packs x 7 templates x 4 ratios, with and without a photo", async () => {
     const photoPng = await new ImageResponse(
-      createElement("div", { style: { display: "flex", width: "100%", height: "100%", backgroundImage: "linear-gradient(160deg, #1d3557, #e63946 60%, #f1faee)" } }),
+      createElement("div", { style: { display: "flex", width: "100%", height: "100%", backgroundImage: "radial-gradient(circle at 30% 35%, #f4d35e 0%, rgba(244,211,94,0) 28%), radial-gradient(circle at 75% 70%, #ee964b 0%, rgba(238,150,75,0) 30%), linear-gradient(160deg, #1d3557, #e63946 60%, #f1faee)" } }),
       { width: 800, height: 800 },
     ).arrayBuffer();
     const photoDataUrl = `data:image/png;base64,${Buffer.from(photoPng).toString("base64")}`;
     const out = process.env.DESIGNS_OUT;
     if (out) mkdirSync(out, { recursive: true });
 
-    for (const id of IDS) {
+    for (const pack of PACKS.map((p) => p.id)) for (const id of IDS) {
       for (const ratio of ASPECT_RATIOS) {
-        for (const withPhoto of [false, true]) {
-          const bytes = await renderTemplate(id, { ...base, photoDataUrl: withPhoto ? photoDataUrl : null }, ratio);
+        for (const withPhoto of ratio === "1:1" || ratio === "9:16" || out ? [false, true] : [false]) {
+          const bytes = await renderTemplate(id, { ...base, pack, photoDataUrl: withPhoto ? photoDataUrl : null }, ratio);
           const buf = Buffer.from(bytes);
           expect(buf.length).toBeGreaterThan(2000);
           expect(buf.subarray(1, 4).toString()).toBe("PNG");
           const { width, height } = ASPECT_SIZES[ratio];
           expect(buf.readUInt32BE(16)).toBe(width);
           expect(buf.readUInt32BE(20)).toBe(height);
-          if (out) writeFileSync(join(out, `${id}-${ratio.replace(":", "x")}-${withPhoto ? "photo" : "plain"}.png`), buf);
+          if (out) writeFileSync(join(out, `${pack}-${id}-${ratio.replace(":", "x")}-${withPhoto ? "photo" : "plain"}.png`), buf);
         }
       }
     }
-  }, 120_000);
+  }, 600_000);
 
   it("copes with very long text, missing chip and a single brand colour", async () => {
     const bytes = await renderTemplate(
@@ -131,4 +135,58 @@ describe("template rendering", () => {
       if (process.env.DESIGNS_OUT) writeFileSync(join(process.env.DESIGNS_OUT, `lang-${headline.length}.png`), Buffer.from(bytes));
     }
   }, 60_000);
+});
+
+describe("style packs", () => {
+  it("lists five packs", () => {
+    expect(PACKS.map((p) => p.id).sort()).toEqual(["bold", "clean", "elegant", "playful", "warm"]);
+  });
+
+  it("picks the pack from the brand voice first", () => {
+    expect(recommendPack({ tone: "luxury", industry: "Gyms & fitness" })).toBe("elegant");
+    expect(recommendPack({ tone: "caring" })).toBe("elegant");
+    expect(recommendPack({ tone: "bold", industry: "Salons & beauty" })).toBe("bold");
+    expect(recommendPack({ tone: "playful", industry: "Professional services" })).toBe("playful");
+  });
+
+  it("falls back to the industry, then to the generic voices", () => {
+    expect(recommendPack({ tone: "friendly", industry: "Salons & beauty" })).toBe("elegant");
+    expect(recommendPack({ tone: "professional", industry: "Gyms & fitness" })).toBe("bold");
+    expect(recommendPack({ tone: null, industry: "Restaurants & cafés" })).toBe("warm");
+    expect(recommendPack({ tone: "friendly", industry: "Shops & retail" })).toBe("warm");
+    expect(recommendPack({ tone: "professional", industry: "Phones & electronics" })).toBe("clean");
+    expect(recommendPack({})).toBe("clean");
+  });
+
+  it("follows the content language for default labels, falling back to English", () => {
+    expect(defaultKicker("new-arrival", "French")).toBe("Nouveauté");
+    expect(defaultKicker("offer", "Spanish")).toBe("Oferta especial");
+    expect(defaultKicker("offer", "English")).toBe("Special offer");
+    expect(defaultKicker("offer", "Japanese")).toBe("Special offer");
+    expect(defaultKicker("offer", null)).toBe("Special offer");
+    expect(defaultKicker("quote", "French")).toBe("");
+  });
+
+  it("uses the translated label unless the user gave one", () => {
+    const element = (kicker?: string | null) => JSON.stringify(buildTemplateElement("announcement", { ...base, language: "French", kicker }, "1:1"));
+    expect(element()).toContain("Annonce");
+    expect(element("Nouveau")).not.toContain("Annonce");
+    expect(element("")).not.toContain("Annonce");
+  });
+
+  it("builds every pack with a long headline and no chip without throwing", () => {
+    for (const pack of PACKS.map((p): PackId => p.id)) for (const ratio of ASPECT_RATIOS) expect(buildTemplateElement("event", { ...base, pack, chip: null, headline: "word ".repeat(40) }, ratio)).toBeTruthy();
+  });
+
+  it("keeps prices, percentages, dates and quoted text out of the image prompt", () => {
+    const scene = buildSceneBrief({ template: "offer", aspectRatio: "1:1", headline: 'Fresh bread: 50% OFF $20 this Friday "Buy 2"' });
+    const prompt = buildImagePrompt({ business: { name: "Sunrise Bakery", industry: "Bakery" }, prompt: scene, aspectRatio: "1:1" });
+    expect(prompt).toContain("Fresh bread");
+    expect(prompt).not.toMatch(/[\d%$€£]|friday|off\b|buy/i);
+    expect(prompt).toContain("Do not put any text");
+  });
+
+  it("falls back to English labels for Arabic", () => {
+    expect(defaultKicker("offer", "Arabic")).toBe("Special offer");
+  });
 });
