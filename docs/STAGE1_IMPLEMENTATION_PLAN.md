@@ -208,6 +208,12 @@ Each phase ends with something you can open and test. A phase is accepted by you
 - Safety even with full admin: every call written to the audit log with before/after values; money actions (`issue_refund`, `change_plan` to paid) require an idempotency key; destructive actions require `confirm: true`; Jarvis's own approval rules apply on its side.
 - **Done when:** the admin console shows real visits, sign-ups, revenue, costs and profit for staging, and Jarvis, connected through MCP, answers "how did BuPulse do this week and what's working?" and can extend a trial, with the change visible in the audit log.
 
+**Decided 8 October 2026:**
+- **Client analytics added to Phase 8:** an "Analytics" page for each business. It shows post reach and engagement per network, the best posts, website-chat leads, and the weekly trend, all from the metrics Phase 5 already collects.
+- **Admin access:** only `admin@bupulse.com` (env `ADMIN_EMAILS`), and it always needs a 6-digit code from an authenticator app (TOTP through Supabase MFA, which works with Microsoft Authenticator). Admin pages and actions require the AAL2 session level.
+- **Money actions** (refunds, and changing a user to a paid plan): Jarvis and the API can only prepare them as approval requests. They run only after the owner clicks Approve in the admin console. Every other action runs directly and is written to the audit log.
+- **Corrections to the text above:** revenue comes from Paddle, not Stripe, and Composio costs are dropped, because Composio comes later.
+
 ### Phase 9 — Hardening and launch
 
 - Security review: RLS on every table and bucket, auth on every route, token encryption, rate limits, input validation, secrets, OWASP top 10, widget isolation.
