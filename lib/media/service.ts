@@ -10,6 +10,8 @@ import {
   fileProblem,
   folderNameProblem,
   galleryPath,
+  IMPORT_RATE,
+  imageSize,
   inferMimeType,
   isMediaType,
   isOwnGalleryPath,
@@ -20,7 +22,9 @@ import {
   nameFromFile,
   quotaProblem,
   sniffMediaType,
+  UNSUPPORTED_MESSAGE,
   UPLOAD_BATCH_MAX,
+  type ImportSource,
   type MediaUsage,
 } from "./rules";
 
@@ -123,6 +127,22 @@ export async function listMedia(
   });
   const page = rows.slice(0, take);
   return { items: await withUrls(page), nextCursor: rows.length > take ? (page[page.length - 1]?.id ?? null) : null };
+}
+
+type NewAsset = Parameters<typeof prisma.mediaAsset.create>[0]["data"] & { businessId: string; bytes: number };
+
+/**
+ * Creates the photo row only if it still fits the quota. The check and the insert run in one transaction
+ * under a per-business advisory lock, so parallel uploads and imports cannot all pass a stale count.
+ */
+async function createWithinQuota(data: NewAsset): Promise<Row> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`media-quota:${data.businessId}`}))`;
+    const sum = await tx.mediaAsset.aggregate({ where: { businessId: data.businessId }, _count: { _all: true }, _sum: { bytes: true } });
+    const problem = quotaProblem({ count: sum._count._all, bytes: sum._sum.bytes ?? 0 }, { count: 1, bytes: data.bytes });
+    if (problem) throw new MediaError(problem);
+    return tx.mediaAsset.create({ data, select: SELECT });
+  });
 }
 
 /** The business's own photos among `paths`, with signed URLs. Paths that are not theirs are left out. */
@@ -241,8 +261,9 @@ export async function finalizeUpload(
   const problem = quotaProblem(await mediaUsage(businessId), { count: 1, bytes: size });
   if (problem) return reject(problem);
 
-  const row = await prisma.mediaAsset.create({
-    data: {
+  let row: Row;
+  try {
+    row = await createWithinQuota({
       id: assetIdFromPath(input.path),
       businessId,
       folderId: input.folderId,
@@ -252,9 +273,11 @@ export async function finalizeUpload(
       bytes: size,
       width: clampSize(input.width),
       height: clampSize(input.height),
-    },
-    select: SELECT,
-  });
+    });
+  } catch (failure) {
+    if (failure instanceof MediaError) await dropObject(input.path);
+    throw failure;
+  }
   return (await withUrls([row]))[0];
 }
 
@@ -351,4 +374,59 @@ export async function deleteAssets(businessId: string, ids: string[]): Promise<n
   if (error) throw error;
   const { count } = await prisma.mediaAsset.deleteMany({ where: { businessId, id: { in: rows.map((r) => r.id) } } });
   return count;
+}
+
+// Imports
+
+/**
+ * Puts a photo downloaded by the server (Google Drive, Dropbox, Canva) into the gallery, with the same
+ * checks as an upload: first bytes, 10 MB, JPEG/PNG/WebP, folder and quota. Not downscaled; larger files
+ * are refused with a message that says so.
+ */
+export async function importAsset(
+  { userId, businessId }: { userId: string; businessId: string },
+  input: { bytes: Uint8Array; name: string; folderId: string | null; source: ImportSource },
+): Promise<MediaItem> {
+  const label = cleanPhotoName(input.name, "That file");
+  const { bytes } = input;
+  if (bytes.length === 0) throw new MediaError(`${label} is empty.`);
+  if (bytes.length > MEDIA_MAX_BYTES) throw new MediaError(`${label} is over 10 MB. Resize it and try again.`);
+  const type = sniffMediaType(bytes);
+  if (!type) throw new MediaError(`${label}: ${UNSUPPORTED_MESSAGE}`);
+  if (input.folderId) await ownFolder(businessId, input.folderId);
+  const problem = quotaProblem(await mediaUsage(businessId), { count: 1, bytes: bytes.length });
+  if (problem) throw new MediaError(problem);
+
+  const path = galleryPath(userId, globalThis.crypto.randomUUID(), type);
+  const { error } = await (await storage()).upload(path, bytes, { contentType: type, upsert: false });
+  if (error) throw error;
+  const size = imageSize(bytes);
+  try {
+    const row = await createWithinQuota({
+      id: assetIdFromPath(path),
+      businessId,
+      folderId: input.folderId,
+      path,
+      name: nameFromFile(input.name),
+      mimeType: type,
+      bytes: bytes.length,
+      width: clampSize(size?.width),
+      height: clampSize(size?.height),
+      source: input.source,
+    });
+    return (await withUrls([row]))[0];
+  } catch (failure) {
+    await dropObject(path);
+    throw failure;
+  }
+}
+
+/** Counts one import against the per-user limit. Importers call it before downloading anything. */
+export async function limitImport(userId: string): Promise<void> {
+  await rateLimit(`media-import:${userId}`, IMPORT_RATE);
+}
+
+/** Whether the business has imported at least one photo from `source`. Cheap: one indexed count. */
+export async function hasImported(businessId: string, source: ImportSource): Promise<boolean> {
+  return (await prisma.mediaAsset.count({ where: { businessId, source } })) > 0;
 }

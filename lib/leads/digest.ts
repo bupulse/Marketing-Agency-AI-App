@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db";
 import { sendEmail } from "@/lib/publishing/email";
 import { dayKey, isValidTimeZone, zonedParts } from "@/lib/publishing/time";
 import { renderDigestEmail } from "./email";
-import { sendLeadWebhook } from "./notify";
 
 export const DIGEST_HOUR = 8;
 const DIGEST_PAGE_SIZE = 200;
@@ -90,41 +89,4 @@ export async function runLeadsDigest(now = new Date()): Promise<DigestResult> {
     }
   }
   }
-}
-
-export const WEBHOOK_RETRY_WINDOW_MS = DAY_MS;
-
-export type WebhookRetryResult = { checked: number; delivered: number; stillFailing: number; gaveUp: number };
-
-/**
- * Retries lead.created webhooks that failed their first attempts (Lead.webhookPendingAt), once per hourly
- * run, for up to 24 hours; after that the lead is dropped from the queue and logged. One attempt each.
- */
-export async function retryPendingWebhooks(now = new Date()): Promise<WebhookRetryResult> {
-  const result: WebhookRetryResult = { checked: 0, delivered: 0, stillFailing: 0, gaveUp: 0 };
-  const cutoff = new Date(now.getTime() - WEBHOOK_RETRY_WINDOW_MS);
-  const leads = await prisma.lead.findMany({
-    where: { webhookPendingAt: { not: null } },
-    include: { business: { select: { id: true, name: true } } },
-    orderBy: { webhookPendingAt: "asc" },
-    take: 100,
-  });
-  for (const lead of leads) {
-    result.checked++;
-    if (lead.webhookPendingAt && lead.webhookPendingAt < cutoff) {
-      console.error(`[leads] giving up on the lead.created webhook for lead ${lead.id} (business ${lead.business.id}) after 24 hours`);
-      await prisma.lead.updateMany({ where: { id: lead.id }, data: { webhookPendingAt: null } });
-      result.gaveUp++;
-      continue;
-    }
-    const widget = await prisma.chatWidget.findUnique({ where: { businessId: lead.business.id }, select: { webhookUrl: true, webhookSecretEncrypted: true } });
-    if (!widget?.webhookUrl || !widget.webhookSecretEncrypted) {
-      await prisma.lead.updateMany({ where: { id: lead.id }, data: { webhookPendingAt: null } }); // webhook was removed
-      continue;
-    }
-    const ok = await sendLeadWebhook({ lead, business: lead.business, webhookUrl: widget.webhookUrl, secretEncrypted: widget.webhookSecretEncrypted, retryDelaysMs: [] });
-    if (ok) result.delivered++;
-    else result.stillFailing++;
-  }
-  return result;
 }

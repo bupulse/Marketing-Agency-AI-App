@@ -7,7 +7,7 @@ import { requireActiveUser } from "@/lib/auth/require-user";
 import { RateLimitError, rateLimit, rateLimitMessage } from "@/lib/rate-limit";
 import { LEAD_STATUSES } from "@/lib/leads/filters";
 import { LeadError, deleteLeads, getLeadDetail, setLeadNotes, setLeadStatus } from "@/lib/leads/service";
-import { rotateWebhookSecret, saveEmailToggles, saveWebhook, sendTestWebhook } from "@/lib/leads/settings";
+import { saveEmailToggles } from "@/lib/leads/settings";
 
 export type LeadActionResult<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -85,27 +85,5 @@ export async function saveToggles(input: { notifyInstant: boolean; notifyDaily: 
     if (!parsed.success) throw new LeadError("invalid", "Those settings are not valid.");
     await saveEmailToggles(businessId, parsed.data);
     return {};
-  });
-}
-
-export async function saveWebhookUrl(url: string) {
-  return guarded(async () => {
-    const { businessId } = await owner();
-    if (typeof url !== "string") throw new LeadError("invalid", "Enter a web address.");
-    const { secret } = await saveWebhook(businessId, url);
-    return { secret };
-  });
-}
-
-export async function rotateSecret() {
-  return guarded(async () => ({ secret: (await rotateWebhookSecret((await owner()).businessId)).secret }));
-}
-
-export async function testWebhook() {
-  return guarded(async () => {
-    const { businessId, userId } = await owner();
-    await rateLimit(`lead-webhook-test:${userId}`, { limit: 20, windowSeconds: 3600 });
-    const result = await sendTestWebhook(businessId);
-    return { delivered: result.ok, status: result.status ?? null, detail: result.error ?? null };
   });
 }

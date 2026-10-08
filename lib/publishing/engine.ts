@@ -7,6 +7,8 @@ import { loadCredentials, markConnectionError } from "@/lib/social/connections";
 import { SocialError, type PublishRequest } from "@/lib/social/types";
 import { sendEmail, renderEmail } from "./email";
 import { adminStorageClient, EMAIL_URL_SECONDS, PUBLISH_URL_SECONDS, signPaths, signPathsForNetwork } from "./media";
+import { queueWebhookEvent } from "@/lib/webhooks/emit";
+import { postData } from "@/lib/webhooks/events";
 import { createMarkPostedToken } from "./token";
 import { composeText } from "./validate";
 
@@ -97,6 +99,7 @@ export async function sweepStalePosts(now: Date): Promise<number> {
   for (const post of await prisma.post.findMany({ where: { id: { in: ids } }, include: postInclude })) {
     const uncertain = post.status === "NEEDS_ACTION";
     if (uncertain) await prisma.post.update({ where: { id: post.id }, data: { lastError: UNCONFIRMED_MESSAGE(label(post.network)) } });
+    if (!uncertain) emitPostEvent(post, "post.failed", { status: "FAILED", lastError: OUT_OF_ATTEMPTS });
     await emailOwner(post, uncertain ? "uncertain" : "failed", uncertain ? UNCONFIRMED_MESSAGE(label(post.network)) : OUT_OF_ATTEMPTS);
   }
   return ids.length;
@@ -194,9 +197,15 @@ async function emailOwner(post: ClaimedPost, kind: "failed" | "uncertain", messa
   });
 }
 
+/** Outgoing webhooks (post.published / post.failed): queued after the state is saved, never slows or breaks publishing. */
+function emitPostEvent(post: ClaimedPost, event: "post.published" | "post.failed", changes: { status: string; lastError: string | null; permalink?: string | null; publishedAt?: Date | null }) {
+  queueWebhookEvent(post.businessId, event, () => postData({ ...post, ...changes, permalink: changes.permalink ?? post.permalink, publishedAt: changes.publishedAt ?? post.publishedAt }));
+}
+
 /** Marks the post FAILED and tells the owner by email. */
 async function failFinally(post: ClaimedPost, message: string, reconnect = false) {
-  await settle(post.id, { status: "FAILED", lastError: message, nextAttemptAt: null });
+  const saved = await settle(post.id, { status: "FAILED", lastError: message, nextAttemptAt: null });
+  if (saved) emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
   await emailOwner(post, "failed", message, reconnect);
 }
 
@@ -231,7 +240,10 @@ async function saveSuccess(post: ClaimedPost, result: { externalId: string; perm
   const data = { status: "PUBLISHED" as const, externalId: result.externalId, permalink: result.permalink ?? null, publishedAt: new Date(), lastError: null, nextAttemptAt: null };
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      if (await settle(post.id, data)) return;
+      if (await settle(post.id, data)) {
+        emitPostEvent(post, "post.published", { status: "PUBLISHED", lastError: null, permalink: data.permalink, publishedAt: data.publishedAt });
+        return;
+      }
       return await logSaveFailure(post, result, new Error("The post was no longer in PUBLISHING state"));
     } catch (error) {
       if (attempt === 3) return await logSaveFailure(post, result, error);
@@ -268,7 +280,8 @@ async function handleProviderError(post: ClaimedPost, error: unknown): Promise<"
 async function processPost(post: ClaimedPost): Promise<keyof Omit<PublishRunResult, "claimed">> {
   try {
     if (!post.connection || !isNetwork(post.network)) {
-      await settle(post.id, { status: "FAILED", lastError: "The account for this post was disconnected." });
+      const message = "The account for this post was disconnected.";
+      if (await settle(post.id, { status: "FAILED", lastError: message })) emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
       return "failed";
     }
     if (post.connection.postingMode === "NOTIFY" || post.format === "SCRIPT") return await sendReminder(post);

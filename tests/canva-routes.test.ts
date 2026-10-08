@@ -59,7 +59,7 @@ describe("connect", () => {
     const url = location(response);
     expect(url.origin + url.pathname).toBe("https://www.canva.com/api/oauth/authorize");
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
-    expect(url.searchParams.get("scope")).toBe("asset:write design:content:write design:content:read");
+    expect(url.searchParams.get("scope")).toBe("asset:write design:content:write design:content:read design:meta:read");
     const cookie = response.headers.get("set-cookie")!;
     expect(cookie).toContain(`${OAUTH_COOKIE}=`);
     expect(cookie.toLowerCase()).toContain("httponly");

@@ -5,6 +5,7 @@ import { WelcomeForm } from "@/components/auth/welcome-form";
 import { prisma } from "@/lib/db";
 import { ensureAccount } from "@/lib/account";
 import { getCurrentUser } from "@/lib/supabase/server";
+import { readReturn } from "@/lib/auth/return-server";
 
 export const metadata: Metadata = {
   title: "About your organisation",
@@ -22,7 +23,7 @@ export default async function WelcomePage() {
     prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true } }),
   ]);
   if (account?.deletionScheduledFor) redirect("/account/deletion");
-  if (business?.detailsCompletedAt) redirect("/dashboard");
+  if (business?.detailsCompletedAt) redirect(await readReturn());
 
   const meta = user.user_metadata as { full_name?: string; name?: string } | undefined;
 

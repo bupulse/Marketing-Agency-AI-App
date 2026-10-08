@@ -1,51 +1,16 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { decrypt } from "@/lib/crypto";
 import { sendEmail } from "@/lib/publishing/email";
 import { renderInstantLeadEmail } from "./email";
-import { deliverWebhook, leadEventBody } from "./webhook";
+import { emitWebhookEvent } from "@/lib/webhooks/emit";
+import { leadData } from "@/lib/webhooks/events";
 
 /**
- * The owner's instant email and the webhook for one new lead. Call it only after claiming the lead's
+ * The owner's instant email and the lead.created webhook for one new lead. Call it only after claiming the lead's
  * notifiedAt (see createLeadFromChat), so a double submit never sends twice. Each part is independent:
- * a bad webhook never stops the email and the other way round.
+ * a bad webhook never stops the email and the other way round. Webhooks are the business's endpoints on
+ * Connectors > Webhooks (lib/webhooks); the old per-widget address was moved there by a migration.
  */
-type WebhookLead = Parameters<typeof leadEventBody>[1];
-
-/**
- * One delivery run (3 attempts) of lead.created. Clears Lead.webhookPendingAt on success; on failure sets it
- * (keeping the first failure time) so the hourly cron can try again. Never throws.
- */
-export async function sendLeadWebhook(args: {
-  lead: WebhookLead;
-  business: { id: string; name: string };
-  webhookUrl: string;
-  secretEncrypted: string;
-  retryDelaysMs?: number[];
-}): Promise<boolean> {
-  const { lead, business } = args;
-  try {
-    const delivery = await deliverWebhook({
-      url: args.webhookUrl,
-      secret: await decrypt(args.secretEncrypted),
-      event: "lead.created",
-      body: leadEventBody("lead.created", lead, business),
-      retryDelaysMs: args.retryDelaysMs,
-    });
-    if (delivery.ok) {
-      await prisma.lead.updateMany({ where: { id: lead.id, webhookPendingAt: { not: null } }, data: { webhookPendingAt: null } });
-    } else {
-      console.warn(`[leads] webhook for business ${business.id} failed after ${delivery.attempts} attempts: ${delivery.error}`);
-      await prisma.lead.updateMany({ where: { id: lead.id, webhookPendingAt: null }, data: { webhookPendingAt: new Date() } });
-    }
-    return delivery.ok;
-  } catch (error) {
-    console.error("[leads] webhook failed:", error instanceof Error ? error.message : error);
-    await prisma.lead.updateMany({ where: { id: lead.id, webhookPendingAt: null }, data: { webhookPendingAt: new Date() } }).catch(() => {});
-    return false;
-  }
-}
-
 export async function notifyNewLead(leadId: string): Promise<{ emailed: boolean; webhook: boolean }> {
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
@@ -72,8 +37,7 @@ export async function notifyNewLead(leadId: string): Promise<{ emailed: boolean;
       }
     })(),
     (async () => {
-      if (!widget?.webhookUrl || !widget.webhookSecretEncrypted) return;
-      result.webhook = await sendLeadWebhook({ lead, business, webhookUrl: widget.webhookUrl, secretEncrypted: widget.webhookSecretEncrypted });
+      result.webhook = (await emitWebhookEvent(business.id, "lead.created", leadData(lead))) > 0;
     })(),
   ]);
   return result;

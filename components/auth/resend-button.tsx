@@ -7,7 +7,7 @@ import { resendConfirmation } from "@/app/signup/actions";
 export const RESEND_COOLDOWN_SECONDS = 60;
 
 /** "Resend email" with a 60s client-side cooldown. The server uses supabase.auth.resend({ type: 'signup' }). */
-export function ResendButton({ email, startCooldown = false }: { email: string; startCooldown?: boolean }) {
+export function ResendButton({ email, startCooldown = false, next }: { email: string; startCooldown?: boolean; next?: string }) {
   const [seconds, setSeconds] = useState(startCooldown ? RESEND_COOLDOWN_SECONDS : 0);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -21,7 +21,7 @@ export function ResendButton({ email, startCooldown = false }: { email: string; 
   function resend() {
     setMessage(null);
     startTransition(async () => {
-      const result = await resendConfirmation(email);
+      const result = await resendConfirmation(email, next);
       if (result.error) {
         setMessage({ text: result.error, error: true });
         if (result.retrySeconds) setSeconds(result.retrySeconds);

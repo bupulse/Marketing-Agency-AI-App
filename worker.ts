@@ -3,6 +3,7 @@
 //   every minute -> POST /api/cron/publish  (publishes due posts)
 //   hourly :37   -> POST /api/cron/leads-digest  (daily leads summary at 08:00 business time)
 //   hourly       -> POST /api/cron/metrics  (collects post metrics, at most once a day per post)
+//   daily 03:47  -> POST /api/cron/store-sync  (re-syncs imported store products, cursor calls)
 // The handler calls the app's own routes through the self-reference binding, so the routes keep one set of
 // rules (CRON_SECRET bearer check) whether Cloudflare, GitHub Actions or a person calls them.
 // Not type-checked with the app (tsconfig excludes it): ./.open-next only exists after `opennextjs-cloudflare build`.
@@ -28,12 +29,15 @@ export const METRICS_CRON = "23 * * * *";
 export const AUTOPILOT_CRON = "11 */3 * * 5,6";
 /** Hourly; the route only sends the leads summary to businesses where it is 08:00. */
 export const LEADS_DIGEST_CRON = "37 * * * *";
+/** Daily at 03:47 UTC: re-sync imported Shopify and WooCommerce products (a few stores per call, with a cursor). */
+export const STORE_SYNC_CRON = "47 3 * * *";
 
 export const CRON_ROUTES: Record<string, string> = {
   [PUBLISH_CRON]: "/api/cron/publish",
   [METRICS_CRON]: "/api/cron/metrics",
   [AUTOPILOT_CRON]: "/api/cron/autopilot",
   [LEADS_DIGEST_CRON]: "/api/cron/leads-digest",
+  [STORE_SYNC_CRON]: "/api/cron/store-sync",
 };
 
 /** The route for a schedule, or null for one this worker doesn't know (never fall back to publishing). */
@@ -57,10 +61,10 @@ async function runCron(path: string, env: Env): Promise<string | null> {
 }
 
 /** Autopilot answers a few businesses per call with a cursor; call again until it says there are no more. */
-async function runAutopilotCron(env: Env): Promise<void> {
+async function runCursorCron(path: string, env: Env): Promise<void> {
   let cursor: string | null = null;
   for (let i = 0; i < 40; i++) {
-    const body = await runCron(`/api/cron/autopilot${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`, env);
+    const body = await runCron(`${path}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`, env);
     try {
       cursor = body ? ((JSON.parse(body) as { nextCursor?: string | null }).nextCursor ?? null) : null;
     } catch {
@@ -70,11 +74,14 @@ async function runAutopilotCron(env: Env): Promise<void> {
   }
 }
 
+const runAutopilotCron = (env: Env) => runCursorCron("/api/cron/autopilot", env);
+
 const worker = {
   fetch: handler.fetch,
 
   async scheduled(controller: { cron: string }, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }) {
     if (controller.cron === AUTOPILOT_CRON) return ctx.waitUntil(runAutopilotCron(env));
+    if (controller.cron === STORE_SYNC_CRON) return ctx.waitUntil(runCursorCron("/api/cron/store-sync", env));
     const path = routeForCron(controller.cron);
     if (!path) return console.error(`[cron] unknown schedule "${controller.cron}"; check wrangler.jsonc against worker.ts`);
     ctx.waitUntil(runCron(path, env));

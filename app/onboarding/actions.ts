@@ -16,6 +16,7 @@ import {
 } from "@/lib/brand/schemas";
 import { buildObjectPath, createSignedUploadUrl } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
+import { takeReturn } from "@/lib/auth/return-server";
 
 export type SaveResult = { ok: true } | { ok: false; error?: string; fieldErrors?: Record<string, string> };
 export type LogoUploadResult =
@@ -110,5 +111,5 @@ export async function finishOnboarding(): Promise<SaveResult> {
 
   const result = await update(user.id, { onboardedAt: business.onboardedAt ?? new Date() });
   if (!result.ok) return result;
-  redirect("/dashboard");
+  redirect(await takeReturn()); // the dashboard, or where the person was headed before signing up
 }

@@ -1,4 +1,5 @@
 import {
+  Blocks,
   CalendarDays,
   ChartNoAxesColumn,
   CreditCard,
@@ -29,6 +30,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard/leads", label: "Leads", icon: Users },
   { href: "/dashboard/widget", label: "Website chat", icon: MessageCircle },
   { href: "/dashboard/connections", label: "Connections", icon: Plug },
+  { href: "/dashboard/connectors", label: "Connectors", icon: Blocks },
   { href: "/dashboard/brand", label: "Brand", icon: Palette },
   { href: "/dashboard/usage", label: "Usage", icon: ChartNoAxesColumn },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard },

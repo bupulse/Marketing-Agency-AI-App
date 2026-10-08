@@ -6,6 +6,7 @@ import { logError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 import { emailSchema, fieldErrors, signUpSchema, type FieldErrors } from "@/lib/auth/schemas";
 import { siteUrl } from "@/lib/auth/site-url";
+import { cleanReturn } from "@/lib/auth/return-path";
 
 export type SignUpState =
   | { status: "idle" }
@@ -33,6 +34,10 @@ function friendlySignUpError(error: AuthErrorLike): string {
         ? "Too many attempts. Please wait a few minutes and try again."
         : "We could not create your account. Please try again.";
   }
+}
+
+function withNext(url: string, next: string) {
+  return next === "/dashboard" ? url : `${url}&next=${encodeURIComponent(next)}`;
 }
 
 function signInUrl(email: string, google = false) {
@@ -64,16 +69,17 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
   });
   if (!parsed.success) return { status: "error", fieldErrors: fieldErrors(parsed.error) };
   const v = parsed.data;
+  const next = cleanReturn(String(formData.get("next") ?? ""));
 
   const existing = await findAccountByEmail(v.email);
-  if (existing) redirect(signInUrl(v.email, existing.method === "GOOGLE"));
+  if (existing) redirect(withNext(signInUrl(v.email, existing.method === "GOOGLE"), next));
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
     email: v.email,
     password: v.password,
     options: {
-      emailRedirectTo: `${siteUrl()}/auth/confirm?next=/dashboard`,
+      emailRedirectTo: `${siteUrl()}/auth/confirm?next=${encodeURIComponent(next)}`,
       data: {
         organisation_name: v.organisationName,
         ceo_name: v.ceoName,
@@ -87,7 +93,7 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
 
   // An existing confirmed account comes back as a user with no identities (or user_already_exists).
   if (error?.code === "user_already_exists" || (!error && data.user && data.user.identities?.length === 0)) {
-    redirect(signInUrl(v.email));
+    redirect(withNext(signInUrl(v.email), next));
   }
   if (error) {
     await logError(error, { source: "signup", code: error.code, status: error.status });
@@ -98,7 +104,7 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
 
 export type ResendResult = { error?: string; retrySeconds?: number };
 
-export async function resendConfirmation(email: string): Promise<ResendResult> {
+export async function resendConfirmation(email: string, next?: string): Promise<ResendResult> {
   const parsed = emailSchema.safeParse(email);
   if (!parsed.success) return { error: "Enter a valid email address." };
 
@@ -106,7 +112,7 @@ export async function resendConfirmation(email: string): Promise<ResendResult> {
   const { error } = await supabase.auth.resend({
     type: "signup",
     email: parsed.data,
-    options: { emailRedirectTo: `${siteUrl()}/auth/confirm?next=/dashboard` },
+    options: { emailRedirectTo: `${siteUrl()}/auth/confirm?next=${encodeURIComponent(cleanReturn(next))}` },
   });
   if (error) {
     await logError(error, { source: "signup.resend", code: error.code, status: error.status });

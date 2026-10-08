@@ -55,7 +55,7 @@ export default function LoginForm({ next, defaultEmail }: { next: string; defaul
 
       <p className="text-sm text-muted">
         New to BuPulse?{" "}
-        <Link href="/signup" className="inline-flex min-h-11 items-center font-semibold text-pulse-blue underline">
+        <Link href={next !== "/dashboard" ? `/signup?next=${encodeURIComponent(next)}` : "/signup"} className="inline-flex min-h-11 items-center font-semibold text-pulse-blue underline">
           Create an account
         </Link>
       </p>

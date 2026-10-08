@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { retryPendingWebhooks, runLeadsDigest } from "@/lib/leads/digest";
+import { runLeadsDigest } from "@/lib/leads/digest";
+import { retryDueWebhooks } from "@/lib/webhooks/retry";
 
 // Compares without stopping at the first different character.
 function safeEqual(a: string, b: string): boolean {
@@ -11,7 +12,7 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 // Called hourly by the Cloudflare Cron Trigger (worker.ts) and by .github/workflows/leads-digest.yml as a
-// fallback. Each run also retries failed lead.created webhooks (up to 24 h old). The digest part only handles the businesses for which it is 08:00 local time. Safe to run twice at once.
+// fallback. Each run also retries pending outgoing webhook deliveries (up to 24 h old) and deletes delivery logs older than 30 days. The digest part only handles the businesses for which it is 08:00 local time. Safe to run twice at once.
 export async function POST(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret) return NextResponse.json({ error: "CRON_SECRET is not set" }, { status: 500 });
@@ -19,8 +20,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const digest = await runLeadsDigest();
-  const webhooks = await retryPendingWebhooks().catch((error) => {
-    console.error("[leads.cron] webhook retry failed:", error instanceof Error ? error.message : error);
+  const webhooks = await retryDueWebhooks().catch((error) => {
+    console.error("[webhooks.cron] retry failed:", error instanceof Error ? error.message : error);
     return null;
   });
   return NextResponse.json({ ...digest, webhooks });

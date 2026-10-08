@@ -8,6 +8,8 @@ import { readKnowledge } from "@/lib/brand/schemas";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { logError } from "@/lib/errors";
 import { consumeUsage, refundUsage } from "@/lib/usage";
+import { queueWebhookEvent } from "@/lib/webhooks/emit";
+import { contentData } from "@/lib/webhooks/events";
 import { MAX_VERSIONS_PER_PROJECT } from "./schemas";
 import { buildVariants, type VariantSource } from "./variants";
 
@@ -124,6 +126,7 @@ export async function generateForProject(args: {
       },
     });
     await pruneVersions(project.id).catch((e) => logError(e, { source: "studio.prune", level: "warn" }));
+    queueWebhookEvent(business.id, "content.generated", () => contentData(saved));
     return saved;
   } catch (error) {
     try {

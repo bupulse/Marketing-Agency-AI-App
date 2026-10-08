@@ -82,7 +82,7 @@ function Progress({ step }: { step: Step }) {
   );
 }
 
-export default function SignupForm() {
+export default function SignupForm({ next = "/dashboard" }: { next?: string }) {
   const [step, setStep] = useState<Step>(1);
   const [checkingEmail, setCheckingEmail] = useState(false);
   const router = useRouter();
@@ -144,7 +144,7 @@ export default function SignupForm() {
       const { registered, signInUrl } = await checkEmail(values.email).catch(() => ({ registered: false, signInUrl: undefined }));
       setCheckingEmail(false);
       if (registered) {
-        router.push(signInUrl ?? `/login?notice=exists&email=${encodeURIComponent(values.email.trim())}`);
+        router.push(`${signInUrl ?? `/login?notice=exists&email=${encodeURIComponent(values.email.trim())}`}${next !== "/dashboard" ? `&next=${encodeURIComponent(next)}` : ""}`);
         return;
       }
     }
@@ -163,6 +163,7 @@ export default function SignupForm() {
   function submitAction() {
     const fd = new FormData();
     for (const [k, v] of Object.entries(values)) fd.set(k, String(v));
+    fd.set("next", next);
     formAction(fd);
   }
 
@@ -170,6 +171,7 @@ export default function SignupForm() {
     return (
       <ConfirmEmail
         email={state.email}
+        next={next}
         onChangeEmail={() => {
           setDismissed(state);
           setValues((v) => ({ ...v, password: "", confirmPassword: "", terms: false }));
@@ -194,7 +196,7 @@ export default function SignupForm() {
       {step === 1 && (
         <>
           <form action={signInWithGoogle}>
-            <input type="hidden" name="next" value="/dashboard" />
+            <input type="hidden" name="next" value={next} />
             <Button type="submit" variant="white" size="lg" className="w-full" leading={<GoogleIcon />}>
               Continue with Google
             </Button>
@@ -280,7 +282,7 @@ export default function SignupForm() {
 
       <p className="text-sm text-muted">
         Already have an account?{" "}
-        <Link href="/login" className="inline-flex min-h-11 items-center font-semibold text-pulse-blue underline">
+        <Link href={next !== "/dashboard" ? `/login?next=${encodeURIComponent(next)}` : "/login"} className="inline-flex min-h-11 items-center font-semibold text-pulse-blue underline">
           Sign in
         </Link>
       </p>

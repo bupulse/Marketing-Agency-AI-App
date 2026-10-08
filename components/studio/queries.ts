@@ -50,6 +50,7 @@ export async function loadProjectCards(businessId: string) {
     take: 60,
     include: {
       _count: { select: { contents: true, designs: true } },
+      storeSync: { select: { connection: { select: { provider: true } } } },
       contents: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
     },
   });
@@ -63,6 +64,7 @@ export async function loadProjectCards(businessId: string) {
     contentCount: p._count.contents,
     designCount: p._count.designs,
     lastGenerated: p.contents[0]?.createdAt.toISOString() ?? null,
+    syncedFrom: p.storeSync?.connection.provider ?? null,
   }));
 }
 
@@ -72,6 +74,7 @@ export async function loadProjectDetail(businessId: string, projectId: string) {
     include: {
       contents: { orderBy: { createdAt: "desc" }, take: 50 },
       designs: { orderBy: { createdAt: "desc" }, take: 50 },
+      storeSync: { select: { connection: { select: { provider: true } } } },
     },
   });
   if (!project) return null;

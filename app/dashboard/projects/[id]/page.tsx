@@ -31,6 +31,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="blue">{typeLabel(project.type)}</Badge>
               {project.price && <Badge tone="neutral">{project.price}</Badge>}
+              {project.storeSync && <Badge tone="violet">{project.storeSync.connection.provider === "shopify" ? "Synced from Shopify" : "Synced from WooCommerce"}</Badge>}
             </div>
             <h1 className="break-words text-[28px] font-semibold leading-tight tracking-[-0.03em] sm:text-[30px]">{project.title}</h1>
             {project.features.length > 0 && (

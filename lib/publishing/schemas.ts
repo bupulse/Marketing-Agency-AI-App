@@ -3,9 +3,9 @@ import { isValidTimeZone } from "./time";
 
 export const MAX_ACCOUNTS_PER_POST = 12;
 export const MAX_MEDIA_PER_POST = 10;
-const TEXT_MAX = 10_000;
+export const TEXT_MAX = 10_000;
 
-const hashtagList = z
+export const hashtagList = z
   .array(z.string().trim().min(1).max(100))
   .max(50)
   .transform((tags) => [...new Set(tags.map((t) => `#${t.replace(/^#+/, "").replace(/\s+/g, "")}`).filter((t) => t.length > 1))]);
@@ -17,7 +17,7 @@ const when = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("now") }),
 ]);
 
-const optionalLink = z
+export const optionalLink = z
   .string()
   .trim()
   .max(2000)

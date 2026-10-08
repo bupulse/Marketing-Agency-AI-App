@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
     mediaFolder: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), create: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn() },
     mediaAsset: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn(), aggregate: vi.fn(), groupBy: vi.fn() },
     $transaction: vi.fn(),
+    $executeRaw: vi.fn(),
   },
   rateLimit: vi.fn(),
   info: vi.fn(),
@@ -51,6 +52,7 @@ beforeEach(() => {
   headFetch.mockReset().mockResolvedValue(new Response(PNG_HEAD));
   vi.stubGlobal("fetch", headFetch);
   mocks.prisma.mediaAsset.aggregate.mockResolvedValue({ _count: { _all: 0 }, _sum: { bytes: 0 } });
+  mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => (typeof arg === "function" ? (arg as (tx: typeof mocks.prisma) => unknown)(mocks.prisma) : Promise.all(arg as unknown[])));
   mocks.createSignedUploadUrl.mockImplementation(async (_b: string, path: string) => ({ path, token: "tok", signedUrl: "u" }));
 });
 

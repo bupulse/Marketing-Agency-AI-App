@@ -9,8 +9,10 @@ import { cn } from "@/lib/cn";
 import { createFolder, deleteAssets, deleteFolder, listGalleryPage, moveAssets, renameAsset, renameFolder } from "@/app/dashboard/gallery/actions";
 import { formatBytes, MEDIA_MAX_ASSETS, MEDIA_MAX_TOTAL_BYTES, MEDIA_TYPES } from "@/lib/media/rules";
 import type { GalleryOverview, MediaItem } from "@/lib/media/service";
+import { ImportMenu } from "./import-menu";
 import { UploadProgress } from "./upload-progress";
 import { useGalleryUpload } from "./use-gallery-upload";
+import { useImporter } from "./use-importer";
 
 type Dialogs =
   | null
@@ -47,10 +49,12 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
   const count = folder === "all" ? overview.total : folder === "none" ? overview.unfiled : (current?.count ?? 0);
   const selecting = selected.size > 0;
 
-  const uploader = useGalleryUpload((uploaded) => {
+  const added = (uploaded: MediaItem[]) => {
     setFresh((cur) => [...[...uploaded].reverse(), ...cur]);
     router.refresh();
-  });
+  };
+  const uploader = useGalleryUpload(added);
+  const importer = useImporter(added);
 
   // After a refresh the first page is new; drop what was loaded beyond it so nothing shows twice or stale.
   const [seen, setSeen] = useState(initialItems);
@@ -196,12 +200,16 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
             </>
           )}
         </div>
-        <Button size="sm" leading={<Upload aria-hidden className="size-4" />} disabled={uploader.state.active} onClick={() => inputRef.current?.click()}>
-          Upload photos
-        </Button>
+        <div className="flex items-center gap-2">
+          <ImportMenu importer={importer} folders={overview.folders} defaultFolderId={uploadFolder} />
+          <Button size="sm" leading={<Upload aria-hidden className="size-4" />} disabled={uploader.state.active} onClick={() => inputRef.current?.click()}>
+            Upload photos
+          </Button>
+        </div>
       </div>
 
       <UploadProgress state={uploader.state} onDismiss={uploader.dismiss} />
+      <UploadProgress state={importer.state} onDismiss={importer.dismiss} verb="Importing" />
 
       {items.length === 0 ? (
         <Empty total={overview.total} folder={folder} onUpload={() => inputRef.current?.click()} />

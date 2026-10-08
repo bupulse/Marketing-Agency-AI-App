@@ -63,9 +63,6 @@ Open **Website chat** in the dashboard (this creates the widget row), copy the s
 
 `npx vitest run tests/widget` (units and service with mocks). Quality eval with the real model: `npm run ai:eval:widget` (5 businesses x 4 questions, costs cents).
 
-## Lead webhook delivery (lib/leads)
+## Lead webhook delivery
 
-- Each new lead POSTs `lead.created` to the owner's webhook (see the header comment in `lib/leads/webhook.ts` for the signature: `X-BuPulse-Signature: t=<unix>,v1=HMAC-SHA256(secret, "<t>.<body>")`).
-- First run, in the background after the response: 3 attempts, 5 s timeout each, waits of 1 s and 4 s (about 20 s at most, inside the ~30 s Cloudflare gives `waitUntil`). The instant email runs at the same time, so a slow webhook never delays it.
-- If all attempts fail, `Lead.webhookPendingAt` is set. The hourly `/api/cron/leads-digest` run retries each pending lead once per hour for up to 24 hours, then logs and gives up.
-- Delivery is at least once. If a slow success was cut off before we saw it, the same event can arrive again with a new `t` in the signature. Receivers should dedupe on `lead.id`.
+Lead webhooks are now part of the general outgoing webhooks (Connectors > Webhooks, `lib/webhooks`, `docs/WEBHOOKS.md`). Each endpoint that listens to `lead.created` gets the event, with the same signature, retries and delivery log. The old per-widget address (`ChatWidget.webhookUrl`) was moved into an endpoint by migration `20261008060000_connectors_hub_webhooks_api`, keeping the same secret.

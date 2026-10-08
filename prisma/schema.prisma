@@ -86,6 +86,11 @@ model Business {
   autopilotRuns AutopilotRun[]
   chatWidgets   ChatWidget[]
   chatSessions  ChatSession[]
+  webhookEndpoints WebhookEndpoint[]
+  apiKeys          ApiKey[]
+  storeConnections StoreConnection[]
+  pendingStores    StoreConnectionPending[]
+  cloudflare       CloudflareConnection?
 }
 
 // Anything the business wants to promote. A real estate "listing" is just one type.
@@ -105,6 +110,7 @@ model Project {
   contents GeneratedContent[]
   designs  Design[]
   posts    Post[]
+  storeSync ProductSync?
 
   @@index([businessId, createdAt])
 }
@@ -552,6 +558,7 @@ model MediaAsset {
   bytes      Int
   width      Int?
   height     Int?
+  source     String? // where an import came from: "google_drive" | "dropbox" | "canva"; null for uploads
   createdAt  DateTime     @default(now())
 
   @@index([businessId, folderId, createdAt])
@@ -583,4 +590,140 @@ model AutopilotRun {
   posts      Post[]
 
   @@unique([businessId, weekStart])
+}
+
+// Outgoing webhooks (Phase 7), on every plan. One business can have a few endpoints, each with its own
+// signing secret and the events it wants.
+model WebhookEndpoint {
+  id              String            @id @default(cuid())
+  businessId      String
+  business        Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  url             String
+  events          String[] // lead.created, content.generated, post.published, post.failed
+  secretEncrypted String // HMAC secret, encrypted with lib/crypto.ts
+  enabled         Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  lastSuccessAt   DateTime?
+  lastFailureAt   DateTime?
+  failureCount    Int               @default(0) // failed deliveries in a row; reset by a success
+  deliveries      WebhookDelivery[]
+
+  @@index([businessId])
+}
+
+// One event for one endpoint. pending: waiting for (another) attempt; success; failed: gave up or not retryable.
+// Deleted after 30 days.
+model WebhookDelivery {
+  id             String          @id @default(cuid())
+  endpointId     String
+  endpoint       WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  event          String
+  payload        Json
+  status         String          @default("pending")
+  attempts       Int             @default(0)
+  responseStatus Int?
+  error          String?
+  nextAttemptAt  DateTime?
+  createdAt      DateTime        @default(now())
+
+  @@index([status, nextAttemptAt])
+  @@index([endpointId, createdAt])
+  @@index([createdAt])
+}
+
+// Pro plan REST API keys (bp_live_...). Only the SHA-256 hash is stored; the key is shown once.
+model ApiKey {
+  id         String    @id @default(cuid())
+  businessId String
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  prefix     String // first characters of the key, to recognise it in the list
+  hash       String    @unique
+  scopes     String[]
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([businessId])
+}
+
+// Phase 7 commerce connectors (docs/CONNECTORS.md). A connected Shopify or WooCommerce store.
+// `credentialsEncrypted` is lib/crypto.ts output: the Shopify access token, or WooCommerce "consumerKey:consumerSecret".
+model StoreConnection {
+  id                   String        @id @default(cuid())
+  businessId           String
+  business             Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider             String // "shopify" | "woocommerce"
+  storeUrl             String // Shopify: "shop.myshopify.com"; WooCommerce: "https://store.com" (no trailing slash)
+  credentialsEncrypted String
+  scopes               String?
+  currency             String? // WooCommerce store currency symbol/code, read once
+  status               String        @default("ACTIVE") // "ACTIVE" | "NEEDS_ATTENTION"
+  lastSyncAt           DateTime?
+  lastSyncError        String?
+  lastAttemptAt        DateTime? // last time the daily sync tried this store (fair rotation); null = never
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  products             ProductSync[]
+
+  @@unique([businessId, provider])
+  @@index([provider, storeUrl])
+  @@index([lastAttemptAt])
+}
+
+// Maps one store product to one Project so a re-sync updates instead of duplicating.
+// `baseline` holds the fields as the last sync wrote them: a Project field is only overwritten
+// while it still equals its baseline (the user has not edited it). See lib/stores/sync.ts.
+model ProductSync {
+  id            String          @id @default(cuid())
+  connectionId  String
+  connection    StoreConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  projectId     String          @unique
+  project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  externalId    String
+  baseline      Json
+  imageMap      Json // { "<source image url>": "<storage path>" }
+  lastSyncedAt  DateTime        @default(now())
+  sourceMissing Boolean         @default(false)
+  createdAt     DateTime        @default(now())
+
+  @@unique([connectionId, externalId])
+}
+
+// A Cloudflare API token (pasted by the user, encrypted) and the chat-widget installs made with it.
+model CloudflareConnection {
+  businessId     String              @id
+  business       Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  tokenEncrypted String
+  status         String              @default("ACTIVE") // "ACTIVE" | "NEEDS_ATTENTION"
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  installs       CloudflareInstall[]
+}
+
+model CloudflareInstall {
+  id          String               @id @default(cuid())
+  businessId  String
+  connection  CloudflareConnection @relation(fields: [businessId], references: [businessId], onDelete: Cascade)
+  zoneId      String
+  zoneName    String
+  toolId      String // the Zaraz tool id BuPulse created
+  installedAt DateTime             @default(now())
+
+  @@unique([businessId, zoneId])
+}
+
+// WooCommerce keys that arrived at the callback but are not active until the signed-in owner confirms them.
+model StoreConnectionPending {
+  id                   String   @id @default(cuid())
+  businessId           String
+  business             Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  provider             String
+  storeUrl             String
+  credentialsEncrypted String
+  currency             String?
+  expiresAt            DateTime
+  createdAt            DateTime @default(now())
+
+  @@unique([businessId, provider])
 }

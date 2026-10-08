@@ -14,13 +14,14 @@ Canva now calls integrations "apps".
 
 ## 2. Scopes (Configuration > Canva REST APIs > Scopes)
 
-Tick exactly these three:
+Tick exactly these four:
 
 | Scope | Why |
 | --- | --- |
 | `asset:write` | upload the design image to the client's Canva |
 | `design:content:write` | create the Canva design from it |
-| `design:content:read` | export the edited design back as PNG |
+| `design:content:read` | export the edited design back as PNG (also used by "Import from Canva") |
+| `design:meta:read` | list the client's designs for "Import from Canva" (docs/CONNECTORS.md) |
 
 BuPulse only ever exports designs it created itself from BuPulse. If you change scopes later, clients must disconnect and connect again.
 

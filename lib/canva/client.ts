@@ -140,6 +140,20 @@ export function canvaSize(width: number, height: number): { width: number; heigh
   return { width: w, height: h };
 }
 
+export type CanvaDesignSummary = { id: string; title: string; thumbnailUrl: string | null; updatedAt: number | null };
+
+/** One page of the user's designs, newest edit first. Pass the previous page's `continuation` for the next one. */
+export async function listDesigns(token: string, options: { query?: string; continuation?: string | null; limit?: number } = {}): Promise<{ items: CanvaDesignSummary[]; continuation: string | null }> {
+  const params = new URLSearchParams({ limit: String(options.limit ?? 24), sort_by: "modified_descending", ownership: "any" });
+  if (options.query?.trim()) params.set("query", options.query.trim().slice(0, 255));
+  if (options.continuation) params.set("continuation", options.continuation);
+  const body = await api<{ items?: { id: string; title?: string; thumbnail?: { url?: string }; updated_at?: number }[]; continuation?: string }>(token, `/designs?${params}`);
+  return {
+    items: (body.items ?? []).map((d) => ({ id: d.id, title: d.title?.trim() || "Untitled design", thumbnailUrl: d.thumbnail?.url ?? null, updatedAt: d.updated_at ?? null })),
+    continuation: body.continuation ?? null,
+  };
+}
+
 export type CanvaDesign = { id: string; editUrl: string };
 
 export async function createDesign(token: string, input: { assetId: string; title: string; width: number; height: number }): Promise<CanvaDesign> {
@@ -202,7 +216,7 @@ async function readCapped(response: Response, maxBytes: number): Promise<Uint8Ar
 export async function exportDesignPng(
   token: string,
   designId: string,
-  size: { width: number; height: number },
+  size: { width: number; height?: number },
   deadline = Date.now() + EXPORT_JOB_MAX_MS + UPLOAD_TIMEOUT_MS,
 ): Promise<Uint8Array> {
   const timeout = () => Math.min(REQUEST_TIMEOUT_MS, remaining(deadline));
@@ -212,7 +226,7 @@ export async function exportDesignPng(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ design_id: designId, format: { type: "png", ...canvaSize(size.width, size.height), pages: [1] } }),
+      body: JSON.stringify({ design_id: designId, format: { type: "png", ...(size.height ? canvaSize(size.width, size.height) : { width: Math.min(8000, Math.max(40, Math.round(size.width))) }), pages: [1] } }),
     },
     timeout(),
   );

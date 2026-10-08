@@ -127,3 +127,37 @@ export function scaledSize(width: number, height: number, max = UPLOAD_MAX_SIDE)
   const k = max / long;
   return { width: Math.max(1, Math.round(width * k)), height: Math.max(1, Math.round(height * k)) };
 }
+
+/** Per-user limit for server-side imports (Google Drive, Dropbox, Canva): one hit per file. */
+export const IMPORT_RATE = { limit: 200, windowSeconds: 60 * 60 } as const;
+/** Files taken in one Import: the browser sends them to the server one at a time. */
+export const IMPORT_MAX_FILES = 20;
+export type ImportSource = "google_drive" | "dropbox" | "canva";
+
+/** Width and height read from a JPEG, PNG or WebP header, or null when they cannot be found. */
+export function imageSize(bytes: Uint8Array): { width: number; height: number } | null {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const type = sniffMediaType(bytes);
+  try {
+    if (type === "image/png" && bytes.length >= 24) return { width: view.getUint32(16), height: view.getUint32(20) };
+    if (type === "image/webp" && bytes.length >= 30) {
+      const kind = String.fromCharCode(...bytes.subarray(12, 16));
+      if (kind === "VP8X") return { width: 1 + (bytes[24] | (bytes[25] << 8) | (bytes[26] << 16)), height: 1 + (bytes[27] | (bytes[28] << 8) | (bytes[29] << 16)) };
+      if (kind === "VP8L") {
+        const bits = view.getUint32(21, true);
+        return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+      }
+      if (kind === "VP8 ") return { width: view.getUint16(26, true) & 0x3fff, height: view.getUint16(28, true) & 0x3fff };
+    }
+    if (type === "image/jpeg") {
+      let i = 2;
+      while (i + 9 < bytes.length) {
+        if (bytes[i] !== 0xff) return null;
+        const marker = bytes[i + 1];
+        if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) return { height: view.getUint16(i + 5), width: view.getUint16(i + 7) };
+        i += 2 + view.getUint16(i + 2);
+      }
+    }
+  } catch {}
+  return null;
+}

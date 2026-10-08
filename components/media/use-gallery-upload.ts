@@ -6,7 +6,7 @@ import { createUploadTargets, discardUpload, finalizeUpload } from "@/app/dashbo
 import { fileProblem, inferMimeType, MEDIA_MAX_BYTES, nameFromFile, scaledSize, UPLOAD_BATCH_MAX } from "@/lib/media/rules";
 import type { MediaItem } from "@/lib/media/service";
 
-export type UploadState = { active: boolean; total: number; done: number; failed: number; errors: string[] };
+export type UploadState = { active: boolean; total: number; done: number; failed: number; errors: string[]; /** The file being worked on (imports only). */ current?: string };
 
 const IDLE: UploadState = { active: false, total: 0, done: 0, failed: 0, errors: [] };
 const PARALLEL = 3;

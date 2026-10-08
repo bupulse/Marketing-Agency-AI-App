@@ -5,6 +5,7 @@ const prisma = vi.hoisted(() => ({
   chatWidget: { findMany: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn() },
   lead: { findMany: vi.fn(), count: vi.fn(), updateMany: vi.fn() },
   business: { groupBy: vi.fn() },
+  webhookDelivery: { findMany: vi.fn(async () => []), deleteMany: vi.fn(async () => ({ count: 0 })) },
 }));
 vi.mock("@/lib/db", () => ({ prisma }));
 const sendEmail = vi.hoisted(() => vi.fn());
@@ -119,6 +120,6 @@ describe("/api/cron/leads-digest", () => {
   it("runs with the right secret", async () => {
     const response = await call("Bearer s3cret");
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ checked: 0, sent: 0, webhooks: { checked: 0 } });
+    expect(await response.json()).toMatchObject({ checked: 0, sent: 0, webhooks: { checked: 0, deleted: 0, adopted: 0 } });
   });
 });

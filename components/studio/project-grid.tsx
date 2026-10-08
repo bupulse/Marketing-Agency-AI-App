@@ -12,6 +12,8 @@ export type ProjectCardData = {
   contentCount: number;
   designCount: number;
   lastGenerated: string | null;
+  /** "shopify" or "woocommerce" when imported from a store. */
+  syncedFrom?: string | null;
 };
 
 export function ProjectGrid({ projects }: { projects: ProjectCardData[] }) {
@@ -33,6 +35,11 @@ export function ProjectGrid({ projects }: { projects: ProjectCardData[] }) {
                 <Badge tone="blue" className="absolute top-3 left-3 bg-glass-strong">
                   {typeLabel(p.type)}
                 </Badge>
+                {p.syncedFrom && (
+                  <Badge tone="violet" className="absolute top-3 right-3 bg-glass-strong">
+                    {p.syncedFrom === "shopify" ? "Synced from Shopify" : "Synced from WooCommerce"}
+                  </Badge>
+                )}
               </div>
               <div className="flex flex-1 flex-col gap-1.5 p-4">
                 <strong className="line-clamp-2 text-[16px] leading-snug">{p.title}</strong>

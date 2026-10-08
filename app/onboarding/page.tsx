@@ -8,6 +8,7 @@ import { ensureAccount } from "@/lib/account";
 import { isOwnLogoPath, readKnowledge } from "@/lib/brand/schemas";
 import { createSignedDownloadUrl } from "@/lib/storage";
 import { getCurrentUser } from "@/lib/supabase/server";
+import { readReturn } from "@/lib/auth/return-server";
 
 export const metadata: Metadata = {
   title: "Set up your brand",
@@ -26,7 +27,7 @@ export default async function OnboardingPage() {
   ]);
   if (account?.deletionScheduledFor) redirect("/account/deletion");
   if (!business?.detailsCompletedAt) redirect("/welcome");
-  if (business.onboardedAt) redirect("/dashboard");
+  if (business.onboardedAt) redirect(await readReturn());
 
   const knowledge = readKnowledge(business.knowledge);
   const hasKnowledge = !!(knowledge.hours || knowledge.area || knowledge.contact || knowledge.faqs.length);

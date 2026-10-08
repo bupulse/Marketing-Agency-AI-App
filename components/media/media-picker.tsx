@@ -16,6 +16,8 @@
  *   max            The most photos that can be chosen when `multiple` (default 10).
  *   title          Dialog title (default "Choose from my gallery" / "Choose photos").
  *   confirmLabel   Button text in multiple mode; gets the count (default "Use N photos").
+ *
+ * The "Import" menu (Google Drive, Dropbox, Canva) is built in: imported photos land in the open folder and are selected.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -25,8 +27,10 @@ import { cn } from "@/lib/cn";
 import { getGalleryOverview, listGalleryPage } from "@/app/dashboard/gallery/actions";
 import { MEDIA_TYPES } from "@/lib/media/rules";
 import type { FolderSummary, MediaItem } from "@/lib/media/service";
+import { ImportMenu } from "./import-menu";
 import { UploadProgress } from "./upload-progress";
 import { useGalleryUpload } from "./use-gallery-upload";
+import { useImporter } from "./use-importer";
 
 export type PickedPhoto = { path: string; url: string; width: number | null; height: number | null; mimeType: string };
 
@@ -45,17 +49,32 @@ type Folder = "all" | "none" | string;
 export const toPicked = (m: Pick<MediaItem, "path" | "url" | "width" | "height" | "mimeType">): PickedPhoto => ({ path: m.path, url: m.url, width: m.width, height: m.height, mimeType: m.mimeType });
 
 export function MediaPicker({ open, onOpenChange, onPick, multiple = false, max = 10, title, confirmLabel }: MediaPickerProps) {
+  // Google's Picker cannot show above a modal <dialog>, so while it is open this dialog steps aside (its state stays).
+  const [aside, setAside] = useState(false);
+  const asideRef = useRef(false);
+  const stepAside = useCallback((on: boolean) => {
+    asideRef.current = on;
+    setAside(on);
+  }, []);
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title={title ?? (multiple ? "Choose photos" : "Choose from my gallery")} className="max-w-3xl">
+    <Dialog
+      open={open && !aside}
+      onOpenChange={(next) => {
+        if (!next && asideRef.current) return;
+        onOpenChange(next);
+      }}
+      title={title ?? (multiple ? "Choose photos" : "Choose from my gallery")}
+      className="max-w-3xl"
+    >
       {/* Mounted only while open, so every opening starts on "All photos" with nothing selected. */}
-      {open && <PickerBody onOpenChange={onOpenChange} onPick={onPick} multiple={multiple} max={max} confirmLabel={confirmLabel} />}
+      {open && <PickerBody onOpenChange={onOpenChange} onPick={onPick} multiple={multiple} max={max} confirmLabel={confirmLabel} onPickerVisible={stepAside} />}
     </Dialog>
   );
 }
 
 type Page = { key: string; items: MediaItem[]; cursor: string | null; error: string | null };
 
-function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel }: Pick<MediaPickerProps, "onOpenChange" | "onPick" | "confirmLabel"> & { multiple: boolean; max: number }) {
+function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, onPickerVisible }: Pick<MediaPickerProps, "onOpenChange" | "onPick" | "confirmLabel"> & { multiple: boolean; max: number; onPickerVisible: (visible: boolean) => void }) {
   const [folders, setFolders] = useState<FolderSummary[]>([]);
   const [folder, setFolder] = useState<Folder>("all");
   const [search, setSearch] = useState("");
@@ -65,6 +84,7 @@ function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel }: Pick<
   const [selected, setSelected] = useState<MediaItem[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const uploadFolder = folder === "all" || folder === "none" ? null : folder;
   const key = `${folder}|${query}`;
   const loading = page?.key !== key;
   // While another folder or search loads, the previous photos stay (dimmed) instead of flashing empty.
@@ -78,16 +98,16 @@ function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel }: Pick<
     if (res.ok) setFolders(res.overview.folders);
   }, []);
 
-  const uploader = useGalleryUpload(
-    useCallback(
-      (uploaded: MediaItem[]) => {
-        setPage((p) => (p ? { ...p, items: [...[...uploaded].reverse(), ...p.items.filter((c) => !uploaded.some((u) => u.id === c.id))] } : p));
-        setSelected((cur) => (multiple ? [...cur, ...uploaded].slice(0, max) : cur));
-        void loadOverview();
-      },
-      [loadOverview, max, multiple],
-    ),
+  const added = useCallback(
+    (uploaded: MediaItem[]) => {
+      setPage((p) => (p ? { ...p, items: [...[...uploaded].reverse(), ...p.items.filter((c) => !uploaded.some((u) => u.id === c.id))] } : p));
+      setSelected((cur) => (multiple ? [...cur, ...uploaded].slice(0, max) : cur));
+      void loadOverview();
+    },
+    [loadOverview, max, multiple],
   );
+  const uploader = useGalleryUpload(added);
+  const importer = useImporter(added);
 
   useEffect(() => {
     void getGalleryOverview().then((res) => res.ok && setFolders(res.overview.folders));
@@ -136,7 +156,6 @@ function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel }: Pick<
   }
 
   const tabs: { value: Folder; label: string }[] = [{ value: "all", label: "All photos" }, { value: "none", label: "Not in a folder" }, ...folders.map((f) => ({ value: f.id, label: f.name }))];
-  const uploadFolder = folder === "all" || folder === "none" ? null : folder;
   const filtering = query.trim() !== "";
 
   return (
@@ -175,6 +194,7 @@ function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel }: Pick<
             <Upload aria-hidden className="size-4" />
             Upload new
           </button>
+          <ImportMenu importer={importer} folders={folders} defaultFolderId={uploadFolder} onPickerVisible={onPickerVisible} />
         </div>
 
         <div role="tablist" aria-label="Folders" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
@@ -196,6 +216,7 @@ function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel }: Pick<
         </div>
 
         <UploadProgress state={uploader.state} onDismiss={uploader.dismiss} />
+        <UploadProgress state={importer.state} onDismiss={importer.dismiss} verb="Importing" />
 
         <div className="min-h-56">
           {error ? (

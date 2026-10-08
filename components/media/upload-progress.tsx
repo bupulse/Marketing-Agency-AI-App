@@ -4,7 +4,7 @@ import { CheckCircle2, LoaderCircle, TriangleAlert, X } from "lucide-react";
 import type { UploadState } from "./use-gallery-upload";
 
 /** Progress bar and problems for the current upload. Hidden until something was dropped. */
-export function UploadProgress({ state, onDismiss }: { state: UploadState; onDismiss: () => void }) {
+export function UploadProgress({ state, onDismiss, verb = "Uploading" }: { state: UploadState; onDismiss: () => void; verb?: string }) {
   if (state.total === 0) return null;
   const finished = state.done + state.failed;
   const percent = Math.round((finished / state.total) * 100);
@@ -18,9 +18,9 @@ export function UploadProgress({ state, onDismiss }: { state: UploadState; onDis
         ) : (
           <CheckCircle2 aria-hidden className="size-5 shrink-0 text-success" />
         )}
-        <p className="flex-1 text-[15px] font-medium">
+        <p className="min-w-0 flex-1 truncate text-[15px] font-medium">
           {state.active
-            ? `Uploading ${Math.min(finished + 1, state.total)} of ${state.total}…`
+            ? `${verb} ${Math.min(finished + 1, state.total)} of ${state.total}${state.current ? `: ${state.current}` : ""}…`
             : state.done > 0
               ? `${state.done} photo${state.done === 1 ? "" : "s"} added${state.failed > 0 ? `, ${state.failed} could not be added` : ""}`
               : "No photos were added"}
@@ -31,7 +31,7 @@ export function UploadProgress({ state, onDismiss }: { state: UploadState; onDis
           </button>
         )}
       </div>
-      <div role="progressbar" aria-label="Upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className="h-1.5 overflow-hidden rounded-full bg-soft">
+      <div role="progressbar" aria-label={`${verb} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className="h-1.5 overflow-hidden rounded-full bg-soft">
         <div className="h-full rounded-full bg-brand-gradient transition-[width] duration-500 ease-out-soft motion-reduce:transition-none" style={{ width: `${percent}%` }} />
       </div>
       {state.errors.length > 0 && (

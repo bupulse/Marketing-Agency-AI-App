@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fieldErrors, signInSchema, type FieldErrors } from "@/lib/auth/schemas";
 import { safeNext } from "@/lib/auth/safe-next";
 import { siteUrl } from "@/lib/auth/site-url";
+import { rememberReturn } from "@/lib/auth/return-server";
 
 export type LoginState = {
   error?: string;
@@ -41,7 +42,9 @@ export async function signInWithPassword(_prev: LoginState, formData: FormData):
     }
     return { error: "We could not sign you in. Please try again." };
   }
-  redirect(safeNext(String(formData.get("next") ?? "")));
+  const next = safeNext(String(formData.get("next") ?? ""));
+  await rememberReturn(next); // a brand-new account still has to pass /welcome and /onboarding first
+  redirect(next);
 }
 
 export async function signInWithGoogle(formData: FormData) {
