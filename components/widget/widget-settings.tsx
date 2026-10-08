@@ -3,9 +3,9 @@
 import { useState, useTransition, type KeyboardEvent } from "react";
 import { ExternalLink, X } from "lucide-react";
 import { saveWidgetSettings } from "@/app/dashboard/widget/actions";
-import { CopyButton } from "@/components/studio/copy-button";
-import { Accordion, Button, Chip, Field, GlassCard, Input, Meter, Textarea, useToast } from "@/components/ui";
+import { Button, Chip, Field, GlassCard, Input, Meter, Textarea, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { InstallGuide } from "./install-guide";
 import { normalizeDomain } from "@/lib/widget/origin";
 
 interface Settings {
@@ -16,21 +16,13 @@ interface Settings {
   allowedDomains: string[];
 }
 
-const STEPS = [
-  { question: "WordPress", answer: "Go to Appearance → Theme File Editor → footer.php and paste the code just before </body>. Or use a plugin such as \"Insert Headers and Footers\" and paste it in the footer box." },
-  { question: "Wix", answer: "Open Settings → Custom Code → Add Custom Code. Paste the code, choose \"Body - end\" and apply it to all pages." },
-  { question: "Shopify", answer: "Go to Online Store → Themes → Edit code → theme.liquid and paste the code just before </body>." },
-  { question: "Squarespace", answer: "Open Settings → Advanced → Code Injection and paste the code in the Footer box." },
-  { question: "Plain HTML", answer: "Paste the code on each page just before the closing </body> tag." },
-];
-
 export function WidgetSettings({
   initial,
   defaultGreeting,
   defaultAccent,
   brandColors,
   widgetKey,
-  snippet,
+  baseUrl,
   usage,
 }: {
   initial: Settings;
@@ -38,7 +30,7 @@ export function WidgetSettings({
   defaultAccent: string;
   brandColors: string[];
   widgetKey: string;
-  snippet: string;
+  baseUrl: string;
   usage: { used: number; limit: number };
 }) {
   const [s, setS] = useState<Settings>(initial);
@@ -193,15 +185,7 @@ export function WidgetSettings({
           </div>
         </GlassCard>
 
-        <GlassCard as="section" aria-labelledby="w-install" className="flex flex-col gap-4 p-5 sm:p-6">
-          <div>
-            <h2 id="w-install" className="text-lg font-semibold tracking-[-0.02em]">Add it to your website</h2>
-            <p className="text-[14px] text-muted">Copy this code and paste it on your site, just before the closing &lt;/body&gt; tag.</p>
-          </div>
-          <pre className="overflow-x-auto rounded-2xl bg-soft p-4 text-[13px] leading-relaxed"><code>{snippet}</code></pre>
-          <div><CopyButton text={snippet} label="Copy code" /></div>
-          <Accordion items={STEPS} />
-        </GlassCard>
+        <InstallGuide baseUrl={baseUrl} widgetKey={widgetKey} accent={accent} />
 
         <GlassCard as="section" aria-labelledby="w-usage" className="flex flex-col gap-3 p-5 sm:p-6">
           <h2 id="w-usage" className="text-lg font-semibold tracking-[-0.02em]">Chat replies this month</h2>

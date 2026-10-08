@@ -6,7 +6,6 @@ import { prisma } from "@/lib/db";
 import { resolveAccent } from "@/lib/widget/config";
 import { defaultAllowedDomains } from "@/lib/widget/origin";
 import { defaultGreeting } from "@/lib/widget/strings";
-import { installSnippet } from "@/lib/widget/settings";
 import { isHexColor } from "@/lib/color-contrast";
 
 export const metadata = { title: "Website chat" };
@@ -33,7 +32,7 @@ export default async function WidgetPage() {
         defaultAccent={resolveAccent(null, business.brandColors)}
         brandColors={business.brandColors.filter(isHexColor)}
         widgetKey={business.widgetKey}
-        snippet={installSnippet(siteUrl(), business.widgetKey)}
+        baseUrl={siteUrl()}
         usage={{ used: usage.used.chat, limit: usage.limits.chat }}
       />
     </>

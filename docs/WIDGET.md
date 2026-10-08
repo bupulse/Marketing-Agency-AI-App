@@ -47,6 +47,14 @@ Owners list the sites that may show the chat. Empty list = any site (easy instal
 
 Each AI reply uses 1 `chat` credit of the business owner (`consumeUsage(userId, "chat")`), refunded if the AI call fails. Limits: Trial 50, Standard 1,000, Pro 5,000 per month. With no credit left, an expired trial, an inactive or past-due subscription, there is no AI reply: the visitor sees "Leave your details and the team will get back to you." with the contact card, and leads still work.
 
+## Install guide and "Check installation"
+
+`/dashboard/widget` shows a grid of platforms (HTML, WordPress, Next.js, React, Shopify, Wix, Squarespace, Webflow, Google Tag Manager). Each opens a dialog with the exact code (real key and `NEXT_PUBLIC_SITE_URL`, escaped), a Copy button, and an animated walkthrough: a mock editor or menu per step, auto-advancing with progress dots (pauses on hover or focus, steps are clickable, still frames with `prefers-reduced-motion`). Content lives in `lib/widget/install.ts`; the CSS animations in `components/widget/install-guide.css`.
+
+The loader works with `next/script` (`document.currentScript` is null there, so it falls back to `script[data-key][src*="widget.js"]`) and survives client-side navigation: one launcher, never mounted twice (checked in WebKit).
+
+When the config endpoint answers "enabled" for a site that is not BuPulse itself, it records `ChatWidget.lastSeenAt` and `lastSeenHost`, at most once per 10 minutes. "Check installation" reads these (and compares with the page address the owner types). Visits from the same hostname as BuPulse (for example localhost while developing) are not recorded.
+
 ## Setup for a business
 
 Open **Website chat** in the dashboard (this creates the widget row), copy the snippet, paste it before `</body>`. Guides for WordPress, Wix, Shopify, Squarespace and plain HTML are on that page.

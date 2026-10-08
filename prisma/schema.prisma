@@ -175,6 +175,8 @@ model ChatWidget {
   webhookUrl             String? // POST lead.created events here (signed)
   webhookSecretEncrypted String? // HMAC secret, encrypted with lib/crypto.ts
   lastDigestAt           DateTime?
+  lastSeenAt             DateTime? // the widget last loaded on a customer's site (written at most every 10 minutes)
+  lastSeenHost           String? // hostname of that site
   updatedAt              DateTime  @default(now()) @updatedAt
 }
 

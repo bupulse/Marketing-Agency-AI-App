@@ -24,13 +24,19 @@ export function Dialog({ open, onOpenChange, title, description, children, class
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (open && !el.open) el.showModal();
+    if (open && !el.open) {
+      el.showModal();
+      // Focus the panel itself, not the close button, so mouse users do not get a focus ring on it.
+      // Keyboard users still reach the close button first with Tab.
+      el.focus({ preventScroll: true });
+    }
     if (!open && el.open) el.close();
   }, [open]);
 
   return (
     <dialog
       ref={ref}
+      tabIndex={-1}
       aria-labelledby={`${uid}-t`}
       aria-describedby={description ? `${uid}-d` : undefined}
       onClose={() => onOpenChange(false)}
@@ -43,7 +49,7 @@ export function Dialog({ open, onOpenChange, title, description, children, class
       )}
     >
       <div className="flex max-h-[inherit] flex-col p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:p-8">
-        <div className="mb-4 flex shrink-0 items-start justify-between gap-4">
+        <div className="mb-1 flex shrink-0 items-start justify-between gap-4">
           <div>
             <h2 id={`${uid}-t`} className="text-xl font-bold tracking-tight">
               {title}
@@ -64,7 +70,7 @@ export function Dialog({ open, onOpenChange, title, description, children, class
           </button>
         </div>
         {/* The header and close button stay put; long content scrolls inside the sheet. */}
-        <div className="-mx-4 -mb-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6">{children}</div>
+        <div className="bp-dialog-scroll -mx-4 -mb-3 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3 pb-6">{children}</div>
       </div>
     </dialog>
   );

@@ -32,7 +32,7 @@
   --bp-success-bg: rgba(15, 122, 74, 0.12);
   --bp-link: #2f6bff;
   --bp-backdrop: rgba(11, 11, 15, 0.4);
-  --bp-dialog: rgba(255, 255, 255, 0.99);
+  --bp-dialog: #ffffff;
 }
 
 .dark {
@@ -58,7 +58,7 @@
   --bp-success-bg: rgba(95, 217, 160, 0.14);
   --bp-link: #8db0ff;
   --bp-backdrop: rgba(0, 0, 0, 0.6);
-  --bp-dialog: rgba(26, 26, 32, 0.99);
+  --bp-dialog: #1a1a20;
 }
 
 @theme inline {
@@ -382,6 +382,9 @@ dialog.bp-dialog {
   /* Safari does not blur what is behind a top-layer <dialog>, so the page showed through the 0.84 glass.
      Near-opaque surface in every browser; where backdrop blur works it still gives the glass feel. */
   background: var(--bp-dialog);
+  /* Fully opaque panel: no backdrop blur on it, so nothing behind can show through (Safari ghosting). */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   overflow: hidden;
   max-height: calc(100dvh - 1.5rem);
 }
@@ -404,6 +407,10 @@ dialog.bp-dialog {
     transform: translate3d(0, 32px, 0);
     opacity: 0;
   }
+}
+/* The panel takes focus when it opens (so the close button shows no ring for mouse users); it needs no ring itself. */
+dialog.bp-dialog:focus-visible {
+  outline: none;
 }
 dialog.bp-dialog::backdrop {
   background: var(--bp-backdrop);
@@ -469,4 +476,10 @@ dialog.bp-dialog[open] {
   .bp-tilt {
     transform: none !important;
   }
+}
+
+/* The scrolling body of a dialog fades out under the header, so content never slides half-visible behind it. */
+.bp-dialog-scroll {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
 }
