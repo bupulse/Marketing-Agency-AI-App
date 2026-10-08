@@ -1,6 +1,7 @@
 // The Cloudflare Worker entry (wrangler.jsonc "main"). It wraps the worker OpenNext generates, so the web app
 // is served exactly as before, and adds a `scheduled` handler for the Cron Triggers in wrangler.jsonc:
 //   every minute -> POST /api/cron/publish  (publishes due posts)
+//   hourly :37   -> POST /api/cron/leads-digest  (daily leads summary at 08:00 business time)
 //   hourly       -> POST /api/cron/metrics  (collects post metrics, at most once a day per post)
 // The handler calls the app's own routes through the self-reference binding, so the routes keep one set of
 // rules (CRON_SECRET bearer check) whether Cloudflare, GitHub Actions or a person calls them.
@@ -16,16 +17,28 @@ import jpegEncodeWasm from "./node_modules/@jsquash/jpeg/codec/enc/mozjpeg_enc.w
 
 export { BucketCachePurge, DOQueueHandler, DOShardedTagCache } from "./.open-next/worker.js";
 
-/** Must match "triggers.crons" in wrangler.jsonc. */
-export const METRICS_CRON = "23 * * * *";
-
 type Env = CloudflareEnv & { CRON_SECRET?: string };
 
-/** Must match "triggers.crons" in wrangler.jsonc. Autopilot plans next week on Fridays and Saturdays. */
+// Each schedule must appear in "triggers.crons" in wrangler.jsonc (tests/worker-crons.test.ts checks both ways).
+/** Every minute: publish due posts. */
+export const PUBLISH_CRON = "* * * * *";
+/** Hourly: collect post metrics; each post is measured at most once every 20 hours. */
+export const METRICS_CRON = "23 * * * *";
+/** Autopilot plans next week on Fridays and Saturdays. */
 export const AUTOPILOT_CRON = "11 */3 * * 5,6";
+/** Hourly; the route only sends the leads summary to businesses where it is 08:00. */
+export const LEADS_DIGEST_CRON = "37 * * * *";
 
-export function routeForCron(cron: string): string {
-  return cron === METRICS_CRON ? "/api/cron/metrics" : cron === AUTOPILOT_CRON ? "/api/cron/autopilot" : "/api/cron/publish";
+export const CRON_ROUTES: Record<string, string> = {
+  [PUBLISH_CRON]: "/api/cron/publish",
+  [METRICS_CRON]: "/api/cron/metrics",
+  [AUTOPILOT_CRON]: "/api/cron/autopilot",
+  [LEADS_DIGEST_CRON]: "/api/cron/leads-digest",
+};
+
+/** The route for a schedule, or null for one this worker doesn't know (never fall back to publishing). */
+export function routeForCron(cron: string): string | null {
+  return CRON_ROUTES[cron] ?? null;
 }
 
 async function runCron(path: string, env: Env): Promise<string | null> {
@@ -61,7 +74,10 @@ const worker = {
   fetch: handler.fetch,
 
   async scheduled(controller: { cron: string }, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }) {
-    ctx.waitUntil(controller.cron === AUTOPILOT_CRON ? runAutopilotCron(env) : runCron(routeForCron(controller.cron), env));
+    if (controller.cron === AUTOPILOT_CRON) return ctx.waitUntil(runAutopilotCron(env));
+    const path = routeForCron(controller.cron);
+    if (!path) return console.error(`[cron] unknown schedule "${controller.cron}"; check wrangler.jsonc against worker.ts`);
+    ctx.waitUntil(runCron(path, env));
   },
 };
 

@@ -137,26 +137,28 @@ enum LeadStatus {
 }
 
 model Lead {
-  id         String       @id @default(cuid())
-  businessId String
-  business   Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  name       String?
-  email      String?
-  phone      String?
-  interest   String?
-  message    String?
-  source     String       @default("website_chat") // "website_chat", "instagram", "contact_form"
-  status     LeadStatus   @default(NEW)
-  notes      String?
-  sessionId  String?      @unique // the chat it came from
-  session    ChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
-  pageUrl    String? // page the visitor was on
-  notifiedAt DateTime? // instant email sent
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @default(now()) @updatedAt
+  id               String       @id @default(cuid())
+  businessId       String
+  business         Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name             String?
+  email            String?
+  phone            String?
+  interest         String?
+  message          String?
+  source           String       @default("website_chat") // "website_chat", "instagram", "contact_form"
+  status           LeadStatus   @default(NEW)
+  notes            String?
+  sessionId        String?      @unique // the chat it came from
+  session          ChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  pageUrl          String? // page the visitor was on
+  notifiedAt       DateTime? // instant email sent
+  webhookPendingAt DateTime? // set when the lead.created webhook failed; the hourly cron retries it for 24 hours
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @default(now()) @updatedAt
 
   @@index([businessId, createdAt])
   @@index([businessId, status])
+  @@index([webhookPendingAt])
 }
 
 // The website chat widget's settings. Created on first visit to the widget settings page.

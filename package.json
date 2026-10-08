@@ -14,6 +14,7 @@
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --include-runtime=false --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "ai:eval:widget": "AI_EVAL=1 node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/ai-eval/widget.test.ts",
     "ai:eval:autopilot": "AI_EVAL=1 node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/ai-eval/autopilot.test.ts"
   },
   "dependencies": {

@@ -6,6 +6,20 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/*": ["./node_modules/**/pg-cloudflare/{dist,esm}/**"],
   },
+  async headers() {
+    return [
+      // Only the chat widget page may be framed (it sets its own frame-ancestors per business).
+      {
+        source: "/:path((?!widget/|widget\\.js|widget-chat\\.js).*)",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+        ],
+      },
+      { source: "/widget.js", headers: [{ key: "Cache-Control", value: "public, max-age=3600, stale-while-revalidate=86400" }] },
+      { source: "/widget-chat.js", headers: [{ key: "Cache-Control", value: "public, max-age=300, stale-while-revalidate=86400" }] },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -1,0 +1,25 @@
+name: Leads daily summary (fallback)
+
+# The main schedule is the Cloudflare Cron Trigger in wrangler.jsonc (hourly at :37). This is the safety net.
+# Each run only emails the businesses where it is 08:00 local time and no summary went out today, so running
+# both is safe.
+
+on:
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Send the daily leads summaries that are due
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 280 -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            https://bupulse.com/api/cron/leads-digest
