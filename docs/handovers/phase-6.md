@@ -21,6 +21,10 @@ Setup, limits and security notes are in `docs/WIDGET.md`.
 - **Local testing:**
   - Pages on `http://localhost:<any port>` work, and so do pages opened as a file, but only while BuPulse itself runs locally.
   - `widget.js` logs `[BuPulse chat] Not shown: …` in the console with the reason.
+- **Install guide** (on `/dashboard/widget`):
+  - Nine platforms, each with its own code and an animated walkthrough: HTML, WordPress, Next.js (App and Pages Router), React, Shopify, Wix, Squarespace, Webflow and GTM.
+  - "Check installation" reads `ChatWidget.lastSeenAt` and `lastSeenHost`.
+  - The loader is verified in a real Next.js app with `next/script` and client-side navigation.
 - **Leads inbox** (`/dashboard/leads`):
   - Statuses, notes and filters, plus CSV export (formula-safe, phones kept clean).
   - An instant email per lead.
@@ -41,5 +45,6 @@ Setup, limits and security notes are in `docs/WIDGET.md`.
 - **Snippet address:** the snippet uses `NEXT_PUBLIC_SITE_URL`. Owners must copy it again after deploy, because the localhost snippet only works on this Mac.
 - **Translations:** a native speaker should check the Kinyarwanda and Swahili UI strings.
 - **CSP warning:** in WebKit against `next dev`, the chat iframe logs a harmless "Refused to apply a stylesheet" warning. It was not seen on a production build, and the styling is fine.
+- **Install paths not browser-tested:** Pages Router and GTM (code only).
 - **Dashboard preview:** it uses real chat credits and creates real leads.
 - **Owner's test page:** `~/Downloads/WECLEARN V2/index.html` line 811 now loads `http://localhost:3000/widget.js`.
