@@ -214,6 +214,15 @@ Each phase ends with something you can open and test. A phase is accepted by you
 - **Money actions** (refunds, and changing a user to a paid plan): Jarvis and the API can only prepare them as approval requests. They run only after the owner clicks Approve in the admin console. Every other action runs directly and is written to the audit log.
 - **Corrections to the text above:** revenue comes from Paddle, not Stripe, and Composio costs are dropped, because Composio comes later.
 
+**Admin console additions, decided 9 October 2026:**
+- **Services:** every outside service has a status card: key set or missing, healthy, last error, usage and cost. Each card has a "Test now" button and an on/off switch. When a service is off, the matching features show a friendly "temporarily unavailable" message. Keys stay in the Cloudflare environment and are never shown or edited in the console.
+- **Client connections:** admin views of every client's social channels, connectors, webhooks and API keys, and website chat widgets. They show status, errors and usage, with audited force-disconnect, pause, revoke and switch-off actions.
+- **More information:**
+  - System health: crons, queues, backlog, error rate, database size.
+  - AI usage and budget against the $20 cap.
+  - A live activity feed.
+  - A Client 360 page for each client.
+
 ### Phase 9 — Hardening and launch
 
 - Security review: RLS on every table and bucket, auth on every route, token encryption, rate limits, input validation, secrets, OWASP top 10, widget isolation.
