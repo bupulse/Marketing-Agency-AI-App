@@ -38,7 +38,7 @@ Details are in:
 - Checks: tsc, lint and 1,286 tests pass, and `next build` succeeds. The WebKit console walk passed 104 of 104 checks.
 
 ## Owner setup (still to do)
-1. Supabase → Authentication → Hooks → "MFA Verification Attempt" → `public.hook_mfa_verification_attempt`.
+1. Supabase → Authentication → Hooks → "MFA Verification Attempt" → `public.hook_mfa_verification_attempt`. **Not available on the Free plan (checked 8 Oct 2026), so it is deferred until the project is upgraded.** Until then, protection is the password, TOTP, BuPulse's own limit on wrong codes and Supabase's built-in limits. The function is installed and unused.
 2. Supabase → Authentication → Email Templates → Magic Link: add `{{ .Token }}`. Admin setup can't continue without it.
 3. Set `ADMIN_EMAILS=admin@bupulse.com` in `.env` and in the Worker environment.
 4. Create and confirm `admin@bupulse.com`, sign in, open `/admin` and enrol Microsoft Authenticator.
