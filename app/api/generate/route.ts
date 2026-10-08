@@ -25,8 +25,8 @@ export async function POST(request: Request) {
   }
   const { details, ...input } = parsed.data;
 
-  const account = await prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true } });
-  if (account?.deletionScheduledFor) return NextResponse.json({ error: "account_locked" }, { status: 403 });
+  const account = await prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true, suspendedAt: true } });
+  if (account?.deletionScheduledFor || account?.suspendedAt) return NextResponse.json({ error: "account_locked" }, { status: 403 });
 
   try {
     await rateLimit(`project:${user.id}`, RATE_LIMITS.projectCreate);

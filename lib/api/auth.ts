@@ -20,7 +20,8 @@ export function apiJson(body: unknown, status = 200) {
 
 /** True while the business is on an active Pro plan. A downgrade, cancellation or failed payment switches the keys off without deleting them. */
 export async function businessHasApiAccess(businessId: string): Promise<boolean> {
-  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { user: { select: { subscription: { select: { plan: true, status: true } } } } } });
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { user: { select: { suspendedAt: true, subscription: { select: { plan: true, status: true } } } } } });
+  if (business?.user.suspendedAt) return false;
   const sub = business?.user.subscription;
   return Boolean(sub && sub.plan === "PRO" && (sub.status === "ACTIVE" || sub.status === "TRIALING"));
 }

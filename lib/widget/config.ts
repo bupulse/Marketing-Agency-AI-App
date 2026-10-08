@@ -34,12 +34,14 @@ export async function loadPublicWidget(key: string): Promise<PublicWidget | null
   if (!business) return null;
   const widget = await prisma.chatWidget.findUnique({ where: { businessId: business.id } });
   if (!widget) return null;
+  // A suspended or deleting owner's widget is unavailable: no AI replies and no new leads.
+  const owner = await prisma.user.findUnique({ where: { id: business.userId }, select: { suspendedAt: true, deletionScheduledFor: true } });
   const accent = resolveAccent(widget.accentColor, business.brandColors);
   return {
     businessId: business.id,
     userId: business.userId,
     key,
-    enabled: widget.enabled,
+    enabled: widget.enabled && !owner?.suspendedAt && !owner?.deletionScheduledFor,
     name: business.name,
     logoPath: business.logoUrl && isOwnLogoPath(business.userId, business.logoUrl) ? business.logoUrl : null,
     accent,

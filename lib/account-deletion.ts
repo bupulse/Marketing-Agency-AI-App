@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/lib/generated/prisma/client";
 import { logError } from "@/lib/errors";
 import { BUCKETS } from "@/lib/storage";
 
@@ -99,6 +100,9 @@ export async function purgeDueAccounts(now = new Date()): Promise<PurgeResult> {
         continue;
       }
       result.filesRemoved += await removeUserFiles(admin, id);
+      // Admin records about this user stay as a trail but lose their personal details (free-text reasons, before/after values).
+      await prisma.$executeRaw`SELECT public.redact_audit_for_user(${id})`;
+      await unlinkAnalytics(id);
       const deleted = await prisma.$executeRaw`
         DELETE FROM auth.users a USING public."User" u
         WHERE a.id = u.id AND u.id = ${id}::uuid AND u."deletionScheduledFor" <= ${now}`;
@@ -109,4 +113,13 @@ export async function purgeDueAccounts(now = new Date()): Promise<PurgeResult> {
     }
   }
   return result;
+}
+
+/** Product analytics events lose every link to the person (user, business, visit session, properties); the counts stay. */
+async function unlinkAnalytics(userId: string) {
+  const business = await prisma.business.findUnique({ where: { userId }, select: { id: true } });
+  await prisma.analyticsEvent.updateMany({
+    where: { OR: [{ userId }, ...(business ? [{ businessId: business.id }] : [])] },
+    data: { userId: null, businessId: null, sessionId: null, props: Prisma.DbNull },
+  });
 }

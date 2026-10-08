@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import { prisma } from "@/lib/db";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import {
@@ -28,11 +29,12 @@ const SAVE_FAILED = "We could not save that. Please try again.";
 /** Every action re-checks the signed-in user and only touches their own business. */
 const requireUser = requireActiveUser;
 
-async function update(userId: string, data: Parameters<typeof prisma.business.update>[0]["data"]): Promise<SaveResult> {
+async function update(userId: string, data: Parameters<typeof prisma.business.update>[0]["data"], step?: string): Promise<SaveResult> {
   try {
     await prisma.business.update({ where: { userId }, data });
     // The app shell shows the logo, colours and business details.
     revalidatePath("/dashboard", "layout");
+    if (step) trackEvent(EVENT_NAMES.onboardingStep, { userId, props: { step } });
     return { ok: true };
   } catch {
     return { ok: false, error: SAVE_FAILED };
@@ -43,14 +45,14 @@ export async function saveOffer(input: { description: string; audience: string }
   const user = await requireUser();
   const parsed = offerSchema.safeParse(input);
   if (!parsed.success) return { ok: false, fieldErrors: flatErrors(parsed.error) };
-  return update(user.id, parsed.data);
+  return update(user.id, parsed.data, "offer");
 }
 
 export async function saveVoice(input: { tone: string }): Promise<SaveResult> {
   const user = await requireUser();
   const parsed = voiceSchema.safeParse(input);
   if (!parsed.success) return { ok: false, fieldErrors: flatErrors(parsed.error) };
-  return update(user.id, { tone: parsed.data.tone });
+  return update(user.id, { tone: parsed.data.tone }, "voice");
 }
 
 export async function saveLook(input: { logoPath: string | null; brandColors: string[] }): Promise<SaveResult> {
@@ -62,7 +64,7 @@ export async function saveLook(input: { logoPath: string | null; brandColors: st
   if (logoPath && !isOwnLogoPath(user.id, logoPath)) return { ok: false, error: "That logo could not be used. Please upload it again." };
 
   const before = await prisma.business.findUnique({ where: { userId: user.id }, select: { logoUrl: true } });
-  const result = await update(user.id, { logoUrl: logoPath ?? null, brandColors });
+  const result = await update(user.id, { logoUrl: logoPath ?? null, brandColors }, "look");
 
   // Tidy up the replaced logo; failing to delete it must never block saving.
   const old = before?.logoUrl;
@@ -83,7 +85,7 @@ export async function saveKnowledge(input: {
   const user = await requireUser();
   const parsed = validateKnowledge(input);
   if (!parsed.ok) return { ok: false, fieldErrors: parsed.errors };
-  return update(user.id, { knowledge: parsed.data });
+  return update(user.id, { knowledge: parsed.data }, "knowledge");
 }
 
 /** Signed URL so the browser can upload the logo straight to the private brand bucket. */
@@ -111,5 +113,6 @@ export async function finishOnboarding(): Promise<SaveResult> {
 
   const result = await update(user.id, { onboardedAt: business.onboardedAt ?? new Date() });
   if (!result.ok) return result;
+  if (!business.onboardedAt) trackEvent(EVENT_NAMES.onboardingComplete, { userId: user.id, businessId: business.id });
   redirect(await takeReturn()); // the dashboard, or where the person was headed before signing up
 }

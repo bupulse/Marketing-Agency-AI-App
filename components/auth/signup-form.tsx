@@ -15,6 +15,7 @@ import {
 import { signInWithGoogle } from "@/app/login/actions";
 import { checkEmail, signUp, type SignUpState } from "@/app/signup/actions";
 import { cn } from "@/lib/cn";
+import { VisitSessionField } from "./visit-session-field";
 import { ConfirmEmail } from "./confirm-email";
 import { GoogleIcon } from "./google-icon";
 import { OrganisationFields, TermsField } from "./organisation-fields";
@@ -197,6 +198,7 @@ export default function SignupForm({ next = "/dashboard" }: { next?: string }) {
         <>
           <form action={signInWithGoogle}>
             <input type="hidden" name="next" value={next} />
+            <VisitSessionField />
             <Button type="submit" variant="white" size="lg" className="w-full" leading={<GoogleIcon />}>
               Continue with Google
             </Button>
@@ -210,6 +212,7 @@ export default function SignupForm({ next = "/dashboard" }: { next?: string }) {
       )}
 
       <form ref={formRef} noValidate onSubmit={onSubmit} action={submitAction} className="flex flex-col gap-4">
+        <VisitSessionField />
         {state.status === "error" && state.message && (
           <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
             {state.message}

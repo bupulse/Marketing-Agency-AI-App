@@ -49,10 +49,13 @@ export async function signInWithPassword(_prev: LoginState, formData: FormData):
 
 export async function signInWithGoogle(formData: FormData) {
   const next = safeNext(String(formData.get("next") ?? ""));
+  const visit = String(formData.get("visitSession") ?? "");
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo: `${siteUrl()}/auth/callback?next=${encodeURIComponent(next)}` },
+    options: {
+      redirectTo: `${siteUrl()}/auth/callback?next=${encodeURIComponent(next)}${/^[A-Za-z0-9_-]{8,40}$/.test(visit) ? `&vs=${visit}` : ""}`,
+    },
   });
   if (error || !data.url) redirect("/login?error=google");
   redirect(data.url);

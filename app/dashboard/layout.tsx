@@ -7,6 +7,8 @@ import { TrialBanner } from "@/components/app/trial-banner";
 import { brandPalette, isHexColor } from "@/lib/color-contrast";
 import { AutoTimezone } from "@/components/publishing/auto-timezone";
 import { PLANS } from "@/lib/plans";
+import { AnnouncementBanner } from "@/components/app/announcement-banner";
+import { getActiveAnnouncements } from "@/lib/admin/service";
 
 export const metadata: Metadata = {
   title: { default: "Dashboard", template: "%s · BuPulse" },
@@ -24,6 +26,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     : null;
 
   const status = usage.subscription.status;
+  // A failing lookup must never break the dashboard.
+  const announcements = await getActiveAnnouncements({ id: business.userId, plan: usage.subscription.plan }).catch(() => []);
 
   return (
     <>
@@ -41,6 +45,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           max: usage.limits.text,
         }}
       >
+        <AnnouncementBanner items={announcements} />
         <TrialBanner
           isTrial={isTrial}
           trialDaysLeft={trialDaysLeft}

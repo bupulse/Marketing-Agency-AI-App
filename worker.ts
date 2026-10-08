@@ -4,6 +4,7 @@
 //   hourly :37   -> POST /api/cron/leads-digest  (daily leads summary at 08:00 business time)
 //   hourly       -> POST /api/cron/metrics  (collects post metrics, at most once a day per post)
 //   daily 03:47  -> POST /api/cron/store-sync  (re-syncs imported store products, cursor calls)
+//   daily 02:17  -> POST /api/cron/analytics-rollup  (daily analytics roll-up and back-fill, cursor calls)
 // The handler calls the app's own routes through the self-reference binding, so the routes keep one set of
 // rules (CRON_SECRET bearer check) whether Cloudflare, GitHub Actions or a person calls them.
 // Not type-checked with the app (tsconfig excludes it): ./.open-next only exists after `opennextjs-cloudflare build`.
@@ -32,12 +33,16 @@ export const LEADS_DIGEST_CRON = "37 * * * *";
 /** Daily at 03:47 UTC: re-sync imported Shopify and WooCommerce products (a few stores per call, with a cursor). */
 export const STORE_SYNC_CRON = "47 3 * * *";
 
+/** Daily at 02:17 UTC: analytics roll-up for yesterday and today, plus back-fill days (cursor calls). */
+export const ANALYTICS_ROLLUP_CRON = "17 2 * * *";
+
 export const CRON_ROUTES: Record<string, string> = {
   [PUBLISH_CRON]: "/api/cron/publish",
   [METRICS_CRON]: "/api/cron/metrics",
   [AUTOPILOT_CRON]: "/api/cron/autopilot",
   [LEADS_DIGEST_CRON]: "/api/cron/leads-digest",
   [STORE_SYNC_CRON]: "/api/cron/store-sync",
+  [ANALYTICS_ROLLUP_CRON]: "/api/cron/analytics-rollup",
 };
 
 /** The route for a schedule, or null for one this worker doesn't know (never fall back to publishing). */
@@ -82,6 +87,7 @@ const worker = {
   async scheduled(controller: { cron: string }, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }) {
     if (controller.cron === AUTOPILOT_CRON) return ctx.waitUntil(runAutopilotCron(env));
     if (controller.cron === STORE_SYNC_CRON) return ctx.waitUntil(runCursorCron("/api/cron/store-sync", env));
+    if (controller.cron === ANALYTICS_ROLLUP_CRON) return ctx.waitUntil(runCursorCron("/api/cron/analytics-rollup", env));
     const path = routeForCron(controller.cron);
     if (!path) return console.error(`[cron] unknown schedule "${controller.cron}"; check wrangler.jsonc against worker.ts`);
     ctx.waitUntil(runCron(path, env));

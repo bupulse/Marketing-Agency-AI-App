@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
         const email = encodeURIComponent(data.user.email ?? "");
         return NextResponse.redirect(`${origin}/login?error=use_password&email=${email}`);
       }
-      await ensureAccount(data.user);
+      await ensureAccount(data.user, { visitSession: searchParams.get("vs") });
       const response = NextResponse.redirect(`${origin}${next}`);
       if (hasReturn(next)) response.cookies.set(RETURN_COOKIE, next, returnCookieOptions(siteUrl().startsWith("https://")));
       return response;

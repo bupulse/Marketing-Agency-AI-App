@@ -1,3 +1,4 @@
+import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma/client";
@@ -66,6 +67,7 @@ export async function createLeadFromChat(input: CreateLeadInput): Promise<{ id: 
       });
       id = lead.id;
       created = true;
+      trackEvent(EVENT_NAMES.leadCaptured, { businessId: input.businessId });
     } catch (error) {
       // Two submits at the same moment: the other one created it first, so this one merges.
       if (!isUniqueViolation(error)) throw error;

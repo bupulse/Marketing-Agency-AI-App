@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { applyProviderSubscription } from "@/lib/billing/apply";
 import { paddle } from "@/lib/billing/paddle";
+import { trackEvent } from "@/lib/analytics/events";
+import { subscriptionEventsFor } from "@/lib/analytics/math";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 
@@ -36,7 +38,9 @@ export async function POST(request: NextRequest) {
   try {
     let note: string | null = null;
     if (webhook.subscription) {
+      const before = await subscriptionState(webhook.subscription.providerSubscriptionId);
       const outcome = await applyProviderSubscription("PADDLE", webhook.subscription);
+      if (outcome === "applied") await trackSubscriptionChange(webhook.subscription.providerSubscriptionId, before, webhook.subscription);
       if (outcome === "unknown_price") {
         // Probably a missing or wrong PADDLE_PRICE_* setting. Don't mark it processed: Paddle
         // retries, and once the setting is fixed the customer gets their plan.
@@ -67,5 +71,39 @@ export async function POST(request: NextRequest) {
       .catch(() => undefined);
     await logError(error, { source: "billing.webhook.paddle", eventId: webhook.eventId, type: webhook.type });
     return NextResponse.json({ error: "Processing failed" }, { status: 500 });
+  }
+}
+
+type SubState = { userId: string; plan: string; status: string; cancelAtPeriodEnd: boolean } | null;
+
+// Analytics only: the subscription as it was before this webhook, to tell an upgrade from a plain renewal.
+async function subscriptionState(providerSubscriptionId: string): Promise<SubState> {
+  try {
+    return await prisma.subscription.findFirst({
+      where: { providerSubscriptionId },
+      select: { userId: true, plan: true, status: true, cancelAtPeriodEnd: true },
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function trackSubscriptionChange(
+  providerSubscriptionId: string,
+  before: SubState,
+  sub: { status: string; cancelAtPeriodEnd: boolean },
+) {
+  try {
+    const after = await prisma.subscription.findFirst({
+      where: { providerSubscriptionId },
+      select: { userId: true, plan: true, interval: true, status: true, user: { select: { business: { select: { id: true } } } } },
+    });
+    if (!after) return;
+    const track = { userId: after.userId, businessId: after.user.business?.id };
+    for (const name of subscriptionEventsFor(before, after, sub.cancelAtPeriodEnd)) {
+      trackEvent(name, { ...track, props: { plan: after.plan, interval: after.interval, from: before?.plan ?? "TRIAL" } });
+    }
+  } catch {
+    // analytics must never fail a webhook
   }
 }

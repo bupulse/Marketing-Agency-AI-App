@@ -5,14 +5,15 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 type SessionUser = NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;
-export type ActiveUserCheck = { status: "ok"; user: SessionUser } | { status: "signed_out" } | { status: "unconfirmed" } | { status: "locked" };
+export type ActiveUserCheck = { status: "ok"; user: SessionUser } | { status: "signed_out" } | { status: "unconfirmed" } | { status: "locked" } | { status: "suspended" };
 
 /** The same checks as requireActiveUser, for route handlers that answer with a status instead of redirecting. */
 export async function checkActiveUser(): Promise<ActiveUserCheck> {
   const user = await getCurrentUser();
   if (!user) return { status: "signed_out" };
   if (!(await ensureAccount(user))) return { status: "unconfirmed" };
-  const account = await prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true } });
+  const account = await prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true, suspendedAt: true } });
+  if (account?.suspendedAt) return { status: "suspended" };
   if (account?.deletionScheduledFor) return { status: "locked" };
   return { status: "ok", user };
 }
@@ -26,6 +27,7 @@ export async function requireActiveUser() {
   const check = await checkActiveUser();
   if (check.status === "signed_out") redirect("/login");
   if (check.status === "unconfirmed") redirect("/login?error=confirm");
+  if (check.status === "suspended") redirect("/suspended");
   if (check.status === "locked") redirect("/account/deletion");
   return check.user;
 }

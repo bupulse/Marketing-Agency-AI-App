@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { subFindUnique, findMany, findFirst, executeRaw, logError, list, remove, createClient } = vi.hoisted(() => ({
+const { bizFind, eventsUpdate, subFindUnique, findMany, findFirst, executeRaw, logError, list, remove, createClient } = vi.hoisted(() => ({
+  bizFind: vi.fn(),
+  eventsUpdate: vi.fn(),
   subFindUnique: vi.fn(),
   findMany: vi.fn(),
   findFirst: vi.fn(),
@@ -11,16 +13,20 @@ const { subFindUnique, findMany, findFirst, executeRaw, logError, list, remove, 
   createClient: vi.fn(),
 }));
 
-vi.mock("@/lib/db", () => ({ prisma: { user: { findMany, findFirst }, subscription: { findUnique: subFindUnique }, $executeRaw: executeRaw } }));
+vi.mock("@/lib/db", () => ({ prisma: { business: { findUnique: bizFind }, analyticsEvent: { updateMany: eventsUpdate }, user: { findMany, findFirst }, subscription: { findUnique: subFindUnique }, $executeRaw: executeRaw } }));
 vi.mock("@/lib/errors", () => ({ logError }));
 vi.mock("@supabase/supabase-js", () => ({ createClient }));
 
 import { purgeDueAccounts } from "@/lib/account-deletion";
 
+vi.mock("@/lib/generated/prisma/client", () => ({ Prisma: { DbNull: "DbNull" } }));
+
 const now = new Date("2026-11-01T00:00:00Z");
 
 describe("purgeDueAccounts", () => {
   beforeEach(() => {
+    bizFind.mockReset().mockResolvedValue({ id: "biz1" });
+    eventsUpdate.mockReset().mockResolvedValue({ count: 3 });
     for (const m of [subFindUnique, findMany, findFirst, executeRaw, logError, list, remove, createClient]) m.mockReset();
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://x.supabase.co";
     process.env.SUPABASE_SECRET_KEY = "secret";
@@ -36,7 +42,14 @@ describe("purgeDueAccounts", () => {
     findMany.mockResolvedValue([{ id: "u1" }, { id: "u2" }]);
     const result = await purgeDueAccounts(now);
     expect(findMany).toHaveBeenCalledWith({ where: { deletionScheduledFor: { lte: now } }, select: { id: true } });
-    expect(executeRaw).toHaveBeenCalledTimes(2);
+    // per user: redact the admin records, then delete the auth user
+    expect(executeRaw).toHaveBeenCalledTimes(4);
+    const sql = (n: number) => (executeRaw.mock.calls[n][0] as string[]).join("?");
+    expect(sql(0)).toContain("redact_audit_for_user");
+    expect(executeRaw.mock.calls[0][1]).toBe("u1");
+    expect(sql(1)).toContain("DELETE FROM auth.users");
+    expect(sql(2)).toContain("redact_audit_for_user");
+    expect(executeRaw.mock.calls[2][1]).toBe("u2");
     expect(result).toMatchObject({ due: 2, deleted: 2, failed: 0 });
   });
 
@@ -107,5 +120,18 @@ describe("purgeDueAccounts", () => {
     findMany.mockResolvedValue([{ id: "u1" }]);
     subFindUnique.mockResolvedValue({ providerSubscriptionId: "sub_1", status: "ACTIVE", cancelAtPeriodEnd: true });
     expect(await purgeDueAccounts(now)).toMatchObject({ deleted: 1 });
+  });
+
+  it("unlinks the account's analytics events (user, business, visit session, properties) before deleting", async () => {
+    findMany.mockResolvedValue([{ id: "u1" }]);
+    findFirst.mockResolvedValue({ id: "u1" });
+    subFindUnique.mockResolvedValue(null);
+    executeRaw.mockResolvedValue(1);
+    list.mockResolvedValue({ data: [], error: null });
+    await purgeDueAccounts(now);
+    expect(eventsUpdate).toHaveBeenCalledWith({
+      where: { OR: [{ userId: "u1" }, { businessId: "biz1" }] },
+      data: { userId: null, businessId: null, sessionId: null, props: "DbNull" },
+    });
   });
 });

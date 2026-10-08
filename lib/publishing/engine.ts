@@ -1,3 +1,4 @@
+import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
@@ -43,9 +44,9 @@ const postInclude = {
 } satisfies Prisma.PostInclude;
 type ClaimedPost = Prisma.PostGetPayload<{ include: typeof postInclude }>;
 
-/** Accounts waiting to be deleted do not publish: their posts stay where they are. */
+/** Accounts waiting to be deleted, or suspended by the admin, do not publish: their posts stay where they are. */
 const NOT_BEING_DELETED = Prisma.sql`AND "businessId" NOT IN (
-  SELECT b."id" FROM "Business" b JOIN "User" u ON u."id" = b."userId" WHERE u."deletionScheduledFor" IS NOT NULL
+  SELECT b."id" FROM "Business" b JOIN "User" u ON u."id" = b."userId" WHERE u."deletionScheduledFor" IS NOT NULL OR u."suspendedAt" IS NOT NULL
 )`;
 
 /**
@@ -241,6 +242,7 @@ async function saveSuccess(post: ClaimedPost, result: { externalId: string; perm
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       if (await settle(post.id, data)) {
+        trackEvent(EVENT_NAMES.postPublished, { businessId: post.businessId, props: { network: post.network } });
         emitPostEvent(post, "post.published", { status: "PUBLISHED", lastError: null, permalink: data.permalink, publishedAt: data.publishedAt });
         return;
       }

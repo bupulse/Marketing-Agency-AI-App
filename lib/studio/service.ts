@@ -1,3 +1,4 @@
+import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { getTextProvider } from "@/lib/ai";
@@ -126,6 +127,7 @@ export async function generateForProject(args: {
       },
     });
     await pruneVersions(project.id).catch((e) => logError(e, { source: "studio.prune", level: "warn" }));
+    trackEvent(EVENT_NAMES.textGenerated, { userId, businessId: business.id, props: { feature, type: project.type } });
     queueWebhookEvent(business.id, "content.generated", () => contentData(saved));
     return saved;
   } catch (error) {

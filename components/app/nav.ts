@@ -1,6 +1,7 @@
 import {
   Blocks,
   CalendarDays,
+  ChartLine,
   ChartNoAxesColumn,
   CreditCard,
   FolderKanban,
@@ -24,6 +25,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard/projects", label: "Projects", icon: FolderKanban },
   { href: "/dashboard/content", label: "Content", icon: PenLine },
   { href: "/dashboard/calendar", label: "Calendar", icon: CalendarDays },
+  { href: "/dashboard/analytics", label: "Analytics", icon: ChartLine },
   { href: "/dashboard/autopilot", label: "Autopilot", icon: Sparkles },
   { href: "/dashboard/gallery", label: "Gallery", icon: Images },
   { href: "/dashboard/designs", label: "Designs", icon: ImageIcon },

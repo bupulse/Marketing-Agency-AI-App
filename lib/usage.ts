@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { usageWindowEnd, usageWindowStart } from "@/lib/billing/period";
 import { PLANS, type UsageMetric } from "@/lib/plans";
+import { getPlanLimits } from "@/lib/admin/plan-limits";
 
 const FIELD = {
   text: "textGenerations",
@@ -23,7 +24,7 @@ export class UsageLimitError extends Error {
 }
 
 async function activePeriod(userId: string) {
-  const sub = await prisma.subscription.findUnique({ where: { userId } });
+  const sub = await prisma.subscription.findUnique({ where: { userId }, include: { user: { select: { suspendedAt: true } } } });
   if (!sub) throw new UsageLimitError("no_subscription", "text");
   return sub;
 }
@@ -35,6 +36,8 @@ export async function consumeUsage(userId: string, metric: UsageMetric, amount =
   const sub = await activePeriod(userId);
   const now = new Date();
 
+  // A suspended account (admin console) can use nothing, even with a valid session (shown to the user as "inactive").
+  if (sub.user?.suspendedAt) throw new UsageLimitError("inactive", metric);
   if (sub.plan === "TRIAL" && sub.trialEndsAt && sub.trialEndsAt < now) {
     throw new UsageLimitError("trial_expired", metric);
   }
@@ -44,7 +47,8 @@ export async function consumeUsage(userId: string, metric: UsageMetric, amount =
     throw new UsageLimitError("inactive", metric);
   }
 
-  const limit = PLANS[sub.plan].limits[metric];
+  // lib/plans.ts, with the admin console's runtime overrides on top (cached for 30 s).
+  const limit = (await getPlanLimits(sub.plan))[metric];
   const field = FIELD[metric];
   // Usage resets monthly, also inside a yearly billing period.
   const periodStart = usageWindowStart(sub.currentPeriodStart, now);
@@ -77,7 +81,7 @@ export async function getUsageSummary(userId: string) {
   const record = await prisma.usageRecord.findUnique({
     where: { userId_periodStart: { userId, periodStart } },
   });
-  const limits = PLANS[sub.plan].limits;
+  const limits = await getPlanLimits(sub.plan);
   return {
     subscription: sub,
     plan: PLANS[sub.plan],

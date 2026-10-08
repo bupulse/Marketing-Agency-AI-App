@@ -1,3 +1,4 @@
+import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import type { User as AuthUser } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db";
@@ -49,7 +50,7 @@ function signUpMethodOf(authUser: AuthUser): SignUpMethod {
 // 7-day trial the first time; does nothing for returning users. Returns false
 // without creating anything when the email has not been confirmed yet, so a
 // trial never starts for an unverified address.
-export async function ensureAccount(authUser: AuthUser): Promise<boolean> {
+export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: string | null } = {}): Promise<boolean> {
   const email = authUser.email;
   if (!email) throw new Error("Signed-in user has no email address");
   if (!authUser.email_confirmed_at) return false;
@@ -68,7 +69,7 @@ export async function ensureAccount(authUser: AuthUser): Promise<boolean> {
   const now = new Date();
   const trialEndsAt = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
 
-  await prisma.user.upsert({
+  const created = await prisma.user.upsert({
     where: { id: authUser.id },
     update: { email },
     create: {
@@ -97,7 +98,15 @@ export async function ensureAccount(authUser: AuthUser): Promise<boolean> {
         },
       },
     },
+    include: { business: { select: { id: true } } },
   });
+  if (!existing) {
+    // The anonymous visit session (tracker) rides along in the sign-up metadata, or the Google redirect.
+    const sessionId = opts.visitSession ?? text(authUser.user_metadata?.visit_session, 40);
+    const track = { userId: authUser.id, businessId: created.business?.id, sessionId };
+    trackEvent(EVENT_NAMES.signup, { ...track, props: { method: signUpMethodOf(authUser), industry: details.industry ?? null } });
+    trackEvent(EVENT_NAMES.trialStarted, track);
+  }
   return true;
 }
 

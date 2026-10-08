@@ -40,6 +40,7 @@ export async function GET(request: Request) {
   }
   if (check.status === "unconfirmed") return NextResponse.redirect(new URL("/login?error=confirm", siteUrl()));
   if (check.status === "locked") return NextResponse.redirect(new URL("/account/deletion", siteUrl()));
+  if (check.status === "suspended") return NextResponse.redirect(new URL("/suspended", siteUrl()));
 
   try {
     const job = await startCanvaReturn(check.user.id, jwt);

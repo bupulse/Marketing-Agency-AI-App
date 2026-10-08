@@ -20,8 +20,9 @@ export default async function WelcomePage() {
 
   const [business, account] = await Promise.all([
     prisma.business.findUnique({ where: { userId: user.id } }),
-    prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true } }),
+    prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true, suspendedAt: true } }),
   ]);
+  if (account?.suspendedAt) redirect("/suspended");
   if (account?.deletionScheduledFor) redirect("/account/deletion");
   if (business?.detailsCompletedAt) redirect(await readReturn());
 

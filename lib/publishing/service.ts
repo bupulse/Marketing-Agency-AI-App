@@ -1,3 +1,4 @@
+import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
@@ -165,6 +166,7 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
       }),
     ),
   );
+  if (!draft) trackEvent(EVENT_NAMES.postScheduled, { businessId: owner.businessId, props: { count: created.length, status: time.status } });
   return { groupId, postIds: created.map((p) => p.id), scheduledAt: time.scheduledAt, status: time.status };
 }
 

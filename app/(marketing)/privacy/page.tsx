@@ -37,6 +37,7 @@ export default function PrivacyPage() {
             <><strong>Website chat leads:</strong> if you install our chat widget, we store the conversations and any name, email, phone number or request your visitors share, on your behalf.</>,
             <><strong>Billing data:</strong> your plan and subscription status. Card details are collected and held by our payment provider, Paddle; we never see or store full card numbers.</>,
             <><strong>Messages to us:</strong> anything you send through our contact or call-booking forms.</>,
+            <><strong>Visits to our website:</strong> on our public pages we count page views with our own script, without cookies. We store the page, referrer, campaign tags, device type and country, and a hash of your IP address and browser made with a random key that is deleted when the day ends (never the IP address itself), so visits on different days cannot be linked and the hash cannot be turned back into an IP address afterwards. We do not record visits when your browser sends Global Privacy Control or Do Not Track. When you sign up, the account is linked to the visit that led to it, so we can see which pages and sources bring customers.</>,
             <><strong>Technical data:</strong> basic logs such as IP address, browser type and error reports, used to keep the Service secure and working.</>,
           ]}
         />
@@ -136,7 +137,8 @@ export default function PrivacyPage() {
         <p>
           We keep your data while your account is open. When you delete your account, we delete your profile, business data, content, connections and
           tokens within 30 days. Backups are overwritten on their normal cycle, up to a further 35 days. We may keep limited records longer where the law
-          requires, for example invoices and tax records.
+          requires, for example invoices and tax records. Records of administrative actions on your account (for example a plan change or refund) are kept
+          for our own audit trail; when you delete your account their personal details are removed and only the action, date and account id remain. Product usage events (for example &ldquo;signed up&rdquo; or &ldquo;scheduled a post&rdquo;) are unlinked from you when you delete your account, and are removed after 25 months. Website page views are removed after 90 days.
         </p>
       </LegalSection>
 

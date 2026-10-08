@@ -20,7 +20,7 @@ function requireEnv(name: "PADDLE_API_KEY" | "PADDLE_CLIENT_TOKEN" | "PADDLE_WEB
 }
 
 // Calls the Paddle Billing API. Errors carry Paddle's error code and detail, never the key.
-async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function paddleApi<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const response = await fetch(`${baseUrl()}${path}`, {
     method: init.method ?? "GET",
     headers: {
@@ -53,7 +53,7 @@ type Transaction = {
 
 /** A fresh link to the PDF invoice. Paddle's links expire after an hour, so fetch on click. */
 export async function invoiceUrl(transactionId: string): Promise<string> {
-  const data = await api<{ url: string }>(`/transactions/${encodeURIComponent(transactionId)}/invoice`);
+  const data = await paddleApi<{ url: string }>(`/transactions/${encodeURIComponent(transactionId)}/invoice`);
   return data.url;
 }
 
@@ -81,7 +81,7 @@ export const paddle: BillingAdapter = {
   },
 
   async portalUrl({ providerCustomerId, providerSubscriptionId }) {
-    const data = await api<{ urls: { general: { overview: string } } }>(
+    const data = await paddleApi<{ urls: { general: { overview: string } } }>(
       `/customers/${encodeURIComponent(providerCustomerId)}/portal-sessions`,
       { method: "POST", body: providerSubscriptionId ? { subscription_ids: [providerSubscriptionId] } : {} },
     );
@@ -89,7 +89,7 @@ export const paddle: BillingAdapter = {
   },
 
   async cancelAtPeriodEnd(id) {
-    const data = await api(`/subscriptions/${encodeURIComponent(id)}/cancel`, {
+    const data = await paddleApi(`/subscriptions/${encodeURIComponent(id)}/cancel`, {
       method: "POST",
       body: { effective_from: "next_billing_period" },
     });
@@ -97,7 +97,7 @@ export const paddle: BillingAdapter = {
   },
 
   async cancelNow(id) {
-    const data = await api(`/subscriptions/${encodeURIComponent(id)}/cancel`, {
+    const data = await paddleApi(`/subscriptions/${encodeURIComponent(id)}/cancel`, {
       method: "POST",
       body: { effective_from: "immediately" },
     });
@@ -106,7 +106,7 @@ export const paddle: BillingAdapter = {
 
   async resume(id) {
     // Clearing the scheduled change undoes a pending cancellation.
-    const data = await api(`/subscriptions/${encodeURIComponent(id)}`, {
+    const data = await paddleApi(`/subscriptions/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: { scheduled_change: null },
     });
@@ -114,7 +114,7 @@ export const paddle: BillingAdapter = {
   },
 
   async changePlan(id, priceId) {
-    const data = await api(`/subscriptions/${encodeURIComponent(id)}`, {
+    const data = await paddleApi(`/subscriptions/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: {
         items: [{ price_id: priceId, quantity: 1 }],
@@ -133,7 +133,7 @@ export const paddle: BillingAdapter = {
       order_by: "billed_at[DESC]",
       per_page: "30",
     });
-    const transactions = await api<Transaction[]>(`/transactions?${query}`);
+    const transactions = await paddleApi<Transaction[]>(`/transactions?${query}`);
     return transactions.map((t) => ({
       id: t.id,
       date: new Date(t.billed_at ?? t.created_at),

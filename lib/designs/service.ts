@@ -1,3 +1,4 @@
+import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
@@ -162,6 +163,7 @@ export async function createTemplateDesign(input: Owner & {
     await removeFile(path, input.service);
     throw error;
   }
+  trackEvent(EVENT_NAMES.designCreated, { userId: input.userId, businessId: business.id, props: { kind: "TEMPLATE" } });
   return { id, path };
 }
 
@@ -206,6 +208,8 @@ export async function createAiDesign(input: Owner & {
       await removeFile(path, input.service);
       throw error;
     }
+    trackEvent(EVENT_NAMES.designCreated, { userId: input.userId, businessId: business.id, props: { kind: "AI" } });
+    trackEvent(EVENT_NAMES.imageGenerated, { userId: input.userId, businessId: business.id });
     return { id, path };
   } catch (error) {
     // Giving the credit back must never hide the original error.
@@ -303,6 +307,8 @@ export async function createAiPhotoDesign(input: Owner & {
       await removeFile(path, input.service);
       throw error;
     }
+    trackEvent(EVENT_NAMES.designCreated, { userId: input.userId, businessId: business.id, props: { kind: "AI" } });
+    trackEvent(EVENT_NAMES.imageGenerated, { userId: input.userId, businessId: business.id });
     return { id, path };
   } catch (error) {
     // Giving the credit back must never hide the original error.

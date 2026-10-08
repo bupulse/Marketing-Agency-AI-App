@@ -87,6 +87,7 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
         country: v.country,
         phone: v.phone ?? "",
         website: v.website ?? "",
+        visit_session: String(formData.get("visitSession") ?? "").slice(0, 40),
       },
     },
   });

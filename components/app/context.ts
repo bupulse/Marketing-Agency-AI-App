@@ -27,7 +27,8 @@ export const getAppContext = cache(async () => {
   ]);
   // Order matters: a pending deletion locks the account, Google sign-ups give their
   // organisation details first, then everyone completes the brand onboarding.
-  const account = await prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true, name: true } });
+  const account = await prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true, suspendedAt: true, name: true } });
+  if (account?.suspendedAt) redirect("/suspended");
   if (account?.deletionScheduledFor) redirect("/account/deletion");
   if (!business?.detailsCompletedAt) redirect("/welcome");
   if (!business.onboardedAt) redirect("/onboarding");

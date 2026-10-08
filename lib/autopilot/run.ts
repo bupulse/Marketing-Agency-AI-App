@@ -99,12 +99,12 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
   const now = options.now ?? new Date();
   const business = await prisma.business.findUnique({
     where: { id: businessId },
-    include: { autopilot: true, user: { select: { id: true, email: true, deletionScheduledFor: true } } },
+    include: { autopilot: true, user: { select: { id: true, email: true, deletionScheduledFor: true, suspendedAt: true } } },
   });
   if (!business) return { status: "nothing_to_plan", postCount: 0, groupCount: 0, note: "We could not find your business." };
 
-  // Accounts waiting to be deleted are left alone.
-  if (business.user.deletionScheduledFor) return { status: "nothing_to_plan", postCount: 0, groupCount: 0 };
+  // Accounts waiting to be deleted, or suspended by the admin, are left alone (before the week is claimed).
+  if (business.user.deletionScheduledFor || business.user.suspendedAt) return { status: "nothing_to_plan", postCount: 0, groupCount: 0 };
 
   const tz = safeZone(business.timezone);
   const key = weekKey(options.weekStart ?? nextWeekStart(now, tz), tz);
@@ -301,7 +301,7 @@ export async function runDueBusinesses(options: { now?: Date; limit?: number; cu
       where: {
         enabled: true,
         NOT: { connectionIds: { isEmpty: true } },
-        business: { user: { deletionScheduledFor: null } },
+        business: { user: { deletionScheduledFor: null, suspendedAt: null } },
         ...(cursor ? { businessId: { gt: cursor } } : {}),
       },
       select: { businessId: true, business: { select: { timezone: true } } },

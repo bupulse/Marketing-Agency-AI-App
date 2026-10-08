@@ -15,7 +15,7 @@ export async function notifyNewLead(leadId: string): Promise<{ emailed: boolean;
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
     include: {
-      business: { select: { id: true, name: true, user: { select: { email: true, deletionScheduledFor: true } }, } },
+      business: { select: { id: true, name: true, user: { select: { email: true, deletionScheduledFor: true, suspendedAt: true } }, } },
       session: { select: { messages: { orderBy: { createdAt: "desc" }, take: 6, select: { role: true, content: true } } } },
     },
   });
@@ -27,7 +27,7 @@ export async function notifyNewLead(leadId: string): Promise<{ emailed: boolean;
   // Email and webhook run side by side, so a slow webhook never delays the email.
   await Promise.all([
     (async () => {
-      if (!((widget?.notifyInstant ?? true) && business.user.email && !business.user.deletionScheduledFor)) return;
+      if (!((widget?.notifyInstant ?? true) && business.user.email && !business.user.deletionScheduledFor && !business.user.suspendedAt)) return;
       try {
         const transcript = (lead.session?.messages ?? []).slice().reverse();
         const mail = renderInstantLeadEmail({ lead, businessName: business.name, transcript });

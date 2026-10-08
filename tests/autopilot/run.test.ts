@@ -226,6 +226,16 @@ describe("an Autopilot run", () => {
     expect(mocks.prisma.autopilotRun.create).not.toHaveBeenCalled();
   });
 
+  it("leaves suspended accounts alone before claiming the week, and skips them in the due list", async () => {
+    mocks.prisma.business.findUnique.mockResolvedValue({ ...business, user: { ...business.user, suspendedAt: new Date() } });
+    expect((await runAutopilot("biz1", { now })).status).toBe("nothing_to_plan");
+    expect(mocks.prisma.autopilotRun.create).not.toHaveBeenCalled();
+    expect(mocks.consumeUsage).not.toHaveBeenCalled();
+    mocks.prisma.autopilotSettings.findMany.mockResolvedValue([]);
+    await runDueBusinesses({ now });
+    expect(mocks.prisma.autopilotSettings.findMany.mock.calls.at(-1)![0].where.business).toEqual({ user: { deletionScheduledFor: null, suspendedAt: null } });
+  });
+
   it("stops with a friendly note when credits run out mid-week, keeping what was written", async () => {
     mocks.consumeUsage.mockResolvedValueOnce({ periodStart }).mockRejectedValue(new UsageLimitError("limit_reached", "text"));
     mocks.planWeek.mockResolvedValue(plan([group("tip-how-to"), group("poll-question"), group("thank-you"), group("how-we-work")]));
@@ -379,7 +389,7 @@ describe("the Friday cron", () => {
   it("skips accounts waiting for deletion in the query", async () => {
     mocks.prisma.autopilotSettings.findMany.mockImplementation(paged([]));
     await runDueBusinesses({ now });
-    expect(mocks.prisma.autopilotSettings.findMany.mock.calls[0][0].where).toMatchObject({ enabled: true, business: { user: { deletionScheduledFor: null } } });
+    expect(mocks.prisma.autopilotSettings.findMany.mock.calls[0][0].where).toMatchObject({ enabled: true, business: { user: { deletionScheduledFor: null, suspendedAt: null } } });
   });
 
   it("plans a couple per call and a cursor reaches business N+1 until everyone was visited", async () => {

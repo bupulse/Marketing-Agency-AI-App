@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getCurrentUser } from "@/lib/supabase/server";
+import { checkActiveUser } from "@/lib/auth/require-user";
 import { ASPECT_RATIOS } from "@/lib/designs/layout";
 import { PACKS } from "@/lib/designs/packs";
 import { previewTemplate } from "@/lib/designs/service";
@@ -17,8 +17,10 @@ const query = z.object({
 });
 
 export async function GET(request: Request) {
-  const user = await getCurrentUser();
-  if (!user) return new Response("Unauthorized", { status: 401 });
+  const check = await checkActiveUser();
+  if (check.status === "signed_out") return new Response("Unauthorized", { status: 401 });
+  if (check.status !== "ok") return new Response("Forbidden", { status: 403 });
+  const user = check.user;
 
   const parsed = query.safeParse(Object.fromEntries(new URL(request.url).searchParams));
   const def = parsed.success ? TEMPLATES.find((t) => t.id === parsed.data.template) : undefined;

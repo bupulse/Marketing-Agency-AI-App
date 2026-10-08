@@ -34,7 +34,7 @@ export async function runLeadsDigest(now = new Date()): Promise<DigestResult> {
     notifyDaily: true,
     // A summary already sent in the last 20 hours cannot be due again, whatever the time zone.
     OR: [{ lastDigestAt: null }, { lastDigestAt: { lt: new Date(now.getTime() - 20 * 60 * 60 * 1000) } }],
-    business: { timezone: { in: zones }, user: { deletionScheduledFor: null }, leads: { some: { OR: [{ createdAt: { gte: since } }, { status: "NEW" as const }] } } },
+    business: { timezone: { in: zones }, user: { deletionScheduledFor: null, suspendedAt: null }, leads: { some: { OR: [{ createdAt: { gte: since } }, { status: "NEW" as const }] } } },
   };
 
   // Pages ordered by businessId, so every business is reached however many there are.
