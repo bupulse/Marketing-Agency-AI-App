@@ -223,6 +223,12 @@ Each phase ends with something you can open and test. A phase is accepted by you
   - A live activity feed.
   - A Client 360 page for each client.
 
+**Plan builder, decided 9 October 2026:**
+- The admin can create, edit, hide and retire plans: name, monthly and yearly price, limits (text, images, chat replies, channels and others) and features. The Trial stays a special plan, with editable limits and length.
+- Prices are created in Paddle automatically. Paddle prices are not edited in place: a new price is created, and the old one is archived once no subscription uses it.
+- **Price changes apply to existing clients.** Everyone moves to the new price at their next renewal, after an email warning sent 30 days before. A price cut can apply at the next renewal without the 30-day wait.
+- The pricing page, checkout and limits all read plans from the database. The current plans (Trial, Standard $49, Pro $99) are migrated over unchanged.
+
 ### Phase 9 — Hardening and launch
 
 - Security review: RLS on every table and bucket, auth on every route, token encryption, rate limits, input validation, secrets, OWASP top 10, widget isolation.
