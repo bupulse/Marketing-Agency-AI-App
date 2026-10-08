@@ -1,6 +1,6 @@
 import type { Network } from "@/lib/social/types";
 
-/** What the Connections page knows about one network, computed on the server. */
+/** What the Channels page knows about one network, computed on the server. */
 export type ChannelInfo = {
   network: Network;
   label: string;

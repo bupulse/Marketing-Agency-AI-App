@@ -29,7 +29,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard/designs", label: "Designs", icon: ImageIcon },
   { href: "/dashboard/leads", label: "Leads", icon: Users },
   { href: "/dashboard/widget", label: "Website chat", icon: MessageCircle },
-  { href: "/dashboard/connections", label: "Connections", icon: Plug },
+  { href: "/dashboard/connections", label: "Channels", icon: Plug },
   { href: "/dashboard/connectors", label: "Connectors", icon: Blocks },
   { href: "/dashboard/brand", label: "Brand", icon: Palette },
   { href: "/dashboard/usage", label: "Usage", icon: ChartNoAxesColumn },

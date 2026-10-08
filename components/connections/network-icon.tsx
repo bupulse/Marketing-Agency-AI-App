@@ -1,6 +1,6 @@
 import type { Network } from "@/lib/social/types";
 
-/** Inline brand icons (24x24, brand colours) so the Connections page needs no image requests. */
+/** Inline brand icons (24x24, brand colours) so the Channels page needs no image requests. */
 export function NetworkIcon({ network, className = "size-6" }: { network: Network; className?: string }) {
   const common = { viewBox: "0 0 24 24", className, "aria-hidden": true, focusable: false } as const;
   switch (network) {

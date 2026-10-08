@@ -63,7 +63,7 @@ export default async function ConnectorsPage() {
           <h2 id="group-more" className="text-lg font-semibold">
             More ways to connect
           </h2>
-          <p className="text-[14px] text-muted">Social networks are not here: you connect those, to publish posts, on the Connections page.</p>
+          <p className="text-[14px] text-muted">Social networks are not here: you connect those, to publish posts, on the Channels page.</p>
         </div>
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] gap-4">
           <LinkCard href="/dashboard/connections" icon={<Share2 className="size-5" />} title="Social networks" text="Instagram, Facebook, LinkedIn, TikTok and YouTube accounts you publish to." />

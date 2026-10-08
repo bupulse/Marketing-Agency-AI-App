@@ -303,7 +303,7 @@ function ComposerBody({ onOpenChange, context, post, prefill, day, onDone }: Pro
           </p>
           {!editing && context.accounts.some((a) => !a.usable) && (
             <p className="text-[13px] text-muted">
-              Greyed-out accounts need attention. <Link href="/dashboard/connections" className="font-semibold text-pulse-blue">Open Connections</Link>
+              Greyed-out accounts need attention. <Link href="/dashboard/connections" className="font-semibold text-pulse-blue">Open Channels</Link>
             </p>
           )}
         </fieldset>

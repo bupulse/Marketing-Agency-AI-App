@@ -76,7 +76,7 @@ export default async function DataDeletionPage({ searchParams }: PageProps<"/dat
       <LegalSection title="Remove only a connected social account">
         <LegalList
           items={[
-            "In BuPulse, open Connections and choose Disconnect next to the account. We delete the stored tokens straight away.",
+            "In BuPulse, open Channels and choose Disconnect next to the account. We delete the stored tokens straight away.",
             "Or remove BuPulse in the network's own settings: Facebook and Instagram under Settings → Business integrations, TikTok under Settings → Security → Manage app permissions, LinkedIn under Settings → Data privacy → Permitted services, and Google or YouTube in your Google Account security settings.",
           ]}
         />

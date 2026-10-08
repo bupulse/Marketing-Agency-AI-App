@@ -130,7 +130,7 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
     if (draft) {
       if (!text.trim() && data.mediaPaths.length === 0) problems.push("Write something or add a photo to save a draft.");
     } else {
-      if (!accountUsable(connection)) problems.push(`${label} needs to be reconnected first. Open Connections to fix it.`);
+      if (!accountUsable(connection)) problems.push(`${label} needs to be reconnected first. Open Channels to fix it.`);
       for (const issue of validatePost(rules, { format, text, hashtags, mediaCount: data.mediaPaths.length, mediaSizes: sizes }).errors) problems.push(`${label}: ${issue}`);
     }
     return { connection, network, text: text.trim(), hashtags, format };
@@ -194,7 +194,7 @@ export async function updatePost(owner: Owner, postId: string, input: EditInput,
   if (!becomesDraft) {
     const issues = validatePost(rules, { format, text: data.text, hashtags: data.hashtags, mediaCount: data.mediaPaths.length, mediaSizes: post.network === "instagram" ? await mediaSizes(owner.businessId, data.mediaPaths) : [] }).errors;
     if (issues.length > 0) throw new PublishingError(issues[0], "invalid", { form: issues.join(" ") });
-    if (time && (!post.connection || !accountUsable(post.connection))) throw new PublishingError("This account needs to be reconnected first. Open Connections to fix it.", "invalid");
+    if (time && (!post.connection || !accountUsable(post.connection))) throw new PublishingError("This account needs to be reconnected first. Open Channels to fix it.", "invalid");
   } else if (!data.text.trim() && data.mediaPaths.length === 0) {
     throw new PublishingError("Write something or add a photo to save a draft.", "invalid");
   }

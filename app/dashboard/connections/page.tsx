@@ -17,7 +17,7 @@ import { openPending } from "@/lib/social/oauth";
 import { isInstagramViaFacebookConfigured } from "@/lib/social/providers/instagram";
 import { allProviders, isNetwork } from "@/lib/social/registry";
 
-export const metadata = { title: "Connections" };
+export const metadata = { title: "Channels" };
 
 const APPS = [
   { provider: "canva", name: "Canva", note: "Open and export designs" },
@@ -87,7 +87,7 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/dash
   return (
     <>
       <PageHeader
-        title="Connections"
+        title="Channels"
         description="Connect your social accounts to publish, and your apps to bring in photos and products."
       />
       <Suspense>
