@@ -183,6 +183,12 @@ Each phase ends with something you can open and test. A phase is accepted by you
 - User API keys (Pro plan): REST API for projects, content, posts and leads; keys hashed, scoped, revocable, rate limited.
 - **Done when:** a user imports a product from Shopify and a photo from Drive into one post, a Zapier/Make webhook receives `lead.created`, and an API key can list leads.
 
+**Decided 8 October 2026:**
+- **Connectors:** all four groups are in Phase 7: Google Drive and Dropbox, Shopify and WooCommerce, Canva import, and Cloudflare domains.
+- **Google Drive:** file picker only (Google Picker with the `drive.file` scope). BuPulse sees only the files the client picks, so no restricted-scope security review is needed.
+- **Webhooks and API:** outgoing webhooks are on every plan, including Trial. The REST API with keys is Pro only.
+- **Composio:** later. Zapier and Make webhooks cover other apps for now.
+
 ### Phase 8 — Analytics, super-admin console and Jarvis endpoint
 
 **Our own analytics**
