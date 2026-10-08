@@ -166,6 +166,12 @@ Each phase ends with something you can open and test. A phase is accepted by you
 - Chat messages counted in usage (new metric per plan).
 - **Done when:** the widget is installed on a test site, a visitor's question is answered correctly, their details appear in Leads within seconds, the owner gets an email, and spam attempts are blocked.
 
+**Decided 8 October 2026:**
+- **Chat replies per month:** Trial 50, Standard 1,000, Pro 5,000. At the limit the widget keeps collecting contact details without AI answers. Gemini Flash-Lite costs about 0.02¢ per reply.
+- **Asking for contact details:** after helping, when the visitor shows interest (price, booking, buying, or after 2–3 messages), and always when the AI can't answer.
+- **Language:** replies in the visitor's language; the greeting is in the business's content language.
+- **Owner alerts:** an instant email for each new lead, plus a daily summary email. WhatsApp alerts are Stage 2.
+
 ### Phase 7 — Connectors hub
 
 - Catalog page with connect/disconnect and status, using the same methods as Phase 5 (`ConnectorProvider`; direct OAuth by default, the user's own Composio for Pro):

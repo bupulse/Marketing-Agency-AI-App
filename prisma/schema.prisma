@@ -84,6 +84,8 @@ model Business {
   mediaAssets   MediaAsset[]
   autopilot     AutopilotSettings?
   autopilotRuns AutopilotRun[]
+  chatWidgets   ChatWidget[]
+  chatSessions  ChatSession[]
 }
 
 // Anything the business wants to promote. A real estate "listing" is just one type.
@@ -127,19 +129,81 @@ model GeneratedContent {
   @@index([projectId, createdAt])
 }
 
+enum LeadStatus {
+  NEW
+  CONTACTED
+  WON
+  LOST
+}
+
 model Lead {
-  id         String   @id @default(cuid())
+  id         String       @id @default(cuid())
   businessId String
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business   Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
   name       String?
   email      String?
   phone      String?
   interest   String?
   message    String?
-  source     String   @default("website_chat") // "website_chat", "instagram", "contact_form"
-  createdAt  DateTime @default(now())
+  source     String       @default("website_chat") // "website_chat", "instagram", "contact_form"
+  status     LeadStatus   @default(NEW)
+  notes      String?
+  sessionId  String?      @unique // the chat it came from
+  session    ChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  pageUrl    String? // page the visitor was on
+  notifiedAt DateTime? // instant email sent
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @default(now()) @updatedAt
 
   @@index([businessId, createdAt])
+  @@index([businessId, status])
+}
+
+// The website chat widget's settings. Created on first visit to the widget settings page.
+model ChatWidget {
+  businessId             String    @id
+  business               Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  enabled                Boolean   @default(true)
+  greeting               String? // first message; default is written in the business's content language
+  position               String    @default("right") // "right" | "left"
+  accentColor            String? // defaults to the first brand colour
+  allowedDomains         String[] // hostnames the widget may run on; empty = not yet installed, any site allowed until set
+  notifyInstant          Boolean   @default(true) // email the owner for every new lead
+  notifyDaily            Boolean   @default(true) // daily summary email
+  webhookUrl             String? // POST lead.created events here (signed)
+  webhookSecretEncrypted String? // HMAC secret, encrypted with lib/crypto.ts
+  lastDigestAt           DateTime?
+  updatedAt              DateTime  @default(now()) @updatedAt
+}
+
+// One visitor conversation on a business's website.
+model ChatSession {
+  id            String        @id @default(cuid())
+  businessId    String
+  business      Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  visitorId     String // random id kept in the visitor's browser
+  origin        String? // site hostname it ran on
+  pageUrl       String?
+  language      String? // detected visitor language
+  messageCount  Int           @default(0)
+  createdAt     DateTime      @default(now())
+  lastMessageAt DateTime      @default(now())
+  messages      ChatMessage[]
+  lead          Lead?
+
+  @@index([businessId, lastMessageAt])
+  @@index([businessId, visitorId])
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String // "visitor" | "assistant" | "system"
+  content   String
+  createdAt DateTime    @default(now())
+
+  @@index([sessionId, createdAt])
 }
 
 // Payment providers BuPulse can bill through. Paddle first; others plug into lib/billing.
@@ -201,6 +265,7 @@ model UsageRecord {
   imageGenerations Int      @default(0)
   videoSeconds     Int      @default(0)
   voiceCharacters  Int      @default(0)
+  chatMessages     Int      @default(0) // AI replies of the website chat widget
   updatedAt        DateTime @updatedAt
 
   @@unique([userId, periodStart])
@@ -490,16 +555,16 @@ model MediaAsset {
 
 // Autopilot: AI plans and writes next week's posts. Off until the owner turns it on.
 model AutopilotSettings {
-  businessId    String   @id
-  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  enabled       Boolean  @default(false)
-  autoPublish   Boolean  @default(false) // false: posts wait as PENDING_APPROVAL for "Approve all"
-  postsPerWeek  Int      @default(3)
-  connectionIds String[] // accounts Autopilot writes for
-  postingTimes  String[] @default(["09:00", "18:00"]) // local times (Business.timezone) it may use
-  useAiImages   Boolean  @default(false) // false: gallery photos and free templates only
-  skipReligiousHolidays Boolean @default(false) // true: no greetings or posts for religious holidays
-  updatedAt     DateTime @updatedAt
+  businessId            String   @id
+  business              Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  enabled               Boolean  @default(false)
+  autoPublish           Boolean  @default(false) // false: posts wait as PENDING_APPROVAL for "Approve all"
+  postsPerWeek          Int      @default(3)
+  connectionIds         String[] // accounts Autopilot writes for
+  postingTimes          String[] @default(["09:00", "18:00"]) // local times (Business.timezone) it may use
+  useAiImages           Boolean  @default(false) // false: gallery photos and free templates only
+  skipReligiousHolidays Boolean  @default(false) // true: no greetings or posts for religious holidays
+  updatedAt             DateTime @updatedAt
 }
 
 model AutopilotRun {

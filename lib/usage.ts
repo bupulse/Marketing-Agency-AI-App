@@ -8,6 +8,7 @@ const FIELD = {
   image: "imageGenerations",
   videoSeconds: "videoSeconds",
   voiceCharacters: "voiceCharacters",
+  chat: "chatMessages",
 } as const satisfies Record<UsageMetric, string>;
 
 export type UsageBlockReason = "no_subscription" | "trial_expired" | "inactive" | "past_due" | "limit_reached";
@@ -85,6 +86,7 @@ export async function getUsageSummary(userId: string) {
       image: record?.imageGenerations ?? 0,
       videoSeconds: record?.videoSeconds ?? 0,
       voiceCharacters: record?.voiceCharacters ?? 0,
+      chat: record?.chatMessages ?? 0,
     },
     limits,
     /** When usage next resets (trial: when the trial ends). */
