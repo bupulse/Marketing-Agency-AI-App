@@ -1,9 +1,33 @@
 name: Deploy
 
+# Two ways in:
+# - every push to main deploys that commit (as before);
+# - "Run workflow" / the admin console's Settings, Updates page (workflow_dispatch) deploys a chosen release tag or
+#   commit, or rolls the Worker back to its previous version. See docs/UPDATES.md.
+
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Release tag or commit SHA to deploy (ignored for a rollback)"
+        required: false
+        default: main
+        type: string
+      action:
+        description: "deploy or rollback"
+        required: true
+        default: deploy
+        type: choice
+        options: [deploy, rollback]
+      environment:
+        description: "GitHub environment (its secrets and required reviewers apply)"
+        required: false
+        default: production
+        type: string
 
+# One deploy at a time; a second request waits for the first (the console also refuses while one is running).
 concurrency:
   group: deploy-production
   cancel-in-progress: false
@@ -13,8 +37,13 @@ permissions:
 
 jobs:
   deploy:
+    if: github.event_name == 'push' || inputs.action == 'deploy'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # Supabase Free has no backup API to check, so the safety step is human: add required reviewers to this
+    # environment (GitHub: Settings, Environments, production) and take a backup before approving. Pushes to main
+    # also wait for that approval once reviewers are set.
+    environment: ${{ inputs.environment || 'production' }}
     env:
       # Build-time values (public). Real runtime secrets live in Cloudflare.
       NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
@@ -22,6 +51,15 @@ jobs:
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Record the commit being deployed
+        id: build
+        env:
+          REQUESTED: ${{ inputs.ref || github.sha }}
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "Deploying $(git rev-parse HEAD) (requested: $REQUESTED)" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -31,13 +69,37 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DIRECT_URL }}
 
-      # Migrations first: a failed migration stops the deploy.
+      # Migrations first: a failed migration stops the deploy. They are never rolled back by the rollback job.
       - run: npx prisma migrate deploy --config prisma7.config.ts
         env:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
 
       - run: npx opennextjs-cloudflare build
+        env:
+          BUILD_SHA: ${{ steps.build.outputs.sha }}
       - run: npx opennextjs-cloudflare deploy
+        env:
+          BUILD_SHA: ${{ steps.build.outputs.sha }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  rollback:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.environment || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # wrangler reads wrangler.jsonc for the Worker name; the assets directory only needs to exist.
+      - run: mkdir -p .open-next/assets
+      - name: Roll the Worker back to its previous version
+        run: npx wrangler rollback --name bupulse --yes --message "Rollback from the admin console (run ${{ github.run_id }})"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - run: echo "Rolled the Worker back to its previous version. Database migrations were not changed." >> "$GITHUB_STEP_SUMMARY"

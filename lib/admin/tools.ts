@@ -11,6 +11,7 @@ import * as connectionActions from "./actions/connections";
 import * as clientView from "./client360";
 import { getActivity } from "./activity";
 import { getSystemHealth } from "./health";
+import { getUpdateStatus } from "./updates";
 import { SERVICE_IDS } from "./service-catalog";
 import { AdminError, type AdminContext } from "./types";
 
@@ -438,6 +439,14 @@ tool({
   description: "Scheduled jobs (last run and whether overdue), queues and backlogs (publishing, webhooks, approvals), error rate and database size, with an overall status (ok, warning, problem) and a list of what needs attention.",
   schema: z.object({}),
   run: () => getSystemHealth(),
+});
+tool({
+  name: "get_update_status",
+  title: "Update status",
+  kind: "read",
+  description: "The version and commit BuPulse is running, the newest release on GitHub (version, date, notes) and the last 10 runs of the deploy workflow with their status. Read only: installing an update or rolling back can only be done by a person in the admin console (Settings, Updates).",
+  schema: z.object({}),
+  run: () => getUpdateStatus(),
 });
 tool({
   name: "get_activity",

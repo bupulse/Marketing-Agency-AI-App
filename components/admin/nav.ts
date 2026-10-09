@@ -16,6 +16,7 @@ import {
   Server,
   TriangleAlert,
   Building2,
+  CloudDownload,
   type LucideIcon,
 } from "lucide-react";
 
@@ -62,6 +63,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { href: "/admin/flags", label: "Feature flags", icon: Flag },
       { href: "/admin/announcements", label: "Announcements", icon: Megaphone },
       { href: "/admin/jarvis", label: "Jarvis", icon: Bot },
+      { href: "/admin/settings/updates", label: "Updates", icon: CloudDownload },
       { href: "/admin/audit", label: "Audit log", icon: ScrollText },
     ],
   },

@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
+import { version } from "./package.json";
 
 const nextConfig: NextConfig = {
+  // Inlined at build time for the admin Updates page (lib/version.ts). BUILD_SHA comes from the deploy workflow.
+  env: { APP_VERSION: version, BUILD_SHA: process.env.BUILD_SHA ?? "local" },
   // The file tracer only keeps pg-cloudflare's no-op build; Workers needs the real
   // socket implementation that `pg` loads when running on Cloudflare.
   outputFileTracingIncludes: {
