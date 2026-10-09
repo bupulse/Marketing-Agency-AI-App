@@ -52,6 +52,7 @@ Legend: **confirm** = refused without `confirm: true`. **approval** = does not r
 | `list_posts` | Posts across customers, filter by status/network/business |
 | `get_errors`, `get_activity` | The server error log; the live activity feed |
 | `get_system_health` | Scheduled jobs, queues and backlogs, error rate, database size, overall status |
+| `get_update_status` | Running version and commit, newest GitHub release with notes, last deploy runs (installing is console-only, `docs/UPDATES.md`) |
 | `list_services` | Every outside service: env vars set or missing (never values), on or off, health, last test, last error, 30-day usage |
 | `get_ai_usage` | AI spend for a month against the cap: per day, model, feature and client, failures, projection |
 | `list_plans` | Plans with prices, limits, features, clients, MRR and Paddle sync state |

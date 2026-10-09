@@ -11,6 +11,10 @@ Only the addresses in `ADMIN_EMAILS` (comma-separated, default `admin@bupulse.co
 4. Set `ADMIN_EMAILS` in `.env` and in the Worker environment, create `admin@bupulse.com` normally (email and password, confirm the email), sign in at `/login`, then open `/admin`.
 5. On `/admin/setup-2fa`: press "Email me a code", enter it, scan the QR in Microsoft Authenticator (or Google Authenticator or 1Password) and enter the 6-digit code.
 
+## Updates
+
+Settings, Updates shows the running version, the newest GitHub release and the last deploys; **Install update** and **Roll back** start the deploy workflow on GitHub Actions after a second confirmation and are audited. Setup (`GITHUB_REPO`, `GITHUB_TOKEN`, the `production` environment) and the migrations caveat: `docs/UPDATES.md`.
+
 ## Why the extra layers
 
 - `/admin/verify` limits attempts to 8 per 10 minutes per admin, but anyone holding the password can also call Supabase Auth directly. The MFA hook in step 3 is what stops that. Supabase also applies its own per-IP auth rate limits (Authentication, Rate Limits); leave them on.
