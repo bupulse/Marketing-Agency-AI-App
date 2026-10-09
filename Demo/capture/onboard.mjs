@@ -57,7 +57,11 @@ for (const slug of slugs) {
     await page.fill('[name="area"]', a.knowledge.area);
     await page.fill('[name="contact"]', a.knowledge.contact);
     for (let i = 0; i < a.knowledge.faqs.length; i++) {
-      if ((await page.locator(`[name="faqs.${i}.question"]`).count()) === 0) await page.getByRole("button", { name: /add (a )?question/i }).click();
+      if ((await page.locator(`[name="faqs.${i}.question"]`).count()) === 0) {
+        const add = page.getByRole("button", { name: /add a question/i });
+        if (!(await add.count())) break; // onboarding takes a few; the rest are added on the Brand page
+        await add.click();
+      }
       await page.fill(`[name="faqs.${i}.question"]`, a.knowledge.faqs[i].question);
       await page.fill(`[name="faqs.${i}.answer"]`, a.knowledge.faqs[i].answer);
     }

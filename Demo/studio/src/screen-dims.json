@@ -1,0 +1,126 @@
+{
+ "inzu/new-project-form-full": [
+  2880,
+  2988
+ ],
+ "inzu/new-project-form": [
+  2880,
+  1800
+ ],
+ "marketing/home-features-section-full": [
+  2880,
+  1598
+ ],
+ "marketing/home-features": [
+  2880,
+  1800
+ ],
+ "marketing/home-full-m": [
+  1170,
+  25293
+ ],
+ "marketing/home-full": [
+  2880,
+  9566
+ ],
+ "marketing/home-hero-m": [
+  1170,
+  2532
+ ],
+ "marketing/home-hero": [
+  2880,
+  1800
+ ],
+ "marketing/home-m": [
+  1170,
+  2532
+ ],
+ "marketing/home": [
+  2880,
+  1800
+ ],
+ "marketing/pricing-full-m": [
+  1170,
+  12948
+ ],
+ "marketing/pricing-full": [
+  2880,
+  6544
+ ],
+ "marketing/pricing-m": [
+  1170,
+  2532
+ ],
+ "marketing/pricing": [
+  2880,
+  1800
+ ],
+ "marketing/signin-m": [
+  1170,
+  2532
+ ],
+ "marketing/signin": [
+  2880,
+  1800
+ ],
+ "marketing/signup-m": [
+  1170,
+  2532
+ ],
+ "marketing/signup": [
+  2880,
+  1800
+ ],
+ "nova/new-project-form-full": [
+  2880,
+  2988
+ ],
+ "nova/new-project-form": [
+  2880,
+  1800
+ ],
+ "onboarding/done-dashboard": [
+  2880,
+  1800
+ ],
+ "onboarding/step-1-offer-empty": [
+  2880,
+  1800
+ ],
+ "onboarding/step-1-offer": [
+  2880,
+  1800
+ ],
+ "onboarding/step-2-voice": [
+  2880,
+  1800
+ ],
+ "onboarding/step-3-look-empty": [
+  2880,
+  1800
+ ],
+ "onboarding/step-3-look-extracted": [
+  2880,
+  1800
+ ],
+ "onboarding/step-3-look": [
+  2880,
+  1800
+ ],
+ "onboarding/step-4-chat-empty": [
+  2880,
+  1800
+ ],
+ "onboarding/step-4-chat": [
+  2880,
+  1800
+ ],
+ "urugo/new-project-form-full": [
+  2880,
+  2988
+ ],
+ "urugo/new-project-form": [
+  2880,
+  1800
+ ]
+}

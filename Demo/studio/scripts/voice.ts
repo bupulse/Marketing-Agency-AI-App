@@ -2,7 +2,7 @@
 // Cached by text: only new or changed lines cost credits. Run: node scripts/voice.ts
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { VIDEOS } from "../src/script.ts";
+import { CHAPTERS, VIDEOS } from "../src/script.ts";
 
 const VOICE_ID = "NZ8KtusXpnktPYja5Qko"; // JB Pro (chosen 9 Oct 2026)
 const MODEL = "eleven_multilingual_v2";
@@ -29,7 +29,7 @@ async function tts(text: string) {
   }
 }
 
-for (const video of VIDEOS) {
+for (const video of [...VIDEOS, { id: "chapters", title: "Chapters", scenes: Object.values(CHAPTERS) }]) {
   manifest[video.id] = {};
   for (const scene of video.scenes) {
     const enLines = scene.lines.map(([en]) => en);

@@ -226,3 +226,23 @@ Built now as interfaces, each with an admin Services card showing "Not connected
 - Paddle country price overrides for the EAC countries, and whether Paddle accepts your seller profile and buyers with a Rwandan billing address.
 - Paddle's fee (5% + $0.50 per payment) is about 10% on a $10 Starter payment, against about 5–7% at $24. Either accept it or set the card price a little higher than the converted MoMo price. Rwandan banks may also add a foreign-currency fee on USD card payments.
 - The RWF/USD rate used in comparisons (≈1,450 RWF per USD, October 2026 estimate).
+
+## 11. Build timeline (written 9 October 2026)
+
+The demo videos in `Demo/` are the acceptance test: each step is done when its scenes work in the real app. Every step ends with tests passing, a reviewer pass and a handover note. New features stay behind switches until the owner approves them.
+
+| Day | Date | Work (estimated hours) | Deliverable at end of day | Owner (hours) |
+|---|---|---|---|---|
+| 1 | Mon 12 Oct | R0: finish team feature, fix 14 tests, commit (2h). R2: feature registry, prerequisite resolver, tests (3h); feature checks on pages, actions, API and nav (4h) | Clean `main`; each company gets only its plan's features; "Add to your plan" in the nav | MoMo Pay code; check MoMo wallet monthly limit (1h) |
+| 2 | Tue 13 Oct | R1: regions table and migrations (2h); prices per region, RWF formatting, IP country display, sign-up locks region (4h); no trial in RW, card margin and USD rate setting, Paddle card prices for RW and EAC overrides (3h) | Pricing page shows Rwanda / EAC / global prices; Rwandan sign-up has no trial | Approve the RW and EAC prices (0.5h) |
+| 3 | Wed 14 Oct | R4: payment method choice (card or MoMo) (2h); MoMo pay screen, "I've paid", waiting state (3h); admin Payments list, approve/reject, emails (2h); reminders cron, grace period, read-only (2h) | Videos 2 and 5 work for real: MoMo payment approved in the admin, and card with automatic renewal | Test one real 100 RWF MoMo payment (0.5h) |
+| 4 | Thu 15 Oct | R3: add-on price list (2h); "Customise plan" builder with prerequisites, limits and live total (4h); offer → accept → pay → features switch on (3h). Plug-in points for automatic MoMo, Google Calendar, WhatsApp and exchange rate (1h) | Video 4's admin builder and offer flow work for real | Review the add-on prices (0.5h) |
+| 5 | Fri 16 Oct | R5: custom-plan request form, availability, booking, invite with Meet link (4h). R6: Rwanda home and pricing pages, WhatsApp button, "Book a free demo" (2h). End-to-end tests of the main journeys (3h) | Request → meeting booked → offer; Rwanda site ready | Set your meeting availability; record a reusable Meet link (0.5h) |
+| 6 | Mon 19 Oct | R7: security review and fixes (3h); production deploy: Cloudflare, Supabase production, DNS (2h); Paddle live and webhook test (1h); Meta app review pack (1h); re-capture real screens and re-render the videos (1h) | bupulse.com live; videos show the real app | Cloudflare / Supabase / DNS logins (2h); Paddle live verification (1h); submit the Meta review (1h) |
+| — | Tue 20 Oct | Buffer and launch support (up to 4h) | First pilot businesses onboarded | Visit and onboard the first 5 pilot businesses |
+
+About 57 hours of build work, plus about 9 hours from the owner.
+
+**Waits outside our control:** Paddle live approval takes a few days (card payments switch on when it arrives). Meta review takes 2–6 weeks and needs business verification. Until it's approved, Instagram and Facebook use reminder + copy-and-post, and the custom-plan video is used for in-person demos only.
+
+**Gap between the videos and v1:** the custom-plan video shows the lead alert arriving on WhatsApp. Real WhatsApp alerts need the WhatsApp Business Platform, which also needs Meta business verification. v1 sends an instant email and a browser notification, with a "Reply on WhatsApp" button that opens a chat with the visitor. Real WhatsApp alerts plug in once Meta verification is done.

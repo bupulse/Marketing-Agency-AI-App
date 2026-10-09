@@ -153,6 +153,7 @@ export const VIDEOS: Video[] = [
       },
       {
         id: "active",
+        hold: 1.6,
         visual: "PlanActive:starter",
         lines: [["Aline's Starter plan is now active.", "Gahunda ya Starter ya Aline irakora."]],
       },
@@ -225,6 +226,7 @@ export const VIDEOS: Video[] = [
       },
       {
         id: "pay",
+        hold: 1.4,
         visual: "QuickPay:business",
         lines: [["Eric chooses Business, thirty-five thousand francs a month. He pays with Mobile Money, we approve, and his plan is active.", "Eric ahitamo Business, ibihumbi mirongo itatu na bitanu ku kwezi. Yishyura na Mobile Money, tukemeza, gahunda ye igatangira."]],
       },
@@ -342,6 +344,7 @@ export const VIDEOS: Video[] = [
       },
       {
         id: "instagram",
+        hold: 2.2,
         visual: "InstagramConnect",
         lines: [["He connects Instagram in a few seconds.", "Ahuza Instagram mu masegonda make."]],
       },
@@ -416,6 +419,7 @@ export const VIDEOS: Video[] = [
       },
       {
         id: "active",
+        hold: 1.6,
         visual: "PlanActive:card",
         lines: [["Your plan is active straight away. No waiting.", "Gahunda yawe ihita itangira. Nta gutegereza."]],
       },
@@ -434,3 +438,13 @@ export const VIDEOS: Video[] = [
     ],
   },
 ];
+
+/** Spoken chapter titles placed before each part of the full walkthrough (00-full). */
+export const CHAPTERS: Record<string, Scene> = {
+  "02-starter": { id: "ch-starter", visual: "Chapter:starter", hold: 0.8, lines: [["Let's start with the Starter plan.", "Reka duhere kuri gahunda ya Starter."]] },
+  "03-business": { id: "ch-business", visual: "Chapter:business", hold: 0.8, lines: [["Next, the Business plan, made for teams.", "Ubu, gahunda ya Business, yagenewe amatsinda."]] },
+  "04-custom": { id: "ch-custom", visual: "Chapter:custom", hold: 0.8, lines: [["Now, a custom plan, built around your business.", "Noneho, gahunda yihariye, ikozwe ku bucuruzi bwawe."]] },
+  "05-card": { id: "ch-card", visual: "Chapter:card", hold: 0.8, lines: [["Finally, paying by card.", "Hanyuma, kwishyura n'ikarita."]] },
+};
+
+export const FULL_ID = "00-full";

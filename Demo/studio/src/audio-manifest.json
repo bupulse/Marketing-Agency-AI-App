@@ -742,5 +742,47 @@
     }
    ]
   }
+ },
+ "chapters": {
+  "ch-starter": {
+   "file": "audio/voice/0512f4375741.mp3",
+   "duration": 2.368,
+   "lines": [
+    {
+     "start": 0,
+     "end": 2.368
+    }
+   ]
+  },
+  "ch-business": {
+   "file": "audio/voice/67d31b3f1253.mp3",
+   "duration": 1.904,
+   "lines": [
+    {
+     "start": 0,
+     "end": 1.904
+    }
+   ]
+  },
+  "ch-custom": {
+   "file": "audio/voice/077a308e1c75.mp3",
+   "duration": 2.508,
+   "lines": [
+    {
+     "start": 0,
+     "end": 2.508
+    }
+   ]
+  },
+  "ch-card": {
+   "file": "audio/voice/14c48f022792.mp3",
+   "duration": 1.44,
+   "lines": [
+    {
+     "start": 0,
+     "end": 1.44
+    }
+   ]
+  }
  }
 }

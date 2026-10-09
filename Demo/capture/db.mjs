@@ -1,4 +1,6 @@
 // Small pg helper for the demo capture scripts (development database from /Users/macbook1/BuPulse/.env).
+// Timestamps are "timestamp without time zone" holding UTC; make node-pg write them as UTC.
+process.env.TZ = "UTC";
 import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
