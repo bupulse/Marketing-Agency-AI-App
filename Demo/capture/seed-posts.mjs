@@ -104,8 +104,10 @@ if (slug === "nova") {
   const iphone = await project("iPhone 16");
   const acc = await project("Fast chargers & cases");
   const tags = ["#NovaPhonesKigali", "#KigaliPhones", "#Rwanda"];
-  // Four weeks of history for Analytics.
+  // Eight weeks of history for Analytics (the older four weeks are the "period before", with less reach).
   const history = [
+    [-57, "18:00", iphone, 900], [-53, "12:00", acc, 600], [-50, "18:00", a56, 1300], [-46, "09:00", null, 500],
+    [-43, "18:00", iphone, 1100], [-39, "12:00", acc, 700], [-36, "18:00", a56, 1500], [-32, "09:00", null, 650],
     [-27, "18:00", iphone, 1800], [-25, "12:00", acc, 1100], [-22, "18:00", a56, 2600], [-20, "09:00", null, 900],
     [-18, "18:00", iphone, 2100], [-15, "12:00", acc, 1300], [-13, "18:00", a56, 3200], [-11, "09:00", null, 1000],
     [-8, "18:00", iphone, 2900], [-6, "12:00", acc, 1500], [-4, "18:00", a56, 4100], [-2, "09:00", null, 1700],
