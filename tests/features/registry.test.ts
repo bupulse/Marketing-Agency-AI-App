@@ -150,6 +150,8 @@ describe("the seed plans and the plan_features migration agree", () => {
     expect(sql).toContain(`SELECT 'apiAccess' WHERE "key" = 'PRO' OR "capabilities"->>'apiAccess' = 'true'`);
     expect(sql).toContain(`SELECT 'ownComposio' WHERE "key" = 'PRO' OR "capabilities"->>'ownComposio' = 'true'`);
     expect(sql).toContain(`SET "highlights" = "features"`);
-    expect(sql).toContain(`ADD COLUMN "featureKeys" JSONB NOT NULL DEFAULT '[]'`);
+    // Nullable with no default: a plan an older build creates after the migration reads as core + capabilities, not as empty.
+    expect(sql).toContain(`ADD COLUMN "featureKeys" JSONB;`);
+    expect(sql).not.toMatch(/"featureKeys" JSONB NOT NULL/);
   });
 });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiError, apiJson, apiRoute } from "@/lib/api/auth";
+import { apiError, apiFeatureDenied, apiJson, apiRoute } from "@/lib/api/auth";
 import { pageArgs, parsePaging, toPage } from "@/lib/api/paging";
 import { postJson } from "@/lib/api/serialize";
 import { prisma } from "@/lib/db";
@@ -36,8 +36,11 @@ const createSchema = z.object({
 });
 
 // POST /api/v1/posts  { network, text, hashtags?, link?, projectId? }   (scope posts:write)
-// Creates a DRAFT only. Scheduling and publishing stay in the BuPulse calendar, where the owner checks the post.
+// Creates a DRAFT only. Scheduling and publishing stay in the BuPulse calendar, where the owner checks the post, so
+// creating one needs the calendar feature in the plan.
 export const POST = apiRoute("posts:write", async (ctx, request) => {
+  const denied = await apiFeatureDenied(ctx.businessId, "calendar");
+  if (denied) return denied;
   const body = await request.json().catch(() => null);
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return apiError(400, "invalid_request", parsed.error.issues[0]?.message ?? "The request body is not valid.");

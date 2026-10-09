@@ -51,12 +51,12 @@ beforeEach(() => {
 });
 
 describe("leads export", () => {
-  it("answers 403 feature_required without website chat, and the CSV with it", async () => {
+  it("is the company's own data: the CSV comes with or without website chat in the plan", async () => {
     grant.missing.add("websiteChat");
-    const refused = await leadsExport(new NextRequest("https://bupulse.test/api/leads/export"));
-    expect(refused.status).toBe(403);
-    expect(await refused.json()).toMatchObject({ error: "feature_required", feature: "websiteChat", reason: "not_in_plan" });
-    expect(h.prisma.lead.findMany).not.toHaveBeenCalled();
+    const without = await leadsExport(new NextRequest("https://bupulse.test/api/leads/export"));
+    expect(without.status).toBe(200);
+    expect(without.headers.get("content-type")).toContain("text/csv");
+    expect(h.prisma.lead.findMany).toHaveBeenCalledTimes(1);
 
     grant.missing.clear();
     const ok = await leadsExport(new NextRequest("https://bupulse.test/api/leads/export"));
@@ -100,10 +100,14 @@ describe("Autopilot action", () => {
 });
 
 describe("public widget config", () => {
-  it("tells widget.js not_in_plan, before any other reason, so the chat shows nothing", async () => {
+  it("answers a neutral 'unavailable' for a plan without website chat, before any other reason: the plan is not public", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
     h.widget.mockResolvedValue({ businessId: "b1", enabled: false, inPlan: false, allowedDomains: [] });
     const res = await widgetConfig(new Request("https://bupulse.test/api/widget/config?key=KEY12345678"));
-    expect(await res.json()).toEqual({ enabled: false, reason: "not_in_plan" });
+    const body = await res.json();
+    expect(body).toEqual({ enabled: false, reason: "unavailable" });
+    expect(JSON.stringify(body)).not.toContain("plan");
+    expect(console.info).toHaveBeenCalledWith(expect.stringContaining("not in the plan"));
     expect(h.prisma.chatWidget.updateMany).not.toHaveBeenCalled();
   });
 });

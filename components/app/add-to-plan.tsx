@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/app/empty-state";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui";
 import { UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
-import type { FeatureBlockReason } from "@/lib/entitlements";
+import { PLAN_UNKNOWN_MESSAGE, type FeatureBlockReason } from "@/lib/entitlements";
 import { featureOf, type FeatureKey } from "@/lib/features";
 import { askMessage, can, type Role } from "@/lib/team/roles";
 
@@ -21,6 +21,14 @@ export function AddToPlan({ feature, reason = "not_in_plan", role, inPlan }: { f
       <>
         <PageHeader title={def.label} description="Not available yet." />
         <EmptyState icon={Clock} comingSoon title={`${def.label} is on its way`} text={def.description} />
+      </>
+    );
+  }
+  if (reason === "plan_unknown") {
+    return (
+      <>
+        <PageHeader title={def.label} description="Your plan could not be checked." />
+        <EmptyState icon={Icon} title="Please try again in a moment" text={PLAN_UNKNOWN_MESSAGE} />
       </>
     );
   }

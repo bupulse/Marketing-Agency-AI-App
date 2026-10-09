@@ -20,10 +20,12 @@ type Props = {
   sources: string[];
   filters: LeadFilters;
   initialOpenId: string | null;
+  /** Without website chat in the plan: leads can be looked at, exported and deleted, but not worked (status, notes). */
+  readOnly?: boolean;
 };
 
 /** The inbox: filters, list, bulk actions and the detail panel. The URL holds the filters, so links and the CSV export match. */
-export function LeadsInbox({ leads: initial, total, hasMore, limit, counts, sources, filters, initialOpenId }: Props) {
+export function LeadsInbox({ leads: initial, total, hasMore, limit, counts, sources, filters, initialOpenId, readOnly = false }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -162,16 +164,18 @@ export function LeadsInbox({ leads: initial, total, hasMore, limit, counts, sour
       {selected.size > 0 && (
         <GlassCard strong className="sticky top-2 z-10 flex flex-wrap items-center gap-2 p-3" role="region" aria-label="Bulk actions">
           <span className="px-2 text-[14px] font-semibold">{selected.size} selected</span>
-          <div className="w-40">
-            <Select aria-label="Change status of selected" value="" disabled={busy} onChange={(e) => e.target.value && void bulkStatus(e.target.value as LeadStatusValue)}>
-              <option value="">Mark as…</option>
-              {LEAD_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_LABELS[s]}
-                </option>
-              ))}
-            </Select>
-          </div>
+          {!readOnly && (
+            <div className="w-40">
+              <Select aria-label="Change status of selected" value="" disabled={busy} onChange={(e) => e.target.value && void bulkStatus(e.target.value as LeadStatusValue)}>
+                <option value="">Mark as…</option>
+                {LEAD_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABELS[s]}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
           <Button variant="outline" size="sm" leading={<Trash2 aria-hidden className="size-4" />} onClick={() => setConfirmDelete(true)} disabled={busy}>
             Delete
           </Button>
@@ -250,7 +254,7 @@ export function LeadsInbox({ leads: initial, total, hasMore, limit, counts, sour
             aria-label="Lead details"
             className="fixed inset-0 z-50 bg-surface lg:glass-strong overflow-y-auto overscroll-contain p-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))] lg:sticky lg:top-4 lg:z-auto lg:max-h-[calc(100dvh-2rem)] lg:rounded-glass lg:p-6"
           >
-            <LeadPanel key={open.id} lead={open} onClose={() => setOpenId(null)} onStatus={setStatusLocal} />
+            <LeadPanel key={open.id} lead={open} readOnly={readOnly} onClose={() => setOpenId(null)} onStatus={setStatusLocal} />
           </aside>
         )}
       </div>

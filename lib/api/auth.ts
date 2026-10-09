@@ -2,7 +2,8 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { RateLimitError, rateLimit, type RateLimitRule } from "@/lib/rate-limit";
-import { hasFeature } from "@/lib/entitlements";
+import { featureStatus, type FeatureBlockReason } from "@/lib/entitlements";
+import { featureLabel, type FeatureKey } from "@/lib/features";
 import { hashApiKey, KEY_PREFIX, type ApiScope } from "./keys";
 
 export const API_RATE_LIMIT: RateLimitRule = { limit: 60, windowSeconds: 60 }; // per key
@@ -19,12 +20,29 @@ export function apiJson(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: { "cache-control": "no-store" } });
 }
 
+/** "ok" while the business is on an active plan with the apiAccess feature; "inactive" (suspended, lapsed) or the feature's block reason otherwise. */
+async function apiAccessStatus(businessId: string): Promise<"ok" | "inactive" | FeatureBlockReason> {
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { user: { select: { suspendedAt: true, subscription: { select: { status: true } } } } } });
+  if (business?.user.suspendedAt) return "inactive";
+  const sub = business?.user.subscription;
+  if (!sub || (sub.status !== "ACTIVE" && sub.status !== "TRIALING")) return "inactive";
+  return featureStatus(businessId, "apiAccess");
+}
+
 /** True while the business is on an active plan with the apiAccess feature (Pro today). A downgrade, cancellation or failed payment switches the keys off without deleting them. */
 export async function businessHasApiAccess(businessId: string): Promise<boolean> {
-  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { user: { select: { suspendedAt: true, subscription: { select: { status: true } } } } } });
-  if (business?.user.suspendedAt) return false;
-  const sub = business?.user.subscription;
-  return Boolean(sub && (sub.status === "ACTIVE" || sub.status === "TRIALING") && (await hasFeature(businessId, "apiAccess")));
+  return (await apiAccessStatus(businessId)) === "ok";
+}
+
+/**
+ * For writes that belong to a plan feature beyond `apiAccess` (PATCH /leads/:id needs websiteChat, POST /posts needs
+ * calendar): null when the business may, else the JSON error to send. Reading existing data is never gated this way.
+ */
+export async function apiFeatureDenied(businessId: string, key: FeatureKey): Promise<NextResponse | null> {
+  const status = await featureStatus(businessId, key);
+  if (status === "ok") return null;
+  if (status === "not_in_plan") return apiError(403, "feature_required", `${featureLabel(key)} is not part of your plan. You can still read existing data; add it to your plan in BuPulse to change it through the API.`);
+  return apiError(503, "feature_unavailable", `${featureLabel(key)} is temporarily unavailable. Please try again later.`);
 }
 
 /**
@@ -39,7 +57,10 @@ export async function authenticate(request: Request, scope: ApiScope): Promise<{
   }
   const key = await prisma.apiKey.findUnique({ where: { hash: await hashApiKey(match[1]) }, select: { id: true, businessId: true, scopes: true, revokedAt: true, lastUsedAt: true } });
   if (!key || key.revokedAt) return { ok: false, response: apiError(401, "unauthorized", "This API key is not valid or was revoked.", { "www-authenticate": "Bearer" }) };
-  if (!(await businessHasApiAccess(key.businessId))) {
+  const access = await apiAccessStatus(key.businessId);
+  // While the plan cannot be checked (or the API's service is paused) the key is not "not in your plan": answer a temporary 503.
+  if (access === "plan_unknown" || access === "service_off") return { ok: false, response: apiError(503, "feature_unavailable", "Your plan could not be checked right now. Please try again in a moment.") };
+  if (access !== "ok") {
     return { ok: false, response: apiError(403, "plan_required", "API access is not part of your plan. Add it to your plan in BuPulse to use this key again.") };
   }
   if (!key.scopes.includes(scope)) return { ok: false, response: apiError(403, "insufficient_scope", `This key does not have the "${scope}" permission.`) };

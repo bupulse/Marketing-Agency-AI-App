@@ -359,6 +359,27 @@ describe("daily sync rotation (M3)", () => {
     expect(seen.sort()).toEqual(["f0", "f1", "f2", "f3", "f4", "f5", "f6"]);
   });
 
+  it("stamps and skips a store of a company without store import, but leaves one whose plan cannot be checked due", async () => {
+    const grant = await import("@/tests/stubs/entitlements");
+    const resync = vi.fn(async () => ({ checked: 0, updated: 0, unchanged: 0, kept: 0, missing: 0, failed: 0, remaining: 0, done: true }));
+    try {
+      state.conns = [{ id: "np", businessId: "b", lastAttemptAt: null }];
+      grant.missing.add("storeImport");
+      await runDailyStoreSync({ resync: resync as never });
+      expect(resync).not.toHaveBeenCalled();
+      expect(state.conns[0].lastAttemptAt).toBeInstanceOf(Date);
+      grant.missing.clear();
+      grant.state.planUnknown = true;
+      state.conns = [{ id: "unk", businessId: "b", lastAttemptAt: null }];
+      await runDailyStoreSync({ resync: resync as never });
+      expect(resync).not.toHaveBeenCalled();
+      expect(state.conns[0].lastAttemptAt).toBeNull();
+    } finally {
+      grant.missing.clear();
+      grant.state.planUnknown = false;
+    }
+  });
+
   it("tomorrow's run starts again with the stalest", async () => {
     state.conns = [{ id: "a", businessId: "b", lastAttemptAt: new Date(Date.now() - 1000) }];
     const resync = vi.fn(async () => ({ checked: 0, updated: 0, unchanged: 0, kept: 0, missing: 0, failed: 0, remaining: 0, done: true }));

@@ -9,7 +9,7 @@ vi.mock("@/lib/errors", async (orig) => ({ ...(await orig<typeof import("@/lib/e
 vi.mock("@/lib/billing/paddle-catalog", () => ({ paddleConnected: () => false, createPaddleProduct: vi.fn(), createPaddlePrice: vi.fn(), archivePaddlePrice: vi.fn(), updatePaddleProduct: vi.fn() }));
 
 import { clearSwitchCache } from "@/lib/admin/switch";
-import { assertFeature, companyFeatures, featureBlocked, featureErrorResponse, FeatureRequiredError, featureStatus, hasFeature, upgradeHref } from "@/lib/entitlements";
+import { assertFeature, blockReason, companyEntitlements, companyFeatures, featureBlocked, featureErrorResponse, FeatureRequiredError, featureStatus, hasFeature, PLAN_UNKNOWN_MESSAGE, upgradeHref } from "@/lib/entitlements";
 import { createPlan, updatePlan } from "@/lib/admin/plans-service";
 import { getPlan, resetPlanCache, viewOf } from "@/lib/plan-catalog";
 import { CORE_FEATURES, PRO_FEATURES } from "@/lib/plans";
@@ -68,13 +68,45 @@ describe("a plan's features are validated when saved", () => {
     expect((await getPlan("STANDARD"))!.features).toEqual(CORE_FEATURES);
   });
 
-  it("reads a row from before the migration as the core plus its capabilities", () => {
+  it("reads a row from before the migration, or one an older build wrote after it (featureKeys NULL), as the core plus its capabilities", () => {
     const old = viewOf({ id: "x", key: "legacy", name: "Legacy", limits: {}, features: ["Old bullet"], capabilities: { apiAccess: true } });
     expect(old.highlights).toEqual(["Old bullet"]);
     expect(old.features).toEqual([...CORE_FEATURES, "apiAccess"]);
+    const dual = viewOf({ id: "z", key: "dual", name: "Dual", limits: {}, highlights: [], featureKeys: null, features: [], capabilities: { ownComposio: true } });
+    expect(dual.features).toEqual([...CORE_FEATURES, "ownComposio"]);
+    // An array is the plan's own list, even when empty: an admin may sell a plan with nothing in it.
+    expect(viewOf({ id: "e", key: "empty", name: "Empty", limits: {}, featureKeys: [], features: [], capabilities: { apiAccess: true } }).features).toEqual([]);
     const fresh = viewOf({ id: "y", key: "new", name: "New", limits: {}, highlights: ["New bullet"], featureKeys: ["autopilot"], features: ["New bullet"], capabilities: {} });
     expect(fresh.highlights).toEqual(["New bullet"]);
     expect(fresh.features).toEqual(["content", "designs", "calendar", "gallery", "autopilot"]); // prerequisites are filled in on read
+  });
+});
+
+describe("a plan that cannot be resolved", () => {
+  it("is 'plan_unknown', not 'not_in_plan': a company on a plan the catalog does not have, or without a plan, has lost nothing", async () => {
+    company("custom", "rw_starter"); // the row is on a custom plan, but the catalog (seeds, while the database is unreadable) has no such key
+    expect((await companyEntitlements("custom")).resolved).toBe(false);
+    expect(await featureStatus("custom", "calendar")).toBe("plan_unknown");
+    expect(await featureStatus("nobody", "calendar")).toBe("plan_unknown");
+    expect(await featureStatus("", "calendar")).toBe("plan_unknown");
+    expect(blockReason(await companyEntitlements("custom"), "calendar")).toBe("plan_unknown");
+    expect(await hasFeature("custom", "calendar")).toBe(false); // still not usable: gates stay closed
+    // Once the plan exists in the catalog, the same company resolves and the answer becomes definite.
+    await createPlan(CONSOLE, { key: "rw_starter", name: "Starter", monthlyPriceCents: 1000, yearlyPriceCents: 10000, features: ["content"] });
+    expect((await companyEntitlements("custom")).resolved).toBe(true);
+    expect(await featureStatus("custom", "content")).toBe("ok");
+    expect(await featureStatus("custom", "calendar")).toBe("not_in_plan");
+    expect(blockReason(await companyEntitlements("std"), "apiAccess")).toBe("not_in_plan");
+  });
+
+  it("is told apart in words and answered 503 (temporary), never 403 (not in the plan)", async () => {
+    const error = await assertFeature("nobody", "autopilot").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(FeatureRequiredError);
+    expect((error as FeatureRequiredError).reason).toBe("plan_unknown");
+    expect((error as FeatureRequiredError).message).toBe(PLAN_UNKNOWN_MESSAGE);
+    expect(featureErrorResponse(error as FeatureRequiredError).status).toBe(503);
+    expect(await featureBlocked("nobody", "autopilot")).toBe(PLAN_UNKNOWN_MESSAGE);
+    expect(upgradeHref("autopilot", "plan_unknown")).toBe("/dashboard/upgrade?feature=autopilot&reason=plan_unknown");
   });
 });
 

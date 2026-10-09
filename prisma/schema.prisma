@@ -960,7 +960,8 @@ model PlanDefinition {
   // string[] marketing bullets on the pricing card (replaced `features` in 20261009110000_plan_features).
   highlights           Json     @default("[]")
   // FeatureKey[] (lib/features.ts): what the plan unlocks, prerequisites included. The source of truth for entitlements.
-  featureKeys          Json     @default("[]")
+  // NULL (a row written by a build from before 20261009110000_plan_features) reads as the core features plus `capabilities`.
+  featureKeys          Json?
   // Legacy columns, written in step with the two above so a build from before the migration keeps working:
   // `features` holds the same bullets as `highlights`; `capabilities` is { apiAccess, ownComposio } derived from featureKeys.
   features             Json

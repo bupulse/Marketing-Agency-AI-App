@@ -13,7 +13,7 @@ export interface PublicWidget {
   key: string;
   /** Off when the owner switched it off, support locked it, the owner is suspended or deleting, or the plan lacks website chat. */
   enabled: boolean;
-  /** False when the company's plan does not include website chat (the only reason widget.js is told "not_in_plan"). */
+  /** False when the company's plan does not include website chat. The public config answers a neutral "unavailable" for it. */
   inPlan: boolean;
   name: string;
   logoPath: string | null;

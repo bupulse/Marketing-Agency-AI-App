@@ -111,8 +111,9 @@ function cleanStrings(value: unknown): string[] {
 }
 
 /**
- * The plan's feature keys. A row written before the plan_features migration has no `featureKeys`: it gets what the
- * migration gives such a plan (the core features plus the capabilities it had), so an older row never loses anything.
+ * The plan's feature keys. A row written by a build from before the plan_features migration has NULL in `featureKeys`
+ * (the column has no default): it gets what the migration gives such a plan (the core features plus the capabilities
+ * it had), so an older build's plans never lose anything. An array, even an empty one, is the plan's own list.
  */
 function cleanFeatures(value: unknown, capabilities: unknown): FeatureKey[] {
   if (Array.isArray(value)) return withPrerequisites(value.filter(isFeatureKey));

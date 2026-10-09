@@ -6,7 +6,7 @@ import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
 import { AIBudgetExceededError } from "@/lib/ai/budget";
 import { isServiceEnabled, ServiceDisabledError, textAiService } from "@/lib/admin/switch";
-import { hasFeature, notInPlanMessage } from "@/lib/entitlements";
+import { FeatureRequiredError, featureStatus, hasFeature } from "@/lib/entitlements";
 import { AIProviderError } from "@/lib/ai/types";
 import { readKnowledge } from "@/lib/brand/schemas";
 import { logError } from "@/lib/errors";
@@ -109,8 +109,10 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
   // Accounts waiting to be deleted, or suspended by the admin, are left alone (before the week is claimed).
   if (business.user.deletionScheduledFor || business.user.suspendedAt) return { status: "nothing_to_plan", postCount: 0, groupCount: 0 };
 
-  // Autopilot is a plan feature: a company without it is left alone (the cron skips it, the button explains).
-  if (!(await hasFeature(businessId, "autopilot"))) return { status: "nothing_to_plan", postCount: 0, groupCount: 0, note: notInPlanMessage("autopilot") };
+  // Autopilot is a plan feature: a company without it is left alone (the cron skips it, the button explains). While
+  // the plan cannot be checked, the same: nothing is claimed, so it plans normally once the catalog is back.
+  const autopilot = await featureStatus(businessId, "autopilot");
+  if (autopilot !== "ok") return { status: "nothing_to_plan", postCount: 0, groupCount: 0, note: new FeatureRequiredError("autopilot", autopilot).message };
 
   // AI switched off in the admin console: wait, without claiming the week, so it plans normally once it is back.
   if (!(await isServiceEnabled(textAiService()))) return { status: "nothing_to_plan", postCount: 0, groupCount: 0, note: "Autopilot is paused for a short while. Please try again later." };

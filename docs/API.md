@@ -20,7 +20,8 @@ Base address: `https://bupulse.com/api/v1`
 | `leads:write` | `PATCH /leads/:id` (status and notes) |
 
 - A key only ever sees the data of the business that made it.
-- If the business moves to a plan without `apiAccess` (or a payment fails), its keys stop working (`403 plan_required`) but are not deleted; they work again once the feature is back in the plan.
+- If the business moves to a plan without `apiAccess` (or a payment fails), its keys stop working (`403 plan_required`) but are not deleted; they work again once the feature is back in the plan. While BuPulse cannot check the plan at all (a short outage) every call answers `503 feature_unavailable` instead: retry later, nothing has changed.
+- Some writes need more than `apiAccess`: reading your own data always works, but `PATCH /leads/:id` needs the **website chat** feature and `POST /posts` needs the **calendar** feature in your plan. Without it the call answers `403 feature_required` (the message names the feature); `503 feature_unavailable` while the feature is paused on our side.
 - Limit: **60 requests per minute per key**. Over the limit you get `429` with a `Retry-After` header (seconds).
 - Revoke a key in the dashboard; it stops working immediately.
 
@@ -32,10 +33,11 @@ Always JSON: `{ "error": { "code": "...", "message": "..." } }`
 | --- | --- |
 | 400 | `invalid_request` |
 | 401 | `unauthorized` (missing, wrong or revoked key) |
-| 403 | `insufficient_scope`, `plan_required` |
+| 403 | `insufficient_scope`, `plan_required`, `feature_required` |
 | 404 | `not_found` (also for ids that belong to another business) |
 | 429 | `rate_limited` |
 | 500 | `server_error` |
+| 503 | `feature_unavailable` (the plan could not be checked, or the feature is paused; retry later) |
 
 ## Lists and paging
 
@@ -79,7 +81,7 @@ curl -s -H "Authorization: Bearer $KEY" https://bupulse.com/api/v1/leads/cm1lead
 
 ## Update a lead
 
-`PATCH /leads/:id` with `status` (new, contacted, won, lost) and/or `notes` (text up to 5000 characters, `null` to clear). Needs `leads:write`.
+`PATCH /leads/:id` with `status` (new, contacted, won, lost) and/or `notes` (text up to 5000 characters, `null` to clear). Needs `leads:write` and the **website chat** feature in your plan (`403 feature_required` without it; reading leads still works).
 
 ```bash
 curl -s -X PATCH -H "Authorization: Bearer $KEY" -H "content-type: application/json" \
@@ -89,7 +91,7 @@ curl -s -X PATCH -H "Authorization: Bearer $KEY" -H "content-type: application/j
 
 ## Create a draft post
 
-`POST /posts` with `network` (instagram, facebook, linkedin, tiktok, youtube), `text`, and optionally `hashtags` (array), `link`, `projectId`. Needs `posts:write`. The post is saved as a **draft** without an account; open it in the BuPulse calendar to pick the account, check it and schedule it.
+`POST /posts` with `network` (instagram, facebook, linkedin, tiktok, youtube), `text`, and optionally `hashtags` (array), `link`, `projectId`. Needs `posts:write` and the **calendar** feature in your plan (`403 feature_required` without it). The post is saved as a **draft** without an account; open it in the BuPulse calendar to pick the account, check it and schedule it.
 
 ```bash
 curl -s -X POST -H "Authorization: Bearer $KEY" -H "content-type: application/json" \

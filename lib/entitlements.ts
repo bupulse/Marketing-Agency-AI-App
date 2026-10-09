@@ -12,7 +12,15 @@ import type { ServiceId } from "@/lib/admin/service-catalog";
 // (lib/admin/switch.ts). Every gated page, server action and route checks here; hiding a sidebar item is only a
 // courtesy. Role permissions (lib/team/roles.ts) apply on top: a feature in the plan is still subject to who may use it.
 
-export type FeatureBlockReason = "not_in_plan" | "service_off";
+/**
+ * Why a feature is not usable: the plan lacks it, its outside services are all off, or the plan could not be resolved
+ * ("plan_unknown": the company has no plan key, or the key is not in the catalog, which happens while the catalog is
+ * degraded to the seed plans and the company is on a custom plan). Readers must not treat "plan_unknown" as a lost
+ * feature: crons skip without changing anything, and the publisher leaves the post to retry.
+ */
+export type FeatureBlockReason = "not_in_plan" | "service_off" | "plan_unknown";
+
+export const PLAN_UNKNOWN_MESSAGE = "We could not check your plan right now. Please try again in a moment.";
 
 /** A company (Business.id), or anything that carries one, such as the SessionUser of lib/auth/require-user.ts. */
 export type CompanySubject = string | { businessId: string };
@@ -29,7 +37,7 @@ export class FeatureRequiredError extends Error {
     public feature: FeatureKey,
     public reason: FeatureBlockReason,
   ) {
-    super(reason === "service_off" ? UNAVAILABLE_MESSAGE : notInPlanMessage(feature));
+    super(reason === "service_off" ? UNAVAILABLE_MESSAGE : reason === "plan_unknown" ? PLAN_UNKNOWN_MESSAGE : notInPlanMessage(feature));
     this.name = "FeatureRequiredError";
   }
 }
@@ -49,6 +57,8 @@ export type CompanyEntitlements = {
   inPlan: Set<FeatureKey>;
   /** The part of the plan that works right now: its outside services are on. */
   usable: Set<FeatureKey>;
+  /** False when the company's plan could not be found in the catalog: `inPlan` is then empty but says nothing. */
+  resolved: boolean;
 };
 
 const serviceUp = (key: FeatureKey, off: Set<ServiceId>) => {
@@ -56,13 +66,18 @@ const serviceUp = (key: FeatureKey, off: Set<ServiceId>) => {
   return services.length === 0 || services.some((id) => !off.has(id));
 };
 
+/** The reason a company cannot use a feature, from what `companyEntitlements` found. */
+export function blockReason(e: Pick<CompanyEntitlements, "inPlan" | "resolved">, key: FeatureKey): FeatureBlockReason {
+  return e.inPlan.has(key) ? "service_off" : e.resolved ? "not_in_plan" : "plan_unknown";
+}
+
 /** What a company's plan includes and which of those are usable now. One lookup per request. */
 export const companyEntitlements = cache(async (businessId: string): Promise<CompanyEntitlements> => {
   const planKey = await planKeyOf(businessId);
   const plan = planKey ? await getPlan(planKey) : null;
   const off = await disabledServices();
   const inPlan = new Set<FeatureKey>(plan?.features ?? []);
-  return { inPlan, usable: new Set([...inPlan].filter((k) => serviceUp(k, off))) };
+  return { inPlan, usable: new Set([...inPlan].filter((k) => serviceUp(k, off))), resolved: plan !== null };
 });
 
 /** The features a company can use right now. */
@@ -72,8 +87,8 @@ export async function companyFeatures(subject: CompanySubject): Promise<Set<Feat
 
 /** "ok", or why the feature is not usable. */
 export async function featureStatus(subject: CompanySubject, key: FeatureKey): Promise<"ok" | FeatureBlockReason> {
-  const { inPlan, usable } = await companyEntitlements(businessIdOf(subject));
-  return usable.has(key) ? "ok" : inPlan.has(key) ? "service_off" : "not_in_plan";
+  const { inPlan, usable, resolved } = await companyEntitlements(businessIdOf(subject));
+  return usable.has(key) ? "ok" : inPlan.has(key) ? "service_off" : resolved ? "not_in_plan" : "plan_unknown";
 }
 
 export async function hasFeature(subject: CompanySubject, key: FeatureKey): Promise<boolean> {
@@ -102,11 +117,11 @@ export async function requireFeature(subject: CompanySubject, key: FeatureKey): 
 }
 
 export function upgradeHref(key: FeatureKey, reason: FeatureBlockReason = "not_in_plan"): string {
-  return `/dashboard/upgrade?feature=${key}${reason === "service_off" ? "&reason=service_off" : ""}`;
+  return `/dashboard/upgrade?feature=${key}${reason === "not_in_plan" ? "" : `&reason=${reason}`}`;
 }
 
-/** The JSON answer of a route for a FeatureRequiredError: 403 for a feature not in the plan, 503 while its service is off. */
+/** The JSON answer of a route for a FeatureRequiredError: 403 for a feature not in the plan, 503 while its service is off or the plan cannot be checked. */
 export function featureErrorResponse(error: FeatureRequiredError): NextResponse {
-  const status = error.reason === "service_off" ? 503 : 403;
+  const status = error.reason === "not_in_plan" ? 403 : 503;
   return NextResponse.json({ error: "feature_required", feature: error.feature, reason: error.reason, message: error.message }, { status, headers: { "cache-control": "no-store" } });
 }

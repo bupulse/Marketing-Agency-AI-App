@@ -2,7 +2,7 @@ import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { disabledNetworks, isServiceEnabled } from "@/lib/admin/switch";
-import { hasFeature, notInPlanMessage } from "@/lib/entitlements";
+import { featureStatus, notInPlanMessage } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { getProvider, isNetwork } from "@/lib/social/registry";
@@ -318,12 +318,16 @@ async function processPost(post: ClaimedPost): Promise<keyof Omit<PublishRunResu
       if (await settle(post.id, { status: "FAILED", lastError: message })) emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
       return "failed";
     }
-    // Scheduling is a plan feature. A post of a company whose plan lost it fails with the reason, instead of going out.
-    if (!(await hasFeature(post.businessId, "calendar"))) {
+    // Scheduling is a plan feature. A post of a company whose plan (resolved) lost it fails with the reason, instead
+    // of going out. While the plan cannot be checked (catalog degraded, unknown plan key) the post is handed back and
+    // retried later: a deploy or database blip must never fail scheduled posts for good.
+    const calendar = await featureStatus(post.businessId, "calendar");
+    if (calendar === "not_in_plan") {
       const message = notInPlanMessage("calendar");
       if (await settle(post.id, { status: "FAILED", lastError: message })) emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
       return "failed";
     }
+    if (calendar !== "ok") return releaseUnsent(post);
     if (post.connection.postingMode === "NOTIFY" || post.format === "SCRIPT") return await sendReminder(post);
 
     const provider = getProvider(post.network);
