@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChartLine, Lightbulb, MessageCircle, Plug } from "lucide-react";
 import { EmptyState } from "@/components/app/empty-state";
 import { getAppContext } from "@/components/app/context";
+import { featureGate } from "@/components/app/no-access";
 import { PageHeader } from "@/components/app/page-header";
 import { formatCompact, formatPct } from "@/components/analytics/format";
 import { StatCard } from "@/components/analytics/stat-card";
@@ -18,6 +19,8 @@ export const metadata = { title: "Analytics" };
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function AnalyticsPage({ searchParams }: { searchParams: SearchParams }) {
+  const blocked = await featureGate("analytics");
+  if (blocked) return blocked;
   const { business } = await getAppContext();
   const days = parseRange((await searchParams).range);
   const data = await loadClientAnalytics(business.id, days);

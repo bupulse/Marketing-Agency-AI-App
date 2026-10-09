@@ -26,8 +26,8 @@ export default async function NewPlanPage() {
           monthlyPriceCents: 0,
           yearlyPriceCents: 0,
           limits: { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0, chat: 0, seats: 1 },
+          highlights: [],
           features: [],
-          capabilities: { apiAccess: false, ownComposio: false },
         }}
       />
     </>

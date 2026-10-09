@@ -4,6 +4,7 @@ import { safeNext } from "@/lib/auth/safe-next";
 import { buildAuthorizeUrl, newCodeVerifier, OAUTH_COOKIE, randomToken, sealOAuthState } from "@/lib/canva/pkce";
 import { isCanvaEnabled } from "@/lib/canva/config";
 import { isServiceEnabled } from "@/lib/admin/switch";
+import { featureStatus, upgradeHref } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { siteUrl } from "@/lib/auth/site-url";
 
@@ -12,7 +13,10 @@ export async function GET(request: Request) {
   if (!isCanvaEnabled()) return new Response("Not found", { status: 404 });
   const user = await requirePersonalUser();
   const next = safeNext(new URL(request.url).searchParams.get("next"), "/dashboard/designs");
-  if (!(await isServiceEnabled("canva"))) return NextResponse.redirect(new URL(`${next}${next.includes("?") ? "&" : "?"}canva=error`, siteUrl()));
+  // Canva editing is a plan feature (and its service may be off): "Add to your plan", or back with an error.
+  const status = await featureStatus(user, "canva");
+  if (status === "not_in_plan") return NextResponse.redirect(new URL(upgradeHref("canva"), siteUrl()));
+  if (status === "service_off" || !(await isServiceEnabled("canva"))) return NextResponse.redirect(new URL(`${next}${next.includes("?") ? "&" : "?"}canva=error`, siteUrl()));
 
   try {
     const state = randomToken(24);

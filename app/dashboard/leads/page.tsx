@@ -1,6 +1,7 @@
 import { Users } from "lucide-react";
 import { EmptyState } from "@/components/app/empty-state";
 import { getAppContext } from "@/components/app/context";
+import { featureGate } from "@/components/app/no-access";
 import { PageHeader } from "@/components/app/page-header";
 import { LeadsInbox } from "@/components/leads/leads-inbox";
 import { can } from "@/lib/team/roles";
@@ -15,6 +16,8 @@ export const metadata = { title: "Leads" };
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function LeadsPage({ searchParams }: { searchParams: SearchParams }) {
+  const blocked = await featureGate("websiteChat");
+  if (blocked) return blocked;
   const { business, email, role } = await getAppContext();
   const params = await searchParams;
   const filters = parseFilters(params);

@@ -11,8 +11,9 @@ export type ConnectorGroup = "files" | "design" | "store" | "website";
  * - "needs_attention": was connected but the token or keys stopped working; the card asks to reconnect.
  * - "not_connected": can be connected now.
  * - "unavailable": BuPulse's own app keys are not configured; the card shows "Coming soon".
+ * - "not_in_plan": the company's plan lacks the connector's feature; the card offers "Add to your plan".
  */
-export type ConnectorState = "connected" | "needs_attention" | "not_connected" | "unavailable";
+export type ConnectorState = "connected" | "needs_attention" | "not_connected" | "unavailable" | "not_in_plan";
 
 export interface ConnectorStatus {
   state: ConnectorState;

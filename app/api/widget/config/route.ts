@@ -8,7 +8,7 @@ import { widgetStrings } from "@/lib/widget/strings";
 
 const CORS = { "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=60, s-maxage=60" };
 // The reason is shown in the browser console by widget.js, so an owner testing the snippet sees why nothing appears.
-const OFF = (reason: "unknown_key" | "disabled" | "not_allowed") => NextResponse.json({ enabled: false, reason }, { headers: CORS });
+const OFF = (reason: "unknown_key" | "disabled" | "not_in_plan" | "not_allowed") => NextResponse.json({ enabled: false, reason }, { headers: CORS });
 
 // Remembers where the widget loaded, for the "Check installation" button. One conditional UPDATE, and
 // at most one write per 10 minutes per business; it never fails the request.
@@ -31,6 +31,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const widget = await loadPublicWidget(url.searchParams.get("key") ?? "");
   if (!widget) return OFF("unknown_key");
+  if (!widget.inPlan) return OFF("not_in_plan");
   if (!widget.enabled) return OFF("disabled");
   const allowed = checkOrigin({
     allowedDomains: widget.allowedDomains,

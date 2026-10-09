@@ -60,8 +60,8 @@ export default async function PlanPage({ params, searchParams }: PageProps<"/adm
           monthlyPriceCents: plan.monthlyPriceCents,
           yearlyPriceCents: plan.yearlyPriceCents,
           limits: plan.limits,
+          highlights: plan.highlights,
           features: plan.features,
-          capabilities: plan.capabilities,
         }}
       />
 

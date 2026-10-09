@@ -1,7 +1,9 @@
 import { Lock } from "lucide-react";
+import { AddToPlan } from "./add-to-plan";
 import { getAppContext } from "./context";
 import { EmptyState } from "./empty-state";
 import { PageHeader } from "./page-header";
+import type { FeatureKey } from "@/lib/features";
 import { askMessage, can, type Permission } from "@/lib/team/roles";
 
 /**
@@ -17,4 +19,15 @@ export async function pageGate(permission: Permission) {
       <EmptyState icon={Lock} title="Ask your company owner" text={askMessage(permission)} />
     </>
   );
+}
+
+/**
+ * Pages of a plan feature start with `const blocked = await featureGate("autopilot"); if (blocked) return blocked;`:
+ * the "Add to your plan" page replaces them when the company's plan lacks the feature (or its service is off).
+ * The matching actions and routes call `assertFeature` themselves (lib/entitlements.ts).
+ */
+export async function featureGate(feature: FeatureKey) {
+  const { role, entitlements } = await getAppContext();
+  if (entitlements.usable.has(feature)) return null;
+  return <AddToPlan feature={feature} reason={entitlements.inPlan.has(feature) ? "service_off" : "not_in_plan"} role={role} inPlan={entitlements.inPlan} />;
 }

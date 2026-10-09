@@ -1,4 +1,4 @@
-import { pageGate } from "@/components/app/no-access";
+import { featureGate, pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { ConnectorsSubNav } from "@/components/connectors/sub-nav";
@@ -8,7 +8,7 @@ import { listDeliveries, listEndpoints, MAX_ENDPOINTS } from "@/lib/webhooks/end
 export const metadata = { title: "Webhooks" };
 
 export default async function WebhooksPage() {
-  const blocked = await pageGate("webhooks");
+  const blocked = (await pageGate("webhooks")) ?? (await featureGate("webhooks"));
   if (blocked) return blocked;
   const { business } = await getAppContext();
   const [endpoints, deliveries] = await Promise.all([listEndpoints(business.id), listDeliveries(business.id, 50)]);

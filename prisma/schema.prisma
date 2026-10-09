@@ -956,9 +956,15 @@ model PlanDefinition {
   monthlyPriceCents    Int      @default(0)
   yearlyPriceCents     Int      @default(0)
   currency             String   @default("USD")
-  limits               Json // { text, image, chat, videoSeconds, voiceCharacters }
-  features             Json // string[] shown on the pricing page
-  capabilities         Json // { apiAccess: boolean, ownComposio: boolean }
+  limits               Json // { text, image, chat, videoSeconds, voiceCharacters, seats }
+  // string[] marketing bullets on the pricing card (replaced `features` in 20261009110000_plan_features).
+  highlights           Json     @default("[]")
+  // FeatureKey[] (lib/features.ts): what the plan unlocks, prerequisites included. The source of truth for entitlements.
+  featureKeys          Json     @default("[]")
+  // Legacy columns, written in step with the two above so a build from before the migration keeps working:
+  // `features` holds the same bullets as `highlights`; `capabilities` is { apiAccess, ownComposio } derived from featureKeys.
+  features             Json
+  capabilities         Json
   paddleProductId      String?
   paddleMonthlyPriceId String?
   paddleYearlyPriceId  String?

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { ensureAccount } from "@/lib/account";
 import { getCurrentUser } from "@/lib/supabase/server";
+import { companyEntitlements } from "@/lib/entitlements";
 import { getUsageSummary } from "@/lib/usage";
 import { createSignedDownloadUrl } from "@/lib/storage";
 import { getVoice } from "@/lib/brand/voices";
@@ -41,6 +42,8 @@ export const getAppContext = cache(async () => {
   if (!setupDone && company && !can(company.role, "settings")) redirect("/account/waiting");
   if (!business?.detailsCompletedAt) redirect("/welcome");
   if (!business.onboardedAt) redirect("/onboarding");
+  // What the plan unlocks (lib/entitlements.ts): the sidebar and featureGate read it; actions and routes check again.
+  const entitlements = await companyEntitlements(business.id);
 
   const meta = user.user_metadata as { full_name?: string; name?: string } | undefined;
   // The name saved in Settings wins; Google sign-ups start with their Google name.
@@ -76,6 +79,7 @@ export const getAppContext = cache(async () => {
     business,
     businessName: business?.name ?? "My business",
     usage,
+    entitlements,
     isTrial,
     trialDaysLeft,
     logoUrl,

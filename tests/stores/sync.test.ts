@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// Plans are not part of this test's database: every plan feature is granted (tests/stubs/entitlements.ts).
+vi.mock("@/lib/entitlements", () => import("@/tests/stubs/entitlements"));
 import { Prisma } from "@/lib/generated/prisma/client";
 import type { NormalizedProduct } from "@/lib/stores/types";
 import { StoreApiError } from "@/lib/stores/types";

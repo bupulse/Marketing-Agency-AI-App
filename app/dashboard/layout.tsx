@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 };
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
-  const { business, role, displayName, firstName, email, businessName, usage, isTrial, trialDaysLeft, logoUrl, brandColors } =
+  const { business, role, displayName, firstName, email, businessName, usage, entitlements, isTrial, trialDaysLeft, logoUrl, brandColors } =
     await getAppContext();
 
   const trialLabel = isTrial
@@ -39,6 +39,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         email={email}
         businessName={businessName}
         role={role}
+        features={[...entitlements.inPlan]}
         plan={{
           name: usage.plan.name,
           trialLabel,

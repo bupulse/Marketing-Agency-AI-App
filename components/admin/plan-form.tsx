@@ -6,7 +6,8 @@ import { savePlanAction, type PlanFormState } from "@/app/admin/(console)/plans/
 import { formatCents } from "@/components/billing/helpers";
 import { Badge, Button, Field, GlassCard, Input, Select, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { CAPABILITIES, CAPABILITY_LABELS, USAGE_METRICS, type Capability, type PlanLimits, type PlanStatus } from "@/lib/plans";
+import { FEATURES, dependentsOf, featureLabel, withPrerequisites, type FeatureKey } from "@/lib/features";
+import { USAGE_METRICS, type PlanLimits, type PlanStatus } from "@/lib/plans";
 
 export type PlanFormInitial = {
   key: string;
@@ -20,8 +21,8 @@ export type PlanFormInitial = {
   monthlyPriceCents: number;
   yearlyPriceCents: number;
   limits: PlanLimits;
-  features: string[];
-  capabilities: Record<Capability, boolean>;
+  highlights: string[];
+  features: FeatureKey[];
 };
 
 const METRIC_LABELS: Record<string, string> = {
@@ -37,6 +38,47 @@ const cents = (dollars: string) => {
   const n = Number(dollars.replace(/[$,\s]/g, ""));
   return Number.isFinite(n) ? Math.round(n * 100) : 0;
 };
+
+/**
+ * The feature checklist. Ticking a feature ticks what it needs; a feature another ticked one needs cannot be unticked
+ * ("needed by X"); "coming soon" features are shown but disabled. The server validates the same rules (validateFeatureSet).
+ */
+export function FeatureChecklist({ selected, onChange }: { selected: FeatureKey[]; onChange: (next: FeatureKey[]) => void }) {
+  const toggle = (key: FeatureKey, on: boolean) => {
+    if (on) onChange(withPrerequisites([...selected, key]));
+    else if (dependentsOf(key, selected).length === 0) onChange(selected.filter((k) => k !== key));
+  };
+  return (
+    <fieldset className="flex flex-col gap-1">
+      <legend className="mb-1 text-sm font-medium">What the plan unlocks</legend>
+      <p className="mb-2 text-[13px] text-muted">Ticking a feature also ticks what it needs. Features sold as a service (Managed by BuPulse, own Composio account) have nothing to switch on in the app.</p>
+      {FEATURES.map((f) => {
+        const on = selected.includes(f.key);
+        const neededBy = on ? dependentsOf(f.key, selected) : [];
+        const soon = f.status === "coming_soon";
+        return (
+          <label key={f.key} className={cn("flex min-h-11 items-start gap-2 text-[15px]", soon && "text-muted")}>
+            <input type="checkbox" name={`feature_${f.key}`} checked={on} disabled={soon || neededBy.length > 0} onChange={(e) => toggle(f.key, e.target.checked)} className="mt-1 size-5" aria-describedby={`feature_${f.key}_hint`} />
+            {/* A disabled checkbox is not posted; the hidden field keeps a needed feature in the form. */}
+            {on && neededBy.length > 0 && <input type="hidden" name={`feature_${f.key}`} value="on" />}
+            <span>
+              <span className="flex flex-wrap items-center gap-2">
+                <strong>{f.label}</strong>
+                {soon && <Badge tone="violet">Coming soon</Badge>}
+                {f.kind === "service" && <Badge tone="neutral">Service</Badge>}
+                {neededBy.length > 0 && <Badge tone="blue">Needed by {neededBy.map(featureLabel).join(", ")}</Badge>}
+              </span>
+              <span id={`feature_${f.key}_hint`} className="block text-[13px] text-muted">
+                {f.description}
+                {f.requires.length > 0 ? ` Needs ${f.requires.map(featureLabel).join(", ")}.` : ""}
+              </span>
+            </span>
+          </label>
+        );
+      })}
+    </fieldset>
+  );
+}
 
 /** The pricing card as clients will see it (monthly price, features, badge), updated while typing. */
 function CardPreview({ name, description, monthly, yearly, features, highlight, status, isTrial, trialDays }: { name: string; description: string; monthly: number; yearly: number; features: string[]; highlight: boolean; status: PlanStatus; isTrial: boolean; trialDays: number | null }) {
@@ -60,7 +102,7 @@ function CardPreview({ name, description, monthly, yearly, features, highlight, 
         {features.map((f) => (
           <li key={f} className="flex items-start gap-2.5 text-[15px]"><Check aria-hidden className="mt-0.5 size-5 shrink-0 text-success" />{f}</li>
         ))}
-        {features.length === 0 && <li className="text-sm text-muted">No features listed yet.</li>}
+        {features.length === 0 && <li className="text-sm text-muted">No highlights listed yet.</li>}
       </ul>
       <p className="text-xs text-muted">{status === "active" ? "Shown on the pricing page and in Billing." : status === "hidden" ? "Hidden: not shown to new clients." : "Retired: closed to new sign-ups; existing clients stay."}</p>
     </GlassCard>
@@ -73,7 +115,8 @@ export function PlanForm({ mode, initial, paddleConnected, subscribers, version 
   const [description, setDescription] = useState(initial.description);
   const [monthly, setMonthly] = useState(String(initial.monthlyPriceCents / 100));
   const [yearly, setYearly] = useState(String(initial.yearlyPriceCents / 100));
-  const [features, setFeatures] = useState(initial.features.join("\n"));
+  const [highlights, setHighlights] = useState(initial.highlights.join("\n"));
+  const [features, setFeatures] = useState<FeatureKey[]>(initial.features);
   const [highlight, setHighlight] = useState(initial.highlight);
   const [status, setStatus] = useState<PlanStatus>(initial.status);
   const [trialDays, setTrialDays] = useState(String(initial.trialDays ?? 7));
@@ -81,10 +124,9 @@ export function PlanForm({ mode, initial, paddleConnected, subscribers, version 
   const [key, setKey] = useState(initial.key);
   const [sortOrder, setSortOrder] = useState(String(initial.sortOrder));
   const [limits, setLimits] = useState<Record<string, string>>(Object.fromEntries([...USAGE_METRICS, "seats"].map((m) => [m, String(initial.limits[m as keyof PlanLimits])])));
-  const [caps, setCaps] = useState<Record<string, boolean>>({ ...initial.capabilities });
   // "Back" hides the confirm step of one particular answer; a changed price hides it too (it was not reviewed).
   const [backed, setBacked] = useState<object | null>(null);
-  const featureList = features.split("\n").map((l) => l.trim()).filter(Boolean);
+  const highlightList = highlights.split("\n").map((l) => l.trim()).filter(Boolean);
   const confirm = state.confirm && state.confirm !== backed && state.confirm.monthlyCents === cents(monthly) && state.confirm.yearlyCents === cents(yearly) ? state.confirm : null;
   const priceChanged = mode === "edit" && !initial.isTrial && (cents(monthly) !== initial.monthlyPriceCents || cents(yearly) !== initial.yearlyPriceCents);
 
@@ -155,17 +197,13 @@ export function PlanForm({ mode, initial, paddleConnected, subscribers, version 
         </GlassCard>
 
         <GlassCard className="flex flex-col gap-4 p-5 sm:p-6">
-          <h2 className="text-lg font-semibold tracking-[-0.02em]">Features and capabilities</h2>
-          <Field label="Features on the pricing card" hint="One per line, up to 12."><Textarea name="features" rows={6} value={features} onChange={(e) => setFeatures(e.target.value)} /></Field>
-          <fieldset className="flex flex-col gap-1">
-            <legend className="mb-1 text-sm font-medium">What the plan unlocks</legend>
-            {CAPABILITIES.map((c) => (
-              <label key={c} className="flex min-h-11 items-start gap-2 text-[15px]">
-                <input type="checkbox" name={`cap_${c}`} checked={caps[c] === true} onChange={(e) => setCaps({ ...caps, [c]: e.target.checked })} className="mt-1 size-5" />
-                <span><strong>{CAPABILITY_LABELS[c].label}</strong><span className="block text-[13px] text-muted">{CAPABILITY_LABELS[c].hint}</span></span>
-              </label>
-            ))}
-          </fieldset>
+          <h2 className="text-lg font-semibold tracking-[-0.02em]">Features</h2>
+          <FeatureChecklist selected={features} onChange={setFeatures} />
+        </GlassCard>
+
+        <GlassCard className="flex flex-col gap-4 p-5 sm:p-6">
+          <h2 className="text-lg font-semibold tracking-[-0.02em]">Highlights</h2>
+          <Field label="Bullets on the pricing card" hint="Marketing words only; they do not switch anything on. One per line, up to 12."><Textarea name="highlights" rows={6} value={highlights} onChange={(e) => setHighlights(e.target.value)} /></Field>
         </GlassCard>
 
         {confirm ? (
@@ -191,7 +229,7 @@ export function PlanForm({ mode, initial, paddleConnected, subscribers, version 
 
       <div className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-4">
         <h2 className="px-1 text-sm font-medium text-muted">Preview</h2>
-        <CardPreview name={name} description={description} monthly={cents(monthly)} yearly={cents(yearly)} features={featureList} highlight={highlight} status={status} isTrial={initial.isTrial} trialDays={Number(trialDays) || null} />
+        <CardPreview name={name} description={description} monthly={cents(monthly)} yearly={cents(yearly)} features={highlightList} highlight={highlight} status={status} isTrial={initial.isTrial} trialDays={Number(trialDays) || null} />
       </div>
     </div>
   );

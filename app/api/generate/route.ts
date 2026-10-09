@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { AIProviderError } from "@/lib/ai/types";
+import { assertFeature, FeatureRequiredError, featureErrorResponse } from "@/lib/entitlements";
 import { resolveCompany } from "@/lib/team/company";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
@@ -46,6 +47,12 @@ export async function POST(request: Request) {
 
   const business = await prisma.business.findUnique({ where: { userId: companyId }, select: { id: true } });
   if (!business) return NextResponse.json({ error: "Business profile not found" }, { status: 409 });
+  try {
+    await assertFeature(business.id, "content");
+  } catch (error) {
+    if (error instanceof FeatureRequiredError) return featureErrorResponse(error);
+    throw error;
+  }
   if ((await prisma.project.count({ where: { businessId: business.id } })) >= MAX_PROJECTS_PER_BUSINESS) {
     return NextResponse.json({ error: "project_limit", message: "Project limit reached." }, { status: 409 });
   }

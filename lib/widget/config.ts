@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { readKnowledge, isOwnLogoPath } from "@/lib/brand/schemas";
+import { hasFeature } from "@/lib/entitlements";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isHexColor, PULSE_BLUE, readableTextColor } from "@/lib/color-contrast";
 import type { BusinessFacts } from "./prompt";
@@ -10,7 +11,10 @@ export interface PublicWidget {
   businessId: string;
   userId: string;
   key: string;
+  /** Off when the owner switched it off, support locked it, the owner is suspended or deleting, or the plan lacks website chat. */
   enabled: boolean;
+  /** False when the company's plan does not include website chat (the only reason widget.js is told "not_in_plan"). */
+  inPlan: boolean;
   name: string;
   logoPath: string | null;
   accent: string;
@@ -34,14 +38,19 @@ export async function loadPublicWidget(key: string): Promise<PublicWidget | null
   if (!business) return null;
   const widget = await prisma.chatWidget.findUnique({ where: { businessId: business.id } });
   if (!widget) return null;
-  // A suspended or deleting owner's widget is unavailable: no AI replies and no new leads.
-  const owner = await prisma.user.findUnique({ where: { id: business.userId }, select: { suspendedAt: true, deletionScheduledFor: true } });
+  // A suspended or deleting owner's widget is unavailable: no AI replies and no new leads. So is the widget of a
+  // company whose plan does not include website chat: it stops answering and collects nothing until it is added.
+  const [owner, inPlan] = await Promise.all([
+    prisma.user.findUnique({ where: { id: business.userId }, select: { suspendedAt: true, deletionScheduledFor: true } }),
+    hasFeature(business.id, "websiteChat"),
+  ]);
   const accent = resolveAccent(widget.accentColor, business.brandColors);
   return {
     businessId: business.id,
     userId: business.userId,
     key,
-    enabled: widget.enabled && !widget.disabledByAdminAt && !owner?.suspendedAt && !owner?.deletionScheduledFor,
+    enabled: widget.enabled && !widget.disabledByAdminAt && !owner?.suspendedAt && !owner?.deletionScheduledFor && inPlan,
+    inPlan,
     name: business.name,
     logoPath: business.logoUrl && isOwnLogoPath(business.userId, business.logoUrl) ? business.logoUrl : null,
     accent,

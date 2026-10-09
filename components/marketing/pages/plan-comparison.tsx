@@ -12,11 +12,12 @@ function rowsFor(plans: PublicPlan[]): { label: string; cells: Cell[] }[] {
     { label: "AI text generations", cells: each((p) => total(p, p.limits.text)) },
     { label: "Brand designs", cells: each((p) => total(p, p.limits.image)) },
     { label: "Brand voice and business knowledge", cells: each(() => true) },
-    { label: "Post to Instagram, Facebook, TikTok, LinkedIn, YouTube", cells: each(() => true) },
-    { label: "Content calendar and scheduling", cells: each(() => true) },
-    { label: "Lead-capturing website chat widget", cells: each(() => true) },
-    { label: "App connectors and API access", cells: each((p) => p.capabilities.apiAccess) },
-    { label: "Use your own Composio account", cells: each((p) => p.capabilities.ownComposio) },
+    { label: "Post to Instagram, Facebook, TikTok, LinkedIn, YouTube", cells: each((p) => p.features.includes("calendar")) },
+    { label: "Content calendar and scheduling", cells: each((p) => p.features.includes("calendar")) },
+    { label: "Lead-capturing website chat widget", cells: each((p) => p.features.includes("websiteChat")) },
+    { label: "Autopilot: your week planned and written", cells: each((p) => p.features.includes("autopilot")) },
+    { label: "App connectors and API access", cells: each((p) => p.features.includes("apiAccess")) },
+    { label: "Use your own Composio account", cells: each((p) => p.features.includes("ownComposio")) },
     { label: "Video and voiceover (when released)", cells: each((p) => p.limits.videoSeconds > 0 || p.limits.voiceCharacters > 0) },
   ];
   return rows;

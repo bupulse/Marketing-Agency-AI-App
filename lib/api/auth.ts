@@ -2,7 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { RateLimitError, rateLimit, type RateLimitRule } from "@/lib/rate-limit";
-import { planHasCapability } from "@/lib/plan-catalog";
+import { hasFeature } from "@/lib/entitlements";
 import { hashApiKey, KEY_PREFIX, type ApiScope } from "./keys";
 
 export const API_RATE_LIMIT: RateLimitRule = { limit: 60, windowSeconds: 60 }; // per key
@@ -19,12 +19,12 @@ export function apiJson(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: { "cache-control": "no-store" } });
 }
 
-/** True while the business is on an active plan with API access (Pro today). A downgrade, cancellation or failed payment switches the keys off without deleting them. */
+/** True while the business is on an active plan with the apiAccess feature (Pro today). A downgrade, cancellation or failed payment switches the keys off without deleting them. */
 export async function businessHasApiAccess(businessId: string): Promise<boolean> {
-  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { user: { select: { suspendedAt: true, subscription: { select: { plan: true, status: true } } } } } });
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { user: { select: { suspendedAt: true, subscription: { select: { status: true } } } } } });
   if (business?.user.suspendedAt) return false;
   const sub = business?.user.subscription;
-  return Boolean(sub && (sub.status === "ACTIVE" || sub.status === "TRIALING") && (await planHasCapability(sub.plan, "apiAccess")));
+  return Boolean(sub && (sub.status === "ACTIVE" || sub.status === "TRIALING") && (await hasFeature(businessId, "apiAccess")));
 }
 
 /**
@@ -40,7 +40,7 @@ export async function authenticate(request: Request, scope: ApiScope): Promise<{
   const key = await prisma.apiKey.findUnique({ where: { hash: await hashApiKey(match[1]) }, select: { id: true, businessId: true, scopes: true, revokedAt: true, lastUsedAt: true } });
   if (!key || key.revokedAt) return { ok: false, response: apiError(401, "unauthorized", "This API key is not valid or was revoked.", { "www-authenticate": "Bearer" }) };
   if (!(await businessHasApiAccess(key.businessId))) {
-    return { ok: false, response: apiError(403, "plan_required", "The API is part of the Pro plan. Upgrade in BuPulse to use this key again.") };
+    return { ok: false, response: apiError(403, "plan_required", "API access is not part of your plan. Add it to your plan in BuPulse to use this key again.") };
   }
   if (!key.scopes.includes(scope)) return { ok: false, response: apiError(403, "insufficient_scope", `This key does not have the "${scope}" permission.`) };
   try {

@@ -1,7 +1,9 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { isFeatureKey, sortFeatureKeys, withPrerequisites, type FeatureKey } from "@/lib/features";
 import {
   CAPABILITIES,
+  CORE_FEATURES,
   SEATS_MAX,
   SEATS_MIN,
   SEED_PLANS,
@@ -31,8 +33,10 @@ export interface PlanView {
   yearlyPriceCents: number;
   currency: string;
   limits: PlanLimits;
-  features: string[];
-  capabilities: Record<Capability, boolean>;
+  /** Marketing bullets on the pricing card. */
+  highlights: string[];
+  /** What the plan unlocks (lib/features.ts), prerequisites included. Companies are checked through lib/entitlements.ts. */
+  features: FeatureKey[];
   paddleProductId: string | null;
   paddleMonthlyPriceId: string | null;
   paddleYearlyPriceId: string | null;
@@ -54,8 +58,8 @@ export interface PublicPlan {
   monthlyPriceCents: number;
   yearlyPriceCents: number;
   limits: PlanLimits;
-  features: string[];
-  capabilities: Record<Capability, boolean>;
+  highlights: string[];
+  features: FeatureKey[];
 }
 
 export function toPublic(p: PlanView): PublicPlan {
@@ -69,8 +73,8 @@ export function toPublic(p: PlanView): PublicPlan {
     monthlyPriceCents: p.monthlyPriceCents,
     yearlyPriceCents: p.yearlyPriceCents,
     limits: p.limits,
+    highlights: p.highlights,
     features: p.features,
-    capabilities: p.capabilities,
   };
 }
 
@@ -102,14 +106,23 @@ export function cleanLimits(value: unknown, base?: PlanLimits): PlanLimits {
   return out;
 }
 
-function cleanCapabilities(value: unknown): Record<Capability, boolean> {
-  const out = Object.fromEntries(CAPABILITIES.map((c) => [c, false])) as Record<Capability, boolean>;
-  if (value && typeof value === "object") for (const c of CAPABILITIES) out[c] = (value as Record<string, unknown>)[c] === true;
-  return out;
+function cleanStrings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
-function cleanFeatures(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+/**
+ * The plan's feature keys. A row written before the plan_features migration has no `featureKeys`: it gets what the
+ * migration gives such a plan (the core features plus the capabilities it had), so an older row never loses anything.
+ */
+function cleanFeatures(value: unknown, capabilities: unknown): FeatureKey[] {
+  if (Array.isArray(value)) return withPrerequisites(value.filter(isFeatureKey));
+  const caps = capabilities && typeof capabilities === "object" ? (capabilities as Record<string, unknown>) : {};
+  return withPrerequisites([...CORE_FEATURES, ...CAPABILITIES.filter((c) => caps[c] === true)]);
+}
+
+/** The legacy capabilities column, derived from the features so anything still reading it stays right. */
+export function capabilitiesOf(features: readonly FeatureKey[]): Record<Capability, boolean> {
+  return Object.fromEntries(CAPABILITIES.map((c) => [c, features.includes(c)])) as Record<Capability, boolean>;
 }
 
 function cleanPrices(value: unknown): PaddlePriceRecord[] {
@@ -136,8 +149,9 @@ export function viewOf(row: Row): PlanView {
     currency: String(row.currency ?? "USD"),
     // A plan saved before seats existed gets the seats it was seeded with (1 for plans created later).
     limits: cleanLimits(row.limits, { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0, chat: 0, seats: SEED_PLANS[String(row.key)]?.limits.seats ?? SEATS_MIN }),
-    features: cleanFeatures(row.features),
-    capabilities: cleanCapabilities(row.capabilities),
+    // `highlights` replaced the old `features` bullets; a row from before the migration still has them there.
+    highlights: Array.isArray(row.highlights) ? cleanStrings(row.highlights) : cleanStrings(row.features),
+    features: sortFeatureKeys(cleanFeatures(row.featureKeys, row.capabilities)),
     paddleProductId: (row.paddleProductId as string | null) ?? null,
     paddleMonthlyPriceId: (row.paddleMonthlyPriceId as string | null) ?? null,
     paddleYearlyPriceId: (row.paddleYearlyPriceId as string | null) ?? null,
@@ -164,8 +178,8 @@ function seedViews(): PlanView[] {
       yearlyPriceCents: c.priceUsdYearly * 100,
       currency: "USD",
       limits: c.limits,
-      features: c.features,
-      capabilities: c.capabilities,
+      highlights: c.highlights,
+      featureKeys: c.features,
     }),
   );
 }
@@ -201,9 +215,9 @@ export async function getSellablePlans(): Promise<PlanView[]> {
   return (await getPlans()).filter((p) => p.status === "active" && !p.isTrial);
 }
 
-/** A plan's capability. An unknown plan has none. */
-export async function planHasCapability(key: string, capability: Capability): Promise<boolean> {
-  return (await getPlan(key))?.capabilities[capability] === true;
+/** Whether a plan includes a feature. An unknown plan has none. Companies are checked through lib/entitlements.ts. */
+export async function planHasFeature(key: string, feature: FeatureKey): Promise<boolean> {
+  return (await getPlan(key))?.features.includes(feature) === true;
 }
 
 export async function getPlanLimits(key: string): Promise<PlanLimits> {

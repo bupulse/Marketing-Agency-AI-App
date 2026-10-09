@@ -2,6 +2,7 @@ import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { disabledNetworks, isServiceEnabled } from "@/lib/admin/switch";
+import { hasFeature, notInPlanMessage } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { getProvider, isNetwork } from "@/lib/social/registry";
@@ -314,6 +315,12 @@ async function processPost(post: ClaimedPost): Promise<keyof Omit<PublishRunResu
   try {
     if (!post.connection || !isNetwork(post.network)) {
       const message = "The account for this post was disconnected.";
+      if (await settle(post.id, { status: "FAILED", lastError: message })) emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
+      return "failed";
+    }
+    // Scheduling is a plan feature. A post of a company whose plan lost it fails with the reason, instead of going out.
+    if (!(await hasFeature(post.businessId, "calendar"))) {
+      const message = notInPlanMessage("calendar");
       if (await settle(post.id, { status: "FAILED", lastError: message })) emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
       return "failed";
     }

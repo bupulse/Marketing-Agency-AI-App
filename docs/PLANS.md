@@ -1,7 +1,7 @@
 # Plan builder
 
 Plans live in the `PlanDefinition` table and are managed at `/admin/plans` (and by Jarvis: `list_plans`, `update_plan`, `update_plan_limits`, `change_plan`).
-The pricing page, the in-app Billing page, checkout, usage limits, trial length and capability checks (API access) all read them through `lib/plan-catalog.ts` (`getPlans()`, `getPlan(key)`, cached 30 seconds, with the last good copy kept if the database blinks).
+The pricing page, the in-app Billing page, checkout, usage limits, trial length and feature checks (`lib/entitlements.ts`) all read them through `lib/plan-catalog.ts` (`getPlans()`, `getPlan(key)`, cached 30 seconds, with the last good copy kept if the database blinks).
 
 - `Subscription.plan` is the plan key as text (`TRIAL`, `STANDARD`, `PRO`, or any key you create). It has a foreign key to `PlanDefinition.key`.
 - The `TRIAL` plan is special: it can be edited (length, limits, features) but not priced, hidden or retired.
@@ -13,6 +13,21 @@ The pricing page, the in-app Billing page, checkout, usage limits, trial length 
   - archives old Paddle prices when no subscription and no waiting move uses them.
 - **Failure:** the plan is only changed after Paddle accepted the new prices; if anything fails nothing is changed and the error is shown on the plan page.
 - Without `PADDLE_API_KEY` plans can be drafted and edited; prices of plans that already sell cannot be changed.
+
+## Features and entitlements
+
+Every feature BuPulse has is described once in `lib/features.ts` (key, label, description, prerequisites, usage metric, the outside services it runs on, `built` or `coming_soon`, the dashboard routes it unlocks). A plan carries a list of these keys, and that list is the only thing that decides what a company may use.
+
+- **Storage.** `PlanDefinition.featureKeys` (JSON `FeatureKey[]`) is the plan's features; `PlanDefinition.highlights` (JSON `string[]`) holds the marketing bullets on the pricing card, which used to live in `features`. The old `features` and `capabilities` columns are still there and are written in step on every save (`features` = the highlights, `capabilities` = `{ apiAccess, ownComposio }` derived from the keys), so a build from before migration `20261009110000_plan_features` keeps working against the migrated table. A row without `featureKeys` (never migrated) is read as the core features plus its capabilities.
+- **Reading.** `getPlan(key).features` / `.highlights` (`lib/plan-catalog.ts`). `planHasFeature(key, feature)` for a plan; for a company use `lib/entitlements.ts`: `companyFeatures(businessId)`, `hasFeature(businessId | sessionUser, key)`, `assertFeature` (throws `FeatureRequiredError`, mapped to 403 / 503 JSON by `featureErrorResponse`), `featureBlocked` (the message for actions that answer in words) and `featureGate(key)` for dashboard pages (`components/app/no-access.tsx`, shows "Add to your plan" in place). A feature is usable only when the plan has it **and** at least one of its outside services is switched on (`lib/admin/switch.ts`).
+- **Editing.** The plan form (`/admin/plans`) shows a checklist: ticking a feature ticks its prerequisites, a feature another ticked one needs cannot be unticked ("Needed by …"), and "coming soon" features are disabled. The service validates the same rules (`validateFeatureSet`): unknown keys, coming-soon keys and missing prerequisites are refused with the reason. Jarvis `update_plan` takes `features` (the full list) and `highlights`; `capabilities: { apiAccess, ownComposio }` still works as an alias.
+- **Prerequisites.** `autopilot` needs `content`, `designs`, `calendar` and `gallery`; `aiPhotos` and `canva` need `designs`; `analytics` and `managed` need `calendar`; `driveImport` needs `gallery`. `withPrerequisites(keys)` closes a list, `dependentsOf(key, keys)` says what would break, `findCycle()` keeps the registry a DAG (tested).
+- **Today's plans** (backfilled by the migration, mirrored in `CORE_FEATURES` / `PRO_FEATURES` in `lib/plans.ts`): TRIAL and STANDARD have every built feature of the app except `apiAccess`; PRO has them all plus `ownComposio`. `managed` (Managed by BuPulse) and `ownComposio` are "service" features: sold, but nothing in the app is gated by them. `video` and `voice` are `coming_soon` and cannot be put in a plan.
+- **Adding a feature.** Add the key to `FEATURE_KEYS` and its entry to `FEATURES` in `lib/features.ts`, an icon in `components/app/nav.ts`, then gate its pages (`featureGate`), actions (`assertFeature` / `featureBlocked`) and routes (`featureErrorResponse`). Existing plans do not get it until an admin ticks it (or a migration adds the key).
+
+## Deploying the plan features migration
+
+`20261009110000_plan_features` adds two columns with defaults and backfills them in place (no table rewrite, no drops): `highlights` is copied from `features`, and `featureKeys` is filled so that nothing changes for any existing company (see above). Deploy it **before** the code that reads `featureKeys`: until it has run, the plan catalog cannot read `PlanDefinition` and serves the seed plans (`SEED_PLANS`), which carry the same feature lists. It is safe to re-run on a database that already has the columns only after removing the `ADD COLUMN` lines; Prisma records it once, so this never comes up with `prisma migrate deploy`.
 
 ## Deploying the plan builder migration
 

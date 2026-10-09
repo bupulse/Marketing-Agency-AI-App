@@ -6,6 +6,7 @@ import { requireActiveUser } from "@/lib/auth/require-user";
 import { approveAll, regenerateGroup, removeGroup, saveSettings } from "@/lib/autopilot/manage";
 import { runAutopilotForUser } from "@/lib/autopilot/run";
 import type { SettingsInput } from "@/lib/autopilot/settings";
+import { featureBlocked } from "@/lib/entitlements";
 import { rateLimit, rateLimitMessage, RateLimitError, type RateLimitRule } from "@/lib/rate-limit";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
@@ -17,9 +18,12 @@ const LIMITS = {
   edit: { limit: 120, windowSeconds: 60 * 60 },
 } satisfies Record<string, RateLimitRule>;
 
-async function limited(userId: string, kind: keyof typeof LIMITS): Promise<string | null> {
+/** The plan check, then the rate limit: the message to answer with, or null to go on. */
+async function limited(user: { id: string; businessId: string }, kind: keyof typeof LIMITS): Promise<string | null> {
+  const missing = await featureBlocked(user, "autopilot");
+  if (missing) return missing;
   try {
-    await rateLimit(`autopilot:${kind}:${userId}`, LIMITS[kind]);
+    await rateLimit(`autopilot:${kind}:${user.id}`, LIMITS[kind]);
     return null;
   } catch (error) {
     if (error instanceof RateLimitError) return rateLimitMessage(error);
@@ -37,7 +41,7 @@ export async function saveAutopilotSettings(input: SettingsInput): Promise<Actio
     if (error instanceof ForbiddenError) return { ok: false, error: error.message };
     throw error;
   }
-  const blocked = await limited(user.id, "edit");
+  const blocked = await limited(user, "edit");
   if (blocked) return { ok: false, error: blocked };
   const result = await saveSettings(user.id, input);
   if (result.ok) done();
@@ -46,7 +50,7 @@ export async function saveAutopilotSettings(input: SettingsInput): Promise<Actio
 
 export async function planNextWeek(): Promise<ActionResult> {
   const user = await requireActiveUser();
-  const blocked = await limited(user.id, "plan");
+  const blocked = await limited(user, "plan");
   if (blocked) return { ok: false, error: blocked };
   const result = await runAutopilotForUser(user.id);
   done();
@@ -62,7 +66,7 @@ export async function planNextWeek(): Promise<ActionResult> {
 
 export async function approveAllPosts(): Promise<ActionResult> {
   const user = await requireActiveUser();
-  const blocked = await limited(user.id, "edit");
+  const blocked = await limited(user, "edit");
   if (blocked) return { ok: false, error: blocked };
   const result = await approveAll(user.id);
   done();
@@ -73,7 +77,7 @@ export async function approveAllPosts(): Promise<ActionResult> {
 export async function removePlannedPost(groupId: string): Promise<ActionResult> {
   const user = await requireActiveUser();
   if (typeof groupId !== "string" || groupId.length === 0 || groupId.length > 80) return { ok: false, error: "That post could not be found." };
-  const blocked = await limited(user.id, "edit");
+  const blocked = await limited(user, "edit");
   if (blocked) return { ok: false, error: blocked };
   const result = await removeGroup(user.id, groupId);
   done();
@@ -83,7 +87,7 @@ export async function removePlannedPost(groupId: string): Promise<ActionResult> 
 export async function regeneratePlannedPost(groupId: string): Promise<ActionResult> {
   const user = await requireActiveUser();
   if (typeof groupId !== "string" || groupId.length === 0 || groupId.length > 80) return { ok: false, error: "That post could not be found." };
-  const blocked = await limited(user.id, "regenerate");
+  const blocked = await limited(user, "regenerate");
   if (blocked) return { ok: false, error: blocked };
   const result = await regenerateGroup(user.id, groupId);
   done();

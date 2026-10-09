@@ -3,6 +3,7 @@ import { siteUrl } from "@/lib/auth/site-url";
 import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
+import { hasFeature } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { sameString } from "@/lib/canva/pkce";
 import { saveConnection } from "@/lib/stores/connection";
@@ -43,6 +44,8 @@ export async function GET(request: Request) {
   try {
     const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
     if (!business) return back("no_business");
+    // The plan lost store import while the merchant was on Shopify's consent page: nothing is saved.
+    if (!(await hasFeature(business.id, "storeImport"))) return back("error");
     const { accessToken, scope } = await exchangeCode(shop, code);
     await saveConnection({ businessId: business.id, provider: "shopify", storeUrl: shop, secret: accessToken, scopes: scope });
     await subscribeUninstall({ provider: "shopify", storeUrl: shop, secret: accessToken });

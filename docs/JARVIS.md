@@ -88,7 +88,7 @@ Legend: **confirm** = refused without `confirm: true`. **approval** = does not r
 | `change_plan` | To a paid plan: **approval**, needs `idempotencyKey`. To `TRIAL`: applied now, needs **confirm** |
 | `change_user_email` | **approval, confirm, `idempotencyKey`. Sensitive (account takeover risk).** On approval the new address is confirmed, the OLD address is notified, every session of that user is ended and, with `sendReset`, a reset link goes to the new address |
 | `request_make_company_owner` | **approval, confirm, `idempotencyKey`. Sensitive (billing and deleting the company).** On approval ownership moves to that user and the previous owner becomes an Admin |
-| `update_plan` | **confirm.** Name, description, status, order, trial length, limits, features and capabilities apply now (audited). Any price field is an **approval** (`priceChangeApproval`) and needs `idempotencyKey` |
+| `update_plan` | **confirm.** Name, description, status, order, trial length, limits, highlights (pricing-card bullets) and features (keys of the feature registry, see `docs/PLANS.md`; prerequisites must be included, `video`/`voice` are refused) apply now (audited). `capabilities` is still accepted as an alias for the `apiAccess` and `ownComposio` features. Any price field is an **approval** (`priceChangeApproval`) and needs `idempotencyKey` |
 
 ## 4. Safety rules
 

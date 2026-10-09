@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { CanvaReturnToast } from "@/components/designs/canva-return-toast";
 import { getAppContext } from "@/components/app/context";
+import { featureGate } from "@/components/app/no-access";
 import { PageHeader } from "@/components/app/page-header";
 import { DesignStudio } from "@/components/designs/design-studio";
 import { isCanvaEnabled } from "@/lib/canva/config";
@@ -11,7 +12,9 @@ import { assetById } from "@/lib/media/service";
 export const metadata = { title: "Designs" };
 
 export default async function DesignsPage({ searchParams }: { searchParams: Promise<{ photo?: string }> }) {
-  const { user, business, usage } = await getAppContext();
+  const blocked = await featureGate("designs");
+  if (blocked) return blocked;
+  const { user, business, usage, entitlements } = await getAppContext();
   const { photo } = await searchParams;
   const designs = await listDesigns(user.id);
   // ?photo=<assetId> from the Gallery: only the business's own photo counts, anything else is ignored.
@@ -25,7 +28,8 @@ export default async function DesignsPage({ searchParams }: { searchParams: Prom
       </Suspense>
       <DesignStudio
         pack={recommendPack(business)}
-        canva={isCanvaEnabled()}
+        canva={isCanvaEnabled() && entitlements.usable.has("canva")}
+        aiPhotos={entitlements.usable.has("aiPhotos")}
         designs={designs}
         galleryPhoto={asset && asset.url ? { path: asset.path, url: asset.url } : null}
         hasLogo={!!business.logoUrl}

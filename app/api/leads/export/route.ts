@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { checkActiveUser } from "@/lib/auth/require-user";
+import { assertFeature, FeatureRequiredError, featureErrorResponse } from "@/lib/entitlements";
 import { leadsToCsv } from "@/lib/leads/csv";
 import { MAX_EXPORT, leadWhere, parseFilters } from "@/lib/leads/filters";
 
@@ -10,6 +11,12 @@ export async function GET(request: NextRequest) {
   if (check.status !== "ok") return NextResponse.json({ error: "Please sign in." }, { status: check.status === "signed_out" ? 401 : 403 });
   const business = await prisma.business.findUnique({ where: { userId: check.user.id }, select: { id: true } });
   if (!business) return NextResponse.json({ error: "No business found." }, { status: 404 });
+  try {
+    await assertFeature(business.id, "websiteChat");
+  } catch (error) {
+    if (error instanceof FeatureRequiredError) return featureErrorResponse(error);
+    throw error;
+  }
 
   const leads = await prisma.lead.findMany({
     where: leadWhere(business.id, parseFilters(request.nextUrl.searchParams)),

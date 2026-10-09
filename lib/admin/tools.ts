@@ -273,7 +273,7 @@ tool({
   name: "list_plans",
   title: "List plans",
   kind: "read",
-  description: "The plans clients can buy or be on: key, name, status (active, hidden, retired), monthly and yearly price in cents, usage limits, features, capabilities, how many clients are on each, paying clients, MRR and whether the Paddle prices are in sync. Use the key with change_plan and update_plan.",
+  description: "The plans clients can buy or be on: key, name, status (active, hidden, retired), monthly and yearly price in cents, usage limits, highlights (pricing-card bullets), features (keys of the feature registry: content, designs, aiPhotos, calendar, gallery, websiteChat, autopilot, analytics, canva, storeImport, driveImport, webhooks, apiAccess, ownComposio, managed), how many clients are on each, paying clients, MRR and whether the Paddle prices are in sync. Use the key with change_plan and update_plan.",
   schema: z.object({}),
   run: () => admin.listPlansForTools(),
 });
@@ -282,7 +282,8 @@ tool({
   title: "Update a plan",
   kind: "money",
   description:
-    "Change a plan's name, description, status, order, highlight, trial length, usage limits, features or capabilities (applied immediately and written to the audit log; needs confirm: true), and/or its prices. " +
+    "Change a plan's name, description, status, order, highlight, trial length, usage limits, highlights or features (applied immediately and written to the audit log; needs confirm: true), and/or its prices. " +
+    "features is the full list of feature keys the plan unlocks (see list_plans); every prerequisite must be included (autopilot needs content, designs, calendar and gallery; aiPhotos and canva need designs; analytics needs calendar; driveImport needs gallery) and video/voice are coming soon and refused. " +
     MONEY_NOTE.replace("MONEY ACTION: this does NOT move money. It only creates", "A PRICE change does not apply at once: it only creates") +
     "Prices are in cents. A price change needs an idempotencyKey and returns priceChangeApproval with the approval id.",
   schema: z
@@ -295,8 +296,9 @@ tool({
       highlight: z.boolean().optional(),
       trialDays: z.number().int().min(0).max(90).optional(),
       limits: z.object({ text: z.number().int().min(0).max(10_000_000), image: z.number().int().min(0).max(10_000_000), chat: z.number().int().min(0).max(10_000_000), videoSeconds: z.number().int().min(0).max(10_000_000), voiceCharacters: z.number().int().min(0).max(10_000_000) }).partial().optional(),
-      features: z.array(z.string().min(1).max(120)).max(30).optional(),
-      capabilities: z.object({ apiAccess: z.boolean(), ownComposio: z.boolean() }).partial().optional(),
+      highlights: z.array(z.string().min(1).max(120)).max(12).optional().describe("Pricing-card bullets, replacing the current ones."),
+      features: z.array(z.string().min(1).max(40)).max(30).optional().describe("Feature keys the plan unlocks, replacing the current list."),
+      capabilities: z.object({ apiAccess: z.boolean(), ownComposio: z.boolean() }).partial().optional().describe("Older alias: switches those two features on or off."),
       monthlyPriceCents: z.number().int().min(0).max(10_000_000).optional().describe("New monthly price in cents. Creates an approval."),
       yearlyPriceCents: z.number().int().min(0).max(10_000_000).optional().describe("New yearly price in cents. Creates an approval."),
       confirm: z.boolean().describe("Must be true."),

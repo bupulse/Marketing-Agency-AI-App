@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
+import { assertFeature, FeatureRequiredError } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { isOwnPhotoPath } from "@/lib/designs/assets";
 import { ASPECT_RATIOS } from "@/lib/designs/layout";
@@ -76,7 +77,7 @@ function revalidate(projectId: string | null) {
 function failure(error: unknown, userId: string): DesignResult {
   if (error instanceof UsageLimitError) return { ok: false, error: "You have used your image credits.", blocked: error.reason };
   if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
-  if (error instanceof DesignError) return { ok: false, error: error.message };
+  if (error instanceof DesignError || error instanceof FeatureRequiredError) return { ok: false, error: error.message };
   void logError(error, { source: "designs.action", userId });
   return { ok: false, error: FAILED };
 }
@@ -91,6 +92,7 @@ export async function createTemplateDesign(input: z.input<typeof templateSchema>
   const business = await businessOf(user.id);
   if (!business) return { ok: false, error: "Set up your business first." };
   try {
+    await assertFeature(business.id, "designs");
     const { id, path } = await makeTemplateDesign({ userId: user.id, businessId: business.id, ...data, template: data.template });
     revalidate(data.projectId);
     return { ok: true, designId: id, url: await designUrl(path) };
@@ -109,6 +111,7 @@ export async function createAiDesign(input: z.input<typeof aiSchema>): Promise<D
   const business = await businessOf(user.id);
   if (!business) return { ok: false, error: "Set up your business first." };
   try {
+    await assertFeature(business.id, "aiPhotos");
     const { id, path } = await makeAiDesign({ userId: user.id, businessId: business.id, ...data });
     revalidate(data.projectId);
     return { ok: true, designId: id, url: await designUrl(path) };
@@ -128,6 +131,7 @@ export async function createAiPhotoDesign(input: z.input<typeof aiPhotoSchema>):
   const business = await businessOf(user.id);
   if (!business) return { ok: false, error: "Set up your business first." };
   try {
+    await assertFeature(business.id, "aiPhotos");
     const { id, path } = await makeAiPhotoDesign({ userId: user.id, businessId: business.id, ...data });
     revalidate(data.projectId);
     return { ok: true, designId: id, url: await designUrl(path) };

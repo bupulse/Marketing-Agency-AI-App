@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { Plug } from "lucide-react";
-import { pageGate } from "@/components/app/no-access";
+import { featureGate, pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { Badge, Button, GlassCard } from "@/components/ui";
@@ -65,7 +65,7 @@ const NOTES: Record<string, string> = {
 };
 
 export default async function ConnectionsPage({ searchParams }: PageProps<"/dashboard/connections">) {
-  const blocked = await pageGate("channels");
+  const blocked = (await pageGate("channels")) ?? (await featureGate("calendar"));
   if (blocked) return blocked;
   const { user, actorId, business } = await getAppContext();
   const social = business ? await listConnections(business.id) : [];

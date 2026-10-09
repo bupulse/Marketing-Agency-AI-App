@@ -1,4 +1,5 @@
 import { getAppContext } from "@/components/app/context";
+import { featureGate } from "@/components/app/no-access";
 import { PageHeader } from "@/components/app/page-header";
 import { GalleryView } from "@/components/media/gallery-view";
 import { galleryOverview, listMedia } from "@/lib/media/service";
@@ -6,6 +7,8 @@ import { galleryOverview, listMedia } from "@/lib/media/service";
 export const metadata = { title: "Gallery" };
 
 export default async function GalleryPage({ searchParams }: { searchParams: Promise<{ folder?: string }> }) {
+  const blocked = await featureGate("gallery");
+  if (blocked) return blocked;
   const { business } = await getAppContext();
   const { folder: requested } = await searchParams;
   const overview = await galleryOverview(business.id);

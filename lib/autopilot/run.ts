@@ -6,6 +6,7 @@ import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
 import { AIBudgetExceededError } from "@/lib/ai/budget";
 import { isServiceEnabled, ServiceDisabledError, textAiService } from "@/lib/admin/switch";
+import { hasFeature, notInPlanMessage } from "@/lib/entitlements";
 import { AIProviderError } from "@/lib/ai/types";
 import { readKnowledge } from "@/lib/brand/schemas";
 import { logError } from "@/lib/errors";
@@ -108,6 +109,9 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
   // Accounts waiting to be deleted, or suspended by the admin, are left alone (before the week is claimed).
   if (business.user.deletionScheduledFor || business.user.suspendedAt) return { status: "nothing_to_plan", postCount: 0, groupCount: 0 };
 
+  // Autopilot is a plan feature: a company without it is left alone (the cron skips it, the button explains).
+  if (!(await hasFeature(businessId, "autopilot"))) return { status: "nothing_to_plan", postCount: 0, groupCount: 0, note: notInPlanMessage("autopilot") };
+
   // AI switched off in the admin console: wait, without claiming the week, so it plans normally once it is back.
   if (!(await isServiceEnabled(textAiService()))) return { status: "nothing_to_plan", postCount: 0, groupCount: 0, note: "Autopilot is paused for a short while. Please try again later." };
 
@@ -147,6 +151,8 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
     };
     const trendSource = options.trends ?? noopTrendSource;
 
+    // AI photos are their own plan feature; without it Autopilot draws the free templates only.
+    const aiPhotos = await hasFeature(businessId, "aiPhotos");
     let aiStopped = false;
     const state: { stop: "credits" | "budget" | null } = { stop: null };
     let postCount = 0;
@@ -187,7 +193,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
           (r) => ({ provider: r.provider, model: r.model, usage: r.usage }),
         );
 
-        const images = await makeGroupImages(group, written.image, { userId, businessId, businessName: business.name, language: business.contentLanguage, useAiImages: input.config.useAiImages && !aiStopped, service: options.service ?? false }, { aiStopped });
+        const images = await makeGroupImages(group, written.image, { userId, businessId, businessName: business.name, language: business.contentLanguage, useAiImages: input.config.useAiImages && aiPhotos && !aiStopped, service: options.service ?? false }, { aiStopped });
         if (images.aiStopped) aiStopped = true;
         for (const note of images.notes) if (!notes.includes(note)) notes.push(note);
 

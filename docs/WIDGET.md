@@ -19,7 +19,7 @@ A chat bubble owners add to their website with one line. It answers visitors fro
 | Turnstile | `lib/widget/turnstile.ts` |
 | Dashboard page (settings, snippet, live preview, usage) | `app/dashboard/widget`, `components/widget` |
 
-`widget.js` fetches `/api/widget/config` (public data only), and if the widget is on and the site is allowed, draws a launcher inside a closed Shadow DOM (host CSS cannot reach it) and, on first open, an iframe to `/widget/<key>`. The iframe holds all UI. It tells the loader to resize or close by `postMessage` (the loader only trusts messages from its own iframe and our origin). On phones (max 480px) the open chat is full screen. Animations are disabled under `prefers-reduced-motion`. Everything in the loader is wrapped in try/catch. `window.BuPulse.open()/close()/toggle()` are available.
+`widget.js` fetches `/api/widget/config` (public data only; `{ enabled: false, reason }` with `unknown_key`, `not_in_plan` when the company's plan lacks the website chat feature, `disabled` or `not_allowed`, each explained in the browser console), and if the widget is on and the site is allowed, draws a launcher inside a closed Shadow DOM (host CSS cannot reach it) and, on first open, an iframe to `/widget/<key>`. The iframe holds all UI. It tells the loader to resize or close by `postMessage` (the loader only trusts messages from its own iframe and our origin). On phones (max 480px) the open chat is full screen. Animations are disabled under `prefers-reduced-motion`. Everything in the loader is wrapped in try/catch. `window.BuPulse.open()/close()/toggle()` are available.
 
 ## Allowed domains and their limits
 

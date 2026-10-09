@@ -1,6 +1,6 @@
 # BuPulse REST API (v1)
 
-Read your projects, generated content, posts and leads, update leads, and create draft posts from your own tools. **Pro plan only.** Create keys in the dashboard under **Connectors > API** (`/dashboard/connectors/api`).
+Read your projects, generated content, posts and leads, update leads, and create draft posts from your own tools. **Plans with the `apiAccess` feature only** (Pro today; see `docs/PLANS.md`). Create keys in the dashboard under **Connectors > API** (`/dashboard/connectors/api`).
 
 Base address: `https://bupulse.com/api/v1`
 
@@ -20,7 +20,7 @@ Base address: `https://bupulse.com/api/v1`
 | `leads:write` | `PATCH /leads/:id` (status and notes) |
 
 - A key only ever sees the data of the business that made it.
-- If the business leaves the Pro plan (or a payment fails), its keys stop working (`403 plan_required`) but are not deleted; they work again after upgrading.
+- If the business moves to a plan without `apiAccess` (or a payment fails), its keys stop working (`403 plan_required`) but are not deleted; they work again once the feature is back in the plan.
 - Limit: **60 requests per minute per key**. Over the limit you get `429` with a `Retry-After` header (seconds).
 - Revoke a key in the dashboard; it stops working immediately.
 
