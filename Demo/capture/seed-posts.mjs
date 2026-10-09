@@ -114,9 +114,13 @@ if (slug === "nova") {
   ];
   for (const [day, time, proj, reach] of history) {
     if (proj === null) {
-      await post({ day, time, status: "PUBLISHED", metrics: reach, media: [],
+      await post({ day, time, status: "PUBLISHED", metrics: reach, media: acc.designs.slice(0, 1),
         text: "Tip from Nova 💡 Your battery lasts longer if you keep it between 20% and 80%, and use a genuine fast charger. Drop by for a free battery health check, any day this week.",
         hashtags: [...tags, "#PhoneTips"] });
+    } else if (proj === acc) {
+      await post({ day, time, status: "PUBLISHED", proj, media: proj.designs.slice(0, 1), metrics: reach,
+        text: "Is your charger slowing you down? ⚡ Our 25W and 45W fast chargers fill your phone in under an hour, and cases start from 5,000 RWF. Screen protector fitted free while you wait. Kigali Heights, ground floor.",
+        hashtags: [...tags, "#FastCharging", "#PhoneAccessories"] });
     } else await post({ day, time, status: "PUBLISHED", proj, media: proj.designs.slice(0, 1), metrics: reach });
   }
   await post({ day: 0, time: "18:00", status: "SCHEDULED", proj: a56, media: a56.designs.slice(-1),
