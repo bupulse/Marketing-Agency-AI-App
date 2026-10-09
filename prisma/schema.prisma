@@ -43,6 +43,7 @@ model User {
   usage                UsageRecord[]
   canva                CanvaConnection?
   canvaEdits           CanvaEdit[]
+  manualPayments       ManualPayment[]
 }
 
 // One business per user for now. Industry-neutral: a phone shop, a school,
@@ -224,6 +225,9 @@ enum BillingProvider {
   PADDLE
   STRIPE
   PAYPAL
+  // Mobile Money paid by hand and confirmed in the admin console (lib/billing/momo.ts). An automatic MoMo provider
+  // (Paypack, Flutterwave, MTN) gets its own value and adapter later; see docs/MOMO.md.
+  MANUAL_MOMO
 }
 
 enum BillingInterval {
@@ -268,6 +272,50 @@ model BillingEvent {
 
   @@unique([provider, eventId])
   @@index([userId])
+}
+
+// One Mobile Money payment a client makes by hand (docs/MOMO.md). The client starts it (a reference to quote),
+// pays on their phone, submits the transaction id and phone (submittedAt), and the owner confirms or rejects it in the
+// admin console. Confirming writes the paid period onto the Subscription (periodStart/periodEnd kept here as the record).
+// userId is the company account (Business.userId), like Subscription.
+model ManualPayment {
+  id            String          @id @default(cuid())
+  userId        String          @db.Uuid
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planKey       String
+  plan          PlanDefinition  @relation(fields: [planKey], references: [key], onUpdate: Cascade, onDelete: Restrict)
+  interval      BillingInterval
+  amountMinor   Int // RWF has no minor unit: whole francs
+  currency      String          @default("RWF")
+  reference     String          @unique // "BP-7K3Q": what the client types as the payment note; unambiguous characters
+  payerPhone    String?
+  network       String? // "MTN" | "AIRTEL"
+  transactionId String? // the MoMo transaction id the client typed
+  // pending (started, or submitted and waiting for the owner) | confirmed | rejected | expired (not submitted in time, or replaced)
+  status        String          @default("pending")
+  rejectReason  String?
+  submittedAt   DateTime? // when the client tapped "I've paid"
+  decidedAt     DateTime?
+  decidedBy     String? // AuditLog actor
+  periodStart   DateTime? // the period this payment bought, set on confirm
+  periodEnd     DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+}
+
+// One renewal email of a Mobile Money subscription (lib/billing/momo-renewals.ts): "5d" and "1d" before the period
+// ends, and "paused" when the grace period is over. The unique key is the claim, so a reminder is never sent twice.
+model RenewalNotice {
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  periodEnd DateTime
+  kind      String // "5d" | "1d" | "paused"
+  sentAt    DateTime @default(now())
+
+  @@unique([userId, periodEnd, kind])
 }
 
 // One row per user per billing period. Limits per plan live in lib/plans.ts.
@@ -970,8 +1018,9 @@ model PlanDefinition {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  subscriptions Subscription[]
-  priceChanges  PlanPriceChange[]
+  subscriptions  Subscription[]
+  priceChanges   PlanPriceChange[]
+  manualPayments ManualPayment[]
 }
 
 // One price change of one plan. Existing subscribers move to the new price at a renewal, after notice (increase).

@@ -29,17 +29,20 @@ export async function applyProviderSubscription(provider: BillingProvider, sub: 
   // user id from checkout, but only when the server's signature proves we put it there.
   let row = await prisma.subscription.findFirst({
     where: { providerSubscriptionId: sub.providerSubscriptionId },
-    select: { userId: true, providerSubscriptionId: true, status: true },
+    select: { userId: true, providerSubscriptionId: true, status: true, provider: true },
   });
   if (!row && sub.userId && (await verifyCheckoutUser(sub.userId, sub.userIdSignature))) {
     row = await prisma.subscription.findUnique({
       where: { userId: sub.userId },
-      select: { userId: true, providerSubscriptionId: true, status: true },
+      select: { userId: true, providerSubscriptionId: true, status: true, provider: true },
     });
   }
   if (!row) return "unknown_user";
 
   const sameSubscription = row.providerSubscriptionId === sub.providerSubscriptionId;
+  // A live Mobile Money plan (no provider subscription id) is not ended by a late event of an old card subscription,
+  // and a new live card subscription on top of it is a duplicate, like a second card purchase.
+  if (!sameSubscription && row.provider === "MANUAL_MOMO" && LIVE.has(row.status)) return LIVE.has(sub.status) ? "duplicate" : "stale";
   if (!sameSubscription && row.providerSubscriptionId) {
     // The account holds another subscription. Only a live new one may replace one that has ended
     // (re-subscribing after cancelling). Anything else must not touch the current plan.

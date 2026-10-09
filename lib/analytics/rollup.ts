@@ -6,7 +6,7 @@ import { purgeOldSalts } from "./salt";
 import { utcDay } from "./collect";
 import { EVENT_NAMES } from "./events";
 import { getPriceTable } from "@/lib/plan-catalog";
-import { addDays, churnPct, computeMrrCents, eachDay, parseMoneyEvent, round2 } from "./math";
+import { addDays, churnPct, computeMrrCents, eachDay, MONEY_EVENT_TYPES, parseMoneyEvent, round2 } from "./math";
 
 type Row = { key: string; dimension: string; value: number };
 const n = (v: unknown) => Number(v ?? 0);
@@ -90,9 +90,9 @@ export async function rollupDay(day: string, now = new Date()): Promise<number> 
   await feature(EVENT_NAMES.postPublished, Prisma.sql`SELECT COUNT(DISTINCT "businessId")::bigint c FROM "Post" WHERE "publishedAt" >= ${start} AND "publishedAt" < ${end}`);
   await feature(EVENT_NAMES.leadCaptured, Prisma.sql`SELECT COUNT(DISTINCT "businessId")::bigint c FROM "Lead" WHERE "createdAt" >= ${start} AND "createdAt" < ${end}`);
 
-  // --- Revenue (Paddle webhooks, USD cents, tax excluded; one refund counted once per adjustment id) ---
+  // --- Revenue (Paddle webhooks and confirmed Mobile Money payments, USD cents, tax excluded; one refund counted once per adjustment id) ---
   const billing = await prisma.billingEvent.findMany({
-    where: { createdAt: range, type: { in: ["transaction.completed", "adjustment.created", "adjustment.updated"] } },
+    where: { createdAt: range, type: { in: MONEY_EVENT_TYPES } },
     select: { type: true, payload: true, createdAt: true, eventId: true },
   });
   let revenue = 0;

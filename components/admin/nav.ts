@@ -14,12 +14,13 @@ import {
   Plug,
   ScrollText,
   Server,
+  Smartphone,
   TriangleAlert,
   Building2,
   type LucideIcon,
 } from "lucide-react";
 
-export type AdminNavItem = { href: string; label: string; icon: LucideIcon; badge?: "approvals" | "health" };
+export type AdminNavItem = { href: string; label: string; icon: LucideIcon; badge?: "approvals" | "health" | "payments" };
 export type AdminNavGroup = { title: string | null; items: AdminNavItem[] };
 
 export const ADMIN_NAV: AdminNavGroup[] = [
@@ -37,6 +38,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { href: "/admin/revenue", label: "Revenue and costs", icon: Coins },
       { href: "/admin/plans", label: "Plans", icon: Layers },
       { href: "/admin/approvals", label: "Approvals", icon: BadgeCheck, badge: "approvals" },
+      { href: "/admin/payments", label: "Payments", icon: Smartphone, badge: "payments" },
     ],
   },
   {

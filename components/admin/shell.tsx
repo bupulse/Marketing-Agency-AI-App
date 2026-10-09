@@ -14,7 +14,7 @@ function isActive(pathname: string, href: string) {
   return href === "/admin" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export type ShellBadges = { approvals: number; health: { status: "ok" | "warning" | "problem"; count: number } };
+export type ShellBadges = { approvals: number; payments: number; health: { status: "ok" | "warning" | "problem"; count: number } };
 
 function Nav({ badges, onNavigate }: { badges: ShellBadges; onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -41,6 +41,11 @@ function Nav({ badges, onNavigate }: { badges: ShellBadges; onNavigate?: () => v
                 {badge === "approvals" && badges.approvals > 0 && (
                   <Badge tone="danger" aria-label={`${badges.approvals} waiting for approval`}>
                     {badges.approvals}
+                  </Badge>
+                )}
+                {badge === "payments" && badges.payments > 0 && (
+                  <Badge tone="danger" aria-label={`${badges.payments} Mobile Money ${badges.payments === 1 ? "payment" : "payments"} to check`}>
+                    {badges.payments}
                   </Badge>
                 )}
                 {badge === "health" && badges.health.status !== "ok" && (

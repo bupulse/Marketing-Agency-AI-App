@@ -3,6 +3,7 @@ import { pendingApprovalCount } from "./console";
 import { getAiBudgetStatus } from "./ai-usage";
 import { getHealthSummary, type HealthIssue } from "./health";
 import { getServicesAttention } from "./services";
+import { pendingManualPaymentCount } from "@/lib/billing/momo";
 
 export type AttentionItem = { level: "warning" | "problem"; key: string; text: string; href: string };
 
@@ -11,13 +12,15 @@ export type AttentionItem = { level: "warning" | "problem"; key: string; text: s
  * and anything the Services and AI pages report. One list for the Overview box.
  */
 export async function getAttention(): Promise<AttentionItem[]> {
-  const [approvals, health, services, budget] = await Promise.all([
+  const [approvals, payments, health, services, budget] = await Promise.all([
     pendingApprovalCount(),
+    pendingManualPaymentCount().catch(() => 0),
     getHealthSummary().catch(() => ({ status: "ok" as const, issues: [] as HealthIssue[] })),
     getServicesAttention().catch(() => ({ failing: [], off: [] })),
     getAiBudgetStatus().catch(() => null),
   ]);
   const items: AttentionItem[] = [];
+  if (payments > 0) items.push({ level: "warning", key: "payments", text: `${payments} Mobile Money payment${payments === 1 ? " is" : "s are"} waiting for you to check.`, href: "/admin/payments" });
   if (approvals > 0) items.push({ level: "warning", key: "approvals", text: `${approvals} money request${approvals === 1 ? " is" : "s are"} waiting for your approval.`, href: "/admin/approvals" });
   for (const f of services.failing) items.push({ level: "problem", key: `service:${f.key}`, text: `${f.label} is failing: ${f.reason}`, href: "/admin/services" });
   for (const o of services.off) items.push({ level: "warning", key: `off:${o.key}`, text: `${o.label} is switched off (${o.reason}).`, href: "/admin/services" });

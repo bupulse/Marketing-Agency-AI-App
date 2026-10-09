@@ -10,6 +10,7 @@ import * as connections from "./connections";
 import * as connectionActions from "./actions/connections";
 import * as clientView from "./client360";
 import { getActivity } from "./activity";
+import { getManualPayment, listManualPayments } from "@/lib/billing/momo";
 import { getSystemHealth } from "./health";
 import { SERVICE_IDS } from "./service-catalog";
 import { AdminError, type AdminContext } from "./types";
@@ -157,6 +158,15 @@ tool({
 });
 tool({ name: "get_approval", title: "Get approval", kind: "read", description: "Status of a money-action approval request: pending, approved, rejected, executed, failed or needs_check (Paddle may have acted; the owner verifies in Paddle, never retry), with the result once it has run.", schema: z.object({ id: id("Approval id returned by issue_refund or change_plan.") }), run: (a) => admin.getApproval(a.id) });
 tool({ name: "list_approvals", title: "List approvals", kind: "read", description: "Money-action approval requests, newest first, optionally by status.", schema: z.object({ status: z.enum(["pending", "approved", "rejected", "executed", "failed", "needs_check"]).optional(), limit }), run: (a) => admin.listApprovals(a) });
+tool({
+  name: "list_momo_payments",
+  title: "List Mobile Money payments",
+  kind: "read",
+  description: "Mobile Money (MoMo / Airtel) payments clients made by hand, newest first: company, plan, amount in RWF, reference, transaction id, phone and status (pending, confirmed, rejected, expired). Confirming or rejecting is done by the owner in the admin console only (/admin/payments); there is no tool for it.",
+  schema: z.object({ status: z.enum(["pending", "confirmed", "rejected", "expired"]).optional(), userId: z.string().max(100).optional().describe("Company account id (uuid)."), reference: z.string().max(12).optional().describe("A reference such as BP-7K3Q."), cursor, limit }),
+  run: (a) => listManualPayments(a),
+});
+tool({ name: "get_momo_payment", title: "Get Mobile Money payment", kind: "read", description: "One Mobile Money payment in detail, with the period it bought once confirmed.", schema: z.object({ id: id("Payment id.") }), run: (a) => getManualPayment(a.id) });
 tool({ name: "list_feature_flags", title: "List feature flags", kind: "read", description: "All feature flags with their switch, rollout percentage and per-user overrides.", schema: z.object({}), run: () => admin.listFeatureFlags() });
 
 // ---- direct actions ----------------------------------------------------------------------------------------
