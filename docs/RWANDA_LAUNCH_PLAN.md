@@ -282,3 +282,14 @@ About 57 hours of build work, plus about 9 hours from the owner.
   - Deploy
 - Custom plans are made by hand in the existing plan builder (a private plan per company).
 - Later in the week: R3 custom-plan builder and offers, the R5 request form, card payments (once Paddle is live), the full R7 review, and re-recording the videos.
+
+## 13. Fix list found while recording the demo videos (9 October 2026)
+
+To fix before the pilot launch on 12 October:
+1. **Home page placeholders.** The testimonials section is placeholder text, and the hero illustration shows placeholders such as "[your.shop]". Remove the testimonials until real pilot quotes exist, and replace the placeholders with real example text.
+2. **Autopilot posting times.** Kigali times were saved as UTC, so 09:00 showed as 11:00 local (found with Nova Phones' planned week). Check the time-zone conversion in the Autopilot planner and add a test with Africa/Kigali.
+3. **Dashboard "Designs" card.** The count is hard-coded to 0 (`app/dashboard/page.tsx`, about line 52). Show the company's real design count.
+
+Demo data in the v1 development database (4 demo accounts and their content) is listed in `Demo/capture/MANIFEST.md`.
+- Remove it with `node Demo/capture/cleanup.mjs --yes` (without `--yes` it only lists what it would delete).
+- Don't press "Approve all" on Nova's 14 Autopilot posts: its social connections are fake rows.
