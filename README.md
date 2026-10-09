@@ -1,5 +1,7 @@
 # BuPulse
 
+# BuPulse
+
 The AI marketing team for every small business: content generation, a lead-capturing
 chat widget, and (later) video, voiceover and performance learning.
 
