@@ -19,6 +19,8 @@ const eslintConfig = defineConfig([
     "playwright-report/**",
     "test-results/**",
     "cloudflare-env.d.ts",
+    // Demo video project (own package and toolchain):
+    "Demo/**",
   ]),
 ]);
 

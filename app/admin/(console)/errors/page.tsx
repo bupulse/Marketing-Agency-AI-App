@@ -6,6 +6,7 @@ import { Panel } from "@/components/admin/ui";
 import { Badge, Button, Input, Select } from "@/components/ui";
 import { dateTime, nowMs, param } from "@/lib/admin/format";
 import { AdminError, getErrors } from "@/lib/admin/service";
+import { scrubSecrets } from "@/lib/admin/scrub";
 
 export const metadata = { title: "Errors" };
 
@@ -55,13 +56,13 @@ export default async function ErrorsPage({ searchParams }: PageProps<"/admin/err
                     <summary className="flex min-h-11 cursor-pointer flex-wrap items-center gap-x-3 gap-y-1">
                       <Badge tone={e.level === "error" ? "danger" : "neutral"}>{e.level}</Badge>
                       <code className="font-mono text-[13px]">{e.source}</code>
-                      <span className="min-w-0 flex-1 truncate text-[14px]">{e.message}</span>
+                      <span className="min-w-0 flex-1 truncate text-[14px]">{scrubSecrets(e.message, 300)}</span>
                       <span className="text-xs text-muted">{dateTime(e.createdAt)}</span>
                     </summary>
                     <div className="mt-2 flex flex-col gap-2 text-[13px]">
-                      <p className="break-words">{e.message}</p>
+                      <p className="break-words">{scrubSecrets(e.message, 1000)}</p>
                       {e.userId && <p>User: <Link href={`/admin/users/${e.userId}`} className="underline">{e.userId}</Link></p>}
-                      {e.context != null && <pre className="max-h-64 overflow-auto rounded-xl bg-soft p-3 font-mono text-xs">{JSON.stringify(e.context, null, 2)}</pre>}
+                      {e.context != null && <pre className="max-h-64 overflow-auto rounded-xl bg-soft p-3 font-mono text-xs">{scrubSecrets(JSON.stringify(e.context, null, 2), 4000)}</pre>}
                     </div>
                   </details>
                 </li>

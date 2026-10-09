@@ -5,6 +5,7 @@ import { pruneRateLimits } from "@/lib/rate-limit";
 import { purgeOldSalts } from "./salt";
 import { utcDay } from "./collect";
 import { EVENT_NAMES } from "./events";
+import { getPriceTable } from "@/lib/plan-catalog";
 import { addDays, churnPct, computeMrrCents, eachDay, parseMoneyEvent, round2 } from "./math";
 
 type Row = { key: string; dimension: string; value: number };
@@ -123,7 +124,7 @@ export async function rollupDay(day: string, now = new Date()): Promise<number> 
     });
     const list = groups.map((g) => ({ plan: g.plan, interval: g.interval, count: g._count._all }));
     const active = list.reduce((s, g) => s + g.count, 0);
-    add("mrr_cents", computeMrrCents(list));
+    add("mrr_cents", computeMrrCents(list, await getPriceTable()));
     add("active_subscriptions", active);
     const churn = churnPct(cancellations, active);
     if (churn !== null) add("churn_rate", churn);
@@ -131,11 +132,16 @@ export async function rollupDay(day: string, now = new Date()): Promise<number> 
   add("rolled", 1); // marker: this day has been computed
 
   // One writer per day: the cron and an admin/Jarvis read can roll the same day at the same moment.
-  await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`analytics-rollup:${day}`}))`;
-    await tx.dailyMetric.deleteMany({ where: { date: start } });
-    await tx.dailyMetric.createMany({ data: rows.map((r) => ({ date: start, ...r })), skipDuplicates: true });
-  });
+  // Someone else already writing the same day (cron vs a read) is enough: skip instead of queueing behind them.
+  await prisma.$transaction(
+    async (tx) => {
+      const [lock] = await tx.$queryRaw<{ ok: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${`analytics-rollup:${day}`})) AS ok`;
+      if (!lock?.ok) return;
+      await tx.dailyMetric.deleteMany({ where: { date: start } });
+      await tx.dailyMetric.createMany({ data: rows.map((r) => ({ date: start, ...r })), skipDuplicates: true });
+    },
+    { timeout: 60_000, maxWait: 15_000 },
+  );
   return rows.length;
 }
 

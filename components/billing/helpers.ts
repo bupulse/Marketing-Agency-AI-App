@@ -1,23 +1,45 @@
-import type { BillingInterval, Plan } from "@/lib/generated/prisma/client";
-import { PRICES, type PaidPlan } from "@/lib/billing/catalog";
-import { PLANS } from "@/lib/plans";
+import type { BillingInterval } from "@/lib/generated/prisma/client";
+import type { Plan, PlanLimits } from "@/lib/plans";
 
+/** The price part of a plan, in cents (the shape of PublicPlan). */
+export type PlanPrices = { monthlyPriceCents: number; yearlyPriceCents: number };
+
+/** Dollars, without cents when they are zero: 490 -> "$490", 49.5 -> "$49.50". */
 export function formatUsd(amount: number) {
-  return `$${amount.toLocaleString("en-US")}`;
+  const whole = Number.isInteger(amount);
+  return `$${amount.toLocaleString("en-US", whole ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export function priceFor(plan: PaidPlan, interval: BillingInterval) {
-  return PRICES[plan][interval];
+export const formatCents = (cents: number) => formatUsd(cents / 100);
+
+/** The plan's price for a billing interval, in dollars. */
+export function priceFor(plan: PlanPrices, interval: BillingInterval) {
+  return (interval === "YEAR" ? plan.yearlyPriceCents : plan.monthlyPriceCents) / 100;
 }
 
-/** What a customer saves by paying yearly instead of monthly (2 months free). */
-export function yearlySavings(plan: PaidPlan) {
-  return PRICES[plan].MONTH * 12 - PRICES[plan].YEAR;
+/** What a customer saves by paying yearly instead of monthly, in dollars. */
+export function yearlySavings(plan: PlanPrices) {
+  return (plan.monthlyPriceCents * 12 - plan.yearlyPriceCents) / 100;
 }
 
 /** The yearly discount against paying monthly for 12 months, rounded (e.g. 17 for 17% off). */
-export function yearlyDiscountPercent(plan: PaidPlan) {
-  return Math.round((yearlySavings(plan) / (PRICES[plan].MONTH * 12)) * 100);
+export function yearlyDiscountPercent(plan: PlanPrices) {
+  return plan.monthlyPriceCents > 0 ? Math.round(((plan.monthlyPriceCents * 12 - plan.yearlyPriceCents) / (plan.monthlyPriceCents * 12)) * 100) : 0;
+}
+
+/** "2 months free" when yearly is exactly ten months, otherwise "N% off"; null when yearly is no cheaper. */
+export function yearlySavingsLabel(plan: PlanPrices): string | null {
+  if (plan.monthlyPriceCents > 0 && plan.yearlyPriceCents === plan.monthlyPriceCents * 10) return "2 months free";
+  const percent = yearlyDiscountPercent(plan);
+  return percent > 0 ? `${percent}% off` : null;
+}
+
+/** The toggle badge for a set of plans: "2 months free" if every plan agrees, else the best discount, else nothing. */
+export function yearlyBadge(plans: PlanPrices[]): string | null {
+  const labels = plans.map(yearlySavingsLabel);
+  if (labels.length > 0 && labels.every((l) => l === labels[0])) return labels[0];
+  const best = Math.max(0, ...plans.map(yearlyDiscountPercent));
+  return best > 0 ? `Save up to ${best}%` : null;
 }
 
 export const intervalWord = (interval: BillingInterval) => (interval === "YEAR" ? "year" : "month");
@@ -32,14 +54,15 @@ export type PlanButtonAction = "upgrade" | "switch" | "current";
 /** What a plan card's button does: trial customers buy, paying customers switch, the current plan is a badge. */
 export function planButtonAction(
   current: { plan: Plan; interval: BillingInterval; paid: boolean },
-  target: { plan: PaidPlan; interval: BillingInterval },
+  target: { plan: Plan; interval: BillingInterval },
 ): PlanButtonAction {
   if (!current.paid) return "upgrade";
   return current.plan === target.plan && current.interval === target.interval ? "current" : "switch";
 }
 
-export function planFeatures(plan: PaidPlan) {
-  const { text, image, videoSeconds, voiceCharacters } = PLANS[plan].limits;
+/** A feature list built from limits alone (the fallback when a plan has none of its own). */
+export function planFeatures(limits: PlanLimits) {
+  const { text, image, videoSeconds, voiceCharacters } = limits;
   return [
     `${text} text generations per month`,
     `${image} brand designs per month`,

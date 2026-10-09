@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
+import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { logError } from "@/lib/errors";
 import { RATE_LIMITS, rateLimit, RateLimitError, rateLimitMessage } from "@/lib/rate-limit";
 import { cancelPending, confirmPending, credentialsOf, getConnection, providerFor, removeConnection, saveConnection } from "@/lib/stores/connection";
@@ -20,12 +21,17 @@ export type SyncResult = { ok: true; summary: ResyncSummary; since: string } | {
 const NOT_CONNECTED = "Connect your store first.";
 
 async function connectionFor(provider: string) {
-  const user = await requireActiveUser();
+  const user = await requireActiveUser("connectors");
   if (!isStoreProvider(provider)) return null;
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (!business) return null;
   const conn = await getConnection(business.id, provider);
   return conn ? { user, conn } : null;
+}
+
+/** Shopify / WooCommerce switched off in the admin console: stop with a friendly message; stored products stay. */
+async function paused(provider: string): Promise<string | null> {
+  return (provider === "shopify" || provider === "woocommerce") && !(await isServiceEnabled(provider)) ? UNAVAILABLE_MESSAGE : null;
 }
 
 async function limited(userId: string): Promise<string | null> {
@@ -47,6 +53,8 @@ function friendly(error: unknown) {
 export async function listProductsAction(provider: string, opts: { cursor?: string | null; search?: string }): Promise<ListResult> {
   const found = await connectionFor(provider);
   if (!found) return { ok: false, error: NOT_CONNECTED };
+  const off = await paused(found.conn.provider);
+  if (off) return { ok: false, error: off };
   const tooMany = await limited(found.user.id);
   if (tooMany) return { ok: false, error: tooMany };
   try {
@@ -73,6 +81,8 @@ export async function listProductsAction(provider: string, opts: { cursor?: stri
 export async function importChunkAction(provider: string, ids: string[]): Promise<ImportResult> {
   const found = await connectionFor(provider);
   if (!found) return { ok: false, error: NOT_CONNECTED };
+  const off = await paused(found.conn.provider);
+  if (off) return { ok: false, error: off };
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > IMPORT_CHUNK || ids.some((id) => typeof id !== "string" || id.length > 100)) return { ok: false, error: "Choose some products first." };
   const tooMany = await limited(found.user.id);
   if (tooMany) return { ok: false, error: tooMany };
@@ -94,6 +104,8 @@ export async function importChunkAction(provider: string, ids: string[]): Promis
 export async function resyncAction(provider: string, since?: string): Promise<SyncResult> {
   const found = await connectionFor(provider);
   if (!found) return { ok: false, error: NOT_CONNECTED };
+  const off = await paused(found.conn.provider);
+  if (off) return { ok: false, error: off };
   const tooMany = await limited(found.user.id);
   if (tooMany) return { ok: false, error: tooMany };
   const parsed = since ? new Date(since) : new Date();
@@ -111,7 +123,7 @@ export async function resyncAction(provider: string, since?: string): Promise<Sy
 
 /** Forgets the store's keys and product mappings (imported projects stay). The screen then reloads the page. */
 export async function disconnectStoreAction(provider: string): Promise<{ ok: boolean }> {
-  const user = await requireActiveUser();
+  const user = await requireActiveUser("connectors");
   if (!isStoreProvider(provider)) return { ok: false };
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (business) await removeConnection(business.id, provider);
@@ -125,7 +137,8 @@ export type ManualState = { error?: string; values?: { store: string; key: strin
 
 /** WooCommerce fallback for stores where the one-click key page is blocked: paste the REST API keys by hand. */
 export async function connectWooManualAction(_prev: ManualState, formData: FormData): Promise<ManualState> {
-  const user = await requireActiveUser();
+  const user = await requireActiveUser("connectors");
+  if (!(await isServiceEnabled("woocommerce"))) return { error: UNAVAILABLE_MESSAGE };
   const typedStore = String(formData.get("store") ?? "");
   const key = String(formData.get("key") ?? "").trim();
   const secret = String(formData.get("secret") ?? "").trim();
@@ -157,7 +170,8 @@ const wooBack = (error: string): never => redirect(`/dashboard/stores/woocommerc
  * website cannot send a signed-in owner into an attacker's store approval page.
  */
 export async function startWooConnectAction(formData: FormData): Promise<void> {
-  const user = await requireActiveUser();
+  const user = await requireActiveUser("connectors");
+  if (!(await isServiceEnabled("woocommerce"))) return wooBack("unavailable");
   const store = normalizeStoreUrl(String(formData.get("store") ?? ""));
   if (!store.ok) return wooBack("invalid_store");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
@@ -181,7 +195,7 @@ export async function startWooConnectAction(formData: FormData): Promise<void> {
  * changed). Returns where to go; the screen does a full page load, so the new state always shows.
  */
 export async function confirmPendingAction(pendingId: string): Promise<{ ok: boolean }> {
-  const user = await requireActiveUser();
+  const user = await requireActiveUser("connectors");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   const ok = !!business && typeof pendingId === "string" && pendingId.length <= 64 && (await confirmPending(business.id, "woocommerce", pendingId));
   revalidatePath("/dashboard/stores/woocommerce");
@@ -189,7 +203,7 @@ export async function confirmPendingAction(pendingId: string): Promise<{ ok: boo
 }
 
 export async function cancelPendingAction(): Promise<{ ok: boolean }> {
-  const user = await requireActiveUser();
+  const user = await requireActiveUser("connectors");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (business) await cancelPending(business.id, "woocommerce");
   revalidatePath("/dashboard/stores/woocommerce");

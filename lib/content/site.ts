@@ -22,7 +22,6 @@ import {
   Video,
   type LucideIcon,
 } from "lucide-react";
-import { PRICES } from "@/lib/billing/catalog";
 
 export const site = {
   name: "BuPulse",
@@ -100,9 +99,10 @@ export const steps = [
   { title: "Post and win customers", text: "Publish to your socials while the chat widget turns website visitors into leads." },
 ];
 
+/** Answers may contain {trialDays}; fill it with fillFaq() where they are shown (the trial length is a plan setting). */
 export const faqs = [
   { q: "Does BuPulse work for my type of business?", a: "Yes. Shops, schools, construction, IT, restaurants, salons, clinics and more. You tell BuPulse what you do, and it writes for your customers." },
-  { q: "How does the free trial work?", a: "Sign up and use BuPulse free for 7 days, with a limited number of generations so you can see real results. No card needed. Pick a plan to keep going." },
+  { q: "How does the free trial work?", a: "Sign up and use BuPulse free for {trialDays} days, with a limited number of generations so you can see real results. No card needed. Pick a plan to keep going." },
   { q: "Do I need marketing experience?", a: "No. If you can describe what you sell, BuPulse does the rest. You review and post." },
   { q: "Which social networks can I post to?", a: "Instagram, Facebook, TikTok, LinkedIn and YouTube. You connect your own accounts with a normal login." },
   { q: "How does the chat widget get on my website?", a: "You paste one line of code into your site. It answers visitors from the information you gave BuPulse and saves their details in your Leads list." },
@@ -117,32 +117,9 @@ export const testimonials = [
   { quote: "[Testimonial from a construction company]", name: "[Name]", business: "[Company name]" },
 ];
 
-export interface PricingPlan {
-  id: "STANDARD" | "PRO";
-  name: string;
-  price: number;
-  description: string;
-  features: string[];
-  highlighted?: boolean;
+// Plans, prices and the trial now come from the database (lib/plan-catalog.ts, managed at /admin/plans).
+
+/** The FAQ with the live trial length filled in. */
+export function fillFaq<T extends { a: string }>(items: T[], trialDays: number): T[] {
+  return items.map((f) => ({ ...f, a: f.a.replaceAll("{trialDays}", String(trialDays)) }));
 }
-
-// Limits must match lib/plans.ts.
-export const pricingPlans: PricingPlan[] = [
-  {
-    id: "STANDARD",
-    name: "Standard",
-    price: PRICES.STANDARD.MONTH,
-    description: "For owners who want steady, on-brand content every week.",
-    features: ["100 AI text generations a month", "50 brand designs a month", "Post to 5 social networks", "Lead-capturing chat widget", "Content calendar and scheduling"],
-  },
-  {
-    id: "PRO",
-    name: "Pro",
-    price: PRICES.PRO.MONTH,
-    description: "For busy businesses that post often and want every connection.",
-    features: ["300 AI text generations a month", "150 brand designs a month", "Everything in Standard", "App connectors and API access", "Use your own Composio account", "Video and voiceover when released"],
-    highlighted: true,
-  },
-];
-
-export const trial = { days: 7, text: 10, images: 5 };

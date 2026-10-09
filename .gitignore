@@ -52,3 +52,17 @@ next-env.d.ts
 # playwright
 /test-results
 /playwright-report
+
+# Demo videos: renders and build output stay out of git
+/Demo/Social media/
+/Demo/In-person demo/
+/Demo/studio/node_modules/
+/Demo/studio/out/
+/Demo/studio/public/audio/
+/Demo/studio/public/recordings/
+/Demo/samples/
+/Demo/studio/public/mock/
+/Demo/Full walkthrough/
+/Demo/capture/.state/
+/Demo/capture/assets/
+/Demo/capture/site/

@@ -1,3 +1,4 @@
+import { recordCron } from "@/lib/admin/cron-run";
 import { NextResponse, type NextRequest } from "next/server";
 import { purgeDueAccounts } from "@/lib/account-deletion";
 
@@ -17,5 +18,5 @@ export async function POST(request: NextRequest) {
   if (!safeEqual(request.headers.get("authorization") ?? "", `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return NextResponse.json(await purgeDueAccounts());
+  return NextResponse.json(await recordCron("purge-accounts", () => purgeDueAccounts()));
 }

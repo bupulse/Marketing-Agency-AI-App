@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ refreshConnectionById: vi.fn(), findMany: vi.fn() }));
+const mocks = vi.hoisted(() => ({ refreshConnectionById: vi.fn(), findMany: vi.fn(), off: vi.fn() }));
 vi.mock("@/lib/social/connections", () => ({ refreshConnectionById: mocks.refreshConnectionById }));
-vi.mock("@/lib/db", () => ({ prisma: { connection: { findMany: mocks.findMany } } }));
+vi.mock("@/lib/db", () => ({ prisma: { connection: { findMany: mocks.findMany }, serviceSwitch: { findMany: mocks.off } } }));
 vi.mock("@opennextjs/cloudflare", () => ({ getCloudflareContext: () => { throw new Error("no"); } }));
 
 import { POST } from "@/app/api/cron/social-refresh/route";
+import { clearSwitchCache } from "@/lib/admin/switch";
 
 const call = (authorization?: string) =>
   POST(new NextRequest("https://bupulse.test/api/cron/social-refresh", { method: "POST", headers: authorization ? { authorization } : {} }));
@@ -14,6 +15,8 @@ const call = (authorization?: string) =>
 beforeEach(() => {
   vi.resetAllMocks();
   process.env.CRON_SECRET = "s3cret";
+  mocks.off.mockResolvedValue([]);
+  clearSwitchCache();
   mocks.findMany.mockResolvedValue([{ id: "a" }, { id: "b" }, { id: "c" }]);
   mocks.refreshConnectionById.mockImplementation(async (id: string) => id !== "b");
 });
@@ -35,5 +38,13 @@ describe("social-refresh cron route", () => {
     expect(horizon).toBeGreaterThan(6.9 * 86_400_000);
     expect(horizon).toBeLessThanOrEqual(7 * 86_400_000);
     expect(where).toMatchObject({ kind: "SOCIAL", postingMode: "AUTO" });
+  });
+
+  it("leaves the tokens of a network switched off in the admin console alone", async () => {
+    mocks.off.mockResolvedValue([{ service: "meta" }, { service: "tiktok" }]);
+    clearSwitchCache();
+    await call("Bearer s3cret");
+    expect(mocks.findMany.mock.calls[0][0].where.provider).toEqual({ notIn: expect.arrayContaining(["facebook", "instagram", "tiktok"]) });
+    expect(mocks.findMany.mock.calls[0][0].where.provider.notIn).not.toContain("linkedin");
   });
 });

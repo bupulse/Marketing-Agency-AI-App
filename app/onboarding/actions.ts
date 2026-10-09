@@ -27,7 +27,7 @@ export type LogoUploadResult =
 const SAVE_FAILED = "We could not save that. Please try again.";
 
 /** Every action re-checks the signed-in user and only touches their own business. */
-const requireUser = requireActiveUser;
+const requireUser = () => requireActiveUser("settings");
 
 async function update(userId: string, data: Parameters<typeof prisma.business.update>[0]["data"], step?: string): Promise<SaveResult> {
   try {

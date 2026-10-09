@@ -5,6 +5,7 @@ const prisma = vi.hoisted(() => ({
   chatWidget: { findMany: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn() },
   lead: { findMany: vi.fn(), count: vi.fn(), updateMany: vi.fn() },
   business: { groupBy: vi.fn() },
+  serviceSwitch: { findMany: vi.fn() },
   webhookDelivery: { findMany: vi.fn(async () => []), deleteMany: vi.fn(async () => ({ count: 0 })) },
 }));
 vi.mock("@/lib/db", () => ({ prisma }));
@@ -12,6 +13,7 @@ const sendEmail = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/publishing/email", async (orig) => ({ ...(await orig<typeof import("@/lib/publishing/email")>()), sendEmail }));
 
 import { isDigestDue, runLeadsDigest } from "@/lib/leads/digest";
+import { clearSwitchCache } from "@/lib/admin/switch";
 import { POST } from "@/app/api/cron/leads-digest/route";
 
 describe("isDigestDue", () => {
@@ -47,6 +49,8 @@ describe("runLeadsDigest", () => {
   beforeEach(() => {
     for (const g of Object.values(prisma)) for (const f of Object.values(g)) f.mockReset();
     sendEmail.mockReset().mockResolvedValue(true);
+    prisma.serviceSwitch.findMany.mockResolvedValue([]);
+    clearSwitchCache();
     prisma.business.groupBy.mockResolvedValue([{ timezone: "Africa/Kigali" }, { timezone: "UTC" }, { timezone: "America/New_York" }]);
     prisma.chatWidget.updateMany.mockResolvedValue({ count: 1 });
     prisma.lead.findMany.mockResolvedValue([{ id: "l1", name: "Jane", email: null, phone: null, interest: "cakes", message: null, source: "website_chat", pageUrl: null, createdAt: new Date("2026-10-08T01:00:00Z") }]);
@@ -60,6 +64,18 @@ describe("runLeadsDigest", () => {
     expect(sendEmail).toHaveBeenCalledTimes(1);
     expect(sendEmail.mock.calls[0][0].to).toBe("kigali@x.com");
     expect(sendEmail.mock.calls[0][0].subject).toContain("1 new lead");
+  });
+  it("does nothing while Resend is switched off in the admin console: no claims, nothing counted as failed", async () => {
+    prisma.serviceSwitch.findMany.mockResolvedValue([{ service: "resend" }]);
+    clearSwitchCache();
+    prisma.chatWidget.findMany.mockResolvedValue([row("kigali", "Africa/Kigali")]);
+    expect(await runLeadsDigest(now)).toEqual({ checked: 0, due: 0, sent: 0, skipped: 0, failed: 0 });
+    expect(prisma.chatWidget.updateMany).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
+    // and it sends normally once Resend is back on
+    prisma.serviceSwitch.findMany.mockResolvedValue([]);
+    clearSwitchCache();
+    expect(await runLeadsDigest(now)).toMatchObject({ sent: 1, failed: 0 });
   });
   it("reads only zones where it is 08:00, and pages by businessId until a short page", async () => {
     const page = Array.from({ length: 200 }, (_, i) => row(`b${String(i).padStart(3, "0")}`, "Africa/Kigali", new Date("2026-10-08T04:00:00Z")));

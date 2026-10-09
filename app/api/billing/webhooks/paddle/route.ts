@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       const outcome = await applyProviderSubscription("PADDLE", webhook.subscription);
       if (outcome === "applied") await trackSubscriptionChange(webhook.subscription.providerSubscriptionId, before, webhook.subscription);
       if (outcome === "unknown_price") {
-        // Probably a missing or wrong PADDLE_PRICE_* setting. Don't mark it processed: Paddle
+        // Probably a plan that is not synced with Paddle yet. Don't mark it processed: Paddle
         // retries, and once the setting is fixed the customer gets their plan.
         throw new Error(`Unknown Paddle price ${webhook.subscription.providerPriceId}`);
       }

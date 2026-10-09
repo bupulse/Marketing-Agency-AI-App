@@ -43,7 +43,7 @@ export class AdminError extends Error {
 
 export type Page<T> = { items: T[]; nextCursor: string | null };
 
-export type ApprovalKind = "issue_refund" | "change_plan";
+export type ApprovalKind = "issue_refund" | "change_plan" | "plan_price_change" | "change_user_email" | "make_company_owner";
 /** needs_check: the provider may or may not have done it. Never retried automatically; verify in Paddle first. */
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "executed" | "failed" | "needs_check";
 export const APPROVAL_STATUSES: ApprovalStatus[] = ["pending", "approved", "rejected", "executed", "failed", "needs_check"];

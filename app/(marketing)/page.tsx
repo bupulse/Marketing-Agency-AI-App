@@ -7,18 +7,25 @@ import { Hero } from "@/components/marketing/home/hero";
 import { HowItWorks } from "@/components/marketing/home/how-it-works";
 import { IndustryCards, IndustryMarquee } from "@/components/marketing/home/industries";
 import { Testimonials } from "@/components/marketing/home/testimonials";
+import { getTrialInfo } from "@/lib/plan-catalog";
+
+// The trial length comes from the Trial plan, which an admin can change.
+export const dynamic = "force-dynamic";
 
 const title = "BuPulse: the marketing team for every small business";
-const description =
-  "Tell BuPulse about your business once. It writes your posts, designs your graphics and chats with your website visitors. Try it free for 7 days.";
+const describe = (days: number) =>
+  `Tell BuPulse about your business once. It writes your posts, designs your graphics and chats with your website visitors. Try it free for ${days} days.`;
 
-export const metadata: Metadata = {
-  title: { absolute: title },
-  description,
-  alternates: { canonical: "/" },
-  openGraph: { type: "website", siteName: "BuPulse", title, description, url: "/" },
-  twitter: { card: "summary_large_image", title, description },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const description = describe((await getTrialInfo()).days);
+  return {
+    title: { absolute: title },
+    description,
+    alternates: { canonical: "/" },
+    openGraph: { type: "website", siteName: "BuPulse", title, description, url: "/" },
+    twitter: { card: "summary_large_image", title, description },
+  };
+}
 
 export default function HomePage() {
   return (

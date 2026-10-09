@@ -4,6 +4,7 @@ import type { User as AuthUser } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db";
 import type { SignUpMethod } from "@/lib/generated/prisma/client";
 import { TRIAL_DAYS } from "@/lib/plans";
+import { getTrialPlan } from "@/lib/plan-catalog";
 
 type SignUpDetails = {
   organisationName: string | null;
@@ -67,7 +68,8 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
     details.ceoName;
 
   const now = new Date();
-  const trialEndsAt = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+  const trialDays = (await getTrialPlan()).trialDays ?? TRIAL_DAYS;
+  const trialEndsAt = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000);
 
   const created = await prisma.user.upsert({
     where: { id: authUser.id },
@@ -86,6 +88,8 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
           country: details.country,
           phone: details.phone,
           detailsCompletedAt: hasRequiredDetails(details) ? now : null,
+          // The person who signs up owns the company; teammates are added from Settings → Team.
+          memberships: { create: { userId: authUser.id, role: "OWNER" } },
         },
       },
       subscription: {

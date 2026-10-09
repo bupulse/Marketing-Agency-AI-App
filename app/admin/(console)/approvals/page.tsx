@@ -37,7 +37,10 @@ function describe(a: ApprovalView) {
     const total = typeof p.transactionTotalMinor === "number" ? ` of a ${money(p.transactionTotalMinor, cur)} payment${p.transactionBilledAt ? ` from ${dateTime(String(p.transactionBilledAt)).replace(/, \d\d:\d\d.*/, "")}` : ""}` : "";
     return { title: "Refund", lines: [`Refund ${amount} (${p.refundType === "partial" ? "partial" : "full"})${total}`, `Reason: ${String(p.reason ?? "")}`] };
   }
+  if (a.kind === "change_user_email") return { title: "Change a sign-in email", lines: [`${String(p.company ?? "A company")}: change ${String(p.currentEmail)} to ${String(p.newEmail)}`, "The old address is told, every session of that person is ended.", ...(p.sendReset ? ["A password reset link is sent to the new address."] : [])] };
+  if (a.kind === "make_company_owner") return { title: "Hand over company ownership", lines: [`${String(p.company ?? "A company")}: ${String(p.email)} becomes the owner (billing and deleting the company).`, `The current owner${p.currentOwner ? ` (${String(p.currentOwner)})` : ""} becomes an Admin.`] };
   const from = p.currentPlan ? ` from ${String(p.currentPlan)}${p.currentInterval ? ` (${String(p.currentInterval).toLowerCase()})` : ""}` : "";
+  if (a.kind === "plan_price_change") return { title: "Change a plan price", lines: [`${String(p.planName ?? p.plan)}: ${String(p.oldMonthlyCents)} to ${String(p.monthlyPriceCents)} cents a month, ${String(p.oldYearlyCents)} to ${String(p.yearlyPriceCents)} cents a year.`, ...(Array.isArray(p.lines) ? (p.lines as unknown[]).map(String) : [])] };
   return { title: "Change plan", lines: [`Move to ${String(p.plan)} (${String(p.interval ?? "").toLowerCase()}ly billing)${from}`, "Paddle prorates the change"] };
 }
 

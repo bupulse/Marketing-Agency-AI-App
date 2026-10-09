@@ -1,3 +1,4 @@
+import { pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { WidgetSettings } from "@/components/widget/widget-settings";
@@ -11,6 +12,8 @@ import { isHexColor } from "@/lib/color-contrast";
 export const metadata = { title: "Website chat" };
 
 export default async function WidgetPage() {
+  const blocked = await pageGate("widget");
+  if (blocked) return blocked;
   const { business, usage } = await getAppContext();
   if (!business) return null;
   // Created on the first visit, so the embed key works as soon as the owner copies it. It starts limited to the
@@ -31,6 +34,7 @@ export default async function WidgetPage() {
         defaultGreeting={defaultGreeting(business.contentLanguage, business.name)}
         defaultAccent={resolveAccent(null, business.brandColors)}
         brandColors={business.brandColors.filter(isHexColor)}
+        lockedBySupport={Boolean(widget.disabledByAdminAt)}
         widgetKey={business.widgetKey}
         baseUrl={siteUrl()}
         usage={{ used: usage.used.chat, limit: usage.limits.chat }}

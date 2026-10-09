@@ -3,8 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { requireActiveUser } from "@/lib/auth/require-user";
-import { activeProvider, billingAdapter, isInterval, isPaidPlan, priceIdFor } from "@/lib/billing";
+import { askMessage, can } from "@/lib/team/roles";
+import { activeProvider, billingAdapter, isInterval } from "@/lib/billing";
+import { getPlan, priceIdFor } from "@/lib/plan-catalog";
 import { invoiceUrl } from "@/lib/billing/paddle";
 import { applyProviderSubscription } from "@/lib/billing/apply";
 import type { CheckoutConfig, Invoice, PaidPlan } from "@/lib/billing";
@@ -13,7 +16,7 @@ import type { BillingInterval } from "@/lib/generated/prisma/client";
 export type BillingResult<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 const planSchema = z.object({
-  plan: z.string().refine(isPaidPlan, "Choose Standard or Pro."),
+  plan: z.string().min(1).max(64),
   interval: z.string().refine(isInterval, "Choose monthly or yearly."),
 });
 
@@ -31,13 +34,23 @@ function isNotConfigured(error: unknown) {
   return error instanceof Error && /not configured|not available/i.test(error.message);
 }
 
+// Paddle switched off in the admin console: cancelling, resuming, the card page and receipts cannot run, so say so plainly
+// and point to support (a cancellation request is then handled by hand) instead of failing silently.
+const BILLING_PAUSED = "Billing is temporarily unavailable. Please contact support and we will help you, including with cancelling.";
+
 // Opens checkout for a first purchase (trial, or after a plan ended). Paying customers use changePlan.
 export async function startCheckout(input: { plan: string; interval: string }): Promise<BillingResult<{ config: CheckoutConfig }>> {
   const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  // Paddle switched off in the admin console: no new checkouts (webhooks still arrive).
+  if (!(await isServiceEnabled("paddle"))) return { ok: false, error: UNAVAILABLE_MESSAGE };
   const parsed = planSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Choose a plan." };
   const plan = parsed.data.plan as PaidPlan;
   const interval = parsed.data.interval as BillingInterval;
+  // New purchases: only active, paid plans (hidden and retired ones are closed to new sign-ups).
+  const target = await getPlan(plan);
+  if (!target || target.isTrial || target.status !== "active") return { ok: false, error: "That plan is not available. Choose one of the plans shown." };
 
   const sub = await prisma.subscription.findUnique({ where: { userId: user.id } });
   if (managed(sub) && sub?.plan !== "TRIAL") {
@@ -67,6 +80,8 @@ export async function startCheckout(input: { plan: string; interval: string }): 
 // difference now, and our copy is updated straight away so limits change immediately.
 export async function changePlan(input: { plan: string; interval: string }): Promise<BillingResult> {
   const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  if (!(await isServiceEnabled("paddle"))) return { ok: false, error: UNAVAILABLE_MESSAGE };
   const parsed = planSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Choose a plan." };
   const plan = parsed.data.plan as PaidPlan;
@@ -79,7 +94,12 @@ export async function changePlan(input: { plan: string; interval: string }): Pro
   if (sub.status === "PAST_DUE") {
     return { ok: false, error: "Update your payment method first, then you can change plan." };
   }
-  const priceId = priceIdFor(sub.provider, plan, interval);
+  // Switching to another plan needs it to be on sale; staying on the plan you have (even a retired one) only changes the interval.
+  const target = await getPlan(plan);
+  if (!target || target.isTrial || (target.status !== "active" && plan !== sub.plan)) {
+    return { ok: false, error: "That plan is not available. Choose one of the plans shown." };
+  }
+  const priceId = await priceIdFor(sub.provider, plan, interval);
   if (!priceId) return { ok: false, error: NOT_READY };
   if (priceId === sub.providerPriceId) return { ok: false, error: "You are already on that plan." };
 
@@ -97,8 +117,10 @@ export async function changePlan(input: { plan: string; interval: string }): Pro
 
 async function setCancellation(cancel: boolean): Promise<BillingResult> {
   const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
   const sub = managed(await prisma.subscription.findUnique({ where: { userId: user.id } }));
   if (!sub || !sub.provider || !sub.providerSubscriptionId) return { ok: false, error: "You do not have a paid plan." };
+  if (!(await isServiceEnabled("paddle"))) return { ok: false, error: BILLING_PAUSED };
 
   try {
     const adapter = billingAdapter(sub.provider);
@@ -127,8 +149,10 @@ export async function resumeSubscription(): Promise<BillingResult> {
 // A link to the provider's secure page for updating the card or payment method.
 export async function openPortal(): Promise<BillingResult<{ url: string }>> {
   const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
   const sub = await prisma.subscription.findUnique({ where: { userId: user.id } });
   if (!sub?.provider || !sub.providerCustomerId) return { ok: false, error: "You do not have a paid plan." };
+  if (!(await isServiceEnabled("paddle"))) return { ok: false, error: BILLING_PAUSED };
 
   try {
     const url = await billingAdapter(sub.provider).portalUrl({
@@ -146,8 +170,10 @@ export async function openPortal(): Promise<BillingResult<{ url: string }>> {
 // Receipts and invoices for the caller's own customer record. Empty when there are none or the provider is unreachable.
 export async function getInvoices(): Promise<Invoice[]> {
   const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return [];
   const sub = await prisma.subscription.findUnique({ where: { userId: user.id } });
   if (!sub?.provider || !sub.providerCustomerId) return [];
+  if (!(await isServiceEnabled("paddle"))) return [];
   try {
     return await billingAdapter(sub.provider).listInvoices(sub.providerCustomerId);
   } catch (error) {
@@ -159,6 +185,7 @@ export async function getInvoices(): Promise<Invoice[]> {
 // A fresh receipt link (provider links expire), only for a payment in the caller's own list.
 export async function getInvoiceUrl(id: string): Promise<BillingResult<{ url: string }>> {
   const invoices = await getInvoices();
+  if (!(await isServiceEnabled("paddle"))) return { ok: false, error: BILLING_PAUSED };
   if (!invoices.some((invoice) => invoice.id === id)) return { ok: false, error: "We could not find that receipt." };
   try {
     return { ok: true, url: await invoiceUrl(id) };
@@ -171,6 +198,7 @@ export async function getInvoiceUrl(id: string): Promise<BillingResult<{ url: st
 // Cheap check the page polls after checkout: is a paid plan active that changed after `since`?
 export async function checkoutActivated(since: number): Promise<boolean> {
   const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return false;
   const sub = await prisma.subscription.findUnique({
     where: { userId: user.id },
     select: { plan: true, status: true, updatedAt: true },

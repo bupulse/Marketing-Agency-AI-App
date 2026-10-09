@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
     autopilotRun: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn(), delete: vi.fn() },
     autopilotSettings: { findMany: vi.fn() },
     post: { createMany: vi.fn(), count: vi.fn() },
+    serviceSwitch: { findMany: vi.fn() },
   },
   planWeek: vi.fn(),
   consumeUsage: vi.fn(),
@@ -40,6 +41,7 @@ import { AIProviderError } from "@/lib/ai/types";
 import { getIdea } from "@/lib/autopilot/playbook";
 import { runAutopilot, runAutopilotForUser, runDueBusinesses } from "@/lib/autopilot/run";
 import { UsageLimitError } from "@/lib/usage";
+import { clearSwitchCache } from "@/lib/admin/switch";
 
 const now = new Date("2026-10-09T08:00:00Z");
 const periodStart = new Date("2026-10-01");
@@ -91,6 +93,8 @@ function plan(groups: ReturnType<typeof group>[], config: Partial<{ autoPublish:
 }
 
 beforeEach(() => {
+  mocks.prisma.serviceSwitch.findMany.mockResolvedValue([]);
+  clearSwitchCache();
   vi.resetAllMocks();
   mocks.prisma.business.findUnique.mockResolvedValue(business);
   mocks.prisma.autopilotRun.create.mockResolvedValue({ id: "run1" });
@@ -218,6 +222,18 @@ describe("an Autopilot run", () => {
     expect(mocks.consumeUsage).toHaveBeenCalledTimes(3);
     expect(mocks.refundUsage).toHaveBeenCalledTimes(3);
     expect(mocks.prisma.post.createMany).not.toHaveBeenCalled();
+  });
+
+  it("waits without claiming the week while AI is switched off in the admin console", async () => {
+    mocks.prisma.business.findUnique.mockResolvedValue(business);
+    mocks.prisma.serviceSwitch.findMany.mockResolvedValue([{ service: "gemini" }]);
+    clearSwitchCache();
+    const result = await runAutopilot("biz1", { now });
+    expect(result).toMatchObject({ status: "nothing_to_plan", note: expect.stringMatching(/paused for a short while/) });
+    expect(mocks.prisma.autopilotRun.create).not.toHaveBeenCalled();
+    expect(mocks.consumeUsage).not.toHaveBeenCalled();
+    mocks.prisma.serviceSwitch.findMany.mockResolvedValue([]);
+    clearSwitchCache();
   });
 
   it("leaves accounts waiting for deletion alone", async () => {

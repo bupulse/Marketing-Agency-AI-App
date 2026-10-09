@@ -45,6 +45,7 @@ Variables (not secret, they end up in the browser anyway):
 
 ## 4. Deploying
 
+- **Before the plan builder migration (`20261009095000_plan_builder`) reaches production, take a database backup.** It converts `Subscription.plan` from an enum to text and drops `PlanLimitOverride` and the `Plan` enum; see `docs/PLANS.md`.
 - Automatic: every push to `main` runs `.github/workflows/deploy.yml`, which applies database migrations (`prisma migrate deploy`) and then deploys. If a migration fails, nothing is deployed.
 - CI (`.github/workflows/ci.yml`) runs lint, type check, tests, build and the browser smoke test on every pull request.
 - Manual, from your machine (needs `wrangler login` and a `.env` with the build-time values): `npm run deploy`

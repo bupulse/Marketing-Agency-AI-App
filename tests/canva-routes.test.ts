@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   saveTokens: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/require-user", () => ({ checkActiveUser: mocks.checkActiveUser, requireActiveUser: mocks.requireActiveUser }));
+vi.mock("@/lib/auth/require-user", () => ({ checkActiveUser: mocks.checkActiveUser, requireActiveUser: mocks.requireActiveUser, requirePersonalUser: mocks.requireActiveUser }));
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
 vi.mock("@/lib/canva/tokens", () => ({ saveTokens: mocks.saveTokens }));
 vi.mock("@opennextjs/cloudflare", () => ({ getCloudflareContext: () => { throw new Error("not on cloudflare"); } }));
@@ -37,8 +37,8 @@ beforeEach(() => {
   process.env.CANVA_CLIENT_SECRET = "secret";
   process.env.NEXT_PUBLIC_SITE_URL = SITE;
   delete process.env.CANVA_REDIRECT_URI;
-  mocks.requireActiveUser.mockResolvedValue({ id: USER });
-  mocks.checkActiveUser.mockResolvedValue({ status: "ok", user: { id: USER } });
+  mocks.requireActiveUser.mockResolvedValue({ id: USER, actorId: USER });
+  mocks.checkActiveUser.mockResolvedValue({ status: "ok", user: { id: USER, actorId: USER } });
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -133,7 +133,7 @@ describe("open", () => {
     mocks.openDesignInCanva.mockRejectedValueOnce(new CanvaError("x", "not_connected")).mockRejectedValueOnce(new CanvaError("y", "not_found"));
     expect((await post({ designId: "d1" })).status).toBe(409);
     expect((await post({ designId: "foreign" })).status).toBe(404);
-    expect(mocks.openDesignInCanva).toHaveBeenCalledWith(USER, "foreign");
+    expect(mocks.openDesignInCanva).toHaveBeenCalledWith(USER, "foreign", USER);
   });
 });
 

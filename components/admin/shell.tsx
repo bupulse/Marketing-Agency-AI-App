@@ -14,38 +14,50 @@ function isActive(pathname: string, href: string) {
   return href === "/admin" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function Nav({ pendingApprovals, onNavigate }: { pendingApprovals: number; onNavigate?: () => void }) {
+export type ShellBadges = { approvals: number; health: { status: "ok" | "warning" | "problem"; count: number } };
+
+function Nav({ badges, onNavigate }: { badges: ShellBadges; onNavigate?: () => void }) {
   const pathname = usePathname();
   return (
-    <nav aria-label="Admin" className="flex flex-col gap-1">
-      {ADMIN_NAV.map(({ href, label, icon: Icon, badge }) => {
-        const active = isActive(pathname, href);
-        return (
-          <Link
-            key={href}
-            href={href}
-            onClick={onNavigate}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "flex min-h-11 items-center gap-3 rounded-2xl px-3.5 text-[15px] font-medium no-underline transition-colors duration-200",
-              active ? "bg-soft text-text" : "text-muted hover:bg-soft hover:text-text",
-            )}
-          >
-            <Icon aria-hidden className={cn("size-[18px] shrink-0", active && "text-pulse-blue")} />
-            <span className="flex-1">{label}</span>
-            {badge === "approvals" && pendingApprovals > 0 && (
-              <Badge tone="danger" aria-label={`${pendingApprovals} waiting for approval`}>
-                {pendingApprovals}
-              </Badge>
-            )}
-          </Link>
-        );
-      })}
+    <nav aria-label="Admin" className="flex flex-col gap-3">
+      {ADMIN_NAV.map((group) => (
+        <div key={group.title ?? "top"} className="flex flex-col gap-1">
+          {group.title && <p className="px-3.5 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted">{group.title}</p>}
+          {group.items.map(({ href, label, icon: Icon, badge }) => {
+            const active = isActive(pathname, href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={onNavigate}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex min-h-11 items-center gap-3 rounded-2xl px-3.5 text-[15px] font-medium no-underline transition-colors duration-200",
+                  active ? "bg-soft text-text" : "text-muted hover:bg-soft hover:text-text",
+                )}
+              >
+                <Icon aria-hidden className={cn("size-[18px] shrink-0", active && "text-pulse-blue")} />
+                <span className="flex-1">{label}</span>
+                {badge === "approvals" && badges.approvals > 0 && (
+                  <Badge tone="danger" aria-label={`${badges.approvals} waiting for approval`}>
+                    {badges.approvals}
+                  </Badge>
+                )}
+                {badge === "health" && badges.health.status !== "ok" && (
+                  <Badge tone={badges.health.status === "problem" ? "danger" : "violet"} aria-label={`${badges.health.count} health ${badges.health.count === 1 ? "issue" : "issues"}`}>
+                    {badges.health.count}
+                  </Badge>
+                )}
+              </Link>
+            );
+          })}
+        </div>
+      ))}
     </nav>
   );
 }
 
-export function AdminShell({ email, pendingApprovals, children }: { email: string; pendingApprovals: number; children: ReactNode }) {
+export function AdminShell({ email, badges, children }: { email: string; badges: ShellBadges; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative flex min-h-dvh w-full flex-wrap items-start gap-5 p-3 sm:p-5">
@@ -61,7 +73,7 @@ export function AdminShell({ email, pendingApprovals, children }: { email: strin
           <Logo height={26} />
           <Badge tone="violet">Admin</Badge>
         </div>
-        <Nav pendingApprovals={pendingApprovals} />
+        <Nav badges={badges} />
       </aside>
 
       <div className="flex min-w-0 flex-1 basis-[min(100%,560px)] flex-col gap-5">
@@ -94,7 +106,7 @@ export function AdminShell({ email, pendingApprovals, children }: { email: strin
 
         {open && (
           <div id="admin-mobile-nav" className="glass-strong rounded-[24px] p-3 lg:hidden">
-            <Nav pendingApprovals={pendingApprovals} onNavigate={() => setOpen(false)} />
+            <Nav badges={badges} onNavigate={() => setOpen(false)} />
           </div>
         )}
 

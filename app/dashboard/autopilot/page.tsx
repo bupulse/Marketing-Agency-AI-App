@@ -4,13 +4,16 @@ import { EmptyState } from "@/components/app/empty-state";
 import { PageHeader } from "@/components/app/page-header";
 import { PlanBoard } from "@/components/autopilot/plan-board";
 import { SettingsCard } from "@/components/autopilot/settings-card";
-import { Button } from "@/components/ui";
+import { Button, GlassCard } from "@/components/ui";
+import { askMessage, can } from "@/lib/team/roles";
 import { loadAutopilotView } from "@/lib/autopilot/view";
 
 export const metadata = { title: "Autopilot" };
 
 export default async function AutopilotPage() {
-  const { user, usage } = await getAppContext();
+  const { user, usage, role } = await getAppContext();
+  const canConfigure = can(role, "autopilotSettings");
+  const canConnect = can(role, "channels");
   const view = await loadAutopilotView(user.id);
   const creditsLeft = Math.max(0, usage.limits.text - usage.used.text);
 
@@ -25,9 +28,13 @@ export default async function AutopilotPage() {
           points={["Connect Instagram, Facebook, LinkedIn, TikTok or YouTube", "Upload photos of your products, team and work", "Switch Autopilot on and approve your week in one tap"]}
           action={
             <div className="flex flex-wrap justify-center gap-3">
-              <Button href="/dashboard/connections" leading={<Plug aria-hidden className="size-5" />}>
-                Connect accounts
-              </Button>
+              {canConnect ? (
+                <Button href="/dashboard/connections" leading={<Plug aria-hidden className="size-5" />}>
+                  Connect accounts
+                </Button>
+              ) : (
+                <p className="text-sm text-muted">{askMessage("channels")}</p>
+              )}
               <Button href="/dashboard/gallery" variant="outline" leading={<Camera aria-hidden className="size-5" />}>
                 Upload photos
               </Button>
@@ -36,7 +43,14 @@ export default async function AutopilotPage() {
         />
       ) : (
         <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
-          <SettingsCard initial={view.config} accounts={view.accounts} timeZone={view.timeZone} />
+          {canConfigure ? (
+            <SettingsCard initial={view.config} accounts={view.accounts} timeZone={view.timeZone} />
+          ) : (
+            <GlassCard as="section" aria-labelledby="ap-settings" className="flex flex-col gap-2 p-5">
+              <h2 id="ap-settings" className="text-lg font-semibold">Autopilot settings</h2>
+              <p className="text-sm text-muted">{view.config.enabled ? "Autopilot is on." : "Autopilot is off."} {askMessage("autopilotSettings")}</p>
+            </GlassCard>
+          )}
           <PlanBoard view={view} creditsLeft={creditsLeft} />
         </div>
       )}

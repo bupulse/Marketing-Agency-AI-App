@@ -3,32 +3,32 @@
 import { Check } from "lucide-react";
 import { useState } from "react";
 import { IntervalToggle } from "@/components/billing/interval-toggle";
-import { formatUsd, yearlySavings } from "@/components/billing/helpers";
+import { formatUsd, yearlyBadge, yearlySavings, yearlySavingsLabel } from "@/components/billing/helpers";
 import { PriceTag } from "@/components/billing/price-tag";
 import { Badge, Button, GlassCard } from "@/components/ui";
-import { pricingPlans } from "@/lib/content/site";
+import type { PublicPlan } from "@/lib/plan-catalog";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 import { cn } from "@/lib/cn";
 
-/** Plan cards with a Monthly/Yearly switch. Prices come from the billing catalog. */
-export function PricingPlans() {
+/** Plan cards with a Monthly/Yearly switch. The plans (and their prices) come from the database, via the page. */
+export function PricingPlans({ plans }: { plans: PublicPlan[] }) {
   const [interval, setInterval] = useState<BillingInterval>("MONTH");
 
   return (
     <div className="flex flex-col items-center gap-8">
       {/* Wrapped so the toggle centres here (it aligns to the start on the billing page). */}
       <div>
-        <IntervalToggle value={interval} onChange={setInterval} />
+        <IntervalToggle value={interval} onChange={setInterval} badge={yearlyBadge(plans)} />
       </div>
-      <div className="mx-auto grid w-full max-w-4xl gap-6 md:grid-cols-2">
-        {pricingPlans.map((plan) => (
+      <div className={cn("mx-auto grid w-full gap-6", plans.length >= 3 ? "max-w-6xl md:grid-cols-2 lg:grid-cols-3" : "max-w-4xl md:grid-cols-2")}>
+        {plans.map((plan) => (
           <GlassCard
-            key={plan.id}
-            strong={plan.highlighted}
+            key={plan.key}
+            strong={plan.highlight}
             padding="lg"
-            className={cn("relative flex flex-col gap-6", plan.highlighted && "shadow-glow ring-2 ring-pulse-violet/60")}
+            className={cn("relative flex flex-col gap-6", plan.highlight && "shadow-glow ring-2 ring-pulse-violet/60")}
           >
-            {plan.highlighted && (
+            {plan.highlight && (
               <Badge tone="violet" className="absolute top-6 right-6">
                 Most popular
               </Badge>
@@ -38,9 +38,13 @@ export function PricingPlans() {
               <p className="text-muted">{plan.description}</p>
             </div>
             <div>
-              <PriceTag plan={plan.id} interval={interval} />
+              <PriceTag plan={plan} interval={interval} />
               <p className="mt-1 min-h-5 text-sm text-muted">
-                {interval === "YEAR" ? `Billed yearly. You save ${formatUsd(yearlySavings(plan.id))}, that's 2 months free.` : "Billed every month"}
+                {interval === "YEAR"
+                  ? yearlySavingsLabel(plan)
+                    ? `Billed yearly. You save ${formatUsd(yearlySavings(plan))}, that's ${yearlySavingsLabel(plan) === "2 months free" ? "2 months free" : yearlySavingsLabel(plan)}.`
+                    : "Billed yearly"
+                  : "Billed every month"}
               </p>
             </div>
             <ul className="flex flex-1 flex-col gap-3">
@@ -51,7 +55,7 @@ export function PricingPlans() {
                 </li>
               ))}
             </ul>
-            <Button href="/signup" size="lg" variant={plan.highlighted ? "primary" : "ghost"}>
+            <Button href="/signup" size="lg" variant={plan.highlight ? "primary" : "ghost"}>
               Start free trial
             </Button>
           </GlassCard>

@@ -1,4 +1,5 @@
 import "server-only";
+import { disabledServices } from "@/lib/admin/switch";
 import type { ConnectorEntry, ConnectorGroup, ConnectorId, ConnectorStatus } from "./types";
 
 // The catalog for /dashboard/connectors. To add a connector: create lib/connectors/entries/<id>.ts that exports
@@ -59,6 +60,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
  */
 export async function getCatalog(ctx: { userId: string; businessId: string }, entries: ConnectorEntry[] = ENTRIES): Promise<CatalogItem[]> {
   const byId = new Map(entries.map((e) => [e.id, e]));
+  const off = await disabledServices(); // switched off in the admin console
   const ids = [...new Set<ConnectorId>([...(Object.keys(PLANNED) as ConnectorId[]), ...entries.map((e) => e.id)])];
   return Promise.all(
     ids.map(async (id): Promise<CatalogItem> => {
@@ -66,6 +68,10 @@ export async function getCatalog(ctx: { userId: string; businessId: string }, en
       const planned = PLANNED[id];
       if (!entry) return { id, ...planned, status: { state: "unavailable" }, connectHref: null, manageHref: null };
       let status: ConnectorStatus;
+      if (off.has(id)) {
+        // Paused by the admin: shown as unavailable (no Connect button); nothing is disconnected or lost.
+        return { id, name: entry.name, group: entry.group, description: entry.description, icon: entry.icon, status: { state: "unavailable", detail: "Temporarily unavailable. Please try again later." }, connectHref: null, manageHref: null };
+      }
       try {
         status = await withTimeout(Promise.resolve().then(() => entry.status(ctx)), STATUS_TIMEOUT_MS);
       } catch (error) {

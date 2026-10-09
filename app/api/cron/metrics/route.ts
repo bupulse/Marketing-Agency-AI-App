@@ -1,3 +1,4 @@
+import { recordCron } from "@/lib/admin/cron-run";
 import { NextResponse, type NextRequest } from "next/server";
 import { collectMetrics } from "@/lib/publishing/metrics";
 
@@ -17,5 +18,5 @@ export async function POST(request: NextRequest) {
   if (!safeEqual(request.headers.get("authorization") ?? "", `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return NextResponse.json(await collectMetrics());
+  return NextResponse.json(await recordCron("metrics", () => collectMetrics()));
 }

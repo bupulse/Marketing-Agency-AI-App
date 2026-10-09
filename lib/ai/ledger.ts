@@ -1,6 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
+import { AI_PROVIDER_SERVICE } from "@/lib/admin/service-catalog";
+import { assertServiceEnabled } from "@/lib/admin/switch";
 import { assertWithinBudget } from "./budget";
 import { estimateCostUsd } from "./pricing";
 import { AIProviderError, type TokenUsage } from "./types";
@@ -17,6 +19,9 @@ export async function withLedger<T>(
   call: () => Promise<T>,
   describe: (result: T) => { provider: string; model: string; usage: TokenUsage; images?: number },
 ): Promise<T> {
+  // The admin console can switch a provider off: refuse before calling it. Not recorded as a call.
+  const service = AI_PROVIDER_SERVICE[meta.provider];
+  if (service) await assertServiceEnabled(service);
   // Over the monthly cap: refuse before calling (and paying) the provider. Not recorded as a call.
   await assertWithinBudget(meta.provider);
   const started = Date.now();

@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   requireActiveUser: vi.fn(),
   rateLimit: vi.fn(),
   saveConnections: vi.fn(),
-  prisma: { business: { findUnique: vi.fn() } },
+  prisma: { business: { findUnique: vi.fn() }, serviceSwitch: { findMany: vi.fn() } },
 }));
 
 vi.mock("@/lib/auth/require-user", () => ({ requireActiveUser: mocks.requireActiveUser }));
@@ -19,6 +19,7 @@ import { GET as callback } from "@/app/api/social/[network]/callback/route";
 import { sealState, STATE_COOKIE } from "@/lib/social/oauth";
 import { CONNECT_ERRORS } from "@/lib/social/connect-errors";
 import { RateLimitError } from "@/lib/rate-limit";
+import { clearSwitchCache } from "@/lib/admin/switch";
 
 const USER = "11111111-1111-1111-1111-111111111111";
 const SITE = "http://127.0.0.1:3000";
@@ -36,6 +37,8 @@ beforeEach(() => {
   mocks.requireActiveUser.mockResolvedValue({ id: USER });
   mocks.rateLimit.mockResolvedValue(undefined);
   mocks.prisma.business.findUnique.mockResolvedValue({ id: "biz1" });
+  mocks.prisma.serviceSwitch.findMany.mockResolvedValue([]);
+  clearSwitchCache();
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -110,6 +113,18 @@ describe("callback error paths", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: { message: "bad code", code: 100 } }), { status: 400 })));
     expect(location(await cb("?code=c&state=s", { state: "s" })).searchParams.get("error")).toBe("failed");
     expect(mocks.saveConnections).not.toHaveBeenCalled();
+  });
+
+  it("shows 'unavailable' and exchanges nothing when the network was switched off in the admin console meanwhile", async () => {
+    mocks.prisma.serviceSwitch.findMany.mockResolvedValue([{ service: "meta" }]);
+    clearSwitchCache();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await cb("?code=c&state=s", { state: "s" });
+    expect(location(response).searchParams.get("error")).toBe("unavailable");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.saveConnections).not.toHaveBeenCalled();
+    expect(response.headers.get("set-cookie")).toContain(`${STATE_COOKIE}=;`);
   });
 
   it("clears the state cookie on every exit", async () => {

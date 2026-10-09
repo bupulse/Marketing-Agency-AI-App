@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireActiveUser } from "@/lib/auth/require-user";
+import { ForbiddenError, type Permission } from "@/lib/team/roles";
 import { logError } from "@/lib/errors";
 import { rateLimit, rateLimitMessage, RateLimitError, type RateLimitRule } from "@/lib/rate-limit";
 import { publishPostsNow } from "@/lib/publishing/engine";
@@ -31,8 +32,8 @@ import type { Network } from "@/lib/social/types";
 const SAVE_FAILED = "We could not save that. Please try again.";
 
 /** Every action re-checks the signed-in user and only touches their own business. */
-async function owner(): Promise<Owner | null> {
-  const user = await requireActiveUser();
+async function owner(permission?: Permission): Promise<Owner | null> {
+  const user = await requireActiveUser(permission, "throw");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   return business ? { businessId: business.id, userId: user.id } : null;
 }
@@ -64,8 +65,15 @@ async function run<T extends object>(
   name: string,
   limit: keyof typeof PUBLISHING_LIMITS,
   body: (o: Owner) => Promise<T>,
+  permission?: Permission,
 ): Promise<ActionResult<T>> {
-  const o = await owner();
+  let o: Owner | null;
+  try {
+    o = await owner(permission);
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { ok: false, error: error.message };
+    throw error;
+  }
   if (!o) return { ok: false, error: "Set up your business first." };
   const blocked = await limited(o.userId, limit);
   if (blocked) return blocked;
@@ -150,7 +158,7 @@ export async function setTimezoneAction(timezone: string): Promise<ActionResult>
     await setBusinessTimezone(o.businessId, parsed.data);
     revalidatePath("/dashboard", "layout");
     return {};
-  });
+  }, "settings");
 }
 
 /** For the "Schedule" buttons on content: loads what the composer needs when it is opened. */
@@ -180,5 +188,5 @@ export async function autoSetTimezoneAction(timezone: string): Promise<ActionRes
     // No revalidation: it would refresh whatever page the user has moved on to (see AutoTimezone).
     const { count } = await prisma.business.updateMany({ where: { id: o.businessId, timezone: "UTC" }, data: { timezone: parsed.data } });
     return { changed: count > 0 };
-  });
+  }, "settings");
 }

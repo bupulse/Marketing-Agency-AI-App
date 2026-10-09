@@ -2,6 +2,7 @@ import "server-only";
 // The analytics query layer used by the /admin console and the Jarvis REST/MCP tools. All ranges are inclusive UTC days.
 import { prisma } from "@/lib/db";
 import { utcDay } from "./collect";
+import { getPriceTable } from "@/lib/plan-catalog";
 import { addDays, computeMrrCents, conversionPct, eachDay, fixedCostForDay, pct, profitCents, round2 } from "./math";
 import { rollupDay } from "./rollup";
 import type {
@@ -46,7 +47,10 @@ async function ensureRolled(range: DateRange, now = new Date()) {
   const at = new Map(rows.map((r) => [utcDay(r.date), r.updatedAt]));
   if (range.to >= yesterday && range.from <= yesterday && !at.has(yesterday)) todo.push(yesterday);
   if (range.to === today && (!at.has(today) || now.getTime() - at.get(today)!.getTime() > 60_000)) todo.push(today);
-  for (const d of todo) await rollupDay(d, now);
+  for (const d of todo) {
+    // Best effort: a slow or failing refresh must not break a read; serve what is already rolled up.
+    await rollupDay(d, now).catch((error) => console.error(`[analytics] refresh of ${d} failed:`, error instanceof Error ? error.message : error));
+  }
 }
 
 type KeyedPoint = MetricPoint & { key: string };
@@ -166,7 +170,8 @@ export async function getRevenue(range: DateRange): Promise<Revenue> {
     where: { plan: { not: "TRIAL" }, status: { in: ["ACTIVE", "PAST_DUE"] } },
     _count: { _all: true },
   });
-  const byPlan = groups.map((g) => ({ plan: g.plan, interval: g.interval, subscribers: g._count._all, mrrCents: computeMrrCents([{ plan: g.plan, interval: g.interval, count: g._count._all }]) }));
+  const prices = await getPriceTable();
+  const byPlan = groups.map((g) => ({ plan: g.plan, interval: g.interval, subscribers: g._count._all, mrrCents: computeMrrCents([{ plan: g.plan, interval: g.interval, count: g._count._all }], prices) }));
   const grossCents = byDay.reduce((s, d) => s + d.grossCents, 0);
   const refundsCents = byDay.reduce((s, d) => s + d.refundsCents, 0);
   return { range: r, grossCents, refundsCents, netCents: grossCents - refundsCents, mrrCents: byPlan.reduce((s, p) => s + p.mrrCents, 0), byPlan, byDay };

@@ -1,8 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { usageWindowEnd, usageWindowStart } from "@/lib/billing/period";
-import { PLANS, type UsageMetric } from "@/lib/plans";
-import { getPlanLimits } from "@/lib/admin/plan-limits";
+import type { UsageMetric } from "@/lib/plans";
+import { getPlan, getPlanLimits, getTrialPlan } from "@/lib/plan-catalog";
 
 const FIELD = {
   text: "textGenerations",
@@ -47,7 +47,7 @@ export async function consumeUsage(userId: string, metric: UsageMetric, amount =
     throw new UsageLimitError("inactive", metric);
   }
 
-  // lib/plans.ts, with the admin console's runtime overrides on top (cached for 30 s).
+  // The plan's limits from the plan catalog (database, cached for 30 s).
   const limit = (await getPlanLimits(sub.plan))[metric];
   const field = FIELD[metric];
   // Usage resets monthly, also inside a yearly billing period.
@@ -82,9 +82,10 @@ export async function getUsageSummary(userId: string) {
     where: { userId_periodStart: { userId, periodStart } },
   });
   const limits = await getPlanLimits(sub.plan);
+  const planConfig = (await getPlan(sub.plan)) ?? (await getTrialPlan());
   return {
     subscription: sub,
-    plan: PLANS[sub.plan],
+    plan: planConfig,
     used: {
       text: record?.textGenerations ?? 0,
       image: record?.imageGenerations ?? 0,

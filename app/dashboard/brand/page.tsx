@@ -1,3 +1,4 @@
+import { pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { BrandSection } from "@/components/brand-profile/brand-section";
@@ -10,6 +11,8 @@ import { createSignedDownloadUrl } from "@/lib/storage";
 export const metadata = { title: "Brand" };
 
 export default async function BrandPage() {
+  const blocked = await pageGate("settings");
+  if (blocked) return blocked;
   const { business, businessName, user } = await getAppContext();
   if (!business) return null;
 

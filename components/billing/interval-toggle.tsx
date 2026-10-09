@@ -6,7 +6,7 @@ import type { BillingInterval } from "@/lib/generated/prisma/client";
 import { cn } from "@/lib/cn";
 
 /** Monthly/Yearly toggle (shared look with the marketing pricing page). */
-export function IntervalToggle({ value, onChange }: { value: BillingInterval; onChange: (v: BillingInterval) => void }) {
+export function IntervalToggle({ value, onChange, badge = "2 months free" }: { value: BillingInterval; onChange: (v: BillingInterval) => void; badge?: string | null }) {
   return (
     <div role="radiogroup" aria-label="Billing period" className="glass inline-flex items-center gap-1 self-start rounded-full p-1">
       {INTERVALS.map((interval) => {
@@ -24,7 +24,7 @@ export function IntervalToggle({ value, onChange }: { value: BillingInterval; on
             )}
           >
             {interval === "MONTH" ? "Monthly" : "Yearly"}
-            {interval === "YEAR" && <Badge tone="success">2 months free</Badge>}
+            {interval === "YEAR" && badge && <Badge tone="success">{badge}</Badge>}
           </button>
         );
       })}

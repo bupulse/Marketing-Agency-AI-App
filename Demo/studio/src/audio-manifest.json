@@ -1,0 +1,746 @@
+{
+ "01-intro": {
+  "hook": {
+   "file": "audio/voice/b85755b9b854.mp3",
+   "duration": 8.359,
+   "lines": [
+    {
+     "start": 0,
+     "end": 1.753
+    },
+    {
+     "start": 2.136,
+     "end": 3.924
+    },
+    {
+     "start": 4.249,
+     "end": 8.359
+    }
+   ]
+  },
+  "problem": {
+   "file": "audio/voice/1e65d62deb37.mp3",
+   "duration": 12.771,
+   "lines": [
+    {
+     "start": 0,
+     "end": 7.709
+    },
+    {
+     "start": 7.837,
+     "end": 12.771
+    }
+   ]
+  },
+  "landing": {
+   "file": "audio/voice/58367fb30d05.mp3",
+   "duration": 7.012,
+   "lines": [
+    {
+     "start": 0,
+     "end": 1.591
+    },
+    {
+     "start": 1.672,
+     "end": 7.012
+    }
+   ]
+  },
+  "features": {
+   "file": "audio/voice/165010f02577.mp3",
+   "duration": 6.873,
+   "lines": [
+    {
+     "start": 0,
+     "end": 6.873
+    }
+   ]
+  },
+  "pricing": {
+   "file": "audio/voice/aa342cc458f8.mp3",
+   "duration": 13.235,
+   "lines": [
+    {
+     "start": 0,
+     "end": 1.765
+    },
+    {
+     "start": 2.043,
+     "end": 7.512
+    },
+    {
+     "start": 7.721,
+     "end": 13.235
+    }
+   ]
+  },
+  "nocontract": {
+   "file": "audio/voice/ab1d35ddb32a.mp3",
+   "duration": 3.855,
+   "lines": [
+    {
+     "start": 0,
+     "end": 3.855
+    }
+   ]
+  },
+  "signup": {
+   "file": "audio/voice/093c6c3c4b76.mp3",
+   "duration": 4.412,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.412
+    }
+   ]
+  },
+  "onboarding": {
+   "file": "audio/voice/cbd1c6be9357.mp3",
+   "duration": 9.752,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.168
+    },
+    {
+     "start": 4.493,
+     "end": 9.752
+    }
+   ]
+  },
+  "dashboard": {
+   "file": "audio/voice/a2e8d56f473c.mp3",
+   "duration": 3.344,
+   "lines": [
+    {
+     "start": 0,
+     "end": 3.344
+    }
+   ]
+  },
+  "choose": {
+   "file": "audio/voice/1a5b0bedf790.mp3",
+   "duration": 3.065,
+   "lines": [
+    {
+     "start": 0,
+     "end": 3.065
+    }
+   ]
+  },
+  "end": {
+   "file": "audio/voice/67895a424716.mp3",
+   "duration": 3.111,
+   "lines": [
+    {
+     "start": 0,
+     "end": 3.111
+    }
+   ]
+  }
+ },
+ "02-starter": {
+  "persona": {
+   "file": "audio/voice/2e7d8cf0d783.mp3",
+   "duration": 6.641,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.005
+    },
+    {
+     "start": 4.052,
+     "end": 6.641
+    }
+   ]
+  },
+  "choose": {
+   "file": "audio/voice/74a6ff41e1fc.mp3",
+   "duration": 5.341,
+   "lines": [
+    {
+     "start": 0,
+     "end": 5.341
+    }
+   ]
+  },
+  "nocard": {
+   "file": "audio/voice/81dc0ffb0f8a.mp3",
+   "duration": 3.297,
+   "lines": [
+    {
+     "start": 0,
+     "end": 3.297
+    }
+   ]
+  },
+  "momo": {
+   "file": "audio/voice/3d22a85a34df.mp3",
+   "duration": 6.316,
+   "lines": [
+    {
+     "start": 0,
+     "end": 3.622
+    },
+    {
+     "start": 3.831,
+     "end": 6.316
+    }
+   ]
+  },
+  "reference": {
+   "file": "audio/voice/20f914cde61e.mp3",
+   "duration": 4.04,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.04
+    }
+   ]
+  },
+  "paid": {
+   "file": "audio/voice/72744a5f4ca9.mp3",
+   "duration": 5.759,
+   "lines": [
+    {
+     "start": 0,
+     "end": 5.759
+    }
+   ]
+  },
+  "approve": {
+   "file": "audio/voice/28c98ce734b7.mp3",
+   "duration": 4.783,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.783
+    }
+   ]
+  },
+  "active": {
+   "file": "audio/voice/c64d90c5d8da.mp3",
+   "duration": 1.95,
+   "lines": [
+    {
+     "start": 0,
+     "end": 1.95
+    }
+   ]
+  },
+  "project": {
+   "file": "audio/voice/2f08b428f93b.mp3",
+   "duration": 5.294,
+   "lines": [
+    {
+     "start": 0,
+     "end": 5.294
+    }
+   ]
+  },
+  "generate": {
+   "file": "audio/voice/0f7ed42be3ed.mp3",
+   "duration": 8.452,
+   "lines": [
+    {
+     "start": 0,
+     "end": 8.452
+    }
+   ]
+  },
+  "voice": {
+   "file": "audio/voice/3f4f07235c23.mp3",
+   "duration": 7.755,
+   "lines": [
+    {
+     "start": 0,
+     "end": 7.755
+    }
+   ]
+  },
+  "design": {
+   "file": "audio/voice/81ec692980cf.mp3",
+   "duration": 4.876,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.876
+    }
+   ]
+  },
+  "edit": {
+   "file": "audio/voice/8099647a3c8c.mp3",
+   "duration": 4.319,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.319
+    }
+   ]
+  },
+  "gallery": {
+   "file": "audio/voice/39fc3288ecbf.mp3",
+   "duration": 2.926,
+   "lines": [
+    {
+     "start": 0,
+     "end": 2.926
+    }
+   ]
+  },
+  "calendar": {
+   "file": "audio/voice/9811a9cddd25.mp3",
+   "duration": 3.808,
+   "lines": [
+    {
+     "start": 0,
+     "end": 3.808
+    }
+   ]
+  },
+  "publish": {
+   "file": "audio/voice/710fbbc3c969.mp3",
+   "duration": 5.666,
+   "lines": [
+    {
+     "start": 0,
+     "end": 5.666
+    }
+   ]
+  },
+  "usage": {
+   "file": "audio/voice/66d078666094.mp3",
+   "duration": 5.712,
+   "lines": [
+    {
+     "start": 0,
+     "end": 5.712
+    }
+   ]
+  },
+  "upsell": {
+   "file": "audio/voice/65623795659d.mp3",
+   "duration": 2.786,
+   "lines": [
+    {
+     "start": 0,
+     "end": 2.786
+    }
+   ]
+  },
+  "end": {
+   "file": "audio/voice/67895a424716.mp3",
+   "duration": 3.111,
+   "lines": [
+    {
+     "start": 0,
+     "end": 3.111
+    }
+   ]
+  }
+ },
+ "03-business": {
+  "persona": {
+   "file": "audio/voice/bef16649eab5.mp3",
+   "duration": 6.548,
+   "lines": [
+    {
+     "start": 0,
+     "end": 6.548
+    }
+   ]
+  },
+  "pay": {
+   "file": "audio/voice/caac6913b430.mp3",
+   "duration": 6.316,
+   "lines": [
+    {
+     "start": 0,
+     "end": 6.316
+    }
+   ]
+  },
+  "team": {
+   "file": "audio/voice/cce986330aa0.mp3",
+   "duration": 4.876,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.876
+    }
+   ]
+  },
+  "roles": {
+   "file": "audio/voice/821803c8e9fa.mp3",
+   "duration": 5.062,
+   "lines": [
+    {
+     "start": 0,
+     "end": 5.062
+    }
+   ]
+  },
+  "listing": {
+   "file": "audio/voice/c33f28c9d2b5.mp3",
+   "duration": 3.808,
+   "lines": [
+    {
+     "start": 0,
+     "end": 3.808
+    }
+   ]
+  },
+  "content": {
+   "file": "audio/voice/4405bec9ac09.mp3",
+   "duration": 5.341,
+   "lines": [
+    {
+     "start": 0,
+     "end": 5.341
+    }
+   ]
+  },
+  "volume": {
+   "file": "audio/voice/e4318f868856.mp3",
+   "duration": 3.762,
+   "lines": [
+    {
+     "start": 0,
+     "end": 3.762
+    }
+   ]
+  },
+  "channels": {
+   "file": "audio/voice/fded9c71f16f.mp3",
+   "duration": 3.065,
+   "lines": [
+    {
+     "start": 0,
+     "end": 3.065
+    }
+   ]
+  },
+  "composer": {
+   "file": "audio/voice/ad9b4c7426a4.mp3",
+   "duration": 5.666,
+   "lines": [
+    {
+     "start": 0,
+     "end": 5.666
+    }
+   ]
+  },
+  "variants": {
+   "file": "audio/voice/44518bbbcfb3.mp3",
+   "duration": 8.499,
+   "lines": [
+    {
+     "start": 0,
+     "end": 8.499
+    }
+   ]
+  },
+  "calendar": {
+   "file": "audio/voice/58e86cad10f5.mp3",
+   "duration": 5.201,
+   "lines": [
+    {
+     "start": 0,
+     "end": 5.201
+    }
+   ]
+  },
+  "results": {
+   "file": "audio/voice/838e1d0b73af.mp3",
+   "duration": 4.319,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.319
+    }
+   ]
+  },
+  "reminder": {
+   "file": "audio/voice/eb8cb61b3094.mp3",
+   "duration": 4.551,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.551
+    }
+   ]
+  },
+  "upsell": {
+   "file": "audio/voice/d868ab51da73.mp3",
+   "duration": 5.433,
+   "lines": [
+    {
+     "start": 0,
+     "end": 5.433
+    }
+   ]
+  },
+  "end": {
+   "file": "audio/voice/67895a424716.mp3",
+   "duration": 3.111,
+   "lines": [
+    {
+     "start": 0,
+     "end": 3.111
+    }
+   ]
+  }
+ },
+ "04-custom": {
+  "persona": {
+   "file": "audio/voice/405fc5dba5ad.mp3",
+   "duration": 8.173,
+   "lines": [
+    {
+     "start": 0,
+     "end": 8.173
+    }
+   ]
+  },
+  "request": {
+   "file": "audio/voice/316253b6200d.mp3",
+   "duration": 5.201,
+   "lines": [
+    {
+     "start": 0,
+     "end": 5.201
+    }
+   ]
+  },
+  "booking": {
+   "file": "audio/voice/6982cd0f4d85.mp3",
+   "duration": 4.876,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.876
+    }
+   ]
+  },
+  "meeting": {
+   "file": "audio/voice/1eb35fb13fee.mp3",
+   "duration": 4.087,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.087
+    }
+   ]
+  },
+  "builder": {
+   "file": "audio/voice/0fda93712b3e.mp3",
+   "duration": 18.994,
+   "lines": [
+    {
+     "start": 0,
+     "end": 7.721
+    },
+    {
+     "start": 7.964,
+     "end": 18.994
+    }
+   ]
+  },
+  "offer": {
+   "file": "audio/voice/d311bfb24216.mp3",
+   "duration": 6.641,
+   "lines": [
+    {
+     "start": 0,
+     "end": 6.641
+    }
+   ]
+  },
+  "payforneed": {
+   "file": "audio/voice/c61013f4a74b.mp3",
+   "duration": 4.04,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.04
+    }
+   ]
+  },
+  "instagram": {
+   "file": "audio/voice/1775c794aa4a.mp3",
+   "duration": 2.136,
+   "lines": [
+    {
+     "start": 0,
+     "end": 2.136
+    }
+   ]
+  },
+  "autopilot": {
+   "file": "audio/voice/7fb429da437e.mp3",
+   "duration": 9.567,
+   "lines": [
+    {
+     "start": 0,
+     "end": 9.567
+    }
+   ]
+  },
+  "aiphoto": {
+   "file": "audio/voice/ea4dfb3c20c8.mp3",
+   "duration": 4.272,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.272
+    }
+   ]
+  },
+  "chat": {
+   "file": "audio/voice/744cb1a30426.mp3",
+   "duration": 12.446,
+   "lines": [
+    {
+     "start": 0,
+     "end": 8.766
+    },
+    {
+     "start": 9.044,
+     "end": 12.446
+    }
+   ]
+  },
+  "leads": {
+   "file": "audio/voice/a06f1d42cf68.mp3",
+   "duration": 6.223,
+   "lines": [
+    {
+     "start": 0,
+     "end": 6.223
+    }
+   ]
+  },
+  "managed": {
+   "file": "audio/voice/6739ba1a6241.mp3",
+   "duration": 4.087,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.087
+    }
+   ]
+  },
+  "analytics": {
+   "file": "audio/voice/3687dd74bd50.mp3",
+   "duration": 4.551,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.551
+    }
+   ]
+  },
+  "soon": {
+   "file": "audio/voice/678ff7148583.mp3",
+   "duration": 6.177,
+   "lines": [
+    {
+     "start": 0,
+     "end": 6.177
+    }
+   ]
+  },
+  "end": {
+   "file": "audio/voice/67895a424716.mp3",
+   "duration": 3.111,
+   "lines": [
+    {
+     "start": 0,
+     "end": 3.111
+    }
+   ]
+  }
+ },
+ "05-card": {
+  "choose": {
+   "file": "audio/voice/c673748d31cf.mp3",
+   "duration": 2.833,
+   "lines": [
+    {
+     "start": 0,
+     "end": 2.833
+    }
+   ]
+  },
+  "price": {
+   "file": "audio/voice/76a9a2e62215.mp3",
+   "duration": 3.715,
+   "lines": [
+    {
+     "start": 0,
+     "end": 3.715
+    }
+   ]
+  },
+  "checkout": {
+   "file": "audio/voice/0d9d10f3083b.mp3",
+   "duration": 4.969,
+   "lines": [
+    {
+     "start": 0,
+     "end": 4.969
+    }
+   ]
+  },
+  "secure": {
+   "file": "audio/voice/6b693e58f9e6.mp3",
+   "duration": 5.666,
+   "lines": [
+    {
+     "start": 0,
+     "end": 5.666
+    }
+   ]
+  },
+  "active": {
+   "file": "audio/voice/266976be22ed.mp3",
+   "duration": 2.74,
+   "lines": [
+    {
+     "start": 0,
+     "end": 2.74
+    }
+   ]
+  },
+  "renew": {
+   "file": "audio/voice/fdb4488c139b.mp3",
+   "duration": 5.573,
+   "lines": [
+    {
+     "start": 0,
+     "end": 5.573
+    }
+   ]
+  },
+  "switch": {
+   "file": "audio/voice/060853da8329.mp3",
+   "duration": 2.833,
+   "lines": [
+    {
+     "start": 0,
+     "end": 2.833
+    }
+   ]
+  },
+  "end": {
+   "file": "audio/voice/67895a424716.mp3",
+   "duration": 3.111,
+   "lines": [
+    {
+     "start": 0,
+     "end": 3.111
+    }
+   ]
+  }
+ }
+}

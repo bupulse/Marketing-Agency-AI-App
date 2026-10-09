@@ -1,4 +1,5 @@
 import "server-only";
+import { disabledNetworks } from "@/lib/admin/switch";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { getProvider, isNetwork } from "@/lib/social/registry";
@@ -23,8 +24,11 @@ export type MetricsRunResult = { checked: number; saved: number; skipped: number
 export async function collectMetrics(now = new Date(), options: { limit?: number; budgetMs?: number; pauseMs?: number } = {}): Promise<MetricsRunResult> {
   const result: MetricsRunResult = { checked: 0, saved: 0, skipped: 0, failed: 0 };
   const deadline = Date.now() + (options.budgetMs ?? TIME_BUDGET_MS);
+  // Networks switched off in the admin console are skipped (their tokens and posts are left alone).
+  const paused = await disabledNetworks();
   const posts = await prisma.post.findMany({
     where: {
+      ...(paused.length ? { network: { notIn: paused } } : {}),
       status: "PUBLISHED",
       externalId: { not: null },
       connectionId: { not: null },

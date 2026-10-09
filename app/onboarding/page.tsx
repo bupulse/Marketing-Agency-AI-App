@@ -7,6 +7,8 @@ import { prisma } from "@/lib/db";
 import { ensureAccount } from "@/lib/account";
 import { isOwnLogoPath, readKnowledge } from "@/lib/brand/schemas";
 import { createSignedDownloadUrl } from "@/lib/storage";
+import { resolveCompany } from "@/lib/team/company";
+import { can } from "@/lib/team/roles";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { readReturn } from "@/lib/auth/return-server";
 
@@ -21,12 +23,16 @@ export default async function OnboardingPage() {
   if (!user) redirect("/login?next=/onboarding");
   if (!(await ensureAccount(user))) redirect("/login?error=confirm");
 
+  // A teammate sees the company's setup, not an account of their own.
+  const company = await resolveCompany(user.id);
+  const ownerId = company?.ownerId ?? user.id;
   const [business, account] = await Promise.all([
-    prisma.business.findUnique({ where: { userId: user.id } }),
+    prisma.business.findUnique({ where: { userId: ownerId } }),
     prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true, suspendedAt: true } }),
   ]);
-  if (account?.suspendedAt) redirect("/suspended");
-  if (account?.deletionScheduledFor) redirect("/account/deletion");
+  if (company && !can(company.role, "settings")) redirect("/account/waiting");
+  if (account?.suspendedAt || company?.ownerSuspended) redirect("/suspended");
+  if (account?.deletionScheduledFor || company?.ownerDeleting) redirect("/account/deletion");
   if (!business?.detailsCompletedAt) redirect("/welcome");
   if (business.onboardedAt) redirect(await readReturn());
 
@@ -37,7 +43,7 @@ export default async function OnboardingPage() {
   const initialStep = !business.description || !business.audience ? 1 : !business.tone ? 2 : hasKnowledge || hasLook ? 4 : 3;
 
   let savedLogoUrl: string | null = null;
-  if (business.logoUrl && isOwnLogoPath(user.id, business.logoUrl)) {
+  if (business.logoUrl && isOwnLogoPath(ownerId, business.logoUrl)) {
     try {
       savedLogoUrl = await createSignedDownloadUrl("brand", business.logoUrl);
     } catch {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { AIProviderError } from "@/lib/ai/types";
+import { resolveCompany } from "@/lib/team/company";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
 import { MAX_PROJECTS_PER_BUSINESS, projectInputSchema } from "@/lib/studio/schemas";
@@ -14,10 +15,13 @@ import { consumeUsage, refundUsage, UsageLimitError } from "@/lib/usage";
 export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  // Teammates work on the company account: its projects, its Storage folder and its credits.
+  const company = await resolveCompany(user.id);
+  const companyId = company?.ownerId ?? user.id;
 
   const raw = await request.json().catch(() => null);
   const body = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
-  const parsed = projectInputSchema(user.id)
+  const parsed = projectInputSchema(companyId)
     .extend({ type: z.string().trim().toLowerCase().min(1).max(40).default("product") })
     .safeParse(body && { ...body, details: body.details ?? body.extraDetails });
   if (!parsed.success) {
@@ -26,10 +30,10 @@ export async function POST(request: Request) {
   const { details, ...input } = parsed.data;
 
   const account = await prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true, suspendedAt: true } });
-  if (account?.deletionScheduledFor || account?.suspendedAt) return NextResponse.json({ error: "account_locked" }, { status: 403 });
+  if (account?.deletionScheduledFor || account?.suspendedAt || company?.ownerDeleting || company?.ownerSuspended) return NextResponse.json({ error: "account_locked" }, { status: 403 });
 
   try {
-    await rateLimit(`project:${user.id}`, RATE_LIMITS.projectCreate);
+    await rateLimit(`project:${companyId}`, RATE_LIMITS.projectCreate);
   } catch (error) {
     if (error instanceof RateLimitError) {
       return NextResponse.json(
@@ -40,7 +44,7 @@ export async function POST(request: Request) {
     throw error;
   }
 
-  const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
+  const business = await prisma.business.findUnique({ where: { userId: companyId }, select: { id: true } });
   if (!business) return NextResponse.json({ error: "Business profile not found" }, { status: 409 });
   if ((await prisma.project.count({ where: { businessId: business.id } })) >= MAX_PROJECTS_PER_BUSINESS) {
     return NextResponse.json({ error: "project_limit", message: "Project limit reached." }, { status: 409 });
@@ -49,7 +53,7 @@ export async function POST(request: Request) {
   // Reserve the credit first, so a blocked call leaves no project behind.
   let reservation;
   try {
-    reservation = await consumeUsage(user.id, "text");
+    reservation = await consumeUsage(companyId, "text");
   } catch (error) {
     if (error instanceof UsageLimitError) {
       return NextResponse.json({ error: "usage_blocked", reason: error.reason }, { status: 402 });
@@ -65,13 +69,13 @@ export async function POST(request: Request) {
     });
     projectId = project.id;
   } catch (error) {
-    await refundUsage(user.id, "text", reservation.periodStart).catch(() => {});
+    await refundUsage(companyId, "text", reservation.periodStart).catch(() => {});
     throw error;
   }
 
   try {
     const content = await generateForProject({
-      userId: user.id,
+      userId: companyId,
       businessId: business.id,
       projectId,
       feature: "content",

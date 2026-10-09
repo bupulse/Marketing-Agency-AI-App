@@ -1,5 +1,5 @@
 // Pure roll-up maths (no I/O) so the money and rate rules are unit-tested on their own.
-import { PRICES, type PaidPlan } from "@/lib/billing/catalog";
+import { SEED_PLANS } from "@/lib/plans";
 import { utcDay } from "./collect";
 
 export const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -9,13 +9,21 @@ export function pct(part: number, whole: number): number | null {
   return whole > 0 ? Math.round((part / whole) * 1000) / 10 : null;
 }
 
-/** Monthly recurring revenue in USD cents. Yearly plans count a twelfth. Trials and unpaid states count nothing. */
-export function computeMrrCents(groups: { plan: string; interval: string; count: number }[]): number {
+export type PriceTable = Record<string, { monthlyPriceCents: number; yearlyPriceCents: number }>;
+const SEED_PRICES: PriceTable = Object.fromEntries(Object.entries(SEED_PLANS).map(([k, p]) => [k, { monthlyPriceCents: p.priceUsdMonthly * 100, yearlyPriceCents: p.priceUsdYearly * 100 }]));
+
+/**
+ * Monthly recurring revenue in USD cents. Yearly plans count a twelfth. Trials and unpaid states count nothing.
+ * `prices` is the plans' current prices (the plan catalog; defaults to the original plans). A subscriber whose price
+ * change has not reached them yet is counted at the plan's new price: MRR moves with the price, not with each renewal.
+ */
+export function computeMrrCents(groups: { plan: string; interval: string; count: number }[], prices: PriceTable = SEED_PRICES): number {
   let cents = 0;
   for (const g of groups) {
-    const price = PRICES[g.plan as PaidPlan]?.[g.interval === "YEAR" ? "YEAR" : "MONTH"];
+    const p = prices[g.plan];
+    const price = p ? (g.interval === "YEAR" ? p.yearlyPriceCents : p.monthlyPriceCents) : 0;
     if (!price) continue;
-    cents += g.count * (g.interval === "YEAR" ? price / 12 : price) * 100;
+    cents += g.count * (g.interval === "YEAR" ? price / 12 : price);
   }
   return Math.round(cents);
 }

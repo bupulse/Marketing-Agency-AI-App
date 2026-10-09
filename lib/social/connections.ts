@@ -26,6 +26,26 @@ export type ConnectionSummary = {
   lastError: string | null;
 };
 
+/** Start of the note the admin console puts on queued posts when it force-disconnects an account. */
+export const NEEDS_RECONNECT_PREFIX = "Needs reconnect:";
+export const PICK_NEW_TIME = "Pick a new time: this post's time passed while the account was disconnected.";
+
+/**
+ * After an account is reconnected: queued posts the admin console marked "Needs reconnect" go back to normal. A post
+ * still in the future keeps its time and just loses the note. One whose time already passed would publish the moment
+ * the publisher next runs, so it becomes NEEDS_ACTION ("Pick a new time") for the owner to reschedule or mark posted.
+ */
+export async function restoreQueuedPosts(connectionIds: string[], now = new Date()): Promise<{ restored: number; needsNewTime: number }> {
+  if (!connectionIds.length) return { restored: 0, needsNewTime: 0 };
+  const marked = { connectionId: { in: connectionIds }, status: { in: ["SCHEDULED", "PENDING_APPROVAL"] as ("SCHEDULED" | "PENDING_APPROVAL")[] }, lastError: { startsWith: NEEDS_RECONNECT_PREFIX } };
+  // One batch: the stale ones leave SCHEDULED first, so the second statement only clears the note on the rest.
+  const [stale, rest] = await prisma.$transaction([
+    prisma.post.updateMany({ where: { ...marked, status: "SCHEDULED", scheduledAt: { lte: now } }, data: { status: "NEEDS_ACTION", lastError: PICK_NEW_TIME, nextAttemptAt: null } }),
+    prisma.post.updateMany({ where: marked, data: { lastError: null } }),
+  ]);
+  return { restored: rest?.count ?? 0, needsNewTime: stale?.count ?? 0 };
+}
+
 const SOCIAL_NETWORKS = new Set<string>(["instagram", "facebook", "linkedin", "tiktok", "youtube"]);
 
 export async function listConnections(businessId: string): Promise<ConnectionSummary[]> {
@@ -88,7 +108,8 @@ export async function saveConnections(
     });
     ids.push(row.id);
   }
-  await shareLinkedInToken(businessId, network, oauth, ids);
+  const shared = await shareLinkedInToken(businessId, network, oauth, ids);
+  await restoreQueuedPosts([...ids, ...shared]);
   return ids;
 }
 
@@ -96,11 +117,13 @@ export async function saveConnections(
  * LinkedIn may invalidate a member's earlier tokens when they authorize the app again, so every other LinkedIn
  * connection of this business made by the same member (the "li_member:<id>" scope entry) gets the new token.
  */
-async function shareLinkedInToken(businessId: string, network: Network, oauth: OAuthResult, savedIds: string[]) {
+async function shareLinkedInToken(businessId: string, network: Network, oauth: OAuthResult, savedIds: string[]): Promise<string[]> {
   const member = oauth.scopes.find((scope) => scope.startsWith("li_member:"));
-  if (network !== "linkedin" || !member) return;
+  if (network !== "linkedin" || !member) return [];
+  const where = { businessId, provider: "linkedin", scopes: { has: member }, id: { notIn: savedIds } };
+  const others = (await prisma.connection.findMany({ where, select: { id: true } })).map((c) => c.id);
   await prisma.connection.updateMany({
-    where: { businessId, provider: "linkedin", scopes: { has: member }, id: { notIn: savedIds } },
+    where,
     data: {
       accessTokenEncrypted: await encrypt(oauth.accessToken),
       refreshTokenEncrypted: oauth.refreshToken ? await encrypt(oauth.refreshToken) : null,
@@ -111,6 +134,7 @@ async function shareLinkedInToken(businessId: string, network: Network, oauth: O
       lastCheckedAt: new Date(),
     },
   });
+  return others;
 }
 
 /**
@@ -245,6 +269,9 @@ export async function refreshConnectionById(connectionId: string): Promise<boole
 
 /** Records a provider error. An auth error means the owner must reconnect, so the connection becomes EXPIRED. */
 export async function markConnectionError(connectionId: string, error: SocialError): Promise<void> {
+  // A force-disconnected account (REVOKED, tokens erased) keeps its "Disconnected by BuPulse support" note and status.
+  const current = await prisma.connection.findUnique({ where: { id: connectionId }, select: { status: true, accessTokenEncrypted: true } });
+  if (current?.status === "REVOKED" && !current.accessTokenEncrypted) return;
   await prisma.connection.updateMany({
     where: { id: connectionId },
     data: { lastError: error.message.slice(0, 300), lastCheckedAt: new Date(), ...(error.kind === "auth" ? { status: "EXPIRED" as const } : {}) },

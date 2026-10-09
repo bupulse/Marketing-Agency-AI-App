@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { checkActiveUser } from "@/lib/auth/require-user";
 import { siteUrl } from "@/lib/auth/site-url";
 import { isCanvaEnabled } from "@/lib/canva/config";
+import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { CanvaError, finishCanvaReturn, startCanvaReturn } from "@/lib/canva/service";
 
 /** How long the browser waits for the export before being told it is still being saved. */
@@ -30,6 +31,7 @@ function runInBackground(work: Promise<unknown>) {
  */
 export async function GET(request: Request) {
   if (!isCanvaEnabled()) return new Response("Not found", { status: 404 });
+  if (!(await isServiceEnabled("canva"))) return new Response(UNAVAILABLE_MESSAGE, { status: 503 });
   const jwt = new URL(request.url).searchParams.get("correlation_jwt");
   if (!jwt) return toDesigns({ canva: "error" });
 
@@ -43,7 +45,7 @@ export async function GET(request: Request) {
   if (check.status === "suspended") return NextResponse.redirect(new URL("/suspended", siteUrl()));
 
   try {
-    const job = await startCanvaReturn(check.user.id, jwt);
+    const job = await startCanvaReturn(check.user.id, jwt, check.user.actorId);
     const work = finishCanvaReturn(job).then(
       (value) => ({ ok: true as const, value }),
       (error: unknown) => ({ ok: false as const, error }),

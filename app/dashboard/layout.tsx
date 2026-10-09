@@ -6,8 +6,8 @@ import { getAppContext } from "@/components/app/context";
 import { TrialBanner } from "@/components/app/trial-banner";
 import { brandPalette, isHexColor } from "@/lib/color-contrast";
 import { AutoTimezone } from "@/components/publishing/auto-timezone";
-import { PLANS } from "@/lib/plans";
 import { AnnouncementBanner } from "@/components/app/announcement-banner";
+import { can } from "@/lib/team/roles";
 import { getActiveAnnouncements } from "@/lib/admin/service";
 
 export const metadata: Metadata = {
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 };
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
-  const { business, displayName, firstName, email, businessName, usage, isTrial, trialDaysLeft, logoUrl, brandColors } =
+  const { business, role, displayName, firstName, email, businessName, usage, isTrial, trialDaysLeft, logoUrl, brandColors } =
     await getAppContext();
 
   const trialLabel = isTrial
@@ -38,8 +38,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         firstName={firstName}
         email={email}
         businessName={businessName}
+        role={role}
         plan={{
-          name: PLANS[usage.subscription.plan].name,
+          name: usage.plan.name,
           trialLabel,
           used: usage.used.text,
           max: usage.limits.text,
@@ -55,7 +56,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           image={{ used: usage.used.image, max: usage.limits.image }}
         />
         {children}
-        <AutoTimezone current={business.timezone} />
+        {can(role, "settings") && <AutoTimezone current={business.timezone} />}
       </AppShell>
     </>
   );

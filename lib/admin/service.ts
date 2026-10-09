@@ -1,18 +1,21 @@
 import "server-only";
-import type { Plan, Prisma, PostStatus } from "@/lib/generated/prisma/client";
+import type { Prisma, PostStatus } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { PLANS, type UsageMetric } from "@/lib/plans";
-import { isInterval, isPaidPlan, priceIdFor, type PaidPlan } from "@/lib/billing/catalog";
+import { SEED_PLANS, type Plan, type UsageMetric } from "@/lib/plans";
+import { getPlan, getPlans, getTrialPlan, priceIdFor } from "@/lib/plan-catalog";
+import { listAdminPlans, previewPriceChange, setPlanLimits, updatePlan, type PlanInput } from "./plans-service";
+import { isInterval, type PaidPlan } from "@/lib/billing/catalog";
 import { applyProviderSubscription } from "@/lib/billing/apply";
 import { paddle } from "@/lib/billing/paddle";
 import { createRefund, describeRefundTarget } from "@/lib/billing/paddle-admin";
 import { retryPost, PublishingError } from "@/lib/publishing/service";
 import { monthlyCostSchema, type MonthlyCostInput } from "@/lib/analytics/costs";
 import { writeAudit } from "./audit";
+import * as companies from "./actions/companies";
+import { isServiceEnabled } from "./switch";
 import { clearFlagCache } from "./flags";
-import { clearPlanLimitCache, getLimitOverrides, USAGE_METRICS } from "./plan-limits";
 import {
   AdminError,
   APPROVAL_STATUSES,
@@ -30,7 +33,6 @@ export { isEnabled } from "./flags";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const APPROVAL_TTL_MS = 7 * DAY_MS;
-const PLAN_NAMES = ["TRIAL", "STANDARD", "PRO"] as const;
 const SUBSCRIPTION_STATUSES = ["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"] as const;
 const POST_STATUSES = ["DRAFT", "PENDING_APPROVAL", "SCHEDULED", "PUBLISHING", "PUBLISHED", "NEEDS_ACTION", "FAILED", "CANCELLED"] as const;
 
@@ -115,7 +117,7 @@ export async function listUsers(
   opts: { q?: string; plan?: string; status?: string; suspended?: boolean; cursor?: string; limit?: number } = {},
 ): Promise<Page<UserSummary>> {
   const limit = limitOf(opts.limit);
-  const plan = oneOf(opts.plan, PLAN_NAMES, "plan");
+  const plan = opts.plan?.trim().slice(0, 64) || undefined; // a plan key; an unknown one simply matches nobody
   const status = oneOf(opts.status, SUBSCRIPTION_STATUSES, "status");
   const q = opts.q?.trim().slice(0, 100);
   const where: Prisma.UserWhereInput = {
@@ -293,7 +295,7 @@ export async function extendTrial(ctx: AdminContext, input: { userId: string; da
   const days = Math.trunc(Number(input.days));
   if (!Number.isFinite(days) || days < 1 || days > 90) throw new AdminError("invalid", "days must be a whole number from 1 to 90.");
   const sub = await subscriptionOf(input.userId);
-  if (sub.plan !== "TRIAL") throw new AdminError("conflict", `This user is on the ${PLANS[sub.plan].name} plan, not a trial.`);
+  if (sub.plan !== "TRIAL") throw new AdminError("conflict", `This user is on the ${(await getPlan(sub.plan))?.name ?? sub.plan} plan, not a trial.`);
   const now = new Date();
   const base = sub.trialEndsAt && sub.trialEndsAt > now ? sub.trialEndsAt : now;
   const trialEndsAt = new Date(base.getTime() + days * DAY_MS);
@@ -427,7 +429,8 @@ export async function sendAnnouncement(
   if (!title || title.length > 120) throw new AdminError("invalid", "title is required (max 120 characters).");
   if (!body || body.length > 2000) throw new AdminError("invalid", "body is required (max 2000 characters).");
   const audience = oneOf(input.audience ?? "all", ["all", "plan"] as const, "audience")!;
-  const plans = (input.plans ?? []).map((p) => oneOf(p, PLAN_NAMES, "plans")!) as Plan[];
+  const known = (await getPlans()).map((p) => p.key);
+  const plans = (input.plans ?? []).map((p) => oneOf(p, known, "plans")!) as Plan[];
   if (audience === "plan" && plans.length === 0) throw new AdminError("invalid", 'audience "plan" needs a non-empty plans list.');
   const startsAt = asDate(input.startsAt, "startsAt") ?? new Date();
   const endsAt = asDate(input.endsAt, "endsAt") ?? null;
@@ -469,37 +472,24 @@ export async function getActiveAnnouncements(user: { id: string; plan?: Plan | n
 // ---- plan limits -------------------------------------------------------------------------------------------
 
 export async function getPlanLimitsView() {
-  const overrides = await getLimitOverrides({ force: true });
+  const plans = await getPlans({ force: true });
   return Object.fromEntries(
-    PLAN_NAMES.map((plan) => [plan, { defaults: PLANS[plan].limits, overrides: overrides[plan] ?? {}, effective: { ...PLANS[plan].limits, ...(overrides[plan] ?? {}) } }]),
+    plans.map((p) => {
+      const defaults = SEED_PLANS[p.key]?.limits ?? { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0, chat: 0 };
+      // "overrides" = the metrics that differ from what the plan was seeded with.
+      const overrides = Object.fromEntries(Object.entries(p.limits).filter(([m, v]) => defaults[m as UsageMetric] !== v));
+      return [p.key, { defaults, overrides, effective: p.limits }];
+    }),
   );
 }
 
-/** Sets runtime limits for a plan on top of lib/plans.ts. A metric set to null goes back to the default. */
-export async function updatePlanLimits(ctx: AdminContext, input: { plan: string; limits: Partial<Record<UsageMetric, number | null>>; confirm?: boolean }) {
+/** Sets a plan's limits (they live on the plan; /admin/plans edits the same numbers). A metric set to null goes back to its seed value. */
+export async function updatePlanLimits(ctx: AdminContext, input: { plan: string; limits: Partial<Record<UsageMetric | "seats", number | null>>; confirm?: boolean }) {
   requireConfirm(ctx, input.confirm, "Changing plan limits");
-  const plan = oneOf(input.plan, PLAN_NAMES, "plan");
-  if (!plan) throw new AdminError("invalid", "plan is required.");
-  const entries = Object.entries(input.limits ?? {});
-  if (entries.length === 0) throw new AdminError("invalid", "limits must set at least one metric.");
-  const existing = await prisma.planLimitOverride.findUnique({ where: { plan } });
-  const merged: Record<string, number> = { ...((existing?.limits as Record<string, number> | null) ?? {}) };
-  for (const [metric, value] of entries) {
-    if (!(USAGE_METRICS as string[]).includes(metric)) throw new AdminError("invalid", `Unknown metric "${metric}". Use: ${USAGE_METRICS.join(", ")}.`);
-    if (value === null) delete merged[metric];
-    else if (!Number.isInteger(value) || value < 0 || value > 10_000_000) throw new AdminError("invalid", `${metric} must be a whole number from 0 to 10000000, or null to reset.`);
-    else merged[metric] = value;
-  }
-  const effective = (o: Record<string, number>) => ({ ...PLANS[plan].limits, ...o });
-  const before = effective((existing?.limits as Record<string, number> | null) ?? {});
-  const after = effective(merged);
-  await prisma.$transaction(async (tx) => {
-    if (Object.keys(merged).length === 0) await tx.planLimitOverride.deleteMany({ where: { plan } });
-    else await tx.planLimitOverride.upsert({ where: { plan }, create: { plan, limits: merged }, update: { limits: merged } });
-    await writeAudit(tx, ctx, "update_plan_limits", `plan:${plan}`, before, after);
-  });
-  clearPlanLimitCache();
-  return { plan, effective: after, overrides: merged };
+  if (!input.plan) throw new AdminError("invalid", "plan is required.");
+  const { plan, effective } = await setPlanLimits(ctx, { plan: input.plan, limits: input.limits });
+  const defaults = SEED_PLANS[plan]?.limits ?? { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0, chat: 0 };
+  return { plan, effective, overrides: Object.fromEntries(Object.entries(effective).filter(([m, v]) => defaults[m as UsageMetric] !== v)) };
 }
 
 // ---- posts -------------------------------------------------------------------------------------------------
@@ -555,7 +545,12 @@ function stable(value: unknown): string {
   return JSON.stringify(value);
 }
 
-const WAITING = "Waiting for the owner to approve it in the admin console. Nothing has been charged or refunded yet.";
+/** Money actions need Paddle switched on (the console switch); webhooks are unaffected. */
+async function requirePaddleOn() {
+  if (!(await isServiceEnabled("paddle"))) throw new AdminError("unavailable", "Paddle is switched off in Services, so money actions are paused. Switch it on first.");
+}
+
+const WAITING = "Waiting for the owner to approve it in the admin console. Nothing has been done yet.";
 
 /**
  * Creates a pending approval. A repeated idempotency key returns the same approval (matching request) or a conflict
@@ -618,6 +613,7 @@ export async function requestRefund(ctx: AdminContext, input: { userId: string; 
   if (input.amountMinor !== undefined && (!Number.isInteger(input.amountMinor) || input.amountMinor <= 0)) throw new AdminError("invalid", "amountMinor must be a positive whole number (e.g. cents).");
   const sub = await subscriptionOf(input.userId);
   if (sub.provider !== "PADDLE" || !sub.providerCustomerId) throw new AdminError("conflict", "That user has never paid through Paddle, so there is nothing to refund.");
+  await requirePaddleOn();
   const customerId = sub.providerCustomerId;
   const request = { userId: input.userId, transactionId: input.transactionId ?? null, lineItemId: input.lineItemId ?? null, amountMinor: input.amountMinor ?? null, reason };
   return createApproval(ctx, "issue_refund", request, async () => {
@@ -656,32 +652,105 @@ export async function requestRefund(ctx: AdminContext, input: { userId: string; 
 
 /** Changing to STANDARD or PRO moves money, so it becomes an approval. TRIAL is not a money action and is applied now. */
 export async function requestChangePlan(ctx: AdminContext, input: { userId: string; plan: string; interval?: string; idempotencyKey?: string; confirm?: boolean }) {
-  const plan = oneOf(input.plan, PLAN_NAMES, "plan");
+  const plan = typeof input.plan === "string" ? input.plan.trim() : "";
   if (!plan) throw new AdminError("invalid", "plan is required.");
+  const target = await getPlan(plan);
+  if (!target) throw new AdminError("invalid", "That plan does not exist. Check the plan keys at /admin/plans.");
   const sub = await subscriptionOf(input.userId);
-  if (plan === "TRIAL") {
+  if (target.isTrial) {
     requireConfirm(ctx, input.confirm, "Moving a user back to the free trial");
     if (sub.providerSubscriptionId && (sub.status === "ACTIVE" || sub.status === "PAST_DUE" || sub.status === "TRIALING") && sub.plan !== "TRIAL") {
       throw new AdminError("conflict", "That user has a live paid subscription. Cancel it in Paddle first; BuPulse never ends a paid subscription from here.");
     }
     const before = { plan: sub.plan, status: sub.status, trialEndsAt: sub.trialEndsAt };
-    const trialEndsAt = new Date(Date.now() + 7 * DAY_MS);
-    const after = { plan: "TRIAL" as const, status: "TRIALING" as const, trialEndsAt };
+    const trialEndsAt = new Date(Date.now() + ((await getTrialPlan()).trialDays ?? 7) * DAY_MS);
+    const after = { plan: target.key, status: "TRIALING" as const, trialEndsAt };
     await prisma.$transaction(async (tx) => {
       await tx.subscription.update({ where: { userId: input.userId }, data: after });
       await writeAudit(tx, ctx, "change_plan", `user:${input.userId}`, before, after);
     });
-    return { id: null, status: "applied", kind: "change_plan" as const, replayed: false, message: "The user is back on a 7-day free trial. No money was involved." };
+    return { id: null, status: "applied", kind: "change_plan" as const, replayed: false, message: `The user is back on a ${(await getTrialPlan()).trialDays ?? 7}-day free trial. No money was involved.` };
   }
-  if (!isPaidPlan(plan)) throw new AdminError("invalid", "plan must be TRIAL, STANDARD or PRO.");
+  if (target.status === "retired") throw new AdminError("conflict", `The ${target.name} plan is retired and cannot be given to anyone new.`);
+  await requirePaddleOn();
   const interval = input.interval ?? sub.interval;
   if (!isInterval(interval)) throw new AdminError("invalid", "interval must be MONTH or YEAR.");
   if (!sub.providerSubscriptionId || sub.provider !== "PADDLE") {
     throw new AdminError("conflict", "That user has no paid subscription to change. They have to check out themselves first (BuPulse cannot take a card on their behalf).");
   }
-  if (!priceIdFor("PADDLE", plan, interval)) throw new AdminError("unavailable", `Paddle price for ${plan}/${interval} is not configured.`);
+  if (!(await priceIdFor("PADDLE", plan, interval))) throw new AdminError("unavailable", `Paddle price for ${plan}/${interval} is not configured.`);
   const params = { userId: input.userId, plan, interval, currentPlan: sub.plan, currentInterval: sub.interval };
   return createApproval(ctx, "change_plan", { userId: input.userId, plan, interval }, async () => params, input.idempotencyKey);
+}
+
+/**
+ * An email change through the API is only a request: the owner approves it in the console, where it runs as the console
+ * action (old address notified, sessions ended). Details are checked and locked now, so the owner approves what they see.
+ */
+export async function requestChangeUserEmail(ctx: AdminContext, input: { userId: string; newEmail: string; sendReset?: boolean; idempotencyKey?: string; confirm?: boolean }) {
+  requireConfirm(ctx, input.confirm, "Asking to change a sign-in email");
+  const plan = await companies.prepareEmailChange(input);
+  const request = { userId: input.userId, newEmail: plan.newEmail, sendReset: Boolean(input.sendReset) };
+  return createApproval(ctx, "change_user_email", request, async () => ({ ...request, currentEmail: plan.currentEmail, company: plan.company }), input.idempotencyKey);
+}
+
+/** Making someone the owner of a company (the previous owner becomes Admin) is an approval from the API too. */
+export async function requestMakeCompanyOwner(ctx: AdminContext, input: { userId: string; idempotencyKey?: string; confirm?: boolean }) {
+  requireConfirm(ctx, input.confirm, "Asking to hand over a company's ownership");
+  const plan = await companies.prepareMakeOwner(input);
+  return createApproval(ctx, "make_company_owner", { userId: input.userId }, async () => ({ userId: input.userId, email: plan.email, company: plan.company, currentOwner: plan.currentOwner }), input.idempotencyKey);
+}
+
+/**
+ * A plan price change moves money for every client on the plan, so from the API it only creates an approval; the owner
+ * approves it in the console. The new prices are locked in the request, with the prices they replace.
+ */
+export async function requestPlanPriceChange(ctx: AdminContext, input: { plan: string; monthlyPriceCents?: number; yearlyPriceCents?: number; idempotencyKey?: string }) {
+  const plan = await getPlan(input.plan);
+  if (!plan) throw new AdminError("not_found", "No plan with that key.");
+  if (plan.isTrial) throw new AdminError("conflict", "The free trial has no price.");
+  const monthlyPriceCents = input.monthlyPriceCents ?? plan.monthlyPriceCents;
+  const yearlyPriceCents = input.yearlyPriceCents ?? plan.yearlyPriceCents;
+  for (const [label, v] of [["monthlyPriceCents", monthlyPriceCents], ["yearlyPriceCents", yearlyPriceCents]] as const) {
+    if (!Number.isInteger(v) || v < 1 || v > 10_000_000) throw new AdminError("invalid", `${label} must be a whole number of cents from 1 to 10000000.`);
+  }
+  if (monthlyPriceCents === plan.monthlyPriceCents && yearlyPriceCents === plan.yearlyPriceCents) throw new AdminError("invalid", "Those are the prices the plan already has.");
+  const preview = await previewPriceChange(plan.key, { monthlyPriceCents, yearlyPriceCents });
+  const params = { plan: plan.key, planName: plan.name, oldMonthlyCents: plan.monthlyPriceCents, oldYearlyCents: plan.yearlyPriceCents, monthlyPriceCents, yearlyPriceCents, direction: preview.direction, affected: preview.affected, lines: preview.lines };
+  return createApproval(ctx, "plan_price_change", { plan: plan.key, monthlyPriceCents, yearlyPriceCents }, async () => params, input.idempotencyKey);
+}
+
+/** The plans for Jarvis (list_plans): what clients can buy, with clients and MRR. */
+export async function listPlansForTools() {
+  const { plans, paddleConnected } = await listAdminPlans();
+  return {
+    paddleConnected,
+    plans: plans.map((p) => ({
+      key: p.key, name: p.name, description: p.description, status: p.status, isTrial: p.isTrial, trialDays: p.trialDays, sortOrder: p.sortOrder, highlight: p.highlight,
+      monthlyPriceCents: p.monthlyPriceCents, yearlyPriceCents: p.yearlyPriceCents, currency: p.currency, limits: p.limits, features: p.features, capabilities: p.capabilities,
+      clients: p.subscribers, payingClients: p.payingSubscribers, mrrCents: p.mrrCents, paddleSync: p.syncState, paddleSyncError: p.syncError,
+    })),
+  };
+}
+
+/**
+ * update_plan: everything except the price is applied now (audited). A price change is a money action: it only creates an
+ * approval request, which the owner approves in the console; the response then carries the approval receipt.
+ */
+export async function updatePlanFromTool(
+  ctx: AdminContext,
+  input: Partial<PlanInput> & { plan: string; confirm?: boolean; idempotencyKey?: string },
+) {
+  requireConfirm(ctx, input.confirm, "Changing a plan");
+  const { plan: key, confirm: _confirm, idempotencyKey, monthlyPriceCents, yearlyPriceCents, ...rest } = input;
+  void _confirm;
+  const wantsPrice = monthlyPriceCents !== undefined || yearlyPriceCents !== undefined;
+  const current = await getPlan(key);
+  if (!current) throw new AdminError("not_found", "No plan with that key. Use list_plans.");
+  const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)) as Partial<PlanInput>;
+  const applied = Object.keys(patch).length > 0 ? await updatePlan(ctx, key, patch) : null;
+  const approval = wantsPrice ? await requestPlanPriceChange(ctx, { plan: key, monthlyPriceCents, yearlyPriceCents, idempotencyKey }) : null;
+  return { applied: applied ? { changed: applied.changed, warnings: applied.warnings } : null, priceChangeApproval: approval };
 }
 
 export async function listApprovals(opts: { status?: string; limit?: number } = {}) {
@@ -711,7 +780,24 @@ export function isUncertainProviderError(error: unknown): boolean {
 }
 
 /** Runs the provider call. `onProviderDone` records the answer in its own write before any local step runs. */
-async function executeApproval(kind: string, params: Record<string, unknown>, onProviderDone: (result: Record<string, unknown>) => Promise<void>): Promise<Record<string, unknown>> {
+async function executeApproval(kind: string, params: Record<string, unknown>, onProviderDone: (result: Record<string, unknown>) => Promise<void>, ctx: AdminContext): Promise<Record<string, unknown>> {
+  if (kind === "plan_price_change") {
+    // Not about one user. Only runs if the plan still has the prices the owner saw when approving.
+    const plan = await getPlan(String(params.plan));
+    if (!plan) throw new Error("That plan no longer exists.");
+    if (plan.monthlyPriceCents !== params.oldMonthlyCents || plan.yearlyPriceCents !== params.oldYearlyCents) throw new Error("The plan's prices changed since this request was made. Ask for the change again.");
+    const done = await updatePlan(ctx, plan.key, { monthlyPriceCents: Number(params.monthlyPriceCents), yearlyPriceCents: Number(params.yearlyPriceCents) }, { confirmPriceChange: true });
+    const result = { plan: plan.key, priceChangeId: done.priceChange?.id ?? null, clientsToMove: done.priceChange?.subscribers ?? 0 };
+    await onProviderDone(result);
+    return result;
+  }
+  if (kind === "change_user_email" || kind === "make_company_owner") {
+    // Not money: runs as the console action, with the approving admin as the actor (audited, old address notified).
+    const result = kind === "change_user_email"
+      ? { ...(await companies.changeUserEmail(ctx, { userId: String(params.userId), newEmail: String(params.newEmail), sendReset: params.sendReset === true })) }
+      : { ...(await companies.changeCompanyUserRole(ctx, { userId: String(params.userId), role: "OWNER" })) };
+    return result;
+  }
   const userId = String(params.userId);
   const sub = await prisma.subscription.findUnique({ where: { userId } });
   if (!sub) throw new Error("That user has no subscription any more.");
@@ -726,7 +812,7 @@ async function executeApproval(kind: string, params: Record<string, unknown>, on
   if (kind === "change_plan") {
     const plan = params.plan as PaidPlan;
     const interval = params.interval as "MONTH" | "YEAR";
-    const priceId = priceIdFor("PADDLE", plan, interval);
+    const priceId = await priceIdFor("PADDLE", plan, interval);
     if (!priceId || !sub.providerSubscriptionId) throw new Error("The subscription or the Paddle price is missing.");
     const changed = await paddle.changePlan(sub.providerSubscriptionId, priceId);
     const done = { plan, interval, providerSubscriptionId: sub.providerSubscriptionId };
@@ -751,6 +837,8 @@ const CHECK_PADDLE = "Check Paddle before doing anything else. Do not request th
 export async function approveAction(ctx: AdminContext, id: string): Promise<ApprovalView> {
   if (ctx.viaApi || ctx.actor !== "admin") throw new AdminError("forbidden", "Only the owner can approve a money action, in the admin console.");
   const row = await prisma.adminApproval.findUnique({ where: { id } });
+  // Only the money kinds need Paddle; checked before claiming, so the request stays pending and can be approved later.
+  if (!row || (row.kind !== "change_user_email" && row.kind !== "make_company_owner")) await requirePaddleOn();
   if (!row) throw new AdminError("not_found", "No approval with that id.");
   const decidedAt = new Date();
   // Pending AND not expired, in the same conditional update that claims it.
@@ -771,7 +859,7 @@ export async function approveAction(ctx: AdminContext, id: string): Promise<Appr
       providerResult = r;
       // Its own write, before anything else can fail: the money fact is on record even if the next step throws.
       await prisma.adminApproval.update({ where: { id }, data: { result: { stage: "provider_done", ...r } as Prisma.InputJsonObject } });
-    });
+    }, ctx);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await logError(error, { source: "admin:approve", approvalId: id, kind: row.kind });

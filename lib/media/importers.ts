@@ -4,6 +4,7 @@ import { CanvaTimeoutError } from "@/lib/canva/jobs";
 import { CanvaNotConnectedError, CanvaReconnectError, withCanva } from "@/lib/canva/tokens";
 import { isCanvaEnabled } from "@/lib/canva/config";
 import { prisma } from "@/lib/db";
+import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { rateLimit } from "@/lib/rate-limit";
 import { HEIC_MESSAGE, IMPORT_MAX_FILES, isMediaType, MEDIA_MAX_BYTES, UNSUPPORTED_MESSAGE } from "./rules";
 import { isDropboxHost, isGoogleApiHost, SafeFetchError, safeFetchBytes } from "./safe-fetch";
@@ -36,12 +37,14 @@ export function googlePickerConfig(): ImportOptions["google"] {
 export const dropboxAppKey = () => process.env.DROPBOX_APP_KEY || null;
 
 export async function canvaImportState(userId: string): Promise<ImportOptions["canva"]> {
-  if (!isCanvaEnabled()) return "unavailable";
+  if (!isCanvaEnabled() || !(await isServiceEnabled("canva"))) return "unavailable";
   return (await prisma.canvaConnection.count({ where: { userId } })) > 0 ? "connected" : "not_connected";
 }
 
 export async function importOptions(userId: string): Promise<ImportOptions> {
-  return { google: googlePickerConfig(), dropboxAppKey: dropboxAppKey(), canva: await canvaImportState(userId) };
+  // A source switched off in the admin console is hidden like one that is not configured.
+  const [drive, dropbox] = await Promise.all([isServiceEnabled("google-drive"), isServiceEnabled("dropbox")]);
+  return { google: drive ? googlePickerConfig() : null, dropboxAppKey: dropbox ? dropboxAppKey() : null, canva: await canvaImportState(userId) };
 }
 
 function download(error: unknown, name: string): never {
@@ -57,6 +60,7 @@ function download(error: unknown, name: string): never {
 
 /** One photo the person picked in Google Picker. The access token is used for this call only and never stored. */
 export async function importDriveFile(ctx: Ctx, input: { token: string; fileId: string; folderId: string | null }): Promise<MediaItem> {
+  if (!(await isServiceEnabled("google-drive"))) throw new MediaError(UNAVAILABLE_MESSAGE);
   if (!DRIVE_ID.test(input.fileId) || !input.token) throw new MediaError("That file could not be imported.");
   await limitImport(ctx.userId);
   const headers = { Authorization: `Bearer ${input.token}` };
@@ -78,6 +82,7 @@ export async function importDriveFile(ctx: Ctx, input: { token: string; fileId: 
 
 /** One Dropbox Chooser direct link. Only https links on Dropbox hosts are followed. */
 export async function importDropboxFile(ctx: Ctx, input: { link: string; name: string; folderId: string | null }): Promise<MediaItem> {
+  if (!(await isServiceEnabled("dropbox"))) throw new MediaError(UNAVAILABLE_MESSAGE);
   await limitImport(ctx.userId);
   const bytes = await safeFetchBytes(input.link, { allowHost: isDropboxHost, maxBytes: MEDIA_MAX_BYTES, timeoutMs: 45_000 }, `${input.name} is over 10 MB. Resize it and try again.`).catch((e) => download(e, input.name));
   return importAsset(ctx, { bytes, name: input.name, folderId: input.folderId, source: "dropbox" });
@@ -110,6 +115,7 @@ function canvaFailure(error: unknown): never {
 }
 
 export async function listCanvaDesigns(userId: string, input: { query?: string; cursor?: string | null }): Promise<{ items: CanvaDesignSummary[]; nextCursor: string | null }> {
+  if (!(await isServiceEnabled("canva"))) throw new MediaError(UNAVAILABLE_MESSAGE);
   if (!isCanvaEnabled()) throw new CanvaImportError("Canva is not set up yet.");
   try {
     const page = await withCanva(userId, (token) => listDesigns(token, { query: input.query, continuation: input.cursor }));
@@ -121,6 +127,7 @@ export async function listCanvaDesigns(userId: string, input: { query?: string; 
 
 /** Exports page 1 of a design as a PNG (2048 px wide) and adds it to the gallery. */
 export async function importCanvaDesign(ctx: Ctx, input: { designId: string; title: string; folderId: string | null }): Promise<MediaItem> {
+  if (!(await isServiceEnabled("canva"))) throw new MediaError(UNAVAILABLE_MESSAGE);
   if (!isCanvaEnabled()) throw new CanvaImportError("Canva is not set up yet.");
   if (!CANVA_DESIGN_ID.test(input.designId)) throw new MediaError("That design could not be imported.");
   // Exports are the slow, rate-limited part, so count the hits before starting one.

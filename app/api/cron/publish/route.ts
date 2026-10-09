@@ -1,3 +1,4 @@
+import { recordCron } from "@/lib/admin/cron-run";
 import { NextResponse, type NextRequest } from "next/server";
 import { publishDue } from "@/lib/publishing/engine";
 
@@ -18,5 +19,5 @@ export async function POST(request: NextRequest) {
   if (!safeEqual(request.headers.get("authorization") ?? "", `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return NextResponse.json(await publishDue());
+  return NextResponse.json(await recordCron("publish", () => publishDue()));
 }

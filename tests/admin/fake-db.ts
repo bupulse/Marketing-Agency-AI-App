@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { vi } from "vitest";
+import { SEED_PLANS } from "@/lib/plans";
 
 // A tiny in-memory stand-in for Prisma: just the calls lib/admin and lib/usage make. Equality filters plus
 // not/lt/lte/gt/gte, unique-key checks that raise P2002 like the real database.
@@ -7,16 +8,24 @@ import { vi } from "vitest";
 export type Row = Record<string, any>;
 type Where = Record<string, any> | undefined;
 
+let currentDb: { planPriceChange: { rows: Row[] } } | null = null;
+
 function match(row: Row, where: Where): boolean {
   if (!where) return true;
   return Object.entries(where).every(([key, cond]) => {
     if (key === "OR") return (cond as Where[]).some((w) => match(row, w));
     if (key === "month_category") return row.month === cond.month && row.category === cond.category;
+    // Relation filter on a plan price change item: look the change up by its id.
+    if (key === "change") {
+      const change = currentDb?.planPriceChange.rows.find((r) => r.id === row.changeId);
+      return !!change && match(change, cond as Where);
+    }
     if (key === "AND") return (cond as Where[]).every((w) => match(row, w));
     const value = row[key] === undefined ? null : row[key];
     if (cond && typeof cond === "object" && !(cond instanceof Date) && !Array.isArray(cond)) {
       const c = cond as Record<string, any>;
       if ("not" in c && value === c.not) return false;
+      if ("in" in c && !(c.in as unknown[]).includes(value)) return false;
       if ("lt" in c && !(value < c.lt)) return false;
       if ("lte" in c && !(value <= c.lte)) return false;
       if ("gt" in c && !(value > c.gt)) return false;
@@ -49,6 +58,10 @@ function table(rows: Row[], opts: { pk: string; unique?: string[]; defaults?: ()
       return row;
     }),
     createMany: vi.fn(async ({ data }: { data: Row[] }) => {
+      if (data.length > 0 && !("periodStart" in data[0])) {
+        for (const d of data) rows.push({ ...(opts.defaults?.() ?? {}), createdAt: new Date(), ...d, [opts.pk]: d[opts.pk] ?? `${opts.pk}_${++seq}` });
+        return { count: data.length };
+      }
       for (const d of data) if (!rows.some((r) => r.userId === d.userId && r.periodStart?.getTime() === d.periodStart?.getTime())) rows.push({ textGenerations: 0, imageGenerations: 0, videoSeconds: 0, voiceCharacters: 0, chatMessages: 0, ...d });
       return { count: data.length };
     }),
@@ -75,8 +88,40 @@ function table(rows: Row[], opts: { pk: string; unique?: string[]; defaults?: ()
       return { count };
     }),
     groupBy: vi.fn(async () => []),
+    aggregate: vi.fn(async ({ where }: { where?: Where } = {}) => {
+      const hit = rows.filter((r) => match(r, where));
+      return { _sum: { costUsd: hit.reduce((n, r) => n + Number(r.costUsd ?? 0), 0) }, _count: { _all: hit.length } };
+    }),
   };
   return api;
+}
+
+export function seedPlanRows(): Row[] {
+  return Object.entries(SEED_PLANS).map(([key, c]) => ({
+    id: `plan_${key.toLowerCase()}`,
+    key,
+    name: c.name,
+    description: c.description,
+    isTrial: c.isTrial,
+    trialDays: c.trialDays,
+    status: "active",
+    sortOrder: c.sortOrder,
+    highlight: c.highlight,
+    monthlyPriceCents: c.priceUsdMonthly * 100,
+    yearlyPriceCents: c.priceUsdYearly * 100,
+    currency: "USD",
+    limits: { ...c.limits },
+    features: [...c.features],
+    capabilities: { ...c.capabilities },
+    paddleProductId: null,
+    paddleMonthlyPriceId: null,
+    paddleYearlyPriceId: null,
+    paddlePrices: [],
+    syncState: "not_synced",
+    syncError: null,
+    createdAt: new Date("2026-10-09T00:00:00Z"),
+    updatedAt: new Date("2026-10-09T00:00:00Z"),
+  }));
 }
 
 export function createFakeDb() {
@@ -93,11 +138,26 @@ export function createFakeDb() {
     adminApiKey: table([], { pk: "id", unique: ["hash"] }),
     featureFlag: table([], { pk: "key" }),
     announcement: table([], { pk: "id" }),
+    aiCall: table([], { pk: "id" }),
+    billingEvent: table([], { pk: "id" }),
+    mediaAsset: table([], { pk: "id" }),
+    canvaConnection: table([], { pk: "id" }),
+    cloudflareConnection: table([], { pk: "id" }),
+    storeConnection: table([], { pk: "id" }),
+    serviceUsage: table([], { pk: "service" }),
+    serviceSwitch: table([], { pk: "service" }),
+    serviceCheck: table([], { pk: "service" }),
+    adminSetting: table([], { pk: "key" }),
     monthlyCost: table([], { pk: "id" }),
-    planLimitOverride: table([], { pk: "plan" }),
+    // The three plans the migration seeds, exactly (so limits, trial length and capabilities behave as in production).
+    planDefinition: table(seedPlanRows(), { pk: "key", unique: ["key"] }),
+    planPriceChange: table([], { pk: "id", defaults: () => ({ status: "scheduled", notifiedCount: 0, appliedCount: 0, failedCount: 0, completedAt: null }) }),
+    planPriceChangeItem: table([], { pk: "id", defaults: () => ({ status: "pending", noticeSentAt: null, effectiveAt: null, appliedAt: null, error: null, updatedAt: new Date() }) }),
     $executeRaw: vi.fn(async () => 1),
+    $queryRaw: vi.fn(async () => [{ locked: true }]),
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
   };
+  currentDb = db as never;
   return db;
 }
 export type FakeDb = ReturnType<typeof createFakeDb>;

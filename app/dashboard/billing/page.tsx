@@ -1,15 +1,16 @@
 import Link from "next/link";
 import { AlertTriangle, ArrowRight } from "lucide-react";
+import { pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { CheckoutScript } from "@/components/billing/checkout";
 import { CheckoutReturn } from "@/components/billing/checkout-return";
-import { formatDate, intervalWord, priceFor, formatUsd, statusLabel } from "@/components/billing/helpers";
+import { formatDate, intervalWord, formatUsd, statusLabel } from "@/components/billing/helpers";
 import { InvoiceList } from "@/components/billing/invoice-list";
 import { PlanActions } from "@/components/billing/plan-actions";
 import { PlanPicker } from "@/components/billing/plan-picker";
 import { Badge, GlassCard, Meter } from "@/components/ui";
-import { isPaidPlan } from "@/lib/billing/catalog";
+import { getPlan, getSellablePlans, subscriberPriceCents, toPublic } from "@/lib/plan-catalog";
 import { getInvoices } from "./actions";
 
 export const metadata = { title: "Billing" };
@@ -17,6 +18,8 @@ export const metadata = { title: "Billing" };
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
 export default async function BillingPage({ searchParams }: { searchParams: SearchParams }) {
+  const blocked = await pageGate("billing");
+  if (blocked) return blocked;
   const [{ usage, isTrial, trialDaysLeft }, query] = await Promise.all([getAppContext(), searchParams]);
   const { subscription, plan, used, limits, resetsAt } = usage;
 
@@ -26,8 +29,11 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   const periodEnd = formatDate(subscription.currentPeriodEnd);
   const trialEnd = formatDate(subscription.trialEndsAt);
   const cancelling = paid && subscription.cancelAtPeriodEnd;
+  const [sellable, currentPlan] = await Promise.all([getSellablePlans(), getPlan(subscription.plan)]);
+  // Retired and hidden plans stay listed for the clients already on them, so "Your current plan" is still shown.
+  const pickable = [...sellable, ...(currentPlan && !currentPlan.isTrial && !sellable.some((p) => p.key === currentPlan.key) ? [currentPlan] : [])].map(toPublic);
   const price =
-    paid && isPaidPlan(subscription.plan) ? `${formatUsd(priceFor(subscription.plan, subscription.interval))} per ${intervalWord(subscription.interval)}` : null;
+    paid && currentPlan && !currentPlan.isTrial ? `${formatUsd(subscriberPriceCents(currentPlan, subscription.providerPriceId, subscription.interval) / 100)} per ${intervalWord(subscription.interval)}` : null;
 
   const invoices = paid || subscription.providerCustomerId ? await getInvoices() : [];
   const checkoutSuccess = query.checkout === "success";
@@ -105,7 +111,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
 
       {/* Hidden while a purchase is being confirmed, so nobody buys a second plan by accident. */}
       {!waitingForCheckout && (
-        <PlanPicker current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue }} />
+        <PlanPicker plans={pickable} current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue }} />
       )}
 
       {(paid || invoices.length > 0) && <InvoiceList invoices={invoices} />}

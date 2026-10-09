@@ -9,7 +9,7 @@ export type WelcomeState = { error?: string; fieldErrors?: FieldErrors };
 
 // Google sign-ups: save the organisation details, then open the dashboard.
 export async function saveOrganisation(_prev: WelcomeState, formData: FormData): Promise<WelcomeState> {
-  const user = await requireActiveUser();
+  const user = await requireActiveUser("settings");
 
   const parsed = welcomeSchema.safeParse({
     organisationName: formData.get("organisationName") ?? "",

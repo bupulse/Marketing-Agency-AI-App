@@ -1,4 +1,5 @@
 import "server-only";
+import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { siteUrl } from "@/lib/auth/site-url";
 import { prisma } from "@/lib/db";
@@ -38,6 +39,7 @@ async function guarded<T>(businessId: string, run: () => Promise<T>): Promise<T>
 
 /** Checks the pasted token (never stored unchecked), then keeps it encrypted. */
 export async function connectCloudflare(businessId: string, rawToken: string): Promise<{ zones: number }> {
+  if (!(await isServiceEnabled("cloudflare"))) throw new CloudflareUserError(UNAVAILABLE_MESSAGE);
   const token = rawToken.trim();
   if (token.length < 20 || token.length > 200 || /\s/.test(token)) throw new CloudflareUserError("That does not look like a Cloudflare API token. Copy the whole token.");
   let zones: Zone[];
@@ -98,6 +100,8 @@ export type InstallOutcome = { status: "installed" | "already_installed" } | { s
  * site and the answer is "manual" so the screen shows the copy-this-code step instead.
  */
 export async function installChat(businessId: string, zoneId: string): Promise<InstallOutcome> {
+  // Switched off in the admin console: the copy-paste snippet still works, so point to it.
+  if (!(await isServiceEnabled("cloudflare"))) return { status: "manual", reason: `${UNAVAILABLE_MESSAGE} You can copy the code below into your site instead.` };
   const token = await tokenFor(businessId);
   const zone = (await guarded(businessId, () => listZones(token))).find((z) => z.id === zoneId);
   if (!zone) throw new CloudflareUserError("We could not find that domain in your Cloudflare account.");

@@ -6,6 +6,7 @@ import { Badge, Button, Field, Input, Textarea } from "@/components/ui";
 import { LocalTime, TimezoneField } from "@/components/admin/local-time";
 import { nowMs, param } from "@/lib/admin/format";
 import { listAnnouncements } from "@/lib/admin/service";
+import { getPlans } from "@/lib/plan-catalog";
 import { createAnnouncementAction, endAnnouncementAction } from "../actions";
 
 export const metadata = { title: "Announcements" };
@@ -13,7 +14,7 @@ export const metadata = { title: "Announcements" };
 export default async function AnnouncementsPage({ searchParams }: PageProps<"/admin/announcements">) {
   await requireAdmin(); // pages render alongside the layout, so check here too
   const sp = await searchParams;
-  const rows = await listAnnouncements();
+  const [rows, allPlans] = await Promise.all([listAnnouncements(), getPlans()]);
   const now = nowMs();
   const state = (a: (typeof rows)[number]) =>
     a.startsAt.getTime() > now ? "scheduled" : a.endsAt && a.endsAt.getTime() <= now ? "ended" : "live";
@@ -35,7 +36,7 @@ export default async function AnnouncementsPage({ searchParams }: PageProps<"/ad
           </div>
           <fieldset className="flex flex-wrap items-center gap-x-5 gap-y-1">
             <legend className="mb-1 text-sm font-medium">Show to (none ticked means everyone)</legend>
-            {[["TRIAL", "Trial"], ["STANDARD", "Standard"], ["PRO", "Pro"]].map(([v, l]) => (
+            {allPlans.map((p) => [p.key, p.name]).map(([v, l]) => (
               <label key={v} className="inline-flex min-h-11 items-center gap-2 text-[15px]"><input type="checkbox" name="plans" value={v} className="size-5" /> {l}</label>
             ))}
           </fieldset>

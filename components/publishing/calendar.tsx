@@ -26,10 +26,10 @@ const VIEWS: { value: View; label: string }[] = [
 ];
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-type Props = { posts: CalendarPost[]; context: ComposerContext; todayKey: string; nowIso: string };
+type Props = { posts: CalendarPost[]; context: ComposerContext; todayKey: string; nowIso: string; /** Changing the company time zone is a settings action (Owner and Admins). */ canSetZone?: boolean };
 
 /** The calendar: week, month and queue views in the business's time zone, with drag-to-reschedule and approvals. */
-export function Calendar({ posts, context, todayKey, nowIso }: Props) {
+export function Calendar({ posts, context, todayKey, nowIso, canSetZone = true }: Props) {
   const router = useRouter();
   const { toast } = useToast();
   const zone = context.timezone;
@@ -170,14 +170,18 @@ export function Calendar({ posts, context, todayKey, nowIso }: Props) {
           </div>
         )}
         <div className="ml-auto flex items-center gap-2">
-          <button type="button" onClick={() => setTzOpen(true)} className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[13px] text-muted hover:bg-soft hover:text-text">
-            <Globe aria-hidden className="size-4" /> {zone.replace(/_/g, " ")}
-          </button>
+          {canSetZone ? (
+            <button type="button" onClick={() => setTzOpen(true)} className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[13px] text-muted hover:bg-soft hover:text-text">
+              <Globe aria-hidden className="size-4" /> {zone.replace(/_/g, " ")}
+            </button>
+          ) : (
+            <span className="inline-flex min-h-11 items-center gap-1.5 px-3 text-[13px] text-muted"><Globe aria-hidden className="size-4" /> {zone.replace(/_/g, " ")}</span>
+          )}
           <Button size="sm" leading={<Plus aria-hidden className="size-4" />} onClick={() => setComposer({})}>Create post</Button>
         </div>
       </div>
 
-      {zone === "UTC" && (
+      {zone === "UTC" && canSetZone && (
         <div className="glass flex flex-col gap-3 rounded-2xl p-4">
           <p className="text-[14px]"><span className="font-semibold">Set your time zone.</span> <span className="text-muted">Your calendar is on UTC, so posts would go out at the wrong local time. Pick where you are.</span></p>
           <TimezoneForm current={zone} />

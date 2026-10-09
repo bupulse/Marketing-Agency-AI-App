@@ -6,16 +6,27 @@ import { pageMetadata } from "@/components/marketing/pages/seo";
 import { Accordion, Button, Container, GlassCard, SectionHeading } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { PricingPlans } from "./pricing-plans";
-import { faqs, trial } from "@/lib/content/site";
+import { faqs, fillFaq } from "@/lib/content/site";
+import { getSellablePlans, getTrialInfo, getTrialPlan, toPublic } from "@/lib/plan-catalog";
 
-export const metadata = pageMetadata({
-  title: "Pricing",
-  description: "Start free for 7 days, no card needed. Then Standard or Pro, monthly or yearly with 2 months free. Marketing help for every small business.",
-  path: "/pricing",
-});
+// Plans change in the admin console, so the page is rendered per request (the plan catalog is cached for 30 seconds).
+export const dynamic = "force-dynamic";
 
-export default function PricingPage() {
-  const pricingFaqs = faqs.filter((f) => /trial|marketing experience|type of business|done-for-you/i.test(f.q));
+export async function generateMetadata() {
+  const days = (await getTrialInfo()).days;
+  return pageMetadata({
+    title: "Pricing",
+    description: `Start free for ${days} days, no card needed. Then pick a paid plan, monthly or yearly with a discount. Marketing help for every small business.`,
+    path: "/pricing",
+  });
+}
+
+export default async function PricingPage() {
+  const [sellable, trialPlan] = await Promise.all([getSellablePlans(), getTrialPlan()]);
+  const plans = sellable.map(toPublic);
+  const comparison = [toPublic(trialPlan), ...plans];
+  const trial = { days: trialPlan.trialDays ?? 7, text: trialPlan.limits.text, images: trialPlan.limits.image };
+  const pricingFaqs = fillFaq(faqs, trial.days).filter((f) => /trial|marketing experience|type of business|done-for-you/i.test(f.q));
   return (
     <>
       <PageHero
@@ -25,9 +36,9 @@ export default function PricingPage() {
       />
 
       <Container className="pb-16">
-        <PricingPlans />
+        <PricingPlans plans={plans} />
         <p className="mx-auto mt-6 max-w-2xl text-center text-sm text-muted">
-          Prices are in US dollars. Pay yearly and get 2 months free. Cancel any time; your plan stays active until the end of the period you paid for. See our <Link href="/refund-policy" className="font-semibold text-[color:var(--bp-link)] underline">refund policy</Link>.
+          Prices are in US dollars. Pay yearly and save. Cancel any time; your plan stays active until the end of the period you paid for. See our <Link href="/refund-policy" className="font-semibold text-[color:var(--bp-link)] underline">refund policy</Link>.
         </p>
       </Container>
 
@@ -51,7 +62,7 @@ export default function PricingPage() {
 
       <Container className="pb-20">
         <SectionHeading title="Compare plans" text="Everything in each plan, side by side." className="mb-10" />
-        <PlanComparison />
+        <PlanComparison plans={comparison} />
       </Container>
 
       <Container size="narrow" className="pb-20">

@@ -4,7 +4,7 @@ const { aggregate, create, logError } = vi.hoisted(() => ({ aggregate: vi.fn(), 
 vi.mock("@/lib/db", () => ({ prisma: { aiCall: { aggregate, create } } }));
 vi.mock("@/lib/errors", () => ({ logError }));
 
-import { AIBudgetExceededError } from "@/lib/ai/budget";
+import { AIBudgetExceededError, clearBudgetCache } from "@/lib/ai/budget";
 import { withLedger } from "@/lib/ai/ledger";
 
 const run = () =>
@@ -17,6 +17,7 @@ const run = () =>
 
 describe("monthly AI budget", () => {
   beforeEach(() => {
+    clearBudgetCache(); // the cap is cached for 30 s
     for (const m of [aggregate, create, logError]) m.mockReset();
     delete process.env.AI_MONTHLY_BUDGET_USD;
   });

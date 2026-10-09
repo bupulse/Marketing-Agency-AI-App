@@ -1,4 +1,5 @@
 import { Lock } from "lucide-react";
+import { pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { ApiKeysManager } from "@/components/connectors/api-keys-manager";
@@ -10,6 +11,8 @@ import { listApiKeys, MAX_API_KEYS } from "@/lib/api/keys";
 export const metadata = { title: "API keys" };
 
 export default async function ApiKeysPage() {
+  const blocked = await pageGate("webhooks");
+  if (blocked) return blocked;
   const { business } = await getAppContext();
   const [allowed, keys] = await Promise.all([businessHasApiAccess(business.id), listApiKeys(business.id)]);
   const active = keys.filter((k) => !k.revokedAt).length;

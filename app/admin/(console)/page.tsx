@@ -3,6 +3,9 @@ import Link from "next/link";
 import { BarChart3 } from "lucide-react";
 import { EmptyState, PageHeader } from "@/components/app";
 import { LineChart, Spark } from "@/components/admin/charts";
+import { ActivityFeed } from "@/components/admin/activity-feed";
+import { getActivity } from "@/lib/admin/activity";
+import { getAttention } from "@/lib/admin/attention";
 import { Empty, Panel, Stat } from "@/components/admin/ui";
 import { Badge } from "@/components/ui";
 import { money, num, pct, rangeFor } from "@/lib/admin/format";
@@ -40,7 +43,9 @@ function Tiles({ o, days }: { o: Overview; days: number }) {
 export default async function AdminOverview() {
   await requireAdmin(); // pages render alongside the layout, so check here too
   const range30 = rangeFor(30);
-  const [overviews, series, working] = await Promise.all([
+  const [attention, activity, overviews, series, working] = await Promise.all([
+    getAttention().catch(() => []),
+    getActivity({ limit: 8 }).catch(() => ({ items: [], newest: null, nextBefore: null, more: false })),
     Promise.all(PERIODS.map((p) => getOverview(rangeFor(p.days)))),
     getMetrics(range30, ["visits", "signups", "revenue_cents", "profit_cents"]),
     getWhatsWorking(range30),
@@ -62,6 +67,20 @@ export default async function AdminOverview() {
           text="Numbers appear after the first visits and sign-ups, and after the nightly roll-up has run once."
         />
       )}
+      <Panel title="Needs your attention" description="Everything that is waiting for you or looks wrong right now.">
+        {attention.length === 0 ? (
+          <p role="status" className="rounded-2xl bg-success-bg px-4 py-3 text-[15px] font-medium text-success">Nothing needs you right now. <Link href="/admin/health" className="underline">System health</Link> is all good.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {attention.map((a) => (
+              <li key={a.key} className="flex items-start gap-3 text-[15px]">
+                <Badge tone={a.level === "problem" ? "danger" : "violet"}>{a.level}</Badge>
+                <Link href={a.href} className="underline">{a.text}</Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
       {PERIODS.map((p, i) => (
         <section key={p.key} aria-labelledby={`h-${p.key}`} className="flex flex-col gap-3">
           <h2 id={`h-${p.key}`} className="px-1 text-lg font-semibold tracking-[-0.02em]">
@@ -103,6 +122,10 @@ export default async function AdminOverview() {
           <Spark values={col("profit_cents")} label="Profit trend" />
         </Panel>
       </div>
+
+      <Panel title="Live activity" description="The latest things that happened. Updates every 5 seconds." action={<Link href="/admin/activity" className="text-sm font-medium underline">Open the full feed</Link>}>
+        <ActivityFeed initial={activity} compact limit={8} />
+      </Panel>
 
       <Panel title="What’s working" description="Last 30 days. Counts are real businesses and visits; nothing is estimated." action={<Link href="/admin/content" className="text-sm font-medium underline">Content performance</Link>}>
         <div className="grid gap-5 md:grid-cols-3">

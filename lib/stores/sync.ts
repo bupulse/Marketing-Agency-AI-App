@@ -8,6 +8,7 @@
 // only while the Project still equals that baseline, meaning the user has not changed it. A field the user changed
 // is kept and counted as "kept"; it stays protected until they delete the project or re-import it as new.
 import "server-only";
+import { disabledServices } from "@/lib/admin/switch";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { logError } from "@/lib/errors";
@@ -392,7 +393,10 @@ export async function runDailyStoreSync(opts: { cursor?: string | null; now?: Da
   const budget = opts.budget ?? newBudget();
   const parsed = opts.cursor ? new Date(opts.cursor) : null;
   const runStart = parsed && !Number.isNaN(parsed.getTime()) ? parsed : (opts.now ?? new Date());
-  const due = { status: "ACTIVE", products: { some: {} }, OR: [{ lastAttemptAt: null }, { lastAttemptAt: { lt: runStart } }] };
+  // Providers switched off in the admin console are skipped (their stores keep their data and are not marked failed).
+  const off = await disabledServices();
+  const pausedProviders = (["shopify", "woocommerce"] as const).filter((p) => off.has(p));
+  const due = { status: "ACTIVE", products: { some: {} }, ...(pausedProviders.length ? { provider: { notIn: [...pausedProviders] } } : {}), OR: [{ lastAttemptAt: null }, { lastAttemptAt: { lt: runStart } }] };
   const batch = await prisma.storeConnection.findMany({ where: due, orderBy: [{ lastAttemptAt: { sort: "asc", nulls: "first" } }, { id: "asc" }], take: CRON_BATCH });
   let updated = 0;
   let failed = 0;

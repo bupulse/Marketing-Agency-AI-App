@@ -18,6 +18,9 @@ import {
   setFeatureFlag,
   suspendUser,
 } from "@/lib/admin/service";
+import { addAdminNote, deleteAdminNote } from "@/lib/admin/notes";
+import { setAiBudget } from "@/lib/admin/ai-usage";
+import { setServiceEnabled, testService } from "@/lib/admin/services";
 import { AdminError } from "@/lib/admin/types";
 import { prisma } from "@/lib/db";
 
@@ -218,4 +221,48 @@ export async function createAnnouncementAction(f: FormData) {
 export async function endAnnouncementAction(f: FormData) {
   const ctx = await adminAction();
   await finish("/admin/announcements", "Announcement ended.", () => endAnnouncement(ctx, text(f, "id")));
+}
+
+// ---- Client notes ------------------------------------------------------------------------------------------
+
+export async function addNoteAction(f: FormData) {
+  const ctx = await adminAction();
+  const userId = userIdOf(text(f, "userId"));
+  await finish(`/admin/users/${userId}?tab=notes`, "Note saved.", () => addAdminNote(ctx, { userId, body: String(f.get("body") ?? "") }));
+}
+
+export async function deleteNoteAction(f: FormData) {
+  const ctx = await adminAction();
+  const userId = userIdOf(text(f, "userId"));
+  await finish(`/admin/users/${userId}?tab=notes`, "Note deleted.", async () => {
+    // The note must belong to this client: the id alone is not enough.
+    const note = await prisma.adminNote.findFirst({ where: { id: text(f, "id"), userId }, select: { id: true } });
+    if (!note) throw new AdminError("not_found", "That note does not belong to this client.");
+    await deleteAdminNote(ctx, note.id);
+  });
+}
+
+// ---- Services and AI budget ----------------------------------------------------------------------------------
+
+export async function testServiceAction(f: FormData) {
+  const ctx = await adminAction();
+  await finish("/admin/services", (r) => `${r.ok ? "Working" : "Not working"}: ${r.message ?? (r.ok ? "the check passed" : "the check failed")} (${r.latencyMs} ms).`, () => testService(ctx, text(f, "service")));
+}
+
+export async function setServiceEnabledAction(f: FormData) {
+  const ctx = await adminAction();
+  const enabled = text(f, "enabled") === "1";
+  await finish("/admin/services", enabled ? "Service switched on." : "Service switched off. Clients see a friendly unavailable message.", () =>
+    setServiceEnabled(ctx, { service: text(f, "service"), enabled, reason: text(f, "reason") || undefined }),
+  );
+}
+
+export async function setAiBudgetAction(f: FormData) {
+  const ctx = await adminAction();
+  await finish("/admin/ai", "Monthly AI cap saved.", () => {
+    const raw = text(f, "usd");
+    const usd = raw === "" ? null : Number(raw.replace(/[$,\s]/g, ""));
+    if (usd !== null && !Number.isFinite(usd)) throw new AdminError("invalid", "Enter the cap in dollars, for example 20.");
+    return setAiBudget(ctx, { monthlyUsd: usd });
+  });
 }

@@ -1,3 +1,4 @@
+import { recordCron } from "@/lib/admin/cron-run";
 import { NextResponse, type NextRequest } from "next/server";
 import { runLeadsDigest } from "@/lib/leads/digest";
 import { retryDueWebhooks } from "@/lib/webhooks/retry";
@@ -19,10 +20,14 @@ export async function POST(request: NextRequest) {
   if (!safeEqual(request.headers.get("authorization") ?? "", `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const digest = await runLeadsDigest();
-  const webhooks = await retryDueWebhooks().catch((error) => {
-    console.error("[webhooks.cron] retry failed:", error instanceof Error ? error.message : error);
-    return null;
-  });
-  return NextResponse.json({ ...digest, webhooks });
+  return NextResponse.json(
+    await recordCron("leads-digest", async () => {
+      const digest = await runLeadsDigest();
+      const webhooks = await retryDueWebhooks().catch((error) => {
+        console.error("[webhooks.cron] retry failed:", error instanceof Error ? error.message : error);
+        return null;
+      });
+      return { ...digest, webhooks };
+    }),
+  );
 }

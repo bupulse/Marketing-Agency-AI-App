@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { bizFind, eventsUpdate, subFindUnique, findMany, findFirst, executeRaw, logError, list, remove, createClient } = vi.hoisted(() => ({
+const { queryRaw, memberFind, bizFind, eventsUpdate, notesDelete, subFindUnique, findMany, findFirst, executeRaw, logError, list, remove, createClient } = vi.hoisted(() => ({
+  queryRaw: vi.fn(),
+  memberFind: vi.fn(),
   bizFind: vi.fn(),
   eventsUpdate: vi.fn(),
+  notesDelete: vi.fn(),
   subFindUnique: vi.fn(),
   findMany: vi.fn(),
   findFirst: vi.fn(),
@@ -13,7 +16,7 @@ const { bizFind, eventsUpdate, subFindUnique, findMany, findFirst, executeRaw, l
   createClient: vi.fn(),
 }));
 
-vi.mock("@/lib/db", () => ({ prisma: { business: { findUnique: bizFind }, analyticsEvent: { updateMany: eventsUpdate }, user: { findMany, findFirst }, subscription: { findUnique: subFindUnique }, $executeRaw: executeRaw } }));
+vi.mock("@/lib/db", () => ({ prisma: { business: { findUnique: bizFind }, analyticsEvent: { updateMany: eventsUpdate }, adminNote: { deleteMany: notesDelete }, user: { findMany, findFirst }, membership: { findMany: memberFind }, invite: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) }, subscription: { findUnique: subFindUnique }, $executeRaw: executeRaw, $queryRaw: queryRaw } }));
 vi.mock("@/lib/errors", () => ({ logError }));
 vi.mock("@supabase/supabase-js", () => ({ createClient }));
 
@@ -26,7 +29,10 @@ const now = new Date("2026-11-01T00:00:00Z");
 describe("purgeDueAccounts", () => {
   beforeEach(() => {
     bizFind.mockReset().mockResolvedValue({ id: "biz1" });
+    memberFind.mockReset().mockResolvedValue([]);
+    queryRaw.mockReset().mockResolvedValue([]);
     eventsUpdate.mockReset().mockResolvedValue({ count: 3 });
+    notesDelete.mockReset().mockResolvedValue({ count: 1 });
     for (const m of [subFindUnique, findMany, findFirst, executeRaw, logError, list, remove, createClient]) m.mockReset();
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://x.supabase.co";
     process.env.SUPABASE_SECRET_KEY = "secret";
@@ -50,12 +56,48 @@ describe("purgeDueAccounts", () => {
     expect(sql(1)).toContain("DELETE FROM auth.users");
     expect(sql(2)).toContain("redact_audit_for_user");
     expect(executeRaw.mock.calls[2][1]).toBe("u2");
+    // the private admin notes of each deleted user go too
+    expect(notesDelete.mock.calls.map((c) => c[0])).toEqual([{ where: { userId: "u1" } }, { where: { userId: "u2" } }]);
     expect(result).toMatchObject({ due: 2, deleted: 2, failed: 0 });
+  });
+
+  it("erases a company's teammates BEFORE the company account, so a failure never strands logins", async () => {
+    findMany.mockResolvedValue([{ id: "owner1" }]);
+    memberFind.mockResolvedValue([{ userId: "mate1" }]);
+    const order: string[] = [];
+    executeRaw.mockImplementation(async (sql: string[], id: string) => {
+      const text = sql.join("?");
+      if (text.includes("DELETE FROM auth.users")) order.push(`delete:${id}`);
+      return 1;
+    });
+    const result = await purgeDueAccounts(now);
+    expect(order).toEqual(["delete:mate1", "delete:owner1"]);
+    expect(result).toMatchObject({ deleted: 1, failed: 0 });
+  });
+
+  it("leaves the company intact for a retry when erasing a teammate fails", async () => {
+    findMany.mockResolvedValue([{ id: "owner1" }]);
+    memberFind.mockResolvedValue([{ userId: "mate1" }]);
+    executeRaw.mockImplementation(async (sql: string[], id: string) => {
+      if (sql.join("?").includes("DELETE FROM auth.users") && id === "mate1") throw new Error("db");
+      return 1;
+    });
+    const result = await purgeDueAccounts(now);
+    expect(result).toMatchObject({ deleted: 0, failed: 1 });
+    expect(executeRaw.mock.calls.some((c) => c[1] === "owner1" && (c[0] as string[]).join("?").includes("DELETE FROM auth.users"))).toBe(false);
+  });
+
+  it("sweeps logins that belong to no company", async () => {
+    findMany.mockResolvedValue([]);
+    queryRaw.mockResolvedValue([{ id: "orphan1" }, { id: "orphan2" }]);
+    const result = await purgeDueAccounts(now);
+    expect(result.orphansRemoved).toBe(2);
+    expect(executeRaw.mock.calls.filter((c) => (c[0] as string[]).join("?").includes("DELETE FROM auth.users")).map((c) => c[1])).toEqual(["orphan1", "orphan2"]);
   });
 
   it("does nothing when no one is due", async () => {
     findMany.mockResolvedValue([]);
-    expect(await purgeDueAccounts(now)).toEqual({ due: 0, deleted: 0, failed: 0, filesRemoved: 0 });
+    expect(await purgeDueAccounts(now)).toEqual({ due: 0, deleted: 0, failed: 0, filesRemoved: 0, orphansRemoved: 0 });
     expect(executeRaw).not.toHaveBeenCalled();
   });
 

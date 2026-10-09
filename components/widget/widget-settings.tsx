@@ -24,6 +24,7 @@ export function WidgetSettings({
   widgetKey,
   baseUrl,
   usage,
+  lockedBySupport = false,
 }: {
   initial: Settings;
   defaultGreeting: string;
@@ -32,6 +33,8 @@ export function WidgetSettings({
   widgetKey: string;
   baseUrl: string;
   usage: { used: number; limit: number };
+  /** Support switched the chat off: the switch stays off until support turns it back on. */
+  lockedBySupport?: boolean;
 }) {
   const [s, setS] = useState<Settings>(initial);
   const [domainInput, setDomainInput] = useState("");
@@ -95,19 +98,26 @@ export function WidgetSettings({
               <p className="text-[14px] text-muted">Changes go live on your website as soon as you save.</p>
             </div>
             <label className="flex cursor-pointer items-center gap-3 text-[15px] font-medium">
-              {s.enabled ? "On" : "Off"}
+              {s.enabled && !lockedBySupport ? "On" : "Off"}
               <button
                 type="button"
                 role="switch"
-                aria-checked={s.enabled}
+                aria-checked={s.enabled && !lockedBySupport}
                 aria-label="Website chat"
+                disabled={lockedBySupport}
                 onClick={() => update({ enabled: !s.enabled })}
-                className={cn("relative h-7 w-12 cursor-pointer rounded-full transition-colors motion-reduce:transition-none", s.enabled ? "bg-brand-gradient" : "bg-line")}
+                className={cn("relative h-7 w-12 rounded-full transition-colors motion-reduce:transition-none", lockedBySupport ? "cursor-not-allowed opacity-60" : "cursor-pointer", s.enabled && !lockedBySupport ? "bg-brand-gradient" : "bg-line")}
               >
-                <span className={cn("absolute top-0.5 size-6 rounded-full bg-white shadow transition-[left] motion-reduce:transition-none", s.enabled ? "left-[22px]" : "left-0.5")} />
+                <span className={cn("absolute top-0.5 size-6 rounded-full bg-white shadow transition-[left] motion-reduce:transition-none", s.enabled && !lockedBySupport ? "left-[22px]" : "left-0.5")} />
               </button>
             </label>
           </div>
+
+          {lockedBySupport && (
+            <p role="status" className="rounded-2xl bg-soft p-3 text-[14px]">
+              <strong>Website chat is switched off.</strong> Our team turned it off for your account. <a href="/contact" className="underline">Contact support</a> to switch it back on.
+            </p>
+          )}
 
           <Field label="Greeting" hint={`Leave empty to use: "${defaultGreeting}"`} error={errors.greeting || undefined}>
             <Textarea rows={2} maxLength={300} value={s.greeting} placeholder={defaultGreeting} onChange={(e) => update({ greeting: e.target.value })} />

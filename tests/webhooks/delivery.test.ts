@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const prisma = vi.hoisted(() => ({
   lead: { findMany: vi.fn(), updateMany: vi.fn() },
@@ -46,7 +46,7 @@ describe("emitWebhookEvent", () => {
     prisma.webhookDelivery.create.mockImplementation(async ({ data }) => ({ id: `d-${data.endpointId}`, event: data.event, payload: data.payload, attempts: 0, createdAt: t0 }));
     deliverWebhook.mockResolvedValue({ ok: true, attempts: 1, status: 200, retryable: false });
     expect(await emitWebhookEvent("b1", "lead.created", { id: "l1" })).toBe(2);
-    expect(prisma.webhookEndpoint.findMany.mock.calls[0][0].where).toEqual({ businessId: "b1", enabled: true, events: { has: "lead.created" } });
+    expect(prisma.webhookEndpoint.findMany.mock.calls[0][0].where).toEqual({ businessId: "b1", enabled: true, pausedByAdminAt: null, events: { has: "lead.created" } });
     expect(prisma.webhookDelivery.create).toHaveBeenCalledTimes(2);
     const data = prisma.webhookDelivery.create.mock.calls[0][0].data;
     expect(data).toMatchObject({ endpointId: "e1", event: "lead.created", status: "pending" });
@@ -172,9 +172,13 @@ describe("leads left waiting by the old per-widget webhook", () => {
 });
 
 describe("manual Retry", () => {
+  afterEach(() => vi.useRealTimers());
   const next = new Date(t0.getTime() + HOUR);
   const row = (status: string) => ({ ...delivery({ attempts: 3 }), status, nextAttemptAt: status === "pending" ? next : null, endpoint });
   beforeEach(() => {
+    // The rows were created at t0; pin the clock so the 24-hour give-up does not depend on today's date.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(t0.getTime() + HOUR / 2));
     prisma.webhookDelivery.findUnique.mockResolvedValue({ responseStatus: 503, error: "x" });
     deliverWebhook.mockResolvedValue({ ok: false, attempts: 1, status: 503, error: "x", retryable: true });
   });

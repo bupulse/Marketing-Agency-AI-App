@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { Badge, Button, GlassCard, Input } from "@/components/ui";
@@ -29,6 +30,8 @@ const ERRORS: Record<string, string> = {
 };
 
 export default async function StorePage({ params, searchParams }: { params: Promise<{ provider: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const blocked = await pageGate("connectors");
+  if (blocked) return blocked;
   const { provider } = await params;
   if (!isStoreProvider(provider)) notFound();
   const query = await searchParams;

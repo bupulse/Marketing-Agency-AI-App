@@ -1,3 +1,4 @@
+import { recordCron } from "@/lib/admin/cron-run";
 import { NextResponse, type NextRequest } from "next/server";
 import { runDailyStoreSync } from "@/lib/stores/sync";
 
@@ -20,5 +21,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const cursor = request.nextUrl.searchParams.get("cursor");
-  return NextResponse.json(await runDailyStoreSync({ cursor: cursor && cursor.length <= 64 ? cursor : null }));
+  return NextResponse.json(await recordCron("store-sync", () => runDailyStoreSync({ cursor: cursor && cursor.length <= 64 ? cursor : null })));
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { businessHasApiAccess } from "@/lib/api/auth";
 import { ApiKeyError, createApiKey, revokeApiKey } from "@/lib/api/keys";
@@ -10,7 +11,7 @@ import { RateLimitError, rateLimit, rateLimitMessage } from "@/lib/rate-limit";
 export type ApiKeyActionResult<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 async function owner() {
-  const user = await requireActiveUser();
+  const user = await requireActiveUser("webhooks", "throw");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (!business) throw new ApiKeyError("not_found", "Finish setting up your business first.");
   return { userId: user.id, businessId: business.id };
@@ -23,6 +24,7 @@ async function guarded<T extends object>(run: () => Promise<T>): Promise<ApiKeyA
     return { ok: true, ...value };
   } catch (error) {
     if (error instanceof ApiKeyError) return { ok: false, error: error.message };
+    if (error instanceof ForbiddenError) return { ok: false, error: error.message };
     if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
     if (error && typeof error === "object" && "digest" in error) throw error; // redirects from requireActiveUser
     console.error("[api-keys] action failed:", error instanceof Error ? error.message : error);

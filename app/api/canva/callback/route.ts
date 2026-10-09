@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireActiveUser } from "@/lib/auth/require-user";
+import { requirePersonalUser } from "@/lib/auth/require-user";
 import { safeNext } from "@/lib/auth/safe-next";
 import { siteUrl } from "@/lib/auth/site-url";
 import { CanvaApiError, exchangeCode, getCanvaUserId } from "@/lib/canva/client";
 import { isCanvaEnabled } from "@/lib/canva/config";
+import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { openOAuthState, OAUTH_COOKIE, sameString } from "@/lib/canva/pkce";
 import { saveTokens } from "@/lib/canva/tokens";
 import { logError } from "@/lib/errors";
@@ -19,7 +20,8 @@ function back(next: string, result: "connected" | "denied" | "error") {
 /** Canva sends the user here after they allow (or refuse) access. Checks state, swaps the code for tokens and stores them encrypted. */
 export async function GET(request: Request) {
   if (!isCanvaEnabled()) return new Response("Not found", { status: 404 });
-  const user = await requireActiveUser();
+  if (!(await isServiceEnabled("canva"))) return new Response(UNAVAILABLE_MESSAGE, { status: 503 });
+  const user = await requirePersonalUser();
   const params = new URL(request.url).searchParams;
   const cookie = request.headers.get("cookie")?.split(/;\s*/).find((c) => c.startsWith(`${OAUTH_COOKIE}=`))?.slice(OAUTH_COOKIE.length + 1);
   const pending = await openOAuthState(cookie ? decodeURIComponent(cookie) : undefined, user.id);

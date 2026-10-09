@@ -8,7 +8,7 @@ import { saveOrganisation, type WelcomeState } from "@/app/welcome/actions";
 import { OrganisationFields, TermsField, type OrganisationValues } from "./organisation-fields";
 
 /** /welcome: organisation details for people who signed up with Google (no password needed). */
-export function WelcomeForm({ email, defaults }: { email: string; defaults: OrganisationValues }) {
+export function WelcomeForm({ email, defaults, trialDays = 7 }: { email: string; defaults: OrganisationValues; trialDays?: number }) {
   const [values, setValues] = useState({ ...defaults, terms: false });
   const [errors, setErrors] = useState<FieldErrors>({});
   const [state, formAction, pending] = useActionState<WelcomeState, FormData>(saveOrganisation, {});
@@ -47,7 +47,7 @@ export function WelcomeForm({ email, defaults }: { email: string; defaults: Orga
       <div className="flex flex-col gap-1.5">
         <h1 className="text-2xl font-semibold tracking-[-0.03em]">About your organisation</h1>
         <p className="text-[15px] text-muted">
-          One last step before your 7-day trial. This helps us write in your brand voice from day one.
+          One last step before your {trialDays}-day trial. This helps us write in your brand voice from day one.
         </p>
       </div>
 

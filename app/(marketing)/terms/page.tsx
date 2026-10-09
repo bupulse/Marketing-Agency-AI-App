@@ -3,6 +3,11 @@ import Link from "next/link";
 import { LegalList, LegalPage, LegalSection } from "@/components/marketing/pages/legal";
 import { pageMetadata } from "@/components/marketing/pages/seo";
 import { site } from "@/lib/content/site";
+import { formatCents } from "@/components/billing/helpers";
+import { getSellablePlans, getTrialInfo } from "@/lib/plan-catalog";
+
+// Trial length and plan prices come from the plans an admin manages; the wording stays as written.
+export const dynamic = "force-dynamic";
 
 export const metadata = pageMetadata({
   title: "Terms of Service",
@@ -10,7 +15,10 @@ export const metadata = pageMetadata({
   path: "/terms",
 });
 
-export default function TermsPage() {
+export default async function TermsPage() {
+  const [trial, sellable] = await Promise.all([getTrialInfo(), getSellablePlans()]);
+  const priceList = sellable.map((p) => `${p.name} costs ${formatCents(p.monthlyPriceCents)} per month or ${formatCents(p.yearlyPriceCents)} per year`);
+  const prices = priceList.length > 1 ? `${priceList.slice(0, -1).join(", ")}, and ${priceList[priceList.length - 1]}` : priceList[0] ?? "Plans and prices are shown on our pricing page";
   return (
     <LegalPage title="Terms of Service" intro="The rules for using BuPulse, in plain English.">
       <p>
@@ -39,8 +47,8 @@ export default function TermsPage() {
       <LegalSection title="3. Free trial, plans and billing">
         <LegalList
           items={[
-            "The free trial lasts 7 days and includes 10 AI text generations and 5 brand designs. No card is needed.",
-            "Standard costs $49 per month or $490 per year, and Pro costs $99 per month or $990 per year, in US dollars. Each plan has monthly usage limits shown on our pricing page; on yearly plans they reset every month.",
+            `The free trial lasts ${trial.days} days and includes ${trial.text} AI text generations and ${trial.images} brand designs. No card is needed.`,
+            `${prices}, in US dollars. Each plan has monthly usage limits shown on our pricing page; on yearly plans they reset every month.`,
             "Paid plans renew at the end of each month or year until cancelled. Payments are processed by our reseller and merchant of record, Paddle.com, which appears on your card statement.",
             "You can cancel at any time. Your plan stays active until the end of the period you have paid for. Refunds follow our Refund Policy (bupulse.com/refund-policy).",
             "If a payment fails, we may limit your account until it is resolved.",

@@ -10,7 +10,7 @@ export type CheckResult = { ok: true; result: SeenResult; typedHost: string | nu
 
 /** "Check installation": has the widget loaded on a website recently, and does it match the page the owner typed? */
 export async function checkInstallation(url: string): Promise<CheckResult> {
-  const user = await requireActiveUser();
+  const user = await requireActiveUser("widget");
   const typed = url.trim() ? hostOf(url.trim().slice(0, 300)) : null;
   if (url.trim() && !typed) return { ok: false, error: "That does not look like a web address. Try something like https://mysite.com/contact." };
   try {

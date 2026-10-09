@@ -1,5 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { isServiceEnabled } from "@/lib/admin/switch";
+import { alertRecipients } from "@/lib/team/recipients";
 import { sendEmail } from "@/lib/publishing/email";
 import { dayKey, isValidTimeZone, zonedParts } from "@/lib/publishing/time";
 import { renderDigestEmail } from "./email";
@@ -26,6 +28,8 @@ export type DigestResult = { checked: number; due: number; sent: number; skipped
  */
 export async function runLeadsDigest(now = new Date()): Promise<DigestResult> {
   const result: DigestResult = { checked: 0, due: 0, sent: 0, skipped: 0, failed: 0 };
+  // Resend switched off in the admin console: do not start (no claims, nothing counted as failed). Leads stay in the dashboard.
+  if (!(await isServiceEnabled("resend"))) return result;
   const since = new Date(now.getTime() - DAY_MS);
   // Only the time zones where it is 08:00 right now, so the query never reads the other businesses.
   const zones = (await prisma.business.groupBy({ by: ["timezone"] })).map((g) => g.timezone).filter((zone) => zonedParts(now, isValidTimeZone(zone) ? zone : "UTC").hour === DIGEST_HOUR);
@@ -76,7 +80,9 @@ export async function runLeadsDigest(now = new Date()): Promise<DigestResult> {
         continue;
       }
       const mail = renderDigestEmail({ leads, openCount, businessName: business.name, timeZone: isValidTimeZone(business.timezone) ? business.timezone : "UTC" });
-      const sent = await sendEmail({ to: business.user.email, subject: mail.subject, html: mail.html, text: mail.text });
+      const recipients = await alertRecipients(business.id, business.user.email);
+      const results = await Promise.all(recipients.map((to) => sendEmail({ to, subject: mail.subject, html: mail.html, text: mail.text })));
+      const sent = results[0] ?? false; // the owner's copy decides whether the digest counts as sent
       if (sent) {
         result.sent++;
       } else {

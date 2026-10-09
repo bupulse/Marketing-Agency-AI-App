@@ -1,4 +1,6 @@
 import "server-only";
+import { isServiceEnabled } from "@/lib/admin/switch";
+import { recordServiceUse } from "@/lib/admin/usage-counter";
 
 export type Email = { to: string; subject: string; html: string; text: string };
 
@@ -9,6 +11,19 @@ const DEFAULT_FROM = "BuPulse <register@bupulse.com>";
  * cannot break publishing. Without RESEND_API_KEY it logs and returns false (local development).
  */
 export async function sendEmail(email: Email): Promise<boolean> {
+  // Switched off in the admin console: nothing is sent and false comes back. This is NOT a failure to retry: callers that
+  // would count an attempt check isServiceEnabled("resend") first and wait instead (reminder posts are not claimed, price
+  // notices and the lead digest do not start). Leads stay saved and show in the dashboard and the next digest.
+  if (!(await isServiceEnabled("resend"))) {
+    console.warn("[publishing.email] Resend is switched off in the admin console; email not sent:", email.subject);
+    return false;
+  }
+  const sent = await deliver(email);
+  if (process.env.RESEND_API_KEY) await recordServiceUse("resend", sent);
+  return sent;
+}
+
+async function deliver(email: Email): Promise<boolean> {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
     console.warn("[publishing.email] RESEND_API_KEY is not set; email not sent:", email.subject);

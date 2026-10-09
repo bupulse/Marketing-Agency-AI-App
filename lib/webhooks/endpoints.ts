@@ -28,7 +28,14 @@ export function validateEndpointInput(input: { url?: unknown; events?: unknown }
   return { url: check.url.toString(), events };
 }
 
-const endpointSelect = { id: true, url: true, events: true, enabled: true, createdAt: true, lastSuccessAt: true, lastFailureAt: true, failureCount: true } as const;
+const endpointSelect = { id: true, url: true, events: true, enabled: true, createdAt: true, lastSuccessAt: true, lastFailureAt: true, failureCount: true, pausedByAdminAt: true } as const;
+
+export const PAUSED_BY_SUPPORT = "This webhook was paused by BuPulse support. Contact support to turn it back on.";
+
+async function refuseIfPaused(businessId: string, id: string) {
+  const e = await prisma.webhookEndpoint.findFirst({ where: { id, businessId }, select: { pausedByAdminAt: true } });
+  if (e?.pausedByAdminAt) throw new WebhookError("invalid", PAUSED_BY_SUPPORT);
+}
 
 export async function listEndpoints(businessId: string) {
   return prisma.webhookEndpoint.findMany({ where: { businessId }, orderBy: { createdAt: "asc" }, select: endpointSelect });
@@ -48,11 +55,13 @@ export async function createEndpoint(businessId: string, input: { url?: unknown;
 export async function updateEndpoint(businessId: string, id: string, input: { url?: unknown; events?: unknown; enabled?: unknown }) {
   const data = validateEndpointInput(input);
   const enabled = typeof input.enabled === "boolean" ? input.enabled : undefined;
+  if (enabled === true) await refuseIfPaused(businessId, id);
   const result = await prisma.webhookEndpoint.updateMany({ where: { id, businessId }, data: { ...data, ...(enabled === undefined ? {} : { enabled }) } });
   if (result.count !== 1) throw new WebhookError("not_found", "That webhook no longer exists.");
 }
 
 export async function setEndpointEnabled(businessId: string, id: string, enabled: boolean) {
+  if (enabled) await refuseIfPaused(businessId, id);
   const result = await prisma.webhookEndpoint.updateMany({ where: { id, businessId }, data: { enabled, ...(enabled ? { failureCount: 0 } : {}) } });
   if (result.count !== 1) throw new WebhookError("not_found", "That webhook no longer exists.");
 }
@@ -74,6 +83,7 @@ export async function rotateEndpointSecret(businessId: string, id: string): Prom
 export async function sendTestEvent(businessId: string, id: string): Promise<{ ok: boolean; status: number | null; error: string | null }> {
   const endpoint = await prisma.webhookEndpoint.findFirst({ where: { id, businessId }, include: { business: { select: { id: true, name: true } } } });
   if (!endpoint) throw new WebhookError("not_found", "That webhook no longer exists.");
+  if (endpoint.pausedByAdminAt) throw new WebhookError("invalid", PAUSED_BY_SUPPORT);
   const payload = buildPayload("webhook.test", { message: "This is a test event from BuPulse." }, endpoint.business);
   const row = await prisma.webhookDelivery.create({
     data: { endpointId: endpoint.id, event: "webhook.test", payload: toJson(payload), status: "pending" },
@@ -104,6 +114,7 @@ export async function retryDelivery(businessId: string, deliveryId: string): Pro
   const delivery = await prisma.webhookDelivery.findFirst({ where: { id: deliveryId, endpoint: { businessId } }, include: { endpoint: true } });
   if (!delivery) throw new WebhookError("not_found", "That delivery no longer exists.");
   if (delivery.status === "success") throw new WebhookError("invalid", "That delivery already went through.");
+  if (delivery.endpoint.pausedByAdminAt) throw new WebhookError("invalid", PAUSED_BY_SUPPORT);
   const pending = delivery.status === "pending";
   if (pending) {
     const claimed = await prisma.webhookDelivery.updateMany({

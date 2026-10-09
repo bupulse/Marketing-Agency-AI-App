@@ -10,12 +10,6 @@ datasource db {
   provider = "postgresql"
 }
 
-enum Plan {
-  TRIAL
-  STANDARD
-  PRO
-}
-
 enum SubscriptionStatus {
   TRIALING
   ACTIVE
@@ -44,6 +38,7 @@ model User {
   suspendedReason      String?
   createdAt            DateTime         @default(now())
   business             Business?
+  membership           Membership?
   subscription         Subscription?
   usage                UsageRecord[]
   canva                CanvaConnection?
@@ -94,6 +89,8 @@ model Business {
   storeConnections StoreConnection[]
   pendingStores    StoreConnectionPending[]
   cloudflare       CloudflareConnection?
+  memberships      Membership[]
+  invites          Invite[]
 }
 
 // Anything the business wants to promote. A real estate "listing" is just one type.
@@ -186,6 +183,8 @@ model ChatWidget {
   lastDigestAt           DateTime?
   lastSeenAt             DateTime? // the widget last loaded on a customer's site (written at most every 10 minutes)
   lastSeenHost           String? // hostname of that site
+  disabledByAdminAt      DateTime? // set by the admin console (switch off the widget); the owner cannot turn it back on
+  disabledByAdminReason  String?
   updatedAt              DateTime  @default(now()) @updatedAt
 }
 
@@ -236,7 +235,9 @@ model Subscription {
   id                     String             @id @default(cuid())
   userId                 String             @unique @db.Uuid
   user                   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan                   Plan               @default(TRIAL)
+  // The plan key (PlanDefinition.key): TRIAL, STANDARD, PRO or any plan the admin creates.
+  plan                   String             @default("TRIAL")
+  planRef                PlanDefinition     @relation(fields: [plan], references: [key], onUpdate: Cascade, onDelete: Restrict)
   status                 SubscriptionStatus @default(TRIALING)
   provider               BillingProvider? // null while on the free trial
   providerCustomerId     String?
@@ -611,6 +612,8 @@ model WebhookEndpoint {
   lastSuccessAt   DateTime?
   lastFailureAt   DateTime?
   failureCount    Int               @default(0) // failed deliveries in a row; reset by a success
+  pausedByAdminAt     DateTime? // set by the admin console; the owner cannot turn the webhook back on
+  pausedByAdminReason String?
   deliveries      WebhookDelivery[]
 
   @@index([businessId])
@@ -855,7 +858,7 @@ model Announcement {
   title       String
   body        String
   audience    String    @default("all") // "all" | "plan"
-  plans       Plan[] // used when audience = "plan"
+  plans       String[] // plan keys; used when audience = "plan"
   startsAt    DateTime  @default(now())
   endsAt      DateTime?
   dismissible Boolean   @default(true)
@@ -865,12 +868,6 @@ model Announcement {
   @@index([startsAt, endsAt])
 }
 
-// Runtime override of lib/plans.ts limits for one plan. limits holds only the metrics that are overridden.
-model PlanLimitOverride {
-  plan      Plan     @id
-  limits    Json
-  updatedAt DateTime @updatedAt
-}
 
 // The random key behind one UTC day's visitor hashes (lib/analytics/salt.ts). Deleted once the day has ended,
 // so yesterday's hashes can no longer be recomputed from an IP and browser.
@@ -878,4 +875,199 @@ model AnalyticsSalt {
   day       String   @id // "YYYY-MM-DD"
   salt      String
   createdAt DateTime @default(now())
+}
+
+// One finished run of a scheduled job (lib/admin/cron-run.ts). Read by the admin health page; old rows are pruned.
+model CronRun {
+  id         String   @id @default(cuid())
+  job        String
+  startedAt  DateTime
+  finishedAt DateTime
+  ok         Boolean
+  summary    String?
+  error      String?
+
+  @@index([job, startedAt])
+  @@index([startedAt])
+}
+
+// A private note about a client, written in the admin console. userId has no foreign key on purpose (see the migration).
+model AdminNote {
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  body      String
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// ---- Admin: services control and AI budget (lib/admin/services.ts, lib/admin/switch.ts) ----
+
+// Kill switch per outside service. A missing row means "on". reason is what the owner typed.
+model ServiceSwitch {
+  service   String   @id
+  enabled   Boolean  @default(true)
+  reason    String?
+  changedBy String
+  updatedAt DateTime @updatedAt
+}
+
+// Result of the last "Test now" per service (secrets scrubbed before saving).
+model ServiceCheck {
+  service    String   @id
+  ok         Boolean
+  latencyMs  Int
+  message    String?
+  checkedAt  DateTime @default(now())
+}
+
+// Small counters per service and UTC day (e.g. emails sent through Resend).
+model ServiceUsage {
+  service String
+  day     DateTime @db.Date
+  ok      Int      @default(0)
+  failed  Int      @default(0)
+
+  @@id([service, day])
+}
+
+// Admin-changeable settings, e.g. key "ai.monthlyBudgetUsd" (overrides AI_MONTHLY_BUDGET_USD).
+model AdminSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+
+// A plan the admin manages (/admin/plans). Replaces the hard-coded plans of lib/plans.ts, whose values remain only as the
+// seed and as the fallback when the database cannot be read. Paddle prices are never edited in place: a price change
+// creates new Paddle prices and the old ids move to paddlePrices (history), so old subscriptions still map to this plan.
+model PlanDefinition {
+  id                   String   @id @default(cuid())
+  key                  String   @unique // slug; TRIAL, STANDARD and PRO keep their old enum names
+  name                 String
+  description          String   @default("")
+  isTrial              Boolean  @default(false) // exactly one plan: TRIAL
+  trialDays            Int? // trial only
+  status               String   @default("active") // active | hidden | retired
+  sortOrder            Int      @default(0)
+  highlight            Boolean  @default(false)
+  monthlyPriceCents    Int      @default(0)
+  yearlyPriceCents     Int      @default(0)
+  currency             String   @default("USD")
+  limits               Json // { text, image, chat, videoSeconds, voiceCharacters }
+  features             Json // string[] shown on the pricing page
+  capabilities         Json // { apiAccess: boolean, ownComposio: boolean }
+  paddleProductId      String?
+  paddleMonthlyPriceId String?
+  paddleYearlyPriceId  String?
+  // Every Paddle price this plan has had: [{ id, interval, amountCents, createdAt, archivedAt? }]. The current ones are in here too.
+  paddlePrices         Json     @default("[]")
+  // "not_synced" (draft or Paddle not connected) | "synced" | "failed"
+  syncState            String   @default("not_synced")
+  syncError            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  subscriptions Subscription[]
+  priceChanges  PlanPriceChange[]
+}
+
+// One price change of one plan. Existing subscribers move to the new price at a renewal, after notice (increase).
+model PlanPriceChange {
+  id               String   @id @default(cuid())
+  planKey          String
+  plan             PlanDefinition @relation(fields: [planKey], references: [key], onUpdate: Cascade, onDelete: Restrict)
+  direction        String // increase | decrease | mixed
+  oldMonthlyCents  Int
+  newMonthlyCents  Int
+  oldYearlyCents   Int
+  newYearlyCents   Int
+  oldMonthlyPriceId String?
+  oldYearlyPriceId  String?
+  newMonthlyPriceId String?
+  newYearlyPriceId  String?
+  // scheduled (waiting for notices and renewals) | completed | cancelled
+  status           String   @default("scheduled")
+  subscribers      Int      @default(0)
+  notifiedCount    Int      @default(0)
+  appliedCount     Int      @default(0)
+  failedCount      Int      @default(0)
+  createdBy        String
+  createdAt        DateTime @default(now())
+  completedAt      DateTime?
+
+  items PlanPriceChangeItem[]
+
+  @@index([planKey, createdAt])
+  @@index([status])
+}
+
+// One subscriber of a price change: notified, then moved to the new price shortly before the renewal on effectiveAt.
+model PlanPriceChangeItem {
+  id                     String   @id @default(cuid())
+  changeId               String
+  change                 PlanPriceChange @relation(fields: [changeId], references: [id], onDelete: Cascade)
+  userId                 String   @db.Uuid
+  providerSubscriptionId String
+  interval               BillingInterval
+  oldPriceId             String
+  newPriceId             String
+  oldCents               Int
+  newCents               Int
+  // pending -> notified (increase only) -> applied | skipped | failed
+  status                 String   @default("pending")
+  noticeSentAt           DateTime?
+  reminderSentAt         DateTime? // the second email, about 30 days before the renewal, for notices sent long ahead
+  attempts               Int      @default(0) // failed tries to send the notice; the item is failed after a few
+  effectiveAt            DateTime? // the renewal the new price starts with
+  appliedAt              DateTime?
+  error                  String?
+  updatedAt              DateTime @updatedAt
+
+  @@unique([changeId, userId])
+  @@index([changeId, status])
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+// Who belongs to a company. A user belongs to one company in Stage 1 (userId is unique). Business.userId stays the
+// company account: the billing account, the Storage folder and the subject of every service call. The Owner role normally
+// sits on that user; transferring ownership moves the role, not the account (see lib/team/service.ts).
+model Membership {
+  id         String     @id @default(cuid())
+  businessId String
+  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId     String     @unique @db.Uuid
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       MemberRole
+  invitedBy  String?    @db.Uuid
+  /// Admins opt in to the lead, digest and post alerts that go to the Owner.
+  notifyEmail Boolean   @default(false)
+  createdAt  DateTime   @default(now())
+
+  @@index([businessId])
+  // Also a partial unique index in SQL ("Membership_one_owner_per_business"): one OWNER per business.
+}
+
+// A pending invitation. The token is emailed once; only its SHA-256 hash is stored.
+model Invite {
+  id         String     @id @default(cuid())
+  businessId String
+  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  email      String
+  role       MemberRole
+  tokenHash  String     @unique
+  invitedBy  String?    @db.Uuid
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([businessId])
+  @@index([email])
 }

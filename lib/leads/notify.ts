@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { alertRecipients } from "@/lib/team/recipients";
 import { sendEmail } from "@/lib/publishing/email";
 import { renderInstantLeadEmail } from "./email";
 import { emitWebhookEvent } from "@/lib/webhooks/emit";
@@ -31,7 +32,10 @@ export async function notifyNewLead(leadId: string): Promise<{ emailed: boolean;
       try {
         const transcript = (lead.session?.messages ?? []).slice().reverse();
         const mail = renderInstantLeadEmail({ lead, businessName: business.name, transcript });
-        result.emailed = await sendEmail({ to: business.user.email, subject: mail.subject, html: mail.html, text: mail.text });
+        // The Owner, and Admins who opted in. `emailed` says whether the first (the owner's) went out.
+        const recipients = await alertRecipients(business.id, business.user.email);
+        const sent = await Promise.all(recipients.map((to) => sendEmail({ to, subject: mail.subject, html: mail.html, text: mail.text })));
+        result.emailed = sent[0] ?? false;
       } catch (error) {
         console.error("[leads] instant email failed:", error instanceof Error ? error.message : error);
       }

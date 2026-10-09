@@ -5,12 +5,14 @@ import { prisma } from "@/lib/db";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
 import { AIBudgetExceededError } from "@/lib/ai/budget";
+import { isServiceEnabled, ServiceDisabledError, textAiService } from "@/lib/admin/switch";
 import { AIProviderError } from "@/lib/ai/types";
 import { readKnowledge } from "@/lib/brand/schemas";
 import { logError } from "@/lib/errors";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { makeGroupImages, aspectFor } from "./images";
 import { noopTrendSource, type TrendSource } from "./learning";
+import { alertRecipients } from "@/lib/team/recipients";
 import { sendReadyEmail } from "./notify";
 import type { PlannedGroup } from "./planner";
 import { planWeek } from "./plan";
@@ -105,6 +107,9 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
 
   // Accounts waiting to be deleted, or suspended by the admin, are left alone (before the week is claimed).
   if (business.user.deletionScheduledFor || business.user.suspendedAt) return { status: "nothing_to_plan", postCount: 0, groupCount: 0 };
+
+  // AI switched off in the admin console: wait, without claiming the week, so it plans normally once it is back.
+  if (!(await isServiceEnabled(textAiService()))) return { status: "nothing_to_plan", postCount: 0, groupCount: 0, note: "Autopilot is paused for a short while. Please try again later." };
 
   const tz = safeZone(business.timezone);
   const key = weekKey(options.weekStart ?? nextWeekStart(now, tz), tz);
@@ -223,7 +228,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
         finished = true;
         await prisma.autopilotRun.update({ where: { id: runId }, data: { postCount } });
       } catch (error) {
-        if (error instanceof AIBudgetExceededError) {
+        if (error instanceof AIBudgetExceededError || error instanceof ServiceDisabledError) {
           state.stop = "budget";
           return;
         }
@@ -260,7 +265,9 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
     await prisma.autopilotRun.update({ where: { id: runId }, data: { status: "DONE", postCount, error: note } });
 
     if (postCount > 0 && !autoPublish && business.user.email) {
-      await sendReadyEmail({ to: business.user.email, businessName: business.name, postCount, groupCount, weekLabel: weekLabel(weekStart, tz) }).catch((e) => logError(e, { source: "autopilot.email", businessId, level: "warn" }));
+      for (const to of await alertRecipients(businessId, business.user.email)) {
+        await sendReadyEmail({ to, businessName: business.name, postCount, groupCount, weekLabel: weekLabel(weekStart, tz) }).catch((e) => logError(e, { source: "autopilot.email", businessId, level: "warn" }));
+      }
     }
     return { status: postCount === 0 && state.stop === "credits" ? "no_credits" : "planned", runId, postCount, groupCount, note: note ?? undefined };
   } catch (error) {

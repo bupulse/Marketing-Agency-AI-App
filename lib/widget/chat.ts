@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { consumeUsage, refundUsage, UsageLimitError } from "@/lib/usage";
+import { isServiceEnabled } from "@/lib/admin/switch";
 import { RateLimitError, rateLimit } from "@/lib/rate-limit";
 import { createLeadFromChat } from "@/lib/leads/service";
 import { generateChatReply } from "./ai";
@@ -194,6 +195,9 @@ export async function handleChat(raw: unknown, ctx: RequestContext): Promise<Ser
   // Each visitor address gets a daily allowance of AI replies per business; beyond it only details are collected.
   const dailyCapped = await limited(`widget:aiday:${widget.businessId}:${ctx.ipHash}`, WIDGET_LIMITS.aiPerIpDay);
   if (dailyCapped) {
+    unanswered = true;
+  } else if (!(await isServiceEnabled("gemini"))) {
+    // The widget always answers with Gemini (lib/widget/ai.ts), whatever AI_TEXT_PROVIDER is. AI switched off in the admin console: the widget keeps collecting the visitor's details and no credit is used.
     unanswered = true;
   } else {
     try {

@@ -1,3 +1,4 @@
+import { recordCron } from "@/lib/admin/cron-run";
 import { NextResponse, type NextRequest } from "next/server";
 import { runDailyRollup } from "@/lib/analytics/rollup";
 
@@ -19,5 +20,5 @@ export async function POST(request: NextRequest) {
   if (!safeEqual(request.headers.get("authorization") ?? "", `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return NextResponse.json(await runDailyRollup());
+  return NextResponse.json(await recordCron("analytics-rollup", () => runDailyRollup()));
 }

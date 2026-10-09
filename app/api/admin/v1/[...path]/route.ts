@@ -22,6 +22,7 @@ const ALIASES: Record<string, string> = {
   "whats-working": "get_whats_working",
   "weekly-report": "weekly_report",
   users: "list_users",
+  companies: "list_companies",
   businesses: "list_businesses",
   posts: "list_posts",
   errors: "get_errors",
@@ -34,6 +35,7 @@ const BY_ID: Record<string, { tool: string; arg: string }> = {
   users: { tool: "get_user", arg: "userId" },
   businesses: { tool: "get_business", arg: "businessId" },
   approvals: { tool: "get_approval", arg: "id" },
+  companies: { tool: "get_company", arg: "businessId" },
 };
 
 const ok = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "cache-control": "no-store" } });

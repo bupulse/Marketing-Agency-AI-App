@@ -1,5 +1,7 @@
+import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { NextResponse } from "next/server";
 import { siteUrl } from "@/lib/auth/site-url";
+import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { randomToken } from "@/lib/canva/pkce";
 import { prisma } from "@/lib/db";
@@ -12,7 +14,13 @@ const back = (error: string) => NextResponse.redirect(new URL(`/dashboard/stores
 const INSTALL_MAX_AGE_S = 15 * 60;
 
 async function start(shopInput: string | null) {
-  const user = await requireActiveUser();
+  let user: Awaited<ReturnType<typeof requireActiveUser>>;
+  try {
+    user = await requireActiveUser("connectors", "throw");
+  } catch (error) {
+    if (error instanceof ForbiddenError) return new Response(error.message, { status: 403 });
+    throw error;
+  }
   const shop = normalizeShopDomain(shopInput);
   if (!shop) return back("invalid_shop");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
@@ -45,6 +53,7 @@ async function start(shopInput: string | null) {
 export async function GET(request: Request) {
   const config = shopifyConfig();
   if (!config) return new Response("Not found", { status: 404 });
+  if (!(await isServiceEnabled("shopify"))) return new Response(UNAVAILABLE_MESSAGE, { status: 503 });
   const params = new URL(request.url).searchParams;
   // Next's client router adds ?_rsc=… when it follows a redirect made during a soft navigation (after sign-in). It is not
   // part of what Shopify signed.
@@ -57,6 +66,7 @@ export async function GET(request: Request) {
 /** The "Connect" form on our own page: a POST from our origin (a link or image on another site cannot trigger it). */
 export async function POST(request: Request) {
   if (!isShopifyEnabled()) return new Response("Not found", { status: 404 });
+  if (!(await isServiceEnabled("shopify"))) return new Response(UNAVAILABLE_MESSAGE, { status: 503 });
   const origin = request.headers.get("origin");
   if (!origin || origin !== new URL(siteUrl()).origin) return back("invalid_request");
   const form = await request.formData().catch(() => null);

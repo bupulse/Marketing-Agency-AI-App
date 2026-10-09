@@ -2,11 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { isContentLanguage } from "@/lib/brand/languages";
 
 export async function saveContentLanguage(language: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const user = await requireActiveUser();
+  let user: Awaited<ReturnType<typeof requireActiveUser>>;
+  try {
+    user = await requireActiveUser("settings", "throw");
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { ok: false, error: error.message };
+    throw error;
+  }
   if (!isContentLanguage(language)) return { ok: false, error: "Choose one of the languages in the list." };
 
   const updated = await prisma.business.updateMany({ where: { userId: user.id }, data: { contentLanguage: language } });

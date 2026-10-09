@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
 import { RateLimitError, rateLimit, rateLimitMessage } from "@/lib/rate-limit";
@@ -11,7 +12,7 @@ export type WebhookActionResult<T = object> = ({ ok: true } & T) | { ok: false; 
 const GENERIC = "Something went wrong. Nothing was changed. Please try again.";
 
 async function owner() {
-  const user = await requireActiveUser();
+  const user = await requireActiveUser("webhooks", "throw");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (!business) throw new WebhookError("not_found", "Finish setting up your business first.");
   return { userId: user.id, businessId: business.id };
@@ -24,6 +25,7 @@ async function guarded<T extends object>(run: () => Promise<T>): Promise<Webhook
     return { ok: true, ...value };
   } catch (error) {
     if (error instanceof WebhookError) return { ok: false, error: error.message };
+    if (error instanceof ForbiddenError) return { ok: false, error: error.message };
     if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
     // requireActiveUser redirects by throwing; let Next handle that.
     if (error && typeof error === "object" && "digest" in error) throw error;

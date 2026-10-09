@@ -1,7 +1,7 @@
 import "server-only";
 import type { BillingProvider, Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { planForPriceId } from "./catalog";
+import { planForPriceId } from "@/lib/plan-catalog";
 import { verifyCheckoutUser } from "./signing";
 import type { ProviderSubscription } from "./types";
 
@@ -9,7 +9,7 @@ import type { ProviderSubscription } from "./types";
  * What happened to a provider subscription update:
  * - applied: written to the user's Subscription
  * - stale: an older update than the one we have (providers don't guarantee order)
- * - unknown_price: not one of our prices (likely a missing PADDLE_PRICE_* setting: retry later)
+ * - unknown_price: not one of our prices (a price the plans do not know yet: retry later)
  * - unknown_user: no account to attach it to (no valid signed user id, or the account is gone)
  * - duplicate: the account already has a different live subscription (a second purchase)
  */
@@ -22,7 +22,7 @@ const LIVE = new Set(["ACTIVE", "PAST_DUE", "TRIALING"]);
  * after actions (cancel/resume/change). Upgrading from the trial ends the trial: paid starts now.
  */
 export async function applyProviderSubscription(provider: BillingProvider, sub: ProviderSubscription): Promise<ApplyOutcome> {
-  const match = planForPriceId(provider, sub.providerPriceId);
+  const match = await planForPriceId(provider, sub.providerPriceId);
   if (!match) return "unknown_price";
 
   // The owner is whoever already holds this subscription id (set by us earlier). Otherwise the
@@ -47,7 +47,7 @@ export async function applyProviderSubscription(provider: BillingProvider, sub: 
     if (!LIVE.has(sub.status)) return "stale";
   }
 
-  const data: Prisma.SubscriptionUpdateManyMutationInput = {
+  const data: Prisma.SubscriptionUncheckedUpdateManyInput = {
     provider,
     plan: match.plan,
     interval: match.interval,

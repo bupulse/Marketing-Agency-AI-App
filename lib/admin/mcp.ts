@@ -23,12 +23,15 @@ type Message = { jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unk
 const rpcError = (id: JsonRpcId, code: number, message: string, data?: unknown) => ({ jsonrpc: "2.0" as const, id, error: { code, message, ...(data === undefined ? {} : { data }) } });
 const rpcResult = (id: JsonRpcId, result: unknown) => ({ jsonrpc: "2.0" as const, id, result });
 
+const DESTRUCTIVE = new Set(["suspend_user", "update_plan_limits", "set_service_enabled", "set_ai_budget", "force_disconnect_channel", "disconnect_connector", "revoke_client_api_key", "switch_off_widget", "update_plan", "remove_company_user", "change_company_user_role", "change_user_email", "request_make_company_owner"]);
+const IDEMPOTENT = new Set(["restore_user", "set_feature_flag", "set_service_enabled", "set_ai_budget", "switch_on_widget", "switch_off_widget", "test_service"]);
+
 function annotations(t: Tool) {
   return {
     title: t.title,
     readOnlyHint: t.kind === "read",
-    destructiveHint: t.name === "suspend_user" || t.name === "update_plan_limits",
-    idempotentHint: t.kind === "read" || t.kind === "money" || t.name === "restore_user" || t.name === "set_feature_flag",
+    destructiveHint: DESTRUCTIVE.has(t.name),
+    idempotentHint: t.kind === "read" || t.kind === "money" || IDEMPOTENT.has(t.name),
     openWorldHint: t.kind === "money",
   };
 }

@@ -1,11 +1,13 @@
 import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import { prisma } from "@/lib/db";
+import { disabledNetworks, isServiceEnabled } from "@/lib/admin/switch";
 import { logError } from "@/lib/errors";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { loadCredentials, markConnectionError } from "@/lib/social/connections";
 import { SocialError, type PublishRequest } from "@/lib/social/types";
+import { alertRecipients } from "@/lib/team/recipients";
 import { sendEmail, renderEmail } from "./email";
 import { adminStorageClient, EMAIL_URL_SECONDS, PUBLISH_URL_SECONDS, signPaths, signPathsForNetwork } from "./media";
 import { queueWebhookEvent } from "@/lib/webhooks/emit";
@@ -55,11 +57,25 @@ const NOT_BEING_DELETED = Prisma.sql`AND "businessId" NOT IN (
  * attempts left. A PUBLISHING post is never taken again (see sweepStalePosts): the network may already have it.
  * Each claim counts as an attempt.
  */
+/**
+ * Posts the admin console marked "Needs reconnect:" on an account it force-disconnected (REVOKED, tokens erased) wait
+ * untouched: no attempt, no FAILED, no failure email. Reconnecting restores them (restoreQueuedPosts in social/connections).
+ */
+const NOT_FORCE_DISCONNECTED = Prisma.sql`AND NOT ("lastError" LIKE 'Needs reconnect:%' AND EXISTS (
+  SELECT 1 FROM "Connection" c WHERE c."id" = "Post"."connectionId" AND c."status" = 'REVOKED'::"ConnectionStatus" AND c."accessTokenEncrypted" IS NULL))`;
+
 export async function claimDuePosts(args: { now: Date; limit: number; ids?: string[]; businessId?: string }): Promise<string[]> {
   const { now, limit } = args;
   if (args.ids && args.ids.length === 0) return [];
   const only = args.ids ? Prisma.sql`AND "id" IN (${Prisma.join(args.ids)})` : Prisma.empty;
   const business = args.businessId ? Prisma.sql`AND "businessId" = ${args.businessId}` : Prisma.empty;
+  // Networks switched off in the admin console are skipped, so their posts stay SCHEDULED (not failed) until it is back on.
+  const paused = await disabledNetworks();
+  const pausedSql = paused.length ? Prisma.sql`AND "network" NOT IN (${Prisma.join(paused)})` : Prisma.empty;
+  // Reminder posts (NOTIFY accounts and SCRIPT posts) need Resend. While it is off they are not claimed, so they stay
+  // SCHEDULED with no attempt used, and go out as soon as it is switched back on.
+  const emailOff = !(await isServiceEnabled("resend"));
+  const reminderSql = emailOff ? Prisma.sql`AND "format" <> 'SCRIPT'::"PostFormat" AND ("connectionId" IS NULL OR "connectionId" NOT IN (SELECT "id" FROM "Connection" WHERE "postingMode" = 'NOTIFY'))` : Prisma.empty;
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     UPDATE "Post" SET "status" = 'PUBLISHING'::"PostStatus", "lockedAt" = ${now}, "attempts" = "attempts" + 1, "updatedAt" = ${now}
     WHERE "id" IN (
@@ -67,7 +83,7 @@ export async function claimDuePosts(args: { now: Date; limit: number; ids?: stri
       WHERE "status" = 'SCHEDULED'::"PostStatus" AND "scheduledAt" <= ${now}
         AND "attempts" < ${MAX_ATTEMPTS}
         AND ("nextAttemptAt" IS NULL OR "nextAttemptAt" <= ${now})
-        ${NOT_BEING_DELETED} ${only} ${business}
+        ${NOT_BEING_DELETED} ${NOT_FORCE_DISCONNECTED} ${only} ${business} ${pausedSql} ${reminderSql}
       ORDER BY "scheduledAt" ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
@@ -125,11 +141,13 @@ async function settle(postId: string, data: Prisma.PostUpdateManyMutationInput):
 
 /** Reminder path (NOTIFY accounts and SCRIPT posts): email everything needed to post by hand, then wait for "I posted it". */
 async function sendReminder(post: ClaimedPost): Promise<"reminders" | "retrying" | "failed"> {
-  const to = post.business.user.email;
+  const [to, ...copies] = await alertRecipients(post.businessId, post.business.user.email);
   if (!to) {
     await settle(post.id, { status: "FAILED", lastError: "There is no email address to send the reminder to." });
     return "failed";
   }
+  // Resend was switched off after this post was claimed: hand the attempt back and wait, instead of counting a failure.
+  if (!(await isServiceEnabled("resend"))) return releaseUnsent(post);
   const network = label(post.network);
   const isScript = post.format === "SCRIPT";
   const admin = adminStorageClient();
@@ -138,7 +156,7 @@ async function sendReminder(post: ClaimedPost): Promise<"reminders" | "retrying"
   const token = await createMarkPostedToken(post.id);
   const heading = isScript ? `Time to film and post on ${network}` : `Time to post on ${network}`;
 
-  const sent = await sendEmail({
+  const sentEmail = {
     to,
     subject: heading,
     ...renderEmail({
@@ -155,10 +173,23 @@ async function sendReminder(post: ClaimedPost): Promise<"reminders" | "retrying"
       button: { label: "I posted it", url: `${siteUrl()}/posted?token=${encodeURIComponent(token)}` },
       footer: links.length ? "Image links work for 7 days." : post.mediaPaths.length ? "Open BuPulse to download the images for this post." : undefined,
     }),
-  });
-  if (!sent) return retryLater(post, "We could not send the reminder email.");
+  };
+  const sent = await sendEmail(sentEmail);
+  if (!sent) {
+    // A switch flipped while sending is a pause, not a failed attempt.
+    if (!(await isServiceEnabled("resend"))) return releaseUnsent(post);
+    return retryLater(post, "We could not send the reminder email.");
+  }
   await settle(post.id, { status: "NEEDS_ACTION", lastError: null, nextAttemptAt: null });
+  // Admins who opted in get the same reminder (best effort; the Owner's copy is the one that counts).
+  for (const copy of copies) await sendEmail({ ...sentEmail, to: copy }).catch(() => false);
   return "reminders";
+}
+
+/** Puts a claimed post back to SCHEDULED, undoing the attempt the claim counted, because a service it needs is switched off. */
+async function releaseUnsent(post: ClaimedPost): Promise<"retrying"> {
+  await settle(post.id, { status: "SCHEDULED", attempts: Math.max(0, post.attempts - 1), nextAttemptAt: null, lastError: null });
+  return "retrying";
 }
 
 /** Back to SCHEDULED with a wait (1, 5, 15, 60 minutes), or FAILED after the last attempt. */
@@ -175,12 +206,11 @@ async function retryLater(post: ClaimedPost, message: string, retryAfterSeconds?
 
 /** Tells the owner by email that a post failed, or that we cannot tell whether it went out. */
 async function emailOwner(post: ClaimedPost, kind: "failed" | "uncertain", message: string, reconnect = false) {
-  const to = post.business.user.email;
-  if (!to) return;
+  const recipients = await alertRecipients(post.businessId, post.business.user.email);
+  if (!recipients.length) return;
   const network = label(post.network);
   const uncertain = kind === "uncertain";
-  await sendEmail({
-    to,
+  const email = {
     subject: uncertain ? `Please check your ${network} post` : `Your ${network} post could not be published`,
     ...renderEmail({
       heading: uncertain ? `Please check your ${network} post` : `Your ${network} post could not be published`,
@@ -195,7 +225,8 @@ async function emailOwner(post: ClaimedPost, kind: "failed" | "uncertain", messa
       ],
       button: { label: reconnect ? "Reconnect your account" : "Open your calendar", url: `${siteUrl()}/dashboard/${reconnect ? "connections" : "calendar"}` },
     }),
-  });
+  };
+  for (const to of recipients) await sendEmail({ to, ...email });
 }
 
 /** Outgoing webhooks (post.published / post.failed): queued after the state is saved, never slows or breaks publishing. */

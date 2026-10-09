@@ -3,6 +3,15 @@ import { z } from "zod";
 import * as analytics from "@/lib/analytics/queries";
 import { METRIC_KEYS, type DateRange, type MetricKey } from "@/lib/analytics/types";
 import * as admin from "./service";
+import * as companies from "./actions/companies";
+import * as services from "./services";
+import * as aiUsage from "./ai-usage";
+import * as connections from "./connections";
+import * as connectionActions from "./actions/connections";
+import * as clientView from "./client360";
+import { getActivity } from "./activity";
+import { getSystemHealth } from "./health";
+import { SERVICE_IDS } from "./service-catalog";
 import { AdminError, type AdminContext } from "./types";
 
 // One registry of every tool Jarvis can use. The REST API (/api/admin/v1) and the MCP server (/api/mcp) both call
@@ -18,7 +27,8 @@ export type Tool = {
   run: (args: never, ctx: AdminContext) => Promise<unknown>;
 };
 
-const PLAN = z.enum(["TRIAL", "STANDARD", "PRO"]);
+// A plan key (see list_plans): TRIAL, STANDARD, PRO or any plan created in /admin/plans.
+const PLAN = z.string().min(1).max(64);
 const id = (what: string) => z.string().min(1).max(100).describe(what);
 const cursor = z.string().max(100).optional().describe("Pass nextCursor from the previous page to get the next page.");
 const limit = z.number().int().min(1).max(100).optional().describe("Page size, 1-100 (default 25).");
@@ -256,6 +266,257 @@ tool({
     confirm: z.boolean().optional().describe("Must be true when moving a user to TRIAL."),
   }),
   run: (a, ctx) => admin.requestChangePlan(ctx, a),
+});
+
+
+tool({
+  name: "list_plans",
+  title: "List plans",
+  kind: "read",
+  description: "The plans clients can buy or be on: key, name, status (active, hidden, retired), monthly and yearly price in cents, usage limits, features, capabilities, how many clients are on each, paying clients, MRR and whether the Paddle prices are in sync. Use the key with change_plan and update_plan.",
+  schema: z.object({}),
+  run: () => admin.listPlansForTools(),
+});
+tool({
+  name: "update_plan",
+  title: "Update a plan",
+  kind: "money",
+  description:
+    "Change a plan's name, description, status, order, highlight, trial length, usage limits, features or capabilities (applied immediately and written to the audit log; needs confirm: true), and/or its prices. " +
+    MONEY_NOTE.replace("MONEY ACTION: this does NOT move money. It only creates", "A PRICE change does not apply at once: it only creates") +
+    "Prices are in cents. A price change needs an idempotencyKey and returns priceChangeApproval with the approval id.",
+  schema: z
+    .object({
+      plan: id("Plan key (see list_plans)."),
+      name: z.string().min(1).max(60).optional(),
+      description: z.string().max(300).optional(),
+      status: z.enum(["active", "hidden", "retired"]).optional(),
+      sortOrder: z.number().int().min(0).max(1000).optional(),
+      highlight: z.boolean().optional(),
+      trialDays: z.number().int().min(0).max(90).optional(),
+      limits: z.object({ text: z.number().int().min(0).max(10_000_000), image: z.number().int().min(0).max(10_000_000), chat: z.number().int().min(0).max(10_000_000), videoSeconds: z.number().int().min(0).max(10_000_000), voiceCharacters: z.number().int().min(0).max(10_000_000) }).partial().optional(),
+      features: z.array(z.string().min(1).max(120)).max(30).optional(),
+      capabilities: z.object({ apiAccess: z.boolean(), ownComposio: z.boolean() }).partial().optional(),
+      monthlyPriceCents: z.number().int().min(0).max(10_000_000).optional().describe("New monthly price in cents. Creates an approval."),
+      yearlyPriceCents: z.number().int().min(0).max(10_000_000).optional().describe("New yearly price in cents. Creates an approval."),
+      confirm: z.boolean().describe("Must be true."),
+      idempotencyKey: idem.optional().describe("REQUIRED when a price is included (8-128 chars: letters, numbers . _ : -)."),
+    })
+    .superRefine((a, ctx) => {
+      if ((a.monthlyPriceCents !== undefined || a.yearlyPriceCents !== undefined) && !a.idempotencyKey) ctx.addIssue({ code: "custom", path: ["idempotencyKey"], message: "idempotencyKey is required with a price change." });
+    }),
+  run: (a, ctx) => admin.updatePlanFromTool(ctx, a as never),
+});
+
+
+// ---- companies and their users (console: /admin/companies/<businessId>) ----------------------------------------
+
+const ROLE = z.enum(["OWNER", "ADMIN", "MEMBER"]);
+const confirmField = z.boolean().describe("Must be true.");
+
+tool({
+  name: "list_companies",
+  title: "List companies",
+  kind: "read",
+  description: "Search companies (a business and its team) with plan, status and seats used. q matches company name, owner email and team emails. In the console a company is at /admin/companies/<businessId>.",
+  schema: z.object({ q: z.string().max(100).optional(), plan: PLAN.optional(), status: z.string().max(30).optional(), cursor, limit }),
+  run: (a) => companies.listCompanies(a),
+});
+tool({
+  name: "get_company",
+  title: "Get company",
+  kind: "read",
+  description: "One company in detail: its users with roles, pending invites, seat limit and plan. Emails of team members are masked unless they are the owner's.",
+  schema: z.object({ businessId: id("Business id.") }),
+  run: (a) => companies.getCompany(a.businessId),
+});
+tool({
+  name: "create_company_user",
+  title: "Add a user to a company",
+  kind: "action",
+  description: "SENSITIVE. Adds a team member to a company. The sign-in is created with NO password and the person is emailed a link to set their own; an admin never sets or sees a password. Respects the plan's seat limit. Requires confirm: true.",
+  schema: z.object({ businessId: id("Business id."), email: z.string().email().max(254), role: z.enum(["ADMIN", "MEMBER"]), name: z.string().max(100).optional(), confirm: confirmField }),
+  run: (a, ctx) => companies.createCompanyUser(ctx, a),
+});
+tool({
+  name: "change_user_email",
+  title: "Change a user's email",
+  kind: "action",
+  description: "SENSITIVE (account takeover risk). Asks to change a user's sign-in email. It does NOT run by itself: the owner approves it in the admin console (Approvals), and only then the new address is confirmed, the OLD address is notified, every session of that user is ended, and sendReset can email a reset link to the new one. Needs an idempotencyKey and confirm: true.",
+  schema: z.object({ userId: id("User id (uuid)."), newEmail: z.string().email().max(254), sendReset: z.boolean().optional().describe("Also email a reset link to the new address."), idempotencyKey: z.string().min(8).max(128).describe("Reuse the same key when retrying."), confirm: confirmField }),
+  run: (a, ctx) => admin.requestChangeUserEmail(ctx, a),
+});
+tool({
+  name: "request_make_company_owner",
+  title: "Ask to make someone a company's owner",
+  kind: "action",
+  description: "SENSITIVE (billing and deleting the company). Asks to hand a company's ownership to one of its users; the previous owner becomes an Admin. It does NOT run by itself: the owner approves it in the admin console (Approvals). Needs an idempotencyKey and confirm: true.",
+  schema: z.object({ userId: id("User id (uuid) of the person who becomes owner."), idempotencyKey: z.string().min(8).max(128), confirm: confirmField }),
+  run: (a, ctx) => admin.requestMakeCompanyOwner(ctx, a),
+});
+tool({
+  name: "send_password_reset",
+  title: "Send a password reset",
+  kind: "action",
+  description: "Emails the user a password-reset link at their address on file. The admin never sees or sets the password. Requires confirm: true.",
+  schema: z.object({ userId: id("User id (uuid)."), confirm: confirmField }),
+  run: (a, ctx) => companies.sendPasswordReset(ctx, a),
+});
+tool({
+  name: "remove_company_user",
+  title: "Remove a user from a company",
+  kind: "action",
+  description: "DESTRUCTIVE. Removes a team member from their company. The company keeps exactly one owner, so the owner cannot be removed (hand ownership over first). Requires confirm: true.",
+  schema: z.object({ userId: id("User id (uuid)."), confirm: confirmField }),
+  run: (a, ctx) => companies.removeCompanyUser(ctx, a),
+});
+tool({
+  name: "change_company_user_role",
+  title: "Change a user's role in a company",
+  kind: "action",
+  description: "DESTRUCTIVE. Sets a team member's role to ADMIN or MEMBER. Making someone OWNER is refused here: use request_make_company_owner, which the owner approves in the console. The company always keeps exactly one owner. Requires confirm: true.",
+  schema: z.object({ userId: id("User id (uuid)."), role: ROLE, confirm: confirmField }),
+  run: (a, ctx) => companies.changeCompanyUserRole(ctx, a),
+});
+
+// ---- services, AI budget, connections, health, activity, Client 360 --------------------------------------------
+
+/** Over MCP the client's own customers are not shown in full: lead names and emails are masked like team emails in get_company. */
+function maskClientLeads<T extends { leads?: { leads?: { name?: string | null; email?: string | null }[] } }>(client: T): T {
+  const leads = client.leads?.leads;
+  if (!leads) return client;
+  const maskName = (n: string | null | undefined) => (n ? `${n.trim().slice(0, 1)}***` : n);
+  return { ...client, leads: { ...client.leads, leads: leads.map((l) => ({ ...l, name: maskName(l.name), email: l.email ? companies.maskEmail(l.email) : l.email })) } };
+}
+
+const SERVICE = z.enum(SERVICE_IDS).describe("Service id.");
+
+tool({
+  name: "list_services",
+  title: "List services",
+  kind: "read",
+  description: "Every outside service BuPulse depends on (Gemini, Resend, Paddle, Supabase, Meta, LinkedIn, TikTok, YouTube, Canva, Drive, Dropbox, Shopify, WooCommerce, Cloudflare, Turnstile): purpose, which environment variables are set or missing (never their values), whether it is switched on, health, last test result, last error and 30-day usage. Start here for \"is anything broken?\".",
+  schema: z.object({}),
+  run: () => services.listServices(),
+});
+tool({
+  name: "test_service",
+  title: "Test a service",
+  kind: "action",
+  description: "Runs the service's cheap health check now (a free call such as a models list; OAuth-only services check their configuration) and stores the result. Safe to run any time; it never sends anything to a client.",
+  schema: z.object({ service: SERVICE }),
+  run: (a, ctx) => services.testService(ctx, a.service),
+});
+tool({
+  name: "set_service_enabled",
+  title: "Switch a service on or off",
+  kind: "action",
+  description: "DESTRUCTIVE when turning off. The kill switch for one outside service. Off: the features that use it show \"temporarily unavailable\" and wait (scheduled posts stay scheduled, the website chat keeps collecting leads, emails are skipped); nothing is deleted, and Paddle and Supabase webhooks keep being received. Turning off needs confirm: true and a reason. Supabase and Turnstile cannot be switched off.",
+  schema: z.object({ service: SERVICE, enabled: z.boolean(), reason: z.string().max(200).optional().describe("Required when enabled is false."), confirm: z.boolean().optional().describe("Must be true when enabled is false.") }),
+  run: (a, ctx) => services.setServiceEnabled(ctx, a),
+});
+tool({
+  name: "get_ai_usage",
+  title: "AI usage and budget",
+  kind: "read",
+  description: "AI spend for a month against the monthly cap: spent, remaining, whether AI is paused, projection to month end, spend per day, model, feature and client (top spenders), and failed calls with the most common errors. Costs are USD estimates from the AI call ledger.",
+  schema: z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional().describe("YYYY-MM; default the current month."), topLimit: z.number().int().min(1).max(50).optional().describe("How many top spenders (default 10).") }),
+  run: (a) => aiUsage.getAiUsage(a),
+});
+tool({
+  name: "set_ai_budget",
+  title: "Set the monthly AI budget",
+  kind: "action",
+  description: "DESTRUCTIVE. Changes the monthly AI spending cap in USD (1-1000; default from AI_MONTHLY_BUDGET_USD, $20). It applies within 30 seconds; setting it below what is already spent pauses all AI at once. null goes back to the environment default. Requires confirm: true.",
+  schema: z.object({ monthlyUsd: z.number().min(1).max(1000).nullable(), confirm: z.boolean().describe("Must be true.") }),
+  run: (a, ctx) => aiUsage.setAiBudget(ctx, a),
+});
+tool({
+  name: "get_system_health",
+  title: "System health",
+  kind: "read",
+  description: "Scheduled jobs (last run and whether overdue), queues and backlogs (publishing, webhooks, approvals), error rate and database size, with an overall status (ok, warning, problem) and a list of what needs attention.",
+  schema: z.object({}),
+  run: () => getSystemHealth(),
+});
+tool({
+  name: "get_activity",
+  title: "Activity feed",
+  kind: "read",
+  description: "The live activity feed, newest first: sign-ups, payments, errors and admin actions. Page back with before = the previous result's cursor; pass after to get only newer items.",
+  schema: z.object({ before: z.string().max(100).optional(), after: z.string().max(100).optional(), types: z.array(z.string().max(30)).max(10).optional().describe("Filter by group."), limit: z.number().int().min(1).max(100).optional() }),
+  run: (a) => getActivity(a),
+});
+tool({
+  name: "get_client_360",
+  title: "Client 360",
+  kind: "read",
+  description: "Everything about one client in one answer: overview, billing, usage, channels, content, leads, errors, admin audit history and private notes.",
+  schema: z.object({ userId: id("User id (uuid).") }),
+  run: async (a) => maskClientLeads(await clientView.getClient360(a.userId)),
+});
+tool({
+  name: "list_connections",
+  title: "List client connections",
+  kind: "read",
+  description: "Clients' connections with status, errors and usage. kind: channels (social accounts), stores (Shopify/WooCommerce), cloudflare, canva, imports (file import usage), webhooks, api_keys (clients' Pro API keys, never the key itself), widgets (website chat widgets), or client (everything for one businessId).",
+  schema: z.object({ kind: z.enum(["channels", "stores", "cloudflare", "canva", "imports", "webhooks", "api_keys", "widgets", "client"]), businessId: z.string().max(100).optional().describe("Required for kind=client; filters channels."), q: z.string().max(100).optional(), status: z.string().max(30).optional(), network: z.string().max(30).optional(), cursor, limit }),
+  run: (a) => {
+    const { kind, businessId, ...rest } = a;
+    switch (kind) {
+      case "channels": return connections.listChannels({ ...rest, businessId });
+      case "stores": return connections.listStoreConnections(rest);
+      case "cloudflare": return connections.listCloudflareConnections(rest);
+      case "canva": return connections.listCanvaConnections(rest);
+      case "imports": return connections.listFileImportUsage(rest);
+      case "webhooks": return connections.listWebhookEndpoints({ ...rest, state: rest.status });
+      case "api_keys": return connections.listApiKeys(rest);
+      case "widgets": return connections.listWidgets({ ...rest, state: rest.status });
+      case "client":
+        if (!businessId) throw new AdminError("invalid", "kind=client needs businessId.");
+        return connections.getClientConnections(businessId);
+    }
+  },
+});
+tool({
+  name: "force_disconnect_channel",
+  title: "Force-disconnect a social channel",
+  kind: "action",
+  description: "DESTRUCTIVE. Revokes a client's social channel: tokens are removed and its scheduled posts are marked as needing a reconnect (nothing is deleted). Requires confirm: true.",
+  schema: z.object({ connectionId: id("Connection id."), reason: z.string().max(200).optional(), confirm: z.boolean().describe("Must be true.") }),
+  run: (a, ctx) => connectionActions.forceDisconnectChannel(ctx, a),
+});
+tool({
+  name: "disconnect_connector",
+  title: "Disconnect a connector",
+  kind: "action",
+  description: "DESTRUCTIVE. Disconnects a client's store (id = store connection id), Cloudflare (id = business id) or Canva account (id = Canva connection id) like the client's own Disconnect; imported products and files stay. Requires confirm: true.",
+  schema: z.object({ kind: z.enum(["store", "cloudflare", "canva"]), id: id("The id for that kind."), reason: z.string().max(200).optional(), confirm: z.boolean().describe("Must be true.") }),
+  run: (a, ctx) => connectionActions.disconnectConnector(ctx, a),
+});
+tool({
+  name: "revoke_client_api_key",
+  title: "Revoke a client's API key",
+  kind: "action",
+  description: "DESTRUCTIVE. Revokes one of a client's Pro API keys at once. Requires confirm: true.",
+  schema: z.object({ keyId: id("API key id."), reason: z.string().max(200).optional(), confirm: z.boolean().describe("Must be true.") }),
+  run: (a, ctx) => connectionActions.revokeClientApiKey(ctx, a),
+});
+tool({
+  name: "switch_off_widget",
+  title: "Switch off a client's chat widget",
+  kind: "action",
+  description: "DESTRUCTIVE. Turns a business's website chat widget off (it stops answering and collecting leads on their site; existing leads stay). Needs a reason and confirm: true.",
+  schema: z.object({ businessId: id("Business id."), reason: z.string().min(3).max(200), confirm: z.boolean().describe("Must be true.") }),
+  run: (a, ctx) => connectionActions.switchOffWidget(ctx, a),
+});
+tool({
+  name: "switch_on_widget",
+  title: "Switch a client's chat widget back on",
+  kind: "action",
+  description: "Turns a business's website chat widget back on.",
+  schema: z.object({ businessId: id("Business id.") }),
+  run: (a, ctx) => connectionActions.switchOnWidget(ctx, a),
 });
 
 export const TOOLS: readonly Tool[] = defs;

@@ -4,6 +4,7 @@ const prisma = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
   post: { findMany: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
   mediaAsset: { findMany: vi.fn() },
+  serviceSwitch: { findMany: vi.fn() },
 }));
 const provider = vi.hoisted(() => ({ publish: vi.fn() }));
 const connections = vi.hoisted(() => ({ loadCredentials: vi.fn(), markConnectionError: vi.fn() }));
@@ -29,6 +30,7 @@ vi.mock("@/lib/publishing/media", async () => {
 
 import { backoffMinutes, claimDuePosts, MAX_ATTEMPTS, publishDue, publishPostsNow, STALE_LOCK_MINUTES, sweepStalePosts } from "@/lib/publishing/engine";
 import { SocialError } from "@/lib/social/types";
+import { clearSwitchCache } from "@/lib/admin/switch";
 
 const finalError = (message: string, kind: "temporary" | "rate_limit" = "temporary") => new SocialError(message, kind, "facebook", undefined, "final");
 
@@ -93,6 +95,8 @@ beforeEach(() => {
   connections.markConnectionError.mockResolvedValue(undefined);
   provider.publish.mockResolvedValue({ externalId: "ext1", permalink: "https://facebook.com/ext1" });
   email.sendEmail.mockResolvedValue(true);
+  prisma.serviceSwitch.findMany.mockResolvedValue([]);
+  clearSwitchCache();
   media.adminStorageClient.mockReturnValue({});
   media.signPaths.mockImplementation(async (_c: unknown, paths: string[]) => new Map(paths.map((p) => [p, `https://signed.example/${p}`])));
   media.signPathsForNetwork.mockImplementation(async (c: unknown, paths: string[], _network: string, seconds: number) => ({ urls: await media.signPaths(c, paths, seconds), jpeg: new Set<string>() }));
@@ -323,6 +327,54 @@ describe("reminders (NOTIFY accounts and SCRIPT posts)", () => {
     const result = await publishDue(now);
     expect(result.retrying).toBe(1);
     expect(settled().data.status).toBe("SCHEDULED");
+  });
+});
+
+describe("reminders while Resend is switched off in the admin console", () => {
+  const resendOff = () => {
+    prisma.serviceSwitch.findMany.mockResolvedValue([{ service: "resend" }]);
+    clearSwitchCache();
+  };
+
+  it("does not claim reminder posts (NOTIFY accounts and SCRIPT posts) while it is off, and claims them again when it is on", async () => {
+    resendOff();
+    await claimDuePosts({ now, limit: 5 });
+    const [, ...values] = claimCalls()[0];
+    expect(JSON.stringify(values)).toContain("NOTIFY");
+    expect(JSON.stringify(values)).toContain("SCRIPT");
+    prisma.serviceSwitch.findMany.mockResolvedValue([]);
+    clearSwitchCache();
+    prisma.$queryRaw.mockClear();
+    await claimDuePosts({ now, limit: 5 });
+    expect(JSON.stringify(claimCalls()[0].slice(1))).not.toContain("NOTIFY");
+  });
+
+  it("a reminder claimed just before the switch went off goes back to SCHEDULED with its attempt returned, never FAILED", async () => {
+    claimOnce(post({ connection: { id: "c1", postingMode: "NOTIFY", displayName: "x" }, attempts: 4 })); // the last attempt
+    resendOff();
+    const result = await publishDue(now);
+    expect(result).toMatchObject({ claimed: 1, retrying: 1, failed: 0, reminders: 0 });
+    expect(email.sendEmail).not.toHaveBeenCalled();
+    expect(settled().data).toMatchObject({ status: "SCHEDULED", attempts: 3, nextAttemptAt: null, lastError: null, lockedAt: null });
+  });
+
+  it("SCRIPT posts wait the same way, and the switch flipping while the email is sent does not burn an attempt", async () => {
+    claimOnce(post({ network: "tiktok", format: "SCRIPT", attempts: 1 }));
+    email.sendEmail.mockImplementation(async () => {
+      resendOff();
+      return false;
+    });
+    const result = await publishDue(now);
+    expect(result).toMatchObject({ retrying: 1, failed: 0 });
+    expect(settled().data).toMatchObject({ status: "SCHEDULED", attempts: 0, nextAttemptAt: null });
+  });
+
+  it("a genuine email failure with Resend on still counts the attempt and backs off", async () => {
+    claimOnce(post({ connection: { id: "c1", postingMode: "NOTIFY", displayName: "x" }, attempts: 1 }));
+    email.sendEmail.mockResolvedValue(false);
+    await publishDue(now);
+    expect(settled().data.status).toBe("SCHEDULED");
+    expect(settled().data.nextAttemptAt).toBeInstanceOf(Date);
   });
 });
 

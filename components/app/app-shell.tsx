@@ -10,6 +10,7 @@ import { Avatar, Button, Meter, useToast } from "@/components/ui";
 import { readableTextColor } from "@/lib/color-contrast";
 import { cn } from "@/lib/cn";
 import { NAV_ITEMS } from "./nav";
+import { can, type Role } from "@/lib/team/roles";
 
 export type ShellPlan = {
   name: string;
@@ -35,10 +36,12 @@ type ShellProps = {
   email: string;
   businessName: string;
   plan: ShellPlan;
+  role: Role;
   children: ReactNode;
 };
 
 function isActive(pathname: string, href: string) {
+  if (href === "/dashboard/settings") return pathname === href;
   return href === "/dashboard" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -80,9 +83,11 @@ function Sidebar({
   plan,
   businessName,
   brand,
+  role,
   onNavigate,
 }: {
   pathname: string;
+  role: Role;
   plan: ShellPlan;
   businessName: string;
   brand: ShellBrand;
@@ -104,7 +109,7 @@ function Sidebar({
         <span className="min-w-0 truncate text-sm font-semibold">{businessName}</span>
       </Link>
       <nav aria-label="App" className="flex flex-col gap-1">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {NAV_ITEMS.filter((item) => !item.permission || can(role, item.permission)).map(({ href, label, icon: Icon }) => {
           const active = isActive(pathname, href);
           return (
             <Link
@@ -214,9 +219,11 @@ function Drawer({
   plan,
   businessName,
   brand,
+  role,
   onClose,
 }: {
   pathname: string;
+  role: Role;
   plan: ShellPlan;
   businessName: string;
   brand: ShellBrand;
@@ -270,13 +277,13 @@ function Drawer({
         >
           <X aria-hidden className="size-5" />
         </button>
-        <Sidebar pathname={pathname} plan={plan} businessName={businessName} brand={brand} onNavigate={onClose} />
+        <Sidebar pathname={pathname} plan={plan} role={role} businessName={businessName} brand={brand} onNavigate={onClose} />
       </div>
     </div>
   );
 }
 
-export function AppShell({ brand, displayName, firstName, email, businessName, plan, children }: ShellProps) {
+export function AppShell({ brand, displayName, firstName, email, businessName, plan, role, children }: ShellProps) {
   const pathname = usePathname();
   const { toast } = useToast();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -312,10 +319,10 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
         aria-label="Sidebar"
         className="glass-strong hidden w-[248px] shrink-0 flex-col rounded-[28px] p-3.5 lg:sticky lg:top-5 lg:flex lg:max-h-[calc(100dvh-2.5rem)] lg:self-start lg:overflow-y-auto"
       >
-        <Sidebar pathname={pathname} plan={plan} businessName={businessName} brand={brand} />
+        <Sidebar pathname={pathname} plan={plan} role={role} businessName={businessName} brand={brand} />
       </aside>
 
-      {drawerOpen && <Drawer pathname={pathname} plan={plan} businessName={businessName} brand={brand} onClose={closeDrawer} />}
+      {drawerOpen && <Drawer pathname={pathname} plan={plan} role={role} businessName={businessName} brand={brand} onClose={closeDrawer} />}
 
       <div className="flex min-w-0 flex-1 basis-[min(100%,560px)] flex-col gap-5">
         <div className="flex flex-wrap items-center justify-between gap-3 px-1">

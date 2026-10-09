@@ -7,6 +7,8 @@ import { getCurrentUser } from "@/lib/supabase/server";
 import { getUsageSummary } from "@/lib/usage";
 import { createSignedDownloadUrl } from "@/lib/storage";
 import { getVoice } from "@/lib/brand/voices";
+import { resolveCompany } from "@/lib/team/company";
+import { can, type Role } from "@/lib/team/roles";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -21,21 +23,28 @@ export const getAppContext = cache(async () => {
   // Safety net only: sessions are normally created after email confirmation,
   // and ensureAccount never starts a trial for an unconfirmed address.
   if (!(await ensureAccount(user))) redirect("/login?error=confirm");
+  // The company comes through Membership. `ownerId` (Business.userId) is the company account that owns the plan,
+  // the credits and the Storage folder, so a teammate sees and spends the company's, not their own.
+  const company = await resolveCompany(user.id);
+  const ownerId = company?.ownerId ?? user.id;
   const [business, usage] = await Promise.all([
-    prisma.business.findUnique({ where: { userId: user.id } }),
-    getUsageSummary(user.id),
+    prisma.business.findUnique({ where: { userId: ownerId } }),
+    getUsageSummary(ownerId),
   ]);
   // Order matters: a pending deletion locks the account, Google sign-ups give their
   // organisation details first, then everyone completes the brand onboarding.
   const account = await prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true, suspendedAt: true, name: true } });
-  if (account?.suspendedAt) redirect("/suspended");
-  if (account?.deletionScheduledFor) redirect("/account/deletion");
+  if (account?.suspendedAt || company?.ownerSuspended) redirect("/suspended");
+  if (account?.deletionScheduledFor || company?.ownerDeleting) redirect("/account/deletion");
+  // First-time setup belongs to the owner or an admin; a teammate who arrives early waits.
+  const setupDone = Boolean(business?.detailsCompletedAt && business.onboardedAt);
+  if (!setupDone && company && !can(company.role, "settings")) redirect("/account/waiting");
   if (!business?.detailsCompletedAt) redirect("/welcome");
   if (!business.onboardedAt) redirect("/onboarding");
 
   const meta = user.user_metadata as { full_name?: string; name?: string } | undefined;
   // The name saved in Settings wins; Google sign-ups start with their Google name.
-  const fullName = account?.name?.trim() || meta?.full_name || meta?.name || business.ceoName || null;
+  const fullName = account?.name?.trim() || meta?.full_name || meta?.name || (company?.role === "OWNER" ? business.ceoName : null) || null;
   const displayName = fullName ?? user.email?.split("@")[0] ?? "there";
   const firstName = displayName.split(/\s+/)[0];
 
@@ -57,7 +66,10 @@ export const getAppContext = cache(async () => {
   }
 
   return {
-    user,
+    // `user.id` is the company account (see SessionUser in lib/auth/require-user.ts); `actorId` is the signed-in person.
+    user: { ...user, id: ownerId },
+    actorId: user.id,
+    role: (company?.role ?? "OWNER") as Role,
     email: user.email ?? "",
     displayName,
     firstName,

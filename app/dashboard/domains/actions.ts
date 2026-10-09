@@ -9,7 +9,7 @@ import { RATE_LIMITS, rateLimit, RateLimitError, rateLimitMessage } from "@/lib/
 import { connectCloudflare, disconnectCloudflare, installChat, uninstallChat, CloudflareUserError, type InstallOutcome } from "@/lib/cloudflare/service";
 
 async function businessId() {
-  const user = await requireActiveUser();
+  const user = await requireActiveUser("connectors");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   return { user, id: business?.id ?? null };
 }

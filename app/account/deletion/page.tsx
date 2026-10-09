@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui";
 import { prisma } from "@/lib/db";
+import { resolveCompany } from "@/lib/team/company";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { keepAccount } from "./actions";
 
@@ -15,10 +16,34 @@ export default async function AccountDeletionPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
+  const company = await resolveCompany(user.id);
   const account = await prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true } });
-  if (!account?.deletionScheduledFor) redirect("/dashboard");
+  // A teammate can be locked out by the owner deleting the company: nothing for them to cancel.
+  const companyDate = company?.ownerDeleting && company.role !== "OWNER"
+    ? (await prisma.user.findUnique({ where: { id: company.ownerId }, select: { deletionScheduledFor: true } }))?.deletionScheduledFor
+    : null;
+  const scheduled = companyDate ?? account?.deletionScheduledFor;
+  if (!scheduled) redirect("/dashboard");
+  if (companyDate) {
+    return (
+      <AuthShell>
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-2xl font-semibold tracking-[-0.03em]">Your company is being deleted</h1>
+          <p className="text-[15px] text-muted">
+            Your company is being deleted by its owner. It is locked and will be erased on{" "}
+            {companyDate.toLocaleDateString("en-GB", { dateStyle: "long", timeZone: "UTC" })}. Ask the owner if you think this is a mistake.
+          </p>
+        </div>
+        <form action="/auth/signout" method="post">
+          <Button type="submit" variant="outline" className="w-full">
+            Sign out
+          </Button>
+        </form>
+      </AuthShell>
+    );
+  }
 
-  const date = account.deletionScheduledFor.toLocaleDateString("en-GB", { dateStyle: "long", timeZone: "UTC" });
+  const date = scheduled.toLocaleDateString("en-GB", { dateStyle: "long", timeZone: "UTC" });
 
   return (
     <AuthShell>

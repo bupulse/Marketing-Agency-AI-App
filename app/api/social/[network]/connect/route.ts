@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { safeNext } from "@/lib/auth/safe-next";
 import { siteUrl } from "@/lib/auth/site-url";
@@ -8,6 +9,8 @@ import { RATE_LIMITS, rateLimit, RateLimitError } from "@/lib/rate-limit";
 import { codeChallenge, cookieOptions, isValidVariant, newCodeVerifier, newState, redirectUri, sealState, STATE_COOKIE, VARIANTS, type ConnectErrorCode } from "@/lib/social/oauth";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { SocialError } from "@/lib/social/types";
+import { NETWORK_SERVICE } from "@/lib/admin/service-catalog";
+import { isServiceEnabled } from "@/lib/admin/switch";
 
 function back(next: string, error: ConnectErrorCode) {
   const url = new URL(next, siteUrl());
@@ -19,12 +22,20 @@ function back(next: string, error: ConnectErrorCode) {
 export async function GET(request: Request, { params }: { params: Promise<{ network: string }> }) {
   const { network } = await params;
   if (!isNetwork(network)) return new Response("Not found", { status: 404 });
-  const user = await requireActiveUser();
+  let user: Awaited<ReturnType<typeof requireActiveUser>>;
+  try {
+    user = await requireActiveUser("channels", "throw");
+  } catch (error) {
+    if (error instanceof ForbiddenError) return new Response(error.message, { status: 403 });
+    throw error;
+  }
   const query = new URL(request.url).searchParams;
   const next = safeNext(query.get("next"), "/dashboard/connections");
   const requested = query.get("variant") ?? undefined;
 
   if (!isValidVariant(network, requested)) return back(next, "unavailable");
+  // Switched off in the admin console: a friendly "unavailable" instead of starting the sign-in.
+  if (NETWORK_SERVICE[network] && !(await isServiceEnabled(NETWORK_SERVICE[network]))) return back(next, "unavailable");
   const variant = requested ?? VARIANTS[network]?.[0];
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (!business) return back(next, "failed");

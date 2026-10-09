@@ -19,4 +19,5 @@ export function billingAdapter(provider: BillingProvider = activeProvider()): Bi
 }
 
 export * from "./catalog";
+export { priceIdFor, planForPriceId } from "@/lib/plan-catalog";
 export type * from "./types";

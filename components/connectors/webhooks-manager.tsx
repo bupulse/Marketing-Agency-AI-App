@@ -16,7 +16,7 @@ import { SecretBox } from "./secret-box";
 import { When } from "./when";
 import { EVENT_LABELS, WEBHOOK_EVENTS } from "@/lib/webhooks/events";
 
-export type EndpointView = { id: string; url: string; events: string[]; enabled: boolean; createdAt: string; lastSuccessAt: string | null; lastFailureAt: string | null; failureCount: number };
+export type EndpointView = { id: string; url: string; events: string[]; enabled: boolean; createdAt: string; lastSuccessAt: string | null; lastFailureAt: string | null; failureCount: number; pausedBySupport?: boolean };
 export type DeliveryView = { id: string; endpointId: string; url: string; event: string; status: string; attempts: number; responseStatus: number | null; error: string | null; nextAttemptAt: string | null; createdAt: string };
 
 const host = (url: string) => {
@@ -170,7 +170,7 @@ export function WebhooksManager({ endpoints, deliveries, max }: { endpoints: End
               <GlassCard as="li" key={e.id} className="flex flex-col gap-3 rounded-card p-5" data-endpoint={e.id}>
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="min-w-0 break-all font-semibold">{e.url}</p>
-                  <Badge tone={e.enabled ? "success" : "neutral"}>{e.enabled ? "On" : "Paused"}</Badge>
+                  <Badge tone={e.pausedBySupport ? "danger" : e.enabled ? "success" : "neutral"}>{e.pausedBySupport ? "Paused by BuPulse support" : e.enabled ? "On" : "Paused"}</Badge>
                   {e.failureCount > 0 && <Badge tone="danger">{e.failureCount} failed in a row</Badge>}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -184,13 +184,18 @@ export function WebhooksManager({ endpoints, deliveries, max }: { endpoints: End
                   {e.lastSuccessAt ? <>Last delivered <When iso={e.lastSuccessAt} />.</> : "Nothing delivered yet."}
                   {e.lastFailureAt ? <> Last failure <When iso={e.lastFailureAt} />.</> : ""}
                 </p>
+                {e.pausedBySupport && (
+                  <p role="status" className="rounded-2xl bg-soft p-3 text-[13px]">
+                    <strong>Paused by BuPulse support.</strong> No events are sent until support turns it back on. <a href="/contact" className="underline">Contact support</a>.
+                  </p>
+                )}
                 {testResult[e.id] && (
                   <p role="status" className={`text-[13px] font-medium ${testResult[e.id].ok ? "text-success" : "text-danger"}`}>
                     {testResult[e.id].text}
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={() => test(e)} disabled={pending && busyId === e.id}>
+                  <Button variant="outline" size="sm" onClick={() => test(e)} disabled={e.pausedBySupport || (pending && busyId === e.id)}>
                     Send test event
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => { setFormError(null); setForm({ mode: "edit", endpoint: e }); }}>
@@ -199,7 +204,7 @@ export function WebhooksManager({ endpoints, deliveries, max }: { endpoints: End
                   <Button variant="outline" size="sm" onClick={() => rotate(e)} disabled={pending && busyId === e.id}>
                     New secret
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => toggle(e)} disabled={pending && busyId === e.id}>
+                  <Button variant="outline" size="sm" onClick={() => toggle(e)} disabled={e.pausedBySupport || (pending && busyId === e.id)}>
                     {e.enabled ? "Pause" : "Turn on"}
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => setRemoving(e)} aria-label={`Delete webhook ${host(e.url)}`}>

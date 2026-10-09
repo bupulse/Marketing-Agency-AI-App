@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { Plug } from "lucide-react";
+import { pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { Badge, Button, GlassCard } from "@/components/ui";
@@ -64,7 +65,9 @@ const NOTES: Record<string, string> = {
 };
 
 export default async function ConnectionsPage({ searchParams }: PageProps<"/dashboard/connections">) {
-  const { user, business } = await getAppContext();
+  const blocked = await pageGate("channels");
+  if (blocked) return blocked;
+  const { user, actorId, business } = await getAppContext();
   const social = business ? await listConnections(business.id) : [];
   const apps = business ? await prisma.connection.findMany({ where: { businessId: business.id, kind: "APP" }, select: { provider: true } }) : [];
   const connected = new Set(apps.map((r) => r.provider));
@@ -103,7 +106,7 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/dash
       <Suspense>
         <CanvaReturnToast />
       </Suspense>
-      <CanvaCard userId={user.id} next="/dashboard/connections" />
+      <CanvaCard userId={actorId} next="/dashboard/connections" />
       <Group title="Apps" items={isCanvaEnabled() ? APPS.filter((a) => a.provider !== "canva") : APPS} connected={connected} />
       <GlassCard className="flex flex-wrap items-center gap-3 p-5 text-[15px]">
         <Badge tone="violet">Pro</Badge>

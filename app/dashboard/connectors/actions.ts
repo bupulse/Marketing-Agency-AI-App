@@ -9,13 +9,13 @@ export type DisconnectResult = { ok: true } | { ok: false; error: string };
 
 /** Removes the stored access for one connector of the signed-in owner's business. */
 export async function disconnectConnector(id: string): Promise<DisconnectResult> {
-  const user = await requireActiveUser();
+  const user = await requireActiveUser("connectors");
   const entry = typeof id === "string" ? findEntry(id) : undefined;
   if (!entry) return { ok: false, error: "That connector is not available." };
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (!business) return { ok: false, error: "We could not find your business." };
   try {
-    await entry.disconnect({ userId: user.id, businessId: business.id });
+    await entry.disconnect({ userId: user.actorId, businessId: business.id });
   } catch (error) {
     console.error(`[connectors] disconnect ${id} failed:`, error instanceof Error ? error.message : error);
     return { ok: false, error: "We could not disconnect it. Nothing was changed. Please try again." };

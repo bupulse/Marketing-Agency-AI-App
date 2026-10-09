@@ -1,3 +1,4 @@
+import { pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { Badge, GlassCard } from "@/components/ui";
@@ -13,6 +14,8 @@ import { DisconnectCloudflareButton } from "@/components/domains/disconnect-butt
 export const metadata = { title: "Your domains" };
 
 export default async function DomainsPage() {
+  const blocked = await pageGate("connectors");
+  if (blocked) return blocked;
   const { business } = await getAppContext();
   if (!business) return null;
   const conn = await prisma.cloudflareConnection.findUnique({ where: { businessId: business.id }, select: { status: true } });

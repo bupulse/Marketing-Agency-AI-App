@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Row = Record<string, unknown> & { id: string };
 const state = vi.hoisted(() => ({ rows: new Map<string, Row>() }));
+type LinkedInWhere = { businessId: string; provider: string; scopes: { has: string }; id: { notIn: string[] } };
+const linkedinMatch = vi.hoisted(() => (row: Record<string, unknown>, where: LinkedInWhere) =>
+  row.businessId === where.businessId && row.provider === where.provider && (row.scopes as string[]).includes(where.scopes.has) && !where.id.notIn.includes(row.id as string));
 
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
 vi.mock("@/lib/social/registry", () => ({ getProvider: () => ({}) }));
@@ -17,11 +20,11 @@ vi.mock("@/lib/db", () => ({
         state.rows.set(row.id, row);
         return row;
       }),
+      findMany: vi.fn(async ({ where }) => [...state.rows.values()].filter((row) => linkedinMatch(row, where)).map((row) => ({ id: row.id }))),
       updateMany: vi.fn(async ({ where, data }) => {
         let count = 0;
         for (const row of state.rows.values()) {
-          const hasScope = (row.scopes as string[]).includes(where.scopes.has);
-          if (row.businessId === where.businessId && row.provider === where.provider && hasScope && !where.id.notIn.includes(row.id)) {
+          if (linkedinMatch(row, where)) {
             Object.assign(row, data);
             count += 1;
           }
@@ -29,6 +32,9 @@ vi.mock("@/lib/db", () => ({
         return { count };
       }),
     },
+    // restoreQueuedPosts (runs after every reconnect): there are no posts in these tests.
+    post: { updateMany: vi.fn(async () => ({ count: 0 })) },
+    $transaction: vi.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
   },
 }));
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, KeyRound, Share2, Webhook } from "lucide-react";
+import { pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { ConnectorCard } from "@/components/connectors/connector-card";
@@ -30,8 +31,11 @@ function LinkCard({ href, icon, title, text, badge }: { href: string; icon: Reac
 }
 
 export default async function ConnectorsPage() {
-  const { user, business } = await getAppContext();
-  const items = await getCatalog({ userId: user.id, businessId: business.id });
+  const blocked = await pageGate("connectors");
+  if (blocked) return blocked;
+  const { actorId, business } = await getAppContext();
+  // Canva is personal (each teammate links their own account); everything else in the catalog belongs to the company.
+  const items = await getCatalog({ userId: actorId, businessId: business.id });
 
   return (
     <div className="flex flex-col gap-6">

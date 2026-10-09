@@ -177,6 +177,11 @@ describe("markConnectionError", () => {
     await markConnectionError("c0", new SocialError("try later", "rate_limit", "instagram"));
     expect(state.rows.get("c0")).toMatchObject({ status: "ACTIVE", lastError: "try later" });
   });
+  it("leaves a force-disconnected account's status and note alone", async () => {
+    await seed({ status: "REVOKED", accessTokenEncrypted: null, lastError: "Disconnected by BuPulse support. Reconnect this account to publish." });
+    await markConnectionError("c0", new SocialError("token revoked", "auth", "instagram"));
+    expect(state.rows.get("c0")).toMatchObject({ status: "REVOKED", lastError: "Disconnected by BuPulse support. Reconnect this account to publish." });
+  });
 });
 
 describe("disconnect", () => {

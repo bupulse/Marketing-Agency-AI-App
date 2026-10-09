@@ -2,9 +2,11 @@ import { ArrowRight } from "lucide-react";
 import { RotatingWords } from "@/components/motion";
 import { Button } from "@/components/ui";
 import { heroWords } from "@/lib/content/site";
+import { getTrialInfo } from "@/lib/plan-catalog";
 import { HeroScene } from "./hero-scene";
 
-export function Hero() {
+export async function Hero() {
+  const trialDays = (await getTrialInfo()).days;
   return (
     <section
       aria-labelledby="hero-title"
@@ -34,7 +36,7 @@ export function Hero() {
           </Button>
         </div>
         <p className="animate-rise m-0 text-[13px] text-muted [animation-delay:360ms]">
-          7-day free trial · No marketing experience needed · Cancel anytime
+          {trialDays}-day free trial · No marketing experience needed · Cancel anytime
         </p>
       </div>
       <HeroScene />

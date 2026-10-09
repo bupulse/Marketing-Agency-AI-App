@@ -19,7 +19,7 @@ vi.mock("@/lib/billing/apply", () => ({ applyProviderSubscription: h.apply }));
 vi.mock("@/lib/billing/paddle-admin", () => ({ createRefund: h.createRefund, describeRefundTarget: h.describe }));
 vi.mock("@/lib/publishing/service", async (orig) => ({ ...(await orig<typeof import("@/lib/publishing/service")>()), retryPost: h.retryPost }));
 
-import { clearPlanLimitCache } from "@/lib/admin/plan-limits";
+import { resetPlanCache } from "@/lib/plan-catalog";
 import { flagDecision } from "@/lib/admin/flags";
 import * as svc from "@/lib/admin/service";
 import { AdminError, apiContext, consoleContext } from "@/lib/admin/types";
@@ -44,7 +44,7 @@ function seedSub(over: Record<string, unknown> = {}) {
 beforeEach(() => {
   h.db = createFakeDb();
   vi.clearAllMocks();
-  clearPlanLimitCache();
+  resetPlanCache();
   process.env.PADDLE_PRICE_PRO_MONTH = "pri_pro_m";
   process.env.PADDLE_PRICE_PRO_YEAR = "pri_pro_y";
   process.env.PADDLE_PRICE_STANDARD_MONTH = "pri_std_m";
@@ -408,48 +408,52 @@ describe("direct actions: confirm and audit", () => {
   });
 
   it("update_plan_limits needs confirm from the API, validates, merges, resets with null, and audits", async () => {
+    const trial = () => h.db.planDefinition.rows.find((r) => r.key === "TRIAL")!;
     expect(await code(svc.updatePlanLimits(API, { plan: "TRIAL", limits: { text: 20 } }))).toBe("confirm_required");
-    expect(h.db.planLimitOverride.rows).toHaveLength(0);
+    expect(trial().limits.text).toBe(10);
     await svc.updatePlanLimits(API, { plan: "TRIAL", limits: { text: 20 }, confirm: true });
     expect(lastAudit()).toMatchObject({ action: "update_plan_limits", target: "plan:TRIAL" });
     expect((lastAudit().before as { text: number }).text).toBe(10);
     expect((lastAudit().after as { text: number }).text).toBe(20);
     await svc.updatePlanLimits(API, { plan: "TRIAL", limits: { image: 9 }, confirm: true });
-    expect(h.db.planLimitOverride.rows[0].limits).toEqual({ text: 20, image: 9 });
+    expect(trial().limits).toMatchObject({ text: 20, image: 9, chat: 50 });
     expect(await code(svc.updatePlanLimits(API, { plan: "TRIAL", limits: { text: -1 }, confirm: true }))).toBe("invalid");
     expect(await code(svc.updatePlanLimits(API, { plan: "TRIAL", limits: { bogus: 1 } as never, confirm: true }))).toBe("invalid");
-    await svc.updatePlanLimits(API, { plan: "TRIAL", limits: { text: null, image: null }, confirm: true });
-    expect(h.db.planLimitOverride.rows).toHaveLength(0);
+    expect(await code(svc.updatePlanLimits(API, { plan: "NOPE", limits: { text: 1 }, confirm: true }))).toBe("not_found");
+    const reset = await svc.updatePlanLimits(API, { plan: "TRIAL", limits: { text: null, image: null }, confirm: true });
+    expect(trial().limits).toMatchObject({ text: 10, image: 5 });
+    expect(reset.overrides).toEqual({});
   });
 });
 
-describe("plan-limit cache", () => {
-  it("keeps the last good overrides when the database errors, even right after a cache clear", async () => {
-    const { getLimitOverrides } = await import("@/lib/admin/plan-limits");
-    h.db.planLimitOverride.rows.push({ plan: "TRIAL", limits: { text: 3 } });
-    expect((await getLimitOverrides({ force: true })).TRIAL).toEqual({ text: 3 });
-    clearPlanLimitCache();
-    h.db.planLimitOverride.findMany.mockRejectedValueOnce(new Error("connection reset"));
-    expect((await getLimitOverrides()).TRIAL).toEqual({ text: 3 });
+describe("plan catalog cache", () => {
+  it("keeps the last good plans when the database errors, even right after a cache clear", async () => {
+    const { getPlans, clearPlanCache } = await import("@/lib/plan-catalog");
+    h.db.planDefinition.rows.find((r) => r.key === "TRIAL")!.limits.text = 3;
+    expect((await getPlans({ force: true })).find((p) => p.key === "TRIAL")!.limits.text).toBe(3);
+    clearPlanCache();
+    h.db.planDefinition.findMany.mockRejectedValueOnce(new Error("connection reset"));
+    expect((await getPlans()).find((p) => p.key === "TRIAL")!.limits.text).toBe(3);
     // and it recovers on the next call
-    h.db.planLimitOverride.rows[0].limits = { text: 4 };
-    expect((await getLimitOverrides()).TRIAL).toEqual({ text: 4 });
+    h.db.planDefinition.rows.find((r) => r.key === "TRIAL")!.limits.text = 4;
+    expect((await getPlans()).find((p) => p.key === "TRIAL")!.limits.text).toBe(4);
   });
 
   it("force reads fresh data without pushing the cache clock", async () => {
-    const { getLimitOverrides } = await import("@/lib/admin/plan-limits");
-    h.db.planLimitOverride.rows.push({ plan: "PRO", limits: { chat: 1 } });
-    await getLimitOverrides({ force: true });
-    h.db.planLimitOverride.rows[0].limits = { chat: 2 };
-    expect((await getLimitOverrides()).PRO).toEqual({ chat: 1 }); // still cached
-    expect((await getLimitOverrides({ force: true })).PRO).toEqual({ chat: 2 });
-    clearPlanLimitCache();
-    h.db.planLimitOverride.rows[0].limits = { chat: 3 };
-    expect((await getLimitOverrides()).PRO).toEqual({ chat: 3 }); // stale after clear
+    const { getPlans, clearPlanCache } = await import("@/lib/plan-catalog");
+    const pro = () => h.db.planDefinition.rows.find((r) => r.key === "PRO")!;
+    pro().limits.chat = 1;
+    await getPlans({ force: true });
+    pro().limits.chat = 2;
+    expect((await getPlans()).find((p) => p.key === "PRO")!.limits.chat).toBe(1); // still cached
+    expect((await getPlans({ force: true })).find((p) => p.key === "PRO")!.limits.chat).toBe(2);
+    clearPlanCache();
+    pro().limits.chat = 3;
+    expect((await getPlans()).find((p) => p.key === "PRO")!.limits.chat).toBe(3); // stale after clear
   });
 });
 
-describe("plan-limit override applies in consumeUsage", () => {
+describe("plan limits apply in consumeUsage", () => {
   it("a lowered limit blocks sooner, a raised limit allows more", async () => {
     seedUser();
     seedSub({ plan: "TRIAL", status: "TRIALING", provider: null, providerSubscriptionId: null, trialEndsAt: new Date(Date.now() + 86_400_000) });
@@ -462,7 +466,7 @@ describe("plan-limit override applies in consumeUsage", () => {
     await expect(consumeUsage(USER, "text")).rejects.toMatchObject({ reason: "limit_reached" });
   });
 
-  it("without an override the defaults from lib/plans.ts apply", async () => {
+  it("without a change the seeded limits apply", async () => {
     seedUser();
     seedSub({ plan: "TRIAL", status: "TRIALING", provider: null, providerSubscriptionId: null, trialEndsAt: new Date(Date.now() + 86_400_000) });
     for (let i = 0; i < 10; i++) await consumeUsage(USER, "text");

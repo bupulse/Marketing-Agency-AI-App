@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { RateLimitError, rateLimit, type RateLimitRule } from "@/lib/rate-limit";
+import { planHasCapability } from "@/lib/plan-catalog";
 import { hashApiKey, KEY_PREFIX, type ApiScope } from "./keys";
 
 export const API_RATE_LIMIT: RateLimitRule = { limit: 60, windowSeconds: 60 }; // per key
@@ -18,12 +19,12 @@ export function apiJson(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: { "cache-control": "no-store" } });
 }
 
-/** True while the business is on an active Pro plan. A downgrade, cancellation or failed payment switches the keys off without deleting them. */
+/** True while the business is on an active plan with API access (Pro today). A downgrade, cancellation or failed payment switches the keys off without deleting them. */
 export async function businessHasApiAccess(businessId: string): Promise<boolean> {
   const business = await prisma.business.findUnique({ where: { id: businessId }, select: { user: { select: { suspendedAt: true, subscription: { select: { plan: true, status: true } } } } } });
   if (business?.user.suspendedAt) return false;
   const sub = business?.user.subscription;
-  return Boolean(sub && sub.plan === "PRO" && (sub.status === "ACTIVE" || sub.status === "TRIALING"));
+  return Boolean(sub && (sub.status === "ACTIVE" || sub.status === "TRIALING") && (await planHasCapability(sub.plan, "apiAccess")));
 }
 
 /**

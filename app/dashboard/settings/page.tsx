@@ -9,12 +9,16 @@ import { TeamCard } from "@/components/settings/team-card";
 import { CanvaCard } from "@/components/settings/canva-card";
 import { CanvaReturnToast } from "@/components/designs/canva-return-toast";
 import { prisma } from "@/lib/db";
+import { can } from "@/lib/team/roles";
 
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
-  const { user, email, displayName, business, usage } = await getAppContext();
-  const account = await prisma.user.findUnique({ where: { id: user.id }, select: { name: true, signUpMethod: true } });
+  const { actorId, role, email, displayName, business, usage } = await getAppContext();
+  const [account, members] = await Promise.all([
+    prisma.user.findUnique({ where: { id: actorId }, select: { name: true, signUpMethod: true } }),
+    prisma.membership.count({ where: { businessId: business.id } }),
+  ]);
 
   return (
     <>
@@ -27,6 +31,7 @@ export default async function SettingsPage() {
         email={email}
         signInMethod={account?.signUpMethod === "GOOGLE" ? "Google" : "Email and password"}
       />
+      {can(role, "settings") && (
       <BusinessSection
         defaults={{
           organisationName: business.name,
@@ -37,9 +42,10 @@ export default async function SettingsPage() {
           website: business.website ?? "",
         }}
       />
-      <CanvaCard userId={user.id} />
-      <TeamCard />
-      <DeleteAccount email={email} />
+      )}
+      <CanvaCard userId={actorId} />
+      <TeamCard role={role} canManage={can(role, "team")} members={members} />
+      <DeleteAccount email={email} wholeCompany={role === "OWNER"} teammates={members - 1} />
       {process.env.NODE_ENV !== "production" && (
         <GlassCard as="section" aria-labelledby="devchecks" className="flex flex-col gap-3 p-5 sm:p-6">
           <h2 id="devchecks" className="text-lg font-semibold">Developer checks</h2>

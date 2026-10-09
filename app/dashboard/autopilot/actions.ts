@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { approveAll, regenerateGroup, removeGroup, saveSettings } from "@/lib/autopilot/manage";
 import { runAutopilotForUser } from "@/lib/autopilot/run";
@@ -29,7 +30,13 @@ async function limited(userId: string, kind: keyof typeof LIMITS): Promise<strin
 const done = () => revalidatePath("/dashboard/autopilot");
 
 export async function saveAutopilotSettings(input: SettingsInput): Promise<ActionResult> {
-  const user = await requireActiveUser();
+  let user: Awaited<ReturnType<typeof requireActiveUser>>;
+  try {
+    user = await requireActiveUser("autopilotSettings", "throw");
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { ok: false, error: error.message };
+    throw error;
+  }
   const blocked = await limited(user.id, "edit");
   if (blocked) return { ok: false, error: blocked };
   const result = await saveSettings(user.id, input);

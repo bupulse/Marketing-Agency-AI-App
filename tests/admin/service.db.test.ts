@@ -124,12 +124,13 @@ describe.skipIf(!enabled)("admin service against the real database", { timeout: 
              pg_get_userbyid(proowner) AS owner
       FROM pg_proc WHERE proname = 'redact_audit_for_user'`;
     expect(fn).toEqual({ anon: false, auth: false, svc: false, pub: false, owner: "audit_redactor" });
-    for (const table of ["AuditLog", "AdminApproval", "AdminApiKey", "FeatureFlag", "Announcement", "PlanLimitOverride"]) {
+    for (const table of ["AuditLog", "AdminApproval", "AdminApiKey", "FeatureFlag", "Announcement", "ServiceSwitch", "ServiceCheck", "ServiceUsage", "AdminSetting", "AdminNote"]) {
       const [row] = await prisma.$queryRawUnsafe<{ rls: boolean; any: boolean }[]>(
         `SELECT c.relrowsecurity AS rls,
-                (has_table_privilege('anon', c.oid, 'SELECT,INSERT,UPDATE,DELETE') OR has_table_privilege('authenticated', c.oid, 'SELECT,INSERT,UPDATE,DELETE') OR has_table_privilege('service_role', c.oid, 'SELECT,INSERT,UPDATE,DELETE')) AS any
+                (has_table_privilege('anon', c.oid, 'SELECT,INSERT,UPDATE,DELETE') OR has_table_privilege('authenticated', c.oid, 'SELECT,INSERT,UPDATE,DELETE') OR (c.relname = ANY($2) AND has_table_privilege('service_role', c.oid, 'SELECT,INSERT,UPDATE,DELETE'))) AS any
          FROM pg_class c WHERE c.relname = $1 AND c.relnamespace = 'public'::regnamespace`,
         table,
+        ["AuditLog", "AdminApproval", "AdminApiKey", "FeatureFlag", "Announcement", "ServiceSwitch", "ServiceCheck", "ServiceUsage", "AdminSetting"], // also closed to service_role
       );
       expect({ table, ...row }).toEqual({ table, rls: true, any: false });
     }
@@ -161,5 +162,19 @@ describe.skipIf(!enabled)("admin service against the real database", { timeout: 
         await tx.$executeRawUnsafe(`DELETE FROM "AuditLog" WHERE "id" = '${row.id}'`);
       }),
     ).rejects.toThrow(/append-only/);
+  });
+
+  it("admin notes are removed with the account and the audit rows about them are redacted", async () => {
+    const { addAdminNote } = await import("@/lib/admin/notes");
+    await addAdminNote(svc.consoleContext(), { userId, body: "private note: owner is going through a divorce" });
+    await prisma.$executeRaw`SELECT public.redact_audit_for_user(${userId})`;
+    const rows = await prisma.auditLog.findMany({ where: { action: "add_admin_note", target: `user:${userId}` } });
+    expect(rows.length).toBeGreaterThan(0);
+    expect(JSON.stringify(rows)).not.toContain("divorce");
+    expect(rows[0].after).toEqual({ redacted: true });
+    // the account purge deletes the notes themselves (lib/account-deletion.ts)
+    expect(await prisma.adminNote.count({ where: { userId } })).toBe(1);
+    await prisma.adminNote.deleteMany({ where: { userId } });
+    expect(await prisma.adminNote.count({ where: { userId } })).toBe(0);
   });
 });

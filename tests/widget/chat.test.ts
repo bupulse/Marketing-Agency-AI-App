@@ -6,6 +6,7 @@ const m = vi.hoisted(() => ({
     $queryRaw: vi.fn(),
     chatMessage: { create: vi.fn(), findMany: vi.fn() },
     lead: { findUnique: vi.fn() },
+    serviceSwitch: { findMany: vi.fn() },
   },
   rateLimit: vi.fn(),
   consumeUsage: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock("@/lib/widget/turnstile", async (orig) => ({ ...(await orig<typeof impor
 import { handleChat, handleLead } from "@/lib/widget/chat";
 import { RateLimitError } from "@/lib/rate-limit";
 import { UsageLimitError } from "@/lib/usage";
+import { clearSwitchCache } from "@/lib/admin/switch";
 
 const widget = {
   businessId: "b1", userId: "u1", key: "KEY12345", enabled: true, name: "Glow", contentLanguage: "English",
@@ -47,6 +49,8 @@ const aiReply = { reply: "Hi!", wantsContact: false, language: "English", detect
 
 beforeEach(() => {
   vi.clearAllMocks();
+  m.prisma.serviceSwitch.findMany.mockResolvedValue([]);
+  clearSwitchCache();
   m.widget.mockResolvedValue(widget);
   m.rateLimit.mockResolvedValue(undefined);
   m.consumeUsage.mockResolvedValue({ periodStart: new Date("2026-10-01") });
@@ -92,6 +96,40 @@ describe("handleChat", () => {
     const r = await handleChat(body, ctx);
     expect(m.refundUsage).toHaveBeenCalledWith("u1", "chat", new Date("2026-10-01"));
     expect(r.body).toMatchObject({ askContact: true, limited: true });
+  });
+
+  it("AI switched off in the admin console: no AI call and no credit used, the visitor is asked for contact details", async () => {
+    m.prisma.serviceSwitch.findMany.mockResolvedValue([{ service: "gemini" }]);
+    clearSwitchCache();
+    const result = await handleChat(body, ctx);
+    expect(result.status).toBe(200);
+    expect(m.generate).not.toHaveBeenCalled();
+    expect(m.consumeUsage).not.toHaveBeenCalled();
+    expect(result.body.askContact).toBe(true);
+    // switched back on: the AI answers again
+    m.prisma.serviceSwitch.findMany.mockResolvedValue([]);
+    clearSwitchCache();
+    await handleChat(body, ctx);
+    expect(m.generate).toHaveBeenCalledTimes(1);
+  });
+
+  it("the widget always uses Gemini: it follows the Gemini switch, not AI_TEXT_PROVIDER", async () => {
+    const previous = process.env.AI_TEXT_PROVIDER;
+    process.env.AI_TEXT_PROVIDER = "claude";
+    try {
+      m.prisma.serviceSwitch.findMany.mockResolvedValue([{ service: "claude" }]);
+      clearSwitchCache();
+      await handleChat(body, ctx);
+      expect(m.generate).toHaveBeenCalledTimes(1); // Claude off does not stop the widget
+      m.generate.mockClear();
+      m.prisma.serviceSwitch.findMany.mockResolvedValue([{ service: "gemini" }]);
+      clearSwitchCache();
+      await handleChat(body, ctx);
+      expect(m.generate).not.toHaveBeenCalled(); // Gemini off does
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, "AI_TEXT_PROVIDER");
+      else process.env.AI_TEXT_PROVIDER = previous;
+    }
   });
 
   it("over the limit: no AI call, friendly message, contact card", async () => {

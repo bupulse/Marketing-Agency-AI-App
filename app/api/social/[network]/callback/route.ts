@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { safeNext } from "@/lib/auth/safe-next";
 import { siteUrl } from "@/lib/auth/site-url";
@@ -8,6 +9,8 @@ import { saveConnections } from "@/lib/social/connections";
 import { cookieOptions, openState, PENDING_PATH, pendingCookieNames, redirectUri, sameString, sealPending, STATE_COOKIE, type ConnectErrorCode } from "@/lib/social/oauth";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { SocialError } from "@/lib/social/types";
+import { NETWORK_SERVICE } from "@/lib/admin/service-catalog";
+import { isServiceEnabled } from "@/lib/admin/switch";
 
 type Outcome = { error: ConnectErrorCode } | { connected: string } | { pick: string };
 
@@ -31,7 +34,13 @@ function readCookie(request: Request, name: string) {
 export async function GET(request: Request, { params }: { params: Promise<{ network: string }> }) {
   const { network } = await params;
   if (!isNetwork(network)) return new Response("Not found", { status: 404 });
-  const user = await requireActiveUser();
+  let user: Awaited<ReturnType<typeof requireActiveUser>>;
+  try {
+    user = await requireActiveUser("channels", "throw");
+  } catch (error) {
+    if (error instanceof ForbiddenError) return new Response(error.message, { status: 403 });
+    throw error;
+  }
   const query = new URL(request.url).searchParams;
   const fallback = "/dashboard/connections";
 
@@ -39,6 +48,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ netw
   if (!opened.ok) return done(fallback, { error: opened.reason === "expired" ? "expired" : "state" });
   const pending = opened.data;
   const next = safeNext(pending.next, fallback);
+  // Switched off while the person was on the network's consent page: show "unavailable" and keep nothing.
+  if (NETWORK_SERVICE[network] && !(await isServiceEnabled(NETWORK_SERVICE[network]))) return done(next, { error: "unavailable" });
 
   if (!sameString(pending.state, query.get("state") ?? "")) return done(next, { error: "state" });
   if (query.get("error")) {

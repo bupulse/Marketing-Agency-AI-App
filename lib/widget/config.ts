@@ -41,7 +41,7 @@ export async function loadPublicWidget(key: string): Promise<PublicWidget | null
     businessId: business.id,
     userId: business.userId,
     key,
-    enabled: widget.enabled && !owner?.suspendedAt && !owner?.deletionScheduledFor,
+    enabled: widget.enabled && !widget.disabledByAdminAt && !owner?.suspendedAt && !owner?.deletionScheduledFor,
     name: business.name,
     logoPath: business.logoUrl && isOwnLogoPath(business.userId, business.logoUrl) ? business.logoUrl : null,
     accent,

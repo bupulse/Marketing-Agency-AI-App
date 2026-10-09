@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { siteUrl } from "@/lib/auth/site-url";
+import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
@@ -26,7 +27,13 @@ export async function GET(request: Request) {
   const shop = normalizeShopDomain(params.get("shop"));
   if (!shop) return back("invalid_shop");
 
-  const user = await requireActiveUser();
+  let user: Awaited<ReturnType<typeof requireActiveUser>>;
+  try {
+    user = await requireActiveUser("connectors", "throw");
+  } catch (error) {
+    if (error instanceof ForbiddenError) return new Response(error.message, { status: 403 });
+    throw error;
+  }
   const cookie = request.headers.get("cookie")?.split(/;\s*/).find((c) => c.startsWith(`${SHOPIFY_COOKIE}=`))?.slice(SHOPIFY_COOKIE.length + 1);
   const pending = await openShopifyState(cookie ? decodeURIComponent(cookie) : undefined, user.id);
   if (!pending || pending.shop !== shop || !sameString(pending.state, params.get("state") ?? "")) return back("invalid_request");

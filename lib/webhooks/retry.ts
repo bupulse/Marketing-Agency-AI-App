@@ -18,7 +18,7 @@ const CLAIM_MS = 30 * 60 * 1000;
 export async function adoptLegacyPendingLeads(now = new Date()): Promise<number> {
   const leads = await prisma.lead.findMany({
     where: { webhookPendingAt: { not: null } },
-    include: { business: { select: { id: true, name: true, webhookEndpoints: { where: { enabled: true, events: { has: "lead.created" } }, select: { id: true } } } } },
+    include: { business: { select: { id: true, name: true, webhookEndpoints: { where: { enabled: true, pausedByAdminAt: null, events: { has: "lead.created" } }, select: { id: true } } } } },
     orderBy: { webhookPendingAt: "asc" },
     take: BATCH,
   });
@@ -49,7 +49,7 @@ export async function retryDueWebhooks(now = new Date()): Promise<WebhookRetryRe
   });
   const due = await prisma.webhookDelivery.findMany({
     where: { status: "pending", nextAttemptAt: { lte: now } },
-    include: { endpoint: { select: { id: true, url: true, secretEncrypted: true, enabled: true } } },
+    include: { endpoint: { select: { id: true, url: true, secretEncrypted: true, enabled: true, pausedByAdminAt: true } } },
     orderBy: { nextAttemptAt: "asc" },
     take: BATCH,
   });
@@ -57,8 +57,9 @@ export async function retryDueWebhooks(now = new Date()): Promise<WebhookRetryRe
 
   async function handle(delivery: (typeof due)[number]) {
     result.checked++;
-    if (!delivery.endpoint.enabled || delivery.createdAt <= expired) {
-      const why = delivery.endpoint.enabled ? `${delivery.error ?? "Failed."} Gave up after 24 hours.` : "The endpoint was switched off.";
+    const live = delivery.endpoint.enabled && !delivery.endpoint.pausedByAdminAt;
+    if (!live || delivery.createdAt <= expired) {
+      const why = live ? `${delivery.error ?? "Failed."} Gave up after 24 hours.` : "The endpoint was switched off.";
       await prisma.webhookDelivery.updateMany({ where: { id: delivery.id, status: "pending" }, data: { status: "failed", nextAttemptAt: null, error: why } });
       result.gaveUp++;
       return;

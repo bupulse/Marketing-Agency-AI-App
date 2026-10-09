@@ -3,6 +3,7 @@ import { EmptyState } from "@/components/app/empty-state";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { LeadsInbox } from "@/components/leads/leads-inbox";
+import { can } from "@/lib/team/roles";
 import { NotificationsCard } from "@/components/leads/notifications-card";
 import { Button } from "@/components/ui";
 import { PAGE_SIZE, MAX_PAGE_SIZE, parseFilters, type LeadStatusValue } from "@/lib/leads/filters";
@@ -14,7 +15,7 @@ export const metadata = { title: "Leads" };
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function LeadsPage({ searchParams }: { searchParams: SearchParams }) {
-  const { business, email } = await getAppContext();
+  const { business, email, role } = await getAppContext();
   const params = await searchParams;
   const filters = parseFilters(params);
   const requested = Number(Array.isArray(params.limit) ? params.limit[0] : params.limit);
@@ -49,7 +50,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Search
           action={<Button href="/dashboard/widget">Set up website chat</Button>}
         />
       )}
-      <NotificationsCard initial={settings} email={email} />
+      {can(role, "settings") && <NotificationsCard initial={settings} email={email} />}
     </div>
   );
 }

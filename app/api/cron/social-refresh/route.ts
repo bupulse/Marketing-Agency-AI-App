@@ -1,3 +1,5 @@
+import { recordCron } from "@/lib/admin/cron-run";
+import { disabledNetworks } from "@/lib/admin/switch";
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { refreshConnectionById } from "@/lib/social/connections";
@@ -23,23 +25,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const due = await prisma.connection.findMany({
-    where: {
-      kind: "SOCIAL",
-      postingMode: "AUTO",
-      status: { in: ["ACTIVE", "EXPIRING", "ERROR"] },
-      accessTokenEncrypted: { not: null },
-      expiresAt: { not: null, lt: new Date(Date.now() + WINDOW_MS) },
-    },
-    select: { id: true },
-    orderBy: { expiresAt: "asc" },
-    take: BATCH,
-  });
-  let refreshed = 0;
-  let failed = 0;
-  for (const { id } of due) {
-    if (await refreshConnectionById(id)) refreshed += 1;
-    else failed += 1;
-  }
-  return NextResponse.json({ due: due.length, refreshed, failed });
+  return NextResponse.json(
+    await recordCron("social-refresh", async () => {
+    // A network switched off in the admin console keeps its tokens as they are; they are refreshed once it is back on.
+    const paused = await disabledNetworks();
+    const due = await prisma.connection.findMany({
+      where: {
+        kind: "SOCIAL",
+        ...(paused.length ? { provider: { notIn: paused } } : {}),
+        postingMode: "AUTO",
+        status: { in: ["ACTIVE", "EXPIRING", "ERROR"] },
+        accessTokenEncrypted: { not: null },
+        expiresAt: { not: null, lt: new Date(Date.now() + WINDOW_MS) },
+      },
+      select: { id: true },
+      orderBy: { expiresAt: "asc" },
+      take: BATCH,
+    });
+    let refreshed = 0;
+    let failed = 0;
+    for (const { id } of due) {
+      if (await refreshConnectionById(id)) refreshed += 1;
+      else failed += 1;
+    }
+    return { due: due.length, refreshed, failed };
+    }),
+  );
 }

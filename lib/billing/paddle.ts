@@ -1,6 +1,6 @@
 import "server-only";
 import { siteUrl } from "@/lib/auth/site-url";
-import { priceIdFor } from "./catalog";
+import { priceIdFor } from "@/lib/plan-catalog";
 import { formatMoney, isUuid, mapSubscription, verifySignature } from "./paddle-map";
 import { signCheckoutUser } from "./signing";
 import type { BillingAdapter, BillingWebhook, Invoice, ProviderSubscription } from "./types";
@@ -65,8 +65,8 @@ export const paddle: BillingAdapter = {
   },
 
   async checkoutConfig({ userId, email, plan, interval, providerCustomerId }) {
-    const priceId = priceIdFor("PADDLE", plan, interval);
-    if (!priceId) throw new Error(`Paddle price id missing: PADDLE_PRICE_${plan}_${interval}`);
+    const priceId = await priceIdFor("PADDLE", plan, interval);
+    if (!priceId) throw new Error(`Paddle price id missing for plan ${plan} (${interval}): sync the plan with Paddle in /admin/plans`);
     return {
       provider: "PADDLE",
       environment: environment(),

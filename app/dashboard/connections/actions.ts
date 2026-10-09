@@ -17,7 +17,7 @@ async function businessIdFor(userId: string) {
 
 /** Disconnects one of the signed-in user's accounts. A connection of another business is ignored (no IDOR). */
 export async function disconnectAction(formData: FormData) {
-  const user = await requireActiveUser();
+  const user = await requireActiveUser("channels");
   const id = z.string().min(1).max(64).safeParse(formData.get("id"));
   const businessId = await businessIdFor(user.id);
   if (id.success && businessId) await disconnect(id.data, { businessId });
@@ -33,7 +33,7 @@ const reminderSchema = z.object({
 
 /** Personal Instagram: no OAuth, the publisher sends a reminder instead of posting. */
 export async function connectReminderAction(_prev: ReminderState, formData: FormData): Promise<ReminderState> {
-  const user = await requireActiveUser();
+  const user = await requireActiveUser("channels");
   const parsed = reminderSchema.safeParse({ handle: formData.get("handle"), displayName: formData.get("displayName") || undefined });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the username and try again." };
   const businessId = await businessIdFor(user.id);
@@ -57,7 +57,7 @@ async function clearPending() {
 
 /** Saves the accounts ticked in the account picker from the pending OAuth result held in the encrypted cookie. */
 export async function savePickedAccountsAction(formData: FormData) {
-  const user = await requireActiveUser();
+  const user = await requireActiveUser("channels");
   const store = await cookies();
   const pending = await openPending((name) => store.get(name)?.value, user.id);
   const businessId = await businessIdFor(user.id);
@@ -77,7 +77,7 @@ export async function savePickedAccountsAction(formData: FormData) {
 
 /** Drops a half-finished connect (the user closed the account picker). */
 export async function cancelPickAction() {
-  await requireActiveUser();
+  await requireActiveUser("channels");
   await clearPending();
   redirect("/dashboard/connections");
 }

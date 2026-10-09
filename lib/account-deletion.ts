@@ -7,7 +7,7 @@ import { BUCKETS } from "@/lib/storage";
 
 const PAGE = 100;
 
-export type PurgeResult = { due: number; deleted: number; failed: number; filesRemoved: number };
+export type PurgeResult = { due: number; deleted: number; failed: number; filesRemoved: number; orphansRemoved?: number };
 
 // Admin client for Storage. Never import this anywhere that reaches the browser.
 function adminClient(): SupabaseClient | null {
@@ -68,6 +68,16 @@ async function stillBilling(id: string) {
  * which cascades to the User row and everything under it.
  */
 export async function purgeDueAccounts(now = new Date()): Promise<PurgeResult> {
+  const result = await purgeDue(now);
+  try {
+    result.orphansRemoved = await sweepOrphanLogins(now);
+  } catch (error) {
+    await logError(error, { source: "account-deletion.orphans" });
+  }
+  return result;
+}
+
+async function purgeDue(now: Date): Promise<PurgeResult> {
   const due = await prisma.user.findMany({
     where: { deletionScheduledFor: { lte: now } },
     select: { id: true },
@@ -99,9 +109,21 @@ export async function purgeDueAccounts(now = new Date()): Promise<PurgeResult> {
         });
         continue;
       }
+      // A company account takes its teammates' sign-ins with it (they exist only for this company); a teammate leaving
+      // alone has nobody here and no files of their own, so this is empty and the rest of the steps still apply.
+      const teammates = (
+        await prisma.membership.findMany({ where: { business: { userId: id }, userId: { not: id } }, select: { userId: true } })
+      ).map((m) => m.userId);
       result.filesRemoved += await removeUserFiles(admin, id);
+      // Teammates go BEFORE the company account: once it is deleted their memberships cascade away, and a failure after that
+      // would leave logins that belong to no company for good. A failure here is retried tomorrow, with the company still intact.
+      // The last re-check keeps them safe if the owner pressed "Keep" while files were being removed.
+      if (!(await stillDue(id, now))) continue;
+      for (const teammateId of teammates) await eraseTeammateLogin(teammateId);
       // Admin records about this user stay as a trail but lose their personal details (free-text reasons, before/after values).
       await prisma.$executeRaw`SELECT public.redact_audit_for_user(${id})`;
+      // Private admin notes about the client (no foreign key, so they would otherwise outlive the account).
+      await prisma.adminNote.deleteMany({ where: { userId: id } });
       await unlinkAnalytics(id);
       const deleted = await prisma.$executeRaw`
         DELETE FROM auth.users a USING public."User" u
@@ -122,4 +144,35 @@ async function unlinkAnalytics(userId: string) {
     where: { OR: [{ userId }, ...(business ? [{ businessId: business.id }] : [])] },
     data: { userId: null, businessId: null, sessionId: null, props: Prisma.DbNull },
   });
+}
+
+/**
+ * Everything that must go when a teammate leaves; shared by removal, the admin console, account deletion and the orphan sweep.
+ * Their own Storage folder (their login id, not the company's) is emptied, the invitations they sent die with them, and their
+ * records lose their personal details before the sign-in itself is deleted.
+ */
+export async function eraseTeammateLogin(userId: string, db: Pick<typeof prisma, "$executeRaw" | "adminNote" | "analyticsEvent" | "invite"> = prisma) {
+  const admin = adminClient();
+  if (admin) await removeUserFiles(admin, userId);
+  await db.invite.deleteMany({ where: { invitedBy: userId, acceptedAt: null } });
+  await db.$executeRaw`SELECT public.redact_audit_for_user(${userId})`;
+  await db.adminNote.deleteMany({ where: { userId } });
+  await db.analyticsEvent.updateMany({ where: { userId }, data: { userId: null, sessionId: null, props: Prisma.DbNull } });
+  await db.$executeRaw`DELETE FROM auth.users WHERE id = ${userId}::uuid`;
+}
+
+/**
+ * Logins that belong to no company (no membership and no business) for over a day: a teammate whose company was erased
+ * half way, or a sign-up that never finished. Nothing can be done with them, so they are erased like any removed teammate.
+ */
+export async function sweepOrphanLogins(now = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT u."id"::text AS id FROM "User" u
+    WHERE u."createdAt" < ${cutoff}
+      AND NOT EXISTS (SELECT 1 FROM "Membership" m WHERE m."userId" = u."id")
+      AND NOT EXISTS (SELECT 1 FROM "Business" b WHERE b."userId" = u."id")
+    LIMIT 100`;
+  for (const { id } of rows) await eraseTeammateLogin(id);
+  return rows.length;
 }

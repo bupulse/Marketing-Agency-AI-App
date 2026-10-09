@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
 import { AIBudgetExceededError } from "@/lib/ai/budget";
+import { ServiceDisabledError } from "@/lib/admin/switch";
 import { readKnowledge } from "@/lib/brand/schemas";
 import { logError } from "@/lib/errors";
 import { approvePosts } from "@/lib/publishing/service";
@@ -142,7 +143,7 @@ export async function regenerateGroup(userId: string, groupId: string): Promise<
     return { ok: true };
   } catch (error) {
     await refundUsage(userId, "text", reservation.periodStart).catch((e) => logError(e, { source: "autopilot.refund", userId }));
-    if (error instanceof AIBudgetExceededError) return { ok: false, error: "Autopilot is paused for a short while. Please try again later." };
+    if (error instanceof AIBudgetExceededError || error instanceof ServiceDisabledError) return { ok: false, error: "Autopilot is paused for a short while. Please try again later." };
     await logError(error, { source: "autopilot.regenerate", userId, businessId: business.id });
     return { ok: false, error: "We could not write a new version. Your credit was returned. Please try again." };
   }

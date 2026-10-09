@@ -94,3 +94,13 @@ export async function currentSessionId(supabase: Awaited<ReturnType<typeof creat
     return "";
   }
 }
+
+/** True for a signed-in, verified, AAL2 admin. For route handlers, which answer 404 instead of redirecting. */
+export async function isAdminSession(): Promise<boolean> {
+  try {
+    await requireAdmin();
+    return true;
+  } catch {
+    return false;
+  }
+}

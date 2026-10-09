@@ -48,35 +48,41 @@ async function ownDesign(userId: string, designId: string) {
   return design && isOwnDesignPath(userId, design.path) ? design : null;
 }
 
-/** Uploads the design to the user's Canva, creates an editable Canva design from it and returns the URL to open. */
-export async function openDesignInCanva(userId: string, designId: string): Promise<{ url: string }> {
+/**
+ * Uploads the design to the user's Canva, creates an editable Canva design from it and returns the URL to open.
+ * `userId` is the company account (the design belongs to the company); `actorId` is the person whose own Canva account
+ * is used. Canva tokens are personal: every teammate connects their own Canva, and designs stay the company's.
+ */
+export async function openDesignInCanva(userId: string, designId: string, actorId: string = userId): Promise<{ url: string }> {
   try {
     const design = await ownDesign(userId, designId);
     if (!design) throw new CanvaError("We could not find that design.", "not_found");
-    await rateLimit(`canva-open:${userId}`, RATE_LIMITS.canvaOpen);
+    await rateLimit(`canva-open:${actorId}`, RATE_LIMITS.canvaOpen);
 
     const file = await (await createClient()).storage.from("designs").download(design.path);
     if (file.error || !file.data) throw new CanvaError("We could not load that design. Please try again.", "failed");
     const bytes = new Uint8Array(await file.data.arrayBuffer());
 
     // Separate calls: if the token is refreshed after a 401, only the failed step is repeated (no second upload).
-    const assetId = await withCanva(userId, (token) => uploadAsset(token, "BuPulse design", bytes));
-    const created = await withCanva(userId, (token) => createDesign(token, { assetId, title: "BuPulse design", width: design.width, height: design.height }));
+    const assetId = await withCanva(actorId, (token) => uploadAsset(token, "BuPulse design", bytes));
+    const created = await withCanva(actorId, (token) => createDesign(token, { assetId, title: "BuPulse design", width: design.width, height: design.height }));
 
     const id = randomToken(16);
     await prisma.canvaEdit.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - SESSION_MAX_AGE_MS) } } });
-    await prisma.canvaEdit.create({ data: { id, userId, designId: design.id, canvaDesignId: created.id } });
+    await prisma.canvaEdit.create({ data: { id, userId: actorId, designId: design.id, canvaDesignId: created.id } });
 
     const url = new URL(created.editUrl);
     url.searchParams.set("correlation_state", id);
     return { url: url.toString() };
   } catch (error) {
-    throw await friendly(error, "canva.open", userId);
+    throw await friendly(error, "canva.open", actorId);
   }
 }
 
 export type ReturnJob = {
+  /** The company account (the design's owner) and the person whose Canva session this is. */
   userId: string;
+  actorId: string;
   editId: string;
   canvaDesignId: string;
   original: NonNullable<Awaited<ReturnType<typeof ownDesign>>>;
@@ -88,9 +94,9 @@ export type ReturnJob = {
  * theirs, and claims the session so two returns cannot save at once. Call finishCanvaReturn next;
  * it releases the claim.
  */
-export async function startCanvaReturn(userId: string, jwtParam: string): Promise<ReturnJob> {
+export async function startCanvaReturn(userId: string, jwtParam: string, actorId: string = userId): Promise<ReturnJob> {
   try {
-    await rateLimit(`canva-return:${userId}`, RATE_LIMITS.canvaReturn);
+    await rateLimit(`canva-return:${actorId}`, RATE_LIMITS.canvaReturn);
     let claims;
     try {
       claims = await verifyReturnJwt(unwrapJwt(jwtParam));
@@ -99,19 +105,19 @@ export async function startCanvaReturn(userId: string, jwtParam: string): Promis
       throw error;
     }
 
-    const edit = await prisma.canvaEdit.findFirst({ where: { id: claims.correlation_state, userId } });
+    const edit = await prisma.canvaEdit.findFirst({ where: { id: claims.correlation_state, userId: actorId } });
     if (!edit || edit.canvaDesignId !== claims.design_id) throw new CanvaError("We could not match that Canva design to your account.", "not_found");
     const original = await ownDesign(userId, edit.designId);
     if (!original) throw new CanvaError("The original design no longer exists.", "not_found");
 
     const claimed = await prisma.canvaEdit.updateMany({
-      where: { id: edit.id, userId, OR: [{ processingAt: null }, { processingAt: { lt: new Date(Date.now() - CLAIM_STALE_MS) } }] },
+      where: { id: edit.id, userId: actorId, OR: [{ processingAt: null }, { processingAt: { lt: new Date(Date.now() - CLAIM_STALE_MS) } }] },
       data: { processingAt: new Date() },
     });
     if (claimed.count !== 1) throw new CanvaError("That edit is already being saved. Give it a moment, then check your designs.", "processing");
-    return { userId, editId: edit.id, canvaDesignId: edit.canvaDesignId, original, deadline: Date.now() + RETURN_BUDGET_MS };
+    return { userId, actorId, editId: edit.id, canvaDesignId: edit.canvaDesignId, original, deadline: Date.now() + RETURN_BUDGET_MS };
   } catch (error) {
-    throw await friendly(error, "canva.return", userId);
+    throw await friendly(error, "canva.return", actorId);
   }
 }
 
@@ -121,12 +127,12 @@ export async function startCanvaReturn(userId: string, jwtParam: string): Promis
  * session is kept, so pressing "Return to BuPulse" again saves the latest state again.
  */
 export async function finishCanvaReturn(job: ReturnJob): Promise<{ designId: string }> {
-  const { userId, original } = job;
+  const { userId, actorId, original } = job;
   let path: string | null = null;
   let stored = false;
   const storage = (await createClient()).storage.from("designs");
   try {
-    const png = await withCanva(userId, (token) => exportDesignPng(token, job.canvaDesignId, { width: original.width, height: original.height }, job.deadline));
+    const png = await withCanva(actorId, (token) => exportDesignPng(token, job.canvaDesignId, { width: original.width, height: original.height }, job.deadline));
     if (!PNG_MAGIC.every((byte, i) => png[i] === byte)) throw new CanvaError("Canva sent a file we could not read. Please try again.", "failed");
 
     const id = globalThis.crypto.randomUUID();
@@ -151,18 +157,18 @@ export async function finishCanvaReturn(job: ReturnJob): Promise<{ designId: str
     stored = true;
     return { designId: id };
   } catch (error) {
-    throw await friendly(error, "canva.return", userId);
+    throw await friendly(error, "canva.return", actorId);
   } finally {
     // Never leave a file without a design row, and always free the session for the next try.
     try {
       if (path && !stored) await storage.remove([path]);
     } catch {}
     try {
-      await prisma.canvaEdit.updateMany({ where: { id: job.editId, userId }, data: { processingAt: null } });
+      await prisma.canvaEdit.updateMany({ where: { id: job.editId, userId: actorId }, data: { processingAt: null } });
     } catch {}
   }
 }
 
-export async function completeCanvaReturn(userId: string, jwtParam: string): Promise<{ designId: string }> {
-  return finishCanvaReturn(await startCanvaReturn(userId, jwtParam));
+export async function completeCanvaReturn(userId: string, jwtParam: string, actorId: string = userId): Promise<{ designId: string }> {
+  return finishCanvaReturn(await startCanvaReturn(userId, jwtParam, actorId));
 }

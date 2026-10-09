@@ -30,12 +30,40 @@ Details are in:
   - Functions are closed to anon and authenticated, and so are the defaults for new functions.
   - Row-level security is on for every table.
 
+## Added on 9 October 2026 (admin console additions, plans, companies and teams)
+- **Services** (`/admin/services`):
+  - 16 outside services, each with keys set or missing (never values), a "Test now" button, its last error and its usage.
+  - A kill switch per service. Switching one off never loses data:
+    - posts wait;
+    - leads are still saved;
+    - emails wait or are skipped safely;
+    - Paddle webhooks keep flowing.
+- **AI usage** (`/admin/ai`): spend against the cap (editable), a forecast, the top spenders and failed calls.
+- **Health** (`/admin/health`): cron runs (`CronRun`), queues, error rate, database and storage size, and one overall status.
+- **Activity** (`/admin/activity`): live feed, polled every 5 to 15 s.
+- **Client 360** tabs and **admin notes**.
+- **Connections** (`/admin/connections`): channels, connectors, webhooks, API keys and widgets, with audited:
+  - force-disconnect, after which posts wait and ask for a new time once the client reconnects;
+  - disconnect, pause, revoke and switch-off.
+- **Plan builder** (`/admin/plans`, `PlanDefinition`): plans live in the database, and Paddle products and prices are created automatically.
+  - A price increase moves every subscriber at their next renewal, at least 30 days after the email. The swap uses `do_not_bill`, and yearly clients get a reminder.
+  - The nightly cron is claimed and locked, reconciles stragglers, and has a Retry button.
+  - See `docs/PLANS.md`. Take a database backup before deploying: the migration is one-way.
+- **Companies and teams**:
+  - Roles: Owner, Admin and Member (`Membership`, `Invite`), with the role matrix enforced on the server (`lib/team/roles.ts`).
+  - Settings → Team has invites, roles, transfer and team history.
+  - Seats per plan: 1, 3 and 10.
+  - Storage policies let members use the company folder. Writing brand files needs Admin or above.
+  - `/admin/companies` has a Users tab: add user (they set their own password), reset link, change email (the old address is notified and sessions are ended), and remove.
+  - Over Jarvis, changing an email or making someone owner only creates an approval.
+
 ## Reviewed
 - Opus reviews found:
   - backend: 2 high, 7 medium, 6 low;
   - console: 1 high, 5 medium, 7 low.
 - All are fixed. The lead also revoked the public execute grant on the live database immediately.
-- Checks: tsc, lint and 1,286 tests pass, and `next build` succeeds. The WebKit console walk passed 104 of 104 checks.
+- Additions on 9 October: four Opus reviews (services, admin, plans, teams) found 4 high, 22 medium and 37 low issues; all are fixed.
+- Checks: tsc, lint and 1,534 tests pass, and `next build` succeeds. The WebKit console walk passed 104 of 104 checks.
 
 ## Owner setup (still to do)
 1. Supabase → Authentication → Hooks → "MFA Verification Attempt" → `public.hook_mfa_verification_attempt`. **Not available on the Free plan (checked 8 Oct 2026), so it is deferred until the project is upgraded.** Until then, protection is the password, TOTP, BuPulse's own limit on wrong codes and Supabase's built-in limits. The function is installed and unused.

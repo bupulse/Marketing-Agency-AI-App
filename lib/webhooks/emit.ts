@@ -12,7 +12,7 @@ import { buildPayload, type WebhookEvent } from "./events";
 export async function emitWebhookEvent(businessId: string, event: WebhookEvent, data: unknown): Promise<number> {
   try {
     const endpoints = await prisma.webhookEndpoint.findMany({
-      where: { businessId, enabled: true, events: { has: event } },
+      where: { businessId, enabled: true, pausedByAdminAt: null, events: { has: event } },
       select: { id: true, url: true, secretEncrypted: true, business: { select: { id: true, name: true } } },
     });
     if (endpoints.length === 0) return 0;
