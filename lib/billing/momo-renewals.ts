@@ -89,7 +89,7 @@ async function processSubscription(sub: Sub, now: Date): Promise<Outcome> {
     if (!(await isServiceEnabled("resend"))) return "skipped";
     if (!(await claim(sub.userId, end, due))) return "skipped";
     const to = await recipient(sub.userId);
-    const sent = to ? await sendRenewalReminderEmail(to, due, await reminderInput(sub)) : false;
+    const sent = to ? await sendRenewalReminderEmail(to, due, await reminderInput(sub), now) : false;
     if (!sent) {
       await release(sub.userId, end, due);
       return "skipped";

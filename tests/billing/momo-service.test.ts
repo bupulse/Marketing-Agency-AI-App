@@ -21,7 +21,7 @@ import { resetPlanCache } from "@/lib/plan-catalog";
 import { AdminError, apiContext, consoleContext } from "@/lib/admin/types";
 import { applyProviderSubscription } from "@/lib/billing/apply";
 import * as momo from "@/lib/billing/momo";
-import { clearMomoSettingsCache, getMomoPrice, saveMomoSettings } from "@/lib/billing/momo-settings";
+import { clearMomoSettingsCache, getMomoPrice, getMomoSettings, saveMomoSettings } from "@/lib/billing/momo-settings";
 import { MOMO_SETTING_KEY } from "@/lib/billing/momo-shared";
 
 const CONSOLE = consoleContext("198.51.100.1");
@@ -63,16 +63,36 @@ describe("prices and settings", () => {
     expect(await getMomoPrice("NOPE", "MONTH")).toBeNull();
   });
 
-  it("saving the settings is console-only and audited with before and after", async () => {
+  it("saving the settings is console-only, refuses malformed codes and numbers, and is audited with before and after", async () => {
     expect(await code(saveMomoSettings(API, { merchantCode: "1" }))).toBe("forbidden");
     expect(await code(saveMomoSettings(CONSOLE, { usdToRwf: 5 }))).toBe("invalid");
     expect(await code(saveMomoSettings(CONSOLE, { prices: { NOPE: { monthlyMinor: 1, yearlyMinor: 1 } } }))).toBe("invalid");
-    const saved = await saveMomoSettings(CONSOLE, { merchantCode: "123456", prices: { STANDARD: { monthlyMinor: 15000, yearlyMinor: 150000 } } });
+    expect(await msg(saveMomoSettings(CONSOLE, { merchantCode: "12AB" }))).toMatch(/4 to 12 digits/);
+    expect(await msg(saveMomoSettings(CONSOLE, { momoNumber: "0781" }))).toMatch(/phone number/);
+    expect(await msg(saveMomoSettings(CONSOLE, { accountName: "x".repeat(81) }))).toMatch(/80 characters/);
+    expect(h.db.adminSetting.rows).toHaveLength(0);
+    const saved = await saveMomoSettings(CONSOLE, { merchantCode: " 123456 ", prices: { STANDARD: { monthlyMinor: 15000, yearlyMinor: 150000 } } });
     expect(saved).toMatchObject({ merchantCode: "123456", prices: { STANDARD: { monthlyMinor: 15000, yearlyMinor: 150000 } } });
     expect(lastAudit()).toMatchObject({ actor: "admin", action: "set_momo_settings", target: "setting:billing.momo" });
     expect((lastAudit().after as { merchantCode: string }).merchantCode).toBe("123456");
     await saveMomoSettings(CONSOLE, { prices: { STANDARD: null } });
     expect((await getMomoPrice("STANDARD", "MONTH"))?.amountMinor).toBe(71100);
+  });
+
+  it("the audit's before comes from the stored row, not the cache, and a changed code or number emails every admin", async () => {
+    settings({ merchantCode: "111111" });
+    expect((await getMomoSettings()).merchantCode).toBe("111111"); // cached now
+    h.db.adminSetting.rows[0].value = { ...h.db.adminSetting.rows[0].value, merchantCode: "222222" }; // changed behind the cache
+    await saveMomoSettings(CONSOLE, { accountName: "BuPulse Ltd" });
+    expect((lastAudit().before as { merchantCode: string }).merchantCode).toBe("222222");
+    expect(h.sendEmail).not.toHaveBeenCalled(); // the name alone is not where clients pay
+    await saveMomoSettings(CONSOLE, { momoNumber: "078 999 8888" });
+    expect(h.sendEmail).toHaveBeenCalledTimes(2);
+    const mail = h.sendEmail.mock.calls[0][0];
+    expect(mail.to).toBe("owner@bupulse.com");
+    expect(mail.subject).toBe("Mobile Money payment details changed");
+    expect(mail.text).toContain("MoMo Pay code 222222");
+    expect(mail.text).toContain("MTN number 078 999 8888");
   });
 });
 
@@ -119,12 +139,38 @@ describe("starting a payment", () => {
     expect(p.reference).toBe("BP-AAAAAA");
   });
 
-  it("refuses while a card subscription is live, allows once it has ended", async () => {
-    seed({ plan: "STANDARD", status: "ACTIVE", provider: "PADDLE", providerSubscriptionId: "sub_1" });
+  it("refuses while a card subscription still renews; a cancelled one hands over at its period end", async () => {
+    seed({ plan: "STANDARD", status: "ACTIVE", provider: "PADDLE", providerSubscriptionId: "sub_1", currentPeriodEnd: new Date("2026-11-01T00:00:00Z") });
     settings();
     expect(await msg(start())).toMatch(/pay by card at the moment/);
-    h.db.subscription.rows[0].status = "CANCELED";
-    expect((await start()).status).toBe("pending");
+    h.db.subscription.rows[0].cancelAtPeriodEnd = true;
+    const p = await start();
+    expect(p).toMatchObject({ status: "pending", periodNote: { mode: "extend", daysLeft: 18, currentEnd: "2026-11-01T00:00:00.000Z" } });
+    h.db.subscription.rows[0] = { ...h.db.subscription.rows[0], status: "CANCELED", cancelAtPeriodEnd: false };
+    expect((await start()).periodNote).toBeNull();
+  });
+
+  it("two requests racing for the first payment both get the one row (the unique index decides)", async () => {
+    seed();
+    settings();
+    const real = h.db.manualPayment.create.getMockImplementation()!;
+    h.db.manualPayment.create.mockImplementationOnce(async (args) => {
+      // Another request created the company's pending payment between our read and our write.
+      await real({ data: { ...args.data, reference: "BP-RACE" } });
+      throw Object.assign(new Error("Unique constraint failed on ManualPayment_one_pending_per_user"), { code: "P2002" });
+    });
+    const p = await start();
+    expect(p.reference).toBe("BP-RACE");
+    expect(h.db.manualPayment.rows).toHaveLength(1);
+  });
+
+  it("the expire-and-replace race returns whatever is open now", async () => {
+    seed();
+    settings();
+    const first = await start();
+    h.db.manualPayment.updateMany.mockImplementationOnce(async () => ({ count: 0 })); // submitted from another tab meanwhile
+    const again = await start({ plan: "PRO" });
+    expect(again.id).toBe(first.id);
   });
 });
 
@@ -147,6 +193,24 @@ describe("the proof", () => {
     expect((await proof(p.id, { transactionId: "OTHER999" })).transactionId).toBe("MP1234567");
     expect(h.sendEmail).toHaveBeenCalledTimes(2);
     expect(await msg(momo.submitManualProof("33333333-3333-4333-8333-333333333333", { paymentId: p.id, transactionId: "MP1234", payerPhone: "078 123 4567", network: "MTN" }))).toMatch(/could not find/);
+  });
+
+  it("a transaction id already used by a pending or confirmed payment of any company is refused; closed ones are not", async () => {
+    seed();
+    settings();
+    const other = "22222222-2222-4222-8222-222222222222";
+    h.db.manualPayment.rows.push({ id: "theirs", userId: other, planKey: "PRO", interval: "MONTH", amountMinor: 35000, reference: "BP-THEM", status: "confirmed", network: "MTN", transactionId: "mp1234567", submittedAt: NOW, createdAt: new Date("2026-10-01T00:00:00Z") });
+    const p = await start();
+    expect(await msg(proof(p.id))).toMatch(/already been used/);
+    expect(await msg(proof(p.id, { network: "AIRTEL" }))).toBeNull(); // a different network is a different id space
+    h.db.manualPayment.rows[0].status = "rejected";
+    const q = await start({ plan: "PRO" });
+    h.db.manualPayment.rows.find((r) => r.id === q.id)!.submittedAt = null;
+    expect(await msg(proof(q.id, { transactionId: "MP1234567", network: "MTN" }))).toBeNull();
+    // The unique index catching a race is reported the same way.
+    const r = await start({ plan: "STANDARD", interval: "YEAR" });
+    h.db.manualPayment.updateMany.mockImplementationOnce(async () => { throw Object.assign(new Error("Unique constraint failed on ManualPayment_live_transaction_key"), { code: "P2002" }); });
+    expect(await msg(proof(r.id, { transactionId: "NEW999" }))).toMatch(/already been used/);
   });
 
   it("the client can cancel before, not after, saying they paid", async () => {
@@ -187,7 +251,7 @@ describe("confirming", () => {
     h.db.usageRecord.rows.push({ id: "u1", userId: USER, periodStart: new Date("2026-10-10T00:00:00Z"), textGenerations: 9 });
     const p = await submitted();
     const done = await momo.confirmManualPayment(CONSOLE, p.id, NOW);
-    expect(done).toMatchObject({ status: "confirmed", plan: "STANDARD", periodStart: NOW, periodEnd: new Date("2026-11-14T10:00:00Z"), emailed: true });
+    expect(done).toMatchObject({ status: "confirmed", plan: "STANDARD", periodMode: "fresh", periodStart: NOW, periodEnd: new Date("2026-11-14T10:00:00Z"), emailed: true });
     const sub = h.db.subscription.rows[0];
     expect(sub).toMatchObject({ plan: "STANDARD", status: "ACTIVE", provider: "MANUAL_MOMO", interval: "MONTH", providerSubscriptionId: null, providerCustomerId: null, trialEndsAt: null, cancelAtPeriodEnd: false, currentPeriodStart: NOW, currentPeriodEnd: new Date("2026-11-14T10:00:00Z") });
     expect(h.db.manualPayment.rows[0]).toMatchObject({ status: "confirmed", decidedBy: "admin", periodStart: NOW });
@@ -221,14 +285,88 @@ describe("confirming", () => {
     expect(audit().filter((a) => a.action === "confirm_momo_payment")).toHaveLength(1);
   });
 
-  it("renewing early extends the running Mobile Money period from its end; a yearly payment adds twelve months", async () => {
+  it("renewing the same plan early extends the period from its end and keeps the usage anchor; yearly adds twelve months", async () => {
+    const end = new Date("2026-10-20T00:00:00Z");
+    const anchor = new Date("2026-09-20T00:00:00Z");
+    const p = await submitted({ plan: "STANDARD", status: "ACTIVE", provider: "MANUAL_MOMO", currentPeriodStart: anchor, currentPeriodEnd: end });
+    expect(p.periodNote).toEqual({ mode: "extend", daysLeft: 6, currentEnd: end.toISOString() });
+    const done = await momo.confirmManualPayment(CONSOLE, p.id, NOW);
+    expect(done).toMatchObject({ periodMode: "extend", periodStart: end, periodEnd: new Date("2026-11-20T00:00:00Z") });
+    // currentPeriodStart is never in the future: usage keeps counting from the anchor, and resets on its monthly rhythm.
+    expect(h.db.subscription.rows[0]).toMatchObject({ plan: "STANDARD", status: "ACTIVE", currentPeriodStart: anchor, currentPeriodEnd: new Date("2026-11-20T00:00:00Z") });
+    expect(h.db.manualPayment.rows[0]).toMatchObject({ periodStart: end, periodEnd: new Date("2026-11-20T00:00:00Z") });
+    const { usageWindowStart, usageWindowEnd } = await import("@/lib/billing/period");
+    expect(usageWindowStart(anchor, NOW)).toEqual(anchor);
+    expect(usageWindowEnd(anchor, NOW)).toEqual(end);
+    expect(h.trackEvent).not.toHaveBeenCalledWith("plan_change", expect.anything());
+    // Yearly, same plan: twelve months after the end.
+    h.db.manualPayment.rows.length = 0;
+    h.db.user.rows.length = 0;
+    h.db.business.rows.length = 0;
+    h.db.subscription.rows.length = 0;
+    h.db.adminSetting.rows.length = 0;
+    clearMomoSettingsCache();
+    const q = await submitted({ plan: "STANDARD", interval: "YEAR", status: "ACTIVE", provider: "MANUAL_MOMO", currentPeriodStart: anchor, currentPeriodEnd: end }, { interval: "YEAR" });
+    expect((await momo.confirmManualPayment(CONSOLE, q.id, NOW)).periodEnd).toEqual(new Date("2027-10-20T00:00:00Z"));
+  });
+
+  it("a different plan or interval replaces the running period from now (no free overlap), and says so", async () => {
     const end = new Date("2026-10-20T00:00:00Z");
     const p = await submitted({ plan: "STANDARD", status: "ACTIVE", provider: "MANUAL_MOMO", currentPeriodStart: new Date("2026-09-20T00:00:00Z"), currentPeriodEnd: end }, { plan: "PRO", interval: "YEAR" });
+    expect(p.periodNote).toEqual({ mode: "replace", daysLeft: 6, currentEnd: end.toISOString() });
+    expect((await momo.getManualPayment(p.id, NOW)).periodNote?.mode).toBe("replace");
     const done = await momo.confirmManualPayment(CONSOLE, p.id, NOW);
-    expect(done.periodStart).toEqual(end);
-    expect(done.periodEnd).toEqual(new Date("2027-10-20T00:00:00Z"));
-    expect(h.db.subscription.rows[0]).toMatchObject({ plan: "PRO", interval: "YEAR", status: "ACTIVE", currentPeriodStart: end, currentPeriodEnd: new Date("2027-10-20T00:00:00Z") });
+    expect(done).toMatchObject({ periodMode: "replace", periodStart: NOW, periodEnd: new Date("2027-10-14T10:00:00Z") });
+    expect(h.db.subscription.rows[0]).toMatchObject({ plan: "PRO", interval: "YEAR", status: "ACTIVE", currentPeriodStart: NOW, currentPeriodEnd: new Date("2027-10-14T10:00:00Z") });
     expect(h.trackEvent).toHaveBeenCalledWith("plan_change", expect.anything());
+    expect((lastAudit().after as { period: string }).period).toBe("replace");
+  });
+
+  it("a cancelled card plan hands over to Mobile Money from its period end", async () => {
+    const end = new Date("2026-11-01T00:00:00Z");
+    const p = await submitted({ plan: "STANDARD", status: "ACTIVE", provider: "PADDLE", providerSubscriptionId: "sub_1", providerCustomerId: "ctm_1", cancelAtPeriodEnd: true, currentPeriodStart: new Date("2026-10-01T00:00:00Z"), currentPeriodEnd: end });
+    const done = await momo.confirmManualPayment(CONSOLE, p.id, NOW);
+    expect(done).toMatchObject({ periodMode: "extend", periodStart: end, periodEnd: new Date("2026-12-01T00:00:00Z") });
+    expect(h.db.subscription.rows[0]).toMatchObject({ provider: "MANUAL_MOMO", providerSubscriptionId: null, providerCustomerId: null, cancelAtPeriodEnd: false, currentPeriodStart: new Date("2026-10-01T00:00:00Z"), currentPeriodEnd: new Date("2026-12-01T00:00:00Z") });
+  });
+
+  it("a subscription that moves between the read and the write is re-read and the period recomputed, once", async () => {
+    const p = await submitted();
+    const real = h.db.subscription.updateMany.getMockImplementation()!;
+    // The fake database has no rollback: undo the payment's claim by hand, as the failed transaction would.
+    const rollback = () => Object.assign(h.db.manualPayment.rows.find((r) => r.id === p.id) ?? h.db.manualPayment.rows[0], { status: "pending", decidedAt: null, decidedBy: null, periodStart: null, periodEnd: null });
+    h.db.subscription.updateMany.mockImplementationOnce(async (args) => {
+      // A confirmation from another tab landed: the client is now on a paid-up MoMo period.
+      Object.assign(h.db.subscription.rows[0], { plan: "STANDARD", status: "ACTIVE", provider: "MANUAL_MOMO", currentPeriodStart: NOW, currentPeriodEnd: new Date("2026-11-14T10:00:00Z") });
+      const out = await real(args);
+      if (out.count === 0) rollback();
+      return out;
+    });
+    const done = await momo.confirmManualPayment(CONSOLE, p.id, NOW);
+    expect(done).toMatchObject({ periodMode: "extend", periodStart: new Date("2026-11-14T10:00:00Z"), periodEnd: new Date("2026-12-14T10:00:00Z") });
+    expect(h.db.manualPayment.rows[0].status).toBe("confirmed");
+    expect(h.db.billingEvent.rows).toHaveLength(1);
+    // Moving twice is given up with a conflict and nothing confirmed.
+    h.db.manualPayment.rows.length = 0;
+    h.db.billingEvent.rows.length = 0;
+    const q = await start({ plan: "PRO" });
+    await proof(q.id, { transactionId: "MP7654321" });
+    h.db.subscription.updateMany.mockImplementation(async () => {
+      Object.assign(h.db.manualPayment.rows[0], { status: "pending", decidedAt: null, periodStart: null, periodEnd: null });
+      return { count: 0 };
+    });
+    expect(await code(momo.confirmManualPayment(CONSOLE, q.id, NOW))).toBe("conflict");
+    h.db.subscription.updateMany.mockImplementation(real);
+    expect(h.db.manualPayment.rows[0].status).toBe("pending");
+    expect(h.db.billingEvent.rows).toHaveLength(0);
+  });
+
+  it("a transaction id confirmed on another payment meanwhile is caught inside the transaction", async () => {
+    const p = await submitted();
+    h.db.manualPayment.rows.push({ id: "other", userId: "22222222-2222-4222-8222-222222222222", planKey: "PRO", interval: "MONTH", amountMinor: 1, reference: "BP-OTHR", status: "confirmed", network: "MTN", transactionId: "MP1234567", submittedAt: NOW, createdAt: new Date("2026-10-13T00:00:00Z") });
+    expect(await msg(momo.confirmManualPayment(CONSOLE, p.id, NOW))).toMatch(/confirmed on another payment/);
+    expect(h.db.manualPayment.rows[0].status).toBe("pending");
+    expect(h.db.subscription.rows[0].status).toBe("TRIALING");
   });
 
   it("after the grace period (PAST_DUE) the new period starts now and the account is active again", async () => {
@@ -238,22 +376,30 @@ describe("confirming", () => {
     expect(h.db.subscription.rows[0].status).toBe("ACTIVE");
   });
 
-  it("refuses while a live card subscription exists", async () => {
+  it("refuses while a card subscription still renews", async () => {
     seed({ plan: "STANDARD", status: "ACTIVE", provider: "PADDLE", providerSubscriptionId: "sub_1" });
     settings();
     h.db.manualPayment.rows.push({ id: "m1", userId: USER, planKey: "PRO", interval: "MONTH", amountMinor: 35000, reference: "BP-ZZZZ", status: "pending", submittedAt: NOW, transactionId: "X1", payerPhone: "078", network: "MTN" });
-    expect(await msg(momo.confirmManualPayment(CONSOLE, "m1", NOW))).toMatch(/live card subscription/);
+    expect(await msg(momo.confirmManualPayment(CONSOLE, "m1", NOW))).toMatch(/card subscription that still renews/);
     expect(h.db.manualPayment.rows[0].status).toBe("pending");
   });
 
-  it("a late card webhook cannot end a live Mobile Money plan, and a new live card subscription is a duplicate", async () => {
+  it("a late card webhook cannot end a paid-up Mobile Money plan, a new live card subscription on it is a duplicate, and a lapsed one is replaced", async () => {
     const p = await submitted();
-    await momo.confirmManualPayment(CONSOLE, p.id, NOW);
+    // Confirmed with a period end in the real future, so the plan counts as paid up when apply() looks at the clock.
+    await momo.confirmManualPayment(CONSOLE, p.id, new Date(Date.now() + 60_000));
     process.env.PADDLE_PRICE_STANDARD_MONTH = "pri_std_m";
     const base = { providerSubscriptionId: "sub_old", providerCustomerId: "ctm_1", providerPriceId: "pri_std_m", userId: USER, userIdSignature: "sig", currentPeriodStart: NOW, currentPeriodEnd: null, cancelAtPeriodEnd: false, updatedAt: NOW };
     expect(await applyProviderSubscription("PADDLE", { ...base, status: "CANCELED" })).toBe("stale");
     expect(await applyProviderSubscription("PADDLE", { ...base, status: "ACTIVE" })).toBe("duplicate");
     expect(h.db.subscription.rows[0]).toMatchObject({ provider: "MANUAL_MOMO", status: "ACTIVE" });
+    // Past due (grace over): a new card subscription takes over, no duplicate handling.
+    h.db.subscription.rows[0].status = "PAST_DUE";
+    expect(await applyProviderSubscription("PADDLE", { ...base, status: "ACTIVE" })).toBe("applied");
+    expect(h.db.subscription.rows[0]).toMatchObject({ provider: "PADDLE", status: "ACTIVE", providerSubscriptionId: "sub_old" });
+    // Lapsed (period over, grace not yet run): the same.
+    Object.assign(h.db.subscription.rows[0], { provider: "MANUAL_MOMO", providerSubscriptionId: null, status: "ACTIVE", currentPeriodEnd: new Date(Date.now() - 60_000) });
+    expect(await applyProviderSubscription("PADDLE", { ...base, status: "ACTIVE" })).toBe("applied");
   });
 });
 
@@ -282,21 +428,34 @@ describe("rejecting", () => {
 });
 
 describe("reads", () => {
-  it("lists payments with company and email, pending ones submitted first, and counts what needs checking", async () => {
+  it("lists payments with company and email, orders the queue in the database, warns about a transaction id seen before, and counts what needs checking", async () => {
     seed();
     settings();
     const a = await start();
     await proof(a.id);
-    h.db.manualPayment.rows.push({ id: "b", userId: USER, planKey: "PRO", interval: "MONTH", amountMinor: 35000, reference: "BP-BBBB", status: "pending", createdAt: new Date("2026-10-14T11:00:00Z") });
-    h.db.manualPayment.rows.push({ id: "c", userId: USER, planKey: "PRO", interval: "MONTH", amountMinor: 35000, reference: "BP-CCCC", status: "confirmed", createdAt: new Date("2026-10-01T11:00:00Z") });
+    h.db.manualPayment.rows.push({ id: "c", userId: USER, planKey: "PRO", interval: "MONTH", amountMinor: 35000, reference: "BP-CCCC", status: "rejected", network: "MTN", transactionId: "mp1234567", submittedAt: new Date("2026-10-01T12:00:00Z"), createdAt: new Date("2026-10-01T11:00:00Z") });
     const pending = await momo.listManualPayments({ status: "pending" });
-    expect(pending.items.map((p) => p.id)).toEqual([a.id, "b"]);
-    expect(pending.items[0]).toMatchObject({ company: "Inzu Fashion", email: "owner@example.rw", submitted: true, planName: "Standard" });
+    expect(h.db.manualPayment.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ orderBy: [{ submittedAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }, { id: "asc" }] }));
+    expect(pending.items[0]).toMatchObject({ id: a.id, company: "Inzu Fashion", email: "owner@example.rw", submitted: true, planName: "Standard", seenBefore: { id: "c", reference: "BP-CCCC", status: "rejected", sameCompany: true } });
+    expect(pending.nextCursor).toBeNull();
     expect(await momo.pendingManualPaymentCount()).toBe(1);
     expect((await momo.listManualPayments({ reference: "bp-cccc" })).items.map((p) => p.id)).toEqual(["c"]);
     expect(await code(momo.listManualPayments({ status: "weird" }))).toBe("invalid");
     expect(await code(momo.listManualPayments({ reference: "nope" }))).toBe("invalid");
-    expect((await momo.getManualPayment("c")).status).toBe("confirmed");
+    expect(await code(momo.listManualPayments({ cursor: "junk" }))).toBe("invalid");
+    expect((await momo.getManualPayment("c")).status).toBe("rejected");
     expect(await code(momo.getManualPayment("zzz"))).toBe("not_found");
+  });
+
+  it("pages the history newest first with a (createdAt, id) cursor", async () => {
+    seed();
+    const at = new Date("2026-10-05T00:00:00Z");
+    for (const id of ["p1", "p2", "p3"]) h.db.manualPayment.rows.push({ id, userId: USER, planKey: "PRO", interval: "MONTH", amountMinor: 1, reference: `BP-${id.toUpperCase()}X`, status: "expired", createdAt: at });
+    const first = await momo.listManualPayments({ limit: 2 });
+    expect(first.items).toHaveLength(2);
+    expect(first.nextCursor).toBe(`${at.getTime()}~${first.items[1].id}`);
+    expect(h.db.manualPayment.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 3 }));
+    await momo.listManualPayments({ limit: 2, cursor: first.nextCursor! });
+    expect(h.db.manualPayment.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { OR: [{ createdAt: { lt: at } }, { createdAt: at, id: { lt: first.items[1].id } }] } }));
   });
 });

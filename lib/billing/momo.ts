@@ -15,19 +15,21 @@ import {
   makeReference,
   MANUAL_PAYMENT_STATUSES,
   momoConfigured,
-  nextManualPeriod,
+  planManualPeriod,
   proofSchema,
   REJECTED_SHOWN_DAYS,
   usdCentsOf,
   type ManualPaymentStatus,
   type ManualPaymentView,
   type MomoNetwork,
+  type PeriodNote,
   type ProofInput,
 } from "./momo-shared";
 
 // Manual Mobile Money payments (docs/MOMO.md). The client side (start, submit the proof, cancel) is keyed on the
 // company account id; the owner side (confirm, reject) runs in the admin console only and is audited. Every state
-// change is one conditional write on the status, so a double click or two tabs cannot confirm or submit twice.
+// change is one conditional write on the status, so a double click or two tabs cannot confirm or submit twice, and
+// two partial unique indexes back it up: one pending payment per company, one live use of a transaction id.
 
 /** The client-facing message thrown by the client-side functions. Safe to show. */
 export class ManualPaymentError extends Error {
@@ -39,10 +41,21 @@ export class ManualPaymentError extends Error {
 
 const LIVE = new Set(["ACTIVE", "PAST_DUE", "TRIALING"]);
 const REFERENCE_TRIES = 6;
+const TRANSACTION_REUSED = "This transaction id has already been used for another payment. Check the id in your Mobile Money message, or contact support.";
 
 type Row = Prisma.ManualPaymentGetPayload<object>;
+type Sub = Prisma.SubscriptionGetPayload<object>;
 
-async function toView(row: Row): Promise<ManualPaymentView> {
+const isUnique = (error: unknown) => Boolean(error && typeof error === "object" && (error as { code?: string }).code === "P2002");
+
+/** How a pending payment meets the client's running period (nothing once it is decided, or nothing is running). */
+function periodNoteOf(row: Row, sub: Sub | null, now: Date): PeriodNote | null {
+  if (row.status !== "pending" || !sub) return null;
+  const plan = planManualPeriod(sub, row.planKey, row.interval, now);
+  return plan.mode === "fresh" ? null : { mode: plan.mode, daysLeft: plan.daysLeft, currentEnd: (sub.currentPeriodEnd as Date).toISOString() };
+}
+
+async function toView(row: Row, sub: Sub | null, now: Date = new Date()): Promise<ManualPaymentView> {
   return {
     id: row.id,
     planKey: row.planKey,
@@ -61,26 +74,49 @@ async function toView(row: Row): Promise<ManualPaymentView> {
     submittedAt: row.submittedAt?.toISOString() ?? null,
     decidedAt: row.decidedAt?.toISOString() ?? null,
     periodEnd: row.periodEnd?.toISOString() ?? null,
+    periodNote: periodNoteOf(row, sub, now),
   };
+}
+
+const subOf = (userId: string) => prisma.subscription.findUnique({ where: { userId } });
+const openOf = (userId: string) => prisma.manualPayment.findFirst({ where: { userId, status: "pending" }, orderBy: { createdAt: "desc" } });
+
+/**
+ * A payment that already used this transaction id on this network. `live` only looks at pending and confirmed ones,
+ * which is what the unique index enforces; without it, rejected and expired ones count too (the admin's "seen before"
+ * note).
+ */
+async function transactionUse(network: string, transactionId: string, opts: { live: boolean; except?: string; db?: Prisma.TransactionClient }) {
+  const db = opts.db ?? prisma;
+  return db.manualPayment.findFirst({
+    where: {
+      network,
+      transactionId: { equals: transactionId, mode: "insensitive" },
+      ...(opts.live ? { status: { in: ["pending", "confirmed"] } } : {}),
+      ...(opts.except ? { id: { not: opts.except } } : {}),
+    },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, reference: true, status: true, userId: true },
+  });
 }
 
 // ---- client side -------------------------------------------------------------------------------------------
 
 /** The client's open payment, or their last rejected one (for a week), so the Billing page can show where they are. */
 export async function currentManualPayment(userId: string, now: Date = new Date()): Promise<ManualPaymentView | null> {
-  const pending = await prisma.manualPayment.findFirst({ where: { userId, status: "pending" }, orderBy: { createdAt: "desc" } });
-  if (pending) return toView(pending);
+  const pending = await openOf(userId);
+  if (pending) return toView(pending, await subOf(userId), now);
   const rejected = await prisma.manualPayment.findFirst({ where: { userId, status: "rejected", decidedAt: { gte: new Date(now.getTime() - REJECTED_SHOWN_DAYS * DAY_MS) } }, orderBy: { decidedAt: "desc" } });
   if (!rejected) return null;
   // Only until the client pays again: a newer confirmed payment hides an old rejection.
   const newer = await prisma.manualPayment.findFirst({ where: { userId, status: "confirmed", createdAt: { gt: rejected.createdAt } }, select: { id: true } });
-  return newer ? null : toView(rejected);
+  return newer ? null : toView(rejected, null, now);
 }
 
 /**
  * Starts a payment: a pending row with a fresh reference and the plan's RWF price, for the client to quote when
- * paying. One pending payment per company: starting again returns the open one, so a reload or a second tab never
- * makes a second reference.
+ * paying. One pending payment per company (also a partial unique index): starting again returns the open one, so a
+ * reload or a second tab never makes a second reference.
  */
 export async function startManualPayment(input: { userId: string; plan: string; interval: BillingInterval; now?: Date }): Promise<ManualPaymentView> {
   const now = input.now ?? new Date();
@@ -88,19 +124,24 @@ export async function startManualPayment(input: { userId: string; plan: string; 
   if (!momoConfigured(settings)) throw new ManualPaymentError("Mobile Money payments are not available right now. Please pay by card or contact support.");
   const plan = await getPlan(input.plan);
   if (!plan || plan.isTrial || plan.status !== "active") throw new ManualPaymentError("That plan is not available. Choose one of the plans shown.");
-  const sub = await prisma.subscription.findUnique({ where: { userId: input.userId } });
+  const sub = await subOf(input.userId);
   if (!sub) throw new ManualPaymentError("Your account is still being set up. Please try again in a moment.");
-  // A live card subscription renews by itself; paying by MoMo on top would pay twice and the card webhooks would
-  // overwrite the MoMo period. The client cancels the card plan first (it stays active until its period end).
-  if (sub.provider === "PADDLE" && sub.providerSubscriptionId && LIVE.has(sub.status) && sub.plan !== "TRIAL") {
-    throw new ManualPaymentError("You pay by card at the moment. Cancel the card plan first (it stays active until the end of the period you paid for), then pay by Mobile Money.");
+  // A card subscription that still renews by itself would pay twice. Once the client has cancelled it (it stays active
+  // until its period end), Mobile Money takes over from that end.
+  if (sub.provider === "PADDLE" && sub.providerSubscriptionId && LIVE.has(sub.status) && sub.plan !== "TRIAL" && !sub.cancelAtPeriodEnd) {
+    throw new ManualPaymentError("You pay by card at the moment. Cancel the card plan first (it stays active until the end of the period you paid for); your Mobile Money plan then starts from that date.");
   }
-  const open = await prisma.manualPayment.findFirst({ where: { userId: input.userId, status: "pending" }, orderBy: { createdAt: "desc" } });
+  const open = await openOf(input.userId);
   if (open) {
-    if (open.submittedAt) return toView(open);
+    if (open.submittedAt) return toView(open, sub, now);
     // Not paid yet: the client may still change their mind about the plan. Same plan and period: keep the reference.
-    if (open.planKey === plan.key && open.interval === input.interval) return toView(open);
-    await prisma.manualPayment.updateMany({ where: { id: open.id, status: "pending", submittedAt: null }, data: { status: "expired", decidedAt: now, decidedBy: "client" } });
+    if (open.planKey === plan.key && open.interval === input.interval) return toView(open, sub, now);
+    const { count } = await prisma.manualPayment.updateMany({ where: { id: open.id, status: "pending", submittedAt: null }, data: { status: "expired", decidedAt: now, decidedBy: "client" } });
+    // Submitted or replaced from another tab meanwhile: whatever is open now is the payment.
+    if (count !== 1) {
+      const current = await openOf(input.userId);
+      if (current) return toView(current, sub, now);
+    }
   }
   const price = await getMomoPrice(plan.key, input.interval);
   if (!price || price.amountMinor <= 0) throw new ManualPaymentError("This plan has no Mobile Money price yet. Please pay by card or contact support.");
@@ -109,10 +150,12 @@ export async function startManualPayment(input: { userId: string; plan: string; 
       const row = await prisma.manualPayment.create({
         data: { userId: input.userId, planKey: plan.key, interval: input.interval, amountMinor: price.amountMinor, currency: price.currency, reference: makeReference(attempt < 3 ? 4 : 6) },
       });
-      return toView(row);
+      return toView(row, sub, now);
     } catch (error) {
-      // A reference already in use: try another. Anything else is a real problem.
-      if (!(error && typeof error === "object" && (error as { code?: string }).code === "P2002")) throw error;
+      if (!isUnique(error)) throw error;
+      // Either the company got a pending payment from another request (return it) or the reference is taken (try another).
+      const current = await openOf(input.userId);
+      if (current) return toView(current, sub, now);
     }
   }
   throw new ManualPaymentError("We could not create a payment reference. Please try again.");
@@ -120,20 +163,29 @@ export async function startManualPayment(input: { userId: string; plan: string; 
 
 /**
  * The client tapped "I've paid": records the transaction id and phone, and alerts the owner. Only the open,
- * not-yet-submitted payment of this company can be submitted, exactly once.
+ * not-yet-submitted payment of this company can be submitted, exactly once, and a transaction id that already paid
+ * for a pending or confirmed payment of any company is refused (the unique index catches a race).
  */
 export async function submitManualProof(userId: string, raw: ProofInput, now: Date = new Date()): Promise<ManualPaymentView> {
   const parsed = proofSchema.safeParse(raw);
   if (!parsed.success) throw new ManualPaymentError(parsed.error.issues[0]?.message ?? "Check the details and try again.");
   const { paymentId, transactionId, payerPhone, network } = parsed.data;
-  const { count } = await prisma.manualPayment.updateMany({
-    where: { id: paymentId, userId, status: "pending", submittedAt: null },
-    data: { transactionId, payerPhone, network, submittedAt: now },
-  });
+  const sub = await subOf(userId);
+  if (await transactionUse(network, transactionId, { live: true, except: paymentId })) throw new ManualPaymentError(TRANSACTION_REUSED);
+  let count = 0;
+  try {
+    ({ count } = await prisma.manualPayment.updateMany({
+      where: { id: paymentId, userId, status: "pending", submittedAt: null },
+      data: { transactionId, payerPhone, network, submittedAt: now },
+    }));
+  } catch (error) {
+    if (isUnique(error)) throw new ManualPaymentError(TRANSACTION_REUSED);
+    throw error;
+  }
   const row = await prisma.manualPayment.findFirst({ where: { id: paymentId, userId } });
   if (!row) throw new ManualPaymentError("We could not find that payment. Start again from the Billing page.");
   if (count !== 1) {
-    if (row.status === "pending" && row.submittedAt) return toView(row); // already submitted: nothing to redo
+    if (row.status === "pending" && row.submittedAt) return toView(row, sub, now); // already submitted: nothing to redo
     throw new ManualPaymentError("This payment is closed. Start again from the Billing page.");
   }
   // The alert is best effort: the payment is on record and shows in the admin queue either way.
@@ -151,7 +203,7 @@ export async function submitManualProof(userId: string, raw: ProofInput, now: Da
     await logError(error, { source: "billing.momo.alert", userId, paymentId });
   }
   trackEvent("momo_payment_submitted", { userId, props: { plan: row.planKey, interval: row.interval, amountMinor: row.amountMinor } });
-  return toView(row);
+  return toView(row, sub, now);
 }
 
 /** The client changed their mind before paying. A submitted payment cannot be cancelled: the owner decides it. */
@@ -174,81 +226,106 @@ async function clientOf(userId: string) {
   return { email: user?.email ?? null, name: user?.name ?? business?.ceoName ?? null, company: business?.name ?? null, businessId: business?.id ?? null };
 }
 
+/** Thrown inside the confirm transaction when the subscription moved under us; the caller re-reads and tries once more. */
+class SubscriptionMoved extends Error {}
+
 /**
  * The owner saw the money arrive and clicked Confirm. Claims the payment (pending -> confirmed) and, in the same
- * transaction, writes the paid period onto the subscription: provider MANUAL_MOMO, the plan, ACTIVE, a period that
- * extends a running MoMo period or starts now, and no card ids. Usage counts from the new period start, so it resets.
- * Then the money is recorded for analytics (BillingEvent) and the client is emailed. Idempotent: a second click
- * finds the payment already confirmed and is refused without touching anything.
+ * transaction, writes the paid period onto the subscription: provider MANUAL_MOMO, the plan, ACTIVE, the interval and
+ * no card ids. The period follows planManualPeriod: extending a running period of the same plan only moves
+ * currentPeriodEnd (currentPeriodStart, the usage anchor, is never set in the future); a different plan or interval,
+ * or nothing running, starts a fresh period now. The payment keeps the exact period it bought. Then the money is
+ * recorded for analytics (BillingEvent) and the client is emailed. Idempotent: a second click finds the payment
+ * already confirmed and is refused without touching anything; a subscription that changed between the read and the
+ * write is re-read and the period recomputed once.
  */
 export async function confirmManualPayment(ctx: AdminContext, paymentId: string, now: Date = new Date()) {
   requireConsole(ctx);
   const payment = await prisma.manualPayment.findUnique({ where: { id: paymentId } });
   if (!payment) throw new AdminError("not_found", "No payment with that id.");
   if (payment.status !== "pending") throw new AdminError("conflict", `This payment is already ${payment.status}.`);
-  if (!payment.submittedAt) throw new AdminError("conflict", "The client has not said they paid yet (no transaction id). Wait for them, or ask them to tap I've paid.");
-  const sub = await prisma.subscription.findUnique({ where: { userId: payment.userId } });
-  if (!sub) throw new AdminError("not_found", "This client has no subscription any more.");
+  if (!payment.submittedAt || !payment.transactionId || !payment.network) throw new AdminError("conflict", "The client has not said they paid yet (no transaction id). Wait for them, or ask them to tap I've paid.");
   const plan = await getPlan(payment.planKey);
   if (!plan) throw new AdminError("conflict", "The plan of this payment no longer exists.");
-  if (sub.provider === "PADDLE" && sub.providerSubscriptionId && LIVE.has(sub.status) && sub.plan !== "TRIAL") {
-    throw new AdminError("conflict", "This client has a live card subscription. Cancel it in Paddle first, or reject this payment and refund it by MoMo.");
-  }
-  const period = nextManualPeriod(sub, payment.interval, now);
-  const before = { plan: sub.plan, status: sub.status, provider: sub.provider, interval: sub.interval, cancelAtPeriodEnd: sub.cancelAtPeriodEnd, currentPeriodStart: sub.currentPeriodStart, currentPeriodEnd: sub.currentPeriodEnd };
-  const after = {
-    plan: plan.key,
-    status: "ACTIVE" as const,
-    provider: "MANUAL_MOMO" as const,
-    interval: payment.interval,
-    providerSubscriptionId: null,
-    providerCustomerId: null,
-    providerPriceId: null,
-    providerUpdatedAt: now,
-    cancelAtPeriodEnd: false,
-    trialEndsAt: null,
-    currentPeriodStart: period.start,
-    currentPeriodEnd: period.end,
-  };
   const settings = await getMomoSettings();
   const usdCents = usdCentsOf(payment.amountMinor, payment.currency, settings.usdToRwf);
-  await prisma.$transaction(async (tx) => {
-    // The claim: only a pending, submitted payment moves to confirmed, once.
-    const claim = await tx.manualPayment.updateMany({
-      where: { id: paymentId, status: "pending", submittedAt: { not: null } },
-      data: { status: "confirmed", decidedAt: now, decidedBy: ctx.actor, periodStart: period.start, periodEnd: period.end },
-    });
-    if (claim.count !== 1) throw new AdminError("conflict", "This payment was decided a moment ago. Nothing was changed.");
-    // Guarded on the state we read, so a card webhook landing meanwhile cannot be overwritten blindly.
-    const written = await tx.subscription.updateMany({ where: { userId: payment.userId, providerSubscriptionId: sub.providerSubscriptionId, status: sub.status }, data: after });
-    if (written.count !== 1) throw new AdminError("conflict", "The subscription changed while confirming. Look at the client and try again.");
-    // The money, for the revenue roll-up and the activity feed (same shape of row as a Paddle payment event).
-    await tx.billingEvent.create({
-      data: {
-        provider: "MANUAL_MOMO",
-        eventId: payment.id,
-        type: "manual_payment.confirmed",
-        userId: payment.userId,
-        processedAt: now,
-        payload: {
-          event_type: "manual_payment.confirmed",
-          occurred_at: now.toISOString(),
-          data: { id: payment.reference, amount_minor: payment.amountMinor, currency: payment.currency, usd_cents: usdCents, plan: plan.key, interval: payment.interval, transaction_id: payment.transactionId, payer_phone: payment.payerPhone, network: payment.network, period_start: period.start.toISOString(), period_end: period.end.toISOString() },
-        },
-      },
-    });
-    await writeAudit(tx, ctx, "confirm_momo_payment", `payment:${paymentId}`, { status: "pending", subscription: before }, { status: "confirmed", reference: payment.reference, amountMinor: payment.amountMinor, currency: payment.currency, subscription: after });
-  });
-  // After the commit: analytics and the client's email. Neither can undo the confirmation.
-  const client = await clientOf(payment.userId);
-  for (const name of subscriptionEventsFor(before, after, false)) {
-    trackEvent(name, { userId: payment.userId, businessId: client.businessId, props: { plan: plan.key, interval: payment.interval, from: before.plan, method: "momo" } });
+
+  for (let attempt = 0; ; attempt++) {
+    const sub = await subOf(payment.userId);
+    if (!sub) throw new AdminError("not_found", "This client has no subscription any more.");
+    if (sub.provider === "PADDLE" && sub.providerSubscriptionId && LIVE.has(sub.status) && sub.plan !== "TRIAL" && !sub.cancelAtPeriodEnd) {
+      throw new AdminError("conflict", "This client has a card subscription that still renews. Cancel it in Paddle first, or reject this payment and refund it by MoMo.");
+    }
+    const period = planManualPeriod(sub, plan.key, payment.interval, now);
+    const before = { plan: sub.plan, status: sub.status, provider: sub.provider, interval: sub.interval, cancelAtPeriodEnd: sub.cancelAtPeriodEnd, currentPeriodStart: sub.currentPeriodStart, currentPeriodEnd: sub.currentPeriodEnd };
+    const after = {
+      plan: plan.key,
+      status: "ACTIVE" as const,
+      provider: "MANUAL_MOMO" as const,
+      interval: payment.interval,
+      providerSubscriptionId: null,
+      providerCustomerId: null,
+      providerPriceId: null,
+      providerUpdatedAt: now,
+      cancelAtPeriodEnd: false,
+      trialEndsAt: null,
+      // Extending keeps the usage anchor; a fresh or replacing period starts counting now.
+      ...(period.mode === "extend" ? {} : { currentPeriodStart: period.start }),
+      currentPeriodEnd: period.end,
+    };
+    try {
+      await prisma.$transaction(async (tx) => {
+        // The transaction id must still be unused by any other live payment (the index refuses too; this says why).
+        if (await transactionUse(payment.network as string, payment.transactionId as string, { live: true, except: paymentId, db: tx })) {
+          throw new AdminError("conflict", "This transaction id was confirmed on another payment meanwhile. Reject this one.");
+        }
+        // The claim: only a pending, submitted payment moves to confirmed, once.
+        const claim = await tx.manualPayment.updateMany({
+          where: { id: paymentId, status: "pending", submittedAt: { not: null } },
+          data: { status: "confirmed", decidedAt: now, decidedBy: ctx.actor, periodStart: period.start, periodEnd: period.end },
+        });
+        if (claim.count !== 1) throw new AdminError("conflict", "This payment was decided a moment ago. Nothing was changed.");
+        // Guarded on the state we read (ids, status and period end), so a card webhook or another confirmation landing
+        // meanwhile is never overwritten blindly.
+        const written = await tx.subscription.updateMany({
+          where: { userId: payment.userId, providerSubscriptionId: sub.providerSubscriptionId, status: sub.status, currentPeriodEnd: sub.currentPeriodEnd },
+          data: after,
+        });
+        if (written.count !== 1) throw new SubscriptionMoved();
+        // The money, for the revenue roll-up and the activity feed (same shape of row as a Paddle payment event).
+        await tx.billingEvent.create({
+          data: {
+            provider: "MANUAL_MOMO",
+            eventId: payment.id,
+            type: "manual_payment.confirmed",
+            userId: payment.userId,
+            processedAt: now,
+            payload: {
+              event_type: "manual_payment.confirmed",
+              occurred_at: now.toISOString(),
+              data: { id: payment.reference, amount_minor: payment.amountMinor, currency: payment.currency, usd_cents: usdCents, plan: plan.key, interval: payment.interval, transaction_id: payment.transactionId, payer_phone: payment.payerPhone, network: payment.network, period_mode: period.mode, period_start: period.start.toISOString(), period_end: period.end.toISOString() },
+            },
+          },
+        });
+        await writeAudit(tx, ctx, "confirm_momo_payment", `payment:${paymentId}`, { status: "pending", subscription: before }, { status: "confirmed", reference: payment.reference, amountMinor: payment.amountMinor, currency: payment.currency, period: period.mode, subscription: after });
+      });
+    } catch (error) {
+      // The subscription changed under us (a webhook, another admin): read it again and recompute the period, once.
+      if (error instanceof SubscriptionMoved && attempt === 0) continue;
+      if (error instanceof SubscriptionMoved) throw new AdminError("conflict", "The subscription keeps changing while confirming. Look at the client and try again.");
+      throw error;
+    }
+    // After the commit: analytics and the client's email. Neither can undo the confirmation.
+    const client = await clientOf(payment.userId);
+    for (const name of subscriptionEventsFor(before, after, false)) {
+      trackEvent(name, { userId: payment.userId, businessId: client.businessId, props: { plan: plan.key, interval: payment.interval, from: before.plan, method: "momo" } });
+    }
+    let emailed = false;
+    if (client.email) {
+      emailed = await sendPlanActiveEmail({ email: client.email, name: client.name }, { planName: plan.name, interval: payment.interval, amountMinor: payment.amountMinor, currency: payment.currency, reference: payment.reference, periodEnd: period.end }).catch(() => false);
+    }
+    return { id: paymentId, status: "confirmed" as const, plan: plan.key, periodMode: period.mode, periodStart: period.start, periodEnd: period.end, emailed };
   }
-  let emailed = false;
-  if (client.email) {
-    emailed = await sendPlanActiveEmail({ email: client.email, name: client.name }, { planName: plan.name, interval: payment.interval, amountMinor: payment.amountMinor, currency: payment.currency, reference: payment.reference, periodEnd: period.end }).catch(() => false);
-  }
-  return { id: paymentId, status: "confirmed" as const, plan: plan.key, periodStart: period.start, periodEnd: period.end, emailed };
 }
 
 /** The money did not arrive, or does not match: the owner says why, and the client sees it and can try again. */
@@ -277,42 +354,77 @@ export type ManualPaymentAdminView = ManualPaymentView & {
   company: string | null;
   email: string | null;
   decidedBy: string | null;
+  /** An older payment (any status, any company) that used the same transaction id on the same network. */
+  seenBefore: { id: string; reference: string; status: string; sameCompany: boolean } | null;
 };
 
-async function adminViews(rows: Row[]): Promise<ManualPaymentAdminView[]> {
+async function adminViews(rows: Row[], now: Date): Promise<ManualPaymentAdminView[]> {
   const ids = [...new Set(rows.map((r) => r.userId))];
-  const [users, businesses] = ids.length
+  const [users, businesses, subs] = ids.length
     ? await Promise.all([
         prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, email: true } }),
         prisma.business.findMany({ where: { userId: { in: ids } }, select: { userId: true, name: true } }),
+        prisma.subscription.findMany({ where: { userId: { in: ids } } }),
       ])
-    : [[], []];
+    : [[], [], []];
   const email = new Map(users.map((u) => [u.id, u.email]));
   const company = new Map(businesses.map((b) => [b.userId, b.name]));
-  return Promise.all(rows.map(async (r) => ({ ...(await toView(r)), userId: r.userId, company: company.get(r.userId) ?? null, email: email.get(r.userId) ?? null, decidedBy: r.decidedBy })));
+  const sub = new Map(subs.map((s) => [s.userId, s]));
+  return Promise.all(
+    rows.map(async (r) => {
+      const seen = r.network && r.transactionId ? await transactionUse(r.network, r.transactionId, { live: false, except: r.id }) : null;
+      return {
+        ...(await toView(r, sub.get(r.userId) ?? null, now)),
+        userId: r.userId,
+        company: company.get(r.userId) ?? null,
+        email: email.get(r.userId) ?? null,
+        decidedBy: r.decidedBy,
+        seenBefore: seen ? { id: seen.id, reference: seen.reference, status: seen.status, sameCompany: seen.userId === r.userId } : null,
+      };
+    }),
+  );
 }
 
-/** Payments waiting for the owner: submitted ones first (oldest first, they have waited longest), then started-only ones. */
-export async function listManualPayments(opts: { status?: string; userId?: string; reference?: string; cursor?: string; limit?: number } = {}): Promise<Page<ManualPaymentAdminView>> {
+/** A (createdAt, id) cursor: rows are paged newest first without skipping two rows created in the same millisecond. */
+const cursorOf = (r: Pick<Row, "createdAt" | "id">) => `${r.createdAt.getTime()}~${r.id}`;
+function parseCursor(cursor: string | undefined): Prisma.ManualPaymentWhereInput | null {
+  if (!cursor) return null;
+  const i = cursor.indexOf("~");
+  const ms = Number(cursor.slice(0, i));
+  if (i < 1 || !Number.isFinite(ms) || cursor.length > 120) throw new AdminError("invalid", "That cursor is not one this list gave out.");
+  const at = new Date(ms);
+  return { OR: [{ createdAt: { lt: at } }, { createdAt: at, id: { lt: cursor.slice(i + 1) } }] };
+}
+
+/**
+ * Payments, newest first. `status: "pending"` lists the queue instead: submitted ones first and oldest first (they
+ * have waited longest), then started-only ones; ordered by the database.
+ */
+export async function listManualPayments(opts: { status?: string; userId?: string; reference?: string; cursor?: string; limit?: number } = {}, now: Date = new Date()): Promise<Page<ManualPaymentAdminView>> {
   const status = opts.status && (MANUAL_PAYMENT_STATUSES as readonly string[]).includes(opts.status) ? (opts.status as ManualPaymentStatus) : undefined;
   if (opts.status && !status) throw new AdminError("invalid", `status must be one of: ${MANUAL_PAYMENT_STATUSES.join(", ")}.`);
   if (opts.reference && !isReference(opts.reference.toUpperCase())) throw new AdminError("invalid", "A reference looks like BP-7K3Q.");
   const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 25) || 25, 1), 100);
+  const queue = status === "pending";
+  const where: Prisma.ManualPaymentWhereInput = {
+    ...(status ? { status } : {}),
+    ...(opts.userId ? { userId: opts.userId } : {}),
+    ...(opts.reference ? { reference: opts.reference.toUpperCase() } : {}),
+    ...(!queue ? (parseCursor(opts.cursor) ?? {}) : {}),
+  };
   const rows = await prisma.manualPayment.findMany({
-    where: { ...(status ? { status } : {}), ...(opts.userId ? { userId: opts.userId } : {}), ...(opts.reference ? { reference: opts.reference.toUpperCase() } : {}), ...(opts.cursor ? { id: { lt: opts.cursor } } : {}) },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    where,
+    orderBy: queue ? [{ submittedAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }, { id: "asc" }] : [{ createdAt: "desc" }, { id: "desc" }],
     take: limit + 1,
   });
   const page = rows.slice(0, limit);
-  const items = await adminViews(page);
-  if (status === "pending") items.sort((a, b) => Number(b.submitted) - Number(a.submitted) || (a.submittedAt ?? a.createdAt).localeCompare(b.submittedAt ?? b.createdAt));
-  return { items, nextCursor: rows.length > limit ? page[page.length - 1].id : null };
+  return { items: await adminViews(page, now), nextCursor: rows.length > limit && !queue ? cursorOf(page[page.length - 1]) : null };
 }
 
-export async function getManualPayment(id: string): Promise<ManualPaymentAdminView> {
+export async function getManualPayment(id: string, now: Date = new Date()): Promise<ManualPaymentAdminView> {
   const row = await prisma.manualPayment.findUnique({ where: { id } });
   if (!row) throw new AdminError("not_found", "No payment with that id.");
-  return (await adminViews([row]))[0];
+  return (await adminViews([row], now))[0];
 }
 
 /** Submitted payments waiting for a decision (sidebar badge and the Overview attention list). */

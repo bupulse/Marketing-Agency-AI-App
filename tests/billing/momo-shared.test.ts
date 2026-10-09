@@ -7,7 +7,9 @@ import {
   makeReference,
   momoConfigured,
   momoPriceFor,
+  momoSettingsProblem,
   nextManualPeriod,
+  planManualPeriod,
   proofSchema,
   REFERENCE_ALPHABET,
   reminderDue,
@@ -38,18 +40,30 @@ describe("payment reference", () => {
 
 describe("the period a confirmed payment buys", () => {
   const now = d("2026-10-14T10:00:00Z");
-  it("starts now for a trial, an ended plan or a card plan", () => {
-    expect(nextManualPeriod({ status: "TRIALING", currentPeriodEnd: null, provider: null }, "MONTH", now)).toEqual({ start: now, end: d("2026-11-14T10:00:00Z") });
-    expect(nextManualPeriod({ status: "PAST_DUE", currentPeriodEnd: d("2026-10-10T00:00:00Z"), provider: "MANUAL_MOMO" }, "MONTH", now).start).toEqual(now);
-    expect(nextManualPeriod({ status: "ACTIVE", currentPeriodEnd: d("2026-11-01T00:00:00Z"), provider: "PADDLE" }, "MONTH", now).start).toEqual(now);
+  const base = { plan: "STANDARD", interval: "MONTH" as const, cancelAtPeriodEnd: false };
+  it("starts now (fresh) for a trial, an ended plan or a card plan that still renews", () => {
+    expect(planManualPeriod({ ...base, status: "TRIALING", currentPeriodEnd: null, provider: null }, "STANDARD", "MONTH", now)).toEqual({ mode: "fresh", start: now, end: d("2026-11-14T10:00:00Z"), daysLeft: 0 });
+    expect(planManualPeriod({ ...base, status: "PAST_DUE", currentPeriodEnd: d("2026-10-10T00:00:00Z"), provider: "MANUAL_MOMO" }, "STANDARD", "MONTH", now).mode).toBe("fresh");
+    expect(planManualPeriod({ ...base, status: "ACTIVE", currentPeriodEnd: d("2026-11-01T00:00:00Z"), provider: "PADDLE" }, "STANDARD", "MONTH", now).mode).toBe("fresh");
+    expect(nextManualPeriod({ ...base, status: "TRIALING", currentPeriodEnd: null, provider: null }, "STANDARD", "MONTH", now)).toEqual({ start: now, end: d("2026-11-14T10:00:00Z") });
   });
-  it("extends a running Mobile Money period from its end, monthly or yearly", () => {
-    const sub = { status: "ACTIVE", currentPeriodEnd: d("2026-10-20T00:00:00Z"), provider: "MANUAL_MOMO" };
-    expect(nextManualPeriod(sub, "MONTH", now)).toEqual({ start: d("2026-10-20T00:00:00Z"), end: d("2026-11-20T00:00:00Z") });
-    expect(nextManualPeriod(sub, "YEAR", now)).toEqual({ start: d("2026-10-20T00:00:00Z"), end: d("2027-10-20T00:00:00Z") });
+  it("extends a running Mobile Money period of the same plan and interval from its end, monthly or yearly", () => {
+    const sub = { ...base, status: "ACTIVE", currentPeriodEnd: d("2026-10-20T00:00:00Z"), provider: "MANUAL_MOMO" };
+    expect(planManualPeriod(sub, "STANDARD", "MONTH", now)).toEqual({ mode: "extend", start: d("2026-10-20T00:00:00Z"), end: d("2026-11-20T00:00:00Z"), daysLeft: 6 });
+    expect(planManualPeriod({ ...sub, interval: "YEAR" }, "STANDARD", "YEAR", now).end).toEqual(d("2027-10-20T00:00:00Z"));
+  });
+  it("a different plan or interval replaces the running period from now, saying how many days are given up", () => {
+    const sub = { ...base, status: "ACTIVE", currentPeriodEnd: d("2026-10-20T00:00:00Z"), provider: "MANUAL_MOMO" };
+    expect(planManualPeriod(sub, "PRO", "MONTH", now)).toEqual({ mode: "replace", start: now, end: d("2026-11-14T10:00:00Z"), daysLeft: 6 });
+    expect(planManualPeriod(sub, "STANDARD", "YEAR", now)).toMatchObject({ mode: "replace", start: now, end: d("2027-10-14T10:00:00Z") });
+  });
+  it("a card plan cancelled at its period end hands over to Mobile Money from that end", () => {
+    const sub = { ...base, status: "ACTIVE", currentPeriodEnd: d("2026-11-01T00:00:00Z"), provider: "PADDLE", cancelAtPeriodEnd: true };
+    expect(planManualPeriod(sub, "STANDARD", "MONTH", now)).toMatchObject({ mode: "extend", start: d("2026-11-01T00:00:00Z"), end: d("2026-12-01T00:00:00Z"), daysLeft: 18 });
+    expect(planManualPeriod(sub, "PRO", "MONTH", now)).toMatchObject({ mode: "replace", start: now });
   });
   it("a period that already ended (inside grace) starts now, not from the old end", () => {
-    expect(nextManualPeriod({ status: "ACTIVE", currentPeriodEnd: d("2026-10-13T00:00:00Z"), provider: "MANUAL_MOMO" }, "MONTH", now).start).toEqual(now);
+    expect(planManualPeriod({ ...base, status: "ACTIVE", currentPeriodEnd: d("2026-10-13T00:00:00Z"), provider: "MANUAL_MOMO" }, "STANDARD", "MONTH", now)).toMatchObject({ mode: "fresh", start: now });
   });
   it("grace is 3 days after the end", () => {
     expect(graceEnd(d("2026-10-20T00:00:00Z"))).toEqual(d("2026-10-23T00:00:00Z"));
@@ -95,6 +109,20 @@ describe("owner settings", () => {
     const s = cleanMomoSettings({ merchantCode: " 123456 ", momoNumber: "078", usdToRwf: -5, prices: { OK: { monthlyMinor: 1, yearlyMinor: 2 }, BAD: { monthlyMinor: "x" }, "no good!": { monthlyMinor: 1, yearlyMinor: 1 } } });
     expect(s).toMatchObject({ merchantCode: "123456", momoNumber: "078", usdToRwf: 1450, prices: { OK: { monthlyMinor: 1, yearlyMinor: 2 } } });
     expect(momoConfigured(s)).toBe(true);
+  });
+});
+
+describe("what the owner may save", () => {
+  const ok = { merchantCode: "123456", momoNumber: "078 123 4567", accountName: "BuPulse", airtelNumber: "+250 730 000 000", usdToRwf: 1450 };
+  it("accepts a digit code, phone numbers and a short name; refuses the rest in words", () => {
+    expect(momoSettingsProblem(ok)).toBeNull();
+    expect(momoSettingsProblem({ ...ok, merchantCode: "", momoNumber: "", airtelNumber: "" })).toBeNull();
+    expect(momoSettingsProblem({ ...ok, merchantCode: "12AB" })).toMatch(/4 to 12 digits/);
+    expect(momoSettingsProblem({ ...ok, merchantCode: "1234567890123" })).toMatch(/4 to 12 digits/);
+    expect(momoSettingsProblem({ ...ok, momoNumber: "0781" })).toMatch(/MTN MoMo number must be a phone number/);
+    expect(momoSettingsProblem({ ...ok, airtelNumber: "call me" })).toMatch(/Airtel Money number must be a phone number/);
+    expect(momoSettingsProblem({ ...ok, accountName: "x".repeat(81) })).toMatch(/80 characters/);
+    expect(momoSettingsProblem({ ...ok, usdToRwf: 5 })).toMatch(/francs per dollar/);
   });
 });
 

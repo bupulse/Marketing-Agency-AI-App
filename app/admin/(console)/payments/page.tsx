@@ -15,6 +15,15 @@ export const metadata = { title: "Payments" };
 
 const tone = (s: string) => (s === "confirmed" ? "success" : s === "rejected" ? "danger" : s === "pending" ? "violet" : "neutral") as "success" | "danger" | "violet" | "neutral";
 const interval = (i: string) => (i === "YEAR" ? "yearly" : "monthly");
+const day = (iso: string) => dateTime(iso).replace(/, \d\d:\d\d.*/, "");
+
+/** What confirming does to the client's running period, for the dialog and the row. */
+function periodText(p: ManualPaymentAdminView): string {
+  const n = p.periodNote;
+  if (!n) return `The ${p.planName} plan switches on for one ${p.interval === "YEAR" ? "year" : "month"} from now.`;
+  if (n.mode === "extend") return `Adds one ${p.interval === "YEAR" ? "year" : "month"} after the current period (${n.daysLeft} ${n.daysLeft === 1 ? "day" : "days"} left, until ${day(n.currentEnd)}).`;
+  return `Plan change: replaces the current period (${n.daysLeft} ${n.daysLeft === 1 ? "day" : "days"} left, until ${day(n.currentEnd)}) with one ${p.interval === "YEAR" ? "year" : "month"} of ${p.planName} from now. Give credit manually if needed.`;
+}
 
 function Who({ p }: { p: ManualPaymentAdminView }) {
   return (
@@ -63,12 +72,19 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                   </p>
                   <p className="text-[13px] text-muted"><Who p={p} /></p>
                   <p className="text-[13px] text-muted">Said paid {p.submittedAt ? dateTime(p.submittedAt) : ""} · started {dateTime(p.createdAt)}</p>
+                  {p.periodNote?.mode === "replace" && <p className="text-[13px] font-medium text-danger">{periodText(p)}</p>}
+                  {p.periodNote?.mode === "extend" && <p className="text-[13px] text-muted">{periodText(p)}</p>}
+                  {p.seenBefore && (
+                    <p role="alert" className="mt-1 rounded-xl bg-danger-bg px-3 py-2 text-[13px] font-medium text-danger">
+                      Transaction id seen before on payment {p.seenBefore.reference} ({p.seenBefore.status}{p.seenBefore.sameCompany ? ", same company" : ", another company"}). Check it is not the same Mobile Money message used twice.
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <ConfirmButton action={rejectPaymentAction} fields={{ id: p.id }} label="Reject" title={`Reject ${p.reference}?`} description="The client sees your reason on their Billing page and by email, and can try again. Nothing else changes." confirmLabel="Reject">
                     <Field label="Reason the client will see" required><Textarea name="reason" minLength={3} maxLength={300} rows={3} required placeholder="We received no payment with this reference. Please check the number you paid to." /></Field>
                   </ConfirmButton>
-                  <ConfirmButton action={confirmPaymentAction} fields={{ id: p.id }} variant="primary" label="Confirm" title={`Confirm ${money(p.amountMinor, p.currency)} from ${p.company ?? "this client"}?`} description={`Only after you have seen ${p.reference} arrive. The ${p.planName} plan switches on for one ${p.interval === "YEAR" ? "year" : "month"} (added to any time left), usage resets and the client is emailed.`} confirmLabel="Confirm payment" />
+                  <ConfirmButton action={confirmPaymentAction} fields={{ id: p.id }} variant="primary" label="Confirm" title={`Confirm ${money(p.amountMinor, p.currency)} from ${p.company ?? "this client"}?`} description={`Only after you have seen ${p.reference} arrive. ${periodText(p)} The client is emailed.`} confirmLabel="Confirm payment" />
                 </div>
               </li>
             ))}

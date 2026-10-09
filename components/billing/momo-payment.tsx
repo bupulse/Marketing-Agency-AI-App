@@ -166,6 +166,13 @@ export function MomoPayment({ payment, details }: Props) {
           <span className="text-sm text-muted">
             {payment.planName}, billed {payment.interval === "YEAR" ? "yearly" : "every month"}. Nothing renews by itself: we remind you before it ends.
           </span>
+          {payment.periodNote && (
+            <span className={payment.periodNote.mode === "replace" ? "text-sm font-medium text-danger" : "text-sm text-muted"}>
+              {payment.periodNote.mode === "extend"
+                ? `Added after your current period: your plan runs until ${formatDate(payment.periodNote.currentEnd)} and then one more ${intervalWord(payment.interval)}.`
+                : `Plan change: this replaces the ${payment.periodNote.daysLeft} ${payment.periodNote.daysLeft === 1 ? "day" : "days"} left on your current plan (until ${formatDate(payment.periodNote.currentEnd)}). The new plan starts as soon as the payment is confirmed.`}
+            </span>
+          )}
         </div>
         <Badge tone="violet">Step {step === "pay" ? "1" : "2"} of 2</Badge>
       </div>

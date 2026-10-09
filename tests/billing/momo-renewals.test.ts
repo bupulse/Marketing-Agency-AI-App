@@ -58,6 +58,16 @@ describe("reminders", () => {
     expect(h.db.subscription.rows[0].status).toBe("ACTIVE");
   });
 
+  it("a 1-day reminder that goes out after the end says the plan has ended and until when the grace lasts", async () => {
+    seed();
+    expect(await run(at("2026-10-21T06:00:00Z"))).toMatchObject({ reminded1d: 1, pastDue: 0 });
+    expect(mails()).toEqual(["Your BuPulse Standard plan has ended: pay to continue"]);
+    const mail = h.sendEmail.mock.calls[0][0];
+    expect(mail.text).toContain("ended on October 20, 2026");
+    expect(mail.text).toContain("You can still create until October 23, 2026");
+    expect(mail.text).not.toContain("tomorrow");
+  });
+
   it("a missed day sends only the later reminder; no reminder while a submitted payment waits for the owner", async () => {
     seed();
     h.db.manualPayment.rows.push({ id: "m1", userId: USER, planKey: "STANDARD", interval: "MONTH", amountMinor: 15000, reference: "BP-AAAA", status: "pending", submittedAt: at("2026-10-18T00:00:00Z") });
@@ -92,7 +102,7 @@ describe("grace and read-only", () => {
     expect(await run(at("2026-10-22T23:00:00Z"))).toMatchObject({ pastDue: 0, reminded1d: 1 });
     expect(await run(at("2026-10-23T00:00:00Z"))).toMatchObject({ pastDue: 1 });
     expect(h.db.subscription.rows[0].status).toBe("PAST_DUE");
-    expect(mails()).toEqual(["Your BuPulse Standard plan ends tomorrow", "Your BuPulse Standard plan is paused"]);
+    expect(mails()).toEqual(["Your BuPulse Standard plan has ended: pay to continue", "Your BuPulse Standard plan is paused"]);
     expect(h.db.auditLog.rows.map((a) => a.action)).toContain("momo_past_due");
     expect(h.db.auditLog.rows.find((a) => a.action === "momo_past_due")).toMatchObject({ actor: "system:cron", target: `user:${USER}` });
     // Already past due: left alone, no second email.

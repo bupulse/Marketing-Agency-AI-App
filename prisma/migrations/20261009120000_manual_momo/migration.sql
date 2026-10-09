@@ -30,6 +30,10 @@ CREATE INDEX "ManualPayment_status_createdAt_idx" ON "ManualPayment"("status", "
 CREATE INDEX "ManualPayment_userId_createdAt_idx" ON "ManualPayment"("userId", "createdAt");
 ALTER TABLE "ManualPayment" ADD CONSTRAINT "ManualPayment_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "ManualPayment" ADD CONSTRAINT "ManualPayment_planKey_fkey" FOREIGN KEY ("planKey") REFERENCES "PlanDefinition"("key") ON DELETE RESTRICT ON UPDATE CASCADE;
+-- One open payment per company, whatever two tabs or a retry do.
+CREATE UNIQUE INDEX "ManualPayment_one_pending_per_user" ON "ManualPayment"("userId") WHERE "status" = 'pending';
+-- A Mobile Money transaction id pays for one plan once: no replay of the same SMS by another company (or the same one).
+CREATE UNIQUE INDEX "ManualPayment_live_transaction_key" ON "ManualPayment"("network", upper("transactionId")) WHERE "status" IN ('pending', 'confirmed') AND "transactionId" IS NOT NULL;
 
 -- Renewal reminders of Mobile Money subscriptions: the unique key is the claim, so an email is never sent twice.
 CREATE TABLE "RenewalNotice" (
@@ -41,6 +45,7 @@ CREATE TABLE "RenewalNotice" (
     CONSTRAINT "RenewalNotice_pkey" PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "RenewalNotice_userId_periodEnd_kind_key" ON "RenewalNotice"("userId", "periodEnd", "kind");
+ALTER TABLE "RenewalNotice" ADD CONSTRAINT "RenewalNotice_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- Same rules as the other internal tables: RLS on, no access for anon, authenticated or service_role (Prisma connects as postgres).
 ALTER TABLE "ManualPayment" ENABLE ROW LEVEL SECURITY;

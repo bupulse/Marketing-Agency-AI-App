@@ -24,6 +24,10 @@ function match(row: Row, where: Where): boolean {
     const value = row[key] === undefined ? null : row[key];
     if (cond && typeof cond === "object" && !(cond instanceof Date) && !Array.isArray(cond)) {
       const c = cond as Record<string, any>;
+      if ("equals" in c) {
+        const same = typeof value === "string" && typeof c.equals === "string" && c.mode === "insensitive" ? value.toLowerCase() === c.equals.toLowerCase() : value === c.equals;
+        if (!same) return false;
+      }
       if ("not" in c && value === c.not) return false;
       if ("in" in c && !(c.in as unknown[]).includes(value)) return false;
       if ("lt" in c && !(value < c.lt)) return false;

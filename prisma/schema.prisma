@@ -44,6 +44,7 @@ model User {
   canva                CanvaConnection?
   canvaEdits           CanvaEdit[]
   manualPayments       ManualPayment[]
+  renewalNotices       RenewalNotice[]
 }
 
 // One business per user for now. Industry-neutral: a phone shop, a school,
@@ -304,6 +305,9 @@ model ManualPayment {
 
   @@index([status, createdAt])
   @@index([userId, createdAt])
+  // Also two partial unique indexes in SQL (the migration): one pending payment per company
+  // ("ManualPayment_one_pending_per_user") and one live use of a transaction id per network across all companies
+  // ("ManualPayment_live_transaction_key": network + upper(transactionId) where status is pending or confirmed).
 }
 
 // One renewal email of a Mobile Money subscription (lib/billing/momo-renewals.ts): "5d" and "1d" before the period
@@ -311,6 +315,7 @@ model ManualPayment {
 model RenewalNotice {
   id        String   @id @default(cuid())
   userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   periodEnd DateTime
   kind      String // "5d" | "1d" | "paused"
   sentAt    DateTime @default(now())

@@ -42,16 +42,37 @@ export function isReference(value: unknown): value is string {
 
 // ---- period ------------------------------------------------------------------------------------------------
 
-export type PeriodInput = { status: string; currentPeriodEnd: Date | null; provider: string | null };
+export type PeriodInput = { plan: string; interval: BillingInterval; status: string; currentPeriodEnd: Date | null; provider: string | null; cancelAtPeriodEnd: boolean };
+
+export type PeriodPlan = {
+  /** extend: added after a running period of the same plan and interval; replace: a different plan or interval starts now and the running period is given up; fresh: nothing was running. */
+  mode: "extend" | "replace" | "fresh";
+  start: Date;
+  end: Date;
+  /** Whole days still paid for on the running period (extend and replace only). */
+  daysLeft: number;
+};
 
 /**
- * The period a confirmed payment buys. A client still inside a paid Mobile Money period renews early: the new period
- * starts where the current one ends, so they lose nothing. Everyone else (trial, ended, past due, card) starts now.
+ * The period a payment buys. A paid-up period that is still running is a Mobile Money one (ACTIVE, end in the future)
+ * or a card one that the client has cancelled at its end (cancelAtPeriodEnd): same plan and interval extend it from
+ * its end, so the client loses nothing; a different plan or interval starts now and replaces it (no free overlap: the
+ * owner may credit by hand). A trial, an ended, past-due or still-renewing card plan starts now.
  */
-export function nextManualPeriod(sub: PeriodInput, interval: BillingInterval, now: Date = new Date()): { start: Date; end: Date } {
-  const extend = sub.provider === "MANUAL_MOMO" && sub.status === "ACTIVE" && sub.currentPeriodEnd !== null && sub.currentPeriodEnd > now;
-  const start = extend ? (sub.currentPeriodEnd as Date) : now;
-  return { start, end: addMonths(start, interval === "YEAR" ? 12 : 1) };
+export function planManualPeriod(sub: PeriodInput, plan: string, interval: BillingInterval, now: Date = new Date()): PeriodPlan {
+  const end = sub.currentPeriodEnd;
+  const running = end !== null && end > now && ((sub.provider === "MANUAL_MOMO" && sub.status === "ACTIVE") || (sub.provider === "PADDLE" && sub.status === "ACTIVE" && sub.cancelAtPeriodEnd));
+  const months = interval === "YEAR" ? 12 : 1;
+  if (!running) return { mode: "fresh", start: now, end: addMonths(now, months), daysLeft: 0 };
+  const daysLeft = Math.ceil(((end as Date).getTime() - now.getTime()) / DAY_MS);
+  if (sub.plan === plan && sub.interval === interval) return { mode: "extend", start: end as Date, end: addMonths(end as Date, months), daysLeft };
+  return { mode: "replace", start: now, end: addMonths(now, months), daysLeft };
+}
+
+/** Kept for callers that only need the dates. */
+export function nextManualPeriod(sub: PeriodInput, plan: string, interval: BillingInterval, now: Date = new Date()): { start: Date; end: Date } {
+  const { start, end } = planManualPeriod(sub, plan, interval, now);
+  return { start, end };
 }
 
 /** When a Mobile Money subscription becomes read-only: the end of the paid period plus the grace days. */
@@ -141,6 +162,25 @@ export function cleanMomoSettings(value: unknown): MomoSettings {
   };
 }
 
+const MERCHANT_CODE = /^\d{4,12}$/;
+const PHONE = /^\+?[\d\s().-]{6,24}$/;
+const phoneDigits = (v: string) => v.replace(/\D/g, "").length;
+
+/**
+ * What the owner may save: a MoMo Pay code is 4 to 12 digits, numbers are phone numbers (9 to 15 digits, with or
+ * without +250), the account name up to 80 characters. Returns the first problem in words, or null. Nothing is
+ * truncated on save; cleanMomoSettings only trims what is already stored.
+ */
+export function momoSettingsProblem(s: Pick<MomoSettings, "merchantCode" | "momoNumber" | "accountName" | "airtelNumber" | "usdToRwf">): string | null {
+  if (s.merchantCode && !MERCHANT_CODE.test(s.merchantCode)) return "The MoMo Pay code is 4 to 12 digits.";
+  for (const [label, value] of [["MTN MoMo number", s.momoNumber], ["Airtel Money number", s.airtelNumber]] as const) {
+    if (value && (!PHONE.test(value) || phoneDigits(value) < 9 || phoneDigits(value) > 15)) return `The ${label} must be a phone number, like 078 123 4567.`;
+  }
+  if (s.accountName.length > 80) return "The account name is at most 80 characters.";
+  if (!Number.isFinite(s.usdToRwf) || s.usdToRwf < 100 || s.usdToRwf > 100_000) return "The USD rate is francs per dollar, for example 1450.";
+  return null;
+}
+
 /** Clients can only be offered Mobile Money when there is somewhere to send the money. */
 export function momoConfigured(s: Pick<MomoSettings, "merchantCode" | "momoNumber" | "airtelNumber">): boolean {
   return Boolean(s.merchantCode || s.momoNumber || s.airtelNumber);
@@ -186,8 +226,13 @@ export const proofSchema = z.object({
 /** What the form sends; the schema checks it (network is one of MOMO_NETWORKS). */
 export type ProofInput = { paymentId: string; transactionId: string; payerPhone: string; network: string };
 
+/** How this payment meets the client's running period, shown before they pay and to the owner before confirming. */
+export type PeriodNote = { mode: "extend" | "replace"; daysLeft: number; currentEnd: string };
+
 /** What the Billing page shows the client about their payment. Never includes other clients' data. */
 export type ManualPaymentView = {
+  /** Null when nothing is running (trial, ended) or once the payment is decided. */
+  periodNote: PeriodNote | null;
   id: string;
   planKey: string;
   planName: string;

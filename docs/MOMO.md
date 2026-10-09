@@ -24,8 +24,18 @@ Decided in `docs/RWANDA_LAUNCH_PLAN.md` (sections 2, 5 and R4). Built on 9 Octob
    (`currentPeriodStart/End`; card ids cleared), a `BillingEvent` (`manual_payment.confirmed`, with the USD value at the
    owner's rate) is written for revenue, and an audit row with before and after. Then the `upgrade` / `plan_change`
    analytics event and the "Your plan is active" email. Usage counts from the new period start, so it resets.
-   - Period: a running Mobile Money period is **extended from its end** (early renewal loses nothing); a trial, an
-     ended, past-due or card plan starts **now**. Monthly adds one month, yearly twelve (`nextManualPeriod`).
+   - Period (`planManualPeriod`): a running period (a paid-up MoMo one, or a card one the client has cancelled at its
+     end) of the **same plan and interval** is extended from its end (early renewal loses nothing; only
+     `currentPeriodEnd` moves, `currentPeriodStart` stays the usage anchor and is never in the future). A **different
+     plan or interval** starts now and replaces the running period (no free overlap; the queue and the client's pay
+     screen both say "Plan change: replaces the current period (N days left)" and the owner may credit by hand).
+     A trial, an ended, past-due or still-renewing card plan starts now. Monthly adds one month, yearly twelve.
+     The payment row keeps the exact period it bought.
+   - Replay: a transaction id already used by a pending or confirmed payment of any company is refused on submit, again
+     inside the confirm transaction, and by a partial unique index (network + upper(transactionId)). The queue warns
+     "Transaction id seen before on payment X" when any older payment, rejected ones included, used it.
+   - Concurrency: the subscription write is conditional on the ids, status and period end that were read; if it
+     changed meanwhile the period is recomputed once. One pending payment per company is also a partial unique index.
 6. **Reject** with a reason (3 to 300 characters): the client sees it on Billing for a week with **Try again**, and gets
    an email. Audited, once.
 7. **Renewals** (`/api/cron/momo-renewals`, daily 05:41 UTC, `MOMO_RENEWALS_CRON`): for `MANUAL_MOMO` + `ACTIVE`
@@ -36,10 +46,11 @@ Decided in `docs/RWANDA_LAUNCH_PLAN.md` (sections 2, 5 and R4). Built on 9 Octob
    while a submitted payment waits for the owner. Payments started but never submitted are closed after 48 hours.
    Runs under an advisory lock with a cursor, like the price-change job.
 
-Switching method: a live card subscription blocks a MoMo payment (the client cancels the card plan first; it stays
-active until its period end), and a paid-up MoMo plan blocks card checkout until its period has ended. A late Paddle
-webhook can never end a live Mobile Money plan (`lib/billing/apply.ts`); a new live card subscription on top of one is
-treated as a duplicate, like a second card purchase.
+Switching method: a card subscription that still renews blocks a MoMo payment; once the client has cancelled it
+(`cancelAtPeriodEnd`, active until its period end) a MoMo payment of the same plan starts from that end. A paid-up MoMo
+plan blocks card checkout until its period has ended. A late Paddle webhook can never end a paid-up Mobile Money plan
+(`lib/billing/apply.ts`: ACTIVE with the period end in the future); a new live card subscription on top of one is a
+duplicate, like a second card purchase, while a past-due or lapsed MoMo plan is simply replaced by it.
 
 ## Settings (admin → Payments → "Where clients pay")
 
@@ -52,6 +63,10 @@ Stored in `AdminSetting` key `billing.momo` (`MomoSettings` in `lib/billing/momo
 | Account name | What the client sees on their phone |
 | RWF per USD | Converts plans without an RWF price (rounded to 100 RWF) and values MoMo revenue in USD for the roll-up (default 1,450) |
 | RWF prices per plan | Monthly and yearly, whole francs. Empty = converted USD price. **R1 (regions) folds these into per-region plan prices**; until then this is the one place RWF prices live (`getMomoPrice`) |
+
+A malformed code (not 4 to 12 digits) or number (not a phone number) is refused, never truncated. Every save is audited
+with the stored values read inside the transaction, and every `ADMIN_EMAILS` address is emailed when the code or a number
+changes.
 
 Mobile Money is offered to clients only when a code or a number is filled in (`momoConfigured`).
 

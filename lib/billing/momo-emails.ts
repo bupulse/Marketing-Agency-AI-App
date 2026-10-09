@@ -2,7 +2,7 @@ import "server-only";
 import { adminEmails } from "@/lib/admin/auth";
 import { siteUrl } from "@/lib/auth/site-url";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
-import { formatMomoAmount, GRACE_DAYS, whatsappText, type MomoPayDetails } from "./momo-shared";
+import { formatMomoAmount, GRACE_DAYS, graceEnd, whatsappText, type MomoPayDetails } from "./momo-shared";
 
 // Every email of the Mobile Money flow. All of them go through sendEmail (Resend, kill switch respected) and return
 // whether the mail went out; nothing here throws, so a mail problem never stops a payment being recorded.
@@ -79,12 +79,18 @@ export type ReminderInput = {
   details: MomoPayDetails;
 };
 
-/** 5 days and 1 day before the paid period ends: amount, how to pay, and a WhatsApp-ready text. */
-export async function sendRenewalReminderEmail(to: ClientRecipient, kind: "5d" | "1d", p: ReminderInput): Promise<boolean> {
-  const when = kind === "5d" ? `in 5 days, on ${longDate(p.periodEnd)}` : `on ${longDate(p.periodEnd)}`;
+/**
+ * 5 days and 1 day before the paid period ends: amount, how to pay, and a WhatsApp-ready text. The 1-day reminder
+ * can go out after the end (a missed day): then it says the plan has ended and until when the grace lasts.
+ */
+export async function sendRenewalReminderEmail(to: ClientRecipient, kind: "5d" | "1d", p: ReminderInput, now: Date = new Date()): Promise<boolean> {
+  const ended = p.periodEnd <= now;
+  const grace = longDate(graceEnd(p.periodEnd));
+  const heading = ended ? `Your ${p.planName} plan has ended` : kind === "5d" ? `Your ${p.planName} plan ends in 5 days` : `Your ${p.planName} plan ends tomorrow`;
+  const when = ended ? `ended on ${longDate(p.periodEnd)}` : kind === "5d" ? `ends in 5 days, on ${longDate(p.periodEnd)}` : `ends tomorrow, ${longDate(p.periodEnd)}`;
   const { html, text } = renderEmail({
-    heading: kind === "5d" ? `Your ${p.planName} plan ends in 5 days` : `Your ${p.planName} plan ends ${kind === "1d" ? "tomorrow" : "soon"}`,
-    intro: `${first(to.name)}your ${p.planName} plan (${p.interval === "YEAR" ? "yearly" : "monthly"}) ends ${when}. Pay ${formatMomoAmount(p.amountMinor, p.currency)} by Mobile Money to keep creating. After ${longDate(p.periodEnd)} you have ${GRACE_DAYS} days of grace, then the account becomes read-only until you pay. Nothing is deleted.`,
+    heading,
+    intro: `${first(to.name)}your ${p.planName} plan (${p.interval === "YEAR" ? "yearly" : "monthly"}) ${when}. Pay ${formatMomoAmount(p.amountMinor, p.currency)} by Mobile Money to ${ended ? "continue" : "keep creating"}. ${ended ? `You can still create until ${grace}; after that` : `After ${longDate(p.periodEnd)} you have ${GRACE_DAYS} days of grace, then`} the account becomes read-only until you pay. Nothing is deleted.`,
     blocks: [
       { label: "Amount", value: formatMomoAmount(p.amountMinor, p.currency) },
       { label: "Where to pay", value: payDetailsLine(p.details) || "See the Billing page" },
@@ -93,7 +99,24 @@ export async function sendRenewalReminderEmail(to: ClientRecipient, kind: "5d" |
     ],
     button: { label: "Pay now", url: billingUrl() },
   });
-  return sendEmail({ to: to.email, subject: `Your BuPulse ${p.planName} plan ends ${kind === "5d" ? "in 5 days" : "tomorrow"}`, html, text });
+  return sendEmail({ to: to.email, subject: ended ? `Your BuPulse ${p.planName} plan has ended: pay to continue` : `Your BuPulse ${p.planName} plan ends ${kind === "5d" ? "in 5 days" : "tomorrow"}`, html, text });
+}
+
+/** Where clients pay changed: every admin address is told, so a changed number never goes unnoticed. */
+export async function sendPayDetailsChangedEmail(before: MomoPayDetails, after: MomoPayDetails, actor: string): Promise<boolean> {
+  const admins = adminEmails();
+  if (admins.length === 0) return false;
+  const { html, text } = renderEmail({
+    heading: "Mobile Money payment details changed",
+    intro: `The MoMo Pay code or numbers clients pay to were changed in the admin console (${actor}). If this was not you, change them back now and check the audit log.`,
+    blocks: [
+      { label: "Before", value: payDetailsLine(before) || "Nothing set" },
+      { label: "After", value: payDetailsLine(after) || "Nothing set" },
+    ],
+    button: { label: "Open Payments", url: `${siteUrl()}/admin/payments#settings` },
+  });
+  const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: "Mobile Money payment details changed", html, text })));
+  return results.some(Boolean);
 }
 
 /** The grace period is over: the account is read-only until the client pays. */
