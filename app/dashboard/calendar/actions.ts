@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { ForbiddenError, type Permission } from "@/lib/team/roles";
+import { assertFeature, FeatureRequiredError } from "@/lib/entitlements";
+import type { FeatureKey } from "@/lib/features";
 import { logError } from "@/lib/errors";
 import { rateLimit, rateLimitMessage, RateLimitError, type RateLimitRule } from "@/lib/rate-limit";
 import { publishPostsNow } from "@/lib/publishing/engine";
@@ -32,9 +34,10 @@ import type { Network } from "@/lib/social/types";
 const SAVE_FAILED = "We could not save that. Please try again.";
 
 /** Every action re-checks the signed-in user and only touches their own business. */
-async function owner(permission?: Permission): Promise<Owner | null> {
+async function owner(permission?: Permission, feature: FeatureKey | null = "calendar"): Promise<Owner | null> {
   const user = await requireActiveUser(permission, "throw");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
+  if (business && feature) await assertFeature(business.id, feature);
   return business ? { businessId: business.id, userId: user.id } : null;
 }
 
@@ -60,18 +63,19 @@ function refresh() {
   revalidatePath("/dashboard/projects/[id]", "page");
 }
 
-/** Wraps an action: sign-in check, business lookup, rate limit, error mapping, revalidation. */
+/** Wraps an action: sign-in check, business lookup, plan feature (the calendar unless told otherwise), rate limit, error mapping, revalidation. */
 async function run<T extends object>(
   name: string,
   limit: keyof typeof PUBLISHING_LIMITS,
   body: (o: Owner) => Promise<T>,
   permission?: Permission,
+  feature: FeatureKey | null = "calendar",
 ): Promise<ActionResult<T>> {
   let o: Owner | null;
   try {
-    o = await owner(permission);
+    o = await owner(permission, feature);
   } catch (error) {
-    if (error instanceof ForbiddenError) return { ok: false, error: error.message };
+    if (error instanceof ForbiddenError || error instanceof FeatureRequiredError) return { ok: false, error: error.message };
     throw error;
   }
   if (!o) return { ok: false, error: "Set up your business first." };
@@ -154,11 +158,12 @@ export async function markPostedAction(postId: string): Promise<ActionResult> {
 export async function setTimezoneAction(timezone: string): Promise<ActionResult> {
   const parsed = timezoneSchema.safeParse(timezone);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Pick a time zone." };
+  // The company's time zone is a setting, not a calendar feature: every plan may set it.
   return run("timezone", "compose", async (o) => {
     await setBusinessTimezone(o.businessId, parsed.data);
     revalidatePath("/dashboard", "layout");
     return {};
-  }, "settings");
+  }, "settings", null);
 }
 
 /** For the "Schedule" buttons on content: loads what the composer needs when it is opened. */
@@ -188,5 +193,5 @@ export async function autoSetTimezoneAction(timezone: string): Promise<ActionRes
     // No revalidation: it would refresh whatever page the user has moved on to (see AutoTimezone).
     const { count } = await prisma.business.updateMany({ where: { id: o.businessId, timezone: "UTC" }, data: { timezone: parsed.data } });
     return { changed: count > 0 };
-  }, "settings");
+  }, "settings", null);
 }

@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// Plans are not part of this test's database: every plan feature is granted (tests/stubs/entitlements.ts).
+vi.mock("@/lib/entitlements", () => import("@/tests/stubs/entitlements"));
 
 const sql = readFileSync("prisma/migrations/20261008060000_connectors_hub_webhooks_api/migration.sql", "utf8");
 

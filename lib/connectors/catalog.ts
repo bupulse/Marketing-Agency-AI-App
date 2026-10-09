@@ -1,5 +1,6 @@
 import "server-only";
 import { disabledServices } from "@/lib/admin/switch";
+import type { FeatureKey } from "@/lib/features";
 import type { ConnectorEntry, ConnectorGroup, ConnectorId, ConnectorStatus } from "./types";
 
 // The catalog for /dashboard/connectors. To add a connector: create lib/connectors/entries/<id>.ts that exports
@@ -30,6 +31,16 @@ export const PLANNED: Record<ConnectorId, { name: string; group: ConnectorGroup;
   cloudflare: { name: "Cloudflare", group: "website", description: "See your domains and add the chat widget to your website in one click.", icon: "Globe" },
 };
 
+/** The plan feature each connector belongs to (lib/features.ts). */
+export const CONNECTOR_FEATURE: Record<ConnectorId, FeatureKey> = {
+  "google-drive": "driveImport",
+  dropbox: "driveImport",
+  canva: "canva",
+  shopify: "storeImport",
+  woocommerce: "storeImport",
+  cloudflare: "websiteChat",
+};
+
 export type CatalogItem = {
   id: ConnectorId;
   name: string;
@@ -56,9 +67,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 /**
  * Every connector's status for one business, fetched in parallel. A connector that throws or is slow shows as
- * "needs attention"; it never breaks the page or the other cards.
+ * "needs attention"; it never breaks the page or the other cards. With `features` (the plan's, from
+ * lib/entitlements.ts), a connector whose feature is missing shows "Add to your plan" instead of Connect.
  */
-export async function getCatalog(ctx: { userId: string; businessId: string }, entries: ConnectorEntry[] = ENTRIES): Promise<CatalogItem[]> {
+export async function getCatalog(ctx: { userId: string; businessId: string; features?: ReadonlySet<FeatureKey> }, entries: ConnectorEntry[] = ENTRIES): Promise<CatalogItem[]> {
   const byId = new Map(entries.map((e) => [e.id, e]));
   const off = await disabledServices(); // switched off in the admin console
   const ids = [...new Set<ConnectorId>([...(Object.keys(PLANNED) as ConnectorId[]), ...entries.map((e) => e.id)])];
@@ -68,6 +80,9 @@ export async function getCatalog(ctx: { userId: string; businessId: string }, en
       const planned = PLANNED[id];
       if (!entry) return { id, ...planned, status: { state: "unavailable" }, connectHref: null, manageHref: null };
       let status: ConnectorStatus;
+      if (ctx.features && !ctx.features.has(CONNECTOR_FEATURE[id])) {
+        return { id, name: entry.name, group: entry.group, description: entry.description, icon: entry.icon, status: { state: "not_in_plan", detail: "Not part of your plan yet." }, connectHref: null, manageHref: `/dashboard/upgrade?feature=${CONNECTOR_FEATURE[id]}` };
+      }
       if (off.has(id)) {
         // Paused by the admin: shown as unavailable (no Connect button); nothing is disconnected or lost.
         return { id, name: entry.name, group: entry.group, description: entry.description, icon: entry.icon, status: { state: "unavailable", detail: "Temporarily unavailable. Please try again later." }, connectHref: null, manageHref: null };

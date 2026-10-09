@@ -19,6 +19,7 @@ const BADGE: Record<CatalogItem["status"]["state"], { tone: BadgeTone; label: st
   needs_attention: { tone: "danger", label: "Needs attention" },
   not_connected: { tone: "neutral", label: "Not connected" },
   unavailable: { tone: "neutral", label: "Coming soon" },
+  not_in_plan: { tone: "violet", label: "Add to your plan" },
 };
 
 /** OAuth start routes under /api must be real page loads: a client-side Link would prefetch them. */
@@ -69,6 +70,11 @@ export function ConnectorCard({ item }: { item: CatalogItem }) {
         {state === "unavailable" && (
           <Button variant="outline" size="sm" disabled>
             Connect
+          </Button>
+        )}
+        {state === "not_in_plan" && item.manageHref && (
+          <Button href={item.manageHref} variant="outline" size="sm">
+            Add to your plan
           </Button>
         )}
         {state === "not_connected" && item.connectHref && <ConnectLink href={item.connectHref} variant="primary">Connect</ConnectLink>}

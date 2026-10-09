@@ -101,11 +101,11 @@ describe("the migration seeds exactly today's plans", () => {
   it("is identical to the code fallback (SEED_PLANS) and to the pricing page copy", () => {
     for (const [key, c] of Object.entries(SEED_PLANS)) {
       const r = row(key);
-      expect(r).toMatchObject({ name: c.name, description: c.description, isTrial: c.isTrial, trialDays: c.trialDays, sortOrder: c.sortOrder, highlight: c.highlight, monthly: c.priceUsdMonthly * 100, yearly: c.priceUsdYearly * 100, limits: Object.fromEntries(Object.entries(c.limits).filter(([k]) => k !== "seats")), features: c.features, caps: c.capabilities });
+      expect(r).toMatchObject({ name: c.name, description: c.description, isTrial: c.isTrial, trialDays: c.trialDays, sortOrder: c.sortOrder, highlight: c.highlight, monthly: c.priceUsdMonthly * 100, yearly: c.priceUsdYearly * 100, limits: Object.fromEntries(Object.entries(c.limits).filter(([k]) => k !== "seats")), features: c.highlights, caps: { apiAccess: c.features.includes("apiAccess"), ownComposio: c.features.includes("ownComposio") } });
       // seats arrive with their own migration (the plan_seats one); here only the original five limits are compared
       expect(Object.keys(r.limits).sort()).toEqual(["chat", "image", "text", "videoSeconds", "voiceCharacters"]);
     }
-    expect(SEED_PLANS.STANDARD.features).toEqual(["100 AI text generations a month", "50 brand designs a month", "Post to 5 social networks", "Lead-capturing chat widget", "Content calendar and scheduling"]);
+    expect(SEED_PLANS.STANDARD.highlights).toEqual(["100 AI text generations a month", "50 brand designs a month", "Post to 5 social networks", "Lead-capturing chat widget", "Content calendar and scheduling"]);
   });
 
   it("keeps existing subscriptions: the column becomes the same words as text, with a foreign key, and the overrides are folded in", () => {
@@ -175,7 +175,7 @@ describe("Paddle price ids map back to a plan, old ones too", () => {
 
 describe("creating a plan", () => {
   it("creates the Paddle product and both prices, goes live, and is audited", async () => {
-    const out = await createPlan(CONSOLE, { key: "starter", name: "Starter", description: "Small", monthlyPriceCents: 1900, yearlyPriceCents: 19000, status: "active", limits: { text: 20 }, features: ["20 posts"] });
+    const out = await createPlan(CONSOLE, { key: "starter", name: "Starter", description: "Small", monthlyPriceCents: 1900, yearlyPriceCents: 19000, status: "active", limits: { text: 20 }, highlights: ["20 posts"] });
     expect(out.paddle).toBe("synced");
     expect(out.plan).toMatchObject({ key: "starter", status: "active", syncState: "synced", paddleProductId: "pro_new" });
     expect(out.plan.paddleMonthlyPriceId).toMatch(/^pri_new_m/);
@@ -216,7 +216,7 @@ describe("creating a plan", () => {
     expect(await code(createPlan(CONSOLE, { key: "standard", name: "Dup", monthlyPriceCents: 100, yearlyPriceCents: 1000 }))).toBe("conflict");
     expect(await code(createPlan(CONSOLE, { key: "free-ish", name: "Free", monthlyPriceCents: 0, yearlyPriceCents: 0 }))).toBe("invalid");
     expect(await code(createPlan(CONSOLE, { key: "ok-plan", name: "Ok", monthlyPriceCents: 100, yearlyPriceCents: 1000, limits: { text: -1 } }))).toBe("invalid");
-    expect(await code(createPlan(CONSOLE, { key: "ok-plan", name: "Ok", monthlyPriceCents: 100, yearlyPriceCents: 1000, features: Array(13).fill("x") }))).toBe("invalid");
+    expect(await code(createPlan(CONSOLE, { key: "ok-plan", name: "Ok", monthlyPriceCents: 100, yearlyPriceCents: 1000, highlights: Array(13).fill("x") }))).toBe("invalid");
   });
 });
 
@@ -499,11 +499,11 @@ describe("retiring, hiding and the trial", () => {
 
 describe("audit rows", () => {
   it("every change writes one row with before and after, including for the API actor", async () => {
-    await updatePlan(API, "PRO", { name: "Pro Max", features: ["a", "b"] });
+    await updatePlan(API, "PRO", { name: "Pro Max", highlights: ["a", "b"] });
     const a = audits()[0];
     expect(a).toMatchObject({ action: "update_plan", target: "plan:PRO", actor: API.actor });
-    expect(a.before).toMatchObject({ name: "Pro", features: SEED_PLANS.PRO.features });
-    expect(a.after).toEqual({ name: "Pro Max", features: ["a", "b"] });
+    expect(a.before).toMatchObject({ name: "Pro", highlights: SEED_PLANS.PRO.highlights });
+    expect(a.after).toEqual({ name: "Pro Max", highlights: ["a", "b"] });
     await updatePlan(API, "PRO", { name: "Pro Max" }); // no change, no row
     expect(audits()).toHaveLength(1);
     await svc.updatePlanLimits(API, { plan: "PRO", limits: { chat: 1 }, confirm: true });

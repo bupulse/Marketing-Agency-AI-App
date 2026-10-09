@@ -727,7 +727,7 @@ export async function listPlansForTools() {
     paddleConnected,
     plans: plans.map((p) => ({
       key: p.key, name: p.name, description: p.description, status: p.status, isTrial: p.isTrial, trialDays: p.trialDays, sortOrder: p.sortOrder, highlight: p.highlight,
-      monthlyPriceCents: p.monthlyPriceCents, yearlyPriceCents: p.yearlyPriceCents, currency: p.currency, limits: p.limits, features: p.features, capabilities: p.capabilities,
+      monthlyPriceCents: p.monthlyPriceCents, yearlyPriceCents: p.yearlyPriceCents, currency: p.currency, limits: p.limits, highlights: p.highlights, features: p.features,
       clients: p.subscribers, payingClients: p.payingSubscribers, mrrCents: p.mrrCents, paddleSync: p.syncState, paddleSyncError: p.syncError,
     })),
   };

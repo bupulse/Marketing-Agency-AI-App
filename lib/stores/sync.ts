@@ -10,6 +10,7 @@
 import "server-only";
 import { disabledServices } from "@/lib/admin/switch";
 import { prisma } from "@/lib/db";
+import { hasFeature } from "@/lib/entitlements";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { logError } from "@/lib/errors";
 import { extensionFor } from "@/lib/media/rules";
@@ -405,6 +406,11 @@ export async function runDailyStoreSync(opts: { cursor?: string | null; now?: Da
     if (budget.used >= budget.max) break;
     processed++;
     let finished = false;
+    // Store import is a plan feature: a store of a company without it is stamped and left as it is (not failed).
+    if (!(await hasFeature(conn.businessId, "storeImport"))) {
+      await prisma.storeConnection.updateMany({ where: { id: conn.id }, data: { lastAttemptAt: new Date() } });
+      continue;
+    }
     try {
       // Keep going through this store's slices while the call's subrequest budget lasts; a store that does not finish
       // stays due (it is only stamped when done) and the next call continues with it.

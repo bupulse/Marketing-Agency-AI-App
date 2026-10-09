@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { checkActiveUser } from "@/lib/auth/require-user";
+import { hasFeature } from "@/lib/entitlements";
 import { ASPECT_RATIOS } from "@/lib/designs/layout";
 import { PACKS } from "@/lib/designs/packs";
 import { previewTemplate } from "@/lib/designs/service";
@@ -21,6 +22,7 @@ export async function GET(request: Request) {
   if (check.status === "signed_out") return new Response("Unauthorized", { status: 401 });
   if (check.status !== "ok") return new Response("Forbidden", { status: 403 });
   const user = check.user;
+  if (!(await hasFeature(user, "designs"))) return new Response("Branded designs are not part of your plan.", { status: 403 });
 
   const parsed = query.safeParse(Object.fromEntries(new URL(request.url).searchParams));
   const def = parsed.success ? TEMPLATES.find((t) => t.id === parsed.data.template) : undefined;

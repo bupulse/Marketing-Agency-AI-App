@@ -5,6 +5,7 @@ import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { randomToken } from "@/lib/canva/pkce";
 import { prisma } from "@/lib/db";
+import { hasFeature, upgradeHref } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { RATE_LIMITS, rateLimit, RateLimitError } from "@/lib/rate-limit";
 import { buildAuthorizeUrl, isShopifyEnabled, normalizeShopDomain, shopifyConfig, verifyOAuthHmac } from "@/lib/stores/shopify";
@@ -25,6 +26,8 @@ async function start(shopInput: string | null) {
   if (!shop) return back("invalid_shop");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (!business) return back("no_business");
+  // Store import is a plan feature: "Add to your plan" instead of Shopify's consent page.
+  if (!(await hasFeature(business.id, "storeImport"))) return NextResponse.redirect(new URL(upgradeHref("storeImport"), siteUrl()), 303);
   try {
     await rateLimit(`store-connect:${user.id}`, RATE_LIMITS.storeConnect);
     const state = randomToken(24);

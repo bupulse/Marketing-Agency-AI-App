@@ -4,22 +4,25 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
+import { featureBlocked } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { RATE_LIMITS, rateLimit, RateLimitError, rateLimitMessage } from "@/lib/rate-limit";
 import { connectCloudflare, disconnectCloudflare, installChat, uninstallChat, CloudflareUserError, type InstallOutcome } from "@/lib/cloudflare/service";
 
+/** The Cloudflare install puts the website chat on the client's site, so it is part of that plan feature. */
 async function businessId() {
   const user = await requireActiveUser("connectors");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
-  return { user, id: business?.id ?? null };
+  const missing = business ? await featureBlocked(business.id, "websiteChat") : null;
+  return { user, id: missing ? null : (business?.id ?? null), missing };
 }
 
 export type TokenState = { error?: string };
 
 /** The token goes from this form straight to Cloudflare and into encrypted storage; it is never sent back to the browser. */
 export async function connectCloudflareAction(_prev: TokenState, formData: FormData): Promise<TokenState> {
-  const { user, id } = await businessId();
-  if (!id) return { error: "Finish setting up your business first." };
+  const { user, id, missing } = await businessId();
+  if (!id) return { error: missing ?? "Finish setting up your business first." };
   try {
     await rateLimit(`store-connect:${user.id}`, RATE_LIMITS.storeConnect);
     await connectCloudflare(id, String(formData.get("token") ?? ""));
@@ -36,7 +39,8 @@ export async function connectCloudflareAction(_prev: TokenState, formData: FormD
 export type InstallResult = ({ ok: true } & InstallOutcome) | { ok: false; error: string };
 
 export async function installChatAction(zoneId: string): Promise<InstallResult> {
-  const { user, id } = await businessId();
+  const { user, id, missing } = await businessId();
+  if (missing) return { ok: false, error: missing };
   if (!id || typeof zoneId !== "string" || zoneId.length > 64) return { ok: false, error: "We could not find that domain." };
   try {
     await rateLimit(`store-connect:${user.id}`, RATE_LIMITS.storeConnect);
@@ -53,7 +57,8 @@ export async function installChatAction(zoneId: string): Promise<InstallResult> 
 }
 
 export async function removeChatAction(zoneId: string): Promise<{ ok: boolean; error?: string }> {
-  const { user, id } = await businessId();
+  const { user, id, missing } = await businessId();
+  if (missing) return { ok: false, error: missing };
   if (!id || typeof zoneId !== "string" || zoneId.length > 64) return { ok: false, error: "We could not find that domain." };
   try {
     await uninstallChat(id, zoneId);

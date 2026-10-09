@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireActiveUser } from "@/lib/auth/require-user";
+import { assertFeature, FeatureRequiredError } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import {
   businessIdFor,
@@ -41,10 +42,11 @@ async function guard<T extends object>(fn: (ctx: Ctx) => Promise<T>, options: { 
   try {
     const businessId = await businessIdFor(user.id);
     if (!businessId) return { ok: false, error: "Set up your business first." };
+    await assertFeature(businessId, "gallery");
     if (options.limit) await rateLimit(`media-edit:${user.id}`, MEDIA_RATE.edit);
     return { ok: true, ...(await fn({ userId: user.id, businessId })) };
   } catch (error) {
-    if (error instanceof MediaError) return { ok: false, error: error.message };
+    if (error instanceof MediaError || error instanceof FeatureRequiredError) return { ok: false, error: error.message };
     if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
     void logError(error, { source: "gallery.action", userId: user.id });
     return { ok: false, error: FAILED };

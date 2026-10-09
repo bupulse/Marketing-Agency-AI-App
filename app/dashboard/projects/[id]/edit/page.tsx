@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getAppContext } from "@/components/app/context";
+import { featureGate } from "@/components/app/no-access";
 import { PageHeader } from "@/components/app/page-header";
 import { ProjectForm } from "@/components/studio/project-form";
 import { detailsText } from "@/components/studio/helpers";
@@ -9,6 +10,8 @@ import { signPhotos } from "@/components/studio/queries";
 export const metadata = { title: "Edit project" };
 
 export default async function EditProjectPage({ params }: { params: Promise<{ id: string }> }) {
+  const blocked = await featureGate("content");
+  if (blocked) return blocked;
   const { id } = await params;
   const { business } = await getAppContext();
   if (!business) notFound();

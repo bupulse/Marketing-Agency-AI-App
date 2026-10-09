@@ -1,6 +1,7 @@
 import { PenLine } from "lucide-react";
 import { EmptyState } from "@/components/app/empty-state";
 import { getAppContext } from "@/components/app/context";
+import { featureGate } from "@/components/app/no-access";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui";
 import { ContentLibrary } from "@/components/studio/content-library";
@@ -9,6 +10,8 @@ import { loadContentLibrary } from "@/components/studio/queries";
 export const metadata = { title: "Content" };
 
 export default async function ContentPage() {
+  const blocked = await featureGate("content");
+  if (blocked) return blocked;
   const { business } = await getAppContext();
   const items = business ? await loadContentLibrary(business.id) : [];
 

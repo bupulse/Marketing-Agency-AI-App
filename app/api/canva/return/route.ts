@@ -5,6 +5,7 @@ import { siteUrl } from "@/lib/auth/site-url";
 import { isCanvaEnabled } from "@/lib/canva/config";
 import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { CanvaError, finishCanvaReturn, startCanvaReturn } from "@/lib/canva/service";
+import { hasFeature, upgradeHref } from "@/lib/entitlements";
 
 /** How long the browser waits for the export before being told it is still being saved. */
 const WAIT_MS = 30 * 1000;
@@ -43,6 +44,8 @@ export async function GET(request: Request) {
   if (check.status === "unconfirmed") return NextResponse.redirect(new URL("/login?error=confirm", siteUrl()));
   if (check.status === "locked") return NextResponse.redirect(new URL("/account/deletion", siteUrl()));
   if (check.status === "suspended") return NextResponse.redirect(new URL("/suspended", siteUrl()));
+  // The plan lost Canva while the person was editing there: nothing is imported.
+  if (!(await hasFeature(check.user, "canva"))) return NextResponse.redirect(new URL(upgradeHref("canva"), siteUrl()));
 
   try {
     const job = await startCanvaReturn(check.user.id, jwt, check.user.actorId);

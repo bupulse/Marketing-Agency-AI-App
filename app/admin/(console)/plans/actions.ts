@@ -6,7 +6,8 @@ import { actionMessage, adminAction, finish } from "@/lib/admin/console";
 import { cancelPriceChange, createPlan, previewPriceChange, retryFailedPriceItems, syncPlanToPaddle, updatePlan, type PlanInput } from "@/lib/admin/plans-service";
 import { AdminError } from "@/lib/admin/types";
 import { getPlan } from "@/lib/plan-catalog";
-import { CAPABILITIES, PLAN_STATUSES, USAGE_METRICS, type PlanStatus, type UsageMetric } from "@/lib/plans";
+import { FEATURE_KEYS } from "@/lib/features";
+import { PLAN_STATUSES, USAGE_METRICS, type PlanStatus, type UsageMetric } from "@/lib/plans";
 
 export type PlanFormState = { error?: string; confirm?: { lines: string[]; direction: string; affected: number; monthlyCents: number; yearlyCents: number } };
 
@@ -33,8 +34,9 @@ function readForm(f: FormData, isTrial: boolean): Partial<PlanInput> {
     sortOrder: numberOf(f, "sortOrder", "The order"),
     highlight: f.get("highlight") === "on",
     limits: Object.fromEntries([...USAGE_METRICS, "seats"].map((m) => [m, numberOf(f, `limit_${m}`, m === "seats" ? "Team seats" : `The ${m} limit`)])) as Record<UsageMetric | "seats", number>,
-    features: String(f.get("features") ?? "").split("\n").map((l) => l.trim()).filter(Boolean),
-    capabilities: Object.fromEntries(CAPABILITIES.map((c) => [c, f.get(`cap_${c}`) === "on"])),
+    highlights: String(f.get("highlights") ?? "").split("\n").map((l) => l.trim()).filter(Boolean),
+    // The checklist; the service validates prerequisites and refuses "coming soon" keys (the form only guides).
+    features: FEATURE_KEYS.filter((k) => f.get(`feature_${k}`) === "on"),
   };
   if (isTrial) {
     input.trialDays = numberOf(f, "trialDays", "The trial length");

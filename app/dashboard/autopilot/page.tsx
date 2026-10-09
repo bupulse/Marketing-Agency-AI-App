@@ -1,6 +1,7 @@
 import { Camera, Plug, Sparkles } from "lucide-react";
 import { getAppContext } from "@/components/app/context";
 import { EmptyState } from "@/components/app/empty-state";
+import { featureGate } from "@/components/app/no-access";
 import { PageHeader } from "@/components/app/page-header";
 import { PlanBoard } from "@/components/autopilot/plan-board";
 import { SettingsCard } from "@/components/autopilot/settings-card";
@@ -11,6 +12,8 @@ import { loadAutopilotView } from "@/lib/autopilot/view";
 export const metadata = { title: "Autopilot" };
 
 export default async function AutopilotPage() {
+  const blocked = await featureGate("autopilot");
+  if (blocked) return blocked;
   const { user, usage, role } = await getAppContext();
   const canConfigure = can(role, "autopilotSettings");
   const canConnect = can(role, "channels");

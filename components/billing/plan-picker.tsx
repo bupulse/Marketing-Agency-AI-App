@@ -101,7 +101,7 @@ export function PlanPicker({ plans, current }: Props) {
                 </p>
               </div>
               <ul className="flex flex-1 flex-col gap-2 text-[15px]">
-                {(plan.features.length > 0 ? plan.features : planFeatures(plan.limits)).map((f) => (
+                {(plan.highlights.length > 0 ? plan.highlights : planFeatures(plan.limits)).map((f) => (
                   <li key={f} className="flex items-start gap-2.5">
                     <Check aria-hidden className="mt-0.5 size-5 shrink-0 text-pulse-blue" />
                     {f}

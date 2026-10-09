@@ -1,6 +1,7 @@
 import { FolderKanban, Plus, Store } from "lucide-react";
 import { EmptyState } from "@/components/app/empty-state";
 import { getAppContext } from "@/components/app/context";
+import { featureGate } from "@/components/app/no-access";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui";
 import { ProjectGrid } from "@/components/studio/project-grid";
@@ -10,6 +11,8 @@ import { prisma } from "@/lib/db";
 export const metadata = { title: "Projects" };
 
 export default async function ProjectsPage() {
+  const blocked = await featureGate("content");
+  if (blocked) return blocked;
   const { business } = await getAppContext();
   const projects = business ? await loadProjectCards(business.id) : [];
   // One button per connected store ("Import from Shopify"), or a single "Import from your store" before any is connected.

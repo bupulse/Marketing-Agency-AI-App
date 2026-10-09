@@ -7,6 +7,7 @@ import { isCanvaEnabled } from "@/lib/canva/config";
 import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { openOAuthState, OAUTH_COOKIE, sameString } from "@/lib/canva/pkce";
 import { saveTokens } from "@/lib/canva/tokens";
+import { hasFeature } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 
 function back(next: string, result: "connected" | "denied" | "error") {
@@ -28,6 +29,8 @@ export async function GET(request: Request) {
   const next = safeNext(pending?.next, "/dashboard/designs");
 
   if (!pending || !sameString(pending.state, params.get("state") ?? "")) return back(next, "error");
+  // Canva editing is a plan feature: a company without it keeps no Canva tokens.
+  if (!(await hasFeature(user, "canva"))) return back(next, "error");
   if (params.get("error")) return back(next, params.get("error") === "access_denied" ? "denied" : "error");
   const code = params.get("code");
   if (!code) return back(next, "error");

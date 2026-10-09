@@ -11,6 +11,7 @@ import { getProvider, isNetwork } from "@/lib/social/registry";
 import { SocialError } from "@/lib/social/types";
 import { NETWORK_SERVICE } from "@/lib/admin/service-catalog";
 import { isServiceEnabled } from "@/lib/admin/switch";
+import { hasFeature, upgradeHref } from "@/lib/entitlements";
 
 function back(next: string, error: ConnectErrorCode) {
   const url = new URL(next, siteUrl());
@@ -34,6 +35,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ netw
   const requested = query.get("variant") ?? undefined;
 
   if (!isValidVariant(network, requested)) return back(next, "unavailable");
+  // Channels are part of the calendar feature: "Add to your plan" instead of the network's consent page.
+  if (!(await hasFeature(user, "calendar"))) return NextResponse.redirect(new URL(upgradeHref("calendar"), siteUrl()));
   // Switched off in the admin console: a friendly "unavailable" instead of starting the sign-in.
   if (NETWORK_SERVICE[network] && !(await isServiceEnabled(NETWORK_SERVICE[network]))) return back(next, "unavailable");
   const variant = requested ?? VARIANTS[network]?.[0];

@@ -11,6 +11,7 @@ import { getProvider, isNetwork } from "@/lib/social/registry";
 import { SocialError } from "@/lib/social/types";
 import { NETWORK_SERVICE } from "@/lib/admin/service-catalog";
 import { isServiceEnabled } from "@/lib/admin/switch";
+import { hasFeature } from "@/lib/entitlements";
 
 type Outcome = { error: ConnectErrorCode } | { connected: string } | { pick: string };
 
@@ -48,8 +49,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ netw
   if (!opened.ok) return done(fallback, { error: opened.reason === "expired" ? "expired" : "state" });
   const pending = opened.data;
   const next = safeNext(pending.next, fallback);
-  // Switched off while the person was on the network's consent page: show "unavailable" and keep nothing.
+  // Switched off (or the plan lost the calendar) while the person was on the network's consent page: show "unavailable" and keep nothing.
   if (NETWORK_SERVICE[network] && !(await isServiceEnabled(NETWORK_SERVICE[network]))) return done(next, { error: "unavailable" });
+  if (!(await hasFeature(user, "calendar"))) return done(next, { error: "unavailable" });
 
   if (!sameString(pending.state, query.get("state") ?? "")) return done(next, { error: "state" });
   if (query.get("error")) {

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
+import { featureBlocked } from "@/lib/entitlements";
 import { validateWidgetSettings } from "@/lib/widget/settings";
 
 export type SaveWidgetResult = { ok: true } | { ok: false; errors: Record<string, string> };
@@ -16,6 +17,8 @@ export async function saveWidgetSettings(input: unknown): Promise<SaveWidgetResu
     if (error instanceof ForbiddenError) return { ok: false, errors: { form: error.message } };
     throw error;
   }
+  const missing = await featureBlocked(user, "websiteChat");
+  if (missing) return { ok: false, errors: { form: missing } };
   const result = validateWidgetSettings(input);
   if (!result.ok) return result;
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });

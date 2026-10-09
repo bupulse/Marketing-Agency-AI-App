@@ -1,0 +1,57 @@
+import { Check, Clock } from "lucide-react";
+import { FEATURE_ICONS } from "@/components/app/nav";
+import { EmptyState } from "@/components/app/empty-state";
+import { PageHeader } from "@/components/app/page-header";
+import { Button } from "@/components/ui";
+import { UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
+import type { FeatureBlockReason } from "@/lib/entitlements";
+import { featureOf, type FeatureKey } from "@/lib/features";
+import { askMessage, can, type Role } from "@/lib/team/roles";
+
+/**
+ * The friendly page for a feature the company's plan does not include (or whose service is off right now):
+ * what it does, what it needs, and how to get it. Custom plans are arranged with the BuPulse team; until the
+ * request form exists (R5) the button goes to Billing.
+ */
+export function AddToPlan({ feature, reason = "not_in_plan", role, inPlan }: { feature: FeatureKey; reason?: FeatureBlockReason; role: Role; inPlan: ReadonlySet<FeatureKey> }) {
+  const def = featureOf(feature);
+  const Icon = FEATURE_ICONS[feature];
+  if (def.status === "coming_soon") {
+    return (
+      <>
+        <PageHeader title={def.label} description="Not available yet." />
+        <EmptyState icon={Clock} comingSoon title={`${def.label} is on its way`} text={def.description} />
+      </>
+    );
+  }
+  if (reason === "service_off") {
+    return (
+      <>
+        <PageHeader title={def.label} description="Part of your plan, paused for a short while." />
+        <EmptyState icon={Icon} title="Temporarily unavailable" text={UNAVAILABLE_MESSAGE} />
+      </>
+    );
+  }
+  const needs = def.requires.filter((k) => !inPlan.has(k)).map((k) => featureOf(k).label);
+  const points = [def.description, ...(needs.length ? [`Comes with ${needs.join(" and ")}, which it needs.`] : [])];
+  return (
+    <>
+      <PageHeader title={def.label} description="Not part of your plan yet." />
+      <EmptyState
+        icon={Icon}
+        title={`Add ${def.label} to your plan`}
+        text="Custom plans are put together with the BuPulse team: tell us what you need and we send you an offer to accept in Billing."
+        points={points}
+        action={
+          can(role, "billing") ? (
+            <Button href="/dashboard/billing" leading={<Check aria-hidden className="size-5" />}>
+              Ask for a custom plan
+            </Button>
+          ) : (
+            <p className="text-sm text-muted">{askMessage("billing")}</p>
+          )
+        }
+      />
+    </>
+  );
+}

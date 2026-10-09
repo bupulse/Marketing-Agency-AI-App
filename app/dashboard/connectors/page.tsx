@@ -33,9 +33,10 @@ function LinkCard({ href, icon, title, text, badge }: { href: string; icon: Reac
 export default async function ConnectorsPage() {
   const blocked = await pageGate("connectors");
   if (blocked) return blocked;
-  const { actorId, business } = await getAppContext();
+  const { actorId, business, entitlements } = await getAppContext();
   // Canva is personal (each teammate links their own account); everything else in the catalog belongs to the company.
-  const items = await getCatalog({ userId: actorId, businessId: business.id });
+  const items = await getCatalog({ userId: actorId, businessId: business.id, features: entitlements.inPlan });
+  const addable = (feature: "webhooks" | "apiAccess") => (entitlements.inPlan.has(feature) ? undefined : "Add to your plan");
 
   return (
     <div className="flex flex-col gap-6">
@@ -71,8 +72,8 @@ export default async function ConnectorsPage() {
         </div>
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] gap-4">
           <LinkCard href="/dashboard/connections" icon={<Share2 className="size-5" />} title="Social networks" text="Instagram, Facebook, LinkedIn, TikTok and YouTube accounts you publish to." />
-          <LinkCard href="/dashboard/connectors/webhooks" icon={<Webhook className="size-5" />} title="Webhooks" text="Send new leads, content and post results to Zapier, Make or your own system." />
-          <LinkCard href="/dashboard/connectors/api" icon={<KeyRound className="size-5" />} title="API keys" text="Let your own tools read your projects, posts and leads." badge="Pro" />
+          <LinkCard href="/dashboard/connectors/webhooks" icon={<Webhook className="size-5" />} title="Webhooks" text="Send new leads, content and post results to Zapier, Make or your own system." badge={addable("webhooks")} />
+          <LinkCard href="/dashboard/connectors/api" icon={<KeyRound className="size-5" />} title="API keys" text="Let your own tools read your projects, posts and leads." badge={addable("apiAccess")} />
         </ul>
       </section>
     </div>

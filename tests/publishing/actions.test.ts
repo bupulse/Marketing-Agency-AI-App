@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// Plans are not part of this test's database: every plan feature is granted (tests/stubs/entitlements.ts).
+vi.mock("@/lib/entitlements", () => import("@/tests/stubs/entitlements"));
 
 const prisma = vi.hoisted(() => ({
   business: { findUnique: vi.fn(), update: vi.fn() },

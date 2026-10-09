@@ -23,6 +23,7 @@
         if (why === "not_allowed" && isFile) warn("Not shown: pages opened as a file only work while testing BuPulse on this computer. Put the page on your website to use it.");
         else if (why === "not_allowed") warn("Not shown: " + host + " is not in this chat's allowed websites. Add it in BuPulse → Website chat.");
         else if (why === "disabled") warn("Not shown: the chat is switched off in BuPulse → Website chat.");
+        else if (why === "not_in_plan") warn("Not shown: website chat is not part of this BuPulse plan. Add it to the plan in BuPulse → Billing.");
         else if (why === "unknown_key") warn("Not shown: the data-key in the script tag is wrong. Copy the snippet again from BuPulse → Website chat.");
       })
       .catch(function () { warn("Not shown: could not reach " + base + "."); });

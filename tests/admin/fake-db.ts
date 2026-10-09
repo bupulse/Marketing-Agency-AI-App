@@ -111,8 +111,11 @@ export function seedPlanRows(): Row[] {
     yearlyPriceCents: c.priceUsdYearly * 100,
     currency: "USD",
     limits: { ...c.limits },
-    features: [...c.features],
-    capabilities: { ...c.capabilities },
+    highlights: [...c.highlights],
+    featureKeys: [...c.features],
+    // The legacy pair, as the plan_features migration leaves them.
+    features: [...c.highlights],
+    capabilities: { apiAccess: c.features.includes("apiAccess"), ownComposio: c.features.includes("ownComposio") },
     paddleProductId: null,
     paddleMonthlyPriceId: null,
     paddleYearlyPriceId: null,

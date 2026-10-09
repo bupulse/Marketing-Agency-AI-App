@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { hasFeature } from "@/lib/entitlements";
 import { runInBackground } from "@/lib/leads/background";
 import { attemptDelivery, toJson } from "./delivery";
 import { buildPayload, type WebhookEvent } from "./events";
@@ -11,6 +12,8 @@ import { buildPayload, type WebhookEvent } from "./events";
  */
 export async function emitWebhookEvent(businessId: string, event: WebhookEvent, data: unknown): Promise<number> {
   try {
+    // Webhooks are a plan feature: endpoints of a company without it stay but receive nothing.
+    if (!(await hasFeature(businessId, "webhooks"))) return 0;
     const endpoints = await prisma.webhookEndpoint.findMany({
       where: { businessId, enabled: true, pausedByAdminAt: null, events: { has: event } },
       select: { id: true, url: true, secretEncrypted: true, business: { select: { id: true, name: true } } },

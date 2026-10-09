@@ -48,7 +48,7 @@ export function PricingPlans({ plans }: { plans: PublicPlan[] }) {
               </p>
             </div>
             <ul className="flex flex-1 flex-col gap-3">
-              {plan.features.map((feature) => (
+              {plan.highlights.map((feature) => (
                 <li key={feature} className="flex items-start gap-3">
                   <Check aria-hidden className="mt-0.5 size-5 shrink-0 text-success" />
                   <span>{feature}</span>

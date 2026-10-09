@@ -11,6 +11,7 @@ import {
 } from "@/lib/billing/paddle-catalog";
 import { OPEN_ITEM_STATUSES, refreshChange } from "@/lib/billing/price-changes";
 import {
+  capabilitiesOf,
   clearPlanCache,
   currentPriceId,
   getPlans,
@@ -19,6 +20,7 @@ import {
   type PaddlePriceRecord,
   type PlanView,
 } from "@/lib/plan-catalog";
+import { validateFeatureSet, type FeatureKey } from "@/lib/features";
 import { CAPABILITIES, PLAN_STATUSES, SEATS_MAX, SEATS_MIN, SEED_PLANS, TRIAL_PLAN_KEY, USAGE_METRICS, type Capability, type PlanLimits, type PlanStatus, type UsageMetric } from "@/lib/plans";
 import { writeAudit } from "./audit";
 import { AdminError, type AdminContext } from "./types";
@@ -44,7 +46,11 @@ export type PlanInput = {
   highlight?: boolean;
   /** The usage limits and `seats` (users per company, 1 to 1000). */
   limits?: Partial<Record<UsageMetric | "seats", number>>;
+  /** Marketing bullets on the pricing card. */
+  highlights?: string[];
+  /** Feature keys (lib/features.ts). Every prerequisite must be in the list; "coming soon" features are refused. */
   features?: string[];
+  /** Alias from before the feature registry: apiAccess / ownComposio switch those two features. */
   capabilities?: Partial<Record<Capability, boolean>>;
 };
 
@@ -58,8 +64,8 @@ type Snapshot = {
   monthlyPriceCents: number;
   yearlyPriceCents: number;
   limits: PlanLimits;
-  features: string[];
-  capabilities: Record<Capability, boolean>;
+  highlights: string[];
+  features: FeatureKey[];
 };
 
 const snap = (p: PlanView): Snapshot => ({
@@ -72,11 +78,19 @@ const snap = (p: PlanView): Snapshot => ({
   monthlyPriceCents: p.monthlyPriceCents,
   yearlyPriceCents: p.yearlyPriceCents,
   limits: p.limits,
+  highlights: p.highlights,
   features: p.features,
-  capabilities: p.capabilities,
 });
 
 const json = (v: unknown) => v as Prisma.InputJsonValue;
+
+/** The four feature columns written together: the new pair and the legacy pair kept in step (see prisma/schema.prisma). */
+const featureColumns = (s: Pick<Snapshot, "highlights" | "features">) => ({
+  highlights: json(s.highlights),
+  featureKeys: json(s.features),
+  features: json(s.highlights),
+  capabilities: json(capabilitiesOf(s.features)),
+});
 
 function int(value: unknown, field: string, min: number, max: number): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
@@ -87,7 +101,7 @@ function int(value: unknown, field: string, min: number, max: number): number {
 
 /** Validates and merges a (partial) input over the current snapshot. Pure. */
 export function mergePlan(base: Snapshot, patch: Partial<PlanInput>, isTrial: boolean): Snapshot {
-  const next: Snapshot = { ...base, limits: { ...base.limits }, features: [...base.features], capabilities: { ...base.capabilities } };
+  const next: Snapshot = { ...base, limits: { ...base.limits }, highlights: [...base.highlights], features: [...base.features] };
   if (patch.name !== undefined) {
     const name = String(patch.name).trim();
     if (!name || name.length > 60) throw new AdminError("invalid", "The name is required (max 60 characters).");
@@ -125,17 +139,25 @@ export function mergePlan(base: Snapshot, patch: Partial<PlanInput>, isTrial: bo
       next.limits[metric as UsageMetric] = int(value, `The ${metric} limit`, 0, MAX_LIMIT);
     }
   }
-  if (patch.features !== undefined) {
-    const list = patch.features.map((f) => String(f).trim()).filter(Boolean);
-    if (list.length > 12) throw new AdminError("invalid", "A plan can list at most 12 features.");
-    if (list.some((f) => f.length > 120)) throw new AdminError("invalid", "Each feature can be at most 120 characters.");
-    next.features = list;
+  if (patch.highlights !== undefined) {
+    const list = patch.highlights.map((f) => String(f).trim()).filter(Boolean);
+    if (list.length > 12) throw new AdminError("invalid", "A plan can list at most 12 highlights.");
+    if (list.some((f) => f.length > 120)) throw new AdminError("invalid", "Each highlight can be at most 120 characters.");
+    next.highlights = list;
   }
+  let features: string[] | null = patch.features !== undefined ? patch.features.map((f) => String(f).trim()).filter(Boolean) : null;
   if (patch.capabilities !== undefined) {
+    features ??= [...next.features];
     for (const [cap, value] of Object.entries(patch.capabilities)) {
       if (!(CAPABILITIES as readonly string[]).includes(cap)) throw new AdminError("invalid", `Unknown capability "${cap}".`);
-      next.capabilities[cap as Capability] = value === true;
+      features = value === true ? [...new Set([...features, cap])] : features.filter((k) => k !== cap);
     }
+  }
+  if (features !== null) {
+    // Prerequisites are not added quietly: the form ticks them itself, and the API is told what is missing.
+    const checked = validateFeatureSet(features);
+    if (!checked.ok) throw new AdminError("invalid", checked.message);
+    next.features = checked.keys;
   }
   return next;
 }
@@ -326,8 +348,8 @@ export async function createPlan(ctx: AdminContext, input: PlanInput): Promise<{
     monthlyPriceCents: 0,
     yearlyPriceCents: 0,
     limits: { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0, chat: 0, seats: 1 },
+    highlights: [],
     features: [],
-    capabilities: { apiAccess: false, ownComposio: false },
   };
   const wanted = mergePlan(blank, { ...input, trialDays: undefined }, false);
   if (!wanted.name) throw new AdminError("invalid", "The name is required.");
@@ -349,8 +371,7 @@ export async function createPlan(ctx: AdminContext, input: PlanInput): Promise<{
         yearlyPriceCents: wanted.yearlyPriceCents,
         currency: "USD",
         limits: json(wanted.limits),
-        features: json(wanted.features),
-        capabilities: json(wanted.capabilities),
+        ...featureColumns(wanted),
         paddlePrices: json([]),
         syncState: "not_synced",
       },
@@ -487,8 +508,7 @@ export async function updatePlan(ctx: AdminContext, key: string, patch: Partial<
         monthlyPriceCents: next.monthlyPriceCents,
         yearlyPriceCents: next.yearlyPriceCents,
         limits: json(next.limits),
-        features: json(next.features),
-        capabilities: json(next.capabilities),
+        ...featureColumns(next),
         ...(priceChanged && connected
           ? { paddleProductId: productId, paddleMonthlyPriceId: monthlyId, paddleYearlyPriceId: yearlyId, paddlePrices: json(history), syncState: "synced", syncError: null }
           : {}),

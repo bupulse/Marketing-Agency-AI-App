@@ -26,6 +26,7 @@
  */
 
 import { createContext, useContext, useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Download, ImageIcon, Images, Sparkles, Trash2 } from "lucide-react";
 import { Button, Field, GlassCard, Input, Tabs, Textarea, useToast } from "@/components/ui";
@@ -62,8 +63,10 @@ export type DesignStudioProps = {
   pack?: PackId;
   showGallery?: boolean;
   galleryPhoto?: { path: string; url: string } | null;
-  /** Pass `isCanvaEnabled()` from the server page to show "Edit in Canva" on designs. */
+  /** Pass `isCanvaEnabled()` (and the plan's canva feature) from the server page to show "Edit in Canva" on designs. */
   canva?: boolean;
+  /** The plan's aiPhotos feature: shows the "Describe an image" tab. Templates are always there with the designs feature. */
+  aiPhotos?: boolean;
 };
 
 const CanvaEnabled = createContext(false);
@@ -602,7 +605,7 @@ function Gallery({ designs }: { designs: StudioDesign[] }) {
   );
 }
 
-export function DesignStudio({ projectId, defaults, designs, credits, hasLogo, pack, showGallery = true, galleryPhoto = null, canva = false }: DesignStudioProps) {
+export function DesignStudio({ projectId, defaults, designs, credits, hasLogo, pack, showGallery = true, galleryPhoto = null, canva = false, aiPhotos = true }: DesignStudioProps) {
   const order = useMemo(() => templatesForProjectType(defaults?.projectType ?? ""), [defaults?.projectType]);
   return (
     <CanvaEnabled value={canva}>
@@ -616,11 +619,25 @@ export function DesignStudio({ projectId, defaults, designs, credits, hasLogo, p
                 label: "From a template",
                 content: <TemplateTab projectId={projectId} defaults={defaults} order={order} pack={pack} credits={credits} galleryPhoto={galleryPhoto} />,
               },
-              {
-                value: "ai",
-                label: "Describe an image",
-                content: <AiTab projectId={projectId} defaults={defaults} credits={credits} hasLogo={hasLogo} galleryPhoto={galleryPhoto} />,
-              },
+              ...(aiPhotos
+                ? [
+                    {
+                      value: "ai",
+                      label: "Describe an image",
+                      content: <AiTab projectId={projectId} defaults={defaults} credits={credits} hasLogo={hasLogo} galleryPhoto={galleryPhoto} />,
+                    },
+                  ]
+                : [
+                    {
+                      value: "ai",
+                      label: "Describe an image",
+                      content: (
+                        <p className="text-[15px] text-muted">
+                          AI photos are not part of your plan. <Link href="/dashboard/upgrade?feature=aiPhotos" className="font-semibold underline">See what they do and add them to your plan.</Link>
+                        </p>
+                      ),
+                    },
+                  ]),
             ]}
           />
         </GlassCard>

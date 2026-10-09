@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { isServiceEnabled } from "@/lib/admin/switch";
+import { hasFeature } from "@/lib/entitlements";
 import { alertRecipients } from "@/lib/team/recipients";
 import { sendEmail } from "@/lib/publishing/email";
 import { dayKey, isValidTimeZone, zonedParts } from "@/lib/publishing/time";
@@ -61,6 +62,11 @@ export async function runLeadsDigest(now = new Date()): Promise<DigestResult> {
     result.checked++;
     const { business } = widget;
     if (!isDigestDue(business.timezone, widget.lastDigestAt, now)) continue;
+    // Website chat is a plan feature: a company without it gets no digest (its inbox is closed too).
+    if (!(await hasFeature(business.id, "websiteChat"))) {
+      result.skipped++;
+      continue;
+    }
     result.due++;
     try {
       const claimed = await prisma.chatWidget.updateMany({

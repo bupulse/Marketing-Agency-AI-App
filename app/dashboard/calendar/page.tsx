@@ -1,4 +1,5 @@
 import { getAppContext } from "@/components/app/context";
+import { featureGate } from "@/components/app/no-access";
 import { PageHeader } from "@/components/app/page-header";
 import { Calendar } from "@/components/publishing/calendar";
 import { loadCalendarPosts, loadComposerContext } from "@/lib/publishing/queries";
@@ -8,6 +9,8 @@ import { dayKey } from "@/lib/publishing/time";
 export const metadata = { title: "Calendar" };
 
 export default async function CalendarPage() {
+  const blocked = await featureGate("calendar");
+  if (blocked) return blocked;
   const { business, role } = await getAppContext();
   const now = new Date();
   const [posts, context] = await Promise.all([loadCalendarPosts(business.id, now), loadComposerContext(business.id)]);

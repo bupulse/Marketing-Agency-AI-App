@@ -9,7 +9,8 @@ import { ThemeToggle } from "@/components/theme";
 import { Avatar, Button, Meter, useToast } from "@/components/ui";
 import { readableTextColor } from "@/lib/color-contrast";
 import { cn } from "@/lib/cn";
-import { NAV_ITEMS } from "./nav";
+import { FEATURES, type FeatureKey } from "@/lib/features";
+import { FEATURE_ICONS, NAV_ITEMS } from "./nav";
 import { can, type Role } from "@/lib/team/roles";
 
 export type ShellPlan = {
@@ -37,8 +38,15 @@ type ShellProps = {
   businessName: string;
   plan: ShellPlan;
   role: Role;
+  /** The features of the company's plan (lib/features.ts). Pages for the others show "Add to your plan". */
+  features: FeatureKey[];
   children: ReactNode;
 };
+
+/** Built features of the app the plan does not include: offered in a small group under the navigation. */
+function addable(features: FeatureKey[]) {
+  return FEATURES.filter((f) => f.status === "built" && f.kind === "app" && !features.includes(f.key));
+}
 
 function isActive(pathname: string, href: string) {
   if (href === "/dashboard/settings") return pathname === href;
@@ -84,6 +92,7 @@ function Sidebar({
   businessName,
   brand,
   role,
+  features,
   onNavigate,
 }: {
   pathname: string;
@@ -91,8 +100,10 @@ function Sidebar({
   plan: ShellPlan;
   businessName: string;
   brand: ShellBrand;
+  features: FeatureKey[];
   onNavigate?: () => void;
 }) {
+  const missing = addable(features);
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5">
       <div className="px-2 pt-1">
@@ -109,7 +120,7 @@ function Sidebar({
         <span className="min-w-0 truncate text-sm font-semibold">{businessName}</span>
       </Link>
       <nav aria-label="App" className="flex flex-col gap-1">
-        {NAV_ITEMS.filter((item) => !item.permission || can(role, item.permission)).map(({ href, label, icon: Icon }) => {
+        {NAV_ITEMS.filter((item) => (!item.permission || can(role, item.permission)) && (!item.feature || features.includes(item.feature))).map(({ href, label, icon: Icon }) => {
           const active = isActive(pathname, href);
           return (
             <Link
@@ -134,6 +145,26 @@ function Sidebar({
           );
         })}
       </nav>
+      {missing.length > 0 && (
+        <nav aria-label="Add to your plan" className="flex flex-col gap-1">
+          <p className="px-3.5 pb-1 text-xs font-semibold uppercase tracking-wide text-muted">Add to your plan</p>
+          {missing.map(({ key, label }) => {
+            const Icon = FEATURE_ICONS[key];
+            const href = `/dashboard/upgrade?feature=${key}`;
+            return (
+              <Link
+                key={key}
+                href={href}
+                onClick={onNavigate}
+                className="flex min-h-11 items-center gap-3 rounded-2xl px-3.5 text-[14px] font-medium text-muted no-underline transition-colors duration-200 hover:bg-soft hover:text-text"
+              >
+                <Icon aria-hidden className="size-[18px] shrink-0" />
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
+      )}
       <div className="glass-strong mt-auto flex flex-col gap-2.5 rounded-[20px] p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[13px]">
           <strong>{plan.name}</strong>
@@ -220,6 +251,7 @@ function Drawer({
   businessName,
   brand,
   role,
+  features,
   onClose,
 }: {
   pathname: string;
@@ -227,6 +259,7 @@ function Drawer({
   plan: ShellPlan;
   businessName: string;
   brand: ShellBrand;
+  features: FeatureKey[];
   onClose: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -277,13 +310,13 @@ function Drawer({
         >
           <X aria-hidden className="size-5" />
         </button>
-        <Sidebar pathname={pathname} plan={plan} role={role} businessName={businessName} brand={brand} onNavigate={onClose} />
+        <Sidebar pathname={pathname} plan={plan} role={role} features={features} businessName={businessName} brand={brand} onNavigate={onClose} />
       </div>
     </div>
   );
 }
 
-export function AppShell({ brand, displayName, firstName, email, businessName, plan, role, children }: ShellProps) {
+export function AppShell({ brand, displayName, firstName, email, businessName, plan, role, features, children }: ShellProps) {
   const pathname = usePathname();
   const { toast } = useToast();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -319,10 +352,10 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
         aria-label="Sidebar"
         className="glass-strong hidden w-[248px] shrink-0 flex-col rounded-[28px] p-3.5 lg:sticky lg:top-5 lg:flex lg:max-h-[calc(100dvh-2.5rem)] lg:self-start lg:overflow-y-auto"
       >
-        <Sidebar pathname={pathname} plan={plan} role={role} businessName={businessName} brand={brand} />
+        <Sidebar pathname={pathname} plan={plan} role={role} features={features} businessName={businessName} brand={brand} />
       </aside>
 
-      {drawerOpen && <Drawer pathname={pathname} plan={plan} role={role} businessName={businessName} brand={brand} onClose={closeDrawer} />}
+      {drawerOpen && <Drawer pathname={pathname} plan={plan} role={role} features={features} businessName={businessName} brand={brand} onClose={closeDrawer} />}
 
       <div className="flex min-w-0 flex-1 basis-[min(100%,560px)] flex-col gap-5">
         <div className="flex flex-wrap items-center justify-between gap-3 px-1">

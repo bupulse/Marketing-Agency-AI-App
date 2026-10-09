@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { AIProviderError } from "@/lib/ai/types";
 import { requireActiveUser } from "@/lib/auth/require-user";
+import { featureBlocked } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError, type RateLimitRule } from "@/lib/rate-limit";
 import type { ZodError } from "zod";
@@ -116,6 +117,8 @@ export async function createProject(input: ProjectInput): Promise<ProjectResult>
   if (!parsed.success) return { ok: false, error: "Check the highlighted fields.", fieldErrors: flatErrors(parsed.error) };
   const business = await ownBusiness(user.id);
   if (!business) return { ok: false, error: "Set up your business first." };
+  const missing = await featureBlocked(business.id, "content");
+  if (missing) return { ok: false, error: missing };
   const blocked = await limited(`project:${user.id}`, RATE_LIMITS.projectCreate);
   if (blocked) return blocked;
   if ((await prisma.project.count({ where: { businessId: business.id } })) >= MAX_PROJECTS_PER_BUSINESS) {
@@ -188,6 +191,8 @@ export async function generateContent(projectId: string, input: { instruction?: 
   if (!instruction.success) return { ok: false, error: "Check the highlighted fields.", fieldErrors: { instruction: "Use 500 characters or fewer." } };
   const business = await ownBusiness(user.id);
   if (!business) return NOT_FOUND;
+  const missing = await featureBlocked(business.id, "content");
+  if (missing) return { ok: false, error: missing };
   const project = await prisma.project.findFirst({
     where: { id: projectId, businessId: business.id },
     select: { id: true, _count: { select: { contents: true } } },

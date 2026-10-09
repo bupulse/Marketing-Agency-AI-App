@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { PenLine } from "lucide-react";
 import { getAppContext } from "@/components/app/context";
+import { featureGate } from "@/components/app/no-access";
 import { Badge, Button, GlassCard } from "@/components/ui";
 import { ContentCard } from "@/components/studio/content-card";
 import { DeleteProjectButton } from "@/components/studio/delete-project";
@@ -14,8 +15,10 @@ import { typeLabel } from "@/components/studio/helpers";
 export const metadata = { title: "Project" };
 
 export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
+  const blocked = await featureGate("content");
+  if (blocked) return blocked;
   const { id } = await params;
-  const { business, usage } = await getAppContext();
+  const { business, usage, entitlements } = await getAppContext();
   if (!business) notFound();
   const detail = await loadProjectDetail(business.id, id);
   if (!detail) notFound();
@@ -69,9 +72,12 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         <ContentCard projectId={project.id} contents={contents} used={used} limit={limit} photos={photos} />
       )}
 
+      {/* Designs are their own plan feature; the project page keeps its content tools without them. */}
+      {entitlements.usable.has("designs") && (
       <DesignStudio
         pack={recommendPack(business)}
-        canva={isCanvaEnabled()}
+        canva={isCanvaEnabled() && entitlements.usable.has("canva")}
+        aiPhotos={entitlements.usable.has("aiPhotos")}
         projectId={project.id}
         defaults={{
           headline: project.title,
@@ -86,6 +92,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
         credits={{ used: usage.used.image, limit: usage.limits.image, resetsAt: usage.resetsAt?.toISOString() ?? null }}
         hasLogo={Boolean(business.logoUrl)}
       />
+      )}
     </>
   );
 }
