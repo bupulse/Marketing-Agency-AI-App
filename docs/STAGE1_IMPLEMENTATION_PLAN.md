@@ -229,6 +229,19 @@ Each phase ends with something you can open and test. A phase is accepted by you
 - **Price changes apply to existing clients.** Everyone moves to the new price at their next renewal, after an email warning sent 30 days before. A price cut can apply at the next renewal without the 30-day wait.
 - The pricing page, checkout and limits all read plans from the database. The current plans (Trial, Standard $49, Pro $99) are migrated over unchanged.
 
+**Companies and team members, decided 9 October 2026:**
+- **Companies can have several users, with roles.** A user belongs to one company in Stage 1.
+  - Owner: billing, plan, and deleting the company.
+  - Admin: everything except billing.
+  - Member: create and schedule content, and see leads.
+- Owners and Admins invite teammates from Settings → Team.
+- The plan, credits and limits belong to the company and are billed through the Owner.
+- **Admin console:** "Users" becomes "Companies". Clicking a company lists its users. The super admin can:
+  - create a user for a company: the user gets an email to confirm and to set their own password;
+  - send a password reset link;
+  - change a user's email and send the link to the new address. The old address gets a notice.
+- The super admin never sets or sees passwords; it uses reset links only. Every action is audited.
+
 ### Phase 9 — Hardening and launch
 
 - Security review: RLS on every table and bucket, auth on every route, token encryption, rate limits, input validation, secrets, OWASP top 10, widget isolation.
