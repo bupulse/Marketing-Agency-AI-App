@@ -246,3 +246,39 @@ About 57 hours of build work, plus about 9 hours from the owner.
 **Waits outside our control:** Paddle live approval takes a few days (card payments switch on when it arrives). Meta review takes 2–6 weeks and needs business verification. Until it's approved, Instagram and Facebook use reminder + copy-and-post, and the custom-plan video is used for in-person demos only.
 
 **Gap between the videos and v1:** the custom-plan video shows the lead alert arriving on WhatsApp. Real WhatsApp alerts need the WhatsApp Business Platform, which also needs Meta business verification. v1 sends an instant email and a browser notification, with a "Reply on WhatsApp" button that opens a chat with the visitor. Real WhatsApp alerts plug in once Meta verification is done.
+
+## 12. Decisions of 9 October 2026 (afternoon): pilot launch on 12 October
+
+**Two versions side by side**
+- **v1** is `~/BuPulse` on branch `main` (version 1.0.0). It stays as it is, apart from the update screen below.
+- **v2** is `~/BuPulse-v2` on branch `v2` (version 2.0.0). It is a git worktree of the same repository and runs on `localhost:3001` (`npm run dev`).
+- v2 uses its **own free Supabase project** for testing, so v1's data is never touched. Its `.env` has the database and Supabase values left empty until the owner fills them in.
+- When v2 is approved, it is merged into `main`, deployed, and handed over as a zip (without `node_modules`, `.next` or `.env`).
+
+**Updates from the admin (built in v1 and v2)**
+- Admin → Settings → **Updates** shows the running version, the newest release and its notes.
+- **Install update** needs a fresh authenticator code (AAL2). It starts the official deploy through GitHub Actions (`workflow_dispatch`): database backup check, migrations, then the new Worker.
+- The page shows the deploy's progress and offers **Roll back** to the previous Worker version.
+- The admin never uploads code. The button needs the repository on GitHub, a GitHub token with Actions permission in the Worker environment, and the deploy workflow.
+
+**No free trial at sign-up: demo first, then a trial**
+1. A new client signs up, chooses a plan, and books a demo time. Before the demo the dashboard only shows "Your demo is on …" and a short tour. Nothing else works.
+2. In the demo meeting we learn the business and show BuPulse.
+3. After the demo, the admin clicks **Start trial** on the company. The trial length is set in Admin → Settings (default **3 days**; this replaces the 7-day trial).
+4. When the trial ends:
+   - **MoMo clients** get reminders on days 2 and 3 and must pay to continue. If they don't, the account becomes read-only; nothing is deleted.
+   - **Card clients** add their card when the trial starts and are charged automatically at the end, unless they cancel.
+- This applies to every region. Section 2's "Rwanda: no trial" is replaced by this rule.
+
+**Scope for the pilot launch on Monday 12 October**
+- In:
+  - R2 (features and plan checks)
+  - R1 (regions, RWF prices by location)
+  - R4 (manual MoMo payments with admin approval)
+  - The demo-first trial, with a simple demo booking: pick a time from the owner's availability; email + calendar invite with the owner's reusable Google Meet link
+  - Admin "Start trial"
+  - The Updates screen
+  - Essential security checks
+  - Deploy
+- Custom plans are made by hand in the existing plan builder (a private plan per company).
+- Later in the week: R3 custom-plan builder and offers, the R5 request form, card payments (once Paddle is live), the full R7 review, and re-recording the videos.
