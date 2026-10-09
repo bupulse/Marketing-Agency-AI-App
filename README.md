@@ -1,5 +1,7 @@
 # BuPulse
 
+# BuPulse
+
 The AI marketing team for every small business: content generation, a lead-capturing
 chat widget, and (later) video, voiceover and performance learning.
 
@@ -21,6 +23,3 @@ Stack: Next.js 16 (TypeScript, Tailwind), Supabase (Postgres + Auth), Prisma 7, 
 3. `npm run dev` and open http://localhost:3000/login
 
 Trial: 7 days, 10 text generations and 5 images. Limits live in `lib/plans.ts`.
-# Marketing-Agency-AI-App
-# Marketing-Agency-AI-App
-# Marketing-Agency-AI-App
