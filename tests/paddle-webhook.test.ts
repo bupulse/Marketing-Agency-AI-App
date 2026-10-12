@@ -13,8 +13,7 @@ const { planFind, alert, upsert, update, findFirst, findUnique, subUpdate, logEr
   subUpdate: vi.fn(),
   logError: vi.fn(),
 }));
-vi.mock("@/lib/db", async () => {
-  const { seedPlanRows } = await import("./admin/fake-db");
+vi.mock("@/lib/db", () => {
   return { prisma: { billingEvent: { upsert, update }, subscription: { findFirst, findUnique, updateMany: subUpdate }, planDefinition: { findMany: planFind }, planRegionPrice: { findMany: vi.fn(async () => []) } } };
 });
 vi.mock("@/lib/errors", () => ({ logError }));
