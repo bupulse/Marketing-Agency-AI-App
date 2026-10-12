@@ -21,7 +21,7 @@ export const PUBLIC_LIMITS = {
 } satisfies Record<string, { ip: RateLimitRule; email?: RateLimitRule }>;
 export type PublicLimit = keyof typeof PUBLIC_LIMITS;
 
-/** The caller's address: the host's own header (lib/platform/headers.ts), else the first x-forwarded-for hop (local dev), else null. */
+/** The caller's address: the host's own header (lib/platform/headers.ts), else (plain Node only, local dev) the first x-forwarded-for hop, else null. */
 export function clientIpFrom(h: Headers): string | null {
   return clientIp(h);
 }

@@ -1,5 +1,5 @@
 import "server-only";
-// Is the Google Geocoding API usable? Until the Google project has billing (or the API enabled), Google answers
+// Only for GEO_PROVIDER=google (the built-in provider is always available). Is the Google Geocoding API usable? Until the Google project has billing (or the API enabled), Google answers
 // REQUEST_DENIED, and the pricing page should not offer "Use my location" at all. The answer is cached ~10 minutes per
 // server instance; a denial is logged once per change, never shown to visitors. Resolves to the API key, or null.
 import { logError } from "@/lib/errors";

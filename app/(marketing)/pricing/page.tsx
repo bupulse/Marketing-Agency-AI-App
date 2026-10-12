@@ -9,7 +9,7 @@ import { PricingPlans } from "./pricing-plans";
 import { UseMyLocation } from "./use-my-location";
 import { faqs, fillFaq } from "@/lib/content/site";
 import { getSetting } from "@/lib/admin/settings";
-import { geocodingAvailable } from "@/lib/geo-availability";
+import { geoLookupAvailable } from "@/lib/geo/provider";
 import { displayRegionWithOverride } from "@/lib/region";
 import { currencyNote } from "@/lib/region-format";
 import { getRegionPlans } from "@/lib/region-prices";
@@ -28,7 +28,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   const sp = await searchParams;
   // ?region= only counts when REGION_OVERRIDE=1 (local development); see lib/region.ts.
   const region = await displayRegionWithOverride(sp.region);
-  const [plans, trialDays, canLocate] = await Promise.all([getRegionPlans(region.key), getSetting("trialDays"), geocodingAvailable()]);
+  const [plans, trialDays, canLocate] = await Promise.all([getRegionPlans(region.key), getSetting("trialDays"), geoLookupAvailable()]);
   const days = `${trialDays} ${trialDays === 1 ? "day" : "days"}`;
   const pricingFaqs = fillFaq(faqs, trialDays).filter((f) => /get started|marketing experience|type of business|done-for-you/i.test(f.q));
   return (
