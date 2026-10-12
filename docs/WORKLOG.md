@@ -56,10 +56,11 @@ The autonomous loop reads this file, takes the first open task, does it (build â
 
 ## Publish-ready checklist (goal: deploy v2 on Wed 14 Oct)
 - [x] Launch basics: WhatsApp button (NEXT_PUBLIC_WHATSAPP_NUMBER), MoMo/Airtel/Card badges on pricing, /api/status (07dd006).
-- [ ] Billing fixes from the journey tests (MoMo payment settles the matching invoice; regional Paddle price ids): `v2-journeys`, then a Sonnet review.
+- [x] Billing fixes from the journey tests + two review rounds (exact-amount invoice settlement, payment review list, unmapped Paddle prices with admin Reprocess): merged (b59efd8); Paddle setup now subscribes to transaction.completed and adjustment.* (5e58c2f).
 - [ ] R3 custom plans and offers + R5 custom-plan request form: `v2-offers`, then review.
-- [ ] Final security review of everything since 615da00: done, no critical/high. Fixes on `v2-secfix` (region mismatch flag, widget AI share, CI pinning) and `v2-journeys` (exact-amount invoice settlement).
+- [x] Final security review of everything since 615da00: no critical/high; all findings fixed and merged (2f5100f, b59efd8).
 - [x] Meta app review pack: `docs/META_APP_REVIEW.md` (9e0991f).
 - [x] Release prep: `docs/RELEASE_2.0.md` (release notes, owner tasks, go-live order, backups, rollback, limits). Offline Netlify build to re-run on the final head.
 - [ ] Owner: test v2 on localhost:3001; Netlify + production Supabase (free) + Resend DNS; MoMo Pay code; availability; Connect Google Calendar; reset keys pasted in chat.
 - [ ] Merge v2 into `main`, deploy, one real 100 RWF MoMo payment, zip handover.
+- 2026-10-12 20:25: internet outage 17:41â€“20:12 interrupted the agents; resumed. Security fixes and billing fixes merged; migrations applied to the test database.
