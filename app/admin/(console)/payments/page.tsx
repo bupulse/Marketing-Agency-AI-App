@@ -9,7 +9,8 @@ import { dateTime, money, param } from "@/lib/admin/format";
 import { listManualPayments, type ManualPaymentAdminView } from "@/lib/billing/momo";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
 import { momoConfigured } from "@/lib/billing/momo-shared";
-import { confirmPaymentAction, rejectPaymentAction, savePaymentSettingsAction } from "./actions";
+import { listUnprocessedPaddleEvents } from "@/lib/billing/paddle-events";
+import { confirmPaymentAction, rejectPaymentAction, reprocessCardEventAction, savePaymentSettingsAction } from "./actions";
 
 export const metadata = { title: "Payments" };
 
@@ -37,10 +38,11 @@ function Who({ p }: { p: ManualPaymentAdminView }) {
 export default async function PaymentsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireAdmin(); // pages render alongside the layout, so check here too
   const sp = await searchParams;
-  const [pendingPage, history, settings] = await Promise.all([
+  const [pendingPage, history, settings, cardEvents] = await Promise.all([
     listManualPayments({ status: "pending", limit: 100 }),
     listManualPayments({ limit: 100 }),
     getMomoSettings(),
+    listUnprocessedPaddleEvents(),
   ]);
   const toCheck = pendingPage.items.filter((p) => p.submitted);
   const started = pendingPage.items.filter((p) => !p.submitted);
@@ -108,6 +110,24 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
             </tbody>
           </TableWrap>
         </Panel>
+      )}
+
+      {cardEvents.length > 0 && (
+        <div id="card-events">
+          <Panel title={`Card events not applied (${cardEvents.length})`} description="Paddle sent these but BuPulse could not apply them yet (usually a price that is not synced with a plan). Fix the mapping, then Reprocess. Paddle's own retries also apply them.">
+            <ul className="flex flex-col divide-y divide-line">
+              {cardEvents.map((e) => (
+                <li key={e.id} className="flex flex-wrap items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                  <div className="min-w-0">
+                    <p className="font-semibold">{e.type} <span className="font-mono text-[13px] font-normal text-muted">{e.eventId}</span></p>
+                    <p className="text-[13px] text-muted">{dateTime(e.createdAt)}{e.error ? ` · ${e.error}` : ""}</p>
+                  </div>
+                  <ConfirmButton action={reprocessCardEventAction} fields={{ id: e.id }} label="Reprocess" title={`Reprocess ${e.type}?`} description="Runs the stored event again, once. The result is audited." confirmLabel="Reprocess" />
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        </div>
       )}
 
       <Panel title="History" description="Confirmed, rejected and expired payments, newest first.">

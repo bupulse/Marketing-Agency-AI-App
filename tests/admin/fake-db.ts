@@ -31,6 +31,7 @@ function match(row: Row, where: Where): boolean {
   return Object.entries(where).every(([key, cond]) => {
     if (key === "OR") return (cond as Where[]).some((w) => match(row, w));
     if (key === "month_category") return row.month === cond.month && row.category === cond.category;
+    if (key === "provider_eventId") return row.provider === cond.provider && row.eventId === cond.eventId;
     if (key === "planKey_regionKey") return row.planKey === cond.planKey && row.regionKey === cond.regionKey;
     if (key === "addonKey_regionKey") return row.addonKey === cond.addonKey && row.regionKey === cond.regionKey;
     // Relation filter on a business: its account user's subscription (lib/demo and lib/admin/demos).
@@ -219,7 +220,7 @@ export function createFakeDb() {
       uniqueWhere: [
         { key: "reference", when: (r) => !String(r.reference ?? "").startsWith("BP-INV-") },
         { key: "invoiceId", when: (r) => r.invoiceId != null && (r.status === "pending" || r.status === "confirmed") },
-        // One pending payment per company, and one live payment per offer (20261013120000_custom_plan_offers).
+        // One pending payment per company, and one live payment per offer (20261014100000_custom_plan_offers).
         { key: "userId", when: (r) => r.status === "pending" },
         { key: "offerId", when: (r) => r.offerId != null && (r.status === "pending" || r.status === "confirmed") },
       ],

@@ -71,8 +71,9 @@ checkout for it, and mark the offer paid when the webhook applies the subscripti
   what the business does, goals, features of interest (the registry, coming-soon ones included), an optional budget
   range and phone. Linked to the company and its live demo booking. The owner of BuPulse (`ADMIN_EMAILS`) is emailed.
   Rate-limited to 3 a day per company.
-- **Entry points:** pricing page "Need something different? Request a custom plan" (a visitor signs in or signs up
-  first, and talks it through in the demo), Billing, the demo screen, and "Add to your plan" (with that feature ticked).
+- **Entry points:** pricing page "Need something different? Request a custom plan" (goes to sign-up with
+  `next=/custom-plan?from=pricing`; after confirming the email, /welcome and /onboarding the visitor lands on the form;
+  a signed-in visitor goes straight there), Billing, the demo screen, and "Add to your plan" (with that feature ticked).
 - **Admin → Clients → Plan requests** (badge = new): status `new` / `contacted` / `offered` / `closed`, a link to the
   company and **Customise plan**, which opens the editor with the requested features ticked. Sending that offer marks the
   request `offered`.
@@ -106,4 +107,4 @@ checkout for it, and mark the offer paid when the webhook applies the subscripti
 - UI: `components/billing/offer-card.tsx`, `offer-actions.tsx`, `components/app/offer-banner.tsx`, `demo-lock.tsx`,
   `invoice-lock.tsx`, `components/admin/offer-editor.tsx`, `company-offers.tsx`, `app/admin/(console)/{offers,addon-prices,requests}`,
   `app/custom-plan`, `components/offers/custom-plan-form.tsx`, Billing and pricing pages.
-- Migration `20261013120000_custom_plan_offers`. Tests `tests/offers/*`.
+- Migration `20261014100000_custom_plan_offers`. Tests `tests/offers/*`.

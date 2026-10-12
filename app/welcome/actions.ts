@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { fieldErrors, welcomeSchema, type FieldErrors } from "@/lib/auth/schemas";
 import { regionFromCountryName } from "@/lib/region";
+import { noteRegionMismatch } from "@/lib/region-check";
 import { timezoneForCountryName } from "@/lib/region-format";
 import { resolveIndustryChoice } from "@/lib/industries/server";
 
@@ -46,5 +47,7 @@ export async function saveOrganisation(_prev: WelcomeState, formData: FormData):
     data: { ...details, country, pricingRegion: await regionFromCountryName(country), ...(timezone ? { timezone } : {}), detailsCompletedAt: new Date() },
   });
   if (first.count === 0) await prisma.business.update({ where: { userId: user.id }, data: details });
+  // The region was just set from the declared country: compare it with the IP country (soft, never blocks; docs/REGIONS.md).
+  else await noteRegionMismatch(user.businessId, "signup");
   redirect("/onboarding");
 }

@@ -16,6 +16,7 @@ import { cancelManualPayment, currentManualPayment, ManualPaymentError, startInv
 import type { ManualPaymentView } from "@/lib/billing/momo-shared";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
 import { acceptOffer, OfferError } from "@/lib/offers/service";
+import { noteRegionMismatch } from "@/lib/region-check";
 import type { CheckoutConfig, Invoice, PaidPlan } from "@/lib/billing";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 
@@ -71,6 +72,8 @@ export async function startCheckout(input: { plan: string; interval: string }): 
     return { ok: false, error: "Your plan is paid by Mobile Money until the end of the current period. You can switch to card after that." };
   }
   if (!user.email) return { ok: false, error: "Add an email address to your account first." };
+  // Soft region check: a checkout from a dearer region's IP is flagged for the admin, never refused (docs/REGIONS.md).
+  await noteRegionMismatch(user.businessId, "card");
   // The plan must be offered in the company's region, at the region's price. Billing never looks at the visitor's IP.
   const { region, plans } = await companyPlans(user.businessId);
   if (!plans.some((p) => p.key === plan)) return { ok: false, error: NOT_IN_REGION };
@@ -257,6 +260,8 @@ export async function startMomoPayment(input: { plan: string; interval: string }
   if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
   const limited = await momoLimited(user.id);
   if (limited) return limited;
+  // Soft region check: a payment started from a dearer region's IP is flagged for the admin, never refused (docs/REGIONS.md).
+  await noteRegionMismatch(user.businessId, "momo");
   if (input && typeof input === "object" && "invoiceId" in input) {
     const invoiceId = String(input.invoiceId ?? "");
     if (!invoiceId || invoiceId.length > 64) return { ok: false, error: "We could not find that invoice." };
@@ -328,6 +333,8 @@ export async function acceptOfferAction(input: { offerId: string; method: string
     if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
     throw error;
   }
+  // Same soft region check as the other Mobile Money starts (flagged for the admin, never refused).
+  if (method === "momo") await noteRegionMismatch(user.businessId, "momo");
   try {
     await acceptOffer({ userId: user.id, actorId: user.actorId, businessId: user.businessId, offerId, method });
     revalidatePath("/dashboard", "layout");

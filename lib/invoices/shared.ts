@@ -331,24 +331,61 @@ export function cardPaymentOf(event: { event_type?: unknown; occurred_at?: unkno
   };
 }
 
+type PayableInvoice = { sentAt: Date | null; totalMinor: number; currency: string; planKey: string | null; interval: string | null; lines?: unknown };
+type PaymentFacts = Pick<CardPayment, "amountMinor" | "currency" | "paidAt" | "origin">;
+
 /**
- * Which open invoice a card payment settles, or null. Only invoices for the paid plan and interval that were sent
- * before the payment. An invoice whose total and currency equal the payment wins (the newest such). Otherwise (an RWF
- * invoice paid at the plan's USD card price) only a first purchase settles one, the newest; a renewal never settles an
- * invoice it does not match exactly.
+ * Which open invoice a payment (card or Mobile Money) pays. Only invoices for the paid plan and interval that were sent
+ * before the payment are considered, newest first.
+ *  - `settle`: the invoice is marked paid, only when the payment is provably for it: its total and currency equal the
+ *    payment, or it is a single plan line whose amount equals the payment. The newest such invoice.
+ *  - `review`: no invoice matches, but the newest candidate may be the one paid (an RWF invoice paid at the plan's USD
+ *    card price, an invoice with extra lines such as a setup fee). Nothing is marked paid: the caller records the
+ *    payment on the invoice for an admin to check. A renewal (`subscription_recurring`) neither settles nor needs review.
  */
-export function invoiceForCardPayment<T extends { sentAt: Date | null; totalMinor: number; currency: string; planKey: string | null; interval: string | null }>(
-  invoices: readonly T[],
-  pay: Pick<CardPayment, "amountMinor" | "currency" | "paidAt" | "origin">,
-  plan: { plan: string; interval: string },
-): T | null {
+export function matchInvoicePayment<T extends PayableInvoice>(invoices: readonly T[], pay: PaymentFacts, plan: { plan: string; interval: string }): { settle: T | null; review: T | null } {
+  // A renewal of a plan that is already running never pays or flags an invoice.
+  if (pay.origin === "subscription_recurring") return { settle: null, review: null };
   const candidates = invoices
     .filter((i) => i.sentAt && i.sentAt.getTime() <= pay.paidAt.getTime() && i.planKey === plan.plan && i.interval === plan.interval)
     .sort((a, b) => (b.sentAt as Date).getTime() - (a.sentAt as Date).getTime());
-  const exact = candidates.find((i) => i.totalMinor === pay.amountMinor && i.currency.toUpperCase() === pay.currency);
-  if (exact) return exact;
-  if (pay.origin === "subscription_recurring") return null;
-  return candidates[0] ?? null;
+  const sameCurrency = (i: T) => i.currency.toUpperCase() === pay.currency;
+  const settle =
+    candidates.find((i) => i.totalMinor === pay.amountMinor && sameCurrency(i)) ??
+    candidates.find((i) => {
+      const lines = readLines(i.lines);
+      return lines.length === 1 && lines[0].quantity * lines[0].unitMinor === pay.amountMinor && sameCurrency(i);
+    }) ??
+    null;
+  if (settle) return { settle, review: null };
+  return { settle: null, review: candidates[0] ?? null };
+}
+
+/** The invoice a payment settles by itself, or null (see matchInvoicePayment). */
+export function invoiceForCardPayment<T extends PayableInvoice>(invoices: readonly T[], pay: PaymentFacts, plan: { plan: string; interval: string }): T | null {
+  return matchInvoicePayment(invoices, pay, plan).settle;
+}
+
+/** One payment received for an invoice that could not be matched to its total (an entry of Invoice.paymentReview). */
+export type PaymentReview = { source: "paddle" | "momo"; reference: string; amountMinor: number; currency: string; receivedAt: string; planKey: string | null; interval: string | null };
+
+function oneReview(value: unknown): PaymentReview | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  if ((v.source !== "paddle" && v.source !== "momo") || typeof v.reference !== "string" || typeof v.amountMinor !== "number" || typeof v.currency !== "string" || typeof v.receivedAt !== "string") return null;
+  return { source: v.source, reference: v.reference, amountMinor: v.amountMinor, currency: v.currency, receivedAt: v.receivedAt, planKey: typeof v.planKey === "string" ? v.planKey : null, interval: typeof v.interval === "string" ? v.interval : null };
+}
+
+/** Safe read of Invoice.paymentReview: the payments received for the invoice that wait for an admin (a list; a single object is read as one entry). */
+export function readPaymentReviews(value: unknown): PaymentReview[] {
+  return (Array.isArray(value) ? value : value ? [value] : []).map(oneReview).filter((r): r is PaymentReview => r !== null);
+}
+
+/** The list with `next` added; never overwrites. A payment already on it (same source and reference, a replay) is not added twice. */
+export function withPaymentReview(existing: unknown, next: PaymentReview): { list: PaymentReview[]; added: boolean } {
+  const list = readPaymentReviews(existing);
+  if (list.some((r) => r.source === next.source && r.reference === next.reference)) return { list, added: false };
+  return { list: [...list, next], added: true };
 }
 
 // ---- logo checks ---------------------------------------------------------------------------------------------

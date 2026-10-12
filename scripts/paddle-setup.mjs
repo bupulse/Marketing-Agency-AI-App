@@ -28,6 +28,11 @@ const EVENTS = [
   "subscription.paused",
   "subscription.resumed",
   "transaction.payment_failed",
+  // A completed card payment may pay an open invoice (docs/INVOICES.md); refunds are checked before an admin marks a
+  // flagged invoice paid.
+  "transaction.completed",
+  "adjustment.created",
+  "adjustment.updated",
 ];
 const PLANS = {
   STANDARD: { name: "BuPulse Standard", MONTH: 49, YEAR: 490 },

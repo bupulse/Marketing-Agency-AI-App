@@ -53,3 +53,14 @@ The autonomous loop reads this file, takes the first open task, does it (build â
 - AI: the owner has $30 of AI credit. Set AI_MONTHLY_BUDGET_USD to 30 and warn at 80%.
 - 2026-10-12 16:10: invoices, offline "Use my location", follow-ups (read-only webhooks/API, legal text) and Netlify hosting merged into `v2`. Fixed a dev-only database pool error (33b6bd1). Knowledge Base part 1 is getting its review fixes; part 2 is being built.
 - 2026-10-12 16:50: Knowledge base (parts 1 and 2) merged into `v2`, migrations applied to the test database, 2246 tests and the build pass. Journey tests found 2 billing bugs; fixes in progress on `v2-journeys`.
+
+## Publish-ready checklist (goal: deploy v2 on Wed 14 Oct)
+- [x] Launch basics: WhatsApp button (NEXT_PUBLIC_WHATSAPP_NUMBER), MoMo/Airtel/Card badges on pricing, /api/status (07dd006).
+- [x] Billing fixes from the journey tests + two review rounds (exact-amount invoice settlement, payment review list, unmapped Paddle prices with admin Reprocess): merged (b59efd8); Paddle setup now subscribes to transaction.completed and adjustment.* (5e58c2f).
+- [ ] R3 custom plans and offers + R5 custom-plan request form: `v2-offers`, then review.
+- [x] Final security review of everything since 615da00: no critical/high; all findings fixed and merged (2f5100f, b59efd8).
+- [x] Meta app review pack: `docs/META_APP_REVIEW.md` (9e0991f).
+- [x] Release prep: `docs/RELEASE_2.0.md` (release notes, owner tasks, go-live order, backups, rollback, limits). Offline Netlify build to re-run on the final head.
+- [ ] Owner: test v2 on localhost:3001; Netlify + production Supabase (free) + Resend DNS; MoMo Pay code; availability; Connect Google Calendar; reset keys pasted in chat.
+- [ ] Merge v2 into `main`, deploy, one real 100 RWF MoMo payment, zip handover.
+- 2026-10-12 20:25: internet outage 17:41â€“20:12 interrupted the agents; resumed. Security fixes and billing fixes merged; migrations applied to the test database.

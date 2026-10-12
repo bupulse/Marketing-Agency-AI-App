@@ -88,6 +88,11 @@ model Business {
   timezone                String    @default("UTC") // IANA zone for the calendar and posting times, e.g. "Africa/Kigali"
   // PricingRegion.key, set from the sign-up country (lib/region.ts). Billing always uses this, never the visitor's IP.
   pricingRegion           String    @default("GLOBAL")
+  // Soft region check (lib/region-check.ts): the IP country seen at sign-up or a payment start mapped to a dearer
+  // region than pricingRegion. Never blocks; shown to the admin with "Change region". Kept after a dismissal (dismissedAt)
+  // so the same country is not flagged again; regionMismatchAt is set only while the flag is open (the attention list).
+  regionMismatch          Json?
+  regionMismatchAt        DateTime?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
@@ -124,6 +129,7 @@ model Business {
   interview        MarketingInterview?
 
   @@index([industryId])
+  @@index([regionMismatchAt])
 }
 
 // LEGACY, read-only since the Knowledge base (docs/KNOWLEDGE_BASE.md): what the business promoted before Products and
@@ -1580,6 +1586,10 @@ model Invoice {
   reminderSentAt DateTime? // the due-date reminder, claimed before sending
   paidAt         DateTime?
   paidBy         String? // "momo:<ManualPayment id>" | "manual:<ManualPayment id>" | "paddle:<subscription id>"
+  // A payment that arrived for this invoice but could not be matched to its total (a card payment at the plan's USD
+  // price for an RWF invoice, an invoice with extra lines): { source, reference, transactionId, amountMinor, currency,
+  // receivedAt, planKey, interval }. The invoice stays "sent" until an admin checks and marks it paid.
+  paymentReview  Json?
   voidedAt       DateTime?
   voidReason     String?
   createdBy      String // AuditLog actor

@@ -46,6 +46,7 @@ vi.mock("@/lib/billing/apply", () => ({ applyProviderSubscription: vi.fn() }));
 vi.mock("@/lib/billing/methods", () => ({ paymentMethod: () => ({}) }));
 vi.mock("@/lib/billing/momo", () => ({ ManualPaymentError: class extends Error {}, startInvoicePayment: vi.fn(), cancelManualPayment: vi.fn(), currentManualPayment: vi.fn() }));
 vi.mock("@/lib/region-prices", () => ({ companyPlans: vi.fn(), regionPriceIdFor: vi.fn() }));
+vi.mock("@/lib/region-check", () => ({ noteRegionMismatch: vi.fn(async () => null) }));
 vi.mock("@/lib/plan-catalog", () => ({ getPlan: vi.fn(), priceIdFor: vi.fn() }));
 
 import { saveOfferAction, withdrawOfferAction } from "@/app/admin/(console)/offers/actions";

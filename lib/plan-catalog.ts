@@ -195,7 +195,7 @@ function seedViews(): PlanView[] {
 }
 
 /** Every plan (any status), in sort order. Cached for 30 s; on a database error the last good copy (or the seed plans) is used. */
-export async function getPlans(opts: { force?: boolean; now?: number } = {}): Promise<PlanView[]> {
+export async function getPlans(opts: { force?: boolean; now?: number; strict?: boolean } = {}): Promise<PlanView[]> {
   const now = opts.now ?? Date.now();
   if (!opts.force && lastGood && now - fetchedAt < TTL_MS) return lastGood;
   try {
@@ -204,7 +204,9 @@ export async function getPlans(opts: { force?: boolean; now?: number } = {}): Pr
     lastGood = rows.map(viewOf).sort((a, b) => a.sortOrder - b.sortOrder);
     fetchedAt = now;
     return lastGood;
-  } catch {
+  } catch (error) {
+    // `strict` (webhook price lookups): a database error must not look like "no such plan", so it is thrown.
+    if (opts.strict) throw error;
     // The database blinking must never stop generation or reset limits: keep the last good copy, and retry on the next call.
     return lastGood ?? seedViews();
   }
@@ -260,8 +262,8 @@ export async function priceIdFor(provider: BillingProvider, planKey: string, int
  * Which plan and interval a provider price id stands for, or null if it is not ours. Current ids and every old id in a
  * plan's price history count, so subscriptions still on an old price keep their plan.
  */
-export async function planForPriceId(provider: BillingProvider, priceId: string): Promise<{ plan: Plan; interval: BillingInterval } | null> {
-  const plans = await getPlans();
+export async function planForPriceId(provider: BillingProvider, priceId: string, opts: { strict?: boolean } = {}): Promise<{ plan: Plan; interval: BillingInterval } | null> {
+  const plans = await getPlans(opts.strict ? { force: true, strict: true } : {});
   for (const plan of plans) {
     for (const interval of ["MONTH", "YEAR"] as const) {
       if (currentPriceId(provider, plan, interval) === priceId) return { plan: plan.key, interval };

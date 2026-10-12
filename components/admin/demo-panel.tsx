@@ -5,7 +5,7 @@ import { Badge, Button, Select, type BadgeTone } from "@/components/ui";
 import { demoPanel } from "@/lib/admin/demos";
 import { dateTime } from "@/lib/admin/format";
 import { getRegions } from "@/lib/region";
-import { companyRegionAction, demoStatusAction } from "@/app/admin/(console)/demos/actions";
+import { companyRegionAction, demoStatusAction, dismissRegionMismatchAction } from "@/app/admin/(console)/demos/actions";
 import { ActivateAccount } from "./activate-account";
 import { SubscriptionStatus } from "./subscription-status";
 import { subscriptionSummary } from "@/lib/admin/subscription-summary";
@@ -20,6 +20,7 @@ const SUB: Record<string, { label: string; tone: BadgeTone }> = {
   CANCELED: { label: "Cancelled", tone: "neutral" },
   EXPIRED: { label: "Expired", tone: "neutral" },
 };
+const SOURCE: Record<string, string> = { signup: "sign-up", momo: "a Mobile Money payment", card: "a card checkout" };
 const DEMO: Record<string, string> = { booked: "Booked", done: "Done", no_show: "No-show", cancelled: "Cancelled" };
 
 /** The company page's "Demo and trial" panel: where the company is in the demo-first flow, its region, and the admin buttons. */
@@ -80,6 +81,20 @@ export async function DemoPanel({ businessId, back }: { businessId: string; back
             <span className="text-xs text-muted">Now: {regionName}. Audited.</span>
           </form>
         </dd>
+        {p.regionMismatch && (
+          <>
+            <dt className="text-muted">Region check</dt>
+            <dd className="flex flex-col gap-1.5">
+              <span>
+                <Badge tone="danger">Check region</Badge>{" "}
+                Seen from {p.regionMismatch.country} ({regions.find((r) => r.key === p.regionMismatch?.ipRegion)?.name ?? p.regionMismatch.ipRegion}, dearer prices) at {SOURCE[p.regionMismatch.source]}, {dateTime(p.regionMismatch.seenAt)}
+                {p.regionMismatch.firstSeenAt !== p.regionMismatch.seenAt && <> (first {dateTime(p.regionMismatch.firstSeenAt)})</>}.
+              </span>
+              <span className="text-xs text-muted">The company signed up as {regionName}. Nothing was blocked. If it really is in {p.regionMismatch.country}, pick that region above and Change region; if not (travelling, a VPN), dismiss.</span>
+              <ConfirmButton action={dismissRegionMismatchAction} fields={{ businessId, back }} label="Dismiss" title="Keep the company's region?" description="The flag is closed and this country is not raised again for this company. Written to the audit log." confirmLabel="Dismiss" />
+            </dd>
+          </>
+        )}
       </dl>
       <div className="flex flex-wrap gap-2">
         {sub?.status === "PENDING_DEMO" && (

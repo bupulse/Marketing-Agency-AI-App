@@ -7,6 +7,7 @@ import { getIndustries, slugForIndustryName } from "@/lib/industries/server";
 import { INDUSTRY_DESCRIPTION_MIN } from "@/lib/industries/shared";
 import { phoneCountry, toE164 } from "@/lib/phone";
 import { regionFromCountryName } from "@/lib/region";
+import { noteRegionMismatch } from "@/lib/region-check";
 import { timezoneForCountryName } from "@/lib/region-format";
 
 type SignUpDetails = {
@@ -144,6 +145,9 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
     const track = { userId: authUser.id, businessId: created.business?.id, sessionId };
     // trial_started is recorded when an admin starts the trial after the demo (lib/admin/demos.ts).
     await trackEvent(EVENT_NAMES.signup, { ...track, props: { method: signUpMethodOf(authUser), industry: sector.industry, region: pricingRegion } });
+    // Soft region check: the sign-up's IP country in a dearer region than the declared country is flagged for the
+    // admin (docs/REGIONS.md). Google sign-ups pick their country on /welcome, which checks then.
+    if (created.business?.id && details.country) await noteRegionMismatch(created.business.id, "signup");
   }
   return true;
 }

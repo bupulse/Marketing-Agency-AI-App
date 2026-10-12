@@ -59,9 +59,10 @@ jobs:
       # The workflow's own commit first (the pushed commit, or main for a manual start). A requested ref is checked
       # before any of its code runs: only a vX.Y.Z tag or a full SHA, and only if it is on main's history, so a branch
       # or an unreviewed commit can never be deployed with the production secrets (docs/UPDATES.md).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Check and check out the requested release
         id: build
         env:
@@ -69,10 +70,11 @@ jobs:
           REQUESTED: ${{ inputs.ref }}
         run: |
           set -euo pipefail
+          # fetch-depth 0 already brought every branch and tag (origin/main included), so nothing is fetched here:
+          # the checkout keeps no credentials (persist-credentials: false), so no later step can read a GitHub token.
           if [ "$EVENT" = "workflow_dispatch" ]; then
-            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+            git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null || { echo "::error::origin/main is missing from the checkout."; exit 1; }
             if [[ "$REQUESTED" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              git fetch --no-tags origin "+refs/tags/$REQUESTED:refs/tags/$REQUESTED"
               TARGET="$(git rev-parse --verify "refs/tags/$REQUESTED^{commit}")"
             elif [[ "$REQUESTED" =~ ^[0-9a-f]{40}$ ]]; then
               TARGET="$REQUESTED"
@@ -92,7 +94,7 @@ jobs:
           fi
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "Deploying $(git rev-parse HEAD) (requested: ${REQUESTED:-$GITHUB_SHA})" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -121,8 +123,10 @@ jobs:
     timeout-minutes: 10
     environment: production
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm

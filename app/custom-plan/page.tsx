@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 // state, including while waiting for the demo, so the request can be talked through in the demo call.
 export default async function CustomPlanPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const check = await checkActiveUser();
-  if (check.status === "signed_out") redirect("/login?next=/custom-plan");
+  if (check.status === "signed_out") redirect(`/signup?next=${encodeURIComponent("/custom-plan")}`);
   if (check.status === "unconfirmed") redirect("/login?error=confirm");
   if (check.status === "suspended") redirect("/suspended");
   if (check.status === "locked") redirect("/account/deletion");
@@ -30,9 +30,12 @@ export default async function CustomPlanPage({ searchParams }: { searchParams: P
   const source: RequestSource = (REQUEST_SOURCES as readonly string[]).includes(from) ? (from as RequestSource) : "billing";
   const feature = one(sp.feature);
   const business = user.businessId
-    ? await prisma.business.findUnique({ where: { id: user.businessId }, select: { name: true, description: true, industryDescription: true, phone: true, detailsCompletedAt: true, user: { select: { subscription: { select: { status: true } } } } } })
+    ? await prisma.business.findUnique({ where: { id: user.businessId }, select: { name: true, description: true, industryDescription: true, phone: true, detailsCompletedAt: true, onboardedAt: true, user: { select: { subscription: { select: { status: true } } } } } })
     : null;
+  // A brand-new account finishes /welcome and /onboarding first; the return cookie set when the sign-up email was
+  // confirmed (lib/auth/return-path.ts) brings it back here afterwards.
   if (!business?.detailsCompletedAt) redirect("/welcome");
+  if (!business.onboardedAt) redirect("/onboarding");
   const pendingDemo = business.user?.subscription?.status === "PENDING_DEMO";
   const back = pendingDemo ? { href: "/dashboard", label: "Back to your demo" } : { href: "/dashboard/billing", label: "Back to Billing" };
 

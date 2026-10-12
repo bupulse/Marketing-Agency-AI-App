@@ -305,7 +305,14 @@ the profile the knowledge blocks stay under about 2,000 tokens.
   `assertCompanyWithinBudget`, called by `withLedger`). Over it, `CompanyBudgetExceededError` (a kind of
   `AIBudgetExceededError`, so every caller that pauses on the platform cap pauses on it) says "Your monthly AI
   allowance is reached. It renews on the 1st of next month." to the owner (Studio, designs, Autopilot notes and
-  regenerate). The admin client view (Usage tab) shows "AI spend this month: $x of $3".
+  regenerate). The admin client view (Usage tab) shows "AI spend this month: $x of $3", and the split below.
+- **Website chat share.** Replies of the website chat (ledger feature `widget`) may use at most `WIDGET_AI_SHARE`
+  (default 0.5) of the company's allowance a month, and never past the whole allowance; the owner's own features may
+  use the allowance minus what the chat used within its share, so visitors can never push the owner below their own
+  share (`companyCallAllowed`, `companySpendThisMonth` in `lib/ai/budget.ts`). Over its share the chat gets
+  `WidgetBudgetExceededError` and falls back to collecting the visitor's details (the contact form), the credit is
+  refunded and nothing is logged as an error. The Usage tab shows "Website chat AI, this month: $x of $y" and
+  "Owner features AI, this month".
 - Rate limits per company account (`lib/rate-limit.ts`): `projectCreate` 30 an hour for new products, campaigns and
   copies; `knowledgeEdit` 300 an hour for saves, status changes, deletes and album edits; `profileSave` 60 an hour;
   gallery uploads keep `media-upload`. Caps: 500 products, 300 campaigns per company (checked under an advisory lock).

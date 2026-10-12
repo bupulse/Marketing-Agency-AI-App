@@ -254,6 +254,8 @@ async function UsageTab({ c }: { c: C }) {
         <Stat label="AI calls, 30 days" value={num(u.ai.calls30d)} source="AI call ledger" />
         <Stat label="Failed AI calls" value={num(u.ai.failures30d)} source="AI call ledger" />
         <Stat label="AI spend this month" value={`$${u.ai.monthUsd.toFixed(2)} of $${u.ai.allowanceUsd.toFixed(2)}`} source="Company allowance (AI_COMPANY_MONTHLY_USD)" />
+        <Stat label="Website chat AI, this month" value={`$${u.ai.widgetUsd.toFixed(2)} of $${u.ai.widgetCapUsd.toFixed(2)}`} source="Chat share (WIDGET_AI_SHARE); when used, the chat collects details" />
+        <Stat label="Owner features AI, this month" value={`$${u.ai.ownerUsd.toFixed(2)}`} source="Studio, Autopilot, designs and the rest" />
       </div>
     </>
   );

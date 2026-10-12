@@ -248,6 +248,19 @@ describe("accept -> pay by Mobile Money -> activate", () => {
     expect(await msg(momo.submitManualProof(USER, { paymentId: r.payment!.id, transactionId: "MP12345678", payerPhone: "078 123 4567", network: "MTN" }, LATER))).toMatch(/already been used/);
   });
 
+  it("an offer's own payment never settles or flags another open invoice of the company", async () => {
+    seed();
+    const id = await sentOffer();
+    await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
+    // An invoice the admin made by hand for the same plan, interval and amount: a plain payment would settle it.
+    h.db.invoice.rows.push({ id: "inv_other", number: "BP-INV-0099", businessId: "biz1", status: "sent", currency: "RWF", lines: [{ description: "Custom", quantity: 1, unitMinor: 73000 }], subtotalMinor: 73000, taxMinor: 0, totalMinor: 73000, planKey: customPlanKeyFor(id), interval: "MONTH", sentAt: NOW, sentTo: [], paymentReview: null, createdAt: NOW });
+    await payByMomo(id);
+    expect(offerRow(id).status).toBe("paid");
+    expect(h.db.invoice.rows.find((r) => r.id === "inv_other")).toMatchObject({ status: "sent", paymentReview: null });
+    expect(audits("invoice_paid")).toHaveLength(0);
+    expect(audits("invoice_payment_review")).toHaveLength(0);
+  });
+
   it("a newer paid offer replaces the custom plan: the old one is retired", async () => {
     seed();
     const first = await sentOffer();

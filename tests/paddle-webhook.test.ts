@@ -2,8 +2,10 @@ import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { upsert, update, findFirst, findUnique, subUpdate, logError, settle } = vi.hoisted(() => ({
+const { planFind, alert, upsert, update, findFirst, findUnique, subUpdate, logError, settle } = vi.hoisted(() => ({
   settle: vi.fn(async () => null),
+  alert: vi.fn(async () => true),
+  planFind: vi.fn(),
   upsert: vi.fn(),
   update: vi.fn(),
   findFirst: vi.fn(),
@@ -11,10 +13,11 @@ const { upsert, update, findFirst, findUnique, subUpdate, logError, settle } = v
   subUpdate: vi.fn(),
   logError: vi.fn(),
 }));
-vi.mock("@/lib/db", () => ({
-  prisma: { billingEvent: { upsert, update }, subscription: { findFirst, findUnique, updateMany: subUpdate } },
-}));
+vi.mock("@/lib/db", () => {
+  return { prisma: { billingEvent: { upsert, update }, subscription: { findFirst, findUnique, updateMany: subUpdate }, planDefinition: { findMany: planFind }, planRegionPrice: { findMany: vi.fn(async () => []) } } };
+});
 vi.mock("@/lib/errors", () => ({ logError }));
+vi.mock("@/lib/billing/momo-emails", () => ({ sendUnmappedPriceAlertEmail: alert }));
 vi.mock("@/lib/invoices/service", () => ({ settleInvoiceFromCardPayment: settle }));
 
 import { POST } from "@/app/api/billing/webhooks/paddle/route";
@@ -57,6 +60,9 @@ describe("paddle webhook route", () => {
     SIG = await signCheckoutUser(USER);
     process.env.PADDLE_WEBHOOK_SECRET = SECRET;
     process.env.PADDLE_PRICE_STANDARD_MONTH = "pri_std_m";
+    planFind.mockReset();
+    planFind.mockImplementation(async () => (await import("./admin/fake-db")).seedPlanRows());
+    alert.mockClear();
     upsert.mockResolvedValue({ id: "be_1", processedAt: null });
     update.mockResolvedValue({});
     findFirst.mockResolvedValue(null);
@@ -106,11 +112,34 @@ describe("paddle webhook route", () => {
     expect(subUpdate).not.toHaveBeenCalled();
   });
 
-  it("keeps an unknown price for a retry (likely a missing price setting)", async () => {
+  it("an unknown price answers 200 but stays UNPROCESSED with an 'unmapped' note and one alert; a Paddle replay processes it once the mapping exists", async () => {
+    const unknown = event({ items: [{ price: { id: "pri_other" } }] });
+    const response = await call(unknown);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, unmapped: true });
+    expect(subUpdate).not.toHaveBeenCalled();
+    expect(update.mock.calls[0][0].data).toEqual({ error: expect.stringMatching(/^unmapped: price pri_other/) }); // no processedAt
+    expect(logError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ source: "billing.webhook.paddle.unmapped", priceId: "pri_other" }));
+    expect(alert).toHaveBeenCalledWith(expect.objectContaining({ priceId: "pri_other", subscriptionId: "sub_1" }));
+    // Paddle sends it again, still unmapped: answered 200 again, no second alert.
+    alert.mockClear();
+    upsert.mockResolvedValue({ id: "be_1", processedAt: null, error: "unmapped: price pri_other is not one of our plans or region prices; nothing applied" });
+    expect((await call(unknown)).status).toBe(200);
+    expect(alert).not.toHaveBeenCalled();
+    // Now the price is mapped (env), and the replay of the same unprocessed event is applied and marked processed.
+    process.env.PADDLE_PRICE_STANDARD_YEAR = "pri_other";
+    expect((await call(unknown)).status).toBe(200);
+    expect(subUpdate).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls.at(-1)?.[0].data).toEqual({ processedAt: expect.any(Date), error: null });
+    delete process.env.PADDLE_PRICE_STANDARD_YEAR;
+  });
+
+  it("a database error while looking the price up is a 500 (Paddle retries), never 'unmapped'", async () => {
+    planFind.mockRejectedValueOnce(new Error("connection reset"));
     const response = await call(event({ items: [{ price: { id: "pri_other" } }] }));
     expect(response.status).toBe(500);
-    expect(subUpdate).not.toHaveBeenCalled();
-    expect(update.mock.calls[0][0].data).toEqual({ error: expect.stringMatching(/Unknown Paddle price/) });
+    expect(alert).not.toHaveBeenCalled();
+    expect(update.mock.calls[0][0].data).toEqual({ error: "connection reset" });
   });
 
   it("ignores an unknown user without failing", async () => {

@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   reject: vi.fn(),
   save: vi.fn(),
   rateLimit: vi.fn<(key: string, rule: unknown) => Promise<void>>(async () => {}),
+  noteRegionMismatch: vi.fn(async () => null as unknown),
 }));
 
 vi.mock("@/lib/auth/require-user", () => ({ requireActiveUser: h.requireActiveUser }));
@@ -30,6 +31,7 @@ vi.mock("@/lib/billing/momo", async (orig) => {
   return { ManualPaymentError, cancelManualPayment: h.cancel, currentManualPayment: h.current, confirmManualPayment: h.confirm, rejectManualPayment: h.reject };
 });
 vi.mock("@/lib/billing/momo-settings", () => ({ saveMomoSettings: h.save }));
+vi.mock("@/lib/region-check", () => ({ noteRegionMismatch: h.noteRegionMismatch }));
 vi.mock("@/lib/rate-limit", async (orig) => ({ ...(await orig<typeof import("@/lib/rate-limit")>()), rateLimit: h.rateLimit }));
 vi.mock("@/lib/admin/console", async () => {
   const { AdminError } = await import("@/lib/admin/types");
@@ -69,6 +71,8 @@ describe("client actions", () => {
     h.adapter.startPayment.mockResolvedValue({ id: "p1", reference: "BP-7K3Q" });
     expect(await a.startMomoPayment({ plan: "STANDARD", interval: "YEAR" })).toEqual({ ok: true, payment: { id: "p1", reference: "BP-7K3Q" } });
     expect(h.adapter.startPayment).toHaveBeenCalledWith({ userId: "owner", plan: "STANDARD", interval: "YEAR" });
+    // The soft region check runs for the company and never blocks.
+    expect(h.noteRegionMismatch).toHaveBeenCalledWith("b1", "momo");
   });
 
   it("start, I've paid and cancel share one limit per company (momo:<company>), answered in words", async () => {
@@ -87,6 +91,13 @@ describe("client actions", () => {
     expect(h.adapter.startPayment).toHaveBeenCalledTimes(1);
     expect(h.adapter.submitProof).not.toHaveBeenCalled();
     expect(h.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("a region mismatch is recorded but the payment still starts", async () => {
+    h.noteRegionMismatch.mockResolvedValueOnce({ country: "KE", ipRegion: "EAC", companyRegion: "RW", source: "momo", seenAt: "", firstSeenAt: "" });
+    h.adapter.startPayment.mockResolvedValueOnce({ id: "p1" });
+    const a = await import("@/app/dashboard/billing/actions");
+    expect(await a.startMomoPayment({ plan: "STANDARD", interval: "MONTH" })).toEqual({ ok: true, payment: { id: "p1" } });
   });
 
   it("service refusals come back in words; anything else is generic", async () => {

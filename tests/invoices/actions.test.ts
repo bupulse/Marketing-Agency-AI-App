@@ -104,7 +104,7 @@ describe("admin actions", () => {
     await a.markInvoicePaidAction(form({ id: "inv1", method: "MTN", reference: " MP123456 " }));
     expect(h.svc.markInvoicePaid).toHaveBeenCalledWith(CTX, "inv1", { method: "MTN", reference: "MP123456" });
     await a.voidInvoiceAction(form({ id: "inv1", reason: "Re-issued" }));
-    expect(h.svc.voidInvoice).toHaveBeenCalledWith(CTX, "inv1", "Re-issued");
+    expect(h.svc.voidInvoice).toHaveBeenCalledWith(CTX, "inv1", "Re-issued", expect.any(Date), { acknowledgePayment: false });
   });
 
   it("Activate account: a trial for the days typed (1 to 90), or a draft invoice opened in the editor", async () => {
@@ -174,7 +174,8 @@ describe("PDF routes", () => {
     expect(ok.status).toBe(200);
     expect(ok.headers.get("content-type")).toBe("application/pdf");
     expect(ok.headers.get("content-disposition")).toBe('attachment; filename="BP-INV-0001.pdf"');
-    expect(h.rateLimit).toHaveBeenCalledWith("invoice-pdf:owner", expect.anything());
+    // Per company (the limit says so): teammates share one bucket.
+    expect(h.rateLimit).toHaveBeenCalledWith("invoice-pdf:biz1", expect.anything());
   });
 
   it("admin: 404 unless an AAL2 admin session", async () => {

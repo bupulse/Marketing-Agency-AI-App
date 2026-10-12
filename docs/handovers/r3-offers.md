@@ -21,7 +21,7 @@ database was touched: the migration was written and `npx prisma generate` was ru
 
 ## Migration
 
-`20261013120000_custom_plan_offers` (after `20261013110000_knowledge_base_2`): `PlanDefinition.isCustom` / `businessId`
+`20261014100000_custom_plan_offers` (after v2's `20261014090000_region_mismatch`): `PlanDefinition.isCustom` / `businessId`
 (FK SET NULL); tables `AddonPrice`, `PlanOffer` (status/amount/method CHECKs, partial unique one sent-or-accepted per
 company, unique `customPlanKey`), `CustomPlanRequest` (FK CASCADE so a deleted company takes contact details with it);
 `ManualPayment.offerId` (FK SET NULL) with partial unique one live payment per offer; RLS on and `REVOKE ALL` for the
@@ -37,6 +37,21 @@ deploy`, then the code (the new code reads `ManualPayment.offerId` and `PlanDefi
   (yearly = 10 months; monthly = yearly / 10 rounded up) for renewals.
 - Invoice VAT follows the invoice settings (default none), as for activation invoices.
 - No EAC/GLOBAL add-on prices are seeded (the plan gives none). Extra social channel is not an add-on (no such limit).
+
+## Merged with v2 (14 October 2026)
+
+- Billing fixes: in `confirmManualPayment` a plain payment (no invoice) is matched against open invoices
+  (`matchInvoicePayment`, settle or flag for review). An offer's own payment is excluded from that matching
+  (`else if (!offer)`): `markOfferPaidInTx` voids the offer's own invoice instead, so an offer payment never settles or
+  flags another invoice. Offer activation still runs once, inside the same transaction (also for Mark as paid, which
+  goes through the confirmation). Test: "an offer's own payment never settles or flags another open invoice".
+- Security fixes: accepting an offer with Mobile Money calls `noteRegionMismatch(…, "momo")` like the other MoMo starts.
+- Migration renamed to `20261014100000_custom_plan_offers` (after `20261014090000_region_mismatch`); v2's
+  `20261013120000_invoice_payment_review` keeps its name.
+- Sign-up return: the pricing page's "Request a custom plan" goes to `/signup?next=/custom-plan?from=pricing`. The
+  existing return path carries it: confirmation email link → `/auth/confirm` (return cookie) → `/welcome` →
+  `/onboarding` → `takeReturn()` → the form. `/custom-plan` sends a not-yet-onboarded account to `/welcome` /
+  `/onboarding` first. Test: `tests/offers/signup-return.test.ts`. The return cookie lasts 1 hour from confirming.
 
 ## Checks (13 October 2026)
 
@@ -58,6 +73,5 @@ unique indexes.
 ## Open items
 
 - Card payment of an offer (Paddle one-off price) — see `docs/OFFERS.md`, "Card".
-- A visitor from the pricing page signs in/up first; the `next=/custom-plan` return is only kept on sign-in.
 - Admin notice on Payments does not say a payment is for an offer (the plan column shows "Custom").
 - MRR in the plan builder ignores custom plans (they are left out of that list); the revenue roll-up still counts them.
