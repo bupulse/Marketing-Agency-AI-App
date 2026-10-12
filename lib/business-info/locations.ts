@@ -128,17 +128,10 @@ export function blockLabel(text: string | undefined): string {
   return /^[A-Za-z0-9]{1,3}$/.test(t) ? `Block ${t.toUpperCase()}` : t;
 }
 
-/** "12" -> "No. 12"; "Shop 12" or "Office 4A" stay as typed. */
-export function unitLabel(text: string | undefined): string {
-  const t = clean(text);
-  if (!t) return "";
-  return /^\d+$/.test(t) ? `No. ${t}` : t;
-}
-
-/** "M Peace Plaza, 8th floor, Block B, No. 12". Empty without a building. */
+/** "M Peace Plaza, 8th floor, Block B, Shop 12". The shop or office number is shown exactly as typed. */
 export function buildingText(b: Building | undefined): string {
   if (!b) return "";
-  return [clean(b.name), floorLabel(b.floor), blockLabel(b.block), unitLabel(b.unit)].filter(Boolean).join(", ");
+  return [clean(b.name), floorLabel(b.floor), blockLabel(b.block), clean(b.unit)].filter(Boolean).join(", ");
 }
 
 /** The address without a trailing country ("KN 4 Avenue, Kigali, Rwanda" -> "KN 4 Avenue, Kigali"). */

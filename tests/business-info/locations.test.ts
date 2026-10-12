@@ -98,12 +98,13 @@ describe("floor dropdown, block and shop number labels", () => {
     expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 31, 42, 53].map(ordinal)).toEqual(["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "23rd", "31st", "42nd", "53rd"]);
   });
   it("shows floor, block and number with their words", async () => {
-    const { blockLabel, floorLabel, unitLabel } = await import("@/lib/business-info/locations");
+    const { blockLabel, buildingText, floorLabel } = await import("@/lib/business-info/locations");
     expect(["8", "G", "B1", "B2", "M", "R"].map(floorLabel)).toEqual(["8th floor", "Ground floor", "Basement 1", "Basement 2", "Mezzanine", "Rooftop"]);
     expect(floorLabel("Top deck")).toBe("Top deck"); // older free text, as typed
     expect(["B", "b", "C2", "Block B", "East wing"].map(blockLabel)).toEqual(["Block B", "Block B", "Block C2", "Block B", "East wing"]);
-    expect(["12", "Shop 12", "Office 4A"].map(unitLabel)).toEqual(["No. 12", "Shop 12", "Office 4A"]);
-    expect(locationText({ address: "KN 4 Ave, Kigali, Rwanda", building: { name: "M Peace Plaza", floor: "8", block: "B", unit: "12" } })).toBe("M Peace Plaza, 8th floor, Block B, No. 12 — KN 4 Ave, Kigali");
+    // The shop or office number is shown exactly as typed.
+    for (const unit of ["Shop 12", "Office 4A", "12"]) expect(buildingText({ name: "Plaza", unit })).toBe(`Plaza, ${unit}`);
+    expect(locationText({ address: "KN 4 Ave, Kigali, Rwanda", building: { name: "M Peace Plaza", floor: "8", block: "B", unit: "Shop 12" } })).toBe("M Peace Plaza, 8th floor, Block B, Shop 12 — KN 4 Ave, Kigali");
   });
   it("maps floors typed before the dropdown, and keeps the rest as typed", async () => {
     const { parseFloor } = await import("@/lib/business-info/locations");

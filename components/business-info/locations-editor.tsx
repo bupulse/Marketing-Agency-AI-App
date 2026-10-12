@@ -129,8 +129,8 @@ export function LocationsEditor({
                 <Field label="Block / wing (optional)" error={err("block")} hint="Just the letter or number, e.g. B: shown as “Block B”.">
                   <Input maxLength={LOCATION_LIMITS.block} placeholder="B" value={l.building.block} onChange={(e) => setBuilding(i, { block: e.target.value })} />
                 </Field>
-                <Field label="Shop or office number (optional)" error={err("unit")} hint="A number like 12 is shown as “No. 12”." className="sm:col-span-2">
-                  <Input maxLength={LOCATION_LIMITS.unit} placeholder="12" value={l.building.unit} onChange={(e) => setBuilding(i, { unit: e.target.value })} />
+                <Field label="Shop or office number (optional)" error={err("unit")} hint="Shown exactly as you type it." className="sm:col-span-2">
+                  <Input maxLength={LOCATION_LIMITS.unit} placeholder="e.g. Shop 12" value={l.building.unit} onChange={(e) => setBuilding(i, { unit: e.target.value })} />
                 </Field>
               </div>
             )}

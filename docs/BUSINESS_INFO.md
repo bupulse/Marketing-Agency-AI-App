@@ -32,8 +32,8 @@ save it. First-version free text converted by the form counts once saved in the 
     Rooftop) stored as `B2`, `B1`, `G`, `M`, `1`–`60`, `R`; the server accepts only these, plus a free-text floor
     already saved before the dropdown. Older free-text floors are read as the new values when they can be ("8th
     floor", "ground", "B1") and otherwise shown as typed (`parseFloor`). Block takes the code ("B" → "Block B"; "Block
-    B" or "East wing" as typed); a shop number of digits shows as "No. 12", anything else as typed.
-  - It is shown, and told to the chat, as `M Peace Plaza, 8th floor, Block B, No. 12 — KN 4 Avenue, Kigali`
+    B" or "East wing" as typed); the shop or office number is shown exactly as typed ("Shop 12").
+  - It is shown, and told to the chat, as `M Peace Plaza, 8th floor, Block B, Shop 12 — KN 4 Avenue, Kigali`
     (`locationText()`: the trailing country is dropped and a building name Google already put in the address is not
     repeated), with an "Open in Google Maps" link (a plain link: no Maps JavaScript, no key in the page).
   - "Area you serve" stays a free-text field.
@@ -57,7 +57,7 @@ All in `Business.knowledge` (JSON), no migration. Schema: `knowledgeSchema` in `
                    { "days": ["sun"], "open": "00:00", "close": "23:59", "allDay": true }],
   "locations": [{ "kind": "head", "label": "Main shop", "address": "KN 4 Avenue, Kigali, Rwanda",
                   "placeId": "ChIJ…", "lat": -1.95, "lng": 30.09,
-                  "building": { "name": "M Peace Plaza", "floor": "8", "block": "B", "unit": "12" },
+                  "building": { "name": "M Peace Plaza", "floor": "8", "block": "B", "unit": "Shop 12" },
                   "mapsUrl": "https://www.google.com/maps/search/?api=1&…" },
                 { "kind": "branch", "label": "Kiyovu", "address": "KN 4 Ave, Kiyovu, Kigali",   // entered by hand
                   "manual": { "street": "KN 4 Ave", "area": "Kiyovu", "city": "Kigali" }, "mapsUrl": "…" }],
