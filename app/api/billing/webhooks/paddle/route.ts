@@ -5,6 +5,7 @@ import { paddle } from "@/lib/billing/paddle";
 import { trackEvent } from "@/lib/analytics/events";
 import { subscriptionEventsFor } from "@/lib/analytics/math";
 import { prisma } from "@/lib/db";
+import { settleInvoicesPaidByCard } from "@/lib/invoices/service";
 import { logError } from "@/lib/errors";
 
 // Paddle posts here (https://bupulse.com/api/billing/webhooks/paddle). The body must be read as
@@ -40,7 +41,10 @@ export async function POST(request: NextRequest) {
     if (webhook.subscription) {
       const before = await subscriptionState(webhook.subscription.providerSubscriptionId);
       const outcome = await applyProviderSubscription("PADDLE", webhook.subscription);
-      if (outcome === "applied") await trackSubscriptionChange(webhook.subscription.providerSubscriptionId, before, webhook.subscription);
+      if (outcome === "applied") {
+        await trackSubscriptionChange(webhook.subscription.providerSubscriptionId, before, webhook.subscription);
+        await settleInvoices(webhook.subscription.providerSubscriptionId);
+      }
       if (outcome === "unknown_price") {
         // Probably a plan that is not synced with Paddle yet. Don't mark it processed: Paddle
         // retries, and once the setting is fixed the customer gets their plan.
@@ -105,5 +109,16 @@ async function trackSubscriptionChange(
     }
   } catch {
     // analytics must never fail a webhook
+  }
+}
+
+// A card subscription that is now active pays the company's open invoice for the same plan and interval
+// (docs/INVOICES.md). Best effort: an invoice left open can still be marked paid by hand.
+async function settleInvoices(providerSubscriptionId: string) {
+  try {
+    const sub = await prisma.subscription.findFirst({ where: { providerSubscriptionId }, select: { userId: true, plan: true, interval: true, status: true } });
+    if (sub?.status === "ACTIVE") await settleInvoicesPaidByCard({ userId: sub.userId, plan: sub.plan, interval: sub.interval, providerSubscriptionId });
+  } catch (error) {
+    await logError(error, { source: "billing.webhook.paddle.invoices", subscriptionId: providerSubscriptionId });
   }
 }

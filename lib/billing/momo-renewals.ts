@@ -5,6 +5,7 @@ import { writeAudit } from "@/lib/admin/audit";
 import { consoleContext } from "@/lib/admin/types";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { getPlan } from "@/lib/plan-catalog";
+import { sendInvoiceReminders } from "@/lib/invoices/service";
 import { sendPlanPausedEmail, sendRenewalReminderEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
 import { DAY_MS, graceEnd, reminderDue, UNSUBMITTED_TTL_HOURS } from "./momo-shared";
@@ -29,6 +30,8 @@ export type RenewalRun = {
   pastDue: number;
   expiredPayments: number;
   skipped: number;
+  /** Due-date reminders of sent invoices (first call of a sweep only; absent when none went out). */
+  invoiceReminders?: number;
   nextCursor: string | null;
   /** True when another run holds the lock; nothing was done. */
   busy?: boolean;
@@ -122,6 +125,13 @@ async function runBatch(opts: { now?: Date; cursor?: string | null; batchSize?: 
       data: { status: "expired", decidedAt: now, decidedBy: "system:cron" },
     });
     run.expiredPayments = count;
+    // Invoices due today get their one reminder (docs/INVOICES.md). Its own failure never stops the renewals.
+    try {
+      const reminded = await sendInvoiceReminders(now);
+      if (reminded > 0) run.invoiceReminders = reminded;
+    } catch (error) {
+      await logError(error, { source: "invoices.reminders" });
+    }
   }
   // Only subscriptions whose period ends within the reminder window or has ended: the rest are not looked at.
   const rows = await prisma.subscription.findMany({
@@ -137,7 +147,7 @@ async function runBatch(opts: { now?: Date; cursor?: string | null; batchSize?: 
     run.nextCursor = more ? row.userId : null;
   }
   // One audit row per run that did something (quiet days leave no row).
-  if (run.reminded5d + run.reminded1d + run.pastDue + run.expiredPayments > 0) {
+  if (run.reminded5d + run.reminded1d + run.pastDue + run.expiredPayments + (run.invoiceReminders ?? 0) > 0) {
     const { nextCursor, ...summary } = run;
     await writeAudit(prisma, systemContext(), "momo_renewals_run", "momo-renewals", null, { ...summary, more: nextCursor !== null }).catch(() => undefined);
   }

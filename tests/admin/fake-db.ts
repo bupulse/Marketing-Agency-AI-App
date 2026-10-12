@@ -56,13 +56,21 @@ function match(row: Row, where: Where): boolean {
       if ("gt" in c && !(value > c.gt)) return false;
       if ("gte" in c && !(value >= c.gte)) return false;
       if ("has" in c && !(value ?? []).includes(c.has)) return false;
+      if ("contains" in c) {
+        if (typeof value !== "string") return false;
+        const hit = c.mode === "insensitive" ? value.toLowerCase().includes(String(c.contains).toLowerCase()) : value.includes(String(c.contains));
+        if (!hit) return false;
+      }
       return true;
     }
     return value instanceof Date && cond instanceof Date ? value.getTime() === cond.getTime() : value === cond;
   });
 }
 
-function table(rows: Row[], opts: { pk: string; unique?: string[]; uniqueCombo?: string[]; defaults?: () => Row }) {
+/** A partial unique index: `key` is unique among the rows for which `when` holds (e.g. one draft invoice per company). */
+type PartialUnique = { key: string; when: (row: Row) => boolean };
+
+function table(rows: Row[], opts: { pk: string; unique?: string[]; uniqueCombo?: string[]; uniqueWhere?: PartialUnique[]; defaults?: () => Row }) {
   const uniqueKeys = [opts.pk, ...(opts.unique ?? [])];
   let seq = 0;
   const copy = (r: Row | undefined | null) => (r ? { ...r } : null);
@@ -78,6 +86,9 @@ function table(rows: Row[], opts: { pk: string; unique?: string[]; uniqueCombo?:
         if (data[k] !== undefined && rows.some((r) => r[k] === data[k])) throw Object.assign(new Error(`Unique constraint failed on ${k}`), { code: "P2002" });
       }
       const row: Row = { ...(opts.defaults?.() ?? {}), createdAt: new Date(), ...data };
+      for (const u of opts.uniqueWhere ?? []) {
+        if (u.when(row) && rows.some((r) => u.when(r) && r[u.key] === row[u.key])) throw Object.assign(new Error(`Unique constraint failed on ${u.key}`), { code: "P2002" });
+      }
       if (row[opts.pk] === undefined) row[opts.pk] = `${opts.pk}_${++seq}`;
       rows.push(row);
       return row;
@@ -169,7 +180,9 @@ export function seedPlanRows(): Row[] {
 }
 
 export function createFakeDb() {
+  const sequences = { invoice: 0 };
   const db = {
+    sequences,
     user: table([], { pk: "id", unique: ["email"] }),
     subscription: table([], { pk: "id", unique: ["userId"] }),
     business: table([], { pk: "id" }),
@@ -198,7 +211,23 @@ export function createFakeDb() {
     planPriceChange: table([], { pk: "id", defaults: () => ({ status: "scheduled", notifiedCount: 0, appliedCount: 0, failedCount: 0, completedAt: null }) }),
     planPriceChangeItem: table([], { pk: "id", defaults: () => ({ status: "pending", noticeSentAt: null, effectiveAt: null, appliedAt: null, error: null, updatedAt: new Date() }) }),
     // Manual Mobile Money payments (lib/billing/momo.ts) and their renewal reminders.
-    manualPayment: table([], { pk: "id", unique: ["reference"], defaults: () => ({ currency: "RWF", status: "pending", payerPhone: null, network: null, transactionId: null, rejectReason: null, submittedAt: null, decidedAt: null, decidedBy: null, periodStart: null, periodEnd: null, updatedAt: new Date() }) }),
+    // The reference is unique for plain payments; an invoice's attempts share its number, and an invoice has at most one
+    // live (pending or confirmed) payment: the partial unique indexes of migration 20261013090000_invoices.
+    manualPayment: table([], {
+      pk: "id",
+      uniqueWhere: [
+        { key: "reference", when: (r) => r.invoiceId == null },
+        { key: "invoiceId", when: (r) => r.invoiceId != null && (r.status === "pending" || r.status === "confirmed") },
+      ],
+      defaults: () => ({ currency: "RWF", status: "pending", invoiceId: null, payerPhone: null, network: null, transactionId: null, rejectReason: null, submittedAt: null, decidedAt: null, decidedBy: null, periodStart: null, periodEnd: null, updatedAt: new Date() }),
+    }),
+    // Invoices (lib/invoices): unique number, one draft per company.
+    invoice: table([], {
+      pk: "id",
+      unique: ["number"],
+      uniqueWhere: [{ key: "businessId", when: (r) => r.status === "draft" }],
+      defaults: () => ({ status: "draft", taxRatePercent: null, taxMinor: 0, notes: null, billingEmail: null, planKey: null, interval: null, billTo: null, seller: null, pdfPath: null, sentAt: null, sentTo: [], reminderSentAt: null, paidAt: null, paidBy: null, voidedAt: null, voidReason: null, updatedAt: new Date() }),
+    }),
     renewalNotice: table([], { pk: "id", uniqueCombo: ["userId", "periodEnd", "kind"], defaults: () => ({ sentAt: new Date() }) }),
     analyticsEvent: table([], { pk: "id" }),
     // Regions, regional prices and demo bookings (R1). Empty by default: lib/region falls back to the seeds.
@@ -211,7 +240,16 @@ export function createFakeDb() {
     industry: table([], { pk: "id", unique: ["slug"], defaults: () => ({ hashtags: [], postIdeas: "", seasons: "", avoid: "", active: true, sortOrder: 0, updatedAt: new Date() }) }),
     dismissedIndustrySuggestion: table([], { pk: "key" }),
     $executeRaw: vi.fn(async () => 1),
-    $queryRaw: vi.fn(async () => [{ locked: true }]),
+    // Advisory locks answer "locked"; the invoice number sequence hands out 1, 2, 3... like nextval, atomically even
+    // when calls interleave (the increment happens before the first await).
+    $queryRaw: vi.fn(async (strings: TemplateStringsArray | string[]) => {
+      if (Array.isArray(strings) && strings.join("").includes("Invoice_number_seq")) {
+        const n = BigInt(++sequences.invoice);
+        await Promise.resolve();
+        return [{ n }];
+      }
+      return [{ locked: true }];
+    }),
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
   };
   currentDb = db as never;

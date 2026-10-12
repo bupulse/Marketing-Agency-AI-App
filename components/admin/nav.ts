@@ -5,6 +5,7 @@ import {
   ChartLine,
   Coins,
   Cpu,
+  FileText,
   Flag,
   Funnel,
   Gauge,
@@ -46,6 +47,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { href: "/admin/settings/regions", label: "Regions and prices", icon: Globe },
       { href: "/admin/approvals", label: "Approvals", icon: BadgeCheck, badge: "approvals" },
       { href: "/admin/payments", label: "Payments", icon: Smartphone, badge: "payments" },
+      { href: "/admin/invoices", label: "Invoices", icon: FileText },
     ],
   },
   {

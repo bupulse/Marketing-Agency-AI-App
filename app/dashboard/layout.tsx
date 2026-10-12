@@ -8,6 +8,8 @@ import { brandPalette, isHexColor } from "@/lib/color-contrast";
 import { AutoTimezone } from "@/components/publishing/auto-timezone";
 import { AnnouncementBanner } from "@/components/app/announcement-banner";
 import { DemoLock } from "@/components/app/demo-lock";
+import { InvoiceLock } from "@/components/app/invoice-lock";
+import { openInvoiceOf } from "@/lib/invoices/service";
 import { can } from "@/lib/team/roles";
 import { getActiveAnnouncements } from "@/lib/admin/service";
 
@@ -23,10 +25,17 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   // Waiting for the demo: every dashboard route shows the demo and nothing else (the server refuses the rest anyway:
   // lib/entitlements.ts grants no features and lib/usage.ts answers pending_demo while the status is PENDING_DEMO).
   if (pendingDemo) {
+    // After the demo the admin may skip the trial and send an invoice: then the invoice and how to pay it replace the
+    // demo screen until it is paid (docs/INVOICES.md). A failed lookup falls back to the demo screen.
+    const invoice = await openInvoiceOf(business.id).catch(() => null);
     return (
       <>
         <BackgroundBlobs />
-        <DemoLock businessId={business.id} role={role} firstName={firstName} email={email} businessName={businessName} />
+        {invoice ? (
+          <InvoiceLock invoice={invoice} businessId={business.id} role={role} firstName={firstName} email={email} businessName={businessName} />
+        ) : (
+          <DemoLock businessId={business.id} role={role} firstName={firstName} email={email} businessName={businessName} />
+        )}
       </>
     );
   }

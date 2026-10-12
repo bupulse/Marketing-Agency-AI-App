@@ -8,6 +8,7 @@ import { trackEvent } from "@/lib/analytics/events";
 import { subscriptionEventsFor } from "@/lib/analytics/math";
 import { getSetting } from "@/lib/admin/settings";
 import { getPlan } from "@/lib/plan-catalog";
+import { companyPlans } from "@/lib/region-prices";
 import { sendPaymentRejectedEmail, sendPaymentToCheckEmail, sendPlanActiveEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
 import {
@@ -67,6 +68,7 @@ async function toView(row: Row, sub: Sub | null, now: Date = new Date()): Promis
     amountMinor: row.amountMinor,
     currency: row.currency,
     reference: row.reference,
+    invoiceId: row.invoiceId ?? null,
     status: row.status as ManualPaymentStatus,
     submitted: row.submittedAt !== null,
     transactionId: row.transactionId,
@@ -133,38 +135,68 @@ export async function startManualPayment(input: { userId: string; plan: string; 
   // not offered there, cannot be paid this way. Checked before anything is written.
   const price = await getMomoPrice(business.id, plan.key, input.interval);
   if (!price || price.amountMinor <= 0) throw new ManualPaymentError("Mobile Money is not available for this plan where your business is. Choose one of the plans shown, pay by card, or contact support.");
+  return openPayment(input.userId, sub, { planKey: plan.key, interval: input.interval, amountMinor: price.amountMinor, currency: price.currency, invoiceId: null, reference: null }, now);
+}
+
+/**
+ * Starts the Mobile Money payment of an invoice (docs/INVOICES.md): the amount is the invoice total, the reference the
+ * invoice number, and confirming it activates the invoice's plan and interval and marks the invoice paid. Only an
+ * invoice of the client's own company that has been sent and not paid or voided; the region must take Mobile Money.
+ */
+export async function startInvoicePayment(input: { userId: string; invoiceId: string; now?: Date }): Promise<ManualPaymentView> {
+  const now = input.now ?? new Date();
+  const settings = await getMomoSettings();
+  if (!momoConfigured(settings)) throw new ManualPaymentError("Mobile Money payments are not available right now. Please pay by card or contact support.");
+  const [sub, business] = await Promise.all([subOf(input.userId), prisma.business.findUnique({ where: { userId: input.userId }, select: { id: true } })]);
+  if (!sub || !business) throw new ManualPaymentError("Your account is still being set up. Please try again in a moment.");
+  const invoice = await prisma.invoice.findFirst({ where: { id: input.invoiceId, businessId: business.id } });
+  if (!invoice || invoice.status === "draft") throw new ManualPaymentError("We could not find that invoice. Open it again from the Billing page.");
+  if (invoice.status === "paid") throw new ManualPaymentError("This invoice is already paid.");
+  if (invoice.status !== "sent") throw new ManualPaymentError("This invoice was cancelled. Contact support if you still want to pay it.");
+  if (!invoice.planKey || !invoice.interval || invoice.totalMinor <= 0) throw new ManualPaymentError("This invoice cannot be paid by Mobile Money here. Contact support and we will help you.");
+  const { region } = await companyPlans(business.id);
+  if (!region.paymentMethods.includes("momo")) throw new ManualPaymentError("Mobile Money is not available where your business is. Pay by card, or contact support.");
+  return openPayment(input.userId, sub, { planKey: invoice.planKey, interval: invoice.interval, amountMinor: invoice.totalMinor, currency: invoice.currency, invoiceId: invoice.id, reference: invoice.number }, now);
+}
+
+type PaymentTarget = { planKey: string; interval: BillingInterval; amountMinor: number; currency: string; invoiceId: string | null; reference: string | null };
+
+/** The open payment for this target, or a new one (replacing an unsubmitted payment of something else). */
+async function openPayment(userId: string, sub: Sub, target: PaymentTarget, now: Date): Promise<ManualPaymentView> {
   // A card subscription that still renews by itself would pay twice. Once the client has cancelled it (it stays active
   // until its period end), Mobile Money takes over from that end.
   if (sub.provider === "PADDLE" && sub.providerSubscriptionId && LIVE.has(sub.status) && sub.plan !== "TRIAL" && !sub.cancelAtPeriodEnd) {
     throw new ManualPaymentError("You pay by card at the moment. Cancel the card plan first (it stays active until the end of the period you paid for); your Mobile Money plan then starts from that date.");
   }
-  const open = await openOf(input.userId);
+  const open = await openOf(userId);
   if (open) {
     if (open.submittedAt) return toView(open, sub, now);
-    // Not paid yet: the client may still change their mind about the plan. Same plan and period: keep the reference.
-    if (open.planKey === plan.key && open.interval === input.interval) return toView(open, sub, now);
+    // Not paid yet: the client may still change their mind about the plan. Same plan, period and invoice: keep the reference.
+    if (open.planKey === target.planKey && open.interval === target.interval && (open.invoiceId ?? null) === target.invoiceId) return toView(open, sub, now);
     const { count } = await prisma.manualPayment.updateMany({ where: { id: open.id, status: "pending", submittedAt: null }, data: { status: "expired", decidedAt: now, decidedBy: "client" } });
     // Submitted or replaced from another tab meanwhile: whatever is open now is the payment.
     if (count !== 1) {
-      const current = await openOf(input.userId);
+      const current = await openOf(userId);
       if (current) return toView(current, sub, now);
     }
   }
   // A new payment row (the open one was returned above): at most MOMO_DAILY_PAYMENTS a day per company, so a loop of
   // start / cancel cannot fill the table or the admin queue.
-  const recent = await prisma.manualPayment.count({ where: { userId: input.userId, createdAt: { gte: new Date(now.getTime() - DAY_MS) } } });
+  const recent = await prisma.manualPayment.count({ where: { userId, createdAt: { gte: new Date(now.getTime() - DAY_MS) } } });
   if (recent >= MOMO_DAILY_PAYMENTS) throw new ManualPaymentError("You have started many Mobile Money payments today. Please try again tomorrow, or contact support.");
   for (let attempt = 0; attempt < REFERENCE_TRIES; attempt++) {
     try {
       const row = await prisma.manualPayment.create({
-        data: { userId: input.userId, planKey: plan.key, interval: input.interval, amountMinor: price.amountMinor, currency: price.currency, reference: makeReference(attempt < 3 ? 4 : 6) },
+        data: { userId, planKey: target.planKey, interval: target.interval, amountMinor: target.amountMinor, currency: target.currency, invoiceId: target.invoiceId, reference: target.reference ?? makeReference(attempt < 3 ? 4 : 6) },
       });
       return toView(row, sub, now);
     } catch (error) {
       if (!isUnique(error)) throw error;
       // Either the company got a pending payment from another request (return it) or the reference is taken (try another).
-      const current = await openOf(input.userId);
+      const current = await openOf(userId);
       if (current) return toView(current, sub, now);
+      // An invoice's reference is fixed: the only other clash is a confirmed payment of that invoice.
+      if (target.invoiceId) throw new ManualPaymentError("This invoice is already paid.");
     }
   }
   throw new ManualPaymentError("We could not create a payment reference. Please try again.");
@@ -257,6 +289,10 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
   if (!payment.submittedAt || !payment.transactionId || !payment.network) throw new AdminError("conflict", "The client has not said they paid yet (no transaction id). Wait for them, or ask them to tap I've paid.");
   const plan = await getPlan(payment.planKey);
   if (!plan) throw new AdminError("conflict", "The plan of this payment no longer exists.");
+  if (payment.invoiceId) {
+    const invoice = await prisma.invoice.findUnique({ where: { id: payment.invoiceId }, select: { status: true } });
+    if (invoice?.status !== "sent") throw new AdminError("conflict", `Invoice ${payment.reference} is ${invoice ? `already ${invoice.status}` : "gone"}. Reject this payment (and refund it if the money arrived) instead.`);
+  }
   // The revenue roll-up is in USD: the one USD->RWF rate of Admin -> Settings (also used for card prices).
   const usdCents = usdCentsOf(payment.amountMinor, payment.currency, await getSetting("usdToRwf"));
 
@@ -295,6 +331,13 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
           data: { status: "confirmed", decidedAt: now, decidedBy: ctx.actor, periodStart: period.start, periodEnd: period.end },
         });
         if (claim.count !== 1) throw new AdminError("conflict", "This payment was decided a moment ago. Nothing was changed.");
+        // A payment of an invoice (its number is the reference) pays that invoice, once: only a sent invoice moves to
+        // paid. A voided or already paid invoice stops the confirmation (nothing is written).
+        if (payment.invoiceId) {
+          const paid = await tx.invoice.updateMany({ where: { id: payment.invoiceId, status: "sent" }, data: { status: "paid", paidAt: now, paidBy: `manual_payment:${payment.id}` } });
+          if (paid.count !== 1) throw new AdminError("conflict", `Invoice ${payment.reference} is no longer open (voided or already paid). Reject this payment and refund it, or look at the invoice first.`);
+          await writeAudit(tx, ctx, "invoice_paid", `invoice:${payment.invoiceId}`, { status: "sent" }, { status: "paid", number: payment.reference, paidBy: `manual_payment:${payment.id}`, amountMinor: payment.amountMinor, currency: payment.currency });
+        }
         // Guarded on the state we read (ids, status and period end), so a card webhook or another confirmation landing
         // meanwhile is never overwritten blindly.
         const written = await tx.subscription.updateMany({
@@ -313,11 +356,11 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
             payload: {
               event_type: "manual_payment.confirmed",
               occurred_at: now.toISOString(),
-              data: { id: payment.reference, amount_minor: payment.amountMinor, currency: payment.currency, usd_cents: usdCents, plan: plan.key, interval: payment.interval, transaction_id: payment.transactionId, payer_phone: payment.payerPhone, network: payment.network, period_mode: period.mode, period_start: period.start.toISOString(), period_end: period.end.toISOString() },
+              data: { id: payment.reference, invoice_id: payment.invoiceId, amount_minor: payment.amountMinor, currency: payment.currency, usd_cents: usdCents, plan: plan.key, interval: payment.interval, transaction_id: payment.transactionId, payer_phone: payment.payerPhone, network: payment.network, period_mode: period.mode, period_start: period.start.toISOString(), period_end: period.end.toISOString() },
             },
           },
         });
-        await writeAudit(tx, ctx, "confirm_momo_payment", `payment:${paymentId}`, { status: "pending", subscription: before }, { status: "confirmed", reference: payment.reference, amountMinor: payment.amountMinor, currency: payment.currency, period: period.mode, subscription: after });
+        await writeAudit(tx, ctx, "confirm_momo_payment", `payment:${paymentId}`, { status: "pending", subscription: before }, { status: "confirmed", reference: payment.reference, invoiceId: payment.invoiceId, amountMinor: payment.amountMinor, currency: payment.currency, period: period.mode, subscription: after });
       });
     } catch (error) {
       // The subscription changed under us (a webhook, another admin): read it again and recompute the period, once.

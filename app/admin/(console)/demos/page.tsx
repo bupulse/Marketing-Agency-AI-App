@@ -8,7 +8,8 @@ import { listDemos } from "@/lib/admin/demos";
 import { param } from "@/lib/admin/format";
 import { getSettings } from "@/lib/admin/settings";
 import { cn } from "@/lib/cn";
-import { demoStatusAction, startTrialAction } from "./actions";
+import { ActivateAccount } from "@/components/admin/activate-account";
+import { demoStatusAction } from "./actions";
 
 export const metadata = { title: "Demos" };
 export const dynamic = "force-dynamic";
@@ -41,7 +42,7 @@ export default async function DemosPage({ searchParams }: { searchParams: Promis
     <>
       <PageHeader
         title="Demos"
-        description={`Demo calls booked by new clients, in Africa/Kigali time. After the call, mark it done and start the trial (${settings.trialDays} ${settings.trialDays === 1 ? "day" : "days"}, set in Settings).`}
+        description={`Demo calls booked by new clients, in Africa/Kigali time. After the call, Activate account: start the trial (${settings.trialDays} ${settings.trialDays === 1 ? "day" : "days"} by default, set in Settings) or send an invoice.`}
       />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
@@ -119,15 +120,7 @@ export default async function DemosPage({ searchParams }: { searchParams: Promis
                           </>
                         )}
                         {d.subscriptionStatus === "PENDING_DEMO" && (
-                          <ConfirmButton
-                            action={startTrialAction}
-                            fields={{ businessId: d.businessId, back: here }}
-                            label="Start trial"
-                            variant="primary"
-                            title={`Start ${d.businessName}'s trial?`}
-                            description={`The company gets the ${d.planKey} plan's features for ${settings.trialDays} ${settings.trialDays === 1 ? "day" : "days"} with the trial limits, starting now. The client is emailed. Written to the audit log.`}
-                            confirmLabel="Start trial"
-                          />
+                          <ActivateAccount businessId={d.businessId} back={here} businessName={d.businessName} planName={d.planKey} trialDays={settings.trialDays} interval="MONTH" />
                         )}
                       </div>
                     </Td>

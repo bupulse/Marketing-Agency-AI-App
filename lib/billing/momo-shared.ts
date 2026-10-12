@@ -36,9 +36,11 @@ export function makeReference(length = 4, random: () => number = Math.random): s
   return out;
 }
 
+/** A payment reference: "BP-7K3Q", or the invoice number ("BP-INV-0001") when the payment settles an invoice. */
 export function isReference(value: unknown): value is string {
-  return typeof value === "string" && REFERENCE.test(value);
+  return typeof value === "string" && (REFERENCE.test(value) || INVOICE_REFERENCE.test(value));
 }
+const INVOICE_REFERENCE = /^BP-INV-\d{4,}$/;
 
 // ---- period ------------------------------------------------------------------------------------------------
 
@@ -218,6 +220,8 @@ export type ManualPaymentView = {
   amountMinor: number;
   currency: string;
   reference: string;
+  /** The invoice this payment settles (its number is the reference), or null for a plain plan payment. */
+  invoiceId: string | null;
   status: ManualPaymentStatus;
   submitted: boolean;
   transactionId: string | null;
