@@ -64,3 +64,4 @@ The autonomous loop reads this file, takes the first open task, does it (build â
 - [ ] Owner: test v2 on localhost:3001; Netlify + production Supabase (free) + Resend DNS; MoMo Pay code; availability; Connect Google Calendar; reset keys pasted in chat.
 - [ ] Merge v2 into `main`, deploy, one real 100 RWF MoMo payment, zip handover.
 - 2026-10-12 20:25: internet outage 17:41â€“20:12 interrupted the agents; resumed. Security fixes and billing fixes merged; migrations applied to the test database.
+- [ ] Content comes with its visual (owner request, 12 Oct evening): AI art director picks template/style and single image or carousel; product album photos first, AI photo when needed (within allowance), free design fallback; free browser-rendered slideshow videos for video content (AI video "coming soon"); everything editable before posting. Building on `v2-media`.
