@@ -1627,36 +1627,39 @@ model AddonPrice {
 // exactly what they were shown. Accepting prepares the company's private plan (customPlanKey, a PlanDefinition with
 // isCustom) and the payment (Mobile Money with offerId, or an invoice); confirming the payment switches it on.
 model PlanOffer {
-  id             String             @id @default(cuid())
-  businessId     String
-  business       Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  requestId      String?
-  request        CustomPlanRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
-  basePlanKey    String? // the regional plan it starts from, or null for features only
-  featureKeys    Json // FeatureKey[], prerequisites included
-  limits         Json // PlanLimits of the custom plan
-  options        Json               @default("{}") // { managedTier?: "light" | "full" }
-  currency       String
-  interval       BillingInterval
-  lines          Json // [{ key, label, quantity, unitMinor, totalMinor }] for the interval
-  computedMinor  Int // the sum of the lines
-  adjustedMinor  Int // what the client pays (the computed total, or the admin's rounding / discount)
-  adjustReason   String?
-  note           String? // the admin's message to the client
-  status         String             @default("draft") // draft | sent | accepted | paid | expired | withdrawn
-  validUntil     DateTime?
-  sentAt         DateTime?
-  acceptedAt     DateTime?
-  payMethod      String? // "momo" | "invoice"
-  customPlanKey  String? // PlanDefinition.key prepared on accept
-  invoiceId      String? // the invoice made from the offer, when paid that way
-  paidAt         DateTime?
-  paidBy         String? // "manual_payment:<id>"
-  withdrawnAt    DateTime?
-  withdrawReason String?
-  createdBy      String // AuditLog actor
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  id              String             @id @default(cuid())
+  businessId      String
+  business        Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  requestId       String?
+  request         CustomPlanRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  basePlanKey     String? // the regional plan it starts from, or null for features only
+  featureKeys     Json // FeatureKey[], prerequisites included
+  limits          Json // PlanLimits of the custom plan
+  options         Json               @default("{}") // { managedTier?: "light" | "full" }
+  currency        String
+  interval        BillingInterval
+  lines           Json // [{ key, label, quantity, unitMinor, totalMinor }] for the interval
+  computedMinor   Int // the sum of the lines
+  adjustedMinor   Int // what the client pays (the computed total, or the admin's rounding / discount)
+  adjustReason    String?
+  note            String? // the admin's message to the client
+  status          String             @default("draft") // draft | sent | accepted | paid | expired | withdrawn
+  validUntil      DateTime?
+  sentAt          DateTime?
+  acceptedAt      DateTime?
+  payMethod       String? // "momo" | "invoice"
+  customPlanKey   String? // PlanDefinition.key prepared on accept
+  invoiceId       String? // the invoice made from the offer, when paid that way
+  // Payment reminders of an accepted, unpaid offer (day 3 and day 7 after accepting), claimed before sending.
+  reminder3SentAt DateTime?
+  reminder7SentAt DateTime?
+  paidAt          DateTime?
+  paidBy          String? // "manual_payment:<id>"
+  withdrawnAt     DateTime?
+  withdrawReason  String?
+  createdBy       String // AuditLog actor
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
   manualPayments ManualPayment[]
   // Also a partial unique index in SQL ("PlanOffer_one_open_per_business"): at most one sent or accepted offer per company.

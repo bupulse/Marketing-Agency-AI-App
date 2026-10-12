@@ -196,6 +196,12 @@ export function isOfferExpired(o: { status: string; validUntil: Date | string | 
   return o.status === "sent" && o.validUntil !== null && new Date(o.validUntil).getTime() <= now.getTime();
 }
 
+/** "Accepted today", "Accepted 1 day ago", "Accepted 9 days ago": how long an accepted offer has waited for payment. */
+export function acceptedAgoText(acceptedAt: Date | string, now: Date = new Date()): string {
+  const days = Math.max(0, Math.floor((now.getTime() - new Date(acceptedAt).getTime()) / DAY_MS));
+  return days === 0 ? "Accepted today" : `Accepted ${days} ${days === 1 ? "day" : "days"} ago`;
+}
+
 export const validUntilOf = (sentAt: Date, days: number = OFFER_VALID_DAYS) => new Date(sentAt.getTime() + days * DAY_MS);
 
 /** The private plan key prepared for an offer: deterministic, so accepting twice can never make two plans. */

@@ -48,3 +48,16 @@ export async function sendRequestAlertEmail(p: { id: string; company: string; em
   const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: `Custom plan request: ${p.company}`, html, text })));
   return results.some(Boolean);
 }
+
+/** The client's reminder that an accepted offer is not paid yet (day 3 and day 7 after accepting). */
+export async function sendOfferReminderEmail(to: { email: string; name: string | null }, p: { day: 3 | 7; totalMinor: number; currency: string; interval: string; method: string | null }): Promise<boolean> {
+  const url = `${siteUrl()}/dashboard/billing#offer`;
+  const how = p.method === "invoice" ? "Pay the invoice by Mobile Money with its number, or as it says." : "Pay by Mobile Money from Billing and tap I've paid.";
+  const { html, text } = renderEmail({
+    heading: p.day === 7 ? "Your custom plan is still waiting" : "Your custom plan is waiting for payment",
+    intro: `${first(to.name)}you accepted your custom BuPulse plan (${formatMinor(p.totalMinor, p.currency)} ${per(p.interval)}) ${p.day} days ago. It switches on as soon as your payment is confirmed. ${how}`,
+    button: { label: "Pay now", url },
+    footer: "Changed your mind, or need something different? Reply to this email. Your current plan stays as it is until you pay.",
+  });
+  return sendEmail({ to: to.email, subject: p.day === 7 ? "Reminder: your custom BuPulse plan is not paid yet" : "Your custom BuPulse plan is waiting for payment", html, text });
+}

@@ -295,13 +295,13 @@ async function deliverSentInvoice(sent: Row, billTo: BillTo, snapshot: SellerSna
 /**
  * An invoice issued straight away, without a draft: a client who accepted a custom plan offer and chose "Pay by
  * invoice" (docs/OFFERS.md). It activates `planKey` / `interval` when paid, exactly like an activation invoice (Mobile
- * Money with the invoice number, Mark as paid). Sent at once to the company owner, due in DEFAULT_DUE_DAYS. `ctx` is the
+ * Money with the invoice number, Mark as paid). No tax line: the offer's price is final. Sent at once to the company owner, due in DEFAULT_DUE_DAYS. `ctx` is the
  * client's context ("client:<user id>"), so the audit says who asked for it. Returns the sent invoice.
  */
 export async function issuePlanInvoice(ctx: AdminContext, input: { businessId: string; currency: string; lines: InvoiceLine[]; planKey: string; interval: BillingInterval; notes?: string | null }, now: Date = new Date()): Promise<Row> {
   if (input.lines.length === 0) throw new AdminError("invalid", "An invoice needs at least one line.");
-  const settings = await getInvoiceSettings();
-  const totals = computeTotals(input.lines, settings.vatRatePercent);
+  // The price on an offer is the final amount the client pays: never a tax line, whatever the VAT setting.
+  const totals = computeTotals(input.lines, null);
   if (totals.totalMinor <= 0) throw new AdminError("invalid", "An invoice needs a price.");
   const [{ billTo, ownerEmail }, snapshot] = await Promise.all([billToOf(input.businessId), sellerSnapshot()]);
   if (!ownerEmail) throw new AdminError("conflict", "The company has no email address to send the invoice to.");
@@ -316,7 +316,7 @@ export async function issuePlanInvoice(ctx: AdminContext, input: { businessId: s
         currency: input.currency.toUpperCase(),
         lines: input.lines as Prisma.InputJsonValue,
         ...totals,
-        taxRatePercent: settings.vatRatePercent,
+        taxRatePercent: null,
         issueDate: dateOfYmd(today),
         dueDate: dateOfYmd(addDaysYmd(today, DEFAULT_DUE_DAYS)),
         notes: input.notes ?? null,

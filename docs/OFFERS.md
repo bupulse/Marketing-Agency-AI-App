@@ -51,7 +51,23 @@ or accepted offer per company, another one live payment per offer; the Mobile Mo
 transaction id) covers offers too. A second confirm, a second accept or a replayed transaction id changes nothing.
 
 **Renewals.** A custom plan renews by Mobile Money at its own price (`startManualPayment` accepts the company's own
-custom plan; nobody else can buy it). The renewal reminders work as for any MoMo plan.
+custom plan; nobody else can buy it), but only once its offer is paid: while the offer is accepted, a plain payment of
+the plan is routed to the offer's payment (`startOfferPayment`, the offer's price and interval); a withdrawn or expired
+offer's plan cannot be paid. The renewal reminders work as for any MoMo plan.
+
+**Amounts.** The offer's price is the final amount: an offer invoice never has a tax line, whatever the VAT setting
+(line = total = the offer's price). Confirming a payment of an offer refuses any amount or currency other than the
+offer's price (`assertOfferAmount`, before the confirmation and again inside its transaction).
+
+**Accepted but unpaid.** The offers list and the company page show "Accepted N days ago". The daily Mobile Money
+renewals job emails the company owner on day 3 and day 7 after accepting (`lib/offers/reminders.ts`; claimed in
+`reminder3SentAt` / `reminder7SentAt`, released when the email fails, only day 7 when day 3 was missed). After 7 days
+the offer shows on the admin Overview attention list.
+
+**Withdraw race.** The reported-payment check runs inside the withdrawal's transaction, after the unsubmitted payments
+are closed, so a proof submitted at the same moment either stops the withdrawal or finds its payment closed.
+
+**Jarvis approvals** are priced again before anything is saved; a price change since the request fails the approval.
 
 **Never on sale.** Custom plans are left out of `regionalPlansFor` (pricing page, Billing plan picker, checkout),
 `getSellablePlans` and the plan builder list (`listAdminPlans`).

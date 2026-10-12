@@ -6,6 +6,7 @@ import { consoleContext } from "@/lib/admin/types";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { getPlan } from "@/lib/plan-catalog";
 import { sendInvoiceReminders } from "@/lib/invoices/service";
+import { sendOfferReminders } from "@/lib/offers/reminders";
 import { sendPlanPausedEmail, sendRenewalReminderEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
 import { DAY_MS, graceEnd, reminderDue, UNSUBMITTED_TTL_HOURS } from "./momo-shared";
@@ -32,6 +33,8 @@ export type RenewalRun = {
   skipped: number;
   /** Due-date reminders of sent invoices (first call of a sweep only; absent when none went out). */
   invoiceReminders?: number;
+  /** Payment reminders of accepted, unpaid custom plan offers (first call of a sweep only; absent when none went out). */
+  offerReminders?: number;
   nextCursor: string | null;
   /** True when another run holds the lock; nothing was done. */
   busy?: boolean;
@@ -131,6 +134,13 @@ async function runBatch(opts: { now?: Date; cursor?: string | null; batchSize?: 
       if (reminded > 0) run.invoiceReminders = reminded;
     } catch (error) {
       await logError(error, { source: "invoices.reminders" });
+    }
+    // Accepted custom plan offers not paid yet: day 3 and day 7 (docs/OFFERS.md).
+    try {
+      const reminded = await sendOfferReminders(now);
+      if (reminded > 0) run.offerReminders = reminded;
+    } catch (error) {
+      await logError(error, { source: "offers.reminders" });
     }
   }
   // Only subscriptions whose period ends within the reminder window or has ended: the rest are not looked at.

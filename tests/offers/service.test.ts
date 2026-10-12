@@ -41,7 +41,9 @@ import * as inv from "@/lib/invoices/service";
 import { setAddonPrice } from "@/lib/offers/addon-prices";
 import * as offers from "@/lib/offers/service";
 import { createPlanRequest, listPlanRequests, PlanRequestError, setPlanRequestStatus } from "@/lib/offers/requests";
-import { customPlanKeyFor } from "@/lib/offers/shared";
+import { acceptedAgoText, customPlanKeyFor } from "@/lib/offers/shared";
+import { sendOfferReminders, staleAcceptedOfferCount } from "@/lib/offers/reminders";
+import { INVOICE_SETTING_KEY } from "@/lib/invoices/shared";
 import { RateLimitError } from "@/lib/rate-limit";
 import { resetRegionCache } from "@/lib/region";
 import { regionalPlansFor, resetRegionPriceCache, getRegionPrices } from "@/lib/region-prices";
@@ -411,5 +413,104 @@ describe("custom plan requests", () => {
     expect(ctx.initial).toMatchObject({ basePlanKey: "STANDARD", features: ["websiteChat"], requestId: r.id });
     await sentOffer({ ...DRAFT, requestId: r.id });
     expect(h.db.customPlanRequest.rows[0].status).toBe("offered");
+  });
+});
+
+describe("review fixes", () => {
+  const DAY = 86_400_000;
+  const at = (days: number) => new Date(NOW.getTime() + days * DAY);
+
+  it("an offer invoice has no tax line whatever the VAT setting: the offer's price is the total", async () => {
+    seed();
+    h.db.adminSetting.rows.push({ key: INVOICE_SETTING_KEY, value: { vatRatePercent: 18 } });
+    const id = await sentOffer();
+    await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "invoice" }, NOW);
+    expect(h.db.invoice.rows[0]).toMatchObject({ subtotalMinor: 73000, taxMinor: 0, totalMinor: 73000, taxRatePercent: null });
+  });
+
+  it("confirming refuses a payment whose amount or currency is not the offer's price; nothing changes", async () => {
+    seed();
+    const id = await sentOffer();
+    const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
+    await momo.submitManualProof(USER, { paymentId: r.payment!.id, transactionId: "MP77777777", payerPhone: "078 123 4567", network: "MTN" }, NOW);
+    h.db.manualPayment.rows[0].amountMinor = 70000;
+    expect(await msg(momo.confirmManualPayment(CONSOLE, r.payment!.id, LATER))).toMatch(/70000 RWF, but the custom plan offer costs 73000 RWF/);
+    h.db.manualPayment.rows[0].amountMinor = 73000;
+    h.db.manualPayment.rows[0].currency = "USD";
+    expect(await code(momo.confirmManualPayment(CONSOLE, r.payment!.id, LATER))).toBe("conflict");
+    expect(offerRow(id).status).toBe("accepted");
+    expect(sub().plan).toBe("STANDARD");
+    expect(h.db.manualPayment.rows[0].status).toBe("pending");
+  });
+
+  it("a plain Mobile Money payment of a custom plan goes through its accepted offer; a withdrawn offer's plan cannot be paid", async () => {
+    seed();
+    const id = await sentOffer();
+    await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "invoice" }, NOW);
+    const p = await momo.startManualPayment({ userId: USER, plan: customPlanKeyFor(id), interval: "YEAR", now: NOW });
+    expect(p).toMatchObject({ offerId: id, amountMinor: 73000, interval: "MONTH" });
+    await offers.withdrawOffer(CONSOLE, id, "Client changed plans", NOW);
+    expect(await msg(momo.startManualPayment({ userId: USER, plan: customPlanKeyFor(id), interval: "MONTH", now: NOW }))).toMatch(/not available|no longer open/);
+  });
+
+  it("withdrawing re-checks for a reported payment inside its transaction: a proof landing meanwhile stops it", async () => {
+    seed();
+    const id = await sentOffer();
+    const r = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
+    const real = h.db.manualPayment.updateMany.getMockImplementation()!;
+    // The client taps "I've paid" just before the withdrawal closes the open payments.
+    h.db.manualPayment.updateMany.mockImplementationOnce(async (args) => {
+      await momo.submitManualProof(USER, { paymentId: r.payment!.id, transactionId: "MP88888888", payerPhone: "078 123 4567", network: "MTN" }, NOW);
+      return real(args);
+    });
+    expect(await msg(offers.withdrawOffer(CONSOLE, id, "Too slow", NOW))).toMatch(/reported a payment/);
+    expect(h.db.manualPayment.rows[0]).toMatchObject({ status: "pending", transactionId: "MP88888888" });
+    expect(audits("withdraw_offer")).toHaveLength(0);
+  });
+
+  it("accepted but unpaid: reminders on day 3 and day 7, once each; on the Overview after 7 days", async () => {
+    seed();
+    const id = await sentOffer();
+    await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
+    h.sendEmail.mockClear();
+    expect(await sendOfferReminders(at(2))).toBe(0);
+    expect(await sendOfferReminders(at(3))).toBe(1);
+    expect(await sendOfferReminders(at(4))).toBe(0);
+    expect(await staleAcceptedOfferCount(at(6))).toBe(0);
+    expect(await staleAcceptedOfferCount(at(7))).toBe(1);
+    expect(await sendOfferReminders(at(7))).toBe(1);
+    expect(await sendOfferReminders(at(9))).toBe(0);
+    expect(h.sendEmail.mock.calls.map(([m]) => [m.to, m.subject])).toEqual([
+      ["biz1@example.rw", "Your custom BuPulse plan is waiting for payment"],
+      ["biz1@example.rw", "Reminder: your custom BuPulse plan is not paid yet"],
+    ]);
+    expect(acceptedAgoText(NOW, at(9))).toBe("Accepted 9 days ago");
+    expect(acceptedAgoText(NOW, at(0.5))).toBe("Accepted today");
+  });
+
+  it("a missed day-3 run sends only the day-7 reminder; a failed email is retried next run; a paid offer gets none", async () => {
+    seed();
+    const id = await sentOffer();
+    await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
+    h.sendEmail.mockClear();
+    h.sendEmail.mockResolvedValueOnce(false);
+    expect(await sendOfferReminders(at(8))).toBe(0);
+    expect(offerRow(id)).toMatchObject({ reminder3SentAt: null, reminder7SentAt: null });
+    expect(await sendOfferReminders(at(8))).toBe(1);
+    expect(await sendOfferReminders(at(9))).toBe(0);
+    const other = await sentOffer({ ...DRAFT }, "biz2");
+    await offers.acceptOffer({ userId: OTHER, actorId: OTHER, businessId: "biz2", offerId: other, method: "invoice" }, NOW);
+    offerRow(other).status = "paid";
+    expect(await sendOfferReminders(at(8))).toBe(0);
+  });
+
+  it("an approved create_offer is priced again before anything is saved: a price change fails it and saves nothing", async () => {
+    seed();
+    const receipt = (await callTool("create_offer", { businessId: "biz1", ...DRAFT, send: true, idempotencyKey: "offer-biz1-drift" }, API)) as { id: string };
+    h.db.addonPrice.rows.find((r) => r.addonKey === "autopilot")!.monthlyMinor = 25000;
+    const done = await admin.approveAction(CONSOLE, receipt.id);
+    expect(done.status).toBe("failed");
+    expect(JSON.stringify(done.result)).toMatch(/price changed/);
+    expect(h.db.planOffer.rows).toHaveLength(0);
   });
 });

@@ -8,7 +8,7 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { dateTime, param } from "@/lib/admin/format";
 import { formatMinor } from "@/lib/region-format";
 import { listOffers } from "@/lib/offers/service";
-import { isOfferStatus, OFFER_STATUS_LABEL } from "@/lib/offers/shared";
+import { acceptedAgoText, isOfferStatus, OFFER_STATUS_LABEL } from "@/lib/offers/shared";
 
 export const metadata = { title: "Offers" };
 export const dynamic = "force-dynamic";
@@ -29,6 +29,7 @@ export default async function OffersPage({ searchParams }: { searchParams: Promi
   const status = isOfferStatus(param(sp.status)) ? param(sp.status) : "";
   const businessId = param(sp.businessId).slice(0, 64);
   const offers = await listOffers({ status: status || undefined, businessId: businessId || undefined });
+  const now = new Date();
   const qs = (s: string) => `/admin/offers?${new URLSearchParams({ ...(s && { status: s }), ...(businessId && { businessId }) })}`;
 
   return (
@@ -57,7 +58,7 @@ export default async function OffersPage({ searchParams }: { searchParams: Promi
         ) : (
           <TableWrap caption="Offers">
             <thead>
-              <tr><Th>Company</Th><Th>Adds</Th><Th right>Price</Th><Th>Created</Th><Th>Open until</Th><Th>Status</Th></tr>
+              <tr><Th>Company</Th><Th>Adds</Th><Th right>Price</Th><Th>Created</Th><Th>Open until / waiting</Th><Th>Status</Th></tr>
             </thead>
             <tbody>
               {offers.map((o) => (
@@ -66,7 +67,7 @@ export default async function OffersPage({ searchParams }: { searchParams: Promi
                   <Td className="max-w-[16rem]"><span className="line-clamp-2 text-muted">{[o.basePlanName, ...o.added.map(String)].filter(Boolean).join(" + ") || "—"}</span></Td>
                   <Td right>{formatMinor(o.adjustedMinor, o.currency)} / {o.interval === "YEAR" ? "yr" : "mo"}</Td>
                   <Td className="whitespace-nowrap">{dateTime(o.createdAt)}</Td>
-                  <Td className="whitespace-nowrap">{o.validUntil && (o.status === "sent" || o.status === "expired") ? dateTime(o.validUntil) : "—"}</Td>
+                  <Td className="whitespace-nowrap">{o.status === "accepted" && o.acceptedAt ? acceptedAgoText(o.acceptedAt, now) : o.validUntil && (o.status === "sent" || o.status === "expired") ? dateTime(o.validUntil) : "—"}</Td>
                   <Td><Badge tone={OFFER_TONE[o.status] ?? "neutral"}>{OFFER_STATUS_LABEL[o.status]}</Badge></Td>
                 </tr>
               ))}

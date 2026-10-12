@@ -20,15 +20,23 @@ export async function offerForPayment(payment: { offerId?: string | null; invoic
   return null;
 }
 
+/** The money must be exactly the offer's price, in its currency (also checked before the confirmation starts). */
+export function assertOfferAmount(offer: Pick<OfferRow, "adjustedMinor" | "currency">, paid: { amountMinor: number; currency: string }) {
+  if (paid.amountMinor !== offer.adjustedMinor || paid.currency.toUpperCase() !== offer.currency.toUpperCase()) {
+    throw new AdminError("conflict", `This payment is ${paid.amountMinor} ${paid.currency.toUpperCase()}, but the custom plan offer costs ${offer.adjustedMinor} ${offer.currency.toUpperCase()}. Reject it (refund the difference if the money arrived), then ask the client to pay the offer's price from Billing.`);
+  }
+}
+
 /**
  * accepted -> paid, once (a conditional write: a replay or a second confirmation finds it paid and stops the whole
  * transaction). The company's older custom plans are retired (their payments keep pointing at them), an open invoice
  * of the offer that this payment did not pay is voided (so the client cannot pay twice), unsubmitted Mobile Money
  * payments of the offer are closed, and the request behind it is marked offered. Audited.
  */
-export async function markOfferPaidInTx(tx: Tx, ctx: AdminContext, input: { offer: OfferRow; paymentId: string; invoiceId: string | null; planKey: string }, now: Date) {
+export async function markOfferPaidInTx(tx: Tx, ctx: AdminContext, input: { offer: OfferRow; paymentId: string; invoiceId: string | null; planKey: string; amountMinor: number; currency: string }, now: Date) {
   const { offer } = input;
   if (offer.customPlanKey !== input.planKey) throw new AdminError("conflict", "This payment is for a different plan than the offer's custom plan. Reject it and ask the client to pay again from Billing.");
+  assertOfferAmount(offer, input);
   const paidBy = `manual_payment:${input.paymentId}`;
   const claim = await tx.planOffer.updateMany({ where: { id: offer.id, status: "accepted" }, data: { status: "paid", paidAt: now, paidBy } });
   if (claim.count !== 1) throw new AdminError("conflict", "This offer was paid or withdrawn a moment ago. Nothing was changed.");

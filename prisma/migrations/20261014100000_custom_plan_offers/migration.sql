@@ -73,6 +73,8 @@ CREATE TABLE "PlanOffer" (
     "payMethod" TEXT,
     "customPlanKey" TEXT,
     "invoiceId" TEXT,
+    "reminder3SentAt" TIMESTAMP(3),
+    "reminder7SentAt" TIMESTAMP(3),
     "paidAt" TIMESTAMP(3),
     "paidBy" TEXT,
     "withdrawnAt" TIMESTAMP(3),

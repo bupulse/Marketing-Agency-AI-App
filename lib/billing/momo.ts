@@ -8,7 +8,7 @@ import { trackEvent } from "@/lib/analytics/events";
 import { subscriptionEventsFor } from "@/lib/analytics/math";
 import { getSetting } from "@/lib/admin/settings";
 import { clearPlanCache, getPlan, getPlans, priceCents } from "@/lib/plan-catalog";
-import { markOfferPaidInTx, offerForPayment } from "@/lib/offers/activate";
+import { assertOfferAmount, markOfferPaidInTx, offerForPayment } from "@/lib/offers/activate";
 import { companyPlans } from "@/lib/region-prices";
 import { matchInvoicePayment, readPaymentReviews, withPaymentReview, type PaymentReview } from "@/lib/invoices/shared";
 import { sendInvoiceReviewAlertEmail, sendPaymentRejectedEmail, sendPaymentToCheckEmail, sendPlanActiveEmail } from "./momo-emails";
@@ -141,6 +141,14 @@ export async function startManualPayment(input: { userId: string; plan: string; 
   const ownCustom = Boolean(plan?.isCustom && business && plan.businessId === business.id && plan.status !== "retired");
   if (!plan || plan.isTrial || (plan.status !== "active" && !ownCustom) || (plan.isCustom && !ownCustom)) throw new ManualPaymentError("That plan is not available. Choose one of the plans shown.");
   if (!sub || !business) throw new ManualPaymentError("Your account is still being set up. Please try again in a moment.");
+  // A custom plan is switched on by paying its offer first: an accepted offer is paid through the offer (same pay
+  // screen, payment tied to it, its price and interval); a withdrawn or expired one cannot be paid at all. Plain
+  // renewals are for a custom plan whose offer is paid.
+  if (ownCustom) {
+    const offer = await prisma.planOffer.findFirst({ where: { customPlanKey: plan.key, businessId: business.id }, select: { id: true, status: true } });
+    if (offer?.status === "accepted") return startOfferPayment({ userId: input.userId, offerId: offer.id, now });
+    if (offer?.status !== "paid") throw new ManualPaymentError("This custom plan offer is no longer open. Ask us for a new one.");
+  }
   // The amount is the plan's price in the company's region (docs/REGIONS.md); a region without Mobile Money, or a plan
   // not offered there, cannot be paid this way. Checked before anything is written.
   const price = ownCustom ? await customPlanMomoPrice(business.id, plan, input.interval) : await getMomoPrice(business.id, plan.key, input.interval);
@@ -332,6 +340,7 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
   // A payment of a custom plan offer (directly, or through the invoice made from it) also settles the offer.
   const offer = await offerForPayment(payment);
   if (offer && offer.status !== "accepted") throw new AdminError("conflict", `The custom plan offer this payment is for is ${offer.status}. Reject this payment (and refund it if the money arrived) instead.`);
+  if (offer) assertOfferAmount(offer, payment);
   if (payment.invoiceId) {
     const invoice = await prisma.invoice.findUnique({ where: { id: payment.invoiceId }, select: { status: true } });
     if (invoice?.status !== "sent") throw new AdminError("conflict", `Invoice ${payment.reference} is ${invoice ? `already ${invoice.status}` : "gone"}. Reject this payment (and refund it if the money arrived) instead.`);
@@ -412,7 +421,7 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
         });
         if (written.count !== 1) throw new SubscriptionMoved();
         // The offer is paid and its custom plan replaces any older one of the company (in the same transaction).
-        if (offer) await markOfferPaidInTx(tx, ctx, { offer, paymentId: payment.id, invoiceId: payment.invoiceId, planKey: plan.key }, now);
+        if (offer) await markOfferPaidInTx(tx, ctx, { offer, paymentId: payment.id, invoiceId: payment.invoiceId, planKey: plan.key, amountMinor: payment.amountMinor, currency: payment.currency }, now);
         // The money, for the revenue roll-up and the activity feed (same shape of row as a Paddle payment event).
         await tx.billingEvent.create({
           data: {

@@ -202,15 +202,16 @@ export async function withdrawOffer(ctx: AdminContext, id: string, reason: strin
   const row = await prisma.planOffer.findUnique({ where: { id } });
   if (!row) throw new AdminError("not_found", "No offer with that id.");
   if (!["draft", "sent", "accepted"].includes(row.status)) throw new AdminError("conflict", `This offer is ${row.status}: there is nothing to withdraw.`);
-  const reported = await prisma.manualPayment.findFirst({
-    where: { status: "pending", submittedAt: { not: null }, OR: [{ offerId: id }, ...(row.invoiceId ? [{ invoiceId: row.invoiceId }] : [])] },
-    select: { reference: true },
-  });
-  if (reported) throw new AdminError("conflict", `The client has reported a payment (${reported.reference}) for this offer. Confirm or reject it in Payments first.`);
   await prisma.$transaction(async (tx) => {
     const { count } = await tx.planOffer.updateMany({ where: { id, status: { in: ["draft", "sent", "accepted"] } }, data: { status: "withdrawn", withdrawnAt: now, withdrawReason: why } });
     if (count !== 1) throw new AdminError("conflict", "The offer was paid or withdrawn a moment ago. Nothing was changed.");
-    await tx.manualPayment.updateMany({ where: { status: "pending", submittedAt: null, OR: [{ offerId: id }, ...(row.invoiceId ? [{ invoiceId: row.invoiceId }] : [])] }, data: { status: "expired", decidedAt: now, decidedBy: ctx.actor } });
+    // Close the payments the client only opened first (a conditional write: a proof submitted at the same moment either
+    // lands before it, and is found just below, or finds its payment closed). Then a reported payment stops the
+    // whole withdrawal, which is rolled back.
+    const payments = { OR: [{ offerId: id }, ...(row.invoiceId ? [{ invoiceId: row.invoiceId }] : [])] };
+    await tx.manualPayment.updateMany({ where: { status: "pending", submittedAt: null, ...payments }, data: { status: "expired", decidedAt: now, decidedBy: ctx.actor } });
+    const reported = await tx.manualPayment.findFirst({ where: { status: "pending", submittedAt: { not: null }, ...payments }, select: { reference: true } });
+    if (reported) throw new AdminError("conflict", `The client has reported a payment (${reported.reference}) for this offer. Confirm or reject it in Payments first.`);
     if (row.invoiceId) await tx.invoice.updateMany({ where: { id: row.invoiceId, status: "sent" }, data: { status: "void", voidedAt: now, voidReason: `Offer withdrawn: ${why}` } });
     if (row.customPlanKey) await tx.planDefinition.updateMany({ where: { key: row.customPlanKey, isCustom: true, status: { not: "retired" } }, data: { status: "retired" } });
     await writeAudit(tx, ctx, "withdraw_offer", `offer:${id}`, { status: row.status }, { status: "withdrawn", reason: why, invoiceId: row.invoiceId, customPlanKey: row.customPlanKey });

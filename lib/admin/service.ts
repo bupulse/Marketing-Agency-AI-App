@@ -834,8 +834,14 @@ async function executeApproval(kind: string, params: Record<string, unknown>, on
   if (kind === "create_offer") {
     // Not Paddle: runs the console's own save (and send), with the approving admin as the actor. Only if the price is
     // still the one the owner saw.
-    const saved = await saveOfferDraft(ctx, { businessId: String(params.businessId), draft: params.draft });
-    if (saved.adjustedMinor !== params.adjustedMinor) throw new Error(`The price changed since this request was made (now ${saved.adjustedMinor}, requested ${String(params.adjustedMinor)}). The draft was saved; check it in Offers.`);
+    // Priced again first: nothing is saved when the add-on or plan prices moved since the request.
+    const businessId = String(params.businessId);
+    const draft = parseDraft(params.draft);
+    const { quote } = quoteWith(await pricingContext(businessId), draft);
+    const checked = checkOfferDraft(draft, quote);
+    if (!checked.ok) throw new Error(checked.error);
+    if (checked.adjustedMinor !== params.adjustedMinor) throw new Error(`The price changed since this request was made (now ${checked.adjustedMinor}, requested ${String(params.adjustedMinor)}). Nothing was saved; ask for the offer again.`);
+    const saved = await saveOfferDraft(ctx, { businessId, draft: params.draft });
     const sent = params.send === true ? await sendOffer(ctx, saved.id) : null;
     return { offerId: saved.id, status: sent ? "sent" : "draft", emailed: sent?.emailed ?? false };
   }

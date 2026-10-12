@@ -5,12 +5,13 @@ import { Badge, Button } from "@/components/ui";
 import { dateTime } from "@/lib/admin/format";
 import { listOffers } from "@/lib/offers/service";
 import { listPlanRequests } from "@/lib/offers/requests";
-import { OFFER_STATUS_LABEL, REQUEST_STATUS_LABEL } from "@/lib/offers/shared";
+import { acceptedAgoText, OFFER_STATUS_LABEL, REQUEST_STATUS_LABEL } from "@/lib/offers/shared";
 import { formatMinor } from "@/lib/region-format";
 
 /** Client 360 → "Custom plan": Customise plan, the company's latest offers and its open requests (docs/OFFERS.md). */
 export async function CompanyOffers({ businessId }: { businessId: string }) {
   const [offers, requests] = await Promise.all([listOffers({ businessId, limit: 5 }).catch(() => []), listPlanRequests({ businessId, limit: 5 }).catch(() => [])]);
+  const now = new Date();
   const openRequest = requests.find((r) => r.status === "new" || r.status === "contacted");
   return (
     <Panel
@@ -33,7 +34,10 @@ export async function CompanyOffers({ businessId }: { businessId: string }) {
               <Link href={`/admin/offers/${o.id}`} className="underline">
                 Offer {formatMinor(o.adjustedMinor, o.currency)} / {o.interval === "YEAR" ? "year" : "month"}, {dateTime(o.createdAt)}
               </Link>
-              <Badge tone={OFFER_TONE[o.status] ?? "neutral"}>{OFFER_STATUS_LABEL[o.status]}</Badge>
+              <span className="flex flex-wrap items-center gap-2">
+                {o.status === "accepted" && o.acceptedAt && <span className="text-[13px] text-muted">{acceptedAgoText(o.acceptedAt, now)}</span>}
+                <Badge tone={OFFER_TONE[o.status] ?? "neutral"}>{OFFER_STATUS_LABEL[o.status]}</Badge>
+              </span>
             </li>
           ))}
         </ul>
