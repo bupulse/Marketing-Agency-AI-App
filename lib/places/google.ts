@@ -86,6 +86,14 @@ export async function placeDetails(key: string, input: { placeId: string; sessio
 
 const GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json";
 
+/** Google refuses the key (billing off, API not enabled, quota gone): the feature is unavailable, not failing per request. */
+const DENIED = new Set(["REQUEST_DENIED", "OVER_DAILY_LIMIT", "OVER_QUERY_LIMIT"]);
+export class GeocodeDeniedError extends Error {
+  constructor(public googleStatus: string) {
+    super(`Geocoding unavailable (${googleStatus})`);
+  }
+}
+
 type GeocodeResponse = { status?: string; results?: { address_components?: { short_name?: string; types?: string[] }[] }[] };
 
 /**
@@ -96,6 +104,7 @@ export async function reverseGeocodeCountry(key: string, lat: number, lng: numbe
   const params = new URLSearchParams({ latlng: `${lat},${lng}`, result_type: "country", key });
   const data = (await call(`${GEOCODE_URL}?${params}`, {})) as GeocodeResponse;
   if (data.status === "ZERO_RESULTS") return null;
+  if (data.status && DENIED.has(data.status)) throw new GeocodeDeniedError(data.status);
   if (data.status !== "OK") throw new PlacesError(502);
   const code = data.results?.[0]?.address_components?.find((c) => c.types?.includes("country"))?.short_name?.toUpperCase();
   return code && /^[A-Z]{2}$/.test(code) ? code : null;

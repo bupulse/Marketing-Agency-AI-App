@@ -9,6 +9,7 @@ import { PricingPlans } from "./pricing-plans";
 import { UseMyLocation } from "./use-my-location";
 import { faqs, fillFaq } from "@/lib/content/site";
 import { getSetting } from "@/lib/admin/settings";
+import { geocodingAvailable } from "@/lib/geo-availability";
 import { displayRegionWithOverride } from "@/lib/region";
 import { currencyNote } from "@/lib/region-format";
 import { getRegionPlans } from "@/lib/region-prices";
@@ -27,7 +28,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
   const sp = await searchParams;
   // ?region= only counts when REGION_OVERRIDE=1 (local development); see lib/region.ts.
   const region = await displayRegionWithOverride(sp.region);
-  const [plans, trialDays] = await Promise.all([getRegionPlans(region.key), getSetting("trialDays")]);
+  const [plans, trialDays, canLocate] = await Promise.all([getRegionPlans(region.key), getSetting("trialDays"), geocodingAvailable()]);
   const days = `${trialDays} ${trialDays === 1 ? "day" : "days"}`;
   const pricingFaqs = fillFaq(faqs, trialDays).filter((f) => /get started|marketing experience|type of business|done-for-you/i.test(f.q));
   return (
@@ -39,7 +40,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
       />
 
       <Container className="pb-16">
-        <UseMyLocation />
+        {canLocate && <UseMyLocation />}
         <PricingPlans plans={plans} />
         <p className="mx-auto mt-6 max-w-2xl text-center text-sm text-muted">
           {currencyNote(region.currency, region.paymentMethods)} Cancel any time; your plan stays active until the end of the period you paid for. See our{" "}

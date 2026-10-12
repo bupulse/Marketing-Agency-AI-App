@@ -2,7 +2,8 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import { logError } from "@/lib/errors";
 import { GEO_COOKIE, GEO_MAX_AGE_SECONDS, signGeoCookie } from "@/lib/geo-cookie";
-import { placesKey, reverseGeocodeCountry } from "@/lib/places/google";
+import { geocodingAvailable, markGeocodingUnavailable } from "@/lib/geo-availability";
+import { GeocodeDeniedError, reverseGeocodeCountry } from "@/lib/places/google";
 import { RATE_LIMITS, rateLimit, RateLimitError } from "@/lib/rate-limit";
 
 // "Use my location" on /pricing. POST { lat, lng } from the browser's geolocation. Reverse-geocodes on the server with
@@ -14,7 +15,7 @@ const HEADERS = { "Cache-Control": "private, no-store" };
 const reply = (data: unknown, status = 200, extra: Record<string, string> = {}) => Response.json(data, { status, headers: { ...HEADERS, ...extra } });
 
 export async function POST(request: Request) {
-  const key = placesKey();
+  const key = await geocodingAvailable();
   if (!key) return reply({ enabled: false });
   const parsed = body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return reply({ error: "Bad request" }, 400);
@@ -30,7 +31,11 @@ export async function POST(request: Request) {
   let country: string | null;
   try {
     country = await reverseGeocodeCountry(key, parsed.data.lat, parsed.data.lng);
-  } catch {
+  } catch (error) {
+    if (error instanceof GeocodeDeniedError) {
+      await markGeocodingUnavailable(error.googleStatus);
+      return reply({ enabled: false });
+    }
     await logError(new Error("Geocoding failed"), { source: "geo.country" });
     return reply({ error: "We could not work out your country right now." }, 502);
   }
