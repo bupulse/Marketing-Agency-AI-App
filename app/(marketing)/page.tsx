@@ -6,7 +6,6 @@ import { FinalCta } from "@/components/marketing/home/final-cta";
 import { Hero } from "@/components/marketing/home/hero";
 import { HowItWorks } from "@/components/marketing/home/how-it-works";
 import { IndustryCards, IndustryMarquee } from "@/components/marketing/home/industries";
-import { Testimonials } from "@/components/marketing/home/testimonials";
 
 // The FAQ reads the trial length, an admin setting.
 export const dynamic = "force-dynamic";
@@ -33,7 +32,6 @@ export default function HomePage() {
       <IndustryCards />
       <Features />
       <HowItWorks />
-      <Testimonials />
       <Faq />
       <BlogTeaser />
       <FinalCta />

@@ -11,6 +11,9 @@ import { getPlan, priceIdFor } from "@/lib/plan-catalog";
 import { companyPlans, regionPriceIdFor } from "@/lib/region-prices";
 import { invoiceUrl } from "@/lib/billing/paddle";
 import { applyProviderSubscription } from "@/lib/billing/apply";
+import { paymentMethod } from "@/lib/billing/methods";
+import { cancelManualPayment, currentManualPayment, ManualPaymentError } from "@/lib/billing/momo";
+import type { ManualPaymentView } from "@/lib/billing/momo-shared";
 import type { CheckoutConfig, Invoice, PaidPlan } from "@/lib/billing";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 
@@ -59,6 +62,11 @@ export async function startCheckout(input: { plan: string; interval: string }): 
   const sub = await prisma.subscription.findUnique({ where: { userId: user.id } });
   if (managed(sub) && sub?.plan !== "TRIAL") {
     return { ok: false, error: "You already have a paid plan. Use Switch plan to change it." };
+  }
+  // A Mobile Money plan that is still paid for: the card would charge again for the same time. Switching to card
+  // happens at the renewal, once the paid period has ended.
+  if (sub?.provider === "MANUAL_MOMO" && sub.status === "ACTIVE" && sub.currentPeriodEnd && sub.currentPeriodEnd > new Date()) {
+    return { ok: false, error: "Your plan is paid by Mobile Money until the end of the current period. You can switch to card after that." };
   }
   if (!user.email) return { ok: false, error: "Add an email address to your account first." };
   // The plan must be offered in the company's region, at the region's price. Billing never looks at the visitor's IP.
@@ -164,6 +172,7 @@ export async function openPortal(): Promise<BillingResult<{ url: string }>> {
   const user = await requireActiveUser();
   if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
   const sub = await prisma.subscription.findUnique({ where: { userId: user.id } });
+  if (sub?.provider === "MANUAL_MOMO") return { ok: false, error: "You pay by Mobile Money, so there is no card to update. Renew from the Billing page when your plan ends." };
   if (!sub?.provider || !sub.providerCustomerId) return { ok: false, error: "You do not have a paid plan." };
   if (!(await isServiceEnabled("paddle"))) return { ok: false, error: BILLING_PAUSED };
 
@@ -218,4 +227,56 @@ export async function checkoutActivated(since: number): Promise<boolean> {
   });
   if (!sub || sub.plan === "TRIAL" || sub.status !== "ACTIVE") return false;
   return !Number.isFinite(since) || sub.updatedAt.getTime() >= since;
+}
+
+// ---- Mobile Money (MoMo / Airtel), paid by hand and confirmed by BuPulse (docs/MOMO.md) -------------------------
+
+function momoError(error: unknown): BillingResult<never> {
+  if (error instanceof ManualPaymentError) return { ok: false, error: error.message };
+  console.error("Mobile Money action failed", error);
+  return { ok: false, error: GENERIC };
+}
+
+// Starts (or returns the open) Mobile Money payment for a plan and period: the amount, the reference and where to pay.
+export async function startMomoPayment(input: { plan: string; interval: string }): Promise<BillingResult<{ payment: ManualPaymentView }>> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const parsed = planSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Choose a plan." };
+  try {
+    const payment = await paymentMethod("MANUAL_MOMO").startPayment({ userId: user.id, plan: parsed.data.plan, interval: parsed.data.interval as BillingInterval });
+    revalidatePath("/dashboard/billing");
+    return { ok: true, payment };
+  } catch (error) {
+    return momoError(error);
+  }
+}
+
+// "I've paid": the transaction id and the phone the client paid from. BuPulse is alerted and checks within minutes.
+export async function submitMomoProof(input: { paymentId: string; transactionId: string; payerPhone: string; network: string }): Promise<BillingResult<{ payment: ManualPaymentView }>> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  try {
+    const payment = await paymentMethod("MANUAL_MOMO").submitProof({ userId: user.id, ...input });
+    revalidatePath("/dashboard/billing");
+    return { ok: true, payment };
+  } catch (error) {
+    return momoError(error);
+  }
+}
+
+// The client changed their mind before paying. A payment they already reported stays with BuPulse to decide.
+export async function cancelMomoPayment(paymentId: string): Promise<BillingResult> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const done = await cancelManualPayment(user.id, String(paymentId));
+  revalidatePath("/dashboard/billing");
+  return done ? { ok: true } : { ok: false, error: "This payment can no longer be cancelled. If you have paid, wait for it to be confirmed." };
+}
+
+// Cheap check the waiting screen polls: the client's current payment (pending, or recently rejected), or null.
+export async function momoPaymentStatus(): Promise<ManualPaymentView | null> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return null;
+  return currentManualPayment(user.id);
 }

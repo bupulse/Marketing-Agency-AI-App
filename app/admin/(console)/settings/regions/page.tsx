@@ -6,13 +6,11 @@ import { Empty, Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
 import { Badge, Button, Field, Input, Select } from "@/components/ui";
 import { param } from "@/lib/admin/format";
 import { listRegionsAdmin } from "@/lib/admin/regions-service";
-import { formatMinor, minorDigits, PAYMENT_METHODS, paymentMethodLabel } from "@/lib/region-format";
+import { formatMinor, PAYMENT_METHODS, paymentMethodLabel } from "@/lib/region-format";
 import { removeRegionPriceAction, saveRegionAction, setRegionPriceAction } from "./actions";
 
 export const metadata = { title: "Regions and prices" };
 export const dynamic = "force-dynamic";
-
-const major = (minor: number, currency: string) => (minor / 10 ** minorDigits(currency)).toString();
 
 export default async function RegionsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireAdmin(); // pages render alongside the layout, so check here too

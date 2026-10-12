@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SEED_PLANS, type Plan, type UsageMetric } from "@/lib/plans";
-import { getPlan, getPlans, getTrialPlan, priceIdFor } from "@/lib/plan-catalog";
+import { getPlan, getPlans, priceIdFor } from "@/lib/plan-catalog";
 import { listAdminPlans, previewPriceChange, setPlanLimits, updatePlan, type PlanInput } from "./plans-service";
 import { isInterval, type PaidPlan } from "@/lib/billing/catalog";
 import { applyProviderSubscription } from "@/lib/billing/apply";

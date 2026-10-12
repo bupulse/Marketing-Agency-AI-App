@@ -15,12 +15,16 @@ export type LeadActionResult<T = object> = ({ ok: true } & T) | { ok: false; err
 
 const GENERIC = "Something went wrong. Nothing was changed. Please try again.";
 
-/** The signed-in owner's business id. Every action starts here, and every query below is scoped by it. */
-async function owner(permission?: Permission) {
+/**
+ * The signed-in owner's business id. Every action starts here, and every query below is scoped by it. Working a lead
+ * (status, notes, notifications) needs website chat in the plan; looking at and deleting the leads the company already
+ * has never does (`gated: false`), so losing the feature never locks anyone out of their own data.
+ */
+async function owner(permission?: Permission, { gated = true } = {}) {
   const user = await requireActiveUser(permission, "throw");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (!business) throw new LeadError("not_found", "Finish setting up your business first.");
-  await assertFeature(business.id, "websiteChat");
+  if (gated) await assertFeature(business.id, "websiteChat");
   return { userId: user.id, businessId: business.id };
 }
 
@@ -43,7 +47,7 @@ const idsSchema = z.array(idSchema).min(1).max(200);
 
 export async function loadLead(id: string) {
   return guarded(async () => {
-    const { businessId } = await owner();
+    const { businessId } = await owner(undefined, { gated: false });
     const lead = await getLeadDetail(businessId, idSchema.parse(id));
     if (!lead) throw new LeadError("not_found", "That lead no longer exists.");
     return { lead };
@@ -73,7 +77,7 @@ export async function saveNotes(id: string, notes: string) {
 
 export async function removeLeads(ids: string[]) {
   return guarded(async () => {
-    const { businessId } = await owner();
+    const { businessId } = await owner(undefined, { gated: false });
     const parsed = idsSchema.safeParse(ids);
     if (!parsed.success) throw new LeadError("invalid", "Choose at least one lead.");
     const deleted = await deleteLeads(businessId, parsed.data);

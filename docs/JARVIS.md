@@ -58,6 +58,7 @@ Legend: **confirm** = refused without `confirm: true`. **approval** = does not r
 | `list_plans` | Plans with prices, limits, features, clients, MRR and Paddle sync state |
 | `get_audit_log` | Every admin action with before and after |
 | `get_approval`, `list_approvals` | Money requests and their outcome |
+| `list_momo_payments`, `get_momo_payment` | Mobile Money payments made by hand (`docs/MOMO.md`): company, plan, RWF amount, reference, transaction id, status. Confirming stays in the console |
 | `list_feature_flags` | Flags |
 
 **Actions** (run immediately, audited)

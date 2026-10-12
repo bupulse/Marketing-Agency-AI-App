@@ -22,16 +22,17 @@ export default async function DashboardPage() {
   const { business, usage, firstName, logoUrl, brandColors, voiceLabel, businessName } = await getAppContext();
 
   const businessId = business?.id;
-  const [projectCount, contentCount, leadCount, connectionCount, recentProjects, recentLeads] = businessId
+  const [projectCount, contentCount, leadCount, connectionCount, designCount, recentProjects, recentLeads] = businessId
     ? await Promise.all([
         prisma.project.count({ where: { businessId } }),
         prisma.generatedContent.count({ where: { project: { businessId } } }),
         prisma.lead.count({ where: { businessId } }),
         prisma.connection.count({ where: { businessId } }),
+        prisma.design.count({ where: { businessId } }),
         prisma.project.findMany({ where: { businessId }, orderBy: { createdAt: "desc" }, take: 3 }),
         prisma.lead.findMany({ where: { businessId }, orderBy: { createdAt: "desc" }, take: 3 }),
       ])
-    : [0, 0, 0, 0, [], []];
+    : [0, 0, 0, 0, 0, [], []];
 
   const { used, limits } = usage;
   const brandDone = Boolean(business?.onboardedAt);
@@ -49,7 +50,7 @@ export default async function DashboardPage() {
     { label: "Projects", value: projectCount, note: "Things you are promoting", icon: FolderKanban },
     { label: "Content pieces", value: contentCount, note: "Captions, scripts and ads", icon: PenLine },
     { label: "Leads", value: leadCount, note: "From your chat widget", icon: Users },
-    { label: "Designs", value: 0, note: "Branded posts made", icon: ImageIcon },
+    { label: "Designs", value: designCount, note: "Branded posts made", icon: ImageIcon },
   ];
 
   const meters = [

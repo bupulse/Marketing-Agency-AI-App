@@ -8,7 +8,21 @@ import { SEED_PLANS } from "@/lib/plans";
 export type Row = Record<string, any>;
 type Where = Record<string, any> | undefined;
 
-let currentDb: { planPriceChange: { rows: Row[] } } | null = null;
+let currentDb: { planPriceChange: { rows: Row[] }; business: { rows: Row[] }; user: { rows: Row[] } } | null = null;
+
+/**
+ * The two relations the server code reads through `select` / `include`: a row's business (by businessId) and its
+ * account user (by userId), looked up in the other tables when the test did not attach them by hand. Nested selects
+ * are served by whatever the related row carries (tests attach `user.subscription`, `business.user` as needed).
+ */
+function attach(row: Row | null, args?: { select?: Record<string, any>; include?: Record<string, any> }): Row | null {
+  if (!row || !currentDb) return row;
+  const rel = args?.select ?? args?.include;
+  if (!rel) return row;
+  if (rel.business && row.business === undefined && row.businessId !== undefined) row.business = currentDb.business.rows.find((b) => b.id === row.businessId) ?? null;
+  if (rel.user && row.user === undefined && row.userId !== undefined) row.user = currentDb.user.rows.find((u) => u.id === row.userId) ?? null;
+  return row;
+}
 
 function match(row: Row, where: Where): boolean {
   if (!where) return true;
@@ -29,6 +43,10 @@ function match(row: Row, where: Where): boolean {
     const value = row[key] === undefined ? null : row[key];
     if (cond && typeof cond === "object" && !(cond instanceof Date) && !Array.isArray(cond)) {
       const c = cond as Record<string, any>;
+      if ("equals" in c) {
+        const same = typeof value === "string" && typeof c.equals === "string" && c.mode === "insensitive" ? value.toLowerCase() === c.equals.toLowerCase() : value === c.equals;
+        if (!same) return false;
+      }
       if ("not" in c && value === c.not) return false;
       if ("in" in c && !(c.in as unknown[]).includes(value)) return false;
       if ("lt" in c && !(value < c.lt)) return false;
@@ -42,16 +60,16 @@ function match(row: Row, where: Where): boolean {
   });
 }
 
-function table(rows: Row[], opts: { pk: string; unique?: string[]; defaults?: () => Row }) {
+function table(rows: Row[], opts: { pk: string; unique?: string[]; uniqueCombo?: string[]; defaults?: () => Row }) {
   const uniqueKeys = [opts.pk, ...(opts.unique ?? [])];
   let seq = 0;
   const copy = (r: Row | undefined | null) => (r ? { ...r } : null);
   const find = (where: Record<string, any>) => rows.find((r) => match(r, where)) ?? null;
   const api = {
     rows,
-    findUnique: vi.fn(async ({ where }: { where: Record<string, any> }) => copy(find(where))),
-    findFirst: vi.fn(async ({ where }: { where?: Where } = {}) => copy(rows.find((r) => match(r, where)))),
-    findMany: vi.fn(async ({ where, take }: { where?: Where; take?: number } = {}) => rows.filter((r) => match(r, where)).slice(0, take).map((r) => ({ ...r }))),
+    findUnique: vi.fn(async (args: { where: Record<string, any>; select?: Record<string, any>; include?: Record<string, any> }) => attach(copy(find(args.where)), args)),
+    findFirst: vi.fn(async (args: { where?: Where; select?: Record<string, any>; include?: Record<string, any> } = {}) => attach(copy(rows.find((r) => match(r, args.where))), args)),
+    findMany: vi.fn(async (args: { where?: Where; take?: number; select?: Record<string, any>; include?: Record<string, any> } = {}) => rows.filter((r) => match(r, args.where)).slice(0, args.take).map((r) => attach({ ...r }, args) as Row)),
     count: vi.fn(async ({ where }: { where?: Where } = {}) => rows.filter((r) => match(r, where)).length),
     create: vi.fn(async ({ data }: { data: Row }) => {
       for (const k of uniqueKeys) {
@@ -62,10 +80,20 @@ function table(rows: Row[], opts: { pk: string; unique?: string[]; defaults?: ()
       rows.push(row);
       return row;
     }),
-    createMany: vi.fn(async ({ data }: { data: Row[] }) => {
+    createMany: vi.fn(async ({ data, skipDuplicates }: { data: Row[]; skipDuplicates?: boolean }) => {
       if (data.length > 0 && !("periodStart" in data[0])) {
-        for (const d of data) rows.push({ ...(opts.defaults?.() ?? {}), createdAt: new Date(), ...d, [opts.pk]: d[opts.pk] ?? `${opts.pk}_${++seq}` });
-        return { count: data.length };
+        let count = 0;
+        for (const d of data) {
+          // A composite unique key (RenewalNotice): with skipDuplicates the row is skipped, like ON CONFLICT DO NOTHING.
+          const combo = opts.uniqueCombo;
+          if (combo && rows.some((r) => combo.every((k) => (r[k] instanceof Date ? r[k].getTime() === d[k]?.getTime() : r[k] === d[k])))) {
+            if (skipDuplicates) continue;
+            throw Object.assign(new Error(`Unique constraint failed on ${combo.join(",")}`), { code: "P2002" });
+          }
+          rows.push({ ...(opts.defaults?.() ?? {}), createdAt: new Date(), ...d, [opts.pk]: d[opts.pk] ?? `${opts.pk}_${++seq}` });
+          count++;
+        }
+        return { count };
       }
       for (const d of data) if (!rows.some((r) => r.userId === d.userId && r.periodStart?.getTime() === d.periodStart?.getTime())) rows.push({ textGenerations: 0, imageGenerations: 0, videoSeconds: 0, voiceCharacters: 0, chatMessages: 0, ...d });
       return { count: data.length };
@@ -161,6 +189,10 @@ export function createFakeDb() {
     planDefinition: table(seedPlanRows(), { pk: "key", unique: ["key"] }),
     planPriceChange: table([], { pk: "id", defaults: () => ({ status: "scheduled", notifiedCount: 0, appliedCount: 0, failedCount: 0, completedAt: null }) }),
     planPriceChangeItem: table([], { pk: "id", defaults: () => ({ status: "pending", noticeSentAt: null, effectiveAt: null, appliedAt: null, error: null, updatedAt: new Date() }) }),
+    // Manual Mobile Money payments (lib/billing/momo.ts) and their renewal reminders.
+    manualPayment: table([], { pk: "id", unique: ["reference"], defaults: () => ({ currency: "RWF", status: "pending", payerPhone: null, network: null, transactionId: null, rejectReason: null, submittedAt: null, decidedAt: null, decidedBy: null, periodStart: null, periodEnd: null, updatedAt: new Date() }) }),
+    renewalNotice: table([], { pk: "id", uniqueCombo: ["userId", "periodEnd", "kind"], defaults: () => ({ sentAt: new Date() }) }),
+    analyticsEvent: table([], { pk: "id" }),
     // Regions, regional prices and demo bookings (R1). Empty by default: lib/region falls back to the seeds.
     pricingRegion: table([], { pk: "key" }),
     planRegionPrice: table([], { pk: "id", defaults: () => ({ cardMonthlyUsdCents: null, cardYearlyUsdCents: null, paddleMonthlyPriceId: null, paddleYearlyPriceId: null, updatedAt: new Date() }) }),

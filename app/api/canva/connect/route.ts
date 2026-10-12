@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   // Canva editing is a plan feature (and its service may be off): "Add to your plan", or back with an error.
   const status = await featureStatus(user, "canva");
   if (status === "not_in_plan") return NextResponse.redirect(new URL(upgradeHref("canva"), siteUrl()));
-  if (status === "service_off" || !(await isServiceEnabled("canva"))) return NextResponse.redirect(new URL(`${next}${next.includes("?") ? "&" : "?"}canva=error`, siteUrl()));
+  if (status !== "ok" || !(await isServiceEnabled("canva"))) return NextResponse.redirect(new URL(`${next}${next.includes("?") ? "&" : "?"}canva=error`, siteUrl()));
 
   try {
     const state = randomToken(24);

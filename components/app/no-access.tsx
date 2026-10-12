@@ -3,6 +3,7 @@ import { AddToPlan } from "./add-to-plan";
 import { getAppContext } from "./context";
 import { EmptyState } from "./empty-state";
 import { PageHeader } from "./page-header";
+import { blockReason } from "@/lib/entitlements";
 import type { FeatureKey } from "@/lib/features";
 import { askMessage, can, type Permission } from "@/lib/team/roles";
 
@@ -29,5 +30,5 @@ export async function pageGate(permission: Permission) {
 export async function featureGate(feature: FeatureKey) {
   const { role, entitlements } = await getAppContext();
   if (entitlements.usable.has(feature)) return null;
-  return <AddToPlan feature={feature} reason={entitlements.inPlan.has(feature) ? "service_off" : "not_in_plan"} role={role} inPlan={entitlements.inPlan} />;
+  return <AddToPlan feature={feature} reason={blockReason(entitlements, feature)} role={role} inPlan={entitlements.inPlan} />;
 }

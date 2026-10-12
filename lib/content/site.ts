@@ -110,12 +110,8 @@ export const faqs = [
   { q: "What is done-for-you?", a: "If you would rather not do it yourself, our team runs your social content and lead capture with BuPulse for a monthly fee." },
 ];
 
-// Placeholders until real customers give permission to be quoted.
-export const testimonials = [
-  { quote: "[Testimonial from a store owner]", name: "[Owner name]", business: "[Store name]" },
-  { quote: "[Testimonial from a school]", name: "[Name]", business: "[School name]" },
-  { quote: "[Testimonial from a construction company]", name: "[Name]", business: "[Company name]" },
-];
+// Testimonials: none yet. The home page section (components/marketing/home/testimonials.tsx, removed 12 October 2026,
+// in git history) comes back once pilot clients have agreed to be quoted; until then nothing made up is shown.
 
 // Plans, prices and the trial now come from the database (lib/plan-catalog.ts, managed at /admin/plans).
 

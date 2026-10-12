@@ -4,13 +4,21 @@ import { Logo } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme";
 import { Badge, Button, GlassCard, buttonClasses } from "@/components/ui";
 import { formatPrice } from "@/components/billing/helpers";
+import { MomoPayment } from "@/components/billing/momo-payment";
 import { getSettings } from "@/lib/admin/settings";
+import { currentManualPayment } from "@/lib/billing/momo";
+import { getMomoSettings } from "@/lib/billing/momo-settings";
+import { momoConfigured, momoPriceOf } from "@/lib/billing/momo-shared";
 import { prisma } from "@/lib/db";
 import { currentBooking } from "@/lib/demo/bookings";
 import { DEMO_TIME_ZONE, formatSlot, MIN_LEAD_MINUTES } from "@/lib/demo/slots";
 import { companyPlans } from "@/lib/region-prices";
 import { can, type Role } from "@/lib/team/roles";
 import { DemoCancelButton } from "./demo-cancel";
+import { DemoPayButton } from "./demo-pay";
+
+/** Reschedule and cancel are only offered up to MIN_LEAD_MINUTES before the call (lib/demo/bookings.ts enforces it too). */
+const canStillMove = (booking: { startsAt: Date }) => booking.startsAt.getTime() - Date.now() >= MIN_LEAD_MINUTES * 60_000;
 
 /**
  * What a company sees instead of the dashboard while it waits for its demo (Subscription.status PENDING_DEMO): the
@@ -18,17 +26,22 @@ import { DemoCancelButton } from "./demo-cancel";
  * and the server refuses everything else too (lib/entitlements.ts, lib/usage.ts).
  */
 export async function DemoLock({ businessId, role, firstName, email, businessName }: { businessId: string; role: Role; firstName: string; email: string; businessName: string }) {
-  const [booking, settings, { plans }, business] = await Promise.all([
+  const canManage = can(role, "settings");
+  const [booking, settings, { region, plans }, business, momoSettings] = await Promise.all([
     currentBooking(businessId),
     getSettings(),
     companyPlans(businessId),
-    prisma.business.findUnique({ where: { id: businessId }, select: { user: { select: { subscription: { select: { chosenPlan: true } } } } } }),
+    prisma.business.findUnique({ where: { id: businessId }, select: { userId: true, user: { select: { subscription: { select: { chosenPlan: true } } } } } }),
+    getMomoSettings(),
   ]);
   const chosenKey = business?.user.subscription?.chosenPlan ?? null;
   const plan = chosenKey ? plans.find((p) => p.key === chosenKey) ?? null : null;
+  // Paying by Mobile Money does not have to wait for the demo: where the region takes it and the owner has said where
+  // to pay, the chosen plan can be paid from here; confirming makes the company ACTIVE and opens the dashboard.
+  const canPay = canManage && plan !== null && region.paymentMethods.includes("momo") && momoConfigured(momoSettings) && momoPriceOf(plan, "MONTH") !== null;
+  const payment = canManage && business ? await currentManualPayment(business.userId) : null;
   const meetingLink = booking?.meetingLink || settings.meetingLink || null;
-  const canManage = can(role, "settings");
-  const movable = booking ? booking.startsAt.getTime() - Date.now() >= MIN_LEAD_MINUTES * 60_000 : false;
+  const movable = booking ? canStillMove(booking) : false;
   const zone = DEMO_TIME_ZONE.replace("_", " ");
 
   return (
@@ -109,6 +122,8 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
           )}
         </GlassCard>
 
+        {payment && <MomoPayment payment={payment} details={momoSettings} />}
+
         <div className="grid gap-5 md:grid-cols-2">
           <GlassCard as="section" aria-labelledby="chosen-plan" className="flex flex-col gap-3 p-5 sm:p-6">
             <h2 id="chosen-plan" className="text-base font-semibold">
@@ -136,6 +151,12 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
                   <Link href="/book-demo?step=plan" className="text-sm font-semibold">
                     Change plan
                   </Link>
+                )}
+                {canPay && !payment && (
+                  <div className="flex flex-col gap-1.5 border-t border-line pt-3">
+                    <DemoPayButton plan={plan.key} planName={plan.name} />
+                    <span className="text-xs text-muted">Already decided? Pay now and your plan starts as soon as we confirm the payment, demo or not.</span>
+                  </div>
                 )}
               </>
             ) : (

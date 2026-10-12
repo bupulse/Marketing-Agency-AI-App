@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as grant from "@/tests/stubs/entitlements";
 // Plans are not part of this test's database: every plan feature is granted (tests/stubs/entitlements.ts).
 vi.mock("@/lib/entitlements", () => import("@/tests/stubs/entitlements"));
 
@@ -329,6 +330,32 @@ describe("reminders (NOTIFY accounts and SCRIPT posts)", () => {
     const result = await publishDue(now);
     expect(result.retrying).toBe(1);
     expect(settled().data.status).toBe("SCHEDULED");
+  });
+});
+
+describe("the calendar plan feature", () => {
+  afterEach(() => {
+    grant.missing.clear();
+    grant.state.planUnknown = false;
+  });
+
+  it("fails a claimed post of a company whose plan (resolved) lacks it, with the reason, instead of sending it", async () => {
+    claimOnce(post({ attempts: 1 }));
+    grant.missing.add("calendar");
+    const result = await publishDue(now);
+    expect(result).toMatchObject({ claimed: 1, failed: 1, published: 0, retrying: 0 });
+    expect(provider.publish).not.toHaveBeenCalled();
+    expect(settled().data).toMatchObject({ status: "FAILED", lastError: expect.stringMatching(/not part of your plan/) });
+  });
+
+  it("hands the post back to retry while the plan cannot be checked (catalog degraded, unknown plan key): never FAILED for good", async () => {
+    claimOnce(post({ attempts: 4 })); // even on the last attempt
+    grant.state.planUnknown = true;
+    const result = await publishDue(now);
+    expect(result).toMatchObject({ claimed: 1, retrying: 1, failed: 0, published: 0 });
+    expect(provider.publish).not.toHaveBeenCalled();
+    expect(email.sendEmail).not.toHaveBeenCalled();
+    expect(settled().data).toMatchObject({ status: "SCHEDULED", attempts: 3, nextAttemptAt: null, lastError: null, lockedAt: null });
   });
 });
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiError, apiJson, apiRoute } from "@/lib/api/auth";
+import { apiError, apiFeatureDenied, apiJson, apiRoute } from "@/lib/api/auth";
 import { leadJson } from "@/lib/api/serialize";
 import { prisma } from "@/lib/db";
 import { LEAD_STATUSES } from "@/lib/leads/filters";
@@ -21,8 +21,10 @@ const patchSchema = z
   .strict()
   .refine((v) => v.status !== undefined || v.notes !== undefined, "Send status, notes or both.");
 
-// PATCH /api/v1/leads/:id  { status?, notes? }   (scope leads:write)
+// PATCH /api/v1/leads/:id  { status?, notes? }   (scope leads:write; working leads needs website chat in the plan)
 export const PATCH = apiRoute("leads:write", async (ctx, request, route: { params: Promise<{ id: string }> }) => {
+  const denied = await apiFeatureDenied(ctx.businessId, "websiteChat");
+  if (denied) return denied;
   const { id } = await route.params;
   const parsed = patchSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return apiError(400, "invalid_request", parsed.error.issues[0]?.message ?? "status must be new, contacted, won or lost, and notes must be text.");

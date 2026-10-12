@@ -14,6 +14,7 @@ import {
   Plug,
   ScrollText,
   Server,
+  Smartphone,
   TriangleAlert,
   Building2,
   CalendarCheck,
@@ -23,7 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export type AdminNavItem = { href: string; label: string; icon: LucideIcon; badge?: "approvals" | "health" };
+export type AdminNavItem = { href: string; label: string; icon: LucideIcon; badge?: "approvals" | "health" | "payments" };
 export type AdminNavGroup = { title: string | null; items: AdminNavItem[] };
 
 export const ADMIN_NAV: AdminNavGroup[] = [
@@ -43,6 +44,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { href: "/admin/plans", label: "Plans", icon: Layers },
       { href: "/admin/settings/regions", label: "Regions and prices", icon: Globe },
       { href: "/admin/approvals", label: "Approvals", icon: BadgeCheck, badge: "approvals" },
+      { href: "/admin/payments", label: "Payments", icon: Smartphone, badge: "payments" },
     ],
   },
   {

@@ -238,6 +238,23 @@ describe("an Autopilot run", () => {
     clearSwitchCache();
   });
 
+  it("says why when the plan lacks Autopilot or cannot be checked, without claiming the week", async () => {
+    const grant = await import("@/tests/stubs/entitlements");
+    mocks.prisma.business.findUnique.mockResolvedValue(business);
+    try {
+      grant.missing.add("autopilot");
+      expect(await runAutopilot("biz1", { now })).toMatchObject({ status: "nothing_to_plan", note: expect.stringMatching(/not part of your plan/) });
+      grant.missing.clear();
+      grant.state.planUnknown = true;
+      expect(await runAutopilot("biz1", { now })).toMatchObject({ status: "nothing_to_plan", note: expect.stringMatching(/could not check your plan/) });
+      expect(mocks.prisma.autopilotRun.create).not.toHaveBeenCalled();
+      expect(mocks.consumeUsage).not.toHaveBeenCalled();
+    } finally {
+      grant.missing.clear();
+      grant.state.planUnknown = false;
+    }
+  });
+
   it("leaves accounts waiting for deletion alone", async () => {
     mocks.prisma.business.findUnique.mockResolvedValue({ ...business, user: { ...business.user, deletionScheduledFor: new Date() } });
     expect((await runAutopilot("biz1", { now })).status).toBe("nothing_to_plan");

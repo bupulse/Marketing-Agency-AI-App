@@ -10,7 +10,7 @@
 import "server-only";
 import { disabledServices } from "@/lib/admin/switch";
 import { prisma } from "@/lib/db";
-import { hasFeature } from "@/lib/entitlements";
+import { featureStatus } from "@/lib/entitlements";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { logError } from "@/lib/errors";
 import { extensionFor } from "@/lib/media/rules";
@@ -407,8 +407,10 @@ export async function runDailyStoreSync(opts: { cursor?: string | null; now?: Da
     processed++;
     let finished = false;
     // Store import is a plan feature: a store of a company without it is stamped and left as it is (not failed).
-    if (!(await hasFeature(conn.businessId, "storeImport"))) {
-      await prisma.storeConnection.updateMany({ where: { id: conn.id }, data: { lastAttemptAt: new Date() } });
+    // While the plan cannot be checked (plan_unknown) nothing is written, so the store is simply due again next time.
+    const storeImport = await featureStatus(conn.businessId, "storeImport");
+    if (storeImport !== "ok") {
+      if (storeImport !== "plan_unknown") await prisma.storeConnection.updateMany({ where: { id: conn.id }, data: { lastAttemptAt: new Date() } });
       continue;
     }
     try {

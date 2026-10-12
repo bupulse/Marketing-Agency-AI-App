@@ -1,6 +1,9 @@
 -- Plans carry features (lib/features.ts). Two new columns: `highlights` takes over the marketing bullets that lived in
 -- `features`, and `featureKeys` lists what the plan unlocks. The old `features` and `capabilities` columns stay and are
 -- kept in step by the app, so a build from before this migration keeps working against the migrated table.
+-- `featureKeys` is nullable with no default: a row an older build inserts after this migration has NULL there, which
+-- the app reads as "the core features plus its capabilities" (the same as the backfill below). A default of '[]' would
+-- have given such a plan no features at all.
 --
 -- Backfill, so NOTHING changes for existing companies:
 --   TRIAL and STANDARD: every built feature of the app except the API (they never had API access or Composio);
@@ -10,7 +13,7 @@
 -- The table already has RLS on and no grants for anon, authenticated or service_role (20261009095100_plan_builder_grants).
 
 ALTER TABLE "PlanDefinition" ADD COLUMN "highlights" JSONB NOT NULL DEFAULT '[]';
-ALTER TABLE "PlanDefinition" ADD COLUMN "featureKeys" JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE "PlanDefinition" ADD COLUMN "featureKeys" JSONB;
 
 UPDATE "PlanDefinition" SET "highlights" = "features" WHERE jsonb_typeof("features") = 'array';
 

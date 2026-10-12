@@ -6,6 +6,7 @@
 //   daily 03:47  -> POST /api/cron/store-sync  (re-syncs imported store products, cursor calls)
 //   daily 02:17  -> POST /api/cron/analytics-rollup  (daily analytics roll-up and back-fill, cursor calls)
 //   daily 04:29  -> POST /api/cron/plan-price-changes  (price-change notices and swaps, archives old Paddle prices, cursor calls)
+//   daily 05:41  -> POST /api/cron/momo-renewals  (Mobile Money renewal reminders, grace period, cursor calls)
 //   hourly :53   -> POST /api/cron/trial-reminders  (trial-end reminders for clients without a card, and trial expiry)
 // The handler calls the app's own routes through the self-reference binding, so the routes keep one set of
 // rules (CRON_SECRET bearer check) whether Cloudflare, GitHub Actions or a person calls them.
@@ -41,6 +42,8 @@ export const ANALYTICS_ROLLUP_CRON = "17 2 * * *";
 /** Daily at 04:29 UTC: plan price changes (notice emails, moving clients to the new price before renewal), cursor calls. */
 export const PLAN_PRICE_CRON = "29 4 * * *";
 
+/** Daily at 05:41 UTC: Mobile Money renewal reminders and the grace period (read-only after it), cursor calls. */
+export const MOMO_RENEWALS_CRON = "41 5 * * *";
 /** Hourly at :53: trial-end reminders (a day before and on the last day) and trials that are over become read-only. */
 export const TRIAL_CRON = "53 * * * *";
 
@@ -52,6 +55,7 @@ export const CRON_ROUTES: Record<string, string> = {
   [STORE_SYNC_CRON]: "/api/cron/store-sync",
   [ANALYTICS_ROLLUP_CRON]: "/api/cron/analytics-rollup",
   [PLAN_PRICE_CRON]: "/api/cron/plan-price-changes",
+  [MOMO_RENEWALS_CRON]: "/api/cron/momo-renewals",
   [TRIAL_CRON]: "/api/cron/trial-reminders",
 };
 
@@ -98,6 +102,7 @@ const worker = {
     if (controller.cron === AUTOPILOT_CRON) return ctx.waitUntil(runAutopilotCron(env));
     if (controller.cron === STORE_SYNC_CRON) return ctx.waitUntil(runCursorCron("/api/cron/store-sync", env));
     if (controller.cron === PLAN_PRICE_CRON) return ctx.waitUntil(runCursorCron("/api/cron/plan-price-changes", env));
+    if (controller.cron === MOMO_RENEWALS_CRON) return ctx.waitUntil(runCursorCron("/api/cron/momo-renewals", env));
     if (controller.cron === ANALYTICS_ROLLUP_CRON) return ctx.waitUntil(runCursorCron("/api/cron/analytics-rollup", env));
     const path = routeForCron(controller.cron);
     if (!path) return console.error(`[cron] unknown schedule "${controller.cron}"; check wrangler.jsonc against worker.ts`);

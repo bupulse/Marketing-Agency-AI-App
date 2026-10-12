@@ -7,7 +7,7 @@ import { createFakeDb, type FakeDb } from "../admin/fake-db";
 
 const h = vi.hoisted(() => ({
   db: null as unknown as FakeDb,
-  email: vi.fn(async () => true),
+  email: vi.fn<(email: { to: string; subject: string; text: string; html: string; attachments?: { filename: string; content: string }[] }) => Promise<boolean>>(async () => true),
   track: vi.fn(),
   adminAction: vi.fn(),
 }));
@@ -60,7 +60,7 @@ function seedCatalog() {
 function company(n: number, region = "RW", sub: Record<string, unknown> = {}) {
   const userId = UID(n);
   const businessId = `b${n}`;
-  const subscription = { id: `s${n}`, userId, plan: "TRIAL", status: "PENDING_DEMO", chosenPlan: null, trialEndsAt: null, currentPeriodStart: NOW, currentPeriodEnd: null, providerSubscriptionId: null, trialReminder1SentAt: null, trialReminder2SentAt: null, ...sub };
+  const subscription: Record<string, unknown> & { trialEndsAt: Date | null; status: string; chosenPlan: string | null; trialReminder1SentAt: Date | null; trialReminder2SentAt: Date | null } = { id: `s${n}`, userId, plan: "TRIAL", status: "PENDING_DEMO", chosenPlan: null, trialEndsAt: null, currentPeriodStart: NOW, currentPeriodEnd: null, providerSubscriptionId: null, trialReminder1SentAt: null, trialReminder2SentAt: null, ...sub };
   h.db.subscription.rows.push(subscription);
   const user = { id: userId, email: `owner${n}@example.com`, name: `Owner ${n}`, suspendedAt: null, subscription, business: { id: businessId, name: `Company ${n}` } };
   h.db.user.rows.push(user);
@@ -88,7 +88,8 @@ describe("sign-up", () => {
     h.db.user.upsert = create as never;
     const ok = await ensureAccount({ id: UID(9), email: "new@example.com", email_confirmed_at: "2026-10-12T06:00:00Z", user_metadata: { organisation_name: "Inzu", ceo_name: "Aline", industry: "Retail", country: "Rwanda" }, identities: [{ provider: "email" }] } as never);
     expect(ok).toBe(true);
-    const data = create.mock.calls[0][0].data as { create: { business: { create: Record<string, unknown> }; subscription: { create: Record<string, unknown> } } };
+    // The upsert's argument: { where, update, create: { business: { create }, subscription: { create } }, include }.
+    const data = create.mock.calls[0][0] as unknown as { create: { business: { create: Record<string, unknown> }; subscription: { create: Record<string, unknown> } } };
     expect(data.create.business.create).toMatchObject({ pricingRegion: "RW", country: "Rwanda" });
     expect(data.create.subscription.create).toEqual({ plan: "TRIAL", status: "PENDING_DEMO", trialEndsAt: null, currentPeriodStart: expect.any(Date), currentPeriodEnd: null });
     expect(h.track.mock.calls.map((c) => c[0])).toEqual(["signup"]); // no trial_started at sign-up
@@ -185,7 +186,7 @@ describe("admin: start trial", () => {
     await startTrialAction(f);
     expect(h.adminAction).toHaveBeenCalledTimes(1);
     expect(subscription).toMatchObject({ status: "TRIALING", plan: "TRIAL", chosenPlan: "STARTER" });
-    expect(Math.round((subscription.trialEndsAt.getTime() - Date.now()) / DAY)).toBe(5);
+    expect(Math.round(((subscription.trialEndsAt as Date).getTime() - Date.now()) / DAY)).toBe(5);
     expect(h.db.demoBooking.rows[0].status).toBe("done");
     expect(h.db.auditLog.rows.at(-1)).toMatchObject({ action: "start_trial", target: `business:${businessId}`, before: { status: "PENDING_DEMO" }, after: { status: "TRIALING", days: 5 } });
     expect((h.email.mock.calls[0][0] as { subject: string }).subject).toMatch(/trial has started: Starter/);
@@ -211,7 +212,7 @@ describe("admin: start trial", () => {
     expect(await code(setDemoStatus(CONSOLE, { id: upcoming[0].id, status: "booked" }))).toMatch(/^invalid/);
     const result = await startTrial(CONSOLE, { businessId }, NOW);
     expect(result.days).toBe(3);
-    expect(subscription.trialEndsAt.toISOString()).toBe("2026-10-15T06:00:00.000Z");
+    expect(subscription.trialEndsAt?.toISOString()).toBe("2026-10-15T06:00:00.000Z");
     expect((await demoPanel(businessId)).chosenPlanName).toBe("Starter");
   });
 });
@@ -240,8 +241,9 @@ describe("trial end", () => {
     await expect(consumeUsage(over.userId, "text")).rejects.toMatchObject({ reason: "trial_expired" });
     // A second run does nothing.
     expect(await processTrialReminders(NOW)).toEqual({ reminded1: 0, reminded2: 0, expired: 0, paused: false });
-    // Later the day-before client reaches the last day: the second reminder, once.
-    expect(await processTrialReminders(new Date(NOW.getTime() + 14 * HOUR))).toEqual({ reminded1: 0, reminded2: 1, expired: 0, paused: false });
+    // Later the day-before client reaches the last day: the second reminder, once. By then the last-day client's trial
+    // (5 hours from NOW) is over too, so it expires in the same run.
+    expect(await processTrialReminders(new Date(NOW.getTime() + 14 * HOUR))).toEqual({ reminded1: 0, reminded2: 1, expired: 1, paused: false });
   });
 
   it("claims nothing while Resend is switched off, and a failed send is retried next time", async () => {

@@ -117,7 +117,8 @@ export function freeSlots(opts: SlotOptions): Date[] {
   const days = opts.days ?? BOOKING_WINDOW_DAYS;
   const out: Date[] = [];
   let ymd = ymdInZone(opts.from, timeZone);
-  for (let i = 0; i <= days; i++, ymd = addDaysYmd(ymd, 1)) {
+  // Exactly `days` days, today (in the zone) included.
+  for (let i = 0; i < days; i++, ymd = addDaysYmd(ymd, 1)) {
     if (blocked.has(ymd)) continue;
     const weekday = new Date(`${ymd}T00:00:00Z`).getUTCDay();
     for (const w of opts.windows.filter((x) => x.weekday === weekday).sort((a, b) => a.startMinute - b.startMinute)) {
@@ -138,17 +139,28 @@ export function isSlotFree(start: Date, opts: SlotOptions): boolean {
   return freeSlots({ ...opts, from: opts.from }).some((d) => d.getTime() === start.getTime());
 }
 
+/** Parts of a date as words, built by hand so the text is the same on Node and Cloudflare (ICU versions differ in punctuation). */
+function words(date: Date, timeZone: string, locale: string) {
+  const parts = new Intl.DateTimeFormat(locale, { timeZone, weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return { weekday: get("weekday"), day: get("day"), month: get("month"), year: get("year"), time: `${get("hour").padStart(2, "0")}:${get("minute").padStart(2, "0")}` };
+}
+
 /** "Tuesday 14 October 2026, 10:00" in the zone. */
 export function formatSlot(date: Date, timeZone = DEMO_TIME_ZONE, locale = "en-GB"): string {
-  return new Intl.DateTimeFormat(locale, { timeZone, weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date).replace(" at ", ", ");
+  const w = words(date, timeZone, locale);
+  return `${w.weekday} ${w.day} ${w.month} ${w.year}, ${w.time}`;
 }
 
+/** "10:00" in the zone. */
 export function formatSlotTime(date: Date, timeZone = DEMO_TIME_ZONE, locale = "en-GB"): string {
-  return new Intl.DateTimeFormat(locale, { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date);
+  return words(date, timeZone, locale).time;
 }
 
+/** "Tuesday 14 October" in the zone. */
 export function formatSlotDay(date: Date, timeZone = DEMO_TIME_ZONE, locale = "en-GB"): string {
-  return new Intl.DateTimeFormat(locale, { timeZone, weekday: "long", day: "numeric", month: "long" }).format(date);
+  const w = words(date, timeZone, locale);
+  return `${w.weekday} ${w.day} ${w.month}`;
 }
 
 /** Groups slots by their day in the zone, in order, for the picker. */

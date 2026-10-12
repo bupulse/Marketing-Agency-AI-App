@@ -3,21 +3,43 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, useToast } from "@/components/ui";
-import { cancelSubscription, openPortal, resumeSubscription } from "@/app/dashboard/billing/actions";
+import { cancelSubscription, openPortal, resumeSubscription, startMomoPayment } from "@/app/dashboard/billing/actions";
+import type { BillingInterval } from "@/lib/generated/prisma/client";
 
 type Props = {
   cancelAtPeriodEnd: boolean;
   pastDue: boolean;
   /** Formatted end of the paid period. */
   periodEnd: string | null;
+  /** "momo": paid by hand each period, so the only action is to pay the next one (docs/MOMO.md). */
+  method?: "card" | "momo";
+  /** For Mobile Money: the plan and period to renew. */
+  renew?: { plan: string; interval: BillingInterval };
 };
 
 /** Buttons on the current plan card: update payment method, resume, cancel. */
-export function PlanActions({ cancelAtPeriodEnd, pastDue, periodEnd }: Props) {
+export function PlanActions({ cancelAtPeriodEnd, pastDue, periodEnd, method = "card", renew }: Props) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
   const [confirm, setConfirm] = useState(false);
+
+  if (method === "momo") {
+    const pay = () =>
+      start(async () => {
+        const result = renew ? await startMomoPayment(renew) : { ok: false as const, error: "Choose a plan below." };
+        if (result.ok) router.refresh();
+        else toast(result.error, "error");
+      });
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <Button onClick={pay} disabled={pending || !renew}>
+          {pending ? "One moment…" : pastDue ? "Pay by Mobile Money" : "Renew by Mobile Money"}
+        </Button>
+        <span className="text-sm text-muted">Paid by hand each period. We email you before it ends; nothing is ever deleted.</span>
+      </div>
+    );
+  }
 
   function run(action: () => ReturnType<typeof cancelSubscription>, done: string, close = false) {
     start(async () => {

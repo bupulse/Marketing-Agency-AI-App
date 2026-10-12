@@ -53,10 +53,16 @@ Object.assign(prisma, {
 });
 vi.mock("@/lib/db", () => ({ prisma }));
 
+// One custom plan beyond the seeds: API access without website chat or the calendar, to prove the write gates.
+vi.mock("@/lib/plan-catalog", async (orig) => {
+  const actual = await orig<typeof import("@/lib/plan-catalog")>();
+  return { ...actual, getPlan: async (key: string) => (key === "API_ONLY" ? { ...(await actual.getPlan("PRO"))!, key: "API_ONLY", features: ["apiAccess"] } : actual.getPlan(key)) };
+});
+
 const rateLimit = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/rate-limit", async (orig) => ({ ...(await orig<typeof import("@/lib/rate-limit")>()), rateLimit }));
 
-import { authenticate, API_RATE_LIMIT } from "@/lib/api/auth";
+import { apiFeatureDenied, authenticate, API_RATE_LIMIT } from "@/lib/api/auth";
 import { generateApiKey, hashApiKey, validateKeyInput, ApiKeyError } from "@/lib/api/keys";
 import { pageArgs, parsePaging, toPage } from "@/lib/api/paging";
 import { RateLimitError } from "@/lib/rate-limit";
@@ -230,6 +236,31 @@ describe("writes", () => {
       expect(response.status).toBe(400);
       expect((await response.json()).error.code).toBe("invalid_request");
     }
+  });
+  it("gates writes by the resource's own feature: leads need website chat, posts need the calendar; reading stays open with apiAccess", async () => {
+    db.business.find((b) => b.id === "bizA")!.user = { subscription: { plan: "API_ONLY", status: "ACTIVE" } };
+    expect((await listLeads(req(KEY_A))).status).toBe(200);
+    expect((await getLead(req(KEY_A, "https://x.test/api/v1/leads/a1"), ctxId("a1"))).status).toBe(200);
+    expect((await listPosts(req(KEY_A, "https://x.test/api/v1/posts"))).status).toBe(200);
+    const patch = await patchLead(req(KEY_A, "https://x.test/api/v1/leads/a1", { method: "PATCH", body: JSON.stringify({ status: "won" }) }), ctxId("a1"));
+    expect(patch.status).toBe(403);
+    expect((await patch.json()).error).toMatchObject({ code: "feature_required", message: expect.stringMatching(/^Website chat and leads is not part of your plan\. You can still read existing data/) });
+    expect(db.lead.find((l) => l.id === "a1")!.status).toBe("NEW");
+    const post = await createPost(req(KEY_A, "https://x.test/api/v1/posts", { method: "POST", body: JSON.stringify({ network: "linkedin", text: "Hello" }) }));
+    expect(post.status).toBe(403);
+    expect((await post.json()).error.code).toBe("feature_required");
+    expect(db.post.filter((p) => p.businessId === "bizA")).toHaveLength(1);
+  });
+  it("answers 503 feature_unavailable, never 403, while the plan cannot be checked (a key is not 'not in your plan' during a catalog blip)", async () => {
+    db.business.find((b) => b.id === "bizA")!.user = { subscription: { plan: "RW_CUSTOM", status: "ACTIVE" } }; // a plan the catalog does not have
+    for (const call of [() => listLeads(req(KEY_A)), () => patchLead(req(KEY_A, "https://x.test/api/v1/leads/a1", { method: "PATCH", body: JSON.stringify({ status: "won" }) }), ctxId("a1"))]) {
+      const response = await call();
+      expect(response.status).toBe(503);
+      expect((await response.json()).error.code).toBe("feature_unavailable");
+    }
+    const denied = await apiFeatureDenied("bizA", "websiteChat");
+    expect(denied?.status).toBe(503);
+    expect((await denied!.json()).error.code).toBe("feature_unavailable");
   });
   it("POST /posts creates a draft only", async () => {
     const response = await createPost(req(KEY_A, "https://x.test/api/v1/posts", { method: "POST", body: JSON.stringify({ network: "linkedin", text: "Hello", hashtags: ["#a"], projectId: "pA" }) }));

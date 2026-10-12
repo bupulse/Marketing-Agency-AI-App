@@ -65,7 +65,8 @@ describe("free slots", () => {
     const hourly = freeSlots({ ...base, slotMinutes: 60, windows: [{ weekday: 1, startMinute: 9 * 60, endMinute: 12 * 60 }] });
     expect(hourly.map((s) => s.toISOString().slice(11, 16))).toEqual(["08:00", "09:00"]); // 10:00 and 11:00 Kigali; 09:00 is before the lead time
     const groups = groupSlotsByDay(freeSlots(base));
-    expect(groups.map((g) => g.ymd)).toEqual(["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-19"]);
+    // Seven days from Monday 12 October: the working days up to Friday 16; the next Monday is outside the window.
+    expect(groups.map((g) => g.ymd)).toEqual(["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16"]);
     expect(groups[0].label).toMatch(/Monday 12 October/);
   });
 });
@@ -90,8 +91,9 @@ describe("calendar invite", () => {
     expect(ics).toContain("SEQUENCE:3\r\n");
     expect(ics).toContain("DESCRIPTION:Line one\\; with\\, commas\\nLine two\r\n");
     expect(ics).toContain("URL:https://meet.google.com/abc-defg-hij\r\n");
-    expect(ics).toContain("ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=Aline:mailto:aline@example.com");
+    // Long lines are folded (CRLF + space) at 75 octets; unfolding gives the attendee line back whole.
     expect(ics.split("\r\n").every((l) => l.length <= 75)).toBe(true);
+    expect(ics.replace(/\r\n /g, "")).toContain("ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=Aline:mailto:aline@example.com");
     const cancelled = buildIcs({ uid: "x", sequence: 1, start: new Date(), end: new Date(), summary: "s", description: "d", organizer: { name: "B", email: "a@b.c" }, attendees: [], cancelled: true });
     expect(cancelled).toContain("METHOD:CANCEL");
     expect(cancelled).toContain("STATUS:CANCELLED");

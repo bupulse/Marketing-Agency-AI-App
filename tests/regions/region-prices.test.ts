@@ -149,6 +149,7 @@ describe("admin prices", () => {
     expect(await setSetting(CONSOLE, "blockedDates", "2026-12-25\n2026-12-26, 2026-12-25")).toEqual(["2026-12-25", "2026-12-26"]);
     expect(await code(setSetting(CONSOLE, "blockedDates", "2026-13-01"))).toMatch(/^invalid/);
     expect(await code(setSetting(CONSOLE, "slotMinutes", 32))).toMatch(/^invalid/);
-    expect(h.db.auditLog.rows.filter((r) => r.action === "update_setting")).toHaveLength(4);
+    // Three saves went through (trialDays, meetingLink, blockedDates); refused values leave no audit row.
+    expect(h.db.auditLog.rows.filter((r) => r.action === "update_setting")).toHaveLength(3);
   });
 });

@@ -307,15 +307,15 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
   const postingPool = config.postingTimes.filter((t) => minutesOf(t) !== null);
   const baseTimes = postingPool.length > 0 ? postingPool : DEFAULT_POSTING_TIMES;
 
+  // The owner's posting times are local wall-clock times in the business's zone ("09:00" in Africa/Kigali is 07:00
+  // UTC). They are the times Autopilot MAY post at: what the learning profile knows (the best local hours of past
+  // posts) only decides which of them is tried first, it never adds hours of its own. (Learned hours used to come
+  // first, so a history that did well at 11:00 local made the planner ignore a 09:00 setting and post two hours late.)
   const slot = (connectionId: string, network: Network, date: string): Date | null => {
     const hours = preferredHours(profile, network);
-    const learned = profile.confident ? (profile.bestHours.get(network) ?? []) : [];
-    const closeness = (t: string) => Math.min(...hours.map((h) => Math.abs((minutesOf(t) ?? 0) / 60 - h)));
-    const ordered = [
-      ...learned.map((h) => `${String(h).padStart(2, "0")}:00`),
-      ...[...baseTimes].sort((a, b) => closeness(a) - closeness(b)),
-    ];
-    // Fallback slots through the day, nearest to the preferred hour first.
+    const closeness = (t: string) => Math.min(...hours.map((h, i) => Math.abs((minutesOf(t) ?? 0) / 60 - h) + i / 100));
+    const ordered = [...baseTimes].sort((a, b) => closeness(a) - closeness(b));
+    // Only when every posting time clashes on this account: half-hour slots through the day, nearest to the preferred hour first.
     const fallback: string[] = [];
     for (let h = 8; h <= 21; h++) for (const m of ["00", "30"]) fallback.push(`${String(h).padStart(2, "0")}:${m}`);
     fallback.sort((a, b) => closeness(a) - closeness(b));

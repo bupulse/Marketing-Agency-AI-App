@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { holidaysBetween } from "@/lib/autopilot/calendar";
-import { EMPTY_PROFILE } from "@/lib/autopilot/learning";
+import { buildProfile, EMPTY_PROFILE, type PostResult } from "@/lib/autopilot/learning";
 import { buildWeekPlan, type PlanInput, type PlanPhoto, type PlanProject } from "@/lib/autopilot/planner";
 import { ideaNetworks } from "@/lib/autopilot/playbook";
 import { DEFAULT_CONFIG } from "@/lib/autopilot/settings";
@@ -144,6 +144,41 @@ describe("days and times", () => {
   it("converts times for another zone (New York, summer time)", () => {
     const plan = buildWeekPlan(input({ timeZone: "America/New_York", weekStart: nextWeekStart(now, "America/New_York"), config: { ...DEFAULT_CONFIG, postsPerWeek: 3, postingTimes: ["09:00"], connectionIds: [] } }));
     for (const g of plan.groups) for (const p of g.posts) expect(p.scheduledAt.getUTCHours()).toBe(13); // 09:00 EDT
+  });
+
+  // Past posts that did well at some hour (in the business zone) must only ORDER the owner's posting times, never add
+  // hours of their own: this is the bug found with Nova Phones' week (history at 09:00 UTC = 11:00 Kigali made the
+  // planner post at 11:00 and 20:00 local although the settings said 09:00 and 18:00).
+  const history = (network: PostResult["network"], utcHour: number, n = 4): PostResult[] =>
+    Array.from({ length: n }, (_, i) => ({ playbookId: "tip-how-to", network, publishedAt: new Date(`2026-09-1${(i % 6) + 4}T${String(utcHour).padStart(2, "0")}:00:00Z`), reach: 1000, likes: 80, comments: 0, saves: 0, shares: 0 }));
+
+  it("keeps the owner's posting times in Africa/Kigali when the history did best two hours later", () => {
+    const profile = buildProfile([...history("instagram", 9), ...history("facebook", 18)], TZ);
+    expect(profile.confident).toBe(true);
+    expect(profile.bestHours.get("instagram")).toEqual([11]); // 09:00 UTC is 11:00 in Kigali
+    expect(profile.bestHours.get("facebook")).toEqual([20]);
+    const plan = buildWeekPlan(input({ profile, config: { ...DEFAULT_CONFIG, postsPerWeek: 4, postingTimes: ["09:00", "18:00"], connectionIds: [] } }));
+    expect(plan.groups.length).toBeGreaterThan(0);
+    for (const g of plan.groups) {
+      for (const p of g.posts) {
+        expect([9, 18]).toContain(localParts(p.scheduledAt, TZ).hour);
+        expect([7, 16]).toContain(p.scheduledAt.getUTCHours()); // 09:00 and 18:00 Kigali, never 09:00 UTC
+      }
+    }
+  });
+
+  it("keeps the owner's posting times in a zone behind UTC (America/Sao_Paulo, UTC-3) too", () => {
+    const tz = "America/Sao_Paulo";
+    const profile = buildProfile(history("instagram", 9, 8), tz); // 09:00 UTC is 06:00 in Sao Paulo
+    expect(profile.bestHours.get("instagram")).toEqual([6]);
+    const plan = buildWeekPlan(input({ timeZone: tz, weekStart: nextWeekStart(now, tz), profile, config: { ...DEFAULT_CONFIG, postsPerWeek: 3, postingTimes: ["09:00"], connectionIds: [] } }));
+    expect(plan.groups.length).toBeGreaterThan(0);
+    for (const g of plan.groups) {
+      for (const p of g.posts) {
+        expect(localParts(p.scheduledAt, tz).hour).toBe(9);
+        expect(p.scheduledAt.getUTCHours()).toBe(12);
+      }
+    }
   });
 
   it("never puts two posts on one account closer than 2.5 hours, new or existing", () => {

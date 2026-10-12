@@ -282,3 +282,26 @@ About 57 hours of build work, plus about 9 hours from the owner.
   - Deploy
 - Custom plans are made by hand in the existing plan builder (a private plan per company).
 - Later in the week: R3 custom-plan builder and offers, the R5 request form, card payments (once Paddle is live), the full R7 review, and re-recording the videos.
+
+## 13. Fix list found while recording the demo videos (9 October 2026)
+
+To fix before the pilot launch on 12 October:
+1. **Home page placeholders.** The testimonials section is placeholder text, and the hero illustration shows placeholders such as "[your.shop]". Remove the testimonials until real pilot quotes exist, and replace the placeholders with real example text.
+2. **Autopilot posting times.** Kigali times were saved as UTC, so 09:00 showed as 11:00 local (found with Nova Phones' planned week). Check the time-zone conversion in the Autopilot planner and add a test with Africa/Kigali.
+3. **Dashboard "Designs" card.** The count is hard-coded to 0 (`app/dashboard/page.tsx`, about line 52). Show the company's real design count.
+
+Demo data in the v1 development database (4 demo accounts and their content) is listed in `Demo/capture/MANIFEST.md`.
+- Remove it with `node Demo/capture/cleanup.mjs --yes` (without `--yes` it only lists what it would delete).
+- Don't press "Approve all" on Nova's 14 Autopilot posts: its social connections are fake rows.
+
+## 14. Pilot moved to Wednesday 14 October (decided 12 October 2026)
+
+| Day | Work | Owner |
+|---|---|---|
+| Mon 12 Oct | Finish R1 (regions, RWF prices) and the demo-first trial on top of R2 + R4. Fold MoMo's RWF prices into regional prices. Review and fix. Fix list from section 13 | Create the v2 test Supabase project and paste its keys into `~/BuPulse-v2/.env`; send the MoMo Pay code, demo availability and Meet link |
+| Tue 13 Oct | Apply migrations to the v2 test database, seed regions and plans, run v2 on localhost:3001. Owner tests every flow. Security pass and fixes. Production setup | Test v2 (about 1 hour); Cloudflare token and account ID, production Supabase, Resend DNS, admin authenticator |
+| Wed 14 Oct | Merge v2 into `main`, back up the database, deploy to bupulse.com, one real 100 RWF MoMo payment, onboard the first pilot businesses | Approve the deploy; test payment; pilot visits |
+
+Also on 12 October:
+- The demo accounts and their data were deleted from the development database. Their password had been published in the public GitHub repository.
+- The owner chose to keep the repository public. No API keys or database passwords are in it; `.env` has never been committed.
