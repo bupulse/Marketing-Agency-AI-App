@@ -95,7 +95,11 @@ Earlier (merge with v2): `tests/billing/momo-*.test.ts` (regional prices, PENDIN
 ## Open items
 
 - Paddle: create the RW card prices and the EAC prices (`PlanRegionPrice.paddle*PriceId`), and the card-at-trial-start flow (`docs/REGIONS.md`, "Paddle (TODO)"). Nothing calls Paddle today.
-- Review items left open on purpose: **12** (wording to be pasted from the review), **14** Paddle checkout should compare the card's billing country with the company's region (in the Paddle TODO, `docs/REGIONS.md`), **18** and **19** (wording to be pasted from the review).
+- Review items left open on purpose:
+  - **12.** `lib/region-format.ts` `cardUsdCents` uses the USD→RWF rate for every non-USD currency, so an admin-created region in another local currency (e.g. KES) would get wrong card prices: either restrict local currencies to RWF or add a per-region rate.
+  - **14.** Paddle checkout should compare the card's billing country with the company's region (in the Paddle TODO, `docs/REGIONS.md`).
+  - **18.** Migration edge: if production already has an admin-made plan keyed `STARTER` or `BUSINESS`, the GLOBAL backfill in `20261010100100_regions_and_demos` skips those keys and the plan disappears from GLOBAL. **Check production plan keys before deploying.** (Also: the `CREATE TABLE` statements are not `IF NOT EXISTS`, unlike the column adds; fine under Prisma, just inconsistent.)
+  - **19.** `usdCentsOf` (`lib/billing/momo-shared.ts`) values revenue in currencies other than RWF and USD at 0.
 - Legal placeholders on the public pages (`app/(marketing)/terms`, `privacy`, `data-deletion`: "[Company legal name], [Address]", "[State]", "[County, State]") need the owner's legal entity and governing law; nothing was invented.
 - `Business.timezone` is set from the sign-up country for Rwanda and the EAC countries; everywhere else it stays "UTC" until the browser sets it on the first dashboard visit, so Autopilot plans such a business in UTC until then.
 - Confirming a Mobile Money payment of a `PENDING_DEMO` company keeps its demo booking (decided: the client may still want the demo); Demos shows the company as "Paying" and the owner marks the booking done or cancelled.
