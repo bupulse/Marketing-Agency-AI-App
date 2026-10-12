@@ -3,7 +3,7 @@ import { ArrowRight, Sparkles } from "lucide-react";
 import { PageHero } from "@/components/marketing/pages/page-hero";
 import { PlanComparison } from "@/components/marketing/pages/plan-comparison";
 import { pageMetadata } from "@/components/marketing/pages/seo";
-import { Accordion, Button, Container, GlassCard, SectionHeading } from "@/components/ui";
+import { Accordion, Badge, Button, Container, GlassCard, SectionHeading } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { PricingPlans } from "./pricing-plans";
 import { UseMyLocation } from "./use-my-location";
@@ -11,7 +11,7 @@ import { faqs, fillFaq } from "@/lib/content/site";
 import { getSetting } from "@/lib/admin/settings";
 import { geoLookupAvailable } from "@/lib/geo/provider";
 import { displayRegionWithOverride } from "@/lib/region";
-import { currencyNote } from "@/lib/region-format";
+import { currencyNote, paymentBadges } from "@/lib/region-format";
 import { getRegionPlans } from "@/lib/region-prices";
 
 // Plans and prices depend on where the visitor is (lib/region.ts) and change in the admin console, so the page is
@@ -41,6 +41,15 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
 
       <Container className="pb-16">
         {canLocate && <UseMyLocation />}
+        {paymentBadges(region.paymentMethods).length > 0 && (
+          <ul aria-label="Ways to pay" className="m-0 mb-6 flex list-none flex-wrap items-center justify-center gap-2 p-0">
+            {paymentBadges(region.paymentMethods).map((name) => (
+              <li key={name}>
+                <Badge tone="neutral">{name}</Badge>
+              </li>
+            ))}
+          </ul>
+        )}
         <PricingPlans plans={plans} />
         <p className="mx-auto mt-6 max-w-2xl text-center text-sm text-muted">
           {currencyNote(region.currency, region.paymentMethods)} Cancel any time; your plan stays active until the end of the period you paid for. See our{" "}

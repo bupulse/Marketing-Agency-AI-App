@@ -81,6 +81,12 @@ export function paymentMethodLabel(method: PaymentMethod): string {
   return method === "momo" ? "Mobile Money" : "Card";
 }
 
+/** Payment names to show as badges: Mobile Money as the two wallets clients know (MTN MoMo, Airtel Money), then card. */
+export function paymentBadges(methods: readonly string[]): string[] {
+  const known = methods.filter(isPaymentMethod);
+  return [...(known.includes("momo") ? ["MTN MoMo", "Airtel Money"] : []), ...(known.includes("card") ? ["Card"] : [])];
+}
+
 /** "Prices are in Rwandan francs. Pay by Mobile Money or Card ..." for a region's currency and payment methods. */
 export function currencyNote(currency: string, methods: readonly string[]): string {
   const pay = methods.filter(isPaymentMethod).map(paymentMethodLabel);
