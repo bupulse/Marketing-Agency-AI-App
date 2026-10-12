@@ -7,7 +7,7 @@ import { profileContext } from "@/lib/knowledge/context";
 import { writerKnowledge } from "@/lib/knowledge/writer-context";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
-import { AIBudgetExceededError } from "@/lib/ai/budget";
+import { AIBudgetExceededError, COMPANY_ALLOWANCE_MESSAGE, CompanyBudgetExceededError } from "@/lib/ai/budget";
 import { isServiceEnabled, ServiceDisabledError, textAiService } from "@/lib/admin/switch";
 import { FeatureRequiredError, featureStatus, hasFeature } from "@/lib/entitlements";
 import { AIProviderError } from "@/lib/ai/types";
@@ -163,7 +163,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
     // AI photos are their own plan feature; without it Autopilot draws the free templates only.
     const aiPhotos = await hasFeature(businessId, "aiPhotos");
     let aiStopped = false;
-    const state: { stop: "credits" | "budget" | null } = { stop: null };
+    const state: { stop: "credits" | "budget" | "allowance" | null } = { stop: null };
     let postCount = 0;
     let groupCount = 0;
 
@@ -245,7 +245,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
         await prisma.autopilotRun.update({ where: { id: runId }, data: { postCount } });
       } catch (error) {
         if (error instanceof AIBudgetExceededError || error instanceof ServiceDisabledError) {
-          state.stop = "budget";
+          state.stop = error instanceof CompanyBudgetExceededError ? "allowance" : "budget";
           return;
         }
         await logError(error, { source: "autopilot.group", userId, businessId, idea: group.idea.id, level: error instanceof AIProviderError ? "warn" : "error" });
@@ -275,6 +275,8 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
       );
     } else if (state.stop === "budget") {
       notes.unshift("Autopilot is paused for a short while. Please try again later.");
+    } else if (state.stop === "allowance") {
+      notes.unshift(`${COMPANY_ALLOWANCE_MESSAGE} Autopilot wrote what it could before that.`);
     }
     const note = notes.length > 0 ? notes.join(" ") : null;
 

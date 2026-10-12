@@ -13,7 +13,7 @@ export type ReviewItem = { id: string; values: ReviewFormValues; productName: st
 const formatDay = (day: string) => (day ? new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`)) : "");
 
 /** Knowledge base -> Reviews & testimonials. Only reviews marked "may be quoted" ever reach the AI. */
-export function ReviewEditor({ reviews, products, today, canEdit }: { reviews: ReviewItem[]; products: { id: string; name: string }[]; today: string; canEdit: boolean }) {
+export function ReviewEditor({ reviews, products, today, canEdit, canGrant }: { reviews: ReviewItem[]; products: { id: string; name: string }[]; today: string; canEdit: boolean; canGrant: boolean }) {
   const router = useRouter();
   const { toast } = useToast();
   const [editing, setEditing] = useState<ReviewItem | "new" | null>(null);
@@ -67,6 +67,7 @@ export function ReviewEditor({ reviews, products, today, canEdit }: { reviews: R
                   {r.values.canPublish ? <Badge tone="success">May be quoted in posts</Badge> : <Badge tone="neutral">Not quoted: no permission yet</Badge>}
                   {canEdit && (
                     <div className="flex flex-wrap gap-1">
+                      {canGrant && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -75,6 +76,7 @@ export function ReviewEditor({ reviews, products, today, canEdit }: { reviews: R
                       >
                         {r.values.canPublish ? "Withdraw permission" : "Customer agreed"}
                       </Button>
+                      )}
                       <Button variant="ghost" size="sm" disabled={pending} leading={<PenLine aria-hidden className="size-4" />} onClick={() => setEditing(r)}>
                         Edit<span className="sr-only"> review by {r.values.customerName}</span>
                       </Button>
@@ -89,7 +91,7 @@ export function ReviewEditor({ reviews, products, today, canEdit }: { reviews: R
           ))}
         </ul>
       )}
-      {editing && <ReviewDialog key={editing === "new" ? "new" : editing.id} review={editing === "new" ? null : editing} products={products} today={today} onClose={() => setEditing(null)} />}
+      {editing && <ReviewDialog key={editing === "new" ? "new" : editing.id} review={editing === "new" ? null : editing} products={products} today={today} canGrant={canGrant} onClose={() => setEditing(null)} />}
       <Dialog open={!!confirming} onOpenChange={(open) => !open && setConfirming(null)} title="Delete this review?" description="It will be removed and no longer quoted. This cannot be undone.">
         <div className="flex flex-wrap justify-end gap-3">
           <Button variant="ghost" onClick={() => setConfirming(null)} disabled={pending}>
@@ -104,7 +106,7 @@ export function ReviewEditor({ reviews, products, today, canEdit }: { reviews: R
   );
 }
 
-function ReviewDialog({ review, products, today, onClose }: { review: ReviewItem | null; products: { id: string; name: string }[]; today: string; onClose: () => void }) {
+function ReviewDialog({ review, products, today, canGrant, onClose }: { review: ReviewItem | null; products: { id: string; name: string }[]; today: string; canGrant: boolean; onClose: () => void }) {
   const router = useRouter();
   const { toast } = useToast();
   const [values, setValues] = useState<ReviewFormValues>(review?.values ?? emptyReview(today));
@@ -192,10 +194,10 @@ function ReviewDialog({ review, products, today, onClose }: { review: ReviewItem
           </Field>
         )}
         <label className="glass flex min-h-11 cursor-pointer items-start gap-3 rounded-2xl p-4 text-[15px]">
-          <input type="checkbox" className="mt-0.5 size-5 shrink-0 accent-pulse-blue" checked={values.canPublish} onChange={(e) => set("canPublish", e.target.checked)} />
+          <input type="checkbox" className="mt-0.5 size-5 shrink-0 accent-pulse-blue" checked={values.canPublish} disabled={!canGrant} onChange={(e) => set("canPublish", e.target.checked)} />
           <span>
             <span className="font-semibold">The customer agreed to be quoted</span>
-            <span className="block text-[13px] text-muted">Required before BuPulse may use this review in posts. Without it, the review is kept for you only.</span>
+            <span className="block text-[13px] text-muted">{canGrant ? "Required before BuPulse may use this review in posts. Without it, the review is kept for you only." : "Required before BuPulse may use this review in posts. Your company owner or an admin confirms it."}</span>
           </span>
         </label>
         {formError && (

@@ -253,6 +253,7 @@ async function UsageTab({ c }: { c: C }) {
         <Stat label="AI cost, 30 days" value={`$${u.ai.costUsd30d.toFixed(2)}`} source="AI call ledger" href="/admin/ai" />
         <Stat label="AI calls, 30 days" value={num(u.ai.calls30d)} source="AI call ledger" />
         <Stat label="Failed AI calls" value={num(u.ai.failures30d)} source="AI call ledger" />
+        <Stat label="AI spend this month" value={`$${u.ai.monthUsd.toFixed(2)} of $${u.ai.allowanceUsd.toFixed(2)}`} source="Company allowance (AI_COMPANY_MONTHLY_USD)" />
       </div>
     </>
   );

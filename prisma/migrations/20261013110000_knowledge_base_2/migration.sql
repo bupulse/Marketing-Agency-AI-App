@@ -157,3 +157,6 @@ ALTER TABLE "KnowledgeFaq" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Testimonial" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "MarketingInterview" ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE "Persona", "Competitor", "KnowledgeFaq", "Testimonial", "MarketingInterview" FROM PUBLIC, anon, authenticated, service_role;
+
+-- ---- A rating is 1 to 5 stars, or none (the form and reviewInputSchema check the same) ------------------------------
+ALTER TABLE "Testimonial" ADD CONSTRAINT "Testimonial_rating_check" CHECK ("rating" IS NULL OR "rating" BETWEEN 1 AND 5);

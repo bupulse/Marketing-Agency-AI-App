@@ -11,7 +11,7 @@ import { OrderedList } from "./ordered-list";
 
 export type FaqItem = { id: string; question: string; answer: string };
 
-/** Knowledge base -> FAQs: questions in the owner's order (Members edit them too). */
+/** Knowledge base -> FAQs: questions in the owner's order. Public-facing (the chat answers with them): Owners and Admins edit. */
 export function FaqEditor({ faqs, canEdit }: { faqs: FaqItem[]; canEdit: boolean }) {
   const [editing, setEditing] = useState<FaqItem | "new" | null>(null);
   return (
@@ -26,6 +26,12 @@ export function FaqEditor({ faqs, canEdit }: { faqs: FaqItem[]; canEdit: boolean
           </Button>
         )}
       </div>
+      {!canEdit && (
+        <p className="-mt-2 inline-flex items-center gap-1 text-[13px] text-muted">
+          <Lock aria-hidden className="size-3.5" />
+          Owners and admins edit these
+        </p>
+      )}
       {faqs.length === 0 ? (
         <GlassCard className="p-5 text-[15px] text-muted">The questions customers ask you most, with your answers. Your website chat answers from these, word for word, in the visitor&apos;s language.</GlassCard>
       ) : (

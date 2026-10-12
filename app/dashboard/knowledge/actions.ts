@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z, type ZodError } from "zod";
 import { prisma } from "@/lib/db";
+import { CompanyBudgetExceededError } from "@/lib/ai/budget";
 import { AIProviderError } from "@/lib/ai/types";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { featureBlocked } from "@/lib/entitlements";
@@ -61,6 +62,7 @@ export async function generateContent(subjectId: string, input: { instruction?: 
   } catch (error) {
     if (error instanceof StudioNotFoundError) return NOT_FOUND;
     if (error instanceof UsageLimitError) return { ok: false, error: "Your plan does not allow new content right now.", blocked: error.reason };
+    if (error instanceof CompanyBudgetExceededError) return { ok: false, error: error.message };
     if (!(error instanceof AIProviderError)) await logError(error, { source: "studio.generate", level: "error" });
     return { ok: false, error: GENERATE_FAILED };
   }

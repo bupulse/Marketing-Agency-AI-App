@@ -1,3 +1,4 @@
+import { featureGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { BackLink } from "@/components/knowledge/back-link";
@@ -11,6 +12,8 @@ import { can } from "@/lib/team/roles";
 export const metadata = { title: "Reviews & testimonials" };
 
 export default async function ReviewsPage() {
+  const blocked = await featureGate("content");
+  if (blocked) return blocked;
   const { business, role } = await getAppContext();
   const [reviews, products] = await Promise.all([
     listReviews(business.id),
@@ -22,7 +25,7 @@ export default async function ReviewsPage() {
     <>
       <BackLink />
       <PageHeader title="Reviews & testimonials" description="What customers say about you. BuPulse quotes only the reviews customers agreed to share, word for word." />
-      <ReviewEditor reviews={reviews.map((r) => ({ id: r.id, values: reviewFormValues(r), productName: r.product?.name ?? null }))} products={products} today={today} canEdit={can(role, "content")} />
+      <ReviewEditor reviews={reviews.map((r) => ({ id: r.id, values: reviewFormValues(r), productName: r.product?.name ?? null }))} products={products} today={today} canEdit={can(role, "content")} canGrant={can(role, "settings")} />
     </>
   );
 }

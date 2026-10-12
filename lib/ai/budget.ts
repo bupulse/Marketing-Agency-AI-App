@@ -39,10 +39,42 @@ export class AIBudgetExceededError extends AIProviderError {
   }
 }
 
+/** Per-company monthly cap on AI spend (AI_COMPANY_MONTHLY_USD, default $3), on top of the platform cap above. */
+export function companyMonthlyBudgetUsd(): number {
+  const value = Number(process.env.AI_COMPANY_MONTHLY_USD ?? 3);
+  return Number.isFinite(value) && value > 0 ? value : 3;
+}
+
+export const COMPANY_ALLOWANCE_MESSAGE = "Your monthly AI allowance is reached. It renews on the 1st of next month.";
+
+/**
+ * One company used its monthly AI allowance. A kind of AIBudgetExceededError, so every caller that pauses on the
+ * platform cap pauses on this too; `message` is safe to show the owner.
+ */
+export class CompanyBudgetExceededError extends AIBudgetExceededError {
+  constructor(provider: string) {
+    super(provider);
+    this.message = COMPANY_ALLOWANCE_MESSAGE;
+  }
+}
+
+const monthStart = (now: Date) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+
+/** What one company's AI calls cost this calendar month (UTC), from the ledger. */
+export async function companySpentThisMonthUsd(businessId: string, now = new Date()): Promise<number> {
+  const { _sum } = await prisma.aiCall.aggregate({ where: { businessId, createdAt: { gte: monthStart(now) } }, _sum: { costUsd: true } });
+  return Number(_sum.costUsd ?? 0);
+}
+
+/** Refuses an AI call for a company over its monthly allowance (before calling, and paying, the provider). */
+export async function assertCompanyWithinBudget(businessId: string, provider: string, now = new Date()): Promise<void> {
+  if ((await companySpentThisMonthUsd(businessId, now)) < companyMonthlyBudgetUsd()) return;
+  throw new CompanyBudgetExceededError(provider);
+}
+
 /** What the cost ledger says was spent this calendar month (UTC). */
 export async function spentThisMonthUsd(now = new Date()): Promise<number> {
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const { _sum } = await prisma.aiCall.aggregate({ where: { createdAt: { gte: start } }, _sum: { costUsd: true } });
+  const { _sum } = await prisma.aiCall.aggregate({ where: { createdAt: { gte: monthStart(now) } }, _sum: { costUsd: true } });
   return Number(_sum.costUsd ?? 0);
 }
 

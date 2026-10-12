@@ -8,8 +8,9 @@ import { fieldErrorMap } from "@/lib/knowledge/products";
 import { createFaq as create, deleteListItem, reorderList, savePolicies as save, updateFaq as update } from "@/lib/knowledge/records";
 
 /**
- * Knowledge base -> FAQs & policies. FAQs follow the `content` permission (Members too); the policies are company
- * rules (delivery, refunds, payment), so they need `settings` (Owner, Admin), like the company profile.
+ * Knowledge base -> FAQs & policies. Both are public-facing (the website chat gives them to visitors as the company's
+ * own answers and rules), so both need the `settings` permission (Owner, Admin), like the company profile; Members
+ * see them read-only. No plan feature, like the profile and the business info card.
  */
 const id = z.string().min(1).max(60);
 const ids = z.array(id).max(250);
@@ -27,7 +28,7 @@ function check(input: unknown) {
 export async function createFaq(input: FaqInput): Promise<Result<{ faqId: string }>> {
   const checked = check(input);
   if (checked.failure) return checked.failure;
-  const result = await knowledgeAction({ permission: "content", limit: "knowledgeCreate", source: "knowledge.faq.create" }, async ({ businessId }) => ({ faqId: await create(businessId, checked.data) }));
+  const result = await knowledgeAction({ permission: "settings", limit: "knowledgeCreate", source: "knowledge.faq.create" }, async ({ businessId }) => ({ faqId: await create(businessId, checked.data) }));
   if (result.ok) refresh();
   return result;
 }
@@ -36,7 +37,7 @@ export async function updateFaq(faqId: string, input: FaqInput): Promise<Result>
   if (!id.safeParse(faqId).success) return { ok: false, error: "We could not find that question." };
   const checked = check(input);
   if (checked.failure) return checked.failure;
-  const result = await knowledgeAction({ permission: "content", limit: "knowledgeEdit", source: "knowledge.faq.update" }, async ({ businessId }) => {
+  const result = await knowledgeAction({ permission: "settings", limit: "knowledgeEdit", source: "knowledge.faq.update" }, async ({ businessId }) => {
     await update(businessId, faqId, checked.data);
     return {};
   });
@@ -46,7 +47,7 @@ export async function updateFaq(faqId: string, input: FaqInput): Promise<Result>
 
 export async function deleteFaq(faqId: string): Promise<Result> {
   if (!id.safeParse(faqId).success) return { ok: false, error: "We could not find that question." };
-  const result = await knowledgeAction({ permission: "content", limit: "knowledgeEdit", source: "knowledge.faq.delete" }, async ({ businessId }) => {
+  const result = await knowledgeAction({ permission: "settings", limit: "knowledgeEdit", source: "knowledge.faq.delete" }, async ({ businessId }) => {
     await deleteListItem("faq", businessId, faqId);
     return {};
   });
@@ -57,7 +58,7 @@ export async function deleteFaq(faqId: string): Promise<Result> {
 export async function reorderFaqs(order: string[]): Promise<Result> {
   const parsed = ids.safeParse(order);
   if (!parsed.success) return { ok: false, error: "We could not change the order." };
-  const result = await knowledgeAction({ permission: "content", limit: "knowledgeEdit", source: "knowledge.faq.reorder" }, async ({ businessId }) => {
+  const result = await knowledgeAction({ permission: "settings", limit: "knowledgeEdit", source: "knowledge.faq.reorder" }, async ({ businessId }) => {
     await reorderList("faq", businessId, parsed.data);
     return {};
   });

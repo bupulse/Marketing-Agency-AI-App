@@ -3,7 +3,7 @@
 // company's id is simply "not found".
 import "server-only";
 import { prisma } from "@/lib/db";
-import type { Prisma } from "@/lib/generated/prisma/client";
+import { Prisma } from "@/lib/generated/prisma/client";
 import { MAX_PERSONAS, type PersonaData } from "./audience";
 import { MAX_COMPETITORS, type CompetitorData, type Positioning } from "./competitors";
 import { MAX_FAQS, type Policies } from "./policies";
@@ -11,6 +11,8 @@ import { MAX_REVIEWS, type ReviewData } from "./reviews";
 import { KnowledgeError } from "./service";
 
 export type ListKind = "persona" | "competitor" | "faq";
+
+const LIST_TABLE: Record<ListKind, string> = { persona: '"Persona"', competitor: '"Competitor"', faq: '"KnowledgeFaq"' };
 
 const NOT_FOUND: Record<ListKind | "review", string> = {
   persona: "We could not find that persona.",
@@ -126,12 +128,10 @@ export async function reorderList(kind: ListKind, businessId: string, ids: strin
     if (ids.length !== own.size || new Set(ids).size !== ids.length || ids.some((id) => !own.has(id))) {
       throw new KnowledgeError("The list changed in the meantime. Reload the page and try again.");
     }
-    for (const [position, id] of ids.entries()) {
-      const data = { position };
-      if (kind === "persona") await tx.persona.updateMany({ where: { id, businessId }, data });
-      else if (kind === "competitor") await tx.competitor.updateMany({ where: { id, businessId }, data });
-      else await tx.knowledgeFaq.updateMany({ where: { id, businessId }, data });
-    }
+    if (!ids.length) return;
+    // One statement for the whole order. The table name comes from the fixed map, never from the request.
+    const values = Prisma.join(ids.map((id, position) => Prisma.sql`(${id}::text, ${position}::int)`));
+    await tx.$executeRaw`UPDATE ${Prisma.raw(LIST_TABLE[kind])} AS t SET "position" = v.position FROM (VALUES ${values}) AS v(id, position) WHERE t."id" = v.id AND t."businessId" = ${businessId}`;
   });
 }
 
@@ -154,7 +154,8 @@ async function ownProduct(businessId: string, productId: string | null): Promise
   return found.id;
 }
 
-function reviewColumns(data: ReviewData, productId: string | null) {
+/** `canPublish: undefined` leaves the stored permission as it is (someone without the right to change it saved). */
+function reviewColumns(data: Omit<ReviewData, "canPublish"> & { canPublish?: boolean }, productId: string | null) {
   return {
     quote: data.quote,
     customerName: data.customerName,
@@ -175,7 +176,7 @@ export async function createReview(businessId: string, data: ReviewData): Promis
   });
 }
 
-export async function updateReview(businessId: string, id: string, data: ReviewData): Promise<void> {
+export async function updateReview(businessId: string, id: string, data: Omit<ReviewData, "canPublish"> & { canPublish?: boolean }): Promise<void> {
   const productId = await ownProduct(businessId, data.productId);
   const { count } = await prisma.testimonial.updateMany({ where: { id, businessId }, data: reviewColumns(data, productId) });
   if (!count) throw new KnowledgeError(NOT_FOUND.review);

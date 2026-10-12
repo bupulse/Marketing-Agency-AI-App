@@ -2,8 +2,9 @@
 // question and the summary, and approval into Business.marketingProfile. The rules are pure, in ./interview.ts.
 //
 // AI calls go through the cost ledger (feature "interview") on the cheap text model, so the admin switch and the
-// monthly budget cap apply; each company may make RATE_LIMITS.interviewAi calls an hour and MAX_AI_CALLS per
-// interview. Whenever the AI cannot be used the fixed question set carries on, and once the reason is lasting (no
+// monthly budget caps (the platform's and the company's allowance) apply; each company may make
+// RATE_LIMITS.interviewAi calls an hour and MAX_AI_CALLS_PER_DAY over a rolling 24 hours, counted in the ledger
+// (AiCall, feature "interview"), so starting over does not reset it. Whenever the AI cannot be used the fixed question set carries on, and once the reason is lasting (no
 // key, switched off, budget reached, rate limited) the rest of the interview stays on the fixed set.
 import "server-only";
 import { AIBudgetExceededError } from "@/lib/ai/budget";
@@ -25,7 +26,8 @@ import {
   fixedQuestion,
   interviewDone,
   marketingProfileFrom,
-  MAX_AI_CALLS,
+  MAX_AI_CALLS_PER_DAY,
+  MAX_RESTARTS_PER_DAY,
   MAX_QUESTIONS,
   nextFixedQuestion,
   parseAiQuestion,
@@ -95,16 +97,32 @@ function lasting(error: unknown): boolean {
 
 type AiResult<T> = { value: T | null; called: boolean; stop: boolean };
 
-/** One cheap AI call through the ledger, rate-limited per company. Never throws: failures become `value: null`. */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Interview AI calls the company made in the last 24 hours (failed ones too: they may have been billed). */
+export function interviewCallsToday(businessId: string, now = new Date()): Promise<number> {
+  return prisma.aiCall.count({ where: { businessId, feature: "interview", createdAt: { gte: new Date(now.getTime() - DAY_MS) } } });
+}
+
+/**
+ * One cheap AI call through the ledger, rate-limited per company. Never throws: failures become `value: null`.
+ * `called` is true only when the provider was really asked (refusals before the call, such as the budget caps or
+ * the admin switch, cost nothing and do not count).
+ */
 async function callAi<T>(ctx: Ctx, row: Row, request: { system: string; prompt: string; jsonSchema: Record<string, unknown> }, parse: (text: string) => T | null): Promise<AiResult<T>> {
-  if (row.mode === "fixed" || row.aiCalls >= MAX_AI_CALLS) return { value: null, called: false, stop: false };
+  if (row.mode === "fixed") return { value: null, called: false, stop: false };
+  if ((await interviewCallsToday(ctx.businessId)) >= MAX_AI_CALLS_PER_DAY) return { value: null, called: false, stop: true };
+  let invoked = false;
   try {
     await rateLimit(`interviewAi:${ctx.businessId}`, RATE_LIMITS.interviewAi);
     const { provider, model } = getCheapTextProvider();
     const result = await withLedger(
       { userId: ctx.userId, businessId: ctx.businessId, feature: "interview" },
       { provider: provider.name, model },
-      () => provider.generate(request),
+      () => {
+        invoked = true;
+        return provider.generate(request);
+      },
       (r) => ({ provider: r.provider, model: r.model, usage: r.usage }),
     );
     return { value: parse(result.text), called: true, stop: false };
@@ -112,27 +130,61 @@ async function callAi<T>(ctx: Ctx, row: Row, request: { system: string; prompt: 
     if (!(error instanceof RateLimitError) && !(error instanceof AIBudgetExceededError) && !(error instanceof ServiceDisabledError)) {
       await logError(error, { source: "knowledge.interview.ai", level: "warn", businessId: ctx.businessId });
     }
-    return { value: null, called: !(error instanceof RateLimitError), stop: lasting(error) };
+    return { value: null, called: invoked, stop: lasting(error) };
   }
 }
 
-/** Starts (or starts over) the interview with the fixed first question. The approved profile stays until a new one is approved. */
-export async function startInterview(businessId: string): Promise<void> {
-  const first: InterviewStep = { ...fixedQuestion("tone"), answer: null, skipped: false };
-  const data = { status: "active", mode: "ai", steps: [first] as unknown as Prisma.InputJsonValue, cursor: 0, aiCalls: 0, summary: Prisma.DbNull };
-  await prisma.marketingInterview.upsert({ where: { businessId }, create: { businessId, ...data }, update: data });
+/** Thrown by startInterview when an interview is under way and the owner has not confirmed "Start over". */
+export class InterviewInProgressError extends KnowledgeError {
+  constructor() {
+    super("You have an interview in progress. Choose Start over to throw away its answers and begin again.");
+  }
 }
+
+/**
+ * Starts the interview with the fixed first question. Over an interview in progress (or waiting for approval) only
+ * with `confirm` ("Start over"), at most MAX_RESTARTS_PER_DAY times a day. The AI call count is not reset: the daily
+ * cap is counted in the ledger. The approved profile stays until a new one is approved.
+ */
+export async function startInterview(businessId: string, opts: { confirm?: boolean } = {}): Promise<void> {
+  const row = await loadRow(businessId);
+  if (row && (row.status === "active" || row.status === "review") && !opts.confirm) throw new InterviewInProgressError();
+  if (row) {
+    try {
+      await rateLimit(`interviewRestart:${businessId}`, { limit: MAX_RESTARTS_PER_DAY, windowSeconds: 24 * 60 * 60 });
+    } catch (error) {
+      if (error instanceof RateLimitError) throw new KnowledgeError(`You can start the interview over ${MAX_RESTARTS_PER_DAY} times a day. Please carry on with this one, or try again tomorrow.`);
+      throw error;
+    }
+  }
+  const first: InterviewStep = { ...fixedQuestion("tone"), answer: null, skipped: false };
+  const data = { status: "active", mode: "ai", steps: [first] as unknown as Prisma.InputJsonValue, cursor: 0, summary: Prisma.DbNull };
+  if (!row) {
+    await prisma.marketingInterview.upsert({ where: { businessId }, create: { businessId, ...data }, update: data });
+    return;
+  }
+  await save(row, data);
+}
+
+/** A claim older than this (the request that made it died) may be taken over by the next answer. */
+const CLAIM_STALE_MS = 60_000;
 
 /**
  * Answers (or skips) the question at `index`, which must be the one on screen. Going forward from an earlier
  * question shows the next one already asked; from the last one, the AI (or the fixed set) asks the next, or the
  * summary is written when every topic is covered or the cap is reached.
+ *
+ * The row is claimed BEFORE any AI call: the answer is saved and the cursor moved past the last question in one
+ * conditional update, so a double click or a second tab is refused instead of paying for a second AI call. A claim
+ * left behind by a request that died is taken over after CLAIM_STALE_MS.
  */
-export async function answerStep(ctx: Ctx, input: { index: number; choices: string[]; other: string; skip: boolean }): Promise<void> {
+export async function answerStep(ctx: Ctx, input: { index: number; choices: string[]; other: string; skip: boolean }, now = new Date()): Promise<void> {
   const row = await loadRow(ctx.businessId);
   if (!row || row.status !== "active") throw new KnowledgeError("Start the interview first.");
   const steps = readSteps(row.steps);
-  if (input.index !== row.cursor || input.index >= steps.length) throw new KnowledgeError(CHANGED);
+  const last = steps.length - 1;
+  const abandoned = row.cursor === steps.length && input.index === last && now.getTime() - row.updatedAt.getTime() > CLAIM_STALE_MS;
+  if ((input.index !== row.cursor && !abandoned) || input.index > last) throw new KnowledgeError(CHANGED);
   const step = steps[input.index];
   if (input.skip) {
     steps[input.index] = { ...step, answer: null, skipped: true };
@@ -142,26 +194,31 @@ export async function answerStep(ctx: Ctx, input: { index: number; choices: stri
     steps[input.index] = { ...step, answer: checked.answer, skipped: false };
   }
 
-  if (input.index < steps.length - 1) {
+  if (input.index < last) {
     await save(row, { steps: steps as unknown as Prisma.InputJsonValue, cursor: input.index + 1 });
     return;
   }
+
+  // Claim: the answer is stored and the cursor points past the last question while the next one is written.
+  const claimedAt = new Date(Math.max(now.getTime(), row.updatedAt.getTime() + 1));
+  await save(row, { steps: steps as unknown as Prisma.InputJsonValue, cursor: steps.length, updatedAt: claimedAt });
+  const claimed: Row = { ...row, updatedAt: claimedAt, cursor: steps.length };
 
   let aiCalls = row.aiCalls;
   let mode = row.mode;
   if (interviewDone(steps)) {
     const ictx = await interviewContext(ctx.businessId);
-    const ai = await callAi(ctx, row, { system: SUMMARY_SYSTEM, prompt: buildSummaryPrompt(ictx, steps, ictx.language), jsonSchema: aiSummaryJsonSchema }, parseAiSummary);
+    const ai = await callAi(ctx, claimed, { system: SUMMARY_SYSTEM, prompt: buildSummaryPrompt(ictx, steps, ictx.language), jsonSchema: aiSummaryJsonSchema }, parseAiSummary);
     if (ai.called) aiCalls += 1;
     if (ai.stop) mode = "fixed";
-    await save(row, { steps: steps as unknown as Prisma.InputJsonValue, status: "review", summary: (ai.value ?? fallbackSummary(steps)) as Prisma.InputJsonValue, aiCalls, mode });
+    await save(claimed, { status: "review", cursor: last, summary: (ai.value ?? fallbackSummary(steps)) as Prisma.InputJsonValue, aiCalls, mode });
     return;
   }
 
   let next: InterviewQuestion | null = null;
   if (steps.length < MAX_QUESTIONS) {
     const ictx = await interviewContext(ctx.businessId);
-    const ai = await callAi(ctx, row, { system: QUESTION_SYSTEM, prompt: buildQuestionPrompt(ictx, steps), jsonSchema: aiQuestionJsonSchema }, (text) => {
+    const ai = await callAi(ctx, claimed, { system: QUESTION_SYSTEM, prompt: buildQuestionPrompt(ictx, steps), jsonSchema: aiQuestionJsonSchema }, (text) => {
       const q = parseAiQuestion(text, steps);
       return q === "done" ? null : q;
     });
@@ -169,9 +226,12 @@ export async function answerStep(ctx: Ctx, input: { index: number; choices: stri
     if (ai.stop) mode = "fixed";
     next = ai.value ?? nextFixedQuestion(steps);
   }
-  if (!next) throw new KnowledgeError("We could not find the next question. Please try again.");
+  if (!next) {
+    await save(claimed, { cursor: last });
+    throw new KnowledgeError("We could not find the next question. Please try again.");
+  }
   steps.push({ ...next, answer: null, skipped: false });
-  await save(row, { steps: steps as unknown as Prisma.InputJsonValue, cursor: steps.length - 1, aiCalls, mode });
+  await save(claimed, { steps: steps as unknown as Prisma.InputJsonValue, cursor: steps.length - 1, aiCalls, mode });
 }
 
 /** Back one question (from the summary: back to the last question). */

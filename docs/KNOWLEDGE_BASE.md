@@ -208,8 +208,9 @@ place, unread, for an older build. The chat (`loadFaqs` in `lib/widget/config.ts
 
 Policies are `Business.policies` (JSON, `policiesSchema` in `lib/knowledge/policies.ts`, read with `readPolicies`):
 payment methods (MTN Mobile Money, Airtel Money, cash, card, bank transfer) with a note, and four texts of up to 1,000
-characters: delivery, returns and refunds, warranties and guarantees, booking and cancellation. FAQs follow the
-`content` permission; the policies are company rules and need `settings` (Members see them read-only).
+characters: delivery, returns and refunds, warranties and guarantees, booking and cancellation. FAQs and policies
+are public-facing (the chat gives them to visitors as the company's answers), so both need `settings` (Owner, Admin;
+Members see them read-only), and neither needs a plan feature, like the company profile.
 
 **Website chat.** `buildSystemPrompt` (`lib/widget/prompt.ts`) adds the FAQs as a fenced `FAQ` block
 (`faqContext`, 3,000 characters, the owner's first questions kept) and the policies as a fenced `POLICIES` block
@@ -221,13 +222,15 @@ it does not say". The general rule "missing information is I don't know" still a
 `Testimonial` rows: the quote* (1,000), customer name or initials*, source* (Google, WhatsApp, in person, Facebook,
 Instagram, email, other), rating (1 to 5, optional), date (optional, not in the future), product (optional, the
 company's own) and **"The customer agreed to be quoted"** (`canPublish`, off by default; also a one-click switch on
-the list). Up to 300. The writers get only quotable reviews: the query filters on `canPublish` and
+the list). The permission is consent for public posts, so only `settings` (Owner, Admin) grants or withdraws it: a
+Member's new review is saved with it off and a Member's edit keeps the stored value. A rating outside 1 to 5 is
+refused by the form, the action and a `CHECK` constraint. Up to 300. The writers get only quotable reviews: the query filters on `canPublish` and
 `reviewsContext()` drops any other again, so a caller cannot leak one. Autopilot's and Studio's system prompts now say
 a review may be quoted only from the `CUSTOMER REVIEWS` block, word for word with the name, never invented.
 
 ## Digital marketing profile (the AI interview)
 
-`/dashboard/knowledge/interview`, `settings` permission. Pure rules in `lib/knowledge/interview.ts`, the server in
+`/dashboard/knowledge/interview`, `settings` permission and the `content` plan feature (it calls the AI, like Studio). Pure rules in `lib/knowledge/interview.ts`, the server in
 `lib/knowledge/interview-service.ts`, state in `MarketingInterview` (one row per company: `steps` JSON, `cursor`,
 `status` active | review | approved, `mode` ai | fixed, `aiCalls`, the draft `summary`).
 
@@ -243,14 +246,21 @@ a review may be quoted only from the `CUSTOMER REVIEWS` block, word for word wit
   otherwise the next fixed question is asked. Hard cap 20 questions (`MAX_QUESTIONS`); normally 14 or 15.
 - **AI use.** `getCheapTextProvider()` (`lib/ai/index.ts`: the configured provider on its cheap model, Gemini
   Flash-Lite or Claude Sonnet at low effort; `CHEAP_TEXT_MODEL` overrides) through `withLedger` (feature
-  `interview`: the admin switch and the monthly budget cap apply), at most `RATE_LIMITS.interviewAi` (60 an hour per
-  company) and `MAX_AI_CALLS` (24) per interview. **Fallback:** any failure gives the fixed question; a lasting one
-  (no key, switched off, budget reached, rate limited) sets `mode: "fixed"` for the rest of the interview, and the page
+  `interview`: the admin switch, the platform budget cap and the company's monthly allowance apply), at most
+  `RATE_LIMITS.interviewAi` (60 an hour per company) and `MAX_AI_CALLS_PER_DAY` (40) per company over a rolling 24
+  hours, counted from the ledger (`AiCall` feature `interview`, failed calls too), so starting over never resets it.
+  A call refused before the provider (budget, allowance, switch) is not counted. **Fallback:** any failure gives the fixed question; a lasting one
+  (no key, switched off, budget or allowance reached, rate limited, daily cap) sets `mode: "fixed"` for the rest of the interview, and the page
   says the questions are the standard set.
 - **Skip and back.** Skip marks the question skipped. Back moves the cursor; answering an earlier question again
   moves forward through the questions already asked (they are not regenerated). An answer must be for the question on
   screen (`index === cursor`) and use its own options (`checkAnswer`); saves are optimistic on `updatedAt`, so a
-  second tab gets "This interview changed in another tab".
+  second tab gets "This interview changed in another tab". Before any AI call the row is **claimed**: the answer is
+  saved and the cursor moved past the last question in one conditional update, so a double click is refused instead
+  of paying for a second call; a claim older than a minute (its request died) is taken over by the next answer.
+- **Starting over.** Over an interview in progress or waiting for approval, `startInterview` refuses unless the owner
+  confirmed "Start over" (`InterviewInProgressError`; the action answers `needsConfirm`). Restarts are limited to 3 a
+  day per company (`interviewRestart`); the AI calls they lead to count toward the daily cap.
 - **Summary.** When every topic is asked (or the cap is reached) the AI writes the brand-voice guide
   (`buildSummaryPrompt`: voice, do, don't, three sample captions in the content language), or `fallbackSummary()`
   puts the answers into sentences. The owner edits it and approves: `Business.marketingProfile` =
@@ -276,9 +286,17 @@ the profile the knowledge blocks stay under about 2,000 tokens.
   `content` plan feature (pages: `featureGate("content")`; actions: `knowledgeAction({ feature: "content" })`).
   Deleting is never feature-gated (your own data).
 - Company profile and locations: the `settings` permission (Owner, Admin). The landing page is open to everyone.
-- Part 2: personas, audience notes, competitors, positioning, FAQs and reviews follow `content` (Members too);
-  policies and the marketing interview need `settings`. No plan feature (the knowledge base is for every plan; the
-  writers that use it are gated as before).
+- Part 2, as part 1: personas, audience notes, competitors, positioning and reviews follow the `content` permission
+  (Members too) and the `content` plan feature (pages and saves; deletes never); FAQs, policies and the permission
+  to quote a review need `settings` with no plan feature, like the profile; the marketing interview needs `settings`
+  and the `content` feature.
+- **Company AI allowance.** Every AI call with a company (all features: Studio, Autopilot, designs, the website chat,
+  the interview) also checks that company's spend this calendar month in the ledger against
+  `AI_COMPANY_MONTHLY_USD` (default $3), on top of the platform cap (`lib/ai/budget.ts`
+  `assertCompanyWithinBudget`, called by `withLedger`). Over it, `CompanyBudgetExceededError` (a kind of
+  `AIBudgetExceededError`, so every caller that pauses on the platform cap pauses on it) says "Your monthly AI
+  allowance is reached. It renews on the 1st of next month." to the owner (Studio, designs, Autopilot notes and
+  regenerate). The admin client view (Usage tab) shows "AI spend this month: $x of $3".
 - Rate limits per company account (`lib/rate-limit.ts`): `projectCreate` 30 an hour for new products, campaigns and
   copies; `knowledgeEdit` 300 an hour for saves, status changes, deletes and album edits; `profileSave` 60 an hour;
   gallery uploads keep `media-upload`. Caps: 500 products, 300 campaigns per company (checked under an advisory lock).

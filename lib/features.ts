@@ -66,7 +66,7 @@ export const FEATURES: readonly FeatureDef[] = [
     services: ["gemini", "claude"],
     status: "built",
     kind: "app",
-    routes: ["/dashboard/knowledge/products", "/dashboard/knowledge/campaigns", "/dashboard/projects", "/dashboard/content"],
+    routes: ["/dashboard/knowledge/products", "/dashboard/knowledge/campaigns", "/dashboard/knowledge/audience", "/dashboard/knowledge/competitors", "/dashboard/knowledge/reviews", "/dashboard/knowledge/interview", "/dashboard/projects", "/dashboard/content"],
   },
   {
     key: "designs",

@@ -19,7 +19,7 @@ const records = vi.hoisted(() => ({
   updateCompetitor: vi.fn(),
   savePositioning: vi.fn(),
 }));
-const interview = vi.hoisted(() => ({ startInterview: vi.fn(), answerStep: vi.fn(), stepBack: vi.fn(), approveProfile: vi.fn(), updateApprovedProfile: vi.fn() }));
+const interview = vi.hoisted(() => ({ startInterview: vi.fn(), answerStep: vi.fn(), stepBack: vi.fn(), approveProfile: vi.fn(), updateApprovedProfile: vi.fn(), InterviewInProgressError: class extends Error {} }));
 const rateLimitMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock("@/lib/db", () => ({ prisma: { business: { findUnique: vi.fn().mockResolvedValue({ id: "b1" }) } } }));
@@ -42,24 +42,65 @@ import { createPersona } from "@/app/dashboard/knowledge/audience/actions";
 import { createCompetitor } from "@/app/dashboard/knowledge/competitors/actions";
 import { createFaq, reorderFaqs, savePolicies } from "@/app/dashboard/knowledge/faqs/actions";
 import { answerQuestion, approveVoice, startInterview } from "@/app/dashboard/knowledge/interview/actions";
-import { createReview } from "@/app/dashboard/knowledge/reviews/actions";
+import { deletePersona } from "@/app/dashboard/knowledge/audience/actions";
+import { createReview, setReviewPublishable, updateReview } from "@/app/dashboard/knowledge/reviews/actions";
 import { KnowledgeError } from "@/lib/knowledge/service";
+import { missing } from "@/tests/stubs/entitlements";
 
 beforeEach(() => {
   vi.clearAllMocks();
   role.value = "MEMBER";
+  missing.clear();
 });
 
 describe("part 2 actions", () => {
-  it("lets a Member add FAQs, personas, competitors and reviews (the content permission)", async () => {
-    expect(await createFaq({ question: "Do you deliver?", answer: "Yes" })).toEqual({ ok: true, faqId: "faq1" });
-    expect(records.createFaq).toHaveBeenCalledWith("b1", { question: "Do you deliver?", answer: "Yes" });
+  it("lets a Member add personas, competitors and reviews (the content permission), but not FAQs", async () => {
     expect((await createPersona({ name: "Student", ageRange: "18-24", location: "Huye" })).ok).toBe(true);
     expect((await createCompetitor({ name: "Rival", link: "rival.rw" })).ok).toBe(true);
     expect(records.createCompetitor.mock.calls[0][1]).toMatchObject({ link: "https://rival.rw" });
-    expect((await createReview({ quote: "Great", customerName: "A.", source: "GOOGLE", canPublish: true })).ok).toBe(true);
-    expect(records.createReview.mock.calls[0][1]).toMatchObject({ canPublish: true, receivedOn: null });
+    expect((await createReview({ quote: "Great", customerName: "A.", source: "GOOGLE" })).ok).toBe(true);
     expect(rateLimitMock).toHaveBeenCalledWith("knowledgeCreate:u1", expect.anything());
+    // FAQs are public answers in the website chat: Owners and Admins only.
+    expect(await createFaq({ question: "Do you deliver?", answer: "Yes" })).toMatchObject({ ok: false });
+    expect(records.createFaq).not.toHaveBeenCalled();
+    role.value = "ADMIN";
+    expect(await createFaq({ question: "Do you deliver?", answer: "Yes" })).toEqual({ ok: true, faqId: "faq1" });
+    expect(records.createFaq).toHaveBeenCalledWith("b1", { question: "Do you deliver?", answer: "Yes" });
+  });
+
+  it("keeps the permission to quote a review to Owners and Admins", async () => {
+    await createReview({ quote: "Great", customerName: "A.", source: "GOOGLE", canPublish: true });
+    expect(records.createReview.mock.calls[0][1]).toMatchObject({ canPublish: false, receivedOn: null });
+    await updateReview("rev1", { quote: "Great", customerName: "A.", source: "GOOGLE", canPublish: true });
+    expect(records.updateReview.mock.calls[0][2]).toMatchObject({ canPublish: undefined }); // the stored value stays
+    expect(await setReviewPublishable("rev1", true)).toMatchObject({ ok: false });
+    expect(records.setReviewPermission).not.toHaveBeenCalled();
+
+    role.value = "OWNER";
+    await createReview({ quote: "Great", customerName: "A.", source: "GOOGLE", canPublish: true });
+    expect(records.createReview.mock.calls[1][1]).toMatchObject({ canPublish: true });
+    expect(await setReviewPublishable("rev1", true)).toEqual({ ok: true });
+  });
+
+  it("needs the content plan feature for part 2 writing data and the interview, but never to delete", async () => {
+    missing.add("content");
+    expect(await createPersona({ name: "Student", ageRange: "18-24", location: "Huye" })).toMatchObject({ ok: false, error: expect.stringContaining("not part of your plan") });
+    expect(await createReview({ quote: "Great", customerName: "A.", source: "GOOGLE" })).toMatchObject({ ok: false });
+    expect(await deletePersona("p1")).toEqual({ ok: true });
+    role.value = "OWNER";
+    expect(await startInterview()).toMatchObject({ ok: false, error: expect.stringContaining("not part of your plan") });
+    expect(interview.startInterview).not.toHaveBeenCalled();
+    // Policies and FAQs are like the company profile: no plan feature.
+    expect(await savePolicies({ delivery: "Free" })).toEqual({ ok: true });
+  });
+
+  it("asks before starting over an interview in progress", async () => {
+    role.value = "OWNER";
+    interview.startInterview.mockRejectedValueOnce(new interview.InterviewInProgressError("You have an interview in progress."));
+    // The mocked class is not a KnowledgeError, so the guard reports a generic failure; the flag is what the page uses.
+    expect(await startInterview()).toMatchObject({ ok: false, needsConfirm: true });
+    await startInterview({ startOver: true });
+    expect(interview.startInterview).toHaveBeenLastCalledWith("b1", { confirm: true });
   });
 
   it("keeps policies and the brand voice to owners and admins (the settings permission)", async () => {
@@ -87,6 +128,7 @@ describe("part 2 actions", () => {
   });
 
   it("shows the service's own message (a stale order, a wrong answer) and refuses bad ids", async () => {
+    role.value = "ADMIN";
     records.reorderList.mockRejectedValueOnce(new KnowledgeError("The list changed in the meantime. Reload the page and try again."));
     expect(await reorderFaqs(["a", "b"])).toEqual({ ok: false, error: "The list changed in the meantime. Reload the page and try again." });
     expect(await reorderFaqs("nope" as never)).toEqual({ ok: false, error: "We could not change the order." });

@@ -85,7 +85,7 @@ function Overview({ profile }: { profile: MarketingProfile | null }) {
             About {TOPIC_KEYS.length} quick multiple-choice questions on your tone, emojis, languages, goals and what never to say. Each question adapts to your earlier answers. You can skip any question, go back, and edit
             the result before you approve it. Your approved voice is then used for every post BuPulse writes.
           </p>
-          <Button className="self-start" disabled={pending} trailing={<ArrowRight aria-hidden className="size-4" />} onClick={() => run(startInterview)}>
+          <Button className="self-start" disabled={pending} trailing={<ArrowRight aria-hidden className="size-4" />} onClick={() => run(() => startInterview())}>
             Start the interview
           </Button>
         </GlassCard>
@@ -95,8 +95,31 @@ function Overview({ profile }: { profile: MarketingProfile | null }) {
           <Button variant="ghost" onClick={() => setConfirming(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button disabled={pending} onClick={() => run(startInterview)}>
+          <Button disabled={pending} onClick={() => run(() => startInterview({ startOver: true }))}>
             Start again
+          </Button>
+        </div>
+      </Dialog>
+    </>
+  );
+}
+
+/** "Start over" during an interview or its review: asks first (the answers are thrown away; it counts toward the daily limit). */
+function StartOver() {
+  const { pending, run } = useRun();
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <>
+      <Button variant="ghost" size="sm" disabled={pending} leading={<RotateCcw aria-hidden className="size-4" />} onClick={() => setConfirming(true)}>
+        Start over
+      </Button>
+      <Dialog open={confirming} onOpenChange={setConfirming} title="Start the interview over?" description="Your answers so far are thrown away. You can start over 3 times a day.">
+        <div className="flex flex-wrap justify-end gap-3">
+          <Button variant="ghost" onClick={() => setConfirming(false)} disabled={pending}>
+            Keep my answers
+          </Button>
+          <Button disabled={pending} onClick={() => run(() => startInterview({ startOver: true }))}>
+            Start over
           </Button>
         </div>
       </Dialog>
@@ -145,7 +168,10 @@ function QuestionCard({ view }: { view: InterviewView }) {
           <span>
             Question {number} of about {total} · {topicLabel(step.topic)}
           </span>
-          {view.mode === "fixed" && <span>Standard questions (the AI is not available right now)</span>}
+          <span className="flex flex-wrap items-center gap-2">
+            {view.mode === "fixed" && <span>Standard questions (the AI is not available right now)</span>}
+            <StartOver />
+          </span>
         </div>
         <Progress percent={Math.round((view.cursor / total) * 100)} label="Interview progress" />
       </div>
@@ -252,9 +278,12 @@ function SummaryEditor({ initial, mode, onDone }: { initial: VoiceSummary; mode:
   return (
     <GlassCard as="section" aria-labelledby="summary" className="flex flex-col gap-5 p-5 sm:p-6">
       <div className="flex flex-col gap-1">
-        <h2 id="summary" className="text-lg font-semibold tracking-[-0.02em]">
-          {mode === "approve" ? "Your brand voice, ready to approve" : "Edit your brand voice"}
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="summary" className="text-lg font-semibold tracking-[-0.02em]">
+            {mode === "approve" ? "Your brand voice, ready to approve" : "Edit your brand voice"}
+          </h2>
+          {mode === "approve" && <StartOver />}
+        </div>
         <p className="text-[14px] text-muted">Change anything that does not sound like you. BuPulse follows this for every post once approved.</p>
       </div>
       <Field label="The voice" required error={errors.voice}>

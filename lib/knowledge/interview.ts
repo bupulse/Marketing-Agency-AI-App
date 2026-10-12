@@ -14,8 +14,10 @@ import { clean } from "./text";
 export const MIN_QUESTIONS = 12;
 export const TARGET_QUESTIONS = 15;
 export const MAX_QUESTIONS = 20;
-/** Questions, retries and the summary together, per interview. */
-export const MAX_AI_CALLS = 24;
+/** AI calls (questions and summaries, every interview and restart together) per company over a rolling 24 hours. */
+export const MAX_AI_CALLS_PER_DAY = 40;
+/** Starting over (a new interview while one exists) per company per day. */
+export const MAX_RESTARTS_PER_DAY = 3;
 
 export const OPTION_MAX = 80;
 export const QUESTION_MAX = 200;

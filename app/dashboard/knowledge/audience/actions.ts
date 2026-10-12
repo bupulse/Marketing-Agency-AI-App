@@ -24,7 +24,7 @@ function check(input: unknown) {
 export async function createPersona(input: PersonaInput): Promise<Result<{ personaId: string }>> {
   const checked = check(input);
   if (checked.failure) return checked.failure;
-  const result = await knowledgeAction({ permission: "content", limit: "knowledgeCreate", source: "knowledge.persona.create" }, async ({ businessId }) => ({ personaId: await create(businessId, checked.data) }));
+  const result = await knowledgeAction({ permission: "content", feature: "content", limit: "knowledgeCreate", source: "knowledge.persona.create" }, async ({ businessId }) => ({ personaId: await create(businessId, checked.data) }));
   if (result.ok) refresh();
   return result;
 }
@@ -33,7 +33,7 @@ export async function updatePersona(personaId: string, input: PersonaInput): Pro
   if (!id.safeParse(personaId).success) return { ok: false, error: "We could not find that persona." };
   const checked = check(input);
   if (checked.failure) return checked.failure;
-  const result = await knowledgeAction({ permission: "content", limit: "knowledgeEdit", source: "knowledge.persona.update" }, async ({ businessId }) => {
+  const result = await knowledgeAction({ permission: "content", feature: "content", limit: "knowledgeEdit", source: "knowledge.persona.update" }, async ({ businessId }) => {
     await update(businessId, personaId, checked.data);
     return {};
   });
@@ -54,7 +54,7 @@ export async function deletePersona(personaId: string): Promise<Result> {
 export async function reorderPersonas(order: string[]): Promise<Result> {
   const parsed = ids.safeParse(order);
   if (!parsed.success) return { ok: false, error: "We could not change the order." };
-  const result = await knowledgeAction({ permission: "content", limit: "knowledgeEdit", source: "knowledge.persona.reorder" }, async ({ businessId }) => {
+  const result = await knowledgeAction({ permission: "content", feature: "content", limit: "knowledgeEdit", source: "knowledge.persona.reorder" }, async ({ businessId }) => {
     await reorderList("persona", businessId, parsed.data);
     return {};
   });
@@ -65,7 +65,7 @@ export async function reorderPersonas(order: string[]): Promise<Result> {
 export async function saveAudienceNotes(input: { notes: string }): Promise<Result> {
   const parsed = audienceNotesSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the highlighted fields.", fieldErrors: fieldErrorMap(parsed.error) };
-  const result = await knowledgeAction({ permission: "content", limit: "knowledgeEdit", source: "knowledge.audience.notes" }, async ({ businessId }) => {
+  const result = await knowledgeAction({ permission: "content", feature: "content", limit: "knowledgeEdit", source: "knowledge.audience.notes" }, async ({ businessId }) => {
     await saveNotes(businessId, parsed.data.notes);
     return {};
   });

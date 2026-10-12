@@ -1,4 +1,4 @@
-import { pageGate } from "@/components/app/no-access";
+import { featureGate, pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { BackLink } from "@/components/knowledge/back-link";
@@ -8,7 +8,7 @@ import { getInterviewView } from "@/lib/knowledge/interview-service";
 export const metadata = { title: "Digital marketing profile" };
 
 export default async function InterviewPage() {
-  const blocked = await pageGate("settings");
+  const blocked = (await pageGate("settings")) ?? (await featureGate("content"));
   if (blocked) return blocked;
   const { business } = await getAppContext();
   const view = await getInterviewView(business.id);

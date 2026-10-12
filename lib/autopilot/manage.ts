@@ -8,7 +8,7 @@ import { writerKnowledge } from "@/lib/knowledge/writer-context";
 import { writingSubject, type Subject } from "@/lib/knowledge/service";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
-import { AIBudgetExceededError } from "@/lib/ai/budget";
+import { AIBudgetExceededError, CompanyBudgetExceededError } from "@/lib/ai/budget";
 import { ServiceDisabledError } from "@/lib/admin/switch";
 import { readKnowledge } from "@/lib/brand/schemas";
 import { knowledgeFacts } from "@/lib/business-info/facts";
@@ -152,6 +152,7 @@ export async function regenerateGroup(userId: string, groupId: string): Promise<
     return { ok: true };
   } catch (error) {
     await refundUsage(userId, "text", reservation.periodStart).catch((e) => logError(e, { source: "autopilot.refund", userId }));
+    if (error instanceof CompanyBudgetExceededError) return { ok: false, error: `${error.message} Your credit was returned.` };
     if (error instanceof AIBudgetExceededError || error instanceof ServiceDisabledError) return { ok: false, error: "Autopilot is paused for a short while. Please try again later." };
     await logError(error, { source: "autopilot.regenerate", userId, businessId: business.id });
     return { ok: false, error: "We could not write a new version. Your credit was returned. Please try again." };

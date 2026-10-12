@@ -15,7 +15,7 @@ export default async function FaqsPage() {
     <>
       <BackLink />
       <PageHeader title="FAQs & policies" description="Answers to what customers ask, and your rules for delivery, returns, payment and bookings. Your website chat and your posts use them." />
-      <FaqEditor faqs={faqs.map((f) => ({ id: f.id, question: f.question, answer: f.answer }))} canEdit={can(role, "content")} />
+      <FaqEditor faqs={faqs.map((f) => ({ id: f.id, question: f.question, answer: f.answer }))} canEdit={can(role, "settings")} />
       <PoliciesForm initial={readPolicies(business.policies)} canEdit={can(role, "settings")} />
     </>
   );

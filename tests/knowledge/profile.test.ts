@@ -45,11 +45,11 @@ describe("knowledge base sections", () => {
     expect(KNOWLEDGE_SECTIONS.map((s) => s.key)).toEqual([...SECTION_KEYS]);
     for (const key of SECTION_KEYS) expect(SECTION_ICONS[key], key).toBeTruthy();
     expect(KNOWLEDGE_SECTIONS.filter((s) => s.status === "coming_soon")).toEqual([]);
-    // Policies and the brand voice are company settings; the other part 2 sections follow `content`, like products.
+    // FAQs and policies (public answers) and the brand voice are company settings; the rest follow `content`.
     expect(Object.fromEntries(KNOWLEDGE_SECTIONS.filter((s) => ["audience", "competitors", "faqs", "reviews", "interview"].includes(s.key)).map((s) => [s.key, s.permission]))).toEqual({
       audience: "content",
       competitors: "content",
-      faqs: "content",
+      faqs: "settings",
       reviews: "content",
       interview: "settings",
     });

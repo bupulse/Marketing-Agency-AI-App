@@ -16,8 +16,8 @@ Built 12 October 2026 on branch `v2-kb2` (from `v2-kb`, with `v2` merged in for 
   - **FAQs & policies**: FAQs moved to their own ordered table (`KnowledgeFaq`, up to 200; the migration copies
     `Business.knowledge.faqs`), policies in `Business.policies` (payment methods, delivery, returns and refunds,
     warranties, booking and cancellation). The business info card no longer edits FAQs; it links to the new page.
-  - **Reviews & testimonials**: `Testimonial` with "The customer agreed to be quoted" (`canPublish`); only those reach
-    the AI.
+  - **Reviews & testimonials**: `Testimonial` with "The customer agreed to be quoted" (`canPublish`, granted by
+    Owners and Admins only); only those reach the AI.
   - **Digital marketing profile**: the adaptive AI interview (14 topics, 3 to 5 options + Other, skip and back, hard
     cap 20), the AI-written brand-voice summary the owner edits and approves (`Business.marketingProfile`), and the
     fixed question set + a summary built from the answers when the AI cannot be used.
@@ -29,6 +29,19 @@ Built 12 October 2026 on branch `v2-kb2` (from `v2-kb`, with `v2` merged in for 
 - **Cheap AI provider**: `getCheapTextProvider()` in `lib/ai/index.ts` (Gemini Flash-Lite, or Claude Sonnet at low
   effort with `AI_TEXT_PROVIDER=claude`; `CHEAP_TEXT_MODEL` in `.env.example` overrides). Interview calls are in the
   `AiCall` ledger as feature `interview`, behind the admin switch and the budget cap, rate-limited per company.
+
+## Review fixes (second commit)
+
+- Interview cost: AI calls capped at 40 per company over a rolling 24 hours, counted from the ledger (restarts do not
+  reset it); starting over an interview in progress needs the owner's "Start over" confirmation, 3 restarts a day.
+  The row is claimed before the AI call (no double-click second call); a call refused before the provider is not
+  counted.
+- Per-company monthly AI allowance for every AI feature: `AI_COMPANY_MONTHLY_USD` (default $3), checked in
+  `withLedger` on top of the platform cap, with the "monthly AI allowance reached" message and the month's spend in the
+  admin client view (Usage tab).
+- Plan feature `content` on the audience, competitors, reviews and interview pages and saves (deletes never).
+- FAQs (create, edit, delete, order) and the permission to quote a review moved to the `settings` role.
+- Reordering is one `UPDATE ... FROM (VALUES ...)` statement; `Testimonial.rating` has a `CHECK` (1 to 5 or null).
 
 ## Deploy (migration first)
 
@@ -43,12 +56,12 @@ Built 12 October 2026 on branch `v2-kb2` (from `v2-kb`, with `v2` merged in for 
 
 ## Checks
 
-`npx next typegen`, `npx tsc --noEmit`, `npm run lint`, `npx vitest run` (177 files, 2132 tests pass; 10 database
+`npx next typegen`, `npx tsc --noEmit`, `npm run lint`, `npx vitest run` (178 files, 2145 tests pass after the review fixes; 10 database
 files skipped without a database) and `npx next build` pass. New tests: `tests/knowledge/part2.test.ts` (validation,
 progress scores, context blocks: fencing, marker stripping, budgets, only permitted reviews, voice profile replacing
 the preset, website chat answering from FAQs and policies, migration order and FAQ copy),
 `tests/knowledge/interview.test.ts` (adaptive next question, rejected AI output, fallback, lasting fallback on budget /
-missing key / rate limit, hard cap, skip and back, stale tab, AI summary, approval), `tests/knowledge/part2-actions.test.ts`
+missing key / rate limit, hard cap, skip and back, stale tab, AI summary, approval), `tests/knowledge/part2-actions.test.ts`, `tests/knowledge/records.test.ts`, `tests/ai-budget.test.ts` (company allowance)
 (permissions, field errors, service messages). Updated: widget prompt and chat, studio service, Autopilot run and
 manage (mock `writerKnowledge`), sections registry.
 

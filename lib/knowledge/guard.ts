@@ -8,12 +8,12 @@ import { logError } from "@/lib/errors";
 import type { FeatureKey } from "@/lib/features";
 import { MediaError } from "@/lib/media/service";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
-import { ForbiddenError, type Permission } from "@/lib/team/roles";
+import { ForbiddenError, type Permission, type Role } from "@/lib/team/roles";
 import { KnowledgeError } from "./service";
 
 export type Failure = { ok: false; error: string; fieldErrors?: Record<string, string> };
 export type Result<T = object> = ({ ok: true } & T) | Failure;
-export type Ctx = { userId: string; businessId: string };
+export type Ctx = { userId: string; businessId: string; role: Role };
 
 export const SAVE_FAILED = "We could not save that. Please try again.";
 
@@ -40,7 +40,7 @@ export async function knowledgeAction<T extends object>(
       if (missing) return { ok: false, error: missing };
     }
     if (opts.limit) await rateLimit(`${opts.limit}:${user.id}`, RATE_LIMITS[opts.limit]);
-    return { ok: true, ...(await fn({ userId: user.id, businessId: business.id })) };
+    return { ok: true, ...(await fn({ userId: user.id, businessId: business.id, role: user.role })) };
   } catch (error) {
     if (error instanceof KnowledgeError || error instanceof MediaError) return { ok: false, error: error.message };
     if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };

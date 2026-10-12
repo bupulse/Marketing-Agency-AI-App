@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // An in-memory MarketingInterview row and Business, so the service's flow runs for real with the AI mocked.
 const m = vi.hoisted(() => {
-  const state: { row: Record<string, unknown> | null; business: Record<string, unknown>; tick: number } = { row: null, business: {}, tick: 0 };
+  const state: { row: Record<string, unknown> | null; business: Record<string, unknown>; tick: number; callsToday: number } = { row: null, business: {}, tick: 0, callsToday: 0 };
   const stamp = () => new Date(1_700_000_000_000 + ++state.tick);
   return {
     state,
@@ -14,12 +14,13 @@ const m = vi.hoisted(() => {
       marketingInterview: {
         findUnique: vi.fn(async () => (state.row ? { ...state.row } : null)),
         upsert: vi.fn(async ({ create, update }: { create: Record<string, unknown>; update: Record<string, unknown> }) => {
-          state.row = state.row ? { ...state.row, ...update, updatedAt: stamp() } : { id: "i1", ...create, updatedAt: stamp() };
+          state.row = state.row ? { ...state.row, ...update, updatedAt: stamp() } : { id: "i1", aiCalls: 0, ...create, updatedAt: stamp() };
           return state.row;
         }),
         updateMany: vi.fn(async ({ where, data }: { where: { updatedAt?: Date }; data: Record<string, unknown> }) => {
           if (!state.row || (where.updatedAt && (state.row.updatedAt as Date).getTime() !== where.updatedAt.getTime())) return { count: 0 };
-          state.row = { ...state.row, ...data, updatedAt: stamp() };
+          // Like Prisma's @updatedAt: an explicit value wins, otherwise "now".
+          state.row = { ...state.row, ...data, updatedAt: (data.updatedAt as Date | undefined) ?? stamp() };
           return { count: 1 };
         }),
         update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -34,6 +35,7 @@ const m = vi.hoisted(() => {
           return state.business;
         }),
       },
+      aiCall: { count: vi.fn(async () => state.callsToday) },
       $transaction: vi.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
     },
   };
@@ -58,6 +60,7 @@ import {
   fixedQuestion,
   followupAllowed,
   interviewCompleteness,
+  MAX_AI_CALLS_PER_DAY,
   MAX_QUESTIONS,
   nextFixedQuestion,
   parseAiQuestion,
@@ -66,7 +69,7 @@ import {
   TOPIC_KEYS,
   type InterviewStep,
 } from "@/lib/knowledge/interview";
-import { answerStep, approveProfile, getInterviewView, startInterview, stepBack } from "@/lib/knowledge/interview-service";
+import { answerStep, approveProfile, getInterviewView, InterviewInProgressError, startInterview, stepBack } from "@/lib/knowledge/interview-service";
 import { RateLimitError } from "@/lib/rate-limit";
 
 const ctx = { userId: "u1", businessId: "b1" };
@@ -84,6 +87,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   m.state.row = null;
   m.state.business = {};
+  m.state.callsToday = 0;
   m.providerError = null;
   m.rateLimit.mockResolvedValue(undefined);
   m.generate.mockReset();
@@ -194,13 +198,13 @@ describe("interview flow (AI mocked)", () => {
     await answerCurrent();
     expect(m.generate).toHaveBeenCalledTimes(1); // no more AI calls
 
-    await startInterview("b1");
+    await startInterview("b1", { confirm: true });
     m.providerError = () => new Error("GEMINI_API_KEY is not set");
     await answerCurrent();
     expect((await getInterviewView("b1")).mode).toBe("fixed");
 
     m.providerError = null;
-    await startInterview("b1");
+    await startInterview("b1", { confirm: true });
     m.rateLimit.mockRejectedValueOnce(new RateLimitError(60));
     await answerCurrent();
     const view = await getInterviewView("b1");
@@ -280,5 +284,76 @@ describe("interview flow (AI mocked)", () => {
     expect(profile!.answers).toHaveLength(TOPIC_KEYS.length);
     view = await getInterviewView("b1");
     expect(view.status).toBe("approved");
+  });
+
+  it("refuses to start over an interview in progress without confirmation, keeps the AI call count, and limits restarts", async () => {
+    await startInterview("b1");
+    m.state.row!.aiCalls = 7;
+    await expect(startInterview("b1")).rejects.toBeInstanceOf(InterviewInProgressError);
+    expect(m.rateLimit).not.toHaveBeenCalledWith("interviewRestart:b1", expect.anything());
+
+    await startInterview("b1", { confirm: true });
+    expect(m.rateLimit).toHaveBeenCalledWith("interviewRestart:b1", { limit: 3, windowSeconds: 86400 });
+    expect(m.state.row!.aiCalls).toBe(7); // not reset by a restart
+
+    m.rateLimit.mockImplementation(async (key: string) => {
+      if (key.startsWith("interviewRestart:")) throw new RateLimitError(3600);
+    });
+    await expect(startInterview("b1", { confirm: true })).rejects.toThrow(/3 times a day/);
+
+    // A review waiting for approval also needs the confirmation; an approved one does not.
+    m.state.row!.status = "review";
+    await expect(startInterview("b1")).rejects.toBeInstanceOf(InterviewInProgressError);
+    m.rateLimit.mockResolvedValue(undefined);
+    m.state.row!.status = "approved";
+    await startInterview("b1");
+    expect((await getInterviewView("b1")).status).toBe("active");
+  });
+
+  it("stops calling the AI after the daily cap of the company's interview calls (counted in the ledger, across restarts)", async () => {
+    await startInterview("b1");
+    m.state.callsToday = MAX_AI_CALLS_PER_DAY;
+    await answerCurrent();
+    const view = await getInterviewView("b1");
+    expect(m.generate).not.toHaveBeenCalled();
+    expect(view.steps[1].source).toBe("fixed");
+    expect(view.mode).toBe("fixed");
+    expect(m.prisma.aiCall.count).toHaveBeenCalledWith({ where: { businessId: "b1", feature: "interview", createdAt: { gte: expect.any(Date) } } });
+  });
+
+  it("does not count a call the budget cap refused before reaching the provider", async () => {
+    const { CompanyBudgetExceededError } = await import("@/lib/ai/budget");
+    const ledger = await import("@/lib/ai/ledger");
+    const spy = vi.spyOn(ledger, "withLedger").mockRejectedValueOnce(new CompanyBudgetExceededError("gemini"));
+    await startInterview("b1");
+    await answerCurrent();
+    expect(m.state.row!.aiCalls).toBe(0);
+    expect((await getInterviewView("b1")).mode).toBe("fixed");
+    spy.mockRestore();
+  });
+
+  it("claims the row before the AI call, so a double click pays for one question only", async () => {
+    await startInterview("b1");
+    let release!: (v: unknown) => void;
+    m.generate.mockImplementationOnce(() => new Promise((r) => (release = r)));
+    const view = await getInterviewView("b1");
+    const first = answerStep(ctx, { index: 0, choices: [view.steps[0].options[0]], other: "", skip: false });
+    await vi.waitFor(() => expect(m.generate).toHaveBeenCalledTimes(1));
+    // The second click sees the claim (cursor past the last question) and is refused without an AI call.
+    await expect(answerStep(ctx, { index: 0, choices: [view.steps[0].options[0]], other: "", skip: false })).rejects.toThrow(/another tab/);
+    release(aiJson({ topic: "emojis", question: "How many emojis feel right for you?", options: ["None", "Some", "Lots"] }));
+    await first;
+    expect(m.generate).toHaveBeenCalledTimes(1);
+    expect((await getInterviewView("b1")).steps).toHaveLength(2);
+  });
+
+  it("lets the next answer take over a claim left behind by a request that died", async () => {
+    await startInterview("b1");
+    const steps = (await getInterviewView("b1")).steps;
+    m.state.row!.cursor = 1; // claimed, never finished
+    m.state.row!.updatedAt = new Date(Date.now() - 5 * 60_000);
+    m.generate.mockResolvedValueOnce(aiJson({ topic: "emojis", question: "How many emojis feel right for you?", options: ["None", "Some", "Lots"] }));
+    await answerStep(ctx, { index: 0, choices: [steps[0].options[0]], other: "", skip: false });
+    expect((await getInterviewView("b1")).steps).toHaveLength(2);
   });
 });

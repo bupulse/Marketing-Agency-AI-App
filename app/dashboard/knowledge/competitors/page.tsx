@@ -1,3 +1,4 @@
+import { featureGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { BackLink } from "@/components/knowledge/back-link";
@@ -9,6 +10,8 @@ import { can } from "@/lib/team/roles";
 export const metadata = { title: "Competitors & what makes you different" };
 
 export default async function CompetitorsPage() {
+  const blocked = await featureGate("content");
+  if (blocked) return blocked;
   const { business, role } = await getAppContext();
   const competitors = await listCompetitors(business.id);
   const positioning = readPositioning(business.positioning);

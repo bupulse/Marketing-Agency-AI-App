@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { CompanyBudgetExceededError } from "@/lib/ai/budget";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
 import { assertFeature, FeatureRequiredError } from "@/lib/entitlements";
@@ -81,7 +82,7 @@ function revalidate(subjectId: string | null) {
 function failure(error: unknown, userId: string): DesignResult {
   if (error instanceof UsageLimitError) return { ok: false, error: "You have used your image credits.", blocked: error.reason };
   if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
-  if (error instanceof DesignError || error instanceof FeatureRequiredError) return { ok: false, error: error.message };
+  if (error instanceof DesignError || error instanceof FeatureRequiredError || error instanceof CompanyBudgetExceededError) return { ok: false, error: error.message };
   void logError(error, { source: "designs.action", userId });
   return { ok: false, error: FAILED };
 }

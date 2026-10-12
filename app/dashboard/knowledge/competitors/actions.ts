@@ -24,7 +24,7 @@ function check(input: unknown) {
 export async function createCompetitor(input: CompetitorInput): Promise<Result<{ competitorId: string }>> {
   const checked = check(input);
   if (checked.failure) return checked.failure;
-  const result = await knowledgeAction({ permission: "content", limit: "knowledgeCreate", source: "knowledge.competitor.create" }, async ({ businessId }) => ({ competitorId: await create(businessId, checked.data) }));
+  const result = await knowledgeAction({ permission: "content", feature: "content", limit: "knowledgeCreate", source: "knowledge.competitor.create" }, async ({ businessId }) => ({ competitorId: await create(businessId, checked.data) }));
   if (result.ok) refresh();
   return result;
 }
@@ -33,7 +33,7 @@ export async function updateCompetitor(competitorId: string, input: CompetitorIn
   if (!id.safeParse(competitorId).success) return { ok: false, error: "We could not find that competitor." };
   const checked = check(input);
   if (checked.failure) return checked.failure;
-  const result = await knowledgeAction({ permission: "content", limit: "knowledgeEdit", source: "knowledge.competitor.update" }, async ({ businessId }) => {
+  const result = await knowledgeAction({ permission: "content", feature: "content", limit: "knowledgeEdit", source: "knowledge.competitor.update" }, async ({ businessId }) => {
     await update(businessId, competitorId, checked.data);
     return {};
   });
@@ -54,7 +54,7 @@ export async function deleteCompetitor(competitorId: string): Promise<Result> {
 export async function reorderCompetitors(order: string[]): Promise<Result> {
   const parsed = ids.safeParse(order);
   if (!parsed.success) return { ok: false, error: "We could not change the order." };
-  const result = await knowledgeAction({ permission: "content", limit: "knowledgeEdit", source: "knowledge.competitor.reorder" }, async ({ businessId }) => {
+  const result = await knowledgeAction({ permission: "content", feature: "content", limit: "knowledgeEdit", source: "knowledge.competitor.reorder" }, async ({ businessId }) => {
     await reorderList("competitor", businessId, parsed.data);
     return {};
   });
@@ -65,7 +65,7 @@ export async function reorderCompetitors(order: string[]): Promise<Result> {
 export async function savePositioning(input: PositioningInput): Promise<Result> {
   const parsed = positioningSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the highlighted fields.", fieldErrors: fieldErrorMap(parsed.error) };
-  const result = await knowledgeAction({ permission: "content", limit: "knowledgeEdit", source: "knowledge.positioning" }, async ({ businessId }) => {
+  const result = await knowledgeAction({ permission: "content", feature: "content", limit: "knowledgeEdit", source: "knowledge.positioning" }, async ({ businessId }) => {
     await save(businessId, parsed.data);
     return {};
   });
