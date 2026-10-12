@@ -1,4 +1,5 @@
 import "server-only";
+import { companyMonthlyBudgetUsd } from "@/lib/ai/budget";
 import { prisma } from "@/lib/db";
 import { getPriceTable } from "@/lib/plan-catalog";
 import { computeMrrCents, MANUAL_PAYMENT_EVENT, MONEY_EVENT_TYPES } from "@/lib/analytics/math";
@@ -85,10 +86,12 @@ export async function usageSection(c: Client, now = new Date()) {
   ]);
   const used: Record<string, number> = usage ? { text: usage.textGenerations, image: usage.imageGenerations, videoSeconds: usage.videoSeconds, voiceCharacters: usage.voiceCharacters, chat: usage.chatMessages } : {};
   const failures = await prisma.aiCall.count({ where: { userId: c.id, createdAt: { gte: since }, success: false } });
+  // The company's own monthly AI allowance (AI_COMPANY_MONTHLY_USD), counted on the business like the cap is.
+  const month = c.business ? await prisma.aiCall.aggregate({ where: { businessId: c.business.id, createdAt: { gte: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)) } }, _sum: { costUsd: true } }) : null;
   return {
     periodStart: iso(usage?.periodStart),
     metrics: USAGE_METRICS.map((k) => ({ key: k, label: METRIC_LABELS[k] ?? k, used: used[k] ?? 0, limit: limits ? limits[k] : null })),
-    ai: { calls30d: ai._count._all, failures30d: failures, costUsd30d: Number(ai._sum.costUsd ?? 0) },
+    ai: { calls30d: ai._count._all, failures30d: failures, costUsd30d: Number(ai._sum.costUsd ?? 0), monthUsd: Number(month?._sum?.costUsd ?? 0), allowanceUsd: companyMonthlyBudgetUsd() },
   };
 }
 

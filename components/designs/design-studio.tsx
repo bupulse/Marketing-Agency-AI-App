@@ -3,17 +3,19 @@
 /**
  * <DesignStudio> makes branded designs: from a template in one of five style packs (free,
  * unlimited), from a template over an AI-made photo (1 image credit), or from a description
- * (AI, 1 image credit). Embed it on a project page or use it alone.
+ * (AI, 1 image credit). Embed it on a product's or campaign's page or use it alone.
  *
  * Props (all optional except `designs`):
- *   projectId   Attach new designs to this project. Omit on the Designs page.
- *   defaults    Prefill from the project:
+ *   subjectId   Attach new designs to this product or campaign. Omit on the Designs page.
+ *   album       Its album ("product:<id>"), where the gallery picker opens.
+ *   defaults    Prefill from the product or campaign:
  *                 headline, subline, chip   template text
- *                 photoPaths                object paths in the private "media" bucket (<userId>/projects/...)
+ *                 photoPaths                its album's object paths in the private "media" bucket, cover first
  *                 photoUrls                 signed display URLs, same order as photoPaths
  *                                           (lib/designs/service.ts photoPreviewUrls); without them the
  *                                           picker shows "Photo 1", "Photo 2"...
- *                 projectType               Project.type, to list the best-fitting templates first
+ *                 projectType               the old project type (lib/knowledge/legacy.ts legacyTypeOf), to list
+ *                                           the best-fitting templates first
  *   designs     Existing designs to show in the gallery: { id, url, kind, aspectRatio, template }[]
  *               (lib/designs/service.ts listDesigns returns exactly this).
  *   credits     { used, limit, resetsAt? } of the plan's image credits, for "Uses 1 of your N" and the paywall.
@@ -48,7 +50,8 @@ export type StudioDesign = {
 };
 
 export type DesignStudioProps = {
-  projectId?: string;
+  subjectId?: string;
+  album?: string;
   defaults?: {
     headline?: string;
     subline?: string;
@@ -70,6 +73,8 @@ export type DesignStudioProps = {
 };
 
 const CanvaEnabled = createContext(false);
+/** The product's or campaign's album key ("product:<id>"): the gallery picker opens there. */
+const AlbumKey = createContext<string | undefined>(undefined);
 
 type Created = { designId: string; url: string };
 
@@ -120,6 +125,7 @@ function PhotoPicker({
   // Photos taken from "From my gallery" stay in the list, so the choice can be changed back and forth.
   const [picks, setPicks] = useState<{ path: string; url: string }[]>(gallery ? [gallery] : []);
   const [open, setOpen] = useState(false);
+  const album = useContext(AlbumKey);
   const tile = (selected: boolean) =>
     cn("flex size-16 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 text-xs font-semibold", selected ? "border-pulse-blue" : "border-transparent hover:border-line");
 
@@ -167,7 +173,7 @@ function PhotoPicker({
           From my gallery
         </button>
       </div>
-      <MediaPicker open={open} onOpenChange={setOpen} onPick={pick} />
+      <MediaPicker open={open} onOpenChange={setOpen} onPick={pick} initialFolder={album} />
     </fieldset>
   );
 }
@@ -291,13 +297,13 @@ function StylePicker({ value, onChange, matches }: { value: PackId; onChange: (v
 }
 
 function TemplateTab({
-  projectId,
+  subjectId,
   defaults,
   order,
   pack: matchingPack = "clean",
   credits,
   galleryPhoto,
-}: Pick<DesignStudioProps, "projectId" | "defaults" | "credits" | "galleryPhoto"> & {
+}: Pick<DesignStudioProps, "subjectId" | "defaults" | "credits" | "galleryPhoto"> & {
   order: string[];
   pack?: PackId;
 }) {
@@ -333,7 +339,7 @@ function TemplateTab({
     setError(undefined);
     start(async () => {
       const text = {
-        projectId,
+        subjectId,
         template: activeId,
         pack,
         aspectRatio: ratio,
@@ -467,7 +473,7 @@ function TemplateTab({
   );
 }
 
-function AiTab({ projectId, defaults, credits, hasLogo, galleryPhoto }: Pick<DesignStudioProps, "projectId" | "defaults" | "credits" | "hasLogo" | "galleryPhoto">) {
+function AiTab({ subjectId, defaults, credits, hasLogo, galleryPhoto }: Pick<DesignStudioProps, "subjectId" | "defaults" | "credits" | "hasLogo" | "galleryPhoto">) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
@@ -490,7 +496,7 @@ function AiTab({ projectId, defaults, credits, hasLogo, galleryPhoto }: Pick<Des
     setError(undefined);
     start(async () => {
       const res = await createAiDesign({
-        projectId,
+        subjectId,
         prompt,
         aspectRatio: ratio,
         useLogo,
@@ -605,10 +611,11 @@ function Gallery({ designs }: { designs: StudioDesign[] }) {
   );
 }
 
-export function DesignStudio({ projectId, defaults, designs, credits, hasLogo, pack, showGallery = true, galleryPhoto = null, canva = false, aiPhotos = true }: DesignStudioProps) {
+export function DesignStudio({ subjectId, album, defaults, designs, credits, hasLogo, pack, showGallery = true, galleryPhoto = null, canva = false, aiPhotos = true }: DesignStudioProps) {
   const order = useMemo(() => templatesForProjectType(defaults?.projectType ?? ""), [defaults?.projectType]);
   return (
     <CanvaEnabled value={canva}>
+      <AlbumKey value={album}>
       <div className="flex flex-col gap-8">
         <GlassCard strong padding="lg">
           <Tabs
@@ -617,14 +624,14 @@ export function DesignStudio({ projectId, defaults, designs, credits, hasLogo, p
               {
                 value: "template",
                 label: "From a template",
-                content: <TemplateTab projectId={projectId} defaults={defaults} order={order} pack={pack} credits={credits} galleryPhoto={galleryPhoto} />,
+                content: <TemplateTab subjectId={subjectId} defaults={defaults} order={order} pack={pack} credits={credits} galleryPhoto={galleryPhoto} />,
               },
               ...(aiPhotos
                 ? [
                     {
                       value: "ai",
                       label: "Describe an image",
-                      content: <AiTab projectId={projectId} defaults={defaults} credits={credits} hasLogo={hasLogo} galleryPhoto={galleryPhoto} />,
+                      content: <AiTab subjectId={subjectId} defaults={defaults} credits={credits} hasLogo={hasLogo} galleryPhoto={galleryPhoto} />,
                     },
                   ]
                 : [
@@ -648,6 +655,7 @@ export function DesignStudio({ projectId, defaults, designs, credits, hasLogo, p
           </section>
         )}
       </div>
+      </AlbumKey>
     </CanvaEnabled>
   );
 }

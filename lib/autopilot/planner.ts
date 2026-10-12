@@ -21,8 +21,13 @@ export interface PlanConnection {
   network: Network;
 }
 
+/** A product or campaign Autopilot may post about (the name is from before the Knowledge base). */
 export interface PlanProject {
   id: string;
+  /** Whether `id` is a product's or a campaign's (posts and designs link to it). Older callers leave it out: product. */
+  subject?: "product" | "campaign";
+  /** The fenced data block for the writer (lib/knowledge/context.ts). */
+  context?: string;
   title: string;
   type: string;
   price: string | null;

@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }));
+vi.mock("@/lib/knowledge/writer-context", () => ({ writerKnowledge: async () => ({ knowledgeBase: null, voiceProfile: null }) }));
 vi.mock("@/lib/errors", () => ({ logError: mocks.logError }));
 vi.mock("@/lib/ai", () => ({ getTextProvider: () => ({ name: "gemini" }) }));
 vi.mock("@/lib/ai/ledger", () => ({ withLedger: async (_c: unknown, _m: unknown, call: () => unknown) => call() }));

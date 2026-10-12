@@ -122,7 +122,7 @@ tool({
   name: "list_businesses",
   title: "List businesses",
   kind: "read",
-  description: "Search businesses by name, industry or owner email, with plan and counts of projects, posts, leads and connections.",
+  description: "Search businesses by name, industry or owner email, with plan and counts of products, posts, leads and connections.",
   schema: z.object({ q: z.string().max(100).optional(), cursor, limit }),
   run: (a) => admin.listBusinesses(a),
 });

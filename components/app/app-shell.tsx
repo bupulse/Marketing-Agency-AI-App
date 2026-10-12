@@ -388,8 +388,8 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
             >
               <Bell aria-hidden className="size-5" />
             </button>
-            <Button href="/dashboard/projects/new" size="sm" leading={<Plus aria-hidden className="size-[18px]" />}>
-              New project
+            <Button href="/dashboard/knowledge/products/new" size="sm" leading={<Plus aria-hidden className="size-[18px]" />}>
+              Add product
             </Button>
             <UserMenu displayName={displayName} email={email} />
           </div>

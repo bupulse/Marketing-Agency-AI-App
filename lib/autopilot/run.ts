@@ -4,9 +4,11 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { hasShortRequestLimit } from "@/lib/platform/limits";
 import { industryContext } from "@/lib/industry-context";
+import { profileContext } from "@/lib/knowledge/context";
+import { writerKnowledge } from "@/lib/knowledge/writer-context";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
-import { AIBudgetExceededError } from "@/lib/ai/budget";
+import { AIBudgetExceededError, COMPANY_ALLOWANCE_MESSAGE, CompanyBudgetExceededError } from "@/lib/ai/budget";
 import { isServiceEnabled, ServiceDisabledError, textAiService } from "@/lib/admin/switch";
 import { FeatureRequiredError, featureStatus, hasFeature } from "@/lib/entitlements";
 import { AIProviderError } from "@/lib/ai/types";
@@ -75,7 +77,7 @@ async function claimRun(businessId: string, key: Date, now: Date): Promise<{ id:
 
 function factsFor(group: PlannedGroup) {
   return {
-    project: group.project && { type: group.project.type, title: group.project.title, price: group.project.price, features: group.project.features, notes: group.project.notes },
+    project: group.project && { type: group.project.type, title: group.project.title, price: group.project.price, features: group.project.features, notes: group.project.notes, context: group.project.context },
     faq: group.faq,
     holiday: group.holiday ? { name: group.holiday.name, date: group.holiday.date } : undefined,
     date: group.day,
@@ -146,6 +148,8 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
       businessName: business.name,
       industry: business.industry,
       industryContext: industryContext(business),
+      profile: profileContext(business.profile),
+      ...(await writerKnowledge(business.id)),
       description: business.description,
       audience: business.audience,
       tone: business.tone,
@@ -160,7 +164,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
     // AI photos are their own plan feature; without it Autopilot draws the free templates only.
     const aiPhotos = await hasFeature(businessId, "aiPhotos");
     let aiStopped = false;
-    const state: { stop: "credits" | "budget" | null } = { stop: null };
+    const state: { stop: "credits" | "budget" | "allowance" | null } = { stop: null };
     let postCount = 0;
     let groupCount = 0;
 
@@ -218,7 +222,8 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
               connectionId: planned.connectionId,
               network: planned.network,
               groupId: group.groupId,
-              projectId: group.project?.id ?? null,
+              productId: group.project && group.project.subject !== "campaign" ? group.project.id : null,
+              campaignId: group.project?.subject === "campaign" ? group.project.id : null,
               status: needsPicture ? ("DRAFT" as const) : autoPublish ? ("SCHEDULED" as const) : ("PENDING_APPROVAL" as const),
               format,
               source: "AUTOPILOT" as const,
@@ -241,7 +246,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
         await prisma.autopilotRun.update({ where: { id: runId }, data: { postCount } });
       } catch (error) {
         if (error instanceof AIBudgetExceededError || error instanceof ServiceDisabledError) {
-          state.stop = "budget";
+          state.stop = error instanceof CompanyBudgetExceededError ? "allowance" : "budget";
           return;
         }
         await logError(error, { source: "autopilot.group", userId, businessId, idea: group.idea.id, level: error instanceof AIProviderError ? "warn" : "error" });
@@ -271,6 +276,8 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
       );
     } else if (state.stop === "budget") {
       notes.unshift("Autopilot is paused for a short while. Please try again later.");
+    } else if (state.stop === "allowance") {
+      notes.unshift(`${COMPANY_ALLOWANCE_MESSAGE} Autopilot wrote what it could before that.`);
     }
     const note = notes.length > 0 ? notes.join(" ") : null;
 

@@ -23,7 +23,7 @@ export function SyncPanel({ provider, imported, lastSync }: { provider: string; 
             start(async () => {
               setMessage(null);
               // One slice per call keeps each request short; keep asking until the server says the pass is done.
-              const total = { updated: 0, unchanged: 0, kept: 0, missing: 0, failed: 0, checked: 0 };
+              const total = { updated: 0, unchanged: 0, kept: 0, missing: 0, failed: 0, skippedPhotos: 0, checked: 0 };
               let since: string | undefined;
               for (let i = 0; i < 40; i++) {
                 const res = await resyncAction(provider, since);
@@ -42,6 +42,7 @@ export function SyncPanel({ provider, imported, lastSync }: { provider: string; 
               if (total.kept) bits.push(`${total.kept} kept your edits`);
               if (total.missing) bits.push(`${total.missing} no longer in the store`);
               if (total.failed) bits.push(`${total.failed} failed`);
+              if (total.skippedPhotos) bits.push(`Gallery full: ${total.skippedPhotos} store ${total.skippedPhotos === 1 ? "photo" : "photos"} not imported`);
               setMessage(bits.join(", "));
             })
           }

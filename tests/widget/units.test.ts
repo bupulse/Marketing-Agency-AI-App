@@ -141,7 +141,9 @@ describe("prompt", () => {
     name: "Glow Studio",
     description: "Hair and nails",
     website: "https://glow.example",
-    knowledge: { hours: "Mon-Sat 9-18", area: "Kigali", contact: "+250 788 000 000", faqs: [{ question: "Walk-ins?", answer: "Yes on weekdays" }] },
+    knowledge: { hours: "Mon-Sat 9-18", area: "Kigali", contact: "+250 788 000 000", faqs: [] },
+    // FAQs come from the Knowledge base (KnowledgeFaq rows), no longer from knowledge.faqs.
+    faqs: [{ question: "Walk-ins?", answer: "Yes on weekdays" }],
     projects: [{ type: "offer", title: "Bridal pack", price: "120 EUR", features: ["Trial included"] }],
   };
   it("contains only this business's facts and the safety rules", () => {

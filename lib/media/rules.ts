@@ -161,3 +161,37 @@ export function imageSize(bytes: Uint8Array): { width: number; height: number } 
   } catch {}
   return null;
 }
+
+/**
+ * `MediaAsset.source` of the photos the Knowledge base migration copied from old projects. They were already stored
+ * before the gallery quota knew about them, so they never count toward a company's 500 photos / 2 GB.
+ */
+export const MIGRATED_SOURCE = "project-migration";
+/** `MediaAsset.source` of photos copied from a Shopify or WooCommerce store. They count, like uploads. */
+export const STORE_SOURCE = "store";
+
+/** The Prisma filter for the photos that count toward a company's quota (null sources are uploads). */
+export const COUNTED = { OR: [{ source: null }, { source: { not: MIGRATED_SOURCE } }] };
+
+/**
+ * All companies share one Storage project (Supabase free plan: 1 GB in total), so new photos stop before it is full.
+ * MEDIA_PLATFORM_MAX_BYTES sets the cap; 900 MB by default. The admin is warned from 80%.
+ */
+export const PLATFORM_DEFAULT_MAX_BYTES = 900 * 1024 * 1024;
+export const PLATFORM_WARN_RATIO = 0.8;
+export const PLATFORM_FULL_MESSAGE = "BuPulse's photo storage is full right now, so new photos cannot be added. We have been told and are making room. Please try again later.";
+
+export function platformMaxBytes(raw: string | undefined = process.env.MEDIA_PLATFORM_MAX_BYTES): number {
+  const n = Number(raw);
+  return raw && Number.isFinite(n) && n > 0 ? Math.floor(n) : PLATFORM_DEFAULT_MAX_BYTES;
+}
+
+/** Why `adding` bytes would not fit in the shared storage, or null when they fit. */
+export function platformProblem(usedBytes: number, adding: number, max = platformMaxBytes()): string | null {
+  return usedBytes + adding > max ? PLATFORM_FULL_MESSAGE : null;
+}
+
+/** Whether the shared storage is past the warning line (80%). */
+export function platformNearlyFull(usedBytes: number, max = platformMaxBytes()): boolean {
+  return usedBytes >= max * PLATFORM_WARN_RATIO;
+}

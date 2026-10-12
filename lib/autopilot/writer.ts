@@ -2,9 +2,8 @@
 // text for the image. Facts rules follow lib/ai/marketing.ts: only the facts given, nothing invented.
 import "server-only";
 import { z } from "zod";
-import type { BrandContext } from "@/lib/ai/marketing";
+import { voiceLine, type BrandContext } from "@/lib/ai/marketing";
 import { AIProviderError, type TextProvider, type TokenUsage } from "@/lib/ai/types";
-import { getVoice } from "@/lib/brand/voices";
 import { getProvider } from "@/lib/social/registry";
 import type { Network } from "@/lib/social/types";
 import { normalizeHashtags, truncateSmart } from "@/lib/studio/variants";
@@ -12,7 +11,8 @@ import type { Trend } from "./learning";
 import type { AutopilotFormat, Idea } from "./playbook";
 
 export interface WriterFacts {
-  project?: { type: string; title: string; price?: string | null; features: string[]; notes?: string };
+  /** The product or campaign the post is about. `context` is its fenced data block (lib/knowledge/context.ts); when given it replaces price, features and notes. */
+  project?: { type: string; title: string; price?: string | null; features: string[]; notes?: string; context?: string };
   faq?: { question: string; answer: string };
   holiday?: { name: string; date: string };
   /** "YYYY-MM-DD" the post goes out, for "time of year" ideas. */
@@ -65,7 +65,7 @@ export const SYSTEM = `You are BuPulse Autopilot, the marketing writer for a sma
 Each network gets its own version, written for how people use that network. Never paste the same text everywhere.
 Be specific to the business. Use only the facts you are given: never invent prices, numbers, dates, discounts, specifications, addresses, contact details, customer names, quotes, reviews, statistics or claims.
 If a price or offer is given you may state it exactly as written; if none is given, do not mention a price.
-Never write a quote or review as if a customer said it. Never claim the business is open, closed or running an offer unless the facts say so.
+Never write a quote or review as if a customer said it; you may quote one only from the CUSTOMER REVIEWS block, word for word with the name given. Never name a competitor. Never claim the business is open, closed or running an offer unless the facts say so.
 Hashtags must not contain years, dates or other numbers unless they appear in the facts.
 Return only the requested JSON.`;
 
@@ -92,7 +92,6 @@ const NETWORK_BRIEF: Record<Network, (format: AutopilotFormat) => string> = {
 export function buildPrompt(req: WriteRequest): string {
   const { brand, idea, facts, targets } = req;
   const language = brand.contentLanguage?.trim() || "English";
-  const voice = getVoice(brand.tone);
   const k = brand.knowledge;
   const faq = facts.faq;
   const p = facts.project;
@@ -106,7 +105,7 @@ export function buildPrompt(req: WriteRequest): string {
     brand.audience && `Its customers: ${brand.audience}`,
     brand.website && `Website: ${brand.website}`,
     brand.ownerName && `Owner: ${brand.ownerName}`,
-    `Brand voice: ${voice ? `${voice.label}. ${voice.guide}` : "Friendly and professional."}`,
+    voiceLine(brand),
     (k?.hours || k?.area || k?.contact) &&
       [
         "Business facts you may use in the call to action (use only these):",
@@ -117,6 +116,9 @@ export function buildPrompt(req: WriteRequest): string {
         .filter(Boolean)
         .join("\n"),
     brand.industryContext && `\n${brand.industryContext}`,
+    brand.profile && `\n${brand.profile}`,
+    brand.voiceProfile && `\n${brand.voiceProfile}`,
+    brand.knowledgeBase && `\n${brand.knowledgeBase}`,
     "",
     `Post idea: ${idea.name} (goal: ${idea.goal})`,
     `How to write it: ${idea.guidance}`,
@@ -125,9 +127,10 @@ export function buildPrompt(req: WriteRequest): string {
     p &&
       [
         `About (${p.type}): ${p.title}`,
-        p.price && `Price or offer: ${p.price}`,
-        p.features.length > 0 && `Key features:\n- ${p.features.join("\n- ")}`,
-        p.notes && `Other details: ${p.notes}`,
+        p.context,
+        !p.context && p.price && `Price or offer: ${p.price}`,
+        !p.context && p.features.length > 0 && `Key features:\n- ${p.features.join("\n- ")}`,
+        !p.context && p.notes && `Other details: ${p.notes}`,
       ]
         .filter(Boolean)
         .join("\n"),
@@ -218,6 +221,10 @@ export function factsText(req: WriteRequest): string {
     facts.project?.price,
     ...(facts.project?.features ?? []),
     facts.project?.notes,
+    facts.project?.context,
+    brand.profile,
+    brand.knowledgeBase,
+    brand.voiceProfile,
     facts.faq?.question,
     facts.faq?.answer,
     ...(facts.trends ?? []).flatMap((t) => [t.topic, ...t.hashtags]),

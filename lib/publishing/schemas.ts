@@ -38,7 +38,8 @@ export const composeSchema = z.object({
   overrides,
   mediaPaths,
   link: optionalLink,
-  projectId: z.string().max(60).nullish(),
+  /** The product or campaign the post is about (an old project id works: it is the same id). */
+  subjectId: z.string().max(60).nullish(),
   contentId: z.string().max(60).nullish(),
   when,
 });

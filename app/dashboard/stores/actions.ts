@@ -94,7 +94,7 @@ export async function importChunkAction(provider: string, ids: string[]): Promis
   if (tooMany) return { ok: false, error: tooMany };
   try {
     const results = await importProducts(found.conn, ids);
-    revalidatePath("/dashboard/projects");
+    revalidatePath("/dashboard/knowledge/products");
     revalidatePath(`/dashboard/stores/${provider}`);
     return { ok: true, results };
   } catch (error) {
@@ -118,7 +118,7 @@ export async function resyncAction(provider: string, since?: string): Promise<Sy
   const passStart = Number.isNaN(parsed.getTime()) || parsed.getTime() > Date.now() + 1000 ? new Date() : parsed;
   try {
     const summary = await resyncConnection(found.conn, { since: passStart });
-    revalidatePath("/dashboard/projects");
+    revalidatePath("/dashboard/knowledge/products");
     revalidatePath(`/dashboard/stores/${provider}`);
     return { ok: true, summary, since: passStart.toISOString() };
   } catch (error) {
@@ -127,13 +127,13 @@ export async function resyncAction(provider: string, since?: string): Promise<Sy
   }
 }
 
-/** Forgets the store's keys and product mappings (imported projects stay). The screen then reloads the page. */
+/** Forgets the store's keys and product mappings (imported products stay). The screen then reloads the page. */
 export async function disconnectStoreAction(provider: string): Promise<{ ok: boolean }> {
   const user = await requireActiveUser("connectors");
   if (!isStoreProvider(provider)) return { ok: false };
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (business) await removeConnection(business.id, provider);
-  revalidatePath("/dashboard/projects");
+  revalidatePath("/dashboard/knowledge/products");
   revalidatePath(`/dashboard/stores/${provider}`);
   return { ok: true };
 }

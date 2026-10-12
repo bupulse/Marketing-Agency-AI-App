@@ -41,5 +41,27 @@ export function getTextProvider(): TextProvider {
   return textProvider;
 }
 
+let cheapProvider: { provider: TextProvider; model: string } | undefined;
+
+/**
+ * The same provider as getTextProvider (AI_TEXT_PROVIDER), on its cheapest model, for short structured calls such as
+ * the marketing interview's next question: Gemini Flash-Lite (CHEAP_TEXT_MODEL to change it, the main text model as
+ * the busy fallback), or Claude Sonnet at low effort. `model` is what the cost ledger records before the call.
+ */
+export function getCheapTextProvider(): { provider: TextProvider; model: string } {
+  if (cheapProvider) return cheapProvider;
+  const choice = (process.env.AI_TEXT_PROVIDER ?? "gemini").toLowerCase();
+  if (choice === "claude") {
+    const model = process.env.CHEAP_TEXT_MODEL || "claude-sonnet-5-5";
+    cheapProvider = { provider: new ClaudeTextProvider(required("ANTHROPIC_API_KEY"), model, "low"), model };
+  } else if (choice === "gemini") {
+    const model = process.env.CHEAP_TEXT_MODEL || DEFAULT_GEMINI_TEXT_FALLBACK;
+    cheapProvider = { provider: new GeminiTextProvider(required("GEMINI_API_KEY"), model, process.env.GEMINI_TEXT_MODEL ?? DEFAULT_GEMINI_TEXT_MODEL), model };
+  } else {
+    throw new Error(`Unknown AI_TEXT_PROVIDER "${choice}" (use "gemini" or "claude")`);
+  }
+  return cheapProvider;
+}
+
 // ImageProvider (Gemini image model), VideoProvider (Veo) and VoiceProvider
 // (ElevenLabs) get their factories here when those features are built.

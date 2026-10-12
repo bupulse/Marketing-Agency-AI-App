@@ -6,7 +6,7 @@ export const API_SCOPES = ["projects:read", "content:read", "posts:read", "posts
 export type ApiScope = (typeof API_SCOPES)[number];
 
 export const SCOPE_LABELS: Record<ApiScope, string> = {
-  "projects:read": "Read projects",
+  "projects:read": "Read products and campaigns",
   "content:read": "Read generated content",
   "posts:read": "Read posts",
   "posts:write": "Create draft posts",

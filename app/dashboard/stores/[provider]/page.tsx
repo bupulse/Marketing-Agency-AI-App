@@ -54,7 +54,7 @@ export default async function StorePage({ params, searchParams }: { params: Prom
 
   return (
     <>
-      <PageHeader title={`Products from ${name}`} description="Pick the products you want to promote. BuPulse copies the name, price, description and photos into projects." />
+      <PageHeader title={`Products from ${name}`} description="Pick the products you want to promote. BuPulse copies the name, price, description and photos into your products, each with its own album." />
       {notice && <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-[14px] text-danger">{notice}</p>}
       {connected && conn && !pending && <p role="status" className="rounded-2xl bg-success-bg px-4 py-3 text-[14px] text-success">Connected to {conn.storeUrl.replace(/^https:\/\//, "")}. Choose your products below.</p>}
 

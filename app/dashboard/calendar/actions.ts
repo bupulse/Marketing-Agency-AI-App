@@ -60,7 +60,8 @@ function failure(error: unknown, source: string): ActionFailure {
 function refresh() {
   revalidatePath("/dashboard/calendar");
   revalidatePath("/dashboard/content");
-  revalidatePath("/dashboard/projects/[id]", "page");
+  revalidatePath("/dashboard/knowledge/products/[id]", "page");
+  revalidatePath("/dashboard/knowledge/campaigns/[id]", "page");
 }
 
 /** Wraps an action: sign-in check, business lookup, plan feature (the calendar unless told otherwise), rate limit, error mapping, revalidation. */

@@ -5,6 +5,10 @@ const mocks = vi.hoisted(() => ({
     business: { findUnique: vi.fn() },
     mediaFolder: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), create: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn() },
     mediaAsset: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn(), aggregate: vi.fn(), groupBy: vi.fn() },
+    product: { findFirst: vi.fn() },
+    campaign: { findFirst: vi.fn() },
+    productPhoto: { findMany: vi.fn(), createMany: vi.fn() },
+    campaignPhoto: { findMany: vi.fn(), createMany: vi.fn() },
     $transaction: vi.fn(),
     $executeRaw: vi.fn(),
   },
@@ -17,6 +21,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }));
+const logError = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/errors", () => ({ logError }));
 vi.mock("@/lib/rate-limit", () => ({ rateLimit: mocks.rateLimit }));
 vi.mock("@/lib/storage", () => ({ createSignedUploadUrl: mocks.createSignedUploadUrl }));
 vi.mock("@/lib/supabase/server", () => ({
@@ -34,8 +40,9 @@ import {
   moveAssets,
   prepareUploads,
   renameFolder,
+  resetPlatformWarning,
 } from "@/lib/media/service";
-import { MEDIA_MAX_ASSETS } from "@/lib/media/rules";
+import { MEDIA_MAX_ASSETS, MIGRATED_SOURCE, PLATFORM_DEFAULT_MAX_BYTES, PLATFORM_FULL_MESSAGE } from "@/lib/media/rules";
 
 const USER = "11111111-1111-1111-1111-111111111111";
 const ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -54,13 +61,16 @@ beforeEach(() => {
   mocks.prisma.mediaAsset.aggregate.mockResolvedValue({ _count: { _all: 0 }, _sum: { bytes: 0 } });
   mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => (typeof arg === "function" ? (arg as (tx: typeof mocks.prisma) => unknown)(mocks.prisma) : Promise.all(arg as unknown[])));
   mocks.createSignedUploadUrl.mockImplementation(async (_b: string, path: string) => ({ path, token: "tok", signedUrl: "u" }));
+  mocks.prisma.mediaFolder.findFirst.mockImplementation(async ({ where }: { where: { id: string; businessId: string } }) => (where.id === "f1" && where.businessId === "biz1" ? { id: "f1", name: "Shop" } : null));
+  mocks.prisma.product.findFirst.mockImplementation(async ({ where }: { where: { id: string; businessId: string } }) => (where.id === "prod1" && where.businessId === "biz1" ? { id: "prod1", name: "Basket", _count: { photos: 2 } } : null));
+  mocks.prisma.productPhoto.findMany.mockResolvedValue([{ assetId: "x1", position: 0 }, { assetId: "x2", position: 1 }]);
 });
 
 describe("prepareUploads", () => {
   const file = { name: "a.png", type: "image/png", size: 1000 };
 
   it("issues signed targets under <userId>/gallery/ for valid files and reports bad ones in order", async () => {
-    const res = await prepareUploads(ctx, [file, { name: "b.gif", type: "image/gif", size: 5 }, file], null);
+    const res = await prepareUploads(ctx, [file, { name: "b.gif", type: "image/gif", size: 5 }, file], "folder:f1");
     expect(res[0]).toMatchObject({ ok: true, token: "tok" });
     expect(res[0].ok && res[0].path).toMatch(new RegExp(`^${USER}/gallery/[0-9a-f-]{36}\\.png$`));
     expect(res[1]).toMatchObject({ ok: false });
@@ -70,21 +80,72 @@ describe("prepareUploads", () => {
 
   it("refuses files past the photo quota with a clear message", async () => {
     mocks.prisma.mediaAsset.aggregate.mockResolvedValue({ _count: { _all: MEDIA_MAX_ASSETS - 1 }, _sum: { bytes: 0 } });
-    const res = await prepareUploads(ctx, [file, file], null);
+    const res = await prepareUploads(ctx, [file, file], "folder:f1");
     expect(res[0].ok).toBe(true);
     expect(res[1]).toMatchObject({ ok: false, error: expect.stringMatching(/500 photos/) });
   });
 
   it("refuses a folder that is not the business's", async () => {
-    mocks.prisma.mediaFolder.findFirst.mockResolvedValue(null);
-    await expect(prepareUploads(ctx, [file], "foreign")).rejects.toBeInstanceOf(MediaError);
+    await expect(prepareUploads(ctx, [file], "folder:foreign")).rejects.toBeInstanceOf(MediaError);
     expect(mocks.prisma.mediaFolder.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "foreign", businessId: "biz1" } }));
     expect(mocks.createSignedUploadUrl).not.toHaveBeenCalled();
+  });
+
+  it("needs a destination first: no upload to 'All photos' or 'Not in a folder'", async () => {
+    for (const destination of [null, "", "none", "all", "f1", "folder:", "album:prod1", "product:prod1:x"]) {
+      await expect(prepareUploads(ctx, [file], destination)).rejects.toThrow(/Choose where these photos go/);
+    }
+    expect(mocks.createSignedUploadUrl).not.toHaveBeenCalled();
+    expect(mocks.rateLimit).not.toHaveBeenCalled();
+  });
+
+  it("accepts the business's own product album and refuses another's or a full one", async () => {
+    expect((await prepareUploads(ctx, [file], "product:prod1"))[0].ok).toBe(true);
+    await expect(prepareUploads(ctx, [file], "product:theirs")).rejects.toThrow(/could not find that product/);
+    mocks.prisma.product.findFirst.mockResolvedValue({ id: "prod1", name: "Basket", _count: { photos: 29 } });
+    await expect(prepareUploads(ctx, [file, file], "product:prod1")).rejects.toThrow(/holds up to 30 photos/);
+  });
+});
+
+describe("quotas", () => {
+  const file = { name: "a.png", type: "image/png", size: 1000 };
+  /** The company's own count, and every company's bytes (the shared storage), answered separately. */
+  const usage = (company: { count: number; bytes: number }, platformBytes: number) =>
+    mocks.prisma.mediaAsset.aggregate.mockImplementation(async (args: { where?: unknown }) => (args.where ? { _count: { _all: company.count }, _sum: { bytes: company.bytes } } : { _sum: { bytes: platformBytes } }));
+
+  beforeEach(() => resetPlatformWarning());
+
+  it("does not count the photos the migration moved from old projects", async () => {
+    usage({ count: 0, bytes: 0 }, 0);
+    await prepareUploads(ctx, [file], "folder:f1");
+    const company = mocks.prisma.mediaAsset.aggregate.mock.calls.find(([a]) => a.where)![0];
+    expect(company.where).toEqual({ businessId: "biz1", OR: [{ source: null }, { source: { not: MIGRATED_SOURCE } }] });
+  });
+
+  it("refuses new photos when the shared storage is full, in words, and warns the admin from 80% once an hour", async () => {
+    usage({ count: 0, bytes: 0 }, PLATFORM_DEFAULT_MAX_BYTES - 500);
+    await expect(prepareUploads(ctx, [file], "folder:f1")).rejects.toThrow(PLATFORM_FULL_MESSAGE);
+    expect(mocks.createSignedUploadUrl).not.toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringMatching(/Photo storage is at 100%/) }), { source: "media.platform-storage", level: "warn" });
+
+    logError.mockClear();
+    usage({ count: 0, bytes: 0 }, PLATFORM_DEFAULT_MAX_BYTES * 0.85);
+    expect((await prepareUploads(ctx, [file], "folder:f1"))[0].ok).toBe(true);
+    expect(logError).not.toHaveBeenCalled(); // already warned this hour
+    resetPlatformWarning();
+    await prepareUploads(ctx, [file], "folder:f1");
+    expect(logError).toHaveBeenCalledTimes(1);
+
+    logError.mockClear();
+    resetPlatformWarning();
+    usage({ count: 0, bytes: 0 }, PLATFORM_DEFAULT_MAX_BYTES * 0.5);
+    await prepareUploads(ctx, [file], "folder:f1");
+    expect(logError).not.toHaveBeenCalled();
   });
 });
 
 describe("finalizeUpload", () => {
-  const input = { path: PATH, name: "Shop front", folderId: null, width: 800, height: 600 };
+  const input = { path: PATH, name: "Shop front", destination: "folder:f1", width: 800, height: 600 };
 
   it("rejects paths outside the user's gallery without touching Storage", async () => {
     for (const path of [`other-user/gallery/${ID}.png`, `${USER}/projects/${ID}.png`, `${USER}/gallery/${ID}.gif`]) {
@@ -98,8 +159,49 @@ describe("finalizeUpload", () => {
     mocks.info.mockResolvedValue({ data: { size: 2048, contentType: "image/png" }, error: null });
     mocks.prisma.mediaAsset.create.mockImplementation(async ({ data }) => ({ ...data, createdAt: new Date() }));
     const item = await finalizeUpload(ctx, input);
-    expect(mocks.prisma.mediaAsset.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ id: ID, businessId: "biz1", path: PATH, bytes: 2048, mimeType: "image/png", width: 800, height: 600 }) }));
+    expect(mocks.prisma.mediaAsset.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ id: ID, businessId: "biz1", folderId: "f1", path: PATH, bytes: 2048, mimeType: "image/png", width: 800, height: 600 }) }));
     expect(item.path).toBe(PATH);
+    expect(mocks.prisma.productPhoto.createMany).not.toHaveBeenCalled();
+  });
+
+  it("puts a photo uploaded to a product album in no folder and links it after the album's photos", async () => {
+    mocks.prisma.mediaAsset.findUnique.mockResolvedValue(null);
+    mocks.info.mockResolvedValue({ data: { size: 2048, contentType: "image/png" }, error: null });
+    mocks.prisma.mediaAsset.create.mockImplementation(async ({ data }) => ({ ...data, createdAt: new Date() }));
+    await finalizeUpload(ctx, { ...input, destination: "product:prod1" });
+    expect(mocks.prisma.mediaAsset.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ folderId: null }) }));
+    expect(mocks.prisma.productPhoto.createMany).toHaveBeenCalledWith({ data: [{ productId: "prod1", assetId: ID, position: 2 }], skipDuplicates: true });
+  });
+
+  it("locks the album while it links, so parallel uploads cannot pass the 30-photo cap", async () => {
+    mocks.prisma.mediaAsset.findUnique.mockResolvedValue(null);
+    mocks.info.mockResolvedValue({ data: { size: 2048, contentType: "image/png" }, error: null });
+    mocks.prisma.mediaAsset.create.mockImplementation(async ({ data }) => ({ ...data, createdAt: new Date() }));
+    await finalizeUpload(ctx, { ...input, destination: "product:prod1" });
+    const keys = mocks.prisma.$executeRaw.mock.calls.map((c) => c.slice(1).join("|"));
+    expect(keys).toContain("album:product:prod1");
+    const lock = mocks.prisma.$executeRaw.mock.invocationCallOrder[keys.indexOf("album:product:prod1")];
+    expect(lock).toBeLessThan(mocks.prisma.productPhoto.findMany.mock.invocationCallOrder[0]);
+  });
+
+  it("on a retry after the row was saved, still puts the photo in its album or folder", async () => {
+    mocks.prisma.mediaAsset.findUnique.mockResolvedValue({ id: ID, businessId: "biz1", path: PATH, folderId: null, name: "x", width: 1, height: 1, mimeType: "image/png", bytes: 5, createdAt: new Date() });
+    await finalizeUpload(ctx, { ...input, destination: "product:prod1" });
+    expect(mocks.prisma.productPhoto.createMany).toHaveBeenCalledWith({ data: [{ productId: "prod1", assetId: ID, position: 2 }], skipDuplicates: true });
+    mocks.prisma.productPhoto.findMany.mockResolvedValue([{ assetId: ID, position: 0 }]);
+    mocks.prisma.productPhoto.createMany.mockClear();
+    await finalizeUpload(ctx, { ...input, destination: "product:prod1" }); // already linked: nothing twice
+    expect(mocks.prisma.productPhoto.createMany).not.toHaveBeenCalled();
+    await finalizeUpload(ctx, input);
+    expect(mocks.prisma.mediaAsset.updateMany).toHaveBeenCalledWith({ where: { id: ID, businessId: "biz1", folderId: null }, data: { folderId: "f1" } });
+    expect(mocks.info).not.toHaveBeenCalled();
+  });
+
+  it("removes the upload when it names no destination", async () => {
+    mocks.prisma.mediaAsset.findUnique.mockResolvedValue(null);
+    await expect(finalizeUpload(ctx, { ...input, destination: null })).rejects.toThrow(/Choose where these photos go/);
+    expect(mocks.remove).toHaveBeenCalledWith([PATH]);
+    expect(mocks.info).not.toHaveBeenCalled();
   });
 
   it("removes the object when its type, size or quota is not allowed", async () => {

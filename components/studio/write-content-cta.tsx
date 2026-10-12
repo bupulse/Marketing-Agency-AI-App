@@ -6,9 +6,9 @@ import { GenerateProgress } from "./generate-progress";
 import { useGenerate } from "./use-generate";
 import { usageNote } from "./helpers";
 
-/** Shown on a project that has no content yet. */
-export function WriteContentCta({ projectId, used, limit }: { projectId: string; used?: number; limit?: number }) {
-  const { run, pending, dialog } = useGenerate(projectId, { limit });
+/** Shown on a product or campaign that has no content yet. */
+export function WriteContentCta({ subjectId, used, limit }: { subjectId: string; used?: number; limit?: number }) {
+  const { run, pending, dialog } = useGenerate(subjectId, { limit });
 
   return (
     <GlassCard as="section" aria-labelledby="write-content" padding="lg" className="flex flex-col items-center gap-4 text-center">

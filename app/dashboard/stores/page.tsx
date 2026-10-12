@@ -21,7 +21,7 @@ export default async function StoresPage() {
   ];
   return (
     <>
-      <PageHeader title="Import from your store" description="Turn your online shop's products into projects, with photos, then create posts from them." />
+      <PageHeader title="Import from your store" description="Bring your online shop's products into your Knowledge base, with photos, then create posts from them." />
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
         {cards.map(({ id, name, icon: Icon, off }) => (
           <GlassCard as="li" key={id} className="flex flex-col gap-4">

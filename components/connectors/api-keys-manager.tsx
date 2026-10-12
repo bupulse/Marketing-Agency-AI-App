@@ -9,7 +9,7 @@ import { When } from "./when";
 
 // Kept in step with lib/api/keys.ts (that file is server-only, so the labels are repeated here).
 const SCOPES = [
-  { id: "projects:read", label: "Read projects" },
+  { id: "projects:read", label: "Read products and campaigns" },
   { id: "content:read", label: "Read generated content" },
   { id: "posts:read", label: "Read posts" },
   { id: "posts:write", label: "Create draft posts" },

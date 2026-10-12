@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { Knowledge } from "@/lib/brand/schemas";
 import { businessFactsContext } from "@/lib/business-info/facts";
+import { faqContext, policiesContext } from "@/lib/knowledge/context";
 import type { Detected } from "./detect";
 
 export interface BusinessFacts {
@@ -15,7 +16,11 @@ export interface BusinessFacts {
   /** IANA zone of the opening hours (Business.timezone). UTC when missing. */
   timezone?: string | null;
   knowledge: Knowledge;
-  /** Recent projects, offers and products. */
+  /** Knowledge base -> FAQs (KnowledgeFaq rows, in order). */
+  faqs?: { question: string; answer: string }[];
+  /** Knowledge base -> Policies (Business.policies JSON): delivery, returns, payment, warranty, booking. */
+  policies?: unknown;
+  /** Active products and services and current campaigns (lib/widget/config.ts loadProjectFacts). */
   projects: { type: string; title: string; price?: string | null; features: string[] }[];
 }
 
@@ -71,7 +76,8 @@ export function buildSystemPrompt(facts: BusinessFacts, state: { leadCaptured: b
     const parts = [`${p.title} (${p.type})`, p.price ? `price: ${p.price}` : null, p.features.length ? `details: ${p.features.slice(0, 6).join("; ")}` : null];
     return `- ${parts.filter(Boolean).join(", ")}`;
   });
-  const faqs = k.faqs.map((f) => `- Q: ${f.question}\n  A: ${f.answer}`);
+  const faqs = faqContext(facts.faqs ?? []);
+  const policies = policiesContext(facts.policies);
 
   const sections = [
     [
@@ -87,7 +93,8 @@ export function buildSystemPrompt(facts: BusinessFacts, state: { leadCaptured: b
       .join("\n"),
     facts.industryContext?.trim() ? `ABOUT THE BUSINESS AND ITS SECTOR\n${facts.industryContext.trim()}\nThe sector guidance is background for tone and understanding only: it is NOT a list of what this business offers, so never present it as fact.` : null,
     businessFactsContext(k, { timeZone: facts.timezone, now }),
-    faqs.length ? `FREQUENTLY ASKED QUESTIONS\n${faqs.join("\n")}` : null,
+    faqs ? `FREQUENTLY ASKED QUESTIONS (the owner's own answers: give them as written, in the visitor's language)\n${faqs}` : null,
+    policies ? `DELIVERY, RETURNS, PAYMENT, WARRANTY AND BOOKING (answer questions about these only from this block; never promise anything it does not say)\n${policies}` : null,
     projects.length ? `PRODUCTS, SERVICES AND OFFERS\n${projects.join("\n")}` : null,
     state.leadCaptured ? "The visitor's contact details are already saved. Do not ask for them again; set wantsContact to false." : null,
   ];

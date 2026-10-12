@@ -7,7 +7,8 @@ import type { ComposerPrefill, Overrides } from "@/lib/publishing/types";
  */
 export function prefillFromContent(
   content: { id: string; caption: string; hashtags: string[]; videoScript?: string; variants?: StudioVariant[] },
-  projectId: string,
+  /** The product or campaign the content was written for. */
+  subject: { kind: "product" | "campaign"; id: string },
 ): ComposerPrefill {
   const overrides: Overrides = {};
   for (const v of content.variants ?? []) {
@@ -19,5 +20,5 @@ export function prefillFromContent(
     overrides.tiktok = { text: content.videoScript };
     overrides.youtube = { text: content.videoScript };
   }
-  return { text: content.caption, hashtags: content.hashtags, overrides, projectId, contentId: content.id };
+  return { text: content.caption, hashtags: content.hashtags, overrides, subjectId: subject.id, album: `${subject.kind}:${subject.id}`, contentId: content.id };
 }

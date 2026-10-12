@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prisma = vi.hoisted(() => ({
   connection: { findMany: vi.fn() },
-  project: { findFirst: vi.fn() },
+  product: { findFirst: vi.fn() },
+  campaign: { findFirst: vi.fn() },
   generatedContent: { findFirst: vi.fn() },
   business: { findUnique: vi.fn(), update: vi.fn() },
   autopilotSettings: { findUnique: vi.fn() },
@@ -179,13 +180,15 @@ describe("createPosts", () => {
       expect(prisma.post.create).not.toHaveBeenCalled();
     });
 
-    it("rejects another business's project or content", async () => {
-      prisma.project.findFirst.mockResolvedValue(null);
-      expect(await code(createPosts(owner, compose({ projectId: "other-project" }), now))).toBe("not_found");
-      expect(prisma.project.findFirst.mock.calls[0][0].where).toEqual({ id: "other-project", businessId: "b1" });
+    it("rejects another business's product, campaign or content", async () => {
+      prisma.product.findFirst.mockResolvedValue(null);
+      prisma.campaign.findFirst.mockResolvedValue(null);
+      expect(await code(createPosts(owner, compose({ subjectId: "other-product" }), now))).toBe("not_found");
+      expect(prisma.product.findFirst.mock.calls[0][0].where).toEqual({ id: "other-product", businessId: "b1" });
+      expect(prisma.campaign.findFirst.mock.calls[0][0].where).toEqual({ id: "other-product", businessId: "b1" });
       prisma.generatedContent.findFirst.mockResolvedValue(null);
       expect(await code(createPosts(owner, compose({ contentId: "other-content" }), now))).toBe("not_found");
-      expect(prisma.generatedContent.findFirst.mock.calls[0][0].where).toEqual({ id: "other-content", project: { businessId: "b1" } });
+      expect(prisma.generatedContent.findFirst.mock.calls[0][0].where).toEqual({ id: "other-content", businessId: "b1" });
     });
   });
 });

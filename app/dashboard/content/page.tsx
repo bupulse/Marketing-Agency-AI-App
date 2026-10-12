@@ -6,6 +6,8 @@ import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui";
 import { ContentLibrary } from "@/components/studio/content-library";
 import { loadContentLibrary } from "@/components/studio/queries";
+import { SubjectLinks } from "@/components/knowledge/subject-links";
+import { subjectOptions } from "@/lib/knowledge/service";
 
 export const metadata = { title: "Content" };
 
@@ -13,17 +15,18 @@ export default async function ContentPage() {
   const blocked = await featureGate("content");
   if (blocked) return blocked;
   const { business } = await getAppContext();
-  const items = business ? await loadContentLibrary(business.id) : [];
+  const [items, options] = await Promise.all([loadContentLibrary(business.id), subjectOptions(business.id)]);
 
   return (
     <>
-      <PageHeader title="Content" description="The latest caption, script and ad headlines for each project, in one place." />
+      <PageHeader title="Content" description="The latest caption, script and ad headlines for each product and campaign, in one place." />
+      <SubjectLinks options={options} />
       {items.length === 0 ? (
         <EmptyState
           icon={PenLine}
           title="No content yet"
-          text="Create a project and BuPulse writes captions, hashtags, a video script and ad headlines for it."
-          action={<Button href="/dashboard/projects/new">New project</Button>}
+          text="Add a product or campaign and BuPulse writes captions, hashtags, a video script and ad headlines for it."
+          action={<Button href="/dashboard/knowledge/products/new">Add a product or service</Button>}
         />
       ) : (
         <ContentLibrary items={items} />

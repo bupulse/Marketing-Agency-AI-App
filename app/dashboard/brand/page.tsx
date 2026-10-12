@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
@@ -8,6 +9,7 @@ import { initialValues } from "@/components/brand-profile/initial";
 import { LanguageSection } from "@/components/studio/language-section";
 import { GlassCard } from "@/components/ui";
 import { isOwnLogoPath } from "@/lib/brand/schemas";
+import { readMarketingProfile } from "@/lib/knowledge/interview";
 import { placesKey } from "@/lib/places/google";
 import { createSignedDownloadUrl } from "@/lib/storage";
 import { prisma } from "@/lib/db";
@@ -55,6 +57,15 @@ export default async function BrandPage() {
       </GlassCard>
       <IndustrySection industries={industries} initial={industryFormValues(sector ?? {})} />
       <BrandSection step="offer" initial={initial} context={context} />
+      {readMarketingProfile(business.marketingProfile) && (
+        <GlassCard className="p-5 text-[15px]">
+          Your approved{" "}
+          <Link href="/dashboard/knowledge/interview" className="font-semibold">
+            digital marketing profile
+          </Link>{" "}
+          sets the voice of every post; the preset below is only a fallback.
+        </GlassCard>
+      )}
       <BrandSection step="voice" initial={initial} context={context} />
       <LanguageSection initial={business.contentLanguage} />
       <BrandSection step="look" initial={initial} context={context} />

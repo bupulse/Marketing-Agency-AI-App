@@ -13,12 +13,15 @@ import { logError } from "@/lib/errors";
 import { consumeUsage, refundUsage } from "@/lib/usage";
 import { queueWebhookEvent } from "@/lib/webhooks/emit";
 import { contentData } from "@/lib/webhooks/events";
+import { profileContext } from "@/lib/knowledge/context";
+import { writerKnowledge } from "@/lib/knowledge/writer-context";
+import { subjectColumns, writingSubject, type Subject } from "@/lib/knowledge/service";
 import { MAX_VERSIONS_PER_PROJECT } from "./schemas";
 import { buildVariants, type VariantSource } from "./variants";
 
 export class StudioNotFoundError extends Error {
   constructor() {
-    super("Project not found");
+    super("Not found");
   }
 }
 
@@ -31,10 +34,10 @@ export function configuredModel(provider: string) {
     : (process.env.GEMINI_TEXT_MODEL ?? DEFAULT_GEMINI_TEXT_MODEL);
 }
 
-/** Keeps at most MAX_VERSIONS_PER_PROJECT versions: deletes the oldest ones beyond that. */
-export async function pruneVersions(projectId: string) {
+/** Keeps at most MAX_VERSIONS_PER_PROJECT versions per product or campaign: deletes the oldest ones beyond that. */
+export async function pruneVersions(subject: Subject) {
   const old = await prisma.generatedContent.findMany({
-    where: { projectId },
+    where: subject.kind === "product" ? { productId: subject.id } : { campaignId: subject.id },
     orderBy: { createdAt: "desc" },
     skip: MAX_VERSIONS_PER_PROJECT,
     select: { id: true },
@@ -56,32 +59,34 @@ export function readNotes(details: unknown): string | undefined {
 }
 
 /**
- * Generates a new content version for a project: reserves 1 text credit, calls the AI through
- * the cost ledger, saves the version with its per-network variants, and gives the credit back
- * if anything fails. Throws UsageLimitError (nothing was charged) when the plan blocks it.
+ * Generates a new content version for a product or campaign: reserves 1 text credit, calls the AI through the cost
+ * ledger with the product's (or campaign's) full details as a fenced data block, saves the version with its per-network
+ * variants, and gives the credit back if anything fails. Throws UsageLimitError (nothing was charged) when the plan
+ * blocks it.
  */
-export async function generateForProject(args: {
+export async function generateForSubject(args: {
   userId: string;
   businessId: string;
-  projectId: string;
+  subject: Subject;
   instruction?: string;
   feature: GenerateFeature;
   /** A credit the caller already reserved (consumeUsage); it is refunded on any failure here. */
   reservation?: { periodStart: Date };
 }) {
-  const { userId, businessId, projectId, instruction, feature } = args;
+  const { userId, businessId, subject, instruction, feature } = args;
   let reservation = args.reservation;
 
-  // Scoped to the business, so another account's project is simply "not found".
-  const project = await prisma.project.findFirst({
-    where: { id: projectId, businessId },
-    include: { business: { include: { industryRef: true } }, contents: { orderBy: { createdAt: "desc" }, take: 1 } },
-  });
-  if (!project) {
+  // Scoped to the business, so another account's product is simply "not found".
+  const [business, item, previous, kb] = await Promise.all([
+    prisma.business.findUnique({ where: { id: businessId }, include: { industryRef: true } }),
+    writingSubject(businessId, subject),
+    prisma.generatedContent.findFirst({ where: { businessId, ...subjectColumns(subject) }, orderBy: { createdAt: "desc" }, select: { caption: true } }),
+    writerKnowledge(businessId),
+  ]);
+  if (!business || !item) {
     if (reservation) await refundUsage(userId, "text", reservation.periodStart).catch(() => {});
     throw new StudioNotFoundError();
   }
-  const { business } = project;
 
   reservation ??= await consumeUsage(userId, "text");
   const reserved = reservation;
@@ -104,15 +109,17 @@ export async function generateForProject(args: {
             website: business.website,
             contentLanguage: business.contentLanguage,
             knowledge: knowledgeFacts(knowledge),
+            profile: profileContext(business.profile),
+            ...kb,
           },
           {
-            type: project.type,
-            title: project.title,
-            price: project.price,
-            features: project.features,
-            extraDetails: readNotes(project.details),
+            type: item.type,
+            title: item.title,
+            price: item.price,
+            features: item.features,
+            context: item.context,
             instruction,
-            previousCaption: project.contents[0]?.caption,
+            previousCaption: previous?.caption,
           },
         ),
       (r) => ({ provider: r.provider, model: r.model, usage: r.usage }),
@@ -120,7 +127,8 @@ export async function generateForProject(args: {
 
     const saved = await prisma.generatedContent.create({
       data: {
-        projectId: project.id,
+        businessId,
+        ...subjectColumns(subject),
         ...result.content,
         language: business.contentLanguage,
         variants: variantsJson(result.content),
@@ -129,8 +137,8 @@ export async function generateForProject(args: {
         model: result.model,
       },
     });
-    await pruneVersions(project.id).catch((e) => logError(e, { source: "studio.prune", level: "warn" }));
-    await trackEvent(EVENT_NAMES.textGenerated, { userId, businessId: business.id, props: { feature, type: project.type } });
+    await pruneVersions(subject).catch((e) => logError(e, { source: "studio.prune", level: "warn" }));
+    await trackEvent(EVENT_NAMES.textGenerated, { userId, businessId: business.id, props: { feature, type: item.type } });
     await queueWebhookEvent(business.id, "content.generated", () => contentData(saved));
     return saved;
   } catch (error) {

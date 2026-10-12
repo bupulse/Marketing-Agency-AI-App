@@ -1,12 +1,16 @@
-// Importing store products as Projects and keeping them in step (re-sync).
+// Importing store products as Products (Knowledge base) and keeping them in step (re-sync).
 //
-// One ProductSync row maps a store product to one Project, so importing twice or re-syncing updates the same
-// Project instead of duplicating it.
+// One ProductSync row maps a store product to one Product, so importing twice or re-syncing updates the same
+// Product instead of duplicating it. Store photos become gallery photos (MediaAsset, source "store") in the
+// product's album, in the store's order.
 //
 // OVERWRITE RULE: BuPulse never overwrites an edit silently. ProductSync.baseline holds each field as the last sync
 // wrote it. On a re-sync a field (title, price, features, description, photos) is replaced with the store's value
-// only while the Project still equals that baseline, meaning the user has not changed it. A field the user changed
-// is kept and counted as "kept"; it stays protected until they delete the project or re-import it as new.
+// only while the Product still equals that baseline, meaning the user has not changed it. A field the user changed
+// is kept and counted as "kept"; it stays protected until they delete the product or re-import it as new.
+// The fields compared: title = Product.name, price = Product.priceNote (the store's price text; saving the product
+// form turns it into an amount and clears the note, which counts as an edit), features, description, and photos =
+// the album's paths in order.
 import "server-only";
 import { disabledServices } from "@/lib/admin/switch";
 import { prisma } from "@/lib/db";
@@ -16,7 +20,11 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import { logError } from "@/lib/errors";
 import { extensionFor } from "@/lib/media/rules";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { MAX_PROJECT_PHOTOS, MAX_PROJECTS_PER_BUSINESS } from "@/lib/studio/schemas";
+import { MAX_PROJECT_PHOTOS } from "@/lib/studio/schemas";
+import { MAX_PRODUCTS_PER_BUSINESS, parsePriceText, toMinor } from "@/lib/knowledge/products";
+import { defaultCurrency } from "@/lib/knowledge/service";
+import { cleanPhotoName, MEDIA_MAX_ASSETS, MEDIA_MAX_TOTAL_BYTES, platformMaxBytes, STORE_SOURCE } from "@/lib/media/rules";
+import { mediaUsage, platformBytes } from "@/lib/media/service";
 import { credentialsOf, markNeedsAttention, providerFor, type ConnectionRow } from "./connection";
 import { fetchImage, isShopifyImageHost, type ImageResult } from "./safe-fetch";
 import { StoreApiError, type NormalizedProduct, type StoreProviderId } from "./types";
@@ -75,6 +83,7 @@ export function planUpdate(project: ProjectFields, baseline: Baseline, incoming:
 
 export interface SyncDeps {
   fetchImage(url: string, provider: StoreProviderId): Promise<ImageResult>;
+  /** Stores the image and returns its object path in the "media" bucket. */
   uploadPhoto(userId: string, image: Extract<ImageResult, { ok: true }>): Promise<string>;
   removePhotos(paths: string[]): Promise<void>;
 }
@@ -122,23 +131,105 @@ export function photosChanged(wantedUrls: string[], stored: { entries: ImageEntr
 }
 
 /** Downloads the wanted images, reusing files already stored for the same source URL. */
-async function resolvePhotos(userId: string, provider: StoreProviderId, urls: string[], known: Record<string, string>, deps: SyncDeps) {
+/**
+ * How many new store photos still fit: the company's gallery quota (store photos count, like uploads) and the shared
+ * storage (MEDIA_PLATFORM_MAX_BYTES). Photos past it are skipped and reported, never half-stored; the next sync tries
+ * them again (they stay missing from the image map).
+ */
+export type PhotoRoom = { count: number; bytes: number; skipped: number };
+
+export async function galleryRoom(businessId: string): Promise<PhotoRoom> {
+  const [usage, platform] = await Promise.all([mediaUsage(businessId), platformBytes()]);
+  return { count: Math.max(0, MEDIA_MAX_ASSETS - usage.count), bytes: Math.max(0, Math.min(MEDIA_MAX_TOTAL_BYTES - usage.bytes, platformMaxBytes() - platform)), skipped: 0 };
+}
+
+async function resolvePhotos(userId: string, provider: StoreProviderId, urls: string[], known: Record<string, string>, deps: SyncDeps, room: PhotoRoom) {
   const wanted = urls.slice(0, MAX_PROJECT_PHOTOS);
   const results = await Promise.all(
     wanted.map(async (url) => {
       if (known[url]) return { url, path: known[url], fresh: false };
+      // Reserve a place before downloading, so parallel downloads cannot all take the last one.
+      if (room.count <= 0) {
+        room.skipped++;
+        return null;
+      }
+      room.count--;
       const image = await deps.fetchImage(url, provider);
-      if (!image.ok) return null;
+      if (!image.ok) {
+        room.count++;
+        return null;
+      }
+      if (image.bytes.length > room.bytes) {
+        room.count++;
+        room.skipped++;
+        return null;
+      }
+      room.bytes -= image.bytes.length;
       try {
-        return { url, path: await deps.uploadPhoto(userId, image), fresh: true };
+        return { url, path: await deps.uploadPhoto(userId, image), fresh: true, bytes: image.bytes.length, mimeType: image.mimeType as string };
       } catch {
         return null;
       }
     }),
   );
   const ok = results.flatMap((r) => (r ? [r] : []));
-  return { paths: ok.map((r) => r.path), entries: ok.map((r) => ({ url: r.url, path: r.path })), fresh: ok.filter((r) => r.fresh).map((r) => r.path), failed: wanted.length - ok.length };
+  const freshRows = ok.flatMap((r) => ("bytes" in r && r.fresh ? [{ path: r.path, bytes: r.bytes ?? 0, mimeType: r.mimeType ?? "image/jpeg" }] : []));
+  return { paths: ok.map((r) => r.path), entries: ok.map((r) => ({ url: r.url, path: r.path })), fresh: ok.filter((r) => r.fresh).map((r) => r.path), freshRows, failed: wanted.length - ok.length };
 }
+
+type FreshPhoto = { path: string; bytes: number; mimeType: string };
+
+/**
+ * Makes the product's album exactly `paths`, in order: gallery rows are created for fresh store photos, links that
+ * are no longer wanted are removed, and a store photo nothing uses any more is deleted (its file is returned so the
+ * caller removes it from Storage after the transaction). Photos the owner added themselves are never deleted, only
+ * unlinked.
+ */
+async function setAlbum(tx: Prisma.TransactionClient, product: { id: string; businessId: string; name: string }, paths: string[], fresh: FreshPhoto[]): Promise<string[]> {
+  for (const [i, f] of fresh.entries()) {
+    await tx.mediaAsset.upsert({
+      where: { path: f.path },
+      create: { id: crypto.randomUUID(), businessId: product.businessId, path: f.path, name: cleanPhotoName(`${product.name} ${i + 1}`), mimeType: f.mimeType, bytes: f.bytes, source: STORE_SOURCE },
+      update: {},
+    });
+  }
+  const assets = paths.length ? await tx.mediaAsset.findMany({ where: { businessId: product.businessId, path: { in: paths } }, select: { id: true, path: true } }) : [];
+  const idOf = new Map(assets.map((a) => [a.path, a.id]));
+  const wanted = paths.flatMap((p) => (idOf.has(p) ? [idOf.get(p)!] : []));
+  const before = await tx.productPhoto.findMany({ where: { productId: product.id }, select: { assetId: true, asset: { select: { path: true, source: true, folderId: true } } } });
+  const dropped = before.filter((b) => !wanted.includes(b.assetId));
+  if (dropped.length) await tx.productPhoto.deleteMany({ where: { productId: product.id, assetId: { in: dropped.map((d) => d.assetId) } } });
+  for (const [position, assetId] of wanted.entries()) {
+    await tx.productPhoto.upsert({ where: { productId_assetId: { productId: product.id, assetId } }, create: { productId: product.id, assetId, position }, update: { position } });
+  }
+  const orphans: string[] = [];
+  for (const d of dropped) {
+    // Only a store photo nobody else uses goes: not one the owner filed in a folder, put in another album, or used in
+    // a post (Post.mediaPaths) or an Autopilot design (Design.prompt "photo:<path>").
+    if (d.asset.source !== STORE_SOURCE || d.asset.folderId) continue;
+    const still =
+      (await tx.productPhoto.count({ where: { assetId: d.assetId } })) +
+      (await tx.campaignPhoto.count({ where: { assetId: d.assetId } })) +
+      (await tx.post.count({ where: { businessId: product.businessId, mediaPaths: { has: d.asset.path } } })) +
+      (await tx.design.count({ where: { businessId: product.businessId, prompt: `photo:${d.asset.path}` } }));
+    if (still === 0) {
+      await tx.mediaAsset.deleteMany({ where: { id: d.assetId } });
+      orphans.push(d.asset.path);
+    }
+  }
+  return orphans;
+}
+
+/** The structured price of a store price text, or "on request" with the text kept as the note. */
+function priceFields(price: string | null, currency: string) {
+  const parsed = parsePriceText(price, currency);
+  const amount = parsed ? toMinor(parsed.price, parsed.currency) : null;
+  return parsed && amount !== null
+    ? { priceModel: parsed.priceModel, priceAmount: amount, currency: parsed.currency, priceNote: price }
+    : { priceModel: "ON_REQUEST" as const, priceAmount: null, currency, priceNote: price };
+}
+
+const summaryOf = (description: string | null, title: string) => (description ?? title).replace(/\s+/g, " ").trim().slice(0, 300) || title;
 
 // ---- Import and re-sync ----
 
@@ -148,79 +239,87 @@ export type ProductResult = {
   status: "created" | "updated" | "unchanged" | "missing" | "failed";
   /** Fields that were not overwritten because the user edited them. */
   kept?: FieldName[];
+  /** Store photos not imported because the gallery (or BuPulse's shared storage) is full. */
+  skippedPhotos?: number;
   error?: string;
 };
 
 type Context = { conn: ConnectionRow; userId: string; deps: SyncDeps };
 
-function detailsWith(existing: unknown, notes: string | null): Prisma.InputJsonValue | typeof Prisma.DbNull {
-  const base = existing && typeof existing === "object" && !Array.isArray(existing) ? { ...(existing as Record<string, unknown>) } : {};
-  if (notes) base.notes = notes;
-  else delete base.notes;
-  return Object.keys(base).length ? (base as Prisma.InputJsonObject) : Prisma.DbNull;
-}
-
-class ProjectCapError extends Error {}
+class ProductCapError extends Error {}
 
 async function createFromProduct(ctx: Context, product: NormalizedProduct): Promise<ProductResult | "exists"> {
   const { conn, userId, deps } = ctx;
-  const capReached: ProductResult = { externalId: product.externalId, title: product.title, status: "failed", error: `You have reached the limit of ${MAX_PROJECTS_PER_BUSINESS} projects.` };
+  const capReached: ProductResult = { externalId: product.externalId, title: product.title, status: "failed", error: `You have reached the limit of ${MAX_PRODUCTS_PER_BUSINESS} products.` };
   // Cheap early exit before any photo is downloaded; the authoritative check is inside the transaction below.
-  if ((await prisma.project.count({ where: { businessId: conn.businessId } })) >= MAX_PROJECTS_PER_BUSINESS) return capReached;
-  const photos = await resolvePhotos(userId, conn.provider as StoreProviderId, product.imageUrls, {}, deps);
+  if ((await prisma.product.count({ where: { businessId: conn.businessId } })) >= MAX_PRODUCTS_PER_BUSINESS) return capReached;
+  const room = await galleryRoom(conn.businessId);
+  const photos = await resolvePhotos(userId, conn.provider as StoreProviderId, product.imageUrls, {}, deps, room);
+  const currency = await defaultCurrency(conn.businessId);
   try {
     // The count and the create run in one transaction under a per-business advisory lock, so parallel imports cannot
     // all pass the check and go past the cap.
     await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`projects:${conn.businessId}`}))`;
-      if ((await tx.project.count({ where: { businessId: conn.businessId } })) >= MAX_PROJECTS_PER_BUSINESS) throw new ProjectCapError();
-      await tx.project.create({
-      data: {
-        businessId: conn.businessId,
-        type: "product",
-        title: product.title,
-        price: product.price,
-        features: product.features,
-        details: product.description ? { notes: product.description } : undefined,
-        photoPaths: photos.paths,
-        storeSync: {
-          create: { connectionId: conn.id, externalId: product.externalId, baseline: baselineOf(product, photos.paths), imageMap: photos.entries },
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`products:${conn.businessId}`}))`;
+      if ((await tx.product.count({ where: { businessId: conn.businessId } })) >= MAX_PRODUCTS_PER_BUSINESS) throw new ProductCapError();
+      const row = await tx.product.create({
+        data: {
+          businessId: conn.businessId,
+          kind: "PHYSICAL",
+          name: product.title.slice(0, 200),
+          summary: summaryOf(product.description, product.title),
+          description: product.description,
+          ...priceFields(product.price, currency),
+          features: product.features,
+          usps: [],
+          storeSync: {
+            create: { connectionId: conn.id, externalId: product.externalId, baseline: baselineOf(product, photos.paths), imageMap: photos.entries },
+          },
         },
-      },
+        select: { id: true, businessId: true, name: true },
       });
+      await setAlbum(tx, row, photos.paths, photos.freshRows);
     });
-    return { externalId: product.externalId, title: product.title, status: "created" };
+    return { externalId: product.externalId, title: product.title, status: "created", ...(room.skipped ? { skippedPhotos: room.skipped } : {}) };
   } catch (error) {
     await deps.removePhotos(photos.fresh);
-    if (error instanceof ProjectCapError) return capReached;
+    if (error instanceof ProductCapError) return capReached;
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return "exists"; // imported by a parallel request
     throw error;
   }
 }
 
-async function updateFromProduct(ctx: Context, product: NormalizedProduct): Promise<ProductResult> {
-  const { conn, userId, deps } = ctx;
-  const mapping = await prisma.productSync.findUnique({ where: { connectionId_externalId: { connectionId: conn.id, externalId: product.externalId } }, include: { project: true } });
-  if (!mapping) return { externalId: product.externalId, title: product.title, status: "failed", error: "Not found." };
-  const project = mapping.project;
-  const baseline = mapping.baseline as Baseline;
-  const plan = planUpdate({ title: project.title, price: project.price, features: project.features, notes: notesOf(project.details), photoPaths: project.photoPaths }, baseline, product);
+async function albumOf(productId: string): Promise<string[]> {
+  const rows = await prisma.productPhoto.findMany({ where: { productId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], select: { asset: { select: { path: true } } } });
+  return rows.map((r) => r.asset.path);
+}
 
-  let photoPaths = project.photoPaths;
+async function updateFromProduct(ctx: Context, incoming: NormalizedProduct): Promise<ProductResult> {
+  const { conn, userId, deps } = ctx;
+  const mapping = await prisma.productSync.findUnique({ where: { connectionId_externalId: { connectionId: conn.id, externalId: incoming.externalId } }, include: { product: true } });
+  if (!mapping?.product) return { externalId: incoming.externalId, title: incoming.title, status: "failed", error: "Not found." };
+  const product = mapping.product;
+  const baseline = mapping.baseline as Baseline;
+  const album = await albumOf(product.id);
+  const plan = planUpdate({ title: product.name, price: product.priceNote, features: product.features, notes: product.description, photoPaths: album }, baseline, incoming);
+
+  let photoPaths = album;
   const stored = readImageMap(mapping.imageMap);
   const known = Object.fromEntries(stored.entries.map((e) => [e.url, e.path]));
   let imageMap: ImageEntry[] = stored.entries;
-  let removed: string[] = [];
   let fresh: string[] = [];
-  const wantedUrls = product.imageUrls.slice(0, MAX_PROJECT_PHOTOS);
+  let freshRows: FreshPhoto[] = [];
+  const wantedUrls = incoming.imageUrls.slice(0, MAX_PROJECT_PHOTOS);
   const photosDiffer = photosChanged(wantedUrls, stored);
+  let room: PhotoRoom | null = null;
   if (photosDiffer) {
     if (plan.photosEditable) {
-      const resolved = await resolvePhotos(userId, conn.provider as StoreProviderId, product.imageUrls, known, deps);
-      // If every download failed keep what we have rather than emptying the project.
+      room = await galleryRoom(conn.businessId);
+      const resolved = await resolvePhotos(userId, conn.provider as StoreProviderId, incoming.imageUrls, known, deps, room);
+      // If every download failed keep what we have rather than emptying the album.
       if (resolved.paths.length > 0 || wantedUrls.length === 0) {
-        removed = project.photoPaths.filter((p) => !resolved.paths.includes(p));
         fresh = resolved.fresh;
+        freshRows = resolved.freshRows;
         photoPaths = resolved.paths;
         imageMap = resolved.entries;
         plan.nextBaseline.photoPaths = photoPaths;
@@ -229,34 +328,42 @@ async function updateFromProduct(ctx: Context, product: NormalizedProduct): Prom
     } else plan.kept.push("photos");
   }
 
-  const projectData: Prisma.ProjectUpdateInput = {};
-  if (plan.set.title !== undefined) projectData.title = plan.set.title;
-  if (plan.set.price !== undefined) projectData.price = plan.set.price;
-  if (plan.set.features !== undefined) projectData.features = plan.set.features;
-  if (plan.set.notes !== undefined) projectData.details = detailsWith(project.details, plan.set.notes);
-  if (plan.changed.includes("photos")) projectData.photoPaths = photoPaths;
+  const data: Prisma.ProductUpdateInput = {};
+  if (plan.set.title !== undefined) data.name = plan.set.title.slice(0, 200);
+  if (plan.set.price !== undefined) Object.assign(data, priceFields(plan.set.price, product.currency));
+  if (plan.set.features !== undefined) data.features = plan.set.features;
+  if (plan.set.notes !== undefined) {
+    data.description = plan.set.notes;
+    // The summary follows the description while it is still the one the import wrote.
+    if (product.summary === summaryOf(product.description, product.name)) data.summary = summaryOf(plan.set.notes, plan.set.title ?? product.name);
+  }
 
+  let removed: string[] = [];
   try {
-    await prisma.$transaction([
-      ...(Object.keys(projectData).length ? [prisma.project.update({ where: { id: project.id, updatedAt: project.updatedAt }, data: projectData })] : []),
-      prisma.productSync.update({ where: { id: mapping.id }, data: { baseline: plan.nextBaseline, imageMap, lastSyncedAt: new Date(), sourceMissing: false } }),
-    ]);
+    await prisma.$transaction(async (tx) => {
+      // Only while the product is unchanged since we read it: a save in between wins (P2025 below).
+      if (Object.keys(data).length) await tx.product.update({ where: { id: product.id, updatedAt: product.updatedAt }, data });
+      else if (plan.changed.includes("photos")) await tx.product.update({ where: { id: product.id, updatedAt: product.updatedAt }, data: { updatedAt: new Date() } });
+      if (plan.changed.includes("photos")) removed = await setAlbum(tx, { id: product.id, businessId: product.businessId, name: product.name }, photoPaths, freshRows);
+      await tx.productSync.update({ where: { id: mapping.id }, data: { baseline: plan.nextBaseline, imageMap, lastSyncedAt: new Date(), sourceMissing: false } });
+    });
   } catch (error) {
     await deps.removePhotos(fresh);
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
-      // The user saved an edit between our read and our write (the project's updatedAt moved): their edit wins, nothing
-      // is overwritten, and the next sync decides again from the fresh project.
+      // The user saved an edit between our read and our write (the product's updatedAt moved): their edit wins, nothing
+      // is overwritten, and the next sync decides again from the fresh product.
       await prisma.productSync.update({ where: { id: mapping.id }, data: { lastSyncedAt: new Date() } });
-      return { externalId: product.externalId, title: project.title, status: "unchanged", kept: [...new Set([...plan.kept, ...plan.changed])] };
+      return { externalId: incoming.externalId, title: product.name, status: "unchanged", kept: [...new Set([...plan.kept, ...plan.changed])] };
     }
     throw error;
   }
   await deps.removePhotos(removed);
   return {
-    externalId: product.externalId,
-    title: project.title,
+    externalId: incoming.externalId,
+    title: product.name,
     status: plan.changed.length ? "updated" : "unchanged",
     kept: plan.kept.length ? plan.kept : undefined,
+    ...(room?.skipped ? { skippedPhotos: room.skipped } : {}),
   };
 }
 
@@ -322,7 +429,7 @@ function counted(deps: SyncDeps, budget: SubrequestBudget): SyncDeps {
   };
 }
 
-export type ResyncSummary = { checked: number; updated: number; unchanged: number; kept: number; missing: number; failed: number; /** Products not yet visited in this pass. */ remaining: number; /** True when the pass has nothing left to do (or cannot make progress), so the caller can stop calling. */ done: boolean };
+export type ResyncSummary = { checked: number; updated: number; unchanged: number; kept: number; missing: number; failed: number; /** Store photos not imported because the gallery is full. */ skippedPhotos: number; /** Products not yet visited in this pass. */ remaining: number; /** True when the pass has nothing left to do (or cannot make progress), so the caller can stop calling. */ done: boolean };
 
 const RESYNC_TAKE = 40;
 
@@ -338,7 +445,7 @@ export async function resyncConnection(conn: ConnectionRow, opts: { limit?: numb
   const since = opts.since ?? new Date();
   const budget = opts.budget ?? newBudget();
   const deps = counted(baseDeps, budget);
-  const summary: ResyncSummary = { checked: 0, updated: 0, unchanged: 0, kept: 0, missing: 0, failed: 0, remaining: 0, done: false };
+  const summary: ResyncSummary = { checked: 0, updated: 0, unchanged: 0, kept: 0, missing: 0, failed: 0, skippedPhotos: 0, remaining: 0, done: false };
   const stale = { connectionId: conn.id, lastSyncedAt: { lt: since } };
   const mappings = await prisma.productSync.findMany({ where: stale, orderBy: { lastSyncedAt: "asc" }, take: opts.limit ?? RESYNC_TAKE, select: { externalId: true, imageMap: true } });
   if (!mappings.length) return { ...summary, done: true };
@@ -368,6 +475,7 @@ export async function resyncConnection(conn: ConnectionRow, opts: { limit?: numb
       const r = await updateFromProduct(ctx, product);
       if (r.status === "updated") summary.updated++;
       else summary.unchanged++;
+      summary.skippedPhotos += r.skippedPhotos ?? 0;
       if (r.kept?.length) summary.kept++;
     } catch (error) {
       summary.failed++;

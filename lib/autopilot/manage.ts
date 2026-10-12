@@ -3,9 +3,12 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { industryContext } from "@/lib/industry-context";
+import { profileContext } from "@/lib/knowledge/context";
+import { writerKnowledge } from "@/lib/knowledge/writer-context";
+import { writingSubject, type Subject } from "@/lib/knowledge/service";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
-import { AIBudgetExceededError } from "@/lib/ai/budget";
+import { AIBudgetExceededError, CompanyBudgetExceededError } from "@/lib/ai/budget";
 import { ServiceDisabledError } from "@/lib/admin/switch";
 import { readKnowledge } from "@/lib/brand/schemas";
 import { knowledgeFacts } from "@/lib/business-info/facts";
@@ -77,7 +80,7 @@ export async function regenerateGroup(userId: string, groupId: string): Promise<
   if (!business) return { ok: false, error: "We could not find your business." };
   const posts = await prisma.post.findMany({
     where: { groupId, businessId: business.id, source: "AUTOPILOT", status: { in: [...CHANGEABLE] } },
-    include: { project: true },
+    select: { id: true, text: true, network: true, format: true, playbookId: true, scheduledAt: true, productId: true, campaignId: true },
   });
   const idea = getIdea(posts[0]?.playbookId);
   if (posts.length === 0 || !idea) return { ok: false, error: "That post can no longer be regenerated." };
@@ -96,15 +99,18 @@ export async function regenerateGroup(userId: string, groupId: string): Promise<
     const first = posts[0];
     const day = first.scheduledAt ? localDateISO(first.scheduledAt, tz) : localDateISO(new Date(), tz);
     const holiday = idea.needs.includes("holiday") ? holidaysBetween(business.country, day, day).find((h) => !h.sensitive) : undefined;
+    const faqs = idea.needs.includes("faq") ? await prisma.knowledgeFaq.findMany({ where: { businessId: business.id }, orderBy: { position: "asc" }, take: 50, select: { question: true, answer: true } }) : [];
     const faq = idea.needs.includes("faq")
-      ? [...knowledge.faqs].sort((a, b) => overlap(first.text, `${b.question} ${b.answer}`) - overlap(first.text, `${a.question} ${a.answer}`))[0]
+      ? faqs.sort((a, b) => overlap(first.text, `${b.question} ${b.answer}`) - overlap(first.text, `${a.question} ${a.answer}`))[0]
       : undefined;
-    const details = first.project?.details;
-    const notes = details && typeof details === "object" && "notes" in details && typeof (details as { notes?: unknown }).notes === "string" ? (details as { notes: string }).notes : undefined;
+    const subject: Subject | null = first.productId ? { kind: "product", id: first.productId } : first.campaignId ? { kind: "campaign", id: first.campaignId } : null;
+    const about = subject ? await writingSubject(business.id, subject) : null;
     const brand: WriterBrand = {
       businessName: business.name,
       industry: business.industry,
       industryContext: industryContext(business),
+      profile: profileContext(business.profile),
+      ...(await writerKnowledge(business.id)),
       description: business.description,
       audience: business.audience,
       tone: business.tone,
@@ -124,7 +130,7 @@ export async function regenerateGroup(userId: string, groupId: string): Promise<
           brand,
           idea,
           facts: {
-            project: first.project ? { type: first.project.type, title: first.project.title, price: first.project.price, features: first.project.features, notes } : undefined,
+            project: about ? { type: about.type, title: about.title, price: about.price, features: about.features, context: about.context } : undefined,
             faq,
             holiday: holiday && { name: holiday.name, date: holiday.date },
             date: day,
@@ -146,6 +152,7 @@ export async function regenerateGroup(userId: string, groupId: string): Promise<
     return { ok: true };
   } catch (error) {
     await refundUsage(userId, "text", reservation.periodStart).catch((e) => logError(e, { source: "autopilot.refund", userId }));
+    if (error instanceof CompanyBudgetExceededError) return { ok: false, error: `${error.message} Your credit was returned.` };
     if (error instanceof AIBudgetExceededError || error instanceof ServiceDisabledError) return { ok: false, error: "Autopilot is paused for a short while. Please try again later." };
     await logError(error, { source: "autopilot.regenerate", userId, businessId: business.id });
     return { ok: false, error: "We could not write a new version. Your credit was returned. Please try again." };

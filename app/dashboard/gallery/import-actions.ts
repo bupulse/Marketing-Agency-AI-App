@@ -13,7 +13,8 @@ import type { CanvaDesignSummary } from "@/lib/canva/client";
 export type ImportResult<T = object> = ({ ok: true } & T) | { ok: false; error: string; needsConnect?: boolean };
 
 const FAILED = "Something went wrong. Please try again.";
-const folderId = z.string().min(1).max(60).nullish().transform((v) => v || null);
+/** Where the photo goes: "folder:<id>", "product:<id>" or "campaign:<id>" (lib/media/destinations.ts); required. */
+const destination = z.string().max(80).nullish().transform((v) => v || null);
 
 type Ctx = { userId: string; businessId: string };
 
@@ -40,7 +41,7 @@ export async function getImportOptions(): Promise<ImportResult<{ options: Import
   return guard(async ({ userId }) => ({ options: await importOptions(userId) }));
 }
 
-const driveSchema = z.object({ token: z.string().min(10).max(4096), fileId: z.string().min(8).max(128), folderId });
+const driveSchema = z.object({ token: z.string().min(10).max(4096), fileId: z.string().min(8).max(128), destination });
 
 /** Imports one file the person picked in Google Picker. The token is used for this call and not stored. */
 export async function importFromDrive(input: z.input<typeof driveSchema>): Promise<ImportResult<{ item: MediaItem }>> {
@@ -49,7 +50,7 @@ export async function importFromDrive(input: z.input<typeof driveSchema>): Promi
   return guard(async (ctx) => ({ item: await importDriveFile(ctx, parsed.data) }), "driveImport");
 }
 
-const dropboxSchema = z.object({ link: z.string().url().max(2000), name: z.string().min(1).max(260), folderId });
+const dropboxSchema = z.object({ link: z.string().url().max(2000), name: z.string().min(1).max(260), destination });
 
 /** Imports one file from a Dropbox Chooser direct link. */
 export async function importFromDropbox(input: z.input<typeof dropboxSchema>): Promise<ImportResult<{ item: MediaItem }>> {
@@ -66,7 +67,7 @@ export async function listFromCanva(input: z.input<typeof listSchema>): Promise<
   return guard(({ userId }) => listCanvaDesigns(userId, parsed.data), "canva");
 }
 
-const canvaSchema = z.object({ designId: z.string().min(6).max(64), title: z.string().max(260), folderId });
+const canvaSchema = z.object({ designId: z.string().min(6).max(64), title: z.string().max(260), destination });
 
 /** Exports one Canva design as a PNG and adds it to the gallery. */
 export async function importFromCanva(input: z.input<typeof canvaSchema>): Promise<ImportResult<{ item: MediaItem }>> {

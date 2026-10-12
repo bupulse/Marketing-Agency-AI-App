@@ -12,15 +12,15 @@ import type { ImportTask } from "./use-importer";
 type Page = { key: string; items: CanvaDesignSummary[]; cursor: string | null; error: string | null; needsConnect: boolean };
 
 /** "Import from Canva": the person's designs with thumbnails, search and paging; the chosen ones are exported as PNGs. */
-export function CanvaImportDialog({ open, onOpenChange, folderId, onImport }: { open: boolean; onOpenChange: (open: boolean) => void; folderId: string | null; onImport: (tasks: ImportTask[]) => void }) {
+export function CanvaImportDialog({ open, onOpenChange, destination, onImport }: { open: boolean; onOpenChange: (open: boolean) => void; destination: string; onImport: (tasks: ImportTask[]) => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title="Import from Canva" description="Pick the designs to add to your gallery. Each one is saved as a PNG." className="max-w-3xl">
-      {open && <Body onOpenChange={onOpenChange} folderId={folderId} onImport={onImport} />}
+      {open && <Body onOpenChange={onOpenChange} destination={destination} onImport={onImport} />}
     </Dialog>
   );
 }
 
-function Body({ onOpenChange, folderId, onImport }: { onOpenChange: (open: boolean) => void; folderId: string | null; onImport: (tasks: ImportTask[]) => void }) {
+function Body({ onOpenChange, destination, onImport }: { onOpenChange: (open: boolean) => void; destination: string; onImport: (tasks: ImportTask[]) => void }) {
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState<Page | null>(null);
@@ -63,7 +63,7 @@ function Body({ onOpenChange, folderId, onImport }: { onOpenChange: (open: boole
   }
 
   function confirm() {
-    onImport(selected.map((d) => ({ name: d.title, run: () => importFromCanva({ designId: d.id, title: d.title, folderId }) })));
+    onImport(selected.map((d) => ({ name: d.title, run: () => importFromCanva({ designId: d.id, title: d.title, destination }) })));
     onOpenChange(false);
   }
 

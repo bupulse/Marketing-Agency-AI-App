@@ -4,6 +4,9 @@ import { rateLimit } from "@/lib/rate-limit";
 import { createSignedUploadUrl } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Prisma } from "@/lib/generated/prisma/client";
+import { albumProblem, DESTINATION_REQUIRED, parseDestination, type AlbumKind, type Destination } from "./destinations";
+import { logError } from "@/lib/errors";
 import {
   assetIdFromPath,
   cleanPhotoName,
@@ -20,6 +23,11 @@ import {
   MEDIA_MAX_BYTES,
   MEDIA_MAX_FOLDERS,
   MEDIA_RATE,
+  COUNTED,
+  MIGRATED_SOURCE,
+  platformMaxBytes,
+  platformNearlyFull,
+  platformProblem,
   nameFromFile,
   quotaProblem,
   sniffMediaType,
@@ -50,11 +58,13 @@ export type MediaItem = {
 };
 
 export type FolderSummary = { id: string; name: string; count: number };
-export type GalleryOverview = { folders: FolderSummary[]; unfiled: number; total: number; usage: MediaUsage };
+/** A product's or campaign's album, as the gallery lists it. */
+export type AlbumSummary = { kind: AlbumKind; id: string; name: string; count: number };
+export type GalleryOverview = { folders: FolderSummary[]; albums: AlbumSummary[]; unfiled: number; total: number; uncounted: number; usage: MediaUsage };
 
 type Row = Omit<MediaItem, "url">;
 
-const SELECT = { id: true, name: true, path: true, width: true, height: true, mimeType: true, bytes: true, folderId: true, createdAt: true } as const;
+export const SELECT = { id: true, name: true, path: true, width: true, height: true, mimeType: true, bytes: true, folderId: true, createdAt: true } as const;
 
 /** The business the signed-in user owns, or null before onboarding. Every gallery call starts here. */
 export async function businessIdFor(userId: string): Promise<string | null> {
@@ -74,7 +84,7 @@ export async function signedUrls(paths: string[]): Promise<Map<string, string>> 
   return new Map((data ?? []).flatMap((d) => (d.path && d.signedUrl ? [[d.path, d.signedUrl] as const] : [])));
 }
 
-async function withUrls(rows: Row[]): Promise<MediaItem[]> {
+export async function withUrls(rows: Row[]): Promise<MediaItem[]> {
   const urls = await signedUrls(rows.map((r) => r.path));
   return rows.map((r) => ({ ...r, url: urls.get(r.path) ?? "" }));
 }
@@ -85,34 +95,154 @@ async function ownFolder(businessId: string, folderId: string) {
   return folder;
 }
 
-export async function mediaUsage(businessId: string): Promise<MediaUsage> {
-  const sum = await prisma.mediaAsset.aggregate({ where: { businessId }, _count: { _all: true }, _sum: { bytes: true } });
+/** The product or campaign whose album this is, scoped to the business. */
+export async function ownAlbum(businessId: string, kind: AlbumKind, id: string): Promise<{ id: string; name: string; count: number }> {
+  const row =
+    kind === "product"
+      ? await prisma.product.findFirst({ where: { id, businessId }, select: { id: true, name: true, _count: { select: { photos: true } } } })
+      : await prisma.campaign.findFirst({ where: { id, businessId }, select: { id: true, name: true, _count: { select: { photos: true } } } });
+  if (!row) throw new MediaError(kind === "product" ? "We could not find that product." : "We could not find that campaign.");
+  return { id: row.id, name: row.name, count: row._count.photos };
+}
+
+/**
+ * Checks a destination before photos are added to it: it must be named (DESTINATION_REQUIRED otherwise), belong to the
+ * business, and an album must have room for `adding` more photos.
+ */
+export async function resolveDestination(businessId: string, raw: string | null | undefined, adding = 1): Promise<Destination> {
+  const destination = parseDestination(raw);
+  if (!destination) throw new MediaError(DESTINATION_REQUIRED);
+  if (destination.kind === "folder") await ownFolder(businessId, destination.id);
+  else {
+    const album = await ownAlbum(businessId, destination.kind, destination.id);
+    const problem = albumProblem(album.count, adding);
+    if (problem) throw new MediaError(problem);
+  }
+  return destination;
+}
+
+type Tx = Prisma.TransactionClient;
+
+/**
+ * Adds photos to an album after the ones already there (photos already in it stay where they are). A per-album
+ * advisory lock makes the count and the insert one step, so parallel uploads cannot pass the 30-photo cap together.
+ */
+export async function linkInTx(tx: Tx, kind: AlbumKind, albumId: string, assetIds: string[]): Promise<number> {
+  if (assetIds.length === 0) return 0;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`album:${kind}:${albumId}`}))`;
+  const existing =
+    kind === "product"
+      ? await tx.productPhoto.findMany({ where: { productId: albumId }, select: { assetId: true, position: true } })
+      : await tx.campaignPhoto.findMany({ where: { campaignId: albumId }, select: { assetId: true, position: true } });
+  const have = new Set(existing.map((e) => e.assetId));
+  const fresh = [...new Set(assetIds)].filter((a) => !have.has(a));
+  if (fresh.length === 0) return 0;
+  const problem = albumProblem(existing.length, fresh.length);
+  if (problem) throw new MediaError(problem);
+  let next = existing.reduce((max, e) => Math.max(max, e.position + 1), 0);
+  if (kind === "product") await tx.productPhoto.createMany({ data: fresh.map((assetId) => ({ productId: albumId, assetId, position: next++ })), skipDuplicates: true });
+  else await tx.campaignPhoto.createMany({ data: fresh.map((assetId) => ({ campaignId: albumId, assetId, position: next++ })), skipDuplicates: true });
+  return fresh.length;
+}
+
+/** What counts toward the company's quota: every photo except the ones the migration copied from old projects. */
+export async function mediaUsage(businessId: string, db: Pick<Tx, "mediaAsset"> = prisma): Promise<MediaUsage> {
+  const sum = await db.mediaAsset.aggregate({ where: { businessId, ...COUNTED }, _count: { _all: true }, _sum: { bytes: true } });
   return { count: sum._count._all, bytes: sum._sum.bytes ?? 0 };
 }
 
+/** Bytes of every company's photos together: the shared Storage project (MEDIA_PLATFORM_MAX_BYTES). */
+export async function platformBytes(db: Pick<Tx, "mediaAsset"> = prisma): Promise<number> {
+  const sum = await db.mediaAsset.aggregate({ _sum: { bytes: true } });
+  return sum._sum.bytes ?? 0;
+}
+
+let warnedAt = 0;
+
+/**
+ * Refuses `adding` bytes when the shared storage would pass its cap, with a message the owner can read. From 80% the
+ * admin is told: an ErrorLog warning (at most once an hour per server) and an item in the admin Overview's attention box.
+ */
+export async function assertPlatformRoom(adding: number, db: Pick<Tx, "mediaAsset"> = prisma, now = Date.now()): Promise<void> {
+  const used = await platformBytes(db);
+  const max = platformMaxBytes();
+  if (platformNearlyFull(used + adding, max) && now - warnedAt > 60 * 60 * 1000) {
+    warnedAt = now;
+    void logError(new Error(`Photo storage is at ${Math.round(((used + adding) / max) * 100)}% of MEDIA_PLATFORM_MAX_BYTES (${used} of ${max} bytes)`), { source: "media.platform-storage", level: "warn" });
+  }
+  const problem = platformProblem(used, adding, max);
+  if (problem) throw new MediaError(problem);
+}
+
+/** Forgets the hourly warning throttle (tests). */
+export function resetPlatformWarning() {
+  warnedAt = 0;
+}
+
+/**
+ * Photos copied by the migration without a known size (Storage was not readable then) get it now, on the first gallery
+ * read: a few per call, from the object's metadata. Best effort; the size is only shown, never counted.
+ */
+async function fillMigratedSizes(businessId: string): Promise<void> {
+  try {
+    const rows = await prisma.mediaAsset.findMany({ where: { businessId, source: MIGRATED_SOURCE, bytes: 0 }, take: 10, select: { id: true, path: true } });
+    if (rows.length === 0) return;
+    const bucket = await storage();
+    for (const row of rows) {
+      const info = await bucket.info(row.path);
+      const size = info.data?.size;
+      if (size && size > 0) await prisma.mediaAsset.updateMany({ where: { id: row.id, bytes: 0 }, data: { bytes: size } });
+    }
+  } catch {}
+}
+
 export async function galleryOverview(businessId: string): Promise<GalleryOverview> {
-  const [folders, counts, usage] = await Promise.all([
+  const albumWhere = { businessId, status: { not: "ARCHIVED" as const } };
+  void fillMigratedSizes(businessId);
+  const [folders, counts, usage, all, products, campaigns] = await Promise.all([
     prisma.mediaFolder.findMany({ where: { businessId }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.mediaAsset.groupBy({ by: ["folderId"], where: { businessId }, _count: { _all: true } }),
     mediaUsage(businessId),
+    prisma.mediaAsset.count({ where: { businessId } }),
+    prisma.product.findMany({ where: albumWhere, orderBy: { name: "asc" }, take: 200, select: { id: true, name: true, _count: { select: { photos: true } } } }),
+    prisma.campaign.findMany({ where: albumWhere, orderBy: { createdAt: "desc" }, take: 100, select: { id: true, name: true, _count: { select: { photos: true } } } }),
   ]);
   const byFolder = new Map(counts.map((c) => [c.folderId, c._count._all]));
   return {
     folders: folders.map((f) => ({ ...f, count: byFolder.get(f.id) ?? 0 })),
+    albums: [
+      ...products.map((p) => ({ kind: "product" as const, id: p.id, name: p.name, count: p._count.photos })),
+      ...campaigns.map((c) => ({ kind: "campaign" as const, id: c.id, name: c.name, count: c._count.photos })),
+    ],
     unfiled: byFolder.get(null) ?? 0,
-    total: usage.count,
+    total: all,
+    // Photos moved from old projects are in the gallery but do not count toward the quota.
+    uncounted: Math.max(0, all - usage.count),
     usage,
   };
 }
 
+/** An album's photos in album order (the first is the cover), with signed URLs. */
+export async function albumItems(businessId: string, kind: AlbumKind, id: string, search?: string): Promise<MediaItem[]> {
+  const q = search?.trim().slice(0, 80);
+  const assetWhere = { businessId, ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}) };
+  const rows =
+    kind === "product"
+      ? await prisma.productPhoto.findMany({ where: { productId: id, asset: assetWhere }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], take: 100, select: { asset: { select: SELECT } } })
+      : await prisma.campaignPhoto.findMany({ where: { campaignId: id, asset: assetWhere }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], take: 100, select: { asset: { select: SELECT } } });
+  return withUrls(rows.map((r) => r.asset));
+}
+
 /**
  * One page of the business's photos, newest first. `folderId` undefined is every photo, null is
- * "Not in a folder", a string is that folder. `cursor` is the last id of the previous page.
+ * "Not in a folder", a string is that folder; `album` is a product's or campaign's album, in album order (one page).
+ * `cursor` is the last id of the previous page.
  */
 export async function listMedia(
   businessId: string,
-  opts: { folderId?: string | null; search?: string; take?: number; cursor?: string | null } = {},
+  opts: { folderId?: string | null; album?: { kind: AlbumKind; id: string }; search?: string; take?: number; cursor?: string | null } = {},
 ): Promise<{ items: MediaItem[]; nextCursor: string | null }> {
+  if (opts.album) return { items: await albumItems(businessId, opts.album.kind, opts.album.id, opts.search), nextCursor: null };
   const take = Math.min(Math.max(opts.take ?? 48, 1), 100);
   const search = opts.search?.trim().slice(0, 80);
   const rows = await prisma.mediaAsset.findMany({
@@ -130,19 +260,22 @@ export async function listMedia(
   return { items: await withUrls(page), nextCursor: rows.length > take ? (page[page.length - 1]?.id ?? null) : null };
 }
 
-type NewAsset = Parameters<typeof prisma.mediaAsset.create>[0]["data"] & { businessId: string; bytes: number };
+type NewAsset = Prisma.MediaAssetUncheckedCreateInput;
 
 /**
- * Creates the photo row only if it still fits the quota. The check and the insert run in one transaction
- * under a per-business advisory lock, so parallel uploads and imports cannot all pass a stale count.
+ * Creates the photo row only if it still fits the quota, and puts it in its destination (a folder, or an album link).
+ * The check and the insert run in one transaction under a per-business advisory lock, so parallel uploads and imports
+ * cannot all pass a stale count.
  */
-async function createWithinQuota(data: NewAsset): Promise<Row> {
+async function createWithinQuota(data: NewAsset, destination?: Destination): Promise<Row> {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`media-quota:${data.businessId}`}))`;
-    const sum = await tx.mediaAsset.aggregate({ where: { businessId: data.businessId }, _count: { _all: true }, _sum: { bytes: true } });
-    const problem = quotaProblem({ count: sum._count._all, bytes: sum._sum.bytes ?? 0 }, { count: 1, bytes: data.bytes });
+    const problem = quotaProblem(await mediaUsage(data.businessId, tx), { count: 1, bytes: data.bytes });
     if (problem) throw new MediaError(problem);
-    return tx.mediaAsset.create({ data, select: SELECT });
+    await assertPlatformRoom(data.bytes, tx);
+    const row = await tx.mediaAsset.create({ data: { ...data, folderId: destination?.kind === "folder" ? destination.id : (data.folderId ?? null) }, select: SELECT });
+    if (destination && destination.kind !== "folder") await linkInTx(tx, destination.kind, destination.id, [row.id]);
+    return row;
   });
 }
 
@@ -163,17 +296,18 @@ export async function assetById(businessId: string, id: string): Promise<MediaIt
 export type UploadTarget = { ok: true; path: string; token: string } | { ok: false; error: string };
 
 /**
- * Checks each file (type, size, quota, folder) and issues a signed upload URL for the ones that pass.
+ * Checks the destination and each file (type, size, quota) and issues a signed upload URL for the ones that pass.
  * The result lines up with `files`. The browser then uploads straight to Storage and calls finalizeUpload.
  */
 export async function prepareUploads(
   { userId, businessId }: { userId: string; businessId: string },
   files: { name: string; type: string; size: number }[],
-  folderId: string | null,
+  destination: string | null,
 ): Promise<UploadTarget[]> {
   if (files.length === 0 || files.length > UPLOAD_BATCH_MAX) throw new MediaError(`Add up to ${UPLOAD_BATCH_MAX} photos at a time.`);
+  await resolveDestination(businessId, destination, files.length);
+  await assertPlatformRoom(files.reduce((sum, f) => sum + (Number.isFinite(f.size) && f.size > 0 ? f.size : 0), 0));
   await rateLimit(`media-upload:${userId}`, MEDIA_RATE.uploadBatch);
-  if (folderId) await ownFolder(businessId, folderId);
 
   const used = await mediaUsage(businessId);
   const running = { count: used.count, bytes: used.bytes };
@@ -228,21 +362,29 @@ async function dropObject(path: string) {
  */
 export async function finalizeUpload(
   { userId, businessId }: { userId: string; businessId: string },
-  input: { path: string; name: string; folderId: string | null; width?: number | null; height?: number | null },
+  input: { path: string; name: string; destination: string | null; width?: number | null; height?: number | null },
 ): Promise<MediaItem> {
   if (!isOwnGalleryPath(userId, input.path)) throw new MediaError("That upload could not be used.");
   const existing = await prisma.mediaAsset.findUnique({ where: { path: input.path }, select: { ...SELECT, businessId: true } });
   if (existing) {
     if (existing.businessId !== businessId) throw new MediaError("That upload could not be used.");
-    return (await withUrls([existing]))[0];
-  }
-  if (input.folderId) {
-    try {
-      await ownFolder(businessId, input.folderId);
-    } catch (error) {
-      await dropObject(input.path);
-      throw error;
+    // A retry after the row was saved (a lost answer): make sure it is in its destination too.
+    const destination = parseDestination(input.destination);
+    if (destination) {
+      await resolveDestination(businessId, input.destination, 0);
+      if (destination.kind === "folder") {
+        if (!existing.folderId) await prisma.mediaAsset.updateMany({ where: { id: existing.id, businessId, folderId: null }, data: { folderId: destination.id } });
+      } else await prisma.$transaction((tx) => linkInTx(tx, destination.kind as AlbumKind, destination.id, [existing.id]));
     }
+    const fresh = await prisma.mediaAsset.findUnique({ where: { path: input.path }, select: SELECT });
+    return (await withUrls([fresh ?? existing]))[0];
+  }
+  let destination: Destination;
+  try {
+    destination = await resolveDestination(businessId, input.destination);
+  } catch (error) {
+    await dropObject(input.path);
+    throw error;
   }
 
   const info = await (await storage()).info(input.path);
@@ -264,17 +406,19 @@ export async function finalizeUpload(
 
   let row: Row;
   try {
-    row = await createWithinQuota({
-      id: assetIdFromPath(input.path),
-      businessId,
-      folderId: input.folderId,
-      path: input.path,
-      name: cleanPhotoName(input.name, nameFromFile(input.path)),
-      mimeType: contentType,
-      bytes: size,
-      width: clampSize(input.width),
-      height: clampSize(input.height),
-    });
+    row = await createWithinQuota(
+      {
+        id: assetIdFromPath(input.path),
+        businessId,
+        path: input.path,
+        name: cleanPhotoName(input.name, nameFromFile(input.path)),
+        mimeType: contentType,
+        bytes: size,
+        width: clampSize(input.width),
+        height: clampSize(input.height),
+      },
+      destination,
+    );
   } catch (failure) {
     if (failure instanceof MediaError) await dropObject(input.path);
     throw failure;
@@ -386,7 +530,7 @@ export async function deleteAssets(businessId: string, ids: string[]): Promise<n
  */
 export async function importAsset(
   { userId, businessId }: { userId: string; businessId: string },
-  input: { bytes: Uint8Array; name: string; folderId: string | null; source: ImportSource },
+  input: { bytes: Uint8Array; name: string; destination: string | null; source: ImportSource },
 ): Promise<MediaItem> {
   const label = cleanPhotoName(input.name, "That file");
   const { bytes } = input;
@@ -394,9 +538,10 @@ export async function importAsset(
   if (bytes.length > MEDIA_MAX_BYTES) throw new MediaError(`${label} is over 10 MB. Resize it and try again.`);
   const type = sniffMediaType(bytes);
   if (!type) throw new MediaError(`${label}: ${UNSUPPORTED_MESSAGE}`);
-  if (input.folderId) await ownFolder(businessId, input.folderId);
+  const destination = await resolveDestination(businessId, input.destination);
   const problem = quotaProblem(await mediaUsage(businessId), { count: 1, bytes: bytes.length });
   if (problem) throw new MediaError(problem);
+  await assertPlatformRoom(bytes.length);
 
   // Written with the service key: the checks above (and the caller's active user) are the app's own, and the path is
   // built here in the company folder. The Storage policies are for the browser's own uploads (signed upload URLs).
@@ -405,18 +550,20 @@ export async function importAsset(
   if (error) throw error;
   const size = imageSize(bytes);
   try {
-    const row = await createWithinQuota({
-      id: assetIdFromPath(path),
-      businessId,
-      folderId: input.folderId,
-      path,
-      name: nameFromFile(input.name),
-      mimeType: type,
-      bytes: bytes.length,
-      width: clampSize(size?.width),
-      height: clampSize(size?.height),
-      source: input.source,
-    });
+    const row = await createWithinQuota(
+      {
+        id: assetIdFromPath(path),
+        businessId,
+        path,
+        name: nameFromFile(input.name),
+        mimeType: type,
+        bytes: bytes.length,
+        width: clampSize(size?.width),
+        height: clampSize(size?.height),
+        source: input.source,
+      },
+      destination,
+    );
     return (await withUrls([row]))[0];
   } catch (failure) {
     await dropObject(path);

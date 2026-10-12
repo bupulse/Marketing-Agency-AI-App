@@ -1,6 +1,7 @@
 import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import { prisma } from "@/lib/db";
+import { resolveSubject, subjectColumns } from "@/lib/knowledge/service";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { composeSchema, editSchema, isOwnMediaPath, type ComposeParsed } from "./schemas";
@@ -110,11 +111,11 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
   if (connections.length !== new Set(data.connectionIds).size) throw new PublishingError("One of those accounts is not connected.", "not_found");
   const ordered = data.connectionIds.flatMap((id) => connections.filter((c) => c.id === id));
 
-  const [project, content] = await Promise.all([
-    data.projectId ? prisma.project.findFirst({ where: { id: data.projectId, businessId: owner.businessId }, select: { id: true } }) : null,
-    data.contentId ? prisma.generatedContent.findFirst({ where: { id: data.contentId, project: { businessId: owner.businessId } }, select: { id: true } }) : null,
+  const [subject, content] = await Promise.all([
+    data.subjectId ? resolveSubject(owner.businessId, data.subjectId) : null,
+    data.contentId ? prisma.generatedContent.findFirst({ where: { id: data.contentId, businessId: owner.businessId }, select: { id: true } }) : null,
   ]);
-  if ((data.projectId && !project) || (data.contentId && !content)) throw new PublishingError("We could not find that project.", "not_found");
+  if ((data.subjectId && !subject) || (data.contentId && !content)) throw new PublishingError("We could not find that product or campaign.", "not_found");
 
   const draft = data.when.mode === "draft";
   const problems: string[] = [];
@@ -151,7 +152,7 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
           connectionId: row.connection.id,
           network: row.network,
           groupId,
-          projectId: project?.id,
+          ...subjectColumns(subject),
           contentId: content?.id,
           status: time.status,
           format: row.format,
@@ -241,6 +242,8 @@ export async function duplicatePost(owner: Owner, postId: string): Promise<{ id:
       network: post.network,
       groupId: globalThis.crypto.randomUUID(),
       projectId: post.projectId,
+      productId: post.productId,
+      campaignId: post.campaignId,
       contentId: post.contentId,
       status: "DRAFT",
       format: post.format,

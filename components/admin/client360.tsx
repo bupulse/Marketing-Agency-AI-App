@@ -172,7 +172,7 @@ async function OverviewTab({ id, c, here }: { id: string; c: C; here: string }) 
               <dt className="text-muted">Phone</dt><dd>{business.phone ? <a href={`tel:${business.phone}`} className="underline">{formatPhone(business.phone)}</a> : "n/a"}</dd>
               <dt className="text-muted">Country</dt><dd>{business.country ?? "n/a"}</dd>
               <dt className="text-muted">Onboarded</dt><dd>{business.onboarded ? "Yes" : "No"}</dd>
-              <dt className="text-muted">Projects, posts, leads</dt><dd>{business.counts.projects}, {business.counts.posts}, {business.counts.leads}</dd>
+              <dt className="text-muted">Products, posts, leads</dt><dd>{business.counts.projects}, {business.counts.posts}, {business.counts.leads}</dd>
               <dt className="text-muted">Posts by status</dt><dd>{Object.entries(business.posts).map(([s, n]) => `${s.toLowerCase()} ${n}`).join(", ") || "none"}</dd>
             </dl>
           )}
@@ -253,6 +253,7 @@ async function UsageTab({ c }: { c: C }) {
         <Stat label="AI cost, 30 days" value={`$${u.ai.costUsd30d.toFixed(2)}`} source="AI call ledger" href="/admin/ai" />
         <Stat label="AI calls, 30 days" value={num(u.ai.calls30d)} source="AI call ledger" />
         <Stat label="Failed AI calls" value={num(u.ai.failures30d)} source="AI call ledger" />
+        <Stat label="AI spend this month" value={`$${u.ai.monthUsd.toFixed(2)} of $${u.ai.allowanceUsd.toFixed(2)}`} source="Company allowance (AI_COMPANY_MONTHLY_USD)" />
       </div>
     </>
   );

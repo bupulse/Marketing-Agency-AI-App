@@ -1,6 +1,6 @@
 # BuPulse REST API (v1)
 
-Read your projects, generated content, posts and leads, update leads, and create draft posts from your own tools. **Plans with the `apiAccess` feature only** (Pro today; see `docs/PLANS.md`). Create keys in the dashboard under **Connectors > API** (`/dashboard/connectors/api`).
+Read your products, campaigns, generated content, posts and leads, update leads, and create draft posts from your own tools. **Plans with the `apiAccess` feature only** (Pro today; see `docs/PLANS.md`). Create keys in the dashboard under **Connectors > API** (`/dashboard/connectors/api`).
 
 Base address: `https://bupulse.com/api/v1`
 
@@ -14,7 +14,7 @@ Base address: `https://bupulse.com/api/v1`
 
 | Scope | Allows |
 | --- | --- |
-| `projects:read` | `GET /projects`, `GET /projects/:id` |
+| `projects:read` | `GET /products`, `GET /products/:id`, `GET /campaigns`, `GET /campaigns/:id`, and the deprecated `GET /projects`, `GET /projects/:id` |
 | `content:read` | `GET /content`, `GET /content/:id` |
 | `posts:read` | `GET /posts`, `GET /posts/:id` |
 | `posts:write` | `POST /posts` (creates a **draft**; scheduling and publishing stay in the dashboard) |
@@ -55,21 +55,33 @@ Filters:
 
 | Endpoint | Query parameters |
 | --- | --- |
-| `/projects` | `type` (product, service, event, offer, listing, ...) |
-| `/content` | `projectId` |
-| `/posts` | `status` (draft, pending_approval, scheduled, publishing, published, needs_action, failed, cancelled), `network`, `projectId` |
+| `/products` | `kind` (physical, digital, service), `status` (active, draft, archived) |
+| `/campaigns` | `type` (event, offer, promotion, launch, other) |
+| `/projects` (deprecated) | `type`: product, listing, service, project list products; event, offer, other list campaigns |
+| `/content` | `productId`, `campaignId`, `projectId` (deprecated: matches either) |
+| `/posts` | `status` (draft, pending_approval, scheduled, publishing, published, needs_action, failed, cancelled), `network`, `productId`, `campaignId`, `projectId` (deprecated) |
 | `/leads` | `status` (new, contacted, won, lost), `source`, `q` (search text), `since` (ISO date) |
 
 ```bash
 curl -s -H "Authorization: Bearer $KEY" "https://bupulse.com/api/v1/leads?status=new&since=2026-10-01T00:00:00Z"
 curl -s -H "Authorization: Bearer $KEY" "https://bupulse.com/api/v1/posts?status=failed"
-curl -s -H "Authorization: Bearer $KEY" "https://bupulse.com/api/v1/projects"
-curl -s -H "Authorization: Bearer $KEY" "https://bupulse.com/api/v1/content?projectId=cm1proj"
+curl -s -H "Authorization: Bearer $KEY" "https://bupulse.com/api/v1/products?kind=service"
+curl -s -H "Authorization: Bearer $KEY" "https://bupulse.com/api/v1/content?productId=cm1prod"
 ```
 
 ## One item
 
-`GET /leads/:id` (and the same for projects, content, posts) returns `{ "data": {...} }`.
+`GET /leads/:id` (and the same for products, campaigns, content, posts) returns `{ "data": {...} }`.
+
+### Products, campaigns and the old projects
+
+Projects became **products** and **campaigns** in the Knowledge base (12 October 2026, `docs/KNOWLEDGE_BASE.md`). Each
+project's id is now the id of the product or campaign it became, so stored ids keep working.
+
+- A product: `{ id, kind, name, category, summary, description, price: { model, amountMinor, currency, note, label }, sellingPoints, features, targetCustomer, status, photoCount, createdAt, updatedAt }`. `amountMinor` is in the currency's smallest unit (francs for RWF, cents for USD); `label` is the price as people read it ("From 15,000 RWF").
+- A campaign: `{ id, type, name, description, startsOn, endsOn, priceInfo, highlights, productIds, status, photoCount, createdAt, updatedAt }` (dates as `YYYY-MM-DD`).
+- `GET /projects` and `/projects/:id` are **deprecated** and answer in the old shape (`type`, `title`, `price` text, `features`, `photoCount`), filled from the product or campaign. Without `type`, `/projects` lists products and campaigns together, newest first (then by id), with the usual `limit` / `cursor` paging.
+- Content and posts carry `productId` and `campaignId`; their `projectId` is kept (the product's or campaign's id) for older scripts.
 
 ```bash
 curl -s -H "Authorization: Bearer $KEY" https://bupulse.com/api/v1/leads/cm1lead
@@ -93,15 +105,15 @@ curl -s -X PATCH -H "Authorization: Bearer $KEY" -H "content-type: application/j
 
 ## Create a draft post
 
-`POST /posts` with `network` (instagram, facebook, linkedin, tiktok, youtube), `text`, and optionally `hashtags` (array), `link`, `projectId`. Needs `posts:write` and the **calendar** feature in your plan (`403 feature_required` without it). The post is saved as a **draft** without an account; open it in the BuPulse calendar to pick the account, check it and schedule it.
+`POST /posts` with `network` (instagram, facebook, linkedin, tiktok, youtube), `text`, and optionally `hashtags` (array), `link`, and `productId` or `campaignId` (`projectId` still works: it is the same id). Needs `posts:write` and the **calendar** feature in your plan (`403 feature_required` without it). The post is saved as a **draft** without an account; open it in the BuPulse calendar to pick the account, check it and schedule it.
 
 ```bash
 curl -s -X POST -H "Authorization: Bearer $KEY" -H "content-type: application/json" \
-  -d '{"network":"instagram","text":"New arrivals this week!","hashtags":["#new"],"projectId":"cm1proj"}' \
+  -d '{"network":"instagram","text":"New arrivals this week!","hashtags":["#new"],"productId":"cm1prod"}' \
   https://bupulse.com/api/v1/posts
 ```
 
-Photos are not returned as links (they live in your private storage); projects and posts show `photoCount` / `mediaCount`.
+Photos are not returned as links (they live in your private storage); products, campaigns and posts show `photoCount` / `mediaCount`.
 
 ## Developer notes
 

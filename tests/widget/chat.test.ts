@@ -30,7 +30,7 @@ vi.mock("@/lib/usage", () => ({
 }));
 vi.mock("@/lib/leads/service", () => ({ createLeadFromChat: m.createLead }));
 vi.mock("@/lib/widget/ai", () => ({ generateChatReply: m.generate }));
-vi.mock("@/lib/widget/config", () => ({ loadPublicWidget: m.widget, loadProjectFacts: vi.fn().mockResolvedValue([]) }));
+vi.mock("@/lib/widget/config", () => ({ loadPublicWidget: m.widget, loadProjectFacts: vi.fn().mockResolvedValue([]), loadFaqs: vi.fn().mockResolvedValue([]) }));
 vi.mock("@/lib/widget/turnstile", async (orig) => ({ ...(await orig<typeof import("@/lib/widget/turnstile")>()), turnstileEnabled: m.turnstile, verifyTurnstile: vi.fn().mockResolvedValue(true) }));
 
 import { handleChat, handleLead } from "@/lib/widget/chat";
