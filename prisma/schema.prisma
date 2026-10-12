@@ -11,6 +11,8 @@ datasource db {
 }
 
 enum SubscriptionStatus {
+  // New sign-ups: a plan is chosen and a demo booked, nothing else works until an admin starts the trial (docs/REGIONS.md).
+  PENDING_DEMO
   TRIALING
   ACTIVE
   PAST_DUE
@@ -70,10 +72,13 @@ model Business {
   widgetKey               String    @unique @default(cuid()) // public id used by the embed snippet
   composioApiKeyEncrypted String? // Pro users' own Composio key, encrypted with lib/crypto.ts
   timezone                String    @default("UTC") // IANA zone for the calendar and posting times, e.g. "Africa/Kigali"
+  // PricingRegion.key, set from the sign-up country (lib/region.ts). Billing always uses this, never the visitor's IP.
+  pricingRegion           String    @default("GLOBAL")
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
   projects      Project[]
+  demoBookings  DemoBooking[]
   designs       Design[]
   leads         Lead[]
   connections   Connection[]
@@ -247,6 +252,13 @@ model Subscription {
   cancelAtPeriodEnd      Boolean            @default(false) // stays active until currentPeriodEnd
   providerUpdatedAt      DateTime? // the provider's last change; older webhooks arriving late are ignored
   trialEndsAt            DateTime?
+  // The plan chosen at sign-up (PlanDefinition.key, no foreign key so a plan can be retired freely). While the status is
+  // PENDING_DEMO nothing is usable; during the trial the company has this plan's features with the TRIAL plan's limits;
+  // `plan` becomes this key when the client pays.
+  chosenPlan             String?
+  // Trial-end reminders (lib/demo/trial-reminders.ts), recorded before sending so each goes out at most once.
+  trialReminder1SentAt   DateTime?
+  trialReminder2SentAt   DateTime?
   // Start of the billing period. Usage resets monthly from here (yearly plans too).
   currentPeriodStart     DateTime           @default(now())
   currentPeriodEnd       DateTime?
@@ -978,6 +990,78 @@ model PlanDefinition {
 
   subscriptions Subscription[]
   priceChanges  PlanPriceChange[]
+  regionPrices  PlanRegionPrice[]
+}
+
+// ---- Regions, regional prices and demo bookings (docs/REGIONS.md) ---------------------------------------------------
+
+// Where a business is, for prices and payment methods. RW, EAC and GLOBAL are seeded; admins can add more.
+model PricingRegion {
+  key            String   @id // "RW", "EAC", "GLOBAL" or an admin-created key
+  name           String
+  currency       String // ISO 4217: "RWF", "USD"
+  countries      String[] // ISO 3166-1 alpha-2 codes; GLOBAL has none and takes everything else
+  paymentMethods String[] // "momo" | "card"
+  active         Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  prices PlanRegionPrice[]
+}
+
+// A plan is offered in a region only when it has a price there. Amounts are in the currency's smallest unit
+// (RWF has no minor unit, so monthlyMinor = whole francs). For a non-USD region the card (Paddle, USD) price is derived
+// from the admin's USD rate and card margin and kept here; the Paddle price ids are filled by the (TODO) Paddle sync.
+model PlanRegionPrice {
+  id                   String         @id @default(cuid())
+  planKey              String
+  plan                 PlanDefinition @relation(fields: [planKey], references: [key], onUpdate: Cascade, onDelete: Cascade)
+  regionKey            String
+  region               PricingRegion  @relation(fields: [regionKey], references: [key], onUpdate: Cascade, onDelete: Cascade)
+  currency             String
+  monthlyMinor         Int
+  yearlyMinor          Int
+  cardMonthlyUsdCents  Int?
+  cardYearlyUsdCents   Int?
+  paddleMonthlyPriceId String?
+  paddleYearlyPriceId  String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  @@unique([planKey, regionKey])
+  @@index([regionKey])
+}
+
+// When the owner takes demo calls: one row per weekly window, in Africa/Kigali time (lib/demo/slots.ts). Slot length,
+// buffer and blocked dates are AdminSetting keys (lib/admin/settings.ts).
+model AdminAvailability {
+  id          String   @id @default(cuid())
+  weekday     Int // 0 = Sunday ... 6 = Saturday
+  startMinute Int // minutes after midnight, Africa/Kigali
+  endMinute   Int
+  createdAt   DateTime @default(now())
+
+  @@index([weekday])
+}
+
+// A demo call booked by a new client. One live ("booked") booking per start time (partial unique index in the migration).
+model DemoBooking {
+  id          String   @id @default(cuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  planKey     String // the plan chosen when booking
+  startsAt    DateTime
+  endsAt      DateTime
+  status      String   @default("booked") // booked | done | no_show | cancelled
+  notes       String?
+  meetingLink String? // the reusable meeting link at the time of booking
+  icsToken    String   @unique @default(cuid()) // unguessable id of the .ics invite route
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([startsAt])
+  @@index([businessId, status])
 }
 
 // One price change of one plan. Existing subscribers move to the new price at a renewal, after notice (increase).

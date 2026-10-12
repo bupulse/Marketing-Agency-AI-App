@@ -1,8 +1,22 @@
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 import type { Plan, PlanLimits } from "@/lib/plans";
+import { formatMinor } from "@/lib/region-format";
 
-/** The price part of a plan, in cents (the shape of PublicPlan). */
-export type PlanPrices = { monthlyPriceCents: number; yearlyPriceCents: number };
+/** The price part of a plan in the currency's smallest unit (the shape of PublicPlan); `currency` defaults to USD. */
+export type PlanPrices = { monthlyPriceCents: number; yearlyPriceCents: number; currency?: string };
+
+/** An amount in a plan's currency: "$49", "15,000 RWF". */
+export const formatPrice = (minor: number, currency = "USD") => formatMinor(minor, currency);
+
+/** The plan's price for an interval, formatted in its currency. */
+export function formatPlanPrice(plan: PlanPrices, interval: BillingInterval) {
+  return formatPrice(interval === "YEAR" ? plan.yearlyPriceCents : plan.monthlyPriceCents, plan.currency ?? "USD");
+}
+
+/** What a customer saves by paying yearly, in the smallest unit of the plan's currency. */
+export function yearlySavingsMinor(plan: PlanPrices) {
+  return plan.monthlyPriceCents * 12 - plan.yearlyPriceCents;
+}
 
 /** Dollars, without cents when they are zero: 490 -> "$490", 49.5 -> "$49.50". */
 export function formatUsd(amount: number) {
@@ -71,9 +85,9 @@ export function planFeatures(limits: PlanLimits) {
   ];
 }
 
-export type UsageBlockReason = "no_subscription" | "trial_expired" | "inactive" | "past_due" | "limit_reached";
+export type UsageBlockReason = "no_subscription" | "pending_demo" | "trial_expired" | "inactive" | "past_due" | "limit_reached";
 
-const REASONS: UsageBlockReason[] = ["no_subscription", "trial_expired", "inactive", "past_due", "limit_reached"];
+const REASONS: UsageBlockReason[] = ["no_subscription", "pending_demo", "trial_expired", "inactive", "past_due", "limit_reached"];
 
 /** Reads the 402 body of a blocked generation ({ error: "usage_blocked", reason }), or null if it is something else. */
 export function parseUsageBlock(body: unknown): UsageBlockReason | null {
@@ -83,11 +97,18 @@ export function parseUsageBlock(body: unknown): UsageBlockReason | null {
   return REASONS.includes(reason as UsageBlockReason) ? (reason as UsageBlockReason) : "inactive";
 }
 
-export type BlockCopy = { title: string; body: string; cta: string; action: "billing" | "portal" };
+export type BlockCopy = { title: string; body: string; cta: string; action: "billing" | "portal" | "dashboard" };
 
 export function blockCopy(reason: UsageBlockReason, opts: { limit?: number; resetsAt?: Date | string | null } = {}): BlockCopy {
   const reset = formatDate(opts.resetsAt);
   switch (reason) {
+    case "pending_demo":
+      return {
+        title: "Your demo comes first",
+        body: "Everything opens after your demo and the free trial that follows it. Your demo details are on the dashboard.",
+        cta: "See your demo",
+        action: "dashboard",
+      };
     case "trial_expired":
       return {
         title: "Your free trial has ended",
@@ -122,6 +143,7 @@ export function blockCopy(reason: UsageBlockReason, opts: { limit?: number; rese
 export function statusLabel(status: string, cancelAtPeriodEnd = false) {
   if (status === "ACTIVE") return cancelAtPeriodEnd ? "Cancels soon" : "Active";
   if (status === "TRIALING") return "Free trial";
+  if (status === "PENDING_DEMO") return "Waiting for demo";
   if (status === "PAST_DUE") return "Payment failed";
   if (status === "CANCELED") return "Cancelled";
   return "Ended";

@@ -8,6 +8,7 @@ import { requireActiveUser } from "@/lib/auth/require-user";
 import { askMessage, can } from "@/lib/team/roles";
 import { activeProvider, billingAdapter, isInterval } from "@/lib/billing";
 import { getPlan, priceIdFor } from "@/lib/plan-catalog";
+import { companyPlans, regionPriceIdFor } from "@/lib/region-prices";
 import { invoiceUrl } from "@/lib/billing/paddle";
 import { applyProviderSubscription } from "@/lib/billing/apply";
 import type { CheckoutConfig, Invoice, PaidPlan } from "@/lib/billing";
@@ -21,6 +22,9 @@ const planSchema = z.object({
 });
 
 const NOT_READY = "Payments are not available right now. Please try again in a little while.";
+const NOT_IN_REGION = "That plan is not offered where your business is. Choose one of the plans shown.";
+// A region's card prices exist in Paddle only once they are synced (docs/REGIONS.md); until then the region's other method is the way.
+const CARD_NOT_READY = "Card payments are not ready for your region yet. Pay by Mobile Money instead, or contact support.";
 const GENERIC = "Something went wrong. Nothing was changed. Please try again.";
 
 /** A paying subscription the customer can manage: has a provider subscription and is not cancelled. */
@@ -57,6 +61,11 @@ export async function startCheckout(input: { plan: string; interval: string }): 
     return { ok: false, error: "You already have a paid plan. Use Switch plan to change it." };
   }
   if (!user.email) return { ok: false, error: "Add an email address to your account first." };
+  // The plan must be offered in the company's region, at the region's price. Billing never looks at the visitor's IP.
+  const { region, plans } = await companyPlans(user.businessId);
+  if (!plans.some((p) => p.key === plan)) return { ok: false, error: NOT_IN_REGION };
+  const priceId = await regionPriceIdFor("PADDLE", plan, region.key, interval);
+  if (!priceId) return { ok: false, error: region.paymentMethods.includes("momo") ? CARD_NOT_READY : NOT_READY };
 
   try {
     const adapter = billingAdapter(activeProvider());
@@ -67,6 +76,7 @@ export async function startCheckout(input: { plan: string; interval: string }): 
       plan,
       interval,
       providerCustomerId: sub?.provider === adapter.provider ? sub.providerCustomerId : null,
+      priceId,
     });
     return { ok: true, config };
   } catch (error) {
@@ -99,7 +109,10 @@ export async function changePlan(input: { plan: string; interval: string }): Pro
   if (!target || target.isTrial || (target.status !== "active" && plan !== sub.plan)) {
     return { ok: false, error: "That plan is not available. Choose one of the plans shown." };
   }
-  const priceId = await priceIdFor(sub.provider, plan, interval);
+  // Another plan must be offered in the company's region; staying on the current plan only changes the interval.
+  const { region, plans } = await companyPlans(user.businessId);
+  if (plan !== sub.plan && !plans.some((p) => p.key === plan)) return { ok: false, error: NOT_IN_REGION };
+  const priceId = (await regionPriceIdFor(sub.provider, plan, region.key, interval)) ?? (plan === sub.plan ? await priceIdFor(sub.provider, plan, interval) : null);
   if (!priceId) return { ok: false, error: NOT_READY };
   if (priceId === sub.providerPriceId) return { ok: false, error: "You are already on that plan." };
 

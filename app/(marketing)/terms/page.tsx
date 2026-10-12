@@ -3,10 +3,11 @@ import Link from "next/link";
 import { LegalList, LegalPage, LegalSection } from "@/components/marketing/pages/legal";
 import { pageMetadata } from "@/components/marketing/pages/seo";
 import { site } from "@/lib/content/site";
-import { formatCents } from "@/components/billing/helpers";
-import { getSellablePlans, getTrialInfo } from "@/lib/plan-catalog";
+import { formatPrice } from "@/components/billing/helpers";
+import { getSellablePlans } from "@/lib/plan-catalog";
+import { getSetting } from "@/lib/admin/settings";
 
-// Trial length and plan prices come from the plans an admin manages; the wording stays as written.
+// Trial length (an admin setting) and plan prices (the plans an admin manages) are read live; the wording stays as written.
 export const dynamic = "force-dynamic";
 
 export const metadata = pageMetadata({
@@ -16,8 +17,8 @@ export const metadata = pageMetadata({
 });
 
 export default async function TermsPage() {
-  const [trial, sellable] = await Promise.all([getTrialInfo(), getSellablePlans()]);
-  const priceList = sellable.map((p) => `${p.name} costs ${formatCents(p.monthlyPriceCents)} per month or ${formatCents(p.yearlyPriceCents)} per year`);
+  const [trialDays, sellable] = await Promise.all([getSetting("trialDays"), getSellablePlans()]);
+  const priceList = sellable.map((p) => `${p.name} costs ${formatPrice(p.monthlyPriceCents, p.currency)} per month or ${formatPrice(p.yearlyPriceCents, p.currency)} per year`);
   const prices = priceList.length > 1 ? `${priceList.slice(0, -1).join(", ")}, and ${priceList[priceList.length - 1]}` : priceList[0] ?? "Plans and prices are shown on our pricing page";
   return (
     <LegalPage title="Terms of Service" intro="The rules for using BuPulse, in plain English.">
@@ -44,11 +45,11 @@ export default async function TermsPage() {
         />
       </LegalSection>
 
-      <LegalSection title="3. Free trial, plans and billing">
+      <LegalSection title="3. Demo, free trial, plans and billing">
         <LegalList
           items={[
-            `The free trial lasts ${trial.days} days and includes ${trial.text} AI text generations and ${trial.images} brand designs. No card is needed.`,
-            `${prices}, in US dollars. Each plan has monthly usage limits shown on our pricing page; on yearly plans they reset every month.`,
+            `New accounts start with a free demo call. After it we start a free trial of ${trialDays} days with a limited number of generations. No card is needed for the trial, and nothing is charged when it ends: if you do nothing, the account becomes read-only and your work stays saved.`,
+            `${prices}, in US dollars. Some regions have their own prices and currency (for example Rwandan francs in Rwanda) and payment methods, shown on our pricing page for your location. Each plan has monthly usage limits shown there; on yearly plans they reset every month.`,
             "Paid plans renew at the end of each month or year until cancelled. Payments are processed by our reseller and merchant of record, Paddle.com, which appears on your card statement.",
             "You can cancel at any time. Your plan stays active until the end of the period you have paid for. Refunds follow our Refund Policy (bupulse.com/refund-policy).",
             "If a payment fails, we may limit your account until it is resolved.",

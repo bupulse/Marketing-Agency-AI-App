@@ -59,7 +59,7 @@ export function MobileMenu({ links }: MobileMenuProps) {
             Log in
           </Link>
           <Link href="/signup" onClick={close} className={buttonClasses({ variant: "primary" })}>
-            Start free trial
+            Book a free demo
           </Link>
         </div>
       </div>

@@ -13,6 +13,7 @@ import { createRefund, describeRefundTarget } from "@/lib/billing/paddle-admin";
 import { retryPost, PublishingError } from "@/lib/publishing/service";
 import { monthlyCostSchema, type MonthlyCostInput } from "@/lib/analytics/costs";
 import { writeAudit } from "./audit";
+import { getSetting } from "./settings";
 import * as companies from "./actions/companies";
 import { isServiceEnabled } from "./switch";
 import { clearFlagCache } from "./flags";
@@ -33,7 +34,7 @@ export { isEnabled } from "./flags";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const APPROVAL_TTL_MS = 7 * DAY_MS;
-const SUBSCRIPTION_STATUSES = ["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"] as const;
+const SUBSCRIPTION_STATUSES = ["PENDING_DEMO", "TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"] as const;
 const POST_STATUSES = ["DRAFT", "PENDING_APPROVAL", "SCHEDULED", "PUBLISHING", "PUBLISHED", "NEEDS_ACTION", "FAILED", "CANCELLED"] as const;
 
 // ---- small helpers ----------------------------------------------------------------------------------------
@@ -663,13 +664,15 @@ export async function requestChangePlan(ctx: AdminContext, input: { userId: stri
       throw new AdminError("conflict", "That user has a live paid subscription. Cancel it in Paddle first; BuPulse never ends a paid subscription from here.");
     }
     const before = { plan: sub.plan, status: sub.status, trialEndsAt: sub.trialEndsAt };
-    const trialEndsAt = new Date(Date.now() + ((await getTrialPlan()).trialDays ?? 7) * DAY_MS);
+    // The trial length is the admin setting (Admin -> Settings), not the TRIAL plan's trialDays (docs/REGIONS.md).
+    const trialDays = await getSetting("trialDays");
+    const trialEndsAt = new Date(Date.now() + trialDays * DAY_MS);
     const after = { plan: target.key, status: "TRIALING" as const, trialEndsAt };
     await prisma.$transaction(async (tx) => {
       await tx.subscription.update({ where: { userId: input.userId }, data: after });
       await writeAudit(tx, ctx, "change_plan", `user:${input.userId}`, before, after);
     });
-    return { id: null, status: "applied", kind: "change_plan" as const, replayed: false, message: `The user is back on a ${(await getTrialPlan()).trialDays ?? 7}-day free trial. No money was involved.` };
+    return { id: null, status: "applied", kind: "change_plan" as const, replayed: false, message: `The user is back on a ${trialDays}-day free trial. No money was involved.` };
   }
   if (target.status === "retired") throw new AdminError("conflict", `The ${target.name} plan is retired and cannot be given to anyone new.`);
   await requirePaddleOn();

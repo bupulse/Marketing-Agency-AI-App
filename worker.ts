@@ -6,6 +6,7 @@
 //   daily 03:47  -> POST /api/cron/store-sync  (re-syncs imported store products, cursor calls)
 //   daily 02:17  -> POST /api/cron/analytics-rollup  (daily analytics roll-up and back-fill, cursor calls)
 //   daily 04:29  -> POST /api/cron/plan-price-changes  (price-change notices and swaps, archives old Paddle prices, cursor calls)
+//   hourly :53   -> POST /api/cron/trial-reminders  (trial-end reminders for clients without a card, and trial expiry)
 // The handler calls the app's own routes through the self-reference binding, so the routes keep one set of
 // rules (CRON_SECRET bearer check) whether Cloudflare, GitHub Actions or a person calls them.
 // Not type-checked with the app (tsconfig excludes it): ./.open-next only exists after `opennextjs-cloudflare build`.
@@ -40,6 +41,9 @@ export const ANALYTICS_ROLLUP_CRON = "17 2 * * *";
 /** Daily at 04:29 UTC: plan price changes (notice emails, moving clients to the new price before renewal), cursor calls. */
 export const PLAN_PRICE_CRON = "29 4 * * *";
 
+/** Hourly at :53: trial-end reminders (a day before and on the last day) and trials that are over become read-only. */
+export const TRIAL_CRON = "53 * * * *";
+
 export const CRON_ROUTES: Record<string, string> = {
   [PUBLISH_CRON]: "/api/cron/publish",
   [METRICS_CRON]: "/api/cron/metrics",
@@ -48,6 +52,7 @@ export const CRON_ROUTES: Record<string, string> = {
   [STORE_SYNC_CRON]: "/api/cron/store-sync",
   [ANALYTICS_ROLLUP_CRON]: "/api/cron/analytics-rollup",
   [PLAN_PRICE_CRON]: "/api/cron/plan-price-changes",
+  [TRIAL_CRON]: "/api/cron/trial-reminders",
 };
 
 /** The route for a schedule, or null for one this worker doesn't know (never fall back to publishing). */

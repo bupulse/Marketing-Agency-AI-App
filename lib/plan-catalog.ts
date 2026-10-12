@@ -55,8 +55,10 @@ export interface PublicPlan {
   isTrial: boolean;
   trialDays: number | null;
   highlight: boolean;
+  /** In the currency's smallest unit. For a region's prices see lib/region-prices.ts (RegionalPlan). */
   monthlyPriceCents: number;
   yearlyPriceCents: number;
+  currency: string;
   limits: PlanLimits;
   highlights: string[];
   features: FeatureKey[];
@@ -72,6 +74,7 @@ export function toPublic(p: PlanView): PublicPlan {
     highlight: p.highlight,
     monthlyPriceCents: p.monthlyPriceCents,
     yearlyPriceCents: p.yearlyPriceCents,
+    currency: p.currency,
     limits: p.limits,
     highlights: p.highlights,
     features: p.features,

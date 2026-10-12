@@ -10,7 +10,9 @@ import { InvoiceList } from "@/components/billing/invoice-list";
 import { PlanActions } from "@/components/billing/plan-actions";
 import { PlanPicker } from "@/components/billing/plan-picker";
 import { Badge, GlassCard, Meter } from "@/components/ui";
-import { getPlan, getSellablePlans, subscriberPriceCents, toPublic } from "@/lib/plan-catalog";
+import { getPlan, subscriberPriceCents, toPublic } from "@/lib/plan-catalog";
+import { companyPlans, type RegionalPlan } from "@/lib/region-prices";
+import { currencyNote } from "@/lib/region-format";
 import { getInvoices } from "./actions";
 
 export const metadata = { title: "Billing" };
@@ -20,7 +22,7 @@ type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 export default async function BillingPage({ searchParams }: { searchParams: SearchParams }) {
   const blocked = await pageGate("billing");
   if (blocked) return blocked;
-  const [{ usage, isTrial, trialDaysLeft }, query] = await Promise.all([getAppContext(), searchParams]);
+  const [{ usage, isTrial, trialDaysLeft, business, chosenPlan }, query] = await Promise.all([getAppContext(), searchParams]);
   const { subscription, plan, used, limits, resetsAt } = usage;
 
   const status = subscription.status;
@@ -29,9 +31,13 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   const periodEnd = formatDate(subscription.currentPeriodEnd);
   const trialEnd = formatDate(subscription.trialEndsAt);
   const cancelling = paid && subscription.cancelAtPeriodEnd;
-  const [sellable, currentPlan] = await Promise.all([getSellablePlans(), getPlan(subscription.plan)]);
+  // The plans and prices of the company's region (never the visitor's IP), plus the plan the client chose at sign-up.
+  const [{ region, plans: regional }, currentPlan, chosen] = await Promise.all([companyPlans(business.id), getPlan(subscription.plan), chosenPlan ? getPlan(chosenPlan) : Promise.resolve(null)]);
   // Retired and hidden plans stay listed for the clients already on them, so "Your current plan" is still shown.
-  const pickable = [...sellable, ...(currentPlan && !currentPlan.isTrial && !sellable.some((p) => p.key === currentPlan.key) ? [currentPlan] : [])].map(toPublic);
+  const pickable: RegionalPlan[] = [
+    ...regional,
+    ...(currentPlan && !currentPlan.isTrial && !regional.some((p) => p.key === currentPlan.key) ? [{ ...toPublic(currentPlan), regionKey: region.key, paymentMethods: region.paymentMethods, card: null }] : []),
+  ];
   const price =
     paid && currentPlan && !currentPlan.isTrial ? `${formatUsd(subscriberPriceCents(currentPlan, subscription.providerPriceId, subscription.interval) / 100)} per ${intervalWord(subscription.interval)}` : null;
 
@@ -76,7 +82,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
               Current plan
             </span>
             <strong className="text-2xl tracking-[-0.02em]">
-              {plan.name}
+              {isTrial && chosen ? `${plan.name} of ${chosen.name}` : plan.name}
               {paid && <span className="text-base font-medium text-muted"> · {subscription.interval === "YEAR" ? "Yearly" : "Monthly"}</span>}
             </strong>
             {price && <span className="text-sm text-muted">{price}</span>}
@@ -111,7 +117,12 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
 
       {/* Hidden while a purchase is being confirmed, so nobody buys a second plan by accident. */}
       {!waitingForCheckout && (
-        <PlanPicker plans={pickable} current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue }} />
+        <>
+          <PlanPicker plans={pickable} current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue }} />
+          <p className="px-1 text-sm text-muted">
+            Prices for {region.name}. {currencyNote(region.currency, region.paymentMethods)}
+          </p>
+        </>
       )}
 
       {(paid || invoices.length > 0) && <InvoiceList invoices={invoices} />}

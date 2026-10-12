@@ -62,6 +62,8 @@ export interface BillingAdapter {
     interval: BillingInterval;
     /** Existing customer at this provider, so they are not created twice. */
     providerCustomerId?: string | null;
+    /** The price to charge when it is not the plan's own (a region's price, lib/region-prices.ts). */
+    priceId?: string | null;
   }): Promise<CheckoutConfig>;
   /** A link to the provider's page where the customer updates their card or cancels. */
   portalUrl(input: { providerCustomerId: string; providerSubscriptionId?: string | null }): Promise<string>;

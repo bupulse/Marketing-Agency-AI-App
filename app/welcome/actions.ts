@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { fieldErrors, welcomeSchema, type FieldErrors } from "@/lib/auth/schemas";
+import { regionFromCountryName } from "@/lib/region";
 
 export type WelcomeState = { error?: string; fieldErrors?: FieldErrors };
 
@@ -30,6 +31,7 @@ export async function saveOrganisation(_prev: WelcomeState, formData: FormData):
       ceoName,
       industry,
       country,
+      pricingRegion: await regionFromCountryName(country),
       phone: phone ?? null,
       website: website ?? null,
       detailsCompletedAt: new Date(),

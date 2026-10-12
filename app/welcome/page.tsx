@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { WelcomeForm } from "@/components/auth/welcome-form";
-import { getTrialInfo } from "@/lib/plan-catalog";
 import { prisma } from "@/lib/db";
 import { ensureAccount } from "@/lib/account";
 import { resolveCompany } from "@/lib/team/company";
@@ -39,7 +38,6 @@ export default async function WelcomePage() {
     <AuthShell wide>
       <WelcomeForm
         email={user.email ?? ""}
-        trialDays={(await getTrialInfo()).days}
         defaults={{
           organisationName: business && business.name !== "My business" ? business.name : "",
           ceoName: business?.ceoName ?? meta?.full_name ?? meta?.name ?? "",

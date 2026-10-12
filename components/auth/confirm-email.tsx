@@ -20,7 +20,7 @@ export function ConfirmEmail({ email, onChangeEmail, next }: { email: string; on
       </h1>
       <p className="text-[15px] text-muted">
         We sent a confirmation link to <strong className="break-all text-text">{email}</strong>. It comes from{" "}
-        <strong className="text-text">register@bupulse.com</strong>. Open it to activate your account and start your free trial.
+        <strong className="text-text">register@bupulse.com</strong>. Open it to activate your account, choose a plan and book your free demo.
       </p>
       <p className="text-[13px] text-muted">Can&apos;t find it? Check your spam or promotions folder.</p>
       <ResendButton email={email} startCooldown next={next} />

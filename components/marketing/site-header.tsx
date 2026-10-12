@@ -34,7 +34,7 @@ export function SiteHeader() {
             Log in
           </Button>
           <Button href="/signup" size="sm" className="hidden md:inline-flex">
-            Start free trial
+            Book a free demo
           </Button>
           <MobileMenu links={navLinks} />
         </div>

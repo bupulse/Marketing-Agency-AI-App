@@ -11,10 +11,10 @@ export function FinalCta() {
             <h2 id="cta-title" className="relative m-0 text-[clamp(30px,4vw,52px)] leading-[1.08] font-bold tracking-[-0.03em]">
               Whatever you sell, let’s get it seen.
             </h2>
-            <p className="relative m-0 text-lg">Plans from $49 a month, or let our team run it for you.</p>
+            <p className="relative m-0 text-lg">Simple plans priced for where you are, or let our team run it for you.</p>
             <div className="relative flex flex-wrap justify-center gap-3">
               <Button href="/signup" variant="white" size="lg">
-                Start free trial
+                Book a free demo
               </Button>
               <Button
                 href="/done-for-you"

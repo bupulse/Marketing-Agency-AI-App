@@ -6,7 +6,6 @@ import { Fragment } from "react";
 import { Button, Container } from "@/components/ui";
 import { getAllPosts, getPost } from "@/lib/content/blog";
 import { site } from "@/lib/content/site";
-import { getTrialInfo } from "@/lib/plan-catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +39,6 @@ function Inline({ text }: { text: string }) {
 
 export default async function BlogPostPage({ params }: PageProps<"/blog/[slug]">) {
   const post = getPost((await params).slug);
-  const trialDays = (await getTrialInfo()).days;
   if (!post) notFound();
 
   const jsonLd = {
@@ -86,7 +84,7 @@ export default async function BlogPostPage({ params }: PageProps<"/blog/[slug]">
       </div>
       <div className="mt-14 flex flex-col items-start gap-4 border-t border-line pt-8">
         <p className="text-lg font-semibold">Want help putting this into practice?</p>
-        <Button href="/signup">Try BuPulse free for {trialDays} days</Button>
+        <Button href="/signup">Book a free demo</Button>
       </div>
     </Container>
   );

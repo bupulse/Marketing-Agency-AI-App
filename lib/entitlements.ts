@@ -34,15 +34,30 @@ export class FeatureRequiredError extends Error {
   }
 }
 
-/** The plan key of a company. Cached per request, like getAppContext. */
-const planKeyOf = cache(async (businessId: string): Promise<string | null> => {
+type SubscriptionBits = { plan: string; status: string; chosenPlan: string | null };
+
+/** The subscription of a company. Cached per request, like getAppContext. */
+const subscriptionOf = cache(async (businessId: string): Promise<SubscriptionBits | null> => {
   if (!businessId) return null;
   const business = await prisma.business.findUnique({
     where: { id: businessId },
-    select: { user: { select: { subscription: { select: { plan: true } } } } },
+    select: { user: { select: { subscription: { select: { plan: true, status: true, chosenPlan: true } } } } },
   });
-  return business?.user.subscription?.plan ?? null;
+  const sub = business?.user.subscription;
+  return sub ? { plan: sub.plan, status: sub.status, chosenPlan: sub.chosenPlan ?? null } : null;
 });
+
+/**
+ * Which plan's features a company has (pure, so tests can check the rule):
+ * - waiting for its demo (PENDING_DEMO): none, whatever the plan says;
+ * - on the trial (TRIALING) with a plan chosen at sign-up: the chosen plan's features (the limits stay the TRIAL plan's);
+ * - otherwise its plan's.
+ */
+export function featurePlanKey(sub: SubscriptionBits | null): string | null {
+  if (!sub || sub.status === "PENDING_DEMO") return null;
+  if (sub.status === "TRIALING" && sub.chosenPlan) return sub.chosenPlan;
+  return sub.plan;
+}
 
 export type CompanyEntitlements = {
   /** Everything the plan includes. */
@@ -58,8 +73,10 @@ const serviceUp = (key: FeatureKey, off: Set<ServiceId>) => {
 
 /** What a company's plan includes and which of those are usable now. One lookup per request. */
 export const companyEntitlements = cache(async (businessId: string): Promise<CompanyEntitlements> => {
-  const planKey = await planKeyOf(businessId);
-  const plan = planKey ? await getPlan(planKey) : null;
+  const sub = await subscriptionOf(businessId);
+  const planKey = featurePlanKey(sub);
+  // A chosen plan that was retired since falls back to the plan the subscription is on.
+  const plan = planKey ? ((await getPlan(planKey)) ?? (sub && planKey !== sub.plan ? await getPlan(sub.plan) : null)) : null;
   const off = await disabledServices();
   const inPlan = new Set<FeatureKey>(plan?.features ?? []);
   return { inPlan, usable: new Set([...inPlan].filter((k) => serviceUp(k, off))) };

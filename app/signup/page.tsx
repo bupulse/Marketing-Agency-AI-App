@@ -4,7 +4,6 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import SignupForm from "@/components/auth/signup-form";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { cleanReturn } from "@/lib/auth/return-path";
-import { getTrialInfo } from "@/lib/plan-catalog";
 
 export const metadata: Metadata = {
   title: "Create your account",
@@ -19,7 +18,7 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
 
   return (
     <AuthShell wide>
-      <SignupForm next={next} trialDays={(await getTrialInfo()).days} />
+      <SignupForm next={next} />
     </AuthShell>
   );
 }

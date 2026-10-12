@@ -1,5 +1,5 @@
 import { Check, Minus } from "lucide-react";
-import { formatCents } from "@/components/billing/helpers";
+import { formatPrice } from "@/components/billing/helpers";
 import type { PublicPlan } from "@/lib/plan-catalog";
 
 type Cell = string | boolean;
@@ -8,7 +8,7 @@ function rowsFor(plans: PublicPlan[]): { label: string; cells: Cell[] }[] {
   const each = (f: (p: PublicPlan) => Cell) => plans.map(f);
   const total = (p: PublicPlan, n: number) => (p.isTrial ? `${n} total` : `${n} / month`);
   const rows: { label: string; cells: Cell[] }[] = [
-    { label: "Price", cells: each((p) => (p.isTrial ? `Free for ${p.trialDays ?? 7} days` : `${formatCents(p.monthlyPriceCents)}/month`)) },
+    { label: "Price", cells: each((p) => (p.isTrial ? `Free for ${p.trialDays ?? 7} days` : `${formatPrice(p.monthlyPriceCents, p.currency)}/month`)) },
     { label: "AI text generations", cells: each((p) => total(p, p.limits.text)) },
     { label: "Brand designs", cells: each((p) => total(p, p.limits.image)) },
     { label: "Brand voice and business knowledge", cells: each(() => true) },

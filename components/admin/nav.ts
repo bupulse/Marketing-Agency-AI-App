@@ -16,7 +16,10 @@ import {
   Server,
   TriangleAlert,
   Building2,
+  CalendarCheck,
   CloudDownload,
+  Globe,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 
@@ -29,6 +32,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     title: "Clients",
     items: [
       { href: "/admin/companies", label: "Companies", icon: Building2 },
+      { href: "/admin/demos", label: "Demos", icon: CalendarCheck },
       { href: "/admin/connections", label: "Connections", icon: Plug },
     ],
   },
@@ -37,6 +41,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { href: "/admin/revenue", label: "Revenue and costs", icon: Coins },
       { href: "/admin/plans", label: "Plans", icon: Layers },
+      { href: "/admin/settings/regions", label: "Regions and prices", icon: Globe },
       { href: "/admin/approvals", label: "Approvals", icon: BadgeCheck, badge: "approvals" },
     ],
   },
@@ -63,6 +68,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { href: "/admin/flags", label: "Feature flags", icon: Flag },
       { href: "/admin/announcements", label: "Announcements", icon: Megaphone },
       { href: "/admin/jarvis", label: "Jarvis", icon: Bot },
+      { href: "/admin/settings", label: "Settings", icon: Settings },
       { href: "/admin/settings/updates", label: "Updates", icon: CloudDownload },
       { href: "/admin/audit", label: "Audit log", icon: ScrollText },
     ],

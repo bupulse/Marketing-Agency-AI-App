@@ -7,6 +7,7 @@ import { TrialBanner } from "@/components/app/trial-banner";
 import { brandPalette, isHexColor } from "@/lib/color-contrast";
 import { AutoTimezone } from "@/components/publishing/auto-timezone";
 import { AnnouncementBanner } from "@/components/app/announcement-banner";
+import { DemoLock } from "@/components/app/demo-lock";
 import { can } from "@/lib/team/roles";
 import { getActiveAnnouncements } from "@/lib/admin/service";
 
@@ -16,8 +17,19 @@ export const metadata: Metadata = {
 };
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
-  const { business, role, displayName, firstName, email, businessName, usage, entitlements, isTrial, trialDaysLeft, logoUrl, brandColors } =
+  const { business, role, displayName, firstName, email, businessName, usage, entitlements, isTrial, trialDaysLeft, logoUrl, brandColors, pendingDemo } =
     await getAppContext();
+
+  // Waiting for the demo: every dashboard route shows the demo and nothing else (the server refuses the rest anyway:
+  // lib/entitlements.ts grants no features and lib/usage.ts answers pending_demo while the status is PENDING_DEMO).
+  if (pendingDemo) {
+    return (
+      <>
+        <BackgroundBlobs />
+        <DemoLock businessId={business.id} role={role} firstName={firstName} email={email} businessName={businessName} />
+      </>
+    );
+  }
 
   const trialLabel = isTrial
     ? trialDaysLeft === 0

@@ -24,9 +24,9 @@ export function UpgradeDialog({ open, onOpenChange, reason, limit, resetsAt }: U
   const copy = blockCopy(reason, { limit, resetsAt });
 
   function go() {
-    if (copy.action === "billing") {
+    if (copy.action === "billing" || copy.action === "dashboard") {
       onOpenChange(false);
-      router.push("/dashboard/billing");
+      router.push(copy.action === "billing" ? "/dashboard/billing" : "/dashboard");
       return;
     }
     start(async () => {

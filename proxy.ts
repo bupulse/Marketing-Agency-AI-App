@@ -1,7 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED = ["/dashboard", "/welcome", "/onboarding", "/account"];
+const PROTECTED = ["/dashboard", "/welcome", "/onboarding", "/book-demo", "/account"];
+
+/** The public pages' region switch (?region=RW) and local testing: kept in a cookie lib/region.ts reads. */
+const REGION_COOKIE = "bp-region";
+const REGION_KEY = /^[A-Z][A-Z0-9_]{1,15}$/;
 
 // Refreshes the Supabase session cookie on every request and keeps
 // signed-out visitors out of the dashboard.
@@ -41,6 +45,9 @@ export async function proxy(request: NextRequest) {
     url.searchParams.set("next", `${path}${request.nextUrl.search}`);
     return NextResponse.redirect(url);
   }
+
+  const region = request.nextUrl.searchParams.get("region")?.toUpperCase();
+  if (region && REGION_KEY.test(region)) response.cookies.set(REGION_COOKIE, region, { path: "/", maxAge: 30 * 24 * 60 * 60, sameSite: "lax" });
 
   return response;
 }

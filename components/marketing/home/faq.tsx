@@ -1,10 +1,10 @@
 import { Reveal } from "@/components/motion";
 import { Accordion, Container } from "@/components/ui";
 import { faqs, fillFaq } from "@/lib/content/site";
-import { getTrialInfo } from "@/lib/plan-catalog";
+import { getSetting } from "@/lib/admin/settings";
 
 export async function Faq() {
-  const items = fillFaq(faqs, (await getTrialInfo()).days);
+  const items = fillFaq(faqs, await getSetting("trialDays"));
   return (
     <section aria-labelledby="faq-title" className="py-16">
       <Container size="narrow">

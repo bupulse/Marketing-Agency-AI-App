@@ -12,7 +12,7 @@ const FIELD = {
   chat: "chatMessages",
 } as const satisfies Record<UsageMetric, string>;
 
-export type UsageBlockReason = "no_subscription" | "trial_expired" | "inactive" | "past_due" | "limit_reached";
+export type UsageBlockReason = "no_subscription" | "pending_demo" | "trial_expired" | "inactive" | "past_due" | "limit_reached";
 
 export class UsageLimitError extends Error {
   constructor(
@@ -38,6 +38,8 @@ export async function consumeUsage(userId: string, metric: UsageMetric, amount =
 
   // A suspended account (admin console) can use nothing, even with a valid session (shown to the user as "inactive").
   if (sub.user?.suspendedAt) throw new UsageLimitError("inactive", metric);
+  // Waiting for the demo: nothing is generated until an admin starts the trial (docs/REGIONS.md).
+  if (sub.status === "PENDING_DEMO") throw new UsageLimitError("pending_demo", metric);
   if (sub.plan === "TRIAL" && sub.trialEndsAt && sub.trialEndsAt < now) {
     throw new UsageLimitError("trial_expired", metric);
   }

@@ -9,14 +9,15 @@ import { useTheme } from "@/components/theme";
 import { changePlan, startCheckout } from "@/app/dashboard/billing/actions";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 import type { Plan } from "@/lib/plans";
-import type { PublicPlan } from "@/lib/plan-catalog";
+import type { RegionalPlan } from "@/lib/region-prices";
+import { paymentMethodLabel } from "@/lib/region-format";
 import { openCheckout } from "./checkout";
-import { formatUsd, intervalWord, planButtonAction, planFeatures, priceFor, yearlyBadge, yearlySavings, yearlySavingsLabel } from "./helpers";
+import { formatPlanPrice, formatPrice, intervalWord, planButtonAction, planFeatures, yearlyBadge, yearlySavingsLabel, yearlySavingsMinor } from "./helpers";
 import { PriceTag } from "./price-tag";
 
 type Props = {
-  /** The plans a client can pick (active, in sort order), from the database. */
-  plans: PublicPlan[];
+  /** The plans a client can pick (active, in sort order), at the company's region's prices. */
+  plans: RegionalPlan[];
   current: { plan: Plan; interval: BillingInterval; paid: boolean; pastDue: boolean };
 };
 
@@ -95,10 +96,22 @@ export function PlanPicker({ plans, current }: Props) {
                 <p className="mt-1 min-h-5 text-sm text-muted">
                   {interval === "YEAR"
                     ? yearlySavingsLabel(plan)
-                      ? `Billed yearly. You save ${formatUsd(yearlySavings(plan))}, that's ${yearlySavingsLabel(plan)}.`
+                      ? `Billed yearly. You save ${formatPrice(yearlySavingsMinor(plan), plan.currency)}, that's ${yearlySavingsLabel(plan)}.`
                       : "Billed yearly"
                     : "Billed every month"}
                 </p>
+                {plan.card && (
+                  <p className="mt-1 text-sm text-muted">
+                    or {formatPrice(interval === "YEAR" ? plan.card.yearlyUsdCents : plan.card.monthlyUsdCents, "USD")} / {intervalWord(interval)} by card
+                  </p>
+                )}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {plan.paymentMethods.map((m) => (
+                    <Badge key={m} tone={m === "momo" ? "success" : "blue"}>
+                      {paymentMethodLabel(m)}
+                    </Badge>
+                  ))}
+                </div>
               </div>
               <ul className="flex flex-1 flex-col gap-2 text-[15px]">
                 {(plan.highlights.length > 0 ? plan.highlights : planFeatures(plan.limits)).map((f) => (
@@ -146,7 +159,7 @@ export function PlanPicker({ plans, current }: Props) {
         {switchTo && (
           <div className="flex flex-col gap-5">
             <p className="text-[15px]">
-              New price: <strong>{formatUsd(priceFor(planOf(switchTo), interval))}</strong> per {intervalWord(interval)}.
+              New price: <strong>{formatPlanPrice(planOf(switchTo), interval)}</strong> per {intervalWord(interval)}.
             </p>
             <div className="flex flex-wrap justify-end gap-3">
               <Button variant="ghost" onClick={() => setSwitchTo(null)}>

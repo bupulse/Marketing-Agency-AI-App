@@ -36,11 +36,11 @@ const STEP_FIELDS: Record<Step, string[]> = {
   3: ["password", "confirmPassword", "terms"],
 };
 
-const titles = (trialDays: number): Record<Step, { title: string; sub: string }> => ({
-  1: { title: "Create your account", sub: `Start your ${trialDays}-day free trial. No credit card needed.` },
+const TITLES: Record<Step, { title: string; sub: string }> = {
+  1: { title: "Create your account", sub: "Then choose a plan and book a free demo. No credit card needed." },
   2: { title: "About your organisation", sub: "This helps us write in your brand voice from day one." },
   3: { title: "Secure your account", sub: "Choose a password to finish." },
-});
+};
 
 const empty = {
   email: "",
@@ -83,8 +83,7 @@ function Progress({ step }: { step: Step }) {
   );
 }
 
-export default function SignupForm({ next = "/dashboard", trialDays = 7 }: { next?: string; trialDays?: number }) {
-  const TITLES = titles(trialDays);
+export default function SignupForm({ next = "/dashboard" }: { next?: string }) {
   const [step, setStep] = useState<Step>(1);
   const [checkingEmail, setCheckingEmail] = useState(false);
   const router = useRouter();

@@ -15,6 +15,11 @@ function match(row: Row, where: Where): boolean {
   return Object.entries(where).every(([key, cond]) => {
     if (key === "OR") return (cond as Where[]).some((w) => match(row, w));
     if (key === "month_category") return row.month === cond.month && row.category === cond.category;
+    if (key === "planKey_regionKey") return row.planKey === cond.planKey && row.regionKey === cond.regionKey;
+    // Relation filter on a business: its account user's subscription (lib/demo and lib/admin/demos).
+    if (key === "business" && cond && typeof cond === "object") return !!row.business && match(row.business, cond as Where);
+    if (key === "user" && cond && typeof cond === "object") return !!row.user && match(row.user, cond as Where);
+    if (key === "subscription" && cond && typeof cond === "object") return !!row.subscription && match(row.subscription, cond as Where);
     // Relation filter on a plan price change item: look the change up by its id.
     if (key === "change") {
       const change = currentDb?.planPriceChange.rows.find((r) => r.id === row.changeId);
@@ -156,6 +161,12 @@ export function createFakeDb() {
     planDefinition: table(seedPlanRows(), { pk: "key", unique: ["key"] }),
     planPriceChange: table([], { pk: "id", defaults: () => ({ status: "scheduled", notifiedCount: 0, appliedCount: 0, failedCount: 0, completedAt: null }) }),
     planPriceChangeItem: table([], { pk: "id", defaults: () => ({ status: "pending", noticeSentAt: null, effectiveAt: null, appliedAt: null, error: null, updatedAt: new Date() }) }),
+    // Regions, regional prices and demo bookings (R1). Empty by default: lib/region falls back to the seeds.
+    pricingRegion: table([], { pk: "key" }),
+    planRegionPrice: table([], { pk: "id", defaults: () => ({ cardMonthlyUsdCents: null, cardYearlyUsdCents: null, paddleMonthlyPriceId: null, paddleYearlyPriceId: null, updatedAt: new Date() }) }),
+    adminAvailability: table([], { pk: "id" }),
+    demoBooking: table([], { pk: "id", unique: ["icsToken"], defaults: () => ({ status: "booked", notes: null, meetingLink: null, icsToken: `ics_${Math.random().toString(36).slice(2, 14)}`, updatedAt: new Date() }) }),
+    membership: table([], { pk: "id", unique: ["userId"] }),
     $executeRaw: vi.fn(async () => 1),
     $queryRaw: vi.fn(async () => [{ locked: true }]),
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),

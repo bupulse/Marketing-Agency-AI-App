@@ -42,6 +42,10 @@ export const getAppContext = cache(async () => {
   if (!setupDone && company && !can(company.role, "settings")) redirect("/account/waiting");
   if (!business?.detailsCompletedAt) redirect("/welcome");
   if (!business.onboardedAt) redirect("/onboarding");
+  // Demo first (docs/REGIONS.md): a new company chooses a plan and books a demo before the dashboard opens. Until an
+  // admin starts the trial, the dashboard layout shows only the demo (components/app/demo-lock.tsx).
+  const pendingDemo = usage.subscription.status === "PENDING_DEMO";
+  if (pendingDemo && !usage.subscription.chosenPlan && (!company || can(company.role, "settings"))) redirect("/book-demo");
   // What the plan unlocks (lib/entitlements.ts): the sidebar and featureGate read it; actions and routes check again.
   const entitlements = await companyEntitlements(business.id);
 
@@ -82,6 +86,8 @@ export const getAppContext = cache(async () => {
     entitlements,
     isTrial,
     trialDaysLeft,
+    pendingDemo,
+    chosenPlan: usage.subscription.chosenPlan ?? null,
     logoUrl,
     brandColors: business.brandColors,
     voiceLabel: getVoice(business.tone)?.label ?? null,

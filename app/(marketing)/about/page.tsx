@@ -57,7 +57,7 @@ export default function AboutPage() {
         </section>
 
         <div className="flex flex-wrap gap-3">
-          <Button href="/signup" size="lg">Start free trial</Button>
+          <Button href="/signup" size="lg">Book a free demo</Button>
           <Button href="/contact" size="lg" variant="ghost">Get in touch</Button>
         </div>
       </Container>

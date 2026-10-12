@@ -64,8 +64,8 @@ export const paddle: BillingAdapter = {
     return Boolean(process.env.PADDLE_API_KEY && process.env.PADDLE_CLIENT_TOKEN && process.env.PADDLE_WEBHOOK_SECRET);
   },
 
-  async checkoutConfig({ userId, email, plan, interval, providerCustomerId }) {
-    const priceId = await priceIdFor("PADDLE", plan, interval);
+  async checkoutConfig({ userId, email, plan, interval, providerCustomerId, priceId: given }) {
+    const priceId = given ?? (await priceIdFor("PADDLE", plan, interval));
     if (!priceId) throw new Error(`Paddle price id missing for plan ${plan} (${interval}): sync the plan with Paddle in /admin/plans`);
     return {
       provider: "PADDLE",

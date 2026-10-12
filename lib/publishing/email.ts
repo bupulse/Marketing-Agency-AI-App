@@ -2,7 +2,8 @@ import "server-only";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { recordServiceUse } from "@/lib/admin/usage-counter";
 
-export type Email = { to: string; subject: string; html: string; text: string };
+/** `attachments` are base64 file bodies (Resend's shape), used for the demo calendar invites. */
+export type Email = { to: string; subject: string; html: string; text: string; attachments?: { filename: string; content: string }[] };
 
 const DEFAULT_FROM = "BuPulse <register@bupulse.com>";
 
@@ -39,6 +40,7 @@ async function deliver(email: Email): Promise<boolean> {
         subject: email.subject,
         html: email.html,
         text: email.text,
+        ...(email.attachments?.length ? { attachments: email.attachments } : {}),
       }),
     });
     if (!response.ok) {

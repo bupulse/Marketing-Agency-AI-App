@@ -3,8 +3,7 @@ import "server-only";
 import type { User as AuthUser } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db";
 import type { SignUpMethod } from "@/lib/generated/prisma/client";
-import { TRIAL_DAYS } from "@/lib/plans";
-import { getTrialPlan } from "@/lib/plan-catalog";
+import { regionFromCountryName } from "@/lib/region";
 
 type SignUpDetails = {
   organisationName: string | null;
@@ -47,10 +46,11 @@ function signUpMethodOf(authUser: AuthUser): SignUpMethod {
 }
 
 // Called after email confirmation and after Google sign-in. Creates the app's
-// User row, the Business (from the sign-up details when there are any) and the
-// 7-day trial the first time; does nothing for returning users. Returns false
-// without creating anything when the email has not been confirmed yet, so a
-// trial never starts for an unverified address.
+// User row, the Business (from the sign-up details when there are any, with its
+// pricing region from the country) and a subscription that waits for a demo
+// (PENDING_DEMO: no trial starts at sign-up, an admin starts it after the demo,
+// docs/REGIONS.md) the first time; does nothing for returning users. Returns false
+// without creating anything when the email has not been confirmed yet.
 export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: string | null } = {}): Promise<boolean> {
   const email = authUser.email;
   if (!email) throw new Error("Signed-in user has no email address");
@@ -68,8 +68,7 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
     details.ceoName;
 
   const now = new Date();
-  const trialDays = (await getTrialPlan()).trialDays ?? TRIAL_DAYS;
-  const trialEndsAt = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000);
+  const pricingRegion = await regionFromCountryName(details.country);
 
   const created = await prisma.user.upsert({
     where: { id: authUser.id },
@@ -87,6 +86,7 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
           ceoName: details.ceoName,
           country: details.country,
           phone: details.phone,
+          pricingRegion,
           detailsCompletedAt: hasRequiredDetails(details) ? now : null,
           // The person who signs up owns the company; teammates are added from Settings → Team.
           memberships: { create: { userId: authUser.id, role: "OWNER" } },
@@ -95,10 +95,10 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
       subscription: {
         create: {
           plan: "TRIAL",
-          status: "TRIALING",
-          trialEndsAt,
+          status: "PENDING_DEMO",
+          trialEndsAt: null,
           currentPeriodStart: now,
-          currentPeriodEnd: trialEndsAt,
+          currentPeriodEnd: null,
         },
       },
     },
@@ -108,8 +108,8 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
     // The anonymous visit session (tracker) rides along in the sign-up metadata, or the Google redirect.
     const sessionId = opts.visitSession ?? text(authUser.user_metadata?.visit_session, 40);
     const track = { userId: authUser.id, businessId: created.business?.id, sessionId };
-    trackEvent(EVENT_NAMES.signup, { ...track, props: { method: signUpMethodOf(authUser), industry: details.industry ?? null } });
-    trackEvent(EVENT_NAMES.trialStarted, track);
+    // trial_started is recorded when an admin starts the trial after the demo (lib/admin/demos.ts).
+    trackEvent(EVENT_NAMES.signup, { ...track, props: { method: signUpMethodOf(authUser), industry: details.industry ?? null, region: pricingRegion } });
   }
   return true;
 }

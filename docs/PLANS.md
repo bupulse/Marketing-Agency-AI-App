@@ -3,8 +3,9 @@
 Plans live in the `PlanDefinition` table and are managed at `/admin/plans` (and by Jarvis: `list_plans`, `update_plan`, `update_plan_limits`, `change_plan`).
 The pricing page, the in-app Billing page, checkout, usage limits, trial length and feature checks (`lib/entitlements.ts`) all read them through `lib/plan-catalog.ts` (`getPlans()`, `getPlan(key)`, cached 30 seconds, with the last good copy kept if the database blinks).
 
-- `Subscription.plan` is the plan key as text (`TRIAL`, `STANDARD`, `PRO`, or any key you create). It has a foreign key to `PlanDefinition.key`.
-- The `TRIAL` plan is special: it can be edited (length, limits, features) but not priced, hidden or retired.
+- `Subscription.plan` is the plan key as text (`TRIAL`, `STANDARD`, `PRO`, `STARTER`, `BUSINESS`, or any key you create). It has a foreign key to `PlanDefinition.key`.
+- The `TRIAL` plan is special: it can be edited (limits, features) but not priced, hidden or retired. **Nobody starts on it at sign-up any more:** a new company waits for a demo (`SubscriptionStatus.PENDING_DEMO`), then an admin's **Start trial** puts it on the TRIAL plan for the number of days in **Admin → Settings** (`trial.days`, default 3). During the trial the company has the features of the plan it chose at sign-up (`Subscription.chosenPlan`) with the TRIAL plan's limits. The TRIAL plan's own `trialDays` column no longer drives anything. See `docs/REGIONS.md`.
+- **Prices depend on the region** (`docs/REGIONS.md`). A plan's own `monthlyPriceCents` / `yearlyPriceCents` are its GLOBAL (USD, Paddle) prices; other regions price it in `PlanRegionPrice` (Admin → Regions and prices), and a plan is offered in a region only when it has a price there. `STARTER` and `BUSINESS` are the Rwanda plans, priced only in RW (RWF); their plan-level USD price is the derived card price.
 - **Status:** `active` is for sale; `hidden` (draft) and `retired` are closed to new sign-ups. Clients already on them keep the plan, its limits and their price.
 - **Env price ids:** `PADDLE_PRICE_<KEY>_<MONTH|YEAR>` (e.g. `PADDLE_PRICE_STANDARD_MONTH`) are still read as a fallback for any plan that has no Paddle price id in the database. They are the seed source for the original three plans. After the first price change, or "Sync with Paddle", the plan's ids are in the database and the env values only help map old subscriptions (the old ids are copied into the plan's price history).
 - **Price changes:** Paddle prices are never edited. A change creates new prices, points the plan at them and schedules every live subscriber (`PlanPriceChange`, `PlanPriceChangeItem`). The daily cron `/api/cron/plan-price-changes` (04:29 UTC, `PLAN_PRICE_CRON` in `worker.ts` and `wrangler.jsonc`):
@@ -13,6 +14,10 @@ The pricing page, the in-app Billing page, checkout, usage limits, trial length 
   - archives old Paddle prices when no subscription and no waiting move uses them.
 - **Failure:** the plan is only changed after Paddle accepted the new prices; if anything fails nothing is changed and the error is shown on the plan page.
 - Without `PADDLE_API_KEY` plans can be drafted and edited; prices of plans that already sell cannot be changed.
+
+## Regions and the demo-first trial
+
+Full description in `docs/REGIONS.md`. In short: `lib/region.ts` says which region a visitor or a company is in; `lib/region-prices.ts` lists the plans a region offers with that region's prices (`getRegionPlans`, `companyPlans`); checkout uses `regionPriceIdFor` (GLOBAL = the plan's own Paddle ids, other regions wait for the Paddle sync). `lib/entitlements.ts` grants nothing while a company waits for its demo and the chosen plan's features during the trial. The migrations are `20261010100000_subscription_pending_demo` and `20261010100100_regions_and_demos` (deploy before the code).
 
 ## Features and entitlements
 

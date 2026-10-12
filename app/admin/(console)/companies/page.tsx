@@ -41,7 +41,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
             <option value="">Any plan</option>{plans.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
           </Select>
           <Select name="status" defaultValue={status} aria-label="Subscription status">
-            <option value="">Any status</option><option value="TRIALING">Trialing</option><option value="ACTIVE">Active</option><option value="PAST_DUE">Past due</option><option value="CANCELED">Canceled</option><option value="EXPIRED">Expired</option>
+            <option value="">Any status</option><option value="PENDING_DEMO">Waiting for demo</option><option value="TRIALING">Trialing</option><option value="ACTIVE">Active</option><option value="PAST_DUE">Past due</option><option value="CANCELED">Canceled</option><option value="EXPIRED">Expired</option>
           </Select>
           <Button type="submit">Search</Button>
         </form>

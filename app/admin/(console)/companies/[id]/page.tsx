@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/app";
 import { Client360, clientHeader } from "@/components/admin/client360";
 import { CompanyUsers } from "@/components/admin/company-users";
+import { DemoPanel } from "@/components/admin/demo-panel";
 import { notice } from "@/components/admin/ui";
 import { Badge } from "@/components/ui";
 import { getCompany } from "@/lib/admin/actions/companies";
@@ -36,6 +37,7 @@ export default async function CompanyPage({ params, searchParams }: { params: Pr
       />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
+      {(!tab || tab === "overview") && <DemoPanel businessId={id} back={`/admin/companies/${id}`} />}
       <Client360 userId={company.accountUserId} tab={tab} basePath={`/admin/companies/${id}`} extraTabs={EXTRA_TABS} />
       {tab === "users" && <CompanyUsers company={company} />}
     </>

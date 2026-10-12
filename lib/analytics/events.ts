@@ -7,7 +7,8 @@ import { cleanSessionId } from "./collect";
 /** Product events the roll-up knows. Anything else is stored too, but only these feed the funnel and feature adoption. */
 export const EVENT_NAMES = {
   signup: "signup",
-  trialStarted: "trial_started",
+  demoBooked: "demo_booked", // props.plan, props.rescheduled
+  trialStarted: "trial_started", // when an admin starts the trial after the demo
   onboardingStep: "onboarding_step", // props.step: "offer" | "voice" | "look" | "knowledge"
   onboardingComplete: "onboarding_complete",
   textGenerated: "text_generated",

@@ -9,6 +9,8 @@ import * as aiUsage from "./ai-usage";
 import * as connections from "./connections";
 import * as connectionActions from "./actions/connections";
 import * as clientView from "./client360";
+import * as regions from "./regions-service";
+import * as demos from "./demos";
 import { getActivity } from "./activity";
 import { getSystemHealth } from "./health";
 import { getUpdateStatus } from "./updates";
@@ -106,7 +108,7 @@ tool({
   schema: z.object({
     q: z.string().max(100).optional().describe("Search text."),
     plan: PLAN.optional(),
-    status: z.enum(["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"]).optional().describe("Subscription status."),
+    status: z.enum(["PENDING_DEMO", "TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"]).optional().describe("Subscription status. PENDING_DEMO = signed up, waiting for the demo and the admin's Start trial."),
     suspended: z.boolean().optional(),
     cursor,
     limit,
@@ -159,6 +161,41 @@ tool({
 tool({ name: "get_approval", title: "Get approval", kind: "read", description: "Status of a money-action approval request: pending, approved, rejected, executed, failed or needs_check (Paddle may have acted; the owner verifies in Paddle, never retry), with the result once it has run.", schema: z.object({ id: id("Approval id returned by issue_refund or change_plan.") }), run: (a) => admin.getApproval(a.id) });
 tool({ name: "list_approvals", title: "List approvals", kind: "read", description: "Money-action approval requests, newest first, optionally by status.", schema: z.object({ status: z.enum(["pending", "approved", "rejected", "executed", "failed", "needs_check"]).optional(), limit }), run: (a) => admin.listApprovals(a) });
 tool({ name: "list_feature_flags", title: "List feature flags", kind: "read", description: "All feature flags with their switch, rollout percentage and per-user overrides.", schema: z.object({}), run: () => admin.listFeatureFlags() });
+
+// ---- regions, regional prices and demos (read) ---------------------------------------------------------------
+tool({
+  name: "list_regions",
+  title: "List regions",
+  kind: "read",
+  description: "Pricing regions (RW, EAC, GLOBAL and any the owner added): name, currency, countries (ISO codes; none = everywhere else), payment methods (momo, card) and whether active. Also the USD->RWF rate and card margin used for card prices.",
+  schema: z.object({}),
+  run: async () => {
+    const r = await regions.listRegionsAdmin();
+    return { settings: r.settings, regions: r.regions.map(({ prices: _p, ...rest }) => rest) };
+  },
+});
+tool({
+  name: "list_region_prices",
+  title: "List prices by region",
+  kind: "read",
+  description: "Which plans are offered in each region and at what price (monthly and yearly, in the currency's smallest unit: RWF francs, USD cents), with the derived card (USD) price and whether Paddle has the price yet. GLOBAL prices are the plans' own (see list_plans).",
+  schema: z.object({ region: z.string().max(16).optional().describe("A region key to limit to, e.g. RW.") }),
+  run: async (a) => {
+    const r = await regions.listRegionsAdmin();
+    const key = a.region?.toUpperCase();
+    const list = key ? r.regions.filter((x) => x.key === key) : r.regions;
+    if (key && list.length === 0) throw new AdminError("not_found", "No region with that key. Use list_regions.");
+    return { settings: r.settings, regions: list.map((x) => ({ key: x.key, name: x.name, currency: x.currency, prices: x.prices.map((p) => ({ ...p, paddleReady: Boolean(p.paddleMonthlyPriceId && p.paddleYearlyPriceId) })) })) };
+  },
+});
+tool({
+  name: "list_demos",
+  title: "List demos",
+  kind: "read",
+  description: "Demo calls booked by new clients: company, contact, plan chosen, time (Africa/Kigali), status (booked, done, no_show, cancelled) and the company's subscription status. Default: upcoming booked demos.",
+  schema: z.object({ when: z.enum(["upcoming", "past", "all"]).optional(), status: z.enum(["booked", "done", "no_show", "cancelled"]).optional(), limit: z.number().int().min(1).max(500).optional() }),
+  run: (a) => demos.listDemos(a),
+});
 
 // ---- direct actions ----------------------------------------------------------------------------------------
 
