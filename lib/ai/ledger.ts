@@ -24,8 +24,9 @@ export async function withLedger<T>(
   if (service) await assertServiceEnabled(service);
   // Over the monthly cap: refuse before calling (and paying) the provider. Not recorded as a call.
   await assertWithinBudget(meta.provider);
-  // Each company has its own monthly allowance too (AI_COMPANY_MONTHLY_USD), so one account cannot use up the cap.
-  if (context.businessId) await assertCompanyWithinBudget(context.businessId, meta.provider);
+  // Each company has its own monthly allowance too (AI_COMPANY_MONTHLY_USD), so one account cannot use up the cap;
+  // the website chat may use only its share of it (WIDGET_AI_SHARE), the rest stays the owner's.
+  if (context.businessId) await assertCompanyWithinBudget(context.businessId, meta.provider, new Date(), context.feature);
   const started = Date.now();
   try {
     const result = await call();

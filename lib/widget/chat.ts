@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
+import { WidgetBudgetExceededError } from "@/lib/ai/budget";
 import { consumeUsage, refundUsage, UsageLimitError } from "@/lib/usage";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { RateLimitError, rateLimit } from "@/lib/rate-limit";
@@ -228,7 +229,8 @@ export async function handleChat(raw: unknown, ctx: RequestContext): Promise<Ser
       language = result.language;
     } catch (error) {
       await refundUsage(widget.userId, "chat", reservation.periodStart).catch(() => {});
-      await logError(error, { source: "widget.ai", level: "warn", businessId: widget.businessId });
+      // The chat's share of the allowance used is expected, not an error: the widget collects details until the 1st.
+      if (!(error instanceof WidgetBudgetExceededError)) await logError(error, { source: "widget.ai", level: "warn", businessId: widget.businessId });
       unanswered = true;
       reply = text.limited;
     }

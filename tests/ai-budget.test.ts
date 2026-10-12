@@ -4,7 +4,7 @@ const { aggregate, create, logError } = vi.hoisted(() => ({ aggregate: vi.fn(), 
 vi.mock("@/lib/db", () => ({ prisma: { aiCall: { aggregate, create } } }));
 vi.mock("@/lib/errors", () => ({ logError }));
 
-import { AIBudgetExceededError, clearBudgetCache, COMPANY_ALLOWANCE_MESSAGE, CompanyBudgetExceededError } from "@/lib/ai/budget";
+import { AIBudgetExceededError, clearBudgetCache, COMPANY_ALLOWANCE_MESSAGE, CompanyBudgetExceededError, companyCallAllowed, widgetAiShare, WidgetBudgetExceededError } from "@/lib/ai/budget";
 import { withLedger } from "@/lib/ai/ledger";
 
 const run = () =>
@@ -46,18 +46,21 @@ describe("monthly AI budget", () => {
 });
 
 describe("monthly AI allowance per company", () => {
-  // The platform total comes first (no businessId in the filter), then the company's own spend.
-  const spend = (platform: number, company: number) =>
-    aggregate.mockImplementation(async ({ where }: { where: { businessId?: string } }) => ({ _sum: { costUsd: where.businessId ? company : platform } }));
+  // The platform total comes first (no businessId in the filter), then the company's own spend and its website-chat part.
+  const spend = (platform: number, company: number, widget = 0) =>
+    aggregate.mockImplementation(async ({ where }: { where: { businessId?: string; feature?: string } }) => ({
+      _sum: { costUsd: where.feature === "widget" ? widget : where.businessId ? company : platform },
+    }));
   const call = vi.fn(async () => "ok");
-  const runFor = (businessId: string | null) =>
-    withLedger({ feature: "content", businessId }, { provider: "gemini", model: "m" }, call, () => ({ provider: "gemini", model: "m", usage: { inputTokens: 0, outputTokens: 0 } }));
+  const runFor = (businessId: string | null, feature = "content") =>
+    withLedger({ feature, businessId }, { provider: "gemini", model: "m" }, call, () => ({ provider: "gemini", model: "m", usage: { inputTokens: 0, outputTokens: 0 } }));
 
   beforeEach(() => {
     clearBudgetCache();
     for (const m of [aggregate, create, logError, call]) m.mockClear();
     delete process.env.AI_MONTHLY_BUDGET_USD;
     delete process.env.AI_COMPANY_MONTHLY_USD;
+    delete process.env.WIDGET_AI_SHARE;
   });
 
   it("lets a company under $3 (the default) through", async () => {
@@ -83,5 +86,41 @@ describe("monthly AI allowance per company", () => {
     expect(await runFor("b1")).toBe("ok");
     spend(5, 1000);
     expect(await runFor(null)).toBe("ok");
+  });
+
+  it("gives the website chat at most half the allowance by default, then falls back to collecting details", async () => {
+    spend(5, 1.49, 1.49);
+    expect(await runFor("b1", "widget")).toBe("ok");
+    spend(5, 1.5, 1.5);
+    const error = await runFor("b1", "widget").catch((e) => e);
+    expect(error).toBeInstanceOf(WidgetBudgetExceededError);
+    expect(error).toBeInstanceOf(CompanyBudgetExceededError);
+    // The owner still has their half.
+    expect(await runFor("b1", "content")).toBe("ok");
+  });
+
+  it("never lets chat spend push the owner below their share, and stops the chat when the owner used the allowance", async () => {
+    spend(5, 2.9, 1.6); // the chat ran 10 cents over its share on its last reply: not counted against the owner
+    expect(await runFor("b1", "content")).toBe("ok");
+    spend(5, 3.1, 1.6); // owner 1.50: that is their whole share
+    await expect(runFor("b1", "content")).rejects.toBeInstanceOf(CompanyBudgetExceededError);
+    spend(5, 3, 0); // owner used it all: the chat stops too
+    await expect(runFor("b1", "widget")).rejects.toBeInstanceOf(WidgetBudgetExceededError);
+  });
+
+  it("reads WIDGET_AI_SHARE, clamped between 0 and 1", () => {
+    expect(widgetAiShare()).toBe(0.5);
+    process.env.WIDGET_AI_SHARE = "0.2";
+    expect(widgetAiShare()).toBe(0.2);
+    process.env.WIDGET_AI_SHARE = "7";
+    expect(widgetAiShare()).toBe(1);
+    process.env.WIDGET_AI_SHARE = "-1";
+    expect(widgetAiShare()).toBe(0);
+    process.env.WIDGET_AI_SHARE = "nope";
+    expect(widgetAiShare()).toBe(0.5);
+    const spendOf = (totalUsd: number, widgetUsd: number, widgetCapUsd: number) => ({ totalUsd, widgetUsd, ownerUsd: totalUsd - widgetUsd, allowanceUsd: 3, widgetCapUsd });
+    expect(companyCallAllowed(spendOf(0, 0, 0), "widget")).toBe(false); // share 0: no chat replies
+    expect(companyCallAllowed(spendOf(2.99, 2.99, 3), "widget")).toBe(true); // share 1: the chat may use it all
+    expect(companyCallAllowed(spendOf(3, 3, 3), "content")).toBe(false);
   });
 });
