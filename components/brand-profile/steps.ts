@@ -63,7 +63,7 @@ export const STEP_TITLES: Record<StepId, { title: string; short: string; descrip
   offer: { title: "What you sell", short: "What you sell", description: "A short description helps us write about your business the way you would." },
   voice: { title: "Brand voice", short: "Voice", description: "Pick how your posts should sound. You can change it any time." },
   look: { title: "Logo and colours", short: "Logo", description: "We use these on your designs. You can also add them later." },
-  knowledge: { title: "Help your chat assistant", short: "Chat", description: "Your chat assistant answers visitors using only what you write here. All optional." },
+  knowledge: { title: "Help your chat assistant", short: "Chat", description: "Your chat assistant answers visitors using only what you write here. It needs your opening hours, your head office address and a WhatsApp or phone number; the rest is optional." },
 };
 
 /** The step 4 values the validator and the server action take. */
@@ -81,7 +81,7 @@ export function validateStep(step: StepId, v: BrandValues): Errors {
           ? lookSchema.safeParse({ logoPath: v.logoPath ?? undefined, brandColors: v.brandColors })
           : null;
   if (!result) {
-    const knowledge = validateKnowledge(knowledgeInput(v));
+    const knowledge = validateKnowledge(knowledgeInput(v), { requireEssentials: true });
     return knowledge.ok ? {} : knowledge.errors;
   }
   return result.success ? {} : flatErrors(result.error);

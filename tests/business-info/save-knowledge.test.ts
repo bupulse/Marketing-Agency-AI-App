@@ -8,11 +8,18 @@ vi.mock("@/lib/analytics/events", () => ({ EVENT_NAMES: { onboardingStep: "onboa
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/storage", () => ({ buildObjectPath: vi.fn(), createSignedUploadUrl: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
-vi.mock("@/lib/auth/return-server", () => ({ takeReturn: vi.fn() }));
+vi.mock("@/lib/auth/return-server", () => ({ takeReturn: vi.fn(async () => "/dashboard") }));
+vi.mock("next/navigation", () => ({ redirect: vi.fn((to: string) => { throw new Error(`redirect:${to}`); }) }));
 
-import { saveKnowledge } from "@/app/onboarding/actions";
+import { finishOnboarding, saveKnowledge } from "@/app/onboarding/actions";
 
-const hours = { faqs: [], openingHours: [{ days: ["mon" as const], open: "08:00", close: "18:00" }] };
+// The essentials: hours, the head office and a phone number.
+const hours = {
+  faqs: [],
+  openingHours: [{ days: ["mon" as const], open: "08:00", close: "18:00" }],
+  locations: [{ kind: "head" as const, address: "KN 4 Avenue, Kigali" }],
+  contacts: [{ type: "whatsapp" as const, value: "0791954277", country: "Rwanda" }],
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -38,5 +45,29 @@ describe("saveKnowledge", () => {
     const r = await saveKnowledge({ hours: { evil: true }, contacts: 7 } as never);
     expect(r).toMatchObject({ ok: false, fieldErrors: { form: expect.stringMatching(/could not be read/) } });
     expect(mocks.update).not.toHaveBeenCalled();
+  });
+  it("refuses to save without the essentials (the Brand page and step 4 share this action)", async () => {
+    mocks.findUnique.mockResolvedValue({ country: "Rwanda", timezone: "Africa/Kigali" });
+    const r = await saveKnowledge({ faqs: [], area: "Kigali" });
+    expect(r).toMatchObject({ ok: false, fieldErrors: { "openingHours.form": expect.any(String), "locations.0.address": expect.any(String), "contacts.form": expect.any(String) } });
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("finishOnboarding", () => {
+  const ready = { id: "biz-1", description: "Bakery", audience: "Families", tone: "friendly", onboardedAt: null };
+  it("can't finish without hours, head office and phone", async () => {
+    mocks.findUnique.mockResolvedValue({ ...ready, knowledge: { faqs: [], hours: "Mon-Fri 8-18" } });
+    const r = await finishOnboarding();
+    expect(r).toEqual({ ok: false, error: expect.stringMatching(/opening hours, head office address and a WhatsApp or phone number/) });
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+  it("finishes once they are saved", async () => {
+    mocks.findUnique.mockResolvedValue({
+      ...ready,
+      knowledge: { faqs: [], openingHours: hours.openingHours, locations: hours.locations, contacts: [{ type: "phone", value: "+250791954277", primary: true }] },
+    });
+    await expect(finishOnboarding()).rejects.toThrow("redirect:/dashboard");
+    expect(mocks.update).toHaveBeenCalled();
   });
 });

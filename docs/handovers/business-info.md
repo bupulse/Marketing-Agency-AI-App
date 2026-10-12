@@ -30,6 +30,8 @@ matter.
   (`includedRegionCodes`); a branch abroad is entered by hand. Building names come from the autocomplete
   suggestion's main text and types, not from extra Details fields. Locations saved before this have neither field
   and read as before. Client 360 does not show business info, so there was nothing to change there.
+- **Required essentials.** Hours, head office and a phone/WhatsApp contact are required on save and to finish
+  onboarding; older onboarded companies get a dashboard / Brand banner instead of a lock (`missingEssentials`).
 - **One main contact.** The widget's WhatsApp and Call buttons prefer it, else use the first contact that can.
 - **Map link built server-side** from address + place id (public Maps URLs format), and rebuilt on read: a stored or
   posted URL is never trusted. Details request Essentials fields only (cheapest SKU).

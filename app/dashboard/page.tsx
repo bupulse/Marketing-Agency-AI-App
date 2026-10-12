@@ -1,6 +1,7 @@
 import { ArrowRight, CircleCheck, Circle, FolderKanban, Image as ImageIcon, Palette, PenLine, Users } from "lucide-react";
 import Link from "next/link";
 import { getAppContext } from "@/components/app/context";
+import { EssentialsBanner } from "@/components/business-info/essentials-banner";
 import { Badge, GlassCard, Meter } from "@/components/ui";
 import { prisma } from "@/lib/db";
 import { cn } from "@/lib/cn";
@@ -73,6 +74,8 @@ export default async function DashboardPage() {
           style={{ background: "linear-gradient(90deg, var(--brand-1), var(--brand-2))" }}
         />
       </header>
+
+      {business?.onboardedAt && <EssentialsBanner knowledge={business.knowledge} />}
 
       <GlassCard as="section" aria-labelledby="yb" className="flex flex-wrap items-center gap-x-5 gap-y-3 p-4 sm:p-5">
         {logoUrl ? (

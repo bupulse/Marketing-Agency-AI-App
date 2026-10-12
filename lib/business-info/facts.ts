@@ -2,7 +2,7 @@
 // first version stays readable as a note next to them, so nothing an owner wrote before is lost.
 import type { Knowledge } from "@/lib/brand/schemas";
 import { isValidTimeZone, localParts } from "@/lib/autopilot/timezone";
-import { summarizeContacts } from "./contacts";
+import { isPhoneType, summarizeContacts } from "./contacts";
 import { DAY_LONG, DAYS, describeOpenStatus, openStatus, summarizeHours } from "./hours";
 import { locationText, summarizeLocations } from "./locations";
 
@@ -16,6 +16,20 @@ export function knowledgeFacts(k: Knowledge | null | undefined): { hours?: strin
     area: join(k.area, head && !k.area ? locationText(head) : undefined),
     contact: join(summarizeContacts(k.contacts ?? []), k.contact),
   };
+}
+
+/** What the chat assistant needs and the business has not given yet (all false = complete). */
+export function missingEssentials(k: Knowledge): { hours: boolean; location: boolean; phone: boolean } {
+  return {
+    hours: !(k.openingHours ?? []).some((s) => s.days.length > 0),
+    location: !(k.locations ?? []).some((l) => l.kind === "head" && l.address.trim()),
+    phone: !(k.contacts ?? []).some((c) => isPhoneType(c.type)),
+  };
+}
+
+export function hasEssentials(k: Knowledge): boolean {
+  const m = missingEssentials(k);
+  return !m.hours && !m.location && !m.phone;
 }
 
 /** Whether the owner gave any hours, locations or contacts. */

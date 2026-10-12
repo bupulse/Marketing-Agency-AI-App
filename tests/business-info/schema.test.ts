@@ -48,7 +48,8 @@ describe("initialValues converts old text for the editors", () => {
     const v = initialValues({ ...profile, knowledge: { hours: "Most days, ring first", contact: "Ask at the market stall", faqs: [] } });
     expect(v.openingHours).toEqual([]);
     expect(v.hours).toBe("Most days, ring first");
-    expect(v.contacts).toEqual([]);
+    // Only the empty starter WhatsApp row (a phone number is required); the text stays a note.
+    expect(v.contacts).toEqual([{ type: "whatsapp", value: "", country: "Rwanda", primary: true }]);
     expect(v.contact).toBe("Ask at the market stall");
   });
   it("round-trips through validation to the same stored value", () => {

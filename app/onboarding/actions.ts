@@ -12,10 +12,12 @@ import {
   LOGO_TYPES,
   lookSchema,
   offerSchema,
+  readKnowledge,
   validateKnowledge,
   voiceSchema,
   type KnowledgeInput,
 } from "@/lib/brand/schemas";
+import { hasEssentials } from "@/lib/business-info/facts";
 import { timezoneForCountryName } from "@/lib/region-format";
 import { buildObjectPath, createSignedUploadUrl } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
@@ -82,7 +84,7 @@ export async function saveKnowledge(input: KnowledgeInput): Promise<SaveResult> 
   const user = await requireUser();
   // Phone numbers without a country of their own are read in the business's sign-up country.
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { country: true, timezone: true } });
-  const parsed = validateKnowledge(input, { country: business?.country });
+  const parsed = validateKnowledge(input, { country: business?.country, requireEssentials: true });
   if (!parsed.ok) return { ok: false, fieldErrors: parsed.errors, error: parsed.errors.form };
   // Opening hours are in the business's zone. A business still on the default UTC gets its country's zone
   // (Rwanda -> Africa/Kigali), as sign-up does; countries with several zones keep theirs until the browser sets it.
@@ -112,6 +114,7 @@ export async function finishOnboarding(): Promise<SaveResult> {
   if (!business) redirect("/login");
   if (!business.description || !business.audience) return { ok: false, error: "Go back to step 1 and describe what you sell." };
   if (!business.tone) return { ok: false, error: "Go back to step 2 and choose a brand voice." };
+  if (!hasEssentials(readKnowledge(business.knowledge))) return { ok: false, error: "Add your opening hours, head office address and a WhatsApp or phone number in step 4." };
 
   const result = await update(user.id, { onboardedAt: business.onboardedAt ?? new Date() });
   if (!result.ok) return result;

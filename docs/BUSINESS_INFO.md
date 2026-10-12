@@ -1,7 +1,16 @@
 # Business info: opening hours, locations and contacts
 
 Onboarding step 4 ("Help your chat assistant") and the Brand page card of the same name hold structured business
-info that the website chat answers from. Everything is optional, as before.
+info that the website chat answers from.
+
+**Required** (owner decision, 12 Oct 2026): at least one set of opening hours with a day (or open 24 hours), the head
+office address (searched or entered by hand) and at least one WhatsApp, Phone call or WhatsApp + calls contact.
+Email, website, socials, branches, the notes and FAQs stay optional. `validateKnowledge(..., { requireEssentials:
+true })` checks this in the form and in `saveKnowledge` (errors `openingHours.form`, `locations.0.address` or
+`.street`, `contacts.form`), and `finishOnboarding` refuses to finish without them. Companies onboarded before are not
+locked out: the dashboard and the Brand page show a reminder (`EssentialsBanner`, "Add your opening hours, location
+and phone so your chat assistant can answer customers") linking to the card, and the rule applies when they next
+save it. First-version free text converted by the form counts once saved in the structured form.
 
 ## What the owner fills in
 

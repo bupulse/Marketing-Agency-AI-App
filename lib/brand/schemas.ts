@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CONTACT_TYPES, MAX_CONTACTS, isNormalised, normaliseContact, type Contact, type ContactType } from "@/lib/business-info/contacts";
+import { CONTACT_TYPES, MAX_CONTACTS, isNormalised, isPhoneType, normaliseContact, type Contact, type ContactType } from "@/lib/business-info/contacts";
 import { DAYS, LAST_MINUTE, MAX_SCHEDULES, fromMinutes, scheduleErrors, sortDays, type Schedule } from "@/lib/business-info/hours";
 import { LOCATION_LIMITS, MAX_BRANCHES, PLACE_ID, manualAddressText, mapsUrl, type Building, type Location, type LocationKind, type ManualAddress } from "@/lib/business-info/locations";
 import { phoneCountry } from "@/lib/phone";
@@ -244,12 +244,20 @@ const knowledgeInputSchema = z.object({
 
 const num = (v: unknown, min: number, max: number) => (typeof v === "number" && Number.isFinite(v) && v >= min && v <= max ? v : undefined);
 
+/** The essentials errors: what the chat assistant cannot do without. */
+export const ESSENTIALS_ERRORS = {
+  hours: "Add your opening hours: at least one day, or open 24 hours.",
+  location: "Add your head office address: search for it, or enter it yourself.",
+  phone: "Add a WhatsApp or phone number so customers can reach you.",
+} as const;
+
 /**
- * Validates step 4. Completely blank FAQ, contact and branch rows are ignored, and errors keep the row's position
+ * Validates step 4. With `requireEssentials` (the form and the save action), opening hours, the head office address
+ * and a WhatsApp or phone number are required; plain validation (tests, reading) keeps everything optional. Completely blank FAQ, contact and branch rows are ignored, and errors keep the row's position
  * in the form ("faqs.1.answer", "contacts.2.value") so they show under the right inputs. The same function runs in
  * the browser and in the server action. `country` is the business's sign-up country, the default for phone numbers.
  */
-export function validateKnowledge(raw: KnowledgeInput, opts: { country?: string | null } = {}): { ok: true; data: Knowledge } | { ok: false; errors: Record<string, string> } {
+export function validateKnowledge(raw: KnowledgeInput, opts: { country?: string | null; requireEssentials?: boolean } = {}): { ok: true; data: Knowledge } | { ok: false; errors: Record<string, string> } {
   const shaped = knowledgeInputSchema.safeParse(raw);
   if (!shaped.success) return { ok: false, errors: { form: "Some details could not be read. Please check the form and try again." } };
   const input = shaped.data as KnowledgeInput;
@@ -361,6 +369,16 @@ export function validateKnowledge(raw: KnowledgeInput, opts: { country?: string 
     if (i === main) c.primary = true;
     else delete c.primary;
   });
+
+  if (opts.requireEssentials) {
+    if (!openingHours.some((h) => h.days.length)) add("openingHours.form", ESSENTIALS_ERRORS.hours);
+    if (!locations.some((l) => l.kind === "head")) {
+      const head = (input.locations ?? []).findIndex((l) => l.kind === "head");
+      add(`locations.${Math.max(0, head)}.${input.locations?.[Math.max(0, head)]?.manual ? "street" : "address"}`, ESSENTIALS_ERRORS.location);
+    }
+    // A phone row with a typo already shows its own error; only a missing number gets this one.
+    if (!(input.contacts ?? []).some((c) => isPhoneType(c.type) && c.value.trim())) add("contacts.form", ESSENTIALS_ERRORS.phone);
+  }
 
   if (Object.keys(errors).length || !parsed.success) return { ok: false, errors };
   return {

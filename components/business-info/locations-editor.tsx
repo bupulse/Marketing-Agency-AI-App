@@ -94,7 +94,7 @@ export function LocationsEditor({
               <div className="flex flex-col gap-1">
                 <PlaceSearch
                   label={`${what} address`}
-                  required={head && branches > 0}
+                  required={head}
                   address={l.address}
                   enabled={placesEnabled}
                   error={err("address")}

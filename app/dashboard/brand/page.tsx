@@ -2,6 +2,7 @@ import { pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { BrandSection } from "@/components/brand-profile/brand-section";
+import { EssentialsBanner } from "@/components/business-info/essentials-banner";
 import { IndustrySection } from "@/components/brand-profile/industry-section";
 import { initialValues } from "@/components/brand-profile/initial";
 import { LanguageSection } from "@/components/studio/language-section";
@@ -43,6 +44,7 @@ export default async function BrandPage() {
   return (
     <>
       <PageHeader title="Brand" description="Your voice, logo and colours. Everything BuPulse creates is based on this." />
+      {business.onboardedAt && <EssentialsBanner knowledge={business.knowledge} href="#brand-knowledge" />}
       <GlassCard as="dl" className="grid gap-4 p-5 sm:grid-cols-3 sm:p-6">
         {rows.map(([label, value]) => (
           <div key={label} className="min-w-0">

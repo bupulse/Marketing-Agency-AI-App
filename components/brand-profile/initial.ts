@@ -65,7 +65,8 @@ export function initialValues(b: BusinessProfile): BrandValues {
     hours: legacyHours ? "" : (k.hours ?? ""),
     area: k.area ?? "",
     locations,
-    contacts,
+    // A phone or WhatsApp number is required, so the editor starts with an empty WhatsApp row (blank rows are ignored).
+    contacts: contacts.length ? contacts : [{ type: "whatsapp", value: "", country, primary: true }],
     contact: legacyContact ? legacyContact.rest : (k.contact ?? ""),
     faqs: k.faqs,
   };
