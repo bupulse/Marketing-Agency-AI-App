@@ -31,6 +31,7 @@ function match(row: Row, where: Where): boolean {
   return Object.entries(where).every(([key, cond]) => {
     if (key === "OR") return (cond as Where[]).some((w) => match(row, w));
     if (key === "month_category") return row.month === cond.month && row.category === cond.category;
+    if (key === "provider_eventId") return row.provider === cond.provider && row.eventId === cond.eventId;
     if (key === "planKey_regionKey") return row.planKey === cond.planKey && row.regionKey === cond.regionKey;
     // Relation filter on a business: its account user's subscription (lib/demo and lib/admin/demos).
     if (key === "business" && cond && typeof cond === "object") return !!row.business && match(row.business, cond as Where);
