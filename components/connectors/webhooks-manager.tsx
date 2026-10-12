@@ -85,7 +85,8 @@ function EndpointForm({ initial, submitLabel, pending, error, onSubmit, onCancel
   );
 }
 
-export function WebhooksManager({ endpoints, deliveries, max }: { endpoints: EndpointView[]; deliveries: DeliveryView[]; max: number }) {
+/** `readOnly`: the plan no longer has webhooks. The endpoints stay to look at, switch off and delete; nothing else is offered. */
+export function WebhooksManager({ endpoints, deliveries, max, readOnly = false }: { endpoints: EndpointView[]; deliveries: DeliveryView[]; max: number; readOnly?: boolean }) {
   const { toast } = useToast();
   const [pending, start] = useTransition();
   const [form, setForm] = useState<null | { mode: "add" } | { mode: "edit"; endpoint: EndpointView }>(null);
@@ -155,9 +156,11 @@ export function WebhooksManager({ endpoints, deliveries, max }: { endpoints: End
           <h2 id="endpoints" className="text-lg font-semibold">
             Your webhooks
           </h2>
-          <Button size="sm" onClick={() => { setFormError(null); setForm({ mode: "add" }); }} disabled={endpoints.length >= max} leading={<Plus aria-hidden className="size-4" />}>
-            Add webhook
-          </Button>
+          {!readOnly && (
+            <Button size="sm" onClick={() => { setFormError(null); setForm({ mode: "add" }); }} disabled={endpoints.length >= max} leading={<Plus aria-hidden className="size-4" />}>
+              Add webhook
+            </Button>
+          )}
         </div>
         {endpoints.length === 0 ? (
           <GlassCard className="flex flex-col gap-2 rounded-card p-5">
@@ -195,18 +198,24 @@ export function WebhooksManager({ endpoints, deliveries, max }: { endpoints: End
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={() => test(e)} disabled={e.pausedBySupport || (pending && busyId === e.id)}>
-                    Send test event
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => { setFormError(null); setForm({ mode: "edit", endpoint: e }); }}>
-                    Edit
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => rotate(e)} disabled={pending && busyId === e.id}>
-                    New secret
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => toggle(e)} disabled={e.pausedBySupport || (pending && busyId === e.id)}>
-                    {e.enabled ? "Pause" : "Turn on"}
-                  </Button>
+                  {!readOnly && (
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => test(e)} disabled={e.pausedBySupport || (pending && busyId === e.id)}>
+                        Send test event
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => { setFormError(null); setForm({ mode: "edit", endpoint: e }); }}>
+                        Edit
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => rotate(e)} disabled={pending && busyId === e.id}>
+                        New secret
+                      </Button>
+                    </>
+                  )}
+                  {(!readOnly || e.enabled) && (
+                    <Button variant="outline" size="sm" onClick={() => toggle(e)} disabled={e.pausedBySupport || (pending && busyId === e.id)}>
+                      {e.enabled ? "Pause" : "Turn on"}
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" onClick={() => setRemoving(e)} aria-label={`Delete webhook ${host(e.url)}`}>
                     Delete
                   </Button>
@@ -245,7 +254,7 @@ export function WebhooksManager({ endpoints, deliveries, max }: { endpoints: End
                       </p>
                       {d.error && d.status !== "success" && <p className="mt-0.5 text-[13px] break-words text-danger">{d.error}</p>}
                     </div>
-                    {d.status !== "success" && (
+                    {d.status !== "success" && !readOnly && (
                       <Button variant="outline" size="sm" onClick={() => retry(d)} disabled={pending && busyId === d.id} leading={<RotateCw aria-hidden className="size-4" />}>
                         Retry
                       </Button>

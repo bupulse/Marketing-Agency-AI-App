@@ -12,7 +12,7 @@ import { companyPlans, regionPriceIdFor } from "@/lib/region-prices";
 import { invoiceUrl } from "@/lib/billing/paddle";
 import { applyProviderSubscription } from "@/lib/billing/apply";
 import { paymentMethod } from "@/lib/billing/methods";
-import { cancelManualPayment, currentManualPayment, ManualPaymentError } from "@/lib/billing/momo";
+import { cancelManualPayment, currentManualPayment, ManualPaymentError, startInvoicePayment } from "@/lib/billing/momo";
 import type { ManualPaymentView } from "@/lib/billing/momo-shared";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
 import type { CheckoutConfig, Invoice, PaidPlan } from "@/lib/billing";
@@ -250,11 +250,23 @@ function momoError(error: unknown): BillingResult<never> {
 }
 
 // Starts (or returns the open) Mobile Money payment for a plan and period: the amount, the reference and where to pay.
-export async function startMomoPayment(input: { plan: string; interval: string }): Promise<BillingResult<{ payment: ManualPaymentView }>> {
+// With `invoiceId`: the payment of that invoice of the caller's company (amount = invoice total, reference = invoice number).
+export async function startMomoPayment(input: { plan: string; interval: string } | { invoiceId: string }): Promise<BillingResult<{ payment: ManualPaymentView }>> {
   const user = await requireActiveUser();
   if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
   const limited = await momoLimited(user.id);
   if (limited) return limited;
+  if (input && typeof input === "object" && "invoiceId" in input) {
+    const invoiceId = String(input.invoiceId ?? "");
+    if (!invoiceId || invoiceId.length > 64) return { ok: false, error: "We could not find that invoice." };
+    try {
+      const payment = await startInvoicePayment({ userId: user.id, invoiceId });
+      revalidatePath("/dashboard", "layout");
+      return { ok: true, payment };
+    } catch (error) {
+      return momoError(error);
+    }
+  }
   const parsed = planSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Choose a plan." };
   try {

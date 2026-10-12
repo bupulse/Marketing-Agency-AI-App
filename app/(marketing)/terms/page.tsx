@@ -20,7 +20,7 @@ export default async function TermsPage() {
   return (
     <LegalPage title="Terms of Service" intro="The rules for using BuPulse, in plain English.">
       <p>
-        These terms are an agreement between you and [Company legal name], [Address], United States (&quot;BuPulse&quot;, &quot;we&quot;, &quot;us&quot;). By creating an
+        These terms are an agreement between you and BuPulse, Kigali, Rwanda (&quot;BuPulse&quot;, &quot;we&quot;, &quot;us&quot;). By creating an
         account or using bupulse.com or the BuPulse app (the &quot;Service&quot;), you agree to them. If you use BuPulse for a company, you confirm you can
         accept these terms for that company.
       </p>
@@ -128,7 +128,7 @@ export default async function TermsPage() {
       <LegalSection title="11. Changes, law and contact">
         <p>
           We may update these terms. If a change is material, we will give notice, and continuing to use the Service means you accept it. These terms are
-          governed by the laws of [State], United States, and disputes will be handled in the courts of [County, State], unless the law says otherwise.
+          governed by the laws of Rwanda, and disputes will be handled in the courts of Rwanda, unless the law says otherwise.
           Questions: <a className="font-semibold text-[color:var(--bp-link)] underline" href={`mailto:${site.email}`}>{site.email}</a>.
         </p>
       </LegalSection>

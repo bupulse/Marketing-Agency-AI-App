@@ -54,6 +54,10 @@ joined to the regions and the demo-first trial (R1, `docs/REGIONS.md`) on 12 Oct
    while a submitted payment waits for the owner. Payments started but never submitted are closed after 48 hours.
    Runs under an advisory lock with a cursor, like the price-change job.
 
+Invoices (`docs/INVOICES.md`): a payment can settle a BuPulse invoice. Its reference is then the invoice number
+(`BP-INV-0001`, shared by every attempt at that invoice), the amount is the invoice total, and confirming it also marks
+the invoice paid in the same transaction. One live payment per invoice (`ManualPayment_invoice_live_key`).
+
 Switching method: a card subscription that still renews blocks a MoMo payment; once the client has cancelled it
 (`cancelAtPeriodEnd`, active until its period end) a MoMo payment of the same plan starts from that end. A paid-up MoMo
 plan blocks card checkout until its period has ended. A late Paddle webhook can never end a paid-up Mobile Money plan

@@ -109,6 +109,7 @@ model Business {
   cloudflare       CloudflareConnection?
   memberships      Membership[]
   invites          Invite[]
+  invoices         Invoice[]
 
   @@index([industryId])
 }
@@ -448,7 +449,14 @@ model ManualPayment {
   interval      BillingInterval
   amountMinor   Int // RWF has no minor unit: whole francs
   currency      String          @default("RWF")
-  reference     String          @unique // "BP-7K3Q": what the client types as the payment note; unambiguous characters
+  // "BP-7K3Q": what the client types as the payment note; unambiguous characters. A payment of an invoice uses the
+  // invoice number instead ("BP-INV-0001"), so several attempts at one invoice share it: uniqueness is two partial
+  // indexes in SQL ("ManualPayment_reference_key" where the reference does not start with BP-INV-,
+  // "ManualPayment_invoice_live_key").
+  reference     String
+  // The invoice this payment settles (docs/INVOICES.md); confirming it marks the invoice paid.
+  invoiceId     String?
+  invoice       Invoice?        @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   payerPhone    String?
   network       String? // "MTN" | "AIRTEL"
   transactionId String? // the MoMo transaction id the client typed
@@ -462,12 +470,14 @@ model ManualPayment {
   periodEnd     DateTime?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
-  // Also two partial unique indexes in SQL (the migration): one pending payment per company
-  // ("ManualPayment_one_pending_per_user") and one live use of a transaction id per network across all companies
-  // ("ManualPayment_live_transaction_key": network + upper(transactionId) where status is pending or confirmed).
 
   @@index([status, createdAt])
   @@index([userId, createdAt])
+  @@index([reference])
+  @@index([invoiceId])
+  // Also two partial unique indexes in SQL (the migration): one pending payment per company
+  // ("ManualPayment_one_pending_per_user") and one live use of a transaction id per network across all companies
+  // ("ManualPayment_live_transaction_key": network + upper(transactionId) where status is pending or confirmed).
 }
 
 // One renewal email of a Mobile Money subscription (lib/billing/momo-renewals.ts): "5d" and "1d" before the period
@@ -1409,4 +1419,50 @@ model DismissedIndustrySuggestion {
   key       String   @id
   label     String // the text as one client wrote it, for the audit log and the list
   createdAt DateTime @default(now())
+}
+
+// Invoices (docs/INVOICES.md): made by an admin, mostly from "Activate account -> No trial, send invoice" after the
+// demo, edited while a draft, then sent (PDF by email), paid (Mobile Money confirmed with the invoice number as the
+// reference, card, or marked paid by hand) or voided. Amounts are in the currency's smallest unit like everywhere else.
+model Invoice {
+  id             String           @id @default(cuid())
+  // "BP-INV-0001": from the Postgres sequence "Invoice_number_seq" (lib/invoices/service.ts nextInvoiceNumber), so
+  // two admins creating invoices at the same instant never get the same number. Numbers are never reused.
+  number         String           @unique
+  businessId     String
+  business       Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  status         String           @default("draft") // draft | sent | paid | void
+  currency       String // RWF for Rwanda, USD otherwise (the company region's currency)
+  lines          Json // [{ description, quantity, unitMinor }]
+  subtotalMinor  Int
+  taxRatePercent Float? // VAT rate from the invoice settings when the invoice was last edited; null = no tax line
+  taxMinor       Int              @default(0)
+  totalMinor     Int
+  issueDate      DateTime         @db.Date
+  dueDate        DateTime         @db.Date
+  notes          String?
+  billingEmail   String? // a billing contact who gets the invoice too, besides the owner
+  // What the invoice activates when paid (from the client's chosen plan); null on a plain invoice.
+  planKey        String?
+  interval       BillingInterval?
+  // Snapshots taken when the invoice is sent, so the PDF and the email never change afterwards.
+  billTo         Json?
+  seller         Json?
+  pdfPath        String? // object path in the private "invoices" Storage bucket
+  sentAt         DateTime?
+  sentTo         String[]         @default([])
+  reminderSentAt DateTime? // the due-date reminder, claimed before sending
+  paidAt         DateTime?
+  paidBy         String? // "momo:<ManualPayment id>" | "manual:<ManualPayment id>" | "paddle:<subscription id>"
+  voidedAt       DateTime?
+  voidReason     String?
+  createdBy      String // AuditLog actor
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  manualPayments ManualPayment[]
+
+  @@index([businessId, createdAt])
+  @@index([status, dueDate])
+  // Also a partial unique index in SQL ("Invoice_one_draft_per_business"): one draft per company.
 }

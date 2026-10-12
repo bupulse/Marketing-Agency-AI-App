@@ -97,14 +97,14 @@ export function MomoPayment({ payment, details }: Props) {
 
   function tryAgain() {
     start(async () => {
-      const result = await startMomoPayment({ plan: payment.planKey, interval: payment.interval });
+      const result = await startMomoPayment(payment.invoiceId ? { invoiceId: payment.invoiceId } : { plan: payment.planKey, interval: payment.interval });
       if (result.ok) router.refresh();
       else toast(result.error, "error");
     });
   }
 
   const amount = formatMomoAmount(payment.amountMinor, payment.currency);
-  const title = `${payment.planName} · ${amount} per ${intervalWord(payment.interval)}`;
+  const title = payment.invoiceId ? `Invoice ${payment.reference} · ${payment.planName} · ${amount}` : `${payment.planName} · ${amount} per ${intervalWord(payment.interval)}`;
 
   if (payment.status === "confirmed") {
     return (
@@ -164,7 +164,7 @@ export function MomoPayment({ payment, details }: Props) {
             {amount}
           </strong>
           <span className="text-sm text-muted">
-            {payment.planName}, billed {payment.interval === "YEAR" ? "yearly" : "every month"}. Nothing renews by itself: we remind you before it ends.
+            {payment.invoiceId ? `Invoice ${payment.reference}: ${payment.planName}, ${payment.interval === "YEAR" ? "one year" : "one month"}.` : `${payment.planName}, billed ${payment.interval === "YEAR" ? "yearly" : "every month"}.`} Nothing renews by itself: we remind you before it ends.
           </span>
           {payment.periodNote && (
             <span className={payment.periodNote.mode === "replace" ? "text-sm font-medium text-danger" : "text-sm text-muted"}>
@@ -208,7 +208,7 @@ export function MomoPayment({ payment, details }: Props) {
               I&apos;ve paid
             </Button>
             <Button variant="ghost" onClick={cancel} disabled={pending}>
-              Choose another plan
+              {payment.invoiceId ? "Not now" : "Choose another plan"}
             </Button>
           </div>
         </>

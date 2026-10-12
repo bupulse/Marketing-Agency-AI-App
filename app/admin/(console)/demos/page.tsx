@@ -9,7 +9,12 @@ import { param } from "@/lib/admin/format";
 import { getSettings } from "@/lib/admin/settings";
 import { googleCalendarStatus } from "@/lib/google-calendar/calendar";
 import { cn } from "@/lib/cn";
-import { demoStatusAction, retryDemoCalendarAction, startTrialAction } from "./actions";
+import { ActivateAccount } from "@/components/admin/activate-account";
+import { SubscriptionStatus } from "@/components/admin/subscription-status";
+import { subscriptionSummary } from "@/lib/admin/subscription-summary";
+import { prisma } from "@/lib/db";
+import { getPlans } from "@/lib/plan-catalog";
+import { demoStatusAction, retryDemoCalendarAction } from "./actions";
 
 export const metadata = { title: "Demos" };
 export const dynamic = "force-dynamic";
@@ -34,7 +39,13 @@ export default async function DemosPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const when = (["upcoming", "past", "all"] as const).find((w) => w === param(sp.when)) ?? "upcoming";
   const status = param(sp.status);
-  const [demos, settings, google] = await Promise.all([listDemos({ when, status: status || undefined }), getSettings(), googleCalendarStatus()]);
+  const [demos, settings, plans, google] = await Promise.all([listDemos({ when, status: status || undefined }), getSettings(), getPlans(), googleCalendarStatus()]);
+  // The subscriptions as they are now (read on their own, by company account): Activate account only while the company
+  // still waits for its demo; past that, where it stands and links to Extend trial / Change plan.
+  const subs = new Map(
+    (await prisma.subscription.findMany({ where: { userId: { in: [...new Set(demos.map((d) => d.userId))] } }, select: { userId: true, status: true, plan: true, provider: true, interval: true, trialEndsAt: true, currentPeriodEnd: true, cancelAtPeriodEnd: true } })).map((s) => [s.userId, s]),
+  );
+  const planName = (key: string) => plans.find((p) => p.key === key)?.name ?? key;
   const here = `/admin/demos?${new URLSearchParams({ when, ...(status && { status }) })}`;
   const qs = (w: string) => `/admin/demos?${new URLSearchParams({ when: w, ...(status && { status }) })}`;
 
@@ -42,7 +53,7 @@ export default async function DemosPage({ searchParams }: { searchParams: Promis
     <>
       <PageHeader
         title="Demos"
-        description={`Demo calls booked by new clients, in Africa/Kigali time. After the call, mark it done and start the trial (${settings.trialDays} ${settings.trialDays === 1 ? "day" : "days"}, set in Settings).`}
+        description={`Demo calls booked by new clients, in Africa/Kigali time. After the call, Activate account: start the trial (${settings.trialDays} ${settings.trialDays === 1 ? "day" : "days"} by default, set in Settings) or send an invoice.`}
       />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
@@ -90,7 +101,10 @@ export default async function DemosPage({ searchParams }: { searchParams: Promis
             <tbody>
               {demos.map((d) => {
                 const s = STATUS[d.status] ?? { label: d.status, tone: "neutral" as BadgeTone };
-                const sub = d.subscriptionStatus ? (SUB[d.subscriptionStatus] ?? { label: d.subscriptionStatus, tone: "neutral" as BadgeTone }) : null;
+                const current = subs.get(d.userId) ?? null;
+                const subStatus = current?.status ?? d.subscriptionStatus;
+                const sub = subStatus ? (SUB[subStatus] ?? { label: subStatus, tone: "neutral" as BadgeTone }) : null;
+                const summary = current ? subscriptionSummary(current, planName) : null;
                 return (
                   <tr key={d.id}>
                     <Td className="whitespace-nowrap">
@@ -120,7 +134,10 @@ export default async function DemosPage({ searchParams }: { searchParams: Promis
                         </form>
                       )}
                     </Td>
-                    <Td>{sub && <Badge tone={sub.tone}>{sub.label}</Badge>}</Td>
+                    <Td>
+                      {sub && <Badge tone={sub.tone}>{sub.label}</Badge>}
+                      {summary && <SubscriptionStatus summary={summary} businessId={d.businessId} />}
+                    </Td>
                     <Td>
                       <div className="flex flex-wrap gap-1.5">
                         {d.status === "booked" && (
@@ -133,16 +150,8 @@ export default async function DemosPage({ searchParams }: { searchParams: Promis
                             </ConfirmButton>
                           </>
                         )}
-                        {d.subscriptionStatus === "PENDING_DEMO" && (
-                          <ConfirmButton
-                            action={startTrialAction}
-                            fields={{ businessId: d.businessId, back: here }}
-                            label="Start trial"
-                            variant="primary"
-                            title={`Start ${d.businessName}'s trial?`}
-                            description={`The company gets the ${d.planKey} plan's features for ${settings.trialDays} ${settings.trialDays === 1 ? "day" : "days"} with the trial limits, starting now. The client is emailed. Written to the audit log.`}
-                            confirmLabel="Start trial"
-                          />
+                        {subStatus === "PENDING_DEMO" && (
+                          <ActivateAccount businessId={d.businessId} back={here} businessName={d.businessName} planName={d.planKey} trialDays={settings.trialDays} interval="MONTH" />
                         )}
                       </div>
                     </Td>

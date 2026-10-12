@@ -23,7 +23,7 @@ export default function PrivacyPage() {
       intro="We keep this simple: what we collect, why, who sees it, and how you can delete it."
     >
       <p>
-        BuPulse (&quot;BuPulse&quot;, &quot;we&quot;, &quot;us&quot;) is operated by [Company legal name], [Address], United States. This policy explains how
+        BuPulse (&quot;BuPulse&quot;, &quot;we&quot;, &quot;us&quot;) is operated by BuPulse, Kigali, Rwanda. This policy explains how
         we handle personal data when you visit bupulse.com or use the BuPulse app (together, the &quot;Service&quot;). If you have a question, email {mail}.
       </p>
 
@@ -171,15 +171,15 @@ export default function PrivacyPage() {
 
       <LegalSection title="12. International users">
         <p>
-          BuPulse is operated from the United States and your data is stored there. If you use the Service from another country, you understand your data
-          will be transferred to and processed in the United States.
+          BuPulse is operated from Rwanda and your data is stored with our hosting providers, mainly in the United States. If you use the Service from another country, you understand your data
+          will be transferred to and processed in those places.
         </p>
       </LegalSection>
 
       <LegalSection title="13. Changes and contact">
         <p>
           If we change this policy in a meaningful way, we will update the date above and, where appropriate, notify you. Questions or requests: {mail}
-          {" "}or [Company legal name], [Address].
+          {" "}or BuPulse, Kigali, Rwanda.
         </p>
       </LegalSection>
     </LegalPage>

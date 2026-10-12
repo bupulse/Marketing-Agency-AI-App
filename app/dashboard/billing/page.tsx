@@ -6,7 +6,9 @@ import { PageHeader } from "@/components/app/page-header";
 import { CheckoutScript } from "@/components/billing/checkout";
 import { CheckoutReturn } from "@/components/billing/checkout-return";
 import { formatDate, formatPrice, intervalWord, formatUsd, statusLabel } from "@/components/billing/helpers";
+import { ClientInvoices } from "@/components/billing/client-invoices";
 import { InvoiceList } from "@/components/billing/invoice-list";
+import { InvoicePay } from "@/components/billing/invoice-pay";
 import { MomoPayment } from "@/components/billing/momo-payment";
 import { PlanActions } from "@/components/billing/plan-actions";
 import { PlanPicker } from "@/components/billing/plan-picker";
@@ -17,6 +19,7 @@ import { momoConfigured, momoPriceOf } from "@/lib/billing/momo-shared";
 import { getPlan, subscriberPriceCents, toPublic } from "@/lib/plan-catalog";
 import { companyPlans, type RegionalPlan } from "@/lib/region-prices";
 import { currencyNote } from "@/lib/region-format";
+import { clientInvoices, openInvoiceOf, payableView } from "@/lib/invoices/service";
 import { getInvoices } from "./actions";
 
 export const metadata = { title: "Billing" };
@@ -62,6 +65,12 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       : null;
 
   const invoices = paid || subscription.providerCustomerId ? await getInvoices() : [];
+  // BuPulse's own invoices (docs/INVOICES.md): the open one with its Pay buttons, unless its Mobile Money payment is
+  // already open (then the pay screen above is that payment), and the list with PDFs.
+  const [bpInvoices, openInvoice] = await Promise.all([clientInvoices(business.id), openInvoiceOf(business.id)]);
+  const payingInvoice = Boolean(openInvoice && momoPayment?.status === "pending" && momoPayment.invoiceId === openInvoice.id);
+  const payable = openInvoice && !payingInvoice ? await payableView(openInvoice) : null;
+  const highlighted = typeof query.invoice === "string" ? query.invoice : null;
   const checkoutSuccess = query.checkout === "success";
   // Wait for this purchase specifically: the plan is active and was updated after checkout began.
   const since = Number(query.since);
@@ -96,6 +105,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
           </div>
         </GlassCard>
       )}
+
+      {payable && <InvoicePay invoice={payable} momo={momoOn} card={region.paymentMethods.includes("card")} highlight={highlighted === payable.number} />}
 
       {momoPayment && <MomoPayment payment={momoPayment} details={momoSettings} />}
 
@@ -156,6 +167,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
           </p>
         </>
       )}
+
+      {bpInvoices.length > 0 && <ClientInvoices invoices={bpInvoices} />}
 
       {(paid || invoices.length > 0) && !momoPlan && <InvoiceList invoices={invoices} />}
 

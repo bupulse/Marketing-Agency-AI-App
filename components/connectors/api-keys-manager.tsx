@@ -19,7 +19,8 @@ const SCOPES = [
 
 export type KeyView = { id: string; name: string; prefix: string; scopes: string[]; lastUsedAt: string | null; revokedAt: string | null; createdAt: string };
 
-export function ApiKeysManager({ keys, max }: { keys: KeyView[]; max: number }) {
+/** `readOnly`: the plan no longer has API access. The keys stay to look at and revoke; creating one is not offered. */
+export function ApiKeysManager({ keys, max, readOnly = false }: { keys: KeyView[]; max: number; readOnly?: boolean }) {
   const { toast } = useToast();
   const [pending, start] = useTransition();
   const [adding, setAdding] = useState(false);
@@ -51,9 +52,11 @@ export function ApiKeysManager({ keys, max }: { keys: KeyView[]; max: number }) 
           <h2 id="keys" className="text-lg font-semibold">
             Your keys
           </h2>
-          <Button size="sm" onClick={() => { setError(null); setAdding(true); }} disabled={active.length >= max} leading={<Plus aria-hidden className="size-4" />}>
-            Create key
-          </Button>
+          {!readOnly && (
+            <Button size="sm" onClick={() => { setError(null); setAdding(true); }} disabled={active.length >= max} leading={<Plus aria-hidden className="size-4" />}>
+              Create key
+            </Button>
+          )}
         </div>
         {keys.length === 0 ? (
           <GlassCard className="flex flex-col gap-2 rounded-card p-5">

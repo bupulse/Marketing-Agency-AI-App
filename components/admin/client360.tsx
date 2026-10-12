@@ -61,7 +61,11 @@ export async function Client360({ userId, tab: asked, basePath, extraTabs = [] }
           );
         })}
       </nav>
-      {showActions && <Actions id={id} c={c} />}
+      {showActions && (
+        <div id="actions" className="scroll-mt-24">
+          <Actions id={id} c={c} />
+        </div>
+      )}
       {!extra && tab === "overview" && <OverviewTab id={id} c={c} here={here} />}
       {!extra && tab === "billing" && <BillingTab c={c} />}
       {!extra && tab === "usage" && <UsageTab c={c} />}

@@ -5,7 +5,12 @@ import { Badge, Button, Select, type BadgeTone } from "@/components/ui";
 import { demoPanel } from "@/lib/admin/demos";
 import { dateTime } from "@/lib/admin/format";
 import { getRegions } from "@/lib/region";
-import { companyRegionAction, demoStatusAction, startTrialAction } from "@/app/admin/(console)/demos/actions";
+import { companyRegionAction, demoStatusAction } from "@/app/admin/(console)/demos/actions";
+import { ActivateAccount } from "./activate-account";
+import { SubscriptionStatus } from "./subscription-status";
+import { subscriptionSummary } from "@/lib/admin/subscription-summary";
+import { prisma } from "@/lib/db";
+import { getPlans } from "@/lib/plan-catalog";
 
 const SUB: Record<string, { label: string; tone: BadgeTone }> = {
   PENDING_DEMO: { label: "Waiting for demo", tone: "violet" },
@@ -19,12 +24,16 @@ const DEMO: Record<string, string> = { booked: "Booked", done: "Done", no_show: 
 
 /** The company page's "Demo and trial" panel: where the company is in the demo-first flow, its region, and the admin buttons. */
 export async function DemoPanel({ businessId, back }: { businessId: string; back: string }) {
-  const [p, regions] = await Promise.all([demoPanel(businessId), getRegions()]);
-  const sub = p.subscription;
+  const [p, regions, plans, owner] = await Promise.all([demoPanel(businessId), getRegions(), getPlans(), prisma.business.findUnique({ where: { id: businessId }, select: { userId: true } })]);
+  // The subscription as it is now: Activate account only while the company waits for its demo; past that, where it
+  // stands, with links to Extend trial / Change plan in the actions below.
+  const current = owner ? await prisma.subscription.findUnique({ where: { userId: owner.userId }, select: { status: true, plan: true, provider: true, interval: true, trialEndsAt: true, currentPeriodEnd: true, cancelAtPeriodEnd: true } }) : null;
+  const sub = current ?? p.subscription;
+  const summary = current ? subscriptionSummary(current, (key) => plans.find((pl) => pl.key === key)?.name ?? key) : null;
   const status = sub ? (SUB[sub.status] ?? { label: sub.status, tone: "neutral" as BadgeTone }) : null;
   const regionName = regions.find((r) => r.key === p.region)?.name ?? p.region ?? "GLOBAL";
   return (
-    <Panel title="Demo and trial" description="New clients book a demo, then an admin starts the trial. Region decides the plans, prices and payment methods the company sees in Billing." action={status && <Badge tone={status.tone}>{status.label}</Badge>}>
+    <Panel title="Demo and trial" description="New clients book a demo, then an admin activates the account: a trial, or an invoice to pay. Region decides the plans, prices and payment methods the company sees in Billing." action={status && <Badge tone={status.tone}>{status.label}</Badge>}>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[14px]">
         <dt className="text-muted">Plan chosen</dt>
         <dd>{p.chosenPlanName ?? <span className="text-muted">Not chosen yet</span>}</dd>
@@ -51,6 +60,12 @@ export async function DemoPanel({ businessId, back }: { businessId: string; back
             <dd>{dateTime(sub.trialEndsAt)}</dd>
           </>
         )}
+        {summary && (
+          <>
+            <dt className="text-muted">Account</dt>
+            <dd><SubscriptionStatus summary={summary} businessId={businessId} /></dd>
+          </>
+        )}
         <dt className="text-muted">Region</dt>
         <dd>
           <form action={companyRegionAction} className="flex flex-wrap items-center gap-2">
@@ -68,15 +83,7 @@ export async function DemoPanel({ businessId, back }: { businessId: string; back
       </dl>
       <div className="flex flex-wrap gap-2">
         {sub?.status === "PENDING_DEMO" && (
-          <ConfirmButton
-            action={startTrialAction}
-            fields={{ businessId, back }}
-            label="Start trial"
-            variant="primary"
-            title="Start the trial?"
-            description={`The company gets ${p.chosenPlanName ? `the ${p.chosenPlanName} plan's` : "its chosen plan's"} features for ${p.trialDays} ${p.trialDays === 1 ? "day" : "days"} with the trial limits, starting now. The client is emailed. Written to the audit log.`}
-            confirmLabel="Start trial"
-          />
+          <ActivateAccount businessId={businessId} back={back} businessName="this company" planName={p.chosenPlanName} trialDays={p.trialDays} interval="MONTH" />
         )}
         {p.booking?.status === "booked" && (
           <>
@@ -85,6 +92,7 @@ export async function DemoPanel({ businessId, back }: { businessId: string; back
           </>
         )}
         <Link href="/admin/demos" className="inline-flex min-h-11 items-center px-2 text-sm font-medium underline">All demos</Link>
+        <Link href={`/admin/invoices?businessId=${encodeURIComponent(businessId)}`} className="inline-flex min-h-11 items-center px-2 text-sm font-medium underline">Invoices</Link>
       </div>
     </Panel>
   );
