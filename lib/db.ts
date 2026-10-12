@@ -4,8 +4,6 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { poolMax, requestDatabase } from "@/lib/platform/database";
 
 const globalForPrisma = globalThis as unknown as {
-  prisma?: PrismaClient;
-  prismaClass?: typeof PrismaClient;
   clients?: Map<typeof PrismaClient, PrismaClient>;
 };
 
@@ -55,15 +53,19 @@ function getClient(): PrismaClient {
     }
     return client;
   }
-  // Reuse one client across hot reloads in development. After `prisma generate` the dev
-  // server reloads this module with a new PrismaClient class; a client made from the old
-  // class would not know new fields ("Unknown field …"), so it is replaced.
-  if (!globalForPrisma.prisma || globalForPrisma.prismaClass !== PrismaClient) {
-    void globalForPrisma.prisma?.$disconnect().catch(() => {});
-    globalForPrisma.prisma = createClient(process.env.DATABASE_URL);
-    globalForPrisma.prismaClass = PrismaClient;
+  // Reuse clients across hot reloads in development, one per PrismaClient class. After `prisma
+  // generate` the dev server reloads this module with a new class; a client made from the old
+  // class would not know new fields ("Unknown field …"), so the new class gets its own client.
+  // The dev server can also load several chunks at once, each with its own class, so an old
+  // client is never closed here: closing it would break another chunk's queries in flight
+  // ("Cannot use a pool after calling end on the pool"). Idle connections close on their own.
+  globalForPrisma.clients ??= new Map();
+  let client = globalForPrisma.clients.get(PrismaClient);
+  if (!client) {
+    client = createClient(process.env.DATABASE_URL);
+    globalForPrisma.clients.set(PrismaClient, client);
   }
-  return globalForPrisma.prisma;
+  return client;
 }
 
 export const prisma = new Proxy({} as PrismaClient, {
