@@ -5,6 +5,8 @@ import { paddle } from "@/lib/billing/paddle";
 import { trackEvent } from "@/lib/analytics/events";
 import { subscriptionEventsFor } from "@/lib/analytics/math";
 import { prisma } from "@/lib/db";
+import { settleInvoiceFromCardPayment } from "@/lib/invoices/service";
+import { cardPaymentOf } from "@/lib/invoices/shared";
 import { logError } from "@/lib/errors";
 
 // Paddle posts here (https://bupulse.com/api/billing/webhooks/paddle). The body must be read as
@@ -63,6 +65,7 @@ export async function POST(request: NextRequest) {
       if (outcome === "unknown_user") note = "ignored: no matching account";
       if (outcome === "stale") note = "ignored: older than the stored state";
     }
+    if (webhook.type === "transaction.completed") await settleInvoice(webhook.payload);
     await prisma.billingEvent.update({ where: { id: event.id }, data: { processedAt: new Date(), error: note } });
     return NextResponse.json({ ok: true });
   } catch (error) {
@@ -105,5 +108,18 @@ async function trackSubscriptionChange(
     }
   } catch {
     // analytics must never fail a webhook
+  }
+}
+
+// A completed card payment (transaction.completed) may pay the company's open invoice (docs/INVOICES.md). Only that
+// event records money; subscription events (renewals, edits) never settle an invoice. Best effort: an invoice left open
+// can still be marked paid by hand.
+async function settleInvoice(payload: unknown) {
+  const pay = cardPaymentOf(payload as Parameters<typeof cardPaymentOf>[0]);
+  if (!pay) return;
+  try {
+    await settleInvoiceFromCardPayment(pay);
+  } catch (error) {
+    await logError(error, { source: "billing.webhook.paddle.invoices", transactionId: pay.transactionId });
   }
 }
