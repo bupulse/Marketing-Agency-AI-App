@@ -58,8 +58,8 @@ The autonomous loop reads this file, takes the first open task, does it (build â
 - [x] Launch basics: WhatsApp button (NEXT_PUBLIC_WHATSAPP_NUMBER), MoMo/Airtel/Card badges on pricing, /api/status (07dd006).
 - [ ] Billing fixes from the journey tests (MoMo payment settles the matching invoice; regional Paddle price ids): `v2-journeys`, then a Sonnet review.
 - [ ] R3 custom plans and offers + R5 custom-plan request form: `v2-offers`, then review.
-- [ ] Final security review of everything since 615da00, then fix the high and medium findings.
-- [ ] Meta app review pack (docs only).
-- [ ] Release prep: version 2.0.0 notes, `docs/DEPLOY_NETLIFY.md` dry run (`netlify build --offline`), production `.env` checklist, backup/restore steps.
+- [ ] Final security review of everything since 615da00: done, no critical/high. Fixes on `v2-secfix` (region mismatch flag, widget AI share, CI pinning) and `v2-journeys` (exact-amount invoice settlement).
+- [x] Meta app review pack: `docs/META_APP_REVIEW.md` (9e0991f).
+- [x] Release prep: `docs/RELEASE_2.0.md` (release notes, owner tasks, go-live order, backups, rollback, limits). Offline Netlify build to re-run on the final head.
 - [ ] Owner: test v2 on localhost:3001; Netlify + production Supabase (free) + Resend DNS; MoMo Pay code; availability; Connect Google Calendar; reset keys pasted in chat.
 - [ ] Merge v2 into `main`, deploy, one real 100 RWF MoMo payment, zip handover.
