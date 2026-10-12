@@ -18,7 +18,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/invoices/[i
   const row = await clientInvoiceRow(user.businessId, id);
   if (!row) return new Response("Not found", { status: 404 });
   try {
-    await rateLimit(`invoice-pdf:${user.id}`, RATE_LIMITS.invoicePdf);
+    await rateLimit(`invoice-pdf:${user.businessId}`, RATE_LIMITS.invoicePdf);
     const pdf = await invoicePdf(row);
     return new Response(pdf as BodyInit, {
       headers: {
