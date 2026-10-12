@@ -30,7 +30,7 @@ Netlify's free plan gives **300 credits a month, as a hard limit: when they are 
 What else to do:
 
 1. After the first week, check Netlify: Usage & billing, Credit usage breakdown, Compute. Multiply by four.
-2. Optionally disable `.github/workflows/publish-posts.yml` (Actions, the workflow, "Disable workflow"): it also calls the publisher every 5 minutes, which doubles that cost; the Netlify schedule is reliable.
+2. `.github/workflows/publish-posts.yml` (the GitHub fallback for publishing and metrics) skips its scheduled runs by itself when the repository variable `DEPLOY_TARGET` is `netlify`, so the publisher is not paid for twice; "Run workflow" by hand still works.
 3. Deploy in batches: merge several changes, then deploy once.
 
 **When free is not enough:** Netlify Personal ($9 a month, 1,000 credits, and you can buy 500 more for $5 instead of being paused), or Pro (from 3,000 credits, also allows choosing the functions region and more memory). Cloudflare Workers Paid ($5 a month) is the other way out and is still fully supported (`docs/DEPLOY.md`).

@@ -35,7 +35,7 @@ The sharp binaries were the macOS ones; GitHub's Linux runner bundles the Linux 
 
 ## Free plan risks
 
-- 300 credits a month, hard limit (all sites paused when spent). Production deploy 15 credits; compute 10 credits per GB-hour at a fixed 1 GB. The publisher every 5 minutes (3 invocations a run) is estimated at 12 to 50 credits a month (it would be 60 to 240 every minute). Also documented: disable the GitHub publish fallback, deploy in batches. Paid fallback: Netlify Personal ($9, 1,000 credits, credit packs) or back to Cloudflare Workers Paid ($5).
+- 300 credits a month, hard limit (all sites paused when spent). Production deploy 15 credits; compute 10 credits per GB-hour at a fixed 1 GB. The publisher every 5 minutes (3 invocations a run) is estimated at 12 to 50 credits a month (it would be 60 to 240 every minute). `publish-posts.yml` skips its scheduled runs when `DEPLOY_TARGET=netlify` (manual runs still work). Also documented: deploy in batches. Paid fallback: Netlify Personal ($9, 1,000 credits, credit packs) or back to Cloudflare Workers Paid ($5).
 - 60 s per request on every plan; long AI or image work in one request (Studio image generation, an Autopilot plan with several images) can still hit it. Not measured: needs a real deploy.
 - Functions region fixed to US East (Ohio) on free.
 - Not verified without a live site: that Netlify's Next runtime passes `x-nf-geo` and `x-nf-client-connection-ip` through to the Next server's request headers (it builds `context.geo` from them, and the code reads them from the request), and the real duration and cost of a cron run.

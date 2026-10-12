@@ -3,6 +3,9 @@ name: Publish scheduled posts (fallback)
 # The main schedule is the Cloudflare Cron Trigger in wrangler.jsonc (every minute). This is the safety net
 # if that trigger is ever paused or misconfigured: GitHub's schedule is best effort, so expect 5 to 15 minutes.
 # Running both is safe, posts are claimed atomically and never published twice.
+# On Netlify (repository variable DEPLOY_TARGET=netlify) the scheduled runs are skipped: Netlify's own scheduled
+# functions publish every 5 minutes and collect metrics hourly, and a second caller would double the free plan's
+# compute cost (docs/DEPLOY_NETLIFY.md). "Run workflow" by hand still works there.
 
 on:
   schedule:
@@ -14,7 +17,7 @@ permissions: {}
 
 jobs:
   publish:
-    if: github.event.schedule != '23 * * * *'
+    if: github.event.schedule != '23 * * * *' && (vars.DEPLOY_TARGET != 'netlify' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
@@ -28,7 +31,7 @@ jobs:
 
   metrics:
     # Hourly safety net for /api/cron/metrics (the Cloudflare trigger is the main one).
-    if: github.event.schedule == '23 * * * *' || github.event_name == 'workflow_dispatch'
+    if: (github.event.schedule == '23 * * * *' && vars.DEPLOY_TARGET != 'netlify') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
