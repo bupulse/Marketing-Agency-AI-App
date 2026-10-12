@@ -3,6 +3,7 @@
 import { adminAction, finish } from "@/lib/admin/console";
 import { confirmManualPayment, rejectManualPayment } from "@/lib/billing/momo";
 import { saveMomoSettings } from "@/lib/billing/momo-settings";
+import { reprocessBillingEvent } from "@/lib/billing/paddle-events";
 
 const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 
@@ -33,4 +34,9 @@ export async function savePaymentSettingsAction(f: FormData) {
       airtelNumber: text(f, "airtelNumber"),
     }),
   );
+}
+
+export async function reprocessCardEventAction(f: FormData) {
+  const ctx = await adminAction();
+  await finish("/admin/payments#card-events", (r) => `Reprocessed ${r.type}.${r.note ? ` Note: ${r.note}.` : ""}`, () => reprocessBillingEvent(ctx, text(f, "id")));
 }

@@ -68,3 +68,6 @@ No trial starts at sign-up, in any region. `SubscriptionStatus` has a new value,
 ## Copy
 
 "Start free trial" became "Book a free demo" everywhere (header, mobile menu, hero, final CTA, plan cards, industries, about, blog, sign-up and welcome forms, confirmation email page, FAQ "How do I get started?", terms section 3). The trial banner and billing page keep "free trial" wording for companies that are on one. Copy stays industry-neutral.
+
+
+**Webhook price ids.** `planForAnyPriceId` (`lib/region-prices.ts`) maps a Paddle price id to its plan: the plans' own ids and history first, then a region's `PlanRegionPrice.paddle*PriceId`. An id nobody knows is stored UNPROCESSED with an `unmapped` note (ErrorLog `billing.webhook.paddle.unmapped` and one email to the admins), and the route answers 200 so Paddle stops retrying. It is listed under **Admin -> Payments -> Card events not applied** with a **Reprocess** button (console, authenticator code, audited `reprocess_billing_event`) to run once the plan or region price is synced; a later Paddle replay of the same event is processed too. A database error during the lookup is not "unmapped": the route answers 500 and Paddle retries. A region price id is forgotten when its price is edited, so subscribers on an old regional price need a PlanPriceChange (no history is kept for region prices yet).

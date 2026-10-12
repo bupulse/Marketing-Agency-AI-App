@@ -9,7 +9,8 @@ import { subscriptionEventsFor } from "@/lib/analytics/math";
 import { getSetting } from "@/lib/admin/settings";
 import { getPlan } from "@/lib/plan-catalog";
 import { companyPlans } from "@/lib/region-prices";
-import { sendPaymentRejectedEmail, sendPaymentToCheckEmail, sendPlanActiveEmail } from "./momo-emails";
+import { matchInvoicePayment, readPaymentReviews, withPaymentReview, type PaymentReview } from "@/lib/invoices/shared";
+import { sendInvoiceReviewAlertEmail, sendPaymentRejectedEmail, sendPaymentToCheckEmail, sendPlanActiveEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
 import {
   DAY_MS,
@@ -153,6 +154,8 @@ export async function startInvoicePayment(input: { userId: string; invoiceId: st
   if (!invoice || invoice.status === "draft") throw new ManualPaymentError("We could not find that invoice. Open it again from the Billing page.");
   if (invoice.status === "paid") throw new ManualPaymentError("This invoice is already paid.");
   if (invoice.status !== "sent") throw new ManualPaymentError("This invoice was cancelled. Contact support if you still want to pay it.");
+  // A payment for it already arrived and waits for the owner to check: a second one would be a double payment.
+  if (readPaymentReviews(invoice.paymentReview).length > 0) throw new ManualPaymentError("A payment for this invoice is being checked. We'll confirm shortly.");
   if (!invoice.planKey || !invoice.interval || invoice.totalMinor <= 0) throw new ManualPaymentError("This invoice cannot be paid by Mobile Money here. Contact support and we will help you.");
   const { region } = await companyPlans(business.id);
   if (!region.paymentMethods.includes("momo")) throw new ManualPaymentError("Mobile Money is not available where your business is. Pay by card, or contact support.");
@@ -297,6 +300,7 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
   const usdCents = usdCentsOf(payment.amountMinor, payment.currency, await getSetting("usdToRwf"));
 
   for (let attempt = 0; ; attempt++) {
+    let flagged: { invoice: { id: string; number: string; totalMinor: number; currency: string }; company: string; second: boolean } | null = null;
     const sub = await subOf(payment.userId);
     if (!sub) throw new AdminError("not_found", "This client has no subscription any more.");
     if (sub.provider === "PADDLE" && sub.providerSubscriptionId && LIVE.has(sub.status) && sub.plan !== "TRIAL" && !sub.cancelAtPeriodEnd) {
@@ -337,6 +341,27 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
           const paid = await tx.invoice.updateMany({ where: { id: payment.invoiceId, status: "sent" }, data: { status: "paid", paidAt: now, paidBy: `manual_payment:${payment.id}` } });
           if (paid.count !== 1) throw new AdminError("conflict", `Invoice ${payment.reference} is no longer open (voided or already paid). Reject this payment and refund it, or look at the invoice first.`);
           await writeAudit(tx, ctx, "invoice_paid", `invoice:${payment.invoiceId}`, { status: "sent" }, { status: "paid", number: payment.reference, paidBy: `manual_payment:${payment.id}`, amountMinor: payment.amountMinor, currency: payment.currency });
+        } else {
+          // A plain payment (the pay screen's BP- reference) for a plan the client was also invoiced for: the invoice is
+          // marked paid only when the payment provably is for it (matchInvoicePayment: the same total, or a single plan
+          // line of that amount). Otherwise it is recorded on the newest candidate for an admin to check and mark paid.
+          const business = await tx.business.findUnique({ where: { userId: payment.userId }, select: { id: true, name: true } });
+          const open = business ? await tx.invoice.findMany({ where: { businessId: business.id, status: "sent" } }) : [];
+          const { settle, review } = matchInvoicePayment(open, { amountMinor: payment.amountMinor, currency: payment.currency.toUpperCase(), paidAt: now, origin: period.mode === "extend" ? "subscription_recurring" : "web" }, { plan: plan.key, interval: payment.interval });
+          if (settle) {
+            const paidBy = `momo:${payment.reference}`;
+            const settled = await tx.invoice.updateMany({ where: { id: settle.id, status: "sent" }, data: { status: "paid", paidAt: now, paidBy } });
+            if (settled.count === 1) await writeAudit(tx, ctx, "invoice_paid", `invoice:${settle.id}`, { status: "sent" }, { status: "paid", number: settle.number, paidBy, amountMinor: payment.amountMinor, currency: payment.currency });
+          } else if (review) {
+            // Appended, never overwritten: a second payment for the same invoice is a possible double payment.
+            const note: PaymentReview = { source: "momo", reference: payment.reference, amountMinor: payment.amountMinor, currency: payment.currency, receivedAt: now.toISOString(), planKey: plan.key, interval: payment.interval };
+            const { list, added } = withPaymentReview((review as { paymentReview?: unknown }).paymentReview, note);
+            const marked = added ? await tx.invoice.updateMany({ where: { id: review.id, status: "sent" }, data: { paymentReview: list } }) : { count: 0 };
+            if (marked.count === 1) {
+              await writeAudit(tx, ctx, "invoice_payment_review", `invoice:${review.id}`, { status: "sent", payments: list.length - 1 }, { number: review.number, ...note, payments: list.length, invoiceTotalMinor: review.totalMinor, invoiceCurrency: review.currency });
+              flagged = { invoice: review, company: business?.name ?? "A company", second: list.length > 1 };
+            }
+          }
         }
         // Guarded on the state we read (ids, status and period end), so a card webhook or another confirmation landing
         // meanwhile is never overwritten blindly.
@@ -368,7 +393,9 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
       if (error instanceof SubscriptionMoved) throw new AdminError("conflict", "The subscription keeps changing while confirming. Look at the client and try again.");
       throw error;
     }
-    // After the commit: analytics and the client's email. Neither can undo the confirmation.
+    // After the commit: analytics and the emails. None of them can undo the confirmation.
+    const review = flagged as { invoice: { id: string; number: string; totalMinor: number; currency: string }; company: string; second: boolean } | null;
+    if (review) await sendInvoiceReviewAlertEmail({ second: review.second, number: review.invoice.number, company: review.company, invoiceId: review.invoice.id, source: "momo", reference: payment.reference, paidMinor: payment.amountMinor, paidCurrency: payment.currency, invoiceMinor: review.invoice.totalMinor, invoiceCurrency: review.invoice.currency }).catch(() => false);
     const client = await clientOf(payment.userId);
     for (const name of subscriptionEventsFor(before, after, false)) {
       await trackEvent(name, { userId: payment.userId, businessId: client.businessId, props: { plan: plan.key, interval: payment.interval, from: before.plan, method: "momo" } });

@@ -104,7 +104,7 @@ describe("admin actions", () => {
     await a.markInvoicePaidAction(form({ id: "inv1", method: "MTN", reference: " MP123456 " }));
     expect(h.svc.markInvoicePaid).toHaveBeenCalledWith(CTX, "inv1", { method: "MTN", reference: "MP123456" });
     await a.voidInvoiceAction(form({ id: "inv1", reason: "Re-issued" }));
-    expect(h.svc.voidInvoice).toHaveBeenCalledWith(CTX, "inv1", "Re-issued");
+    expect(h.svc.voidInvoice).toHaveBeenCalledWith(CTX, "inv1", "Re-issued", expect.any(Date), { acknowledgePayment: false });
   });
 
   it("Activate account: a trial for the days typed (1 to 90), or a draft invoice opened in the editor", async () => {

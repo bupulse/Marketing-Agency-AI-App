@@ -57,6 +57,20 @@ export async function invoiceUrl(transactionId: string): Promise<string> {
   return data.url;
 }
 
+/** A stored or verified Paddle event, translated to what BuPulse needs to do (also used to reprocess a stored event). */
+export function webhookFromEvent(event: { event_id: string; event_type: string; data?: unknown }): BillingWebhook {
+  const isSubscriptionEvent = event.event_type.startsWith("subscription.");
+  const subscription = isSubscriptionEvent ? (mapSubscription(event.data) ?? undefined) : undefined;
+  const customUserId = (event.data as { custom_data?: { userId?: unknown } } | null)?.custom_data?.userId;
+  return {
+    eventId: event.event_id,
+    type: event.event_type,
+    userId: subscription?.userId ?? (isUuid(customUserId) ? customUserId : null),
+    payload: event,
+    subscription,
+  };
+}
+
 export const paddle: BillingAdapter = {
   provider: "PADDLE",
 
@@ -155,15 +169,6 @@ export const paddle: BillingAdapter = {
     }
     if (typeof event.event_id !== "string" || typeof event.event_type !== "string") return null;
 
-    const isSubscriptionEvent = event.event_type.startsWith("subscription.");
-    const subscription = isSubscriptionEvent ? (mapSubscription(event.data) ?? undefined) : undefined;
-    const customUserId = (event.data as { custom_data?: { userId?: unknown } } | null)?.custom_data?.userId;
-    return {
-      eventId: event.event_id,
-      type: event.event_type,
-      userId: subscription?.userId ?? (isUuid(customUserId) ? customUserId : null),
-      payload: event,
-      subscription,
-    };
+    return webhookFromEvent(event as { event_id: string; event_type: string; data?: unknown });
   },
 };
