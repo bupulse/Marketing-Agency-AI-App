@@ -4,6 +4,7 @@ import { getAiBudgetStatus } from "./ai-usage";
 import { getHealthSummary, type HealthIssue } from "./health";
 import { getServicesAttention } from "./services";
 import { pendingManualPaymentCount } from "@/lib/billing/momo";
+import { openRegionMismatches } from "@/lib/region-check";
 import { platformBytes } from "@/lib/media/service";
 import { formatBytes, platformMaxBytes, platformNearlyFull } from "@/lib/media/rules";
 
@@ -14,17 +15,20 @@ export type AttentionItem = { level: "warning" | "problem"; key: string; text: s
  * and anything the Services and AI pages report. One list for the Overview box.
  */
 export async function getAttention(): Promise<AttentionItem[]> {
-  const [approvals, payments, health, services, budget, storageBytes] = await Promise.all([
+  const [approvals, payments, health, services, budget, storageBytes, mismatches] = await Promise.all([
     pendingApprovalCount(),
     pendingManualPaymentCount().catch(() => 0),
     getHealthSummary().catch(() => ({ status: "ok" as const, issues: [] as HealthIssue[] })),
     getServicesAttention().catch(() => ({ failing: [], off: [] })),
     getAiBudgetStatus().catch(() => null),
     platformBytes().catch(() => null),
+    openRegionMismatches().catch(() => []),
   ]);
   const items: AttentionItem[] = [];
   if (payments > 0) items.push({ level: "warning", key: "payments", text: `${payments} Mobile Money payment${payments === 1 ? " is" : "s are"} waiting for you to check.`, href: "/admin/payments" });
   if (approvals > 0) items.push({ level: "warning", key: "approvals", text: `${approvals} money request${approvals === 1 ? " is" : "s are"} waiting for your approval.`, href: "/admin/approvals" });
+  // The soft region check (lib/region-check.ts): paid from a dearer region than the one signed up in. Never blocked.
+  for (const m of mismatches) items.push({ level: "warning", key: `region:${m.businessId}`, text: `${m.name} signed up in ${m.pricingRegion} but was seen from ${m.flag.country} (${m.flag.ipRegion} prices) at ${m.flag.source === "signup" ? "sign-up" : m.flag.source === "momo" ? "a Mobile Money payment" : "a card checkout"}. Check the region and Change region if needed.`, href: `/admin/companies/${m.businessId}` });
   for (const f of services.failing) items.push({ level: "problem", key: `service:${f.key}`, text: `${f.label} is failing: ${f.reason}`, href: "/admin/services" });
   for (const o of services.off) items.push({ level: "warning", key: `off:${o.key}`, text: `${o.label} is switched off (${o.reason}).`, href: "/admin/services" });
   if (budget) {
