@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { getPriceTable } from "@/lib/plan-catalog";
-import { computeMrrCents } from "@/lib/analytics/math";
+import { computeMrrCents, MANUAL_PAYMENT_EVENT, MONEY_EVENT_TYPES } from "@/lib/analytics/math";
 import { getPlanLimits, USAGE_METRICS } from "./plan-limits";
 import { getClientConnections } from "./connections";
 import { scrubSecrets } from "./scrub";
@@ -57,13 +57,15 @@ export async function overviewSection(c: Client) {
 
 export async function billingSection(c: Client) {
   const rows = await prisma.billingEvent.findMany({
-    where: { userId: c.id, type: { in: ["transaction.completed", "adjustment.created", "adjustment.updated"] } },
+    where: { userId: c.id, type: { in: MONEY_EVENT_TYPES } },
     orderBy: { createdAt: "desc" },
     take: 40,
     select: { id: true, type: true, payload: true, createdAt: true },
   });
   const items = rows.flatMap((r): { kind: "payment" | "refund"; id: string; at: string; providerId: string | null; amountMinor: number | null; currency: string }[] => {
     const data = ((r.payload ?? {}) as { data?: Record<string, any> }).data ?? {}; // eslint-disable-line @typescript-eslint/no-explicit-any
+    // A confirmed Mobile Money payment carries its own amount (RWF) and our reference as the id.
+    if (r.type === MANUAL_PAYMENT_EVENT) return [{ kind: "payment" as const, id: r.id, at: r.createdAt.toISOString(), providerId: typeof data.id === "string" ? data.id : null, amountMinor: typeof data.amount_minor === "number" ? data.amount_minor : null, currency: typeof data.currency === "string" ? data.currency : "RWF" }];
     const totals = data.details?.totals ?? data.totals;
     const minor = Number(totals?.grand_total ?? totals?.total);
     const base = { id: r.id, at: r.createdAt.toISOString(), providerId: typeof data.id === "string" ? data.id : null, amountMinor: Number.isFinite(minor) ? minor : null, currency: typeof (data.currency_code ?? totals?.currency_code) === "string" ? String(data.currency_code ?? totals?.currency_code) : "USD" };

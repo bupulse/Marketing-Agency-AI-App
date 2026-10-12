@@ -24,6 +24,10 @@ function match(row: Row, where: Where): boolean {
     const value = row[key] === undefined ? null : row[key];
     if (cond && typeof cond === "object" && !(cond instanceof Date) && !Array.isArray(cond)) {
       const c = cond as Record<string, any>;
+      if ("equals" in c) {
+        const same = typeof value === "string" && typeof c.equals === "string" && c.mode === "insensitive" ? value.toLowerCase() === c.equals.toLowerCase() : value === c.equals;
+        if (!same) return false;
+      }
       if ("not" in c && value === c.not) return false;
       if ("in" in c && !(c.in as unknown[]).includes(value)) return false;
       if ("lt" in c && !(value < c.lt)) return false;
@@ -37,7 +41,7 @@ function match(row: Row, where: Where): boolean {
   });
 }
 
-function table(rows: Row[], opts: { pk: string; unique?: string[]; defaults?: () => Row }) {
+function table(rows: Row[], opts: { pk: string; unique?: string[]; uniqueCombo?: string[]; defaults?: () => Row }) {
   const uniqueKeys = [opts.pk, ...(opts.unique ?? [])];
   let seq = 0;
   const copy = (r: Row | undefined | null) => (r ? { ...r } : null);
@@ -57,10 +61,20 @@ function table(rows: Row[], opts: { pk: string; unique?: string[]; defaults?: ()
       rows.push(row);
       return row;
     }),
-    createMany: vi.fn(async ({ data }: { data: Row[] }) => {
+    createMany: vi.fn(async ({ data, skipDuplicates }: { data: Row[]; skipDuplicates?: boolean }) => {
       if (data.length > 0 && !("periodStart" in data[0])) {
-        for (const d of data) rows.push({ ...(opts.defaults?.() ?? {}), createdAt: new Date(), ...d, [opts.pk]: d[opts.pk] ?? `${opts.pk}_${++seq}` });
-        return { count: data.length };
+        let count = 0;
+        for (const d of data) {
+          // A composite unique key (RenewalNotice): with skipDuplicates the row is skipped, like ON CONFLICT DO NOTHING.
+          const combo = opts.uniqueCombo;
+          if (combo && rows.some((r) => combo.every((k) => (r[k] instanceof Date ? r[k].getTime() === d[k]?.getTime() : r[k] === d[k])))) {
+            if (skipDuplicates) continue;
+            throw Object.assign(new Error(`Unique constraint failed on ${combo.join(",")}`), { code: "P2002" });
+          }
+          rows.push({ ...(opts.defaults?.() ?? {}), createdAt: new Date(), ...d, [opts.pk]: d[opts.pk] ?? `${opts.pk}_${++seq}` });
+          count++;
+        }
+        return { count };
       }
       for (const d of data) if (!rows.some((r) => r.userId === d.userId && r.periodStart?.getTime() === d.periodStart?.getTime())) rows.push({ textGenerations: 0, imageGenerations: 0, videoSeconds: 0, voiceCharacters: 0, chatMessages: 0, ...d });
       return { count: data.length };
@@ -156,6 +170,10 @@ export function createFakeDb() {
     planDefinition: table(seedPlanRows(), { pk: "key", unique: ["key"] }),
     planPriceChange: table([], { pk: "id", defaults: () => ({ status: "scheduled", notifiedCount: 0, appliedCount: 0, failedCount: 0, completedAt: null }) }),
     planPriceChangeItem: table([], { pk: "id", defaults: () => ({ status: "pending", noticeSentAt: null, effectiveAt: null, appliedAt: null, error: null, updatedAt: new Date() }) }),
+    // Manual Mobile Money payments (lib/billing/momo.ts) and their renewal reminders.
+    manualPayment: table([], { pk: "id", unique: ["reference"], defaults: () => ({ currency: "RWF", status: "pending", payerPhone: null, network: null, transactionId: null, rejectReason: null, submittedAt: null, decidedAt: null, decidedBy: null, periodStart: null, periodEnd: null, updatedAt: new Date() }) }),
+    renewalNotice: table([], { pk: "id", uniqueCombo: ["userId", "periodEnd", "kind"], defaults: () => ({ sentAt: new Date() }) }),
+    analyticsEvent: table([], { pk: "id" }),
     $executeRaw: vi.fn(async () => 1),
     $queryRaw: vi.fn(async () => [{ locked: true }]),
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),

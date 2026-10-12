@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { MANUAL_PAYMENT_EVENT } from "@/lib/analytics/math";
 import { money } from "./format";
 import { scrubSecrets } from "./scrub";
 
@@ -68,6 +69,8 @@ type Raw = { at: Date; id: string; group: ActivityGroup; title: string; detail: 
 
 function paymentDetail(payload: unknown): string | null {
   const data = ((payload ?? {}) as { data?: Record<string, any> }).data ?? {}; // eslint-disable-line @typescript-eslint/no-explicit-any
+  // A confirmed Mobile Money payment (lib/billing/momo.ts) carries its own amount and currency.
+  if (typeof data.amount_minor === "number") return `${money(data.amount_minor, typeof data.currency === "string" ? data.currency : "RWF")} by Mobile Money`;
   const totals = data.details?.totals ?? data.totals;
   const raw = totals?.grand_total ?? totals?.total;
   const minor = typeof raw === "string" || typeof raw === "number" ? Number(raw) : NaN;
@@ -88,18 +91,25 @@ async function fromEvents(range: Range, take: number, groups: Set<ActivityGroup>
 }
 
 async function fromBilling(range: Range, take: number, groups: Set<ActivityGroup>, dir: Dir): Promise<Raw[]> {
-  const types = [...(groups.has("payment") ? ["transaction.completed"] : []), ...(groups.has("refund") ? ["adjustment.created", "adjustment.updated"] : [])];
+  const types = [...(groups.has("payment") ? ["transaction.completed", MANUAL_PAYMENT_EVENT] : []), ...(groups.has("refund") ? ["adjustment.created", "adjustment.updated"] : [])];
   if (!types.length) return [];
   const rows = await prisma.billingEvent.findMany({ where: { type: { in: types }, createdAt: range }, orderBy: [{ createdAt: dir }, { id: dir }], take });
   const out: Raw[] = [];
   for (const r of rows) {
-    if (r.type === "transaction.completed") out.push({ at: r.createdAt, id: `billing:${r.id}`, group: "payment", title: "Payment received", detail: paymentDetail(r.payload), tone: "good", userId: r.userId });
+    if (r.type === "transaction.completed" || r.type === MANUAL_PAYMENT_EVENT) out.push({ at: r.createdAt, id: `billing:${r.id}`, group: "payment", title: r.type === MANUAL_PAYMENT_EVENT ? "Mobile Money payment confirmed" : "Payment received", detail: paymentDetail(r.payload), tone: "good", userId: r.userId });
     else {
       const d = ((r.payload ?? {}) as { data?: { action?: string; status?: string } }).data;
       if (d?.action === "refund" && d?.status === "approved") out.push({ at: r.createdAt, id: `billing:${r.id}`, group: "refund", title: "Refund issued", detail: paymentDetail(r.payload), tone: "bad", userId: r.userId });
     }
   }
   return out;
+}
+
+/** Mobile Money payments the client says they made, waiting for the owner to check (lib/billing/momo.ts). */
+async function fromManualPayments(range: Range, take: number, groups: Set<ActivityGroup>, dir: Dir): Promise<Raw[]> {
+  if (!groups.has("payment")) return [];
+  const rows = await prisma.manualPayment.findMany({ where: { submittedAt: { not: null, ...range } }, orderBy: [{ submittedAt: dir }, { id: dir }], take, select: { id: true, submittedAt: true, reference: true, amountMinor: true, currency: true, status: true, userId: true } });
+  return rows.map((r) => ({ at: r.submittedAt as Date, id: `momo:${r.id}`, group: "payment" as const, title: r.status === "pending" ? "MoMo payment to check" : `MoMo payment ${r.status}`, detail: `${money(r.amountMinor, r.currency)} · ${r.reference}`, tone: r.status === "rejected" ? ("bad" as const) : r.status === "pending" ? ("neutral" as const) : ("good" as const), userId: r.userId }));
 }
 
 async function fromErrors(range: Range, take: number, groups: Set<ActivityGroup>, dir: Dir): Promise<Raw[]> {
@@ -142,7 +152,7 @@ export async function getActivity(opts: { before?: string | null; after?: string
   const take = limit + 20;
   // Polling reads forward from the cursor (oldest first) so a burst bigger than one batch is taken in order.
   const dir: Dir = after ? "asc" : "desc";
-  const raw = (await Promise.all([fromEvents(range, take, groups, dir), fromBilling(range, take, groups, dir), fromErrors(range, take, groups, dir), fromAudit(range, take, groups, dir)])).flat();
+  const raw = (await Promise.all([fromEvents(range, take, groups, dir), fromBilling(range, take, groups, dir), fromManualPayments(range, take, groups, dir), fromErrors(range, take, groups, dir), fromAudit(range, take, groups, dir)])).flat();
 
   const merged = raw.map<ActivityItem>((r) => ({ id: r.id, at: r.at.toISOString(), group: r.group, title: r.title, detail: r.detail, tone: r.tone, userId: r.userId && UUID.test(r.userId) ? r.userId : null, who: null, href: null, ...(r.businessId ? { _b: r.businessId } : {}) }) as ActivityItem & { _b?: string });
   const page = slice(merged, { before: opts.before, after: opts.after, limit });

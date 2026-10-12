@@ -1,5 +1,7 @@
 # Billing
 
+Mobile Money payments made by hand (Rwanda) are a separate flow beside the card checkout: `docs/MOMO.md`.
+
 BuPulse bills through a payment provider behind one interface, `BillingAdapter` (`lib/billing/types.ts`).
 Paddle is the first adapter (`lib/billing/paddle.ts`); Stripe and PayPal will add their own and be
 registered in `lib/billing/index.ts`. The rest of the app never talks to a provider directly.

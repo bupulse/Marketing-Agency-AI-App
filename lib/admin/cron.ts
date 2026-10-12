@@ -20,6 +20,7 @@ export const CRON_JOBS: CronJob[] = [
   { job: "store-sync", label: "Store sync", cron: "47 3 * * *", via: "Cloudflare", what: "Re-syncs imported store products" },
   { job: "analytics-rollup", label: "Analytics roll-up", cron: "17 2 * * *", via: "Cloudflare", what: "Daily numbers for the admin console" },
   { job: "plan-price-changes", label: "Plan price changes", cron: "29 4 * * *", via: "Cloudflare", what: "Notices and renewals when a plan price changes" },
+  { job: "momo-renewals", label: "Mobile Money renewals", cron: "41 5 * * *", via: "Cloudflare", what: "Renewal reminders, then read-only after the grace period" },
   { job: "purge-accounts", label: "Delete scheduled accounts", cron: "17 3 * * *", via: "GitHub Actions", what: "Erases accounts past their 30-day grace period" },
   { job: "social-refresh", label: "Refresh social tokens", cron: "43 4 * * *", via: "GitHub Actions", what: "Renews channel tokens before they expire" },
 ];

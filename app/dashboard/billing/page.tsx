@@ -7,9 +7,13 @@ import { CheckoutScript } from "@/components/billing/checkout";
 import { CheckoutReturn } from "@/components/billing/checkout-return";
 import { formatDate, intervalWord, formatUsd, statusLabel } from "@/components/billing/helpers";
 import { InvoiceList } from "@/components/billing/invoice-list";
+import { MomoPayment } from "@/components/billing/momo-payment";
 import { PlanActions } from "@/components/billing/plan-actions";
 import { PlanPicker } from "@/components/billing/plan-picker";
 import { Badge, GlassCard, Meter } from "@/components/ui";
+import { currentManualPayment } from "@/lib/billing/momo";
+import { getMomoPriceTable, getMomoSettings } from "@/lib/billing/momo-settings";
+import { formatMomoAmount, momoConfigured, momoPriceFor } from "@/lib/billing/momo-shared";
 import { getPlan, getSellablePlans, subscriberPriceCents, toPublic } from "@/lib/plan-catalog";
 import { getInvoices } from "./actions";
 
@@ -25,15 +29,23 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
 
   const status = subscription.status;
   const pastDue = status === "PAST_DUE";
-  const paid = !isTrial && !!subscription.providerSubscriptionId && (status === "ACTIVE" || pastDue);
+  // Mobile Money plans have no provider subscription id: the paid period alone says they are paid (docs/MOMO.md).
+  const momoPlan = subscription.provider === "MANUAL_MOMO";
+  const paid = !isTrial && (!!subscription.providerSubscriptionId || momoPlan) && (status === "ACTIVE" || pastDue);
   const periodEnd = formatDate(subscription.currentPeriodEnd);
   const trialEnd = formatDate(subscription.trialEndsAt);
   const cancelling = paid && subscription.cancelAtPeriodEnd;
-  const [sellable, currentPlan] = await Promise.all([getSellablePlans(), getPlan(subscription.plan)]);
+  const [sellable, currentPlan, momoSettings, momoPayment] = await Promise.all([getSellablePlans(), getPlan(subscription.plan), getMomoSettings(), currentManualPayment(subscription.userId)]);
+  const momoOn = momoConfigured(momoSettings);
+  const momoPrices = momoOn ? Object.fromEntries((await getMomoPriceTable()).map((p) => [p.key, { monthlyMinor: p.monthlyMinor, yearlyMinor: p.yearlyMinor }])) : {};
   // Retired and hidden plans stay listed for the clients already on them, so "Your current plan" is still shown.
   const pickable = [...sellable, ...(currentPlan && !currentPlan.isTrial && !sellable.some((p) => p.key === currentPlan.key) ? [currentPlan] : [])].map(toPublic);
   const price =
-    paid && currentPlan && !currentPlan.isTrial ? `${formatUsd(subscriberPriceCents(currentPlan, subscription.providerPriceId, subscription.interval) / 100)} per ${intervalWord(subscription.interval)}` : null;
+    paid && currentPlan && !currentPlan.isTrial
+      ? momoPlan
+        ? `${formatMomoAmount(momoPriceFor(currentPlan, subscription.interval, momoSettings))} per ${intervalWord(subscription.interval)}, by Mobile Money`
+        : `${formatUsd(subscriberPriceCents(currentPlan, subscription.providerPriceId, subscription.interval) / 100)} per ${intervalWord(subscription.interval)}`
+      : null;
 
   const invoices = paid || subscription.providerCustomerId ? await getInvoices() : [];
   const checkoutSuccess = query.checkout === "success";
@@ -61,13 +73,17 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
         <GlassCard role="alert" className="flex items-start gap-3 border border-danger/40 p-5">
           <AlertTriangle aria-hidden className="mt-0.5 size-5 shrink-0 text-danger" />
           <div className="flex flex-col gap-1">
-            <strong>Your last payment didn&apos;t go through</strong>
+            <strong>{momoPlan ? "Your plan has ended" : "Your last payment didn't go through"}</strong>
             <p className="text-sm text-muted">
-              Update your payment method to keep creating. Everything you have made is saved; new content is paused until the payment goes through.
+              {momoPlan
+                ? "Pay by Mobile Money to keep creating. Everything you have made is saved; new content is paused until the payment is confirmed."
+                : "Update your payment method to keep creating. Everything you have made is saved; new content is paused until the payment goes through."}
             </p>
           </div>
         </GlassCard>
       )}
+
+      {momoPayment && <MomoPayment payment={momoPayment} details={momoSettings} />}
 
       <GlassCard as="section" aria-labelledby="current-plan" className="flex flex-col gap-5 p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -86,7 +102,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
                 {trialDaysLeft ? ` (${trialDaysLeft} ${trialDaysLeft === 1 ? "day" : "days"} left)` : ""}
               </span>
             )}
-            {paid && periodEnd && !cancelling && !pastDue && <span className="text-sm text-muted">Renews {periodEnd}</span>}
+            {paid && periodEnd && !cancelling && !pastDue && <span className="text-sm text-muted">{momoPlan ? `Paid until ${periodEnd}` : `Renews ${periodEnd}`}</span>}
             {cancelling && periodEnd && <span className="text-sm font-medium text-danger">Cancels on {periodEnd}. Your plan stays active until then.</span>}
           </div>
           <Badge tone={status === "ACTIVE" || status === "TRIALING" ? (cancelling ? "neutral" : "success") : "danger"}>
@@ -94,7 +110,15 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
           </Badge>
         </div>
 
-        {paid && <PlanActions cancelAtPeriodEnd={cancelling} pastDue={pastDue} periodEnd={periodEnd} />}
+        {paid && (
+          <PlanActions
+            cancelAtPeriodEnd={cancelling}
+            pastDue={pastDue}
+            periodEnd={periodEnd}
+            method={momoPlan ? "momo" : "card"}
+            renew={momoPlan && !momoPayment && currentPlan && !currentPlan.isTrial ? { plan: currentPlan.key, interval: subscription.interval } : undefined}
+          />
+        )}
 
         <div className="flex flex-col gap-3 border-t border-line pt-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -110,11 +134,15 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       </GlassCard>
 
       {/* Hidden while a purchase is being confirmed, so nobody buys a second plan by accident. */}
-      {!waitingForCheckout && (
-        <PlanPicker plans={pickable} current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue }} />
+      {!waitingForCheckout && momoPayment?.status !== "pending" && (
+        <PlanPicker
+          plans={pickable}
+          current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue, method: paid ? (momoPlan ? "momo" : "card") : null }}
+          momo={momoOn ? { prices: momoPrices } : null}
+        />
       )}
 
-      {(paid || invoices.length > 0) && <InvoiceList invoices={invoices} />}
+      {(paid || invoices.length > 0) && !momoPlan && <InvoiceList invoices={invoices} />}
 
       <GlassCard as="aside" className="flex flex-wrap items-center justify-between gap-3 p-5">
         <div>

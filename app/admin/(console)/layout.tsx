@@ -4,14 +4,15 @@ import { AdminShell } from "@/components/admin/shell";
 import { requireAdmin } from "@/lib/admin/auth";
 import { pendingApprovalCount } from "@/lib/admin/console";
 import { getHealthSummary } from "@/lib/admin/health";
+import { pendingManualPaymentCount } from "@/lib/billing/momo";
 
 export default async function AdminConsoleLayout({ children }: { children: ReactNode }) {
   const admin = await requireAdmin();
-  const [pending, health] = await Promise.all([pendingApprovalCount(), getHealthSummary().catch(() => ({ status: "ok" as const, issues: [] }))]);
+  const [pending, payments, health] = await Promise.all([pendingApprovalCount(), pendingManualPaymentCount().catch(() => 0), getHealthSummary().catch(() => ({ status: "ok" as const, issues: [] }))]);
   return (
     <>
       <BackgroundBlobs />
-      <AdminShell email={admin.email} badges={{ approvals: pending, health: { status: health.status, count: health.issues.length } }}>
+      <AdminShell email={admin.email} badges={{ approvals: pending, payments, health: { status: health.status, count: health.issues.length } }}>
         {children}
       </AdminShell>
     </>
