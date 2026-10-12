@@ -92,7 +92,7 @@ export async function toCalendarPosts(rows: PostRow[]): Promise<CalendarPost[]> 
     publishedAt: r.publishedAt?.toISOString() ?? null,
     permalink: r.permalink,
     lastError: r.lastError,
-    projectId: r.projectId,
+    subjectId: r.productId ?? r.campaignId ?? r.projectId,
     contentId: r.contentId,
   }));
 }

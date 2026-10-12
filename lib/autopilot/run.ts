@@ -3,6 +3,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { industryContext } from "@/lib/industry-context";
+import { profileContext } from "@/lib/knowledge/context";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
 import { AIBudgetExceededError } from "@/lib/ai/budget";
@@ -74,7 +75,7 @@ async function claimRun(businessId: string, key: Date, now: Date): Promise<{ id:
 
 function factsFor(group: PlannedGroup) {
   return {
-    project: group.project && { type: group.project.type, title: group.project.title, price: group.project.price, features: group.project.features, notes: group.project.notes },
+    project: group.project && { type: group.project.type, title: group.project.title, price: group.project.price, features: group.project.features, notes: group.project.notes, context: group.project.context },
     faq: group.faq,
     holiday: group.holiday ? { name: group.holiday.name, date: group.holiday.date } : undefined,
     date: group.day,
@@ -145,6 +146,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
       businessName: business.name,
       industry: business.industry,
       industryContext: industryContext(business),
+      profile: profileContext(business.profile),
       description: business.description,
       audience: business.audience,
       tone: business.tone,
@@ -217,7 +219,8 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
               connectionId: planned.connectionId,
               network: planned.network,
               groupId: group.groupId,
-              projectId: group.project?.id ?? null,
+              productId: group.project && group.project.subject !== "campaign" ? group.project.id : null,
+              campaignId: group.project?.subject === "campaign" ? group.project.id : null,
               status: needsPicture ? ("DRAFT" as const) : autoPublish ? ("SCHEDULED" as const) : ("PENDING_APPROVAL" as const),
               format,
               source: "AUTOPILOT" as const,

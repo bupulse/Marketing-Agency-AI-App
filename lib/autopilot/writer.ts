@@ -12,7 +12,8 @@ import type { Trend } from "./learning";
 import type { AutopilotFormat, Idea } from "./playbook";
 
 export interface WriterFacts {
-  project?: { type: string; title: string; price?: string | null; features: string[]; notes?: string };
+  /** The product or campaign the post is about. `context` is its fenced data block (lib/knowledge/context.ts); when given it replaces price, features and notes. */
+  project?: { type: string; title: string; price?: string | null; features: string[]; notes?: string; context?: string };
   faq?: { question: string; answer: string };
   holiday?: { name: string; date: string };
   /** "YYYY-MM-DD" the post goes out, for "time of year" ideas. */
@@ -117,6 +118,7 @@ export function buildPrompt(req: WriteRequest): string {
         .filter(Boolean)
         .join("\n"),
     brand.industryContext && `\n${brand.industryContext}`,
+    brand.profile && `\n${brand.profile}`,
     "",
     `Post idea: ${idea.name} (goal: ${idea.goal})`,
     `How to write it: ${idea.guidance}`,
@@ -125,9 +127,10 @@ export function buildPrompt(req: WriteRequest): string {
     p &&
       [
         `About (${p.type}): ${p.title}`,
-        p.price && `Price or offer: ${p.price}`,
-        p.features.length > 0 && `Key features:\n- ${p.features.join("\n- ")}`,
-        p.notes && `Other details: ${p.notes}`,
+        p.context,
+        !p.context && p.price && `Price or offer: ${p.price}`,
+        !p.context && p.features.length > 0 && `Key features:\n- ${p.features.join("\n- ")}`,
+        !p.context && p.notes && `Other details: ${p.notes}`,
       ]
         .filter(Boolean)
         .join("\n"),
@@ -218,6 +221,8 @@ export function factsText(req: WriteRequest): string {
     facts.project?.price,
     ...(facts.project?.features ?? []),
     facts.project?.notes,
+    facts.project?.context,
+    brand.profile,
     facts.faq?.question,
     facts.faq?.answer,
     ...(facts.trends ?? []).flatMap((t) => [t.topic, ...t.hashtags]),

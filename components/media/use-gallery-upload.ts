@@ -82,7 +82,8 @@ async function prepareImage(file: File): Promise<Prepared> {
 
 /**
  * Uploads photos straight from the browser to Storage, three at a time. Each batch asks the server for
- * signed upload URLs (type, size, quota and folder are checked there), uploads, then finalizes each file.
+ * signed upload URLs (type, size, quota and the destination are checked there), uploads, then finalizes each file.
+ * `destination` is "folder:<id>", "product:<id>" or "campaign:<id>" (lib/media/destinations.ts): every upload needs one.
  * `onUploaded` gets the photos that made it, once the whole drop is finished.
  */
 export function useGalleryUpload(onUploaded?: (items: MediaItem[]) => void) {
@@ -93,7 +94,7 @@ export function useGalleryUpload(onUploaded?: (items: MediaItem[]) => void) {
   const dismiss = useCallback(() => setState((s) => (s.active ? s : IDLE)), []);
 
   const start = useCallback(
-    async (list: FileList | File[], folderId: string | null) => {
+    async (list: FileList | File[], destination: string) => {
       if (running.current) return;
       const files = Array.from(list);
       if (files.length === 0) return;
@@ -119,7 +120,7 @@ export function useGalleryUpload(onUploaded?: (items: MediaItem[]) => void) {
           }
           if (prepared.length === 0) continue;
           const batch = prepared.map((p) => p.file);
-          const res = await createUploadTargets({ folderId, files: batch.map((f) => ({ name: f.name, type: inferMimeType(f.name, f.type), size: f.size })) });
+          const res = await createUploadTargets({ destination, files: batch.map((f) => ({ name: f.name, type: inferMimeType(f.name, f.type), size: f.size })) });
           if (!res.ok) {
             batch.forEach(() => fail(res.error));
             continue;
@@ -138,7 +139,7 @@ export function useGalleryUpload(onUploaded?: (items: MediaItem[]) => void) {
               try {
                 const { error } = await storage.uploadToSignedUrl(target.path, target.token, file, { contentType: inferMimeType(file.name, file.type) });
                 if (error) throw error;
-                const saved = await finalizeUpload({ path: target.path, name: nameFromFile(file.name), folderId, width, height });
+                const saved = await finalizeUpload({ path: target.path, name: nameFromFile(file.name), destination, width, height });
                 if (!saved.ok) {
                   void discardUpload(target.path);
                   fail(saved.error);

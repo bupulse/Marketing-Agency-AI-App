@@ -26,8 +26,8 @@ export const PLANNED: Record<ConnectorId, { name: string; group: ConnectorGroup;
   "google-drive": { name: "Google Drive", group: "files", description: "Pick photos and files from your Drive and add them to your gallery.", icon: "HardDrive" },
   dropbox: { name: "Dropbox", group: "files", description: "Pick photos and files from Dropbox and add them to your gallery.", icon: "Folder" },
   canva: { name: "Canva", group: "design", description: "Bring your Canva designs into BuPulse to use in posts.", icon: "Palette" },
-  shopify: { name: "Shopify", group: "store", description: "Import your products as projects, with photos and prices.", icon: "ShoppingBag" },
-  woocommerce: { name: "WooCommerce", group: "store", description: "Import your products as projects, with photos and prices.", icon: "ShoppingCart" },
+  shopify: { name: "Shopify", group: "store", description: "Import your products, with photos and prices.", icon: "ShoppingBag" },
+  woocommerce: { name: "WooCommerce", group: "store", description: "Import your products, with photos and prices.", icon: "ShoppingCart" },
   cloudflare: { name: "Cloudflare", group: "website", description: "See your domains and add the chat widget to your website in one click.", icon: "Globe" },
 };
 

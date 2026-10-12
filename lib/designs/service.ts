@@ -1,6 +1,7 @@
 import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import { prisma } from "@/lib/db";
+import { resolveSubject, subjectColumns } from "@/lib/knowledge/service";
 import { logError } from "@/lib/errors";
 import { withLedger } from "@/lib/ai/ledger";
 import { getImageProvider } from "@/lib/ai/image";
@@ -27,7 +28,8 @@ const IMAGE_FEATURE = "image";
 type Owner = {
   userId: string;
   businessId: string;
-  projectId?: string | null;
+  /** The product or campaign the design is for (an old project id works: it is the same id). */
+  subjectId?: string | null;
   /** Background jobs (Autopilot's cron) have no session: use the service key for Storage. Ownership is still checked. */
   service?: boolean;
 };
@@ -37,14 +39,12 @@ async function storageClient(service?: boolean) {
   return service ? createAdminClient() : await createClient();
 }
 
-async function requireOwned({ userId, businessId, projectId }: Owner) {
+async function requireOwned({ userId, businessId, subjectId }: Owner) {
   const business = await prisma.business.findFirst({ where: { id: businessId, userId } });
   if (!business) throw new DesignError("We could not find your business.");
-  if (projectId) {
-    const project = await prisma.project.findFirst({ where: { id: projectId, businessId }, select: { id: true } });
-    if (!project) throw new DesignError("We could not find that project.");
-  }
-  return business;
+  const subject = subjectId ? await resolveSubject(businessId, subjectId) : null;
+  if (subjectId && !subject) throw new DesignError("We could not find that product or campaign.");
+  return { business, subject: subjectColumns(subject) };
 }
 
 const TEMPLATE_TYPES = ["image/png", "image/jpeg"];
@@ -128,7 +128,8 @@ export async function createTemplateDesign(input: Owner & {
 }): Promise<CreatedDesign> {
   if (!isTemplateId(input.template)) throw new DesignError("Pick one of the templates.");
   await rateLimit(`design:${input.userId}`, RATE_LIMITS.templateDesign);
-  const business = await requireOwned(input);
+  const owned = await requireOwned(input);
+  const { business } = owned;
   const [photoDataUrl, logoDataUrl] = await Promise.all([loadPhoto(input.userId, input.photoPath, TEMPLATE_TYPES, input.service), loadLogo(input.userId, business.logoUrl, undefined, input.service)]);
 
   let png: ArrayBuffer;
@@ -159,7 +160,7 @@ export async function createTemplateDesign(input: Owner & {
   const { width, height } = ASPECT_SIZES[input.aspectRatio];
   try {
     await prisma.design.create({
-      data: { id, businessId: business.id, projectId: input.projectId ?? null, kind: "TEMPLATE", template: input.template, aspectRatio: input.aspectRatio, path, width, height },
+      data: { id, businessId: business.id, ...owned.subject, kind: "TEMPLATE", template: input.template, aspectRatio: input.aspectRatio, path, width, height },
     });
   } catch (error) {
     await removeFile(path, true);
@@ -178,7 +179,8 @@ export async function createAiDesign(input: Owner & {
   includePeople?: boolean;
 }): Promise<CreatedDesign> {
   await rateLimit(`aiimage:${input.userId}`, RATE_LIMITS.aiImage);
-  const business = await requireOwned(input);
+  const owned = await requireOwned(input);
+  const { business } = owned;
   if (input.usePhotoPath && !isOwnPhotoPath(input.userId, input.usePhotoPath)) throw new DesignError("That photo could not be used.");
 
   // Throws UsageLimitError when the plan has no image credits left.
@@ -204,7 +206,7 @@ export async function createAiDesign(input: Owner & {
     const { width, height } = imageSize(image.data, input.aspectRatio);
     try {
       await prisma.design.create({
-        data: { id, businessId: business.id, projectId: input.projectId ?? null, kind: "AI", prompt: input.prompt, aspectRatio: input.aspectRatio, path, width, height },
+        data: { id, businessId: business.id, ...owned.subject, kind: "AI", prompt: input.prompt, aspectRatio: input.aspectRatio, path, width, height },
       });
     } catch (error) {
       await removeFile(path, true);
@@ -248,7 +250,8 @@ export async function createAiPhotoDesign(input: Owner & {
   if (input.usePhotoPath && !isOwnPhotoPath(input.userId, input.usePhotoPath)) throw new DesignError("That photo could not be used.");
   // Each call pays for a Gemini image, so it shares the tighter AI limit, not the template one.
   await rateLimit(`aiimage:${input.userId}`, RATE_LIMITS.aiImage);
-  const business = await requireOwned(input);
+  const owned = await requireOwned(input);
+  const { business } = owned;
 
   // Throws UsageLimitError when the plan has no image credits left.
   const { periodStart } = await consumeUsage(input.userId, "image");
@@ -303,7 +306,7 @@ export async function createAiPhotoDesign(input: Owner & {
     const { width, height } = ASPECT_SIZES[input.aspectRatio];
     try {
       await prisma.design.create({
-        data: { id, businessId: business.id, projectId: input.projectId ?? null, kind: "AI", template: input.template, prompt: input.scene?.trim() || input.headline, aspectRatio: input.aspectRatio, path, width, height },
+        data: { id, businessId: business.id, ...owned.subject, kind: "AI", template: input.template, prompt: input.scene?.trim() || input.headline, aspectRatio: input.aspectRatio, path, width, height },
       });
     } catch (error) {
       await removeFile(path, true);
@@ -365,9 +368,9 @@ export async function designUrls(paths: string[]): Promise<Map<string, string>> 
 }
 
 /** The business's designs, newest first, with signed URLs, in the shape <DesignStudio designs> expects. */
-export async function listDesigns(userId: string, options: { projectId?: string; take?: number } = {}) {
+export async function listDesigns(userId: string, options: { take?: number } = {}) {
   const rows = await prisma.design.findMany({
-    where: { business: { userId }, ...(options.projectId ? { projectId: options.projectId } : {}) },
+    where: { business: { userId } },
     orderBy: { createdAt: "desc" },
     take: options.take ?? 60,
   });

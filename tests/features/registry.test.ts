@@ -55,7 +55,8 @@ describe("the feature registry", () => {
     const byHref = Object.fromEntries(NAV_ITEMS.map((i) => [i.href, i.feature]));
     expect(byHref).toMatchObject({
       "/dashboard": null,
-      "/dashboard/projects": "content",
+      // The Knowledge base landing is open on every plan; its products and campaigns pages need `content`.
+      "/dashboard/knowledge": null,
       "/dashboard/content": "content",
       "/dashboard/calendar": "calendar",
       "/dashboard/analytics": "analytics",
@@ -123,6 +124,9 @@ describe("featureForRoute", () => {
   it("maps dashboard paths to the feature that unlocks them (longest prefix wins)", () => {
     expect(featureForRoute("/dashboard/autopilot")).toBe("autopilot");
     expect(featureForRoute("/dashboard/projects/abc/edit")).toBe("content");
+    expect(featureForRoute("/dashboard/knowledge/products/abc/edit")).toBe("content");
+    expect(featureForRoute("/dashboard/knowledge/campaigns")).toBe("content");
+    expect(featureForRoute("/dashboard/knowledge/profile")).toBeNull();
     expect(featureForRoute("/dashboard/connectors/api")).toBe("apiAccess");
     expect(featureForRoute("/dashboard/connectors/webhooks")).toBe("webhooks");
     expect(featureForRoute("/dashboard/connectors")).toBeNull();

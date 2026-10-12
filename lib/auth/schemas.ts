@@ -34,7 +34,7 @@ export const passwordSchema = z
   });
 
 // Accepts "example.com" as well as full URLs; stores a normalised https URL.
-const websiteSchema = z
+export const websiteSchema = z
   .string()
   .trim()
   .max(200, "That website address is too long.")

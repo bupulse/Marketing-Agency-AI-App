@@ -177,7 +177,10 @@ export function aspectNote(ratio: string): string {
   return note ? `${ratio} · ${note}` : ratio;
 }
 
-/** A project's content, as the screens use it (dates as ISO strings so it can cross to the browser). */
+/** What content is written for: a product or a campaign (Knowledge base). */
+export type StudioSubject = { kind: "product" | "campaign"; id: string };
+
+/** A product's or campaign's content, as the screens use it (dates as ISO strings so it can cross to the browser). */
 export type StudioContent = {
   id: string;
   caption: string;

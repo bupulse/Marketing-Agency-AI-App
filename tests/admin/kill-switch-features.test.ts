@@ -82,9 +82,9 @@ describe("importers", () => {
   it("refuse with the friendly message while their service is off", async () => {
     turnOff("google-drive", "dropbox", "canva");
     for (const run of [
-      () => importDriveFile(ctx, { token: "t", fileId: "abcdefghij1", folderId: null }),
-      () => importDropboxFile(ctx, { link: "https://dl.dropboxusercontent.com/x", name: "a.jpg", folderId: null }),
-      () => importCanvaDesign(ctx, { designId: "D1", title: "t", folderId: null }),
+      () => importDriveFile(ctx, { token: "t", fileId: "abcdefghij1", destination: "folder:f1" }),
+      () => importDropboxFile(ctx, { link: "https://dl.dropboxusercontent.com/x", name: "a.jpg", destination: "folder:f1" }),
+      () => importCanvaDesign(ctx, { designId: "D1", title: "t", destination: "folder:f1" }),
       () => listCanvaDesigns("u1", {}),
     ]) {
       const err = await run().catch((e) => e);

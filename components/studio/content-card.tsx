@@ -4,14 +4,14 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { History, PenLine, Plus, RefreshCw, X } from "lucide-react";
 import { Badge, Button, Chip, Field, GlassCard, Input, Tabs, Textarea, useToast } from "@/components/ui";
-import { saveEditedContent } from "@/app/dashboard/projects/actions";
+import { saveEditedContent } from "@/app/dashboard/knowledge/actions";
 import { prefillFromContent } from "@/components/publishing/prefill";
 import { ScheduleButton } from "@/components/publishing/schedule-button";
 import { CopyButton } from "./copy-button";
 import { GenerateProgress } from "./generate-progress";
 import { NetworkPreviews } from "./network-previews";
 import { useGenerate } from "./use-generate";
-import { REGENERATE_IDEAS, addHashtag, formatCopyText, formatWhenWithTime, usageNote, type StudioContent } from "./helpers";
+import { REGENERATE_IDEAS, addHashtag, formatCopyText, formatWhenWithTime, usageNote, type StudioContent, type StudioSubject } from "./helpers";
 
 const MAX_HEADLINES = 5;
 
@@ -166,16 +166,16 @@ function Viewer({ content }: { content: StudioContent }) {
   );
 }
 
-/** The project's written content: view, edit, regenerate, network previews and version history. */
+/** A product's or campaign's written content: view, edit, regenerate, network previews and version history. */
 export function ContentCard({
-  projectId,
+  subject,
   contents,
   used,
   limit,
   photos,
 }: {
-  projectId: string;
-  /** The project's photos, offered with the post when scheduling. */
+  subject: StudioSubject;
+  /** The album's photos (cover first), offered with the post when scheduling. */
   photos?: { path: string; url: string }[];
   /** Newest first. */
   contents: StudioContent[];
@@ -195,7 +195,7 @@ export function ContentCard({
   const viewing = contents.find((c) => c.id === viewingId) ?? latest;
   const isLatest = viewing.id === latest.id;
 
-  const { run, pending: generating, dialog } = useGenerate(projectId, {
+  const { run, pending: generating, dialog } = useGenerate(subject.id, {
     limit,
     onDone: (id) => {
       setViewingId(id);
@@ -267,7 +267,7 @@ export function ContentCard({
           </div>
           {!editing && !generating && (
             <div className="flex flex-wrap gap-2">
-              <ScheduleButton prefill={{ ...prefillFromContent(viewing, projectId), media: photos?.slice(0, 4) }} />
+              <ScheduleButton prefill={{ ...prefillFromContent(viewing, subject), media: photos?.slice(0, 4) }} />
               <Button variant="ghost" size="sm" onClick={startEdit} leading={<PenLine aria-hidden className="size-4" />}>
                 Edit
               </Button>

@@ -6,13 +6,13 @@ vi.hoisted(() => {
 
 // ---- A tiny in-memory database: just enough to prove who can see what ------------------------------------
 type Row = Record<string, unknown> & { id: string };
-const db = vi.hoisted(() => ({ lead: [] as Row[], project: [] as Row[], generatedContent: [] as Row[], post: [] as Row[], apiKey: [] as Row[], business: [] as Row[] }));
+const db = vi.hoisted(() => ({ lead: [] as Row[], project: [] as Row[], product: [] as Row[], campaign: [] as Row[], generatedContent: [] as Row[], post: [] as Row[], apiKey: [] as Row[], business: [] as Row[] }));
 
 function matches(row: Row, where: Record<string, unknown> | undefined): boolean {
   if (!where) return true;
   return Object.entries(where).every(([key, cond]) => {
     if (key === "project") return matches((db.project.find((p) => p.id === row.projectId) ?? { id: "" }) as Row, cond as Record<string, unknown>);
-    if (key === "OR") return true;
+    if (key === "OR") return (cond as Record<string, unknown>[]).some((c) => matches(row, c));
     const value = row[key];
     if (cond && typeof cond === "object" && !(cond instanceof Date)) {
       const c = cond as { gte?: Date };
@@ -21,7 +21,7 @@ function matches(row: Row, where: Record<string, unknown> | undefined): boolean 
     return value === cond;
   });
 }
-function table(name: "lead" | "project" | "generatedContent" | "post") {
+function table(name: "lead" | "project" | "product" | "campaign" | "generatedContent" | "post") {
   return {
     findMany: vi.fn(async (args: { where?: Record<string, unknown>; take?: number; cursor?: { id: string }; skip?: number }) => {
       let rows = db[name].filter((r) => matches(r, args.where)).sort((a, b) => (b.createdAt as Date).getTime() - (a.createdAt as Date).getTime() || (a.id < b.id ? 1 : -1));
@@ -45,6 +45,8 @@ const prisma = vi.hoisted(() => ({}) as Record<string, unknown>);
 Object.assign(prisma, {
   lead: table("lead"),
   project: table("project"),
+  product: table("product"),
+  campaign: table("campaign"),
   generatedContent: table("generatedContent"),
   post: table("post"),
   apiKey: {
@@ -73,6 +75,10 @@ import { RateLimitError } from "@/lib/rate-limit";
 import { GET as listLeads } from "@/app/api/v1/leads/route";
 import { GET as getLead, PATCH as patchLead } from "@/app/api/v1/leads/[id]/route";
 import { GET as listProjects } from "@/app/api/v1/projects/route";
+import { GET as listProducts } from "@/app/api/v1/products/route";
+import { GET as getProduct } from "@/app/api/v1/products/[id]/route";
+import { GET as listCampaigns } from "@/app/api/v1/campaigns/route";
+import { GET as getCampaign } from "@/app/api/v1/campaigns/[id]/route";
 import { GET as getProject } from "@/app/api/v1/projects/[id]/route";
 import { GET as listContent } from "@/app/api/v1/content/route";
 import { GET as getContent } from "@/app/api/v1/content/[id]/route";
@@ -100,8 +106,12 @@ beforeEach(async () => {
   const lead = (id: string, businessId: string, d: number, status = "NEW") => ({ id, businessId, name: `Lead ${id}`, email: `${id}@x.com`, phone: null, interest: null, message: null, source: "website_chat", status, notes: null, pageUrl: null, createdAt: day(d), updatedAt: day(d) });
   db.lead.push(lead("a1", "bizA", 1), lead("a2", "bizA", 2, "WON"), lead("a3", "bizA", 3), lead("b1", "bizB", 4));
   db.project.push({ id: "pA", businessId: "bizA", type: "product", title: "A thing", price: null, features: [], photoPaths: ["secret/path.jpg"], createdAt: day(1), updatedAt: day(1) }, { id: "pB", businessId: "bizB", type: "product", title: "B thing", price: null, features: [], photoPaths: [], createdAt: day(1), updatedAt: day(1) });
-  db.generatedContent.push({ id: "cA", projectId: "pA", caption: "A", hashtags: [], videoScript: "", adHeadlines: [], language: "English", edited: false, createdAt: day(1) }, { id: "cB", projectId: "pB", caption: "B", hashtags: [], videoScript: "", adHeadlines: [], language: "English", edited: false, createdAt: day(1) });
-  db.post.push({ id: "postA", businessId: "bizA", network: "instagram", status: "DRAFT", format: "POST", projectId: "pA", contentId: null, title: null, text: "hi", hashtags: [], link: null, mediaPaths: [], scheduledAt: null, publishedAt: null, permalink: null, lastError: null, createdAt: day(1) }, { id: "postB", businessId: "bizB", network: "instagram", status: "DRAFT", format: "POST", projectId: "pB", contentId: null, title: null, text: "other", hashtags: [], link: null, mediaPaths: [], scheduledAt: null, publishedAt: null, permalink: null, lastError: null, createdAt: day(1) });
+  // The migration copied each project into a product with the same id (lib/knowledge/legacy.ts).
+  const product = (id: string, businessId: string, photos: number) => ({ id, businessId, kind: "PHYSICAL", name: `${id} thing`, category: null, summary: "A thing", description: null, priceModel: "FIXED", priceAmount: 15000, currency: "RWF", priceNote: null, usps: ["Local"], features: [], targetCustomer: null, status: "ACTIVE", details: null, _count: { photos }, createdAt: day(1), updatedAt: day(1) });
+  db.product.push(product("pA", "bizA", 1), product("pB", "bizB", 0));
+  db.campaign.push({ id: "kgA", businessId: "bizA", type: "EVENT", name: "Open day", description: null, startsAt: day(20), endsAt: null, priceInfo: "Free entry", highlights: [], status: "ACTIVE", products: [{ productId: "pA" }], _count: { photos: 0 }, createdAt: day(2), updatedAt: day(2) }, { id: "kgB", businessId: "bizB", type: "OFFER", name: "B sale", description: null, startsAt: null, endsAt: null, priceInfo: null, highlights: [], status: "ACTIVE", products: [], _count: { photos: 0 }, createdAt: day(2), updatedAt: day(2) });
+  db.generatedContent.push({ id: "cA", businessId: "bizA", productId: "pA", campaignId: null, projectId: "pA", caption: "A", hashtags: [], videoScript: "", adHeadlines: [], language: "English", edited: false, createdAt: day(1) }, { id: "cB", businessId: "bizB", productId: "pB", campaignId: null, projectId: "pB", caption: "B", hashtags: [], videoScript: "", adHeadlines: [], language: "English", edited: false, createdAt: day(1) });
+  db.post.push({ id: "postA", businessId: "bizA", network: "instagram", status: "DRAFT", format: "POST", projectId: "pA", productId: "pA", campaignId: null, contentId: null, title: null, text: "hi", hashtags: [], link: null, mediaPaths: [], scheduledAt: null, publishedAt: null, permalink: null, lastError: null, createdAt: day(1) }, { id: "postB", businessId: "bizB", network: "instagram", status: "DRAFT", format: "POST", projectId: "pB", productId: "pB", campaignId: null, contentId: null, title: null, text: "other", hashtags: [], link: null, mediaPaths: [], scheduledAt: null, publishedAt: null, permalink: null, lastError: null, createdAt: day(1) });
 });
 
 describe("API keys", () => {
@@ -235,7 +245,20 @@ describe("business A can never see or change business B", () => {
     expect(await ids(await listProjects(req(KEY_A, "https://x.test/api/v1/projects")))).toEqual(["pA"]);
     expect(await ids(await listContent(req(KEY_A, "https://x.test/api/v1/content")))).toEqual(["cA"]);
     expect(await ids(await listPosts(req(KEY_A, "https://x.test/api/v1/posts")))).toEqual(["postA"]);
+    expect(await ids(await listProducts(req(KEY_A, "https://x.test/api/v1/products")))).toEqual(["pA"]);
+    expect(await ids(await listCampaigns(req(KEY_A, "https://x.test/api/v1/campaigns")))).toEqual(["kgA"]);
+    expect(await ids(await listProjects(req(KEY_A, "https://x.test/api/v1/projects?type=event")))).toEqual(["kgA"]);
     expect(await ids(await listLeads(req(KEY_B)))).toEqual(["b1"]);
+  });
+  it("answers products and campaigns in their own shape, and old project ids through /projects/:id", async () => {
+    const product = (await (await getProduct(req(KEY_A), ctxId("pA"))).json()).data;
+    expect(product).toMatchObject({ id: "pA", kind: "physical", price: { model: "fixed", amountMinor: 15000, currency: "RWF", label: "15,000 RWF" }, sellingPoints: ["Local"], photoCount: 1 });
+    const campaign = (await (await getCampaign(req(KEY_A), ctxId("kgA"))).json()).data;
+    expect(campaign).toMatchObject({ id: "kgA", type: "event", startsOn: "2026-10-20", productIds: ["pA"] });
+    expect((await (await getProject(req(KEY_A), ctxId("kgA"))).json()).data).toMatchObject({ id: "kgA", type: "event", title: "Open day", price: "Free entry" });
+    expect((await getProduct(req(KEY_A), ctxId("pB"))).status).toBe(404);
+    expect((await getCampaign(req(KEY_A), ctxId("kgB"))).status).toBe(404);
+    expect((await listProducts(req(KEY_A, "https://x.test/api/v1/products?kind=car"))).status).toBe(400);
   });
   it("answers 404 for another business's id on every GET", async () => {
     expect((await getLead(req(KEY_A), ctxId("b1"))).status).toBe(404);

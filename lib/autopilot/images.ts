@@ -78,7 +78,7 @@ export async function makeGroupImages(group: PlannedGroup, image: ImageText, ctx
   const template = templateFor(group, !!cover);
   if (!template) return result;
 
-  const owner = { userId: ctx.userId, businessId: ctx.businessId, projectId: group.project?.id ?? null, service: ctx.service };
+  const owner = { userId: ctx.userId, businessId: ctx.businessId, subjectId: group.project?.id ?? null, service: ctx.service };
   const text = imageText(group, image, ctx);
   const aspects = [...new Set(group.networks.filter((n) => n !== "tiktok" && n !== "youtube").map(aspectFor))];
   if (aspects.length === 0) return result;

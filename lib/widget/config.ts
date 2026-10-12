@@ -1,5 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { CAMPAIGN_TYPE_LABEL, dayString, formatDateRange } from "@/lib/knowledge/campaigns";
+import { KIND_LABEL, priceLine } from "@/lib/knowledge/products";
 import { readKnowledge, isOwnLogoPath } from "@/lib/brand/schemas";
 import { hasFeature } from "@/lib/entitlements";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -79,15 +81,32 @@ export async function loadPublicWidget(key: string): Promise<PublicWidget | null
   };
 }
 
-/** Recent projects and offers the assistant may mention: this business's rows only. */
+/**
+ * Active products and current campaigns the assistant may mention: this business's rows only, drafts and archived
+ * ones left out. Shown to the model as "Name (kind), price, details".
+ */
 export async function loadProjectFacts(businessId: string): Promise<BusinessFacts["projects"]> {
-  const rows = await prisma.project.findMany({
-    where: { businessId },
-    orderBy: { createdAt: "desc" },
-    take: 15,
-    select: { type: true, title: true, price: true, features: true },
-  });
-  return rows;
+  const [products, campaigns] = await Promise.all([
+    prisma.product.findMany({
+      where: { businessId, status: "ACTIVE" },
+      orderBy: { updatedAt: "desc" },
+      take: 12,
+      select: { kind: true, name: true, summary: true, priceModel: true, priceAmount: true, currency: true, priceNote: true, usps: true, features: true },
+    }),
+    prisma.campaign.findMany({
+      where: { businessId, status: "ACTIVE", OR: [{ endsAt: null }, { endsAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }] },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      select: { type: true, name: true, priceInfo: true, highlights: true, startsAt: true, endsAt: true },
+    }),
+  ]);
+  return [
+    ...products.map((p) => ({ type: KIND_LABEL[p.kind].toLowerCase(), title: p.name, price: priceLine(p), features: [p.summary, ...p.usps, ...p.features] })),
+    ...campaigns.map((c) => {
+      const dates = formatDateRange(dayString(c.startsAt), dayString(c.endsAt));
+      return { type: CAMPAIGN_TYPE_LABEL[c.type].toLowerCase(), title: c.name, price: c.priceInfo, features: [...(dates ? [`dates: ${dates}`] : []), ...c.highlights] };
+    }),
+  ];
 }
 
 /** Signed URL for the logo (the brand bucket is private). A failure just means no logo. */

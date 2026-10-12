@@ -15,7 +15,7 @@ export interface BusinessFacts {
   /** IANA zone of the opening hours (Business.timezone). UTC when missing. */
   timezone?: string | null;
   knowledge: Knowledge;
-  /** Recent projects, offers and products. */
+  /** Active products and services and current campaigns (lib/widget/config.ts loadProjectFacts). */
   projects: { type: string; title: string; price?: string | null; features: string[] }[];
 }
 

@@ -168,7 +168,7 @@ async function OverviewTab({ id, c, here }: { id: string; c: C; here: string }) 
               <dt className="text-muted">Phone</dt><dd>{business.phone ? <a href={`tel:${business.phone}`} className="underline">{formatPhone(business.phone)}</a> : "n/a"}</dd>
               <dt className="text-muted">Country</dt><dd>{business.country ?? "n/a"}</dd>
               <dt className="text-muted">Onboarded</dt><dd>{business.onboarded ? "Yes" : "No"}</dd>
-              <dt className="text-muted">Projects, posts, leads</dt><dd>{business.counts.projects}, {business.counts.posts}, {business.counts.leads}</dd>
+              <dt className="text-muted">Products, posts, leads</dt><dd>{business.counts.projects}, {business.counts.posts}, {business.counts.leads}</dd>
               <dt className="text-muted">Posts by status</dt><dd>{Object.entries(business.posts).map(([s, n]) => `${s.toLowerCase()} ${n}`).join(", ") || "none"}</dd>
             </dl>
           )}

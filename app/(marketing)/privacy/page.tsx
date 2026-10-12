@@ -32,7 +32,7 @@ export default function PrivacyPage() {
           items={[
             <><strong>Account data:</strong> your name, email address and sign-in details (we use email sign-in links and Google sign-in through Supabase Auth).</>,
             <><strong>Business profile:</strong> your business name, industry, description, brand voice, logo, colours, website, and the facts you give the chat widget (hours, service area, FAQs).</>,
-            <><strong>Content you create:</strong> projects, photos you upload, and the text and designs BuPulse generates for you.</>,
+            <><strong>Content you create:</strong> your company profile, products and campaigns, photos you upload, and the text and designs BuPulse generates for you.</>,
             <><strong>Connected accounts:</strong> if you connect Instagram, Facebook Pages, TikTok, LinkedIn or YouTube, we receive your account or Page identifier, display name, profile picture, the permissions you granted, and an access token (and refresh token where the network provides one). We also read the performance numbers of posts made through BuPulse, such as views, reach, likes, comments and shares.</>,
             <><strong>Website chat leads:</strong> if you install our chat widget, we store the conversations and any name, email, phone number or request your visitors share, on your behalf.</>,
             <><strong>Billing data:</strong> your plan and subscription status. Card details are collected and held by our payment provider, Paddle; we never see or store full card numbers.</>,

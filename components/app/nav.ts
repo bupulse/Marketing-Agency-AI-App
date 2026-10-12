@@ -1,12 +1,12 @@
 import {
   Blocks,
+  BookOpen,
   Camera,
   CalendarDays,
   ChartLine,
   ChartNoAxesColumn,
   Clapperboard,
   CreditCard,
-  FolderKanban,
   HardDrive,
   House,
   KeyRound,
@@ -43,7 +43,7 @@ const item = (href: string, label: string, icon: LucideIcon, permission?: Permis
 
 export const NAV_ITEMS: NavItem[] = [
   item("/dashboard", "Home", House),
-  item("/dashboard/projects", "Projects", FolderKanban),
+  item("/dashboard/knowledge", "Knowledge base", BookOpen),
   item("/dashboard/content", "Content", PenLine),
   item("/dashboard/calendar", "Calendar", CalendarDays),
   item("/dashboard/analytics", "Analytics", ChartLine),

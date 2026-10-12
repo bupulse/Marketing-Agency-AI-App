@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui";
 import { UpgradeDialog } from "@/components/billing/upgrade-dialog";
 import type { UsageBlockReason } from "@/components/billing/helpers";
-import { generateContent } from "@/app/dashboard/projects/actions";
+import { generateContent } from "@/app/dashboard/knowledge/actions";
 
-/** Runs "write / rewrite this project's content" and handles a blocked plan with the upgrade dialog. */
-export function useGenerate(projectId: string, options: { limit?: number; onDone?: (contentId: string) => void } = {}) {
+/** Runs "write / rewrite the content" for a product or campaign and handles a blocked plan with the upgrade dialog. */
+export function useGenerate(subjectId: string, options: { limit?: number; onDone?: (contentId: string) => void } = {}) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
@@ -19,7 +19,7 @@ export function useGenerate(projectId: string, options: { limit?: number; onDone
   function run(instruction?: string) {
     start(async () => {
       const text = instruction?.trim();
-      const result = await generateContent(projectId, text ? { instruction: text } : {});
+      const result = await generateContent(subjectId, text ? { instruction: text } : {});
       if (result.ok) {
         onDone?.(result.contentId);
         router.refresh();

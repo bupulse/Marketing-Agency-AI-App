@@ -78,6 +78,7 @@ model Business {
   onboardedAt             DateTime? // set when the brand onboarding (/onboarding) is finished
   instagramHandle         String?
   knowledge               Json? // facts the chat widget may answer from (lib/brand/schemas.ts knowledgeSchema)
+  profile                 Json? // Knowledge base -> Company profile: tagline, mission, values... (lib/knowledge/profile.ts)
   widgetKey               String    @unique @default(cuid()) // public id used by the embed snippet
   composioApiKeyEncrypted String? // Pro users' own Composio key, encrypted with lib/crypto.ts
   timezone                String    @default("UTC") // IANA zone for the calendar and posting times, e.g. "Africa/Kigali"
@@ -86,18 +87,21 @@ model Business {
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
-  projects      Project[]
-  demoBookings  DemoBooking[]
-  designs       Design[]
-  leads         Lead[]
-  connections   Connection[]
-  posts         Post[]
-  mediaFolders  MediaFolder[]
-  mediaAssets   MediaAsset[]
-  autopilot     AutopilotSettings?
-  autopilotRuns AutopilotRun[]
-  chatWidgets   ChatWidget[]
-  chatSessions  ChatSession[]
+  projects         Project[]
+  products         Product[]
+  campaigns        Campaign[]
+  contents         GeneratedContent[]
+  demoBookings     DemoBooking[]
+  designs          Design[]
+  leads            Lead[]
+  connections      Connection[]
+  posts            Post[]
+  mediaFolders     MediaFolder[]
+  mediaAssets      MediaAsset[]
+  autopilot        AutopilotSettings?
+  autopilotRuns    AutopilotRun[]
+  chatWidgets      ChatWidget[]
+  chatSessions     ChatSession[]
   webhookEndpoints WebhookEndpoint[]
   apiKeys          ApiKey[]
   storeConnections StoreConnection[]
@@ -109,7 +113,9 @@ model Business {
   @@index([industryId])
 }
 
-// Anything the business wants to promote. A real estate "listing" is just one type.
+// LEGACY, read-only since the Knowledge base (docs/KNOWLEDGE_BASE.md): what the business promoted before Products and
+// Campaigns. Migration 20261013100000_knowledge_base copied every row into Product or Campaign with the SAME id, so an
+// old projectId is still the id of its product or campaign. New code never writes here.
 model Project {
   id         String   @id @default(cuid())
   businessId String
@@ -123,32 +129,165 @@ model Project {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  contents GeneratedContent[]
-  designs  Design[]
-  posts    Post[]
+  contents  GeneratedContent[]
+  designs   Design[]
+  posts     Post[]
   storeSync ProductSync?
 
   @@index([businessId, createdAt])
 }
 
 // Every generation is kept, so users can regenerate and compare versions.
+// Belongs to one product or one campaign. projectId is the legacy link, kept readable.
 model GeneratedContent {
-  id          String   @id @default(cuid())
-  projectId   String
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id          String    @id @default(cuid())
+  businessId  String
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  campaignId  String?
+  campaign    Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   caption     String
   hashtags    String[]
   videoScript String
   adHeadlines String[]
-  language    String   @default("English")
+  language    String    @default("English")
   // Per-network versions (caption length, hashtags, aspect ratio) prepared for publishing.
   variants    Json?
-  edited      Boolean  @default(false) // true once the owner changed the AI's text
+  edited      Boolean   @default(false) // true once the owner changed the AI's text
   provider    String // "gemini" | "claude" | "edit"
   model       String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([projectId, createdAt])
+  @@index([productId, createdAt])
+  @@index([campaignId, createdAt])
+  @@index([businessId, createdAt])
+}
+
+// ---- Knowledge base (docs/KNOWLEDGE_BASE.md) ----------------------------------------------------------------------
+
+enum ProductKind {
+  PHYSICAL
+  DIGITAL
+  SERVICE
+}
+
+enum PriceModel {
+  FIXED
+  FROM
+  PER_MONTH
+  PER_YEAR
+  PER_UNIT
+  ON_REQUEST
+}
+
+enum ItemStatus {
+  ACTIVE
+  DRAFT
+  ARCHIVED
+}
+
+enum CampaignType {
+  EVENT
+  OFFER
+  PROMOTION
+  LAUNCH
+  OTHER
+}
+
+// Something the business sells: a physical product, a digital product or a service.
+model Product {
+  id             String      @id @default(cuid())
+  businessId     String
+  business       Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  kind           ProductKind
+  name           String
+  category       String?
+  summary        String // short description, one or two sentences
+  description    String?
+  priceModel     PriceModel  @default(ON_REQUEST)
+  priceAmount    Int? // in the currency's smallest unit (RWF has none: whole francs)
+  currency       String // ISO 4217; the company's region currency unless the owner picked another
+  priceNote      String? // extra price text ("Discount from 3 pieces"); also the free-text price of a migrated project
+  usps           String[] // unique selling points: why buy this one
+  features       String[]
+  targetCustomer String?
+  status         ItemStatus  @default(ACTIVE)
+  details        Json? // kind-specific fields (lib/knowledge/products.ts productDetailsSchema)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  photos    ProductPhoto[]
+  campaigns CampaignProduct[]
+  contents  GeneratedContent[]
+  designs   Design[]
+  posts     Post[]
+  storeSync ProductSync?
+
+  @@index([businessId, status, createdAt])
+}
+
+// An event, offer, promotion or launch, usually with dates and the products it is about.
+model Campaign {
+  id          String       @id @default(cuid())
+  businessId  String
+  business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  type        CampaignType
+  name        String
+  description String?
+  startsAt    DateTime?    @db.Date
+  endsAt      DateTime?    @db.Date
+  priceInfo   String? // "20% off", "Free entry", "Buy 2 get 1 free"
+  highlights  String[]
+  status      ItemStatus   @default(ACTIVE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  products CampaignProduct[]
+  photos   CampaignPhoto[]
+  contents GeneratedContent[]
+  designs  Design[]
+  posts    Post[]
+
+  @@index([businessId, status, createdAt])
+}
+
+model CampaignProduct {
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([campaignId, productId])
+  @@index([productId])
+}
+
+// A product's album: gallery photos linked to it. A photo can be in several albums; deleting a product keeps its photos.
+model ProductPhoto {
+  productId String
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  assetId   String
+  asset     MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  position  Int        @default(0)
+  createdAt DateTime   @default(now())
+
+  @@id([productId, assetId])
+  @@index([assetId])
+}
+
+model CampaignPhoto {
+  campaignId String
+  campaign   Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  assetId    String
+  asset      MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  position   Int        @default(0)
+  createdAt  DateTime   @default(now())
+
+  @@id([campaignId, assetId])
+  @@index([assetId])
 }
 
 enum LeadStatus {
@@ -323,12 +462,12 @@ model ManualPayment {
   periodEnd     DateTime?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
-
-  @@index([status, createdAt])
-  @@index([userId, createdAt])
   // Also two partial unique indexes in SQL (the migration): one pending payment per company
   // ("ManualPayment_one_pending_per_user") and one live use of a transaction id per network across all companies
   // ("ManualPayment_live_transaction_key": network + upper(transactionId) where status is pending or confirmed).
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
 }
 
 // One renewal email of a Mobile Money subscription (lib/billing/momo-renewals.ts): "5d" and "1d" before the period
@@ -449,8 +588,12 @@ model Post {
   connection     Connection?   @relation(fields: [connectionId], references: [id], onDelete: SetNull)
   network        String // "instagram" | "facebook" | "linkedin" | "tiktok" | "youtube"; kept if the connection goes
   groupId        String?
-  projectId      String?
+  projectId      String? // legacy; new posts set productId or campaignId
   project        Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  productId      String?
+  product        Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  campaignId     String?
+  campaign       Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   contentId      String? // GeneratedContent it came from
   status         PostStatus    @default(DRAFT)
   format         PostFormat    @default(POST)
@@ -540,8 +683,12 @@ model Design {
   id          String     @id @default(cuid())
   businessId  String
   business    Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  projectId   String?
+  projectId   String? // legacy; new designs set productId or campaignId
   project     Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  productId   String?
+  product     Product?   @relation(fields: [productId], references: [id], onDelete: SetNull)
+  campaignId  String?
+  campaign    Campaign?  @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   kind        DesignKind
   template    String? // template id from lib/designs/templates, for TEMPLATE
   prompt      String? // the description, for AI
@@ -627,19 +774,21 @@ model MediaFolder {
 }
 
 model MediaAsset {
-  id         String       @id @default(cuid())
+  id         String          @id @default(cuid())
   businessId String
-  business   Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business   Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
   folderId   String? // null = not in a folder
-  folder     MediaFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  path       String       @unique // <userId>/gallery/<id>.<ext> in the "media" bucket
+  folder     MediaFolder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  path       String          @unique // <userId>/gallery/<id>.<ext> in the "media" bucket
   name       String
   mimeType   String
   bytes      Int
   width      Int?
   height     Int?
-  source     String? // where an import came from: "google_drive" | "dropbox" | "canva"; null for uploads
-  createdAt  DateTime     @default(now())
+  source     String? // where an import came from: "google_drive" | "dropbox" | "canva" | "store"; null for uploads
+  createdAt  DateTime        @default(now())
+  products   ProductPhoto[]
+  campaigns  CampaignPhoto[]
 
   @@index([businessId, folderId, createdAt])
 }
@@ -675,20 +824,20 @@ model AutopilotRun {
 // Outgoing webhooks (Phase 7), on every plan. One business can have a few endpoints, each with its own
 // signing secret and the events it wants.
 model WebhookEndpoint {
-  id              String            @id @default(cuid())
-  businessId      String
-  business        Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  url             String
-  events          String[] // lead.created, content.generated, post.published, post.failed
-  secretEncrypted String // HMAC secret, encrypted with lib/crypto.ts
-  enabled         Boolean           @default(true)
-  createdAt       DateTime          @default(now())
-  lastSuccessAt   DateTime?
-  lastFailureAt   DateTime?
-  failureCount    Int               @default(0) // failed deliveries in a row; reset by a success
+  id                  String            @id @default(cuid())
+  businessId          String
+  business            Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  url                 String
+  events              String[] // lead.created, content.generated, post.published, post.failed
+  secretEncrypted     String // HMAC secret, encrypted with lib/crypto.ts
+  enabled             Boolean           @default(true)
+  createdAt           DateTime          @default(now())
+  lastSuccessAt       DateTime?
+  lastFailureAt       DateTime?
+  failureCount        Int               @default(0) // failed deliveries in a row; reset by a success
   pausedByAdminAt     DateTime? // set by the admin console; the owner cannot turn the webhook back on
   pausedByAdminReason String?
-  deliveries      WebhookDelivery[]
+  deliveries          WebhookDelivery[]
 
   @@index([businessId])
 }
@@ -753,15 +902,17 @@ model StoreConnection {
   @@index([lastAttemptAt])
 }
 
-// Maps one store product to one Project so a re-sync updates instead of duplicating.
-// `baseline` holds the fields as the last sync wrote them: a Project field is only overwritten
+// Maps one store product to one Product so a re-sync updates instead of duplicating.
+// `baseline` holds the fields as the last sync wrote them: a Product field is only overwritten
 // while it still equals its baseline (the user has not edited it). See lib/stores/sync.ts.
 model ProductSync {
   id            String          @id @default(cuid())
   connectionId  String
   connection    StoreConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  projectId     String          @unique
-  project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  productId     String?         @unique // null only for a mapping an older build wrote after the migration
+  product       Product?        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  projectId     String?         @unique // legacy
+  project       Project?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   externalId    String
   baseline      Json
   imageMap      Json // { "<source image url>": "<storage path>" }
@@ -814,19 +965,19 @@ model StoreConnectionPending {
 
 // One marketing-page view from public/t.js. No raw IP is stored: visitorHash is SHA-256(IP + UA + daily salt).
 model PageView {
-  id          String   @id @default(cuid())
-  createdAt   DateTime @default(now())
-  sessionId   String? // random id from the visitor's sessionStorage
-  visitorHash String // changes every UTC day, so it never follows a person across days
-  path        String
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  sessionId    String? // random id from the visitor's sessionStorage
+  visitorHash  String // changes every UTC day, so it never follows a person across days
+  path         String
   referrerHost String?
-  source      String // "direct" | "google" | "facebook" ... | utm_source
-  utmSource   String?
-  utmMedium   String?
-  utmCampaign String?
-  device      String // "mobile" | "tablet" | "desktop"
-  country     String? // ISO 3166 alpha-2
-  screenWidth Int?
+  source       String // "direct" | "google" | "facebook" ... | utm_source
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  device       String // "mobile" | "tablet" | "desktop"
+  country      String? // ISO 3166 alpha-2
+  screenWidth  Int?
 
   @@index([createdAt])
   @@index([sessionId])
@@ -919,12 +1070,12 @@ model AdminApiKey {
 }
 
 model FeatureFlag {
-  key             String   @id
-  enabled         Boolean  @default(false)
-  rolloutPercent  Int      @default(100) // 0-100, applied per user by a stable hash when enabled
-  userOverrides   Json? // { "<userId>": true | false }
-  description     String?
-  updatedAt       DateTime @updatedAt
+  key            String   @id
+  enabled        Boolean  @default(false)
+  rolloutPercent Int      @default(100) // 0-100, applied per user by a stable hash when enabled
+  userOverrides  Json? // { "<userId>": true | false }
+  description    String?
+  updatedAt      DateTime @updatedAt
 }
 
 model Announcement {
@@ -941,7 +1092,6 @@ model Announcement {
 
   @@index([startsAt, endsAt])
 }
-
 
 // The random key behind one UTC day's visitor hashes (lib/analytics/salt.ts). Deleted once the day has ended,
 // so yesterday's hashes can no longer be recomputed from an IP and browser.
@@ -989,11 +1139,11 @@ model ServiceSwitch {
 
 // Result of the last "Test now" per service (secrets scrubbed before saving).
 model ServiceCheck {
-  service    String   @id
-  ok         Boolean
-  latencyMs  Int
-  message    String?
-  checkedAt  DateTime @default(now())
+  service   String   @id
+  ok        Boolean
+  latencyMs Int
+  message   String?
+  checkedAt DateTime @default(now())
 }
 
 // Small counters per service and UTC day (e.g. emails sent through Resend).
@@ -1012,7 +1162,6 @@ model AdminSetting {
   value     Json
   updatedAt DateTime @updatedAt
 }
-
 
 // A plan the admin manages (/admin/plans). Replaces the hard-coded plans of lib/plans.ts, whose values remain only as the
 // seed and as the fallback when the database cannot be read. Paddle prices are never edited in place: a price change
@@ -1112,24 +1261,24 @@ model AdminAvailability {
 // A demo call booked by a new client. One live ("booked") booking per start time and one per company (partial unique
 // indexes in the migration). A reschedule updates the row in place (same UID, SEQUENCE + 1).
 model DemoBooking {
-  id                  String   @id @default(cuid())
+  id                  String    @id @default(cuid())
   businessId          String
-  business            Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  business            Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
   planKey             String // the plan chosen when booking
   startsAt            DateTime
   endsAt              DateTime
-  status              String   @default("booked") // booked | done | no_show | cancelled
+  status              String    @default("booked") // booked | done | no_show | cancelled
   notes               String?
   meetingLink         String? // the reusable meeting link at the time of booking
-  icsToken            String   @unique // 32 random bytes, base64url (lib/demo/bookings.ts newIcsToken): the secret of the .ics route
-  sequence            Int      @default(0) // iCalendar SEQUENCE: bumped on every reschedule and on cancel, so calendars move the same event
+  icsToken            String    @unique // 32 random bytes, base64url (lib/demo/bookings.ts newIcsToken): the secret of the .ics route
+  sequence            Int       @default(0) // iCalendar SEQUENCE: bumped on every reschedule and on cancel, so calendars move the same event
   googleEventId       String? // the event in the owner's Google Calendar (lib/google-calendar), when it was connected at booking time
   meetLink            String? // the Google Meet link Google generated for that event (also copied into meetingLink)
-  googleSyncPending   Boolean  @default(false) // a change to the booking has not reached the Google event yet (retried: lib/google-calendar/events.ts)
+  googleSyncPending   Boolean   @default(false) // a change to the booking has not reached the Google event yet (retried: lib/google-calendar/events.ts)
   googleSyncError     String? // why the last attempt failed, shown on Admin -> Demos
   googleSyncAttemptAt DateTime? // the last attempt, so retries are spaced out
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@index([startsAt])
   @@index([businessId, status])
@@ -1137,27 +1286,27 @@ model DemoBooking {
 
 // One price change of one plan. Existing subscribers move to the new price at a renewal, after notice (increase).
 model PlanPriceChange {
-  id               String   @id @default(cuid())
-  planKey          String
-  plan             PlanDefinition @relation(fields: [planKey], references: [key], onUpdate: Cascade, onDelete: Restrict)
-  direction        String // increase | decrease | mixed
-  oldMonthlyCents  Int
-  newMonthlyCents  Int
-  oldYearlyCents   Int
-  newYearlyCents   Int
+  id                String         @id @default(cuid())
+  planKey           String
+  plan              PlanDefinition @relation(fields: [planKey], references: [key], onUpdate: Cascade, onDelete: Restrict)
+  direction         String // increase | decrease | mixed
+  oldMonthlyCents   Int
+  newMonthlyCents   Int
+  oldYearlyCents    Int
+  newYearlyCents    Int
   oldMonthlyPriceId String?
   oldYearlyPriceId  String?
   newMonthlyPriceId String?
   newYearlyPriceId  String?
   // scheduled (waiting for notices and renewals) | completed | cancelled
-  status           String   @default("scheduled")
-  subscribers      Int      @default(0)
-  notifiedCount    Int      @default(0)
-  appliedCount     Int      @default(0)
-  failedCount      Int      @default(0)
-  createdBy        String
-  createdAt        DateTime @default(now())
-  completedAt      DateTime?
+  status            String         @default("scheduled")
+  subscribers       Int            @default(0)
+  notifiedCount     Int            @default(0)
+  appliedCount      Int            @default(0)
+  failedCount       Int            @default(0)
+  createdBy         String
+  createdAt         DateTime       @default(now())
+  completedAt       DateTime?
 
   items PlanPriceChangeItem[]
 
@@ -1167,10 +1316,10 @@ model PlanPriceChange {
 
 // One subscriber of a price change: notified, then moved to the new price shortly before the renewal on effectiveAt.
 model PlanPriceChangeItem {
-  id                     String   @id @default(cuid())
+  id                     String          @id @default(cuid())
   changeId               String
   change                 PlanPriceChange @relation(fields: [changeId], references: [id], onDelete: Cascade)
-  userId                 String   @db.Uuid
+  userId                 String          @db.Uuid
   providerSubscriptionId String
   interval               BillingInterval
   oldPriceId             String
@@ -1178,14 +1327,14 @@ model PlanPriceChangeItem {
   oldCents               Int
   newCents               Int
   // pending -> notified (increase only) -> applied | skipped | failed
-  status                 String   @default("pending")
+  status                 String          @default("pending")
   noticeSentAt           DateTime?
   reminderSentAt         DateTime? // the second email, about 30 days before the renewal, for notices sent long ahead
-  attempts               Int      @default(0) // failed tries to send the notice; the item is failed after a few
+  attempts               Int             @default(0) // failed tries to send the notice; the item is failed after a few
   effectiveAt            DateTime? // the renewal the new price starts with
   appliedAt              DateTime?
   error                  String?
-  updatedAt              DateTime @updatedAt
+  updatedAt              DateTime        @updatedAt
 
   @@unique([changeId, userId])
   @@index([changeId, status])
@@ -1201,19 +1350,19 @@ enum MemberRole {
 // company account: the billing account, the Storage folder and the subject of every service call. The Owner role normally
 // sits on that user; transferring ownership moves the role, not the account (see lib/team/service.ts).
 model Membership {
-  id         String     @id @default(cuid())
-  businessId String
-  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  userId     String     @unique @db.Uuid
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role       MemberRole
-  invitedBy  String?    @db.Uuid
+  id          String     @id @default(cuid())
+  businessId  String
+  business    Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId      String     @unique @db.Uuid
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        MemberRole
+  invitedBy   String?    @db.Uuid
   /// Admins opt in to the lead, digest and post alerts that go to the Owner.
-  notifyEmail Boolean   @default(false)
-  createdAt  DateTime   @default(now())
+  notifyEmail Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  // Also a partial unique index in SQL ("Membership_one_owner_per_business"): one OWNER per business.
 
   @@index([businessId])
-  // Also a partial unique index in SQL ("Membership_one_owner_per_business"): one OWNER per business.
 }
 
 // A pending invitation. The token is emailed once; only its SHA-256 hash is stored.

@@ -26,7 +26,8 @@ export type CalendarPost = {
   publishedAt: string | null;
   permalink: string | null;
   lastError: string | null;
-  projectId: string | null;
+  /** The product or campaign the post is about. */
+  subjectId: string | null;
   contentId: string | null;
 };
 
@@ -60,7 +61,9 @@ export type ComposerPrefill = {
   hashtags?: string[];
   overrides?: Overrides;
   media?: MediaItem[];
-  projectId?: string;
+  subjectId?: string;
+  /** The product's or campaign's album ("product:<id>"), where the composer's uploads go and its gallery opens. */
+  album?: string;
   contentId?: string;
   connectionIds?: string[];
 };
@@ -78,7 +81,7 @@ export type ComposeInput = {
   overrides: Overrides;
   mediaPaths: string[];
   link?: string | null;
-  projectId?: string | null;
+  subjectId?: string | null;
   contentId?: string | null;
   when: When;
 };

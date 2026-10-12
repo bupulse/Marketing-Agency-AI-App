@@ -1,14 +1,18 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, FolderInput, FolderPlus, ImagePlus, Pencil, Sparkles, Trash2, Upload, X } from "lucide-react";
-import { Button, Dialog, Input, useToast } from "@/components/ui";
+import { Check, FolderInput, FolderPlus, ImagePlus, Package, Pencil, Sparkles, Star, Trash2, Upload, X } from "lucide-react";
+import { Button, Chip, Dialog, Input, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { createFolder, deleteAssets, deleteFolder, listGalleryPage, moveAssets, renameAsset, renameFolder } from "@/app/dashboard/gallery/actions";
+import { addToAlbum, getPhotoAlbums, removeFromAlbum, setAlbumCover, setPhotoProductsAction } from "@/app/dashboard/knowledge/actions";
+import { destinationKey, destinationOptions, parseDestination, parseFilter, uploadDestinationFor } from "@/lib/media/destinations";
 import { formatBytes, MEDIA_MAX_ASSETS, MEDIA_MAX_TOTAL_BYTES, MEDIA_TYPES } from "@/lib/media/rules";
 import type { GalleryOverview, MediaItem } from "@/lib/media/service";
+import type { PhotoAlbums } from "@/lib/media/albums";
+import { DestinationDialog } from "./destination-dialog";
 import { ImportMenu } from "./import-menu";
 import { UploadProgress } from "./upload-progress";
 import { useGalleryUpload } from "./use-gallery-upload";
@@ -20,11 +24,16 @@ type Dialogs =
   | { kind: "renameFolder" }
   | { kind: "deleteFolder" }
   | { kind: "move"; ids: string[] }
+  | { kind: "addToAlbum"; ids: string[] }
   | { kind: "deletePhotos"; ids: string[] };
 
 const HOME = "/dashboard/gallery";
 
-/** The Gallery screen: folder chips, photo grid, upload, multi-select and the photo viewer. `folder` is "all", "none" or a folder id. */
+/**
+ * The Gallery screen: folder and album chips, photo grid, upload, multi-select and the photo viewer. `folder` is "all",
+ * "none", a folder id, or "product:<id>" / "campaign:<id>" for an album (lib/media/destinations.ts parseFilter).
+ * Uploads go to the open folder or album; from "All photos" or "Not in a folder" the person picks a destination first.
+ */
 export function GalleryView({ folder, overview, initialItems, initialCursor }: { folder: string; overview: GalleryOverview; initialItems: MediaItem[]; initialCursor: string | null }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -39,14 +48,20 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
   const [dialog, setDialog] = useState<Dialogs>(null);
   const [dragging, setDragging] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [target, setTarget] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const current = overview.folders.find((f) => f.id === folder);
-  const uploadFolder = current?.id ?? null;
+  const filter = parseFilter(folder);
+  const current = filter.kind === "folder" ? overview.folders.find((f) => f.id === filter.id) : undefined;
+  const album = filter.kind === "product" || filter.kind === "campaign" ? overview.albums.find((a) => a.kind === filter.kind && a.id === filter.id) : undefined;
+  const viewDestination = uploadDestinationFor(filter);
+  const uploadDestination = viewDestination ? destinationKey(viewDestination) : null;
+  const destinations = destinationOptions(overview);
   const known = new Set(initialItems.map((i) => i.id));
   const items = [...fresh.filter((f) => !known.has(f.id)), ...initialItems, ...extra.filter((e) => !known.has(e.id))].filter((i) => !gone.has(i.id));
   const viewed = items.find((i) => i.id === viewing) ?? null;
-  const count = folder === "all" ? overview.total : folder === "none" ? overview.unfiled : (current?.count ?? 0);
+  const count = folder === "all" ? overview.total : folder === "none" ? overview.unfiled : (current?.count ?? album?.count ?? 0);
   const selecting = selected.size > 0;
 
   const added = (uploaded: MediaItem[]) => {
@@ -94,8 +109,17 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
     setCursor(res.nextCursor);
   }
 
-  function addFiles(list: FileList | File[]) {
-    void uploader.start(list, uploadFolder);
+  function addFiles(list: FileList | File[], to = target ?? uploadDestination) {
+    if (!to) return setAsking(true);
+    void uploader.start(list, to);
+  }
+
+  /** The upload button: straight to the open folder or album, otherwise ask where first. */
+  function chooseFiles() {
+    if (uploadDestination) {
+      setTarget(null);
+      inputRef.current?.click();
+    } else setAsking(true);
   }
 
   const dropProps = {
@@ -111,7 +135,10 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
     onDrop: (e: React.DragEvent) => {
       e.preventDefault();
       setDragging(false);
-      if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files);
+      if (e.dataTransfer.files.length > 0) {
+        if (uploadDestination) addFiles(e.dataTransfer.files, uploadDestination);
+        else toast("Open a folder or album first, or use Upload photos to choose where they go.", "info");
+      }
     },
   };
 
@@ -127,9 +154,9 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
     });
   }
 
-  function move(ids: string[], target: string | null, label: string) {
+  function move(ids: string[], to: string | null, label: string) {
     start(async () => {
-      const res = await moveAssets(ids, target);
+      const res = await moveAssets(ids, to);
       if (!res.ok) return fail(res.error);
       setSelected(new Set());
       setViewing(null);
@@ -138,12 +165,37 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
     });
   }
 
+  function link(ids: string[], key: string, label: string) {
+    const d = parseDestination(key);
+    if (!d || d.kind === "folder") return;
+    start(async () => {
+      const res = await addToAlbum(d.kind, d.id, ids);
+      if (!res.ok) return fail(res.error);
+      setSelected(new Set());
+      setDialog(null);
+      done(`Added to ${label}`);
+    });
+  }
+
+  function unlink(ids: string[]) {
+    if (!album) return;
+    start(async () => {
+      const res = await removeFromAlbum(album.kind, album.id, ids);
+      if (!res.ok) return fail(res.error);
+      setGone((cur) => new Set([...cur, ...ids]));
+      setSelected(new Set());
+      setViewing(null);
+      done(`Removed from ${album.name}. The photo${ids.length === 1 ? " stays" : "s stay"} in your gallery.`);
+    });
+  }
+
   const chips = [
     { href: HOME, label: "All photos", count: overview.total, active: folder === "all" },
     { href: `${HOME}?folder=none`, label: "Not in a folder", count: overview.unfiled, active: folder === "none" },
-    ...overview.folders.map((f) => ({ href: `${HOME}?folder=${f.id}`, label: f.name, count: f.count, active: f.id === folder })),
+    ...overview.folders.map((f) => ({ href: `${HOME}?folder=${f.id}`, label: f.name, count: f.count, active: current?.id === f.id })),
   ];
-  const title = current?.name ?? (folder === "none" ? "Not in a folder" : "All photos");
+  const albumChips = overview.albums.map((a) => ({ href: `${HOME}?folder=${a.kind}:${a.id}`, label: a.name, count: a.count, active: album?.kind === a.kind && album.id === a.id }));
+  const title = current?.name ?? album?.name ?? (folder === "none" ? "Not in a folder" : "All photos");
 
   return (
     <div className="relative flex flex-col gap-5" {...dropProps}>
@@ -185,6 +237,26 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
           New folder
         </button>
       </nav>
+      {albumChips.length > 0 && (
+        <nav aria-label="Product and campaign albums" className="-mx-1 -mt-3 flex items-center gap-2 overflow-x-auto px-1 py-1">
+          <span className="shrink-0 px-1 text-[13px] font-semibold text-muted">Albums</span>
+          {albumChips.map((c) => (
+            <Link
+              key={c.href}
+              href={c.href}
+              aria-current={c.active ? "page" : undefined}
+              className={cn(
+                "inline-flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 text-[15px] font-medium whitespace-nowrap",
+                c.active ? "bg-brand-gradient text-white" : "border border-line text-text hover:bg-soft",
+              )}
+            >
+              <Package aria-hidden className="size-4" />
+              {c.label}
+              <span className={cn("text-[13px]", c.active ? "text-white/80" : "text-muted")}>{c.count}</span>
+            </Link>
+          ))}
+        </nav>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 px-1">
         <div className="flex min-w-0 items-center gap-1">
@@ -201,8 +273,8 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <ImportMenu importer={importer} folders={overview.folders} defaultFolderId={uploadFolder} />
-          <Button size="sm" leading={<Upload aria-hidden className="size-4" />} disabled={uploader.state.active} onClick={() => inputRef.current?.click()}>
+          <ImportMenu importer={importer} destinations={destinations} defaultDestination={uploadDestination} />
+          <Button size="sm" leading={<Upload aria-hidden className="size-4" />} disabled={uploader.state.active} onClick={chooseFiles}>
             Upload photos
           </Button>
         </div>
@@ -212,7 +284,7 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
       <UploadProgress state={importer.state} onDismiss={importer.dismiss} verb="Importing" />
 
       {items.length === 0 ? (
-        <Empty total={overview.total} folder={folder} onUpload={() => inputRef.current?.click()} />
+        <Empty total={overview.total} folder={album ? "album" : folder} onUpload={chooseFiles} />
       ) : (
         <>
           <ul className={cn("grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5", selecting && "pb-24")}>
@@ -273,7 +345,7 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
         <div aria-hidden className="animate-pop pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-3xl border-2 border-dashed border-pulse-blue bg-bg/80 backdrop-blur-sm">
           <p className="flex items-center gap-2 text-lg font-semibold">
             <ImagePlus className="size-6" />
-            Drop photos to add them{current ? ` to ${current.name}` : ""}
+            Drop photos to add them{current ? ` to ${current.name}` : album ? ` to ${album.name}` : ""}
           </p>
         </div>
       )}
@@ -285,6 +357,16 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
           <Button size="sm" variant="ghost" leading={<FolderInput aria-hidden className="size-4" />} onClick={() => setDialog({ kind: "move", ids: [...selected] })}>
             Move
           </Button>
+          {overview.albums.length > 0 && (
+            <Button size="sm" variant="ghost" leading={<Package aria-hidden className="size-4" />} onClick={() => setDialog({ kind: "addToAlbum", ids: [...selected] })}>
+              Add to album
+            </Button>
+          )}
+          {album && (
+            <Button size="sm" variant="ghost" leading={<X aria-hidden className="size-4" />} disabled={pending} onClick={() => unlink([...selected])}>
+              Remove from album
+            </Button>
+          )}
           <Button size="sm" variant="ghost" leading={<Trash2 aria-hidden className="size-4" />} onClick={() => setDialog({ kind: "deletePhotos", ids: [...selected] })}>
             Delete
           </Button>
@@ -297,7 +379,19 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
       <Viewer
         item={viewed}
         folders={overview.folders}
+        products={overview.albums.filter((a) => a.kind === "product")}
+        album={album ?? null}
         busy={pending}
+        onUnlink={(id) => unlink([id])}
+        onCover={(id) =>
+          album &&
+          start(async () => {
+            const res = await setAlbumCover(album.kind, album.id, id);
+            if (!res.ok) return fail(res.error);
+            setViewing(null);
+            done("Cover photo set");
+          })
+        }
         onClose={() => setViewing(null)}
         onMove={(id) => setDialog({ kind: "move", ids: [id] })}
         onDelete={(id) => setDialog({ kind: "deletePhotos", ids: [id] })}
@@ -369,6 +463,25 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
         </div>
       </Dialog>
 
+      <DestinationDialog
+        open={asking}
+        onOpenChange={setAsking}
+        destinations={destinations}
+        onPick={(key) => {
+          setAsking(false);
+          setTarget(key);
+          inputRef.current?.click();
+        }}
+      />
+
+      <DestinationDialog
+        open={dialog?.kind === "addToAlbum"}
+        onOpenChange={(o) => !o && setDialog(null)}
+        destinations={destinations.filter((d) => d.group !== "Folders")}
+        canCreateFolder={false}
+        onPick={(key, label) => dialog?.kind === "addToAlbum" && link(dialog.ids, key, label)}
+      />
+
       <MoveDialog
         ids={dialog?.kind === "move" ? dialog.ids : null}
         folders={overview.folders}
@@ -399,9 +512,15 @@ function Empty({ total, folder, onUpload }: { total: number; folder: string; onU
       <span className="inline-flex size-14 items-center justify-center rounded-full bg-soft">
         <ImagePlus aria-hidden className="size-7 text-pulse-blue" />
       </span>
-      <h3 className="text-lg font-semibold">{first ? "Add your first photos" : folder === "none" ? "Every photo is in a folder" : "This folder is empty"}</h3>
+      <h3 className="text-lg font-semibold">{first ? "Add your first photos" : folder === "none" ? "Every photo is in a folder" : folder === "album" ? "This album is empty" : "This folder is empty"}</h3>
       <p className="max-w-sm text-[15px] text-muted">
-        {first ? "Drag photos here, or choose them from your device. They are yours to use in posts and designs, free." : folder === "none" ? "Photos you take out of a folder show up here." : "Drag photos onto this page to add them here."}
+        {first
+          ? "Choose a folder or a product's album, then pick photos from your device. They are yours to use in posts and designs, free."
+          : folder === "none"
+            ? "Photos you take out of a folder show up here."
+            : folder === "album"
+              ? "Upload photos here, or select photos anywhere in the gallery and use Add to album."
+              : "Drag photos onto this page to add them here."}
       </p>
       {(first || folder !== "none") && (
         <Button leading={<Upload aria-hidden className="size-4" />} onClick={onUpload}>
@@ -413,35 +532,50 @@ function Empty({ total, folder, onUpload }: { total: number; folder: string; onU
   );
 }
 
-function Viewer({
-  item,
-  folders,
-  busy,
-  onClose,
-  onMove,
-  onDelete,
-  onRenamed,
-  onError,
-}: {
+type ViewerProps = {
   item: MediaItem | null;
   folders: { id: string; name: string }[];
+  /** Every product album, for "Used for" on the photo. */
+  products: { id: string; name: string }[];
+  /** The album being viewed, when it is one (adds "Make cover" and "Remove from album"). */
+  album: { kind: "product" | "campaign"; id: string; name: string } | null;
   busy: boolean;
   onClose: () => void;
   onMove: (id: string) => void;
   onDelete: (id: string) => void;
+  onUnlink: (id: string) => void;
+  onCover: (id: string) => void;
   onRenamed: () => void;
   onError: (message: string) => void;
-}) {
+};
+
+function Viewer({ item, onClose, ...rest }: ViewerProps) {
   return (
     <Dialog open={!!item} onOpenChange={(o) => !o && onClose()} title={item?.name ?? "Photo"} className="max-w-3xl">
-      {item && <ViewerBody key={`${item.id}:${item.name}`} item={item} folders={folders} busy={busy} onMove={onMove} onDelete={onDelete} onRenamed={onRenamed} onError={onError} />}
+      {item && <ViewerBody key={`${item.id}:${item.name}`} item={item} {...rest} />}
     </Dialog>
   );
 }
 
-function ViewerBody({ item, folders, busy, onMove, onDelete, onRenamed, onError }: { item: MediaItem; folders: { id: string; name: string }[]; busy: boolean; onMove: (id: string) => void; onDelete: (id: string) => void; onRenamed: () => void; onError: (message: string) => void }) {
+function ViewerBody({ item, folders, products, album, busy, onMove, onDelete, onUnlink, onCover, onRenamed, onError }: Omit<ViewerProps, "item" | "onClose"> & { item: MediaItem }) {
   const [name, setName] = useState(item.name);
   const [saving, start] = useTransition();
+  const [albums, setAlbums] = useState<PhotoAlbums | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const { toast } = useToast();
+  useEffect(() => {
+    let live = true;
+    void getPhotoAlbums(item.id).then((res) => {
+      if (live && res.ok) {
+        setAlbums(res.albums);
+        setChosen(new Set(res.albums.products.map((p) => p.id)));
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [item.id]);
   const folder = folders.find((f) => f.id === item.folderId);
   const changed = name.trim() !== "" && name.trim() !== item.name;
 
@@ -469,10 +603,77 @@ function ViewerBody({ item, folders, busy, onMove, onDelete, onRenamed, onError 
               Save
             </Button>
           </form>
+          {products.length > 0 && (
+            <section aria-label="Used for" className="flex flex-col gap-2 rounded-2xl bg-soft p-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-[14px] font-semibold">Used for</h3>
+                <Button size="sm" variant="ghost" onClick={() => setPicking((p) => !p)} aria-expanded={picking}>
+                  {picking ? "Done" : "Change"}
+                </Button>
+              </div>
+              {!picking ? (
+                <p className="text-[14px] text-muted">
+                  {albums === null
+                    ? "Loading…"
+                    : [...albums.products, ...albums.campaigns].length
+                      ? [...albums.products, ...albums.campaigns].map((a) => a.name).join(", ")
+                      : "Not in any product's album yet."}
+                </p>
+              ) : (
+                <>
+                  <div className="flex max-h-48 flex-wrap gap-2 overflow-y-auto" role="group" aria-label="Products this photo shows">
+                    {products.map((p) => (
+                      <Chip
+                        key={p.id}
+                        selected={chosen.has(p.id)}
+                        onClick={() =>
+                          setChosen((cur) => {
+                            const next = new Set(cur);
+                            if (!next.delete(p.id)) next.add(p.id);
+                            return next;
+                          })
+                        }
+                        className="px-3 py-2 text-[14px]"
+                      >
+                        {p.name}
+                      </Chip>
+                    ))}
+                  </div>
+                  <div>
+                    <Button
+                      size="sm"
+                      disabled={saving}
+                      onClick={() =>
+                        start(async () => {
+                          const res = await setPhotoProductsAction(item.id, [...chosen]);
+                          if (!res.ok) return onError(res.error);
+                          setAlbums(res.albums);
+                          setPicking(false);
+                          toast("Saved", "success");
+                        })
+                      }
+                    >
+                      Save
+                    </Button>
+                  </div>
+                </>
+              )}
+            </section>
+          )}
           <div className="flex flex-wrap gap-3">
             <Button href={`/dashboard/designs?photo=${item.id}`} leading={<Sparkles aria-hidden className="size-4" />}>
               Make a design
             </Button>
+            {album && (
+              <>
+                <Button variant="ghost" disabled={busy} leading={<Star aria-hidden className="size-4" />} onClick={() => onCover(item.id)}>
+                  Make cover
+                </Button>
+                <Button variant="ghost" disabled={busy} leading={<X aria-hidden className="size-4" />} onClick={() => onUnlink(item.id)}>
+                  Remove from album
+                </Button>
+              </>
+            )}
             <Button variant="ghost" disabled={busy} leading={<FolderInput aria-hidden className="size-4" />} onClick={() => onMove(item.id)}>
               Move
             </Button>

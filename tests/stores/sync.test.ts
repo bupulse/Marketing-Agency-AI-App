@@ -7,20 +7,23 @@ import { StoreApiError } from "@/lib/stores/types";
 
 
 const state = vi.hoisted(() => ({
-  projects: new Map<string, Record<string, unknown>>(),
+  products: new Map<string, Record<string, unknown>>(),
   syncs: new Map<string, Record<string, unknown>>(),
+  // Gallery photos by path, and album links (ProductPhoto rows).
+  assets: new Map<string, { id: string; path: string; source: string | null; businessId: string }>(),
+  links: [] as { productId: string; assetId: string; position: number }[],
   store: new Map<string, unknown>(),
   getProductsError: null as unknown,
   conns: [] as { id: string; businessId: string; lastAttemptAt: Date | null }[],
   seq: 0,
   clock: 1_000,
-  rollback: false,
   lock: Promise.resolve() as Promise<void>,
 }));
 const markNeedsAttention = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
-vi.mock("@/lib/studio/schemas", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/studio/schemas")>()), MAX_PROJECTS_PER_BUSINESS: 3 }));
+vi.mock("@/lib/knowledge/products", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/knowledge/products")>()), MAX_PRODUCTS_PER_BUSINESS: 3 }));
+vi.mock("@/lib/knowledge/service", () => ({ defaultCurrency: async () => "USD" }));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/lib/stores/connection", () => ({
   providerFor: () => ({
@@ -34,6 +37,8 @@ vi.mock("@/lib/stores/connection", () => ({
 }));
 vi.mock("@/lib/db", () => {
   const syncKey = (c: string, e: string) => `${c}|${e}`;
+  const albumOf = (productId: string) => state.links.filter((l) => l.productId === productId).sort((a, b) => a.position - b.position);
+  const assetById = (id: string) => [...state.assets.values()].find((a) => a.id === id)!;
   const prisma = {
     business: { findUnique: async () => ({ userId: "u1" }) },
     storeConnection: {
@@ -54,10 +59,10 @@ vi.mock("@/lib/db", () => {
         return { count: c ? 1 : 0 };
       },
     },
-    project: {
+    product: {
       count: async () => {
         await new Promise((r) => setTimeout(r, 1)); // yields, so an unlocked count-then-create would race
-        return state.projects.size;
+        return state.products.size;
       },
       create: async ({ data }: { data: Record<string, unknown> & { storeSync?: { create: Record<string, unknown> } } }) => {
         const { storeSync, ...fields } = data;
@@ -65,33 +70,57 @@ vi.mock("@/lib/db", () => {
         if (storeSync) {
           const key = syncKey(String(storeSync.create.connectionId), String(storeSync.create.externalId));
           if (state.syncs.has(key)) throw new Prisma.PrismaClientKnownRequestError("dup", { code: "P2002", clientVersion: "x" });
-          state.syncs.set(key, { id: `s${state.seq}`, projectId: id, ...storeSync.create, sourceMissing: false, lastSyncedAt: new Date(0) });
+          state.syncs.set(key, { id: `s${state.seq}`, productId: id, ...storeSync.create, sourceMissing: false, lastSyncedAt: new Date(0) });
         }
         await new Promise((r) => setTimeout(r, 1));
-        state.projects.set(id, { id, details: null, updatedAt: new Date(++state.clock), ...fields });
-        return { id };
+        state.products.set(id, { id, updatedAt: new Date(++state.clock), ...fields });
+        return { id, businessId: fields.businessId, name: fields.name };
       },
       update: async ({ where, data }: { where: { id: string; updatedAt?: Date }; data: Record<string, unknown> }) => {
-        const p = state.projects.get(where.id)!;
-        if (where.updatedAt && (p.updatedAt as Date).getTime() !== where.updatedAt.getTime()) { state.rollback = true; throw new Prisma.PrismaClientKnownRequestError("not found", { code: "P2025", clientVersion: "x" }); }
+        const p = state.products.get(where.id)!;
+        if (where.updatedAt && (p.updatedAt as Date).getTime() !== where.updatedAt.getTime()) throw new Prisma.PrismaClientKnownRequestError("not found", { code: "P2025", clientVersion: "x" });
+        Object.assign(p, data);
         p.updatedAt = new Date(++state.clock);
-        const d = { ...data };
-        if (d.details && typeof d.details === "object" && "_isDbNull" in d.details) d.details = null;
-        Object.assign(p, d);
         return p;
       },
     },
+    mediaAsset: {
+      upsert: async ({ where, create }: { where: { path: string }; create: { id: string; path: string; source: string | null; businessId: string } }) => {
+        if (!state.assets.has(where.path)) state.assets.set(where.path, { id: create.id, path: create.path, source: create.source, businessId: create.businessId });
+        return state.assets.get(where.path);
+      },
+      findMany: async ({ where }: { where: { path: { in: string[] } } }) => where.path.in.flatMap((p) => (state.assets.has(p) ? [state.assets.get(p)!] : [])),
+      deleteMany: async ({ where }: { where: { id: string } }) => {
+        const a = assetById(where.id);
+        if (a) state.assets.delete(a.path);
+        return { count: a ? 1 : 0 };
+      },
+    },
+    productPhoto: {
+      findMany: async ({ where }: { where: { productId: string } }) => albumOf(where.productId).map((l) => ({ assetId: l.assetId, asset: assetById(l.assetId) })),
+      deleteMany: async ({ where }: { where: { productId: string; assetId: { in: string[] } } }) => {
+        const before = state.links.length;
+        state.links = state.links.filter((l) => !(l.productId === where.productId && where.assetId.in.includes(l.assetId)));
+        return { count: before - state.links.length };
+      },
+      upsert: async ({ where, create, update }: { where: { productId_assetId: { productId: string; assetId: string } }; create: { productId: string; assetId: string; position: number }; update: { position: number } }) => {
+        const l = state.links.find((x) => x.productId === where.productId_assetId.productId && x.assetId === where.productId_assetId.assetId);
+        if (l) l.position = update.position;
+        else state.links.push({ ...create });
+        return {};
+      },
+      count: async ({ where }: { where: { assetId: string } }) => state.links.filter((l) => l.assetId === where.assetId).length,
+    },
+    campaignPhoto: { count: async () => 0 },
     productSync: {
       findUnique: async ({ where }: { where: { connectionId_externalId: { connectionId: string; externalId: string } }; include?: unknown }) => {
         const s = state.syncs.get(syncKey(where.connectionId_externalId.connectionId, where.connectionId_externalId.externalId));
-        return s ? { ...s, project: { ...state.projects.get(String(s.projectId)) } } : null; // a copy, like a database read
+        return s ? { ...s, product: { ...state.products.get(String(s.productId)) } } : null; // a copy, like a database read
       },
       findMany: async ({ where, take }: { where: { lastSyncedAt?: { lt: Date } }; take?: number }) =>
         [...state.syncs.values()].filter((x) => !where.lastSyncedAt || (x.lastSyncedAt as Date).getTime() < where.lastSyncedAt.lt.getTime()).sort((a, b) => (a.lastSyncedAt as Date).getTime() - (b.lastSyncedAt as Date).getTime()).slice(0, take ?? 999),
       count: async ({ where }: { where: { lastSyncedAt: { lt: Date } } }) => [...state.syncs.values()].filter((x) => (x.lastSyncedAt as Date).getTime() < where.lastSyncedAt.lt.getTime()).length,
       update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
-        await new Promise((r) => setTimeout(r, 0)); // lets a failing sibling in the same transaction flag a rollback first
-        if (state.rollback) return null;
         const s = [...state.syncs.values()].find((x) => x.id === where.id)!;
         Object.assign(s, data);
         return s;
@@ -105,13 +134,7 @@ vi.mock("@/lib/db", () => {
     $executeRaw: async () => 0,
     // Function-form transactions run one at a time, like the advisory lock the code takes.
     $transaction: async (arg: Promise<unknown>[] | ((tx: unknown) => Promise<unknown>)) => {
-      if (typeof arg !== "function") {
-        const settled = await Promise.allSettled(arg);
-        state.rollback = false;
-        const bad = settled.find((r) => r.status === "rejected");
-        if (bad) throw (bad as PromiseRejectedResult).reason;
-        return settled.map((r) => (r as PromiseFulfilledResult<unknown>).value);
-      }
+      if (typeof arg !== "function") return Promise.all(arg);
       const run = state.lock.then(() => arg(prisma));
       state.lock = run.then(() => undefined, () => undefined);
       return run;
@@ -144,11 +167,24 @@ const deps: SyncDeps = {
 };
 
 const tick = () => new Promise((r) => setTimeout(r, 3)); // timestamps are compared strictly, so let a millisecond pass
-const onlyProject = () => [...state.projects.values()][0] as Record<string, unknown> & { id: string; photoPaths: string[] };
+const onlyProduct = () => [...state.products.values()][0] as Record<string, unknown> & { id: string };
+/** The product's album, as paths in order. */
+const album = (productId = onlyProduct().id) => state.links.filter((l) => l.productId === productId).sort((a, b) => a.position - b.position).map((l) => [...state.assets.values()].find((a) => a.id === l.assetId)!.path);
+/** The owner puts their own photos in the album (gallery uploads, not store photos). */
+function setOwnAlbum(paths: string[]) {
+  const productId = onlyProduct().id;
+  state.links = state.links.filter((l) => l.productId !== productId);
+  paths.forEach((path, position) => {
+    if (!state.assets.has(path)) state.assets.set(path, { id: `own-${path}`, path, source: null, businessId: "b1" });
+    state.links.push({ productId, assetId: state.assets.get(path)!.id, position });
+  });
+}
 
 beforeEach(() => {
-  state.projects.clear();
+  state.products.clear();
   state.syncs.clear();
+  state.assets.clear();
+  state.links = [];
   state.store.clear();
   state.getProductsError = null;
   uploads = 0;
@@ -187,14 +223,22 @@ describe("planUpdate (the overwrite rule)", () => {
 });
 
 describe("import and re-sync", () => {
-  it("creates a project with photos and a mapping", async () => {
+  it("creates a product with an album of store photos and a mapping", async () => {
     state.store.set("gid://1", product());
     const [r] = await importProducts(conn, ["gid://1"], deps);
     expect(r.status).toBe("created");
-    const p = onlyProject();
-    expect(p).toMatchObject({ type: "product", title: "Leather bag", price: "$20.00", features: ["Bags", "leather"], details: { notes: "Hand made." } });
-    expect(p.photoPaths).toEqual(["u1/projects/up1.jpg", "u1/projects/up2.jpg"]);
+    const p = onlyProduct();
+    expect(p).toMatchObject({ businessId: "b1", kind: "PHYSICAL", name: "Leather bag", summary: "Hand made.", description: "Hand made.", priceModel: "FIXED", priceAmount: 2000, currency: "USD", priceNote: "$20.00", features: ["Bags", "leather"], usps: [] });
+    expect(album()).toEqual(["u1/projects/up1.jpg", "u1/projects/up2.jpg"]);
+    expect([...state.assets.values()].every((a) => a.source === "store" && a.businessId === "b1")).toBe(true);
     expect(state.syncs.size).toBe(1);
+    expect([...state.syncs.values()][0]).toMatchObject({ productId: p.id });
+  });
+
+  it("keeps a price it cannot read as the note, on request", async () => {
+    state.store.set("gid://1", product({ price: "Call us" }));
+    await importProducts(conn, ["gid://1"], deps);
+    expect(onlyProduct()).toMatchObject({ priceModel: "ON_REQUEST", priceAmount: null, priceNote: "Call us" });
   });
 
   it("importing the same product again does not duplicate it or re-download photos", async () => {
@@ -202,7 +246,7 @@ describe("import and re-sync", () => {
     await importProducts(conn, ["gid://1"], deps);
     const [r] = await importProducts(conn, ["gid://1", "gid://1"], deps);
     expect(r.status).toBe("unchanged");
-    expect(state.projects.size).toBe(1);
+    expect(state.products.size).toBe(1);
     expect(state.syncs.size).toBe(1);
     expect(uploads).toBe(2);
   });
@@ -210,7 +254,7 @@ describe("import and re-sync", () => {
   it("a parallel import that loses the race becomes an update instead of a duplicate", async () => {
     state.store.set("gid://1", product());
     await Promise.all([importProducts(conn, ["gid://1"], deps), importProducts(conn, ["gid://1"], deps)]);
-    expect(state.projects.size).toBe(1);
+    expect(state.products.size).toBe(1);
   });
 
   it("re-sync updates untouched fields and swaps changed photos", async () => {
@@ -220,24 +264,27 @@ describe("import and re-sync", () => {
     await tick();
     const summary = await resyncConnection(conn, {}, deps);
     expect(summary).toMatchObject({ checked: 1, updated: 1, kept: 0 });
-    expect(onlyProject()).toMatchObject({ title: "Leather bag XL", price: "$25.00" });
-    expect(onlyProject().photoPaths).toEqual(["u1/projects/up1.jpg", "u1/projects/up3.jpg"]);
+    expect(onlyProduct()).toMatchObject({ name: "Leather bag XL", priceNote: "$25.00", priceAmount: 2500 });
+    expect(album()).toEqual(["u1/projects/up1.jpg", "u1/projects/up3.jpg"]);
     expect(removed).toEqual(["u1/projects/up2.jpg"]);
-    expect(state.projects.size).toBe(1);
+    expect(state.assets.has("u1/projects/up2.jpg")).toBe(false); // a store photo in no album any more is deleted
+    expect(state.products.size).toBe(1);
   });
 
   it("does not overwrite the user's edits", async () => {
     state.store.set("gid://1", product());
     await importProducts(conn, ["gid://1"], deps);
-    Object.assign(onlyProject(), { title: "My title", details: { notes: "My own words" }, photoPaths: ["u1/projects/up1.jpg", "u1/projects/mine.jpg"] });
+    Object.assign(onlyProduct(), { name: "My title", description: "My own words" });
+    setOwnAlbum(["u1/projects/up1.jpg", "u1/gallery/mine.jpg"]);
     state.store.set("gid://1", product({ title: "Store title", price: "$30.00", description: "Store words", imageUrls: ["https://cdn.shopify.com/z.jpg"] }));
     await tick();
     const summary = await resyncConnection(conn, {}, deps);
-    const p = onlyProject();
-    expect(p.title).toBe("My title");
-    expect((p.details as { notes: string }).notes).toBe("My own words");
-    expect(p.photoPaths).toEqual(["u1/projects/up1.jpg", "u1/projects/mine.jpg"]);
-    expect(p.price).toBe("$30.00"); // untouched by the user, so it follows the store
+    const p = onlyProduct();
+    expect(p.name).toBe("My title");
+    expect(p.description).toBe("My own words");
+    expect(album()).toEqual(["u1/projects/up1.jpg", "u1/gallery/mine.jpg"]);
+    expect(p.priceNote).toBe("$30.00"); // untouched by the user, so it follows the store
+    expect(p.priceAmount).toBe(3000);
     expect(summary.kept).toBe(1);
     expect(removed).toEqual([]);
     expect(uploads).toBe(2); // nothing new downloaded for protected photos
@@ -245,17 +292,28 @@ describe("import and re-sync", () => {
     state.store.set("gid://1", product({ title: "Another", price: "$30.00", description: "Store words", imageUrls: ["https://cdn.shopify.com/z.jpg"] }));
     await tick();
     await resyncConnection(conn, {}, deps);
-    expect(onlyProject().title).toBe("My title");
+    expect(onlyProduct().name).toBe("My title");
   });
 
-  it("keeps the project when the product leaves the store", async () => {
+  it("an amount the owner set in the form protects the price", async () => {
+    state.store.set("gid://1", product());
+    await importProducts(conn, ["gid://1"], deps);
+    // Saving the product form turns the store's price text into an amount and clears the note.
+    Object.assign(onlyProduct(), { priceNote: null, priceAmount: 1800 });
+    state.store.set("gid://1", product({ price: "$30.00" }));
+    await tick();
+    expect(await resyncConnection(conn, {}, deps)).toMatchObject({ kept: 1 });
+    expect(onlyProduct()).toMatchObject({ priceNote: null, priceAmount: 1800 });
+  });
+
+  it("keeps the product when it leaves the store", async () => {
     state.store.set("gid://1", product());
     await importProducts(conn, ["gid://1"], deps);
     state.store.delete("gid://1");
     await tick();
     const summary = await resyncConnection(conn, {}, deps);
     expect(summary.missing).toBe(1);
-    expect(state.projects.size).toBe(1);
+    expect(state.products.size).toBe(1);
     expect([...state.syncs.values()][0].sourceMissing).toBe(true);
   });
 
@@ -265,7 +323,7 @@ describe("import and re-sync", () => {
     state.store.set("gid://1", product({ imageUrls: ["https://cdn.shopify.com/new.jpg"] }));
     await tick();
     await resyncConnection(conn, {}, { ...deps, fetchImage: async () => ({ ok: false, reason: "no" }) });
-    expect(onlyProject().photoPaths).toHaveLength(2);
+    expect(album()).toHaveLength(2);
   });
 
   it("reports a product that is gone, and flags the connection when access is revoked", async () => {
@@ -393,28 +451,28 @@ describe("race and budget protections (L3, L4, L6)", () => {
     state.store.set("gid://1", product());
     await importProducts(conn, ["gid://1"], deps);
     state.store.set("gid://1", product({ title: "Store renamed", price: "$99.00", imageUrls: ["https://cdn.shopify.com/new.jpg"] }));
-    // The user saves a new title while we are downloading the new photo (between reading and writing the project).
-    const racing: SyncDeps = { ...deps, fetchImage: async (u, p) => { const proj = onlyProject(); proj.title = "My edit, saved just now"; proj.updatedAt = new Date(++state.clock); return deps.fetchImage(u, p); } };
+    // The user saves a new name while we are downloading the new photo (between reading and writing the product).
+    const racing: SyncDeps = { ...deps, fetchImage: async (u, p) => { const prod = onlyProduct(); prod.name = "My edit, saved just now"; prod.updatedAt = new Date(++state.clock); return deps.fetchImage(u, p); } };
     await tick();
     const summary = await resyncConnection(conn, {}, racing);
-    const p = onlyProject();
-    expect(p.title).toBe("My edit, saved just now");
-    expect(p.price).toBe("$20.00"); // nothing of this sync was written
-    expect(p.photoPaths).toHaveLength(2);
+    const p = onlyProduct();
+    expect(p.name).toBe("My edit, saved just now");
+    expect(p.priceNote).toBe("$20.00"); // nothing of this sync was written
+    expect(album()).toHaveLength(2);
     expect(summary).toMatchObject({ updated: 0, kept: 1 });
     expect(removed.length).toBe(1); // the photo we had just uploaded is cleaned up
     // the next sync decides again from the fresh project: the title edit is protected, the price now updates
     await tick();
     await resyncConnection(conn, {}, deps);
-    expect(onlyProject()).toMatchObject({ title: "My edit, saved just now", price: "$99.00" });
+    expect(onlyProduct()).toMatchObject({ name: "My edit, saved just now", priceNote: "$99.00" });
   });
 
-  it("L4: parallel imports cannot go past the project cap (cap is 3 in this file)", async () => {
+  it("L4: parallel imports cannot go past the product cap (cap is 3 in this file)", async () => {
     for (let i = 0; i < 6; i++) state.store.set(`gid://p${i}`, product({ externalId: `gid://p${i}`, title: `P${i}`, imageUrls: [] }));
     const results = (await Promise.all([0, 1, 2, 3, 4, 5].map((i) => importProducts(conn, [`gid://p${i}`], deps)))).flat();
-    expect(state.projects.size).toBe(3);
+    expect(state.products.size).toBe(3);
     expect(results.filter((r) => r.status === "created")).toHaveLength(3);
-    expect(results.filter((r) => r.status === "failed").every((r) => /limit of 3 projects/.test(r.error ?? ""))).toBe(true);
+    expect(results.filter((r) => r.status === "failed").every((r) => /limit of 3 products/.test(r.error ?? ""))).toBe(true);
     expect(state.syncs.size).toBe(3); // no orphan mappings
   });
 

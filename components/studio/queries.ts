@@ -1,6 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { createSignedDownloadUrl } from "@/lib/storage";
+import { CAMPAIGN_TYPE_LABEL } from "@/lib/knowledge/campaigns";
+import { KIND_LABEL } from "@/lib/knowledge/products";
 import { parseVariants, type StudioContent } from "./helpers";
 
 type ContentRow = {
@@ -43,75 +45,46 @@ export async function signPhotos(paths: string[]): Promise<{ path: string; url: 
   return paths.flatMap((path, i) => (urls[i] ? [{ path, url: urls[i] as string }] : []));
 }
 
-export async function loadProjectCards(businessId: string) {
-  const projects = await prisma.project.findMany({
-    where: { businessId },
-    orderBy: { createdAt: "desc" },
-    take: 60,
-    include: {
-      _count: { select: { contents: true, designs: true } },
-      storeSync: { select: { connection: { select: { provider: true } } } },
-      contents: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
-    },
-  });
-  const thumbs = await Promise.all(projects.map((p) => (p.photoPaths[0] ? signedUrl("media", p.photoPaths[0]) : null)));
-  return projects.map((p, i) => ({
-    id: p.id,
-    type: p.type,
-    title: p.title,
-    price: p.price,
-    thumb: thumbs[i],
-    contentCount: p._count.contents,
-    designCount: p._count.designs,
-    lastGenerated: p.contents[0]?.createdAt.toISOString() ?? null,
-    syncedFrom: p.storeSync?.connection.provider ?? null,
-  }));
-}
-
-export async function loadProjectDetail(businessId: string, projectId: string) {
-  const project = await prisma.project.findFirst({
-    where: { id: projectId, businessId },
-    include: {
-      contents: { orderBy: { createdAt: "desc" }, take: 50 },
-      designs: { orderBy: { createdAt: "desc" }, take: 50 },
-      storeSync: { select: { connection: { select: { provider: true } } } },
-    },
-  });
-  if (!project) return null;
-  const [photos, designUrls] = await Promise.all([
-    signPhotos(project.photoPaths),
-    Promise.all(project.designs.map((d) => signedUrl("designs", d.path))),
-  ]);
-  const designs = project.designs.flatMap((d, i) =>
-    designUrls[i] ? [{ id: d.id, url: designUrls[i] as string, kind: d.kind, aspectRatio: d.aspectRatio, template: d.template }] : [],
-  );
-  return { project, contents: project.contents.map(toStudioContent), photos, designs };
-}
-
+/** The latest text for each product and campaign, newest first. */
 export async function loadContentLibrary(businessId: string) {
-  const projects = await prisma.project.findMany({
-    where: { businessId, contents: { some: {} } },
-    include: { contents: { orderBy: { createdAt: "desc" }, take: 1 } },
-    take: 200,
+  const rows = await prisma.generatedContent.findMany({
+    where: { businessId, OR: [{ productId: { not: null } }, { campaignId: { not: null } }] },
+    orderBy: { createdAt: "desc" },
+    distinct: ["productId", "campaignId"],
+    take: 300,
+    include: { product: { select: { id: true, name: true, kind: true } }, campaign: { select: { id: true, name: true, type: true } } },
   });
-  return projects
-    .flatMap((p) => {
-      const c = p.contents[0];
-      return c
-        ? [{
-            id: c.id,
-            projectId: p.id,
-            projectTitle: p.title,
-            projectType: p.type,
-            caption: c.caption,
-            hashtags: c.hashtags,
-            videoScript: c.videoScript,
-            variants: parseVariants(c.variants),
-            language: c.language,
-            edited: c.edited,
-            createdAt: c.createdAt.toISOString(),
-          }]
-        : [];
-    })
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return rows.flatMap((c) => {
+    const subject = c.product ? { kind: "product" as const, id: c.product.id } : c.campaign ? { kind: "campaign" as const, id: c.campaign.id } : null;
+    if (!subject) return [];
+    return [
+      {
+        id: c.id,
+        subject,
+        title: c.product?.name ?? c.campaign?.name ?? "",
+        label: c.product ? KIND_LABEL[c.product.kind] : CAMPAIGN_TYPE_LABEL[c.campaign!.type],
+        caption: c.caption,
+        hashtags: c.hashtags,
+        videoScript: c.videoScript,
+        variants: parseVariants(c.variants),
+        language: c.language,
+        edited: c.edited,
+        createdAt: c.createdAt.toISOString(),
+      },
+    ];
+  });
+}
+
+/** Content versions and designs of a product or campaign, for its page. */
+export async function loadSubjectStudio(businessId: string, subject: { kind: "product" | "campaign"; id: string }) {
+  const where = subject.kind === "product" ? { businessId, productId: subject.id } : { businessId, campaignId: subject.id };
+  const [contents, designs] = await Promise.all([
+    prisma.generatedContent.findMany({ where, orderBy: { createdAt: "desc" }, take: 50 }),
+    prisma.design.findMany({ where, orderBy: { createdAt: "desc" }, take: 50 }),
+  ]);
+  const designUrls = await Promise.all(designs.map((d) => signedUrl("designs", d.path)));
+  return {
+    contents: contents.map(toStudioContent),
+    designs: designs.flatMap((d, i) => (designUrls[i] ? [{ id: d.id, url: designUrls[i] as string, kind: d.kind, aspectRatio: d.aspectRatio, template: d.template }] : [])),
+  };
 }

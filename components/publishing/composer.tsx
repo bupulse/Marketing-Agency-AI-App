@@ -185,7 +185,7 @@ function ComposerBody({ onOpenChange, context, post, prefill, day, onDone }: Pro
       const mediaPaths = media.map((m) => m.path);
       const res = post
         ? await updatePostAction(post.id, { text, hashtags, mediaPaths, link: link || null, when: chosen === "keep" ? { mode: "keep" } : createWhen })
-        : await createPostsAction({ connectionIds: accountIds, text, hashtags, overrides, mediaPaths, link: link || null, projectId: prefill?.projectId, contentId: prefill?.contentId, when: createWhen });
+        : await createPostsAction({ connectionIds: accountIds, text, hashtags, overrides, mediaPaths, link: link || null, subjectId: prefill?.subjectId, contentId: prefill?.contentId, when: createWhen });
       if (!res.ok) return setError(res.fieldErrors?.form ?? res.error);
       if (res.outcomes.length > 0) report(res.outcomes);
       else {
@@ -231,7 +231,7 @@ function ComposerBody({ onOpenChange, context, post, prefill, day, onDone }: Pro
       <Hashtags tags={hashtags} onChange={setHashtags} />
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-sm font-semibold">Photos</legend>
-        <MediaAttach media={media} onChange={setMedia} max={MAX_MEDIA_PER_POST} />
+        <MediaAttach media={media} onChange={setMedia} max={MAX_MEDIA_PER_POST} album={prefill?.album} />
       </fieldset>
       <Field label="Link (optional)" hint="Shown with the post where the network allows it." error={undefined}>
         <Input type="url" inputMode="url" value={link} placeholder="https://" onChange={(e) => setLink(e.target.value)} />

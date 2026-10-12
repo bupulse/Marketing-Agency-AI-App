@@ -57,6 +57,7 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.prisma.mediaFolder.findFirst.mockImplementation(async ({ where }: { where: { id: string } }) => (where.id === "f1" ? { id: "f1", name: "Imports" } : null));
   process.env.ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
   process.env.CANVA_CLIENT_ID = "OC-client";
   process.env.CANVA_CLIENT_SECRET = "secret";
@@ -145,7 +146,7 @@ describe("imageSize", () => {
 });
 
 describe("importAsset", () => {
-  const base = { name: "Summer Party_3.png", folderId: null, source: "dropbox" as const };
+  const base = { name: "Summer Party_3.png", destination: "folder:f1", source: "dropbox" as const };
 
   it("stores a valid photo under <userId>/gallery/ and records its source and size", async () => {
     const item = await importAsset(ctx, { ...base, bytes: png() });
@@ -168,8 +169,8 @@ describe("importAsset", () => {
     mocks.prisma.mediaAsset.aggregate.mockResolvedValue({ _count: { _all: 500 }, _sum: { bytes: 0 } });
     await expect(importAsset(ctx, { ...base, bytes: png() })).rejects.toThrow(/gallery is full/);
     mocks.prisma.mediaAsset.aggregate.mockResolvedValue({ _count: { _all: 0 }, _sum: { bytes: 0 } });
-    mocks.prisma.mediaFolder.findFirst.mockResolvedValue(null);
-    await expect(importAsset(ctx, { ...base, bytes: png(), folderId: "someone-elses" })).rejects.toBeInstanceOf(MediaError);
+    await expect(importAsset(ctx, { ...base, bytes: png(), destination: "folder:someone-elses" })).rejects.toBeInstanceOf(MediaError);
+    await expect(importAsset(ctx, { ...base, bytes: png(), destination: null })).rejects.toThrow(/Choose where these photos go/);
     expect(mocks.upload).not.toHaveBeenCalled();
   });
 
@@ -181,7 +182,7 @@ describe("importAsset", () => {
 });
 
 describe("quota is checked atomically", () => {
-  const base = { name: "a.png", folderId: null, source: "dropbox" as const };
+  const base = { name: "a.png", destination: "folder:f1", source: "dropbox" as const };
 
   it("takes the per-business lock and re-counts inside the transaction before inserting", async () => {
     await importAsset(ctx, { ...base, bytes: png() });
@@ -206,16 +207,16 @@ describe("the import rate limit is counted before any download", () => {
   });
 
   it("stops Drive, Dropbox and Canva imports before they fetch anything", async () => {
-    await expect(importDriveFile(ctx, { token: "ya29.token-token", fileId: "1AbCdEfGhIjK", folderId: null })).rejects.toBeInstanceOf(RateLimitError);
-    await expect(importDropboxFile(ctx, { link: "https://dl.dropboxusercontent.com/a", name: "a.jpg", folderId: null })).rejects.toBeInstanceOf(RateLimitError);
-    await expect(importCanvaDesign(ctx, { designId: "DAF1abcdef", title: "x", folderId: null })).rejects.toBeInstanceOf(RateLimitError);
+    await expect(importDriveFile(ctx, { token: "ya29.token-token", fileId: "1AbCdEfGhIjK", destination: "folder:f1" })).rejects.toBeInstanceOf(RateLimitError);
+    await expect(importDropboxFile(ctx, { link: "https://dl.dropboxusercontent.com/a", name: "a.jpg", destination: "folder:f1" })).rejects.toBeInstanceOf(RateLimitError);
+    await expect(importCanvaDesign(ctx, { designId: "DAF1abcdef", title: "x", destination: "folder:f1" })).rejects.toBeInstanceOf(RateLimitError);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(mocks.rateLimit.mock.calls.map((c) => c[0])).toEqual([`media-import:${USER}`, `media-import:${USER}`, `media-import:${USER}`]);
   });
 });
 
 describe("importDriveFile", () => {
-  const input = { token: "ya29.token-token", fileId: "1AbCdEfGhIjK", folderId: null };
+  const input = { token: "ya29.token-token", fileId: "1AbCdEfGhIjK", destination: "folder:f1" };
 
   it("reads the metadata, then downloads with alt=media and the bearer token", async () => {
     fetchMock.mockResolvedValueOnce(json({ name: "shop.png", mimeType: "image/png", size: "33" })).mockResolvedValueOnce(body(png()));
@@ -254,13 +255,13 @@ describe("importDriveFile", () => {
 describe("importDropboxFile", () => {
   it("downloads a Dropbox direct link into the gallery", async () => {
     fetchMock.mockResolvedValueOnce(body(JPEG));
-    await importDropboxFile(ctx, { link: "https://dl.dropboxusercontent.com/apitl/1/abc", name: "cake.jpg", folderId: null });
+    await importDropboxFile(ctx, { link: "https://dl.dropboxusercontent.com/apitl/1/abc", name: "cake.jpg", destination: "folder:f1" });
     expect(mocks.prisma.mediaAsset.create.mock.calls[0][0].data).toMatchObject({ source: "dropbox", mimeType: "image/jpeg" });
   });
 
   it("never fetches a link that is not on Dropbox", async () => {
-    await expect(importDropboxFile(ctx, { link: "https://evil.example/x.jpg", name: "x.jpg", folderId: null })).rejects.toBeInstanceOf(MediaError);
-    await expect(importDropboxFile(ctx, { link: "http://169.254.169.254/", name: "x.jpg", folderId: null })).rejects.toBeInstanceOf(MediaError);
+    await expect(importDropboxFile(ctx, { link: "https://evil.example/x.jpg", name: "x.jpg", destination: "folder:f1" })).rejects.toBeInstanceOf(MediaError);
+    await expect(importDropboxFile(ctx, { link: "http://169.254.169.254/", name: "x.jpg", destination: "folder:f1" })).rejects.toBeInstanceOf(MediaError);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -308,7 +309,7 @@ describe("Canva import", () => {
     fetchMock
       .mockResolvedValueOnce(json({ job: { id: "J1", status: "success", urls: ["https://export-download.canva.com/f.png"] } }))
       .mockResolvedValueOnce(body(png(2048, 1024)));
-    await importCanvaDesign(ctx, { designId: "DAF1abcdef", title: "Menu", folderId: null });
+    await importCanvaDesign(ctx, { designId: "DAF1abcdef", title: "Menu", destination: "folder:f1" });
     expect(mocks.prisma.mediaAsset.create.mock.calls[0][0].data).toMatchObject({ source: "canva", name: "Menu", width: 2048, height: 1024 });
   });
 
@@ -326,6 +327,6 @@ describe("Canva import", () => {
   it("is unavailable without the Canva keys", async () => {
     delete process.env.CANVA_CLIENT_ID;
     await expect(listCanvaDesigns(USER, {})).rejects.toBeInstanceOf(CanvaImportError);
-    await expect(importCanvaDesign(ctx, { designId: "DAF1abcdef", title: "x", folderId: null })).rejects.toBeInstanceOf(CanvaImportError);
+    await expect(importCanvaDesign(ctx, { designId: "DAF1abcdef", title: "x", destination: "folder:f1" })).rejects.toBeInstanceOf(CanvaImportError);
   });
 });

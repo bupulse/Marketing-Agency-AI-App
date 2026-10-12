@@ -3,6 +3,8 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { industryContext } from "@/lib/industry-context";
+import { profileContext } from "@/lib/knowledge/context";
+import { writingSubject, type Subject } from "@/lib/knowledge/service";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
 import { AIBudgetExceededError } from "@/lib/ai/budget";
@@ -77,7 +79,7 @@ export async function regenerateGroup(userId: string, groupId: string): Promise<
   if (!business) return { ok: false, error: "We could not find your business." };
   const posts = await prisma.post.findMany({
     where: { groupId, businessId: business.id, source: "AUTOPILOT", status: { in: [...CHANGEABLE] } },
-    include: { project: true },
+    select: { id: true, text: true, network: true, format: true, playbookId: true, scheduledAt: true, productId: true, campaignId: true },
   });
   const idea = getIdea(posts[0]?.playbookId);
   if (posts.length === 0 || !idea) return { ok: false, error: "That post can no longer be regenerated." };
@@ -99,12 +101,13 @@ export async function regenerateGroup(userId: string, groupId: string): Promise<
     const faq = idea.needs.includes("faq")
       ? [...knowledge.faqs].sort((a, b) => overlap(first.text, `${b.question} ${b.answer}`) - overlap(first.text, `${a.question} ${a.answer}`))[0]
       : undefined;
-    const details = first.project?.details;
-    const notes = details && typeof details === "object" && "notes" in details && typeof (details as { notes?: unknown }).notes === "string" ? (details as { notes: string }).notes : undefined;
+    const subject: Subject | null = first.productId ? { kind: "product", id: first.productId } : first.campaignId ? { kind: "campaign", id: first.campaignId } : null;
+    const about = subject ? await writingSubject(business.id, subject) : null;
     const brand: WriterBrand = {
       businessName: business.name,
       industry: business.industry,
       industryContext: industryContext(business),
+      profile: profileContext(business.profile),
       description: business.description,
       audience: business.audience,
       tone: business.tone,
@@ -124,7 +127,7 @@ export async function regenerateGroup(userId: string, groupId: string): Promise<
           brand,
           idea,
           facts: {
-            project: first.project ? { type: first.project.type, title: first.project.title, price: first.project.price, features: first.project.features, notes } : undefined,
+            project: about ? { type: about.type, title: about.title, price: about.price, features: about.features, context: about.context } : undefined,
             faq,
             holiday: holiday && { name: holiday.name, date: holiday.date },
             date: day,

@@ -59,7 +59,7 @@ function download(error: unknown, name: string): never {
 }
 
 /** One photo the person picked in Google Picker. The access token is used for this call only and never stored. */
-export async function importDriveFile(ctx: Ctx, input: { token: string; fileId: string; folderId: string | null }): Promise<MediaItem> {
+export async function importDriveFile(ctx: Ctx, input: { token: string; fileId: string; destination: string | null }): Promise<MediaItem> {
   if (!(await isServiceEnabled("google-drive"))) throw new MediaError(UNAVAILABLE_MESSAGE);
   if (!DRIVE_ID.test(input.fileId) || !input.token) throw new MediaError("That file could not be imported.");
   await limitImport(ctx.userId);
@@ -77,15 +77,15 @@ export async function importDriveFile(ctx: Ctx, input: { token: string; fileId: 
   if (!meta.mimeType || !isMediaType(meta.mimeType)) throw new MediaError(`${name}: ${UNSUPPORTED_MESSAGE}`);
   if (Number(meta.size) > MEDIA_MAX_BYTES) throw new MediaError(`${name} is over 10 MB. Resize it and try again.`);
   const bytes = await safeFetchBytes(`${file}?alt=media`, { allowHost: isGoogleApiHost, maxBytes: MEDIA_MAX_BYTES, timeoutMs: 45_000, headers }, `${name} is over 10 MB. Resize it and try again.`).catch((e) => download(e, name));
-  return importAsset(ctx, { bytes, name, folderId: input.folderId, source: "google_drive" });
+  return importAsset(ctx, { bytes, name, destination: input.destination, source: "google_drive" });
 }
 
 /** One Dropbox Chooser direct link. Only https links on Dropbox hosts are followed. */
-export async function importDropboxFile(ctx: Ctx, input: { link: string; name: string; folderId: string | null }): Promise<MediaItem> {
+export async function importDropboxFile(ctx: Ctx, input: { link: string; name: string; destination: string | null }): Promise<MediaItem> {
   if (!(await isServiceEnabled("dropbox"))) throw new MediaError(UNAVAILABLE_MESSAGE);
   await limitImport(ctx.userId);
   const bytes = await safeFetchBytes(input.link, { allowHost: isDropboxHost, maxBytes: MEDIA_MAX_BYTES, timeoutMs: 45_000 }, `${input.name} is over 10 MB. Resize it and try again.`).catch((e) => download(e, input.name));
-  return importAsset(ctx, { bytes, name: input.name, folderId: input.folderId, source: "dropbox" });
+  return importAsset(ctx, { bytes, name: input.name, destination: input.destination, source: "dropbox" });
 }
 
 export class CanvaImportError extends MediaError {
@@ -126,7 +126,7 @@ export async function listCanvaDesigns(userId: string, input: { query?: string; 
 }
 
 /** Exports page 1 of a design as a PNG (2048 px wide) and adds it to the gallery. */
-export async function importCanvaDesign(ctx: Ctx, input: { designId: string; title: string; folderId: string | null }): Promise<MediaItem> {
+export async function importCanvaDesign(ctx: Ctx, input: { designId: string; title: string; destination: string | null }): Promise<MediaItem> {
   if (!(await isServiceEnabled("canva"))) throw new MediaError(UNAVAILABLE_MESSAGE);
   if (!isCanvaEnabled()) throw new CanvaImportError("Canva is not set up yet.");
   if (!CANVA_DESIGN_ID.test(input.designId)) throw new MediaError("That design could not be imported.");
@@ -139,7 +139,7 @@ export async function importCanvaDesign(ctx: Ctx, input: { designId: string; tit
   } catch (error) {
     return canvaFailure(error);
   }
-  return importAsset(ctx, { bytes, name: input.title || "Canva design", folderId: input.folderId, source: "canva" });
+  return importAsset(ctx, { bytes, name: input.title || "Canva design", destination: input.destination, source: "canva" });
 }
 
 export { hasImported };

@@ -145,6 +145,8 @@ export async function finishCanvaReturn(job: ReturnJob): Promise<{ designId: str
         id,
         businessId: original.businessId,
         projectId: original.projectId,
+        productId: original.productId,
+        campaignId: original.campaignId,
         kind: original.kind,
         template: original.template,
         prompt: original.prompt,

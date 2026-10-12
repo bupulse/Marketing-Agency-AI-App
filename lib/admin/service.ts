@@ -180,7 +180,7 @@ const businessSelect = {
   onboardedAt: true,
   createdAt: true,
   user: { select: { email: true, suspendedAt: true, subscription: { select: { plan: true, status: true } } } },
-  _count: { select: { projects: true, posts: true, leads: true, connections: true } },
+  _count: { select: { products: true, posts: true, leads: true, connections: true } },
 } satisfies Prisma.BusinessSelect;
 
 type BusinessRow = Prisma.BusinessGetPayload<{ select: typeof businessSelect }>;
@@ -205,7 +205,7 @@ function businessView(b: BusinessRow) {
     plan: b.user.subscription?.plan ?? null,
     subscriptionStatus: b.user.subscription?.status ?? null,
     suspended: Boolean(b.user.suspendedAt),
-    counts: { projects: b._count.projects, posts: b._count.posts, leads: b._count.leads, connections: b._count.connections },
+    counts: { projects: b._count.products, posts: b._count.posts, leads: b._count.leads, connections: b._count.connections },
   };
 }
 

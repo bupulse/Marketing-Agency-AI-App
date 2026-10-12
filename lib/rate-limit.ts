@@ -9,7 +9,9 @@ export const RATE_LIMITS = {
   aiImage: { limit: 10, windowSeconds: 60 * 60 }, // paid Gemini images (describe an image, AI photo): 10 an hour
   designPreview: { limit: 400, windowSeconds: 60 * 60 },
   photoUpload: { limit: 60, windowSeconds: 60 * 60 },
-  projectCreate: { limit: 30, windowSeconds: 60 * 60 },
+  projectCreate: { limit: 30, windowSeconds: 60 * 60 }, // new products and campaigns (and the legacy /api/generate), together
+  knowledgeEdit: { limit: 300, windowSeconds: 60 * 60 }, // product / campaign saves, status changes, copies, deletes, album edits
+  profileSave: { limit: 60, windowSeconds: 60 * 60 }, // Knowledge base -> Company profile
   contentEdit: { limit: 120, windowSeconds: 60 * 60 },
   canvaOpen: { limit: 20, windowSeconds: 60 * 60 },
   canvaReturn: { limit: 30, windowSeconds: 60 * 60 },

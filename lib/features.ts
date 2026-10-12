@@ -60,13 +60,13 @@ export const FEATURES: readonly FeatureDef[] = [
   {
     key: "content",
     label: "AI content",
-    description: "Captions, hashtags, video scripts and ad headlines written for your business and projects.",
+    description: "Captions, hashtags, video scripts and ad headlines written for your business, products and campaigns.",
     requires: [],
     metric: "text",
     services: ["gemini", "claude"],
     status: "built",
     kind: "app",
-    routes: ["/dashboard/projects", "/dashboard/content"],
+    routes: ["/dashboard/knowledge/products", "/dashboard/knowledge/campaigns", "/dashboard/projects", "/dashboard/content"],
   },
   {
     key: "designs",
@@ -153,7 +153,7 @@ export const FEATURES: readonly FeatureDef[] = [
   {
     key: "storeImport",
     label: "Store import",
-    description: "Turn your Shopify or WooCommerce products into projects, with photos and prices, and keep them in sync.",
+    description: "Bring your Shopify or WooCommerce products into BuPulse, with photos and prices, and keep them in sync.",
     requires: [],
     services: ["shopify", "woocommerce"],
     status: "built",
@@ -183,7 +183,7 @@ export const FEATURES: readonly FeatureDef[] = [
   {
     key: "apiAccess",
     label: "API access",
-    description: "API keys for your own scripts and tools to read your projects, content, posts and leads.",
+    description: "API keys for your own scripts and tools to read your products, campaigns, content, posts and leads.",
     requires: [],
     services: [],
     status: "built",

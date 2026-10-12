@@ -1,5 +1,5 @@
 // Shared shapes for the Shopify and WooCommerce connectors (Phase 7). Providers turn a store's product into a
-// NormalizedProduct; lib/stores/sync.ts imports and re-syncs those into Projects and does not know either API.
+// NormalizedProduct; lib/stores/sync.ts imports and re-syncs those into Products and does not know either API.
 
 export type StoreProviderId = "shopify" | "woocommerce";
 
@@ -10,7 +10,7 @@ export function isStoreProvider(value: string): value is StoreProviderId {
   return value === "shopify" || value === "woocommerce";
 }
 
-/** A store product in BuPulse's terms (the fields of a Project). */
+/** A store product in BuPulse's terms (the fields of a Product). */
 export interface NormalizedProduct {
   /** Stable id in the store: the Shopify GID or the WooCommerce numeric id. */
   externalId: string;

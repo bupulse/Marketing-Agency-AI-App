@@ -28,10 +28,11 @@ const optionalText = (max: number) =>
     .transform((v) => v || null);
 
 const ratio = z.enum(ASPECT_RATIOS);
-const projectId = z.string().min(1).max(60).nullish().transform((v) => v || null);
+/** The product or campaign the design is for. */
+const subjectId = z.string().min(1).max(60).nullish().transform((v) => v || null);
 
 const templateSchema = z.object({
-  projectId,
+  subjectId,
   template: z.string().refine(isTemplateId, "Pick one of the templates."),
   aspectRatio: ratio,
   headline: z.string().trim().min(1, "Add a headline.").max(140, "Keep the headline under 140 characters."),
@@ -43,7 +44,7 @@ const templateSchema = z.object({
 });
 
 const aiPhotoSchema = z.object({
-  projectId,
+  subjectId,
   template: z.string().refine((v) => isTemplateId(v) && v !== "quote", "Pick one of the templates."),
   pack: optionalText(20),
   aspectRatio: ratio,
@@ -57,7 +58,7 @@ const aiPhotoSchema = z.object({
 });
 
 const aiSchema = z.object({
-  projectId,
+  subjectId,
   prompt: z.string().trim().min(5, "Describe the image in a few words.").max(800, "Keep the description under 800 characters."),
   aspectRatio: ratio,
   useLogo: z.boolean().optional(),
@@ -69,9 +70,12 @@ async function businessOf(userId: string) {
   return prisma.business.findUnique({ where: { userId }, select: { id: true } });
 }
 
-function revalidate(projectId: string | null) {
+function revalidate(subjectId: string | null) {
   revalidatePath("/dashboard/designs");
-  if (projectId) revalidatePath(`/dashboard/projects/${projectId}`);
+  if (subjectId) {
+    revalidatePath("/dashboard/knowledge/products/[id]", "page");
+    revalidatePath("/dashboard/knowledge/campaigns/[id]", "page");
+  }
 }
 
 function failure(error: unknown, userId: string): DesignResult {
@@ -94,7 +98,7 @@ export async function createTemplateDesign(input: z.input<typeof templateSchema>
   try {
     await assertFeature(business.id, "designs");
     const { id, path } = await makeTemplateDesign({ userId: user.id, businessId: business.id, ...data, template: data.template });
-    revalidate(data.projectId);
+    revalidate(data.subjectId);
     return { ok: true, designId: id, url: await designUrl(path) };
   } catch (error) {
     return failure(error, user.id);
@@ -113,7 +117,7 @@ export async function createAiDesign(input: z.input<typeof aiSchema>): Promise<D
   try {
     await assertFeature(business.id, "aiPhotos");
     const { id, path } = await makeAiDesign({ userId: user.id, businessId: business.id, ...data });
-    revalidate(data.projectId);
+    revalidate(data.subjectId);
     return { ok: true, designId: id, url: await designUrl(path) };
   } catch (error) {
     return failure(error, user.id);
@@ -133,7 +137,7 @@ export async function createAiPhotoDesign(input: z.input<typeof aiPhotoSchema>):
   try {
     await assertFeature(business.id, "aiPhotos");
     const { id, path } = await makeAiPhotoDesign({ userId: user.id, businessId: business.id, ...data });
-    revalidate(data.projectId);
+    revalidate(data.subjectId);
     return { ok: true, designId: id, url: await designUrl(path) };
   } catch (error) {
     return failure(error, user.id);

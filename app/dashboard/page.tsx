@@ -1,4 +1,4 @@
-import { ArrowRight, CircleCheck, Circle, FolderKanban, Image as ImageIcon, Palette, PenLine, Users } from "lucide-react";
+import { ArrowRight, CircleCheck, Circle, Image as ImageIcon, Package, Palette, PenLine, Users } from "lucide-react";
 import Link from "next/link";
 import { getAppContext } from "@/components/app/context";
 import { EssentialsBanner } from "@/components/business-info/essentials-banner";
@@ -6,6 +6,7 @@ import { Badge, GlassCard, Meter } from "@/components/ui";
 import { prisma } from "@/lib/db";
 import { cn } from "@/lib/cn";
 import { isHexColor } from "@/lib/color-contrast";
+import { formatPrice, KIND_LABEL } from "@/lib/knowledge/products";
 
 export const metadata = { title: "Dashboard" };
 
@@ -23,14 +24,14 @@ export default async function DashboardPage() {
   const { business, usage, firstName, logoUrl, brandColors, voiceLabel, businessName } = await getAppContext();
 
   const businessId = business?.id;
-  const [projectCount, contentCount, leadCount, connectionCount, designCount, recentProjects, recentLeads] = businessId
+  const [productCount, contentCount, leadCount, connectionCount, designCount, recentProducts, recentLeads] = businessId
     ? await Promise.all([
-        prisma.project.count({ where: { businessId } }),
-        prisma.generatedContent.count({ where: { project: { businessId } } }),
+        prisma.product.count({ where: { businessId, status: { not: "ARCHIVED" } } }),
+        prisma.generatedContent.count({ where: { businessId } }),
         prisma.lead.count({ where: { businessId } }),
         prisma.connection.count({ where: { businessId } }),
         prisma.design.count({ where: { businessId } }),
-        prisma.project.findMany({ where: { businessId }, orderBy: { createdAt: "desc" }, take: 3 }),
+        prisma.product.findMany({ where: { businessId, status: { not: "ARCHIVED" } }, orderBy: { updatedAt: "desc" }, take: 3 }),
         prisma.lead.findMany({ where: { businessId }, orderBy: { createdAt: "desc" }, take: 3 }),
       ])
     : [0, 0, 0, 0, 0, [], []];
@@ -42,13 +43,13 @@ export default async function DashboardPage() {
   const checklist = [
     { label: "Complete your brand profile", done: brandDone, href: "/dashboard/brand" },
     { label: "Connect a social account", done: connectionCount > 0, href: "/dashboard/connections" },
-    { label: "Create your first project", done: projectCount > 0, href: projectCount > 0 ? "/dashboard/projects" : "/dashboard/projects/new" },
+    { label: "Add your first product or service", done: productCount > 0, href: productCount > 0 ? "/dashboard/knowledge/products" : "/dashboard/knowledge/products/new" },
     { label: "Install the chat widget", done: false, href: "/dashboard/settings" },
   ];
   const doneCount = checklist.filter((c) => c.done).length;
 
   const stats = [
-    { label: "Projects", value: projectCount, note: "Things you are promoting", icon: FolderKanban },
+    { label: "Products & services", value: productCount, note: "What you sell", icon: Package },
     { label: "Content pieces", value: contentCount, note: "Captions, scripts and ads", icon: PenLine },
     { label: "Leads", value: leadCount, note: "From your chat widget", icon: Users },
     { label: "Designs", value: designCount, note: "Branded posts made", icon: ImageIcon },
@@ -155,25 +156,26 @@ export default async function DashboardPage() {
       <div className="flex flex-wrap gap-5">
         <GlassCard as="section" aria-labelledby="rp" className="min-w-0 flex-[1.5_1_340px] p-5 sm:p-6">
           <div className="mb-3 flex items-center justify-between">
-            <h2 id="rp" className="text-lg font-semibold">Recent projects</h2>
-            <Link href="/dashboard/projects" className="text-sm font-semibold">View all</Link>
+            <h2 id="rp" className="text-lg font-semibold">Products & services</h2>
+            <Link href="/dashboard/knowledge/products" className="text-sm font-semibold">View all</Link>
           </div>
-          {recentProjects.length === 0 ? (
+          {recentProducts.length === 0 ? (
             <p className="rounded-2xl bg-soft px-4 py-8 text-center text-[15px] text-muted">
-              No projects yet. A project is anything you want to promote: a product, a service, an event or an offer.
+              Nothing here yet. Add what you sell in the <Link href="/dashboard/knowledge" className="font-semibold">Knowledge base</Link>: products, services, events and offers.
             </p>
           ) : (
             <ul className="flex flex-col">
-              {recentProjects.map((p) => (
-                <li key={p.id} className="flex items-center gap-3.5 rounded-2xl p-3 hover:bg-soft">
-                  <span aria-hidden className="size-12 shrink-0 rounded-[14px] bg-brand-gradient" />
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <strong className="truncate text-[15px]">{p.title}</strong>
-                    <span className="truncate text-[13px] capitalize text-muted">
-                      {p.type}
-                      {p.price ? ` · ${p.price}` : ""}
-                    </span>
-                  </div>
+              {recentProducts.map((p) => (
+                <li key={p.id}>
+                  <Link href={`/dashboard/knowledge/products/${p.id}`} className="flex items-center gap-3.5 rounded-2xl p-3 no-underline hover:bg-soft">
+                    <span aria-hidden className="size-12 shrink-0 rounded-[14px] bg-brand-gradient" />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <strong className="truncate text-[15px]">{p.name}</strong>
+                      <span className="truncate text-[13px] text-muted">
+                        {KIND_LABEL[p.kind]} · {formatPrice(p)}
+                      </span>
+                    </div>
+                  </Link>
                 </li>
               ))}
             </ul>

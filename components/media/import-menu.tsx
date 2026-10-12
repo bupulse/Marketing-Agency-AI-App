@@ -6,8 +6,8 @@
  *
  * Props:
  *   importer         From useImporter(onImported).
- *   folders          The business's folders, for the "Save to" choice.
- *   defaultFolderId  Where files go unless the person picks another folder (null: not in a folder).
+ *   destinations        Folders and albums, for the "Save to" choice (lib/media/destinations.ts destinationOptions).
+ *   defaultDestination  Where files go unless the person picks another place; null: they must pick one first.
  *   onPickerVisible  Called with true while Google's Picker is open. It cannot sit above a modal <dialog>,
  *                    so a host that is inside one hides it until this is called with false.
  */
@@ -19,31 +19,31 @@ import { cn } from "@/lib/cn";
 import { getImportOptions, importFromDrive, importFromDropbox } from "@/app/dashboard/gallery/import-actions";
 import type { ImportOptions } from "@/lib/media/importers";
 import { IMPORT_MAX_FILES } from "@/lib/media/rules";
-import type { FolderSummary } from "@/lib/media/service";
+import type { DestinationOption } from "@/lib/media/destinations";
 import { CanvaImportDialog } from "./canva-import-dialog";
 import { dropboxReady, googleReady, pickFromDrive, pickFromDropbox, preloadDropbox, preloadGoogle } from "./import-sdk";
 import type { useImporter } from "./use-importer";
 
 type Props = {
   importer: ReturnType<typeof useImporter>;
-  folders: Pick<FolderSummary, "id" | "name">[];
-  defaultFolderId: string | null;
+  destinations: DestinationOption[];
+  defaultDestination: string | null;
   onPickerVisible?: (visible: boolean) => void;
   className?: string;
 };
 
-export function ImportMenu({ importer, folders, defaultFolderId, onPickerVisible, className }: Props) {
+export function ImportMenu({ importer, destinations, defaultDestination, onPickerVisible, className }: Props) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<ImportOptions | null>(null);
-  const [override, setOverride] = useState<string | null | undefined>(undefined);
+  const [override, setOverride] = useState<string | undefined>(undefined);
   const [canva, setCanva] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const [shift, setShift] = useState(0);
   const menuId = useId();
 
-  const folderId = override !== undefined && (override === null || folders.some((f) => f.id === override)) ? override : defaultFolderId;
+  const destination = override !== undefined && destinations.some((d) => d.key === override) ? override : defaultDestination;
   const busy = importer.state.active;
 
   const toggle = useCallback(() => {
@@ -103,7 +103,7 @@ export function ImportMenu({ importer, folders, defaultFolderId, onPickerVisible
     pickFromDrive(google, IMPORT_MAX_FILES, (visible) => onPickerVisible?.(visible)).then(
       (picked) => {
         if (!picked || picked.files.length === 0) return;
-        void importer.run(picked.files.map((f) => ({ name: f.name, run: () => importFromDrive({ token: picked.token, fileId: f.id, folderId }) })));
+        void importer.run(picked.files.map((f) => ({ name: f.name, run: () => importFromDrive({ token: picked.token, fileId: f.id, destination: destination! }) })));
       },
       () => {
         onPickerVisible?.(false);
@@ -119,7 +119,7 @@ export function ImportMenu({ importer, folders, defaultFolderId, onPickerVisible
     pickFromDropbox().then(
       (files) => {
         if (files.length === 0) return;
-        void importer.run(files.slice(0, IMPORT_MAX_FILES).map((f) => ({ name: f.name, run: () => importFromDropbox({ link: f.link, name: f.name, folderId }) })));
+        void importer.run(files.slice(0, IMPORT_MAX_FILES).map((f) => ({ name: f.name, run: () => importFromDropbox({ link: f.link, name: f.name, destination: destination! }) })));
       },
       () => toast("Dropbox could not be opened. Check that pop-ups are allowed and try again.", "error"),
     );
@@ -160,24 +160,32 @@ export function ImportMenu({ importer, folders, defaultFolderId, onPickerVisible
           <label className="flex flex-col gap-1 px-3 pt-2 pb-3 text-xs font-semibold text-muted">
             Save to
             <select
-              value={folderId ?? ""}
-              onChange={(e) => setOverride(e.target.value || null)}
+              value={destination ?? ""}
+              onChange={(e) => setOverride(e.target.value || undefined)}
               className="min-h-11 w-full cursor-pointer rounded-xl border border-line bg-transparent px-3 text-[15px] font-medium text-text"
             >
-              <option value="">Not in a folder</option>
-              {folders.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
+              {!destination && <option value="">Choose a folder or product…</option>}
+              {(["Folders", "Products", "Campaigns"] as const).map((group) => {
+                const items = destinations.filter((d) => d.group === group);
+                return items.length ? (
+                  <optgroup key={group} label={group}>
+                    {items.map((d) => (
+                      <option key={d.key} value={d.key}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null;
+              })}
             </select>
+            {!destination && <span className="font-normal">{destinations.length ? "Pick where the photos go first." : "Create a folder or add a product first."}</span>}
           </label>
           {entries.map(({ key, label, icon: Icon, ready, run }) => (
             <button
               key={key}
               type="button"
               role="menuitem"
-              disabled={ready !== true}
+              disabled={ready !== true || !destination}
               onClick={run}
               className="flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-xl px-3 text-left text-[15px] font-medium hover:bg-soft disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent"
             >
@@ -188,7 +196,7 @@ export function ImportMenu({ importer, folders, defaultFolderId, onPickerVisible
           ))}
         </div>
       )}
-      <CanvaImportDialog open={canva} onOpenChange={setCanva} folderId={folderId} onImport={(tasks) => void importer.run(tasks)} />
+      <CanvaImportDialog open={canva && !!destination} onOpenChange={setCanva} destination={destination ?? ""} onImport={(tasks) => void importer.run(tasks)} />
     </div>
   );
 }
