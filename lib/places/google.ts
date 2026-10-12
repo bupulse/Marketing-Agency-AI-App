@@ -83,3 +83,20 @@ export async function placeDetails(key: string, input: { placeId: string; sessio
     ...(typeof lat === "number" && typeof lng === "number" ? { lat, lng } : {}),
   };
 }
+
+const GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json";
+
+type GeocodeResponse = { status?: string; results?: { address_components?: { short_name?: string; types?: string[] }[] }[] };
+
+/**
+ * The ISO country code of a point, or null when Google has none (open sea). Server-side only: the key stays here and
+ * only the two-letter code leaves. Coordinates are sent to Google for this one lookup and never stored by us.
+ */
+export async function reverseGeocodeCountry(key: string, lat: number, lng: number): Promise<string | null> {
+  const params = new URLSearchParams({ latlng: `${lat},${lng}`, result_type: "country", key });
+  const data = (await call(`${GEOCODE_URL}?${params}`, {})) as GeocodeResponse;
+  if (data.status === "ZERO_RESULTS") return null;
+  if (data.status !== "OK") throw new PlacesError(502);
+  const code = data.results?.[0]?.address_components?.find((c) => c.types?.includes("country"))?.short_name?.toUpperCase();
+  return code && /^[A-Z]{2}$/.test(code) ? code : null;
+}

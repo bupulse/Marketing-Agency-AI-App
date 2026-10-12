@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PROTECTED = ["/dashboard", "/welcome", "/onboarding", "/book-demo", "/account"];
 
-/** The public pages' region switch (?region=RW) and local testing: kept in a cookie lib/region.ts reads. */
+/** Local development only (REGION_OVERRIDE=1): ?region=RW is kept in a cookie lib/region.ts reads. Otherwise nothing sets it. */
 const REGION_COOKIE = "bp-region";
 const REGION_KEY = /^[A-Z][A-Z0-9_]{1,15}$/;
 
@@ -47,7 +47,7 @@ export async function proxy(request: NextRequest) {
   }
 
   const region = request.nextUrl.searchParams.get("region")?.toUpperCase();
-  if (region && REGION_KEY.test(region)) response.cookies.set(REGION_COOKIE, region, { path: "/", maxAge: 30 * 24 * 60 * 60, sameSite: "lax" });
+  if (process.env.REGION_OVERRIDE === "1" && region && REGION_KEY.test(region)) response.cookies.set(REGION_COOKIE, region, { path: "/", maxAge: 30 * 24 * 60 * 60, sameSite: "lax" });
 
   return response;
 }
