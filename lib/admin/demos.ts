@@ -5,6 +5,7 @@ import { siteUrl } from "@/lib/auth/site-url";
 import { isBookingStatus, type BookingStatus } from "@/lib/demo/bookings";
 import { formatSlot } from "@/lib/demo/slots";
 import { logError } from "@/lib/errors";
+import { syncDemoEvent } from "@/lib/google-calendar/events";
 import { getPlan, getTrialPlan } from "@/lib/plan-catalog";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { companyPlans } from "@/lib/region-prices";
@@ -56,10 +57,10 @@ export async function listDemos(opts: DemoListFilter = {}, now = new Date()) {
   }));
 }
 
-/** Marks a demo done, a no-show, or cancelled. Audited on the company. */
+/** Marks a demo done, a no-show, or cancelled. Audited on the company. Cancelling also cancels its Google event (Google emails the client). */
 export async function setDemoStatus(ctx: AdminContext, input: { id: string; status: string; notes?: string }) {
   if (!isBookingStatus(input.status) || input.status === "booked") throw new AdminError("invalid", "status must be done, no_show or cancelled.");
-  const booking = await prisma.demoBooking.findUnique({ where: { id: input.id }, select: { id: true, businessId: true, status: true, notes: true, startsAt: true } });
+  const booking = await prisma.demoBooking.findUnique({ where: { id: input.id }, select: { id: true, businessId: true, status: true, notes: true, startsAt: true, endsAt: true, googleEventId: true, business: { select: { name: true, user: { select: { email: true, name: true } } } } } });
   if (!booking) throw new AdminError("not_found", "No demo with that id.");
   if (booking.status === input.status && (input.notes ?? booking.notes) === booking.notes) return { id: booking.id, status: booking.status, changed: false };
   const notes = input.notes === undefined ? booking.notes : input.notes.trim().slice(0, 1000) || null;
@@ -67,6 +68,9 @@ export async function setDemoStatus(ctx: AdminContext, input: { id: string; stat
     await tx.demoBooking.update({ where: { id: booking.id }, data: { status: input.status, notes } });
     await writeAudit(tx, ctx, "update_demo", `business:${booking.businessId}`, { demoId: booking.id, status: booking.status, notes: booking.notes }, { demoId: booking.id, status: input.status, notes });
   });
+  if (input.status === "cancelled" && booking.status === "booked" && booking.googleEventId) {
+    await syncDemoEvent("cancelled", booking, { name: booking.business.name, email: booking.business.user.email, contact: booking.business.user.name }, null);
+  }
   return { id: booking.id, status: input.status, changed: true };
 }
 

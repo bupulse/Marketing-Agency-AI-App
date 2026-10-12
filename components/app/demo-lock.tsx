@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarCheck, CalendarClock, ExternalLink, LogOut, MessageSquareText, Sparkles, Video } from "lucide-react";
+import { CalendarCheck, CalendarClock, CalendarPlus, ExternalLink, LogOut, MessageSquareText, Sparkles, Video } from "lucide-react";
 import { Logo } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme";
 import { Badge, Button, GlassCard, buttonClasses } from "@/components/ui";
@@ -10,7 +10,9 @@ import { currentManualPayment } from "@/lib/billing/momo";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
 import { momoConfigured, momoPriceOf } from "@/lib/billing/momo-shared";
 import { prisma } from "@/lib/db";
+import { siteUrl } from "@/lib/auth/site-url";
 import { currentBooking } from "@/lib/demo/bookings";
+import { demoGoogleCalendarUrl } from "@/lib/demo/calendar-links";
 import { DEMO_TIME_ZONE, formatSlot, MIN_LEAD_MINUTES } from "@/lib/demo/slots";
 import { companyPlans } from "@/lib/region-prices";
 import { can, type Role } from "@/lib/team/roles";
@@ -41,6 +43,7 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
   const canPay = canManage && plan !== null && region.paymentMethods.includes("momo") && momoConfigured(momoSettings) && momoPriceOf(plan, "MONTH") !== null;
   const payment = canManage && business ? await currentManualPayment(business.userId) : null;
   const meetingLink = booking?.meetingLink || settings.meetingLink || null;
+  const googleUrl = booking ? demoGoogleCalendarUrl({ ...booking, meetingLink }, businessName, `${siteUrl()}/dashboard`) : null;
   const movable = booking ? canStillMove(booking) : false;
   const zone = DEMO_TIME_ZONE.replace("_", " ");
 
@@ -92,9 +95,14 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
                 <ExternalLink aria-hidden className="size-4" />
               </a>
             )}
+            {booking && googleUrl && (
+              <a href={googleUrl} target="_blank" rel="noreferrer noopener" className={buttonClasses({ variant: "outline", size: "lg" })}>
+                <CalendarPlus aria-hidden className="size-[18px]" /> Add to Google Calendar
+              </a>
+            )}
             {booking && (
               <a href={`/api/demo/ics/${encodeURIComponent(booking.icsToken)}`} className={buttonClasses({ variant: "outline", size: "lg" })}>
-                <CalendarCheck aria-hidden className="size-[18px]" /> Add to calendar
+                <CalendarCheck aria-hidden className="size-[18px]" /> Add to Apple / Outlook (.ics)
               </a>
             )}
             {!booking && canManage && (
@@ -103,6 +111,15 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
               </Button>
             )}
           </div>
+          {booking && meetingLink && (
+            <p className="text-sm text-muted">
+              {booking.meetLink ? "Google Meet" : "Meeting link"}:{" "}
+              <a href={meetingLink} target="_blank" rel="noreferrer noopener" className="break-all font-medium text-text underline">
+                {meetingLink}
+              </a>
+              {booking.googleEventId ? ". Google Calendar has also sent the invite to your email." : ""}
+            </p>
+          )}
           {booking && !meetingLink && <p className="text-sm text-muted">The meeting link arrives by email before the call.</p>}
 
           {booking && canManage && (
