@@ -54,11 +54,11 @@ describe("visitor country per host", () => {
     expect(visitorCountry(new Headers({ "x-nf-geo": NF_GEO }), "cloudflare")).toBeNull();
   });
 
-  it("Netlify reads x-nf-geo, then x-country, and never trusts cf-ipcountry", () => {
+  it("Netlify reads x-nf-geo only: never x-country or cf-ipcountry (missing means the catch-all region)", () => {
     expect(visitorCountry(all, "netlify")).toBe("RW");
-    expect(visitorCountry(new Headers({ "x-country": "ke", "cf-ipcountry": "UG" }), "netlify")).toBe("KE");
+    expect(visitorCountry(new Headers({ "x-country": "ke", "cf-ipcountry": "UG" }), "netlify")).toBeNull();
     expect(visitorCountry(new Headers({ "cf-ipcountry": "UG" }), "netlify")).toBeNull();
-    expect(visitorCountry(new Headers({ "x-nf-geo": "garbage", "x-country": "TZ" }), "netlify")).toBe("TZ");
+    expect(visitorCountry(new Headers({ "x-nf-geo": "garbage", "x-country": "TZ" }), "netlify")).toBeNull();
   });
 
   it("cleans codes", () => {
@@ -85,10 +85,14 @@ describe("client IP per host", () => {
     expect(clientIp(new Headers({ "x-forwarded-for": "192.0.2.9, 10.0.0.1" }), "node")).toBe("192.0.2.9");
   });
 
-  it("Netlify: x-nf-client-connection-ip, never a visitor's cf-connecting-ip", () => {
+  it("Netlify: x-nf-client-connection-ip, never a visitor's cf-connecting-ip or x-forwarded-for", () => {
     expect(clientIp(h, "netlify")).toBe("198.51.100.7");
-    expect(clientIp(new Headers({ "cf-connecting-ip": "203.0.113.1", "x-forwarded-for": "192.0.2.9" }), "netlify")).toBe("192.0.2.9");
+    expect(clientIp(new Headers({ "cf-connecting-ip": "203.0.113.1", "x-forwarded-for": "192.0.2.9" }), "netlify")).toBeNull();
     expect(clientIp(new Headers({}), "netlify")).toBeNull();
+  });
+
+  it("Cloudflare never falls back to x-forwarded-for either (null: the shared rate-limit bucket)", () => {
+    expect(clientIp(new Headers({ "x-forwarded-for": "192.0.2.9" }), "cloudflare")).toBeNull();
   });
 
   it("the trusted address never falls back to x-forwarded-for (IP allow-lists)", () => {
@@ -100,8 +104,9 @@ describe("client IP per host", () => {
   it("the app's helpers follow the detected host", () => {
     vi.stubEnv("PLATFORM", "netlify");
     expect(clientIpFrom(h)).toBe("198.51.100.7");
-    expect(collectClientIp(new Headers({ "x-real-ip": "192.0.2.50" }))).toBe("192.0.2.50");
+    expect(collectClientIp(new Headers({ "x-real-ip": "192.0.2.50", "x-forwarded-for": "192.0.2.51" }))).toBe("0.0.0.0");
     vi.stubEnv("PLATFORM", "");
+    expect(collectClientIp(new Headers({ "x-real-ip": "192.0.2.50" }))).toBe("192.0.2.50");
     expect(clientIpFrom(h)).toBe("203.0.113.1");
   });
 });
@@ -123,6 +128,27 @@ describe("host detection", () => {
     expect(currentPlatform()).toBe("node");
     vi.stubEnv("BUPULSE_BUILD_PLATFORM", "netlify");
     expect(currentPlatform()).toBe("netlify");
+  });
+
+  it("in production, plain Node with Netlify's or Lambda's environment is Netlify; otherwise it logs an error once", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NETLIFY", "true");
+    expect(currentPlatform()).toBe("netlify");
+    vi.stubEnv("NETLIFY", "");
+    vi.stubEnv("LAMBDA_TASK_ROOT", "/var/task");
+    expect(currentPlatform()).toBe("netlify");
+    vi.stubEnv("LAMBDA_TASK_ROOT", "");
+    expect(currentPlatform()).toBe("node");
+    expect(currentPlatform()).toBe("node");
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(String(error.mock.calls[0][0])).toContain("production resolved to plain Node");
+    error.mockRestore();
+  });
+
+  it("outside production NETLIFY alone does not change plain Node", () => {
+    vi.stubEnv("NETLIFY", "true");
+    expect(currentPlatform()).toBe("node");
   });
 
   it("detects Netlify Functions by the Netlify global", () => {

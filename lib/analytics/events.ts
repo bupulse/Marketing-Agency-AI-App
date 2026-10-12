@@ -1,7 +1,7 @@
 import "server-only";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { waitUntil } from "@/lib/platform/background";
+import { keepAlive } from "@/lib/platform/background";
 import { cleanSessionId } from "./collect";
 
 /** Product events the roll-up knows. Anything else is stored too, but only these feed the funnel and feature adoption. */
@@ -33,10 +33,11 @@ export type TrackOptions = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Records a product event. Fire-and-forget: returns immediately, never throws, never rejects, and the write keeps
- * running after the response on Workers and Netlify (waitUntil). A failed write is only logged to the console.
+ * Records a product event. Fire-and-forget: never throws, never rejects, and the write keeps running after the
+ * response on Workers and Netlify (waitUntil). The returned promise resolves at once, except on Netlify when the host
+ * could not take the write (then it waits for it, at most 10 s): await it. A failed write is only logged.
  */
-export function trackEvent(name: string, options: TrackOptions = {}): void {
+export function trackEvent(name: string, options: TrackOptions = {}): Promise<void> {
   try {
     const promise = Promise.resolve()
       .then(() =>
@@ -52,8 +53,9 @@ export function trackEvent(name: string, options: TrackOptions = {}): void {
       )
       .catch((error) => console.error(`[analytics] trackEvent ${name} failed:`, error instanceof Error ? error.message : error));
     // Without a host (local dev, tests, next start) the promise simply keeps running.
-    waitUntil(promise);
+    return keepAlive(promise);
   } catch (error) {
     console.error(`[analytics] trackEvent ${name} failed:`, error instanceof Error ? error.message : error);
+    return Promise.resolve();
   }
 }

@@ -130,8 +130,8 @@ export async function generateForProject(args: {
       },
     });
     await pruneVersions(project.id).catch((e) => logError(e, { source: "studio.prune", level: "warn" }));
-    trackEvent(EVENT_NAMES.textGenerated, { userId, businessId: business.id, props: { feature, type: project.type } });
-    queueWebhookEvent(business.id, "content.generated", () => contentData(saved));
+    await trackEvent(EVENT_NAMES.textGenerated, { userId, businessId: business.id, props: { feature, type: project.type } });
+    await queueWebhookEvent(business.id, "content.generated", () => contentData(saved));
     return saved;
   } catch (error) {
     try {

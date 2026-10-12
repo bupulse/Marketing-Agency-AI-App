@@ -11,7 +11,7 @@ What runs where on Netlify:
 | Static files (`public/`, `_next/static`) | Netlify's CDN |
 | Scheduled jobs (the Cloudflare Cron Triggers) | Netlify Scheduled Functions `netlify/functions/cron-*.mts`, same schedules (UTC), except the publisher: every 5 minutes instead of every minute |
 | Database | Supabase through `DATABASE_URL` (no Hyperdrive) |
-| Visitor country / IP | Netlify's `x-nf-geo` and `x-nf-client-connection-ip` headers |
+| Visitor country / IP | Netlify's `x-nf-geo` and `x-nf-client-connection-ip` headers only (no `x-country`, `x-forwarded-for` or `cf-*`). No `x-nf-geo` means the catch-all region; no `x-nf-client-connection-ip` means one shared "unknown" rate-limit bucket. |
 | Deploys, rollback | GitHub Actions `.github/workflows/deploy-netlify.yml` (migrations first), started by a push or by Admin, Settings, Updates |
 
 ## Free plan limits that matter (read this first)
@@ -37,7 +37,7 @@ What else to do:
 
 Other limits, on every plan:
 
-- **60 seconds per request** (not configurable). BuPulse shortens its own budgets on Netlify (`lib/platform/limits.ts`): the publisher claims posts for 15 s instead of 45 s, waits at most 25 s for Instagram to process images (then retries later, nothing was published), metrics run for 30 s, Autopilot plans 1 business per call instead of 2, store sync takes 2 stores per call instead of 5, Canva's return waits 15 s before saying "still saving". Work handed to `waitUntil` also counts towards the 60 s.
+- **60 seconds per request** (not configurable). BuPulse shortens its own budgets on Netlify (`lib/platform/limits.ts`): the publisher claims posts for 15 s instead of 45 s, waits at most 25 s for Instagram to process images (then retries later, nothing was published), metrics run for 30 s, Autopilot plans 1 business per call instead of 2, store sync takes 2 stores per call instead of 5, Canva's return waits 15 s before saying "still saving". Work handed to `waitUntil` also counts towards the 60 s. If Netlify ever gives no `waitUntil` in production, the request waits for that work before answering (at most 10 s, `keepAlive` in `lib/platform/background.ts`) and logs a warning, rather than losing it when the function freezes.
 - **Scheduled functions stop after 30 s**, so they only hand the job to the background function `cron-runner-background` (up to 15 minutes), which calls the route once or with cursors (as `worker.ts`), each call within 60 s, and starts no new call after 13 minutes.
 - **6 MB per request or response** (about 4.5 MB for a binary upload). Photo uploads go straight to Supabase Storage with signed URLs, so they are not affected.
 - **Functions run in US East (Ohio).** Changing the region is a Pro feature. Supabase in `us-east-1` or `us-east-2` keeps database round trips short; visitors in Rwanda see about 250 ms of network distance to Ohio on each uncached request.
@@ -132,6 +132,30 @@ Check them in Netlify: Logs & metrics, Functions, `cron-publish` (each run logs)
 4. Schedule a post for Instagram with a PNG design a few minutes ahead (it goes out within 5 minutes of that time): it is converted to JPEG (WebAssembly codecs read from the function bundle) and published.
 5. Netlify, Logs, Functions: `cron-runner-background` lines every 5 minutes (and hourly ones).
 6. After a week: Usage & billing, credits used (see the limits above).
+7. Netlify, Logs, Functions, `___netlify-server-handler`: no `[platform] production resolved to plain Node` error (that would mean the host was not detected; set `PLATFORM=netlify`).
+
+### Header check (country, IP, spoofing)
+
+Set `PLATFORM_CHECK=1` in Netlify's environment variables and deploy (or do this right after the first deploy, before the domain moves). `GET /api/platform/check` then answers what the app reads for your own request. Remove the variable afterwards (the route answers 404 without it).
+
+```
+SITE=https://bupulse.com   # or https://<site>.netlify.app
+
+# 1. Netlify's geo header reaches the app: your real country and your public IP (compare with https://ifconfig.me).
+curl -s $SITE/api/platform/check
+# {"platform":"netlify","country":"RW","ip":"<your IP>"}
+
+# 2. Spoofed headers are ignored or overwritten: the answer must be the same as in 1.
+curl -s $SITE/api/platform/check \
+  -H "x-nf-geo: $(printf '{"country":{"code":"US"}}' | base64)" \
+  -H "x-country: US" -H "cf-ipcountry: US" \
+  -H "x-nf-client-connection-ip: 203.0.113.9" -H "x-forwarded-for: 203.0.113.9" -H "cf-connecting-ip: 203.0.113.9"
+
+# 3. The same through the netlify.app address (bypassing the custom domain) gives the same result.
+curl -s https://<site>.netlify.app/api/platform/check -H "x-nf-geo: $(printf '{"country":{"code":"US"}}' | base64)"
+```
+
+If 2 shows `US` or `203.0.113.9`, Netlify passed a visitor's header through: stop and report it (pricing by region and rate limits would be spoofable). If 1 shows `"country":null`, Netlify's geo header does not reach the app: visitors get the catch-all region until it is fixed (`/pricing` shows it too: RWF from Rwanda, the catch-all prices from elsewhere).
 
 ## Switching back to Cloudflare
 

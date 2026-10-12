@@ -42,11 +42,13 @@ export async function emitWebhookEvent(businessId: string, event: WebhookEvent, 
  * event data from what the caller already has; if it throws, the event is dropped and logged, so a hook can
  * never break the action it sits in.
  */
-export function queueWebhookEvent(businessId: string, event: WebhookEvent, build: () => unknown): void {
+export function queueWebhookEvent(businessId: string, event: WebhookEvent, build: () => unknown): Promise<void> {
   try {
     const data = build();
-    runInBackground(() => emitWebhookEvent(businessId, event, data), `webhook ${event}`);
+    // Resolves at once unless Netlify could not take the work (lib/leads/background.ts); callers await it.
+    return runInBackground(() => emitWebhookEvent(businessId, event, data), `webhook ${event}`);
   } catch (error) {
     console.error(`[webhooks] could not queue ${event}:`, error instanceof Error ? error.message : error);
+    return Promise.resolve();
   }
 }

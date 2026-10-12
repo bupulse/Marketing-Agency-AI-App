@@ -166,7 +166,7 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
       }),
     ),
   );
-  if (!draft) trackEvent(EVENT_NAMES.postScheduled, { businessId: owner.businessId, props: { count: created.length, status: time.status } });
+  if (!draft) await trackEvent(EVENT_NAMES.postScheduled, { businessId: owner.businessId, props: { count: created.length, status: time.status } });
   return { groupId, postIds: created.map((p) => p.id), scheduledAt: time.scheduledAt, status: time.status };
 }
 

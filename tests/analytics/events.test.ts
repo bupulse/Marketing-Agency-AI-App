@@ -14,10 +14,13 @@ describe("trackEvent", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  it("returns nothing and writes the event in the background", async () => {
+  it("resolves at once (nothing to wait for off Netlify) and writes the event in the background", async () => {
+    create.mockReturnValue(new Promise(() => {})); // a write that never finishes must not hold the caller
+    await expect(trackEvent("signup")).resolves.toBeUndefined();
+    create.mockReset();
     create.mockResolvedValue({});
     const out = trackEvent("signup", { userId: "11111111-1111-4111-8111-111111111111", businessId: "b1", sessionId: "abcdef123456", props: { method: "PASSWORD" } });
-    expect(out).toBeUndefined();
+    await expect(out).resolves.toBeUndefined();
     await flush();
     expect(create).toHaveBeenCalledWith({
       data: { name: "signup", userId: "11111111-1111-4111-8111-111111111111", businessId: "b1", sessionId: "abcdef123456", props: { method: "PASSWORD" } },

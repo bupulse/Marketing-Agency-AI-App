@@ -143,7 +143,7 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
     const sessionId = opts.visitSession ?? text(authUser.user_metadata?.visit_session, 40);
     const track = { userId: authUser.id, businessId: created.business?.id, sessionId };
     // trial_started is recorded when an admin starts the trial after the demo (lib/admin/demos.ts).
-    trackEvent(EVENT_NAMES.signup, { ...track, props: { method: signUpMethodOf(authUser), industry: sector.industry, region: pricingRegion } });
+    await trackEvent(EVENT_NAMES.signup, { ...track, props: { method: signUpMethodOf(authUser), industry: sector.industry, region: pricingRegion } });
   }
   return true;
 }

@@ -4,8 +4,9 @@ import { INSTAGRAM_MAX_SIDE } from "./validate";
 // PNG and WebP to JPEG for networks that only take JPEG (Instagram). Uses the squoosh codecs from @jsquash,
 // which are small WebAssembly modules (about 0.6 MB in all) that run in Workers and in Node.
 // In Workers worker.ts hands us the compiled .wasm modules; in Node (next start, Netlify Functions, tests) we compile
-// the files from node_modules. On Netlify they reach the function through next.config.ts (outputFileTracingIncludes)
-// and netlify.toml (included_files); the function's working directory is its root (LAMBDA_TASK_ROOT).
+// the files from node_modules. On Netlify they reach the function only through next.config.ts
+// (outputFileTracingIncludes, which the server function is built from); they are looked up from the working directory,
+// then from the function's root (LAMBDA_TASK_ROOT).
 
 export const JPEG_QUALITY = 88;
 

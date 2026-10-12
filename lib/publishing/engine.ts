@@ -123,7 +123,7 @@ export async function sweepStalePosts(now: Date): Promise<number> {
   for (const post of await prisma.post.findMany({ where: { id: { in: ids } }, include: postInclude })) {
     const uncertain = post.status === "NEEDS_ACTION";
     if (uncertain) await prisma.post.update({ where: { id: post.id }, data: { lastError: UNCONFIRMED_MESSAGE(label(post.network)) } });
-    if (!uncertain) emitPostEvent(post, "post.failed", { status: "FAILED", lastError: OUT_OF_ATTEMPTS });
+    if (!uncertain) await emitPostEvent(post, "post.failed", { status: "FAILED", lastError: OUT_OF_ATTEMPTS });
     await emailOwner(post, uncertain ? "uncertain" : "failed", uncertain ? UNCONFIRMED_MESSAGE(label(post.network)) : OUT_OF_ATTEMPTS);
   }
   return ids.length;
@@ -240,14 +240,14 @@ async function emailOwner(post: ClaimedPost, kind: "failed" | "uncertain", messa
 }
 
 /** Outgoing webhooks (post.published / post.failed): queued after the state is saved, never slows or breaks publishing. */
-function emitPostEvent(post: ClaimedPost, event: "post.published" | "post.failed", changes: { status: string; lastError: string | null; permalink?: string | null; publishedAt?: Date | null }) {
-  queueWebhookEvent(post.businessId, event, () => postData({ ...post, ...changes, permalink: changes.permalink ?? post.permalink, publishedAt: changes.publishedAt ?? post.publishedAt }));
+function emitPostEvent(post: ClaimedPost, event: "post.published" | "post.failed", changes: { status: string; lastError: string | null; permalink?: string | null; publishedAt?: Date | null }): Promise<void> {
+  return queueWebhookEvent(post.businessId, event, () => postData({ ...post, ...changes, permalink: changes.permalink ?? post.permalink, publishedAt: changes.publishedAt ?? post.publishedAt }));
 }
 
 /** Marks the post FAILED and tells the owner by email. */
 async function failFinally(post: ClaimedPost, message: string, reconnect = false) {
   const saved = await settle(post.id, { status: "FAILED", lastError: message, nextAttemptAt: null });
-  if (saved) emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
+  if (saved) await emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
   await emailOwner(post, "failed", message, reconnect);
 }
 
@@ -283,8 +283,8 @@ async function saveSuccess(post: ClaimedPost, result: { externalId: string; perm
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       if (await settle(post.id, data)) {
-        trackEvent(EVENT_NAMES.postPublished, { businessId: post.businessId, props: { network: post.network } });
-        emitPostEvent(post, "post.published", { status: "PUBLISHED", lastError: null, permalink: data.permalink, publishedAt: data.publishedAt });
+        await trackEvent(EVENT_NAMES.postPublished, { businessId: post.businessId, props: { network: post.network } });
+        await emitPostEvent(post, "post.published", { status: "PUBLISHED", lastError: null, permalink: data.permalink, publishedAt: data.publishedAt });
         return;
       }
       return await logSaveFailure(post, result, new Error("The post was no longer in PUBLISHING state"));
@@ -324,7 +324,7 @@ async function processPost(post: ClaimedPost): Promise<keyof Omit<PublishRunResu
   try {
     if (!post.connection || !isNetwork(post.network)) {
       const message = "The account for this post was disconnected.";
-      if (await settle(post.id, { status: "FAILED", lastError: message })) emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
+      if (await settle(post.id, { status: "FAILED", lastError: message })) await emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
       return "failed";
     }
     // Scheduling is a plan feature. A post of a company whose plan (resolved) lost it fails with the reason, instead
@@ -337,7 +337,7 @@ async function processPost(post: ClaimedPost): Promise<keyof Omit<PublishRunResu
     if (access.block) return releaseUnsent(post, blockMessage(access.block));
     if (!access.inPlan.has("calendar")) {
       const message = notInPlanMessage("calendar");
-      if (await settle(post.id, { status: "FAILED", lastError: message })) emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
+      if (await settle(post.id, { status: "FAILED", lastError: message })) await emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
       return "failed";
     }
     if (!access.usable.has("calendar")) return releaseUnsent(post);

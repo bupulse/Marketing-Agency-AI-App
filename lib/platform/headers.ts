@@ -2,8 +2,9 @@ import { currentPlatform, type Platform } from "./detect";
 
 // The visitor's country and IP address from the headers the host sets. Each host only trusts its own headers:
 // anyone can send `cf-ipcountry` or `x-nf-geo` to a host that does not overwrite them, so on Netlify the cf-* headers
-// are ignored and on Cloudflare the x-nf-* ones are. "node" (next dev, next start, tests) reads the Cloudflare
-// headers as before, so local runs and the existing tests behave exactly as they always did.
+// are ignored and on Cloudflare the x-nf-* ones are. Neither host ever falls back to headers a visitor can choose
+// (x-forwarded-for, x-country). "node" (next dev, next start, tests) reads the Cloudflare headers and, for local
+// runs, the first x-forwarded-for hop, as it always did.
 
 const COUNTRY = /^[A-Z]{2}$/;
 
@@ -37,9 +38,12 @@ export function countryFromNetlifyGeo(value: string | null | undefined): string 
   }
 }
 
-/** The visitor's country as the host saw it (Cloudflare: cf-ipcountry; Netlify: x-nf-geo, then x-country), or null. */
+/**
+ * The visitor's country as the host saw it (Cloudflare: cf-ipcountry; Netlify: x-nf-geo only), or null, which means
+ * the catch-all region. x-country is not read: a visitor can send it, and only x-nf-geo is what Netlify itself set.
+ */
 export function visitorCountry(h: Headers, platform: Platform = currentPlatform()): string | null {
-  if (platform === "netlify") return countryFromNetlifyGeo(h.get("x-nf-geo")) ?? cleanCountry(h.get("x-country"));
+  if (platform === "netlify") return countryFromNetlifyGeo(h.get("x-nf-geo"));
   return cleanCountry(h.get("cf-ipcountry"));
 }
 
@@ -55,9 +59,10 @@ export function trustedClientIp(h: Headers, platform: Platform = currentPlatform
 }
 
 /**
- * The caller's address for rate limits and logs: the host's own header (trustedClientIp), else the first
- * x-forwarded-for hop (local dev), else null.
+ * The caller's address for rate limits and logs: the host's own header (trustedClientIp). Only plain Node (local dev,
+ * tests) falls back to the first x-forwarded-for hop; on Cloudflare and Netlify a missing header gives null, and the
+ * callers then use one shared "unknown" rate-limit bucket rather than a key the caller picked.
  */
 export function clientIp(h: Headers, platform: Platform = currentPlatform()): string | null {
-  return trustedClientIp(h, platform) ?? firstForwarded(h);
+  return trustedClientIp(h, platform) ?? (platform === "node" ? firstForwarded(h) : null);
 }

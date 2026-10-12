@@ -27,5 +27,19 @@ export function currentPlatform(): Platform {
   const g = globalThis as { Netlify?: unknown; navigator?: { userAgent?: string } } & Record<symbol, unknown>;
   if (g.Netlify) return "netlify";
   if (g.navigator?.userAgent === "Cloudflare-Workers" || g[Symbol.for("__cloudflare-context__")]) return "cloudflare";
+  if (process.env.NODE_ENV === "production") {
+    // A production run that looks like plain Node but has Netlify's (or AWS Lambda's) environment is Netlify: trusting
+    // its headers and keeping background work alive matter more than the label.
+    if (process.env.NETLIFY || process.env.LAMBDA_TASK_ROOT) return "netlify";
+    reportPlainNode();
+  }
   return "node";
+}
+
+let reported = false;
+/** Logged once per instance: production should run on a known host (or `next start` with PLATFORM=node). */
+function reportPlainNode() {
+  if (reported) return;
+  reported = true;
+  console.error("[platform] production resolved to plain Node: set PLATFORM=netlify or PLATFORM=cloudflare (or PLATFORM=node for next start on purpose).");
 }

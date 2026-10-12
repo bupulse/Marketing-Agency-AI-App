@@ -243,7 +243,7 @@ export async function submitManualProof(userId: string, raw: ProofInput, now: Da
   } catch (error) {
     await logError(error, { source: "billing.momo.alert", userId, paymentId });
   }
-  trackEvent("momo_payment_submitted", { userId, props: { plan: row.planKey, interval: row.interval, amountMinor: row.amountMinor } });
+  await trackEvent("momo_payment_submitted", { userId, props: { plan: row.planKey, interval: row.interval, amountMinor: row.amountMinor } });
   return toView(row, sub, now);
 }
 
@@ -371,7 +371,7 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
     // After the commit: analytics and the client's email. Neither can undo the confirmation.
     const client = await clientOf(payment.userId);
     for (const name of subscriptionEventsFor(before, after, false)) {
-      trackEvent(name, { userId: payment.userId, businessId: client.businessId, props: { plan: plan.key, interval: payment.interval, from: before.plan, method: "momo" } });
+      await trackEvent(name, { userId: payment.userId, businessId: client.businessId, props: { plan: plan.key, interval: payment.interval, from: before.plan, method: "momo" } });
     }
     let emailed = false;
     if (client.email) {

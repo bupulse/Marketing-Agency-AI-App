@@ -1,6 +1,7 @@
 // Pure helpers for the first-party tracker (/api/collect). No I/O, so they are unit-tested directly.
 // Privacy: the raw IP and UA are only ever hashed together with a daily salt (visitorHash); neither is stored.
 
+import { currentPlatform } from "@/lib/platform/detect";
 import { cleanCountry, clientIp as platformClientIp, visitorCountry } from "@/lib/platform/headers";
 
 const BOT_UA =
@@ -121,8 +122,10 @@ export async function visitorHash(ip: string, userAgent: string, now: Date, secr
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/** The host's client address (lib/platform/headers.ts); x-real-ip only in plain Node; "0.0.0.0" (one shared bucket) when missing. */
 export function clientIp(headers: Headers): string {
-  return platformClientIp(headers) ?? headers.get("x-real-ip") ?? "0.0.0.0";
+  const platform = currentPlatform();
+  return platformClientIp(headers, platform) ?? (platform === "node" ? headers.get("x-real-ip") : null) ?? "0.0.0.0";
 }
 
 /** ISO country code from the host (Cloudflare or Netlify, lib/platform/headers.ts), with a dev fallback so local runs still show a country. */

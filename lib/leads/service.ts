@@ -67,7 +67,7 @@ export async function createLeadFromChat(input: CreateLeadInput): Promise<{ id: 
       });
       id = lead.id;
       created = true;
-      trackEvent(EVENT_NAMES.leadCaptured, { businessId: input.businessId });
+      await trackEvent(EVENT_NAMES.leadCaptured, { businessId: input.businessId });
     } catch (error) {
       // Two submits at the same moment: the other one created it first, so this one merges.
       if (!isUniqueViolation(error)) throw error;
@@ -83,7 +83,7 @@ export async function createLeadFromChat(input: CreateLeadInput): Promise<{ id: 
 
   // The claim is atomic: of any number of parallel or repeated calls, exactly one updates the row.
   const claimed = await prisma.lead.updateMany({ where: { id, notifiedAt: null }, data: { notifiedAt: new Date() } });
-  if (claimed.count === 1) runInBackground(() => notifyNewLead(id), "new lead notification");
+  if (claimed.count === 1) await runInBackground(() => notifyNewLead(id), "new lead notification");
   return { id, created };
 }
 

@@ -126,7 +126,7 @@ export async function startTrial(ctx: AdminContext, input: { businessId: string;
     await tx.demoBooking.updateMany({ where: { businessId: business.id, status: "booked" }, data: { status: "done" } });
     await writeAudit(tx, ctx, "start_trial", `business:${business.id}`, before, { ...after, days });
   });
-  trackEvent(EVENT_NAMES.trialStarted, { userId: business.userId, businessId: business.id, props: { plan: chosen.key, days } });
+  await trackEvent(EVENT_NAMES.trialStarted, { userId: business.userId, businessId: business.id, props: { plan: chosen.key, days } });
   try {
     const first = business.user.name?.split(/\s+/)[0];
     const { html, text } = renderEmail({

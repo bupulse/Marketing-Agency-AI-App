@@ -8,7 +8,7 @@ vi.mock("@opennextjs/cloudflare", () => ({
   },
 }));
 
-import { waitUntil } from "@/lib/platform/background";
+import { keepAlive, KEEP_ALIVE_MS, waitUntil } from "@/lib/platform/background";
 import { sharedCache } from "@/lib/platform/cache";
 import { poolMax, requestDatabase } from "@/lib/platform/database";
 import { hasShortRequestLimit, timeBudget } from "@/lib/platform/limits";
@@ -96,6 +96,63 @@ describe("waitUntil", () => {
     trackEvent("signup");
     expect(wait).toHaveBeenCalledTimes(2);
     vi.doUnmock("@/lib/db");
+  });
+});
+
+describe("keepAlive (work the host did not take)", () => {
+  it("resolves at once when the host took the work", async () => {
+    g[NEXT_REQUEST_CONTEXT] = { get: () => ({ waitUntil: vi.fn() }) };
+    vi.stubEnv("NODE_ENV", "production");
+    const never = new Promise(() => {});
+    await keepAlive(never, "netlify"); // would hang if it waited
+  });
+
+  it("Netlify in production without waitUntil: warns and waits for the work before the response", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let done = false;
+    const work = new Promise<void>((resolve) => setTimeout(() => ((done = true), resolve()), 20));
+    await keepAlive(work, "netlify");
+    expect(done).toBe(true);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("no waitUntil"));
+    warn.mockRestore();
+  });
+
+  it("the wait is bounded and never rejects", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const start = Date.now();
+    await keepAlive(new Promise(() => {}), "netlify", 30);
+    expect(Date.now() - start).toBeLessThan(1000);
+    await keepAlive(Promise.reject(new Error("x")), "netlify", 30);
+    expect(KEEP_ALIVE_MS).toBe(10_000);
+    vi.restoreAllMocks();
+  });
+
+  it("does not wait elsewhere (plain Node, Cloudflare without context, Netlify outside production)", async () => {
+    const never = new Promise(() => {});
+    await keepAlive(never, "node");
+    await keepAlive(never, "cloudflare");
+    await keepAlive(never, "netlify");
+  });
+
+  it("runInBackground and trackEvent wait for it on Netlify without waitUntil", async () => {
+    vi.doMock("@/lib/db", () => ({ prisma: { analyticsEvent: { create: vi.fn(async () => new Promise((r) => setTimeout(() => r({}), 10))) } } }));
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("PLATFORM", "netlify");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.resetModules();
+    const { runInBackground } = await import("@/lib/leads/background");
+    let ran = false;
+    await runInBackground(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+      ran = true;
+    }, "test");
+    expect(ran).toBe(true);
+    const { trackEvent } = await import("@/lib/analytics/events");
+    await expect(trackEvent("signup")).resolves.toBeUndefined();
+    vi.doUnmock("@/lib/db");
+    vi.restoreAllMocks();
   });
 });
 

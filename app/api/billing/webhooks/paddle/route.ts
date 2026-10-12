@@ -104,7 +104,7 @@ async function trackSubscriptionChange(
     if (!after) return;
     const track = { userId: after.userId, businessId: after.user.business?.id };
     for (const name of subscriptionEventsFor(before, after, sub.cancelAtPeriodEnd)) {
-      trackEvent(name, { ...track, props: { plan: after.plan, interval: after.interval, from: before?.plan ?? "TRIAL" } });
+      await trackEvent(name, { ...track, props: { plan: after.plan, interval: after.interval, from: before?.plan ?? "TRIAL" } });
     }
   } catch {
     // analytics must never fail a webhook

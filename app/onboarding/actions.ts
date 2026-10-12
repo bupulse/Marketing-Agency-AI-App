@@ -38,7 +38,7 @@ async function update(userId: string, data: Parameters<typeof prisma.business.up
     await prisma.business.update({ where: { userId }, data });
     // The app shell shows the logo, colours and business details.
     revalidatePath("/dashboard", "layout");
-    if (step) trackEvent(EVENT_NAMES.onboardingStep, { userId, props: { step } });
+    if (step) await trackEvent(EVENT_NAMES.onboardingStep, { userId, props: { step } });
     return { ok: true };
   } catch {
     return { ok: false, error: SAVE_FAILED };
@@ -120,6 +120,6 @@ export async function finishOnboarding(): Promise<SaveResult> {
 
   const result = await update(user.id, { onboardedAt: business.onboardedAt ?? new Date() });
   if (!result.ok) return result;
-  if (!business.onboardedAt) trackEvent(EVENT_NAMES.onboardingComplete, { userId: user.id, businessId: business.id });
+  if (!business.onboardedAt) await trackEvent(EVENT_NAMES.onboardingComplete, { userId: user.id, businessId: business.id });
   redirect(await takeReturn()); // the dashboard, or where the person was headed before signing up
 }

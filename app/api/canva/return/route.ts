@@ -6,7 +6,7 @@ import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { CanvaError, finishCanvaReturn, startCanvaReturn } from "@/lib/canva/service";
 import { hasFeature, upgradeHref } from "@/lib/entitlements";
 import { timeBudget } from "@/lib/platform/limits";
-import { waitUntil } from "@/lib/platform/background";
+import { keepAlive } from "@/lib/platform/background";
 
 /**
  * How long the browser waits for the export before being told it is still being saved. Netlify stops a function
@@ -20,10 +20,12 @@ function toDesigns(params: Record<string, string>) {
   return NextResponse.redirect(url);
 }
 
-/** Lets the work finish after the response: the host's waitUntil, or simply continuing in Node (development). */
+/**
+ * Lets the work finish after the response: the host's waitUntil, or simply continuing in Node (development). On
+ * Netlify without waitUntil the response waits for it instead (at most 10 s). The promise never rejects.
+ */
 function runInBackground(work: Promise<unknown>) {
-  // Without a host the promise keeps running on its own; it never rejects.
-  waitUntil(work);
+  return keepAlive(work);
 }
 
 /**
@@ -59,7 +61,7 @@ export async function GET(request: Request) {
     const outcome = await Promise.race([work, late]);
     clearTimeout(timer);
     if (!outcome) {
-      runInBackground(work);
+      await runInBackground(work);
       return toDesigns({ canva: "processing" });
     }
     if (!outcome.ok) throw outcome.error;

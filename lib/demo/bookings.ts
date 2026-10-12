@@ -188,7 +188,7 @@ export async function bookDemo(input: { businessId: string; startsAt: Date; now?
   const plan = await getPlan(booking.planKey);
   const synced = await syncDemoEvent(existing ? "rescheduled" : "booked", booking, eventBusiness(business), plan?.name ?? null);
   booking = ((await persistDemoSync(booking, synced)) as BookingView | null) ?? booking;
-  trackEvent(EVENT_NAMES.demoBooked, { userId: business.userId, businessId: business.id, props: { plan: sub.chosenPlan, rescheduled: Boolean(existing), google: synced.status } });
+  await trackEvent(EVENT_NAMES.demoBooked, { userId: business.userId, businessId: business.id, props: { plan: sub.chosenPlan, rescheduled: Boolean(existing), google: synced.status } });
   await sendBookingEmails(existing ? "rescheduled" : "booked", booking, { name: business.name, email: business.user.email, contact: business.user.name });
   await retryPendingDemoSyncs({ limit: 3 });
   return { booking, rescheduled: Boolean(existing) };
