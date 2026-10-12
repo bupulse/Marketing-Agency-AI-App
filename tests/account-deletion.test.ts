@@ -115,6 +115,14 @@ describe("purgeDueAccounts", () => {
     expect(result.filesRemoved).toBe(6); // two files in each of the three buckets
   });
 
+  it("removes the company's invoice PDFs from the private invoices bucket too", async () => {
+    findMany.mockResolvedValue([{ id: "u1" }]);
+    list.mockImplementation(async (prefix: string) => (prefix === "pdf/biz1" ? { data: [{ name: "BP-INV-0001.pdf", id: "9" }], error: null } : { data: [], error: null }));
+    const result = await purgeDueAccounts(now);
+    expect(remove).toHaveBeenCalledWith(["pdf/biz1/BP-INV-0001.pdf"]);
+    expect(result.filesRemoved).toBe(1);
+  });
+
   it("keeps the account for a retry when its files cannot be removed", async () => {
     findMany.mockResolvedValue([{ id: "u1" }]);
     list.mockResolvedValue({ data: null, error: new Error("storage down") });

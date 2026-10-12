@@ -37,7 +37,7 @@ import { AdminError, apiContext, consoleContext } from "@/lib/admin/types";
 import * as momo from "@/lib/billing/momo";
 import { clearMomoSettingsCache } from "@/lib/billing/momo-settings";
 import { MOMO_SETTING_KEY } from "@/lib/billing/momo-shared";
-import { INVOICE_SETTING_KEY } from "@/lib/invoices/shared";
+import { cardPaymentOf, INVOICE_SETTING_KEY, invoiceForCardPayment, type CardPayment } from "@/lib/invoices/shared";
 import * as inv from "@/lib/invoices/service";
 import { resetRegionCache } from "@/lib/region";
 import { resetRegionPriceCache } from "@/lib/region-prices";
@@ -298,7 +298,7 @@ describe("mark as paid (by hand)", () => {
     expect(r).toMatchObject({ status: "paid", number: "BP-INV-0001" });
     expect(r.periodEnd?.toISOString()).toBe("2026-11-13T08:00:00.000Z");
     const pay = h.db.manualPayment.rows[0];
-    expect(pay).toMatchObject({ status: "confirmed", reference: "BP-INV-0001", invoiceId: id, network: "BANK", transactionId: "TRF-2026-0042", amountMinor: 35000 });
+    expect(pay).toMatchObject({ status: "confirmed", reference: "BP-INV-0001", invoiceId: id, network: "BANK", transactionId: "BP-INV-0001/TRF-2026-0042", amountMinor: 35000 });
     expect(invoice()).toMatchObject({ status: "paid", paidBy: `manual_payment:${pay.id}` });
     expect(h.db.subscription.rows[0]).toMatchObject({ status: "ACTIVE", plan: "PRO" });
     expect(audits("confirm_momo_payment")).toHaveLength(1);
@@ -319,6 +319,27 @@ describe("mark as paid (by hand)", () => {
     await momo.submitManualProof(USER, { paymentId: pay.id, transactionId: "MP333333", payerPhone: "078 123 4567", network: "MTN" }, NOW);
     expect(await msg(inv.markInvoicePaid(CONSOLE, id, { method: "CASH", reference: "R-0001" }, NOW))).toMatch(/waiting in Payments/);
     expect(invoice().status).toBe("sent");
+  });
+
+  it("the same bank or cash receipt text on two invoices is fine; the same MoMo transaction id is still a replay", async () => {
+    seed();
+    company("biz2", OTHER);
+    const first = await sent();
+    const second = (await inv.createActivationInvoice(CONSOLE, { businessId: "biz2" }, NOW)).id;
+    await inv.sendInvoice(CONSOLE, second, NOW);
+    await inv.markInvoicePaid(CONSOLE, first, { method: "CASH", reference: "R-0001" }, NOW);
+    await inv.markInvoicePaid(CONSOLE, second, { method: "CASH", reference: "R-0001" }, NOW);
+    expect(h.db.invoice.rows.map((r) => r.status)).toEqual(["paid", "paid"]);
+    expect(h.db.manualPayment.rows.map((r) => r.transactionId)).toEqual(["BP-INV-0001/R-0001", "BP-INV-0002/R-0001"]);
+
+    // MoMo ids are not scoped: one SMS pays once, across companies.
+    company("biz3", `3${USER.slice(1)}`);
+    const third = (await inv.createActivationInvoice(CONSOLE, { businessId: "biz3" }, NOW)).id;
+    await inv.sendInvoice(CONSOLE, third, NOW);
+    h.db.manualPayment.rows[0] = { ...h.db.manualPayment.rows[0], network: "MTN", transactionId: "MP555555" };
+    expect(await code(inv.markInvoicePaid(CONSOLE, third, { method: "MTN", reference: "mp555555" }, NOW))).toBe("conflict");
+    expect(h.db.invoice.rows[2].status).toBe("sent");
+    expect(h.db.manualPayment.rows.at(-1)?.status).toBe("expired");
   });
 
   it("an unsubmitted payment the client opened gives way", async () => {
@@ -372,13 +393,41 @@ describe("reminders and card", () => {
     void id;
   });
 
-  it("an active card subscription settles the open invoice of the same plan and interval", async () => {
+  it("a completed card payment settles the open invoice it pays; never one sent after it, never on a renewal that does not match", async () => {
     seed();
-    await sent();
-    expect(await inv.settleInvoicesPaidByCard({ userId: USER, plan: "STANDARD", interval: "MONTH", providerSubscriptionId: "sub_1" }, NOW)).toBe(0);
-    expect(await inv.settleInvoicesPaidByCard({ userId: USER, plan: "PRO", interval: "MONTH", providerSubscriptionId: "sub_1" }, NOW)).toBe(1);
-    expect(invoice()).toMatchObject({ status: "paid", paidBy: "paddle:sub_1" });
-    expect(await inv.settleInvoicesPaidByCard({ userId: USER, plan: "PRO", interval: "MONTH", providerSubscriptionId: "sub_1" }, NOW)).toBe(0);
+    const id = await sent(); // BP-INV-0001, PRO monthly, 35,000 RWF, sent at NOW
+    h.db.subscription.rows[0] = { ...h.db.subscription.rows[0], provider: "PADDLE", providerSubscriptionId: "sub_1", plan: "PRO", interval: "MONTH", status: "ACTIVE" };
+    const pay = (over: Partial<CardPayment> = {}): CardPayment => ({ transactionId: "txn_1", subscriptionId: "sub_1", priceId: null, amountMinor: 2800, currency: "USD", paidAt: new Date("2026-10-14T09:00:00Z"), origin: "web", userId: null, ...over });
+    // A payment made before the invoice was sent does not pay it.
+    expect(await inv.settleInvoiceFromCardPayment(pay({ paidAt: new Date("2026-10-12T09:00:00Z") }))).toBeNull();
+    // A renewal at the card price (another amount and currency) does not pay it either.
+    expect(await inv.settleInvoiceFromCardPayment(pay({ origin: "subscription_recurring" }))).toBeNull();
+    // Another plan does not.
+    h.db.subscription.rows[0].plan = "STANDARD";
+    expect(await inv.settleInvoiceFromCardPayment(pay())).toBeNull();
+    h.db.subscription.rows[0].plan = "PRO";
+    expect(invoice().status).toBe("sent");
+    // The first purchase after it was sent does, once.
+    expect(await inv.settleInvoiceFromCardPayment(pay())).toBe(id);
+    expect(invoice()).toMatchObject({ status: "paid", paidBy: "paddle:txn_1" });
+    expect(await inv.settleInvoiceFromCardPayment(pay({ transactionId: "txn_2" }))).toBeNull();
+    expect(audits("invoice_paid")).toHaveLength(1);
+  });
+
+  it("a renewal whose amount and currency equal an open invoice settles that one (the newest exact match)", () => {
+    const at = (iso: string) => new Date(iso);
+    const invs = [
+      { id: "a", sentAt: at("2026-10-01T00:00:00Z"), totalMinor: 4900, currency: "USD", planKey: "PRO", interval: "MONTH" },
+      { id: "b", sentAt: at("2026-10-05T00:00:00Z"), totalMinor: 4900, currency: "USD", planKey: "PRO", interval: "MONTH" },
+      { id: "c", sentAt: at("2026-10-06T00:00:00Z"), totalMinor: 9900, currency: "USD", planKey: "PRO", interval: "MONTH" },
+      { id: "late", sentAt: at("2026-10-20T00:00:00Z"), totalMinor: 4900, currency: "USD", planKey: "PRO", interval: "MONTH" },
+    ];
+    const plan = { plan: "PRO", interval: "MONTH" };
+    expect(invoiceForCardPayment(invs, { amountMinor: 4900, currency: "USD", paidAt: at("2026-10-10T00:00:00Z"), origin: "subscription_recurring" }, plan)?.id).toBe("b");
+    expect(invoiceForCardPayment(invs, { amountMinor: 1234, currency: "USD", paidAt: at("2026-10-10T00:00:00Z"), origin: "subscription_recurring" }, plan)).toBeNull();
+    expect(invoiceForCardPayment(invs, { amountMinor: 1234, currency: "USD", paidAt: at("2026-10-10T00:00:00Z"), origin: "web" }, plan)?.id).toBe("c");
+    expect(cardPaymentOf({ event_type: "subscription.updated", data: { id: "sub_1" } })).toBeNull();
+    expect(cardPaymentOf({ event_type: "transaction.completed", data: { id: "txn_1", details: { totals: { grand_total: "4900", currency_code: "USD" } } } })).toMatchObject({ amountMinor: 4900, currency: "USD" });
   });
 });
 
@@ -435,5 +484,51 @@ describe("admin list", () => {
     expect((await inv.listInvoices({ q: "inzu" }, NOW)).map((i) => i.number)).toEqual(["BP-INV-0001"]);
     expect((await inv.listInvoices({ q: "inv-0002" }, NOW)).map((i) => i.number)).toEqual(["BP-INV-0002"]);
     expect((await inv.listInvoices({ businessId: "biz2" }, NOW)).map((i) => i.number)).toEqual(["BP-INV-0002"]);
+  });
+});
+
+describe("deleting a company", () => {
+  it("the reference index does not depend on invoiceId, so the SET NULL on its invoices' payments never collides", async () => {
+    const { readFileSync } = await import("node:fs");
+    const sql = readFileSync("prisma/migrations/20261013090000_invoices/migration.sql", "utf8");
+    const index = /CREATE UNIQUE INDEX "ManualPayment_reference_key"[^;]*;/.exec(sql)?.[0] ?? "";
+    expect(index).toContain(`WHERE "reference" NOT LIKE 'BP-INV-%'`);
+    expect(index).not.toContain("invoiceId");
+
+    seed();
+    const id = await sent();
+    // Two attempts at the invoice (a rejected one, then the retry) share its number.
+    const first = await momo.startInvoicePayment({ userId: USER, invoiceId: id, now: NOW });
+    await momo.submitManualProof(USER, { paymentId: first.id, transactionId: "MP444444", payerPhone: "078 123 4567", network: "MTN" }, NOW);
+    await momo.rejectManualPayment(CONSOLE, first.id, "No money arrived", NOW);
+    await momo.startInvoicePayment({ userId: USER, invoiceId: id, now: NOW });
+    // What ON DELETE SET NULL does when the company's invoices go: both rows keep "BP-INV-0001" with no invoice.
+    h.db.invoice.rows.splice(0);
+    for (const r of h.db.manualPayment.rows) r.invoiceId = null;
+    // Another payment with that number, and plain payments, are still accepted; plain references stay unique.
+    await expect(h.db.manualPayment.create({ data: { userId: OTHER, planKey: "PRO", interval: "MONTH", amountMinor: 1, reference: "BP-INV-0001", invoiceId: null, status: "expired" } })).resolves.toBeTruthy();
+    await h.db.manualPayment.create({ data: { userId: OTHER, planKey: "PRO", interval: "MONTH", amountMinor: 1, reference: "BP-7K3Q", status: "expired" } });
+    await expect(h.db.manualPayment.create({ data: { userId: OTHER, planKey: "PRO", interval: "MONTH", amountMinor: 1, reference: "BP-7K3Q", status: "expired" } })).rejects.toMatchObject({ code: "P2002" });
+  });
+});
+
+describe("logo upload", () => {
+  const png = (w: number, h: number) => {
+    const b = new Uint8Array(33);
+    b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+    new DataView(b.buffer).setUint32(16, w);
+    new DataView(b.buffer).setUint32(20, h);
+    return b;
+  };
+  it("refuses a decompression bomb (huge declared size) and SVG before storing anything; stores a sane PNG", async () => {
+    const { uploadInvoiceLogo } = await import("@/lib/invoices/settings");
+    const { putInvoiceObject } = await import("@/lib/invoices/storage");
+    expect(await msg(uploadInvoiceLogo(CONSOLE, png(30000, 30000)))).toMatch(/at most 2000 × 2000 pixels \(this one is 30000 × 30000\)/);
+    expect(await msg(uploadInvoiceLogo(CONSOLE, new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"/>')))).toMatch(/PNG or JPEG/);
+    expect(putInvoiceObject).not.toHaveBeenCalled();
+    const saved = await uploadInvoiceLogo(CONSOLE, png(400, 120));
+    expect(saved).toMatchObject({ logoType: "image/png" });
+    expect(putInvoiceObject).toHaveBeenCalledTimes(1);
+    expect(audits("set_invoice_logo")).toHaveLength(1);
   });
 });

@@ -216,7 +216,7 @@ export function createFakeDb() {
     manualPayment: table([], {
       pk: "id",
       uniqueWhere: [
-        { key: "reference", when: (r) => r.invoiceId == null },
+        { key: "reference", when: (r) => !String(r.reference ?? "").startsWith("BP-INV-") },
         { key: "invoiceId", when: (r) => r.invoiceId != null && (r.status === "pending" || r.status === "confirmed") },
       ],
       defaults: () => ({ currency: "RWF", status: "pending", invoiceId: null, payerPhone: null, network: null, transactionId: null, rejectReason: null, submittedAt: null, decidedAt: null, decidedBy: null, periodStart: null, periodEnd: null, updatedAt: new Date() }),

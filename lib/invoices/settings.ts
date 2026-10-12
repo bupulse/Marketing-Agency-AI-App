@@ -5,7 +5,7 @@ import { writeAudit } from "@/lib/admin/audit";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
 import type { InvoiceLogo } from "./pdf";
-import { cleanInvoiceSettings, defaultPaymentInstructions, INVOICE_SETTING_KEY, invoiceSettingsProblem, type InvoiceSettings } from "./shared";
+import { cleanInvoiceSettings, defaultPaymentInstructions, INVOICE_SETTING_KEY, invoiceSettingsProblem, logoProblem, type InvoiceSettings } from "./shared";
 import { getInvoiceObject, putInvoiceObject, removeInvoiceObject } from "./storage";
 
 // The owner's invoice settings (Admin -> Invoices -> Settings), one AdminSetting row (key "invoice.settings"). Every
@@ -88,6 +88,9 @@ export async function uploadInvoiceLogo(ctx: AdminContext, bytes: Uint8Array): P
   if (ctx.viaApi) throw new AdminError("forbidden", "Invoice settings are changed in the admin console only.");
   if (bytes.length === 0) throw new AdminError("invalid", "Choose a logo file.");
   if (bytes.length > LOGO_MAX_BYTES) throw new AdminError("invalid", "The logo is at most 512 KB. Export a smaller PNG or JPEG.");
+  // Checked from the header before anything is decoded or stored: PNG or JPEG only (no SVG), at most 2000 x 2000 pixels.
+  const problem = logoProblem(bytes);
+  if (problem) throw new AdminError("invalid", problem);
   const type = logoTypeOf(bytes);
   if (!type) throw new AdminError("invalid", "The logo must be a PNG or JPEG image.");
   const path = `settings/logo-${globalThis.crypto.randomUUID()}.${type === "image/png" ? "png" : "jpg"}`;

@@ -54,7 +54,10 @@ ALTER TABLE "ManualPayment" ADD CONSTRAINT "ManualPayment_invoiceId_fkey" FOREIG
 CREATE INDEX "ManualPayment_invoiceId_idx" ON "ManualPayment"("invoiceId");
 CREATE INDEX "ManualPayment_reference_idx" ON "ManualPayment"("reference");
 DROP INDEX IF EXISTS "ManualPayment_reference_key";
-CREATE UNIQUE INDEX "ManualPayment_reference_key" ON "ManualPayment"("reference") WHERE "invoiceId" IS NULL;
+-- Keyed on the reference itself, not on invoiceId: when a company is deleted its invoices go and their payments' invoiceId
+-- becomes NULL (ON DELETE SET NULL); several attempts at one invoice sharing "BP-INV-0001" must not then collide. Plain
+-- references (BP-XXXX, alphabet without I) can never start with "BP-INV-".
+CREATE UNIQUE INDEX "ManualPayment_reference_key" ON "ManualPayment"("reference") WHERE "reference" NOT LIKE 'BP-INV-%';
 -- One live payment per invoice: an invoice is never paid twice, and never has two open payments.
 CREATE UNIQUE INDEX "ManualPayment_invoice_live_key" ON "ManualPayment"("invoiceId") WHERE "status" IN ('pending', 'confirmed') AND "invoiceId" IS NOT NULL;
 

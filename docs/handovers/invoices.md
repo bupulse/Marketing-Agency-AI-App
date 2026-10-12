@@ -22,7 +22,7 @@ works: `docs/INVOICES.md`.
   still `PENDING_DEMO` sees the invoice lock screen instead of the demo screen. Mobile Money uses reference = invoice
   number and amount = invoice total; confirming in Payments marks the invoice paid and activates its plan and interval
   (R4 confirm, same transaction). Mark as paid goes through the same confirmation. An active Paddle subscription for the
-  same plan / interval settles the open invoice (webhook).
+  same plan / interval: a completed card payment settles the open invoice it pays (webhook `transaction.completed`).
 - **Overdue**: one reminder email on the due date from the daily momo-renewals job; the account follows the existing
   paywall (documented in `docs/INVOICES.md`, "Overdue").
 
@@ -36,6 +36,22 @@ actions on the company page (`?tab=billing#actions`; the Actions panel got an `i
 `createActivationInvoice` now refuses anything but `PENDING_DEMO` with the same wording as Start trial. Test:
 `tests/invoices/subscription-summary.test.ts`.
 
+## Review fixes (13 October 2026, after merging v2: Google Calendar booking, location pricing)
+
+1. **Card settlement** only on `transaction.completed` (money received), never on `subscription.*` events; at most one
+   invoice, for the plan and interval paid, sent before the payment; exact amount + currency wins, otherwise only a first
+   purchase (not `subscription_recurring`) settles the newest. `paidBy paddle:<transaction id>`. Tests:
+   `tests/paddle-webhook.test.ts` (subscription.updated on an active card plan settles nothing),
+   `tests/invoices/service.test.ts`.
+2. **Reference index vs deletion**: `ManualPayment_reference_key` is `WHERE reference NOT LIKE 'BP-INV-%'` (no longer
+   on `invoiceId`), so the SET NULL when a company's invoices are deleted cannot collide. The deletion purge also removes
+   the company's invoice PDFs. Tests: service ("deleting a company"), `tests/account-deletion.test.ts`.
+3. Client PDF route: no second `decodeURIComponent` (a malformed id is a 404).
+5. **Mark as paid**: bank / cash receipts are stored as `BP-INV-0001/<receipt>` (scoped per invoice); MTN / Airtel ids
+   stay global for the replay guard.
+6. **Logo**: width and height read from the PNG IHDR / JPEG SOF header, at most 2000 × 2000, before storing; the PDF
+   re-checks before embedding; SVG and anything else refused.
+
 ## Migration
 
 `20261013090000_invoices` (after `20261012130100_storage_account_blocked`):
@@ -44,7 +60,7 @@ actions on the company page (`?tab=billing#actions`; the Actions panel got an `i
   `Invoice_one_draft_per_business`), RLS on, `REVOKE ALL` from `PUBLIC, anon, authenticated, service_role` (table and
   sequence);
 - `ManualPayment.invoiceId` (nullable FK, `ON DELETE SET NULL`), indexes on `invoiceId` and `reference`;
-  `ManualPayment_reference_key` dropped and recreated as **partial** (`where "invoiceId" is null`): plain payments keep
+  `ManualPayment_reference_key` dropped and recreated as **partial** (`where "reference" not like 'BP-INV-%'`, independent of `invoiceId`, so the SET NULL when a company's invoices are deleted never collides): plain payments keep
   unique BP-XXXX references, attempts at one invoice share its number; new partial unique
   `ManualPayment_invoice_live_key` (one pending or confirmed payment per invoice);
 - Storage bucket `invoices` (private, 5 MB, PDF / PNG / JPEG), skipped where there is no `storage` schema. No policy
@@ -64,7 +80,8 @@ New dependency: `pdf-lib@1.17.1` (pure JS, MIT).
 - `lib/billing/momo-shared.ts`: `isReference` accepts `BP-INV-0001`; `ManualPaymentView.invoiceId`.
 - `lib/billing/momo-renewals.ts`: calls `sendInvoiceReminders` once per sweep (isolated try/catch; `invoiceReminders`
   only present in the run summary when > 0).
-- `app/api/billing/webhooks/paddle/route.ts`: after an applied subscription, `settleInvoicesPaidByCard` (best effort).
+- `app/api/billing/webhooks/paddle/route.ts`: on `transaction.completed`, `settleInvoiceFromCardPayment` (best effort).
+- `lib/account-deletion.ts`: the purge removes `pdf/<businessId>/` from the `invoices` bucket.
 - `app/dashboard/billing/actions.ts`: `startMomoPayment` also takes `{ invoiceId }`.
 - `app/dashboard/billing/page.tsx`, `app/dashboard/layout.tsx` (invoice lock while `PENDING_DEMO`),
   `components/billing/momo-payment.tsx` (invoice wording, retry keeps the invoice).
@@ -94,7 +111,7 @@ confirm, reminders once, card settlement, client sees only its own invoices, adm
 | `npx next typegen` | ok |
 | `npx tsc --noEmit` | clean |
 | `npm run lint` | clean |
-| `npx vitest run` | 160 files passed, 10 skipped; 1962 tests passed, 70 skipped; 0 failed |
+| `npx vitest run` | 166 files passed, 10 skipped; 2018 tests passed, 70 skipped; 0 failed (after the review fixes and the v2 merge) |
 | `npx next build` | compiled, exit 0 |
 
 ## Not done / to decide

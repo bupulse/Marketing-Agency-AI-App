@@ -312,7 +312,8 @@ model ManualPayment {
   currency      String          @default("RWF")
   // "BP-7K3Q": what the client types as the payment note; unambiguous characters. A payment of an invoice uses the
   // invoice number instead ("BP-INV-0001"), so several attempts at one invoice share it: uniqueness is two partial
-  // indexes in SQL ("ManualPayment_reference_key" where invoiceId is null, "ManualPayment_invoice_live_key").
+  // indexes in SQL ("ManualPayment_reference_key" where the reference does not start with BP-INV-,
+  // "ManualPayment_invoice_live_key").
   reference     String
   // The invoice this payment settles (docs/INVOICES.md); confirming it marks the invoice paid.
   invoiceId     String?

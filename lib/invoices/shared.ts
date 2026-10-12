@@ -287,3 +287,117 @@ export type InvoiceDocument = {
 export function intervalLabel(i: BillingInterval | null | undefined): string {
   return i === "YEAR" ? "yearly" : "monthly";
 }
+
+// ---- card payments (Paddle transaction.completed) -------------------------------------------------------------
+
+/** A completed card payment, as far as invoices care. */
+export type CardPayment = {
+  transactionId: string;
+  subscriptionId: string | null;
+  priceId: string | null;
+  /** Grand total in the currency's smallest unit. */
+  amountMinor: number;
+  currency: string;
+  paidAt: Date;
+  /** Paddle's origin: "web" / "api" for a first purchase, "subscription_recurring" for a renewal, ... */
+  origin: string | null;
+  userId: string | null;
+};
+
+/**
+ * Reads a Paddle `transaction.completed` event (the event that records money received). Null for any other event or a
+ * payload without an amount: subscription.created / updated (renewals, edits) never settle an invoice.
+ */
+export function cardPaymentOf(event: { event_type?: unknown; occurred_at?: unknown; data?: unknown } | null | undefined): CardPayment | null {
+  if (!event || event.event_type !== "transaction.completed" || !event.data || typeof event.data !== "object") return null;
+  const d = event.data as Record<string, unknown>;
+  const totals = ((d.details as Record<string, unknown> | undefined)?.totals ?? {}) as Record<string, unknown>;
+  const amount = Number(totals.grand_total ?? totals.total);
+  const currency = String(totals.currency_code ?? d.currency_code ?? "").toUpperCase();
+  if (typeof d.id !== "string" || !Number.isSafeInteger(amount) || amount <= 0 || !/^[A-Z]{3}$/.test(currency)) return null;
+  const when = new Date(String(d.billed_at ?? d.updated_at ?? event.occurred_at ?? ""));
+  const items = Array.isArray(d.items) ? (d.items as { price?: { id?: unknown }; price_id?: unknown }[]) : [];
+  const priceId = items[0]?.price?.id ?? items[0]?.price_id;
+  const custom = (d.custom_data ?? {}) as { userId?: unknown };
+  return {
+    transactionId: d.id,
+    subscriptionId: typeof d.subscription_id === "string" ? d.subscription_id : null,
+    priceId: typeof priceId === "string" ? priceId : null,
+    amountMinor: amount,
+    currency,
+    paidAt: Number.isNaN(when.getTime()) ? new Date() : when,
+    origin: typeof d.origin === "string" ? d.origin : null,
+    userId: typeof custom.userId === "string" ? custom.userId : null,
+  };
+}
+
+/**
+ * Which open invoice a card payment settles, or null. Only invoices for the paid plan and interval that were sent
+ * before the payment. An invoice whose total and currency equal the payment wins (the newest such). Otherwise (an RWF
+ * invoice paid at the plan's USD card price) only a first purchase settles one, the newest; a renewal never settles an
+ * invoice it does not match exactly.
+ */
+export function invoiceForCardPayment<T extends { sentAt: Date | null; totalMinor: number; currency: string; planKey: string | null; interval: string | null }>(
+  invoices: readonly T[],
+  pay: Pick<CardPayment, "amountMinor" | "currency" | "paidAt" | "origin">,
+  plan: { plan: string; interval: string },
+): T | null {
+  const candidates = invoices
+    .filter((i) => i.sentAt && i.sentAt.getTime() <= pay.paidAt.getTime() && i.planKey === plan.plan && i.interval === plan.interval)
+    .sort((a, b) => (b.sentAt as Date).getTime() - (a.sentAt as Date).getTime());
+  const exact = candidates.find((i) => i.totalMinor === pay.amountMinor && i.currency.toUpperCase() === pay.currency);
+  if (exact) return exact;
+  if (pay.origin === "subscription_recurring") return null;
+  return candidates[0] ?? null;
+}
+
+// ---- logo checks ---------------------------------------------------------------------------------------------
+
+/** The largest logo, in pixels per side. A small file can still declare a huge image (a decompression bomb). */
+export const MAX_LOGO_PX = 2000;
+
+/**
+ * Width and height read from a PNG's IHDR or a JPEG's SOF header, without decoding any pixels; null when the bytes are
+ * not a well-formed PNG or JPEG (an SVG, a renamed file, a truncated header).
+ */
+export function imageDimensions(bytes: Uint8Array): { type: "image/png" | "image/jpeg"; width: number; height: number } | null {
+  const u16 = (i: number) => (bytes[i] << 8) | bytes[i + 1];
+  const u32 = (i: number) => ((bytes[i] << 24) >>> 0) + (bytes[i + 1] << 16) + (bytes[i + 2] << 8) + bytes[i + 3];
+  const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  if (bytes.length >= 24 && PNG.every((b, i) => bytes[i] === b)) {
+    if (String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15]) !== "IHDR") return null;
+    return { type: "image/png", width: u32(16), height: u32(20) };
+  }
+  if (bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+    let i = 2;
+    while (i + 9 < bytes.length) {
+      if (bytes[i] !== 0xff) return null;
+      const marker = bytes[i + 1];
+      if (marker === 0xff) {
+        i++; // fill byte
+        continue;
+      }
+      if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+        i += 2; // markers without a length
+        continue;
+      }
+      if (marker === 0xd9 || marker === 0xda) return null; // end of image or start of scan before any frame header
+      const length = u16(i + 2);
+      if (length < 2) return null;
+      // SOF0..SOF15 except DHT (C4), JPG (C8) and DAC (CC): precision, height, width.
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        return { type: "image/jpeg", width: u16(i + 7), height: u16(i + 5) };
+      }
+      i += 2 + length;
+    }
+  }
+  return null;
+}
+
+/** The logo problem in words, or null when it may be stored and drawn. */
+export function logoProblem(bytes: Uint8Array): string | null {
+  const dims = imageDimensions(bytes);
+  if (!dims) return "The logo must be a PNG or JPEG image.";
+  if (dims.width < 1 || dims.height < 1 || dims.width > MAX_LOGO_PX || dims.height > MAX_LOGO_PX) return `The logo must be at most ${MAX_LOGO_PX} × ${MAX_LOGO_PX} pixels (this one is ${dims.width} × ${dims.height}).`;
+  return null;
+}

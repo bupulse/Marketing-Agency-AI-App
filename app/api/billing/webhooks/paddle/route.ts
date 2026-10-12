@@ -5,7 +5,8 @@ import { paddle } from "@/lib/billing/paddle";
 import { trackEvent } from "@/lib/analytics/events";
 import { subscriptionEventsFor } from "@/lib/analytics/math";
 import { prisma } from "@/lib/db";
-import { settleInvoicesPaidByCard } from "@/lib/invoices/service";
+import { settleInvoiceFromCardPayment } from "@/lib/invoices/service";
+import { cardPaymentOf } from "@/lib/invoices/shared";
 import { logError } from "@/lib/errors";
 
 // Paddle posts here (https://bupulse.com/api/billing/webhooks/paddle). The body must be read as
@@ -41,10 +42,7 @@ export async function POST(request: NextRequest) {
     if (webhook.subscription) {
       const before = await subscriptionState(webhook.subscription.providerSubscriptionId);
       const outcome = await applyProviderSubscription("PADDLE", webhook.subscription);
-      if (outcome === "applied") {
-        await trackSubscriptionChange(webhook.subscription.providerSubscriptionId, before, webhook.subscription);
-        await settleInvoices(webhook.subscription.providerSubscriptionId);
-      }
+      if (outcome === "applied") await trackSubscriptionChange(webhook.subscription.providerSubscriptionId, before, webhook.subscription);
       if (outcome === "unknown_price") {
         // Probably a plan that is not synced with Paddle yet. Don't mark it processed: Paddle
         // retries, and once the setting is fixed the customer gets their plan.
@@ -67,6 +65,7 @@ export async function POST(request: NextRequest) {
       if (outcome === "unknown_user") note = "ignored: no matching account";
       if (outcome === "stale") note = "ignored: older than the stored state";
     }
+    if (webhook.type === "transaction.completed") await settleInvoice(webhook.payload);
     await prisma.billingEvent.update({ where: { id: event.id }, data: { processedAt: new Date(), error: note } });
     return NextResponse.json({ ok: true });
   } catch (error) {
@@ -112,13 +111,15 @@ async function trackSubscriptionChange(
   }
 }
 
-// A card subscription that is now active pays the company's open invoice for the same plan and interval
-// (docs/INVOICES.md). Best effort: an invoice left open can still be marked paid by hand.
-async function settleInvoices(providerSubscriptionId: string) {
+// A completed card payment (transaction.completed) may pay the company's open invoice (docs/INVOICES.md). Only that
+// event records money; subscription events (renewals, edits) never settle an invoice. Best effort: an invoice left open
+// can still be marked paid by hand.
+async function settleInvoice(payload: unknown) {
+  const pay = cardPaymentOf(payload as Parameters<typeof cardPaymentOf>[0]);
+  if (!pay) return;
   try {
-    const sub = await prisma.subscription.findFirst({ where: { providerSubscriptionId }, select: { userId: true, plan: true, interval: true, status: true } });
-    if (sub?.status === "ACTIVE") await settleInvoicesPaidByCard({ userId: sub.userId, plan: sub.plan, interval: sub.interval, providerSubscriptionId });
+    await settleInvoiceFromCardPayment(pay);
   } catch (error) {
-    await logError(error, { source: "billing.webhook.paddle.invoices", subscriptionId: providerSubscriptionId });
+    await logError(error, { source: "billing.webhook.paddle.invoices", transactionId: pay.transactionId });
   }
 }

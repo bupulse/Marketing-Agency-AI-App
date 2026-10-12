@@ -6,6 +6,8 @@ import {
   defaultPaymentInstructions,
   DEFAULT_INVOICE_SETTINGS,
   formatInvoiceNumber,
+  imageDimensions,
+  logoProblem,
   invoiceSettingsProblem,
   invoiceToday,
   isInvoiceNumber,
@@ -143,5 +145,21 @@ describe("settings", () => {
       "Pay by Mobile Money to MoMo Pay code 123456 or MTN MoMo 0788000000 (BuPulse Ltd), or online with the link below.",
     );
     expect(defaultPaymentInstructions({ merchantCode: "", momoNumber: "", airtelNumber: "", accountName: "" })).toMatch(/online/);
+  });
+});
+
+describe("logo headers", () => {
+  it("reads PNG and JPEG sizes without decoding, and refuses anything else", () => {
+    const png = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+    expect(imageDimensions(png)).toEqual({ type: "image/png", width: 1, height: 1 });
+    // SOI, an APP0 segment, then SOF0 with height 300 and width 640.
+    const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x01, 0x2c, 0x02, 0x80, 0x03, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(imageDimensions(jpeg)).toEqual({ type: "image/jpeg", width: 640, height: 300 });
+    const bomb = Uint8Array.from(jpeg);
+    bomb.set([0xff, 0xff, 0xff, 0xff], 13);
+    expect(logoProblem(bomb)).toMatch(/at most 2000/);
+    expect(imageDimensions(new TextEncoder().encode("<svg></svg>"))).toBeNull();
+    expect(imageDimensions(Uint8Array.from([0xff, 0xd8, 0xff, 0xda, 0, 2, 0, 0, 0, 0, 0, 0]))).toBeNull();
+    expect(logoProblem(png)).toBeNull();
   });
 });

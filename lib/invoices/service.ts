@@ -10,7 +10,7 @@ import { transactionIdSchema } from "@/lib/billing/momo-shared";
 import { locationText } from "@/lib/business-info/locations";
 import { logError } from "@/lib/errors";
 import { isServiceEnabled } from "@/lib/admin/switch";
-import { getPlan } from "@/lib/plan-catalog";
+import { getPlan, planForPriceId } from "@/lib/plan-catalog";
 import { companyPlans } from "@/lib/region-prices";
 import { sendInvoiceEmail, sendInvoiceReminderEmail } from "./emails";
 import { renderInvoicePdf } from "./pdf";
@@ -22,6 +22,7 @@ import {
   DEFAULT_DUE_DAYS,
   formatInvoiceMoney,
   formatInvoiceNumber,
+  invoiceForCardPayment,
   intervalLabel,
   invoiceToday,
   isInvoiceNumber,
@@ -32,6 +33,7 @@ import {
   validateDraft,
   ymdOf,
   type BillTo,
+  type CardPayment,
   type InvoiceDocument,
   type InvoiceLine,
   type InvoicePayDetails,
@@ -296,6 +298,16 @@ export async function resendInvoice(ctx: AdminContext, id: string) {
   return { id, number: row.number, to, emailed: result.sent, failed: result.failed };
 }
 
+/**
+ * The transaction id stored for a payment marked paid by hand. A Mobile Money id (MTN, Airtel) is stored as it is, so
+ * the replay guard (one live use per network and id, across every company) still catches the same SMS used twice. A
+ * bank or cash receipt is the admin's own text ("R-0001", "Deposit"): it is scoped to the invoice
+ * ("BP-INV-0001/R-0001"), so the same words on two invoices are not taken for a replay.
+ */
+export function manualTransactionId(method: ManualPayMethod, reference: string, invoiceNumber: string): string {
+  return method === "MTN" || method === "AIRTEL" ? reference : `${invoiceNumber}/${reference}`;
+}
+
 export const MANUAL_PAY_METHODS = ["MTN", "AIRTEL", "BANK", "CASH"] as const;
 export type ManualPayMethod = (typeof MANUAL_PAY_METHODS)[number];
 export const MANUAL_PAY_LABEL: Record<ManualPayMethod, string> = { MTN: "MTN Mobile Money", AIRTEL: "Airtel Money", BANK: "Bank transfer", CASH: "Cash" };
@@ -336,7 +348,7 @@ export async function markInvoicePaid(ctx: AdminContext, id: string, input: { me
   let paymentId: string;
   try {
     const payment = await prisma.manualPayment.create({
-      data: { userId, planKey: row.planKey, interval: row.interval, amountMinor: row.totalMinor, currency: row.currency, reference: row.number, invoiceId: row.id, network: method, transactionId: ref.data, submittedAt: now },
+      data: { userId, planKey: row.planKey, interval: row.interval, amountMinor: row.totalMinor, currency: row.currency, reference: row.number, invoiceId: row.id, network: method, transactionId: manualTransactionId(method, ref.data, row.number), submittedAt: now },
     });
     paymentId = payment.id;
   } catch (error) {
@@ -377,23 +389,27 @@ export async function voidInvoice(ctx: AdminContext, id: string, reason: string,
 // ---- card payments (Paddle) ----------------------------------------------------------------------------------
 
 /**
- * After a card subscription becomes ACTIVE (the Paddle webhook): an open invoice of the same company for the same plan
- * and interval is settled by it. Best effort and idempotent (only sent invoices move to paid).
+ * A completed card payment (Paddle `transaction.completed`, the event that records money received) settles at most
+ * one open invoice of that company: for the plan and interval paid, sent before the payment, matched on amount and
+ * currency or, for a first purchase at the plan's card price, the newest one (`invoiceForCardPayment`). Subscription
+ * events (renewals, edits) never settle anything. Idempotent: only a sent invoice moves to paid.
  */
-export async function settleInvoicesPaidByCard(input: { userId: string; plan: string; interval: BillingInterval; providerSubscriptionId: string }, now: Date = new Date()): Promise<number> {
-  const business = await prisma.business.findUnique({ where: { userId: input.userId }, select: { id: true } });
-  if (!business) return 0;
-  const open = await prisma.invoice.findMany({ where: { businessId: business.id, status: "sent", planKey: input.plan, interval: input.interval } });
-  let settled = 0;
-  const ctx = { ...consoleContext(null), actor: "system:paddle" };
-  for (const inv of open) {
-    const paidBy = `paddle:${input.providerSubscriptionId}`;
-    const { count } = await prisma.invoice.updateMany({ where: { id: inv.id, status: "sent" }, data: { status: "paid", paidAt: now, paidBy } });
-    if (count !== 1) continue;
-    settled++;
-    await writeAudit(prisma, ctx, "invoice_paid", `invoice:${inv.id}`, { status: "sent" }, { status: "paid", number: inv.number, paidBy }).catch(() => undefined);
-  }
-  return settled;
+export async function settleInvoiceFromCardPayment(pay: CardPayment): Promise<string | null> {
+  const sub = pay.subscriptionId ? await prisma.subscription.findFirst({ where: { providerSubscriptionId: pay.subscriptionId }, select: { userId: true, plan: true, interval: true } }) : null;
+  const userId = sub?.userId ?? pay.userId;
+  if (!userId) return null;
+  const plan = sub ? { plan: sub.plan, interval: sub.interval } : pay.priceId ? await planForPriceId("PADDLE", pay.priceId) : null;
+  if (!plan) return null;
+  const business = await prisma.business.findUnique({ where: { userId }, select: { id: true } });
+  if (!business) return null;
+  const open = await prisma.invoice.findMany({ where: { businessId: business.id, status: "sent" } });
+  const target = invoiceForCardPayment(open, pay, plan);
+  if (!target) return null;
+  const paidBy = `paddle:${pay.transactionId}`;
+  const { count } = await prisma.invoice.updateMany({ where: { id: target.id, status: "sent" }, data: { status: "paid", paidAt: pay.paidAt, paidBy } });
+  if (count !== 1) return null;
+  await writeAudit(prisma, { ...consoleContext(null), actor: "system:paddle" }, "invoice_paid", `invoice:${target.id}`, { status: "sent" }, { status: "paid", number: target.number, paidBy, amountMinor: pay.amountMinor, currency: pay.currency, subscriptionId: pay.subscriptionId }).catch(() => undefined);
+  return target.id;
 }
 
 // ---- reminders (daily, from the Mobile Money renewals job) --------------------------------------------------

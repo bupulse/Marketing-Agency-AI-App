@@ -63,8 +63,9 @@ The list filters by status (All, Drafts, Sent, **Overdue** = sent and past the d
 ### Invoice settings (`/admin/invoices/settings`)
 
 AdminSetting `invoice.settings` (`InvoiceSettings`, `lib/invoices/shared.ts`; audited `set_invoice_settings`,
-`set_invoice_logo`): logo (PNG or JPEG, at most 512 KB, recognised by its bytes, stored in the private `invoices`
-bucket under `settings/`), business / legal name (default "BuPulse"), address, email, phone, website, TIN (optional,
+`set_invoice_logo`): logo (PNG or JPEG, at most 512 KB and 2000 × 2000 pixels, type and size read from the file's header before anything
+is decoded, so SVG and decompression bombs are refused; stored in the private `invoices` bucket under `settings/`; the
+PDF re-checks the header before embedding), business / legal name (default "BuPulse"), address, email, phone, website, TIN (optional,
 printed when set), VAT rate (optional; empty = no tax line), footer, payment instructions (prefilled from the Mobile
 Money settings: "Pay by Mobile Money to MoMo Pay code … (account name), or online with the link below."), accent colour.
 Malformed values are refused, never truncated. A preview with a made-up client sits beside the form. Drafts and new
@@ -80,7 +81,7 @@ new pages with the header repeated); subtotal, VAT, total; **How to pay** (the i
 numbers, account name, "Use reference BP-INV-0001", the Pay online URL); notes; footer with "BP-INV-0001 · Page 1 of N".
 Characters the standard fonts cannot draw (emoji, other scripts) print as "?" instead of failing.
 
-**Storage**: the private bucket `invoices` (created by the migration; no Storage policy names it, so signed-in users can
+**Storage**: the private bucket `invoices` (a deleted account's `pdf/<businessId>/` files are removed by the deletion purge, `lib/account-deletion.ts`) (created by the migration; no Storage policy names it, so signed-in users can
 neither read nor write it). The app uses the service key after its own checks: `pdf/<businessId>/<number>.pdf` is
 written when the invoice is sent. Downloads: a sent invoice serves the stored copy; a paid or void one is drawn again
 from the frozen details with its mark; if Storage was down at send time the PDF is drawn again on download (same frozen
@@ -113,20 +114,25 @@ nothing is written and the admin is told to reject (and refund) instead.
 inside confirm and by the index; one pending payment per company). On top: one live payment per invoice
 (`ManualPayment_invoice_live_key`: `invoiceId` unique where status is pending or confirmed), and the invoice claim itself
 (only a `sent` invoice becomes `paid`). `ManualPayment.reference` stays unique for plain payments
-(`ManualPayment_reference_key` is now partial: `where invoiceId is null`), because every attempt at one invoice shares
+(`ManualPayment_reference_key` is now partial: `where reference not like 'BP-INV-%'`, so deleting a company, which sets the payments' `invoiceId` to null, never collides), because every attempt at one invoice shares
 its number.
 
 **Mark as paid** (admin): for an invoice with a plan, a `ManualPayment` is created with the invoice number, the method as
 the network and the typed transaction id / receipt, and confirmed at once through `confirmManualPayment`, so the plan,
-period, revenue, guards and email are exactly the Mobile Money ones. A payment the client opened but did not report
+period, revenue, guards and email are exactly the Mobile Money ones. MTN / Airtel transaction ids are stored as typed,
+so the replay guard still refuses the same SMS on a second invoice; a bank or cash receipt is stored scoped to the
+invoice (`BP-INV-0001/R-0001`, `manualTransactionId`), so the same receipt words on two invoices are not a replay. A payment the client opened but did not report
 gives way; one they reported must be decided in Payments first. An invoice without a plan is just marked paid
 (`manual:<method>:<reference>`).
 
 **Card**: Pay by card opens the existing checkout for the invoice's plan and interval (charged at the plan's card price
-in USD, renewing in Paddle). When the Paddle webhook makes that subscription `ACTIVE`, `settleInvoicesPaidByCard`
-marks the company's open invoice for the same plan and interval paid (`paddle:<subscription id>`, audited as
-`system:paddle`). Until the RW card prices exist in Paddle, checkout answers "Card payments are not ready for your
-region yet" (`docs/REGIONS.md`).
+in USD, renewing in Paddle). Only a **completed payment** settles an invoice: the Paddle `transaction.completed` event
+(`cardPaymentOf`, `settleInvoiceFromCardPayment`), never `subscription.*` events (renewals, edits). It settles at most one
+open invoice of that company, for the plan and interval paid and **sent before the payment**: the newest whose total and
+currency equal the payment, or else, for a first purchase (Paddle origin other than `subscription_recurring`), the
+newest one (an RWF invoice paid at the USD card price). A renewal that matches no invoice exactly settles nothing.
+`paidBy paddle:<transaction id>`, audited as `system:paddle`. Until the RW card prices exist in Paddle, checkout answers
+"Card payments are not ready for your region yet" (`docs/REGIONS.md`).
 
 ## Overdue
 

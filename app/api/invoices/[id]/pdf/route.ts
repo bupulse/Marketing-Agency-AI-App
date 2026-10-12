@@ -14,7 +14,8 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/invoices/[i
   const user = check.user;
   if (!can(user.role, "billing")) return new Response("Ask your company owner for this invoice.", { status: 403 });
   const { id } = await ctx.params;
-  const row = await clientInvoiceRow(user.businessId, decodeURIComponent(id));
+  // Next has already decoded the segment once; decoding again could throw on a stray "%" (that is just "not found").
+  const row = await clientInvoiceRow(user.businessId, id);
   if (!row) return new Response("Not found", { status: 404 });
   try {
     await rateLimit(`invoice-pdf:${user.id}`, RATE_LIMITS.invoicePdf);

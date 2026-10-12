@@ -49,6 +49,19 @@ async function removeUserFiles(admin: SupabaseClient, userId: string): Promise<n
   return removed;
 }
 
+// The company's invoice PDFs (private "invoices" bucket, pdf/<businessId>/). Their Invoice rows cascade with the company,
+// so the files would otherwise outlive the account with the client's details on them. Errors propagate like above.
+async function removeInvoiceFiles(admin: SupabaseClient, userId: string): Promise<number> {
+  const business = await prisma.business.findUnique({ where: { userId }, select: { id: true } });
+  if (!business) return 0;
+  const paths = await listObjects(admin, "invoices", `pdf/${business.id}`);
+  for (let i = 0; i < paths.length; i += PAGE) {
+    const { error } = await admin.storage.from("invoices").remove(paths.slice(i, i + PAGE));
+    if (error) throw error;
+  }
+  return paths.length;
+}
+
 async function stillDue(id: string, now: Date) {
   const user = await prisma.user.findFirst({ where: { id, deletionScheduledFor: { lte: now } }, select: { id: true } });
   return user !== null;
@@ -115,6 +128,7 @@ async function purgeDue(now: Date): Promise<PurgeResult> {
         await prisma.membership.findMany({ where: { business: { userId: id }, userId: { not: id } }, select: { userId: true } })
       ).map((m) => m.userId);
       result.filesRemoved += await removeUserFiles(admin, id);
+      result.filesRemoved += await removeInvoiceFiles(admin, id);
       // Teammates go BEFORE the company account: once it is deleted their memberships cascade away, and a failure after that
       // would leave logins that belong to no company for good. A failure here is retried tomorrow, with the company still intact.
       // The last re-check keeps them safe if the owner pressed "Keep" while files were being removed.

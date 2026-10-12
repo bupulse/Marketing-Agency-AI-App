@@ -32,7 +32,7 @@ export default async function InvoiceSettingsPage({ searchParams }: { searchPara
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-5">
-          <Panel title="Logo" description="PNG or JPEG, at most 512 KB. Stored privately; printed at the top left of every invoice.">
+          <Panel title="Logo" description="PNG or JPEG, at most 512 KB and 2000 × 2000 pixels. Stored privately; printed at the top left of every invoice.">
             <form action={uploadInvoiceLogoAction} className="flex flex-wrap items-end gap-3">
               <Field label="Logo file">
                 <Input name="logo" type="file" accept="image/png,image/jpeg" required />

@@ -2,7 +2,7 @@
 // in Node and in the tests. One A4 page in the usual case, more when there are many lines. No server imports: it draws
 // an InvoiceDocument (lib/invoices/shared.ts) that the service has already put together.
 import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFImage, type PDFPage, type RGB } from "pdf-lib";
-import { formatInvoiceMoney, longInvoiceDate, type InvoiceDocument } from "./shared";
+import { formatInvoiceMoney, imageDimensions, logoProblem, longInvoiceDate, type InvoiceDocument } from "./shared";
 
 const A4 = { width: 595.28, height: 841.89 };
 const MARGIN = 48;
@@ -145,7 +145,8 @@ export async function renderInvoicePdf(doc: InvoiceDocument, logo?: InvoiceLogo 
   const fonts = { regular: await pdf.embedFont(StandardFonts.Helvetica), bold: await pdf.embedFont(StandardFonts.HelveticaBold) };
   const accent = hexToRgb(doc.seller.accentColor);
   let image: PDFImage | null = null;
-  if (logo?.bytes.length) {
+  // The header is checked before pdf-lib decodes anything: a stored logo that is not a sane PNG / JPEG is left out.
+  if (logo?.bytes.length && !logoProblem(logo.bytes) && imageDimensions(logo.bytes)?.type === logo.type) {
     try {
       image = logo.type === "image/png" ? await pdf.embedPng(logo.bytes) : await pdf.embedJpg(logo.bytes);
     } catch {

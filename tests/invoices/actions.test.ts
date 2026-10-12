@@ -165,6 +165,10 @@ describe("PDF routes", () => {
     h.svc.clientInvoiceRow.mockResolvedValueOnce(null);
     expect((await call("inv-of-another-company")).status).toBe(404);
     expect(h.svc.clientInvoiceRow).toHaveBeenLastCalledWith("biz1", "inv-of-another-company");
+    // A malformed id is never decoded a second time: just not found.
+    h.svc.clientInvoiceRow.mockResolvedValueOnce(null);
+    expect((await call("%E0%A4%A")).status).toBe(404);
+    expect(h.svc.clientInvoiceRow).toHaveBeenLastCalledWith("biz1", "%E0%A4%A");
     h.svc.clientInvoiceRow.mockResolvedValueOnce({ id: "inv1", number: "BP-INV-0001", status: "sent" });
     const ok = await call("inv1");
     expect(ok.status).toBe(200);
