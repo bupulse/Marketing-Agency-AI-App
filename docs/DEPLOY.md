@@ -26,6 +26,7 @@ Set each one with `npx wrangler secret put NAME` (it asks for the value):
 | `ENCRYPTION_KEY` | 32 random bytes, base64: `openssl rand -base64 32` |
 | `AI_TEXT_PROVIDER` | `gemini` or `claude` |
 | `GEMINI_API_KEY`, `GEMINI_TEXT_MODEL` | Gemini settings |
+| `GOOGLE_MAPS_API_KEY` | Optional. Address search on the Brand page and onboarding (Places API (New) only, see `docs/BUSINESS_INFO.md`). Without it the address boxes are plain text. |
 | `ANTHROPIC_API_KEY`, `CLAUDE_TEXT_MODEL`, `CLAUDE_EFFORT` | Claude settings |
 
 `DATABASE_URL` is not needed on Cloudflare: the app uses the Hyperdrive binding there.

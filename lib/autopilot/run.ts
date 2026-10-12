@@ -10,6 +10,7 @@ import { isServiceEnabled, ServiceDisabledError, textAiService } from "@/lib/adm
 import { FeatureRequiredError, featureStatus, hasFeature } from "@/lib/entitlements";
 import { AIProviderError } from "@/lib/ai/types";
 import { readKnowledge } from "@/lib/brand/schemas";
+import { knowledgeFacts } from "@/lib/business-info/facts";
 import { logError } from "@/lib/errors";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { makeGroupImages, aspectFor } from "./images";
@@ -149,7 +150,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
       tone: business.tone,
       website: business.website,
       contentLanguage: business.contentLanguage,
-      knowledge,
+      knowledge: knowledgeFacts(knowledge),
       ownerName: business.ceoName,
       country: business.country,
     };

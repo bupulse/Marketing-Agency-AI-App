@@ -7,6 +7,7 @@ import { initialValues } from "@/components/brand-profile/initial";
 import { LanguageSection } from "@/components/studio/language-section";
 import { GlassCard } from "@/components/ui";
 import { isOwnLogoPath } from "@/lib/brand/schemas";
+import { placesKey } from "@/lib/places/google";
 import { createSignedDownloadUrl } from "@/lib/storage";
 import { prisma } from "@/lib/db";
 import { industryOptions } from "@/lib/industries/server";
@@ -32,7 +33,7 @@ export default async function BrandPage() {
   const sector = await prisma.business.findUnique({ where: { id: business.id }, select: { industryId: true, industryOther: true, industryDescription: true, industryRef: { select: { slug: true } } } });
   const industries = await industryOptions({ currentIndustryId: sector?.industryId });
   const initial = initialValues(business);
-  const context = { businessName, industry: business.industry, savedLogoUrl };
+  const context = { businessName, industry: business.industry, savedLogoUrl, country: business.country ?? "", timezone: business.timezone, placesEnabled: !!placesKey() };
   const rows = [
     ["Business", businessName],
     ["Industry", business.industry],

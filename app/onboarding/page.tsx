@@ -6,6 +6,8 @@ import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard";
 import { prisma } from "@/lib/db";
 import { ensureAccount } from "@/lib/account";
 import { isOwnLogoPath, readKnowledge } from "@/lib/brand/schemas";
+import { hasBusinessInfo } from "@/lib/business-info/facts";
+import { placesKey } from "@/lib/places/google";
 import { createSignedDownloadUrl } from "@/lib/storage";
 import { resolveCompany } from "@/lib/team/company";
 import { can } from "@/lib/team/roles";
@@ -37,7 +39,7 @@ export default async function OnboardingPage() {
   if (business.onboardedAt) redirect(await readReturn());
 
   const knowledge = readKnowledge(business.knowledge);
-  const hasKnowledge = !!(knowledge.hours || knowledge.area || knowledge.contact || knowledge.faqs.length);
+  const hasKnowledge = hasBusinessInfo(knowledge) || knowledge.faqs.length > 0;
   const hasLook = !!business.logoUrl || business.brandColors.length > 0;
   // Resume at the first unfinished step. Logo and colours can be skipped, so a skipped step 3 shows again.
   const initialStep = !business.description || !business.audience ? 1 : !business.tone ? 2 : hasKnowledge || hasLook ? 4 : 3;
@@ -56,7 +58,7 @@ export default async function OnboardingPage() {
       <OnboardingWizard
         initial={initialValues(business)}
         initialStep={initialStep}
-        context={{ businessName: business.name, industry: business.industry, savedLogoUrl }}
+        context={{ businessName: business.name, industry: business.industry, savedLogoUrl, country: business.country ?? "", timezone: business.timezone, placesEnabled: !!placesKey() }}
       />
     </OnboardingShell>
   );

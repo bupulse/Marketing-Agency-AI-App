@@ -14,6 +14,7 @@ import {
   offerSchema,
   validateKnowledge,
   voiceSchema,
+  type KnowledgeInput,
 } from "@/lib/brand/schemas";
 import { buildObjectPath, createSignedUploadUrl } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
@@ -76,14 +77,11 @@ export async function saveLook(input: { logoPath: string | null; brandColors: st
   return result;
 }
 
-export async function saveKnowledge(input: {
-  hours: string;
-  area: string;
-  contact: string;
-  faqs: { question: string; answer: string }[];
-}): Promise<SaveResult> {
+export async function saveKnowledge(input: KnowledgeInput): Promise<SaveResult> {
   const user = await requireUser();
-  const parsed = validateKnowledge(input);
+  // Phone numbers without a country of their own are read in the business's sign-up country.
+  const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { country: true } });
+  const parsed = validateKnowledge(input && typeof input === "object" ? input : {}, { country: business?.country });
   if (!parsed.ok) return { ok: false, fieldErrors: parsed.errors };
   return update(user.id, { knowledge: parsed.data }, "knowledge");
 }

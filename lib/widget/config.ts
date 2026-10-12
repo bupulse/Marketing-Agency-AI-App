@@ -5,6 +5,7 @@ import { hasFeature } from "@/lib/entitlements";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isHexColor, PULSE_BLUE, readableTextColor } from "@/lib/color-contrast";
 import { industryContext } from "@/lib/industry-context";
+import { quickActions } from "@/lib/business-info/contacts";
 import type { BusinessFacts } from "./prompt";
 import { defaultGreeting } from "./strings";
 
@@ -24,6 +25,8 @@ export interface PublicWidget {
   greeting: string;
   allowedDomains: string[];
   contentLanguage: string;
+  /** WhatsApp and Call buttons in the chat header, from the business's contacts (wa.me and tel: links). */
+  actions: { whatsapp?: string; call?: string };
   facts: Omit<BusinessFacts, "projects">;
 }
 
@@ -46,6 +49,7 @@ export async function loadPublicWidget(key: string): Promise<PublicWidget | null
     hasFeature(business.id, "websiteChat"),
   ]);
   const accent = resolveAccent(widget.accentColor, business.brandColors);
+  const knowledge = readKnowledge(business.knowledge);
   return {
     businessId: business.id,
     userId: business.userId,
@@ -60,6 +64,7 @@ export async function loadPublicWidget(key: string): Promise<PublicWidget | null
     greeting: widget.greeting?.trim() || defaultGreeting(business.contentLanguage, business.name),
     allowedDomains: widget.allowedDomains,
     contentLanguage: business.contentLanguage,
+    actions: quickActions(knowledge.contacts),
     facts: {
       name: business.name,
       industry: business.industry,
@@ -68,7 +73,8 @@ export async function loadPublicWidget(key: string): Promise<PublicWidget | null
       audience: business.audience,
       website: business.website,
       contentLanguage: business.contentLanguage,
-      knowledge: readKnowledge(business.knowledge),
+      timezone: business.timezone,
+      knowledge,
     },
   };
 }

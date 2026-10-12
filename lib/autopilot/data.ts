@@ -108,7 +108,7 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
     connections: connections.flatMap((c) => (isNetwork(c.provider) && accountUsable(c) ? [{ id: c.id, network: c.provider }] : [])),
     projects: planProjects,
     faqs: knowledge.faqs,
-    hasHours: !!knowledge.hours,
+    hasHours: !!(knowledge.hours || knowledge.openingHours.length),
     holidays: holidaysBetween(business.country, dates[0], dates[6], { skipReligious: config.skipReligious }),
     photos: assets.map((a) => ({ id: a.id, path: a.path, folderId: a.folderId, mimeType: a.mimeType, recentUses: uses.get(a.path) ?? 0 })),
     existing: existing.flatMap((e) => (e.connectionId && e.scheduledAt ? [{ connectionId: e.connectionId, scheduledAt: e.scheduledAt }] : [])),
