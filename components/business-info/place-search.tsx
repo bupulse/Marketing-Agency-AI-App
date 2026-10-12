@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ExternalLink, MapPin } from "lucide-react";
+import { Building2, MapPin } from "lucide-react";
 import { Field, Input } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { mapsUrl } from "@/lib/business-info/locations";
 
-type Suggestion = { placeId: string; main: string; secondary: string; text: string };
-export type PickedPlace = { address: string; placeId: string; lat?: number; lng?: number; name: string };
+type Suggestion = { placeId: string; main: string; secondary: string; text: string; building?: boolean };
+/** `name` is the suggestion's main text ("M Peace Plaza"); `building` is true when Google says it is a building or business. */
+export type PickedPlace = { address: string; placeId: string; lat?: number; lng?: number; name: string; building: boolean };
 
 function newSessionToken(): string {
   return crypto.randomUUID().replace(/-/g, "");
@@ -21,21 +21,15 @@ function newSessionToken(): string {
 export function PlaceSearch({
   label,
   address,
-  placeId,
-  lat,
-  lng,
   enabled,
   required,
   error,
-  placeholder = "Search for your address",
+  placeholder = "Search for a building, business or street",
   onType,
   onPick,
 }: {
   label: string;
   address: string;
-  placeId?: string;
-  lat?: number;
-  lng?: number;
   enabled: boolean;
   required?: boolean;
   error?: string;
@@ -104,10 +98,10 @@ export function PlaceSearch({
     try {
       const res = await fetch(`/api/places/details?${new URLSearchParams({ id: s.placeId, ...(token ? { session: token } : {}) })}`);
       const body = (await res.json().catch(() => ({}))) as { place?: { address: string; placeId: string; lat?: number; lng?: number } };
-      if (res.ok && body.place?.address) onPick({ ...body.place, name: s.main });
-      else onPick({ address: s.text, placeId: s.placeId, name: s.main });
+      if (res.ok && body.place?.address) onPick({ ...body.place, name: s.main, building: !!s.building });
+      else onPick({ address: s.text, placeId: s.placeId, name: s.main, building: !!s.building });
     } catch {
-      onPick({ address: s.text, placeId: s.placeId, name: s.main });
+      onPick({ address: s.text, placeId: s.placeId, name: s.main, building: !!s.building });
     }
   }
 
@@ -121,8 +115,7 @@ export function PlaceSearch({
     e.preventDefault();
   }
 
-  const hint = notice ?? (off ? undefined : "Start typing and pick your address, or type it in full.");
-  const showMap = address.trim().length > 0;
+  const hint = notice ?? (off ? undefined : "Type a building, mall or street name and pick it from the list.");
 
   return (
     <div className="relative flex flex-col gap-1.5">
@@ -164,9 +157,9 @@ export function PlaceSearch({
               onClick={() => void pick(s)}
               className={cn("flex min-h-11 cursor-pointer items-start gap-2 rounded-xl px-3 py-2 text-[14px]", i === highlight ? "bg-soft" : "hover:bg-soft")}
             >
-              <MapPin aria-hidden className="mt-0.5 size-4 shrink-0 text-muted" />
+              {s.building ? <Building2 aria-hidden className="mt-0.5 size-4 shrink-0 text-muted" /> : <MapPin aria-hidden className="mt-0.5 size-4 shrink-0 text-muted" />}
               <span className="min-w-0">
-                <span className="block truncate font-medium">{s.main}</span>
+                <span className="block truncate font-semibold">{s.main}</span>
                 {s.secondary && <span className="block truncate text-[13px] text-muted">{s.secondary}</span>}
               </span>
             </li>
@@ -175,16 +168,6 @@ export function PlaceSearch({
             Powered by Google
           </li>
         </ul>
-      )}
-      {showMap && (
-        <a
-          href={mapsUrl({ address, placeId, lat, lng })}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex min-h-11 items-center gap-1.5 self-start text-[14px] font-medium text-pulse-blue underline-offset-2 hover:underline"
-        >
-          <ExternalLink aria-hidden className="size-4" /> Open in Google Maps
-        </a>
       )}
     </div>
   );

@@ -33,7 +33,27 @@ export type BrandValues = {
   faqs: { question: string; answer: string }[];
 };
 
-export type LocationValue = { kind: LocationKind; label: string; address: string; placeId?: string; lat?: number; lng?: number };
+export type LocationValue = {
+  kind: LocationKind;
+  label: string;
+  /** The searched address (or, when `manual`, rebuilt from street / area / city on save). */
+  address: string;
+  placeId?: string;
+  lat?: number;
+  lng?: number;
+  /** "Inside a building or mall" and its fields. */
+  inBuilding: boolean;
+  building: { name: string; floor: string; block: string; unit: string };
+  /** "Can't find it? Enter it yourself": street, area and city instead of the search. */
+  manual: boolean;
+  street: string;
+  area: string;
+  city: string;
+};
+
+export function emptyLocation(kind: LocationKind): LocationValue {
+  return { kind, label: "", address: "", inBuilding: false, building: { name: "", floor: "", block: "", unit: "" }, manual: false, street: "", area: "", city: "" };
+}
 /** `value` is what is shown in the input; `country` is the phone country (a sign-up country name). */
 export type ContactValue = { type: ContactType; value: string; country: string; primary: boolean };
 

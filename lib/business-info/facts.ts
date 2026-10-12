@@ -4,7 +4,7 @@ import type { Knowledge } from "@/lib/brand/schemas";
 import { isValidTimeZone, localParts } from "@/lib/autopilot/timezone";
 import { summarizeContacts } from "./contacts";
 import { DAY_LONG, DAYS, describeOpenStatus, openStatus, summarizeHours } from "./hours";
-import { summarizeLocations } from "./locations";
+import { locationText, summarizeLocations } from "./locations";
 
 /** Hours, area and contact as one line each, for the marketing writers' calls to action. */
 export function knowledgeFacts(k: Knowledge | null | undefined): { hours?: string; area?: string; contact?: string } {
@@ -13,7 +13,7 @@ export function knowledgeFacts(k: Knowledge | null | undefined): { hours?: strin
   const head = k.locations?.find((l) => l.kind === "head") ?? k.locations?.[0];
   return {
     hours: join(summarizeHours(k.openingHours ?? []), k.hours),
-    area: join(k.area, head && !k.area ? head.address : undefined),
+    area: join(k.area, head && !k.area ? locationText(head) : undefined),
     contact: join(summarizeContacts(k.contacts ?? []), k.contact),
   };
 }
@@ -49,7 +49,7 @@ export function businessFactsContext(k: Knowledge, opts: { timeZone?: string | n
     }
   }
   if (k.hours) lines.push(`${schedules.length ? "Note on hours" : "Opening hours"}: ${k.hours}`);
-  // Token budget: the first six places (a typical business has one to three), addresses cut to 160 characters.
+  // Token budget: the first six places (a typical business has one to three), each place cut to 220 characters.
   const all = k.locations ?? [];
   const places = summarizeLocations(all.slice(0, 6));
   if (places.length) lines.push(...places.map((l) => `- ${l}`));
@@ -70,7 +70,7 @@ export function businessFactsContext(k: Knowledge, opts: { timeZone?: string | n
         ? "Use the 'Right now' line for questions like \"are you open?\"."
         : "The current local time is not known: for \"are you open now?\" give the opening hours instead of saying open or closed."
       : null,
-    places.length ? "When asked where the business is, give the address and its map link exactly as written." : null,
+    places.length ? "When asked where the business is, give the place exactly as written (building, floor, block and shop number first, then the street) and its map link." : null,
   ]
     .filter(Boolean)
     .join("\n");

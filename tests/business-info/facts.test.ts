@@ -68,7 +68,7 @@ describe("businessFactsContext", () => {
     // At most six places with addresses cut to 160 characters: even this extreme case stays under ~1,000 tokens.
     const text = businessFactsContext(many)!;
     expect(text).toContain("and 4 more branches");
-    expect(text.length).toBeLessThan(4000);
+    expect(text.length).toBeLessThan(4500);
   });
 });
 

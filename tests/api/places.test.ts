@@ -86,7 +86,7 @@ describe("/api/places/autocomplete", () => {
     fetchMock.mockResolvedValue(
       Response.json({
         suggestions: [
-          { placePrediction: { placeId: "ChIJ_kigali_heights", text: { text: "Kigali Heights, KG 7 Ave, Kigali, Rwanda" }, structuredFormat: { mainText: { text: "Kigali Heights" }, secondaryText: { text: "KG 7 Ave, Kigali, Rwanda" } } } },
+          { placePrediction: { placeId: "ChIJ_kigali_heights", types: ["establishment", "point_of_interest"], text: { text: "Kigali Heights, KG 7 Ave, Kigali, Rwanda" }, structuredFormat: { mainText: { text: "Kigali Heights" }, secondaryText: { text: "KG 7 Ave, Kigali, Rwanda" } } } },
           { placePrediction: { placeId: "bad id!", text: { text: "x" } } },
           { queryPrediction: { text: { text: "query only" } } },
         ],
@@ -97,16 +97,43 @@ describe("/api/places/autocomplete", () => {
     const body = await res.json();
     expect(body).toEqual({
       enabled: true,
-      suggestions: [{ placeId: "ChIJ_kigali_heights", main: "Kigali Heights", secondary: "KG 7 Ave, Kigali, Rwanda", text: "Kigali Heights, KG 7 Ave, Kigali, Rwanda" }],
+      suggestions: [{ placeId: "ChIJ_kigali_heights", main: "Kigali Heights", secondary: "KG 7 Ave, Kigali, Rwanda", text: "Kigali Heights, KG 7 Ave, Kigali, Rwanda", building: true }],
     });
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("https://places.googleapis.com/v1/places:autocomplete");
     expect(url).not.toContain(KEY);
     expect(init.headers["X-Goog-Api-Key"]).toBe(KEY);
     expect(init.headers["X-Goog-FieldMask"]).toContain("placePrediction.placeId");
-    expect(JSON.parse(init.body)).toMatchObject({ input: "Kigali Heights", sessionToken: SESSION, regionCode: "rw" });
+    // Kept to the business's country, any kind of place (no includedPrimaryTypes filter).
+    expect(JSON.parse(init.body)).toEqual({ input: "Kigali Heights", sessionToken: SESSION, regionCode: "rw", includedRegionCodes: ["rw"], languageCode: "en" });
+    expect(init.headers["X-Goog-FieldMask"]).toContain("placePrediction.types");
     expect(JSON.stringify(body)).not.toContain(KEY);
     expect(res.headers.get("Cache-Control")).toContain("no-store");
+  });
+
+  it("maps building names and street results from the suggestion's main text", async () => {
+    fetchMock.mockResolvedValue(
+      Response.json({
+        suggestions: [
+          { placePrediction: { placeId: "ChIJ_m_peace_plaza", types: ["establishment", "shopping_mall"], text: { text: "M Peace Plaza, KN 4 Avenue, Kigali, Rwanda" }, structuredFormat: { mainText: { text: "M Peace Plaza" }, secondaryText: { text: "KN 4 Avenue, Kigali, Rwanda" } } } },
+          { placePrediction: { placeId: "ChIJ_kn_4_avenue_", types: ["route", "geocode"], text: { text: "KN 4 Avenue, Kigali, Rwanda" }, structuredFormat: { mainText: { text: "KN 4 Avenue" }, secondaryText: { text: "Kigali, Rwanda" } } } },
+        ],
+      }),
+    );
+    const body = await (await autocomplete(req(`/api/places/autocomplete?q=M.%20Peace&session=${SESSION}`))).json();
+    expect(body.suggestions).toEqual([
+      { placeId: "ChIJ_m_peace_plaza", main: "M Peace Plaza", secondary: "KN 4 Avenue, Kigali, Rwanda", text: "M Peace Plaza, KN 4 Avenue, Kigali, Rwanda", building: true },
+      { placeId: "ChIJ_kn_4_avenue_", main: "KN 4 Avenue", secondary: "Kigali, Rwanda", text: "KN 4 Avenue, Kigali, Rwanda", building: false },
+    ]);
+  });
+
+  it("does not restrict the country when the business has none", async () => {
+    mocks.findUnique.mockResolvedValue({ id: "biz-1", country: null });
+    fetchMock.mockResolvedValue(Response.json({ suggestions: [] }));
+    await autocomplete(req(`/api/places/autocomplete?q=Kigali&session=${SESSION}`));
+    const sent = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(sent.includedRegionCodes).toBeUndefined();
+    expect(sent.regionCode).toBeUndefined();
   });
 
   it("hides Google's errors and never leaks the key", async () => {

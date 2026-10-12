@@ -4,7 +4,7 @@ import "server-only";
 // Google are reduced to a status so its messages (which can echo the request) never reach the client either.
 // Billing: the browser keeps one session token from the first keystroke to the chosen place, so the autocomplete
 // requests and the one details request are charged as a single session. Details ask only for Essentials fields.
-import { PLACE_ID } from "@/lib/business-info/locations";
+import { isBuildingResult, PLACE_ID } from "@/lib/business-info/locations";
 
 const AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete";
 const DETAILS_URL = "https://places.googleapis.com/v1/places/";
@@ -12,7 +12,9 @@ const TIMEOUT_MS = 5000;
 
 export const SESSION_TOKEN = /^[A-Za-z0-9_-]{16,64}$/;
 
-export type PlaceSuggestion = { placeId: string; main: string; secondary: string; text: string };
+/** `main` is the place or building name ("M Peace Plaza"), `secondary` the rest ("KN 4 Avenue, Kigali, Rwanda").
+ * `building` is true for an establishment or premise: its name is then the building name. */
+export type PlaceSuggestion = { placeId: string; main: string; secondary: string; text: string; building: boolean };
 export type PlaceDetails = { placeId: string; address: string; lat?: number; lng?: number };
 
 export class PlacesError extends Error {
@@ -32,19 +34,25 @@ async function call(url: string, init: RequestInit): Promise<unknown> {
 }
 
 type AutocompleteResponse = {
-  suggestions?: { placePrediction?: { placeId?: string; text?: { text?: string }; structuredFormat?: { mainText?: { text?: string }; secondaryText?: { text?: string } } } }[];
+  suggestions?: { placePrediction?: { placeId?: string; types?: string[]; text?: { text?: string }; structuredFormat?: { mainText?: { text?: string }; secondaryText?: { text?: string } } } }[];
 };
 
-/** Address suggestions for what was typed, ranked for the business's country (regionCode, e.g. "rw"). */
+/**
+ * Suggestions for what was typed: buildings, malls and businesses as well as street addresses (no type filter), kept
+ * to the business's country (includedRegionCodes) and ranked for it (regionCode, e.g. "rw").
+ */
 export async function autocomplete(key: string, input: { q: string; sessionToken: string; regionCode?: string | null; languageCode?: string }): Promise<PlaceSuggestion[]> {
   const body: Record<string, unknown> = { input: input.q, sessionToken: input.sessionToken, languageCode: input.languageCode ?? "en" };
-  if (input.regionCode) body.regionCode = input.regionCode;
+  if (input.regionCode) {
+    body.regionCode = input.regionCode;
+    body.includedRegionCodes = [input.regionCode];
+  }
   const data = (await call(AUTOCOMPLETE_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Goog-Api-Key": key,
-      "X-Goog-FieldMask": "suggestions.placePrediction.placeId,suggestions.placePrediction.text.text,suggestions.placePrediction.structuredFormat",
+      "X-Goog-FieldMask": "suggestions.placePrediction.placeId,suggestions.placePrediction.types,suggestions.placePrediction.text.text,suggestions.placePrediction.structuredFormat",
     },
     body: JSON.stringify(body),
   })) as AutocompleteResponse;
@@ -53,7 +61,7 @@ export async function autocomplete(key: string, input: { q: string; sessionToken
     if (!p?.placeId || !PLACE_ID.test(p.placeId)) return [];
     const text = (p.text?.text ?? "").slice(0, 300);
     const main = (p.structuredFormat?.mainText?.text ?? text).slice(0, 200);
-    return [{ placeId: p.placeId, main, secondary: (p.structuredFormat?.secondaryText?.text ?? "").slice(0, 200), text }];
+    return [{ placeId: p.placeId, main, secondary: (p.structuredFormat?.secondaryText?.text ?? "").slice(0, 200), text, building: isBuildingResult(p.types) }];
   }).slice(0, 5);
 }
 

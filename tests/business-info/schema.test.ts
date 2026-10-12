@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { initialValues } from "@/components/brand-profile/initial";
-import { knowledgeInput } from "@/components/brand-profile/steps";
+import { emptyLocation, knowledgeInput } from "@/components/brand-profile/steps";
 import { readKnowledge, validateKnowledge } from "@/lib/brand/schemas";
 import { knowledgeFacts } from "@/lib/business-info/facts";
 
@@ -42,7 +42,7 @@ describe("initialValues converts old text for the editors", () => {
     expect(v.hours).toBe("");
     expect(v.contacts).toEqual([{ type: "whatsapp", value: "+250 791 954 277", country: "Rwanda", primary: true }]);
     expect(v.contact).toBe("");
-    expect(v.locations).toEqual([{ kind: "head", label: "", address: "" }]);
+    expect(v.locations).toEqual([emptyLocation("head")]);
   });
   it("keeps unreadable text as notes", () => {
     const v = initialValues({ ...profile, knowledge: { hours: "Most days, ring first", contact: "Ask at the market stall", faqs: [] } });

@@ -2,7 +2,7 @@ import { readKnowledge } from "@/lib/brand/schemas";
 import { contactDisplay, countryNameForCode, isPhoneType, parseLegacyContact, phoneCountryCode } from "@/lib/business-info/contacts";
 import { parseLegacyHours } from "@/lib/business-info/hours";
 import { phoneCountry } from "@/lib/phone";
-import type { BrandValues, ContactValue, LocationValue } from "./steps";
+import { emptyLocation, type BrandValues, type ContactValue, type LocationValue } from "./steps";
 
 type BusinessProfile = {
   description: string | null;
@@ -38,8 +38,22 @@ export function initialValues(b: BusinessProfile): BrandValues {
     : (legacyContact?.contacts ?? []).map((c) => ({ type: c.type, value: contactDisplay(c), country: countryNameForCode(phoneCountryCode(c.value)) ?? country, primary: !!c.primary }));
 
   const head = k.locations.find((l) => l.kind === "head");
-  const toValue = (l: (typeof k.locations)[number]): LocationValue => ({ kind: l.kind, label: l.label ?? "", address: l.address, placeId: l.placeId, lat: l.lat, lng: l.lng });
-  const locations: LocationValue[] = [head ? toValue(head) : { kind: "head", label: "", address: "" }, ...k.locations.filter((l) => l.kind === "branch").map(toValue)];
+  // Locations saved before building details and manual entry simply have neither.
+  const toValue = (l: (typeof k.locations)[number]): LocationValue => ({
+    ...emptyLocation(l.kind),
+    label: l.label ?? "",
+    address: l.address,
+    placeId: l.placeId,
+    lat: l.lat,
+    lng: l.lng,
+    inBuilding: !!l.building,
+    building: { name: l.building?.name ?? "", floor: l.building?.floor ?? "", block: l.building?.block ?? "", unit: l.building?.unit ?? "" },
+    manual: !!l.manual,
+    street: l.manual?.street ?? "",
+    area: l.manual?.area ?? "",
+    city: l.manual?.city ?? "",
+  });
+  const locations: LocationValue[] = [head ? toValue(head) : emptyLocation("head"), ...k.locations.filter((l) => l.kind === "branch").map(toValue)];
 
   return {
     description: b.description ?? b.industryDescription ?? "",

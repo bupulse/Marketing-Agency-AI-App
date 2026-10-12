@@ -25,6 +25,11 @@ matter.
   text when it opens; the database changes only on save. "Area you serve" stays free text next to the locations.
 - **Head office first.** The first location row is always the head office; branches can only be added once its
   address is filled, and the server refuses branches without it.
+- **Buildings and manual addresses.** Locations can be inside a building (name, floor, block, shop number) and can
+  be entered by hand (street, area, city; no place id). Search is kept to the business's country
+  (`includedRegionCodes`); a branch abroad is entered by hand. Building names come from the autocomplete
+  suggestion's main text and types, not from extra Details fields. Locations saved before this have neither field
+  and read as before. Client 360 does not show business info, so there was nothing to change there.
 - **One main contact.** The widget's WhatsApp and Call buttons prefer it, else use the first contact that can.
 - **Map link built server-side** from address + place id (public Maps URLs format), and rebuilt on read: a stored or
   posted URL is never trusted. Details request Essentials fields only (cheapest SKU).

@@ -11,10 +11,19 @@ info that the website chat answers from. Everything is optional, as before.
   used elsewhere are greyed out. Days in no set are shown (and told to the chat) as closed. The card previews the
   summary: `Mon–Fri 08:00–18:00 · Sat 09:00–14:00 · Sun closed`. Times are in the business time zone
   (`Business.timezone`). A free "Note on hours" stays for things like public holidays.
-- **Locations.** The head office (optional, but needed before any branch) and up to 9 branches, each with a name and
-  an address. The address box suggests places from Google; picking one stores the place id and coordinates. Typing
-  the address by hand always works. Each filled address shows an "Open in Google Maps" link (a plain link: no Maps
-  JavaScript, no key in the page). "Area you serve" stays a free-text field.
+- **Locations.** The head office (optional, but needed before any branch) and up to 9 branches, each with a name.
+  - **Search** finds buildings, malls and businesses as well as streets ("M. Peace" → **M Peace Plaza**,
+    KN 4 Avenue, Kigali, Rwanda), kept to the business's country. Each suggestion shows the place name in bold and
+    the rest of the address below. Picking one stores the place id and coordinates; when Google marks it as a
+    building or business (`types`: establishment, premise, point of interest, mall…), its name fills the building name.
+  - **"Can't find it? Enter it yourself"** switches to Street / road, Area and City fields (no place id or
+    coordinates; the map link searches the text). "Search for it instead" switches back.
+  - **"Inside a building or mall"** reveals Building name (required when ticked), Floor, Block / wing and Shop or
+    office number (optional).
+  - It is shown, and told to the chat, as `M Peace Plaza, 3rd floor, Block B, Shop 12 — KN 4 Avenue, Kigali`
+    (`locationText()`: the trailing country is dropped and a building name Google already put in the address is not
+    repeated), with an "Open in Google Maps" link (a plain link: no Maps JavaScript, no key in the page).
+  - "Area you serve" stays a free-text field.
 - **Contacts.** Up to 10: WhatsApp, Phone call, WhatsApp + calls (same number), Email, Website, Instagram, Facebook,
   TikTok. Phone types use the same country picker and as-you-type grouping as sign-up (`+250 791 954 277`); email and
   website are validated; social profiles accept a handle (`@glow.rw`) or a link and keep the handle. One contact is
@@ -33,8 +42,12 @@ All in `Business.knowledge` (JSON), no migration. Schema: `knowledgeSchema` in `
   "openingHours": [{ "days": ["mon","tue","wed","thu","fri"], "open": "08:00", "close": "18:00" },
                    { "days": ["fri"], "open": "22:00", "close": "02:00", "overnight": true },
                    { "days": ["sun"], "open": "00:00", "close": "23:59", "allDay": true }],
-  "locations": [{ "kind": "head", "label": "Main shop", "address": "KG 7 Ave, Kigali, Rwanda",
-                  "placeId": "ChIJ…", "lat": -1.95, "lng": 30.09, "mapsUrl": "https://www.google.com/maps/search/?api=1&…" }],
+  "locations": [{ "kind": "head", "label": "Main shop", "address": "KN 4 Avenue, Kigali, Rwanda",
+                  "placeId": "ChIJ…", "lat": -1.95, "lng": 30.09,
+                  "building": { "name": "M Peace Plaza", "floor": "3rd floor", "block": "Block B", "unit": "Shop 12" },
+                  "mapsUrl": "https://www.google.com/maps/search/?api=1&…" },
+                { "kind": "branch", "label": "Kiyovu", "address": "KN 4 Ave, Kiyovu, Kigali",   // entered by hand
+                  "manual": { "street": "KN 4 Ave", "area": "Kiyovu", "city": "Kigali" }, "mapsUrl": "…" }],
   "contacts": [{ "type": "whatsapp_call", "value": "+250791954277", "primary": true },
                { "type": "instagram", "value": "glow.rw" }]
 }
@@ -48,7 +61,9 @@ place id (`lib/business-info/locations.ts`), never taken from the browser, and r
 (`app/onboarding/actions.ts` `saveKnowledge`, which reads phone numbers without their own country in the business's
 sign-up country). It checks: at least one day per set, a day in one set only, closing after opening (or before it
 when "closes after midnight"), late hours not running into the next day's opening, the head office before branches,
-place ids and coordinates (coordinates are kept only with a valid place id), and each contact. Blank contact and
+place ids and coordinates (coordinates are kept only with a valid place id; never for a hand-entered address), the
+building name when "Inside a building or mall" is ticked, the lengths of the building and manual fields
+(`LOCATION_LIMITS`: name 120, floor / block / shop 40, street 160, area and city 80), and each contact. Blank contact and
 branch rows are ignored. The whole input is first checked for shape (`knowledgeInputSchema`), so a crafted request
 (a number for text, an object for a list) gets a form error, never a server error. Errors use the form's own keys (`openingHours.1.close`, `contacts.2.value`).
 
@@ -93,7 +108,7 @@ The browser never talks to Google. It calls our routes, which call Places API (N
 
 | Route | Calls | Fields |
 | --- | --- | --- |
-| `GET /api/places/autocomplete?q=&session=` | `POST places:autocomplete` | `placePrediction.placeId`, `text`, `structuredFormat` |
+| `GET /api/places/autocomplete?q=&session=` | `POST places:autocomplete` (`regionCode` + `includedRegionCodes`, no type filter) | `placePrediction.placeId`, `types`, `text`, `structuredFormat` |
 | `GET /api/places/details?id=&session=` | `GET places/{id}` | `id,formattedAddress,location` (Place Details Essentials) |
 
 - **Auth**: a signed-in, active user with the `settings` permission (owner or admin), like the save action.
@@ -101,8 +116,10 @@ The browser never talks to Google. It calls our routes, which call Places API (N
   and `placesDetails` in `lib/rate-limit.ts`): 300 autocomplete and 60 details requests an hour. The query and place
   id are validated first, so a malformed request never spends quota. The browser waits 300 ms after typing and needs
   3 characters.
-- **Region**: the business's sign-up country becomes `regionCode` (Rwanda → `rw`), which ranks local results first
-  without hiding branches abroad.
+- **Region**: the business's sign-up country becomes `regionCode` and `includedRegionCodes` (Rwanda → `rw`), so
+  results stay in that country (a branch abroad can be entered by hand). Without a country, nothing is restricted.
+- **Building names** come from the suggestion's `structuredFormat.mainText` and `types`, which autocomplete returns
+  anyway: no extra (costlier) Details fields such as `displayName`.
 - **Billing**: the browser makes one session token per search (`crypto.randomUUID`), sends it with every
   autocomplete request and with the details request, then starts a new one. Google bills the session, not each
   keystroke. Details ask only for Essentials fields; the display name comes from the suggestion and the map link is

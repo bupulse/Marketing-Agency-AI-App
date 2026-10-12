@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { CONTACT_TYPES, MAX_CONTACTS, isNormalised, normaliseContact, type Contact, type ContactType } from "@/lib/business-info/contacts";
 import { DAYS, LAST_MINUTE, MAX_SCHEDULES, fromMinutes, scheduleErrors, sortDays, type Schedule } from "@/lib/business-info/hours";
-import { MAX_BRANCHES, PLACE_ID, mapsUrl, type Location, type LocationKind } from "@/lib/business-info/locations";
+import { LOCATION_LIMITS, MAX_BRANCHES, PLACE_ID, manualAddressText, mapsUrl, type Building, type Location, type LocationKind, type ManualAddress } from "@/lib/business-info/locations";
 import { phoneCountry } from "@/lib/phone";
 import { voices, type VoiceId } from "./voices";
 
@@ -67,6 +67,21 @@ export const locationSchema = z.object({
   placeId: z.string().regex(PLACE_ID).optional(),
   lat: z.number().min(-90).max(90).optional(),
   lng: z.number().min(-180).max(180).optional(),
+  building: z
+    .object({
+      name: z.string().trim().min(1).max(LOCATION_LIMITS.buildingName),
+      floor: z.string().trim().max(LOCATION_LIMITS.floor).optional(),
+      block: z.string().trim().max(LOCATION_LIMITS.block).optional(),
+      unit: z.string().trim().max(LOCATION_LIMITS.unit).optional(),
+    })
+    .optional(),
+  manual: z
+    .object({
+      street: z.string().trim().max(LOCATION_LIMITS.street).optional(),
+      area: z.string().trim().max(LOCATION_LIMITS.area).optional(),
+      city: z.string().trim().max(LOCATION_LIMITS.city).optional(),
+    })
+    .optional(),
   mapsUrl: z.string().max(800).optional(),
 });
 
@@ -171,7 +186,21 @@ export type KnowledgeInput = {
   contact?: string;
   faqs?: { question: string; answer: string }[];
   openingHours?: Schedule[];
-  locations?: { kind: LocationKind; label?: string; address: string; placeId?: string; lat?: number; lng?: number }[];
+  /** `manual`: typed as street / area / city instead of searched. `inBuilding`: the building fields count. */
+  locations?: {
+    kind: LocationKind;
+    label?: string;
+    address: string;
+    placeId?: string;
+    lat?: number;
+    lng?: number;
+    inBuilding?: boolean;
+    building?: { name?: string; floor?: string; block?: string; unit?: string };
+    manual?: boolean;
+    street?: string;
+    area?: string;
+    city?: string;
+  }[];
   contacts?: { type: ContactType; value: string; country?: string | null; primary?: boolean }[];
 };
 
@@ -189,7 +218,22 @@ const knowledgeInputSchema = z.object({
     .max(20)
     .optional(),
   locations: z
-    .array(z.object({ kind: z.enum(["head", "branch"]), label: text.optional(), address: text, placeId: z.string().max(400).optional(), lat: z.number().optional(), lng: z.number().optional() }))
+    .array(
+      z.object({
+        kind: z.enum(["head", "branch"]),
+        label: text.optional(),
+        address: text,
+        placeId: z.string().max(400).optional(),
+        lat: z.number().optional(),
+        lng: z.number().optional(),
+        inBuilding: z.boolean().optional(),
+        building: z.object({ name: text.optional(), floor: text.optional(), block: text.optional(), unit: text.optional() }).optional(),
+        manual: z.boolean().optional(),
+        street: text.optional(),
+        area: text.optional(),
+        city: text.optional(),
+      }),
+    )
     .max(30)
     .optional(),
   contacts: z
@@ -242,22 +286,59 @@ export function validateKnowledge(raw: KnowledgeInput, opts: { country?: string 
     ...(!s.allDay && s.overnight ? { overnight: true } : {}),
   }));
 
-  // Locations: the head office first; branches only once it is filled.
-  const places = (input.locations ?? []).map((l, index) => ({ l, index }));
-  const filled = places.filter(({ l }) => l.address.trim());
+  // Locations: the head office first; branches only once it is filled. A hand-entered address is its street, area
+  // and city joined, without a place id or coordinates.
+  const one = (v: string | undefined) => v?.replace(/\s+/g, " ").trim() || undefined;
+  const places = (input.locations ?? []).map((l, index) => {
+    const manual: ManualAddress | undefined = l.manual ? { street: one(l.street), area: one(l.area), city: one(l.city) } : undefined;
+    const address = manual ? manualAddressText(manual) : (one(l.address) ?? "");
+    const buildingName = l.inBuilding ? one(l.building?.name) : undefined;
+    return { l, index, manual, address, buildingName, filled: !!(address || buildingName) };
+  });
+  const filled = places.filter((p) => p.filled);
   const head = places.find(({ l }) => l.kind === "head");
-  if (filled.some(({ l }) => l.kind === "branch") && !head?.l.address.trim()) add(`locations.${head?.index ?? 0}.address`, "Add the head office address first, or remove the branches.");
+  if (filled.some(({ l }) => l.kind === "branch") && !head?.filled) add(`locations.${head?.index ?? 0}.${head?.manual ? "street" : "address"}`, "Add the head office address first, or remove the branches.");
   if (filled.filter(({ l }) => l.kind === "branch").length > MAX_BRANCHES) add("locations.form", `Add up to ${MAX_BRANCHES} branches.`);
   const locations: Location[] = [];
-  for (const { l, index } of [...filled].sort((a, b) => Number(a.l.kind === "branch") - Number(b.l.kind === "branch"))) {
-    const address = l.address.trim().replace(/\s+/g, " ");
+  for (const { l, index, manual, address, buildingName } of [...filled].sort((a, b) => Number(a.l.kind === "branch") - Number(b.l.kind === "branch"))) {
+    const at = (field: string) => `locations.${index}.${field}`;
     const label = l.label?.trim() || undefined;
-    if (address.length > 300) add(`locations.${index}.address`, "Use 300 characters or fewer.");
-    if (label && label.length > 80) add(`locations.${index}.label`, "Use 80 characters or fewer.");
-    const placeId = l.placeId && PLACE_ID.test(l.placeId) ? l.placeId : undefined;
+    const tooLong = (value: string | undefined, max: number, field: string) => {
+      if (value && value.length > max) add(at(field), `Use ${max} characters or fewer.`);
+    };
+    if (!address) add(at(manual ? "street" : "address"), manual ? "Add the street, the area or the city." : "Add the address, or enter it yourself.");
+    tooLong(address, 300, manual ? "street" : "address");
+    tooLong(label, 80, "label");
+    if (manual) {
+      tooLong(manual.street, LOCATION_LIMITS.street, "street");
+      tooLong(manual.area, LOCATION_LIMITS.area, "area");
+      tooLong(manual.city, LOCATION_LIMITS.city, "city");
+    }
+    let building: Building | undefined;
+    if (l.inBuilding) {
+      const floor = one(l.building?.floor);
+      const block = one(l.building?.block);
+      const unit = one(l.building?.unit);
+      if (!buildingName) add(at("buildingName"), "Add the building or mall name, or untick “Inside a building or mall”.");
+      tooLong(buildingName, LOCATION_LIMITS.buildingName, "buildingName");
+      tooLong(floor, LOCATION_LIMITS.floor, "floor");
+      tooLong(block, LOCATION_LIMITS.block, "block");
+      tooLong(unit, LOCATION_LIMITS.unit, "unit");
+      if (buildingName) building = { name: buildingName, ...(floor ? { floor } : {}), ...(block ? { block } : {}), ...(unit ? { unit } : {}) };
+    }
+    const placeId = !manual && l.placeId && PLACE_ID.test(l.placeId) ? l.placeId : undefined;
     const lat = placeId ? num(l.lat, -90, 90) : undefined;
     const lng = placeId ? num(l.lng, -180, 180) : undefined;
-    const loc: Location = { kind: l.kind === "head" ? "head" : "branch", address, ...(label ? { label } : {}), ...(placeId ? { placeId } : {}), ...(lat !== undefined && lng !== undefined ? { lat, lng } : {}) };
+    const manualParts = manual && Object.fromEntries(Object.entries(manual).filter(([, v]) => v));
+    const loc: Location = {
+      kind: l.kind === "head" ? "head" : "branch",
+      address,
+      ...(label ? { label } : {}),
+      ...(placeId ? { placeId } : {}),
+      ...(lat !== undefined && lng !== undefined ? { lat, lng } : {}),
+      ...(building ? { building } : {}),
+      ...(manualParts ? { manual: manualParts } : {}),
+    };
     locations.push({ ...loc, mapsUrl: mapsUrl(loc) });
   }
 
