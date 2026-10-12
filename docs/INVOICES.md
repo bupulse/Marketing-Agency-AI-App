@@ -134,6 +134,8 @@ newest one (an RWF invoice paid at the USD card price). A renewal that matches n
 `paidBy paddle:<transaction id>`, audited as `system:paddle`. Until the RW card prices exist in Paddle, checkout answers
 "Card payments are not ready for your region yet" (`docs/REGIONS.md`).
 
+**Plain Mobile Money payments.** A payment made from the pay screen with a BP- reference (no invoice) that the owner confirms also settles at most one open invoice of that company: same plan and interval, sent before the confirmation, an exact amount and currency first, else the newest (`invoiceForCardPayment`, in the same transaction; `paidBy` = `momo:<reference>`, audited `invoice_paid`). Other plans' invoices, drafts and void ones are untouched, and the due-date reminder stops.
+
 ## Overdue
 
 - **Reminder**: the daily Mobile Money job (`/api/cron/momo-renewals`, 05:41 UTC = 07:41 Kigali) sends one reminder per

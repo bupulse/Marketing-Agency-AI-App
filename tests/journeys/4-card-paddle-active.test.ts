@@ -173,12 +173,8 @@ describe("journey: card payment through Paddle webhooks", () => {
     expect(audits("invoice_paid")).toHaveLength(0);
   });
 
-  // KNOWN GAP (latent, app code not changed): an EAC (or RW card) client checks out with the region's own Paddle price
-  // (PlanRegionPrice.paddleMonthlyPriceId, docs/REGIONS.md "Paddle (TODO)"). The webhook maps a price id to a plan with
-  // planForPriceId (lib/plan-catalog.ts:257), which only knows PlanDefinition ids, so the region price is an
-  // "unknown_price": the route answers 500 on every retry and the paying client stays on the trial / pending demo.
-  // Nothing creates region price ids yet, so it is not live; it will be the moment the Paddle sync for regions lands.
-  it.fails("an EAC client paying with the region's own Paddle price becomes ACTIVE", async () => {
+  // The region's own Paddle price (PlanRegionPrice.paddleMonthlyPriceId, docs/REGIONS.md) maps to its plan too.
+  it("an EAC client paying with the region's own Paddle price becomes ACTIVE", async () => {
     h.db.planRegionPrice.rows.push({ id: "prp_pro_eac", planKey: "PRO", regionKey: "EAC", currency: "USD", monthlyMinor: 4900, yearlyMinor: 49000, cardMonthlyUsdCents: null, cardYearlyUsdCents: null, paddleMonthlyPriceId: "pri_pro_eac_m", paddleYearlyPriceId: null });
     resetRegionPriceCache();
     await ensureAccount(authUser(2, "Kenya") as never);
@@ -186,7 +182,21 @@ describe("journey: card payment through Paddle webhooks", () => {
     expect(c.business.pricingRegion).toBe("EAC");
     const ctx: Ctx = { userId: c.userId, sig: await signCheckoutUser(c.userId) };
     expect((await post(subscriptionEvent(ctx, "subscription.created", "evt_eac", {}, "pri_pro_eac_m"))).status).toBe(200);
-    expect(c.subscription).toMatchObject({ status: "ACTIVE", plan: "PRO", provider: "PADDLE" });
+    expect(c.subscription).toMatchObject({ status: "ACTIVE", plan: "PRO", provider: "PADDLE", providerPriceId: "pri_pro_eac_m" });
+  });
+
+  it("an unknown price is recorded as unmapped with an alert and a 200, never retried forever, and never changes the plan", async () => {
+    const c = await invoicedClient(1, "France");
+    h.sendEmail.mockClear();
+    const body = subscriptionEvent(c.ctx, "subscription.created", "evt_x", {}, "pri_nobody");
+    expect((await post(body)).status).toBe(200);
+    expect(c.subscription).toMatchObject({ status: "PENDING_DEMO", provider: null });
+    expect(h.db.billingEvent.rows[0]).toMatchObject({ type: "subscription.created", error: expect.stringMatching(/^unmapped: price pri_nobody/) });
+    expect(h.db.billingEvent.rows[0].processedAt).toBeInstanceOf(Date);
+    expect(h.logError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ source: "billing.webhook.paddle.unmapped" }));
+    expect((h.sendEmail.mock.calls.at(-1)?.[0] as { subject: string }).subject).toBe("Paddle price not recognised: pri_nobody");
+    expect(await (await post(body)).json()).toEqual({ ok: true, duplicate: true });
+    expect(h.db.billingEvent.rows).toHaveLength(1);
   });
 
   it("is unreachable without the signed checkout user: a forged user id attaches nothing", async () => {

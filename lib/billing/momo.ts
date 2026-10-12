@@ -9,6 +9,7 @@ import { subscriptionEventsFor } from "@/lib/analytics/math";
 import { getSetting } from "@/lib/admin/settings";
 import { getPlan } from "@/lib/plan-catalog";
 import { companyPlans } from "@/lib/region-prices";
+import { invoiceForCardPayment } from "@/lib/invoices/shared";
 import { sendPaymentRejectedEmail, sendPaymentToCheckEmail, sendPlanActiveEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
 import {
@@ -337,6 +338,18 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
           const paid = await tx.invoice.updateMany({ where: { id: payment.invoiceId, status: "sent" }, data: { status: "paid", paidAt: now, paidBy: `manual_payment:${payment.id}` } });
           if (paid.count !== 1) throw new AdminError("conflict", `Invoice ${payment.reference} is no longer open (voided or already paid). Reject this payment and refund it, or look at the invoice first.`);
           await writeAudit(tx, ctx, "invoice_paid", `invoice:${payment.invoiceId}`, { status: "sent" }, { status: "paid", number: payment.reference, paidBy: `manual_payment:${payment.id}`, amountMinor: payment.amountMinor, currency: payment.currency });
+        } else {
+          // A plain payment (the pay screen's BP- reference) for a plan the client was also invoiced for settles at most
+          // one open invoice, by the same rules as a card payment (invoiceForCardPayment): same plan and interval, sent
+          // before the payment, an exact amount and currency first, else the newest. The reminder stops with it.
+          const business = await tx.business.findUnique({ where: { userId: payment.userId }, select: { id: true } });
+          const open = business ? await tx.invoice.findMany({ where: { businessId: business.id, status: "sent" } }) : [];
+          const target = invoiceForCardPayment(open, { amountMinor: payment.amountMinor, currency: payment.currency.toUpperCase(), paidAt: now, origin: "web" }, { plan: plan.key, interval: payment.interval });
+          if (target) {
+            const paidBy = `momo:${payment.reference}`;
+            const settled = await tx.invoice.updateMany({ where: { id: target.id, status: "sent" }, data: { status: "paid", paidAt: now, paidBy } });
+            if (settled.count === 1) await writeAudit(tx, ctx, "invoice_paid", `invoice:${target.id}`, { status: "sent" }, { status: "paid", number: target.number, paidBy, amountMinor: payment.amountMinor, currency: payment.currency });
+          }
         }
         // Guarded on the state we read (ids, status and period end), so a card webhook or another confirmation landing
         // meanwhile is never overwritten blindly.

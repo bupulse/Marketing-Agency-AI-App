@@ -43,6 +43,28 @@ export async function sendPaymentToCheckEmail(p: { reference: string; amountMino
   return results.some(Boolean);
 }
 
+/**
+ * The owner's alert that Paddle sent a subscription for a price id no plan or region price knows. The event is stored
+ * as processed (so Paddle does not retry it forever); the owner maps the price and re-sends it from Paddle.
+ */
+export async function sendUnmappedPriceAlertEmail(p: { priceId: string; subscriptionId: string; eventId: string; userId: string | null }): Promise<boolean> {
+  const admins = adminEmails();
+  if (admins.length === 0) return false;
+  const { html, text } = renderEmail({
+    heading: "A Paddle payment could not be matched to a plan",
+    intro: "Paddle sent a subscription for a price BuPulse does not know, so the client's plan was not changed. Sync the plan or the region price with Paddle (Admin -> Plans / Regions), then re-send this event from the Paddle dashboard (Developer tools -> Events), or change the client's plan by hand.",
+    blocks: [
+      { label: "Price id", value: p.priceId },
+      { label: "Subscription", value: p.subscriptionId },
+      { label: "Event", value: p.eventId },
+      ...(p.userId ? [{ label: "Client", value: p.userId }] : []),
+    ],
+    button: { label: "Open errors", url: `${siteUrl()}/admin/errors` },
+  });
+  const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: `Paddle price not recognised: ${p.priceId}`, html, text })));
+  return results.some(Boolean);
+}
+
 /** The client's confirmation: the plan is on, until when. */
 export async function sendPlanActiveEmail(to: ClientRecipient, p: { planName: string; interval: string; amountMinor: number; currency: string; reference: string; periodEnd: Date }): Promise<boolean> {
   const { html, text } = renderEmail({

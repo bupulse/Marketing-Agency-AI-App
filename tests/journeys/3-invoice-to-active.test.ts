@@ -182,13 +182,9 @@ describe("journey: invoice -> Mobile Money with BP-INV reference -> paid + ACTIV
     expect(h.db.invoice.rows.find((i) => i.id === third.id)).toMatchObject({ status: "paid" });
   });
 
-  // KNOWN GAP (reported, app code not changed): the client pays a plain Mobile Money payment (BP-XXXX, from the pay
-  // screen) for the invoiced plan while the invoice is open, and the owner confirms it. confirmManualPayment
-  // (lib/billing/momo.ts:~330) only marks an invoice paid when the payment itself carries an invoiceId, so the invoice
-  // stays `sent`: still payable (startInvoicePayment would take a second month's money), and the due-date reminder
-  // (sendInvoiceReminders) would chase a client who has already paid. Card payments do settle it
-  // (settleInvoiceFromCardPayment); MoMo does not. Remove `.fails` when it is settled.
-  it.fails("a plain Mobile Money payment for the invoiced plan also settles the open invoice", async () => {
+  // A plain Mobile Money payment (BP-XXXX, from the pay screen) for the invoiced plan settles at most one open invoice,
+  // by the card rules (invoiceForCardPayment); an invoice of another plan, a void or a draft one is never touched.
+  it("a plain Mobile Money payment for the invoiced plan also settles the open invoice", async () => {
     const { userId, businessId } = await afterDemo(1);
     const draft = await inv.createActivationInvoice(CONSOLE, { businessId }, AT);
     await inv.sendInvoice(CONSOLE, draft.id, AT);
@@ -197,6 +193,42 @@ describe("journey: invoice -> Mobile Money with BP-INV reference -> paid + ACTIV
     await momo.submitManualProof(userId, { paymentId: plain.id, transactionId: "MP88112233", payerPhone: "0781234567", network: "MTN" }, AT);
     await momo.confirmManualPayment(CONSOLE, plain.id, AT);
     expect(h.db.subscription.rows[0]).toMatchObject({ status: "ACTIVE", plan: "BUSINESS" });
-    expect(h.db.invoice.rows[0].status).toBe("paid");
+    expect(h.db.invoice.rows[0]).toMatchObject({ status: "paid", paidBy: `momo:${plain.reference}`, paidAt: AT });
+    expect(audits("invoice_paid")).toHaveLength(1);
+    expect(audits("invoice_paid")[0]).toMatchObject({ actor: "admin", target: `invoice:${draft.id}`, after: expect.objectContaining({ paidBy: `momo:${plain.reference}`, amountMinor: 35000 }) });
+    // The payment itself stays a plain one, and the reminder no longer chases the paid invoice.
+    expect(h.db.manualPayment.rows[0].invoiceId).toBeNull();
+    vi.setSystemTime(new Date("2026-10-17T08:00:00Z"));
+    expect(await inv.sendInvoiceReminders(new Date())).toBe(0);
+  });
+
+  it("settles only the matching invoice: not another plan's, not a void or draft one, and only one of two open ones", async () => {
+    const { userId, businessId } = await afterDemo(1);
+    const rows = h.db.invoice.rows;
+    const base = { businessId, status: "sent", currency: "RWF", interval: "MONTH", sentAt: new Date("2026-10-12T08:00:00Z"), taxMinor: 0, dueDate: new Date("2026-10-30T00:00:00Z"), reminderSentAt: null };
+    rows.push(
+      { ...base, id: "i_old", number: "BP-INV-0001", planKey: "BUSINESS", totalMinor: 35000, subtotalMinor: 35000, sentAt: new Date("2026-10-11T08:00:00Z") },
+      { ...base, id: "i_new", number: "BP-INV-0002", planKey: "BUSINESS", totalMinor: 35000, subtotalMinor: 35000 },
+      { ...base, id: "i_other", number: "BP-INV-0003", planKey: "STARTER", totalMinor: 15000, subtotalMinor: 15000 },
+      { ...base, id: "i_void", number: "BP-INV-0004", planKey: "BUSINESS", totalMinor: 35000, subtotalMinor: 35000, status: "void" },
+      { ...base, id: "i_draft", number: "BP-INV-0005", planKey: "BUSINESS", totalMinor: 35000, subtotalMinor: 35000, status: "draft", sentAt: null },
+      { ...base, id: "i_year", number: "BP-INV-0006", planKey: "BUSINESS", totalMinor: 350000, subtotalMinor: 350000, interval: "YEAR" },
+    );
+    const plain = await momo.startManualPayment({ userId, plan: "BUSINESS", interval: "MONTH", now: AT });
+    await momo.submitManualProof(userId, { paymentId: plain.id, transactionId: "MP88112244", payerPhone: "0781234567", network: "MTN" }, AT);
+    await momo.confirmManualPayment(CONSOLE, plain.id, AT);
+    const status = (id: string) => rows.find((i) => i.id === id)!.status;
+    // Two equal exact matches: the newest one is settled, the older stays open.
+    expect(["i_old", "i_new", "i_other", "i_void", "i_draft", "i_year"].map(status)).toEqual(["sent", "paid", "sent", "void", "draft", "sent"]);
+    expect(audits("invoice_paid")).toHaveLength(1);
+  });
+
+  it("a payment confirmed before the invoice was sent does not settle it", async () => {
+    const { userId, businessId } = await afterDemo(1);
+    h.db.invoice.rows.push({ id: "i_later", businessId, number: "BP-INV-0001", status: "sent", currency: "RWF", planKey: "BUSINESS", interval: "MONTH", totalMinor: 35000, subtotalMinor: 35000, taxMinor: 0, sentAt: new Date(AT.getTime() + 3_600_000), reminderSentAt: null });
+    const plain = await momo.startManualPayment({ userId, plan: "BUSINESS", interval: "MONTH", now: AT });
+    await momo.submitManualProof(userId, { paymentId: plain.id, transactionId: "MP88112255", payerPhone: "0781234567", network: "MTN" }, AT);
+    await momo.confirmManualPayment(CONSOLE, plain.id, AT);
+    expect(h.db.invoice.rows[0].status).toBe("sent");
   });
 });

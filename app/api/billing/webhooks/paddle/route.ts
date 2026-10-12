@@ -4,6 +4,7 @@ import { applyProviderSubscription } from "@/lib/billing/apply";
 import { paddle } from "@/lib/billing/paddle";
 import { trackEvent } from "@/lib/analytics/events";
 import { subscriptionEventsFor } from "@/lib/analytics/math";
+import { sendUnmappedPriceAlertEmail } from "@/lib/billing/momo-emails";
 import { prisma } from "@/lib/db";
 import { settleInvoiceFromCardPayment } from "@/lib/invoices/service";
 import { cardPaymentOf } from "@/lib/invoices/shared";
@@ -44,9 +45,13 @@ export async function POST(request: NextRequest) {
       const outcome = await applyProviderSubscription("PADDLE", webhook.subscription);
       if (outcome === "applied") await trackSubscriptionChange(webhook.subscription.providerSubscriptionId, before, webhook.subscription);
       if (outcome === "unknown_price") {
-        // Probably a plan that is not synced with Paddle yet. Don't mark it processed: Paddle
-        // retries, and once the setting is fixed the customer gets their plan.
-        throw new Error(`Unknown Paddle price ${webhook.subscription.providerPriceId}`);
+        // A price no plan or region price knows (a plan not synced with Paddle yet). Retrying cannot help until an
+        // admin maps it, so the event is stored as processed (the replay guard holds), logged as an error and the
+        // admins are emailed; they fix the mapping and re-send the event from Paddle.
+        const priceId = webhook.subscription.providerPriceId;
+        await logError(new Error(`Unknown Paddle price ${priceId}`), { source: "billing.webhook.paddle.unmapped", level: "error", userId: webhook.userId ?? undefined, eventId: webhook.eventId, subscriptionId: webhook.subscription.providerSubscriptionId, priceId });
+        await sendUnmappedPriceAlertEmail({ priceId, subscriptionId: webhook.subscription.providerSubscriptionId, eventId: webhook.eventId, userId: webhook.userId }).catch(() => false);
+        note = `unmapped: price ${priceId} is not one of our plans or region prices; nothing applied`;
       }
       if (outcome === "duplicate") {
         // A second live subscription for an account that already pays: stop it charging again
