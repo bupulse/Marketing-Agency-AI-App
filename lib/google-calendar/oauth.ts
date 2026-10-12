@@ -96,12 +96,12 @@ export class GoogleOAuthError extends Error {
 
 type TokenResponse = { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string; id_token?: string; error?: string; error_description?: string };
 
-async function postForm(url: string, body: Record<string, string>): Promise<{ status: number; json: TokenResponse }> {
+async function postForm(url: string, body: Record<string, string>, timeoutMs = 10_000): Promise<{ status: number; json: TokenResponse }> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(body).toString(),
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const json = (await res.json().catch(() => ({}))) as TokenResponse;
   return { status: res.status, json };
@@ -143,8 +143,8 @@ export async function exchangeGoogleCode(config: GoogleCalendarConfig, code: str
 }
 
 /** A fresh access token from the refresh token. invalid_grant means the owner revoked access (or it expired): reconnect. */
-export async function refreshGoogleToken(config: GoogleCalendarConfig, refreshToken: string, now = Date.now()): Promise<{ accessToken: string; expiresAt: number }> {
-  const { status, json } = await postForm(GOOGLE_TOKEN_URL, { grant_type: "refresh_token", refresh_token: refreshToken, client_id: config.clientId, client_secret: config.clientSecret });
+export async function refreshGoogleToken(config: GoogleCalendarConfig, refreshToken: string, now = Date.now(), timeoutMs = 10_000): Promise<{ accessToken: string; expiresAt: number }> {
+  const { status, json } = await postForm(GOOGLE_TOKEN_URL, { grant_type: "refresh_token", refresh_token: refreshToken, client_id: config.clientId, client_secret: config.clientSecret }, timeoutMs);
   if (json.error === "invalid_grant") throw new GoogleOAuthError("invalid_grant", "Google no longer accepts the saved login. Connect Google Calendar again.");
   if (status !== 200 || !json.access_token) throw new GoogleOAuthError("refresh", `Google token refresh failed (${status}).`);
   return { accessToken: json.access_token, expiresAt: now + (json.expires_in ?? 3600) * 1000 };

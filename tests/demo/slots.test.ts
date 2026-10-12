@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanWindows, freeSlots, groupSlotsByDay, isSlotFree, parseHm, ymdInZone, zoneOffsetMinutes, zonedToUtc, type AvailabilityWindow } from "@/lib/demo/slots";
+import { cleanWindows, freeSlots, groupSlotsByDay, isSlotFree, parseHm, subtractInterval, ymdInZone, zoneOffsetMinutes, zonedToUtc, type AvailabilityWindow } from "@/lib/demo/slots";
 import { buildIcs, escapeIcsText, foldIcsLine, icsParam } from "@/lib/demo/ics";
 
 // Free demo slots from weekly windows in Africa/Kigali (UTC+2, no daylight saving), and the calendar invite text.
@@ -113,5 +113,17 @@ describe("calendar invite", () => {
     const emoji = foldIcsLine(`X:${"a".repeat(71)}😀end`);
     for (const l of emoji.split("\r\n")) expect(l).not.toMatch(/[\uD800-\uDBFF]$/);
     expect(emoji.split("\r\n").map((l, i) => (i === 0 ? l : l.slice(1))).join("")).toBe(`X:${"a".repeat(71)}😀end`);
+  });
+});
+
+describe("subtractInterval", () => {
+  const t = (hm: string) => new Date(`2026-10-13T${hm}:00Z`);
+  const block = (a: string, b: string) => ({ startsAt: t(a), endsAt: t(b) });
+  it("splits a block around the interval, drops covered blocks, keeps the rest", () => {
+    const cut = block("08:00", "08:30");
+    expect(subtractInterval([block("07:00", "09:00")], cut)).toEqual([block("07:00", "08:00"), block("08:30", "09:00")]);
+    expect(subtractInterval([block("07:00", "08:30")], cut)).toEqual([block("07:00", "08:00")]);
+    expect(subtractInterval([block("08:00", "08:30"), block("08:10", "08:20")], cut)).toEqual([]);
+    expect(subtractInterval([block("06:00", "08:00"), block("08:30", "10:00")], cut)).toEqual([block("06:00", "08:00"), block("08:30", "10:00")]);
   });
 });

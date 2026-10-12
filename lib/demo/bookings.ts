@@ -11,10 +11,10 @@ import { getPlan } from "@/lib/plan-catalog";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { companyPlans } from "@/lib/region-prices";
 import { calendarBusy } from "@/lib/google-calendar/calendar";
-import { syncDemoEvent, type DemoEventBusiness } from "@/lib/google-calendar/events";
+import { persistDemoSync, retryPendingDemoSyncs, syncDemoEvent, type DemoEventBusiness } from "@/lib/google-calendar/events";
 import { demoGoogleCalendarUrl } from "./calendar-links";
 import { buildIcs } from "./ics";
-import { BOOKING_WINDOW_DAYS, DEMO_TIME_ZONE, formatSlot, freeSlots, MIN_LEAD_MINUTES, ymdInZone, zonedToUtc, type AvailabilityWindow, type SlotOptions } from "./slots";
+import { BOOKING_WINDOW_DAYS, DEMO_TIME_ZONE, formatSlot, freeSlots, MIN_LEAD_MINUTES, subtractInterval, ymdInZone, zonedToUtc, type AvailabilityWindow, type SlotOptions } from "./slots";
 
 // Booking the demo that comes before the trial (section 12 of docs/RWANDA_LAUNCH_PLAN.md). A new company chooses a
 // plan from its region, picks a free slot from the owner's availability, and both sides get an email with the
@@ -47,24 +47,24 @@ export async function availabilityWindows(): Promise<AvailabilityWindow[]> {
 
 /**
  * Everything freeSlots needs, read once: availability, live bookings and the owner's Google Calendar busy times
- * (cached two minutes; none when not connected or Google fails). `ignoreBookingId` leaves a booking out of the busy
- * list (rescheduling it), and its own Google event with it.
+ * (cached two minutes unless `fresh`; at most 3 s; none when not connected or Google fails). `ignoreBookingId` leaves a
+ * booking out of the busy list (rescheduling it), and its interval is cut out of Google's busy blocks too (its own
+ * event, which Google may have merged with a neighbouring one).
  */
-export async function slotOptions(now: Date, ignoreBookingId?: string | null): Promise<SlotOptions> {
+export async function slotOptions(now: Date, ignoreBookingId?: string | null, opts: { fresh?: boolean } = {}): Promise<SlotOptions> {
   const [windows, settings, busy, google] = await Promise.all([
     availabilityWindows(),
     getSettings(),
     prisma.demoBooking.findMany({ where: { status: "booked", endsAt: { gte: now } }, select: { id: true, startsAt: true, endsAt: true } }),
-    calendarBusy(now, new Date(now.getTime() + (BOOKING_WINDOW_DAYS + 1) * 86_400_000)),
+    calendarBusy(now, new Date(now.getTime() + (BOOKING_WINDOW_DAYS + 1) * 86_400_000), { fresh: opts.fresh }),
   ]);
   const ignored = busy.find((b) => b.id === ignoreBookingId);
-  const sameTimes = (a: { startsAt: Date; endsAt: Date }, b: { startsAt: Date; endsAt: Date }) => a.startsAt.getTime() === b.startsAt.getTime() && a.endsAt.getTime() === b.endsAt.getTime();
   return {
     windows,
     slotMinutes: settings.slotMinutes,
     bufferMinutes: settings.bufferMinutes,
     blockedDates: settings.blockedDates,
-    busy: [...busy.filter((b) => b.id !== ignoreBookingId), ...(ignored ? google.filter((g) => !sameTimes(g, ignored)) : google)],
+    busy: [...busy.filter((b) => b.id !== ignoreBookingId), ...(ignored ? subtractInterval(google, ignored) : google)],
     from: now,
     timeZone: DEMO_TIME_ZONE,
   };
@@ -159,7 +159,8 @@ export async function bookDemo(input: { businessId: string; startsAt: Date; now?
     const today = await prisma.demoBooking.count({ where: { status: "booked", createdAt: { gte: startOfDemoDay(now) } } });
     if (today >= cap) throw new DemoError("not_allowed", "We have reached today's limit for new demo bookings. Please try again tomorrow, or email hello@bupulse.com.");
   }
-  const opts = await slotOptions(now, existing?.id);
+  // The final check asks Google afresh (still 3 s at most, availability alone if it fails), not the page's cached list.
+  const opts = await slotOptions(now, existing?.id, { fresh: true });
   const slotMinutes = opts.slotMinutes ?? 30;
   if (!freeSlots(opts).some((d) => d.getTime() === input.startsAt.getTime())) throw new DemoError("conflict", "That time is no longer free. Pick another one.");
   const settings = await getSettings();
@@ -182,17 +183,14 @@ export async function bookDemo(input: { businessId: string; startsAt: Date; now?
     if (current && !existing) return { booking: current, rescheduled: false };
     throw new DemoError("conflict", "Someone just took that time. Pick another one.");
   }
-  // The Google event (Meet link, Google's invite to the client). On failure or without a connection, nothing changes.
+  // The Google event (Meet link, Google's invite to the client). Without a connection nothing changes; a failure keeps
+  // the reusable link for now and marks the booking so the event is made (or moved) on a retry.
   const plan = await getPlan(booking.planKey);
   const synced = await syncDemoEvent(existing ? "rescheduled" : "booked", booking, eventBusiness(business), plan?.name ?? null);
-  if (synced) {
-    booking = await prisma.demoBooking.update({
-      where: { id: booking.id },
-      data: { googleEventId: synced.googleEventId, meetLink: synced.meetLink ?? booking.meetLink, ...(synced.meetLink ? { meetingLink: synced.meetLink } : {}) },
-    });
-  }
-  trackEvent(EVENT_NAMES.demoBooked, { userId: business.userId, businessId: business.id, props: { plan: sub.chosenPlan, rescheduled: Boolean(existing), google: Boolean(synced) } });
+  booking = ((await persistDemoSync(booking, synced)) as BookingView | null) ?? booking;
+  trackEvent(EVENT_NAMES.demoBooked, { userId: business.userId, businessId: business.id, props: { plan: sub.chosenPlan, rescheduled: Boolean(existing), google: synced.status } });
   await sendBookingEmails(existing ? "rescheduled" : "booked", booking, { name: business.name, email: business.user.email, contact: business.user.name });
+  await retryPendingDemoSyncs({ limit: 3 });
   return { booking, rescheduled: Boolean(existing) };
 }
 
@@ -209,7 +207,8 @@ export async function cancelDemo(input: { businessId: string; now?: Date }): Pro
   if (count !== 1) throw new DemoError("conflict", "That demo was already changed. Reload the page.");
   const cancelled = { ...existing, status: "cancelled", sequence: existing.sequence + 1 };
   // Google tells the client too (sendUpdates=all); the event id stays on the row as a record.
-  await syncDemoEvent("cancelled", cancelled, eventBusiness(business), null);
+  await persistDemoSync(cancelled, await syncDemoEvent("cancelled", cancelled, eventBusiness(business), null));
+  await retryPendingDemoSyncs({ limit: 3 });
   await sendBookingEmails("cancelled", cancelled, { name: business.name, email: business.user.email, contact: business.user.name });
   return cancelled;
 }

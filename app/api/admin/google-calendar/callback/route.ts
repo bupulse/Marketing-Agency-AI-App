@@ -39,7 +39,8 @@ export async function GET(request: NextRequest) {
     const grant = await exchangeGoogleCode(config, code, opened.data.verifier);
     const ip = request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
     const saved = await saveGoogleConnection(consoleContext(ip), grant);
-    return done("notice", `Google Calendar connected${saved.email ? ` (${saved.email})` : ""}. New demo bookings get a Google Meet link and an event in calendar "${saved.calendarId}".`);
+    const moved = saved.accountChanged ? " This is a different Google account, so the calendar is back to \"primary\"; events made in the old account stay there." : "";
+    return done("notice", `Google Calendar connected${saved.email ? ` (${saved.email})` : ""}. New demo bookings get a Google Meet link and an event in calendar "${saved.calendarId}".${moved}`);
   } catch (error) {
     if (error instanceof GoogleOAuthError && (error.code === "scopes" || error.code === "no_refresh_token")) return done("error", MESSAGES[error.code]);
     await logError(error, { source: "google-calendar.callback" });

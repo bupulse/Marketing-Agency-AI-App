@@ -18,9 +18,10 @@ vi.mock("@/lib/publishing/email", async (orig) => ({ ...(await orig<typeof impor
 vi.mock("@/lib/analytics/events", () => ({ EVENT_NAMES: { demoBooked: "demo_booked", trialStarted: "trial_started" }, trackEvent: vi.fn() }));
 
 import { availableSlots, bookDemo, cancelDemo, choosePlan } from "@/lib/demo/bookings";
-import { setDemoStatus } from "@/lib/admin/demos";
+import { retryDemoCalendar, setDemoStatus } from "@/lib/admin/demos";
 import { encrypt } from "@/lib/crypto";
-import { CONNECTION_KEY, resetGoogleCalendarCache } from "@/lib/google-calendar/calendar";
+import { calendarBusy, CONNECTION_KEY, googleCalendarStatus, resetGoogleCalendarCache, saveGoogleConnection, SLOT_TIMEOUT_MS } from "@/lib/google-calendar/calendar";
+import { retryPendingDemoSyncs } from "@/lib/google-calendar/events";
 import { EVENTS_SCOPE, FREEBUSY_SCOPE } from "@/lib/google-calendar/oauth";
 import { resetPlanCache } from "@/lib/plan-catalog";
 import { resetRegionCache } from "@/lib/region";
@@ -134,24 +135,86 @@ describe("free slots", () => {
     resetGoogleCalendarCache();
     google.on("POST https://oauth2.googleapis.com/token", () => ({ status: 400, json: { error: "invalid_grant" } }));
     expect(await slotIsos()).toEqual(plain);
-    expect(h.db.adminSetting.rows.find((r) => r.key === CONNECTION_KEY)!.value.lastError).toMatch(/Connect Google Calendar again/);
+    expect(h.db.adminSetting.rows.find((r) => r.key === CONNECTION_KEY)!.value.lastError).toMatch(/Reconnect Google Calendar/);
   });
 
-  it("do not count the booking's own Google event against it when rescheduling", async () => {
+  it("cut the booking's own interval out of Google's merged busy block when rescheduling", async () => {
     await connect();
     const businessId = await company();
     const { booking } = await bookDemo({ businessId, startsAt: TUE_10, now: NOW });
-    // Google now reports the demo event itself as busy.
-    google.on(FREEBUSY, () => ({ json: { calendars: { primary: { busy: [{ start: iso(booking.startsAt), end: iso(booking.endsAt) }] } } } }));
+    // Google merges another event (09:00-10:00 Kigali) with the demo event itself (10:00-10:30) into one block.
+    google.on(FREEBUSY, () => ({ json: { calendars: { primary: { busy: [{ start: "2026-10-13T07:00:00Z", end: iso(booking.endsAt) }] } } } }));
     resetGoogleCalendarCache("busy");
     expect(await slotIsos(NOW)).not.toContain("2026-10-13T08:30:00.000Z");
-    expect(await slotIsos(NOW, booking.id)).toContain("2026-10-13T08:30:00.000Z");
-    const moved = await bookDemo({ businessId, startsAt: new Date("2026-10-13T08:30:00Z"), now: NOW });
-    expect(moved.rescheduled).toBe(true);
+    // Rescheduling: 10:00-10:30 is cut out, 09:00-10:00 stays busy, so 10:30 is free again but 10:00 is not (buffer).
+    const moving = await slotIsos(NOW, booking.id);
+    expect(moving).toContain("2026-10-13T08:30:00.000Z");
+    expect(moving).not.toContain("2026-10-13T08:00:00.000Z");
+    expect((await bookDemo({ businessId, startsAt: new Date("2026-10-13T08:30:00Z"), now: NOW })).rescheduled).toBe(true);
+  });
+
+  it("are not asked again for a minute after Google failed (busy times or sign-in), and wait at most 3 s on the slot path", async () => {
+    await connect();
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    const t0 = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(t0);
+    google.on(FREEBUSY, () => ({ status: 503, json: { error: { message: "unavailable" } } }));
+    await slotIsos();
+    expect(timeout).toHaveBeenCalledWith(SLOT_TIMEOUT_MS);
+    expect(SLOT_TIMEOUT_MS).toBe(3000);
+    await slotIsos();
+    clock.mockReturnValue(t0 + 59_000);
+    await slotIsos();
+    expect(google.to(FREEBUSY)).toHaveLength(1);
+    clock.mockReturnValue(t0 + 61_000);
+    await slotIsos();
+    expect(google.to(FREEBUSY)).toHaveLength(2);
+
+    // A failed token refresh (not invalid_grant) is left alone for a minute too.
+    resetGoogleCalendarCache();
+    const tokensBefore = google.to("POST https://oauth2.googleapis.com/token").length;
+    google.on("POST https://oauth2.googleapis.com/token", () => ({ status: 500, json: { error: "internal" } }));
+    await calendarBusy(NOW, new Date(NOW.getTime() + 86_400_000));
+    clock.mockReturnValue(t0 + 61_000 + 30_000);
+    await calendarBusy(NOW, new Date(NOW.getTime() + 86_400_000));
+    expect(google.to("POST https://oauth2.googleapis.com/token")).toHaveLength(tokensBefore + 1);
+  });
+
+  it("stop calling Google after invalid_grant until the owner reconnects", async () => {
+    await connect();
+    google.on("POST https://oauth2.googleapis.com/token", () => ({ status: 400, json: { error: "invalid_grant" } }));
+    await slotIsos();
+    expect((await googleCalendarStatus()).needsReconnect).toBe(true);
+    resetGoogleCalendarCache(); // even with every cache cleared
+    const before = google.calls.length;
+    await slotIsos();
+    const businessId = await company();
+    const { booking } = await bookDemo({ businessId, startsAt: TUE_10, now: NOW });
+    expect(google.calls.length).toBe(before);
+    // The booking went through with the reusable link and waits for the calendar.
+    expect(booking).toMatchObject({ meetingLink: REUSABLE, googleSyncPending: true, googleSyncError: expect.stringMatching(/reconnecting/) });
+
+    // Reconnecting (same account) clears the state; the pending event is then made by the retry.
+    google.on("POST https://oauth2.googleapis.com/token", () => ({ json: { access_token: "ya29.new", expires_in: 3600 } }));
+    await saveGoogleConnection(consoleContext(), { refreshToken: "1//new", accessToken: "ya29.new", expiresAt: Date.now() + 3_600_000, scopes: [EVENTS_SCOPE, FREEBUSY_SCOPE], email: "demos@bupulse.com" });
+    expect((await googleCalendarStatus()).needsReconnect).toBe(false);
+    h.db.demoBooking.rows[0].googleSyncAttemptAt = new Date(Date.now() - 120_000);
+    expect(await retryPendingDemoSyncs()).toEqual({ tried: 1, fixed: 1, failed: 0 });
+    expect(h.db.demoBooking.rows[0]).toMatchObject({ googleEventId: "evt1", googleSyncPending: false });
   });
 });
 
 describe("booking with Google Calendar", () => {
+  it("checks the chosen slot against Google afresh, not the page's cached busy times", async () => {
+    await connect();
+    const businessId = await company();
+    expect(await slotIsos()).toContain(iso(TUE_10)); // cached: Tuesday 10:00 free
+    google.on(FREEBUSY, () => ({ json: { calendars: { primary: { busy: [{ start: iso(TUE_10), end: "2026-10-13T09:00:00Z" }] } } } }));
+    await expect(bookDemo({ businessId, startsAt: TUE_10, now: NOW })).rejects.toMatchObject({ code: "conflict" });
+    expect(google.to(FREEBUSY)).toHaveLength(2);
+    expect(google.to(EVENTS)).toHaveLength(0);
+  });
+
   it("creates the event with a Meet link and Google's invite, and the emails carry the Meet link and calendar links", async () => {
     await connect();
     const businessId = await company();
@@ -270,5 +333,81 @@ describe("booking with Google Calendar", () => {
     await bookDemo({ businessId, startsAt: new Date("2026-10-14T09:00:00Z"), now: NOW });
     expect(google.calls).toHaveLength(0);
     expect(h.db.demoBooking.rows.at(-1)).toMatchObject({ meetingLink: REUSABLE });
+  });
+});
+
+describe("pending calendar changes", () => {
+  const ago = (ms: number) => new Date(Date.now() - ms);
+
+  it("a failed cancel is marked on the booking, then retried by the next booking request until Google has it", async () => {
+    await connect();
+    const businessId = await company();
+    await bookDemo({ businessId, startsAt: TUE_10, now: NOW });
+    google.on(DELETE, () => ({ status: 500, json: { error: { message: "backend error" } } }));
+    const cancelled = await cancelDemo({ businessId, now: NOW });
+    expect(cancelled.status).toBe("cancelled");
+    expect(h.db.demoBooking.rows[0]).toMatchObject({ status: "cancelled", googleSyncPending: true, googleSyncError: expect.stringMatching(/DELETE calendars failed \(500/) });
+
+    // Google is back; the next booking-related request (here: the company books a new time) retries the old row.
+    google.on(DELETE, () => ({ status: 204 }));
+    h.db.demoBooking.rows[0].googleSyncAttemptAt = ago(120_000);
+    await bookDemo({ businessId, startsAt: new Date("2026-10-14T09:00:00Z"), now: NOW });
+    expect(google.to(DELETE)).toHaveLength(2);
+    expect(h.db.demoBooking.rows[0]).toMatchObject({ googleSyncPending: false, googleSyncError: null });
+  });
+
+  it("a failed move is retried with the booking's current time (cron), spaced a minute apart", async () => {
+    await connect();
+    const businessId = await company();
+    await bookDemo({ businessId, startsAt: TUE_10, now: NOW });
+    google.on(PATCH, () => ({ status: 503, json: { error: { message: "unavailable" } } }));
+    const moved = await bookDemo({ businessId, startsAt: new Date("2026-10-14T09:00:00Z"), now: NOW });
+    expect(moved.booking).toMatchObject({ googleEventId: "evt1", googleSyncPending: true, meetingLink: "https://meet.google.com/abc-defg-hij" });
+    expect(await retryPendingDemoSyncs()).toEqual({ tried: 0, fixed: 0, failed: 0 }); // tried just now
+
+    google.on(PATCH, () => ({ json: { id: "evt1", hangoutLink: "https://meet.google.com/abc-defg-hij" } }));
+    h.db.demoBooking.rows[0].googleSyncAttemptAt = ago(120_000);
+    expect(await retryPendingDemoSyncs()).toEqual({ tried: 1, fixed: 1, failed: 0 });
+    expect(google.to(PATCH).at(-1)!.body).toMatchObject({ start: { dateTime: "2026-10-14T09:00:00.000Z" } });
+    expect(h.db.demoBooking.rows[0].googleSyncPending).toBe(false);
+  });
+
+  it("a failed create is retried without a new Meet link, pointing at the link the client already has", async () => {
+    await connect();
+    google.on(EVENTS, () => ({ status: 500, json: { error: { message: "backend error" } } }));
+    const businessId = await company();
+    await bookDemo({ businessId, startsAt: TUE_10, now: NOW });
+    expect(h.db.demoBooking.rows[0]).toMatchObject({ googleSyncPending: true, meetingLink: REUSABLE });
+    google.on(EVENTS, () => ({ json: { id: "evt9" } }));
+    h.db.demoBooking.rows[0].googleSyncAttemptAt = ago(120_000);
+    await retryPendingDemoSyncs();
+    const body = google.to(EVENTS).at(-1)!.body as Record<string, unknown>;
+    expect(body.conferenceData).toBeUndefined();
+    expect(body.location).toBe(REUSABLE);
+    expect(h.db.demoBooking.rows[0]).toMatchObject({ googleEventId: "evt9", googleSyncPending: false, meetingLink: REUSABLE });
+  });
+
+  it("Admin -> Demos Retry pushes it now, audited, and says when Google still refuses", async () => {
+    await connect();
+    const businessId = await company();
+    const { booking } = await bookDemo({ businessId, startsAt: TUE_10, now: NOW });
+    google.on(DELETE, () => ({ status: 500, json: { error: { message: "backend error" } } }));
+    await setDemoStatus(consoleContext(), { id: booking.id, status: "cancelled" });
+    expect(h.db.demoBooking.rows[0].googleSyncPending).toBe(true);
+    await expect(retryDemoCalendar(consoleContext(), booking.id)).rejects.toThrow(/still not updated: .*500/);
+    google.on(DELETE, () => ({ status: 204 }));
+    expect(await retryDemoCalendar(consoleContext(), booking.id)).toEqual({ ok: true, already: false });
+    expect(await retryDemoCalendar(consoleContext(), booking.id)).toEqual({ ok: true, already: true });
+    expect(h.db.auditLog.rows.filter((r) => r.action === "retry_demo_calendar").map((r) => r.after.ok)).toEqual([false, true]);
+  });
+
+  it("disconnecting clears the marks (nothing will sync them)", async () => {
+    await connect();
+    google.on(EVENTS, () => ({ status: 500, json: { error: { message: "backend error" } } }));
+    const businessId = await company();
+    await bookDemo({ businessId, startsAt: TUE_10, now: NOW });
+    const { disconnectGoogleCalendar } = await import("@/lib/google-calendar/calendar");
+    await disconnectGoogleCalendar(consoleContext());
+    expect(h.db.demoBooking.rows[0].googleSyncPending).toBe(false);
   });
 });

@@ -5,7 +5,7 @@ import { siteUrl } from "@/lib/auth/site-url";
 import { isBookingStatus, type BookingStatus } from "@/lib/demo/bookings";
 import { formatSlot } from "@/lib/demo/slots";
 import { logError } from "@/lib/errors";
-import { syncDemoEvent } from "@/lib/google-calendar/events";
+import { persistDemoSync, retryDemoSync, syncDemoEvent } from "@/lib/google-calendar/events";
 import { getPlan, getTrialPlan } from "@/lib/plan-catalog";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { companyPlans } from "@/lib/region-prices";
@@ -31,7 +31,7 @@ export async function listDemos(opts: DemoListFilter = {}, now = new Date()) {
     orderBy: { startsAt: when === "past" ? "desc" : "asc" },
     take: Math.min(Math.max(opts.limit ?? 100, 1), 500),
     select: {
-      id: true, businessId: true, planKey: true, startsAt: true, endsAt: true, status: true, notes: true, meetingLink: true, createdAt: true,
+      id: true, businessId: true, planKey: true, startsAt: true, endsAt: true, status: true, notes: true, meetingLink: true, createdAt: true, googleSyncPending: true, googleSyncError: true,
       business: { select: { name: true, country: true, pricingRegion: true, user: { select: { id: true, email: true, name: true, subscription: { select: { status: true, chosenPlan: true, trialEndsAt: true } } } } } },
     },
   });
@@ -51,6 +51,8 @@ export async function listDemos(opts: DemoListFilter = {}, now = new Date()) {
     status: r.status as BookingStatus,
     notes: r.notes,
     meetingLink: r.meetingLink,
+    googleSyncPending: r.googleSyncPending,
+    googleSyncError: r.googleSyncError,
     subscriptionStatus: r.business.user.subscription?.status ?? null,
     trialEndsAt: r.business.user.subscription?.trialEndsAt ?? null,
     createdAt: r.createdAt,
@@ -69,9 +71,21 @@ export async function setDemoStatus(ctx: AdminContext, input: { id: string; stat
     await writeAudit(tx, ctx, "update_demo", `business:${booking.businessId}`, { demoId: booking.id, status: booking.status, notes: booking.notes }, { demoId: booking.id, status: input.status, notes });
   });
   if (input.status === "cancelled" && booking.status === "booked" && booking.googleEventId) {
-    await syncDemoEvent("cancelled", booking, { name: booking.business.name, email: booking.business.user.email, contact: booking.business.user.name }, null);
+    await persistDemoSync(booking, await syncDemoEvent("cancelled", booking, { name: booking.business.name, email: booking.business.user.email, contact: booking.business.user.name }, null));
   }
   return { id: booking.id, status: input.status, changed: true };
+}
+
+/** Admin -> Demos "Retry": pushes a booking's pending change to its Google event now. Audited on the company. */
+export async function retryDemoCalendar(ctx: AdminContext, id: string) {
+  const booking = await prisma.demoBooking.findUnique({ where: { id }, select: { id: true, businessId: true, googleSyncPending: true, googleSyncError: true } });
+  if (!booking) throw new AdminError("not_found", "No demo with that id.");
+  if (!booking.googleSyncPending) return { ok: true, already: true };
+  const result = await retryDemoSync(booking.id);
+  const ok = result.status !== "failed";
+  await writeAudit(prisma, ctx, "retry_demo_calendar", `business:${booking.businessId}`, { demoId: booking.id, error: booking.googleSyncError }, { demoId: booking.id, ok, ...(result.status === "failed" ? { error: result.error } : {}) });
+  if (result.status === "failed") throw new AdminError("unavailable", `Google Calendar is still not updated: ${result.error}`);
+  return { ok: true, already: false };
 }
 
 /**

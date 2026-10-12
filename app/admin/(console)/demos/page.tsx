@@ -3,12 +3,13 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { Empty, Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
-import { Badge, Field, Select, Textarea, type BadgeTone } from "@/components/ui";
+import { Badge, Button, Field, Select, Textarea, type BadgeTone } from "@/components/ui";
 import { listDemos } from "@/lib/admin/demos";
 import { param } from "@/lib/admin/format";
 import { getSettings } from "@/lib/admin/settings";
+import { googleCalendarStatus } from "@/lib/google-calendar/calendar";
 import { cn } from "@/lib/cn";
-import { demoStatusAction, startTrialAction } from "./actions";
+import { demoStatusAction, retryDemoCalendarAction, startTrialAction } from "./actions";
 
 export const metadata = { title: "Demos" };
 export const dynamic = "force-dynamic";
@@ -33,7 +34,7 @@ export default async function DemosPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const when = (["upcoming", "past", "all"] as const).find((w) => w === param(sp.when)) ?? "upcoming";
   const status = param(sp.status);
-  const [demos, settings] = await Promise.all([listDemos({ when, status: status || undefined }), getSettings()]);
+  const [demos, settings, google] = await Promise.all([listDemos({ when, status: status || undefined }), getSettings(), googleCalendarStatus()]);
   const here = `/admin/demos?${new URLSearchParams({ when, ...(status && { status }) })}`;
   const qs = (w: string) => `/admin/demos?${new URLSearchParams({ when: w, ...(status && { status }) })}`;
 
@@ -45,6 +46,12 @@ export default async function DemosPage({ searchParams }: { searchParams: Promis
       />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
+      {google.needsReconnect && (
+        <p role="alert" className={notice.bad}>
+          <strong>Reconnect Google Calendar.</strong> Google no longer accepts the saved login, so new bookings use the meeting link and .ics invites and calendar changes wait.{" "}
+          <Link href="/admin/settings#google-calendar" className="underline">Reconnect Google Calendar</Link>
+        </p>
+      )}
       {!settings.meetingLink && (
         <p role="status" className="rounded-2xl bg-soft px-4 py-3 text-sm">
           <strong>No meeting link yet.</strong> Add your reusable Google Meet link in <Link href="/admin/settings" className="underline">Settings</Link> so invites carry it.
@@ -104,6 +111,14 @@ export default async function DemosPage({ searchParams }: { searchParams: Promis
                     <Td>
                       <Badge tone={s.tone}>{s.label}</Badge>
                       {d.notes && <span className="mt-1 block max-w-[16rem] truncate text-xs text-muted" title={d.notes}>{d.notes}</span>}
+                      {d.googleSyncPending && (
+                        <form action={retryDemoCalendarAction} className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <input type="hidden" name="id" value={d.id} />
+                          <input type="hidden" name="back" value={here} />
+                          <span className="text-xs font-medium text-danger" title={d.googleSyncError ?? undefined}>Calendar not updated</span>
+                          <Button type="submit" size="sm" variant="outline">Retry</Button>
+                        </form>
+                      )}
                     </Td>
                     <Td>{sub && <Badge tone={sub.tone}>{sub.label}</Badge>}</Td>
                     <Td>

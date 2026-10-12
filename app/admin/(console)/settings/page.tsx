@@ -99,7 +99,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <Panel
           title="Google Calendar"
           description="Connect the calendar you take demos in: busy times there are taken out of the slots clients see, and every booking becomes an event with its own Google Meet link and Google's invite to the client. Without it, bookings use the meeting link above and .ics invites."
-          action={google.connected ? <Badge tone="success">Connected</Badge> : <Badge tone="neutral">Not connected</Badge>}
+          action={google.needsReconnect ? <Badge tone="danger">Reconnect needed</Badge> : google.connected ? <Badge tone="success">Connected</Badge> : <Badge tone="neutral">Not connected</Badge>}
         >
           {!google.configured ? (
             <div className="flex flex-col gap-2 text-sm">
@@ -129,7 +129,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                 Connected as <strong>{google.email ?? "an unknown account"}</strong>
                 {google.connectedAt ? <span className="text-muted"> since {dateTime(google.connectedAt)}</span> : null}.
               </p>
-              {google.lastError && (
+              {google.needsReconnect && (
+                <div role="alert" className={`${notice.bad} flex flex-wrap items-center gap-3`}>
+                  <span>Google no longer accepts the saved login (access revoked or expired). Until you reconnect, BuPulse does not call Google: slots use your availability, bookings use the meeting link and .ics invites, and calendar changes wait (Demos shows them).</span>
+                  <a href="/api/admin/google-calendar/connect" className={buttonClasses({ size: "sm" })}>Reconnect Google Calendar</a>
+                </div>
+              )}
+              {google.lastError && !google.needsReconnect && (
                 <p role="alert" className={notice.bad}>
                   Last problem{google.lastErrorAt ? ` (${dateTime(google.lastErrorAt)})` : ""}: {google.lastError} Bookings fall back to the meeting link and .ics invites until it works again; Test shows whether it does.
                 </p>

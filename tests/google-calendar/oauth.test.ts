@@ -19,7 +19,7 @@ import { GET as connect } from "@/app/api/admin/google-calendar/connect/route";
 import { GET as callback } from "@/app/api/admin/google-calendar/callback/route";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { codeChallenge } from "@/lib/canva/pkce";
-import { CONNECTION_KEY, disconnectGoogleCalendar, googleCalendarStatus, resetGoogleCalendarCache, setGoogleCalendarId } from "@/lib/google-calendar/calendar";
+import { CONNECTION_KEY, disconnectGoogleCalendar, googleCalendarStatus, resetGoogleCalendarCache, saveGoogleConnection, setGoogleCalendarId } from "@/lib/google-calendar/calendar";
 import { EVENTS_SCOPE, FREEBUSY_SCOPE, idTokenEmail, openGoogleState, sealGoogleState, STATE_COOKIE } from "@/lib/google-calendar/oauth";
 import { consoleContext } from "@/lib/admin/types";
 
@@ -188,5 +188,14 @@ describe("disconnect and calendar choice", () => {
     expect(h.db.auditLog.rows[0]).toMatchObject({ action: "update_setting", before: { calendarId: "primary" }, after: { calendarId: "team@group.calendar.google.com" } });
     await expect(setGoogleCalendarId(consoleContext(), "a b")).rejects.toThrow(/calendar id/);
     await expect(setGoogleCalendarId(consoleContext(), "../x")).rejects.toThrow(/calendar id/);
+  });
+
+  it("keeps the chosen calendar when the same account reconnects, and goes back to primary for another account", async () => {
+    await connected("team@group.calendar.google.com");
+    const grant = (email: string) => ({ refreshToken: "1//r", accessToken: "a", expiresAt: Date.now() + 3_600_000, scopes: [EVENTS_SCOPE, FREEBUSY_SCOPE], email });
+    expect(await saveGoogleConnection(consoleContext(), grant("demos@bupulse.com"))).toEqual({ email: "demos@bupulse.com", calendarId: "team@group.calendar.google.com", accountChanged: false });
+    expect(await saveGoogleConnection(consoleContext(), grant("owner@bupulse.com"))).toEqual({ email: "owner@bupulse.com", calendarId: "primary", accountChanged: true });
+    expect(h.db.auditLog.rows.at(-1)).toMatchObject({ action: "connect_google_calendar", before: { email: "demos@bupulse.com" }, after: { calendarId: "primary", accountChanged: true } });
+    expect((await googleCalendarStatus()).needsReconnect).toBe(false);
   });
 });
