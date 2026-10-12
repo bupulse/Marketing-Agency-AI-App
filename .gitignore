@@ -67,3 +67,7 @@ next-env.d.ts
 /Demo/capture/assets/
 /Demo/capture/site/
 /Demo/studio/public/screens/
+
+# local-only scripts (may hold credentials)
+scripts/local/
+TEST_ACCOUNTS.md
