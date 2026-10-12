@@ -45,7 +45,7 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
   const photoSince = new Date(now.getTime() - 60 * DAY_MS);
 
   const today = localDateISO(now, timeZone);
-  const [connections, products, campaigns, postedByProduct, postedByCampaign, assets, recentDesigns, recentPosts, existing, results] = await Promise.all([
+  const [connections, products, campaigns, postedByProduct, postedByCampaign, assets, recentDesigns, recentPosts, existing, results, faqs] = await Promise.all([
     prisma.connection.findMany({ where: { businessId, kind: "SOCIAL", id: { in: config.connectionIds } }, orderBy: { createdAt: "asc" } }),
     // Active products and campaigns only: drafts and archived ones are not posted about.
     prisma.product.findMany({ where: { businessId, status: "ACTIVE" }, orderBy: { createdAt: "desc" }, take: 30, include: { photos: ALBUM } }),
@@ -75,6 +75,8 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
       select: { connectionId: true, scheduledAt: true },
     }),
     loadPostResults(businessId),
+    // FAQs live in the Knowledge base now (KnowledgeFaq, in the owner's order).
+    prisma.knowledgeFaq.findMany({ where: { businessId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], take: 50, select: { question: true, answer: true } }),
   ]);
 
   const posted = new Map<string | null, { _count: { _all: number }; _max: { scheduledAt: Date | null } }>([...postedByProduct.map((g) => [g.productId, g] as const), ...postedByCampaign.map((g) => [g.campaignId, g] as const)]);
@@ -135,7 +137,7 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
     config,
     connections: connections.flatMap((c) => (isNetwork(c.provider) && accountUsable(c) ? [{ id: c.id, network: c.provider }] : [])),
     projects: planProjects,
-    faqs: knowledge.faqs,
+    faqs,
     hasHours: !!(knowledge.hours || knowledge.openingHours.length),
     holidays: holidaysBetween(business.country, dates[0], dates[6], { skipReligious: config.skipReligious }),
     photos: assets.map((a) => ({ id: a.id, path: a.path, folderId: a.folderId, mimeType: a.mimeType, recentUses: uses.get(a.path) ?? 0 })),

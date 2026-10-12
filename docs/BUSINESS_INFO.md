@@ -5,7 +5,8 @@ info that the website chat answers from.
 
 **Required** (owner decision, 12 Oct 2026): at least one set of opening hours with a day (or open 24 hours), the head
 office address (searched or entered by hand) and at least one WhatsApp, Phone call or WhatsApp + calls contact.
-Email, website, socials, branches, the notes and FAQs stay optional. `validateKnowledge(..., { requireEssentials:
+Email, website, socials, branches and the notes stay optional. (FAQs moved to Knowledge base -> FAQs & policies on
+12 October 2026, `docs/KNOWLEDGE_BASE.md`; the card links there and keeps the stored `faqs` list untouched.) `validateKnowledge(..., { requireEssentials:
 true })` checks this in the form and in `saveKnowledge` (errors `openingHours.form`, `locations.0.address` or
 `.street`, `contacts.form`), and `finishOnboarding` refuses to finish without them. Companies onboarded before are not
 locked out: the dashboard and the Brand page show a reminder (`EssentialsBanner`, "Add your opening hours, location

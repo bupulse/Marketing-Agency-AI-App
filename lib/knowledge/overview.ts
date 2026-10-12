@@ -4,9 +4,14 @@ import { prisma } from "@/lib/db";
 import { readKnowledge } from "@/lib/brand/schemas";
 import { missingEssentials } from "@/lib/business-info/facts";
 import { isHexColor } from "@/lib/color-contrast";
+import { audienceCompleteness } from "./audience";
 import { campaignPhase, dayString } from "./campaigns";
+import { competitorsCompleteness, readPositioning } from "./competitors";
+import { interviewCompleteness, readMarketingProfile } from "./interview";
+import { faqsCompleteness, readPolicies } from "./policies";
 import { productReadiness } from "./products";
 import { profileCompleteness } from "./profile";
+import { reviewsCompleteness } from "./reviews";
 import type { SectionKey, SectionProgress } from "./sections";
 
 type BusinessRow = {
@@ -20,13 +25,16 @@ type BusinessRow = {
   logoUrl: string | null;
   brandColors: string[];
   tone: string | null;
+  positioning: unknown;
+  policies: unknown;
+  marketingProfile: unknown;
 };
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** Each ready section's percentage (null when a percentage would mean nothing) and a one-line summary. */
 export async function knowledgeProgress(business: BusinessRow, today: string): Promise<Partial<Record<SectionKey, SectionProgress>>> {
-  const [products, campaigns, channels] = await Promise.all([
+  const [products, campaigns, channels, personas, competitors, faqs, reviews, permitted, interview] = await Promise.all([
     prisma.product.findMany({
       where: { businessId: business.id, status: { not: "ARCHIVED" } },
       select: { summary: true, usps: true, priceModel: true, priceAmount: true, priceNote: true, _count: { select: { photos: true } } },
@@ -34,6 +42,12 @@ export async function knowledgeProgress(business: BusinessRow, today: string): P
     }),
     prisma.campaign.findMany({ where: { businessId: business.id, status: "ACTIVE" }, select: { startsAt: true, endsAt: true }, take: 300 }),
     prisma.connection.count({ where: { businessId: business.id, kind: "SOCIAL" } }),
+    prisma.persona.findMany({ where: { businessId: business.id }, select: { needs: true, pains: true, triggers: true, channels: true }, take: 50 }),
+    prisma.competitor.count({ where: { businessId: business.id } }),
+    prisma.knowledgeFaq.count({ where: { businessId: business.id } }),
+    prisma.testimonial.count({ where: { businessId: business.id } }),
+    prisma.testimonial.count({ where: { businessId: business.id, canPublish: true } }),
+    prisma.marketingInterview.findUnique({ where: { businessId: business.id }, select: { status: true, steps: true } }),
   ]);
 
   const knowledge = readKnowledge(business.knowledge);
@@ -63,5 +77,10 @@ export async function knowledgeProgress(business: BusinessRow, today: string): P
     },
     brand: { percent: Math.round((brand.filter(Boolean).length / 3) * 100), summary: brand.every(Boolean) ? "Logo, colours and voice set" : `Add your ${[!brand[0] && "logo", !brand[1] && "colours", !brand[2] && "voice"].filter(Boolean).join(", ")}` },
     channels: { percent: channels > 0 ? 100 : 0, summary: channels ? `${plural(channels, "account")} connected` : "Connect a social account" },
+    audience: audienceCompleteness(personas),
+    competitors: competitorsCompleteness(competitors, readPositioning(business.positioning)),
+    faqs: faqsCompleteness(faqs, readPolicies(business.policies)),
+    reviews: reviewsCompleteness(reviews, permitted),
+    interview: interviewCompleteness(readMarketingProfile(business.marketingProfile), interview),
   };
 }

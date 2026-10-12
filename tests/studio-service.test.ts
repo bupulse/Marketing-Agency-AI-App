@@ -24,6 +24,7 @@ const usage = vi.hoisted(() => {
 const generate = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/db", () => ({ prisma }));
+vi.mock("@/lib/knowledge/writer-context", () => ({ writerKnowledge: async () => ({ knowledgeBase: null, voiceProfile: null }) }));
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
 vi.mock("@/lib/usage", () => usage);
 vi.mock("@/lib/ai", () => ({ getTextProvider: () => ({ name: "gemini", generate }) }));

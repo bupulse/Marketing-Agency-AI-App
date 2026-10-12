@@ -1,7 +1,6 @@
 // The Knowledge base sections, as data: the landing page (/dashboard/knowledge) renders one card per entry, in order.
-// Pure, so tests and later parts can extend it. To add a section (part 2: audience, competitors, FAQs, reviews, the
-// AI interview): set `status: "ready"` and its `href`, give it an icon in components/knowledge/section-icons.ts, and
-// add its completeness to lib/knowledge/overview.ts (`SECTION_PROGRESS`). Nothing else needs to change.
+// Pure, so tests and later parts can extend it. To add a section: set `status: "ready"` and its `href`, give it an icon
+// in components/knowledge/section-icons.ts, and add its completeness to knowledgeProgress() (lib/knowledge/overview.ts).
 
 import type { FeatureKey } from "@/lib/features";
 import type { Permission } from "@/lib/team/roles";
@@ -45,11 +44,11 @@ export const KNOWLEDGE_SECTIONS: readonly KnowledgeSection[] = [
   { key: "locations", title: "Locations, hours & contacts", description: "Where to find you, when you are open and how to reach you.", href: "/dashboard/knowledge/locations", status: "ready", permission: "settings" },
   { key: "brand", title: "Brand look", description: "Your logo and colours, used in every design.", href: "/dashboard/brand#brand-look", status: "ready", permission: "settings", external: true },
   { key: "channels", title: "Channels", description: "The social accounts BuPulse posts to.", href: "/dashboard/connections", status: "ready", permission: "channels", external: true },
-  { key: "audience", title: "Customers & audience", description: "Who buys from you, what they need and how they decide.", href: "/dashboard/knowledge/audience", status: "coming_soon" },
-  { key: "competitors", title: "Competitors", description: "Who else customers consider, and why they choose you.", href: "/dashboard/knowledge/competitors", status: "coming_soon" },
-  { key: "faqs", title: "FAQs & policies", description: "Answers to common questions, returns, delivery and payment rules.", href: "/dashboard/knowledge/faqs", status: "coming_soon" },
-  { key: "reviews", title: "Reviews", description: "What customers say about you, to quote in posts.", href: "/dashboard/knowledge/reviews", status: "coming_soon" },
-  { key: "interview", title: "AI marketing interview", description: "A short chat that fills in the gaps for you.", href: "/dashboard/knowledge/interview", status: "coming_soon" },
+  { key: "audience", title: "Customers & audience", description: "Who buys from you, what they need and how they decide.", href: "/dashboard/knowledge/audience", status: "ready", permission: "content" },
+  { key: "competitors", title: "Competitors & what makes you different", description: "Who else customers consider, and why they choose you.", href: "/dashboard/knowledge/competitors", status: "ready", permission: "content" },
+  { key: "faqs", title: "FAQs & policies", description: "Answers to common questions, returns, delivery and payment rules.", href: "/dashboard/knowledge/faqs", status: "ready", permission: "content" },
+  { key: "reviews", title: "Reviews & testimonials", description: "What customers say about you, to quote in posts.", href: "/dashboard/knowledge/reviews", status: "ready", permission: "content" },
+  { key: "interview", title: "Digital marketing profile", description: "A short AI interview that sets your brand voice.", href: "/dashboard/knowledge/interview", status: "ready", permission: "settings" },
 ];
 
 export function sectionByKey(key: SectionKey): KnowledgeSection {

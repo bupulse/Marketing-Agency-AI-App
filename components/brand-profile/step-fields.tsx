@@ -1,6 +1,5 @@
 "use client";
 
-import { MAX_ONBOARDING_FAQS } from "@/lib/brand/schemas";
 import { KnowledgeFields } from "./knowledge-fields";
 import { LookFields } from "./look-fields";
 import { OfferFields } from "./offer-fields";
@@ -27,7 +26,6 @@ export function StepFields({
   onChange,
   onBusyChange,
   context,
-  maxFaqs = MAX_ONBOARDING_FAQS,
 }: {
   step: StepId;
   values: BrandValues;
@@ -35,7 +33,6 @@ export function StepFields({
   onChange: (patch: Partial<BrandValues>) => void;
   onBusyChange: (busy: boolean) => void;
   context: StepContext;
-  maxFaqs?: number;
 }) {
   switch (step) {
     case "offer":
@@ -45,6 +42,6 @@ export function StepFields({
     case "look":
       return <LookFields values={values} errors={errors} onChange={onChange} onBusyChange={onBusyChange} savedLogoUrl={context.savedLogoUrl} />;
     case "knowledge":
-      return <KnowledgeFields values={values} errors={errors} onChange={onChange} maxFaqs={maxFaqs} context={context} />;
+      return <KnowledgeFields values={values} errors={errors} onChange={onChange} context={context} />;
   }
 }

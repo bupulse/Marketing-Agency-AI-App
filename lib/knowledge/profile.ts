@@ -41,7 +41,7 @@ export const MAX_LANGUAGES = 10;
 export const MAX_VALUES = 8;
 export const MAX_ACHIEVEMENTS = 10;
 
-const optional = (max: number) =>
+export const optional = (max: number) =>
   z
     .string()
     .trim()
@@ -50,7 +50,7 @@ const optional = (max: number) =>
     .nullable()
     .transform((v) => v || null);
 
-const chips = (max: number, each: number, label: string) =>
+export const chips = (max: number, each: number, label: string) =>
   z
     .array(z.string().max(1000))
     .max(100)

@@ -4,6 +4,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { industryContext } from "@/lib/industry-context";
 import { profileContext } from "@/lib/knowledge/context";
+import { writerKnowledge } from "@/lib/knowledge/writer-context";
 import { writingSubject, type Subject } from "@/lib/knowledge/service";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
@@ -98,8 +99,9 @@ export async function regenerateGroup(userId: string, groupId: string): Promise<
     const first = posts[0];
     const day = first.scheduledAt ? localDateISO(first.scheduledAt, tz) : localDateISO(new Date(), tz);
     const holiday = idea.needs.includes("holiday") ? holidaysBetween(business.country, day, day).find((h) => !h.sensitive) : undefined;
+    const faqs = idea.needs.includes("faq") ? await prisma.knowledgeFaq.findMany({ where: { businessId: business.id }, orderBy: { position: "asc" }, take: 50, select: { question: true, answer: true } }) : [];
     const faq = idea.needs.includes("faq")
-      ? [...knowledge.faqs].sort((a, b) => overlap(first.text, `${b.question} ${b.answer}`) - overlap(first.text, `${a.question} ${a.answer}`))[0]
+      ? faqs.sort((a, b) => overlap(first.text, `${b.question} ${b.answer}`) - overlap(first.text, `${a.question} ${a.answer}`))[0]
       : undefined;
     const subject: Subject | null = first.productId ? { kind: "product", id: first.productId } : first.campaignId ? { kind: "campaign", id: first.campaignId } : null;
     const about = subject ? await writingSubject(business.id, subject) : null;
@@ -108,6 +110,7 @@ export async function regenerateGroup(userId: string, groupId: string): Promise<
       industry: business.industry,
       industryContext: industryContext(business),
       profile: profileContext(business.profile),
+      ...(await writerKnowledge(business.id)),
       description: business.description,
       audience: business.audience,
       tone: business.tone,

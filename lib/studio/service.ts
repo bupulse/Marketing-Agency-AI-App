@@ -14,6 +14,7 @@ import { consumeUsage, refundUsage } from "@/lib/usage";
 import { queueWebhookEvent } from "@/lib/webhooks/emit";
 import { contentData } from "@/lib/webhooks/events";
 import { profileContext } from "@/lib/knowledge/context";
+import { writerKnowledge } from "@/lib/knowledge/writer-context";
 import { subjectColumns, writingSubject, type Subject } from "@/lib/knowledge/service";
 import { MAX_VERSIONS_PER_PROJECT } from "./schemas";
 import { buildVariants, type VariantSource } from "./variants";
@@ -76,10 +77,11 @@ export async function generateForSubject(args: {
   let reservation = args.reservation;
 
   // Scoped to the business, so another account's product is simply "not found".
-  const [business, item, previous] = await Promise.all([
+  const [business, item, previous, kb] = await Promise.all([
     prisma.business.findUnique({ where: { id: businessId }, include: { industryRef: true } }),
     writingSubject(businessId, subject),
     prisma.generatedContent.findFirst({ where: { businessId, ...subjectColumns(subject) }, orderBy: { createdAt: "desc" }, select: { caption: true } }),
+    writerKnowledge(businessId),
   ]);
   if (!business || !item) {
     if (reservation) await refundUsage(userId, "text", reservation.periodStart).catch(() => {});
@@ -108,6 +110,7 @@ export async function generateForSubject(args: {
             contentLanguage: business.contentLanguage,
             knowledge: knowledgeFacts(knowledge),
             profile: profileContext(business.profile),
+            ...kb,
           },
           {
             type: item.type,

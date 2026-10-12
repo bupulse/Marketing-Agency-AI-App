@@ -79,6 +79,10 @@ model Business {
   instagramHandle         String?
   knowledge               Json? // facts the chat widget may answer from (lib/brand/schemas.ts knowledgeSchema)
   profile                 Json? // Knowledge base -> Company profile: tagline, mission, values... (lib/knowledge/profile.ts)
+  audienceNotes           String? // Knowledge base -> Customers & audience: overall notes next to the personas
+  positioning             Json? // Knowledge base -> Competitors: differentiators and positioning statement (lib/knowledge/competitors.ts)
+  policies                Json? // Knowledge base -> FAQs & policies: delivery, returns, payment... (lib/knowledge/policies.ts)
+  marketingProfile        Json? // Knowledge base -> AI marketing interview: the approved brand voice (lib/knowledge/interview.ts)
   widgetKey               String    @unique @default(cuid()) // public id used by the embed snippet
   composioApiKeyEncrypted String? // Pro users' own Composio key, encrypted with lib/crypto.ts
   timezone                String    @default("UTC") // IANA zone for the calendar and posting times, e.g. "Africa/Kigali"
@@ -110,6 +114,11 @@ model Business {
   memberships      Membership[]
   invites          Invite[]
   invoices         Invoice[]
+  personas         Persona[]
+  competitors      Competitor[]
+  faqs             KnowledgeFaq[]
+  testimonials     Testimonial[]
+  interview        MarketingInterview?
 
   @@index([industryId])
 }
@@ -221,12 +230,13 @@ model Product {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  photos    ProductPhoto[]
-  campaigns CampaignProduct[]
-  contents  GeneratedContent[]
-  designs   Design[]
-  posts     Post[]
-  storeSync ProductSync?
+  photos       ProductPhoto[]
+  campaigns    CampaignProduct[]
+  contents     GeneratedContent[]
+  designs      Design[]
+  posts        Post[]
+  storeSync    ProductSync?
+  testimonials Testimonial[]
 
   @@index([businessId, status, createdAt])
 }
@@ -289,6 +299,106 @@ model CampaignPhoto {
 
   @@id([campaignId, assetId])
   @@index([assetId])
+}
+
+// Knowledge base, part 2 (docs/KNOWLEDGE_BASE.md). A customer persona: who buys, what they need and how they decide.
+model Persona {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String // "Busy office worker"
+  ageRange   String // lib/knowledge/audience.ts AGE_RANGES
+  gender     String? // optional: "female" | "male" | "any"
+  location   String
+  occupation String?
+  incomeBand String? // "low" | "middle" | "high"
+  needs      String[]
+  pains      String[]
+  objections String[]
+  channels   String[] // where they spend time online
+  triggers   String[] // what makes them buy now
+  language   String? // preferred language
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([businessId, position])
+}
+
+model Competitor {
+  id            String   @id @default(cuid())
+  businessId    String
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name          String
+  link          String? // website or social profile, as typed (normalised to https:// or @handle)
+  strengths     String[] // what they do well
+  weaknesses    String[]
+  pricePosition String? // "lower" | "similar" | "higher" | "varies"
+  position      Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([businessId, position])
+}
+
+// The company's FAQs, in order. Replaces Business.knowledge.faqs (copied by the migration; the JSON stays for older builds).
+model KnowledgeFaq {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  question   String
+  answer     String
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([businessId, position])
+}
+
+enum ReviewSource {
+  GOOGLE
+  WHATSAPP
+  IN_PERSON
+  FACEBOOK
+  INSTAGRAM
+  EMAIL
+  OTHER
+}
+
+// A customer review or testimonial. The AI may quote it only when canPublish is true (the customer agreed).
+model Testimonial {
+  id           String       @id @default(cuid())
+  businessId   String
+  business     Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  quote        String
+  customerName String // name or initials, as the customer agreed to be shown
+  source       ReviewSource
+  rating       Int? // 1 to 5
+  receivedOn   DateTime?    @db.Date
+  productId    String?
+  product      Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+  canPublish   Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([businessId, createdAt])
+  @@index([productId])
+}
+
+// The AI marketing interview in progress (one per company): its questions and answers, in order. The approved result
+// is Business.marketingProfile (lib/knowledge/interview.ts).
+model MarketingInterview {
+  id         String   @id @default(cuid())
+  businessId String   @unique
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  status     String   @default("active") // active | review (summary written, waiting for approval) | approved
+  mode       String   @default("ai") // ai (next question by the AI) | fixed (the fixed question set)
+  steps      Json // InterviewStep[]
+  cursor     Int      @default(0)
+  aiCalls    Int      @default(0)
+  summary    Json? // the draft brand-voice summary before approval
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 enum LeadStatus {
@@ -470,14 +580,14 @@ model ManualPayment {
   periodEnd     DateTime?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
+  // Also two partial unique indexes in SQL (the migration): one pending payment per company
+  // ("ManualPayment_one_pending_per_user") and one live use of a transaction id per network across all companies
+  // ("ManualPayment_live_transaction_key": network + upper(transactionId) where status is pending or confirmed).
 
   @@index([status, createdAt])
   @@index([userId, createdAt])
   @@index([reference])
   @@index([invoiceId])
-  // Also two partial unique indexes in SQL (the migration): one pending payment per company
-  // ("ManualPayment_one_pending_per_user") and one live use of a transaction id per network across all companies
-  // ("ManualPayment_live_transaction_key": network + upper(transactionId) where status is pending or confirmed).
 }
 
 // One renewal email of a Mobile Money subscription (lib/billing/momo-renewals.ts): "5d" and "1d" before the period
@@ -1461,8 +1571,8 @@ model Invoice {
   updatedAt      DateTime         @updatedAt
 
   manualPayments ManualPayment[]
+  // Also a partial unique index in SQL ("Invoice_one_draft_per_business"): one draft per company.
 
   @@index([businessId, createdAt])
   @@index([status, dueDate])
-  // Also a partial unique index in SQL ("Invoice_one_draft_per_business"): one draft per company.
 }

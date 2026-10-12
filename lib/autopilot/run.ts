@@ -4,6 +4,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { industryContext } from "@/lib/industry-context";
 import { profileContext } from "@/lib/knowledge/context";
+import { writerKnowledge } from "@/lib/knowledge/writer-context";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
 import { AIBudgetExceededError } from "@/lib/ai/budget";
@@ -147,6 +148,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
       industry: business.industry,
       industryContext: industryContext(business),
       profile: profileContext(business.profile),
+      ...(await writerKnowledge(business.id)),
       description: business.description,
       audience: business.audience,
       tone: business.tone,

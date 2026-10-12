@@ -29,7 +29,7 @@ export interface PublicWidget {
   contentLanguage: string;
   /** WhatsApp and Call buttons in the chat header, from the business's contacts (wa.me and tel: links). */
   actions: { whatsapp?: string; call?: string };
-  facts: Omit<BusinessFacts, "projects">;
+  facts: Omit<BusinessFacts, "projects" | "faqs">;
 }
 
 export function resolveAccent(accentColor: string | null | undefined, brandColors: string[]): string {
@@ -77,6 +77,7 @@ export async function loadPublicWidget(key: string): Promise<PublicWidget | null
       contentLanguage: business.contentLanguage,
       timezone: business.timezone,
       knowledge,
+      policies: business.policies,
     },
   };
 }
@@ -107,6 +108,11 @@ export async function loadProjectFacts(businessId: string): Promise<BusinessFact
       return { type: CAMPAIGN_TYPE_LABEL[c.type].toLowerCase(), title: c.name, price: c.priceInfo, features: [...(dates ? [`dates: ${dates}`] : []), ...c.highlights] };
     }),
   ];
+}
+
+/** The Knowledge base FAQs the assistant answers from, in the owner's order (lib/knowledge/context.ts faqContext budgets them). */
+export async function loadFaqs(businessId: string): Promise<NonNullable<BusinessFacts["faqs"]>> {
+  return prisma.knowledgeFaq.findMany({ where: { businessId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], take: 60, select: { question: true, answer: true } });
 }
 
 /** Signed URL for the logo (the brand bucket is private). A failure just means no logo. */

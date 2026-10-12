@@ -41,10 +41,18 @@ describe("company profile", () => {
 });
 
 describe("knowledge base sections", () => {
-  it("has every section once, an icon for each, and placeholders for part 2", () => {
+  it("has every section once, an icon for each, all ready (part 2 done)", () => {
     expect(KNOWLEDGE_SECTIONS.map((s) => s.key)).toEqual([...SECTION_KEYS]);
     for (const key of SECTION_KEYS) expect(SECTION_ICONS[key], key).toBeTruthy();
-    expect(KNOWLEDGE_SECTIONS.filter((s) => s.status === "coming_soon").map((s) => s.key)).toEqual(["audience", "competitors", "faqs", "reviews", "interview"]);
+    expect(KNOWLEDGE_SECTIONS.filter((s) => s.status === "coming_soon")).toEqual([]);
+    // Policies and the brand voice are company settings; the other part 2 sections follow `content`, like products.
+    expect(Object.fromEntries(KNOWLEDGE_SECTIONS.filter((s) => ["audience", "competitors", "faqs", "reviews", "interview"].includes(s.key)).map((s) => [s.key, s.permission]))).toEqual({
+      audience: "content",
+      competitors: "content",
+      faqs: "content",
+      reviews: "content",
+      interview: "settings",
+    });
     expect(KNOWLEDGE_SECTIONS.find((s) => s.key === "products")).toMatchObject({ href: "/dashboard/knowledge/products", feature: "content", permission: "content" });
   });
 

@@ -3,8 +3,9 @@
 Everything BuPulse knows about a company, in one place: `/dashboard/knowledge` (sidebar **Knowledge base**, where
 **Projects** used to be). Part 1 (12 October 2026, branch `v2-kb`, handover `docs/handovers/knowledge-base-1.md`)
 built the shell, the company profile, products and services, campaigns, product and campaign photo albums, and the
-move from Projects. Part 2 adds customers and audience, competitors, FAQs and policies, reviews and the AI marketing
-interview on the same shell.
+move from Projects. Part 2 (12 October 2026, branch `v2-kb2`, handover `docs/handovers/knowledge-base-2.md`) added
+customers and audience, competitors and positioning, FAQs and policies, reviews and testimonials, and the digital
+marketing profile (the AI interview) on the same shell. Every section is now ready.
 
 ## The landing page
 
@@ -22,9 +23,13 @@ report a percentage (`overallPercent`). Cards say "Add to your plan" when the se
 | Locations, hours & contacts | `/dashboard/knowledge/locations` (the business info editor of `docs/BUSINESS_INFO.md`, embedded) | hours, head office, phone |
 | Brand look | `/dashboard/brand#brand-look` | logo, colours, voice |
 | Channels | `/dashboard/connections` | a social account connected |
-| Customers & audience, Competitors, FAQs & policies, Reviews, AI marketing interview | coming soon (part 2) | |
+| Customers & audience | `/dashboard/knowledge/audience` | one persona with needs, pains, triggers and channels = 100 (`audienceCompleteness`) |
+| Competitors & what makes you different | `/dashboard/knowledge/competitors` | a competitor 40, differentiators 35, statement 25 |
+| FAQs & policies | `/dashboard/knowledge/faqs` | 3 FAQs 40, payment methods 20, each of 4 policy texts 10 |
+| Reviews & testimonials | `/dashboard/knowledge/reviews` | 3 quotable reviews = 100; unquotable ones 5 each (max 95) |
+| Digital marketing profile | `/dashboard/knowledge/interview` | answered share up to 85, summary waiting 90, approved 100 |
 
-**Adding a section (part 2):** set its entry to `status: "ready"` with its `href`, keep its icon in
+**Adding a section:** set its entry to `status: "ready"` with its `href`, keep its icon in
 `components/knowledge/section-icons.ts` (the type requires one per key), add its progress to `knowledgeProgress()`,
 and put its page under `app/dashboard/knowledge/<key>/` starting with `<BackLink />`. Pure rules go in
 `lib/knowledge/<key>.ts`, server code in `lib/knowledge/service.ts` (or its own file), actions through
@@ -177,17 +182,112 @@ text kept in `priceNote` (with the amount read from it); saving the product form
 clears it, which counts as the owner's edit. Store photos are gallery photos with `source: "store"` in the product's
 album; a re-sync relinks the album and deletes a store photo only when it is then in no album at all.
 
+## Customers & audience
+
+`Persona` rows in the owner's order (`position`, Move up / Move down): name*, age range* (`AGE_RANGES`, "All ages"
+included), gender (optional: mostly women, mostly men, any), location*, occupation, income band (lower, middle,
+higher), and lists of up to 8: needs, pains, objections, where they spend time online (chips for WhatsApp, Instagram,
+Facebook, TikTok, YouTube, X, LinkedIn, Google search), buying triggers; preferred language. Up to 12 personas. The
+overall notes are `Business.audienceNotes` (2,000 characters); the onboarding one-liner `Business.audience` stays and
+the writers still get it. Schema `personaInputSchema` (`lib/knowledge/audience.ts`).
+
+## Competitors & what makes you different
+
+`Competitor` rows (ordered, up to 20): name*, website or social handle (`competitorLinkSchema`: "rival.rw" becomes
+`https://rival.rw`, "@rival" stays, anything else is refused, so the page only links real websites), what they do well,
+weaknesses (8 lines each), price position (cheaper, about the same, more expensive, it depends). The differentiators
+(up to 10) and the positioning statement (600) are `Business.positioning` (JSON, `readPositioning`).
+
+## FAQs & policies
+
+FAQs are `KnowledgeFaq` rows (question 200, answer 1,000; up to 200, ordered). They used to be
+`Business.knowledge.faqs` (at most 10, edited in the business info card): the migration copies them in order, and the
+business info card (Brand, onboarding step 4, Locations) no longer edits FAQs; it links here. The JSON list stays in
+place, unread, for an older build. The chat (`loadFaqs` in `lib/widget/config.ts`), Autopilot's FAQ ideas
+(`lib/autopilot/data.ts`, `manage.ts`) read the table.
+
+Policies are `Business.policies` (JSON, `policiesSchema` in `lib/knowledge/policies.ts`, read with `readPolicies`):
+payment methods (MTN Mobile Money, Airtel Money, cash, card, bank transfer) with a note, and four texts of up to 1,000
+characters: delivery, returns and refunds, warranties and guarantees, booking and cancellation. FAQs follow the
+`content` permission; the policies are company rules and need `settings` (Members see them read-only).
+
+**Website chat.** `buildSystemPrompt` (`lib/widget/prompt.ts`) adds the FAQs as a fenced `FAQ` block
+(`faqContext`, 3,000 characters, the owner's first questions kept) and the policies as a fenced `POLICIES` block
+(`policiesContext`, 1,200) under the rule "answer questions about these only from this block; never promise anything
+it does not say". The general rule "missing information is I don't know" still applies.
+
+## Reviews & testimonials
+
+`Testimonial` rows: the quote* (1,000), customer name or initials*, source* (Google, WhatsApp, in person, Facebook,
+Instagram, email, other), rating (1 to 5, optional), date (optional, not in the future), product (optional, the
+company's own) and **"The customer agreed to be quoted"** (`canPublish`, off by default; also a one-click switch on
+the list). Up to 300. The writers get only quotable reviews: the query filters on `canPublish` and
+`reviewsContext()` drops any other again, so a caller cannot leak one. Autopilot's and Studio's system prompts now say
+a review may be quoted only from the `CUSTOMER REVIEWS` block, word for word with the name, never invented.
+
+## Digital marketing profile (the AI interview)
+
+`/dashboard/knowledge/interview`, `settings` permission. Pure rules in `lib/knowledge/interview.ts`, the server in
+`lib/knowledge/interview-service.ts`, state in `MarketingInterview` (one row per company: `steps` JSON, `cursor`,
+`status` active | review | approved, `mode` ai | fixed, `aiCalls`, the draft `summary`).
+
+- **Topics** (`INTERVIEW_TOPICS`, 14, each with a fixed question and 4 to 5 options): tone, personality words, values,
+  formality, emojis, language mix (Kinyarwanda / English / French / Swahili), words and topics to avoid, goals
+  (awareness, leads, sales, loyalty), main channels, posting frequency, content they like (links under Other), what
+  never to say, calls to action, look and feel. Every question shows its options as chips plus "Other" free text;
+  single- or multiple-choice per question.
+- **Adaptive.** The first question is always the fixed tone question (no AI cost). After each answer the AI writes the
+  next one from the answers so far (fenced JSON) and the topics not covered (`buildQuestionPrompt`, JSON schema
+  `aiQuestionSchema`). `parseAiQuestion` accepts it only for an uncovered topic (or a follow-up while
+  `steps + remaining topics < 15`), not repeating a question, with 3 to 5 distinct options ("Other" options dropped);
+  otherwise the next fixed question is asked. Hard cap 20 questions (`MAX_QUESTIONS`); normally 14 or 15.
+- **AI use.** `getCheapTextProvider()` (`lib/ai/index.ts`: the configured provider on its cheap model, Gemini
+  Flash-Lite or Claude Sonnet at low effort; `CHEAP_TEXT_MODEL` overrides) through `withLedger` (feature
+  `interview`: the admin switch and the monthly budget cap apply), at most `RATE_LIMITS.interviewAi` (60 an hour per
+  company) and `MAX_AI_CALLS` (24) per interview. **Fallback:** any failure gives the fixed question; a lasting one
+  (no key, switched off, budget reached, rate limited) sets `mode: "fixed"` for the rest of the interview, and the page
+  says the questions are the standard set.
+- **Skip and back.** Skip marks the question skipped. Back moves the cursor; answering an earlier question again
+  moves forward through the questions already asked (they are not regenerated). An answer must be for the question on
+  screen (`index === cursor`) and use its own options (`checkAnswer`); saves are optimistic on `updatedAt`, so a
+  second tab gets "This interview changed in another tab".
+- **Summary.** When every topic is asked (or the cap is reached) the AI writes the brand-voice guide
+  (`buildSummaryPrompt`: voice, do, don't, three sample captions in the content language), or `fallbackSummary()`
+  puts the answers into sentences. The owner edits it and approves: `Business.marketingProfile` =
+  `{ voice, do, dont, samples, answers, approvedAt }`. It can be edited later without a new interview; "Take the
+  interview again" keeps the approved voice until a new one is approved.
+- **Use.** `voiceProfileContext()` (fenced `BRAND VOICE PROFILE`, 1,600) is `BrandContext.voiceProfile`; when set,
+  `voiceLine()` replaces the preset's "Brand voice" line in Studio (`lib/ai/marketing.ts`) and Autopilot
+  (`lib/autopilot/writer.ts`). The Brand page says the approved profile is in use and the preset is the fallback.
+
+## Part 2 in the writers
+
+`writerKnowledge(businessId)` (`lib/knowledge/writer-context.ts`) loads, in one go, `CUSTOMERS` (up to 4 personas
+and the notes, 1,400), `POSITIONING` (statement, differentiators, up to 5 competitors as background with "never name
+or criticise a competitor", 1,000), `CUSTOMER REVIEWS` (up to 5 quotable, 1,200) and `POLICIES` (1,200) as
+`knowledgeBase`, plus `voiceProfile`. Studio (`generateForSubject`) and Autopilot (run and regenerate) spread it into
+the brand context; Autopilot's `factsText` includes both, so numbers from them are not flagged as invented. Every
+block is fenced and stripped of fence markers like part 1 (`clean`, now in `lib/knowledge/text.ts`); together with
+the profile the knowledge blocks stay under about 2,000 tokens.
+
 ## Roles, plan and limits
 
 - Products, campaigns, albums and content: the `content` permission (Members too, as for projects before) and the
   `content` plan feature (pages: `featureGate("content")`; actions: `knowledgeAction({ feature: "content" })`).
   Deleting is never feature-gated (your own data).
 - Company profile and locations: the `settings` permission (Owner, Admin). The landing page is open to everyone.
+- Part 2: personas, audience notes, competitors, positioning, FAQs and reviews follow `content` (Members too);
+  policies and the marketing interview need `settings`. No plan feature (the knowledge base is for every plan; the
+  writers that use it are gated as before).
 - Rate limits per company account (`lib/rate-limit.ts`): `projectCreate` 30 an hour for new products, campaigns and
   copies; `knowledgeEdit` 300 an hour for saves, status changes, deletes and album edits; `profileSave` 60 an hour;
   gallery uploads keep `media-upload`. Caps: 500 products, 300 campaigns per company (checked under an advisory lock).
-- RLS: the five new tables have RLS on and every grant revoked from `anon`, `authenticated` and `service_role`
-  (`tests/security/rls-coverage.test.ts`).
+  Part 2: `knowledgeCreate` 120 an hour for new personas, competitors, FAQs and reviews; their edits, deletes and
+  reorders use `knowledgeEdit`; policies `profileSave`; the interview `interviewStep` 300 an hour and `interviewAi` 60
+  AI calls an hour per company. Caps: 12 personas, 20 competitors, 200 FAQs, 300 reviews (advisory lock).
+- RLS: the five new tables of each part have RLS on and every grant revoked from `anon`, `authenticated` and
+  `service_role` (`tests/security/rls-coverage.test.ts`). Part 2: `Persona`, `Competitor`, `KnowledgeFaq`,
+  `Testimonial`, `MarketingInterview` (migration `20261013110000_knowledge_base_2`, after part 1 and invoices).
 
 ## Public API
 
@@ -198,13 +298,17 @@ products and campaigns"); `/projects` and `/projects/:id` answer in the old shap
 
 ## Files
 
-- Pure: `lib/knowledge/{sections,profile,products,campaigns,legacy,context}.ts`, `lib/media/destinations.ts`.
-- Server: `lib/knowledge/{service,overview,guard}.ts`, `lib/media/{service,albums}.ts`, `lib/studio/service.ts`,
+- Pure: `lib/knowledge/{sections,profile,products,campaigns,legacy,context,text,audience,competitors,policies,reviews,interview}.ts`,
+  `lib/media/destinations.ts`.
+- Server: `lib/knowledge/{service,overview,guard,records,interview-service,writer-context}.ts`, `lib/ai/index.ts`
+  (`getCheapTextProvider`), `lib/widget/{prompt,config,chat}.ts`, `lib/media/{service,albums}.ts`, `lib/studio/service.ts`,
   `lib/stores/sync.ts`, `lib/autopilot/{data,run,manage,writer}.ts`, `lib/widget/config.ts`, `lib/designs/service.ts`,
   `lib/publishing/service.ts`, `lib/api/serialize.ts`.
 - Actions: `app/dashboard/knowledge/{actions,products/actions,campaigns/actions,profile/actions}.ts`,
+  `app/dashboard/knowledge/{audience,competitors,faqs,reviews,interview}/actions.ts`,
   `app/dashboard/gallery/{actions,import-actions}.ts`.
 - Pages: `app/dashboard/knowledge/**`, `app/dashboard/projects/**` (redirects), `app/api/v1/{products,campaigns}/**`.
-- Components: `components/knowledge/*`, `components/media/{gallery-view,media-picker,import-menu,destination-dialog}.tsx`.
-- Tests: `tests/knowledge/*.test.ts`, `tests/stores/sync.test.ts`, `tests/media-service.test.ts`,
+- Components: `components/knowledge/*` (part 2: `ordered-list`, `persona-editor`, `competitor-editor`, `faq-editor`,
+  `review-editor`, `interview`), `components/media/{gallery-view,media-picker,import-menu,destination-dialog}.tsx`.
+- Tests: `tests/knowledge/*.test.ts` (part 2: `part2`, `part2-actions`, `interview`), `tests/stores/sync.test.ts`, `tests/media-service.test.ts`,
   `tests/studio-service.test.ts`, `tests/api/api.test.ts`.

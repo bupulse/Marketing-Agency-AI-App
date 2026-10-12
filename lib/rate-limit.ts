@@ -12,6 +12,9 @@ export const RATE_LIMITS = {
   projectCreate: { limit: 30, windowSeconds: 60 * 60 }, // new products and campaigns (and the legacy /api/generate), together
   knowledgeEdit: { limit: 300, windowSeconds: 60 * 60 }, // product / campaign saves, status changes, copies, deletes, album edits
   profileSave: { limit: 60, windowSeconds: 60 * 60 }, // Knowledge base -> Company profile
+  knowledgeCreate: { limit: 120, windowSeconds: 60 * 60 }, // new personas, competitors, FAQs and reviews, together
+  interviewStep: { limit: 300, windowSeconds: 60 * 60 }, // marketing interview answers, skips, back, start, approve
+  interviewAi: { limit: 60, windowSeconds: 60 * 60 }, // marketing interview AI calls (next question, summary), per company
   contentEdit: { limit: 120, windowSeconds: 60 * 60 },
   canvaOpen: { limit: 20, windowSeconds: 60 * 60 },
   canvaReturn: { limit: 30, windowSeconds: 60 * 60 },
