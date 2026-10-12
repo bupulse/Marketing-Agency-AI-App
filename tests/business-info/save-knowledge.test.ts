@@ -71,3 +71,13 @@ describe("finishOnboarding", () => {
     expect(mocks.update).toHaveBeenCalled();
   });
 });
+
+describe("saveKnowledge floors", () => {
+  const withFloor = (floor: string) => ({ ...hours, locations: [{ kind: "head" as const, address: "KN 4 Avenue, Kigali", inBuilding: true, building: { name: "Plaza", floor } }] });
+  it("keeps a free-text floor that was already saved, refuses new free text", async () => {
+    mocks.findUnique.mockResolvedValue({ country: "Rwanda", timezone: "Africa/Kigali", knowledge: { faqs: [], locations: [{ kind: "head", address: "KN 4 Avenue", building: { name: "Plaza", floor: "Top deck" } }] } });
+    expect(await saveKnowledge(withFloor("Top deck"))).toEqual({ ok: true });
+    expect(await saveKnowledge(withFloor("Penthouse"))).toMatchObject({ ok: false, fieldErrors: { "locations.0.floor": expect.any(String) } });
+    expect(await saveKnowledge(withFloor("8"))).toEqual({ ok: true });
+  });
+});

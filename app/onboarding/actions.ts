@@ -83,8 +83,10 @@ export async function saveLook(input: { logoPath: string | null; brandColors: st
 export async function saveKnowledge(input: KnowledgeInput): Promise<SaveResult> {
   const user = await requireUser();
   // Phone numbers without a country of their own are read in the business's sign-up country.
-  const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { country: true, timezone: true } });
-  const parsed = validateKnowledge(input, { country: business?.country, requireEssentials: true });
+  const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { country: true, timezone: true, knowledge: true } });
+  // Free-text floors saved before the floor dropdown stay valid; any other floor must come from the list.
+  const legacyFloors = readKnowledge(business?.knowledge).locations.flatMap((l) => (l.building?.floor ? [l.building.floor] : []));
+  const parsed = validateKnowledge(input, { country: business?.country, requireEssentials: true, legacyFloors });
   if (!parsed.ok) return { ok: false, fieldErrors: parsed.errors, error: parsed.errors.form };
   // Opening hours are in the business's zone. A business still on the default UTC gets its country's zone
   // (Rwanda -> Africa/Kigali), as sign-up does; countries with several zones keep theirs until the browser sets it.

@@ -67,10 +67,78 @@ export function manualAddressText(m: ManualAddress): string {
   return [m.street, m.area, m.city].map(clean).filter(Boolean).join(", ");
 }
 
-/** "M Peace Plaza, 3rd floor, Block B, Shop 12". Empty without a building. */
+// ---- floors, blocks and shop numbers ----
+
+/** "1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "23rd". */
+export function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  return `${n}${["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+}
+
+export const MAX_FLOOR = 60;
+
+/** The floor dropdown, bottom to top. `value` is what is stored ("B2", "G", "8", "R"). */
+export const FLOORS: { value: string; label: string }[] = [
+  { value: "B2", label: "Basement 2" },
+  { value: "B1", label: "Basement 1" },
+  { value: "G", label: "Ground floor" },
+  { value: "M", label: "Mezzanine" },
+  ...Array.from({ length: MAX_FLOOR }, (_, i) => ({ value: String(i + 1), label: `${ordinal(i + 1)} floor` })),
+  { value: "R", label: "Rooftop" },
+];
+const FLOOR_LABELS = new Map(FLOORS.map((f) => [f.value, f.label]));
+
+export function isFloorValue(value: string): boolean {
+  return FLOOR_LABELS.has(value);
+}
+
+/** "8th floor" for "8"; a floor saved as free text before the dropdown is shown as typed. */
+export function floorLabel(value: string | undefined): string {
+  const v = clean(value);
+  return v ? (FLOOR_LABELS.get(v) ?? v) : "";
+}
+
+/**
+ * The dropdown value of a floor typed as text before the dropdown existed: "8", "8th", "8th floor", "floor 8",
+ * "ground", "GF", "basement 1", "B1", "mezzanine", "rooftop". Null when it can't be read (it is then kept as typed).
+ */
+export function parseFloor(text: string | undefined): string | null {
+  const t = clean(text)?.toLowerCase().replace(/\./g, "");
+  if (!t) return null;
+  if (isFloorValue(t.toUpperCase())) return t.toUpperCase();
+  if (/^(g|gf|ground( floor)?|ground level|rez-de-chauss[ée]e)$/.test(t)) return "G";
+  if (/^(m|mezz|mezzanine)( floor)?$/.test(t)) return "M";
+  if (/^(r|roof|rooftop|roof top)( floor| terrace)?$/.test(t)) return "R";
+  const basement = /^(?:b|basement|lower ground|lg)\s*(\d)?$/.exec(t) ?? /^(\d)(?:st|nd|rd|th)? basement$/.exec(t);
+  if (basement) return basement[1] === "2" ? "B2" : basement[1] === undefined || basement[1] === "1" ? "B1" : null;
+  const n = /^(?:floor|level|fl)?\s*(\d{1,2})(?:st|nd|rd|th)?(?:\s*(?:floor|fl|level))?$/.exec(t);
+  if (n) {
+    const num = Number(n[1]);
+    if (num === 0) return "G";
+    if (num >= 1 && num <= MAX_FLOOR) return String(num);
+  }
+  return null;
+}
+
+/** "B" -> "Block B"; "Block B" or "East wing" stay as typed. */
+export function blockLabel(text: string | undefined): string {
+  const t = clean(text);
+  if (!t) return "";
+  return /^[A-Za-z0-9]{1,3}$/.test(t) ? `Block ${t.toUpperCase()}` : t;
+}
+
+/** "12" -> "No. 12"; "Shop 12" or "Office 4A" stay as typed. */
+export function unitLabel(text: string | undefined): string {
+  const t = clean(text);
+  if (!t) return "";
+  return /^\d+$/.test(t) ? `No. ${t}` : t;
+}
+
+/** "M Peace Plaza, 8th floor, Block B, No. 12". Empty without a building. */
 export function buildingText(b: Building | undefined): string {
   if (!b) return "";
-  return [b.name, b.floor, b.block, b.unit].map(clean).filter(Boolean).join(", ");
+  return [clean(b.name), floorLabel(b.floor), blockLabel(b.block), unitLabel(b.unit)].filter(Boolean).join(", ");
 }
 
 /** The address without a trailing country ("KN 4 Avenue, Kigali, Rwanda" -> "KN 4 Avenue, Kigali"). */

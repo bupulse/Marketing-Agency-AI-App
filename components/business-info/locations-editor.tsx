@@ -1,8 +1,8 @@
 "use client";
 
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
-import { Button, Field, Input } from "@/components/ui";
-import { HEAD_OFFICE_LABEL, LOCATION_LIMITS, MAX_BRANCHES, locationText, manualAddressText, mapsUrl, type Location } from "@/lib/business-info/locations";
+import { Button, Field, Input, Select } from "@/components/ui";
+import { FLOORS, HEAD_OFFICE_LABEL, LOCATION_LIMITS, isFloorValue, MAX_BRANCHES, locationText, manualAddressText, mapsUrl, type Location } from "@/lib/business-info/locations";
 import { emptyLocation, type LocationValue } from "@/components/brand-profile/steps";
 import { PlaceSearch, type PickedPlace } from "./place-search";
 
@@ -115,13 +115,22 @@ export function LocationsEditor({
                   <Input maxLength={LOCATION_LIMITS.buildingName} placeholder="M Peace Plaza" value={l.building.name} onChange={(e) => setBuilding(i, { name: e.target.value })} />
                 </Field>
                 <Field label="Floor (optional)" error={err("floor")}>
-                  <Input maxLength={LOCATION_LIMITS.floor} placeholder="3rd floor" value={l.building.floor} onChange={(e) => setBuilding(i, { floor: e.target.value })} />
+                  <Select value={l.building.floor} onChange={(e) => setBuilding(i, { floor: e.target.value })}>
+                    <option value="">Not set</option>
+                    {/* A floor typed as text before the dropdown, that could not be matched, stays selectable as it was. */}
+                    {l.building.floor && !isFloorValue(l.building.floor) && <option value={l.building.floor}>{l.building.floor}</option>}
+                    {FLOORS.map((f) => (
+                      <option key={f.value} value={f.value}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </Select>
                 </Field>
-                <Field label="Block / wing (optional)" error={err("block")}>
-                  <Input maxLength={LOCATION_LIMITS.block} placeholder="Block B" value={l.building.block} onChange={(e) => setBuilding(i, { block: e.target.value })} />
+                <Field label="Block / wing (optional)" error={err("block")} hint="Just the letter or number, e.g. B: shown as “Block B”.">
+                  <Input maxLength={LOCATION_LIMITS.block} placeholder="B" value={l.building.block} onChange={(e) => setBuilding(i, { block: e.target.value })} />
                 </Field>
-                <Field label="Shop or office number (optional)" error={err("unit")} className="sm:col-span-2">
-                  <Input maxLength={LOCATION_LIMITS.unit} placeholder="Shop 12" value={l.building.unit} onChange={(e) => setBuilding(i, { unit: e.target.value })} />
+                <Field label="Shop or office number (optional)" error={err("unit")} hint="A number like 12 is shown as “No. 12”." className="sm:col-span-2">
+                  <Input maxLength={LOCATION_LIMITS.unit} placeholder="12" value={l.building.unit} onChange={(e) => setBuilding(i, { unit: e.target.value })} />
                 </Field>
               </div>
             )}

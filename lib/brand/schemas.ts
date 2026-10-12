@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { CONTACT_TYPES, MAX_CONTACTS, isNormalised, isPhoneType, normaliseContact, type Contact, type ContactType } from "@/lib/business-info/contacts";
 import { DAYS, LAST_MINUTE, MAX_SCHEDULES, fromMinutes, scheduleErrors, sortDays, type Schedule } from "@/lib/business-info/hours";
-import { LOCATION_LIMITS, MAX_BRANCHES, PLACE_ID, manualAddressText, mapsUrl, type Building, type Location, type LocationKind, type ManualAddress } from "@/lib/business-info/locations";
+import { LOCATION_LIMITS, MAX_BRANCHES, PLACE_ID, isFloorValue, manualAddressText, mapsUrl, parseFloor, type Building, type Location, type LocationKind, type ManualAddress } from "@/lib/business-info/locations";
 import { phoneCountry } from "@/lib/phone";
 import { voices, type VoiceId } from "./voices";
 
@@ -148,7 +148,12 @@ export function readKnowledge(value: unknown): StoredKnowledge {
     faqs,
     openingHours: Object.keys(scheduleErrors(openingHours)).length ? [] : openingHours,
     // The map link is rebuilt from the address, so a stored value can never point elsewhere.
-    locations: locations.map((l) => ({ ...l, mapsUrl: mapsUrl(l) })),
+    locations: locations.map((l) => ({
+      ...l,
+      // A floor typed as text before the dropdown ("8th floor") reads as its dropdown value ("8") when it can.
+      ...(l.building?.floor ? { building: { ...l.building, floor: parseFloor(l.building.floor) ?? l.building.floor } } : {}),
+      mapsUrl: mapsUrl(l),
+    })),
     contacts,
   };
 }
@@ -257,7 +262,7 @@ export const ESSENTIALS_ERRORS = {
  * in the form ("faqs.1.answer", "contacts.2.value") so they show under the right inputs. The same function runs in
  * the browser and in the server action. `country` is the business's sign-up country, the default for phone numbers.
  */
-export function validateKnowledge(raw: KnowledgeInput, opts: { country?: string | null; requireEssentials?: boolean } = {}): { ok: true; data: Knowledge } | { ok: false; errors: Record<string, string> } {
+export function validateKnowledge(raw: KnowledgeInput, opts: { country?: string | null; requireEssentials?: boolean; legacyFloors?: readonly string[] } = {}): { ok: true; data: Knowledge } | { ok: false; errors: Record<string, string> } {
   const shaped = knowledgeInputSchema.safeParse(raw);
   if (!shaped.success) return { ok: false, errors: { form: "Some details could not be read. Please check the form and try again." } };
   const input = shaped.data as KnowledgeInput;
@@ -330,6 +335,8 @@ export function validateKnowledge(raw: KnowledgeInput, opts: { country?: string 
       if (!buildingName) add(at("buildingName"), "Add the building or mall name, or untick “Inside a building or mall”.");
       tooLong(buildingName, LOCATION_LIMITS.buildingName, "buildingName");
       tooLong(floor, LOCATION_LIMITS.floor, "floor");
+      // Floors come from the dropdown; free text saved before it existed may stay as it is.
+      if (floor && !isFloorValue(floor) && !opts.legacyFloors?.includes(floor)) add(at("floor"), "Choose the floor from the list.");
       tooLong(block, LOCATION_LIMITS.block, "block");
       tooLong(unit, LOCATION_LIMITS.unit, "unit");
       if (buildingName) building = { name: buildingName, ...(floor ? { floor } : {}), ...(block ? { block } : {}), ...(unit ? { unit } : {}) };

@@ -36,8 +36,8 @@ describe("inside a building", () => {
     expect(missing.ok).toBe(false);
     if (!missing.ok) expect(missing.errors["locations.0.buildingName"]).toMatch(/building or mall name/);
 
-    const ok = save([head({ address: "KN 4 Avenue, Kigali", placeId: "ChIJ_m_peace_plaza", inBuilding: true, building: { name: "M Peace Plaza", floor: " 3rd  floor ", block: "", unit: "Shop 12" } })]);
-    expect(ok.ok && ok.data.locations?.[0].building).toEqual({ name: "M Peace Plaza", floor: "3rd floor", unit: "Shop 12" });
+    const ok = save([head({ address: "KN 4 Avenue, Kigali", placeId: "ChIJ_m_peace_plaza", inBuilding: true, building: { name: "M Peace Plaza", floor: "3", block: "", unit: "Shop 12" } })]);
+    expect(ok.ok && ok.data.locations?.[0].building).toEqual({ name: "M Peace Plaza", floor: "3", unit: "Shop 12" });
   });
   it("ignores the building fields when the box is not ticked", () => {
     const r = save([head({ address: "KN 4 Avenue", inBuilding: false, building: { name: "Old name", floor: "1", block: "", unit: "" } })]);
@@ -52,7 +52,7 @@ describe("inside a building", () => {
 
 describe("entered by hand", () => {
   it("joins street, area and city, drops any place id and links a Maps search of the text", () => {
-    const r = save([head({ manual: true, street: "KN 4 Ave", area: "Kiyovu", city: "Kigali", placeId: "ChIJ_forged_place", lat: 1, lng: 2, inBuilding: true, building: { name: "M Peace Plaza", floor: "3rd floor", block: "", unit: "" } })]);
+    const r = save([head({ manual: true, street: "KN 4 Ave", area: "Kiyovu", city: "Kigali", placeId: "ChIJ_forged_place", lat: 1, lng: 2, inBuilding: true, building: { name: "M Peace Plaza", floor: "3", block: "", unit: "" } })]);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const l = r.data.locations![0];
@@ -86,5 +86,39 @@ describe("chat prompt", () => {
     const text = businessFactsContext(k)!;
     expect(text).toContain("- Shop: M Peace Plaza, 3rd floor, Block B, Shop 12 — KN 4 Avenue, Kigali (map: https://www.google.com/maps/search/?api=1&query=KN+4+Avenue%2C+Kigali%2C+Rwanda&query_place_id=ChIJ_m_peace_plaza)");
     expect(text).toMatch(/building, floor, block and shop number first/);
+  });
+});
+
+describe("floor dropdown, block and shop number labels", () => {
+  it("lists basements to rooftop with English ordinals", async () => {
+    const { FLOORS, ordinal } = await import("@/lib/business-info/locations");
+    expect(FLOORS.slice(0, 5).map((f) => f.label)).toEqual(["Basement 2", "Basement 1", "Ground floor", "Mezzanine", "1st floor"]);
+    expect(FLOORS.at(-1)).toEqual({ value: "R", label: "Rooftop" });
+    expect(FLOORS.at(-2)).toEqual({ value: "60", label: "60th floor" });
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 31, 42, 53].map(ordinal)).toEqual(["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "23rd", "31st", "42nd", "53rd"]);
+  });
+  it("shows floor, block and number with their words", async () => {
+    const { blockLabel, floorLabel, unitLabel } = await import("@/lib/business-info/locations");
+    expect(["8", "G", "B1", "B2", "M", "R"].map(floorLabel)).toEqual(["8th floor", "Ground floor", "Basement 1", "Basement 2", "Mezzanine", "Rooftop"]);
+    expect(floorLabel("Top deck")).toBe("Top deck"); // older free text, as typed
+    expect(["B", "b", "C2", "Block B", "East wing"].map(blockLabel)).toEqual(["Block B", "Block B", "Block C2", "Block B", "East wing"]);
+    expect(["12", "Shop 12", "Office 4A"].map(unitLabel)).toEqual(["No. 12", "Shop 12", "Office 4A"]);
+    expect(locationText({ address: "KN 4 Ave, Kigali, Rwanda", building: { name: "M Peace Plaza", floor: "8", block: "B", unit: "12" } })).toBe("M Peace Plaza, 8th floor, Block B, No. 12 — KN 4 Ave, Kigali");
+  });
+  it("maps floors typed before the dropdown, and keeps the rest as typed", async () => {
+    const { parseFloor } = await import("@/lib/business-info/locations");
+    expect(["8", "8th", "8th floor", "Floor 8", "level 8", "ground", "Ground floor", "GF", "0", "basement", "Basement 2", "B1", "mezzanine", "Rooftop", "roof"].map(parseFloor)).toEqual(["8", "8", "8", "8", "8", "G", "G", "G", "G", "B1", "B2", "B1", "M", "R", "R"]);
+    expect(parseFloor("Top deck")).toBeNull();
+    expect(parseFloor("99th floor")).toBeNull();
+    const k = readKnowledge({ faqs: [], locations: [{ kind: "head", address: "KN 4 Ave", building: { name: "Plaza", floor: "8th floor" } }, { kind: "branch", address: "X", building: { name: "Mall", floor: "Top deck" } }] });
+    expect(k.locations.map((l) => l.building?.floor)).toEqual(["8", "Top deck"]);
+  });
+  it("only accepts floors from the list, plus older free text already saved", () => {
+    const at = (floor: string, legacyFloors?: string[]) => validateKnowledge({ faqs: [], locations: [head({ address: "KN 4 Ave", inBuilding: true, building: { name: "Plaza", floor, block: "", unit: "" } })] }, { legacyFloors });
+    expect(at("8").ok).toBe(true);
+    expect(at("R").ok).toBe(true);
+    const bad = at("8th floor");
+    expect(!bad.ok && bad.errors["locations.0.floor"]).toMatch(/from the list/);
+    expect(at("Top deck", ["Top deck"]).ok).toBe(true);
   });
 });
