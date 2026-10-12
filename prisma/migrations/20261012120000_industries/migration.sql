@@ -4,7 +4,7 @@
 -- Autopilot playbook tags and the design packs keep working. Existing companies are linked to a sector by name.
 
 -- ---- Tables --------------------------------------------------------------------------------------------------------
-CREATE TABLE "Industry" (
+CREATE TABLE IF NOT EXISTS "Industry" (
     "id" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -22,9 +22,9 @@ CREATE TABLE "Industry" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "Industry_pkey" PRIMARY KEY ("id")
 );
-CREATE UNIQUE INDEX "Industry_slug_key" ON "Industry"("slug");
+CREATE UNIQUE INDEX IF NOT EXISTS "Industry_slug_key" ON "Industry"("slug");
 
-CREATE TABLE "DismissedIndustrySuggestion" (
+CREATE TABLE IF NOT EXISTS "DismissedIndustrySuggestion" (
     "key" TEXT NOT NULL,
     "label" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -35,8 +35,11 @@ CREATE TABLE "DismissedIndustrySuggestion" (
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "industryId" TEXT;
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "industryOther" TEXT;
 ALTER TABLE "Business" ADD COLUMN IF NOT EXISTS "industryDescription" TEXT;
-CREATE INDEX "Business_industryId_idx" ON "Business"("industryId");
-ALTER TABLE "Business" ADD CONSTRAINT "Business_industryId_fkey" FOREIGN KEY ("industryId") REFERENCES "Industry"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+CREATE INDEX IF NOT EXISTS "Business_industryId_idx" ON "Business"("industryId");
+DO $$ BEGIN
+  ALTER TABLE "Business" ADD CONSTRAINT "Business_industryId_fkey" FOREIGN KEY ("industryId") REFERENCES "Industry"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Same rules as the other internal tables: RLS on, no access for anon, authenticated or service_role (Prisma connects as postgres).
 ALTER TABLE "Industry" ENABLE ROW LEVEL SECURITY;

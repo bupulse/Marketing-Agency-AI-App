@@ -14,13 +14,18 @@ export type WelcomeState = { error?: string; fieldErrors?: FieldErrors };
 export async function saveOrganisation(_prev: WelcomeState, formData: FormData): Promise<WelcomeState> {
   const user = await requireActiveUser("settings");
 
+  // Once the details are saved the country is fixed, so a later save checks the phone against the STORED country,
+  // not whatever was posted.
+  const saved = await prisma.business.findUnique({ where: { userId: user.id }, select: { country: true, detailsCompletedAt: true } });
+  const lockedCountry = saved?.detailsCompletedAt ? saved.country : null;
+
   const parsed = welcomeSchema.safeParse({
     organisationName: formData.get("organisationName") ?? "",
     ceoName: formData.get("ceoName") ?? "",
     industry: formData.get("industry") ?? "",
     industryOther: formData.get("industryOther") ?? "",
     industryDescription: formData.get("industryDescription") ?? "",
-    country: formData.get("country") ?? "",
+    country: lockedCountry ?? formData.get("country") ?? "",
     phone: formData.get("phone") ?? "",
     website: formData.get("website") ?? "",
     terms: formData.get("terms") === "true",

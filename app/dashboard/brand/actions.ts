@@ -28,7 +28,8 @@ export async function saveIndustry(_prev: IndustryState, formData: FormData): Pr
     industryDescription: formData.get("industryDescription") ?? "",
   });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
-  const sector = await resolveIndustryChoice(parsed.data);
+  const current = await prisma.business.findUnique({ where: { userId: user.id }, select: { industryId: true } });
+  const sector = await resolveIndustryChoice(parsed.data, { currentIndustryId: current?.industryId });
   if (!sector) return { fieldErrors: { industry: "Choose your business sector from the list." } };
 
   // Writes industryId / industryOther / industryDescription and the legacy label (Business.industry) together.

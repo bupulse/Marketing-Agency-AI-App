@@ -52,21 +52,34 @@ export async function getIndustries(opts: { force?: boolean; now?: number } = {}
   }
 }
 
-/** The sectors a form offers: active rows in order. */
-export async function industryOptions(): Promise<IndustryOption[]> {
-  return (await getIndustries()).filter((i) => i.active).map((i) => ({ slug: i.slug, name: i.name }));
+/**
+ * The sectors a form offers: active rows in order. With `currentIndustryId` (the Brand form) the company's own sector
+ * stays in the list even when it was deactivated, marked "(no longer offered)".
+ */
+export async function industryOptions(opts: { currentIndustryId?: string | null } = {}): Promise<IndustryOption[]> {
+  return (await getIndustries())
+    .filter((i) => i.active || i.id === opts.currentIndustryId)
+    .map((i) => ({ slug: i.slug, name: i.active ? i.name : `${i.name} (no longer offered)` }));
 }
 
-/** The Business columns to write for a form's sector choice, or null when the slug is not an active sector. */
-export async function resolveIndustryChoice(input: { industry: string; industryOther: string; industryDescription: string }): Promise<{ industryId: string | null; industryOther: string | null; industry: string | null; industryDescription: string } | null> {
+/** An unknown slug only forces a refetch when the cached copy is older than this (a public POST must not hammer the database). */
+const REFETCH_AFTER_MS = 5_000;
+
+/**
+ * The Business columns to write for a form's sector choice, or null when the slug is not an active sector. A company
+ * that is already on a deactivated sector may keep it: pass its current `industryId`.
+ */
+export async function resolveIndustryChoice(input: { industry: string; industryOther: string; industryDescription: string }, opts: { currentIndustryId?: string | null } = {}): Promise<{ industryId: string | null; industryOther: string | null; industry: string | null; industryDescription: string } | null> {
   const description = input.industryDescription.trim();
   if (input.industry === INDUSTRY_OTHER) {
     const other = input.industryOther.trim();
     if (!other) return null;
     return { industryId: null, industryOther: other, industry: other, industryDescription: description };
   }
-  const row = (await getIndustries()).find((i) => i.slug === input.industry) ?? (await getIndustries({ force: true })).find((i) => i.slug === input.industry);
-  if (!row || !row.active) return null;
+  const find = (rows: IndustryRow[]) => rows.find((i) => i.slug === input.industry);
+  let row = find(await getIndustries());
+  if (!row && Date.now() - fetchedAt > REFETCH_AFTER_MS) row = find(await getIndustries({ force: true }));
+  if (!row || (!row.active && row.id !== opts.currentIndustryId)) return null;
   return { industryId: row.id, industryOther: null, industry: row.name, industryDescription: description };
 }
 

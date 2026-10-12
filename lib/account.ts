@@ -4,6 +4,7 @@ import type { User as AuthUser } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db";
 import type { SignUpMethod } from "@/lib/generated/prisma/client";
 import { getIndustries, slugForIndustryName } from "@/lib/industries/server";
+import { INDUSTRY_DESCRIPTION_MIN } from "@/lib/industries/shared";
 import { phoneCountry, toE164 } from "@/lib/phone";
 import { regionFromCountryName } from "@/lib/region";
 import { timezoneForCountryName } from "@/lib/region-format";
@@ -48,17 +49,23 @@ function signUpDetails(meta: AuthUser["user_metadata"] | undefined): SignUpDetai
  * only the name is linked by name; anything else is the owner's own text. The phone becomes E.164 for the country.
  */
 async function industryColumns(d: SignUpDetails) {
+  // The metadata is client-writable: apply the form's rules again. Anything invalid stores nothing for the industry,
+  // so /welcome (and Brand) ask again.
+  if (!(d.industryDescription && d.industryDescription.length >= INDUSTRY_DESCRIPTION_MIN)) return { industry: null, industryId: null, industryOther: null, industryDescription: null };
   const slug = d.industrySlug ?? slugForIndustryName(d.industry);
   const row = slug ? (await getIndustries()).find((i) => i.slug === slug) ?? null : null;
-  if (row) return { industry: row.name, industryId: row.id, industryOther: null, industryDescription: d.industryDescription };
+  if (row?.active) return { industry: row.name, industryId: row.id, industryOther: null, industryDescription: d.industryDescription };
+  if (row) return { industry: null, industryId: null, industryOther: null, industryDescription: null };
   const other = d.industryOther ?? (d.industry && d.industry.toLowerCase() !== "other" ? d.industry : null);
+  if (!other) return { industry: null, industryId: null, industryOther: null, industryDescription: null };
   return { industry: other, industryId: null, industryOther: other, industryDescription: d.industryDescription };
 }
 
 // True when the required sign-up details are all there. Email sign-ups always have
 // them; Google sign-ups don't and complete them on /welcome.
-function hasRequiredDetails(d: SignUpDetails) {
-  return Boolean(d.organisationName && d.ceoName && d.industry && d.country);
+// A sector that failed the form's rules counts as missing, so /welcome asks again.
+function hasRequiredDetails(d: SignUpDetails, sector: { industry: string | null }) {
+  return Boolean(d.organisationName && d.ceoName && sector.industry && d.country);
 }
 
 // Google-only accounts have just a "google" identity; anything with an email identity
@@ -114,7 +121,7 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
           pricingRegion,
           // Rwanda and the EAC countries have one zone each; elsewhere the browser sets it on the first dashboard visit.
           ...(timezoneForCountryName(details.country) ? { timezone: timezoneForCountryName(details.country) as string } : {}),
-          detailsCompletedAt: hasRequiredDetails(details) ? now : null,
+          detailsCompletedAt: hasRequiredDetails(details, sector) ? now : null,
           // The person who signs up owns the company; teammates are added from Settings → Team.
           memberships: { create: { userId: authUser.id, role: "OWNER" } },
         },
@@ -136,7 +143,7 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
     const sessionId = opts.visitSession ?? text(authUser.user_metadata?.visit_session, 40);
     const track = { userId: authUser.id, businessId: created.business?.id, sessionId };
     // trial_started is recorded when an admin starts the trial after the demo (lib/admin/demos.ts).
-    trackEvent(EVENT_NAMES.signup, { ...track, props: { method: signUpMethodOf(authUser), industry: details.industry ?? null, region: pricingRegion } });
+    trackEvent(EVENT_NAMES.signup, { ...track, props: { method: signUpMethodOf(authUser), industry: sector.industry, region: pricingRegion } });
   }
   return true;
 }

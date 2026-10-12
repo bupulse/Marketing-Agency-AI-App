@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // /welcome (Google sign-ups): the country, the pricing region and the time zone are set once, on the first save. A
 // server action is a public POST, so a second call may change the business details but never the region.
 
-const h = vi.hoisted(() => ({ requireActiveUser: vi.fn(), updateMany: vi.fn(), update: vi.fn() }));
+const h = vi.hoisted(() => ({ requireActiveUser: vi.fn(), updateMany: vi.fn(), update: vi.fn(), findUnique: vi.fn() }));
 vi.mock("@/lib/auth/require-user", () => ({ requireActiveUser: h.requireActiveUser }));
-vi.mock("@/lib/db", () => ({ prisma: { business: { updateMany: h.updateMany, update: h.update } } }));
+vi.mock("@/lib/db", () => ({ prisma: { business: { updateMany: h.updateMany, update: h.update, findUnique: h.findUnique } } }));
 vi.mock("@/lib/region", () => ({ regionFromCountryName: async (name: string) => (name === "Rwanda" ? "RW" : "GLOBAL") }));
 vi.mock("@/lib/industries/server", () => ({
   resolveIndustryChoice: async (v: { industry: string; industryOther: string; industryDescription: string }) =>
@@ -33,6 +33,7 @@ const SECTOR = { industryId: "ind_retail", industryOther: null, industry: "Shops
 beforeEach(() => {
   vi.clearAllMocks();
   h.requireActiveUser.mockResolvedValue({ id: "u1", businessId: "b1", role: "OWNER" });
+  h.findUnique.mockResolvedValue({ country: null, detailsCompletedAt: null });
 });
 
 describe("saveOrganisation", () => {
@@ -61,6 +62,16 @@ describe("saveOrganisation", () => {
     expect(await saveOrganisation({}, form("Rwanda", { industry: "other", industryOther: "" }))).toEqual({ fieldErrors: { industryOther: "Tell us your industry." } });
     expect(await saveOrganisation({}, form("Rwanda", { industryDescription: "" }))).toEqual({ fieldErrors: { industryDescription: expect.stringMatching(/Describe/) } });
     expect(await saveOrganisation({}, form("Rwanda", { industry: "retired-sector" }))).toEqual({ fieldErrors: { industry: expect.stringMatching(/from the list/) } });
+  });
+
+  it("after the first save the phone is checked against the stored country, not the posted one", async () => {
+    const { saveOrganisation } = await import("@/app/welcome/actions");
+    h.findUnique.mockResolvedValue({ country: "Rwanda", detailsCompletedAt: new Date() });
+    h.updateMany.mockResolvedValue({ count: 0 });
+    // A French number is fine for France but not for the stored Rwanda; posting country=France must not change that.
+    expect(await saveOrganisation({}, form("France", { phone: "06 12 34 56 78" }))).toEqual({ fieldErrors: { phone: expect.stringMatching(/Rwandan/) } });
+    await expect(saveOrganisation({}, form("France", { phone: "0791 954 277" }))).rejects.toThrow("NEXT_REDIRECT");
+    expect(h.update.mock.calls[0][0].data.phone).toBe("+250791954277");
   });
 
   it("leaves the zone alone for a country without one of its own", async () => {

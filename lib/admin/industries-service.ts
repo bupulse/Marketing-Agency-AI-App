@@ -137,9 +137,9 @@ export async function setIndustryOrder(ctx: AdminContext, input: { id: string; s
 export async function deleteIndustry(ctx: AdminContext, input: { id: string }) {
   const before = await prisma.industry.findUnique({ where: { id: input.id } });
   if (!before) throw new AdminError("not_found", "No industry with that id.");
-  const inUse = await prisma.business.count({ where: { industryId: before.id } });
-  if (inUse > 0) throw new AdminError("conflict", `${before.name} is the sector of ${inUse} ${inUse === 1 ? "company" : "companies"}. Deactivate it instead; they keep it.`);
   await prisma.$transaction(async (tx) => {
+    const inUse = await tx.business.count({ where: { industryId: before.id } });
+    if (inUse > 0) throw new AdminError("conflict", `${before.name} is the sector of ${inUse} ${inUse === 1 ? "company" : "companies"}. Deactivate it instead; they keep it.`);
     await tx.industry.delete({ where: { id: before.id } });
     await writeAudit(tx, ctx, "delete_industry", `industry:${before.id}`, before, null);
   });
@@ -240,14 +240,19 @@ export async function createIndustryFromSuggestion(ctx: AdminContext, input: Ind
   if (!key) throw new AdminError("invalid", "The suggestion is missing.");
   const clash = await prisma.industry.findUnique({ where: { slug: next.slug } });
   if (clash) throw new AdminError("conflict", `"${next.slug}" is already the slug of ${clash.name}. Choose another slug.`);
-  const candidates = await prisma.business.findMany({ where: { industryId: null, industryOther: { not: null } }, select: { id: true, industryOther: true, industry: true } });
-  const moving = candidates.filter((b) => industryKey(b.industryOther ?? "") === key);
   const data = { slug: next.slug, name: next.name, shortDescription: next.shortDescription, customers: next.customers, offerings: next.offerings, postIdeas: next.postIdeas, tone: next.tone, hashtags: next.hashtags, seasons: next.seasons, avoid: next.avoid, active: next.active, sortOrder: next.sortOrder };
+  let moved = 0;
   const created = await prisma.$transaction(async (tx) => {
+    moved = 0; // a retried transaction starts again
     const row = await tx.industry.create({ data });
     await writeAudit(tx, ctx, "create_industry", `industry:${row.id}`, null, { id: row.id, ...data, fromSuggestion: key });
-    for (const b of moving) {
-      await tx.business.update({ where: { id: b.id }, data: { industryId: row.id, industryOther: null, industry: row.name } });
+    // Read inside the transaction, and move each company only if it still has the same "Other" text: a company that
+    // changed its sector since is left alone (and neither audited nor counted).
+    const candidates = await tx.business.findMany({ where: { industryId: null, industryOther: { not: null } }, select: { id: true, industryOther: true, industry: true } });
+    for (const b of candidates.filter((c) => industryKey(c.industryOther ?? "") === key)) {
+      const res = await tx.business.updateMany({ where: { id: b.id, industryId: null, industryOther: b.industryOther }, data: { industryId: row.id, industryOther: null, industry: row.name } });
+      if (res.count !== 1) continue;
+      moved++;
       await writeAudit(tx, ctx, "update_company_industry", `business:${b.id}`, { industryId: null, industryOther: b.industryOther, industry: b.industry }, { industryId: row.id, industryOther: null, industry: row.name });
     }
     // The suggestion is gone from the list because the companies moved; a dismissal of the same key is tidied up.
@@ -255,7 +260,7 @@ export async function createIndustryFromSuggestion(ctx: AdminContext, input: Ind
     return row;
   });
   clearIndustryCache();
-  return { industry: await getIndustryAdmin(created.id), moved: moving.length };
+  return { industry: await getIndustryAdmin(created.id), moved };
 }
 
 /** For the Jarvis read tool: the guided fields of every industry, active ones first. */

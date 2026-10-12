@@ -29,10 +29,8 @@ export default async function BrandPage() {
     }
   }
 
-  const [industries, sector] = await Promise.all([
-    industryOptions(),
-    prisma.business.findUnique({ where: { id: business.id }, select: { industryOther: true, industryDescription: true, industryRef: { select: { slug: true } } } }),
-  ]);
+  const sector = await prisma.business.findUnique({ where: { id: business.id }, select: { industryId: true, industryOther: true, industryDescription: true, industryRef: { select: { slug: true } } } });
+  const industries = await industryOptions({ currentIndustryId: sector?.industryId });
   const initial = initialValues(business);
   const context = { businessName, industry: business.industry, savedLogoUrl };
   const rows = [
