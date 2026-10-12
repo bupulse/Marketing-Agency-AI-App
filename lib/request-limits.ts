@@ -1,5 +1,6 @@
 import "server-only";
 import { headers } from "next/headers";
+import { clientIp } from "@/lib/platform/headers";
 import { rateLimit, rateLimitMessage, RateLimitError, type RateLimitRule } from "@/lib/rate-limit";
 
 // Limits for the public, signed-out entry points (sign-up, sign-in, password reset, contact form, demo booking).
@@ -20,9 +21,9 @@ export const PUBLIC_LIMITS = {
 } satisfies Record<string, { ip: RateLimitRule; email?: RateLimitRule }>;
 export type PublicLimit = keyof typeof PUBLIC_LIMITS;
 
-/** The caller's address: Cloudflare's cf-connecting-ip, else the first x-forwarded-for hop (local dev), else null. */
+/** The caller's address: the host's own header (lib/platform/headers.ts), else the first x-forwarded-for hop (local dev), else null. */
 export function clientIpFrom(h: Headers): string | null {
-  return h.get("cf-connecting-ip")?.trim() || h.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+  return clientIp(h);
 }
 
 /** The address of the request behind the current server action or route. */

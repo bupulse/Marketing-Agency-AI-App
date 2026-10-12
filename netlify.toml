@@ -1,0 +1,41 @@
+# Netlify (free plan) build and runtime settings. Step-by-step setup: docs/DEPLOY_NETLIFY.md.
+# Production deploys run from GitHub Actions (.github/workflows/deploy-netlify.yml: migrations first, then
+# `netlify deploy --build --prod`), so Netlify's own builds stay stopped (each production deploy costs 15 credits).
+# Cloudflare Workers keeps working from wrangler.jsonc / worker.ts; the GitHub variable DEPLOY_TARGET picks the host.
+
+[build]
+  # Prisma's client is generated, not committed. `next build` also type-checks netlify/ (tsconfig includes it).
+  command = "npx prisma generate --config prisma7.config.ts && npm run build"
+  publish = ".next"
+
+[build.environment]
+  # The functions runtime follows the build's Node version (nodejs24.x on AWS Lambda).
+  NODE_VERSION = "24"
+  # Inlined at build time (next.config.ts, BUPULSE_BUILD_PLATFORM) so lib/platform/detect.ts knows the host even
+  # before it sees the Netlify global. Build variables here do not reach functions at runtime.
+  PLATFORM = "netlify"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+# Netlify's Next.js runtime (OpenNext adapter). Netlify installs it by itself when this block is absent; it is pinned
+# here (and in package.json devDependencies) so GitHub Actions, a local `netlify build` and Netlify all build the
+# same way. Update both together; to let Netlify pick the newest instead, delete this block and the devDependency.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[functions]
+  # The scheduled jobs (cron-*.mts) and their background runner. Netlify's Next.js runtime adds its own server
+  # function (___netlify-server-handler) and the proxy.ts edge function next to these.
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Pages and API answers get their headers from next.config.ts (the Next.js server applies them). Files in public/ are
+# served by Netlify's CDN without the Next.js server, so their cache headers are repeated here.
+[[headers]]
+  for = "/widget.js"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/widget-chat.js"
+  [headers.values]
+    Cache-Control = "public, max-age=300, stale-while-revalidate=86400"

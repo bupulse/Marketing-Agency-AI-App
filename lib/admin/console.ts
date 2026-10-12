@@ -6,6 +6,7 @@ import { AdminError, consoleContext, type AdminContext } from "./types";
 import { prisma } from "@/lib/db";
 import { APPROVAL_TTL_MS } from "./service";
 import { logError } from "@/lib/errors";
+import { clientIp } from "@/lib/platform/headers";
 
 /**
  * Start of every console server action: re-checks the admin (email, verified, AAL2) and returns the
@@ -14,7 +15,7 @@ import { logError } from "@/lib/errors";
 export async function adminAction(): Promise<AdminContext> {
   await requireAdmin();
   const h = await headers();
-  const ip = h.get("cf-connecting-ip") ?? h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+  const ip = clientIp(h);
   return consoleContext(ip);
 }
 

@@ -2,22 +2,28 @@
 // workflow_dispatch. Pure fetch, no SDK, so it runs on Cloudflare Workers. The token is never returned or logged.
 // No server imports: tests pass a fake fetch.
 
+import { DEPLOY_HOSTS, deployHost } from "./deploy-host";
 import { AdminError } from "./types";
 
+/** The Cloudflare deploy workflow, used when the config names no other (lib/admin/deploy-host.ts). */
 export const DEPLOY_WORKFLOW_FILE = "deploy.yml";
 /** The branch the workflow file is read from when dispatching (the target to deploy is passed as an input). */
 export const DEFAULT_BRANCH = "main";
 const API = "https://api.github.com";
 const TIMEOUT_MS = 10_000;
 
-export type GitHubConfig = { repo: string; token: string };
+/** `workflow`: the deploy workflow file of the host (deploy.yml for Cloudflare, deploy-netlify.yml for Netlify). */
+export type GitHubConfig = { repo: string; token: string; workflow?: string };
 
-/** GITHUB_REPO ("owner/name") and GITHUB_TOKEN, or null when either is missing or malformed. */
+/**
+ * GITHUB_REPO ("owner/name") and GITHUB_TOKEN, or null when either is missing or malformed, with the deploy workflow
+ * of the host BuPulse runs on (DEPLOY_TARGET overrides it).
+ */
 export function githubConfig(env: Record<string, string | undefined> = process.env): GitHubConfig | null {
   const repo = (env.GITHUB_REPO ?? "").trim();
   const token = (env.GITHUB_TOKEN ?? "").trim();
   if (!token || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) return null;
-  return { repo, token };
+  return { repo, token, workflow: DEPLOY_HOSTS[deployHost(env)].workflow };
 }
 
 export type LatestRelease = {
@@ -62,6 +68,10 @@ export class GitHubClient {
     private readonly cfg: GitHubConfig,
     private readonly fetchImpl: FetchLike = (input, init) => fetch(input, init),
   ) {}
+
+  private get workflow(): string {
+    return this.cfg.workflow ?? DEPLOY_WORKFLOW_FILE;
+  }
 
   private async request(path: string, init: { method?: string; body?: unknown } = {}): Promise<Response> {
     const controller = new AbortController();
@@ -141,7 +151,7 @@ export class GitHubClient {
 
   /** The newest runs of the deploy workflow, newest first. */
   async listDeployRuns(limit = 10): Promise<WorkflowRun[]> {
-    const data = await this.json<{ workflow_runs: GhRun[] }>(`/repos/${this.cfg.repo}/actions/workflows/${DEPLOY_WORKFLOW_FILE}/runs?per_page=${limit}`);
+    const data = await this.json<{ workflow_runs: GhRun[] }>(`/repos/${this.cfg.repo}/actions/workflows/${this.workflow}/runs?per_page=${limit}`);
     return (data?.workflow_runs ?? []).map((r) => ({
       id: r.id,
       name: r.name ?? "Deploy",
@@ -170,12 +180,12 @@ export class GitHubClient {
 
   /** Starts the deploy workflow (workflow_dispatch). GitHub answers 204 and the run appears a few seconds later. */
   async dispatchDeploy(inputs: { ref: string; action: "deploy" | "rollback"; environment: string }): Promise<void> {
-    const res = await this.request(`/repos/${this.cfg.repo}/actions/workflows/${DEPLOY_WORKFLOW_FILE}/dispatches`, {
+    const res = await this.request(`/repos/${this.cfg.repo}/actions/workflows/${this.workflow}/dispatches`, {
       method: "POST",
       body: { ref: DEFAULT_BRANCH, inputs },
     });
     if (res.status === 204) return;
-    if (res.status === 404) throw new AdminError("not_found", `GitHub could not find .github/workflows/${DEPLOY_WORKFLOW_FILE} on ${DEFAULT_BRANCH} in ${this.cfg.repo}, or the token cannot see the repository.`);
+    if (res.status === 404) throw new AdminError("not_found", `GitHub could not find .github/workflows/${this.workflow} on ${DEFAULT_BRANCH} in ${this.cfg.repo}, or the token cannot see the repository.`);
     if (res.status === 422) throw new AdminError("invalid", "GitHub refused the request: the workflow has no workflow_dispatch trigger or the inputs do not match it.");
     throw failure(res.status, "start the workflow");
   }

@@ -1,5 +1,9 @@
 name: Deploy
 
+# Cloudflare Workers. Netlify has its own workflow (deploy-netlify.yml); the repository variable DEPLOY_TARGET
+# (Settings, Secrets and variables, Actions, Variables) chooses which one a push to main deploys: unset or
+# "cloudflare" = this one, "netlify" = that one. The admin console starts the workflow of the host it runs on.
+#
 # Two ways in:
 # - every push to main deploys that commit (as before);
 # - "Run workflow" / the admin console's Settings, Updates page (workflow_dispatch) deploys a chosen release tag or
@@ -38,7 +42,8 @@ permissions:
 
 jobs:
   deploy:
-    if: github.event_name == 'push' || inputs.action == 'deploy'
+    # A push deploys here unless the repository variable DEPLOY_TARGET is "netlify" (then deploy-netlify.yml does).
+    if: (github.event_name == 'push' && vars.DEPLOY_TARGET != 'netlify') || (github.event_name == 'workflow_dispatch' && inputs.action == 'deploy')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     # Supabase Free has no backup API to check, so the safety step is human: add required reviewers to this

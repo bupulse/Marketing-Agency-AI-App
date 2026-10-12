@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
+import { clientIp } from "@/lib/platform/headers";
 import { bookingIcs } from "@/lib/demo/bookings";
 import { rateLimit, RateLimitError } from "@/lib/rate-limit";
 
@@ -14,7 +15,7 @@ export const ICS_RATE_LIMIT = { limit: 30, windowSeconds: 60 * 60 };
 const notFound = () => NextResponse.json({ error: "not_found" }, { status: 404, headers: { "cache-control": "no-store" } });
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
-  const ip = request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = clientIp(request.headers) ?? "unknown";
   try {
     await rateLimit(`demo-ics:${ip}`, ICS_RATE_LIMIT);
   } catch (error) {

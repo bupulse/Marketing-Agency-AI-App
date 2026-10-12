@@ -1,6 +1,7 @@
 import "server-only";
 import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/db";
+import { visitorCountry } from "@/lib/platform/headers";
 import { GEO_COOKIE, verifyGeoCookie } from "@/lib/geo-cookie";
 import {
   DEFAULT_REGION_KEY,
@@ -14,7 +15,7 @@ import {
 
 // Which region a visitor or a company is in. Public pages show the region of where the visitor really is, with no
 // switch: the country the visitor's browser reported through "Use my location" (a signed 24 h cookie, lib/geo-cookie.ts),
-// else Cloudflare's cf-ipcountry, else (outside production) ANALYTICS_DEV_COUNTRY, else the catch-all region. The old
+// else the host's IP country (Cloudflare's cf-ipcountry, Netlify's x-nf-geo), else (outside production) ANALYTICS_DEV_COUNTRY, else the catch-all region. The old
 // ?region= / bp-region override only works when REGION_OVERRIDE=1 (local development). Billing never looks at the IP:
 // it uses Business.pricingRegion, set from the sign-up country and changeable by an admin. Regions are rows of
 // PricingRegion, cached like the plans.
@@ -88,10 +89,12 @@ export async function regionFromCountryName(name: string | null | undefined): Pr
   return regionKeyForCountryName(name, await getRegions());
 }
 
-/** The visitor's IP country from Cloudflare (cf-ipcountry); null when absent, unknown (XX) or Tor (T1). */
+/**
+ * The visitor's IP country from the host: Cloudflare's cf-ipcountry, or Netlify's x-nf-geo (lib/platform/headers.ts);
+ * null when absent, unknown (XX) or Tor (T1).
+ */
 export function ipCountryFromHeaders(h: Headers): string | null {
-  const raw = (h.get("cf-ipcountry") ?? "").toUpperCase();
-  return /^[A-Z]{2}$/.test(raw) && raw !== "XX" && raw !== "T1" ? raw : null;
+  return visitorCountry(h);
 }
 
 /** ANALYTICS_DEV_COUNTRY, outside production only: lets a local run look like a visitor. */

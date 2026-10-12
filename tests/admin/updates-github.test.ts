@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ACTIVE_RUN_STATUSES, GitHubClient, githubConfig, isActiveRun } from "@/lib/admin/github";
 import { AdminError } from "@/lib/admin/types";
+import { DEPLOY_HOSTS, deployHost } from "@/lib/admin/deploy-host";
 
 const CFG = { repo: "bupulse/bupulse", token: "github_pat_FAKE_token_0001" };
 const SHA = "a".repeat(40);
@@ -22,10 +23,39 @@ function fakeFetch(routes: Record<string, Route>) {
 
 const code = async (p: Promise<unknown>) => p.then(() => null, (e: AdminError) => e.code);
 
+describe("the deploy workflow per host", () => {
+  it("is deploy.yml (Cloudflare) unless BuPulse runs on Netlify or DEPLOY_TARGET says netlify", () => {
+    const base = { GITHUB_REPO: "bupulse/bupulse", GITHUB_TOKEN: "t" };
+    expect(githubConfig({ ...base, DEPLOY_TARGET: "netlify" })?.workflow).toBe("deploy-netlify.yml");
+    expect(githubConfig({ ...base, DEPLOY_TARGET: " Cloudflare " })?.workflow).toBe("deploy.yml");
+    expect(deployHost({}, "netlify")).toBe("netlify");
+    expect(deployHost({}, "cloudflare")).toBe("cloudflare");
+    expect(deployHost({}, "node")).toBe("cloudflare");
+    expect(deployHost({ DEPLOY_TARGET: "cloudflare" }, "netlify")).toBe("cloudflare");
+    expect(deployHost({ DEPLOY_TARGET: "vercel" }, "netlify")).toBe("netlify");
+  });
+
+  it("lists, dispatches and names the Netlify workflow", async () => {
+    const cfg = { ...CFG, workflow: DEPLOY_HOSTS.netlify.workflow };
+    const { fetchImpl, calls } = fakeFetch({
+      "/repos/bupulse/bupulse/actions/workflows/deploy-netlify.yml/runs?per_page=10": () => ({ status: 200, body: { workflow_runs: [] } }),
+      "/repos/bupulse/bupulse/actions/workflows/deploy-netlify.yml/dispatches": () => ({ status: 204 }),
+    });
+    await new GitHubClient(cfg, fetchImpl).listDeployRuns();
+    await new GitHubClient(cfg, fetchImpl).dispatchDeploy({ ref: "v1.0.0", action: "deploy", environment: "production" });
+    expect(calls.map((c) => c.url)).toEqual([
+      "https://api.github.com/repos/bupulse/bupulse/actions/workflows/deploy-netlify.yml/runs?per_page=10",
+      "https://api.github.com/repos/bupulse/bupulse/actions/workflows/deploy-netlify.yml/dispatches",
+    ]);
+    const f404 = fakeFetch({});
+    await expect(new GitHubClient(cfg, f404.fetchImpl).dispatchDeploy({ ref: "v1", action: "deploy", environment: "production" })).rejects.toMatchObject({ message: expect.stringContaining("deploy-netlify.yml") });
+  });
+});
+
 describe("GITHUB_REPO and GITHUB_TOKEN", () => {
   it("needs both, and the repo as owner/name", () => {
-    expect(githubConfig({ GITHUB_REPO: "bupulse/bupulse", GITHUB_TOKEN: "t" })).toEqual({ repo: "bupulse/bupulse", token: "t" });
-    expect(githubConfig({ GITHUB_REPO: " bupulse/bupulse ", GITHUB_TOKEN: " t " })).toEqual({ repo: "bupulse/bupulse", token: "t" });
+    expect(githubConfig({ GITHUB_REPO: "bupulse/bupulse", GITHUB_TOKEN: "t" })).toEqual({ repo: "bupulse/bupulse", token: "t", workflow: "deploy.yml" });
+    expect(githubConfig({ GITHUB_REPO: " bupulse/bupulse ", GITHUB_TOKEN: " t " })).toEqual({ repo: "bupulse/bupulse", token: "t", workflow: "deploy.yml" });
     expect(githubConfig({ GITHUB_REPO: "bupulse/bupulse" })).toBeNull();
     expect(githubConfig({ GITHUB_TOKEN: "t" })).toBeNull();
     expect(githubConfig({ GITHUB_REPO: "https://github.com/bupulse/bupulse", GITHUB_TOKEN: "t" })).toBeNull();

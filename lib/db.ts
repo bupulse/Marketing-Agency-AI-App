@@ -1,7 +1,7 @@
 import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { poolMax, requestDatabase } from "@/lib/platform/database";
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -9,22 +9,15 @@ const globalForPrisma = globalThis as unknown as {
   clients?: Map<typeof PrismaClient, PrismaClient>;
 };
 
-// On Cloudflare Workers the connection comes from the Hyperdrive binding.
-// Locally and at build time there is no binding, so DATABASE_URL is used.
-function workersContext() {
-  try {
-    const { env, ctx } = getCloudflareContext();
-    return env.HYPERDRIVE ? { connectionString: env.HYPERDRIVE.connectionString, ctx } : undefined;
-  } catch {
-    return undefined;
-  }
-}
+// On Cloudflare Workers the connection comes from the Hyperdrive binding (lib/platform/database.ts).
+// On Netlify, locally and at build time there is no binding, so DATABASE_URL is used.
 
 function createClient(connectionString: string | undefined) {
   if (!connectionString) throw new Error("DATABASE_URL is not set");
   return new PrismaClient({
     adapter: new PrismaPg({
       connectionString,
+      max: poolMax(),
       // Close idle connections before Supabase's pooler drops them, so no request picks up a
       // dead connection and hangs.
       idleTimeoutMillis: 20_000,
@@ -41,12 +34,12 @@ function createClient(connectionString: string | undefined) {
 const workerClients = new WeakMap<object, PrismaClient>();
 
 function getClient(): PrismaClient {
-  const workers = workersContext();
+  const workers = requestDatabase();
   if (workers) {
-    let client = workerClients.get(workers.ctx);
+    let client = workerClients.get(workers.scope);
     if (!client) {
       client = createClient(workers.connectionString);
-      workerClients.set(workers.ctx, client);
+      workerClients.set(workers.scope, client);
     }
     return client;
   }

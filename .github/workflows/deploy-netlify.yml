@@ -1,0 +1,135 @@
+name: Deploy (Netlify)
+
+# Netlify (docs/DEPLOY_NETLIFY.md). The same rules as deploy.yml (Cloudflare): migrations first, only release tags or
+# full SHAs on main, one run at a time, the `production` environment's secrets and reviewers.
+# Two ways in:
+# - every push to main deploys that commit, when the repository variable DEPLOY_TARGET is "netlify";
+# - "Run workflow" / the admin console's Settings, Updates page (workflow_dispatch) deploys a chosen release tag or
+#   commit, or restores the production deploy before the live one. See docs/UPDATES.md.
+# Free plan: every production deploy costs 15 of the 300 monthly credits; a rollback (restore) costs none.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Release tag (vX.Y.Z) or full 40-character commit SHA on main (ignored for a rollback)"
+        required: false
+        default: ""
+        type: string
+      action:
+        description: "deploy or rollback"
+        required: true
+        default: deploy
+        type: choice
+        options: [deploy, rollback]
+      environment:
+        description: "GitHub environment (its secrets and required reviewers apply). Production is the only one."
+        required: true
+        default: production
+        type: choice
+        options: [production]
+
+# One deploy at a time; a second request waits for the first (the console also refuses while one is running).
+# The same group as deploy.yml, so a Cloudflare and a Netlify deploy never run at once either.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: (github.event_name == 'push' && vars.DEPLOY_TARGET == 'netlify') || (github.event_name == 'workflow_dispatch' && inputs.action == 'deploy')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Supabase Free has no backup API to check, so the safety step is human: add required reviewers to this
+    # environment (GitHub: Settings, Environments, production) and take a backup before approving. Pushes to main
+    # also wait for that approval once reviewers are set.
+    environment: production
+    env:
+      # Build-time values (public). Real runtime secrets live in Netlify (Project configuration, Environment variables).
+      NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      PLATFORM: netlify
+      NETLIFY_CLI: netlify-cli@27.12.0
+    steps:
+      # The workflow's own commit first (the pushed commit, or main for a manual start). A requested ref is checked
+      # before any of its code runs: only a vX.Y.Z tag or a full SHA, and only if it is on main's history, so a branch
+      # or an unreviewed commit can never be deployed with the production secrets (docs/UPDATES.md).
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check and check out the requested release
+        id: build
+        env:
+          EVENT: ${{ github.event_name }}
+          REQUESTED: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+            if [[ "$REQUESTED" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              git fetch --no-tags origin "+refs/tags/$REQUESTED:refs/tags/$REQUESTED"
+              TARGET="$(git rev-parse --verify "refs/tags/$REQUESTED^{commit}")"
+            elif [[ "$REQUESTED" =~ ^[0-9a-f]{40}$ ]]; then
+              TARGET="$REQUESTED"
+              if ! git cat-file -e "$TARGET^{commit}" 2>/dev/null; then
+                echo "::error::Commit $TARGET was not found in the repository."
+                exit 1
+              fi
+            else
+              echo "::error::ref must be a release tag (vX.Y.Z) or a full 40-character commit SHA on main."
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$TARGET" origin/main; then
+              echo "::error::$REQUESTED is not on main. Only commits merged into main can be deployed."
+              exit 1
+            fi
+            git checkout --detach "$TARGET"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "Deploying $(git rev-parse HEAD) (requested: ${REQUESTED:-$GITHUB_SHA})" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate --config prisma7.config.ts
+        env:
+          DATABASE_URL: ${{ secrets.DIRECT_URL }}
+
+      # Migrations first: a failed migration stops the deploy. They are never rolled back by the rollback job.
+      - run: npx prisma migrate deploy --config prisma7.config.ts
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+
+      # Builds here with netlify.toml (the pinned Next.js runtime, the cron functions) and uploads the result as a
+      # production deploy. Netlify's own builds stay stopped, so nothing deploys around the migrations.
+      - name: Build and deploy to Netlify
+        run: npx --yes "$NETLIFY_CLI" deploy --build --prod --context production --message "Deploy ${{ steps.build.outputs.sha }} (run ${{ github.run_id }})"
+        env:
+          BUILD_SHA: ${{ steps.build.outputs.sha }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+
+  rollback:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # Netlify's restore deploy: the production deploy before the live one is published again (no build, no credits).
+      - name: Restore the previous production deploy
+        run: node scripts/netlify-rollback.mjs
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      - run: echo "Restored the previous Netlify production deploy. Database migrations were not changed." >> "$GITHUB_STEP_SUMMARY"

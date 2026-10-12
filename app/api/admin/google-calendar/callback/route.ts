@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/admin/auth";
 import { consoleContext } from "@/lib/admin/types";
 import { logError } from "@/lib/errors";
+import { clientIp } from "@/lib/platform/headers";
 import { saveGoogleConnection } from "@/lib/google-calendar/calendar";
 import { exchangeGoogleCode, googleCalendarConfig, googleSettingsUrl, GoogleOAuthError, openGoogleState, sameString, STATE_COOKIE, STATE_COOKIE_PATH } from "@/lib/google-calendar/oauth";
 
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
   if (!code) return done("error", MESSAGES.failed);
   try {
     const grant = await exchangeGoogleCode(config, code, opened.data.verifier);
-    const ip = request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    const ip = clientIp(request.headers);
     const saved = await saveGoogleConnection(consoleContext(ip), grant);
     const moved = saved.accountChanged ? " This is a different Google account, so the calendar is back to \"primary\"; events made in the old account stay there." : "";
     return done("notice", `Google Calendar connected${saved.email ? ` (${saved.email})` : ""}. New demo bookings get a Google Meet link and an event in calendar "${saved.calendarId}".${moved}`);

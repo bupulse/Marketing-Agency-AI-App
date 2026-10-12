@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { findByKeyHash } from "@/lib/api/keys";
+import { trustedClientIp } from "@/lib/platform/headers";
 import { RateLimitError, rateLimit, type RateLimitRule } from "@/lib/rate-limit";
 import { ADMIN_KEY_PREFIX, ipAllowed } from "./keys";
 import { apiContext, type AdminContext } from "./types";
@@ -15,9 +16,12 @@ export function adminError(status: number, code: string, message: string, header
 
 export type AdminAuth = { ok: true; ctx: AdminContext; keyId: string } | { ok: false; response: NextResponse };
 
-/** The caller's address as Cloudflare saw it. Only meaningful behind Cloudflare, which always sets it. */
+/**
+ * The caller's address as the host saw it (Cloudflare's cf-connecting-ip, Netlify's x-nf-client-connection-ip), never
+ * x-forwarded-for: the IP allow-list must not trust anything the caller can choose.
+ */
 export function clientIp(request: Request): string | null {
-  return request.headers.get("cf-connecting-ip")?.trim() || null;
+  return trustedClientIp(request.headers);
 }
 
 /**

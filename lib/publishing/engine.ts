@@ -1,6 +1,7 @@
 import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import { prisma } from "@/lib/db";
+import { timeBudget } from "@/lib/platform/limits";
 import { disabledNetworks, isServiceEnabled } from "@/lib/admin/switch";
 import { blockMessage, companyEntitlements, notInPlanMessage } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
@@ -23,7 +24,8 @@ export const MAX_ATTEMPTS = 5;
 export const BACKOFF_MINUTES = [1, 5, 15, 60] as const;
 export const MAX_POSTS_PER_RUN = 20;
 const CLAIM_BATCH = 5;
-const TIME_BUDGET_MS = 45_000;
+/** Stop claiming posts after this long; posts in flight still finish. Netlify stops a function at 60 s, so 15 s there. */
+const timeBudgetMs = () => timeBudget(45_000, 15_000);
 
 export type PublishRunResult = {
   claimed: number;
@@ -389,7 +391,7 @@ async function runClaimed(ids: string[], totals: PublishRunResult) {
  */
 export async function publishDue(now = new Date(), options: { limit?: number; budgetMs?: number } = {}): Promise<PublishRunResult> {
   const limit = options.limit ?? MAX_POSTS_PER_RUN;
-  const deadline = Date.now() + (options.budgetMs ?? TIME_BUDGET_MS);
+  const deadline = Date.now() + (options.budgetMs ?? timeBudgetMs());
   const totals: PublishRunResult = { claimed: 0, published: 0, reminders: 0, retrying: 0, failed: 0, uncertain: 0 };
   await sweepStalePosts(now).catch((error) => logError(error, { source: "publishing.sweep" }));
   while (totals.claimed < limit && Date.now() < deadline) {

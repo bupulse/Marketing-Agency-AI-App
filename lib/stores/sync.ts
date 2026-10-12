@@ -10,6 +10,7 @@
 import "server-only";
 import { disabledServices } from "@/lib/admin/switch";
 import { prisma } from "@/lib/db";
+import { hasShortRequestLimit } from "@/lib/platform/limits";
 import { featureStatus } from "@/lib/entitlements";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { logError } from "@/lib/errors";
@@ -381,7 +382,8 @@ export async function resyncConnection(conn: ConnectionRow, opts: { limit?: numb
   return summary;
 }
 
-const CRON_BATCH = 5;
+/** Stores per call. Netlify stops a function at 60 s, so fewer there. */
+const cronBatch = () => (hasShortRequestLimit() ? 2 : 5);
 
 /**
  * One page of the daily sync. Stores are taken stalest first (never tried before, then oldest attempt), and each is
@@ -398,7 +400,7 @@ export async function runDailyStoreSync(opts: { cursor?: string | null; now?: Da
   const off = await disabledServices();
   const pausedProviders = (["shopify", "woocommerce"] as const).filter((p) => off.has(p));
   const due = { status: "ACTIVE", products: { some: {} }, ...(pausedProviders.length ? { provider: { notIn: [...pausedProviders] } } : {}), OR: [{ lastAttemptAt: null }, { lastAttemptAt: { lt: runStart } }] };
-  const batch = await prisma.storeConnection.findMany({ where: due, orderBy: [{ lastAttemptAt: { sort: "asc", nulls: "first" } }, { id: "asc" }], take: CRON_BATCH });
+  const batch = await prisma.storeConnection.findMany({ where: due, orderBy: [{ lastAttemptAt: { sort: "asc", nulls: "first" } }, { id: "asc" }], take: cronBatch() });
   let updated = 0;
   let failed = 0;
   let processed = 0;

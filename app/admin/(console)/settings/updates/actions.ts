@@ -1,6 +1,7 @@
 "use server";
 
 import { adminAction, finish } from "@/lib/admin/console";
+import { DEPLOY_HOSTS, deployHost } from "@/lib/admin/deploy-host";
 import { AdminError } from "@/lib/admin/types";
 import { installUpdate, rollbackDeploy } from "@/lib/admin/updates";
 
@@ -23,7 +24,7 @@ export async function installUpdateAction(f: FormData) {
 
 export async function rollbackAction(f: FormData) {
   const ctx = await adminAction();
-  await finish(BACK, "Rollback requested. GitHub is putting the previous Worker version back; database migrations are not undone.", async () => {
+  await finish(BACK, `Rollback requested. GitHub is putting the previous ${DEPLOY_HOSTS[deployHost()].runtime} version back; database migrations are not undone.`, async () => {
     if (text(f, "confirm") !== "on") throw new AdminError("confirm_required", "Tick the box to confirm the rollback.");
     return rollbackDeploy(ctx, { reason: text(f, "reason"), confirm: true });
   });

@@ -1,0 +1,147 @@
+# Deploying BuPulse on Netlify (free plan)
+
+BuPulse can run on Netlify's free plan instead of Cloudflare Workers. The code supports both; one GitHub variable (`DEPLOY_TARGET`) decides where a push to `main` goes. The Cloudflare setup (`docs/DEPLOY.md`, `wrangler.jsonc`, `worker.ts`) is untouched and can be switched back on at any time.
+
+What runs where on Netlify:
+
+| Part | On Netlify |
+| --- | --- |
+| Pages, API routes, server actions | One Netlify Function made by Netlify's Next.js runtime (`@netlify/plugin-nextjs`, pinned in `netlify.toml` and `package.json`) |
+| `proxy.ts` (session refresh, dashboard redirect) | A Netlify Edge Function (made by the same runtime) |
+| Static files (`public/`, `_next/static`) | Netlify's CDN |
+| Scheduled jobs (the Cloudflare Cron Triggers) | Netlify Scheduled Functions `netlify/functions/cron-*.mts`, same schedules (UTC) |
+| Database | Supabase through `DATABASE_URL` (no Hyperdrive) |
+| Visitor country / IP | Netlify's `x-nf-geo` and `x-nf-client-connection-ip` headers |
+| Deploys, rollback | GitHub Actions `.github/workflows/deploy-netlify.yml` (migrations first), started by a push or by Admin, Settings, Updates |
+
+## Free plan limits that matter (read this first)
+
+Netlify's free plan gives **300 credits a month, as a hard limit: when they are used up, every site on the account is paused** ("Site not available") until the next month. Credits are spent on:
+
+| What | Cost | BuPulse |
+| --- | --- | --- |
+| Production deploy | 15 credits each (failed deploys and rollbacks are free) | Every push to `main` and every "Install update" is one. 10 deploys = 150 credits. |
+| Compute (functions) | 10 credits per GB-hour; free functions always have 1 GB, so 1 hour of function time = 10 credits | Every page view, API call and cron run |
+| Web requests | 2 credits per 10,000 | Pages, assets, API, cron calls |
+| Bandwidth | 20 credits per GB | Pages, scripts, images served by Netlify |
+
+**The every-minute publisher is the biggest cost.** Each minute three function invocations run (the scheduled function, the background runner, the `/api/cron/publish` route), about 43,200 a month. If they take 0.5 s together that is about 6 GB-hours (60 credits); at 2 s (cold starts, a slow database round trip) about 24 GB-hours (240 credits), most of the month's budget before any visitor arrives. Add the hourly jobs (about 10 to 30 credits) and the GitHub fallback workflows (another call every 5 minutes for publishing).
+
+What to do about it:
+
+1. After the first week, check Netlify: Usage & billing, Credit usage breakdown, Compute. Multiply by four.
+2. If it is too much, publish every 5 minutes instead of every minute: in `netlify/functions/cron-publish.mts` change `schedule: "* * * * *"` to `"*/5 * * * *"`, and `PUBLISH_CRON` in `worker.ts` plus `triggers.crons` in `wrangler.jsonc` to the same value (`tests/netlify-crons.test.ts` keeps the two hosts on the same schedules). Posts then go out up to 5 minutes late. That cuts the publisher's cost by five.
+3. Optionally disable `.github/workflows/publish-posts.yml` (Actions, the workflow, "Disable workflow"): on Netlify the scheduled function is reliable and the fallback is paid compute.
+4. Deploy in batches: merge several changes, then deploy once.
+
+**When free is not enough:** Netlify Personal ($9 a month, 1,000 credits, and you can buy 500 more for $5 instead of being paused), or Pro (from 3,000 credits, also allows choosing the functions region and more memory). Cloudflare Workers Paid ($5 a month) is the other way out and is still fully supported (`docs/DEPLOY.md`).
+
+Other limits, on every plan:
+
+- **60 seconds per request** (not configurable). BuPulse shortens its own budgets on Netlify (`lib/platform/limits.ts`): the publisher claims posts for 15 s instead of 45 s, waits at most 25 s for Instagram to process images (then retries later, nothing was published), metrics run for 30 s, Autopilot plans 1 business per call instead of 2, store sync takes 2 stores per call instead of 5, Canva's return waits 15 s before saying "still saving". Work handed to `waitUntil` also counts towards the 60 s.
+- **Scheduled functions stop after 30 s**, so they only hand the job to the background function `cron-runner-background` (up to 15 minutes), which calls the route once or with cursors (as `worker.ts`), each call within 60 s, and starts no new call after 13 minutes.
+- **6 MB per request or response** (about 4.5 MB for a binary upload). Photo uploads go straight to Supabase Storage with signed URLs, so they are not affected.
+- **Functions run in US East (Ohio).** Changing the region is a Pro feature. Supabase in `us-east-1` or `us-east-2` keeps database round trips short; visitors in Rwanda see about 250 ms of network distance to Ohio on each uncached request.
+- **1 GB of memory per function** on the free plan. Enough for the JPEG conversion of a 4096 px photo.
+- The shared cache for rendered designs and fonts (Netlify Cache API) is per region and emptied on every deploy.
+- Scheduled functions only run on the published production deploy (not on deploy previews).
+
+## 1. Create the Netlify account and site (once)
+
+1. Sign up at netlify.com with GitHub (free plan, no card).
+2. Add new project, Import an existing project, GitHub, authorise Netlify for the BuPulse repository, pick it. Netlify detects Next.js. Leave the build settings as they are (`netlify.toml` sets them) and create the site.
+3. **Stop Netlify's own builds:** Project configuration, Build & deploy, Continuous deployment, Build settings, Configure, **Stop builds**. Deploys come from GitHub Actions only, so migrations always run first and a push does not cost two deploys. (Netlify may already have made a first deploy; that is fine.)
+4. Note the **Site ID**: Project configuration, General, Project details, "Project ID".
+5. Create a **personal access token**: User settings (your avatar), Applications, Personal access tokens, New access token, "BuPulse deploys", choose an expiry and put a reminder in the calendar.
+
+## 2. Environment variables (Netlify)
+
+Project configuration, Environment variables, Add a variable. Use the scope "All scopes" (builds and functions) unless noted. These are the same values as the Cloudflare secrets in `docs/DEPLOY.md`, plus:
+
+| Name | Value |
+| --- | --- |
+| `DATABASE_URL` | Supabase **transaction pooler** string (Connect, Transaction pooler, port **6543**). Every function instance holds its own small pool (3 connections, `DATABASE_POOL_MAX` changes it), so the transaction pooler is the right one for serverless. |
+| `PLATFORM` | `netlify`. Detection works without it (the `Netlify` global and the build sets it), this just makes it explicit. |
+| `AWS_LAMBDA_JS_RUNTIME` | Optional. `nodejs24.x` pins the functions' Node version (otherwise it follows the build's Node 24). Must be set here, not in `netlify.toml`. |
+| `NEXT_PUBLIC_SITE_URL` | `https://bupulse.com` (or the `*.netlify.app` URL until the domain moves) |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | As on Cloudflare |
+| `SUPABASE_SECRET_KEY`, `ENCRYPTION_KEY`, `CRON_SECRET`, `API_KEY_PEPPER` | As on Cloudflare. **`ENCRYPTION_KEY` and `API_KEY_PEPPER` must be the same values as on Cloudflare**, or stored tokens and API keys stop working. |
+| `AI_TEXT_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_TEXT_MODEL`, `ANTHROPIC_API_KEY`, `CLAUDE_TEXT_MODEL`, `CLAUDE_EFFORT` | As on Cloudflare |
+| `RESEND_API_KEY`, `RESEND_FROM`, `GOOGLE_MAPS_API_KEY`, `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, Paddle, Meta, LinkedIn, TikTok, YouTube, Canva, Shopify, Google Calendar keys | As on Cloudflare (`.env.example` lists them all) |
+| `ADMIN_EMAILS` | As on Cloudflare |
+| `GITHUB_REPO`, `GITHUB_TOKEN` | For Admin, Settings, Updates (`docs/UPDATES.md`). Scope: Functions. |
+
+Not needed on Netlify: `HYPERDRIVE` (Cloudflare only), `DIRECT_URL` (only the deploy workflow uses it, from GitHub).
+
+Mark the secret ones as "Contains secret values". Changing a variable needs a new deploy to reach the functions.
+
+## 3. GitHub (once)
+
+Settings of the repository:
+
+- **Environments, `production`**, environment secrets: `NETLIFY_AUTH_TOKEN` (the token from step 1.5), `NETLIFY_SITE_ID` (step 1.4), `DIRECT_URL` (already there for Cloudflare). Environment variables: `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (already there). Keep "Required reviewers" and "Deployment branches: main" as in `docs/UPDATES.md`.
+- **Secrets and variables, Actions, Variables (repository variable)**: `DEPLOY_TARGET` = `netlify`. From now on a push to `main` runs `deploy-netlify.yml` and skips `deploy.yml`. Delete the variable (or set `cloudflare`) to go back.
+
+## 4. Deploying
+
+- Automatic: a push to `main` runs `.github/workflows/deploy-netlify.yml`: checks the ref, `npm ci`, `prisma generate`, **`prisma migrate deploy` with `DIRECT_URL`** (a failed migration stops everything), then `netlify deploy --build --prod` (Netlify CLI 27.12.0) builds with `netlify.toml` on GitHub's runner and uploads the result as the production deploy. `BUILD_SHA` is the commit, as on Cloudflare.
+- From the admin console: Settings, Updates, Install (the same workflow; the console picks `deploy-netlify.yml` because it runs on Netlify; `DEPLOY_TARGET=cloudflare` in the Netlify environment would make it start `deploy.yml` instead).
+- **Rollback:** Settings, Updates, Roll back (or Run workflow with `action: rollback`) runs `scripts/netlify-rollback.mjs`, which asks Netlify's API to publish the production deploy before the live one again (`POST /api/v1/sites/{site}/deploys/{deploy}/restore`). It is live within seconds and costs no credits. Each rollback goes one deploy further back; to return to a newer one, install it again or use Netlify: Deploys, pick the deploy, Publish deploy. **Database migrations are never rolled back** (`docs/UPDATES.md`).
+- By hand from your machine (needs `npx netlify login` once and a `.env` with the build values): `npx prisma migrate deploy --config prisma7.config.ts`, then `npx netlify-cli@27.12.0 deploy --build --prod --site <SITE_ID>`.
+- Try the Netlify build locally without deploying: `npx netlify-cli@27.12.0 build --offline`.
+
+## 5. Domain and DNS (Cloudflare stays the DNS provider)
+
+The domain's DNS can stay at Cloudflare. In Netlify: Domain management, Add a domain, `bupulse.com` (and `www.bupulse.com`). Netlify shows the records; in Cloudflare DNS:
+
+- `bupulse.com`: `A` record to Netlify's load balancer address shown by Netlify (or a `CNAME` to `<site>.netlify.app`, which Cloudflare flattens at the apex).
+- `www`: `CNAME` to `<site>.netlify.app`.
+- **Proxy status: DNS only (grey cloud)** for both. Recommended, for three reasons:
+  1. Netlify then sees the visitor directly, so `x-nf-geo` (country, used for prices on `/pricing` and analytics) and `x-nf-client-connection-ip` (rate limits, admin key allow-lists) are the visitor's. Behind Cloudflare's proxy (orange cloud) Netlify would see Cloudflare's servers instead: every visitor would share a handful of IP addresses (and their rate limits), and the country would be that of the Cloudflare data centre.
+  2. On Netlify the app **ignores Cloudflare's `cf-ipcountry` and `cf-connecting-ip`**: anyone can send those headers straight to the `*.netlify.app` address, so trusting them would let a visitor pick their country or dodge rate limits. With the orange cloud they would be ignored anyway.
+  3. Netlify issues the HTTPS certificate (Let's Encrypt) itself; a proxy in front gets in the way of the certificate check and of Netlify's CDN caching.
+- Then in Netlify: HTTPS, Verify DNS configuration, Provision certificate. Set `NEXT_PUBLIC_SITE_URL` to `https://bupulse.com` and deploy again.
+- Email records (Resend, `docs/EMAIL_SETUP.md`) and anything else in Cloudflare DNS stay as they are.
+
+If BuPulse moves back to Cloudflare Workers, the Worker route takes the domain again and the proxy (orange cloud) comes back by itself.
+
+## 6. Scheduled jobs
+
+`netlify/functions/cron-*.mts` are deployed with the site and start by themselves on the published deploy. Same jobs and schedules as the Worker (UTC):
+
+| Function | Schedule | Route |
+| --- | --- | --- |
+| `cron-publish` | every minute | `/api/cron/publish` |
+| `cron-metrics` | hourly at :23 | `/api/cron/metrics` |
+| `cron-autopilot` | every 3 hours on Fri and Sat at :11 | `/api/cron/autopilot` (cursor calls) |
+| `cron-leads-digest` | hourly at :37 | `/api/cron/leads-digest` |
+| `cron-store-sync` | daily 03:47 | `/api/cron/store-sync` (cursor calls) |
+| `cron-analytics-rollup` | daily 02:17 | `/api/cron/analytics-rollup` (cursor calls) |
+| `cron-plan-price-changes` | daily 04:29 | `/api/cron/plan-price-changes` (cursor calls) |
+| `cron-momo-renewals` | daily 05:41 | `/api/cron/momo-renewals` (cursor calls) |
+| `cron-trial-reminders` | hourly at :53 | `/api/cron/trial-reminders` |
+
+How a run works: the scheduled function (30 s limit) posts `{ path }` with `Authorization: Bearer $CRON_SECRET` to `/.netlify/functions/cron-runner-background`; Netlify answers 202 and runs that background function (15 minutes), which checks the secret and that the path is one of the jobs above, then calls the route on the site's own URL with the same bearer token. `purge-accounts` and `social-refresh` keep running from GitHub Actions as before.
+
+Check them in Netlify: Logs & metrics, Functions, `cron-publish` (each run logs) and `cron-runner-background` (`[cron] /api/cron/publish: {...}` lines). "Run now" on a scheduled function starts it by hand. By hand from anywhere: `curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://bupulse.com/api/cron/publish`.
+
+## 7. Checks after the first deploy
+
+1. Open the site, sign in, open `/dashboard` (the edge function refreshes the session).
+2. `/pricing` from Rwanda shows RWF prices (country from `x-nf-geo`). From elsewhere, the catch-all region.
+3. Admin, Settings, Updates shows "Netlify site", the version and the runs of `deploy-netlify.yml`.
+4. Schedule a post for Instagram with a PNG design two minutes ahead: it is converted to JPEG (WebAssembly codecs read from the function bundle) and published.
+5. Netlify, Logs, Functions: `cron-runner-background` lines every minute.
+6. After a week: Usage & billing, credits used (see the limits above).
+
+## Switching back to Cloudflare
+
+Delete the GitHub variable `DEPLOY_TARGET` (or set it to `cloudflare`), put the domain back on the Worker (`docs/DEPLOY.md`, Domains) and push. Nothing in the code has to change: on Cloudflare the platform layer (`lib/platform/`) uses Hyperdrive, `ctx.waitUntil`, `caches.default`, `cf-ipcountry` and `cf-connecting-ip` exactly as before.
+
+## Where the code is
+
+- `lib/platform/`: the platform layer (host detection, `waitUntil`, shared cache, database connection, visitor country and IP, time budgets). `PLATFORM=netlify|cloudflare|node` forces a host; otherwise it is detected.
+- `netlify.toml`: build command, Node 24, the pinned Next.js runtime, functions directory, cache headers of `public/` scripts.
+- `netlify/functions/`, `netlify/lib/cron.ts`: the scheduled jobs and their runner.
+- `.github/workflows/deploy-netlify.yml`, `scripts/netlify-rollback.mjs`: deploy and rollback.
+- `lib/admin/deploy-host.ts`: which workflow the Updates screen starts.

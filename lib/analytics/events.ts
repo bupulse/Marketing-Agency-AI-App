@@ -1,7 +1,7 @@
 import "server-only";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { waitUntil } from "@/lib/platform/background";
 import { cleanSessionId } from "./collect";
 
 /** Product events the roll-up knows. Anything else is stored too, but only these feed the funnel and feature adoption. */
@@ -34,7 +34,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Records a product event. Fire-and-forget: returns immediately, never throws, never rejects, and the write keeps
- * running after the response on Workers (waitUntil). A failed write is only logged to the console.
+ * running after the response on Workers and Netlify (waitUntil). A failed write is only logged to the console.
  */
 export function trackEvent(name: string, options: TrackOptions = {}): void {
   try {
@@ -51,11 +51,8 @@ export function trackEvent(name: string, options: TrackOptions = {}): void {
         }),
       )
       .catch((error) => console.error(`[analytics] trackEvent ${name} failed:`, error instanceof Error ? error.message : error));
-    try {
-      getCloudflareContext().ctx.waitUntil(promise);
-    } catch {
-      // Not on Workers (local dev, tests, next start): the promise simply keeps running.
-    }
+    // Without a host (local dev, tests, next start) the promise simply keeps running.
+    waitUntil(promise);
   } catch (error) {
     console.error(`[analytics] trackEvent ${name} failed:`, error instanceof Error ? error.message : error);
   }

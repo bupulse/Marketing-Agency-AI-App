@@ -71,3 +71,6 @@ next-env.d.ts
 # local-only scripts (may hold credentials)
 scripts/local/
 TEST_ACCOUNTS.md
+
+# Netlify (local builds and the CLI link)
+.netlify

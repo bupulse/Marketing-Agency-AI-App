@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeDb, type FakeDb } from "./fake-db";
 
 const h = vi.hoisted(() => ({
@@ -146,9 +146,9 @@ describe("install update", () => {
     expect(JSON.parse(String(dispatches()[1][1].body))).toEqual({ ref: "main", inputs: { ref: SHA, action: "deploy", environment: "production" } });
   });
 
-  it("the workflow re-checks the ref, only knows the production environment, and checks ancestry against main", async () => {
+  it.each(["deploy.yml", "deploy-netlify.yml"])("the workflow (%s) re-checks the ref, only knows the production environment, and checks ancestry against main", async (file) => {
     const { readFileSync } = await import("node:fs");
-    const yml = readFileSync(new URL("../../.github/workflows/deploy.yml", import.meta.url), "utf8");
+    const yml = readFileSync(new URL(`../../.github/workflows/${file}`, import.meta.url), "utf8");
     expect(yml).toMatch(/environment:\n\s+description: [^\n]+\n\s+required: true\n\s+default: production\n\s+type: choice\n\s+options: \[production\]/);
     expect(yml).toContain("^v[0-9]+\\.[0-9]+\\.[0-9]+$");
     expect(yml).toContain("^[0-9a-f]{40}$");
@@ -184,6 +184,39 @@ describe("install update", () => {
     delete process.env.GITHUB_REPO;
     await expect(installUpdate(CONSOLE, { ref: "v1.1.0", confirm: true })).rejects.toMatchObject({ code: "unavailable", message: expect.stringContaining("GITHUB_REPO") });
     expect(h.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("on Netlify", () => {
+  beforeEach(() => {
+    process.env.PLATFORM = "netlify";
+    routes["/repos/bupulse/bupulse/actions/workflows/deploy-netlify.yml/runs?per_page=10"] = { status: 200, body: { workflow_runs: [run(7, "completed", "success")] } };
+    routes["/repos/bupulse/bupulse/actions/workflows/deploy-netlify.yml/dispatches"] = { status: 204 };
+  });
+  afterEach(() => {
+    delete process.env.PLATFORM;
+    delete process.env.DEPLOY_TARGET;
+  });
+
+  it("shows the Netlify workflow's runs and installs through it", async () => {
+    const s = await getUpdateStatus();
+    expect(s.host).toBe("netlify");
+    expect(s.runs.map((r) => r.id)).toEqual([7]);
+    await installUpdate(CONSOLE, { ref: "v1.1.0", confirm: true });
+    expect(String(dispatches()[0][0])).toContain("/actions/workflows/deploy-netlify.yml/dispatches");
+  });
+
+  it("rolls back through it, audited as the Netlify site", async () => {
+    await rollbackDeploy(CONSOLE, { reason: "Images broken after 1.1.0", confirm: true });
+    expect(String(dispatches()[0][0])).toContain("/deploy-netlify.yml/dispatches");
+    expect(audit()[0]).toMatchObject({ action: "rollback_deploy", target: "netlify:site" });
+  });
+
+  it("DEPLOY_TARGET=cloudflare keeps the Cloudflare workflow selectable", async () => {
+    process.env.DEPLOY_TARGET = "cloudflare";
+    await rollbackDeploy(CONSOLE, { reason: "Images broken after 1.1.0", confirm: true });
+    expect(String(dispatches()[0][0])).toContain("/workflows/deploy.yml/dispatches");
+    expect(audit()[0]).toMatchObject({ target: "worker:bupulse" });
   });
 });
 

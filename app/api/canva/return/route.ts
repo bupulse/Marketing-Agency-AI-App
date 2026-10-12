@@ -1,4 +1,3 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { NextResponse } from "next/server";
 import { checkActiveUser } from "@/lib/auth/require-user";
 import { siteUrl } from "@/lib/auth/site-url";
@@ -6,9 +5,14 @@ import { isCanvaEnabled } from "@/lib/canva/config";
 import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { CanvaError, finishCanvaReturn, startCanvaReturn } from "@/lib/canva/service";
 import { hasFeature, upgradeHref } from "@/lib/entitlements";
+import { timeBudget } from "@/lib/platform/limits";
+import { waitUntil } from "@/lib/platform/background";
 
-/** How long the browser waits for the export before being told it is still being saved. */
-const WAIT_MS = 30 * 1000;
+/**
+ * How long the browser waits for the export before being told it is still being saved. Netlify stops a function
+ * after 60 s, background work included, so the wait is shorter there to leave the save time to finish.
+ */
+const waitMs = () => timeBudget(30 * 1000, 15 * 1000);
 
 function toDesigns(params: Record<string, string>) {
   const url = new URL("/dashboard/designs", siteUrl());
@@ -16,19 +20,16 @@ function toDesigns(params: Record<string, string>) {
   return NextResponse.redirect(url);
 }
 
-/** Lets the work finish after the response: Cloudflare's waitUntil, or simply continuing in Node (development). */
+/** Lets the work finish after the response: the host's waitUntil, or simply continuing in Node (development). */
 function runInBackground(work: Promise<unknown>) {
-  try {
-    getCloudflareContext().ctx.waitUntil(work);
-  } catch {
-    // Not on Cloudflare: the promise keeps running on its own and never rejects.
-  }
+  // Without a host the promise keeps running on its own; it never rejects.
+  waitUntil(work);
 }
 
 /**
  * Canva's return navigation lands here with ?correlation_jwt=... when the user clicks "Return to BuPulse".
  * Exports the edited design, saves it as a new design and sends the user back to the designs page.
- * If Canva is slow, the user is sent back after 30 s and the save finishes in the background.
+ * If Canva is slow, the user is sent back after 30 s (15 s on Netlify) and the save finishes in the background.
  */
 export async function GET(request: Request) {
   if (!isCanvaEnabled()) return new Response("Not found", { status: 404 });
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
       (error: unknown) => ({ ok: false as const, error }),
     );
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), WAIT_MS)));
+    const late = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), waitMs())));
     const outcome = await Promise.race([work, late]);
     clearTimeout(timer);
     if (!outcome) {

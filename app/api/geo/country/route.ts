@@ -4,6 +4,7 @@ import { logError } from "@/lib/errors";
 import { GEO_COOKIE, GEO_MAX_AGE_SECONDS, signGeoCookie } from "@/lib/geo-cookie";
 import { geocodingAvailable, markGeocodingUnavailable } from "@/lib/geo-availability";
 import { GeocodeDeniedError, reverseGeocodeCountry } from "@/lib/places/google";
+import { trustedClientIp } from "@/lib/platform/headers";
 import { RATE_LIMITS, rateLimit, RateLimitError } from "@/lib/rate-limit";
 
 // "Use my location" on /pricing. POST { lat, lng } from the browser's geolocation. Reverse-geocodes on the server with
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
   const parsed = body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return reply({ error: "Bad request" }, 400);
 
-  const ip = (request.headers.get("cf-connecting-ip") ?? "").trim().slice(0, 64) || "unknown";
+  const ip = (trustedClientIp(request.headers) ?? "").slice(0, 64) || "unknown";
   try {
     await rateLimit(`geo:country:${ip}`, RATE_LIMITS.geoCountry);
   } catch (error) {

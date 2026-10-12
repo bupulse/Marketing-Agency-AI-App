@@ -1,6 +1,8 @@
 // Pure helpers for the first-party tracker (/api/collect). No I/O, so they are unit-tested directly.
 // Privacy: the raw IP and UA are only ever hashed together with a daily salt (visitorHash); neither is stored.
 
+import { cleanCountry, clientIp as platformClientIp, visitorCountry } from "@/lib/platform/headers";
+
 const BOT_UA =
   /bot|crawl|spider|slurp|headless|phantom|puppeteer|playwright|selenium|lighthouse|pagespeed|gtmetrix|pingdom|uptime|monitor|curl|wget|python-requests|python-urllib|aiohttp|httpx|go-http|java\/|okhttp|libwww|scrapy|node-fetch|axios|undici|postman|facebookexternalhit|embedly|preview|whatsapp|telegram|discord|skype|vkshare|bingpreview|yahoo|duckduck|baidu|yandex|semrush|ahrefs|mj12|dotbot|petalbot|bytespider|gptbot|claudebot|anthropic|perplexity|ccbot|amazonbot|applebot/i;
 
@@ -120,12 +122,12 @@ export async function visitorHash(ip: string, userAgent: string, now: Date, secr
 }
 
 export function clientIp(headers: Headers): string {
-  return headers.get("cf-connecting-ip") ?? headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? headers.get("x-real-ip") ?? "0.0.0.0";
+  return platformClientIp(headers) ?? headers.get("x-real-ip") ?? "0.0.0.0";
 }
 
-/** ISO country code from Cloudflare, with a dev fallback so local runs still show a country. */
+/** ISO country code from the host (Cloudflare or Netlify, lib/platform/headers.ts), with a dev fallback so local runs still show a country. */
 export function countryFrom(headers: Headers, cfCountry: string | undefined, dev: boolean): string | null {
-  const raw = (headers.get("cf-ipcountry") ?? cfCountry ?? "").toUpperCase();
-  if (/^[A-Z]{2}$/.test(raw) && raw !== "XX" && raw !== "T1") return raw;
+  const country = visitorCountry(headers) ?? cleanCountry(cfCountry);
+  if (country) return country;
   return dev ? (process.env.ANALYTICS_DEV_COUNTRY || "ZZ").toUpperCase().slice(0, 2) : null;
 }

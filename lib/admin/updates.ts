@@ -3,11 +3,13 @@ import { prisma } from "@/lib/db";
 import { rateLimit, RateLimitError, type RateLimitRule } from "@/lib/rate-limit";
 import { currentBuild, updateState, type BuildInfo, type UpdateState } from "@/lib/version";
 import { writeAudit } from "./audit";
+import { DEPLOY_HOSTS, deployHost, type DeployHost } from "./deploy-host";
 import { GitHubClient, githubConfig, isActiveRun, type LatestRelease, type WorkflowRun } from "./github";
 import { AdminError, type AdminContext } from "./types";
 
 // Updates: the running build, the newest release on GitHub and the deploy workflow's runs. Installing or rolling
-// back only ever starts the official GitHub Actions workflow (deploy.yml); the admin never uploads code.
+// back only ever starts the official GitHub Actions workflow (deploy.yml for Cloudflare, deploy-netlify.yml for
+// Netlify, lib/admin/deploy-host.ts); the admin never uploads code.
 // Both are console-only (a person with an authenticator code), confirmed, audited and limited to one run at a time.
 
 export const RUN_LIMIT = 10;
@@ -17,6 +19,8 @@ const DISPATCH_KEY = "admin-updates:dispatch";
 
 export type UpdateStatus = {
   current: BuildInfo;
+  /** Where deploys go (the host BuPulse runs on, or DEPLOY_TARGET). */
+  host: DeployHost;
   connected: boolean;
   repo: string | null;
   latest: LatestRelease | null;
@@ -37,14 +41,16 @@ function describe(e: unknown): string {
 /** Everything the Updates page and the get_update_status tool show. Never throws for GitHub trouble. */
 export async function getUpdateStatus(): Promise<UpdateStatus> {
   const current = currentBuild();
+  const host = deployHost();
   const cfg = githubConfig();
-  if (!cfg) return { current, connected: false, repo: null, latest: null, state: "not_connected", runs: [], inFlight: null, error: null };
+  if (!cfg) return { current, host, connected: false, repo: null, latest: null, state: "not_connected", runs: [], inFlight: null, error: null };
   const gh = client(cfg);
   const [latest, runs] = await Promise.all([gh.latestRelease().then((r) => ({ ok: true as const, r }), (e: unknown) => ({ ok: false as const, e })), gh.listDeployRuns(RUN_LIMIT).then((r) => ({ ok: true as const, r }), (e: unknown) => ({ ok: false as const, e }))]);
   const errors = [latest.ok ? null : describe(latest.e), runs.ok ? null : describe(runs.e)].filter((s): s is string => Boolean(s));
   const runList = runs.ok ? runs.r : [];
   return {
     current,
+    host,
     connected: true,
     repo: cfg.repo,
     latest: latest.ok ? latest.r : null,
@@ -69,7 +75,7 @@ function requireConsole(ctx: AdminContext, what: string) {
 
 function requireConnected() {
   const cfg = githubConfig();
-  if (!cfg) throw new AdminError("unavailable", "Updates are not connected: set GITHUB_REPO and GITHUB_TOKEN in the Worker environment.");
+  if (!cfg) throw new AdminError("unavailable", `Updates are not connected: set GITHUB_REPO and GITHUB_TOKEN in the ${DEPLOY_HOSTS[deployHost()].runtime} environment.`);
   return cfg;
 }
 
@@ -122,8 +128,9 @@ export async function installUpdate(ctx: AdminContext, input: { ref: string; ver
 }
 
 /**
- * Starts the workflow with action=rollback: it runs `wrangler rollback`, which puts the previous Worker version
- * back. Database migrations are not undone (docs/UPDATES.md). Console-only, confirmed, audited.
+ * Starts the workflow with action=rollback: on Cloudflare it runs `wrangler rollback`, which puts the previous Worker
+ * version back; on Netlify it restores the production deploy before the current one. Database migrations are not
+ * undone (docs/UPDATES.md). Console-only, confirmed, audited.
  */
 export async function rollbackDeploy(ctx: AdminContext, input: { reason: string; confirm?: boolean }) {
   requireConsole(ctx, "Rolling back");
@@ -134,6 +141,6 @@ export async function rollbackDeploy(ctx: AdminContext, input: { reason: string;
   await refuseWhileRunning(gh);
   await limitDispatch();
   await gh.dispatchDeploy({ ref: "main", action: "rollback", environment: DEPLOY_ENVIRONMENT }); // the workflow ignores ref for a rollback
-  await writeAudit(prisma, ctx, "rollback_deploy", "worker:bupulse", { version: currentBuild().version, sha: currentBuild().sha }, { action: "rollback", reason });
+  await writeAudit(prisma, ctx, "rollback_deploy", DEPLOY_HOSTS[deployHost()].auditTarget, { version: currentBuild().version, sha: currentBuild().sha }, { action: "rollback", reason });
   return { action: "rollback" as const };
 }

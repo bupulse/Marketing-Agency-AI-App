@@ -2,6 +2,7 @@
 // draws its images, and saves the posts. Safe to call twice: one run per business and week.
 import "server-only";
 import { prisma } from "@/lib/db";
+import { hasShortRequestLimit } from "@/lib/platform/limits";
 import { industryContext } from "@/lib/industry-context";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
@@ -311,7 +312,8 @@ const PAGE = 100;
  */
 export async function runDueBusinesses(options: { now?: Date; limit?: number; cursor?: string | null } = {}): Promise<DueResult> {
   const now = options.now ?? new Date();
-  const limit = options.limit ?? 2;
+  // Each plan writes with AI and draws images; Netlify stops a function at 60 s, so one business per call there.
+  const limit = options.limit ?? (hasShortRequestLimit() ? 1 : 2);
   const result: DueResult = { checked: 0, planned: 0, skipped: 0, failed: 0, nextCursor: null };
   let cursor = options.cursor ?? null;
   for (;;) {

@@ -1,6 +1,6 @@
 # Updates from the admin console (`/admin/settings/updates`)
 
-The Updates page shows the version BuPulse is running, the newest release on GitHub with its notes, and the last deploys. **Install update** and **Roll back** start the official deploy workflow on GitHub Actions (`.github/workflows/deploy.yml`); the console never uploads code. Both need the admin sign-in with an authenticator code (AAL2), a second confirmation in the dialog, and are written to the audit log (`install_update`, `rollback_deploy`). Jarvis can read the same status with `get_update_status`, but cannot install or roll back.
+The Updates page shows the version BuPulse is running, the newest release on GitHub with its notes, and the last deploys. **Install update** and **Roll back** start the official deploy workflow on GitHub Actions (`.github/workflows/deploy.yml` on Cloudflare, `.github/workflows/deploy-netlify.yml` on Netlify; the console picks the workflow of the host it runs on, and `DEPLOY_TARGET=cloudflare|netlify` in the app's environment overrides it, `lib/admin/deploy-host.ts`); the console never uploads code. Both need the admin sign-in with an authenticator code (AAL2), a second confirmation in the dialog, and are written to the audit log (`install_update`, `rollback_deploy`). Jarvis can read the same status with `get_update_status`, but cannot install or roll back.
 
 ## How a release works
 
@@ -14,7 +14,7 @@ What the workflow does for a deploy: check out `main`, check the ref again (form
 
 ## Rollback
 
-**Roll back** starts the same workflow with `action: rollback`, which runs `npx wrangler rollback --yes` and puts the previous Worker version back (Cloudflare keeps the last versions; traffic switches within about a minute). Then the Updates page shows the old version again.
+**Roll back** starts the same workflow with `action: rollback`. On Cloudflare it runs `npx wrangler rollback --yes` and puts the previous Worker version back (Cloudflare keeps the last versions; traffic switches within about a minute). On Netlify it runs `scripts/netlify-rollback.mjs`, which restores the production deploy before the live one through Netlify's API (free, live within seconds; each rollback goes one deploy further back, `docs/DEPLOY_NETLIFY.md`). Then the Updates page shows the old version again.
 
 **Database migrations are not rolled back.** `prisma migrate deploy` only goes forward. If the update added a migration, the previous code keeps running against the newer schema; that is fine for additive changes (new tables, new nullable columns), but a migration that renamed or dropped something the old code uses will break it. Before such an update, take a Supabase backup (Database, Backups, or `pg_dump` with `DIRECT_URL`) and know how you would restore it. To undo a migration by hand, write a reverse SQL migration and deploy it as a new version.
 

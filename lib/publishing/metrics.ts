@@ -1,6 +1,7 @@
 import "server-only";
 import { disabledNetworks } from "@/lib/admin/switch";
 import { prisma } from "@/lib/db";
+import { timeBudget } from "@/lib/platform/limits";
 import { logError } from "@/lib/errors";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { loadCredentials, markConnectionError } from "@/lib/social/connections";
@@ -13,7 +14,8 @@ export const METRICS_DAYS = 30;
 const FRESH_HOURS = 20;
 const MAX_POSTS_PER_RUN = 150;
 const PAUSE_MS = 250;
-const TIME_BUDGET_MS = 45_000;
+/** Netlify stops a function at 60 s, so the run stops sooner there; the next hourly run does the rest. */
+const timeBudgetMs = () => timeBudget(45_000, 30_000);
 
 export type MetricsRunResult = { checked: number; saved: number; skipped: number; failed: number };
 
@@ -23,7 +25,7 @@ export type MetricsRunResult = { checked: number; saved: number; skipped: number
  */
 export async function collectMetrics(now = new Date(), options: { limit?: number; budgetMs?: number; pauseMs?: number } = {}): Promise<MetricsRunResult> {
   const result: MetricsRunResult = { checked: 0, saved: 0, skipped: 0, failed: 0 };
-  const deadline = Date.now() + (options.budgetMs ?? TIME_BUDGET_MS);
+  const deadline = Date.now() + (options.budgetMs ?? timeBudgetMs());
   // Networks switched off in the admin console are skipped (their tokens and posts are left alone).
   const paused = await disabledNetworks();
   const posts = await prisma.post.findMany({

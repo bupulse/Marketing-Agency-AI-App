@@ -2,6 +2,8 @@
 
 BuPulse runs on Cloudflare Workers (through OpenNext). The database is Supabase Postgres, reached through Cloudflare Hyperdrive. These steps are done once by the owner; after that GitHub deploys every push to `main`.
 
+BuPulse can also run on Netlify's free plan: see `docs/DEPLOY_NETLIFY.md`. The repository variable `DEPLOY_TARGET` (unset or `cloudflare` = this page, `netlify` = that one) chooses which workflow a push to `main` runs; everything that differs between the two hosts lives in `lib/platform/`.
+
 ## 1. One-time Cloudflare setup
 
 1. Log in: `npx wrangler login`

@@ -1,3 +1,4 @@
+import { timeBudget } from "@/lib/platform/limits";
 import { graphGet, graphJson, graphPost, GRAPH_VERSION } from "../graph";
 import {
   finalStage,
@@ -146,8 +147,9 @@ async function publish(credentials: ConnectionCredentials, post: PublishRequest)
   const caption = post.text;
   await checkQuota(token, igId);
 
-  // One deadline covers every container, children and parent together.
-  const deadline = Date.now() + POLL.deadlineMs;
+  // One deadline covers every container, children and parent together. Netlify stops a function at 60 s, so the wait
+  // is 25 s there; a container still processing is retried later ("temporary"), nothing was published yet.
+  const deadline = Date.now() + timeBudget(POLL.deadlineMs, 25_000);
   let creationId: string;
   if (post.media.length === 1) {
     creationId = (await graphPost<{ id: string }>(E, `${base}/${igId}/media`, { image_url: post.media[0].url, caption, access_token: token })).id;

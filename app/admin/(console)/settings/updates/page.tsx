@@ -7,6 +7,7 @@ import { Panel, notice } from "@/components/admin/ui";
 import { Badge, Field, Input, Textarea, type BadgeTone } from "@/components/ui";
 import { dateTime, param } from "@/lib/admin/format";
 import { notesToBlocks } from "@/lib/admin/release-notes";
+import { DEPLOY_HOSTS } from "@/lib/admin/deploy-host";
 import { getUpdateStatus, type UpdateStatus } from "@/lib/admin/updates";
 import { installUpdateAction, rollbackAction } from "./actions";
 
@@ -27,6 +28,7 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/admin/se
   const sp = await searchParams;
   const s = await getUpdateStatus();
   const state = STATE[s.state];
+  const host = DEPLOY_HOSTS[s.host];
   const docsUrl = s.repo ? DOCS.replace("%s", s.repo) : null;
   const latest = s.latest;
   const latestVersion = latest?.version ?? (latest?.sha ? latest.sha.slice(0, 7) : null);
@@ -40,7 +42,7 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/admin/se
       {s.error && <p role="alert" className={notice.bad}>{s.error}</p>}
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <Panel title="Running now" description="What this Worker was built from." action={<Badge tone={state.tone}>{state.label}</Badge>}>
+        <Panel title="Running now" description={`What this ${host.runtime} was built from.`} action={<Badge tone={state.tone}>{state.label}</Badge>}>
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[14px]">
             <dt className="text-muted">Version</dt>
             <dd className="font-semibold tabular-nums">{s.current.version}</dd>
@@ -57,10 +59,19 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/admin/se
         {!s.connected ? (
           <Panel title="Not connected" description="Set GITHUB_REPO and GITHUB_TOKEN so this page can see releases and start deploys.">
             <ol className="list-decimal space-y-1.5 pl-5 text-[14px]">
-              <li>Push the code to a GitHub repository and keep <code className="font-mono text-[13px]">.github/workflows/deploy.yml</code> on <code className="font-mono text-[13px]">main</code>.</li>
+              <li>Push the code to a GitHub repository and keep <code className="font-mono text-[13px]">.github/workflows/{host.workflow}</code> on <code className="font-mono text-[13px]">main</code>.</li>
               <li>On GitHub: Settings, Developer settings, Fine-grained tokens, create one for that repository with <strong>Actions: Read and write</strong> and <strong>Contents: Read</strong> (Metadata is added by itself).</li>
-              <li>In Cloudflare: <code className="font-mono text-[13px]">npx wrangler secret put GITHUB_REPO</code> (owner/name) and <code className="font-mono text-[13px]">npx wrangler secret put GITHUB_TOKEN</code>. For local use add both to <code className="font-mono text-[13px]">.env</code>.</li>
-              <li>Add the GitHub Actions secrets the workflow needs (<code className="font-mono text-[13px]">CLOUDFLARE_API_TOKEN</code>, <code className="font-mono text-[13px]">CLOUDFLARE_ACCOUNT_ID</code>, <code className="font-mono text-[13px]">DIRECT_URL</code>) and the <code className="font-mono text-[13px]">production</code> environment. See docs/UPDATES.md.</li>
+              <li>{host.runtimeSecrets} For local use add both to <code className="font-mono text-[13px]">.env</code>.</li>
+              <li>
+                Add the GitHub Actions secrets the workflow needs (
+                {host.secrets.map((name, i) => (
+                  <Fragment key={name}>
+                    {i > 0 && ", "}
+                    <code className="font-mono text-[13px]">{name}</code>
+                  </Fragment>
+                ))}
+                ) and the <code className="font-mono text-[13px]">production</code> environment. See docs/UPDATES.md.
+              </li>
             </ol>
           </Panel>
         ) : (
@@ -93,7 +104,7 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/admin/se
                   label={`Install ${latestVersion}`}
                   variant="primary"
                   title={`Install ${latestVersion}?`}
-                  description={`GitHub will check out ${latest.ref}, run the database migrations, then build and deploy the new Worker. If the production environment has required reviewers, the run waits for approval on GitHub first. The request is written to the audit log.`}
+                  description={`GitHub will check out ${latest.ref}, run the database migrations, then build and deploy the new ${host.runtime}. If the production environment has required reviewers, the run waits for approval on GitHub first. The request is written to the audit log.`}
                   confirmLabel="Install update"
                 >
                   <Field label={`Type ${latestVersion} to confirm`} hint="Exactly as shown, to be sure you mean this one." required>
@@ -122,9 +133,9 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/admin/se
       )}
 
       {s.connected && (
-        <Panel title="Roll back" description="Puts the previous Worker version back (wrangler rollback). Use it when an update breaks the site.">
+        <Panel title="Roll back" description={`Puts the previous ${host.runtime} version back. Use it when an update breaks the site.`}>
           <p className="text-[14px] text-muted">
-            Only the Worker code is rolled back. <strong className="text-text">Database migrations are not undone:</strong> if the update changed the database, the old code must still work with the new tables, or you need a manual migration back.
+            Only the {host.runtime} code is rolled back. <strong className="text-text">Database migrations are not undone:</strong> if the update changed the database, the old code must still work with the new tables, or you need a manual migration back.
             {docsUrl && (
               <>
                 {" "}Read <a href={docsUrl} target="_blank" rel="noreferrer noopener" className="underline">docs/UPDATES.md</a> first.
@@ -137,8 +148,8 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/admin/se
               fields={{}}
               label="Roll back to the previous version"
               variant="outline"
-              title="Roll back the Worker?"
-              description="GitHub runs wrangler rollback, which switches traffic to the previous Worker version within a minute. Database migrations stay as they are. The request is written to the audit log."
+              title={`Roll back the ${host.runtime}?`}
+              description={`${host.rollback} Database migrations stay as they are. The request is written to the audit log.`}
               confirmLabel="Roll back"
             >
               <Field label="Reason" hint="Saved in the audit log." required>
