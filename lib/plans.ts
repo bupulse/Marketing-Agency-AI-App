@@ -1,4 +1,4 @@
-import { BUILT_APP_FEATURE_KEYS, type FeatureKey } from "@/lib/features";
+import { BUILT_APP_FEATURE_KEYS, sortFeatureKeys, type FeatureKey } from "@/lib/features";
 
 export type UsageMetric = "text" | "image" | "videoSeconds" | "voiceCharacters" | "chat";
 export const USAGE_METRICS: UsageMetric[] = ["text", "image", "videoSeconds", "voiceCharacters", "chat"];
@@ -43,10 +43,13 @@ export interface PlanConfig {
 
 export const TRIAL_DAYS = 7;
 
-/** Every built feature of the app except the API: what the trial and Standard had before plans carried features. */
-export const CORE_FEATURES: FeatureKey[] = BUILT_APP_FEATURE_KEYS.filter((k) => k !== "apiAccess");
+/**
+ * Every built feature of the app except the API and videos: what the trial and Standard had before plans carried
+ * features. Videos came later (docs/CONTENT_VISUALS.md) and come with video seconds, which only Pro has.
+ */
+export const CORE_FEATURES: FeatureKey[] = BUILT_APP_FEATURE_KEYS.filter((k) => k !== "apiAccess" && k !== "video");
 /** Every built feature of the app plus the client's own Composio account: Pro. (Managed by BuPulse is sold apart.) */
-export const PRO_FEATURES: FeatureKey[] = [...BUILT_APP_FEATURE_KEYS, "ownComposio"];
+export const PRO_FEATURES: FeatureKey[] = sortFeatureKeys([...BUILT_APP_FEATURE_KEYS, "ownComposio"]);
 
 /**
  * The plans as they were when the plan builder was introduced (9 October 2026). They are the seed of the PlanDefinition

@@ -16,7 +16,7 @@ export const MAX_OFFER_MINOR = 2_000_000_000;
 
 // ---- the add-on catalog ---------------------------------------------------------------------------------------------
 
-/** The limits an offer can raise by blocks (videoSeconds and voiceCharacters belong to coming-soon features). */
+/** The limits an offer can raise by blocks (video seconds and voice characters stay the base plan's). */
 export const OFFER_METRICS = ["text", "image", "chat"] as const;
 export type OfferMetric = (typeof OFFER_METRICS)[number];
 

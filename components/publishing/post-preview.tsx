@@ -2,6 +2,7 @@ import { ImagePlus, Mail } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { Network } from "@/lib/social/types";
 import { AccountAvatar, networkName } from "./network-icon";
+import { MediaThumb } from "@/components/visuals/media-thumb";
 
 type Props = {
   network: Network;
@@ -23,10 +24,8 @@ function Images({ media, ratio }: { media: { url: string }[]; ratio: string }) {
   const shown = media.slice(0, 4);
   return (
     <div className={cn("relative grid gap-0.5 overflow-hidden bg-soft", shown.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
-      {shown.map((m, i) => (
-        // Signed storage URLs: plain <img>, they are short-lived and not worth routing through the image optimizer.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img key={m.url} src={m.url} alt="" loading="lazy" className={cn("w-full object-cover", shown.length > 1 ? "aspect-square" : ratio)} data-index={i} />
+      {shown.map((m) => (
+        <MediaThumb key={m.url} url={m.url} loading="lazy" className={cn("w-full object-cover", shown.length > 1 ? "aspect-square" : ratio)} />
       ))}
       {media.length > 4 && <span className="absolute right-2 bottom-2 rounded-full bg-black/60 px-2 py-0.5 text-xs font-semibold text-white">+{media.length - 4}</span>}
     </div>

@@ -11,6 +11,7 @@ import { loadCredentials, markConnectionError } from "@/lib/social/connections";
 import { SocialError, type PublishRequest } from "@/lib/social/types";
 import { alertRecipients } from "@/lib/team/recipients";
 import { sendEmail, renderEmail } from "./email";
+import { isVideoPath } from "@/lib/visuals/post-media";
 import { adminStorageClient, EMAIL_URL_SECONDS, PUBLISH_URL_SECONDS, signPaths, signPathsForNetwork } from "./media";
 import { queueWebhookEvent } from "@/lib/webhooks/emit";
 import { postData } from "@/lib/webhooks/events";
@@ -159,7 +160,8 @@ async function sendReminder(post: ClaimedPost): Promise<"reminders" | "retrying"
   const isScript = post.format === "SCRIPT";
   const admin = adminStorageClient();
   const signed = admin && post.mediaPaths.length ? await signPaths(admin, post.mediaPaths, EMAIL_URL_SECONDS) : new Map<string, string>();
-  const links = post.mediaPaths.flatMap((path, i) => (signed.has(path) ? [{ label: `Image ${i + 1}`, url: signed.get(path) as string }] : []));
+  const links = post.mediaPaths.flatMap((path, i) => (signed.has(path) ? [{ label: isVideoPath(path) ? "Your video" : `Image ${i + 1}`, url: signed.get(path) as string }] : []));
+  const hasVideo = post.mediaPaths.some(isVideoPath);
   const token = await createMarkPostedToken(post.id);
   const heading = isScript ? `Time to film and post on ${network}` : `Time to post on ${network}`;
 
@@ -169,7 +171,9 @@ async function sendReminder(post: ClaimedPost): Promise<"reminders" | "retrying"
     ...renderEmail({
       heading,
       intro: isScript
-        ? `Your ${network} video is scheduled for now. BuPulse cannot publish video yet, so here is the script and caption to film and post it yourself.`
+        ? hasVideo
+          ? `Your ${network} video is scheduled for now. BuPulse cannot upload to ${network} yet, so download your video below and post it with this caption.`
+          : `Your ${network} video is scheduled for now. BuPulse cannot publish video yet, so here is the script and caption to film and post it yourself.`
         : `Your ${network} post is scheduled for now. ${post.connection?.displayName ?? "This account"} is set to remind you instead of posting automatically, so here is everything ready to copy.`,
       blocks: [
         { label: isScript ? "Script" : "Caption", value: post.text },
@@ -178,7 +182,7 @@ async function sendReminder(post: ClaimedPost): Promise<"reminders" | "retrying"
       ],
       links,
       button: { label: "I posted it", url: `${siteUrl()}/posted?token=${encodeURIComponent(token)}` },
-      footer: links.length ? "Image links work for 7 days." : post.mediaPaths.length ? "Open BuPulse to download the images for this post." : undefined,
+      footer: links.length ? (hasVideo ? "Download links work for 7 days." : "Image links work for 7 days.") : post.mediaPaths.length ? "Open BuPulse to download the images for this post." : undefined,
     }),
   };
   const sent = await sendEmail(sentEmail);
@@ -260,7 +264,7 @@ async function leaveUncertain(post: ClaimedPost) {
 
 function guessMime(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase();
-  return ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "mp4" ? "video/mp4" : "image/jpeg";
+  return ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "mp4" ? "video/mp4" : ext === "webm" ? "video/webm" : "image/jpeg";
 }
 
 /** The network has the post but we could not record it: shout, with everything needed to fix it by hand. */

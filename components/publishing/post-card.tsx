@@ -6,6 +6,7 @@ import { MOVABLE, STATUS_LABEL, STATUS_STYLE } from "@/lib/publishing/status";
 import type { CalendarPost } from "@/lib/publishing/types";
 import { formatTime, snippet } from "./helpers";
 import { NetworkIcon, networkName } from "./network-icon";
+import { MediaThumb } from "@/components/visuals/media-thumb";
 
 type Props = {
   post: CalendarPost;
@@ -71,10 +72,7 @@ export function PostCard({ post, zone, compact, onOpen, onMoveByDays, onDragStar
       {!compact && (
         <div className="flex min-w-0 items-start gap-2">
           <p className="line-clamp-2 min-w-0 flex-1 break-words text-muted">{snippet(post.text, 120) || (post.media.length ? "Photo post" : "No text yet")}</p>
-          {post.media[0] && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={post.media[0].url} alt="" loading="lazy" className="size-9 shrink-0 rounded-lg object-cover" />
-          )}
+          {post.media[0] && <MediaThumb url={post.media[0].url} loading="lazy" className="size-9 shrink-0 rounded-lg object-cover" />}
         </div>
       )}
       {!compact && post.status !== "SCHEDULED" && (

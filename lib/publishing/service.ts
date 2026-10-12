@@ -10,6 +10,8 @@ import { EDITABLE, QUEUED, type PostStatusName } from "./status";
 import { parseLocalInput } from "./time";
 import { formatFor, validatePost, type PostFormatName } from "./validate";
 import type { ComposeInput, EditInput } from "./types";
+import { composerMediaFor, isVideoPath } from "@/lib/visuals/post-media";
+import { readyMedia } from "@/lib/visuals/service";
 
 /** A problem the owner can fix. `code` tells the action layer whether it was a missing thing, bad input or a race. */
 export class PublishingError extends Error {
@@ -120,6 +122,9 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
   const draft = data.when.mode === "draft";
   const problems: string[] = [];
   const sizes = !draft && ordered.some((c) => c.provider === "instagram") ? await mediaSizes(owner.businessId, data.mediaPaths) : [];
+  // The content's visuals (docs/CONTENT_VISUALS.md): a video goes only where the network takes it, and with the script
+  // reminder of TikTok and YouTube; the other networks get the photos (or the content's picture).
+  const visual = content ? await readyMedia(owner.businessId, { contentId: content.id }) : { images: [], video: null };
   const rows = ordered.map((connection) => {
     if (!isNetwork(connection.provider)) throw new PublishingError("That account cannot be posted to.", "invalid");
     const network = connection.provider;
@@ -127,15 +132,17 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
     const override = data.overrides[network];
     const text = override?.text ?? data.text;
     const hashtags = override?.hashtags ?? data.hashtags;
-    const format: PostFormatName = formatFor(rules, data.mediaPaths.length);
+    let mediaPaths = composerMediaFor(network, rules.videoOnly, data.mediaPaths, visual.images);
+    if (rules.videoOnly && visual.video && !mediaPaths.some(isVideoPath)) mediaPaths = [visual.video];
+    const format: PostFormatName = formatFor(rules, mediaPaths.length);
     const label = connection.displayName ?? rules.label;
     if (draft) {
       if (!text.trim() && data.mediaPaths.length === 0) problems.push("Write something or add a photo to save a draft.");
     } else {
       if (!accountUsable(connection)) problems.push(`${label} needs to be reconnected first. Open Channels to fix it.`);
-      for (const issue of validatePost(rules, { format, text, hashtags, mediaCount: data.mediaPaths.length, mediaSizes: sizes }).errors) problems.push(`${label}: ${issue}`);
+      for (const issue of validatePost(rules, { format, text, hashtags, mediaCount: mediaPaths.length, mediaSizes: sizes }).errors) problems.push(`${label}: ${issue}`);
     }
-    return { connection, network, text: text.trim(), hashtags, format };
+    return { connection, network, text: text.trim(), hashtags, format, mediaPaths };
   });
   if (problems.length > 0) throw new PublishingError([...new Set(problems)][0], "invalid", { form: [...new Set(problems)].join(" ") });
 
@@ -159,7 +166,7 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
           source: "MANUAL",
           text: row.text,
           hashtags: row.hashtags,
-          mediaPaths: data.mediaPaths,
+          mediaPaths: row.mediaPaths,
           link: data.link,
           scheduledAt: time.scheduledAt,
         },

@@ -1,6 +1,7 @@
 // What the owner does with the plan: save settings, approve, remove, regenerate. Every function
 // starts from the signed-in user's id and only touches that user's business.
 import "server-only";
+import { releaseGroupVisuals } from "@/lib/visuals/service";
 import { prisma } from "@/lib/db";
 import { industryContext } from "@/lib/industry-context";
 import { profileContext } from "@/lib/knowledge/context";
@@ -71,6 +72,10 @@ export async function removeGroup(userId: string, groupId: string): Promise<Mana
   const { count } = await prisma.post.deleteMany({
     where: { groupId, source: "AUTOPILOT", status: { in: [...CHANGEABLE] }, business: { userId } },
   });
+  if (count > 0) {
+    const business = await prisma.business.findUnique({ where: { userId }, select: { id: true } }).catch(() => null);
+    if (business) await releaseGroupVisuals({ userId, businessId: business.id }, groupId).catch(() => {});
+  }
   return count > 0 ? { ok: true, removed: count } : { ok: false, error: "That post is already gone or can no longer be changed." };
 }
 
