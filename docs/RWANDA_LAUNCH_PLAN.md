@@ -116,7 +116,7 @@ Everything is audited.
 4. Confirm extends the paid-until date by a month or a year and resets usage.
 5. Reminders go out by email, with a WhatsApp-ready message, 5 days and 1 day before the end. There are 3 days of grace, then the account is read-only. Nothing is deleted.
 
-**Location.** Public pages read the IP country and show that region's prices, with a "Not in Rwanda? See other prices" switch. At sign-up the country chosen sets the company's region. Billing always uses the company's region, not the IP.
+**Location.** Public pages read the IP country and show that region's prices, (no manual switch: "Use my location" with the browser's permission corrects VPN users; see docs/REGIONS.md). At sign-up the country chosen sets the company's region. Billing always uses the company's region, not the IP.
 
 ## 6. Reaching 9,000,000 RWF a month
 

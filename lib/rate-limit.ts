@@ -19,6 +19,7 @@ export const RATE_LIMITS = {
   momo: { limit: 10, windowSeconds: 60 * 60 }, // Mobile Money start / "I've paid" / cancel, together, per company
   invoicePdf: { limit: 60, windowSeconds: 60 * 60 }, // invoice PDF downloads (drawn on demand when not stored), per company
   placesAutocomplete: { limit: 300, windowSeconds: 60 * 60 }, // address suggestions (debounced typing), per company
+  geoCountry: { limit: 20, windowSeconds: 60 * 60 }, // "Use my location" on the pricing page (a Google Geocoding call), per IP
   placesDetails: { limit: 60, windowSeconds: 60 * 60 }, // the chosen address's details, per company
 } satisfies Record<string, RateLimitRule>;
 

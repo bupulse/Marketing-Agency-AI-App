@@ -1,0 +1,43 @@
+import { cookies } from "next/headers";
+import { z } from "zod";
+import { logError } from "@/lib/errors";
+import { GEO_COOKIE, GEO_MAX_AGE_SECONDS, signGeoCookie } from "@/lib/geo-cookie";
+import { placesKey, reverseGeocodeCountry } from "@/lib/places/google";
+import { RATE_LIMITS, rateLimit, RateLimitError } from "@/lib/rate-limit";
+
+// "Use my location" on /pricing. POST { lat, lng } from the browser's geolocation. Reverse-geocodes on the server with
+// Google (the key never reaches the browser), answers only the ISO country code, and sets the signed bp-geo cookie.
+// Coordinates are used for this one call and never stored or logged. Without a key: { enabled: false }.
+const body = z.object({ lat: z.number().finite().min(-90).max(90), lng: z.number().finite().min(-180).max(180) });
+
+const HEADERS = { "Cache-Control": "private, no-store" };
+const reply = (data: unknown, status = 200, extra: Record<string, string> = {}) => Response.json(data, { status, headers: { ...HEADERS, ...extra } });
+
+export async function POST(request: Request) {
+  const key = placesKey();
+  if (!key) return reply({ enabled: false });
+  const parsed = body.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return reply({ error: "Bad request" }, 400);
+
+  const ip = (request.headers.get("cf-connecting-ip") ?? "").trim().slice(0, 64) || "unknown";
+  try {
+    await rateLimit(`geo:country:${ip}`, RATE_LIMITS.geoCountry);
+  } catch (error) {
+    if (error instanceof RateLimitError) return reply({ error: "Too many tries. Please try again later." }, 429, { "Retry-After": String(error.retryAfterSeconds) });
+    throw error;
+  }
+
+  let country: string | null;
+  try {
+    country = await reverseGeocodeCountry(key, parsed.data.lat, parsed.data.lng);
+  } catch {
+    await logError(new Error("Geocoding failed"), { source: "geo.country" });
+    return reply({ error: "We could not work out your country right now." }, 502);
+  }
+  if (!country) return reply({ error: "We could not work out your country." }, 404);
+
+  const signed = await signGeoCookie(country);
+  if (!signed) return reply({ error: "Not available right now." }, 503);
+  (await cookies()).set(GEO_COOKIE, signed, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: GEO_MAX_AGE_SECONDS });
+  return reply({ enabled: true, country });
+}

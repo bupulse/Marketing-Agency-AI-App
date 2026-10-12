@@ -98,6 +98,27 @@ export function addDaysYmd(ymd: string, days: number): string {
   return new Date(Date.parse(`${ymd}T00:00:00Z`) + days * DAY).toISOString().slice(0, 10);
 }
 
+/**
+ * Busy blocks with one interval cut out of them: a block that covers it is split around it, one that it covers goes.
+ * Google's free/busy merges back-to-back events, so a rescheduled booking's own event may sit inside a longer block.
+ */
+export function subtractInterval(busy: Busy[], cut: Busy): Busy[] {
+  const a = cut.startsAt.getTime();
+  const b = cut.endsAt.getTime();
+  const out: Busy[] = [];
+  for (const x of busy) {
+    const s = x.startsAt.getTime();
+    const e = x.endsAt.getTime();
+    if (e <= a || s >= b) {
+      out.push(x);
+      continue;
+    }
+    if (s < a) out.push({ startsAt: x.startsAt, endsAt: cut.startsAt });
+    if (e > b) out.push({ startsAt: cut.endsAt, endsAt: x.endsAt });
+  }
+  return out;
+}
+
 function overlaps(start: number, end: number, busy: Busy[], bufferMs: number): boolean {
   return busy.some((b) => start - bufferMs < b.endsAt.getTime() && end + bufferMs > b.startsAt.getTime());
 }

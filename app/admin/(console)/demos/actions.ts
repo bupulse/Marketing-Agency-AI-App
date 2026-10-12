@@ -1,7 +1,7 @@
 "use server";
 
 import { adminAction, finish } from "@/lib/admin/console";
-import { setDemoStatus, startTrial } from "@/lib/admin/demos";
+import { retryDemoCalendar, setDemoStatus, startTrial } from "@/lib/admin/demos";
 import { dateTime } from "@/lib/admin/format";
 import { setCompanyRegion } from "@/lib/admin/regions-service";
 
@@ -30,4 +30,9 @@ export async function companyRegionAction(f: FormData) {
   await finish(back(f), (r) => (r.changed ? `Region changed to ${r.pricingRegion}. Billing now shows that region's plans and prices.` : "The company is already in that region."), () =>
     setCompanyRegion(ctx, { businessId: text(f, "businessId"), regionKey: text(f, "regionKey") }),
   );
+}
+
+export async function retryDemoCalendarAction(f: FormData) {
+  const ctx = await adminAction();
+  await finish(back(f), (r) => (r.already ? "That demo's calendar event was already up to date." : "Google Calendar updated."), () => retryDemoCalendar(ctx, text(f, "id")));
 }

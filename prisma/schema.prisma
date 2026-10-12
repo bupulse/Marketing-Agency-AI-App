@@ -1121,19 +1121,24 @@ model AdminAvailability {
 // A demo call booked by a new client. One live ("booked") booking per start time and one per company (partial unique
 // indexes in the migration). A reschedule updates the row in place (same UID, SEQUENCE + 1).
 model DemoBooking {
-  id          String   @id @default(cuid())
-  businessId  String
-  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  planKey     String // the plan chosen when booking
-  startsAt    DateTime
-  endsAt      DateTime
-  status      String   @default("booked") // booked | done | no_show | cancelled
-  notes       String?
-  meetingLink String? // the reusable meeting link at the time of booking
-  icsToken    String   @unique // 32 random bytes, base64url (lib/demo/bookings.ts newIcsToken): the secret of the .ics route
-  sequence    Int      @default(0) // iCalendar SEQUENCE: bumped on every reschedule and on cancel, so calendars move the same event
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  businessId          String
+  business            Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  planKey             String // the plan chosen when booking
+  startsAt            DateTime
+  endsAt              DateTime
+  status              String   @default("booked") // booked | done | no_show | cancelled
+  notes               String?
+  meetingLink         String? // the reusable meeting link at the time of booking
+  icsToken            String   @unique // 32 random bytes, base64url (lib/demo/bookings.ts newIcsToken): the secret of the .ics route
+  sequence            Int      @default(0) // iCalendar SEQUENCE: bumped on every reschedule and on cancel, so calendars move the same event
+  googleEventId       String? // the event in the owner's Google Calendar (lib/google-calendar), when it was connected at booking time
+  meetLink            String? // the Google Meet link Google generated for that event (also copied into meetingLink)
+  googleSyncPending   Boolean  @default(false) // a change to the booking has not reached the Google event yet (retried: lib/google-calendar/events.ts)
+  googleSyncError     String? // why the last attempt failed, shown on Admin -> Demos
+  googleSyncAttemptAt DateTime? // the last attempt, so retries are spaced out
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   @@index([startsAt])
   @@index([businessId, status])

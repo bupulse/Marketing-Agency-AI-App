@@ -44,11 +44,11 @@ describe("region of a country", () => {
 
 describe("display region", () => {
   it("takes ?region=, then the cookie, then the IP country, ignoring unknown keys", () => {
-    expect(resolveDisplayRegionKey({ query: "EAC", cookie: "RW", country: "FR" }, REGION_SEEDS)).toBe("EAC");
-    expect(resolveDisplayRegionKey({ query: "nope", cookie: "rw", country: "FR" }, REGION_SEEDS)).toBe("RW");
-    expect(resolveDisplayRegionKey({ country: "KE" }, REGION_SEEDS)).toBe("EAC");
-    expect(resolveDisplayRegionKey({ country: null }, REGION_SEEDS)).toBe("GLOBAL");
-    expect(resolveDisplayRegionKey({ query: "EAC", country: "RW" }, REGION_SEEDS.map((r) => (r.key === "EAC" ? { ...r, active: false } : r)))).toBe("RW");
+    expect(resolveDisplayRegionKey({ query: "EAC", cookie: "RW", ip: "FR" }, REGION_SEEDS)).toBe("EAC");
+    expect(resolveDisplayRegionKey({ query: "nope", cookie: "rw", ip: "FR" }, REGION_SEEDS)).toBe("RW");
+    expect(resolveDisplayRegionKey({ ip: "KE" }, REGION_SEEDS)).toBe("EAC");
+    expect(resolveDisplayRegionKey({ ip: null }, REGION_SEEDS)).toBe("GLOBAL");
+    expect(resolveDisplayRegionKey({ query: "EAC", ip: "RW" }, REGION_SEEDS.map((r) => (r.key === "EAC" ? { ...r, active: false } : r)))).toBe("RW");
   });
 });
 
