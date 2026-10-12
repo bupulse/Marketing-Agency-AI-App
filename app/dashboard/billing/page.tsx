@@ -20,6 +20,10 @@ import { getPlan, subscriberPriceCents, toPublic } from "@/lib/plan-catalog";
 import { companyPlans, type RegionalPlan } from "@/lib/region-prices";
 import { currencyNote } from "@/lib/region-format";
 import { clientInvoices, openInvoiceOf, payableView } from "@/lib/invoices/service";
+import { clientOffer } from "@/lib/offers/service";
+import { OfferCard } from "@/components/billing/offer-card";
+import { OfferActions } from "@/components/billing/offer-actions";
+import { site } from "@/lib/content/site";
 import { getInvoices } from "./actions";
 
 export const metadata = { title: "Billing" };
@@ -41,12 +45,14 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   const trialEnd = formatDate(subscription.trialEndsAt);
   const cancelling = paid && subscription.cancelAtPeriodEnd;
   // The plans and prices of the company's region (never the visitor's IP), plus the plan the client chose at sign-up.
-  const [{ region, plans: regional }, currentPlan, chosen, momoSettings, momoPayment] = await Promise.all([
+  const [{ region, plans: regional }, currentPlan, chosen, momoSettings, momoPayment, offer] = await Promise.all([
     companyPlans(business.id),
     getPlan(subscription.plan),
     chosenPlan ? getPlan(chosenPlan) : Promise.resolve(null),
     getMomoSettings(),
     currentManualPayment(subscription.userId),
+    // A custom plan offer from the BuPulse team (docs/OFFERS.md); a failed lookup never breaks Billing.
+    clientOffer(business.id).catch(() => null),
   ]);
   // Mobile Money is offered where the company's region takes it and the owner has said where to pay (docs/MOMO.md).
   const momoOn = momoConfigured(momoSettings) && region.paymentMethods.includes("momo");
@@ -70,6 +76,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   const [bpInvoices, openInvoice] = await Promise.all([clientInvoices(business.id), openInvoiceOf(business.id)]);
   const payingInvoice = Boolean(openInvoice && momoPayment?.status === "pending" && momoPayment.invoiceId === openInvoice.id);
   const payable = openInvoice && !payingInvoice ? await payableView(openInvoice) : null;
+  // A custom plan cannot be bought by card through checkout (docs/OFFERS.md, "Card"): its invoice is paid by Mobile Money.
+  const payableCustom = payable?.planKey ? (await getPlan(payable.planKey))?.isCustom === true : false;
   const highlighted = typeof query.invoice === "string" ? query.invoice : null;
   const checkoutSuccess = query.checkout === "success";
   // Wait for this purchase specifically: the plan is active and was updated after checkout began.
@@ -106,7 +114,18 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
         </GlassCard>
       )}
 
-      {payable && <InvoicePay invoice={payable} momo={momoOn} card={region.paymentMethods.includes("card")} highlight={highlighted === payable.number} />}
+      {offer && (
+        <OfferCard
+          offer={offer}
+          actions={
+            offer.status === "sent" || (offer.status === "accepted" && !(momoPayment?.status === "pending" && momoPayment.submitted)) ? (
+              <OfferActions offerId={offer.id} momo={momoOn} card={region.paymentMethods.includes("card")} accepted={offer.status === "accepted"} method={offer.payMethod} contactEmail={site.email} />
+            ) : undefined
+          }
+        />
+      )}
+
+      {payable && <InvoicePay invoice={payable} momo={momoOn} card={region.paymentMethods.includes("card") && !payableCustom} highlight={highlighted === payable.number} />}
 
       {momoPayment && <MomoPayment payment={momoPayment} details={momoSettings} />}
 
@@ -171,6 +190,17 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       {bpInvoices.length > 0 && <ClientInvoices invoices={bpInvoices} />}
 
       {(paid || invoices.length > 0) && !momoPlan && <InvoiceList invoices={invoices} />}
+
+      <GlassCard as="aside" className="flex flex-wrap items-center justify-between gap-3 p-5">
+        <div>
+          <strong>Need something different?</strong>
+          <p className="text-sm text-muted">Tell us what your business needs and we put together a custom plan with only what you use.</p>
+        </div>
+        <Link href="/custom-plan?from=billing" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold no-underline">
+          Request a custom plan
+          <ArrowRight aria-hidden className="size-4" />
+        </Link>
+      </GlassCard>
 
       <GlassCard as="aside" className="flex flex-wrap items-center justify-between gap-3 p-5">
         <div>

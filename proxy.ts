@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED = ["/dashboard", "/welcome", "/onboarding", "/book-demo", "/account"];
+const PROTECTED = ["/dashboard", "/welcome", "/onboarding", "/book-demo", "/custom-plan", "/account"];
 
 /** Local development only (REGION_OVERRIDE=1): ?region=RW is kept in a cookie lib/region.ts reads. Otherwise nothing sets it. */
 const REGION_COOKIE = "bp-region";

@@ -12,6 +12,8 @@ import { InvoiceLock } from "@/components/app/invoice-lock";
 import { openInvoiceOf } from "@/lib/invoices/service";
 import { can } from "@/lib/team/roles";
 import { getActiveAnnouncements } from "@/lib/admin/service";
+import { OfferBanner } from "@/components/app/offer-banner";
+import { clientOffer } from "@/lib/offers/service";
 
 export const metadata: Metadata = {
   title: { default: "Dashboard", template: "%s · BuPulse" },
@@ -49,6 +51,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const status = usage.subscription.status;
   // A failing lookup must never break the dashboard.
   const announcements = await getActiveAnnouncements({ id: business.userId, plan: usage.subscription.plan }).catch(() => []);
+  // A custom plan offer waiting for the owner (docs/OFFERS.md): only those who can pay see it.
+  const offer = can(role, "billing") ? await clientOffer(business.id).catch(() => null) : null;
 
   return (
     <>
@@ -69,6 +73,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         }}
       >
         <AnnouncementBanner items={announcements} />
+        {offer && <OfferBanner offer={offer} />}
         <TrialBanner
           isTrial={isTrial}
           trialDaysLeft={trialDaysLeft}

@@ -67,11 +67,14 @@ export async function getRegionPrices(opts: { force?: boolean; now?: number } = 
   }
 }
 
-/** Pure: the plans offered in a region with that region's prices (see the rules at the top). Hidden and retired plans are left out. */
+/**
+ * Pure: the plans offered in a region with that region's prices (see the rules at the top). Hidden and retired plans,
+ * and every company's custom plan (docs/OFFERS.md), are left out.
+ */
 export function regionalPlansFor(plans: PlanView[], prices: RegionPriceRow[], region: RegionInfo): RegionalPlan[] {
   const out: RegionalPlan[] = [];
   for (const plan of plans) {
-    if (plan.isTrial || plan.status !== "active") continue;
+    if (plan.isTrial || plan.status !== "active" || plan.isCustom) continue;
     const row = prices.find((p) => p.planKey === plan.key && p.regionKey === region.key);
     const isGlobal = region.key === DEFAULT_REGION_KEY || region.countries.length === 0;
     if (isGlobal) {

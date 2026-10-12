@@ -67,6 +67,22 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
         </Reveal>
       </Container>
 
+      <Container size="narrow" className="pb-20">
+        <Reveal>
+          <GlassCard padding="lg" className="flex flex-col gap-3">
+            <h2 className="text-2xl font-bold tracking-tight">Need something different?</h2>
+            <p className="text-muted">
+              Only some features, more posts, website chat or Autopilot on top of a plan, or the BuPulse team running it for you: request a custom plan. Sign up first (it takes a few minutes), tell us what you need, and we talk it through in your free demo and send you an offer.
+            </p>
+            <div>
+              <Button href="/custom-plan?from=pricing" variant="outline" trailing={<ArrowRight aria-hidden className="size-4" />}>
+                Request a custom plan
+              </Button>
+            </div>
+          </GlassCard>
+        </Reveal>
+      </Container>
+
       {plans.length > 1 && (
         <Container className="pb-20">
           <SectionHeading title="Compare plans" text="Everything in each plan, side by side." className="mb-10" />

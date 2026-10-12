@@ -17,6 +17,8 @@ import { getSetting } from "./settings";
 import * as companies from "./actions/companies";
 import { isServiceEnabled } from "./switch";
 import { clearFlagCache } from "./flags";
+import { checkOfferDraft } from "@/lib/offers/shared";
+import { parseDraft, pricingContext, quoteWith, saveOfferDraft, sendOffer } from "@/lib/offers/service";
 import {
   AdminError,
   APPROVAL_STATUSES,
@@ -730,6 +732,34 @@ export async function requestPlanPriceChange(ctx: AdminContext, input: { plan: s
   return createApproval(ctx, "plan_price_change", { plan: plan.key, monthlyPriceCents, yearlyPriceCents }, async () => params, input.idempotencyKey);
 }
 
+/**
+ * A custom plan offer asked for through the API (Jarvis create_offer). An offer sets what a client pays, so it is a
+ * money action: only an approval is created, with the priced lines and the price locked in, and nothing is saved or
+ * sent until the owner approves it in the console (which then saves the draft and, with `send`, sends it).
+ */
+export async function requestCreateOffer(ctx: AdminContext, input: { businessId: string; draft: Record<string, unknown>; send?: boolean; idempotencyKey?: string }) {
+  const business = await prisma.business.findUnique({ where: { id: input.businessId }, select: { id: true, name: true } });
+  if (!business) throw new AdminError("not_found", "No company with that id.");
+  const draft = parseDraft(input.draft);
+  const pc = await pricingContext(business.id);
+  const { quote } = quoteWith(pc, draft);
+  const checked = checkOfferDraft(draft, quote);
+  if (!checked.ok) throw new AdminError("invalid", checked.error);
+  const request = { businessId: business.id, draft: input.draft, send: input.send === true };
+  return createApproval(ctx, "create_offer", request, async () => ({
+    businessId: business.id,
+    company: business.name,
+    draft: input.draft,
+    send: input.send === true,
+    currency: pc.region.currency,
+    interval: draft.interval,
+    features: quote.features,
+    lines: quote.lines.map((l) => `${l.label}${l.quantity > 1 ? ` x${l.quantity}` : ""}: ${l.totalMinor} ${pc.region.currency}${l.missingPrice ? " (no price set)" : ""}`),
+    computedMinor: quote.computedMinor,
+    adjustedMinor: checked.adjustedMinor,
+  }), input.idempotencyKey);
+}
+
 /** The plans for Jarvis (list_plans): what clients can buy, with clients and MRR. */
 export async function listPlansForTools() {
   const { plans, paddleConnected } = await listAdminPlans();
@@ -801,6 +831,14 @@ async function executeApproval(kind: string, params: Record<string, unknown>, on
     await onProviderDone(result);
     return result;
   }
+  if (kind === "create_offer") {
+    // Not Paddle: runs the console's own save (and send), with the approving admin as the actor. Only if the price is
+    // still the one the owner saw.
+    const saved = await saveOfferDraft(ctx, { businessId: String(params.businessId), draft: params.draft });
+    if (saved.adjustedMinor !== params.adjustedMinor) throw new Error(`The price changed since this request was made (now ${saved.adjustedMinor}, requested ${String(params.adjustedMinor)}). The draft was saved; check it in Offers.`);
+    const sent = params.send === true ? await sendOffer(ctx, saved.id) : null;
+    return { offerId: saved.id, status: sent ? "sent" : "draft", emailed: sent?.emailed ?? false };
+  }
   if (kind === "change_user_email" || kind === "make_company_owner") {
     // Not money: runs as the console action, with the approving admin as the actor (audited, old address notified).
     const result = kind === "change_user_email"
@@ -848,7 +886,7 @@ export async function approveAction(ctx: AdminContext, id: string): Promise<Appr
   if (ctx.viaApi || ctx.actor !== "admin") throw new AdminError("forbidden", "Only the owner can approve a money action, in the admin console.");
   const row = await prisma.adminApproval.findUnique({ where: { id } });
   // Only the money kinds need Paddle; checked before claiming, so the request stays pending and can be approved later.
-  if (!row || (row.kind !== "change_user_email" && row.kind !== "make_company_owner")) await requirePaddleOn();
+  if (!row || (row.kind !== "change_user_email" && row.kind !== "make_company_owner" && row.kind !== "create_offer")) await requirePaddleOn();
   if (!row) throw new AdminError("not_found", "No approval with that id.");
   const decidedAt = new Date();
   // Pending AND not expired, in the same conditional update that claims it.

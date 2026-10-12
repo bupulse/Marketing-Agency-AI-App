@@ -32,6 +32,7 @@ function match(row: Row, where: Where): boolean {
     if (key === "OR") return (cond as Where[]).some((w) => match(row, w));
     if (key === "month_category") return row.month === cond.month && row.category === cond.category;
     if (key === "planKey_regionKey") return row.planKey === cond.planKey && row.regionKey === cond.regionKey;
+    if (key === "addonKey_regionKey") return row.addonKey === cond.addonKey && row.regionKey === cond.regionKey;
     // Relation filter on a business: its account user's subscription (lib/demo and lib/admin/demos).
     if (key === "business" && cond && typeof cond === "object") return !!row.business && match(row.business, cond as Where);
     if (key === "user" && cond && typeof cond === "object") return !!row.user && match(row.user, cond as Where);
@@ -218,8 +219,11 @@ export function createFakeDb() {
       uniqueWhere: [
         { key: "reference", when: (r) => !String(r.reference ?? "").startsWith("BP-INV-") },
         { key: "invoiceId", when: (r) => r.invoiceId != null && (r.status === "pending" || r.status === "confirmed") },
+        // One pending payment per company, and one live payment per offer (20261013120000_custom_plan_offers).
+        { key: "userId", when: (r) => r.status === "pending" },
+        { key: "offerId", when: (r) => r.offerId != null && (r.status === "pending" || r.status === "confirmed") },
       ],
-      defaults: () => ({ currency: "RWF", status: "pending", invoiceId: null, payerPhone: null, network: null, transactionId: null, rejectReason: null, submittedAt: null, decidedAt: null, decidedBy: null, periodStart: null, periodEnd: null, updatedAt: new Date() }),
+      defaults: () => ({ currency: "RWF", status: "pending", invoiceId: null, offerId: null, payerPhone: null, network: null, transactionId: null, rejectReason: null, submittedAt: null, decidedAt: null, decidedBy: null, periodStart: null, periodEnd: null, updatedAt: new Date() }),
     }),
     // Invoices (lib/invoices): unique number, one draft per company.
     invoice: table([], {
@@ -228,6 +232,17 @@ export function createFakeDb() {
       uniqueWhere: [{ key: "businessId", when: (r) => r.status === "draft" }],
       defaults: () => ({ status: "draft", taxRatePercent: null, taxMinor: 0, notes: null, billingEmail: null, planKey: null, interval: null, billTo: null, seller: null, pdfPath: null, sentAt: null, sentTo: [], reminderSentAt: null, paidAt: null, paidBy: null, voidedAt: null, voidReason: null, updatedAt: new Date() }),
     }),
+    // Custom plans (lib/offers): add-on prices, offers (one sent or accepted per company), requests.
+    addonPrice: table([], { pk: "id", defaults: () => ({ updatedBy: null, updatedAt: new Date() }) }),
+    planOffer: table([], {
+      pk: "id",
+      uniqueWhere: [
+        { key: "businessId", when: (r) => r.status === "sent" || r.status === "accepted" },
+        { key: "customPlanKey", when: (r) => r.customPlanKey != null },
+      ],
+      defaults: () => ({ status: "draft", options: {}, requestId: null, adjustReason: null, note: null, validUntil: null, sentAt: null, acceptedAt: null, payMethod: null, customPlanKey: null, invoiceId: null, paidAt: null, paidBy: null, withdrawnAt: null, withdrawReason: null, updatedAt: new Date() }),
+    }),
+    customPlanRequest: table([], { pk: "id", defaults: () => ({ status: "new", source: "billing", handledBy: null, demoBookingId: null, budget: null, phone: null, updatedAt: new Date() }) }),
     renewalNotice: table([], { pk: "id", uniqueCombo: ["userId", "periodEnd", "kind"], defaults: () => ({ sentAt: new Date() }) }),
     analyticsEvent: table([], { pk: "id" }),
     // Regions, regional prices and demo bookings (R1). Empty by default: lib/region falls back to the seeds.

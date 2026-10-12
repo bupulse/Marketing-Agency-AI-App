@@ -114,6 +114,9 @@ model Business {
   memberships      Membership[]
   invites          Invite[]
   invoices         Invoice[]
+  customPlans      PlanDefinition[]
+  planOffers       PlanOffer[]
+  planRequests     CustomPlanRequest[]
   personas         Persona[]
   competitors      Competitor[]
   faqs             KnowledgeFaq[]
@@ -567,6 +570,10 @@ model ManualPayment {
   // The invoice this payment settles (docs/INVOICES.md); confirming it marks the invoice paid.
   invoiceId     String?
   invoice       Invoice?        @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  // The custom plan offer this payment pays (docs/OFFERS.md); confirming it marks the offer paid and switches the
+  // company onto the offer's custom plan (planKey). Null for plan, renewal and invoice payments.
+  offerId       String?
+  offer         PlanOffer?      @relation(fields: [offerId], references: [id], onDelete: SetNull)
   payerPhone    String?
   network       String? // "MTN" | "AIRTEL"
   transactionId String? // the MoMo transaction id the client typed
@@ -588,6 +595,7 @@ model ManualPayment {
   @@index([userId, createdAt])
   @@index([reference])
   @@index([invoiceId])
+  @@index([offerId])
 }
 
 // One renewal email of a Mobile Money subscription (lib/billing/momo-renewals.ts): "5d" and "1d" before the period
@@ -1287,21 +1295,21 @@ model AdminSetting {
 // seed and as the fallback when the database cannot be read. Paddle prices are never edited in place: a price change
 // creates new Paddle prices and the old ids move to paddlePrices (history), so old subscriptions still map to this plan.
 model PlanDefinition {
-  id                   String   @id @default(cuid())
-  key                  String   @unique // slug; TRIAL, STANDARD and PRO keep their old enum names
+  id                   String    @id @default(cuid())
+  key                  String    @unique // slug; TRIAL, STANDARD and PRO keep their old enum names
   name                 String
-  description          String   @default("")
-  isTrial              Boolean  @default(false) // exactly one plan: TRIAL
+  description          String    @default("")
+  isTrial              Boolean   @default(false) // exactly one plan: TRIAL
   trialDays            Int? // trial only
-  status               String   @default("active") // active | hidden | retired
-  sortOrder            Int      @default(0)
-  highlight            Boolean  @default(false)
-  monthlyPriceCents    Int      @default(0)
-  yearlyPriceCents     Int      @default(0)
-  currency             String   @default("USD")
+  status               String    @default("active") // active | hidden | retired
+  sortOrder            Int       @default(0)
+  highlight            Boolean   @default(false)
+  monthlyPriceCents    Int       @default(0)
+  yearlyPriceCents     Int       @default(0)
+  currency             String    @default("USD")
   limits               Json // { text, image, chat, videoSeconds, voiceCharacters, seats }
   // string[] marketing bullets on the pricing card (replaced `features` in 20261009110000_plan_features).
-  highlights           Json     @default("[]")
+  highlights           Json      @default("[]")
   // FeatureKey[] (lib/features.ts): what the plan unlocks, prerequisites included. The source of truth for entitlements.
   // NULL (a row written by a build from before 20261009110000_plan_features) reads as the core features plus `capabilities`.
   featureKeys          Json?
@@ -1313,17 +1321,25 @@ model PlanDefinition {
   paddleMonthlyPriceId String?
   paddleYearlyPriceId  String?
   // Every Paddle price this plan has had: [{ id, interval, amountCents, createdAt, archivedAt? }]. The current ones are in here too.
-  paddlePrices         Json     @default("[]")
+  paddlePrices         Json      @default("[]")
   // "not_synced" (draft or Paddle not connected) | "synced" | "failed"
-  syncState            String   @default("not_synced")
+  syncState            String    @default("not_synced")
   syncError            String?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  // A company's private plan, made from an accepted offer (docs/OFFERS.md). Never on the pricing page or in the plan
+  // pickers (status "hidden" and filtered by isCustom); priced in its own currency (RWF in Rwanda), so Mobile Money
+  // renewals charge what the offer said. A newer paid offer retires the older custom plan of the same company.
+  isCustom             Boolean   @default(false)
+  businessId           String?
+  business             Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   subscriptions  Subscription[]
   priceChanges   PlanPriceChange[]
   regionPrices   PlanRegionPrice[]
   manualPayments ManualPayment[]
+
+  @@index([businessId])
 }
 
 // ---- Regions, regional prices and demo bookings (docs/REGIONS.md) ---------------------------------------------------
@@ -1575,4 +1591,96 @@ model Invoice {
 
   @@index([businessId, createdAt])
   @@index([status, dueDate])
+}
+
+// ---- Custom plans: add-on prices, offers and requests (docs/OFFERS.md) -----------------------------------------------
+
+// What one add-on costs per month in one region: a feature (key from lib/features.ts, e.g. "websiteChat"), a tier of
+// one ("managed:full") or a block of a usage limit ("block:text" = +blockSize texts, "seat" = one extra user). The list
+// of add-ons is code (lib/offers/shared.ts ADDONS); the amounts are data, edited in Admin -> Add-on prices (audited).
+model AddonPrice {
+  id           String   @id @default(cuid())
+  addonKey     String
+  regionKey    String
+  currency     String
+  monthlyMinor Int // smallest currency unit; RWF has none (whole francs)
+  updatedBy    String? // AuditLog actor of the last change
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([addonKey, regionKey])
+  @@index([regionKey])
+}
+
+// A custom plan offered to one company (docs/OFFERS.md): draft -> sent -> accepted -> paid, or expired (a sent offer
+// past validUntil) or withdrawn. The priced lines and totals are frozen when the offer is saved, so the client pays
+// exactly what they were shown. Accepting prepares the company's private plan (customPlanKey, a PlanDefinition with
+// isCustom) and the payment (Mobile Money with offerId, or an invoice); confirming the payment switches it on.
+model PlanOffer {
+  id             String             @id @default(cuid())
+  businessId     String
+  business       Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  requestId      String?
+  request        CustomPlanRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  basePlanKey    String? // the regional plan it starts from, or null for features only
+  featureKeys    Json // FeatureKey[], prerequisites included
+  limits         Json // PlanLimits of the custom plan
+  options        Json               @default("{}") // { managedTier?: "light" | "full" }
+  currency       String
+  interval       BillingInterval
+  lines          Json // [{ key, label, quantity, unitMinor, totalMinor }] for the interval
+  computedMinor  Int // the sum of the lines
+  adjustedMinor  Int // what the client pays (the computed total, or the admin's rounding / discount)
+  adjustReason   String?
+  note           String? // the admin's message to the client
+  status         String             @default("draft") // draft | sent | accepted | paid | expired | withdrawn
+  validUntil     DateTime?
+  sentAt         DateTime?
+  acceptedAt     DateTime?
+  payMethod      String? // "momo" | "invoice"
+  customPlanKey  String? // PlanDefinition.key prepared on accept
+  invoiceId      String? // the invoice made from the offer, when paid that way
+  paidAt         DateTime?
+  paidBy         String? // "manual_payment:<id>"
+  withdrawnAt    DateTime?
+  withdrawReason String?
+  createdBy      String // AuditLog actor
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  manualPayments ManualPayment[]
+  // Also a partial unique index in SQL ("PlanOffer_one_open_per_business"): at most one sent or accepted offer per company.
+
+  @@index([businessId, createdAt])
+  @@index([status, validUntil])
+  @@index([invoiceId])
+}
+
+// "Request a custom plan" (pricing page, Billing, "Add to your plan", the demo booking): what the business needs, for
+// the admin to answer with an offer. Linked to the company (and its demo booking, when it has one).
+model CustomPlanRequest {
+  id            String    @id @default(cuid())
+  businessId    String?
+  // Cascade: a deleted company takes its requests (names, emails and phones) with it.
+  business      Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId        String?   @db.Uuid // who sent it
+  demoBookingId String? // the company's live demo booking when it was sent
+  name          String
+  email         String
+  phone         String?
+  companyName   String
+  description   String // what the business does
+  goals         String
+  featureKeys   Json // FeatureKey[] of interest
+  budget        String? // a budget range key (lib/offers/shared.ts BUDGET_RANGES)
+  source        String    @default("billing") // billing | pricing | upgrade | demo
+  status        String    @default("new") // new | contacted | offered | closed
+  handledBy     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  offers PlanOffer[]
+
+  @@index([status, createdAt])
+  @@index([businessId, createdAt])
 }

@@ -172,8 +172,9 @@ export type AdminPlanRow = PlanView & {
   latestChange: { id: string; direction: string; status: string; subscribers: number; notifiedCount: number; appliedCount: number; failedCount: number; createdAt: Date } | null;
 };
 
+/** The plan builder's plans. Companies' custom plans (docs/OFFERS.md) are left out: they live on each company's offers. */
 export async function listAdminPlans(): Promise<{ plans: AdminPlanRow[]; paddleConnected: boolean }> {
-  const plans = await getPlans({ force: true });
+  const plans = (await getPlans({ force: true })).filter((p) => !p.isCustom);
   const groups = await prisma.subscription.groupBy({ by: ["plan", "interval", "status"], _count: { _all: true } });
   const rows: AdminPlanRow[] = [];
   for (const plan of plans) {

@@ -22,7 +22,9 @@ export const RATE_LIMITS = {
   storeConnect: { limit: 30, windowSeconds: 60 * 60 }, // starting a Shopify/WooCommerce/Cloudflare connection
   storeImport: { limit: 150, windowSeconds: 60 * 60 }, // import/list calls (5 products each)
   momo: { limit: 10, windowSeconds: 60 * 60 }, // Mobile Money start / "I've paid" / cancel, together, per company
-  invoicePdf: { limit: 60, windowSeconds: 60 * 60 }, // invoice PDF downloads (drawn on demand when not stored), per company
+  invoicePdf: { limit: 60, windowSeconds: 60 * 60 },
+  planRequest: { limit: 3, windowSeconds: 24 * 60 * 60 }, // custom plan requests (each emails the owner), per company per day
+  offerAccept: { limit: 20, windowSeconds: 60 * 60 }, // accepting an offer / choosing how to pay it, per company // invoice PDF downloads (drawn on demand when not stored), per company
   placesAutocomplete: { limit: 300, windowSeconds: 60 * 60 }, // address suggestions (debounced typing), per company
   geoCountry: { limit: 20, windowSeconds: 60 * 60 }, // "Use my location" on the pricing page (a Google Geocoding call), per IP
   placesDetails: { limit: 60, windowSeconds: 60 * 60 }, // the chosen address's details, per company

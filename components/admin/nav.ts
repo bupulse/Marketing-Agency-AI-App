@@ -23,10 +23,13 @@ import {
   CloudDownload,
   Globe,
   Settings,
+  Sparkles,
+  MessageSquarePlus,
+  Tags,
   type LucideIcon,
 } from "lucide-react";
 
-export type AdminNavItem = { href: string; label: string; icon: LucideIcon; badge?: "approvals" | "health" | "payments" };
+export type AdminNavItem = { href: string; label: string; icon: LucideIcon; badge?: "approvals" | "health" | "payments" | "requests" };
 export type AdminNavGroup = { title: string | null; items: AdminNavItem[] };
 
 export const ADMIN_NAV: AdminNavGroup[] = [
@@ -36,6 +39,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { href: "/admin/companies", label: "Companies", icon: Building2 },
       { href: "/admin/demos", label: "Demos", icon: CalendarCheck },
+      { href: "/admin/requests", label: "Plan requests", icon: MessageSquarePlus, badge: "requests" },
       { href: "/admin/connections", label: "Connections", icon: Plug },
     ],
   },
@@ -48,6 +52,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { href: "/admin/approvals", label: "Approvals", icon: BadgeCheck, badge: "approvals" },
       { href: "/admin/payments", label: "Payments", icon: Smartphone, badge: "payments" },
       { href: "/admin/invoices", label: "Invoices", icon: FileText },
+      { href: "/admin/offers", label: "Offers", icon: Sparkles },
+      { href: "/admin/addon-prices", label: "Add-on prices", icon: Tags },
     ],
   },
   {

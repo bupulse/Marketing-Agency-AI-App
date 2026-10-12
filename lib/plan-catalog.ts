@@ -45,6 +45,10 @@ export interface PlanView {
   syncError: string | null;
   /** The row's last change, to detect two admins editing at once. Null for the built-in fallback. */
   updatedAt: Date | null;
+  /** A company's private plan made from an offer (docs/OFFERS.md): never sold to anyone else. */
+  isCustom: boolean;
+  /** The company a custom plan belongs to. */
+  businessId: string | null;
 }
 
 /** The part of a plan that is safe to send to the browser (no Paddle ids). */
@@ -163,6 +167,8 @@ export function viewOf(row: Row): PlanView {
     syncState: sync,
     syncError: (row.syncError as string | null) ?? null,
     updatedAt: row.updatedAt instanceof Date ? row.updatedAt : null,
+    isCustom: row.isCustom === true,
+    businessId: typeof row.businessId === "string" ? row.businessId : null,
   };
 }
 
@@ -214,9 +220,9 @@ export async function getTrialPlan(): Promise<PlanView> {
   return plans.find((p) => p.isTrial) ?? seedViews().find((p) => p.isTrial)!;
 }
 
-/** Plans a new client can buy: active, not the trial, in sort order. */
+/** Plans a new client can buy: active, not the trial, not a company's custom plan, in sort order. */
 export async function getSellablePlans(): Promise<PlanView[]> {
-  return (await getPlans()).filter((p) => p.status === "active" && !p.isTrial);
+  return (await getPlans()).filter((p) => p.status === "active" && !p.isTrial && !p.isCustom);
 }
 
 /** Whether a plan includes a feature. An unknown plan has none. Companies are checked through lib/entitlements.ts. */

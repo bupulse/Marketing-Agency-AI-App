@@ -222,6 +222,8 @@ export type ManualPaymentView = {
   reference: string;
   /** The invoice this payment settles (its number is the reference), or null for a plain plan payment. */
   invoiceId: string | null;
+  /** The custom plan offer this payment pays (docs/OFFERS.md), or null. */
+  offerId: string | null;
   status: ManualPaymentStatus;
   submitted: boolean;
   transactionId: string | null;

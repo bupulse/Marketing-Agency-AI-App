@@ -7,7 +7,8 @@ import { AdminError, type AdminContext, type Page } from "@/lib/admin/types";
 import { trackEvent } from "@/lib/analytics/events";
 import { subscriptionEventsFor } from "@/lib/analytics/math";
 import { getSetting } from "@/lib/admin/settings";
-import { getPlan } from "@/lib/plan-catalog";
+import { clearPlanCache, getPlan, getPlans, priceCents } from "@/lib/plan-catalog";
+import { markOfferPaidInTx, offerForPayment } from "@/lib/offers/activate";
 import { companyPlans } from "@/lib/region-prices";
 import { sendPaymentRejectedEmail, sendPaymentToCheckEmail, sendPlanActiveEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
@@ -59,16 +60,22 @@ function periodNoteOf(row: Row, sub: Sub | null, now: Date): PeriodNote | null {
   return plan.mode === "fresh" ? null : { mode: plan.mode, daysLeft: plan.daysLeft, currentEnd: (sub.currentPeriodEnd as Date).toISOString() };
 }
 
+/** A plan by key, re-reading the catalog once when this isolate's copy does not have it yet (a custom plan made a moment ago). */
+async function freshPlan(key: string) {
+  return (await getPlan(key)) ?? (await getPlans({ force: true })).find((p) => p.key === key) ?? null;
+}
+
 async function toView(row: Row, sub: Sub | null, now: Date = new Date()): Promise<ManualPaymentView> {
   return {
     id: row.id,
     planKey: row.planKey,
-    planName: (await getPlan(row.planKey))?.name ?? row.planKey,
+    planName: (await freshPlan(row.planKey))?.name ?? row.planKey,
     interval: row.interval,
     amountMinor: row.amountMinor,
     currency: row.currency,
     reference: row.reference,
     invoiceId: row.invoiceId ?? null,
+    offerId: row.offerId ?? null,
     status: row.status as ManualPaymentStatus,
     submitted: row.submittedAt !== null,
     transactionId: row.transactionId,
@@ -127,15 +134,17 @@ export async function startManualPayment(input: { userId: string; plan: string; 
   const now = input.now ?? new Date();
   const settings = await getMomoSettings();
   if (!momoConfigured(settings)) throw new ManualPaymentError("Mobile Money payments are not available right now. Please pay by card or contact support.");
-  const plan = await getPlan(input.plan);
-  if (!plan || plan.isTrial || plan.status !== "active") throw new ManualPaymentError("That plan is not available. Choose one of the plans shown.");
+  const plan = await freshPlan(input.plan);
   const [sub, business] = await Promise.all([subOf(input.userId), prisma.business.findUnique({ where: { userId: input.userId }, select: { id: true } })]);
+  // The company's own custom plan (docs/OFFERS.md) is renewed at its own price; nobody else can buy it.
+  const ownCustom = Boolean(plan?.isCustom && business && plan.businessId === business.id && plan.status !== "retired");
+  if (!plan || plan.isTrial || (plan.status !== "active" && !ownCustom) || (plan.isCustom && !ownCustom)) throw new ManualPaymentError("That plan is not available. Choose one of the plans shown.");
   if (!sub || !business) throw new ManualPaymentError("Your account is still being set up. Please try again in a moment.");
   // The amount is the plan's price in the company's region (docs/REGIONS.md); a region without Mobile Money, or a plan
   // not offered there, cannot be paid this way. Checked before anything is written.
-  const price = await getMomoPrice(business.id, plan.key, input.interval);
+  const price = ownCustom ? await customPlanMomoPrice(business.id, plan, input.interval) : await getMomoPrice(business.id, plan.key, input.interval);
   if (!price || price.amountMinor <= 0) throw new ManualPaymentError("Mobile Money is not available for this plan where your business is. Choose one of the plans shown, pay by card, or contact support.");
-  return openPayment(input.userId, sub, { planKey: plan.key, interval: input.interval, amountMinor: price.amountMinor, currency: price.currency, invoiceId: null, reference: null }, now);
+  return openPayment(input.userId, sub, { planKey: plan.key, interval: input.interval, amountMinor: price.amountMinor, currency: price.currency, invoiceId: null, offerId: null, reference: null }, now);
 }
 
 /**
@@ -156,10 +165,37 @@ export async function startInvoicePayment(input: { userId: string; invoiceId: st
   if (!invoice.planKey || !invoice.interval || invoice.totalMinor <= 0) throw new ManualPaymentError("This invoice cannot be paid by Mobile Money here. Contact support and we will help you.");
   const { region } = await companyPlans(business.id);
   if (!region.paymentMethods.includes("momo")) throw new ManualPaymentError("Mobile Money is not available where your business is. Pay by card, or contact support.");
-  return openPayment(input.userId, sub, { planKey: invoice.planKey, interval: invoice.interval, amountMinor: invoice.totalMinor, currency: invoice.currency, invoiceId: invoice.id, reference: invoice.number }, now);
+  return openPayment(input.userId, sub, { planKey: invoice.planKey, interval: invoice.interval, amountMinor: invoice.totalMinor, currency: invoice.currency, invoiceId: invoice.id, offerId: null, reference: invoice.number }, now);
 }
 
-type PaymentTarget = { planKey: string; interval: BillingInterval; amountMinor: number; currency: string; invoiceId: string | null; reference: string | null };
+/** A custom plan's Mobile Money price: its own amount in its own currency, when the company's region takes Mobile Money. */
+async function customPlanMomoPrice(businessId: string, plan: { monthlyPriceCents: number; yearlyPriceCents: number; currency: string }, interval: BillingInterval) {
+  const { region } = await companyPlans(businessId);
+  if (!region.paymentMethods.includes("momo") || plan.currency.toUpperCase() !== region.currency.toUpperCase()) return null;
+  return { amountMinor: priceCents(plan, interval), currency: plan.currency.toUpperCase() };
+}
+
+/**
+ * Starts the Mobile Money payment of an accepted custom plan offer (docs/OFFERS.md): the amount is the offer's price,
+ * the plan its prepared custom plan, a fresh BP-XXXX reference. Confirming it marks the offer paid and switches the
+ * company onto the custom plan. Only an accepted offer of the client's own company; the region must take Mobile Money.
+ */
+export async function startOfferPayment(input: { userId: string; offerId: string; now?: Date }): Promise<ManualPaymentView> {
+  const now = input.now ?? new Date();
+  const settings = await getMomoSettings();
+  if (!momoConfigured(settings)) throw new ManualPaymentError("Mobile Money payments are not available right now. Choose Pay by invoice, or contact support.");
+  const [sub, business] = await Promise.all([subOf(input.userId), prisma.business.findUnique({ where: { userId: input.userId }, select: { id: true } })]);
+  if (!sub || !business) throw new ManualPaymentError("Your account is still being set up. Please try again in a moment.");
+  const offer = await prisma.planOffer.findFirst({ where: { id: input.offerId, businessId: business.id } });
+  if (!offer || offer.status === "draft") throw new ManualPaymentError("We could not find that offer. Open it again from the Billing page.");
+  if (offer.status === "paid") throw new ManualPaymentError("This offer is already paid.");
+  if (offer.status !== "accepted" || !offer.customPlanKey) throw new ManualPaymentError("This offer is no longer open. Ask us for a new one.");
+  const { region } = await companyPlans(business.id);
+  if (!region.paymentMethods.includes("momo")) throw new ManualPaymentError("Mobile Money is not available where your business is. Choose Pay by invoice, or contact support.");
+  return openPayment(input.userId, sub, { planKey: offer.customPlanKey, interval: offer.interval, amountMinor: offer.adjustedMinor, currency: offer.currency, invoiceId: null, offerId: offer.id, reference: null }, now);
+}
+
+type PaymentTarget = { planKey: string; interval: BillingInterval; amountMinor: number; currency: string; invoiceId: string | null; offerId: string | null; reference: string | null };
 
 /** The open payment for this target, or a new one (replacing an unsubmitted payment of something else). */
 async function openPayment(userId: string, sub: Sub, target: PaymentTarget, now: Date): Promise<ManualPaymentView> {
@@ -172,7 +208,7 @@ async function openPayment(userId: string, sub: Sub, target: PaymentTarget, now:
   if (open) {
     if (open.submittedAt) return toView(open, sub, now);
     // Not paid yet: the client may still change their mind about the plan. Same plan, period and invoice: keep the reference.
-    if (open.planKey === target.planKey && open.interval === target.interval && (open.invoiceId ?? null) === target.invoiceId) return toView(open, sub, now);
+    if (open.planKey === target.planKey && open.interval === target.interval && (open.invoiceId ?? null) === target.invoiceId && (open.offerId ?? null) === target.offerId) return toView(open, sub, now);
     const { count } = await prisma.manualPayment.updateMany({ where: { id: open.id, status: "pending", submittedAt: null }, data: { status: "expired", decidedAt: now, decidedBy: "client" } });
     // Submitted or replaced from another tab meanwhile: whatever is open now is the payment.
     if (count !== 1) {
@@ -187,7 +223,7 @@ async function openPayment(userId: string, sub: Sub, target: PaymentTarget, now:
   for (let attempt = 0; attempt < REFERENCE_TRIES; attempt++) {
     try {
       const row = await prisma.manualPayment.create({
-        data: { userId, planKey: target.planKey, interval: target.interval, amountMinor: target.amountMinor, currency: target.currency, invoiceId: target.invoiceId, reference: target.reference ?? makeReference(attempt < 3 ? 4 : 6) },
+        data: { userId, planKey: target.planKey, interval: target.interval, amountMinor: target.amountMinor, currency: target.currency, invoiceId: target.invoiceId, offerId: target.offerId, reference: target.reference ?? makeReference(attempt < 3 ? 4 : 6) },
       });
       return toView(row, sub, now);
     } catch (error) {
@@ -197,6 +233,7 @@ async function openPayment(userId: string, sub: Sub, target: PaymentTarget, now:
       if (current) return toView(current, sub, now);
       // An invoice's reference is fixed: the only other clash is a confirmed payment of that invoice.
       if (target.invoiceId) throw new ManualPaymentError("This invoice is already paid.");
+      if (target.offerId) throw new ManualPaymentError("This offer is already paid.");
     }
   }
   throw new ManualPaymentError("We could not create a payment reference. Please try again.");
@@ -287,8 +324,11 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
   if (!payment) throw new AdminError("not_found", "No payment with that id.");
   if (payment.status !== "pending") throw new AdminError("conflict", `This payment is already ${payment.status}.`);
   if (!payment.submittedAt || !payment.transactionId || !payment.network) throw new AdminError("conflict", "The client has not said they paid yet (no transaction id). Wait for them, or ask them to tap I've paid.");
-  const plan = await getPlan(payment.planKey);
+  const plan = await freshPlan(payment.planKey);
   if (!plan) throw new AdminError("conflict", "The plan of this payment no longer exists.");
+  // A payment of a custom plan offer (directly, or through the invoice made from it) also settles the offer.
+  const offer = await offerForPayment(payment);
+  if (offer && offer.status !== "accepted") throw new AdminError("conflict", `The custom plan offer this payment is for is ${offer.status}. Reject this payment (and refund it if the money arrived) instead.`);
   if (payment.invoiceId) {
     const invoice = await prisma.invoice.findUnique({ where: { id: payment.invoiceId }, select: { status: true } });
     if (invoice?.status !== "sent") throw new AdminError("conflict", `Invoice ${payment.reference} is ${invoice ? `already ${invoice.status}` : "gone"}. Reject this payment (and refund it if the money arrived) instead.`);
@@ -345,6 +385,8 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
           data: after,
         });
         if (written.count !== 1) throw new SubscriptionMoved();
+        // The offer is paid and its custom plan replaces any older one of the company (in the same transaction).
+        if (offer) await markOfferPaidInTx(tx, ctx, { offer, paymentId: payment.id, invoiceId: payment.invoiceId, planKey: plan.key }, now);
         // The money, for the revenue roll-up and the activity feed (same shape of row as a Paddle payment event).
         await tx.billingEvent.create({
           data: {
@@ -369,6 +411,7 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
       throw error;
     }
     // After the commit: analytics and the client's email. Neither can undo the confirmation.
+    if (offer) clearPlanCache();
     const client = await clientOf(payment.userId);
     for (const name of subscriptionEventsFor(before, after, false)) {
       await trackEvent(name, { userId: payment.userId, businessId: client.businessId, props: { plan: plan.key, interval: payment.interval, from: before.plan, method: "momo" } });

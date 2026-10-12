@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { clientInvoices, payableView } from "@/lib/invoices/service";
 import { companyPlans } from "@/lib/region-prices";
+import { getPlan } from "@/lib/plan-catalog";
 import { can, type Role } from "@/lib/team/roles";
 
 /**
@@ -32,6 +33,8 @@ export async function InvoiceLock({ invoice, businessId, role, firstName, email,
   const paying = payment?.status === "pending" && payment.invoiceId === invoice.id;
   const momo = momoConfigured(momoSettings) && region.paymentMethods.includes("momo");
   const payable = await payableView(invoice);
+  // A custom plan's invoice (docs/OFFERS.md) is not payable through card checkout.
+  const custom = invoice.planKey ? (await getPlan(invoice.planKey))?.isCustom === true : false;
 
   return (
     <div className="relative flex min-h-dvh w-full flex-col items-center px-4 pb-10 sm:px-8">
@@ -60,7 +63,7 @@ export async function InvoiceLock({ invoice, businessId, role, firstName, email,
           </p>
         </GlassCard>
 
-        {canPay && (paying && payment ? <MomoPayment payment={payment} details={momoSettings} /> : <InvoicePay invoice={payable} momo={momo} card={region.paymentMethods.includes("card")} highlight />)}
+        {canPay && (paying && payment ? <MomoPayment payment={payment} details={momoSettings} /> : <InvoicePay invoice={payable} momo={momo} card={region.paymentMethods.includes("card") && !custom} highlight />)}
         {canPay && payment && !paying && payment.status !== "pending" && <MomoPayment payment={payment} details={momoSettings} />}
         {list.length > 0 && <ClientInvoices invoices={list} />}
 

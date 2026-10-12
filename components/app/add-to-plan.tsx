@@ -11,7 +11,7 @@ import { askMessage, can, type Role } from "@/lib/team/roles";
 /**
  * The friendly page for a feature the company's plan does not include (or whose service is off right now):
  * what it does, what it needs, and how to get it. Custom plans are arranged with the BuPulse team; until the
- * request form exists (R5) the button goes to Billing.
+ * request form exists (R5) the button goes to Billing. (R5 is built: it opens /custom-plan with this feature ticked.)
  */
 export function AddToPlan({ feature, reason = "not_in_plan", block = null, role, inPlan }: { feature: FeatureKey; reason?: FeatureBlockReason; block?: AccountBlock | null; role: Role; inPlan: ReadonlySet<FeatureKey> }) {
   const def = featureOf(feature);
@@ -66,7 +66,7 @@ export function AddToPlan({ feature, reason = "not_in_plan", block = null, role,
         points={points}
         action={
           can(role, "billing") ? (
-            <Button href="/dashboard/billing" leading={<Check aria-hidden className="size-5" />}>
+            <Button href={`/custom-plan?from=upgrade&feature=${encodeURIComponent(def.key)}`} leading={<Check aria-hidden className="size-5" />}>
               Ask for a custom plan
             </Button>
           ) : (

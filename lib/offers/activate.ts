@@ -1,0 +1,42 @@
+import "server-only";
+import type { Prisma } from "@/lib/generated/prisma/client";
+import { prisma } from "@/lib/db";
+import { writeAudit } from "@/lib/admin/audit";
+import { AdminError, type AdminContext } from "@/lib/admin/types";
+
+// The step that switches a custom plan on (docs/OFFERS.md). Called by the Mobile Money confirmation
+// (lib/billing/momo.ts confirmManualPayment), inside its transaction, for a payment of an offer: directly (offerId) or
+// through the invoice made from the offer (Mark as paid goes through the same confirmation). The subscription write
+// (plan, ACTIVE, period, usage reset) is the confirmation's own; this part settles the offer. Kept apart from
+// lib/offers/service.ts so the payment code does not import the offer flows that import it.
+
+type Tx = Prisma.TransactionClient;
+type OfferRow = Prisma.PlanOfferGetPayload<object>;
+
+/** The offer a payment settles: its own offerId, or the offer whose invoice it pays. Null for every other payment. */
+export async function offerForPayment(payment: { offerId?: string | null; invoiceId: string | null }, db: Pick<typeof prisma, "planOffer"> = prisma): Promise<OfferRow | null> {
+  if (payment.offerId) return db.planOffer.findUnique({ where: { id: payment.offerId } });
+  if (payment.invoiceId) return db.planOffer.findFirst({ where: { invoiceId: payment.invoiceId } });
+  return null;
+}
+
+/**
+ * accepted -> paid, once (a conditional write: a replay or a second confirmation finds it paid and stops the whole
+ * transaction). The company's older custom plans are retired (their payments keep pointing at them), an open invoice
+ * of the offer that this payment did not pay is voided (so the client cannot pay twice), unsubmitted Mobile Money
+ * payments of the offer are closed, and the request behind it is marked offered. Audited.
+ */
+export async function markOfferPaidInTx(tx: Tx, ctx: AdminContext, input: { offer: OfferRow; paymentId: string; invoiceId: string | null; planKey: string }, now: Date) {
+  const { offer } = input;
+  if (offer.customPlanKey !== input.planKey) throw new AdminError("conflict", "This payment is for a different plan than the offer's custom plan. Reject it and ask the client to pay again from Billing.");
+  const paidBy = `manual_payment:${input.paymentId}`;
+  const claim = await tx.planOffer.updateMany({ where: { id: offer.id, status: "accepted" }, data: { status: "paid", paidAt: now, paidBy } });
+  if (claim.count !== 1) throw new AdminError("conflict", "This offer was paid or withdrawn a moment ago. Nothing was changed.");
+  const retired = await tx.planDefinition.updateMany({ where: { businessId: offer.businessId, isCustom: true, key: { not: input.planKey }, status: { not: "retired" } }, data: { status: "retired" } });
+  if (offer.invoiceId && offer.invoiceId !== input.invoiceId) {
+    await tx.invoice.updateMany({ where: { id: offer.invoiceId, status: "sent" }, data: { status: "void", voidedAt: now, voidReason: "The custom plan offer was paid by Mobile Money." } });
+  }
+  await tx.manualPayment.updateMany({ where: { offerId: offer.id, status: "pending", submittedAt: null, id: { not: input.paymentId } }, data: { status: "expired", decidedAt: now, decidedBy: ctx.actor } });
+  if (offer.requestId) await tx.customPlanRequest.updateMany({ where: { id: offer.requestId, status: { in: ["new", "contacted"] } }, data: { status: "offered" } });
+  await writeAudit(tx, ctx, "offer_paid", `offer:${offer.id}`, { status: "accepted" }, { status: "paid", paidBy, plan: input.planKey, businessId: offer.businessId, amountMinor: offer.adjustedMinor, currency: offer.currency, retiredPlans: retired.count });
+}

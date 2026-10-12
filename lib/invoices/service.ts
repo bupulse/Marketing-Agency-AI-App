@@ -270,17 +270,66 @@ export async function sendInvoice(ctx: AdminContext, id: string, now: Date = new
     await writeAudit(tx, ctx, "send_invoice", `invoice:${id}`, { status: "draft" }, { status: "sent", number: row.number, to, totalMinor: row.totalMinor, currency: row.currency, dueDate: ymdOf(row.dueDate) });
   });
   const sent: Row = { ...row, ...data, billTo: billTo as Prisma.JsonValue, seller: snapshot as unknown as Prisma.JsonValue };
+  const result = await deliverSentInvoice(sent, billTo, snapshot, to);
+  return { id, number: row.number, to, emailed: result.sent, failed: result.failed };
+}
+
+/** After the sent claim: draws the PDF, archives it, and emails it. Neither storage nor email can undo the send. */
+async function deliverSentInvoice(sent: Row, billTo: BillTo, snapshot: SellerSnapshot, to: string[]) {
   const pdf = await renderInvoice(sent);
   // The archive copy. Storage being down never stops the invoice: downloads draw it again from the frozen details.
   try {
-    const path = invoicePdfPath(row.businessId, row.number);
+    const path = invoicePdfPath(sent.businessId, sent.number);
     await putInvoiceObject(path, pdf, "application/pdf");
-    await prisma.invoice.update({ where: { id }, data: { pdfPath: path } });
+    await prisma.invoice.update({ where: { id: sent.id }, data: { pdfPath: path } });
   } catch (error) {
-    await logError(error, { source: "invoices.store-pdf", invoiceId: id });
+    await logError(error, { source: "invoices.store-pdf", invoiceId: sent.id });
   }
-  const result = await sendInvoiceEmail(to, { number: row.number, totalMinor: row.totalMinor, currency: row.currency, dueDate: row.dueDate, sellerName: snapshot.seller.businessName, billToName: billTo.businessName, payUrl: payUrlOf(row.number), recipientName: billTo.ownerName }, pdf);
-  return { id, number: row.number, to, emailed: result.sent, failed: result.failed };
+  return sendInvoiceEmail(to, { number: sent.number, totalMinor: sent.totalMinor, currency: sent.currency, dueDate: sent.dueDate, sellerName: snapshot.seller.businessName, billToName: billTo.businessName, payUrl: payUrlOf(sent.number), recipientName: billTo.ownerName }, pdf);
+}
+
+/**
+ * An invoice issued straight away, without a draft: a client who accepted a custom plan offer and chose "Pay by
+ * invoice" (docs/OFFERS.md). It activates `planKey` / `interval` when paid, exactly like an activation invoice (Mobile
+ * Money with the invoice number, Mark as paid). Sent at once to the company owner, due in DEFAULT_DUE_DAYS. `ctx` is the
+ * client's context ("client:<user id>"), so the audit says who asked for it. Returns the sent invoice.
+ */
+export async function issuePlanInvoice(ctx: AdminContext, input: { businessId: string; currency: string; lines: InvoiceLine[]; planKey: string; interval: BillingInterval; notes?: string | null }, now: Date = new Date()): Promise<Row> {
+  if (input.lines.length === 0) throw new AdminError("invalid", "An invoice needs at least one line.");
+  const settings = await getInvoiceSettings();
+  const totals = computeTotals(input.lines, settings.vatRatePercent);
+  if (totals.totalMinor <= 0) throw new AdminError("invalid", "An invoice needs a price.");
+  const [{ billTo, ownerEmail }, snapshot] = await Promise.all([billToOf(input.businessId), sellerSnapshot()]);
+  if (!ownerEmail) throw new AdminError("conflict", "The company has no email address to send the invoice to.");
+  const today = invoiceToday(now);
+  const number = await nextInvoiceNumber();
+  const row = await prisma.$transaction(async (tx) => {
+    const created = await tx.invoice.create({
+      data: {
+        number,
+        businessId: input.businessId,
+        status: "sent",
+        currency: input.currency.toUpperCase(),
+        lines: input.lines as Prisma.InputJsonValue,
+        ...totals,
+        taxRatePercent: settings.vatRatePercent,
+        issueDate: dateOfYmd(today),
+        dueDate: dateOfYmd(addDaysYmd(today, DEFAULT_DUE_DAYS)),
+        notes: input.notes ?? null,
+        planKey: input.planKey,
+        interval: input.interval,
+        billTo: billTo as Prisma.InputJsonValue,
+        seller: snapshot as unknown as Prisma.InputJsonValue,
+        sentAt: now,
+        sentTo: [ownerEmail.toLowerCase()],
+        createdBy: ctx.actor,
+      },
+    });
+    await writeAudit(tx, ctx, "issue_invoice", `invoice:${created.id}`, null, { number, businessId: input.businessId, planKey: input.planKey, interval: input.interval, currency: created.currency, totalMinor: totals.totalMinor });
+    return created;
+  });
+  await deliverSentInvoice(row, billTo, snapshot, row.sentTo).catch((error) => logError(error, { source: "invoices.issue-email", invoiceId: row.id }));
+  return row;
 }
 
 /** Emails a sent invoice again (the stored PDF). Audited. */

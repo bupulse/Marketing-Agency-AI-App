@@ -18,6 +18,10 @@ import { companyPlans } from "@/lib/region-prices";
 import { can, type Role } from "@/lib/team/roles";
 import { DemoCancelButton } from "./demo-cancel";
 import { DemoPayButton } from "./demo-pay";
+import { OfferCard } from "@/components/billing/offer-card";
+import { OfferActions } from "@/components/billing/offer-actions";
+import { clientOffer } from "@/lib/offers/service";
+import { site } from "@/lib/content/site";
 
 /** Reschedule and cancel are only offered up to MIN_LEAD_MINUTES before the call (lib/demo/bookings.ts enforces it too). */
 const canStillMove = (booking: { startsAt: Date }) => booking.startsAt.getTime() - Date.now() >= MIN_LEAD_MINUTES * 60_000;
@@ -42,6 +46,10 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
   // to pay, the chosen plan can be paid from here; confirming makes the company ACTIVE and opens the dashboard.
   const canPay = canManage && plan !== null && region.paymentMethods.includes("momo") && momoConfigured(momoSettings) && momoPriceOf(plan, "MONTH") !== null;
   const payment = canManage && business ? await currentManualPayment(business.userId) : null;
+  // A custom plan offer sent before or after the demo (docs/OFFERS.md): paying it opens the dashboard like any plan.
+  const canBill = can(role, "billing");
+  const offer = canBill ? await clientOffer(businessId).catch(() => null) : null;
+  const momoOn = region.paymentMethods.includes("momo") && momoConfigured(momoSettings);
   const meetingLink = booking?.meetingLink || settings.meetingLink || null;
   const googleUrl = booking ? demoGoogleCalendarUrl({ ...booking, meetingLink }, businessName, `${siteUrl()}/dashboard`) : null;
   const movable = booking ? canStillMove(booking) : false;
@@ -139,7 +147,24 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
           )}
         </GlassCard>
 
+        {offer && (
+          <OfferCard
+            offer={offer}
+            actions={offer.status === "sent" || (offer.status === "accepted" && !(payment?.status === "pending" && payment.submitted)) ? <OfferActions offerId={offer.id} momo={momoOn} card={region.paymentMethods.includes("card")} accepted={offer.status === "accepted"} method={offer.payMethod} contactEmail={site.email} /> : undefined}
+          />
+        )}
+
         {payment && <MomoPayment payment={payment} details={momoSettings} />}
+
+        {canBill && !offer && (
+          <p className="px-1 text-sm text-muted">
+            Need something different from the plans?{" "}
+            <Link href="/custom-plan?from=demo" className="font-semibold underline">
+              Request a custom plan
+            </Link>{" "}
+            and we will talk it through in the demo.
+          </p>
+        )}
 
         <div className="grid gap-5 md:grid-cols-2">
           <GlassCard as="section" aria-labelledby="chosen-plan" className="flex flex-col gap-3 p-5 sm:p-6">

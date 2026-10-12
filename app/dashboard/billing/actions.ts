@@ -15,6 +15,7 @@ import { paymentMethod } from "@/lib/billing/methods";
 import { cancelManualPayment, currentManualPayment, ManualPaymentError, startInvoicePayment } from "@/lib/billing/momo";
 import type { ManualPaymentView } from "@/lib/billing/momo-shared";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
+import { acceptOffer, OfferError } from "@/lib/offers/service";
 import type { CheckoutConfig, Invoice, PaidPlan } from "@/lib/billing";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 
@@ -309,4 +310,31 @@ export async function momoPaymentStatus(): Promise<ManualPaymentView | null> {
   const user = await requireActiveUser();
   if (!can(user.role, "billing")) return null;
   return currentManualPayment(user.id);
+}
+
+// ---- custom plan offers (docs/OFFERS.md) ---------------------------------------------------------------------------
+
+// Accept the company's offer and choose how to pay: Mobile Money opens the usual pay screen for the offer's price;
+// invoice issues an invoice from the offer (shown on Billing, payable by Mobile Money with its number). Owner only.
+export async function acceptOfferAction(input: { offerId: string; method: string }): Promise<BillingResult<{ method: "momo" | "invoice" }>> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const offerId = String(input?.offerId ?? "");
+  const method = input?.method === "invoice" ? "invoice" : input?.method === "momo" ? "momo" : null;
+  if (!offerId || offerId.length > 64 || !method) return { ok: false, error: "Choose how you want to pay." };
+  try {
+    await rateLimit(`offer:${user.businessId}`, RATE_LIMITS.offerAccept);
+  } catch (error) {
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    throw error;
+  }
+  try {
+    await acceptOffer({ userId: user.id, actorId: user.actorId, businessId: user.businessId, offerId, method });
+    revalidatePath("/dashboard", "layout");
+    return { ok: true, method };
+  } catch (error) {
+    if (error instanceof OfferError) return { ok: false, error: error.message };
+    console.error("Accepting an offer failed", error);
+    return { ok: false, error: GENERIC };
+  }
 }

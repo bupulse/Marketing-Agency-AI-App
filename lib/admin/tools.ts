@@ -14,6 +14,10 @@ import * as industries from "./industries-service";
 import * as demos from "./demos";
 import { getActivity } from "./activity";
 import { getManualPayment, listManualPayments } from "@/lib/billing/momo";
+import { listOffers } from "@/lib/offers/service";
+import { listPlanRequests } from "@/lib/offers/requests";
+import { FEATURE_KEYS } from "@/lib/features";
+import { MANAGED_TIERS, OFFER_STATUSES, REQUEST_STATUSES } from "@/lib/offers/shared";
 import { getSystemHealth } from "./health";
 import { getUpdateStatus } from "./updates";
 import { SERVICE_IDS } from "./service-catalog";
@@ -170,6 +174,22 @@ tool({
   schema: z.object({ status: z.enum(["pending", "confirmed", "rejected", "expired"]).optional(), userId: z.string().max(100).optional().describe("Company account id (uuid)."), reference: z.string().max(12).optional().describe("A reference such as BP-7K3Q."), cursor, limit }),
   run: (a) => listManualPayments(a),
 });
+tool({
+  name: "list_offers",
+  title: "List custom plan offers",
+  kind: "read",
+  description: "Custom plan offers to companies, newest first: company, status (draft, sent, accepted = waiting for payment, paid, expired, withdrawn), features, limits, the computed and the adjusted price (in the company region's currency, smallest unit; RWF has none), interval, valid until and how the client chose to pay.",
+  schema: z.object({ status: z.enum(OFFER_STATUSES).optional(), businessId: z.string().max(100).optional().describe("Company (business) id."), limit }),
+  run: (a) => listOffers(a),
+});
+tool({
+  name: "list_plan_requests",
+  title: "List custom plan requests",
+  kind: "read",
+  description: "Requests for a custom plan sent by clients (pricing page, Billing, the demo booking), newest first: company, what the business does, goals, features of interest, budget range and status (new, contacted, offered, closed).",
+  schema: z.object({ status: z.enum(REQUEST_STATUSES).optional(), businessId: z.string().max(100).optional(), limit }),
+  run: (a) => listPlanRequests(a),
+});
 tool({ name: "get_momo_payment", title: "Get Mobile Money payment", kind: "read", description: "One Mobile Money payment in detail, with the period it bought once confirmed.", schema: z.object({ id: id("Payment id.") }), run: (a) => getManualPayment(a.id) });
 tool({ name: "list_feature_flags", title: "List feature flags", kind: "read", description: "All feature flags with their switch, rollout percentage and per-user overrides.", schema: z.object({}), run: () => admin.listFeatureFlags() });
 
@@ -320,6 +340,33 @@ tool({
     idempotencyKey: idem,
   }),
   run: (a, ctx) => admin.requestRefund(ctx, a),
+});
+tool({
+  name: "create_offer",
+  title: "Prepare a custom plan offer",
+  kind: "money",
+  description:
+    MONEY_NOTE.replace("this does NOT move money", "an offer sets what a client pays, so this does NOT create or send it") +
+    "Prepares a custom plan offer for a company, priced from its region's plan and add-on prices (see list_region_prices and the admin's Add-on prices). Prerequisites are added automatically. When the owner approves, the offer is saved as a draft, and sent to the company owner by email when send is true. Default validity 7 days.",
+  schema: z.object({
+    businessId: id("Company (business) id."),
+    basePlanKey: z.string().max(64).optional().describe("A plan offered in the company's region to start from (e.g. BUSINESS). Omit for features only."),
+    features: z.array(z.enum(FEATURE_KEYS)).max(30).describe("Feature keys to add (lib/features.ts). Coming-soon features are refused."),
+    limits: z.object({ text: z.number().int().min(0), image: z.number().int().min(0), chat: z.number().int().min(0), seats: z.number().int().min(1) }).describe("Monthly limits of the custom plan; above what the base plan and add-ons include, blocks are priced."),
+    managedTier: z.enum(MANAGED_TIERS).optional().describe("Managed by BuPulse tier, when features include managed."),
+    interval: z.enum(["MONTH", "YEAR"]),
+    adjustedMinor: z.number().int().positive().optional().describe("The price the client pays, when it differs from the computed total (rounding or discount). Needs adjustReason."),
+    adjustReason: z.string().max(200).optional(),
+    note: z.string().max(1000).optional().describe("A message to the client, shown with the offer."),
+    validDays: z.number().int().min(1).max(60).optional(),
+    requestId: z.string().max(100).optional().describe("The custom plan request this answers (list_plan_requests)."),
+    send: z.boolean().optional().describe("Send it to the client once approved. Default false (saved as a draft)."),
+    idempotencyKey: idem,
+  }),
+  run: (a, ctx) => {
+    const { businessId, send, idempotencyKey, ...draft } = a;
+    return admin.requestCreateOffer(ctx, { businessId, draft, send, idempotencyKey });
+  },
 });
 tool({
   name: "change_plan",
