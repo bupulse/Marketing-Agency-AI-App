@@ -25,7 +25,7 @@ async function loadClient(userId: string) {
     select: {
       id: true, email: true, name: true, createdAt: true, suspendedAt: true, suspendedReason: true, deletionScheduledFor: true,
       subscription: { select: { plan: true, status: true, provider: true, interval: true, trialEndsAt: true, currentPeriodEnd: true, cancelAtPeriodEnd: true } },
-      business: { select: { id: true, name: true, industry: true, country: true, website: true, onboardedAt: true, createdAt: true } },
+      business: { select: { id: true, name: true, industry: true, industryOther: true, industryDescription: true, country: true, phone: true, ceoName: true, website: true, onboardedAt: true, createdAt: true } },
     },
   });
   if (!user) throw new AdminError("not_found", "No user with that id.");
@@ -48,7 +48,7 @@ export async function overviewSection(c: Client) {
   return {
     user: { id: c.id, email: c.email, name: c.name, createdAt: iso(c.createdAt), suspendedAt: iso(c.suspendedAt), suspendedReason: c.suspendedReason, deletionScheduledFor: iso(c.deletionScheduledFor) },
     subscription: sub ? { ...sub, trialEndsAt: iso(sub.trialEndsAt), currentPeriodEnd: iso(sub.currentPeriodEnd) } : null,
-    business: c.business ? { id: c.business.id, name: c.business.name, industry: c.business.industry, country: c.business.country, website: c.business.website, onboarded: !!c.business.onboardedAt } : null,
+    business: c.business ? { id: c.business.id, name: c.business.name, industry: c.business.industry, industryDescription: c.business.industryDescription, country: c.business.country, phone: c.business.phone, ceoName: c.business.ceoName, website: c.business.website, onboarded: !!c.business.onboardedAt } : null,
     mrrCents,
     signupSource: visit ? { source: visit.source, landingPage: visit.path, campaign: visit.utmCampaign, country: visit.country } : null,
     lastActiveAt: times.length ? new Date(Math.max(...times.map((t) => t.getTime()))).toISOString() : null,

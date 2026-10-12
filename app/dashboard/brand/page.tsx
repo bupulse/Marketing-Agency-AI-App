@@ -2,11 +2,15 @@ import { pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { BrandSection } from "@/components/brand-profile/brand-section";
+import { IndustrySection } from "@/components/brand-profile/industry-section";
 import { initialValues } from "@/components/brand-profile/initial";
 import { LanguageSection } from "@/components/studio/language-section";
 import { GlassCard } from "@/components/ui";
 import { isOwnLogoPath } from "@/lib/brand/schemas";
 import { createSignedDownloadUrl } from "@/lib/storage";
+import { prisma } from "@/lib/db";
+import { industryOptions } from "@/lib/industries/server";
+import { industryFormValues } from "@/lib/industries/shared";
 
 export const metadata = { title: "Brand" };
 
@@ -25,6 +29,10 @@ export default async function BrandPage() {
     }
   }
 
+  const [industries, sector] = await Promise.all([
+    industryOptions(),
+    prisma.business.findUnique({ where: { id: business.id }, select: { industryOther: true, industryDescription: true, industryRef: { select: { slug: true } } } }),
+  ]);
   const initial = initialValues(business);
   const context = { businessName, industry: business.industry, savedLogoUrl };
   const rows = [
@@ -44,6 +52,7 @@ export default async function BrandPage() {
           </div>
         ))}
       </GlassCard>
+      <IndustrySection industries={industries} initial={industryFormValues(sector ?? {})} />
       <BrandSection step="offer" initial={initial} context={context} />
       <BrandSection step="voice" initial={initial} context={context} />
       <LanguageSection initial={business.contentLanguage} />

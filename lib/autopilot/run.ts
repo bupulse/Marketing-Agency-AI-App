@@ -2,6 +2,7 @@
 // draws its images, and saves the posts. Safe to call twice: one run per business and week.
 import "server-only";
 import { prisma } from "@/lib/db";
+import { industryContext } from "@/lib/industry-context";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
 import { AIBudgetExceededError } from "@/lib/ai/budget";
@@ -102,7 +103,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
   const now = options.now ?? new Date();
   const business = await prisma.business.findUnique({
     where: { id: businessId },
-    include: { autopilot: true, user: { select: { id: true, email: true, deletionScheduledFor: true, suspendedAt: true } } },
+    include: { autopilot: true, industryRef: true, user: { select: { id: true, email: true, deletionScheduledFor: true, suspendedAt: true } } },
   });
   if (!business) return { status: "nothing_to_plan", postCount: 0, groupCount: 0, note: "We could not find your business." };
 
@@ -142,6 +143,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
     const brand: WriterBrand = {
       businessName: business.name,
       industry: business.industry,
+      industryContext: industryContext(business),
       description: business.description,
       audience: business.audience,
       tone: business.tone,

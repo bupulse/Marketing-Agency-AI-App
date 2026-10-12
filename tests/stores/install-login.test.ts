@@ -31,7 +31,6 @@ import { signUp } from "@/app/signup/actions";
 import { GET as confirm } from "@/app/auth/confirm/route";
 import { cleanReturn, hasReturn, RETURN_COOKIE } from "@/lib/auth/return-path";
 import { readReturn, takeReturn } from "@/lib/auth/return-server";
-import { industryOptions } from "@/lib/auth/schemas";
 import { countries } from "@/lib/content/countries";
 
 const INSTALL = "/dashboard/stores/shopify?shop=my-shop.myshopify.com&hmac=abc123&host=YWRtaW4&timestamp=1700000000";
@@ -88,7 +87,7 @@ describe("the install URL survives sign-in", () => {
 describe("the install URL survives sign-up for brand-new users", () => {
   const signup = (next: string) => {
     const f = new FormData();
-    for (const [k, v] of Object.entries({ email: "new@shop.co", organisationName: "Shop", ceoName: "Ann Lee", industry: industryOptions[0], country: countries[0], phone: "", website: "", password: "Password-12345!", confirmPassword: "Password-12345!", terms: "true", next })) f.set(k, v);
+    for (const [k, v] of Object.entries({ email: "new@shop.co", organisationName: "Shop", ceoName: "Ann Lee", industry: "other", industryOther: "Corner shop", industryDescription: "A corner shop selling groceries and airtime in Kigali.", country: countries[0], phone: "", website: "", password: "Password-12345!", confirmPassword: "Password-12345!", terms: "true", next })) f.set(k, v);
     return signUp({ status: "idle" }, f);
   };
 

@@ -2,6 +2,7 @@
 // starts from the signed-in user's id and only touches that user's business.
 import "server-only";
 import { prisma } from "@/lib/db";
+import { industryContext } from "@/lib/industry-context";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
 import { AIBudgetExceededError } from "@/lib/ai/budget";
@@ -25,7 +26,7 @@ export type ManageResult<T = object> = ({ ok: true } & T) | { ok: false; error: 
 const CHANGEABLE = ["PENDING_APPROVAL", "SCHEDULED", "DRAFT"] as const;
 
 async function businessOf(userId: string) {
-  return prisma.business.findUnique({ where: { userId } });
+  return prisma.business.findUnique({ where: { userId }, include: { industryRef: true } });
 }
 
 export async function saveSettings(userId: string, input: SettingsInput): Promise<ManageResult> {
@@ -102,6 +103,7 @@ export async function regenerateGroup(userId: string, groupId: string): Promise<
     const brand: WriterBrand = {
       businessName: business.name,
       industry: business.industry,
+      industryContext: industryContext(business),
       description: business.description,
       audience: business.audience,
       tone: business.tone,

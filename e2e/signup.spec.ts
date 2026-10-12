@@ -10,7 +10,9 @@ async function fillStep1(page: Page, email = "owner@example.com") {
 async function fillStep2(page: Page) {
   await page.getByLabel("Organisation name").fill("Sunrise Phones");
   await page.getByLabel("CEO name").fill("Ana Silva");
-  await page.getByLabel("Industry").selectOption("Other");
+  await page.getByLabel("Business sector").selectOption("other");
+  await page.getByLabel("Your industry").fill("Phone repairs");
+  await page.getByLabel("Describe your business").fill("We repair and sell phones and accessories in Nairobi CBD.");
   await page.getByLabel("Country").selectOption("Kenya");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
 }
@@ -36,21 +38,29 @@ test("step 2 requires organisation details and validates optional fields", async
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Enter your organisation name.")).toBeVisible();
   await expect(page.getByText("Enter the CEO's name.")).toBeVisible();
-  await expect(page.getByText("Choose your industry.")).toBeVisible();
+  await expect(page.getByText("Choose your business sector.")).toBeVisible();
+  await expect(page.getByText("Describe your business in a sentence or two.")).toBeVisible();
   await expect(page.getByText("Choose your country.")).toBeVisible();
   await expect(page.getByLabel("Organisation name")).toBeFocused();
 
   await page.getByLabel("Organisation name").fill("Sunrise Phones");
   await page.getByLabel("CEO name").fill("Ana Silva");
-  await page.getByLabel("Industry").selectOption("Other");
+  // "Other" reveals the industry text and moves focus into it.
+  await page.getByLabel("Business sector").selectOption("other");
+  await expect(page.getByLabel("Your industry")).toBeFocused();
+  await page.getByLabel("Describe your business").fill("We repair and sell phones and accessories in Nairobi CBD.");
   await page.getByLabel("Country").selectOption("Kenya");
-  await page.getByLabel("Phone (optional)").fill("abc");
+  await page.getByLabel("Phone (optional)").fill("12");
   await page.getByLabel("Website (optional)").fill("not a url");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
-  await expect(page.getByText("Enter a valid phone number")).toBeVisible();
+  await expect(page.getByText("Tell us your industry.")).toBeVisible();
+  await expect(page.getByText(/Enter a valid Kenyan number/)).toBeVisible();
   await expect(page.getByText("Enter a valid website")).toBeVisible();
 
-  await page.getByLabel("Phone (optional)").fill("+254 700 000 000");
+  await page.getByLabel("Your industry").fill("Phone repairs");
+  // Typing a national number groups it with the Kenyan dial code.
+  await page.getByLabel("Phone (optional)").fill("0712345678");
+  await expect(page.getByLabel("Phone (optional)")).toHaveValue("+254 712 345 678");
   await page.getByLabel("Website (optional)").fill("sunrise.example.com");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Secure your account" })).toBeVisible();
@@ -66,7 +76,8 @@ test("back keeps the values that were entered", async ({ page }) => {
   await page.getByRole("button", { name: "Back" }).click();
   await expect(page.getByLabel("Organisation name")).toHaveValue("Sunrise Phones");
   await expect(page.getByLabel("CEO name")).toHaveValue("Ana Silva");
-  await expect(page.getByLabel("Industry")).toHaveValue("Other");
+  await expect(page.getByLabel("Business sector")).toHaveValue("other");
+  await expect(page.getByLabel("Your industry")).toHaveValue("Phone repairs");
   await expect(page.getByLabel("Country")).toHaveValue("Kenya");
 
   await page.getByRole("button", { name: "Back" }).click();

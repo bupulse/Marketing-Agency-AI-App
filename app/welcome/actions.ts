@@ -6,6 +6,7 @@ import { requireActiveUser } from "@/lib/auth/require-user";
 import { fieldErrors, welcomeSchema, type FieldErrors } from "@/lib/auth/schemas";
 import { regionFromCountryName } from "@/lib/region";
 import { timezoneForCountryName } from "@/lib/region-format";
+import { resolveIndustryChoice } from "@/lib/industries/server";
 
 export type WelcomeState = { error?: string; fieldErrors?: FieldErrors };
 
@@ -17,6 +18,8 @@ export async function saveOrganisation(_prev: WelcomeState, formData: FormData):
     organisationName: formData.get("organisationName") ?? "",
     ceoName: formData.get("ceoName") ?? "",
     industry: formData.get("industry") ?? "",
+    industryOther: formData.get("industryOther") ?? "",
+    industryDescription: formData.get("industryDescription") ?? "",
     country: formData.get("country") ?? "",
     phone: formData.get("phone") ?? "",
     website: formData.get("website") ?? "",
@@ -24,8 +27,11 @@ export async function saveOrganisation(_prev: WelcomeState, formData: FormData):
   });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
 
-  const { organisationName, ceoName, industry, country, phone, website } = parsed.data;
-  const details = { name: organisationName, ceoName, industry, phone: phone ?? null, website: website ?? null };
+  const { organisationName, ceoName, country, phone, website } = parsed.data;
+  const sector = await resolveIndustryChoice(parsed.data);
+  if (!sector) return { fieldErrors: { industry: "Choose your business sector from the list." } };
+  // The phone is stored as E.164 ("+250791954277"); the sector writes industryId / industryOther and the legacy label.
+  const details = { name: organisationName, ceoName, ...sector, phone: phone ?? null, website: website ?? null };
   // The country, and with it the pricing region (and the time zone where the country has one), are set once: on the
   // first save, while the details are still missing. A server action is a public POST, so a later call must not let
   // the owner move the company to another region's prices; from then on only an admin changes the region (audited).

@@ -1,8 +1,9 @@
-import type { InputHTMLAttributes } from "react";
+import type { ComponentProps } from "react";
 import { cn } from "@/lib/cn";
 import { fieldBorder, fieldClasses } from "./field-styles";
 
-export type InputProps = InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean };
+// ComponentProps (not InputHTMLAttributes) so a parent can pass `ref` (React 19 passes it as a prop).
+export type InputProps = ComponentProps<"input"> & { invalid?: boolean };
 
 export function Input({ invalid, className, ...props }: InputProps) {
   return (

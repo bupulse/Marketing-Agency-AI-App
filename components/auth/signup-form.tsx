@@ -15,6 +15,7 @@ import {
 import { signInWithGoogle } from "@/app/login/actions";
 import { checkEmail, signUp, type SignUpState } from "@/app/signup/actions";
 import { cn } from "@/lib/cn";
+import type { IndustryOption } from "@/lib/industries/shared";
 import { VisitSessionField } from "./visit-session-field";
 import { ConfirmEmail } from "./confirm-email";
 import { GoogleIcon } from "./google-icon";
@@ -32,7 +33,7 @@ const STEPS = [
 
 const STEP_FIELDS: Record<Step, string[]> = {
   1: ["email"],
-  2: ["organisationName", "ceoName", "industry", "country", "phone", "website"],
+  2: ["organisationName", "ceoName", "industry", "industryOther", "industryDescription", "country", "phone", "website"],
   3: ["password", "confirmPassword", "terms"],
 };
 
@@ -47,6 +48,8 @@ const empty = {
   organisationName: "",
   ceoName: "",
   industry: "",
+  industryOther: "",
+  industryDescription: "",
   country: "",
   phone: "",
   website: "",
@@ -83,7 +86,7 @@ function Progress({ step }: { step: Step }) {
   );
 }
 
-export default function SignupForm({ next = "/dashboard" }: { next?: string }) {
+export default function SignupForm({ next = "/dashboard", industries }: { next?: string; industries: IndustryOption[] }) {
   const [step, setStep] = useState<Step>(1);
   const [checkingEmail, setCheckingEmail] = useState(false);
   const router = useRouter();
@@ -232,7 +235,7 @@ export default function SignupForm({ next = "/dashboard" }: { next?: string }) {
           </Field>
         )}
 
-        {step === 2 && <OrganisationFields values={values} errors={errors} onChange={set} />}
+        {step === 2 && <OrganisationFields values={values} errors={errors} onChange={set} industries={industries} />}
 
         {step === 3 && (
           <>

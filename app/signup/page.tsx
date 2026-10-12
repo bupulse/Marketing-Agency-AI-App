@@ -4,6 +4,7 @@ import { AuthShell } from "@/components/auth/auth-shell";
 import SignupForm from "@/components/auth/signup-form";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { cleanReturn } from "@/lib/auth/return-path";
+import { industryOptions } from "@/lib/industries/server";
 
 export const metadata: Metadata = {
   title: "Create your account",
@@ -15,10 +16,11 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
   const next = cleanReturn(typeof params.next === "string" ? params.next : null);
   const user = await getCurrentUser();
   if (user?.email_confirmed_at) redirect(next);
+  const industries = await industryOptions();
 
   return (
     <AuthShell wide>
-      <SignupForm next={next} />
+      <SignupForm next={next} industries={industries} />
     </AuthShell>
   );
 }

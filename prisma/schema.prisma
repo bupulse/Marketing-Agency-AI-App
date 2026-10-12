@@ -56,8 +56,15 @@ model Business {
   userId                  String    @unique @db.Uuid
   user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   name                    String
-  industry                String? // e.g. "Phone store", "School", "Construction"
-  description             String? // what they sell
+  // Deprecated, kept readable: the sector's name, or the owner's own words when they chose "Other". Written alongside
+  // industryId / industryOther on every save so analytics, the Autopilot playbook tags and the design packs keep working.
+  industry                String?
+  // The sector chosen at sign-up (Admin -> Industries). Null when the owner picked "Other" (industryOther) or signed up before industries were data.
+  industryId              String?
+  industryRef             Industry? @relation(fields: [industryId], references: [id], onDelete: SetNull)
+  industryOther           String? // "Other": the owner's own industry text, grouped into suggestions for the admin
+  industryDescription     String? // "Describe your business" at sign-up (required from 12 October 2026); the AI's first facts about the company
+  description             String? // what they sell (onboarding step 1; prefilled from industryDescription)
   audience                String? // who their customers are
   tone                    String? // brand voice preset id from lib/brand/voices.ts, e.g. "friendly"
   contentLanguage         String    @default("English") // language the AI writes in (lib/brand/languages.ts)
@@ -98,6 +105,8 @@ model Business {
   cloudflare       CloudflareConnection?
   memberships      Membership[]
   invites          Invite[]
+
+  @@index([industryId])
 }
 
 // Anything the business wants to promote. A real estate "listing" is just one type.
@@ -1217,4 +1226,33 @@ model Invite {
 
   @@index([businessId])
   @@index([email])
+}
+
+// A business sector offered at sign-up, with the guidance the AI writes from (Admin -> Industries, docs/INDUSTRIES.md).
+// The marketing /industries page keeps its own static list (lib/content/site.ts); the migration seeds the same names.
+model Industry {
+  id               String   @id @default(cuid())
+  slug             String   @unique // stable form value, e.g. "retail"
+  name             String // "Shops & retail"
+  shortDescription String
+  customers        String // typical customers
+  offerings        String // typical products and services
+  postIdeas        String // post ideas that work for this sector
+  tone             String // tone of voice
+  hashtags         String[]
+  seasons          String // important dates and seasons in Rwanda / East Africa
+  avoid            String // words, claims and compliance notes to avoid
+  active           Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  businesses Business[]
+}
+
+// "New from sign-ups" suggestions the admin dismissed: the normalised (trimmed, lower-cased) industryOther text.
+model DismissedIndustrySuggestion {
+  key       String   @id
+  label     String // the text as one client wrote it, for the audit log and the list
+  createdAt DateTime @default(now())
 }

@@ -128,3 +128,16 @@ describe("number helpers", () => {
     expect(factsText(request())).toMatch(/5,000 RWF/);
   });
 });
+
+describe("industry context", () => {
+  it("goes into the prompt before the post idea and counts as facts for the number check", () => {
+    const context = "Industry: Restaurants & cafés (Restaurants and cafés.)\nAbout this business, in the owner's words: Brochettes and chips in Kimironko since 2019.\n- Dates and seasons in Rwanda and East Africa: Kwibohora (4 July); no promotions during Kwibuka (7 to 13 April).";
+    const req = request({ brand: { ...request().brand, industryContext: context } });
+    const prompt = buildPrompt(req);
+    expect(prompt).toContain(context);
+    expect(prompt).not.toContain("Industry: Food");
+    expect(prompt.indexOf("Kwibohora")).toBeLessThan(prompt.indexOf("Post idea:"));
+    expect(numbersIn(factsText(req))).toEqual(expect.arrayContaining(["2019", "4", "7", "13"]));
+    expect(buildPrompt(request())).toContain("Industry: Food");
+  });
+});

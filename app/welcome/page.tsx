@@ -8,6 +8,9 @@ import { resolveCompany } from "@/lib/team/company";
 import { can } from "@/lib/team/roles";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { readReturn } from "@/lib/auth/return-server";
+import { industryOptions } from "@/lib/industries/server";
+import { industryFormValues } from "@/lib/industries/shared";
+import { formatPhone } from "@/lib/phone";
 
 export const metadata: Metadata = {
   title: "About your organisation",
@@ -23,9 +26,10 @@ export default async function WelcomePage() {
   // A teammate sees the company's setup, not an account of their own.
   const company = await resolveCompany(user.id);
   const ownerId = company?.ownerId ?? user.id;
-  const [business, account] = await Promise.all([
-    prisma.business.findUnique({ where: { userId: ownerId } }),
+  const [business, account, industries] = await Promise.all([
+    prisma.business.findUnique({ where: { userId: ownerId }, include: { industryRef: { select: { slug: true } } } }),
     prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true, suspendedAt: true } }),
+    industryOptions(),
   ]);
   if (company && !can(company.role, "settings")) redirect("/account/waiting");
   if (account?.suspendedAt || company?.ownerSuspended) redirect("/suspended");
@@ -38,12 +42,13 @@ export default async function WelcomePage() {
     <AuthShell wide>
       <WelcomeForm
         email={user.email ?? ""}
+        industries={industries}
         defaults={{
           organisationName: business && business.name !== "My business" ? business.name : "",
           ceoName: business?.ceoName ?? meta?.full_name ?? meta?.name ?? "",
-          industry: business?.industry ?? "",
+          ...(business ? industryFormValues(business) : { industry: "", industryOther: "", industryDescription: "" }),
           country: business?.country ?? "",
-          phone: business?.phone ?? "",
+          phone: formatPhone(business?.phone),
           website: business?.website ?? "",
         }}
       />

@@ -5,6 +5,8 @@ import type { Detected } from "./detect";
 export interface BusinessFacts {
   name: string;
   industry?: string | null;
+  /** The sector's guidance and the owner's own description (lib/industry-context.ts). */
+  industryContext?: string | null;
   description?: string | null;
   audience?: string | null;
   website?: string | null;
@@ -71,7 +73,7 @@ export function buildSystemPrompt(facts: BusinessFacts, state: { leadCaptured: b
     [
       "BUSINESS FACTS",
       line("Name", facts.name),
-      line("Industry", facts.industry),
+      facts.industryContext ? null : line("Industry", facts.industry),
       line("What it sells or does", facts.description),
       line("Its customers", facts.audience),
       line("Website", facts.website),
@@ -82,6 +84,7 @@ export function buildSystemPrompt(facts: BusinessFacts, state: { leadCaptured: b
     ]
       .filter(Boolean)
       .join("\n"),
+    facts.industryContext?.trim() ? `ABOUT THE BUSINESS AND ITS SECTOR\n${facts.industryContext.trim()}\nThe sector guidance is background for tone and understanding only: it is NOT a list of what this business offers, so never present it as fact.` : null,
     faqs.length ? `FREQUENTLY ASKED QUESTIONS\n${faqs.join("\n")}` : null,
     projects.length ? `PRODUCTS, SERVICES AND OFFERS\n${projects.join("\n")}` : null,
     state.leadCaptured ? "The visitor's contact details are already saved. Do not ask for them again; set wantsContact to false." : null,

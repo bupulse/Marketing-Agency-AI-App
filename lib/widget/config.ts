@@ -4,6 +4,7 @@ import { readKnowledge, isOwnLogoPath } from "@/lib/brand/schemas";
 import { hasFeature } from "@/lib/entitlements";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isHexColor, PULSE_BLUE, readableTextColor } from "@/lib/color-contrast";
+import { industryContext } from "@/lib/industry-context";
 import type { BusinessFacts } from "./prompt";
 import { defaultGreeting } from "./strings";
 
@@ -34,7 +35,7 @@ export function resolveAccent(accentColor: string | null | undefined, brandColor
 /** The widget behind a public key, or null when the key is unknown or the widget was never set up. */
 export async function loadPublicWidget(key: string): Promise<PublicWidget | null> {
   if (!/^[A-Za-z0-9_-]{8,64}$/.test(key)) return null;
-  const business = await prisma.business.findUnique({ where: { widgetKey: key } });
+  const business = await prisma.business.findUnique({ where: { widgetKey: key }, include: { industryRef: true } });
   if (!business) return null;
   const widget = await prisma.chatWidget.findUnique({ where: { businessId: business.id } });
   if (!widget) return null;
@@ -62,6 +63,7 @@ export async function loadPublicWidget(key: string): Promise<PublicWidget | null
     facts: {
       name: business.name,
       industry: business.industry,
+      industryContext: industryContext(business),
       description: business.description,
       audience: business.audience,
       website: business.website,

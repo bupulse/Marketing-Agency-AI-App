@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { safeNext } from "@/lib/auth/safe-next";
 import {
+  businessDetailsSchema,
   emailSchema,
   fieldErrors,
+  industrySchema,
   organisationSchema,
   passwordSchema,
   resetPasswordSchema,
@@ -11,7 +13,16 @@ import {
   welcomeSchema,
 } from "@/lib/auth/schemas";
 
-const org = { organisationName: "Sunrise Phones", ceoName: "Ana Silva", industry: "Other", country: "Kenya", phone: "", website: "" };
+const org = {
+  organisationName: "Sunrise Phones",
+  ceoName: "Ana Silva",
+  industry: "other",
+  industryOther: "Phone repairs",
+  industryDescription: "We repair and sell phones and accessories in Nairobi CBD.",
+  country: "Kenya",
+  phone: "",
+  website: "",
+};
 const valid = { email: " Ana@Example.com ", ...org, password: "abcdefg1", confirmPassword: "abcdefg1", terms: true as const };
 
 describe("emailSchema", () => {
@@ -39,14 +50,29 @@ describe("organisationSchema", () => {
     expect(r.website).toBeUndefined();
   });
 
-  it("requires name, CEO, industry and country", () => {
-    const r = organisationSchema.safeParse({ ...org, organisationName: " ", ceoName: "", industry: "", country: "" });
+  it("requires name, CEO, sector, description and country", () => {
+    const r = organisationSchema.safeParse({ ...org, organisationName: " ", ceoName: "", industry: "", industryDescription: "", country: "" });
     expect(r.success).toBe(false);
-    expect(Object.keys(fieldErrors(r.error!)).sort()).toEqual(["ceoName", "country", "industry", "organisationName"]);
+    expect(Object.keys(fieldErrors(r.error!)).sort()).toEqual(["ceoName", "country", "industry", "industryDescription", "organisationName"]);
   });
 
-  it("rejects an unknown industry or country", () => {
-    expect(organisationSchema.safeParse({ ...org, industry: "Piracy" }).success).toBe(false);
+  it("Other requires the owner's industry text; a listed sector does not", () => {
+    const r = organisationSchema.safeParse({ ...org, industry: "other", industryOther: "  " });
+    expect(r.success).toBe(false);
+    expect(fieldErrors(r.error!)).toEqual({ industryOther: "Tell us your industry." });
+    expect(organisationSchema.safeParse({ ...org, industry: "retail", industryOther: "" }).success).toBe(true);
+    // The "Other" check runs even when another field failed, so the person sees every problem at once.
+    const both = organisationSchema.safeParse({ ...org, industry: "other", industryOther: "", ceoName: "" });
+    expect(Object.keys(fieldErrors(both.error!)).sort()).toEqual(["ceoName", "industryOther"]);
+  });
+
+  it("requires a description of 20 to 500 characters", () => {
+    expect(fieldErrors(organisationSchema.safeParse({ ...org, industryDescription: "Too short" }).error!).industryDescription).toMatch(/at least 20/);
+    expect(organisationSchema.safeParse({ ...org, industryDescription: "x".repeat(501) }).success).toBe(false);
+    expect(organisationSchema.safeParse({ ...org, industryDescription: "x".repeat(500) }).success).toBe(true);
+  });
+
+  it("rejects an unknown country", () => {
     expect(organisationSchema.safeParse({ ...org, country: "Atlantis" }).success).toBe(false);
   });
 
@@ -58,10 +84,19 @@ describe("organisationSchema", () => {
     }
   });
 
-  it("validates phone numbers", () => {
-    expect(organisationSchema.parse({ ...org, phone: "+254 700 000 000" }).phone).toBe("+254 700 000 000");
-    expect(organisationSchema.safeParse({ ...org, phone: "abc" }).success).toBe(false);
-    expect(organisationSchema.safeParse({ ...org, phone: "123" }).success).toBe(false);
+  it("validates the phone for the chosen country and stores E.164", () => {
+    expect(organisationSchema.parse({ ...org, phone: "+254 712 345 678" }).phone).toBe("+254712345678");
+    expect(organisationSchema.parse({ ...org, phone: "0712 345 678" }).phone).toBe("+254712345678");
+    expect(organisationSchema.parse({ ...org, country: "Rwanda", phone: "0791954277" }).phone).toBe("+250791954277");
+    expect(organisationSchema.parse({ ...org, country: "Portugal", phone: "912 345 678" }).phone).toBe("+351912345678");
+    expect(organisationSchema.parse({ ...org, country: "United States", phone: "(201) 555-0123" }).phone).toBe("+12015550123");
+    // "+250..." is a Rwandan number on a Kenyan form: a typo, not a Kenyan phone.
+    for (const bad of ["abc", "123", "07123", "+250791954277"]) {
+      const r = organisationSchema.safeParse({ ...org, phone: bad });
+      expect(r.success).toBe(false);
+      expect(fieldErrors(r.error!).phone).toMatch(/^Enter a valid Kenyan number, e\.g\. \+254 /);
+    }
+    expect(fieldErrors(organisationSchema.safeParse({ ...org, country: "Rwanda", phone: "0712345678" }).error!).phone).toMatch(/^Enter a valid Rwandan number, e\.g\. \+250 /);
   });
 });
 
@@ -90,6 +125,27 @@ describe("welcomeSchema", () => {
     const r = welcomeSchema.safeParse({ ...org, organisationName: "", terms: false });
     expect(r.success).toBe(false);
     expect(Object.keys(fieldErrors(r.error!)).sort()).toEqual(["organisationName", "terms"]);
+  });
+
+  it("applies the Other and phone checks too", () => {
+    const r = welcomeSchema.safeParse({ ...org, industryOther: "", phone: "abc", terms: true });
+    expect(Object.keys(fieldErrors(r.error!)).sort()).toEqual(["industryOther", "phone"]);
+    expect(welcomeSchema.parse({ ...org, phone: "0712345678", terms: true }).phone).toBe("+254712345678");
+  });
+});
+
+describe("businessDetailsSchema and industrySchema", () => {
+  it("checks the phone against the company's saved country, with no country or sector fields", () => {
+    const s = businessDetailsSchema("Rwanda");
+    expect(s.parse({ organisationName: "Inzu", ceoName: "Aline", phone: "0791954277", website: "" }).phone).toBe("+250791954277");
+    expect(fieldErrors(s.safeParse({ organisationName: "Inzu", ceoName: "Aline", phone: "0712345678", website: "" }).error!).phone).toMatch(/Rwandan/);
+    expect(Object.keys(s.parse({ organisationName: "Inzu", ceoName: "Aline", phone: "", website: "" })).sort()).toEqual(["ceoName", "organisationName", "phone", "website"]);
+  });
+
+  it("industrySchema: Other needs the text, the description is required", () => {
+    expect(industrySchema.safeParse({ industry: "retail", industryOther: "", industryDescription: org.industryDescription }).success).toBe(true);
+    expect(fieldErrors(industrySchema.safeParse({ industry: "other", industryOther: "", industryDescription: org.industryDescription }).error!)).toEqual({ industryOther: "Tell us your industry." });
+    expect(fieldErrors(industrySchema.safeParse({ industry: "retail", industryOther: "", industryDescription: "" }).error!).industryDescription).toMatch(/Describe your business/);
   });
 });
 

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { emailSchema, fieldErrors, signUpSchema, type FieldErrors } from "@/lib/auth/schemas";
 import { siteUrl } from "@/lib/auth/site-url";
 import { cleanReturn } from "@/lib/auth/return-path";
+import { resolveIndustryChoice } from "@/lib/industries/server";
 
 export type SignUpState =
   | { status: "idle" }
@@ -60,6 +61,8 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     organisationName: formData.get("organisationName") ?? "",
     ceoName: formData.get("ceoName") ?? "",
     industry: formData.get("industry") ?? "",
+    industryOther: formData.get("industryOther") ?? "",
+    industryDescription: formData.get("industryDescription") ?? "",
     country: formData.get("country") ?? "",
     phone: formData.get("phone") ?? "",
     website: formData.get("website") ?? "",
@@ -69,6 +72,9 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
   });
   if (!parsed.success) return { status: "error", fieldErrors: fieldErrors(parsed.error) };
   const v = parsed.data;
+  // The sector must be one the admin offers today (the list is data, not a constant).
+  const sector = await resolveIndustryChoice(v);
+  if (!sector) return { status: "error", fieldErrors: { industry: "Choose your business sector from the list." } };
   const next = cleanReturn(String(formData.get("next") ?? ""));
 
   const existing = await findAccountByEmail(v.email);
@@ -83,7 +89,11 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
       data: {
         organisation_name: v.organisationName,
         ceo_name: v.ceoName,
-        industry: v.industry,
+        // Read by lib/account.ts ensureAccount once the email is confirmed. `industry` keeps the legacy label.
+        industry: sector.industry,
+        industry_slug: sector.industryId ? v.industry : "",
+        industry_other: sector.industryOther ?? "",
+        industry_description: sector.industryDescription,
         country: v.country,
         phone: v.phone ?? "",
         website: v.website ?? "",

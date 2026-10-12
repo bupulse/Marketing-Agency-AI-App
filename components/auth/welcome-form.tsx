@@ -5,10 +5,11 @@ import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui";
 import { fieldErrors, welcomeSchema, type FieldErrors } from "@/lib/auth/schemas";
 import { saveOrganisation, type WelcomeState } from "@/app/welcome/actions";
+import type { IndustryOption } from "@/lib/industries/shared";
 import { OrganisationFields, TermsField, type OrganisationValues } from "./organisation-fields";
 
 /** /welcome: organisation details for people who signed up with Google (no password needed). */
-export function WelcomeForm({ email, defaults }: { email: string; defaults: OrganisationValues }) {
+export function WelcomeForm({ email, defaults, industries }: { email: string; defaults: OrganisationValues; industries: IndustryOption[] }) {
   const [values, setValues] = useState({ ...defaults, terms: false });
   const [errors, setErrors] = useState<FieldErrors>({});
   const [state, formAction, pending] = useActionState<WelcomeState, FormData>(saveOrganisation, {});
@@ -57,7 +58,7 @@ export function WelcomeForm({ email, defaults }: { email: string; defaults: Orga
             {state.error}
           </p>
         )}
-        <OrganisationFields values={values} errors={errors} onChange={set} />
+        <OrganisationFields values={values} errors={errors} onChange={set} industries={industries} />
         <TermsField checked={values.terms} error={errors.terms} onChange={(v) => set("terms", v)} />
         <Button type="submit" disabled={pending} className="w-full" trailing={<ArrowRight aria-hidden className="size-4" />}>
           {pending ? "Saving…" : "Go to my dashboard"}

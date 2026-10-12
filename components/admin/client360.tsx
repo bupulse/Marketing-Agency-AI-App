@@ -7,6 +7,7 @@ import { Badge, Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { Meter } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { currencyDigits, dateTime, money, num } from "@/lib/admin/format";
+import { formatPhone } from "@/lib/phone";
 import { diffJson, show } from "@/lib/admin/diff";
 import { AdminError, getBusiness, getUser, listFeatureFlags } from "@/lib/admin/service";
 import {
@@ -162,6 +163,9 @@ async function OverviewTab({ id, c, here }: { id: string; c: C; here: string }) 
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[14px]">
               <dt className="text-muted">Name</dt><dd>{business.name}</dd>
               <dt className="text-muted">Industry</dt><dd>{business.industry ?? "n/a"}</dd>
+              {business.industryDescription && (<><dt className="text-muted">Describes itself</dt><dd className="text-[13px]">{business.industryDescription}</dd></>)}
+              <dt className="text-muted">CEO</dt><dd>{business.ceoName ?? "n/a"}</dd>
+              <dt className="text-muted">Phone</dt><dd>{business.phone ? <a href={`tel:${business.phone}`} className="underline">{formatPhone(business.phone)}</a> : "n/a"}</dd>
               <dt className="text-muted">Country</dt><dd>{business.country ?? "n/a"}</dd>
               <dt className="text-muted">Onboarded</dt><dd>{business.onboarded ? "Yes" : "No"}</dd>
               <dt className="text-muted">Projects, posts, leads</dt><dd>{business.counts.projects}, {business.counts.posts}, {business.counts.leads}</dd>

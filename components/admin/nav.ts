@@ -17,6 +17,7 @@ import {
   Smartphone,
   TriangleAlert,
   Building2,
+  Briefcase,
   CalendarCheck,
   CloudDownload,
   Globe,
@@ -52,6 +53,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { href: "/admin/content", label: "Content performance", icon: ChartLine },
       { href: "/admin/funnels", label: "Funnels", icon: Funnel },
+      { href: "/admin/industries", label: "Industries", icon: Briefcase },
     ],
   },
   {

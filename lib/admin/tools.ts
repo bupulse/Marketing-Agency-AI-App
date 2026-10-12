@@ -10,6 +10,7 @@ import * as connections from "./connections";
 import * as connectionActions from "./actions/connections";
 import * as clientView from "./client360";
 import * as regions from "./regions-service";
+import * as industries from "./industries-service";
 import * as demos from "./demos";
 import { getActivity } from "./activity";
 import { getManualPayment, listManualPayments } from "@/lib/billing/momo";
@@ -171,6 +172,27 @@ tool({
 });
 tool({ name: "get_momo_payment", title: "Get Mobile Money payment", kind: "read", description: "One Mobile Money payment in detail, with the period it bought once confirmed.", schema: z.object({ id: id("Payment id.") }), run: (a) => getManualPayment(a.id) });
 tool({ name: "list_feature_flags", title: "List feature flags", kind: "read", description: "All feature flags with their switch, rollout percentage and per-user overrides.", schema: z.object({}), run: () => admin.listFeatureFlags() });
+
+// ---- industries (read) ----------------------------------------------------------------------------------------
+tool({
+  name: "list_industries",
+  title: "List industries",
+  kind: "read",
+  description: "The business sectors offered at sign-up (Admin -> Industries) with the guidance the AI writes from: short description, typical customers, products and services, post ideas, tone, hashtags, Rwanda / East Africa dates and seasons, words and claims to avoid, whether active, and how many companies use each. Editing is done in the admin console only.",
+  schema: z.object({ active: z.boolean().optional().describe("true = only sectors offered at sign-up; false = only hidden ones; omit for all.") }),
+  run: async (a) => {
+    const rows = await industries.listIndustriesForTools();
+    return { industries: rows.filter((r) => a.active === undefined || r.active === a.active) };
+  },
+});
+tool({
+  name: "list_industry_suggestions",
+  title: "List industry suggestions",
+  kind: "read",
+  description: "\"New from sign-ups\": what clients typed after choosing Other as their sector, grouped (trimmed, case-insensitive) with counts and sample descriptions, most frequent first. Dismissed suggestions are left out unless includeDismissed is true. Adding one as an industry is done in the admin console (/admin/industries).",
+  schema: z.object({ includeDismissed: z.boolean().optional() }),
+  run: async (a) => ({ suggestions: (await industries.listIndustrySuggestions({ includeDismissed: a.includeDismissed })).map(({ businessIds, ...s }) => ({ ...s, businessCount: businessIds.length })) }),
+});
 
 // ---- regions, regional prices and demos (read) ---------------------------------------------------------------
 tool({

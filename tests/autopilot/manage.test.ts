@@ -50,7 +50,7 @@ beforeEach(() => {
 describe("saving settings", () => {
   it("saves for the signed-in user's business, including the skip-religious-holidays choice", async () => {
     expect(await saveSettings("user1", { ...valid, skipReligious: true })).toEqual({ ok: true });
-    expect(mocks.prisma.business.findUnique).toHaveBeenCalledWith({ where: { userId: "user1" } });
+    expect(mocks.prisma.business.findUnique).toHaveBeenCalledWith({ where: { userId: "user1" }, include: { industryRef: true } });
     const call = mocks.prisma.autopilotSettings.upsert.mock.calls[0][0];
     expect(call.where).toEqual({ businessId: "biz1" });
     expect(call.update).toMatchObject({ enabled: true, postsPerWeek: 4, connectionIds: ["c1"], postingTimes: ["09:00", "18:00"], skipReligiousHolidays: true });

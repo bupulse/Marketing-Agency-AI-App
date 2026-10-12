@@ -23,6 +23,8 @@ delete jsonSchema.$schema;
 export interface BrandContext {
   businessName: string;
   industry?: string | null;
+  /** The sector's guidance and the owner's own description, from lib/industry-context.ts industryContext(). */
+  industryContext?: string | null;
   /** What the business sells or does. */
   description?: string | null;
   audience?: string | null;
@@ -62,7 +64,7 @@ export function buildPrompt(brand: BrandContext, input: PromotionInput): string 
     `Write all content in ${language}. Hashtags may stay in English where that is normal for ${language}-speaking audiences; everything else must be in ${language}.`,
     "",
     `Business: ${brand.businessName}`,
-    brand.industry && `Industry: ${brand.industry}`,
+    !brand.industryContext && brand.industry && `Industry: ${brand.industry}`,
     brand.description && `What the business sells or does: ${brand.description}`,
     brand.audience && `Its customers: ${brand.audience}`,
     brand.website && `Website: ${brand.website}`,
@@ -76,6 +78,7 @@ export function buildPrompt(brand: BrandContext, input: PromotionInput): string 
       ]
         .filter(Boolean)
         .join("\n"),
+    brand.industryContext && `\n${brand.industryContext}`,
     "",
     `Promoting (${input.type}): ${input.title}`,
     input.price && `Price or offer: ${input.price}`,

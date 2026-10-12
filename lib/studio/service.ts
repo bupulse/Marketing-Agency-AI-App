@@ -1,6 +1,7 @@
 import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import { prisma } from "@/lib/db";
+import { industryContext } from "@/lib/industry-context";
 import { getTextProvider } from "@/lib/ai";
 import { DEFAULT_GEMINI_TEXT_MODEL } from "@/lib/ai/gemini-text";
 import { withLedger } from "@/lib/ai/ledger";
@@ -73,7 +74,7 @@ export async function generateForProject(args: {
   // Scoped to the business, so another account's project is simply "not found".
   const project = await prisma.project.findFirst({
     where: { id: projectId, businessId },
-    include: { business: true, contents: { orderBy: { createdAt: "desc" }, take: 1 } },
+    include: { business: { include: { industryRef: true } }, contents: { orderBy: { createdAt: "desc" }, take: 1 } },
   });
   if (!project) {
     if (reservation) await refundUsage(userId, "text", reservation.periodStart).catch(() => {});
@@ -95,6 +96,7 @@ export async function generateForProject(args: {
           {
             businessName: business.name,
             industry: business.industry,
+            industryContext: industryContext(business),
             description: business.description,
             audience: business.audience,
             tone: business.tone,

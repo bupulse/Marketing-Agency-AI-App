@@ -3,13 +3,20 @@ import "server-only";
 import type { User as AuthUser } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db";
 import type { SignUpMethod } from "@/lib/generated/prisma/client";
+import { getIndustries, slugForIndustryName } from "@/lib/industries/server";
+import { phoneCountry, toE164 } from "@/lib/phone";
 import { regionFromCountryName } from "@/lib/region";
 import { timezoneForCountryName } from "@/lib/region-format";
 
 type SignUpDetails = {
   organisationName: string | null;
   ceoName: string | null;
+  /** Legacy label: the sector's name, or the owner's own text. */
   industry: string | null;
+  /** Sector slug from the form (empty for "Other" and for sign-ups before industries were data). */
+  industrySlug: string | null;
+  industryOther: string | null;
+  industryDescription: string | null;
   country: string | null;
   phone: string | null;
   website: string | null;
@@ -27,10 +34,25 @@ function signUpDetails(meta: AuthUser["user_metadata"] | undefined): SignUpDetai
     organisationName: text(meta?.organisation_name, 120),
     ceoName: text(meta?.ceo_name, 100),
     industry: text(meta?.industry, 80),
+    industrySlug: text(meta?.industry_slug, 60),
+    industryOther: text(meta?.industry_other, 80),
+    industryDescription: text(meta?.industry_description, 500),
     country: text(meta?.country, 80),
     phone: text(meta?.phone, 30),
     website: text(meta?.website),
   };
+}
+
+/**
+ * The Business industry columns from the sign-up metadata: the slug links the sector; an older sign-up that stored
+ * only the name is linked by name; anything else is the owner's own text. The phone becomes E.164 for the country.
+ */
+async function industryColumns(d: SignUpDetails) {
+  const slug = d.industrySlug ?? slugForIndustryName(d.industry);
+  const row = slug ? (await getIndustries()).find((i) => i.slug === slug) ?? null : null;
+  if (row) return { industry: row.name, industryId: row.id, industryOther: null, industryDescription: d.industryDescription };
+  const other = d.industryOther ?? (d.industry && d.industry.toLowerCase() !== "other" ? d.industry : null);
+  return { industry: other, industryId: null, industryOther: other, industryDescription: d.industryDescription };
 }
 
 // True when the required sign-up details are all there. Email sign-ups always have
@@ -70,6 +92,8 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
 
   const now = new Date();
   const pricingRegion = await regionFromCountryName(details.country);
+  const sector = await industryColumns(details);
+  const phone = details.phone ? (toE164(details.phone, phoneCountry(details.country)) ?? details.phone) : null;
 
   const created = await prisma.user.upsert({
     where: { id: authUser.id },
@@ -82,11 +106,11 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
       business: {
         create: {
           name: details.organisationName ?? "My business",
-          industry: details.industry,
+          ...sector,
           website: details.website,
           ceoName: details.ceoName,
           country: details.country,
-          phone: details.phone,
+          phone,
           pricingRegion,
           // Rwanda and the EAC countries have one zone each; elsewhere the browser sets it on the first dashboard visit.
           ...(timezoneForCountryName(details.country) ? { timezone: timezoneForCountryName(details.country) as string } : {}),

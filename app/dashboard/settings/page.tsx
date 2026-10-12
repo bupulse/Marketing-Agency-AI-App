@@ -10,6 +10,7 @@ import { CanvaCard } from "@/components/settings/canva-card";
 import { CanvaReturnToast } from "@/components/designs/canva-return-toast";
 import { prisma } from "@/lib/db";
 import { can } from "@/lib/team/roles";
+import { formatPhone } from "@/lib/phone";
 
 export const metadata = { title: "Settings" };
 
@@ -33,12 +34,12 @@ export default async function SettingsPage() {
       />
       {can(role, "settings") && (
       <BusinessSection
+        country={business.country ?? ""}
+        industryLabel={business.industry ?? ""}
         defaults={{
           organisationName: business.name,
           ceoName: business.ceoName ?? "",
-          industry: business.industry ?? "",
-          country: business.country ?? "",
-          phone: business.phone ?? "",
+          phone: formatPhone(business.phone),
           website: business.website ?? "",
         }}
       />

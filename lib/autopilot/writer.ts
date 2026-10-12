@@ -101,7 +101,7 @@ export function buildPrompt(req: WriteRequest): string {
     `Write all content in ${language}. Hashtags may stay in English where that is normal for ${language}-speaking audiences; everything else must be in ${language}.`,
     "",
     `Business: ${brand.businessName}`,
-    brand.industry && `Industry: ${brand.industry}`,
+    !brand.industryContext && brand.industry && `Industry: ${brand.industry}`,
     brand.description && `What the business sells or does: ${brand.description}`,
     brand.audience && `Its customers: ${brand.audience}`,
     brand.website && `Website: ${brand.website}`,
@@ -116,6 +116,7 @@ export function buildPrompt(req: WriteRequest): string {
       ]
         .filter(Boolean)
         .join("\n"),
+    brand.industryContext && `\n${brand.industryContext}`,
     "",
     `Post idea: ${idea.name} (goal: ${idea.goal})`,
     `How to write it: ${idea.guidance}`,
@@ -203,6 +204,7 @@ export function factsText(req: WriteRequest): string {
   return [
     brand.businessName,
     brand.industry,
+    brand.industryContext,
     brand.description,
     brand.audience,
     brand.website,

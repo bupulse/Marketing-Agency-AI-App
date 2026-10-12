@@ -21,6 +21,8 @@ function attach(row: Row | null, args?: { select?: Record<string, any>; include?
   if (!rel) return row;
   if (rel.business && row.business === undefined && row.businessId !== undefined) row.business = currentDb.business.rows.find((b) => b.id === row.businessId) ?? null;
   if (rel.user && row.user === undefined && row.userId !== undefined) row.user = currentDb.user.rows.find((u) => u.id === row.userId) ?? null;
+  // `_count: { select: { businesses: true } }` on an industry: how many Business rows point at it.
+  if (rel._count?.select?.businesses && row._count === undefined) row._count = { businesses: currentDb.business.rows.filter((b) => b.industryId === row.id).length };
   return row;
 }
 
@@ -114,6 +116,12 @@ function table(rows: Row[], opts: { pk: string; unique?: string[]; uniqueCombo?:
       if (row) return Object.assign(row, update);
       return api.create({ data: create });
     }),
+    delete: vi.fn(async ({ where }: { where: Record<string, any> }) => {
+      const row = find(where);
+      if (!row) throw Object.assign(new Error("Record to delete does not exist."), { code: "P2025" });
+      rows.splice(rows.indexOf(row), 1);
+      return row;
+    }),
     deleteMany: vi.fn(async ({ where }: { where?: Where } = {}) => {
       const keep = rows.filter((r) => !match(r, where));
       const count = rows.length - keep.length;
@@ -199,6 +207,9 @@ export function createFakeDb() {
     adminAvailability: table([], { pk: "id" }),
     demoBooking: table([], { pk: "id", unique: ["icsToken"], defaults: () => ({ status: "booked", notes: null, meetingLink: null, sequence: 0, icsToken: `ics_${Math.random().toString(36).slice(2, 14)}`, updatedAt: new Date() }) }),
     membership: table([], { pk: "id", unique: ["userId"] }),
+    // Industries as data (sign-up sectors) and the dismissed "New from sign-ups" suggestions.
+    industry: table([], { pk: "id", unique: ["slug"], defaults: () => ({ hashtags: [], postIdeas: "", seasons: "", avoid: "", active: true, sortOrder: 0, updatedAt: new Date() }) }),
+    dismissedIndustrySuggestion: table([], { pk: "key" }),
     $executeRaw: vi.fn(async () => 1),
     $queryRaw: vi.fn(async () => [{ locked: true }]),
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),

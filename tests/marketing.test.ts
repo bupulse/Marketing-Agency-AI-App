@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateMarketingContent } from "@/lib/ai/marketing";
+import { buildPrompt, generateMarketingContent } from "@/lib/ai/marketing";
 import { AIProviderError, type TextProvider } from "@/lib/ai/types";
 
 const brand = { businessName: "Sunrise Bakery", industry: "Food", tone: "friendly" };
@@ -96,5 +96,18 @@ describe("generateMarketingContent", () => {
   it("throws when required fields are missing", async () => {
     const provider = fakeProvider(JSON.stringify({ caption: "only a caption" }));
     await expect(generateMarketingContent(provider, brand, input)).rejects.toBeInstanceOf(AIProviderError);
+  });
+});
+
+describe("buildPrompt and the industry context", () => {
+  it("puts the sector guidance and the owner's description in the prompt, replacing the bare industry line", () => {
+    const context = "Industry: Shops & retail (Shops and boutiques.)\nAbout this business, in the owner's words: We sell kitenge dresses in Kigali.\nSector guidance (general knowledge about this kind of business, not facts about this one; use it for ideas, tone and timing, never as claims):\n- Avoid (words, claims, compliance): Never invent prices.";
+    const withContext = buildPrompt({ ...brand, industryContext: context }, input);
+    expect(withContext).toContain(context);
+    expect(withContext).not.toContain("Industry: Food");
+    expect(withContext.indexOf("Sector guidance")).toBeLessThan(withContext.indexOf("Promoting (product)"));
+    const without = buildPrompt(brand, input);
+    expect(without).toContain("Industry: Food");
+    expect(without).not.toContain("Sector guidance");
   });
 });
