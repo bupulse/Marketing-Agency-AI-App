@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { RateLimitError, rateLimit, type RateLimitRule } from "@/lib/rate-limit";
 import { featureStatus, type FeatureBlockReason } from "@/lib/entitlements";
 import { featureLabel, type FeatureKey } from "@/lib/features";
-import { hashApiKey, KEY_PREFIX, type ApiScope } from "./keys";
+import { findByKeyHash, KEY_PREFIX, type ApiScope } from "./keys";
 
 export const API_RATE_LIMIT: RateLimitRule = { limit: 60, windowSeconds: 60 }; // per key
 const LAST_USED_EVERY_MS = 60_000;
@@ -55,7 +55,11 @@ export async function authenticate(request: Request, scope: ApiScope): Promise<{
   if (!match || !match[1].startsWith(KEY_PREFIX) || match[1].length > 200) {
     return { ok: false, response: apiError(401, "unauthorized", "Send your API key as: Authorization: Bearer bp_live_...", { "www-authenticate": "Bearer" }) };
   }
-  const key = await prisma.apiKey.findUnique({ where: { hash: await hashApiKey(match[1]) }, select: { id: true, businessId: true, scopes: true, revokedAt: true, lastUsedAt: true } });
+  const key = await findByKeyHash(
+    match[1],
+    (hash) => prisma.apiKey.findUnique({ where: { hash }, select: { id: true, businessId: true, scopes: true, revokedAt: true, lastUsedAt: true } }),
+    (id, from, to) => prisma.apiKey.updateMany({ where: { id, hash: from }, data: { hash: to } }),
+  );
   if (!key || key.revokedAt) return { ok: false, response: apiError(401, "unauthorized", "This API key is not valid or was revoked.", { "www-authenticate": "Bearer" }) };
   const access = await apiAccessStatus(key.businessId);
   // While the plan cannot be checked (or the API's service is paused) the key is not "not in your plan": answer a temporary 503.

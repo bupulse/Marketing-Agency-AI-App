@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { hashApiKey } from "@/lib/api/keys";
+import { findByKeyHash } from "@/lib/api/keys";
 import { RateLimitError, rateLimit, type RateLimitRule } from "@/lib/rate-limit";
 import { ADMIN_KEY_PREFIX, ipAllowed } from "./keys";
 import { apiContext, type AdminContext } from "./types";
@@ -30,10 +30,11 @@ export async function authenticateAdminRequest(request: Request): Promise<AdminA
   if (!match || !match[1].startsWith(ADMIN_KEY_PREFIX) || match[1].length > 200) {
     return { ok: false, response: adminError(401, "unauthorized", "Send your admin key as: Authorization: Bearer bpj_live_...", challenge) };
   }
-  const key = await prisma.adminApiKey.findUnique({
-    where: { hash: await hashApiKey(match[1]) },
-    select: { id: true, ipAllowList: true, revokedAt: true, lastUsedAt: true },
-  });
+  const key = await findByKeyHash(
+    match[1],
+    (hash) => prisma.adminApiKey.findUnique({ where: { hash }, select: { id: true, ipAllowList: true, revokedAt: true, lastUsedAt: true } }),
+    (id, from, to) => prisma.adminApiKey.updateMany({ where: { id, hash: from }, data: { hash: to } }),
+  );
   if (!key || key.revokedAt) return { ok: false, response: adminError(401, "unauthorized", "This key is not valid or was revoked.", challenge) };
   const ip = clientIp(request);
   if (!ipAllowed(ip, key.ipAllowList)) {

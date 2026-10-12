@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.hoisted(() => {
+  process.env.API_KEY_PEPPER = "test-pepper-for-api-keys";
+});
+
 // ---- A tiny in-memory database: just enough to prove who can see what ------------------------------------
 type Row = Record<string, unknown> & { id: string };
 const db = vi.hoisted(() => ({ lead: [] as Row[], project: [] as Row[], generatedContent: [] as Row[], post: [] as Row[], apiKey: [] as Row[], business: [] as Row[] }));
@@ -63,7 +67,7 @@ const rateLimit = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/rate-limit", async (orig) => ({ ...(await orig<typeof import("@/lib/rate-limit")>()), rateLimit }));
 
 import { apiFeatureDenied, authenticate, API_RATE_LIMIT } from "@/lib/api/auth";
-import { generateApiKey, hashApiKey, validateKeyInput, ApiKeyError } from "@/lib/api/keys";
+import { generateApiKey, hashApiKey, legacyHashApiKey, validateKeyInput, ApiKeyError } from "@/lib/api/keys";
 import { pageArgs, parsePaging, toPage } from "@/lib/api/paging";
 import { RateLimitError } from "@/lib/rate-limit";
 import { GET as listLeads } from "@/app/api/v1/leads/route";
@@ -101,13 +105,47 @@ beforeEach(async () => {
 });
 
 describe("API keys", () => {
-  it("makes bp_live_ keys with a recognisable prefix, and hashes them with SHA-256", async () => {
+  it("makes bp_live_ keys with a recognisable prefix, and hashes them with HMAC-SHA256 and the server pepper", async () => {
     const { key, prefix } = generateApiKey();
     expect(key).toMatch(/^bp_live_[A-Za-z0-9_-]{43}$/);
     expect(prefix).toBe(key.slice(0, 12));
     expect(generateApiKey().key).not.toBe(key);
-    const { createHash } = await import("node:crypto");
-    expect(await hashApiKey(key)).toBe(createHash("sha256").update(key).digest("hex"));
+    const { createHash, createHmac } = await import("node:crypto");
+    expect(await hashApiKey(key)).toBe(createHmac("sha256", "test-pepper-for-api-keys").update(key).digest("hex"));
+    expect(await hashApiKey(key)).not.toBe(createHash("sha256").update(key).digest("hex"));
+    expect(await legacyHashApiKey(key)).toBe(createHash("sha256").update(key).digest("hex"));
+  });
+  it("without API_KEY_PEPPER, peppers with a key derived from ENCRYPTION_KEY (not the raw key), and fails closed with neither", async () => {
+    const { createHmac } = await import("node:crypto");
+    const saved = { pepper: process.env.API_KEY_PEPPER, enc: process.env.ENCRYPTION_KEY };
+    try {
+      delete process.env.API_KEY_PEPPER;
+      process.env.ENCRYPTION_KEY = "enc-key-for-tests";
+      const derived = await hashApiKey(KEY_A);
+      expect(derived).toMatch(/^[0-9a-f]{64}$/);
+      expect(derived).not.toBe(createHmac("sha256", "enc-key-for-tests").update(KEY_A).digest("hex"));
+      expect(derived).not.toBe(await legacyHashApiKey(KEY_A));
+      delete process.env.ENCRYPTION_KEY;
+      await expect(hashApiKey(KEY_A)).rejects.toThrow(/API_KEY_PEPPER/);
+    } finally {
+      process.env.API_KEY_PEPPER = saved.pepper;
+      if (saved.enc === undefined) delete process.env.ENCRYPTION_KEY;
+      else process.env.ENCRYPTION_KEY = saved.enc;
+    }
+  });
+  it("still accepts a key stored with the old unpeppered hash, and rehashes it on that use", async () => {
+    const row = db.apiKey.find((k) => k.id === "kA")!;
+    row.hash = await legacyHashApiKey(KEY_A);
+    const updateMany = prisma.apiKey as { updateMany: ReturnType<typeof vi.fn> };
+    updateMany.updateMany.mockClear();
+    const auth = await authenticate(req(KEY_A), "leads:read");
+    expect(auth.ok).toBe(true);
+    expect(updateMany.updateMany).toHaveBeenCalledWith({ where: { id: "kA", hash: await legacyHashApiKey(KEY_A) }, data: { hash: await hashApiKey(KEY_A) } });
+    // A peppered key is never rehashed.
+    row.hash = await hashApiKey(KEY_A);
+    updateMany.updateMany.mockClear();
+    await authenticate(req(KEY_A), "leads:read");
+    expect(updateMany.updateMany.mock.calls.some((c) => "hash" in (c[0] as { data: object }).data)).toBe(false);
   });
   it("validates name and scopes", () => {
     expect(validateKeyInput({ name: "  Zapier  ", scopes: ["leads:read", "leads:read", "bogus"] })).toEqual({ name: "Zapier", scopes: ["leads:read"] });

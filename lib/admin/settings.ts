@@ -9,6 +9,9 @@ import { AdminError, type AdminContext } from "./types";
 // The owner's settings (Admin -> Settings), one AdminSetting row per key. A missing row means the default, so a
 // fresh database needs no seed. Every change is audited with the old and new value.
 
+/** New demo bookings per day, all companies together (Admin -> Settings, Demo calls). */
+export const DEFAULT_DEMO_DAILY_CAP = 12;
+
 /** New sign-ups: how long the trial lasts once an admin starts it after the demo (section 12 of the launch plan). */
 export const DEFAULT_TRIAL_DAYS = 3;
 
@@ -29,6 +32,8 @@ export type Settings = {
   bufferMinutes: number;
   /** Days with no demos, YYYY-MM-DD in Africa/Kigali. */
   blockedDates: string[];
+  /** New demo bookings accepted per day (Africa/Kigali), across all companies; stops sign-up floods from filling the calendar and the admin inbox. */
+  demoDailyCap: number;
 };
 export type SettingName = keyof Settings;
 
@@ -41,6 +46,7 @@ const KEYS: Record<SettingName, string> = {
   slotMinutes: "demo.slotMinutes",
   bufferMinutes: "demo.bufferMinutes",
   blockedDates: "demo.blockedDates",
+  demoDailyCap: "demo.dailyCap",
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -52,6 +58,7 @@ export const DEFAULT_SETTINGS: Settings = {
   slotMinutes: DEFAULT_SLOT_MINUTES,
   bufferMinutes: DEFAULT_BUFFER_MINUTES,
   blockedDates: [],
+  demoDailyCap: DEFAULT_DEMO_DAILY_CAP,
 };
 
 const number = (field: string, min: number, max: number, integer = true) => (value: unknown) => {
@@ -90,6 +97,7 @@ export const cleanSetting: { [K in SettingName]: (value: unknown) => Settings[K]
     return n;
   },
   bufferMinutes: number("The buffer (minutes)", 0, 120),
+  demoDailyCap: number("New demo bookings per day", 1, 200),
   blockedDates: (value) => {
     const list = Array.isArray(value) ? value : String(value ?? "").split(/[\s,]+/);
     const out = [...new Set(list.map((v) => String(v).trim()).filter(Boolean))].sort();

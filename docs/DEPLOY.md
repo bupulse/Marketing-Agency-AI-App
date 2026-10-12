@@ -31,7 +31,9 @@ Set each one with `npx wrangler secret put NAME` (it asks for the value):
 `DATABASE_URL` is not needed on Cloudflare: the app uses the Hyperdrive binding there.
 The `NEXT_PUBLIC_*` values are also needed at build time (see the GitHub variables below), because Next.js bakes them into the browser code.
 
-## 3. GitHub settings (Settings, Secrets and variables, Actions)
+## 3. GitHub settings (Settings, Environments, `production`)
+
+Put these on the `production` **environment**, not as repository secrets: only jobs that run in that environment (the deploy workflow, from `main`) can read them. Limit the environment's deployment branches to `main`. Details: `docs/UPDATES.md` (What the owner sets up).
 
 Secrets:
 

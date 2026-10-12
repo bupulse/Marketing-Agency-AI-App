@@ -713,7 +713,7 @@ model WebhookDelivery {
   @@index([createdAt])
 }
 
-// Pro plan REST API keys (bp_live_...). Only the SHA-256 hash is stored; the key is shown once.
+// Pro plan REST API keys (bp_live_...). Only a peppered hash (HMAC-SHA256, lib/api/keys.ts) is stored; the key is shown once.
 model ApiKey {
   id         String    @id @default(cuid())
   businessId String
@@ -906,7 +906,7 @@ model AdminApproval {
   @@index([status, createdAt])
 }
 
-// Bearer keys for the Jarvis REST API and MCP server. Only the SHA-256 hash is stored.
+// Bearer keys for the Jarvis REST API and MCP server. Only a peppered hash (HMAC-SHA256, lib/api/keys.ts) is stored.
 model AdminApiKey {
   id          String    @id @default(cuid())
   name        String

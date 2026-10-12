@@ -80,6 +80,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <Field label="Buffer between calls (minutes)" required>
               <Input name="bufferMinutes" type="number" min={0} max={120} defaultValue={s.bufferMinutes} required className="w-28" />
             </Field>
+            <Field label="New bookings per day" required hint="All companies together. Reschedules do not count.">
+              <Input name="demoDailyCap" type="number" min={1} max={200} defaultValue={s.demoDailyCap} required className="w-28" />
+            </Field>
           </div>
           <Field label="Blocked dates" hint="One per line, YYYY-MM-DD: holidays, travel. No slots are offered on these days.">
             <Textarea name="blockedDates" rows={3} defaultValue={s.blockedDates.join("\n")} placeholder="2026-12-25" />

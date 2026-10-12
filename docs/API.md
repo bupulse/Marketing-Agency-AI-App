@@ -6,7 +6,9 @@ Base address: `https://bupulse.com/api/v1`
 
 ## Keys
 
-- A key looks like `bp_live_...` and is shown **once**. BuPulse stores only its SHA-256 hash.
+- A key looks like `bp_live_...` and is shown **once**. BuPulse stores only a peppered hash of it: HMAC-SHA256 with a server secret (`API_KEY_PEPPER`, or a key derived from `ENCRYPTION_KEY` when that is not set), so a copy of the database alone cannot be used to test guessed keys. Admin (Jarvis) keys are hashed the same way.
+  - **Transition:** keys created before the pepper (Phase 9) were stored as plain SHA-256. They keep working: a key is looked up by its peppered hash, then by its plain hash, and a key found the second way is rehashed on that request. Nothing to run.
+  - **Changing the pepper** (or `ENCRYPTION_KEY` while `API_KEY_PEPPER` is unset) makes every key invalid; owners must create new ones. Set `API_KEY_PEPPER` once, before go-live, and do not rotate it with `ENCRYPTION_KEY`.
 - Send it on every request: `Authorization: Bearer bp_live_...`
 - Scopes (choose when creating the key):
 

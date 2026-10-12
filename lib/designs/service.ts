@@ -93,9 +93,11 @@ async function loadLogo(userId: string, logoPath: string | null, types = ["image
   }
 }
 
-async function store(userId: string, designId: string, bytes: Uint8Array, mimeType: string, service?: boolean) {
+// The rendered file is written with the service key: ownership, usage and the account were checked by the app first,
+// and the path is built here in the company folder. The Storage policies are for the browser's own uploads.
+async function store(userId: string, designId: string, bytes: Uint8Array, mimeType: string) {
   const path = designObjectPath(userId, designId, mimeType);
-  const { error } = await (await storageClient(service)).storage.from("designs").upload(path, bytes, { contentType: mimeType, upsert: false });
+  const { error } = await createAdminClient().storage.from("designs").upload(path, bytes, { contentType: mimeType, upsert: false });
   if (error) throw new Error(`Could not store the design: ${error.message}`);
   return path;
 }
@@ -153,14 +155,14 @@ export async function createTemplateDesign(input: Owner & {
   }
 
   const id = globalThis.crypto.randomUUID();
-  const path = await store(input.userId, id, new Uint8Array(png), "image/png", input.service);
+  const path = await store(input.userId, id, new Uint8Array(png), "image/png");
   const { width, height } = ASPECT_SIZES[input.aspectRatio];
   try {
     await prisma.design.create({
       data: { id, businessId: business.id, projectId: input.projectId ?? null, kind: "TEMPLATE", template: input.template, aspectRatio: input.aspectRatio, path, width, height },
     });
   } catch (error) {
-    await removeFile(path, input.service);
+    await removeFile(path, true);
     throw error;
   }
   trackEvent(EVENT_NAMES.designCreated, { userId: input.userId, businessId: business.id, props: { kind: "TEMPLATE" } });
@@ -198,14 +200,14 @@ export async function createAiDesign(input: Owner & {
     );
 
     const id = globalThis.crypto.randomUUID();
-    const path = await store(input.userId, id, image.data, image.mimeType, input.service);
+    const path = await store(input.userId, id, image.data, image.mimeType);
     const { width, height } = imageSize(image.data, input.aspectRatio);
     try {
       await prisma.design.create({
         data: { id, businessId: business.id, projectId: input.projectId ?? null, kind: "AI", prompt: input.prompt, aspectRatio: input.aspectRatio, path, width, height },
       });
     } catch (error) {
-      await removeFile(path, input.service);
+      await removeFile(path, true);
       throw error;
     }
     trackEvent(EVENT_NAMES.designCreated, { userId: input.userId, businessId: business.id, props: { kind: "AI" } });
@@ -297,14 +299,14 @@ export async function createAiPhotoDesign(input: Owner & {
     }
 
     const id = globalThis.crypto.randomUUID();
-    const path = await store(input.userId, id, new Uint8Array(png), "image/png", input.service);
+    const path = await store(input.userId, id, new Uint8Array(png), "image/png");
     const { width, height } = ASPECT_SIZES[input.aspectRatio];
     try {
       await prisma.design.create({
         data: { id, businessId: business.id, projectId: input.projectId ?? null, kind: "AI", template: input.template, prompt: input.scene?.trim() || input.headline, aspectRatio: input.aspectRatio, path, width, height },
       });
     } catch (error) {
-      await removeFile(path, input.service);
+      await removeFile(path, true);
       throw error;
     }
     trackEvent(EVENT_NAMES.designCreated, { userId: input.userId, businessId: business.id, props: { kind: "AI" } });

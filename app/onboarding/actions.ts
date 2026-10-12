@@ -96,7 +96,7 @@ export async function createLogoUpload(input: { fileName: string; type: string; 
   }
   if (!(input.size > 0) || input.size > LOGO_MAX_BYTES) return { ok: false, error: "The logo must be 5 MB or smaller." };
   try {
-    const { path, token } = await createSignedUploadUrl("brand", buildObjectPath(user.id, input.fileName, "logo"));
+    const { path, token } = await createSignedUploadUrl("brand", buildObjectPath(user.id, input.fileName, "logo"), { service: true });
     return { ok: true, path, token };
   } catch {
     return { ok: false, error: "We could not start the upload. Please try again." };

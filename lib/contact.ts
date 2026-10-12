@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { publicLimited } from "@/lib/request-limits";
 
 export const contactKinds = ["contact", "done_for_you"] as const;
 export type ContactKind = (typeof contactKinds)[number];
@@ -47,6 +48,10 @@ export async function submitContactRequest(formData: FormData): Promise<ContactF
 
   // Honeypot: real people never see or fill this field. Pretend it worked.
   if (String(formData.get("website") ?? "").trim() !== "") return { status: "success" };
+
+  // Per client address (the form is public and every request lands in the admin's inbox).
+  const limited = await publicLimited("contact");
+  if (limited) return { status: "error", errors: { form: limited }, values: raw as ContactFormState["values"] };
 
   const parsed = contactSchema.safeParse(raw);
   if (!parsed.success) {

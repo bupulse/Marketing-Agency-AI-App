@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeDb, type FakeDb } from "./fake-db";
 
+vi.hoisted(() => {
+  process.env.API_KEY_PEPPER = "test-pepper-for-admin-keys";
+});
+
 const h = vi.hoisted(() => ({ db: null as unknown as FakeDb, rateLimit: vi.fn(async () => {}), overview: vi.fn(), weekly: vi.fn() }));
 
 vi.mock("@/lib/db", () => ({ prisma: new Proxy({}, { get: (_t, p) => (h.db as never)[p] }) }));
@@ -20,7 +24,7 @@ vi.mock("@/lib/analytics/queries", () => ({
   weeklyReport: h.weekly,
 }));
 
-import { hashApiKey } from "@/lib/api/keys";
+import { hashApiKey, legacyHashApiKey } from "@/lib/api/keys";
 import { authenticateAdminRequest } from "@/lib/admin/api-auth";
 import { createAdminKey, generateAdminKey, ipAllowed, revokeAdminKey, rotateAdminKey } from "@/lib/admin/keys";
 import { handleMcpPost, methodNotAllowed } from "@/lib/admin/mcp";
@@ -76,6 +80,14 @@ describe("admin key authentication", () => {
       expect(auth.response.status).toBe(401);
       expect((await auth.response.json()).error.code).toBe("unauthorized");
     }
+  });
+
+  it("accepts a key stored with the old unpeppered hash and rehashes it to the peppered one", async () => {
+    h.db.adminApiKey.rows[0].hash = await legacyHashApiKey(KEY);
+    const auth = await authenticateAdminRequest(req(KEY));
+    expect(auth.ok).toBe(true);
+    expect(h.db.adminApiKey.rows[0].hash).toBe(await hashApiKey(KEY));
+    expect(await hashApiKey(KEY)).not.toBe(await legacyHashApiKey(KEY));
   });
 
   it("rejects a revoked key", async () => {

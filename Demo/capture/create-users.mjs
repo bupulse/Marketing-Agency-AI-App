@@ -2,13 +2,13 @@
 // then creates the User, Business, Membership and trial Subscription on the first sign-in.
 import { createClient } from "@supabase/supabase-js";
 import { ROOT } from "./db.mjs";
-import { ACCOUNTS, PASSWORD } from "./accounts.mjs";
+import { ACCOUNTS, demoPassword } from "./accounts.mjs";
 void ROOT;
 
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false } });
 
 export async function ensureAuthUser(email, user_metadata) {
-  const { data, error } = await admin.auth.admin.createUser({ email, password: PASSWORD, email_confirm: true, user_metadata });
+  const { data, error } = await admin.auth.admin.createUser({ email, password: demoPassword(), email_confirm: true, user_metadata });
   if (!error) return data.user.id;
   if (!/already/i.test(error.message)) throw error;
   for (let page = 1; ; page++) {

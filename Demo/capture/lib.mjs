@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "@playwright/test";
 import { ROOT } from "./db.mjs";
-import { ACCOUNTS, PASSWORD } from "./accounts.mjs";
+import { ACCOUNTS, demoPassword } from "./accounts.mjs";
 
 export const BASE = process.env.CAPTURE_BASE ?? "http://localhost:3100";
 export const SCREENS = path.join(ROOT, "Demo/studio/public/screens");
@@ -52,7 +52,7 @@ export async function login(ctx, slug) {
   }
   await page.goto(`${BASE}/login`, { timeout: 180_000 });
   await page.fill('input[name="email"]', ACCOUNTS[slug]?.email ?? slug);
-  await page.fill('input[name="password"]', PASSWORD);
+  await page.fill('input[name="password"]', demoPassword());
   await page.click('form:has(input[name="password"]) button[type="submit"]');
   // The session cookie is set by the sign-in action; the redirect after it is not always followed by the dev server.
   for (let i = 0; i < 240; i++) {

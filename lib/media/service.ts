@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { createSignedUploadUrl } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   assetIdFromPath,
   cleanPhotoName,
@@ -397,8 +398,10 @@ export async function importAsset(
   const problem = quotaProblem(await mediaUsage(businessId), { count: 1, bytes: bytes.length });
   if (problem) throw new MediaError(problem);
 
+  // Written with the service key: the checks above (and the caller's active user) are the app's own, and the path is
+  // built here in the company folder. The Storage policies are for the browser's own uploads (signed upload URLs).
   const path = galleryPath(userId, globalThis.crypto.randomUUID(), type);
-  const { error } = await (await storage()).upload(path, bytes, { contentType: type, upsert: false });
+  const { error } = await createAdminClient().storage.from(BUCKET).upload(path, bytes, { contentType: type, upsert: false });
   if (error) throw error;
   const size = imageSize(bytes);
   try {

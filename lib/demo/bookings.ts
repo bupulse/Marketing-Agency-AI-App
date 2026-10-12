@@ -11,7 +11,7 @@ import { getPlan } from "@/lib/plan-catalog";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { companyPlans } from "@/lib/region-prices";
 import { buildIcs } from "./ics";
-import { DEMO_TIME_ZONE, formatSlot, freeSlots, MIN_LEAD_MINUTES, type AvailabilityWindow, type SlotOptions } from "./slots";
+import { DEMO_TIME_ZONE, formatSlot, freeSlots, MIN_LEAD_MINUTES, ymdInZone, zonedToUtc, type AvailabilityWindow, type SlotOptions } from "./slots";
 
 // Booking the demo that comes before the trial (section 12 of docs/RWANDA_LAUNCH_PLAN.md). A new company chooses a
 // plan from its region, picks a free slot from the owner's availability, and both sides get an email with the
@@ -75,6 +75,11 @@ export function newIcsToken(): string {
   return Buffer.from(bytes).toString("base64url");
 }
 
+/** Midnight of `now`'s day in the demo time zone (Africa/Kigali), as a UTC instant. */
+export function startOfDemoDay(now: Date): Date {
+  return zonedToUtc(ymdInZone(now), 0);
+}
+
 /** A live booking may still be moved or cancelled by the client until MIN_LEAD_MINUTES before it starts. */
 export function canMoveBooking(booking: { startsAt: Date }, now: Date): boolean {
   return booking.startsAt.getTime() - now.getTime() >= MIN_LEAD_MINUTES * MINUTE;
@@ -126,6 +131,13 @@ export async function bookDemo(input: { businessId: string; startsAt: Date; now?
   // A booking that is about to start cannot be moved; one whose slot has passed can (the client books again).
   if (existing && !slotPassed(existing, now) && !canMoveBooking(existing, now)) {
     throw new DemoError("not_allowed", `Your demo starts in less than ${MIN_LEAD_MINUTES / 60} hours, so it can no longer be moved. Join the call, or email us.`);
+  }
+  // A global cap on new bookings per day (Admin -> Settings): each one emails every admin, so a flood of sign-ups
+  // cannot fill the calendar or the inbox. Moving the company's own booking does not count.
+  if (!existing) {
+    const cap = await getSetting("demoDailyCap");
+    const today = await prisma.demoBooking.count({ where: { status: "booked", createdAt: { gte: startOfDemoDay(now) } } });
+    if (today >= cap) throw new DemoError("not_allowed", "We have reached today's limit for new demo bookings. Please try again tomorrow, or email hello@bupulse.com.");
   }
   const opts = await slotOptions(now, existing?.id);
   const slotMinutes = opts.slotMinutes ?? 30;

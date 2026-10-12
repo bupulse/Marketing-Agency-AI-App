@@ -21,11 +21,11 @@ vi.mock("@/lib/admin/console", () => ({ adminAction: h.adminAction, finish: vi.f
 import { ensureAccount } from "@/lib/account";
 import { companyFeatures, featurePlanKey } from "@/lib/entitlements";
 import { consumeUsage, UsageLimitError } from "@/lib/usage";
-import { bookDemo, cancelDemo, choosePlan, DemoError } from "@/lib/demo/bookings";
+import { bookDemo, cancelDemo, choosePlan, DemoError, startOfDemoDay } from "@/lib/demo/bookings";
 import { demoPanel, listDemos, setDemoStatus, startTrial } from "@/lib/admin/demos";
 import { processTrialReminders } from "@/lib/demo/trial-reminders";
 import { startTrialAction } from "@/app/admin/(console)/demos/actions";
-import { setSetting } from "@/lib/admin/settings";
+import { cleanSetting, DEFAULT_SETTINGS, setSetting } from "@/lib/admin/settings";
 import { resetPlanCache } from "@/lib/plan-catalog";
 import { resetRegionCache } from "@/lib/region";
 import { resetRegionPriceCache } from "@/lib/region-prices";
@@ -197,6 +197,27 @@ describe("while waiting for the demo", () => {
     expect(rescheduled).toBe(false);
     expect(booking.startsAt).toEqual(new Date("2026-10-14T09:00:00Z"));
     expect(h.db.demoBooking.rows).toHaveLength(1);
+  });
+
+  it("stops new bookings once the day's cap is reached (all companies together); moving a booking still works", async () => {
+    h.db.adminSetting.rows.push({ key: "demo.dailyCap", value: 1 });
+    const a = company(1);
+    const b = company(2);
+    await choosePlan({ businessId: a.businessId, planKey: "STARTER" });
+    await choosePlan({ businessId: b.businessId, planKey: "STARTER" });
+    await bookDemo({ businessId: a.businessId, startsAt: new Date("2026-10-13T08:00:00Z"), now: NOW });
+    h.db.demoBooking.rows[0].createdAt = NOW;
+    expect(await code(bookDemo({ businessId: b.businessId, startsAt: new Date("2026-10-14T08:00:00Z"), now: NOW }))).toMatch(/^not_allowed: We have reached today's limit/);
+    expect((await bookDemo({ businessId: a.businessId, startsAt: new Date("2026-10-14T09:00:00Z"), now: NOW })).rescheduled).toBe(true);
+    // The next Kigali day starts at 22:00 UTC: the cap counts again from zero.
+    expect((await bookDemo({ businessId: b.businessId, startsAt: new Date("2026-10-15T08:00:00Z"), now: new Date("2026-10-12T22:30:00Z") })).rescheduled).toBe(false);
+    expect(startOfDemoDay(NOW).toISOString()).toBe("2026-10-11T22:00:00.000Z");
+  });
+
+  it("caps new bookings at 12 a day by default", () => {
+    expect(DEFAULT_SETTINGS.demoDailyCap).toBe(12);
+    expect(cleanSetting.demoDailyCap("20")).toBe(20);
+    expect(() => cleanSetting.demoDailyCap("0")).toThrow(/from 1 to 200/);
   });
 
   it("is only for companies waiting for their demo", async () => {

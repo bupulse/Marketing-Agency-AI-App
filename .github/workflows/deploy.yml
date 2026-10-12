@@ -11,9 +11,9 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Release tag or commit SHA to deploy (ignored for a rollback)"
+        description: "Release tag (vX.Y.Z) or full 40-character commit SHA on main (ignored for a rollback)"
         required: false
-        default: main
+        default: ""
         type: string
       action:
         description: "deploy or rollback"
@@ -22,10 +22,11 @@ on:
         type: choice
         options: [deploy, rollback]
       environment:
-        description: "GitHub environment (its secrets and required reviewers apply)"
-        required: false
+        description: "GitHub environment (its secrets and required reviewers apply). Production is the only one."
+        required: true
         default: production
-        type: string
+        type: choice
+        options: [production]
 
 # One deploy at a time; a second request waits for the first (the console also refuses while one is running).
 concurrency:
@@ -43,23 +44,49 @@ jobs:
     # Supabase Free has no backup API to check, so the safety step is human: add required reviewers to this
     # environment (GitHub: Settings, Environments, production) and take a backup before approving. Pushes to main
     # also wait for that approval once reviewers are set.
-    environment: ${{ inputs.environment || 'production' }}
+    environment: production
     env:
       # Build-time values (public). Real runtime secrets live in Cloudflare.
       NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
     steps:
+      # The workflow's own commit first (the pushed commit, or main for a manual start). A requested ref is checked
+      # before any of its code runs: only a vX.Y.Z tag or a full SHA, and only if it is on main's history, so a branch
+      # or an unreviewed commit can never be deployed with the production secrets (docs/UPDATES.md).
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref || github.sha }}
-      - name: Record the commit being deployed
+          fetch-depth: 0
+      - name: Check and check out the requested release
         id: build
         env:
-          REQUESTED: ${{ inputs.ref || github.sha }}
+          EVENT: ${{ github.event_name }}
+          REQUESTED: ${{ inputs.ref }}
         run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+            if [[ "$REQUESTED" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              git fetch --no-tags origin "+refs/tags/$REQUESTED:refs/tags/$REQUESTED"
+              TARGET="$(git rev-parse --verify "refs/tags/$REQUESTED^{commit}")"
+            elif [[ "$REQUESTED" =~ ^[0-9a-f]{40}$ ]]; then
+              TARGET="$REQUESTED"
+              if ! git cat-file -e "$TARGET^{commit}" 2>/dev/null; then
+                echo "::error::Commit $TARGET was not found in the repository."
+                exit 1
+              fi
+            else
+              echo "::error::ref must be a release tag (vX.Y.Z) or a full 40-character commit SHA on main."
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$TARGET" origin/main; then
+              echo "::error::$REQUESTED is not on main. Only commits merged into main can be deployed."
+              exit 1
+            fi
+            git checkout --detach "$TARGET"
+          fi
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "Deploying $(git rev-parse HEAD) (requested: $REQUESTED)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Deploying $(git rev-parse HEAD) (requested: ${REQUESTED:-$GITHUB_SHA})" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -87,7 +114,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: ${{ inputs.environment || 'production' }}
+    environment: production
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

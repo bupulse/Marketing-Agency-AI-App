@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const BUCKETS = ["brand", "media", "designs"] as const;
 export type Bucket = (typeof BUCKETS)[number];
@@ -25,9 +26,12 @@ export function buildObjectPath(
   return `${parts.join("/")}/${id}-${safeFileName(fileName)}`;
 }
 
-// Signed URL the browser can upload one file to, without exposing any key.
-export async function createSignedUploadUrl(bucket: Bucket, path: string) {
-  const supabase = await createClient();
+// Signed URL the browser can upload one file to, without exposing any key. Made with the user's session, so the
+// Storage policies apply (own folder, account not read-only). `service` makes it with the service key instead, for
+// the few uploads the app allows while the account is read-only (the onboarding logo while the demo is pending); the
+// caller has then already checked the user and built the path in their own folder.
+export async function createSignedUploadUrl(bucket: Bucket, path: string, options: { service?: boolean } = {}) {
+  const supabase = options.service ? createAdminClient() : await createClient();
   const { data, error } = await supabase.storage
     .from(bucket)
     .createSignedUploadUrl(path);

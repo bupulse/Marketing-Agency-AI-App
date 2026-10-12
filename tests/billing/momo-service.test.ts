@@ -137,6 +137,22 @@ describe("starting a payment", () => {
     expect(h.db.manualPayment.rows).toHaveLength(1);
   });
 
+  it("starts at most MOMO_DAILY_PAYMENTS new payments a day per company; the open one is still returned", async () => {
+    seed();
+    settings();
+    for (let i = 0; i < momo.MOMO_DAILY_PAYMENTS; i++) {
+      const p = await start({ interval: i % 2 === 0 ? "YEAR" : "MONTH" }); // each switch expires the open one and makes a new row
+      h.db.manualPayment.rows.find((r) => r.id === p.id)!.createdAt = NOW;
+    }
+    expect(h.db.manualPayment.rows).toHaveLength(momo.MOMO_DAILY_PAYMENTS);
+    const open = h.db.manualPayment.rows.find((r) => r.status === "pending")!;
+    // Same plan and period as the open one: no new row, so the cap does not apply.
+    expect((await start({ interval: open.interval as "MONTH" | "YEAR" })).id).toBe(open.id);
+    expect(await msg(start({ interval: open.interval === "MONTH" ? "YEAR" : "MONTH" }))).toMatch(/many Mobile Money payments today/);
+    // A day later the company may start again.
+    expect((await start({ interval: open.interval === "MONTH" ? "YEAR" : "MONTH", now: new Date(NOW.getTime() + 25 * 3_600_000) })).status).toBe("pending");
+  });
+
   it("a different plan before paying replaces the open payment; after I've paid the open one stays", async () => {
     seed();
     settings();

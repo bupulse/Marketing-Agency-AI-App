@@ -33,8 +33,9 @@ vi.mock("@/lib/db", () => ({ prisma: { demoBooking: { findUnique: h.findUnique }
 vi.mock("@/lib/errors", () => ({ logError: vi.fn(async () => {}) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: (to: string) => { throw new Error(`NEXT_REDIRECT ${to}`); } }));
+vi.mock("next/headers", () => ({ headers: async () => new Headers({ "cf-connecting-ip": "203.0.113.9" }) }));
 
-const OWNER = { id: "u1", actorId: "u1", role: "OWNER", businessId: "b1", email: "o@x.rw" };
+const OWNER = { id: "u1", actorId: "u1", role: "OWNER", businessId: "b1", email: "o@x.rw", email_confirmed_at: "2026-10-01T00:00:00Z" };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -44,7 +45,7 @@ beforeEach(() => {
 
 describe("demo actions", () => {
   it("count one hit per company and kind, and answer in words when the limit is reached (nothing runs)", async () => {
-    const a = await import("@/app/book-demo/actions");
+    const a = { ...(await import("@/app/book-demo/actions")), ...(await import("@/lib/demo/limits")) };
     const f = new FormData();
     f.set("plan", "STARTER");
     await expect(a.choosePlanAction({}, f)).rejects.toThrow("NEXT_REDIRECT /book-demo?step=time");
@@ -68,6 +69,54 @@ describe("demo actions", () => {
     h.rateLimit.mockRejectedValueOnce(new RateLimitError(60));
     expect(await c.cancelDemoAction()).toMatchObject({ ok: false, error: expect.stringMatching(/doing that a lot/) });
     expect(h.cancelDemo).toHaveBeenCalledTimes(1);
+  });
+
+  it("booking is also limited per client address, and needs a confirmed email", async () => {
+    const a = await import("@/app/book-demo/actions");
+    const { PUBLIC_LIMITS } = await import("@/lib/request-limits");
+    const b = new FormData();
+    b.set("startsAt", "2026-10-13T08:00:00.000Z");
+    await expect(a.bookDemoAction({}, b)).rejects.toThrow("NEXT_REDIRECT /dashboard?demo=booked");
+    expect(h.rateLimit).toHaveBeenCalledWith(expect.stringMatching(/^public:demoBook:ip:[0-9a-f]{32}$/), PUBLIC_LIMITS.demoBook.ip);
+    // The raw address is never part of the key.
+    expect(h.rateLimit.mock.calls.some((c: unknown[]) => String(c[0]).includes("203.0.113.9"))).toBe(false);
+    h.rateLimit.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new RateLimitError(60));
+    expect(await a.bookDemoAction({}, b)).toMatchObject({ error: expect.stringMatching(/doing that a lot/) });
+    expect(h.bookDemo).toHaveBeenCalledTimes(1);
+
+    h.requireActiveUser.mockResolvedValue({ ...OWNER, email_confirmed_at: undefined });
+    expect(await a.bookDemoAction({}, b)).toEqual({ error: expect.stringMatching(/Confirm your email/) });
+    expect(h.bookDemo).toHaveBeenCalledTimes(1);
+  });
+
+  it("no \"use server\" file exports anything but async functions (each export is a public endpoint)", async () => {
+    const { readdirSync, readFileSync, statSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const root = join(__dirname, "..", "..");
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const full = join(dir, name);
+        if (statSync(full).isDirectory()) {
+          if (name !== "node_modules" && name !== "generated" && !name.startsWith(".")) walk(full);
+        } else if (/\.(ts|tsx)$/.test(name)) files.push(full);
+      }
+    };
+    for (const dir of ["app", "components", "lib"]) walk(join(root, dir));
+    const bad: string[] = [];
+    let serverFiles = 0;
+    for (const file of files) {
+      const text = readFileSync(file, "utf8");
+      if (!/^\s*["']use server["'];?/.test(text)) continue;
+      serverFiles++;
+      for (const line of text.split("\n")) {
+        if (!line.startsWith("export ")) continue;
+        if (/^export (type|interface) /.test(line) || /^export async function /.test(line)) continue;
+        bad.push(`${file.slice(root.length + 1)}: ${line.slice(0, 80)}`);
+      }
+    }
+    expect(serverFiles).toBeGreaterThan(30);
+    expect(bad).toEqual([]);
   });
 });
 

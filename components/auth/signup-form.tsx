@@ -22,6 +22,7 @@ import { GoogleIcon } from "./google-icon";
 import { OrganisationFields, TermsField } from "./organisation-fields";
 import { PasswordChecks } from "./password-checks";
 import { PasswordInput } from "./password-input";
+import { TurnstileField } from "./turnstile-field";
 
 type Step = 1 | 2 | 3;
 
@@ -86,8 +87,18 @@ function Progress({ step }: { step: Step }) {
   );
 }
 
-export default function SignupForm({ next = "/dashboard", industries }: { next?: string; industries: IndustryOption[] }) {
+export default function SignupForm({
+  next = "/dashboard",
+  industries,
+  turnstileSiteKey = null,
+}: {
+  next?: string;
+  industries: IndustryOption[];
+  /** Set when Cloudflare Turnstile is configured: the last step then shows the security check. */
+  turnstileSiteKey?: string | null;
+}) {
   const [step, setStep] = useState<Step>(1);
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [checkingEmail, setCheckingEmail] = useState(false);
   const router = useRouter();
   const [values, setValues] = useState<Values>(empty);
@@ -168,6 +179,7 @@ export default function SignupForm({ next = "/dashboard", industries }: { next?:
     const fd = new FormData();
     for (const [k, v] of Object.entries(values)) fd.set(k, String(v));
     fd.set("next", next);
+    if (turnstileSiteKey) fd.set("turnstileToken", turnstileToken);
     formAction(fd);
   }
 
@@ -257,6 +269,7 @@ export default function SignupForm({ next = "/dashboard", industries }: { next?:
               />
             </Field>
             <TermsField checked={values.terms} error={errors.terms} onChange={(v) => set("terms", v)} />
+            {turnstileSiteKey && <TurnstileField siteKey={turnstileSiteKey} onToken={setTurnstileToken} resetKey={state.status === "error" ? state : undefined} />}
           </>
         )}
 

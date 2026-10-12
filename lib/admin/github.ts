@@ -159,6 +159,15 @@ export class GitHubClient {
     }));
   }
 
+  /**
+   * True when `sha` is on main's history (main is the same commit or ahead of it), so only reviewed, merged code can be
+   * installed. Uses the compare API: base = sha, head = main. Unknown commits and other branches' commits are false.
+   */
+  async isAncestorOfMain(sha: string): Promise<boolean> {
+    const data = await this.json<{ status?: string }>(`/repos/${this.cfg.repo}/compare/${encodeURIComponent(sha)}...${DEFAULT_BRANCH}`);
+    return data?.status === "ahead" || data?.status === "identical";
+  }
+
   /** Starts the deploy workflow (workflow_dispatch). GitHub answers 204 and the run appears a few seconds later. */
   async dispatchDeploy(inputs: { ref: string; action: "deploy" | "rollback"; environment: string }): Promise<void> {
     const res = await this.request(`/repos/${this.cfg.repo}/actions/workflows/${DEPLOY_WORKFLOW_FILE}/dispatches`, {

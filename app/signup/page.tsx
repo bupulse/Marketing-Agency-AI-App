@@ -5,6 +5,7 @@ import SignupForm from "@/components/auth/signup-form";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { cleanReturn } from "@/lib/auth/return-path";
 import { industryOptions } from "@/lib/industries/server";
+import { turnstileSiteKey } from "@/lib/widget/turnstile";
 
 export const metadata: Metadata = {
   title: "Create your account",
@@ -20,7 +21,7 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
 
   return (
     <AuthShell wide>
-      <SignupForm next={next} industries={industries} />
+      <SignupForm next={next} industries={industries} turnstileSiteKey={turnstileSiteKey()} />
     </AuthShell>
   );
 }

@@ -87,7 +87,21 @@ async function limitDispatch() {
   }
 }
 
-const REF = /^[A-Za-z0-9][A-Za-z0-9._\/-]{0,120}$/;
+/** A release tag (v1.2.3). Anything else must be a full commit SHA. */
+export const RELEASE_TAG = /^v\d+\.\d+\.\d+$/;
+export const COMMIT_SHA = /^[0-9a-f]{40}$/;
+/** The only GitHub environment deploys run in (the workflow's `environment` input accepts nothing else). */
+export const DEPLOY_ENVIRONMENT = "production";
+
+/**
+ * Only a release tag (vX.Y.Z) or a full commit SHA that is already on main can be installed: a branch name or a commit
+ * that never went through review is refused here, and again by the workflow (docs/UPDATES.md).
+ */
+async function checkRef(gh: GitHubClient, ref: string) {
+  if (RELEASE_TAG.test(ref)) return;
+  if (!COMMIT_SHA.test(ref)) throw new AdminError("invalid", "Choose a release tag (like v1.2.0) or a full 40-character commit SHA.");
+  if (!(await gh.isAncestorOfMain(ref))) throw new AdminError("invalid", "That commit is not on main. Only commits merged into main can be installed.");
+}
 
 /**
  * Starts the deploy workflow for a release tag or commit SHA. `confirm` must be true (the console's dialog sets it
@@ -97,11 +111,12 @@ export async function installUpdate(ctx: AdminContext, input: { ref: string; ver
   requireConsole(ctx, "Installing an update");
   if (input.confirm !== true) throw new AdminError("confirm_required", "Confirm the version to install.");
   const ref = input.ref.trim();
-  if (!REF.test(ref) || ref.includes("..")) throw new AdminError("invalid", "That is not a valid release tag or commit.");
+  if (!RELEASE_TAG.test(ref) && !COMMIT_SHA.test(ref)) throw new AdminError("invalid", "Choose a release tag (like v1.2.0) or a full 40-character commit SHA.");
   const gh = client(requireConnected());
+  await checkRef(gh, ref);
   await refuseWhileRunning(gh);
   await limitDispatch();
-  await gh.dispatchDeploy({ ref, action: "deploy", environment: "production" });
+  await gh.dispatchDeploy({ ref, action: "deploy", environment: DEPLOY_ENVIRONMENT });
   await writeAudit(prisma, ctx, "install_update", `release:${ref}`, { version: currentBuild().version, sha: currentBuild().sha }, { ref, version: input.version ?? null, action: "deploy" });
   return { ref, action: "deploy" as const };
 }
@@ -118,7 +133,7 @@ export async function rollbackDeploy(ctx: AdminContext, input: { reason: string;
   const gh = client(requireConnected());
   await refuseWhileRunning(gh);
   await limitDispatch();
-  await gh.dispatchDeploy({ ref: "main", action: "rollback", environment: "production" });
+  await gh.dispatchDeploy({ ref: "main", action: "rollback", environment: DEPLOY_ENVIRONMENT }); // the workflow ignores ref for a rollback
   await writeAudit(prisma, ctx, "rollback_deploy", "worker:bupulse", { version: currentBuild().version, sha: currentBuild().sha }, { action: "rollback", reason });
   return { action: "rollback" as const };
 }

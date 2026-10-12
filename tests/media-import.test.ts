@@ -1,6 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  adminClient: vi.fn(),
   prisma: {
     business: { findUnique: vi.fn() },
     mediaFolder: { findFirst: vi.fn() },
@@ -19,6 +20,13 @@ vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
 vi.mock("@/lib/rate-limit", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/rate-limit")>()), rateLimit: mocks.rateLimit }));
 vi.mock("@/lib/storage", () => ({ createSignedUploadUrl: vi.fn() }));
+// Server-side writes use the service key (Phase 9, H2): the session's Storage policies are for the browser's uploads.
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: (...args: unknown[]) => {
+    mocks.adminClient(...args);
+    return { storage: { from: () => ({ upload: mocks.upload, remove: mocks.remove, createSignedUrls: mocks.createSignedUrls }) } };
+  },
+}));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({ storage: { from: () => ({ upload: mocks.upload, remove: mocks.remove, createSignedUrls: mocks.createSignedUrls }) } }),
 }));
@@ -143,6 +151,7 @@ describe("importAsset", () => {
     const item = await importAsset(ctx, { ...base, bytes: png() });
     const [path, , options] = mocks.upload.mock.calls[0];
     expect(path).toMatch(new RegExp(`^${USER}/gallery/[0-9a-f-]+\\.png$`));
+    expect(mocks.adminClient).toHaveBeenCalled();
     expect(options).toMatchObject({ contentType: "image/png", upsert: false });
     expect(mocks.prisma.mediaAsset.create.mock.calls[0][0].data).toMatchObject({ businessId: "biz1", source: "dropbox", width: 640, height: 480, name: "Summer Party 3" });
     expect(item.url).toContain("https://signed/");

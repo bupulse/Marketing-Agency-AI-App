@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   confirm: vi.fn(),
   reject: vi.fn(),
   save: vi.fn(),
+  rateLimit: vi.fn<(key: string, rule: unknown) => Promise<void>>(async () => {}),
 }));
 
 vi.mock("@/lib/auth/require-user", () => ({ requireActiveUser: h.requireActiveUser }));
@@ -29,6 +30,7 @@ vi.mock("@/lib/billing/momo", async (orig) => {
   return { ManualPaymentError, cancelManualPayment: h.cancel, currentManualPayment: h.current, confirmManualPayment: h.confirm, rejectManualPayment: h.reject };
 });
 vi.mock("@/lib/billing/momo-settings", () => ({ saveMomoSettings: h.save }));
+vi.mock("@/lib/rate-limit", async (orig) => ({ ...(await orig<typeof import("@/lib/rate-limit")>()), rateLimit: h.rateLimit }));
 vi.mock("@/lib/admin/console", async () => {
   const { AdminError } = await import("@/lib/admin/types");
   return { adminAction: h.adminAction, finish: h.finish, actionMessage: (e: unknown) => (e instanceof AdminError ? e.message : "oops") };
@@ -67,6 +69,24 @@ describe("client actions", () => {
     h.adapter.startPayment.mockResolvedValue({ id: "p1", reference: "BP-7K3Q" });
     expect(await a.startMomoPayment({ plan: "STANDARD", interval: "YEAR" })).toEqual({ ok: true, payment: { id: "p1", reference: "BP-7K3Q" } });
     expect(h.adapter.startPayment).toHaveBeenCalledWith({ userId: "owner", plan: "STANDARD", interval: "YEAR" });
+  });
+
+  it("start, I've paid and cancel share one limit per company (momo:<company>), answered in words", async () => {
+    const a = await import("@/app/dashboard/billing/actions");
+    const { RATE_LIMITS, RateLimitError } = await import("@/lib/rate-limit");
+    h.adapter.startPayment.mockResolvedValue({ id: "p1", reference: "BP-7K3Q" });
+    h.cancel.mockResolvedValue(true);
+    await a.startMomoPayment({ plan: "STANDARD", interval: "MONTH" });
+    await a.cancelMomoPayment("p1");
+    expect(h.rateLimit.mock.calls).toEqual([["momo:owner", RATE_LIMITS.momo], ["momo:owner", RATE_LIMITS.momo]]);
+    expect(RATE_LIMITS.momo).toEqual({ limit: 10, windowSeconds: 3600 });
+    h.rateLimit.mockRejectedValueOnce(new RateLimitError(1200)).mockRejectedValueOnce(new RateLimitError(1200)).mockRejectedValueOnce(new RateLimitError(1200));
+    expect(await a.startMomoPayment({ plan: "STANDARD", interval: "MONTH" })).toEqual({ ok: false, error: expect.stringMatching(/doing that a lot/) });
+    expect(await a.submitMomoProof({ paymentId: "p1", transactionId: "T1234", payerPhone: "078 123 4567", network: "MTN" })).toMatchObject({ ok: false });
+    expect(await a.cancelMomoPayment("p1")).toMatchObject({ ok: false, error: expect.stringMatching(/doing that a lot/) });
+    expect(h.adapter.startPayment).toHaveBeenCalledTimes(1);
+    expect(h.adapter.submitProof).not.toHaveBeenCalled();
+    expect(h.cancel).toHaveBeenCalledTimes(1);
   });
 
   it("service refusals come back in words; anything else is generic", async () => {

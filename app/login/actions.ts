@@ -7,6 +7,7 @@ import { fieldErrors, signInSchema, type FieldErrors } from "@/lib/auth/schemas"
 import { safeNext } from "@/lib/auth/safe-next";
 import { siteUrl } from "@/lib/auth/site-url";
 import { rememberReturn } from "@/lib/auth/return-server";
+import { publicLimited } from "@/lib/request-limits";
 
 export type LoginState = {
   error?: string;
@@ -21,6 +22,9 @@ export async function signInWithPassword(_prev: LoginState, formData: FormData):
     password: formData.get("password") ?? "",
   });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  // Per IP and per address, before Supabase: password guessing is slowed for one account from many IPs too.
+  const limited = await publicLimited("login", parsed.data.email);
+  if (limited) return { error: limited };
 
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword(parsed.data);

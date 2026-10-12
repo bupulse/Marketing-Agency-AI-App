@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw new Error(`REDIRECT:${url}`); } }));
 vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ "cf-connecting-ip": "203.0.113.20" }),
   cookies: async () => ({
     get: (name: string) => (jar.values.has(name) ? { name, value: jar.values.get(name)! } : undefined),
     set: (name: string, value: string, options: Record<string, unknown>) => { jar.values.set(name, value); jar.sets.push({ name, value, options }); },
@@ -23,6 +24,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 vi.mock("@/lib/account", () => ({ findAccountByEmail: async () => mocks.existing, ensureAccount: async () => true }));
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
+vi.mock("@/lib/rate-limit", async (orig) => ({ ...(await orig<typeof import("@/lib/rate-limit")>()), rateLimit: vi.fn(async () => {}) }));
 
 import { NextRequest } from "next/server";
 import { proxy } from "@/proxy";

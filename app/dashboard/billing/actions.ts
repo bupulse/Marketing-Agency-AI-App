@@ -14,6 +14,7 @@ import { applyProviderSubscription } from "@/lib/billing/apply";
 import { paymentMethod } from "@/lib/billing/methods";
 import { cancelManualPayment, currentManualPayment, ManualPaymentError } from "@/lib/billing/momo";
 import type { ManualPaymentView } from "@/lib/billing/momo-shared";
+import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
 import type { CheckoutConfig, Invoice, PaidPlan } from "@/lib/billing";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 
@@ -231,6 +232,17 @@ export async function checkoutActivated(since: number): Promise<boolean> {
 
 // ---- Mobile Money (MoMo / Airtel), paid by hand and confirmed by BuPulse (docs/MOMO.md) -------------------------
 
+/** Start, "I've paid" and cancel share one limit per company: each can alert the owner or write a payment row. */
+async function momoLimited(userId: string): Promise<BillingResult<never> | null> {
+  try {
+    await rateLimit(`momo:${userId}`, RATE_LIMITS.momo);
+    return null;
+  } catch (error) {
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    throw error;
+  }
+}
+
 function momoError(error: unknown): BillingResult<never> {
   if (error instanceof ManualPaymentError) return { ok: false, error: error.message };
   console.error("Mobile Money action failed", error);
@@ -241,6 +253,8 @@ function momoError(error: unknown): BillingResult<never> {
 export async function startMomoPayment(input: { plan: string; interval: string }): Promise<BillingResult<{ payment: ManualPaymentView }>> {
   const user = await requireActiveUser();
   if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const limited = await momoLimited(user.id);
+  if (limited) return limited;
   const parsed = planSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Choose a plan." };
   try {
@@ -256,6 +270,8 @@ export async function startMomoPayment(input: { plan: string; interval: string }
 export async function submitMomoProof(input: { paymentId: string; transactionId: string; payerPhone: string; network: string }): Promise<BillingResult<{ payment: ManualPaymentView }>> {
   const user = await requireActiveUser();
   if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const limited = await momoLimited(user.id);
+  if (limited) return limited;
   try {
     const payment = await paymentMethod("MANUAL_MOMO").submitProof({ userId: user.id, ...input });
     revalidatePath("/dashboard/billing");
@@ -269,6 +285,8 @@ export async function submitMomoProof(input: { paymentId: string; transactionId:
 export async function cancelMomoPayment(paymentId: string): Promise<BillingResult> {
   const user = await requireActiveUser();
   if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const limited = await momoLimited(user.id);
+  if (limited) return limited;
   const done = await cancelManualPayment(user.id, String(paymentId));
   revalidatePath("/dashboard/billing");
   return done ? { ok: true } : { ok: false, error: "This payment can no longer be cancelled. If you have paid, wait for it to be confirmed." };

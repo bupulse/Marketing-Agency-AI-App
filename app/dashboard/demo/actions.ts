@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireActiveUser } from "@/lib/auth/require-user";
-import { demoLimited } from "@/app/book-demo/actions";
+import { demoLimited } from "@/lib/demo/limits";
 import { cancelDemo, DemoError } from "@/lib/demo/bookings";
 import { logError } from "@/lib/errors";
 

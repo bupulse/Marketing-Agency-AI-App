@@ -42,6 +42,8 @@ export class ManualPaymentError extends Error {
 
 const LIVE = new Set(["ACTIVE", "PAST_DUE", "TRIALING"]);
 const REFERENCE_TRIES = 6;
+/** New Mobile Money payments a company may start in 24 hours. */
+export const MOMO_DAILY_PAYMENTS = 10;
 const TRANSACTION_REUSED = "This transaction id has already been used for another payment. Check the id in your Mobile Money message, or contact support.";
 
 type Row = Prisma.ManualPaymentGetPayload<object>;
@@ -148,6 +150,10 @@ export async function startManualPayment(input: { userId: string; plan: string; 
       if (current) return toView(current, sub, now);
     }
   }
+  // A new payment row (the open one was returned above): at most MOMO_DAILY_PAYMENTS a day per company, so a loop of
+  // start / cancel cannot fill the table or the admin queue.
+  const recent = await prisma.manualPayment.count({ where: { userId: input.userId, createdAt: { gte: new Date(now.getTime() - DAY_MS) } } });
+  if (recent >= MOMO_DAILY_PAYMENTS) throw new ManualPaymentError("You have started many Mobile Money payments today. Please try again tomorrow, or contact support.");
   for (let attempt = 0; attempt < REFERENCE_TRIES; attempt++) {
     try {
       const row = await prisma.manualPayment.create({

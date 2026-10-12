@@ -16,6 +16,7 @@ export const RATE_LIMITS = {
   socialConnect: { limit: 30, windowSeconds: 60 * 60 }, // starting a social connection (OAuth or reminder account)
   storeConnect: { limit: 30, windowSeconds: 60 * 60 }, // starting a Shopify/WooCommerce/Cloudflare connection
   storeImport: { limit: 150, windowSeconds: 60 * 60 }, // import/list calls (5 products each)
+  momo: { limit: 10, windowSeconds: 60 * 60 }, // Mobile Money start / "I've paid" / cancel, together, per company
 } satisfies Record<string, RateLimitRule>;
 
 export class RateLimitError extends Error {
