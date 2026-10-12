@@ -175,6 +175,29 @@ export type KnowledgeInput = {
   contacts?: { type: ContactType; value: string; country?: string | null; primary?: boolean }[];
 };
 
+// The shape of what the form sends, checked before anything else so a crafted request (a number where text belongs,
+// an object for a list) gets a validation error instead of crashing the action. Limits are generous: the real ones
+// are checked below with messages for the person.
+const text = z.string().max(5000);
+const knowledgeInputSchema = z.object({
+  hours: text.optional(),
+  area: text.optional(),
+  contact: text.optional(),
+  faqs: z.array(z.object({ question: text, answer: text })).max(50).optional(),
+  openingHours: z
+    .array(z.object({ days: z.array(z.enum(DAYS)).max(7), open: z.string().max(10), close: z.string().max(10), allDay: z.boolean().optional(), overnight: z.boolean().optional() }))
+    .max(20)
+    .optional(),
+  locations: z
+    .array(z.object({ kind: z.enum(["head", "branch"]), label: text.optional(), address: text, placeId: z.string().max(400).optional(), lat: z.number().optional(), lng: z.number().optional() }))
+    .max(30)
+    .optional(),
+  contacts: z
+    .array(z.object({ type: z.string().max(40), value: text, country: z.string().max(100).nullable().optional(), primary: z.boolean().optional() }))
+    .max(30)
+    .optional(),
+});
+
 const num = (v: unknown, min: number, max: number) => (typeof v === "number" && Number.isFinite(v) && v >= min && v <= max ? v : undefined);
 
 /**
@@ -182,7 +205,10 @@ const num = (v: unknown, min: number, max: number) => (typeof v === "number" && 
  * in the form ("faqs.1.answer", "contacts.2.value") so they show under the right inputs. The same function runs in
  * the browser and in the server action. `country` is the business's sign-up country, the default for phone numbers.
  */
-export function validateKnowledge(input: KnowledgeInput, opts: { country?: string | null } = {}): { ok: true; data: Knowledge } | { ok: false; errors: Record<string, string> } {
+export function validateKnowledge(raw: KnowledgeInput, opts: { country?: string | null } = {}): { ok: true; data: Knowledge } | { ok: false; errors: Record<string, string> } {
+  const shaped = knowledgeInputSchema.safeParse(raw);
+  if (!shaped.success) return { ok: false, errors: { form: "Some details could not be read. Please check the form and try again." } };
+  const input = shaped.data as KnowledgeInput;
   const errors: Record<string, string> = {};
   const add = (key: string, message: string) => {
     if (!(key in errors)) errors[key] = message;

@@ -7,7 +7,8 @@ const query = z.object({ q: z.string().trim().min(2).max(200), session: z.string
 
 export async function GET(request: Request) {
   const parsed = query.safeParse(Object.fromEntries(new URL(request.url).searchParams));
-  const ready = await placesRequest("autocomplete");
+  // The query is checked before the rate limit, so a malformed request never spends the company's quota.
+  const ready = await placesRequest("autocomplete", parsed.success);
   if (!ready.ok) return ready.response;
   if (!parsed.success) return json({ error: "Bad request" }, 400);
   try {

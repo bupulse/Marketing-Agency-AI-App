@@ -16,6 +16,7 @@ import {
   voiceSchema,
   type KnowledgeInput,
 } from "@/lib/brand/schemas";
+import { timezoneForCountryName } from "@/lib/region-format";
 import { buildObjectPath, createSignedUploadUrl } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { takeReturn } from "@/lib/auth/return-server";
@@ -80,10 +81,13 @@ export async function saveLook(input: { logoPath: string | null; brandColors: st
 export async function saveKnowledge(input: KnowledgeInput): Promise<SaveResult> {
   const user = await requireUser();
   // Phone numbers without a country of their own are read in the business's sign-up country.
-  const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { country: true } });
-  const parsed = validateKnowledge(input && typeof input === "object" ? input : {}, { country: business?.country });
-  if (!parsed.ok) return { ok: false, fieldErrors: parsed.errors };
-  return update(user.id, { knowledge: parsed.data }, "knowledge");
+  const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { country: true, timezone: true } });
+  const parsed = validateKnowledge(input, { country: business?.country });
+  if (!parsed.ok) return { ok: false, fieldErrors: parsed.errors, error: parsed.errors.form };
+  // Opening hours are in the business's zone. A business still on the default UTC gets its country's zone
+  // (Rwanda -> Africa/Kigali), as sign-up does; countries with several zones keep theirs until the browser sets it.
+  const zone = business && (!business.timezone || business.timezone === "UTC") ? timezoneForCountryName(business.country) : null;
+  return update(user.id, { knowledge: parsed.data, ...(zone ? { timezone: zone } : {}) }, "knowledge");
 }
 
 /** Signed URL so the browser can upload the logo straight to the private brand bucket. */

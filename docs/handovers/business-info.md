@@ -28,9 +28,10 @@ matter.
 - **One main contact.** The widget's WhatsApp and Call buttons prefer it, else use the first contact that can.
 - **Map link built server-side** from address + place id (public Maps URLs format), and rebuilt on read: a stored or
   posted URL is never trusted. Details request Essentials fields only (cheapest SKU).
-- **Rate limits** are defined next to the proxy (`PLACES_LIMITS` in `lib/places/google.ts`) rather than in
-  `lib/rate-limit.ts` `RATE_LIMITS`, to keep this branch off the file the security work is changing; they use the
-  same `rateLimit()` table. Fold them into `RATE_LIMITS` after both merge if preferred.
+- **Rate limits** live in `RATE_LIMITS` (`placesAutocomplete`, `placesDetails`), keyed on the business id, checked
+  after the query is validated.
+- **Time zone.** "Open now" is only stated when `Business.timezone` is not the default `UTC`; saving step 4 fills
+  the zone from the country when it can (`timezoneForCountryName`).
 - **The open-now line** is computed per chat request from `Business.timezone` and passed to the model in English;
   the model answers in the visitor's language.
 

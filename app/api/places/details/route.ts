@@ -8,7 +8,8 @@ const query = z.object({ id: z.string().regex(PLACE_ID), session: z.string().reg
 
 export async function GET(request: Request) {
   const parsed = query.safeParse(Object.fromEntries(new URL(request.url).searchParams));
-  const ready = await placesRequest("details");
+  // The query is checked before the rate limit, so a malformed request never spends the company's quota.
+  const ready = await placesRequest("details", parsed.success);
   if (!ready.ok) return ready.response;
   if (!parsed.success) return json({ error: "Bad request" }, 400);
   try {

@@ -43,6 +43,10 @@ describe("normaliseContact", () => {
     // A link to another site is not this network's profile.
     expect(normaliseSocial("instagram", "https://evil.example/shop")).toBeNull();
     expect(normaliseSocial("instagram", "has spaces")).toBeNull();
+    // A stray "%" must be a field error, not a crash (decodeURIComponent throws on it).
+    expect(normaliseSocial("instagram", "100%")).toBeNull();
+    expect(normaliseSocial("facebook", "https://facebook.com/%E0%A4%A")).toBeNull();
+    expect(normaliseContact("tiktok", "@shop%", null).ok).toBe(false);
   });
   it("normalises websites idempotently", () => {
     const once = normaliseWebsite("Shop.rw/Menu");

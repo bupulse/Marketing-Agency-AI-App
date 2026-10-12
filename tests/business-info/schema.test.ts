@@ -117,6 +117,25 @@ describe("validateKnowledge (shared by the form and the server action)", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(Object.keys(r.errors)).toEqual(["contacts.1.value"]);
   });
+  it("answers a validation error, never a crash, for crafted input", () => {
+    const crafted: unknown[] = [
+      null,
+      "text",
+      { hours: 5, faqs: [] },
+      { faqs: "nope" },
+      { contacts: [{ type: "email", value: 42 }] },
+      { contacts: "x" },
+      { locations: [{ kind: "head", address: { toString: "x" } }] },
+      { openingHours: [{ days: ["funday"], open: "08:00", close: "18:00" }] },
+      { openingHours: [{ days: ["mon"], open: 800, close: "18:00" }] },
+      { faqs: [{ question: ["q"], answer: "a" }] },
+    ];
+    for (const input of crafted) {
+      const r = validateKnowledge(input as never);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.errors.form).toMatch(/could not be read/);
+    }
+  });
   it("still accepts the first version's input", () => {
     const r = validateKnowledge({ hours: "Mon-Sat 9-18", area: "Kigali", contact: "Call us", faqs: [] });
     expect(r).toEqual({ ok: true, data: { hours: "Mon-Sat 9-18", area: "Kigali", contact: "Call us", faqs: [] } });

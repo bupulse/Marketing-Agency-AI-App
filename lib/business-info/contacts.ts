@@ -88,7 +88,12 @@ export function normaliseSocial(type: "instagram" | "facebook" | "tiktok", raw: 
     if (type === "facebook" && /^profile\.php\?id=\d{1,30}$/.test(text)) return text;
     handle = text;
   }
-  handle = decodeURIComponent(handle).replace(/^@/, "");
+  try {
+    handle = decodeURIComponent(handle);
+  } catch {
+    return null; // a stray "%" is a typo, not a profile
+  }
+  handle = handle.replace(/^@/, "");
   if (type === "instagram") return HANDLE.test(handle) && !handle.startsWith(".") && !handle.endsWith(".") ? handle.toLowerCase() : null;
   if (type === "tiktok") return TIKTOK_HANDLE.test(handle) ? handle.toLowerCase() : null;
   return FACEBOOK_PATH.test(handle) ? handle : null;

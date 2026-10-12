@@ -5,17 +5,10 @@ import "server-only";
 // Billing: the browser keeps one session token from the first keystroke to the chosen place, so the autocomplete
 // requests and the one details request are charged as a single session. Details ask only for Essentials fields.
 import { PLACE_ID } from "@/lib/business-info/locations";
-import type { RateLimitRule } from "@/lib/rate-limit";
 
 const AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete";
 const DETAILS_URL = "https://places.googleapis.com/v1/places/";
 const TIMEOUT_MS = 5000;
-
-/** Per company: generous for typing (debounced in the browser), tight enough to cap a runaway script. */
-export const PLACES_LIMITS = {
-  autocomplete: { limit: 300, windowSeconds: 60 * 60 },
-  details: { limit: 60, windowSeconds: 60 * 60 },
-} satisfies Record<string, RateLimitRule>;
 
 export const SESSION_TOKEN = /^[A-Za-z0-9_-]{16,64}$/;
 

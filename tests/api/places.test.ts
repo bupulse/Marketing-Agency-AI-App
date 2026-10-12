@@ -27,7 +27,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   process.env.GOOGLE_MAPS_API_KEY = KEY;
   mocks.checkActiveUser.mockResolvedValue({ status: "ok", user: USER });
-  mocks.findUnique.mockResolvedValue({ country: "Rwanda" });
+  mocks.findUnique.mockResolvedValue({ id: "biz-1", country: "Rwanda" });
   mocks.rateLimit.mockResolvedValue(undefined);
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
@@ -62,13 +62,24 @@ describe("/api/places/autocomplete", () => {
     const res = await autocomplete(req(`/api/places/autocomplete?q=Kigali&session=${SESSION}`));
     expect(res.status).toBe(429);
     expect(res.headers.get("Retry-After")).toBe("120");
-    expect(mocks.rateLimit.mock.calls[0][0]).toBe("places:autocomplete:owner-1");
+    expect(mocks.rateLimit.mock.calls[0][0]).toBe("places:autocomplete:biz-1");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects bad input", async () => {
     expect((await autocomplete(req(`/api/places/autocomplete?q=K&session=${SESSION}`))).status).toBe(400);
     expect((await autocomplete(req(`/api/places/autocomplete?q=Kigali&session=short`))).status).toBe(400);
+    // A malformed request never spends the company's quota.
+    expect(mocks.rateLimit).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("shares one budget across the company's teammates", async () => {
+    fetchMock.mockResolvedValue(Response.json({ suggestions: [] }));
+    mocks.checkActiveUser.mockResolvedValue({ status: "ok", user: { id: "owner-1", actorId: "teammate-7", role: "ADMIN", businessId: "biz-1" } });
+    await autocomplete(req(`/api/places/autocomplete?q=Kigali&session=${SESSION}`));
+    expect(mocks.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: "owner-1" } }));
+    expect(mocks.rateLimit.mock.calls[0][0]).toBe("places:autocomplete:biz-1");
   });
 
   it("calls Places (New) with the key in a header, the session token and the business region", async () => {
@@ -128,12 +139,13 @@ describe("/api/places/details", () => {
     expect(url).toContain("regionCode=rw");
     expect(url).not.toContain(KEY);
     expect(init.headers["X-Goog-FieldMask"]).toBe("id,formattedAddress,location");
-    expect(mocks.rateLimit.mock.calls[0][0]).toBe("places:details:owner-1");
+    expect(mocks.rateLimit.mock.calls[0][0]).toBe("places:details:biz-1");
   });
 
   it("rejects malformed place ids before calling Google", async () => {
     expect((await details(req(`/api/places/details?id=../../etc&session=${SESSION}`))).status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.rateLimit).not.toHaveBeenCalled();
   });
 
   it("needs auth and degrades without a key", async () => {

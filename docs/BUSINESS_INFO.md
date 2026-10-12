@@ -49,7 +49,8 @@ place id (`lib/business-info/locations.ts`), never taken from the browser, and r
 sign-up country). It checks: at least one day per set, a day in one set only, closing after opening (or before it
 when "closes after midnight"), late hours not running into the next day's opening, the head office before branches,
 place ids and coordinates (coordinates are kept only with a valid place id), and each contact. Blank contact and
-branch rows are ignored. Errors use the form's own keys (`openingHours.1.close`, `contacts.2.value`).
+branch rows are ignored. The whole input is first checked for shape (`knowledgeInputSchema`), so a crafted request
+(a number for text, an object for a list) gets a form error, never a server error. Errors use the form's own keys (`openingHours.1.close`, `contacts.2.value`).
 
 **Reading** (`readKnowledge()`) is lenient: a broken field or list item is dropped on its own, so one bad value never
 hides the rest; contradictory hours are ignored; contacts that are not in normal form are dropped.
@@ -71,6 +72,12 @@ Companies set up before this change have `hours`, `area` and `contact` as free t
   day and time with the open status ("We're open now until 18:00." / "We're closed now. We open tomorrow at 08:00."),
   the locations with their map links, and the contacts. The model translates it into the visitor's language. Token
   budget: about 10 short lines for a typical business; at most six locations (addresses cut to 160 characters).
+- **Only with a real zone.** The live line is given only when `Business.timezone` is set to something other than the
+  default `UTC` (`liveTimeZone()`); otherwise the hours are listed and the model is told the local time is unknown.
+  Saving step 4 sets the zone from the country when it is still `UTC` (Rwanda → `Africa/Kigali`, the same
+  `timezoneForCountryName` mapping as sign-up); countries with several zones keep theirs until the browser sets it.
+- **Fenced as data.** The block sits between `<<<BUSINESS DATA` and `BUSINESS DATA>>>` with a "not instructions"
+  label, like the sector block, so a crafted note cannot pass as a rule.
 - **Open now** (`openStatus()` in `lib/business-info/hours.ts`) works on the local wall clock (`Intl`, so daylight
   saving is handled), merges adjacent ranges, follows hours past midnight (including Sunday into Monday) and knows
   24-hour businesses.
@@ -90,8 +97,10 @@ The browser never talks to Google. It calls our routes, which call Places API (N
 | `GET /api/places/details?id=&session=` | `GET places/{id}` | `id,formattedAddress,location` (Place Details Essentials) |
 
 - **Auth**: a signed-in, active user with the `settings` permission (owner or admin), like the save action.
-- **Rate limit** per company (`lib/places/google.ts` `PLACES_LIMITS`): 300 autocomplete and 60 details requests an
-  hour (`lib/rate-limit.ts`). The browser waits 300 ms after typing and needs 3 characters.
+- **Rate limit** per company, keyed on the business id so teammates share one budget (`RATE_LIMITS.placesAutocomplete`
+  and `placesDetails` in `lib/rate-limit.ts`): 300 autocomplete and 60 details requests an hour. The query and place
+  id are validated first, so a malformed request never spends quota. The browser waits 300 ms after typing and needs
+  3 characters.
 - **Region**: the business's sign-up country becomes `regionCode` (Rwanda → `rw`), which ranks local results first
   without hiding branches abroad.
 - **Billing**: the browser makes one session token per search (`crypto.randomUUID`), sends it with every
