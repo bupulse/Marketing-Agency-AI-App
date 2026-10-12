@@ -223,6 +223,40 @@ describe("journey: invoice -> Mobile Money with BP-INV reference -> paid + ACTIV
     expect(audits("invoice_paid")).toHaveLength(1);
   });
 
+  it("a payment that does not match the invoice total is not auto-settled: it is flagged for review, then the admin marks it paid", async () => {
+    const { userId, businessId, subscription } = await afterDemo(1);
+    const draft = await inv.createActivationInvoice(CONSOLE, { businessId }, AT);
+    // An invoice with a setup fee on top of the plan line: 35,000 + 20,000.
+    await inv.updateInvoiceDraft(CONSOLE, draft.id, { lines: [{ description: "BuPulse Business plan, monthly", quantity: 1, unitMinor: 35000 }, { description: "Setup", quantity: 1, unitMinor: 20000 }], dueDate: "2026-10-16", notes: "", billingEmail: "" });
+    await inv.sendInvoice(CONSOLE, draft.id, AT);
+    const row = () => h.db.invoice.rows.find((i) => i.id === draft.id)!;
+    expect(row().totalMinor).toBe(55000);
+
+    // The client pays the standard 35,000 from the pay screen; the owner confirms the money (the plan opens).
+    const plain = await momo.startManualPayment({ userId, plan: "BUSINESS", interval: "MONTH", now: AT });
+    await momo.submitManualProof(userId, { paymentId: plain.id, transactionId: "MP88113300", payerPhone: "0781234567", network: "MTN" }, AT);
+    h.sendEmail.mockClear();
+    await momo.confirmManualPayment(CONSOLE, plain.id, AT);
+    expect(subscription).toMatchObject({ status: "ACTIVE", plan: "BUSINESS" });
+    // The invoice is NOT marked paid; the payment is recorded on it, audited, and the admins are alerted.
+    expect(row()).toMatchObject({ status: "sent", paidBy: null, paymentReview: { source: "momo", reference: plain.reference, amountMinor: 35000, currency: "RWF" } });
+    expect(audits("invoice_paid")).toHaveLength(0);
+    expect(audits("invoice_payment_review")).toHaveLength(1);
+    expect(subjects(h.sendEmail.mock.calls)).toContain("Payment received for BP-INV-0001: check and mark paid");
+    expect(recipients(h.sendEmail.mock.calls)).toContain("owner@bupulse.com");
+    // The reminders keep running until the admin settles it.
+    vi.setSystemTime(new Date("2026-10-17T08:00:00Z"));
+    expect(await inv.sendInvoiceReminders(new Date())).toBe(1);
+
+    // The admin checks the money (the other 20,000 arrived by bank) and marks it paid: no second payment, no second period.
+    const periodEnd = subscription.currentPeriodEnd;
+    const paid = await inv.markInvoicePaid(CONSOLE, draft.id, { method: "BANK", reference: "BANK-REF-9981" }, new Date());
+    expect(paid).toMatchObject({ status: "paid", number: "BP-INV-0001" });
+    expect(row()).toMatchObject({ status: "paid", paidBy: `momo:${plain.reference}` });
+    expect(subscription.currentPeriodEnd).toEqual(periodEnd);
+    expect(h.db.manualPayment.rows).toHaveLength(1);
+  });
+
   it("a payment confirmed before the invoice was sent does not settle it", async () => {
     const { userId, businessId } = await afterDemo(1);
     h.db.invoice.rows.push({ id: "i_later", businessId, number: "BP-INV-0001", status: "sent", currency: "RWF", planKey: "BUSINESS", interval: "MONTH", totalMinor: 35000, subtotalMinor: 35000, taxMinor: 0, sentAt: new Date(AT.getTime() + 3_600_000), reminderSentAt: null });

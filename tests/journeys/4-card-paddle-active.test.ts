@@ -161,6 +161,26 @@ describe("journey: card payment through Paddle webhooks", () => {
     expect(audits("invoice_paid")).toHaveLength(1);
   });
 
+  it("a card payment that does not match the invoice (it has a setup fee) activates the plan but only flags the invoice for review", async () => {
+    const c = await invoicedClient(1, "France");
+    const inv0 = c.invoice();
+    Object.assign(inv0, { lines: [{ description: "Pro plan", quantity: 1, unitMinor: 9900 }, { description: "Setup", quantity: 1, unitMinor: 5000 }], totalMinor: 14900, subtotalMinor: 14900 });
+    h.sendEmail.mockClear();
+    await post(subscriptionEvent(c.ctx, "subscription.created", "evt_1"));
+    await post(transactionEvent(c.ctx, "evt_2", "txn_1"));
+    expect(c.subscription).toMatchObject({ status: "ACTIVE", plan: "PRO" });
+    expect(c.invoice()).toMatchObject({ status: "sent", paidBy: null, paymentReview: { source: "paddle", reference: "txn_1", amountMinor: 9900, currency: "USD" } });
+    expect(audits("invoice_paid")).toHaveLength(0);
+    expect(audits("invoice_payment_review")[0]).toMatchObject({ actor: "system:paddle", target: `invoice:${c.invoice().id}` });
+    expect((h.sendEmail.mock.calls.at(-1)?.[0] as { subject: string }).subject).toBe("Payment received for BP-INV-0001: check and mark paid");
+    // The admin checks and marks it paid: the card subscription is not touched and no Mobile Money payment is made.
+    const end = c.subscription.currentPeriodEnd;
+    await inv.markInvoicePaid(CONSOLE, c.invoice().id, { method: "BANK", reference: "BANK-REF-1234" }, new Date());
+    expect(c.invoice()).toMatchObject({ status: "paid", paidBy: "paddle:txn_1" });
+    expect(c.subscription).toMatchObject({ provider: "PADDLE", currentPeriodEnd: end });
+    expect(h.db.manualPayment.rows).toHaveLength(0);
+  });
+
   it("a payment made before the invoice was sent, or for another plan, does not settle it", async () => {
     const c = await invoicedClient(1, "France");
     await post(subscriptionEvent(c.ctx, "subscription.created", "evt_1"));

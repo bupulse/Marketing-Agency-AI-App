@@ -9,8 +9,8 @@ import { subscriptionEventsFor } from "@/lib/analytics/math";
 import { getSetting } from "@/lib/admin/settings";
 import { getPlan } from "@/lib/plan-catalog";
 import { companyPlans } from "@/lib/region-prices";
-import { invoiceForCardPayment } from "@/lib/invoices/shared";
-import { sendPaymentRejectedEmail, sendPaymentToCheckEmail, sendPlanActiveEmail } from "./momo-emails";
+import { matchInvoicePayment } from "@/lib/invoices/shared";
+import { sendInvoiceReviewAlertEmail, sendPaymentRejectedEmail, sendPaymentToCheckEmail, sendPlanActiveEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
 import {
   DAY_MS,
@@ -298,6 +298,7 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
   const usdCents = usdCentsOf(payment.amountMinor, payment.currency, await getSetting("usdToRwf"));
 
   for (let attempt = 0; ; attempt++) {
+    let flagged: { invoice: { id: string; number: string; totalMinor: number; currency: string }; company: string } | null = null;
     const sub = await subOf(payment.userId);
     if (!sub) throw new AdminError("not_found", "This client has no subscription any more.");
     if (sub.provider === "PADDLE" && sub.providerSubscriptionId && LIVE.has(sub.status) && sub.plan !== "TRIAL" && !sub.cancelAtPeriodEnd) {
@@ -339,16 +340,23 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
           if (paid.count !== 1) throw new AdminError("conflict", `Invoice ${payment.reference} is no longer open (voided or already paid). Reject this payment and refund it, or look at the invoice first.`);
           await writeAudit(tx, ctx, "invoice_paid", `invoice:${payment.invoiceId}`, { status: "sent" }, { status: "paid", number: payment.reference, paidBy: `manual_payment:${payment.id}`, amountMinor: payment.amountMinor, currency: payment.currency });
         } else {
-          // A plain payment (the pay screen's BP- reference) for a plan the client was also invoiced for settles at most
-          // one open invoice, by the same rules as a card payment (invoiceForCardPayment): same plan and interval, sent
-          // before the payment, an exact amount and currency first, else the newest. The reminder stops with it.
-          const business = await tx.business.findUnique({ where: { userId: payment.userId }, select: { id: true } });
+          // A plain payment (the pay screen's BP- reference) for a plan the client was also invoiced for: the invoice is
+          // marked paid only when the payment provably is for it (matchInvoicePayment: the same total, or a single plan
+          // line of that amount). Otherwise it is recorded on the newest candidate for an admin to check and mark paid.
+          const business = await tx.business.findUnique({ where: { userId: payment.userId }, select: { id: true, name: true } });
           const open = business ? await tx.invoice.findMany({ where: { businessId: business.id, status: "sent" } }) : [];
-          const target = invoiceForCardPayment(open, { amountMinor: payment.amountMinor, currency: payment.currency.toUpperCase(), paidAt: now, origin: "web" }, { plan: plan.key, interval: payment.interval });
-          if (target) {
+          const { settle, review } = matchInvoicePayment(open, { amountMinor: payment.amountMinor, currency: payment.currency.toUpperCase(), paidAt: now, origin: "web" }, { plan: plan.key, interval: payment.interval });
+          if (settle) {
             const paidBy = `momo:${payment.reference}`;
-            const settled = await tx.invoice.updateMany({ where: { id: target.id, status: "sent" }, data: { status: "paid", paidAt: now, paidBy } });
-            if (settled.count === 1) await writeAudit(tx, ctx, "invoice_paid", `invoice:${target.id}`, { status: "sent" }, { status: "paid", number: target.number, paidBy, amountMinor: payment.amountMinor, currency: payment.currency });
+            const settled = await tx.invoice.updateMany({ where: { id: settle.id, status: "sent" }, data: { status: "paid", paidAt: now, paidBy } });
+            if (settled.count === 1) await writeAudit(tx, ctx, "invoice_paid", `invoice:${settle.id}`, { status: "sent" }, { status: "paid", number: settle.number, paidBy, amountMinor: payment.amountMinor, currency: payment.currency });
+          } else if (review) {
+            const note = { source: "momo", reference: payment.reference, amountMinor: payment.amountMinor, currency: payment.currency, receivedAt: now.toISOString(), planKey: plan.key, interval: payment.interval };
+            const marked = await tx.invoice.updateMany({ where: { id: review.id, status: "sent" }, data: { paymentReview: note } });
+            if (marked.count === 1) {
+              await writeAudit(tx, ctx, "invoice_payment_review", `invoice:${review.id}`, { status: "sent" }, { number: review.number, ...note, invoiceTotalMinor: review.totalMinor, invoiceCurrency: review.currency });
+              flagged = { invoice: review, company: business?.name ?? "A company" };
+            }
           }
         }
         // Guarded on the state we read (ids, status and period end), so a card webhook or another confirmation landing
@@ -381,7 +389,9 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
       if (error instanceof SubscriptionMoved) throw new AdminError("conflict", "The subscription keeps changing while confirming. Look at the client and try again.");
       throw error;
     }
-    // After the commit: analytics and the client's email. Neither can undo the confirmation.
+    // After the commit: analytics and the emails. None of them can undo the confirmation.
+    const review = flagged as { invoice: { id: string; number: string; totalMinor: number; currency: string }; company: string } | null;
+    if (review) await sendInvoiceReviewAlertEmail({ number: review.invoice.number, company: review.company, invoiceId: review.invoice.id, source: "momo", reference: payment.reference, paidMinor: payment.amountMinor, paidCurrency: payment.currency, invoiceMinor: review.invoice.totalMinor, invoiceCurrency: review.invoice.currency }).catch(() => false);
     const client = await clientOf(payment.userId);
     for (const name of subscriptionEventsFor(before, after, false)) {
       await trackEvent(name, { userId: payment.userId, businessId: client.businessId, props: { plan: plan.key, interval: payment.interval, from: before.plan, method: "momo" } });

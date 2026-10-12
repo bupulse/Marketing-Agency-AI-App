@@ -65,6 +65,23 @@ export async function sendUnmappedPriceAlertEmail(p: { priceId: string; subscrip
   return results.some(Boolean);
 }
 
+/** The owner's alert that a payment arrived for an invoice but did not match its total, so it was not marked paid. */
+export async function sendInvoiceReviewAlertEmail(p: { number: string; company: string; invoiceId: string; source: "paddle" | "momo"; reference: string; paidMinor: number; paidCurrency: string; invoiceMinor: number; invoiceCurrency: string }): Promise<boolean> {
+  const admins = adminEmails();
+  if (admins.length === 0) return false;
+  const { html, text } = renderEmail({
+    heading: `Payment received for invoice ${p.number}: check and mark paid`,
+    intro: `${p.company} paid ${formatMomoAmount(p.paidMinor, p.paidCurrency)} by ${p.source === "paddle" ? "card" : "Mobile Money"}, but the invoice is for ${formatMomoAmount(p.invoiceMinor, p.invoiceCurrency)}, so BuPulse did not mark it paid. Check the amount, then mark the invoice paid. The due-date reminder keeps running until you do.`,
+    blocks: [
+      { label: "Invoice", value: p.number },
+      { label: p.source === "paddle" ? "Paddle transaction" : "Payment reference", value: p.reference },
+    ],
+    button: { label: "Open invoice", url: `${siteUrl()}/admin/invoices/${encodeURIComponent(p.invoiceId)}` },
+  });
+  const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: `Payment received for ${p.number}: check and mark paid`, html, text })));
+  return results.some(Boolean);
+}
+
 /** The client's confirmation: the plan is on, until when. */
 export async function sendPlanActiveEmail(to: ClientRecipient, p: { planName: string; interval: string; amountMinor: number; currency: string; reference: string; periodEnd: Date }): Promise<boolean> {
   const { html, text } = renderEmail({

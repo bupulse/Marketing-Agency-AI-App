@@ -11,7 +11,7 @@ import { dateTime, param } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/types";
 import { getInvoiceSettings, logoDataUrl } from "@/lib/invoices/settings";
 import { getInvoiceRow, invoiceDocument, invoicePayments, MANUAL_PAY_LABEL, MANUAL_PAY_METHODS } from "@/lib/invoices/service";
-import { formatInvoiceMoney, INVOICE_STATUS_LABEL, isOverdue, longInvoiceDate, ymdOf } from "@/lib/invoices/shared";
+import { formatInvoiceMoney, INVOICE_STATUS_LABEL, isOverdue, longInvoiceDate, readPaymentReview, ymdOf } from "@/lib/invoices/shared";
 import { prisma } from "@/lib/db";
 import { markInvoicePaidAction, resendInvoiceAction, voidInvoiceAction } from "../actions";
 
@@ -41,6 +41,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   const total = formatInvoiceMoney(row.totalMinor, row.currency);
   // A draft is priced with the current VAT setting (saving applies it); the preview shows the same.
   const draftDoc = row.status === "draft" ? { ...doc, taxRatePercent: settings.vatRatePercent } : doc;
+  const review = row.status === "sent" ? readPaymentReview(row.paymentReview) : null;
   const pdfHref = `/admin/invoices/${row.id}/pdf`;
 
   return (
@@ -52,6 +53,11 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
       />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
+      {review && (
+        <p role="alert" className={notice.bad}>
+          Payment received: {formatInvoiceMoney(review.amountMinor, review.currency)} by {review.source === "paddle" ? "card" : "Mobile Money"} ({review.reference}, {dateTime(new Date(review.receivedAt))}), but the invoice is for {total}. It was not marked paid. Check the money, then mark the invoice paid. Reminders keep going until you do.
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <Link href="/admin/invoices" className="inline-flex min-h-11 items-center px-2 text-sm font-medium underline">All invoices</Link>

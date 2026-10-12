@@ -37,7 +37,7 @@ import { AdminError, apiContext, consoleContext } from "@/lib/admin/types";
 import * as momo from "@/lib/billing/momo";
 import { clearMomoSettingsCache } from "@/lib/billing/momo-settings";
 import { MOMO_SETTING_KEY } from "@/lib/billing/momo-shared";
-import { cardPaymentOf, INVOICE_SETTING_KEY, invoiceForCardPayment, type CardPayment } from "@/lib/invoices/shared";
+import { cardPaymentOf, INVOICE_SETTING_KEY, invoiceForCardPayment, matchInvoicePayment, type CardPayment } from "@/lib/invoices/shared";
 import * as inv from "@/lib/invoices/service";
 import { resetRegionCache } from "@/lib/region";
 import { resetRegionPriceCache } from "@/lib/region-prices";
@@ -407,25 +407,46 @@ describe("reminders and card", () => {
     expect(await inv.settleInvoiceFromCardPayment(pay())).toBeNull();
     h.db.subscription.rows[0].plan = "PRO";
     expect(invoice().status).toBe("sent");
-    // The first purchase after it was sent does, once.
-    expect(await inv.settleInvoiceFromCardPayment(pay())).toBe(id);
-    expect(invoice()).toMatchObject({ status: "paid", paidBy: "paddle:txn_1" });
-    expect(await inv.settleInvoiceFromCardPayment(pay({ transactionId: "txn_2" }))).toBeNull();
+    // A first purchase at the plan's USD card price for an RWF invoice cannot be proven to be for it: nothing is marked
+    // paid; the payment is recorded on the invoice for an admin to check (it stays sent, so the reminders keep going),
+    // audited, and the admins are emailed.
+    h.sendEmail.mockClear();
+    expect(await inv.settleInvoiceFromCardPayment(pay())).toBeNull();
+    expect(invoice()).toMatchObject({ status: "sent", paidBy: null, paymentReview: { source: "paddle", reference: "txn_1", amountMinor: 2800, currency: "USD", planKey: "PRO", interval: "MONTH" } });
+    expect(audits("invoice_paid")).toHaveLength(0);
+    expect(audits("invoice_payment_review")).toHaveLength(1);
+    expect(h.sendEmail.mock.calls.map((c) => c[0].subject)).toEqual(["Payment received for BP-INV-0001: check and mark paid"]);
+    // The same amount and currency as the invoice settles it, once.
+    expect(await inv.settleInvoiceFromCardPayment(pay({ transactionId: "txn_2", amountMinor: 35000, currency: "RWF" }))).toBe(id);
+    expect(invoice()).toMatchObject({ status: "paid", paidBy: "paddle:txn_2" });
+    expect(await inv.settleInvoiceFromCardPayment(pay({ transactionId: "txn_3", amountMinor: 35000, currency: "RWF" }))).toBeNull();
     expect(audits("invoice_paid")).toHaveLength(1);
   });
 
-  it("a renewal whose amount and currency equal an open invoice settles that one (the newest exact match)", () => {
+  it("auto-settles only on an exact total or a single plan line of the paid amount; anything else is for review", () => {
     const at = (iso: string) => new Date(iso);
+    const line = (unitMinor: number) => ({ description: "Plan", quantity: 1, unitMinor });
+    const base = { currency: "USD", planKey: "PRO", interval: "MONTH" };
     const invs = [
-      { id: "a", sentAt: at("2026-10-01T00:00:00Z"), totalMinor: 4900, currency: "USD", planKey: "PRO", interval: "MONTH" },
-      { id: "b", sentAt: at("2026-10-05T00:00:00Z"), totalMinor: 4900, currency: "USD", planKey: "PRO", interval: "MONTH" },
-      { id: "c", sentAt: at("2026-10-06T00:00:00Z"), totalMinor: 9900, currency: "USD", planKey: "PRO", interval: "MONTH" },
-      { id: "late", sentAt: at("2026-10-20T00:00:00Z"), totalMinor: 4900, currency: "USD", planKey: "PRO", interval: "MONTH" },
+      { id: "a", sentAt: at("2026-10-01T00:00:00Z"), totalMinor: 4900, lines: [line(4900)], ...base },
+      { id: "b", sentAt: at("2026-10-05T00:00:00Z"), totalMinor: 4900, lines: [line(4900)], ...base },
+      { id: "c", sentAt: at("2026-10-06T00:00:00Z"), totalMinor: 9900, lines: [line(4900), { description: "Setup", quantity: 1, unitMinor: 5000 }], ...base },
+      { id: "late", sentAt: at("2026-10-20T00:00:00Z"), totalMinor: 4900, lines: [line(4900)], ...base },
     ];
     const plan = { plan: "PRO", interval: "MONTH" };
-    expect(invoiceForCardPayment(invs, { amountMinor: 4900, currency: "USD", paidAt: at("2026-10-10T00:00:00Z"), origin: "subscription_recurring" }, plan)?.id).toBe("b");
-    expect(invoiceForCardPayment(invs, { amountMinor: 1234, currency: "USD", paidAt: at("2026-10-10T00:00:00Z"), origin: "subscription_recurring" }, plan)).toBeNull();
-    expect(invoiceForCardPayment(invs, { amountMinor: 1234, currency: "USD", paidAt: at("2026-10-10T00:00:00Z"), origin: "web" }, plan)?.id).toBe("c");
+    const pay = (amountMinor: number, origin = "web", currency = "USD") => ({ amountMinor, currency, paidAt: at("2026-10-10T00:00:00Z"), origin });
+    // Exact total: the newest exact match, whatever the origin.
+    expect(matchInvoicePayment(invs, pay(4900, "subscription_recurring"), plan)).toMatchObject({ settle: { id: "b" }, review: null });
+    // A payment equal to the single plan line of an invoice that has a setup fee on top does NOT pay that invoice (its total is larger)...
+    expect(matchInvoicePayment([invs[2]], pay(4900), plan)).toMatchObject({ settle: null, review: { id: "c" } });
+    // ...while one that matches nothing is for review (newest candidate), and a renewal needs no review at all.
+    expect(matchInvoicePayment(invs, pay(1234), plan)).toMatchObject({ settle: null, review: { id: "c" } });
+    expect(matchInvoicePayment(invs, pay(1234, "subscription_recurring"), plan)).toEqual({ settle: null, review: null });
+    expect(matchInvoicePayment(invs, pay(4900, "web", "RWF"), plan)).toMatchObject({ settle: null, review: { id: "c" } }); // wrong currency
+    // A single plan line that equals the payment settles even when tax makes the total higher.
+    const taxed = { id: "t", sentAt: at("2026-10-02T00:00:00Z"), totalMinor: 5782, lines: [line(4900)], ...base };
+    expect(matchInvoicePayment([taxed], pay(4900), plan).settle?.id).toBe("t");
+    expect(invoiceForCardPayment(invs, pay(1234), plan)).toBeNull();
     expect(cardPaymentOf({ event_type: "subscription.updated", data: { id: "sub_1" } })).toBeNull();
     expect(cardPaymentOf({ event_type: "transaction.completed", data: { id: "txn_1", details: { totals: { grand_total: "4900", currency_code: "USD" } } } })).toMatchObject({ amountMinor: 4900, currency: "USD" });
   });

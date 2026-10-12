@@ -6,6 +6,7 @@ import { AdminError, consoleContext, type AdminContext } from "@/lib/admin/types
 import { siteUrl } from "@/lib/auth/site-url";
 import { readKnowledge } from "@/lib/brand/schemas";
 import { confirmManualPayment } from "@/lib/billing/momo";
+import { sendInvoiceReviewAlertEmail } from "@/lib/billing/momo-emails";
 import { transactionIdSchema } from "@/lib/billing/momo-shared";
 import { locationText } from "@/lib/business-info/locations";
 import { logError } from "@/lib/errors";
@@ -22,7 +23,9 @@ import {
   DEFAULT_DUE_DAYS,
   formatInvoiceMoney,
   formatInvoiceNumber,
-  invoiceForCardPayment,
+  matchInvoicePayment,
+  readPaymentReview,
+  type PaymentReview,
   intervalLabel,
   invoiceToday,
   isInvoiceNumber,
@@ -329,8 +332,11 @@ export async function markInvoicePaid(ctx: AdminContext, id: string, input: { me
   if (!row) throw new AdminError("not_found", "No invoice with that id.");
   if (row.status !== "sent") throw new AdminError("conflict", row.status === "draft" ? `Send invoice ${row.number} first, then mark it paid.` : `Invoice ${row.number} is already ${row.status}.`);
 
-  if (!row.planKey || !row.interval) {
-    const paidBy = `manual:${method}:${ref.data}`;
+  // A payment already recorded on the invoice (Invoice.paymentReview) has switched the plan on: the admin only confirms
+  // the money, so the invoice is marked paid without a second payment or period.
+  const reviewed = readPaymentReview(row.paymentReview);
+  if (!row.planKey || !row.interval || reviewed) {
+    const paidBy = reviewed ? `${reviewed.source}:${reviewed.reference}` : `manual:${method}:${ref.data}`;
     await prisma.$transaction(async (tx) => {
       const { count } = await tx.invoice.updateMany({ where: { id, status: "sent" }, data: { status: "paid", paidAt: now, paidBy } });
       if (count !== 1) throw new AdminError("conflict", "The invoice was paid or voided a moment ago. Nothing was changed.");
@@ -403,13 +409,29 @@ export async function settleInvoiceFromCardPayment(pay: CardPayment): Promise<st
   const business = await prisma.business.findUnique({ where: { userId }, select: { id: true } });
   if (!business) return null;
   const open = await prisma.invoice.findMany({ where: { businessId: business.id, status: "sent" } });
-  const target = invoiceForCardPayment(open, pay, plan);
-  if (!target) return null;
+  const { settle: target, review } = matchInvoicePayment(open, pay, plan);
+  if (!target) {
+    if (review) await flagPaymentForReview(review, { source: "paddle", reference: pay.transactionId, amountMinor: pay.amountMinor, currency: pay.currency, receivedAt: pay.paidAt, planKey: plan.plan, interval: plan.interval }, "system:paddle", business.id);
+    return null;
+  }
   const paidBy = `paddle:${pay.transactionId}`;
   const { count } = await prisma.invoice.updateMany({ where: { id: target.id, status: "sent" }, data: { status: "paid", paidAt: pay.paidAt, paidBy } });
   if (count !== 1) return null;
   await writeAudit(prisma, { ...consoleContext(null), actor: "system:paddle" }, "invoice_paid", `invoice:${target.id}`, { status: "sent" }, { status: "paid", number: target.number, paidBy, amountMinor: pay.amountMinor, currency: pay.currency, subscriptionId: pay.subscriptionId }).catch(() => undefined);
   return target.id;
+}
+
+/**
+ * A payment arrived for this invoice but did not match its total: record it on the invoice (it stays "sent", so the
+ * reminders keep running), audit it and alert the admins. An admin checks the money and marks the invoice paid.
+ */
+async function flagPaymentForReview(invoice: Row, pay: Omit<PaymentReview, "receivedAt" | "planKey" | "interval"> & { receivedAt: Date; planKey: string | null; interval: string | null }, actor: string, businessId: string) {
+  const review: PaymentReview = { ...pay, receivedAt: pay.receivedAt.toISOString() };
+  const { count } = await prisma.invoice.updateMany({ where: { id: invoice.id, status: "sent" }, data: { paymentReview: review as unknown as Prisma.InputJsonValue } });
+  if (count !== 1) return;
+  await writeAudit(prisma, { ...consoleContext(null), actor }, "invoice_payment_review", `invoice:${invoice.id}`, { status: "sent" }, { number: invoice.number, ...review, invoiceTotalMinor: invoice.totalMinor, invoiceCurrency: invoice.currency }).catch(() => undefined);
+  const company = await prisma.business.findUnique({ where: { id: businessId }, select: { name: true } }).catch(() => null);
+  await sendInvoiceReviewAlertEmail({ number: invoice.number, company: company?.name ?? "A company", invoiceId: invoice.id, source: review.source, reference: review.reference, paidMinor: review.amountMinor, paidCurrency: review.currency, invoiceMinor: invoice.totalMinor, invoiceCurrency: invoice.currency }).catch(() => false);
 }
 
 // ---- reminders (daily, from the Mobile Money renewals job) --------------------------------------------------
