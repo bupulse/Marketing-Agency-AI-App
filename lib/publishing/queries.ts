@@ -1,4 +1,5 @@
 import "server-only";
+import { publishTimingNote } from "@/lib/platform/limits";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { getProvider, isNetwork } from "@/lib/social/registry";
@@ -57,7 +58,7 @@ export async function loadComposerContext(businessId: string): Promise<ComposerC
   const present = new Set(accounts.map((a) => a.network));
   const rules: ComposerContext["rules"] = {};
   for (const network of NETWORKS) if (present.has(network)) rules[network] = ruleSummary(network);
-  return { accounts, rules, timezone: business?.timezone || "UTC", slotTimes: cleanSlotTimes(autopilot?.postingTimes) };
+  return { accounts, rules, timezone: business?.timezone || "UTC", slotTimes: cleanSlotTimes(autopilot?.postingTimes), timingNote: publishTimingNote() };
 }
 
 /** Post rows as the calendar shows them, with signed links for their photos. */

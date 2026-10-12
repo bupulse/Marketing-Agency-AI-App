@@ -48,6 +48,8 @@ export type ComposerContext = {
   rules: Partial<Record<Network, RuleSummary>>;
   timezone: string;
   slotTimes: string[];
+  /** "Posts go out within 5 minutes of the scheduled time." on Netlify (lib/platform/limits.ts); absent elsewhere. */
+  timingNote?: string | null;
 };
 
 export type MediaItem = { path: string; url: string; mimeType?: string };

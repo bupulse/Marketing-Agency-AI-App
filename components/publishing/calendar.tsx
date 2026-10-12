@@ -170,6 +170,7 @@ export function Calendar({ posts, context, todayKey, nowIso, canSetZone = true }
           </div>
         )}
         <div className="ml-auto flex items-center gap-2">
+          {context.timingNote && <span className="text-[13px] text-muted max-md:hidden">{context.timingNote}</span>}
           {canSetZone ? (
             <button type="button" onClick={() => setTzOpen(true)} className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[13px] text-muted hover:bg-soft hover:text-text">
               <Globe aria-hidden className="size-4" /> {zone.replace(/_/g, " ")}

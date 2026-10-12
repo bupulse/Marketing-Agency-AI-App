@@ -387,6 +387,7 @@ function ComposerBody({ onOpenChange, context, post, prefill, day, onDone }: Pro
             : mode === "now" ? "Sends it to the network straight away."
             : mode === "keep" ? "Saves your changes and leaves the time as it is."
             : `Times are in ${zone}.`}
+          {context.timingNote && mode !== "now" && mode !== "keep" && ` ${context.timingNote}`}
         </p>
         {error && <p role="alert" className="text-[14px] font-medium text-danger">{error}</p>}
         <div className="flex flex-wrap items-center justify-end gap-3">

@@ -6,4 +6,4 @@ export { clientIp, cleanCountry, countryFromNetlifyGeo, trustedClientIp, visitor
 export { waitUntil } from "./background";
 export { sharedCache } from "./cache";
 export { poolMax, requestDatabase, type RequestDatabase } from "./database";
-export { hasShortRequestLimit, NETLIFY_FUNCTION_LIMIT_MS, timeBudget } from "./limits";
+export { hasShortRequestLimit, NETLIFY_FUNCTION_LIMIT_MS, NETLIFY_PUBLISH_EVERY_MINUTES, publishTimingNote, timeBudget } from "./limits";

@@ -5,6 +5,17 @@ import { currentPlatform, type Platform } from "./detect";
 // budgets apply. Netlify: a function stops after 60 s, whatever the plan, so budgets are cut to leave room for the
 // work already in flight when the budget runs out.
 
+/**
+ * On Netlify the publisher runs every 5 minutes (netlify/functions/cron-publish.mts), to stay inside the free plan's
+ * credits; on Cloudflare every minute (worker.ts). It always claims every post due up to now, so none is skipped.
+ */
+export const NETLIFY_PUBLISH_EVERY_MINUTES = 5;
+
+/** The line the composer and the calendar show about publishing delay, or null where posts go out within a minute. */
+export function publishTimingNote(platform: Platform = currentPlatform()): string | null {
+  return platform === "netlify" ? `Posts go out within ${NETLIFY_PUBLISH_EVERY_MINUTES} minutes of the scheduled time.` : null;
+}
+
 /** Netlify's synchronous function limit (all plans, not configurable). */
 export const NETLIFY_FUNCTION_LIMIT_MS = 60_000;
 

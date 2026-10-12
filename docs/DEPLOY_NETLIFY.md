@@ -9,7 +9,7 @@ What runs where on Netlify:
 | Pages, API routes, server actions | One Netlify Function made by Netlify's Next.js runtime (`@netlify/plugin-nextjs`, pinned in `netlify.toml` and `package.json`) |
 | `proxy.ts` (session refresh, dashboard redirect) | A Netlify Edge Function (made by the same runtime) |
 | Static files (`public/`, `_next/static`) | Netlify's CDN |
-| Scheduled jobs (the Cloudflare Cron Triggers) | Netlify Scheduled Functions `netlify/functions/cron-*.mts`, same schedules (UTC) |
+| Scheduled jobs (the Cloudflare Cron Triggers) | Netlify Scheduled Functions `netlify/functions/cron-*.mts`, same schedules (UTC), except the publisher: every 5 minutes instead of every minute |
 | Database | Supabase through `DATABASE_URL` (no Hyperdrive) |
 | Visitor country / IP | Netlify's `x-nf-geo` and `x-nf-client-connection-ip` headers |
 | Deploys, rollback | GitHub Actions `.github/workflows/deploy-netlify.yml` (migrations first), started by a push or by Admin, Settings, Updates |
@@ -25,14 +25,13 @@ Netlify's free plan gives **300 credits a month, as a hard limit: when they are 
 | Web requests | 2 credits per 10,000 | Pages, assets, API, cron calls |
 | Bandwidth | 20 credits per GB | Pages, scripts, images served by Netlify |
 
-**The every-minute publisher is the biggest cost.** Each minute three function invocations run (the scheduled function, the background runner, the `/api/cron/publish` route), about 43,200 a month. If they take 0.5 s together that is about 6 GB-hours (60 credits); at 2 s (cold starts, a slow database round trip) about 24 GB-hours (240 credits), most of the month's budget before any visitor arrives. Add the hourly jobs (about 10 to 30 credits) and the GitHub fallback workflows (another call every 5 minutes for publishing).
+**The publisher runs every 5 minutes on Netlify** (owner decision; every minute on Cloudflare). Each run is three function invocations (the scheduled function, the background runner, the `/api/cron/publish` route), about 8,640 runs a month: roughly 12 to 50 credits at 0.5 to 2 s a run, instead of 60 to 240 every minute. Each run claims every post due up to that moment, so a post scheduled between two runs goes out at the next one, at most 5 minutes late; the composer and the calendar say "Posts go out within 5 minutes of the scheduled time." on Netlify. (`NETLIFY_PUBLISH_EVERY_MINUTES` in `lib/platform/limits.ts` and the schedule in `netlify/functions/cron-publish.mts` change together; `tests/netlify-crons.test.ts` checks it.) A run publishes up to 20 posts in its 15 s budget; anything beyond waits for the next run. Add the hourly jobs (about 10 to 30 credits) and the GitHub fallback workflows.
 
-What to do about it:
+What else to do:
 
 1. After the first week, check Netlify: Usage & billing, Credit usage breakdown, Compute. Multiply by four.
-2. If it is too much, publish every 5 minutes instead of every minute: in `netlify/functions/cron-publish.mts` change `schedule: "* * * * *"` to `"*/5 * * * *"`, and `PUBLISH_CRON` in `worker.ts` plus `triggers.crons` in `wrangler.jsonc` to the same value (`tests/netlify-crons.test.ts` keeps the two hosts on the same schedules). Posts then go out up to 5 minutes late. That cuts the publisher's cost by five.
-3. Optionally disable `.github/workflows/publish-posts.yml` (Actions, the workflow, "Disable workflow"): on Netlify the scheduled function is reliable and the fallback is paid compute.
-4. Deploy in batches: merge several changes, then deploy once.
+2. Optionally disable `.github/workflows/publish-posts.yml` (Actions, the workflow, "Disable workflow"): it also calls the publisher every 5 minutes, which doubles that cost; the Netlify schedule is reliable.
+3. Deploy in batches: merge several changes, then deploy once.
 
 **When free is not enough:** Netlify Personal ($9 a month, 1,000 credits, and you can buy 500 more for $5 instead of being paused), or Pro (from 3,000 credits, also allows choosing the functions region and more memory). Cloudflare Workers Paid ($5 a month) is the other way out and is still fully supported (`docs/DEPLOY.md`).
 
@@ -111,7 +110,7 @@ If BuPulse moves back to Cloudflare Workers, the Worker route takes the domain a
 
 | Function | Schedule | Route |
 | --- | --- | --- |
-| `cron-publish` | every minute | `/api/cron/publish` |
+| `cron-publish` | every 5 minutes (every minute on Cloudflare) | `/api/cron/publish` |
 | `cron-metrics` | hourly at :23 | `/api/cron/metrics` |
 | `cron-autopilot` | every 3 hours on Fri and Sat at :11 | `/api/cron/autopilot` (cursor calls) |
 | `cron-leads-digest` | hourly at :37 | `/api/cron/leads-digest` |
@@ -130,8 +129,8 @@ Check them in Netlify: Logs & metrics, Functions, `cron-publish` (each run logs)
 1. Open the site, sign in, open `/dashboard` (the edge function refreshes the session).
 2. `/pricing` from Rwanda shows RWF prices (country from `x-nf-geo`). From elsewhere, the catch-all region.
 3. Admin, Settings, Updates shows "Netlify site", the version and the runs of `deploy-netlify.yml`.
-4. Schedule a post for Instagram with a PNG design two minutes ahead: it is converted to JPEG (WebAssembly codecs read from the function bundle) and published.
-5. Netlify, Logs, Functions: `cron-runner-background` lines every minute.
+4. Schedule a post for Instagram with a PNG design a few minutes ahead (it goes out within 5 minutes of that time): it is converted to JPEG (WebAssembly codecs read from the function bundle) and published.
+5. Netlify, Logs, Functions: `cron-runner-background` lines every 5 minutes (and hourly ones).
 6. After a week: Usage & billing, credits used (see the limits above).
 
 ## Switching back to Cloudflare

@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
+import { NETLIFY_PUBLISH_EVERY_MINUTES, publishTimingNote } from "@/lib/platform/limits";
 import { CRON_JOBS, handleRunnerRequest, MAX_CURSOR_CALLS, RUNNER_BUDGET_MS, RUNNER_PATH, runJob, siteOrigin, startCron } from "@/netlify/lib/cron";
 
 // worker.ts imports the OpenNext build output, so read it as text (as tests/worker-crons.test.ts does).
@@ -19,9 +20,24 @@ const scheduled = readdirSync(DIR)
   });
 
 describe("Netlify scheduled functions match the Cloudflare cron triggers", () => {
-  it("every Worker schedule has a Netlify function with the same schedule and route", () => {
-    const netlify = Object.fromEntries(scheduled.map((s) => [s.schedule, s.path]));
-    expect(netlify).toEqual(workerRoutes);
+  // The one documented difference: the publisher runs every 5 minutes on Netlify (free plan credits), every minute on
+  // Cloudflare. docs/DEPLOY_NETLIFY.md, lib/platform/limits.ts NETLIFY_PUBLISH_EVERY_MINUTES.
+  const NETLIFY_ONLY: Record<string, string> = { "/api/cron/publish": `*/${NETLIFY_PUBLISH_EVERY_MINUTES} * * * *` };
+
+  it("every Worker schedule has a Netlify function with the same schedule and route (publisher excepted)", () => {
+    const netlify = Object.fromEntries(scheduled.map((s) => [s.path, s.schedule]));
+    const expected = Object.fromEntries(Object.entries(workerRoutes).map(([schedule, path]) => [path, NETLIFY_ONLY[path] ?? schedule]));
+    expect(netlify).toEqual(expected);
+  });
+
+  it("the publisher is every minute on Cloudflare and every 5 minutes on Netlify", () => {
+    expect(schedules.PUBLISH_CRON).toBe("* * * * *");
+    expect(scheduled.find((s) => s.path === "/api/cron/publish")?.schedule).toBe("*/5 * * * *");
+  });
+
+  it("the publisher claims every post due up to now, so a 5-minute gap skips nothing", () => {
+    const engine = readFileSync("lib/publishing/engine.ts", "utf8");
+    expect(engine).toContain('WHERE "status" = \'SCHEDULED\'::"PostStatus" AND "scheduledAt" <= ${now}');
   });
 
   it("each function is one schedule and one known job", () => {
@@ -124,5 +140,13 @@ describe("the background runner", () => {
     });
     const calls = await runJob(CRON_JOBS["/api/cron/momo-renewals"], "https://x.example", "s", slow, () => clock);
     expect(calls).toBe(Math.floor(RUNNER_BUDGET_MS / (5 * 60 * 1000)) + 1);
+  });
+});
+
+describe("the publishing delay note", () => {
+  it("is shown on Netlify only", () => {
+    expect(publishTimingNote("netlify")).toBe("Posts go out within 5 minutes of the scheduled time.");
+    expect(publishTimingNote("cloudflare")).toBeNull();
+    expect(publishTimingNote("node")).toBeNull();
   });
 });
