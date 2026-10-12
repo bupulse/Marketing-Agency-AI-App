@@ -28,6 +28,7 @@ beforeEach(() => {
   mocks.rateLimit.mockReset().mockResolvedValue(undefined);
   mocks.set.mockReset();
   resetGeocodingAvailability();
+  vi.stubEnv("GEO_PROVIDER", "google"); // these tests cover the Google provider; tests/geo/builtin.test.ts the default
   vi.stubEnv("GOOGLE_MAPS_API_KEY", "k-secret");
   vi.stubEnv("ENCRYPTION_KEY", Buffer.alloc(32, 7).toString("base64"));
 });
