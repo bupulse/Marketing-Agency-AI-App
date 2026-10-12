@@ -42,6 +42,12 @@ See the Files section of `docs/INDUSTRIES.md`. New: `lib/phone.ts`, `lib/industr
 - `npx next build`: succeeded; `/admin/industries`, `/admin/industries/new`, `/admin/industries/[id]` are dynamic routes.
 - `e2e/signup.spec.ts` updated for the new fields (sector select, Other reveal with focus, description, Kenyan phone grouping); not run here (needs a dev server).
 
+## Status at handover (12 October 2026, work moves to another model)
+
+**Done**: everything in sections A–F of the brief is implemented, tested and committed (`6512cbb`): migration + seeds + backfill, Admin → Industries with suggestions, sign-up / welcome / Brand forms, country-aware phone (E.164), `industryContext()` in Studio, Autopilot writer and website chat, docs. All checks green (see above).
+
+**Remaining**: nothing in the brief is unfinished. Not done by design or out of scope: the open items below; the Playwright spec was updated but not executed; the migration has not been applied to any database; the branch is not pushed or merged.
+
 ## Open items
 
 - Emails do not include the company phone (none showed it before either); add `formatPhone(business.phone)` to the demo booking admin email if wanted.
