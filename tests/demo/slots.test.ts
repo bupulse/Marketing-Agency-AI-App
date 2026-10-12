@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cleanWindows, freeSlots, groupSlotsByDay, isSlotFree, parseHm, ymdInZone, zoneOffsetMinutes, zonedToUtc, type AvailabilityWindow } from "@/lib/demo/slots";
-import { buildIcs } from "@/lib/demo/ics";
+import { buildIcs, escapeIcsText, foldIcsLine, icsParam } from "@/lib/demo/ics";
 
 // Free demo slots from weekly windows in Africa/Kigali (UTC+2, no daylight saving), and the calendar invite text.
 
@@ -93,9 +93,25 @@ describe("calendar invite", () => {
     expect(ics).toContain("URL:https://meet.google.com/abc-defg-hij\r\n");
     // Long lines are folded (CRLF + space) at 75 octets; unfolding gives the attendee line back whole.
     expect(ics.split("\r\n").every((l) => l.length <= 75)).toBe(true);
-    expect(ics.replace(/\r\n /g, "")).toContain("ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN=Aline:mailto:aline@example.com");
+    expect(ics.replace(/\r\n /g, "")).toContain('ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=ACCEPTED;CN="Aline":mailto:aline@example.com');
+    expect(ics).toContain('ORGANIZER;CN="BuPulse":mailto:admin@bupulse.com');
     const cancelled = buildIcs({ uid: "x", sequence: 1, start: new Date(), end: new Date(), summary: "s", description: "d", organizer: { name: "B", email: "a@b.c" }, attendees: [], cancelled: true });
     expect(cancelled).toContain("METHOD:CANCEL");
     expect(cancelled).toContain("STATUS:CANCELLED");
+  });
+
+  it("quotes parameter values, escapes lone carriage returns, and folds by octets without splitting a character", () => {
+    expect(icsParam('Aline "Ali" Uwase; Inzu')).toBe('"Aline Ali Uwase; Inzu"');
+    expect(escapeIcsText("a\rb\r\nc\nd")).toBe("a\\nb\\nc\\nd");
+    // 60 two-byte characters are 120 octets but 60 characters: folded by octets, at most 75 per line, nothing broken.
+    const folded = foldIcsLine(`SUMMARY:${"é".repeat(60)}`);
+    const lines = folded.split("\r\n");
+    expect(lines.length).toBeGreaterThan(1);
+    for (const l of lines) expect(new TextEncoder().encode(l).length).toBeLessThanOrEqual(75);
+    expect(lines.map((l, i) => (i === 0 ? l : l.slice(1))).join("")).toBe(`SUMMARY:${"é".repeat(60)}`);
+    // An emoji (a surrogate pair) at the fold is never cut in two.
+    const emoji = foldIcsLine(`X:${"a".repeat(71)}😀end`);
+    for (const l of emoji.split("\r\n")) expect(l).not.toMatch(/[\uD800-\uDBFF]$/);
+    expect(emoji.split("\r\n").map((l, i) => (i === 0 ? l : l.slice(1))).join("")).toBe(`X:${"a".repeat(71)}😀end`);
   });
 });

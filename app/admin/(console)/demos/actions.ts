@@ -21,7 +21,7 @@ export async function demoStatusAction(f: FormData) {
 export async function startTrialAction(f: FormData) {
   const ctx = await adminAction();
   await finish(back(f), (r) => `Trial started: ${r.days} ${r.days === 1 ? "day" : "days"}, until ${dateTime(r.trialEndsAt)}. The client has been emailed.`, () =>
-    startTrial(ctx, { businessId: text(f, "businessId") }),
+    startTrial(ctx, { businessId: text(f, "businessId"), planKey: text(f, "planKey") || undefined }),
   );
 }
 

@@ -21,6 +21,8 @@ export type Settings = {
   cardMarginPercent: number;
   /** The reusable meeting link (Google Meet) sent with every demo invite. */
   meetingLink: string;
+  /** The ORGANIZER of the calendar invites clients get (never the admin addresses). */
+  organizerEmail: string;
   /** Demo length. */
   slotMinutes: number;
   /** Free time kept on both sides of a demo. */
@@ -35,6 +37,7 @@ const KEYS: Record<SettingName, string> = {
   usdToRwf: "pricing.usdToRwf",
   cardMarginPercent: "pricing.cardMarginPercent",
   meetingLink: "demo.meetingLink",
+  organizerEmail: "demo.organizerEmail",
   slotMinutes: "demo.slotMinutes",
   bufferMinutes: "demo.bufferMinutes",
   blockedDates: "demo.blockedDates",
@@ -45,6 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
   usdToRwf: DEFAULT_USD_TO_RWF,
   cardMarginPercent: DEFAULT_CARD_MARGIN_PERCENT,
   meetingLink: "",
+  organizerEmail: "hello@bupulse.com",
   slotMinutes: DEFAULT_SLOT_MINUTES,
   bufferMinutes: DEFAULT_BUFFER_MINUTES,
   blockedDates: [],
@@ -74,6 +78,11 @@ export const cleanSetting: { [K in SettingName]: (value: unknown) => Settings[K]
     }
     if (url.protocol !== "https:" || v.length > 300) throw new AdminError("invalid", "The meeting link must be a full https:// address.");
     return url.toString();
+  },
+  organizerEmail: (value) => {
+    const v = String(value ?? "").trim().toLowerCase();
+    if (!/^[^\s@"<>]+@[^\s@"<>]+\.[a-z]{2,}$/.test(v) || v.length > 120) throw new AdminError("invalid", "The organizer email must be an address like hello@bupulse.com.");
+    return v;
   },
   slotMinutes: (value) => {
     const n = number("The demo length (minutes)", 15, 120)(value);

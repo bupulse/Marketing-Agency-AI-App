@@ -64,6 +64,7 @@ CREATE TABLE "DemoBooking" (
     "notes" TEXT,
     "meetingLink" TEXT,
     "icsToken" TEXT NOT NULL,
+    "sequence" INTEGER NOT NULL DEFAULT 0,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "DemoBooking_pkey" PRIMARY KEY ("id")
@@ -73,6 +74,8 @@ CREATE INDEX "DemoBooking_startsAt_idx" ON "DemoBooking"("startsAt");
 CREATE INDEX "DemoBooking_businessId_status_idx" ON "DemoBooking"("businessId", "status");
 -- Two clients can never hold the same start time: the booking code checks first, the database guarantees it.
 CREATE UNIQUE INDEX "DemoBooking_live_slot_key" ON "DemoBooking"("startsAt") WHERE "status" = 'booked';
+-- And one company never holds two live bookings (a reschedule moves the one it has).
+CREATE UNIQUE INDEX "DemoBooking_live_business_key" ON "DemoBooking"("businessId") WHERE "status" = 'booked';
 ALTER TABLE "DemoBooking" ADD CONSTRAINT "DemoBooking_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- Same rules as the other internal tables: RLS on, no access for anon, authenticated or service_role (Prisma connects as postgres).

@@ -80,7 +80,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
       {plans.length > 1 && (
         <Container className="pb-20">
           <SectionHeading title="Compare plans" text="Everything in each plan, side by side." className="mb-10" />
-          <PlanComparison plans={plans} />
+          <PlanComparison plans={plans} trialDays={trialDays} />
         </Container>
       )}
 

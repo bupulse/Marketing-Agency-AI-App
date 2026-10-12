@@ -7,10 +7,14 @@ import { featureLabel, type FeatureKey } from "@/lib/features";
 
 export const missing = new Set<FeatureKey>();
 export const serviceOff = new Set<FeatureKey>();
-/** Set `planUnknown` to true to act as a company whose plan cannot be resolved (catalog degraded, unknown key). */
-export const state = { planUnknown: false };
+/** Set `planUnknown` to act as a company whose plan cannot be resolved; `block` to act as a read-only account. */
+export const state: { planUnknown: boolean; block: AccountBlock | null } = { planUnknown: false, block: null };
 
 export type FeatureBlockReason = "not_in_plan" | "service_off" | "plan_unknown";
+export type AccountBlock = "pending_demo" | "trial_expired" | "past_due" | "inactive";
+export function blockMessage(block: AccountBlock): string {
+  return `Account is read-only (${block}).`;
+}
 
 export const PLAN_UNKNOWN_MESSAGE = "We could not check your plan right now. Please try again in a moment.";
 
@@ -22,17 +26,18 @@ export class FeatureRequiredError extends Error {
   constructor(
     public feature: FeatureKey,
     public reason: FeatureBlockReason,
+    public block: AccountBlock | null = null,
   ) {
-    super(reason === "service_off" ? "This feature is temporarily unavailable. Please try again later." : reason === "plan_unknown" ? PLAN_UNKNOWN_MESSAGE : notInPlanMessage(feature));
+    super(block ? blockMessage(block) : reason === "service_off" ? "This feature is temporarily unavailable. Please try again later." : reason === "plan_unknown" ? PLAN_UNKNOWN_MESSAGE : notInPlanMessage(feature));
     this.name = "FeatureRequiredError";
   }
 }
 
-const status = (key: FeatureKey): "ok" | FeatureBlockReason => (state.planUnknown ? "plan_unknown" : missing.has(key) ? "not_in_plan" : serviceOff.has(key) ? "service_off" : "ok");
+const status = (key: FeatureKey): "ok" | FeatureBlockReason => (state.block ? "not_in_plan" : state.planUnknown ? "plan_unknown" : missing.has(key) ? "not_in_plan" : serviceOff.has(key) ? "service_off" : "ok");
 
 export async function companyEntitlements() {
   const all = state.planUnknown ? [] : (await import("@/lib/features")).FEATURE_KEYS.filter((k) => !missing.has(k));
-  return { inPlan: new Set(all), usable: new Set(all.filter((k) => !serviceOff.has(k))), resolved: !state.planUnknown };
+  return { inPlan: new Set(all), usable: new Set(all.filter((k) => !serviceOff.has(k))), resolved: !state.planUnknown || state.block !== null, block: state.block };
 }
 export function blockReason(e: { inPlan: Set<FeatureKey>; resolved: boolean }, key: FeatureKey): FeatureBlockReason {
   return e.inPlan.has(key) ? "service_off" : e.resolved ? "not_in_plan" : "plan_unknown";
@@ -48,11 +53,11 @@ export async function hasFeature(_subject: unknown, key: FeatureKey) {
 }
 export async function assertFeature(_subject: unknown, key: FeatureKey) {
   const s = status(key);
-  if (s !== "ok") throw new FeatureRequiredError(key, s);
+  if (s !== "ok") throw new FeatureRequiredError(key, s, state.block);
 }
 export async function featureBlocked(_subject: unknown, key: FeatureKey) {
   const s = status(key);
-  return s === "ok" ? null : new FeatureRequiredError(key, s).message;
+  return s === "ok" ? null : new FeatureRequiredError(key, s, state.block).message;
 }
 export async function requireFeature(_subject: unknown, key: FeatureKey) {
   const s = status(key);

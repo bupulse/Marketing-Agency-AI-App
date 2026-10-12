@@ -4,6 +4,7 @@ import type { User as AuthUser } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db";
 import type { SignUpMethod } from "@/lib/generated/prisma/client";
 import { regionFromCountryName } from "@/lib/region";
+import { timezoneForCountryName } from "@/lib/region-format";
 
 type SignUpDetails = {
   organisationName: string | null;
@@ -87,6 +88,8 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
           country: details.country,
           phone: details.phone,
           pricingRegion,
+          // Rwanda and the EAC countries have one zone each; elsewhere the browser sets it on the first dashboard visit.
+          ...(timezoneForCountryName(details.country) ? { timezone: timezoneForCountryName(details.country) as string } : {}),
           detailsCompletedAt: hasRequiredDetails(details) ? now : null,
           // The person who signs up owns the company; teammates are added from Settings → Team.
           memberships: { create: { userId: authUser.id, role: "OWNER" } },

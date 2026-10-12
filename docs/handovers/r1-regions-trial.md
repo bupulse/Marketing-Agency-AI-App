@@ -54,26 +54,51 @@ Both add columns with defaults and new tables only: no rewrite, nothing dropped,
 
 Also fixed while making the checks green: `lib/demo/slots.ts` `freeSlots` covered `days + 1` days (now exactly `days`) and `formatSlot` / `formatSlotDay` / `formatSlotTime` are built from `formatToParts` so the text is the same whatever the ICU version ("Tuesday 13 October 2026, 10:00"); R1's own tests had a few wrong expectations (ICS folding, audit count, trial expiry in the second run) and an untyped email mock that failed `tsc`.
 
+## Review fixes (12 October 2026)
+
+From the R1 review, all with tests:
+
+1. **Region set once** (high): `/welcome` sets country, `pricingRegion` and (where the country has one zone) `timezone` only on the first save (`updateMany where detailsCompletedAt is null`); a later call of the public server action changes name and contact details only. `ensureAccount` sets the zone from the country too (`COUNTRY_TIMEZONES`). After that only an admin changes the region (audited). Tests: `tests/account/welcome.test.ts`, sign-up test in `tests/demo/demo-flow.test.ts`.
+2. **Organizer address**: new setting `demo.organizerEmail` (default hello@bupulse.com, Admin → Settings → Demo calls). The client's invite names it as ORGANIZER and lists only the client; the admins' copy adds `ADMIN_EMAILS`. The `.ics` route serves the client's copy.
+3. **ICS token and route**: `icsToken` = 32 random bytes base64url (`newIcsToken()`), set by `bookDemo`; the Prisma-side `@default(cuid())` is gone (the column never had a SQL default, the migration is unchanged there). The route answers 404 unless the booking is `booked` and ended less than a day ago, and is rate-limited per address (30/h). Test: `tests/demo/demo-actions.test.ts`.
+4. **Rate limits** on choose plan (10/h), book (5/h) and cancel (5/h) per company (`DEMO_LIMITS`), like the Autopilot actions.
+5. **One live booking per company**: partial unique index `DemoBooking_live_business_key` (added to the R1 migration, which has not been applied anywhere); a P2002 on the first booking returns the booking that won. The buffer is not re-checked inside a transaction: accepted and documented in `docs/REGIONS.md`.
+6. **Reschedule in place**: `DemoBooking.sequence` (new column in the R1 migration); a reschedule updates the row (same UID, SEQUENCE + 1), cancelling bumps it and sends METHOD:CANCEL for the same UID.
+7. **Legacy trials** whose `trialEndsAt` is older than 48 h are flipped to EXPIRED without an email (audited `emailed: false`).
+8. **Read-only accounts**: `accountBlock()` in `lib/entitlements.ts` (PENDING_DEMO, trial over, PAST_DUE, EXPIRED/CANCELED). The plan's features stay in `inPlan`/`usable` for viewing; `block` is set, `resolved: true`, `featureStatus` answers `not_in_plan` (403) with a message that says why (`FeatureRequiredError.block`, `blockMessage`). Crons skip, widget `unavailable`, API refused. **Decision: posts of a blocked company stay SCHEDULED and held** (`claimDuePosts` skips companies whose subscription is not ACTIVE/TRIALING; a claimed post of a blocked account is released with the reason as `lastError`, attempt returned); they go out when the company pays. Tests: `tests/features/entitlements.test.ts`, `tests/publishing/engine.test.ts`.
+9. Terms no longer list prices per plan: "prices depend on the country … see Pricing".
+10. About page: neutral real text (built in Kigali, Rwanda; small team; next: video and voice); `plan-comparison` takes the trial setting (`trialDays` prop from the pricing page).
+11. PENDING_DEMO resolves (`resolved: true`, empty plan) → 403 `not_in_plan`, never 503 (part of 8).
+13. Every country in `lib/content/countries.ts` has its ISO code in `COUNTRY_CODES` (test checks the two lists agree and codes are unique).
+15. `extendTrial` and `change_plan` to TRIAL clear both reminder stamps; `startTrial` refuses a chosen plan the company's region does not offer and accepts `planKey` from the admin.
+16. A client may book again once the booked slot's end has passed and the admin has not marked it (the same row moves).
+17. ICS: `CN` parameters in DQUOTEs, lone `\r` escaped, folding by octets without splitting a UTF-8 sequence or surrogate pair.
+- Also: `Business.timezone` from the sign-up country (see 1); a confirmed Mobile Money payment of a PENDING_DEMO company keeps its booking (shown in Demos with the "Paying" badge) — documented in `docs/MOMO.md`.
+- Left as open items: 12, 14 (added to the Paddle TODO in `docs/REGIONS.md`: compare the billing country with the region at checkout), 18, 19 (see Open items).
+
 ## Checks
 
-Run on 12 October 2026 in the worktree after the merge with `v2` (no database; `.env` has empty database values on purpose, nothing was migrated):
+Run on 12 October 2026 in the worktree after the review fixes (no database; `.env` has empty database values on purpose, nothing was migrated):
 
 | Check | Result |
 |---|---|
 | `npx next typegen` | ok |
 | `npx tsc --noEmit` | clean (exit 0) |
 | `npm run lint` | clean: 0 errors, 0 warnings |
-| `npx vitest run` | 137 files passed, 9 skipped; 1712 tests passed, 69 skipped; 0 failed (the jpeg / carousel timing tests passed first time) |
+| `npx vitest run` | 139 files passed, 9 skipped; 1724 tests passed, 69 skipped; 0 failed |
 | `npx next build` | compiled, 89 static pages generated, exit 0 |
 
-New or changed tests: `tests/billing/momo-*.test.ts` (regional prices, PENDING_DEMO / EXPIRED → ACTIVE on confirm, reminder amount fallback, settings without prices), `tests/autopilot/planner.test.ts` (posting times in Africa/Kigali and America/Sao_Paulo with a learned profile), `tests/demo/*` and `tests/regions/region-prices.test.ts` (R1's own, now passing and type-clean), `tests/admin/fake-db.ts` (relations on select / include).
+New or changed tests (review fixes): `tests/account/welcome.test.ts`, `tests/demo/demo-actions.test.ts` (rate limits, `.ics` route), `tests/demo/demo-flow.test.ts` (organizer, token, in-place reschedule, rebook, index race, region check at Start trial, silent legacy expiry), `tests/demo/slots.test.ts` (ICS quoting, escaping, octet folding), `tests/features/entitlements.test.ts` (read-only accounts), `tests/publishing/engine.test.ts` (held posts), `tests/regions/region-format.test.ts` (every country mapped), `tests/admin/service.test.ts` (reminder stamps).
+
+Earlier (merge with v2): `tests/billing/momo-*.test.ts` (regional prices, PENDING_DEMO / EXPIRED → ACTIVE on confirm, reminder amount fallback, settings without prices), `tests/autopilot/planner.test.ts` (posting times in Africa/Kigali and America/Sao_Paulo with a learned profile), `tests/demo/*` and `tests/regions/region-prices.test.ts` (R1's own, now passing and type-clean), `tests/admin/fake-db.ts` (relations on select / include).
 
 ## Open items
 
 - Paddle: create the RW card prices and the EAC prices (`PlanRegionPrice.paddle*PriceId`), and the card-at-trial-start flow (`docs/REGIONS.md`, "Paddle (TODO)"). Nothing calls Paddle today.
+- Review items left open on purpose: **12** (wording to be pasted from the review), **14** Paddle checkout should compare the card's billing country with the company's region (in the Paddle TODO, `docs/REGIONS.md`), **18** and **19** (wording to be pasted from the review).
 - Legal placeholders on the public pages (`app/(marketing)/terms`, `privacy`, `data-deletion`: "[Company legal name], [Address]", "[State]", "[County, State]") need the owner's legal entity and governing law; nothing was invented.
-- `Business.timezone` is only set from the browser on the first dashboard visit; Autopilot plans a business whose owner never opened the dashboard in UTC. Setting it from the sign-up country (Rwanda → Africa/Kigali) at `ensureAccount` would close that gap.
-- Confirming a Mobile Money payment of a `PENDING_DEMO` company leaves its demo booking as it is; the owner may still hold the call or mark it done / cancelled from Demos.
+- `Business.timezone` is set from the sign-up country for Rwanda and the EAC countries; everywhere else it stays "UTC" until the browser sets it on the first dashboard visit, so Autopilot plans such a business in UTC until then.
+- Confirming a Mobile Money payment of a `PENDING_DEMO` company keeps its demo booking (decided: the client may still want the demo); Demos shows the company as "Paying" and the owner marks the booking done or cancelled.
 - The Starter and Business cards use plain highlights; R6 may want Rwanda-specific wording and the WhatsApp button.
 - Google Calendar per-booking Meet links (R5 optional upgrade) would replace the single `demo.meetingLink` setting.
 - The owner's availability is one weekly pattern; no per-date exceptions beyond blocked dates.

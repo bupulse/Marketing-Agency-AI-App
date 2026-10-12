@@ -67,7 +67,9 @@ duplicate, like a second card purchase, while a past-due or lapsed MoMo plan is 
 - **Waiting for the demo** (`PENDING_DEMO`): the lock screen (`components/app/demo-lock.tsx`) offers **Pay for <plan> by
   Mobile Money** to the Owner when the region takes Mobile Money and the owner has set up where to pay; it starts a
   monthly payment of the chosen plan (`components/app/demo-pay.tsx`) and shows the pay screen in place. Confirming makes
-  the company `ACTIVE` and the dashboard opens; the demo booking stays as it is (the owner can still hold or mark it).
+  the company `ACTIVE` and the dashboard opens. **The demo booking is kept** (decided 12 October 2026): a paying client
+  may still want the walk-through, so the booking stays `booked` and shows in Demos with the company badged "Paying";
+  the owner holds it or marks it done / cancelled. The calendar invite still works for both sides.
 - **On the trial** (`TRIALING`): the client pays from Billing as above. Trial-end reminders (a day before, last day) and
   the expiry to `EXPIRED` are the trial-reminders cron's (`lib/demo/trial-reminders.ts`, hourly), which only looks at
   `TRIALING` subscriptions without a card on file. The Mobile Money renewals cron only looks at `MANUAL_MOMO` +

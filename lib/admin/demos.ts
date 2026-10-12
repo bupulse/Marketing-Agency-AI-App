@@ -7,6 +7,7 @@ import { formatSlot } from "@/lib/demo/slots";
 import { logError } from "@/lib/errors";
 import { getPlan, getTrialPlan } from "@/lib/plan-catalog";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
+import { companyPlans } from "@/lib/region-prices";
 import { writeAudit } from "./audit";
 import { getSettings } from "./settings";
 import { AdminError, type AdminContext } from "./types";
@@ -74,7 +75,7 @@ export async function setDemoStatus(ctx: AdminContext, input: { id: string; stat
  * limits) with the chosen plan's features (lib/entitlements.ts), for the number of days in Admin -> Settings.
  * The live demo booking, if any, is marked done. Audited; the client gets an email.
  */
-export async function startTrial(ctx: AdminContext, input: { businessId: string; days?: number }, now = new Date()) {
+export async function startTrial(ctx: AdminContext, input: { businessId: string; days?: number; planKey?: string }, now = new Date()) {
   const business = await prisma.business.findUnique({
     where: { id: input.businessId },
     select: { id: true, name: true, userId: true, user: { select: { email: true, name: true, subscription: { select: { status: true, plan: true, chosenPlan: true, trialEndsAt: true, providerSubscriptionId: true } } } } },
@@ -83,16 +84,23 @@ export async function startTrial(ctx: AdminContext, input: { businessId: string;
   const sub = business.user.subscription;
   if (!sub) throw new AdminError("conflict", "This company has no subscription record.");
   if (sub.status !== "PENDING_DEMO") throw new AdminError("conflict", `This company is ${sub.status === "TRIALING" ? "already on its trial" : `${sub.status.toLowerCase().replace("_", " ")}, not waiting for a demo`}. Use "Extend trial" or "Change plan" instead.`);
-  if (!sub.chosenPlan) throw new AdminError("conflict", "The client has not chosen a plan yet. Ask them to choose one in the app first (Book a demo, step 1).");
-  const chosen = await getPlan(sub.chosenPlan);
-  if (!chosen) throw new AdminError("conflict", `The chosen plan "${sub.chosenPlan}" no longer exists. Change it in Plans or ask the client to choose again.`);
+  // The admin may pick the plan (e.g. after moving the company to another region); otherwise it is the client's choice.
+  const chosenKey = input.planKey?.trim() || sub.chosenPlan;
+  if (!chosenKey) throw new AdminError("conflict", "The client has not chosen a plan yet. Ask them to choose one in the app first (Book a demo, step 1), or pick one here.");
+  const chosen = await getPlan(chosenKey);
+  if (!chosen) throw new AdminError("conflict", `The plan "${chosenKey}" no longer exists. Change it in Plans or ask the client to choose again.`);
+  // The trial carries the chosen plan's features and leads to paying for it, so it must be a plan the company's region sells.
+  const { region, plans } = await companyPlans(business.id);
+  if (!plans.some((p) => p.key === chosen.key)) {
+    throw new AdminError("conflict", `The ${chosen.name} plan is not offered in ${region.name} (${region.key}), the company's region. Pick one of: ${plans.map((p) => p.name).join(", ") || "none (add a price for this region first)"}, or change the company's region.`);
+  }
   const settings = await getSettings();
   const days = input.days ?? settings.trialDays;
   if (!Number.isInteger(days) || days < 1 || days > 90) throw new AdminError("invalid", "days must be a whole number from 1 to 90.");
   const trialPlan = await getTrialPlan();
   const trialEndsAt = new Date(now.getTime() + days * DAY_MS);
   const before = { status: sub.status, plan: sub.plan, chosenPlan: sub.chosenPlan, trialEndsAt: sub.trialEndsAt };
-  const after = { status: "TRIALING" as const, plan: trialPlan.key, chosenPlan: sub.chosenPlan, trialEndsAt, currentPeriodStart: now, currentPeriodEnd: trialEndsAt, trialReminder1SentAt: null, trialReminder2SentAt: null };
+  const after = { status: "TRIALING" as const, plan: trialPlan.key, chosenPlan: chosen.key, trialEndsAt, currentPeriodStart: now, currentPeriodEnd: trialEndsAt, trialReminder1SentAt: null, trialReminder2SentAt: null };
   await prisma.$transaction(async (tx) => {
     // Guarded on the status we read, so two clicks cannot start two trials.
     const { count } = await tx.subscription.updateMany({ where: { userId: business.userId, status: "PENDING_DEMO" }, data: after });
@@ -100,7 +108,7 @@ export async function startTrial(ctx: AdminContext, input: { businessId: string;
     await tx.demoBooking.updateMany({ where: { businessId: business.id, status: "booked" }, data: { status: "done" } });
     await writeAudit(tx, ctx, "start_trial", `business:${business.id}`, before, { ...after, days });
   });
-  trackEvent(EVENT_NAMES.trialStarted, { userId: business.userId, businessId: business.id, props: { plan: sub.chosenPlan, days } });
+  trackEvent(EVENT_NAMES.trialStarted, { userId: business.userId, businessId: business.id, props: { plan: chosen.key, days } });
   try {
     const first = business.user.name?.split(/\s+/)[0];
     const { html, text } = renderEmail({
@@ -118,7 +126,7 @@ export async function startTrial(ctx: AdminContext, input: { businessId: string;
   } catch (error) {
     await logError(error, { source: "admin.start-trial.email", businessId: business.id });
   }
-  return { businessId: business.id, userId: business.userId, status: "TRIALING" as const, plan: trialPlan.key, chosenPlan: sub.chosenPlan, trialEndsAt, days };
+  return { businessId: business.id, userId: business.userId, status: "TRIALING" as const, plan: trialPlan.key, chosenPlan: chosen.key, trialEndsAt, days };
 }
 
 /** What the company page shows about the demo stage: status, the chosen plan, the live booking and the trial setting. */

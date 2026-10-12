@@ -23,6 +23,8 @@ export const REMINDER_1_BEFORE_MS = 24 * HOUR;
 export const REMINDER_2_BEFORE_MS = 8 * HOUR;
 /** A trial shorter than this gets only the last-day reminder (the first would fire at the start). */
 const MIN_FOR_FIRST_MS = 36 * HOUR;
+/** A trial that ended longer ago than this (a legacy row from before the cron existed) is closed without an email. */
+export const ENDED_EMAIL_WINDOW_MS = 48 * HOUR;
 const BATCH = 200;
 
 const systemContext = () => ({ ...consoleContext(null), actor: "system:cron" });
@@ -69,8 +71,10 @@ export async function processTrialReminders(now = new Date()): Promise<TrialRun>
     const { count } = await prisma.subscription.updateMany({ where: { id: row.id, status: "TRIALING", trialEndsAt: row.trialEndsAt }, data: { status: "EXPIRED" } });
     if (count !== 1) continue;
     out.expired++;
-    await writeAudit(prisma, systemContext(), "trial_expired", `user:${row.userId}`, { status: "TRIALING", trialEndsAt: row.trialEndsAt }, { status: "EXPIRED" }).catch(() => undefined);
-    if (await isServiceEnabled("resend")) await sendEnded(row).catch((e) => logError(e, { source: "trial.ended-email", userId: row.userId }));
+    const legacy = now.getTime() - row.trialEndsAt!.getTime() > ENDED_EMAIL_WINDOW_MS;
+    await writeAudit(prisma, systemContext(), "trial_expired", `user:${row.userId}`, { status: "TRIALING", trialEndsAt: row.trialEndsAt }, { status: "EXPIRED", emailed: !legacy }).catch(() => undefined);
+    // Only trials that ended recently are told; one that ended days or weeks ago (before this cron existed) is closed quietly.
+    if (!legacy && (await isServiceEnabled("resend"))) await sendEnded(row).catch((e) => logError(e, { source: "trial.ended-email", userId: row.userId }));
   }
 
   // 2. Reminders, only while Resend is on (otherwise nothing is claimed and the next run tries again).

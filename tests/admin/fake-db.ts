@@ -197,7 +197,7 @@ export function createFakeDb() {
     pricingRegion: table([], { pk: "key" }),
     planRegionPrice: table([], { pk: "id", defaults: () => ({ cardMonthlyUsdCents: null, cardYearlyUsdCents: null, paddleMonthlyPriceId: null, paddleYearlyPriceId: null, updatedAt: new Date() }) }),
     adminAvailability: table([], { pk: "id" }),
-    demoBooking: table([], { pk: "id", unique: ["icsToken"], defaults: () => ({ status: "booked", notes: null, meetingLink: null, icsToken: `ics_${Math.random().toString(36).slice(2, 14)}`, updatedAt: new Date() }) }),
+    demoBooking: table([], { pk: "id", unique: ["icsToken"], defaults: () => ({ status: "booked", notes: null, meetingLink: null, sequence: 0, icsToken: `ics_${Math.random().toString(36).slice(2, 14)}`, updatedAt: new Date() }) }),
     membership: table([], { pk: "id", unique: ["userId"] }),
     $executeRaw: vi.fn(async () => 1),
     $queryRaw: vi.fn(async () => [{ locked: true }]),

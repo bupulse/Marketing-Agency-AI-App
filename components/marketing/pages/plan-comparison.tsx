@@ -4,11 +4,12 @@ import type { PublicPlan } from "@/lib/plan-catalog";
 
 type Cell = string | boolean;
 
-function rowsFor(plans: PublicPlan[]): { label: string; cells: Cell[] }[] {
+function rowsFor(plans: PublicPlan[], trialDays: number): { label: string; cells: Cell[] }[] {
   const each = (f: (p: PublicPlan) => Cell) => plans.map(f);
   const total = (p: PublicPlan, n: number) => (p.isTrial ? `${n} total` : `${n} / month`);
   const rows: { label: string; cells: Cell[] }[] = [
-    { label: "Price", cells: each((p) => (p.isTrial ? `Free for ${p.trialDays ?? 7} days` : `${formatPrice(p.monthlyPriceCents, p.currency)}/month`)) },
+    // The trial length is the admin setting (docs/REGIONS.md), not the TRIAL plan's own column.
+    { label: "Price", cells: each((p) => (p.isTrial ? `Free for ${trialDays} ${trialDays === 1 ? "day" : "days"}` : `${formatPrice(p.monthlyPriceCents, p.currency)}/month`)) },
     { label: "AI text generations", cells: each((p) => total(p, p.limits.text)) },
     { label: "Brand designs", cells: each((p) => total(p, p.limits.image)) },
     { label: "Brand voice and business knowledge", cells: each(() => true) },
@@ -30,8 +31,8 @@ function Value({ value }: { value: Cell }) {
 }
 
 /** Plan comparison. The columns and numbers come from the plans in the database. Scrolls sideways inside its own box on narrow screens. */
-export function PlanComparison({ plans }: { plans: PublicPlan[] }) {
-  const rows = rowsFor(plans);
+export function PlanComparison({ plans, trialDays }: { plans: PublicPlan[]; trialDays: number }) {
+  const rows = rowsFor(plans, trialDays);
   return (
     <div className="glass-strong overflow-x-auto rounded-card" tabIndex={0} role="region" aria-label="Plan comparison table">
       <table className="w-full min-w-[640px] border-collapse text-left text-[15px]">

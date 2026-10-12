@@ -7,7 +7,7 @@ import { setSetting, type SettingName } from "@/lib/admin/settings";
 
 const BACK = "/admin/settings";
 const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-const NAMES: SettingName[] = ["trialDays", "usdToRwf", "cardMarginPercent", "meetingLink", "slotMinutes", "bufferMinutes", "blockedDates"];
+const NAMES: SettingName[] = ["trialDays", "usdToRwf", "cardMarginPercent", "meetingLink", "organizerEmail", "slotMinutes", "bufferMinutes", "blockedDates"];
 
 // Each action re-checks the admin (adminAction: allow-listed email, AAL2). Every saved setting is audited.
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { cardUsdCents, currencyNote, formatMinor, localEquivalentMinor, REGION_SEEDS, regionKeyForCountryCode, regionKeyForCountryName } from "@/lib/region-format";
+import { cardUsdCents, COUNTRY_CODES, currencyNote, formatMinor, localEquivalentMinor, REGION_SEEDS, regionKeyForCountryCode, regionKeyForCountryName, timezoneForCountryName } from "@/lib/region-format";
+import { countries } from "@/lib/content/countries";
 import { resolveDisplayRegionKey } from "@/lib/region";
 
 // Regions as data: which region a country is in, how money is shown, and the card price of an RWF plan.
@@ -13,6 +14,16 @@ describe("region of a country", () => {
     expect(regionKeyForCountryCode("US")).toBe("GLOBAL");
     expect(regionKeyForCountryCode(null)).toBe("GLOBAL");
     expect(regionKeyForCountryCode("")).toBe("GLOBAL");
+  });
+
+  it("knows the ISO code of every sign-up country, and the zone of the ones with their own region", () => {
+    for (const name of countries) expect(COUNTRY_CODES[name], name).toMatch(/^[A-Z]{2}$/);
+    expect(new Set(Object.values(COUNTRY_CODES)).size).toBe(Object.keys(COUNTRY_CODES).length);
+    expect(COUNTRY_CODES["United Kingdom"]).toBe("GB");
+    expect(timezoneForCountryName("Rwanda")).toBe("Africa/Kigali");
+    expect(timezoneForCountryName("Kenya")).toBe("Africa/Nairobi");
+    expect(timezoneForCountryName("France")).toBeNull();
+    expect(timezoneForCountryName(null)).toBeNull();
   });
 
   it("maps the sign-up country names", () => {

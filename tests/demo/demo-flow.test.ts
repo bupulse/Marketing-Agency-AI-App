@@ -90,7 +90,7 @@ describe("sign-up", () => {
     expect(ok).toBe(true);
     // The upsert's argument: { where, update, create: { business: { create }, subscription: { create } }, include }.
     const data = create.mock.calls[0][0] as unknown as { create: { business: { create: Record<string, unknown> }; subscription: { create: Record<string, unknown> } } };
-    expect(data.create.business.create).toMatchObject({ pricingRegion: "RW", country: "Rwanda" });
+    expect(data.create.business.create).toMatchObject({ pricingRegion: "RW", country: "Rwanda", timezone: "Africa/Kigali" });
     expect(data.create.subscription.create).toEqual({ plan: "TRIAL", status: "PENDING_DEMO", trialEndsAt: null, currentPeriodStart: expect.any(Date), currentPeriodEnd: null });
     expect(h.track.mock.calls.map((c) => c[0])).toEqual(["signup"]); // no trial_started at sign-up
   });
@@ -120,7 +120,15 @@ describe("while waiting for the demo", () => {
     expect(h.email.mock.calls.map((c) => (c[0] as { to: string }).to)).toEqual(["owner1@example.com", "admin@bupulse.com", "owner@bupulse.com"]);
     const first = h.email.mock.calls[0][0] as { subject: string; text: string; attachments: { filename: string; content: string }[] };
     expect(first.subject).toMatch(/demo is booked: Tuesday 13 October 2026, 10:00/);
-    expect(Buffer.from(first.attachments[0].content, "base64").toString()).toContain("BEGIN:VCALENDAR");
+    const clientIcs = Buffer.from(first.attachments[0].content, "base64").toString();
+    expect(clientIcs).toContain("BEGIN:VCALENDAR");
+    // The client's invite names the dedicated organizer address and only the client; the admins' copy adds the admins.
+    expect(clientIcs).toContain('ORGANIZER;CN="BuPulse":mailto:hello@bupulse.com');
+    expect(clientIcs).not.toContain("admin@bupulse.com");
+    expect(clientIcs).toContain("SEQUENCE:0");
+    const adminMail = h.email.mock.calls[1][0] as { attachments: { content: string }[] };
+    expect(Buffer.from(adminMail.attachments[0].content, "base64").toString().replace(/\r\n /g, "")).toContain("mailto:admin@bupulse.com");
+    expect(booking.icsToken).toMatch(/^[A-Za-z0-9_-]{43}$/); // 32 random bytes, base64url
     expect(first.text).toContain(`/api/demo/ics/${booking.icsToken}`);
     expect(h.track).toHaveBeenCalledWith("demo_booked", expect.objectContaining({ businessId }));
   });
@@ -131,7 +139,7 @@ describe("while waiting for the demo", () => {
     await choosePlan({ businessId: a.businessId, planKey: "STARTER" });
     await choosePlan({ businessId: b.businessId, planKey: "STARTER" });
     const slot = new Date("2026-10-13T08:00:00Z");
-    await bookDemo({ businessId: a.businessId, startsAt: slot, now: NOW });
+    const firstBooking = (await bookDemo({ businessId: a.businessId, startsAt: slot, now: NOW })).booking;
     expect(await code(bookDemo({ businessId: b.businessId, startsAt: slot, now: NOW }))).toMatch(/^conflict: That time is no longer free/);
     expect(await code(bookDemo({ businessId: b.businessId, startsAt: new Date("2026-10-13T08:30:00Z"), now: NOW }))).toMatch(/^conflict/); // inside the buffer
     expect(await code(bookDemo({ businessId: b.businessId, startsAt: new Date("2026-10-17T08:00:00Z"), now: NOW }))).toMatch(/^conflict/); // Saturday
@@ -139,8 +147,13 @@ describe("while waiting for the demo", () => {
     h.email.mockClear();
     const moved = await bookDemo({ businessId: a.businessId, startsAt: new Date("2026-10-14T09:00:00Z"), now: NOW });
     expect(moved.rescheduled).toBe(true);
-    expect(h.db.demoBooking.rows.map((r) => r.status)).toEqual(["cancelled", "booked"]);
-    expect((h.email.mock.calls[0][0] as { subject: string }).subject).toMatch(/demo has moved/);
+    // The one booking moves in place: same row and calendar UID, SEQUENCE + 1, so calendars move the event.
+    expect(moved.booking.id).toBe(firstBooking.id);
+    expect(h.db.demoBooking.rows).toHaveLength(1);
+    expect(h.db.demoBooking.rows[0]).toMatchObject({ status: "booked", sequence: 1, startsAt: new Date("2026-10-14T09:00:00Z"), icsToken: firstBooking.icsToken });
+    const movedMail = h.email.mock.calls[0][0] as { subject: string; attachments: { content: string }[] };
+    expect(movedMail.subject).toMatch(/demo has moved/);
+    expect(Buffer.from(movedMail.attachments[0].content, "base64").toString()).toContain(`UID:${firstBooking.id}@bupulse.com\r\nSEQUENCE:1`);
     // The old slot is free again for the other company.
     await bookDemo({ businessId: b.businessId, startsAt: slot, now: NOW });
   });
@@ -154,8 +167,36 @@ describe("while waiting for the demo", () => {
     h.email.mockClear();
     const cancelled = await cancelDemo({ businessId, now: new Date(slot.getTime() - 3 * HOUR) });
     expect(cancelled.status).toBe("cancelled");
-    expect((h.email.mock.calls[0][0] as { subject: string }).subject).toMatch(/cancelled/);
+    expect(h.db.demoBooking.rows[0]).toMatchObject({ status: "cancelled", sequence: 1 });
+    const mail = h.email.mock.calls[0][0] as { subject: string; attachments: { content: string }[] };
+    expect(mail.subject).toMatch(/cancelled/);
+    expect(Buffer.from(mail.attachments[0].content, "base64").toString()).toContain("METHOD:CANCEL");
     expect(await code(cancelDemo({ businessId, now: NOW }))).toMatch(/^invalid/);
+  });
+
+  it("lets the client book again once the booked slot has passed without the admin marking it", async () => {
+    const { businessId } = company(1);
+    await choosePlan({ businessId, planKey: "STARTER" });
+    await bookDemo({ businessId, startsAt: new Date("2026-10-13T08:00:00Z"), now: NOW }); // Tuesday 10:00-10:30 Kigali
+    expect(await code(bookDemo({ businessId, startsAt: new Date("2026-10-14T09:00:00Z"), now: new Date("2026-10-13T07:30:00Z") }))).toMatch(/^not_allowed/); // 30 minutes before
+    const again = await bookDemo({ businessId, startsAt: new Date("2026-10-14T09:00:00Z"), now: new Date("2026-10-13T09:00:00Z") }); // the slot ended at 08:30Z
+    expect(again.rescheduled).toBe(true);
+    expect(h.db.demoBooking.rows).toHaveLength(1);
+    expect(h.db.demoBooking.rows[0]).toMatchObject({ status: "booked", sequence: 1, startsAt: new Date("2026-10-14T09:00:00Z") });
+  });
+
+  it("two first bookings racing for one company end with the one row (the per-company index decides)", async () => {
+    const { businessId } = company(1);
+    await choosePlan({ businessId, planKey: "STARTER" });
+    const real = h.db.demoBooking.create.getMockImplementation()!;
+    h.db.demoBooking.create.mockImplementationOnce(async (args) => {
+      await real({ data: { ...args.data, startsAt: new Date("2026-10-14T09:00:00Z"), icsToken: "tokenfromtheotherrequest_________________" } });
+      throw Object.assign(new Error("Unique constraint failed on DemoBooking_live_business_key"), { code: "P2002" });
+    });
+    const { booking, rescheduled } = await bookDemo({ businessId, startsAt: new Date("2026-10-13T08:00:00Z"), now: NOW });
+    expect(rescheduled).toBe(false);
+    expect(booking.startsAt).toEqual(new Date("2026-10-14T09:00:00Z"));
+    expect(h.db.demoBooking.rows).toHaveLength(1);
   });
 
   it("is only for companies waiting for their demo", async () => {
@@ -210,6 +251,10 @@ describe("admin: start trial", () => {
     expect(h.db.demoBooking.rows[0]).toMatchObject({ status: "no_show", notes: "Did not join" });
     expect(h.db.auditLog.rows.at(-1)).toMatchObject({ action: "update_demo" });
     expect(await code(setDemoStatus(CONSOLE, { id: upcoming[0].id, status: "booked" }))).toMatch(/^invalid/);
+    // The chosen plan must be one the company's region sells; the admin may pick another that is.
+    h.db.business.rows.find((b) => b.id === businessId)!.pricingRegion = "GLOBAL";
+    expect(await code(startTrial(CONSOLE, { businessId }, NOW))).toMatch(/^conflict: The Starter plan is not offered in Everywhere else/);
+    h.db.business.rows.find((b) => b.id === businessId)!.pricingRegion = "RW";
     const result = await startTrial(CONSOLE, { businessId }, NOW);
     expect(result.days).toBe(3);
     expect(subscription.trialEndsAt?.toISOString()).toBe("2026-10-15T06:00:00.000Z");
@@ -226,8 +271,11 @@ describe("trial end", () => {
     const over = trial(3, -1 * HOUR);
     const card = trial(4, 5 * HOUR, { providerSubscriptionId: "sub_paddle" }); // Paddle's business
     const notYet = trial(5, 3 * DAY);
+    const legacy = trial(6, -3 * DAY); // ended days ago (before this cron existed): closed without an email
     const run = await processTrialReminders(NOW);
-    expect(run).toEqual({ reminded1: 1, reminded2: 1, expired: 1, paused: false });
+    expect(run).toEqual({ reminded1: 1, reminded2: 1, expired: 2, paused: false });
+    expect(legacy.subscription.status).toBe("EXPIRED");
+    expect(h.db.auditLog.rows.find((a) => a.action === "trial_expired" && a.target === `user:${legacy.userId}`)!.after).toMatchObject({ status: "EXPIRED", emailed: false });
     expect(dayBefore.subscription.trialReminder1SentAt).toEqual(NOW);
     expect(lastDay.subscription.trialReminder2SentAt).toEqual(NOW);
     expect(over.subscription.status).toBe("EXPIRED");
@@ -235,7 +283,7 @@ describe("trial end", () => {
     expect(notYet.subscription.trialReminder1SentAt).toBeNull();
     const subjects = h.email.mock.calls.map((c) => (c[0] as { subject: string; to: string }).subject);
     expect(subjects).toEqual(["Your BuPulse trial has ended", "Your BuPulse trial ends tomorrow", "Your BuPulse trial ends today"]);
-    expect(h.db.auditLog.rows.at(-1)).toMatchObject({ action: "trial_expired", actor: "system:cron", target: `user:${over.userId}` });
+    expect(h.db.auditLog.rows.find((a) => a.action === "trial_expired" && a.target === `user:${over.userId}`)).toMatchObject({ actor: "system:cron", after: { status: "EXPIRED", emailed: true } });
     // The expired account is read-only: generation answers trial_expired, nothing was deleted.
     await expect(consumeUsage(over.userId, "text")).rejects.toBeInstanceOf(UsageLimitError);
     await expect(consumeUsage(over.userId, "text")).rejects.toMatchObject({ reason: "trial_expired" });

@@ -22,6 +22,27 @@ export type FeatureBlockReason = "not_in_plan" | "service_off" | "plan_unknown";
 
 export const PLAN_UNKNOWN_MESSAGE = "We could not check your plan right now. Please try again in a moment.";
 
+/**
+ * Why an account is read-only, whatever its plan says: waiting for its demo, trial over, a failed payment, or a plan
+ * that ended (EXPIRED, CANCELED). Mirrors lib/usage.ts, which refuses generation for the same reasons. "Keep your data"
+ * stays: pages still render (viewing), export and delete stay open; everything that does something new is refused,
+ * crons skip the company, and the publisher holds its posts (lib/publishing/engine.ts).
+ */
+export type AccountBlock = "pending_demo" | "trial_expired" | "past_due" | "inactive";
+
+export function blockMessage(block: AccountBlock): string {
+  switch (block) {
+    case "pending_demo":
+      return "Your demo comes first: everything opens after your demo and the free trial that follows it.";
+    case "trial_expired":
+      return "Your free trial has ended. Choose a plan on the Billing page to keep going; everything you made is saved.";
+    case "past_due":
+      return "Your last payment did not go through. Update your payment on the Billing page to keep creating; everything you made is saved.";
+    default:
+      return "Your plan is not active. Choose a plan on the Billing page to start again; everything you made is saved.";
+  }
+}
+
 /** A company (Business.id), or anything that carries one, such as the SessionUser of lib/auth/require-user.ts. */
 export type CompanySubject = string | { businessId: string };
 
@@ -36,23 +57,25 @@ export class FeatureRequiredError extends Error {
   constructor(
     public feature: FeatureKey,
     public reason: FeatureBlockReason,
+    /** Set when the account as a whole is read-only: the message then says why, not "not in your plan". */
+    public block: AccountBlock | null = null,
   ) {
-    super(reason === "service_off" ? UNAVAILABLE_MESSAGE : reason === "plan_unknown" ? PLAN_UNKNOWN_MESSAGE : notInPlanMessage(feature));
+    super(block ? blockMessage(block) : reason === "service_off" ? UNAVAILABLE_MESSAGE : reason === "plan_unknown" ? PLAN_UNKNOWN_MESSAGE : notInPlanMessage(feature));
     this.name = "FeatureRequiredError";
   }
 }
 
-type SubscriptionBits = { plan: string; status: string; chosenPlan: string | null };
+type SubscriptionBits = { plan: string; status: string; chosenPlan: string | null; trialEndsAt?: Date | null };
 
 /** The subscription of a company. Cached per request, like getAppContext. */
 const subscriptionOf = cache(async (businessId: string): Promise<SubscriptionBits | null> => {
   if (!businessId) return null;
   const business = await prisma.business.findUnique({
     where: { id: businessId },
-    select: { user: { select: { subscription: { select: { plan: true, status: true, chosenPlan: true } } } } },
+    select: { user: { select: { subscription: { select: { plan: true, status: true, chosenPlan: true, trialEndsAt: true } } } } },
   });
   const sub = business?.user.subscription;
-  return sub ? { plan: sub.plan, status: sub.status, chosenPlan: sub.chosenPlan ?? null } : null;
+  return sub ? { plan: sub.plan, status: sub.status, chosenPlan: sub.chosenPlan ?? null, trialEndsAt: sub.trialEndsAt ?? null } : null;
 });
 
 /**
@@ -67,6 +90,16 @@ export function featurePlanKey(sub: SubscriptionBits | null): string | null {
   return sub.plan;
 }
 
+/** Pure: whether a subscription makes the account read-only right now (see AccountBlock), or null when it may act. */
+export function accountBlock(sub: SubscriptionBits | null, now: Date = new Date()): AccountBlock | null {
+  if (!sub) return null;
+  if (sub.status === "PENDING_DEMO") return "pending_demo";
+  if (sub.status === "PAST_DUE") return "past_due";
+  if (sub.plan === "TRIAL" && sub.trialEndsAt && sub.trialEndsAt.getTime() < now.getTime()) return "trial_expired";
+  if (sub.status !== "ACTIVE" && sub.status !== "TRIALING") return "inactive";
+  return null;
+}
+
 export type CompanyEntitlements = {
   /** Everything the plan includes. */
   inPlan: Set<FeatureKey>;
@@ -74,6 +107,8 @@ export type CompanyEntitlements = {
   usable: Set<FeatureKey>;
   /** False when the company's plan could not be found in the catalog: `inPlan` is then empty but says nothing. */
   resolved: boolean;
+  /** Set while the account is read-only (demo pending, trial over, past due, ended): nothing in `usable` may be acted on. */
+  block: AccountBlock | null;
 };
 
 const serviceUp = (key: FeatureKey, off: Set<ServiceId>) => {
@@ -89,12 +124,15 @@ export function blockReason(e: Pick<CompanyEntitlements, "inPlan" | "resolved">,
 /** What a company's plan includes and which of those are usable now. One lookup per request. */
 export const companyEntitlements = cache(async (businessId: string): Promise<CompanyEntitlements> => {
   const sub = await subscriptionOf(businessId);
+  const block = accountBlock(sub);
   const planKey = featurePlanKey(sub);
   // A chosen plan that was retired since falls back to the plan the subscription is on.
   const plan = planKey ? ((await getPlan(planKey)) ?? (sub && planKey !== sub.plan ? await getPlan(sub.plan) : null)) : null;
   const off = await disabledServices();
+  // A read-only account keeps its plan's features for viewing; `block` says they may not be acted on. Its answer is
+  // definite (resolved), never "plan_unknown": a company waiting for its demo is refused with 403, not 503.
   const inPlan = new Set<FeatureKey>(plan?.features ?? []);
-  return { inPlan, usable: new Set([...inPlan].filter((k) => serviceUp(k, off))), resolved: plan !== null };
+  return { inPlan, usable: new Set([...inPlan].filter((k) => serviceUp(k, off))), resolved: plan !== null || block !== null, block };
 });
 
 /** The features a company can use right now. */
@@ -102,10 +140,18 @@ export async function companyFeatures(subject: CompanySubject): Promise<Set<Feat
   return (await companyEntitlements(businessIdOf(subject))).usable;
 }
 
-/** "ok", or why the feature is not usable. */
+/** "ok", or why the feature may not be used now (a read-only account answers "not_in_plan" for everything). */
 export async function featureStatus(subject: CompanySubject, key: FeatureKey): Promise<"ok" | FeatureBlockReason> {
-  const { inPlan, usable, resolved } = await companyEntitlements(businessIdOf(subject));
+  const { inPlan, usable, resolved, block } = await companyEntitlements(businessIdOf(subject));
+  if (block) return "not_in_plan";
   return usable.has(key) ? "ok" : inPlan.has(key) ? "service_off" : resolved ? "not_in_plan" : "plan_unknown";
+}
+
+/** The error for a feature that may not be used now, or null. Carries the account block so the message says why. */
+async function featureError(subject: CompanySubject, key: FeatureKey): Promise<FeatureRequiredError | null> {
+  const e = await companyEntitlements(businessIdOf(subject));
+  const status = e.block ? "not_in_plan" : e.usable.has(key) ? "ok" : e.inPlan.has(key) ? "service_off" : e.resolved ? "not_in_plan" : "plan_unknown";
+  return status === "ok" ? null : new FeatureRequiredError(key, status, e.block);
 }
 
 export async function hasFeature(subject: CompanySubject, key: FeatureKey): Promise<boolean> {
@@ -114,14 +160,13 @@ export async function hasFeature(subject: CompanySubject, key: FeatureKey): Prom
 
 /** For server actions and route handlers: throws FeatureRequiredError when the company may not use the feature. */
 export async function assertFeature(subject: CompanySubject, key: FeatureKey): Promise<void> {
-  const status = await featureStatus(subject, key);
-  if (status !== "ok") throw new FeatureRequiredError(key, status);
+  const error = await featureError(subject, key);
+  if (error) throw error;
 }
 
 /** For actions that answer in words (`{ ok: false, error }`): the message when the feature is not usable, else null. */
 export async function featureBlocked(subject: CompanySubject, key: FeatureKey): Promise<string | null> {
-  const status = await featureStatus(subject, key);
-  return status === "ok" ? null : new FeatureRequiredError(key, status).message;
+  return (await featureError(subject, key))?.message ?? null;
 }
 
 /**

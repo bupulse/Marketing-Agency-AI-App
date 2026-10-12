@@ -337,6 +337,16 @@ describe("the calendar plan feature", () => {
   afterEach(() => {
     grant.missing.clear();
     grant.state.planUnknown = false;
+    grant.state.block = null;
+  });
+
+  it("holds (never fails) the posts of a read-only account, with the reason on the post, until it pays", async () => {
+    claimOnce(post({ attempts: 4 }));
+    grant.state.block = "trial_expired";
+    const result = await publishDue(now);
+    expect(result).toMatchObject({ claimed: 1, retrying: 1, failed: 0, published: 0 });
+    expect(provider.publish).not.toHaveBeenCalled();
+    expect(settled().data).toMatchObject({ status: "SCHEDULED", attempts: 3, nextAttemptAt: null, lastError: grant.blockMessage("trial_expired") });
   });
 
   it("fails a claimed post of a company whose plan (resolved) lacks it, with the reason, instead of sending it", async () => {

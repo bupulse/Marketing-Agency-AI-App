@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/app/empty-state";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui";
 import { UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
-import { PLAN_UNKNOWN_MESSAGE, type FeatureBlockReason } from "@/lib/entitlements";
+import { blockMessage, PLAN_UNKNOWN_MESSAGE, type AccountBlock, type FeatureBlockReason } from "@/lib/entitlements";
 import { featureOf, type FeatureKey } from "@/lib/features";
 import { askMessage, can, type Role } from "@/lib/team/roles";
 
@@ -13,9 +13,23 @@ import { askMessage, can, type Role } from "@/lib/team/roles";
  * what it does, what it needs, and how to get it. Custom plans are arranged with the BuPulse team; until the
  * request form exists (R5) the button goes to Billing.
  */
-export function AddToPlan({ feature, reason = "not_in_plan", role, inPlan }: { feature: FeatureKey; reason?: FeatureBlockReason; role: Role; inPlan: ReadonlySet<FeatureKey> }) {
+export function AddToPlan({ feature, reason = "not_in_plan", block = null, role, inPlan }: { feature: FeatureKey; reason?: FeatureBlockReason; block?: AccountBlock | null; role: Role; inPlan: ReadonlySet<FeatureKey> }) {
   const def = featureOf(feature);
   const Icon = FEATURE_ICONS[feature];
+  // The account is read-only (lib/entitlements.ts accountBlock): the feature itself is not the problem.
+  if (block) {
+    return (
+      <>
+        <PageHeader title={def.label} description={block === "pending_demo" ? "Opens after your demo." : "Your account is read-only for now."} />
+        <EmptyState
+          icon={Icon}
+          title={block === "pending_demo" ? "Your demo comes first" : block === "trial_expired" ? "Your free trial has ended" : block === "past_due" ? "Your last payment did not go through" : "Your plan is not active"}
+          text={blockMessage(block)}
+          action={block !== "pending_demo" && can(role, "billing") ? <Button href="/dashboard/billing">Go to Billing</Button> : block !== "pending_demo" ? <p className="text-sm text-muted">{askMessage("billing")}</p> : undefined}
+        />
+      </>
+    );
+  }
   if (def.status === "coming_soon") {
     return (
       <>

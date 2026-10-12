@@ -30,5 +30,5 @@ export async function pageGate(permission: Permission) {
 export async function featureGate(feature: FeatureKey) {
   const { role, entitlements } = await getAppContext();
   if (entitlements.usable.has(feature)) return null;
-  return <AddToPlan feature={feature} reason={blockReason(entitlements, feature)} role={role} inPlan={entitlements.inPlan} />;
+  return <AddToPlan feature={feature} reason={blockReason(entitlements, feature)} block={entitlements.block} role={role} inPlan={entitlements.inPlan} />;
 }

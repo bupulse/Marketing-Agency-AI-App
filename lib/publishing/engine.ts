@@ -2,7 +2,7 @@ import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { disabledNetworks, isServiceEnabled } from "@/lib/admin/switch";
-import { featureStatus, notInPlanMessage } from "@/lib/entitlements";
+import { blockMessage, companyEntitlements, notInPlanMessage } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { getProvider, isNetwork } from "@/lib/social/registry";
@@ -77,6 +77,10 @@ export async function claimDuePosts(args: { now: Date; limit: number; ids?: stri
   // SCHEDULED with no attempt used, and go out as soon as it is switched back on.
   const emailOff = !(await isServiceEnabled("resend"));
   const reminderSql = emailOff ? Prisma.sql`AND "format" <> 'SCRIPT'::"PostFormat" AND ("connectionId" IS NULL OR "connectionId" NOT IN (SELECT "id" FROM "Connection" WHERE "postingMode" = 'NOTIFY'))` : Prisma.empty;
+  // Companies whose subscription is not live (waiting for a demo, past due, expired, cancelled) are not claimed at all:
+  // their posts stay SCHEDULED, held, without using attempts. (A trial that ran out but was not flipped yet is caught
+  // by the entitlement check below and released the same way.)
+  const liveSql = Prisma.sql`AND "businessId" IN (SELECT b."id" FROM "Business" b JOIN "Subscription" s ON s."userId" = b."userId" WHERE s."status" IN ('ACTIVE'::"SubscriptionStatus", 'TRIALING'::"SubscriptionStatus"))`;
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     UPDATE "Post" SET "status" = 'PUBLISHING'::"PostStatus", "lockedAt" = ${now}, "attempts" = "attempts" + 1, "updatedAt" = ${now}
     WHERE "id" IN (
@@ -84,7 +88,7 @@ export async function claimDuePosts(args: { now: Date; limit: number; ids?: stri
       WHERE "status" = 'SCHEDULED'::"PostStatus" AND "scheduledAt" <= ${now}
         AND "attempts" < ${MAX_ATTEMPTS}
         AND ("nextAttemptAt" IS NULL OR "nextAttemptAt" <= ${now})
-        ${NOT_BEING_DELETED} ${NOT_FORCE_DISCONNECTED} ${only} ${business} ${pausedSql} ${reminderSql}
+        ${NOT_BEING_DELETED} ${NOT_FORCE_DISCONNECTED} ${liveSql} ${only} ${business} ${pausedSql} ${reminderSql}
       ORDER BY "scheduledAt" ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
@@ -187,9 +191,12 @@ async function sendReminder(post: ClaimedPost): Promise<"reminders" | "retrying"
   return "reminders";
 }
 
-/** Puts a claimed post back to SCHEDULED, undoing the attempt the claim counted, because a service it needs is switched off. */
-async function releaseUnsent(post: ClaimedPost): Promise<"retrying"> {
-  await settle(post.id, { status: "SCHEDULED", attempts: Math.max(0, post.attempts - 1), nextAttemptAt: null, lastError: null });
+/**
+ * Puts a claimed post back to SCHEDULED, undoing the attempt the claim counted, because a service it needs is switched
+ * off or its account is read-only. `held` is shown on the post as the reason it waits (cleared when it is tried again).
+ */
+async function releaseUnsent(post: ClaimedPost, held: string | null = null): Promise<"retrying"> {
+  await settle(post.id, { status: "SCHEDULED", attempts: Math.max(0, post.attempts - 1), nextAttemptAt: null, lastError: held });
   return "retrying";
 }
 
@@ -320,14 +327,18 @@ async function processPost(post: ClaimedPost): Promise<keyof Omit<PublishRunResu
     }
     // Scheduling is a plan feature. A post of a company whose plan (resolved) lost it fails with the reason, instead
     // of going out. While the plan cannot be checked (catalog degraded, unknown plan key) the post is handed back and
-    // retried later: a deploy or database blip must never fail scheduled posts for good.
-    const calendar = await featureStatus(post.businessId, "calendar");
-    if (calendar === "not_in_plan") {
+    // retried later: a deploy or database blip must never fail scheduled posts for good. A read-only account (demo
+    // pending, trial over, past due, plan ended) keeps its posts too: SCHEDULED and held, with the reason on them,
+    // until it pays (then they go out, late ones first).
+    const access = await companyEntitlements(post.businessId);
+    if (!access.resolved) return releaseUnsent(post);
+    if (access.block) return releaseUnsent(post, blockMessage(access.block));
+    if (!access.inPlan.has("calendar")) {
       const message = notInPlanMessage("calendar");
       if (await settle(post.id, { status: "FAILED", lastError: message })) emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
       return "failed";
     }
-    if (calendar !== "ok") return releaseUnsent(post);
+    if (!access.usable.has("calendar")) return releaseUnsent(post);
     if (post.connection.postingMode === "NOTIFY" || post.format === "SCRIPT") return await sendReminder(post);
 
     const provider = getProvider(post.network);

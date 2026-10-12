@@ -9,7 +9,7 @@ vi.mock("@/lib/errors", async (orig) => ({ ...(await orig<typeof import("@/lib/e
 vi.mock("@/lib/billing/paddle-catalog", () => ({ paddleConnected: () => false, createPaddleProduct: vi.fn(), createPaddlePrice: vi.fn(), archivePaddlePrice: vi.fn(), updatePaddleProduct: vi.fn() }));
 
 import { clearSwitchCache } from "@/lib/admin/switch";
-import { assertFeature, blockReason, companyEntitlements, companyFeatures, featureBlocked, featureErrorResponse, FeatureRequiredError, featureStatus, hasFeature, PLAN_UNKNOWN_MESSAGE, upgradeHref } from "@/lib/entitlements";
+import { accountBlock, assertFeature, blockMessage, blockReason, companyEntitlements, companyFeatures, featureBlocked, featureErrorResponse, FeatureRequiredError, featureStatus, hasFeature, PLAN_UNKNOWN_MESSAGE, upgradeHref } from "@/lib/entitlements";
 import { createPlan, updatePlan } from "@/lib/admin/plans-service";
 import { getPlan, resetPlanCache, viewOf } from "@/lib/plan-catalog";
 import { CORE_FEATURES, PRO_FEATURES } from "@/lib/plans";
@@ -17,8 +17,8 @@ import { consoleContext } from "@/lib/admin/types";
 
 const CONSOLE = consoleContext("198.51.100.1");
 
-function company(id: string, plan: string, status = "ACTIVE") {
-  h.db.business.rows.push({ id, userId: `u_${id}`, user: { suspendedAt: null, subscription: { plan, status } } });
+function company(id: string, plan: string, status = "ACTIVE", extra: Record<string, unknown> = {}) {
+  h.db.business.rows.push({ id, userId: `u_${id}`, user: { suspendedAt: null, subscription: { plan, status, chosenPlan: null, trialEndsAt: null, ...extra } } });
 }
 
 beforeEach(() => {
@@ -107,6 +107,47 @@ describe("a plan that cannot be resolved", () => {
     expect(featureErrorResponse(error as FeatureRequiredError).status).toBe(503);
     expect(await featureBlocked("nobody", "autopilot")).toBe(PLAN_UNKNOWN_MESSAGE);
     expect(upgradeHref("autopilot", "plan_unknown")).toBe("/dashboard/upgrade?feature=autopilot&reason=plan_unknown");
+  });
+});
+
+describe("a read-only account", () => {
+  it("is told apart (pure): demo pending, trial over, past due, ended; a live trial or paid plan is not blocked", () => {
+    const now = new Date("2026-10-12T10:00:00Z");
+    expect(accountBlock({ plan: "TRIAL", status: "PENDING_DEMO", chosenPlan: "STARTER" }, now)).toBe("pending_demo");
+    expect(accountBlock({ plan: "TRIAL", status: "TRIALING", chosenPlan: "STARTER", trialEndsAt: new Date("2026-10-12T09:00:00Z") }, now)).toBe("trial_expired");
+    expect(accountBlock({ plan: "TRIAL", status: "TRIALING", chosenPlan: "STARTER", trialEndsAt: new Date("2026-10-13T09:00:00Z") }, now)).toBeNull();
+    expect(accountBlock({ plan: "TRIAL", status: "EXPIRED", chosenPlan: null, trialEndsAt: new Date("2026-10-01T09:00:00Z") }, now)).toBe("trial_expired");
+    expect(accountBlock({ plan: "STANDARD", status: "PAST_DUE", chosenPlan: null }, now)).toBe("past_due");
+    expect(accountBlock({ plan: "STANDARD", status: "CANCELED", chosenPlan: null }, now)).toBe("inactive");
+    expect(accountBlock({ plan: "STANDARD", status: "ACTIVE", chosenPlan: null }, now)).toBeNull();
+    expect(accountBlock(null, now)).toBeNull();
+  });
+
+  it("keeps its plan for viewing but may act on nothing: every gate answers not_in_plan (403, never 503) with the reason why", async () => {
+    company("pending", "TRIAL", "PENDING_DEMO", { chosenPlan: "PRO" });
+    company("expired", "TRIAL", "EXPIRED", { trialEndsAt: new Date("2026-10-01T00:00:00Z") });
+    company("due", "PRO", "PAST_DUE");
+    // Waiting for the demo: nothing at all, and a definite answer (the plan is not "unknown").
+    const pending = await companyEntitlements("pending");
+    expect(pending).toMatchObject({ resolved: true, block: "pending_demo" });
+    expect(pending.inPlan.size).toBe(0);
+    expect(await featureStatus("pending", "content")).toBe("not_in_plan");
+    const error = await assertFeature("pending", "content").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(FeatureRequiredError);
+    expect((error as FeatureRequiredError).message).toBe(blockMessage("pending_demo"));
+    expect(featureErrorResponse(error as FeatureRequiredError).status).toBe(403);
+    // Trial over: the TRIAL plan's features stay listed (pages render, data can be looked at), nothing may be done.
+    const expired = await companyEntitlements("expired");
+    expect(expired.block).toBe("trial_expired");
+    expect(expired.usable.has("content")).toBe(true);
+    expect(await featureStatus("expired", "content")).toBe("not_in_plan");
+    expect(await hasFeature("expired", "calendar")).toBe(false);
+    expect(await featureBlocked("expired", "calendar")).toBe(blockMessage("trial_expired"));
+    // Past due on a paid plan: the same.
+    expect(await featureStatus("due", "autopilot")).toBe("not_in_plan");
+    expect(await featureBlocked("due", "autopilot")).toMatch(/payment did not go through/);
+    // A paying company is unaffected.
+    expect(await featureStatus("pro", "autopilot")).toBe("ok");
   });
 });
 

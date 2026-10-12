@@ -70,6 +70,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <Field label="Meeting link" hint="Your reusable Google Meet (or other) link, sent with every invite. Optional until you have one.">
             <Input name="meetingLink" type="url" placeholder="https://meet.google.com/abc-defg-hij" defaultValue={s.meetingLink} />
           </Field>
+          <Field label="Invite organizer email" required hint="The organizer on the calendar invites clients receive. The admin addresses are never shown to clients.">
+            <Input name="organizerEmail" type="email" defaultValue={s.organizerEmail} required className="max-w-sm" />
+          </Field>
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Call length (minutes)" required>
               <Input name="slotMinutes" type="number" min={15} max={120} step={5} defaultValue={s.slotMinutes} required className="w-28" />

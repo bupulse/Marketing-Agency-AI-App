@@ -302,7 +302,8 @@ export async function extendTrial(ctx: AdminContext, input: { userId: string; da
   const trialEndsAt = new Date(base.getTime() + days * DAY_MS);
   const before = { trialEndsAt: sub.trialEndsAt, status: sub.status };
   const status = sub.status === "EXPIRED" || sub.status === "CANCELED" ? "TRIALING" : sub.status;
-  const after = { trialEndsAt, status };
+  // A longer trial gets its two end-of-trial reminders again (lib/demo/trial-reminders.ts).
+  const after = { trialEndsAt, status, trialReminder1SentAt: null, trialReminder2SentAt: null };
   await prisma.$transaction(async (tx) => {
     // Guarded on the value we read, so two extensions at once cannot silently overwrite each other.
     const { count } = await tx.subscription.updateMany({ where: { userId: input.userId, plan: "TRIAL", trialEndsAt: sub.trialEndsAt }, data: after });
@@ -667,7 +668,7 @@ export async function requestChangePlan(ctx: AdminContext, input: { userId: stri
     // The trial length is the admin setting (Admin -> Settings), not the TRIAL plan's trialDays (docs/REGIONS.md).
     const trialDays = await getSetting("trialDays");
     const trialEndsAt = new Date(Date.now() + trialDays * DAY_MS);
-    const after = { plan: target.key, status: "TRIALING" as const, trialEndsAt };
+    const after = { plan: target.key, status: "TRIALING" as const, trialEndsAt, trialReminder1SentAt: null, trialReminder2SentAt: null };
     await prisma.$transaction(async (tx) => {
       await tx.subscription.update({ where: { userId: input.userId }, data: after });
       await writeAudit(tx, ctx, "change_plan", `user:${input.userId}`, before, after);

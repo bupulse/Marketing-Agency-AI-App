@@ -3,7 +3,6 @@ import Link from "next/link";
 import { LegalList, LegalPage, LegalSection } from "@/components/marketing/pages/legal";
 import { pageMetadata } from "@/components/marketing/pages/seo";
 import { site } from "@/lib/content/site";
-import { formatPrice } from "@/components/billing/helpers";
 import { getSellablePlans } from "@/lib/plan-catalog";
 import { getSetting } from "@/lib/admin/settings";
 
@@ -18,8 +17,6 @@ export const metadata = pageMetadata({
 
 export default async function TermsPage() {
   const [trialDays, sellable] = await Promise.all([getSetting("trialDays"), getSellablePlans()]);
-  const priceList = sellable.map((p) => `${p.name} costs ${formatPrice(p.monthlyPriceCents, p.currency)} per month or ${formatPrice(p.yearlyPriceCents, p.currency)} per year`);
-  const prices = priceList.length > 1 ? `${priceList.slice(0, -1).join(", ")}, and ${priceList[priceList.length - 1]}` : priceList[0] ?? "Plans and prices are shown on our pricing page";
   return (
     <LegalPage title="Terms of Service" intro="The rules for using BuPulse, in plain English.">
       <p>
@@ -49,7 +46,7 @@ export default async function TermsPage() {
         <LegalList
           items={[
             `New accounts start with a free demo call. After it we start a free trial of ${trialDays} days with a limited number of generations. No card is needed for the trial, and nothing is charged when it ends: if you do nothing, the account becomes read-only and your work stays saved.`,
-            `${prices}, in US dollars. Some regions have their own prices and currency (for example Rwandan francs in Rwanda) and payment methods, shown on our pricing page for your location. Each plan has monthly usage limits shown there; on yearly plans they reset every month.`,
+            `Plans (${sellable.map((p) => p.name).join(", ")}) and their prices depend on the country your business is in: see our pricing page (bupulse.com/pricing) for the plans, prices, currency and payment methods for your location. Each plan has monthly usage limits shown there; on yearly plans they reset every month.`,
             "Paid plans renew at the end of each month or year until cancelled. Payments are processed by our reseller and merchant of record, Paddle.com, which appears on your card statement.",
             "You can cancel at any time. Your plan stays active until the end of the period you have paid for. Refunds follow our Refund Policy (bupulse.com/refund-policy).",
             "If a payment fails, we may limit your account until it is resolved.",

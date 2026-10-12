@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { adminEmails } from "@/lib/admin/auth";
+import { getSetting } from "@/lib/admin/settings";
 import { getSettings } from "@/lib/admin/settings";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
@@ -14,7 +15,9 @@ import { DEMO_TIME_ZONE, formatSlot, freeSlots, MIN_LEAD_MINUTES, type Availabil
 
 // Booking the demo that comes before the trial (section 12 of docs/RWANDA_LAUNCH_PLAN.md). A new company chooses a
 // plan from its region, picks a free slot from the owner's availability, and both sides get an email with the
-// meeting link and a calendar invite. Reschedule and cancel are allowed up to MIN_LEAD_MINUTES before the call.
+// meeting link and a calendar invite. Reschedule and cancel are allowed up to MIN_LEAD_MINUTES before the call; a
+// reschedule moves the one booking in place (same calendar UID, SEQUENCE + 1), so calendars move the event. Once a
+// booked slot has passed without the admin marking it, the client may book again (the same row moves).
 
 export type DemoErrorCode = "invalid" | "conflict" | "not_allowed";
 export class DemoError extends Error {
@@ -61,9 +64,25 @@ export async function availableSlots(now = new Date(), ignoreBookingId?: string 
   return { slots: freeSlots(opts), slotMinutes: opts.slotMinutes ?? 30 };
 }
 
-/** The company's live booking (the newest one still "booked"), or null. */
+/** The company's live booking (the one still "booked"; the partial unique index allows one), or null. */
 export async function currentBooking(businessId: string) {
   return prisma.demoBooking.findFirst({ where: { businessId, status: "booked" }, orderBy: { startsAt: "desc" } });
+}
+
+/** The secret of the .ics route: 32 random bytes, base64url (43 characters). */
+export function newIcsToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return Buffer.from(bytes).toString("base64url");
+}
+
+/** A live booking may still be moved or cancelled by the client until MIN_LEAD_MINUTES before it starts. */
+export function canMoveBooking(booking: { startsAt: Date }, now: Date): boolean {
+  return booking.startsAt.getTime() - now.getTime() >= MIN_LEAD_MINUTES * MINUTE;
+}
+
+/** A booked slot whose end has passed without the admin marking it done or a no-show: the client may book again. */
+export function slotPassed(booking: { endsAt: Date }, now: Date): boolean {
+  return booking.endsAt.getTime() <= now.getTime();
 }
 
 async function pendingSubscription(businessId: string) {
@@ -93,8 +112,10 @@ export async function choosePlan(input: { businessId: string; planKey: string })
 export type BookingView = NonNullable<Awaited<ReturnType<typeof currentBooking>>>;
 
 /**
- * Step 2: books a free slot (or moves the live booking to it). The slot is checked against the same rules the page
- * used, and the partial unique index on DemoBooking(startsAt) catches two clients taking the same minute at once.
+ * Step 2: books a free slot, or moves the live booking to it (in place: same row and calendar UID, SEQUENCE + 1). The
+ * slot is checked against the same rules the page used; two partial unique indexes back it up: one live booking per
+ * start time, one per company. The slot check and the write are not one transaction: a second client taking a
+ * neighbouring slot in the same instant can land inside the buffer (accepted: the owner sees both in Demos).
  */
 export async function bookDemo(input: { businessId: string; startsAt: Date; now?: Date }): Promise<{ booking: BookingView; rescheduled: boolean }> {
   const now = input.now ?? new Date();
@@ -102,7 +123,8 @@ export async function bookDemo(input: { businessId: string; startsAt: Date; now?
   if (!sub.chosenPlan) throw new DemoError("invalid", "Choose a plan first.");
   if (Number.isNaN(input.startsAt.getTime())) throw new DemoError("invalid", "Pick a time from the list.");
   const existing = await currentBooking(business.id);
-  if (existing && existing.startsAt.getTime() - now.getTime() < MIN_LEAD_MINUTES * MINUTE) {
+  // A booking that is about to start cannot be moved; one whose slot has passed can (the client books again).
+  if (existing && !slotPassed(existing, now) && !canMoveBooking(existing, now)) {
     throw new DemoError("not_allowed", `Your demo starts in less than ${MIN_LEAD_MINUTES / 60} hours, so it can no longer be moved. Join the call, or email us.`);
   }
   const opts = await slotOptions(now, existing?.id);
@@ -110,33 +132,40 @@ export async function bookDemo(input: { businessId: string; startsAt: Date; now?
   if (!freeSlots(opts).some((d) => d.getTime() === input.startsAt.getTime())) throw new DemoError("conflict", "That time is no longer free. Pick another one.");
   const settings = await getSettings();
   const endsAt = new Date(input.startsAt.getTime() + slotMinutes * MINUTE);
+  const data = { planKey: sub.chosenPlan, startsAt: input.startsAt, endsAt, meetingLink: settings.meetingLink || null };
   let booking: BookingView;
   try {
-    booking = await prisma.$transaction(async (tx) => {
-      if (existing) await tx.demoBooking.update({ where: { id: existing.id }, data: { status: "cancelled" } });
-      return tx.demoBooking.create({ data: { businessId: business.id, planKey: sub.chosenPlan!, startsAt: input.startsAt, endsAt, meetingLink: settings.meetingLink || null } });
-    });
+    if (existing) {
+      const { count } = await prisma.demoBooking.updateMany({ where: { id: existing.id, status: "booked" }, data: { ...data, sequence: { increment: 1 } } });
+      if (count !== 1) throw new DemoError("conflict", "That demo was just changed. Reload the page.");
+      booking = (await prisma.demoBooking.findUnique({ where: { id: existing.id } })) as BookingView;
+    } else {
+      booking = await prisma.demoBooking.create({ data: { businessId: business.id, ...data, icsToken: newIcsToken() } });
+    }
   } catch (error) {
-    if ((error as { code?: string }).code === "P2002") throw new DemoError("conflict", "Someone just took that time. Pick another one.");
-    throw error;
+    if ((error as { code?: string }).code !== "P2002") throw error;
+    // Either this company got its booking from another request (return it) or the start time was taken meanwhile.
+    const current = await currentBooking(business.id);
+    if (current && !existing) return { booking: current, rescheduled: false };
+    throw new DemoError("conflict", "Someone just took that time. Pick another one.");
   }
   trackEvent(EVENT_NAMES.demoBooked, { userId: business.userId, businessId: business.id, props: { plan: sub.chosenPlan, rescheduled: Boolean(existing) } });
   await sendBookingEmails(existing ? "rescheduled" : "booked", booking, { name: business.name, email: business.user.email, contact: business.user.name });
   return { booking, rescheduled: Boolean(existing) };
 }
 
-/** Cancels the live booking (at least MIN_LEAD_MINUTES ahead). The client books again from the dashboard. */
+/** Cancels the live booking (at least MIN_LEAD_MINUTES ahead). The invite goes out as METHOD:CANCEL for the same UID. */
 export async function cancelDemo(input: { businessId: string; now?: Date }): Promise<BookingView> {
   const now = input.now ?? new Date();
   const { business } = await pendingSubscription(input.businessId);
   const existing = await currentBooking(business.id);
   if (!existing) throw new DemoError("invalid", "There is no demo to cancel.");
-  if (existing.startsAt.getTime() - now.getTime() < MIN_LEAD_MINUTES * MINUTE) {
+  if (!slotPassed(existing, now) && !canMoveBooking(existing, now)) {
     throw new DemoError("not_allowed", `Your demo starts in less than ${MIN_LEAD_MINUTES / 60} hours, so it can no longer be cancelled here. Email us instead.`);
   }
-  const { count } = await prisma.demoBooking.updateMany({ where: { id: existing.id, status: "booked" }, data: { status: "cancelled" } });
+  const { count } = await prisma.demoBooking.updateMany({ where: { id: existing.id, status: "booked" }, data: { status: "cancelled", sequence: { increment: 1 } } });
   if (count !== 1) throw new DemoError("conflict", "That demo was already changed. Reload the page.");
-  const cancelled = { ...existing, status: "cancelled" };
+  const cancelled = { ...existing, status: "cancelled", sequence: existing.sequence + 1 };
   await sendBookingEmails("cancelled", cancelled, { name: business.name, email: business.user.email, contact: business.user.name });
   return cancelled;
 }
@@ -144,27 +173,31 @@ export async function cancelDemo(input: { businessId: string; now?: Date }): Pro
 // ---- invites and emails ---------------------------------------------------------------------------------------------
 
 export const ORGANIZER_NAME = "BuPulse";
-export function organizerEmail(): string {
-  return adminEmails()[0] ?? "admin@bupulse.com";
+/** The organizer of every invite: a dedicated address (Admin -> Settings), never one of ADMIN_EMAILS. */
+export async function organizerEmail(): Promise<string> {
+  return getSetting("organizerEmail");
 }
 
 export function icsUrl(token: string): string {
   return `${siteUrl()}/api/demo/ics/${encodeURIComponent(token)}`;
 }
 
-/** The invite text for a booking (also served by /api/demo/ics/[token]). */
-export async function bookingIcs(booking: BookingView, business: { name: string; email: string; contact?: string | null }): Promise<string> {
-  const plan = await getPlan(booking.planKey);
+/**
+ * The invite text for a booking. The client's copy (also served by /api/demo/ics/[token]) lists only the client as
+ * attendee; the admins' copy adds the admin addresses, so they never reach a client's calendar.
+ */
+export async function bookingIcs(booking: BookingView, business: { name: string; email: string; contact?: string | null }, audience: "client" | "admin" = "client"): Promise<string> {
+  const [plan, organizer] = await Promise.all([getPlan(booking.planKey), organizerEmail()]);
   return buildIcs({
     uid: `${booking.id}@bupulse.com`,
-    sequence: Math.floor(booking.updatedAt.getTime() / 1000),
+    sequence: booking.sequence,
     start: booking.startsAt,
     end: booking.endsAt,
     summary: `BuPulse demo: ${business.name}`,
     description: [`A ${Math.round((booking.endsAt.getTime() - booking.startsAt.getTime()) / MINUTE)}-minute walk through BuPulse for ${business.name}.`, plan ? `Plan chosen: ${plan.name}.` : "", booking.meetingLink ? `Join: ${booking.meetingLink}` : "The meeting link follows by email.", `Reschedule or cancel (up to ${MIN_LEAD_MINUTES / 60} hours before): ${siteUrl()}/dashboard`].filter(Boolean).join("\n"),
     url: booking.meetingLink,
-    organizer: { name: ORGANIZER_NAME, email: organizerEmail() },
-    attendees: [{ name: business.contact ?? business.name, email: business.email }, ...adminEmails().map((email) => ({ email }))],
+    organizer: { name: ORGANIZER_NAME, email: organizer },
+    attendees: [{ name: business.contact ?? business.name, email: business.email }, ...(audience === "admin" ? adminEmails().map((email) => ({ email })) : [])],
     cancelled: booking.status === "cancelled",
     stamp: booking.updatedAt,
   });
@@ -178,8 +211,9 @@ export async function sendBookingEmails(kind: EmailKind, booking: BookingView, b
   try {
     const plan = await getPlan(booking.planKey);
     const when = `${formatSlot(booking.startsAt)} (${DEMO_TIME_ZONE.replace("_", " ")})`;
-    const ics = await bookingIcs(booking, business);
-    const attachment = { filename: kind === "cancelled" ? "bupulse-demo-cancelled.ics" : "bupulse-demo.ics", content: Buffer.from(ics, "utf8").toString("base64") };
+    const filename = kind === "cancelled" ? "bupulse-demo-cancelled.ics" : "bupulse-demo.ics";
+    const attachment = { filename, content: Buffer.from(await bookingIcs(booking, business, "client"), "utf8").toString("base64") };
+    const adminAttachment = { filename, content: Buffer.from(await bookingIcs(booking, business, "admin"), "utf8").toString("base64") };
     const first = business.contact?.split(/\s+/)[0];
     const headingByKind: Record<EmailKind, string> = { booked: "Your BuPulse demo is booked", rescheduled: "Your BuPulse demo has moved", cancelled: "Your BuPulse demo is cancelled" };
     const blocks = [
@@ -206,7 +240,7 @@ export async function sendBookingEmails(kind: EmailKind, booking: BookingView, b
     });
     let admins = 0;
     for (const to of adminEmails()) {
-      if (await sendEmail({ to, subject: `${kind === "cancelled" ? "Demo cancelled" : kind === "rescheduled" ? "Demo moved" : "New demo"}: ${business.name}, ${when}`, html: admin.html, text: admin.text, attachments: [attachment] })) admins++;
+      if (await sendEmail({ to, subject: `${kind === "cancelled" ? "Demo cancelled" : kind === "rescheduled" ? "Demo moved" : "New demo"}: ${business.name}, ${when}`, html: admin.html, text: admin.text, attachments: [adminAttachment] })) admins++;
     }
     return { client: clientSent, admins };
   } catch (error) {

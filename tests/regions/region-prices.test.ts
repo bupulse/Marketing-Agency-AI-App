@@ -137,7 +137,7 @@ describe("admin prices", () => {
     expect(await code(saveRegion(CONSOLE, { key: "ke", name: "Kenya", currency: "KES", countries: ["KE"], paymentMethods: [] }))).toMatch(/^invalid/);
     const made = await saveRegion(CONSOLE, { key: "ng", name: "Nigeria", currency: "NGN", countries: ["ng"], paymentMethods: ["card"], sortOrder: 15 });
     expect(made).toMatchObject({ key: "NG", countries: ["NG"], currency: "NGN", active: true });
-    expect(await regionFromCountryName("Nigeria")).toBe("GLOBAL"); // no name mapping for it; the code path is by ISO code
+    expect(await regionFromCountryName("Nigeria")).toBe("NG"); // every sign-up country has its ISO code, so the new region takes it at once
     expect(h.db.auditLog.rows.at(-1)).toMatchObject({ action: "create_region", target: "region:NG" });
   });
 
