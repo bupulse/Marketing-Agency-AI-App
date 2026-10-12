@@ -43,8 +43,8 @@ The autonomous loop reads this file, takes the first open task, does it (build â
 - [x] Invoices and post-demo activation: merged (02ab3b6), migration applied to the test database.
 - [x] "Use my location" with a built-in offline country map (free), Google behind GEO_PROVIDER for later: merged (2012f28).
 - [x] Small follow-ups: read-only Webhooks/API pages after a downgrade; legal pages name "BuPulse, Kigali, Rwanda": merged (fb404ed).
-- [ ] Knowledge Base part 1 (company profile, products & services, campaigns from projects, gallery folders and product albums): built (fe1e929 on `v2-kb`), under review.
-- [ ] Knowledge Base part 2: customers & audience, competitors and differentiation, FAQs & policies, reviews & testimonials, AI marketing interview (multiple choice, adaptive): building on `v2-kb2`.
+- [x] Knowledge Base part 1 (company profile, products & services, campaigns from projects, gallery folders and product albums): merged with review fixes (89ecd2d).
+- [x] Knowledge Base part 2: customers & audience, competitors and differentiation, FAQs & policies, reviews & testimonials, AI marketing interview: merged with review fixes (89ecd2d). Per-company AI allowance $3/month (AI_COMPANY_MONTHLY_USD).
 - [x] Hosting on the **Netlify free plan** instead of Cloudflare Workers Paid (merged 4c51add; the publisher runs every 5 minutes; nothing deployed yet, owner steps in docs/DEPLOY_NETLIFY.md):
   - port OpenNext/Workers specifics (cron triggers â†’ Netlify scheduled functions, Hyperdrive â†’ pooled DATABASE_URL, Worker bindings, wasm image codecs);
   - read the location from Netlify's geo header (x-nf-geo) with cf-ipcountry kept as a fallback;
@@ -52,3 +52,4 @@ The autonomous loop reads this file, takes the first open task, does it (build â
   - Cloudflare stays as DNS.
 - AI: the owner has $30 of AI credit. Set AI_MONTHLY_BUDGET_USD to 30 and warn at 80%.
 - 2026-10-12 16:10: invoices, offline "Use my location", follow-ups (read-only webhooks/API, legal text) and Netlify hosting merged into `v2`. Fixed a dev-only database pool error (33b6bd1). Knowledge Base part 1 is getting its review fixes; part 2 is being built.
+- 2026-10-12 16:50: Knowledge base (parts 1 and 2) merged into `v2`, migrations applied to the test database, 2246 tests and the build pass. Journey tests found 2 billing bugs; fixes in progress on `v2-journeys`.
