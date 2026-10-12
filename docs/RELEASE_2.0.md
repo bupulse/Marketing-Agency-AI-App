@@ -42,6 +42,9 @@ to check.
    `AI_COMPANY_MONTHLY_USD` (3), `MEDIA_PLATFORM_MAX_BYTES` (900 MB), `NEXT_PUBLIC_WHATSAPP_NUMBER`,
    `GEO_PROVIDER=builtin`, `PLATFORM=netlify`, `AI_MONTHLY_BUDGET_USD` (30), `API_KEY_PEPPER` (new random value),
    `GOOGLE_CALENDAR_CLIENT_ID/SECRET`. Never copy `ANALYTICS_DEV_COUNTRY` or `REGION_OVERRIDE` to production.
+   Build-time values (every `NEXT_PUBLIC_*`, plus `PLATFORM=netlify`) must also be **GitHub repository variables**:
+   the deploy workflow builds offline in GitHub without the Netlify token, so it can't read Netlify's settings at
+   build time (`docs/DEPLOY_NETLIFY.md`).
 6. **Supabase production settings**: Auth → URL configuration (site URL `https://bupulse.com`, redirect
    `https://bupulse.com/**`), SMTP with Resend (username `resend`), storage buckets created by the migrations.
 7. **Deploy** (GitHub Actions → Deploy to Netlify), then DNS at Cloudflare (DNS only, grey cloud).
