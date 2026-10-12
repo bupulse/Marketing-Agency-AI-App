@@ -60,16 +60,64 @@ export class CompanyBudgetExceededError extends AIBudgetExceededError {
 
 const monthStart = (now: Date) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
+/** The ledger feature of website-chat replies (lib/widget/ai.ts). Visitors start these, not the owner. */
+export const WIDGET_FEATURE = "widget";
+
+/**
+ * The share of a company's monthly allowance the website chat may use (WIDGET_AI_SHARE, default 0.5, between 0 and 1).
+ * Visitors cannot use up what the owner's own features (Studio, Autopilot, designs...) need.
+ */
+export function widgetAiShare(): number {
+  const raw = process.env.WIDGET_AI_SHARE;
+  const value = raw === undefined || raw.trim() === "" ? 0.5 : Number(raw);
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0.5;
+}
+
+export const WIDGET_ALLOWANCE_MESSAGE = "The website chat's share of this month's AI allowance is used. Visitors can still leave their details.";
+
+/** The website chat used its share of the company's allowance. The widget then only collects details (the contact form). */
+export class WidgetBudgetExceededError extends CompanyBudgetExceededError {
+  constructor(provider: string) {
+    super(provider);
+    this.message = WIDGET_ALLOWANCE_MESSAGE;
+  }
+}
+
 /** What one company's AI calls cost this calendar month (UTC), from the ledger. */
 export async function companySpentThisMonthUsd(businessId: string, now = new Date()): Promise<number> {
   const { _sum } = await prisma.aiCall.aggregate({ where: { businessId, createdAt: { gte: monthStart(now) } }, _sum: { costUsd: true } });
   return Number(_sum.costUsd ?? 0);
 }
 
-/** Refuses an AI call for a company over its monthly allowance (before calling, and paying, the provider). */
-export async function assertCompanyWithinBudget(businessId: string, provider: string, now = new Date()): Promise<void> {
-  if ((await companySpentThisMonthUsd(businessId, now)) < companyMonthlyBudgetUsd()) return;
-  throw new CompanyBudgetExceededError(provider);
+export type CompanySpend = { totalUsd: number; widgetUsd: number; ownerUsd: number; allowanceUsd: number; widgetCapUsd: number };
+
+/** One company's spend this month split into website chat (visitors) and everything the owner started. */
+export async function companySpendThisMonth(businessId: string, now = new Date()): Promise<CompanySpend> {
+  const since = monthStart(now);
+  const [total, widget] = await Promise.all([
+    prisma.aiCall.aggregate({ where: { businessId, createdAt: { gte: since } }, _sum: { costUsd: true } }),
+    prisma.aiCall.aggregate({ where: { businessId, feature: WIDGET_FEATURE, createdAt: { gte: since } }, _sum: { costUsd: true } }),
+  ]);
+  const totalUsd = Number(total._sum.costUsd ?? 0);
+  const widgetUsd = Math.min(totalUsd, Number(widget._sum.costUsd ?? 0));
+  const allowanceUsd = companyMonthlyBudgetUsd();
+  return { totalUsd, widgetUsd, ownerUsd: totalUsd - widgetUsd, allowanceUsd, widgetCapUsd: allowanceUsd * widgetAiShare() };
+}
+
+/**
+ * Pure: may this call go ahead? The website chat may spend at most its share (and never past the whole allowance);
+ * the owner's features may spend the allowance minus what the chat used within its share, so the chat can never push
+ * the owner below their own share (a chat call that ran over its share by a few cents does not count against the owner).
+ */
+export function companyCallAllowed(spend: CompanySpend, feature: string): boolean {
+  if (feature === WIDGET_FEATURE) return spend.widgetUsd < spend.widgetCapUsd && spend.totalUsd < spend.allowanceUsd;
+  return spend.ownerUsd < spend.allowanceUsd - Math.min(spend.widgetUsd, spend.widgetCapUsd);
+}
+
+/** Refuses an AI call for a company over its monthly allowance, or the website chat over its share (before calling, and paying, the provider). */
+export async function assertCompanyWithinBudget(businessId: string, provider: string, now = new Date(), feature = ""): Promise<void> {
+  if (companyCallAllowed(await companySpendThisMonth(businessId, now), feature)) return;
+  throw feature === WIDGET_FEATURE ? new WidgetBudgetExceededError(provider) : new CompanyBudgetExceededError(provider);
 }
 
 /** What the cost ledger says was spent this calendar month (UTC). */

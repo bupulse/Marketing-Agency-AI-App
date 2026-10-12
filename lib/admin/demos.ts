@@ -12,6 +12,7 @@ import { companyPlans } from "@/lib/region-prices";
 import { writeAudit } from "./audit";
 import { getSettings } from "./settings";
 import { AdminError, type AdminContext } from "./types";
+import { parseMismatch } from "@/lib/region-check";
 
 // The admin side of the demo-first trial: the Demos list, marking a demo done or a no-show, and "Start trial", which
 // moves a PENDING_DEMO company onto its trial. Every action is audited; the console re-checks AAL2 in adminAction().
@@ -150,7 +151,7 @@ export async function startTrial(ctx: AdminContext, input: { businessId: string;
 /** What the company page shows about the demo stage: status, the chosen plan, the live booking and the trial setting. */
 export async function demoPanel(businessId: string) {
   const [business, booking, settings] = await Promise.all([
-    prisma.business.findUnique({ where: { id: businessId }, select: { pricingRegion: true, user: { select: { subscription: { select: { status: true, plan: true, chosenPlan: true, trialEndsAt: true } } } } } }),
+    prisma.business.findUnique({ where: { id: businessId }, select: { pricingRegion: true, regionMismatch: true, regionMismatchAt: true, user: { select: { subscription: { select: { status: true, plan: true, chosenPlan: true, trialEndsAt: true } } } } } }),
     prisma.demoBooking.findFirst({ where: { businessId }, orderBy: { startsAt: "desc" } }),
     getSettings(),
   ]);
@@ -158,6 +159,8 @@ export async function demoPanel(businessId: string) {
   const chosen = sub?.chosenPlan ? await getPlan(sub.chosenPlan) : null;
   return {
     region: business?.pricingRegion ?? null,
+    // An open soft region check (lib/region-check.ts): the IP country at sign-up or a payment start is in a dearer region.
+    regionMismatch: business?.regionMismatchAt ? parseMismatch(business.regionMismatch) : null,
     subscription: sub,
     chosenPlanName: chosen?.name ?? sub?.chosenPlan ?? null,
     booking: booking ? { id: booking.id, status: booking.status as BookingStatus, startsAt: booking.startsAt, when: formatSlot(booking.startsAt), meetingLink: booking.meetingLink, notes: booking.notes } : null,

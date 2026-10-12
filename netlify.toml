@@ -1,6 +1,6 @@
 # Netlify (free plan) build and runtime settings. Step-by-step setup: docs/DEPLOY_NETLIFY.md.
 # Production deploys run from GitHub Actions (.github/workflows/deploy-netlify.yml: migrations first, then
-# `netlify deploy --build --prod`), so Netlify's own builds stay stopped (each production deploy costs 15 credits).
+# `netlify build --offline`, then `netlify deploy --no-build --prod` with the token), so Netlify's own builds stay stopped (each production deploy costs 15 credits).
 # Cloudflare Workers keeps working from wrangler.jsonc / worker.ts; the GitHub variable DEPLOY_TARGET picks the host.
 
 [build]

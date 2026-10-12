@@ -4,6 +4,8 @@ import { getPlans } from "@/lib/plan-catalog";
 import { clearRegionCache, getRegions } from "@/lib/region";
 import { cardUsdCents, DEFAULT_REGION_KEY, isPaymentMethod, isRegionKey, type PaymentMethod, type RegionInfo } from "@/lib/region-format";
 import { clearRegionPriceCache, getRegionPrices, type RegionPriceRow } from "@/lib/region-prices";
+import { CLEARED_MISMATCH, parseMismatch } from "@/lib/region-check";
+import type { Prisma } from "@/lib/generated/prisma/client";
 import { writeAudit } from "./audit";
 import { getSettings } from "./settings";
 import { AdminError, type AdminContext } from "./types";
@@ -135,7 +137,7 @@ export async function recomputeCardPrices(ctx: AdminContext): Promise<{ changed:
   return { changed };
 }
 
-/** Moves a company to another region (its billing prices and payment methods). Audited on the business. */
+/** Moves a company to another region (its billing prices and payment methods). Audited on the business. Clears an open region mismatch. */
 export async function setCompanyRegion(ctx: AdminContext, input: { businessId: string; regionKey: string }) {
   const key = String(input.regionKey ?? "").toUpperCase();
   const region = (await getRegions({ force: true })).find((r) => r.key === key);
@@ -145,10 +147,27 @@ export async function setCompanyRegion(ctx: AdminContext, input: { businessId: s
   if (!business) throw new AdminError("not_found", "No company with that id.");
   if (business.pricingRegion === key) return { businessId: business.id, pricingRegion: key, changed: false };
   await prisma.$transaction(async (tx) => {
-    await tx.business.update({ where: { id: business.id }, data: { pricingRegion: key } });
+    await tx.business.update({ where: { id: business.id }, data: { pricingRegion: key, ...CLEARED_MISMATCH } });
     await writeAudit(tx, ctx, "update_company_region", `business:${business.id}`, { pricingRegion: business.pricingRegion }, { pricingRegion: key });
   });
   return { businessId: business.id, pricingRegion: key, changed: true };
+}
+
+/**
+ * The admin looked at a region mismatch (lib/region-check.ts) and keeps the company's region (a traveller, a VPN).
+ * The flag stays on the company as dismissed, so the same country is not raised again. Audited.
+ */
+export async function dismissRegionMismatch(ctx: AdminContext, input: { businessId: string }) {
+  const business = await prisma.business.findUnique({ where: { id: String(input.businessId ?? "") }, select: { id: true, pricingRegion: true, regionMismatch: true, regionMismatchAt: true } });
+  if (!business) throw new AdminError("not_found", "No company with that id.");
+  const flag = parseMismatch(business.regionMismatch);
+  if (!flag || !business.regionMismatchAt) return { businessId: business.id, changed: false };
+  const dismissed = { ...flag, dismissedAt: new Date().toISOString() };
+  await prisma.$transaction(async (tx) => {
+    await tx.business.update({ where: { id: business.id }, data: { regionMismatch: dismissed as unknown as Prisma.InputJsonValue, regionMismatchAt: null } });
+    await writeAudit(tx, ctx, "dismiss_region_mismatch", `business:${business.id}`, { regionMismatch: flag }, { pricingRegion: business.pricingRegion, dismissedAt: dismissed.dismissedAt });
+  });
+  return { businessId: business.id, changed: true };
 }
 
 /** Regions with their prices per plan, for the admin page and the Jarvis tools. */

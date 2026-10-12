@@ -174,7 +174,8 @@ describe("PDF routes", () => {
     expect(ok.status).toBe(200);
     expect(ok.headers.get("content-type")).toBe("application/pdf");
     expect(ok.headers.get("content-disposition")).toBe('attachment; filename="BP-INV-0001.pdf"');
-    expect(h.rateLimit).toHaveBeenCalledWith("invoice-pdf:owner", expect.anything());
+    // Per company (the limit says so): teammates share one bucket.
+    expect(h.rateLimit).toHaveBeenCalledWith("invoice-pdf:biz1", expect.anything());
   });
 
   it("admin: 404 unless an AAL2 admin session", async () => {

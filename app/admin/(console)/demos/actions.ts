@@ -3,7 +3,7 @@
 import { adminAction, finish } from "@/lib/admin/console";
 import { retryDemoCalendar, setDemoStatus, startTrial } from "@/lib/admin/demos";
 import { dateTime } from "@/lib/admin/format";
-import { setCompanyRegion } from "@/lib/admin/regions-service";
+import { dismissRegionMismatch, setCompanyRegion } from "@/lib/admin/regions-service";
 
 const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 const back = (f: FormData) => text(f, "back") || "/admin/demos";
@@ -29,6 +29,13 @@ export async function companyRegionAction(f: FormData) {
   const ctx = await adminAction();
   await finish(back(f), (r) => (r.changed ? `Region changed to ${r.pricingRegion}. Billing now shows that region's plans and prices.` : "The company is already in that region."), () =>
     setCompanyRegion(ctx, { businessId: text(f, "businessId"), regionKey: text(f, "regionKey") }),
+  );
+}
+
+export async function dismissRegionMismatchAction(f: FormData) {
+  const ctx = await adminAction();
+  await finish(back(f), (r) => (r.changed ? "Region check dismissed. The company keeps its region." : "There was nothing to dismiss."), () =>
+    dismissRegionMismatch(ctx, { businessId: text(f, "businessId") }),
   );
 }
 
