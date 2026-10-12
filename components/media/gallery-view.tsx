@@ -337,7 +337,8 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
       )}
 
       <p className="px-1 text-[13px] text-muted">
-        {overview.total} of {MEDIA_MAX_ASSETS} photos · {formatBytes(overview.usage.bytes)} of {formatBytes(MEDIA_MAX_TOTAL_BYTES)} used
+        {overview.usage.count} of {MEDIA_MAX_ASSETS} photos · {formatBytes(overview.usage.bytes)} of {formatBytes(MEDIA_MAX_TOTAL_BYTES)} used
+        {overview.uncounted > 0 ? ` · ${overview.uncounted} photo${overview.uncounted === 1 ? "" : "s"} moved from your old projects, not counted` : ""}
         {count !== overview.total ? ` · ${count} here` : ""}
       </p>
 

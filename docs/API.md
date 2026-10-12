@@ -80,7 +80,7 @@ project's id is now the id of the product or campaign it became, so stored ids k
 
 - A product: `{ id, kind, name, category, summary, description, price: { model, amountMinor, currency, note, label }, sellingPoints, features, targetCustomer, status, photoCount, createdAt, updatedAt }`. `amountMinor` is in the currency's smallest unit (francs for RWF, cents for USD); `label` is the price as people read it ("From 15,000 RWF").
 - A campaign: `{ id, type, name, description, startsOn, endsOn, priceInfo, highlights, productIds, status, photoCount, createdAt, updatedAt }` (dates as `YYYY-MM-DD`).
-- `GET /projects` and `/projects/:id` are **deprecated** and answer in the old shape (`type`, `title`, `price` text, `features`, `photoCount`), filled from the product or campaign.
+- `GET /projects` and `/projects/:id` are **deprecated** and answer in the old shape (`type`, `title`, `price` text, `features`, `photoCount`), filled from the product or campaign. Without `type`, `/projects` lists products and campaigns together, newest first (then by id), with the usual `limit` / `cursor` paging.
 - Content and posts carry `productId` and `campaignId`; their `projectId` is kept (the product's or campaign's id) for older scripts.
 
 ```bash

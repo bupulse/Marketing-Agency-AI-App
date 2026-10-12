@@ -200,8 +200,8 @@ SELECT
   (CASE
     WHEN coalesce(p."price", '') !~ '[0-9]' THEN 'ON_REQUEST'
     WHEN p."price" ~* '^\s*from\s' THEN 'FROM'
-    WHEN p."price" ~* '(per|/|a|an)\s*month|monthly' THEN 'PER_MONTH'
-    WHEN p."price" ~* '(per|/|a|an)\s*year|yearly|annual' THEN 'PER_YEAR'
+    WHEN p."price" ~* '(^|[^a-z])(per|a|an)\s+month|/\s*month|monthly' THEN 'PER_MONTH'
+    WHEN p."price" ~* '(^|[^a-z])(per|a|an)\s+year|/\s*year|yearly|annual' THEN 'PER_YEAR'
     ELSE 'FIXED'
   END)::"PriceModel",
   NULL,
@@ -241,8 +241,10 @@ WHERE lower(btrim(p."type")) NOT IN ('product', 'listing', 'service', 'project')
   AND NOT EXISTS (SELECT 1 FROM "Campaign" x WHERE x."id" = p."id");
 
 -- Project photos become gallery photos (not in a folder) on their existing object paths, linked to the new album in
--- the same order. Ids are derived from the path, so running this again links the same rows.
-INSERT INTO "MediaAsset" ("id", "businessId", "folderId", "path", "name", "mimeType", "bytes", "createdAt")
+-- the same order. Ids are derived from the path, so running this again links the same rows. They are marked with
+-- source 'project-migration' (lib/media/rules.ts MIGRATED_SOURCE): already stored before the quota knew about them,
+-- they never count toward a company's 500 photos / 2 GB.
+INSERT INTO "MediaAsset" ("id", "businessId", "folderId", "path", "name", "mimeType", "bytes", "source", "createdAt")
 SELECT
   'mig_' || substr(md5(u."path"), 1, 24),
   p."businessId",
@@ -251,6 +253,7 @@ SELECT
   left(btrim(p."title"), 100) || ' ' || u."ord",
   CASE lower(substring(u."path" from '\.([A-Za-z0-9]+)$')) WHEN 'png' THEN 'image/png' WHEN 'webp' THEN 'image/webp' ELSE 'image/jpeg' END,
   0,
+  'project-migration',
   p."createdAt"
 FROM "Project" p, unnest(p."photoPaths") WITH ORDINALITY AS u("path", "ord")
 ON CONFLICT ("path") DO NOTHING;
@@ -269,7 +272,9 @@ JOIN "MediaAsset" a ON a."path" = u."path"
 WHERE EXISTS (SELECT 1 FROM "Campaign" x WHERE x."id" = p."id") AND a."businessId" = p."businessId"
 ON CONFLICT DO NOTHING;
 
--- Sizes from Storage, so the gallery quota counts them; photos whose file is gone are not kept as broken tiles.
+-- Sizes from Storage (shown, and counted toward the shared MEDIA_PLATFORM_MAX_BYTES, not the company quota); photos
+-- whose file is gone are not kept as broken tiles. Without a readable storage schema the size stays 0 and the gallery
+-- fills it on first read (lib/media/service.ts fillMigratedSizes).
 DO $$
 BEGIN
   IF to_regclass('storage.objects') IS NOT NULL THEN

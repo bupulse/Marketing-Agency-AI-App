@@ -68,8 +68,8 @@ describe("the migration SQL follows the same rule", () => {
   it("reads the price model with the same patterns as legacyPriceModel()", () => {
     expect(SQL).toContain(`WHEN coalesce(p."price", '') !~ '[0-9]' THEN 'ON_REQUEST'`);
     expect(SQL).toContain(`WHEN p."price" ~* '^\\s*from\\s' THEN 'FROM'`);
-    expect(SQL).toContain(`WHEN p."price" ~* '(per|/|a|an)\\s*month|monthly' THEN 'PER_MONTH'`);
-    expect(SQL).toContain(`WHEN p."price" ~* '(per|/|a|an)\\s*year|yearly|annual' THEN 'PER_YEAR'`);
+    expect(SQL).toContain(`WHEN p."price" ~* '(^|[^a-z])(per|a|an)\\s+month|/\\s*month|monthly' THEN 'PER_MONTH'`);
+    expect(SQL).toContain(`WHEN p."price" ~* '(^|[^a-z])(per|a|an)\\s+year|/\\s*year|yearly|annual' THEN 'PER_YEAR'`);
   });
 
   it("keeps ids, moves photos into albums, points content, designs, posts and store links at the copies, and is safe to run again", () => {

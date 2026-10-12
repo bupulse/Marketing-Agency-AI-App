@@ -94,6 +94,7 @@ export function ProductImport({ provider, storeName }: { provider: string; store
     unchanged: results.filter((r) => r.status === "unchanged").length,
     failed: results.filter((r) => r.status === "failed" || r.status === "missing"),
     kept: results.filter((r) => r.kept?.length),
+    skippedPhotos: results.reduce((n, r) => n + (r.skippedPhotos ?? 0), 0),
   };
 
   return (
@@ -132,6 +133,11 @@ export function ProductImport({ provider, storeName }: { provider: string; store
           {summary.kept.length > 0 && (
             <p className="text-[13px] text-muted">
               Kept your own edits on {summary.kept.length} {summary.kept.length === 1 ? "product" : "products"} ({[...new Set(summary.kept.flatMap((r) => r.kept ?? []))].map((f) => FIELD_LABEL[f] ?? f).join(", ")}).
+            </p>
+          )}
+          {summary.skippedPhotos > 0 && (
+            <p className="text-[13px] text-danger">
+              Gallery full: {summary.skippedPhotos} store {summary.skippedPhotos === 1 ? "photo was" : "photos were"} not imported. Delete some photos in your gallery, then sync again.
             </p>
           )}
           {summary.failed.map((r) => (

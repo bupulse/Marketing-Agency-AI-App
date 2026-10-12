@@ -123,7 +123,8 @@ price label, the selling points and features, the album paths, and the **context
   (`clean`), so a product name cannot close the block. The writers' system prompts say that text between the markers
   is data, never instructions.
 - Budgeted: a product block at most 2,400 characters (about 600 tokens), a campaign block 2,800 with up to five linked
-  products in one line each, fields clipped (300, lists 8 lines of 160, the description 900); over budget, the
+  products in one line each. Any run of three or more `<` or `>` is removed from the owner's text, repeatedly until
+  none is left (`stripFences`), so nothing can open or close a fence. Fields are clipped (300, lists 8 lines of 160, the description 900); over budget, the
   lowest-priority lines go first (the long description, then variants, category...), never the name, summary, price
   or selling points.
 - When a block is given, the prompt's old "Price or offer / Key features / Other details" lines are left out (the block
@@ -160,9 +161,12 @@ migrated products show "Needs details". The currency is the company's region cur
 is `mapLegacyProject()` (`lib/knowledge/legacy.ts`); `tests/knowledge/legacy.test.ts` checks the SQL says the same.
 
 Photos: each project photo becomes a gallery photo (not in a folder) on its existing object path
-(`<userId>/projects/…`), id `mig_<md5 of the path>`, named after the project, and is linked to the new album in the
-same order. Sizes come from Storage (`storage.objects`), so they count toward the 500-photo / 2 GB gallery quota; a
-photo whose file is gone is not kept.
+(`<userId>/projects/…`), id `mig_<md5 of the path>`, named after the project, `source = 'project-migration'`, and is
+linked to the new album in the same order. These photos **do not count** toward the company's 500-photo / 2 GB quota
+(they were stored before the quota knew about them: `COUNTED` in `lib/media/rules.ts` leaves them out; the Gallery
+footer says "N photos moved from your old projects, not counted"). Their sizes come from Storage (`storage.objects`)
+when the migration can read it; otherwise they start at 0 and the gallery fills them from the object's metadata on
+first read, ten per gallery page view (`fillMigratedSizes`). A photo whose file is gone is not kept.
 
 Links: `GeneratedContent` gains `businessId` (backfilled, then NOT NULL: content is now scoped by company directly),
 `productId`, `campaignId`; `Design` and `Post` gain `productId`, `campaignId`; `ProductSync` gains `productId`
@@ -175,7 +179,12 @@ Store sync now writes products. The overwrite rule is unchanged (`planUpdate`): 
 and photos are replaced only while they still equal what the last sync wrote. The price compared is the store's price
 text kept in `priceNote` (with the amount read from it); saving the product form turns the note into the amount and
 clears it, which counts as the owner's edit. Store photos are gallery photos with `source: "store"` in the product's
-album; a re-sync relinks the album and deletes a store photo only when it is then in no album at all.
+album; a re-sync relinks the album and deletes a store photo only when nothing uses it any more: no album, no folder,
+no post (`Post.mediaPaths`) and no Autopilot design (`Design.prompt = "photo:<path>"`). Store photos **count** toward
+the gallery quota like uploads: when the gallery (or the shared storage) is full, new store photos are skipped before
+they are downloaded and reported ("Gallery full: N store photos not imported" on the import and Sync now screens;
+`skippedPhotos` on `ProductResult` / `ResyncSummary`). They stay missing from the image map, so the next sync tries
+them again once there is room.
 
 ## Roles, plan and limits
 
@@ -186,6 +195,15 @@ album; a re-sync relinks the album and deletes a store photo only when it is the
 - Rate limits per company account (`lib/rate-limit.ts`): `projectCreate` 30 an hour for new products, campaigns and
   copies; `knowledgeEdit` 300 an hour for saves, status changes, deletes and album edits; `profileSave` 60 an hour;
   gallery uploads keep `media-upload`. Caps: 500 products, 300 campaigns per company (checked under an advisory lock).
+- **Shared storage guard.** Every company's photos live in one Storage project (the Supabase free plan has 1 GB in
+  total). `MEDIA_PLATFORM_MAX_BYTES` (default 900 MB, `platformMaxBytes()`) caps the sum of `MediaAsset.bytes` over
+  all companies: uploads, finalizes (inside the quota transaction), imports and store photos past it are refused with
+  "BuPulse's photo storage is full right now…". From 80% the admin is told: an ErrorLog warning
+  (`media.platform-storage`, at most once an hour per server) and an item in the admin Overview's attention list
+  (`lib/admin/attention.ts`; "problem" once full). Migrated photos count here (they use real storage) but not in the
+  company quota.
+- Albums are capped at 30 photos under a per-album advisory lock (`linkInTx`), so parallel uploads cannot pass it. A
+  retried `finalizeUpload` whose row already exists still puts the photo in its album or folder.
 - RLS: the five new tables have RLS on and every grant revoked from `anon`, `authenticated` and `service_role`
   (`tests/security/rls-coverage.test.ts`).
 

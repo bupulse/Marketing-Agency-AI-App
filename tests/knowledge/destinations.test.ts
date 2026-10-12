@@ -40,3 +40,23 @@ describe("gallery destinations", () => {
     ]);
   });
 });
+
+describe("shared storage guard", () => {
+  it("reads MEDIA_PLATFORM_MAX_BYTES, defaulting to 900 MB", async () => {
+    const { platformMaxBytes, PLATFORM_DEFAULT_MAX_BYTES } = await import("@/lib/media/rules");
+    expect(PLATFORM_DEFAULT_MAX_BYTES).toBe(900 * 1024 * 1024);
+    expect(platformMaxBytes(undefined)).toBe(PLATFORM_DEFAULT_MAX_BYTES);
+    expect(platformMaxBytes("")).toBe(PLATFORM_DEFAULT_MAX_BYTES);
+    expect(platformMaxBytes("abc")).toBe(PLATFORM_DEFAULT_MAX_BYTES);
+    expect(platformMaxBytes("-5")).toBe(PLATFORM_DEFAULT_MAX_BYTES);
+    expect(platformMaxBytes("5000000000")).toBe(5_000_000_000);
+  });
+
+  it("refuses what would pass the cap and warns from 80%", async () => {
+    const { platformNearlyFull, platformProblem, PLATFORM_FULL_MESSAGE } = await import("@/lib/media/rules");
+    expect(platformProblem(900, 100, 1000)).toBeNull();
+    expect(platformProblem(901, 100, 1000)).toBe(PLATFORM_FULL_MESSAGE);
+    expect(platformNearlyFull(799, 1000)).toBe(false);
+    expect(platformNearlyFull(800, 1000)).toBe(true);
+  });
+});
