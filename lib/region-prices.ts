@@ -45,7 +45,7 @@ export function resetRegionPriceCache() {
 }
 
 /** Every regional price. Cached for 30 s; on a database error the last good copy, or none (GLOBAL then falls back to the plans). */
-export async function getRegionPrices(opts: { force?: boolean; now?: number } = {}): Promise<RegionPriceRow[]> {
+export async function getRegionPrices(opts: { force?: boolean; now?: number; strict?: boolean } = {}): Promise<RegionPriceRow[]> {
   const now = opts.now ?? Date.now();
   if (!opts.force && lastGood && now - fetchedAt < TTL_MS) return lastGood;
   try {
@@ -63,7 +63,8 @@ export async function getRegionPrices(opts: { force?: boolean; now?: number } = 
     }));
     fetchedAt = now;
     return lastGood;
-  } catch {
+  } catch (error) {
+    if (opts.strict) throw error;
     return lastGood ?? [];
   }
 }
@@ -136,10 +137,13 @@ export async function regionPriceIdFor(provider: BillingProvider, planKey: strin
  * region's own Paddle price (PlanRegionPrice.paddle*PriceId, used by the RW card and EAC prices). `regionKey` is set
  * for the latter. Null when the id is not ours.
  */
-export async function planForAnyPriceId(provider: BillingProvider, priceId: string): Promise<{ plan: Plan; interval: BillingInterval; regionKey?: string } | null> {
-  const own = await planForPriceId(provider, priceId);
+export async function planForAnyPriceId(provider: BillingProvider, priceId: string, opts: { strict?: boolean } = {}): Promise<{ plan: Plan; interval: BillingInterval; regionKey?: string } | null> {
+  const own = await planForPriceId(provider, priceId, opts);
   if (own || provider !== "PADDLE") return own;
-  const row = (await getRegionPrices({ force: true })).find((p) => p.paddleMonthlyPriceId === priceId || p.paddleYearlyPriceId === priceId);
+  // `strict` (webhooks): a database error is thrown, never answered as "not ours", so Paddle retries instead of the event
+  // being parked as unmapped.
+  const rows = await getRegionPrices({ force: true, strict: opts.strict });
+  const row = rows.find((p) => p.paddleMonthlyPriceId === priceId || p.paddleYearlyPriceId === priceId);
   if (!row) return null;
   return { plan: row.planKey, interval: row.paddleMonthlyPriceId === priceId ? "MONTH" : "YEAR", regionKey: row.regionKey };
 }

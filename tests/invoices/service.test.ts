@@ -373,6 +373,17 @@ describe("void", () => {
     await inv.markInvoicePaid(CONSOLE, second.id, { method: "CASH", reference: "R-0002" }, NOW);
     expect(await msg(inv.voidInvoice(CONSOLE, second.id, "Oops", NOW))).toMatch(/Refund/);
   });
+
+  it("with money received for it (a payment flagged for review) a void needs the admin to say they know; the audit keeps the payments", async () => {
+    seed();
+    const id = await sent();
+    h.db.invoice.rows[0].paymentReview = [{ source: "momo", reference: "BP-7K3Q", amountMinor: 20000, currency: "RWF", receivedAt: NOW.toISOString(), planKey: "PRO", interval: "MONTH" }];
+    expect(await msg(inv.voidInvoice(CONSOLE, id, "Wrong plan", NOW))).toMatch(/Money was received for BP-INV-0001 \(20,000 RWF by Mobile Money, BP-7K3Q\)/);
+    expect(invoice().status).toBe("sent");
+    await inv.voidInvoice(CONSOLE, id, "Wrong plan, refunded by MoMo", NOW, { acknowledgePayment: true });
+    expect(invoice().status).toBe("void");
+    expect(audits("void_invoice")[0].after).toMatchObject({ status: "void", acknowledgedPayments: [expect.objectContaining({ reference: "BP-7K3Q" })] });
+  });
 });
 
 describe("reminders and card", () => {
@@ -412,10 +423,37 @@ describe("reminders and card", () => {
     // audited, and the admins are emailed.
     h.sendEmail.mockClear();
     expect(await inv.settleInvoiceFromCardPayment(pay())).toBeNull();
-    expect(invoice()).toMatchObject({ status: "sent", paidBy: null, paymentReview: { source: "paddle", reference: "txn_1", amountMinor: 2800, currency: "USD", planKey: "PRO", interval: "MONTH" } });
+    expect(invoice()).toMatchObject({ status: "sent", paidBy: null, paymentReview: [{ source: "paddle", reference: "txn_1", amountMinor: 2800, currency: "USD", planKey: "PRO", interval: "MONTH" }] });
     expect(audits("invoice_paid")).toHaveLength(0);
     expect(audits("invoice_payment_review")).toHaveLength(1);
     expect(h.sendEmail.mock.calls.map((c) => c[0].subject)).toEqual(["Payment received for BP-INV-0001: check and mark paid"]);
+    // A replay of the same transaction adds nothing and alerts nobody again; a second, different payment is APPENDED
+    // (never overwrites the first) and the admins are told it may be a double payment.
+    h.sendEmail.mockClear();
+    await inv.settleInvoiceFromCardPayment(pay());
+    expect(h.sendEmail).not.toHaveBeenCalled();
+    expect(invoice().paymentReview).toHaveLength(1);
+    expect(await inv.settleInvoiceFromCardPayment(pay({ transactionId: "txn_1b", amountMinor: 2900 }))).toBeNull();
+    expect(invoice().paymentReview.map((r: { reference: string }) => r.reference)).toEqual(["txn_1", "txn_1b"]);
+    expect(h.sendEmail.mock.calls.map((c) => c[0].subject)).toEqual(["Second payment received for BP-INV-0001: possible double payment"]);
+    // The client cannot start another payment for it while one is being checked; a void needs the admin's say-so.
+    expect(await msg(momo.startInvoicePayment({ userId: USER, invoiceId: id, now: NOW }))).toBe("A payment for this invoice is being checked. We'll confirm shortly.");
+    expect(await code(inv.voidInvoice(CONSOLE, id, "Wrong plan", NOW))).toBe("conflict");
+    expect(invoice().status).toBe("sent");
+    // Marking it paid first: a refunded card transaction (Paddle adjustment) is refused.
+    h.db.billingEvent.rows.push({ id: "adj1", provider: "PADDLE", eventId: "evt_adj", type: "adjustment.created", payload: { data: { transaction_id: "txn_1", action: "refund", status: "approved" } }, createdAt: new Date() });
+    expect(await msg(inv.markInvoicePaid(CONSOLE, id, { method: "BANK", reference: "BANK-REF-1" }, NOW))).toMatch(/Paddle shows transaction txn_1 as refunded/);
+    h.db.billingEvent.rows.length = 0;
+    // The admin's method and reference are in the audit row beside the payments they confirmed.
+    h.db.invoice.rows[0].paymentReview = h.db.invoice.rows[0].paymentReview.slice(0, 1);
+    await inv.markInvoicePaid(CONSOLE, id, { method: "BANK", reference: "BANK-REF-1" }, NOW);
+    expect(invoice()).toMatchObject({ status: "paid", paidBy: "paddle:txn_1" });
+    expect(audits("invoice_paid")[0].after).toMatchObject({ paidBy: "paddle:txn_1", adminMethod: "BANK", adminReference: "BANK-REF-1", confirmedPayments: [expect.objectContaining({ reference: "txn_1" })] });
+    // A voided invoice with money received: shown in a separate test below. Here: back to an open one for the exact match.
+    invoice().status = "sent";
+    invoice().paidBy = null;
+    invoice().paymentReview = null;
+    for (let i = h.db.auditLog.rows.length - 1; i >= 0; i--) if (h.db.auditLog.rows[i].action === "invoice_paid") h.db.auditLog.rows.splice(i, 1);
     // The same amount and currency as the invoice settles it, once.
     expect(await inv.settleInvoiceFromCardPayment(pay({ transactionId: "txn_2", amountMinor: 35000, currency: "RWF" }))).toBe(id);
     expect(invoice()).toMatchObject({ status: "paid", paidBy: "paddle:txn_2" });
@@ -436,7 +474,9 @@ describe("reminders and card", () => {
     const plan = { plan: "PRO", interval: "MONTH" };
     const pay = (amountMinor: number, origin = "web", currency = "USD") => ({ amountMinor, currency, paidAt: at("2026-10-10T00:00:00Z"), origin });
     // Exact total: the newest exact match, whatever the origin.
-    expect(matchInvoicePayment(invs, pay(4900, "subscription_recurring"), plan)).toMatchObject({ settle: { id: "b" }, review: null });
+    expect(matchInvoicePayment(invs, pay(4900), plan)).toMatchObject({ settle: { id: "b" }, review: null });
+    // A renewal never pays or flags an invoice, even at the same amount.
+    expect(matchInvoicePayment(invs, pay(4900, "subscription_recurring"), plan)).toEqual({ settle: null, review: null });
     // A payment equal to the single plan line of an invoice that has a setup fee on top does NOT pay that invoice (its total is larger)...
     expect(matchInvoicePayment([invs[2]], pay(4900), plan)).toMatchObject({ settle: null, review: { id: "c" } });
     // ...while one that matches nothing is for review (newest candidate), and a renewal needs no review at all.

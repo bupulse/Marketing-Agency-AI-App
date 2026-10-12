@@ -11,7 +11,7 @@ import { dateTime, param } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/types";
 import { getInvoiceSettings, logoDataUrl } from "@/lib/invoices/settings";
 import { getInvoiceRow, invoiceDocument, invoicePayments, MANUAL_PAY_LABEL, MANUAL_PAY_METHODS } from "@/lib/invoices/service";
-import { formatInvoiceMoney, INVOICE_STATUS_LABEL, isOverdue, longInvoiceDate, readPaymentReview, ymdOf } from "@/lib/invoices/shared";
+import { formatInvoiceMoney, INVOICE_STATUS_LABEL, isOverdue, longInvoiceDate, readPaymentReviews, ymdOf } from "@/lib/invoices/shared";
 import { prisma } from "@/lib/db";
 import { markInvoicePaidAction, resendInvoiceAction, voidInvoiceAction } from "../actions";
 
@@ -41,7 +41,7 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
   const total = formatInvoiceMoney(row.totalMinor, row.currency);
   // A draft is priced with the current VAT setting (saving applies it); the preview shows the same.
   const draftDoc = row.status === "draft" ? { ...doc, taxRatePercent: settings.vatRatePercent } : doc;
-  const review = row.status === "sent" ? readPaymentReview(row.paymentReview) : null;
+  const received = row.status === "sent" ? readPaymentReviews(row.paymentReview) : [];
   const pdfHref = `/admin/invoices/${row.id}/pdf`;
 
   return (
@@ -53,10 +53,16 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
       />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
-      {review && (
-        <p role="alert" className={notice.bad}>
-          Payment received: {formatInvoiceMoney(review.amountMinor, review.currency)} by {review.source === "paddle" ? "card" : "Mobile Money"} ({review.reference}, {dateTime(new Date(review.receivedAt))}), but the invoice is for {total}. It was not marked paid. Check the money, then mark the invoice paid. Reminders keep going until you do.
-        </p>
+      {received.length > 0 && (
+        <div role="alert" className={notice.bad}>
+          <p className="font-semibold">{received.length > 1 ? "Payments received" : "Payment received"}: check and mark paid. {received.length > 1 && "More than one payment came in: possible double payment, refund the extra one."}</p>
+          <ul className="list-disc pl-5">
+            {received.map((r) => (
+              <li key={`${r.source}:${r.reference}`}>{formatInvoiceMoney(r.amountMinor, r.currency)} by {r.source === "paddle" ? "card" : "Mobile Money"} ({r.reference}, {dateTime(new Date(r.receivedAt))}); the invoice is for {total}.</li>
+            ))}
+          </ul>
+          <p>It was not marked paid. Check the money, then mark the invoice paid. Reminders keep going until you do.</p>
+        </div>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
@@ -82,8 +88,11 @@ export default async function InvoicePage({ params, searchParams }: { params: Pr
           </>
         )}
         {(row.status === "draft" || row.status === "sent") && (
-          <ConfirmButton action={voidInvoiceAction} fields={{ id: row.id }} label="Void" title={`Void ${row.number}?`} description="The client can no longer pay it and sees it as void. The number is not reused. Written to the audit log." confirmLabel="Void invoice">
+          <ConfirmButton action={voidInvoiceAction} fields={{ id: row.id }} label="Void" title={`Void ${row.number}?`} description={received.length ? "Money was received for this invoice. Voiding it does not return the money: refund the client, or mark the invoice paid instead. Written to the audit log." : "The client can no longer pay it and sees it as void. The number is not reused. Written to the audit log."} confirmLabel="Void invoice">
             <Field label="Reason" required><Textarea name="reason" rows={2} minLength={3} maxLength={300} required placeholder="Wrong plan, re-issued as a new invoice." /></Field>
+            {received.length > 0 && (
+              <label className="flex items-start gap-2 text-[14px]"><input type="checkbox" name="acknowledgePayment" value="yes" required className="mt-1" /> Money was received for this invoice and I know voiding it does not refund it.</label>
+            )}
           </ConfirmButton>
         )}
       </div>

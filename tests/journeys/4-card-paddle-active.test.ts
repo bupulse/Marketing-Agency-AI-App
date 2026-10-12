@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeDb, type FakeDb } from "../admin/fake-db";
-import { authUser, companyOf, HOUR, installSignUp, seedCatalog } from "./world";
+import { authUser, code, companyOf, HOUR, installSignUp, seedCatalog } from "./world";
 
 // Journey 4: outside Rwanda the client pays by card (Paddle). The webhook route runs for real against the in-memory
 // database, with a correctly signed request (HMAC with a test secret). subscription.* events move the plan to ACTIVE
@@ -30,6 +30,7 @@ vi.mock("@/lib/invoices/storage", () => ({
 import { POST } from "@/app/api/billing/webhooks/paddle/route";
 import { ensureAccount } from "@/lib/account";
 import { companyEntitlements, hasFeature } from "@/lib/entitlements";
+import { listUnprocessedPaddleEvents, reprocessBillingEvent } from "@/lib/billing/paddle-events";
 import { signCheckoutUser } from "@/lib/billing/signing";
 import { choosePlan } from "@/lib/demo/bookings";
 import * as inv from "@/lib/invoices/service";
@@ -37,7 +38,7 @@ import { resetPlanCache } from "@/lib/plan-catalog";
 import { resetRegionCache } from "@/lib/region";
 import { resetRegionPriceCache } from "@/lib/region-prices";
 import { clearSwitchCache } from "@/lib/admin/switch";
-import { consoleContext } from "@/lib/admin/types";
+import { apiContext, consoleContext } from "@/lib/admin/types";
 
 const CONSOLE = consoleContext("198.51.100.1");
 const SECRET = "pdl_ntfset_journey";
@@ -169,7 +170,7 @@ describe("journey: card payment through Paddle webhooks", () => {
     await post(subscriptionEvent(c.ctx, "subscription.created", "evt_1"));
     await post(transactionEvent(c.ctx, "evt_2", "txn_1"));
     expect(c.subscription).toMatchObject({ status: "ACTIVE", plan: "PRO" });
-    expect(c.invoice()).toMatchObject({ status: "sent", paidBy: null, paymentReview: { source: "paddle", reference: "txn_1", amountMinor: 9900, currency: "USD" } });
+    expect(c.invoice()).toMatchObject({ status: "sent", paidBy: null, paymentReview: [expect.objectContaining({ source: "paddle", reference: "txn_1", amountMinor: 9900, currency: "USD" })] });
     expect(audits("invoice_paid")).toHaveLength(0);
     expect(audits("invoice_payment_review")[0]).toMatchObject({ actor: "system:paddle", target: `invoice:${c.invoice().id}` });
     expect((h.sendEmail.mock.calls.at(-1)?.[0] as { subject: string }).subject).toBe("Payment received for BP-INV-0001: check and mark paid");
@@ -205,18 +206,47 @@ describe("journey: card payment through Paddle webhooks", () => {
     expect(c.subscription).toMatchObject({ status: "ACTIVE", plan: "PRO", provider: "PADDLE", providerPriceId: "pri_pro_eac_m" });
   });
 
-  it("an unknown price is recorded as unmapped with an alert and a 200, never retried forever, and never changes the plan", async () => {
+  it("an unknown price answers 200 but stays unprocessed; once it is mapped, Reprocess (or a Paddle replay) applies it; a database error is a 500", async () => {
     const c = await invoicedClient(1, "France");
     h.sendEmail.mockClear();
-    const body = subscriptionEvent(c.ctx, "subscription.created", "evt_x", {}, "pri_nobody");
-    expect((await post(body)).status).toBe(200);
+    const body = subscriptionEvent(c.ctx, "subscription.created", "evt_x", {}, "pri_later");
+    expect(await (await post(body)).json()).toEqual({ ok: true, unmapped: true });
     expect(c.subscription).toMatchObject({ status: "PENDING_DEMO", provider: null });
-    expect(h.db.billingEvent.rows[0]).toMatchObject({ type: "subscription.created", error: expect.stringMatching(/^unmapped: price pri_nobody/) });
-    expect(h.db.billingEvent.rows[0].processedAt).toBeInstanceOf(Date);
+    const stored = h.db.billingEvent.rows[0];
+    expect(stored).toMatchObject({ type: "subscription.created", error: expect.stringMatching(/^unmapped: price pri_later/) });
+    expect(stored.processedAt ?? null).toBeNull();
     expect(h.logError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ source: "billing.webhook.paddle.unmapped" }));
-    expect((h.sendEmail.mock.calls.at(-1)?.[0] as { subject: string }).subject).toBe("Paddle price not recognised: pri_nobody");
-    expect(await (await post(body)).json()).toEqual({ ok: true, duplicate: true });
+    expect((h.sendEmail.mock.calls.at(-1)?.[0] as { subject: string }).subject).toBe("Paddle price not recognised: pri_later");
+    // It is listed for the admin; Paddle's own replay while still unmapped alerts nobody again.
+    expect((await listUnprocessedPaddleEvents()).map((e) => e.eventId)).toEqual(["evt_x"]);
+    h.sendEmail.mockClear();
+    expect((await post(body)).status).toBe(200);
+    expect(h.sendEmail).not.toHaveBeenCalled();
     expect(h.db.billingEvent.rows).toHaveLength(1);
+    // Reprocess is the console's, and refuses while the price is still unknown (nothing changes, nothing is audited).
+    expect(await code(reprocessBillingEvent(consoleContext(null), stored.id))).toMatch(/^conflict: Price pri_later is still not one of our plans/);
+    expect(await code(reprocessBillingEvent(apiContext("key1", "203.0.113.5"), stored.id))).toMatch(/^forbidden/);
+    expect(h.db.auditLog.rows.filter((r) => r.action === "reprocess_billing_event")).toHaveLength(0);
+    // The admin syncs the plan's price with Paddle; Reprocess applies the stored event once and audits it.
+    h.db.planDefinition.rows.find((p) => p.key === "PRO")!.paddleMonthlyPriceId = "pri_later";
+    resetPlanCache();
+    expect(await reprocessBillingEvent(consoleContext(null), stored.id)).toMatchObject({ type: "subscription.created" });
+    expect(c.subscription).toMatchObject({ status: "ACTIVE", plan: "PRO", provider: "PADDLE", providerPriceId: "pri_later" });
+    expect(stored.processedAt).toBeInstanceOf(Date);
+    expect(h.db.auditLog.rows.filter((r) => r.action === "reprocess_billing_event")).toHaveLength(1);
+    expect(await code(reprocessBillingEvent(consoleContext(null), stored.id))).toMatch(/^conflict: This event was already processed/);
+    expect(await (await post(body)).json()).toEqual({ ok: true, duplicate: true });
+
+    // A database error during the price lookup is a 500 (Paddle retries), not an "unmapped" event.
+    const failing = subscriptionEvent(c.ctx, "subscription.updated", "evt_db", { updated_at: "2026-10-13T09:30:00Z" });
+    resetPlanCache();
+    const find = h.db.planDefinition.findMany;
+    h.db.planDefinition.findMany = vi.fn(async () => { throw new Error("connection reset"); }) as never;
+    expect((await post(failing)).status).toBe(500);
+    h.db.planDefinition.findMany = find;
+    expect(h.db.billingEvent.rows.find((e) => e.eventId === "evt_db")).toMatchObject({ error: "connection reset" });
+    expect(h.db.billingEvent.rows.find((e) => e.eventId === "evt_db")!.processedAt ?? null).toBeNull();
+    expect(h.db.billingEvent.rows.find((e) => e.eventId === "evt_db")!.error).not.toMatch(/unmapped/);
   });
 
   it("is unreachable without the signed checkout user: a forged user id attaches nothing", async () => {

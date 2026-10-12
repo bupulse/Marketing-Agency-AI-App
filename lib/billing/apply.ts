@@ -22,7 +22,7 @@ const LIVE = new Set(["ACTIVE", "PAST_DUE", "TRIALING"]);
  * after actions (cancel/resume/change). Upgrading from the trial ends the trial: paid starts now.
  */
 export async function applyProviderSubscription(provider: BillingProvider, sub: ProviderSubscription): Promise<ApplyOutcome> {
-  const match = await planForAnyPriceId(provider, sub.providerPriceId);
+  const match = await planForAnyPriceId(provider, sub.providerPriceId, { strict: true });
   if (!match) return "unknown_price";
 
   // The owner is whoever already holds this subscription id (set by us earlier). Otherwise the

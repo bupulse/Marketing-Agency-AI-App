@@ -24,7 +24,8 @@ import {
   formatInvoiceMoney,
   formatInvoiceNumber,
   matchInvoicePayment,
-  readPaymentReview,
+  readPaymentReviews,
+  withPaymentReview,
   type PaymentReview,
   intervalLabel,
   invoiceToday,
@@ -332,15 +333,21 @@ export async function markInvoicePaid(ctx: AdminContext, id: string, input: { me
   if (!row) throw new AdminError("not_found", "No invoice with that id.");
   if (row.status !== "sent") throw new AdminError("conflict", row.status === "draft" ? `Send invoice ${row.number} first, then mark it paid.` : `Invoice ${row.number} is already ${row.status}.`);
 
-  // A payment already recorded on the invoice (Invoice.paymentReview) has switched the plan on: the admin only confirms
-  // the money, so the invoice is marked paid without a second payment or period.
-  const reviewed = readPaymentReview(row.paymentReview);
-  if (!row.planKey || !row.interval || reviewed) {
-    const paidBy = reviewed ? `${reviewed.source}:${reviewed.reference}` : `manual:${method}:${ref.data}`;
+  // Payments already recorded on the invoice (Invoice.paymentReview) have switched the plan on: the admin only confirms
+  // the money, so the invoice is marked paid without a second payment or period. The admin's own method and reference
+  // go into the audit row beside the payments they confirm.
+  const reviewed = readPaymentReviews(row.paymentReview);
+  if (!row.planKey || !row.interval || reviewed.length > 0) {
+    const first = reviewed[0];
+    // A card payment that Paddle has since refunded (an approved refund adjustment is on file) is not money received.
+    if (first?.source === "paddle" && (await paddleTransactionRefunded(first.reference))) {
+      throw new AdminError("conflict", `Paddle shows transaction ${first.reference} as refunded, so the money is not with us. Check Paddle before marking ${row.number} paid; void the invoice (acknowledging the payment) if it was refunded.`);
+    }
+    const paidBy = first ? `${first.source}:${first.reference}` : `manual:${method}:${ref.data}`;
     await prisma.$transaction(async (tx) => {
       const { count } = await tx.invoice.updateMany({ where: { id, status: "sent" }, data: { status: "paid", paidAt: now, paidBy } });
       if (count !== 1) throw new AdminError("conflict", "The invoice was paid or voided a moment ago. Nothing was changed.");
-      await writeAudit(tx, ctx, "invoice_paid", `invoice:${id}`, { status: "sent" }, { status: "paid", number: row.number, paidBy, amountMinor: row.totalMinor, currency: row.currency });
+      await writeAudit(tx, ctx, "invoice_paid", `invoice:${id}`, { status: "sent" }, { status: "paid", number: row.number, paidBy, amountMinor: row.totalMinor, currency: row.currency, ...(reviewed.length ? { confirmedPayments: reviewed, adminMethod: method, adminReference: ref.data } : {}) });
     });
     return { id, number: row.number, status: "paid" as const, periodEnd: null as Date | null, emailed: false };
   }
@@ -372,7 +379,7 @@ export async function markInvoicePaid(ctx: AdminContext, id: string, input: { me
 }
 
 /** Cancels a draft or an unpaid invoice with a reason. A paid invoice is refunded instead, never voided. Audited. */
-export async function voidInvoice(ctx: AdminContext, id: string, reason: string, now: Date = new Date()) {
+export async function voidInvoice(ctx: AdminContext, id: string, reason: string, now: Date = new Date(), opts: { acknowledgePayment?: boolean } = {}) {
   requireConsole(ctx);
   const why = reason.trim();
   if (why.length < 3 || why.length > 300) throw new AdminError("invalid", "Give a short reason (3 to 300 characters).");
@@ -380,6 +387,12 @@ export async function voidInvoice(ctx: AdminContext, id: string, reason: string,
   if (!row) throw new AdminError("not_found", "No invoice with that id.");
   if (row.status === "paid") throw new AdminError("conflict", `Invoice ${row.number} is paid. Refund the client instead of voiding it.`);
   if (row.status === "void") throw new AdminError("conflict", `Invoice ${row.number} is already void.`);
+  // Money was received for it (a card payment or Mobile Money that did not match the total): voiding hides the invoice
+  // while the client has paid, so the admin must say they know (and refund or settle it).
+  const received = readPaymentReviews(row.paymentReview);
+  if (received.length > 0 && !opts.acknowledgePayment) {
+    throw new AdminError("conflict", `Money was received for ${row.number} (${received.map((r) => `${formatInvoiceMoney(r.amountMinor, r.currency)} ${r.source === "paddle" ? "by card" : "by Mobile Money"}, ${r.reference}`).join("; ")}). Mark it paid, or refund the client, before voiding. To void it anyway, confirm that you know about the payment.`);
+  }
   const reported = await prisma.manualPayment.findFirst({ where: { invoiceId: id, status: "pending", submittedAt: { not: null } } });
   if (reported) throw new AdminError("conflict", `The client has reported a payment for ${row.number}. Confirm or reject it in Payments first.`);
   await prisma.$transaction(async (tx) => {
@@ -387,9 +400,21 @@ export async function voidInvoice(ctx: AdminContext, id: string, reason: string,
     if (count !== 1) throw new AdminError("conflict", "The invoice was paid or voided a moment ago. Nothing was changed.");
     // A payment the client only opened for this invoice is closed with it.
     await tx.manualPayment.updateMany({ where: { invoiceId: id, status: "pending", submittedAt: null }, data: { status: "expired", decidedAt: now, decidedBy: ctx.actor } });
-    await writeAudit(tx, ctx, "void_invoice", `invoice:${id}`, { status: row.status }, { status: "void", number: row.number, reason: why });
+    await writeAudit(tx, ctx, "void_invoice", `invoice:${id}`, { status: row.status }, { status: "void", number: row.number, reason: why, ...(received.length ? { acknowledgedPayments: received } : {}) });
   });
   return { id, number: row.number, status: "void" as const };
+}
+
+/**
+ * Whether Paddle told us (an `adjustment.*` event, if the notification destination includes them) that this transaction
+ * was refunded. Without those events nothing is known here, and the admin checks in Paddle (docs/INVOICES.md).
+ */
+async function paddleTransactionRefunded(transactionId: string): Promise<boolean> {
+  const events = await prisma.billingEvent.findMany({ where: { provider: "PADDLE", type: { in: ["adjustment.created", "adjustment.updated"] } }, orderBy: { createdAt: "desc" }, take: 500 });
+  return events.some((e) => {
+    const d = (e.payload as { data?: { transaction_id?: unknown; action?: unknown; status?: unknown } } | null)?.data;
+    return d?.transaction_id === transactionId && d?.action === "refund" && d?.status === "approved";
+  });
 }
 
 // ---- card payments (Paddle) ----------------------------------------------------------------------------------
@@ -425,13 +450,19 @@ export async function settleInvoiceFromCardPayment(pay: CardPayment): Promise<st
  * A payment arrived for this invoice but did not match its total: record it on the invoice (it stays "sent", so the
  * reminders keep running), audit it and alert the admins. An admin checks the money and marks the invoice paid.
  */
-async function flagPaymentForReview(invoice: Row, pay: Omit<PaymentReview, "receivedAt" | "planKey" | "interval"> & { receivedAt: Date; planKey: string | null; interval: string | null }, actor: string, businessId: string) {
-  const review: PaymentReview = { ...pay, receivedAt: pay.receivedAt.toISOString() };
-  const { count } = await prisma.invoice.updateMany({ where: { id: invoice.id, status: "sent" }, data: { paymentReview: review as unknown as Prisma.InputJsonValue } });
+async function flagPaymentForReview(invoice: Row, pay: Omit<PaymentReview, "receivedAt"> & { receivedAt: Date }, actor: string, businessId: string) {
+  // Never overwrites: every payment received is appended, so a second one (a possible double payment) is seen too.
+  const fresh = await prisma.invoice.findUnique({ where: { id: invoice.id }, select: { status: true, paymentReview: true } });
+  if (!fresh || fresh.status !== "sent") return;
+  const entry: PaymentReview = { ...pay, receivedAt: pay.receivedAt.toISOString() };
+  const { list, added } = withPaymentReview(fresh.paymentReview, entry);
+  if (!added) return; // a replay of a payment already on the invoice
+  const { count } = await prisma.invoice.updateMany({ where: { id: invoice.id, status: "sent" }, data: { paymentReview: list as unknown as Prisma.InputJsonValue } });
   if (count !== 1) return;
-  await writeAudit(prisma, { ...consoleContext(null), actor }, "invoice_payment_review", `invoice:${invoice.id}`, { status: "sent" }, { number: invoice.number, ...review, invoiceTotalMinor: invoice.totalMinor, invoiceCurrency: invoice.currency }).catch(() => undefined);
+  const second = list.length > 1;
+  await writeAudit(prisma, { ...consoleContext(null), actor }, "invoice_payment_review", `invoice:${invoice.id}`, { status: "sent", payments: list.length - 1 }, { number: invoice.number, ...entry, payments: list.length, invoiceTotalMinor: invoice.totalMinor, invoiceCurrency: invoice.currency }).catch(() => undefined);
   const company = await prisma.business.findUnique({ where: { id: businessId }, select: { name: true } }).catch(() => null);
-  await sendInvoiceReviewAlertEmail({ number: invoice.number, company: company?.name ?? "A company", invoiceId: invoice.id, source: review.source, reference: review.reference, paidMinor: review.amountMinor, paidCurrency: review.currency, invoiceMinor: invoice.totalMinor, invoiceCurrency: invoice.currency }).catch(() => false);
+  await sendInvoiceReviewAlertEmail({ second, number: invoice.number, company: company?.name ?? "A company", invoiceId: invoice.id, source: entry.source, reference: entry.reference, paidMinor: entry.amountMinor, paidCurrency: entry.currency, invoiceMinor: invoice.totalMinor, invoiceCurrency: invoice.currency }).catch(() => false);
 }
 
 // ---- reminders (daily, from the Mobile Money renewals job) --------------------------------------------------

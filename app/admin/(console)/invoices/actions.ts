@@ -99,7 +99,7 @@ export async function markInvoicePaidAction(f: FormData) {
 export async function voidInvoiceAction(f: FormData) {
   const ctx = await adminAction();
   const id = text(f, "id");
-  await finish(editor(id), (r) => `${r.number} is void. The client can no longer pay it.`, () => voidInvoice(ctx, id, text(f, "reason")));
+  await finish(editor(id), (r) => `${r.number} is void. The client can no longer pay it.`, () => voidInvoice(ctx, id, text(f, "reason"), new Date(), { acknowledgePayment: text(f, "acknowledgePayment") === "yes" }));
 }
 
 // ---- settings ------------------------------------------------------------------------------------------------

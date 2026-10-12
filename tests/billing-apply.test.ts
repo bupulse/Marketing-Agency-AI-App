@@ -5,7 +5,11 @@ const { findFirst, findUnique, updateMany } = vi.hoisted(() => ({
   findUnique: vi.fn(),
   updateMany: vi.fn(),
 }));
-vi.mock("@/lib/db", () => ({ prisma: { subscription: { findFirst, findUnique, updateMany } } }));
+// The plan catalog and region prices come from the database (strict lookups: an error is an error, not "unknown").
+vi.mock("@/lib/db", async () => {
+  const { seedPlanRows } = await import("./admin/fake-db");
+  return { prisma: { subscription: { findFirst, findUnique, updateMany }, planDefinition: { findMany: vi.fn(async () => seedPlanRows()) }, planRegionPrice: { findMany: vi.fn(async () => []) } } };
+});
 
 import { applyProviderSubscription } from "@/lib/billing/apply";
 import { signCheckoutUser } from "@/lib/billing/signing";

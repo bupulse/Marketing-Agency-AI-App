@@ -239,11 +239,14 @@ describe("journey: invoice -> Mobile Money with BP-INV reference -> paid + ACTIV
     await momo.confirmManualPayment(CONSOLE, plain.id, AT);
     expect(subscription).toMatchObject({ status: "ACTIVE", plan: "BUSINESS" });
     // The invoice is NOT marked paid; the payment is recorded on it, audited, and the admins are alerted.
-    expect(row()).toMatchObject({ status: "sent", paidBy: null, paymentReview: { source: "momo", reference: plain.reference, amountMinor: 35000, currency: "RWF" } });
+    expect(row()).toMatchObject({ status: "sent", paidBy: null, paymentReview: [expect.objectContaining({ source: "momo", reference: plain.reference, amountMinor: 35000, currency: "RWF" })] });
     expect(audits("invoice_paid")).toHaveLength(0);
     expect(audits("invoice_payment_review")).toHaveLength(1);
     expect(subjects(h.sendEmail.mock.calls)).toContain("Payment received for BP-INV-0001: check and mark paid");
     expect(recipients(h.sendEmail.mock.calls)).toContain("owner@bupulse.com");
+    // The client cannot pay the same invoice again while it is being checked, and a void needs the admin's say-so.
+    expect(await code(momo.startInvoicePayment({ userId, invoiceId: draft.id, now: AT }))).toMatch(/A payment for this invoice is being checked/);
+    expect(await code(inv.voidInvoice(CONSOLE, draft.id, "Changed our mind", AT))).toMatch(/^conflict: Money was received for BP-INV-0001/);
     // The reminders keep running until the admin settles it.
     vi.setSystemTime(new Date("2026-10-17T08:00:00Z"));
     expect(await inv.sendInvoiceReminders(new Date())).toBe(1);
@@ -255,6 +258,21 @@ describe("journey: invoice -> Mobile Money with BP-INV reference -> paid + ACTIV
     expect(row()).toMatchObject({ status: "paid", paidBy: `momo:${plain.reference}` });
     expect(subscription.currentPeriodEnd).toEqual(periodEnd);
     expect(h.db.manualPayment.rows).toHaveLength(1);
+    expect(audits("invoice_paid")[0].after).toMatchObject({ paidBy: `momo:${plain.reference}`, adminMethod: "BANK", adminReference: "BANK-REF-9981", confirmedPayments: [expect.objectContaining({ reference: plain.reference })] });
+  });
+
+  it("a payment that only renews the plan already running never settles or flags an invoice", async () => {
+    const { userId, businessId, subscription } = await afterDemo(1);
+    Object.assign(subscription, { status: "ACTIVE", plan: "BUSINESS", provider: "MANUAL_MOMO", interval: "MONTH", currentPeriodStart: AT, currentPeriodEnd: new Date(AT.getTime() + 10 * 86_400_000) });
+    h.db.invoice.rows.push({ id: "i1", businessId, number: "BP-INV-0001", status: "sent", currency: "RWF", planKey: "BUSINESS", interval: "MONTH", totalMinor: 35000, subtotalMinor: 35000, taxMinor: 0, lines: [{ description: "Plan", quantity: 1, unitMinor: 35000 }], sentAt: new Date(AT.getTime() - 3_600_000), reminderSentAt: null });
+    const renewal = await momo.startManualPayment({ userId, plan: "BUSINESS", interval: "MONTH", now: AT });
+    expect(renewal.periodNote).toMatchObject({ mode: "extend" });
+    await momo.submitManualProof(userId, { paymentId: renewal.id, transactionId: "MP99001122", payerPhone: "0781234567", network: "MTN" }, AT);
+    await momo.confirmManualPayment(CONSOLE, renewal.id, AT);
+    expect(h.db.invoice.rows[0].status).toBe("sent");
+    expect(h.db.invoice.rows[0].paidBy ?? null).toBeNull();
+    expect(h.db.invoice.rows[0].paymentReview).toBeUndefined();
+    expect(audits("invoice_paid")).toHaveLength(0);
   });
 
   it("a payment confirmed before the invoice was sent does not settle it", async () => {
