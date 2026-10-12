@@ -15,9 +15,13 @@ function matches(row: Row, where: Record<string, unknown> | undefined): boolean 
     if (key === "OR") return (cond as Record<string, unknown>[]).some((c) => matches(row, c));
     const value = row[key];
     if (cond && typeof cond === "object" && !(cond instanceof Date)) {
-      const c = cond as { gte?: Date };
+      const c = cond as { gte?: Date; lt?: Date | string; in?: unknown[] };
       if (c.gte) return (value as Date) >= c.gte;
+      if (c.lt !== undefined) return c.lt instanceof Date ? (value as Date) < c.lt : (value as string) < c.lt;
+      if (c.in) return c.in.includes(value);
+      if (cond instanceof Object && !Array.isArray(cond)) return true;
     }
+    if (cond instanceof Date) return value instanceof Date && value.getTime() === cond.getTime();
     return value === cond;
   });
 }
@@ -242,14 +246,33 @@ describe("business A can never see or change business B", () => {
   it("lists only its own rows on every endpoint", async () => {
     const ids = async (response: Response) => (await response.json()).data.map((r: { id: string }) => r.id);
     expect(await ids(await listLeads(req(KEY_A)))).not.toContain("b1");
-    expect(await ids(await listProjects(req(KEY_A, "https://x.test/api/v1/projects")))).toEqual(["pA"]);
+    expect(await ids(await listProjects(req(KEY_A, "https://x.test/api/v1/projects")))).toEqual(["kgA", "pA"]);
     expect(await ids(await listContent(req(KEY_A, "https://x.test/api/v1/content")))).toEqual(["cA"]);
     expect(await ids(await listPosts(req(KEY_A, "https://x.test/api/v1/posts")))).toEqual(["postA"]);
     expect(await ids(await listProducts(req(KEY_A, "https://x.test/api/v1/products")))).toEqual(["pA"]);
     expect(await ids(await listCampaigns(req(KEY_A, "https://x.test/api/v1/campaigns")))).toEqual(["kgA"]);
     expect(await ids(await listProjects(req(KEY_A, "https://x.test/api/v1/projects?type=event")))).toEqual(["kgA"]);
+    expect(await ids(await listProjects(req(KEY_A, "https://x.test/api/v1/projects?type=product")))).toEqual(["pA"]);
     expect(await ids(await listLeads(req(KEY_B)))).toEqual(["b1"]);
   });
+  it("lists products and campaigns together on the old /projects, newest first, and pages through both without gaps or repeats", async () => {
+    db.product.push({ ...db.product[0], id: "pA2", createdAt: day(3), updatedAt: day(3) });
+    db.campaign.push({ ...db.campaign[0], id: "kgA0", createdAt: day(2), updatedAt: day(2) }); // same time as kgA: the id breaks the tie (descending)
+    const all = (await (await listProjects(req(KEY_A, "https://x.test/api/v1/projects"))).json()).data.map((r: { id: string; type: string }) => `${r.id}:${r.type}`);
+    expect(all).toEqual(["pA2:product", "kgA0:event", "kgA:event", "pA:product"]);
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let i = 0; i < 10; i++) {
+      const url: string = `https://x.test/api/v1/projects?limit=1${cursor ? `&cursor=${cursor}` : ""}`;
+      const page: { data: { id: string }[]; nextCursor: string | null } = await (await listProjects(req(KEY_A, url))).json();
+      seen.push(...page.data.map((r) => r.id));
+      cursor = page.nextCursor;
+      if (!cursor) break;
+    }
+    expect(seen).toEqual(["pA2", "kgA0", "kgA", "pA"]);
+    expect((await listProjects(req(KEY_A, "https://x.test/api/v1/projects?cursor=pB"))).status).toBe(400); // another company's id
+  });
+
   it("answers products and campaigns in their own shape, and old project ids through /projects/:id", async () => {
     const product = (await (await getProduct(req(KEY_A), ctxId("pA"))).json()).data;
     expect(product).toMatchObject({ id: "pA", kind: "physical", price: { model: "fixed", amountMinor: 15000, currency: "RWF", label: "15,000 RWF" }, sellingPoints: ["Local"], photoCount: 1 });

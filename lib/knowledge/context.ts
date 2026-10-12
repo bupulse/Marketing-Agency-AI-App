@@ -27,7 +27,7 @@ import { FOLLOWUP, readMarketingProfile, topicLabel } from "./interview";
 import { paymentLine, POLICY_FIELDS, readPolicies } from "./policies";
 import { readProfile, SIZE_LABEL } from "./profile";
 import { SOURCE_LABEL, type ReviewSourceValue } from "./reviews";
-import { clean } from "./text";
+import { clean, stripFences } from "./text";
 
 export const PRODUCT_CONTEXT_MAX = 2400;
 export const CAMPAIGN_CONTEXT_MAX = 2800;
@@ -67,7 +67,7 @@ export type ContextCampaign = {
   products: ContextProduct[];
 };
 
-export { clean };
+export { clean, stripFences };
 
 type Line = { text: string; /** Lower is dropped first when over budget. */ keep: number };
 

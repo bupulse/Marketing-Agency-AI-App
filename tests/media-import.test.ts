@@ -192,7 +192,9 @@ describe("quota is checked atomically", () => {
   });
 
   it("refuses and removes the file when parallel imports filled the quota after the first check", async () => {
-    mocks.prisma.mediaAsset.aggregate.mockResolvedValueOnce({ _count: { _all: 499 }, _sum: { bytes: 0 } }).mockResolvedValueOnce({ _count: { _all: 500 }, _sum: { bytes: 0 } });
+    // The company's count is 499 at the first check and 500 inside the transaction; the shared storage is nearly empty.
+    const company = [499, 500];
+    mocks.prisma.mediaAsset.aggregate.mockImplementation(async (args: { where?: unknown }) => (args.where ? { _count: { _all: company.length > 1 ? company.shift()! : company[0] }, _sum: { bytes: 0 } } : { _sum: { bytes: 0 } }));
     await expect(importAsset(ctx, { ...base, bytes: png() })).rejects.toThrow(/gallery is full/);
     expect(mocks.prisma.mediaAsset.create).not.toHaveBeenCalled();
     expect(mocks.remove).toHaveBeenCalledWith([mocks.upload.mock.calls[0][0]]);

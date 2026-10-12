@@ -42,7 +42,10 @@ Built 12 October 2026 on branch `v2-kb` (from `v2`). Full description: `docs/KNO
    it **creates** in that window are not copied: if the old build ran for more than a few minutes after the migration,
    re-run the "BACKFILL" block of the migration (it is idempotent) after the new build is live.
 3. Nothing is dropped. Rolling back the code is safe: the old build reads `Project`, which still holds every project
-   from before the migration (but not products or campaigns created after it).
+   from before the migration (but not products or campaigns created after it). One caveat: migrated photos keep their
+   `<userId>/projects/…` object paths, so a photo deleted in the new Gallery is also gone from the old project
+   (`Project.photoPaths` still lists it; the old build shows it as missing). Store-import mappings an older build
+   writes after the migration (`ProductSync` has no trigger) also need the BACKFILL block re-run.
 
 ## Checks
 
@@ -51,6 +54,15 @@ files skipped without a database) and `npx next build` all pass. New tests: `tes
 legacy,destinations,context,profile,actions}.test.ts`; updated: store sync, media service and imports, studio
 service, publishing, public API, features registry. `tests/studio-actions.test.ts` was replaced by
 `tests/knowledge/actions.test.ts` (the project actions are gone).
+
+## Review fixes (second commit)
+
+Quota exemption for migrated photos and the shared storage guard with an admin warning at 80%; store photos skipped
+and reported when the gallery is full; store sync never deletes a store photo that is in a folder or used by a post
+or design; `GET /api/v1/projects` without `type` merges products and campaigns with cursor paging; `/api/generate`
+puts `photoPaths` (gallery photos) in the album or answers 400 `invalid_photo`; a per-album advisory lock for the
+30-photo cap; a retried finalize links its destination; the fence stripper removes any run of 3+ `<` or `>` until
+stable. Further items from the reviewer are listed with their tests in the commit.
 
 ## For part 2
 
@@ -66,9 +78,9 @@ service, publishing, public API, features registry. `tests/studio-actions.test.t
 
 ## Open items
 
-- Migrated project photos and store photos now count toward the gallery quota (500 photos, 2 GB). A company with many
-  project photos could be over 500 after the migration: new uploads are then refused with the "gallery is full"
-  message until photos are deleted. Consider raising the count limit or excluding `source: "store"` if it happens.
+- Photos moved from projects do not count toward the gallery quota (`source = 'project-migration'`); store photos do,
+  and are skipped (and reported) when the gallery is full. All photos count toward the shared storage cap
+  (`MEDIA_PLATFORM_MAX_BYTES`, default 900 MB for the Supabase free plan's 1 GB); set it when the Storage plan grows.
 - Migrated products have no selling point and no structured amount (the price text is kept as the note, the form
   reads it back): they show "Needs details" until the owner opens and saves them. That is intended (the owner confirms
   the number), but a one-click "confirm price" could help.

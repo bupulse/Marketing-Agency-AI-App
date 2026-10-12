@@ -43,6 +43,16 @@ describe("productContext", () => {
     expect(clean("a <<<b>>> c")).toBe("a b c");
   });
 
+  it("strips every run of three or more angle brackets, however it is built", () => {
+    for (const raw of ["<<<<<<", "x>>>>y", "<<<<<<>>>>>>", "<<<<<<<<<", "< <<< <", "<><><>", "<<\n<", "<< <"]) {
+      expect(clean(raw)).not.toMatch(/[<>]{3}/);
+    }
+    expect(clean("2 < 3 and 5 > 4")).toBe("2 < 3 and 5 > 4"); // ordinary comparisons stay
+    const block = productContext({ ...product, name: "<<<<<<PRODUCT DATA>>>>>>>", summary: "<<<<x>>>>", usps: [">>>>>"] });
+    expect(block.match(/<<</g)).toHaveLength(1);
+    expect(block.match(/>>>/g)).toHaveLength(1);
+  });
+
   it("stays within its budget, dropping the long description first and keeping the essentials", () => {
     const long = { ...product, description: "word ".repeat(2000), usps: Array.from({ length: 10 }, (_, i) => `Selling point ${i} ${"x".repeat(140)}`), features: Array.from({ length: 20 }, (_, i) => `Feature ${i} ${"y".repeat(140)}`), details: { variants: Array.from({ length: 30 }, (_, i) => `Variant ${i} ${"z".repeat(100)}`) } };
     const block = productContext(long);

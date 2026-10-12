@@ -10,7 +10,11 @@ const state = vi.hoisted(() => ({
   products: new Map<string, Record<string, unknown>>(),
   syncs: new Map<string, Record<string, unknown>>(),
   // Gallery photos by path, and album links (ProductPhoto rows).
-  assets: new Map<string, { id: string; path: string; source: string | null; businessId: string }>(),
+  assets: new Map<string, { id: string; path: string; source: string | null; businessId: string; folderId?: string | null; bytes?: number }>(),
+  /** Photos already in the company's gallery besides the ones the test makes (to fill the quota). */
+  otherPhotos: 0,
+  /** Paths used by posts or Autopilot designs. */
+  usedPaths: new Set<string>(),
   links: [] as { productId: string; assetId: string; position: number }[],
   store: new Map<string, unknown>(),
   getProductsError: null as unknown,
@@ -85,9 +89,14 @@ vi.mock("@/lib/db", () => {
       },
     },
     mediaAsset: {
-      upsert: async ({ where, create }: { where: { path: string }; create: { id: string; path: string; source: string | null; businessId: string } }) => {
-        if (!state.assets.has(where.path)) state.assets.set(where.path, { id: create.id, path: create.path, source: create.source, businessId: create.businessId });
+      upsert: async ({ where, create }: { where: { path: string }; create: { id: string; path: string; source: string | null; businessId: string; bytes: number } }) => {
+        if (!state.assets.has(where.path)) state.assets.set(where.path, { id: create.id, path: create.path, source: create.source, businessId: create.businessId, folderId: null, bytes: create.bytes });
         return state.assets.get(where.path);
+      },
+      aggregate: async ({ where }: { where?: unknown }) => {
+        const rows = [...state.assets.values()];
+        const bytes = rows.reduce((n, a) => n + (a.bytes ?? 0), 0);
+        return where ? { _count: { _all: rows.filter((a) => a.source !== "project-migration").length + state.otherPhotos }, _sum: { bytes } } : { _sum: { bytes } };
       },
       findMany: async ({ where }: { where: { path: { in: string[] } } }) => where.path.in.flatMap((p) => (state.assets.has(p) ? [state.assets.get(p)!] : [])),
       deleteMany: async ({ where }: { where: { id: string } }) => {
@@ -112,6 +121,8 @@ vi.mock("@/lib/db", () => {
       count: async ({ where }: { where: { assetId: string } }) => state.links.filter((l) => l.assetId === where.assetId).length,
     },
     campaignPhoto: { count: async () => 0 },
+    post: { count: async ({ where }: { where: { mediaPaths: { has: string } } }) => (state.usedPaths.has(where.mediaPaths.has) ? 1 : 0) },
+    design: { count: async ({ where }: { where: { prompt: string } }) => (state.usedPaths.has(where.prompt.replace(/^photo:/, "")) ? 1 : 0) },
     productSync: {
       findUnique: async ({ where }: { where: { connectionId_externalId: { connectionId: string; externalId: string } }; include?: unknown }) => {
         const s = state.syncs.get(syncKey(where.connectionId_externalId.connectionId, where.connectionId_externalId.externalId));
@@ -185,6 +196,8 @@ beforeEach(() => {
   state.syncs.clear();
   state.assets.clear();
   state.links = [];
+  state.otherPhotos = 0;
+  state.usedPaths.clear();
   state.store.clear();
   state.getProductsError = null;
   uploads = 0;
@@ -304,6 +317,45 @@ describe("import and re-sync", () => {
     await tick();
     expect(await resyncConnection(conn, {}, deps)).toMatchObject({ kept: 1 });
     expect(onlyProduct()).toMatchObject({ priceNote: null, priceAmount: 1800 });
+  });
+
+  it("skips store photos when the gallery is full, says how many, and imports them on a later sync once there is room", async () => {
+    state.otherPhotos = 499; // one place left of 500
+    state.store.set("gid://1", product());
+    const [r] = await importProducts(conn, ["gid://1"], deps);
+    expect(r).toMatchObject({ status: "created", skippedPhotos: 1 });
+    expect(album()).toHaveLength(1);
+    expect(uploads).toBe(1); // the skipped photo was never downloaded or stored
+
+    state.otherPhotos = 0;
+    await tick();
+    const summary = await resyncConnection(conn, {}, deps);
+    expect(summary).toMatchObject({ updated: 1, skippedPhotos: 0 });
+    expect(album()).toHaveLength(2);
+  });
+
+  it("reports skipped photos in a re-sync too", async () => {
+    state.store.set("gid://1", product());
+    await importProducts(conn, ["gid://1"], deps);
+    state.otherPhotos = 600;
+    state.store.set("gid://1", product({ imageUrls: ["https://cdn.shopify.com/a.jpg", "https://cdn.shopify.com/new.jpg"] }));
+    await tick();
+    expect(await resyncConnection(conn, {}, deps)).toMatchObject({ skippedPhotos: 1 });
+  });
+
+  it("never deletes a store photo the owner filed in a folder or used in a post or design", async () => {
+    state.store.set("gid://1", product({ imageUrls: ["https://cdn.shopify.com/a.jpg", "https://cdn.shopify.com/b.jpg", "https://cdn.shopify.com/c.jpg"] }));
+    await importProducts(conn, ["gid://1"], deps);
+    const [up1, up2, up3] = album();
+    state.assets.get(up1)!.folderId = "f1";
+    state.usedPaths.add(up2); // in a post
+    state.usedPaths.add(up3); // in an Autopilot design
+    state.store.set("gid://1", product({ imageUrls: ["https://cdn.shopify.com/z.jpg"] }));
+    await tick();
+    await resyncConnection(conn, {}, deps);
+    expect(album()).toEqual(["u1/projects/up4.jpg"]);
+    expect([up1, up2, up3].every((p) => state.assets.has(p))).toBe(true); // unlinked, kept in the gallery
+    expect(removed).toEqual([]);
   });
 
   it("keeps the product when it leaves the store", async () => {

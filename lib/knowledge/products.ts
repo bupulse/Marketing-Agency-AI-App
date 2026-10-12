@@ -323,15 +323,16 @@ export function parsePriceText(raw: string | null | undefined, fallbackCurrency:
 
 /**
  * The price model of a free-text price, as the migration (20261013100000_knowledge_base) decides it in SQL: no digit
- * is "on request", "from ..." is FROM, "per month" / "monthly" PER_MONTH, "per year" / "yearly" / "annual" PER_YEAR,
+ * is "on request", "from ..." is FROM, "per month" / "a month" / "/ month" / "monthly" PER_MONTH (per, a and an as whole
+ * words, so "Bahamas month" is not a monthly price), "per year" / "yearly" / "annual" PER_YEAR,
  * anything else FIXED. Keep the two in step (tests/knowledge/legacy.test.ts).
  */
 export function legacyPriceModel(price: string | null | undefined): PriceModelValue {
   const p = price ?? "";
   if (!/[0-9]/.test(p)) return "ON_REQUEST";
   if (/^\s*from\s/i.test(p)) return "FROM";
-  if (/(per|\/|a|an)\s*month|monthly/i.test(p)) return "PER_MONTH";
-  if (/(per|\/|a|an)\s*year|yearly|annual/i.test(p)) return "PER_YEAR";
+  if (/(^|[^a-z])(per|a|an)\s+month|\/\s*month|monthly/i.test(p)) return "PER_MONTH";
+  if (/(^|[^a-z])(per|a|an)\s+year|\/\s*year|yearly|annual/i.test(p)) return "PER_YEAR";
   return "FIXED";
 }
 

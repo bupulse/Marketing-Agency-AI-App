@@ -80,6 +80,11 @@ describe("prices", () => {
     expect(legacyPriceModel("10% off")).toBe("FIXED");
     expect(legacyPriceModel("$900 / month")).toBe("PER_MONTH");
     expect(legacyPriceModel("Annual plan 120,000")).toBe("PER_YEAR");
+    expect(legacyPriceModel("20,000 a month")).toBe("PER_MONTH");
+    expect(legacyPriceModel("A month of lessons: 30,000")).toBe("PER_MONTH");
+    // "a"/"an"/"per" only as whole words: a word ending in "a" before "month" is not a monthly price.
+    expect(legacyPriceModel("Kigali Arena month-end sale 5,000")).toBe("FIXED");
+    expect(legacyPriceModel("Bahamas year-end trip $900")).toBe("FIXED");
     expect(legacyPriceModel(null)).toBe("ON_REQUEST");
   });
 
