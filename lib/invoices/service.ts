@@ -164,7 +164,7 @@ export async function invoicePdf(row: Row): Promise<Uint8Array> {
 /**
  * "Activate account -> No trial, send invoice" after the demo: a DRAFT invoice for the client's chosen plan (or the one
  * the admin picks) and interval at the company region's price (RWF in Rwanda, USD elsewhere), due in DEFAULT_DUE_DAYS.
- * The live demo booking is marked done. Opening it twice returns the same draft (one draft per company, also a partial
+ * Only for a company still waiting for its demo (PENDING_DEMO). The live demo booking is marked done. Opening it twice returns the same draft (one draft per company, also a partial
  * unique index). Audited.
  */
 export async function createActivationInvoice(ctx: AdminContext, input: { businessId: string; interval?: string; planKey?: string }, now: Date = new Date()) {
@@ -175,8 +175,9 @@ export async function createActivationInvoice(ctx: AdminContext, input: { busine
   if (!sub) throw new AdminError("conflict", "This company has no subscription record.");
   const draft = await prisma.invoice.findFirst({ where: { businessId: business.id, status: "draft" }, orderBy: { createdAt: "desc" } });
   if (draft) return { id: draft.id, number: draft.number, created: false };
-  if (sub.status === "ACTIVE" && sub.plan !== "TRIAL" && sub.currentPeriodEnd && sub.currentPeriodEnd > now) {
-    throw new AdminError("conflict", "This company already has an active paid plan. Open its billing tab, or void and re-issue from Invoices.");
+  // Activation is the step after the demo, like Start trial: a company on its trial or paying is past it.
+  if (sub.status !== "PENDING_DEMO") {
+    throw new AdminError("conflict", `This company is ${sub.status === "TRIALING" ? "already on its trial" : sub.status === "ACTIVE" ? "already active" : `${sub.status.toLowerCase().replace("_", " ")}, not waiting for a demo`}. Use "Extend trial" or "Change plan" on the company page instead.`);
   }
   const interval: BillingInterval = input.interval === "YEAR" ? "YEAR" : input.interval === "MONTH" ? "MONTH" : sub.interval === "YEAR" ? "YEAR" : "MONTH";
   const planKey = input.planKey?.trim() || sub.chosenPlan;

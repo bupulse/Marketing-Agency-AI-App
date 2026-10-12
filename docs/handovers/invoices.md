@@ -26,6 +26,16 @@ works: `docs/INVOICES.md`.
 - **Overdue**: one reminder email on the due date from the daily momo-renewals job; the account follows the existing
   paywall (documented in `docs/INVOICES.md`, "Overdue").
 
+## Owner testing fix (13 October 2026): activation only before the trial
+
+Demos and the company page's demo panel now read the subscription fresh on each load and show **Activate account** only
+for `PENDING_DEMO` companies. Others show where they stand (`lib/admin/subscription-summary.ts`, rendered by
+`components/admin/subscription-status.tsx`: "On trial until 15 Oct", "Active – Business, MoMo, paid until 12 Nov",
+"Past due – …", "Trial ended …") with **Extend trial** (trial plan only) and **Change plan** links to the Client 360
+actions on the company page (`?tab=billing#actions`; the Actions panel got an `id="actions"` anchor).
+`createActivationInvoice` now refuses anything but `PENDING_DEMO` with the same wording as Start trial. Test:
+`tests/invoices/subscription-summary.test.ts`.
+
 ## Migration
 
 `20261013090000_invoices` (after `20261012130100_storage_account_blocked`):
@@ -84,7 +94,7 @@ confirm, reminders once, card settlement, client sees only its own invoices, adm
 | `npx next typegen` | ok |
 | `npx tsc --noEmit` | clean |
 | `npm run lint` | clean |
-| `npx vitest run` | 159 files passed, 10 skipped; 1959 tests passed, 70 skipped; 0 failed |
+| `npx vitest run` | 160 files passed, 10 skipped; 1962 tests passed, 70 skipped; 0 failed |
 | `npx next build` | compiled, exit 0 |
 
 ## Not done / to decide

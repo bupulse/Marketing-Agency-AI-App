@@ -15,9 +15,15 @@ show **Activate account** where **Start trial** used to be. The dialog offers:
   creates a **draft** for the client's chosen plan (`Subscription.chosenPlan`) at the company region's price
   (`companyPlans`, the same amounts as Billing: RWF in Rwanda, USD elsewhere), one line ("BuPulse Pro plan, monthly
   (1 month)"), issued today (Kigali) and due in 3 days, VAT from the settings. The live demo booking is marked done.
-  The admin lands in the editor. Refused for a company that already has a running paid plan, and for a plan the region
-  does not sell. Clicked twice (or by two admins) it opens the same draft: one draft per company
+  The admin lands in the editor. Only for a company still waiting for its demo (like Start trial), and refused for a
+  plan the region does not sell. Clicked twice (or by two admins) it opens the same draft: one draft per company
   (`Invoice_one_draft_per_business`). The subscription stays `PENDING_DEMO` until the invoice is paid.
+
+Activate account is shown only while the company's subscription is `PENDING_DEMO` (read fresh on each page load). Past
+that, the Demos list and the panel show where the company stands instead (`lib/admin/subscription-summary.ts`: "On
+trial until 15 Oct", "Active – Business, MoMo, paid until 12 Nov", "Past due – …", "Trial ended 15 Oct") with links to
+**Extend trial** (trial plan only) and **Change plan**, which open the company page's Client 360 actions
+(`?tab=billing#actions`).
 
 Both go through `adminAction()` (allow-listed email, AAL2) and are audited (`start_trial`, `create_invoice`).
 

@@ -7,6 +7,10 @@ import { dateTime } from "@/lib/admin/format";
 import { getRegions } from "@/lib/region";
 import { companyRegionAction, demoStatusAction } from "@/app/admin/(console)/demos/actions";
 import { ActivateAccount } from "./activate-account";
+import { SubscriptionStatus } from "./subscription-status";
+import { subscriptionSummary } from "@/lib/admin/subscription-summary";
+import { prisma } from "@/lib/db";
+import { getPlans } from "@/lib/plan-catalog";
 
 const SUB: Record<string, { label: string; tone: BadgeTone }> = {
   PENDING_DEMO: { label: "Waiting for demo", tone: "violet" },
@@ -20,8 +24,12 @@ const DEMO: Record<string, string> = { booked: "Booked", done: "Done", no_show: 
 
 /** The company page's "Demo and trial" panel: where the company is in the demo-first flow, its region, and the admin buttons. */
 export async function DemoPanel({ businessId, back }: { businessId: string; back: string }) {
-  const [p, regions] = await Promise.all([demoPanel(businessId), getRegions()]);
-  const sub = p.subscription;
+  const [p, regions, plans, owner] = await Promise.all([demoPanel(businessId), getRegions(), getPlans(), prisma.business.findUnique({ where: { id: businessId }, select: { userId: true } })]);
+  // The subscription as it is now: Activate account only while the company waits for its demo; past that, where it
+  // stands, with links to Extend trial / Change plan in the actions below.
+  const current = owner ? await prisma.subscription.findUnique({ where: { userId: owner.userId }, select: { status: true, plan: true, provider: true, interval: true, trialEndsAt: true, currentPeriodEnd: true, cancelAtPeriodEnd: true } }) : null;
+  const sub = current ?? p.subscription;
+  const summary = current ? subscriptionSummary(current, (key) => plans.find((pl) => pl.key === key)?.name ?? key) : null;
   const status = sub ? (SUB[sub.status] ?? { label: sub.status, tone: "neutral" as BadgeTone }) : null;
   const regionName = regions.find((r) => r.key === p.region)?.name ?? p.region ?? "GLOBAL";
   return (
@@ -50,6 +58,12 @@ export async function DemoPanel({ businessId, back }: { businessId: string; back
           <>
             <dt className="text-muted">Trial ends</dt>
             <dd>{dateTime(sub.trialEndsAt)}</dd>
+          </>
+        )}
+        {summary && (
+          <>
+            <dt className="text-muted">Account</dt>
+            <dd><SubscriptionStatus summary={summary} businessId={businessId} /></dd>
           </>
         )}
         <dt className="text-muted">Region</dt>
