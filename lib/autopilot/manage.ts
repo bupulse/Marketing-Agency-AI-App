@@ -8,6 +8,7 @@ import { withLedger } from "@/lib/ai/ledger";
 import { AIBudgetExceededError } from "@/lib/ai/budget";
 import { ServiceDisabledError } from "@/lib/admin/switch";
 import { readKnowledge } from "@/lib/brand/schemas";
+import { knowledgeFacts } from "@/lib/business-info/facts";
 import { logError } from "@/lib/errors";
 import { approvePosts } from "@/lib/publishing/service";
 import { isNetwork } from "@/lib/social/registry";
@@ -109,7 +110,7 @@ export async function regenerateGroup(userId: string, groupId: string): Promise<
       tone: business.tone,
       website: business.website,
       contentLanguage: business.contentLanguage,
-      knowledge,
+      knowledge: knowledgeFacts(knowledge),
       ownerName: business.ceoName,
       country: business.country,
     };

@@ -7,6 +7,7 @@ import { DEFAULT_GEMINI_TEXT_MODEL } from "@/lib/ai/gemini-text";
 import { withLedger } from "@/lib/ai/ledger";
 import { generateMarketingContent } from "@/lib/ai/marketing";
 import { readKnowledge } from "@/lib/brand/schemas";
+import { knowledgeFacts } from "@/lib/business-info/facts";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { logError } from "@/lib/errors";
 import { consumeUsage, refundUsage } from "@/lib/usage";
@@ -102,7 +103,7 @@ export async function generateForProject(args: {
             tone: business.tone,
             website: business.website,
             contentLanguage: business.contentLanguage,
-            knowledge,
+            knowledge: knowledgeFacts(knowledge),
           },
           {
             type: project.type,

@@ -50,6 +50,10 @@ button,input,textarea{font:inherit;color:inherit}
 .title{flex:1;min-width:0;font-weight:650;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .x{border:0;background:transparent;color:inherit;width:36px;height:36px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .x:hover{background:rgba(127,127,127,.25)}
+.act{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 12px;border-radius:18px;background:rgba(255,255,255,.2);color:inherit;text-decoration:none;font-size:13.5px;font-weight:600;flex:none}
+.act:hover{background:rgba(255,255,255,.32)}
+.act:focus-visible,.x:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+@media (max-width:360px){.act span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}}
 .log{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px;background:#f6f7f9;-webkit-overflow-scrolling:touch}
 .msg{max-width:84%;padding:9px 13px;border-radius:16px;white-space:pre-wrap;overflow-wrap:anywhere;animation:in .18s ease-out}
 .msg.assistant{align-self:flex-start;background:#fff;border:1px solid #e6e8ec;border-bottom-left-radius:5px}
@@ -97,6 +101,7 @@ export function renderChatPage(o: ChatPageOptions): string {
     mode: o.mode,
     origin: o.origin,
     page: o.page,
+    actions: widget.actions ?? {},
   };
   return `<!doctype html>
 <html lang="en" dir="${rtl ? "rtl" : "ltr"}">
