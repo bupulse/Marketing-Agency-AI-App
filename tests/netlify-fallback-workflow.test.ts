@@ -12,4 +12,13 @@ describe("GitHub publish fallback on Netlify", () => {
       expect(condition, job).toContain("github.event_name == 'workflow_dispatch'");
     }
   });
+
+  it.each([
+    ["leads-digest.yml", "digest"],
+    ["autopilot.yml", "plan"],
+  ])("%s skips its scheduled runs on Netlify, but allows a manual run", (file, job) => {
+    const text = readFileSync(`.github/workflows/${file}`, "utf8");
+    const condition = new RegExp(`\\n  ${job}:\\n    if: ([^\\n]+)`).exec(text)?.[1] ?? "";
+    expect(condition).toBe("vars.DEPLOY_TARGET != 'netlify' || github.event_name == 'workflow_dispatch'");
+  });
 });
