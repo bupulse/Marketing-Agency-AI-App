@@ -88,7 +88,7 @@ export interface RobotJob {
 /** Signed URLs for the scene photos that really are the owner's (a photo path the owner does not own is skipped). */
 async function signScenePhotos(userId: string, plan: VideoPlan): Promise<Record<string, string>> {
   const paths = [...new Set(plan.scenes.flatMap((s) => (s.photoPath ? [s.photoPath] : [])))].filter((p) => isOwnPhotoPath(userId, p) || isOwnDesignPath(userId, p));
-  const byBucket = new Map<"media" | "designs", string[]>();
+  const byBucket = new Map<ReturnType<typeof bucketForPath>, string[]>();
   for (const p of paths) byBucket.set(bucketForPath(p), [...(byBucket.get(bucketForPath(p)) ?? []), p]);
   const out: Record<string, string> = {};
   const storage = createAdminClient().storage;

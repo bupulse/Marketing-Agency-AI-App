@@ -1034,6 +1034,19 @@ model MediaFolder {
   @@unique([businessId, name])
 }
 
+// A Gallery video upload the server allowed and has not confirmed yet (docs/MEDIA.md): its signed upload token is tied
+// to this row, its bytes count toward the quotas until it expires, and finalize takes only a reserved path.
+model MediaUploadReservation {
+  id         String   @id @default(cuid())
+  businessId String
+  path       String   @unique // <userId>/clips/<id>.<ext> in the gallery-videos bucket
+  bytes      Int // the announced size, the most finalize accepts
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([businessId, expiresAt])
+}
+
 model MediaAsset {
   id         String          @id @default(cuid())
   businessId String

@@ -112,7 +112,7 @@ describe("purgeDueAccounts", () => {
     );
     const result = await purgeDueAccounts(now);
     expect(remove.mock.calls[0][0].sort()).toEqual(["u1/a.png", "u1/logo/b.png"]);
-    expect(result.filesRemoved).toBe(6); // two files in each of the three buckets
+    expect(result.filesRemoved).toBe(8); // two files in each of the four buckets (brand, media, designs, gallery-videos)
   });
 
   it("removes the company's invoice PDFs from the private invoices bucket too", async () => {
