@@ -16,11 +16,11 @@ type ContestPost = { id: string; network: string; excerpt: string };
 export function ContestConfirm({ posts, today }: { posts: ContestPost[]; today: string }) {
   if (posts.length === 0) return null;
   return (
-    <section aria-labelledby="contests" className="flex flex-col gap-3">
+    <section aria-labelledby="contests" className="@container flex flex-col gap-3">
       <h2 id="contests" className="px-1 text-lg font-semibold tracking-[-0.02em]">
         Needs your confirmation: prize & rules
       </h2>
-      <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <ul className="grid grid-cols-1 gap-4 @3xl:grid-cols-2">
         {posts.map((p) => (
           <li key={p.id}>
             <ContestForm post={p} today={today} />

@@ -27,7 +27,7 @@ export function DayBar({ path, day, today, label, query }: { path: string; day: 
   const arrow = "glass inline-flex size-11 shrink-0 items-center justify-center rounded-full text-text hover:bg-soft aria-disabled:pointer-events-none aria-disabled:opacity-40";
 
   return (
-    <nav aria-label="Choose a day" className="glass flex flex-wrap items-center gap-2 rounded-glass p-2 sm:gap-3">
+    <nav aria-label="Choose a day" className="glass @container flex flex-wrap items-center gap-2 rounded-glass p-2">
       <Link href={href(prev)} aria-label="Previous day" aria-disabled={prev < min} className={arrow} scroll={false}>
         <ChevronLeft aria-hidden className="size-5" />
       </Link>

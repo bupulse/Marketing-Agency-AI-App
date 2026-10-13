@@ -15,11 +15,11 @@ export function DayVisuals({ items, videoInPlan, album }: { items: DayVisualItem
   const firstVideo = items.find((i) => i.video?.status === "pending")?.id;
   if (items.length === 0) return null;
   return (
-    <section aria-labelledby="day-visuals" className="flex flex-col gap-4">
+    <section aria-labelledby="day-visuals" className="@container flex flex-col gap-4">
       <h2 id="day-visuals" className="px-1 text-lg font-semibold tracking-[-0.02em]">
         Pictures and videos
       </h2>
-      <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <ul className="grid grid-cols-1 gap-4 @3xl:grid-cols-2 @6xl:grid-cols-3">
         {items.map((item) => (
           <li key={item.id}>
             <GlassCard className="flex flex-col gap-3 p-4">

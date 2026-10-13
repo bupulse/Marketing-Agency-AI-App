@@ -77,11 +77,11 @@ export function PostBoard({
   if (all.length === 0) return <>{empty}</>;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="@container flex flex-col gap-4">
       <p role="status" className="px-1 text-[13px] text-muted">
         {total === 1 ? "1 post" : `${total} posts`}
       </p>
-      <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+      <ul className="grid grid-cols-1 gap-4 @xl:grid-cols-2 @4xl:grid-cols-3 @7xl:grid-cols-4">
         {all.map((post) => (
           <li key={post.id}>
             <PostCard post={post} zone={zone} onOpen={() => setDetailId(post.id)} showSubject={showSubject} />

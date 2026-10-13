@@ -120,14 +120,14 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
         {label}
       </Button>
       <Dialog open={open} onOpenChange={(o) => !pending && setOpen(o)} title="Create today's content" description={`Posts for ${subjectName}, for today. They wait for your OK on this page (or go out on their own where your settings say so).`}>
-        <div className="flex flex-col gap-5">
-          <div role="radiogroup" aria-label="How to make it" className="grid gap-3 sm:grid-cols-2">
+        <div className="@container flex flex-col gap-5">
+          <div role="radiogroup" aria-label="How to make it" className="grid gap-3 @md:grid-cols-2">
             <Option selected={!manual} onSelect={() => { setManual(false); setMode("ai"); }} icon={<Wand2 className="size-5" />} title="AI makes it for me" text="Captions for each app from your Knowledge base, then pictures and videos from your Gallery first." />
             <Option selected={manual} onSelect={() => { setManual(true); setMode("describe"); }} icon={<PenLine className="size-5" />} title="I'll create it" text="Describe what to post today, or bring your own photos and caption." />
           </div>
 
           {manual && (
-            <div role="radiogroup" aria-label="How you create it" className="grid gap-3 sm:grid-cols-2">
+            <div role="radiogroup" aria-label="How you create it" className="grid gap-3 @md:grid-cols-2">
               <Option selected={mode === "describe"} onSelect={() => setMode("describe")} icon={<PenLine className="size-5" />} title="Describe today's content" text="Tell BuPulse what to post; it writes and designs it." />
               <Option selected={mode === "own"} onSelect={() => setMode("own")} icon={<Upload className="size-5" />} title="Bring my own" text="Your photos or videos and one caption, adapted to each app." />
             </div>
@@ -184,7 +184,7 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
           </fieldset>
 
           {mode !== "own" && (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 @md:grid-cols-2">
               <Field label="Posts per app" hint={allowance.postsPerApp > 1 ? `Your plan allows up to ${allowance.postsPerApp} per app a day, counting what this ${scope.kind === "general" ? "page" : scope.kind} already has today.` : "Your plan makes 1 post per app a day."}>
                 <Select value={String(each)} onChange={(e) => setPerApp(Number(e.target.value))} disabled={allowance.postsPerApp <= 1}>
                   {Array.from({ length: allowance.postsPerApp }, (_, i) => (
@@ -207,7 +207,7 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
           )}
 
           {mode !== "own" && (
-            <div role="radiogroup" aria-label="Design" className="grid gap-3 sm:grid-cols-2">
+            <div role="radiogroup" aria-label="Design" className="grid gap-3 @md:grid-cols-2">
               <Option selected={design === "ai"} disabled={!allowance.aiPhotos} onSelect={() => setDesign("ai")} icon={<Sparkles className="size-5" />} title="AI designs (images with people)" text={allowance.aiPhotos ? "AI photos of people with your product where they fit; uses AI image credits." : "No AI images left this month, or not in your plan."} />
               <Option selected={design === "free"} onSelect={() => setDesign("free")} icon={<ImagePlus className="size-5" />} title="Free templates" text="Your photos and BuPulse designs. BuPulse picks the design for each post." />
             </div>
