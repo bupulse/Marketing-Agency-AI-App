@@ -564,7 +564,7 @@ function SoundChoices({ visual, disabled, onChanged }: { visual: VisualView; dis
         </Select>
       </Field>
       {options && options.tracks.length === 0 && <p className="text-[13px] text-muted">The music library is empty for now, so videos have no background music.</p>}
-      {plan.music?.attribution && <p className="text-[12px] text-muted">Music: {plan.music.attribution}</p>}
+      {plan.music?.attribution && !plan.music.owned && <p className="text-[12px] text-muted">Music: {plan.music.attribution}</p>}
     </div>
   );
 }

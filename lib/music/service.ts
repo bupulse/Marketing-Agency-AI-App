@@ -12,7 +12,7 @@ import { z } from "zod";
 import { withLedger } from "@/lib/ai/ledger";
 import { composeMusic, ELEVENLABS_MUSIC_MODEL } from "@/lib/ai/tts";
 import { rateLimit, RateLimitError } from "@/lib/rate-limit";
-import { ELEVENLABS_MUSIC_LICENCE, ELEVENLABS_MUSIC_SOURCE, MOOD_LABEL, MOODS, pickTrack, sniffAudio, TRACK_MAX_BYTES, TRACK_TYPES, trackInputSchema, type TrackInput } from "./tracks";
+import { ELEVENLABS_MUSIC_LICENCE, ELEVENLABS_MUSIC_SOURCE, isOwnedLicence, MOOD_LABEL, MOODS, pickTrack, sniffAudio, TRACK_MAX_BYTES, TRACK_TYPES, trackInputSchema, type TrackInput } from "./tracks";
 
 export const MUSIC_BUCKET = "music";
 /** The whole library stays small: it shares the free Storage project with everything else. */
@@ -24,11 +24,11 @@ export function musicUrl(path: string): string {
   return `${base}/storage/v1/object/public/${MUSIC_BUCKET}/${encodeURIComponent(path)}`;
 }
 
-export type LibraryTrack = { id: string; title: string; moods: string[]; attribution: string; path: string; url: string };
+export type LibraryTrack = { id: string; title: string; moods: string[]; attribution: string; licence: string; path: string; url: string };
 
 /** Active tracks for the pickers and the art director, newest first. Empty library: videos have no music. */
 export async function activeTracks(): Promise<LibraryTrack[]> {
-  const rows = await prisma.musicTrack.findMany({ where: { active: true }, orderBy: { createdAt: "desc" }, take: 200, select: { id: true, title: true, moods: true, attribution: true, path: true } });
+  const rows = await prisma.musicTrack.findMany({ where: { active: true }, orderBy: { createdAt: "desc" }, take: 200, select: { id: true, title: true, moods: true, attribution: true, licence: true, path: true } });
   return rows.map((r) => ({ ...r, url: musicUrl(r.path) }));
 }
 
@@ -42,7 +42,7 @@ export async function trackForVideo(mood: string | null | undefined, seed: strin
   try {
     if (!cache || Date.now() - cache.at > 60_000) cache = { at: Date.now(), tracks: await activeTracks() };
     const track = pickTrack(cache.tracks, mood, seed);
-    return track ? { trackId: track.id, title: track.title, path: track.path, attribution: track.attribution } : null;
+    return track ? { trackId: track.id, title: track.title, path: track.path, attribution: track.attribution, owned: isOwnedLicence(track.licence) } : null;
   } catch {
     return null;
   }
@@ -86,11 +86,40 @@ export async function finishTrackUpload(ctx: AdminContext, path: string, raw: Tr
   const type = head ? sniffAudio(new Uint8Array(head)) : null;
   if (!type || TRACK_TYPES[type] !== path.split(".").pop()) return reject("That file is not an MP3 or M4A track.");
   const data = { ...parsed.data, bpm: parsed.data.bpm ?? null, path, mimeType: type, bytes: size, createdBy: ctx.actor };
-  return prisma.$transaction(async (tx) => {
+  const row = await prisma.$transaction(async (tx) => {
+    // The 80 MB cap is checked again under a lock, so two uploads at once cannot both pass it.
+    if (!(await libraryHasRoom(tx, size))) return null;
     const row = await tx.musicTrack.create({ data });
     await writeAudit(tx, ctx, "create_music_track", `music:${row.id}`, null, { title: row.title, licence: row.licence, sourceUrl: row.sourceUrl, bytes: row.bytes });
     return row;
   });
+  return row ?? reject("The music library is full (80 MB). Remove a track first.");
+}
+
+/** Under a transaction-wide lock on the library: whether `adding` bytes still fit the 80 MB cap. */
+async function libraryHasRoom(tx: Pick<typeof prisma, "musicTrack" | "$executeRaw">, adding: number): Promise<boolean> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('music-library'))`;
+  const used = (await tx.musicTrack.aggregate({ _sum: { bytes: true } }))._sum.bytes ?? 0;
+  return used + adding <= MUSIC_LIBRARY_MAX_BYTES;
+}
+
+/**
+ * Files in the music bucket that no track refers to (an upload started and never finished), older than an hour: deleted.
+ * Run when the admin opens the music page and by the daily media clean-up. Best effort.
+ */
+export async function cleanupMusicOrphans(now = new Date()): Promise<number> {
+  try {
+    const bucket = createAdminClient().storage.from(MUSIC_BUCKET);
+    const { data: files } = await bucket.list("", { limit: 1000 });
+    const old = (files ?? []).filter((f) => f.id && f.created_at && now.getTime() - new Date(f.created_at).getTime() > 60 * 60 * 1000).map((f) => f.name);
+    if (old.length === 0) return 0;
+    const known = new Set((await prisma.musicTrack.findMany({ where: { path: { in: old } }, select: { path: true } })).map((t) => t.path));
+    const orphans = old.filter((p) => !known.has(p));
+    if (orphans.length) await bucket.remove(orphans);
+    return orphans.length;
+  } catch {
+    return 0;
+  }
 }
 
 export async function setTrackActive(ctx: AdminContext, id: string, active: boolean) {
@@ -150,11 +179,17 @@ export async function generateTrack(ctx: AdminContext, raw: z.input<typeof gener
   const path = `${globalThis.crypto.randomUUID()}.mp3`;
   const { error } = await createAdminClient().storage.from(MUSIC_BUCKET).upload(path, result.audio, { contentType: "audio/mpeg", upsert: false });
   if (error) throw new AdminError("unavailable", "Storage did not accept the track. Try again.");
-  return prisma.$transaction(async (tx) => {
+  const row = await prisma.$transaction(async (tx) => {
+    if (!(await libraryHasRoom(tx, result.audio.length))) return null;
     const row = await tx.musicTrack.create({
       data: { title: input.title, moods: [input.mood], bpm: null, licence: ELEVENLABS_MUSIC_LICENCE, sourceUrl: ELEVENLABS_MUSIC_SOURCE, attribution: "", path, mimeType: "audio/mpeg", bytes: result.audio.length, durationMs: input.seconds * 1000, createdBy: ctx.actor },
     });
     await writeAudit(tx, ctx, "generate_music_track", `music:${row.id}`, null, { title: row.title, mood: input.mood, seconds: input.seconds, prompt: input.prompt });
     return row;
   });
+  if (!row) {
+    await createAdminClient().storage.from(MUSIC_BUCKET).remove([path]).catch(() => {});
+    throw new AdminError("invalid", "The music library is full (80 MB). Remove a track first.");
+  }
+  return row;
 }

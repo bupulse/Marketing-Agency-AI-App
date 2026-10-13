@@ -135,7 +135,9 @@ export interface VideoVoice {
   voiceId: string;
   /** The voiceover MP3 in the media bucket (a VoiceClip), once made for the current captions and voice. */
   path?: string | null;
-  /** Hash of voice, model and text: a changed caption or voice means a new voiceover. */
+  /** "Regenerate voiceover" counts up: each take is a new voiceover. */
+  take?: number;
+  /** Hash of voice, model, take and text: a changed caption or voice means a new voiceover. */
   hash?: string | null;
   durationMs?: number;
   /** When each scene's line is spoken. */
@@ -151,6 +153,8 @@ export interface VideoMusic {
   path: string;
   /** Credit line the licence asks for ("" when none is needed). */
   attribution: string;
+  /** Original music BuPulse owns: never credited. */
+  owned?: boolean;
 }
 
 /** One stored output of a visual, in order: a design (image or slide) or a media file (the video). */

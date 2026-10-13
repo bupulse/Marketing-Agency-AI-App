@@ -116,6 +116,11 @@ export async function audioDataUrls(audioUrls, storageUrl, fetchImpl = fetch) {
   const origin = allowedUrl(storageUrl) ? new URL(storageUrl).origin : null;
   for (const key of ["voice", "music"]) {
     const url = audioUrls?.[key];
+    // A voiceover the app could not store arrives as the audio itself (a data URL, size capped).
+    if (typeof url === "string" && url.startsWith("data:audio/") && url.length <= MAX_AUDIO_BYTES * 1.4) {
+      out[key] = url;
+      continue;
+    }
     if (!origin || typeof url !== "string" || !allowedUrl(url) || new URL(url).origin !== origin) continue;
     try {
       const response = await fetchImpl(url, { signal: AbortSignal.timeout(PHOTO_TIMEOUT_MS) });

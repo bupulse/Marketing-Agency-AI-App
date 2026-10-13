@@ -781,14 +781,16 @@ export async function readyMedia(businessId: string, key: { contentId: string } 
   const video = rows.find((v) => v.kind === "video");
   const videoPath = video ? (readItems(video.items)[0]?.path ?? null) : null;
   // The music's credit line, when its licence asks for one (docs/VOICE_AND_MUSIC.md).
-  const credit = videoPath && video ? (readVideoPlan(video.plan)?.music?.attribution ?? null) : null;
+  const music = videoPath && video ? readVideoPlan(video.plan)?.music : null;
+  const credit = music && !music.owned ? music.attribution : null;
   return { images: image ? readItems(image.items).map((i) => i.path) : [], video: videoPath, videoCredit: credit || null };
 }
 
 /** A video post's text with the music credit line at the end (once). Pure. */
 export function withMusicCredit(text: string, credit: string | null | undefined): string {
   const line = credit?.trim();
-  if (!line || text.includes(line)) return text;
+  // Added unless the exact credit line is already one of the post's lines.
+  if (!line || text.split(/\r?\n/).some((l) => l.trim() === line)) return text;
   return `${text.trimEnd()}\n\n${line}`;
 }
 

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { bucketForPath } from "@/lib/publishing/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isOwnedLicence } from "@/lib/music/tracks";
 import type { VideoPlan } from "./types";
 import { readVideoPlan } from "./video-plan";
 import { VisualError } from "./service";
@@ -32,7 +33,7 @@ export async function setVideoMusic(businessId: string, visualId: string, trackI
   if (trackId) {
     const track = await prisma.musicTrack.findFirst({ where: { id: trackId, active: true } });
     if (!track) throw new VisualError("That track is no longer in the library.");
-    music = { trackId: track.id, title: track.title, path: track.path, attribution: track.attribution };
+    music = { trackId: track.id, title: track.title, path: track.path, attribution: track.attribution, owned: isOwnedLicence(track.licence) };
   }
   await prisma.contentVisual.update({ where: { id: row.id }, data: { plan: { ...plan, music } as unknown as Prisma.InputJsonValue, status: "pending", error: null, robotAttempts: 0 } });
 }

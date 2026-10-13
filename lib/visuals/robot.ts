@@ -101,11 +101,15 @@ async function signScenePhotos(userId: string, plan: VideoPlan): Promise<Record<
   return out;
 }
 
-/** The voiceover (signed, only the owner's own file) and the library track (public) of a plan. */
-export async function audioUrlsFor(userId: string, plan: VideoPlan): Promise<{ voice?: string; music?: string }> {
+/**
+ * The voiceover (signed, only the company's own file; or the audio itself when it could not be stored) and the
+ * library track (public) of a plan.
+ */
+export async function audioUrlsFor(businessId: string, plan: VideoPlan, voiceDataUrl?: string): Promise<{ voice?: string; music?: string }> {
   const out: { voice?: string; music?: string } = {};
   const voice = plan.voice?.enabled !== false ? plan.voice?.path : null;
-  if (voice && voice.startsWith(`${userId}/voice/`) && !voice.includes("..")) {
+  if (voiceDataUrl && plan.voice?.enabled !== false) out.voice = voiceDataUrl;
+  else if (voice && voice.startsWith(`voice/${businessId}/`) && !voice.includes("..")) {
     const { data } = await createAdminClient().storage.from("media").createSignedUrl(voice, PHOTO_URL_SECONDS);
     if (data?.signedUrl) out.voice = data.signedUrl;
   }
@@ -177,9 +181,10 @@ export async function claimRobotVideos(options: { max?: number; format?: RobotFo
     const owner = { userId, businessId: row.businessId, service: true };
     try {
       // The voiceover is made (or reused) now, so the robot's video sounds like the owner's browser would make it.
-      const voiced = (await ensureVoiceover(owner, row.id).catch(() => null)) ?? plan;
+      const prepared = await ensureVoiceover(owner, row.id).catch(() => null);
+      const voiced = prepared?.plan ?? plan;
       const target = await prepareVideoUpload(owner, row.id, { bytes: VIDEO_LIMITS.maxBytes, mimeType, durationMs: voiced.totalMs });
-      jobs.push({ job, plan: voiced, photoUrls: await signScenePhotos(userId, voiced), audioUrls: await audioUrlsFor(userId, voiced), upload: { url: target.signedUrl, contentType: mimeType }, leaseUntil: leaseUntil.toISOString() });
+      jobs.push({ job, plan: voiced, photoUrls: await signScenePhotos(userId, voiced), audioUrls: await audioUrlsFor(row.businessId, voiced, prepared?.voiceDataUrl), upload: { url: target.signedUrl, contentType: mimeType }, leaseUntil: leaseUntil.toISOString() });
     } catch (error) {
       await releaseLease(row.id, job, { robotAttempts: { decrement: 1 } }).catch(() => {});
       // Seconds used up, quota full, other uploads open: the owner's problem, not the robot's; tried again next run.

@@ -910,15 +910,21 @@ model VoiceClip {
   id         String   @id @default(cuid())
   businessId String
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  hash       String // sha-256 of voice id, model and text
+  hash       String // sha-256 of voice id, model, take and text
   voiceId    String
-  path       String
+  // speaking: one render is asking the voice service now (others wait); ready: the file is stored; spoken: paid for
+  // but not stored yet (the audio waits in pendingAudio, so a retry stores it instead of paying again); too_long: the
+  // voice ran past 30 seconds (never spoken again).
+  status     String   @default("ready")
+  path       String? // voice/<businessId>/<hash>.mp3 in the media bucket, once stored
+  pendingAudio Bytes?
   bytes      Int
   characters Int
   durationMs Int
   // Start and end of each spoken sentence in milliseconds, in order: [{ startMs, endMs }]
   timings    Json
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
 
   @@unique([businessId, hash])
 }

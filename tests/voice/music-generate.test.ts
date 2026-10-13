@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  prisma: { musicTrack: { aggregate: vi.fn(), create: vi.fn() }, $transaction: vi.fn() },
+  prisma: { musicTrack: { aggregate: vi.fn(), create: vi.fn(), findMany: vi.fn() }, $transaction: vi.fn(), $executeRaw: vi.fn() },
   upload: vi.fn(),
   audit: vi.fn(),
   ledger: vi.fn(),
@@ -68,8 +68,10 @@ describe("seeding the library from files", () => {
 describe("Generate a track (ElevenLabs Music)", () => {
   it("composes an instrumental, pays through the ledger, stores it and audits the prompt", async () => {
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
-      expect(url).toBe("https://api.elevenlabs.io/v1/music?output_format=mp3_44100_128");
-      expect(JSON.parse(String(init?.body))).toMatchObject({ music_length_ms: 30_000, model_id: "music_v1", force_instrumental: true });
+      expect(url).toBe("https://api.elevenlabs.io/v1/music");
+      expect(Object.keys(JSON.parse(String(init?.body))).sort()).toEqual(["music_length_ms", "prompt"]);
+      expect(JSON.parse(String(init?.body))).toMatchObject({ music_length_ms: 30_000 });
+      expect(new Headers(init?.headers).get("xi-api-key")).toBe("test-key");
       return new Response(mp3);
     });
     vi.stubGlobal("fetch", fetchImpl);

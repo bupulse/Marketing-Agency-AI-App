@@ -159,7 +159,7 @@ async function videoUsage(db: UsageDb, businessId?: string, now = new Date()): P
     db.contentVisual.aggregate({ where: { kind: "video", uploadExpiresAt: { gt: now }, ...scope }, _count: { _all: true }, _sum: { uploadBytes: true } }),
   ]);
   // Voiceovers (docs/VOICE_AND_MUSIC.md) are files in the same bucket too.
-  const voice = db.voiceClip ? await db.voiceClip.aggregate({ where: scope, _count: { _all: true }, _sum: { bytes: true } }) : null;
+  const voice = db.voiceClip ? await db.voiceClip.aggregate({ where: { ...scope, status: "ready" }, _count: { _all: true }, _sum: { bytes: true } }) : null;
   return {
     count: (stored?._count?._all ?? 0) + (reserved?._count?._all ?? 0) + (voice?._count?._all ?? 0),
     bytes: (stored?._sum?.bytes ?? 0) + (reserved?._sum?.uploadBytes ?? 0) + (voice?._sum?.bytes ?? 0),

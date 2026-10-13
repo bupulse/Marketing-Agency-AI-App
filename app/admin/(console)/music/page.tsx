@@ -4,7 +4,7 @@ import { MusicUpload } from "@/components/admin/music-upload";
 import { Badge, Button, Field, Input, Select } from "@/components/ui";
 import { requireAdmin } from "@/lib/admin/auth";
 import { param } from "@/lib/admin/format";
-import { listTracks, MUSIC_LIBRARY_MAX_BYTES, musicUrl } from "@/lib/music/service";
+import { cleanupMusicOrphans, listTracks, MUSIC_LIBRARY_MAX_BYTES, musicUrl } from "@/lib/music/service";
 import { isMood, MOOD_LABEL, MOODS } from "@/lib/music/tracks";
 import { deleteTrackAction, generateTrackAction, setTrackActiveAction } from "./actions";
 
@@ -16,6 +16,8 @@ const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 export default async function MusicPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireAdmin(); // pages render alongside the layout, so check here too
   const sp = await searchParams;
+  // Uploads started and never finished (older than an hour) are cleared on the way in.
+  await cleanupMusicOrphans();
   const tracks = await listTracks();
   const used = tracks.reduce((sum, t) => sum + t.bytes, 0);
 

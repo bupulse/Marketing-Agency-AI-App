@@ -10,7 +10,7 @@ import { getUsageSummary } from "@/lib/usage";
 import { audioUrlsFor } from "@/lib/visuals/robot";
 import { VISUAL_LIMITS, type VideoPlan } from "@/lib/visuals/types";
 import { renderPhotoUrls, setVideoMusic } from "@/lib/visuals/sound";
-import { ensureVoiceover, forgetVoiceover, setVideoVoice } from "@/lib/voice/service";
+import { ensureVoiceover, regenerateVoiceover, setVideoVoice } from "@/lib/voice/service";
 
 // Content visuals (docs/CONTENT_VISUALS.md): drawing the picture, the owner's changes, and the browser-made video.
 // Every action works inside the signed-in person's company (knowledgeAction), with the `content` permission and feature.
@@ -80,9 +80,9 @@ export async function startVideoRender(visualId: string): Promise<Result<{ plan:
   if (!id.safeParse(visualId).success) return BAD;
   return knowledgeAction({ ...GUARD, source: "visuals.video.lease" }, async ({ userId, businessId }) => {
     await leaseVideoForBrowser({ userId, businessId }, visualId);
-    const plan = await ensureVoiceover({ userId, businessId }, visualId);
-    if (!plan) return { plan: null, photoUrls: {}, audioUrls: {} };
-    return { plan, photoUrls: await renderPhotoUrls(userId, plan), audioUrls: await audioUrlsFor(userId, plan) };
+    const voiced = await ensureVoiceover({ userId, businessId }, visualId);
+    if (!voiced) return { plan: null, photoUrls: {}, audioUrls: {} };
+    return { plan: voiced.plan, photoUrls: await renderPhotoUrls(userId, voiced.plan), audioUrls: await audioUrlsFor(businessId, voiced.plan, voiced.voiceDataUrl) };
   });
 }
 
@@ -90,8 +90,8 @@ export async function startVideoRender(visualId: string): Promise<Result<{ plan:
 export async function changeVideoVoice(visualId: string, choice: { enabled: boolean; voiceId?: string | null; regenerate?: boolean }): Promise<Result> {
   if (!id.safeParse(visualId).success || typeof choice?.enabled !== "boolean") return BAD;
   return knowledgeAction({ ...GUARD, source: "visuals.video.voice" }, async ({ userId, businessId }) => {
-    if (choice.regenerate) await forgetVoiceover({ userId, businessId }, visualId);
-    await setVideoVoice({ userId, businessId }, visualId, { enabled: choice.enabled, voiceId: choice.voiceId ?? null });
+    if (choice.regenerate) await regenerateVoiceover({ userId, businessId }, visualId);
+    else await setVideoVoice({ userId, businessId }, visualId, { enabled: choice.enabled, voiceId: choice.voiceId ?? null });
     return {};
   });
 }

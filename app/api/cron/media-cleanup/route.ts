@@ -1,6 +1,7 @@
 import { recordCron } from "@/lib/admin/cron-run";
 import { NextResponse, type NextRequest } from "next/server";
 import { purgeAbandonedUploads, purgePublishedVideos } from "@/lib/visuals/cleanup";
+import { cleanupMusicOrphans } from "@/lib/music/service";
 
 export const maxDuration = 120;
 
@@ -21,5 +22,5 @@ export async function POST(request: NextRequest) {
   if (!safeEqual(request.headers.get("authorization") ?? "", `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return NextResponse.json(await recordCron("media-cleanup", async () => ({ ...(await purgePublishedVideos()), uploads: await purgeAbandonedUploads() })));
+  return NextResponse.json(await recordCron("media-cleanup", async () => ({ ...(await purgePublishedVideos()), uploads: await purgeAbandonedUploads(), musicOrphans: await cleanupMusicOrphans() })));
 }

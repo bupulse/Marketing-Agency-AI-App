@@ -120,10 +120,12 @@ export async function composeMusic(request: MusicRequest, fetchImpl: typeof fetc
   if (!key) throw new AIProviderError("ElevenLabs is not set up", "elevenlabs", false, undefined, ELEVENLABS_MUSIC_MODEL);
   let response: Response;
   try {
-    response = await fetchImpl(`${API}/music?output_format=mp3_44100_128`, {
+    // The request confirmed against the live API (13 October 2026): prompt and length only; it answers audio/mpeg
+    // (128 kbit/s, 44.1 kHz; 30 s is about 480 KB). "Instrumental" is asked for in the prompt.
+    response = await fetchImpl(`${API}/music`, {
       method: "POST",
       headers: { "xi-api-key": key, "content-type": "application/json", accept: "audio/mpeg" },
-      body: JSON.stringify({ prompt: request.prompt, music_length_ms: Math.round(request.seconds * 1000), model_id: ELEVENLABS_MUSIC_MODEL, force_instrumental: true }),
+      body: JSON.stringify({ prompt: request.prompt, music_length_ms: Math.round(request.seconds * 1000) }),
       signal: AbortSignal.timeout(110_000),
     });
   } catch {

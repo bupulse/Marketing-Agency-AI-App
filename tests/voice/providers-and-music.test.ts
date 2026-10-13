@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  prisma: { musicTrack: { findMany: vi.fn(), aggregate: vi.fn(), create: vi.fn() }, $transaction: vi.fn() },
-  storage: { createSignedUploadUrl: vi.fn(), info: vi.fn(), remove: vi.fn(), createSignedUrl: vi.fn() },
+  prisma: { musicTrack: { findMany: vi.fn(), aggregate: vi.fn(), create: vi.fn() }, $transaction: vi.fn(), $executeRaw: vi.fn() },
+  storage: { createSignedUploadUrl: vi.fn(), info: vi.fn(), remove: vi.fn(), createSignedUrl: vi.fn(), list: vi.fn() },
   audit: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }));
@@ -12,7 +12,8 @@ vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ storage: { 
 
 import { ElevenLabsProvider, voicePreviewUrl } from "@/lib/ai/tts";
 import { estimateCostUsd } from "@/lib/ai/pricing";
-import { finishTrackUpload, musicUrl, startTrackUpload, trackForVideo } from "@/lib/music/service";
+import { cleanupMusicOrphans, finishTrackUpload, musicUrl, startTrackUpload, trackForVideo } from "@/lib/music/service";
+import { withMusicCredit } from "@/lib/visuals/service";
 import { moodFor, pickTrack, sniffAudio, trackInputSchema } from "@/lib/music/tracks";
 import { ADDONS, quoteOffer, type OfferBase } from "@/lib/offers/shared";
 import { SEED_PLANS, VOICE_PLAN_CHARACTERS } from "@/lib/plans";
@@ -135,6 +136,12 @@ describe("music library", () => {
     mocks.prisma.musicTrack.create.mockResolvedValue({ id: "t1", title: "Morning", licence: input.licence, sourceUrl: input.sourceUrl, bytes: 1000 });
     await finishTrackUpload(ctx, path, input);
     expect(mocks.prisma.musicTrack.create.mock.calls[0][0].data).toMatchObject({ title: "Morning", moods: ["calm"], attribution: input.attribution, mimeType: "audio/mpeg", createdBy: "admin" });
+    // The 80 MB cap is checked again under the library lock when the upload is finished.
+    expect(String(mocks.prisma.$executeRaw.mock.calls[0][0])).toContain("pg_advisory_xact_lock");
+    mocks.prisma.musicTrack.aggregate.mockResolvedValue({ _sum: { bytes: 80 * 1024 * 1024 } });
+    mocks.prisma.musicTrack.create.mockClear();
+    await expect(finishTrackUpload(ctx, path, input)).rejects.toThrow(/library is full/);
+    expect(mocks.prisma.musicTrack.create).not.toHaveBeenCalled();
     expect(mocks.audit).toHaveBeenCalledWith(expect.anything(), ctx, "create_music_track", "music:t1", null, expect.anything());
     vi.unstubAllGlobals();
     expect(musicUrl(path)).toBe(`https://proj.supabase.co/storage/v1/object/public/music/${path}`);
@@ -142,13 +149,14 @@ describe("music library", () => {
 });
 
 describe("the video robot gets the sounds", () => {
-  it("signs the owner's own voiceover and gives the public track URL", async () => {
+  it("signs the company's own voiceover (or passes the unstored audio) and gives the public track URL", async () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://proj.supabase.co";
     mocks.storage.createSignedUrl.mockResolvedValue({ data: { signedUrl: "https://proj.supabase.co/sign/voice" } });
-    const plan = { ...buildVideoPlan({ script: "Hi", hook: "Hi", businessName: "B", photos: [], pack: "clean" }), voice: { enabled: true, voiceId: "x", path: "u1/voice/h.mp3" }, music: { trackId: "t", title: "T", path: "t.mp3", attribution: "" } };
-    expect(await audioUrlsFor("u1", plan)).toEqual({ voice: "https://proj.supabase.co/sign/voice", music: "https://proj.supabase.co/storage/v1/object/public/music/t.mp3" });
+    const plan = { ...buildVideoPlan({ script: "Hi", hook: "Hi", businessName: "B", photos: [], pack: "clean" }), voice: { enabled: true, voiceId: "x", path: "voice/b1/h.mp3" }, music: { trackId: "t", title: "T", path: "t.mp3", attribution: "" } };
+    expect(await audioUrlsFor("b1", plan)).toEqual({ voice: "https://proj.supabase.co/sign/voice", music: "https://proj.supabase.co/storage/v1/object/public/music/t.mp3" });
     expect(await audioUrlsFor("someone-else", plan)).toEqual({ music: "https://proj.supabase.co/storage/v1/object/public/music/t.mp3" });
-    expect(await audioUrlsFor("u1", { ...plan, voice: { ...plan.voice, enabled: false } })).not.toHaveProperty("voice");
+    expect(await audioUrlsFor("b1", { ...plan, voice: { ...plan.voice, enabled: false } })).not.toHaveProperty("voice");
+    expect((await audioUrlsFor("b1", { ...plan, voice: { ...plan.voice, path: null } }, "data:audio/mpeg;base64,AAA")).voice).toBe("data:audio/mpeg;base64,AAA");
   });
 
   it("the robot downloads them only from the storage origin, as data URLs", async () => {
@@ -157,5 +165,33 @@ describe("the video robot gets the sounds", () => {
     expect(Object.keys(out)).toEqual(["voice"]);
     expect((out as { voice?: string }).voice).toMatch(/^data:audio\/mpeg;base64,/);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+    // A voiceover the app could not store arrives as the audio itself and is used as it is.
+    fetchImpl.mockClear();
+    const kept = await audioDataUrls({ voice: "data:audio/mpeg;base64,SUQz" }, "https://proj.supabase.co/upload/sign", fetchImpl);
+    expect(kept).toEqual({ voice: "data:audio/mpeg;base64,SUQz" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe("music clean-up and credits", () => {
+  it("files no track refers to, older than an hour, are deleted; tracks and fresh uploads stay", async () => {
+    const now = new Date("2026-10-13T12:00:00Z");
+    mocks.storage.list.mockResolvedValue({ data: [
+      { id: "1", name: "kept.mp3", created_at: "2026-10-13T09:00:00Z" },
+      { id: "2", name: "orphan.mp3", created_at: "2026-10-13T09:00:00Z" },
+      { id: "3", name: "uploading.mp3", created_at: "2026-10-13T11:50:00Z" },
+    ] });
+    mocks.prisma.musicTrack.findMany.mockResolvedValue([{ path: "kept.mp3" }]);
+    mocks.storage.remove.mockClear();
+    expect(await cleanupMusicOrphans(now)).toBe(1);
+    expect(mocks.storage.remove).toHaveBeenCalledWith(["orphan.mp3"]);
+  });
+
+  it("the credit is added unless the exact line is already there; original music is never credited", () => {
+    expect(withMusicCredit("Great phones", "Music: Morning (Pixabay)")).toBe("Great phones\n\nMusic: Morning (Pixabay)");
+    expect(withMusicCredit("Great phones\nMusic: Morning (Pixabay)", "Music: Morning (Pixabay)")).toBe("Great phones\nMusic: Morning (Pixabay)");
+    // Mentioned inside a sentence is not the credit line: it is still added.
+    expect(withMusicCredit("We love Music: Morning (Pixabay) a lot", "Music: Morning (Pixabay)")).toContain("\n\nMusic: Morning (Pixabay)");
+    expect(withMusicCredit("Great phones", "")).toBe("Great phones");
   });
 });
