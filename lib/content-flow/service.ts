@@ -37,8 +37,12 @@ import { aiPhotosAvailable, audienceFor, directionContext, planVisuals, updateIm
 import { dayNumber, dayVariety, subjectKeyOf } from "./variety";
 import { runCost, type DayMode, type DesignChoice } from "./cost";
 import { dayBounds, dayDate, todayIn } from "./day";
-import { assignMedia, hasBeforeAfter, isDrawable, mediaLines, ownMediaFor, type GalleryItem, type PostMedia } from "./media";
-import { fitToNetwork, languageLine, languageMixOf, NETWORK_STYLE } from "./networks";
+import { albumVideos, assignMedia, hasBeforeAfter, isDrawable, mediaLines, ownMediaFor, type GalleryItem, type PostMedia } from "./media";
+import { fitToNetwork, isVideoNetwork, languageLine, languageMixOf, NETWORK_STYLE } from "./networks";
+import { decideFormats, VIDEO_APPS, type FormatChoice, type FormatPreference } from "./format";
+import { recentFormats } from "./recent-formats";
+import { seededRandom } from "@/lib/autopilot/learning";
+import { writeContentScript } from "@/lib/visuals/script-writer";
 import { fence } from "@/lib/visuals/art-director";
 import { adaptOwnPost } from "./writer";
 import { isPriceLike, mentionsPrice, priceAngleAllowed, priceFreeLines, priceSlots, stripPriceLike, withoutPriceLines, type PriceChoice } from "./price";
@@ -72,9 +76,11 @@ export type DayRunInput = {
   perApp?: number;
   /** "AI decides" (default), "With price" or "No price (engaging)". */
   price?: PriceChoice;
+  /** Picture or video per post: BuPulse decides (default), or the owner leans the run to video or pictures. */
+  format?: FormatPreference;
 };
 
-export type DayRunResult = { day: string; packId: string; posts: number; scheduled: number; skipped: { network: Network; reason: string }[]; failed: Network[]; angles: string[]; contests: number };
+export type DayRunResult = { day: string; packId: string; posts: number; scheduled: number; skipped: { network: Network; reason: string }[]; failed: Network[]; angles: string[]; contests: number; videos: number; notes: string[] };
 
 type Item = { type: string; title: string; price: string | null; features: string[]; context: string | null; photoPaths: string[] };
 
@@ -227,9 +233,20 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
   const perApp = postsPerApp({ networks, perApp: input.mode === "own" ? 1 : (input.perApp ?? 1), limit: allowance.postsPerApp, madeToday: Object.fromEntries(today.map((r) => [r.network, r._count._all])) });
   const skipped: DayRunResult["skipped"] = [...perApp.skipped];
 
+  const [kb, previous] = await Promise.all([
+    writerKnowledge(businessId),
+    prisma.generatedContent.findMany({ where: { businessId, ...subjectWhere(input.scope), createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, take: 30, select: { caption: true, angle: true } }),
+  ]);
+  const profile = readMarketingProfile(business.marketingProfile);
+
   // Which media each post uses, decided before writing so the caption can talk about it.
   let slotNetworks: Network[] = perApp.slots;
   let media: PostMedia[] = [];
+  let assigned: ReturnType<typeof assignAngles> = [];
+  let choices: FormatChoice[] = [];
+  const notes: string[] = [];
+  const facts = input.mode === "own" ? null : { ...(await angleFacts(businessId, packSubject, subject.item, business.country, now)), contests: true };
+  const priceHistory = previous.slice(0, 6).map((p) => p.angle === "price" || mentionsPrice(p.caption, subject.item.price));
   const own = new Map<Network, Exclude<ReturnType<typeof ownMediaFor>, { skip: string }>>();
   let gallery: GalleryItem[] = [];
   if (input.mode === "own") {
@@ -243,7 +260,28 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
     const [album, uses] = await Promise.all([subjectGallery(businessId, input.scope), recentUses(businessId, input.scope, since)]);
     // Photos the owner picked while describing come first, then the album.
     gallery = [...picked, ...album.filter((a) => !picked.some((p) => p.path === a.path))].map((m) => ({ ...m, recentUses: picked.some((p) => p.path === m.path) ? -1 : (uses.get(m.path) ?? 0) }));
-    media = assignMedia({ networks: slotNetworks, gallery, day, videoInPlan: allowance.videoInPlan });
+    // A different idea per post, rotated per subject across days and balanced fun / professional by the brand's tone;
+    // the price follows the owner's choice. Then each post's format (format.ts), then its media.
+    const angles = chooseAngles({ ...facts!, hasBeforeAfter: hasBeforeAfter(gallery) }, await recentAngles(businessId, packSubject), slotNetworks.length, {
+      funCount: funCountFor(funShareFor(profile?.answers), slotNetworks.length, dayNumber(day)),
+      exclude: priceAngleAllowed(priceChoice, priceHistory, !!subject.item.price) ? [] : ["price"],
+    });
+    assigned = assignAngles(angles, slotNetworks);
+    const own = albumVideos(slotNetworks, gallery);
+    const decision = decideFormats({
+      slots: assigned,
+      day,
+      preference: input.format,
+      videoInPlan: allowance.videoInPlan,
+      videoSecondsLeft: allowance.videoSecondsLeft,
+      freeVideo: (i) => own[i] !== null,
+      photoApps: VIDEO_APPS.filter((n) => getProvider(n).rules.formats.includes("POST")),
+      recent: await recentFormats(businessId, zone, day),
+      rng: seededRandom(`${businessId}|${subjectKey}|${day}|${now.toISOString()}`),
+    });
+    choices = decision.choices;
+    notes.push(...decision.notes);
+    media = assignMedia({ networks: slotNetworks, gallery, day, videoInPlan: allowance.videoInPlan, choices });
   }
   if (slotNetworks.length === 0) throw new DayRunError(skipped.map((s) => s.reason).join(" ") || "Nothing could be made from that.");
 
@@ -252,10 +290,6 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
   const cost = runCost({ mode: input.mode, design: input.design, posts: slotNetworks.length, designed: designedCount, aiPhotos: allowance.aiPhotos, textLeft: allowance.textLeft, imagesLeft: allowance.imagesLeft, videos, videoSecondsLeft: allowance.videoSecondsLeft, voice: allowance.voice, voiceCharsLeft: allowance.voiceCharsLeft });
   if (!cost.enoughText) throw new DayRunError(`Not enough text generations left for ${slotNetworks.length} posts. ${cost.message}`);
 
-  const [kb, previous] = await Promise.all([
-    writerKnowledge(businessId),
-    prisma.generatedContent.findMany({ where: { businessId, ...subjectWhere(input.scope), createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, take: 30, select: { caption: true, angle: true } }),
-  ]);
   const brand: BrandContext = {
     businessName: business.name,
     industry: business.industry,
@@ -269,7 +303,6 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
     profile: profileContext(business.profile),
     ...kb,
   };
-  const profile = readMarketingProfile(business.marketingProfile);
   const mix = languageMixOf(profile);
   const packId = globalThis.crypto.randomUUID();
   const configured = (process.env.AI_TEXT_PROVIDER ?? "gemini").toLowerCase();
@@ -303,21 +336,15 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
       // Only posts the AI adapted are charged.
       kept = written.filter((w) => w.provider !== "edit").length;
     } else {
-      // "AI makes it" / "Describe": a content pack, a different idea per post, rotated per subject across days and
-      // balanced fun / professional by the brand's tone; the price follows the owner's choice.
-      const facts = { ...(await angleFacts(businessId, packSubject, subject.item, business.country, now)), hasBeforeAfter: hasBeforeAfter(gallery), contests: true };
-      const priceHistory = previous.slice(0, 6).map((p) => p.angle === "price" || mentionsPrice(p.caption, subject.item.price));
-      const angles = chooseAngles(facts, await recentAngles(businessId, packSubject), slotNetworks.length, {
-        funCount: funCountFor(funShareFor(profile?.answers), slotNetworks.length, dayNumber(day)),
-        exclude: priceAngleAllowed(priceChoice, priceHistory, !!subject.item.price) ? [] : ["price"],
-      });
+      // "AI makes it" / "Describe": a content pack, one call for every post (angles and formats chosen above).
       const item0 = subject.item;
-      const assigned = assignAngles(angles, slotNetworks);
       const showsPrice = priceSlots(priceChoice, assigned.map((a) => a.angle), priceHistory, !!subject.item.price);
       const slots: PackSlot[] = assigned.map((slot, i) => {
         const m = media[i];
         const variety = dayVariety(subjectKey, day, i);
-        const format = m.kind === "image" ? (slot.format === "video" ? "image" : slot.format) : "video";
+        // The decided format; a video post's script comes in the same call (lib/ai/pack.ts).
+        const decided = choices[i]?.format ?? slot.format;
+        const format = m.kind === "image" ? (decided === "video" ? "image" : decided) : "video";
         // The shared prompt has no price unless every post shows it; the price post gets the price in its own line.
         const price = showsPrice[i] ? `State the price exactly as given: ${item0.price}.` : "Do not mention any price, cost, discount, free offer or amount in this post.";
         return { ...slot, format, note: [...mediaLines(m), `Opening: ${variety.hook} Structure: ${variety.structure}`, price].filter(Boolean).join(" ") };
@@ -338,7 +365,7 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
         ? { type: item.type, title: item.title, price: item.price, features: item.features, context: item.context }
         : { type: item.type, title: item.title, price: null, features: item.features.filter((f) => !isPriceLike(f, item.price)), context: priceFreeLines(withoutPriceLines(item.context), item.price) };
       const writerBrand: BrandContext = allPriced ? brand : { ...brand, knowledgeBase: priceFreeLines(brand.knowledgeBase, item.price), profile: priceFreeLines(brand.profile, item.price), description: brand.description && stripPriceLike(brand.description, item.price) };
-      const pack = await withLedger(ledger, model, () => writePack(getTextProvider(), writerBrand, promotion, slots, facts.moment ?? null, extra), usage);
+      const pack = await withLedger(ledger, model, () => writePack(getTextProvider(), writerBrand, promotion, slots, facts!.moment ?? null, extra), usage);
       written = pack.posts.flatMap((p): typeof written => {
         const slot = slots.findIndex((s) => s.angle === p.angle && s.network === p.network);
         if (slot < 0) return [];
@@ -380,6 +407,7 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
           packId,
           angle: input.mode === "own" ? null : w.angle,
           network: w.network,
+          format: w.format,
           forDate: dayDate(day),
           mode: input.mode,
           brief: input.mode === "describe" ? brief : input.mode === "own" ? ownCaption : null,
@@ -389,6 +417,19 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
       }),
     ),
   );
+
+  // A video post the pack writer left without its script gets one from the script writer (one text generation each).
+  for (const [i, w] of done.entries()) {
+    const kind = input.mode === "own" ? null : media[w.slot]?.kind;
+    if ((kind !== "render-video" && kind !== "script") || w.videoScript.trim()) continue;
+    try {
+      const script = await writeContentScript(owner, contents[i].id);
+      w.videoScript = script;
+      contents[i] = { ...contents[i], videoScript: script };
+    } catch (error) {
+      await logError(error, { source: "content-flow.script", level: "warn", businessId });
+    }
+  }
 
   // Step 2: the visuals, Gallery first. One art director call per designed post, each with its idea's people;
   // AI photos only with "AI designs", for the first posts while the plan's images last; covers made to differ.
@@ -413,8 +454,9 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
       status: "PENDING_APPROVAL",
       format: m.format,
       source: "STUDIO",
-      // A video idea without the owner's video is the script to film; otherwise the caption.
-      text: m.format === "SCRIPT" && m.mediaPaths.length === 0 && w.videoScript ? (contest ? contestDraftText(w.videoScript) : w.videoScript) : caption,
+      // A TikTok / YouTube video without the owner's video is the script to film (the video BuPulse makes goes with
+      // it); a video post on Instagram, Facebook or LinkedIn keeps its caption (the video becomes the post).
+      text: m.format === "SCRIPT" && m.mediaPaths.length === 0 && w.videoScript && (isVideoNetwork(w.network) || media[w.slot]?.kind === "script") ? (contest ? contestDraftText(w.videoScript) : w.videoScript) : caption,
       hashtags: w.hashtags,
       mediaPaths: m.mediaPaths,
       ...(contest ? { contest: {}, reviewNote: CONTEST_NOTE } : {}),
@@ -425,7 +467,8 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
     await logError(e, { source: "content-flow.auto", level: "warn", businessId });
     return { scheduled: 0, waiting: 0 };
   });
-  return { day, packId, posts: created.length, scheduled: auto.scheduled, skipped, failed, angles: input.mode === "own" ? [] : done.map((w) => w.angle), contests: done.filter(contestOf).length };
+  const videoPosts = input.mode === "own" ? 0 : done.filter((w) => media[w.slot]?.kind === "render-video" || media[w.slot]?.kind === "gallery-video").length;
+  return { day, packId, posts: created.length, scheduled: auto.scheduled, skipped, failed, angles: input.mode === "own" ? [] : done.map((w) => w.angle), contests: done.filter(contestOf).length, videos: videoPosts, notes };
 }
 
 const isVideoPath = (p: string) => /\.(mp4|webm)$/i.test(p);

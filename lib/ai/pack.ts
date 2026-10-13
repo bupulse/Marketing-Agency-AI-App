@@ -5,6 +5,7 @@ import "server-only";
 import { z } from "zod";
 import { ANGLES, type AngleId, type PackFormat } from "@/lib/studio/angles";
 import { MAX_HEADLINE_LENGTH } from "@/lib/studio/schemas";
+import { fitScript, SCRIPT_GUIDE } from "@/lib/visuals/script";
 import { normalizeHashtags, truncateSmart } from "@/lib/studio/variants";
 import type { Network } from "@/lib/social/types";
 import { buildPrompt, type BrandContext, type PromotionInput } from "./marketing";
@@ -14,7 +15,7 @@ const postSchema = z.object({
   index: z.number().int().describe("The post's number from the list, starting at 1"),
   caption: z.string().describe("The post text without hashtags, written for its app and angle"),
   hashtags: z.array(z.string()).describe("Hashtags for its app, each starting with #"),
-  videoScript: z.string().describe("For video posts: a 15 to 30 second vertical video script with timestamps, scene directions and voiceover lines; empty otherwise"),
+  videoScript: z.string().describe("For video posts: the video's scenes, one per line, each a [shot direction] then the spoken line; empty otherwise"),
   headline: z.string().describe(`A short headline for the picture, at most ${MAX_HEADLINE_LENGTH} characters`),
 });
 
@@ -60,6 +61,7 @@ export function buildPackPrompt(brand: BrandContext, input: PromotionInput, slot
     ...list,
     "",
     "For each post return its index, caption (without hashtags), hashtags, videoScript (empty unless it is a video post) and a short headline for its picture. No years, dates or other numbers in hashtags unless they appear in the details above.",
+    slots.some((s) => s.format === "video") ? `Every video post's videoScript: ${SCRIPT_GUIDE} Write it from that post's own caption and angle.` : "",
   ]
     .filter((l) => l !== "")
     .join("\n");
@@ -105,7 +107,7 @@ export function readPack(parsed: z.infer<typeof packSchema>, slots: readonly Pac
       ...slot,
       caption,
       hashtags: normalizeHashtags(post.hashtags).slice(0, slot.network === "instagram" ? 15 : 5),
-      videoScript: slot.format === "video" ? post.videoScript.trim() : "",
+      videoScript: slot.format === "video" && post.videoScript.trim() ? fitScript(post.videoScript.trim()) : "",
       headline: truncateSmart(post.headline.trim(), MAX_HEADLINE_LENGTH),
     });
   });

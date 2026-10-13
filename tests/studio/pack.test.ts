@@ -105,7 +105,7 @@ describe("the pack writer", () => {
       { index: 1, caption: "Three tips", hashtags: [], videoScript: "should go", headline: "Tips" },
       { index: 2, caption: "three  TIPS", hashtags: [], videoScript: "", headline: "Copy" },
     ] }, slots);
-    expect(posts.map((p) => [p.angle, p.caption, p.videoScript])).toEqual([["tips", "Three tips", ""], ["story", "A day with the phone", "0-3s hook"]]);
+    expect(posts.map((p) => [p.angle, p.caption, p.videoScript])).toEqual([["tips", "Three tips", ""], ["story", "A day with the phone", "hook"]]);
     expect(posts[1].hashtags).toEqual(["#kigali"]);
   });
 });
@@ -121,8 +121,9 @@ describe("generatePackForSubject", () => {
     expect(new Set(rows.map((r) => r.packId)).size).toBe(1);
     // 5 posts over 3 apps: 2, 2 and 1, each angle on the app it suits (how it works and the story as TikTok videos).
     expect(rows.map((r) => [r.angle, r.network])).toEqual([["features", "instagram"], ["price", "facebook"], ["story", "tiktok"], ["tips", "instagram"], ["how-it-works", "tiktok"]]);
-    expect(rows.filter((r) => r.network === "tiktok").every((r) => r.videoScript === "0-3s Hook")).toBe(true);
-    expect(rows.filter((r) => r.network !== "tiktok").every((r) => r.videoScript === "")).toBe(true);
+    // Scripts are held to the voiceover rules (timestamps out, lib/visuals/script.ts); the format BuPulse chose is saved.
+    expect(rows.filter((r) => r.network === "tiktok").every((r) => r.videoScript === "Hook" && r.format === "video")).toBe(true);
+    expect(rows.filter((r) => r.network !== "tiktok").every((r) => r.videoScript === "" && r.format !== "video")).toBe(true);
     expect(pack.contents).toHaveLength(5);
   });
 

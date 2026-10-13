@@ -253,7 +253,9 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
               format,
               source: "AUTOPILOT" as const,
               title: version.title,
-              text: version.text,
+              // A feed video post no video is made for (no video in the plan, or the album's own) is the script to
+              // film, with its caption.
+              text: format === "SCRIPT" && version.videoScript && !(videoAllowed && !albumVideo) && !fromVideo ? `${version.videoScript}\n\nCaption: ${version.text}` : version.text,
               hashtags: version.hashtags,
               mediaPaths,
               scheduledAt: planned.scheduledAt,

@@ -16,7 +16,9 @@ Code: `lib/ai/tts.ts`, `lib/voice/`, `lib/music/`, `components/visuals/video-ren
   code: to add African English voices from the ElevenLabs Voice Library, add their ids there (check them with
   "Listen" first).
 - **What is spoken** (`lib/voice/speech.ts`): one sentence per scene, taken from the scene captions (the video plan
-  already removed timestamps, labels and stage directions), each ended with a full stop.
+  already removed timestamps, labels and stage directions), each ended with a full stop. Scripts BuPulse writes are
+  held to the voiceover length up front (`lib/visuals/script.ts`: 3 to 5 scenes, at most 330 spoken characters), so
+  `shortenLines` is rarely needed.
 - **When it is made**: just before a video is rendered, not when content is written: the owner's browser asks for it
   in `startVideoRender`, the video robot in its claim (`ensureVoiceover`, `lib/voice/service.ts`). So characters are
   only spent on videos that are actually made.

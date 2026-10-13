@@ -6,6 +6,7 @@ import { CompanyBudgetExceededError } from "@/lib/ai/budget";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { confirmContest, DayRunError, MAX_BRIEF, MAX_OWN_CAPTION, MAX_OWN_MEDIA, runDayContent, type DayRunResult } from "@/lib/content-flow/service";
 import { contestConfirmSchema } from "@/lib/content-flow/contest";
+import { FORMAT_PREFERENCES } from "@/lib/content-flow/format";
 import { prisma } from "@/lib/db";
 import { featureBlocked } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
@@ -25,6 +26,7 @@ const inputSchema = z.object({
   overlays: z.boolean().optional(),
   perApp: z.number().int().min(1).max(10).optional(),
   price: z.enum(["auto", "with", "none"]).optional(),
+  format: z.enum(FORMAT_PREFERENCES).optional(),
   /** One per dialog opening: the same request is never run twice (double click, retry). */
   requestKey: z.string().regex(/^[A-Za-z0-9-]{8,64}$/).optional(),
 });

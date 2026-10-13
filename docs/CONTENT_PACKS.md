@@ -21,11 +21,15 @@ own app, its own caption and hashtags, and its own picture with people. Code: `l
    `docs/CONTENT.md`.
 2. **Apps** (`spreadNetworks`). The pack is spread over the company's usable connected apps (none connected:
    Instagram, Facebook, TikTok, LinkedIn): every app gets one post before any gets a second, and each angle goes to the
-   app it suits best (how it works on TikTok, news on Facebook, why us on LinkedIn...). Format follows the app: a
-   video on TikTok and YouTube, a carousel for list angles (tips, how it works, features, FAQ) on Instagram, Facebook
-   and LinkedIn, an image otherwise.
+   app it suits best (how it works on TikTok, news on Facebook, why us on LinkedIn...). BuPulse then decides each
+   post's format (`lib/content-flow/format.ts`, docs/CONTENT.md "Picture or video"): mostly video on TikTok and
+   YouTube, a mix on Instagram and Facebook, mostly pictures on LinkedIn, a carousel for list angles (tips, how it
+   works, features, FAQ) when a post is not a video, within the plan's video seconds. Saved on
+   `GeneratedContent.format`.
 3. **Writing** (`writePack`). One AI call writes every post, each for its angle and app (Instagram hooks and hashtags,
-   Facebook conversational, LinkedIn professional, TikTok and Shorts with a video script). The single writer's facts
+   Facebook conversational, LinkedIn professional, TikTok and Shorts with a video script). Every video post's script
+   comes in the same call, scene by scene within the voiceover rules (`SCRIPT_GUIDE`, docs/CONTENT_VISUALS.md); a
+   video post left without one gets it from the script writer (one more text generation). The single writer's facts
    rules apply: nothing invented, reviews only quoted from the CUSTOMER REVIEWS block; without one, the story angle is
    a relatable scenario, never a fake quote. Repeated or empty captions are dropped.
 4. **Pictures** (`planPackVisuals`). The art director is asked for every post at once, with its angle: the cover is a

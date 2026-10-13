@@ -8,6 +8,7 @@ import { activeTracks } from "@/lib/music/service";
 import { featureStatus } from "@/lib/entitlements";
 import { getUsageSummary } from "@/lib/usage";
 import { audioUrlsFor } from "@/lib/visuals/robot";
+import { SCRIPT_RULES } from "@/lib/visuals/script";
 import { VISUAL_LIMITS, type VideoPlan } from "@/lib/visuals/types";
 import { renderPhotoUrls, setVideoMusic } from "@/lib/visuals/sound";
 import { ensureVoiceover, regenerateVoiceover, setVideoVoice } from "@/lib/voice/service";
@@ -28,10 +29,14 @@ export async function renderVisual(visualId: string): Promise<Result<{ status: s
   });
 }
 
-/** A new picture, video plan or both for a content version (fresh art direction). */
-export async function remakeVisual(contentId: string, only?: "image" | "video"): Promise<Result<{ image: string | null; video: string | null }>> {
+/**
+ * A new picture, video plan or both for a content version (fresh art direction). For a video, `script` is the owner's
+ * own script; without it, content with no script gets one written by the AI first (one text generation).
+ */
+export async function remakeVisual(contentId: string, only?: "image" | "video", script?: string): Promise<Result<{ image: string | null; video: string | null }>> {
   if (!id.safeParse(contentId).success || (only && only !== "image" && only !== "video")) return BAD;
-  return knowledgeAction({ ...GUARD, source: "visuals.remake" }, ({ userId, businessId }) => remakeContentVisuals({ userId, businessId }, contentId, only));
+  if (script !== undefined && (typeof script !== "string" || only !== "video" || script.length > SCRIPT_RULES.maxLength)) return { ok: false, error: `Keep your script under ${SCRIPT_RULES.maxLength} characters.` };
+  return knowledgeAction({ ...GUARD, source: "visuals.remake" }, ({ userId, businessId }) => remakeContentVisuals({ userId, businessId }, contentId, only, script === undefined ? {} : { script }));
 }
 
 const changesSchema = z.object({

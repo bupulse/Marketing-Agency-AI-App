@@ -96,6 +96,17 @@ screen).
   moves alternate; colours from the brand (`buildTheme`), style from the pack. A **video look** (docs/DESIGNS.md,
   "Video looks") chosen by BuPulse sets layouts, transition, captions and motion; plans without one render as before. Made with the text when the plan has
   video (`videoAvailable`: the `video` feature and more than 0 video seconds a month) and there is a script.
+- **"Make a video" never asks for a script first** (`remakeContentVisuals`, `lib/visuals/script-writer.ts`). Content
+  without a video script gets one written by the AI from its own post (caption, angle, the subject's Knowledge base,
+  the Digital Marketing Profile's voice and language mix): one text call through `withLedger`, **1 text generation**
+  (shown on the button and under it; given back when the call fails), saved on the content, then the video is planned
+  and made as usual. **"Write my own script"** opens a box with a scene helper (one line per scene, a shot idea in
+  `[brackets]`, scene count, spoken characters and seconds of voice as you type); the owner's script is used as typed,
+  no credit. Only "Videos are not in your plan" still stops it. Script rules (`lib/visuals/script.ts`, shared by the
+  pack writer, Autopilot's writer and the script writer): 3 to 5 scenes, each spoken line at most 80 characters, at
+  most 330 spoken characters in all (the headline opens the video and the business name closes it, so the voiceover
+  stays within 30 seconds at about 15 characters a second, `docs/VOICE_AND_MUSIC.md`); an AI script is held to them
+  (`fitScript`: extra scenes and over-long lines cut, hashtags out, the call to action kept).
 - **Render in the browser** (`components/visuals/video-renderer.ts`): 1080x1920 at 30 fps on a canvas, captions
   burned in, MP4 through WebCodecs H.264 and `mp4-muxer` (MIT, about 14 KB gzipped, loaded only when a video is made;
   the library is superseded by Mediabunny but stable), else a real-time WebM through MediaRecorder, else a clear
@@ -137,6 +148,8 @@ On the day view's "Pictures and videos" (Content, docs/CONTENT.md) and the Autop
 | Style (under "More options") | every slide redrawn with designs of the new style; AI photos are reused | free |
 | Edit text | headline, subline, chip per slide, redrawn | free |
 | New picture | fresh art direction, the old slides go (unless a post uses them) | art director call; AI photo uses a credit |
+| Make a video | the AI writes the script when there is none, then the video is made | 1 text generation without a script; video seconds when made |
+| Write my own script | the owner's lines, one per scene, used as typed; then the video is made | video seconds when made |
 | Remove | slide designs and video file go unless a post uses them; AI photos stay in Designs | none |
 | Edit captions / Make it again / Add your music / music or voice change | new video plan or same plan, rendered again | only the seconds beyond the current video |
 
@@ -208,7 +221,8 @@ seconds. `voice` stays coming soon.
 
 ## Tests
 
-`tests/visuals/`: direction (validation, fallbacks, carousel decision, sources, chips), video plan and timeline maths,
+`tests/visuals/script.test.ts`: script rules, the script writer's prompt, "Make a video" without a script (written,
+charged, saved), with the owner's script (no AI, no credit), the plan blocker and the refund. `tests/visuals/`: direction (validation, fallbacks, carousel decision, sources, chips), video plan and timeline maths,
 post mapping, service (art director fallbacks, AI photo paths with no credits or errors, render steps, video upload
 checks and finalize, attaching to Autopilot posts), integration (feature gating, prompt fencing, quota with videos,
 Autopilot group visuals), the browser renderer (light, mocked canvas). Also `tests/publishing/service.test.ts` (posts

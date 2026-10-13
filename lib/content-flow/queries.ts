@@ -16,7 +16,7 @@ export async function loadDayPosts(businessId: string, scope: ContentScope, day:
   return { posts: await toContentPosts(businessId, rows.slice(0, filters.limit)), total, hasMore: rows.length > filters.limit };
 }
 
-export type DayContent = { id: string; network: string | null; angle: string | null; mode: string | null; createdAt: string };
+export type DayContent = { id: string; network: string | null; angle: string | null; mode: string | null; createdAt: string; hasScript: boolean };
 
 /** The content rows a day's runs made for a subject (one per post), each with its picture and video. */
 export async function loadDayContents(businessId: string, scope: ContentScope, day: string, zone: string) {
@@ -26,8 +26,8 @@ export async function loadDayContents(businessId: string, scope: ContentScope, d
     where: { businessId, ...subject, OR: [{ forDate: dayDate(day) }, { forDate: null, createdAt: dayBounds(day, zone) }] },
     orderBy: { createdAt: "desc" },
     take: 40,
-    select: { id: true, network: true, angle: true, mode: true, createdAt: true },
+    select: { id: true, network: true, angle: true, mode: true, createdAt: true, videoScript: true },
   });
   const visuals = await loadVisuals(businessId, { contentIds: rows.map((r) => r.id) });
-  return rows.map((r) => ({ id: r.id, network: r.network, angle: r.angle, mode: r.mode, createdAt: r.createdAt.toISOString(), ...pickVisuals(visuals, { contentId: r.id }) }));
+  return rows.map((r) => ({ id: r.id, network: r.network, angle: r.angle, mode: r.mode, createdAt: r.createdAt.toISOString(), hasScript: r.videoScript.trim().length > 0, ...pickVisuals(visuals, { contentId: r.id }) }));
 }

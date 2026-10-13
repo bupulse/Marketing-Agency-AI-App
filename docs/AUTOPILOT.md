@@ -54,7 +54,7 @@ With at least 6 posts with metrics the scores steer the plan: about 70% of picks
 `buildWeekPlan(input)` is pure and seeded by business and week, so it is repeatable and testable.
 
 - Holidays in the week come first, on the day itself (a greeting, or an offer on shopping days when an offer exists), at most one per three posts.
-- Every connected network gets at least one post when there is room, and LinkedIn gets an article when there are three or more posts. Video scripts are capped at about a quarter of the plan unless only video accounts are connected.
+- Every connected network gets at least one post when there is room, and LinkedIn gets an article when there are three or more posts. Without video in the plan, video scripts are capped at about a quarter of the plan unless only video accounts are connected; with it, BuPulse makes the videos and each post's format is decided per app (docs/CONTENT.md, "Picture or video").
 - Days are spread over the week (posts avoid piling on one day) and lean on each network's best weekdays.
 - Times come from the owner's posting times (or learned best hours when confident), in `Business.timezone`, never in the past, and never closer than 2.5 hours to another post on the same account, including posts already scheduled.
 - Projects: new, never-posted ones first, each used at most once a week.

@@ -8,7 +8,7 @@ const prisma = vi.hoisted(() => ({
   mediaAsset: { findMany: vi.fn() },
   contentVisual: { findMany: vi.fn(), findFirst: vi.fn() },
   post: { findMany: vi.fn(), create: vi.fn(), groupBy: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
-  generatedContent: { findMany: vi.fn(), create: vi.fn() },
+  generatedContent: { findMany: vi.fn(), create: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
   connection: { findMany: vi.fn() },
   $transaction: vi.fn(),
 }));
@@ -21,6 +21,9 @@ const pack = vi.hoisted(() => ({ angleFacts: vi.fn(), recentAngles: vi.fn(), aiI
 const director = vi.hoisted(() => ({ directVisual: vi.fn(async (ctx: { aiAllowed: boolean; price?: string | null; caption?: string }) => ({ plan: "directed", ai: ctx.aiAllowed })) }));
 const ai = vi.hoisted(() => ({ generate: vi.fn() }));
 const auto = vi.hoisted(() => ({ autoSchedule: vi.fn() }));
+// The format draws (lib/content-flow/format.ts): 0.99 keeps feed apps on pictures; a test lowers it for videos.
+const draw = vi.hoisted(() => ({ value: 0.99 }));
+vi.mock("@/lib/autopilot/learning", () => ({ seededRandom: () => () => draw.value }));
 
 vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("@/lib/usage", () => usage);
@@ -82,10 +85,13 @@ beforeEach(() => {
   visuals.planVisuals.mockResolvedValue({ image: "v1", video: null });
   ai.generate.mockImplementation(async ({ prompt }: { prompt: string }) => packAnswer(prompt));
   auto.autoSchedule.mockResolvedValue({ scheduled: 0, waiting: 3 });
+  draw.value = 0.99;
 });
 
 describe("AI makes it for me (a content pack for the day)", () => {
   it("writes one post per app in one call (one text generation each), new angles, album video first, drafted for today", async () => {
+    // Instagram's draw falls under its video share (0.55), Facebook's not (0.35).
+    draw.value = 0.5;
     const result = await runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "ai", design: "ai", networks: ["instagram", "tiktok", "facebook"] }, NOW);
     expect(result).toMatchObject({ day: "2026-10-13", posts: 3, failed: [], skipped: [] });
     expect(usage.consumeUsage).toHaveBeenCalledWith("u1", "text", 3);
@@ -161,6 +167,57 @@ describe("AI makes it for me (a content pack for the day)", () => {
     expect(pack.recentAngles).toHaveBeenCalledWith("b1", null);
     expect(prisma.generatedContent.create.mock.calls[0][0].data).toMatchObject({ productId: null, campaignId: null });
     expect(ai.generate.mock.calls[0][0].prompt).toContain('"Our shop front"');
+  });
+});
+
+describe("picture or video, decided per post", () => {
+  const photosOnly = [{ asset: { path: "u1/gallery/p1.jpg", name: "Tower in a classroom.jpg", mimeType: "image/jpeg" } }];
+
+  it("saves each post's format and makes Instagram a Reel BuPulse renders, keeping its caption", async () => {
+    prisma.productPhoto.findMany.mockResolvedValue(photosOnly);
+    draw.value = 0.5;
+    const result = await runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "ai", design: "free", networks: ["instagram", "facebook"] }, NOW);
+    expect(result).toMatchObject({ videos: 1, notes: [] });
+    const contents = prisma.generatedContent.create.mock.calls.map((c) => c[0].data);
+    expect(Object.fromEntries(contents.map((c) => [c.network, c.format]))).toEqual({ instagram: "video", facebook: "image" });
+    const prompt = ai.generate.mock.calls[0][0].prompt as string;
+    expect(prompt).toMatch(/Format: a video post \(write the videoScript\)/);
+    expect(prompt).toContain("Every video post's videoScript:");
+    const ig = prisma.post.create.mock.calls.map((c) => c[0].data).find((p) => p.network === "instagram")!;
+    expect(ig).toMatchObject({ format: "SCRIPT", mediaPaths: [] });
+    expect(ig.text).toMatch(/^Post \d: fresh greens/);
+    expect(visuals.planVisuals.mock.calls.find((c) => c[0].video)?.[0]).toMatchObject({ image: false, video: true });
+  });
+
+  it("with no video seconds left, TikTok gets the script to film and the run says why", async () => {
+    prisma.productPhoto.findMany.mockResolvedValue(photosOnly);
+    usage.getUsageSummary.mockResolvedValue({ used: { text: 2, image: 0, videoSeconds: 240, voiceCharacters: 0 }, limits: { text: 30, image: 10, videoSeconds: 240, voiceCharacters: 20000, postsPerAppPerDay: 3 } });
+    const result = await runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "ai", design: "free", networks: ["tiktok"], format: "video" }, NOW);
+    expect(result.notes).toEqual(["TikTok gets a video script to film yourself: your video seconds for this month are used up."]);
+    expect(result.videos).toBe(0);
+    const tiktok = prisma.post.create.mock.calls[0][0].data;
+    expect(tiktok).toMatchObject({ format: "SCRIPT", mediaPaths: [] });
+    expect(tiktok.text).toBe("hook");
+    expect(visuals.planVisuals).not.toHaveBeenCalled();
+  });
+
+  it("writes the script of a video post the pack writer left without one (one more text generation)", async () => {
+    prisma.productPhoto.findMany.mockResolvedValue(photosOnly);
+    prisma.generatedContent.findFirst.mockResolvedValue({ id: "content-1", caption: "Post 1", angle: "story", network: "tiktok", productId: "p1", campaignId: null });
+    prisma.generatedContent.updateMany.mockResolvedValue({ count: 1 });
+    ai.generate.mockImplementationOnce(async ({ prompt }: { prompt: string }) => {
+      const answer = packAnswer(prompt);
+      const parsed = JSON.parse(answer.text);
+      parsed.posts[0].videoScript = "";
+      return { ...answer, text: JSON.stringify(parsed) };
+    });
+    ai.generate.mockResolvedValueOnce({ text: JSON.stringify({ scenes: ["[Tower] Grow greens at school.", "[Kids] Pupils pick lettuce.", "[Logo] Ask us today."] }), provider: "gemini", model: "m", usage: { inputTokens: 1, outputTokens: 1 } });
+    await runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "ai", design: "free", networks: ["tiktok"] }, NOW);
+    expect(ai.generate).toHaveBeenCalledTimes(2);
+    expect(usage.consumeUsage).toHaveBeenCalledWith("u1", "text", 1);
+    expect(usage.consumeUsage).toHaveBeenCalledWith("u1", "text");
+    expect(prisma.generatedContent.updateMany).toHaveBeenCalledWith({ where: { id: "content-1", businessId: "b1" }, data: { videoScript: "[Tower] Grow greens at school.\n[Kids] Pupils pick lettuce.\n[Logo] Ask us today." } });
+    expect(visuals.planVisuals.mock.calls[0][0]).toMatchObject({ video: true, videoScript: expect.stringContaining("Grow greens at school.") });
   });
 });
 

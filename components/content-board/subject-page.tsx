@@ -70,7 +70,7 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
   const sections = groupDay(list.posts, day, zone);
   const visuals = contents
     .filter((c) => c.image || c.video)
-    .map((c) => ({ id: c.id, label: c.network && isNetwork(c.network) ? NETWORK_STYLE[c.network].label : "Post", angle: isAngleId(c.angle) ? ANGLES[c.angle].label : null, image: c.image, video: c.video }));
+    .map((c) => ({ id: c.id, label: c.network && isNetwork(c.network) ? NETWORK_STYLE[c.network].label : "Post", angle: isAngleId(c.angle) ? ANGLES[c.angle].label : null, image: c.image, video: c.video, hasScript: c.hasScript }));
   const create = <CreateDayContent scope={scope} path={path} subjectName={info.name} networks={networks} allowance={allowance} album={album} />;
 
   const empty = filtered ? (
