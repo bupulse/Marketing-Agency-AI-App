@@ -72,7 +72,7 @@ UPDATE "PlanDefinition"
 SET "limits" = jsonb_set("limits", '{videoSeconds}', '30'::jsonb)
 WHERE "isTrial" = true AND jsonb_typeof("limits") = 'object';
 
--- The video add-on in Rwanda: a placeholder price for the admin to set (Admin -> Money -> Add-on prices).
+-- The video add-on in Rwanda: 10,000 RWF a month (owner decision, 13 Oct 2026; editable in Admin -> Money -> Add-on prices).
 INSERT INTO "AddonPrice" ("id", "addonKey", "regionKey", "currency", "monthlyMinor", "updatedBy", "updatedAt") VALUES
-    ('addon_rw_video', 'video', 'RW', 'RWF', 10000, 'migration (placeholder)', CURRENT_TIMESTAMP)
+    ('addon_rw_video', 'video', 'RW', 'RWF', 10000, 'migration', CURRENT_TIMESTAMP)
 ON CONFLICT ("addonKey", "regionKey") DO NOTHING;

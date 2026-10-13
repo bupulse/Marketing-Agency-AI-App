@@ -60,8 +60,8 @@ ledger, the platform cap (`AI_MONTHLY_BUDGET_USD`) and the company allowance (`A
 
 ## Follow-up (owner decisions of 12 October 2026)
 
-- Video by plan: Rwanda Business and Pro 240 s a month, trial 30 s, Starter and Standard none (add-on, RW placeholder
-  price 10,000 RWF for the admin to set). Same migration file (`20261015090000_content_visuals`).
+- Video by plan: Rwanda Business and Pro 240 s a month, trial 30 s, Starter and Standard none (add-on, RW price
+  10,000 RWF a month, owner decision). Same migration file (`20261015090000_content_visuals`).
 - Daily `/api/cron/media-cleanup`: video files go 30 days after their posts were published; videos also go with their
   product, campaign or pruned content (a waiting post keeps its video until then).
 

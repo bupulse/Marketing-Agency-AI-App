@@ -127,8 +127,8 @@ widens the media bucket's types and gives the Pro plan row the `video` key (Pro 
 
 The migration sets this on the `PlanDefinition` rows (features and limits are per plan key; regions only price them);
 `lib/plans.ts` (`VIDEO_PLAN_SECONDS`, `TRIAL_VIDEO_SECONDS`) holds the same for the code's fallback plans. Video is in
-the add-on catalog and the offer builder like every built feature; Rwanda has a placeholder price (10,000 RWF, row
-`addon_rw_video`) for the admin to set. Added on top of a plan without video, an offer's custom plan gets 240 video
+the add-on catalog and the offer builder like every built feature; Rwanda's price is 10,000 RWF a month (owner decision; row
+`addon_rw_video`, editable in Add-on prices). Added on top of a plan without video, an offer's custom plan gets 240 video
 seconds. `voice` stays coming soon.
 
 ## Storage clean-up
