@@ -331,6 +331,6 @@ describe("tool helpers", () => {
 
   it("callTool returns plain JSON", async () => {
     h.overview.mockResolvedValue({ at: new Date("2026-10-08T00:00:00Z") });
-    expect(await callTool("get_overview", {}, { actor: "x", viaApi: true })).toEqual({ at: "2026-10-08T00:00:00.000Z" });
+    expect(await callTool("get_overview", {}, { actor: "x", viaApi: true, permissions: "all" })).toEqual({ at: "2026-10-08T00:00:00.000Z" });
   });
 });

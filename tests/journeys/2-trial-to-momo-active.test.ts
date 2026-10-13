@@ -31,7 +31,7 @@ import { clearSwitchCache } from "@/lib/admin/switch";
 import { apiContext, consoleContext } from "@/lib/admin/types";
 
 const CONSOLE = consoleContext("198.51.100.1");
-const API = apiContext("key1", "203.0.113.5");
+const API = apiContext("key1", "203.0.113.5", "all");
 const PAID_AT = new Date("2026-10-14T10:00:00Z");
 const audits = (action: string) => h.db.auditLog.rows.filter((r) => r.action === action);
 

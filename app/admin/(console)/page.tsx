@@ -23,6 +23,7 @@ import { TodayPayments, TodayTimeline } from "@/components/admin/overview-today"
 import { getTodayPayments, getTodayTimeline, type TodayPayment } from "@/lib/admin/today";
 import { listManualPayments } from "@/lib/billing/momo";
 import { confirmPaymentAction, rejectPaymentAction } from "@/app/admin/(console)/(money)/payments/actions";
+import { kigaliMonthOf } from "@/lib/time/kigali";
 
 export const metadata = { title: "Overview" };
 
@@ -65,7 +66,7 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
   const cur = months[months.length - 1];
   const prev = months[months.length - 2];
   const data: OverviewData = {
-    monthLabel: monthName(report?.thisMonth ?? new Date().toISOString().slice(0, 7)),
+    monthLabel: monthName(report?.thisMonth ?? kigaliMonthOf(new Date())),
     prevMonthLabel: prev ? monthName(prev.month).split(" ")[0] : "last month",
     revenue: { monthCents: cur?.revenue.netCents ?? 0, prevCents: prev?.revenue.netCents ?? 0, lifetimeCents: report?.lifetime.revenueCents ?? 0, customersEver: report?.lifetime.customersEver ?? 0, spark: months.map((m) => m.revenue.netCents) },
     mrrCents: report?.mrrCents ?? 0,

@@ -1,6 +1,7 @@
 import "server-only";
 // Small counts for the Overview dashboard: clients by subscription state and today's demos.
 import { prisma } from "@/lib/db";
+import { kigaliDayStart } from "@/lib/time/kigali";
 
 export type ClientCounts = { active: number; trial: number; pastDue: number; waitingDemo: number; ended: number; total: number };
 
@@ -21,7 +22,7 @@ export async function getClientCounts(): Promise<ClientCounts> {
 
 /** Demos booked for today (UTC) and the next one coming up. */
 export async function getDemosToday(now = new Date()): Promise<{ today: number; next: { startsAt: Date; company: string } | null }> {
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const start = kigaliDayStart(now);
   const end = new Date(start.getTime() + 86_400_000);
   const [today, next] = await Promise.all([
     prisma.demoBooking.count({ where: { status: "booked", startsAt: { gte: start, lt: end } } }),

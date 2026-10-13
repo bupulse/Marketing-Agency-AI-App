@@ -9,22 +9,21 @@ import "server-only";
 // - Active that month: a staff member with a sales role (a built-in sales role, or any role with "My clients",
 //   clients.own), added before the month ended and not disabled before it began. Invited members count too: their
 //   link already works.
-// Months are calendar months in UTC, like the rest of Money.
+// Months are calendar months in Kigali (lib/time/kigali.ts), like the rest of Money.
 import { prisma } from "@/lib/db";
 import { MONEY_EVENT_TYPES } from "@/lib/analytics/math";
 import { dedupe, toRevenueEntry, type RevenueEntry } from "@/lib/money/revenue-shared";
 import { isSalesRole, permissionsOf } from "@/lib/staff/permissions";
+import { kigaliMonthOf, kigaliMonthRange } from "@/lib/time/kigali";
 
 export type AssignmentSpan = { userId: string; staffId: string | null; startsAt: Date; endsAt: Date | null };
 export type BoardAgent = { staffId: string; name: string };
 export type LeaderRow = { staffId: string; name: string; ownCents: number; teamShareCents: number; totalCents: number; clients: number };
 
 export const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
-export const monthOf = (d: Date) => d.toISOString().slice(0, 7);
-export function monthRange(month: string): { start: Date; end: Date } {
-  const [y, m] = month.split("-").map(Number);
-  return { start: new Date(Date.UTC(y, m - 1, 1)), end: new Date(Date.UTC(y, m, 1)) };
-}
+/** Kigali months (lib/time/kigali.ts), like every money page. */
+export const monthOf = kigaliMonthOf;
+export const monthRange = kigaliMonthRange;
 
 /** The staff member assigned to the client (account user id) at `at`, or null when unassigned. Latest start wins. */
 export function agentAt(assignments: readonly AssignmentSpan[], userId: string, at: Date): string | null {

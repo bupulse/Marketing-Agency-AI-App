@@ -8,6 +8,7 @@ import { USAGE_METRICS, type UsageMetric } from "@/lib/plans";
 import { loadRevenueEntries } from "@/lib/money/report";
 import { lastFullPayments, mrrOf } from "@/lib/money/revenue-shared";
 import { healthFlags, riskLevel, riskScore, usageShareOf, type HealthFlag } from "./client-health-shared";
+import { kigaliMonthStart } from "@/lib/time/kigali";
 
 const DAY = 86_400_000;
 const MAX_COMPANIES = 500;
@@ -35,7 +36,7 @@ export type ClientRow = {
 
 /** Every company (newest 500) with its health flags and this period's usage, riskiest first. */
 export async function getClientRows(now = new Date()): Promise<ClientRow[]> {
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const monthStart = kigaliMonthStart(now);
   const companies = await prisma.business.findMany({
     orderBy: { createdAt: "desc" },
     take: MAX_COMPANIES,

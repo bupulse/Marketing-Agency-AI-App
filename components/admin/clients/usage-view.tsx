@@ -76,7 +76,7 @@ export function UsageView({ rows, sort, fx = BOOKS_FMT }: { rows: ClientRow[]; s
       <HowCalculated>
         <ul>
           <li>Usage is the client&apos;s counters for the current period (monthly from their period start; yearly plans reset monthly too), against their plan&apos;s limits.</li>
-          <li>AI cost is the ledger&apos;s estimate of the company&apos;s AI calls this calendar month (UTC), voice and images included; website chat replies count too.</li>
+          <li>AI cost is the ledger&apos;s estimate of the company&apos;s AI calls this calendar month (Kigali time), voice and images included; website chat replies count too.</li>
           <li>Pays per month is their share of MRR: their plan&apos;s price, or what they last paid by Mobile Money, a yearly price divided by 12.</li>
           <li>Margin leaves out shared costs (hosting, the domain): see Revenue and profit for the whole picture.</li>
         </ul>

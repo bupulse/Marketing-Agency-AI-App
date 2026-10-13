@@ -108,7 +108,7 @@ describe("kill switch cache", () => {
 
 describe("get_client_360 over MCP", () => {
   it("masks the client's own customers (lead names and emails) but not the client", async () => {
-    const out = (await callTool("get_client_360", { userId: "11111111-1111-4111-8111-111111111111" }, apiContext("k1"))) as { overview: { user: { email: string } }; leads: { leads: { name: string | null; email: string | null }[] } };
+    const out = (await callTool("get_client_360", { userId: "11111111-1111-4111-8111-111111111111" }, apiContext("k1", null, "all"))) as { overview: { user: { email: string } }; leads: { leads: { name: string | null; email: string | null }[] } };
     expect(out.leads.leads[0]).toMatchObject({ name: "J***", email: "j***@gmail.com" });
     expect(out.leads.leads[1]).toMatchObject({ name: null, email: null });
     expect(JSON.stringify(out)).not.toContain("jane.doe");

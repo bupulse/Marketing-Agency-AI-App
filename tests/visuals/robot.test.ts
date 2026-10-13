@@ -85,7 +85,8 @@ describe("claiming videos", () => {
     expect(Object.keys(jobs[0].photoUrls).sort()).toEqual([design, own].sort());
     // No database ids or storage paths outside the signed URLs.
     expect(jobs[0]).not.toHaveProperty("id");
-    expect(JSON.stringify(jobs[0])).not.toContain("b1");
+    // The company id never appears as a value (a random job id or token may contain the letters "b1" by chance).
+    expect(JSON.stringify(jobs[0])).not.toMatch(/"b1"|[/=]b1\b/);
   });
 
   it("skips a video another run (or the owner's browser) leased first", async () => {

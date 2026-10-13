@@ -24,6 +24,7 @@ import {
 import { addAdminNote, deleteAdminNote } from "@/lib/admin/notes";
 import { setAiBudget } from "@/lib/admin/ai-usage";
 import { clearMoneyReportCache } from "@/lib/money/report";
+import { requirePermission } from "@/lib/admin/auth";
 import { setServiceEnabled, testService } from "@/lib/admin/services";
 import { AdminError } from "@/lib/admin/types";
 import { prisma } from "@/lib/db";
@@ -66,7 +67,9 @@ const allowList = (raw: string) => raw.split(/[\s,]+/).map((s) => s.trim()).filt
 export async function createKeyAction(_prev: KeyState, f: FormData): Promise<KeyState> {
   const ctx = await adminAction("jarvis");
   try {
-    const { key, apiKey } = await createAdminKey(ctx, { name: text(f, "name"), ipAllowList: allowList(text(f, "ips")) });
+    // A staff member's key carries their own permissions; the owner's key can do everything.
+    const me = await requirePermission("jarvis");
+    const { key, apiKey } = await createAdminKey(ctx, { name: text(f, "name"), ipAllowList: allowList(text(f, "ips")) }, me);
     revalidatePath("/admin/jarvis");
     return { key, name: apiKey.name };
   } catch (e) {
@@ -77,7 +80,7 @@ export async function createKeyAction(_prev: KeyState, f: FormData): Promise<Key
 export async function rotateKeyAction(_prev: KeyState, f: FormData): Promise<KeyState> {
   const ctx = await adminAction("jarvis");
   try {
-    const { key, apiKey } = await rotateAdminKey(ctx, text(f, "id"));
+    const { key, apiKey } = await rotateAdminKey(ctx, text(f, "id"), await requirePermission("jarvis"));
     // No revalidate here: re-rendering the list would unmount the row that is showing the new key.
     return { key, name: apiKey.name };
   } catch (e) {
@@ -87,7 +90,7 @@ export async function rotateKeyAction(_prev: KeyState, f: FormData): Promise<Key
 
 export async function revokeKeyAction(f: FormData) {
   const ctx = await adminAction("jarvis");
-  await finish("/admin/jarvis", "Key revoked. Jarvis can no longer use it.", () => revokeAdminKey(ctx, text(f, "id")));
+  await finish("/admin/jarvis", "Key revoked. Jarvis can no longer use it.", async () => revokeAdminKey(ctx, text(f, "id"), await requirePermission("jarvis")));
 }
 
 // ---- Users -----------------------------------------------------------------------------------------------

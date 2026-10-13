@@ -15,11 +15,15 @@ export const PUBLIC_LIMITS = {
   signUp: { ip: { limit: 10, windowSeconds: HOUR }, email: { limit: 5, windowSeconds: HOUR } },
   resendConfirmation: { ip: { limit: 10, windowSeconds: HOUR }, email: { limit: 5, windowSeconds: HOUR } },
   login: { ip: { limit: 30, windowSeconds: 15 * 60 }, email: { limit: 10, windowSeconds: 15 * 60 } },
-  adminCode: { ip: { limit: 20, windowSeconds: HOUR }, email: { limit: 5, windowSeconds: HOUR } },
+  // Counted per address AND per (address + email): a stranger elsewhere cannot use up the owner's own sends.
+  adminCode: { ip: { limit: 20, windowSeconds: HOUR }, email: { limit: 5, windowSeconds: HOUR }, emailPerIp: true },
+  adminVerify: { ip: { limit: 30, windowSeconds: 15 * 60 }, email: { limit: 10, windowSeconds: 15 * 60 }, emailPerIp: true },
   forgotPassword: { ip: { limit: 10, windowSeconds: HOUR }, email: { limit: 5, windowSeconds: HOUR } },
   contact: { ip: { limit: 10, windowSeconds: HOUR } },
   demoBook: { ip: { limit: 10, windowSeconds: HOUR } },
-} satisfies Record<string, { ip: RateLimitRule; email?: RateLimitRule }>;
+  // The sales room TV (/screen/<token>): it polls every 10 s, so 30 a minute leaves room for a few screens per office.
+  screen: { ip: { limit: 30, windowSeconds: 60 } },
+} satisfies Record<string, { ip: RateLimitRule; email?: RateLimitRule; emailPerIp?: boolean }>;
 export type PublicLimit = keyof typeof PUBLIC_LIMITS;
 
 /** The caller's address: the host's own header (lib/platform/headers.ts), else (plain Node only, local dev) the first x-forwarded-for hop, else null. */
@@ -53,10 +57,13 @@ async function shortHash(text: string): Promise<string> {
  * a limit is exceeded, or null to go on. Both counters always count, so switching addresses does not reset either.
  */
 export async function publicLimited(kind: PublicLimit, email?: string | null, ip?: string | null): Promise<string | null> {
-  const rules: { ip: RateLimitRule; email?: RateLimitRule } = PUBLIC_LIMITS[kind];
+  const rules: { ip: RateLimitRule; email?: RateLimitRule; emailPerIp?: boolean } = PUBLIC_LIMITS[kind];
   const address = ip === undefined ? await requestIp() : ip;
   const checks = [rateLimit(`public:${kind}:ip:${await shortHash(address ?? "unknown")}`, rules.ip)];
-  if (rules.email && email) checks.push(rateLimit(`public:${kind}:email:${await shortHash(normalizeEmail(email))}`, rules.email));
+  if (rules.email && email) {
+    const who = rules.emailPerIp ? `${address ?? "unknown"}|${normalizeEmail(email)}` : normalizeEmail(email);
+    checks.push(rateLimit(`public:${kind}:email:${await shortHash(who)}`, rules.email));
+  }
   const results = await Promise.allSettled(checks);
   for (const r of results) {
     if (r.status === "rejected") {

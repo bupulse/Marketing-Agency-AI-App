@@ -323,7 +323,7 @@ export function LeaderboardHow() {
         <li>Own sales: every payment of a client, net of refunds, counts for the agent assigned to that client at the moment of the payment. A reassignment counts from that moment; earlier payments stay with the earlier agent.</li>
         <li>Team share: payments of clients with no agent at that moment are added up and split equally across the agents active that month.</li>
         <li>Active that month: a staff member with a sales role (Sales agent, Sales manager, or any role with My clients), added before the month ended and not disabled before it began.</li>
-        <li>Total = own sales + team share. USD, calendar months in UTC. Performance only: no commission is worked out here.</li>
+        <li>Total = own sales + team share. USD, calendar months in Kigali time. Performance only: no commission is worked out here.</li>
       </ul>
     </HowCalculated>
   );

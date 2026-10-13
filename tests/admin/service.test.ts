@@ -25,7 +25,7 @@ import * as svc from "@/lib/admin/service";
 import { AdminError, apiContext, consoleContext } from "@/lib/admin/types";
 import { consumeUsage, UsageLimitError } from "@/lib/usage";
 
-const API = apiContext("key1", "203.0.113.5");
+const API = apiContext("key1", "203.0.113.5", "all");
 const CONSOLE = consoleContext("198.51.100.1");
 const USER = "11111111-1111-4111-8111-111111111111";
 const code = async (p: Promise<unknown>) => p.then(() => null, (e: AdminError) => e.code);

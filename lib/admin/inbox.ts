@@ -9,6 +9,7 @@ import { APPROVAL_TTL_MS } from "./service";
 import { openRegionMismatches } from "@/lib/region-check";
 import { money } from "./format";
 import type { Permission } from "@/lib/staff/permissions";
+import { kigaliDayStart } from "@/lib/time/kigali";
 
 export type InboxItem = { id: string; text: string; sub?: string; href: string; at?: string };
 export type InboxSection = { key: InboxKey; title: string; why: string; href: string; count: number; tone: "danger" | "violet" | "neutral"; items: InboxItem[] };
@@ -64,7 +65,7 @@ export const getInboxCounts = cache(async (): Promise<Record<InboxKey, number> &
   return { ...counts, total: payments + approvals + demos + requests + invoices + offers + contests + regions };
 });
 
-const startOfDay = (now: Date) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+const startOfDay = kigaliDayStart;
 
 /** Demos from 2 hours ago to 48 hours ahead still "booked", and past ones never marked done or no-show. */
 const demoWhere = (now: Date) => ({ status: "booked", startsAt: { lte: new Date(now.getTime() + 48 * HOUR) } });

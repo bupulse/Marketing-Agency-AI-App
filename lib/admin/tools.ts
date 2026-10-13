@@ -1,4 +1,5 @@
 import "server-only";
+import type { Permission } from "@/lib/staff/permissions";
 import { z } from "zod";
 import * as analytics from "@/lib/analytics/queries";
 import { METRIC_KEYS, type DateRange, type MetricKey } from "@/lib/analytics/types";
@@ -647,6 +648,40 @@ tool({
   run: (a, ctx) => connectionActions.switchOnWidget(ctx, a),
 });
 
+
+/**
+ * The permission each tool needs (lib/staff/permissions.ts), any of a list. A key runs a tool only with it (owner keys
+ * have all). Every tool must be here: tests/organisation/jarvis-scope.test.ts fails otherwise.
+ */
+export const TOOL_PERMISSION: Record<string, readonly Permission[]> = {
+  get_metrics: ["money.revenue"], weekly_report: ["money.revenue"], get_activity: ["system", "overview"],
+  get_overview: ["money.revenue"], get_revenue: ["money.revenue"], get_profit: ["money.revenue"], get_costs: ["money.costs", "money.revenue"],
+  get_funnel: ["content", "overview"], get_top_content: ["content"], get_whats_working: ["content", "overview"],
+  list_users: ["clients.view"], get_user: ["clients.view"], list_businesses: ["clients.view"], get_business: ["clients.view"], list_posts: ["clients.view"],
+  list_companies: ["clients.view"], get_company: ["clients.view"], get_client_360: ["clients.view"], list_connections: ["clients.view"],
+  extend_trial: ["clients.manage"], suspend_user: ["clients.manage"], restore_user: ["clients.manage"], rerun_failed_post: ["clients.manage"], change_plan: ["clients.manage"],
+  create_company_user: ["clients.manage"], change_user_email: ["clients.manage"], request_make_company_owner: ["clients.manage"], send_password_reset: ["clients.manage"],
+  remove_company_user: ["clients.manage"], change_company_user_role: ["clients.manage"], force_disconnect_channel: ["clients.manage"], disconnect_connector: ["clients.manage"],
+  revoke_client_api_key: ["clients.manage"], switch_off_widget: ["clients.manage"], switch_on_widget: ["clients.manage"],
+  list_demos: ["demos"],
+  list_offers: ["requests"], list_plan_requests: ["requests"], create_offer: ["requests"],
+  get_approval: ["approvals.decide"], list_approvals: ["approvals.decide"],
+  list_momo_payments: ["payments.view", "payments.approve"], get_momo_payment: ["payments.view", "payments.approve"], issue_refund: ["payments.approve"],
+  list_regions: ["plans.manage"], list_region_prices: ["plans.manage"], list_plans: ["plans.manage"], update_plan: ["plans.manage"], update_plan_limits: ["plans.manage"],
+  list_industries: ["content"], list_industry_suggestions: ["content"], send_announcement: ["content"],
+  get_ai_usage: ["ai"], set_ai_budget: ["ai"],
+  get_errors: ["system"], get_audit_log: ["system"], list_feature_flags: ["system"], set_feature_flag: ["system"], list_services: ["system"], test_service: ["system"],
+  set_service_enabled: ["system"], get_system_health: ["system"], get_update_status: ["system"],
+};
+
+/** May this context run the tool? The console's own actions are gated elsewhere; an API context needs the permission. */
+export function toolAllowed(name: string, ctx: Pick<AdminContext, "viaApi" | "permissions">): boolean {
+  if (!ctx.viaApi) return true;
+  if (ctx.permissions === "all") return true;
+  const need = TOOL_PERMISSION[name];
+  return !!need && !!ctx.permissions && need.some((p) => ctx.permissions!.includes(p));
+}
+
 export const TOOLS: readonly Tool[] = defs;
 export const TOOL_NAMES = defs.map((t) => t.name);
 
@@ -668,6 +703,7 @@ export function inputSchemaOf(t: Tool) {
 export async function callTool(name: string, rawArgs: unknown, ctx: AdminContext): Promise<unknown> {
   const t = findTool(name);
   if (!t) throw new AdminError("not_found", `Unknown tool "${name}".`);
+  if (!toolAllowed(name, ctx)) throw new AdminError("forbidden", `This key may not use ${name}: it needs the ${(TOOL_PERMISSION[name] ?? ["owner"]).join(" or ")} permission.`);
   const parsed = t.schema.safeParse(rawArgs ?? {});
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
