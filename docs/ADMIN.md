@@ -1,6 +1,6 @@
 # Admin console (`/admin`)
 
-Only the addresses in `ADMIN_EMAILS` (comma-separated, default `admin@bupulse.com`) can open the console. Everyone else, and signed-out visitors, get a 404. An admin also needs an authenticator-app code (Supabase MFA, AAL2) on every sign-in, and every server action re-checks it (`adminAction()`). Money actions run only after the owner clicks Approve (see `docs/JARVIS.md`).
+The addresses in `ADMIN_EMAILS` (comma-separated, default `admin@bupulse.com`) are the **Owner**: every permission. Staff added under Organisation sign in the same way with their own account (Google or password) and get their role's permissions. Everyone else, and signed-out visitors, get a 404. Everyone needs an authenticator-app code (Supabase MFA, AAL2) on every sign-in. Every page, route and server action checks the **permission** it needs (`requirePermission`, `isAdminSession(permission)`, `adminAction(permission)`), not just "is admin": without it the answer is the same 404. Money actions run only after the owner clicks Approve (see `docs/JARVIS.md`).
 
 ## Map
 
@@ -10,6 +10,7 @@ The sidebar groups the pages into folders; the files live in matching route grou
 | --- | --- | --- | --- |
 | | Overview | `/admin` | Today and this month: to-dos, MRR, revenue (month and lifetime), costs, profit, clients by state, AI spend vs the cap, errors in 24 h. |
 | | Inbox | `/admin/inbox` | Everything waiting for a person: payments to confirm, approvals, demos, plan requests, invoices to check, accepted unpaid offers, contests waiting for the client, region mismatches, errors. |
+| Sales | My clients, Sales team, Leaderboard | `/admin/sales`, `/admin/sales/team`, `/admin/sales/leaderboard` | An agent's own clients (contact, plan, trial days left, last sign-in, posts, payment status) and referral link; every agent and reassigning; this month's sales per agent. |
 | Clients | Companies, Users | `/admin/companies`, `/admin/users` | Find a company or person; open one for users, usage and actions. |
 | | Client health | `/admin/client-health` | Inactive 7 days, trial ending in 3 days, past due, low usage, waiting for a demo; one-click WhatsApp and email. |
 | | Usage per client | `/admin/usage` | Texts, images, video seconds, voice characters, chat this period; AI cost this month vs what they pay; margin. |
@@ -20,7 +21,9 @@ The sidebar groups the pages into folders; the files live in matching route grou
 | Content | Content performance, Funnels, Design library, Music library, Industries, Announcements | | |
 | AI and usage | AI calls and spend, Approvals, Jarvis | `/admin/ai`, `/admin/approvals`, `/admin/jarvis` | |
 | System | Health, Services, Errors, Live activity, Audit log, Feature flags, Settings, Updates | | |
+| Organisation | Staff, Roles, Sales screen | `/admin/organisation`, `/admin/organisation/roles`, `/admin/organisation/screen` | Invite staff with a role, disable and remove; custom roles; the sales room TV links and sounds. |
 
+- **Overview** starts with "Waiting for approval" (each Mobile Money payment with its screenshot, company, amount, reference and time; Approve and Reject with a reason in place, the same audited actions as Payments), "Today's payments" (who, how much, how, when, which agent) and "What happened today" (sign-ups, demos, trials, payments, cancellations, plan requests as plain sentences). Each section shows only to someone with its permission; someone without the Overview opens their first allowed page.
 - **Search:** Cmd+K (Mac) or Ctrl+K anywhere, or the Search button: any page by name, folder or keyword, and any company by name or member email (`/admin/search`, same admin gate).
 - **Folders** fold with a click; the choice is remembered in this browser only. The folder of the page you are on stays open. A folded folder shows the sum of its badges.
 - **Badges:** Inbox (all to-dos), Payments, Approvals, Plan requests, Errors (24 h), Health.
@@ -39,6 +42,17 @@ All money is shown in USD; RWF amounts are converted at the rate fixed when a pa
 - **Enter the bills** at the start of each month for the month before: the Costs page shows "Estimated part" in red until then.
 
 Why the AI estimate can differ from Google's bill, and what is done about it: `docs/AI_COSTS.md`.
+
+## Organisation
+
+- **Roles** (`lib/staff/permissions.ts`): Owner (everything), Sales manager, Sales agent, Finance, Support / client success, Marketing, IT, Content team, plus custom roles (a name and ticked permissions). Permissions are areas (pages) and actions: approve payments (Owner and Finance), decide money requests, reassign clients (Owner and Sales manager), manage staff (Owner and IT), manage the sales screen (Owner).
+- **Inviting** (Organisation, Staff; needs "manage staff"): email, name, role. The sign-in is created if the address has none, and our mailer sends a link to choose a password (or sign in with Google), then the person adds an authenticator at `/admin` like the owner. Disabling takes effect on the next click; a disabled member can then be removed (their sales history stays). Nobody changes their own membership, only the owner can make or change an Owner, and nobody can give a role (or build a custom role) with permissions they do not hold. Staff act as `staff:<id>` in the audit log.
+- **The menu and the search** show only the pages a person may open; the inbox and its badge count only what they can act on.
+- **Agents** see only their assigned clients' contact and status (no content or settings), their link, their numbers and the leaderboard. **Sales managers** see every client's agent and reassign with a reason: it counts from that moment, earlier payments stay with the earlier agent, and it is audited and listed.
+- **Referral links:** each sales staff member has a code; any page with `?ref=CODE` (`/`, `/pricing`, `/signup`...) keeps the first code in a 30-day functional cookie (`bp-ref`, never overwritten); the sign-up that follows gives the company to that agent (ClientAssignment, source referral). No code: unassigned.
+- **Leaderboard** (`lib/sales/attribution.ts`), performance only, no commission: own sales are payments (net of refunds) of clients assigned to the agent at the payment's time; payments of clients without an agent at that time are the **team share**, split equally across the sales staff active that month (sales roles and any role with "My clients"; managers included).
+- **Sales room TV** (`/screen/<secret>`; Organisation, Sales screen, Owner): view only, no emails or phones; active users now (dashboard used in the last 5 minutes) and today, revenue today and this month, trials to follow up (soonest end first, with the agent), this month's leaderboard; refreshed about every 10 seconds. A new confirmed payment shows a celebration (company, amount, "Brought in by" the agent or "Team", falling money, a sound from the library in turn). Click "Start screen" once (browsers need a click before playing sound). Links are stored hashed and can be revoked; sounds: up to 10 MP3s uploaded (you must hold the rights) or generated with ElevenLabs Sound Effects.
+- **Test staff** (test project only): `scripts/local/seed-test-staff.mjs` (git-ignored) creates one person per role (two agents), writes their passwords to `TEST_ACCOUNTS.md` and the Keychain, and assigns a few test companies to the agents.
 
 ## One-time setup (owner, in this order)
 
