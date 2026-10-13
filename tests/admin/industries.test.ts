@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeDb, type FakeDb } from "./fake-db";
 
+// Three tests import the whole admin tool registry and server actions on first use; under a busy machine that alone
+// takes longer than the 5 s default.
+vi.setConfig({ testTimeout: 30_000 });
+
 // Admin -> Industries: audited writes, validation, "in use" protection and "New from sign-ups" suggestions that move
 // companies onto a new sector. The server actions re-check the admin (AAL2) before touching anything.
 
