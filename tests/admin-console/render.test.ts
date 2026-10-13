@@ -62,7 +62,7 @@ const row = (over: Partial<ClientRow> = {}): ClientRow => ({
 
 describe("admin shell", () => {
   it("shows the folders, counts, breadcrumbs and search", () => {
-    const out = html(createElement(ThemeProvider, null, createElement(AdminShell, { email: "admin@bupulse.com", badges: { inbox: { count: 3, tone: "danger", label: "3 items" }, payments: { count: 1, tone: "danger", label: "1 payment" } } }, createElement("p", null, "page"))));
+    const out = html(createElement(ThemeProvider, null, createElement(AdminShell, { email: "admin@bupulse.com", badges: { inbox: { count: 3, tone: "danger", label: "3 items" }, payments: { count: 1, tone: "danger", label: "1 payment" } } } as Parameters<typeof AdminShell>[0], createElement("p", null, "page"))));
     for (const text of ["Clients", "Money", "Content", "AI and usage", "System", "Inbox", "Costs", "Client health", "Usage per client", "Search", "Breadcrumb"]) expect(out).toContain(text);
     expect(out).toContain('aria-label="3 items"');
     // The Invoices page is current, inside Money.
