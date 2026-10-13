@@ -5,7 +5,11 @@ import { Button } from "@/components/ui";
 import { navLinks } from "@/lib/content/site";
 import { MobileMenu } from "./mobile-menu";
 
-/** Sticky glass navigation. Desktop shows links and CTAs; phones get a disclosure menu. */
+/**
+ * Sticky glass navigation. From lg (1024 px) the links and both buttons fit on one line; below that the links and
+ * Log in move into the menu, while the theme toggle and the demo button stay (the button from 380 px; on the
+ * narrowest phones it is in the menu). Labels never wrap.
+ */
 export function SiteHeader() {
   return (
     <header className="sticky top-3 z-30 px-3 pt-3 sm:top-4 sm:px-6">
@@ -13,28 +17,29 @@ export function SiteHeader() {
         aria-label="Main"
         className="glass relative mx-auto flex max-w-6xl items-center gap-3 rounded-3xl py-2 pr-2 pl-4 sm:pl-5"
       >
-        <Link href="/" aria-label="BuPulse home" className="flex min-h-11 items-center">
+        <Link href="/" aria-label="BuPulse home" className="flex min-h-11 shrink-0 items-center">
           <Logo height={30} priority />
         </Link>
-        <ul className="m-0 ml-6 hidden flex-1 list-none items-center gap-1 p-0 md:flex">
+        <ul className="m-0 ml-4 hidden flex-1 list-none items-center gap-0.5 p-0 lg:flex xl:ml-6 xl:gap-1">
           {navLinks.map((l) => (
             <li key={l.href}>
               <Link
                 href={l.href}
-                className="inline-flex min-h-11 items-center rounded-full px-3 text-sm font-medium text-text no-underline opacity-80 transition-opacity hover:opacity-100"
+                className="inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-2.5 text-sm font-medium text-text no-underline opacity-80 transition-opacity hover:opacity-100 xl:px-3"
               >
                 {l.label}
               </Link>
             </li>
           ))}
         </ul>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <ThemeToggle />
-          <Button href="/login" variant="ghost" size="sm" className="hidden md:inline-flex">
+          <Button href="/login" variant="ghost" size="sm" className="hidden whitespace-nowrap lg:inline-flex">
             Log in
           </Button>
-          <Button href="/signup" size="sm" className="hidden md:inline-flex">
-            Book a free demo
+          <Button href="/signup" size="sm" className="hidden whitespace-nowrap min-[380px]:inline-flex">
+            <span className="lg:hidden">Book a demo</span>
+            <span className="hidden lg:inline">Book a free demo</span>
           </Button>
           <MobileMenu links={navLinks} />
         </div>
