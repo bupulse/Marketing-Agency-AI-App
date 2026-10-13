@@ -19,6 +19,8 @@ export const PERMISSIONS = {
   content: "MEMBER",
   /** Autopilot settings (the plan, runs and approvals follow `content`). */
   autopilotSettings: "ADMIN",
+  /** Content -> Settings: which apps' posts go out without approval (approving posts follows `content`). */
+  contentSettings: "ADMIN",
   /** Social channels, store connections, Cloudflare, Drive and the other connectors. */
   channels: "ADMIN",
   connectors: "ADMIN",

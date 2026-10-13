@@ -95,6 +95,8 @@ export async function toCalendarPosts(rows: PostRow[]): Promise<CalendarPost[]> 
     lastError: r.lastError,
     subjectId: r.productId ?? r.campaignId ?? r.projectId,
     contentId: r.contentId,
+    reviewNote: r.reviewNote,
+    autoScheduledAt: r.autoScheduledAt?.toISOString() ?? null,
   }));
 }
 

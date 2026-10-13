@@ -12,7 +12,8 @@ The page is `/dashboard/autopilot`. Everything lives in `lib/autopilot/`.
 4. **Write.** One Gemini call per post group (`writer.ts`), recorded in the cost ledger with feature `autopilot`.
 5. **Draw.** `visuals.ts` gives the group its visual (`docs/CONTENT_VISUALS.md`): a short carousel when the idea is a list or the product has several photos, else the picture from `images.ts` (`createTemplateDesign`, or `createAiPhotoDesign` when "Use AI images" is on), and a video plan for video ideas when the plan has video.
 6. **Save.** One `Post` per chosen account, `source AUTOPILOT`, `status PENDING_APPROVAL` (or `SCHEDULED` with "Post without asking"), with `autopilotRunId`, `playbookId` and a `groupId` shared by the posts of one idea.
-7. **Email.** When approval is needed, the owner gets "Your posts for next week are ready. Approve them" through `lib/publishing/email.ts` (Resend).
+7. **Auto-approval.** Without "Post without asking", the posts of apps that need no approval (Content -> Settings, `docs/CONTENT.md`) are scheduled now, keeping their planned time, unless a safety rule keeps them in review (for example a video still to render).
+8. **Email.** When posts still wait for approval, the owner gets "Your posts for next week are ready. Approve them" through `lib/publishing/email.ts` (Resend).
 
 A group is one idea. The week's `postsPerWeek` counts groups, and each group becomes one post for every connected account the idea suits (a tip becomes an Instagram caption, a Facebook post and a LinkedIn post, each written for its network).
 

@@ -93,6 +93,11 @@ model Business {
   // so the same country is not flagged again; regionMismatchAt is set only while the flag is open (the attention list).
   regionMismatch          Json?
   regionMismatchAt        DateTime?
+  // Content -> Settings (docs/CONTENT.md): per app, whether new posts wait for approval (lib/content-board/settings.ts).
+  // Null: approval required for every app.
+  contentSettings         Json?
+  // When the daily "what was auto-scheduled" email last went out (lib/content-board/summary.ts).
+  contentSummarySentAt    DateTime?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
@@ -713,6 +718,7 @@ enum PostFormat {
 enum PostSource {
   MANUAL
   AUTOPILOT
+  STUDIO // drafted automatically from Studio content (lib/content-board/drafts.ts)
 }
 
 // One post for one connected account. Posts written together for several accounts share a groupId.
@@ -750,6 +756,14 @@ model Post {
   autopilotRunId String?
   autopilotRun   AutopilotRun? @relation(fields: [autopilotRunId], references: [id], onDelete: SetNull)
   playbookId     String? // the playbook idea Autopilot used, for learning what works
+  // Why a post that could have been scheduled on its own still waits for review ("Video needs to be made").
+  reviewNote     String?
+  // Set when auto-approval (Content -> Settings) scheduled the post; the daily summary email lists these.
+  autoScheduledAt DateTime?
+  // Set when the owner changed the post (text, media, time, review state): BuPulse then never replaces or redraws it.
+  ownerEditedAt  DateTime?
+  // "post" | "carousel" | "video" | "article": kept by a database trigger from format and mediaPaths, for the type filter.
+  mediaKind      String        @default("post")
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   metrics        PostMetrics[]
@@ -759,6 +773,8 @@ model Post {
   @@index([businessId, scheduledAt])
   @@index([groupId])
   @@index([businessId, status, publishedAt])
+  @@index([businessId, createdAt])
+  @@index([businessId, autoScheduledAt])
 }
 
 model PostMetrics {

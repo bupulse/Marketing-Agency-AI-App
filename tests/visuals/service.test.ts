@@ -381,10 +381,27 @@ describe("video upload checks", () => {
 describe("attachToGroup (pictures)", () => {
   it("a redrawn carousel replaces the feed posts' pictures; posts going out are left alone", async () => {
     mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "carousel", status: "ready", items: [{ path: "a.png" }, { path: "b.png" }, { path: "c.png" }] }]);
-    mocks.prisma.post.findMany.mockResolvedValue([{ id: "fb", network: "facebook", format: "POST", mediaPaths: ["old.png"], status: "SCHEDULED", lastError: null }]);
+    const updatedAt = new Date("2026-10-12T10:00:00Z");
+    mocks.prisma.post.findMany.mockResolvedValue([{ id: "fb", network: "facebook", format: "POST", mediaPaths: ["old.png"], status: "SCHEDULED", lastError: null, updatedAt }]);
     await attachToGroup("biz1", "g1", { feed: true });
-    expect(mocks.prisma.post.findMany.mock.calls[0][0].where).toMatchObject({ businessId: "biz1", groupId: "g1", lockedAt: null, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] } });
-    expect(mocks.prisma.post.updateMany).toHaveBeenCalledWith({ where: { id: "fb", lockedAt: null }, data: { format: "CAROUSEL", mediaPaths: ["a.png", "b.png", "c.png"] } });
+    const status = { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] };
+    expect(mocks.prisma.post.findMany.mock.calls[0][0].where).toMatchObject({ businessId: "biz1", groupId: "g1", lockedAt: null, status });
+    expect(mocks.prisma.post.updateMany).toHaveBeenCalledWith({ where: { groupId: "g1", status, id: "fb", lockedAt: null, updatedAt }, data: { format: "CAROUSEL", mediaPaths: ["a.png", "b.png", "c.png"] } });
+  });
+
+  it("Studio drafts take a finished picture only while waiting and untouched by the owner", async () => {
+    const { attachToContent } = await import("@/lib/visuals/service");
+    mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "image", status: "ready", items: [{ path: "a.png" }] }]);
+    mocks.prisma.post.findMany.mockResolvedValue([]);
+    await attachToContent("biz1", "content-1", { feed: true }).catch(() => {});
+    expect(mocks.prisma.post.findMany.mock.calls[0][0].where).toEqual({
+      businessId: "biz1",
+      contentId: "content-1",
+      source: "STUDIO",
+      status: { in: ["DRAFT", "PENDING_APPROVAL"] },
+      ownerEditedAt: null,
+      lockedAt: null,
+    });
   });
 });
 
