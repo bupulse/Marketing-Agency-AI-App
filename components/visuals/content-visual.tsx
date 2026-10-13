@@ -34,7 +34,7 @@ type Props = { contentId?: string; image: VisualView | null; video: VisualView |
 
 export function ContentVisual({ contentId, image, video, videoInPlan, album, autoVideo = true }: Props) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="@container flex flex-col gap-4">
       <ImagePart contentId={contentId} visual={image} album={album} />
       <VideoPart contentId={contentId} visual={video} videoInPlan={videoInPlan} autoStart={autoVideo} hasImage={!!image?.items.length} />
     </div>
@@ -137,8 +137,8 @@ function ImagePart({ contentId, visual, album }: { contentId?: string; visual: V
         {visual.status === "failed" && <Badge tone="danger">Not finished</Badge>}
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <div className="relative aspect-[4/5] w-full max-w-xs overflow-hidden rounded-2xl bg-soft">
+      <div className="flex flex-col gap-3 @xl:flex-row">
+        <div className="relative aspect-[4/5] w-full max-w-xs self-center overflow-hidden @xl:self-start rounded-2xl bg-soft">
           {items[current] ? (
             // eslint-disable-next-line @next/next/no-img-element -- signed Storage URL
             <img src={items[current].url} alt={slide?.headline ?? "Picture"} className="size-full object-cover" />
@@ -184,7 +184,7 @@ function ImagePart({ contentId, visual, album }: { contentId?: string; visual: V
               {visual.error}
             </p>
           )}
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 @xl:grid-cols-2">
             <Field label="Style">
               <Select value={plan?.pack} disabled={busy} onChange={(e) => run(() => changeVisual(visual.id, { pack: e.target.value }))}>
                 {PACKS.map((p) => (
@@ -251,7 +251,7 @@ function ImagePart({ contentId, visual, album }: { contentId?: string; visual: V
       {editing && (
         <div className="flex flex-col gap-4 rounded-2xl bg-soft p-4">
           {texts.map((t, i) => (
-            <fieldset key={i} className="grid gap-3 sm:grid-cols-3">
+            <fieldset key={i} className="grid gap-3 @xl:grid-cols-3">
               <legend className="mb-1 text-[13px] font-medium text-muted">{isCarousel ? `Slide ${i + 1}` : "Text on the picture"}</legend>
               <Field label="Headline">
                 <Input value={t.headline} maxLength={VISUAL_LIMITS.headline} onChange={(e) => setTexts(texts.map((x, j) => (j === i ? { ...x, headline: e.target.value } : x)))} />
@@ -372,8 +372,8 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage }: { co
         {visual.status === "failed" && <Badge tone="danger">{ready ? "New version not made" : "Not made"}</Badge>}
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <div className="relative aspect-[9/16] w-full max-w-[220px] overflow-hidden rounded-2xl bg-soft">
+      <div className="flex flex-col gap-3 @xl:flex-row">
+        <div className="relative aspect-[9/16] w-full max-w-[220px] self-center overflow-hidden @xl:self-start rounded-2xl bg-soft">
           {ready && !render.busy ? (
             <video src={visual.items[0].url} controls playsInline preload="metadata" className="size-full object-cover" aria-label="Your video" />
           ) : (
