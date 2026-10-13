@@ -38,7 +38,7 @@ ledger, the platform cap (`AI_MONTHLY_BUDGET_USD`) and the company allowance (`A
 ## Free-plan limits to watch
 
 - **Supabase Storage, 1 GB in total.** Videos are 3 to 8 MB each; they count toward `MEDIA_PLATFORM_MAX_BYTES` (900 MB)
-  with the gallery photos, so about 100 to 200 videos across all companies fill it. Uploads are refused with the
+  with the gallery photos, so about 100 to 200 stored videos across all companies fill it (published ones are deleted after 30 days). Uploads are refused with the
   friendly "storage is full" message past the guard. Designs (slides) are in the `designs` bucket, 100 KB to 1 MB each,
   and are not in the platform guard (as before).
 - **Netlify, 60 s per function.** Slides are drawn in calls of at most 30 s; video is never rendered on the server.
@@ -55,12 +55,18 @@ ledger, the platform cap (`AI_MONTHLY_BUDGET_USD`) and the company allowance (`A
 - AI photos are stored as designs (Designs page, `kind AI`) and reused when restyling. Slide designs are deleted when
   replaced, unless a post uses them.
 - Video seconds are counted when the upload is confirmed (not when rendering starts), so a failed render costs nothing.
-- `video` is built but only Pro has it by default; Standard and the trial have 0 video seconds.
+- `video` is built; see the plan table in `docs/CONTENT_VISUALS.md`.
 - Autopilot asks the art director only when a carousel is likely, to keep a week's run short and cheap.
+
+## Follow-up (owner decisions of 12 October 2026)
+
+- Video by plan: Rwanda Business and Pro 240 s a month, trial 30 s, Starter and Standard none (add-on, RW placeholder
+  price 10,000 RWF for the admin to set). Same migration file (`20261015090000_content_visuals`).
+- Daily `/api/cron/media-cleanup`: video files go 30 days after their posts were published; videos also go with their
+  product, campaign or pruned content (a waiting post keeps its video until then).
 
 ## Not done / next
 
 - Real AI video (Veo or similar): plug into `lib/visuals/ai-video.ts` with credits and the ledger.
 - TikTok and YouTube upload APIs (videos go out by reminder email for now).
-- Storage clean-up of videos for deleted products and campaigns (rows cascade; files stay until the account is purged).
 - A gallery view of rendered videos.

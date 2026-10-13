@@ -119,6 +119,7 @@ If BuPulse moves back to Cloudflare Workers, the Worker route takes the domain a
 | `cron-plan-price-changes` | daily 04:29 | `/api/cron/plan-price-changes` (cursor calls) |
 | `cron-momo-renewals` | daily 05:41 | `/api/cron/momo-renewals` (cursor calls) |
 | `cron-trial-reminders` | hourly at :53 | `/api/cron/trial-reminders` |
+| `cron-media-cleanup` | daily 03:19 | `/api/cron/media-cleanup` |
 
 How a run works: the scheduled function (30 s limit) posts `{ path }` with `Authorization: Bearer $CRON_SECRET` to `/.netlify/functions/cron-runner-background`; Netlify answers 202 and runs that background function (15 minutes), which checks the secret and that the path is one of the jobs above, then calls the route on the site's own URL with the same bearer token. `purge-accounts` and `social-refresh` keep running from GitHub Actions as before.
 

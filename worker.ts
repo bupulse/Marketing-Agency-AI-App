@@ -8,6 +8,7 @@
 //   daily 04:29  -> POST /api/cron/plan-price-changes  (price-change notices and swaps, archives old Paddle prices, cursor calls)
 //   daily 05:41  -> POST /api/cron/momo-renewals  (Mobile Money renewal reminders, grace period, cursor calls)
 //   hourly :53   -> POST /api/cron/trial-reminders  (trial-end reminders for clients without a card, and trial expiry)
+//   daily 03:19  -> POST /api/cron/media-cleanup  (deletes content videos 30 days after their posts went out)
 // The handler calls the app's own routes through the self-reference binding, so the routes keep one set of
 // rules (CRON_SECRET bearer check) whether Cloudflare, GitHub Actions or a person calls them.
 // Not type-checked with the app (tsconfig excludes it): ./.open-next only exists after `opennextjs-cloudflare build`.
@@ -46,6 +47,8 @@ export const PLAN_PRICE_CRON = "29 4 * * *";
 export const MOMO_RENEWALS_CRON = "41 5 * * *";
 /** Hourly at :53: trial-end reminders (a day before and on the last day) and trials that are over become read-only. */
 export const TRIAL_CRON = "53 * * * *";
+/** Daily at 03:19: content video files are deleted 30 days after their posts went out (docs/CONTENT_VISUALS.md). */
+export const MEDIA_CLEANUP_CRON = "19 3 * * *";
 
 export const CRON_ROUTES: Record<string, string> = {
   [PUBLISH_CRON]: "/api/cron/publish",
@@ -57,6 +60,7 @@ export const CRON_ROUTES: Record<string, string> = {
   [PLAN_PRICE_CRON]: "/api/cron/plan-price-changes",
   [MOMO_RENEWALS_CRON]: "/api/cron/momo-renewals",
   [TRIAL_CRON]: "/api/cron/trial-reminders",
+  [MEDIA_CLEANUP_CRON]: "/api/cron/media-cleanup",
 };
 
 /** The route for a schedule, or null for one this worker doesn't know (never fall back to publishing). */

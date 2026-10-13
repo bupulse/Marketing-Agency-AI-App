@@ -111,9 +111,31 @@ widens the media bucket's types and gives the Pro plan row the `video` key (Pro 
 
 ## Features and plans
 
-`video` is now a built feature ("Videos", metric `videoSeconds`). It is in Pro (`PRO_FEATURES`, every built feature)
-and not in the core list (Standard, trial), which have 0 video seconds. Admins add it to other plans and set their
-video seconds. `voice` stays coming soon.
+`video` is a built feature ("Videos", metric `videoSeconds`). Owner decision (12 October 2026):
+
+| Plan | Video | Video seconds a month |
+| --- | --- | --- |
+| Rwanda Business, East Africa / Global Pro | yes | 240 (8 videos of up to 30 s) |
+| Free trial (whatever plan was chosen) | yes | 30 (one sample video) |
+| Starter, Standard | no: "Add video to your plan" | 0 |
+
+The migration sets this on the `PlanDefinition` rows (features and limits are per plan key; regions only price them);
+`lib/plans.ts` (`VIDEO_PLAN_SECONDS`, `TRIAL_VIDEO_SECONDS`) holds the same for the code's fallback plans. Video is in
+the add-on catalog and the offer builder like every built feature; Rwanda has a placeholder price (10,000 RWF, row
+`addon_rw_video`) for the admin to set. Added on top of a plan without video, an offer's custom plan gets 240 video
+seconds. `voice` stays coming soon.
+
+## Storage clean-up
+
+- **30 days after posting:** `/api/cron/media-cleanup` (daily 03:19 UTC: `MEDIA_CLEANUP_CRON` in `worker.ts`,
+  `wrangler.jsonc`, `netlify/functions/cron-media-cleanup.mts`, Admin cron list) deletes a video file once every post
+  that used it went out and the last one was published 30 or more days ago (`lib/visuals/cleanup.ts`). Posts and the
+  `ContentVisual` stay; the visual's items are emptied, `bytes` set to 0 (it stops counting toward the quotas) and
+  `error` says "Video removed after 30 days". Videos no post used yet are kept. The video panel says: "Published videos
+  are removed from BuPulse 30 days after posting; they stay on your social accounts."
+- **With their owner:** deleting a product or campaign (`releaseSubjectVideos`), pruning content versions, "New picture"
+  and Remove delete the video files too. A post still waiting to go out keeps its video: the visual is moved to that
+  post's group, and the 30-day clean-up takes it later.
 
 ## Tests
 

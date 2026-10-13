@@ -24,7 +24,7 @@ import { changeVideo, changeVisual, deleteVisual, remakeVisual, renderVisual } f
 import { cn } from "@/lib/cn";
 import { PACKS } from "@/lib/designs/packs";
 import { TEMPLATES } from "@/lib/designs/templates/registry";
-import { VISUAL_LIMITS, VIDEO_LIMITS, type VisualView } from "@/lib/visuals/types";
+import { VISUAL_LIMITS, VIDEO_LIMITS, VIDEO_REMOVED_NOTE, VIDEO_RETENTION_MESSAGE, type VisualView } from "@/lib/visuals/types";
 import { useVideoRender } from "./use-video-render";
 
 type Props = { contentId?: string; image: VisualView | null; video: VisualView | null; videoInPlan: boolean; album?: string; autoVideo?: boolean };
@@ -325,6 +325,8 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage }: { co
   }
 
   const ready = visual.status === "ready" && visual.items[0];
+  // The 30-day clean-up removed the file; the posts went out and the video stays on the social accounts.
+  const removed = visual.status === "ready" && !visual.items[0] && visual.error === VIDEO_REMOVED_NOTE;
   const seconds = Math.ceil(plan.totalMs / 1000);
   const redo = () =>
     run(async () => {
@@ -357,6 +359,7 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage }: { co
               {render.phase === "uploading" && "Saving your video…"}
               {!render.busy && visual.status === "pending" && "Your video plan is ready."}
               {!render.busy && visual.status === "failed" && (visual.error ?? "The video could not be made here.")}
+              {!render.busy && removed && `${VIDEO_REMOVED_NOTE}. It is still on your social accounts.`}
               {render.busy && (
                 <div className="h-2 w-full overflow-hidden rounded-full bg-line" aria-hidden>
                   <div className="h-full bg-pulse-blue transition-[width]" style={{ width: `${Math.round((render.phase === "uploading" ? 1 : render.progress) * 100)}%` }} />
@@ -412,6 +415,7 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage }: { co
               </Button>
             )}
           </div>
+          <p className="text-[12px] text-muted">{VIDEO_RETENTION_MESSAGE}</p>
           {comingSoon}
           <p className="text-[12px] text-muted">Only music you own or may use. It is added in your browser and never stored on its own.</p>
         </div>

@@ -101,10 +101,15 @@ describe("the migration seeds exactly today's plans", () => {
   it("is identical to the code fallback (SEED_PLANS) and to the pricing page copy", () => {
     for (const [key, c] of Object.entries(SEED_PLANS)) {
       const r = row(key);
-      expect(r).toMatchObject({ name: c.name, description: c.description, isTrial: c.isTrial, trialDays: c.trialDays, sortOrder: c.sortOrder, highlight: c.highlight, monthly: c.priceUsdMonthly * 100, yearly: c.priceUsdYearly * 100, limits: Object.fromEntries(Object.entries(c.limits).filter(([k]) => k !== "seats")), features: c.highlights, caps: { apiAccess: c.features.includes("apiAccess"), ownComposio: c.features.includes("ownComposio") } });
+      expect(r).toMatchObject({ name: c.name, description: c.description, isTrial: c.isTrial, trialDays: c.trialDays, sortOrder: c.sortOrder, highlight: c.highlight, monthly: c.priceUsdMonthly * 100, yearly: c.priceUsdYearly * 100, limits: Object.fromEntries(Object.entries(c.limits).filter(([k]) => k !== "seats" && k !== "videoSeconds")), features: c.highlights, caps: { apiAccess: c.features.includes("apiAccess"), ownComposio: c.features.includes("ownComposio") } });
       // seats arrive with their own migration (the plan_seats one); here only the original five limits are compared
       expect(Object.keys(r.limits).sort()).toEqual(["chat", "image", "text", "videoSeconds", "voiceCharacters"]);
     }
+    // Video seconds changed later (20261015090000_content_visuals): trial 30, Pro and Business 240, the rest as seeded.
+    const video = readFileSync("prisma/migrations/20261015090000_content_visuals/migration.sql", "utf8");
+    expect(video).toContain(`jsonb_set("limits", '{videoSeconds}', '${SEED_PLANS.PRO.limits.videoSeconds}'::jsonb)\nWHERE "key" IN ('BUSINESS', 'PRO')`);
+    expect(video).toContain(`jsonb_set("limits", '{videoSeconds}', '${SEED_PLANS.TRIAL.limits.videoSeconds}'::jsonb)\nWHERE "isTrial" = true`);
+    expect(row("STANDARD").limits.videoSeconds).toBe(SEED_PLANS.STANDARD.limits.videoSeconds);
     expect(SEED_PLANS.STANDARD.highlights).toEqual(["100 AI text generations a month", "50 brand designs a month", "Post to 5 social networks", "Lead-capturing chat widget", "Content calendar and scheduling"]);
   });
 

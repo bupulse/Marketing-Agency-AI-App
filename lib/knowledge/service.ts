@@ -1,6 +1,7 @@
 // Products and campaigns in the database, always scoped to one business (another company's row is "not found").
 import "server-only";
 import { prisma } from "@/lib/db";
+import { logError } from "@/lib/errors";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { companyRegion } from "@/lib/region";
 import { albumItems, signedUrls, type MediaItem } from "@/lib/media/service";
@@ -191,8 +192,16 @@ export async function duplicateProduct(businessId: string, id: string): Promise<
   });
 }
 
+/** lib/visuals/service imports this file (VisualError is a KnowledgeError), so it is loaded when needed. */
+async function releaseVideos(businessId: string, subject: { productId: string } | { campaignId: string }) {
+  const { releaseSubjectVideos } = await import("@/lib/visuals/service");
+  await releaseSubjectVideos(businessId, subject);
+}
+
 /** Deletes the product and its written content. Its photos stay in the gallery; designs and posts keep existing. */
 export async function deleteProduct(businessId: string, id: string): Promise<void> {
+  // Its content's video files go too (docs/CONTENT_VISUALS.md); a post still waiting to go out keeps its video.
+  await releaseVideos(businessId, { productId: id }).catch((e) => logError(e, { source: "knowledge.product.delete.videos", level: "warn" }));
   const { count } = await prisma.product.deleteMany({ where: { id, businessId } });
   if (count === 0) throw new KnowledgeError("We could not find that product.");
 }
@@ -279,6 +288,7 @@ export async function setCampaignStatus(businessId: string, id: string, status: 
 }
 
 export async function deleteCampaign(businessId: string, id: string): Promise<void> {
+  await releaseVideos(businessId, { campaignId: id }).catch((e) => logError(e, { source: "knowledge.campaign.delete.videos", level: "warn" }));
   const { count } = await prisma.campaign.deleteMany({ where: { id, businessId } });
   if (count === 0) throw new KnowledgeError("We could not find that campaign.");
 }

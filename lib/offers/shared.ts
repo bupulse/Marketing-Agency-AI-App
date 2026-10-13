@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { featureLabel, FEATURES, isFeatureKey, sortFeatureKeys, validateFeatureSet, withPrerequisites, type FeatureKey } from "@/lib/features";
-import { SEATS_MAX, SEATS_MIN, type PlanLimits } from "@/lib/plans";
+import { SEATS_MAX, SEATS_MIN, VIDEO_PLAN_SECONDS, type PlanLimits } from "@/lib/plans";
 
 /** A yearly custom plan costs this many months (the regional plans' rule: yearly = 10 months). */
 export const YEARLY_MONTHS = 10;
@@ -84,7 +84,7 @@ export type OfferQuote = {
   features: FeatureKey[];
   /** The features the offer adds on top of the base plan. */
   added: FeatureKey[];
-  /** The custom plan's limits (videoSeconds and voiceCharacters stay the base plan's). */
+  /** The custom plan's limits (videoSeconds and voiceCharacters stay the base plan's, except video added as an add-on). */
   limits: PlanLimits;
   /** What the base plan and the add-ons already include before any block is bought. */
   included: OfferLimits;
@@ -154,7 +154,8 @@ export function quoteOffer(input: OfferQuoteInput): OfferQuote {
   return {
     features,
     added,
-    limits: { ...baseLimits, text: input.limits.text, image: input.limits.image, chat: input.limits.chat, seats: input.limits.seats },
+    // Video sold on top of a plan without it brings the video plans' seconds (8 videos of up to 30 s a month).
+    limits: { ...baseLimits, text: input.limits.text, image: input.limits.image, chat: input.limits.chat, seats: input.limits.seats, ...(added.includes("video") ? { videoSeconds: Math.max(baseLimits.videoSeconds, VIDEO_PLAN_SECONDS) } : {}) },
     included,
     lines,
     computedMinor: lines.reduce((s, l) => s + l.totalMinor, 0),

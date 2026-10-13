@@ -43,6 +43,11 @@ export interface PlanConfig {
 
 export const TRIAL_DAYS = 7;
 
+/** Video seconds a month of the plans with video (Rwanda Business, Pro): 8 videos of up to 30 s. */
+export const VIDEO_PLAN_SECONDS = 240;
+/** The trial's one 30 s sample video. */
+export const TRIAL_VIDEO_SECONDS = 30;
+
 /**
  * Every built feature of the app except the API and videos: what the trial and Standard had before plans carried
  * features. Videos came later (docs/CONTENT_VISUALS.md) and come with video seconds, which only Pro has.
@@ -68,9 +73,10 @@ export const SEED_PLANS: Record<string, PlanConfig> = {
     highlight: false,
     priceUsdMonthly: 0,
     priceUsdYearly: 0,
-    limits: { text: 10, image: 5, videoSeconds: 0, voiceCharacters: 0, chat: 50, seats: 1 },
+    // One 30 s sample video, whatever plan was chosen (docs/CONTENT_VISUALS.md).
+    limits: { text: 10, image: 5, videoSeconds: TRIAL_VIDEO_SECONDS, voiceCharacters: 0, chat: 50, seats: 1 },
     highlights: [],
-    features: CORE_FEATURES,
+    features: sortFeatureKeys([...CORE_FEATURES, "video"]),
   },
   STANDARD: {
     name: "Standard",
@@ -94,7 +100,7 @@ export const SEED_PLANS: Record<string, PlanConfig> = {
     highlight: true,
     priceUsdMonthly: 99,
     priceUsdYearly: 990,
-    limits: { text: 300, image: 150, videoSeconds: 120, voiceCharacters: 20000, chat: 5000, seats: 10 },
+    limits: { text: 300, image: 150, videoSeconds: VIDEO_PLAN_SECONDS, voiceCharacters: 20000, chat: 5000, seats: 10 },
     highlights: ["300 AI text generations a month", "150 brand designs a month", "Everything in Standard", "App connectors and API access", "Use your own Composio account", "Video and voiceover when released"],
     features: PRO_FEATURES,
   },

@@ -141,7 +141,7 @@ describe("the seed plans and the plan_features migration agree", () => {
     expect(CORE_FEATURES).toEqual(BUILT_APP_FEATURE_KEYS.filter((k) => k !== "apiAccess" && k !== "video"));
     expect(PRO_FEATURES).toEqual(sortFeatureKeys([...BUILT_APP_FEATURE_KEYS, "ownComposio"]));
     expect(PRO_FEATURES).not.toContain("managed");
-    expect(SEED_PLANS.TRIAL.features).toEqual(CORE_FEATURES);
+    expect(SEED_PLANS.TRIAL.features).toEqual(sortFeatureKeys([...CORE_FEATURES, "video"])); // one sample video
     expect(SEED_PLANS.STANDARD.features).toEqual(CORE_FEATURES);
     expect(SEED_PLANS.PRO.features).toEqual(PRO_FEATURES);
     for (const plan of Object.values(SEED_PLANS)) expect(validateFeatureSet(plan.features).ok, plan.name).toBe(true);

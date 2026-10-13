@@ -396,19 +396,46 @@ export async function removeVisual(owner: Owner, visualId: string) {
   await releaseRows(owner, [row]);
 }
 
+/** Posts that have not gone out yet: a video they use must stay. */
+export const WAITING_STATUSES = ["DRAFT", "PENDING_APPROVAL", "SCHEDULED", "PUBLISHING"] as const;
+
+/**
+ * Lets a video file go when its visual goes. A post still waiting to go out keeps it: the visual is moved to that
+ * post's group (so the 30-day clean-up finds it later) instead of being deleted. Otherwise the file is removed, even
+ * when a published post used it (the post stays, the video stays on the social account). True when the row may go.
+ */
+async function releaseVideo(businessId: string, row: { id: string; items: unknown }): Promise<boolean> {
+  const paths = readItems(row.items).map((i) => i.path).filter((p) => p.split("/")[1] === "videos");
+  for (const path of paths) {
+    const waiting = await prisma.post.findFirst({ where: { businessId, mediaPaths: { has: path }, status: { in: [...WAITING_STATUSES] } }, select: { groupId: true, id: true } });
+    if (waiting) {
+      await prisma.contentVisual.update({ where: { id: row.id }, data: { contentId: null, groupId: waiting.groupId ?? waiting.id } });
+      return false;
+    }
+  }
+  if (paths.length) await createAdminClient().storage.from("media").remove(paths).catch(() => {});
+  return true;
+}
+
 async function releaseRows(owner: Owner, rows: { id: string; kind: string; plan: unknown; items: unknown }[]) {
-  const admin = createAdminClient();
   for (const row of rows) {
     if (row.kind === "video") {
-      for (const item of readItems(row.items)) {
-        if (item.path.startsWith(`${owner.userId}/videos/`) && !(await inUse(owner.businessId, item.path))) await admin.storage.from("media").remove([item.path]).catch(() => {});
-      }
+      if (!(await releaseVideo(owner.businessId, row))) continue;
     } else {
       const plan = readImagePlan(row.plan);
       if (plan) await dropDesigns(owner, plan.slides);
     }
     await prisma.contentVisual.deleteMany({ where: { id: row.id, businessId: owner.businessId } });
   }
+}
+
+/**
+ * A product or campaign is about to be deleted: its content's video files go with it (the rows follow by cascade).
+ * Slide designs stay, like the subject's other designs.
+ */
+export async function releaseSubjectVideos(businessId: string, subject: { productId: string } | { campaignId: string }) {
+  const rows = await prisma.contentVisual.findMany({ where: { businessId, kind: "video", content: subject }, select: { id: true, items: true } });
+  for (const row of rows) await releaseVideo(businessId, row);
 }
 
 /** Before content versions are deleted (pruning): their videos and unused slide designs go too. */

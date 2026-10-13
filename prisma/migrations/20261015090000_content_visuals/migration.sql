@@ -50,8 +50,24 @@ BEGIN
 END
 $$;
 
--- Videos are now a built feature. Pro has "every built feature" and the video seconds (lib/plans.ts PRO_FEATURES), so
--- the Pro plan row gets the key; Standard and the trial (0 video seconds) do not. Admins add it to other plans.
+-- Videos are now a built feature (owner decision, 12 October 2026). Rwanda Business and East Africa / Global Pro get
+-- 8 videos a month of up to 30 s (240 video seconds); the free trial gets one 30 s sample video whatever plan was
+-- chosen. Starter and Standard do not: video is sold to them as an add-on or in a custom plan. lib/plans.ts holds the
+-- same values for the code's fallback plans.
 UPDATE "PlanDefinition"
 SET "featureKeys" = "featureKeys" || '["video"]'::jsonb
-WHERE "key" = 'PRO' AND "featureKeys" IS NOT NULL AND jsonb_typeof("featureKeys") = 'array' AND NOT ("featureKeys" @> '["video"]'::jsonb);
+WHERE ("key" IN ('BUSINESS', 'PRO') OR "isTrial" = true)
+  AND "featureKeys" IS NOT NULL AND jsonb_typeof("featureKeys") = 'array' AND NOT ("featureKeys" @> '["video"]'::jsonb);
+
+UPDATE "PlanDefinition"
+SET "limits" = jsonb_set("limits", '{videoSeconds}', '240'::jsonb)
+WHERE "key" IN ('BUSINESS', 'PRO') AND jsonb_typeof("limits") = 'object';
+
+UPDATE "PlanDefinition"
+SET "limits" = jsonb_set("limits", '{videoSeconds}', '30'::jsonb)
+WHERE "isTrial" = true AND jsonb_typeof("limits") = 'object';
+
+-- The video add-on in Rwanda: a placeholder price for the admin to set (Admin -> Money -> Add-on prices).
+INSERT INTO "AddonPrice" ("id", "addonKey", "regionKey", "currency", "monthlyMinor", "updatedBy", "updatedAt") VALUES
+    ('addon_rw_video', 'video', 'RW', 'RWF', 10000, 'migration (placeholder)', CURRENT_TIMESTAMP)
+ON CONFLICT ("addonKey", "regionKey") DO NOTHING;

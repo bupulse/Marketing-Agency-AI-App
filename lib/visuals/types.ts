@@ -47,6 +47,12 @@ export const VIDEO_LIMITS = {
   bitrate: 2_000_000,
 } as const;
 
+/** Days a video file is kept after the last post that used it went out (lib/visuals/cleanup.ts). */
+export const VIDEO_RETENTION_DAYS = 30;
+/** What a visual says once the clean-up removed its file. */
+export const VIDEO_REMOVED_NOTE = "Video removed after 30 days";
+export const VIDEO_RETENTION_MESSAGE = "Published videos are removed from BuPulse 30 days after posting; they stay on your social accounts.";
+
 /** One slide of an image or carousel visual: what the art director chose, and the design it became. */
 export interface VisualSlide {
   template: TemplateId;
