@@ -145,16 +145,32 @@ export async function linkInTx(tx: Tx, kind: AlbumKind, albumId: string, assetId
   return fresh.length;
 }
 
-/** What counts toward the company's quota: every photo except the ones the migration copied from old projects. */
-export async function mediaUsage(businessId: string, db: Pick<Tx, "mediaAsset"> = prisma): Promise<MediaUsage> {
-  const sum = await db.mediaAsset.aggregate({ where: { businessId, ...COUNTED }, _count: { _all: true }, _sum: { bytes: true } });
-  return { count: sum._count._all, bytes: sum._sum.bytes ?? 0 };
+type UsageDb = Pick<Tx, "mediaAsset"> & Partial<Pick<Tx, "contentVisual">>;
+
+/**
+ * Rendered content videos (docs/CONTENT_VISUALS.md) live in the same bucket and count like photos, and so does every
+ * upload the server allowed and has not confirmed yet (its reservation, 8 MB, until it expires).
+ */
+async function videoUsage(db: UsageDb, businessId?: string, now = new Date()): Promise<MediaUsage> {
+  if (!db.contentVisual) return { count: 0, bytes: 0 };
+  const scope = businessId ? { businessId } : {};
+  const [stored, reserved] = await Promise.all([
+    db.contentVisual.aggregate({ where: { kind: "video", bytes: { gt: 0 }, ...scope }, _count: { _all: true }, _sum: { bytes: true } }),
+    db.contentVisual.aggregate({ where: { kind: "video", uploadExpiresAt: { gt: now }, ...scope }, _count: { _all: true }, _sum: { uploadBytes: true } }),
+  ]);
+  return { count: (stored?._count?._all ?? 0) + (reserved?._count?._all ?? 0), bytes: (stored?._sum?.bytes ?? 0) + (reserved?._sum?.uploadBytes ?? 0) };
 }
 
-/** Bytes of every company's photos together: the shared Storage project (MEDIA_PLATFORM_MAX_BYTES). */
-export async function platformBytes(db: Pick<Tx, "mediaAsset"> = prisma): Promise<number> {
-  const sum = await db.mediaAsset.aggregate({ _sum: { bytes: true } });
-  return sum._sum.bytes ?? 0;
+/** What counts toward the company's quota: every photo except the ones the migration copied from old projects, and every rendered video. */
+export async function mediaUsage(businessId: string, db: UsageDb = prisma): Promise<MediaUsage> {
+  const [sum, videos] = await Promise.all([db.mediaAsset.aggregate({ where: { businessId, ...COUNTED }, _count: { _all: true }, _sum: { bytes: true } }), videoUsage(db, businessId)]);
+  return { count: sum._count._all + videos.count, bytes: (sum._sum.bytes ?? 0) + videos.bytes };
+}
+
+/** Bytes of every company's photos and videos together: the shared Storage project (MEDIA_PLATFORM_MAX_BYTES). */
+export async function platformBytes(db: UsageDb = prisma): Promise<number> {
+  const [sum, videos] = await Promise.all([db.mediaAsset.aggregate({ _sum: { bytes: true } }), videoUsage(db)]);
+  return (sum._sum.bytes ?? 0) + videos.bytes;
 }
 
 let warnedAt = 0;
@@ -163,7 +179,7 @@ let warnedAt = 0;
  * Refuses `adding` bytes when the shared storage would pass its cap, with a message the owner can read. From 80% the
  * admin is told: an ErrorLog warning (at most once an hour per server) and an item in the admin Overview's attention box.
  */
-export async function assertPlatformRoom(adding: number, db: Pick<Tx, "mediaAsset"> = prisma, now = Date.now()): Promise<void> {
+export async function assertPlatformRoom(adding: number, db: UsageDb = prisma, now = Date.now()): Promise<void> {
   const used = await platformBytes(db);
   const max = platformMaxBytes();
   if (platformNearlyFull(used + adding, max) && now - warnedAt > 60 * 60 * 1000) {

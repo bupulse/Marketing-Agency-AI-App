@@ -64,7 +64,7 @@ describe("usage blocks", () => {
 describe("misc", () => {
   it("lists features from plan limits", () => {
     expect(planFeatures(SEED_PLANS.STANDARD.limits)[0]).toBe("100 text generations per month");
-    expect(planFeatures(SEED_PLANS.PRO.limits)).toContain("120 seconds of video");
+    expect(planFeatures(SEED_PLANS.PRO.limits)).toContain("240 seconds of video");
   });
   it("labels statuses", () => {
     expect(statusLabel("PAST_DUE")).toBe("Payment failed");

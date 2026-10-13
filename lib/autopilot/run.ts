@@ -16,7 +16,10 @@ import { readKnowledge } from "@/lib/brand/schemas";
 import { knowledgeFacts } from "@/lib/business-info/facts";
 import { logError } from "@/lib/errors";
 import { Prisma } from "@/lib/generated/prisma/client";
-import { makeGroupImages, aspectFor } from "./images";
+import { aspectFor } from "./images";
+import { makeGroupVisuals, newRunState } from "./visuals";
+import { mediaForPost } from "@/lib/visuals/post-media";
+import { videoAvailable } from "@/lib/visuals/service";
 import { noopTrendSource, type TrendSource } from "./learning";
 import { alertRecipients } from "@/lib/team/recipients";
 import { sendReadyEmail } from "./notify";
@@ -163,6 +166,9 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
 
     // AI photos are their own plan feature; without it Autopilot draws the free templates only.
     const aiPhotos = await hasFeature(businessId, "aiPhotos");
+    // Video ideas get a video plan (made in the owner's browser) when the plan has video.
+    const videoAllowed = await videoAvailable(businessId);
+    const visualRun = newRunState();
     let aiStopped = false;
     const state: { stop: "credits" | "budget" | "allowance" | null } = { stop: null };
     let postCount = 0;
@@ -203,7 +209,12 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
           (r) => ({ provider: r.provider, model: r.model, usage: r.usage }),
         );
 
-        const images = await makeGroupImages(group, written.image, { userId, businessId, businessName: business.name, language: business.contentLanguage, useAiImages: input.config.useAiImages && aiPhotos && !aiStopped, service: options.service ?? false }, { aiStopped });
+        const images = await makeGroupVisuals(
+          group,
+          written,
+          { userId, businessId, businessName: business.name, language: business.contentLanguage, useAiImages: input.config.useAiImages && aiPhotos && !aiStopped, service: options.service ?? false, business: { name: business.name, tone: business.tone, industry: business.industry, brandColors: business.brandColors }, videoAllowed },
+          visualRun,
+        );
         if (images.aiStopped) aiStopped = true;
         for (const note of images.notes) if (!notes.includes(note)) notes.push(note);
 
@@ -211,9 +222,12 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
           const version = written.versions.find((v) => v.network === planned.network);
           if (!version) return [];
           const design = images.designs[aspectFor(planned.network)];
+          const rules = getProvider(planned.network).rules;
+          // A carousel the art director made goes on every feed post whose network has carousels.
+          const fromCarousel = images.carousel && (planned.format === "POST" || planned.format === "CAROUSEL") ? mediaForPost({ network: planned.network, format: planned.format, rules, images: images.carousel, video: null }) : null;
           const extras = planned.format === "CAROUSEL" ? group.photos.slice(1).map((p) => p.path) : [];
-          const mediaPaths = planned.format === "SCRIPT" || planned.format === "ARTICLE" ? [] : [...(design ? [design] : []), ...extras].slice(0, getProvider(planned.network).rules.maxImages || 10);
-          const format = planned.format === "CAROUSEL" && mediaPaths.length < 2 ? "POST" : planned.format;
+          const mediaPaths = fromCarousel?.mediaPaths ?? (planned.format === "SCRIPT" || planned.format === "ARTICLE" ? [] : [...(design ? [design] : []), ...extras].slice(0, rules.maxImages || 10));
+          const format = fromCarousel?.format ?? (planned.format === "CAROUSEL" && mediaPaths.length < 2 ? "POST" : planned.format);
           // Networks that need a picture cannot publish without one: leave it as a draft to finish.
           const needsPicture = getProvider(planned.network).rules.requiresMedia && format !== "SCRIPT" && mediaPaths.length === 0;
           return [

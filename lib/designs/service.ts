@@ -54,7 +54,7 @@ const AI_TYPES = ["image/png", "image/jpeg", "image/webp"];
  * Reads an own file from Storage as a data URL (Satori and Gemini cannot use private URLs).
  * The size and type are checked on the object's metadata first, so an oversized file is never downloaded.
  */
-async function loadImage(bucket: "media" | "brand", path: string, options: { maxBytes: number; types: string[]; resize?: boolean; service?: boolean }) {
+async function loadImage(bucket: "media" | "brand" | "designs", path: string, options: { maxBytes: number; types: string[]; resize?: boolean; service?: boolean }) {
   const storage = (await storageClient(options.service)).storage.from(bucket);
   const info = await storage.info(path);
   if (info.error || !info.data) return null;
@@ -78,8 +78,10 @@ const UNSUPPORTED_PHOTO = "Templates need a JPG or PNG photo. Please pick or upl
 
 async function loadPhoto(userId: string, photoPath: string | null | undefined, types: string[], service?: boolean) {
   if (!photoPath) return null;
-  if (!isOwnPhotoPath(userId, photoPath)) throw new DesignError("That photo could not be used.");
-  const photo = await loadImage("media", photoPath, { maxBytes: PHOTO_MAX_BYTES, types, resize: true, service });
+  // A gallery or project photo, or one of the user's own AI photos (a design), which content visuals re-use.
+  const bucket = isOwnPhotoPath(userId, photoPath) ? "media" : isOwnDesignPath(userId, photoPath) ? "designs" : null;
+  if (!bucket) throw new DesignError("That photo could not be used.");
+  const photo = await loadImage(bucket, photoPath, { maxBytes: PHOTO_MAX_BYTES, types, resize: true, service });
   if (!photo) throw new DesignError("That photo could not be loaded. Please pick it again.");
   return photo;
 }

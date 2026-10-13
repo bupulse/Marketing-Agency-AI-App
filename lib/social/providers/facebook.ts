@@ -36,8 +36,20 @@ async function finishOAuth({ code, redirectUri }: { code: string; redirectUri: s
 async function publish(credentials: ConnectionCredentials, post: PublishRequest): Promise<PublishResult> {
   const token = credentials.accessToken;
   const page = credentials.externalAccountId;
+  const videos = post.media.filter((m) => m.mimeType.startsWith("video/"));
+  if (videos.length > 0) {
+    // A content video (docs/CONTENT_VISUALS.md): Facebook downloads it from the signed URL and processes it.
+    if (post.media.length > 1) throw new SocialError("Facebook posts a video on its own, without photos", "invalid", E);
+    const r = await finalStage(E, () => graphPost<{ id: string; post_id?: string }>(E, `${GRAPH}/${page}/videos`, { file_url: videos[0].url, description: post.text || undefined, access_token: token }));
+    const externalId = r.post_id ?? r.id;
+    const permalink = await graphGet<{ permalink_url?: string }>(E, `${GRAPH}/${r.id}`, { fields: "permalink_url", access_token: token }).then(
+      (v) => (v.permalink_url ? new URL(v.permalink_url, "https://www.facebook.com").toString() : undefined),
+      () => undefined,
+    );
+    return { externalId, permalink };
+  }
   const images = post.media.filter((m) => m.mimeType.startsWith("image/"));
-  if (images.length !== post.media.length) throw new SocialError("Facebook posts support images only for now", "invalid", E);
+  if (images.length !== post.media.length) throw new SocialError("Facebook posts support images and videos only", "invalid", E);
   if (!post.text.trim() && !images.length && !post.link) throw new SocialError("A Facebook post needs text, a link or a photo", "invalid", E);
 
   let externalId: string;

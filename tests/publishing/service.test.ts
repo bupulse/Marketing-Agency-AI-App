@@ -5,6 +5,7 @@ const prisma = vi.hoisted(() => ({
   product: { findFirst: vi.fn() },
   campaign: { findFirst: vi.fn() },
   generatedContent: { findFirst: vi.fn() },
+  contentVisual: { findMany: vi.fn() },
   business: { findUnique: vi.fn(), update: vi.fn() },
   autopilotSettings: { findUnique: vi.fn() },
   mediaAsset: { findMany: vi.fn() },
@@ -190,6 +191,38 @@ describe("createPosts", () => {
       expect(await code(createPosts(owner, compose({ contentId: "other-content" }), now))).toBe("not_found");
       expect(prisma.generatedContent.findFirst.mock.calls[0][0].where).toEqual({ id: "other-content", businessId: "b1" });
     });
+  });
+});
+
+describe("a post made from content takes its visual (docs/CONTENT_VISUALS.md)", () => {
+  const linkedin = { id: "c-li", provider: "linkedin", displayName: "Bakery LI", status: "ACTIVE", postingMode: "AUTO", kind: "SOCIAL", businessId: "b1" };
+  const slides = ["u1/designs/s1.png", "u1/designs/s2.png", "u1/designs/s3.png"];
+  const video = "u1/videos/v1-abcd1.mp4";
+
+  beforeEach(() => {
+    prisma.generatedContent.findFirst.mockResolvedValue({ id: "content-1" });
+    prisma.contentVisual.findMany.mockResolvedValue([
+      { kind: "carousel", status: "ready", items: slides.map((path) => ({ path })) },
+      { kind: "video", status: "ready", items: [{ path: video }] },
+    ]);
+    prisma.connection.findMany.mockResolvedValue([instagram, linkedin, tiktok]);
+  });
+
+  it("the carousel goes out as a carousel; TikTok's script reminder carries the video", async () => {
+    await createPosts(owner, compose({ connectionIds: ["c-ig", "c-li", "c-tt"], contentId: "content-1", mediaPaths: slides, overrides: { tiktok: { text: "Hook: look" } } }), now);
+    const rows = Object.fromEntries(prisma.post.create.mock.calls.map((c) => [c[0].data.network, c[0].data]));
+    expect(rows.instagram).toMatchObject({ format: "CAROUSEL", mediaPaths: slides, contentId: "content-1" });
+    expect(rows.linkedin).toMatchObject({ format: "CAROUSEL", mediaPaths: slides });
+    expect(rows.tiktok).toMatchObject({ format: "SCRIPT", mediaPaths: [video] });
+    expect(prisma.contentVisual.findMany.mock.calls[0][0].where).toMatchObject({ businessId: "b1", contentId: "content-1", status: "ready" });
+  });
+
+  it("the video as media: a Reel on Instagram, the content's pictures on LinkedIn", async () => {
+    prisma.connection.findMany.mockResolvedValue([instagram, linkedin]);
+    await createPosts(owner, compose({ connectionIds: ["c-ig", "c-li"], contentId: "content-1", mediaPaths: [video] }), now);
+    const rows = Object.fromEntries(prisma.post.create.mock.calls.map((c) => [c[0].data.network, c[0].data]));
+    expect(rows.instagram).toMatchObject({ format: "POST", mediaPaths: [video] });
+    expect(rows.linkedin).toMatchObject({ format: "CAROUSEL", mediaPaths: slides });
   });
 });
 

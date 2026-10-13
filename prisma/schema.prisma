@@ -102,6 +102,7 @@ model Business {
   contents         GeneratedContent[]
   demoBookings     DemoBooking[]
   designs          Design[]
+  contentVisuals   ContentVisual[]
   leads            Lead[]
   connections      Connection[]
   posts            Post[]
@@ -179,6 +180,7 @@ model GeneratedContent {
   provider    String // "gemini" | "claude" | "edit"
   model       String
   createdAt   DateTime  @default(now())
+  visuals     ContentVisual[]
 
   @@index([projectId, createdAt])
   @@index([productId, createdAt])
@@ -836,6 +838,39 @@ model Design {
 }
 
 // AI cost ledger: one row per call to an AI provider, successful or not.
+// The image, carousel or video that comes with a piece of content (docs/CONTENT_VISUALS.md). Studio content links
+// by contentId; an Autopilot post group (Post.groupId) by groupId. Designs keep their own rows; a video is a file in
+// the media bucket (<userId>/videos/<id>.mp4) whose size counts toward the company's media quota.
+model ContentVisual {
+  id         String            @id @default(cuid())
+  businessId String
+  business   Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  contentId  String?
+  content    GeneratedContent? @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  groupId    String?
+  kind       String // "image" | "carousel" | "video"
+  status     String            @default("pending") // "pending" | "ready" | "failed"
+  items      Json              @default("[]") // ordered [{ designId?, path }]
+  plan       Json // ImagePlan or VideoPlan (lib/visuals/types.ts)
+  bytes      Int               @default(0) // the video file, counted toward the media quota
+  seconds    Int               @default(0) // the video's length, counted toward the plan's video seconds
+  error      String?
+  renderedAt DateTime?
+  // A render in progress (lease, so two tabs cannot both pay for the same AI photo).
+  renderingUntil  DateTime?
+  // A video upload the server allowed and has not confirmed yet: counted toward the quotas until it expires.
+  uploadPath      String?
+  uploadBytes     Int       @default(0)
+  uploadExpiresAt DateTime?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([contentId])
+  @@index([uploadExpiresAt])
+  @@index([groupId])
+  @@index([businessId, kind])
+}
+
 model AiCall {
   id           String   @id @default(cuid())
   userId       String?  @db.Uuid

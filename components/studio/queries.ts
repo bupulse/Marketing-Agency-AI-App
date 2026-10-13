@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { createSignedDownloadUrl } from "@/lib/storage";
 import { CAMPAIGN_TYPE_LABEL } from "@/lib/knowledge/campaigns";
 import { KIND_LABEL } from "@/lib/knowledge/products";
+import { loadVisuals, pickVisuals } from "@/lib/visuals/queries";
+import { videoAvailable } from "@/lib/visuals/service";
 import { parseVariants, type StudioContent } from "./helpers";
 
 type ContentRow = {
@@ -78,13 +80,15 @@ export async function loadContentLibrary(businessId: string) {
 /** Content versions and designs of a product or campaign, for its page. */
 export async function loadSubjectStudio(businessId: string, subject: { kind: "product" | "campaign"; id: string }) {
   const where = subject.kind === "product" ? { businessId, productId: subject.id } : { businessId, campaignId: subject.id };
-  const [contents, designs] = await Promise.all([
+  const [contents, designs, videoInPlan] = await Promise.all([
     prisma.generatedContent.findMany({ where, orderBy: { createdAt: "desc" }, take: 50 }),
     prisma.design.findMany({ where, orderBy: { createdAt: "desc" }, take: 50 }),
+    videoAvailable(businessId),
   ]);
-  const designUrls = await Promise.all(designs.map((d) => signedUrl("designs", d.path)));
+  const [designUrls, visuals] = await Promise.all([Promise.all(designs.map((d) => signedUrl("designs", d.path))), loadVisuals(businessId, { contentIds: contents.map((c) => c.id) })]);
   return {
-    contents: contents.map(toStudioContent),
+    videoInPlan,
+    contents: contents.map((c) => ({ ...toStudioContent(c), ...pickVisuals(visuals, { contentId: c.id }) })),
     designs: designs.flatMap((d, i) => (designUrls[i] ? [{ id: d.id, url: designUrls[i] as string, kind: d.kind, aspectRatio: d.aspectRatio, template: d.template }] : [])),
   };
 }

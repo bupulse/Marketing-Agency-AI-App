@@ -85,7 +85,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
       {studio.contents.length === 0 ? (
         <WriteContentCta subjectId={campaign.id} used={usage.used.text} limit={usage.limits.text} />
       ) : (
-        <ContentCard subject={subject} contents={studio.contents} used={usage.used.text} limit={usage.limits.text} photos={designPhotos.map((p) => ({ path: p.path, url: p.url }))} />
+        <ContentCard subject={subject} contents={studio.contents} videoInPlan={studio.videoInPlan} used={usage.used.text} limit={usage.limits.text} photos={designPhotos.map((p) => ({ path: p.path, url: p.url }))} />
       )}
 
       {entitlements.usable.has("designs") && (

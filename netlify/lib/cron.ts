@@ -26,6 +26,7 @@ export const CRON_JOBS: Record<string, CronJob> = {
   "/api/cron/plan-price-changes": { path: "/api/cron/plan-price-changes", cursor: true },
   "/api/cron/momo-renewals": { path: "/api/cron/momo-renewals", cursor: true },
   "/api/cron/trial-reminders": { path: "/api/cron/trial-reminders", cursor: false },
+  "/api/cron/media-cleanup": { path: "/api/cron/media-cleanup", cursor: false },
 };
 
 export const RUNNER_PATH = "/.netlify/functions/cron-runner-background";

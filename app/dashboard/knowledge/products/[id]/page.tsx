@@ -115,7 +115,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
       {studio.contents.length === 0 ? (
         <WriteContentCta subjectId={product.id} used={usage.used.text} limit={usage.limits.text} />
       ) : (
-        <ContentCard subject={subject} contents={studio.contents} used={usage.used.text} limit={usage.limits.text} photos={photos.map((p) => ({ path: p.path, url: p.url }))} />
+        <ContentCard subject={subject} contents={studio.contents} videoInPlan={studio.videoInPlan} used={usage.used.text} limit={usage.limits.text} photos={photos.map((p) => ({ path: p.path, url: p.url }))} />
       )}
 
       {/* Designs are their own plan feature; the product page keeps its content tools without them. */}

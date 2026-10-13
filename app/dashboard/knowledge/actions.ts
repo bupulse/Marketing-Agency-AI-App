@@ -16,6 +16,7 @@ import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/
 import { editedContentSchema, instructionSchema } from "@/lib/studio/schemas";
 import { generateForSubject, pruneVersions, StudioNotFoundError, variantsJson } from "@/lib/studio/service";
 import { UsageLimitError, type UsageBlockReason } from "@/lib/usage";
+import { carryVisuals } from "@/lib/visuals/content";
 
 // Writing content for a product or campaign, editing it, and the albums' photos.
 
@@ -92,7 +93,9 @@ export async function saveEditedContent(contentId: string, input: { caption: str
       data: { businessId: business.id, ...subjectColumns(subject), caption, hashtags, videoScript, adHeadlines, language: base.language, variants: variantsJson({ caption, hashtags, videoScript }), edited: true, provider: "edit", model: "owner" },
       select: { id: true },
     });
-    await pruneVersions(subject).catch(() => {});
+    // The edited version keeps the picture and video of the version it started from.
+    await carryVisuals(business.id, contentId, saved.id).catch(() => {});
+    await pruneVersions(subject, { userId: user.id, businessId: business.id }).catch(() => {});
     refresh(subject);
     return { ok: true, contentId: saved.id };
   } catch {

@@ -83,13 +83,14 @@ describe("pricing totals", () => {
   it("every add-on key is unique and the catalog covers every built, priced feature", () => {
     expect(new Set(ADDONS.map((a) => a.key)).size).toBe(ADDONS.length);
     expect(ADDONS.map((a) => a.key)).toEqual(expect.arrayContaining(RW.map((r) => r.addonKey)));
-    expect(ADDONS.some((a) => a.key === "video")).toBe(false); // coming soon: not sellable
+    expect(ADDONS.some((a) => a.key === "voice")).toBe(false); // coming soon: not sellable
+    expect(ADDONS.some((a) => a.key === "video")).toBe(true); // slideshow videos are built
   });
 });
 
 describe("prerequisites in offers", () => {
   it("adding pulls prerequisites; coming-soon and unknown keys are dropped", () => {
-    expect(resolveOfferFeatures(["aiPhotos", "video", "nope"])).toEqual(["designs", "aiPhotos"]);
+    expect(resolveOfferFeatures(["aiPhotos", "voice", "nope"])).toEqual(["designs", "aiPhotos"]);
     expect(resolveOfferFeatures(["driveImport"])).toEqual(["gallery", "driveImport"]);
   });
 
@@ -102,8 +103,8 @@ describe("prerequisites in offers", () => {
   });
 
   it("the server refuses coming-soon and unknown features instead of dropping them quietly", () => {
-    const draft = offerDraftSchema.parse({ features: ["video"], limits: baseLimits, interval: "MONTH" });
-    expect(checkOfferDraft(draft, quote({ features: draft.features }))).toEqual({ ok: false, error: "Video generation is coming soon and cannot be offered yet." });
+    const draft = offerDraftSchema.parse({ features: ["voice"], limits: baseLimits, interval: "MONTH" });
+    expect(checkOfferDraft(draft, quote({ features: draft.features }))).toEqual({ ok: false, error: "Voiceover is coming soon and cannot be offered yet." });
     const unknown = offerDraftSchema.parse({ features: ["teleport"], limits: baseLimits, interval: "MONTH" });
     expect(checkOfferDraft(unknown, quote())).toMatchObject({ ok: false, error: '"teleport" is not a feature.' });
   });

@@ -11,6 +11,7 @@ import { CopyButton } from "./copy-button";
 import { GenerateProgress } from "./generate-progress";
 import { NetworkPreviews } from "./network-previews";
 import { useGenerate } from "./use-generate";
+import { ContentVisual } from "@/components/visuals/content-visual";
 import { REGENERATE_IDEAS, addHashtag, formatCopyText, formatWhenWithTime, usageNote, type StudioContent, type StudioSubject } from "./helpers";
 
 const MAX_HEADLINES = 5;
@@ -19,6 +20,12 @@ type Draft = { caption: string; hashtags: string[]; videoScript: string; headlin
 
 function draftFrom(c: StudioContent): Draft {
   return { caption: c.caption, hashtags: c.hashtags, videoScript: c.videoScript, headlines: c.adHeadlines.length ? c.adHeadlines : [""] };
+}
+
+/** The content's ready picture (all carousel slides) as the post's photos, or undefined to fall back to the album. */
+function visualMedia(content: StudioContent) {
+  const items = content.image?.status === "ready" ? content.image.items : [];
+  return items.length ? items.map((i) => ({ path: i.path, url: i.url })) : undefined;
 }
 
 function Meta({ content }: { content: StudioContent }) {
@@ -173,8 +180,11 @@ export function ContentCard({
   used,
   limit,
   photos,
+  videoInPlan = false,
 }: {
   subject: StudioSubject;
+  /** Whether the plan has video (the content's video is made in the browser; otherwise its picture is used). */
+  videoInPlan?: boolean;
   /** The album's photos (cover first), offered with the post when scheduling. */
   photos?: { path: string; url: string }[];
   /** Newest first. */
@@ -267,7 +277,7 @@ export function ContentCard({
           </div>
           {!editing && !generating && (
             <div className="flex flex-wrap gap-2">
-              <ScheduleButton prefill={{ ...prefillFromContent(viewing, subject), media: photos?.slice(0, 4) }} />
+              <ScheduleButton prefill={{ ...prefillFromContent(viewing, subject), media: visualMedia(viewing) ?? photos?.slice(0, 4) }} />
               <Button variant="ghost" size="sm" onClick={startEdit} leading={<PenLine aria-hidden className="size-4" />}>
                 Edit
               </Button>
@@ -304,7 +314,10 @@ export function ContentCard({
             </div>
           </>
         ) : (
-          <Viewer content={viewing} />
+          <>
+            <ContentVisual key={viewing.id} contentId={viewing.id} image={viewing.image ?? null} video={viewing.video ?? null} videoInPlan={videoInPlan} album={`${subject.kind}:${subject.id}`} />
+            <Viewer content={viewing} />
+          </>
         )}
       </GlassCard>
 

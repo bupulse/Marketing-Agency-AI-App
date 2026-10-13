@@ -18,6 +18,8 @@ import { writerKnowledge } from "@/lib/knowledge/writer-context";
 import { subjectColumns, writingSubject, type Subject } from "@/lib/knowledge/service";
 import { MAX_VERSIONS_PER_PROJECT } from "./schemas";
 import { buildVariants, type VariantSource } from "./variants";
+import { planContentVisuals } from "@/lib/visuals/content";
+import { releaseContentVisuals } from "@/lib/visuals/service";
 
 export class StudioNotFoundError extends Error {
   constructor() {
@@ -34,15 +36,20 @@ export function configuredModel(provider: string) {
     : (process.env.GEMINI_TEXT_MODEL ?? DEFAULT_GEMINI_TEXT_MODEL);
 }
 
-/** Keeps at most MAX_VERSIONS_PER_PROJECT versions per product or campaign: deletes the oldest ones beyond that. */
-export async function pruneVersions(subject: Subject) {
+/**
+ * Keeps at most MAX_VERSIONS_PER_PROJECT versions per product or campaign: deletes the oldest ones beyond that. With
+ * the owner, their visuals' files go too (videos and slide designs no post uses); the rows follow the content.
+ */
+export async function pruneVersions(subject: Subject, owner?: { userId: string; businessId: string }) {
   const old = await prisma.generatedContent.findMany({
     where: subject.kind === "product" ? { productId: subject.id } : { campaignId: subject.id },
     orderBy: { createdAt: "desc" },
     skip: MAX_VERSIONS_PER_PROJECT,
     select: { id: true },
   });
-  if (old.length > 0) await prisma.generatedContent.deleteMany({ where: { id: { in: old.map((c) => c.id) } } });
+  if (old.length === 0) return;
+  if (owner) await releaseContentVisuals(owner, old.map((c) => c.id)).catch((e) => logError(e, { source: "studio.prune.visuals", level: "warn" }));
+  await prisma.generatedContent.deleteMany({ where: { id: { in: old.map((c) => c.id) } } });
 }
 
 export function variantsJson(source: VariantSource) {
@@ -72,6 +79,8 @@ export async function generateForSubject(args: {
   feature: GenerateFeature;
   /** A credit the caller already reserved (consumeUsage); it is refunded on any failure here. */
   reservation?: { periodStart: Date };
+  /** Plan the content's picture (and video) right away; the content screen draws it. Default true. */
+  visuals?: boolean;
 }) {
   const { userId, businessId, subject, instruction, feature } = args;
   let reservation = args.reservation;
@@ -137,7 +146,9 @@ export async function generateForSubject(args: {
         model: result.model,
       },
     });
-    await pruneVersions(subject).catch((e) => logError(e, { source: "studio.prune", level: "warn" }));
+    await pruneVersions(subject, { userId, businessId }).catch((e) => logError(e, { source: "studio.prune", level: "warn" }));
+    // The picture never fails the content: planVisuals logs and gives up on its own.
+    if (args.visuals !== false) await planContentVisuals({ userId, businessId }, { business, item, content: saved }).catch((e) => logError(e, { source: "studio.visuals", level: "warn" }));
     await trackEvent(EVENT_NAMES.textGenerated, { userId, businessId: business.id, props: { feature, type: item.type } });
     await queueWebhookEvent(business.id, "content.generated", () => contentData(saved));
     return saved;

@@ -6,6 +6,9 @@ import { accountUsable } from "@/lib/publishing/service";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import type { Network } from "@/lib/social/types";
 import { createClient } from "@/lib/supabase/server";
+import { loadVisuals, pickVisuals } from "@/lib/visuals/queries";
+import { videoAvailable } from "@/lib/visuals/service";
+import type { VisualView } from "@/lib/visuals/types";
 import { getIdea, type Goal } from "./playbook";
 import { readConfig, type AutopilotConfig } from "./settings";
 import { localDateISO, nextWeekStart, safeZone, weekKey } from "./timezone";
@@ -39,6 +42,9 @@ export interface ViewCard {
   goal: Goal | null;
   status: "PENDING_APPROVAL" | "SCHEDULED" | "DRAFT";
   posts: ViewPost[];
+  /** The group's picture and video (docs/CONTENT_VISUALS.md); a pending video is made when the owner opens it. */
+  image?: VisualView | null;
+  video?: VisualView | null;
 }
 
 export interface ViewDay {
@@ -59,6 +65,8 @@ export interface AutopilotView {
   days: ViewDay[];
   pendingCount: number;
   photoCount: number;
+  /** Whether the plan has video; without it video ideas keep their picture and script. */
+  videoInPlan: boolean;
 }
 
 export async function loadAutopilotView(userId: string, now = new Date()): Promise<AutopilotView | null> {
@@ -126,7 +134,12 @@ export async function loadAutopilotView(userId: string, now = new Date()): Promi
     days.set(date, cards);
   }
 
+  const groupIds = [...new Set(posts.flatMap((p) => (p.groupId ? [p.groupId] : [])))];
+  const [visuals, videoInPlan] = await Promise.all([loadVisuals(business.id, { groupIds }).catch(() => []), videoAvailable(business.id)]);
+  for (const cards of days.values()) for (const card of cards.values()) Object.assign(card, pickVisuals(visuals, { groupId: card.groupId }));
+
   return {
+    videoInPlan,
     config: readConfig(business.autopilot),
     timeZone,
     accounts,

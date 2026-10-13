@@ -1,4 +1,5 @@
 // Pure helpers for the content studio screens (no React, no server code), so they are easy to test.
+import type { VisualView } from "@/lib/visuals/types";
 
 export const MAX_FEATURES = 10;
 export const MAX_PHOTOS = 10;
@@ -191,6 +192,9 @@ export type StudioContent = {
   variants: StudioVariant[];
   edited: boolean;
   createdAt: string;
+  /** The picture (image or carousel) and the video that come with this version (docs/CONTENT_VISUALS.md). */
+  image?: VisualView | null;
+  video?: VisualView | null;
 };
 
 export const REGENERATE_IDEAS = ["Make it shorter", "More playful", "More professional", "Mention free delivery", "Add a call to action"];

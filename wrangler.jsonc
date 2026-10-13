@@ -30,7 +30,7 @@
   "limits": { "cpu_ms": 120000 },
   "triggers": {
     // Every minute: publish due posts. Hourly at :23: collect post metrics (METRICS_CRON in worker.ts); each post is measured at most once every 20 hours. Every 3 hours on Fridays and Saturdays: Autopilot plans next week (AUTOPILOT_CRON). Hourly at :37: the leads summary email, sent to businesses where it is 08:00 (LEADS_DIGEST_CRON). Daily at 03:47 UTC: re-sync imported store products (STORE_SYNC_CRON). Daily at 02:17 UTC: analytics roll-up (ANALYTICS_ROLLUP_CRON). Daily at 04:29 UTC: plan price changes (PLAN_PRICE_CRON). Daily at 05:41 UTC: Mobile Money renewal reminders and grace period (MOMO_RENEWALS_CRON). Hourly at :53: trial-end reminders and expiry (TRIAL_CRON).
-    "crons": ["* * * * *", "23 * * * *", "11 */3 * * 5,6", "37 * * * *", "47 3 * * *", "17 2 * * *", "29 4 * * *", "41 5 * * *", "53 * * * *"]
+    "crons": ["* * * * *", "23 * * * *", "11 */3 * * 5,6", "37 * * * *", "47 3 * * *", "17 2 * * *", "29 4 * * *", "41 5 * * *", "53 * * * *", "19 3 * * *"]
   },
   "observability": { "enabled": true }
   // Custom domains (bupulse.com, staging.bupulse.com) are added later, see docs/DEPLOY.md.

@@ -13,6 +13,7 @@ import { listDesignsAction, type DesignChoice } from "@/app/dashboard/calendar/a
 import { MEDIA_TYPES } from "@/lib/media/rules";
 import { cn } from "@/lib/cn";
 import type { MediaItem } from "@/lib/publishing/types";
+import { MediaThumb } from "@/components/visuals/media-thumb";
 
 const pill =
   "inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-line bg-glass px-4 text-sm font-semibold text-text transition-colors hover:bg-soft disabled:pointer-events-none disabled:opacity-50";
@@ -113,8 +114,7 @@ export function MediaAttach({ media, onChange, max, album }: { media: MediaItem[
         <ul aria-label="Attached photos" className="flex flex-wrap gap-2">
           {media.map((m, i) => (
             <li key={m.path} className="relative size-20 overflow-hidden rounded-xl bg-soft">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={m.url} alt={`Photo ${i + 1}`} className="size-full object-cover" />
+              <MediaThumb url={m.url} alt={`Photo ${i + 1}`} className="size-full object-cover" />
               <button type="button" aria-label={`Remove photo ${i + 1}`} onClick={() => onChange(media.filter((x) => x.path !== m.path))} className="absolute top-1 right-1 inline-flex size-7 cursor-pointer items-center justify-center rounded-full bg-black/65 text-white">
                 <X aria-hidden className="size-4" />
               </button>
