@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, useToast } from "@/components/ui";
 import { acceptOfferAction } from "@/app/dashboard/billing/actions";
-import { MOMO_SOON, type MethodState } from "@/lib/billing/pay-methods";
+import { methodReason, type MethodState } from "@/lib/billing/pay-methods";
 
 /**
  * Accept and pay buttons under the offer card. Mobile Money (where the region takes it) opens the pay screen for the
@@ -37,9 +37,9 @@ export function OfferActions({ offerId, momo: momoState, card, accepted, method,
   return (
     <div className="flex flex-col gap-3 border-t border-line pt-5">
       <div className="flex flex-wrap gap-2">
-        {momoState !== "off" && (accepted ? method !== "momo" : true) && (
+        {(accepted ? method !== "momo" : true) && (
           <Button onClick={() => accept("momo")} disabled={pending || !momo} leading={<Smartphone aria-hidden className="size-5" />}>
-            {!momo ? MOMO_SOON : busy === "momo" ? "Opening…" : accepted ? "Pay by Mobile Money instead" : "Accept and pay by Mobile Money"}
+            {!momo ? methodReason("momo", momoState) : busy === "momo" ? "Opening…" : accepted ? "Pay by Mobile Money instead" : "Accept and pay by Mobile Money"}
           </Button>
         )}
         {(accepted ? method !== "invoice" : true) && (
@@ -47,11 +47,9 @@ export function OfferActions({ offerId, momo: momoState, card, accepted, method,
             {busy === "invoice" ? "Preparing…" : accepted ? "Get an invoice instead" : "Accept and get an invoice"}
           </Button>
         )}
-        {card && (
-          <Button variant="outline" onClick={() => setCardHelp((v) => !v)} aria-expanded={cardHelp} leading={<CreditCard aria-hidden className="size-5" />}>
-            Pay by card
-          </Button>
-        )}
+        <Button variant="outline" onClick={() => setCardHelp((v) => !v)} disabled={!card} aria-expanded={cardHelp} leading={<CreditCard aria-hidden className="size-5" />}>
+          {card ? "Pay by card" : methodReason("card", "off")}
+        </Button>
       </div>
       {cardHelp && (
         <p role="status" className="rounded-2xl bg-soft px-4 py-3 text-sm">

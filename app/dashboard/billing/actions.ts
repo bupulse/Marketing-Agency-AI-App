@@ -64,13 +64,14 @@ export async function startCheckout(input: { plan: string; interval: string }): 
   if (!target || target.isTrial || target.status !== "active") return { ok: false, error: "That plan is not available. Choose one of the plans shown." };
 
   const sub = await prisma.subscription.findUnique({ where: { userId: user.id } });
-  if (managed(sub) && sub?.plan !== "TRIAL") {
-    return { ok: false, error: "You already have a paid plan. Use Switch plan to change it." };
-  }
-  // A Mobile Money plan that is still paid for: renewing by card opens in its last RENEWAL_WINDOW_DAYS days, and the card
-  // is then first billed when the paid period ends (lib/billing/apply.ts), so no paid day is lost (docs/BILLING.md, "Renewing").
+  // A plan that is still paid for (Mobile Money, or a card plan cancelled at its end): renewing opens in its last
+  // RENEWAL_WINDOW_DAYS days. A Mobile Money plan renewed by card is first billed when the paid period ends
+  // (lib/billing/apply.ts), so no paid day is lost (docs/BILLING.md, "Renewing"). Checked first, for both.
   const early = tooEarlyToRenew(sub);
   if (early) return { ok: false, error: earlyRenewalMessage(early) };
+  if (managed(sub) && sub?.plan !== "TRIAL") {
+    return { ok: false, error: sub?.cancelAtPeriodEnd ? "Your card plan is cancelled at the end of its period. Use Renew with card to keep it: it resumes, with no new checkout." : "You already have a paid plan. Use Switch plan to change it." };
+  }
   if (!user.email) return { ok: false, error: "Add an email address to your account first." };
   // Soft region check: a checkout from a dearer region's IP is flagged for the admin, never refused (docs/REGIONS.md).
   await noteRegionMismatch(user.businessId, "card");
@@ -147,6 +148,9 @@ async function setCancellation(cancel: boolean): Promise<BillingResult> {
   const sub = managed(await prisma.subscription.findUnique({ where: { userId: user.id } }));
   if (!sub || !sub.provider || !sub.providerSubscriptionId) return { ok: false, error: "You do not have a paid plan." };
   if (!(await isServiceEnabled("paddle"))) return { ok: false, error: BILLING_PAUSED };
+  // Resuming a card plan cancelled at its end is its renewal: like any renewal, only in its last 7 days.
+  const early = cancel ? null : tooEarlyToRenew(sub);
+  if (early) return { ok: false, error: earlyRenewalMessage(early) };
 
   try {
     const adapter = billingAdapter(sub.provider);

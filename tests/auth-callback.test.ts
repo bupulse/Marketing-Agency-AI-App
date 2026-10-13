@@ -22,6 +22,7 @@ async function callback(query: string) {
 
 describe("auth callback redirect", () => {
   beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://bupulse.test"); // the routes send people back to the site address
     exchangeCodeForSession.mockReset();
     exchangeCodeForSession.mockResolvedValue({ data: { user: { id: "u1", email: "ana@example.com" } }, error: null });
     signOut.mockReset();

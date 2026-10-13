@@ -286,6 +286,26 @@ export function readAddition(options: unknown): OfferAddition | null {
   return { currentPlanKey: a.currentPlanKey, currentPlanName: typeof a.currentPlanName === "string" ? a.currentPlanName : a.currentPlanKey, currentMinor: int("currentMinor"), addonMinor: int("addonMinor"), nextRenewalMinor: int("nextRenewalMinor"), periodEnd: a.periodEnd, daysLeft: int("daysLeft"), periodDays: int("periodDays"), selfServe: a.selfServe === true };
 }
 
+/** Why an add-features quote was cancelled, as the client reads it on Billing (the period it was priced for changed). */
+export const STALE_ADDITION_REASON = "Your plan's period changed after these features were priced (for example, it was renewed), so that quote was cancelled. Add the features again, or ask us, for a new quote.";
+
+/**
+ * Whether an addition still fits the running subscription: the same plan and interval, paid by Mobile Money, ACTIVE,
+ * and exactly the period end it was prorated for. Anything else (a renewal moved the end, another plan) makes the
+ * prorated amount wrong, so the quote is cancelled and priced again.
+ */
+export function additionFits(addition: Pick<OfferAddition, "currentPlanKey" | "periodEnd">, sub: { plan: string; interval: string; provider: string | null; status: string; currentPeriodEnd: Date | null }, interval: string, now: Date): boolean {
+  return (
+    sub.provider === "MANUAL_MOMO" &&
+    sub.status === "ACTIVE" &&
+    sub.currentPeriodEnd !== null &&
+    sub.currentPeriodEnd.getTime() > now.getTime() &&
+    sub.plan === addition.currentPlanKey &&
+    sub.interval === interval &&
+    sub.currentPeriodEnd.getTime() === new Date(addition.periodEnd).getTime()
+  );
+}
+
 /**
  * The features a client can add by themselves on Billing ("Add features"): built, not in the plan yet, and priced in
  * the region (with every prerequisite they would pull in). Managed by BuPulse (two tiers) and anything unpriced go

@@ -7,7 +7,7 @@ import { Badge, Button, GlassCard, useToast } from "@/components/ui";
 import { useTheme } from "@/components/theme";
 import { startCheckout, startMomoPayment } from "@/app/dashboard/billing/actions";
 import { openCheckout } from "./checkout";
-import { CARD_SOON, MOMO_SOON, type PayMethods } from "@/lib/billing/pay-methods";
+import { methodReason, type PayMethods } from "@/lib/billing/pay-methods";
 
 export type PayableInvoice = {
   id: string;
@@ -85,16 +85,12 @@ export function InvoicePay({ invoice, methods, highlight, cardReason }: { invoic
         <Badge tone={invoice.overdue ? "danger" : "blue"}>{invoice.overdue ? "Overdue" : "To pay"}</Badge>
       </div>
       <div className="flex flex-wrap gap-3">
-        {methods.momo !== "off" && (
-          <Button onClick={payByMomo} disabled={pending || !momo} leading={<Smartphone aria-hidden className="size-4" />}>
-            {!momo ? MOMO_SOON : busy === "momo" ? "One moment…" : "Mobile Money (MTN / Airtel)"}
-          </Button>
-        )}
-        {methods.card !== "off" && (
-          <Button variant={momo ? "outline" : "primary"} onClick={payByCard} disabled={pending || !card} leading={<CreditCard aria-hidden className="size-4" />}>
-            {!card ? (cardReason ? "Card" : CARD_SOON) : busy === "card" ? "Opening checkout…" : "Card"}
-          </Button>
-        )}
+        <Button onClick={payByMomo} disabled={pending || !momo} leading={<Smartphone aria-hidden className="size-4" />}>
+          {!momo ? methodReason("momo", methods.momo) : busy === "momo" ? "One moment…" : "Mobile Money (MTN / Airtel)"}
+        </Button>
+        <Button variant={momo ? "outline" : "primary"} onClick={payByCard} disabled={pending || !card} leading={<CreditCard aria-hidden className="size-4" />}>
+          {!card ? (cardReason && methods.card !== "off" ? "Card" : methodReason("card", methods.card)) : busy === "card" ? "Opening checkout…" : "Card"}
+        </Button>
         <a href={`/api/invoices/${encodeURIComponent(invoice.id)}/pdf`} className="glass inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-medium no-underline">
           <FileDown aria-hidden className="size-4" /> Download PDF
         </a>

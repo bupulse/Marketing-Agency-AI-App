@@ -18,7 +18,7 @@ export function StaffView({ staff, roles, grantable, me, actions }: { staff: Sta
   const options = roles.filter((r) => grantable.includes(r.key));
   return (
     <>
-      <Panel title="Invite someone" description="They sign in at /admin with their own account (Google or password) and add an authenticator app, like the owner. The role decides what they see.">
+      <Panel title="Invite someone" description="They sign in at /admin/login like the owner: their email, a code we email them, then an authenticator app. The role decides what they see.">
         <form action={actions.invite} className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr_auto]">
           <Field label="Email" required><Input name="email" type="email" required maxLength={254} placeholder="name@example.com" /></Field>
           <Field label="Name"><Input name="name" maxLength={80} /></Field>

@@ -59,23 +59,46 @@ export async function identityFor(user: { id: string; email: string }): Promise<
 }
 
 /**
- * The signed-in owner or staff member before the second step. Anyone else gets a 404 so the console's existence is
- * not revealed. Used only by /admin/verify and /admin/setup-2fa; everything else uses requireAdmin / requirePermission.
+ * May this address get an admin sign-in code: the owner (ADMIN_EMAILS) or a staff member who is not disabled (invited
+ * members too: their first sign-in activates them). A database error answers no.
+ */
+export async function canReceiveAdminCode(email: string): Promise<boolean> {
+  const e = email.trim().toLowerCase();
+  if (isAdminEmail(e)) return true;
+  try {
+    const staff = await prisma.staffMember.findUnique({ where: { email: e }, select: { status: true } });
+    return !!staff && staff.status !== "disabled";
+  } catch {
+    return false;
+  }
+}
+
+/** True when this session was opened with an email: a password or an emailed code, not Google. */
+export function signedInWithEmail(methods: unknown): boolean {
+  return Array.isArray(methods) && methods.some((m) => m?.method === "password" || m?.method === "otp");
+}
+
+/**
+ * The signed-in owner or staff member before the second step. Signed out → /admin/login; signed in with an account
+ * that is neither the owner nor an enabled staff member, or with Google instead of the emailed code → /admin/login
+ * with a note. Used by /admin/verify and /admin/setup-2fa; everything else uses requireAdmin / requirePermission.
  */
 export async function requireAdminIdentity(): Promise<AdminIdentity & { supabase: Awaited<ReturnType<typeof createClient>>; staff: StaffRow | null }> {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getUser();
   const user = data?.user;
-  if (error || !user || !user.email_confirmed_at || !user.email) notFound();
-  const identity = await identityFor({ id: user.id, email: user.email });
-  if (!identity) notFound();
+  if (error || !user) redirect("/admin/login");
+  const identity = user.email_confirmed_at && user.email ? await identityFor({ id: user.id, email: user.email }) : null;
+  if (!identity) redirect("/admin/login?error=no_access");
+  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (!signedInWithEmail(aal?.currentAuthenticationMethods)) redirect("/admin/login?error=email_only");
   return { ...identity, supabase };
 }
 
 /**
  * Gate for every admin page and every admin server action (call it again inside each action, not just
  * the layout). Needs an allow-listed, verified email and an AAL2 session (authenticator code entered).
- * Non-admins get a 404; an admin below AAL2 is sent to enter a code, or to enrol an app first.
+ * Others are sent to /admin/login; an owner or staff member below AAL2 is sent to enter a code, or to enrol an app first.
  */
 export const requireAdmin = cache(async (): Promise<AdminIdentity> => {
   const { supabase, staff, ...identity } = await requireAdminIdentity();
@@ -104,7 +127,7 @@ export function can(identity: Pick<AdminIdentity, "permissions">, permission: Pe
 
 /**
  * Gate for a page or server action: a signed-in, AAL2 owner or staff member WITH the permission (or one of a list).
- * Anyone else gets the same 404 as a stranger, so the page's existence is not revealed.
+ * Someone signed in without it gets a 404 (the page is not theirs to see).
  */
 export async function requirePermission(permission: Permission | readonly Permission[]): Promise<AdminIdentity> {
   const identity = await requireAdmin();

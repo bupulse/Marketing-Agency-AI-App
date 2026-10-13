@@ -171,3 +171,26 @@ export async function sendPlanPausedEmail(to: ClientRecipient, p: ReminderInput)
   });
   return sendEmail({ to: to.email, subject: `Your BuPulse ${p.planName} plan is paused`, html, text });
 }
+
+/**
+ * The owner's alert that a card renewal of a Mobile Money plan could not move its first card charge by the days already
+ * paid (docs/BILLING.md, "Renewing"). Retried daily; when retrying stops, credit the days by hand in Paddle.
+ */
+export async function sendCarryOverAlertEmail(p: { providerSubscriptionId: string; userId: string | null; nextBilledAt: Date; attempts: number; gaveUp: boolean; error: string }): Promise<boolean> {
+  const admins = adminEmails();
+  if (admins.length === 0) return false;
+  const { html, text } = renderEmail({
+    heading: p.gaveUp ? "Card renewal: paid days NOT carried over" : "Card renewal: paid days not carried over yet",
+    intro: p.gaveUp
+      ? `A client renewed by card while their Mobile Money plan was still paid. Moving the first card charge to ${longDate(p.nextBilledAt)} failed ${p.attempts} times; BuPulse stopped trying. Move the next billing date in Paddle by hand (or credit the days), so the client does not pay twice.`
+      : `A client renewed by card while their Mobile Money plan was still paid. Moving the first card charge to ${longDate(p.nextBilledAt)} failed; BuPulse tries again every day.`,
+    blocks: [
+      { label: "Paddle subscription", value: p.providerSubscriptionId },
+      { label: "Client user id", value: p.userId ?? "unknown" },
+      { label: "Error", value: p.error },
+    ],
+    button: { label: "Open the error log", url: `${siteUrl()}/admin/errors` },
+  });
+  const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: `${p.gaveUp ? "Action needed" : "Retrying"}: card renewal ${p.providerSubscriptionId}, paid days not carried over`, html, text })));
+  return results.some(Boolean);
+}

@@ -15,6 +15,7 @@ export const PUBLIC_LIMITS = {
   signUp: { ip: { limit: 10, windowSeconds: HOUR }, email: { limit: 5, windowSeconds: HOUR } },
   resendConfirmation: { ip: { limit: 10, windowSeconds: HOUR }, email: { limit: 5, windowSeconds: HOUR } },
   login: { ip: { limit: 30, windowSeconds: 15 * 60 }, email: { limit: 10, windowSeconds: 15 * 60 } },
+  adminCode: { ip: { limit: 20, windowSeconds: HOUR }, email: { limit: 5, windowSeconds: HOUR } },
   forgotPassword: { ip: { limit: 10, windowSeconds: HOUR }, email: { limit: 5, windowSeconds: HOUR } },
   contact: { ip: { limit: 10, windowSeconds: HOUR } },
   demoBook: { ip: { limit: 10, windowSeconds: HOUR } },

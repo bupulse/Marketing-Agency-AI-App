@@ -10,6 +10,7 @@ import { sendOfferReminders } from "@/lib/offers/reminders";
 import { sendPlanPausedEmail, sendRenewalReminderEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
 import { sweepUnsubmittedProofs } from "./momo";
+import { retryCarryOvers } from "./carry-over";
 import { DAY_MS, graceEnd, reminderDue, UNSUBMITTED_TTL_HOURS } from "./momo-shared";
 
 // The daily job for Mobile Money subscriptions (nothing renews by itself):
@@ -36,6 +37,8 @@ export type RenewalRun = {
   invoiceReminders?: number;
   /** Payment reminders of accepted, unpaid custom plan offers (first call of a sweep only; absent when none went out). */
   offerReminders?: number;
+  /** Card renewals whose paid Mobile Money days were carried over on a retry (first call of a sweep only). */
+  carryOvers?: number;
   /** Screenshots of payments that were never submitted, removed (first call of a sweep only; absent when none). */
   proofsRemoved?: number;
   nextCursor: string | null;
@@ -147,6 +150,13 @@ async function runBatch(opts: { now?: Date; cursor?: string | null; batchSize?: 
       if (reminded > 0) run.invoiceReminders = reminded;
     } catch (error) {
       await logError(error, { source: "invoices.reminders" });
+    }
+    // Card renewals of Mobile Money plans whose paid days could not be carried over yet (docs/BILLING.md, "Renewing").
+    try {
+      const carried = await retryCarryOvers(now);
+      if (carried > 0) run.carryOvers = carried;
+    } catch (error) {
+      await logError(error, { source: "billing.carry_over" });
     }
     // Accepted custom plan offers not paid yet: day 3 and day 7 (docs/OFFERS.md).
     try {

@@ -19,7 +19,10 @@ export default async function ResetPasswordPage() {
         <>
           <div className="flex flex-col gap-1.5">
             <h1 className="text-2xl font-semibold tracking-[-0.03em]">Choose a new password</h1>
-            <p className="text-[15px] text-muted">Pick something you have not used before.</p>
+            <p className="text-[15px] text-muted">
+              Pick something you have not used before. From now on you sign in with your email and this password; if
+              you used “Continue with Google” before, that stops working for this account.
+            </p>
           </div>
           <ResetForm />
         </>

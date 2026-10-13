@@ -9,7 +9,7 @@ import { createFakeDb, type FakeDb } from "../admin/fake-db";
 const h = vi.hoisted(() => ({ db: null as unknown as FakeDb }));
 vi.mock("@/lib/db", () => ({ prisma: new Proxy({}, { get: (_t, p) => (h.db as never)[p] }) }));
 
-import { offersChoice, payMethods, soleMethod } from "@/lib/billing/pay-methods";
+import { methodReason, offersChoice, payMethods, soleMethod } from "@/lib/billing/pay-methods";
 import { cardCheckoutConfigured, cardPricedPlans, invoicePayMethods } from "@/lib/billing/card-ready";
 import { activeProvider } from "@/lib/billing";
 import { clearSwitchCache } from "@/lib/admin/switch";
@@ -74,12 +74,16 @@ describe("the method choice (pure)", () => {
     expect(offersChoice(m)).toBe(true);
   });
 
-  it("a card-only region: no choice, one click opens the card checkout; Mobile Money never appears", () => {
+  it("a card-only region: both still shown; Mobile Money visible but disabled, 'not available in your region'", () => {
     const m = payMethods({ regionMethods: GLOBAL.paymentMethods, momoConfigured: true, cardConfigured: true, cardPriced: true });
     expect(m).toEqual({ momo: "off", card: "ready" });
-    expect(offersChoice(m)).toBe(false);
-    expect(soleMethod(m)).toBe("card");
-    expect(soleMethod(payMethods({ regionMethods: GLOBAL.paymentMethods, momoConfigured: true, cardConfigured: false, cardPriced: true }))).toBeNull();
+    expect(offersChoice(m)).toBe(true);
+    expect(soleMethod(m)).toBeNull();
+    expect(methodReason("momo", m.momo)).toBe("Mobile Money: not available in your region");
+    expect(methodReason("card", m.card)).toBeNull();
+    expect(methodReason("card", "soon")).toBe("Card payments coming soon");
+    // Nothing at all to pay with: no choice.
+    expect(offersChoice({ momo: "off", card: "off" })).toBe(false);
   });
 
   it("a plan without a Mobile Money price is coming soon for Mobile Money, not hidden", () => {

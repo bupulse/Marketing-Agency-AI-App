@@ -23,6 +23,8 @@ import {
   quoteAddition,
   readAddition,
   selfServeFeatures,
+  STALE_ADDITION_REASON,
+  DAY_MS,
   type AdditionQuote,
   type CurrentPlanForAddition,
   type OfferAddition,
@@ -481,8 +483,9 @@ export async function acceptOffer(input: { userId: string; actorId: string; busi
     // Features added to the running plan: the amount is prorated again for the days left today (the period shrank
     // since the offer was made), and the custom plan renews at the full new total (docs/OFFERS.md).
     const addition = readAddition(row.options);
-    const reprice = addition ? await additionAtAccept(row, addition, input.businessId, now) : null;
-    const prices = customPrices(addition ? addition.nextRenewalMinor : row.adjustedMinor, row.interval);
+    const repriced = addition ? await additionAtAccept(row, addition, input.businessId, now) : null;
+    const reprice = repriced?.data ?? null;
+    const prices = customPrices(repriced ? repriced.nextRenewalMinor : row.adjustedMinor, row.interval);
     const won = await prisma.$transaction(async (tx) => {
       const claim = await tx.planOffer.updateMany({ where: { id: row.id, status: "sent", validUntil: { gt: now } }, data: { status: "accepted", acceptedAt: now, payMethod: method, customPlanKey: planKey, ...(reprice ?? {}) } });
       if (claim.count !== 1) return false;
@@ -513,7 +516,7 @@ export async function acceptOffer(input: { userId: string; actorId: string; busi
           },
         });
       }
-      await writeAudit(tx, ctx, "accept_offer", `offer:${row.id}`, { status: "sent" }, { status: "accepted", method, customPlanKey: planKey, adjustedMinor: reprice?.adjustedMinor ?? row.adjustedMinor, currency: row.currency, interval: row.interval, ...(addition ? { addition: true, nextRenewalMinor: addition.nextRenewalMinor } : {}) });
+      await writeAudit(tx, ctx, "accept_offer", `offer:${row.id}`, { status: "sent" }, { status: "accepted", method, customPlanKey: planKey, adjustedMinor: reprice?.adjustedMinor ?? row.adjustedMinor, currency: row.currency, interval: row.interval, ...(repriced ? { addition: true, nextRenewalMinor: repriced.nextRenewalMinor } : {}) });
       return true;
     });
     if (won) clearPlanCache();
@@ -552,8 +555,10 @@ async function additionAtAccept(row: Row, addition: OfferAddition, businessId: s
   const adjustedMinor = prorateMinor(addition.addonMinor, daysLeft, periodDays);
   if (adjustedMinor <= 0) throw new OfferError("Your paid period ends today. Renew your plan first, then add the features.");
   const computed = readLinesJson(row.lines).reduce((sum, l) => sum + l.totalMinor, 0);
-  const options = { ...(row.options as Record<string, unknown>), addition: { ...addition, periodEnd: ac.ctx.periodEnd.toISOString(), daysLeft, periodDays } };
-  return { adjustedMinor, computedMinor: prorateMinor(computed, daysLeft, periodDays), options: json(options) };
+  // The next renewal from today's price of the plan (it may have changed since the quote) plus the added features.
+  const nextRenewalMinor = ac.ctx.current.priceMinor + addition.addonMinor;
+  const options = { ...(row.options as Record<string, unknown>), addition: { ...addition, currentMinor: ac.ctx.current.priceMinor, nextRenewalMinor, periodEnd: ac.ctx.periodEnd.toISOString(), daysLeft, periodDays } };
+  return { nextRenewalMinor, data: { adjustedMinor, computedMinor: prorateMinor(computed, daysLeft, periodDays), options: json(options) } };
 }
 
 /**
@@ -597,6 +602,13 @@ async function ensureOfferInvoice(ctx: AdminContext, offer: Row, userId: string,
     if (error instanceof AdminError) throw new OfferError(error.message);
     throw error;
   }
+}
+
+/** A recent add-features quote of the company that was cancelled because its period changed (shown on Billing), or null. */
+export async function staleAdditionNotice(businessId: string, now: Date = new Date()): Promise<string | null> {
+  const latest = await prisma.planOffer.findFirst({ where: { businessId }, orderBy: { createdAt: "desc" }, select: { status: true, withdrawReason: true, withdrawnAt: true } });
+  if (latest?.status !== "withdrawn" || latest.withdrawReason !== STALE_ADDITION_REASON || !latest.withdrawnAt) return null;
+  return now.getTime() - latest.withdrawnAt.getTime() < 14 * DAY_MS ? STALE_ADDITION_REASON : null;
 }
 
 /** What Billing's "Add features" needs: the running plan, the features the client can add alone and their prices. */

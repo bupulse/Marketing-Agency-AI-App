@@ -40,6 +40,7 @@ import {
   quoteAddition,
   requestedFeatures,
   selfServeFeatures,
+  STALE_ADDITION_REASON,
   toggleRequestFeature,
   type AddonPriceRow,
 } from "@/lib/offers/shared";
@@ -220,8 +221,48 @@ describe("Add to current plan (admin) -> accept -> pay -> features on", () => {
     sub().plan = "PRO";
     const error = await momo.confirmManualPayment(CONSOLE, accepted.payment!.id, LATER).then(() => null, (e: AdminError) => e);
     expect(error?.message).toMatch(/plan changed since they added these features/);
-    expect(offerRow(saved.id).status).toBe("accepted");
+    expect(offerRow(saved.id)).toMatchObject({ status: "withdrawn", withdrawReason: STALE_ADDITION_REASON });
     expect(sub().plan).toBe("PRO");
+  });
+
+  it("accepted, then the plan was renewed (period end moved) before paying the invoice: refused at the old price, quote cancelled", async () => {
+    seed();
+    const saved = await offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft: ADDON_DRAFT }, NOW);
+    await offers.sendOffer(CONSOLE, saved.id, NOW);
+    const accepted = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: saved.id, method: "invoice" }, NOW);
+    expect(accepted.invoiceId).toBeTruthy();
+    // A renewal confirmed meanwhile: the period now ends a month later.
+    sub().currentPeriodEnd = new Date("2026-12-01T00:00:00Z");
+    // Paying the add-on's invoice now is refused (it was prorated for the old period) and the quote is cancelled.
+    expect(await msg(momo.startInvoicePayment({ userId: USER, invoiceId: accepted.invoiceId!, now: LATER }))).toBe(STALE_ADDITION_REASON);
+    expect(offerRow(saved.id)).toMatchObject({ status: "withdrawn", withdrawReason: STALE_ADDITION_REASON });
+    expect(h.db.invoice.rows.find((i) => i.id === accepted.invoiceId)!.status).toBe("void");
+    expect(await offers.staleAdditionNotice("biz1", LATER)).toBe(STALE_ADDITION_REASON);
+    expect(await offers.clientOffer("biz1", LATER)).toBeNull();
+  });
+
+  it("a payment reported before the renewal is refused at confirm with the plan-changed conflict; nothing switches", async () => {
+    seed();
+    const saved = await offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft: ADDON_DRAFT }, NOW);
+    await offers.sendOffer(CONSOLE, saved.id, NOW);
+    const accepted = await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: saved.id, method: "momo" }, NOW);
+    await momo.submitManualProof(USER, { paymentId: accepted.payment!.id, transactionId: "MP55500077", payerPhone: "078 123 4567", network: "MTN" }, NOW);
+    sub().currentPeriodEnd = new Date("2026-12-01T00:00:00Z");
+    expect(await msg(momo.confirmManualPayment(CONSOLE, accepted.payment!.id, LATER))).toMatch(/plan changed .*Reject this payment and refund it/);
+    expect(sub()).toMatchObject({ plan: "STANDARD" });
+    expect(offerRow(saved.id).status).toBe("withdrawn");
+    expect(h.db.manualPayment.rows.find((p) => p.id === accepted.payment!.id)!.status).toBe("pending");
+  });
+
+  it("accepting uses today's plan price for the next renewal", async () => {
+    seed();
+    const saved = await offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft: ADDON_DRAFT }, NOW);
+    await offers.sendOffer(CONSOLE, saved.id, NOW);
+    h.db.planRegionPrice.rows[0].monthlyMinor = 40000;
+    resetRegionPriceCache();
+    await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: saved.id, method: "momo" }, NOW);
+    expect(offerRow(saved.id).options).toMatchObject({ addition: { currentMinor: 40000, nextRenewalMinor: 50000 } });
+    expect(h.db.planDefinition.rows.find((p) => p.key === customPlanKeyFor(saved.id))).toMatchObject({ monthlyPriceCents: 50000 });
   });
 });
 

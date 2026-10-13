@@ -103,8 +103,14 @@ total (plan + added features).
   pay now; `lines` = the add-on lines for a whole period. No schema change. Accepting prices it again for the days left
   that day (`additionAtAccept`) and prepares the custom plan at the **next-renewal total**.
 - **Confirming** (`confirmManualPayment`, also through an invoice made from it): period mode `keep`; the subscription
-  moves to the custom plan, `currentPeriodStart` / `currentPeriodEnd` untouched. Refused when the plan or interval
-  changed since (reject, refund, make a new offer). Reminders and the next renewal use the custom plan's own price.
+  moves to the custom plan, `currentPeriodStart` / `currentPeriodEnd` untouched. Reminders and the next renewal use the
+  custom plan's own price. Accepting also takes **today's** plan price for the next-renewal total.
+- **The period must be the one it was priced for** (`additionFits`: same plan, interval, Mobile Money, ACTIVE and
+  exactly `addition.periodEnd`). A renewal in between (e.g. accepted by invoice → renewed → invoice paid) would pay the
+  add-on at the old proration, so starting its Mobile Money payment (offer or invoice) and confirming it are refused;
+  the quote is withdrawn (`withdrawStaleAddition`: invoice voided, unsubmitted payments closed, prepared plan retired,
+  reason `STALE_ADDITION_REASON`), Billing tells the client for 14 days to add the features again for a new quote, and
+  the owner rejects (and refunds) a payment already reported.
 - **Admin:** Customise plan → **Add to current plan** (beside "New custom plan"): the current plan is the locked base,
   its features ticked and locked, no limits or interval; the total shows the add-ons per period, "Client pays now
   (prorated, N of M days left)" and "Next renewal: plan + added features". A typed price replaces the add-ons' price

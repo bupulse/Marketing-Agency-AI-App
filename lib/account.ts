@@ -178,3 +178,15 @@ export async function allowGoogleSignIn(authUser: AuthUser): Promise<boolean> {
   await prisma.$executeRaw`DELETE FROM auth.identities WHERE user_id = ${authUser.id}::uuid AND provider = 'google'`;
   return false;
 }
+
+/**
+ * A Google account that sets a password (through "Forgot password?") becomes a password account: from then on it signs
+ * in with the password only and Google sign-in is refused, the same as for an account created with a password.
+ */
+export async function switchToPasswordOnly(userId: string): Promise<void> {
+  const updated = await prisma.user.updateMany({
+    where: { id: userId, signUpMethod: "GOOGLE" },
+    data: { signUpMethod: "PASSWORD" },
+  });
+  if (updated.count) await prisma.$executeRaw`DELETE FROM auth.identities WHERE user_id = ${userId}::uuid AND provider = 'google'`;
+}

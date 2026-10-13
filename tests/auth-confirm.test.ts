@@ -17,6 +17,7 @@ async function confirm(query: string) {
 
 describe("auth confirm route", () => {
   beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://bupulse.test"); // the routes send people back to the site address
     verifyOtp.mockReset();
     ensureAccount.mockReset();
     verifyOtp.mockResolvedValue({ data: { user: { id: "u1" } }, error: null });

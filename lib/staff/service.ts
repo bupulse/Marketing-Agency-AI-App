@@ -56,7 +56,7 @@ function assertNotOwnerTarget(actor: Pick<AdminIdentity, "isOwner">, member: { r
   if (member.roleKey === OWNER_ROLE && !actor.isOwner) throw new AdminError("forbidden", "Only the owner can change an Owner.");
 }
 
-/** The person's sign-in: kept if it exists (Google or password), else created confirmed and without a password. */
+/** The person's sign-in: kept if it exists, else created confirmed and without a password (they sign in with emailed codes). */
 async function ensureSignIn(email: string, name: string | null): Promise<"existing" | "created"> {
   const [hit] = await prisma.$queryRaw<{ id: string }[]>`SELECT id FROM auth.users WHERE lower(email) = ${email} LIMIT 1`;
   if (hit) return "existing";
@@ -69,20 +69,14 @@ async function ensureSignIn(email: string, name: string | null): Promise<"existi
   return "created";
 }
 
-/** The invitation: a link to choose a password (new sign-in) or a plain pointer to /admin (existing), and the second step. */
-async function sendInvite(email: string, name: string | null, roleName: string, signIn: "existing" | "created"): Promise<boolean> {
+/** The invitation: where to sign in (email, then an emailed code, then an authenticator app). No password is set. */
+async function sendInvite(email: string, name: string | null, roleName: string): Promise<boolean> {
   try {
-    let url = `${siteUrl()}/admin`;
-    if (signIn === "created") {
-      const { data, error } = await createAdminClient().auth.admin.generateLink({ type: "recovery", email });
-      const hash = data?.properties?.hashed_token;
-      if (error || !hash) throw error ?? new Error("generateLink returned no token");
-      url = `${siteUrl()}/auth/confirm?token_hash=${encodeURIComponent(hash)}&type=recovery&next=/reset-password`;
-    }
+    const url = `${siteUrl()}/admin/login`;
     const { html, text } = renderEmail({
       heading: "You were added to the BuPulse team",
-      intro: `${name ? `Hi ${name}, ` : ""}you can now use the BuPulse admin console as ${roleName}. ${signIn === "created" ? "Choose your password first (or sign in with Google using this address)." : "Sign in with your usual BuPulse account (Google or password)."} Then open ${siteUrl()}/admin and add an authenticator app (Microsoft Authenticator, Google Authenticator or 1Password): the console asks for its 6-digit code at every sign-in.`,
-      button: { label: signIn === "created" ? "Choose my password" : "Open the console", url },
+      intro: `${name ? `Hi ${name}, ` : ""}you can now use the BuPulse admin console as ${roleName}. Open the console, enter this email address and the code we email you. The first time, you also add an authenticator app (Microsoft Authenticator, Google Authenticator or 1Password): the console asks for its 6-digit code at every sign-in.`,
+      button: { label: "Open the console", url },
       footer: "If you were not expecting this email, you can ignore it.",
     });
     return await sendEmail({ to: email, subject: "You were added to the BuPulse team", html, text });
@@ -102,7 +96,8 @@ export async function inviteStaff(ctx: AdminContext, actor: AdminIdentity, input
   const name = input.name?.trim().slice(0, 80) || null;
   const phone = input.phone?.trim().slice(0, 30) || null;
   if (await prisma.staffMember.findUnique({ where: { email }, select: { id: true } })) throw new AdminError("conflict", "That person is already on the staff list.");
-  const signIn = await ensureSignIn(email, name);
+  // The emailed code needs an existing sign-in (codes never create accounts): made here, confirmed, without a password.
+  await ensureSignIn(email, name);
   const member = await prisma.$transaction(async (tx) => {
     const row = await tx.staffMember.create({ data: { email, name, phone, roleKey: input.roleKey, status: "invited", invitedBy: ctx.actor } });
     await writeAudit(tx, ctx, "invite_staff", `staff:${row.id}`, null, { email, name, roleKey: input.roleKey });
@@ -110,7 +105,7 @@ export async function inviteStaff(ctx: AdminContext, actor: AdminIdentity, input
   });
   if (isSalesRole(input.roleKey, permissions)) await ensureRefCode(member.id).catch((error) => logError(error, { source: "staff.refcode" }));
   const roleName = builtInRole(input.roleKey)?.name ?? (await prisma.staffRole.findUnique({ where: { key: input.roleKey }, select: { name: true } }))?.name ?? input.roleKey;
-  const emailed = await sendInvite(email, name, roleName, signIn);
+  const emailed = await sendInvite(email, name, roleName);
   return { id: member.id, emailed };
 }
 

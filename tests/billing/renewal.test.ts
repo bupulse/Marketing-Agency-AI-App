@@ -12,12 +12,30 @@ const h = vi.hoisted(() => ({
   updateMany: vi.fn(),
   checkoutConfig: vi.fn(async () => ({ provider: "PADDLE", priceId: "pri_rw" })),
   deferNextBilling: vi.fn(),
+  carry: [] as Record<string, any>[], // eslint-disable-line @typescript-eslint/no-explicit-any
+  alert: vi.fn(async () => true),
+  logError: vi.fn(async () => {}),
 }));
+// A tiny CardCarryOver table: enough for create / find / conditional update.
+const carryTable = {
+  findUnique: vi.fn(async ({ where }: { where: { providerSubscriptionId: string } }) => h.carry.find((r) => r.providerSubscriptionId === where.providerSubscriptionId) ?? null),
+  findMany: vi.fn(async () => h.carry.filter((r) => r.status === "pending")),
+  create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+    const row = { id: `c${h.carry.length + 1}`, status: "pending", attempts: 0, lastError: null, alertedAt: null, doneAt: null, ...data };
+    h.carry.push(row);
+    return row;
+  }),
+  updateMany: vi.fn(async ({ where, data }: { where: { id: string; status: string }; data: Record<string, unknown> }) => {
+    const row = h.carry.find((r) => r.id === where.id && r.status === where.status);
+    if (row) Object.assign(row, data);
+    return { count: row ? 1 : 0 };
+  }),
+};
 
 vi.mock("@/lib/auth/require-user", () => ({ requireActiveUser: h.requireActiveUser }));
 vi.mock("@/lib/db", async () => {
   const { seedPlanRows } = await import("../admin/fake-db");
-  return { prisma: { subscription: { findUnique: h.findUnique, findFirst: h.findFirst, updateMany: h.updateMany }, planDefinition: { findMany: vi.fn(async () => seedPlanRows()) }, planRegionPrice: { findMany: vi.fn(async () => []) }, errorLog: { create: vi.fn() } } };
+  return { prisma: { subscription: { findUnique: h.findUnique, findFirst: h.findFirst, updateMany: h.updateMany }, planDefinition: { findMany: vi.fn(async () => seedPlanRows()) }, planRegionPrice: { findMany: vi.fn(async () => []) }, errorLog: { create: vi.fn() }, cardCarryOver: new Proxy({}, { get: (_t, k) => carryTable[k as keyof typeof carryTable] }) } };
 });
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/admin/switch", () => ({ isServiceEnabled: async () => true, UNAVAILABLE_MESSAGE: "off" }));
@@ -32,11 +50,13 @@ vi.mock("@/lib/region-prices", async (orig) => ({
   regionPriceIdFor: async () => "pri_rw",
 }));
 vi.mock("@/lib/region-check", () => ({ noteRegionMismatch: vi.fn(async () => null) }));
-vi.mock("@/lib/errors", () => ({ logError: vi.fn(async () => {}) }));
+vi.mock("@/lib/errors", () => ({ logError: h.logError }));
+vi.mock("@/lib/billing/momo-emails", () => ({ sendCarryOverAlertEmail: h.alert }));
 
-import { startCheckout } from "@/app/dashboard/billing/actions";
+import { resumeSubscription, startCheckout } from "@/app/dashboard/billing/actions";
 import { applyProviderSubscription } from "@/lib/billing/apply";
 import { signCheckoutUser } from "@/lib/billing/signing";
+import { CARRY_OVER_MAX_ATTEMPTS, retryCarryOvers } from "@/lib/billing/carry-over";
 import { daysLeftUntil, renewalState, tooEarlyToRenew, RENEWAL_WINDOW_DAYS } from "@/lib/billing/renewal";
 
 const USER = "11111111-1111-4111-8111-111111111111";
@@ -50,6 +70,7 @@ beforeEach(() => {
   h.requireActiveUser.mockResolvedValue({ id: USER, actorId: USER, businessId: "biz1", role: "OWNER", email: "a@example.rw" });
   h.updateMany.mockResolvedValue({ count: 1 });
   h.findFirst.mockResolvedValue(null);
+  h.carry = [];
 });
 
 describe("the renewal window (pure)", () => {
@@ -93,6 +114,23 @@ describe("Renew with card (server)", () => {
   });
 });
 
+describe("a card plan cancelled at its end", () => {
+  const cancelled = (days: number) => momoSub({ provider: "PADDLE", providerSubscriptionId: "sub_1", providerCustomerId: "ctm_1", cancelAtPeriodEnd: true, currentPeriodEnd: new Date(Date.now() + days * DAY) });
+
+  it("checkout: refused early with the renewal message; in the window it points to Renew with card (resume)", async () => {
+    h.findUnique.mockResolvedValue(cancelled(20));
+    expect(await startCheckout({ plan: "STANDARD", interval: "MONTH" })).toMatchObject({ ok: false, error: expect.stringMatching(/You can renew from/) });
+    h.findUnique.mockResolvedValue(cancelled(3));
+    expect(await startCheckout({ plan: "STANDARD", interval: "MONTH" })).toMatchObject({ ok: false, error: expect.stringMatching(/Use Renew with card/) });
+    expect(h.checkoutConfig).not.toHaveBeenCalled();
+  });
+
+  it("resuming (its renewal) is refused before the last 7 days", async () => {
+    h.findUnique.mockResolvedValue(cancelled(20));
+    expect(await resumeSubscription()).toMatchObject({ ok: false, error: expect.stringMatching(/Your plan is paid until .* You can renew from/) });
+  });
+});
+
 describe("a card renewal of a Mobile Money plan (webhook)", () => {
   const card = async (end: Date) => ({ providerSubscriptionId: "sub_new", providerCustomerId: "ctm_1", providerPriceId: "pri_std_m", userId: USER, userIdSignature: await signCheckoutUser(USER), status: "ACTIVE" as const, currentPeriodStart: new Date(), currentPeriodEnd: end, cancelAtPeriodEnd: false, updatedAt: new Date() });
 
@@ -112,6 +150,34 @@ describe("a card renewal of a Mobile Money plan (webhook)", () => {
     expected.setUTCMonth(expected.getUTCMonth() + 1);
     expect(at.getTime()).toBe(expected.getTime());
     expect(h.updateMany).toHaveBeenCalledTimes(2);
+    expect(h.carry).toEqual([expect.objectContaining({ providerSubscriptionId: "sub_new", status: "done", attempts: 1 })]);
+  });
+
+  it("a failed carry-over is recorded, logged and emailed, retried daily, and given up (with a second alert) after 5 tries", async () => {
+    process.env.PADDLE_PRICE_STANDARD_MONTH = "pri_std_m";
+    h.findUnique.mockResolvedValue({ userId: USER, providerSubscriptionId: null, status: "ACTIVE", provider: "MANUAL_MOMO", currentPeriodEnd: new Date(Date.now() + 4 * DAY) });
+    h.deferNextBilling.mockRejectedValue(new Error("Paddle API 500"));
+    expect(await applyProviderSubscription("PADDLE", await card(new Date(Date.now() + 30 * DAY)))).toBe("applied");
+    expect(h.carry[0]).toMatchObject({ status: "pending", attempts: 1, lastError: "Paddle API 500" });
+    expect(h.logError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ source: "billing.carry_over" }));
+    expect(h.alert).toHaveBeenCalledTimes(1);
+    expect(h.alert.mock.calls[0]).toEqual([expect.objectContaining({ gaveUp: false, providerSubscriptionId: "sub_new" })]);
+    // Daily retries: no new email until it gives up.
+    for (let i = 2; i < CARRY_OVER_MAX_ATTEMPTS; i++) expect(await retryCarryOvers()).toBe(0);
+    expect(h.alert).toHaveBeenCalledTimes(1);
+    expect(await retryCarryOvers()).toBe(0);
+    expect(h.carry[0]).toMatchObject({ status: "failed", attempts: CARRY_OVER_MAX_ATTEMPTS });
+    expect(h.alert).toHaveBeenCalledTimes(2);
+    expect(h.alert.mock.calls[1]).toEqual([expect.objectContaining({ gaveUp: true })]);
+    expect(await retryCarryOvers()).toBe(0); // a failed one is not tried again
+    expect(h.deferNextBilling).toHaveBeenCalledTimes(CARRY_OVER_MAX_ATTEMPTS);
+  });
+
+  it("a retry that succeeds marks it done", async () => {
+    h.carry.push({ id: "c1", provider: "PADDLE", providerSubscriptionId: "sub_x", userId: USER, nextBilledAt: new Date(Date.now() + 33 * DAY), status: "pending", attempts: 1, alertedAt: new Date() });
+    h.deferNextBilling.mockResolvedValue({ providerSubscriptionId: "sub_x", providerCustomerId: "ctm", providerPriceId: "pri_unknown", userId: null, userIdSignature: null, status: "ACTIVE", currentPeriodStart: new Date(), currentPeriodEnd: new Date(), cancelAtPeriodEnd: false, updatedAt: new Date() });
+    expect(await retryCarryOvers()).toBe(1);
+    expect(h.carry[0]).toMatchObject({ status: "done", attempts: 2 });
   });
 
   it("before the window: still a duplicate (refunded by hand), nothing moves", async () => {
