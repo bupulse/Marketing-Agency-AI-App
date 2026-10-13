@@ -1,6 +1,6 @@
 # Deploying BuPulse on Netlify (free plan)
 
-BuPulse can run on Netlify's free plan instead of Cloudflare Workers. The code supports both; one GitHub variable (`DEPLOY_TARGET`) decides where a push to `main` goes. The Cloudflare setup (`docs/DEPLOY.md`, `wrangler.jsonc`, `worker.ts`) is untouched and can be switched back on at any time.
+**Fallback host.** BuPulse 2.0 launches on Cloudflare Workers Paid (`docs/DEPLOY.md`, owner decision of 13 October 2026); this page is kept so the site can move to Netlify's free plan if needed. BuPulse can run on Netlify's free plan instead of Cloudflare Workers. The code supports both; one GitHub variable (`DEPLOY_TARGET`) decides where a push to `main` goes. The Cloudflare setup (`docs/DEPLOY.md`, `wrangler.jsonc`, `worker.ts`) is untouched and can be switched back on at any time.
 
 What runs where on Netlify:
 
@@ -46,7 +46,7 @@ Other limits, on every plan:
 - **6 MB per request or response** (about 4.5 MB for a binary upload). Photo and video uploads go straight to Supabase Storage with signed URLs, so they are not affected.
 - **Supabase free storage is 1 GB for everything** (photos, Gallery videos up to 50 MB each, rendered videos,
   voiceovers, music, designs). The app stops new uploads at `MEDIA_PLATFORM_MAX_BYTES` (900 MB) and each company's
-  Gallery videos at `MEDIA_COMPANY_VIDEO_MAX_BYTES` (300 MB); with videos, a few companies can fill it. Watch Admin,
+  Gallery videos at `MEDIA_COMPANY_VIDEO_MAX_BYTES` (100 MB); with videos, a few companies can fill it. Watch Admin,
   Health and Storage, and plan Supabase Pro before many clients upload videos.
 - **Functions run in US East (Ohio).** Changing the region is a Pro feature. Supabase in `us-east-1` or `us-east-2` keeps database round trips short; visitors in Rwanda see about 250 ms of network distance to Ohio on each uncached request.
 - **1 GB of memory per function** on the free plan. Enough for the JPEG conversion of a 4096 px photo.
@@ -97,7 +97,7 @@ Recommended (the feature switches off without it; the check warns):
 | `AI_COMPANY_MONTHLY_USD` | 3 | Each company's monthly AI allowance in USD |
 | `WIDGET_AI_SHARE` | 0.5 | Share of that allowance the website chat may use |
 | `MEDIA_PLATFORM_MAX_BYTES` | 900 MB | Shared storage guard (Supabase free: 1 GB in all) |
-| `MEDIA_COMPANY_VIDEO_MAX_BYTES` | 300 MB | Each company's Gallery videos (`docs/MEDIA.md`) |
+| `MEDIA_COMPANY_VIDEO_MAX_BYTES` | 100 MB | Each company's Gallery videos (`docs/MEDIA.md`) |
 | `ELEVENLABS_API_KEY` | off | Voiceovers and Generate a track (`docs/VOICE_AND_MUSIC.md`), server-only |
 | `VIDEO_ROBOT_SECRET` | robot off | The video robot (`docs/VIDEO_ROBOT.md`); the same value as the GitHub secret |
 | `NEXT_PUBLIC_WHATSAPP_NUMBER` | button hidden | Chat on WhatsApp (international format). Also a GitHub variable (build value) |

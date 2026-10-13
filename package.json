@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3001",
+    "build:cloudflare": "node scripts/cf-build.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -11,15 +12,13 @@
     "ai:eval": "AI_EVAL=1 node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/ai-eval/run.test.ts",
     "paddle:setup": "node scripts/paddle-setup.mjs",
     "test:e2e": "playwright test",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "preview": "node scripts/cf-build.mjs && opennextjs-cloudflare preview",
+    "deploy": "node scripts/cf-build.mjs && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --include-runtime=false --env-interface CloudflareEnv cloudflare-env.d.ts",
     "ai:eval:widget": "AI_EVAL=1 node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/ai-eval/widget.test.ts",
     "ai:eval:autopilot": "AI_EVAL=1 node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/ai-eval/autopilot.test.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.131.0",
-    "@google/genai": "^2.27.0",
     "@jsquash/jpeg": "^1.6.0",
     "@jsquash/png": "^3.1.1",
     "@jsquash/webp": "^1.5.0",

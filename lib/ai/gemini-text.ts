@@ -1,12 +1,10 @@
 import "server-only";
-import { GoogleGenAI } from "@google/genai";
+import { createInteraction, type Interaction } from "./gemini-rest";
 import { AIProviderError, type TextProvider, type TextRequest, type TextResult, type TokenUsage } from "./types";
 
 export const DEFAULT_GEMINI_TEXT_MODEL = "gemini-3.8-flash";
 // Used when the main model is busy (429/5xx). Cheaper, and usually has spare capacity.
 export const DEFAULT_GEMINI_TEXT_FALLBACK = "gemini-3.1-flash-lite";
-
-type Interaction = Extract<Awaited<ReturnType<GoogleGenAI["interactions"]["create"]>>, { id: string }>;
 
 function isRetryable(status: number | undefined) {
   return status === 429 || (status !== undefined && status >= 500);
@@ -31,15 +29,12 @@ function usageOf(interaction: Interaction): TokenUsage {
 /** Gemini text through the Interactions API (newer Gemini models are not served by generateContent). */
 export class GeminiTextProvider implements TextProvider {
   readonly name = "gemini";
-  private ai: GoogleGenAI;
 
   constructor(
-    apiKey: string,
+    private apiKey: string,
     private model: string,
     private fallbackModel?: string,
-  ) {
-    this.ai = new GoogleGenAI({ apiKey });
-  }
+  ) {}
 
   async generate(request: TextRequest): Promise<TextResult> {
     try {
@@ -53,7 +48,8 @@ export class GeminiTextProvider implements TextProvider {
   private async generateWith(model: string, { system, prompt, jsonSchema }: TextRequest): Promise<TextResult> {
     let interaction: Interaction;
     try {
-      interaction = await this.ai.interactions.create(
+      interaction = await createInteraction(
+        this.apiKey,
         {
           model,
           system_instruction: system,
@@ -62,7 +58,7 @@ export class GeminiTextProvider implements TextProvider {
           generation_config: { max_output_tokens: 4096, thinking_level: "low" },
           ...(jsonSchema ? { response_format: { type: "text", mime_type: "application/json", schema: jsonSchema } } : {}),
         },
-        { timeout: 90_000 },
+        90_000,
       );
     } catch (error) {
       const status = (error as { status?: number }).status;

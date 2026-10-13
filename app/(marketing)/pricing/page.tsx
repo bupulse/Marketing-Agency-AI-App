@@ -9,7 +9,7 @@ import { PricingPlans } from "./pricing-plans";
 import { UseMyLocation } from "./use-my-location";
 import { faqs, fillFaq } from "@/lib/content/site";
 import { getSetting } from "@/lib/admin/settings";
-import { geoLookupAvailable } from "@/lib/geo/provider";
+import { geoLookupAvailable } from "@/lib/geo/availability";
 import { displayRegionWithOverride } from "@/lib/region";
 import { currencyNote, paymentBadges } from "@/lib/region-format";
 import { getRegionPlans } from "@/lib/region-prices";

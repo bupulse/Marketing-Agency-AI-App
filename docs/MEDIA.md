@@ -38,7 +38,7 @@ The owner's own clips go in the Gallery like photos, so AI content uses them fir
   media bucket's file limit to 50 MB).
 - **Quotas**: videos (and open reservations, at their announced size) count toward the company's 500 items / 2 GB and
   the shared storage guard (`MEDIA_PLATFORM_MAX_BYTES`, 900 MB on the free plan), and have their own cap per company,
-  `MEDIA_COMPANY_VIDEO_MAX_BYTES` (300 MB by default), checked when the upload starts, at finalize and again under the
+  `MEDIA_COMPANY_VIDEO_MAX_BYTES` (100 MB by default), checked when the upload starts, at finalize and again under the
   quota lock. The guard takes the larger of the rows and the real object sizes in Storage (`storage.objects`, summed
   per bucket by the database, cached a minute), so files nobody recorded count too. The Gallery says how much video
   space is used and that storage is small for now.

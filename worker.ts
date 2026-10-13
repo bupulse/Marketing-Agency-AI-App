@@ -19,58 +19,19 @@ import pngWasm from "./node_modules/@jsquash/png/codec/pkg/squoosh_png_bg.wasm";
 import webpDecodeWasm from "./node_modules/@jsquash/webp/codec/dec/webp_dec.wasm";
 import jpegDecodeWasm from "./node_modules/@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm";
 import jpegEncodeWasm from "./node_modules/@jsquash/jpeg/codec/enc/mozjpeg_enc.wasm";
+// Prisma's query compiler: workerd cannot compile WebAssembly from bytes at runtime, so the client takes this module
+// (scripts/cf-build.mjs writes the file and points the generated client here).
+import prismaQueryCompilerWasm from "./.open-next/prisma/query_compiler_fast_bg.wasm";
 
-(globalThis as { __bupulseWasm?: unknown }).__bupulseWasm = { png: pngWasm, webpDecode: webpDecodeWasm, jpegEncode: jpegEncodeWasm, jpegDecode: jpegDecodeWasm };
+(globalThis as { __bupulseWasm?: unknown }).__bupulseWasm = { png: pngWasm, webpDecode: webpDecodeWasm, jpegEncode: jpegEncodeWasm, jpegDecode: jpegDecodeWasm, prismaQueryCompiler: prismaQueryCompilerWasm };
 
+// The main module's named exports are Worker entrypoints (Durable Object classes): workerd refuses to start when one is
+// a plain value ("Incorrect type for map entry"), so the cron schedules live in worker-crons.ts.
 export { BucketCachePurge, DOQueueHandler, DOShardedTagCache } from "./.open-next/worker.js";
 
 type Env = CloudflareEnv & { CRON_SECRET?: string };
 
-// Each schedule must appear in "triggers.crons" in wrangler.jsonc (tests/worker-crons.test.ts checks both ways).
-/** Every minute: publish due posts. */
-export const PUBLISH_CRON = "* * * * *";
-/** Hourly: collect post metrics; each post is measured at most once every 20 hours. */
-export const METRICS_CRON = "23 * * * *";
-/** Autopilot plans next week on Fridays and Saturdays. */
-export const AUTOPILOT_CRON = "11 */3 * * 5,6";
-/** Hourly; the route only sends the leads summary to businesses where it is 08:00. */
-export const LEADS_DIGEST_CRON = "37 * * * *";
-/** Daily at 03:47 UTC: re-sync imported Shopify and WooCommerce products (a few stores per call, with a cursor). */
-export const STORE_SYNC_CRON = "47 3 * * *";
-
-/** Daily at 02:17 UTC: analytics roll-up for yesterday and today, plus back-fill days (cursor calls). */
-export const ANALYTICS_ROLLUP_CRON = "17 2 * * *";
-
-/** Daily at 04:29 UTC: plan price changes (notice emails, moving clients to the new price before renewal), cursor calls. */
-export const PLAN_PRICE_CRON = "29 4 * * *";
-
-/** Daily at 05:41 UTC: Mobile Money renewal reminders and the grace period (read-only after it), cursor calls. */
-export const MOMO_RENEWALS_CRON = "41 5 * * *";
-/** Hourly at :53: trial-end reminders (a day before and on the last day) and trials that are over become read-only. */
-export const TRIAL_CRON = "53 * * * *";
-/** Daily at 03:19: content video files are deleted 30 days after their posts went out (docs/CONTENT_VISUALS.md). */
-export const MEDIA_CLEANUP_CRON = "19 3 * * *";
-/** Hourly at :07: the daily email of posts auto-approval scheduled, sent from 08:00 local (docs/CONTENT.md). */
-export const CONTENT_SUMMARY_CRON = "7 * * * *";
-
-export const CRON_ROUTES: Record<string, string> = {
-  [PUBLISH_CRON]: "/api/cron/publish",
-  [METRICS_CRON]: "/api/cron/metrics",
-  [AUTOPILOT_CRON]: "/api/cron/autopilot",
-  [LEADS_DIGEST_CRON]: "/api/cron/leads-digest",
-  [STORE_SYNC_CRON]: "/api/cron/store-sync",
-  [ANALYTICS_ROLLUP_CRON]: "/api/cron/analytics-rollup",
-  [PLAN_PRICE_CRON]: "/api/cron/plan-price-changes",
-  [MOMO_RENEWALS_CRON]: "/api/cron/momo-renewals",
-  [TRIAL_CRON]: "/api/cron/trial-reminders",
-  [MEDIA_CLEANUP_CRON]: "/api/cron/media-cleanup",
-  [CONTENT_SUMMARY_CRON]: "/api/cron/content-summary",
-};
-
-/** The route for a schedule, or null for one this worker doesn't know (never fall back to publishing). */
-export function routeForCron(cron: string): string | null {
-  return CRON_ROUTES[cron] ?? null;
-}
+import { AUTOPILOT_CRON, ANALYTICS_ROLLUP_CRON, CONTENT_SUMMARY_CRON, MOMO_RENEWALS_CRON, PLAN_PRICE_CRON, routeForCron, STORE_SYNC_CRON } from "./worker-crons";
 
 async function runCron(path: string, env: Env): Promise<string | null> {
   if (!env.CRON_SECRET) {

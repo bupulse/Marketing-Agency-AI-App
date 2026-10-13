@@ -96,6 +96,6 @@ describe("review fixes: image packs, custom plans, refill date, render lease", (
   it("the render lease outlasts the slowest AI photo call (120 s attempt + 30 s of SDK retries + drawing)", async () => {
     const { RENDER_LEASE_MS } = await import("@/lib/visuals/service");
     expect(RENDER_LEASE_MS).toBeGreaterThanOrEqual(120_000 + 30_000 + 60_000);
-    expect(readFileSync("lib/ai/gemini-image.ts", "utf8")).toContain("timeout_ms: 120_000");
+    expect(readFileSync("lib/ai/gemini-image.ts", "utf8")).toContain("120_000,");
   });
 });

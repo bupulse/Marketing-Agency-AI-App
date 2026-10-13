@@ -100,6 +100,18 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      # Production variables (scripts/check-env.mjs, names and problems only, never a value): the build values above and
+      # the migrations' DIRECT_URL, then the Worker's secrets in Cloudflare and the Hyperdrive id in wrangler.jsonc.
+      # Before `npm ci`, so the token is only ever in reach of this repository's own script, never of installed packages.
+      - name: Check the build variables
+        run: node scripts/check-env.mjs --build
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      - name: Check the Worker's secrets
+        run: node scripts/check-env.mjs --cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - run: npm ci
       - run: npx prisma generate --config prisma7.config.ts
         env:
@@ -110,7 +122,9 @@ jobs:
         env:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
 
-      - run: npx opennextjs-cloudflare build
+      # The OpenNext build with Prisma's query compiler as a .wasm module (scripts/cf-build.mjs, docs/DEPLOY.md).
+      # --keep: the checkout is thrown away, no need to generate the usual client again.
+      - run: node scripts/cf-build.mjs --keep
         env:
           BUILD_SHA: ${{ steps.build.outputs.sha }}
       - run: npx opennextjs-cloudflare deploy

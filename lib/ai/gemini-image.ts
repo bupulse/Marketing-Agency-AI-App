@@ -1,5 +1,5 @@
 import "server-only";
-import { GoogleGenAI } from "@google/genai";
+import { createInteraction, type Interaction } from "./gemini-rest";
 import { AIProviderError, type ImageProvider, type ImageRequest, type ImageResult } from "./types";
 
 const MAX_REFERENCE_BYTES = 6 * 1024 * 1024;
@@ -35,14 +35,11 @@ async function referencePart(url: string): Promise<ImageInput> {
 /** Gemini image model ("Nano Banana"): text, plus optional reference images, in; one image out. */
 export class GeminiImageProvider implements ImageProvider {
   readonly name = "gemini";
-  private ai: GoogleGenAI;
 
   constructor(
-    apiKey: string,
+    private apiKey: string,
     private model: string,
-  ) {
-    this.ai = new GoogleGenAI({ apiKey });
-  }
+  ) {}
 
   async generate({ prompt, referenceImageUrls = [], aspectRatio }: ImageRequest): Promise<ImageResult> {
     let references: ImageInput[];
@@ -53,17 +50,18 @@ export class GeminiImageProvider implements ImageProvider {
       references = [];
     }
 
-    let interaction;
+    let interaction: Interaction;
     try {
-      interaction = await this.ai.interactions.create(
+      interaction = await createInteraction(
+        this.apiKey,
         {
           model: this.model,
           input: [...references, { type: "text", text: prompt }],
           store: false,
           response_format: { type: "image", ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}) },
         },
-        // One attempt may take up to 120 s (the SDK also retries for up to 30 s): RENDER_LEASE_MS in lib/visuals/service.ts covers both.
-        { timeout: 120_000, timeout_ms: 120_000 },
+        // One attempt may take up to 120 s: RENDER_LEASE_MS in lib/visuals/service.ts covers it.
+        120_000,
       );
     } catch (error) {
       const status = (error as { status?: number }).status;

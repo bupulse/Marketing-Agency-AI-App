@@ -3,11 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import { NETLIFY_PUBLISH_EVERY_MINUTES, publishTimingNote } from "@/lib/platform/limits";
 import { CRON_JOBS, handleRunnerRequest, MAX_CURSOR_CALLS, RUNNER_BUDGET_MS, RUNNER_PATH, runJob, siteOrigin, startCron } from "@/netlify/lib/cron";
 
-// worker.ts imports the OpenNext build output, so read it as text (as tests/worker-crons.test.ts does).
+// worker.ts imports the OpenNext build output, so read it and worker-crons.ts as text (as tests/worker-crons.test.ts does).
 const worker = readFileSync("worker.ts", "utf8");
-const schedules = Object.fromEntries([...worker.matchAll(/export const (\w+_CRON) = "([^"]+)"/g)].map((m) => [m[1], m[2]]));
+const crons = readFileSync("worker-crons.ts", "utf8");
+const schedules = Object.fromEntries([...crons.matchAll(/export const (\w+_CRON) = "([^"]+)"/g)].map((m) => [m[1], m[2]]));
 const workerRoutes: Record<string, string> = Object.fromEntries(
-  [...worker.matchAll(/\[(\w+_CRON)\]: "([^"]+)"/g)].map((m) => [schedules[m[1]], m[2]]),
+  [...crons.matchAll(/\[(\w+_CRON)\]: "([^"]+)"/g)].map((m) => [schedules[m[1]], m[2]]),
 );
 const workerCursorRoutes = [...worker.matchAll(/runCursorCron\("([^"]+)"/g)].map((m) => m[1]);
 

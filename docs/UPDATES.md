@@ -10,7 +10,7 @@ The Updates page shows the version BuPulse is running, the newest release on Git
 4. The admin types the version in the dialog. BuPulse checks that no deploy is queued or running, allows one start per minute, checks the ref (see *Which refs can be installed* below), then calls GitHub's `workflow_dispatch` with `ref` = the release tag (or a commit SHA when the repository has no releases or tags), `action: deploy`, `environment: production`.
 5. The run shows in **Deploys** within a few seconds; the list refreshes every 10 seconds until it finishes, then the page reloads. If the `production` environment has required reviewers, the run waits for approval on GitHub (the status reads "Waiting for approval").
 
-What the workflow does for a deploy: check out `main`, check the ref again (format, and that it is on `main`'s history), check it out, `npm ci`, `prisma generate`, **`prisma migrate deploy`** (a failed migration stops everything), then `opennextjs-cloudflare build` and `deploy` with `BUILD_SHA` set to the commit.
+What the workflow does for a deploy: check out `main`, check the ref again (format, and that it is on `main`'s history), check it out, check the variables (`scripts/check-env.mjs --build` and `--cloudflare`: names only), `npm ci`, `prisma generate`, **`prisma migrate deploy`** (a failed migration stops everything), then the Workers build (`scripts/cf-build.mjs`) and `opennextjs-cloudflare deploy` with `BUILD_SHA` set to the commit.
 
 ## Rollback
 

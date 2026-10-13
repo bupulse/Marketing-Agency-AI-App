@@ -4,17 +4,9 @@ import "server-only";
 import { geocodingAvailable } from "@/lib/geo-availability";
 import { reverseGeocodeCountry } from "@/lib/places/google";
 import { builtinCountryAt } from "./builtin";
+import { geoProvider } from "./availability";
 
-export type GeoProvider = "builtin" | "google";
-
-export function geoProvider(): GeoProvider {
-  return (process.env.GEO_PROVIDER ?? "").trim().toLowerCase() === "google" ? "google" : "builtin";
-}
-
-/** Is "Use my location" usable right now? Always for builtin; for google when a key is set and Google accepts it. */
-export async function geoLookupAvailable(): Promise<boolean> {
-  return geoProvider() === "builtin" ? true : (await geocodingAvailable()) !== null;
-}
+export { geoLookupAvailable, geoProvider, type GeoProvider } from "./availability";
 
 /** The ISO country of a point, or null for open sea. The google provider may throw (GeocodeDeniedError, PlacesError). */
 export async function lookupCountry(lat: number, lng: number): Promise<string | null> {

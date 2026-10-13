@@ -26,10 +26,14 @@
     }
   ],
   // Converting big photos to JPEG for Instagram is CPU heavy. The default is 30 s per invocation; this allows 2 minutes
-  // (Workers Paid, max 300000). Cron runs may also wait on networks for a while: they are not limited by wall time.
+  // (Workers Paid, max 300000). Waiting on networks and AI does not count as CPU; a cron run may last up to 15 minutes.
   "limits": { "cpu_ms": 120000 },
   "triggers": {
-    // Every minute: publish due posts. Hourly at :23: collect post metrics (METRICS_CRON in worker.ts); each post is measured at most once every 20 hours. Every 3 hours on Fridays and Saturdays: Autopilot plans next week (AUTOPILOT_CRON). Hourly at :37: the leads summary email, sent to businesses where it is 08:00 (LEADS_DIGEST_CRON). Daily at 03:47 UTC: re-sync imported store products (STORE_SYNC_CRON). Daily at 02:17 UTC: analytics roll-up (ANALYTICS_ROLLUP_CRON). Daily at 04:29 UTC: plan price changes (PLAN_PRICE_CRON). Daily at 05:41 UTC: Mobile Money renewal reminders and grace period (MOMO_RENEWALS_CRON). Hourly at :53: trial-end reminders and expiry (TRIAL_CRON).
+    // The schedules and their routes are in worker-crons.ts (tests/worker-crons.test.ts keeps both lists equal). Every
+    // minute: publish due posts. Hourly: metrics (:23), leads summary (:37), trial reminders (:53), content summary (:07).
+    // Daily (UTC): analytics roll-up 02:17, media cleanup 03:19, store sync 03:47, plan price changes 04:29, Mobile
+    // Money renewals and offer reminders 05:41. Every 3 hours on Fridays and Saturdays: Autopilot. 11 triggers; Workers
+    // Paid allows 250 per account.
     "crons": ["* * * * *", "23 * * * *", "11 */3 * * 5,6", "37 * * * *", "47 3 * * *", "17 2 * * *", "29 4 * * *", "41 5 * * *", "53 * * * *", "19 3 * * *", "7 * * * *"]
   },
   "observability": { "enabled": true }

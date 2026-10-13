@@ -42,9 +42,9 @@ export const VIDEO_RESERVATION_MS = 2 * 60 * 60 * 1000;
 export const WEBM_READ_MAX_BYTES = 8 * 1024 * 1024;
 /**
  * Videos are heavy and the free storage is small (MEDIA_PLATFORM_MAX_BYTES): each company's gallery videos stop at
- * MEDIA_COMPANY_VIDEO_MAX_BYTES, 300 MB by default, inside its 2 GB.
+ * MEDIA_COMPANY_VIDEO_MAX_BYTES, 100 MB by default (owner decision for launch), inside its 2 GB.
  */
-export const COMPANY_VIDEO_DEFAULT_MAX_BYTES = 300 * 1024 * 1024;
+export const COMPANY_VIDEO_DEFAULT_MAX_BYTES = 100 * 1024 * 1024;
 
 export function companyVideoMaxBytes(raw: string | undefined = process.env.MEDIA_COMPANY_VIDEO_MAX_BYTES): number {
   const n = Number(raw);

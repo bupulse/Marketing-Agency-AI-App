@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { BUILD_REQUIRED, checkEnv, netlifyEnv, RUNTIME_RECOMMENDED, RUNTIME_REQUIRED } from "@/scripts/check-env.mjs";
+import { BUILD_REQUIRED, checkEnv, cloudflareEnv, netlifyEnv, RUNTIME_RECOMMENDED, RUNTIME_REQUIRED, wranglerInfo } from "@/scripts/check-env.mjs";
 
 const SECRET = "s3cr3t-value-that-must-never-be-printed-0123456789";
 const good = {
@@ -86,6 +86,23 @@ describe("check-env: Netlify", () => {
     expect(await netlifyEnv("tok", "site-1", fetchImpl as unknown as typeof fetch)).toEqual({ DATABASE_URL: "set", CRON_SECRET: "set" });
     expect(fetchImpl.mock.calls[1][0]).toBe("https://api.netlify.com/api/v1/accounts/acc-1/env?site_id=site-1");
     await expect(netlifyEnv("tok", "site-1", (async () => new Response("nope", { status: 401 })) as unknown as typeof fetch)).rejects.toThrow("Netlify answered 401 for the site.");
+  });
+});
+
+describe("check-env: Cloudflare", () => {
+  it("reads the Worker's secret names with the token; Hyperdrive stands in for DATABASE_URL", async () => {
+    const fetchImpl = vi.fn(async () => Response.json({ success: true, result: [{ name: "CRON_SECRET", type: "secret_text" }, { name: "RESEND_API_KEY", type: "secret_text" }] }));
+    expect(await cloudflareEnv("tok", "acc-1", "bupulse", true, fetchImpl as unknown as typeof fetch)).toEqual({ CRON_SECRET: "set", RESEND_API_KEY: "set", DATABASE_URL: "set" });
+    expect(fetchImpl.mock.calls[0]).toEqual(["https://api.cloudflare.com/client/v4/accounts/acc-1/workers/scripts/bupulse/secrets", { headers: { authorization: "Bearer tok" } }]);
+    expect(await cloudflareEnv("tok", "acc-1", "bupulse", false, fetchImpl as unknown as typeof fetch)).not.toHaveProperty("DATABASE_URL");
+    await expect(cloudflareEnv("tok", "acc-1", "bupulse", true, (async () => new Response("", { status: 404 })) as unknown as typeof fetch)).rejects.toThrow(/no Worker named bupulse/);
+    await expect(cloudflareEnv("tok", "acc-1", "bupulse", true, (async () => new Response("", { status: 403 })) as unknown as typeof fetch)).rejects.toThrow("Cloudflare answered 403 for the Worker's secrets.");
+  });
+
+  it("wrangler.jsonc: the Worker name and whether Hyperdrive has a real config id", () => {
+    expect(wranglerInfo(readFileSync("wrangler.jsonc", "utf8")).name).toBe("bupulse");
+    expect(wranglerInfo('{ "name": "bupulse", "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "TODO_HYPERDRIVE_CONFIG_ID" }] }')).toEqual({ name: "bupulse", hyperdrive: false });
+    expect(wranglerInfo('{ "name": "bupulse", "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "0123456789abcdef0123456789abcdef" }] }')).toEqual({ name: "bupulse", hyperdrive: true });
   });
 });
 

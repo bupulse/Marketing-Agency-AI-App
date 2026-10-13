@@ -141,11 +141,11 @@ describe("gallery video rules", () => {
     expect(sniffVideoType(JPEG)).toBeNull();
   });
 
-  it("company video cap (300 MB by default, configurable), aspect and length labels", () => {
-    expect(companyVideoMaxBytes()).toBe(300 * MB);
-    expect(companyVideoMaxBytes("104857600")).toBe(100 * MB);
-    expect(videoQuotaProblem(290 * MB, 20 * MB)).toMatch(/300 MB/);
-    expect(videoQuotaProblem(200 * MB, 20 * MB)).toBeNull();
+  it("company video cap (100 MB by default, configurable), aspect and length labels", () => {
+    expect(companyVideoMaxBytes()).toBe(100 * MB);
+    expect(companyVideoMaxBytes("314572800")).toBe(300 * MB);
+    expect(videoQuotaProblem(90 * MB, 20 * MB)).toMatch(/100 MB/);
+    expect(videoQuotaProblem(70 * MB, 20 * MB)).toBeNull();
     expect([aspectOf(1080, 1920), aspectOf(1080, 1080), aspectOf(1920, 1080), aspectOf(null, 1)]).toEqual(["portrait", "square", "landscape", null]);
     expect(formatDuration(42_400)).toBe("0:42");
   });
@@ -179,8 +179,8 @@ describe("uploading a gallery video", () => {
     expect(res[0].ok && res[0].path).toMatch(new RegExp(`^${USER}/clips/.+\\.mp4$`));
     expect(mocks.createSignedUploadUrl.mock.calls.map((c) => c[0])).toEqual(["gallery-videos", "gallery-videos"]);
     expect(mocks.prisma.mediaUploadReservation.create.mock.calls[0][0].data).toMatchObject({ businessId: "biz1", bytes: 20 * MB });
-    mocks.prisma.mediaAsset.aggregate.mockResolvedValue({ _count: { _all: 3 }, _sum: { bytes: 290 * MB } });
-    expect((await prepareUploads(ctx, [{ name: "b.mp4", type: "video/mp4", size: 20 * MB }], "folder:f1"))[0]).toMatchObject({ ok: false, error: expect.stringMatching(/300 MB/) });
+    mocks.prisma.mediaAsset.aggregate.mockResolvedValue({ _count: { _all: 3 }, _sum: { bytes: 90 * MB } });
+    expect((await prepareUploads(ctx, [{ name: "b.mp4", type: "video/mp4", size: 20 * MB }], "folder:f1"))[0]).toMatchObject({ ok: false, error: expect.stringMatching(/100 MB/) });
   });
 
   it("finalize takes only a reserved path of this company, still open, and no bigger than announced", async () => {
@@ -236,11 +236,11 @@ describe("uploading a gallery video", () => {
   it("quotas are checked first, before any of the file is read", async () => {
     const fetchMock = serve({ [VIDEO]: phoneVideo(10_000) });
     mocks.info.mockResolvedValue({ data: { size: 40 * MB, contentType: "video/mp4" }, error: null });
-    mocks.prisma.mediaAsset.aggregate.mockResolvedValue({ _count: { _all: 3 }, _sum: { bytes: 280 * MB } });
+    mocks.prisma.mediaAsset.aggregate.mockResolvedValue({ _count: { _all: 3 }, _sum: { bytes: 80 * MB } });
     // Its own reservation (40 MB) is counted in the usage and taken out again for the check.
     mocks.prisma.mediaUploadReservation.findUnique.mockResolvedValue({ path: VIDEO, businessId: "biz1", bytes: 40 * MB, expiresAt: new Date(Date.now() + 1000) });
     mocks.prisma.mediaUploadReservation.aggregate.mockResolvedValue({ _count: { _all: 1 }, _sum: { bytes: 40 * MB } });
-    await expect(finalizeUpload(ctx, { path: VIDEO, name: "x", destination: "folder:f1" })).rejects.toThrow(/300 MB/);
+    await expect(finalizeUpload(ctx, { path: VIDEO, name: "x", destination: "folder:f1" })).rejects.toThrow(/100 MB/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

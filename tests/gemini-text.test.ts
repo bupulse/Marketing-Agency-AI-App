@@ -1,14 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { create } = vi.hoisted(() => ({ create: vi.fn() }));
-vi.mock("@google/genai", () => ({
-  GoogleGenAI: class {
-    interactions = { create };
-  },
-}));
+vi.mock("@/lib/ai/gemini-rest", async (orig) => ({ ...(await orig<typeof import("@/lib/ai/gemini-rest")>()), createInteraction: (_key: string, body: unknown) => create(body) }));
 
 import { GeminiTextProvider } from "@/lib/ai/gemini-text";
 import { AIProviderError } from "@/lib/ai/types";
+import { GeminiHttpError } from "@/lib/ai/gemini-rest";
 
 const reply = (text: string) => ({
   id: "i1",
@@ -16,7 +13,7 @@ const reply = (text: string) => ({
   steps: [{ type: "thought" }, { type: "model_output", content: [{ type: "text", text }] }],
   usage: { total_input_tokens: 10, total_output_tokens: 5, total_thought_tokens: 20 },
 });
-const httpError = (status: number) => Object.assign(new Error(`HTTP ${status}`), { status });
+const httpError = (status: number) => new GeminiHttpError(status);
 
 describe("GeminiTextProvider", () => {
   beforeEach(() => create.mockReset());

@@ -1,9 +1,13 @@
 #!/usr/bin/env node
-// Checks the production environment variables before a deploy (docs/DEPLOY_NETLIFY.md, docs/RELEASE_2.0.md). Prints
+// Checks the production environment variables before a deploy (docs/DEPLOY.md, docs/DEPLOY_NETLIFY.md,
+// docs/RELEASE_2.0.md). Prints
 // variable NAMES and problems only, never a value. Exit code 1 when something required is missing or wrong.
 //
 //   node scripts/check-env.mjs --build     the build-time values in this process (the deploy workflow's env:
 //                                          NEXT_PUBLIC_*, PLATFORM, and DIRECT_URL for the migrations)
+//   node scripts/check-env.mjs --cloudflare  the Worker's secrets set in Cloudflare (names, read with
+//                                          CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID; values cannot be read) and
+//                                          the Hyperdrive binding in wrangler.jsonc (it replaces DATABASE_URL there)
 //   node scripts/check-env.mjs --netlify   the runtime values set in Netlify (names, read with NETLIFY_AUTH_TOKEN
 //                                          and NETLIFY_SITE_ID; secret values cannot be read, so only presence)
 //   node scripts/check-env.mjs --runtime   the runtime values in this process (a local .env: node --env-file=.env)
@@ -33,7 +37,7 @@ export const RUNTIME_RECOMMENDED = [
   ["AI_COMPANY_MONTHLY_USD", "each company's AI allowance uses its default (3 USD)"],
   ["WIDGET_AI_SHARE", "the website chat may use half of a company's AI allowance (default 0.5)"],
   ["MEDIA_PLATFORM_MAX_BYTES", "the shared storage guard uses 900 MB"],
-  ["MEDIA_COMPANY_VIDEO_MAX_BYTES", "each company's Gallery videos stop at 300 MB"],
+  ["MEDIA_COMPANY_VIDEO_MAX_BYTES", "each company's Gallery videos stop at 100 MB"],
   ["ELEVENLABS_API_KEY", "voiceovers and Generate a track are off"],
   ["VIDEO_ROBOT_SECRET", "the video robot is off: owners make videos in their browser"],
   ["NEXT_PUBLIC_WHATSAPP_NUMBER", "no Chat on WhatsApp button"],
@@ -130,6 +134,30 @@ export async function netlifyEnv(token, siteId, fetchImpl = fetch) {
   return env;
 }
 
+/** The Worker's name and whether wrangler.jsonc binds a real Hyperdrive config (not the TODO placeholder). Pure. */
+export function wranglerInfo(jsonc) {
+  const name = /"name":\s*"([^"]+)"/.exec(jsonc)?.[1] ?? null;
+  const id = /"hyperdrive":\s*\[[\s\S]*?"id":\s*"([^"]*)"/.exec(jsonc)?.[1] ?? "";
+  return { name, hyperdrive: /^[0-9a-f]{32}$/.test(id) };
+}
+
+/**
+ * The secret names set on the Worker, as an env-like object whose values are "set" (Cloudflare never returns secret
+ * values). On Cloudflare the database is the Hyperdrive binding (lib/platform/database.ts), so with one DATABASE_URL
+ * counts as set.
+ */
+export async function cloudflareEnv(token, accountId, worker, hyperdrive, fetchImpl = fetch) {
+  const url = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/workers/scripts/${encodeURIComponent(worker)}/secrets`;
+  const res = await fetchImpl(url, { headers: { authorization: `Bearer ${token}` } });
+  if (res.status === 404) throw new Error(`Cloudflare has no Worker named ${worker} yet: set its secrets first (wrangler secret put creates it, docs/DEPLOY.md).`);
+  if (!res.ok) throw new Error(`Cloudflare answered ${res.status} for the Worker's secrets.`);
+  const { result } = await res.json();
+  const env = {};
+  for (const s of Array.isArray(result) ? result : []) if (s?.name) env[s.name] = "set";
+  if (hyperdrive) env.DATABASE_URL = "set";
+  return env;
+}
+
 function report({ errors, warnings }, label) {
   for (const w of warnings) console.log(`warning: ${w}`);
   for (const e of errors) console.log(`error: ${e}`);
@@ -138,7 +166,7 @@ function report({ errors, warnings }, label) {
 }
 
 async function main(argv) {
-  const mode = argv.includes("--netlify") ? "netlify" : argv.includes("--runtime") ? "runtime" : "build";
+  const mode = argv.includes("--cloudflare") ? "cloudflare" : argv.includes("--netlify") ? "netlify" : argv.includes("--runtime") ? "runtime" : "build";
   if (mode === "netlify") {
     const { NETLIFY_AUTH_TOKEN: token, NETLIFY_SITE_ID: site } = process.env;
     if (!token || !site) {
@@ -146,6 +174,23 @@ async function main(argv) {
       return 1;
     }
     return report(checkEnv(await netlifyEnv(token, site), "runtime", "names"), "Netlify runtime variables");
+  }
+  if (mode === "cloudflare") {
+    const { CLOUDFLARE_API_TOKEN: token, CLOUDFLARE_ACCOUNT_ID: account } = process.env;
+    if (!token || !account) {
+      console.log("error: CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are needed to read the Worker's secrets.");
+      return 1;
+    }
+    const { readFileSync } = await import("node:fs");
+    const { name, hyperdrive } = wranglerInfo(readFileSync("wrangler.jsonc", "utf8"));
+    if (!name) {
+      console.log("error: wrangler.jsonc has no Worker name.");
+      return 1;
+    }
+    const result = checkEnv(await cloudflareEnv(token, account, name, hyperdrive), "runtime", "names");
+    // Without Hyperdrive the database is what is missing, not DATABASE_URL (Workers do not use it).
+    if (!hyperdrive) result.errors = ["wrangler.jsonc has no Hyperdrive config id (TODO_HYPERDRIVE_CONFIG_ID): see docs/DEPLOY.md section 1.", ...result.errors.filter((e) => !e.startsWith("DATABASE_URL "))];
+    return report(result, "Cloudflare Worker secrets");
   }
   return report(checkEnv(process.env, mode, "values"), mode === "build" ? "Build variables" : "Runtime variables");
 }
