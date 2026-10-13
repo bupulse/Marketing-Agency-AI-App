@@ -13,7 +13,7 @@ type ContestPost = { id: string; network: string; excerpt: string };
  * Contests the AI suggested (docs/CONTENT.md): each waits here until the owner enters the prize, the end date and how
  * the winner is chosen, and confirms they will give the prize. Then the post can be approved (never on its own).
  */
-export function ContestConfirm({ posts, today }: { posts: ContestPost[]; today: string }) {
+export function ContestConfirm({ posts, today, canConfirm = true }: { posts: ContestPost[]; today: string; /** Owners and Admins: promising a prize commits the company. */ canConfirm?: boolean }) {
   if (posts.length === 0) return null;
   return (
     <section aria-labelledby="contests" className="@container flex flex-col gap-3">
@@ -23,7 +23,17 @@ export function ContestConfirm({ posts, today }: { posts: ContestPost[]; today: 
       <ul className="grid grid-cols-1 gap-4 @3xl:grid-cols-2">
         {posts.map((p) => (
           <li key={p.id}>
-            <ContestForm post={p} today={today} />
+            {canConfirm ? (
+              <ContestForm post={p} today={today} />
+            ) : (
+              <GlassCard className="flex flex-col gap-2 p-4">
+                <p className="flex items-center gap-2 text-[14px] font-semibold">
+                  <Trophy aria-hidden className="size-4 text-pulse-blue" /> {networkLabel(p.network)} contest
+                </p>
+                <p className="line-clamp-3 text-[14px] text-muted whitespace-pre-line">{p.excerpt}</p>
+                <p className="text-[14px]">Ask an owner or admin to confirm the prize, the end date and how the winner is chosen.</p>
+              </GlassCard>
+            )}
           </li>
         ))}
       </ul>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyContest, CONTEST_NOTE, contestBlocked, contestConfirmSchema, contestDraftText, hasContestPlaceholders, RULES_LINE } from "@/lib/content-flow/contest";
-import { mentionsPrice, priceAngleAllowed, priceSlots, stripPrice, withoutPriceLines } from "@/lib/content-flow/price";
+import { applyContest, CONTEST_NOTE, contestAfterEdit, contestBlocked, contestConfirmSchema, contestDraftText, contestEndProblem, hasContestPlaceholders, RULES_LINE } from "@/lib/content-flow/contest";
+import { isPriceLike, mentionsPrice, priceAngleAllowed, priceFreeLines, priceSlots, stripPrice, stripPriceLike, withoutPriceLines } from "@/lib/content-flow/price";
 import { assignAngles, postsPerApp } from "@/lib/content-flow/slots";
 import { validatePost } from "@/lib/publishing/validate";
 import { postsPerAppLimit, SEED_PLANS } from "@/lib/plans";
@@ -81,5 +81,34 @@ describe("contests need the owner's prize and rules", () => {
     expect(hasContestPlaceholders(text)).toBe(false);
     expect(contestConfirmSchema.safeParse({ prize: "50,000 RWF", endsOn: "2026-10-16", howChosen: "Most likes", willPay: false }).success).toBe(false);
     expect(contestConfirmSchema.safeParse({ prize: "[PRIZE]", endsOn: "2026-10-16", howChosen: "Most likes", willPay: true }).success).toBe(false);
+  });
+});
+
+describe("review fixes: contests and prices", () => {
+  it("re-writes the rules line from the confirmed values when the owner edited the placeholders away", () => {
+    expect(applyContest("Win big!\nRules: whoever. Ends soon.", { prize: "$50", endsOn: "2026-10-16", howChosen: "Most likes" })).toBe("Win big!\n\nRules: Most likes. Ends Friday 16 October. Prize: $50.");
+  });
+
+  it("an edit that changes the confirmed prize, end date or rule needs confirming again", () => {
+    const c = { prize: "50,000 RWF", endsOn: "2026-10-16", howChosen: "Most likes", confirmedAt: "2026-10-13T08:00:00Z" };
+    const text = "Win 50,000 RWF! Rules: Most likes. Ends Friday 16 October. Prize: 50,000 RWF.";
+    expect(contestAfterEdit(c, `Hey! ${text}`)).toEqual(c);
+    expect(contestAfterEdit(c, text.replace("Most likes", "Best video"))).toEqual({ prize: "50,000 RWF", endsOn: "2026-10-16", howChosen: "Most likes" });
+    expect(contestAfterEdit(c, text.replace("16 October", "17 October"))?.confirmedAt).toBeUndefined();
+    expect(contestAfterEdit(null, text)).toBeNull();
+  });
+
+  it("the end date runs from today to 90 days ahead", () => {
+    expect(contestEndProblem("2026-10-12", "2026-10-13")).toMatch(/passed/);
+    expect(contestEndProblem("2026-10-13", "2026-10-13")).toBeNull();
+    expect(contestEndProblem("2027-01-11", "2026-10-13")).toBeNull();
+    expect(contestEndProblem("2027-01-12", "2026-10-13")).toMatch(/90 days/);
+  });
+
+  it("catches price-like words in posts without the price, and drops only those sentences", () => {
+    for (const t of ["It's free!", "Free delivery in Kigali.", "Price on request.", "Only 10k.", "20% off today.", "Just 5,000 RWF.", "Now $49.", "From 12 000 Frw."]) expect(isPriceLike(t)).toBe(true);
+    for (const t of ["Feel free to ask.", "Open 7 days a week.", "We have 40 plants per tower."]) expect(isPriceLike(t)).toBe(false);
+    expect(stripPriceLike("Grow greens. Free installation for schools! Ask us.")).toBe("Grow greens. Ask us.");
+    expect(priceFreeLines("Name: Tower\n- 20% off this week\nGrows 40 plants")).toBe("Name: Tower\nGrows 40 plants");
   });
 });

@@ -15,7 +15,7 @@ import { formatFor, validatePost, type PostFormatName } from "./validate";
 import type { ComposeInput, EditInput } from "./types";
 import { composerMediaFor, isVideoPath, trimNote, videoFitsNetwork } from "@/lib/visuals/post-media";
 import { readyMedia } from "@/lib/visuals/service";
-import { contestBlocked } from "@/lib/content-flow/contest";
+import { CONTEST_NOTE, contestAfterEdit, contestBlocked } from "@/lib/content-flow/contest";
 
 /** A problem the owner can fix. `code` tells the action layer whether it was a missing thing, bad input or a race. */
 export class PublishingError extends Error {
@@ -236,6 +236,16 @@ export async function updatePost(owner: Owner, postId: string, input: EditInput,
   }
 
   const update: Prisma.PostUpdateManyMutationInput = { text: data.text.trim(), hashtags: data.hashtags, mediaPaths: data.mediaPaths, link: data.link, format, ownerEditedAt: now };
+  // A contest edited away from its confirmed prize, end date or winner rule needs confirming again; until then it
+  // cannot be scheduled, and a scheduled one goes back to waiting (lib/content-flow/contest.ts).
+  const contest = contestAfterEdit(post.contest, update.text as string);
+  if (contest) {
+    update.contest = contest;
+    if (contestBlocked({ text: update.text as string, contest })) {
+      if (time?.status === "SCHEDULED") throw new PublishingError(CONTEST_NOTE, "invalid", { form: CONTEST_NOTE });
+      if (!time && post.status === "SCHEDULED") Object.assign(update, { status: "PENDING_APPROVAL", reviewNote: CONTEST_NOTE, autoScheduledAt: null });
+    }
+  }
   if (time) {
     update.status = time.status;
     update.scheduledAt = time.scheduledAt;
@@ -258,6 +268,7 @@ export async function reschedulePost(owner: Owner, postId: string, scheduledAt: 
     throw new PublishingError("A post that is live or going out cannot be moved.", "conflict");
   }
   const revive = post.status === "FAILED" || post.status === "NEEDS_ACTION";
+  if (revive && contestBlocked(post)) throw new PublishingError(CONTEST_NOTE, "invalid");
   const { count } = await prisma.post.updateMany({
     where: { id: postId, businessId: owner.businessId, status: post.status },
     data: revive ? { scheduledAt, status: "SCHEDULED", attempts: 0, nextAttemptAt: null, lockedAt: null, lastError: null, ownerEditedAt: now } : { scheduledAt, ownerEditedAt: now },
@@ -434,6 +445,7 @@ export async function unschedulePost(owner: Owner, postId: string, now = new Dat
 export async function retryPost(owner: Owner, postId: string, now = new Date()): Promise<void> {
   const post = await ownedPost(owner.businessId, postId);
   if (post.status !== "FAILED") throw new PublishingError("Only a failed post can be retried.", "conflict");
+  if (contestBlocked(post)) throw new PublishingError(CONTEST_NOTE, "invalid");
   const { count } = await prisma.post.updateMany({
     where: { id: postId, businessId: owner.businessId, status: "FAILED" },
     data: { status: "SCHEDULED", scheduledAt: now, attempts: 0, nextAttemptAt: null, lockedAt: null, lastError: null },

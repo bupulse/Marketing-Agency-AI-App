@@ -60,14 +60,17 @@ export async function createDayContentAction(input: DayRunInputForm): Promise<({
   }
 }
 
-/** The owner confirms a suggested contest's prize, end date and winner rule (docs/CONTENT.md). */
+/**
+ * The owner confirms a suggested contest's prize, end date and winner rule (docs/CONTENT.md). Promising a prize commits
+ * the company, so it needs an Owner or Admin (the approval level of Content -> Settings), not a Member.
+ */
 export async function confirmContestAction(postId: string, input: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
   const parsed = contestConfirmSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the prize, end date and rules." };
   if (typeof postId !== "string" || postId.length > 64) return { ok: false, error: "We could not find that contest post." };
   let user: Awaited<ReturnType<typeof requireActiveUser>>;
   try {
-    user = await requireActiveUser("content", "throw");
+    user = await requireActiveUser("contentSettings", "throw");
   } catch (error) {
     if (error instanceof ForbiddenError) return { ok: false, error: error.message };
     throw error;

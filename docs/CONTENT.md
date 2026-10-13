@@ -85,7 +85,14 @@ when none of the subject's last 3 posts did (the price angle, or a caption stati
 most about 1 in 4 and never two in a row; "With price" asks every post to state it exactly (the subject must have a
 price); "No price (engaging)" leaves the price angle out, tells every post not to mention a price, removes the price
 lines from the product block, strips any sentence that still states it, and gives the art director no price (so no
-price chip). Posts of "AI decides" that are not the price post get the same treatment.
+price chip). Posts of "AI decides" that are not the price post get the same treatment. Unless every post shows the
+price, the shared prompt carries none (product block, features, knowledge base, profile and description are filtered
+of price-like lines) and the price post gets the price in its own line; every field of a post without the price
+(caption, hashtags, video script, headline) is checked for anything price-like ("free", "on request", "10k",
+"20% off", an amount with a currency) and those sentences are dropped (a post left empty is dropped and not charged).
+The per-day count for posts per app covers every post of the subject on that app that day: by hand, Autopilot or a
+run; going out or gone out that day, or made that day without a time. Autopilot counts the week's existing posts the
+same way.
 
 **Ideas.** Besides the packs' angles there are playful, question or poll, breaking news (only with real news: a
 campaign or a product added in the last 30 days), did you know (facts given or common knowledge, no invented
@@ -102,9 +109,15 @@ Autopilot's idea).
 but never its prize, end date or how the winner is chosen: it writes `[PRIZE]`, `[END DATE]` and
 `[HOW THE WINNER IS CHOSEN]` and a short rules line. The post is saved with `Post.contest = {}` and "Needs your
 confirmation: prize & rules" (migration `20261017150200_contest_posts`). The day view lists such posts with a form:
-prize, end date, how the winner is chosen and "I will give this prize to the winner" (`confirmContest`, guarded by
-`updatedAt`). Until then the post cannot be approved (`approvePosts` skips it), scheduled or published (any text with
-a placeholder fails `validatePost`: composer, Schedule all, auto-approval); a contest is never auto-approved, even
+prize, end date (from today to 90 days ahead, business time zone), how the winner is chosen and "I will give this prize
+to the winner" (`confirmContest`, guarded by `updatedAt`; Owners and Admins only, the approval level of Content ->
+Settings; Members are asked to get one). The picture never shows placeholders (they are taken out of the art
+director's texts) and is redrawn with the prize on its cover after confirming, reusing its photo (no new AI image).
+Editing a confirmed contest so its prize, end date or winner rule is no longer in the text needs confirming again (a
+scheduled one goes back to waiting). Until then the post cannot be approved (`approvePosts` skips it), scheduled or published: `validatePost` refuses
+placeholders, `contestBlocked` is checked by the safety rules (auto-approval, Schedule all, the connect switch, the
+video robot's finish which goes through them), editing with a time, moving a failed post, retry, and the publisher,
+which puts an unconfirmed contest back to waiting; a contest is never auto-approved, even
 once confirmed (`autoSchedule` leaves posts with `contest` alone). Contests are offered only by "Create today's
 content", not by packs from "Write content" or Autopilot.
 

@@ -17,6 +17,7 @@ import { queueWebhookEvent } from "@/lib/webhooks/emit";
 import { postData } from "@/lib/webhooks/events";
 import { createMarkPostedToken } from "./token";
 import { composeText } from "./validate";
+import { CONTEST_NOTE, contestBlocked } from "@/lib/content-flow/contest";
 
 /** A claimed post whose lock is older than this was abandoned by a crashed run and is taken again. */
 export const STALE_LOCK_MINUTES = 10;
@@ -328,6 +329,12 @@ async function handleProviderError(post: ClaimedPost, error: unknown): Promise<"
 /** Publishes one claimed post through its network and records the result. Never throws. */
 async function processPost(post: ClaimedPost): Promise<keyof Omit<PublishRunResult, "claimed">> {
   try {
+    // Last line of defence: a contest without the owner's confirmed prize and rules never goes out; it goes back to
+    // waiting for the owner (lib/content-flow/contest.ts).
+    if (contestBlocked(post)) {
+      await settle(post.id, { status: "PENDING_APPROVAL", reviewNote: CONTEST_NOTE, autoScheduledAt: null });
+      return "retrying";
+    }
     // A post for an app that is not connected (remindOnly) is a reminder; one that lost its account fails.
     const byHand = !post.connection && post.remindOnly;
     if ((!post.connection && !byHand) || !isNetwork(post.network)) {

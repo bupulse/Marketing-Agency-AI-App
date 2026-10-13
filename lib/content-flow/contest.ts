@@ -37,12 +37,45 @@ export function contestDate(day: string): string {
   return new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long" }).format(new Date(Date.UTC(y, m - 1, d, 12)));
 }
 
-/** The text with the owner's prize, end date and winner rule in place of the placeholders. */
+/**
+ * The text with the owner's prize, end date and winner rule in place of the placeholders (function replacers, so a
+ * "$" in the prize is never read as a pattern). A text the owner edited without placeholders gets its rules line
+ * written again from the confirmed values.
+ */
 export function applyContest(text: string, c: Pick<ContestConfirm, "prize" | "endsOn" | "howChosen">): string {
+  const rules = `Rules: ${c.howChosen}. Ends ${contestDate(c.endsOn)}. Prize: ${c.prize}.`;
+  if (!hasContestPlaceholders(text)) return `${text.replace(/\n*\s*Rules?\s*:[^\n]*$/i, "").trim()}\n\n${rules}`;
   return text
-    .replace(/\[prize\]/gi, c.prize)
-    .replace(/\[end date\]/gi, contestDate(c.endsOn))
-    .replace(/\[how the winner is chosen\]/gi, c.howChosen);
+    .replace(/\[prize\]/gi, () => c.prize)
+    .replace(/\[end date\]/gi, () => contestDate(c.endsOn))
+    .replace(/\[how the winner is chosen\]/gi, () => c.howChosen);
+}
+
+/** The end date must be from today (the business's day) to 90 days ahead. */
+export const CONTEST_MAX_DAYS = 90;
+export function contestEndProblem(endsOn: string, today: string): string | null {
+  if (endsOn < today) return "The end date has passed. Choose today or a later day.";
+  const [y, m, d] = today.split("-").map(Number);
+  const last = new Date(Date.UTC(y, m - 1, d + CONTEST_MAX_DAYS)).toISOString().slice(0, 10);
+  if (endsOn > last) return `Choose an end date within ${CONTEST_MAX_DAYS} days.`;
+  return null;
+}
+
+/** Placeholder tokens taken out of a text (for a picture's texts: no "[PRIZE]" is ever drawn). */
+export function withoutPlaceholders(text: string): string {
+  return text.replace(/\[(prize|end date|how the winner is chosen)\]/gi, "").replace(/\s{2,}/g, " ").replace(/\s+([.,!?:])/g, "$1").trim();
+}
+
+/**
+ * A contest after the owner edited its text: still confirmed only while the confirmed prize, end date and winner rule
+ * are all in the text; otherwise it needs confirming again. Null for a post that is not a contest.
+ */
+export function contestAfterEdit(value: unknown, text: string): StoredContest | null {
+  const c = readContest(value);
+  if (!c) return null;
+  if (!c.confirmedAt) return c;
+  const kept = !!c.prize && !!c.endsOn && !!c.howChosen && text.includes(c.prize) && text.includes(contestDate(c.endsOn)) && text.includes(c.howChosen);
+  return kept && !hasContestPlaceholders(text) ? c : { prize: c.prize, endsOn: c.endsOn, howChosen: c.howChosen };
 }
 
 /** Post.contest as stored: what the owner confirmed, or {} while it waits. */

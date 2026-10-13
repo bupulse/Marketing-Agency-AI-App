@@ -6,7 +6,7 @@ const prisma = vi.hoisted(() => ({
   campaignPhoto: { findMany: vi.fn() },
   campaignProduct: { findFirst: vi.fn() },
   mediaAsset: { findMany: vi.fn() },
-  contentVisual: { findMany: vi.fn() },
+  contentVisual: { findMany: vi.fn(), findFirst: vi.fn() },
   post: { findMany: vi.fn(), create: vi.fn(), groupBy: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
   generatedContent: { findMany: vi.fn(), create: vi.fn() },
   connection: { findMany: vi.fn() },
@@ -16,9 +16,9 @@ const usage = vi.hoisted(() => {
   class UsageLimitError extends Error {}
   return { consumeUsage: vi.fn(), refundUsage: vi.fn(), getUsageSummary: vi.fn(), UsageLimitError };
 });
-const visuals = vi.hoisted(() => ({ aiPhotosAvailable: vi.fn(), videoAvailable: vi.fn(), planVisuals: vi.fn(), audienceFor: vi.fn(async () => undefined), directionContext: (x: unknown) => x }));
+const visuals = vi.hoisted(() => ({ aiPhotosAvailable: vi.fn(), videoAvailable: vi.fn(), planVisuals: vi.fn(), updateImageVisual: vi.fn(async () => ({ status: "pending" })), audienceFor: vi.fn(async () => undefined), directionContext: (x: unknown) => x }));
 const pack = vi.hoisted(() => ({ angleFacts: vi.fn(), recentAngles: vi.fn(), aiImagesLeft: vi.fn() }));
-const director = vi.hoisted(() => ({ directVisual: vi.fn(async (ctx: { aiAllowed: boolean; price?: string | null }) => ({ plan: "directed", ai: ctx.aiAllowed })) }));
+const director = vi.hoisted(() => ({ directVisual: vi.fn(async (ctx: { aiAllowed: boolean; price?: string | null; caption?: string }) => ({ plan: "directed", ai: ctx.aiAllowed })) }));
 const ai = vi.hoisted(() => ({ generate: vi.fn() }));
 const auto = vi.hoisted(() => ({ autoSchedule: vi.fn() }));
 
@@ -70,7 +70,7 @@ beforeEach(() => {
   pack.aiImagesLeft.mockResolvedValue({ count: 10, exhausted: null });
   prisma.generatedContent.findMany.mockResolvedValue([{ caption: "Yesterday's post about the tower." }]);
   let n = 0;
-  prisma.generatedContent.create.mockImplementation(async () => ({ id: `content-${++n}` }));
+  prisma.generatedContent.create.mockImplementation(async ({ data }: { data: { caption: string; adHeadlines: string[]; videoScript: string } }) => ({ id: `content-${++n}`, caption: data.caption, adHeadlines: data.adHeadlines, videoScript: data.videoScript }));
   prisma.connection.findMany.mockResolvedValue([{ id: "c-ig", provider: "instagram", status: "ACTIVE", postingMode: "AUTO", kind: "SOCIAL" }]);
   prisma.post.create.mockImplementation(({ data }: { data: unknown }) => data);
   prisma.$transaction.mockImplementation(async (list: unknown[]) => list.map((_, i) => ({ id: `post-${i}` })));
@@ -213,7 +213,9 @@ describe("posts per app, price and ideas", () => {
     expect(posts.filter((n) => n === "facebook")).toHaveLength(1);
     expect(usage.consumeUsage).toHaveBeenCalledWith("u1", "text", 3);
     expect(new Set(result.angles).size).toBe(3);
-    expect(prisma.post.groupBy.mock.calls[0][0].where).toMatchObject({ businessId: "b1", productId: "p1", createdAt: { gte: new Date("2026-10-12T22:00:00Z"), lt: new Date("2026-10-13T22:00:00Z") } });
+    // Every post of the subject on the app for the day: by hand, Autopilot or here; going out, gone out, or made today without a time.
+    const day = { gte: new Date("2026-10-12T22:00:00Z"), lt: new Date("2026-10-13T22:00:00Z") };
+    expect(prisma.post.groupBy.mock.calls[0][0].where).toEqual({ businessId: "b1", productId: "p1", status: { not: "CANCELLED" }, OR: [{ scheduledAt: day }, { publishedAt: day }, { scheduledAt: null, publishedAt: null, createdAt: day }] });
   });
 
   it("skips an app that already has its posts for today", async () => {
@@ -236,6 +238,47 @@ describe("posts per app, price and ideas", () => {
     expect(prompt.match(/Do not mention any price/g)).toHaveLength(2);
     expect(prisma.post.create.mock.calls.map((c) => c[0].data.text).join(" ")).not.toContain("15,000");
     expect(director.directVisual.mock.calls.every((c) => c[0].price === null)).toBe(true);
+  });
+
+  it("AI decides with one price post: the shared prompt has no price; only that post's line carries it; the others are checked field by field", async () => {
+    const { writingSubject } = await import("@/lib/knowledge/service");
+    vi.mocked(writingSubject).mockResolvedValueOnce({ subject: { kind: "product", id: "p1" }, type: "product", title: "Hydro tower", context: "Name: Hydro tower\nPrice: 15,000 RWF\nFree installation in Kigali", price: "15,000 RWF", features: ["Grows 40 plants", "20% off this week"], photoPaths: [] } as never);
+    pack.recentAngles.mockResolvedValue([]);
+    ai.generate.mockImplementation(async ({ prompt }: { prompt: string }) => {
+      const answer = packAnswer(prompt);
+      const parsed = JSON.parse(answer.text);
+      for (const p of parsed.posts) {
+        p.caption = `Post ${p.index}: fresh greens at school. Now 10k only! Price on request for schools.`;
+        p.videoScript = "0-3s: Only 15,000 RWF!\n3-6s: Grow at school.";
+        p.headline = "Only 15,000 RWF";
+      }
+      return { ...answer, text: JSON.stringify(parsed) };
+    });
+    await runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "ai", design: "free", networks: ["instagram", "facebook", "tiktok", "linkedin"], price: "auto" }, NOW);
+    const prompt = ai.generate.mock.calls[0][0].prompt as string;
+    expect(prompt.match(/State the price exactly as given: 15,000 RWF\./g)).toHaveLength(1);
+    const shared = prompt.split("Write 4 posts")[0];
+    expect(shared).not.toMatch(/15,000|20% off|Free installation/);
+    const contents = prisma.generatedContent.create.mock.calls.map((c) => c[0].data);
+    const unpriced = contents.filter((c) => c.angle !== "price");
+    expect(unpriced.length).toBe(3);
+    for (const c of unpriced) {
+      expect(c.caption).toMatch(/^Post \d: fresh greens at school\.$/);
+      expect(c.videoScript).not.toMatch(/15,000/);
+      expect(c.adHeadlines).toEqual([]);
+    }
+  });
+
+  it("a contest's picture never shows the placeholders", async () => {
+    const business = await prisma.business.findUnique();
+    prisma.business.findUnique.mockResolvedValue({ ...business, marketingProfile: { voice: "Fun", do: ["Be playful"], dont: ["Be stiff"], samples: ["Hi!"], answers: [{ topic: "tone", answer: "Fun and playful" }], approvedAt: "2026-10-01" } });
+    pack.recentAngles.mockResolvedValue(["features", "price", "story", "tips", "how-it-works", "news", "faq", "behind-scenes", "cta", "tip-of-day", "did-you-know", "poll", "playful", "myth-fact", "trivia", "meme"]);
+    director.directVisual.mockImplementationOnce(async () => ({ slides: [{ headline: "Win [PRIZE]!", subline: "Ends [END DATE]", chip: "[PRIZE]", kicker: "Contest" }] }) as never);
+    await runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "ai", design: "free", networks: ["facebook"] }, NOW);
+    expect(prisma.generatedContent.create.mock.calls[0][0].data.angle).toBe("challenge");
+    expect(director.directVisual.mock.calls[0][0].caption).not.toMatch(/\[/);
+    const plan = visuals.planVisuals.mock.calls[0][0].precomputed;
+    expect(plan.slides[0]).toEqual({ headline: "Win!", subline: "Ends", chip: "", kicker: "Contest" });
   });
 
   it("With price needs a price on the subject", async () => {
@@ -261,19 +304,33 @@ describe("posts per app, price and ideas", () => {
 describe("confirming a contest", () => {
   it("fills in the owner's prize, end date and rule, guarded by updatedAt", async () => {
     const updatedAt = new Date("2026-10-13T05:00:00Z");
-    prisma.post.findFirst.mockResolvedValue({ id: "c1", text: "Win [PRIZE]! Rules: [HOW THE WINNER IS CHOSEN]. Ends [END DATE]. Prize: [PRIZE].", status: "PENDING_APPROVAL", contest: {}, updatedAt });
+    prisma.post.findFirst.mockResolvedValue({ id: "c1", text: "Win [PRIZE]! Rules: [HOW THE WINNER IS CHOSEN]. Ends [END DATE]. Prize: [PRIZE].", status: "PENDING_APPROVAL", contest: {}, contentId: "content-9", updatedAt });
     prisma.post.updateMany.mockResolvedValue({ count: 1 });
-    await confirmContest(owner, "c1", { prize: "50,000 RWF", endsOn: "2026-10-16", howChosen: "Most likes", willPay: true }, NOW);
+    prisma.contentVisual.findFirst.mockResolvedValue({ id: "vis-1" });
+    await confirmContest(owner, "c1", { prize: "$50 & more", endsOn: "2026-10-16", howChosen: "Most likes", willPay: true }, NOW);
     const call = prisma.post.updateMany.mock.calls[0][0];
     expect(call.where).toEqual({ id: "c1", businessId: "b1", updatedAt });
-    expect(call.data.text).toBe("Win 50,000 RWF! Rules: Most likes. Ends Friday 16 October. Prize: 50,000 RWF.");
-    expect(call.data).toMatchObject({ reviewNote: null, contest: { prize: "50,000 RWF", endsOn: "2026-10-16", howChosen: "Most likes", confirmedAt: NOW.toISOString() } });
+    // "$" in the prize is kept as typed (no pattern replacement).
+    expect(call.data.text).toBe("Win $50 & more! Rules: Most likes. Ends Friday 16 October. Prize: $50 & more.");
+    expect(call.data).toMatchObject({ reviewNote: null, contest: { prize: "$50 & more", endsOn: "2026-10-16", howChosen: "Most likes", confirmedAt: NOW.toISOString() } });
+    // Not an owner edit, so the redrawn picture still goes on the post; the cover is redrawn with the prize, photo reused.
+    expect(call.data).not.toHaveProperty("ownerEditedAt");
+    expect(visuals.updateImageVisual).toHaveBeenCalledWith(owner, "vis-1", { slides: [{ index: 0, chip: "$50 & more" }] });
+  });
+
+  it("refuses an end date in the past or more than 90 days ahead (business time zone)", async () => {
+    prisma.post.findFirst.mockResolvedValue({ id: "c1", text: "Win [PRIZE]", status: "PENDING_APPROVAL", contest: {}, contentId: null, updatedAt: NOW });
+    // 00:30 on 13 October in Kigali is still 12 October in UTC: the 12th is already past for the business.
+    const kigaliMorning = new Date("2026-10-12T22:30:00Z");
+    await expect(confirmContest(owner, "c1", { prize: "x", endsOn: "2026-10-12", howChosen: "y", willPay: true }, kigaliMorning)).rejects.toThrow(/has passed/);
+    await expect(confirmContest(owner, "c1", { prize: "x", endsOn: "2027-02-01", howChosen: "y", willPay: true }, NOW)).rejects.toThrow(/within 90 days/);
+    expect(prisma.post.updateMany).not.toHaveBeenCalled();
   });
 
   it("refuses a post that is not a contest, or that changed meanwhile", async () => {
     prisma.post.findFirst.mockResolvedValue({ id: "p", text: "Hi", status: "PENDING_APPROVAL", contest: null, updatedAt: NOW });
     await expect(confirmContest(owner, "p", { prize: "x", endsOn: "2026-10-16", howChosen: "y", willPay: true })).rejects.toThrow(/could not find/);
-    prisma.post.findFirst.mockResolvedValue({ id: "c1", text: "Win [PRIZE]", status: "PENDING_APPROVAL", contest: {}, updatedAt: NOW });
+    prisma.post.findFirst.mockResolvedValue({ id: "c1", text: "Win [PRIZE]", status: "PENDING_APPROVAL", contest: {}, contentId: null, updatedAt: NOW });
     prisma.post.updateMany.mockResolvedValue({ count: 0 });
     await expect(confirmContest(owner, "c1", { prize: "x", endsOn: "2026-10-16", howChosen: "y", willPay: true })).rejects.toThrow(/changed meanwhile/);
   });

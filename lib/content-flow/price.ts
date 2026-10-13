@@ -55,3 +55,39 @@ export function priceSlots(choice: PriceChoice, angles: readonly string[], histo
 export function priceAngleAllowed(choice: PriceChoice, history: PriceHistory, hasPrice: boolean): boolean {
   return hasPrice && choice !== "none" && (choice === "with" || !history.slice(0, 3).some(Boolean));
 }
+
+// Price-like words a "No price" post must not carry, whatever the number: "free", "on request", "10k", "20% off",
+// an amount with a currency.
+const PRICE_LIKE = [
+  /\bfree (?:of charge|delivery|shipping|installation|trial|consultation|gift|sample|quote)\b|\bfor free\b|\b(?:is|are|it's|its) free\b/i,
+  /\b(?:price|prices|priced|pricing)\s+on request\b|\bon request\b/i,
+  /\b\d+(?:[.,]\d+)?\s?k\b/i,
+  /\b\d+\s?%\s?(?:off|discount|cheaper|less)\b|\b(?:discount|promo code|sale price|half price)\b/i,
+  /(?:\brwf|\bfrw|\bfrs?\b|\busd|\bkes|\bugx|\btzs|\$|€|£)\s?\d|\d[\d,.\s]*\s?(?:rwf|frw|frs?|francs?|usd|dollars?|kes|ugx|tzs|shillings?)\b/i,
+];
+
+/** Whether a text states a price or anything price-like. */
+export function isPriceLike(text: string, price?: string | null): boolean {
+  return mentionsPrice(text, price) || PRICE_LIKE.some((r) => r.test(text));
+}
+
+/** The text without the sentences (or lines) that are price-like. */
+export function stripPriceLike(text: string, price?: string | null): string {
+  if (!isPriceLike(text, price)) return text;
+  return text
+    .split("\n")
+    .map((line) => line.split(/(?<=[.!?])\s+/).filter((p) => !isPriceLike(p, price)).join(" "))
+    .filter((line, i, all) => line.trim() || (i > 0 && all[i - 1].trim()))
+    .join("\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+/** A block of facts without its price-like lines (product block, features, knowledge base, profile). */
+export function priceFreeLines(text: string | null | undefined, price?: string | null): string | null {
+  if (!text) return text ?? null;
+  return text
+    .split("\n")
+    .filter((l) => !/^\s*-?\s*(price|price or offer|pricing|offer|cost|discount)\b/i.test(l) && !isPriceLike(l, price))
+    .join("\n");
+}

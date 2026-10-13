@@ -19,6 +19,7 @@ import { NETWORK_STYLE } from "@/lib/content-flow/networks";
 import { networkChoices, runAllowance } from "@/lib/content-flow/service";
 import { loadComposerContext } from "@/lib/publishing/queries";
 import { isNetwork } from "@/lib/social/registry";
+import { can } from "@/lib/team/roles";
 import { FilterBar } from "./filter-bar";
 import { ScheduleAllButton } from "./schedule-all";
 import { PostBoard } from "./post-board";
@@ -35,7 +36,7 @@ const SECTIONS: DaySection[] = ["review", "goes", "made"];
 export async function SubjectPostsPage({ scope, searchParams }: { scope: ContentScope; searchParams: SearchParams }) {
   const blocked = (await featureGate("content")) ?? (await featureGate("calendar"));
   if (blocked) return blocked;
-  const { business, user } = await getAppContext();
+  const { business, user, role } = await getAppContext();
   const info = await loadSubjectInfo(business.id, scope);
   if (!info) notFound();
   const zone = business.timezone || "UTC";
@@ -111,7 +112,7 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
       <div className="-mt-3 flex justify-end">
         <ScheduleAllButton query={contentQuery({ ...filters, range: "custom", from: day, to: day })} scope={scope} />
       </div>
-      <ContestConfirm posts={list.posts.filter((p) => p.contest?.pending).map((p) => ({ id: p.id, network: p.network, excerpt: p.excerpt }))} today={today} />
+      <ContestConfirm posts={list.posts.filter((p) => p.contest?.pending).map((p) => ({ id: p.id, network: p.network, excerpt: p.excerpt }))} today={today} canConfirm={can(role, "contentSettings")} />
       {shown.length === 0
         ? empty
         : shown.map((s) => (

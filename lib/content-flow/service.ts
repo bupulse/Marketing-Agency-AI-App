@@ -33,7 +33,7 @@ import { directVisual } from "@/lib/visuals/art-director";
 import { diversifyPack } from "@/lib/visuals/direction";
 import { featureStatus } from "@/lib/entitlements";
 import { VOICE_FEATURE } from "@/lib/voice/service";
-import { aiPhotosAvailable, audienceFor, directionContext, planVisuals, videoAvailable, type Owner } from "@/lib/visuals/service";
+import { aiPhotosAvailable, audienceFor, directionContext, planVisuals, updateImageVisual, videoAvailable, type Owner } from "@/lib/visuals/service";
 import { dayNumber, dayVariety, subjectKeyOf } from "./variety";
 import { runCost, type DayMode, type DesignChoice } from "./cost";
 import { dayBounds, dayDate, todayIn } from "./day";
@@ -41,10 +41,10 @@ import { assignMedia, hasBeforeAfter, isDrawable, mediaLines, ownMediaFor, type 
 import { fitToNetwork, languageLine, languageMixOf, NETWORK_STYLE } from "./networks";
 import { fence } from "@/lib/visuals/art-director";
 import { adaptOwnPost } from "./writer";
-import { mentionsPrice, priceAngleAllowed, priceSlots, stripPrice, withoutPriceLines, type PriceChoice } from "./price";
+import { isPriceLike, mentionsPrice, priceAngleAllowed, priceFreeLines, priceSlots, stripPriceLike, withoutPriceLines, type PriceChoice } from "./price";
 import { assignAngles, postsPerApp } from "./slots";
 import { postsPerAppLimit } from "@/lib/plans";
-import { applyContest, CONTEST_NOTE, contestDraftText, readContest, type ContestConfirm } from "./contest";
+import { applyContest, CONTEST_NOTE, contestDraftText, contestEndProblem, hasContestPlaceholders, readContest, withoutPlaceholders, type ContestConfirm } from "./contest";
 
 /** A problem the owner can read and act on. */
 export class DayRunError extends KnowledgeError {}
@@ -216,7 +216,14 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
   const since = new Date(now.getTime() - HISTORY_DAYS * 24 * 60 * 60 * 1000);
 
   // How many posts per app: the owner's choice within the plan's limit, counting what the subject has today.
-  const today = await prisma.post.groupBy({ by: ["network"], where: { businessId, ...subjectWhere(input.scope), createdAt: dayBounds(day, zone), status: { not: "CANCELLED" } }, _count: { _all: true } });
+  // Every post of the subject on the app for today (made by hand, by Autopilot or here): going out today, gone out
+  // today, or made today without a time yet.
+  const bounds = dayBounds(day, zone);
+  const today = await prisma.post.groupBy({
+    by: ["network"],
+    where: { businessId, ...subjectWhere(input.scope), status: { not: "CANCELLED" }, OR: [{ scheduledAt: bounds }, { publishedAt: bounds }, { scheduledAt: null, publishedAt: null, createdAt: bounds }] },
+    _count: { _all: true },
+  });
   const perApp = postsPerApp({ networks, perApp: input.mode === "own" ? 1 : (input.perApp ?? 1), limit: allowance.postsPerApp, madeToday: Object.fromEntries(today.map((r) => [r.network, r._count._all])) });
   const skipped: DayRunResult["skipped"] = [...perApp.skipped];
 
@@ -304,13 +311,15 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
         funCount: funCountFor(funShareFor(profile?.answers), slotNetworks.length, dayNumber(day)),
         exclude: priceAngleAllowed(priceChoice, priceHistory, !!subject.item.price) ? [] : ["price"],
       });
+      const item0 = subject.item;
       const assigned = assignAngles(angles, slotNetworks);
       const showsPrice = priceSlots(priceChoice, assigned.map((a) => a.angle), priceHistory, !!subject.item.price);
       const slots: PackSlot[] = assigned.map((slot, i) => {
         const m = media[i];
         const variety = dayVariety(subjectKey, day, i);
         const format = m.kind === "image" ? (slot.format === "video" ? "image" : slot.format) : "video";
-        const price = showsPrice[i] ? (priceChoice === "with" ? "State the price exactly as given." : "") : "Do not mention any price, cost or discount in this post.";
+        // The shared prompt has no price unless every post shows it; the price post gets the price in its own line.
+        const price = showsPrice[i] ? `State the price exactly as given: ${item0.price}.` : "Do not mention any price, cost, discount, free offer or amount in this post.";
         return { ...slot, format, note: [...mediaLines(m), `Opening: ${variety.hook} Structure: ${variety.structure}`, price].filter(Boolean).join(" ") };
       });
       const openings = previous.map((p) => p.caption.split("\n")[0].replace(/\s+/g, " ").slice(0, 120)).filter(Boolean).slice(0, 12);
@@ -322,15 +331,24 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
         openings.length > 4 ? `${fence("RECENT OPENINGS", openings.map((o) => `- ${o}`).join("\n"))}\nThe first lines of the last 30 days' posts: never open with any of these or a close variant.` : "",
       ].filter(Boolean);
       const item = subject.item;
-      const noPrice = showsPrice.every((x) => !x);
-      const promotion = { type: item.type, title: item.title, price: noPrice ? null : item.price, features: item.features, context: noPrice ? withoutPriceLines(item.context) : item.context };
-      const pack = await withLedger(ledger, model, () => writePack(getTextProvider(), brand, promotion, slots, facts.moment ?? null, extra), usage);
-      written = pack.posts.flatMap((p) => {
+      // Unless every post shows the price, the facts the writer gets carry none (product block, features, knowledge
+      // base, profile): a post without the price cannot pick it up from the shared prompt.
+      const allPriced = showsPrice.length > 0 && showsPrice.every(Boolean);
+      const promotion = allPriced
+        ? { type: item.type, title: item.title, price: item.price, features: item.features, context: item.context }
+        : { type: item.type, title: item.title, price: null, features: item.features.filter((f) => !isPriceLike(f, item.price)), context: priceFreeLines(withoutPriceLines(item.context), item.price) };
+      const writerBrand: BrandContext = allPriced ? brand : { ...brand, knowledgeBase: priceFreeLines(brand.knowledgeBase, item.price), profile: priceFreeLines(brand.profile, item.price), description: brand.description && stripPriceLike(brand.description, item.price) };
+      const pack = await withLedger(ledger, model, () => writePack(getTextProvider(), writerBrand, promotion, slots, facts.moment ?? null, extra), usage);
+      written = pack.posts.flatMap((p): typeof written => {
         const slot = slots.findIndex((s) => s.angle === p.angle && s.network === p.network);
         if (slot < 0) return [];
-        // "No price" posts never state it, whatever the writer did.
-        const caption = showsPrice[slot] ? p.caption : stripPrice(p.caption, item.price);
-        return [{ ...p, ...fitToNetwork(p.network, caption, p.hashtags), slot, showsPrice: showsPrice[slot], provider: pack.provider, model: pack.model }];
+        if (showsPrice[slot]) return [{ ...p, ...fitToNetwork(p.network, p.caption, p.hashtags), slot, showsPrice: true, provider: pack.provider, model: pack.model }];
+        // A post without the price never states one, whatever the writer did: every field is checked and the
+        // price-like sentences dropped; a post left empty is dropped (and not charged).
+        const caption = stripPriceLike(p.caption, item.price);
+        if (!caption.trim()) return [];
+        const fitted = fitToNetwork(p.network, caption, p.hashtags.filter((h) => !isPriceLike(h.replace(/^#/, ""), item.price)));
+        return [{ ...p, ...fitted, videoScript: stripPriceLike(p.videoScript, item.price), headline: stripPriceLike(p.headline, item.price), slot, showsPrice: false, provider: pack.provider, model: pack.model }];
       });
       kept = written.length;
     }
@@ -412,6 +430,21 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
 
 const isVideoPath = (p: string) => /\.(mp4|webm)$/i.test(p);
 
+/** A contest's picture plan with no placeholder in any slide text (the chip waits for the confirmed prize). */
+export function scrubContestPlan<T extends { slides?: { headline: string; subline: string; chip: string; kicker?: string }[] } | null | undefined>(plan: T): T {
+  if (!plan?.slides) return plan;
+  return {
+    ...plan,
+    slides: plan.slides.map((s) => ({
+      ...s,
+      headline: withoutPlaceholders(s.headline),
+      subline: withoutPlaceholders(s.subline),
+      chip: hasContestPlaceholders(s.chip) ? "" : s.chip,
+      ...(s.kicker !== undefined ? { kicker: withoutPlaceholders(s.kicker) } : {}),
+    })),
+  };
+}
+
 async function planDayVisuals(
   owner: Owner,
   ctx: {
@@ -447,13 +480,15 @@ async function planDayVisuals(
     return [];
   });
   const images = jobs.filter((j) => j.kind === "image");
+  const contestJob = (j: Job) => input.mode !== "own" && done[j.i].angle === "challenge";
   const base = (j: Job, aiAllowed: boolean) => ({
     business,
     subjectType: subject.type,
     title: subject.title,
     price: j.price,
-    caption: j.content.caption,
-    headlines: j.content.adHeadlines,
+    // A contest's picture never shows its placeholders: the prize goes on it once the owner confirms it.
+    caption: contestJob(j) ? withoutPlaceholders(j.content.caption) : j.content.caption,
+    headlines: contestJob(j) ? j.content.adHeadlines.map(withoutPlaceholders).filter(Boolean) : j.content.adHeadlines,
     videoScript: j.content.videoScript,
     photos: j.photos,
     carouselAllowed: j.carousel,
@@ -462,7 +497,7 @@ async function planDayVisuals(
     angle: j.angle,
   });
   const aiFor = new Map(images.map((j, k) => [j.i, useAi && k < ai.count]));
-  const directed = diversifyPack(await Promise.all(images.map((j) => directVisual(directionContext(base(j, aiFor.get(j.i)!)), owner))), subject.type);
+  const directed = diversifyPack(await Promise.all(images.map((j) => directVisual(directionContext(base(j, aiFor.get(j.i)!)), owner))), subject.type).map((plan, k) => (contestJob(images[k]) ? scrubContestPlan(plan) : plan));
   // The AI photos the art director planned are paid now (one image credit each), so another run or a team member
   // cannot use them meanwhile; a slide that ends up without its AI photo gives its credit back (lib/visuals/service.ts).
   const aiSlides = directed.flatMap((p) => (p?.slides ?? []).filter((x) => x.source === "ai" && !x.aiPhotoPath));
@@ -511,13 +546,24 @@ export function postMediaFor(input: Pick<DayRunInput, "mode" | "overlays">, netw
  * its own). Guarded by the post's updatedAt, so an edit made meanwhile wins.
  */
 export async function confirmContest(owner: Owner, postId: string, input: ContestConfirm, now = new Date()): Promise<void> {
-  const post = await prisma.post.findFirst({ where: { id: postId, businessId: owner.businessId }, select: { id: true, text: true, status: true, contest: true, updatedAt: true } });
+  const [post, business] = await Promise.all([
+    prisma.post.findFirst({ where: { id: postId, businessId: owner.businessId }, select: { id: true, text: true, status: true, contest: true, contentId: true, updatedAt: true } }),
+    prisma.business.findUnique({ where: { id: owner.businessId }, select: { timezone: true } }),
+  ]);
   if (!post || readContest(post.contest) === null) throw new DayRunError("We could not find that contest post.");
   if (!["DRAFT", "PENDING_APPROVAL"].includes(post.status)) throw new DayRunError("This post is no longer waiting for your confirmation.");
+  const problem = contestEndProblem(input.endsOn, todayIn(business?.timezone || "UTC", now));
+  if (problem) throw new DayRunError(problem);
   const contest = { prize: input.prize, endsOn: input.endsOn, howChosen: input.howChosen, confirmedAt: now.toISOString() };
+  // Not marked as an owner edit, so the redrawn picture below still goes on the post.
   const { count } = await prisma.post.updateMany({
     where: { id: post.id, businessId: owner.businessId, updatedAt: post.updatedAt },
-    data: { text: applyContest(post.text, input), contest, reviewNote: null, ownerEditedAt: now },
+    data: { text: applyContest(post.text, input), contest, reviewNote: null },
   });
   if (count === 0) throw new DayRunError("This post changed meanwhile. Open it again and confirm once more.");
+  // The picture is drawn again with the prize on its cover; its photo (AI or album) is reused, no new AI image.
+  if (post.contentId) {
+    const visual = await prisma.contentVisual.findFirst({ where: { businessId: owner.businessId, contentId: post.contentId, kind: { not: "video" } }, orderBy: { createdAt: "desc" }, select: { id: true } });
+    if (visual) await updateImageVisual(owner, visual.id, { slides: [{ index: 0, chip: input.prize.slice(0, 24) }] }).catch((e) => logError(e, { source: "content-flow.contest.redraw", level: "warn", businessId: owner.businessId }));
+  }
 }

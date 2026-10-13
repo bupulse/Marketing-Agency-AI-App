@@ -86,3 +86,11 @@ then the code.
   Never approved, scheduled or auto-approved before that; never auto-approved after.
 - Decision to confirm: "AI decides" shows a price on at most one post per run and only when the subject's last 3
   posts had none.
+
+## Content rules review fixes
+
+Contest guard on every path (validatePost, safety rules, edit with a time, move, retry, approve, publisher), edits
+that change the confirmed prize / date / rule need re-confirming, end date today to 90 days (business zone), Owner or
+Admin to confirm, no placeholders on pictures and a redraw with the prize after confirming (photo reused). "No price"
+posts: price-free shared prompt, every field checked for price-like words. Per-day cap counts every post of the
+subject on the app that day (also Autopilot's planner).
