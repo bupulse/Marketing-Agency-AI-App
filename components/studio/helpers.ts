@@ -192,6 +192,10 @@ export type StudioContent = {
   variants: StudioVariant[];
   edited: boolean;
   createdAt: string;
+  /** A content pack post (docs/CONTENT_PACKS.md): its angle id, the one app it is for, and its pack. */
+  angle?: string | null;
+  network?: string | null;
+  packId?: string | null;
   /** The picture (image or carousel) and the video that come with this version (docs/CONTENT_VISUALS.md). */
   image?: VisualView | null;
   video?: VisualView | null;

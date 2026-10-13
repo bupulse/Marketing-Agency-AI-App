@@ -59,6 +59,10 @@ export interface DirectionContext {
   maxSlides?: number;
   /** The company's country and personas, so the people in AI photos look like its customers. */
   audience?: Audience;
+  /** A content pack post's angle (lib/studio/angles.ts): what it says and what its people photo shows. */
+  angle?: { label: string; people: string } | null;
+  /** Cover templates other posts of the pack already use: this one should look different. */
+  avoidTemplates?: TemplateId[];
 }
 
 const FENCE = /<{3,}|>{3,}/;
@@ -170,7 +174,7 @@ function slide(base: Omit<VisualSlide, "designId" | "path">): VisualSlide {
 function withPeople(slides: VisualSlide[], ctx: DirectionContext, brief: PeopleBrief | null): VisualSlide[] {
   const coverAi = slides[0]?.source === "ai";
   return slides.map((s, i) => {
-    if (s.source === "ai") return { ...s, scene: peopleScene(brief, ctx.audience, ctx.title, !!s.photoPath, s.scene) };
+    if (s.source === "ai") return { ...s, scene: peopleScene(brief, ctx.audience, ctx.title, !!s.photoPath, s.scene, ctx.angle?.people) };
     if (i > 0 && coverAi && s.source === "text") return { ...s, useCoverPhoto: true, template: PHOTO_TEMPLATES.includes(s.template) ? "announcement" : s.template };
     return s;
   });
@@ -231,7 +235,7 @@ export function fallbackPlan(ctx: DirectionContext, notes: string[] = []): Image
       ...(c.source === "ai" ? { scene: ctx.title } : {}),
     }),
   );
-  const people = slides.some((s) => s.source === "ai") ? defaultPeople(ctx.audience, ctx.title) : undefined;
+  const people = slides.some((s) => s.source === "ai") ? defaultPeople(ctx.audience, ctx.title, ctx.angle?.people) : undefined;
   return { version: 1, pack, aspectRatio: "4:5", slides: withPeople(slides, ctx, people ?? null), directedBy: "rules", notes, ...(people ? { people } : {}) };
 }
 
@@ -283,8 +287,29 @@ export function validateDirection(raw: unknown, ctx: DirectionContext): ImagePla
     notes.push(ctx.aiAllowed ? "One AI photo per post: the other slides use your photos or text." : "AI photos are not available right now, so your photos and free designs are used.");
   }
   const usesAi = slides.some((s) => s.source === "ai");
-  const people = usesAi ? (readPeople(d.people) ?? defaultPeople(ctx.audience, ctx.title)) : undefined;
+  const people = usesAi ? (readPeople(d.people) ?? defaultPeople(ctx.audience, ctx.title, ctx.angle?.people)) : undefined;
   return { version: 1, pack, aspectRatio: "4:5", slides: withPeople(slides, ctx, people ?? null), directedBy: "ai", notes, ...(people ? { people } : {}) };
+}
+
+/**
+ * The posts of a pack look different (owner decision): a cover template another post of the pack already uses is
+ * swapped for the subject's next best one nobody uses yet (never a quote, and a photo template only with a photo).
+ * Pure; returns new plans.
+ */
+export function diversifyPack(plans: ImagePlan[], subjectType: string): ImagePlan[] {
+  const used = new Set<TemplateId>();
+  return plans.map((plan) => {
+    const cover = plan.slides[0];
+    if (!cover) return plan;
+    const hasPhoto = cover.source !== "text" || !!cover.useCoverPhoto;
+    let template = cover.template;
+    if (used.has(template) && template !== "quote") {
+      const next = templatesForProjectType(subjectType).find((t) => !used.has(t) && t !== "quote" && (hasPhoto || !PHOTO_TEMPLATES.includes(t)));
+      if (next) template = next;
+    }
+    used.add(template);
+    return template === cover.template ? plan : { ...plan, slides: [{ ...cover, template }, ...plan.slides.slice(1)] };
+  });
 }
 
 /** A stored image plan read back defensively (JSON from the database). Null when it is not a usable plan. */

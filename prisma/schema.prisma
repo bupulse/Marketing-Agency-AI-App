@@ -185,6 +185,11 @@ model GeneratedContent {
   // When its posts to review were drafted (lib/content-board/drafts.ts); null for content from before, which is drafted
   // once when its product or campaign is opened.
   postsDraftedAt DateTime?
+  // Content packs (docs/CONTENT_PACKS.md): the posts written together share packId; each has its angle
+  // (lib/studio/angles.ts) and the one app it is for. All null for content from before packs (one post for every app).
+  packId      String?
+  angle       String?
+  network     String?
   provider    String // "gemini" | "claude" | "edit"
   model       String
   createdAt   DateTime  @default(now())
@@ -194,6 +199,7 @@ model GeneratedContent {
   @@index([productId, createdAt])
   @@index([campaignId, createdAt])
   @@index([businessId, createdAt])
+  @@index([packId])
 }
 
 // ---- Knowledge base (docs/KNOWLEDGE_BASE.md) ----------------------------------------------------------------------

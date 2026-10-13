@@ -140,13 +140,17 @@ export interface PlanInput {
   audience?: Audience;
   /** AI images ran out this month: the plan says so (and when they come back). */
   aiExhausted?: { refillAt: string | null };
+  /** A content pack post's angle (lib/studio/angles.ts): what it says and what its people photo shows. */
+  angle?: { label: string; people: string } | null;
+  /** The image plan, when the caller already asked the art director (content packs make all their plans first). */
+  precomputed?: ImagePlan;
   /** Skip the AI art director (the rules choose). */
   rulesOnly?: boolean;
 }
 
 const mimeOf = (path: string) => (/\.png$/i.test(path) ? "image/png" : /\.jpe?g$/i.test(path) ? "image/jpeg" : /\.webp$/i.test(path) ? "image/webp" : null);
 
-export function directionContext(input: Omit<PlanInput, "owner" | "target" | "video" | "image" | "subjectId" | "aiExhausted">): DirectionContext {
+export function directionContext(input: Omit<PlanInput, "owner" | "target" | "video" | "image" | "subjectId" | "aiExhausted" | "precomputed">): DirectionContext {
   return {
     subjectType: input.subjectType,
     title: input.title,
@@ -159,6 +163,7 @@ export function directionContext(input: Omit<PlanInput, "owner" | "target" | "vi
     aiAllowed: input.aiAllowed,
     maxSlides: input.maxSlides,
     audience: input.audience,
+    angle: input.angle,
   };
 }
 
@@ -175,7 +180,7 @@ export async function planVisuals(input: PlanInput): Promise<{ image: string | n
   const out = { image: null as string | null, video: null as string | null };
   try {
     const ctx = directionContext(input);
-    const plan = input.rulesOnly || input.image === false ? fallbackPlan(ctx) : await directVisual(ctx, input.owner);
+    const plan = input.precomputed ?? (input.rulesOnly || input.image === false ? fallbackPlan(ctx) : await directVisual(ctx, input.owner));
     if (input.aiExhausted) {
       plan.aiExhausted = input.aiExhausted;
       plan.notes = [aiExhaustedNote(input.aiExhausted.refillAt), ...plan.notes];

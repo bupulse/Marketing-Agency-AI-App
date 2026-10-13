@@ -57,6 +57,8 @@ export function buildPrompt(ctx: DirectionContext): string {
   return [
     `Business: ${slideText(ctx.business.name, 120)}. Voice: ${ctx.business.tone ?? "not set"}. Industry: ${slideText(ctx.business.industry ?? "not set", 120)}.`,
     `Promoting: a ${ctx.subjectType}.`,
+    ctx.angle ? `This post's angle: ${ctx.angle.label}. Its people photo shows ${ctx.angle.people}.` : "",
+    ctx.avoidTemplates?.length ? `Other posts of this pack already use the templates ${ctx.avoidTemplates.join(", ")}: choose a different template and layout for this one.` : "",
     fence("SUBJECT", `${ctx.title}${ctx.price ? `\nPrice: ${ctx.price}` : ""}`),
     fence("POST", ctx.caption),
     ctx.headlines.length ? fence("HEADLINES", ctx.headlines.join("\n")) : "",

@@ -12,7 +12,7 @@ const prisma = vi.hoisted(() => ({
   $executeRaw: vi.fn(),
 }));
 const role = vi.hoisted(() => ({ value: "MEMBER" as "OWNER" | "ADMIN" | "MEMBER" }));
-const service = vi.hoisted(() => ({ generateForSubject: vi.fn() }));
+const service = vi.hoisted(() => ({ generateForSubject: vi.fn(), generatePackForSubject: vi.fn(), draftPostsFromPack: vi.fn(async () => ({})) }));
 const rateLimitMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const usage = vi.hoisted(() => {
   class UsageLimitError extends Error {
@@ -41,6 +41,9 @@ vi.mock("@/lib/auth/require-user", async () => {
   };
 });
 vi.mock("@/lib/studio/service", async () => ({ ...(await vi.importActual<typeof import("@/lib/studio/service")>("@/lib/studio/service")), generateForSubject: service.generateForSubject }));
+// "Write content" makes a content pack (docs/CONTENT_PACKS.md), drafted as posts to review.
+vi.mock("@/lib/studio/pack", () => ({ generatePackForSubject: service.generatePackForSubject }));
+vi.mock("@/lib/content-board/drafts", async () => ({ ...(await vi.importActual<typeof import("@/lib/content-board/drafts")>("@/lib/content-board/drafts")), draftPostsFromPack: service.draftPostsFromPack }));
 
 import { generateContent, saveEditedContent } from "@/app/dashboard/knowledge/actions";
 import { createCampaign, updateCampaign } from "@/app/dashboard/knowledge/campaigns/actions";
@@ -148,9 +151,10 @@ describe("content", () => {
     prisma.product.findFirst.mockResolvedValue({ id: "prod1" });
     prisma.campaign.findFirst.mockResolvedValue(null);
     prisma.generatedContent.count.mockResolvedValue(2);
-    service.generateForSubject.mockResolvedValue({ id: "c2" });
+    service.generatePackForSubject.mockResolvedValue({ packId: "pack-1", contents: [{ id: "c2" }, { id: "c3" }] });
     expect(await generateContent("prod1", { instruction: "  shorter " })).toEqual({ ok: true, contentId: "c2" });
-    expect(service.generateForSubject).toHaveBeenCalledWith(expect.objectContaining({ businessId: "b1", subject: { kind: "product", id: "prod1" }, instruction: "shorter", feature: "regenerate" }));
+    expect(service.generatePackForSubject).toHaveBeenCalledWith(expect.objectContaining({ businessId: "b1", subject: { kind: "product", id: "prod1" }, instruction: "shorter", feature: "regenerate" }));
+    expect(service.draftPostsFromPack).toHaveBeenCalledWith({ businessId: "b1" }, "pack-1");
   });
 
   it("treats another business's product or campaign as not found, without charging", async () => {
@@ -158,15 +162,15 @@ describe("content", () => {
     prisma.campaign.findFirst.mockResolvedValue(null);
     expect(await generateContent("theirs")).toMatchObject({ ok: false, error: "We could not find that." });
     expect(prisma.product.findFirst.mock.calls[0][0].where).toEqual({ id: "theirs", businessId: "b1" });
-    expect(service.generateForSubject).not.toHaveBeenCalled();
+    expect(service.generatePackForSubject).not.toHaveBeenCalled();
   });
 
   it("maps a usage block and a vanished subject", async () => {
     prisma.product.findFirst.mockResolvedValue({ id: "prod1" });
     prisma.generatedContent.count.mockResolvedValue(0);
-    service.generateForSubject.mockRejectedValueOnce(new usage.UsageLimitError("trial_expired", "text"));
+    service.generatePackForSubject.mockRejectedValueOnce(new usage.UsageLimitError("trial_expired", "text"));
     expect(await generateContent("prod1")).toMatchObject({ ok: false, blocked: "trial_expired" });
-    service.generateForSubject.mockRejectedValueOnce(new StudioNotFoundError());
+    service.generatePackForSubject.mockRejectedValueOnce(new StudioNotFoundError());
     expect(await generateContent("prod1")).toMatchObject({ ok: false, error: "We could not find that." });
   });
 
