@@ -56,6 +56,42 @@ const FONTS: Record<VideoPlan["pack"], { family: string; weight: number; upper: 
   playful: { family: 'Nunito, "Trebuchet MS", system-ui, sans-serif', weight: 800, upper: false },
 };
 
+// The pack's caption font and the business-name weight, from the same pinned Fontsource CDN the slide designs use
+// (lib/designs/templates/fonts.ts), so a video looks the same in every browser and in the video robot's headless
+// Chrome (docs/VIDEO_ROBOT.md). Latin and Latin Extended only; other scripts use the fallback fonts.
+const FONT_CDN = "https://cdn.jsdelivr.net/fontsource/fonts";
+const FONT_VERSION = "5.3.0";
+const FONT_FILES: Record<VideoPlan["pack"], { family: string; slug: string; weights: number[] }> = {
+  clean: { family: "Inter", slug: "inter", weights: [800, 600] },
+  elegant: { family: "Playfair Display", slug: "playfair-display", weights: [700, 600] },
+  bold: { family: "Anton", slug: "anton", weights: [400] },
+  warm: { family: "Nunito", slug: "nunito", weights: [800, 600] },
+  playful: { family: "Nunito", slug: "nunito", weights: [800, 600] },
+};
+const FONT_RANGES = {
+  latin: "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
+  "latin-ext": "U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF",
+} as const;
+
+/** Loads the plan's fonts into the page (at most `timeoutMs`); a font that does not arrive leaves the fallback font. */
+export async function loadVideoFonts(pack: VideoPlan["pack"], timeoutMs = 4000): Promise<void> {
+  if (typeof FontFace === "undefined" || typeof document === "undefined" || !document.fonts) return;
+  const files = FONT_FILES[pack] ?? FONT_FILES.clean;
+  const faces = files.weights.flatMap((weight) =>
+    (Object.keys(FONT_RANGES) as (keyof typeof FONT_RANGES)[]).map((subset) => {
+      const url = `${FONT_CDN}/${files.slug}@${FONT_VERSION}/${subset}-${weight}-normal.woff2`;
+      return new FontFace(files.family, `url(${url}) format("woff2")`, { weight: String(weight), unicodeRange: FONT_RANGES[subset] });
+    }),
+  );
+  const loads = faces.map((face) =>
+    face.load().then(
+      (loaded) => void document.fonts.add(loaded),
+      () => undefined,
+    ),
+  );
+  await Promise.race([Promise.all(loads), new Promise((r) => setTimeout(r, timeoutMs))]);
+}
+
 /** Draws one frame at tMs onto a 2D context (exported so the UI can show a live preview / poster). */
 export function drawFrame(ctx: CanvasRenderingContext2D, plan: VideoPlan, images: Map<string, Img>, tMs: number): void {
   const W = plan.width;
@@ -153,7 +189,7 @@ export async function renderVideo(plan: VideoPlan, options: RenderOptions): Prom
   if (!support.mp4 && !support.webm) throw new VideoRenderError("unsupported", UNSUPPORTED);
   try {
     checkAbort(options.signal);
-    const images = await loadImages(plan, options.photoUrls);
+    const [images] = await Promise.all([loadImages(plan, options.photoUrls), loadVideoFonts(plan.pack)]);
     if (support.mp4) {
       const audio = options.music ? await encodeMusic(options.music, plan.totalMs).catch(() => null) : null;
       let blob = await encodeMp4(plan, images, VIDEO_LIMITS.bitrate, audio, options);

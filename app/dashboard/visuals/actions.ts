@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { knowledgeAction, type Result } from "@/lib/knowledge/guard";
 import { remakeContentVisuals } from "@/lib/visuals/content";
-import { finalizeVideo, markVideoFailed, prepareVideoUpload, removeVisual, renderImageStep, updateImageVisual, updateVideoPlan } from "@/lib/visuals/service";
+import { finalizeVideo, leaseVideoForBrowser, markVideoFailed, prepareVideoUpload, removeVisual, renderImageStep, updateImageVisual, updateVideoPlan } from "@/lib/visuals/service";
 import { VISUAL_LIMITS } from "@/lib/visuals/types";
 
 // Content visuals (docs/CONTENT_VISUALS.md): drawing the picture, the owner's changes, and the browser-made video.
@@ -66,13 +66,25 @@ export async function changeVideo(visualId: string, changes: z.input<typeof vide
   });
 }
 
+/** The browser is about to make the video: it holds it, unless the video robot is making it right now. */
+export async function startVideoRender(visualId: string): Promise<Result> {
+  if (!id.safeParse(visualId).success) return BAD;
+  return knowledgeAction({ ...GUARD, source: "visuals.video.lease" }, async ({ userId, businessId }) => {
+    await leaseVideoForBrowser({ userId, businessId }, visualId);
+    return {};
+  });
+}
+
 const fileSchema = z.object({ bytes: z.number().int().positive(), mimeType: z.string().max(40), durationMs: z.number().positive().max(120_000) });
 
 /** Checks the video the browser made and gives it a place to upload to. */
 export async function startVideoUpload(visualId: string, file: z.input<typeof fileSchema>): Promise<Result<{ path: string; token: string; seconds: number }>> {
   const parsed = fileSchema.safeParse(file);
   if (!id.safeParse(visualId).success || !parsed.success) return { ok: false, error: "That video could not be used." };
-  return knowledgeAction({ ...GUARD, source: "visuals.video.upload" }, ({ userId, businessId }) => prepareVideoUpload({ userId, businessId }, visualId, parsed.data));
+  return knowledgeAction({ ...GUARD, source: "visuals.video.upload" }, async ({ userId, businessId }) => {
+    const { path, token, seconds } = await prepareVideoUpload({ userId, businessId }, visualId, parsed.data);
+    return { path, token, seconds };
+  });
 }
 
 /** Confirms the uploaded video: it becomes the content's video (and goes on its Autopilot posts). */

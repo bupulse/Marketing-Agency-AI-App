@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { finishVideoUpload, reportVideoFailure, startVideoUpload } from "@/app/dashboard/visuals/actions";
+import { finishVideoUpload, reportVideoFailure, startVideoRender, startVideoUpload } from "@/app/dashboard/visuals/actions";
 import { createClient } from "@/lib/supabase/client";
 import type { VisualView } from "@/lib/visuals/types";
 
@@ -34,6 +34,13 @@ export function useVideoRender(visual: VisualView | null, onDone?: () => void) {
           const message = "This browser cannot make videos. Try the latest Chrome, Edge or Safari. Your picture is used instead.";
           await reportVideoFailure(visual.id, message);
           setError(message);
+          setPhase("error");
+          return;
+        }
+        // Hold the video while this browser makes it; refused while the video robot is making it (docs/VIDEO_ROBOT.md).
+        const lease = await startVideoRender(visual.id);
+        if (!lease.ok) {
+          setError(lease.error);
           setPhase("error");
           return;
         }

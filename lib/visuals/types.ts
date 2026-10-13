@@ -133,4 +133,10 @@ export interface VisualView {
   /** Signed URLs of the photos a video plan uses, by path, for the browser renderer. */
   photoUrls: Record<string, string>;
   renderedAt: string | null;
+  /**
+   * A pending video while the video robot is on (docs/VIDEO_ROBOT.md): "queued" waits for the next robot run,
+   * "making" is being made by it now, "browser" is left to the owner's browser after 3 failed robot renders.
+   * Null when the robot is off or the video is not pending.
+   */
+  robot?: "queued" | "making" | "browser" | null;
 }

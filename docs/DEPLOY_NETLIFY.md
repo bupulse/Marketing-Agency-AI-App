@@ -69,6 +69,7 @@ Project configuration, Environment variables, Add a variable. Use the scope "All
 | `RESEND_API_KEY`, `RESEND_FROM`, `GOOGLE_MAPS_API_KEY`, `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, Paddle, Meta, LinkedIn, TikTok, YouTube, Canva, Shopify, Google Calendar keys | As on Cloudflare (`.env.example` lists them all) |
 | `ADMIN_EMAILS` | As on Cloudflare |
 | `GITHUB_REPO`, `GITHUB_TOKEN` | For Admin, Settings, Updates (`docs/UPDATES.md`). Scope: Functions. |
+| `VIDEO_ROBOT_SECRET` | Optional. Turns on the video robot (`docs/VIDEO_ROBOT.md`): a long random string, the same value as the GitHub secret of that name. Unset: the robot API answers 404 and owners make videos in their browser. |
 
 Not needed on Netlify: `HYPERDRIVE` (Cloudflare only), `DIRECT_URL` (only the deploy workflow uses it, from GitHub).
 
@@ -79,6 +80,7 @@ Mark the secret ones as "Contains secret values". Changing a variable needs a ne
 Settings of the repository:
 
 - **Environments, `production`**, environment secrets: `NETLIFY_AUTH_TOKEN` (the token from step 1.5), `NETLIFY_SITE_ID` (step 1.4), `DIRECT_URL` (already there for Cloudflare). Environment variables: `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (already there). Keep "Required reviewers" and "Deployment branches: main" as in `docs/UPDATES.md`.
+- **Video robot (optional, `docs/VIDEO_ROBOT.md`)**: repository secret `VIDEO_ROBOT_SECRET` (same value as in Netlify) and repository variable `ROBOT_APP_URL` (the site, e.g. `https://bupulse.com`). Without them `video-robot.yml` skips quietly. Videos are never rendered in a Netlify function (60 s): the robot renders them on GitHub's runner and only calls short API routes.
 - **Secrets and variables, Actions, Variables (repository variable)**: `DEPLOY_TARGET` = `netlify`. From now on a push to `main` runs `deploy-netlify.yml` and skips `deploy.yml`. Delete the variable (or set `cloudflare`) to go back.
 
 ## 4. Deploying

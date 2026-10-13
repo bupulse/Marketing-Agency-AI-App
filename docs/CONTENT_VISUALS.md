@@ -66,7 +66,13 @@ screen).
   file (`lib/visuals/duration.ts`: MP4 `mvhd`; WebM Info Duration, else the last block's timecode, since MediaRecorder
   writes none), refuses more than 30.5 s, bills those seconds, clears the reservation, replaces the old file and, for
   Autopilot, puts the video on the group's posts. A rejected file is deleted. Confirming the same file twice bills once.
-- **When it renders**: on the content page as soon as the video is pending (progress bar). On Autopilot cards the badge
+- **Video robot** (`docs/VIDEO_ROBOT.md`, optional, on when `VIDEO_ROBOT_SECRET` is set): a GitHub Actions job every
+  15 minutes makes pending videos in headless Chrome with this same renderer and confirms them through the same
+  upload checks, so nobody has to open the post. The screen then says "Being made automatically" and offers "Make it
+  now" (the browser takes the render lease unless the robot holds it). After 3 failed robot renders the video is left
+  to the browser. Caption fonts (Inter, or the pack's display font) are loaded from the pinned Fontsource CDN by the
+  renderer, so the robot's and the browser's videos look the same.
+- **When it renders**: on the content page as soon as the video is pending (progress bar), unless the video robot is on. On Autopilot cards the badge
   says "Video ready to render"; it renders when the owner opens the card's "Make the video" panel, one card at a time.
 - Without video in the plan the screen shows the picture with "Add video to your plan" (`/dashboard/upgrade?feature=video`).
 

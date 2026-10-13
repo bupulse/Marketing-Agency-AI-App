@@ -583,10 +583,11 @@ export async function prepareVideoUpload(owner: Owner, visualId: string, file: {
     throw error;
   }
   const path = videoPath(owner.userId, visualId, file.mimeType);
-  const target = await createSignedUploadUrl("media", path);
+  // The video robot has no session (owner.service): its upload URL is made with the service key, in the owner's folder.
+  const target = await createSignedUploadUrl("media", path, { service: !!owner.service });
   // One open upload per visual: a newer one replaces it (the clean-up deletes a file nobody confirmed).
   await prisma.contentVisual.update({ where: { id: visualId }, data: { uploadPath: target.path, uploadBytes: VIDEO_LIMITS.maxBytes, uploadExpiresAt: new Date(now.getTime() + UPLOAD_RESERVATION_MS) } });
-  return { path: target.path, token: target.token, seconds };
+  return { path: target.path, token: target.token, signedUrl: target.signedUrl, seconds };
 }
 
 /**
@@ -640,7 +641,7 @@ export async function finalizeVideo(owner: Owner, visualId: string, input: { pat
   const previous = readItems(row.items);
   await prisma.contentVisual.update({
     where: { id: row.id },
-    data: { status: "ready", error: null, items: json([{ path: input.path }]), bytes: size, seconds, renderedAt: new Date(), uploadPath: null, uploadBytes: 0, uploadExpiresAt: null },
+    data: { status: "ready", error: null, items: json([{ path: input.path }]), bytes: size, seconds, renderedAt: new Date(), uploadPath: null, uploadBytes: 0, uploadExpiresAt: null, renderingUntil: null, robotJobId: null },
   });
   for (const old of previous) {
     if (old.path !== input.path && !(await inUse(owner.businessId, old.path))) await bucket.remove([old.path]).catch(() => {});
@@ -658,8 +659,25 @@ export async function updateVideoPlan(owner: Owner, visualId: string, changes: {
     if (!photos.every((p) => p === null || isOwnPhotoPath(owner.userId, p) || isOwnDesignPath(owner.userId, p))) throw new VisualError("That photo could not be used.");
     next = { ...next, scenes: next.scenes.map((s, i) => (i < photos.length ? { ...s, photoPath: photos[i] } : s)) };
   }
-  await prisma.contentVisual.update({ where: { id: row.id }, data: { plan: json(next), status: "pending", error: null } });
+  await prisma.contentVisual.update({ where: { id: row.id }, data: { plan: json(next), status: "pending", error: null, robotAttempts: 0 } });
   return next;
+}
+
+/** How long a browser render holds the video, so the video robot does not make the same video meanwhile. */
+export const BROWSER_RENDER_LEASE_MS = 10 * 60 * 1000;
+
+/**
+ * The owner's browser is about to make the video ("Make it now", or on open): it takes the render lease unless the
+ * video robot holds a live one (docs/VIDEO_ROBOT.md). A video that is already made can always be made again.
+ */
+export async function leaseVideoForBrowser(owner: Owner, visualId: string, now = new Date()) {
+  const { row } = await videoRow(owner, visualId);
+  if (row.status !== "pending") return;
+  const taken = await prisma.contentVisual.updateMany({
+    where: { id: row.id, businessId: owner.businessId, OR: [{ robotJobId: null }, { renderingUntil: null }, { renderingUntil: { lt: now } }] },
+    data: { renderingUntil: new Date(now.getTime() + BROWSER_RENDER_LEASE_MS), robotJobId: null },
+  });
+  if (taken.count === 0) throw new VisualError("Your video is being made automatically right now. It will be ready in a few minutes.");
 }
 
 /** Marks a video as not renderable in this browser, so the screen shows the picture version and a reason. */

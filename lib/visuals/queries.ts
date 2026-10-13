@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { bucketForPath } from "@/lib/publishing/schemas";
 import { createClient } from "@/lib/supabase/server";
 import { readImagePlan } from "./direction";
+import { robotStateOf } from "./robot";
 import { readItems } from "./service";
 import type { VisualKind, VisualStatus, VisualView } from "./types";
 import { readVideoPlan } from "./video-plan";
@@ -53,6 +54,7 @@ export async function loadVisuals(businessId: string, by: { contentIds?: string[
     videoPlan: video,
     photoUrls: Object.fromEntries((video?.scenes ?? []).flatMap((s) => (s.photoPath && urls.has(s.photoPath) ? [[s.photoPath, urls.get(s.photoPath)!]] : []))),
     renderedAt: row.renderedAt?.toISOString() ?? null,
+    robot: robotStateOf(row),
   }));
 }
 

@@ -862,6 +862,9 @@ model ContentVisual {
   uploadPath      String?
   uploadBytes     Int       @default(0)
   uploadExpiresAt DateTime?
+  // The video robot (docs/VIDEO_ROBOT.md): its job while it holds the render lease, and its failed renders (3 = left to the browser).
+  robotJobId      String?   @unique
+  robotAttempts   Int       @default(0)
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
 
@@ -869,6 +872,7 @@ model ContentVisual {
   @@index([uploadExpiresAt])
   @@index([groupId])
   @@index([businessId, kind])
+  @@index([kind, status, createdAt])
 }
 
 model AiCall {

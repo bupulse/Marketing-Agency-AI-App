@@ -1,0 +1,61 @@
+name: Video robot
+
+# Makes pending content videos in headless Google Chrome with the app's own browser renderer (docs/VIDEO_ROBOT.md).
+# The repository is public, so this log is public: the robot prints counts only, and nothing is uploaded as an artifact.
+# Skips quietly until the VIDEO_ROBOT_SECRET secret and the ROBOT_APP_URL variable are set.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: video-robot
+  cancel-in-progress: false
+
+jobs:
+  videos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ROBOT_APP_URL: ${{ vars.ROBOT_APP_URL }}
+    steps:
+      - name: Check the robot is set up
+        id: setup
+        env:
+          VIDEO_ROBOT_SECRET: ${{ secrets.VIDEO_ROBOT_SECRET }}
+        run: |
+          if [ -z "$VIDEO_ROBOT_SECRET" ] || [ -z "$ROBOT_APP_URL" ]; then
+            echo "Video robot is not set up (VIDEO_ROBOT_SECRET or ROBOT_APP_URL missing); skipping."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: steps.setup.outputs.ready == 'true'
+        with:
+          persist-credentials: false
+      - name: Count waiting videos
+        id: peek
+        if: steps.setup.outputs.ready == 'true'
+        env:
+          VIDEO_ROBOT_SECRET: ${{ secrets.VIDEO_ROBOT_SECRET }}
+        run: node scripts/video-robot/robot.mjs peek
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: steps.peek.outputs.waiting > 0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install the renderer's tools
+        if: steps.peek.outputs.waiting > 0
+        run: npm ci --ignore-scripts --no-audit --no-fund --loglevel=error
+      - name: Make the videos
+        if: steps.peek.outputs.waiting > 0
+        env:
+          VIDEO_ROBOT_SECRET: ${{ secrets.VIDEO_ROBOT_SECRET }}
+          ROBOT_CHROME_CHANNEL: chrome
+          ROBOT_CONCURRENCY: "1"
+        run: node scripts/video-robot/robot.mjs run

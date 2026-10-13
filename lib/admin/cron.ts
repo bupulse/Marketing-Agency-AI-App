@@ -25,6 +25,7 @@ export const CRON_JOBS: CronJob[] = [
   { job: "media-cleanup", label: "Video clean-up", cron: "19 3 * * *", via: "Cloudflare", what: "Deletes content videos 30 days after their posts went out" },
   { job: "purge-accounts", label: "Delete scheduled accounts", cron: "17 3 * * *", via: "GitHub Actions", what: "Erases accounts past their 30-day grace period" },
   { job: "social-refresh", label: "Refresh social tokens", cron: "43 4 * * *", via: "GitHub Actions", what: "Renews channel tokens before they expire" },
+  { job: "video-robot", label: "Video robot", cron: "*/15 * * * *", via: "GitHub Actions", what: "Makes pending content videos in headless Chrome (only when VIDEO_ROBOT_SECRET is set)" },
 ];
 
 const MINUTE = 60_000;

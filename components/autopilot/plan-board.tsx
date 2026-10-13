@@ -64,7 +64,7 @@ function PostCard({ card, timeZone, videoInPlan }: { card: ViewCard; timeZone: s
             {card.status === "SCHEDULED" && <Badge tone="success">Scheduled</Badge>}
             {card.status === "DRAFT" && <Badge tone="danger">Needs a picture</Badge>}
             {card.image?.kind === "carousel" && <Badge tone="neutral">Carousel</Badge>}
-            {card.video?.status === "pending" && <Badge tone="violet">Video ready to render</Badge>}
+            {card.video?.status === "pending" && <Badge tone="violet">{card.video.robot === "queued" || card.video.robot === "making" ? "Video being made" : "Video ready to render"}</Badge>}
             {card.video?.status === "ready" && card.video.items.length > 0 && <Badge tone="success">Video ready</Badge>}
           </div>
           <p className="text-[13px] text-muted">
