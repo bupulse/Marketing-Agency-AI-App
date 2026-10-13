@@ -22,6 +22,7 @@ export const RATE_LIMITS = {
   storeConnect: { limit: 30, windowSeconds: 60 * 60 }, // starting a Shopify/WooCommerce/Cloudflare connection
   storeImport: { limit: 150, windowSeconds: 60 * 60 }, // import/list calls (5 products each)
   momo: { limit: 10, windowSeconds: 60 * 60 }, // Mobile Money start / "I've paid" / cancel, together, per company
+  momoProof: { limit: 20, windowSeconds: 60 * 60 }, // Mobile Money screenshot upload URLs, per user
   invoicePdf: { limit: 60, windowSeconds: 60 * 60 },
   planRequest: { limit: 3, windowSeconds: 24 * 60 * 60 }, // custom plan requests (each emails the owner), per company per day
   offerAccept: { limit: 20, windowSeconds: 60 * 60 }, // accepting an offer / choosing how to pay it, per company // invoice PDF downloads (drawn on demand when not stored), per company

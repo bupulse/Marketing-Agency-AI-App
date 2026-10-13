@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   sendEmail: vi.fn(async () => true),
   trackEvent: vi.fn(),
   files: new Map<string, Uint8Array>(),
+  types: new Map<string, string>(),
   removed: [] as string[],
   uploads: [] as string[],
 }));
@@ -30,6 +31,13 @@ vi.mock("@/lib/supabase/admin", () => ({
             const bytes = h.files.get(path);
             return bytes ? { data: new Blob([bytes as BlobPart]), error: null } : { data: null, error: { message: "not found" } };
           },
+          // The server's own copy: never overwrites (upsert off), like Storage.
+          upload: async (path: string, body: Blob, opts: { upsert?: boolean; contentType?: string }) => {
+            if (h.files.has(path) && !opts.upsert) return { data: null, error: { message: "exists" } };
+            h.files.set(path, new Uint8Array(await body.arrayBuffer()));
+            h.types.set(path, String(opts.contentType));
+            return { data: { path }, error: null };
+          },
           remove: async (paths: string[]) => (h.removed.push(...paths), paths.forEach((p) => h.files.delete(p)), { error: null }),
           createSignedUrl: async (path: string) => ({ data: { signedUrl: `https://storage.test/${path}?token=t` }, error: null }),
         };
@@ -41,7 +49,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 import { resetPlanCache } from "@/lib/plan-catalog";
 import { AdminError, consoleContext } from "@/lib/admin/types";
 import * as momo from "@/lib/billing/momo";
-import { proofSignedUrl } from "@/lib/billing/momo-proofs";
+import { readProofObject } from "@/lib/billing/momo-proofs";
 import { clearMomoSettingsCache } from "@/lib/billing/momo-settings";
 import { MOMO_SETTING_KEY } from "@/lib/billing/momo-shared";
 import { resetRegionCache } from "@/lib/region";
@@ -81,6 +89,7 @@ const submit = (paymentId: string, over: Record<string, unknown> = {}, userId = 
 beforeEach(() => {
   h.db = createFakeDb();
   h.files.clear();
+  h.types.clear();
   h.removed.length = 0;
   h.uploads.length = 0;
   vi.clearAllMocks();
@@ -121,12 +130,18 @@ describe("the screenshot upload", () => {
 });
 
 describe("I have paid, with a screenshot", () => {
-  it("attaches the checked screenshot (bytes and type) with the transaction id", async () => {
+  it("attaches the server's own copy of the checked bytes (the client's upload is removed, so it cannot be changed afterwards)", async () => {
     const p = await start();
     const path = await upload(p.id, PNG);
     const view = await submit(p.id, { proofPath: path });
     expect(view).toMatchObject({ submitted: true, transactionId: "MP1234567", proofType: "image/png" });
-    expect(h.db.manualPayment.rows[0]).toMatchObject({ proofPath: path, proofBytes: PNG.length, proofType: "image/png" });
+    expect(h.db.manualPayment.rows[0]).toMatchObject({ proofPath: `verified/${path}`, proofBytes: PNG.length, proofType: "image/png" });
+    expect(h.files.get(`verified/${path}`)).toEqual(PNG);
+    expect(h.types.get(`verified/${path}`)).toBe("image/png");
+    // The upload token's path is gone: re-uploading there changes nothing the owner sees.
+    expect(h.files.has(path)).toBe(false);
+    h.files.set(path, HTML);
+    expect(h.files.get(`verified/${path}`)).toEqual(PNG);
   });
 
   it("refuses a file that is not an image by its first bytes (and deletes it), whatever it was called", async () => {
@@ -182,8 +197,8 @@ describe("the owner confirms with the screenshot", () => {
   it("lists the screenshot for the console (signed link) and needs the transaction id typed when the client had none", async () => {
     const { p, path } = await waitingWithoutId();
     const listed = (await momo.listManualPayments({ status: "pending" }, NOW)).items[0];
-    expect(listed).toMatchObject({ id: p.id, proofPath: path, proofType: "image/png", transactionId: null });
-    expect(await proofSignedUrl(path)).toBe(`https://storage.test/${path}?token=t`);
+    expect(listed).toMatchObject({ id: p.id, proofPath: `verified/${path}`, proofType: "image/png", transactionId: null });
+    expect(await readProofObject(`verified/${path}`)).toEqual({ bytes: PNG, type: "image/png" });
 
     expect(await msg(momo.confirmManualPayment(CONSOLE, p.id, NOW))).toMatch(/type it from your Mobile Money message/);
     expect(await code(momo.confirmManualPayment(CONSOLE, p.id, NOW, { transactionId: "x" }))).toBe("invalid");
@@ -228,10 +243,12 @@ describe("clean-up", () => {
     const kept = await start(OTHER);
     const keptPath = await upload(kept.id, PNG, "image/png", OTHER);
     await submit(kept.id, { proofPath: keptPath }, OTHER);
+    h.removed.length = 0;
     expect(await momo.sweepUnsubmittedProofs()).toBe(1);
     expect(h.removed).toEqual([path]);
+    expect(h.files.has(`verified/${keptPath}`)).toBe(true);
     expect(h.db.manualPayment.rows.find((r) => r.id === p.id)).toMatchObject({ proofPath: null });
-    expect(h.db.manualPayment.rows.find((r) => r.id === kept.id)).toMatchObject({ proofPath: keptPath });
+    expect(h.db.manualPayment.rows.find((r) => r.id === kept.id)).toMatchObject({ proofPath: `verified/${keptPath}` });
     expect(await momo.sweepUnsubmittedProofs()).toBe(0);
   });
 });

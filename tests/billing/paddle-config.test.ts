@@ -5,10 +5,11 @@ import { createFakeDb, type FakeDb } from "../admin/fake-db";
 // values stored encrypted and never shown again, the environment variables as the fallback, Test connection (read-only),
 // Set up prices (plans, regional prices, webhook + its secret) and the status line. Paddle is a fake fetch here.
 
-const h = vi.hoisted(() => ({ db: null as unknown as FakeDb, sync: vi.fn() }));
+const h = vi.hoisted(() => ({ db: null as unknown as FakeDb, sync: vi.fn(), logError: vi.fn(async () => {}) }));
 vi.mock("@/lib/db", () => ({ prisma: new Proxy({}, { get: (_t, p) => (h.db as never)[p] }) }));
 // The plan builder's own Paddle sync is tested with the plans; here only that each plan without prices is synced.
 vi.mock("@/lib/admin/plans-service", () => ({ syncPlanToPaddle: h.sync }));
+vi.mock("@/lib/errors", async (orig) => ({ ...(await orig<typeof import("@/lib/errors")>()), logError: h.logError }));
 
 import { apiContext, consoleContext } from "@/lib/admin/types";
 import { configState } from "@/lib/admin/services";
@@ -121,6 +122,30 @@ describe("saving", () => {
     expect((await getPaddleConfig()).apiKey).toBe(KEY);
   });
 
+  it("the first save needs the API key and the client-side token together; the values in use afterwards (env fallback included) must match the environment", async () => {
+    expect(await msg(savePaddleSettings(CONSOLE, { environment: "sandbox", apiKey: KEY }))).toMatch(/both the API key and the client-side token/);
+    expect(await msg(savePaddleSettings(CONSOLE, { environment: "sandbox", clientToken: TOKEN }))).toMatch(/both/);
+    // A live client token left in the environment would mix with a sandbox key: refused, naming the variable.
+    process.env.PADDLE_CLIENT_TOKEN = "live_0123456789abcdef";
+    await savePaddleSettings(CONSOLE, { environment: "sandbox", apiKey: KEY, clientToken: TOKEN }); // typed values win
+    clearPaddleConfigCache();
+    expect((await getPaddleConfig()).clientToken).toBe(TOKEN);
+    process.env.PADDLE_WEBHOOK_SECRET = "x";
+    h.db.adminSetting.rows.length = 0;
+    process.env.PADDLE_API_KEY = LIVE_KEY;
+    expect(await msg(savePaddleSettings(CONSOLE, { environment: "sandbox", webhookSecret: SECRET }))).toMatch(/PADDLE_API_KEY: That is a live API key/);
+  });
+
+  it("a saved value that cannot be decrypted (ENCRYPTION_KEY changed) is logged, and its variable applies", async () => {
+    await savePaddleSettings(CONSOLE, { environment: "sandbox", apiKey: KEY, clientToken: TOKEN });
+    process.env.ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
+    process.env.PADDLE_API_KEY = "pdl_env_key_1234";
+    clearPaddleConfigCache();
+    const c = await getPaddleConfig();
+    expect(c).toMatchObject({ apiKey: "pdl_env_key_1234", source: { apiKey: "env" } });
+    expect(h.logError).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ source: "billing.paddle.config", value: "apiKey" }));
+  });
+
   it("switching sandbox <-> live needs the other account's key and token, and drops the old webhook secret", async () => {
     await savePaddleSettings(CONSOLE, { environment: "sandbox", apiKey: KEY, clientToken: TOKEN, webhookSecret: SECRET });
     expect(await msg(savePaddleSettings(CONSOLE, { environment: "production", apiKey: LIVE_KEY }))).toMatch(/different Paddle accounts/);
@@ -131,7 +156,7 @@ describe("saving", () => {
 
   it("removing the saved values brings the environment variables back", async () => {
     process.env.PADDLE_API_KEY = "pdl_env_key_1234";
-    await savePaddleSettings(CONSOLE, { apiKey: KEY });
+    await savePaddleSettings(CONSOLE, { apiKey: KEY, clientToken: TOKEN });
     await clearPaddleSettings(CONSOLE);
     expect((await getPaddleConfig()).apiKey).toBe("pdl_env_key_1234");
     expect(h.db.auditLog.rows.some((a) => a.action === "clear_paddle_settings")).toBe(true);
@@ -140,7 +165,7 @@ describe("saving", () => {
 
 describe("calling Paddle with the saved key", () => {
   it("uses the saved key on the saved environment's API", async () => {
-    await savePaddleSettings(CONSOLE, { environment: "sandbox", apiKey: KEY });
+    await savePaddleSettings(CONSOLE, { environment: "sandbox", apiKey: KEY, clientToken: TOKEN });
     const calls = fakePaddle();
     const r = await testPaddleConnection();
     expect(r).toMatchObject({ ok: true, message: expect.stringMatching(/sandbox answered/) });

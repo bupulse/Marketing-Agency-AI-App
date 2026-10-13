@@ -67,7 +67,9 @@ No environment variable needs editing. In Admin → Settings → **Card payments
    environment is refused. **Test connection** checks the typed (or saved) key with a read-only call (`GET /event-types`).
 2. **Save.** Each value is encrypted with `ENCRYPTION_KEY` (`lib/crypto.ts`, like the Google Calendar token) in
    `AdminSetting` `billing.paddle` and never shown again: the page shows its last 4 characters and where it comes from.
-   An empty field keeps the saved value. Switching sandbox ↔ live needs that account's key and token (and drops the old
+   An empty field keeps the saved value. The first save needs the API key and the client-side token together, and every
+   save checks the values that will be in use afterwards (saved, typed or environment variable) against the chosen
+   environment, so a sandbox key never runs with a live token. Switching sandbox ↔ live needs that account's key and token (and drops the old
    webhook secret). The audit row records the environment and the last 4 characters only.
 3. **Set up prices** (`setUpPaddleStep`, `lib/billing/paddle-setup.ts`; the page runs it step by step so every request
    stays inside the hosting time limit: `plans` two at a time, `regions` four prices at a time, then `webhook`, each
@@ -83,7 +85,10 @@ No environment variable needs editing. In Admin → Settings → **Card payments
 
 **Precedence:** per value, the one saved in Settings wins; a value not saved there falls back to its `PADDLE_*`
 variable. The environment goes with the saved API key; without a saved key, `PADDLE_ENVIRONMENT` (default sandbox).
-**Remove saved values** returns to the variables. The Services page counts Paddle as configured when Settings has all
+**Remove saved values** returns to the variables. The saved values are cached 5 s per instance, so a change reaches every
+instance within seconds. A saved value that cannot be decrypted (ENCRYPTION_KEY changed) is logged to ErrorLog
+(`billing.paddle.config`) and its variable, if any, applies: save it again. The webhook URL comes from
+`NEXT_PUBLIC_SITE_URL` (`siteUrl()`), never from the request's host. The Services page counts Paddle as configured when Settings has all
 three values. `lib/billing/paddle-config.ts` (`getPaddleConfig`) is the one reader; `paddleApi`, checkout, webhooks,
 the plan builder, the service test and the Approvals links all use it.
 

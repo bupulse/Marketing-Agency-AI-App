@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   requireActiveUser: vi.fn(),
   adapter: { startPayment: vi.fn(), submitProof: vi.fn() },
   cancel: vi.fn(),
+  proofUpload: vi.fn(async () => ({ path: "p", token: "t" })),
   current: vi.fn(),
   adminAction: vi.fn(),
   finish: vi.fn(async (_back: string, _ok: unknown, fn: () => Promise<unknown>) => fn()),
@@ -28,7 +29,7 @@ vi.mock("@/lib/billing/apply", () => ({ applyProviderSubscription: vi.fn() }));
 vi.mock("@/lib/billing/methods", () => ({ paymentMethod: () => h.adapter }));
 vi.mock("@/lib/billing/momo", async (orig) => {
   const { ManualPaymentError } = await orig<typeof import("@/lib/billing/momo")>();
-  return { ManualPaymentError, cancelManualPayment: h.cancel, currentManualPayment: h.current, confirmManualPayment: h.confirm, rejectManualPayment: h.reject };
+  return { ManualPaymentError, startProofUpload: h.proofUpload, cancelManualPayment: h.cancel, currentManualPayment: h.current, confirmManualPayment: h.confirm, rejectManualPayment: h.reject };
 });
 vi.mock("@/lib/billing/momo-settings", () => ({ saveMomoSettings: h.save }));
 vi.mock("@/lib/region-check", () => ({ noteRegionMismatch: h.noteRegionMismatch }));
@@ -119,6 +120,22 @@ describe("client actions", () => {
     expect(await a.cancelMomoPayment("p1")).toMatchObject({ ok: false, error: expect.stringMatching(/no longer be cancelled/) });
     h.cancel.mockResolvedValue(true);
     expect(await a.cancelMomoPayment("p1")).toEqual({ ok: true });
+  });
+});
+
+describe("screenshot upload URL", () => {
+  it("has its own limit, 20 an hour per user, and passes the payment, type and size on", async () => {
+    const a = await import("@/app/dashboard/billing/actions");
+    const { RATE_LIMITS, RateLimitError } = await import("@/lib/rate-limit");
+    expect(RATE_LIMITS.momoProof).toEqual({ limit: 20, windowSeconds: 3600 });
+    expect(await a.startMomoProofUpload({ paymentId: "pay1", type: "image/png", bytes: 1000 })).toEqual({ ok: true, path: "p", token: "t" });
+    expect(h.rateLimit).toHaveBeenCalledWith("momo-proof:owner", RATE_LIMITS.momoProof);
+    expect(h.proofUpload).toHaveBeenCalledWith("owner", { paymentId: "pay1", type: "image/png", bytes: 1000 });
+    h.rateLimit.mockRejectedValueOnce(new RateLimitError(1200));
+    expect(await a.startMomoProofUpload({ paymentId: "pay1", type: "image/png", bytes: 1000 })).toMatchObject({ ok: false });
+    expect(h.proofUpload).toHaveBeenCalledTimes(1);
+    h.requireActiveUser.mockResolvedValue(MEMBER);
+    expect(await a.startMomoProofUpload({ paymentId: "pay1", type: "image/png", bytes: 1000 })).toMatchObject({ ok: false });
   });
 });
 

@@ -78,18 +78,23 @@ duplicate, like a second card purchase, while a past-due or lapsed MoMo plan is 
 
 - **Bucket:** `payment-proofs`, private, 5 MB, JPEG / PNG / WebP (migration `20261017170000_payment_proofs`). No Storage
   policy names it: signed-in users cannot list, read or write it; only the server key does.
-- **Upload:** `startMomoProofUpload` → `startProofUpload(userId, { paymentId, type, bytes })` checks the type and size,
+- **Upload:** `startMomoProofUpload` (its own limit: 20 an hour per user, `RATE_LIMITS.momoProof`) → `startProofUpload(userId, { paymentId, type, bytes })` checks the type and size,
   that the payment is the caller's own, pending and not submitted, records the new path on the payment
   (`<userId>/<paymentId>/<uuid>.<ext>`, a re-upload removes the previous file) and returns a one-file signed upload URL.
   The browser uploads straight to Storage. A HEIC photo (or any image over 5 MB) is converted to JPEG in the browser
   first (canvas, long side at most 2400 px); a file the browser cannot read is refused with "JPEG, PNG or WebP".
 - **Check on submit:** the path must be the one recorded for that payment; the server downloads it, checks the size and
-  the first bytes (`sniffProofType`; anything else is deleted and refused), and stores `proofBytes` and `proofType` in the
-  same conditional write that submits the payment. A screenshot uploaded and then left out of the form is deleted.
+  the first bytes (`sniffProofType`; anything else is deleted and refused), writes **those exact bytes** to its own path
+  `verified/<userId>/<paymentId>/<uuid>.<ext>` (upsert off, the sniffed content type) and removes the upload. The payment
+  points at the copy (`proofPath`, `proofBytes`, `proofType`, in the same conditional write that submits it), so the
+  client's upload token can never change what the owner sees. A screenshot uploaded and then left out of the form is deleted.
 - **Clean-up:** screenshots of payments never submitted (cancelled, replaced, closed after 48 hours) are removed by the
   daily renewals job (`sweepUnsubmittedProofs`, `proofsRemoved` in its result); submitted ones are kept as the record of
   the money; the account purge removes the whole `<userId>/` folder (`lib/account-deletion.ts`).
-- **Admin:** `ManualPaymentAdminView.proofPath` (only once checked) → `proofSignedUrl()` on the Payments page. The confirm
+- **Admin:** the Payments page shows the screenshot through `/admin/payments/proof?id=<payment>` (AAL2 admins only, 404
+  otherwise): the copy is read with the server key, sniffed again, and served with that type only,
+  `X-Content-Type-Options: nosniff`, `Content-Disposition: inline`, a sandboxing CSP and `no-store`. No signed Storage URL
+  leaves the server. The account purge removes both `<userId>/` and `verified/<userId>/`. The confirm
   audit row records `transactionId`, `transactionIdBy: "admin"` when the owner typed it, and `screenshot: true|false`.
 
 ## The demo-first trial and Mobile Money

@@ -65,7 +65,8 @@ async function removeInvoiceFiles(admin: SupabaseClient, userId: string): Promis
 // Screenshots of the account's Mobile Money payments (private "payment-proofs" bucket, <userId>/<paymentId>/,
 // docs/MOMO.md). The ManualPayment rows cascade with the user. Errors propagate like above.
 async function removePaymentProofs(admin: SupabaseClient, userId: string): Promise<number> {
-  const paths = await listObjects(admin, "payment-proofs", userId);
+  // The client's uploads (<userId>/...) and the server's checked copies (verified/<userId>/...).
+  const paths = [...(await listObjects(admin, "payment-proofs", userId)), ...(await listObjects(admin, "payment-proofs", `verified/${userId}`))];
   for (let i = 0; i < paths.length; i += PAGE) {
     const { error } = await admin.storage.from("payment-proofs").remove(paths.slice(i, i + PAGE));
     if (error) throw error;

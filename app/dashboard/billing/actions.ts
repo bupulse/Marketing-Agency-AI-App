@@ -288,8 +288,13 @@ export async function startMomoPayment(input: { plan: string; interval: string }
 export async function startMomoProofUpload(input: { paymentId: string; type: string; bytes: number }): Promise<BillingResult<{ path: string; token: string }>> {
   const user = await requireActiveUser();
   if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
-  const limited = await momoLimited(user.id);
-  if (limited) return limited;
+  // Its own limit (20 an hour per user): each call issues an upload URL into the private bucket.
+  try {
+    await rateLimit(`momo-proof:${user.id}`, RATE_LIMITS.momoProof);
+  } catch (error) {
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    throw error;
+  }
   try {
     const target = await startProofUpload(user.id, { paymentId: String(input?.paymentId ?? ""), type: String(input?.type ?? ""), bytes: Number(input?.bytes) });
     return { ok: true, ...target };
