@@ -8,8 +8,8 @@ import { trackEvent } from "@/lib/analytics/events";
 import { subscriptionEventsFor } from "@/lib/analytics/math";
 import { getSetting } from "@/lib/admin/settings";
 import { clearPlanCache, getPlan, getPlans, priceCents } from "@/lib/plan-catalog";
-import { assertOfferAmount, markOfferPaidInTx, offerForPayment } from "@/lib/offers/activate";
-import { readAddition } from "@/lib/offers/shared";
+import { assertOfferAmount, markOfferPaidInTx, offerForPayment, withdrawStaleAddition } from "@/lib/offers/activate";
+import { additionFits, readAddition, STALE_ADDITION_REASON } from "@/lib/offers/shared";
 import { companyPlans } from "@/lib/region-prices";
 import { matchInvoicePayment, readPaymentReviews, withPaymentReview, type PaymentReview } from "@/lib/invoices/shared";
 import { sendInvoiceReviewAlertEmail, sendPaymentRejectedEmail, sendPaymentToCheckEmail, sendPlanActiveEmail } from "./momo-emails";
@@ -190,6 +190,12 @@ export async function startInvoicePayment(input: { userId: string; invoiceId: st
   // A payment for it already arrived and waits for the owner to check: a second one would be a double payment.
   if (readPaymentReviews(invoice.paymentReview).length > 0) throw new ManualPaymentError("A payment for this invoice is being checked. We'll confirm shortly.");
   if (!invoice.planKey || !invoice.interval || invoice.totalMinor <= 0) throw new ManualPaymentError("This invoice cannot be paid by Mobile Money here. Contact support and we will help you.");
+  const invoiceOffer = await offerForPayment({ invoiceId: invoice.id });
+  const invoiceAddition = invoiceOffer ? readAddition(invoiceOffer.options) : null;
+  if (invoiceOffer && invoiceAddition && !additionFits(invoiceAddition, sub, invoiceOffer.interval, now)) {
+    await withdrawStaleAddition(invoiceOffer, now);
+    throw new ManualPaymentError(STALE_ADDITION_REASON);
+  }
   const { region } = await companyPlans(business.id);
   if (!region.paymentMethods.includes("momo")) throw new ManualPaymentError("Mobile Money is not available where your business is. Pay by card, or contact support.");
   return openPayment(input.userId, sub, { planKey: invoice.planKey, interval: invoice.interval, amountMinor: invoice.totalMinor, currency: invoice.currency, invoiceId: invoice.id, offerId: null, reference: invoice.number }, now);
@@ -217,6 +223,11 @@ export async function startOfferPayment(input: { userId: string; offerId: string
   if (!offer || offer.status === "draft") throw new ManualPaymentError("We could not find that offer. Open it again from the Billing page.");
   if (offer.status === "paid") throw new ManualPaymentError("This offer is already paid.");
   if (offer.status !== "accepted" || !offer.customPlanKey) throw new ManualPaymentError("This offer is no longer open. Ask us for a new one.");
+  const addition = readAddition(offer.options);
+  if (addition && !additionFits(addition, sub, offer.interval, now)) {
+    await withdrawStaleAddition(offer, now);
+    throw new ManualPaymentError(STALE_ADDITION_REASON);
+  }
   const { region } = await companyPlans(business.id);
   if (!region.paymentMethods.includes("momo")) throw new ManualPaymentError("Mobile Money is not available where your business is. Choose Pay by invoice, or contact support.");
   return openPayment(input.userId, sub, { planKey: offer.customPlanKey, interval: offer.interval, amountMinor: offer.adjustedMinor, currency: offer.currency, invoiceId: null, offerId: offer.id, reference: null }, now);
@@ -441,8 +452,12 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
     if (sub.provider === "PADDLE" && sub.providerSubscriptionId && LIVE.has(sub.status) && sub.plan !== "TRIAL" && !sub.cancelAtPeriodEnd) {
       throw new AdminError("conflict", "This client has a card subscription that still renews. Cancel it in Paddle first, or reject this payment and refund it by MoMo.");
     }
-    if (addition && (sub.provider !== "MANUAL_MOMO" || sub.status !== "ACTIVE" || !sub.currentPeriodEnd || sub.currentPeriodEnd <= now || sub.plan !== addition.currentPlanKey || sub.interval !== payment.interval)) {
-      throw new AdminError("conflict", `The client's plan changed since they added these features (they were priced on ${addition.currentPlanName}, running until ${addition.periodEnd.slice(0, 10)}). Reject this payment (refund it if the money arrived) and make a new offer.`);
+    if (addition && offer && !additionFits(addition, sub, payment.interval, now)) {
+      // Priced for a period that is no longer the running one (renewed meanwhile, or another plan): the amount is wrong.
+      // The quote is withdrawn (the client is told to ask for a new one) and this payment is left for the owner to reject.
+      await withdrawStaleAddition(offer, now);
+      clearPlanCache();
+      throw new AdminError("conflict", `The client's plan changed since they added these features (priced on ${addition.currentPlanName} until ${addition.periodEnd.slice(0, 10)}; now ${sub.plan} until ${sub.currentPeriodEnd?.toISOString().slice(0, 10) ?? "none"}). The quote was cancelled and the client asked to request a new one. Reject this payment and refund it.`);
     }
     const period: { mode: "extend" | "replace" | "fresh" | "keep"; start: Date; end: Date } = addition ? { mode: "keep", start: now, end: sub.currentPeriodEnd as Date } : planManualPeriod(sub, plan.key, payment.interval, now);
     const before = { plan: sub.plan, status: sub.status, provider: sub.provider, interval: sub.interval, cancelAtPeriodEnd: sub.cancelAtPeriodEnd, currentPeriodStart: sub.currentPeriodStart, currentPeriodEnd: sub.currentPeriodEnd };

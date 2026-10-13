@@ -32,6 +32,10 @@ Decisions:
 
 ## Choosing how to pay
 
+**Both methods are always shown** (13 October 2026): a method the region does not list is "off" but still visible,
+disabled, "Mobile Money: not available in your region" / "Card: not available in your region" (`methodReason`), so a
+card-only region (GLOBAL) also gets the choice, with Mobile Money disabled.
+
 Every pay entry point (Billing plans, the demo lock screen, a custom plan offer, an invoice on Billing or the invoice lock
 screen; the trial-ended and paused screens lead to Billing) asks **Mobile Money (MTN / Airtel)** or **Card** wherever
 the company's region lists both (`PricingRegion.paymentMethods`; RW). `lib/billing/pay-methods.ts` decides, per plan and
@@ -74,10 +78,15 @@ invoice shows card disabled with "ask us for a card link"); offers and added fea
   Money plan opens the checkout; when its webhook arrives inside the window, `applyProviderSubscription` lets the card
   subscription take over (outside it, it is still a `duplicate`) and moves its first renewal to one period after the
   Mobile Money end (`BillingAdapter.deferNextBilling`, Paddle `PATCH /subscriptions/{id}` with `next_billed_at` and
-  `proration_billing_mode: do_not_bill`). If that call fails the card plan is still on and `ErrorLog`
-  `billing.carry_over` says so (credit the days by hand). Card for a card plan cancelled at its end = resume it.
+  `proration_billing_mode: do_not_bill`). The intent is written first (`CardCarryOver`, `lib/billing/carry-over.ts`,
+  migration `20261017191000_card_carry_over`); a failure is logged (`ErrorLog` `billing.carry_over`), the admins are
+  emailed, and the daily Mobile Money renewals job retries it (`carryOvers` in its result). After 5 failed tries it is
+  marked `failed` and the admins get an "Action needed" email: move the next billing date in Paddle by hand. Paid days
+  are never lost silently. Card for a card plan cancelled at its end = resume it.
 - **The server refuses early renewals** with the same sentence: `startManualPayment` (the same plan and interval; a
-  switch to another plan is not a renewal) and `startCheckout` (any card checkout on a paid-up Mobile Money plan).
+  switch to another plan is not a renewal), `startCheckout` (any card checkout on a paid-up Mobile Money plan or a card
+  plan cancelled at its end; checked before anything else) and `resumeSubscription` (resuming a cancelled card plan is
+  its renewal; Billing hides "Resume plan" until the window opens).
 
 ## Connecting Paddle (Admin → Settings → Card payments)
 

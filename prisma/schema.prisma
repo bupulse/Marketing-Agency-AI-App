@@ -640,6 +640,26 @@ model ManualPayment {
   @@index([offerId])
 }
 
+// A card renewal of a Mobile Money plan whose first card charge must be moved by the days already paid
+// (lib/billing/carry-over.ts, docs/BILLING.md "Renewing"). Written before the provider is asked, so a failed request is
+// retried by the daily renewals job and the admins are alerted; paid days are never lost silently.
+model CardCarryOver {
+  id                     String    @id @default(cuid())
+  provider               String // BillingProvider of the card subscription
+  providerSubscriptionId String    @unique
+  userId                 String?   @db.Uuid
+  nextBilledAt           DateTime // one period after the end of the days paid by Mobile Money
+  status                 String    @default("pending") // pending | done | failed (gave up: credit by hand)
+  attempts               Int       @default(0)
+  lastError              String?
+  alertedAt              DateTime?
+  doneAt                 DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([status, createdAt])
+}
+
 // One renewal email of a Mobile Money subscription (lib/billing/momo-renewals.ts): "5d" and "1d" before the period
 // ends, and "paused" when the grace period is over. The unique key is the claim, so a reminder is never sent twice.
 model RenewalNotice {

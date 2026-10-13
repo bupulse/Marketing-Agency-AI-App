@@ -244,6 +244,7 @@ export function createFakeDb() {
       defaults: () => ({ status: "draft", options: {}, requestId: null, adjustReason: null, note: null, validUntil: null, sentAt: null, acceptedAt: null, payMethod: null, customPlanKey: null, invoiceId: null, reminder3SentAt: null, reminder7SentAt: null, paidAt: null, paidBy: null, withdrawnAt: null, withdrawReason: null, updatedAt: new Date() }),
     }),
     customPlanRequest: table([], { pk: "id", defaults: () => ({ status: "new", source: "billing", handledBy: null, demoBookingId: null, budget: null, phone: null, updatedAt: new Date() }) }),
+    cardCarryOver: table([], { pk: "id", unique: ["providerSubscriptionId"], defaults: () => ({ status: "pending", attempts: 0, lastError: null, alertedAt: null, doneAt: null, createdAt: new Date(), updatedAt: new Date() }) }),
     renewalNotice: table([], { pk: "id", uniqueCombo: ["userId", "periodEnd", "kind"], defaults: () => ({ sentAt: new Date() }) }),
     analyticsEvent: table([], { pk: "id" }),
     // Regions, regional prices and demo bookings (R1). Empty by default: lib/region falls back to the seeds.

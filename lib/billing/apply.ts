@@ -89,25 +89,18 @@ export async function applyProviderSubscription(provider: BillingProvider, sub: 
     },
     data,
   });
-  if (count > 0 && carryFrom) await carryOverMomoDays(provider, sub, addMonths(carryFrom, match.interval === "YEAR" ? 12 : 1));
-  return count > 0 ? "applied" : "stale";
-}
-
-/**
- * The card renewal of a Mobile Money plan: moves the card subscription's next charge to one period after the end of the
- * days already paid by Mobile Money (`do_not_bill`, so nothing is charged for it), then records what the provider
- * answers. Best effort: when it fails the card plan is still on (the client loses at most the window's days) and the
- * problem is logged for the owner (ErrorLog `billing.carry_over`).
- */
-async function carryOverMomoDays(provider: BillingProvider, sub: ProviderSubscription, nextBilledAt: Date) {
-  if (sub.currentPeriodEnd && sub.currentPeriodEnd.getTime() >= nextBilledAt.getTime()) return;
-  try {
-    const { billingAdapter } = await import("./index");
-    const adapter = billingAdapter(provider);
-    if (!adapter.deferNextBilling) return;
-    const updated = await adapter.deferNextBilling(sub.providerSubscriptionId, nextBilledAt);
-    await applyProviderSubscription(provider, updated);
-  } catch (error) {
-    await logError(error, { source: "billing.carry_over", providerSubscriptionId: sub.providerSubscriptionId, nextBilledAt: nextBilledAt.toISOString() });
+  // The card renewal of a Mobile Money plan: its first charge moves to one period after the days paid by Mobile Money
+  // (`do_not_bill`). Recorded first and retried by the daily job when the provider fails (lib/billing/carry-over.ts).
+  if (count > 0 && carryFrom) {
+    const nextBilledAt = addMonths(carryFrom, match.interval === "YEAR" ? 12 : 1);
+    if (!sub.currentPeriodEnd || sub.currentPeriodEnd.getTime() < nextBilledAt.getTime()) {
+      try {
+        const { carryOverMomoDays } = await import("./carry-over");
+        await carryOverMomoDays({ provider, providerSubscriptionId: sub.providerSubscriptionId, userId: row.userId, nextBilledAt });
+      } catch (error) {
+        await logError(error, { source: "billing.carry_over", providerSubscriptionId: sub.providerSubscriptionId, nextBilledAt: nextBilledAt.toISOString() });
+      }
+    }
   }
+  return count > 0 ? "applied" : "stale";
 }

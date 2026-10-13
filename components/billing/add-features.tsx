@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, GlassCard, useToast } from "@/components/ui";
 import { addFeaturesAction } from "@/app/dashboard/billing/actions";
 import { featureLabel, FEATURES, withPrerequisites, type FeatureKey } from "@/lib/features";
-import { MOMO_SOON, type MethodState } from "@/lib/billing/pay-methods";
+import { methodReason, type MethodState } from "@/lib/billing/pay-methods";
 import { quoteAddition, type AddonPriceRow, type CurrentPlanForAddition } from "@/lib/offers/shared";
 import { formatMinor } from "@/lib/region-format";
 
@@ -131,19 +131,15 @@ export function AddFeatures({ data, unavailable, momo, card, contactEmail, now }
       )}
 
       <div className="flex flex-wrap gap-2">
-        {momo !== "off" && (
-          <Button onClick={() => pay("momo")} disabled={!canPay || pending || momo !== "ready"} leading={<Smartphone aria-hidden className="size-5" />}>
-            {momo !== "ready" ? MOMO_SOON : busy === "momo" ? "Opening…" : "Pay with Mobile Money"}
-          </Button>
-        )}
+        <Button onClick={() => pay("momo")} disabled={!canPay || pending || momo !== "ready"} leading={<Smartphone aria-hidden className="size-5" />}>
+          {methodReason("momo", momo) ?? (busy === "momo" ? "Opening…" : "Pay with Mobile Money")}
+        </Button>
         <Button variant="outline" onClick={() => pay("invoice")} disabled={!canPay || pending} leading={<FileText aria-hidden className="size-5" />}>
           {busy === "invoice" ? "Preparing…" : "Get an invoice"}
         </Button>
-        {card !== "off" && (
-          <Button variant="outline" onClick={() => setCardHelp((v) => !v)} aria-expanded={cardHelp} leading={<CreditCard aria-hidden className="size-5" />}>
-            Pay by card
-          </Button>
-        )}
+        <Button variant="outline" onClick={() => setCardHelp((v) => !v)} disabled={card === "off"} aria-expanded={cardHelp} leading={<CreditCard aria-hidden className="size-5" />}>
+          {card === "off" ? methodReason("card", card) : "Pay by card"}
+        </Button>
       </div>
       {cardHelp && (
         <p role="status" className="rounded-2xl bg-soft px-4 py-3 text-sm">

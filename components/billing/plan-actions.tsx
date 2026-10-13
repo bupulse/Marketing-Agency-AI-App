@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button, Dialog, useToast } from "@/components/ui";
 import { useTheme } from "@/components/theme";
 import { cancelSubscription, openPortal, resumeSubscription, startCheckout, startMomoPayment } from "@/app/dashboard/billing/actions";
-import { CARD_SOON, MOMO_SOON, type MethodState } from "@/lib/billing/pay-methods";
+import { methodReason, type MethodState } from "@/lib/billing/pay-methods";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 import { openCheckout } from "./checkout";
 
@@ -26,10 +26,12 @@ type Props = {
   method?: "card" | "momo";
   /** The renewal buttons, when renewing is open (the last 7 days of the paid period, or after it ended). */
   renew?: Renewal;
+  /** A card plan cancelled at its end can be resumed only in its last 7 days (resuming is renewing). */
+  canResume?: boolean;
 };
 
 /** Buttons on the current plan card: update payment method, resume, cancel. */
-export function PlanActions({ cancelAtPeriodEnd, pastDue, periodEnd, method = "card", renew }: Props) {
+export function PlanActions({ cancelAtPeriodEnd, pastDue, periodEnd, method = "card", renew, canResume = true }: Props) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
@@ -81,18 +83,14 @@ export function PlanActions({ cancelAtPeriodEnd, pastDue, periodEnd, method = "c
   const renewal = renew ? (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-3">
-        {renew.momo !== "off" && (
-          <Button onClick={() => renewByMomo(renew)} disabled={pending || renew.momo !== "ready"} leading={<Smartphone aria-hidden className="size-4" />}>
-            {busy === "momo" ? "One moment…" : "Renew with Mobile Money"}
-          </Button>
-        )}
-        {renew.card !== "off" && (
-          <Button variant={renew.momo === "ready" ? "outline" : "primary"} onClick={() => renewByCard(renew)} disabled={pending || renew.card !== "ready" || Boolean(renew.cardReason)} leading={<CreditCard aria-hidden className="size-4" />}>
-            {busy === "card" ? "Opening…" : "Renew with card"}
-          </Button>
-        )}
+        <Button onClick={() => renewByMomo(renew)} disabled={pending || renew.momo !== "ready"} leading={<Smartphone aria-hidden className="size-4" />}>
+          {busy === "momo" ? "One moment…" : "Renew with Mobile Money"}
+        </Button>
+        <Button variant={renew.momo === "ready" ? "outline" : "primary"} onClick={() => renewByCard(renew)} disabled={pending || renew.card !== "ready" || Boolean(renew.cardReason)} leading={<CreditCard aria-hidden className="size-4" />}>
+          {busy === "card" ? "Opening…" : "Renew with card"}
+        </Button>
       </div>
-      {[renew.momo === "soon" ? MOMO_SOON : null, renew.card === "soon" ? (renew.cardReason ?? CARD_SOON) : renew.card === "ready" ? (renew.cardReason ?? null) : null]
+      {[methodReason("momo", renew.momo), renew.card === "soon" ? (renew.cardReason ?? methodReason("card", "soon")) : renew.card === "ready" ? (renew.cardReason ?? null) : methodReason("card", renew.card)]
         .filter(Boolean)
         .map((reason) => (
           <span key={reason} className="text-sm text-muted">
@@ -143,9 +141,12 @@ export function PlanActions({ cancelAtPeriodEnd, pastDue, periodEnd, method = "c
         </Button>
       )}
       {cancelAtPeriodEnd ? (
-        <Button onClick={() => run(resumeSubscription, "Your plan will keep renewing.")} disabled={pending}>
-          Resume plan
-        </Button>
+        // In the window the "Renew with card" button above resumes it; before the window it cannot be resumed yet.
+        renew || !canResume ? null : (
+          <Button onClick={() => run(resumeSubscription, "Your plan will keep renewing.")} disabled={pending}>
+            Resume plan
+          </Button>
+        )
       ) : (
         <Button variant="outline" onClick={() => setConfirm(true)} disabled={pending}>
           Cancel plan

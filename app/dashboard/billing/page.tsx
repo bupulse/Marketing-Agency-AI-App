@@ -22,7 +22,7 @@ import { getPlan, subscriberPriceCents, toPublic } from "@/lib/plan-catalog";
 import { companyPlans, type RegionalPlan } from "@/lib/region-prices";
 import { currencyNote } from "@/lib/region-format";
 import { clientInvoices, openInvoiceOf, payableView } from "@/lib/invoices/service";
-import { clientOffer, selfServeAddition } from "@/lib/offers/service";
+import { clientOffer, selfServeAddition, staleAdditionNotice } from "@/lib/offers/service";
 import { renewalState } from "@/lib/billing/renewal";
 import { AddFeatures } from "@/components/billing/add-features";
 import type { Renewal } from "@/components/billing/plan-actions";
@@ -105,6 +105,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       : undefined;
   // "Add features" to the running plan (docs/OFFERS.md): a Mobile Money plan, with no payment or team offer in progress.
   const addition = paid && !pastDue && momoPayment?.status !== "pending" && (!offer || offer.addition?.selfServe) ? await selfServeAddition(business.id, now).catch(() => null) : null;
+  const staleAddition = offer ? null : await staleAdditionNotice(business.id, now).catch(() => null);
   const highlighted = typeof query.invoice === "string" ? query.invoice : null;
   const checkoutSuccess = query.checkout === "success";
   // Wait for this purchase specifically: the plan is active and was updated after checkout began.
@@ -138,6 +139,13 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
                 : "Update your payment method to keep creating. Everything you have made is saved; new content is paused until the payment goes through."}
             </p>
           </div>
+        </GlassCard>
+      )}
+
+      {staleAddition && (
+        <GlassCard role="status" className="flex items-start gap-3 border border-line p-5">
+          <AlertTriangle aria-hidden className="mt-0.5 size-5 shrink-0 text-muted" />
+          <p className="text-sm">{staleAddition}</p>
         </GlassCard>
       )}
 
@@ -184,7 +192,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
                 Your plan is paid until {periodEnd} ({renewal.daysLeft} {renewal.daysLeft === 1 ? "day" : "days"} left). Renew now; the new period starts when this one ends.
               </span>
             )}
-            {cancelling && periodEnd && <span className="text-sm font-medium text-danger">Cancels on {periodEnd}. Your plan stays active until then.</span>}
+            {cancelling && periodEnd && <span className="text-sm font-medium text-danger">Cancels on {periodEnd}. Your plan stays active until then.{renewal?.kind === "paid" ? ` You can renew it from ${formatDate(renewal.opensAt)}.` : ""}</span>}
           </div>
           <Badge tone={status === "ACTIVE" || status === "TRIALING" ? (cancelling ? "neutral" : "success") : "danger"}>
             {statusLabel(status, cancelling)}
@@ -198,6 +206,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
             periodEnd={periodEnd}
             method={momoPlan ? "momo" : "card"}
             renew={renew}
+            canResume={renewal?.kind !== "paid"}
           />
         )}
 
