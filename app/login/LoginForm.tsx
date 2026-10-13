@@ -5,11 +5,13 @@ import { useActionState } from "react";
 import { GoogleIcon } from "@/components/auth/google-icon";
 import { PasswordInput } from "@/components/auth/password-input";
 import { ResendButton } from "@/components/auth/resend-button";
+import { useFieldErrors } from "@/components/auth/use-field-errors";
 import { Button, Field, Input } from "@/components/ui";
 import { signInWithGoogle, signInWithPassword, type LoginState } from "./actions";
 
 export default function LoginForm({ next, defaultEmail }: { next: string; defaultEmail?: string }) {
   const [state, formAction, pending] = useActionState<LoginState, FormData>(signInWithPassword, {});
+  const fields = useFieldErrors(state, state.fieldErrors);
 
   return (
     <div className="flex flex-col gap-5">
@@ -26,7 +28,7 @@ export default function LoginForm({ next, defaultEmail }: { next: string; defaul
         <span className="h-px flex-1 bg-line" />
       </div>
 
-      <form action={formAction} noValidate className="flex flex-col gap-4">
+      <form action={formAction} noValidate onInput={fields.edit} className="flex flex-col gap-4">
         <input type="hidden" name="next" value={next} />
         {state.error && (
           <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
@@ -39,10 +41,10 @@ export default function LoginForm({ next, defaultEmail }: { next: string; defaul
             <ResendButton email={state.unconfirmedEmail} />
           </div>
         )}
-        <Field label="Email" required error={state.fieldErrors?.email}>
+        <Field label="Email" required error={fields.error("email")}>
           <Input name="email" type="email" autoComplete="email" placeholder="you@yourbusiness.com" defaultValue={defaultEmail} />
         </Field>
-        <Field label="Password" required error={state.fieldErrors?.password}>
+        <Field label="Password" required error={fields.error("password")}>
           <PasswordInput name="password" autoComplete="current-password" />
         </Field>
         <Link href="/forgot-password" className="-mt-2 inline-flex min-h-11 items-center self-start text-sm font-semibold text-pulse-blue underline">

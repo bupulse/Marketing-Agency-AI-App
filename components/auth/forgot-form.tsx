@@ -5,9 +5,12 @@ import { useActionState } from "react";
 import { MailCheck } from "lucide-react";
 import { Button, Field, Input } from "@/components/ui";
 import { requestPasswordReset, type ForgotState } from "@/app/forgot-password/actions";
+import { useFieldErrors } from "./use-field-errors";
 
 export default function ForgotForm() {
   const [state, formAction, pending] = useActionState<ForgotState, FormData>(requestPasswordReset, {});
+  // The form's one error is about the email.
+  const fields = useFieldErrors(state, { email: state.error });
 
   if (state.sent) {
     return (
@@ -25,8 +28,8 @@ export default function ForgotForm() {
   }
 
   return (
-    <form action={formAction} noValidate className="flex flex-col gap-4">
-      <Field label="Email" required error={state.error}>
+    <form action={formAction} noValidate onInput={fields.edit} className="flex flex-col gap-4">
+      <Field label="Email" required error={fields.error("email")}>
         <Input name="email" type="email" autoComplete="email" placeholder="you@yourbusiness.com" />
       </Field>
       <Button type="submit" disabled={pending} className="w-full">
