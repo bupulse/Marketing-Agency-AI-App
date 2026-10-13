@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { createUploadTargets, discardUpload, finalizeUpload } from "@/app/dashboard/gallery/actions";
-import { fileProblem, inferMimeType, isVideoType, MEDIA_MAX_BYTES, nameFromFile, POSTER_MAX_BYTES, POSTER_MAX_SIDE, scaledSize, storedVideoType, UPLOAD_BATCH_MAX, VIDEO_MAX_MS } from "@/lib/media/rules";
+import { fileProblem, GALLERY_VIDEO_BUCKET, inferMimeType, isVideoType, MEDIA_MAX_BYTES, nameFromFile, POSTER_MAX_BYTES, POSTER_MAX_SIDE, scaledSize, storedVideoType, UPLOAD_BATCH_MAX, VIDEO_MAX_MS } from "@/lib/media/rules";
 import type { MediaItem } from "@/lib/media/service";
 
 export type UploadState = { active: boolean; total: number; done: number; failed: number; errors: string[]; /** The file being worked on (imports only). */ current?: string };
@@ -187,10 +187,13 @@ export function useGalleryUpload(onUploaded?: (items: MediaItem[]) => void) {
               }
               try {
                 const type = inferMimeType(file.name, file.type);
-                // A MOV is stored and served as MP4 (the same file family; the networks take it).
-                const { error } = await storage.uploadToSignedUrl(target.path, target.token, file, { contentType: isVideoType(type) ? storedVideoType(type) : type });
+                const video = isVideoType(type);
+                // Videos go to their own private bucket with the server's upload token; a MOV is stored and served as
+                // MP4 (the same file family; the networks take it).
+                const bucket = video ? createClient().storage.from(GALLERY_VIDEO_BUCKET) : storage;
+                const { error } = await bucket.uploadToSignedUrl(target.path, target.token, file, { contentType: video ? storedVideoType(type) : type });
                 if (error) throw error;
-                if (target.poster && poster) await storage.uploadToSignedUrl(target.poster.path, target.poster.token, poster, { contentType: "image/jpeg" }).catch(() => null);
+                if (target.poster && poster) await bucket.uploadToSignedUrl(target.poster.path, target.poster.token, poster, { contentType: "image/jpeg" }).catch(() => null);
                 const saved = await finalizeUpload({ path: target.path, name: nameFromFile(file.name), destination, width, height });
                 if (!saved.ok) {
                   void discardUpload(target.path);

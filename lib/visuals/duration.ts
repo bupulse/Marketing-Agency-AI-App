@@ -76,7 +76,7 @@ function uint(b: Uint8Array, i: number, n: number) {
 }
 
 /** Milliseconds from a WebM: the Info Duration, else the latest block timecode plus one frame (about 33 ms). */
-export function webmDurationMs(bytes: Uint8Array): number | null {
+export function webmDurationMs(bytes: Uint8Array, options: { infoOnly?: boolean } = {}): number | null {
   let scale = 1_000_000;
   let duration: number | null = null;
   let cluster = 0;
@@ -112,7 +112,13 @@ export function webmDurationMs(bytes: Uint8Array): number | null {
     i = data + size.value;
   }
   if (duration !== null && Number.isFinite(duration) && duration > 0) return (duration * scale) / 1_000_000;
+  if (options.infoOnly) return null;
   return last >= 0 ? (last * scale) / 1_000_000 + 33 : null;
+}
+
+/** Only a WebM's Info Duration (for a file read in part: the last block seen is not the end of the video). */
+export function webmInfoDurationMs(bytes: Uint8Array): number | null {
+  return webmDurationMs(bytes, { infoOnly: true });
 }
 
 export function videoDurationMs(bytes: Uint8Array, type: "video/mp4" | "video/webm"): number | null {
@@ -123,13 +129,75 @@ export function videoDurationMs(bytes: Uint8Array, type: "video/mp4" | "video/we
   }
 }
 
+/** Boxes inside [start, end): each one's type and body range. */
+function boxes(bytes: Uint8Array, start: number, end: number): { type: string; body: number; end: number }[] {
+  const out: { type: string; body: number; end: number }[] = [];
+  let i = start;
+  while (i + 8 <= end && out.length < 256) {
+    let size = u32(bytes, i);
+    let header = 8;
+    if (size === 1) {
+      if (i + 16 > end) break;
+      size = u32(bytes, i + 8) * 2 ** 32 + u32(bytes, i + 12);
+      header = 16;
+    } else if (size === 0) size = end - i;
+    if (size < header) break;
+    out.push({ type: String.fromCharCode(...bytes.subarray(i + 4, i + 8)), body: i + header, end: Math.min(end, i + size) });
+    i += size;
+  }
+  return out;
+}
+
+/** A (mvhd or mdhd) header's duration in ms: both keep timescale and duration at the same offsets. */
+function headerMs(bytes: Uint8Array, p: number, end: number): number | null {
+  if (bytes[p] === 1) {
+    if (p + 32 > end) return null;
+    const timescale = u32(bytes, p + 20);
+    return timescale > 0 ? ((u32(bytes, p + 24) * 2 ** 32 + u32(bytes, p + 28)) / timescale) * 1000 : null;
+  }
+  if (p + 20 > end) return null;
+  const timescale = u32(bytes, p + 12);
+  return timescale > 0 ? (u32(bytes, p + 16) / timescale) * 1000 : null;
+}
+
+/** An MP4's movie length (mvhd) and each track's own length (trak/mdia/mdhd), from bytes holding its moov box. */
+export function mp4Durations(bytes: Uint8Array): { movieMs: number | null; trackMs: number[] } | null {
+  const moov = boxes(bytes, 0, bytes.length).find((b) => b.type === "moov");
+  if (!moov) return null;
+  const inside = boxes(bytes, moov.body, moov.end);
+  const mvhd = inside.find((b) => b.type === "mvhd");
+  const trackMs = inside
+    .filter((b) => b.type === "trak")
+    .flatMap((trak) => {
+      const mdia = boxes(bytes, trak.body, trak.end).find((b) => b.type === "mdia");
+      const mdhd = mdia && boxes(bytes, mdia.body, mdia.end).find((b) => b.type === "mdhd");
+      const ms = mdhd ? headerMs(bytes, mdhd.body, mdhd.end) : null;
+      return ms !== null && ms > 0 ? [ms] : [];
+    });
+  return { movieMs: mvhd ? headerMs(bytes, mvhd.body, mvhd.end) : null, trackMs };
+}
+
 /**
- * An MP4's (or MOV's) length without downloading it: walks the top-level boxes with small ranged reads until the
- * movie box, then reads only that box (at most `maxMoovBytes`). `read(start, length)` returns those bytes or null.
+ * The length to trust: the longest of the movie and its tracks (a short movie header cannot hide a long track). Null
+ * when nothing is known or the tracks and the movie disagree by more than 10% (an edited or forged header).
  */
-export async function probeMp4DurationMs(read: (start: number, length: number) => Promise<Uint8Array | null>, size: number, maxMoovBytes = 8 * 1024 * 1024): Promise<number | null> {
+export function trustedLengthMs(d: { movieMs: number | null; trackMs: number[] } | null): number | null {
+  if (!d) return null;
+  const all = [...(d.movieMs ? [d.movieMs] : []), ...d.trackMs];
+  if (all.length === 0) return null;
+  const longest = Math.max(...all);
+  if (d.movieMs && d.trackMs.length && Math.abs(Math.max(...d.trackMs) - d.movieMs) > longest * 0.1) return null;
+  return longest;
+}
+
+/**
+ * An MP4's (or MOV's) movie and track lengths without downloading it: walks the top-level boxes with small ranged
+ * reads until the movie box, then reads only that box (at most `maxMoovBytes`). `read(start, length)` returns those
+ * bytes or null.
+ */
+export async function probeMp4Durations(read: (start: number, length: number) => Promise<Uint8Array | null>, size: number, maxMoovBytes = 8 * 1024 * 1024): Promise<{ movieMs: number | null; trackMs: number[] } | null> {
   let offset = 0;
-  for (let boxes = 0; offset + 8 <= size && boxes < 64; boxes++) {
+  for (let count = 0; offset + 8 <= size && count < 64; count++) {
     const head = await read(offset, 16);
     if (!head || head.length < 8) return null;
     let boxSize = u32(head, 0);
@@ -142,7 +210,7 @@ export async function probeMp4DurationMs(read: (start: number, length: number) =
     if (type === "moov") {
       if (boxSize > maxMoovBytes) return null;
       const moov = await read(offset, boxSize);
-      return moov ? mp4DurationMs(moov) : null;
+      return moov ? mp4Durations(moov) : null;
     }
     offset += boxSize;
   }

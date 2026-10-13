@@ -2,7 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export const BUCKETS = ["brand", "media", "designs"] as const;
+export const BUCKETS = ["brand", "media", "designs", "gallery-videos"] as const;
 export type Bucket = (typeof BUCKETS)[number];
 
 const DEFAULT_DOWNLOAD_SECONDS = 60 * 60;
@@ -31,7 +31,8 @@ export function buildObjectPath(
 // the few uploads the app allows while the account is read-only (the onboarding logo while the demo is pending); the
 // caller has then already checked the user and built the path in their own folder.
 export async function createSignedUploadUrl(bucket: Bucket, path: string, options: { service?: boolean } = {}) {
-  const supabase = options.service ? createAdminClient() : await createClient();
+  // The gallery-videos bucket has no Storage policies: only the server's key can issue its upload tokens.
+  const supabase = options.service || bucket === "gallery-videos" ? createAdminClient() : await createClient();
   const { data, error } = await supabase.storage
     .from(bucket)
     .createSignedUploadUrl(path);
