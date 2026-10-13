@@ -42,7 +42,8 @@ export function configuredModel(provider: string) {
  */
 export async function pruneVersions(subject: Subject, owner?: { userId: string; businessId: string }) {
   const old = await prisma.generatedContent.findMany({
-    where: subject.kind === "product" ? { productId: subject.id } : { campaignId: subject.id },
+    // A day's posts (content flow v3, forDate set) are the day view's history, not versions: never pruned here.
+    where: subject.kind === "product" ? { productId: subject.id, forDate: null } : { campaignId: subject.id, forDate: null },
     orderBy: { createdAt: "desc" },
     skip: MAX_VERSIONS_PER_PROJECT,
     select: { id: true },

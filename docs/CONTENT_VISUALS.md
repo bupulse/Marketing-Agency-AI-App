@@ -72,7 +72,7 @@ screen).
   now" (the browser takes the render lease unless the robot holds it). After 3 failed robot renders the video is left
   to the browser. Caption fonts (Inter, or the pack's display font, SIL OFL) are self-hosted in `public/fonts/video`
   and loaded by the renderer, so the robot's and the browser's videos look the same.
-- **When it renders**: on the content page as soon as the video is pending (progress bar), unless the video robot is on. On Autopilot cards the badge
+- **When it renders**: on the subject's day view (Content, "Pictures and videos"; the first pending video of the day) as soon as the video is pending (progress bar), unless the video robot is on. On Autopilot cards the badge
   says "Video ready to render"; it renders when the owner opens the card's "Make the video" panel, one card at a time.
 - Without video in the plan the screen shows the picture with "Add video to your plan" (`/dashboard/upgrade?feature=video`).
 
@@ -82,7 +82,7 @@ platform guard (`platformBytes`, `MEDIA_PLATFORM_MAX_BYTES`, 900 MB default). Th
 
 ## What the owner can change
 
-On the content card (Studio) and the Autopilot card ("Picture and video"):
+On the day view's "Pictures and videos" (Content, docs/CONTENT.md) and the Autopilot card ("Picture and video"):
 
 | Action | What happens | Cost |
 | --- | --- | --- |

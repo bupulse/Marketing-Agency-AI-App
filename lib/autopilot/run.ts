@@ -32,6 +32,8 @@ import { consumeUsage, refundUsage, UsageLimitError } from "@/lib/usage";
 import { getProvider } from "@/lib/social/registry";
 import { localDateISO, nextWeekStart, safeZone, weekdayOfISO, weekKey, weekStartFromKey } from "./timezone";
 import { writeGroup, type WriteRequest, type WriterBrand } from "./writer";
+import { planAutopilotAngles } from "@/lib/content-flow/autopilot";
+import type { AngleChoice } from "@/lib/content-flow/angles";
 
 export type RunStatus = "planned" | "already_planned" | "nothing_to_plan" | "no_credits" | "failed";
 
@@ -80,8 +82,9 @@ async function claimRun(businessId: string, key: Date, now: Date): Promise<{ id:
   return count === 1 ? { id: run.id } : null;
 }
 
-function factsFor(group: PlannedGroup) {
+function factsFor(group: PlannedGroup, angle?: AngleChoice) {
   return {
+    angle,
     project: group.project && { type: group.project.type, title: group.project.title, price: group.project.price, features: group.project.features, notes: group.project.notes, context: group.project.context },
     faq: group.faq,
     holiday: group.holiday ? { name: group.holiday.name, date: group.holiday.date } : undefined,
@@ -203,7 +206,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
       try {
         const targets = group.networks.map((network) => ({ network, format: group.posts.find((p) => p.network === network)!.format }));
         const trends = (await trendSource.trends({ network: targets[0].network, country: business.country, industry: business.industry }).catch(() => [])).slice(0, 3);
-        const request: WriteRequest = { brand, idea: group.idea, facts: { ...factsFor(group), trends }, targets };
+        const request: WriteRequest = { brand, idea: group.idea, facts: { ...factsFor(group, angles.get(group.groupId)), trends }, targets };
         const written = await withLedger(
           { userId, businessId, feature: "autopilot" },
           { provider: configured, model: configuredModel(configured) },
@@ -211,10 +214,12 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
           (r) => ({ provider: r.provider, model: r.model, usage: r.usage }),
         );
 
+        // Gallery first: a video idea about a product or campaign with its own album video posts that video as it is.
+        const albumVideo = group.project?.videoPaths?.[0] ?? null;
         const images = await makeGroupVisuals(
           group,
           written,
-          { userId, businessId, businessName: business.name, language: business.contentLanguage, useAiImages: input.config.useAiImages && aiPhotos && !aiStopped, service: options.service ?? false, business: { name: business.name, tone: business.tone, industry: business.industry, brandColors: business.brandColors }, videoAllowed },
+          { userId, businessId, businessName: business.name, language: business.contentLanguage, useAiImages: input.config.useAiImages && aiPhotos && !aiStopped, service: options.service ?? false, business: { name: business.name, tone: business.tone, industry: business.industry, brandColors: business.brandColors }, videoAllowed: videoAllowed && !albumVideo },
           visualRun,
         );
         if (images.aiStopped) aiStopped = true;
@@ -228,8 +233,9 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
           // A carousel the art director made goes on every feed post whose network has carousels.
           const fromCarousel = images.carousel && (planned.format === "POST" || planned.format === "CAROUSEL") ? mediaForPost({ network: planned.network, format: planned.format, rules, images: images.carousel, video: null }) : null;
           const extras = planned.format === "CAROUSEL" ? group.photos.slice(1).map((p) => p.path) : [];
-          const mediaPaths = fromCarousel?.mediaPaths ?? (planned.format === "SCRIPT" || planned.format === "ARTICLE" ? [] : [...(design ? [design] : []), ...extras].slice(0, rules.maxImages || 10));
-          const format = fromCarousel?.format ?? (planned.format === "CAROUSEL" && mediaPaths.length < 2 ? "POST" : planned.format);
+          const fromVideo = albumVideo && planned.format === "SCRIPT" ? mediaForPost({ network: planned.network, format: "SCRIPT", rules, images: [], video: albumVideo }) : null;
+          const mediaPaths = fromVideo?.mediaPaths ?? fromCarousel?.mediaPaths ?? (planned.format === "SCRIPT" || planned.format === "ARTICLE" ? [] : [...(design ? [design] : []), ...extras].slice(0, rules.maxImages || 10));
+          const format = fromVideo?.format ?? fromCarousel?.format ?? (planned.format === "CAROUSEL" && mediaPaths.length < 2 ? "POST" : planned.format);
           // Networks that need a picture cannot publish without one: leave it as a draft to finish.
           const needsPicture = getProvider(planned.network).rules.requiresMedia && format !== "SCRIPT" && mediaPaths.length === 0;
           return [
@@ -274,6 +280,9 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
         if (!finished) await refundUsage(userId, "text", reservation.periodStart).catch((e) => logError(e, { source: "autopilot.refund", userId, businessId }));
       }
     };
+
+    // The day's angle per product or campaign post, rotated like "Create today's content" (lib/content-flow/angles.ts).
+    const angles = await planAutopilotAngles(businessId, plan.groups, now);
 
     // A few groups at a time; each charges and refunds its own credit.
     const queue = [...plan.groups];

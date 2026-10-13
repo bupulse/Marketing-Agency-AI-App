@@ -36,13 +36,15 @@ export async function planContentVisuals(owner: Owner, input: { business: Busine
  */
 export async function remakeContentVisuals(owner: Owner, contentId: string, only?: "image" | "video") {
   const content = await prisma.generatedContent.findFirst({ where: { id: contentId, businessId: owner.businessId }, select: { id: true, caption: true, adHeadlines: true, videoScript: true, productId: true, campaignId: true } });
-  if (!content || (!content.productId && !content.campaignId)) throw new VisualError("We could not find that content.");
-  const subject: Subject = content.productId ? { kind: "product", id: content.productId } : { kind: "campaign", id: content.campaignId! };
-  const [business, item, old] = await Promise.all([
+  if (!content) throw new VisualError("We could not find that content.");
+  // Content for General (a day's run, docs/CONTENT.md) is about the business itself: no album.
+  const subject: Subject | null = content.productId ? { kind: "product", id: content.productId } : content.campaignId ? { kind: "campaign", id: content.campaignId } : null;
+  const [business, found, old] = await Promise.all([
     prisma.business.findUnique({ where: { id: owner.businessId }, select: { name: true, tone: true, industry: true, brandColors: true } }),
-    writingSubject(owner.businessId, subject),
+    subject ? writingSubject(owner.businessId, subject) : null,
     prisma.contentVisual.findMany({ where: { businessId: owner.businessId, contentId }, select: { id: true, kind: true } }),
   ]);
+  const item = found ?? (subject || !business ? null : { type: "other", title: business.name, price: null, photoPaths: [] as string[] });
   if (!business || !item) throw new VisualError("We could not find that product or campaign.");
   const [aiAllowed, videoOk, carouselAllowed] = await Promise.all([aiPhotosAvailable(owner), videoAvailable(owner.businessId), carouselNetworks(owner.businessId).catch(() => true)]);
   const wantVideo = only !== "image" && videoOk && content.videoScript.trim().length > 0;

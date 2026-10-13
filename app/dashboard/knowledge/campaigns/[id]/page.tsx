@@ -1,22 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAppContext } from "@/components/app/context";
-import { latestContentPosts } from "@/lib/content-board/drafts";
 import { featureGate } from "@/components/app/no-access";
-import { DesignStudio } from "@/components/designs/design-studio";
 import { AlbumCard } from "@/components/knowledge/album-card";
 import { BackLink } from "@/components/knowledge/back-link";
 import { DetailsList } from "@/components/knowledge/details-list";
 import { ItemActions } from "@/components/knowledge/item-actions";
-import { ContentCard } from "@/components/studio/content-card";
-import { loadSubjectStudio } from "@/components/studio/queries";
-import { WriteContentCta } from "@/components/studio/write-content-cta";
+import { SubjectContentLink } from "@/components/knowledge/subject-content-link";
 import { Badge, GlassCard } from "@/components/ui";
 import { localDateISO, safeZone } from "@/lib/autopilot/timezone";
-import { isCanvaEnabled } from "@/lib/canva/config";
-import { recommendPack } from "@/lib/designs/packs";
 import { CAMPAIGN_TYPE_LABEL, campaignPhase, dayString, formatDateRange, PHASE_LABEL } from "@/lib/knowledge/campaigns";
-import { legacyTypeOf } from "@/lib/knowledge/legacy";
 import { formatPrice, KIND_SHORT, STATUS_LABEL } from "@/lib/knowledge/products";
 import { albumItems } from "@/lib/media/service";
 import { getCampaign } from "@/lib/knowledge/service";
@@ -27,16 +20,10 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   const blocked = await featureGate("content");
   if (blocked) return blocked;
   const { id } = await params;
-  const { business, usage, entitlements } = await getAppContext();
+  const { business } = await getAppContext();
   const campaign = await getCampaign(business.id, id);
   if (!campaign) notFound();
-  const subject = { kind: "campaign" as const, id: campaign.id };
-  // Content written before posts were drafted gets its posts to review once, when its page is opened (docs/CONTENT.md).
-  if (entitlements.usable.has("calendar")) await latestContentPosts(business.id, { campaignId: campaign.id }, { backfill: true }).catch(() => null);
-  const [photos, studio] = await Promise.all([albumItems(business.id, "campaign", campaign.id), loadSubjectStudio(business.id, subject)]);
-  // Designs fall back to the first linked product's album while the campaign has no photos of its own.
-  const firstProduct = campaign.products[0]?.product;
-  const designPhotos = photos.length || !firstProduct ? photos : await albumItems(business.id, "product", firstProduct.id);
+  const photos = await albumItems(business.id, "campaign", campaign.id);
   const startsOn = dayString(campaign.startsAt);
   const endsOn = dayString(campaign.endsAt);
   const phase = campaignPhase({ startsOn, endsOn }, localDateISO(new Date(), safeZone(business.timezone)));
@@ -85,32 +72,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
 
       <AlbumCard kind="campaign" id={campaign.id} name={campaign.name} photos={photos.map((p) => ({ id: p.id, path: p.path, url: p.url, name: p.name }))} />
 
-      {studio.contents.length === 0 ? (
-        <WriteContentCta subjectId={campaign.id} used={usage.used.text} limit={usage.limits.text} />
-      ) : (
-        <ContentCard subject={subject} contents={studio.contents} videoInPlan={studio.videoInPlan} used={usage.used.text} limit={usage.limits.text} photos={designPhotos.map((p) => ({ path: p.path, url: p.url }))} />
-      )}
-
-      {entitlements.usable.has("designs") && (
-        <DesignStudio
-          pack={recommendPack(business)}
-          canva={isCanvaEnabled() && entitlements.usable.has("canva")}
-          aiPhotos={entitlements.usable.has("aiPhotos")}
-          subjectId={campaign.id}
-          album={`campaign:${campaign.id}`}
-          defaults={{
-            headline: campaign.name,
-            subline: campaign.highlights[0] ?? formatDateRange(startsOn, endsOn),
-            chip: (campaign.priceInfo ?? "").slice(0, 40),
-            photoPaths: designPhotos.map((p) => p.path),
-            photoUrls: designPhotos.map((p) => p.url),
-            projectType: legacyTypeOf(campaign),
-          }}
-          designs={studio.designs}
-          credits={{ used: usage.used.image, limit: usage.limits.image, resetsAt: usage.resetsAt?.toISOString() ?? null }}
-          hasLogo={Boolean(business.logoUrl)}
-        />
-      )}
+      <SubjectContentLink href={`/dashboard/content/campaigns/${campaign.id}`} label="See this campaign's content" />
     </>
   );
 }

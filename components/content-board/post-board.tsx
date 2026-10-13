@@ -7,13 +7,15 @@ import { PostComposer } from "@/components/publishing/composer";
 import { PostDetail } from "@/components/publishing/post-detail";
 import type { ContentPost } from "@/lib/content-board/queries";
 import type { CalendarPost, ComposerContext } from "@/lib/publishing/types";
+import { dayKey } from "@/lib/publishing/time";
 import { PostCard } from "./post-card";
 
-/** Where a post's picture or video is made: its Autopilot card, or its product's or campaign's page. */
-export function visualHrefFor(post: ContentPost): string | null {
+/** Where a post's picture or video is made: its Autopilot card, or the day it was made on its product's, campaign's or General's content page. */
+export function visualHrefFor(post: ContentPost, zone: string): string | null {
   if (post.source === "AUTOPILOT") return "/dashboard/autopilot";
-  if (post.subject) return `/dashboard/knowledge/${post.subject.kind === "product" ? "products" : "campaigns"}/${post.subject.id}`;
-  return null;
+  if (!post.contentId) return null;
+  const base = post.subject ? `/dashboard/content/${post.subject.kind === "product" ? "products" : "campaigns"}/${post.subject.id}` : "/dashboard/content/general";
+  return `${base}?day=${dayKey(new Date(post.createdAt), zone)}#day-visuals`;
 }
 
 /** Apps with an account BuPulse posts to automatically (by-hand posts for them can switch). */
@@ -93,7 +95,7 @@ export function PostBoard({
           </Link>
         </div>
       )}
-      <PostDetail post={detail} zone={zone} onClose={() => setDetailId(null)} onEdit={(p) => { setDetailId(null); setEditing(p); }} visualHref={detail ? visualHrefFor(detail) : null} autoNetworks={autoNetworksOf(context)} />
+      <PostDetail post={detail} zone={zone} onClose={() => setDetailId(null)} onEdit={(p) => { setDetailId(null); setEditing(p); }} visualHref={detail ? visualHrefFor(detail, zone) : null} autoNetworks={autoNetworksOf(context)} />
       <PostComposer open={editing !== null} onOpenChange={(o) => !o && setEditing(null)} context={context} post={editing ?? undefined} />
     </div>
   );

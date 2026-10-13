@@ -18,6 +18,7 @@ import { localDateISO, safeZone, weekDates } from "./timezone";
 import { campaignContext, productContext } from "@/lib/knowledge/context";
 import { legacyTypeOf } from "@/lib/knowledge/legacy";
 import { formatPrice } from "@/lib/knowledge/products";
+import { isVideoPath } from "@/lib/visuals/post-media";
 
 const CONTEXT_FIELDS = { kind: true, name: true, category: true, summary: true, description: true, priceModel: true, priceAmount: true, currency: true, priceNote: true, usps: true, features: true, targetCustomer: true, details: true } as const;
 
@@ -81,7 +82,8 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
       price: formatPrice(p),
       features: [...p.usps, ...p.features].slice(0, 10),
       context: productContext(p),
-      photoPaths: p.photos.map((x) => x.asset.path),
+      photoPaths: p.photos.map((x) => x.asset.path).filter((path) => !isVideoPath(path)),
+      videoPaths: p.photos.map((x) => x.asset.path).filter(isVideoPath),
       createdAt: p.createdAt,
       postedCount: posted.get(p.id)?._count._all ?? 0,
       lastPostedAt: posted.get(p.id)?._max.scheduledAt ?? null,
@@ -94,7 +96,8 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
       price: c.priceInfo,
       features: c.highlights,
       context: campaignContext({ ...c, products: c.products.map((x) => x.product) }),
-      photoPaths: c.photos.map((x) => x.asset.path),
+      photoPaths: c.photos.map((x) => x.asset.path).filter((path) => !isVideoPath(path)),
+      videoPaths: c.photos.map((x) => x.asset.path).filter(isVideoPath),
       createdAt: c.createdAt,
       postedCount: posted.get(c.id)?._count._all ?? 0,
       lastPostedAt: posted.get(c.id)?._max.scheduledAt ?? null,

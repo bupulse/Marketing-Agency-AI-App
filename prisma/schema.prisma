@@ -105,6 +105,7 @@ model Business {
   products         Product[]
   campaigns        Campaign[]
   contents         GeneratedContent[]
+  contentAngles    ContentAngle[]
   demoBookings     DemoBooking[]
   designs          Design[]
   contentVisuals   ContentVisual[]
@@ -185,6 +186,15 @@ model GeneratedContent {
   // When its posts to review were drafted (lib/content-board/drafts.ts); null for content from before, which is drafted
   // once when its product or campaign is opened.
   postsDraftedAt DateTime?
+  // Content flow v3 (docs/CONTENT.md, lib/content-flow/): one row per post of a day's run. The business-local day it
+  // was made for, the angle it was written from, the network it was written for, the run it belongs to, how it was
+  // made ("ai" | "describe" | "own") and the owner's brief or caption. Null on content from before.
+  forDate     DateTime? @db.Date
+  angle       String?
+  network     String?
+  runId       String?
+  mode        String?
+  brief       String?
   provider    String // "gemini" | "claude" | "edit"
   model       String
   createdAt   DateTime  @default(now())
@@ -194,6 +204,25 @@ model GeneratedContent {
   @@index([productId, createdAt])
   @@index([campaignId, createdAt])
   @@index([businessId, createdAt])
+  @@index([businessId, forDate])
+}
+
+// The angle (and hook and structure) a product's, campaign's or General's posts used on a day, so the next days take
+// another one (lib/content-flow/angles.ts). Written by "Create today's content" and by Autopilot.
+model ContentAngle {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  subjectKey String // "product:<id>" | "campaign:<id>" | "general"
+  day        DateTime @db.Date // business-local day
+  angle      String
+  hook       String
+  structure  String
+  source     String // "studio" | "autopilot"
+  createdAt  DateTime @default(now())
+
+  @@unique([businessId, subjectKey, day, source])
+  @@index([businessId, subjectKey, day])
 }
 
 // ---- Knowledge base (docs/KNOWLEDGE_BASE.md) ----------------------------------------------------------------------

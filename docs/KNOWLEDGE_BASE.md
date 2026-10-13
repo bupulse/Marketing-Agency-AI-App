@@ -73,8 +73,8 @@ the others (`when: () => true`) so the form shows every problem at once. Prices 
 ("15000", "49.99") and stored in the smallest (`toMinor`); RWF refuses decimals.
 
 The list (`/dashboard/knowledge/products`) filters by kind, status and a search, shows "Needs details" with what is
-missing (a reason to choose it, a price, a photo). A product's page shows its facts, its album, its content (write,
-regenerate, edit, schedule) and the design studio. Edit, Duplicate (a draft copy with the same album photos), Archive
+missing (a reason to choose it, a price, a photo). A product's page shows its facts and its album, and links to
+"See this product's content" (its day view on the Content page, docs/CONTENT.md); content is made there. Edit, Duplicate (a draft copy with the same album photos), Archive
 (kept with its content, left out of Autopilot, the chat assistant and pickers) / Restore, and Delete (its texts go;
 its photos stay in the gallery; designs and posts keep existing).
 
