@@ -85,7 +85,7 @@ New dependency: `pdf-lib@1.17.1` (pure JS, MIT).
 - `app/dashboard/billing/actions.ts`: `startMomoPayment` also takes `{ invoiceId }`.
 - `app/dashboard/billing/page.tsx`, `app/dashboard/layout.tsx` (invoice lock while `PENDING_DEMO`),
   `components/billing/momo-payment.tsx` (invoice wording, retry keeps the invoice).
-- `app/admin/(console)/demos/page.tsx`, `components/admin/demo-panel.tsx`: the Start trial button became
+- `app/admin/(console)/(clients)/demos/page.tsx`, `components/admin/demo-panel.tsx`: the Start trial button became
   `<ActivateAccount>` (a few lines each; `startTrialAction` in `demos/actions.ts` is kept and unchanged).
   **Note for the demo-booking / calendar builder working on the same files:** only those button blocks changed.
 - `components/admin/nav.ts` (Invoices under Money), `lib/rate-limit.ts` (`invoicePdf`: 60/h per company),

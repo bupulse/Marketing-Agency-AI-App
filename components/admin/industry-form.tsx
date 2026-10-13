@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import Link from "next/link";
 import { Button, Field, Input, Textarea } from "@/components/ui";
 import { notice } from "@/components/admin/ui";
-import { saveIndustryAction, type IndustryFormState } from "@/app/admin/(console)/industries/actions";
+import { saveIndustryAction, type IndustryFormState } from "@/app/admin/(console)/(content)/industries/actions";
 
 export type IndustryFormValues = {
   id?: string | null;

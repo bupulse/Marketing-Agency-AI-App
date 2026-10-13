@@ -4,7 +4,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Button, Dialog, Field, Input, Textarea } from "@/components/ui";
 import { InvoicePreview } from "@/components/invoices/invoice-preview";
-import { saveInvoiceAction, sendInvoiceAction } from "@/app/admin/(console)/invoices/actions";
+import { saveInvoiceAction, sendInvoiceAction } from "@/app/admin/(console)/(money)/invoices/actions";
 import { computeTotals, formatInvoiceMoney, MAX_LINES, moneyInput, parseMoney, validateDraft, type InvoiceDocument, type InvoiceLine } from "@/lib/invoices/shared";
 
 type LineInput = { key: number; description: string; quantity: string; price: string };

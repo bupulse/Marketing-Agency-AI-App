@@ -6,7 +6,7 @@ import { Badge, Button, Field, Input, Meter } from "@/components/ui";
 import Link from "next/link";
 import { dateTime, num, param } from "@/lib/admin/format";
 import { getAiUsage } from "@/lib/admin/ai-usage";
-import { setAiBudgetAction } from "../actions";
+import { setAiBudgetAction } from "@/app/admin/(console)/actions";
 
 export const metadata = { title: "AI usage" };
 

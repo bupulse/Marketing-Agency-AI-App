@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { Badge, Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { OfferCard } from "@/components/billing/offer-card";
-import { saveOfferAction } from "@/app/admin/(console)/offers/actions";
+import { saveOfferAction } from "@/app/admin/(console)/(money)/offers/actions";
 import { cn } from "@/lib/cn";
 import { featureLabel, FEATURES, withPrerequisites, type FeatureKey } from "@/lib/features";
 import { moneyInput, parseMoney } from "@/lib/invoices/shared";

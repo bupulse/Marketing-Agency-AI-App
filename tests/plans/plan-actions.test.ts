@@ -25,7 +25,7 @@ vi.mock("@/lib/admin/console", async () => {
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw new Error(`NEXT_REDIRECT ${url}`); } }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
-import { savePlanAction } from "@/app/admin/(console)/plans/actions";
+import { savePlanAction } from "@/app/admin/(console)/(money)/plans/actions";
 import { resetPlanCache } from "@/lib/plan-catalog";
 
 const plan = (key: string) => h.db.planDefinition.rows.find((r) => r.key === key)!;

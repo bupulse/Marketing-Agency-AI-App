@@ -7,7 +7,7 @@ import { LocalTime, TimezoneField } from "@/components/admin/local-time";
 import { nowMs, param } from "@/lib/admin/format";
 import { listAnnouncements } from "@/lib/admin/service";
 import { getPlans } from "@/lib/plan-catalog";
-import { createAnnouncementAction, endAnnouncementAction } from "../actions";
+import { createAnnouncementAction, endAnnouncementAction } from "@/app/admin/(console)/actions";
 
 export const metadata = { title: "Announcements" };
 

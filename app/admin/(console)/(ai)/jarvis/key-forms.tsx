@@ -4,7 +4,7 @@ import { Check, Copy } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useActionState, useState } from "react";
 import { Button, Field, Input } from "@/components/ui";
-import { createKeyAction, rotateKeyAction, type KeyState } from "../actions";
+import { createKeyAction, rotateKeyAction, type KeyState } from "@/app/admin/(console)/actions";
 
 export function CopyField({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);

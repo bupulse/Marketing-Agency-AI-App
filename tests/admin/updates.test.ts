@@ -24,8 +24,8 @@ vi.mock("@/lib/rate-limit", () => {
 });
 
 import { DISPATCH_RULE, getUpdateStatus, installUpdate, listDeployRuns, rollbackDeploy } from "@/lib/admin/updates";
-import { installUpdateAction, rollbackAction } from "@/app/admin/(console)/settings/updates/actions";
-import { GET as runsRoute } from "@/app/admin/(console)/settings/updates/runs/route";
+import { installUpdateAction, rollbackAction } from "@/app/admin/(console)/(system)/settings/updates/actions";
+import { GET as runsRoute } from "@/app/admin/(console)/(system)/settings/updates/runs/route";
 import { callTool, findTool } from "@/lib/admin/tools";
 import { AdminError, apiContext, consoleContext } from "@/lib/admin/types";
 

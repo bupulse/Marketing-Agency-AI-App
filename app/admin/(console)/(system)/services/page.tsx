@@ -7,7 +7,7 @@ import { Badge, Button, Field, Input } from "@/components/ui";
 import { dateTime, param } from "@/lib/admin/format";
 import { listServices, type ServiceView } from "@/lib/admin/services";
 import { robotStatus } from "@/lib/visuals/robot";
-import { setServiceEnabledAction, testServiceAction } from "../actions";
+import { setServiceEnabledAction, testServiceAction } from "@/app/admin/(console)/actions";
 
 export const metadata = { title: "Services" };
 

@@ -7,7 +7,7 @@ vi.mock("@/lib/admin/auth", () => ({ isAdminSession: h.admin }));
 vi.mock("@/lib/db", () => ({ prisma: { manualPayment: { findUnique: h.find } } }));
 vi.mock("@/lib/billing/momo-proofs", () => ({ readProofObject: h.read }));
 
-import { GET } from "@/app/admin/(console)/payments/proof/route";
+import { GET } from "@/app/admin/(console)/(money)/payments/proof/route";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]);
 const get = (id = "pay1") => GET(new Request(`https://bupulse.com/admin/payments/proof?id=${id}`));

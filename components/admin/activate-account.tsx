@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button, Dialog, Field, Input, Select } from "@/components/ui";
-import { activateAccountAction } from "@/app/admin/(console)/invoices/actions";
+import { activateAccountAction } from "@/app/admin/(console)/(money)/invoices/actions";
 
 /**
  * "Activate account" after the demo (Demos list and the company page's "Demo and trial" panel): start the trial for an

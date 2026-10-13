@@ -148,7 +148,7 @@ region lists `momo` in its payment methods.
 | Method adapter interface and registry | `lib/billing/methods/` |
 | Screenshots (private bucket: upload URL, check, signed URL, removal) | `lib/billing/momo-proofs.ts` |
 | Client | `app/dashboard/billing/actions.ts` (`startMomoPayment`, `startMomoProofUpload`, `submitMomoProof`, `cancelMomoPayment`, `momoPaymentStatus`), `components/billing/momo-payment.tsx`, the method choice (`components/billing/pay-choice.tsx`, `lib/billing/pay-methods.ts`) in `plan-picker.tsx`, "Pay now" on the demo lock screen (`components/app/demo-pay.tsx`) |
-| Admin | `app/admin/(console)/payments/` (queue, history, settings), badge in the sidebar, item in the Overview attention list |
+| Admin | `app/admin/(console)/(money)/payments/` (queue, history, settings), badge in the sidebar, item in the Overview attention list |
 | Jarvis | `list_momo_payments`, `get_momo_payment` (read only; confirming stays in the console) |
 | Analytics | `BillingEvent` type `manual_payment.confirmed` is read by the roll-up (`MONEY_EVENT_TYPES`), the activity feed and the Client 360 billing tab |
 | Tests | `tests/billing/momo-*.test.ts` |

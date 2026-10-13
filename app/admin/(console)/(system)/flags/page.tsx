@@ -5,7 +5,7 @@ import { Badge, Button, Field, Input, Select } from "@/components/ui";
 import { param } from "@/lib/admin/format";
 import { listFeatureFlags } from "@/lib/admin/service";
 import { prisma } from "@/lib/db";
-import { flagOverrideAction, saveFlagAction } from "../actions";
+import { flagOverrideAction, saveFlagAction } from "@/app/admin/(console)/actions";
 
 export const metadata = { title: "Feature flags" };
 

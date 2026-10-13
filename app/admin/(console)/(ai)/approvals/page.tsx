@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui";
 import { approvalNeedsCheck, isExpiredApproval, splitApprovals } from "@/lib/admin/approvals-view";
 import { dateTime, money, nowMs, param } from "@/lib/admin/format";
 import { APPROVAL_TTL_MS, listApprovals, type ApprovalView } from "@/lib/admin/service";
-import { approveFormAction, rejectFormAction } from "../actions";
+import { approveFormAction, rejectFormAction } from "@/app/admin/(console)/actions";
 import { getPaddleConfig, type PaddleEnvironment } from "@/lib/billing/paddle-config";
 
 export const metadata = { title: "Approvals" };

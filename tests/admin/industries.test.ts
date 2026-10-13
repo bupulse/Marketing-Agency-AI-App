@@ -200,7 +200,7 @@ describe("review fixes", () => {
 describe("server actions", () => {
   it("re-check the admin (AAL2) before anything is written", async () => {
     h.adminAction.mockRejectedValue(new Error("NEXT_REDIRECT /admin/verify"));
-    const { saveIndustryAction, deleteIndustryAction } = await import("@/app/admin/(console)/industries/actions");
+    const { saveIndustryAction, deleteIndustryAction } = await import("@/app/admin/(console)/(content)/industries/actions");
     const f = new FormData();
     for (const [k, v] of Object.entries({ ...valid, hashtags: valid.hashtags!.join(" "), active: "on", sortOrder: "140" })) f.set(k, String(v));
     await expect(saveIndustryAction({}, f)).rejects.toThrow("NEXT_REDIRECT /admin/verify");
@@ -211,7 +211,7 @@ describe("server actions", () => {
 
   it("save returns the validation message instead of throwing, and redirects with a notice on success", async () => {
     h.adminAction.mockResolvedValue(CTX);
-    const { saveIndustryAction } = await import("@/app/admin/(console)/industries/actions");
+    const { saveIndustryAction } = await import("@/app/admin/(console)/(content)/industries/actions");
     const f = new FormData();
     for (const [k, v] of Object.entries({ ...valid, hashtags: valid.hashtags!.join(" "), active: "on", sortOrder: "140" })) f.set(k, String(v));
     f.set("tone", "");

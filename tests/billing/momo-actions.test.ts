@@ -141,7 +141,7 @@ describe("screenshot upload URL", () => {
 
 describe("admin actions", () => {
   it("confirm and reject re-check the admin (adminAction: email, verified, AAL2) and pass the id and reason", async () => {
-    const a = await import("@/app/admin/(console)/payments/actions");
+    const a = await import("@/app/admin/(console)/(money)/payments/actions");
     h.confirm.mockResolvedValue({ id: "p1", status: "confirmed", periodEnd: new Date("2026-11-14T00:00:00Z"), emailed: true });
     const f = new FormData();
     f.set("id", "p1");
@@ -161,7 +161,7 @@ describe("admin actions", () => {
   });
 
   it("the settings form saves where clients pay, trimmed; prices are not here (they are regional prices)", async () => {
-    const a = await import("@/app/admin/(console)/payments/actions");
+    const a = await import("@/app/admin/(console)/(money)/payments/actions");
     const f = new FormData();
     f.set("merchantCode", " 123456 ");
     f.set("accountName", "BuPulse Ltd");

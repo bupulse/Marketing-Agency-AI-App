@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Field, Input } from "@/components/ui";
-import { finishTrackUploadAction, startTrackUploadAction } from "@/app/admin/(console)/music/actions";
+import { finishTrackUploadAction, startTrackUploadAction } from "@/app/admin/(console)/(content)/music/actions";
 import { createClient } from "@/lib/supabase/client";
 import { MOODS, MOOD_LABEL, TRACK_MAX_BYTES, type Mood } from "@/lib/music/tracks";
 

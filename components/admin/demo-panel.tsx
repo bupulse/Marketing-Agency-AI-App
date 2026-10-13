@@ -5,7 +5,7 @@ import { Badge, Button, Select, type BadgeTone } from "@/components/ui";
 import { demoPanel } from "@/lib/admin/demos";
 import { dateTime } from "@/lib/admin/format";
 import { getRegions } from "@/lib/region";
-import { companyRegionAction, demoStatusAction, dismissRegionMismatchAction } from "@/app/admin/(console)/demos/actions";
+import { companyRegionAction, demoStatusAction, dismissRegionMismatchAction } from "@/app/admin/(console)/(clients)/demos/actions";
 import { ActivateAccount } from "./activate-account";
 import { SubscriptionStatus } from "./subscription-status";
 import { subscriptionSummary } from "@/lib/admin/subscription-summary";

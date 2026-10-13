@@ -24,7 +24,7 @@ import { consumeUsage, UsageLimitError } from "@/lib/usage";
 import { bookDemo, cancelDemo, choosePlan, DemoError, startOfDemoDay } from "@/lib/demo/bookings";
 import { demoPanel, listDemos, setDemoStatus, startTrial } from "@/lib/admin/demos";
 import { processTrialReminders } from "@/lib/demo/trial-reminders";
-import { startTrialAction } from "@/app/admin/(console)/demos/actions";
+import { startTrialAction } from "@/app/admin/(console)/(clients)/demos/actions";
 import { cleanSetting, DEFAULT_SETTINGS, setSetting } from "@/lib/admin/settings";
 import { resetPlanCache } from "@/lib/plan-catalog";
 import { resetRegionCache } from "@/lib/region";

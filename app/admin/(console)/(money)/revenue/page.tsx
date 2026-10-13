@@ -7,7 +7,7 @@ import { Button, Field, Input } from "@/components/ui";
 import { money, num, param, parseRange } from "@/lib/admin/format";
 import { getCosts, getProfit, getRevenue } from "@/lib/analytics/queries";
 import { listMonthlyCosts } from "@/lib/analytics/costs";
-import { deleteCostAction, saveCostAction } from "../actions";
+import { deleteCostAction, saveCostAction } from "@/app/admin/(console)/actions";
 
 export const metadata = { title: "Revenue, costs and profit" };
 

@@ -160,7 +160,7 @@ newest one (an RWF invoice paid at the USD card price). A renewal that matches n
 | Storage (`invoices` bucket) | `lib/invoices/storage.ts` |
 | Emails | `lib/invoices/emails.ts` |
 | Mobile Money for invoices | `lib/billing/momo.ts` (`startInvoicePayment`, the invoice claim in `confirmManualPayment`) |
-| Admin | `app/admin/(console)/invoices/` (list, `[id]` editor, `[id]/pdf`, `settings`, `actions.ts`), `components/admin/activate-account.tsx`, `components/admin/invoice-editor.tsx`, nav item under Money |
+| Admin | `app/admin/(console)/(money)/invoices/` (list, `[id]` editor, `[id]/pdf`, `settings`, `actions.ts`), `components/admin/activate-account.tsx`, `components/admin/invoice-editor.tsx`, nav item under Money |
 | Client | `components/billing/invoice-pay.tsx`, `components/billing/client-invoices.tsx`, `components/app/invoice-lock.tsx`, `app/api/invoices/[id]/pdf/route.ts`, `app/dashboard/billing/page.tsx`, `app/dashboard/layout.tsx` |
 | Shared preview | `components/invoices/invoice-preview.tsx` |
 | Tests | `tests/invoices/*` |

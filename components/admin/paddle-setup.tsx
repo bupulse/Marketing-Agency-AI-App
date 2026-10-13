@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog } from "@/components/ui";
-import { paddleSetUpStepAction } from "@/app/admin/(console)/settings/actions";
+import { paddleSetUpStepAction } from "@/app/admin/(console)/(system)/settings/actions";
 
 const STEPS = [
   { step: "plans", label: "Plans" },

@@ -78,7 +78,7 @@ beforeEach(() => {
 
 describe("admin actions", () => {
   it("each one re-checks the admin first; without AAL2 (adminAction redirects) the service never runs", async () => {
-    const a = await import("@/app/admin/(console)/invoices/actions");
+    const a = await import("@/app/admin/(console)/(money)/invoices/actions");
     h.adminAction.mockRejectedValue(new Error("NEXT_REDIRECT /admin/verify"));
     const calls: [(f: FormData) => Promise<unknown>, FormData][] = [
       [a.activateAccountAction, form({ businessId: "biz1", mode: "invoice" })],
@@ -97,7 +97,7 @@ describe("admin actions", () => {
   });
 
   it("send / mark paid / void pass the console context and the form", async () => {
-    const a = await import("@/app/admin/(console)/invoices/actions");
+    const a = await import("@/app/admin/(console)/(money)/invoices/actions");
     await a.sendInvoiceAction(form({ id: "inv1", data: JSON.stringify({ lines: [] }) }));
     expect(h.svc.updateInvoiceDraft).toHaveBeenCalledWith(CTX, "inv1", { lines: [] });
     expect(h.svc.sendInvoice).toHaveBeenCalledWith(CTX, "inv1");
@@ -108,7 +108,7 @@ describe("admin actions", () => {
   });
 
   it("Activate account: a trial for the days typed (1 to 90), or a draft invoice opened in the editor", async () => {
-    const a = await import("@/app/admin/(console)/invoices/actions");
+    const a = await import("@/app/admin/(console)/(money)/invoices/actions");
     await a.activateAccountAction(form({ businessId: "biz1", mode: "trial", days: "5", back: "/admin/demos" }));
     expect(h.startTrial).toHaveBeenCalledWith(CTX, { businessId: "biz1", days: 5, planKey: undefined });
     await expect(a.activateAccountAction(form({ businessId: "biz1", mode: "trial", days: "120" }))).rejects.toThrow(/1 to 90/);
@@ -126,7 +126,7 @@ describe("admin actions", () => {
   });
 
   it("the logo upload refuses a missing or oversized file before the service", async () => {
-    const a = await import("@/app/admin/(console)/invoices/actions");
+    const a = await import("@/app/admin/(console)/(money)/invoices/actions");
     await expect(a.uploadInvoiceLogoAction(form({}))).rejects.toThrow(/PNG or JPEG/);
     const big = new FormData();
     big.set("logo", new Blob([new Uint8Array(600 * 1024)], { type: "image/png" }), "logo.png");
@@ -179,7 +179,7 @@ describe("PDF routes", () => {
   });
 
   it("admin: 404 unless an AAL2 admin session", async () => {
-    const { GET } = await import("@/app/admin/(console)/invoices/[id]/pdf/route");
+    const { GET } = await import("@/app/admin/(console)/(money)/invoices/[id]/pdf/route");
     const res = await GET(new Request("https://bupulse.com/admin/invoices/inv1/pdf"), { params: Promise.resolve({ id: "inv1" }) } as never);
     expect(res.status).toBe(404);
     expect(h.svc.getInvoiceRow).not.toHaveBeenCalled();

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui";
 import { dateTime, param } from "@/lib/admin/format";
 import { listAdminKeys } from "@/lib/admin/keys";
 import { siteUrl } from "@/lib/auth/site-url";
-import { revokeKeyAction } from "../actions";
+import { revokeKeyAction } from "@/app/admin/(console)/actions";
 import { CopyField, CreateKeyForm, RotateKey } from "./key-forms";
 
 export const metadata = { title: "Jarvis" };

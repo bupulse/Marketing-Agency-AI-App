@@ -38,7 +38,7 @@ vi.mock("@/lib/admin/console", async () => ({
 
 import * as actions from "@/lib/admin/actions/connections";
 import * as reads from "@/lib/admin/connections";
-import * as consoleActions from "@/app/admin/(console)/connections/actions";
+import * as consoleActions from "@/app/admin/(console)/(clients)/connections/actions";
 import { apiContext, consoleContext } from "@/lib/admin/types";
 
 const ctx = consoleContext("203.0.113.5");

@@ -27,7 +27,7 @@ import {
   testGoogleCalendarAction,
   testPaddleAction,
 } from "./actions";
-import { savePaymentSettingsAction } from "../payments/actions";
+import { savePaymentSettingsAction } from "@/app/admin/(console)/(money)/payments/actions";
 import { PaddleSetUp } from "@/components/admin/paddle-setup";
 
 export const metadata = { title: "Settings" };

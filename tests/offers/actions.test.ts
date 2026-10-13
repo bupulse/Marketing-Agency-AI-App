@@ -49,9 +49,9 @@ vi.mock("@/lib/region-prices", () => ({ companyPlans: vi.fn(), regionPriceIdFor:
 vi.mock("@/lib/region-check", () => ({ noteRegionMismatch: vi.fn(async () => null) }));
 vi.mock("@/lib/plan-catalog", () => ({ getPlan: vi.fn(), priceIdFor: vi.fn() }));
 
-import { saveOfferAction, withdrawOfferAction } from "@/app/admin/(console)/offers/actions";
-import { saveAddonPricesAction } from "@/app/admin/(console)/addon-prices/actions";
-import { setRequestStatusAction } from "@/app/admin/(console)/requests/actions";
+import { saveOfferAction, withdrawOfferAction } from "@/app/admin/(console)/(money)/offers/actions";
+import { saveAddonPricesAction } from "@/app/admin/(console)/(money)/addon-prices/actions";
+import { setRequestStatusAction } from "@/app/admin/(console)/(clients)/requests/actions";
 import { acceptOfferAction } from "@/app/dashboard/billing/actions";
 import { requestCustomPlanAction } from "@/app/custom-plan/actions";
 import { AdminError } from "@/lib/admin/types";

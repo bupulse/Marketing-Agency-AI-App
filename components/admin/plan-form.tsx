@@ -2,7 +2,7 @@
 
 import { Check } from "lucide-react";
 import { useActionState, useState } from "react";
-import { savePlanAction, type PlanFormState } from "@/app/admin/(console)/plans/actions";
+import { savePlanAction, type PlanFormState } from "@/app/admin/(console)/(money)/plans/actions";
 import { formatCents } from "@/components/billing/helpers";
 import { Badge, Button, Field, GlassCard, Input, Select, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";

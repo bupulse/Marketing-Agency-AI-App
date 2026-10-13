@@ -19,7 +19,7 @@ Supabase user metadata written at sign-up gained `industry_slug`, `industry_othe
 
 ## Files
 
-See the Files section of `docs/INDUSTRIES.md`. New: `lib/phone.ts`, `lib/industry-context.ts`, `lib/industries/{shared,server}.ts`, `lib/admin/industries-service.ts`, `app/admin/(console)/industries/**`, `components/admin/industry-form.tsx`, `components/auth/{industry-fields,phone-field}.tsx`, `components/brand-profile/industry-section.tsx`, `app/dashboard/brand/actions.ts`, four test files.
+See the Files section of `docs/INDUSTRIES.md`. New: `lib/phone.ts`, `lib/industry-context.ts`, `lib/industries/{shared,server}.ts`, `lib/admin/industries-service.ts`, `app/admin/(console)/(content)/industries/**`, `components/admin/industry-form.tsx`, `components/auth/{industry-fields,phone-field}.tsx`, `components/brand-profile/industry-section.tsx`, `app/dashboard/brand/actions.ts`, four test files.
 
 ## Decisions
 
