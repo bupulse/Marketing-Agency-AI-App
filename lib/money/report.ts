@@ -8,7 +8,7 @@ import { getPlans } from "@/lib/plan-catalog";
 import { planForAnyPriceId } from "@/lib/region-prices";
 import { addMonths, monthsBetween, type MonthCosts } from "./costs-shared";
 import { getMonthCosts } from "./costs";
-import { dedupe, mrrOf, rateUsed, revenueByClient, revenueByMonth, revenueByPlan, toRevenueEntry, type PayingSub, type RevenueEntry, type RevenueMonth } from "./revenue-shared";
+import { dedupe, lastFullPayments, mrrOf, rateUsed, revenueByClient, revenueByMonth, revenueByPlan, toRevenueEntry, type PayingSub, type RevenueEntry, type RevenueMonth } from "./revenue-shared";
 
 const DAY = 86_400_000;
 const PAYING = ["ACTIVE", "PAST_DUE"] as const;
@@ -98,8 +98,7 @@ export async function getMoneyReport(opts: { months?: number; now?: Date } = {})
 
   // --- MRR, ARPU, churn ---
   const payingSubs: PayingSub[] = subs.filter((s) => s.plan !== "TRIAL" && (PAYING as readonly string[]).includes(s.status)).map((s) => ({ userId: s.userId, plan: s.plan, interval: s.interval, provider: s.provider }));
-  const lastMomo = new Map<string, number>();
-  for (const e of entries) if (e.userId && e.kind === "payment" && e.method !== "card") lastMomo.set(e.userId, e.usdCents);
+  const lastMomo = lastFullPayments(entries);
   const prices = Object.fromEntries(plans.map((p) => [p.key, { monthlyPriceCents: p.monthlyPriceCents, yearlyPriceCents: p.yearlyPriceCents }]));
   const mrr = mrrOf(payingSubs, lastMomo, prices);
   const payingIds = new Set(payingSubs.map((s) => s.userId));

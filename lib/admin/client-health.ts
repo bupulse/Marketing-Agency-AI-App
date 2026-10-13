@@ -6,7 +6,7 @@ import { usageWindowStart } from "@/lib/billing/period";
 import { getPlans } from "@/lib/plan-catalog";
 import { USAGE_METRICS, type UsageMetric } from "@/lib/plans";
 import { loadRevenueEntries } from "@/lib/money/report";
-import { mrrOf } from "@/lib/money/revenue-shared";
+import { lastFullPayments, mrrOf } from "@/lib/money/revenue-shared";
 import { healthFlags, riskLevel, riskScore, usageShareOf, type HealthFlag } from "./client-health-shared";
 
 const DAY = 86_400_000;
@@ -64,8 +64,7 @@ export async function getClientRows(now = new Date()): Promise<ClientRow[]> {
   const limitsOf = new Map(plans.map((p) => [p.key, p.limits]));
   const aiOf = new Map(ai.map((a) => [a.businessId as string, Number(a._sum.costUsd ?? 0) * 100]));
   const lastOf = new Map(last.map((l) => [l.id, l.at]));
-  const lastMomo = new Map<string, number>();
-  for (const e of entries) if (e.userId && e.kind === "payment" && e.method !== "card") lastMomo.set(e.userId, e.usdCents);
+  const lastMomo = lastFullPayments(entries);
   const paying = companies
     .filter((c) => c.user.subscription && c.user.subscription.plan !== "TRIAL" && ["ACTIVE", "PAST_DUE"].includes(c.user.subscription.status))
     .map((c) => ({ userId: c.userId, plan: c.user.subscription!.plan, interval: c.user.subscription!.interval, provider: c.user.subscription!.provider }));

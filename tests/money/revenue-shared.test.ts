@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dedupe, mrrOf, rateUsed, revenueByClient, revenueByMonth, revenueByPlan, toRevenueEntry, type RevenueEntry } from "@/lib/money/revenue-shared";
+import { dedupe, lastFullPayments, mrrOf, rateUsed, revenueByClient, revenueByMonth, revenueByPlan, toRevenueEntry, type RevenueEntry } from "@/lib/money/revenue-shared";
 
 const momo = (id: string, userId: string | null, rwf: number, usd: number, at = "2026-10-05T10:00:00Z", extra: Record<string, unknown> = {}) => ({
   eventId: id,
@@ -65,6 +65,12 @@ describe("revenue entries", () => {
 });
 
 describe("MRR", () => {
+  it("ignores a prorated add-on payment as the client's monthly amount", () => {
+    const list = entries([momo("a", "u1", 29_000, 2000, "2026-10-01T00:00:00Z"), momo("b", "u1", 7_250, 500, "2026-10-15T00:00:00Z", { period_mode: "keep" })]);
+    expect(list[1].partial).toBe(true);
+    expect(lastFullPayments(list).get("u1")).toBe(2000);
+  });
+
   it("counts what a Mobile Money client last paid and a card client's plan price; yearly a twelfth", () => {
     const prices = { PRO: { monthlyPriceCents: 3000, yearlyPriceCents: 30_000 } };
     const { totalCents, byUser } = mrrOf(

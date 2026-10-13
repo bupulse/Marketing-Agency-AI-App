@@ -118,7 +118,7 @@ export function RevenueView({ r }: { r: MoneyReport }) {
         <ul>
           <li>Revenue is every payment ever recorded (BillingEvent), kept when a client leaves or deletes their account. Card: Paddle&apos;s payout after tax and its fee, less approved refunds. Mobile Money: confirmed MTN or Airtel payments. Invoices: payments of an invoice (MoMo with the invoice number, bank or cash) and plain invoices marked paid.</li>
           <li>RWF payments count at the USD value fixed when they were confirmed; the RWF column shows the francs received and that rate.</li>
-          <li>MRR: each paying client (active or past due, not on trial) counts their plan&apos;s monthly price; a Mobile Money client counts what they last paid; yearly plans count a twelfth. ARPU is MRR divided by paying clients.</li>
+          <li>MRR: each paying client (active or past due, not on trial) counts their plan&apos;s monthly price; a Mobile Money client counts what they last paid for a whole period (features added mid-period count from the next renewal); yearly plans count a twelfth. ARPU is MRR divided by paying clients.</li>
           <li>Churn, 30 days: clients who had paid and stopped in the last 30 days (subscription ended, or account deleted within 45 days of their last payment), out of those paying now plus them.</li>
           <li>Costs and profit: see Costs. A month&apos;s costs are the providers&apos; bills when entered, otherwise the AI ledger&apos;s estimate, plus recurring and one-month costs.</li>
           <li>Per client: AI cost is that company&apos;s calls in the ledger since it started; it leaves out shared costs such as hosting.</li>

@@ -23,6 +23,8 @@ export type RevenueEntry = {
   currency: string;
   plan: string | null;
   priceId: string | null;
+  /** A Mobile Money payment for features added to a running period (prorated; period_mode "keep"), not a full period. */
+  partial: boolean;
 };
 
 type Row = { eventId: string; type: string; payload: unknown; createdAt: Date; userId: string | null };
@@ -41,19 +43,21 @@ export function toRevenueEntry(row: Row): RevenueEntry | null {
   let currency = "USD";
   let plan: string | null = null;
   let priceId: string | null = null;
+  let partial = false;
   if (row.type === MANUAL_PAYMENT_EVENT || row.type === INVOICE_PAID_EVENT) {
     const network = str(data.network)?.toUpperCase();
     method = row.type === INVOICE_PAID_EVENT || str(data.invoice_id) || (network && network !== "MTN" && network !== "AIRTEL") ? "invoice" : "momo";
     localMinor = int(data.amount_minor);
     currency = str(data.currency)?.toUpperCase() ?? "RWF";
     plan = str(data.plan);
+    partial = data.period_mode === "keep";
   } else {
     const items = Array.isArray(data.items) ? (data.items as Data[]) : [];
     priceId = str((items[0]?.price as Data | undefined)?.id) ?? str(items[0]?.price_id);
     localMinor = m.cents;
   }
   const sign = m.kind === "refund" ? -1 : 1;
-  return { id: `${row.type}:${m.id || row.eventId}`, at: m.at, month: m.at.toISOString().slice(0, 7), userId: row.userId, kind: m.kind, usdCents: sign * m.cents, method, localMinor: localMinor === null ? null : sign * localMinor, currency, plan, priceId };
+  return { id: `${row.type}:${m.id || row.eventId}`, at: m.at, month: m.at.toISOString().slice(0, 7), userId: row.userId, kind: m.kind, usdCents: sign * m.cents, method, localMinor: localMinor === null ? null : sign * localMinor, currency, plan, priceId, partial };
 }
 
 /** Each payment or refund once (a provider may send the same transaction in more than one event). */
@@ -130,6 +134,13 @@ export function revenueByPlan(entries: RevenueEntry[], planOf: (e: RevenueEntry)
 }
 
 export type PayingSub = { userId: string; plan: string; interval: string; provider: string | null };
+
+/** What each Mobile Money or invoice client last paid for a whole period (prorated add-on payments skipped), USD cents. */
+export function lastFullPayments(entries: RevenueEntry[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const e of entries) if (e.userId && e.kind === "payment" && e.method !== "card" && !e.partial) out.set(e.userId, e.usdCents);
+  return out;
+}
 
 /**
  * Monthly recurring revenue in USD cents, per client: a Mobile Money client counts what they last paid (a yearly
