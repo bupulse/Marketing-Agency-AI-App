@@ -1,6 +1,7 @@
 // Files in Storage that no row records are never counted toward a quota, so they are swept (docs/MEDIA.md): every
 // company's gallery folder in "media", its Gallery videos in "gallery-videos", and any folder under its "media" folder
-// that the app never writes (a browser may write its own folder directly). Lists are read page by page and compared
+// that the app never writes (a browser may write its own folder directly), for the owner and every team member, nested
+// folders included (bounded depth and pages). Lists are read page by page and compared
 // with the database; only files older than an hour go (an upload may be on its way). Best effort, idempotent.
 import "server-only";
 import { prisma } from "@/lib/db";
@@ -28,6 +29,21 @@ export async function listAll(bucket: Bucket, prefix: string, maxPages = 50): Pr
     if (!data || data.length < PAGE) break;
   }
   return out;
+}
+
+/** Folders are followed this deep below the starting folder, and at most this many list pages per tree. */
+export const MAX_DEPTH = 4;
+const MAX_TREE_PAGES = 200;
+
+/** Every file under `prefix`, nested folders included (bounded: MAX_DEPTH levels, MAX_TREE_PAGES list pages). */
+export async function listTree(bucket: Bucket, prefix: string, depth = MAX_DEPTH, budget = { pages: MAX_TREE_PAGES }): Promise<Entry[]> {
+  if (budget.pages <= 0) return [];
+  const entries = await listAll(bucket, prefix, Math.min(50, budget.pages));
+  budget.pages -= Math.max(1, Math.ceil(entries.length / PAGE));
+  const files = entries.filter((e) => !e.folder);
+  if (depth <= 0) return files;
+  for (const folder of entries.filter((e) => e.folder)) files.push(...(await listTree(bucket, folder.path, depth - 1, budget)));
+  return files;
 }
 
 const old = (entries: Entry[], now: number) => entries.filter((e) => !e.folder && e.createdAt !== null && now - e.createdAt > ORPHAN_AGE_MS).map((e) => e.path);
@@ -79,7 +95,7 @@ export async function sweepCompanyFiles(userId: string, businessId: string, opti
     [media, `${userId}/gallery`],
     [clips, `${userId}/clips`],
   ] as const) {
-    const candidates = old(await listAll(bucket, folder), now.getTime());
+    const candidates = old(await listTree(bucket, folder), now.getTime());
     const keep = await recorded(businessId, candidates, now);
     removed += await removeAll(bucket, candidates.filter((p) => !keep.has(p)));
   }
@@ -87,8 +103,7 @@ export async function sweepCompanyFiles(userId: string, businessId: string, opti
     const top = await listAll(media, userId);
     const strange = [...old(top, now.getTime())];
     for (const entry of top.filter((e) => e.folder && !APP_FOLDERS.has(e.path.slice(userId.length + 1)))) {
-      // One level down is enough to empty it: deeper files are listed by the next run once their folder is gone.
-      strange.push(...old(await listAll(media, entry.path), now.getTime()));
+      strange.push(...old(await listTree(media, entry.path), now.getTime()));
     }
     const keep = await recorded(businessId, strange, now);
     removed += await removeAll(media, strange.filter((p) => !keep.has(p)));
@@ -109,14 +124,22 @@ export async function sweepStorage(now = new Date(), budgetMs = 80_000): Promise
   result.reservations = (await prisma.mediaUploadReservation.deleteMany({ where: { expiresAt: { lte: now } } })).count;
   let cursor: string | undefined;
   for (;;) {
-    const batch = await prisma.business.findMany({ orderBy: { id: "asc" }, take: 100, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}), select: { id: true, userId: true } });
+    const batch = await prisma.business.findMany({
+      orderBy: { id: "asc" },
+      take: 100,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: { id: true, userId: true, memberships: { select: { userId: true } } },
+    });
     for (const business of batch) {
       if (Date.now() - started > budgetMs) {
         result.partial = true;
         return result;
       }
       try {
-        result.removed += await sweepCompanyFiles(business.userId, business.id, { strangers: true, now });
+        // The owner's folder and every team member's own folder (the Storage policies let each write their own).
+        for (const userId of new Set([business.userId, ...(business.memberships ?? []).map((m) => m.userId)])) {
+          result.removed += await sweepCompanyFiles(userId, business.id, { strangers: true, now });
+        }
         result.companies += 1;
       } catch (error) {
         result.failed += 1;

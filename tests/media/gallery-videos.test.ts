@@ -334,11 +334,34 @@ describe("unrecorded files", () => {
     expect(await sweepCompanyFiles(USER, "biz1")).toBe(0);
   });
 
-  it("the daily sweep drops expired reservations and walks every company", async () => {
+  it("the daily sweep drops expired reservations and walks every company, the owner's and each team member's folders", async () => {
+    const MEMBER = "22222222-2222-2222-2222-222222222222";
     mocks.prisma.mediaUploadReservation.deleteMany.mockResolvedValue({ count: 2 });
-    mocks.prisma.business.findMany.mockResolvedValueOnce([{ id: "biz1", userId: USER }]);
+    mocks.prisma.business.findMany.mockResolvedValueOnce([{ id: "biz1", userId: USER, memberships: [{ userId: USER }, { userId: MEMBER }] }]);
     mocks.list.mockResolvedValue({ data: [], error: null });
     expect(await sweepStorage()).toMatchObject({ companies: 1, reservations: 2, partial: false });
+    const prefixes = mocks.list.mock.calls.map((c) => c[1]);
+    expect(prefixes).toEqual(expect.arrayContaining([`${USER}/gallery`, `${USER}/clips`, USER, `${MEMBER}/gallery`, `${MEMBER}/clips`, MEMBER]));
+    expect(prefixes.filter((p) => p === USER)).toHaveLength(1);
+  });
+
+  it("nested folders are followed (bounded depth): files deep in a stray or gallery folder go too", async () => {
+    mocks.list.mockImplementation(async (bucket: string, prefix: string) => {
+      const folder = (name: string) => ({ id: null, name });
+      if (bucket === "media" && prefix === USER) return { data: [folder("junk")], error: null };
+      if (prefix === `${USER}/junk`) return { data: [folder("a")], error: null };
+      if (prefix === `${USER}/junk/a`) return { data: [folder("b"), { id: "1", name: "deep.bin", created_at: hourAgo }], error: null };
+      if (prefix === `${USER}/junk/a/b`) return page(["deeper.bin"]);
+      if (prefix === `${USER}/gallery`) return { data: [folder("x")], error: null };
+      if (prefix === `${USER}/gallery/x`) return page(["hidden.jpg"]);
+      // Past the depth limit nothing is listed.
+      if (prefix.split("/").length > 7) throw new Error("too deep");
+      return { data: [folder("z")], error: null };
+    });
+    mocks.prisma.mediaAsset.findMany.mockResolvedValue([]);
+    await sweepCompanyFiles(USER, "biz1", { strangers: true });
+    const gone = (mocks.remove.mock.calls as [string[], string][]).flatMap(([p]) => p);
+    expect(gone).toEqual(expect.arrayContaining([`${USER}/junk/a/deep.bin`, `${USER}/junk/a/b/deeper.bin`, `${USER}/gallery/x/hidden.jpg`]));
   });
 
   it("the platform guard counts the real object sizes in Storage, not just rows", async () => {
