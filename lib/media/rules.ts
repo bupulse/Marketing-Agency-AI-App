@@ -12,6 +12,8 @@ export const MEDIA_BULK_MAX = 200;
 /** Per-user limits for gallery actions, used with `rateLimit`. */
 export const MEDIA_RATE = {
   uploadBatch: { limit: 60, windowSeconds: 60 * 60 },
+  /** Confirming uploads (each reads the file's head, a video's boxes too). */
+  finalize: { limit: 300, windowSeconds: 60 * 60 },
   edit: { limit: 300, windowSeconds: 60 * 60 },
 } as const;
 
@@ -26,6 +28,18 @@ export const VIDEO_MAX_MS = 60_000;
 /** The first frame the browser captures as the video's poster (a small JPEG next to it). */
 export const POSTER_MAX_BYTES = 400 * 1024;
 export const POSTER_MAX_SIDE = 720;
+/** The largest poster the server keeps (the browser makes 720 px; anything past this is not ours). */
+export const POSTER_SERVER_MAX_SIDE = 1280;
+/**
+ * Gallery videos and their posters live in their own private bucket (50 MB a file): no Storage policy lets a browser
+ * write or read there, only the server's signed upload tokens (tied to a reservation) and its signed URLs. The shared
+ * "media" bucket stays at 10 MB.
+ */
+export const GALLERY_VIDEO_BUCKET = "gallery-videos";
+/** How long a video upload's reservation (and its signed upload token's use) lasts. */
+export const VIDEO_RESERVATION_MS = 2 * 60 * 60 * 1000;
+/** WebM files are read at most this far for their length (MP4/MOV are probed box by box). */
+export const WEBM_READ_MAX_BYTES = 8 * 1024 * 1024;
 /**
  * Videos are heavy and the free storage is small (MEDIA_PLATFORM_MAX_BYTES): each company's gallery videos stop at
  * MEDIA_COMPANY_VIDEO_MAX_BYTES, 300 MB by default, inside its 2 GB.
@@ -93,9 +107,9 @@ export function fileProblem(file: { name: string; type: string; size: number }):
   return null;
 }
 
-/** Where a gallery photo or video lives in the private "media" bucket. */
+/** Where a gallery photo lives (the "media" bucket), or a gallery video (`<userId>/clips/`, the gallery-videos bucket). */
 export function galleryPath(userId: string, assetId: string, mimeType: string): string {
-  return `${userId}/gallery/${assetId}.${extensionFor(mimeType)}`;
+  return `${userId}/${isVideoType(mimeType) ? "clips" : "gallery"}/${assetId}.${extensionFor(mimeType)}`;
 }
 
 /** A gallery video's poster: `<assetId>-poster.jpg` next to it. */
@@ -106,20 +120,25 @@ export function posterPathFor(videoPath: string): string {
 const GALLERY_FILE = /^[A-Za-z0-9-]{8,64}\.(jpg|png|webp)$/;
 const GALLERY_VIDEO_FILE = /^[A-Za-z0-9-]{8,64}\.(mp4|webm)$/;
 
-function inOwnGallery(userId: string, path: string, file: RegExp): boolean {
+function inOwnFolder(userId: string, path: string, folder: string, file: RegExp): boolean {
   if (!userId || typeof path !== "string" || path.length > 300) return false;
-  const prefix = `${userId}/gallery/`;
+  const prefix = `${userId}/${folder}/`;
   return path.startsWith(prefix) && file.test(path.slice(prefix.length)) && !path.endsWith("-poster.jpg");
 }
 
 /** A gallery photo path that belongs to the user: `<userId>/gallery/<assetId>.<jpg|png|webp>`, nothing else (no video, no poster). */
 export function isOwnGalleryPath(userId: string, path: string): boolean {
-  return inOwnGallery(userId, path, GALLERY_FILE);
+  return inOwnFolder(userId, path, "gallery", GALLERY_FILE);
 }
 
-/** A gallery video path that belongs to the user: `<userId>/gallery/<assetId>.<mp4|webm>`. */
+/** A gallery video path that belongs to the user: `<userId>/clips/<assetId>.<mp4|webm>` (gallery-videos bucket). */
 export function isOwnGalleryVideoPath(userId: string, path: string): boolean {
-  return inOwnGallery(userId, path, GALLERY_VIDEO_FILE);
+  return inOwnFolder(userId, path, "clips", GALLERY_VIDEO_FILE);
+}
+
+/** A gallery video or its poster: the second path segment is "clips". */
+export function isClipPath(path: string): boolean {
+  return path.split("/")[1] === "clips";
 }
 
 export function isGalleryVideoPath(path: string): boolean {

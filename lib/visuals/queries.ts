@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { bucketForPath } from "@/lib/publishing/schemas";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { readImagePlan } from "./direction";
 import { robotStateOf } from "./robot";
 import { readItems } from "./service";
@@ -13,14 +14,15 @@ const URL_SECONDS = 60 * 60;
 
 /** Signed URLs for paths in either bucket (designs, media), one request per bucket. Paths that fail are left out. */
 async function signAll(paths: string[]): Promise<Map<string, string>> {
-  const byBucket = new Map<"media" | "designs", string[]>();
+  const byBucket = new Map<ReturnType<typeof bucketForPath>, string[]>();
   for (const p of new Set(paths)) byBucket.set(bucketForPath(p), [...(byBucket.get(bucketForPath(p)) ?? []), p]);
   const out = new Map<string, string>();
   if (byBucket.size === 0) return out;
   const storage = (await createClient()).storage;
   await Promise.all(
     [...byBucket].map(async ([bucket, list]) => {
-      const { data } = await storage.from(bucket).createSignedUrls(list, URL_SECONDS);
+      // Gallery videos' bucket has no Storage policies: the server signs them (the caller's rows are its own).
+      const { data } = await (bucket === "gallery-videos" ? createAdminClient().storage : storage).from(bucket).createSignedUrls(list, URL_SECONDS);
       for (const d of data ?? []) if (d.path && d.signedUrl) out.set(d.path, d.signedUrl);
     }),
   );
