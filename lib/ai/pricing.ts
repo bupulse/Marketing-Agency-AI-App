@@ -34,6 +34,9 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   // ElevenLabs Music, per 1M seconds of music (the ledger records seconds as input tokens): an estimate of about
   // $0.60 a minute on the paid plan; check it against the ElevenLabs invoice (docs/VOICE_AND_MUSIC.md).
   music_v1: { input: 10_000, output: 0 },
+  // ElevenLabs Sound Effects (sales screen sounds), per 1M seconds (seconds recorded as input tokens): an estimate of
+  // about 40 credits a second, $0.012 a second at the overage rate; check it against the ElevenLabs invoice.
+  sound_effects: { input: 12_000, output: 0 },
 };
 
 /** Lower case, no "models/" prefix, no "-preview", "-latest", "-exp", "-001" or date suffix. */

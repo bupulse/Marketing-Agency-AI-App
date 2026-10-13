@@ -592,6 +592,8 @@ model BillingEvent {
 
   @@unique([provider, eventId])
   @@index([userId])
+  // The sales room TV reads new payments every 10 s by time (lib/screen/data.ts).
+  @@index([createdAt])
 }
 
 // One Mobile Money payment a client makes by hand (docs/MOMO.md). The client starts it (a reference to quote),
