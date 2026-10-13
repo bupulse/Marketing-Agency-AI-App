@@ -50,6 +50,11 @@ export const RUNTIME_RECOMMENDED = [
 
 /** Development-only switches that must never be on in production. */
 export const PRODUCTION_FORBIDDEN = ["ANALYTICS_DEV_COUNTRY", "REGION_OVERRIDE"];
+/** Test-machine settings (the test.bupulse.com tunnel) that must be EMPTY in production: a warning, so the owner removes them. */
+export const PRODUCTION_TEST_ONLY = [
+  ["AUTH_EXTRA_ORIGINS", "extra sign-in origins are for the test tunnel only"],
+  ["PUBLIC_LINK_URL", "shareable links (sales TV, referral links, staff invitations) would point at the test tunnel instead of the site"],
+];
 /** Only for the 10-minute check after a deploy (docs/DEPLOY_NETLIFY.md section 7). */
 export const PRODUCTION_TEMPORARY = ["PLATFORM_CHECK"];
 
@@ -69,6 +74,7 @@ export function checkEnv(env, mode, known = "values") {
     for (const [name, effect] of RUNTIME_RECOMMENDED) if (!present(env, name)) warnings.push(`${name} is not set: ${effect}.`);
     for (const name of PRODUCTION_FORBIDDEN) if (present(env, name)) errors.push(`${name} is set: it is for local development only. Remove it.`);
     for (const name of PRODUCTION_TEMPORARY) if (present(env, name)) warnings.push(`${name} is set: remove it after the post-deploy check.`);
+    for (const [name, why] of PRODUCTION_TEST_ONLY) if (present(env, name)) warnings.push(`${name} is set: leave it empty in production (${why}).`);
     if (present(env, "AI_TEXT_PROVIDER")) {
       const provider = env.AI_TEXT_PROVIDER.trim();
       if (known === "values" && !["gemini", "claude"].includes(provider)) errors.push("AI_TEXT_PROVIDER must be gemini or claude.");

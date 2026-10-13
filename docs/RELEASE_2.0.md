@@ -25,7 +25,25 @@ free (`docs/DEPLOY_NETLIFY.md`) stays the fallback. This file is the order of wo
   them as Reels and Shorts and writes the caption about what they show.
 - **Videos made for you** from your photos and script: captions in time, a voiceover in your chosen voice (plans with
   voiceover) and royalty-free music; made automatically in the background, or in your browser.
+- **Add features to your plan any time**: pay only for the added features for the days left in your period; renew
+  in the last 7 days of a period by Mobile Money or card without losing a day.
+- **Account menu** on the public pages, and **one sign-in method per account**.
 - Coming next: the design library (templates you can browse and reuse).
+
+**For the BuPulse team (admin console, 13 October):**
+
+- **Staff and roles**: invite staff, built-in and custom roles, every page, route and action checked against the
+  person's permissions (deny by default), audited. **Admin sign-in**: email, then an emailed code, then the
+  authenticator code (no password); `/admin` opens the admin sign-in.
+- **Sales**: referral links (`?ref=CODE`, 30-day cookie, the sign-up goes to that agent), My clients, the monthly
+  **leaderboard** (own sales and an equal team share), reassignments with a reason, and the **sales room TV**
+  (`/screen/<secret link>`): live numbers, trials to follow up, the leaderboard, and a celebration with a sound for
+  every confirmed payment.
+- **New Overview**: today's payments and what happened today, an approve card for payments waiting, money, clients
+  and AI at a glance, each section shown only to who may see it.
+- **Admin currency switch RWF | USD | EUR** at the top of the console (default in Settings): money received in RWF is
+  shown exactly, converted figures are marked ≈; optional daily ECB rate for EUR. The TV uses the default currency.
+- **Page-loading animation** for the whole site, chosen in Admin → Settings (top bar, BuPulse preloader, or off).
 
 ## Before Wednesday (owner)
 
@@ -47,7 +65,8 @@ free (`docs/DEPLOY_NETLIFY.md`) stays the fallback. This file is the order of wo
 1. **Freeze**: no new merges into `v2` except fixes found on the day.
 2. **Final checks on v2**: `npx tsc --noEmit`, `npm run lint`, `npx vitest run`, `npx next build`, and the Workers
    build with its size (`npm run build:cloudflare`, then `npx wrangler deploy --dry-run --outdir /tmp/cf`: the gzip
-   size must stay under 10 MiB; it was 9.2 MiB on 13 October).
+   size must stay under 10 MiB; it was 9.2 MiB on 13 October afternoon and **9.78 MiB (10,017 KiB) on 13 October
+   evening** with staff, sales, TV, currency and the page loader: about 220 KiB left).
 3. **Merge v2 into main** (merge commit, version 2.0.0). Push only with the owner's go-ahead.
 4. **Production database**: the deploy workflow runs `prisma migrate deploy` on the new Supabase project. Regions,
    plans, add-ons and industries are seeded by the migrations; check them in Admin → Plans / Regions / Industries.
@@ -60,7 +79,10 @@ free (`docs/DEPLOY_NETLIFY.md`) stays the fallback. This file is the order of wo
    `ELEVENLABS_API_KEY` (voiceover and Generate a track), `VIDEO_ROBOT_SECRET` (plus the GitHub secret of that name and
    the repository variable `ROBOT_APP_URL`), `NEXT_PUBLIC_WHATSAPP_NUMBER`, `GEO_PROVIDER=builtin`,
    `API_KEY_PEPPER` (new random value), `GOOGLE_CALENDAR_CLIENT_ID/SECRET`. Never copy `ANALYTICS_DEV_COUNTRY` or
-   `REGION_OVERRIDE` to production (the check refuses them). Build-time values (every `NEXT_PUBLIC_*`) must also be
+   `REGION_OVERRIDE` to production (the check refuses them). **`AUTH_EXTRA_ORIGINS` and `PUBLIC_LINK_URL` must be EMPTY
+   in production**: they exist for the test tunnel (test.bupulse.com); set, they let sign-in accept that origin and
+   make shareable links (sales TV, referral links, staff invitations) point at the tunnel. The check warns when either
+   is set. Build-time values (every `NEXT_PUBLIC_*`) must also be
    **GitHub variables**: the Worker is built in GitHub, and Next.js bakes them into the browser code.
 6. **Supabase production settings**: Auth → URL configuration (site URL `https://bupulse.com`, redirect
    `https://bupulse.com/**`), SMTP with Resend (username `resend`). The migrations create the storage buckets; check
@@ -93,7 +115,31 @@ free (`docs/DEPLOY_NETLIFY.md`) stays the fallback. This file is the order of wo
    - Sign up a real test company from a phone in Rwanda: prices in RWF, book a demo, start trial, pay **100 RWF** by
      MoMo (temporary test plan or price), confirm in Admin → Payments, company becomes active.
    - Free uptime monitor (e.g. UptimeRobot free) on `/api/status` every 5 minutes, alerts to office@bupulse.com.
-10. **Hand-over zip**: `git archive --format=zip -o BuPulse-2.0.0.zip main` (no `node_modules`, `.next` or `.env`).
+10. **Owner, after the deploy** (Admin console):
+   - Settings → **Admin currency**: set the Default currency (RWF), and the EUR rate or its daily refresh.
+   - Organisation → **Sales screen**: create the TV link, open it on the TV, click "Start screen" once; add sounds.
+   - Organisation → **Staff**: invite the staff with their roles (each signs in with an emailed code and an
+     authenticator). Settings → page-loading animation if you want another one.
+11. **Hand-over zip**: `git archive --format=zip -o BuPulse-2.0.0.zip main` (no `node_modules`, `.next` or `.env`).
+
+## Migrations added on 13 October
+
+Applied by the deploy workflow (`prisma migrate deploy`) in name order on the new production database; nothing to do
+by hand. Some were written later than a migration with a higher timestamp (e.g. `20261017191000_card_carry_over`
+after `20261017200000_admin_money`): `migrate deploy` applies every pending one, so this is harmless on a fresh
+database and on the test database.
+
+`20261017110000_voice_clip_states`, `20261017120000_music_seed_moods`, `20261017130000_gallery_videos`,
+`20261017140000_gallery_videos_bucket`, `20261017150000_content_run_claim`, `20261017150100_posts_per_app_per_day`,
+`20261017150200_contest_posts`, `20261017170000_payment_proofs`, `20261017180000_content_format`,
+`20261017190000_request_goals_optional`, `20261017191000_card_carry_over`, `20261017200000_admin_money`,
+`20261017200100_admin_money_rates`, `20261018100000_organisation`, `20261018100100_admin_key_scope`,
+`20261018105000_screen_billing_event_time`.
+
+**Test-only scripts, never run against production:** `scripts/local/seed-test-staff.mjs` (one test person per role,
+passwords to `TEST_ACCOUNTS.md`) and the test sounds script for the sales TV (also git-ignored in `scripts/local/`).
+Production staff are invited from Organisation → Staff, and sounds are uploaded or generated in Organisation → Sales
+screen. (`scripts/local/seed-music.mjs` is the one local script that does run against production, step 8.)
 
 ## Backups (free plan)
 

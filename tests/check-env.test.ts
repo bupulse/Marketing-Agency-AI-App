@@ -37,6 +37,14 @@ describe("check-env: runtime", () => {
     expect(warnings.length).toBe(RUNTIME_RECOMMENDED.length);
   });
 
+  it("the test tunnel's AUTH_EXTRA_ORIGINS and PUBLIC_LINK_URL must be empty in production: a warning each, never the value", () => {
+    const { errors, warnings } = checkEnv({ ...good, AUTH_EXTRA_ORIGINS: "https://test.bupulse.com", PUBLIC_LINK_URL: "https://test.bupulse.com" }, "runtime");
+    expect(errors).toEqual([]);
+    expect(warnings.filter((w) => /^(AUTH_EXTRA_ORIGINS|PUBLIC_LINK_URL) is set: leave it empty in production/.test(w))).toHaveLength(2);
+    expect(warnings.join(" ")).not.toContain("test.bupulse.com");
+    expect(checkEnv({ ...good, AUTH_EXTRA_ORIGINS: " " }, "runtime").warnings.some((w) => w.startsWith("AUTH_EXTRA_ORIGINS"))).toBe(false);
+  });
+
   it("missing required values, development switches, bad formats and a provider without its key are errors", () => {
     expect(checkEnv({}, "runtime").errors).toEqual(expect.arrayContaining(RUNTIME_REQUIRED.map((n) => `${n} is not set.`)));
     const bad = checkEnv(
