@@ -11,7 +11,7 @@ import { setUpPaddleStep, testPaddleConnection, type SetUpStep, type StepResult 
 
 const BACK = "/admin/settings";
 const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-const NAMES: SettingName[] = ["trialDays", "usdToRwf", "cardMarginPercent", "meetingLink", "organizerEmail", "slotMinutes", "bufferMinutes", "blockedDates", "demoDailyCap"];
+const NAMES: SettingName[] = ["trialDays", "usdToRwf", "cardMarginPercent", "meetingLink", "organizerEmail", "slotMinutes", "bufferMinutes", "blockedDates", "demoDailyCap", "pageLoader"];
 
 // Each action re-checks the admin (adminAction: allow-listed email, AAL2). Every saved setting is audited.
 

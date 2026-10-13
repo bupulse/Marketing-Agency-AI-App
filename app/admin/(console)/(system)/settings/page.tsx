@@ -56,6 +56,19 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </form>
         </Panel>
 
+        <Panel title="Loading animation" description="Shown on the whole site (public pages, client dashboard and admin) while a page loads. Visitors see a change within a minute.">
+          <form action={saveSettingsAction} className="flex flex-wrap items-end gap-3">
+            <Field label="Animation" required>
+              <Select name="pageLoader" defaultValue={s.pageLoader} className="w-72">
+                <option value="bar">Bar across the top (left to right)</option>
+                <option value="preloader">BuPulse preloader (logo with a spinning ring)</option>
+                <option value="off">Off</option>
+              </Select>
+            </Field>
+            <Button type="submit">Save</Button>
+          </form>
+        </Panel>
+
         <Panel title="Card prices" description="Plans priced in RWF are charged in US dollars when paid by card. Card price = RWF ÷ rate + margin, rounded up to whole dollars.">
           <form action={saveSettingsAction} className="flex flex-col gap-3">
             <div className="flex flex-wrap items-end gap-3">

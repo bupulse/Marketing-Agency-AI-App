@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { PageLoaderLayer, PageLoaderScript } from "@/components/page-loader";
 import { ThemeProvider, ThemeScript } from "@/components/theme";
 import { ToastProvider } from "@/components/ui/toast";
 import "./globals.css";
@@ -49,9 +50,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <head>
         <ThemeScript />
+        <PageLoaderScript />
       </head>
       <body className="flex min-h-full flex-col bg-bg text-text">
         <ThemeProvider>
+          <PageLoaderLayer />
           <ToastProvider>{children}</ToastProvider>
         </ThemeProvider>
       </body>

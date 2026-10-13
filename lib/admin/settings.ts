@@ -3,6 +3,7 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { DEFAULT_CARD_MARGIN_PERCENT, DEFAULT_USD_TO_RWF } from "@/lib/region-format";
 import { DEFAULT_BUFFER_MINUTES, DEFAULT_SLOT_MINUTES, isValidYmd } from "@/lib/demo/slots";
+import { isPageLoader, type PageLoader } from "@/lib/ui/page-loader";
 import { writeAudit } from "./audit";
 import { AdminError, type AdminContext } from "./types";
 
@@ -34,6 +35,8 @@ export type Settings = {
   blockedDates: string[];
   /** New demo bookings accepted per day (Africa/Kigali), across all companies; stops sign-up floods from filling the calendar and the admin inbox. */
   demoDailyCap: number;
+  /** The page-loading animation on the whole site (clients, public pages, admin): a top bar, the BuPulse preloader, or none. */
+  pageLoader: PageLoader;
 };
 export type SettingName = keyof Settings;
 
@@ -47,6 +50,7 @@ const KEYS: Record<SettingName, string> = {
   bufferMinutes: "demo.bufferMinutes",
   blockedDates: "demo.blockedDates",
   demoDailyCap: "demo.dailyCap",
+  pageLoader: "ui.pageLoader",
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -59,6 +63,7 @@ export const DEFAULT_SETTINGS: Settings = {
   bufferMinutes: DEFAULT_BUFFER_MINUTES,
   blockedDates: [],
   demoDailyCap: DEFAULT_DEMO_DAILY_CAP,
+  pageLoader: "bar",
 };
 
 const number = (field: string, min: number, max: number, integer = true) => (value: unknown) => {
@@ -98,6 +103,11 @@ export const cleanSetting: { [K in SettingName]: (value: unknown) => Settings[K]
   },
   bufferMinutes: number("The buffer (minutes)", 0, 120),
   demoDailyCap: number("New demo bookings per day", 1, 200),
+  pageLoader: (value) => {
+    const v = String(value ?? "").trim();
+    if (!isPageLoader(v)) throw new AdminError("invalid", "Choose a loading animation: bar, preloader or off.");
+    return v;
+  },
   blockedDates: (value) => {
     const list = Array.isArray(value) ? value : String(value ?? "").split(/[\s,]+/);
     const out = [...new Set(list.map((v) => String(v).trim()).filter(Boolean))].sort();
