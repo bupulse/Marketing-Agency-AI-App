@@ -116,7 +116,7 @@ export async function autoSchedule(businessId: string, postIds: string[], now = 
   for (const post of toSchedule) {
     const at = times.get(post.id) ?? post.scheduledAt;
     if (!at) continue;
-    const ok = await scheduleAtFreeSlot(post, at, {
+    const ok = "ok" === await scheduleAtFreeSlot(post, at, {
       businessId,
       where: { status: "PENDING_APPROVAL", updatedAt: post.updatedAt },
       data: { status: "SCHEDULED", autoScheduledAt: now, reviewNote: null },

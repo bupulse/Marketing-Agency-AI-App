@@ -95,7 +95,10 @@ depend on a connection:
   `remindOnly`) still fails as before.
 - **Connected later.** A banner on the Content page ("N posts were made as a reminder... Publish automatically") and a
   button in the post detail switch waiting or scheduled reminder posts of a now-connected app to its account
-  (`connectByHandPosts`; the first usable account that posts automatically), keeping text, media and time.
+  (`lib/content-board/connect.ts`; the first usable account that posts automatically), keeping text and media. A
+  scheduled one is taken out of the queue first, checked by the safety rules, and scheduled again on a free slot (its
+  time if still ahead, else the best time); if it cannot go it waits in Needs review with the reason, so a post is
+  never published late or stacked.
 - **Backfill.** Content written before drafting existed has `GeneratedContent.postsDraftedAt` null. Its posts are
   drafted once when its product or campaign is opened (Knowledge page or Content subject page, `latestContentPosts`);
   content whose drafts the owner rejected is never drafted again on its own. A subject whose newest content has no
@@ -110,8 +113,8 @@ depend on a connection:
   for review, up to 100): a dialog with "Schedule for me" (best times) or "I'll choose times" (a time per post,
   prefilled with the suggestion, in the business's time zone). `lib/content-board/schedule-all.ts` applies the same
   safety rules as auto-approval (`safetyReasons`), writes each post guarded by its `updatedAt`, keeps 2.5 hours per
-  account (`claimSlot`), and reports what was scheduled and what was skipped, with why (time taken, in the past,
-  changed meanwhile, video not made...). Needs the `content` permission and the `calendar` feature.
+  account (`claimSlot`), and reports what was scheduled and what was skipped, with why (time taken, no free time,
+  in the past, more than 90 days ahead, changed meanwhile, video not made...). Needs the `content` permission and the `calendar` feature.
 - **Approve** reports posts it could not place ("Approved 4 of 5. 1 could not find a free time: open it and pick a
   time"): `approvePosts` returns `skipped`.
 - **Connect your apps.** While posts (or Autopilot) target apps without a usable account (`missingApps`), the Content

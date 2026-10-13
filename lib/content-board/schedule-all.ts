@@ -12,7 +12,11 @@ import { networkLabel } from "./labels";
 export const SCHEDULABLE = ["DRAFT", "PENDING_APPROVAL"] as const;
 export const MAX_SCHEDULE_ALL = 100;
 
+/** A time picked by hand may be at most this far ahead. */
+export const MAX_DAYS_AHEAD = 90;
+
 export const SKIP_REASONS = {
+  tooFar: `Pick a time within the next ${MAX_DAYS_AHEAD} days.`,
   taken: "Another post on this account goes out within 2.5 hours of that time. Pick another time.",
   past: "Pick a time in the future.",
   changed: "This post changed or was scheduled meanwhile.",
@@ -77,6 +81,10 @@ export async function scheduleAll(businessId: string, items: { id: string; at?: 
         result.skipped.push({ id: post.id, reason: SKIP_REASONS.past });
         continue;
       }
+      if (chosen.getTime() > now.getTime() + MAX_DAYS_AHEAD * 86_400_000) {
+        result.skipped.push({ id: post.id, reason: SKIP_REASONS.tooFar });
+        continue;
+      }
       const outcome = await claimSlot({ businessId, postId: post.id, connectionId: post.connectionId, at: chosen, where, data });
       if (outcome === "ok") result.scheduled.push({ id: post.id, at: chosen.toISOString() });
       else result.skipped.push({ id: post.id, reason: outcome === "taken" ? SKIP_REASONS.taken : SKIP_REASONS.changed });
@@ -87,10 +95,11 @@ export async function scheduleAll(businessId: string, items: { id: string; at?: 
       result.skipped.push({ id: post.id, reason: SKIP_REASONS.noTime });
       continue;
     }
-    if (await scheduleAtFreeSlot(post, at, { businessId, where, data, now })) {
+    const outcome = await scheduleAtFreeSlot(post, at, { businessId, where, data, now });
+    if (outcome === "ok") {
       const written = await prisma.post.findFirst({ where: { id: post.id, businessId }, select: { scheduledAt: true } });
       result.scheduled.push({ id: post.id, at: (written?.scheduledAt ?? at).toISOString() });
-    } else result.skipped.push({ id: post.id, reason: SKIP_REASONS.noTime });
+    } else result.skipped.push({ id: post.id, reason: outcome === "changed" ? SKIP_REASONS.changed : SKIP_REASONS.noTime });
   }
   return result;
 }

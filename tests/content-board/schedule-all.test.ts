@@ -64,6 +64,23 @@ describe("scheduleAll (Schedule all my posts)", () => {
     ]);
   });
 
+  it("refuses hand-picked times more than 90 days ahead", async () => {
+    rows = [post("a")];
+    const result = await scheduleAll("b1", [{ id: "a", at: new Date("2027-02-01T10:00:00Z") }], now);
+    expect(result.skipped).toEqual([{ id: "a", reason: SKIP_REASONS.tooFar }]);
+  });
+
+  it("tells a post that changed meanwhile apart from one with no free time", async () => {
+    rows = [post("a"), post("b")];
+    prisma.post.updateMany.mockResolvedValueOnce({ count: 0 });
+    prisma.post.findFirst.mockImplementation(async (args: { where: { connectionId?: string } }) => (args.where.connectionId === "c-b" ? { id: "clash" } : null));
+    const result = await scheduleAll("b1", [{ id: "a" }, { id: "b" }], now);
+    expect(result.skipped).toEqual([
+      { id: "a", reason: SKIP_REASONS.changed },
+      { id: "b", reason: SKIP_REASONS.noTime },
+    ]);
+  });
+
   it("skips posts that cannot go yet, and posts that are not this business's or already scheduled", async () => {
     rows = [post("v", { network: "tiktok", format: "SCRIPT", mediaPaths: [], contentId: "k1" })];
     prisma.contentVisual.findMany.mockResolvedValue([{ kind: "video", contentId: "k1", groupId: null }]);
