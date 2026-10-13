@@ -73,7 +73,7 @@ The design choice is made once in the dialog: **AI designs (images with people)*
 BuPulse designs)** (AI is offered only when `aiPhotosAvailable`).
 
 **Posts per app per day** (`lib/content-flow/slots.ts`): the plan's `limits.postsPerAppPerDay` (trial, Starter and
-Standard 1, Business and Pro 3, custom plans 1 to 10 set in the offer builder; migration
+Standard 1, Business and Pro 3, custom plans 1 to 10 set in the offer builder, any plan in Admin -> Plans; migration
 `20261017150100_posts_per_app_per_day`; 1 for a plan without it, `postsPerAppLimit`). The dialog asks "Posts per app"
 (1 by default, up to the limit); the run counts the posts the subject already has on each app today (business time
 zone) and makes at most the rest, skipping a full app with the reason. Every app gets its first post before any gets a

@@ -7,7 +7,7 @@ import { formatCents } from "@/components/billing/helpers";
 import { Badge, Button, Field, GlassCard, Input, Select, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { FEATURES, dependentsOf, featureLabel, withPrerequisites, type FeatureKey } from "@/lib/features";
-import { USAGE_METRICS, type PlanLimits, type PlanStatus } from "@/lib/plans";
+import { USAGE_METRICS, type PlanLimits, type PlanStatus, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit } from "@/lib/plans";
 
 export type PlanFormInitial = {
   key: string;
@@ -32,6 +32,7 @@ const METRIC_LABELS: Record<string, string> = {
   videoSeconds: "Video seconds",
   voiceCharacters: "Voice characters",
   seats: "Team seats",
+  postsPerAppPerDay: "Posts per app per day",
 };
 
 const cents = (dollars: string) => {
@@ -123,7 +124,7 @@ export function PlanForm({ mode, initial, paddleConnected, subscribers, version 
   // Every field is controlled, so nothing is lost when the form action finishes (React resets uncontrolled fields).
   const [key, setKey] = useState(initial.key);
   const [sortOrder, setSortOrder] = useState(String(initial.sortOrder));
-  const [limits, setLimits] = useState<Record<string, string>>(Object.fromEntries([...USAGE_METRICS, "seats"].map((m) => [m, String(initial.limits[m as keyof PlanLimits])])));
+  const [limits, setLimits] = useState<Record<string, string>>(Object.fromEntries([...[...USAGE_METRICS, "seats"].map((m) => [m, String(initial.limits[m as keyof PlanLimits])]), ["postsPerAppPerDay", String(postsPerAppLimit(initial.limits))]]));
   // "Back" hides the confirm step of one particular answer; a changed price hides it too (it was not reviewed).
   const [backed, setBacked] = useState<object | null>(null);
   const highlightList = highlights.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -193,6 +194,7 @@ export function PlanForm({ mode, initial, paddleConnected, subscribers, version 
             {([...USAGE_METRICS, "seats"] as const).map((m) => (
               <Field key={m} label={METRIC_LABELS[m]} hint={m === "seats" ? "Users per company (1 to 1000)." : undefined}><Input name={`limit_${m}`} type="number" min={m === "seats" ? 1 : 0} max={m === "seats" ? 1000 : undefined} step={1} value={limits[m]} onChange={(e) => setLimits({ ...limits, [m]: e.target.value })} required /></Field>
             ))}
+            <Field label={METRIC_LABELS.postsPerAppPerDay} hint={`Posts "Create today's content" and Autopilot make per app a day for one product or campaign (${POSTS_PER_APP_MIN} to ${POSTS_PER_APP_MAX}).`}><Input name="limit_postsPerAppPerDay" type="number" min={POSTS_PER_APP_MIN} max={POSTS_PER_APP_MAX} step={1} value={limits.postsPerAppPerDay} onChange={(e) => setLimits({ ...limits, postsPerAppPerDay: e.target.value })} required /></Field>
           </div>
         </GlassCard>
 

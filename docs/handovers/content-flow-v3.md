@@ -76,8 +76,9 @@ then the code.
 
 - **Posts per app per day** by plan (`PlanDefinition.limits.postsPerAppPerDay`; trial, Starter, Standard 1; Business,
   Pro 3; custom plans 1 to 10 in the offer builder's Limits; migration `20261017150100_posts_per_app_per_day`). The
-  dialog's "Posts per app" counts the subject's posts today; Autopilot respects it per account, day and subject. The
-  admin plan form does not edit it yet (the offer builder does; Jarvis / `setPlanLimits` still take the usage limits).
+  dialog's "Posts per app" counts the subject's posts today; Autopilot respects it per account, day and subject.
+  Admin -> Plans edits it ("Posts per app per day", 1 to 10, audited with the plan), and so does the
+  `update_plan_limits` / `update_plan` tool (null resets to the seeded value).
 - **Price choice** in the dialog: AI decides (default), With price, No price (engaging).
 - **More ideas**, balanced fun / professional by the Digital Marketing Profile; the idea type shows on every card.
 - **Contests**: suggested with placeholders, "Needs your confirmation: prize & rules" until the owner fills in the

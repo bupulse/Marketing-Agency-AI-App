@@ -927,3 +927,18 @@ describe("team seats", () => {
     expect(plan("STANDARD").limits.seats).toBe(3);
   });
 });
+
+describe("posts per app per day", () => {
+  it("is edited in the plan form (1 to 10), validated and audited; the limits tool sets and resets it", async () => {
+    await updatePlan(CONSOLE, "STANDARD", { limits: { postsPerAppPerDay: 4 } });
+    expect(plan("STANDARD").limits).toMatchObject({ postsPerAppPerDay: 4, text: 100, seats: 3 });
+    expect(audits()[0]).toMatchObject({ action: "update_plan", after: { limits: expect.objectContaining({ postsPerAppPerDay: 4 }) } });
+    expect(await code(updatePlan(CONSOLE, "STANDARD", { limits: { postsPerAppPerDay: 0 } }))).toBe("invalid");
+    expect(await code(updatePlan(CONSOLE, "STANDARD", { limits: { postsPerAppPerDay: 11 } }))).toBe("invalid");
+    await svc.updatePlanLimits(API, { plan: "PRO", limits: { postsPerAppPerDay: 7 }, confirm: true });
+    expect(plan("PRO").limits.postsPerAppPerDay).toBe(7);
+    await svc.updatePlanLimits(API, { plan: "PRO", limits: { postsPerAppPerDay: null }, confirm: true });
+    expect(plan("PRO").limits.postsPerAppPerDay).toBe(3);
+    expect(await code(svc.updatePlanLimits(API, { plan: "PRO", limits: { postsPerAppPerDay: 12 }, confirm: true }))).toBe("invalid");
+  });
+});

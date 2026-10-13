@@ -70,6 +70,13 @@ describe("saving a plan from the form", () => {
     expect(plan("STANDARD").limits.text).toBe(123);
   });
 
+  it("saves posts per app per day from the form, and refuses one outside 1 to 10", async () => {
+    await expect(savePlanAction({}, form({ limit_postsPerAppPerDay: "2" }))).rejects.toThrow(/NEXT_REDIRECT/);
+    expect(plan("STANDARD").limits.postsPerAppPerDay).toBe(2);
+    const out = await savePlanAction({}, form({ limit_postsPerAppPerDay: "11", version: plan("STANDARD").updatedAt.toISOString() }));
+    expect(out).toMatchObject({ error: expect.stringContaining("Posts per app per day") });
+  });
+
   it("a form opened before another admin saved is refused, and nothing is overwritten", async () => {
     const stale = form({ name: "Stale name" });
     plan("STANDARD").updatedAt = new Date("2026-10-10T00:00:00Z"); // another admin saved meanwhile

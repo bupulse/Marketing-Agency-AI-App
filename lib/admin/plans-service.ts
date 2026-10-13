@@ -21,7 +21,7 @@ import {
   type PlanView,
 } from "@/lib/plan-catalog";
 import { validateFeatureSet, type FeatureKey } from "@/lib/features";
-import { CAPABILITIES, PLAN_STATUSES, SEATS_MAX, SEATS_MIN, SEED_PLANS, TRIAL_PLAN_KEY, USAGE_METRICS, type Capability, type PlanLimits, type PlanStatus, type UsageMetric } from "@/lib/plans";
+import { CAPABILITIES, PLAN_STATUSES, SEATS_MAX, SEATS_MIN, SEED_PLANS, TRIAL_PLAN_KEY, USAGE_METRICS, type Capability, type PlanLimits, type PlanStatus, type UsageMetric, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit } from "@/lib/plans";
 import { writeAudit } from "./audit";
 import { AdminError, type AdminContext } from "./types";
 
@@ -44,8 +44,8 @@ export type PlanInput = {
   status?: PlanStatus;
   sortOrder?: number;
   highlight?: boolean;
-  /** The usage limits and `seats` (users per company, 1 to 1000). */
-  limits?: Partial<Record<UsageMetric | "seats", number>>;
+  /** The usage limits, `seats` (users per company, 1 to 1000) and `postsPerAppPerDay` (1 to 10, docs/CONTENT.md). */
+  limits?: Partial<Record<UsageMetric | "seats" | "postsPerAppPerDay", number>>;
   /** Marketing bullets on the pricing card. */
   highlights?: string[];
   /** Feature keys (lib/features.ts). Every prerequisite must be in the list; "coming soon" features are refused. */
@@ -135,7 +135,11 @@ export function mergePlan(base: Snapshot, patch: Partial<PlanInput>, isTrial: bo
         next.limits.seats = int(value, "Team seats", SEATS_MIN, SEATS_MAX);
         continue;
       }
-      if (!(USAGE_METRICS as string[]).includes(metric)) throw new AdminError("invalid", `Unknown limit "${metric}". Use: seats, ${USAGE_METRICS.join(", ")}.`);
+      if (metric === "postsPerAppPerDay") {
+        next.limits.postsPerAppPerDay = int(value, "Posts per app per day", POSTS_PER_APP_MIN, POSTS_PER_APP_MAX);
+        continue;
+      }
+      if (!(USAGE_METRICS as string[]).includes(metric)) throw new AdminError("invalid", `Unknown limit "${metric}". Use: seats, postsPerAppPerDay, ${USAGE_METRICS.join(", ")}.`);
       next.limits[metric as UsageMetric] = int(value, `The ${metric} limit`, 0, MAX_LIMIT);
     }
   }
@@ -633,12 +637,18 @@ export async function retryFailedPriceItems(ctx: AdminContext, id: string) {
 // ---- limits only (the update_plan_limits tool) -----------------------------------------------------------------------------------
 
 /** Sets a plan's limits. A metric set to null goes back to the value the plan was seeded with (0 for plans created later). */
-export async function setPlanLimits(ctx: AdminContext, input: { plan: string; limits: Partial<Record<UsageMetric | "seats", number | null>> }) {
+export async function setPlanLimits(ctx: AdminContext, input: { plan: string; limits: Partial<Record<UsageMetric | "seats" | "postsPerAppPerDay", number | null>> }) {
   const plan = await loadPlan(input.plan);
   const entries = Object.entries(input.limits ?? {});
   if (entries.length === 0) throw new AdminError("invalid", "limits must set at least one metric.");
-  const patch: Partial<Record<UsageMetric | "seats", number>> = {};
+  const patch: Partial<Record<UsageMetric | "seats" | "postsPerAppPerDay", number>> = {};
   for (const [metric, value] of entries) {
+    if (metric === "postsPerAppPerDay") {
+      if (value === null) patch.postsPerAppPerDay = postsPerAppLimit(SEED_PLANS[plan.key]?.limits);
+      else if (!Number.isInteger(value) || value < POSTS_PER_APP_MIN || value > POSTS_PER_APP_MAX) throw new AdminError("invalid", `postsPerAppPerDay must be a whole number from ${POSTS_PER_APP_MIN} to ${POSTS_PER_APP_MAX}, or null to reset.`);
+      else patch.postsPerAppPerDay = value;
+      continue;
+    }
     if (metric === "seats") {
       if (value === null) patch.seats = SEED_PLANS[plan.key]?.limits.seats ?? SEATS_MIN;
       else if (!Number.isInteger(value) || value < SEATS_MIN || value > SEATS_MAX) throw new AdminError("invalid", `seats must be a whole number from ${SEATS_MIN} to ${SEATS_MAX}, or null to reset.`);
