@@ -11,11 +11,12 @@ import { getPlan, priceIdFor } from "@/lib/plan-catalog";
 import { companyPlans, regionPriceIdFor } from "@/lib/region-prices";
 import { invoiceUrl } from "@/lib/billing/paddle";
 import { applyProviderSubscription } from "@/lib/billing/apply";
+import { earlyRenewalMessage, tooEarlyToRenew } from "@/lib/billing/renewal";
 import { paymentMethod } from "@/lib/billing/methods";
 import { cancelManualPayment, currentManualPayment, ManualPaymentError, startInvoicePayment, startProofUpload } from "@/lib/billing/momo";
 import type { ManualPaymentView, ProofInput } from "@/lib/billing/momo-shared";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
-import { acceptOffer, OfferError } from "@/lib/offers/service";
+import { acceptOffer, OfferError, startFeatureAddition } from "@/lib/offers/service";
 import { noteRegionMismatch } from "@/lib/region-check";
 import type { CheckoutConfig, Invoice, PaidPlan } from "@/lib/billing";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
@@ -66,11 +67,10 @@ export async function startCheckout(input: { plan: string; interval: string }): 
   if (managed(sub) && sub?.plan !== "TRIAL") {
     return { ok: false, error: "You already have a paid plan. Use Switch plan to change it." };
   }
-  // A Mobile Money plan that is still paid for: the card would charge again for the same time. Switching to card
-  // happens at the renewal, once the paid period has ended.
-  if (sub?.provider === "MANUAL_MOMO" && sub.status === "ACTIVE" && sub.currentPeriodEnd && sub.currentPeriodEnd > new Date()) {
-    return { ok: false, error: "Your plan is paid by Mobile Money until the end of the current period. You can switch to card after that." };
-  }
+  // A Mobile Money plan that is still paid for: renewing by card opens in its last RENEWAL_WINDOW_DAYS days, and the card
+  // is then first billed when the paid period ends (lib/billing/apply.ts), so no paid day is lost (docs/BILLING.md, "Renewing").
+  const early = tooEarlyToRenew(sub);
+  if (early) return { ok: false, error: earlyRenewalMessage(early) };
   if (!user.email) return { ok: false, error: "Add an email address to your account first." };
   // Soft region check: a checkout from a dearer region's IP is flagged for the admin, never refused (docs/REGIONS.md).
   await noteRegionMismatch(user.businessId, "card");
@@ -362,6 +362,32 @@ export async function acceptOfferAction(input: { offerId: string; method: string
   } catch (error) {
     if (error instanceof OfferError) return { ok: false, error: error.message };
     console.error("Accepting an offer failed", error);
+    return { ok: false, error: GENERIC };
+  }
+}
+
+// "Add features" (docs/OFFERS.md, "Adding features to a paid plan"): the ticked features on top of the running plan,
+// paid now prorated for the days left (Mobile Money, or an invoice), switched on when the payment is confirmed. Owner only.
+export async function addFeaturesAction(input: { features: string[]; method: string }): Promise<BillingResult<{ method: "momo" | "invoice" }>> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const method = input?.method === "invoice" ? "invoice" : input?.method === "momo" ? "momo" : null;
+  if (!method) return { ok: false, error: "Choose how you want to pay." };
+  const features = Array.isArray(input?.features) ? input.features.map(String).slice(0, 40) : [];
+  try {
+    await rateLimit(`offer:${user.businessId}`, RATE_LIMITS.offerAccept);
+  } catch (error) {
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    throw error;
+  }
+  if (method === "momo") await noteRegionMismatch(user.businessId, "momo");
+  try {
+    await startFeatureAddition({ userId: user.id, actorId: user.actorId, businessId: user.businessId, features, method });
+    revalidatePath("/dashboard", "layout");
+    return { ok: true, method };
+  } catch (error) {
+    if (error instanceof OfferError) return { ok: false, error: error.message };
+    console.error("Adding features failed", error);
     return { ok: false, error: GENERIC };
   }
 }

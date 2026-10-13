@@ -6,6 +6,7 @@ import { CustomPlanForm } from "@/components/offers/custom-plan-form";
 import { checkActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
 import { isFeatureKey } from "@/lib/features";
+import { companyEntitlements } from "@/lib/entitlements";
 import { askMessage, can } from "@/lib/team/roles";
 import { REQUEST_SOURCES, type RequestSource } from "@/lib/offers/shared";
 
@@ -37,6 +38,8 @@ export default async function CustomPlanPage({ searchParams }: { searchParams: P
   if (!business?.detailsCompletedAt) redirect("/welcome");
   if (!business.onboardedAt) redirect("/onboarding");
   const pendingDemo = business.user?.subscription?.status === "PENDING_DEMO";
+  // What the plan already includes is ticked and locked on the form, so only missing features can be asked for.
+  const owned = user.businessId ? [...(await companyEntitlements(user.businessId)).inPlan] : [];
   const back = pendingDemo ? { href: "/dashboard", label: "Back to your demo" } : { href: "/dashboard/billing", label: "Back to Billing" };
 
   return (
@@ -45,7 +48,7 @@ export default async function CustomPlanPage({ searchParams }: { searchParams: P
         <p className="text-[13px] font-medium text-muted">{business.name}</p>
         <h1 className="text-2xl font-semibold tracking-[-0.03em]">Request a custom plan</h1>
         <p className="text-[15px] text-muted">
-          Tell us what your business does and what you want from BuPulse. We put together a plan with only what you need and send you an offer to accept in Billing.
+          Tell us what your business does and tick what you would like to add. We put together a plan with only what you need and send you an offer to accept in Billing.
           {pendingDemo ? " We will also talk it through in your demo." : ""}
         </p>
       </div>
@@ -53,6 +56,7 @@ export default async function CustomPlanPage({ searchParams }: { searchParams: P
         <CustomPlanForm
           source={source}
           initial={{ description: business.description ?? business.industryDescription ?? "", phone: business.phone ?? "", features: isFeatureKey(feature) ? [feature] : [] }}
+          owned={owned}
           back={back}
         />
       ) : (

@@ -7,10 +7,10 @@ import { logError } from "@/lib/errors";
 import { featureLabel } from "@/lib/features";
 import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { sendRequestAlertEmail } from "./emails";
-import { budgetLabel, isRequestStatus, readFeatureKeys, REQUEST_STATUSES, requestSchema, type RequestStatus } from "./shared";
+import { budgetLabel, isRequestStatus, readFeatureKeys, REQUEST_STATUSES, requestedFeatures, requestSchema, type RequestStatus } from "./shared";
 
-// "Request a custom plan" (R5, docs/OFFERS.md): the client describes the business, its goals and the features it is
-// interested in; the request is linked to the company and its demo booking, the owner is emailed, and the admin
+// "Request a custom plan" (R5, docs/OFFERS.md): the client describes the business and ticks the features it is
+// interested in (what its plan already has is ticked and locked on the form, and never stored as asked for); the request is linked to the company and its demo booking, the owner is emailed, and the admin
 // answers with an offer ("Customise plan", prefilled from the request). Rate-limited per company.
 
 type Row = Prisma.CustomPlanRequestGetPayload<object>;
@@ -23,7 +23,7 @@ export class PlanRequestError extends Error {
 }
 
 /** Records a request from a signed-in company (any status, including one waiting for its demo). Throws RateLimitError. */
-export async function createPlanRequest(input: { userId: string; actorId: string; businessId: string; raw: unknown }, now: Date = new Date()) {
+export async function createPlanRequest(input: { userId: string; actorId: string; businessId: string; raw: unknown; owned?: readonly string[] }, now: Date = new Date()) {
   const parsed = requestSchema.safeParse(input.raw);
   if (!parsed.success) throw new PlanRequestError(parsed.error.issues[0]?.message ?? "Check the form and try again.");
   if (!input.businessId) throw new PlanRequestError("Your account is still being set up. Please try again in a moment.");
@@ -32,7 +32,7 @@ export async function createPlanRequest(input: { userId: string; actorId: string
   if (!business) throw new PlanRequestError("Your account is still being set up. Please try again in a moment.");
   const person = await prisma.user.findUnique({ where: { id: input.actorId }, select: { email: true, name: true } });
   const booking = await prisma.demoBooking.findFirst({ where: { businessId: business.id, status: "booked" }, orderBy: { startsAt: "asc" }, select: { id: true, startsAt: true } });
-  const d = parsed.data;
+  const d = { ...parsed.data, features: requestedFeatures(input.owned ?? [], parsed.data.features) };
   const row = await prisma.customPlanRequest.create({
     data: {
       businessId: business.id,
@@ -43,7 +43,7 @@ export async function createPlanRequest(input: { userId: string; actorId: string
       phone: d.phone ?? business.phone ?? null,
       companyName: business.name,
       description: d.description,
-      goals: d.goals,
+      goals: null,
       featureKeys: d.features as Prisma.InputJsonValue,
       budget: d.budget,
       source: d.source,
@@ -56,7 +56,6 @@ export async function createPlanRequest(input: { userId: string; actorId: string
       email: row.email,
       phone: row.phone,
       description: d.description,
-      goals: d.goals,
       features: d.features.map(featureLabel),
       budget: budgetLabel(d.budget),
       demo: booking ? `Booked for ${booking.startsAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Kigali" })} (Kigali)` : null,

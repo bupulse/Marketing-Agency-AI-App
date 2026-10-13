@@ -73,6 +73,11 @@ export interface BillingAdapter {
   resume(providerSubscriptionId: string): Promise<ProviderSubscription>;
   /** Switch plan or interval; charges/credits the difference now. */
   changePlan(providerSubscriptionId: string, priceId: string): Promise<ProviderSubscription>;
+  /**
+   * Moves the next charge to `at` without billing for the extra days (a card renewal of a plan still paid by Mobile
+   * Money keeps the paid days, docs/BILLING.md "Renewing"). Optional: a provider without it simply starts billing now.
+   */
+  deferNextBilling?(providerSubscriptionId: string, at: Date): Promise<ProviderSubscription>;
   listInvoices(providerCustomerId: string): Promise<Invoice[]>;
   /** Verifies the signature; returns null when the request is not genuine. */
   parseWebhook(rawBody: string, headers: Headers): Promise<BillingWebhook | null>;

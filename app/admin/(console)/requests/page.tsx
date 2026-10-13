@@ -57,7 +57,7 @@ export default async function PlanRequestsPage({ searchParams }: { searchParams:
                   </div>
                   <dl className="grid gap-3 text-[15px] sm:grid-cols-2">
                     <div><dt className="text-[13px] text-muted">The business</dt><dd className="whitespace-pre-line break-words">{r.description}</dd></div>
-                    <div><dt className="text-[13px] text-muted">Goals</dt><dd className="whitespace-pre-line break-words">{r.goals}</dd></div>
+                    {r.goals && <div><dt className="text-[13px] text-muted">Goals</dt><dd className="whitespace-pre-line break-words">{r.goals}</dd></div>}
                     <div><dt className="text-[13px] text-muted">Interested in</dt><dd>{r.features.map(featureLabel).join(", ") || "Not said"}</dd></div>
                     <div><dt className="text-[13px] text-muted">Budget</dt><dd>{r.budgetLabel ?? "Not said"}</dd></div>
                   </dl>

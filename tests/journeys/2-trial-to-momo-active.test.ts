@@ -128,7 +128,9 @@ describe("journey: trial -> Mobile Money -> ACTIVE -> renewal -> grace -> read-o
     expect(await code(rejectManualPayment(CONSOLE, payment.id, "too late", PAID_AT))).toMatch(/^conflict: This payment is already confirmed/);
     expect(h.db.auditLog.rows).toHaveLength(writes);
     expect(subscription.currentPeriodEnd).toEqual(periodEnd);
-    const again = await startManualPayment({ userId, plan: "BUSINESS", interval: "MONTH", now: PAID_AT });
+    // Renewing the same plan opens in the last 7 days of the period only (docs/BILLING.md, "Renewing").
+    await expect(startManualPayment({ userId, plan: "BUSINESS", interval: "MONTH", now: PAID_AT })).rejects.toThrow(/is paid until .* You can renew from/);
+    const again = await startManualPayment({ userId, plan: "BUSINESS", interval: "MONTH", now: new Date((periodEnd as Date).getTime() - 3 * DAY) });
     await expect(proof(userId, again.id)).rejects.toThrow(/already been used/);
     await expect(proof(other.userId, otherPayment.id)).rejects.toThrow(/already been used/);
     expect(await cancelManualPayment(userId, again.id, PAID_AT)).toBe(true);

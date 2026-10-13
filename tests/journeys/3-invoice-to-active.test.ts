@@ -263,7 +263,7 @@ describe("journey: invoice -> Mobile Money with BP-INV reference -> paid + ACTIV
 
   it("a payment that only renews the plan already running never settles or flags an invoice", async () => {
     const { userId, businessId, subscription } = await afterDemo(1);
-    Object.assign(subscription, { status: "ACTIVE", plan: "BUSINESS", provider: "MANUAL_MOMO", interval: "MONTH", currentPeriodStart: AT, currentPeriodEnd: new Date(AT.getTime() + 10 * 86_400_000) });
+    Object.assign(subscription, { status: "ACTIVE", plan: "BUSINESS", provider: "MANUAL_MOMO", interval: "MONTH", currentPeriodStart: AT, currentPeriodEnd: new Date(AT.getTime() + 5 * 86_400_000) });
     h.db.invoice.rows.push({ id: "i1", businessId, number: "BP-INV-0001", status: "sent", currency: "RWF", planKey: "BUSINESS", interval: "MONTH", totalMinor: 35000, subtotalMinor: 35000, taxMinor: 0, lines: [{ description: "Plan", quantity: 1, unitMinor: 35000 }], sentAt: new Date(AT.getTime() - 3_600_000), reminderSentAt: null });
     const renewal = await momo.startManualPayment({ userId, plan: "BUSINESS", interval: "MONTH", now: AT });
     expect(renewal.periodNote).toMatchObject({ mode: "extend" });

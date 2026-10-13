@@ -741,6 +741,7 @@ export async function requestCreateOffer(ctx: AdminContext, input: { businessId:
   const business = await prisma.business.findUnique({ where: { id: input.businessId }, select: { id: true, name: true } });
   if (!business) throw new AdminError("not_found", "No company with that id.");
   const draft = parseDraft(input.draft);
+  if (draft.mode === "addon") throw new AdminError("invalid", "Adding features to a client's running plan (prorated) is done in the console: Customise plan, Add to current plan.");
   const pc = await pricingContext(business.id);
   const { quote } = quoteWith(pc, draft);
   const checked = checkOfferDraft(draft, quote);

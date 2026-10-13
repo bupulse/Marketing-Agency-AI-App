@@ -9,10 +9,12 @@ import { subscriptionEventsFor } from "@/lib/analytics/math";
 import { getSetting } from "@/lib/admin/settings";
 import { clearPlanCache, getPlan, getPlans, priceCents } from "@/lib/plan-catalog";
 import { assertOfferAmount, markOfferPaidInTx, offerForPayment } from "@/lib/offers/activate";
+import { readAddition } from "@/lib/offers/shared";
 import { companyPlans } from "@/lib/region-prices";
 import { matchInvoicePayment, readPaymentReviews, withPaymentReview, type PaymentReview } from "@/lib/invoices/shared";
 import { sendInvoiceReviewAlertEmail, sendPaymentRejectedEmail, sendPaymentToCheckEmail, sendPlanActiveEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
+import { earlyRenewalMessage, tooEarlyToRenew } from "./renewal";
 import { checkProofObject, createProofUpload, ProofFileError, removeProofObjects, verifiedProofPath } from "./momo-proofs";
 import {
   DAY_MS,
@@ -73,6 +75,8 @@ async function freshPlan(key: string) {
 }
 
 async function toView(row: Row, sub: Sub | null, now: Date = new Date()): Promise<ManualPaymentView> {
+  // Features added to the running plan keep its period: no "replaces the current period" note for them.
+  const keeps = row.status === "pending" && (row.offerId || row.invoiceId) ? Boolean(readAddition((await offerForPayment(row))?.options)) : false;
   return {
     id: row.id,
     planKey: row.planKey,
@@ -95,7 +99,7 @@ async function toView(row: Row, sub: Sub | null, now: Date = new Date()): Promis
     submittedAt: row.submittedAt?.toISOString() ?? null,
     decidedAt: row.decidedAt?.toISOString() ?? null,
     periodEnd: row.periodEnd?.toISOString() ?? null,
-    periodNote: periodNoteOf(row, sub, now),
+    periodNote: keeps ? null : periodNoteOf(row, sub, now),
   };
 }
 
@@ -157,6 +161,10 @@ export async function startManualPayment(input: { userId: string; plan: string; 
     if (offer?.status === "accepted") return startOfferPayment({ userId: input.userId, offerId: offer.id, now });
     if (offer?.status !== "paid") throw new ManualPaymentError("This custom plan offer is no longer open. Ask us for a new one.");
   }
+  // Renewing the plan the client is on opens in the last RENEWAL_WINDOW_DAYS days of the paid period (docs/BILLING.md,
+  // "Renewing"); the new period then starts when the current one ends. Another plan or interval is a switch, not a renewal.
+  const early = sub.plan === plan.key && sub.interval === input.interval ? tooEarlyToRenew(sub, now) : null;
+  if (early) throw new ManualPaymentError(earlyRenewalMessage(early));
   // The amount is the plan's price in the company's region (docs/REGIONS.md); a region without Mobile Money, or a plan
   // not offered there, cannot be paid this way. Checked before anything is written.
   const price = ownCustom ? await customPlanMomoPrice(business.id, plan, input.interval) : await getMomoPrice(business.id, plan.key, input.interval);
@@ -416,6 +424,9 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
   const offer = await offerForPayment(payment);
   if (offer && offer.status !== "accepted") throw new AdminError("conflict", `The custom plan offer this payment is for is ${offer.status}. Reject this payment (and refund it if the money arrived) instead.`);
   if (offer) assertOfferAmount(offer, payment);
+  // Features added to the running plan (docs/OFFERS.md): the plan they were priced on must still be the one running;
+  // the subscription moves to the new custom plan and its period does not change.
+  const addition = offer ? readAddition(offer.options) : null;
   if (payment.invoiceId) {
     const invoice = await prisma.invoice.findUnique({ where: { id: payment.invoiceId }, select: { status: true } });
     if (invoice?.status !== "sent") throw new AdminError("conflict", `Invoice ${payment.reference} is ${invoice ? `already ${invoice.status}` : "gone"}. Reject this payment (and refund it if the money arrived) instead.`);
@@ -430,7 +441,10 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
     if (sub.provider === "PADDLE" && sub.providerSubscriptionId && LIVE.has(sub.status) && sub.plan !== "TRIAL" && !sub.cancelAtPeriodEnd) {
       throw new AdminError("conflict", "This client has a card subscription that still renews. Cancel it in Paddle first, or reject this payment and refund it by MoMo.");
     }
-    const period = planManualPeriod(sub, plan.key, payment.interval, now);
+    if (addition && (sub.provider !== "MANUAL_MOMO" || sub.status !== "ACTIVE" || !sub.currentPeriodEnd || sub.currentPeriodEnd <= now || sub.plan !== addition.currentPlanKey || sub.interval !== payment.interval)) {
+      throw new AdminError("conflict", `The client's plan changed since they added these features (they were priced on ${addition.currentPlanName}, running until ${addition.periodEnd.slice(0, 10)}). Reject this payment (refund it if the money arrived) and make a new offer.`);
+    }
+    const period: { mode: "extend" | "replace" | "fresh" | "keep"; start: Date; end: Date } = addition ? { mode: "keep", start: now, end: sub.currentPeriodEnd as Date } : planManualPeriod(sub, plan.key, payment.interval, now);
     const before = { plan: sub.plan, status: sub.status, provider: sub.provider, interval: sub.interval, cancelAtPeriodEnd: sub.cancelAtPeriodEnd, currentPeriodStart: sub.currentPeriodStart, currentPeriodEnd: sub.currentPeriodEnd };
     const after = {
       plan: plan.key,
@@ -443,8 +457,8 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
       providerUpdatedAt: now,
       cancelAtPeriodEnd: false,
       trialEndsAt: null,
-      // Extending keeps the usage anchor; a fresh or replacing period starts counting now.
-      ...(period.mode === "extend" ? {} : { currentPeriodStart: period.start }),
+      // Extending (and adding features) keeps the usage anchor; a fresh or replacing period starts counting now.
+      ...(period.mode === "extend" || period.mode === "keep" ? {} : { currentPeriodStart: period.start }),
       currentPeriodEnd: period.end,
     };
     try {

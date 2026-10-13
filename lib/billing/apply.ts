@@ -2,6 +2,9 @@ import "server-only";
 import type { BillingProvider, Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { planForAnyPriceId } from "@/lib/region-prices";
+import { logError } from "@/lib/errors";
+import { addMonths } from "./period";
+import { tooEarlyToRenew } from "./renewal";
 import { verifyCheckoutUser } from "./signing";
 import type { ProviderSubscription } from "./types";
 
@@ -43,8 +46,15 @@ export async function applyProviderSubscription(provider: BillingProvider, sub: 
   // A paid-up Mobile Money plan (no provider subscription id, ACTIVE, period not over) is not ended by a late event of
   // an old card subscription, and a new live card subscription on top of it is a duplicate, like a second card
   // purchase. Once the MoMo period is over or past due, a new card subscription simply replaces it.
+  // In the plan's last RENEWAL_WINDOW_DAYS days, a new card subscription is the client's renewal by card ("Renew with card",
+  // docs/BILLING.md): it takes over, and its first renewal is moved by the days still paid by Mobile Money (carry-over).
   const momoPaidUp = row.provider === "MANUAL_MOMO" && row.status === "ACTIVE" && row.currentPeriodEnd !== null && row.currentPeriodEnd > new Date();
-  if (!sameSubscription && momoPaidUp) return LIVE.has(sub.status) ? "duplicate" : "stale";
+  let carryFrom: Date | null = null;
+  if (!sameSubscription && momoPaidUp) {
+    if (!LIVE.has(sub.status)) return "stale";
+    if (tooEarlyToRenew({ ...row, cancelAtPeriodEnd: false })) return "duplicate";
+    carryFrom = row.currentPeriodEnd;
+  }
   if (!sameSubscription && row.providerSubscriptionId) {
     // The account holds another subscription. Only a live new one may replace one that has ended
     // (re-subscribing after cancelling). Anything else must not touch the current plan.
@@ -79,5 +89,25 @@ export async function applyProviderSubscription(provider: BillingProvider, sub: 
     },
     data,
   });
+  if (count > 0 && carryFrom) await carryOverMomoDays(provider, sub, addMonths(carryFrom, match.interval === "YEAR" ? 12 : 1));
   return count > 0 ? "applied" : "stale";
+}
+
+/**
+ * The card renewal of a Mobile Money plan: moves the card subscription's next charge to one period after the end of the
+ * days already paid by Mobile Money (`do_not_bill`, so nothing is charged for it), then records what the provider
+ * answers. Best effort: when it fails the card plan is still on (the client loses at most the window's days) and the
+ * problem is logged for the owner (ErrorLog `billing.carry_over`).
+ */
+async function carryOverMomoDays(provider: BillingProvider, sub: ProviderSubscription, nextBilledAt: Date) {
+  if (sub.currentPeriodEnd && sub.currentPeriodEnd.getTime() >= nextBilledAt.getTime()) return;
+  try {
+    const { billingAdapter } = await import("./index");
+    const adapter = billingAdapter(provider);
+    if (!adapter.deferNextBilling) return;
+    const updated = await adapter.deferNextBilling(sub.providerSubscriptionId, nextBilledAt);
+    await applyProviderSubscription(provider, updated);
+  } catch (error) {
+    await logError(error, { source: "billing.carry_over", providerSubscriptionId: sub.providerSubscriptionId, nextBilledAt: nextBilledAt.toISOString() });
+  }
 }

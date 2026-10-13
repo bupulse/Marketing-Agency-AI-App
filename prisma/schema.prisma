@@ -1840,7 +1840,7 @@ model CustomPlanRequest {
   phone         String?
   companyName   String
   description   String // what the business does
-  goals         String
+  goals         String? // no longer asked on the form (13 October 2026); older requests keep theirs
   featureKeys   Json // FeatureKey[] of interest
   budget        String? // a budget range key (lib/offers/shared.ts BUDGET_RANGES)
   source        String    @default("billing") // billing | pricing | upgrade | demo

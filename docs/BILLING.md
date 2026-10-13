@@ -56,7 +56,28 @@ was not a cause (it defaults to Paddle).
 
 Card routes: plans → `startCheckout` (auto-renewing Paddle subscription, activated by the webhooks); invoices → the
 same checkout for the invoice's plan and interval ("Pay online" in the invoice email links to Billing; a custom plan's
-invoice has no card button); offers → "Ask us for a card link" (Paddle cannot take a custom price, `docs/OFFERS.md`).
+invoice shows card disabled with "ask us for a card link"); offers and added features → "Ask us for a card link"
+(Paddle cannot take a custom price, `docs/OFFERS.md`). Renewals: "Renewing" below.
+
+## Renewing (decided 13 October 2026)
+
+`lib/billing/renewal.ts` (pure; the Billing page, the server actions, the card webhook and the tests share it):
+
+- **Card that renews by itself** (Paddle, not cancelled): Billing says "Renews automatically on <date>"; there is no
+  manual renew button.
+- **Anything else** (a Mobile Money plan, or a card plan cancelled at its period end): before the last 7 days
+  (`RENEWAL_WINDOW_DAYS`) Billing says "Your plan is paid until <date>. You can renew from <date − 7 days>" and shows no
+  renewal. In the last 7 days (and after the end, past due) it shows **Renew with Mobile Money** and **Renew with card**
+  side by side; a method that is not ready stays visible, disabled, with its reason ("Mobile Money coming soon", "Card
+  payments coming soon", a custom plan: "ask us for a card link").
+- **No day is lost.** Mobile Money extends from the period end (`planManualPeriod`, mode `extend`). Card for a Mobile
+  Money plan opens the checkout; when its webhook arrives inside the window, `applyProviderSubscription` lets the card
+  subscription take over (outside it, it is still a `duplicate`) and moves its first renewal to one period after the
+  Mobile Money end (`BillingAdapter.deferNextBilling`, Paddle `PATCH /subscriptions/{id}` with `next_billed_at` and
+  `proration_billing_mode: do_not_bill`). If that call fails the card plan is still on and `ErrorLog`
+  `billing.carry_over` says so (credit the days by hand). Card for a card plan cancelled at its end = resume it.
+- **The server refuses early renewals** with the same sentence: `startManualPayment` (the same plan and interval; a
+  switch to another plan is not a renewal) and `startCheckout` (any card checkout on a paid-up Mobile Money plan).
 
 ## Connecting Paddle (Admin → Settings → Card payments)
 

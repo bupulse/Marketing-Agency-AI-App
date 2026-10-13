@@ -13,25 +13,33 @@ const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { da
 export function OfferCard({ offer, actions, preview = false }: { offer: ClientOfferView; actions?: ReactNode; preview?: boolean }) {
   const added = offer.features.filter((f) => f.added);
   const kept = offer.features.filter((f) => !f.added);
+  const addition = offer.addition;
+  const per = offer.interval === "YEAR" ? "year" : "month";
   return (
     <GlassCard as="section" id="offer" strong aria-labelledby={`offer-${offer.id}-heading`} className="flex flex-col gap-5 p-5 ring-2 ring-pulse-violet/50 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <span className="flex items-center gap-1.5 text-[13px] text-muted">
             <Sparkles aria-hidden className="size-4 text-pulse-violet" />
-            {preview ? "Preview: what the client sees" : "A custom plan made for you"}
+            {preview ? "Preview: what the client sees" : addition ? (addition.selfServe ? "Features you are adding" : "Features added to your plan") : "A custom plan made for you"}
           </span>
           <strong id={`offer-${offer.id}-heading`} className="text-2xl tracking-[-0.02em]">
             {formatMinor(offer.totalMinor, offer.currency)}
-            <span className="text-base font-medium text-muted"> / {offer.interval === "YEAR" ? "year" : "month"}</span>
+            <span className="text-base font-medium text-muted">{addition ? " to pay now" : ` / ${per}`}</span>
           </strong>
+          {addition && (
+            <span className="text-sm text-muted">
+              Only the added features, for the {addition.daysLeft} {addition.daysLeft === 1 ? "day" : "days"} left of your {per} ({formatMinor(addition.addonMinor, offer.currency)} / {per} prorated). Your plan still renews on {longDate(addition.renewsOn)}, then at{" "}
+              <strong className="text-text">{formatMinor(addition.nextRenewalMinor, offer.currency)} / {per}</strong> ({addition.currentPlanName} plus the added features).
+            </span>
+          )}
           <span className="text-sm text-muted">
             {offer.adjustment && offer.computedMinor > offer.totalMinor ? (
               <>
                 <s>{formatMinor(offer.computedMinor, offer.currency)}</s> {offer.adjustment}.{" "}
               </>
             ) : null}
-            {offer.basePlanName ? `${offer.basePlanName} plan plus what you asked for.` : "Only what you asked for."}
+            {addition ? "" : offer.basePlanName ? `${offer.basePlanName} plan plus what you asked for.` : "Only what you asked for."}
             {offer.validUntil && offer.status === "sent" ? ` Open until ${longDate(offer.validUntil)}.` : ""}
           </span>
         </div>
@@ -74,7 +82,7 @@ export function OfferCard({ offer, actions, preview = false }: { offer: ClientOf
       {offer.status === "accepted" && !preview && (
         <p className="text-sm text-muted">
           {offer.payMethod === "invoice" ? "Your invoice is below. " : "Pay by Mobile Money below. "}
-          Your custom plan switches on as soon as the payment is confirmed. Until then your current plan stays as it is.
+          {addition ? "The added features switch on as soon as the payment is confirmed; your period end does not change." : "Your custom plan switches on as soon as the payment is confirmed. Until then your current plan stays as it is."}
         </p>
       )}
       {actions}

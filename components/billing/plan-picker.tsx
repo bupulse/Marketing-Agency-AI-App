@@ -26,7 +26,7 @@ type Props = {
    * How the company can pay (lib/billing/pay-methods.ts): the region's methods, whether the owner has set up where to
    * pay by Mobile Money, whether card checkout is configured, and which plans have a card price in the region.
    */
-  pay: { regionMethods: PaymentMethod[]; momoConfigured: boolean; cardConfigured: boolean; cardPriced: CardPriced };
+  pay: { regionMethods: PaymentMethod[]; momoConfigured: boolean; cardConfigured: boolean; cardPriced: CardPriced; /** Why card cannot be chosen yet (a Mobile Money plan before its renewal window). */ cardBlocked?: string | null };
 };
 
 export function PlanPicker({ plans, current, pay }: Props) {
@@ -200,14 +200,14 @@ export function PlanPicker({ plans, current, pay }: Props) {
         open={chooseFor !== null}
         onOpenChange={(open) => !open && setChooseFor(null)}
         title={chooseFor ? `How would you like to pay for ${planOf(chooseFor).name}?` : "How would you like to pay?"}
-        description={current.method === "momo" ? "Your new plan starts when the payment is confirmed; the time left on your current plan is added on." : "Card renews by itself every period. Mobile Money is paid by hand each period; we remind you before it ends."}
+        description={current.method === "momo" ? "Mobile Money: your new plan starts when the payment is confirmed. Card: it starts now and its first renewal is moved by the days you have already paid." : "Card renews by itself every period. Mobile Money is paid by hand each period; we remind you before it ends."}
       >
         {chooseFor && (
           <PayChoice
             methods={methodsFor(chooseFor)}
             momoNote={momoPrice(chooseFor) ? `${formatPrice(momoPrice(chooseFor)!.amountMinor, momoPrice(chooseFor)!.currency)} per ${intervalWord(interval)}. Approved within minutes.` : ""}
             cardNote={`${formatPrice(cardPrice(chooseFor), "USD")} per ${intervalWord(interval)}, charged in USD. Renews automatically.`}
-            cardBlocked={current.method === "momo" ? "Available at your next renewal." : null}
+            cardBlocked={current.method === "momo" ? (pay.cardBlocked ?? null) : null}
             onMomo={() => payByMomo(chooseFor)}
             onCard={() => upgrade(chooseFor)}
             disabled={pending}
