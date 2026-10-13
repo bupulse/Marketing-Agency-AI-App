@@ -6,6 +6,7 @@ import { writeAudit } from "@/lib/admin/audit";
 import { getSetting } from "@/lib/admin/settings";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { buildMonthCosts, monthsBetween, providerBillSchema, recurringCostSchema, toMinorUnits, usdCentsOf, type LedgerMonth, type MonthCosts, type ProviderBillInput, type RecurringCostInput, type RecurringCostRow } from "./costs-shared";
+import { kigaliMonthRange } from "@/lib/time/kigali";
 
 const firstIssue = (e: { issues: { message: string }[] }) => e.issues[0]?.message ?? "Check the form.";
 
@@ -97,10 +98,11 @@ export async function deleteProviderBill(ctx: AdminContext, id: string) {
 
 /** The AI ledger summed per month and provider (USD cents), from `from` ("YYYY-MM") to now. */
 export async function ledgerByMonth(from: string, to?: string): Promise<LedgerMonth[]> {
-  const start = new Date(`${from}-01T00:00:00Z`);
-  const end = to ? new Date(Date.UTC(Number(to.slice(0, 4)), Number(to.slice(5, 7)), 1)) : new Date(Date.UTC(9999, 0, 1));
+  // Kigali months (lib/time/kigali.ts): the bounds, and each call's month from its Kigali wall clock.
+  const start = kigaliMonthRange(from).start;
+  const end = to ? kigaliMonthRange(to).end : new Date(Date.UTC(9999, 0, 1));
   const rows = await prisma.$queryRaw<{ month: string; provider: string; cost: unknown; calls: bigint; estimated: bigint }[]>`
-    SELECT to_char(date_trunc('month', "createdAt"), 'YYYY-MM') AS month, "provider", COALESCE(SUM("costUsd"), 0) AS cost,
+    SELECT to_char("createdAt" + interval '2 hours', 'YYYY-MM') AS month, "provider", COALESCE(SUM("costUsd"), 0) AS cost,
            COUNT(*) AS calls, COUNT(*) FILTER (WHERE "estimated") AS estimated
     FROM "AiCall" WHERE "createdAt" >= ${start} AND "createdAt" < ${end} GROUP BY 1, 2`;
   return rows.map((r) => ({ month: r.month, provider: r.provider, cents: Number(r.cost ?? 0) * 100, calls: Number(r.calls), estimatedCalls: Number(r.estimated) }));

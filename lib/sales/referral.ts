@@ -49,12 +49,14 @@ export function refUrl(code: string, path = "/"): string {
  * who is not disabled: Business.salesAgentId and an open ClientAssignment (source "referral"). Never throws: a
  * sign-up must not fail because of a referral. Returns the agent's id, or null.
  */
-export async function assignReferral(input: { businessId: string; userId: string; code: string | null | undefined; at?: Date }): Promise<string | null> {
+export async function assignReferral(input: { businessId: string; userId: string; email?: string | null; code: string | null | undefined; at?: Date }): Promise<string | null> {
   const code = normalizeRef(input.code);
   if (!code) return null;
   try {
-    const staff = await prisma.staffMember.findUnique({ where: { refCode: code }, select: { id: true, status: true, roleKey: true } });
+    const staff = await prisma.staffMember.findUnique({ where: { refCode: code }, select: { id: true, status: true, roleKey: true, userId: true, email: true } });
     if (!staff || staff.status === "disabled") return null;
+    // No self-referral: an agent signing up a company with their own account (or address) does not get it.
+    if (staff.userId === input.userId || (input.email && staff.email === input.email.trim().toLowerCase())) return null;
     const role = await prisma.staffRole.findUnique({ where: { key: staff.roleKey }, select: { key: true, permissions: true } }).catch(() => null);
     if (!isSalesRole(staff.roleKey, permissionsOf(staff.roleKey, role ? [role] : []))) return null;
     const at = input.at ?? new Date();

@@ -6,7 +6,7 @@ import { MONEY_EVENT_TYPES } from "@/lib/analytics/math";
 import { dedupe, toRevenueEntry, type RevenueEntry } from "@/lib/money/revenue-shared";
 import { agentForPayment, getLeaderboard, monthOf, staffName } from "@/lib/sales/attribution";
 import { activeSoundUrls } from "./sounds";
-import { ACTIVE_WINDOW_MS, advanceCursor, formatCursor, kigaliDayStart, parseCursor, screenName, utcMonthStart, type Celebration, type Cursor, type ScreenData } from "./shared";
+import { ACTIVE_WINDOW_MS, advanceCursor, formatCursor, kigaliDayStart, parseCursor, screenName, kigaliMonthStart, type Celebration, type Cursor, type ScreenData } from "./shared";
 
 const DAY = 86_400_000;
 const TRIALS_SHOWN = 12;
@@ -18,17 +18,26 @@ type Snapshot = Omit<ScreenData, "celebrations" | "cursor" | "sounds">;
 
 const moneyRow = { id: true, eventId: true, type: true, payload: true, createdAt: true, userId: true } as const;
 
-/** Today's (Kigali) and this month's (UTC) confirmed revenue in US cents, net of refunds, like the Revenue page. */
+/** Today's and this month's (Kigali) confirmed revenue in US cents, net of refunds, like the Revenue page. */
 async function revenue(now: Date): Promise<Snapshot["revenue"]> {
-  const month = utcMonthStart(now);
+  const month = kigaliMonthStart(now);
   const day = kigaliDayStart(now);
   // A payment's time can sit a little before its event was stored (Paddle's own time): read two days more, then filter.
-  const rows = await prisma.billingEvent.findMany({
-    where: { type: { in: MONEY_EVENT_TYPES }, createdAt: { gte: new Date(Math.min(month.getTime(), day.getTime()) - 2 * DAY) } },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    select: moneyRow,
-    take: 20_000,
-  });
+  // Newest first, in batches, with no cap: a busy month never drops today's payments.
+  const since = new Date(Math.min(month.getTime(), day.getTime()) - 2 * DAY);
+  const rows: { id: string; eventId: string; type: string; payload: unknown; createdAt: Date; userId: string | null }[] = [];
+  for (let cursor: string | undefined; ; ) {
+    const batch = await prisma.billingEvent.findMany({
+      where: { type: { in: MONEY_EVENT_TYPES }, createdAt: { gte: since } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: moneyRow,
+      take: 5_000,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    rows.push(...batch);
+    if (batch.length < 5_000) break;
+    cursor = batch[batch.length - 1].id;
+  }
   const entries = dedupe(rows.map(toRevenueEntry).filter((e): e is RevenueEntry => !!e));
   const sum = (from: Date) => entries.filter((e) => e.at >= from && e.at <= now).reduce((s, e) => s + e.usdCents, 0);
   return { todayCents: sum(day), monthCents: entries.filter((e) => e.month === monthOf(now) && e.at <= now).reduce((s, e) => s + e.usdCents, 0) };

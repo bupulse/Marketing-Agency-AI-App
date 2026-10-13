@@ -1,7 +1,7 @@
 import "server-only";
 import { logError } from "@/lib/errors";
 import { authenticateAdminRequest } from "./api-auth";
-import { callTool, inputSchemaOf, TOOLS, type Tool } from "./tools";
+import { callTool, inputSchemaOf, toolAllowed, TOOLS, type Tool } from "./tools";
 import { AdminError, type AdminContext } from "./types";
 
 // A minimal, stateless MCP server over Streamable HTTP (spec 2025-06-18): every JSON-RPC message is a POST that is
@@ -36,8 +36,9 @@ function annotations(t: Tool) {
   };
 }
 
-export function listTools() {
-  return TOOLS.map((t) => ({ name: t.name, title: t.title, description: t.description, inputSchema: inputSchemaOf(t), annotations: annotations(t) }));
+/** The tools a caller may use (all of them without a context: the docs and the console). */
+export function listTools(ctx?: AdminContext) {
+  return TOOLS.filter((t) => !ctx || toolAllowed(t.name, ctx)).map((t) => ({ name: t.name, title: t.title, description: t.description, inputSchema: inputSchemaOf(t), annotations: annotations(t) }));
 }
 
 function toolText(value: unknown) {
@@ -82,7 +83,7 @@ export async function handleMessage(msg: Message, ctx: AdminContext): Promise<un
     case "ping":
       return rpcResult(id, {});
     case "tools/list":
-      return rpcResult(id, { tools: listTools() });
+      return rpcResult(id, { tools: listTools(ctx) });
     case "tools/call": {
       try {
         const out = await handleCall(params, ctx);

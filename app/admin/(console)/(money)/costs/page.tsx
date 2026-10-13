@@ -11,6 +11,7 @@ import { getMonthCosts, listProviderBills, listRecurringCosts } from "@/lib/mone
 import { addMonths, BILL_PROVIDERS, CATEGORY_LABEL, COST_CATEGORIES, COST_PRESETS, providerLabel, recurringCentsForMonth } from "@/lib/money/costs-shared";
 import { deleteCostAction, saveCostAction } from "@/app/admin/(console)/actions";
 import { deleteProviderBillAction, deleteRecurringCostAction, endRecurringCostAction, saveProviderBillAction, saveRecurringCostAction } from "./actions";
+import { kigaliMonthOf } from "@/lib/time/kigali";
 
 export const metadata = { title: "Costs" };
 
@@ -19,7 +20,7 @@ const amountText = (minor: number, currency: string) => (currency === "RWF" ? `$
 export default async function CostsPage({ searchParams }: PageProps<"/admin/costs">) {
   await requirePermission("money.costs"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
-  const thisMonth = new Date().toISOString().slice(0, 7);
+  const thisMonth = kigaliMonthOf(new Date());
   const lastMonth = addMonths(thisMonth, -1);
   const [{ months, rwfPerUsd }, recurring, bills, entered] = await Promise.all([getMonthCosts(addMonths(thisMonth, -11), thisMonth), listRecurringCosts(), listProviderBills(), listMonthlyCosts()]);
   const cur = months[months.length - 1];
@@ -176,7 +177,7 @@ export default async function CostsPage({ searchParams }: PageProps<"/admin/cost
       <HowCalculated>
         <ul>
           <li>AI and voice: each provider&apos;s bill for the month when you entered it; otherwise the cost ledger&apos;s estimate (every AI call, priced from lib/ai/pricing.ts). Calls that timed out on our side are counted with estimated usage because providers still bill them.</li>
-          <li>The ledger counts calls in UTC months; Google bills in Pacific time, so a few hours at each month&apos;s edge can fall in the next month. Taxes on Google&apos;s invoice are not in the estimate: the bill you enter includes them.</li>
+          <li>Months here are Kigali months; Google bills in Pacific time, so a few hours at each month&apos;s edge can fall in the next month. Taxes on Google&apos;s invoice are not in the estimate: the bill you enter includes them.</li>
           <li>Recurring costs count from their first to their last month; a yearly cost counts a twelfth each month. An RWF cost or bill keeps the rate of the day you saved it (today {rwfPerUsd} RWF per USD, Settings), so changing the rate never restates past months.</li>
           <li>Profit on Revenue and profit, the Overview and Jarvis all use these same numbers.</li>
         </ul>

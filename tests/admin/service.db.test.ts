@@ -34,7 +34,7 @@ describe.skipIf(!enabled)("admin service against the real database", { timeout: 
     await prisma.$disconnect();
   });
 
-  const API = () => svc.apiContext(`dbtest-${userId.slice(0, 8)}`, "203.0.113.9");
+  const API = () => svc.apiContext(`dbtest-${userId.slice(0, 8)}`, "203.0.113.9", "all");
 
   it("the audit log refuses updates and deletes", async () => {
     await svc.extendTrial(API(), { userId, days: 1 }).catch(() => {}); // not a trial: no row; use a direct write instead

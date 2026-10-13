@@ -11,6 +11,9 @@ import { LINK_SEEN_EVERY_MS } from "./shared";
 /** 32 random bytes, base64url: 43 characters. */
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
+/** A token that could be real (cheap check before any rate limit or database work). */
+export const isScreenTokenFormat = (token: string) => TOKEN.test(token);
+
 export const hashScreenToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
 export type ScreenLinkRow = { id: string; name: string; lastSeenAt: Date | null };

@@ -44,6 +44,8 @@ async function rolePermissions(roleKey: string): Promise<Permission[] | null> {
 export function assertCanGrant(actor: Pick<AdminIdentity, "isOwner" | "permissions">, roleKey: string, permissions: readonly Permission[]) {
   if (roleKey === OWNER_ROLE && !actor.isOwner) throw new AdminError("forbidden", "Only the owner can make someone Owner.");
   if (actor.isOwner) return;
+  // Jarvis keys run admin tools with their maker's permissions: only the owner hands that out.
+  if (permissions.includes("jarvis")) throw new AdminError("forbidden", "Only the owner can give the Jarvis permission.");
   const extra = permissions.filter((p) => !actor.permissions.includes(p));
   if (extra.length) throw new AdminError("forbidden", `You cannot give permissions you do not have yourself (${extra.join(", ")}).`);
 }
@@ -56,9 +58,24 @@ function assertNotOwnerTarget(actor: Pick<AdminIdentity, "isOwner">, member: { r
   if (member.roleKey === OWNER_ROLE && !actor.isOwner) throw new AdminError("forbidden", "Only the owner can change an Owner.");
 }
 
+/**
+ * Someone who is not the owner may change, disable or remove only a person whose current permissions they hold
+ * themselves: IT cannot disable Finance (or demote someone above them) any more than it can make someone Finance.
+ */
+async function assertCanManage(actor: Pick<AdminIdentity, "isOwner" | "permissions">, member: { roleKey: string }) {
+  assertNotOwnerTarget(actor, member);
+  if (actor.isOwner) return;
+  const current = (await rolePermissions(member.roleKey)) ?? [];
+  const extra = current.filter((p) => !actor.permissions.includes(p));
+  if (extra.length) throw new AdminError("forbidden", `This person has permissions you do not have (${extra.join(", ")}). Ask the owner.`);
+}
+
 /** The person's sign-in: kept if it exists, else created confirmed and without a password (they sign in with emailed codes). */
 async function ensureSignIn(email: string, name: string | null): Promise<"existing" | "created"> {
-  const [hit] = await prisma.$queryRaw<{ id: string }[]>`SELECT id FROM auth.users WHERE lower(email) = ${email} LIMIT 1`;
+  const [hit] = await prisma.$queryRaw<{ id: string; confirmed: boolean }[]>`SELECT id, email_confirmed_at IS NOT NULL AS confirmed FROM auth.users WHERE lower(email) = ${email} LIMIT 1`;
+  // An existing sign-in whose address was never confirmed may belong to someone who typed another person's email:
+  // it is not made staff. They confirm it first (or the owner removes that sign-in), then the invitation works.
+  if (hit && !hit.confirmed) throw new AdminError("conflict", "That address has a BuPulse sign-in that was never confirmed. Ask them to confirm their email first, then invite them again.");
   if (hit) return "existing";
   const created = await createAdminClient().auth.admin.createUser({ email, email_confirm: true, user_metadata: { full_name: name ?? undefined, staff: true } });
   if (created.error || !created.data.user) {
@@ -113,7 +130,7 @@ export async function changeStaffRole(ctx: AdminContext, actor: AdminIdentity, i
   const member = await prisma.staffMember.findUnique({ where: { id } });
   if (!member) throw new AdminError("not_found", "No staff member with that id.");
   assertNotSelf(actor, member);
-  assertNotOwnerTarget(actor, member);
+  await assertCanManage(actor, member);
   const permissions = await rolePermissions(roleKey);
   if (!permissions) throw new AdminError("invalid", "Pick a role.");
   assertCanGrant(actor, roleKey, permissions);
@@ -131,7 +148,7 @@ export async function setStaffDisabled(ctx: AdminContext, actor: AdminIdentity, 
   const member = await prisma.staffMember.findUnique({ where: { id } });
   if (!member) throw new AdminError("not_found", "No staff member with that id.");
   assertNotSelf(actor, member);
-  assertNotOwnerTarget(actor, member);
+  await assertCanManage(actor, member);
   const status = disabled ? "disabled" : member.userId ? "active" : "invited";
   if (member.status === status) return { id, status };
   await prisma.$transaction(async (tx) => {
@@ -146,7 +163,7 @@ export async function removeStaff(ctx: AdminContext, actor: AdminIdentity, id: s
   const member = await prisma.staffMember.findUnique({ where: { id } });
   if (!member) throw new AdminError("not_found", "No staff member with that id.");
   assertNotSelf(actor, member);
-  assertNotOwnerTarget(actor, member);
+  await assertCanManage(actor, member);
   if (member.status !== "disabled") throw new AdminError("conflict", "Disable the person first, then remove them.");
   await prisma.$transaction(async (tx) => {
     await tx.staffMember.delete({ where: { id } });
@@ -174,6 +191,8 @@ export async function saveCustomRole(ctx: AdminContext, actor: AdminIdentity, in
     if (builtInRole(input.key)) throw new AdminError("forbidden", "Built-in roles cannot be changed; make a custom role instead.");
     const before = await prisma.staffRole.findUnique({ where: { key: input.key } });
     if (!before) throw new AdminError("not_found", "No role with that key.");
+    // Editing a role others hold changes them too: the role's current permissions must be the editor's as well.
+    assertCanGrant(actor, input.key, before.permissions.filter(isPermission));
     // Changing the role you hold yourself would be giving yourself permissions.
     if (actor.staffId && (await prisma.staffMember.findUnique({ where: { id: actor.staffId }, select: { roleKey: true } }))?.roleKey === input.key) {
       throw new AdminError("forbidden", "You cannot change your own role.");

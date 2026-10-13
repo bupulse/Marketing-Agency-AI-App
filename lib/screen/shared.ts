@@ -13,18 +13,8 @@ export const MAX_ACTIVE_SOUNDS = 10;
 export const SOUND_MAX_BYTES = 1024 * 1024;
 export const SOUND_MAX_SECONDS = 5;
 
-/**
- * "Today" starts at midnight in Kigali (UTC+2, no summer time), where the sales room is. "This month" is the UTC month,
- * like the Revenue page and the leaderboard (lib/sales/attribution.ts), so the screen and the console agree.
- */
-const KIGALI_OFFSET_MS = 2 * 60 * 60 * 1000;
-
-export function kigaliDayStart(now: Date): Date {
-  const local = new Date(now.getTime() + KIGALI_OFFSET_MS);
-  return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - KIGALI_OFFSET_MS);
-}
-
-export const utcMonthStart = (now: Date) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+// "Today" and "this month" are Kigali's (lib/time/kigali.ts), like the Overview, Revenue and the leaderboard.
+export { kigaliDayStart, kigaliMonthStart } from "@/lib/time/kigali";
 
 /** What the screen shows. Names only: never an email address or a phone number. */
 export type ScreenData = {

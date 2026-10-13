@@ -9,6 +9,7 @@ import { planForAnyPriceId } from "@/lib/region-prices";
 import { addMonths, monthsBetween, type MonthCosts } from "./costs-shared";
 import { getMonthCosts } from "./costs";
 import { dedupe, lastFullPayments, stoppedAt, mrrOf, rateUsed, revenueByClient, revenueByMonth, revenueByPlan, toRevenueEntry, type PayingSub, type RevenueEntry, type RevenueMonth } from "./revenue-shared";
+import { kigaliMonthOf } from "@/lib/time/kigali";
 
 const DAY = 86_400_000;
 const PAYING = ["ACTIVE", "PAST_DUE"] as const;
@@ -118,13 +119,13 @@ export function clearMoneyReportCache() {
  */
 export async function getMoneyReport(opts: { months?: number; now?: Date } = {}): Promise<MoneyReport> {
   const now = opts.now ?? new Date();
-  const thisMonth = now.toISOString().slice(0, 7);
+  const thisMonth = kigaliMonthOf(now);
   const { entries, truncated } = await loadRevenue();
   const [firstCall, firstCost] = await Promise.all([
     prisma.aiCall.findFirst({ orderBy: { createdAt: "asc" }, select: { createdAt: true } }),
     prisma.recurringCost.findFirst({ orderBy: { startMonth: "asc" }, select: { startMonth: true } }),
   ]);
-  const starts = [entries[0]?.month, firstCall?.createdAt.toISOString().slice(0, 7), firstCost?.startMonth].filter((m): m is string => !!m && m <= thisMonth);
+  const starts = [entries[0]?.month, firstCall ? kigaliMonthOf(firstCall.createdAt) : undefined, firstCost?.startMonth].filter((m): m is string => !!m && m <= thisMonth);
   const firstMonth = starts.length ? starts.sort()[0] : null;
   const recentFrom = addMonths(thisMonth, -Math.max(1, Math.min(opts.months ?? 12, 36)) + 1);
   const from = firstMonth && firstMonth < recentFrom ? firstMonth : recentFrom;

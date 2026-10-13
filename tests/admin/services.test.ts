@@ -17,7 +17,7 @@ import { clearSwitchCache, disabledNetworks, isServiceEnabled, ServiceDisabledEr
 import { AdminError, apiContext, consoleContext } from "@/lib/admin/types";
 import { sendEmail } from "@/lib/publishing/email";
 
-const API = apiContext("key1", "203.0.113.5");
+const API = apiContext("key1", "203.0.113.5", "all");
 const CONSOLE = consoleContext("198.51.100.1");
 const code = async (p: Promise<unknown>) => p.then(() => null, (e: AdminError) => e.code);
 const audit = () => h.db.auditLog.rows;
@@ -186,15 +186,15 @@ describe("kill switch", () => {
 });
 
 describe("AI budget", () => {
-  it("projects the month end and handles month bounds", () => {
-    const b = monthBounds("2026-10", new Date("2026-10-11T00:00:00Z"));
+  it("projects the month end and handles month bounds (Kigali months)", () => {
+    const b = monthBounds("2026-10", new Date("2026-10-10T22:00:00Z"));
     expect(b).toMatchObject({ month: "2026-10", days: 31, current: true });
-    expect(projectMonthEnd(10, b, new Date("2026-10-11T00:00:00Z"))).toBeCloseTo(31, 5); // $10 in 10 days
-    expect(projectMonthEnd(0, b, new Date("2026-10-11T00:00:00Z"))).toBe(0);
-    const past = monthBounds("2026-09", new Date("2026-10-11T00:00:00Z"));
+    expect(projectMonthEnd(10, b, new Date("2026-10-10T22:00:00Z"))).toBeCloseTo(31, 5); // $10 in 10 days
+    expect(projectMonthEnd(0, b, new Date("2026-10-10T22:00:00Z"))).toBe(0);
+    const past = monthBounds("2026-09", new Date("2026-10-10T22:00:00Z"));
     expect(past.current).toBe(false);
-    expect(projectMonthEnd(12.5, past, new Date("2026-10-11T00:00:00Z"))).toBe(12.5);
-    expect(monthBounds("garbage", new Date("2026-10-11T00:00:00Z")).month).toBe("2026-10");
+    expect(projectMonthEnd(12.5, past, new Date("2026-10-10T22:00:00Z"))).toBe(12.5);
+    expect(monthBounds("garbage", new Date("2026-10-10T22:00:00Z")).month).toBe("2026-10");
   });
 
   it("setAiBudget validates, needs confirm from the API, audits before/after and takes effect", async () => {

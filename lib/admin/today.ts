@@ -6,7 +6,7 @@ import { MONEY_EVENT_TYPES } from "@/lib/analytics/math";
 import { EVENT_NAMES } from "@/lib/analytics/events";
 import { dedupe, METHOD_LABEL, toRevenueEntry, type RevenueEntry } from "@/lib/money/revenue-shared";
 import { agentForPayment } from "@/lib/sales/attribution";
-import { kigaliDayStart } from "@/lib/screen/shared";
+import { kigaliDayStart } from "@/lib/time/kigali";
 import { money } from "./format";
 
 export type TodayPayment = { id: string; at: string; company: string; person: string | null; usdCents: number; amount: string; method: string; agent: string | null; href: string | null };

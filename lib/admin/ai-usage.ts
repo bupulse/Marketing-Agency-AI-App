@@ -5,6 +5,7 @@ import { BUDGET_MAX_USD, BUDGET_MIN_USD, BUDGET_SETTING_KEY, clearBudgetCache, e
 import { writeAudit } from "./audit";
 import { scrubSecrets } from "./scrub";
 import { AdminError, type AdminContext } from "./types";
+import { kigaliMonthOf, kigaliMonthRange } from "@/lib/time/kigali";
 
 // AI spend against the monthly cap: per day, model, feature and client, failures and a month-end projection.
 // Cost comes from the AiCall ledger (estimated from lib/ai/pricing.ts), the same table the cap itself is checked against.
@@ -14,10 +15,9 @@ const num = (v: unknown) => Number(v ?? 0);
 const round = (n: number, digits = 4) => Number(n.toFixed(digits));
 
 export function monthBounds(month: string | undefined, now = new Date()) {
-  const m = month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : now.toISOString().slice(0, 7);
-  const [y, mo] = m.split("-").map(Number);
-  const start = new Date(Date.UTC(y, mo - 1, 1));
-  const end = new Date(Date.UTC(y, mo, 1));
+  // Kigali months (lib/time/kigali.ts), the same as the cap in lib/ai/budget.ts and the Money pages.
+  const m = month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : kigaliMonthOf(now);
+  const { start, end } = kigaliMonthRange(m);
   const days = Math.round((end.getTime() - start.getTime()) / DAY_MS);
   return { month: m, start, end, days, current: now >= start && now < end };
 }
@@ -52,7 +52,7 @@ export async function getAiUsage(opts: { month?: string; topLimit?: number; now?
     budgetInfo(),
     prisma.aiCall.aggregate({ where, _sum: { costUsd: true }, _count: { _all: true } }),
     prisma.$queryRaw<{ day: Date; cost: unknown; calls: bigint; failed: bigint }[]>`
-      SELECT date_trunc('day', "createdAt")::date AS day, COALESCE(SUM("costUsd"), 0) AS cost, COUNT(*) AS calls,
+      SELECT ("createdAt" + interval '2 hours')::date AS day, COALESCE(SUM("costUsd"), 0) AS cost, COUNT(*) AS calls,
              COUNT(*) FILTER (WHERE NOT "success") AS failed
       FROM "AiCall" WHERE "createdAt" >= ${b.start} AND "createdAt" < ${b.end} GROUP BY 1 ORDER BY 1`,
     prisma.aiCall.groupBy({ by: ["provider", "model"], where, _sum: { costUsd: true, inputTokens: true, outputTokens: true, images: true }, _count: { _all: true }, orderBy: { _sum: { costUsd: "desc" } } }),

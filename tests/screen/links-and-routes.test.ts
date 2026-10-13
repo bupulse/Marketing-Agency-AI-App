@@ -8,7 +8,9 @@ const h = vi.hoisted(() => ({
   },
   audit: vi.fn(),
   screenData: vi.fn(),
+  limited: vi.fn(async () => null as string | null),
 }));
+vi.mock("@/lib/request-limits", () => ({ publicLimited: h.limited, clientIpFrom: () => "198.51.100.7" }));
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
 vi.mock("@/lib/admin/audit", () => ({ writeAudit: h.audit }));
 vi.mock("@/lib/screen/data", () => ({ screenData: h.screenData }));
@@ -102,5 +104,21 @@ describe("the screen page and its data route", () => {
     expect(await res.json()).toEqual({ activeNow: 3 });
     expect(h.screenData).toHaveBeenCalledWith("1760000000000_abc");
     expect(h.prisma.screenLink.updateMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("screen rate limit", () => {
+  it("rejects a malformed token without touching the database or the limiter", async () => {
+    const res = await GET(new NextRequest("http://x/screen/bad/data"), { params: Promise.resolve({ token: "short" }) } as never);
+    expect(res.status).toBe(404);
+    expect(h.limited).not.toHaveBeenCalled();
+    expect(h.prisma.screenLink.findUnique).not.toHaveBeenCalled();
+  });
+  it("answers 429 past 30 requests a minute from one address, before looking the token up", async () => {
+    h.limited.mockResolvedValueOnce("Too many requests");
+    const res = await GET(new NextRequest(`http://x/screen/${TOKEN}/data`), { params: Promise.resolve({ token: TOKEN }) } as never);
+    expect(res.status).toBe(429);
+    expect(h.limited).toHaveBeenCalledWith("screen", null, "198.51.100.7");
+    expect(h.prisma.screenLink.findUnique).not.toHaveBeenCalled();
   });
 });

@@ -6,6 +6,7 @@
 // - Invoice: a payment of an invoice (the invoice number as reference, or a bank or cash payment the admin recorded),
 //   and "invoice.paid_manual" (a plain invoice marked paid by hand).
 import { INVOICE_PAID_EVENT, MANUAL_PAYMENT_EVENT, parseMoneyEvent } from "@/lib/analytics/math";
+import { kigaliMonthOf } from "@/lib/time/kigali";
 
 export type PayMethod = "card" | "momo" | "invoice";
 export const METHOD_LABEL: Record<PayMethod, string> = { card: "Card", momo: "Mobile Money", invoice: "Invoice" };
@@ -59,7 +60,7 @@ export function toRevenueEntry(row: Row): RevenueEntry | null {
   const sign = m.kind === "refund" ? -1 : 1;
   // One key per payment or refund, whatever event carried it (a refund can arrive as adjustment.created and
   // adjustment.updated): pay:<id> or refund:<id>.
-  return { id: `${m.kind === "refund" ? "refund" : "pay"}:${m.id || row.eventId}`, at: m.at, month: m.at.toISOString().slice(0, 7), userId: row.userId, kind: m.kind, usdCents: sign * m.cents, method, localMinor: localMinor === null ? null : sign * localMinor, currency, plan, priceId, partial };
+  return { id: `${m.kind === "refund" ? "refund" : "pay"}:${m.id || row.eventId}`, at: m.at, month: kigaliMonthOf(m.at), userId: row.userId, kind: m.kind, usdCents: sign * m.cents, method, localMinor: localMinor === null ? null : sign * localMinor, currency, plan, priceId, partial };
 }
 
 /** Each payment or refund once (a provider may send the same transaction or refund in more than one event). */

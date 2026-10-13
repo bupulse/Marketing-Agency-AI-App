@@ -1513,6 +1513,11 @@ model AdminApiKey {
   prefix      String
   hash        String    @unique
   ipAllowList String[] // empty = any address
+  // A key made by a staff member (not the owner) is scoped: it may run only the tools its permissions allow, and only
+  // while that person is enabled and still holds them (lib/admin/api-auth.ts). An owner's key has every permission.
+  scoped           Boolean  @default(false)
+  permissions      String[] @default([])
+  createdByStaffId String?
   lastUsedAt  DateTime?
   revokedAt   DateTime?
   createdAt   DateTime  @default(now())

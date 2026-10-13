@@ -43,7 +43,7 @@ import { resetRegionCache } from "@/lib/region";
 import { resetRegionPriceCache } from "@/lib/region-prices";
 
 const CONSOLE = consoleContext("198.51.100.1");
-const API = apiContext("key1", "203.0.113.5");
+const API = apiContext("key1", "203.0.113.5", "all");
 const USER = "11111111-1111-4111-8111-111111111111";
 const OTHER = "22222222-2222-4222-8222-222222222222";
 const NOW = new Date("2026-10-13T08:00:00Z");

@@ -38,7 +38,7 @@ import { AdminError, apiContext, consoleContext } from "@/lib/admin/types";
 import * as svc from "@/lib/admin/service";
 
 const CONSOLE = consoleContext("198.51.100.1");
-const API = apiContext("key1", "203.0.113.5");
+const API = apiContext("key1", "203.0.113.5", "all");
 const DAY = 86_400_000;
 const NOW = new Date("2026-10-09T10:00:00Z");
 const code = async (p: Promise<unknown>) => p.then(() => null, (e: AdminError) => e.code);

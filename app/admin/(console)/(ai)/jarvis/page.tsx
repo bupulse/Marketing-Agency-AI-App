@@ -22,7 +22,7 @@ export default async function JarvisPage({ searchParams }: PageProps<"/admin/jar
 
   return (
     <>
-      <PageHeader title="Jarvis" description="Keys that let Jarvis read BuPulse and run admin actions. Every call is written to the audit log; refunds and paid plan changes only wait here for your Approve." />
+      <PageHeader title="Jarvis" description="Keys that let Jarvis read BuPulse and run admin actions. Every call is written to the audit log; refunds and paid plan changes only wait here for your Approve. A key made by a staff member can run only the tools their own permissions allow, and stops working if they are disabled." />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
 

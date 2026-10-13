@@ -227,7 +227,7 @@ describe("journey: card payment through Paddle webhooks", () => {
     expect(h.db.billingEvent.rows).toHaveLength(1);
     // Reprocess is the console's, and refuses while the price is still unknown (nothing changes, nothing is audited).
     expect(await code(reprocessBillingEvent(consoleContext(null), stored.id))).toMatch(/^conflict: Price pri_later is still not one of our plans/);
-    expect(await code(reprocessBillingEvent(apiContext("key1", "203.0.113.5"), stored.id))).toMatch(/^forbidden/);
+    expect(await code(reprocessBillingEvent(apiContext("key1", "203.0.113.5", "all"), stored.id))).toMatch(/^forbidden/);
     expect(h.db.auditLog.rows.filter((r) => r.action === "reprocess_billing_event")).toHaveLength(0);
     // The admin syncs the plan's price with Paddle; Reprocess applies the stored event once and audits it.
     h.db.planDefinition.rows.find((p) => p.key === "PRO")!.paddleMonthlyPriceId = "pri_later";
