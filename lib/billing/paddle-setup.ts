@@ -67,60 +67,101 @@ function prismaRegionStore() {
   };
 }
 
-export type SetUpResult = { plans: string[]; regionPrices: number; webhook: "created" | "updated" | "existing"; secretStored: boolean; problems: string[] };
+export const SET_UP_STEPS = ["plans", "regions", "webhook"] as const;
+export type SetUpStep = (typeof SET_UP_STEPS)[number];
+/** Per request, so each step stays well inside a serverless function's time limit (a few Paddle calls each). */
+export const PLANS_PER_STEP = 2;
+export const REGION_PRICES_PER_STEP = 4;
+
+export type StepResult = {
+  step: SetUpStep;
+  /** Plan keys synced, or regional prices created ("RW STARTER MONTH"), or the webhook outcome. */
+  done: string[];
+  /** Call the same step again (with `attempted`) before moving on. */
+  more: boolean;
+  /** Plans tried in this run so far: never retried in the same run, so a failing plan cannot loop. */
+  attempted: string[];
+  problems: string[];
+  secretStored?: boolean;
+};
 
 /**
- * "Set up prices": (1) every plan on sale (or hidden) gets its Paddle product and monthly and yearly prices (the plan
- * builder's own sync, which only creates what is missing); (2) every regional card price (Rwanda, East Africa) gets its
- * USD Paddle prices, ids written to PlanRegionPrice; (3) the notification destination for this site's webhook URL is
- * created or updated with every event BuPulse handles (transaction.completed and adjustment.* included), and the secret
- * Paddle returns is stored encrypted. Idempotent: running it again reuses what exists. Console only, audited.
+ * "Set up prices", one short step per request (the settings page calls the steps in order and repeats a step while it
+ * says `more`): (1) "plans": plans on sale (or hidden) without Paddle prices get them, PLANS_PER_STEP at a time, through
+ * the plan builder's own sync (product, monthly and yearly price; only what is missing); (2) "regions": regional card
+ * prices (Rwanda, East Africa), REGION_PRICES_PER_STEP at a time, ids written to PlanRegionPrice; (3) "webhook": the
+ * notification destination for this site's webhook URL with every event BuPulse handles (transaction.completed and
+ * adjustment.* included), and the secret Paddle returns is stored encrypted. Idempotent. Console only, audited per step.
  */
-export async function setUpPaddle(ctx: AdminContext): Promise<SetUpResult> {
+export async function setUpPaddleStep(ctx: AdminContext, step: SetUpStep, attempted: string[] = []): Promise<StepResult> {
   if (ctx.viaApi) throw new AdminError("forbidden", "Paddle is set up in the admin console only.");
+  if (!SET_UP_STEPS.includes(step)) throw new AdminError("invalid", "Unknown set-up step.");
   const config = await getPaddleConfig({ force: true });
   if (!config.apiKey) throw new AdminError("invalid", "Save the Paddle API key first.");
-  const problems: string[] = [];
+  const result: StepResult = { step, done: [], more: false, attempted: [...attempted], problems: [] };
 
-  const plans: string[] = [];
-  for (const plan of await getPlans({ force: true })) {
-    if (plan.isTrial || plan.isCustom || plan.status === "retired" || (plan.paddleProductId && plan.paddleMonthlyPriceId && plan.paddleYearlyPriceId)) continue;
+  if (step === "plans") {
+    const todo = (await getPlans({ force: true })).filter((p) => !p.isTrial && !p.isCustom && p.status !== "retired" && !(p.paddleProductId && p.paddleMonthlyPriceId && p.paddleYearlyPriceId) && !attempted.includes(p.key));
+    for (const plan of todo.slice(0, PLANS_PER_STEP)) {
+      result.attempted.push(plan.key);
+      try {
+        const done = await syncPlanToPaddle(ctx, plan.key);
+        if (done.created.length) result.done.push(plan.key);
+      } catch (error) {
+        result.problems.push(`${plan.name}: ${error instanceof Error ? error.message : "sync failed"}`);
+      }
+    }
+    result.more = todo.length > PLANS_PER_STEP;
+    clearPlanCache();
+  } else if (step === "regions") {
     try {
-      const done = await syncPlanToPaddle(ctx, plan.key);
-      if (done.created.length) plans.push(plan.key);
+      const written = (await syncRegionPrices({ api, db: prismaRegionStore(), limit: REGION_PRICES_PER_STEP })) as { planKey: string; regionKey: string; interval: string }[];
+      result.done = written.map((w) => `${w.regionKey} ${w.planKey} ${w.interval}`);
+      result.more = written.length >= REGION_PRICES_PER_STEP;
     } catch (error) {
-      problems.push(`${plan.name}: ${error instanceof Error ? error.message : "sync failed"}`);
+      result.problems.push(`Regional prices: ${error instanceof Error ? error.message : "failed"}`);
+    }
+    clearRegionPriceCache();
+  } else {
+    const url = `${siteUrl()}${PADDLE_WEBHOOK_PATH}`;
+    try {
+      const n = (await ensureNotificationSetting(api, url)) as { secret: string | null; created: boolean; updated: string[] };
+      result.done = [n.created ? "created" : n.updated.length ? "updated" : "existing"];
+      if (n.secret) {
+        await storePaddleWebhookSecret(ctx, n.secret);
+        result.secretStored = true;
+      } else if (!config.webhookSecret) {
+        result.problems.push("Paddle did not return the webhook secret: copy it from Paddle > Developer tools > Notifications and save it here.");
+      }
+    } catch (error) {
+      result.problems.push(`Webhook (${url}): ${error instanceof Error ? error.message : "failed"}`);
     }
   }
-  clearPlanCache();
-
-  let regionPrices = 0;
-  try {
-    regionPrices = (await syncRegionPrices({ api, db: prismaRegionStore() })).length;
-  } catch (error) {
-    problems.push(`Regional prices: ${error instanceof Error ? error.message : "failed"}`);
-  }
-  clearRegionPriceCache();
-
-  let webhook: SetUpResult["webhook"] = "existing";
-  let secretStored = false;
-  const url = `${siteUrl()}${PADDLE_WEBHOOK_PATH}`;
-  try {
-    const n = (await ensureNotificationSetting(api, url)) as { secret: string | null; created: boolean; updated: string[] };
-    webhook = n.created ? "created" : n.updated.length ? "updated" : "existing";
-    if (n.secret) {
-      await storePaddleWebhookSecret(ctx, n.secret);
-      secretStored = true;
-    } else if (!config.webhookSecret) {
-      problems.push("Paddle did not return the webhook secret: copy it from Paddle > Developer tools > Notifications and save it here.");
-    }
-  } catch (error) {
-    problems.push(`Webhook (${url}): ${error instanceof Error ? error.message : "failed"}`);
-  }
-
-  const result = { plans, regionPrices, webhook, secretStored, problems };
-  await writeAudit(prisma, ctx, "paddle_set_up", "setting:billing.paddle", null, { environment: config.environment, ...result, webhookUrl: url });
+  await writeAudit(prisma, ctx, "paddle_set_up", "setting:billing.paddle", null, { environment: config.environment, step, done: result.done, more: result.more, problems: result.problems });
   return result;
+}
+
+export type SetUpResult = { plans: string[]; regionPrices: number; webhook: "created" | "updated" | "existing"; secretStored: boolean; problems: string[] };
+
+/** Every step in one go (tests, and anything without a request time limit). The settings page runs the steps one by one. */
+export async function setUpPaddle(ctx: AdminContext): Promise<SetUpResult> {
+  const out: SetUpResult = { plans: [], regionPrices: 0, webhook: "existing", secretStored: false, problems: [] };
+  for (const step of SET_UP_STEPS) {
+    let attempted: string[] = [];
+    for (let i = 0; i < 100; i++) {
+      const r = await setUpPaddleStep(ctx, step, attempted);
+      attempted = r.attempted;
+      out.problems.push(...r.problems);
+      if (step === "plans") out.plans.push(...r.done);
+      if (step === "regions") out.regionPrices += r.done.length;
+      if (step === "webhook") {
+        out.webhook = (r.done[0] as SetUpResult["webhook"]) ?? "existing";
+        out.secretStored = Boolean(r.secretStored);
+      }
+      if (!r.more) break;
+    }
+  }
+  return out;
 }
 
 export type RegionCardStatus = { key: string; name: string; priced: number; total: number };

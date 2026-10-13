@@ -1,13 +1,13 @@
 "use server";
 
 import { addAvailability, removeAvailability } from "@/lib/admin/availability";
-import { adminAction, finish } from "@/lib/admin/console";
+import { actionMessage, adminAction, finish } from "@/lib/admin/console";
 import { recomputeCardPrices } from "@/lib/admin/regions-service";
 import { setSetting, type SettingName } from "@/lib/admin/settings";
 import { disconnectGoogleCalendar, setGoogleCalendarId, testGoogleCalendar } from "@/lib/google-calendar/calendar";
 import { AdminError } from "@/lib/admin/types";
 import { clearPaddleSettings, savePaddleSettings, SECRET_LABEL } from "@/lib/billing/paddle-config";
-import { setUpPaddle, testPaddleConnection } from "@/lib/billing/paddle-setup";
+import { setUpPaddleStep, testPaddleConnection, type SetUpStep, type StepResult } from "@/lib/billing/paddle-setup";
 
 const BACK = "/admin/settings";
 const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -79,15 +79,21 @@ export async function testPaddleAction(f: FormData) {
   });
 }
 
-export async function setUpPaddleAction() {
-  const ctx = await adminAction();
-  await finish(PADDLE, (r) => {
-    const done = `Set up: ${r.plans.length} ${r.plans.length === 1 ? "plan" : "plans"} synced, ${r.regionPrices} regional ${r.regionPrices === 1 ? "price" : "prices"} created, webhook ${r.webhook}${r.secretStored ? " (secret saved)" : ""}.`;
-    return r.problems.length ? `${done} Still to fix: ${r.problems.join(" · ")}` : done;
-  }, () => setUpPaddle(ctx));
-}
-
 export async function clearPaddleSettingsAction() {
   const ctx = await adminAction();
   await finish(PADDLE, "Saved Paddle values removed. The environment variables apply again, if any are set.", () => clearPaddleSettings(ctx));
+}
+
+/**
+ * One step of "Set up prices" (the page calls the steps in order, repeating one while it says `more`), so each request
+ * stays within the hosting time limit. Returns the result instead of redirecting.
+ */
+export async function paddleSetUpStepAction(step: string, attempted: string[] = []): Promise<{ ok: true; result: StepResult } | { ok: false; error: string }> {
+  const ctx = await adminAction();
+  try {
+    const keys = Array.isArray(attempted) ? attempted.filter((k) => typeof k === "string" && k.length <= 64).slice(0, 200) : [];
+    return { ok: true, result: await setUpPaddleStep(ctx, step as SetUpStep, keys) };
+  } catch (error) {
+    return { ok: false, error: actionMessage(error) };
+  }
 }

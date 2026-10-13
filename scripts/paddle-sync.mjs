@@ -69,14 +69,16 @@ export function regionPriceJobs(row) {
  * Creates (or reuses) the Paddle prices of every region row that lacks them and stores the ids.
  * `api(path, method, body)` is the Paddle API (returns `data`); `db.rows()` lists the rows of regions that take card
  * and have countries (not GLOBAL), joined with the plan's name and Paddle product; `db.save(row, interval, priceId)`
- * stores one id only while it is still empty. Returns what it wrote.
+ * stores one id only while it is still empty. Returns what it wrote. `limit` stops after that many prices (the admin
+ * console runs it in short steps that fit a request's time limit; the next step picks up the rest).
  */
-export async function syncRegionPrices({ api, db, log = () => {} }) {
+export async function syncRegionPrices({ api, db, log = () => {}, limit = Infinity }) {
   const written = [];
   const products = new Map();
   for (const row of await db.rows()) {
     const jobs = regionPriceJobs(row);
     if (jobs.length === 0) continue;
+    if (written.length >= limit) return written;
     let productId = row.paddleProductId ?? products.get(row.planKey) ?? null;
     if (!productId) {
       const name = `BuPulse ${row.planName}`;
@@ -85,6 +87,7 @@ export async function syncRegionPrices({ api, db, log = () => {} }) {
     }
     products.set(row.planKey, productId);
     for (const { interval, cents } of jobs) {
+      if (written.length >= limit) return written;
       const unit = interval === "MONTH" ? "month" : "year";
       const prices = await api(`/prices?product_id=${encodeURIComponent(productId)}&status=active&per_page=200`, "GET");
       const found = prices.find(

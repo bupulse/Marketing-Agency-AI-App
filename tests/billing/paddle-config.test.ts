@@ -17,7 +17,7 @@ import { clearSwitchCache } from "@/lib/admin/switch";
 import { paddle } from "@/lib/billing/paddle";
 import { cardCheckoutConfigured } from "@/lib/billing/card-ready";
 import { clearPaddleConfigCache, clearPaddleSettings, getPaddleConfig, PADDLE_SETTING_KEY, paddleValueProblem, savePaddleSettings } from "@/lib/billing/paddle-config";
-import { paddleStatus, paddleStatusLine, setUpPaddle, testPaddleConnection } from "@/lib/billing/paddle-setup";
+import { PLANS_PER_STEP, paddleStatus, paddleStatusLine, REGION_PRICES_PER_STEP, setUpPaddle, setUpPaddleStep, testPaddleConnection } from "@/lib/billing/paddle-setup";
 import { resetPlanCache } from "@/lib/plan-catalog";
 import { resetRegionCache } from "@/lib/region";
 import { resetRegionPriceCache } from "@/lib/region-prices";
@@ -177,6 +177,43 @@ describe("Set up prices", () => {
     expect(await paddle.isConfigured()).toBe(true);
     expect(h.db.auditLog.rows.some((a) => a.action === "paddle_set_up")).toBe(true);
     expect(JSON.stringify(h.db.auditLog.rows)).not.toContain(SECRET);
+  });
+
+  it("runs in short steps that fit a request: a few plans or prices per call, `more` until done, a failing plan never retried in the run", async () => {
+    await savePaddleSettings(CONSOLE, { environment: "sandbox", apiKey: KEY, clientToken: TOKEN });
+    // Three extra plans without Paddle prices, the second one failing in Paddle.
+    for (const key of ["EXTRA1", "EXTRA2", "EXTRA3"]) h.db.planDefinition.rows.push({ ...h.db.planDefinition.rows.find((p) => p.key === "STANDARD"), id: key, key, name: key, paddleProductId: null, paddleMonthlyPriceId: null, paddleYearlyPriceId: null });
+    resetPlanCache();
+    h.sync.mockImplementation(async (_ctx: unknown, key: string) => {
+      if (key === "EXTRA2") throw new Error("Paddle said no");
+      return { created: ["product"] };
+    });
+    let attempted: string[] = [];
+    let calls = 0;
+    const seen: string[] = [];
+    for (;;) {
+      const r = await setUpPaddleStep(CONSOLE, "plans", attempted);
+      calls++;
+      expect(r.attempted.length - attempted.length).toBeLessThanOrEqual(PLANS_PER_STEP);
+      seen.push(...r.attempted.slice(attempted.length));
+      attempted = r.attempted;
+      if (!r.more) break;
+    }
+    expect(calls).toBeGreaterThan(1);
+    expect(new Set(seen).size).toBe(seen.length); // nothing tried twice, the failing plan included
+    expect(seen).toEqual(expect.arrayContaining(["EXTRA1", "EXTRA2", "EXTRA3"]));
+
+    // Regional prices: 3 Rwandan plans x 2 intervals = 6 prices, REGION_PRICES_PER_STEP per call.
+    for (const key of ["STANDARD", "PRO", "EXTRA1"]) h.db.planRegionPrice.rows.push({ id: `prp_${key}`, planKey: key, regionKey: "RW", currency: "RWF", monthlyMinor: 15000, yearlyMinor: 150000, cardMonthlyUsdCents: 1200, cardYearlyUsdCents: 11600, paddleMonthlyPriceId: null, paddleYearlyPriceId: null });
+    fakePaddle();
+    const first = await setUpPaddleStep(CONSOLE, "regions");
+    expect(first).toMatchObject({ more: true, problems: [] });
+    expect(first.done).toHaveLength(REGION_PRICES_PER_STEP);
+    const second = await setUpPaddleStep(CONSOLE, "regions");
+    expect(second.done).toHaveLength(6 - REGION_PRICES_PER_STEP);
+    expect(second.more).toBe(false);
+    expect(h.db.planRegionPrice.rows.every((r) => r.paddleMonthlyPriceId && r.paddleYearlyPriceId)).toBe(true);
+    expect(h.db.auditLog.rows.filter((a) => a.action === "paddle_set_up").length).toBe(calls + 2);
   });
 
   it("needs a saved API key, and is console only", async () => {

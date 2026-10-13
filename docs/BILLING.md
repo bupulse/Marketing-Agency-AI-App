@@ -69,12 +69,14 @@ No environment variable needs editing. In Admin → Settings → **Card payments
    `AdminSetting` `billing.paddle` and never shown again: the page shows its last 4 characters and where it comes from.
    An empty field keeps the saved value. Switching sandbox ↔ live needs that account's key and token (and drops the old
    webhook secret). The audit row records the environment and the last 4 characters only.
-3. **Set up prices** (`setUpPaddle`, `lib/billing/paddle-setup.ts`): every plan without Paddle prices is synced (the
+3. **Set up prices** (`setUpPaddleStep`, `lib/billing/paddle-setup.ts`; the page runs it step by step so every request
+   stays inside the hosting time limit: `plans` two at a time, `regions` four prices at a time, then `webhook`, each
+   repeated while it answers `more`; a plan that fails is not retried in the same run; each step is audited): every plan without Paddle prices is synced (the
    plan builder's own sync: product, monthly and yearly price), every regional card price gets its USD Paddle prices
    (Rwanda, EAC; ids in `PlanRegionPrice`), and the notification destination `<site>/api/billing/webhooks/paddle` is
    created or updated with every event BuPulse handles (`PADDLE_EVENTS` in `scripts/paddle-sync.mjs`, incl.
    `transaction.completed`, `adjustment.created`, `adjustment.updated`); the secret Paddle returns is saved encrypted.
-   Idempotent; audited `paddle_set_up`. Problems (e.g. Paddle refusing a localhost URL) are listed, the rest still runs.
+   Idempotent (stopping half-way and running again carries on); audited `paddle_set_up` per step. Problems (e.g. Paddle refusing a localhost URL) are listed, the rest still runs.
 4. The **status line** says "Card payments: ready" or "not set up — <reason>" (missing values, Paddle switched off in
    Admin → Services, no plan priced), and how many plans have a card price per region. Card is offered to clients as
    soon as it is ready, with no deploy (caches: 30 s).

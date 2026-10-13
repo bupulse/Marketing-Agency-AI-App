@@ -24,11 +24,11 @@ import {
   removeAvailabilityAction,
   savePaddleSettingsAction,
   saveSettingsAction,
-  setUpPaddleAction,
   testGoogleCalendarAction,
   testPaddleAction,
 } from "./actions";
 import { savePaymentSettingsAction } from "../payments/actions";
+import { PaddleSetUp } from "@/components/admin/paddle-setup";
 
 export const metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
@@ -153,14 +153,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <p className="text-[13px] text-muted">Test connection uses the API key typed above (with the environment chosen), or the saved one; it only reads from Paddle.</p>
           </form>
           <div className="flex flex-wrap items-center gap-3 border-t border-line pt-4">
-            <ConfirmButton
-              action={setUpPaddleAction}
-              fields={{}}
-              variant="primary"
-              label="Set up prices"
-              title="Set up Paddle prices and the webhook?"
-              description={`Creates in Paddle ${paddle.environment === "production" ? "live" : "sandbox"} what is missing: a product and monthly and yearly prices for every plan, the card prices of Rwanda and the other regions, and the notification destination ${siteUrl()}${PADDLE_WEBHOOK_PATH} with every event BuPulse handles. Its secret is saved here. Running it again reuses what exists.`}
-              confirmLabel="Set up prices"
+            <PaddleSetUp
+              description={`Creates in Paddle ${paddle.environment === "production" ? "live" : "sandbox"} what is missing: a product and monthly and yearly prices for every plan, the card prices of Rwanda and the other regions, and the notification destination ${siteUrl()}${PADDLE_WEBHOOK_PATH} with every event BuPulse handles (its secret is saved here). It runs in short steps; running it again reuses what exists.`}
             />
             <ConfirmButton action={clearPaddleSettingsAction} fields={{}} label="Remove saved values" title="Remove the saved Paddle values?" description="Card payments then use the PADDLE_* environment variables, if they are set; otherwise card shows as coming soon to clients." confirmLabel="Remove" />
           </div>
