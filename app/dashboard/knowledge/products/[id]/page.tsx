@@ -45,6 +45,8 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   if (entitlements.usable.has("calendar")) await latestContentPosts(business.id, { productId: product.id }, { backfill: true }).catch(() => null);
   const [photos, studio] = await Promise.all([productAlbum(business.id, product.id), loadSubjectStudio(business.id, subject)]);
   const readiness = productReadiness({ ...product, photoCount: photos.length });
+  // Designs draw photos only; the album's videos are posted as they are (docs/MEDIA.md).
+  const stills = photos.filter((p) => p.kind !== "video");
   const details = readDetails(product.kind, product.details);
   const kindRows: [string, string | string[] | null][] =
     product.kind === "PHYSICAL"
@@ -113,12 +115,12 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
         />
       </GlassCard>
 
-      <AlbumCard kind="product" id={product.id} name={product.name} photos={photos.map((p) => ({ id: p.id, path: p.path, url: p.url, name: p.name }))} />
+      <AlbumCard kind="product" id={product.id} name={product.name} photos={photos.map((p) => ({ id: p.id, path: p.path, url: p.url, name: p.name, kind: p.kind, posterUrl: p.posterUrl, durationMs: p.durationMs }))} />
 
       {studio.contents.length === 0 ? (
         <WriteContentCta subjectId={product.id} used={usage.used.text} limit={usage.limits.text} />
       ) : (
-        <ContentCard subject={subject} contents={studio.contents} videoInPlan={studio.videoInPlan} used={usage.used.text} limit={usage.limits.text} photos={photos.map((p) => ({ path: p.path, url: p.url }))} />
+        <ContentCard subject={subject} contents={studio.contents} videoInPlan={studio.videoInPlan} used={usage.used.text} limit={usage.limits.text} photos={stills.map((p) => ({ path: p.path, url: p.url }))} />
       )}
 
       {/* Designs are their own plan feature; the product page keeps its content tools without them. */}
@@ -133,8 +135,8 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
             headline: product.name,
             subline: product.usps[0] ?? product.features[0] ?? "",
             chip: product.priceAmount != null || product.priceNote ? priceLine(product).slice(0, 40) : "",
-            photoPaths: photos.map((p) => p.path),
-            photoUrls: photos.map((p) => p.url),
+            photoPaths: stills.map((p) => p.path),
+            photoUrls: stills.map((p) => p.url),
             projectType: legacyTypeOf(product),
           }}
           designs={studio.designs}

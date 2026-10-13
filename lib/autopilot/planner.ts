@@ -34,6 +34,8 @@ export interface PlanProject {
   features: string[];
   notes?: string;
   photoPaths: string[];
+  /** The album's own videos (Gallery first, docs/CONTENT.md): a video idea posts one as it is instead of making one. */
+  videoPaths?: string[];
   createdAt: Date;
   /** Posts already made about it (any source); 0 means it was never posted. */
   postedCount: number;

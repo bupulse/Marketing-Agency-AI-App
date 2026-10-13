@@ -36,7 +36,9 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   const [photos, studio] = await Promise.all([albumItems(business.id, "campaign", campaign.id), loadSubjectStudio(business.id, subject)]);
   // Designs fall back to the first linked product's album while the campaign has no photos of its own.
   const firstProduct = campaign.products[0]?.product;
-  const designPhotos = photos.length || !firstProduct ? photos : await albumItems(business.id, "product", firstProduct.id);
+  // Designs draw photos only; the album's videos are posted as they are (docs/MEDIA.md).
+  const ownStills = photos.filter((p) => p.kind !== "video");
+  const designPhotos = ownStills.length || !firstProduct ? ownStills : (await albumItems(business.id, "product", firstProduct.id)).filter((p) => p.kind !== "video");
   const startsOn = dayString(campaign.startsAt);
   const endsOn = dayString(campaign.endsAt);
   const phase = campaignPhase({ startsOn, endsOn }, localDateISO(new Date(), safeZone(business.timezone)));
@@ -83,7 +85,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
         </div>
       </GlassCard>
 
-      <AlbumCard kind="campaign" id={campaign.id} name={campaign.name} photos={photos.map((p) => ({ id: p.id, path: p.path, url: p.url, name: p.name }))} />
+      <AlbumCard kind="campaign" id={campaign.id} name={campaign.name} photos={photos.map((p) => ({ id: p.id, path: p.path, url: p.url, name: p.name, kind: p.kind, posterUrl: p.posterUrl, durationMs: p.durationMs }))} />
 
       {studio.contents.length === 0 ? (
         <WriteContentCta subjectId={campaign.id} used={usage.used.text} limit={usage.limits.text} />

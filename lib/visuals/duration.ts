@@ -122,3 +122,29 @@ export function videoDurationMs(bytes: Uint8Array, type: "video/mp4" | "video/we
     return null;
   }
 }
+
+/**
+ * An MP4's (or MOV's) length without downloading it: walks the top-level boxes with small ranged reads until the
+ * movie box, then reads only that box (at most `maxMoovBytes`). `read(start, length)` returns those bytes or null.
+ */
+export async function probeMp4DurationMs(read: (start: number, length: number) => Promise<Uint8Array | null>, size: number, maxMoovBytes = 8 * 1024 * 1024): Promise<number | null> {
+  let offset = 0;
+  for (let boxes = 0; offset + 8 <= size && boxes < 64; boxes++) {
+    const head = await read(offset, 16);
+    if (!head || head.length < 8) return null;
+    let boxSize = u32(head, 0);
+    const type = String.fromCharCode(...head.subarray(4, 8));
+    if (boxSize === 1) {
+      if (head.length < 16) return null;
+      boxSize = u32(head, 8) * 2 ** 32 + u32(head, 12);
+    } else if (boxSize === 0) boxSize = size - offset;
+    if (boxSize < 8) return null;
+    if (type === "moov") {
+      if (boxSize > maxMoovBytes) return null;
+      const moov = await read(offset, boxSize);
+      return moov ? mp4DurationMs(moov) : null;
+    }
+    offset += boxSize;
+  }
+  return null;
+}
