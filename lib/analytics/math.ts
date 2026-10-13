@@ -80,8 +80,10 @@ export function profitCents(revenue: number, refunds: number, aiCost: number, fi
 type PaddleEvent = { event_type?: string; occurred_at?: string; data?: Record<string, unknown> };
 /** BillingEvent.type of a confirmed manual Mobile Money payment. */
 export const MANUAL_PAYMENT_EVENT = "manual_payment.confirmed";
+/** A plain invoice (no plan) marked paid by hand in the admin console: bank, cash, or a MoMo payment made elsewhere. */
+export const INVOICE_PAID_EVENT = "invoice.paid_manual";
 /** The BillingEvent types that carry money: card payments and refunds from Paddle, and confirmed Mobile Money payments. */
-export const MONEY_EVENT_TYPES = ["transaction.completed", "adjustment.created", "adjustment.updated", MANUAL_PAYMENT_EVENT];
+export const MONEY_EVENT_TYPES = ["transaction.completed", "adjustment.created", "adjustment.updated", MANUAL_PAYMENT_EVENT, INVOICE_PAID_EVENT];
 export type MoneyEvent = { kind: "payment" | "refund"; cents: number; id: string; at: Date };
 
 const minor = (v: unknown) => {
@@ -111,8 +113,9 @@ export function parseMoneyEvent(type: string, payload: unknown, fallbackAt: Date
   const event = (payload ?? {}) as PaddleEvent;
   const data = (event.data ?? {}) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
   const at = event.occurred_at && !Number.isNaN(Date.parse(event.occurred_at)) ? new Date(event.occurred_at) : fallbackAt;
-  // A Mobile Money payment confirmed in the admin console (lib/billing/momo.ts): the USD value was fixed at confirmation.
-  if (type === MANUAL_PAYMENT_EVENT) {
+  // A Mobile Money payment confirmed in the admin console (lib/billing/momo.ts), or a plain invoice marked paid by hand
+  // (lib/invoices/service.ts): the USD value was fixed at that moment.
+  if (type === MANUAL_PAYMENT_EVENT || type === INVOICE_PAID_EVENT) {
     const cents = minor(data.usd_cents);
     return cents === null ? null : { kind: "payment", cents, id: String(data.id ?? ""), at };
   }

@@ -30,6 +30,7 @@ export interface TtsProvider {
 
 export const DEFAULT_ELEVENLABS_MODEL = "eleven_multilingual_v2";
 const API = "https://api.elevenlabs.io/v1";
+const isTimeout = (error: unknown) => error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
 
 type Alignment = { characters?: string[]; character_start_times_seconds?: number[]; character_end_times_seconds?: number[] };
 
@@ -52,8 +53,10 @@ export class ElevenLabsProvider implements TtsProvider {
         body: JSON.stringify({ text, model_id: this.model, voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
         signal: AbortSignal.timeout(60_000),
       });
-    } catch {
-      throw new AIProviderError("The voice service did not answer", this.name, true, undefined, this.model);
+    } catch (error) {
+      // Timed out: ElevenLabs may still have spoken (and charged) the characters; the ledger records them as an estimate.
+      const timedOut = isTimeout(error);
+      throw new AIProviderError("The voice service did not answer", this.name, true, timedOut ? { inputTokens: text.length, outputTokens: 0 } : undefined, this.model, undefined, timedOut);
     }
     if (!response.ok) {
       // Only the status is kept: the answer may echo the request.
@@ -128,8 +131,10 @@ export async function composeMusic(request: MusicRequest, fetchImpl: typeof fetc
       body: JSON.stringify({ prompt: request.prompt, music_length_ms: Math.round(request.seconds * 1000) }),
       signal: AbortSignal.timeout(110_000),
     });
-  } catch {
-    throw new AIProviderError("The music service did not answer", "elevenlabs", true, undefined, ELEVENLABS_MUSIC_MODEL);
+  } catch (error) {
+    // Timed out: the track may still have been composed (and charged); the ledger records its seconds as an estimate.
+    const timedOut = isTimeout(error);
+    throw new AIProviderError("The music service did not answer", "elevenlabs", true, timedOut ? { inputTokens: request.seconds, outputTokens: 0 } : undefined, ELEVENLABS_MUSIC_MODEL, undefined, timedOut);
   }
   if (!response.ok) throw new AIProviderError(`The music service refused the request (${response.status})`, "elevenlabs", response.status === 429 || response.status >= 500, { inputTokens: 0, outputTokens: 0 }, ELEVENLABS_MUSIC_MODEL);
   const audio = new Uint8Array(await response.arrayBuffer());

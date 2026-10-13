@@ -27,7 +27,7 @@ vi.mock("@/lib/entitlements", () => ({ hasFeature: mocks.hasFeature, featureStat
 vi.mock("@/lib/usage", () => ({ getUsageSummary: mocks.getUsageSummary, consumeUsage: vi.fn(), UsageLimitError: class extends Error {} }));
 vi.mock("@/lib/ai/budget", async (original) => ({ ...(await original<typeof import("@/lib/ai/budget")>()), companySpendThisMonth: async () => ({ totalUsd: 0, widgetUsd: 0, ownerUsd: 0, allowanceUsd: 3, widgetCapUsd: 1.5 }) }));
 vi.mock("@/lib/ai", () => ({ getCheapTextProvider: () => ({ provider: { name: "gemini", generate: mocks.generate }, model: "gemini-2.5-flash-lite" }) }));
-vi.mock("@/lib/ai/ledger", () => ({ withLedger: async (_c: unknown, _m: unknown, call: () => unknown) => call() }));
+vi.mock("@/lib/ai/ledger", () => ({ withLedger: async (_c: unknown, _m: unknown, call: () => unknown) => call(), withLateTimeout: <T,>(p: Promise<T>) => p }));
 vi.mock("@/lib/designs/service", () => ({ createTemplateDesign: mocks.createTemplateDesign, createAiDesign: mocks.createAiDesign, DesignError: class extends Error {} }));
 vi.mock("@/lib/autopilot/images", () => ({ makeGroupImages: mocks.makeGroupImages, PHOTO_MARK: "photo:" }));
 vi.mock("@/lib/knowledge/service", () => ({ KnowledgeError: class extends Error {}, writingSubject: vi.fn() }));

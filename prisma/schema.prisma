@@ -983,6 +983,9 @@ model AiCall {
   outputTokens Int      @default(0)
   images       Int      @default(0)
   costUsd      Decimal  @default(0) @db.Decimal(12, 6) // estimated from lib/ai/pricing.ts
+  // True when the provider never reported usage (a call that timed out on our side but was still billed) and the
+  // tokens or images are our estimate (docs/AI_COSTS.md).
+  estimated    Boolean  @default(false)
   durationMs   Int      @default(0)
   success      Boolean
   error        String?
@@ -1309,6 +1312,45 @@ model MonthlyCost {
   updatedAt   DateTime @updatedAt
 
   @@unique([month, category])
+}
+
+// A cost that repeats (Admin -> Money -> Costs, docs/ADMIN.md): hosting, the domain, a subscription. Counted in every
+// month from startMonth to endMonth (inclusive; null = still running); a yearly cost counts a twelfth each month.
+// amountMinor is in `currency` (USD or RWF), converted to USD with the current rate when shown.
+model RecurringCost {
+  id          String   @id @default(cuid())
+  name        String
+  provider    String // a preset key (lib/money/costs-shared.ts COST_PRESETS) or "other"
+  category    String // hosting | domain | ai | email | tools | other
+  amountMinor Int
+  currency    String   @default("USD")
+  period      String // month | year
+  startMonth  String // "YYYY-MM"
+  endMonth    String?
+  note        String?
+  updatedBy   String? // AuditLog actor of the last change
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([startMonth])
+}
+
+// What a provider really billed for one month (its invoice), entered by the admin. When present it replaces the
+// ledger's estimate for that provider and month in every cost and profit number (lib/money/costs-shared.ts).
+model ProviderBill {
+  id          String   @id @default(cuid())
+  provider    String // google_ai | anthropic | elevenlabs | higgsfield | other provider keys
+  month       String // "YYYY-MM"
+  amountMinor Int
+  currency    String   @default("USD")
+  usdCents    Int // amountMinor in USD cents at the rate of the day it was entered
+  usdRate     Float? // RWF per USD used for an RWF bill
+  note        String?
+  enteredBy   String? // AuditLog actor
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([provider, month])
 }
 
 // ---- Phase 8: admin console and Jarvis (lib/admin/*, docs/JARVIS.md) ----

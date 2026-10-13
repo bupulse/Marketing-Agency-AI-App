@@ -1,6 +1,7 @@
 import "server-only";
 import { createInteraction, type Interaction } from "./gemini-rest";
 import { isRetryableStatus } from "./http-retry";
+import { estimateTokens } from "./pricing";
 import { AIProviderError, type ImageProvider, type ImageRequest, type ImageResult } from "./types";
 
 /** One image call, retries and their waits included (lib/ai/http-retry.ts). */
@@ -68,12 +69,17 @@ export class GeminiImageProvider implements ImageProvider {
       );
     } catch (error) {
       const status = (error as { status?: number }).status;
+      // Timed out on our side: Google most likely still made (and billed) the image, so the ledger records one
+      // image and the prompt as an estimate (docs/AI_COSTS.md).
+      const billable = Boolean((error as { billable?: boolean }).billable);
       throw new AIProviderError(
         `Gemini image request failed${status ? ` (${status})` : ""}`,
         this.name,
         status === undefined || isRetryableStatus(status),
-        undefined,
+        billable ? { inputTokens: estimateTokens(prompt) + 258 * references.length, outputTokens: 0 } : undefined,
         this.model,
+        billable ? 1 : undefined,
+        billable,
       );
     }
 

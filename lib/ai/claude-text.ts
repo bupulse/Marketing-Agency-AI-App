@@ -1,6 +1,7 @@
 import "server-only";
 import { fetchWithRetry, isRetryableStatus, logProviderError } from "./http-retry";
 import { AIProviderError, type TextProvider, type TextRequest, type TextResult } from "./types";
+import { estimateTokens, TIMEOUT_OUTPUT_TOKENS } from "./pricing";
 
 type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -50,8 +51,11 @@ export class ClaudeTextProvider implements TextProvider {
         },
         { budgetMs: CLAUDE_BUDGET_MS, fetchImpl: this.fetchImpl },
       );
-    } catch {
-      throw new AIProviderError("Claude request failed", this.name, true);
+    } catch (error) {
+      // Timed out on our side: the answer may still be produced and billed, so the ledger gets an estimate (docs/AI_COSTS.md).
+      const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+      const billed = timedOut ? { inputTokens: estimateTokens(system) + estimateTokens(prompt), outputTokens: TIMEOUT_OUTPUT_TOKENS } : undefined;
+      throw new AIProviderError("Claude request failed", this.name, true, billed, this.model, undefined, timedOut);
     }
     if (res.status === 429) throw new AIProviderError("Claude rate limit reached", this.name, true);
     if (!res.ok) {
@@ -64,8 +68,8 @@ export class ClaudeTextProvider implements TextProvider {
     try {
       response = (await res.json()) as MessageResponse;
     } catch {
-      // Cut off by the time budget, or not JSON: another try may work.
-      throw new AIProviderError("Claude answer could not be read", this.name, true);
+      // Cut off by the time budget, or not JSON: another try may work. The answer was produced, so it is billed.
+      throw new AIProviderError("Claude answer could not be read", this.name, true, { inputTokens: estimateTokens(system) + estimateTokens(prompt), outputTokens: TIMEOUT_OUTPUT_TOKENS }, this.model, undefined, true);
     }
     const usage = { inputTokens: response.usage?.input_tokens ?? 0, outputTokens: response.usage?.output_tokens ?? 0 };
     if (response.stop_reason === "refusal") {

@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
-import { MODEL_PRICES } from "./pricing";
+import { resolvePrice } from "./pricing";
 import { AIProviderError } from "./types";
 
 /** Monthly safety cap on BuPulse's own AI spend (AI_MONTHLY_BUDGET_USD, default $20). */
@@ -89,7 +89,7 @@ export const IMAGE_PACK_SIZE = 50;
 
 /** What one AI image costs us (lib/ai/pricing.ts), for allowances that must cover a plan's images. */
 export function imageUnitUsd(): number {
-  const price = MODEL_PRICES[process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image"]?.perImage;
+  const price = resolvePrice(process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image")?.price.perImage;
   return typeof price === "number" && price > 0 ? price : 0.039;
 }
 

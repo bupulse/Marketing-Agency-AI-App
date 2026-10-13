@@ -9,10 +9,19 @@ export const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta";
 
 /** An HTTP error from Gemini: `status` decides whether a retry (or the fallback model) may help. */
 export class GeminiHttpError extends Error {
-  constructor(public status: number | undefined) {
+  constructor(
+    public status: number | undefined,
+    /**
+     * Google may still bill this call: it timed out on our side (Google finishes and bills the request anyway) or
+     * the answer arrived but could not be read. Not set for HTTP errors and network failures, which are not billed.
+     */
+    public billable = false,
+  ) {
     super(`Gemini answered ${status ?? "without a status"}`);
   }
 }
+
+const isTimeout = (error: unknown) => error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
 
 export type InteractionContent = { type: string; text?: string; data?: string; mime_type?: string };
 export type Interaction = {
@@ -34,8 +43,8 @@ export async function createInteraction(apiKey: string, body: Record<string, unk
       { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "x-goog-api-key": apiKey }, body: JSON.stringify(body) },
       { budgetMs, fetchImpl },
     );
-  } catch {
-    throw new GeminiHttpError(undefined);
+  } catch (error) {
+    throw new GeminiHttpError(undefined, isTimeout(error));
   }
   if (!response.ok) {
     // Only the error's status code is logged and kept: the message may echo the prompt.
@@ -45,7 +54,7 @@ export async function createInteraction(apiKey: string, body: Record<string, unk
   try {
     return (await response.json()) as Interaction;
   } catch {
-    // A body cut off by the time budget or a broken answer: worth another try.
-    throw new GeminiHttpError(undefined);
+    // A body cut off by the time budget or a broken answer: worth another try. Google produced (and billed) it.
+    throw new GeminiHttpError(undefined, true);
   }
 }

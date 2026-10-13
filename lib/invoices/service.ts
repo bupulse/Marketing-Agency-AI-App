@@ -7,7 +7,9 @@ import { siteUrl } from "@/lib/auth/site-url";
 import { readKnowledge } from "@/lib/brand/schemas";
 import { confirmManualPayment } from "@/lib/billing/momo";
 import { sendInvoiceReviewAlertEmail } from "@/lib/billing/momo-emails";
-import { transactionIdSchema } from "@/lib/billing/momo-shared";
+import { transactionIdSchema, usdCentsOf } from "@/lib/billing/momo-shared";
+import { getSetting } from "@/lib/admin/settings";
+import { INVOICE_PAID_EVENT } from "@/lib/analytics/math";
 import { locationText } from "@/lib/business-info/locations";
 import { logError } from "@/lib/errors";
 import { isServiceEnabled } from "@/lib/admin/switch";
@@ -393,10 +395,26 @@ export async function markInvoicePaid(ctx: AdminContext, id: string, input: { me
       throw new AdminError("conflict", `Paddle shows transaction ${first.reference} as refunded, so the money is not with us. Check Paddle before marking ${row.number} paid; void the invoice (acknowledging the payment) if it was refunded.`);
     }
     const paidBy = first ? `${first.source}:${first.reference}` : `manual:${method}:${ref.data}`;
+    // Money that no other event recorded (no MoMo or card payment on file): one revenue event for the roll-up and the
+    // Money pages, in USD at today's rate. Kept after the account is deleted (BillingEvent has no foreign key).
+    const usdCents = first ? null : usdCentsOf(row.totalMinor, row.currency.toUpperCase(), await getSetting("usdToRwf"));
+    const payer = first ? null : ((await prisma.business.findUnique({ where: { id: row.businessId }, select: { userId: true } }))?.userId ?? null);
     await prisma.$transaction(async (tx) => {
       const { count } = await tx.invoice.updateMany({ where: { id, status: "sent" }, data: { status: "paid", paidAt: now, paidBy } });
       if (count !== 1) throw new AdminError("conflict", "The invoice was paid or voided a moment ago. Nothing was changed.");
       await writeAudit(tx, ctx, "invoice_paid", `invoice:${id}`, { status: "sent" }, { status: "paid", number: row.number, paidBy, amountMinor: row.totalMinor, currency: row.currency, ...(reviewed.length ? { confirmedPayments: reviewed, adminMethod: method, adminReference: ref.data } : {}) });
+      if (usdCents !== null) {
+        await tx.billingEvent.create({
+          data: {
+            provider: "MANUAL_MOMO",
+            eventId: `invoice:${id}`,
+            type: INVOICE_PAID_EVENT,
+            userId: payer,
+            processedAt: now,
+            payload: { event_type: INVOICE_PAID_EVENT, occurred_at: now.toISOString(), data: { id: row.number, invoice_id: id, amount_minor: row.totalMinor, currency: row.currency, method, usd_cents: usdCents, plan: row.planKey } },
+          },
+        });
+      }
     });
     return { id, number: row.number, status: "paid" as const, periodEnd: null as Date | null, emailed: false };
   }

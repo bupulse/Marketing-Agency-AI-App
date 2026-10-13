@@ -4,7 +4,7 @@
 import "server-only";
 import { getCheapTextProvider } from "@/lib/ai";
 import { AIBudgetExceededError } from "@/lib/ai/budget";
-import { withLedger } from "@/lib/ai/ledger";
+import { withLateTimeout, withLedger } from "@/lib/ai/ledger";
 import { ServiceDisabledError } from "@/lib/admin/switch";
 import { PACKS, recommendPack } from "@/lib/designs/packs";
 import { TEMPLATES } from "@/lib/designs/templates/registry";
@@ -83,22 +83,6 @@ function parseJson(text: string): unknown {
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("The art director took too long")), ms);
-    promise.then(
-      (v) => {
-        clearTimeout(timer);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(timer);
-        reject(e);
-      },
-    );
-  });
-}
-
 /**
  * Asks the art director for a plan, through the cost ledger (feature "visuals", the company's allowance applies),
  * and validates its answer. Never throws: refusals (budget, switched off), errors, timeouts and nonsense all give
@@ -110,7 +94,8 @@ export async function directVisual(ctx: DirectionContext, owner: { userId: strin
     const result = await withLedger(
       { userId: owner.userId, businessId: owner.businessId, feature: ART_DIRECTOR_FEATURE },
       { provider: provider.name, model },
-      () => withTimeout(provider.generate({ system: SYSTEM, prompt: buildPrompt(ctx), jsonSchema: DIRECTION_JSON_SCHEMA }), TIMEOUT_MS),
+      // Gives up after TIMEOUT_MS; the ledger still records what the late answer cost.
+      () => withLateTimeout(provider.generate({ system: SYSTEM, prompt: buildPrompt(ctx), jsonSchema: DIRECTION_JSON_SCHEMA }), TIMEOUT_MS, "The art director took too long"),
       (r) => ({ provider: r.provider, model: r.model, usage: r.usage }),
     );
     return validateDirection(parseJson(result.text), ctx);

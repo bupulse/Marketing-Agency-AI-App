@@ -1,5 +1,6 @@
 import "server-only";
 import { createInteraction, type Interaction } from "./gemini-rest";
+import { estimateTokens, TIMEOUT_OUTPUT_TOKENS } from "./pricing";
 import { isRetryableStatus } from "./http-retry";
 import { AIProviderError, type TextProvider, type TextRequest, type TextResult, type TokenUsage } from "./types";
 
@@ -61,7 +62,11 @@ export class GeminiTextProvider implements TextProvider {
       );
     } catch (error) {
       const status = (error as { status?: number }).status;
-      throw new AIProviderError(`Gemini request failed${status ? ` (${status})` : ""}`, this.name, isRetryableStatus(status), undefined, model);
+      // Timed out on our side: Google still finishes and bills it, so the ledger gets an estimate (docs/AI_COSTS.md).
+      const billed = (error as { billable?: boolean }).billable
+        ? { inputTokens: estimateTokens(system) + estimateTokens(prompt), outputTokens: TIMEOUT_OUTPUT_TOKENS }
+        : undefined;
+      throw new AIProviderError(`Gemini request failed${status ? ` (${status})` : ""}`, this.name, isRetryableStatus(status), billed, model, undefined, Boolean(billed));
     }
     const usage = usageOf(interaction);
     const text = outputText(interaction);

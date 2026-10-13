@@ -96,6 +96,10 @@ export class AIProviderError extends Error {
     /** Tokens the provider billed before the call failed, for the cost ledger. */
     public usage?: TokenUsage,
     public model?: string,
+    /** Images the provider probably generated (and billed) before the call failed, e.g. a timeout. */
+    public images?: number,
+    /** True when `usage` is our estimate (the provider never reported it), not the provider's own count. */
+    public estimated = false,
   ) {
     super(message);
   }
