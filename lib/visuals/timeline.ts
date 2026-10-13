@@ -84,6 +84,39 @@ export function kenBurns(
   return { sx, sy: spareY / 2, sw, sh };
 }
 
+/** Captions fade in and out over this long; they never cross-fade into each other. */
+export const CAPTION_FADE_MS = 250;
+
+/**
+ * Each scene's caption opacity at `tMs`: scene i's text shows from the end of the crossfade into it until the next
+ * scene starts, fading in and out over CAPTION_FADE_MS. The outgoing caption is gone before the incoming one appears,
+ * so two captions are never drawn over each other (the photos still cross-fade underneath).
+ */
+export function captionAlphas(plan: Pick<VideoPlan, "scenes" | "crossfadeMs">, tMs: number): number[] {
+  const starts = sceneStarts(plan);
+  const total = totalDuration(plan.scenes, plan.crossfadeMs);
+  const last = plan.scenes.length - 1;
+  return plan.scenes.map((_, i) => {
+    const from = i === 0 ? 0 : starts[i] + plan.crossfadeMs;
+    const to = i === last ? total : starts[i + 1];
+    if (tMs < from || tMs > to || to <= from) return 0;
+    const fade = Math.min(CAPTION_FADE_MS, (to - from) / 2);
+    // The first caption is there from the first frame's fade, the last one stays up to the final frame.
+    const fadeIn = Math.min(1, (tMs - from) / fade);
+    const fadeOut = i === last ? 1 : Math.min(1, (to - tMs) / fade);
+    return Math.max(0, Math.min(fadeIn, fadeOut));
+  });
+}
+
+/** The one caption on screen at `tMs` (its scene, opacity and how far it has risen into place), or null between captions. */
+export function captionAt(plan: Pick<VideoPlan, "scenes" | "crossfadeMs">, tMs: number): { index: number; alpha: number; rise: number } | null {
+  const alphas = captionAlphas(plan, tMs);
+  const index = alphas.findIndex((a) => a > 0);
+  if (index < 0) return null;
+  const from = index === 0 ? 0 : sceneStarts(plan)[index] + plan.crossfadeMs;
+  return { index, alpha: alphas[index], rise: ease(Math.min(1, (tMs - from) / (CAPTION_FADE_MS * 1.6))) };
+}
+
 /** Caption opacity within a scene: in over the first 12%, out over the last 8% (the next scene's crossfade covers it). */
 export function captionOpacity(progress: number): number {
   if (progress < 0.12) return progress / 0.12;

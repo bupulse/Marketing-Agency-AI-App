@@ -75,17 +75,20 @@ describe("video renderer", () => {
     expect(calls.filter((c) => c.name === "fillText").map((c) => c.args[0])).toEqual(["Nova Shop"]);
   });
 
-  it("draws both layers and each caption line during a crossfade", () => {
+  it("cross-fades both photos but writes no caption mid-crossfade; the next caption follows alone", () => {
     const { ctx, calls } = fakeContext();
     const t = sceneStarts(plan)[1] + 250;
     drawFrame(ctx, plan, new Map([["a.jpg", image]]), t);
     // Scene 1 photo underneath, scene 2 backdrop (no photo) on top.
     expect(calls.filter((c) => c.name === "drawImage")).toHaveLength(1);
     expect(calls.filter((c) => c.name === "arc")).toHaveLength(1);
-    const texts = calls.filter((c) => c.name === "fillText").map((c) => c.args[0] as string);
-    // At 30px per character and 920px wide, each caption fits on one line.
-    expect(texts).toContain("New arrivals are here");
+    expect(calls.filter((c) => c.name === "fillText").map((c) => c.args[0])).toEqual(["Nova Shop"]);
+
+    const after = fakeContext();
+    drawFrame(after.ctx, plan, new Map([["a.jpg", image]]), sceneStarts(plan)[1] + plan.crossfadeMs + 400);
+    const texts = after.calls.filter((c) => c.name === "fillText").map((c) => c.args[0] as string);
     expect(texts).toContain("Come see us this week");
+    expect(texts).not.toContain("New arrivals are here");
     expect(texts.at(-1)).toBe("Nova Shop");
   });
 });
