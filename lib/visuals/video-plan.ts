@@ -5,6 +5,7 @@ import { buildTheme } from "@/lib/designs/layout";
 import type { PackId } from "@/lib/designs/packs";
 import { totalDuration } from "./timeline";
 import { VIDEO_LIMITS, type Motion, type VideoPlan, type VideoScene } from "./types";
+import { getVideoLook } from "./video-looks";
 
 const MOTIONS: Motion[] = ["zoom-in", "pan-right", "zoom-out", "pan-left"];
 
@@ -79,6 +80,12 @@ export interface VideoPlanInput {
   photos: string[];
   pack: PackId;
   colors?: readonly string[] | null;
+  /** A video look id (chooseVideoLook); its motions and transition length apply. Unknown ids are ignored. */
+  look?: string | null;
+  /** Contact line for the closing scene (looks only). */
+  contact?: string | null;
+  /** Logo path for the closing scene (looks only). */
+  logoPath?: string | null;
 }
 
 /** A video plan from a script. Always at least a hook and a closing scene, so even an empty script makes a video. */
@@ -92,13 +99,16 @@ export function buildVideoPlan(input: VideoPlanInput): VideoPlan {
   if (texts[texts.length - 1].toLowerCase() !== cta.toLowerCase()) texts.push(cta);
 
   const photos = input.photos.filter(Boolean);
-  const durations = fitDurations(texts.map(sceneDuration));
+  const look = getVideoLook(input.look);
+  const crossfadeMs = look ? look.transition.ms : VIDEO_LIMITS.crossfadeMs;
+  const motions = look ? look.motion.sequence : MOTIONS;
+  const durations = fitDurations(texts.map(sceneDuration), crossfadeMs);
   const scenes: VideoScene[] = texts.map((text, i) => ({
     text,
     // Photos cycle through the scenes; the closing scene sits on the brand backdrop when there are few photos.
     photoPath: photos.length === 0 || (i === texts.length - 1 && photos.length < texts.length) ? null : photos[i % photos.length],
     durationMs: durations[i],
-    motion: MOTIONS[i % MOTIONS.length],
+    motion: motions[i % motions.length],
     role: i === 0 ? "hook" : i === texts.length - 1 ? "cta" : "body",
   }));
 
@@ -109,11 +119,12 @@ export function buildVideoPlan(input: VideoPlanInput): VideoPlan {
     height: VIDEO_LIMITS.height,
     fps: VIDEO_LIMITS.fps,
     pack: input.pack,
-    colors: { background: theme.deep, text: "#FFFFFF", accent: theme.primary },
+    colors: { background: theme.deep, text: "#FFFFFF", accent: theme.primary, ...(look ? { highlight: theme.accent } : {}) },
     businessName: clip(input.businessName, 60),
     scenes,
-    crossfadeMs: VIDEO_LIMITS.crossfadeMs,
-    totalMs: totalDuration(scenes, VIDEO_LIMITS.crossfadeMs),
+    crossfadeMs,
+    totalMs: totalDuration(scenes, crossfadeMs),
+    ...(look ? { look: look.id, ...(input.contact?.trim() ? { contact: clip(input.contact, 60) } : {}), ...(input.logoPath ? { logoPath: input.logoPath } : {}) } : {}),
   };
 }
 

@@ -84,6 +84,33 @@ export function kenBurns(
   return { sx, sy: spareY / 2, sw, sh };
 }
 
+export type TransitionKind = "crossfade" | "slide" | "zoom" | "wipe";
+
+/**
+ * How the incoming scene is drawn while it transitions in (`p` 0..1 over the transition, the layer's opacity from
+ * layersAt): crossfade fades; slide pushes in from the right; zoom fades in while settling from 115% to 100%; wipe
+ * reveals it left to right. `clip` is the visible rectangle (null for the whole frame).
+ */
+export function transitionAt(
+  kind: TransitionKind,
+  p: number,
+  width: number,
+  height: number,
+): { alpha: number; dx: number; dy: number; scale: number; clip: { x: number; y: number; w: number; h: number } | null } {
+  const t = Math.min(1, Math.max(0, p));
+  const e = ease(t);
+  if (kind === "slide") return { alpha: 1, dx: Math.round((1 - e) * width), dy: 0, scale: 1, clip: null };
+  if (kind === "zoom") return { alpha: t, dx: 0, dy: 0, scale: 1 + 0.15 * (1 - e), clip: null };
+  if (kind === "wipe") return { alpha: 1, dx: 0, dy: 0, scale: 1, clip: { x: 0, y: 0, w: Math.round(e * width), h: height } };
+  return { alpha: t, dx: 0, dy: 0, scale: 1, clip: null };
+}
+
+/** Kinetic captions: how many of `words` words show at caption progress `p` (all of them by halfway). */
+export function wordsShown(words: number, p: number): number {
+  if (words <= 0) return 0;
+  return Math.max(1, Math.min(words, Math.ceil(words * Math.min(1, Math.max(0, p) / 0.5))));
+}
+
 /** Captions fade in and out over this long; they never cross-fade into each other. */
 export const CAPTION_FADE_MS = 250;
 

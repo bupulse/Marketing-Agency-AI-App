@@ -1,7 +1,10 @@
 // Browser video renderer (docs/CONTENT_VISUALS.md): turns a VideoPlan into an MP4 (WebCodecs + mp4-muxer) or, where
 // WebCodecs is missing, a real-time WebM (MediaRecorder). Client-only; the timeline maths lives in lib/visuals/timeline.
+import { STYLES } from "@/lib/designs/library/styles";
 import { captionAt, frameCount, frameTimestampUs, kenBurns, layersAt, wrapText } from "@/lib/visuals/timeline";
 import { VIDEO_LIMITS, type VideoPlan } from "@/lib/visuals/types";
+import { getVideoLook } from "@/lib/visuals/video-looks";
+import { drawLookFrame } from "./look-renderer";
 import { mixSamples } from "@/lib/voice/mix";
 
 export type VideoSupport = { mp4: boolean; webm: boolean };
@@ -53,25 +56,16 @@ const UNSUPPORTED = "This browser cannot make videos. Try the latest Chrome, Edg
 const TOO_LARGE = "The video came out larger than 8 MB. Try fewer scenes or shorter captions.";
 const FAILED = "We could not make the video in this browser. Please try again.";
 
-const FONTS: Record<VideoPlan["pack"], { family: string; weight: number; upper: boolean }> = {
-  clean: { family: "Inter, system-ui, sans-serif", weight: 800, upper: false },
-  elegant: { family: '"Playfair Display", Georgia, serif', weight: 700, upper: false },
-  bold: { family: 'Anton, Impact, "Arial Narrow", sans-serif', weight: 400, upper: true },
-  warm: { family: 'Nunito, "Trebuchet MS", system-ui, sans-serif', weight: 800, upper: false },
-  playful: { family: 'Nunito, "Trebuchet MS", system-ui, sans-serif', weight: 800, upper: false },
-};
+/** The pack's caption font (lib/designs/library/styles.ts STYLES[pack].video). */
+function captionFont(pack: VideoPlan["pack"]): { family: string; weight: number; upper: boolean } {
+  const v = (STYLES[pack] ?? STYLES.clean).video;
+  return { family: v.css, weight: v.weight, upper: v.upper };
+}
 
 // The pack's caption font and the business-name weight, self-hosted in public/fonts/video (the Fontsource 5.3.0 files
 // of the families the slide designs use, SIL OFL), so a video looks the same in every browser and in the video
 // robot's headless Chrome (docs/VIDEO_ROBOT.md). Latin and Latin Extended only; other scripts use the fallback fonts.
 const FONT_BASE = "/fonts/video";
-const FONT_FILES: Record<VideoPlan["pack"], { family: string; slug: string; weights: number[] }> = {
-  clean: { family: "Inter", slug: "inter", weights: [800, 600] },
-  elegant: { family: "Playfair Display", slug: "playfair-display", weights: [700, 600] },
-  bold: { family: "Anton", slug: "anton", weights: [400] },
-  warm: { family: "Nunito", slug: "nunito", weights: [800, 600] },
-  playful: { family: "Nunito", slug: "nunito", weights: [800, 600] },
-};
 const FONT_RANGES = {
   latin: "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
   "latin-ext": "U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF",
@@ -80,7 +74,7 @@ const FONT_RANGES = {
 /** Loads the plan's fonts into the page (at most `timeoutMs`); a font that does not arrive leaves the fallback font. */
 export async function loadVideoFonts(pack: VideoPlan["pack"], timeoutMs = 4000): Promise<void> {
   if (typeof FontFace === "undefined" || typeof document === "undefined" || !document.fonts) return;
-  const files = FONT_FILES[pack] ?? FONT_FILES.clean;
+  const files = (STYLES[pack] ?? STYLES.clean).video;
   const faces = files.weights.flatMap((weight) =>
     (Object.keys(FONT_RANGES) as (keyof typeof FONT_RANGES)[]).map((subset) => {
       const url = `${FONT_BASE}/${files.slug}-${subset}-${weight}-normal.woff2`;
@@ -98,9 +92,12 @@ export async function loadVideoFonts(pack: VideoPlan["pack"], timeoutMs = 4000):
 
 /** Draws one frame at tMs onto a 2D context (exported so the UI can show a live preview / poster). */
 export function drawFrame(ctx: CanvasRenderingContext2D, plan: VideoPlan, images: Map<string, Img>, tMs: number): void {
+  // A plan with a look (lib/visuals/video-looks.ts) is drawn by its layouts; older plans keep the original slideshow.
+  const look = getVideoLook(plan.look);
+  if (look) return drawLookFrame(ctx, plan, look, images, tMs);
   const W = plan.width;
   const H = plan.height;
-  const font = FONTS[plan.pack] ?? FONTS.clean;
+  const font = captionFont(plan.pack);
   ctx.globalAlpha = 1;
   ctx.fillStyle = plan.colors.background;
   ctx.fillRect(0, 0, W, H);
@@ -193,7 +190,7 @@ export async function renderVideo(plan: VideoPlan, options: RenderOptions): Prom
   if (!support.mp4 && !support.webm) throw new VideoRenderError("unsupported", UNSUPPORTED);
   try {
     checkAbort(options.signal);
-    const [images] = await Promise.all([loadImages(plan, options.photoUrls), loadVideoFonts(plan.pack)]);
+    const [images] = await Promise.all([loadImages(plan, options.photoUrls), loadVideoFonts(getVideoLook(plan.look)?.style ?? plan.pack)]);
     if (support.mp4) {
       const wantsAudio = !!(options.music || options.voiceUrl || options.musicUrl);
       const audio = wantsAudio ? await encodeSoundtrack(plan, options).catch(() => null) : null;
@@ -221,7 +218,7 @@ function checkAbort(signal?: AbortSignal): void {
 /** Loads every scene photo; a failing one is left out (the scene draws the backdrop). */
 async function loadImages(plan: VideoPlan, urls: Record<string, string>): Promise<Map<string, Img>> {
   const images = new Map<string, Img>();
-  const paths = [...new Set(plan.scenes.map((s) => s.photoPath).filter((p): p is string => !!p && !!urls[p]))];
+  const paths = [...new Set([...plan.scenes.map((s) => s.photoPath), plan.logoPath].filter((p): p is string => !!p && !!urls[p]))];
   await Promise.all(
     paths.map(async (path) => {
       try {

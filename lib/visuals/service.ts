@@ -22,11 +22,12 @@ import { createSignedUploadUrl } from "@/lib/storage";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { consumeUsage, getUsageSummary, refundUsage, UsageLimitError } from "@/lib/usage";
 import { directVisual } from "./art-director";
-import { chooseSources, fallbackPlan, PHOTO_TEMPLATES, readImagePlan, slideText, type DirectionContext } from "./direction";
+import { chooseSources, fallbackPlan, listItems, PHOTO_TEMPLATES, readImagePlan, slideText, type DirectionContext } from "./direction";
 import { mediaForPost } from "./post-media";
 import { billableSeconds } from "./timeline";
 import { VIDEO_LIMITS, VISUAL_LIMITS, type ImagePlan, type VideoPlan, type VisualItem, type VisualKind, type VisualSlide } from "./types";
 import { videoDurationMs } from "./duration";
+import { assignDesigns, chooseLook, recentChoices, slideHasPhoto, usableDesign } from "./designs";
 import { moodFor } from "@/lib/music/tracks";
 import { trackForVideo } from "@/lib/music/service";
 import type { Audience } from "./people";
@@ -173,6 +174,16 @@ function kindOf(plan: ImagePlan): VisualKind {
   return plan.slides.length > 1 ? "carousel" : "image";
 }
 
+/** Designs and video looks of the business's latest visuals, newest first (never fails: none on error). */
+export async function recentVisualChoices(businessId: string): Promise<{ designs: string[]; looks: string[] }> {
+  try {
+    const rows = await prisma.contentVisual.findMany({ where: { businessId }, orderBy: { createdAt: "desc" }, take: 24, select: { plan: true } });
+    return recentChoices((rows ?? []).map((r) => r.plan));
+  } catch {
+    return { designs: [], looks: [] };
+  }
+}
+
 /**
  * Plans the visuals of new content: the art director's image or carousel, and a video plan when asked. Saves them as
  * "pending"; the slides are drawn by renderImageStep (the content screen calls it, Autopilot right away).
@@ -182,7 +193,11 @@ export async function planVisuals(input: PlanInput): Promise<{ image: string | n
   const out = { image: null as string | null, video: null as string | null };
   try {
     const ctx = directionContext(input);
-    const plan = input.precomputed ?? (input.rulesOnly || input.image === false ? fallbackPlan(ctx) : await directVisual(ctx, input.owner));
+    const directed = input.precomputed ?? (input.rulesOnly || input.image === false ? fallbackPlan(ctx) : await directVisual(ctx, input.owner));
+    // BuPulse picks each slide's design and the video's look, avoiding the ones the business used lately.
+    const recent = await recentVisualChoices(input.owner.businessId);
+    const seed = "contentId" in input.target ? input.target.contentId : input.target.groupId;
+    const plan = assignDesigns(directed, { recent: recent.designs, seed });
     if (input.aiExhausted) {
       plan.aiExhausted = input.aiExhausted;
       plan.notes = [aiExhaustedNote(input.aiExhausted.refillAt), ...plan.notes];
@@ -202,6 +217,7 @@ export async function planVisuals(input: PlanInput): Promise<{ image: string | n
         photos: input.photos,
         pack: plan.pack,
         colors: input.business.brandColors,
+        look: chooseLook({ pack: plan.pack, template: plan.slides[0]?.template, tips: listItems(input.caption).length >= 3, hasPhoto: input.photos.length > 0, recent: recent.looks, seed }),
       });
       // Music from the library, by the art director's mood (else the angle's or the brand voice's). Empty library: none.
       const mood = plan.mood ?? moodFor({ angle: input.angle?.id, tone: input.business.tone });
@@ -246,6 +262,17 @@ function aiNote(error: unknown): string {
   if (error instanceof AIProviderError) return error.message.includes("allowance") ? error.message : "AI photos are paused for a short while, so this slide uses a free design.";
   if (error instanceof RateLimitError) return "You made many AI photos this hour, so this slide uses a free design.";
   return "The AI photo could not be made, so this slide uses a free design.";
+}
+
+/** The slide's library design, or one that fits when it has none of this style or it needs the photo that failed. */
+function designFor(plan: ImagePlan, slide: VisualSlide, hasPhoto: boolean): string {
+  const kept = usableDesign(slide, plan.pack, hasPhoto);
+  if (kept) return kept;
+  const found = plan.slides.findIndex((s) => s === slide || (s.headline === slide.headline && s.template === slide.template));
+  const at = found >= 0 ? found : 0;
+  const base = found >= 0 ? plan.slides : [slide];
+  const slides = base.map((s, i) => (i === at ? { ...slide, ...(hasPhoto ? {} : { source: "text" as const, aiPhotoPath: null, photoPath: null }) } : s));
+  return assignDesigns({ ...plan, slides }, { recent: [], seed: `${slide.headline}#${at}`, only: new Set([at]) }).slides[at].design!;
 }
 
 /**
@@ -315,6 +342,8 @@ export async function drawSlide(
       kicker: next.kicker,
       photoPath,
       pack: plan.pack,
+      design: (next.design = designFor(plan, slide, !!photoPath)),
+      step: next.step ?? null,
     });
   let made;
   try {
@@ -447,6 +476,8 @@ export interface ImageChanges {
   slides?: { index: number; headline?: string; subline?: string; chip?: string }[];
   /** Another album or gallery photo for one slide. */
   swap?: { index: number; photoPath: string };
+  /** "New design": every slide gets a different design of the same style; photos (AI ones too) are reused. */
+  redesign?: boolean;
 }
 
 /** Applies the owner's changes to the plan and marks the changed slides to be drawn again (free templates only). */
@@ -499,7 +530,20 @@ export async function updateImageVisual(owner: Owner, visualId: string, changes:
     // Designed slides show the cover's photo: a new cover photo redraws them too.
     if (changes.swap.index === 0) plan.slides.forEach((x, i) => x.useCoverPhoto && changed.add(i));
   }
+  if (changes.redesign) plan.slides.forEach((_, i) => changed.add(i));
   if (changed.size === 0) return { status: row.status, plan };
+  // A new style, template or photo gets a fresh design for the changed slides (text edits keep theirs).
+  const redesign = new Set([...changed].filter((i) => {
+    const was = before.slides[i];
+    const now = plan.slides[i];
+    return !!changes.redesign || plan.pack !== before.pack || now.template !== was.template || slideHasPhoto(now) !== slideHasPhoto(was) || !usableDesign(now, plan.pack, slideHasPhoto(now));
+  }));
+  if (redesign.size) {
+    const recent = await recentVisualChoices(owner.businessId);
+    // The designs being replaced are avoided too, so "New design" always looks different.
+    const current = before.slides.flatMap((s) => (s.design ? [s.design] : []));
+    Object.assign(plan, assignDesigns(plan, { recent: [...current, ...recent.designs], seed: `${row.id}:${Date.now()}`, only: redesign }));
+  }
   const old = [...changed].map((i) => before.slides[i]);
   for (const i of changed) plan.slides[i] = { ...plan.slides[i], designId: null, path: null };
   await prisma.contentVisual.update({ where: { id: row.id }, data: { plan: json(plan), items: json(itemsOf(plan)), status: "pending", error: null } });
