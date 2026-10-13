@@ -26,6 +26,7 @@ import { chooseSources, fallbackPlan, PHOTO_TEMPLATES, readImagePlan, slideText,
 import { mediaForPost } from "./post-media";
 import { billableSeconds } from "./timeline";
 import { VIDEO_LIMITS, VISUAL_LIMITS, type ImagePlan, type VideoPlan, type VisualItem, type VisualKind, type VisualSlide } from "./types";
+import { videoDurationMs } from "./duration";
 import { buildVideoPlan, readVideoPlan, withSceneTexts } from "./video-plan";
 
 /** A problem the owner can read and act on (a KnowledgeError, so the content actions show its message). */
@@ -191,6 +192,9 @@ function aiNote(error: unknown): string {
   return "The AI photo could not be made, so this slide uses a free design.";
 }
 
+/** How long one drawing call holds a visual; longer than a call may run, so a crashed call frees it soon after. */
+export const RENDER_LEASE_MS = 2 * 60 * 1000;
+
 export type DrawState = { aiAllowed: boolean; aiMade: number; maxAi: number };
 
 /**
@@ -198,7 +202,15 @@ export type DrawState = { aiAllowed: boolean; aiMade: number; maxAi: number };
  * re-styling), then the template. A photo that cannot be drawn falls back to the text design; only a text design
  * that cannot be drawn either is an error.
  */
-export async function drawSlide(owner: Owner, subjectId: string | null, plan: ImagePlan, slide: VisualSlide, state: DrawState): Promise<VisualSlide> {
+export async function drawSlide(
+  owner: Owner,
+  subjectId: string | null,
+  plan: ImagePlan,
+  slide: VisualSlide,
+  state: DrawState,
+  /** Saves the slide as soon as its AI photo is paid for, so a failed template draw never loses the photo. */
+  onAiPhoto?: (slide: VisualSlide) => Promise<void>,
+): Promise<VisualSlide> {
   const next: VisualSlide = { ...slide };
   let photo: string | null = slide.source === "album" ? slide.photoPath : slide.source === "ai" ? (slide.aiPhotoPath ?? null) : null;
   if (slide.source === "ai" && !slide.aiPhotoPath) {
@@ -209,6 +221,7 @@ export async function drawSlide(owner: Owner, subjectId: string | null, plan: Im
         state.aiMade += 1;
         next.aiPhotoPath = made.path;
         photo = made.path;
+        await onAiPhoto?.({ ...next, source: "ai", designId: null, path: null });
       } catch (error) {
         if (error instanceof UsageLimitError || error instanceof RateLimitError || error instanceof AIProviderError) state.aiAllowed = false;
         else if (!(error instanceof DesignError)) await logError(error, { source: "visuals.ai-photo", level: "warn", businessId: owner.businessId });
@@ -256,25 +269,52 @@ export function itemsOf(plan: ImagePlan): VisualItem[] {
  * the screen calls it again while the visual is pending. Ready when every slide is drawn.
  */
 export async function renderImageStep(owner: Owner, visualId: string, options: { budgetMs?: number; state?: DrawState } = {}) {
+  const first = await ownVisual(owner.businessId, visualId);
+  if (first.kind === "video") throw new VisualError("That is a video. Open it to make it.");
+  if (!readImagePlan(first.plan)) {
+    await prisma.contentVisual.update({ where: { id: first.id }, data: { status: "failed", error: "This picture's plan is damaged. Make it again." } });
+    return { status: "failed" as const, plan: null };
+  }
+  const started = Date.now();
+  const budget = options.budgetMs ?? VISUAL_LIMITS.renderStepMs;
+  // One drawer at a time (two tabs, a double click): the lease is taken atomically, so an AI photo is paid once.
+  const leaseUntil = new Date(started + RENDER_LEASE_MS);
+  const { count: claimed } = await prisma.contentVisual.updateMany({
+    where: { id: first.id, businessId: owner.businessId, OR: [{ renderingUntil: null }, { renderingUntil: { lt: new Date(started) } }] },
+    data: { renderingUntil: leaseUntil },
+  });
+  if (claimed === 0) return { status: "rendering" as const, plan: readImagePlan(first.plan), items: [], error: "This picture is already being drawn." };
+  try {
+    return await drawClaimed(owner, visualId, started, budget, options.state);
+  } finally {
+    // Normally released by the final save; this frees it after an unexpected error too.
+    await prisma.contentVisual.updateMany({ where: { id: first.id, renderingUntil: leaseUntil }, data: { renderingUntil: null } }).catch(() => {});
+  }
+}
+
+/** The drawing itself, once the lease is held. The plan is read again: it may have changed while waiting. */
+async function drawClaimed(owner: Owner, visualId: string, started: number, budget: number, given?: DrawState) {
   const row = await ownVisual(owner.businessId, visualId);
-  if (row.kind === "video") throw new VisualError("That is a video. Open it to make it.");
   const plan = readImagePlan(row.plan);
   if (!plan) {
     await prisma.contentVisual.update({ where: { id: row.id }, data: { status: "failed", error: "This picture's plan is damaged. Make it again." } });
     return { status: "failed" as const, plan: null };
   }
-  const started = Date.now();
-  const budget = options.budgetMs ?? VISUAL_LIMITS.renderStepMs;
   const needsAi = plan.slides.some((s) => s.source === "ai" && !s.aiPhotoPath && !s.path);
-  const state = options.state ?? { aiAllowed: needsAi ? await aiPhotosAvailable(owner) : false, aiMade: 0, maxAi: VISUAL_LIMITS.maxAiPhotosPerVisual };
+  const state = given ?? { aiAllowed: needsAi ? await aiPhotosAvailable(owner) : false, aiMade: 0, maxAi: VISUAL_LIMITS.maxAiPhotosPerVisual };
   const subjectId = await subjectOf(row);
   let error: string | null = null;
 
   for (let i = 0; i < plan.slides.length; i++) {
     if (plan.slides[i].path) continue;
     if (Date.now() - started > budget) break;
+    const index = i;
+    const keepPhoto = async (slide: VisualSlide) => {
+      plan.slides[index] = slide;
+      await prisma.contentVisual.update({ where: { id: row.id }, data: { plan: json(plan) } });
+    };
     try {
-      plan.slides[i] = await drawSlide(owner, subjectId, plan, plan.slides[i], state);
+      plan.slides[i] = await drawSlide(owner, subjectId, plan, plan.slides[i], state, keepPhoto);
     } catch (e) {
       if (e instanceof RateLimitError) error = "You made a lot of designs this hour. Try again in a little while.";
       else if (e instanceof DesignError) error = e.message;
@@ -291,7 +331,7 @@ export async function renderImageStep(owner: Owner, visualId: string, options: {
   const items = itemsOf(plan);
   await prisma.contentVisual.update({
     where: { id: row.id },
-    data: { plan: json(plan), items: json(items), kind: kindOf(plan), status, error, ...(done ? { renderedAt: new Date() } : {}) },
+    data: { plan: json(plan), items: json(items), kind: kindOf(plan), status, error, renderingUntil: null, ...(done ? { renderedAt: new Date() } : {}) },
   });
   // An Autopilot group's posts take the redrawn picture.
   if (done && row.groupId) await attachToGroup(owner.businessId, row.groupId, { feed: true }).catch((e) => logError(e, { source: "visuals.attach", level: "warn", businessId: owner.businessId }));
@@ -491,6 +531,11 @@ async function videoRow(owner: Owner, visualId: string) {
   return { row, plan };
 }
 
+/** Uploads a company may have allowed and not yet confirmed at once. */
+export const MAX_OPEN_UPLOADS = 3;
+/** How long an allowed upload is held (and counted) before the clean-up lets it go. */
+export const UPLOAD_RESERVATION_MS = 60 * 60 * 1000;
+
 /** Video seconds left this month (plan limit minus what was used). */
 async function secondsLeft(userId: string): Promise<number> {
   const usage = await getUsageSummary(userId);
@@ -509,29 +554,23 @@ export async function prepareVideoUpload(owner: Owner, visualId: string, file: {
   if (!(file.durationMs > 0) || file.durationMs > VIDEO_LIMITS.maxMs + 1000) throw new VisualError("Videos can be at most 30 seconds long.");
   const seconds = billableSeconds(Math.max(file.durationMs, plan.totalMs));
   if ((await secondsLeft(owner.userId)) < seconds) throw new VisualError("Your plan's video seconds for this month are used up. Use the picture instead, or add more video to your plan.");
-  const problem = quotaProblem(await mediaUsage(owner.businessId), { count: 1, bytes: file.bytes });
+  const now = new Date();
+  const open = await prisma.contentVisual.count({ where: { businessId: owner.businessId, kind: "video", uploadExpiresAt: { gt: now }, id: { not: visualId } } });
+  if (open >= MAX_OPEN_UPLOADS) throw new VisualError("Other videos are being saved right now. Wait for them to finish, then try again.");
+  // The reservation is counted at the most a video may weigh, whatever size the browser announced.
+  const problem = quotaProblem(await mediaUsage(owner.businessId), { count: 1, bytes: VIDEO_LIMITS.maxBytes });
   if (problem) throw new VisualError(problem);
   try {
-    await assertPlatformRoom(file.bytes);
+    await assertPlatformRoom(VIDEO_LIMITS.maxBytes);
   } catch (error) {
     if (error instanceof MediaError) throw new VisualError(error.message);
     throw error;
   }
   const path = videoPath(owner.userId, visualId, file.mimeType);
   const target = await createSignedUploadUrl("media", path);
+  // One open upload per visual: a newer one replaces it (the clean-up deletes a file nobody confirmed).
+  await prisma.contentVisual.update({ where: { id: visualId }, data: { uploadPath: target.path, uploadBytes: VIDEO_LIMITS.maxBytes, uploadExpiresAt: new Date(now.getTime() + UPLOAD_RESERVATION_MS) } });
   return { path: target.path, token: target.token, seconds };
-}
-
-async function readHead(path: string): Promise<Uint8Array | null> {
-  try {
-    const { data } = await createAdminClient().storage.from("media").createSignedUrl(path, 60);
-    if (!data?.signedUrl) return null;
-    const res = await fetch(data.signedUrl, { headers: { Range: "bytes=0-31" } });
-    if (!res.ok) return null;
-    return new Uint8Array(await res.arrayBuffer()).subarray(0, 32);
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -539,21 +578,31 @@ async function readHead(path: string): Promise<Uint8Array | null> {
  * now), then it replaces the visual's old video and goes on the Autopilot posts of its group. A rejected file is deleted.
  */
 export async function finalizeVideo(owner: Owner, visualId: string, input: { path: string; durationMs: number }) {
-  const { row, plan } = await videoRow(owner, visualId);
+  const { row } = await videoRow(owner, visualId);
   if (!isOwnVideoPath(owner.userId, visualId, input.path)) throw new VisualError("That upload could not be used.");
+  // Asked twice (a lost answer, a double click): the video is already this file, nothing is counted again.
+  if (row.status === "ready" && readItems(row.items)[0]?.path === input.path) return { path: input.path, seconds: row.seconds };
+  if (!(await videoAvailable(owner.businessId))) throw new VisualError("Videos are not in your plan. Add video to your plan to make them.");
   const bucket = createAdminClient().storage.from("media");
   const reject = async (message: string): Promise<never> => {
     await bucket.remove([input.path]).catch(() => {});
+    await prisma.contentVisual.updateMany({ where: { id: row.id, uploadPath: input.path }, data: { uploadPath: null, uploadBytes: 0, uploadExpiresAt: null } }).catch(() => {});
     throw new VisualError(message);
   };
   const info = await bucket.info(input.path);
   if (info.error || !info.data) throw new VisualError("We could not find the uploaded video. Please try again.");
   const { size, contentType } = info.data;
   if (!size || size > VIDEO_LIMITS.maxBytes) return reject("The video is larger than 8 MB.");
-  const head = await readHead(input.path);
-  const sniffed = head && sniffVideo(head);
+  const download = await bucket.download(input.path);
+  const bytes = download.data ? new Uint8Array(await download.data.arrayBuffer()) : null;
+  if (!bytes || bytes.length > VIDEO_LIMITS.maxBytes) return reject("We could not read the uploaded video. Please try again.");
+  const sniffed = sniffVideo(bytes.subarray(0, 32));
   if (!sniffed || (contentType && sniffed !== contentType) || !input.path.endsWith(`.${VIDEO_TYPES[sniffed]}`)) return reject("That file is not an MP4 or WebM video.");
-  const seconds = billableSeconds(Math.max(Math.min(input.durationMs, VIDEO_LIMITS.maxMs), plan.totalMs));
+  // The length is read from the file and billed as it is; the browser's figure is not trusted.
+  const durationMs = videoDurationMs(bytes, sniffed);
+  if (durationMs === null || !(durationMs > 0)) return reject("We could not read the video's length. Please make it again.");
+  if (durationMs > VIDEO_LIMITS.maxMs + 500) return reject("Videos can be at most 30 seconds long.");
+  const seconds = billableSeconds(durationMs);
   try {
     await consumeUsage(owner.userId, "videoSeconds", seconds);
   } catch (error) {
@@ -563,7 +612,7 @@ export async function finalizeVideo(owner: Owner, visualId: string, input: { pat
   const previous = readItems(row.items);
   await prisma.contentVisual.update({
     where: { id: row.id },
-    data: { status: "ready", error: null, items: json([{ path: input.path }]), bytes: size, seconds, renderedAt: new Date() },
+    data: { status: "ready", error: null, items: json([{ path: input.path }]), bytes: size, seconds, renderedAt: new Date(), uploadPath: null, uploadBytes: 0, uploadExpiresAt: null },
   });
   for (const old of previous) {
     if (old.path !== input.path && !(await inUse(owner.businessId, old.path))) await bucket.remove([old.path]).catch(() => {});

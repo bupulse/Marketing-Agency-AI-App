@@ -856,10 +856,17 @@ model ContentVisual {
   seconds    Int               @default(0) // the video's length, counted toward the plan's video seconds
   error      String?
   renderedAt DateTime?
+  // A render in progress (lease, so two tabs cannot both pay for the same AI photo).
+  renderingUntil  DateTime?
+  // A video upload the server allowed and has not confirmed yet: counted toward the quotas until it expires.
+  uploadPath      String?
+  uploadBytes     Int       @default(0)
+  uploadExpiresAt DateTime?
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
 
   @@index([contentId])
+  @@index([uploadExpiresAt])
   @@index([groupId])
   @@index([businessId, kind])
 }

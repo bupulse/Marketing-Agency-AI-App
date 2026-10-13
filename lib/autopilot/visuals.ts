@@ -73,14 +73,19 @@ async function carouselFor(group: PlannedGroup, written: WrittenGroup, ctx: Visu
   plan.slides[0] = { ...plan.slides[0], headline: written.image.headline || plan.slides[0].headline, subline: written.image.subline || plan.slides[0].subline, chip: written.image.chip || plan.slides[0].chip, kicker: written.image.kicker };
   const state: DrawState = { aiAllowed: dctx.aiAllowed, aiMade: run.aiMade, maxAi: VISUAL_LIMITS.maxAiPhotosPerRun };
   const owner = { userId: ctx.userId, businessId: ctx.businessId, service: ctx.service };
-  for (let i = 0; i < plan.slides.length; i++) {
-    const slide = (plan.slides[i] = await drawSlide(owner, group.project?.id ?? null, plan, plan.slides[i], state));
-    run.renders += 1;
-    // Remembered like the single images, so the next weeks prefer photos that were not used recently.
-    if (slide.source === "album" && slide.photoPath && slide.designId) await prisma.design.update({ where: { id: slide.designId }, data: { prompt: `${PHOTO_MARK}${slide.photoPath}` } }).catch(() => {});
+  try {
+    for (let i = 0; i < plan.slides.length; i++) {
+      // Counted before drawing: a draw that throws still used the run's budget (and maybe an AI photo).
+      run.renders += 1;
+      const slide = (plan.slides[i] = await drawSlide(owner, group.project?.id ?? null, plan, plan.slides[i], state));
+      // Remembered like the single images, so the next weeks prefer photos that were not used recently.
+      if (slide.source === "album" && slide.photoPath && slide.designId) await prisma.design.update({ where: { id: slide.designId }, data: { prompt: `${PHOTO_MARK}${slide.photoPath}` } }).catch(() => {});
+    }
+  } finally {
+    // The run's caps hold even when a slide failed half-way (its AI photo was still paid for).
+    run.aiMade = state.aiMade;
+    if (!state.aiAllowed && dctx.aiAllowed) run.aiStopped = true;
   }
-  run.aiMade = state.aiMade;
-  if (!state.aiAllowed && dctx.aiAllowed) run.aiStopped = true;
   const items = itemsOf(plan);
   await prisma.contentVisual.create({ data: { businessId: ctx.businessId, groupId: group.groupId, kind: "carousel", status: "ready", plan: json(plan), items: json(items), renderedAt: new Date() } });
   return items.map((i) => i.path);

@@ -14,12 +14,16 @@ CREATE TABLE "ContentVisual" (
     "seconds" INTEGER NOT NULL DEFAULT 0,
     "error" TEXT,
     "renderedAt" TIMESTAMP(3),
+    "renderingUntil" TIMESTAMP(3),
+    "uploadPath" TEXT,
+    "uploadBytes" INTEGER NOT NULL DEFAULT 0,
+    "uploadExpiresAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "ContentVisual_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "ContentVisual_kind_check" CHECK ("kind" IN ('image', 'carousel', 'video')),
     CONSTRAINT "ContentVisual_status_check" CHECK ("status" IN ('pending', 'ready', 'failed')),
-    CONSTRAINT "ContentVisual_bytes_check" CHECK ("bytes" >= 0 AND "seconds" >= 0),
+    CONSTRAINT "ContentVisual_bytes_check" CHECK ("bytes" >= 0 AND "seconds" >= 0 AND "uploadBytes" >= 0),
     -- Every visual belongs to a content version or an Autopilot post group.
     CONSTRAINT "ContentVisual_owner_check" CHECK ("contentId" IS NOT NULL OR "groupId" IS NOT NULL)
 );
@@ -27,6 +31,7 @@ CREATE TABLE "ContentVisual" (
 CREATE INDEX "ContentVisual_contentId_idx" ON "ContentVisual"("contentId");
 CREATE INDEX "ContentVisual_groupId_idx" ON "ContentVisual"("groupId");
 CREATE INDEX "ContentVisual_businessId_kind_idx" ON "ContentVisual"("businessId", "kind");
+CREATE INDEX "ContentVisual_uploadExpiresAt_idx" ON "ContentVisual"("uploadExpiresAt");
 
 ALTER TABLE "ContentVisual" ADD CONSTRAINT "ContentVisual_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "ContentVisual" ADD CONSTRAINT "ContentVisual_contentId_fkey" FOREIGN KEY ("contentId") REFERENCES "GeneratedContent"("id") ON DELETE CASCADE ON UPDATE CASCADE;

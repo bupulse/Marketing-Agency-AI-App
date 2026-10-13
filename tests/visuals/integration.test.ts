@@ -109,11 +109,16 @@ describe("the art director's prompt", () => {
 });
 
 describe("media quota counts rendered videos", () => {
-  it("adds the company's videos to its photos", async () => {
+  it("adds the company's videos, and the uploads it allowed but has not confirmed (at 8 MB each), to its photos", async () => {
     mocks.prisma.mediaAsset.aggregate.mockResolvedValue({ _count: { _all: 10 }, _sum: { bytes: 1000 } });
-    mocks.prisma.contentVisual.aggregate.mockResolvedValue({ _count: { _all: 2 }, _sum: { bytes: 5000 } });
-    expect(await mediaUsage("biz1")).toEqual({ count: 12, bytes: 6000 });
-    expect(mocks.prisma.contentVisual.aggregate.mock.calls[0][0].where).toMatchObject({ kind: "video", businessId: "biz1" });
+    mocks.prisma.contentVisual.aggregate.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
+      where.uploadExpiresAt ? { _count: { _all: 1 }, _sum: { uploadBytes: 8 * 1024 * 1024 } } : { _count: { _all: 2 }, _sum: { bytes: 5000 } },
+    );
+    expect(await mediaUsage("biz1")).toEqual({ count: 13, bytes: 6000 + 8 * 1024 * 1024 });
+    const [stored, reserved] = mocks.prisma.contentVisual.aggregate.mock.calls.map(([a]) => a.where);
+    expect(stored).toMatchObject({ kind: "video", businessId: "biz1", bytes: { gt: 0 } });
+    expect(reserved).toMatchObject({ kind: "video", businessId: "biz1" });
+    expect(reserved.uploadExpiresAt.gt).toBeInstanceOf(Date);
   });
 });
 
@@ -156,6 +161,17 @@ describe("Autopilot group visuals", () => {
     mocks.prisma.contentVisual.create.mockClear();
     await makeGroupVisuals(g, w, { ...ctx, videoAllowed: false }, newRunState());
     expect(mocks.prisma.contentVisual.create.mock.calls.map(([a]) => a.data.kind)).toEqual(["image"]);
+  });
+
+  it("the run's caps count a slide that failed half-way (its AI photo was paid)", async () => {
+    mocks.generate.mockResolvedValue(answer([{ ...s("Cover", "ai"), scene: "shoes" }, s("With jeans"), s("With a dress")], "carousel"));
+    mocks.createAiDesign.mockResolvedValue({ id: "ai1", path: `${U}/designs/ai1.png` });
+    mocks.createTemplateDesign.mockRejectedValueOnce(new Error("satori crashed"));
+    mocks.makeGroupImages.mockResolvedValue({ designs: {}, aiStopped: false, notes: [], aiUsed: false });
+    const run = newRunState();
+    await makeGroupVisuals(group({ photos: [] }), written("How to wear it:\n1. With jeans\n2. With a dress\n3. For the gym"), { ...ctx, useAiImages: true }, run);
+    expect(run.aiMade).toBe(1);
+    expect(run.renders).toBe(1);
   });
 
   it("a recording failure never fails the group", async () => {

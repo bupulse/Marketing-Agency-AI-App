@@ -82,6 +82,11 @@ function ImagePart({ contentId, visual, album }: { contentId?: string; visual: V
           toast(r.error, "error");
           break;
         }
+        // Another tab or call is drawing it: wait for it instead of drawing twice.
+        if (r.status === "rendering") {
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          continue;
+        }
         setDrawing({ drawn: r.drawn, total: r.total });
         if (r.status !== "pending") break;
       }

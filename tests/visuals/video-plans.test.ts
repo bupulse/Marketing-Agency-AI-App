@@ -10,16 +10,17 @@ const mocks = vi.hoisted(() => ({
     post: { findMany: vi.fn(), findFirst: vi.fn() },
   },
   remove: vi.fn(),
+  list: vi.fn(),
   logError: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/errors", () => ({ logError: mocks.logError }));
-vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ storage: { from: () => ({ remove: mocks.remove }) } }) }));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ storage: { from: () => ({ remove: mocks.remove, list: mocks.list }) } }) }));
 vi.mock("@/lib/entitlements", () => ({ hasFeature: vi.fn(), featureStatus: vi.fn() }));
 
 import { ADDONS, quoteOffer, type AddonPriceRow, type OfferBase } from "@/lib/offers/shared";
 import { SEED_PLANS, TRIAL_VIDEO_SECONDS, VIDEO_PLAN_SECONDS } from "@/lib/plans";
-import { purgePublishedVideos, videoExpired } from "@/lib/visuals/cleanup";
+import { purgeAbandonedUploads, purgePublishedVideos, videoExpired } from "@/lib/visuals/cleanup";
 import { releaseContentVisuals, releaseSubjectVideos } from "@/lib/visuals/service";
 import { VIDEO_REMOVED_NOTE } from "@/lib/visuals/types";
 
@@ -142,5 +143,54 @@ describe("video files leave with their product, campaign or content", () => {
     await releaseContentVisuals({ userId: "u", businessId: "b1" }, ["c1"]);
     expect(mocks.remove).toHaveBeenCalledWith(["u/videos/v1-1111.mp4"]);
     expect(mocks.prisma.contentVisual.deleteMany).toHaveBeenCalledWith({ where: { id: "v1", businessId: "b1" } });
+  });
+});
+
+describe("uploads that were never confirmed", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.remove.mockResolvedValue({ data: [], error: null });
+    mocks.prisma.contentVisual.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  it("expired reservations are let go and their unconfirmed file deleted; a file that became the video stays", async () => {
+    mocks.prisma.contentVisual.findMany
+      .mockResolvedValueOnce([
+        { id: "a", uploadPath: "u/videos/a-1111.mp4", items: [] },
+        { id: "b", uploadPath: "u/videos/b-2222.mp4", items: [{ path: "u/videos/b-2222.mp4" }] },
+      ])
+      .mockResolvedValueOnce([]);
+    const r = await purgeAbandonedUploads(now);
+    expect(r).toEqual({ reservations: 2, orphans: 0 });
+    expect(mocks.remove).toHaveBeenCalledTimes(1);
+    expect(mocks.remove).toHaveBeenCalledWith(["u/videos/a-1111.mp4"]);
+    expect(mocks.prisma.contentVisual.updateMany).toHaveBeenCalledWith({ where: { id: "a", uploadExpiresAt: { lte: now } }, data: { uploadPath: null, uploadBytes: 0, uploadExpiresAt: null } });
+  });
+
+  it("files in a user's videos folder that nothing refers to are deleted after an hour", async () => {
+    const old = new Date(now.getTime() - 2 * 3600 * 1000).toISOString();
+    const fresh = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+    mocks.prisma.contentVisual.findMany
+      .mockResolvedValueOnce([]) // no expired reservations
+      .mockResolvedValueOnce([{ businessId: "b1", business: { userId: "u" } }])
+      .mockResolvedValueOnce([
+        { items: [{ path: "u/videos/kept-1111.mp4" }], uploadPath: null, uploadExpiresAt: null },
+        { items: [], uploadPath: "u/videos/uploading-2222.mp4", uploadExpiresAt: new Date(now.getTime() + 60_000) },
+      ]);
+    mocks.list.mockResolvedValue({
+      data: [
+        { id: "1", name: "kept-1111.mp4", created_at: old },
+        { id: "2", name: "uploading-2222.mp4", created_at: old },
+        { id: "3", name: "orphan-3333.mp4", created_at: old },
+        { id: "4", name: "waiting-4444.mp4", created_at: old },
+        { id: "5", name: "new-5555.mp4", created_at: fresh },
+      ],
+      error: null,
+    });
+    mocks.prisma.post.findMany.mockResolvedValue([{ mediaPaths: ["u/videos/waiting-4444.mp4"] }]);
+    const r = await purgeAbandonedUploads(now);
+    expect(mocks.list).toHaveBeenCalledWith("u/videos", { limit: 1000 });
+    expect(mocks.remove).toHaveBeenCalledWith(["u/videos/orphan-3333.mp4"]);
+    expect(r.orphans).toBe(1);
   });
 });

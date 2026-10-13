@@ -65,3 +65,52 @@ export async function purgePublishedVideos(now = new Date(), options: { budgetMs
     if (rows.length < PAGE || Date.now() - started > budget) return result;
   }
 }
+
+/** A file in a user's videos folder is left alone for this long: it may be an upload still on its way. */
+export const ORPHAN_AGE_MS = 60 * 60 * 1000;
+const ORPHAN_USERS_PER_RUN = 200;
+
+export interface UploadCleanupResult {
+  reservations: number;
+  orphans: number;
+}
+
+/**
+ * Uploads that were allowed but never confirmed: expired reservations are let go (and their file deleted unless it
+ * became the video), and files in `<userId>/videos/` that no visual or waiting post refers to are deleted once they
+ * are an hour old. So a closed tab or a browser that skipped the confirmation cannot fill the storage.
+ */
+export async function purgeAbandonedUploads(now = new Date()): Promise<UploadCleanupResult> {
+  const result: UploadCleanupResult = { reservations: 0, orphans: 0 };
+  const bucket = createAdminClient().storage.from("media");
+
+  const expired = await prisma.contentVisual.findMany({ where: { uploadExpiresAt: { lte: now } }, take: 500, select: { id: true, uploadPath: true, items: true } });
+  for (const row of expired) {
+    const kept = readItems(row.items).some((i) => i.path === row.uploadPath);
+    if (row.uploadPath && !kept) await bucket.remove([row.uploadPath]).catch(() => {});
+    await prisma.contentVisual.updateMany({ where: { id: row.id, uploadExpiresAt: { lte: now } }, data: { uploadPath: null, uploadBytes: 0, uploadExpiresAt: null } });
+    result.reservations += 1;
+  }
+
+  const businesses = await prisma.contentVisual.findMany({ where: { kind: "video" }, distinct: ["businessId"], take: ORPHAN_USERS_PER_RUN, select: { businessId: true, business: { select: { userId: true } } } });
+  for (const { businessId, business } of businesses) {
+    const folder = `${business.userId}/videos`;
+    const { data: files, error } = await bucket.list(folder, { limit: 1000 });
+    if (error || !files?.length) continue;
+    const old = files.filter((f) => f.id && f.created_at && now.getTime() - new Date(f.created_at).getTime() > ORPHAN_AGE_MS).map((f) => `${folder}/${f.name}`);
+    if (old.length === 0) continue;
+    const visuals = await prisma.contentVisual.findMany({ where: { businessId, kind: "video" }, select: { items: true, uploadPath: true, uploadExpiresAt: true } });
+    const known = new Set(visuals.flatMap((v) => [...readItems(v.items).map((i) => i.path), ...(v.uploadPath && v.uploadExpiresAt && v.uploadExpiresAt > now ? [v.uploadPath] : [])]));
+    const candidates = old.filter((p) => !known.has(p));
+    if (candidates.length === 0) continue;
+    // A post that has not gone out yet keeps its file whatever happened to the visual.
+    const waiting = await prisma.post.findMany({ where: { businessId, mediaPaths: { hasSome: candidates }, status: { in: [...WAITING_STATUSES] } }, select: { mediaPaths: true } });
+    const held = new Set(waiting.flatMap((p) => p.mediaPaths));
+    const orphans = candidates.filter((p) => !held.has(p));
+    if (orphans.length === 0) continue;
+    const { error: removeError } = await bucket.remove(orphans);
+    if (removeError) await logError(new Error(`Could not remove orphan videos: ${removeError.message}`), { source: "visuals.cleanup.orphans", level: "warn", businessId });
+    else result.orphans += orphans.length;
+  }
+  return result;
+}

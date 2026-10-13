@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   prisma: {
-    contentVisual: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn() },
+    contentVisual: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn(), count: vi.fn() },
     generatedContent: { findFirst: vi.fn() },
     post: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), updateMany: vi.fn() },
     connection: { findMany: vi.fn() },
@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
   mediaUsage: vi.fn(),
   assertPlatformRoom: vi.fn(),
   signedUpload: vi.fn(),
-  storage: { remove: vi.fn(), info: vi.fn(), createSignedUrl: vi.fn() },
+  storage: { remove: vi.fn(), info: vi.fn(), download: vi.fn() },
   generate: vi.fn(),
 }));
 
@@ -56,6 +56,12 @@ import { fallbackPlan } from "@/lib/visuals/direction";
 import { attachToGroup, drawSlide, finalizeVideo, planVisuals, prepareVideoUpload, renderImageStep, sniffVideo, VisualError, type PlanInput } from "@/lib/visuals/service";
 import type { ImagePlan, VisualSlide } from "@/lib/visuals/types";
 import { buildVideoPlan } from "@/lib/visuals/video-plan";
+import { mp4Bytes } from "./video-bytes";
+
+const upload = (bytes: Uint8Array, type = "video/mp4") => {
+  mocks.storage.info.mockResolvedValue({ data: { size: bytes.length, contentType: type } });
+  mocks.storage.download.mockResolvedValue({ data: new Blob([bytes.slice().buffer]), error: null });
+};
 
 const U = "user-1";
 const owner = { userId: U, businessId: "biz1" };
@@ -102,6 +108,8 @@ beforeEach(() => {
   mocks.spend.mockResolvedValue({ totalUsd: 0, widgetUsd: 0, ownerUsd: 0, allowanceUsd: 3, widgetCapUsd: 1.5 });
   mocks.mediaUsage.mockResolvedValue({ count: 0, bytes: 0 });
   mocks.storage.remove.mockResolvedValue({ data: [], error: null });
+  mocks.prisma.contentVisual.updateMany.mockResolvedValue({ count: 1 });
+  mocks.prisma.contentVisual.count.mockResolvedValue(0);
   mocks.signedUpload.mockImplementation(async (_b: string, path: string) => ({ path, token: "tok" }));
 });
 
@@ -181,7 +189,7 @@ describe("drawSlide (image sources and fallbacks)", () => {
 
 describe("renderImageStep", () => {
   it("draws every slide and marks a carousel ready with its items in order", async () => {
-    mocks.prisma.contentVisual.findFirst.mockResolvedValueOnce({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "carousel", plan: plan([slide(), slide({ source: "text", photoPath: null, template: "announcement" }), slide({ source: "text", photoPath: null, template: "announcement" })]) });
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "carousel", plan: plan([slide(), slide({ source: "text", photoPath: null, template: "announcement" }), slide({ source: "text", photoPath: null, template: "announcement" })]) });
     const r = await renderImageStep(owner, "v1");
     expect(r.status).toBe("ready");
     const data = mocks.prisma.contentVisual.update.mock.calls[0][0].data;
@@ -189,8 +197,39 @@ describe("renderImageStep", () => {
     expect(data.items.map((i: { designId: string }) => i.designId)).toEqual(["d1", "d2", "d3"]);
   });
 
+  it("a second call while one is drawing answers 'rendering' and pays for nothing", async () => {
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: plan([slide({ source: "ai" })]) });
+    mocks.prisma.contentVisual.updateMany.mockResolvedValueOnce({ count: 0 });
+    const r = await renderImageStep(owner, "v1");
+    expect(r.status).toBe("rendering");
+    expect(mocks.createAiDesign).not.toHaveBeenCalled();
+    expect(mocks.createTemplateDesign).not.toHaveBeenCalled();
+    const lease = mocks.prisma.contentVisual.updateMany.mock.calls[0][0];
+    expect(lease.where).toMatchObject({ id: "v1", businessId: "biz1" });
+    expect(lease.data.renderingUntil).toBeInstanceOf(Date);
+  });
+
+  it("a paid AI photo is saved before the template is drawn, so a failed draw keeps it and the retry reuses it", async () => {
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: plan([slide({ source: "ai", photoPath: null })]) });
+    mocks.createTemplateDesign.mockRejectedValueOnce(new Error("satori crashed"));
+    const r = await renderImageStep(owner, "v1");
+    expect(r.status).toBe("failed");
+    const saves = mocks.prisma.contentVisual.update.mock.calls.map(([a]) => a.data.plan?.slides?.[0]?.aiPhotoPath);
+    expect(saves[0]).toBe(`${U}/designs/ai1.png`); // saved right after the photo, before drawing
+    expect(saves.at(-1)).toBe(`${U}/designs/ai1.png`);
+    // The lease is released.
+    expect(mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data.renderingUntil).toBeNull();
+
+    const kept = mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data.plan;
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: kept });
+    const again = await renderImageStep(owner, "v1");
+    expect(again.status).toBe("ready");
+    expect(mocks.createAiDesign).toHaveBeenCalledTimes(1);
+    expect(mocks.createTemplateDesign.mock.calls.at(-1)![0].photoPath).toBe(`${U}/designs/ai1.png`);
+  });
+
   it("stops when its time is used and stays pending (the screen calls again)", async () => {
-    mocks.prisma.contentVisual.findFirst.mockResolvedValueOnce({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: plan([slide()]) });
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: plan([slide()]) });
     const r = await renderImageStep(owner, "v1", { budgetMs: -1 });
     expect(r.status).toBe("pending");
     expect(mocks.createTemplateDesign).not.toHaveBeenCalled();
@@ -214,6 +253,21 @@ describe("video upload checks", () => {
     expect(r.seconds).toBe(Math.ceil(videoPlan.totalMs / 1000));
   });
 
+  it("reserves the upload at 8 MB until it is confirmed, and caps open uploads per company", async () => {
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row);
+    await prepareVideoUpload(owner, "vid1", file);
+    const data = mocks.prisma.contentVisual.update.mock.calls[0][0].data;
+    expect(data).toMatchObject({ uploadBytes: 8 * 1024 * 1024 });
+    expect(data.uploadPath).toMatch(/^user-1\/videos\/vid1-/);
+    expect(data.uploadExpiresAt.getTime()).toBeGreaterThan(Date.now() + 59 * 60 * 1000);
+    expect(mocks.assertPlatformRoom).toHaveBeenCalledWith(8 * 1024 * 1024);
+    mocks.prisma.contentVisual.count.mockResolvedValueOnce(3);
+    await expect(prepareVideoUpload(owner, "vid1", file)).rejects.toThrow(/being saved/);
+    // A company at 2 GB minus 4 MB cannot reserve 8 MB, even for a small announced file.
+    mocks.mediaUsage.mockResolvedValueOnce({ count: 0, bytes: 2 * 1024 ** 3 - 4 * 1024 * 1024 });
+    await expect(prepareVideoUpload(owner, "vid1", { ...file, bytes: 1000 })).rejects.toThrow(/out of space/);
+  });
+
   it("refuses without the video feature, too big, too long, no seconds left, or a full gallery", async () => {
     mocks.prisma.contentVisual.findFirst.mockResolvedValue(row);
     mocks.featureStatus.mockResolvedValueOnce("not_in_plan");
@@ -229,42 +283,54 @@ describe("video upload checks", () => {
     expect(mocks.signedUpload).not.toHaveBeenCalled();
   });
 
-  it("finalize: checks the file's own bytes, counts the seconds, and puts the video on the group's video posts", async () => {
+  it("finalize: reads the real length from the file, bills it, and puts the video on the group's video posts", async () => {
     mocks.prisma.contentVisual.findFirst.mockResolvedValue(row);
-    mocks.storage.info.mockResolvedValue({ data: { size: 3_000_000, contentType: "video/mp4" } });
-    mocks.storage.createSignedUrl.mockResolvedValue({ data: { signedUrl: "https://x/video" } });
-    const head = new Uint8Array([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(head)));
+    upload(mp4Bytes(14_200));
     mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "video", status: "ready", items: [{ path: `${U}/videos/vid1-abcd1.mp4` }] }]);
     mocks.prisma.post.findMany.mockResolvedValue([
       { id: "ig", network: "instagram", format: "SCRIPT", mediaPaths: [], status: "PENDING_APPROVAL", lastError: null },
       { id: "tt", network: "tiktok", format: "SCRIPT", mediaPaths: [], status: "PENDING_APPROVAL", lastError: null },
       { id: "li", network: "linkedin", format: "POST", mediaPaths: [`${U}/designs/x.png`], status: "PENDING_APPROVAL", lastError: null },
     ]);
-    const r = await finalizeVideo(owner, "vid1", { path: `${U}/videos/vid1-abcd1.mp4`, durationMs: videoPlan.totalMs });
-    expect(r.seconds).toBe(Math.ceil(videoPlan.totalMs / 1000));
-    expect(mocks.consumeUsage).toHaveBeenCalledWith(U, "videoSeconds", r.seconds);
-    expect(mocks.prisma.contentVisual.update.mock.calls[0][0].data).toMatchObject({ status: "ready", bytes: 3_000_000, items: [{ path: `${U}/videos/vid1-abcd1.mp4` }] });
+    // The browser says 2 s; the file says 14.2 s: 15 seconds are billed.
+    const r = await finalizeVideo(owner, "vid1", { path: `${U}/videos/vid1-abcd1.mp4`, durationMs: 2000 });
+    expect(r.seconds).toBe(15);
+    expect(mocks.consumeUsage).toHaveBeenCalledWith(U, "videoSeconds", 15);
+    expect(mocks.prisma.contentVisual.update.mock.calls[0][0].data).toMatchObject({ status: "ready", seconds: 15, items: [{ path: `${U}/videos/vid1-abcd1.mp4` }], uploadPath: null, uploadBytes: 0, uploadExpiresAt: null });
     const updates = Object.fromEntries(mocks.prisma.post.updateMany.mock.calls.map(([a]) => [a.where.id, a.data]));
     expect(updates.ig).toMatchObject({ format: "POST", mediaPaths: [`${U}/videos/vid1-abcd1.mp4`] });
     expect(updates.tt).toMatchObject({ format: "SCRIPT", mediaPaths: [`${U}/videos/vid1-abcd1.mp4`] });
     expect(updates.li).toBeUndefined();
-    vi.unstubAllGlobals();
   });
 
-  it("finalize refuses (and deletes) a file that is not a video, another visual's path, or one over the seconds", async () => {
+  it("finalize is idempotent: the same file again is not billed twice", async () => {
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...row, status: "ready", seconds: 15, items: [{ path: `${U}/videos/vid1-abcd1.mp4` }] });
+    const r = await finalizeVideo(owner, "vid1", { path: `${U}/videos/vid1-abcd1.mp4`, durationMs: 15_000 });
+    expect(r).toEqual({ path: `${U}/videos/vid1-abcd1.mp4`, seconds: 15 });
+    expect(mocks.consumeUsage).not.toHaveBeenCalled();
+    expect(mocks.storage.download).not.toHaveBeenCalled();
+  });
+
+  it("finalize re-checks the plan, and refuses (and deletes) other paths, non-videos, videos over 30.5 s, unreadable lengths, or no seconds left", async () => {
     mocks.prisma.contentVisual.findFirst.mockResolvedValue(row);
     await expect(finalizeVideo(owner, "vid1", { path: `${U}/videos/other-abcd1.mp4`, durationMs: 1000 })).rejects.toThrow(/could not be used/);
-    mocks.storage.info.mockResolvedValue({ data: { size: 1000, contentType: "video/mp4" } });
-    mocks.storage.createSignedUrl.mockResolvedValue({ data: { signedUrl: "https://x/video" } });
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]))));
-    await expect(finalizeVideo(owner, "vid1", { path: `${U}/videos/vid1-abcd1.mp4`, durationMs: 1000 })).rejects.toThrow(/not an MP4/);
-    expect(mocks.storage.remove).toHaveBeenCalledWith([`${U}/videos/vid1-abcd1.mp4`]);
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(new Uint8Array([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70]))));
+    mocks.featureStatus.mockResolvedValueOnce("not_in_plan");
+    await expect(finalizeVideo(owner, "vid1", { path: `${U}/videos/vid1-abcd1.mp4`, durationMs: 1000 })).rejects.toThrow(/not in your plan/);
+    const path = `${U}/videos/vid1-abcd1.mp4`;
+    upload(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]));
+    await expect(finalizeVideo(owner, "vid1", { path, durationMs: 1000 })).rejects.toThrow(/not an MP4/);
+    expect(mocks.storage.remove).toHaveBeenCalledWith([path]);
+    expect(mocks.prisma.contentVisual.updateMany).toHaveBeenCalledWith({ where: { id: "vid1", uploadPath: path }, data: { uploadPath: null, uploadBytes: 0, uploadExpiresAt: null } });
+    upload(mp4Bytes(31_000));
+    await expect(finalizeVideo(owner, "vid1", { path, durationMs: 10_000 })).rejects.toThrow(/30 seconds/);
+    upload(mp4Bytes(30_400));
+    mocks.consumeUsage.mockResolvedValueOnce({});
+    await expect(finalizeVideo(owner, "vid1", { path, durationMs: 10_000 })).resolves.toMatchObject({ seconds: 31 });
+    upload(new Uint8Array([0, 0, 0, 0x10, 0x66, 0x74, 0x79, 0x70, 0, 0, 0, 0, 0, 0, 0, 0]));
+    await expect(finalizeVideo(owner, "vid1", { path, durationMs: 10_000 })).rejects.toThrow(/length/);
+    upload(mp4Bytes(10_000));
     mocks.consumeUsage.mockRejectedValueOnce(new UsageLimitError("limit_reached", "videoSeconds"));
-    await expect(finalizeVideo(owner, "vid1", { path: `${U}/videos/vid1-abcd1.mp4`, durationMs: 1000 })).rejects.toThrow(/video seconds/);
-    expect(mocks.prisma.contentVisual.update).not.toHaveBeenCalled();
-    vi.unstubAllGlobals();
+    await expect(finalizeVideo(owner, "vid1", { path, durationMs: 10_000 })).rejects.toThrow(/video seconds/);
   });
 
   it("sniffs MP4 and WebM", () => {

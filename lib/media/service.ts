@@ -147,11 +147,18 @@ export async function linkInTx(tx: Tx, kind: AlbumKind, albumId: string, assetId
 
 type UsageDb = Pick<Tx, "mediaAsset"> & Partial<Pick<Tx, "contentVisual">>;
 
-/** Rendered content videos (docs/CONTENT_VISUALS.md) live in the same bucket and count like photos. */
-async function videoUsage(db: UsageDb, businessId?: string): Promise<MediaUsage> {
+/**
+ * Rendered content videos (docs/CONTENT_VISUALS.md) live in the same bucket and count like photos, and so does every
+ * upload the server allowed and has not confirmed yet (its reservation, 8 MB, until it expires).
+ */
+async function videoUsage(db: UsageDb, businessId?: string, now = new Date()): Promise<MediaUsage> {
   if (!db.contentVisual) return { count: 0, bytes: 0 };
-  const sum = await db.contentVisual.aggregate({ where: { kind: "video", bytes: { gt: 0 }, ...(businessId ? { businessId } : {}) }, _count: { _all: true }, _sum: { bytes: true } });
-  return { count: sum?._count?._all ?? 0, bytes: sum?._sum?.bytes ?? 0 };
+  const scope = businessId ? { businessId } : {};
+  const [stored, reserved] = await Promise.all([
+    db.contentVisual.aggregate({ where: { kind: "video", bytes: { gt: 0 }, ...scope }, _count: { _all: true }, _sum: { bytes: true } }),
+    db.contentVisual.aggregate({ where: { kind: "video", uploadExpiresAt: { gt: now }, ...scope }, _count: { _all: true }, _sum: { uploadBytes: true } }),
+  ]);
+  return { count: (stored?._count?._all ?? 0) + (reserved?._count?._all ?? 0), bytes: (stored?._sum?.bytes ?? 0) + (reserved?._sum?.uploadBytes ?? 0) };
 }
 
 /** What counts toward the company's quota: every photo except the ones the migration copied from old projects, and every rendered video. */

@@ -26,7 +26,10 @@ change it. Code: `lib/visuals/`, `components/visuals/`, `app/dashboard/visuals/a
    `createAiDesign` (1 image credit, `consumeUsage`, `withLedger` feature `image`, refund on failure); the photo is kept
    as a design and the template draws over it, so re-styling never pays twice. When the credit, the allowance or the AI
    fails, the slide uses the album photo or a text design and says why. A text design that cannot be drawn either marks
-   the visual `failed` with a message; the content itself is never affected.
+   the visual `failed` with a message; the content itself is never affected. Each call first takes a 2-minute lease
+   (`renderingUntil`, compare-and-set), so two tabs never draw (or pay for) the same visual; the other call answers
+   "rendering" and the screen waits. An AI photo is saved into the plan the moment it is paid for, before the template
+   is drawn, so a failed draw keeps it and the retry reuses it.
 
 AI photos are offered to the art director only when `aiPhotosAvailable`: the `aiPhotos` feature, an image credit left
 this month, and the company AI allowance not reached.
@@ -55,10 +58,13 @@ screen).
   owner picks (decoded and encoded to AAC in the browser, never stored, no bundled music); skipped with a note when the
   browser cannot encode it. Timeline maths is pure and tested (`lib/visuals/timeline.ts`).
 - **Upload** (`use-video-render.ts`): `startVideoUpload` checks the plan feature, MP4 or WebM, at most 8 MB and 30 s,
-  the video seconds left, the company's media quota and the platform guard, then gives a signed upload URL for
-  `<userId>/videos/<visualId>-<n>.mp4` in the `media` bucket. `finishVideoUpload` reads the object's size and first
-  bytes (`ftyp` or EBML), counts the seconds (`consumeUsage(userId, "videoSeconds", seconds)`), replaces the old file
-  and, for Autopilot, puts the video on the group's posts. A rejected file is deleted.
+  the video seconds left, the company's media quota and the platform guard, records a **reservation** on the visual
+  (`uploadPath`, 8 MB, one hour; counted in the quotas like a stored video; at most 3 open per company), then gives a
+  signed upload URL for `<userId>/videos/<visualId>-<n>.mp4` in the `media` bucket. `finishVideoUpload` re-checks the
+  plan, downloads the file (at most 8 MB), checks its first bytes (`ftyp` or EBML), reads its **real length** from the
+  file (`lib/visuals/duration.ts`: MP4 `mvhd`; WebM Info Duration, else the last block's timecode, since MediaRecorder
+  writes none), refuses more than 30.5 s, bills those seconds, clears the reservation, replaces the old file and, for
+  Autopilot, puts the video on the group's posts. A rejected file is deleted. Confirming the same file twice bills once.
 - **When it renders**: on the content page as soon as the video is pending (progress bar). On Autopilot cards the badge
   says "Video ready to render"; it renders when the owner opens the card's "Make the video" panel, one card at a time.
 - Without video in the plan the screen shows the picture with "Add video to your plan" (`/dashboard/upgrade?feature=video`).
@@ -133,6 +139,8 @@ seconds. `voice` stays coming soon.
   `ContentVisual` stay; the visual's items are emptied, `bytes` set to 0 (it stops counting toward the quotas) and
   `error` says "Video removed after 30 days". Videos no post used yet are kept. The video panel says: "Published videos
   are removed from BuPulse 30 days after posting; they stay on your social accounts."
+- **Abandoned uploads:** the same cron lets expired reservations go (deleting their file unless it became the
+  video) and deletes files in `<userId>/videos/` that no visual or waiting post refers to once they are an hour old.
 - **With their owner:** deleting a product or campaign (`releaseSubjectVideos`), pruning content versions, "New picture"
   and Remove delete the video files too. A post still waiting to go out keeps its video: the visual is moved to that
   post's group, and the 30-day clean-up takes it later.
