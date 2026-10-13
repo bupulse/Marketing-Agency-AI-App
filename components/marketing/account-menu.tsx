@@ -71,7 +71,7 @@ export function AccountMenu({ email }: { email: string | null }) {
       </button>
       {/* pt-2 keeps the hover area continuous between the button and the panel */}
       <div id={menuId} role="menu" hidden={!open} className="absolute right-0 top-full z-40 w-60 pt-2">
-        <div className="glass-strong animate-pop flex flex-col gap-0.5 rounded-2xl p-2">
+        <div className="animate-pop flex flex-col gap-0.5 rounded-2xl border border-line bg-surface p-2 shadow-xl">
           <p className="truncate px-3 pt-1 pb-2 text-xs text-muted">{email}</p>
           {accountLinks.map(({ label, href, icon: Icon }) => (
             <Link
