@@ -70,6 +70,13 @@ export interface VisualSlide {
   scene?: string;
   /** The AI photo once paid for (a Design in the designs bucket), so re-styling the slide never pays twice. */
   aiPhotoPath?: string | null;
+  /**
+   * The design of the library (lib/designs/library, e.g. "warm/split-03") BuPulse chose for the slide; plans made
+   * before the library have none and draw the classic template in the plan's style.
+   */
+  design?: string;
+  /** The tip or step number a numbered design shows. */
+  step?: number;
   /** The rendered design. Null until the slide is drawn. */
   designId: string | null;
   path: string | null;
@@ -106,13 +113,22 @@ export interface VideoPlan {
   height: number;
   fps: number;
   pack: PackId;
-  /** Background, text and accent colours (from the brand). */
-  colors: { background: string; text: string; accent: string };
+  /** Background, text and accent colours (from the brand); `highlight` is the brand's third colour (looks only). */
+  colors: { background: string; text: string; accent: string; highlight?: string };
   businessName: string;
   scenes: VideoScene[];
   crossfadeMs: number;
   /** Length of the finished video, crossfades taken into account. */
   totalMs: number;
+  /**
+   * The video look (lib/visuals/video-looks.ts) chosen by the art director: layouts, transition, captions and motion.
+   * Plans without one (made before looks) render the original lower-third slideshow.
+   */
+  look?: string;
+  /** A contact line for the closing scene (phone, website), looks only. */
+  contact?: string | null;
+  /** The business logo for the closing scene; signed into photoUrls like scene photos. Without it, an initial disc. */
+  logoPath?: string | null;
 }
 
 /** One stored output of a visual, in order: a design (image or slide) or a media file (the video). */

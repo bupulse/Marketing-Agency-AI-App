@@ -19,11 +19,21 @@ export const FONT_FAMILY = "Inter, Cairo";
 // Extra display families for the style packs (all SIL OFL, from the same CDN). Inter stays in the
 // list after them so glyphs a display font lacks (Cyrillic for Anton, say) still draw.
 type PackFont = { name: string; slug: string; weight: 400 | 700 | 800; subsets: readonly string[] };
+const PLAYFAIR: PackFont = { name: "Playfair Display", slug: "playfair-display", weight: 700, subsets: ["latin", "latin-ext", "vietnamese", "cyrillic"] };
+const NUNITO: PackFont = { name: "Nunito", slug: "nunito", weight: 800, subsets: ["latin", "latin-ext", "vietnamese", "cyrillic"] };
+const DM_SERIF: PackFont = { name: "DM Serif Display", slug: "dm-serif-display", weight: 400, subsets: ["latin", "latin-ext"] };
 const PACK_FONTS: Partial<Record<PackId, PackFont>> = {
-  elegant: { name: "Playfair Display", slug: "playfair-display", weight: 700, subsets: ["latin", "latin-ext", "vietnamese", "cyrillic"] },
+  elegant: PLAYFAIR,
   bold: { name: "Anton", slug: "anton", weight: 400, subsets: ["latin", "latin-ext", "vietnamese"] },
-  warm: { name: "Nunito", slug: "nunito", weight: 800, subsets: ["latin", "latin-ext", "vietnamese", "cyrillic"] },
-  playful: { name: "Nunito", slug: "nunito", weight: 800, subsets: ["latin", "latin-ext", "vietnamese", "cyrillic"] },
+  warm: NUNITO,
+  playful: NUNITO,
+  // minimal and clean use Inter alone.
+  luxe: PLAYFAIR,
+  vibrant: { name: "Poppins", slug: "poppins", weight: 800, subsets: ["latin", "latin-ext"] },
+  earthy: DM_SERIF,
+  corporate: { name: "Space Grotesk", slug: "space-grotesk", weight: 700, subsets: ["latin", "latin-ext", "vietnamese"] },
+  fresh: NUNITO,
+  retro: DM_SERIF,
 };
 
 /** CSS font-family list for a pack's text. */

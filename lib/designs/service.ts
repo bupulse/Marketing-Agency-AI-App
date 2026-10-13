@@ -17,6 +17,8 @@ import { isPackId, recommendPack, type PackId } from "./packs";
 import { buildSceneBrief } from "./photo-scene";
 import { buildImagePrompt } from "./prompt";
 import { isTemplateId, renderTemplate, TEMPLATES } from "./templates";
+import { isDesignId } from "./library/catalog";
+import { renderDesign } from "./library/render";
 
 /** A problem the user can read and act on. Anything else is an unexpected failure. */
 export class DesignError extends Error {}
@@ -127,8 +129,13 @@ export async function createTemplateDesign(input: Owner & {
   photoPath?: string | null;
   /** Style pack id; the business's matching pack when missing or unknown. */
   pack?: string | null;
+  /** A design of the library (lib/designs/library) BuPulse chose; drawn instead of the classic template. */
+  design?: string | null;
+  /** The tip or step number a numbered design shows. */
+  step?: number | null;
 }): Promise<CreatedDesign> {
   if (!isTemplateId(input.template)) throw new DesignError("Pick one of the templates.");
+  const design = isDesignId(input.design) ? input.design : null;
   await rateLimit(`design:${input.userId}`, RATE_LIMITS.templateDesign);
   const owned = await requireOwned(input);
   const { business } = owned;
@@ -136,24 +143,23 @@ export async function createTemplateDesign(input: Owner & {
 
   let png: ArrayBuffer;
   try {
-    png = await renderTemplate(
-      input.template,
-      {
-        businessName: business.name,
-        logoDataUrl,
-        colors: business.brandColors,
-        photoDataUrl,
-        headline: input.headline,
-        subline: input.subline,
-        chip: input.chip,
-        kicker: input.kicker,
-        pack: packFor(business, input.pack),
-        language: business.contentLanguage,
-      },
-      input.aspectRatio,
-    );
+    const drawInput = {
+      businessName: business.name,
+      logoDataUrl,
+      colors: business.brandColors,
+      photoDataUrl,
+      headline: input.headline,
+      subline: input.subline,
+      chip: input.chip,
+      kicker: input.kicker,
+      pack: packFor(business, input.pack),
+      language: business.contentLanguage,
+    };
+    png = design
+      ? await renderDesign(design, { ...drawInput, step: input.step }, input.aspectRatio, { template: input.template })
+      : await renderTemplate(input.template, drawInput, input.aspectRatio);
   } catch (error) {
-    await logError(error, { source: "designs.render", userId: input.userId, template: input.template });
+    await logError(error, { source: "designs.render", userId: input.userId, template: design ?? input.template });
     throw new DesignError(photoDataUrl ? "We could not draw that design. Try another photo, a JPG or PNG." : "We could not draw that design. Please try again.");
   }
 

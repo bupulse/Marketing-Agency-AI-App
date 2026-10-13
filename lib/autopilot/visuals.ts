@@ -10,7 +10,8 @@ import { recommendPack } from "@/lib/designs/packs";
 import { getProvider } from "@/lib/social/registry";
 import { directVisual } from "@/lib/visuals/art-director";
 import { shouldCarousel } from "@/lib/visuals/direction";
-import { directionContext, drawSlide, itemsOf, type DrawState } from "@/lib/visuals/service";
+import { assignDesigns, chooseLook } from "@/lib/visuals/designs";
+import { directionContext, drawSlide, itemsOf, recentVisualChoices, type DrawState } from "@/lib/visuals/service";
 import { VISUAL_LIMITS, type ImagePlan } from "@/lib/visuals/types";
 import { buildVideoPlan } from "@/lib/visuals/video-plan";
 import { makeGroupImages, PHOTO_MARK, type GroupImages, type ImageContext } from "./images";
@@ -67,8 +68,10 @@ async function carouselFor(group: PlannedGroup, written: WrittenGroup, ctx: Visu
   });
   // The art director is asked only when a carousel is likely; single images keep the playbook's own template.
   if (!shouldCarousel(dctx)) return null;
-  const plan: ImagePlan = await directVisual(dctx, { userId: ctx.userId, businessId: ctx.businessId });
-  if (plan.slides.length < 2) return null;
+  const directed: ImagePlan = await directVisual(dctx, { userId: ctx.userId, businessId: ctx.businessId });
+  if (directed.slides.length < 2) return null;
+  const recent = await recentVisualChoices(ctx.businessId);
+  const plan = assignDesigns(directed, { recent: recent.designs, seed: group.groupId });
   // The writer's image text is the cover, so the carousel opens like the single image would.
   plan.slides[0] = { ...plan.slides[0], headline: written.image.headline || plan.slides[0].headline, subline: written.image.subline || plan.slides[0].subline, chip: written.image.chip || plan.slides[0].chip, kicker: written.image.kicker };
   const state: DrawState = { aiAllowed: dctx.aiAllowed, aiMade: run.aiMade, maxAi: VISUAL_LIMITS.maxAiPhotosPerRun };
@@ -129,6 +132,7 @@ async function planGroupVideo(group: PlannedGroup, written: WrittenGroup, ctx: V
     photos: group.photos.map((p) => p.path),
     pack: recommendPack(ctx.business),
     colors: ctx.business.brandColors,
+    look: chooseLook({ pack: recommendPack(ctx.business), template: group.idea.template ?? null, hasPhoto: group.photos.length > 0, recent: (await recentVisualChoices(ctx.businessId)).looks, seed: group.groupId }),
   });
   await prisma.contentVisual.create({ data: { businessId: ctx.businessId, groupId: group.groupId, kind: "video", status: "pending", plan: json(plan), items: json([]) } });
 }

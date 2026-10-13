@@ -19,7 +19,8 @@ change it. Code: `lib/visuals/`, `components/visuals/`, `app/dashboard/visuals/a
    cannot draw them), photo templates without a photo become `announcement`, a carousel only where a connected network
    takes carousels and with 3 to 5 slides, at most 1 AI photo per visual and only when allowed. An answer that does not
    parse, an AI error, a timeout (12 s) or the budget cap gives `fallbackPlan` (the same rules without AI). The
-   result is a `ContentVisual` row with status `pending`.
+   result is a `ContentVisual` row with status `pending`. Each slide then gets a design of the library chosen by
+   BuPulse (`assignDesigns`, docs/DESIGNS.md "Design library"), avoiding the business's recent designs.
 4. **Drawing** (`renderImageStep`): the content screen calls `renderVisual` until the visual is `ready`; each call
    draws slides for at most 30 s (Netlify stops a function at 60 s). A slide is drawn with the existing designs engine
    (`createTemplateDesign`, `Design` rows, `designs` bucket). An AI slide first pays for the photo with
@@ -49,7 +50,8 @@ screen).
   directions removed), a hook scene (the headline), up to 5 body scenes and a closing scene (the business name); each
   scene 2 to 6 s by caption length, then scaled so the video lasts 10 to 30 s with 0.5 s crossfades; album photos cycle
   through the scenes (none: the brand backdrop; an AI photo from the image visual is lent when there is one); Ken Burns
-  moves alternate; colours from the brand (`buildTheme`), style from the pack. Made with the text when the plan has
+  moves alternate; colours from the brand (`buildTheme`), style from the pack. A **video look** (docs/DESIGNS.md,
+  "Video looks") chosen by BuPulse sets layouts, transition, captions and motion; plans without one render as before. Made with the text when the plan has
   video (`videoAvailable`: the `video` feature and more than 0 video seconds a month) and there is a script.
 - **Render in the browser** (`components/visuals/video-renderer.ts`): 1080x1920 at 30 fps on a canvas, captions
   burned in, MP4 through WebCodecs H.264 and `mp4-muxer` (MIT, about 14 KB gzipped, loaded only when a video is made;

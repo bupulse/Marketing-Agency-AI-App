@@ -12,6 +12,7 @@ import {
   Layers,
   HeartPulse,
   Megaphone,
+  Palette,
   Plug,
   ScrollText,
   Server,
@@ -62,6 +63,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { href: "/admin/content", label: "Content performance", icon: ChartLine },
       { href: "/admin/funnels", label: "Funnels", icon: Funnel },
       { href: "/admin/industries", label: "Industries", icon: Briefcase },
+      { href: "/admin/designs", label: "Design library", icon: Palette },
     ],
   },
   {
