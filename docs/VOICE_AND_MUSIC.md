@@ -75,6 +75,10 @@ Code: `lib/ai/tts.ts`, `lib/voice/`, `lib/music/`, `components/visuals/video-ren
   afro + upbeat), with the original-music licence and no credit; safe to run twice (stable `seed-…` paths). The runner
   sits in the git-ignored `scripts/local/` with the files; its logic is `scripts/music/seed-lib.mjs` (tested). It needs
   `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY` and `DIRECT_URL`, and prints file names and counts only.
+  The 20 original tracks have moods chosen for them (`SEED_MOODS`: reflective is inspiring, warm and calm; education
+  calm and inspiring; spa, real estate and luxury calm; tech and corporate as named); other names are read word by
+  word. Rows seeded before that map are corrected by the migration `20261017120000_music_seed_moods` (seeded rows only,
+  made from the same map by `moodUpdateSql`).
 - **Generate a track** (admin console, `/admin/music`): a title, a mood, a description and a length (10 to 60 s);
   ElevenLabs Music composes it (`POST https://api.elevenlabs.io/v1/music`, header `xi-api-key`, JSON
   `{"prompt", "music_length_ms"}` only, as confirmed against the live API; answers `audio/mpeg`, 128 kbit/s, 44.1 kHz,

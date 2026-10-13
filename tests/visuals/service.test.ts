@@ -53,7 +53,7 @@ import { AIBudgetExceededError } from "@/lib/ai/budget";
 import { DesignError } from "@/lib/designs/service";
 import { UsageLimitError } from "@/lib/usage";
 import { fallbackPlan } from "@/lib/visuals/direction";
-import { attachToGroup, drawSlide, finalizeVideo, leaseVideoForBrowser, planVisuals, prepareVideoUpload, renderImageStep, sniffVideo, VisualError, type PlanInput } from "@/lib/visuals/service";
+import { attachToGroup, drawSlide, finalizeVideo, leaseVideoForBrowser, planVisuals, prepareVideoUpload, readyMedia, remakeCredit, renderImageStep, sniffVideo, updateVideoPlan, VisualError, type PlanInput } from "@/lib/visuals/service";
 import type { ImagePlan, VisualSlide } from "@/lib/visuals/types";
 import { buildVideoPlan } from "@/lib/visuals/video-plan";
 import { mp4Bytes } from "./video-bytes";
@@ -404,6 +404,56 @@ describe("video upload checks", () => {
     mocks.mediaUsage.mockResolvedValueOnce({ count: 120, bytes: 2 * 1024 ** 3 - 2 * MB }); // includes the old 7 MB video
     await expect(prepareVideoUpload(owner, "vid1", file)).resolves.toMatchObject({ seconds: expect.any(Number) });
     expect(mocks.assertPlatformRoom).toHaveBeenLastCalledWith(1 * MB);
+  });
+
+  describe("making an existing video again (remake)", () => {
+    const OLD = `${U}/videos/vid1-old01.mp4`;
+    // Urugo's case: a 30-second trial, a 28-second video already made and paid for.
+    const made = { ...row, status: "pending", items: [{ path: OLD }], seconds: 28 };
+    const trialUsage = { used: { image: 0, videoSeconds: 28 }, limits: { image: 50, videoSeconds: 30 } };
+
+    it("pays only the seconds beyond the video it replaces (none for the same length), in the browser and for the robot", async () => {
+      mocks.getUsageSummary.mockResolvedValue(trialUsage);
+      mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...made, uploadPath: null, uploadExpiresAt: null });
+      await expect(prepareVideoUpload(owner, "vid1", { ...file, durationMs: 27_500 })).resolves.toMatchObject({ seconds: 28 });
+      mocks.prisma.contentVisual.findFirst.mockResolvedValue(made);
+      mocks.prisma.contentVisual.findMany.mockResolvedValue([]);
+      upload(mp4Bytes(27_500));
+      expect((await finalizeVideo(owner, "vid1", { path: PATH, durationMs: 27_500 })).seconds).toBe(28);
+      expect(mocks.consumeUsage).not.toHaveBeenCalled();
+      expect(mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data).toMatchObject({ status: "ready", seconds: 28, items: [{ path: PATH }] });
+
+      // 2 seconds longer: 2 are counted.
+      mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...made, seconds: 13 });
+      upload(mp4Bytes(14_200));
+      await finalizeVideo(owner, "vid1", { path: PATH, durationMs: 14_200 }, {});
+      expect(mocks.consumeUsage).toHaveBeenCalledWith(U, "videoSeconds", 2);
+      expect(remakeCredit({ kind: "video", items: [], seconds: 28 })).toBe(0); // removed by the 30-day clean-up: a new video
+    });
+
+    it("a longer remake without the seconds is refused before it starts, and the current video is kept", async () => {
+      mocks.getUsageSummary.mockResolvedValue(trialUsage);
+      mocks.prisma.business.findUnique.mockResolvedValue({ userId: U });
+      mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...made, status: "ready", seconds: Math.ceil(videoPlan.totalMs / 1000) - 3 });
+      await expect(updateVideoPlan(owner, "vid1", { texts: ["New caption"] })).rejects.toThrow(/more seconds than your current video.*2 left.*current video is kept/);
+      expect(mocks.prisma.contentVisual.update).not.toHaveBeenCalled();
+      // The same length: allowed, and the video goes on showing (items are untouched).
+      mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...made, status: "ready", seconds: Math.ceil(videoPlan.totalMs / 1000) });
+      await updateVideoPlan(owner, "vid1", {});
+      expect(mocks.prisma.contentVisual.update.mock.calls[0][0].data).not.toHaveProperty("items");
+    });
+
+    it("a refused or failed remake keeps the current file on the posts", async () => {
+      mocks.consumeUsage.mockRejectedValueOnce(new UsageLimitError("limit_reached", "videoSeconds"));
+      mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...made, seconds: 10 });
+      upload(mp4Bytes(14_200));
+      await expect(finalizeVideo(owner, "vid1", { path: PATH, durationMs: 14_200 })).rejects.toThrow(/current video is kept/);
+      expect(mocks.consumeUsage).toHaveBeenCalledWith(U, "videoSeconds", 5);
+      expect(mocks.storage.remove).toHaveBeenCalledWith([PATH]);
+      expect(mocks.storage.remove).not.toHaveBeenCalledWith([OLD]);
+      mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "video", status: "failed", items: [{ path: OLD }], plan: videoPlan }]);
+      expect((await readyMedia("biz1", { groupId: "g1" })).video).toBe(OLD);
+    });
   });
 
   it("sniffs MP4 and WebM", () => {

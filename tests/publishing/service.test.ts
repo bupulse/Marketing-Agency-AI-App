@@ -216,7 +216,8 @@ describe("a post made from content takes its visual (docs/CONTENT_VISUALS.md)", 
     expect(rows.instagram).toMatchObject({ format: "CAROUSEL", mediaPaths: slides, contentId: "content-1" });
     expect(rows.linkedin).toMatchObject({ format: "CAROUSEL", mediaPaths: slides });
     expect(rows.tiktok).toMatchObject({ format: "SCRIPT", mediaPaths: [video] });
-    expect(prisma.contentVisual.findMany.mock.calls[0][0].where).toMatchObject({ businessId: "b1", contentId: "content-1", status: "ready" });
+    // Ready visuals, and a video being made again (its current file stays on the posts until the new one is saved).
+    expect(prisma.contentVisual.findMany.mock.calls[0][0].where).toMatchObject({ businessId: "b1", contentId: "content-1", OR: [{ status: "ready" }, { kind: "video" }] });
   });
 
   it("the video as media: a Reel on Instagram, the content's pictures on LinkedIn", async () => {

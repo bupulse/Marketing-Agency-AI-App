@@ -13,7 +13,38 @@ const SYNONYMS = {
   warm: "warm", cozy: "warm", romantic: "warm",
   energetic: "energetic", hype: "energetic", dance: "energetic", edm: "energetic", sport: "energetic",
   upbeat: "upbeat", happy: "upbeat", pop: "upbeat", fun: "upbeat", bright: "upbeat", groove: "upbeat",
-  elegant: "calm", luxury: "warm", piano: "calm", jazz: "warm", modern: "corporate", celebration: "energetic", festive: "energetic", morning: "upbeat",
+  elegant: "calm", luxury: "calm", piano: "calm", jazz: "warm", modern: "corporate", celebration: "energetic", festive: "energetic", morning: "upbeat",
+  // Emotional and quiet subjects (review, 13 October 2026): never "upbeat" by default.
+  reflective: "inspiring", story: "warm", emotional: "inspiring", education: "calm", focus: "calm", study: "calm", spa: "calm",
+  beauty: "calm", estate: "calm", family: "warm", kids: "warm", food: "warm", kitchen: "warm", drums: "afro", african: "afro",
+  pride: "inspiring", sale: "energetic", promo: "energetic", fashion: "energetic", runway: "energetic",
+};
+
+/**
+ * The moods of the 20 original tracks, chosen by ear rather than from the file name (owner's library, October 2026).
+ * The library has 8 moods: "emotional" is inspiring + warm, "focus" and "elegant" are calm.
+ */
+export const SEED_MOODS = {
+  "upbeat-afrobeats": ["afro", "upbeat"],
+  "amapiano-groove": ["afro", "upbeat"],
+  "afro-pop-celebration": ["afro", "upbeat", "energetic"],
+  "calm-acoustic": ["calm", "acoustic"],
+  "corporate-inspiring": ["corporate", "inspiring"],
+  "tech-modern": ["corporate"],
+  "fresh-morning": ["upbeat", "warm"],
+  "elegant-luxury": ["calm", "warm"],
+  "energetic-sport": ["energetic"],
+  "chill-lofi": ["calm"],
+  "food-kitchen": ["warm", "upbeat"],
+  "real-estate-calm": ["calm"],
+  "kids-friendly-family": ["upbeat", "warm"],
+  "fashion-runway": ["energetic", "upbeat"],
+  "beauty-spa": ["calm"],
+  "event-hype": ["energetic"],
+  "education-focus": ["calm", "inspiring"],
+  "african-drums-pride": ["afro", "energetic", "inspiring"],
+  "sale-promo": ["energetic", "upbeat"],
+  "reflective-story": ["inspiring", "warm", "calm"],
 };
 
 export const LICENCE = "Original — generated with ElevenLabs Music for BuPulse (commercial use, paid plan)";
@@ -24,7 +55,8 @@ export function trackFromFilename(name) {
   const m = /^(\d{1,3})[-_ ]+([a-z0-9][a-z0-9 _-]*)\.mp3$/i.exec(name);
   if (!m) return null;
   const words = m[2].toLowerCase().split(/[-_ ]+/).filter(Boolean);
-  const moods = [...new Set(words.map((w) => SYNONYMS[w]).filter(Boolean))].slice(0, 4);
+  const known = SEED_MOODS[words.join("-")];
+  const moods = known ?? [...new Set(words.map((w) => SYNONYMS[w]).filter(Boolean))].slice(0, 4);
   const title = words.map((w) => w[0].toUpperCase() + w.slice(1)).join(" ").slice(0, 120);
   return { title, moods: moods.length ? moods : ["upbeat"] };
 }
@@ -37,4 +69,15 @@ export function isMp3(bytes) {
 /** The storage path of a seeded track: stable, so running the seed twice adds nothing twice. */
 export function seedPath(fileName) {
   return `seed-${fileName.toLowerCase().replace(/[^a-z0-9.-]+/g, "-")}`;
+}
+
+/**
+ * The one-off correction for tracks seeded with the first, weaker moods: the SQL that sets each seeded track's moods
+ * from SEED_MOODS (only rows the seed made; an admin's own tracks are not touched). Also shipped as the migration
+ * 20261017120000_music_seed_moods.
+ */
+export function moodUpdateSql() {
+  return Object.entries(SEED_MOODS)
+    .map(([slug, moods]) => `UPDATE "MusicTrack" SET "moods" = ARRAY[${moods.map((m) => `'${m}'`).join(", ")}]::TEXT[], "updatedAt" = now() WHERE "createdBy" = 'seed-music' AND "path" LIKE 'seed-__-${slug}.mp3';`)
+    .join("\n");
 }

@@ -23,6 +23,7 @@ import { quotaProblem } from "@/lib/media/rules";
 import { rateLimit, RateLimitError } from "@/lib/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { consumeUsage, refundUsage, UsageLimitError } from "@/lib/usage";
+import { assertRemakeAllowed } from "@/lib/visuals/service";
 import type { VideoPlan } from "@/lib/visuals/types";
 import { readVideoPlan, withSceneTexts } from "@/lib/visuals/video-plan";
 import { estimateSpeechMs, fitPlanToVoice, lineTimings, MAX_SPEECH_MS, speechText, spokenLines, type Timing } from "./speech";
@@ -269,6 +270,7 @@ export async function setVideoVoice(owner: Owner, visualId: string, choice: { en
   if (!row || !plan) return null;
   const voiceId = isVoiceId(choice.voiceId) ? choice.voiceId : (plan.voice?.voiceId ?? DEFAULT_VOICE_ID);
   const next: VideoPlan = { ...plan, voice: { enabled: choice.enabled, voiceId, take: plan.voice?.take ?? 0, path: null, hash: null, note: null } };
+  await assertRemakeAllowed(owner.businessId, row, next);
   await prisma.contentVisual.update({ where: { id: row.id }, data: { plan: json(next), status: "pending", error: null, robotAttempts: 0 } });
   return next;
 }
@@ -279,9 +281,10 @@ export async function setVideoVoice(owner: Owner, visualId: string, choice: { en
  * video of the company uses it.
  */
 export async function regenerateVoiceover(owner: Owner, visualId: string): Promise<void> {
-  const row = await prisma.contentVisual.findFirst({ where: { id: visualId, businessId: owner.businessId, kind: "video" }, select: { id: true, plan: true } });
+  const row = await prisma.contentVisual.findFirst({ where: { id: visualId, businessId: owner.businessId, kind: "video" }, select: { id: true, plan: true, kind: true, items: true, seconds: true } });
   const plan = row && readVideoPlan(row.plan);
   if (!row || !plan) return;
+  await assertRemakeAllowed(owner.businessId, row, plan);
   try {
     await rateLimit(`voice-regen-cooldown:${visualId}`, REGENERATE_COOLDOWN);
     await rateLimit(`voice-regen:${visualId}`, REGENERATE_PER_DAY);

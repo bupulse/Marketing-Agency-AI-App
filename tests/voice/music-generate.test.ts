@@ -23,7 +23,8 @@ import { readFileSync } from "node:fs";
 import { composeMusic } from "@/lib/ai/tts";
 import { generateTrack } from "@/lib/music/service";
 import { ELEVENLABS_MUSIC_LICENCE, isOwnedLicence, trackInputSchema } from "@/lib/music/tracks";
-import { isMp3, seedPath, trackFromFilename } from "@/scripts/music/seed-lib.mjs";
+import { isMp3, moodUpdateSql, SEED_MOODS, seedPath, trackFromFilename } from "@/scripts/music/seed-lib.mjs";
+import { MOODS } from "@/lib/music/tracks";
 
 const ctx = { actor: "admin", viaApi: false };
 const mp3 = new Uint8Array([0x49, 0x44, 0x33, 4, 0, 0, 0, 0]);
@@ -57,6 +58,26 @@ describe("seeding the library from files", () => {
     expect(isMp3(mp3)).toBe(true);
     expect(isMp3(new Uint8Array([0x89, 0x50]))).toBe(false);
     expect(seedPath("02-Amapiano Groove.mp3")).toBe("seed-02-amapiano-groove.mp3");
+  });
+
+  it("the 20 original tracks carry the moods chosen for them: quiet subjects are never upbeat", () => {
+    expect(Object.keys(SEED_MOODS)).toHaveLength(20);
+    for (const moods of Object.values(SEED_MOODS)) expect(moods.every((m) => (MOODS as readonly string[]).includes(m))).toBe(true);
+    expect(trackFromFilename("20-reflective-story.mp3")!.moods).toEqual(["inspiring", "warm", "calm"]);
+    expect(trackFromFilename("17-education-focus.mp3")!.moods).toEqual(["calm", "inspiring"]);
+    expect(trackFromFilename("15-beauty-spa.mp3")!.moods).toEqual(["calm"]);
+    expect(trackFromFilename("08-elegant-luxury.mp3")!.moods).toEqual(["calm", "warm"]);
+    expect(trackFromFilename("12-real-estate-calm.mp3")!.moods).toEqual(["calm"]);
+    expect(trackFromFilename("06-tech-modern.mp3")!.moods).toEqual(["corporate"]);
+    // Files outside the list still read their words: a quiet name is not upbeat.
+    expect(trackFromFilename("33-quiet-study-spa.mp3")!.moods).toEqual(["calm"]);
+  });
+
+  it("already-seeded rows are corrected by a migration made from the same map (seeded rows only)", () => {
+    const sql = readFileSync("prisma/migrations/20261017120000_music_seed_moods/migration.sql", "utf8");
+    expect(sql).toContain(moodUpdateSql());
+    expect(moodUpdateSql().split("\n")).toHaveLength(20);
+    for (const line of moodUpdateSql().split("\n")) expect(line).toMatch(/WHERE "createdBy" = 'seed-music' AND "path" LIKE 'seed-__-[a-z-]+\.mp3';$/);
   });
 
   it("the runner lives in git-ignored scripts/local and uses the owned-music licence with no credit", () => {

@@ -347,7 +347,9 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage }: { co
     ) : null;
   }
 
-  const ready = visual.status === "ready" && visual.items[0];
+  // A video being made again keeps showing (and stays on its posts) until the new one is saved.
+  const ready = !!visual.items[0];
+  const remaking = ready && visual.status !== "ready";
   // The 30-day clean-up removed the file; the posts went out and the video stays on the social accounts.
   const removed = visual.status === "ready" && !visual.items[0] && visual.error === VIDEO_REMOVED_NOTE;
   const seconds = Math.ceil(plan.totalMs / 1000);
@@ -367,7 +369,7 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage }: { co
         <h3 className="text-[15px] font-semibold">Video, {seconds} seconds</h3>
         <Badge tone="neutral">{plan.scenes.length} scenes</Badge>
         {visual.status === "pending" && !render.busy && <Badge tone="blue">{robotBusy ? "Being made automatically" : "Video ready to render"}</Badge>}
-        {visual.status === "failed" && <Badge tone="danger">Not made</Badge>}
+        {visual.status === "failed" && <Badge tone="danger">{ready ? "New version not made" : "Not made"}</Badge>}
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row">
@@ -401,10 +403,15 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage }: { co
               {render.error}
             </p>
           )}
-          {visual.status === "failed" && hasImage && <p className="text-[13px] text-muted">Until then, the picture is used for video posts.</p>}
+          {visual.status === "failed" && hasImage && !ready && <p className="text-[13px] text-muted">Until then, the picture is used for video posts.</p>}
+          {remaking && !render.busy && (
+            <p className="text-[13px] text-muted">
+              {visual.status === "failed" ? `${visual.error ?? "The new version could not be made."} Your current video is kept.` : "A new version is waiting to be made. Your current video stays until it is saved."}
+            </p>
+          )}
           {render.musicSkipped && <p className="text-[13px] text-muted">Your music could not be added in this browser, so the video has no sound.</p>}
           <p className="text-[13px] text-muted">
-            {visual.robot ? "Made automatically (or in your browser) from your photos and script" : "Made in your browser from your photos and script"}, {VIDEO_LIMITS.width}x{VIDEO_LIMITS.height}, captions included. It counts {seconds} seconds of your plan&apos;s video.
+            {visual.robot ? "Made automatically (or in your browser) from your photos and script" : "Made in your browser from your photos and script"}, {VIDEO_LIMITS.width}x{VIDEO_LIMITS.height}, captions included. It counts {seconds} seconds of your plan&apos;s video; making it again counts only the seconds it gets longer.
           </p>
           <div className="flex flex-wrap gap-2">
             {visual.status === "pending" && !render.busy && visual.robot === "queued" && (
