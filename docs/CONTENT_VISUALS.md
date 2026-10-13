@@ -35,6 +35,49 @@ change it. Code: `lib/visuals/`, `components/visuals/`, `app/dashboard/visuals/a
 AI photos are offered to the art director only when `aiPhotosAvailable`: the `aiPhotos` feature, an image credit left
 this month, and the company AI allowance not reached.
 
+### People in the pictures
+
+Owner decision (13 October 2026): posts almost always show people.
+
+- When AI photos are allowed, the cover is an AI scene with people: customers using or enjoying the product or
+  service, staff serving, a family at home. The product's best album photo is the reference image, so the real product
+  stays recognisable (a woman in Kigali holding the real phone). Without a photo, the scene is made from the
+  description. A post without people is the rare exception: a price list, a quote card, or AI images not available
+  (then the real photos and brand designs are used, never a failure).
+- The art director returns a structured `people` brief (`lib/visuals/people.ts`): age band (18–25, 26–40, 41–60, 60+:
+  adults only), gender (woman, man, mixed group) and role (customer, staff, family adults, team, professional) from
+  fixed lists, plus activity, place, mood and framing as free text that goes through `safePhrase` (fences, control
+  characters, minors, nudity, medical and before-and-after words removed, and a public figure's title together with
+  the name after it). The country reaches a prompt only when it is on the sign-up list (`knownCountry`); the area and
+  persona fields go through `safePhrase` too. Missing, BuPulse writes it from the company's country and first persona
+  (Rwanda: Rwandans in Kigali settings, everyday clothes; ages and gender from the persona; under-18 and "all ages"
+  personas still give adults).
+- The image prompt (`lib/designs/prompt.ts`) adds: never a real, famous or recognisable person or a lookalike; adults
+  only; respectful everyday clothing; nothing medical, no before-and-after; no text or logos (text comes from the
+  templates).
+- Carousels use one AI image: the cover; the other slides are designed slides (`useCoverPhoto`) over the same photo.
+  Videos use the people photo for their opening scene and scenes without a photo; no AI image is made for a video.
+- Autopilot: "Use AI images" is now on by default for new settings (existing settings keep the owner's choice).
+
+### AI images and allowance by plan
+
+| Plan | AI images a month (`image`) | Company AI allowance (`aiMonthlyUsd`) |
+| --- | --- | --- |
+| Rwanda Starter, Standard | 30 | $2 |
+| Rwanda Business, Pro | 100 | $6 |
+| Trial | 5 | $1 |
+
+Set by `20261016130000_people_images` (`PlanDefinition.aiMonthlyUsd`, `limits.image`, card copy "N AI images a
+month"); `companyAllowanceUsd` reads the plan's allowance (cached 30 s), else the code's seed plan, else
+`AI_COMPANY_MONTHLY_USD`. When the images run out the visual is a free design from real photos and says "AI images for
+this month used — next refill on <date>" with "Get an image pack (+50 AI images)" (add-on `block:image`, 5,000 RWF a
+month in Rwanda, admin-editable). An image pack raises the dollar allowance too: a custom plan's `aiMonthlyUsd` is set
+when its offer is accepted to its base plan's allowance plus $2 per pack (50 images at cost, rounded up,
+`lib/offers/allowance.ts`); a custom plan without a base or an allowance gets its AI images at cost x 1.5 plus $1. When
+the dollar allowance stops the images first, the same "AI images for this month used" message shows the 1st of next
+month. The drawing lease (`RENDER_LEASE_MS`, 4 minutes) outlasts the slowest AI photo call (120 s timeout plus up to
+30 s of SDK retries) so a second call never pays for the same photo.
+
 ### Carousel or single
 
 `shouldCarousel`: a network that takes carousels (Instagram, Facebook, LinkedIn; with none connected yet, yes) and
@@ -74,7 +117,7 @@ screen).
   now" (the browser takes the render lease unless the robot holds it). After 3 failed robot renders the video is left
   to the browser. Caption fonts (Inter, or the pack's display font, SIL OFL) are self-hosted in `public/fonts/video`
   and loaded by the renderer, so the robot's and the browser's videos look the same.
-- **When it renders**: on the content page as soon as the video is pending (progress bar), unless the video robot is on. On Autopilot cards the badge
+- **When it renders**: on the subject's day view (Content, "Pictures and videos"; the first pending video of the day) as soon as the video is pending (progress bar), unless the video robot is on. On Autopilot cards the badge
   says "Video ready to render"; it renders when the owner opens the card's "Make the video" panel, one card at a time.
 - Without video in the plan the screen shows the picture with "Add video to your plan" (`/dashboard/upgrade?feature=video`).
 
@@ -84,7 +127,7 @@ platform guard (`platformBytes`, `MEDIA_PLATFORM_MAX_BYTES`, 900 MB default). Th
 
 ## What the owner can change
 
-On the content card (Studio) and the Autopilot card ("Picture and video"):
+On the day view's "Pictures and videos" (Content, docs/CONTENT.md) and the Autopilot card ("Picture and video"):
 
 | Action | What happens | Cost |
 | --- | --- | --- |
@@ -94,7 +137,15 @@ On the content card (Studio) and the Autopilot card ("Picture and video"):
 | Edit text | headline, subline, chip per slide, redrawn | free |
 | New picture | fresh art direction, the old slides go (unless a post uses them) | art director call; AI photo uses a credit |
 | Remove | slide designs and video file go unless a post uses them; AI photos stay in Designs | none |
-| Edit captions / Make it again / Add your music | new video plan or same plan, rendered again | video seconds again |
+| Edit captions / Make it again / Add your music / music or voice change | new video plan or same plan, rendered again | only the seconds beyond the current video |
+
+**Remakes** (fix from the Chrome test, 13 October 2026): a video that already exists is replaced, not paid again. The
+seconds of the current video (`remakeCredit`: the visual's billed `seconds` while its file is there) are not counted
+again; a longer remake counts only the extra seconds (`prepareVideoUpload` and `finalizeVideo`, browser and robot
+alike). A remake that would need more seconds than are left is refused before it starts, with that message
+(`assertRemakeAllowed`, in captions, photos, music and voice changes). The current file stays on the panel and on its
+posts (`readyMedia` takes a video being made again, pending or failed) until the new one is confirmed; a refused or
+failed remake keeps it. After the 30-day clean-up removed the file, a remake is a new video and counts in full.
 
 Edited content versions keep their visuals (`carryVisuals`); pruned versions release theirs (`releaseContentVisuals`).
 

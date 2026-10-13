@@ -28,6 +28,9 @@ import { billableSeconds } from "./timeline";
 import { VIDEO_LIMITS, VISUAL_LIMITS, type ImagePlan, type VideoPlan, type VisualItem, type VisualKind, type VisualSlide } from "./types";
 import { videoDurationMs } from "./duration";
 import { assignDesigns, chooseLook, recentChoices, slideHasPhoto, usableDesign } from "./designs";
+import { moodFor } from "@/lib/music/tracks";
+import { trackForVideo } from "@/lib/music/service";
+import type { Audience } from "./people";
 import { buildVideoPlan, readVideoPlan, withSceneTexts } from "./video-plan";
 
 /** A problem the owner can read and act on (a KnowledgeError, so the content actions show its message). */
@@ -50,13 +53,48 @@ const json = (value: unknown) => value as Prisma.InputJsonValue;
  * checks everything again (consumeUsage, withLedger), so a race only costs a fallback.
  */
 export async function aiPhotosAvailable(owner: Owner): Promise<boolean> {
+  return (await aiPhotosStatus(owner)).allowed;
+}
+
+/** The 1st of next month, 00:00 UTC: when the company AI allowance starts again. */
+export function nextMonthStart(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+}
+
+/** "AI images for this month used — next refill on 1 November." */
+export function aiExhaustedNote(refillAt: string | null): string {
+  if (!refillAt) return "AI images for this month used. Your real photos and brand designs are used instead.";
+  const day = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(refillAt));
+  return `AI images for this month used — next refill on ${day}. Your real photos and brand designs are used instead.`;
+}
+
+/**
+ * Like aiPhotosAvailable, with the reason: the visual says when the plan's AI images are used up (and when they come
+ * back), so the owner knows why the post shows a designed picture.
+ */
+export async function aiPhotosStatus(owner: Owner): Promise<{ allowed: boolean; exhausted: { refillAt: string | null } | null }> {
   try {
-    if (!(await hasFeature(owner.businessId, "aiPhotos"))) return false;
+    if (!(await hasFeature(owner.businessId, "aiPhotos"))) return { allowed: false, exhausted: null };
     const [usage, spend] = await Promise.all([getUsageSummary(owner.userId), companySpendThisMonth(owner.businessId)]);
-    if (usage.used.image >= usage.limits.image) return false;
-    return companyCallAllowed(spend, "image");
+    if (usage.used.image >= usage.limits.image) return { allowed: false, exhausted: { refillAt: usage.resetsAt ? new Date(usage.resetsAt).toISOString() : null } };
+    // The company's dollar allowance can stop images before the count does: the same message, refilled on the 1st.
+    if (!companyCallAllowed(spend, "image")) return { allowed: false, exhausted: { refillAt: nextMonthStart(new Date()).toISOString() } };
+    return { allowed: true, exhausted: null };
   } catch {
-    return false;
+    return { allowed: false, exhausted: null };
+  }
+}
+
+/** The company's country and first personas, so the people in AI photos look like its customers. */
+export async function audienceFor(businessId: string): Promise<Audience | undefined> {
+  try {
+    const [business, personas] = await Promise.all([
+      prisma.business.findUnique({ where: { id: businessId }, select: { country: true } }),
+      prisma.persona.findMany({ where: { businessId }, orderBy: { position: "asc" }, take: 3, select: { ageRange: true, gender: true, location: true, occupation: true } }),
+    ]);
+    return { country: business?.country ?? null, personas: personas ?? [] };
+  } catch {
+    return undefined;
   }
 }
 
@@ -101,13 +139,21 @@ export interface PlanInput {
   carouselAllowed: boolean;
   aiAllowed: boolean;
   maxSlides?: number;
+  /** The company's country and personas, for the people in AI photos. */
+  audience?: Audience;
+  /** AI images ran out this month: the plan says so (and when they come back). */
+  aiExhausted?: { refillAt: string | null };
+  /** A content pack post's angle (lib/studio/angles.ts): what it says and what its people photo shows. */
+  angle?: { id?: string; label: string; people: string } | null;
+  /** The image plan, when the caller already asked the art director (content packs make all their plans first). */
+  precomputed?: ImagePlan;
   /** Skip the AI art director (the rules choose). */
   rulesOnly?: boolean;
 }
 
 const mimeOf = (path: string) => (/\.png$/i.test(path) ? "image/png" : /\.jpe?g$/i.test(path) ? "image/jpeg" : /\.webp$/i.test(path) ? "image/webp" : null);
 
-export function directionContext(input: Omit<PlanInput, "owner" | "target" | "video" | "image" | "subjectId">): DirectionContext {
+export function directionContext(input: Omit<PlanInput, "owner" | "target" | "video" | "image" | "subjectId" | "aiExhausted" | "precomputed">): DirectionContext {
   return {
     subjectType: input.subjectType,
     title: input.title,
@@ -119,6 +165,8 @@ export function directionContext(input: Omit<PlanInput, "owner" | "target" | "vi
     carouselAllowed: input.carouselAllowed,
     aiAllowed: input.aiAllowed,
     maxSlides: input.maxSlides,
+    audience: input.audience,
+    angle: input.angle,
   };
 }
 
@@ -145,11 +193,15 @@ export async function planVisuals(input: PlanInput): Promise<{ image: string | n
   const out = { image: null as string | null, video: null as string | null };
   try {
     const ctx = directionContext(input);
-    const directed = input.rulesOnly || input.image === false ? fallbackPlan(ctx) : await directVisual(ctx, input.owner);
+    const directed = input.precomputed ?? (input.rulesOnly || input.image === false ? fallbackPlan(ctx) : await directVisual(ctx, input.owner));
     // BuPulse picks each slide's design and the video's look, avoiding the ones the business used lately.
     const recent = await recentVisualChoices(input.owner.businessId);
     const seed = "contentId" in input.target ? input.target.contentId : input.target.groupId;
     const plan = assignDesigns(directed, { recent: recent.designs, seed });
+    if (input.aiExhausted) {
+      plan.aiExhausted = input.aiExhausted;
+      plan.notes = [aiExhaustedNote(input.aiExhausted.refillAt), ...plan.notes];
+    }
     if (input.image !== false) {
       const row = await prisma.contentVisual.create({
         data: { businessId: input.owner.businessId, ...input.target, kind: kindOf(plan), status: "pending", plan: json(plan), items: json([]) },
@@ -167,6 +219,10 @@ export async function planVisuals(input: PlanInput): Promise<{ image: string | n
         colors: input.business.brandColors,
         look: chooseLook({ pack: plan.pack, template: plan.slides[0]?.template, tips: listItems(input.caption).length >= 3, hasPhoto: input.photos.length > 0, recent: recent.looks, seed }),
       });
+      // Music from the library, by the art director's mood (else the angle's or the brand voice's). Empty library: none.
+      const mood = plan.mood ?? moodFor({ angle: input.angle?.id, tone: input.business.tone });
+      video.mood = mood;
+      video.music = await trackForVideo(mood, "contentId" in input.target ? input.target.contentId : input.target.groupId);
       const v = await prisma.contentVisual.create({
         data: { businessId: input.owner.businessId, ...input.target, kind: "video", status: "pending", plan: json(video), items: json([]) },
         select: { id: true },
@@ -202,7 +258,7 @@ async function subjectOf(row: { contentId: string | null; groupId: string | null
 
 /** Why an AI photo was not made, for the slide's note. */
 function aiNote(error: unknown): string {
-  if (error instanceof UsageLimitError) return "Your image credits are used up, so this slide uses your photo or a free design.";
+  if (error instanceof UsageLimitError) return "AI images for this month used, so this slide uses your photo or a brand design.";
   if (error instanceof AIProviderError) return error.message.includes("allowance") ? error.message : "AI photos are paused for a short while, so this slide uses a free design.";
   if (error instanceof RateLimitError) return "You made many AI photos this hour, so this slide uses a free design.";
   return "The AI photo could not be made, so this slide uses a free design.";
@@ -219,8 +275,12 @@ function designFor(plan: ImagePlan, slide: VisualSlide, hasPhoto: boolean): stri
   return assignDesigns({ ...plan, slides }, { recent: [], seed: `${slide.headline}#${at}`, only: new Set([at]) }).slides[at].design!;
 }
 
-/** How long one drawing call holds a visual; longer than a call may run, so a crashed call frees it soon after. */
-export const RENDER_LEASE_MS = 2 * 60 * 1000;
+/**
+ * How long one drawing call holds a visual: longer than the slowest call can run (the Gemini image request alone may
+ * take up to 120 s, then the template and the saves), so a second call never pays for the same AI photo; a crashed
+ * call frees it a few minutes later.
+ */
+export const RENDER_LEASE_MS = 4 * 60 * 1000;
 
 export type DrawState = { aiAllowed: boolean; aiMade: number; maxAi: number };
 
@@ -239,7 +299,10 @@ export async function drawSlide(
   onAiPhoto?: (slide: VisualSlide) => Promise<void>,
 ): Promise<VisualSlide> {
   const next: VisualSlide = { ...slide };
-  let photo: string | null = slide.source === "album" ? slide.photoPath : slide.source === "ai" ? (slide.aiPhotoPath ?? null) : null;
+  // A designed carousel slide shows the cover's photo (its AI photo, or its album photo when AI was not possible).
+  const cover = plan.slides[0];
+  const coverPhoto = slide.useCoverPhoto && cover !== slide ? (cover?.aiPhotoPath ?? (cover?.source === "album" ? cover.photoPath : null)) : null;
+  let photo: string | null = slide.source === "album" ? slide.photoPath : slide.source === "ai" ? (slide.aiPhotoPath ?? null) : coverPhoto;
   if (slide.source === "ai" && !slide.aiPhotoPath) {
     if (state.aiAllowed && state.aiMade < state.maxAi) {
       try {
@@ -375,8 +438,10 @@ async function drawClaimed(owner: Owner, visualId: string, started: number, budg
 async function lendPhotoToVideo(row: { businessId: string; contentId: string | null; groupId: string | null }, photo: string) {
   const sibling = await prisma.contentVisual.findFirst({ where: { businessId: row.businessId, kind: "video", status: "pending", ...(row.contentId ? { contentId: row.contentId } : { groupId: row.groupId }) } });
   const plan = sibling && readVideoPlan(sibling.plan);
-  if (!sibling || !plan || plan.scenes.some((s) => s.photoPath)) return;
-  const scenes = plan.scenes.map((s) => (s.role === "cta" ? s : { ...s, photoPath: photo }));
+  if (!sibling || !plan || plan.scenes.some((s) => s.photoPath === photo)) return;
+  // The people photo opens the video and fills scenes without a photo; the product photos keep the rest (no extra
+  // AI image is made for the video).
+  const scenes = plan.scenes.map((s, i) => (i === 0 || (!s.photoPath && s.role !== "cta") ? { ...s, photoPath: photo } : s));
   await prisma.contentVisual.update({ where: { id: sibling.id }, data: { plan: json({ ...plan, scenes }) } });
 }
 
@@ -452,8 +517,10 @@ export async function updateImageVisual(owner: Owner, visualId: string, changes:
     const [chosen] = chooseSources([{ source: "album", template: s.template }], { photos: [{ path: changes.swap.photoPath, mimeType: mimeOf(changes.swap.photoPath) }], aiAllowed: false });
     if (chosen.source !== "album") throw new VisualError("Templates need a JPG or PNG photo. Please pick a different one.");
     const template = s.template === "announcement" && changes.swap.index === 0 ? "new-arrival" : s.template;
-    plan.slides[changes.swap.index] = { ...s, source: "album", photoPath: changes.swap.photoPath, aiPhotoPath: null, template, note: undefined };
+    plan.slides[changes.swap.index] = { ...s, source: "album", photoPath: changes.swap.photoPath, aiPhotoPath: null, useCoverPhoto: false, template, note: undefined };
     changed.add(changes.swap.index);
+    // Designed slides show the cover's photo: a new cover photo redraws them too.
+    if (changes.swap.index === 0) plan.slides.forEach((x, i) => x.useCoverPhoto && changed.add(i));
   }
   if (changed.size === 0) return { status: row.status, plan };
   // A new style, template or photo gets a fresh design for the changed slides (text edits keep theirs).
@@ -600,6 +667,29 @@ async function secondsLeft(userId: string): Promise<number> {
 }
 
 /**
+ * The seconds a remake of this visual does not pay again: those of the video it already has (billed when it was
+ * made). A remake replaces that video and pays only the extra seconds when the new one is longer. Nothing when the
+ * visual has no video (never made, or its file was removed by the 30-day clean-up).
+ */
+export function remakeCredit(row: { kind: string; items: unknown; seconds: number }): number {
+  return row.kind === "video" && readItems(row.items)[0]?.path ? Math.max(0, row.seconds) : 0;
+}
+
+/**
+ * Before a video that already exists is made again (captions, photos, music, voice, "Make it again"): refused, with
+ * the old video kept, when the remake would need more seconds than the plan has left this month.
+ */
+export async function assertRemakeAllowed(businessId: string, row: { kind: string; items: unknown; seconds: number }, plan: VideoPlan) {
+  const credit = remakeCredit(row);
+  if (credit === 0) return;
+  const extra = billableSeconds(plan.totalMs) - credit;
+  if (extra <= 0) return;
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { userId: true } });
+  const left = business ? await secondsLeft(business.userId) : 0;
+  if (extra > left) throw new VisualError(`Making this video again needs ${extra} more seconds than your current video, and your plan has ${left} left this month. Your current video is kept.`);
+}
+
+/**
  * Checks a video the browser is about to upload (plan feature, length, size, video seconds left, media quota) and
  * gives it a signed upload URL. The seconds are counted when the upload is confirmed (finalizeVideo).
  */
@@ -610,7 +700,11 @@ export async function prepareVideoUpload(owner: Owner, visualId: string, file: {
   if (!(file.bytes > 0) || file.bytes > VIDEO_LIMITS.maxBytes) throw new VisualError("The video is larger than 8 MB. Try fewer scenes or shorter captions.");
   if (!(file.durationMs > 0) || file.durationMs > VIDEO_LIMITS.maxMs + 1000) throw new VisualError("Videos can be at most 30 seconds long.");
   const seconds = billableSeconds(Math.max(file.durationMs, plan.totalMs));
-  if ((await secondsLeft(owner.userId)) < seconds) throw new VisualError("Your plan's video seconds for this month are used up. Use the picture instead, or add more video to your plan.");
+  // A remake pays only the seconds beyond the video it replaces.
+  const extra = Math.max(0, seconds - remakeCredit(row));
+  if (extra > 0 && (await secondsLeft(owner.userId)) < extra) {
+    throw new VisualError(remakeCredit(row) ? "Your plan does not have enough video seconds left this month for a longer video. Your current video is kept." : "Your plan's video seconds for this month are used up. Use the picture instead, or add more video to your plan.");
+  }
   const now = new Date();
   const open = await prisma.contentVisual.count({ where: { businessId: owner.businessId, kind: "video", uploadExpiresAt: { gt: now }, id: { not: visualId } } });
   if (open >= MAX_OPEN_UPLOADS) throw new VisualError("Other videos are being saved right now. Wait for them to finish, then try again.");
@@ -679,10 +773,12 @@ export async function finalizeVideo(owner: Owner, visualId: string, input: { pat
     const held = await prisma.contentVisual.findUnique({ where: { id: row.id }, select: { robotJobId: true, renderingUntil: true } });
     if (held?.robotJobId !== options.robotJob || !held.renderingUntil || held.renderingUntil <= new Date()) return reject("The video was made elsewhere in the meantime.");
   }
+  // A remake replaces the video it had: only the seconds beyond those already paid for are counted.
+  const extra = Math.max(0, seconds - remakeCredit(row));
   try {
-    await consumeUsage(owner.userId, "videoSeconds", seconds);
+    if (extra > 0) await consumeUsage(owner.userId, "videoSeconds", extra);
   } catch (error) {
-    if (error instanceof UsageLimitError) return reject("Your plan's video seconds for this month are used up.");
+    if (error instanceof UsageLimitError) return reject(remakeCredit(row) ? "Your plan does not have enough video seconds left this month for a longer video. Your current video is kept." : "Your plan's video seconds for this month are used up.");
     throw error;
   }
   const previous = readItems(row.items);
@@ -707,6 +803,8 @@ export async function updateVideoPlan(owner: Owner, visualId: string, changes: {
     if (!photos.every((p) => p === null || isOwnPhotoPath(owner.userId, p) || isOwnDesignPath(owner.userId, p))) throw new VisualError("That photo could not be used.");
     next = { ...next, scenes: next.scenes.map((s, i) => (i < photos.length ? { ...s, photoPath: photos[i] } : s)) };
   }
+  // The video it has stays (and stays on its posts) until the new one is saved.
+  await assertRemakeAllowed(owner.businessId, row, next);
   await prisma.contentVisual.update({ where: { id: row.id }, data: { plan: json(next), status: "pending", error: null, robotAttempts: 0 } });
   return next;
 }
@@ -737,7 +835,10 @@ export async function leaseVideoForBrowser(owner: Owner, visualId: string, now =
   if (row.robotJobId && row.uploadPath) await createAdminClient().storage.from("media").remove([row.uploadPath]).catch(() => {});
 }
 
-/** Marks a video as not renderable in this browser, so the screen shows the picture version and a reason. */
+/**
+ * Marks a video as not renderable in this browser, so the screen shows a reason (and the video it already had, which
+ * is kept, or else the picture version).
+ */
 export async function markVideoFailed(owner: Owner, visualId: string, message: string) {
   const { row } = await videoRow(owner, visualId);
   if (row.status === "ready") return;
@@ -747,11 +848,24 @@ export async function markVideoFailed(owner: Owner, visualId: string, message: s
 // ---- posts ----
 
 /** The ready picture slides and video of a content version or group, as storage paths (for posts). */
-export async function readyMedia(businessId: string, key: { contentId: string } | { groupId: string }): Promise<{ images: string[]; video: string | null }> {
-  const rows = await prisma.contentVisual.findMany({ where: { businessId, ...key, status: "ready" }, orderBy: { createdAt: "desc" } });
-  const image = rows.find((v) => v.kind !== "video");
-  const video = rows.find((v) => v.kind === "video");
-  return { images: image ? readItems(image.items).map((i) => i.path) : [], video: video ? (readItems(video.items)[0]?.path ?? null) : null };
+export async function readyMedia(businessId: string, key: { contentId: string } | { groupId: string }): Promise<{ images: string[]; video: string | null; videoCredit?: string | null }> {
+  // A video being made again (pending or failed) keeps its current file until the new one is saved.
+  const rows = await prisma.contentVisual.findMany({ where: { businessId, ...key, OR: [{ status: "ready" }, { kind: "video" }] }, orderBy: { createdAt: "desc" } });
+  const image = rows.find((v) => v.kind !== "video" && v.status === "ready");
+  const video = rows.find((v) => v.kind === "video" && readItems(v.items)[0]?.path);
+  const videoPath = video ? (readItems(video.items)[0]?.path ?? null) : null;
+  // The music's credit line, when its licence asks for one (docs/VOICE_AND_MUSIC.md).
+  const music = videoPath && video ? readVideoPlan(video.plan)?.music : null;
+  const credit = music && !music.owned ? music.attribution : null;
+  return { images: image ? readItems(image.items).map((i) => i.path) : [], video: videoPath, videoCredit: credit || null };
+}
+
+/** A video post's text with the music credit line at the end (once). Pure. */
+export function withMusicCredit(text: string, credit: string | null | undefined): string {
+  const line = credit?.trim();
+  // Added unless the exact credit line is already one of the post's lines.
+  if (!line || text.split(/\r?\n/).some((l) => l.trim() === line)) return text;
+  return `${text.trimEnd()}\n\n${line}`;
 }
 
 // ---- Autopilot posts ----
@@ -777,8 +891,8 @@ export async function attachToContent(businessId: string, contentId: string, opt
 }
 
 async function attachVisuals(businessId: string, key: { contentId: string } | { groupId: string }, postWhere: Prisma.PostWhereInput, options: { feed?: boolean }) {
-  const { images, video: videoFile } = await readyMedia(businessId, key);
-  const posts = await prisma.post.findMany({ where: { businessId, ...postWhere, lockedAt: null }, select: { id: true, network: true, format: true, mediaPaths: true, status: true, lastError: true, updatedAt: true } });
+  const { images, video: videoFile, videoCredit } = await readyMedia(businessId, key);
+  const posts = await prisma.post.findMany({ where: { businessId, ...postWhere, lockedAt: null }, select: { id: true, network: true, format: true, mediaPaths: true, status: true, lastError: true, updatedAt: true, text: true } });
   for (const post of posts) {
     if (!isNetwork(post.network)) continue;
     const rules = getProvider(post.network).rules;
@@ -788,6 +902,8 @@ async function attachVisuals(businessId: string, key: { contentId: string } | { 
     const { format, mediaPaths } = mediaForPost({ network: post.network, format: planned, rules, images, video: videoFile });
     if (format === post.format && mediaPaths.join("|") === post.mediaPaths.join("|")) continue;
     const fixesDraft = post.status === "DRAFT" && post.lastError?.startsWith("This post needs a picture") && mediaPaths.length > 0;
-    await prisma.post.updateMany({ where: { ...postWhere, id: post.id, lockedAt: null, updatedAt: post.updatedAt }, data: { format, mediaPaths, ...(fixesDraft ? { lastError: null } : {}) } });
+    // A post that carries the video credits its music when the licence asks for it.
+    const text = videoFile && mediaPaths.includes(videoFile) ? withMusicCredit(post.text, videoCredit) : post.text;
+    await prisma.post.updateMany({ where: { ...postWhere, id: post.id, lockedAt: null, updatedAt: post.updatedAt }, data: { format, mediaPaths, ...(text !== post.text ? { text } : {}), ...(fixesDraft ? { lastError: null } : {}) } });
   }
 }

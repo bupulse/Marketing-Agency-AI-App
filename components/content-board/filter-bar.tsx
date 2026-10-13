@@ -27,7 +27,7 @@ const toggle = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter(
  * The Content page's filters, kept in the URL so a view can be shared: quick status chips inline, and every filter
  * (app, post type, date, status) in a sheet (a bottom sheet on phones). Active filters show as removable chips.
  */
-export function FilterBar({ filters, apps = NETWORKS }: { filters: ContentFilters; apps?: readonly Network[] }) {
+export function FilterBar({ filters, apps = NETWORKS, day }: { filters: ContentFilters; apps?: readonly Network[]; /** The day view's day (content flow v3): kept in the URL, and the date filter is not offered. */ day?: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -35,7 +35,9 @@ export function FilterBar({ filters, apps = NETWORKS }: { filters: ContentFilter
   const count = activeFilterCount(filters);
 
   function go(next: ContentFilters) {
-    start(() => router.push(`${pathname}${contentQuery({ ...next, limit: undefined })}`, { scroll: false }));
+    const query = contentQuery({ ...next, limit: undefined, ...(day ? { range: undefined } : {}) });
+    const withDay = day ? `${query ? `${query}&` : "?"}day=${day}` : query;
+    start(() => router.push(`${pathname}${withDay}`, { scroll: false }));
   }
 
   const chips: { key: string; label: string; remove: ContentFilters }[] = [
@@ -89,7 +91,7 @@ export function FilterBar({ filters, apps = NETWORKS }: { filters: ContentFilter
       )}
 
       <Dialog open={open} onOpenChange={setOpen} title="Filters" className="max-w-xl">
-        {open && <FilterSheet initial={filters} apps={apps} onApply={(f) => { setOpen(false); go(f); }} />}
+        {open && <FilterSheet initial={filters} apps={apps} dates={!day} onApply={(f) => { setOpen(false); go(f); }} />}
       </Dialog>
     </div>
   );
@@ -110,7 +112,7 @@ function Group({ legend, children }: { legend: string; children: React.ReactNode
   );
 }
 
-function FilterSheet({ initial, apps, onApply }: { initial: ContentFilters; apps: readonly Network[]; onApply: (f: ContentFilters) => void }) {
+function FilterSheet({ initial, apps, dates = true, onApply }: { initial: ContentFilters; apps: readonly Network[]; dates?: boolean; onApply: (f: ContentFilters) => void }) {
   const [f, setF] = useState<ContentFilters>(initial);
   const set = (patch: Partial<ContentFilters>) => setF((prev) => ({ ...prev, ...patch }));
 
@@ -149,6 +151,7 @@ function FilterSheet({ initial, apps, onApply }: { initial: ContentFilters; apps
         </Chip>
       </Group>
 
+      {dates && (
       <fieldset className="flex flex-col gap-3">
         <legend className="mb-2.5 text-[13px] font-semibold tracking-wide text-muted uppercase">Date</legend>
         <div role="radiogroup" aria-label="Which date" className="inline-flex w-full rounded-full bg-soft p-1 sm:w-auto">
@@ -189,6 +192,7 @@ function FilterSheet({ initial, apps, onApply }: { initial: ContentFilters; apps
           </div>
         )}
       </fieldset>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <Button type="submit">Show posts</Button>

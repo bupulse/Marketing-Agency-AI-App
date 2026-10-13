@@ -4,6 +4,8 @@
 import { z } from "zod";
 import { isPackId, PACKS, recommendPack, type PackId } from "@/lib/designs/packs";
 import { isTemplateId, TEMPLATES, templatesForProjectType, type TemplateId } from "@/lib/designs/templates/registry";
+import { isMood, MOODS } from "@/lib/music/tracks";
+import { defaultPeople, peopleSchema, peopleScene, readPeople, type Audience, type PeopleBrief } from "./people";
 import { VISUAL_LIMITS, type ImagePlan, type SlideSource, type VisualSlide } from "./types";
 
 /** Templates built around a photo; without one they become the plain announcement layout. */
@@ -17,15 +19,17 @@ const slideSchema = z.object({
   chip: z.string().describe(`A price, date or call to action exactly as written in the content or facts, at most ${VISUAL_LIMITS.chip} characters; empty for none`),
   kicker: z.string().describe(`A 1 to 3 word label above the headline; empty for none`),
   template: z.string().describe(`One of: ${TEMPLATES.map((t) => t.id).join(", ")}`),
-  image: z.enum(["album", "ai", "none"]).describe("album: one of the owner's photos; ai: an AI-generated photo of a scene; none: a text design"),
-  photo: z.number().int().describe("For image=album: the number of the album photo (0 is the first); -1 otherwise"),
-  scene: z.string().describe("For image=ai: what the photo shows, in English, no text in the picture, no prices; empty otherwise"),
+  image: z.enum(["album", "ai", "none"]).describe("ai: a realistic photo with people (the default for the cover); album: one of the owner's photos as it is; none: a designed slide (tips, prices, quotes)"),
+  photo: z.number().int().describe("The album photo to use (0 is the first): shown as it is for image=album, or the product reference for image=ai; -1 for none"),
+  scene: z.string().describe("For image=ai: what is photographed besides the people (product, props, place), in English, no prices; empty otherwise"),
 });
 
 export const directionSchema = z.object({
   format: z.enum(["single", "carousel"]),
   pack: z.string().describe(`One of: ${PACKS.map((p) => p.id).join(", ")}`),
   slides: z.array(slideSchema).min(1),
+  people: peopleSchema.describe("The people in the AI photo: everyday local customers or staff, in English"),
+  mood: z.enum(MOODS).describe("The mood of the post's video music"),
 });
 
 export type Direction = z.infer<typeof directionSchema>;
@@ -55,6 +59,12 @@ export interface DirectionContext {
   maxAi?: number;
   /** Most slides (Autopilot uses fewer). */
   maxSlides?: number;
+  /** The company's country and personas, so the people in AI photos look like its customers. */
+  audience?: Audience;
+  /** A content pack post's angle (lib/studio/angles.ts): what it says and what its people photo shows. */
+  angle?: { label: string; people: string } | null;
+  /** Cover templates other posts of the pack already use: this one should look different. */
+  avoidTemplates?: TemplateId[];
 }
 
 const FENCE = /<{3,}|>{3,}/;
@@ -143,8 +153,8 @@ export function chooseSources(
     if (w.source === "ai" && ai < maxAi && w.template !== "quote") {
       source = "ai";
       ai += 1;
-      // The cover photo, when there is one, is the reference for the AI photo.
-      photoPath = photos[0] ?? null;
+      // The real product stays recognisable: the photo the art director picked (else the cover) is the reference.
+      photoPath = (w.photo !== undefined && w.photo >= 0 ? photos[w.photo] : undefined) ?? photos[0] ?? null;
     } else if (w.source !== "none" || PHOTO_TEMPLATES.includes(w.template)) {
       photoPath = nextPhoto(w.photo);
       if (photoPath) source = "album";
@@ -158,6 +168,26 @@ function slide(base: Omit<VisualSlide, "designId" | "path">): VisualSlide {
   return { ...base, designId: null, path: null };
 }
 
+/**
+ * Posts show people (owner decision): the cover becomes an AI scene with people whenever AI photos are allowed (the
+ * album photo, if any, is the product reference). Quote cards stay designed. In a carousel with an AI cover, the
+ * other slides are designed slides over the same photo, so a carousel uses one AI image.
+ */
+function withPeople(slides: VisualSlide[], ctx: DirectionContext, brief: PeopleBrief | null): VisualSlide[] {
+  const coverAi = slides[0]?.source === "ai";
+  return slides.map((s, i) => {
+    if (s.source === "ai") return { ...s, scene: peopleScene(brief, ctx.audience, ctx.title, !!s.photoPath, s.scene, ctx.angle?.people) };
+    if (i > 0 && coverAi && s.source === "text") return { ...s, useCoverPhoto: true, template: PHOTO_TEMPLATES.includes(s.template) ? "announcement" : s.template };
+    return s;
+  });
+}
+
+/** The cover asks for people: an album or plain cover turns into an AI scene when AI photos are allowed. */
+function coverWithPeople(source: "album" | "ai" | "none", template: TemplateId, ctx: DirectionContext): "album" | "ai" | "none" {
+  if (!ctx.aiAllowed || template === "quote") return source;
+  return source === "album" ? "ai" : source;
+}
+
 /** The visual BuPulse makes on its own: used when the art director is not asked, fails or answers nonsense. */
 export function fallbackPlan(ctx: DirectionContext, notes: string[] = []): ImagePlan {
   const pack = recommendPack(ctx.business);
@@ -166,7 +196,7 @@ export function fallbackPlan(ctx: DirectionContext, notes: string[] = []): Image
   const headline = slideText(ctx.headlines[0] || ctx.title || ctx.business.name, VISUAL_LIMITS.headline);
   const firstSentence = slideText(ctx.caption.split(/(?<=[.!?])\s|\n/)[0] ?? "", VISUAL_LIMITS.subline);
   const chip = slideText(ctx.price ?? "", VISUAL_LIMITS.chip);
-  const wantAi = ctx.aiAllowed && photos.length === 0;
+  const wantAi = ctx.aiAllowed;
   const coverTemplate = defaultTemplate(ctx.subjectType, photos.length > 0 || wantAi);
 
   const wanted: { source: "album" | "ai" | "none"; photo?: number; template: TemplateId }[] = [{ source: wantAi ? "ai" : "album", photo: 0, template: coverTemplate }];
@@ -176,7 +206,8 @@ export function fallbackPlan(ctx: DirectionContext, notes: string[] = []): Image
     const items = listItems(ctx.caption);
     if (items.length >= 2) {
       for (const item of items.slice(0, max - 1)) {
-        wanted.push({ source: photos.length > wanted.length ? "album" : "none", template: "announcement" });
+        // With an AI cover the tips are designed over the cover photo (withPeople); without, the next album photos.
+        wanted.push({ source: !wantAi && photos.length > wanted.length ? "album" : "none", template: "announcement" });
         texts.push({ headline: slideText(item, VISUAL_LIMITS.headline), subline: "", chip: "" });
       }
     } else {
@@ -206,7 +237,8 @@ export function fallbackPlan(ctx: DirectionContext, notes: string[] = []): Image
       ...(c.source === "ai" ? { scene: ctx.title } : {}),
     }),
   );
-  return { version: 1, pack, aspectRatio: "4:5", slides, directedBy: "rules", notes };
+  const people = slides.some((s) => s.source === "ai") ? defaultPeople(ctx.audience, ctx.title, ctx.angle?.people) : undefined;
+  return { version: 1, pack, aspectRatio: "4:5", slides: withPeople(slides, ctx, people ?? null), directedBy: "rules", notes, ...(people ? { people } : {}) };
 }
 
 /**
@@ -215,7 +247,8 @@ export function fallbackPlan(ctx: DirectionContext, notes: string[] = []): Image
  * where none is allowed, too few or too many slides. An answer that cannot be parsed gives the fallback plan.
  */
 export function validateDirection(raw: unknown, ctx: DirectionContext): ImagePlan {
-  const parsed = directionSchema.safeParse(raw);
+  // An answer without the people brief is still usable: BuPulse writes the brief itself.
+  const parsed = directionSchema.extend({ people: z.unknown().optional(), mood: z.unknown().optional() }).safeParse(raw);
   if (!parsed.success) return fallbackPlan(ctx, ["BuPulse chose this design for you."]);
   const d = parsed.data;
   const pack: PackId = isPackId(d.pack) ? d.pack : recommendPack(ctx.business);
@@ -235,7 +268,7 @@ export function validateDirection(raw: unknown, ctx: DirectionContext): ImagePla
     const asked: TemplateId = isTemplateId(s.template) ? s.template : defaultTemplate(ctx.subjectType, s.image !== "none");
     // A quote needs words to quote; a cover slide that is a quote with nothing quotable falls back.
     const template: TemplateId = asked === "quote" && i === 0 ? defaultTemplate(ctx.subjectType, s.image !== "none") : asked;
-    return { source: s.image, photo: s.photo, template };
+    return { source: i === 0 ? coverWithPeople(s.image, template, ctx) : s.image, photo: s.photo, template };
   });
   const chosen = chooseSources(wanted, ctx);
   const fallbackHeadline = slideText(ctx.headlines[0] || ctx.title || ctx.business.name, VISUAL_LIMITS.headline);
@@ -255,7 +288,30 @@ export function validateDirection(raw: unknown, ctx: DirectionContext): ImagePla
   if (raws.some((s) => s.image === "ai") && !slides.some((s) => s.source === "ai")) {
     notes.push(ctx.aiAllowed ? "One AI photo per post: the other slides use your photos or text." : "AI photos are not available right now, so your photos and free designs are used.");
   }
-  return { version: 1, pack, aspectRatio: "4:5", slides, directedBy: "ai", notes };
+  const usesAi = slides.some((s) => s.source === "ai");
+  const people = usesAi ? (readPeople(d.people) ?? defaultPeople(ctx.audience, ctx.title, ctx.angle?.people)) : undefined;
+  return { version: 1, pack, aspectRatio: "4:5", slides: withPeople(slides, ctx, people ?? null), directedBy: "ai", notes, ...(people ? { people } : {}), ...(isMood(d.mood) ? { mood: d.mood } : {}) };
+}
+
+/**
+ * The posts of a pack look different (owner decision): a cover template another post of the pack already uses is
+ * swapped for the subject's next best one nobody uses yet (never a quote, and a photo template only with a photo).
+ * Pure; returns new plans.
+ */
+export function diversifyPack(plans: ImagePlan[], subjectType: string): ImagePlan[] {
+  const used = new Set<TemplateId>();
+  return plans.map((plan) => {
+    const cover = plan.slides[0];
+    if (!cover) return plan;
+    const hasPhoto = cover.source !== "text" || !!cover.useCoverPhoto;
+    let template = cover.template;
+    if (used.has(template) && template !== "quote") {
+      const next = templatesForProjectType(subjectType).find((t) => !used.has(t) && t !== "quote" && (hasPhoto || !PHOTO_TEMPLATES.includes(t)));
+      if (next) template = next;
+    }
+    used.add(template);
+    return template === cover.template ? plan : { ...plan, slides: [{ ...cover, template }, ...plan.slides.slice(1)] };
+  });
 }
 
 /** A stored image plan read back defensively (JSON from the database). Null when it is not a usable plan. */

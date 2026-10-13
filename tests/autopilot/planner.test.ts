@@ -271,3 +271,16 @@ describe("photos", () => {
     expect(found).toBe(true);
   });
 });
+
+describe("one app per idea (content packs)", () => {
+  it("puts each idea on one account, and every account gets one before any gets two", () => {
+    const connections = [conn("c-ig", "instagram"), conn("c-fb", "facebook"), conn("c-li", "linkedin")];
+    const plan = buildWeekPlan(input({ connections, config: { ...DEFAULT_CONFIG, postsPerWeek: 5, connectionIds: [] } }));
+    expect(plan.groups.length).toBeGreaterThanOrEqual(3);
+    expect(plan.groups.every((g) => g.posts.length === 1 && g.networks.length === 1)).toBe(true);
+    const perAccount = new Map<string, number>();
+    for (const g of plan.groups) perAccount.set(g.posts[0].connectionId, (perAccount.get(g.posts[0].connectionId) ?? 0) + 1);
+    expect([...perAccount.keys()].sort()).toEqual(["c-fb", "c-ig", "c-li"]);
+    expect(Math.max(...perAccount.values()) - Math.min(...perAccount.values())).toBeLessThanOrEqual(1);
+  });
+});

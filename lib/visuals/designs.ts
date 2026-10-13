@@ -24,8 +24,8 @@ export function slideAngle(slide: Pick<VisualSlide, "template" | "chip" | "sourc
 }
 
 /** Whether a slide will be drawn with a photo (its album photo or a paid or planned AI photo). */
-export function slideHasPhoto(slide: Pick<VisualSlide, "source" | "photoPath" | "aiPhotoPath">): boolean {
-  return slide.source === "ai" || !!slide.aiPhotoPath || (slide.source === "album" && !!slide.photoPath);
+export function slideHasPhoto(slide: Pick<VisualSlide, "source" | "photoPath" | "aiPhotoPath" | "useCoverPhoto">): boolean {
+  return slide.source === "ai" || !!slide.aiPhotoPath || !!slide.useCoverPhoto || (slide.source === "album" && !!slide.photoPath);
 }
 
 /**

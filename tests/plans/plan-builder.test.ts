@@ -83,6 +83,9 @@ beforeEach(() => {
   h.swap.mockImplementation(async (subId: string, price: string) => ({ id: subId, status: "active", customer_id: "ctm_x", items: [{ price: { id: price } }] }));
 });
 
+// 20261016130000_people_images: the image limit is AI images now, and the cards say so.
+const AI_IMAGE_COPY: Record<string, string> = { "50 brand designs a month": "30 AI images a month", "150 brand designs a month": "100 AI images a month" };
+
 describe("the migration seeds exactly today's plans", () => {
   const sql = readFileSync("prisma/migrations/20261009095000_plan_builder/migration.sql", "utf8");
   const row = (key: string) => {
@@ -101,7 +104,9 @@ describe("the migration seeds exactly today's plans", () => {
   it("is identical to the code fallback (SEED_PLANS) and to the pricing page copy", () => {
     for (const [key, c] of Object.entries(SEED_PLANS)) {
       const r = row(key);
-      expect(r).toMatchObject({ name: c.name, description: c.description, isTrial: c.isTrial, trialDays: c.trialDays, sortOrder: c.sortOrder, highlight: c.highlight, monthly: c.priceUsdMonthly * 100, yearly: c.priceUsdYearly * 100, limits: Object.fromEntries(Object.entries(c.limits).filter(([k]) => k !== "seats" && k !== "videoSeconds")), features: c.highlights, caps: { apiAccess: c.features.includes("apiAccess"), ownComposio: c.features.includes("ownComposio") } });
+      // The pricing copy changed later with the AI image limits (20261016130000_people_images).
+      r.features = r.features.map((f: string) => AI_IMAGE_COPY[f] ?? f);
+      expect(r).toMatchObject({ name: c.name, description: c.description, isTrial: c.isTrial, trialDays: c.trialDays, sortOrder: c.sortOrder, highlight: c.highlight, monthly: c.priceUsdMonthly * 100, yearly: c.priceUsdYearly * 100, limits: Object.fromEntries(Object.entries(c.limits).filter(([k]) => k !== "seats" && k !== "videoSeconds" && k !== "image" && k !== "voiceCharacters")), features: c.highlights, caps: { apiAccess: c.features.includes("apiAccess"), ownComposio: c.features.includes("ownComposio") } });
       // seats arrive with their own migration (the plan_seats one); here only the original five limits are compared
       expect(Object.keys(r.limits).sort()).toEqual(["chat", "image", "text", "videoSeconds", "voiceCharacters"]);
     }
@@ -110,7 +115,18 @@ describe("the migration seeds exactly today's plans", () => {
     expect(video).toContain(`jsonb_set("limits", '{videoSeconds}', '${SEED_PLANS.PRO.limits.videoSeconds}'::jsonb)\nWHERE "key" IN ('BUSINESS', 'PRO')`);
     expect(video).toContain(`jsonb_set("limits", '{videoSeconds}', '${SEED_PLANS.TRIAL.limits.videoSeconds}'::jsonb)\nWHERE "isTrial" = true`);
     expect(row("STANDARD").limits.videoSeconds).toBe(SEED_PLANS.STANDARD.limits.videoSeconds);
-    expect(SEED_PLANS.STANDARD.highlights).toEqual(["100 AI text generations a month", "50 brand designs a month", "Post to 5 social networks", "Lead-capturing chat widget", "Content calendar and scheduling"]);
+    const people = readFileSync("prisma/migrations/20261016130000_people_images/migration.sql", "utf8");
+    expect(people).toMatch(/'\{image\}', '30'::jsonb\) WHERE "key" IN \('STARTER', 'STANDARD'\)/);
+    expect(people).toMatch(/'\{image\}', '100'::jsonb\) WHERE "key" IN \('BUSINESS', 'PRO'\)/);
+    expect(people).toMatch(/'\{image\}', '5'::jsonb\) WHERE "isTrial" = true/);
+    expect([SEED_PLANS.TRIAL.limits.image, SEED_PLANS.STANDARD.limits.image, SEED_PLANS.PRO.limits.image]).toEqual([5, 30, 100]);
+    for (const [from, to] of Object.entries(AI_IMAGE_COPY)) expect(people).toContain(`'${from}', '${to}'`);
+    // Voiceover characters changed with 20261017100000_voice_and_music: trial 600, Business and Pro 5,000, the rest 0.
+    const voice = readFileSync("prisma/migrations/20261017100000_voice_and_music/migration.sql", "utf8");
+    expect(voice).toContain(`'{voiceCharacters}', '${SEED_PLANS.PRO.limits.voiceCharacters}'::jsonb) WHERE "key" IN ('BUSINESS', 'PRO')`);
+    expect(voice).toContain(`'{voiceCharacters}', '${SEED_PLANS.TRIAL.limits.voiceCharacters}'::jsonb) WHERE "isTrial" = true`);
+    expect(SEED_PLANS.STANDARD.limits.voiceCharacters).toBe(0);
+    expect(SEED_PLANS.STANDARD.highlights).toEqual(["100 AI text generations a month", "30 AI images a month", "Post to 5 social networks", "Lead-capturing chat widget", "Content calendar and scheduling"]);
   });
 
   it("keeps existing subscriptions: the column becomes the same words as text, with a foreign key, and the overrides are folded in", () => {

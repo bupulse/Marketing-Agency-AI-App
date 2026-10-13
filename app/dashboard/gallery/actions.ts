@@ -18,6 +18,7 @@ import {
   moveAssets as moveInto,
   prepareUploads,
   renameAsset as renamePhoto,
+  setAssetDescription,
   renameFolder as renameFolderRow,
   type FolderSummary,
   type GalleryOverview,
@@ -163,6 +164,15 @@ export async function renameAsset(assetId: string, name: string): Promise<Result
   const parsed = z.object({ id, name: z.string().max(260) }).safeParse({ id: assetId, name });
   if (!parsed.success) return { ok: false, error: FAILED };
   const result = await guard(async ({ businessId }) => ({ name: await renamePhoto(businessId, parsed.data.id, parsed.data.name) }), { limit: true });
+  if (result.ok) refresh();
+  return result;
+}
+
+/** The owner's "What's in this video?" for one photo or video (the AI writes captions about it). */
+export async function describeAsset(assetId: string, description: string): Promise<Result<{ description: string | null }>> {
+  const parsed = z.object({ id, description: z.string().max(1000) }).safeParse({ id: assetId, description });
+  if (!parsed.success) return { ok: false, error: "Keep the description under 500 characters." };
+  const result = await guard(async ({ businessId }) => ({ description: await setAssetDescription(businessId, parsed.data.id, parsed.data.description) }), { limit: true });
   if (result.ok) refresh();
   return result;
 }

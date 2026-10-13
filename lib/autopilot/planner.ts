@@ -34,6 +34,8 @@ export interface PlanProject {
   features: string[];
   notes?: string;
   photoPaths: string[];
+  /** The album's own videos (Gallery first, docs/CONTENT.md): a video idea posts one as it is instead of making one. */
+  videoPaths?: string[];
   createdAt: Date;
   /** Posts already made about it (any source); 0 means it was never posted. */
   postedCount: number;
@@ -334,6 +336,20 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
     return null;
   };
 
+  // One app per idea (as content packs, docs/CONTENT_PACKS.md): each idea goes to one account, so every post is its
+  // own idea with its own picture. The ideas that fit the fewest accounts choose first; each takes the account with
+  // the fewest posts so far, the idea's own app order breaking ties, so every account gets one before any gets two.
+  const accountOf = new Map<Pick, PlanConnection>();
+  const load = new Map<string, number>(input.connections.map((c) => [c.id, 0]));
+  const fits = (pick: Pick) => input.connections.filter((c) => pick.idea.formats[c.network]);
+  for (const pick of [...picks].sort((a, b) => fits(a).length - fits(b).length)) {
+    const order = ideaNetworks(pick.idea);
+    const best = fits(pick).sort((a, b) => load.get(a.id)! - load.get(b.id)! || order.indexOf(a.network) - order.indexOf(b.network))[0];
+    if (!best) continue;
+    accountOf.set(pick, best);
+    load.set(best.id, load.get(best.id)! + 1);
+  }
+
   const groups: PlannedGroup[] = [];
   const ordered = [...picks].sort((a, b) => dayOf.get(a)!.localeCompare(dayOf.get(b)!));
   for (const pick of ordered) {
@@ -353,7 +369,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
     }
 
     const posts: PlannedPost[] = [];
-    for (const connection of input.connections) {
+    for (const connection of input.connections.filter((c) => c === accountOf.get(pick))) {
       const format = idea.formats[connection.network];
       if (!format) continue;
       // A carousel needs at least two pictures; otherwise it is one image post.

@@ -127,7 +127,8 @@ describe("postKind", () => {
 });
 
 describe("cardExcerpt", () => {
-  it("shows a video idea's caption, never its script", async () => {
+  // The queries module pulls in the visuals service; importing it can take longer than a test's 5 s on a cold run.
+  it("shows a video idea's caption, never its script", { timeout: 30_000 }, async () => {
     const { cardExcerpt } = await import("@/lib/content-board/queries");
     const script = "0-5s [Scene: Wide shot of a clean living room] Moving in? Start fresh.\n5-10s: (Close-up) We clean every corner.";
     expect(cardExcerpt({ format: "SCRIPT", title: null, text: script }, "Moving into a new home? We clean it top to bottom.")).toBe("Moving into a new home? We clean it top to bottom.");

@@ -1,21 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAppContext } from "@/components/app/context";
-import { latestContentPosts } from "@/lib/content-board/drafts";
 import { featureGate } from "@/components/app/no-access";
-import { DesignStudio } from "@/components/designs/design-studio";
 import { AlbumCard } from "@/components/knowledge/album-card";
 import { BackLink } from "@/components/knowledge/back-link";
 import { DetailsList } from "@/components/knowledge/details-list";
 import { ItemActions } from "@/components/knowledge/item-actions";
-import { ContentCard } from "@/components/studio/content-card";
-import { loadSubjectStudio } from "@/components/studio/queries";
-import { WriteContentCta } from "@/components/studio/write-content-cta";
+import { SubjectContentLink } from "@/components/knowledge/subject-content-link";
 import { Badge, GlassCard } from "@/components/ui";
-import { isCanvaEnabled } from "@/lib/canva/config";
-import { recommendPack } from "@/lib/designs/packs";
 import { CAMPAIGN_TYPE_LABEL } from "@/lib/knowledge/campaigns";
-import { legacyTypeOf } from "@/lib/knowledge/legacy";
 import {
   ACCESS_LABEL,
   CONDITION_LABEL,
@@ -37,13 +30,10 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   const blocked = await featureGate("content");
   if (blocked) return blocked;
   const { id } = await params;
-  const { business, usage, entitlements } = await getAppContext();
+  const { business } = await getAppContext();
   const product = await getProduct(business.id, id);
   if (!product) notFound();
-  const subject = { kind: "product" as const, id: product.id };
-  // Content written before posts were drafted gets its posts to review once, when its page is opened (docs/CONTENT.md).
-  if (entitlements.usable.has("calendar")) await latestContentPosts(business.id, { productId: product.id }, { backfill: true }).catch(() => null);
-  const [photos, studio] = await Promise.all([productAlbum(business.id, product.id), loadSubjectStudio(business.id, subject)]);
+  const photos = await productAlbum(business.id, product.id);
   const readiness = productReadiness({ ...product, photoCount: photos.length });
   const details = readDetails(product.kind, product.details);
   const kindRows: [string, string | string[] | null][] =
@@ -113,35 +103,9 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
         />
       </GlassCard>
 
-      <AlbumCard kind="product" id={product.id} name={product.name} photos={photos.map((p) => ({ id: p.id, path: p.path, url: p.url, name: p.name }))} />
+      <AlbumCard kind="product" id={product.id} name={product.name} photos={photos.map((p) => ({ id: p.id, path: p.path, url: p.url, name: p.name, kind: p.kind, posterUrl: p.posterUrl, durationMs: p.durationMs }))} />
 
-      {studio.contents.length === 0 ? (
-        <WriteContentCta subjectId={product.id} used={usage.used.text} limit={usage.limits.text} />
-      ) : (
-        <ContentCard subject={subject} contents={studio.contents} videoInPlan={studio.videoInPlan} used={usage.used.text} limit={usage.limits.text} photos={photos.map((p) => ({ path: p.path, url: p.url }))} />
-      )}
-
-      {/* Designs are their own plan feature; the product page keeps its content tools without them. */}
-      {entitlements.usable.has("designs") && (
-        <DesignStudio
-          pack={recommendPack(business)}
-          canva={isCanvaEnabled() && entitlements.usable.has("canva")}
-          aiPhotos={entitlements.usable.has("aiPhotos")}
-          subjectId={product.id}
-          album={`product:${product.id}`}
-          defaults={{
-            headline: product.name,
-            subline: product.usps[0] ?? product.features[0] ?? "",
-            chip: product.priceAmount != null || product.priceNote ? priceLine(product).slice(0, 40) : "",
-            photoPaths: photos.map((p) => p.path),
-            photoUrls: photos.map((p) => p.url),
-            projectType: legacyTypeOf(product),
-          }}
-          designs={studio.designs}
-          credits={{ used: usage.used.image, limit: usage.limits.image, resetsAt: usage.resetsAt?.toISOString() ?? null }}
-          hasLogo={Boolean(business.logoUrl)}
-        />
-      )}
+      <SubjectContentLink href={`/dashboard/content/products/${product.id}`} label="See this product's content" />
     </>
   );
 }

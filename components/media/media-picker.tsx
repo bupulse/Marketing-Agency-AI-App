@@ -28,7 +28,8 @@ import { Check, ImagePlus, LoaderCircle, Search, Upload } from "lucide-react";
 import { Dialog } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { getGalleryOverview, listGalleryPage } from "@/app/dashboard/gallery/actions";
-import { MEDIA_TYPES } from "@/lib/media/rules";
+import { MEDIA_TYPES, UPLOAD_ACCEPT } from "@/lib/media/rules";
+import { GalleryThumb } from "./media-thumb";
 import type { GalleryOverview, MediaItem } from "@/lib/media/service";
 import { destinationKey, destinationOptions, parseFilter, uploadDestinationFor } from "@/lib/media/destinations";
 import { DestinationDialog } from "./destination-dialog";
@@ -48,13 +49,15 @@ export type MediaPickerProps = {
   title?: string;
   confirmLabel?: (count: number) => string;
   initialFolder?: string;
+  /** Offer the owner's Gallery videos too (the post composer); photo pickers (designs, video scenes) leave them out. */
+  videos?: boolean;
 };
 
 type Folder = "all" | "none" | string;
 
 export const toPicked = (m: Pick<MediaItem, "id" | "path" | "url" | "width" | "height" | "mimeType">): PickedPhoto => ({ id: m.id, path: m.path, url: m.url, width: m.width, height: m.height, mimeType: m.mimeType });
 
-export function MediaPicker({ open, onOpenChange, onPick, multiple = false, max = 10, title, confirmLabel, initialFolder }: MediaPickerProps) {
+export function MediaPicker({ open, onOpenChange, onPick, multiple = false, max = 10, title, confirmLabel, initialFolder, videos = false }: MediaPickerProps) {
   // Google's Picker cannot show above a modal <dialog>, so while it is open this dialog steps aside (its state stays).
   const [aside, setAside] = useState(false);
   const asideRef = useRef(false);
@@ -73,14 +76,14 @@ export function MediaPicker({ open, onOpenChange, onPick, multiple = false, max 
       className="max-w-3xl"
     >
       {/* Mounted only while open, so every opening starts on "All photos" with nothing selected. */}
-      {open && <PickerBody onOpenChange={onOpenChange} onPick={onPick} multiple={multiple} max={max} confirmLabel={confirmLabel} initialFolder={initialFolder} onPickerVisible={stepAside} />}
+      {open && <PickerBody onOpenChange={onOpenChange} onPick={onPick} multiple={multiple} max={max} confirmLabel={confirmLabel} initialFolder={initialFolder} onPickerVisible={stepAside} videos={videos} />}
     </Dialog>
   );
 }
 
 type Page = { key: string; items: MediaItem[]; cursor: string | null; error: string | null };
 
-function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, initialFolder, onPickerVisible }: Pick<MediaPickerProps, "onOpenChange" | "onPick" | "confirmLabel" | "initialFolder"> & { multiple: boolean; max: number; onPickerVisible: (visible: boolean) => void }) {
+function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, initialFolder, onPickerVisible, videos }: Pick<MediaPickerProps, "onOpenChange" | "onPick" | "confirmLabel" | "initialFolder"> & { multiple: boolean; max: number; onPickerVisible: (visible: boolean) => void; videos: boolean }) {
   const [overview, setOverview] = useState<Pick<GalleryOverview, "folders" | "albums">>({ folders: [], albums: [] });
   const folders = overview.folders;
   const [folder, setFolder] = useState<Folder>(initialFolder ?? "all");
@@ -99,7 +102,7 @@ function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, initial
   const key = `${folder}|${query}`;
   const loading = page?.key !== key;
   // While another folder or search loads, the previous photos stay (dimmed) instead of flashing empty.
-  const items = page?.items ?? [];
+  const items = (page?.items ?? []).filter((i) => videos || i.kind !== "video");
   const cursor = loading ? null : (page?.cursor ?? null);
   const error = loading ? null : (page?.error ?? null);
   const first = page === null;
@@ -192,7 +195,7 @@ function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, initial
             ref={inputRef}
             type="file"
             multiple
-            accept={MEDIA_TYPES.join(",")}
+            accept={videos ? UPLOAD_ACCEPT : MEDIA_TYPES.join(",")}
             className="sr-only"
             tabIndex={-1}
             aria-hidden
@@ -278,8 +281,7 @@ function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, initial
                         on ? "ring-pulse-blue" : "ring-transparent",
                       )}
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
-                      <img src={item.url} alt="" loading="lazy" decoding="async" className="size-full object-cover" />
+                      <GalleryThumb item={item} alt="" />
                       {on && (
                         <span className="absolute top-1.5 right-1.5 inline-flex size-6 items-center justify-center rounded-full bg-pulse-blue text-white">
                           <Check aria-hidden className="size-4" />

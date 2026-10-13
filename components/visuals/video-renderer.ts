@@ -5,6 +5,7 @@ import { captionAt, frameCount, frameTimestampUs, kenBurns, layersAt, wrapText }
 import { VIDEO_LIMITS, type VideoPlan } from "@/lib/visuals/types";
 import { getVideoLook } from "@/lib/visuals/video-looks";
 import { drawLookFrame } from "./look-renderer";
+import { mixSamples } from "@/lib/voice/mix";
 
 export type VideoSupport = { mp4: boolean; webm: boolean };
 
@@ -34,8 +35,11 @@ export class VideoRenderError extends Error {
 export interface RenderOptions {
   /** Signed URLs for scene.photoPath values. A missing or failing image draws the brand backdrop instead (never fail). */
   photoUrls: Record<string, string>;
-  /** Optional owner-uploaded music track (never stored); skipped with musicSkipped=true when it cannot be decoded/encoded. */
+  /** Optional owner-uploaded music track (never stored); it replaces the library track. */
   music?: File | Blob | null;
+  /** The voiceover MP3 (signed URL or data URL) and the library track (public or data URL), mixed under the video. */
+  voiceUrl?: string | null;
+  musicUrl?: string | null;
   onProgress?: (fraction: number) => void;
   signal?: AbortSignal;
 }
@@ -44,6 +48,7 @@ export interface RenderResult {
   blob: Blob;
   mimeType: "video/mp4" | "video/webm";
   durationMs: number;
+  /** Music or voice was asked for but this browser could not decode or encode it: the video is silent. */
   musicSkipped: boolean;
 }
 
@@ -187,17 +192,18 @@ export async function renderVideo(plan: VideoPlan, options: RenderOptions): Prom
     checkAbort(options.signal);
     const [images] = await Promise.all([loadImages(plan, options.photoUrls), loadVideoFonts(getVideoLook(plan.look)?.style ?? plan.pack)]);
     if (support.mp4) {
-      const audio = options.music ? await encodeMusic(options.music, plan.totalMs).catch(() => null) : null;
+      const wantsAudio = !!(options.music || options.voiceUrl || options.musicUrl);
+      const audio = wantsAudio ? await encodeSoundtrack(plan, options).catch(() => null) : null;
       let blob = await encodeMp4(plan, images, VIDEO_LIMITS.bitrate, audio, options);
       if (blob.size > VIDEO_LIMITS.maxBytes) blob = await encodeMp4(plan, images, VIDEO_LIMITS.bitrate * 0.55, audio, options);
       if (blob.size > VIDEO_LIMITS.maxBytes) throw new VideoRenderError("too_large", TOO_LARGE);
       options.onProgress?.(1);
-      return { blob, mimeType: "video/mp4", durationMs: plan.totalMs, musicSkipped: !!options.music && !audio };
+      return { blob, mimeType: "video/mp4", durationMs: plan.totalMs, musicSkipped: wantsAudio && !audio };
     }
     const blob = await recordWebm(plan, images, options);
     if (blob.size > VIDEO_LIMITS.maxBytes) throw new VideoRenderError("too_large", TOO_LARGE);
     options.onProgress?.(1);
-    return { blob, mimeType: "video/webm", durationMs: plan.totalMs, musicSkipped: !!options.music };
+    return { blob, mimeType: "video/webm", durationMs: plan.totalMs, musicSkipped: !!(options.music || options.voiceUrl || options.musicUrl) };
   } catch (error) {
     if (error instanceof VideoRenderError) throw error;
     if (options.signal?.aborted) throw new VideoRenderError("aborted", "The video was cancelled.", { cause: error });
@@ -241,24 +247,45 @@ function makeCanvas(plan: VideoPlan): { canvas: AnyCanvas; ctx: CanvasRenderingC
 
 type EncodedAudio = { chunks: { chunk: EncodedAudioChunk; meta?: EncodedAudioChunkMetadata }[]; sampleRate: number; numberOfChannels: number };
 
-/** Decodes the music, keeps the first totalMs with a 1 s fade-out, and encodes it to AAC. Null when unsupported. */
-async function encodeMusic(music: Blob, totalMs: number): Promise<EncodedAudio | null> {
-  if (typeof AudioEncoder === "undefined" || typeof AudioContext === "undefined") return null;
-  const context = new AudioContext();
-  let buffer: AudioBuffer;
+const SAMPLE_RATE = 44_100;
+
+/** Fetches and decodes one audio file at 44.1 kHz; null when it is missing or cannot be decoded. */
+async function decode(context: BaseAudioContext, source: Blob | string | null | undefined): Promise<Float32Array[] | null> {
+  if (!source) return null;
   try {
-    buffer = await context.decodeAudioData(await music.arrayBuffer());
+    const bytes = typeof source === "string" ? await (await fetch(source)).arrayBuffer() : await source.arrayBuffer();
+    const buffer = await context.decodeAudioData(bytes);
+    return Array.from({ length: Math.min(2, buffer.numberOfChannels) }, (_, c) => buffer.getChannelData(c).slice());
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The soundtrack: the voiceover over the music (the owner's own file, else the library track), mixed by
+ * lib/voice/mix.ts, encoded to AAC. Null when there is nothing to hear or this browser cannot encode AAC.
+ */
+async function encodeSoundtrack(plan: VideoPlan, options: RenderOptions): Promise<EncodedAudio | null> {
+  if (typeof AudioEncoder === "undefined" || typeof AudioContext === "undefined") return null;
+  const context = new AudioContext({ sampleRate: SAMPLE_RATE });
+  let voice: Float32Array[] | null;
+  let music: Float32Array[] | null;
+  try {
+    [voice, music] = await Promise.all([decode(context, options.voiceUrl), decode(context, options.music ?? options.musicUrl)]);
   } finally {
     void context.close().catch(() => undefined);
   }
-  const sampleRate = buffer.sampleRate;
-  const numberOfChannels = Math.min(2, buffer.numberOfChannels);
+  const mixed = mixSamples({ voice, music, sampleRate: SAMPLE_RATE, totalMs: plan.totalMs, speech: plan.voice?.timings ?? [] });
+  if (!mixed) return null;
+  return encodePcm(mixed, SAMPLE_RATE);
+}
+
+/** Encodes PCM channels to AAC with WebCodecs. Null when unsupported. */
+async function encodePcm(channels: Float32Array[], sampleRate: number): Promise<EncodedAudio | null> {
+  const numberOfChannels = channels.length;
   const config: AudioEncoderConfig = { codec: "mp4a.40.2", sampleRate, numberOfChannels, bitrate: 128_000 };
   if (!(await AudioEncoder.isConfigSupported(config)).supported) return null;
-
-  const frames = Math.min(buffer.length, Math.round((totalMs / 1000) * sampleRate));
-  const fadeFrames = Math.min(frames, sampleRate);
-  const channels = Array.from({ length: numberOfChannels }, (_, c) => buffer.getChannelData(c).subarray(0, frames));
+  const frames = channels[0].length;
   const chunks: EncodedAudio["chunks"] = [];
   let failure: unknown = null;
   const encoder = new AudioEncoder({ output: (chunk, meta) => chunks.push({ chunk, meta }), error: (e) => (failure = e) });
@@ -268,12 +295,7 @@ async function encodeMusic(music: Blob, totalMs: number): Promise<EncodedAudio |
     for (let offset = 0; offset < frames; offset += step) {
       const n = Math.min(step, frames - offset);
       const data = new Float32Array(n * numberOfChannels);
-      for (let c = 0; c < numberOfChannels; c++) {
-        for (let i = 0; i < n; i++) {
-          const left = frames - (offset + i);
-          data[c * n + i] = channels[c][offset + i] * (left < fadeFrames ? left / fadeFrames : 1);
-        }
-      }
+      for (let c = 0; c < numberOfChannels; c++) data.set(channels[c].subarray(offset, offset + n), c * n);
       const audio = new AudioData({ format: "f32-planar", sampleRate, numberOfFrames: n, numberOfChannels, timestamp: Math.round((offset / sampleRate) * 1e6), data });
       encoder.encode(audio);
       audio.close();

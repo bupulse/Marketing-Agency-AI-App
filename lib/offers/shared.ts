@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { featureLabel, FEATURES, isFeatureKey, sortFeatureKeys, validateFeatureSet, withPrerequisites, type FeatureKey } from "@/lib/features";
-import { SEATS_MAX, SEATS_MIN, VIDEO_PLAN_SECONDS, type PlanLimits } from "@/lib/plans";
+import { SEATS_MAX, SEATS_MIN, VIDEO_PLAN_SECONDS, VOICE_PLAN_CHARACTERS, type PlanLimits } from "@/lib/plans";
 
 /** A yearly custom plan costs this many months (the regional plans' rule: yearly = 10 months). */
 export const YEARLY_MONTHS = 10;
@@ -46,7 +46,7 @@ export const ADDONS: readonly AddonDef[] = [
   { key: "managed:light", kind: "feature", feature: "managed", label: "Managed by BuPulse, Light" },
   { key: "managed:full", kind: "feature", feature: "managed", label: "Managed by BuPulse, Full" },
   { key: "block:text", kind: "block", metric: "text", blockSize: 100, label: "+100 AI texts" },
-  { key: "block:image", kind: "block", metric: "image", blockSize: 50, label: "+50 designs" },
+  { key: "block:image", kind: "block", metric: "image", blockSize: 50, label: "Image pack (+50 AI images)" },
   { key: "block:chat", kind: "block", metric: "chat", blockSize: 1000, label: "+1,000 chat replies" },
   { key: "seat", kind: "seat", label: "Extra user" },
 ];
@@ -57,7 +57,7 @@ export const addonOf = (key: string) => ADDONS.find((a) => a.key === key) ?? nul
 /** The price key of a feature in an offer (Managed by BuPulse is priced by tier). */
 export const featureAddonKey = (key: FeatureKey, tier: ManagedTier = "light") => (key === "managed" ? `managed:${tier}` : key);
 
-export const METRIC_LABEL: Record<OfferMetric | "seats", string> = { text: "AI texts a month", image: "Designs a month", chat: "Chat replies a month", seats: "Users" };
+export const METRIC_LABEL: Record<OfferMetric | "seats", string> = { text: "AI texts a month", image: "AI images a month", chat: "Chat replies a month", seats: "Users" };
 
 // ---- pricing ------------------------------------------------------------------------------------------------------
 
@@ -155,7 +155,7 @@ export function quoteOffer(input: OfferQuoteInput): OfferQuote {
     features,
     added,
     // Video sold on top of a plan without it brings the video plans' seconds (8 videos of up to 30 s a month).
-    limits: { ...baseLimits, text: input.limits.text, image: input.limits.image, chat: input.limits.chat, seats: input.limits.seats, ...(added.includes("video") ? { videoSeconds: Math.max(baseLimits.videoSeconds, VIDEO_PLAN_SECONDS) } : {}) },
+    limits: { ...baseLimits, text: input.limits.text, image: input.limits.image, chat: input.limits.chat, seats: input.limits.seats, ...(added.includes("video") ? { videoSeconds: Math.max(baseLimits.videoSeconds, VIDEO_PLAN_SECONDS) } : {}), ...(added.includes("voice") ? { voiceCharacters: Math.max(baseLimits.voiceCharacters, VOICE_PLAN_CHARACTERS) } : {}) },
     included,
     lines,
     computedMinor: lines.reduce((s, l) => s + l.totalMinor, 0),

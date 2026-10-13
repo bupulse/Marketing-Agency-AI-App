@@ -20,6 +20,9 @@ import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Clapperboard, ImageIcon, Music, PenLine, RefreshCw, Replace, Sparkles, Trash2 } from "lucide-react";
 import { Badge, Button, Field, Input, Select, Textarea, useToast } from "@/components/ui";
 import { MediaPicker } from "@/components/media/media-picker";
+import { changeVideoMusic, changeVideoVoice, loadSoundOptions } from "@/app/dashboard/visuals/actions";
+import { isMood, MOOD_LABEL } from "@/lib/music/tracks";
+import { DEFAULT_VOICE_ID, VOICES } from "@/lib/voice/voices";
 import { changeVideo, changeVisual, deleteVisual, remakeVisual, renderVisual } from "@/app/dashboard/visuals/actions";
 import { cn } from "@/lib/cn";
 import { PACKS } from "@/lib/designs/packs";
@@ -171,6 +174,11 @@ function ImagePart({ contentId, visual, album }: { contentId?: string; visual: V
               {n}
             </p>
           ))}
+          {(plan?.aiExhausted || slides.some((s) => s.note?.startsWith("AI images for this month used"))) && (
+            <Button href="/dashboard/billing" size="sm" variant="outline" className="self-start">
+              Get an image pack (+50 AI images)
+            </Button>
+          )}
           {visual.status === "failed" && visual.error && (
             <p role="alert" className="text-[13px] font-medium text-danger">
               {visual.error}
@@ -339,7 +347,9 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage }: { co
     ) : null;
   }
 
-  const ready = visual.status === "ready" && visual.items[0];
+  // A video being made again keeps showing (and stays on its posts) until the new one is saved.
+  const ready = !!visual.items[0];
+  const remaking = ready && visual.status !== "ready";
   // The 30-day clean-up removed the file; the posts went out and the video stays on the social accounts.
   const removed = visual.status === "ready" && !visual.items[0] && visual.error === VIDEO_REMOVED_NOTE;
   const seconds = Math.ceil(plan.totalMs / 1000);
@@ -359,7 +369,7 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage }: { co
         <h3 className="text-[15px] font-semibold">Video, {seconds} seconds</h3>
         <Badge tone="neutral">{plan.scenes.length} scenes</Badge>
         {visual.status === "pending" && !render.busy && <Badge tone="blue">{robotBusy ? "Being made automatically" : "Video ready to render"}</Badge>}
-        {visual.status === "failed" && <Badge tone="danger">Not made</Badge>}
+        {visual.status === "failed" && <Badge tone="danger">{ready ? "New version not made" : "Not made"}</Badge>}
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row">
@@ -393,10 +403,15 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage }: { co
               {render.error}
             </p>
           )}
-          {visual.status === "failed" && hasImage && <p className="text-[13px] text-muted">Until then, the picture is used for video posts.</p>}
+          {visual.status === "failed" && hasImage && !ready && <p className="text-[13px] text-muted">Until then, the picture is used for video posts.</p>}
+          {remaking && !render.busy && (
+            <p className="text-[13px] text-muted">
+              {visual.status === "failed" ? `${visual.error ?? "The new version could not be made."} Your current video is kept.` : "A new version is waiting to be made. Your current video stays until it is saved."}
+            </p>
+          )}
           {render.musicSkipped && <p className="text-[13px] text-muted">Your music could not be added in this browser, so the video has no sound.</p>}
           <p className="text-[13px] text-muted">
-            {visual.robot ? "Made automatically (or in your browser) from your photos and script" : "Made in your browser from your photos and script"}, {VIDEO_LIMITS.width}x{VIDEO_LIMITS.height}, captions included. It counts {seconds} seconds of your plan&apos;s video.
+            {visual.robot ? "Made automatically (or in your browser) from your photos and script" : "Made in your browser from your photos and script"}, {VIDEO_LIMITS.width}x{VIDEO_LIMITS.height}, captions included. It counts {seconds} seconds of your plan&apos;s video; making it again counts only the seconds it gets longer.
           </p>
           <div className="flex flex-wrap gap-2">
             {visual.status === "pending" && !render.busy && visual.robot === "queued" && (
@@ -441,6 +456,10 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage }: { co
               </Button>
             )}
           </div>
+          <SoundChoices visual={visual} disabled={render.busy} onChanged={() => {
+            started.current = null;
+            setOpened(true);
+          }} />
           <p className="text-[12px] text-muted">{VIDEO_RETENTION_MESSAGE}</p>
           {comingSoon}
           <p className="text-[12px] text-muted">Only music you own or may use. It is added in your browser and never stored on its own.</p>
@@ -479,5 +498,80 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage }: { co
         </div>
       )}
     </section>
+  );
+}
+
+// ---- voiceover and music (docs/VOICE_AND_MUSIC.md) ----
+
+type SoundOptions = { tracks: { id: string; title: string; moods: string[] }[]; voiceInPlan: boolean; used: number; limit: number };
+
+/** Voice on or off, which voice, "Regenerate voiceover", and the music track, with the month's voiceover characters. */
+function SoundChoices({ visual, disabled, onChanged }: { visual: VisualView; disabled: boolean; onChanged: () => void }) {
+  const { run, pending } = useRun();
+  const [options, setOptions] = useState<SoundOptions | null>(null);
+  const plan = visual.videoPlan;
+  useEffect(() => {
+    let live = true;
+    void loadSoundOptions().then((r) => live && r.ok && setOptions(r));
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!plan) return null;
+  const voiceOn = plan.voice?.enabled !== false;
+  const voiceId = plan.voice?.voiceId ?? DEFAULT_VOICE_ID;
+  const busy = disabled || pending;
+  const change = (action: () => Promise<{ ok: boolean; error?: string }>) =>
+    run(async () => {
+      const r = await action();
+      if (r.ok) onChanged();
+      return r;
+    });
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl bg-soft p-4">
+      <h4 className="text-[14px] font-semibold">Sound</h4>
+      {options && !options.voiceInPlan ? (
+        <p className="text-[13px] text-muted">Voiceover is not in your plan. <a href="/dashboard/upgrade?feature=voice" className="font-semibold text-pulse-blue underline">Add voiceover</a></p>
+      ) : (
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex items-center gap-2 text-[14px]">
+            <input type="checkbox" className="size-4" checked={voiceOn} disabled={busy} onChange={(e) => change(() => changeVideoVoice(visual.id, { enabled: e.target.checked, voiceId }))} />
+            Voiceover
+          </label>
+          <Field label="Voice">
+            <Select value={voiceId} disabled={busy || !voiceOn} onChange={(e) => change(() => changeVideoVoice(visual.id, { enabled: true, voiceId: e.target.value }))}>
+              {VOICES.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name} ({v.gender === "female" ? "female" : "male"})
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Button size="sm" variant="outline" disabled={busy || !voiceOn} onClick={() => change(() => changeVideoVoice(visual.id, { enabled: true, voiceId, regenerate: true }))}>
+            Regenerate voiceover
+          </Button>
+        </div>
+      )}
+      {plan.voice?.note && <p className="text-[13px] text-muted">{plan.voice.note}</p>}
+      {options && options.limit > 0 && (
+        <p className="text-[13px] text-muted">
+          Voiceover: {options.used.toLocaleString("en-US")} of {options.limit.toLocaleString("en-US")} characters this month
+        </p>
+      )}
+      <Field label="Music">
+        <Select value={plan.music?.trackId ?? ""} disabled={busy || !options} onChange={(e) => change(() => changeVideoMusic(visual.id, e.target.value || null))}>
+          <option value="">No music</option>
+          {plan.music && !options?.tracks.some((t) => t.id === plan.music!.trackId) && <option value={plan.music.trackId}>{plan.music.title}</option>}
+          {options?.tracks.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.title} · {t.moods.map((m) => (isMood(m) ? MOOD_LABEL[m] : m)).join(", ")}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {options && options.tracks.length === 0 && <p className="text-[13px] text-muted">The music library is empty for now, so videos have no background music.</p>}
+      {plan.music?.attribution && !plan.music.owned && <p className="text-[12px] text-muted">Music: {plan.music.attribution}</p>}
+    </div>
   );
 }

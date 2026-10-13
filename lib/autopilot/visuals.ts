@@ -7,8 +7,11 @@ import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { recommendPack } from "@/lib/designs/packs";
+import { moodFor } from "@/lib/music/tracks";
+import { trackForVideo } from "@/lib/music/service";
 import { getProvider } from "@/lib/social/registry";
 import { directVisual } from "@/lib/visuals/art-director";
+import type { Audience } from "@/lib/visuals/people";
 import { shouldCarousel } from "@/lib/visuals/direction";
 import { assignDesigns, chooseLook } from "@/lib/visuals/designs";
 import { directionContext, drawSlide, itemsOf, recentVisualChoices, type DrawState } from "@/lib/visuals/service";
@@ -24,6 +27,8 @@ export interface VisualContext extends ImageContext {
   business: { name: string; tone: string | null; industry: string | null; brandColors: string[] };
   /** The plan has video: video ideas get a video plan. */
   videoAllowed: boolean;
+  /** The company's country and personas, for the people in AI photos. */
+  audience?: Audience;
 }
 
 /** Shared by every group of one run, so the caps hold for the whole week. */
@@ -65,6 +70,7 @@ async function carouselFor(group: PlannedGroup, written: WrittenGroup, ctx: Visu
     carouselAllowed,
     aiAllowed: ctx.useAiImages && !run.aiStopped && run.aiMade < VISUAL_LIMITS.maxAiPhotosPerRun,
     maxSlides: VISUAL_LIMITS.autopilotMaxSlides,
+    audience: ctx.audience,
   });
   // The art director is asked only when a carousel is likely; single images keep the playbook's own template.
   if (!shouldCarousel(dctx)) return null;
@@ -134,6 +140,8 @@ async function planGroupVideo(group: PlannedGroup, written: WrittenGroup, ctx: V
     colors: ctx.business.brandColors,
     look: chooseLook({ pack: recommendPack(ctx.business), template: group.idea.template ?? null, hasPhoto: group.photos.length > 0, recent: (await recentVisualChoices(ctx.businessId)).looks, seed: group.groupId }),
   });
+  plan.mood = moodFor({ tone: ctx.business.tone });
+  plan.music = await trackForVideo(plan.mood, group.groupId);
   await prisma.contentVisual.create({ data: { businessId: ctx.businessId, groupId: group.groupId, kind: "video", status: "pending", plan: json(plan), items: json([]) } });
 }
 

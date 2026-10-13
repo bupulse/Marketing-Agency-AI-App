@@ -1,4 +1,6 @@
 import "server-only";
+import { SEED_PLANS } from "@/lib/plans";
+import { customAllowanceUsd } from "./allowance";
 import type { BillingInterval, Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/admin/audit";
@@ -388,6 +390,9 @@ export async function acceptOffer(input: { userId: string; actorId: string; busi
       if (claim.count !== 1) return false;
       const existing = await tx.planDefinition.findUnique({ where: { key: planKey }, select: { key: true } });
       if (!existing) {
+        // The custom plan's AI allowance: its base plan's, plus what its image packs need (docs/CONTENT_VISUALS.md).
+        const base = row.basePlanKey ? await tx.planDefinition.findUnique({ where: { key: row.basePlanKey }, select: { aiMonthlyUsd: true } }) : null;
+        const aiMonthlyUsd = customAllowanceUsd({ baseUsd: base?.aiMonthlyUsd ?? (row.basePlanKey ? SEED_PLANS[row.basePlanKey]?.aiMonthlyUsd : undefined), lines: row.lines, limits: row.limits });
         await tx.planDefinition.create({
           data: {
             key: planKey,
@@ -406,6 +411,7 @@ export async function acceptOffer(input: { userId: string; actorId: string; busi
             capabilities: json(capabilitiesOf(features)),
             isCustom: true,
             businessId: input.businessId,
+            aiMonthlyUsd,
           },
         });
       }

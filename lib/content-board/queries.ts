@@ -37,7 +37,7 @@ export type ContentPost = CalendarPost & {
 
 export type SubjectCardView = Omit<SubjectCard, "lastActivity"> & { coverUrl: string | null; lastActivity: string | null };
 
-const postInclude = {
+export const postInclude = {
   connection: { select: { displayName: true, avatarUrl: true, postingMode: true } },
   product: { select: { id: true, name: true } },
   campaign: { select: { id: true, name: true } },
@@ -259,3 +259,4 @@ export async function missingApps(businessId: string): Promise<Network[]> {
   const connected = new Set(accounts.filter((a) => a.status === "ACTIVE" || a.status === "EXPIRING").map((a) => a.provider));
   return NETWORKS.filter((n) => wanted.has(n) && !connected.has(n));
 }
+

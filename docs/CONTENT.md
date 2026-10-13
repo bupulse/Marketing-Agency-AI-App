@@ -19,21 +19,108 @@ campaign or app. Content -> Settings decides, per app, whether new posts wait fo
    picture BuPulse drew for it, else an icon), name, kind, and Needs review / Scheduled / Posted counts (Failed when
    any). Search and sort (latest activity, most to review, name) are a plain GET form. Archived products and campaigns
    show only while they have posts. With a post filter on, only subjects with matching posts show.
-5. **A subject's posts** (`/dashboard/content/products/<id>`, `/campaigns/<id>`, `/general`): cards that read like a
-   social post but in BuPulse's look: the picture, carousel (dots) or video (still with a play mark), the app icon and
-   post type (top right, so a design's own brand name at the top left stays visible), 2 to 3 lines of the caption (a
-   video idea shows its content's caption; the script is only in the detail), a status chip (Needs review, Scheduled for <date time>, Posted <date>, Failed,
-   Draft, Post it yourself), the review reason when there is one, and the created date. A card opens the calendar's
-   post detail (preview, Approve, Move, Back to review, Edit, Duplicate, Delete); Edit opens the composer. `?post=<id>`
-   opens one post on arrival (links in the summary email). More posts load as the end of the list scrolls into view
-   (`limit` grows by 24, up to 240), with a "Show more" link as the fallback.
+5. **A subject's content, a day at a time** (`/dashboard/content/products/<id>`, `/campaigns/<id>`, `/general`;
+   content flow v3, below): opens on **today** in the business's time zone with "Needs your OK", "Goes out this day"
+   and "Made this day"; a date bar (previous / next day, a calendar picker, "Today", `?day=YYYY-MM-DD`, a year back and
+   90 days ahead) browses past days (what was made or posted then) and the coming ones (what is scheduled). The cards
+   are the board's: the picture, carousel (dots) or video (still with a play mark), the app icon and post type (top
+   right), 2 to 3 lines of the caption, a status chip, the review reason, the created date and the amber "Not posted
+   yet" border. A card opens the calendar's post detail (preview, Approve, Move, Back to review, Edit, Duplicate,
+   Delete); Edit opens the composer. `?post=<id>` opens one post on arrival. The app, type, status and search filters
+   and "Schedule all my posts" (the day's posts) work within the day. Below the posts, **Pictures and videos** shows
+   the day's visuals: they are drawn there while pending (the first pending video starts on its own), and can be
+   changed (photo, style, texts, a new picture, video captions).
 
-Empty states give the next step: no products ("Add a product or service"), no connected app ("Connect an app"), a
-product or campaign without posts ("Generate posts for this product", which writes the content and drafts the posts),
-General ("Set up Autopilot"), nothing matching ("Clear filters").
+Empty states give the next step: no products ("Add a product or service"), no connected app ("Connect an app"), a day
+with nothing yet ("Create today's content" today, "Back to today" on another day), nothing matching ("Clear filters").
 
-`/dashboard/content` keeps its URL; the old "latest text per product" list was replaced (the text stays on each
-product's and campaign's page). No other URL changed, so no redirect was needed.
+`/dashboard/content` keeps its URL. Product and campaign pages (Knowledge base) no longer have any content tools
+(latest content, visual and video panels, caption and hashtags, video script, ad headlines, versions per network,
+"Write it again", version history, the design studio, "Your designs"): they keep the details and the photo album and
+link to "See this product's content" (the subject's day view). The services behind them stay (`generateForSubject`
+for `/api/generate`, the visuals).
+
+## Content flow v3: "Create today's content"
+
+Code: `lib/content-flow/` (`variety.ts`, `day.ts`, `media.ts`, `networks.ts`, `cost.ts` are pure; `writer.ts`,
+`service.ts`, `queries.ts`, `autopilot.ts`), `components/content-flow/`, `app/dashboard/content/day-actions.ts`. It is
+built on content packs (`docs/CONTENT_PACKS.md`): the same angles, rotation, writer and people pictures.
+
+The button on a subject's day view opens a dialog with two ways to make the business's **today** (its time zone):
+
+- **AI makes it for me** (`mode ai`). Step 1, captions: a content pack with one post per chosen app (connected ones
+  are preselected; apps not connected get a reminder post as before): the packs' `chooseAngles` picks one angle per
+  post from the subject's rotation, `spreadNetworks` gives each app the angle that suits it, and `writePack` writes
+  them in one call (one text generation per post, reserved up front, the ones not written given back) from the
+  Knowledge base (product or campaign block, company profile, customers, positioning, policies, quotable reviews only,
+  the Digital Marketing Profile's voice and do / don't). Each post's line in the prompt also says what it shows
+  (Gallery) and the day's opening and structure; then `fitToNetwork` holds each caption to its app (length, hashtag
+  count, no emojis on LinkedIn). Step 2, visuals: Gallery first (below),
+  then AI people photos (when "AI designs" was chosen and credits are left; the existing people logic of
+  `createAiDesign`) or free designs. The art director (one call per designed post) picks the template from the whole
+  registry (`TEMPLATES`), so the owner never picks one.
+- **I'll create it**: **Describe today's content** (`mode describe`): a brief ("Promote the hydro tower for schools
+  this week...") and optional Gallery picks; the brief is fenced (`OWNER BRIEF`) and leads, the rest is mode A.
+  **Bring my own** (`mode own`): Gallery photos or videos and one caption; per app the AI adapts length, hashtags,
+  tone and emojis without changing the meaning (`adaptOwnPost`, fenced `OWNER CAPTION`, then `fitToNetwork`); if the
+  call fails the owner's caption is used, held to the app's rules, and the credit is given back. The media are used as
+  they are (`ownMediaFor`): a video goes to Instagram (a Reel, MP4), TikTok and YouTube (their reminder carries it),
+  photos to the feed apps as a picture or carousel within the app's limit; an app that cannot take what was given is
+  skipped with the reason ("TikTok needs a video."). "Add BuPulse designs over my photos" draws designs over the feed
+  posts instead (no AI photos).
+
+The design choice is made once in the dialog: **AI designs (images with people)** or **Free templates (your photos +
+BuPulse designs)** (AI is offered only when `aiPhotosAvailable`).
+
+**What a run uses** (`runCost`, shown before confirming): "Uses 4 text generations and up to 4 AI images; you have 26
+text generations and 12 AI images left this month." One text generation per post (as before); at most one AI image per
+designed post and never more than the credits left; videos BuPulse makes count video seconds when they are made, as
+before. A run whose posts need more text generations than are left is refused before anything is charged.
+
+**Angles, day after day.** The angles are the packs' (`lib/studio/angles.ts`: price, how it works, features, news,
+customer story, behind the scenes, tips, FAQ, why us, local moment, book or buy, each only when its facts exist).
+The rotation reads `GeneratedContent.angle` for the subject (packs, day runs; General has its own history), so the
+angles a subject had are the last to come back and the next day's posts take the ones it has not had lately; a second
+run on the same day continues the rotation. On top, `variety.ts` moves the opening (6 hooks) and the structure (5)
+one step a day and one step per post, so consecutive days never open or flow alike even when an angle returns. The
+writer also gets the subject's last captions (30 days) with "do not repeat their opening, wording or structure".
+
+**Gallery first** (`media.ts`): the subject's album (a campaign without photos uses its first product's album; General
+uses the newest 12 Gallery items), photos and videos. TikTok and YouTube take the album's video when there is one
+(several videos are shared out), else a video made from the photos (plan with video), else the script reminder;
+Instagram takes an MP4 album video as a Reel, else a picture; Facebook and LinkedIn a picture. Photos are ordered least
+used first (slides and scenes of the last 30 days' visuals and posts), the day rotating equally used ones, and each
+post of the run leads with a different photo. Photos the owner picked while describing come first. The writer is told
+what the post shows (the file names, rename photos in the Gallery to describe them; camera names such as
+`IMG_2034.jpg` are not used), so the caption relates to it. An album video is used as is (never rendered, never
+removed by the 30-day video clean-up, which only touches BuPulse's own videos). **The Gallery accepts photos only
+today** (`MEDIA_TYPES`); album videos are handled wherever a `MediaAsset` has a `video/*` type or an `.mp4`/`.webm`
+path, so they work as soon as the Gallery accepts video uploads.
+
+**Language** (`languageLine`): `Business.contentLanguage` is the main language; the Digital Marketing Profile's
+language mix (its "languages" answer, for example "Kinyarwanda and English") adds a few short phrases of the other
+language where a local customer would say them, at most one on LinkedIn; prices, names and facts are never translated.
+
+**Pictures**: as packs (`planPackVisuals`), the art director is asked per designed post with its angle's people,
+the covers are made to differ (`diversifyPack`), AI photos go to the first posts while the plan's images last (the rest
+say when they refill), but the photos are the Gallery-first ones above, and "Free templates" gives no AI photos.
+
+**Results**: one `GeneratedContent` row per post (the pack's `packId`, `angle`, `network`, and `forDate`, `mode`,
+`brief`, `postsDraftedAt`) with its own visuals, and one post per row (`source STUDIO`, `PENDING_APPROVAL`, `groupId`
+= the pack). Designed pictures and BuPulse videos are filled in when drawn (`attachToContent`), then auto-approval checks
+them again; everything else (approval, auto-approval, reminders for apps not connected, "Schedule all") is as below.
+A new run does not replace earlier drafts. Older content (no `forDate`) shows on the day it was written.
+
+**Autopilot.** One app per idea, as packs: the planner (`buildWeekPlan`) puts each idea on one account (ideas that fit
+the fewest accounts choose first; each takes the account with the fewest posts so far), so every post is its own idea
+with its own picture, written for its one app; "Posts per week" is now the number of posts (one text credit each).
+Before writing, every post about a product or campaign gets the next angle of the subject's pack rotation with the
+day's opening and structure (`lib/content-flow/autopilot.ts`; Autopilot's choices are not written back to the
+history, which only content rows hold). Its photos were already album first, then the least recently used Gallery
+photos; a video idea whose product or campaign has an album video now posts that video as it is.
+
+**Permissions**: the `content` permission, the `content` and `calendar` features, 30 runs an hour per company.
+
 
 ## Filters (`filters.ts`, pure)
 
@@ -59,7 +146,8 @@ are signed in one batched request per bucket (`signPaths`) and lazy-loaded.
 
 ## Where posts come from
 
-- **Studio.** When content is written or edited for a product or campaign (the Studio buttons and `POST /api/generate`),
+- **Create today's content** (above): one post per chosen app per run.
+- **Studio.** When content is written or edited for a product or campaign (`POST /api/generate`),
   `drafts.ts` drafts one post per usable connected app (`source STUDIO`, `PENDING_APPROVAL`, one `groupId`): Instagram,
   Facebook and LinkedIn get their own version of the caption and the content's picture or carousel; TikTok and YouTube
   get the video script (SCRIPT) with the video once it is made. Older drafts of the same product or campaign that still
@@ -99,10 +187,9 @@ depend on a connection:
   scheduled one is taken out of the queue first, checked by the safety rules, and scheduled again on a free slot (its
   time if still ahead, else the best time); if it cannot go it waits in Needs review with the reason, so a post is
   never published late or stacked.
-- **Backfill.** Content written before drafting existed has `GeneratedContent.postsDraftedAt` null. Its posts are
-  drafted once when its product or campaign is opened (Knowledge page or Content subject page, `latestContentPosts`);
-  content whose drafts the owner rejected is never drafted again on its own. A subject whose newest content has no
-  posts shows "Create posts from this content".
+- **Backfill.** Content written before drafting existed has `GeneratedContent.postsDraftedAt` null. Its posts were
+  drafted once when its product or campaign was opened (`latestContentPosts`); the day view no longer runs it (content
+  flow v3), and `createPostsFromContentAction` stays for such content.
 
 ## Not posted yet, "Schedule all my posts" and the connect notice
 
@@ -185,6 +272,9 @@ The in-app notice on the Content page covers the same posts for 24 hours.
 
 ## Data
 
+Migration `20261017090000_content_flow_v3` (after `20261016140000_content_packs`): `GeneratedContent.forDate` (DATE),
+`mode` (CHECK ai | describe | own), `brief`, index `(businessId, forDate)`. Columns only.
+
 Migration `20261016090000_content_auto_approval` (columns only, no new table, so the existing RLS and revoked grants
 cover them): `PostSource` gains `STUDIO`; `Business.contentSettings` (JSONB) and `contentSummarySentAt`;
 `Post.reviewNote`, `autoScheduledAt`, `mediaKind` (CHECK, kept by the trigger; existing rows filled by the migration);
@@ -194,13 +284,18 @@ adds `Post.remindOnly` and `GeneratedContent.postsDraftedAt`.
 
 ## Permissions and plans
 
-The page needs the `content` feature; subject pages and every post action also need `calendar` (as the calendar's
-actions). Approving, rejecting and editing posts follow the `content` permission (Members included), the settings
+The page needs the `content` feature; subject pages, "Create today's content" and every post action also need
+`calendar` (as the calendar's actions). Approving, rejecting and editing posts follow the `content` permission (Members included), the settings
 need `contentSettings` (Owner, Admin).
 
 ## Tests
 
-`tests/content-board/`: filters (parsing, query string round trip, date windows, the Prisma query), grouping and counts,
+`tests/content-flow/`: the day's pack (angles after the subject's last ones, one call, credits per post and refunds,
+design choice and AI image limit, General), day-to-day variety, Autopilot angles, `tests/autopilot/planner.test.ts`
+one app per idea, Gallery first including videos, Bring my own per network (media, text rules,
+adaptation with the AI mocked), the day view (Africa/Kigali bounds, `?day=`, the query, sections), the run (one text
+generation per post, refunds, angle stored, posts and visuals, refusal before charging), the limits preview, and the
+product and campaign pages without content tools. `tests/content-board/`: filters (parsing, query string round trip, date windows, the Prisma query), grouping and counts,
 the auto-approval rules, auto-scheduling (per app, safety rules, plan, best time, Autopilot times, spacing, retry),
 Approve and Approve all, drafts from content, settings (validation, roles, audit) and the summary email (due time,
 selection, content, compare-and-set). `tests/publishing/best-time.test.ts` for the best time.

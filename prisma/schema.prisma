@@ -108,6 +108,7 @@ model Business {
   demoBookings     DemoBooking[]
   designs          Design[]
   contentVisuals   ContentVisual[]
+  voiceClips       VoiceClip[]
   leads            Lead[]
   connections      Connection[]
   posts            Post[]
@@ -185,6 +186,16 @@ model GeneratedContent {
   // When its posts to review were drafted (lib/content-board/drafts.ts); null for content from before, which is drafted
   // once when its product or campaign is opened.
   postsDraftedAt DateTime?
+  // Content packs (docs/CONTENT_PACKS.md): the posts written together share packId; each has its angle
+  // (lib/studio/angles.ts) and the one app it is for. All null for content from before packs (one post for every app).
+  packId      String?
+  angle       String?
+  network     String?
+  // Content flow v3 (docs/CONTENT.md, lib/content-flow/): the business-local day a post was made for on the day view,
+  // how it was made ("ai" | "describe" | "own") and the owner's brief or caption. Null on content from before.
+  forDate     DateTime? @db.Date
+  mode        String?
+  brief       String?
   provider    String // "gemini" | "claude" | "edit"
   model       String
   createdAt   DateTime  @default(now())
@@ -194,6 +205,8 @@ model GeneratedContent {
   @@index([productId, createdAt])
   @@index([campaignId, createdAt])
   @@index([businessId, createdAt])
+  @@index([packId])
+  @@index([businessId, forDate])
 }
 
 // ---- Knowledge base (docs/KNOWLEDGE_BASE.md) ----------------------------------------------------------------------
@@ -897,6 +910,52 @@ model ContentVisual {
   @@index([kind, status, createdAt])
 }
 
+// A voiceover made by the text-to-speech provider (docs/VOICE_AND_MUSIC.md): the MP3 in the media bucket at
+// <userId>/voice/<hash>.mp3, reused for the same text and voice (hash), counted toward the media quota.
+model VoiceClip {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  hash       String // sha-256 of voice id, model, take and text
+  voiceId    String
+  // speaking: one render is asking the voice service now (others wait); ready: the file is stored; spoken: paid for
+  // but not stored yet (the audio waits in pendingAudio, so a retry stores it instead of paying again); too_long: the
+  // voice ran past 30 seconds (never spoken again).
+  status     String   @default("ready")
+  path       String? // voice/<businessId>/<hash>.mp3 in the media bucket, once stored
+  pendingAudio Bytes?
+  bytes      Int
+  characters Int
+  durationMs Int
+  // Start and end of each spoken sentence in milliseconds, in order: [{ startMs, endMs }]
+  timings    Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@unique([businessId, hash])
+}
+
+// The royalty-free music library (docs/VOICE_AND_MUSIC.md): tracks uploaded by the admin, with their licence.
+model MusicTrack {
+  id          String   @id @default(cuid())
+  title       String
+  moods       String[] // lib/music/tracks.ts MOODS
+  bpm         Int?
+  licence     String // licence name, e.g. "Pixabay Content License"
+  sourceUrl   String
+  attribution String // shown where the licence requires it
+  path        String   @unique // <id>.<ext> in the public "music" bucket
+  mimeType    String
+  bytes       Int
+  durationMs  Int?
+  active      Boolean  @default(true)
+  createdBy   String // AuditLog actor
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
+}
+
 model AiCall {
   id           String   @id @default(cuid())
   userId       String?  @db.Uuid
@@ -976,10 +1035,16 @@ model MediaAsset {
   folder     MediaFolder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
   path       String          @unique // <userId>/gallery/<id>.<ext> in the "media" bucket
   name       String
+  // "photo" or "video" (docs/MEDIA.md). A video's poster is <id>-poster.jpg next to it; bytes include the poster.
+  kind       String          @default("photo")
   mimeType   String
   bytes      Int
   width      Int?
   height     Int?
+  durationMs Int?
+  posterPath String?
+  // The owner's "What's in this video?" (or photo): the AI writes captions about it.
+  description String?
   source     String? // where an import came from: "google_drive" | "dropbox" | "canva" | "store"; null for uploads
   createdAt  DateTime        @default(now())
   products   ProductPhoto[]
@@ -997,7 +1062,7 @@ model AutopilotSettings {
   postsPerWeek          Int      @default(3)
   connectionIds         String[] // accounts Autopilot writes for
   postingTimes          String[] @default(["09:00", "18:00"]) // local times (Business.timezone) it may use
-  useAiImages           Boolean  @default(false) // false: gallery photos and free templates only
+  useAiImages           Boolean  @default(true) // AI photos with people (image credits); false: gallery photos and free templates only
   skipReligiousHolidays Boolean  @default(false) // true: no greetings or posts for religious holidays
   updatedAt             DateTime @updatedAt
 }
@@ -1384,6 +1449,8 @@ model PlanDefinition {
   // `features` holds the same bullets as `highlights`; `capabilities` is { apiAccess, ownComposio } derived from featureKeys.
   features             Json
   capabilities         Json
+  // The monthly AI allowance of a company on this plan, in USD (lib/ai/budget.ts); NULL uses AI_COMPANY_MONTHLY_USD.
+  aiMonthlyUsd         Float?
   paddleProductId      String?
   paddleMonthlyPriceId String?
   paddleYearlyPriceId  String?

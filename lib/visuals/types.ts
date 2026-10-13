@@ -4,6 +4,7 @@
 import type { AspectRatio } from "@/lib/designs/layout";
 import type { PackId } from "@/lib/designs/packs";
 import type { TemplateId } from "@/lib/designs/templates/registry";
+import type { PeopleBrief } from "./people";
 
 export type VisualKind = "image" | "carousel" | "video";
 export type VisualStatus = "pending" | "ready" | "failed";
@@ -68,6 +69,8 @@ export interface VisualSlide {
   photoPath: string | null;
   /** What an AI photo should show. */
   scene?: string;
+  /** A designed carousel slide drawn over the cover's photo (one AI image per carousel). */
+  useCoverPhoto?: boolean;
   /** The AI photo once paid for (a Design in the designs bucket), so re-styling the slide never pays twice. */
   aiPhotoPath?: string | null;
   /**
@@ -92,6 +95,12 @@ export interface ImagePlan {
   /** "ai" when the art director chose it; "rules" when its answer was unusable or AI was not allowed. */
   directedBy: "ai" | "rules";
   notes: string[];
+  /** Who is in the AI photo (lib/visuals/people.ts), when the visual has one. */
+  people?: PeopleBrief;
+  /** The mood the art director chose for the video's music (lib/music/tracks.ts). */
+  mood?: string;
+  /** AI images ran out: when they come back, for "AI images for this month used — next refill on …". */
+  aiExhausted?: { refillAt: string | null };
 }
 
 export type Motion = "zoom-in" | "zoom-out" | "pan-left" | "pan-right";
@@ -129,6 +138,39 @@ export interface VideoPlan {
   contact?: string | null;
   /** The business logo for the closing scene; signed into photoUrls like scene photos. Without it, an initial disc. */
   logoPath?: string | null;
+  /** The spoken voiceover (docs/VOICE_AND_MUSIC.md): on by default when the plan has voiceover. */
+  voice?: VideoVoice;
+  /** The background track from the music library, or null for none. */
+  music?: VideoMusic | null;
+  /** The mood the art director chose (lib/music/tracks.ts MOODS), for picking music. */
+  mood?: string | null;
+}
+
+export interface VideoVoice {
+  enabled: boolean;
+  voiceId: string;
+  /** The voiceover MP3 in the media bucket (a VoiceClip), once made for the current captions and voice. */
+  path?: string | null;
+  /** "Regenerate voiceover" counts up: each take is a new voiceover. */
+  take?: number;
+  /** Hash of voice, model, take and text: a changed caption or voice means a new voiceover. */
+  hash?: string | null;
+  durationMs?: number;
+  /** When each scene's line is spoken. */
+  timings?: { startMs: number; endMs: number }[];
+  /** Why there is no voiceover this time (characters used up, voiceover not in the plan...). */
+  note?: string | null;
+}
+
+export interface VideoMusic {
+  trackId: string;
+  title: string;
+  /** The file in the public music bucket. */
+  path: string;
+  /** Credit line the licence asks for ("" when none is needed). */
+  attribution: string;
+  /** Original music BuPulse owns: never credited. */
+  owned?: boolean;
 }
 
 /** One stored output of a visual, in order: a design (image or slide) or a media file (the video). */
