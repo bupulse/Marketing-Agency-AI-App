@@ -1,3 +1,4 @@
+import { formatMoney, showMixed, showMoney, type MoneyDisplay } from "@/lib/money/display";
 // The sales room TV (/screen/<token>): the rules that need no server, shared by the screen, its data route, the admin
 // page and the tests. Nothing here reads the database.
 
@@ -31,7 +32,10 @@ export type ScreenData = {
   at: string;
   activeNow: number;
   activeToday: number;
-  revenue: { todayCents: number; monthCents: number };
+  /** Today's and this month's revenue in USD cents (the books), with the part received in RWF (exact RWF, its USD value). */
+  revenue: { todayCents: number; monthCents: number; todayRwfMinor: number; todayRwfUsdCents: number; monthRwfMinor: number; monthRwfUsdCents: number };
+  /** The admin default currency (Settings) and rates: the TV shows every amount in it (no switch on the TV). */
+  money: MoneyDisplay;
   trials: { company: string; daysLeft: number; agent: string | null }[];
   leaderboard: { agent: string; ownCents: number; teamShareCents: number; totalCents: number; clients: number }[];
   /** Active sounds in rotation order, with short-lived signed URLs. */
@@ -42,7 +46,17 @@ export type ScreenData = {
   cursor: string;
 };
 
-export type Celebration = { id: string; client: string; usdCents: number; agent: string | null };
+/** A new payment: its USD value and what the client paid in their own currency (RWF for Mobile Money), when known. */
+export type Celebration = { id: string; client: string; usdCents: number; localMinor: number | null; currency: string; agent: string | null };
+
+/** An amount for the TV in the default currency: exact when it was paid in that currency, else "≈" converted. */
+export function screenMoney(d: MoneyDisplay, usdCents: number, paid?: { minor: number | null; currency: string }): string {
+  if (paid && paid.minor !== null && paid.currency.toUpperCase() === d.currency) return formatMoney(paid.minor, d.currency);
+  return showMoney(usdCents, "USD", d).text;
+}
+
+/** A revenue total for the TV: the RWF part exact in RWF, only the rest converted. */
+export const screenTotal = (d: MoneyDisplay, usdCents: number, rwfMinor: number, rwfUsdCents: number) => showMixed({ usdCents, rwfMinor, rwfUsdCents }, d).text;
 
 const EMAIL = /[^\s@]+@[^\s@]+/;
 const PHONE = /\+?\d[\d\s().-]{7,}\d/g;

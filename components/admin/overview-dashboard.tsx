@@ -1,8 +1,9 @@
+import { BOOKS_FMT, type MoneyFmt } from "@/components/admin/money";
 import Link from "next/link";
 import { ArrowRight, CalendarCheck, CircleAlert, Inbox, Smartphone, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import { GlassCard } from "@/components/ui";
-import { money, num } from "@/lib/admin/format";
+import { num } from "@/lib/admin/format";
 import { cn } from "@/lib/cn";
 import { Gauge } from "./charts";
 import { Section, Stat } from "./ui";
@@ -35,7 +36,7 @@ function Shortcut({ href, icon, label, value, tone }: { href: string; icon: Reac
 }
 
 /** The Overview's numbers: what needs doing today, money this month, clients and AI. Every card links to its folder. */
-export function OverviewDashboard({ d, show = { money: true, clients: true, ai: true } }: { d: OverviewData; show?: { money: boolean; clients: boolean; ai: boolean } }) {
+export function OverviewDashboard({ d, show = { money: true, clients: true, ai: true }, fx = BOOKS_FMT }: { d: OverviewData; show?: { money: boolean; clients: boolean; ai: boolean }; /** Money in the admin's display currency. */ fx?: MoneyFmt }) {
   return (
     <>
       <Section title="Today" description="What is waiting for you right now.">
@@ -50,11 +51,11 @@ export function OverviewDashboard({ d, show = { money: true, clients: true, ai: 
       {show.money && (
       <Section title={`Money, ${d.monthLabel}`} description="USD. Revenue is card, Mobile Money and invoices; profit subtracts every cost, estimated or billed." action={<Link href="/admin/revenue" className="text-sm font-medium underline">Revenue and profit</Link>}>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
-          <Stat label="MRR" value={money(d.mrrCents)} source={d.arpuCents == null ? "No paying clients yet" : `ARPU ${money(d.arpuCents)} a month`} href="/admin/revenue#mrr" />
-          <Stat label="Revenue this month" value={money(d.revenue.monthCents)} previous={{ now: d.revenue.monthCents, before: d.revenue.prevCents, label: d.prevMonthLabel }} spark={d.revenue.spark} href="/admin/revenue" source="By month" />
-          <Stat label="Lifetime revenue" value={money(d.revenue.lifetimeCents)} source={`${num(d.revenue.customersEver)} paying client${d.revenue.customersEver === 1 ? "" : "s"} ever`} href="/admin/revenue#clients" />
-          <Stat label="Costs this month" value={money(d.profit.costCents)} invert source={d.profit.estimateCents > 0 ? `${money(d.profit.estimateCents)} still an estimate` : "All billed amounts"} href="/admin/costs" />
-          <Stat label="Profit this month" value={money(d.profit.monthCents)} previous={{ now: d.profit.monthCents, before: d.profit.prevCents, label: d.prevMonthLabel }} spark={d.profit.spark} tone={d.profit.monthCents < 0 ? "danger" : undefined} href="/admin/revenue#profit" source="Revenue minus all costs" />
+          <Stat label="MRR" value={fx.text(d.mrrCents)} title={fx.title(d.mrrCents)} source={d.arpuCents == null ? "No paying clients yet" : `ARPU ${fx.text(d.arpuCents)} a month`} href="/admin/revenue#mrr" />
+          <Stat label="Revenue this month" value={fx.text(d.revenue.monthCents)} title={fx.title(d.revenue.monthCents)} previous={{ now: d.revenue.monthCents, before: d.revenue.prevCents, label: d.prevMonthLabel }} spark={d.revenue.spark} href="/admin/revenue" source="By month" />
+          <Stat label="Lifetime revenue" value={fx.text(d.revenue.lifetimeCents)} title={fx.title(d.revenue.lifetimeCents)} source={`${num(d.revenue.customersEver)} paying client${d.revenue.customersEver === 1 ? "" : "s"} ever`} href="/admin/revenue#clients" />
+          <Stat label="Costs this month" value={fx.text(d.profit.costCents)} title={fx.title(d.profit.costCents)} invert source={d.profit.estimateCents > 0 ? `${fx.text(d.profit.estimateCents)} still an estimate` : "All billed amounts"} href="/admin/costs" />
+          <Stat label="Profit this month" value={fx.text(d.profit.monthCents)} title={fx.title(d.profit.monthCents)} previous={{ now: d.profit.monthCents, before: d.profit.prevCents, label: d.prevMonthLabel }} spark={d.profit.spark} tone={d.profit.monthCents < 0 ? "danger" : undefined} href="/admin/revenue#profit" source="Revenue minus all costs" />
         </div>
       </Section>
       )}
@@ -75,7 +76,7 @@ export function OverviewDashboard({ d, show = { money: true, clients: true, ai: 
           <GlassCard padding="md" className="flex flex-col gap-4">
             {d.ai ? (
               <>
-                <Gauge value={d.ai.spentCents} max={d.ai.capCents} label="AI spend vs budget" text={`${money(d.ai.spentCents)} of ${money(d.ai.capCents)} (${Math.round(d.ai.pct)}%)`} />
+                <Gauge value={d.ai.spentCents} max={d.ai.capCents} label="AI spend vs budget" text={`${fx.text(d.ai.spentCents)} of ${fx.text(d.ai.capCents)} (${Math.round(d.ai.pct)}%)`} />
                 {d.ai.paused ? (
                   <p role="alert" className="flex items-center gap-2 rounded-2xl bg-danger-bg px-3 py-2 text-sm font-medium text-danger">
                     <CircleAlert aria-hidden className="size-4" /> The cap is reached: AI features are paused.

@@ -1,3 +1,5 @@
+import { moneyFmt } from "@/components/admin/money";
+import { adminMoney } from "@/lib/money/display-server";
 import { PageHeader } from "@/components/app";
 import { LeaderboardView } from "@/components/admin/sales/sales-views";
 import { requirePermission } from "@/lib/admin/auth";
@@ -20,7 +22,7 @@ export default async function LeaderboardPage({ searchParams }: PageProps<"/admi
   return (
     <>
       <PageHeader title="Leaderboard" description="Sales per agent for the month: own sales, their share of unassigned clients' payments, and the total." />
-      <LeaderboardView rows={rows} month={month} months={months} me={identity.staffId} />
+      <LeaderboardView  fx={moneyFmt(await adminMoney())} rows={rows} month={month} months={months} me={identity.staffId} />
     </>
   );
 }

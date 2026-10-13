@@ -20,9 +20,12 @@ export function Stat({
   note,
   spark,
   tone,
+  title,
 }: {
   label: string;
   value: string;
+  /** Tooltip of the value (the original amount of a converted money figure). */
+  title?: string;
   /** Raw current and previous numbers, to show the change. */
   previous?: { now: number; before: number; label?: string };
   /** True when going up is bad (costs). */
@@ -38,7 +41,7 @@ export function Stat({
   return (
     <GlassCard padding="sm" className={cn("flex min-w-0 flex-col gap-1", tone === "danger" && "ring-1 ring-danger/40")}>
       <span className="text-[13px] font-medium text-muted">{label}</span>
-      <span className={cn("text-2xl font-semibold tabular-nums tracking-[-0.02em]", tone === "danger" && "text-danger", tone === "success" && "text-success")}>{value}</span>
+      <span className={cn("text-2xl font-semibold tabular-nums tracking-[-0.02em]", tone === "danger" && "text-danger", tone === "success" && "text-success")} title={title}>{value}</span>
       {spark && spark.length > 1 && <Spark values={spark} label={`${label}, recent trend`} />}
       <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
         {delta != null && (

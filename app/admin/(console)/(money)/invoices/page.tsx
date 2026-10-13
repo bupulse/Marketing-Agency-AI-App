@@ -1,3 +1,5 @@
+import { moneyFmt } from "@/components/admin/money";
+import { adminMoney } from "@/lib/money/display-server";
 import Link from "next/link";
 import { FileText } from "lucide-react";
 import { EmptyState, PageHeader } from "@/components/app";
@@ -23,6 +25,7 @@ const FILTERS = [
 
 export default async function InvoicesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requirePermission("payments.view"); // pages render alongside the layout, so check here too
+  const fx = moneyFmt(await adminMoney());
   const sp = await searchParams;
   const status = FILTERS.find((f) => f.key === param(sp.status))?.key ?? "";
   const q = param(sp.q).slice(0, 80);
@@ -71,7 +74,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                   <Td><Link href={`/admin/invoices/${i.id}`} className="font-mono font-semibold underline">{i.number}</Link></Td>
                   <Td className="max-w-[14rem]"><Link href={`/admin/companies/${i.businessId}`} className="block truncate underline">{i.company}</Link></Td>
                   <Td>{i.planLabel ?? <span className="text-muted">None</span>}</Td>
-                  <Td right>{i.total}</Td>
+                  <Td right>{fx.el(i.totalMinor, i.currency)}</Td>
                   <Td className="whitespace-nowrap">{longInvoiceDate(i.issueDate)}</Td>
                   <Td className="whitespace-nowrap">{longInvoiceDate(i.dueDate)}</Td>
                   <Td>

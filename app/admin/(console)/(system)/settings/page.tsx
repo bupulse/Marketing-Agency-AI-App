@@ -7,6 +7,8 @@ import { Badge, Button, buttonClasses, Field, Input, Select, Textarea } from "@/
 import { listAvailability } from "@/lib/admin/availability";
 import { dateTime, param } from "@/lib/admin/format";
 import { getSettings } from "@/lib/admin/settings";
+import { DISPLAY_CURRENCIES } from "@/lib/money/display";
+import { effectiveUsdToEur } from "@/lib/money/display-server";
 import { siteUrl } from "@/lib/auth/site-url";
 import { cardUsdCents, formatMinor } from "@/lib/region-format";
 import { DEMO_TIME_ZONE, WEEKDAY_NAMES } from "@/lib/demo/slots";
@@ -23,6 +25,7 @@ import {
   recomputeCardPricesAction,
   removeAvailabilityAction,
   savePaddleSettingsAction,
+  refreshEurRateAction,
   saveSettingsAction,
   testGoogleCalendarAction,
   testPaddleAction,
@@ -37,6 +40,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   await requirePermission("system"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const [s, windows, google, momo, paddle] = await Promise.all([getSettings(), listAvailability(), googleCalendarStatus(), getMomoSettings(), paddleStatus()]);
+  const eur = await effectiveUsdToEur(s);
   const dial = mtnMomoPayDial(momo.merchantCode);
   const example = cardUsdCents(15000, "RWF", s.usdToRwf, s.cardMarginPercent);
 
@@ -95,6 +99,37 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               confirmLabel="Update card prices"
             />
           </div>
+        </Panel>
+      </div>
+
+      <div id="currency">
+        <Panel title="Admin currency" description="The currency every money figure in the admin is shown in, unless you pick another with the RWF | USD | EUR switch at the top (remembered per browser). Converted figures show ≈; hover them for the original amount.">
+          <form action={saveSettingsAction} className="flex flex-col gap-3">
+            <input type="hidden" name="currencyPanel" value="1" />
+            <div className="flex flex-wrap items-end gap-3">
+              <Field label="Default currency" required>
+                <Select name="displayCurrency" defaultValue={s.displayCurrency} className="w-32">
+                  {DISPLAY_CURRENCIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="EUR per USD" required hint={`RWF per USD is the Card prices rate (${s.usdToRwf}).`}>
+                <Input name="usdToEur" type="number" min={0.1} max={10} step="0.0001" defaultValue={s.usdToEur} required className="w-32" />
+              </Field>
+              <label className="flex min-h-11 items-center gap-2 text-[15px]">
+                <input type="checkbox" name="eurRateAuto" defaultChecked={s.eurRateAuto} className="size-5" />
+                Refresh the EUR rate daily (ECB, free)
+              </label>
+              <Button type="submit">Save</Button>
+            </div>
+            <p className="text-[13px] text-muted">
+              In use: 1 USD = {eur.rate} EUR ({eur.source === "ecb" ? `ECB rate fetched ${eur.fetchedAt ? dateTime(new Date(eur.fetchedAt)) : ""}` : "the rate above"}). The daily refresh uses api.frankfurter.app; when it fails, the rate above stays in use. Payments and bills keep the rate stored with them.
+            </p>
+          </form>
+          <form action={refreshEurRateAction}>
+            <Button type="submit" variant="outline">Refresh EUR rate now</Button>
+          </form>
         </Panel>
       </div>
 

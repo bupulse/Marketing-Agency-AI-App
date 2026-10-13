@@ -1,3 +1,5 @@
+import { moneyFmt } from "@/components/admin/money";
+import { adminMoney } from "@/lib/money/display-server";
 import Link from "next/link";
 import { PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
@@ -14,10 +16,10 @@ import { deleteProviderBillAction, deleteRecurringCostAction, endRecurringCostAc
 
 export const metadata = { title: "Costs" };
 
-const amountText = (minor: number, currency: string) => (currency === "RWF" ? `${minor.toLocaleString("en-US")} RWF` : money(minor));
 
 export default async function CostsPage({ searchParams }: PageProps<"/admin/costs">) {
   await requirePermission("money.costs"); // pages render alongside the layout, so check here too
+  const fx = moneyFmt(await adminMoney());
   const sp = await searchParams;
   const thisMonth = new Date().toISOString().slice(0, 7);
   const lastMonth = addMonths(thisMonth, -1);
@@ -34,20 +36,20 @@ export default async function CostsPage({ searchParams }: PageProps<"/admin/cost
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label={`Costs, ${monthLabel(thisMonth)}`} value={money(Math.round(cur?.totalCents ?? 0))} previous={prev ? { now: cur?.totalCents ?? 0, before: prev.totalCents, label: monthLabel(prev.month) } : undefined} invert source="All kinds" />
-        <Stat label="AI and voice" value={money(Math.round(cur?.aiCents ?? 0))} source={cur && cur.estimateCents > 0 ? "Estimate until the bill is entered" : "From the bills"} href="/admin/ai" />
-        <Stat label="Recurring" value={money(Math.round(cur?.recurringCents ?? 0))} source={`${recurring.filter((r) => !r.endMonth || r.endMonth >= thisMonth).length} running`} href="#recurring" />
-        <Stat label={`Estimated part, ${monthLabel(lastMonth)}`} value={money(Math.round(prev?.estimateCents ?? 0))} source={prev && prev.estimateCents > 0 ? "Enter last month's bills" : "Last month is fully billed"} href="#bills" tone={prev && prev.estimateCents > 0 ? "danger" : undefined} />
+        <Stat label={`Costs, ${monthLabel(thisMonth)}`} value={fx.text(Math.round(cur?.totalCents ?? 0))} title={fx.title(Math.round(cur?.totalCents ?? 0))} previous={prev ? { now: cur?.totalCents ?? 0, before: prev.totalCents, label: monthLabel(prev.month) } : undefined} invert source="All kinds" />
+        <Stat label="AI and voice" value={fx.text(Math.round(cur?.aiCents ?? 0))} title={fx.title(Math.round(cur?.aiCents ?? 0))} source={cur && cur.estimateCents > 0 ? "Estimate until the bill is entered" : "From the bills"} href="/admin/ai" />
+        <Stat label="Recurring" value={fx.text(Math.round(cur?.recurringCents ?? 0))} title={fx.title(Math.round(cur?.recurringCents ?? 0))} source={`${recurring.filter((r) => !r.endMonth || r.endMonth >= thisMonth).length} running`} href="#recurring" />
+        <Stat label={`Estimated part, ${monthLabel(lastMonth)}`} value={fx.text(Math.round(prev?.estimateCents ?? 0))} title={fx.title(Math.round(prev?.estimateCents ?? 0))} source={prev && prev.estimateCents > 0 ? "Enter last month's bills" : "Last month is fully billed"} href="#bills" tone={prev && prev.estimateCents > 0 ? "danger" : undefined} />
       </div>
 
       <Section title="This month" description="Each line says where its number comes from.">
         <Panel title={monthLabel(thisMonth)}>
-          <CostLinesTable month={cur} />
+          <CostLinesTable fx={fx} month={cur} />
         </Panel>
       </Section>
 
       <Panel title="Month by month" description="The last 12 months. A month with a violet badge still has estimates in it.">
-        <MonthCostTable months={months} />
+        <MonthCostTable fx={fx} months={months} />
       </Panel>
 
       <div id="bills" />
@@ -71,7 +73,7 @@ export default async function CostsPage({ searchParams }: PageProps<"/admin/cost
           <Empty>No bills entered yet. Until you add one, AI costs are the ledger&apos;s estimate.</Empty>
         ) : (
           <TableWrap caption="Provider bills entered">
-            <thead><tr><Th>Month</Th><Th>Provider</Th><Th right>Billed</Th><Th right>In USD</Th><Th right>Our estimate</Th><Th>Note</Th><Th /></tr></thead>
+            <thead><tr><Th>Month</Th><Th>Provider</Th><Th right>Billed</Th><Th right>In {fx.display.currency}</Th><Th right>Our estimate</Th><Th>Note</Th><Th /></tr></thead>
             <tbody>
               {bills.map((b) => {
                 const m = months.find((x) => x.month === b.month)?.lines.find((l) => l.key === `ai:${b.provider}`);
@@ -79,9 +81,9 @@ export default async function CostsPage({ searchParams }: PageProps<"/admin/cost
                   <tr key={b.id}>
                     <Td>{monthLabel(b.month)}</Td>
                     <Td>{providerLabel(b.provider)}</Td>
-                    <Td right>{amountText(b.amountMinor, b.currency)}</Td>
-                    <Td right>{money(b.usdCents)}{b.usdRate ? <span className="block text-xs text-muted">at {b.usdRate} RWF/USD</span> : null}</Td>
-                    <Td right className="text-muted">{m ? money(Math.round(m.estimateCents ?? 0)) : "older than 12 months"}</Td>
+                    <Td right>{money(b.amountMinor, b.currency)}</Td>
+                    <Td right>{fx.el(b.usdCents, "USD", { rwfRate: b.usdRate })}{b.usdRate ? <span className="block text-xs text-muted">at {b.usdRate} RWF/USD</span> : null}</Td>
+                    <Td right className="text-muted">{m ? fx.text(Math.round(m.estimateCents ?? 0)) : "older than 12 months"}</Td>
                     <Td>{b.note ?? ""}</Td>
                     <Td right><ConfirmButton action={deleteProviderBillAction} fields={{ id: b.id }} label="Delete" title="Delete this bill?" description={`${providerLabel(b.provider)} for ${b.month} goes back to the ledger's estimate.`} confirmLabel="Delete" /></Td>
                   </tr>
@@ -129,8 +131,8 @@ export default async function CostsPage({ searchParams }: PageProps<"/admin/cost
                   <tr key={r.id} className={ended ? "text-muted" : undefined}>
                     <Td className="font-medium">{r.name}{r.note ? <span className="block text-xs font-normal text-muted">{r.note}</span> : null}</Td>
                     <Td>{CATEGORY_LABEL[r.category as keyof typeof CATEGORY_LABEL] ?? r.category}</Td>
-                    <Td right>{amountText(r.amountMinor, r.currency)} / {r.period}</Td>
-                    <Td right>{money(Math.round(recurringCentsForMonth({ ...r, startMonth: "0000-01", endMonth: null }, thisMonth, rwfPerUsd)))}</Td>
+                    <Td right>{fx.el(r.amountMinor, r.currency)} / {r.period}</Td>
+                    <Td right>{fx.el(Math.round(recurringCentsForMonth({ ...r, startMonth: "0000-01", endMonth: null }, thisMonth, rwfPerUsd)))}</Td>
                     <Td>{monthLabel(r.startMonth)} to {r.endMonth ? monthLabel(r.endMonth) : <Badge tone="success">now</Badge>}</Td>
                     <Td right>
                       <span className="flex justify-end gap-2">
@@ -164,7 +166,7 @@ export default async function CostsPage({ searchParams }: PageProps<"/admin/cost
             <tbody>
               {entered.map((c) => (
                 <tr key={`${c.month}-${c.category}`}>
-                  <Td>{c.month}</Td><Td>{c.category}</Td><Td right>{money(c.amountCents)}</Td><Td>{c.note ?? ""}</Td>
+                  <Td>{c.month}</Td><Td>{c.category}</Td><Td right>{fx.el(c.amountCents)}</Td><Td>{c.note ?? ""}</Td>
                   <Td right><ConfirmButton action={deleteCostAction} fields={{ month: c.month, category: c.category }} label="Delete" title="Delete this cost?" description={`${c.category} for ${c.month} will no longer count.`} confirmLabel="Delete" /></Td>
                 </tr>
               ))}

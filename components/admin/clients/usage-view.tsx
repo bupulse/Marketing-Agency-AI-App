@@ -1,6 +1,7 @@
+import { BOOKS_FMT, type MoneyFmt } from "@/components/admin/money";
 import Link from "next/link";
 import type { ClientRow } from "@/lib/admin/client-health";
-import { money, num } from "@/lib/admin/format";
+import { num } from "@/lib/admin/format";
 import type { UsageMetric } from "@/lib/plans";
 import { Empty, HowCalculated, Panel, Stat, TableWrap, Td, Th } from "../ui";
 
@@ -12,7 +13,7 @@ const used = (r: ClientRow, m: UsageMetric) => (
 );
 
 /** What each client used this period, what that cost in AI this month and what they pay: the margin per client. */
-export function UsageView({ rows, sort }: { rows: ClientRow[]; sort: "cost" | "margin" | "name" }) {
+export function UsageView({ rows, sort, fx = BOOKS_FMT }: { rows: ClientRow[]; sort: "cost" | "margin" | "name"; fx?: MoneyFmt }) {
   const list = rows.filter((r) => r.status && r.status !== "CANCELED" && r.status !== "EXPIRED");
   const sorted = [...list].sort((a, b) => (sort === "name" ? a.name.localeCompare(b.name) : sort === "margin" ? a.mrrCents - a.aiCostMonthCents - (b.mrrCents - b.aiCostMonthCents) : b.aiCostMonthCents - a.aiCostMonthCents));
   const ai = list.reduce((s, r) => s + r.aiCostMonthCents, 0);
@@ -22,9 +23,9 @@ export function UsageView({ rows, sort }: { rows: ClientRow[]; sort: "cost" | "m
   return (
     <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="AI cost this month" value={money(Math.round(ai))} source="All current clients" href="/admin/ai" />
-        <Stat label="They pay (MRR)" value={money(mrr)} source="Per month" href="/admin/revenue#mrr" />
-        <Stat label="AI cost of non-paying clients" value={money(Math.round(trialCost))} source="Trials and demos" />
+        <Stat label="AI cost this month" value={fx.text(Math.round(ai))} title={fx.title(Math.round(ai))} source="All current clients" href="/admin/ai" />
+        <Stat label="They pay (MRR)" value={fx.text(mrr)} title={fx.title(mrr)} source="Per month" href="/admin/revenue#mrr" />
+        <Stat label="AI cost of non-paying clients" value={fx.text(Math.round(trialCost))} title={fx.title(Math.round(trialCost))} source="Trials and demos" />
         <Stat label="Clients costing more than they pay" value={num(losing)} tone={losing ? "danger" : undefined} source="This month's AI alone" />
       </div>
       <Panel
@@ -59,10 +60,10 @@ export function UsageView({ rows, sort }: { rows: ClientRow[]; sort: "cost" | "m
                     <Td right>{used(r, "videoSeconds")}</Td>
                     <Td right>{used(r, "voiceCharacters")}</Td>
                     <Td right>{used(r, "chat")}</Td>
-                    <Td right>{money(Math.round(r.aiCostMonthCents))}</Td>
-                    <Td right>{r.mrrCents ? money(r.mrrCents) : <span className="text-muted">0</span>}</Td>
+                    <Td right>{fx.el(Math.round(r.aiCostMonthCents))}</Td>
+                    <Td right>{r.mrrCents ? fx.text(r.mrrCents) : <span className="text-muted">0</span>}</Td>
                     <Td right className={margin < 0 ? "font-semibold text-danger" : "font-semibold"}>
-                      {money(Math.round(margin))}
+                      {fx.el(Math.round(margin))}
                       {r.mrrCents > 0 && <span className="block text-xs font-normal text-muted">{Math.round((margin / r.mrrCents) * 100)}%</span>}
                     </Td>
                   </tr>

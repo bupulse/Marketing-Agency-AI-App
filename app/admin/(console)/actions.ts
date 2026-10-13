@@ -1,6 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { isDisplayCurrency } from "@/lib/money/display";
+import { ADMIN_CURRENCY_COOKIE } from "@/lib/money/display-server";
 import { adminAction, actionMessage, finish, userIdOf } from "@/lib/admin/console";
 import { toMinor } from "@/lib/admin/format";
 import { createAdminKey, revokeAdminKey, rotateAdminKey } from "@/lib/admin/keys";
@@ -268,4 +271,14 @@ export async function setAiBudgetAction(f: FormData) {
     if (usd !== null && !Number.isFinite(usd)) throw new AdminError("invalid", "Enter the cap in dollars, for example 20.");
     return setAiBudget(ctx, { monthlyUsd: usd });
   });
+}
+
+/** The header's RWF | USD | EUR switch: remembered for this admin's browser (a cookie), for every admin money figure. */
+export async function setDisplayCurrencyAction(currency: string): Promise<{ ok: boolean }> {
+  // Anyone who can see a money figure somewhere in the admin (it only changes how their own pages show money).
+  await adminAction(["overview", "clients.view", "clients.own", "requests", "sales.team", "sales.board", "money.revenue", "money.costs", "payments.view", "payments.approve", "plans.manage", "ai"]);
+  if (!isDisplayCurrency(currency)) return { ok: false };
+  (await cookies()).set(ADMIN_CURRENCY_COOKIE, currency, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/admin", maxAge: 365 * 86_400 });
+  revalidatePath("/admin", "layout");
+  return { ok: true };
 }

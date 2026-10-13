@@ -1,10 +1,11 @@
+import { BOOKS_FMT, type MoneyFmt } from "@/components/admin/money";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Mail, MessageCircle, Share2 } from "lucide-react";
 import { Badge, Button, Input, Select } from "@/components/ui";
 import { CopyButton } from "@/components/studio/copy-button";
 import { mailtoLink, whatsappLink } from "@/lib/admin/client-health-shared";
-import { dateTime, money, num } from "@/lib/admin/format";
+import { dateTime, num } from "@/lib/admin/format";
 import type { LeaderRow } from "@/lib/sales/attribution";
 import type { Reassignment, SalesClient, TeamMember } from "@/lib/sales/clients";
 import { REASON_MAX, REASON_MIN } from "@/lib/sales/assign-rules";
@@ -57,11 +58,11 @@ function Contact({ c }: { c: SalesClient }) {
   );
 }
 
-function Payment({ c }: { c: SalesClient }) {
+function Payment({ c, fx }: { c: SalesClient; fx: MoneyFmt }) {
   return (
     <span className="flex flex-col gap-1">
       {c.status ? <Badge tone={STATUS_TONE[c.status] ?? "neutral"}>{STATUS_LABEL[c.status] ?? c.status}</Badge> : <span className="text-muted">No plan</span>}
-      <span className="text-xs text-muted">{c.lastPayment ? `Last paid ${money(c.lastPayment.usdCents)}, ${dateTime(c.lastPayment.at)}` : "No payment yet"}</span>
+      <span className="text-xs text-muted">{c.lastPayment ? `Last paid ${fx.text(c.lastPayment.usdCents)}, ${dateTime(c.lastPayment.at)}` : "No payment yet"}</span>
     </span>
   );
 }
@@ -103,7 +104,7 @@ function LinkPanel({ link }: { link: { url: string; code: string } }) {
   );
 }
 
-function ClientsTable({ clients, now, link, agentOf, reassign }: { clients: SalesClient[]; now: number; link: boolean; agentOf?: (c: SalesClient) => string; reassign?: (c: SalesClient) => ReactNode }) {
+function ClientsTable({ clients, now, link, agentOf, reassign, fx }: { clients: SalesClient[]; now: number; link: boolean; fx: MoneyFmt; agentOf?: (c: SalesClient) => string; reassign?: (c: SalesClient) => ReactNode }) {
   return (
     <TableWrap caption="Clients" tall>
       <thead>
@@ -127,7 +128,7 @@ function ClientsTable({ clients, now, link, agentOf, reassign }: { clients: Sale
             <Td>{trialLeft(c, now)}</Td>
             <Td>{daysAgo(c.lastSignInAt, now)}</Td>
             <Td right>{num(c.posts)}</Td>
-            <Td><Payment c={c} /></Td>
+            <Td><Payment c={c} fx={fx} /></Td>
             {agentOf && (
               <Td>
                 <span className="flex flex-col gap-1">
@@ -143,13 +144,13 @@ function ClientsTable({ clients, now, link, agentOf, reassign }: { clients: Sale
   );
 }
 
-function Numbers({ row, rank, of, month }: { row: LeaderRow | null; rank: number | null; of: number; month: string }) {
+function Numbers({ row, rank, of, month, fx }: { row: LeaderRow | null; rank: number | null; of: number; month: string; fx: MoneyFmt }) {
   return (
     <Section title={`My numbers, ${monthName(month)}`} description="USD, net of refunds. Performance only.">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Own sales" value={money(row?.ownCents ?? 0)} source="Payments of your clients" />
-        <Stat label="Team share" value={money(row?.teamShareCents ?? 0)} source="Unassigned clients, split equally" />
-        <Stat label="Total" value={money(row?.totalCents ?? 0)} />
+        <Stat label="Own sales" value={fx.text(row?.ownCents ?? 0)} title={fx.title(row?.ownCents ?? 0)} source="Payments of your clients" />
+        <Stat label="Team share" value={fx.text(row?.teamShareCents ?? 0)} title={fx.title(row?.teamShareCents ?? 0)} source="Unassigned clients, split equally" />
+        <Stat label="Total" value={fx.text(row?.totalCents ?? 0)} title={fx.title(row?.totalCents ?? 0)} />
         <Stat label="Rank" value={rank ? `${rank} of ${of}` : "-"} href="/admin/sales/leaderboard" source="Leaderboard" />
       </div>
     </Section>
@@ -169,7 +170,7 @@ export type MyClientsData = {
   now: number;
 };
 
-export function MyClientsView({ d }: { d: MyClientsData }) {
+export function MyClientsView({ d, fx = BOOKS_FMT }: { d: MyClientsData; /** Money in the admin's display currency. */ fx?: MoneyFmt }) {
   if (!d.isStaff) {
     return <Empty>This page is for sales staff: it shows the clients assigned to the signed-in staff member. Add yourself as staff with a sales role to get a link and clients, or open Sales team to see every agent.</Empty>;
   }
@@ -177,9 +178,9 @@ export function MyClientsView({ d }: { d: MyClientsData }) {
   return (
     <>
       {d.link && <LinkPanel link={d.link} />}
-      <Numbers row={i >= 0 ? d.board[i] : null} rank={i >= 0 ? i + 1 : null} of={d.board.length} month={d.month} />
+      <Numbers row={i >= 0 ? d.board[i] : null} rank={i >= 0 ? i + 1 : null} of={d.board.length} month={d.month} fx={fx} />
       <Panel title="My clients" description="Companies assigned to you: how to reach them and how they stand. Nothing of their content or settings.">
-        {d.clients.length === 0 ? <Empty>No clients yet. Share your link: a company that signs up through it is yours.</Empty> : <ClientsTable clients={d.clients} now={d.now} link={d.canViewClients} />}
+        {d.clients.length === 0 ? <Empty>No clients yet. Share your link: a company that signs up through it is yours.</Empty> : <ClientsTable clients={d.clients} now={d.now} link={d.canViewClients} fx={fx} />}
       </Panel>
     </>
   );
@@ -222,7 +223,7 @@ function ReassignForm({ c, members, action }: { c: SalesClient; members: TeamMem
   );
 }
 
-export function TeamView({ d, reassignAction }: { d: TeamData; reassignAction?: (f: FormData) => Promise<void> }) {
+export function TeamView({ d, reassignAction, fx = BOOKS_FMT }: { d: TeamData; reassignAction?: (f: FormData) => Promise<void>; fx?: MoneyFmt }) {
   const rowOf = new Map(d.board.map((r) => [r.staffId, r]));
   const nameOf = new Map(d.members.map((m) => [m.staffId, m.name]));
   const clientsOf = (id: string) => d.clients.filter((c) => c.agentId === id).length;
@@ -259,9 +260,9 @@ export function TeamView({ d, reassignAction }: { d: TeamData; reassignAction?: 
                     <Td>{m.roleName}</Td>
                     <Td><span className="font-mono">{m.refCode ?? "Not yet"}</span></Td>
                     <Td right>{num(clientsOf(m.staffId))}</Td>
-                    <Td right>{money(r?.ownCents ?? 0)}</Td>
-                    <Td right>{money(r?.teamShareCents ?? 0)}</Td>
-                    <Td right>{money(r?.totalCents ?? 0)}</Td>
+                    <Td right>{fx.el(r?.ownCents ?? 0)}</Td>
+                    <Td right>{fx.el(r?.teamShareCents ?? 0)}</Td>
+                    <Td right>{fx.el(r?.totalCents ?? 0)}</Td>
                   </tr>
                 );
               })}
@@ -274,6 +275,7 @@ export function TeamView({ d, reassignAction }: { d: TeamData; reassignAction?: 
           <Empty>No clients yet.</Empty>
         ) : (
           <ClientsTable
+            fx={fx}
             clients={d.clients}
             now={d.now}
             link={d.canViewClients}
@@ -327,7 +329,7 @@ export function LeaderboardHow() {
   );
 }
 
-export function LeaderboardView({ rows, month, months, me }: { rows: LeaderRow[]; month: string; months: string[]; me?: string | null }) {
+export function LeaderboardView({ rows, month, months, me, fx = BOOKS_FMT }: { rows: LeaderRow[]; month: string; months: string[]; me?: string | null; fx?: MoneyFmt }) {
   return (
     <>
       <form method="get" className="flex flex-wrap items-end gap-2">
@@ -362,9 +364,9 @@ export function LeaderboardView({ rows, month, months, me }: { rows: LeaderRow[]
                   <Td right>{i + 1}</Td>
                   <Td><span className="font-medium">{r.name}{r.staffId === me ? " (you)" : ""}</span></Td>
                   <Td right>{num(r.clients)}</Td>
-                  <Td right>{money(r.ownCents)}</Td>
-                  <Td right>{money(r.teamShareCents)}</Td>
-                  <Td right className="font-semibold">{money(r.totalCents)}</Td>
+                  <Td right>{fx.el(r.ownCents)}</Td>
+                  <Td right>{fx.el(r.teamShareCents)}</Td>
+                  <Td right className="font-semibold">{fx.el(r.totalCents)}</Td>
                 </tr>
               ))}
             </tbody>

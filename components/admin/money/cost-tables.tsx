@@ -1,5 +1,6 @@
+import { BOOKS_FMT, type MoneyFmt } from "@/components/admin/money";
 import { Badge } from "@/components/ui";
-import { money, num } from "@/lib/admin/format";
+import { num } from "@/lib/admin/format";
 import { CATEGORY_LABEL, type CostLine, type CostSource, type MonthCosts } from "@/lib/money/costs-shared";
 import { Empty, TableWrap, Td, Th } from "../ui";
 
@@ -15,7 +16,7 @@ export const SourceBadge = ({ source }: { source: CostSource }) => <Badge tone={
 export const monthLabel = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
 
 /** One month's cost lines, dearest first, each marked billed, estimate, recurring or entered. */
-export function CostLinesTable({ month }: { month: MonthCosts | undefined }) {
+export function CostLinesTable({ month, fx = BOOKS_FMT }: { month: MonthCosts | undefined; fx?: MoneyFmt }) {
   if (!month || month.lines.length === 0) return <Empty>No costs for this month yet. Add your recurring costs below; AI costs appear with the first AI call.</Empty>;
   return (
     <TableWrap caption={`Costs of ${month.month}`}>
@@ -31,11 +32,11 @@ export function CostLinesTable({ month }: { month: MonthCosts | undefined }) {
             </Td>
             <Td>{CATEGORY_LABEL[l.category as keyof typeof CATEGORY_LABEL] ?? l.category}</Td>
             <Td><SourceBadge source={l.source} /></Td>
-            <Td right>{money(Math.round(l.cents))}</Td>
+            <Td right>{fx.el(Math.round(l.cents))}</Td>
             <Td right className="text-muted">
               {l.source === "actual" ? (
                 <>
-                  {money(Math.round(l.estimateCents ?? 0))}
+                  {fx.el(Math.round(l.estimateCents ?? 0))}
                   <span className="block text-xs">{diffText(l.cents, l.estimateCents ?? 0)}</span>
                 </>
               ) : l.source === "estimate" ? "this is it" : ""}
@@ -43,7 +44,7 @@ export function CostLinesTable({ month }: { month: MonthCosts | undefined }) {
           </tr>
         ))}
         <tr>
-          <Td className="font-semibold">Total</Td><Td /><Td /><Td right className="font-semibold">{money(Math.round(month.totalCents))}</Td><Td />
+          <Td className="font-semibold">Total</Td><Td /><Td /><Td right className="font-semibold">{fx.el(Math.round(month.totalCents))}</Td><Td />
         </tr>
       </tbody>
     </TableWrap>
@@ -57,7 +58,7 @@ function diffText(bill: number, estimate: number): string {
 }
 
 /** Month by month: AI and voice, recurring, entered, total, and how much of it is still an estimate. */
-export function MonthCostTable({ months }: { months: MonthCosts[] }) {
+export function MonthCostTable({ months, fx = BOOKS_FMT }: { months: MonthCosts[]; fx?: MoneyFmt }) {
   if (months.every((m) => m.totalCents === 0)) return <Empty>No costs recorded yet.</Empty>;
   return (
     <TableWrap caption="Costs by month">
@@ -68,11 +69,11 @@ export function MonthCostTable({ months }: { months: MonthCosts[] }) {
         {[...months].reverse().map((m) => (
           <tr key={m.month}>
             <Td>{monthLabel(m.month)}</Td>
-            <Td right>{money(Math.round(m.aiCents))}</Td>
-            <Td right>{money(Math.round(m.recurringCents))}</Td>
-            <Td right>{money(Math.round(m.enteredCents))}</Td>
-            <Td right className="font-semibold">{money(Math.round(m.totalCents))}</Td>
-            <Td>{m.estimateCents > 0 ? <Badge tone="violet">{money(Math.round(m.estimateCents))} estimated</Badge> : m.totalCents > 0 ? <Badge tone="success">all billed</Badge> : null}</Td>
+            <Td right>{fx.el(Math.round(m.aiCents))}</Td>
+            <Td right>{fx.el(Math.round(m.recurringCents))}</Td>
+            <Td right>{fx.el(Math.round(m.enteredCents))}</Td>
+            <Td right className="font-semibold">{fx.el(Math.round(m.totalCents))}</Td>
+            <Td>{m.estimateCents > 0 ? <Badge tone="violet">{fx.el(Math.round(m.estimateCents))} estimated</Badge> : m.totalCents > 0 ? <Badge tone="success">all billed</Badge> : null}</Td>
           </tr>
         ))}
       </tbody>

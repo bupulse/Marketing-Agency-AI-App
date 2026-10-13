@@ -78,7 +78,8 @@ describe("what the screen shows", () => {
     const now = new Date("2026-10-13T08:00:00Z");
     h.prisma.billingEvent.findMany.mockResolvedValue([momo("a", "2026-10-02T09:00:00Z", 1000), momo("b", "2026-10-13T07:00:00Z", 2500), momo("c", "2026-09-30T09:00:00Z", 999)]);
     const snap = await loadSnapshot(now);
-    expect(snap.revenue).toEqual({ todayCents: 2500, monthCents: 3500 });
+    // With the RWF actually paid (exact on the TV when the default currency is RWF).
+    expect(snap.revenue).toEqual({ todayCents: 2500, monthCents: 3500, todayRwfMinor: 32500, todayRwfUsdCents: 2500, monthRwfMinor: 45500, monthRwfUsdCents: 3500 });
     const [nowCall, todayCall] = h.prisma.user.count.mock.calls.map((c) => c[0].where.lastSeenAt.gte.toISOString());
     expect(nowCall).toBe("2026-10-13T07:55:00.000Z");
     expect(todayCall).toBe("2026-10-12T22:00:00.000Z");
@@ -114,8 +115,8 @@ describe("new payments", () => {
     h.agentForPayment.mockImplementation(async (userId: string) => (userId === "u1" ? { staffId: "s1", name: "Aline" } : null));
     const r = await newPayments(cursor);
     expect(r.celebrations).toEqual([
-      { id: "pay:mp-b8", client: "Kigali Salon", usdCents: 1500, agent: "Aline" },
-      { id: "pay:mp-c1", client: "Nyamirambo Hardware", usdCents: 4000, agent: null },
+      { id: "pay:mp-b8", client: "Kigali Salon", usdCents: 1500, localMinor: 19500, currency: "RWF", agent: "Aline" },
+      { id: "pay:mp-c1", client: "Nyamirambo Hardware", usdCents: 4000, localMinor: 52000, currency: "RWF", agent: null },
     ]);
     // The refund moves the cursor on but is not celebrated; the cursor ends at the last event read.
     expect(r.cursor).toEqual({ at: new Date("2026-10-13T08:00:02Z"), id: "c1" });

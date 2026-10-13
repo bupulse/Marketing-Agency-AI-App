@@ -1,3 +1,5 @@
+import { moneyFmt } from "@/components/admin/money";
+import { adminMoney } from "@/lib/money/display-server";
 import Link from "next/link";
 import { PageHeader } from "@/components/app";
 import { RevenueView } from "@/components/admin/money/revenue-view";
@@ -8,6 +10,7 @@ export const metadata = { title: "Revenue and profit" };
 
 export default async function RevenuePage() {
   await requirePermission("money.revenue"); // pages render alongside the layout, so check here too
+  const fx = moneyFmt(await adminMoney());
   const report = await getMoneyReportCached(12);
   return (
     <>
@@ -16,7 +19,7 @@ export default async function RevenuePage() {
         description="Revenue from every client ever (card, Mobile Money, invoices), MRR, churn and profit after every cost."
         action={<Link href="/admin/costs" className="text-sm font-medium underline">Costs</Link>}
       />
-      <RevenueView r={report} />
+      <RevenueView r={report} fx={fx} />
     </>
   );
 }

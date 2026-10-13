@@ -1,19 +1,23 @@
+import { moneyFmt } from "@/components/admin/money";
+import { adminMoney } from "@/lib/money/display-server";
 import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { Bars, LineChart } from "@/components/admin/charts";
 import { Empty, Panel, Stat, TableWrap, Td, Th, notice } from "@/components/admin/ui";
 import { Badge, Button, Field, Input, Meter } from "@/components/ui";
 import Link from "next/link";
-import { dateTime, num, param } from "@/lib/admin/format";
+import { dateTime, money, num, param } from "@/lib/admin/format";
 import { getAiUsage } from "@/lib/admin/ai-usage";
 import { setAiBudgetAction } from "@/app/admin/(console)/actions";
 
 export const metadata = { title: "AI usage" };
 
-const usd = (n: number) => `$${n.toFixed(2)}`;
 
 export default async function AiPage({ searchParams }: PageProps<"/admin/ai">) {
   await requirePermission("ai"); // pages render alongside the layout, so check here too
+  const fx = moneyFmt(await adminMoney());
+  // AI costs are kept in dollars; shown in the admin's currency.
+  const usd = (n: number) => fx.text(n * 100);
   const sp = await searchParams;
   const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(param(sp.month)) ? param(sp.month) : undefined;
   const u = await getAiUsage({ month });
@@ -28,7 +32,7 @@ export default async function AiPage({ searchParams }: PageProps<"/admin/ai">) {
         <Meter value={u.spentUsd} max={u.cap.usd} label="AI spend against the monthly cap" />
         <p className="text-[14px] text-muted">{usd(u.spentUsd)} spent ({u.percentUsed}%), {usd(u.remainingUsd)} left{u.isCurrentMonth ? `, projected ${usd(u.projectedUsd)} by month end` : ""}.</p>
         <form action={setAiBudgetAction} className="flex flex-wrap items-end gap-3">
-          <Field label="Monthly cap in dollars" hint={`Between ${u.cap.minUsd} and ${u.cap.maxUsd}. Leave empty to go back to ${usd(u.cap.envDefaultUsd)}.`}><Input name="usd" inputMode="decimal" defaultValue={u.cap.source === "admin" ? String(u.cap.usd) : ""} placeholder={String(u.cap.envDefaultUsd)} /></Field>
+          <Field label="Monthly cap in dollars" hint={`Between ${u.cap.minUsd} and ${u.cap.maxUsd}. Leave empty to go back to ${money(Math.round(u.cap.envDefaultUsd * 100))}.`}><Input name="usd" inputMode="decimal" defaultValue={u.cap.source === "admin" ? String(u.cap.usd) : ""} placeholder={String(u.cap.envDefaultUsd)} /></Field>
           <Button type="submit">Save cap</Button>
         </form>
       </Panel>
@@ -51,7 +55,7 @@ export default async function AiPage({ searchParams }: PageProps<"/admin/ai">) {
       </Panel>
 
       <Panel title="Spend per day">
-        {days.length > 1 ? <LineChart cents={false} labels={days} series={[{ name: "Cost (USD)", color: "var(--color-pulse-blue)", values: u.perDay.map((d) => d.costUsd) }]} summary="AI cost per day" /> : <Empty>Not enough days yet.</Empty>}
+        {days.length > 1 ? <LineChart cents labels={days} series={[{ name: `Cost (${fx.display.currency})`, color: "var(--color-pulse-blue)", values: u.perDay.map((d) => Math.round(d.costUsd * 100)) }]} summary="AI cost per day" format={(v) => fx.text(v)} /> : <Empty>Not enough days yet.</Empty>}
       </Panel>
 
       <div className="grid gap-5 lg:grid-cols-2">

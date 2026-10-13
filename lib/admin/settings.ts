@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { DEFAULT_CARD_MARGIN_PERCENT, DEFAULT_USD_TO_RWF } from "@/lib/region-format";
 import { DEFAULT_BUFFER_MINUTES, DEFAULT_SLOT_MINUTES, isValidYmd } from "@/lib/demo/slots";
 import { isPageLoader, type PageLoader } from "@/lib/ui/page-loader";
+import { isDisplayCurrency, type DisplayCurrency } from "@/lib/money/display";
 import { writeAudit } from "./audit";
 import { AdminError, type AdminContext } from "./types";
 
@@ -12,6 +13,9 @@ import { AdminError, type AdminContext } from "./types";
 
 /** New demo bookings per day, all companies together (Admin -> Settings, Demo calls). */
 export const DEFAULT_DEMO_DAILY_CAP = 12;
+
+/** EUR per USD until the owner sets one (or the daily ECB refresh brings one). */
+export const DEFAULT_USD_TO_EUR = 0.92;
 
 /** New sign-ups: how long the trial lasts once an admin starts it after the demo (section 12 of the launch plan). */
 export const DEFAULT_TRIAL_DAYS = 3;
@@ -37,6 +41,12 @@ export type Settings = {
   demoDailyCap: number;
   /** The page-loading animation on the whole site (clients, public pages, admin): a top bar, the BuPulse preloader, or none. */
   pageLoader: PageLoader;
+  /** The admin console's currency when an admin has not picked one with the header switch (lib/money/display.ts). */
+  displayCurrency: DisplayCurrency;
+  /** EUR per USD, for showing admin figures in euros. */
+  usdToEur: number;
+  /** Refresh the EUR rate once a day from the ECB reference rates (api.frankfurter.app, free, no key). */
+  eurRateAuto: boolean;
 };
 export type SettingName = keyof Settings;
 
@@ -51,6 +61,9 @@ const KEYS: Record<SettingName, string> = {
   blockedDates: "demo.blockedDates",
   demoDailyCap: "demo.dailyCap",
   pageLoader: "ui.pageLoader",
+  displayCurrency: "admin.displayCurrency",
+  usdToEur: "pricing.usdToEur",
+  eurRateAuto: "pricing.usdToEurAuto",
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -64,6 +77,9 @@ export const DEFAULT_SETTINGS: Settings = {
   blockedDates: [],
   demoDailyCap: DEFAULT_DEMO_DAILY_CAP,
   pageLoader: "bar",
+  displayCurrency: "USD",
+  usdToEur: DEFAULT_USD_TO_EUR,
+  eurRateAuto: false,
 };
 
 const number = (field: string, min: number, max: number, integer = true) => (value: unknown) => {
@@ -108,6 +124,13 @@ export const cleanSetting: { [K in SettingName]: (value: unknown) => Settings[K]
     if (!isPageLoader(v)) throw new AdminError("invalid", "Choose a loading animation: bar, preloader or off.");
     return v;
   },
+  displayCurrency: (value) => {
+    const v = String(value ?? "").trim().toUpperCase();
+    if (!isDisplayCurrency(v)) throw new AdminError("invalid", "The default currency must be RWF, USD or EUR.");
+    return v;
+  },
+  usdToEur: number("The USD to EUR rate", 0.1, 10, false),
+  eurRateAuto: (value) => value === true || value === "on" || value === "true" || value === "1",
   blockedDates: (value) => {
     const list = Array.isArray(value) ? value : String(value ?? "").split(/[\s,]+/);
     const out = [...new Set(list.map((v) => String(v).trim()).filter(Boolean))].sort();

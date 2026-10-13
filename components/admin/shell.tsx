@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { CurrencySwitch } from "./currency-switch";
+import type { DisplayCurrency } from "@/lib/money/display";
 import { ChevronDown, ChevronRight, LogOut, Menu, Search, X } from "lucide-react";
 import { useCallback, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Logo } from "@/components/brand";
@@ -148,7 +150,7 @@ export function Breadcrumbs({ pathname }: { pathname: string }) {
   );
 }
 
-export function AdminShell({ email, roleName, permissions, badges, children }: { email: string; roleName?: string; permissions: readonly Permission[]; badges: ShellBadges; children: ReactNode }) {
+export function AdminShell({ email, roleName, permissions, badges, currency, children }: { email: string; roleName?: string; permissions: readonly Permission[]; badges: ShellBadges; /** The display currency (RWF | USD | EUR switch). */ currency?: DisplayCurrency; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState(false);
   const pathname = usePathname() ?? "/admin";
@@ -194,6 +196,7 @@ export function AdminShell({ email, roleName, permissions, badges, children }: {
             <button type="button" onClick={() => setSearch(true)} aria-label="Search pages and companies" className="glass inline-flex size-11 cursor-pointer items-center justify-center rounded-full lg:hidden">
               <Search aria-hidden className="size-5" />
             </button>
+            {currency && <CurrencySwitch value={currency} />}
             <ThemeToggle />
             <span className="hidden max-w-[14rem] truncate text-sm text-muted xl:inline" title={email}>
               {email}

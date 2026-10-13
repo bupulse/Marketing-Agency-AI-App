@@ -11,6 +11,7 @@ import { sendPlanPausedEmail, sendRenewalReminderEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
 import { sweepUnsubmittedProofs } from "./momo";
 import { retryCarryOvers } from "./carry-over";
+import { refreshEurRate } from "@/lib/money/display-server";
 import { DAY_MS, graceEnd, reminderDue, UNSUBMITTED_TTL_HOURS } from "./momo-shared";
 
 // The daily job for Mobile Money subscriptions (nothing renews by itself):
@@ -151,6 +152,8 @@ async function runBatch(opts: { now?: Date; cursor?: string | null; batchSize?: 
     } catch (error) {
       await logError(error, { source: "invoices.reminders" });
     }
+    // The admin console's EUR rate, when its daily ECB refresh is on (never fails the job: refreshEurRate logs).
+    await refreshEurRate({ now });
     // Card renewals of Mobile Money plans whose paid days could not be carried over yet (docs/BILLING.md, "Renewing").
     try {
       const carried = await retryCarryOvers(now);

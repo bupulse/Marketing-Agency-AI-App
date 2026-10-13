@@ -76,3 +76,31 @@ Settings, Updates shows the running version, the newest GitHub release and the l
 ## Lost phone
 
 Remove the factor in Supabase (Authentication, Users, the admin, Factors, delete), then repeat step 5.
+
+## Currency (RWF | USD | EUR)
+
+Every money figure in the admin (Overview, Revenue and profit, Costs, Usage per client, Payments, Invoices, AI spend,
+the client page, Sales) follows the **RWF | USD | EUR** switch at the top of the console. The choice is remembered per admin
+browser (cookie `bp_admin_currency`, path `/admin`); without it, Admin → Settings → **Admin currency** → "Default
+currency" applies (USD until changed).
+
+- **One formatter** (`formatMoney` in `lib/money/display.ts`; `money()` in `lib/admin/format.ts` is the same): RWF
+  without decimals, USD and EUR with cents. Pages use `moneyFmt(await adminMoney())` (`components/admin/money.tsx`).
+- **Exact vs converted.** An amount shown in the currency it was stored in is exact (a Mobile Money payment in RWF shows
+  the RWF paid). Anything converted shows **≈** and its tooltip gives the original amount and currency.
+- **Totals with RWF in them** (revenue): the RWF received is added exactly and only the rest is converted, so RWF never
+  makes a round trip through USD. In USD the books' values are used (each RWF payment's USD value was fixed when it
+  was confirmed).
+- **Stored rates win**: a cost bill keeps its own RWF/USD rate; today's rates are only for what has none.
+- **Rates.** RWF per USD is the Card prices rate (Settings). EUR per USD is set in Settings → Admin currency, with an
+  optional **daily refresh from the ECB** (`api.frankfurter.app`, free, no key) run by the daily renewals job and by
+  "Refresh EUR rate now". The fetched rate is used while it is under 3 days old; any failure (logged as
+  `money.eur_rate`) keeps the stored rate.
+- Amounts an admin must act on exactly stay in their own currency: the Mobile Money "Confirm …" dialog, a bill's
+  billed amount, the refund dialog's card amounts.
+- **Sales pages** (My clients, Leaderboard, Sales team) follow the switch like the rest.
+- **The sales room TV** (`/screen/<token>`) has no switch: it shows every amount (revenue today and this month, the
+  leaderboard, the celebration card) in the **default currency** from Settings (`defaultMoney()`, sent with each poll
+  as `ScreenData.money`). A payment made in RWF shows its exact RWF amount on the celebration card; revenue totals add
+  the RWF received exactly (`screenMoney`, `screenTotal` in `lib/screen/shared.ts`).
+- Tests: `tests/money/display.test.ts`, `tests/screen/data.test.ts`.

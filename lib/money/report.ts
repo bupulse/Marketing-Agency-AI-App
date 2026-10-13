@@ -84,7 +84,7 @@ export type MoneyReport = {
   truncated: boolean;
   rwfPerUsd: number;
   months: { month: string; revenue: RevenueMonth; costs: MonthCosts; profitCents: number; rate: number | null }[];
-  lifetime: { revenueCents: number; costCents: number; profitCents: number; customersEver: number; payingNow: number; churned: number; firstMonth: string | null };
+  lifetime: { revenueCents: number; /** The part received in RWF: exact RWF and its USD value at the rates of the day. */ rwfMinor: number; rwfUsdCents: number; costCents: number; profitCents: number; customersEver: number; payingNow: number; churned: number; firstMonth: string | null };
   mrrCents: number;
   arpuCents: number | null;
   churn: { lost30: number; pct: number | null };
@@ -209,6 +209,8 @@ export async function getMoneyReport(opts: { months?: number; now?: Date } = {})
     months: months.filter((m) => m.month >= recentFrom),
     lifetime: {
       revenueCents: lifetimeRevenue,
+      rwfMinor: entries.reduce((s, e) => s + (e.currency === "RWF" && e.localMinor !== null ? e.localMinor : 0), 0),
+      rwfUsdCents: entries.reduce((s, e) => s + (e.currency === "RWF" && e.localMinor !== null ? e.usdCents : 0), 0),
       costCents: Math.round(lifetimeCost),
       profitCents: Math.round(lifetimeRevenue - lifetimeCost),
       customersEver: everPaid.length,

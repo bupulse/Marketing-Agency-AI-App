@@ -1,3 +1,5 @@
+import { moneyFmt } from "@/components/admin/money";
+import { adminMoney } from "@/lib/money/display-server";
 import { notFound } from "next/navigation";
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
@@ -139,13 +141,14 @@ async function Actions({ id, c }: { id: string; c: C }) {
 }
 
 async function OverviewTab({ id, c, here }: { id: string; c: C; here: string }) {
+  const fx = moneyFmt(await adminMoney());
   const [o, user, flags] = await Promise.all([overviewSection(c), getUser(id), listFeatureFlags()]);
   const business = c.business ? await getBusiness(c.business.id) : null;
   return (
     <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Plan" value={o.subscription ? `${o.subscription.plan.toLowerCase()}` : "none"} source={o.subscription?.status.toLowerCase() ?? "no subscription"} />
-        <Stat label="MRR from this client" value={money(o.mrrCents)} source="Plan price, if paying" href="/admin/revenue" />
+        <Stat label="MRR from this client" value={fx.text(o.mrrCents)} title={fx.title(o.mrrCents)} source="Plan price, if paying" href="/admin/revenue" />
         <Stat label="Signed up from" value={o.signupSource?.source ?? "unknown"} source={o.signupSource ? `first page ${o.signupSource.landingPage}` : "No tracked visit linked to the sign-up"} href="/admin/funnels" />
         <Stat label="Last active" value={o.lastActiveAt ? dateTime(o.lastActiveAt).replace(/ UTC$/, "") : "never"} source="Latest product event or AI call" />
       </div>
@@ -211,6 +214,7 @@ async function OverviewTab({ id, c, here }: { id: string; c: C; here: string }) 
 }
 
 async function BillingTab({ c }: { c: C }) {
+  const fx = moneyFmt(await adminMoney());
   const b = await billingSection(c);
   return (
     <Panel title="Payments and refunds" description={b.provider ? `From ${b.provider.toLowerCase()} webhooks, newest first. Amounts are what the customer was charged or refunded, tax included.` : "This client has never paid."}>
@@ -225,7 +229,7 @@ async function BillingTab({ c }: { c: C }) {
                 <Td className="whitespace-nowrap">{dateTime(i.at)}</Td>
                 <Td>{i.kind === "payment" ? <Badge tone="success">Payment</Badge> : <Badge tone="danger">Refund</Badge>}</Td>
                 <Td className="font-mono text-xs">{i.providerId ?? ""}</Td>
-                <Td right>{i.amountMinor === null ? "n/a" : money(i.kind === "refund" ? -i.amountMinor : i.amountMinor, /^[A-Z]{3}$/.test(i.currency) ? i.currency : "USD")}</Td>
+                <Td right>{i.amountMinor === null ? "n/a" : fx.text(i.kind === "refund" ? -i.amountMinor : i.amountMinor, /^[A-Z]{3}$/.test(i.currency) ? i.currency : "USD")}</Td>
               </tr>
             ))}
           </tbody>
@@ -236,6 +240,7 @@ async function BillingTab({ c }: { c: C }) {
 }
 
 async function UsageTab({ c }: { c: C }) {
+  const fx = moneyFmt(await adminMoney());
   const u = await usageSection(c);
   return (
     <>
@@ -250,12 +255,12 @@ async function UsageTab({ c }: { c: C }) {
         </ul>
       </Panel>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <Stat label="AI cost, 30 days" value={`$${u.ai.costUsd30d.toFixed(2)}`} source="AI call ledger" href="/admin/ai" />
+        <Stat label="AI cost, 30 days" value={fx.text(u.ai.costUsd30d * 100)} title={fx.title(u.ai.costUsd30d * 100)} source="AI call ledger" href="/admin/ai" />
         <Stat label="AI calls, 30 days" value={num(u.ai.calls30d)} source="AI call ledger" />
         <Stat label="Failed AI calls" value={num(u.ai.failures30d)} source="AI call ledger" />
-        <Stat label="AI spend this month" value={`$${u.ai.monthUsd.toFixed(2)} of $${u.ai.allowanceUsd.toFixed(2)}`} source="Company allowance (the plan's AI allowance, else AI_COMPANY_MONTHLY_USD)" />
-        <Stat label="Website chat AI, this month" value={`$${u.ai.widgetUsd.toFixed(2)} of $${u.ai.widgetCapUsd.toFixed(2)}`} source="Chat share (WIDGET_AI_SHARE); when used, the chat collects details" />
-        <Stat label="Owner features AI, this month" value={`$${u.ai.ownerUsd.toFixed(2)}`} source="Studio, Autopilot, designs and the rest" />
+        <Stat label="AI spend this month" value={`${fx.text(u.ai.monthUsd * 100)} of ${fx.text(u.ai.allowanceUsd * 100)}`} source="Company allowance (the plan's AI allowance, else AI_COMPANY_MONTHLY_USD)" />
+        <Stat label="Website chat AI, this month" value={`${fx.text(u.ai.widgetUsd * 100)} of ${fx.text(u.ai.widgetCapUsd * 100)}`} source="Chat share (WIDGET_AI_SHARE); when used, the chat collects details" />
+        <Stat label="Owner features AI, this month" value={fx.text(u.ai.ownerUsd * 100)} source="Studio, Autopilot, designs and the rest" />
       </div>
     </>
   );

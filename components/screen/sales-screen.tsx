@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { POLL_MS, nextSound, usd, type Celebration, type ScreenData } from "@/lib/screen/shared";
+import { POLL_MS, nextSound, screenMoney, screenTotal, type Celebration, type ScreenData } from "@/lib/screen/shared";
 
 // The sales room TV. Dark whatever the theme (the "dark" class switches the tokens for this subtree), type sized for a
 // room, 16:9 first. One big "Start screen" button comes first: browsers only let a page play sound after a click, so
@@ -130,7 +130,7 @@ export function SalesScreen({ token, name }: { token: string; name: string }) {
       ) : (
         <Board name={name} data={data} offline={status === "offline"} />
       )}
-      {current && <CelebrationOverlay key={current.id} celebration={current} />}
+      {current && data && <CelebrationOverlay key={current.id} celebration={current} money={data.money} />}
     </div>
   );
 }
@@ -159,8 +159,8 @@ function Board({ name, data, offline }: { name: string; data: ScreenData | null;
       <section aria-label="Today" className="grid grid-cols-2 gap-[1.5vw] lg:grid-cols-4">
         <Stat label="Active now" value={data ? String(data.activeNow) : "–"} />
         <Stat label="Active today" value={data ? String(data.activeToday) : "–"} />
-        <Stat label="Revenue today" value={data ? usd(data.revenue.todayCents) : "–"} accent />
-        <Stat label="Revenue this month" value={data ? usd(data.revenue.monthCents) : "–"} accent />
+        <Stat label="Revenue today" value={data ? screenTotal(data.money, data.revenue.todayCents, data.revenue.todayRwfMinor, data.revenue.todayRwfUsdCents) : "–"} accent />
+        <Stat label="Revenue this month" value={data ? screenTotal(data.money, data.revenue.monthCents, data.revenue.monthRwfMinor, data.revenue.monthRwfUsdCents) : "–"} accent />
       </section>
 
       <div className="grid min-h-0 flex-1 gap-[1.5vw] lg:grid-cols-2">
@@ -204,9 +204,9 @@ function Board({ name, data, offline }: { name: string; data: ScreenData | null;
                       <span className="mr-3 inline-block w-[1.4em] text-muted">{i + 1}</span>
                       {r.agent}
                     </td>
-                    <td className="py-[0.5vh] pl-2 text-right">{usd(r.ownCents)}</td>
-                    <td className="py-[0.5vh] pl-2 text-right text-muted">{usd(r.teamShareCents)}</td>
-                    <td className="py-[0.5vh] pl-2 text-right font-semibold">{usd(r.totalCents)}</td>
+                    <td className="py-[0.5vh] pl-2 text-right">{screenMoney(data.money, r.ownCents)}</td>
+                    <td className="py-[0.5vh] pl-2 text-right text-muted">{screenMoney(data.money, r.teamShareCents)}</td>
+                    <td className="py-[0.5vh] pl-2 text-right font-semibold">{screenMoney(data.money, r.totalCents)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -237,7 +237,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 }
 
 /** The new payment, big, over everything; money falls behind the card unless the viewer asked for reduced motion. */
-function CelebrationOverlay({ celebration }: { celebration: Celebration }) {
+function CelebrationOverlay({ celebration, money }: { celebration: Celebration; money: ScreenData["money"] }) {
   const card = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [reduced] = useState(() => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -258,7 +258,7 @@ function CelebrationOverlay({ celebration }: { celebration: Celebration }) {
       <div ref={card} role="status" aria-live="polite" className="relative w-full max-w-[min(90vw,1100px)] rounded-panel border border-white/15 bg-[#14141b]/95 px-[4vw] py-[5vh] text-center shadow-glow">
         <p className="text-[clamp(1.25rem,2.2vw,2.5rem)] font-medium text-muted">New payment</p>
         <p className="mt-2 truncate text-[clamp(2.25rem,5vw,6rem)] font-semibold leading-tight tracking-tight">{celebration.client}</p>
-        <p className="mt-2 text-[clamp(3.5rem,9vw,11rem)] font-bold leading-none tracking-tight text-success tabular-nums">{usd(celebration.usdCents)}</p>
+        <p className="mt-2 text-[clamp(3.5rem,9vw,11rem)] font-bold leading-none tracking-tight text-success tabular-nums">{screenMoney(money, celebration.usdCents, { minor: celebration.localMinor, currency: celebration.currency })}</p>
         <p className="mt-6 text-[clamp(1.5rem,3vw,3.5rem)] font-medium">{celebration.agent ? `Brought in by ${celebration.agent}` : "Team"}</p>
       </div>
     </div>

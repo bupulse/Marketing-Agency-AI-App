@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { MONEY_EVENT_TYPES } from "@/lib/analytics/math";
 import { dedupe, toRevenueEntry, type RevenueEntry } from "@/lib/money/revenue-shared";
 import { agentForPayment, getLeaderboard, monthOf, staffName } from "@/lib/sales/attribution";
+import { defaultMoney } from "@/lib/money/display-server";
 import { activeSoundUrls } from "./sounds";
 import { ACTIVE_WINDOW_MS, advanceCursor, formatCursor, kigaliDayStart, parseCursor, screenName, utcMonthStart, type Celebration, type Cursor, type ScreenData } from "./shared";
 
@@ -14,7 +15,7 @@ const LEADERS_SHOWN = 10;
 /** New payments read per poll; more than this in 10 s are celebrated on the next polls. */
 const NEW_PER_POLL = 10;
 
-type Snapshot = Omit<ScreenData, "celebrations" | "cursor" | "sounds">;
+type Snapshot = Omit<ScreenData, "celebrations" | "cursor" | "sounds" | "money">;
 
 const moneyRow = { id: true, eventId: true, type: true, payload: true, createdAt: true, userId: true } as const;
 
@@ -30,8 +31,18 @@ async function revenue(now: Date): Promise<Snapshot["revenue"]> {
     take: 20_000,
   });
   const entries = dedupe(rows.map(toRevenueEntry).filter((e): e is RevenueEntry => !!e));
-  const sum = (from: Date) => entries.filter((e) => e.at >= from && e.at <= now).reduce((s, e) => s + e.usdCents, 0);
-  return { todayCents: sum(day), monthCents: entries.filter((e) => e.month === monthOf(now) && e.at <= now).reduce((s, e) => s + e.usdCents, 0) };
+  const today = entries.filter((e) => e.at >= day && e.at <= now);
+  const month_ = entries.filter((e) => e.month === monthOf(now) && e.at <= now);
+  const usd = (list: RevenueEntry[]) => list.reduce((s, e) => s + e.usdCents, 0);
+  const rwf = (list: RevenueEntry[]) => list.filter((e) => e.currency === "RWF" && e.localMinor !== null);
+  return {
+    todayCents: usd(today),
+    monthCents: usd(month_),
+    todayRwfMinor: rwf(today).reduce((s, e) => s + (e.localMinor as number), 0),
+    todayRwfUsdCents: usd(rwf(today)),
+    monthRwfMinor: rwf(month_).reduce((s, e) => s + (e.localMinor as number), 0),
+    monthRwfUsdCents: usd(rwf(month_)),
+  };
 }
 
 /** Trials still running (or ending today), soonest end first, with the company's sales agent. */
@@ -104,7 +115,7 @@ export async function newPayments(cursor: Cursor | null, now = new Date()): Prom
   const celebrations = await Promise.all(
     payments.map(async (p): Promise<Celebration> => {
       const agent = p.userId ? await agentForPayment(p.userId, p.at).catch(() => null) : null;
-      return { id: p.id, client: (p.userId && companies.get(p.userId)) || "A new client", usdCents: p.usdCents, agent: agent ? screenName(agent.name) ?? "Agent" : null };
+      return { id: p.id, client: (p.userId && companies.get(p.userId)) || "A new client", usdCents: p.usdCents, localMinor: p.localMinor, currency: p.currency, agent: agent ? screenName(agent.name) ?? "Agent" : null };
     }),
   );
   return { celebrations, cursor: advanceCursor(cursor, rows) };
@@ -112,6 +123,6 @@ export async function newPayments(cursor: Cursor | null, now = new Date()): Prom
 
 /** One poll's answer. */
 export async function screenData(after: string | null): Promise<ScreenData> {
-  const [snapshot, fresh, sounds] = await Promise.all([getSnapshot(), newPayments(parseCursor(after)), activeSoundUrls()]);
-  return { ...snapshot, sounds, celebrations: fresh.celebrations, cursor: formatCursor(fresh.cursor) };
+  const [snapshot, fresh, sounds, money] = await Promise.all([getSnapshot(), newPayments(parseCursor(after)), activeSoundUrls(), defaultMoney()]);
+  return { ...snapshot, money, sounds, celebrations: fresh.celebrations, cursor: formatCursor(fresh.cursor) };
 }

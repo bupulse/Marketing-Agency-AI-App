@@ -4,6 +4,7 @@ import { addAvailability, removeAvailability } from "@/lib/admin/availability";
 import { actionMessage, adminAction, finish } from "@/lib/admin/console";
 import { recomputeCardPrices } from "@/lib/admin/regions-service";
 import { setSetting, type SettingName } from "@/lib/admin/settings";
+import { refreshEurRate } from "@/lib/money/display-server";
 import { disconnectGoogleCalendar, setGoogleCalendarId, testGoogleCalendar } from "@/lib/google-calendar/calendar";
 import { AdminError } from "@/lib/admin/types";
 import { clearPaddleSettings, savePaddleSettings, SECRET_LABEL } from "@/lib/billing/paddle-config";
@@ -11,7 +12,7 @@ import { setUpPaddleStep, testPaddleConnection, type SetUpStep, type StepResult 
 
 const BACK = "/admin/settings";
 const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
-const NAMES: SettingName[] = ["trialDays", "usdToRwf", "cardMarginPercent", "meetingLink", "organizerEmail", "slotMinutes", "bufferMinutes", "blockedDates", "demoDailyCap", "pageLoader"];
+const NAMES: SettingName[] = ["trialDays", "usdToRwf", "cardMarginPercent", "meetingLink", "organizerEmail", "slotMinutes", "bufferMinutes", "blockedDates", "demoDailyCap", "pageLoader", "displayCurrency", "usdToEur"];
 
 // Each action re-checks the admin (adminAction: allow-listed email, AAL2). Every saved setting is audited.
 
@@ -20,7 +21,15 @@ export async function saveSettingsAction(f: FormData) {
   const ctx = await adminAction("system");
   await finish(BACK, "Settings saved.", async () => {
     for (const name of NAMES) if (f.has(name)) await setSetting(ctx, name, text(f, name));
+    // A checkbox is absent when unticked: the currency panel says it carries the switch.
+    if (f.has("currencyPanel")) await setSetting(ctx, "eurRateAuto", f.get("eurRateAuto") === "on");
   });
+}
+
+/** "Refresh now": fetches the day's ECB EUR rate (api.frankfurter.app) even when the daily refresh is off. */
+export async function refreshEurRateAction() {
+  await adminAction("system");
+  await finish(`${BACK}#currency`, (r) => (r.ok ? `EUR rate refreshed: 1 USD = ${r.rate} EUR (ECB).` : "The ECB rate could not be fetched; the stored rate stays in use."), () => refreshEurRate({ force: true }));
 }
 
 export async function recomputeCardPricesAction() {

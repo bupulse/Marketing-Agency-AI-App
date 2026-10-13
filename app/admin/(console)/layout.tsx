@@ -4,13 +4,14 @@ import { AdminShell, type ShellBadges } from "@/components/admin/shell";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getHealthSummary } from "@/lib/admin/health";
 import { getInboxCounts, inboxTotalFor } from "@/lib/admin/inbox";
+import { adminMoney } from "@/lib/money/display-server";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export default async function AdminConsoleLayout({ children }: { children: ReactNode }) {
   const admin = await requireAdmin();
   // Badges only for what the person can see (the sidebar hides the rest anyway); health needs the system permission.
-  const [inbox, health] = await Promise.all([getInboxCounts(), admin.permissions.includes("system") ? getHealthSummary().catch(() => ({ status: "ok" as const, issues: [] })) : Promise.resolve({ status: "ok" as const, issues: [] })]);
+  const [inbox, display, health] = await Promise.all([getInboxCounts(), adminMoney(), admin.permissions.includes("system") ? getHealthSummary().catch(() => ({ status: "ok" as const, issues: [] })) : Promise.resolve({ status: "ok" as const, issues: [] })]);
   const mine = inboxTotalFor(inbox, admin.permissions);
   const badges: ShellBadges = {
     inbox: { count: mine, tone: "danger", label: plural(mine, "item waiting in the inbox", "items waiting in the inbox") },
@@ -23,7 +24,7 @@ export default async function AdminConsoleLayout({ children }: { children: React
   return (
     <>
       <BackgroundBlobs />
-      <AdminShell email={admin.email} roleName={admin.isOwner && !admin.staffId ? undefined : admin.roleName} permissions={admin.permissions} badges={badges}>
+      <AdminShell email={admin.email} roleName={admin.isOwner && !admin.staffId ? undefined : admin.roleName} permissions={admin.permissions} badges={badges} currency={display.currency}>
         {children}
       </AdminShell>
     </>

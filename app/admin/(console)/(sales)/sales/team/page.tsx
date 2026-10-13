@@ -1,3 +1,5 @@
+import { moneyFmt } from "@/components/admin/money";
+import { adminMoney } from "@/lib/money/display-server";
 import { PageHeader } from "@/components/app";
 import { notice } from "@/components/admin/ui";
 import { TeamView } from "@/components/admin/sales/sales-views";
@@ -20,6 +22,7 @@ export default async function SalesTeamPage({ searchParams }: PageProps<"/admin/
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
       <TeamView
+        fx={moneyFmt(await adminMoney())}
         d={{ members, board, clients, reassignments, month, canViewClients: can(identity, "clients.view"), canReassign: can(identity, "clients.reassign"), now: nowMs() }}
         reassignAction={reassignClientAction}
       />

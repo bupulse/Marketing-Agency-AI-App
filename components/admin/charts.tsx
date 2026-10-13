@@ -15,11 +15,14 @@ export function LineChart({
   series,
   cents,
   summary,
+  format,
 }: {
   labels: string[];
   series: Series[];
   cents?: boolean;
   summary: string;
+  /** How a USD-cents value is printed (the admin's display currency, components/admin/money.tsx); default as stored. */
+  format?: (cents: number) => string;
 }) {
   const all = series.flatMap((s) => s.values);
   if (labels.length < 2 || all.length === 0) return null;
@@ -28,7 +31,7 @@ export function LineChart({
   const span = max - min || 1;
   const x = (i: number) => PAD + (i / (labels.length - 1)) * (W - PAD * 2);
   const y = (v: number) => H - PAD - ((v - min) / span) * (H - PAD * 2);
-  const fmt = (v: number) => (cents ? money(v) : v.toLocaleString("en-US"));
+  const fmt = (v: number) => (cents ? (format ?? money)(v) : v.toLocaleString("en-US"));
   return (
     <figure className="flex flex-col gap-2">
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={summary} className="h-40 w-full overflow-visible">
@@ -102,7 +105,7 @@ export function Bars({ rows, color = "var(--color-pulse-blue)" }: { rows: { labe
  * Monthly bars, two per month side by side (e.g. revenue and costs), from zero, with the month under each pair and
  * a legend. Exact values are in the table next to it and in each bar's tooltip. Values in USD cents.
  */
-export function MonthBars({ months, a, b, summary }: { months: string[]; a: { name: string; color: string; values: number[] }; b: { name: string; color: string; values: number[] }; summary: string }) {
+export function MonthBars({ months, a, b, summary, format = money }: { months: string[]; a: { name: string; color: string; values: number[] }; b: { name: string; color: string; values: number[] }; summary: string; format?: (cents: number) => string }) {
   if (months.length === 0) return null;
   const max = Math.max(1, ...a.values, ...b.values);
   const W = 600;
@@ -121,10 +124,10 @@ export function MonthBars({ months, a, b, summary }: { months: string[]; a: { na
           return (
             <g key={m}>
               <rect x={cx - bar - 1} y={base - h(a.values[i])} width={bar} height={h(a.values[i])} rx={3} fill={a.color}>
-                <title>{`${m} ${a.name}: ${money(a.values[i])}`}</title>
+                <title>{`${m} ${a.name}: ${format(a.values[i])}`}</title>
               </rect>
               <rect x={cx + 1} y={base - h(b.values[i])} width={bar} height={h(b.values[i])} rx={3} fill={b.color}>
-                <title>{`${m} ${b.name}: ${money(b.values[i])}`}</title>
+                <title>{`${m} ${b.name}: ${format(b.values[i])}`}</title>
               </rect>
               <text x={cx} y={H - 6} textAnchor="middle" fontSize={11} fill="var(--bp-muted)">
                 {label(m)}
@@ -134,7 +137,7 @@ export function MonthBars({ months, a, b, summary }: { months: string[]; a: { na
         })}
       </svg>
       <figcaption className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted">
-        <span>Highest month {money(max)}</span>
+        <span>Highest month {format(max)}</span>
         <span className="flex gap-3">
           {[a, b].map((s) => (
             <span key={s.name} className="inline-flex items-center gap-1.5">

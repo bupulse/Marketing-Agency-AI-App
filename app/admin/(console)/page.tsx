@@ -1,3 +1,5 @@
+import { moneyFmt } from "@/components/admin/money";
+import { adminMoney } from "@/lib/money/display-server";
 import { notFound, redirect } from "next/navigation";
 import { can, requireAdmin } from "@/lib/admin/auth";
 import { findNavItem, firstPageFor } from "@/components/admin/nav";
@@ -35,6 +37,7 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
     notFound();
   }
   const sp = await searchParams;
+  const fx = moneyFmt(await adminMoney());
   // Each section shows only to someone allowed to see it (the Overview itself needs "overview").
   const seeMoney = can(me, "money.revenue");
   const seePayments = can(me, ["payments.view", "payments.approve"]);
@@ -116,7 +119,7 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
         )}
       </Panel>
 
-      <OverviewDashboard d={data} show={{ money: seeMoney, clients: can(me, "clients.view"), ai: can(me, "ai") }} />
+      <OverviewDashboard d={data} fx={fx} show={{ money: seeMoney, clients: can(me, "clients.view"), ai: can(me, "ai") }} />
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Panel title="Visits and sign-ups, 30 days" description="Daily counts from BuPulse's own tracker." action={<Link href="/admin/funnels" className="text-sm font-medium underline">Funnels</Link>}>

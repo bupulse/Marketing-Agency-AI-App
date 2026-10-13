@@ -1,3 +1,5 @@
+import { moneyFmt } from "@/components/admin/money";
+import { adminMoney } from "@/lib/money/display-server";
 import Link from "next/link";
 import { Smartphone } from "lucide-react";
 import { EmptyState, PageHeader } from "@/components/app";
@@ -6,7 +8,7 @@ import { Empty, Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
 import { Badge } from "@/components/ui";
 import { can, requirePermission } from "@/lib/admin/auth";
 import { PendingPaymentList } from "@/components/admin/payments/pending-payments";
-import { dateTime, money, param } from "@/lib/admin/format";
+import { dateTime, param } from "@/lib/admin/format";
 import { listManualPayments, type ManualPaymentAdminView } from "@/lib/billing/momo";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
 import { momoConfigured, mtnMomoPayDial } from "@/lib/billing/momo-shared";
@@ -30,6 +32,7 @@ function Who({ p }: { p: ManualPaymentAdminView }) {
 export default async function PaymentsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const me = await requirePermission(["payments.view", "payments.approve"]); // pages render alongside the layout, so check here too
   const canApprove = can(me, "payments.approve");
+  const fx = moneyFmt(await adminMoney());
   const sp = await searchParams;
   const [pendingPage, history, settings, cardEvents] = await Promise.all([
     listManualPayments({ status: "pending", limit: 100 }),
@@ -69,7 +72,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                 <tr key={p.id}>
                   <Td className="max-w-[14rem]"><Who p={p} /></Td>
                   <Td>{p.planName} ({interval(p.interval)})</Td>
-                  <Td right>{money(p.amountMinor, p.currency)}</Td>
+                  <Td right>{fx.el(p.amountMinor, p.currency)}</Td>
                   <Td><span className="font-mono">{p.reference}</span></Td>
                   <Td className="whitespace-nowrap">{dateTime(p.createdAt)}</Td>
                 </tr>
@@ -108,7 +111,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                 <tr key={p.id}>
                   <Td className="max-w-[14rem]"><Who p={p} /></Td>
                   <Td>{p.planName} ({interval(p.interval)})</Td>
-                  <Td right>{money(p.amountMinor, p.currency)}</Td>
+                  <Td right>{fx.el(p.amountMinor, p.currency)}</Td>
                   <Td><span className="font-mono">{p.reference}</span></Td>
                   <Td className="max-w-[10rem] truncate"><span className="font-mono">{p.transactionId ?? ""}</span>{p.payerPhone && <span className="block text-[13px] text-muted">{p.payerPhone}</span>}</Td>
                   <Td><Badge tone={tone(p.status)}>{p.status}</Badge>{p.rejectReason && <span className="block max-w-[16rem] text-[13px] text-muted">{p.rejectReason}</span>}</Td>
