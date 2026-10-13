@@ -17,6 +17,15 @@ to check.
 - **Plans with exactly the features you need**, custom plans and offers from the BuPulse team.
 - **Opening hours, branches and contacts** (with building, floor and shop number) used by the AI and the website chat.
 - **Chat on WhatsApp** button, MoMo/Airtel badges, status page.
+- **A week of posts in one click** (content packs): different posts for each angle and each app, written for that app,
+  from your products, campaigns and Gallery; the best day and time for each.
+- **Every post has its picture, carousel or video**, designed from your own photos first; AI scenes can show local
+  people using your product (plans with AI photos).
+- **Your own videos first**: upload MP4, MOV or WebM clips (up to 60 seconds) to the Gallery and albums; BuPulse posts
+  them as Reels and Shorts and writes the caption about what they show.
+- **Videos made for you** from your photos and script: captions in time, a voiceover in your chosen voice (plans with
+  voiceover) and royalty-free music; made automatically in the background, or in your browser.
+- Coming next: the design library (templates you can browse and reuse).
 
 ## Before Wednesday (owner)
 
@@ -29,6 +38,8 @@ to check.
 | 5 | MoMo Pay code (or the number clients pay to), Airtel number, your demo availability | message me | 5 min |
 | 6 | Reset the keys that were pasted in chat (ElevenLabs, v2 test Supabase) | each dashboard | 15 min |
 | 7 | Install the free Postgres tools for backups (Postgres.app or the EnterpriseDB installer) | postgresapp.com | 10 min |
+| 8 | Copy the 20 music tracks and `scripts/local/seed-music.mjs` to Google Drive (office@bupulse.com) | Google Drive | 5 min |
+| 9 | Fill `.env.production` (from `.env.example`) and run `node --env-file=.env.production scripts/check-env.mjs --runtime` | your Mac | 30 min |
 
 ## Go-live day (in this order)
 
@@ -38,18 +49,39 @@ to check.
 3. **Merge v2 into main** (merge commit, version 2.0.0). Push only with the owner's go-ahead.
 4. **Production database**: the deploy workflow runs `prisma migrate deploy` on the new Supabase project. Regions,
    plans, add-ons and industries are seeded by the migrations; check them in Admin → Plans / Regions / Industries.
-5. **Environment variables** in Netlify (full list in `docs/DEPLOY_NETLIFY.md` section 2). New in 2.0:
-   `AI_COMPANY_MONTHLY_USD` (3), `MEDIA_PLATFORM_MAX_BYTES` (900 MB), `MEDIA_COMPANY_VIDEO_MAX_BYTES` (optional, 300 MB of Gallery videos per company, `docs/MEDIA.md`), `NEXT_PUBLIC_WHATSAPP_NUMBER`,
-   `GEO_PROVIDER=builtin`, `PLATFORM=netlify`, `AI_MONTHLY_BUDGET_USD` (30), `API_KEY_PEPPER` (new random value),
-   `GOOGLE_CALENDAR_CLIENT_ID/SECRET`, `VIDEO_ROBOT_SECRET` (optional, the video robot: also a GitHub secret, plus
-   the repository variable `ROBOT_APP_URL`; `docs/VIDEO_ROBOT.md`). Never copy `ANALYTICS_DEV_COUNTRY` or `REGION_OVERRIDE` to production.
-   Build-time values (every `NEXT_PUBLIC_*`, plus `PLATFORM=netlify`) must also be **GitHub repository variables**:
-   the deploy workflow builds offline in GitHub without the Netlify token, so it can't read Netlify's settings at
-   build time (`docs/DEPLOY_NETLIFY.md`).
+5. **Environment variables**: the complete list, where each goes and what happens without it is
+   `docs/DEPLOY_NETLIFY.md` section 2 (and `.env.example`, every variable, grouped and commented). The deploy workflow
+   checks them before building (`scripts/check-env.mjs`: names and problems only, never values) and stops on a missing
+   required one or a development switch; check yourself first with `node --env-file=.env.production
+   scripts/check-env.mjs --runtime`. New since 1.x: `AI_COMPANY_MONTHLY_USD` (3), `AI_MONTHLY_BUDGET_USD` (30),
+   `WIDGET_AI_SHARE` (0.5), `MEDIA_PLATFORM_MAX_BYTES` (900 MB), `MEDIA_COMPANY_VIDEO_MAX_BYTES` (300 MB),
+   `ELEVENLABS_API_KEY` (voiceover and Generate a track), `VIDEO_ROBOT_SECRET` (plus the GitHub secret of that name and
+   the repository variable `ROBOT_APP_URL`), `NEXT_PUBLIC_WHATSAPP_NUMBER`, `GEO_PROVIDER=builtin`, `PLATFORM=netlify`,
+   `API_KEY_PEPPER` (new random value), `GOOGLE_CALENDAR_CLIENT_ID/SECRET`. Never copy `ANALYTICS_DEV_COUNTRY` or
+   `REGION_OVERRIDE` to production (the check refuses them). Build-time values (every `NEXT_PUBLIC_*`, plus
+   `PLATFORM=netlify`) must also be **GitHub variables**: the deploy workflow builds offline in GitHub without the
+   Netlify token, so it can't read Netlify's settings at build time.
 6. **Supabase production settings**: Auth → URL configuration (site URL `https://bupulse.com`, redirect
-   `https://bupulse.com/**`), SMTP with Resend (username `resend`), storage buckets created by the migrations.
+   `https://bupulse.com/**`), SMTP with Resend (username `resend`). The migrations create the storage buckets; check
+   them in Storage:
+
+   | Bucket | Public | Max file | Holds |
+   | --- | --- | --- | --- |
+   | `brand` | no | 5 MB | logos |
+   | `media` | no | 10 MB | Gallery photos, rendered videos, voiceovers |
+   | `designs` | no | 10 MB | designs and AI photos |
+   | `invoices` | no | 5 MB | invoice PDFs |
+   | `music` | **yes** (read) | 6 MB | the music library (royalty-free, admin uploads only) |
+   | `gallery-videos` | no, no Storage policies | 50 MB | owners' Gallery videos and posters (server tokens only) |
+
 7. **Deploy** (GitHub Actions → Deploy to Netlify), then DNS at Cloudflare (DNS only, grey cloud).
-8. **After deploy** (`docs/DEPLOY_NETLIFY.md` section 7):
+8. **Music library**: the 20 original tracks are not in the repository. Keep the folder (and the git-ignored runner
+   `scripts/local/seed-music.mjs`) in Google Drive, office@bupulse.com, then, from your Mac with
+   the production values: `node --env-file=.env.production scripts/local/seed-music.mjs <folder> --dry-run`, then
+   without `--dry-run` (`docs/VOICE_AND_MUSIC.md`). It needs `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY` and
+   `DIRECT_URL`, prints file names and counts only, and is safe to run twice. Check Admin → Music: 20 tracks, each
+   playing. Until then videos have no music.
+9. **After deploy** (`docs/DEPLOY_NETLIFY.md` section 7):
    - `https://bupulse.com/api/status` answers `{"status":"ok"}`.
    - Header check with `PLATFORM_CHECK=1` for 10 minutes, then remove it.
    - Admin: sign in as admin@bupulse.com, set up the authenticator, set MoMo details, trial days, availability,
@@ -57,7 +89,7 @@ to check.
    - Sign up a real test company from a phone in Rwanda: prices in RWF, book a demo, start trial, pay **100 RWF** by
      MoMo (temporary test plan or price), confirm in Admin → Payments, company becomes active.
    - Free uptime monitor (e.g. UptimeRobot free) on `/api/status` every 5 minutes, alerts to office@bupulse.com.
-9. **Hand-over zip**: `git archive --format=zip -o BuPulse-2.0.0.zip main` (no `node_modules`, `.next` or `.env`).
+10. **Hand-over zip**: `git archive --format=zip -o BuPulse-2.0.0.zip main` (no `node_modules`, `.next` or `.env`).
 
 ## Backups (free plan)
 
@@ -87,5 +119,13 @@ Restore (only after a failed deploy, into the same or a new project):
   (`docs/META_APP_REVIEW.md`); until then clients get reminders plus copy-and-post.
 - Card payments need Paddle live approval; until then MoMo and invoices only.
 - Netlify free: 300 credits a month (the site pauses if they run out); posts go out within 5 minutes of their time.
+  Since 2.0 two more regular callers spend credits: the hourly content summary (`cron-content-summary`, about 720
+  runs a month) and the video robot's API calls from GitHub every 15 minutes (about 2,900 claim calls a month, plus
+  one upload and confirm per video). Both are short (about 1 s), so together roughly 10 to 20 credits a month; videos
+  are never rendered on Netlify. Budget in `docs/DEPLOY_NETLIFY.md` (Free plan limits).
 - Supabase free: 500 MB database, 1 GB file storage (uploads stop at 900 MB), the project pauses after 7 days without
-  traffic (the uptime monitor keeps it awake).
+  traffic (the uptime monitor keeps it awake). Videos fill storage fast: a Gallery video can be 50 MB and each company
+  may keep 300 MB of them, so three busy companies could fill the free storage. Rendered videos (8 MB at most) are
+  deleted 30 days after their posts go out, unrecorded files daily. Watch Admin → Health; lower
+  `MEDIA_COMPANY_VIDEO_MAX_BYTES` (e.g. 100 MB) for launch, or move to Supabase Pro (100 GB) before many clients
+  upload videos.
