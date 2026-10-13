@@ -62,7 +62,11 @@ export function isOwnMediaPath(userId: string, path: string) {
   return path.startsWith(`${userId}/`) && !path.includes("..") && !path.includes("//") && path.length <= 300;
 }
 
-/** The storage bucket a path belongs to: designs are stored as <userId>/designs/..., everything else is in "media". */
-export function bucketForPath(path: string): "media" | "designs" {
-  return path.split("/")[1] === "designs" ? "designs" : "media";
+/**
+ * The storage bucket a path belongs to: designs are stored as <userId>/designs/..., Gallery videos and their posters as
+ * <userId>/clips/... (the private "gallery-videos" bucket, docs/MEDIA.md), everything else is in "media".
+ */
+export function bucketForPath(path: string): "media" | "designs" | "gallery-videos" {
+  const folder = path.split("/")[1];
+  return folder === "designs" ? "designs" : folder === "clips" ? "gallery-videos" : "media";
 }

@@ -20,6 +20,11 @@ import {
   isMediaType,
   isOwnGalleryPath,
   isOwnGalleryVideoPath,
+  isClipPath,
+  GALLERY_VIDEO_BUCKET,
+  VIDEO_RESERVATION_MS,
+  WEBM_READ_MAX_BYTES,
+  POSTER_SERVER_MAX_SIDE,
   isVideoType,
   companyVideoMaxBytes,
   POSTER_MAX_BYTES,
@@ -46,14 +51,13 @@ import {
   type ImportSource,
   type MediaUsage,
 } from "./rules";
-import { mp4DurationMs, probeMp4DurationMs, webmDurationMs } from "@/lib/visuals/duration";
+import { probeMp4Durations, trustedLengthMs, webmDurationMs, webmInfoDurationMs } from "@/lib/visuals/duration";
 
 /** A problem the user can read and act on. Anything else is an unexpected failure. */
 export class MediaError extends Error {}
 
 const BUCKET = "media";
 const DOWNLOAD_SECONDS = 60 * 60;
-const ORPHAN_AGE_MS = 60 * 60 * 1000;
 
 export type MediaItem = {
   id: string;
@@ -90,16 +94,27 @@ export async function businessIdFor(userId: string): Promise<string | null> {
   return business?.id ?? null;
 }
 
-async function storage() {
-  return (await createClient()).storage.from(BUCKET);
+/**
+ * The bucket an object path lives in: photos in "media" (the user's session, so the Storage policies apply), Gallery
+ * videos and posters (`<userId>/clips/`) in the private gallery-videos bucket, which only the server's key reaches.
+ */
+async function storage(path?: string) {
+  return path && isClipPath(path) ? createAdminClient().storage.from(GALLERY_VIDEO_BUCKET) : (await createClient()).storage.from(BUCKET);
 }
 
 /** Signed display URLs for object paths, keyed by path. Pass only paths you already know are the caller's own. */
 export async function signedUrls(paths: string[]): Promise<Map<string, string>> {
   const unique = [...new Set(paths)];
   if (unique.length === 0) return new Map();
-  const { data } = await (await storage()).createSignedUrls(unique, DOWNLOAD_SECONDS);
-  return new Map((data ?? []).flatMap((d) => (d.path && d.signedUrl ? [[d.path, d.signedUrl] as const] : [])));
+  const clips = unique.filter(isClipPath);
+  const photos = unique.filter((p) => !isClipPath(p));
+  const out = new Map<string, string>();
+  for (const [list, bucket] of [[photos, await storage()], [clips, await storage(clips[0])]] as const) {
+    if (list.length === 0) continue;
+    const { data } = await bucket.createSignedUrls(list, DOWNLOAD_SECONDS);
+    for (const d of data ?? []) if (d.path && d.signedUrl) out.set(d.path, d.signedUrl);
+  }
+  return out;
 }
 
 export async function withUrls(rows: Row[]): Promise<MediaItem[]> {
@@ -163,7 +178,7 @@ export async function linkInTx(tx: Tx, kind: AlbumKind, albumId: string, assetId
   return fresh.length;
 }
 
-type UsageDb = Pick<Tx, "mediaAsset"> & Partial<Pick<Tx, "contentVisual" | "voiceClip">>;
+type UsageDb = Pick<Tx, "mediaAsset"> & Partial<Pick<Tx, "contentVisual" | "voiceClip" | "mediaUploadReservation">>;
 
 /**
  * Rendered content videos (docs/CONTENT_VISUALS.md) live in the same bucket and count like photos, and so does every
@@ -178,9 +193,11 @@ async function videoUsage(db: UsageDb, businessId?: string, now = new Date()): P
   ]);
   // Voiceovers (docs/VOICE_AND_MUSIC.md) are files in the same bucket too.
   const voice = db.voiceClip ? await db.voiceClip.aggregate({ where: { ...scope, status: "ready" }, _count: { _all: true }, _sum: { bytes: true } }) : null;
+  // Gallery video uploads allowed and not confirmed yet (docs/MEDIA.md) count at their announced size until they expire.
+  const clips = db.mediaUploadReservation ? await db.mediaUploadReservation.aggregate({ where: { ...scope, expiresAt: { gt: now } }, _count: { _all: true }, _sum: { bytes: true } }) : null;
   return {
-    count: (stored?._count?._all ?? 0) + (reserved?._count?._all ?? 0) + (voice?._count?._all ?? 0),
-    bytes: (stored?._sum?.bytes ?? 0) + (reserved?._sum?.uploadBytes ?? 0) + (voice?._sum?.bytes ?? 0),
+    count: (stored?._count?._all ?? 0) + (reserved?._count?._all ?? 0) + (voice?._count?._all ?? 0) + (clips?._count?._all ?? 0),
+    bytes: (stored?._sum?.bytes ?? 0) + (reserved?._sum?.uploadBytes ?? 0) + (voice?._sum?.bytes ?? 0) + (clips?._sum?.bytes ?? 0),
   };
 }
 
@@ -190,10 +207,39 @@ export async function mediaUsage(businessId: string, db: UsageDb = prisma): Prom
   return { count: sum._count._all + videos.count, bytes: (sum._sum.bytes ?? 0) + videos.bytes };
 }
 
-/** Bytes of every company's photos and videos together: the shared Storage project (MEDIA_PLATFORM_MAX_BYTES). */
+/**
+ * Bytes of every company's photos and videos together: the shared Storage project (MEDIA_PLATFORM_MAX_BYTES). The
+ * rows can miss files nobody recorded (an upload written straight to a folder), so the real object sizes in Storage
+ * count too: the larger of the two (plus open reservations) is used.
+ */
 export async function platformBytes(db: UsageDb = prisma): Promise<number> {
-  const [sum, videos] = await Promise.all([db.mediaAsset.aggregate({ _sum: { bytes: true } }), videoUsage(db)]);
-  return (sum._sum.bytes ?? 0) + videos.bytes;
+  const [sum, videos, objects] = await Promise.all([db.mediaAsset.aggregate({ _sum: { bytes: true } }), videoUsage(db), storageObjectBytes()]);
+  const rows = (sum._sum.bytes ?? 0) + videos.bytes;
+  return objects === null ? rows : Math.max(rows, objects);
+}
+
+let objectBytesCache: { at: number; bytes: number | null } | null = null;
+
+/**
+ * Every object's size in the Storage project, summed per bucket by the database (storage.objects, read with the
+ * server's database role). Cached a minute; null where the storage schema cannot be read (tests, local databases).
+ */
+export async function storageObjectBytes(now = Date.now()): Promise<number | null> {
+  if (objectBytesCache && now - objectBytesCache.at < 60_000) return objectBytesCache.bytes;
+  let bytes: number | null = null;
+  try {
+    const rows = await prisma.$queryRaw<{ bucket_id: string; bytes: bigint | number | null }[]>`SELECT bucket_id, SUM(COALESCE((metadata->>'size')::bigint, 0)) AS bytes FROM storage.objects GROUP BY bucket_id`;
+    bytes = (rows ?? []).reduce((total, r) => total + Number(r.bytes ?? 0), 0);
+  } catch {
+    bytes = null;
+  }
+  objectBytesCache = { at: now, bytes };
+  return bytes;
+}
+
+/** Forgets the cached Storage total (tests, and right after a large delete). */
+export function resetStorageObjectBytes() {
+  objectBytesCache = null;
 }
 
 let warnedAt = 0;
@@ -308,9 +354,11 @@ type NewAsset = Prisma.MediaAssetUncheckedCreateInput;
  * The check and the insert run in one transaction under a per-business advisory lock, so parallel uploads and imports
  * cannot all pass a stale count.
  */
-async function createWithinQuota(data: NewAsset, destination?: Destination): Promise<Row> {
+async function createWithinQuota(data: NewAsset, destination?: Destination, reservationPath?: string): Promise<Row> {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`media-quota:${data.businessId}`}))`;
+    // A video's reservation becomes the row: it stops counting before the real size is checked.
+    if (reservationPath) await tx.mediaUploadReservation.deleteMany({ where: { path: reservationPath, businessId: data.businessId } });
     const problem = quotaProblem(await mediaUsage(data.businessId, tx), { count: 1, bytes: data.bytes });
     if (problem) throw new MediaError(problem);
     if (data.kind === "video") {
@@ -325,8 +373,12 @@ async function createWithinQuota(data: NewAsset, destination?: Destination): Pro
 }
 
 /** Bytes of the company's gallery videos (their own cap, MEDIA_COMPANY_VIDEO_MAX_BYTES, inside the 2 GB). */
-export async function galleryVideoBytes(businessId: string, db: Pick<Tx, "mediaAsset"> = prisma): Promise<number> {
-  return (await db.mediaAsset.aggregate({ where: { businessId, kind: "video" }, _sum: { bytes: true } }))._sum.bytes ?? 0;
+export async function galleryVideoBytes(businessId: string, db: Pick<Tx, "mediaAsset" | "mediaUploadReservation"> = prisma, now = new Date()): Promise<number> {
+  const [stored, reserved] = await Promise.all([
+    db.mediaAsset.aggregate({ where: { businessId, kind: "video" }, _sum: { bytes: true } }),
+    db.mediaUploadReservation.aggregate({ where: { businessId, expiresAt: { gt: now } }, _sum: { bytes: true } }),
+  ]);
+  return (stored._sum.bytes ?? 0) + (reserved?._sum?.bytes ?? 0);
 }
 
 /** The business's own photos among `paths`, with signed URLs. Paths that are not theirs are left out. */
@@ -374,8 +426,11 @@ export async function prepareUploads(
     }
     try {
       const path = galleryPath(userId, globalThis.crypto.randomUUID(), type);
-      const target = await createSignedUploadUrl(BUCKET, path);
-      const poster = video ? await createSignedUploadUrl(BUCKET, posterPathFor(path)) : null;
+      // A video's upload token is tied to a reservation: finalize takes only a reserved path, at most its size, and the
+      // reservation counts toward the quotas until it is confirmed or expires.
+      if (video) await prisma.mediaUploadReservation.create({ data: { businessId, path, bytes: file.size, expiresAt: new Date(Date.now() + VIDEO_RESERVATION_MS) } });
+      const target = await createSignedUploadUrl(video ? GALLERY_VIDEO_BUCKET : BUCKET, path);
+      const poster = video ? await createSignedUploadUrl(GALLERY_VIDEO_BUCKET, posterPathFor(path)) : null;
       results.push({ ok: true, path: target.path, token: target.token, ...(poster ? { poster: { path: poster.path, token: poster.token } } : {}) });
       running.count += 1;
       running.bytes += file.size;
@@ -407,7 +462,7 @@ async function readHead(path: string, length = 64): Promise<Uint8Array | null> {
 
 async function dropObject(path: string) {
   try {
-    await (await storage()).remove([path]);
+    await (await storage(path)).remove([path]);
   } catch {}
 }
 
@@ -421,6 +476,7 @@ export async function finalizeUpload(
 ): Promise<MediaItem> {
   const video = isOwnGalleryVideoPath(userId, input.path);
   if (!video && !isOwnGalleryPath(userId, input.path)) throw new MediaError("That upload could not be used.");
+  await rateLimit(`media-finalize:${userId}`, MEDIA_RATE.finalize);
   const existing = await prisma.mediaAsset.findUnique({ where: { path: input.path }, select: { ...SELECT, businessId: true } });
   if (existing) {
     if (existing.businessId !== businessId) throw new MediaError("That upload could not be used.");
@@ -443,7 +499,14 @@ export async function finalizeUpload(
     throw error;
   }
 
-  const info = await (await storage()).info(input.path);
+  // A video: only a path the server reserved for this company, still open (its token was issued for it).
+  const reservation = video ? await prisma.mediaUploadReservation.findUnique({ where: { path: input.path } }) : null;
+  if (video && (!reservation || reservation.businessId !== businessId || reservation.expiresAt <= new Date())) {
+    await dropObject(input.path);
+    await dropObject(posterPathFor(input.path));
+    throw new MediaError("That upload could not be used. Please upload the video again.");
+  }
+  const info = await (await storage(input.path)).info(input.path);
   if (info.error || !info.data) throw new MediaError("We could not find that upload. Please try again.");
   const { size, contentType } = info.data;
   const reject = async (message: string): Promise<never> => {
@@ -451,10 +514,16 @@ export async function finalizeUpload(
     if (video) await dropObject(posterPathFor(input.path));
     throw new MediaError(message);
   };
-  if (video) {
+  if (video && reservation) {
+    // Sizes and quotas first (cheap), before any of the file is read.
+    if (!size || size > VIDEO_MAX_BYTES || size > reservation.bytes) return reject("Each video must be 50 MB or smaller, and the size it was started with.");
+    const usage = await mediaUsage(businessId);
+    const others = { count: Math.max(0, usage.count - 1), bytes: Math.max(0, usage.bytes - reservation.bytes) };
+    const quota = quotaProblem(others, { count: 1, bytes: size }) ?? videoQuotaProblem(Math.max(0, (await galleryVideoBytes(businessId)) - reservation.bytes), size);
+    if (quota) return reject(quota);
     let checked: Awaited<ReturnType<typeof checkVideo>>;
     try {
-      checked = await checkVideo(input.path, size ?? 0, contentType);
+      checked = await checkVideo(input.path, size, contentType);
     } catch (error) {
       if (error instanceof MediaError) return reject(error.message);
       throw error;
@@ -476,6 +545,7 @@ export async function finalizeUpload(
           posterPath: checked.posterPath,
         },
         destination,
+        input.path,
       );
     } catch (failure) {
       if (failure instanceof MediaError) {
@@ -489,12 +559,12 @@ export async function finalizeUpload(
   if (!contentType || !isMediaType(contentType)) return reject("Use a JPG, PNG or WebP photo.");
   if (extensionFor(contentType) !== input.path.slice(input.path.lastIndexOf(".") + 1)) return reject("That photo could not be used.");
   if (!size || size > MEDIA_MAX_BYTES) return reject("Each photo must be 10 MB or smaller.");
+  const problem = quotaProblem(await mediaUsage(businessId), { count: 1, bytes: size });
+  if (problem) return reject(problem);
   // The recorded content type comes from the uploader, so check the file's own first bytes too.
   const head = await readHead(input.path);
   const sniffed = head && sniffMediaType(head);
   if (!sniffed || sniffed !== contentType) return reject("That file is not a JPG, PNG or WebP photo.");
-  const problem = quotaProblem(await mediaUsage(businessId), { count: 1, bytes: size });
-  if (problem) return reject(problem);
 
   let row: Row;
   try {
@@ -518,13 +588,28 @@ export async function finalizeUpload(
   return (await withUrls([row]))[0];
 }
 
+/** Bytes [start, start + length) of a stored object, by a ranged request on a short-lived signed URL; null when unreadable. */
+async function readRange(path: string, start: number, length: number): Promise<Uint8Array | null> {
+  try {
+    const url = (await signedUrls([path])).get(path);
+    if (!url) return null;
+    const res = await fetch(url, { headers: { Range: `bytes=${start}-${start + length - 1}` } });
+    if (!res.ok) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    // A server that ignores Range sends the whole file: take the asked part.
+    return res.status === 206 ? bytes.subarray(0, length) : bytes.subarray(start, start + length);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Checks an uploaded gallery video: size (50 MB), its own first bytes (MP4, MOV or WebM), and its real length read
- * from the file (60 s at most; an MP4/MOV is probed with ranged reads, a WebM is read whole). Its poster is kept when
- * it is a small JPEG, else dropped (the gallery then shows a plain video tile). Throws a MediaError to reject.
+ * Checks an uploaded gallery video: its own first bytes (MP4, MOV or WebM) and its real length read from the file
+ * (60 s at most): an MP4/MOV's movie and track headers (the longest counts; headers that disagree by more than 10% are
+ * refused), a WebM's Info duration within its first 8 MB. Its poster is kept when it is a JPEG of at most 400 KB and
+ * 1280 px, else dropped (the gallery then shows a plain video tile). Throws a MediaError to reject.
  */
 async function checkVideo(path: string, size: number, contentType: string | undefined): Promise<{ mimeType: "video/mp4" | "video/webm"; durationMs: number; posterPath: string | null; posterBytes: number }> {
-  if (!size || size > VIDEO_MAX_BYTES) throw new MediaError("Each video must be 50 MB or smaller.");
   if (contentType && !isVideoType(contentType)) throw new MediaError("Use an MP4, MOV or WebM video.");
   const head = await readHead(path);
   const sniffed = head && sniffVideoType(head);
@@ -535,36 +620,23 @@ async function checkVideo(path: string, size: number, contentType: string | unde
   if (durationMs === null || !(durationMs > 0)) throw new MediaError("We could not read the video's length. Try saving it again as an MP4.");
   if (durationMs > VIDEO_MAX_MS + 500) throw new MediaError("Videos can be at most 60 seconds long. Trim it on your phone and upload it again.");
   const poster = posterPathFor(path);
-  const info = await (await storage()).info(poster).catch(() => null);
+  const info = await (await storage(poster)).info(poster).catch(() => null);
   const posterSize = info?.data?.size ?? 0;
-  const posterHead = posterSize > 0 && posterSize <= POSTER_MAX_BYTES ? await readHead(poster, 4) : null;
-  if (posterHead && sniffMediaType(posterHead) === "image/jpeg") return { mimeType, durationMs: Math.round(durationMs), posterPath: poster, posterBytes: posterSize };
+  const posterBytes = posterSize > 0 && posterSize <= POSTER_MAX_BYTES ? await readRange(poster, 0, posterSize) : null;
+  const posterDims = posterBytes && sniffMediaType(posterBytes) === "image/jpeg" ? imageSize(posterBytes) : null;
+  if (posterDims && posterDims.width <= POSTER_SERVER_MAX_SIDE && posterDims.height <= POSTER_SERVER_MAX_SIDE) return { mimeType, durationMs: Math.round(durationMs), posterPath: poster, posterBytes: posterSize };
   if (posterSize > 0) await dropObject(poster);
   return { mimeType, durationMs: Math.round(durationMs), posterPath: null, posterBytes: 0 };
 }
 
-/** A stored video's length in milliseconds, from the file; null when it cannot be read. */
+/** A stored video's length in milliseconds, from the file; null when it cannot be read or does not add up. */
 async function videoLength(path: string, size: number, mimeType: "video/mp4" | "video/webm"): Promise<number | null> {
-  if (mimeType === "video/mp4") {
-    const url = (await signedUrls([path])).get(path);
-    if (!url) return null;
-    const read = async (start: number, length: number) => {
-      try {
-        const res = await fetch(url, { headers: { Range: `bytes=${start}-${start + length - 1}` } });
-        if (!res.ok) return null;
-        const bytes = new Uint8Array(await res.arrayBuffer());
-        // A server that ignores Range sends the whole file: take the asked part.
-        return res.status === 206 ? bytes.subarray(0, length) : bytes.subarray(start, start + length);
-      } catch {
-        return null;
-      }
-    };
-    return probeMp4DurationMs(read, size);
-  }
-  const download = await (await storage()).download(path);
-  if (!download.data) return null;
-  const bytes = new Uint8Array(await download.data.arrayBuffer());
-  return webmDurationMs(bytes) ?? mp4DurationMs(bytes);
+  if (mimeType === "video/mp4") return trustedLengthMs(await probeMp4Durations((start, length) => readRange(path, start, length), size));
+  // A WebM is read at most 8 MB in: its Info duration is at the start. A file past that without one (as MediaRecorder
+  // writes) cannot be measured cheaply and is refused.
+  const bytes = await readRange(path, 0, Math.min(size, WEBM_READ_MAX_BYTES));
+  if (!bytes) return null;
+  return size <= WEBM_READ_MAX_BYTES ? webmDurationMs(bytes) : webmInfoDurationMs(bytes);
 }
 
 /** Removes an upload that never became a photo or video (a failed finalize). Only the caller's own, unrecorded files. */
@@ -573,7 +645,10 @@ export async function discardUpload(userId: string, path: string): Promise<void>
   if (!video && !isOwnGalleryPath(userId, path)) return;
   if (await prisma.mediaAsset.findUnique({ where: { path }, select: { id: true } })) return;
   await dropObject(path);
-  if (video) await dropObject(posterPathFor(path));
+  if (video) {
+    await dropObject(posterPathFor(path));
+    await prisma.mediaUploadReservation.deleteMany({ where: { path } });
+  }
 }
 
 /**
@@ -583,17 +658,9 @@ export async function discardUpload(userId: string, path: string): Promise<void>
 export async function sweepOrphans(userId: string, businessId: string, chance = 0.1): Promise<number> {
   if (Math.random() >= chance) return 0;
   try {
-    const bucket = await storage();
-    const { data } = await bucket.list(`${userId}/gallery`, { limit: 200, sortBy: { column: "created_at", order: "asc" } });
-    const old = (data ?? []).filter((o) => o.id && Date.now() - new Date(o.created_at ?? Date.now()).getTime() > ORPHAN_AGE_MS);
-    if (old.length === 0) return 0;
-    const paths = old.map((o) => `${userId}/gallery/${o.name}`);
-    // A video's poster belongs to the video's row.
-    const rows = await prisma.mediaAsset.findMany({ where: { businessId, OR: [{ path: { in: paths } }, { posterPath: { in: paths } }] }, select: { path: true, posterPath: true } });
-    const known = new Set(rows.flatMap((r) => (r.posterPath ? [r.path, r.posterPath] : [r.path])));
-    const orphans = paths.filter((p) => !known.has(p));
-    if (orphans.length > 0) await bucket.remove(orphans);
-    return orphans.length;
+    // Every page of the gallery photo and video folders, compared with the database (lib/media/storage-sweep.ts).
+    const { sweepCompanyFiles } = await import("./storage-sweep");
+    return await sweepCompanyFiles(userId, businessId);
   } catch {
     return 0;
   }
@@ -667,9 +734,15 @@ export async function moveAssets(businessId: string, ids: string[], folderId: st
 export async function deleteAssets(businessId: string, ids: string[]): Promise<number> {
   const rows = await prisma.mediaAsset.findMany({ where: { businessId, id: { in: ids.slice(0, MEDIA_BULK_MAX) } }, select: { id: true, path: true, posterPath: true } });
   if (rows.length === 0) return 0;
-  // Also the JPEG copy the publisher makes for Instagram (lib/publishing/media.ts), if there is one, and a video's poster.
-  const { error } = await (await storage()).remove(rows.flatMap((r) => [r.path, `${r.path}.jpg`, ...(r.posterPath ? [r.posterPath] : [])]));
-  if (error) throw error;
+  // Also the JPEG copy the publisher makes for Instagram (lib/publishing/media.ts), if there is one; a video and its
+  // poster are in the gallery-videos bucket.
+  const photos = rows.filter((r) => !isClipPath(r.path)).flatMap((r) => [r.path, `${r.path}.jpg`]);
+  const clips = rows.filter((r) => isClipPath(r.path)).flatMap((r) => [r.path, ...(r.posterPath ? [r.posterPath] : [])]);
+  for (const list of [photos, clips]) {
+    if (list.length === 0) continue;
+    const { error } = await (await storage(list[0])).remove(list);
+    if (error) throw error;
+  }
   const { count } = await prisma.mediaAsset.deleteMany({ where: { businessId, id: { in: rows.map((r) => r.id) } } });
   return count;
 }

@@ -21,7 +21,7 @@ export function adminStorageClient(): SupabaseClient | null {
 /** Signs stored files (either bucket) in one request per bucket. Files that cannot be signed are left out. */
 export async function signPaths(client: SupabaseClient, paths: string[], expiresInSeconds: number): Promise<Map<string, string>> {
   const out = new Map<string, string>();
-  const byBucket = new Map<"media" | "designs", string[]>();
+  const byBucket = new Map<ReturnType<typeof bucketForPath>, string[]>();
   for (const path of new Set(paths)) {
     const bucket = bucketForPath(path);
     byBucket.set(bucket, [...(byBucket.get(bucket) ?? []), path]);
