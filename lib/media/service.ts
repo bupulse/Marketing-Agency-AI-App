@@ -19,6 +19,16 @@ import {
   inferMimeType,
   isMediaType,
   isOwnGalleryPath,
+  isOwnGalleryVideoPath,
+  isVideoType,
+  companyVideoMaxBytes,
+  POSTER_MAX_BYTES,
+  posterPathFor,
+  sniffVideoType,
+  storedVideoType,
+  VIDEO_MAX_BYTES,
+  VIDEO_MAX_MS,
+  videoQuotaProblem,
   MEDIA_BULK_MAX,
   MEDIA_MAX_BYTES,
   MEDIA_MAX_FOLDERS,
@@ -36,6 +46,7 @@ import {
   type ImportSource,
   type MediaUsage,
 } from "./rules";
+import { mp4DurationMs, probeMp4DurationMs, webmDurationMs } from "@/lib/visuals/duration";
 
 /** A problem the user can read and act on. Anything else is an unexpected failure. */
 export class MediaError extends Error {}
@@ -55,16 +66,23 @@ export type MediaItem = {
   bytes: number;
   folderId: string | null;
   createdAt: Date;
+  /** "photo" or "video" (docs/MEDIA.md). */
+  kind: string;
+  /** A video's length, its poster (the first frame, a small JPEG) and the owner's "What's in this video?". */
+  durationMs: number | null;
+  posterPath: string | null;
+  posterUrl: string | null;
+  description: string | null;
 };
 
 export type FolderSummary = { id: string; name: string; count: number };
 /** A product's or campaign's album, as the gallery lists it. */
 export type AlbumSummary = { kind: AlbumKind; id: string; name: string; count: number };
-export type GalleryOverview = { folders: FolderSummary[]; albums: AlbumSummary[]; unfiled: number; total: number; uncounted: number; usage: MediaUsage };
+export type GalleryOverview = { folders: FolderSummary[]; albums: AlbumSummary[]; unfiled: number; total: number; uncounted: number; usage: MediaUsage; /** Gallery videos' bytes and their cap. */ videos: { bytes: number; max: number } };
 
-type Row = Omit<MediaItem, "url">;
+type Row = Omit<MediaItem, "url" | "posterUrl">;
 
-export const SELECT = { id: true, name: true, path: true, width: true, height: true, mimeType: true, bytes: true, folderId: true, createdAt: true } as const;
+export const SELECT = { id: true, name: true, path: true, width: true, height: true, mimeType: true, bytes: true, folderId: true, createdAt: true, kind: true, durationMs: true, posterPath: true, description: true } as const;
 
 /** The business the signed-in user owns, or null before onboarding. Every gallery call starts here. */
 export async function businessIdFor(userId: string): Promise<string | null> {
@@ -85,8 +103,8 @@ export async function signedUrls(paths: string[]): Promise<Map<string, string>> 
 }
 
 export async function withUrls(rows: Row[]): Promise<MediaItem[]> {
-  const urls = await signedUrls(rows.map((r) => r.path));
-  return rows.map((r) => ({ ...r, url: urls.get(r.path) ?? "" }));
+  const urls = await signedUrls(rows.flatMap((r) => (r.posterPath ? [r.path, r.posterPath] : [r.path])));
+  return rows.map((r) => ({ ...r, url: urls.get(r.path) ?? "", posterUrl: r.posterPath ? (urls.get(r.posterPath) ?? null) : null }));
 }
 
 async function ownFolder(businessId: string, folderId: string) {
@@ -220,13 +238,14 @@ async function fillMigratedSizes(businessId: string): Promise<void> {
 export async function galleryOverview(businessId: string): Promise<GalleryOverview> {
   const albumWhere = { businessId, status: { not: "ARCHIVED" as const } };
   void fillMigratedSizes(businessId);
-  const [folders, counts, usage, all, products, campaigns] = await Promise.all([
+  const [folders, counts, usage, all, products, campaigns, videoBytes] = await Promise.all([
     prisma.mediaFolder.findMany({ where: { businessId }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.mediaAsset.groupBy({ by: ["folderId"], where: { businessId }, _count: { _all: true } }),
     mediaUsage(businessId),
     prisma.mediaAsset.count({ where: { businessId } }),
     prisma.product.findMany({ where: albumWhere, orderBy: { name: "asc" }, take: 200, select: { id: true, name: true, _count: { select: { photos: true } } } }),
     prisma.campaign.findMany({ where: albumWhere, orderBy: { createdAt: "desc" }, take: 100, select: { id: true, name: true, _count: { select: { photos: true } } } }),
+    galleryVideoBytes(businessId),
   ]);
   const byFolder = new Map(counts.map((c) => [c.folderId, c._count._all]));
   return {
@@ -240,6 +259,7 @@ export async function galleryOverview(businessId: string): Promise<GalleryOvervi
     // Photos moved from old projects are in the gallery but do not count toward the quota.
     uncounted: Math.max(0, all - usage.count),
     usage,
+    videos: { bytes: videoBytes, max: companyVideoMaxBytes() },
   };
 }
 
@@ -293,11 +313,20 @@ async function createWithinQuota(data: NewAsset, destination?: Destination): Pro
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`media-quota:${data.businessId}`}))`;
     const problem = quotaProblem(await mediaUsage(data.businessId, tx), { count: 1, bytes: data.bytes });
     if (problem) throw new MediaError(problem);
+    if (data.kind === "video") {
+      const videos = videoQuotaProblem(await galleryVideoBytes(data.businessId, tx), data.bytes);
+      if (videos) throw new MediaError(videos);
+    }
     await assertPlatformRoom(data.bytes, tx);
     const row = await tx.mediaAsset.create({ data: { ...data, folderId: destination?.kind === "folder" ? destination.id : (data.folderId ?? null) }, select: SELECT });
     if (destination && destination.kind !== "folder") await linkInTx(tx, destination.kind, destination.id, [row.id]);
     return row;
   });
+}
+
+/** Bytes of the company's gallery videos (their own cap, MEDIA_COMPANY_VIDEO_MAX_BYTES, inside the 2 GB). */
+export async function galleryVideoBytes(businessId: string, db: Pick<Tx, "mediaAsset"> = prisma): Promise<number> {
+  return (await db.mediaAsset.aggregate({ where: { businessId, kind: "video" }, _sum: { bytes: true } }))._sum.bytes ?? 0;
 }
 
 /** The business's own photos among `paths`, with signed URLs. Paths that are not theirs are left out. */
@@ -314,7 +343,8 @@ export async function assetById(businessId: string, id: string): Promise<MediaIt
   return row ? (await withUrls([row]))[0] : null;
 }
 
-export type UploadTarget = { ok: true; path: string; token: string } | { ok: false; error: string };
+/** A signed upload; a video's also carries its poster's (the first frame, uploaded right after it). */
+export type UploadTarget = { ok: true; path: string; token: string; poster?: { path: string; token: string } } | { ok: false; error: string };
 
 /**
  * Checks the destination and each file (type, size, quota) and issues a signed upload URL for the ones that pass.
@@ -332,10 +362,12 @@ export async function prepareUploads(
 
   const used = await mediaUsage(businessId);
   const running = { count: used.count, bytes: used.bytes };
+  let videoBytes = files.some((f) => isVideoType(inferMimeType(f.name, f.type))) ? await galleryVideoBytes(businessId) : 0;
   const results: UploadTarget[] = [];
   for (const file of files) {
     const type = inferMimeType(file.name, file.type);
-    const problem = fileProblem(file) ?? quotaProblem(running, { count: 1, bytes: file.size });
+    const video = isVideoType(type);
+    const problem = fileProblem(file) ?? quotaProblem(running, { count: 1, bytes: file.size }) ?? (video ? videoQuotaProblem(videoBytes, file.size) : null);
     if (problem) {
       results.push({ ok: false, error: problem });
       continue;
@@ -343,9 +375,11 @@ export async function prepareUploads(
     try {
       const path = galleryPath(userId, globalThis.crypto.randomUUID(), type);
       const target = await createSignedUploadUrl(BUCKET, path);
-      results.push({ ok: true, path: target.path, token: target.token });
+      const poster = video ? await createSignedUploadUrl(BUCKET, posterPathFor(path)) : null;
+      results.push({ ok: true, path: target.path, token: target.token, ...(poster ? { poster: { path: poster.path, token: poster.token } } : {}) });
       running.count += 1;
       running.bytes += file.size;
+      if (video) videoBytes += file.size;
     } catch {
       results.push({ ok: false, error: `${file.name} could not be started. Please try again.` });
     }
@@ -385,7 +419,8 @@ export async function finalizeUpload(
   { userId, businessId }: { userId: string; businessId: string },
   input: { path: string; name: string; destination: string | null; width?: number | null; height?: number | null },
 ): Promise<MediaItem> {
-  if (!isOwnGalleryPath(userId, input.path)) throw new MediaError("That upload could not be used.");
+  const video = isOwnGalleryVideoPath(userId, input.path);
+  if (!video && !isOwnGalleryPath(userId, input.path)) throw new MediaError("That upload could not be used.");
   const existing = await prisma.mediaAsset.findUnique({ where: { path: input.path }, select: { ...SELECT, businessId: true } });
   if (existing) {
     if (existing.businessId !== businessId) throw new MediaError("That upload could not be used.");
@@ -413,8 +448,44 @@ export async function finalizeUpload(
   const { size, contentType } = info.data;
   const reject = async (message: string): Promise<never> => {
     await dropObject(input.path);
+    if (video) await dropObject(posterPathFor(input.path));
     throw new MediaError(message);
   };
+  if (video) {
+    let checked: Awaited<ReturnType<typeof checkVideo>>;
+    try {
+      checked = await checkVideo(input.path, size ?? 0, contentType);
+    } catch (error) {
+      if (error instanceof MediaError) return reject(error.message);
+      throw error;
+    }
+    let row: Row;
+    try {
+      row = await createWithinQuota(
+        {
+          id: assetIdFromPath(input.path),
+          businessId,
+          path: input.path,
+          name: cleanPhotoName(input.name, "Video"),
+          kind: "video",
+          mimeType: checked.mimeType,
+          bytes: (size ?? 0) + checked.posterBytes,
+          width: clampSize(input.width),
+          height: clampSize(input.height),
+          durationMs: checked.durationMs,
+          posterPath: checked.posterPath,
+        },
+        destination,
+      );
+    } catch (failure) {
+      if (failure instanceof MediaError) {
+        await dropObject(input.path);
+        await dropObject(posterPathFor(input.path));
+      }
+      throw failure;
+    }
+    return (await withUrls([row]))[0];
+  }
   if (!contentType || !isMediaType(contentType)) return reject("Use a JPG, PNG or WebP photo.");
   if (extensionFor(contentType) !== input.path.slice(input.path.lastIndexOf(".") + 1)) return reject("That photo could not be used.");
   if (!size || size > MEDIA_MAX_BYTES) return reject("Each photo must be 10 MB or smaller.");
@@ -447,11 +518,62 @@ export async function finalizeUpload(
   return (await withUrls([row]))[0];
 }
 
-/** Removes an upload that never became a photo (a failed finalize). Only the caller's own, unrecorded files. */
+/**
+ * Checks an uploaded gallery video: size (50 MB), its own first bytes (MP4, MOV or WebM), and its real length read
+ * from the file (60 s at most; an MP4/MOV is probed with ranged reads, a WebM is read whole). Its poster is kept when
+ * it is a small JPEG, else dropped (the gallery then shows a plain video tile). Throws a MediaError to reject.
+ */
+async function checkVideo(path: string, size: number, contentType: string | undefined): Promise<{ mimeType: "video/mp4" | "video/webm"; durationMs: number; posterPath: string | null; posterBytes: number }> {
+  if (!size || size > VIDEO_MAX_BYTES) throw new MediaError("Each video must be 50 MB or smaller.");
+  if (contentType && !isVideoType(contentType)) throw new MediaError("Use an MP4, MOV or WebM video.");
+  const head = await readHead(path);
+  const sniffed = head && sniffVideoType(head);
+  if (!sniffed) throw new MediaError("That file is not an MP4, MOV or WebM video.");
+  const mimeType = storedVideoType(sniffed);
+  if (!path.endsWith(mimeType === "video/webm" ? ".webm" : ".mp4")) throw new MediaError("That video could not be used.");
+  const durationMs = await videoLength(path, size, mimeType);
+  if (durationMs === null || !(durationMs > 0)) throw new MediaError("We could not read the video's length. Try saving it again as an MP4.");
+  if (durationMs > VIDEO_MAX_MS + 500) throw new MediaError("Videos can be at most 60 seconds long. Trim it on your phone and upload it again.");
+  const poster = posterPathFor(path);
+  const info = await (await storage()).info(poster).catch(() => null);
+  const posterSize = info?.data?.size ?? 0;
+  const posterHead = posterSize > 0 && posterSize <= POSTER_MAX_BYTES ? await readHead(poster, 4) : null;
+  if (posterHead && sniffMediaType(posterHead) === "image/jpeg") return { mimeType, durationMs: Math.round(durationMs), posterPath: poster, posterBytes: posterSize };
+  if (posterSize > 0) await dropObject(poster);
+  return { mimeType, durationMs: Math.round(durationMs), posterPath: null, posterBytes: 0 };
+}
+
+/** A stored video's length in milliseconds, from the file; null when it cannot be read. */
+async function videoLength(path: string, size: number, mimeType: "video/mp4" | "video/webm"): Promise<number | null> {
+  if (mimeType === "video/mp4") {
+    const url = (await signedUrls([path])).get(path);
+    if (!url) return null;
+    const read = async (start: number, length: number) => {
+      try {
+        const res = await fetch(url, { headers: { Range: `bytes=${start}-${start + length - 1}` } });
+        if (!res.ok) return null;
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        // A server that ignores Range sends the whole file: take the asked part.
+        return res.status === 206 ? bytes.subarray(0, length) : bytes.subarray(start, start + length);
+      } catch {
+        return null;
+      }
+    };
+    return probeMp4DurationMs(read, size);
+  }
+  const download = await (await storage()).download(path);
+  if (!download.data) return null;
+  const bytes = new Uint8Array(await download.data.arrayBuffer());
+  return webmDurationMs(bytes) ?? mp4DurationMs(bytes);
+}
+
+/** Removes an upload that never became a photo or video (a failed finalize). Only the caller's own, unrecorded files. */
 export async function discardUpload(userId: string, path: string): Promise<void> {
-  if (!isOwnGalleryPath(userId, path)) return;
+  const video = isOwnGalleryVideoPath(userId, path);
+  if (!video && !isOwnGalleryPath(userId, path)) return;
   if (await prisma.mediaAsset.findUnique({ where: { path }, select: { id: true } })) return;
   await dropObject(path);
+  if (video) await dropObject(posterPathFor(path));
 }
 
 /**
@@ -466,7 +588,9 @@ export async function sweepOrphans(userId: string, businessId: string, chance = 
     const old = (data ?? []).filter((o) => o.id && Date.now() - new Date(o.created_at ?? Date.now()).getTime() > ORPHAN_AGE_MS);
     if (old.length === 0) return 0;
     const paths = old.map((o) => `${userId}/gallery/${o.name}`);
-    const known = new Set((await prisma.mediaAsset.findMany({ where: { businessId, path: { in: paths } }, select: { path: true } })).map((r) => r.path));
+    // A video's poster belongs to the video's row.
+    const rows = await prisma.mediaAsset.findMany({ where: { businessId, OR: [{ path: { in: paths } }, { posterPath: { in: paths } }] }, select: { path: true, posterPath: true } });
+    const known = new Set(rows.flatMap((r) => (r.posterPath ? [r.path, r.posterPath] : [r.path])));
     const orphans = paths.filter((p) => !known.has(p));
     if (orphans.length > 0) await bucket.remove(orphans);
     return orphans.length;
@@ -524,6 +648,14 @@ export async function renameAsset(businessId: string, id: string, rawName: strin
   return name;
 }
 
+/** The owner's "What's in this video?" (or photo): a line or two the AI writes captions about. Empty clears it. */
+export async function setAssetDescription(businessId: string, id: string, raw: string): Promise<string | null> {
+  const text = raw.replace(/[\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 500) || null;
+  const { count } = await prisma.mediaAsset.updateMany({ where: { id, businessId }, data: { description: text } });
+  if (count === 0) throw new MediaError("We could not find that video.");
+  return text;
+}
+
 /** Moves photos into a folder, or out of any folder when `folderId` is null. Only the business's own photos move. */
 export async function moveAssets(businessId: string, ids: string[], folderId: string | null): Promise<number> {
   if (folderId) await ownFolder(businessId, folderId);
@@ -533,10 +665,10 @@ export async function moveAssets(businessId: string, ids: string[], folderId: st
 
 /** Deletes photos and their Storage files. Files go first so a Storage failure leaves the photos listed. */
 export async function deleteAssets(businessId: string, ids: string[]): Promise<number> {
-  const rows = await prisma.mediaAsset.findMany({ where: { businessId, id: { in: ids.slice(0, MEDIA_BULK_MAX) } }, select: { id: true, path: true } });
+  const rows = await prisma.mediaAsset.findMany({ where: { businessId, id: { in: ids.slice(0, MEDIA_BULK_MAX) } }, select: { id: true, path: true, posterPath: true } });
   if (rows.length === 0) return 0;
-  // Also the JPEG copy the publisher makes for Instagram (lib/publishing/media.ts), if there is one.
-  const { error } = await (await storage()).remove(rows.flatMap((r) => [r.path, `${r.path}.jpg`]));
+  // Also the JPEG copy the publisher makes for Instagram (lib/publishing/media.ts), if there is one, and a video's poster.
+  const { error } = await (await storage()).remove(rows.flatMap((r) => [r.path, `${r.path}.jpg`, ...(r.posterPath ? [r.posterPath] : [])]));
   if (error) throw error;
   const { count } = await prisma.mediaAsset.deleteMany({ where: { businessId, id: { in: rows.map((r) => r.id) } } });
   return count;

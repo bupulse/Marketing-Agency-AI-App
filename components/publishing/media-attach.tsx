@@ -162,7 +162,7 @@ export function MediaAttach({ media, onChange, max, album }: { media: MediaItem[
           input.current?.click();
         }}
       />
-      <MediaPicker open={gallery} onOpenChange={setGallery} initialFolder={album} multiple max={Math.max(room, 1)} onPick={(photos) => add(photos.map((p) => ({ path: p.path, url: p.url, mimeType: p.mimeType })))} />
+      <MediaPicker open={gallery} onOpenChange={setGallery} initialFolder={album} videos multiple max={Math.max(room, 1)} onPick={(photos) => add(photos.map((p) => ({ path: p.path, url: p.url, mimeType: p.mimeType })))} />
       <DesignPicker open={designs} onOpenChange={setDesigns} max={Math.max(room, 1)} onPick={add} />
     </div>
   );

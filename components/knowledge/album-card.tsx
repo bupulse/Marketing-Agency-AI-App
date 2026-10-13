@@ -9,9 +9,10 @@ import { UploadProgress } from "@/components/media/upload-progress";
 import { useGalleryUpload } from "@/components/media/use-gallery-upload";
 import { addToAlbum, removeFromAlbum, setAlbumCover } from "@/app/dashboard/knowledge/actions";
 import { MAX_ALBUM_PHOTOS } from "@/lib/knowledge/products";
-import { MEDIA_TYPES } from "@/lib/media/rules";
+import { UPLOAD_ACCEPT } from "@/lib/media/rules";
+import { GalleryThumb } from "@/components/media/media-thumb";
 
-export type AlbumPhoto = { id: string; path: string; url: string; name: string };
+export type AlbumPhoto = { id: string; path: string; url: string; name: string; kind?: string; posterUrl?: string | null; durationMs?: number | null };
 
 /**
  * A product's or campaign's album: upload straight into it, add photos already in the gallery, set the cover (the
@@ -60,7 +61,7 @@ export function AlbumCard({ kind, id, name, photos }: { kind: "product" | "campa
         ref={input}
         type="file"
         multiple
-        accept={MEDIA_TYPES.join(",")}
+        accept={UPLOAD_ACCEPT}
         className="sr-only"
         tabIndex={-1}
         aria-label={`Upload photos to ${name}`}
@@ -78,14 +79,13 @@ export function AlbumCard({ kind, id, name, photos }: { kind: "product" | "campa
         >
           <ImagePlus aria-hidden className="size-7 text-pulse-blue" />
           <span className="font-semibold">Add photos of {name}</span>
-          <span className="text-[13px] text-muted">Real photos make the best posts and designs. JPG, PNG or WebP, up to 10 MB each.</span>
+          <span className="text-[13px] text-muted">Real photos and videos make the best posts. Photos: JPG, PNG or WebP, up to 10 MB. Videos: MP4, MOV or WebM, up to 60 s and 50 MB.</span>
         </button>
       ) : (
         <ul aria-label={`Photos of ${name}`} className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
           {photos.map((p, i) => (
             <li key={p.id} className="group relative aspect-square overflow-hidden rounded-2xl bg-soft">
-              {/* eslint-disable-next-line @next/next/no-img-element -- private signed URL */}
-              <img src={p.url} alt={`${name}, photo ${i + 1}`} loading="lazy" className="size-full object-cover" />
+              <GalleryThumb item={p} alt={`${name}, ${p.kind === "video" ? "video" : "photo"} ${i + 1}`} />
               {i === 0 && <span className="absolute top-1.5 left-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[12px] font-semibold text-white">Cover</span>}
               <div className="absolute inset-x-1.5 bottom-1.5 flex justify-end gap-1">
                 {i > 0 && (

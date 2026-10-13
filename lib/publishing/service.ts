@@ -13,7 +13,7 @@ import { EDITABLE, QUEUED, type PostStatusName } from "./status";
 import { parseLocalInput } from "./time";
 import { formatFor, validatePost, type PostFormatName } from "./validate";
 import type { ComposeInput, EditInput } from "./types";
-import { composerMediaFor, isVideoPath } from "@/lib/visuals/post-media";
+import { composerMediaFor, isVideoPath, trimNote, videoFitsNetwork } from "@/lib/visuals/post-media";
 import { readyMedia } from "@/lib/visuals/service";
 
 /** A problem the owner can fix. `code` tells the action layer whether it was a missing thing, bad input or a race. */
@@ -85,8 +85,16 @@ async function resolveTime(
 /** Sizes of the owner's Gallery photos among these paths (designs and others are not recorded, so are skipped). */
 async function mediaSizes(businessId: string, paths: string[]) {
   if (paths.length === 0) return [];
-  const rows = await prisma.mediaAsset.findMany({ where: { businessId, path: { in: paths } }, select: { width: true, height: true } });
+  // Photos only: a video's shape is not held to Instagram's photo ratios.
+  const rows = await prisma.mediaAsset.findMany({ where: { businessId, path: { in: paths }, kind: "photo" }, select: { width: true, height: true } });
   return rows;
+}
+
+async function galleryVideoLengths(businessId: string, paths: string[]): Promise<Map<string, number>> {
+  const videos = paths.filter(isVideoPath);
+  if (videos.length === 0) return new Map();
+  const rows = await prisma.mediaAsset.findMany({ where: { businessId, path: { in: videos }, kind: "video" }, select: { path: true, durationMs: true } });
+  return new Map(rows.flatMap((r) => (r.durationMs ? [[r.path, r.durationMs] as const] : [])));
 }
 
 function checkMedia(userId: string, paths: string[]) {
@@ -128,6 +136,8 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
   // The content's visuals (docs/CONTENT_VISUALS.md): a video goes only where the network takes it, and with the script
   // reminder of TikTok and YouTube; the other networks get the photos (or the content's picture).
   const visual = content ? await readyMedia(owner.businessId, { contentId: content.id }) : { images: [], video: null };
+  // The owner's own Gallery videos and their lengths (docs/MEDIA.md): one too long for a network stays out of it.
+  const videoMs = await galleryVideoLengths(owner.businessId, data.mediaPaths);
   const rows = ordered.map((connection) => {
     if (!isNetwork(connection.provider)) throw new PublishingError("That account cannot be posted to.", "invalid");
     const network = connection.provider;
@@ -135,7 +145,9 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
     const override = data.overrides[network];
     const text = override?.text ?? data.text;
     const hashtags = override?.hashtags ?? data.hashtags;
-    let mediaPaths = composerMediaFor(network, rules.videoOnly, data.mediaPaths, visual.images);
+    let mediaPaths = composerMediaFor(network, rules.videoOnly, data.mediaPaths, visual.images, videoMs);
+    const tooLong = data.mediaPaths.some((p) => isVideoPath(p) && !videoFitsNetwork(network, videoMs.get(p)));
+    if (!draft && tooLong && rules.videoOnly && !mediaPaths.some(isVideoPath) && !visual.video) problems.push(`${connection.displayName ?? rules.label}: ${trimNote(network)}`);
     if (rules.videoOnly && visual.video && !mediaPaths.some(isVideoPath)) mediaPaths = [visual.video];
     const format: PostFormatName = formatFor(rules, mediaPaths.length);
     const label = connection.displayName ?? rules.label;

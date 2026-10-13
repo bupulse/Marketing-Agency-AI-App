@@ -70,7 +70,7 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
         </div>
       </GlassCard>
 
-      <AlbumCard kind="campaign" id={campaign.id} name={campaign.name} photos={photos.map((p) => ({ id: p.id, path: p.path, url: p.url, name: p.name }))} />
+      <AlbumCard kind="campaign" id={campaign.id} name={campaign.name} photos={photos.map((p) => ({ id: p.id, path: p.path, url: p.url, name: p.name, kind: p.kind, posterUrl: p.posterUrl, durationMs: p.durationMs }))} />
 
       <SubjectContentLink href={`/dashboard/content/campaigns/${campaign.id}`} label="See this campaign's content" />
     </>

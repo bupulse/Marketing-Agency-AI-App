@@ -6,6 +6,10 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import { companyRegion } from "@/lib/region";
 import { albumItems, signedUrls, type MediaItem } from "@/lib/media/service";
 import { albumPaths } from "@/lib/media/albums";
+import { isGalleryVideoPath } from "@/lib/media/rules";
+
+/** Album photos only: the owner's videos are posted as they are (lib/media/videos.ts), never drawn into designs. */
+const photosOnly = (paths: string[]) => paths.filter((p) => !isGalleryVideoPath(p));
 import { dayDate, MAX_CAMPAIGNS_PER_BUSINESS, type CampaignData } from "./campaigns";
 import { campaignContext, productContext, type ContextProduct } from "./context";
 import { legacyTypeOf } from "./legacy";
@@ -329,7 +333,7 @@ export async function writingSubject(businessId: string, subject: Subject): Prom
   if (subject.kind === "product") {
     const p = await prisma.product.findFirst({ where: { id: subject.id, businessId }, select: { ...CONTEXT_SELECT, id: true } });
     if (!p) return null;
-    return { subject, type: legacyTypeOf(p), title: p.name, context: productContext(p), price: formatPrice(p), features: [...p.usps, ...p.features].slice(0, 10), photoPaths: await albumPaths("product", p.id) };
+    return { subject, type: legacyTypeOf(p), title: p.name, context: productContext(p), price: formatPrice(p), features: [...p.usps, ...p.features].slice(0, 10), photoPaths: photosOnly(await albumPaths("product", p.id)) };
   }
   const c = await prisma.campaign.findFirst({
     where: { id: subject.id, businessId },
@@ -337,11 +341,11 @@ export async function writingSubject(businessId: string, subject: Subject): Prom
   });
   if (!c) return null;
   const products: ContextProduct[] = c.products.map((x) => x.product);
-  let photoPaths = await albumPaths("campaign", c.id);
+  let photoPaths = photosOnly(await albumPaths("campaign", c.id));
   // A campaign without its own photos uses its first product's album.
   if (photoPaths.length === 0) {
     const first = await prisma.campaignProduct.findFirst({ where: { campaignId: c.id }, select: { productId: true } });
-    if (first) photoPaths = await albumPaths("product", first.productId);
+    if (first) photoPaths = photosOnly(await albumPaths("product", first.productId));
   }
   return { subject, type: legacyTypeOf(c), title: c.name, context: campaignContext({ ...c, products }), price: c.priceInfo, features: c.highlights, photoPaths };
 }

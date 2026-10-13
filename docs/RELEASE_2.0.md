@@ -39,7 +39,7 @@ to check.
 4. **Production database**: the deploy workflow runs `prisma migrate deploy` on the new Supabase project. Regions,
    plans, add-ons and industries are seeded by the migrations; check them in Admin → Plans / Regions / Industries.
 5. **Environment variables** in Netlify (full list in `docs/DEPLOY_NETLIFY.md` section 2). New in 2.0:
-   `AI_COMPANY_MONTHLY_USD` (3), `MEDIA_PLATFORM_MAX_BYTES` (900 MB), `NEXT_PUBLIC_WHATSAPP_NUMBER`,
+   `AI_COMPANY_MONTHLY_USD` (3), `MEDIA_PLATFORM_MAX_BYTES` (900 MB), `MEDIA_COMPANY_VIDEO_MAX_BYTES` (optional, 300 MB of Gallery videos per company, `docs/MEDIA.md`), `NEXT_PUBLIC_WHATSAPP_NUMBER`,
    `GEO_PROVIDER=builtin`, `PLATFORM=netlify`, `AI_MONTHLY_BUDGET_USD` (30), `API_KEY_PEPPER` (new random value),
    `GOOGLE_CALENDAR_CLIENT_ID/SECRET`, `VIDEO_ROBOT_SECRET` (optional, the video robot: also a GitHub secret, plus
    the repository variable `ROBOT_APP_URL`; `docs/VIDEO_ROBOT.md`). Never copy `ANALYTICS_DEV_COUNTRY` or `REGION_OVERRIDE` to production.
