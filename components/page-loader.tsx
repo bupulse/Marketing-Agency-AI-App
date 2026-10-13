@@ -90,14 +90,14 @@ function Loader() {
   return <Preloader />;
 }
 
-/** The branded preloader: the BuPulse mark inside a spinning gradient ring, on a soft veil. */
+/** The branded preloader: the BuPulse mark inside a spinning gradient ring, on the page background (no blur). */
 export function Preloader({ id }: { id?: string }) {
   return (
     <div
       id={id}
       role="status"
       aria-label="Loading"
-      className="bp-preloader fixed inset-0 z-[100] items-center justify-center bg-bg/70 backdrop-blur-sm"
+      className="bp-preloader fixed inset-0 z-[100] items-center justify-center bg-bg"
     >
       <div className="relative grid size-20 place-items-center">
         <span aria-hidden className="bp-preloader-ring absolute inset-0 rounded-full" />

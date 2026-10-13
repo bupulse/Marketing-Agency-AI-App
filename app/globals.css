@@ -496,11 +496,12 @@ dialog.bp-dialog[open] {
 }
 .bp-preloader {
   display: flex;
-  animation: bp-fade-in 0.2s ease-out 0.12s both; /* no flash on fast pages */
+  /* no flash on fast pages; and it can never stay up: gone after 3 s even if the page is still loading */
+  animation: bp-fade-in 0.2s ease-out 0.12s both, bp-fade-away 0.3s ease-in 3s forwards;
 }
 #bp-first-load {
   display: none;
-  animation: none;
+  animation: bp-fade-away 0.3s ease-in 3s forwards;
 }
 .bp-preloading #bp-first-load {
   display: flex;
@@ -517,6 +518,7 @@ dialog.bp-dialog[open] {
 @keyframes bp-spin { to { transform: rotate(360deg); } }
 @keyframes bp-pulse { 0%, 100% { transform: scale(0.92); opacity: 0.85; } 50% { transform: scale(1.04); opacity: 1; } }
 @keyframes bp-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes bp-fade-away { to { opacity: 0; visibility: hidden; } }
 @media (prefers-reduced-motion: reduce) {
   .bp-preloader-ring, .bp-preloader-mark { animation-duration: 3s; }
   .bp-loader-bar { animation-duration: 16s; }
