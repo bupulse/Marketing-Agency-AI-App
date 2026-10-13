@@ -27,6 +27,6 @@ describe("marketing header", () => {
   it("keeps the theme toggle and the demo button outside the menu", () => {
     expect(html).toMatch(/Book a demo/);
     expect(html).toMatch(/Book a free demo/);
-    expect(html).toMatch(/min-\[380px\]:inline-flex/);
+    expect(html).toMatch(/hidden whitespace-nowrap sm:inline-flex/); // phones (under 640 px): the demo button is in the menu, so the menu button always fits
   });
 });

@@ -13,7 +13,7 @@ export function HeaderActions({ links }: { links: { label: string; href: string 
   return (
     <>
       <AccountMenu email={email} />
-      <Button href={email ? "/dashboard" : "/signup"} size="sm" className="hidden whitespace-nowrap min-[380px]:inline-flex">
+      <Button href={email ? "/dashboard" : "/signup"} size="sm" className="hidden whitespace-nowrap sm:inline-flex">
         {email ? (
           "Go to dashboard"
         ) : (
