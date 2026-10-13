@@ -185,14 +185,22 @@ export async function createAiDesign(input: Owner & {
   useLogo?: boolean;
   usePhotoPath?: string | null;
   includePeople?: boolean;
+  /** An image credit reserved before (a "Create today's content" run, docs/CONTENT.md): used instead of a new one, given back on any failure. */
+  prepaid?: { periodStart: Date };
 }): Promise<CreatedDesign> {
-  await rateLimit(`aiimage:${input.userId}`, RATE_LIMITS.aiImage);
-  const owned = await requireOwned(input);
+  let owned: Awaited<ReturnType<typeof requireOwned>>;
+  try {
+    await rateLimit(`aiimage:${input.userId}`, RATE_LIMITS.aiImage);
+    owned = await requireOwned(input);
+    if (input.usePhotoPath && !isOwnPhotoPath(input.userId, input.usePhotoPath)) throw new DesignError("That photo could not be used.");
+  } catch (error) {
+    if (input.prepaid) await refundUsage(input.userId, "image", input.prepaid.periodStart).catch((e) => logError(e, { source: "designs.refund", userId: input.userId }));
+    throw error;
+  }
   const { business } = owned;
-  if (input.usePhotoPath && !isOwnPhotoPath(input.userId, input.usePhotoPath)) throw new DesignError("That photo could not be used.");
 
   // Throws UsageLimitError when the plan has no image credits left.
-  const { periodStart } = await consumeUsage(input.userId, "image");
+  const { periodStart } = input.prepaid ?? (await consumeUsage(input.userId, "image"));
   try {
     const [logo, photo] = await Promise.all([
       input.useLogo ? loadLogo(input.userId, business.logoUrl, [...AI_TYPES, "image/svg+xml"], input.service) : null,
@@ -376,6 +384,25 @@ export async function designUrls(paths: string[]): Promise<Map<string, string>> 
 }
 
 /** The business's designs, newest first, with signed URLs, in the shape <DesignStudio designs> expects. */
+/** One page of the business's designs (newest first), optionally within createdAt bounds, for the Designs page. */
+export async function listDesignsPage(
+  userId: string,
+  options: { page: number; perPage: number; gte?: Date | null; lt?: Date | null },
+): Promise<{ items: { id: string; url: string; kind: string; aspectRatio: string; template: string | null; createdAt: string }[]; total: number; page: number; pages: number }> {
+  const createdAt = { ...(options.gte ? { gte: options.gte } : {}), ...(options.lt ? { lt: options.lt } : {}) };
+  const where = { business: { userId }, ...(options.gte || options.lt ? { createdAt } : {}) };
+  const total = await prisma.design.count({ where });
+  const pages = Math.max(1, Math.ceil(total / options.perPage));
+  const page = Math.min(Math.max(1, options.page), pages);
+  const rows = await prisma.design.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * options.perPage, take: options.perPage });
+  const urls = await designUrls(rows.map((r) => r.path));
+  const items = rows.flatMap((r) => {
+    const url = urls.get(r.path);
+    return url ? [{ id: r.id, url, kind: r.kind, aspectRatio: r.aspectRatio, template: r.template, createdAt: r.createdAt.toISOString() }] : [];
+  });
+  return { items, total, page, pages };
+}
+
 export async function listDesigns(userId: string, options: { take?: number } = {}) {
   const rows = await prisma.design.findMany({
     where: { business: { userId } },

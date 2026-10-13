@@ -20,7 +20,7 @@ import { RateLimitError } from "@/lib/rate-limit";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { createSignedUploadUrl } from "@/lib/storage";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { consumeUsage, getUsageSummary, UsageLimitError } from "@/lib/usage";
+import { consumeUsage, getUsageSummary, refundUsage, UsageLimitError } from "@/lib/usage";
 import { directVisual } from "./art-director";
 import { chooseSources, fallbackPlan, listItems, PHOTO_TEMPLATES, readImagePlan, slideText, type DirectionContext } from "./direction";
 import { mediaForPost } from "./post-media";
@@ -303,11 +303,15 @@ export async function drawSlide(
   const cover = plan.slides[0];
   const coverPhoto = slide.useCoverPhoto && cover !== slide ? (cover?.aiPhotoPath ?? (cover?.source === "album" ? cover.photoPath : null)) : null;
   let photo: string | null = slide.source === "album" ? slide.photoPath : slide.source === "ai" ? (slide.aiPhotoPath ?? null) : coverPhoto;
+  const prepaid = slide.prepaidAi ? { periodStart: new Date(slide.prepaidAi) } : undefined;
+  next.prepaidAi = null;
+  if (slide.source !== "ai" || slide.aiPhotoPath) await refundPrepaid(owner, prepaid);
   if (slide.source === "ai" && !slide.aiPhotoPath) {
     if (state.aiAllowed && state.aiMade < state.maxAi) {
       try {
         const scene = buildSceneBrief({ template: slide.template, aspectRatio: plan.aspectRatio, scene: slide.scene, headline: slide.headline });
-        const made = await createAiDesign({ ...owner, subjectId, prompt: scene, aspectRatio: plan.aspectRatio, usePhotoPath: slide.photoPath, includePeople: true });
+        // A credit reserved when the run was planned is used (createAiDesign gives it back on any failure).
+        const made = await createAiDesign({ ...owner, subjectId, prompt: scene, aspectRatio: plan.aspectRatio, usePhotoPath: slide.photoPath, includePeople: true, prepaid });
         state.aiMade += 1;
         next.aiPhotoPath = made.path;
         photo = made.path;
@@ -319,6 +323,7 @@ export async function drawSlide(
         photo = slide.photoPath;
       }
     } else {
+      await refundPrepaid(owner, prepaid);
       next.note = "AI photos are not available right now, so this slide uses your photo or a free design.";
       photo = slide.photoPath;
     }
@@ -519,7 +524,8 @@ export async function updateImageVisual(owner: Owner, visualId: string, changes:
     const [chosen] = chooseSources([{ source: "album", template: s.template }], { photos: [{ path: changes.swap.photoPath, mimeType: mimeOf(changes.swap.photoPath) }], aiAllowed: false });
     if (chosen.source !== "album") throw new VisualError("Templates need a JPG or PNG photo. Please pick a different one.");
     const template = s.template === "announcement" && changes.swap.index === 0 ? "new-arrival" : s.template;
-    plan.slides[changes.swap.index] = { ...s, source: "album", photoPath: changes.swap.photoPath, aiPhotoPath: null, useCoverPhoto: false, template, note: undefined };
+    if (s.prepaidAi && !s.aiPhotoPath) await refundPrepaid(owner, { periodStart: new Date(s.prepaidAi) });
+    plan.slides[changes.swap.index] = { ...s, source: "album", photoPath: changes.swap.photoPath, aiPhotoPath: null, prepaidAi: null, useCoverPhoto: false, template, note: undefined };
     changed.add(changes.swap.index);
     // Designed slides show the cover's photo: a new cover photo redraws them too.
     if (changes.swap.index === 0) plan.slides.forEach((x, i) => x.useCoverPhoto && changed.add(i));
@@ -572,6 +578,12 @@ async function releaseVideo(businessId: string, row: { id: string; items: unknow
   return true;
 }
 
+/** Gives back an image credit reserved for a slide whose AI photo will not be made. */
+async function refundPrepaid(owner: Owner, prepaid: { periodStart: Date } | undefined) {
+  if (!prepaid || Number.isNaN(prepaid.periodStart.getTime())) return;
+  await refundUsage(owner.userId, "image", prepaid.periodStart).catch((e) => logError(e, { source: "visuals.prepaid.refund", level: "error", businessId: owner.businessId }));
+}
+
 async function releaseRows(owner: Owner, rows: { id: string; kind: string; plan: unknown; items: unknown }[]) {
   for (const row of rows) {
     if (row.kind === "video") {
@@ -579,6 +591,8 @@ async function releaseRows(owner: Owner, rows: { id: string; kind: string; plan:
     } else {
       const plan = readImagePlan(row.plan);
       if (plan) await dropDesigns(owner, plan.slides);
+      // Credits reserved for AI photos never made go back.
+      for (const s of plan?.slides ?? []) if (s.prepaidAi && !s.aiPhotoPath) await refundPrepaid(owner, { periodStart: new Date(s.prepaidAi) });
     }
     await prisma.contentVisual.deleteMany({ where: { id: row.id, businessId: owner.businessId } });
   }

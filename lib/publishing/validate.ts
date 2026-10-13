@@ -1,4 +1,5 @@
 import type { NetworkRules } from "@/lib/social/types";
+import { CONTEST_NOTE, hasContestPlaceholders } from "@/lib/content-flow/contest";
 
 /** The part of a network's rules the composer needs; plain data so it can be sent to the browser. */
 export type RuleSummary = Pick<NetworkRules, "network" | "label" | "maxText" | "maxHashtags" | "requiresMedia" | "maxImages" | "formats" | "videoOnly">;
@@ -34,6 +35,8 @@ export function validatePost(
 ): Checked {
   const errors: string[] = [];
   const length = composeText(input.text, input.hashtags).length;
+  // A contest the AI suggested keeps placeholders until the owner confirms the prize and rules (lib/content-flow/contest.ts).
+  if (hasContestPlaceholders(input.text)) errors.push(CONTEST_NOTE);
 
   if (input.format === "SCRIPT") {
     const limit = MAX_SCRIPT_LENGTH;

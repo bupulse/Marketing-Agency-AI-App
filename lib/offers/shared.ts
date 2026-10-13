@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { featureLabel, FEATURES, isFeatureKey, sortFeatureKeys, validateFeatureSet, withPrerequisites, type FeatureKey } from "@/lib/features";
-import { SEATS_MAX, SEATS_MIN, VIDEO_PLAN_SECONDS, VOICE_PLAN_CHARACTERS, type PlanLimits } from "@/lib/plans";
+import { SEATS_MAX, SEATS_MIN, VIDEO_PLAN_SECONDS, VOICE_PLAN_CHARACTERS, type PlanLimits, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit } from "@/lib/plans";
 
 /** A yearly custom plan costs this many months (the regional plans' rule: yearly = 10 months). */
 export const YEARLY_MONTHS = 10;
@@ -57,14 +57,15 @@ export const addonOf = (key: string) => ADDONS.find((a) => a.key === key) ?? nul
 /** The price key of a feature in an offer (Managed by BuPulse is priced by tier). */
 export const featureAddonKey = (key: FeatureKey, tier: ManagedTier = "light") => (key === "managed" ? `managed:${tier}` : key);
 
-export const METRIC_LABEL: Record<OfferMetric | "seats", string> = { text: "AI texts a month", image: "AI images a month", chat: "Chat replies a month", seats: "Users" };
+export const METRIC_LABEL: Record<OfferMetric | "seats" | "postsPerAppPerDay", string> = { text: "AI texts a month", image: "AI images a month", chat: "Chat replies a month", seats: "Users", postsPerAppPerDay: "Posts per app per day" };
 
 // ---- pricing ------------------------------------------------------------------------------------------------------
 
 export type AddonPriceRow = { addonKey: string; regionKey: string; currency: string; monthlyMinor: number };
 /** A regional plan to start from: its price in the region's currency, what it includes. */
 export type OfferBase = { key: string; name: string; monthlyMinor: number; yearlyMinor: number; features: readonly FeatureKey[]; limits: PlanLimits };
-export type OfferLimits = Pick<PlanLimits, OfferMetric | "seats">;
+/** `postsPerAppPerDay` (1 to 10) is set, not priced: how many posts per app a day the custom plan makes (docs/CONTENT.md). */
+export type OfferLimits = Pick<PlanLimits, OfferMetric | "seats"> & { postsPerAppPerDay?: number };
 
 export type PricedLine = { key: string; label: string; quantity: number; unitMinor: number; totalMinor: number; missingPrice?: boolean };
 
@@ -130,7 +131,7 @@ export function quoteOffer(input: OfferQuoteInput): OfferQuote {
   };
   if (input.base) lines.push({ key: `plan:${input.base.key}`, label: `${input.base.name} plan`, quantity: 1, unitMinor: yearly ? input.base.yearlyMinor : input.base.monthlyMinor, totalMinor: yearly ? input.base.yearlyMinor : input.base.monthlyMinor });
 
-  const included: OfferLimits = { text: baseLimits.text, image: baseLimits.image, chat: baseLimits.chat, seats: baseLimits.seats };
+  const included: OfferLimits = { text: baseLimits.text, image: baseLimits.image, chat: baseLimits.chat, seats: baseLimits.seats, postsPerAppPerDay: postsPerAppLimit(baseLimits) };
   for (const key of added) {
     const def = FEATURES.find((f) => f.key === key);
     if (!def) continue;
@@ -155,7 +156,7 @@ export function quoteOffer(input: OfferQuoteInput): OfferQuote {
     features,
     added,
     // Video sold on top of a plan without it brings the video plans' seconds (8 videos of up to 30 s a month).
-    limits: { ...baseLimits, text: input.limits.text, image: input.limits.image, chat: input.limits.chat, seats: input.limits.seats, ...(added.includes("video") ? { videoSeconds: Math.max(baseLimits.videoSeconds, VIDEO_PLAN_SECONDS) } : {}), ...(added.includes("voice") ? { voiceCharacters: Math.max(baseLimits.voiceCharacters, VOICE_PLAN_CHARACTERS) } : {}) },
+    limits: { ...baseLimits, text: input.limits.text, image: input.limits.image, chat: input.limits.chat, seats: input.limits.seats, postsPerAppPerDay: postsPerAppLimit({ postsPerAppPerDay: input.limits.postsPerAppPerDay ?? postsPerAppLimit(baseLimits) }), ...(added.includes("video") ? { videoSeconds: Math.max(baseLimits.videoSeconds, VIDEO_PLAN_SECONDS) } : {}), ...(added.includes("voice") ? { voiceCharacters: Math.max(baseLimits.voiceCharacters, VOICE_PLAN_CHARACTERS) } : {}) },
     included,
     lines,
     computedMinor: lines.reduce((s, l) => s + l.totalMinor, 0),
@@ -214,7 +215,7 @@ const count = (max: number) => z.number().int().min(0).max(max);
 export const offerDraftSchema = z.object({
   basePlanKey: z.string().trim().max(64).nullish().transform((v) => v || null),
   features: z.array(z.string().max(40)).max(40).default([]),
-  limits: z.object({ text: count(MAX_LIMIT), image: count(MAX_LIMIT), chat: count(MAX_LIMIT), seats: z.number().int().min(SEATS_MIN).max(SEATS_MAX) }),
+  limits: z.object({ text: count(MAX_LIMIT), image: count(MAX_LIMIT), chat: count(MAX_LIMIT), seats: z.number().int().min(SEATS_MIN).max(SEATS_MAX), postsPerAppPerDay: z.number().int().min(POSTS_PER_APP_MIN).max(POSTS_PER_APP_MAX).default(POSTS_PER_APP_MIN) }),
   managedTier: z.enum(MANAGED_TIERS).default("light"),
   interval: z.enum(["MONTH", "YEAR"]),
   adjustedMinor: z.number().int().min(1, "The price must be more than zero.").max(MAX_OFFER_MINOR).nullish().transform((v) => v ?? null),
@@ -313,7 +314,7 @@ export function toClientOffer(o: {
     adjustment: adjustmentText(o.computedMinor, o.adjustedMinor),
     basePlanName: o.basePlanName,
     features: o.features.map((key) => ({ key, label: featureLabel(key), description: FEATURES.find((f) => f.key === key)?.description ?? "", added: o.added.includes(key) })),
-    limits: { text: o.limits.text, image: o.limits.image, chat: o.limits.chat, seats: o.limits.seats },
+    limits: { text: o.limits.text, image: o.limits.image, chat: o.limits.chat, seats: o.limits.seats, postsPerAppPerDay: o.limits.postsPerAppPerDay },
     managedTier: o.features.includes("managed") ? o.managedTier : null,
     lines: o.lines,
     note: o.note,

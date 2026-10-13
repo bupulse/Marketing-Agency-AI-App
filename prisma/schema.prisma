@@ -98,6 +98,10 @@ model Business {
   contentSettings         Json?
   // When the daily "what was auto-scheduled" email last went out (lib/content-board/summary.ts).
   contentSummarySentAt    DateTime?
+  // "Create today's content" (docs/CONTENT.md): one run at a time per company. The run's request key (from the dialog)
+  // and until when it holds the claim; the key stays after the run so the same request is never run twice.
+  contentRunKey           String?
+  contentRunUntil         DateTime?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
@@ -781,6 +785,9 @@ model Post {
   // For an app that is not connected (yet): at its time the owner gets the reminder to post it by hand, like a NOTIFY
   // account (lib/publishing/engine.ts). False on posts that lost their account later: those fail as before.
   remindOnly     Boolean       @default(false)
+  // A challenge or contest the AI suggested (lib/content-flow/contest.ts): {} until the owner confirms the prize, end
+  // date and how the winner is chosen ({ prize, endsOn, howChosen, confirmedAt }). Never auto-approved.
+  contest        Json?
   // "post" | "carousel" | "video" | "article": kept by a database trigger from format and mediaPaths, for the type filter.
   mediaKind      String        @default("post")
   createdAt      DateTime      @default(now())

@@ -27,7 +27,7 @@
  *   showGallery Show the gallery under the studio (default true).
  */
 
-import { createContext, useContext, useMemo, useState, useTransition } from "react";
+import { createContext, useContext, useMemo, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Download, ImageIcon, Images, Sparkles, Trash2 } from "lucide-react";
@@ -38,6 +38,7 @@ import { EditInCanva } from "./edit-in-canva";
 import { createAiDesign, createAiPhotoDesign, createTemplateDesign, deleteDesign, getDesignDownloadUrl } from "@/app/dashboard/designs/actions";
 import { cn } from "@/lib/cn";
 import { ASPECT_LABELS, ASPECT_RATIOS, type AspectRatio } from "@/lib/designs/layout";
+import { groupByDay } from "@/lib/designs/list";
 import { PACKS, type PackId } from "@/lib/designs/packs";
 import { TEMPLATES, templatesForProjectType } from "@/lib/designs/templates/registry";
 
@@ -47,6 +48,8 @@ export type StudioDesign = {
   kind: string;
   aspectRatio: string;
   template: string | null;
+  /** ISO time it was made; when given, the gallery groups designs by day. */
+  createdAt?: string;
 };
 
 export type DesignStudioProps = {
@@ -65,6 +68,11 @@ export type DesignStudioProps = {
   hasLogo?: boolean;
   pack?: PackId;
   showGallery?: boolean;
+  /** Shown above and below the gallery, e.g. the date filter and the page links on the Designs page. */
+  galleryTop?: ReactNode;
+  galleryBottom?: ReactNode;
+  /** The business's time zone, for the gallery's day headings. */
+  timeZone?: string;
   galleryPhoto?: { path: string; url: string } | null;
   /** Pass `isCanvaEnabled()` (and the plan's canva feature) from the server page to show "Edit in Canva" on designs. */
   canva?: boolean;
@@ -559,7 +567,7 @@ function AiTab({ subjectId, defaults, credits, hasLogo, galleryPhoto }: Pick<Des
   );
 }
 
-function Gallery({ designs }: { designs: StudioDesign[] }) {
+function Gallery({ designs, timeZone = "UTC" }: { designs: StudioDesign[]; timeZone?: string }) {
   const canva = useContext(CanvaEnabled);
   const router = useRouter();
   const { toast } = useToast();
@@ -577,9 +585,15 @@ function Gallery({ designs }: { designs: StudioDesign[] }) {
     });
   }
 
+  const groups = designs.every((d) => d.createdAt) ? groupByDay(designs as (StudioDesign & { createdAt: string })[], new Date(), timeZone) : [{ day: "", label: "", items: designs }];
+
   return (
+    <div className="flex flex-col gap-6">
+      {groups.map((g) => (
+        <section key={g.day || "all"} aria-label={g.label || undefined} className="flex flex-col gap-3">
+          {g.label && <h3 className="px-1 text-[14px] font-semibold text-muted">{g.label}</h3>}
     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-      {designs.map((d) => (
+      {g.items.map((d) => (
         <li key={d.id} className="flex flex-col gap-2">
           <div className="flex aspect-square items-center justify-center overflow-hidden rounded-2xl border border-line bg-soft">
             {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
@@ -608,10 +622,13 @@ function Gallery({ designs }: { designs: StudioDesign[] }) {
         </li>
       ))}
     </ul>
+        </section>
+      ))}
+    </div>
   );
 }
 
-export function DesignStudio({ subjectId, album, defaults, designs, credits, hasLogo, pack, showGallery = true, galleryPhoto = null, canva = false, aiPhotos = true }: DesignStudioProps) {
+export function DesignStudio({ subjectId, album, defaults, designs, credits, hasLogo, pack, showGallery = true, galleryTop, galleryBottom, timeZone, galleryPhoto = null, canva = false, aiPhotos = true }: DesignStudioProps) {
   const order = useMemo(() => templatesForProjectType(defaults?.projectType ?? ""), [defaults?.projectType]);
   return (
     <CanvaEnabled value={canva}>
@@ -651,7 +668,9 @@ export function DesignStudio({ subjectId, album, defaults, designs, credits, has
         {showGallery && (
           <section aria-label="Your designs" className="flex flex-col gap-4">
             <h2 className="px-1 text-lg font-semibold">Your designs</h2>
-            <Gallery designs={designs} />
+            {galleryTop}
+            <Gallery designs={designs} timeZone={timeZone} />
+            {galleryBottom}
           </section>
         )}
       </div>

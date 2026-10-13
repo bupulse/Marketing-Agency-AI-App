@@ -71,9 +71,11 @@ export interface PlanInput {
   holidays: Holiday[];
   photos: PlanPhoto[];
   /** Posts already scheduled in the week, so new ones do not clash with them. */
-  existing: { connectionId: string | null; scheduledAt: Date }[];
+  existing: { connectionId: string | null; scheduledAt: Date; network?: string; subjectId?: string | null }[];
   /** How often each idea was used in the last weeks. */
   recentIdeas: Map<string, number>;
+  /** The plan's posts per app per day for one product, campaign or General (lib/plans.ts; 1 when missing). */
+  postsPerAppPerDay?: number;
   profile: LearningProfile;
   now: Date;
 }
@@ -352,6 +354,15 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
 
   const groups: PlannedGroup[] = [];
   const ordered = [...picks].sort((a, b) => dayOf.get(a)!.localeCompare(dayOf.get(b)!));
+  // Posts per app per day for one subject, as the plan allows (docs/CONTENT.md).
+  const perDayLimit = Math.max(1, input.postsPerAppPerDay ?? 1);
+  const perDay = new Map<string, number>();
+  // Posts already there (made by hand, by "Create today's content" or an earlier run) count too.
+  for (const e of input.existing) {
+    if (!e.network) continue;
+    const key = `${e.network}|${localDateISO(e.scheduledAt, timeZone)}|${e.subjectId ?? "general"}`;
+    perDay.set(key, (perDay.get(key) ?? 0) + 1);
+  }
   for (const pick of ordered) {
     const { idea } = pick;
     const date = dayOf.get(pick)!;
@@ -379,6 +390,12 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
         notes.push(`Skipped one ${connection.network} post on ${date}: no free time slot.`);
         continue;
       }
+      const dayKey = `${connection.network}|${date}|${pick.project?.id ?? "general"}`;
+      if ((perDay.get(dayKey) ?? 0) >= perDayLimit) {
+        notes.push(`Skipped one ${connection.network} post on ${date}: your plan allows ${perDayLimit} per app a day for the same product or campaign.`);
+        continue;
+      }
+      perDay.set(dayKey, (perDay.get(dayKey) ?? 0) + 1);
       noteTime(connection.id, at);
       posts.push({ connectionId: connection.id, network: connection.network, format: effective, scheduledAt: at });
     }

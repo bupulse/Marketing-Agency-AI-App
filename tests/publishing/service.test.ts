@@ -341,6 +341,29 @@ describe("actions on existing posts are scoped to the business (IDOR)", () => {
     expect(data).not.toHaveProperty("scheduledAt");
   });
 
+  it("a contest without its confirmed prize and rules cannot be revived, retried or scheduled by an edit", async () => {
+    const contest = { text: "Win [PRIZE]!", contest: {} };
+    prisma.post.findFirst.mockResolvedValue(post("FAILED", contest));
+    expect(await code(reschedulePost(owner, "p1", new Date("2026-10-20T10:00:00Z"), now))).toBe("invalid");
+    expect(await code(retryPost(owner, "p1", now))).toBe("invalid");
+    prisma.post.findFirst.mockResolvedValue(post("SCHEDULED", { text: "Win 50,000 RWF! Rules: Most likes. Ends Friday 16 October. Prize: 50,000 RWF.", contest: { prize: "50,000 RWF", endsOn: "2026-10-16", howChosen: "Most likes", confirmedAt: "2026-10-13T08:00:00Z" } }));
+    expect(await code(updatePost(owner, "p1", { ...edit, text: "Win 50,000 RWF!", when: { mode: "schedule", local: "2026-10-20T10:00" } } as never, now))).toBe("invalid");
+    expect(prisma.post.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("editing a confirmed contest's prize, end date or rule needs confirming again; a scheduled one goes back to waiting", async () => {
+    const confirmed = { prize: "50,000 RWF", endsOn: "2026-10-16", howChosen: "Most likes", confirmedAt: "2026-10-13T08:00:00Z" };
+    prisma.post.findFirst.mockResolvedValue(post("SCHEDULED", { text: "Win 50,000 RWF! Rules: Most likes. Ends Friday 16 October. Prize: 50,000 RWF.", contest: confirmed }));
+    await updatePost(owner, "p1", { ...edit, text: "Win 100,000 RWF! Rules: Most likes. Ends Friday 16 October. Prize: 100,000 RWF." }, now);
+    const data = prisma.post.updateMany.mock.calls[0][0].data;
+    expect(data.contest).toEqual({ prize: "50,000 RWF", endsOn: "2026-10-16", howChosen: "Most likes" });
+    expect(data).toMatchObject({ status: "PENDING_APPROVAL", reviewNote: "Needs your confirmation: prize & rules", autoScheduledAt: null });
+    // A wording change that keeps the prize, date and rule stays confirmed.
+    prisma.post.updateMany.mockClear();
+    await updatePost(owner, "p1", { ...edit, text: "Join in! Win 50,000 RWF! Rules: Most likes. Ends Friday 16 October. Prize: 50,000 RWF." }, now);
+    expect(prisma.post.updateMany.mock.calls[0][0].data.contest).toEqual(confirmed);
+  });
+
   it("editing validates against the post's own network", async () => {
     prisma.post.findFirst.mockResolvedValue(post("SCHEDULED", { network: "instagram", connection: { ...instagram, provider: "instagram" } }));
     expect(await code(updatePost(owner, "p1", edit, now))).toBe("invalid"); // Instagram needs a photo
@@ -370,6 +393,15 @@ describe("approvePosts", () => {
     const data = prisma.post.updateMany.mock.calls[0][0].data;
     expect(data.status).toBe("SCHEDULED");
     expect(data.scheduledAt.toISOString()).toBe("2026-10-07T16:00:00.000Z");
+  });
+
+  it("never approves a contest before the owner confirmed its prize and rules", async () => {
+    prisma.post.findMany.mockResolvedValue([
+      { id: "c1", connectionId: "c-fb", scheduledAt: new Date("2026-10-09T07:00:00Z"), text: "Win [PRIZE]!", contest: {} },
+      { id: "c2", connectionId: "c-fb", scheduledAt: new Date("2026-10-09T07:00:00Z"), text: "Win 50,000 RWF!", contest: {} },
+    ]);
+    expect(await approvePosts("b1", ["c1", "c2"], now)).toEqual({ approved: 0, skipped: 2 });
+    expect(prisma.post.updateMany).not.toHaveBeenCalled();
   });
 
   it("does nothing for an empty list", async () => {

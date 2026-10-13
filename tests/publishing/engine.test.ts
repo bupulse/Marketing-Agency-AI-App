@@ -213,6 +213,13 @@ describe("publishing", () => {
     expect(settled().data.publishedAt instanceof Date).toBe(true);
   });
 
+  it("never publishes a contest without its confirmed prize and rules: it goes back to waiting for the owner", async () => {
+    claimOnce(post({ text: "Win [PRIZE]!", contest: {} }));
+    await publishDue(now);
+    expect(provider.publish).not.toHaveBeenCalled();
+    expect(settled().data).toMatchObject({ status: "PENDING_APPROVAL", reviewNote: "Needs your confirmation: prize & rules" });
+  });
+
   it("only settles posts that are still PUBLISHING", async () => {
     claimOnce(post());
     await publishDue(now);

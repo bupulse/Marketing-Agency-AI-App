@@ -14,6 +14,16 @@ describe("what a run uses (shown before confirming)", () => {
     expect(runCost({ mode: "own", design: "ai", posts: 3, designed: 3, aiPhotos: true, textLeft: 10, imagesLeft: 10 }).aiImages).toBe(0);
   });
 
+  it("adds the video seconds and voiceover characters of the videos BuPulse would make", () => {
+    const c = runCost({ mode: "ai", design: "ai", posts: 3, designed: 1, aiPhotos: true, textLeft: 30, imagesLeft: 5, videos: 2, videoSecondsLeft: 240, voice: true, voiceCharsLeft: 20_000 });
+    expect(c).toMatchObject({ videoSeconds: 60, voiceChars: 1200 });
+    expect(c.message).toBe(
+      "Uses 3 text generations, up to 1 AI image, up to 60 video seconds and about 1,200 voiceover characters; you have 30 text generations, 5 AI images, 240 video seconds and 20,000 voiceover characters left this month.",
+    );
+    expect(runCost({ mode: "ai", design: "free", posts: 1, designed: 0, aiPhotos: false, textLeft: 5, imagesLeft: 0, videos: 1, videoSecondsLeft: 240, voice: false }).message).not.toContain("voiceover");
+    expect(runCost({ mode: "own", design: "free", posts: 1, designed: 0, aiPhotos: false, textLeft: 5, imagesLeft: 0, videos: 1, videoSecondsLeft: 240 }).videoSeconds).toBe(0);
+  });
+
   it("caps AI images at the credits left and says when text generations are short", () => {
     expect(runCost({ mode: "ai", design: "ai", posts: 5, designed: 4, aiPhotos: true, textLeft: 10, imagesLeft: 2 }).aiImages).toBe(2);
     const short = runCost({ mode: "ai", design: "free", posts: 4, designed: 4, aiPhotos: false, textLeft: 2, imagesLeft: 0 });

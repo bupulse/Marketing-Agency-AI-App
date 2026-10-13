@@ -55,6 +55,8 @@ jobs:
       NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      # Inlined at build like every NEXT_PUBLIC_* value: the Chat on WhatsApp button (empty hides it).
+      NEXT_PUBLIC_WHATSAPP_NUMBER: ${{ vars.NEXT_PUBLIC_WHATSAPP_NUMBER }}
     steps:
       # The workflow's own commit first (the pushed commit, or main for a manual start). A requested ref is checked
       # before any of its code runs: only a vX.Y.Z tag or a full SHA, and only if it is on main's history, so a branch

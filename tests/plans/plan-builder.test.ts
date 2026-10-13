@@ -106,7 +106,7 @@ describe("the migration seeds exactly today's plans", () => {
       const r = row(key);
       // The pricing copy changed later with the AI image limits (20261016130000_people_images).
       r.features = r.features.map((f: string) => AI_IMAGE_COPY[f] ?? f);
-      expect(r).toMatchObject({ name: c.name, description: c.description, isTrial: c.isTrial, trialDays: c.trialDays, sortOrder: c.sortOrder, highlight: c.highlight, monthly: c.priceUsdMonthly * 100, yearly: c.priceUsdYearly * 100, limits: Object.fromEntries(Object.entries(c.limits).filter(([k]) => k !== "seats" && k !== "videoSeconds" && k !== "image" && k !== "voiceCharacters")), features: c.highlights, caps: { apiAccess: c.features.includes("apiAccess"), ownComposio: c.features.includes("ownComposio") } });
+      expect(r).toMatchObject({ name: c.name, description: c.description, isTrial: c.isTrial, trialDays: c.trialDays, sortOrder: c.sortOrder, highlight: c.highlight, monthly: c.priceUsdMonthly * 100, yearly: c.priceUsdYearly * 100, limits: Object.fromEntries(Object.entries(c.limits).filter(([k]) => k !== "seats" && k !== "videoSeconds" && k !== "image" && k !== "voiceCharacters" && k !== "postsPerAppPerDay")), features: c.highlights, caps: { apiAccess: c.features.includes("apiAccess"), ownComposio: c.features.includes("ownComposio") } });
       // seats arrive with their own migration (the plan_seats one); here only the original five limits are compared
       expect(Object.keys(r.limits).sort()).toEqual(["chat", "image", "text", "videoSeconds", "voiceCharacters"]);
     }
@@ -925,5 +925,20 @@ describe("team seats", () => {
     expect(USAGE_METRICS).not.toContain("seats");
     await svc.updatePlanLimits(API, { plan: "STANDARD", limits: { seats: null }, confirm: true });
     expect(plan("STANDARD").limits.seats).toBe(3);
+  });
+});
+
+describe("posts per app per day", () => {
+  it("is edited in the plan form (1 to 10), validated and audited; the limits tool sets and resets it", async () => {
+    await updatePlan(CONSOLE, "STANDARD", { limits: { postsPerAppPerDay: 4 } });
+    expect(plan("STANDARD").limits).toMatchObject({ postsPerAppPerDay: 4, text: 100, seats: 3 });
+    expect(audits()[0]).toMatchObject({ action: "update_plan", after: { limits: expect.objectContaining({ postsPerAppPerDay: 4 }) } });
+    expect(await code(updatePlan(CONSOLE, "STANDARD", { limits: { postsPerAppPerDay: 0 } }))).toBe("invalid");
+    expect(await code(updatePlan(CONSOLE, "STANDARD", { limits: { postsPerAppPerDay: 11 } }))).toBe("invalid");
+    await svc.updatePlanLimits(API, { plan: "PRO", limits: { postsPerAppPerDay: 7 }, confirm: true });
+    expect(plan("PRO").limits.postsPerAppPerDay).toBe(7);
+    await svc.updatePlanLimits(API, { plan: "PRO", limits: { postsPerAppPerDay: null }, confirm: true });
+    expect(plan("PRO").limits.postsPerAppPerDay).toBe(3);
+    expect(await code(svc.updatePlanLimits(API, { plan: "PRO", limits: { postsPerAppPerDay: 12 }, confirm: true }))).toBe("invalid");
   });
 });

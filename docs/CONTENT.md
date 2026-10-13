@@ -72,10 +72,69 @@ The button on a subject's day view opens a dialog with two ways to make the busi
 The design choice is made once in the dialog: **AI designs (images with people)** or **Free templates (your photos +
 BuPulse designs)** (AI is offered only when `aiPhotosAvailable`).
 
-**What a run uses** (`runCost`, shown before confirming): "Uses 4 text generations and up to 4 AI images; you have 26
-text generations and 12 AI images left this month." One text generation per post (as before); at most one AI image per
-designed post and never more than the credits left; videos BuPulse makes count video seconds when they are made, as
-before. A run whose posts need more text generations than are left is refused before anything is charged.
+**Posts per app per day** (`lib/content-flow/slots.ts`): the plan's `limits.postsPerAppPerDay` (trial, Starter and
+Standard 1, Business and Pro 3, custom plans 1 to 10 set in the offer builder, any plan in Admin -> Plans; migration
+`20261017150100_posts_per_app_per_day`; 1 for a plan without it, `postsPerAppLimit`). The dialog asks "Posts per app"
+(1 by default, up to the limit); the run counts the posts the subject already has on each app today (business time
+zone) and makes at most the rest, skipping a full app with the reason. Every app gets its first post before any gets a
+second; an app's second post that day is a picture, not the same Reel again. Autopilot's planner keeps the same limit
+per account, day and product or campaign (`buildWeekPlan`, `postsPerAppPerDay` from the plan).
+
+**Price** (`lib/content-flow/price.ts`): "AI decides" (default) lets at most one post of a run show the price, and only
+when none of the subject's last 3 posts did (the price angle, or a caption stating one of the price's numbers), so at
+most about 1 in 4 and never two in a row; "With price" asks every post to state it exactly (the subject must have a
+price); "No price (engaging)" leaves the price angle out, tells every post not to mention a price, removes the price
+lines from the product block, strips any sentence that still states it, and gives the art director no price (so no
+price chip). Posts of "AI decides" that are not the price post get the same treatment. Unless every post shows the
+price, the shared prompt carries none (product block, features, knowledge base, profile and description are filtered
+of price-like lines) and the price post gets the price in its own line; every field of a post without the price
+(caption, hashtags, video script, headline) is checked for anything price-like ("free", "on request", "10k",
+"20% off", an amount with a currency) and those sentences are dropped (a post left empty is dropped and not charged).
+The per-day count for posts per app covers every post of the subject on that app that day: by hand, Autopilot or a
+run; going out or gone out that day, or made that day without a time. Autopilot counts the week's existing posts the
+same way.
+
+**Ideas.** Besides the packs' angles there are playful, question or poll, breaking news (only with real news: a
+campaign or a product added in the last 30 days), did you know (facts given or common knowledge, no invented
+statistics), challenge or contest, trivia or quiz, myth vs fact, tip of the day, customer spotlight (quotable reviews
+only), before and after (only when Gallery items are described or named "before" and "after"), meme-style humour
+(brand-safe), with behind the scenes, local moment and the rest. Each is fun or professional; the day's mix follows
+the Digital Marketing Profile's tone, personality and formality answers (playful about half fun, formal about 15%,
+otherwise about a third; `funShareFor`, and `funCountFor` spreads the fraction over days so a one-post day is sometimes
+fun). The rotation reads the subject's angles; the writer also gets the first lines of the last 30 days' posts
+(fenced `RECENT OPENINGS`) and must not reuse them. Each post card shows its idea type (the content's angle, or
+Autopilot's idea).
+
+**Contests** (`lib/content-flow/contest.ts`): the AI may suggest a challenge or contest ("make the best video about us")
+but never its prize, end date or how the winner is chosen: it writes `[PRIZE]`, `[END DATE]` and
+`[HOW THE WINNER IS CHOSEN]` and a short rules line. The post is saved with `Post.contest = {}` and "Needs your
+confirmation: prize & rules" (migration `20261017150200_contest_posts`). The day view lists such posts with a form:
+prize, end date (from today to 90 days ahead, business time zone), how the winner is chosen and "I will give this prize
+to the winner" (`confirmContest`, guarded by `updatedAt`; Owners and Admins only, the approval level of Content ->
+Settings; Members are asked to get one). The picture never shows placeholders (they are taken out of the art
+director's texts) and is redrawn with the prize on its cover after confirming, reusing its photo (no new AI image).
+Editing a confirmed contest so its prize, end date or winner rule is no longer in the text needs confirming again (a
+scheduled one goes back to waiting). Until then the post cannot be approved (`approvePosts` skips it), scheduled or published: `validatePost` refuses
+placeholders, `contestBlocked` is checked by the safety rules (auto-approval, Schedule all, the connect switch, the
+video robot's finish which goes through them), editing with a time, moving a failed post, retry, and the publisher,
+which puts an unconfirmed contest back to waiting; a contest is never auto-approved, even
+once confirmed (`autoSchedule` leaves posts with `contest` alone). Contests are offered only by "Create today's
+content", not by packs from "Write content" or Autopilot.
+
+**What a run uses** (`runCost`, shown before confirming): "Uses 3 text generations, up to 1 AI image, up to 60 video
+seconds and about 1,200 voiceover characters; you have ... left this month." One text generation per post (as
+before), reserved when the run starts, the ones not written given back; at most one AI image per designed post and
+never more than the credits left: the AI photos the art director planned are **reserved when the run starts**
+(`consumeUsage image`, the slide keeps `prepaidAi`) and drawing uses that credit (`createAiDesign` `prepaid`); a slide
+that ends without its AI photo (cap, swap, removal, failure) gives it back. Videos BuPulse makes (TikTok and YouTube
+without an album video) count up to 30 video seconds each, and with voiceover in the plan up to 600 voice characters
+each, when they are made. A run whose posts need more text generations than are left is refused before anything is
+charged.
+
+**One run at a time.** `runDayContent` claims the company first (`Business.contentRunUntil`, compare-and-set, 5
+minutes for a run that died) with the dialog's request key (`contentRunKey`, new each time the dialog opens): a
+double click, a second tab or another team member gets "Already making today's content… it shows here in a moment.",
+and the same request after it finished gets "already made". Migration `20261017150000_content_run_claim`.
 
 **Angles, day after day.** The angles are the packs' (`lib/studio/angles.ts`: price, how it works, features, news,
 customer story, behind the scenes, tips, FAQ, why us, local moment, book or buy, each only when its facts exist).

@@ -48,7 +48,7 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
   const currency = region.currency;
   const [baseKey, setBaseKey] = useState(initial.basePlanKey ?? "");
   const [selected, setSelected] = useState<FeatureKey[]>(initial.features);
-  const [limits, setLimits] = useState<Record<keyof OfferLimits, string>>({ text: String(initial.limits.text), image: String(initial.limits.image), chat: String(initial.limits.chat), seats: String(initial.limits.seats) });
+  const [limits, setLimits] = useState<Record<keyof OfferLimits, string>>({ text: String(initial.limits.text), image: String(initial.limits.image), chat: String(initial.limits.chat), seats: String(initial.limits.seats), postsPerAppPerDay: String(initial.limits.postsPerAppPerDay) });
   const [tier, setTier] = useState<ManagedTier>(initial.managedTier);
   const [interval, setInterval] = useState<"MONTH" | "YEAR">(initial.interval);
   const [adjusted, setAdjusted] = useState(initial.adjusted);
@@ -59,7 +59,7 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
   const base = bases.find((b) => b.key === baseKey) ?? null;
   const baseFeatures = base?.features ?? [];
   const num = (v: string, min: number) => (/^\d+$/.test(v.trim()) ? Math.max(Number(v), min) : min);
-  const numericLimits: OfferLimits = { text: num(limits.text, 0), image: num(limits.image, 0), chat: num(limits.chat, 0), seats: num(limits.seats, 1) };
+  const numericLimits: OfferLimits = { text: num(limits.text, 0), image: num(limits.image, 0), chat: num(limits.chat, 0), seats: num(limits.seats, 1), postsPerAppPerDay: Math.min(10, Math.max(1, num(limits.postsPerAppPerDay, 1))) };
   const quote = useMemo(
     () => quoteOffer({ base, features: selected, limits: numericLimits, managedTier: tier, interval, currency, regionKey: region.key, prices }),
     // numericLimits is derived from limits
@@ -188,6 +188,9 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
               <Input value={limits[m]} onChange={(e) => setLimits({ ...limits, [m]: e.target.value })} inputMode="numeric" maxLength={8} />
             </Field>
           ))}
+          <Field label={METRIC_LABEL.postsPerAppPerDay} hint={`1 to 10; ${quote.included.postsPerAppPerDay} in the base plan. Not priced.`}>
+            <Input value={limits.postsPerAppPerDay} onChange={(e) => setLimits({ ...limits, postsPerAppPerDay: e.target.value })} inputMode="numeric" maxLength={2} />
+          </Field>
         </fieldset>
 
         <section aria-labelledby="offer-total" className="flex flex-col gap-3 rounded-2xl bg-soft p-4">

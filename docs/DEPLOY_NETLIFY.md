@@ -25,7 +25,11 @@ Netlify's free plan gives **300 credits a month, as a hard limit: when they are 
 | Web requests | 2 credits per 10,000 | Pages, assets, API, cron calls |
 | Bandwidth | 20 credits per GB | Pages, scripts, images served by Netlify |
 
-**The publisher runs every 5 minutes on Netlify** (owner decision; every minute on Cloudflare). Each run is three function invocations (the scheduled function, the background runner, the `/api/cron/publish` route), about 8,640 runs a month: roughly 12 to 50 credits at 0.5 to 2 s a run, instead of 60 to 240 every minute. Each run claims every post due up to that moment, so a post scheduled between two runs goes out at the next one, at most 5 minutes late; the composer and the calendar say "Posts go out within 5 minutes of the scheduled time." on Netlify. (`NETLIFY_PUBLISH_EVERY_MINUTES` in `lib/platform/limits.ts` and the schedule in `netlify/functions/cron-publish.mts` change together; `tests/netlify-crons.test.ts` checks it.) A run publishes up to 20 posts in its 15 s budget; anything beyond waits for the next run. Add the hourly jobs (about 10 to 30 credits) and the GitHub fallback workflows.
+**The publisher runs every 5 minutes on Netlify** (owner decision; every minute on Cloudflare). Each run is three function invocations (the scheduled function, the background runner, the `/api/cron/publish` route), about 8,640 runs a month: roughly 12 to 50 credits at 0.5 to 2 s a run, instead of 60 to 240 every minute. Each run claims every post due up to that moment, so a post scheduled between two runs goes out at the next one, at most 5 minutes late; the composer and the calendar say "Posts go out within 5 minutes of the scheduled time." on Netlify. (`NETLIFY_PUBLISH_EVERY_MINUTES` in `lib/platform/limits.ts` and the schedule in `netlify/functions/cron-publish.mts` change together; `tests/netlify-crons.test.ts` checks it.) A run publishes up to 20 posts in its 15 s budget; anything beyond waits for the next run. Add the hourly jobs (about 10 to 30 credits, the hourly content summary included: about 720 runs a month), the video
+robot's calls from GitHub (every 15 minutes about 2,900 short claim calls a month, plus an upload and a confirm per
+video: roughly 5 to 15 credits; the videos are rendered on GitHub's runner, never on Netlify) and the GitHub fallback
+workflows. A realistic month at launch: 10 deploys (150) + publisher (12 to 50) + hourly jobs (10 to 30) + robot (5 to
+15) + visitors, about 200 to 260 of the 300 credits: deploy in batches.
 
 What else to do:
 
@@ -39,7 +43,11 @@ Other limits, on every plan:
 
 - **60 seconds per request** (not configurable). BuPulse shortens its own budgets on Netlify (`lib/platform/limits.ts`): the publisher claims posts for 15 s instead of 45 s, waits at most 25 s for Instagram to process images (then retries later, nothing was published), metrics run for 30 s, Autopilot plans 1 business per call instead of 2, store sync takes 2 stores per call instead of 5, Canva's return waits 15 s before saying "still saving". Work handed to `waitUntil` also counts towards the 60 s. If Netlify ever gives no `waitUntil` in production, the request waits for that work before answering (at most 10 s, `keepAlive` in `lib/platform/background.ts`) and logs a warning, rather than losing it when the function freezes.
 - **Scheduled functions stop after 30 s**, so they only hand the job to the background function `cron-runner-background` (up to 15 minutes), which calls the route once or with cursors (as `worker.ts`), each call within 60 s, and starts no new call after 13 minutes.
-- **6 MB per request or response** (about 4.5 MB for a binary upload). Photo uploads go straight to Supabase Storage with signed URLs, so they are not affected.
+- **6 MB per request or response** (about 4.5 MB for a binary upload). Photo and video uploads go straight to Supabase Storage with signed URLs, so they are not affected.
+- **Supabase free storage is 1 GB for everything** (photos, Gallery videos up to 50 MB each, rendered videos,
+  voiceovers, music, designs). The app stops new uploads at `MEDIA_PLATFORM_MAX_BYTES` (900 MB) and each company's
+  Gallery videos at `MEDIA_COMPANY_VIDEO_MAX_BYTES` (300 MB); with videos, a few companies can fill it. Watch Admin,
+  Health and Storage, and plan Supabase Pro before many clients upload videos.
 - **Functions run in US East (Ohio).** Changing the region is a Pro feature. Supabase in `us-east-1` or `us-east-2` keeps database round trips short; visitors in Rwanda see about 250 ms of network distance to Ohio on each uncached request.
 - **1 GB of memory per function** on the free plan. Enough for the JPEG conversion of a 4096 px photo.
 - The shared cache for rendered designs and fonts (Netlify Cache API) is per region and emptied on every deploy.
@@ -55,31 +63,70 @@ Other limits, on every plan:
 
 ## 2. Environment variables (Netlify)
 
-Project configuration, Environment variables, Add a variable. Use the scope "All scopes" (builds and functions) unless noted. These are the same values as the Cloudflare secrets in `docs/DEPLOY.md`, plus:
+Project configuration, Environment variables, Add a variable. Scope "All scopes" (builds and functions) unless noted;
+mark secret ones "Contains secret values". Changing a variable needs a new deploy to reach the functions. `.env.example`
+lists every variable, empty, grouped and commented; this is where each one goes in production.
 
-| Name | Value |
-| --- | --- |
-| `DATABASE_URL` | Supabase **transaction pooler** string (Connect, Transaction pooler, port **6543**). Every function instance holds its own small pool (3 connections, `DATABASE_POOL_MAX` changes it), so the transaction pooler is the right one for serverless. |
-| `PLATFORM` | `netlify`. Detection works without it (the `Netlify` global and the build sets it), this just makes it explicit. |
-| `AWS_LAMBDA_JS_RUNTIME` | Optional. `nodejs24.x` pins the functions' Node version (otherwise it follows the build's Node 24). Must be set here, not in `netlify.toml`. |
-| `NEXT_PUBLIC_SITE_URL` | `https://bupulse.com` (or the `*.netlify.app` URL until the domain moves) |
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | As on Cloudflare |
-| `SUPABASE_SECRET_KEY`, `ENCRYPTION_KEY`, `CRON_SECRET`, `API_KEY_PEPPER` | As on Cloudflare. **`ENCRYPTION_KEY` and `API_KEY_PEPPER` must be the same values as on Cloudflare**, or stored tokens and API keys stop working. |
-| `AI_TEXT_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_TEXT_MODEL`, `ANTHROPIC_API_KEY`, `CLAUDE_TEXT_MODEL`, `CLAUDE_EFFORT` | As on Cloudflare |
-| `RESEND_API_KEY`, `RESEND_FROM`, `GOOGLE_MAPS_API_KEY`, `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, Paddle, Meta, LinkedIn, TikTok, YouTube, Canva, Shopify, Google Calendar keys | As on Cloudflare (`.env.example` lists them all) |
-| `ADMIN_EMAILS` | As on Cloudflare |
-| `GITHUB_REPO`, `GITHUB_TOKEN` | For Admin, Settings, Updates (`docs/UPDATES.md`). Scope: Functions. |
-| `VIDEO_ROBOT_SECRET` | Optional. Turns on the video robot (`docs/VIDEO_ROBOT.md`): a long random string, the same value as the GitHub secret of that name. Unset: the robot API answers 404 and owners make videos in their browser. |
+**Checked on every deploy** (`scripts/check-env.mjs`, run by `deploy-netlify.yml` before `npm ci`): the build values
+in the workflow, then the runtime variables' names read from Netlify's API with the deploy token (secret values cannot
+be read, so only their presence). It prints names and problems only, never a value, and stops the deploy on a missing
+required variable or a development switch. Locally, with a filled-in file:
+`node --env-file=.env.production scripts/check-env.mjs --runtime` (formats too: https site address, 32-byte
+`ENCRYPTION_KEY`, secrets of at least 32 characters, numbers, the WhatsApp number).
 
-Not needed on Netlify: `HYPERDRIVE` (Cloudflare only), `DIRECT_URL` (only the deploy workflow uses it, from GitHub).
+Required (the deploy stops without them):
 
-Mark the secret ones as "Contains secret values". Changing a variable needs a new deploy to reach the functions.
+| Name | Where | Value |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SITE_URL` | Netlify **and** GitHub variable | `https://bupulse.com` (or the `*.netlify.app` URL until the domain moves) |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Netlify **and** GitHub variables | Supabase, Project Settings, API |
+| `DATABASE_URL` | Netlify | **Transaction pooler** string (port **6543**). Each function instance holds its own small pool (3 connections; `DATABASE_POOL_MAX` changes it). |
+| `DIRECT_URL` | GitHub secret only | Session connection (port 5432), for the migrations |
+| `SUPABASE_SECRET_KEY` | Netlify | `sb_secret_...`: server Storage work (Gallery videos, voiceovers, music, purges) |
+| `ENCRYPTION_KEY`, `API_KEY_PEPPER` | Netlify | 32 random bytes each. **The same values as on Cloudflare** if you move, or stored tokens and API keys stop working |
+| `CRON_SECRET` | Netlify and GitHub secret | Long random string, the same in both |
+| `ADMIN_EMAILS` | Netlify | `admin@bupulse.com` |
+| `AI_TEXT_PROVIDER` and its key (`GEMINI_API_KEY` or `ANTHROPIC_API_KEY`) | Netlify | `gemini` or `claude`. Gemini also makes the AI designs and photos |
+| `RESEND_API_KEY` | Netlify | Resend (sign-in links, reminders, invoices) |
+
+Recommended (the feature switches off without it; the check warns):
+
+| Name | Default when empty | What it does |
+| --- | --- | --- |
+| `AI_MONTHLY_BUDGET_USD` | built-in (Admin, AI usage can override) | Cap on BuPulse's whole AI spend a month; 30 at launch |
+| `AI_COMPANY_MONTHLY_USD` | 3 | Each company's monthly AI allowance in USD |
+| `WIDGET_AI_SHARE` | 0.5 | Share of that allowance the website chat may use |
+| `MEDIA_PLATFORM_MAX_BYTES` | 900 MB | Shared storage guard (Supabase free: 1 GB in all) |
+| `MEDIA_COMPANY_VIDEO_MAX_BYTES` | 300 MB | Each company's Gallery videos (`docs/MEDIA.md`) |
+| `ELEVENLABS_API_KEY` | off | Voiceovers and Generate a track (`docs/VOICE_AND_MUSIC.md`), server-only |
+| `VIDEO_ROBOT_SECRET` | robot off | The video robot (`docs/VIDEO_ROBOT.md`); the same value as the GitHub secret |
+| `NEXT_PUBLIC_WHATSAPP_NUMBER` | button hidden | Chat on WhatsApp (international format). Also a GitHub variable (build value) |
+| `RESEND_FROM` | built-in sender | e.g. `BuPulse <hello@bupulse.com>` |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | rate limits only | Sign-up and chat bot protection |
+| `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET` | link and .ics only | Demo bookings in Google Calendar |
+| `GITHUB_REPO`, `GITHUB_TOKEN` | "Not connected" | Admin, Settings, Updates (`docs/UPDATES.md`). Scope: Functions |
+
+Set as needed: `PLATFORM` (`netlify`; also a build value, the workflow sets it), `GEO_PROVIDER` (`builtin`),
+`GOOGLE_MAPS_API_KEY`, the social apps (`FACEBOOK_*`, `INSTAGRAM_*`, `META_APP_SECRET`, `LINKEDIN_*`, `TIKTOK_*`,
+`GOOGLE_YOUTUBE_*`), Paddle (`BILLING_PROVIDER`, `PADDLE_*`), Canva (`CANVA_*`), imports (`GOOGLE_PICKER_*`,
+`GOOGLE_CLIENT_ID`, `DROPBOX_APP_KEY`, `SHOPIFY_*`), the model names (`GEMINI_*_MODEL`, `CLAUDE_*`,
+`CHEAP_TEXT_MODEL`, `WIDGET_MODEL`, `ELEVENLABS_MODEL`), `BILLING_SIGNING_SECRET`, `ENCRYPTION_KEY_ID`,
+`DB_SIZE_LIMIT_MB`, `MCP_ALLOWED_ORIGINS`, `DATABASE_POOL_MAX`, `AWS_LAMBDA_JS_RUNTIME` (optional, `nodejs24.x` pins the
+functions' Node; Netlify UI only).
+
+Never in production: `ANALYTICS_DEV_COUNTRY`, `REGION_OVERRIDE` (the check refuses them). `PLATFORM_CHECK=1` only for
+the 10-minute check in section 7 (the check warns while it is set).
+
+GitHub only (section 3): `NETLIFY_AUTH_TOKEN`, `NETLIFY_SITE_ID`, `DIRECT_URL`, `CRON_SECRET`, `VIDEO_ROBOT_SECRET`
+(secrets); `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`,
+`NEXT_PUBLIC_WHATSAPP_NUMBER`, `ROBOT_APP_URL`, `DEPLOY_TARGET` (variables). Not needed on Netlify: `HYPERDRIVE`
+(Cloudflare only).
 
 ## 3. GitHub (once)
 
 Settings of the repository:
 
-- **Environments, `production`**, environment secrets: `NETLIFY_AUTH_TOKEN` (the token from step 1.5), `NETLIFY_SITE_ID` (step 1.4), `DIRECT_URL` (already there for Cloudflare). Environment variables: `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (already there). Keep "Required reviewers" and "Deployment branches: main" as in `docs/UPDATES.md`.
+- **Environments, `production`**, environment secrets: `NETLIFY_AUTH_TOKEN` (the token from step 1.5), `NETLIFY_SITE_ID` (step 1.4), `DIRECT_URL` (already there for Cloudflare). Environment variables: `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (already there) and `NEXT_PUBLIC_WHATSAPP_NUMBER` (new in 2.0: without it the production build has no WhatsApp button, whatever Netlify says). Keep "Required reviewers" and "Deployment branches: main" as in `docs/UPDATES.md`.
 - **Video robot (optional, `docs/VIDEO_ROBOT.md`)**: repository secret `VIDEO_ROBOT_SECRET` (same value as in Netlify) and repository variable `ROBOT_APP_URL` (the site, e.g. `https://bupulse.com`). Without them `video-robot.yml` skips quietly. Videos are never rendered in a Netlify function (60 s): the robot renders them on GitHub's runner and only calls short API routes.
 - **Secrets and variables, Actions, Variables (repository variable)**: `DEPLOY_TARGET` = `netlify`. From now on a push to `main` runs `deploy-netlify.yml` and skips `deploy.yml`. Delete the variable (or set `cloudflare`) to go back.
 
@@ -108,7 +155,8 @@ If BuPulse moves back to Cloudflare Workers, the Worker route takes the domain a
 
 ## 6. Scheduled jobs
 
-`netlify/functions/cron-*.mts` are deployed with the site and start by themselves on the published deploy. Same jobs and schedules as the Worker (UTC):
+`netlify/functions/cron-*.mts` are deployed with the site and start by themselves on the published deploy. The video
+robot is not one of them: it runs on GitHub Actions every 15 minutes (`video-robot.yml`) and calls `/api/robot/*`. Same jobs and schedules as the Worker (UTC):
 
 | Function | Schedule | Route |
 | --- | --- | --- |

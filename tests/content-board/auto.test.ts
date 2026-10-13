@@ -59,6 +59,18 @@ describe("autoSchedule", () => {
     expect(call.data).toEqual({ status: "SCHEDULED", scheduledAt: new Date("2026-10-13T16:00:00Z"), autoScheduledAt: now, reviewNote: null });
   });
 
+  it("never schedules a contest on its own, confirmed or not", async () => {
+    pending = [post("c1", { contest: {}, text: "Win [PRIZE]" }), post("c2", { contest: { confirmedAt: "2026-10-12T08:00:00Z" }, text: "Win 50,000 RWF" })];
+    expect(await autoSchedule("b1", ["c1", "c2"], now)).toEqual({ scheduled: 0, waiting: 2 });
+    expect(scheduledCalls()).toEqual([]);
+  });
+
+  it("the safety rules (Schedule all, the connect switch) refuse an unconfirmed contest with its reason", async () => {
+    const { safetyReasons } = await import("@/lib/content-board/auto");
+    const reasons = await safetyReasons("b1", [post("c1", { contest: {}, text: "Win 50,000 RWF" }) as never]);
+    expect(reasons.get("c1")).toBe("Needs your confirmation: prize & rules");
+  });
+
   it("only reads this business's posts that still wait for review", async () => {
     await autoSchedule("b1", ["a", "a", "b"], now);
     expect(prisma.post.findMany.mock.calls[0][0].where).toEqual({ id: { in: ["a", "b"] }, businessId: "b1", status: "PENDING_APPROVAL" });

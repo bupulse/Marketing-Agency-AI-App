@@ -5,7 +5,7 @@ import type { Network } from "@/lib/social/types";
 import { seed } from "./variety";
 import { NETWORK_STYLE, type Shape } from "./networks";
 
-export type GalleryItem = { path: string; name: string; mimeType: string; recentUses?: number };
+export type GalleryItem = { path: string; name: string; mimeType: string; recentUses?: number; description?: string | null };
 
 export const isVideoItem = (m: Pick<GalleryItem, "mimeType" | "path">) => m.mimeType.startsWith("video/") || /\.(mp4|webm)$/i.test(m.path);
 const isMp4 = (m: GalleryItem) => m.mimeType === "video/mp4" || /\.mp4$/i.test(m.path);
@@ -44,30 +44,41 @@ export function orderVideos(items: GalleryItem[]): GalleryItem[] {
  * - Facebook and LinkedIn: a picture.
  * Each post leads with a different photo when the album has several.
  */
-export function assignMedia(input: { networks: Network[]; gallery: GalleryItem[]; day: string; videoInPlan: boolean }): Map<Network, PostMedia> {
+export function assignMedia(input: { networks: readonly Network[]; gallery: GalleryItem[]; day: string; videoInPlan: boolean }): PostMedia[] {
   const photos = orderPhotos(input.gallery, input.day);
   const videos = orderVideos(input.gallery);
-  const out = new Map<Network, PostMedia>();
   let nextVideo = 0;
-  input.networks.forEach((network, index) => {
+  const reels = new Set<Network>();
+  return input.networks.map((network, index): PostMedia => {
     const lead = photos.length ? [...photos.slice(index % photos.length), ...photos.slice(0, index % photos.length)] : [];
     const style = NETWORK_STYLE[network];
     if (style.video === "always") {
-      if (videos.length) out.set(network, { kind: "gallery-video", video: videos[nextVideo++ % videos.length], photos: lead });
-      else out.set(network, { kind: input.videoInPlan ? "render-video" : "script", photos: lead });
-      return;
+      if (videos.length) return { kind: "gallery-video", video: videos[nextVideo++ % videos.length], photos: lead };
+      return { kind: input.videoInPlan ? "render-video" : "script", photos: lead };
     }
-    const reel = style.video === "when-given" ? videos.find(isMp4) : undefined;
-    if (reel) out.set(network, { kind: "gallery-video", video: reel, photos: lead });
-    else out.set(network, { kind: "image", photos: lead });
+    // One Reel of the album's video per app a day; the app's other posts that day are pictures.
+    const reel = style.video === "when-given" && !reels.has(network) ? videos.find(isMp4) : undefined;
+    if (reel) {
+      reels.add(network);
+      return { kind: "gallery-video", video: reel, photos: lead };
+    }
+    return { kind: "image", photos: lead };
   });
-  return out;
+}
+
+/** Real before / after material: Gallery items described or named so. */
+export function hasBeforeAfter(items: readonly Pick<GalleryItem, "name" | "description">[]): boolean {
+  const said = (m: Pick<GalleryItem, "name" | "description">) => `${m.description ?? ""} ${m.name}`.toLowerCase();
+  return items.some((m) => /\bbefore\b|\bavant\b/.test(said(m))) && items.some((m) => /\bafter\b|\baprès\b|\bapres\b/.test(said(m)));
 }
 
 const MEANINGLESS = /^(img|dsc|dscn|pxl|photo|image|video|vid|whatsapp( image| video)?|screenshot|screen shot|mvimg)[\W_]*\d/i;
 
 /** A file's name as a description of what it shows ("hydro-tower_in class.jpg" -> "hydro tower in class"), or null. */
-export function describeItem(item: Pick<GalleryItem, "name">): string | null {
+export function describeItem(item: Pick<GalleryItem, "name" | "description">): string | null {
+  // The owner's description in the Gallery says best what it shows.
+  const description = item.description?.replace(/\s+/g, " ").trim();
+  if (description) return description.slice(0, 160);
   const name = item.name.replace(/\.[a-z0-9]{2,4}$/i, "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
   if (!name || MEANINGLESS.test(item.name) || /^\d+$/.test(name)) return null;
   return name.slice(0, 120);

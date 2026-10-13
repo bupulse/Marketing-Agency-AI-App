@@ -43,8 +43,9 @@ The owner's own clips go in the Gallery like photos, so AI content uses them fir
   per bucket by the database, cached a minute), so files nobody recorded count too. The Gallery says how much video
   space is used and that storage is small for now.
 - **Unrecorded files** (`lib/media/storage-sweep.ts`): the daily media-cleanup cron drops expired reservations and
-  walks every company, page by page: its `gallery/` (media), `clips/` (gallery-videos) and any folder under its
-  `media` folder the app never writes (not gallery, videos or projects). Files older than an hour that no row records
+  walks every company, page by page, for the owner and each team member's own folder: its `gallery/` (media), `clips/`
+  (gallery-videos) and any folder under its `media` folder the app never writes (not gallery, videos or projects),
+  nested folders included (4 levels, 200 list pages per tree). Files older than an hour that no row records
   (photo or video, poster, Instagram copy, open reservation, waiting post) are deleted. The upload path runs the same
   per-company sweep on a share of requests (`sweepOrphans`).
 - **Gallery screen**: video tiles show the poster, a play mark and the length; the viewer plays the video (poster

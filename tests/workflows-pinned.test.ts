@@ -51,6 +51,12 @@ describe("GitHub workflows", () => {
     expect(deploy).toContain("--prod");
     expect(deploy).not.toContain("--build ");
     expect(deploy).toContain("NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}");
+    // The variables are checked (by this repository's script only) before any package is installed.
+    expect(yml.indexOf("node scripts/check-env.mjs --build")).toBeGreaterThan(0);
+    expect(yml.indexOf("node scripts/check-env.mjs --netlify")).toBeLessThan(yml.indexOf("- run: npm ci"));
+    expect(yml.indexOf("node scripts/check-env.mjs --build")).toBeLessThan(yml.indexOf("- run: npm ci"));
+    // Every NEXT_PUBLIC_* value the code reads is a build value of the deploy.
+    expect(yml).toContain("NEXT_PUBLIC_WHATSAPP_NUMBER: ${{ vars.NEXT_PUBLIC_WHATSAPP_NUMBER }}");
     // The token is never job-wide.
     expect(yml.split("\n").filter((l) => l.includes("NETLIFY_AUTH_TOKEN:")).every((l) => l.startsWith("          "))).toBe(true);
   });

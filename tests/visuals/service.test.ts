@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   getUsageSummary: vi.fn(),
   spend: vi.fn(),
   createAiDesign: vi.fn(),
+  refundUsage: vi.fn(async () => undefined),
   createTemplateDesign: vi.fn(),
   mediaUsage: vi.fn(),
   assertPlatformRoom: vi.fn(),
@@ -33,7 +34,7 @@ vi.mock("@/lib/usage", () => {
       super("limit");
     }
   }
-  return { consumeUsage: mocks.consumeUsage, getUsageSummary: mocks.getUsageSummary, UsageLimitError };
+  return { consumeUsage: mocks.consumeUsage, getUsageSummary: mocks.getUsageSummary, refundUsage: mocks.refundUsage, UsageLimitError };
 });
 vi.mock("@/lib/ai/budget", async (original) => ({ ...(await original<typeof import("@/lib/ai/budget")>()), companySpendThisMonth: mocks.spend }));
 vi.mock("@/lib/ai", () => ({ getCheapTextProvider: () => ({ provider: { name: "gemini", generate: mocks.generate }, model: "gemini-2.5-flash-lite" }) }));
@@ -163,6 +164,19 @@ describe("drawSlide (image sources and fallbacks)", () => {
     expect(mocks.createAiDesign).toHaveBeenCalledTimes(1);
     expect(next).toMatchObject({ source: "album", photoPath: photo });
     expect(next.note).toMatch(/not available/);
+  });
+
+  it("uses the credit reserved when the run was planned, and gives it back when no AI photo is made", async () => {
+    const reserved = "2026-10-01T00:00:00.000Z";
+    const state = { aiAllowed: true, aiMade: 0, maxAi: 1 };
+    const out = await drawSlide(owner, "p1", p, slide({ source: "ai", prepaidAi: reserved }), state);
+    expect(mocks.createAiDesign.mock.calls[0][0]).toMatchObject({ prepaid: { periodStart: new Date(reserved) } });
+    expect(out.prepaidAi).toBeNull();
+    expect(mocks.refundUsage).not.toHaveBeenCalled();
+    // The cap is reached: the reserved credit goes back.
+    const next = await drawSlide(owner, "p1", p, slide({ source: "ai", prepaidAi: reserved }), state);
+    expect(next.source).toBe("album");
+    expect(mocks.refundUsage).toHaveBeenCalledWith(owner.userId, "image", new Date(reserved));
   });
 
   it("no image credits: the album photo, and AI is not tried again this time", async () => {

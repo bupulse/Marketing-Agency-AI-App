@@ -284,3 +284,15 @@ describe("one app per idea (content packs)", () => {
     expect(Math.max(...perAccount.values()) - Math.min(...perAccount.values())).toBeLessThanOrEqual(1);
   });
 });
+
+describe("posts per app per day count what is already there", () => {
+  it("a product that already has its post on an app that day gets no second one from Autopilot", () => {
+    const connections = [conn("c-ig", "instagram")];
+    const base = input({ connections, projects: [project("p1", "product")], config: { ...DEFAULT_CONFIG, postsPerWeek: 7, connectionIds: [] } });
+    const free = buildWeekPlan(base);
+    const busy = free.groups.find((g) => g.project?.id === "p1")!;
+    const plan = buildWeekPlan({ ...base, existing: [{ connectionId: null, scheduledAt: busy.posts[0].scheduledAt, network: "instagram", subjectId: "p1" }] });
+    expect(plan.groups.some((g) => g.project?.id === "p1" && g.day === busy.day)).toBe(false);
+    expect(plan.notes.join(" ")).toMatch(/per app a day/);
+  });
+});

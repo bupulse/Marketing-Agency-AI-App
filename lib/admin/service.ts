@@ -494,7 +494,7 @@ export async function getPlanLimitsView() {
 }
 
 /** Sets a plan's limits (they live on the plan; /admin/plans edits the same numbers). A metric set to null goes back to its seed value. */
-export async function updatePlanLimits(ctx: AdminContext, input: { plan: string; limits: Partial<Record<UsageMetric | "seats", number | null>>; confirm?: boolean }) {
+export async function updatePlanLimits(ctx: AdminContext, input: { plan: string; limits: Partial<Record<UsageMetric | "seats" | "postsPerAppPerDay", number | null>>; confirm?: boolean }) {
   requireConfirm(ctx, input.confirm, "Changing plan limits");
   if (!input.plan) throw new AdminError("invalid", "plan is required.");
   const { plan, effective } = await setPlanLimits(ctx, { plan: input.plan, limits: input.limits });

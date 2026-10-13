@@ -199,8 +199,8 @@ export function SettingsCard({ initial, accounts, timeZone }: { initial: Autopil
           onChange={(v) => set("autoPublish", v)}
         />
         <ToggleRow
-          title="Use AI images (uses image credits)"
-          text="Off: your own photos in free brand templates. On: Autopilot creates a new picture for each post, using 1 image credit each. It falls back to free templates when credits run out."
+          title="AI images with people (on by default, uses image credits)"
+          text="On (the default): most posts get a new AI picture with people who look like your customers, using 1 image credit each, and free templates with your photos when the month's AI images run out. Off: only your own photos in free brand templates, no image credits used."
           checked={config.useAiImages}
           onChange={(v) => set("useAiImages", v)}
         />

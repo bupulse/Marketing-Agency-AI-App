@@ -12,6 +12,7 @@ import { validatePost, type PostFormatName } from "@/lib/publishing/validate";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { autoDecision } from "./rules";
 import { readContentSettings, requiresApproval } from "./settings";
+import { CONTEST_NOTE, contestBlocked } from "@/lib/content-flow/contest";
 
 const VIDEO = /\.(mp4|webm)$/i;
 
@@ -33,10 +34,11 @@ export const SAFETY_SELECT = {
   reviewNote: true,
   updatedAt: true,
   remindOnly: true,
+  contest: true,
   connection: { select: { status: true, postingMode: true } },
 } as const;
 
-type SafetyPost = { id: string; network: string; format: string; text: string; hashtags: string[]; mediaPaths: string[]; contentId: string | null; groupId: string | null; remindOnly: boolean; connection: { status: string; postingMode: string } | null };
+type SafetyPost = { id: string; network: string; format: string; text: string; hashtags: string[]; mediaPaths: string[]; contentId: string | null; groupId: string | null; remindOnly: boolean; contest?: unknown; connection: { status: string; postingMode: string } | null };
 
 /**
  * Why each post could not go out safely right now (null: it can), ignoring the approval setting: the plan, the
@@ -76,7 +78,8 @@ export async function safetyReasons(businessId: string, posts: readonly SafetyPo
       imagePending: pending(post, false),
       issues: rules && format ? validatePost(rules, { format, text: post.text, hashtags: post.hashtags, mediaCount: post.mediaPaths.length }).errors : [],
     });
-    out.set(post.id, decision.action === "review" ? decision.reason : null);
+    // A contest without the owner's confirmed prize and rules never goes out (lib/content-flow/contest.ts).
+    out.set(post.id, contestBlocked(post) ? CONTEST_NOTE : decision.action === "review" ? decision.reason : null);
   }
   return out;
 }
@@ -91,7 +94,8 @@ export async function autoSchedule(businessId: string, postIds: string[], now = 
 
   const posts = await prisma.post.findMany({ where: { id: { in: ids }, businessId, status: "PENDING_APPROVAL" }, select: SAFETY_SELECT });
   // Nothing to decide when every app here waits for approval.
-  const candidates = posts.filter((p) => !requiresApproval(settings, p.network));
+  // A contest is never scheduled on its own, even once confirmed: the owner approves it (lib/content-flow/contest.ts).
+  const candidates = posts.filter((p) => !requiresApproval(settings, p.network) && p.contest == null);
   if (candidates.length === 0) return { scheduled: 0, waiting: posts.length };
   const reasons = await safetyReasons(businessId, candidates);
 
