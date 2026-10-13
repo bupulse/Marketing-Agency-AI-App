@@ -12,6 +12,7 @@ import { loadOnePost, loadSubjectInfo, loadSubjectPosts } from "@/lib/content-bo
 import { loadComposerContext } from "@/lib/publishing/queries";
 import { CreatePostsButton } from "./content-actions";
 import { FilterBar } from "./filter-bar";
+import { ScheduleAllButton } from "./schedule-all";
 import { GeneratePostsButton } from "./generate-posts";
 import { PostBoard } from "./post-board";
 
@@ -84,6 +85,9 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
         }
       />
       <FilterBar filters={filters} />
+      <div className="-mt-3 flex justify-end">
+        <ScheduleAllButton query={contentQuery(filters)} scope={scope} />
+      </div>
       {latest && !latest.hasPosts && list.posts.length > 0 && (
         <GlassCard className="flex flex-wrap items-center gap-3 p-4">
           <p className="min-w-0 flex-1 text-[15px]">The newest content for this {thing} has no posts yet.</p>

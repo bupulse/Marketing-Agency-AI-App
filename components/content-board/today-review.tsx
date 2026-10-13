@@ -11,6 +11,7 @@ import { PostDetail } from "@/components/publishing/post-detail";
 import type { ContentPost } from "@/lib/content-board/queries";
 import type { CalendarPost, ComposerContext } from "@/lib/publishing/types";
 import { autoNetworksOf, visualHrefFor } from "./post-board";
+import { approvedMessage } from "@/lib/content-board/labels";
 import { PostCard } from "./post-card";
 
 /**
@@ -27,23 +28,22 @@ export function TodayReview({ posts, older, zone, context }: { posts: ContentPos
   const [editing, setEditing] = useState<CalendarPost | null>(null);
   const detail = posts.find((p) => p.id === detailId) ?? null;
 
-  function run(id: string | null, action: () => Promise<{ ok: boolean; error?: string } & Record<string, unknown>>, done: (res: Record<string, unknown>) => string) {
+  function run(id: string | null, action: () => Promise<{ ok: boolean; error?: string } & Record<string, unknown>>, done: (res: Record<string, unknown>) => string | { text: string; tone: "success" | "error" }) {
     setBusyId(id);
     start(async () => {
       const res = await action();
       setBusyId(null);
       setRejecting(null);
       if (!res.ok) return toast(res.error ?? "That did not work. Please try again.", "error");
-      toast(done(res), "success");
+      const message = done(res);
+      if (typeof message === "string") toast(message, "success");
+      else toast(message.text, message.tone);
       router.refresh();
     });
   }
 
   const approveAll = () =>
-    run(null, () => approvePostsAction(posts.map((p) => p.id)), (res) => {
-      const n = Number(res.approved ?? 0);
-      return n === 1 ? "1 post approved. It goes out at the best time." : `${n} posts approved. Each goes out at the best time for its app.`;
-    });
+    run(null, () => approvePostsAction(posts.map((p) => p.id)), (res) => approvedMessage(res, posts.length));
 
   return (
     <section aria-labelledby="today-heading" className="flex flex-col gap-4">
@@ -89,7 +89,7 @@ export function TodayReview({ posts, older, zone, context }: { posts: ContentPos
                     </>
                   ) : (
                     <>
-                      <Button size="sm" leading={<CheckCheck aria-hidden className="size-4" />} disabled={pending} onClick={() => run(post.id, () => approvePostsAction([post.id]), () => "Approved. It goes out at the best time.")} aria-label={`Approve ${post.accountName} post`}>
+                      <Button size="sm" leading={<CheckCheck aria-hidden className="size-4" />} disabled={pending} onClick={() => run(post.id, () => approvePostsAction([post.id]), (res) => approvedMessage(res, 1))} aria-label={`Approve ${post.accountName} post`}>
                         {busyId === post.id ? "Approving..." : "Approve"}
                       </Button>
                       <Button size="sm" variant="outline" leading={<Pencil aria-hidden className="size-4" />} disabled={pending} onClick={() => setEditing(post)} aria-label={`Edit ${post.accountName} post`}>

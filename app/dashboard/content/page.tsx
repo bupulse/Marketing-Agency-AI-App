@@ -10,7 +10,11 @@ import { SubjectGrid } from "@/components/content-board/subject-grid";
 import { TodayReview } from "@/components/content-board/today-review";
 import { Button, GlassCard } from "@/components/ui";
 import { parseContentFilters } from "@/lib/content-board/filters";
-import { loadSubjectCards, loadToday, recentAutoCount, switchableByHand } from "@/lib/content-board/queries";
+import { loadSubjectCards, loadToday, missingApps, recentAutoCount, switchableByHand } from "@/lib/content-board/queries";
+import { contentQuery } from "@/lib/content-board/filters";
+import { can } from "@/lib/team/roles";
+import { ConnectAppsBanner } from "@/components/content-board/connect-apps-banner";
+import { ScheduleAllButton } from "@/components/content-board/schedule-all";
 import { loadComposerContext } from "@/lib/publishing/queries";
 
 export const metadata = { title: "Content" };
@@ -20,18 +24,19 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 export default async function ContentPage({ searchParams }: { searchParams: SearchParams }) {
   const blocked = await featureGate("content");
   if (blocked) return blocked;
-  const { business, entitlements } = await getAppContext();
+  const { business, entitlements, role } = await getAppContext();
   const filters = parseContentFilters(await searchParams);
   const zone = business.timezone || "UTC";
   const now = new Date();
   const posting = entitlements.usable.has("calendar");
 
-  const [cards, today, autoCount, context, switchable] = await Promise.all([
+  const [cards, today, autoCount, context, switchable, missing] = await Promise.all([
     loadSubjectCards(business.id, filters, zone, now),
     posting ? loadToday(business.id, filters, zone, now) : null,
     posting ? recentAutoCount(business.id, now) : 0,
     posting ? loadComposerContext(business.id) : null,
     posting ? switchableByHand(business.id) : [],
+    missingApps(business.id),
   ]);
   const nothingYet = cards.length === 1 && cards[0].kind === "general" && cards[0].total === 0 && !today?.posts.length && !today?.older;
 
@@ -59,6 +64,7 @@ export default async function ContentPage({ searchParams }: { searchParams: Sear
         </GlassCard>
       )}
 
+      <ConnectAppsBanner apps={missing} canConnect={can(role, "channels")} />
       {switchable.length > 0 && <SwitchToAutoBanner postIds={switchable} />}
 
       {nothingYet ? (
@@ -72,6 +78,11 @@ export default async function ContentPage({ searchParams }: { searchParams: Sear
         <>
           {today && context && <TodayReview posts={today.posts} older={today.older} zone={zone} context={context} />}
           <FilterBar filters={filters} />
+          {posting && (
+            <div className="-mt-4 flex justify-end">
+              <ScheduleAllButton query={contentQuery(filters)} />
+            </div>
+          )}
           <SubjectGrid cards={cards} filters={filters} />
         </>
       )}

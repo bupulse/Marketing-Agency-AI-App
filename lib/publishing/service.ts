@@ -177,9 +177,14 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
   );
   // Scheduled from Studio content by hand: the drafts BuPulse made of that content for the same accounts are replaced,
   // in the same transaction, unless the owner already edited them.
+  // The owner's edited drafts are kept as history but cancelled (superseded), so the account never gets two posts.
+  const draftsOf = { businessId: owner.businessId, contentId: content?.id, source: "STUDIO" as const, status: "PENDING_APPROVAL" as const, connectionId: { in: ordered.map((c) => c.id) } };
   const replace =
     !draft && content
-      ? [prisma.post.deleteMany({ where: { businessId: owner.businessId, contentId: content.id, source: "STUDIO", status: "PENDING_APPROVAL", ownerEditedAt: null, connectionId: { in: ordered.map((c) => c.id) } } })]
+      ? [
+          prisma.post.deleteMany({ where: { ...draftsOf, ownerEditedAt: null } }),
+          prisma.post.updateMany({ where: { ...draftsOf, ownerEditedAt: { not: null } }, data: { status: "CANCELLED", reviewNote: "Replaced by the post you scheduled." } }),
+        ]
       : [];
   const created = (await prisma.$transaction([...creates, ...replace])).slice(0, creates.length) as { id: string }[];
   if (!draft) await trackEvent(EVENT_NAMES.postScheduled, { businessId: owner.businessId, props: { count: created.length, status: time.status } });
@@ -365,27 +370,30 @@ export async function scheduleAtFreeSlot(
  * that still wait are touched. A post keeps its planned time when that is still ahead; one without a time, or whose
  * time passed, goes out at the best time for its network.
  */
-export async function approvePosts(businessId: string, postIds: string[], now = new Date()): Promise<{ approved: number }> {
+export async function approvePosts(businessId: string, postIds: string[], now = new Date()): Promise<{ approved: number; skipped: number }> {
   const ids = [...new Set(postIds)].slice(0, 200);
-  if (ids.length === 0) return { approved: 0 };
+  if (ids.length === 0) return { approved: 0, skipped: 0 };
   const posts = await prisma.post.findMany({ where: { id: { in: ids }, businessId, status: "PENDING_APPROVAL" }, select: { id: true, network: true, connectionId: true, scheduledAt: true } });
-  if (posts.length === 0) return { approved: 0 };
+  if (posts.length === 0) return { approved: 0, skipped: 0 };
 
   const stale = posts.filter((p) => !p.scheduledAt || p.scheduledAt.getTime() <= now.getTime());
   const times = stale.length > 0 ? await bestTimesFor(businessId, stale, now) : new Map<string, Date>();
 
+  // `skipped`: no free time could be found (every pick was taken by another post on the account): it stays in review.
   let approved = 0;
+  let skipped = 0;
   for (const post of posts) {
     const scheduledAt = times.get(post.id);
     const data = { status: "SCHEDULED" as const, reviewNote: null };
     if (scheduledAt) {
       if (await scheduleAtFreeSlot(post, scheduledAt, { businessId, where: { status: "PENDING_APPROVAL" }, data, now })) approved += 1;
+      else skipped += 1;
       continue;
     }
     const { count } = await prisma.post.updateMany({ where: { id: post.id, businessId, status: "PENDING_APPROVAL" }, data });
     approved += count;
   }
-  return { approved };
+  return { approved, skipped };
 }
 
 /**

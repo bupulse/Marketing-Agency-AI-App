@@ -161,7 +161,7 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = []
 
       <div className="flex flex-wrap gap-2">
         {post.status === "PENDING_APPROVAL" && (
-          <Button size="sm" leading={<CheckCheck aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => approvePostsAction([post.id]), "Approved. It will go out at its time.")}>Approve</Button>
+          <Button size="sm" leading={<CheckCheck aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => approvePostsAction([post.id]), (res) => (Number(res.skipped ?? 0) > 0 ? { text: "No free time was found for it. Open it, pick a time with Move, then approve.", tone: "error" } : { text: "Approved. It will go out at its time.", tone: "success" }))}>Approve</Button>
         )}
         {post.status === "FAILED" && (
           <Button size="sm" leading={<RotateCw aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => retryPostAction(post.id), retryMessage)}>Retry</Button>

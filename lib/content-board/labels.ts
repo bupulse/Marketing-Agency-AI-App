@@ -42,3 +42,35 @@ export const CHIP_STYLE: Record<ChipTone, string> = {
   failed: "bg-danger-bg text-danger",
   action: "bg-amber-500/15 text-amber-800 dark:text-amber-300",
 };
+
+/** What Approve or Approve all says, including posts no free time was found for. */
+export function approvedMessage(res: { approved?: unknown; skipped?: unknown }, total: number): { text: string; tone: "success" | "error" } {
+  const approved = Number(res.approved ?? 0);
+  const skipped = Number(res.skipped ?? 0);
+  if (skipped > 0) {
+    const missed = skipped === 1 ? "1 could not find a free time" : `${skipped} could not find a free time`;
+    return { text: `Approved ${approved} of ${total}. ${missed}: open ${skipped === 1 ? "it" : "them"} and pick a time.`, tone: approved > 0 ? "success" : "error" };
+  }
+  if (total === 1) return { text: "Approved. It goes out at the best time.", tone: "success" };
+  return { text: `${approved} posts approved. Each goes out at the best time for its app.`, tone: "success" };
+}
+
+/** Statuses of posts that have not gone out yet (the board highlights them). */
+export const UNPOSTED: readonly PostStatusName[] = ["DRAFT", "PENDING_APPROVAL", "SCHEDULED", "PUBLISHING", "NEEDS_ACTION"];
+
+/** The "Not posted yet" note's reason for a card. */
+export function unpostedReason(post: { status: PostStatusName; remindOnly?: boolean; reviewNote?: string | null; network: string }, when: (iso: string) => string, scheduledAt: string | null): string {
+  if (post.remindOnly) return `${networkLabel(post.network)} not connected`;
+  switch (post.status) {
+    case "PENDING_APPROVAL":
+      return post.reviewNote ?? "Waiting for your OK";
+    case "DRAFT":
+      return "Draft";
+    case "NEEDS_ACTION":
+      return "Waiting for you to post it";
+    case "PUBLISHING":
+      return "Going out now";
+    default:
+      return scheduledAt ? `Goes out ${when(scheduledAt)}` : "Scheduled";
+  }
+}

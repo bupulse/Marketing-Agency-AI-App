@@ -163,7 +163,7 @@ describe("approvePosts (Approve and Approve all)", () => {
     prisma.post.findMany.mockImplementation(async (args: { where: { status?: unknown } }) =>
       args.where.status === "PENDING_APPROVAL" ? [{ id: "ig", network: "instagram", connectionId: "c-ig", scheduledAt: null }, { id: "li", network: "linkedin", connectionId: "c-li", scheduledAt: null }] : [],
     );
-    expect(await approvePosts("b1", ["ig", "li"], now)).toEqual({ approved: 2 });
+    expect(await approvePosts("b1", ["ig", "li"], now)).toEqual({ approved: 2, skipped: 0 });
     const calls = prisma.post.updateMany.mock.calls.map((c) => c[0]);
     // Instagram prefers Wednesday evening; LinkedIn mornings, Tuesday to Thursday: today's 18:00 is the only time left today.
     expect(calls[0].data).toEqual({ status: "SCHEDULED", reviewNote: null, scheduledAt: new Date("2026-10-14T16:00:00Z") });

@@ -40,8 +40,55 @@ type ShellProps = {
   role: Role;
   /** The features of the company's plan (lib/features.ts). Pages for the others show "Add to your plan". */
   features: FeatureKey[];
+  /** Things that need the owner's attention, shown under the bell (for example apps to connect). */
+  notices?: ShellNotice[];
   children: ReactNode;
 };
+
+export type ShellNotice = { id: string; title: string; text: string; href: string; action: string };
+
+/** The bell: a short list of notices, or "all caught up". Esc and a click outside close it. */
+function NoticesBell({ notices }: { notices: ShellNotice[] }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onClick = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onClick);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClick);
+    };
+  }, [open]);
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-label={notices.length ? `Notifications, ${notices.length} new` : "Notifications"}
+        aria-expanded={notices.length ? open : undefined}
+        onClick={() => (notices.length ? setOpen((o) => !o) : toast("You're all caught up. No new notifications.", "info"))}
+        className="glass relative inline-flex size-11 cursor-pointer items-center justify-center rounded-full"
+      >
+        <Bell aria-hidden className="size-5" />
+        {notices.length > 0 && <span aria-hidden className="absolute top-2 right-2 size-2.5 rounded-full bg-amber-500 ring-2 ring-[var(--bp-bg-solid)]" />}
+      </button>
+      {open && (
+        <div role="region" aria-label="Notifications" className="glass-strong absolute right-0 z-40 mt-2 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-1 rounded-card p-2 shadow-glass">
+          {notices.map((n) => (
+            <Link key={n.id} href={n.href} onClick={() => setOpen(false)} className="flex flex-col gap-0.5 rounded-2xl p-3 hover:bg-soft">
+              <span className="text-[15px] font-semibold">{n.title}</span>
+              <span className="text-[14px] text-muted">{n.text}</span>
+              <span className="text-[14px] font-semibold text-pulse-blue">{n.action}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Built features of the app the plan does not include: offered in a small group under the navigation. */
 function addable(features: FeatureKey[]) {
@@ -316,9 +363,8 @@ function Drawer({
   );
 }
 
-export function AppShell({ brand, displayName, firstName, email, businessName, plan, role, features, children }: ShellProps) {
+export function AppShell({ brand, displayName, firstName, email, businessName, plan, role, features, notices = [], children }: ShellProps) {
   const pathname = usePathname();
-  const { toast } = useToast();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -380,14 +426,7 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
           </div>
           <div className="flex items-center gap-2.5">
             <ThemeToggle />
-            <button
-              type="button"
-              aria-label="Notifications"
-              onClick={() => toast("You're all caught up. No new notifications.", "info")}
-              className="glass inline-flex size-11 cursor-pointer items-center justify-center rounded-full"
-            >
-              <Bell aria-hidden className="size-5" />
-            </button>
+            <NoticesBell notices={notices} />
             <Button href="/dashboard/knowledge/products/new" size="sm" leading={<Plus aria-hidden className="size-[18px]" />}>
               Add product
             </Button>

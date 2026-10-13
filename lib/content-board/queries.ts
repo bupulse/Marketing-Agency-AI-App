@@ -10,7 +10,7 @@ import type { PostStatusName } from "@/lib/publishing/status";
 import type { CalendarPost } from "@/lib/publishing/types";
 import type { PostFormatName } from "@/lib/publishing/validate";
 import { getProvider, isNetwork } from "@/lib/social/registry";
-import type { Network } from "@/lib/social/types";
+import { NETWORKS, type Network } from "@/lib/social/types";
 import { createClient } from "@/lib/supabase/server";
 import { readItems } from "@/lib/visuals/service";
 import { contentWhere, startOfToday, type ContentFilters, type ContentScope } from "./filters";
@@ -223,4 +223,20 @@ export async function switchableByHand(businessId: string): Promise<string[]> {
     take: 200,
   });
   return rows.map((r) => r.id);
+}
+
+/**
+ * Apps posts are made for that have no usable account: reminder posts not posted yet, and apps Autopilot was told to
+ * write for while not connected. The "Connect your apps" notice lists them until each is connected.
+ */
+export async function missingApps(businessId: string): Promise<Network[]> {
+  const [rows, accounts, autopilot] = await Promise.all([
+    prisma.post.groupBy({ by: ["network"], where: { businessId, remindOnly: true, connectionId: null, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED", "NEEDS_ACTION"] } } }),
+    prisma.connection.findMany({ where: { businessId, kind: "SOCIAL" }, select: { provider: true, status: true, postingMode: true } }),
+    prisma.autopilotSettings.findUnique({ where: { businessId }, select: { enabled: true, connectionIds: true } }),
+  ]);
+  const wanted = new Set<string>(rows.map((r) => r.network));
+  if (autopilot?.enabled) for (const id of autopilot.connectionIds) if (id.startsWith("network:")) wanted.add(id.slice("network:".length));
+  const connected = new Set(accounts.filter((a) => a.status === "ACTIVE" || a.status === "EXPIRING").map((a) => a.provider));
+  return NETWORKS.filter((n) => wanted.has(n) && !connected.has(n));
 }

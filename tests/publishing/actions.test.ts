@@ -76,7 +76,7 @@ describe("calendar actions", () => {
 
   it("approve is scoped to the user's business", async () => {
     const result = await approvePostsAction(["p-other"]);
-    expect(result).toEqual({ ok: true, approved: 0 });
+    expect(result).toEqual({ ok: true, approved: 0, skipped: 0 });
     expect(prisma.post.findMany.mock.calls[0][0].where).toMatchObject({ businessId: "b1", status: "PENDING_APPROVAL" });
   });
 

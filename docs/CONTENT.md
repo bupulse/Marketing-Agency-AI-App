@@ -97,6 +97,26 @@ depend on a connection:
   content whose drafts the owner rejected is never drafted again on its own. A subject whose newest content has no
   posts shows "Create posts from this content".
 
+## Not posted yet, "Schedule all my posts" and the connect notice
+
+- **Highlight.** Every post that has not gone out (draft, needs review, scheduled, posting, post it yourself) has a
+  warning-colour (amber) border and, at the bottom of the card, an icon and "Not posted yet · <reason>" (for example
+  "Instagram not connected" with a Connect link, the review reason, "Goes out <date>"), so it never relies on colour.
+- **Schedule all my posts** (Content page and each subject page; acts on the current view's drafts and posts waiting
+  for review, up to 100): a dialog with "Schedule for me" (best times) or "I'll choose times" (a time per post,
+  prefilled with the suggestion, in the business's time zone). `lib/content-board/schedule-all.ts` applies the same
+  safety rules as auto-approval (`safetyReasons`), writes each post guarded by its `updatedAt`, keeps 2.5 hours per
+  account (`claimSlot`), and reports what was scheduled and what was skipped, with why (time taken, in the past,
+  changed meanwhile, video not made...). Needs the `content` permission and the `calendar` feature.
+- **Approve** reports posts it could not place ("Approved 4 of 5. 1 could not find a free time: open it and pick a
+  time"): `approvePosts` returns `skipped`.
+- **Connect your apps.** While posts (or Autopilot) target apps without a usable account (`missingApps`), the Content
+  page shows "Connect your apps so we can post for you" listing them with "Connect apps" (Channels; Members are told to
+  ask an owner or admin), dismissible for the browser session (it returns in a new session or when the list changes),
+  and the bell shows the same notice with a dot.
+- **Scheduling by hand from content** replaces its untouched drafts for those accounts and cancels the drafts the owner
+  had edited ("Replaced by the post you scheduled"), so an account never gets two posts.
+
 ## Approval and auto-approval
 
 **Settings** (`/dashboard/content/settings`): "Require my approval before posting" per app. Stored as
