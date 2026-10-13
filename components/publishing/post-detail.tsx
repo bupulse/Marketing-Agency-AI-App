@@ -3,10 +3,11 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { CheckCheck, Copy, ExternalLink, Pencil, RotateCw, Trash2, TriangleAlert, Undo2 } from "lucide-react";
+import { CheckCheck, ClipboardCopy, Copy, Download, ExternalLink, Pencil, PlugZap, RotateCw, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { Badge, Button, Dialog, useToast } from "@/components/ui";
 import {
   approvePostsAction,
+  connectByHandPostsAction,
   deletePostAction,
   duplicatePostAction,
   markPostedAction,
@@ -28,13 +29,15 @@ type Props = {
   onEdit: (post: CalendarPost) => void;
   /** Where the post's picture or video is made (its product, campaign or Autopilot), for "Needs review" notes. */
   visualHref?: string | null;
+  /** Apps with a connected account BuPulse posts to: a post made for one before it was connected can switch to it. */
+  autoNetworks?: readonly string[];
 };
 
 /** One post in full: how it looks, what happened to it, and what the owner can do about it. */
-export function PostDetail({ post, zone, onClose, onEdit, visualHref }: Props) {
+export function PostDetail({ post, zone, onClose, onEdit, visualHref, autoNetworks }: Props) {
   return (
     <Dialog open={post !== null} onOpenChange={(o) => !o && onClose()} title={post ? `${networkName(post.network)} post` : "Post"} className="max-w-2xl">
-      {post && <DetailBody key={post.id} post={post} zone={zone} onClose={onClose} onEdit={onEdit} visualHref={visualHref} />}
+      {post && <DetailBody key={post.id} post={post} zone={zone} onClose={onClose} onEdit={onEdit} visualHref={visualHref} autoNetworks={autoNetworks} />}
     </Dialog>
   );
 }
@@ -47,7 +50,7 @@ function retryMessage(res: Record<string, unknown>): { text: string; tone: "succ
   return { text: "We will try again shortly.", tone: "success" };
 }
 
-function DetailBody({ post, zone, onClose, onEdit, visualHref }: Omit<Props, "post"> & { post: CalendarPost }) {
+function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = [] }: Omit<Props, "post"> & { post: CalendarPost }) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
@@ -105,6 +108,20 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref }: Omit<Props, "po
       {post.status === "SCHEDULED" && post.autoScheduledAt && (
         <p className="rounded-2xl bg-soft p-3.5 text-[14px] text-muted">Scheduled on its own because this app needs no approval. You can change it, move it, take it back to review or delete it until it goes out.</p>
       )}
+      {post.remindOnly && post.status !== "PUBLISHED" && (
+        <div className="flex flex-col gap-2 rounded-2xl bg-amber-500/15 p-3.5 text-[14px] text-amber-900 dark:text-amber-200">
+          <p>
+            {networkName(post.network)} is not connected to BuPulse, so this post is a reminder: at its time you get an email with the caption and the {post.media.some((m) => /\.(mp4|webm)$/i.test(m.path)) ? "video" : "pictures"} to post it yourself, then press &ldquo;Mark as posted&rdquo;.
+          </p>
+          {autoNetworks.includes(post.network) ? (
+            <p className="font-medium">{networkName(post.network)} is connected now. Switch this post to publish automatically.</p>
+          ) : (
+            <Link href="/dashboard/connections" className="inline-flex min-h-11 w-fit items-center font-semibold underline underline-offset-2">
+              Connect {networkName(post.network)}
+            </Link>
+          )}
+        </div>
+      )}
       {post.status === "NEEDS_ACTION" && (
         <p className="rounded-2xl bg-amber-500/15 p-3.5 text-[14px] text-amber-900 dark:text-amber-200">
           We emailed you a reminder to post this on {networkName(post.network)}. Once it is up, press &ldquo;Mark as posted&rdquo;.
@@ -144,7 +161,7 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref }: Omit<Props, "po
 
       <div className="flex flex-wrap gap-2">
         {post.status === "PENDING_APPROVAL" && (
-          <Button size="sm" leading={<CheckCheck aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => approvePostsAction([post.id]), "Approved. It will go out at its time.")}>Approve</Button>
+          <Button size="sm" leading={<CheckCheck aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => approvePostsAction([post.id]), (res) => (Number(res.skipped ?? 0) > 0 ? { text: "No free time was found for it. Open it, pick a time with Move, then approve.", tone: "error" } : { text: "Approved. It will go out at its time.", tone: "success" }))}>Approve</Button>
         )}
         {post.status === "FAILED" && (
           <Button size="sm" leading={<RotateCw aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => retryPostAction(post.id), retryMessage)}>Retry</Button>
@@ -152,6 +169,18 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref }: Omit<Props, "po
         {post.status === "NEEDS_ACTION" && (
           <Button size="sm" leading={<CheckCheck aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => markPostedAction(post.id), "Marked as posted.")}>Mark as posted</Button>
         )}
+        {post.remindOnly && autoNetworks.includes(post.network) && (post.status === "PENDING_APPROVAL" || post.status === "SCHEDULED" || post.status === "DRAFT") && (
+          <Button size="sm" leading={<PlugZap aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => connectByHandPostsAction([post.id]), `Switched. It goes out on ${networkName(post.network)} automatically.`)}>Publish automatically</Button>
+        )}
+        {(post.remindOnly || post.notify || post.status === "NEEDS_ACTION") && (
+          <Button variant="outline" size="sm" leading={<ClipboardCopy aria-hidden className="size-4" />} onClick={() => copyCaption(post, toast)}>Copy caption</Button>
+        )}
+        {(post.remindOnly || post.status === "NEEDS_ACTION") &&
+          post.media.map((m, i) => (
+            <a key={m.path} href={m.url} target="_blank" rel="noopener noreferrer" download className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line px-4 text-[14px] font-semibold hover:bg-soft">
+              <Download aria-hidden className="size-4" /> {/\.(mp4|webm)$/i.test(m.path) ? "Video" : post.media.length > 1 ? `Image ${i + 1}` : "Image"}
+            </a>
+          ))}
         {post.status === "SCHEDULED" && (
           <Button variant="outline" size="sm" leading={<Undo2 aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => unschedulePostAction(post.id), "Back in review. It will not go out until you approve it.")}>Back to review</Button>
         )}
@@ -174,5 +203,14 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref }: Omit<Props, "po
         <p className="text-[13px] text-muted">This only removes it from BuPulse. The post stays live on {networkName(post.network)}, so delete it there too if you want it gone.</p>
       )}
     </div>
+  );
+}
+
+/** The caption and hashtags as they are posted, on the clipboard. */
+function copyCaption(post: CalendarPost, toast: (message: string, tone?: "info" | "success" | "error") => void) {
+  const text = [post.title, post.text.trim(), post.hashtags.join(" ")].filter(Boolean).join("\n\n");
+  navigator.clipboard?.writeText(text).then(
+    () => toast("Caption copied.", "success"),
+    () => toast("Could not copy. Select the text and copy it instead.", "error"),
   );
 }

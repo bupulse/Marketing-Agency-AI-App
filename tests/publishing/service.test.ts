@@ -24,6 +24,7 @@ vi.mock("@/lib/db", () => ({ prisma }));
 
 import {
   approvePosts,
+  connectByHandPosts,
   createPosts,
   deletePost,
   duplicatePost,
@@ -350,14 +351,14 @@ describe("actions on existing posts are scoped to the business (IDOR)", () => {
 describe("approvePosts", () => {
   it("only approves this business's posts that are waiting for approval", async () => {
     prisma.post.findMany.mockResolvedValue([{ id: "a", connectionId: "c-fb", scheduledAt: new Date("2026-10-09T07:00:00Z") }]);
-    expect(await approvePosts("b1", ["a", "b", "a"], now)).toEqual({ approved: 1 });
+    expect(await approvePosts("b1", ["a", "b", "a"], now)).toEqual({ approved: 1, skipped: 0 });
     expect(prisma.post.findMany.mock.calls[0][0].where).toEqual({ id: { in: ["a", "b"] }, businessId: "b1", status: "PENDING_APPROVAL" });
     expect(prisma.post.updateMany.mock.calls[0][0]).toEqual({ where: { id: "a", businessId: "b1", status: "PENDING_APPROVAL" }, data: { status: "SCHEDULED", reviewNote: null } });
   });
 
   it("approves nothing for another business's posts", async () => {
     prisma.post.findMany.mockResolvedValue([]);
-    expect(await approvePosts("b1", ["x"], now)).toEqual({ approved: 0 });
+    expect(await approvePosts("b1", ["x"], now)).toEqual({ approved: 0, skipped: 0 });
     expect(prisma.post.updateMany).not.toHaveBeenCalled();
   });
 
@@ -372,7 +373,7 @@ describe("approvePosts", () => {
   });
 
   it("does nothing for an empty list", async () => {
-    expect(await approvePosts("b1", [], now)).toEqual({ approved: 0 });
+    expect(await approvePosts("b1", [], now)).toEqual({ approved: 0, skipped: 0 });
     expect(prisma.post.findMany).not.toHaveBeenCalled();
   });
 });
@@ -410,8 +411,11 @@ describe("owner edits are remembered, so BuPulse never replaces or redraws them"
     prisma.contentVisual.findMany.mockResolvedValue([]);
     await createPosts(owner, compose({ contentId: "content-1" }), now);
     const ops = prisma.$transaction.mock.calls[0][0] as unknown[];
-    expect(ops).toHaveLength(2);
-    expect(prisma.post.deleteMany).toHaveBeenCalledWith({ where: { businessId: "b1", contentId: "content-1", source: "STUDIO", status: "PENDING_APPROVAL", ownerEditedAt: null, connectionId: { in: ["c-fb"] } } });
+    expect(ops).toHaveLength(3);
+    const drafts = { businessId: "b1", contentId: "content-1", source: "STUDIO", status: "PENDING_APPROVAL", connectionId: { in: ["c-fb"] } };
+    expect(prisma.post.deleteMany).toHaveBeenCalledWith({ where: { ...drafts, ownerEditedAt: null } });
+    // A draft the owner edited for the same account is cancelled as superseded, never left as a second post.
+    expect(prisma.post.updateMany).toHaveBeenCalledWith({ where: { ...drafts, ownerEditedAt: { not: null } }, data: { status: "CANCELLED", reviewNote: "Replaced by the post you scheduled." } });
   });
 });
 
@@ -425,11 +429,39 @@ describe("approving never stacks two posts on one account", () => {
       // Queued posts on the account: none at first, then the one that took 18:00.
       return call++ === 0 ? [] : [{ connectionId: "c-fb", scheduledAt: new Date("2026-10-07T16:00:00Z") }];
     });
-    expect(await approvePosts("b1", ["a"], now)).toEqual({ approved: 1 });
+    expect(await approvePosts("b1", ["a"], now)).toEqual({ approved: 1, skipped: 0 });
     expect(prisma.$executeRaw).toHaveBeenCalled();
     const clash = prisma.post.findFirst.mock.calls[0][0].where;
     expect(clash).toMatchObject({ connectionId: "c-fb", id: { not: "a" } });
     const written = prisma.post.updateMany.mock.calls.at(-1)![0].data.scheduledAt as Date;
     expect(Math.abs(written.getTime() - new Date("2026-10-07T16:00:00Z").getTime())).toBeGreaterThanOrEqual(150 * 60_000);
+  });
+});
+
+describe("connectByHandPosts (Publish automatically)", () => {
+  it("moves reminder posts of a now-connected app to its account, and leaves apps still not connected alone", async () => {
+    prisma.post.findMany.mockResolvedValue([
+      { id: "a", network: "facebook", status: "SCHEDULED" },
+      { id: "b", network: "tiktok", status: "PENDING_APPROVAL" },
+    ]);
+    prisma.connection.findMany.mockResolvedValue([facebook]);
+    expect(await connectByHandPosts(owner, ["a", "b", "a"])).toEqual({ switched: 1 });
+    expect(prisma.post.findMany.mock.calls[0][0].where).toMatchObject({ id: { in: ["a", "b"] }, businessId: "b1", remindOnly: true, connectionId: null });
+    expect(prisma.post.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.post.updateMany.mock.calls[0][0]).toEqual({
+      where: { id: "a", businessId: "b1", remindOnly: true, connectionId: null, status: "SCHEDULED", lockedAt: null },
+      data: { connectionId: "c-fb", remindOnly: false },
+    });
+  });
+});
+
+describe("approvePosts reports what it could not schedule", () => {
+  it("counts a post as skipped when no free time is left after three tries", async () => {
+    prisma.post.findMany.mockImplementation(async (args: { where: { status?: unknown } }) =>
+      args.where.status === "PENDING_APPROVAL" ? [{ id: "a", network: "facebook", connectionId: "c-fb", scheduledAt: null }] : [],
+    );
+    prisma.post.findFirst.mockResolvedValue({ id: "other" });
+    expect(await approvePosts("b1", ["a"], now)).toEqual({ approved: 0, skipped: 1 });
+    expect(prisma.post.updateMany).not.toHaveBeenCalled();
   });
 });

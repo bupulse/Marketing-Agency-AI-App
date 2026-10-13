@@ -72,6 +72,51 @@ are signed in one batched request per bucket (`signPaths`) and lazy-loaded.
   still waiting (DRAFT, PENDING_APPROVAL) that the owner did not edit; never a SCHEDULED post. The write is guarded by
   the `updatedAt` it read, so an edit made meanwhile wins.
 
+## Apps that are not connected yet
+
+Most pilot companies cannot connect Instagram, Facebook or TikTok until the networks approve BuPulse, so posts never
+depend on a connection:
+
+- **Drafts.** Studio drafts a post for every app the content was written for (its per-network versions; Instagram,
+  Facebook and LinkedIn when there are none), connected or not. An app without a usable account gets a post with no
+  account and `Post.remindOnly` (`lib/content-board/by-hand.ts`, `draftTargets`). It shows in Today and Needs review
+  with its picture or video and a "Not connected" chip linking to Channels ("Connect Instagram").
+- **Autopilot** lists apps without a usable account in its account choice as "Not connected: you get a reminder"
+  (stored as `network:<app>` in `AutopilotSettings.connectionIds`); their posts are `remindOnly`. Once the app is
+  connected, Autopilot writes for its account instead (`planConnections`), so the next weeks publish on their own.
+- **Approve or auto-approve** schedules it at the best time like any post. At its time the publisher sends the
+  existing reminder (`lib/publishing/engine.ts`, as for NOTIFY accounts and TikTok/YouTube scripts): email with the
+  caption, hashtags, 7-day image and video links and "I posted it", then "Post it yourself" (NEEDS_ACTION) with Mark as
+  posted. The post detail adds Copy caption and the image/video downloads. A post that lost its account later (not
+  `remindOnly`) still fails as before.
+- **Connected later.** A banner on the Content page ("N posts were made as a reminder... Publish automatically") and a
+  button in the post detail switch waiting or scheduled reminder posts of a now-connected app to its account
+  (`connectByHandPosts`; the first usable account that posts automatically), keeping text, media and time.
+- **Backfill.** Content written before drafting existed has `GeneratedContent.postsDraftedAt` null. Its posts are
+  drafted once when its product or campaign is opened (Knowledge page or Content subject page, `latestContentPosts`);
+  content whose drafts the owner rejected is never drafted again on its own. A subject whose newest content has no
+  posts shows "Create posts from this content".
+
+## Not posted yet, "Schedule all my posts" and the connect notice
+
+- **Highlight.** Every post that has not gone out (draft, needs review, scheduled, posting, post it yourself) has a
+  warning-colour (amber) border and, at the bottom of the card, an icon and "Not posted yet · <reason>" (for example
+  "Instagram not connected" with a Connect link, the review reason, "Goes out <date>"), so it never relies on colour.
+- **Schedule all my posts** (Content page and each subject page; acts on the current view's drafts and posts waiting
+  for review, up to 100): a dialog with "Schedule for me" (best times) or "I'll choose times" (a time per post,
+  prefilled with the suggestion, in the business's time zone). `lib/content-board/schedule-all.ts` applies the same
+  safety rules as auto-approval (`safetyReasons`), writes each post guarded by its `updatedAt`, keeps 2.5 hours per
+  account (`claimSlot`), and reports what was scheduled and what was skipped, with why (time taken, in the past,
+  changed meanwhile, video not made...). Needs the `content` permission and the `calendar` feature.
+- **Approve** reports posts it could not place ("Approved 4 of 5. 1 could not find a free time: open it and pick a
+  time"): `approvePosts` returns `skipped`.
+- **Connect your apps.** While posts (or Autopilot) target apps without a usable account (`missingApps`), the Content
+  page shows "Connect your apps so we can post for you" listing them with "Connect apps" (Channels; Members are told to
+  ask an owner or admin), dismissible for the browser session (it returns in a new session or when the list changes),
+  and the bell shows the same notice with a dot.
+- **Scheduling by hand from content** replaces its untouched drafts for those accounts and cancels the drafts the owner
+  had edited ("Replaced by the post you scheduled"), so an account never gets two posts.
+
 ## Approval and auto-approval
 
 **Settings** (`/dashboard/content/settings`): "Require my approval before posting" per app. Stored as
@@ -100,7 +145,7 @@ post limit to enforce:
 | Rule | Reason shown |
 | --- | --- |
 | no `calendar` feature, or the account is read-only | "Scheduling is not part of your plan right now..." |
-| no account / account must be reconnected | "Connect this app in Channels first." / "<App> needs to be reconnected first..." |
+| no account (and not an app-not-connected reminder post) / account must be reconnected | "Connect this app in Channels first." / "<App> needs to be reconnected first..." |
 | video idea whose video is planned but not rendered | "Video needs to be made: open to render." |
 | picture still being drawn / missing where the app needs one | "The picture is still being made: open it to finish." / "This post needs a picture..." |
 | the network's rules (length, hashtags...) | the rule's own message |
@@ -137,7 +182,8 @@ Migration `20261016090000_content_auto_approval` (columns only, no new table, so
 cover them): `PostSource` gains `STUDIO`; `Business.contentSettings` (JSONB) and `contentSummarySentAt`;
 `Post.reviewNote`, `autoScheduledAt`, `mediaKind` (CHECK, kept by the trigger; existing rows filled by the migration);
 indexes `Post(businessId, createdAt)` and `Post(businessId, autoScheduledAt)`. The trigger function has all EXECUTE
-revoked. `20261016100000_post_owner_edited` adds `Post.ownerEditedAt`.
+revoked. `20261016100000_post_owner_edited` adds `Post.ownerEditedAt`; `20261016110000_posts_for_unconnected_apps`
+adds `Post.remindOnly` and `GeneratedContent.postsDraftedAt`.
 
 ## Permissions and plans
 

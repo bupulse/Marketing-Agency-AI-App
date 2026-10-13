@@ -1,7 +1,8 @@
 // Studio content becomes posts to review (docs/CONTENT.md): when content is written or edited for a product or
 // campaign, BuPulse drafts one post per connected app, written for that app, with the content's picture or video.
 // They wait as "Needs review" (or are scheduled on their own where Content -> Settings says so). The content itself
-// stays on the product's or campaign's page as before.
+// stays on the product's or campaign's page as before. Apps the content was written for that are not connected get a
+// post too (remindOnly): approved, it becomes a "post it yourself" reminder at its time.
 import "server-only";
 import { parseVariants } from "@/components/studio/helpers";
 import { prisma } from "@/lib/db";
@@ -12,6 +13,7 @@ import type { Network } from "@/lib/social/types";
 import { mediaForPost } from "@/lib/visuals/post-media";
 import { readyMedia } from "@/lib/visuals/service";
 import { autoSchedule, type AutoResult } from "./auto";
+import { draftTargets } from "./by-hand";
 
 type ContentText = { caption: string; hashtags: string[]; videoScript: string; variants: unknown };
 
@@ -43,19 +45,21 @@ export async function draftPostsFromContent(owner: { businessId: string }, conte
   const connections = (await prisma.connection.findMany({ where: { businessId: owner.businessId, kind: "SOCIAL" }, orderBy: { createdAt: "asc" } })).filter(
     (c) => isNetwork(c.provider) && accountUsable(c),
   );
-  if (connections.length === 0) return none;
+  const writtenFor = [...new Set(parseVariants(content.variants).map((v): string => v.network))].filter(isNetwork);
+  const targets = draftTargets(connections, writtenFor);
+  if (targets.length === 0) return none;
 
   const subject = content.productId ? { productId: content.productId } : { campaignId: content.campaignId as string };
   const visual = await readyMedia(owner.businessId, { contentId: content.id });
   const groupId = globalThis.crypto.randomUUID();
-  const rows = connections.map((c) => {
-    const network = c.provider as Network;
+  const rows = targets.map(({ connection, network }) => {
     const rules = getProvider(network).rules;
     const draft = draftFor(network, content);
     const media = mediaForPost({ network, format: draft.format, rules, images: visual.images, video: visual.video });
     return {
       businessId: owner.businessId,
-      connectionId: c.id,
+      connectionId: connection?.id ?? null,
+      remindOnly: connection === null,
       network,
       groupId,
       ...subject,
@@ -69,11 +73,29 @@ export async function draftPostsFromContent(owner: { businessId: string }, conte
     };
   });
   // Replacing and drafting in one transaction: never the old drafts gone and no new ones. Drafts the owner edited stay.
-  const [removed, ...created] = (await prisma.$transaction([
+  const results = await prisma.$transaction([
     prisma.post.deleteMany({ where: { businessId: owner.businessId, ...subject, source: "STUDIO", status: "PENDING_APPROVAL", ownerEditedAt: null, NOT: { contentId: content.id } } }),
     ...rows.map((data) => prisma.post.create({ data, select: { id: true } })),
-  ])) as [{ count: number }, ...{ id: string }[]];
-  const replaced = removed.count;
+    prisma.generatedContent.updateMany({ where: { id: content.id, businessId: owner.businessId }, data: { postsDraftedAt: now } }),
+  ]);
+  const replaced = (results[0] as { count: number }).count;
+  const created = results.slice(1, 1 + rows.length) as { id: string }[];
   const auto = await autoSchedule(owner.businessId, created.map((p) => p.id), now);
   return { created: created.length, replaced, ...auto };
+}
+
+/**
+ * The newest content of a product or campaign, and whether it has posts. Content written before drafting existed
+ * (postsDraftedAt null) and with no posts yet is drafted now, once (the backfill when its page is opened); content
+ * whose drafts the owner rejected is never drafted again on its own.
+ */
+export async function latestContentPosts(businessId: string, subject: { productId: string } | { campaignId: string }, options: { backfill?: boolean } = {}): Promise<{ contentId: string; hasPosts: boolean } | null> {
+  const content = await prisma.generatedContent.findFirst({ where: { businessId, ...subject }, orderBy: { createdAt: "desc" }, select: { id: true, postsDraftedAt: true } });
+  if (!content) return null;
+  const hasPosts = (await prisma.post.count({ where: { businessId, contentId: content.id } })) > 0;
+  if (!hasPosts && !content.postsDraftedAt && options.backfill) {
+    const { created } = await draftPostsFromContent({ businessId }, content.id);
+    return { contentId: content.id, hasPosts: created > 0 };
+  }
+  return { contentId: content.id, hasPosts };
 }

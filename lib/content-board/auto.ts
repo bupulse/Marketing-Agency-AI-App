@@ -17,40 +17,39 @@ const VIDEO = /\.(mp4|webm)$/i;
 
 export type AutoResult = { scheduled: number; waiting: number };
 
-/** Runs auto-approval over these posts (only this business's, only those still waiting). */
-export async function autoSchedule(businessId: string, postIds: string[], now = new Date()): Promise<AutoResult> {
-  const ids = [...new Set(postIds)].slice(0, 500);
-  if (ids.length === 0) return { scheduled: 0, waiting: 0 };
-  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { contentSettings: true } });
-  if (!business) return { scheduled: 0, waiting: 0 };
-  const settings = readContentSettings(business.contentSettings);
+/** What the safety rules need to know about a post. */
+export const SAFETY_SELECT = {
+  id: true,
+  network: true,
+  format: true,
+  text: true,
+  hashtags: true,
+  mediaPaths: true,
+  scheduledAt: true,
+  status: true,
+  connectionId: true,
+  contentId: true,
+  groupId: true,
+  reviewNote: true,
+  updatedAt: true,
+  remindOnly: true,
+  connection: { select: { status: true, postingMode: true } },
+} as const;
 
-  const posts = await prisma.post.findMany({
-    where: { id: { in: ids }, businessId, status: "PENDING_APPROVAL" },
-    select: {
-      id: true,
-      network: true,
-      format: true,
-      text: true,
-      hashtags: true,
-      mediaPaths: true,
-      scheduledAt: true,
-      connectionId: true,
-      contentId: true,
-      groupId: true,
-      reviewNote: true,
-      updatedAt: true,
-      connection: { select: { status: true, postingMode: true } },
-    },
-  });
-  // Nothing to decide when every app here waits for approval.
-  const candidates = posts.filter((p) => !requiresApproval(settings, p.network));
-  if (candidates.length === 0) return { scheduled: 0, waiting: posts.length };
+type SafetyPost = { id: string; network: string; format: string; text: string; hashtags: string[]; mediaPaths: string[]; contentId: string | null; groupId: string | null; remindOnly: boolean; connection: { status: string; postingMode: string } | null };
 
+/**
+ * Why each post could not go out safely right now (null: it can), ignoring the approval setting: the plan, the
+ * account, a picture or video still being made, the network's rules (lib/content-board/rules.ts). Used by
+ * auto-approval and by "Schedule all my posts".
+ */
+export async function safetyReasons(businessId: string, posts: readonly SafetyPost[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  if (posts.length === 0) return out;
   const entitlements = await companyEntitlements(businessId);
   const canSchedule = entitlements.usable.has("calendar") && !entitlements.block;
-  const contentIds = [...new Set(candidates.flatMap((p) => (p.contentId ? [p.contentId] : [])))];
-  const groupIds = [...new Set(candidates.flatMap((p) => (p.groupId ? [p.groupId] : [])))];
+  const contentIds = [...new Set(posts.flatMap((p) => (p.contentId ? [p.contentId] : [])))];
+  const groupIds = [...new Set(posts.flatMap((p) => (p.groupId ? [p.groupId] : [])))];
   const visuals =
     contentIds.length || groupIds.length
       ? await prisma.contentVisual.findMany({
@@ -60,10 +59,7 @@ export async function autoSchedule(businessId: string, postIds: string[], now = 
       : [];
   const pending = (post: { contentId: string | null; groupId: string | null }, video: boolean) =>
     visuals.some((v) => (v.kind === "video") === video && ((post.contentId && v.contentId === post.contentId) || (post.groupId && v.groupId === post.groupId)));
-
-  const toSchedule: typeof candidates = [];
-  let waiting = posts.length - candidates.length;
-  for (const post of candidates) {
+  for (const post of posts) {
     const rules = isNetwork(post.network) ? getProvider(post.network).rules : null;
     const format = post.format === "ARTICLE" || post.format === "THREAD" ? null : (post.format as PostFormatName);
     const decision = autoDecision({
@@ -72,6 +68,7 @@ export async function autoSchedule(businessId: string, postIds: string[], now = 
       requireApproval: false,
       canSchedule,
       account: post.connection ? { usable: accountUsable(post.connection) } : null,
+      byHand: !post.connection && post.remindOnly,
       requiresMedia: rules?.requiresMedia ?? false,
       hasMedia: post.mediaPaths.length > 0,
       hasVideo: post.mediaPaths.some((p) => VIDEO.test(p)),
@@ -79,12 +76,34 @@ export async function autoSchedule(businessId: string, postIds: string[], now = 
       imagePending: pending(post, false),
       issues: rules && format ? validatePost(rules, { format, text: post.text, hashtags: post.hashtags, mediaCount: post.mediaPaths.length }).errors : [],
     });
-    if (decision.action === "schedule") {
+    out.set(post.id, decision.action === "review" ? decision.reason : null);
+  }
+  return out;
+}
+
+/** Runs auto-approval over these posts (only this business's, only those still waiting). */
+export async function autoSchedule(businessId: string, postIds: string[], now = new Date()): Promise<AutoResult> {
+  const ids = [...new Set(postIds)].slice(0, 500);
+  if (ids.length === 0) return { scheduled: 0, waiting: 0 };
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { contentSettings: true } });
+  if (!business) return { scheduled: 0, waiting: 0 };
+  const settings = readContentSettings(business.contentSettings);
+
+  const posts = await prisma.post.findMany({ where: { id: { in: ids }, businessId, status: "PENDING_APPROVAL" }, select: SAFETY_SELECT });
+  // Nothing to decide when every app here waits for approval.
+  const candidates = posts.filter((p) => !requiresApproval(settings, p.network));
+  if (candidates.length === 0) return { scheduled: 0, waiting: posts.length };
+  const reasons = await safetyReasons(businessId, candidates);
+
+  const toSchedule: typeof candidates = [];
+  let waiting = posts.length - candidates.length;
+  for (const post of candidates) {
+    const note = reasons.get(post.id) ?? null;
+    if (note === null) {
       toSchedule.push(post);
       continue;
     }
     waiting += 1;
-    const note = decision.action === "review" ? decision.reason : null;
     if (note !== post.reviewNote) await prisma.post.updateMany({ where: { id: post.id, businessId, status: "PENDING_APPROVAL", updatedAt: post.updatedAt }, data: { reviewNote: note } });
   }
 

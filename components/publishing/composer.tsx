@@ -278,6 +278,9 @@ function ComposerBody({ onOpenChange, context, post, prefill, day, onDone }: Pro
       <div className="flex min-w-0 flex-col gap-5">
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-1 text-sm font-semibold">{editing ? "Account" : "Post to"}</legend>
+          {editing && post && !post.connectionId && post.remindOnly && (
+            <p className="text-[14px] text-muted">{networkName(post.network)}: not connected. This post is sent to you as a reminder to post it yourself.</p>
+          )}
           <ul className="flex flex-wrap gap-3">
             {(editing ? context.accounts.filter((a) => a.id === post?.connectionId) : context.accounts).map((a) => {
               const on = accountIds.includes(a.id);

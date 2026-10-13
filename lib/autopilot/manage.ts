@@ -1,6 +1,7 @@
 // What the owner does with the plan: save settings, approve, remove, regenerate. Every function
 // starts from the signed-in user's id and only touches that user's business.
 import "server-only";
+import { byHandNetwork } from "@/lib/content-board/by-hand";
 import { releaseGroupVisuals } from "@/lib/visuals/service";
 import { prisma } from "@/lib/db";
 import { industryContext } from "@/lib/industry-context";
@@ -45,7 +46,9 @@ export async function saveSettings(userId: string, input: SettingsInput): Promis
     where: { businessId: business.id, kind: "SOCIAL", id: { in: parsed.data.connectionIds } },
     select: { id: true, provider: true },
   });
-  const connectionIds = owned.filter((c) => isNetwork(c.provider)).map((c) => c.id);
+  // Apps not connected yet ("network:<app>") may be chosen too: Autopilot writes for them and the posts become reminders.
+  const byHand = [...new Set(parsed.data.connectionIds.filter((id) => byHandNetwork(id) !== null))];
+  const connectionIds = [...owned.filter((c) => isNetwork(c.provider)).map((c) => c.id), ...byHand];
   if (parsed.data.enabled && connectionIds.length === 0) {
     return { ok: false, error: "Pick at least one account for Autopilot to write for." };
   }

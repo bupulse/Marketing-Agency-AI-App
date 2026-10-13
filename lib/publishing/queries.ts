@@ -79,7 +79,7 @@ export async function toCalendarPosts(rows: PostRow[]): Promise<CalendarPost[]> 
     connectionId: r.connectionId,
     accountName: r.connection?.displayName ?? (isNetwork(r.network) ? getProvider(r.network).rules.label : r.network),
     accountAvatar: r.connection?.avatarUrl ?? null,
-    notify: r.connection?.postingMode === "NOTIFY",
+    notify: r.connection?.postingMode === "NOTIFY" || (!r.connection && r.remindOnly),
     status: r.status as PostStatusName,
     format: r.format as PostFormatName | "ARTICLE" | "THREAD",
     source: r.source,
@@ -97,6 +97,7 @@ export async function toCalendarPosts(rows: PostRow[]): Promise<CalendarPost[]> 
     contentId: r.contentId,
     reviewNote: r.reviewNote,
     autoScheduledAt: r.autoScheduledAt?.toISOString() ?? null,
+    remindOnly: !r.connection && r.remindOnly,
   }));
 }
 

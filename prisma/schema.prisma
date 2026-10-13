@@ -182,6 +182,9 @@ model GeneratedContent {
   // Per-network versions (caption length, hashtags, aspect ratio) prepared for publishing.
   variants    Json?
   edited      Boolean   @default(false) // true once the owner changed the AI's text
+  // When its posts to review were drafted (lib/content-board/drafts.ts); null for content from before, which is drafted
+  // once when its product or campaign is opened.
+  postsDraftedAt DateTime?
   provider    String // "gemini" | "claude" | "edit"
   model       String
   createdAt   DateTime  @default(now())
@@ -762,6 +765,9 @@ model Post {
   autoScheduledAt DateTime?
   // Set when the owner changed the post (text, media, time, review state): BuPulse then never replaces or redraws it.
   ownerEditedAt  DateTime?
+  // For an app that is not connected (yet): at its time the owner gets the reminder to post it by hand, like a NOTIFY
+  // account (lib/publishing/engine.ts). False on posts that lost their account later: those fail as before.
+  remindOnly     Boolean       @default(false)
   // "post" | "carousel" | "video" | "article": kept by a database trigger from format and mediaPaths, for the type filter.
   mediaKind      String        @default("post")
   createdAt      DateTime      @default(now())

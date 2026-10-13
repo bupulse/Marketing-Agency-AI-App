@@ -177,9 +177,14 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
   );
   // Scheduled from Studio content by hand: the drafts BuPulse made of that content for the same accounts are replaced,
   // in the same transaction, unless the owner already edited them.
+  // The owner's edited drafts are kept as history but cancelled (superseded), so the account never gets two posts.
+  const draftsOf = { businessId: owner.businessId, contentId: content?.id, source: "STUDIO" as const, status: "PENDING_APPROVAL" as const, connectionId: { in: ordered.map((c) => c.id) } };
   const replace =
     !draft && content
-      ? [prisma.post.deleteMany({ where: { businessId: owner.businessId, contentId: content.id, source: "STUDIO", status: "PENDING_APPROVAL", ownerEditedAt: null, connectionId: { in: ordered.map((c) => c.id) } } })]
+      ? [
+          prisma.post.deleteMany({ where: { ...draftsOf, ownerEditedAt: null } }),
+          prisma.post.updateMany({ where: { ...draftsOf, ownerEditedAt: { not: null } }, data: { status: "CANCELLED", reviewNote: "Replaced by the post you scheduled." } }),
+        ]
       : [];
   const created = (await prisma.$transaction([...creates, ...replace])).slice(0, creates.length) as { id: string }[];
   if (!draft) await trackEvent(EVENT_NAMES.postScheduled, { businessId: owner.businessId, props: { count: created.length, status: time.status } });
@@ -212,7 +217,7 @@ export async function updatePost(owner: Owner, postId: string, input: EditInput,
   if (!becomesDraft) {
     const issues = validatePost(rules, { format, text: data.text, hashtags: data.hashtags, mediaCount: data.mediaPaths.length, mediaSizes: post.network === "instagram" ? await mediaSizes(owner.businessId, data.mediaPaths) : [] }).errors;
     if (issues.length > 0) throw new PublishingError(issues[0], "invalid", { form: issues.join(" ") });
-    if (time && (!post.connection || !accountUsable(post.connection))) throw new PublishingError("This account needs to be reconnected first. Open Channels to fix it.", "invalid");
+    if (time && !post.remindOnly && (!post.connection || !accountUsable(post.connection))) throw new PublishingError("This account needs to be reconnected first. Open Channels to fix it.", "invalid");
   } else if (!data.text.trim() && data.mediaPaths.length === 0) {
     throw new PublishingError("Write something or add a photo to save a draft.", "invalid");
   }
@@ -365,27 +370,30 @@ export async function scheduleAtFreeSlot(
  * that still wait are touched. A post keeps its planned time when that is still ahead; one without a time, or whose
  * time passed, goes out at the best time for its network.
  */
-export async function approvePosts(businessId: string, postIds: string[], now = new Date()): Promise<{ approved: number }> {
+export async function approvePosts(businessId: string, postIds: string[], now = new Date()): Promise<{ approved: number; skipped: number }> {
   const ids = [...new Set(postIds)].slice(0, 200);
-  if (ids.length === 0) return { approved: 0 };
+  if (ids.length === 0) return { approved: 0, skipped: 0 };
   const posts = await prisma.post.findMany({ where: { id: { in: ids }, businessId, status: "PENDING_APPROVAL" }, select: { id: true, network: true, connectionId: true, scheduledAt: true } });
-  if (posts.length === 0) return { approved: 0 };
+  if (posts.length === 0) return { approved: 0, skipped: 0 };
 
   const stale = posts.filter((p) => !p.scheduledAt || p.scheduledAt.getTime() <= now.getTime());
   const times = stale.length > 0 ? await bestTimesFor(businessId, stale, now) : new Map<string, Date>();
 
+  // `skipped`: no free time could be found (every pick was taken by another post on the account): it stays in review.
   let approved = 0;
+  let skipped = 0;
   for (const post of posts) {
     const scheduledAt = times.get(post.id);
     const data = { status: "SCHEDULED" as const, reviewNote: null };
     if (scheduledAt) {
       if (await scheduleAtFreeSlot(post, scheduledAt, { businessId, where: { status: "PENDING_APPROVAL" }, data, now })) approved += 1;
+      else skipped += 1;
       continue;
     }
     const { count } = await prisma.post.updateMany({ where: { id: post.id, businessId, status: "PENDING_APPROVAL" }, data });
     approved += count;
   }
-  return { approved };
+  return { approved, skipped };
 }
 
 /**
@@ -402,6 +410,31 @@ export async function unschedulePost(owner: Owner, postId: string, now = new Dat
     if (!post) throw NOT_FOUND();
     throw new PublishingError(NO_LONGER_EDITABLE, "conflict");
   }
+}
+
+/**
+ * "Publish automatically": posts made for an app that was not connected become normal posts of the account now
+ * connected for it (the first usable one that BuPulse posts to), keeping their text, media and time. Only posts that
+ * have not gone out; returns how many switched.
+ */
+export async function connectByHandPosts(owner: Owner, postIds: string[]): Promise<{ switched: number }> {
+  const ids = [...new Set(postIds)].slice(0, 200);
+  if (ids.length === 0) return { switched: 0 };
+  const [posts, connections] = await Promise.all([
+    prisma.post.findMany({ where: { id: { in: ids }, businessId: owner.businessId, remindOnly: true, connectionId: null, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] }, lockedAt: null }, select: { id: true, network: true, status: true } }),
+    prisma.connection.findMany({ where: { businessId: owner.businessId, kind: "SOCIAL" }, orderBy: { createdAt: "asc" } }),
+  ]);
+  let switched = 0;
+  for (const post of posts) {
+    const account = connections.find((c) => c.provider === post.network && accountUsable(c) && c.postingMode === "AUTO") ?? connections.find((c) => c.provider === post.network && accountUsable(c));
+    if (!account) continue;
+    const { count } = await prisma.post.updateMany({
+      where: { id: post.id, businessId: owner.businessId, remindOnly: true, connectionId: null, status: post.status, lockedAt: null },
+      data: { connectionId: account.id, remindOnly: false },
+    });
+    switched += count;
+  }
+  return { switched };
 }
 
 /** Puts a failed post back in line to be published now. */

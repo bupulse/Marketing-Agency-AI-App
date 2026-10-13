@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAppContext } from "@/components/app/context";
+import { latestContentPosts } from "@/lib/content-board/drafts";
 import { featureGate } from "@/components/app/no-access";
 import { DesignStudio } from "@/components/designs/design-studio";
 import { AlbumCard } from "@/components/knowledge/album-card";
@@ -40,6 +41,8 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   const product = await getProduct(business.id, id);
   if (!product) notFound();
   const subject = { kind: "product" as const, id: product.id };
+  // Content written before posts were drafted gets its posts to review once, when its page is opened (docs/CONTENT.md).
+  if (entitlements.usable.has("calendar")) await latestContentPosts(business.id, { productId: product.id }, { backfill: true }).catch(() => null);
   const [photos, studio] = await Promise.all([productAlbum(business.id, product.id), loadSubjectStudio(business.id, subject)]);
   const readiness = productReadiness({ ...product, photoCount: photos.length });
   const details = readDetails(product.kind, product.details);

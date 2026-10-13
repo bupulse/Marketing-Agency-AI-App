@@ -10,7 +10,7 @@ import type { PostStatusName } from "@/lib/publishing/status";
 import type { CalendarPost } from "@/lib/publishing/types";
 import type { PostFormatName } from "@/lib/publishing/validate";
 import { getProvider, isNetwork } from "@/lib/social/registry";
-import type { Network } from "@/lib/social/types";
+import { NETWORKS, type Network } from "@/lib/social/types";
 import { createClient } from "@/lib/supabase/server";
 import { readItems } from "@/lib/visuals/service";
 import { contentWhere, startOfToday, type ContentFilters, type ContentScope } from "./filters";
@@ -85,7 +85,7 @@ export async function toContentPosts(businessId: string, rows: PostRow[]): Promi
       connectionId: r.connectionId,
       accountName: r.connection?.displayName ?? (isNetwork(r.network) ? getProvider(r.network).rules.label : r.network),
       accountAvatar: r.connection?.avatarUrl ?? null,
-      notify: r.connection?.postingMode === "NOTIFY",
+      notify: r.connection?.postingMode === "NOTIFY" || (!r.connection && r.remindOnly),
       status: r.status as PostStatusName,
       format: r.format as PostFormatName | "ARTICLE" | "THREAD",
       source: r.source,
@@ -104,6 +104,7 @@ export async function toContentPosts(businessId: string, rows: PostRow[]): Promi
       createdAt: r.createdAt.toISOString(),
       reviewNote: r.reviewNote,
       autoScheduledAt: r.autoScheduledAt?.toISOString() ?? null,
+      remindOnly: !r.connection && r.remindOnly,
       kind: isPostKind(r.mediaKind) ? r.mediaKind : "post",
       poster: poster ? (signed.get(poster) ?? null) : null,
       subject: r.product ? { kind: "product", id: r.product.id, name: r.product.name } : r.campaign ? { kind: "campaign", id: r.campaign.id, name: r.campaign.name } : null,
@@ -206,4 +207,36 @@ export async function loadSubjectPosts(businessId: string, scope: ContentScope, 
 export async function loadOnePost(businessId: string, postId: string): Promise<ContentPost | null> {
   const row = await prisma.post.findFirst({ where: { id: postId, businessId }, include: postInclude });
   return row ? (await toContentPosts(businessId, [row]))[0] : null;
+}
+
+/**
+ * Posts made for an app that was not connected, still waiting or scheduled, whose app now has an account BuPulse posts
+ * to: the "publish them automatically" offer.
+ */
+export async function switchableByHand(businessId: string): Promise<string[]> {
+  const accounts = await prisma.connection.findMany({ where: { businessId, kind: "SOCIAL", postingMode: "AUTO", status: { in: ["ACTIVE", "EXPIRING"] } }, select: { provider: true } });
+  const networks = [...new Set(accounts.map((a) => a.provider))];
+  if (networks.length === 0) return [];
+  const rows = await prisma.post.findMany({
+    where: { businessId, remindOnly: true, connectionId: null, network: { in: networks }, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] }, lockedAt: null },
+    select: { id: true },
+    take: 200,
+  });
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Apps posts are made for that have no usable account: reminder posts not posted yet, and apps Autopilot was told to
+ * write for while not connected. The "Connect your apps" notice lists them until each is connected.
+ */
+export async function missingApps(businessId: string): Promise<Network[]> {
+  const [rows, accounts, autopilot] = await Promise.all([
+    prisma.post.groupBy({ by: ["network"], where: { businessId, remindOnly: true, connectionId: null, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED", "NEEDS_ACTION"] } } }),
+    prisma.connection.findMany({ where: { businessId, kind: "SOCIAL" }, select: { provider: true, status: true, postingMode: true } }),
+    prisma.autopilotSettings.findUnique({ where: { businessId }, select: { enabled: true, connectionIds: true } }),
+  ]);
+  const wanted = new Set<string>(rows.map((r) => r.network));
+  if (autopilot?.enabled) for (const id of autopilot.connectionIds) if (id.startsWith("network:")) wanted.add(id.slice("network:".length));
+  const connected = new Set(accounts.filter((a) => a.status === "ACTIVE" || a.status === "EXPIRING").map((a) => a.provider));
+  return NETWORKS.filter((n) => wanted.has(n) && !connected.has(n));
 }
