@@ -7,6 +7,11 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["test.bupulse.com"],
   // Hide the Next.js dev-tools button (the "N" bubble): the test site is shown to people as the real thing.
   devIndicators: false,
+  // Heavy libraries used by both pages (server actions) and route handlers: kept as packages so the Cloudflare Worker
+  // carries each one once (OpenNext bundles external packages once) instead of a copy per Turbopack chunk group.
+  // Behaviour is the same; only where the code sits in the Worker changes (docs/DEPLOY.md, "Worker size").
+  // @bupulse/prisma-data exists only in the Cloudflare build (scripts/cf-build.mjs): the generated Prisma client's data.
+  serverExternalPackages: ["zod", "pdf-lib", "libphonenumber-js", "@bupulse/prisma-data"],
   // Inlined at build time for the admin Updates page (lib/version.ts). BUILD_SHA comes from the deploy workflow.
   // BUPULSE_BUILD_PLATFORM: "netlify" when Netlify builds the app (it sets NETLIFY=true), else PLATFORM or empty, read by
   // lib/platform/detect.ts when PLATFORM is not set at runtime.
