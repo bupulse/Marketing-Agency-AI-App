@@ -39,8 +39,8 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
         <ResendByEmail />
       ) : params.error === "use_password" ? (
         <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
-          {email ? `${email} was` : "This account was"} created with an email and password, so Google sign-in
-          can’t be used for it. Sign in with your password below, or choose “Forgot password?”.
+          {email ? `${email} uses` : "This account uses"} an email and password, so Google sign-in can’t be used
+          for it. Please sign in the normal way with your password below, or choose “Forgot password?”.
         </p>
       ) : params.error ? (
         <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">

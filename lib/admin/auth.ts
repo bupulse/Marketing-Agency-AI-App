@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit, type RateLimitRule } from "@/lib/rate-limit";
 
@@ -21,15 +21,24 @@ export function isAdminEmail(email: string | null | undefined): boolean {
 
 export type AdminIdentity = { id: string; email: string };
 
+/** True when this session was opened with an email: a password or an emailed code, not Google. */
+export function signedInWithEmail(methods: unknown): boolean {
+  return Array.isArray(methods) && methods.some((m) => m?.method === "password" || m?.method === "otp");
+}
+
 /**
- * The signed-in admin before the second step. Anyone else gets a 404 so the console's existence is
- * not revealed. Used only by /admin/verify and /admin/setup-2fa; everything else uses requireAdmin.
+ * The signed-in admin before the second step. Signed out → /admin/login; signed in with a non-admin account, or with
+ * Google instead of email and password → /admin/login with a note. Used by /admin/verify and /admin/setup-2fa;
+ * everything else uses requireAdmin.
  */
 export async function requireAdminIdentity(): Promise<AdminIdentity & { supabase: Awaited<ReturnType<typeof createClient>> }> {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getUser();
   const user = data?.user;
-  if (error || !user || !user.email_confirmed_at || !isAdminEmail(user.email)) notFound();
+  if (error || !user) redirect("/admin/login");
+  if (!user.email_confirmed_at || !isAdminEmail(user.email)) redirect("/admin/login?error=no_access");
+  const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (!signedInWithEmail(aal?.currentAuthenticationMethods)) redirect("/admin/login?error=email_only");
   return { id: user.id, email: user.email!.toLowerCase(), supabase };
 }
 

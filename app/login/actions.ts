@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { findAccountByEmail } from "@/lib/account";
+import { findAccountByEmail, switchToPasswordOnly } from "@/lib/account";
 import { createClient } from "@/lib/supabase/server";
 import { fieldErrors, signInSchema, type FieldErrors } from "@/lib/auth/schemas";
 import { safeNext } from "@/lib/auth/safe-next";
@@ -28,7 +28,7 @@ export async function signInWithPassword(_prev: LoginState, formData: FormData):
   if (limited) return { error: limited };
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword(parsed.data);
+  const { data, error } = await supabase.auth.signInWithPassword(parsed.data);
   if (error) {
     if (error.code === "email_not_confirmed") return { unconfirmedEmail: parsed.data.email };
     if (error.status === 429 || error.code === "over_request_rate_limit") {
@@ -40,13 +40,15 @@ export async function signInWithPassword(_prev: LoginState, formData: FormData):
       if (account?.method === "GOOGLE" && !account.hasPassword) {
         return {
           error:
-            "This account was created with Google. Use Continue with Google, or choose “Forgot password?” to add a password.",
+            "This account was created with Google, so sign in with “Continue with Google”. To use a password instead, choose “Forgot password?”: after that you sign in with your password only, not Google.",
         };
       }
       return { error: "Incorrect email or password." };
     }
     return { error: "We could not sign you in. Please try again." };
   }
+  // A Google account only has a password after "Forgot password?" (set before that page switched it): password only now.
+  if (data?.user) await switchToPasswordOnly(data.user.id);
   const next = safeNext(String(formData.get("next") ?? ""));
   await rememberReturn(next); // a brand-new account still has to pass /welcome and /onboarding first
   redirect(next);

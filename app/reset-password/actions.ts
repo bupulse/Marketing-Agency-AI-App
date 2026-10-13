@@ -1,5 +1,6 @@
 "use server";
 
+import { switchToPasswordOnly } from "@/lib/account";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { fieldErrors, resetPasswordSchema, type FieldErrors } from "@/lib/auth/schemas";
 
@@ -12,7 +13,8 @@ export async function updatePassword(_prev: ResetState, formData: FormData): Pro
   });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
 
-  if (!(await getCurrentUser())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return { error: "This reset link has expired. Request a new one to continue." };
   }
   const supabase = await createClient();
@@ -22,5 +24,6 @@ export async function updatePassword(_prev: ResetState, formData: FormData): Pro
     if (error.code === "weak_password") return { error: "That password is too easy to guess. Try a longer one." };
     return { error: "We could not update your password. Please try again." };
   }
+  await switchToPasswordOnly(user.id); // a Google account now signs in with this password only
   return { done: true };
 }

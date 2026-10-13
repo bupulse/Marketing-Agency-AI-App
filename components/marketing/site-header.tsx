@@ -1,14 +1,13 @@
 import Link from "next/link";
 import { Logo } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme";
-import { Button } from "@/components/ui";
 import { navLinks } from "@/lib/content/site";
-import { MobileMenu } from "./mobile-menu";
+import { HeaderActions } from "./header-actions";
 
 /**
  * Sticky glass navigation. From lg (1024 px) the links and both buttons fit on one line; below that the links and
  * Log in move into the menu, while the theme toggle and the demo button stay (the button from 380 px; on the
- * narrowest phones it is in the menu). Labels never wrap.
+ * narrowest phones it is in the menu). Labels never wrap. Signed in, Log in becomes the Account menu (HeaderActions).
  */
 export function SiteHeader() {
   return (
@@ -34,14 +33,7 @@ export function SiteHeader() {
         </ul>
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <ThemeToggle />
-          <Button href="/login" variant="ghost" size="sm" className="hidden whitespace-nowrap lg:inline-flex">
-            Log in
-          </Button>
-          <Button href="/signup" size="sm" className="hidden whitespace-nowrap min-[380px]:inline-flex">
-            <span className="lg:hidden">Book a demo</span>
-            <span className="hidden lg:inline">Book a free demo</span>
-          </Button>
-          <MobileMenu links={navLinks} />
+          <HeaderActions links={navLinks} />
         </div>
       </nav>
     </header>
