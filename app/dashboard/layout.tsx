@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { BackgroundBlobs } from "@/components/motion";
-import { AppShell } from "@/components/app/app-shell";
+import { AppShell, type ShellNotice } from "@/components/app/app-shell";
+import { networkLabel } from "@/lib/content-board/labels";
+import { missingApps } from "@/lib/content-board/queries";
 import { getAppContext } from "@/components/app/context";
 import { TrialBanner } from "@/components/app/trial-banner";
 import { brandPalette, isHexColor } from "@/lib/color-contrast";
@@ -53,6 +55,19 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const announcements = await getActiveAnnouncements({ id: business.userId, plan: usage.subscription.plan }).catch(() => []);
   // A custom plan offer waiting for the owner (docs/OFFERS.md): only those who can pay see it.
   const offer = can(role, "billing") ? await clientOffer(business.id).catch(() => null) : null;
+  // Apps posts are made for that are not connected (docs/CONTENT.md): under the bell until they are.
+  const missing = entitlements.usable.has("content") ? await missingApps(business.id).catch(() => []) : [];
+  const notices: ShellNotice[] = missing.length
+    ? [
+        {
+          id: "connect-apps",
+          title: "Connect your apps so we can post for you",
+          text: `${missing.map(networkLabel).join(", ")} ${missing.length === 1 ? "is" : "are"} not connected. Their posts come to you as reminders to post yourself.`,
+          href: can(role, "channels") ? "/dashboard/connections" : "/dashboard/content",
+          action: can(role, "channels") ? "Connect apps" : "See the posts",
+        },
+      ]
+    : [];
 
   return (
     <>
@@ -65,6 +80,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         businessName={businessName}
         role={role}
         features={[...entitlements.inPlan]}
+        notices={notices}
         plan={{
           name: usage.plan.name,
           trialLabel,

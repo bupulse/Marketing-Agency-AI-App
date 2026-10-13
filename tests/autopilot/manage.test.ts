@@ -64,6 +64,12 @@ describe("saving settings", () => {
     expect(mocks.prisma.autopilotSettings.upsert.mock.calls[0][0].update.connectionIds).toEqual(["c1"]);
   });
 
+  it("accepts apps that are not connected yet (network:<app>), and nothing else that is not the user's", async () => {
+    mocks.prisma.connection.findMany.mockResolvedValue([]);
+    expect(await saveSettings("user1", { ...valid, connectionIds: ["network:instagram", "network:myspace", "someone-elses"] })).toEqual({ ok: true });
+    expect(mocks.prisma.autopilotSettings.upsert.mock.calls[0][0].update.connectionIds).toEqual(["network:instagram"]);
+  });
+
   it("refuses to switch on with no valid account", async () => {
     mocks.prisma.connection.findMany.mockResolvedValue([]);
     const result = await saveSettings("user1", { ...valid, connectionIds: ["someone-elses"] });

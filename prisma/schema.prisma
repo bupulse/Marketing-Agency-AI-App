@@ -93,6 +93,11 @@ model Business {
   // so the same country is not flagged again; regionMismatchAt is set only while the flag is open (the attention list).
   regionMismatch          Json?
   regionMismatchAt        DateTime?
+  // Content -> Settings (docs/CONTENT.md): per app, whether new posts wait for approval (lib/content-board/settings.ts).
+  // Null: approval required for every app.
+  contentSettings         Json?
+  // When the daily "what was auto-scheduled" email last went out (lib/content-board/summary.ts).
+  contentSummarySentAt    DateTime?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
@@ -177,6 +182,9 @@ model GeneratedContent {
   // Per-network versions (caption length, hashtags, aspect ratio) prepared for publishing.
   variants    Json?
   edited      Boolean   @default(false) // true once the owner changed the AI's text
+  // When its posts to review were drafted (lib/content-board/drafts.ts); null for content from before, which is drafted
+  // once when its product or campaign is opened.
+  postsDraftedAt DateTime?
   provider    String // "gemini" | "claude" | "edit"
   model       String
   createdAt   DateTime  @default(now())
@@ -713,6 +721,7 @@ enum PostFormat {
 enum PostSource {
   MANUAL
   AUTOPILOT
+  STUDIO // drafted automatically from Studio content (lib/content-board/drafts.ts)
 }
 
 // One post for one connected account. Posts written together for several accounts share a groupId.
@@ -750,6 +759,17 @@ model Post {
   autopilotRunId String?
   autopilotRun   AutopilotRun? @relation(fields: [autopilotRunId], references: [id], onDelete: SetNull)
   playbookId     String? // the playbook idea Autopilot used, for learning what works
+  // Why a post that could have been scheduled on its own still waits for review ("Video needs to be made").
+  reviewNote     String?
+  // Set when auto-approval (Content -> Settings) scheduled the post; the daily summary email lists these.
+  autoScheduledAt DateTime?
+  // Set when the owner changed the post (text, media, time, review state): BuPulse then never replaces or redraws it.
+  ownerEditedAt  DateTime?
+  // For an app that is not connected (yet): at its time the owner gets the reminder to post it by hand, like a NOTIFY
+  // account (lib/publishing/engine.ts). False on posts that lost their account later: those fail as before.
+  remindOnly     Boolean       @default(false)
+  // "post" | "carousel" | "video" | "article": kept by a database trigger from format and mediaPaths, for the type filter.
+  mediaKind      String        @default("post")
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   metrics        PostMetrics[]
@@ -759,6 +779,8 @@ model Post {
   @@index([businessId, scheduledAt])
   @@index([groupId])
   @@index([businessId, status, publishedAt])
+  @@index([businessId, createdAt])
+  @@index([businessId, autoScheduledAt])
 }
 
 model PostMetrics {
@@ -862,6 +884,9 @@ model ContentVisual {
   uploadPath      String?
   uploadBytes     Int       @default(0)
   uploadExpiresAt DateTime?
+  // The video robot (docs/VIDEO_ROBOT.md): its job while it holds the render lease, and its failed renders (3 = left to the browser).
+  robotJobId      String?   @unique
+  robotAttempts   Int       @default(0)
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
 
@@ -869,6 +894,7 @@ model ContentVisual {
   @@index([uploadExpiresAt])
   @@index([groupId])
   @@index([businessId, kind])
+  @@index([kind, status, createdAt])
 }
 
 model AiCall {

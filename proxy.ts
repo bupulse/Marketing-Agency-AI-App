@@ -55,7 +55,7 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Everything except static files, images and the public machine-to-machine routes
-    // (chat widget and its page, the REST API with its own bearer keys, payment webhooks, scheduled jobs, the status check), which never use a browser session.
-    "/((?!_next/static|_next/image|favicon.ico|api/widget|api/v1|api/admin/v1|api/mcp|api/collect|t\\.js|widget\\.js|widget-chat\\.js|widget/|api/billing/webhooks|api/cron|api/status|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // (chat widget and its page, the REST API with its own bearer keys, payment webhooks, scheduled jobs, the video robot, the status check), which never use a browser session.
+    "/((?!_next/static|_next/image|favicon.ico|api/widget|api/v1|api/admin/v1|api/mcp|api/collect|t\\.js|widget\\.js|widget-chat\\.js|widget/|api/billing/webhooks|api/cron|api/robot|api/status|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2)$).*)",
   ],
 };

@@ -1,6 +1,8 @@
 // Runs Autopilot for a business: plans the week, writes each post group (1 text credit each),
 // draws its images, and saves the posts. Safe to call twice: one run per business and week.
 import "server-only";
+import { autoSchedule } from "@/lib/content-board/auto";
+import { byHandNetwork } from "@/lib/content-board/by-hand";
 import { prisma } from "@/lib/db";
 import { hasShortRequestLimit } from "@/lib/platform/limits";
 import { industryContext } from "@/lib/industry-context";
@@ -234,7 +236,9 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
           return [
             {
               businessId,
-              connectionId: planned.connectionId,
+              // An app chosen while not connected ("network:<app>"): no account, a reminder to post it yourself.
+              connectionId: byHandNetwork(planned.connectionId) ? null : planned.connectionId,
+              remindOnly: byHandNetwork(planned.connectionId) !== null,
               network: planned.network,
               groupId: group.groupId,
               productId: group.project && group.project.subject !== "campaign" ? group.project.id : null,
@@ -298,7 +302,19 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
 
     await prisma.autopilotRun.update({ where: { id: runId }, data: { status: "DONE", postCount, error: note } });
 
-    if (postCount > 0 && !autoPublish && business.user.email) {
+    // Content -> Settings: posts for apps that need no approval are scheduled now (docs/CONTENT.md). Only the posts
+    // still waiting are worth the "approve them" email.
+    let waiting = postCount;
+    if (postCount > 0 && !autoPublish) {
+      try {
+        const pending = await prisma.post.findMany({ where: { autopilotRunId: runId, businessId, status: "PENDING_APPROVAL" }, select: { id: true }, take: 500 });
+        waiting = pending.length ? (await autoSchedule(businessId, pending.map((p) => p.id))).waiting : 0;
+      } catch (error) {
+        await logError(error, { source: "autopilot.auto", businessId, level: "warn" });
+      }
+    }
+
+    if (postCount > 0 && waiting > 0 && !autoPublish && business.user.email) {
       for (const to of await alertRecipients(businessId, business.user.email)) {
         await sendReadyEmail({ to, businessName: business.name, postCount, groupCount, weekLabel: weekLabel(weekStart, tz) }).catch((e) => logError(e, { source: "autopilot.email", businessId, level: "warn" }));
       }

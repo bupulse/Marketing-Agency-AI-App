@@ -41,7 +41,8 @@ to check.
 5. **Environment variables** in Netlify (full list in `docs/DEPLOY_NETLIFY.md` section 2). New in 2.0:
    `AI_COMPANY_MONTHLY_USD` (3), `MEDIA_PLATFORM_MAX_BYTES` (900 MB), `NEXT_PUBLIC_WHATSAPP_NUMBER`,
    `GEO_PROVIDER=builtin`, `PLATFORM=netlify`, `AI_MONTHLY_BUDGET_USD` (30), `API_KEY_PEPPER` (new random value),
-   `GOOGLE_CALENDAR_CLIENT_ID/SECRET`. Never copy `ANALYTICS_DEV_COUNTRY` or `REGION_OVERRIDE` to production.
+   `GOOGLE_CALENDAR_CLIENT_ID/SECRET`, `VIDEO_ROBOT_SECRET` (optional, the video robot: also a GitHub secret, plus
+   the repository variable `ROBOT_APP_URL`; `docs/VIDEO_ROBOT.md`). Never copy `ANALYTICS_DEV_COUNTRY` or `REGION_OVERRIDE` to production.
    Build-time values (every `NEXT_PUBLIC_*`, plus `PLATFORM=netlify`) must also be **GitHub repository variables**:
    the deploy workflow builds offline in GitHub without the Netlify token, so it can't read Netlify's settings at
    build time (`docs/DEPLOY_NETLIFY.md`).

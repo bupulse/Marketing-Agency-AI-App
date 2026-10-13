@@ -1,11 +1,16 @@
 // Database reads for planning: everything buildWeekPlan needs, scoped to one business.
 import "server-only";
+import { byHandNetwork } from "@/lib/content-board/by-hand";
+import type { Network } from "@/lib/social/types";
 import { prisma } from "@/lib/db";
 import { readKnowledge } from "@/lib/brand/schemas";
 import { accountUsable } from "@/lib/publishing/service";
 import { isNetwork } from "@/lib/social/registry";
 import { holidaysBetween } from "./calendar";
-import { buildProfile, type PostResult } from "./learning";
+import { buildProfile } from "./learning";
+import { loadPostResults } from "./results";
+
+export { loadPostResults };
 import { industryTags } from "./playbook";
 import type { PlanInput, PlanProject } from "./planner";
 import { readConfig } from "./settings";
@@ -21,19 +26,6 @@ const PHOTO_MARK = "photo:";
 
 const ALBUM = { orderBy: [{ position: "asc" as const }, { createdAt: "asc" as const }], take: 10, select: { asset: { select: { path: true } } } };
 
-export async function loadPostResults(businessId: string): Promise<PostResult[]> {
-  const posts = await prisma.post.findMany({
-    where: { businessId, status: "PUBLISHED", publishedAt: { not: null }, metrics: { some: {} } },
-    orderBy: { publishedAt: "desc" },
-    take: 300,
-    select: { playbookId: true, network: true, publishedAt: true, metrics: { orderBy: { capturedAt: "desc" }, take: 1 } },
-  });
-  return posts.flatMap((p) => {
-    const m = p.metrics[0];
-    return m && p.publishedAt ? [{ playbookId: p.playbookId, network: p.network, publishedAt: p.publishedAt, views: m.views, reach: m.reach, likes: m.likes, comments: m.comments, saves: m.saves, shares: m.shares }] : [];
-  });
-}
-
 /** Everything the planner needs for one business and week. Null when the business does not exist. */
 export async function loadPlanInput(businessId: string, weekStart: Date, now: Date): Promise<PlanInput | null> {
   const business = await prisma.business.findUnique({ where: { id: businessId }, include: { autopilot: true } });
@@ -46,7 +38,7 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
 
   const today = localDateISO(now, timeZone);
   const [connections, products, campaigns, postedByProduct, postedByCampaign, assets, recentDesigns, recentPosts, existing, results, faqs] = await Promise.all([
-    prisma.connection.findMany({ where: { businessId, kind: "SOCIAL", id: { in: config.connectionIds } }, orderBy: { createdAt: "asc" } }),
+    prisma.connection.findMany({ where: { businessId, kind: "SOCIAL" }, orderBy: { createdAt: "asc" } }),
     // Active products and campaigns only: drafts and archived ones are not posted about.
     prisma.product.findMany({ where: { businessId, status: "ACTIVE" }, orderBy: { createdAt: "desc" }, take: 30, include: { photos: ALBUM } }),
     prisma.campaign.findMany({
@@ -135,7 +127,7 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
     country: business.country,
     industryTags: industryTags(business.industry),
     config,
-    connections: connections.flatMap((c) => (isNetwork(c.provider) && accountUsable(c) ? [{ id: c.id, network: c.provider }] : [])),
+    connections: planConnections(connections, config.connectionIds),
     projects: planProjects,
     faqs,
     hasHours: !!(knowledge.hours || knowledge.openingHours.length),
@@ -146,4 +138,22 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
     profile: buildProfile(results, timeZone),
     now,
   };
+}
+
+/**
+ * The accounts Autopilot writes for: the chosen usable accounts, and for each app chosen while it was not connected
+ * ("network:<app>") its account once one is connected (so the posts publish on their own), else the app itself, whose
+ * posts become reminders to post yourself (docs/CONTENT.md).
+ */
+export function planConnections(all: { id: string; provider: string; status: string; postingMode: string }[], chosen: string[]): { id: string; network: Network }[] {
+  const usable = all.filter((c) => isNetwork(c.provider) && accountUsable(c));
+  const out: { id: string; network: Network }[] = usable.filter((c) => chosen.includes(c.id)).map((c) => ({ id: c.id, network: c.provider as Network }));
+  for (const id of chosen) {
+    const network = byHandNetwork(id);
+    if (!network) continue;
+    const account = usable.find((c) => c.provider === network && c.postingMode === "AUTO") ?? usable.find((c) => c.provider === network);
+    const entry = account ? { id: account.id, network } : { id, network };
+    if (!out.some((o) => o.id === entry.id)) out.push(entry);
+  }
+  return out;
 }

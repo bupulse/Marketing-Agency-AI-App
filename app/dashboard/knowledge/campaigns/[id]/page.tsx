@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAppContext } from "@/components/app/context";
+import { latestContentPosts } from "@/lib/content-board/drafts";
 import { featureGate } from "@/components/app/no-access";
 import { DesignStudio } from "@/components/designs/design-studio";
 import { AlbumCard } from "@/components/knowledge/album-card";
@@ -30,6 +31,8 @@ export default async function CampaignPage({ params }: { params: Promise<{ id: s
   const campaign = await getCampaign(business.id, id);
   if (!campaign) notFound();
   const subject = { kind: "campaign" as const, id: campaign.id };
+  // Content written before posts were drafted gets its posts to review once, when its page is opened (docs/CONTENT.md).
+  if (entitlements.usable.has("calendar")) await latestContentPosts(business.id, { campaignId: campaign.id }, { backfill: true }).catch(() => null);
   const [photos, studio] = await Promise.all([albumItems(business.id, "campaign", campaign.id), loadSubjectStudio(business.id, subject)]);
   // Designs fall back to the first linked product's album while the campaign has no photos of its own.
   const firstProduct = campaign.products[0]?.product;

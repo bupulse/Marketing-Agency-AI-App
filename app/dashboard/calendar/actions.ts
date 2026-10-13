@@ -14,6 +14,7 @@ import { loadComposerContext } from "@/lib/publishing/queries";
 import { timezoneSchema } from "@/lib/publishing/schemas";
 import {
   approvePosts,
+  connectByHandPosts,
   createPosts,
   deletePost,
   duplicatePost,
@@ -21,6 +22,7 @@ import {
   PublishingError,
   reschedulePost,
   retryPost,
+  unschedulePost,
   setBusinessTimezone,
   updatePost,
   type Owner,
@@ -138,6 +140,19 @@ export async function deletePostAction(postId: string): Promise<ActionResult<{ n
 
 export async function approvePostsAction(postIds: string[]): Promise<ActionResult<{ approved: number }>> {
   return run("approve", "compose", (o) => approvePosts(o.businessId, Array.isArray(postIds) ? postIds.map(String) : []));
+}
+
+/** "Publish automatically": posts made for an app that is now connected switch to that account. */
+export async function connectByHandPostsAction(postIds: string[]): Promise<ActionResult<{ switched: number }>> {
+  return run("connect-by-hand", "compose", (o) => connectByHandPosts(o, Array.isArray(postIds) ? postIds.map(String) : []));
+}
+
+/** Takes a scheduled post back to "Needs review" (auto-approval's safety window). */
+export async function unschedulePostAction(postId: string): Promise<ActionResult> {
+  return run("unschedule", "compose", async (o) => {
+    await unschedulePost(o, String(postId));
+    return {};
+  });
 }
 
 /** Puts a failed post back in line and tries to publish it straight away. */

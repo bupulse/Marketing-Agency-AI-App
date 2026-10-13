@@ -22,6 +22,24 @@ describe("GitHub workflows", () => {
     for (const [, block] of checkouts) expect(block).toContain("persist-credentials: false");
   });
 
+  it("video robot: every 15 minutes, read-only, never overlapping, no artifacts, secret only where it is used", () => {
+    const yml = readFileSync(`${dir}/video-robot.yml`, "utf8");
+    expect(yml).toContain('cron: "*/15 * * * *"');
+    expect(yml).toContain("workflow_dispatch:");
+    expect(yml).toMatch(/\npermissions:\n {2}contents: read\n\n/);
+    expect(yml).toMatch(/\nconcurrency:\n {2}group: video-robot\n {2}cancel-in-progress: false\n/);
+    expect(yml).toContain("timeout-minutes: 20");
+    expect(yml).toContain("persist-credentials: false");
+    expect(yml).not.toMatch(/upload-artifact|actions\/cache@|set -x|curl /);
+    expect(yml).toContain("ROBOT_APP_URL: ${{ vars.ROBOT_APP_URL }}");
+    // The secret is never job-wide: only the steps that call the app get it.
+    const secretLines = yml.split("\n").filter((l) => l.includes("secrets.VIDEO_ROBOT_SECRET"));
+    expect(secretLines.length).toBe(3);
+    expect(secretLines.every((l) => l.startsWith("          VIDEO_ROBOT_SECRET: "))).toBe(true);
+    // Skips quietly when not set up.
+    expect(yml).toContain("steps.setup.outputs.ready == 'true'");
+  });
+
   it("Netlify: builds without the token, then deploys the build without building", () => {
     const yml = readFileSync(`${dir}/deploy-netlify.yml`, "utf8");
     const steps = yml.split(/\n      - /);

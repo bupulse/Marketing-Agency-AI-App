@@ -308,6 +308,18 @@ describe("reminders (NOTIFY accounts and SCRIPT posts)", () => {
     expect(settled().data).toMatchObject({ status: "NEEDS_ACTION", lastError: null });
   });
 
+  it("sends a post made for an app that is not connected (remindOnly) as a reminder", async () => {
+    claimOnce(post({ network: "instagram", connection: null, connectionId: null, remindOnly: true, mediaPaths: ["u1/designs/d.png"] }));
+    const result = await publishDue(now);
+    expect(result).toMatchObject({ claimed: 1, reminders: 1, failed: 0 });
+    expect(provider.publish).not.toHaveBeenCalled();
+    const sent = email.sendEmail.mock.calls[0][0];
+    expect(sent.subject).toBe("Time to post on Instagram");
+    expect(sent.text).toContain("not connected to BuPulse yet");
+    expect(sent.text).toContain("https://signed.example/u1/designs/d.png");
+    expect(settled().data).toMatchObject({ status: "NEEDS_ACTION" });
+  });
+
   it("sends SCRIPT posts as reminders even on an AUTO account", async () => {
     claimOnce(post({ network: "tiktok", format: "SCRIPT", text: "0-5s: show the oven" }));
     const result = await publishDue(now);
@@ -381,6 +393,7 @@ describe("reminders while Resend is switched off in the admin console", () => {
     const [, ...values] = claimCalls()[0];
     expect(JSON.stringify(values)).toContain("NOTIFY");
     expect(JSON.stringify(values)).toContain("SCRIPT");
+    expect(JSON.stringify(values)).toContain("remindOnly");
     prisma.serviceSwitch.findMany.mockResolvedValue([]);
     clearSwitchCache();
     prisma.$queryRaw.mockClear();

@@ -124,6 +124,16 @@ describe("the background runner", () => {
     ]);
   });
 
+  it("follows the content summary's keyset cursor on both hosts", async () => {
+    expect(CRON_JOBS["/api/cron/content-summary"].cursor).toBe(true);
+    expect(workerCursorRoutes).toContain("/api/cron/content-summary");
+    expect(worker).toMatch(/CONTENT_SUMMARY_CRON\) return ctx\.waitUntil\(runCursorCron\("\/api\/cron\/content-summary"/);
+    const answers = [{ nextCursor: "2026-10-11T07:00:00.000Z|b5" }, { nextCursor: null }];
+    const fetchImpl = vi.fn(async () => ok(answers.shift()));
+    expect(await runJob(CRON_JOBS["/api/cron/content-summary"], "https://x.example", "s", fetchImpl)).toBe(2);
+    expect((fetchImpl.mock.calls[1] as unknown as [string])[0]).toBe("https://x.example/api/cron/content-summary?cursor=2026-10-11T07%3A00%3A00.000Z%7Cb5");
+  });
+
   it("stops on an error answer or a body that is not JSON", async () => {
     expect(await runJob(CRON_JOBS["/api/cron/store-sync"], "https://x.example", "s", vi.fn(async () => ok({ error: "x" }, 500)))).toBe(1);
     expect(await runJob(CRON_JOBS["/api/cron/store-sync"], "https://x.example", "s", vi.fn(async () => new Response("<html>")))).toBe(1);

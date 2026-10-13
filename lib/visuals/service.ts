@@ -376,6 +376,8 @@ async function drawClaimed(owner: Owner, visualId: string, started: number, budg
   });
   // An Autopilot group's posts take the redrawn picture.
   if (done && row.groupId) await attachToGroup(owner.businessId, row.groupId, { feed: true }).catch((e) => logError(e, { source: "visuals.attach", level: "warn", businessId: owner.businessId }));
+  // Studio's drafted posts of this content take it too (docs/CONTENT.md).
+  if (done && row.contentId) await attachToContent(owner.businessId, row.contentId, { feed: true }).catch((e) => logError(e, { source: "visuals.attach", level: "warn", businessId: owner.businessId }));
   // A video planned without photos shows the AI photo once there is one.
   const aiPhoto = plan.slides.find((s) => s.aiPhotoPath)?.aiPhotoPath;
   if (aiPhoto) await lendPhotoToVideo(row, aiPhoto).catch(() => {});
@@ -628,17 +630,18 @@ export async function prepareVideoUpload(owner: Owner, visualId: string, file: {
     throw error;
   }
   const path = videoPath(owner.userId, visualId, file.mimeType);
-  const target = await createSignedUploadUrl("media", path);
+  // The video robot has no session (owner.service): its upload URL is made with the service key, in the owner's folder.
+  const target = await createSignedUploadUrl("media", path, { service: !!owner.service });
   // One open upload per visual: a newer one replaces it (the clean-up deletes a file nobody confirmed).
   await prisma.contentVisual.update({ where: { id: visualId }, data: { uploadPath: target.path, uploadBytes: VIDEO_LIMITS.maxBytes, uploadExpiresAt: new Date(now.getTime() + UPLOAD_RESERVATION_MS) } });
-  return { path: target.path, token: target.token, seconds };
+  return { path: target.path, token: target.token, signedUrl: target.signedUrl, seconds };
 }
 
 /**
  * Confirms an uploaded video: the file exists, is an MP4 or WebM of at most 8 MB, the seconds fit the plan (counted
  * now), then it replaces the visual's old video and goes on the Autopilot posts of its group. A rejected file is deleted.
  */
-export async function finalizeVideo(owner: Owner, visualId: string, input: { path: string; durationMs: number }) {
+export async function finalizeVideo(owner: Owner, visualId: string, input: { path: string; durationMs: number }, options: { robotJob?: string } = {}) {
   const { row } = await videoRow(owner, visualId);
   if (!isOwnVideoPath(owner.userId, visualId, input.path)) throw new VisualError("That upload could not be used.");
   // Asked twice (a lost answer, a double click): the video is already this file, nothing is counted again.
@@ -676,6 +679,12 @@ export async function finalizeVideo(owner: Owner, visualId: string, input: { pat
   if (durationMs === null || !(durationMs > 0)) return reject("We could not read the video's length. Please make it again.");
   if (durationMs > VIDEO_LIMITS.maxMs + 500) return reject("Videos can be at most 30 seconds long.");
   const seconds = billableSeconds(durationMs);
+  // The video robot's file is taken only while it still holds the video: the owner may have taken it over ("Make it
+  // now") or the lease ran out while the file was checked. Read again right before billing.
+  if (options.robotJob) {
+    const held = await prisma.contentVisual.findUnique({ where: { id: row.id }, select: { robotJobId: true, renderingUntil: true } });
+    if (held?.robotJobId !== options.robotJob || !held.renderingUntil || held.renderingUntil <= new Date()) return reject("The video was made elsewhere in the meantime.");
+  }
   try {
     await consumeUsage(owner.userId, "videoSeconds", seconds);
   } catch (error) {
@@ -685,12 +694,13 @@ export async function finalizeVideo(owner: Owner, visualId: string, input: { pat
   const previous = readItems(row.items);
   await prisma.contentVisual.update({
     where: { id: row.id },
-    data: { status: "ready", error: null, items: json([{ path: input.path }]), bytes: size, seconds, renderedAt: new Date(), uploadPath: null, uploadBytes: 0, uploadExpiresAt: null },
+    data: { status: "ready", error: null, items: json([{ path: input.path }]), bytes: size, seconds, renderedAt: new Date(), uploadPath: null, uploadBytes: 0, uploadExpiresAt: null, renderingUntil: null, robotJobId: null, robotAttempts: 0 },
   });
   for (const old of previous) {
     if (old.path !== input.path && !(await inUse(owner.businessId, old.path))) await bucket.remove([old.path]).catch(() => {});
   }
   if (row.groupId) await attachToGroup(owner.businessId, row.groupId).catch((e) => logError(e, { source: "visuals.attach", level: "warn", businessId: owner.businessId }));
+  if (row.contentId) await attachToContent(owner.businessId, row.contentId).catch((e) => logError(e, { source: "visuals.attach", level: "warn", businessId: owner.businessId }));
   return { path: input.path, seconds };
 }
 
@@ -703,8 +713,34 @@ export async function updateVideoPlan(owner: Owner, visualId: string, changes: {
     if (!photos.every((p) => p === null || isOwnPhotoPath(owner.userId, p) || isOwnDesignPath(owner.userId, p))) throw new VisualError("That photo could not be used.");
     next = { ...next, scenes: next.scenes.map((s, i) => (i < photos.length ? { ...s, photoPath: photos[i] } : s)) };
   }
-  await prisma.contentVisual.update({ where: { id: row.id }, data: { plan: json(next), status: "pending", error: null } });
+  await prisma.contentVisual.update({ where: { id: row.id }, data: { plan: json(next), status: "pending", error: null, robotAttempts: 0 } });
   return next;
+}
+
+/** How long a browser render holds the video, so the video robot does not make the same video meanwhile. */
+export const BROWSER_RENDER_LEASE_MS = 10 * 60 * 1000;
+/** How long the video robot holds a video it claimed (render, upload, confirm). Longer than the browser's lease. */
+export const ROBOT_LEASE_MS = 15 * 60 * 1000;
+/** After this long without the robot finishing, the owner's "Make it now" takes the video over. */
+export const ROBOT_TAKEOVER_MS = 5 * 60 * 1000;
+
+/**
+ * The owner's browser is about to make the video ("Make it now", or on open): it takes the render lease, unless the
+ * video robot claimed it less than 5 minutes ago (docs/VIDEO_ROBOT.md). Past that the owner wins: the robot's job is
+ * cancelled, its reserved upload (and any file written there) goes, and its later "complete" is refused.
+ * A video that is already made can always be made again.
+ */
+export async function leaseVideoForBrowser(owner: Owner, visualId: string, now = new Date()) {
+  const { row } = await videoRow(owner, visualId);
+  if (row.status !== "pending") return;
+  // The robot's lease started ROBOT_LEASE_MS before it ends; it is "recent" while it ends later than this.
+  const recentRobot = new Date(now.getTime() + ROBOT_LEASE_MS - ROBOT_TAKEOVER_MS);
+  const taken = await prisma.contentVisual.updateMany({
+    where: { id: row.id, businessId: owner.businessId, robotJobId: row.robotJobId, OR: [{ robotJobId: null }, { renderingUntil: null }, { renderingUntil: { lte: recentRobot } }] },
+    data: { renderingUntil: new Date(now.getTime() + BROWSER_RENDER_LEASE_MS), robotJobId: null, ...(row.robotJobId && row.uploadPath ? { uploadPath: null, uploadBytes: 0, uploadExpiresAt: null } : {}) },
+  });
+  if (taken.count === 0) throw new VisualError("Your video is being made automatically right now. It will be ready in a few minutes.");
+  if (row.robotJobId && row.uploadPath) await createAdminClient().storage.from("media").remove([row.uploadPath]).catch(() => {});
 }
 
 /** Marks a video as not renderable in this browser, so the screen shows the picture version and a reason. */
@@ -731,8 +767,24 @@ export async function readyMedia(businessId: string, key: { contentId: string } 
  * video ideas (a real video post on Instagram and Facebook, the script reminder's attachment on TikTok and YouTube).
  */
 export async function attachToGroup(businessId: string, groupId: string, options: { feed?: boolean } = {}) {
-  const { images, video: videoFile } = await readyMedia(businessId, { groupId });
-  const posts = await prisma.post.findMany({ where: { businessId, groupId, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] }, lockedAt: null }, select: { id: true, network: true, format: true, mediaPaths: true, status: true, lastError: true } });
+  await attachVisuals(businessId, { groupId }, { groupId, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] } }, options);
+}
+
+/**
+ * The same for the posts Studio drafted from a content version (source STUDIO, docs/CONTENT.md); posts the owner made
+ * in the composer keep the media they chose. Posts that waited only for this picture or video are then auto-approved
+ * when their app needs no approval.
+ */
+export async function attachToContent(businessId: string, contentId: string, options: { feed?: boolean } = {}) {
+  // Only drafts still waiting and untouched: a scheduled post or one the owner edited keeps what it has.
+  await attachVisuals(businessId, { contentId }, { contentId, source: "STUDIO", status: { in: ["DRAFT", "PENDING_APPROVAL"] }, ownerEditedAt: null }, options);
+  const { retryAutoSchedule } = await import("@/lib/content-board/auto");
+  await retryAutoSchedule(businessId, { contentId });
+}
+
+async function attachVisuals(businessId: string, key: { contentId: string } | { groupId: string }, postWhere: Prisma.PostWhereInput, options: { feed?: boolean }) {
+  const { images, video: videoFile } = await readyMedia(businessId, key);
+  const posts = await prisma.post.findMany({ where: { businessId, ...postWhere, lockedAt: null }, select: { id: true, network: true, format: true, mediaPaths: true, status: true, lastError: true, updatedAt: true } });
   for (const post of posts) {
     if (!isNetwork(post.network)) continue;
     const rules = getProvider(post.network).rules;
@@ -742,6 +794,6 @@ export async function attachToGroup(businessId: string, groupId: string, options
     const { format, mediaPaths } = mediaForPost({ network: post.network, format: planned, rules, images, video: videoFile });
     if (format === post.format && mediaPaths.join("|") === post.mediaPaths.join("|")) continue;
     const fixesDraft = post.status === "DRAFT" && post.lastError?.startsWith("This post needs a picture") && mediaPaths.length > 0;
-    await prisma.post.updateMany({ where: { id: post.id, lockedAt: null }, data: { format, mediaPaths, ...(fixesDraft ? { lastError: null } : {}) } });
+    await prisma.post.updateMany({ where: { ...postWhere, id: post.id, lockedAt: null, updatedAt: post.updatedAt }, data: { format, mediaPaths, ...(fixesDraft ? { lastError: null } : {}) } });
   }
 }
