@@ -350,19 +350,22 @@ export async function claimSlot(
   });
 }
 
-/** claimSlot, picking a new best time (up to 3 times) when another post took the slot first. */
+/**
+ * claimSlot, picking a new best time (up to 3 times) when another post took the slot first. "ok": written; "taken": no
+ * free time was found; "changed": the post changed meanwhile (the guard in `where` failed).
+ */
 export async function scheduleAtFreeSlot(
   post: { id: string; network: string; connectionId: string | null },
   first: Date,
   args: { businessId: string; where: Prisma.PostWhereInput; data: Prisma.PostUpdateManyMutationInput; now: Date },
-): Promise<boolean> {
+): Promise<"ok" | "taken" | "changed"> {
   let at = first;
   for (let attempt = 0; attempt < 3; attempt++) {
     const result = await claimSlot({ businessId: args.businessId, postId: post.id, connectionId: post.connectionId, at, where: args.where, data: args.data });
-    if (result !== "taken") return result === "ok";
+    if (result !== "taken") return result;
     at = (await bestTimesFor(args.businessId, [post], args.now)).get(post.id) ?? at;
   }
-  return false;
+  return "taken";
 }
 
 /**
@@ -386,7 +389,7 @@ export async function approvePosts(businessId: string, postIds: string[], now = 
     const scheduledAt = times.get(post.id);
     const data = { status: "SCHEDULED" as const, reviewNote: null };
     if (scheduledAt) {
-      if (await scheduleAtFreeSlot(post, scheduledAt, { businessId, where: { status: "PENDING_APPROVAL" }, data, now })) approved += 1;
+      if ((await scheduleAtFreeSlot(post, scheduledAt, { businessId, where: { status: "PENDING_APPROVAL" }, data, now })) === "ok") approved += 1;
       else skipped += 1;
       continue;
     }
@@ -410,31 +413,6 @@ export async function unschedulePost(owner: Owner, postId: string, now = new Dat
     if (!post) throw NOT_FOUND();
     throw new PublishingError(NO_LONGER_EDITABLE, "conflict");
   }
-}
-
-/**
- * "Publish automatically": posts made for an app that was not connected become normal posts of the account now
- * connected for it (the first usable one that BuPulse posts to), keeping their text, media and time. Only posts that
- * have not gone out; returns how many switched.
- */
-export async function connectByHandPosts(owner: Owner, postIds: string[]): Promise<{ switched: number }> {
-  const ids = [...new Set(postIds)].slice(0, 200);
-  if (ids.length === 0) return { switched: 0 };
-  const [posts, connections] = await Promise.all([
-    prisma.post.findMany({ where: { id: { in: ids }, businessId: owner.businessId, remindOnly: true, connectionId: null, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] }, lockedAt: null }, select: { id: true, network: true, status: true } }),
-    prisma.connection.findMany({ where: { businessId: owner.businessId, kind: "SOCIAL" }, orderBy: { createdAt: "asc" } }),
-  ]);
-  let switched = 0;
-  for (const post of posts) {
-    const account = connections.find((c) => c.provider === post.network && accountUsable(c) && c.postingMode === "AUTO") ?? connections.find((c) => c.provider === post.network && accountUsable(c));
-    if (!account) continue;
-    const { count } = await prisma.post.updateMany({
-      where: { id: post.id, businessId: owner.businessId, remindOnly: true, connectionId: null, status: post.status, lockedAt: null },
-      data: { connectionId: account.id, remindOnly: false },
-    });
-    switched += count;
-  }
-  return { switched };
 }
 
 /** Puts a failed post back in line to be published now. */

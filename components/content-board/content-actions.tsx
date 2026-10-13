@@ -50,7 +50,11 @@ export function SwitchToAutoBanner({ postIds }: { postIds: string[] }) {
           start(async () => {
             const res = await connectByHandPostsAction(postIds);
             if (!res.ok) return toast(res.error, "error");
-            toast(res.switched === 1 ? "1 post now goes out automatically." : `${res.switched} posts now go out automatically.`, "success");
+            const auto = res.switched - res.toReview;
+            toast(
+              `${auto === 1 ? "1 post now goes out" : `${auto} posts now go out`} automatically.${res.toReview > 0 ? ` ${res.toReview === 1 ? "1 needs" : `${res.toReview} need`} a look first: back in Needs review with the reason.` : ""}`,
+              res.toReview > 0 ? "info" : "success",
+            );
             router.refresh();
           })
         }

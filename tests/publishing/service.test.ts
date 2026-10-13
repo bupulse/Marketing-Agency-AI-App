@@ -24,7 +24,6 @@ vi.mock("@/lib/db", () => ({ prisma }));
 
 import {
   approvePosts,
-  connectByHandPosts,
   createPosts,
   deletePost,
   duplicatePost,
@@ -438,22 +437,6 @@ describe("approving never stacks two posts on one account", () => {
   });
 });
 
-describe("connectByHandPosts (Publish automatically)", () => {
-  it("moves reminder posts of a now-connected app to its account, and leaves apps still not connected alone", async () => {
-    prisma.post.findMany.mockResolvedValue([
-      { id: "a", network: "facebook", status: "SCHEDULED" },
-      { id: "b", network: "tiktok", status: "PENDING_APPROVAL" },
-    ]);
-    prisma.connection.findMany.mockResolvedValue([facebook]);
-    expect(await connectByHandPosts(owner, ["a", "b", "a"])).toEqual({ switched: 1 });
-    expect(prisma.post.findMany.mock.calls[0][0].where).toMatchObject({ id: { in: ["a", "b"] }, businessId: "b1", remindOnly: true, connectionId: null });
-    expect(prisma.post.updateMany).toHaveBeenCalledTimes(1);
-    expect(prisma.post.updateMany.mock.calls[0][0]).toEqual({
-      where: { id: "a", businessId: "b1", remindOnly: true, connectionId: null, status: "SCHEDULED", lockedAt: null },
-      data: { connectionId: "c-fb", remindOnly: false },
-    });
-  });
-});
 
 describe("approvePosts reports what it could not schedule", () => {
   it("counts a post as skipped when no free time is left after three tries", async () => {
