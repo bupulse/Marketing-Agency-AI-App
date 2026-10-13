@@ -65,7 +65,7 @@ then the code.
 ## Review fixes (after the merge into v2)
 
 - One run at a time per company with a request key from the dialog (`Business.contentRunKey`, `contentRunUntil`,
-  migration `20261017130000_content_run_claim`): "Already making today's content…".
+  migration `20261017150000_content_run_claim`): "Already making today's content…".
 - AI photos reserved when the run starts and given back when a slide ends without one (`prepaidAi`, `createAiDesign`
   `prepaid`).
 - The cost line includes video seconds and voiceover characters of the videos BuPulse would make.
@@ -75,13 +75,13 @@ then the code.
 ## Owner requirements (posts per app, price, ideas, contests)
 
 - **Posts per app per day** by plan (`PlanDefinition.limits.postsPerAppPerDay`; trial, Starter, Standard 1; Business,
-  Pro 3; custom plans 1 to 10 in the offer builder's Limits; migration `20261017150000_posts_per_app_per_day`). The
+  Pro 3; custom plans 1 to 10 in the offer builder's Limits; migration `20261017150100_posts_per_app_per_day`). The
   dialog's "Posts per app" counts the subject's posts today; Autopilot respects it per account, day and subject. The
   admin plan form does not edit it yet (the offer builder does; Jarvis / `setPlanLimits` still take the usage limits).
 - **Price choice** in the dialog: AI decides (default), With price, No price (engaging).
 - **More ideas**, balanced fun / professional by the Digital Marketing Profile; the idea type shows on every card.
 - **Contests**: suggested with placeholders, "Needs your confirmation: prize & rules" until the owner fills in the
-  prize, end date and winner rule and confirms paying (migration `20261017160000_contest_posts`, `Post.contest`).
+  prize, end date and winner rule and confirms paying (migration `20261017150200_contest_posts`, `Post.contest`).
   Never approved, scheduled or auto-approved before that; never auto-approved after.
 - Decision to confirm: "AI decides" shows a price on at most one post per run and only when the subject's last 3
   posts had none.

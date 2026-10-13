@@ -74,7 +74,7 @@ BuPulse designs)** (AI is offered only when `aiPhotosAvailable`).
 
 **Posts per app per day** (`lib/content-flow/slots.ts`): the plan's `limits.postsPerAppPerDay` (trial, Starter and
 Standard 1, Business and Pro 3, custom plans 1 to 10 set in the offer builder; migration
-`20261017150000_posts_per_app_per_day`; 1 for a plan without it, `postsPerAppLimit`). The dialog asks "Posts per app"
+`20261017150100_posts_per_app_per_day`; 1 for a plan without it, `postsPerAppLimit`). The dialog asks "Posts per app"
 (1 by default, up to the limit); the run counts the posts the subject already has on each app today (business time
 zone) and makes at most the rest, skipping a full app with the reason. Every app gets its first post before any gets a
 second; an app's second post that day is a picture, not the same Reel again. Autopilot's planner keeps the same limit
@@ -101,7 +101,7 @@ Autopilot's idea).
 **Contests** (`lib/content-flow/contest.ts`): the AI may suggest a challenge or contest ("make the best video about us")
 but never its prize, end date or how the winner is chosen: it writes `[PRIZE]`, `[END DATE]` and
 `[HOW THE WINNER IS CHOSEN]` and a short rules line. The post is saved with `Post.contest = {}` and "Needs your
-confirmation: prize & rules" (migration `20261017160000_contest_posts`). The day view lists such posts with a form:
+confirmation: prize & rules" (migration `20261017150200_contest_posts`). The day view lists such posts with a form:
 prize, end date, how the winner is chosen and "I will give this prize to the winner" (`confirmContest`, guarded by
 `updatedAt`). Until then the post cannot be approved (`approvePosts` skips it), scheduled or published (any text with
 a placeholder fails `validatePost`: composer, Schedule all, auto-approval); a contest is never auto-approved, even
@@ -121,7 +121,7 @@ charged.
 **One run at a time.** `runDayContent` claims the company first (`Business.contentRunUntil`, compare-and-set, 5
 minutes for a run that died) with the dialog's request key (`contentRunKey`, new each time the dialog opens): a
 double click, a second tab or another team member gets "Already making today's content… it shows here in a moment.",
-and the same request after it finished gets "already made". Migration `20261017130000_content_run_claim`.
+and the same request after it finished gets "already made". Migration `20261017150000_content_run_claim`.
 
 **Angles, day after day.** The angles are the packs' (`lib/studio/angles.ts`: price, how it works, features, news,
 customer story, behind the scenes, tips, FAQ, why us, local moment, book or buy, each only when its facts exist).
