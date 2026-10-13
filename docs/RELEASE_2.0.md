@@ -47,7 +47,7 @@ free (`docs/DEPLOY_NETLIFY.md`) stays the fallback. This file is the order of wo
 1. **Freeze**: no new merges into `v2` except fixes found on the day.
 2. **Final checks on v2**: `npx tsc --noEmit`, `npm run lint`, `npx vitest run`, `npx next build`, and the Workers
    build with its size (`npm run build:cloudflare`, then `npx wrangler deploy --dry-run --outdir /tmp/cf`: the gzip
-   size must stay under 10 MiB; it was BUNDLE_AFTER on 13 October).
+   size must stay under 10 MiB; it was 9.2 MiB on 13 October).
 3. **Merge v2 into main** (merge commit, version 2.0.0). Push only with the owner's go-ahead.
 4. **Production database**: the deploy workflow runs `prisma migrate deploy` on the new Supabase project. Regions,
    plans, add-ons and industries are seeded by the migrations; check them in Admin → Plans / Regions / Industries.
@@ -124,7 +124,7 @@ Restore (only after a failed deploy, into the same or a new project):
 - Card payments need Paddle live approval; until then MoMo and invoices only.
 - Cloudflare Workers Paid: $5 a month includes 10 million requests and 30 million CPU milliseconds; the crons (about
   45,000 runs a month, the publisher every minute) and the video robot's calls are a small part of that. The Worker is
-  BUNDLE_AFTER gzipped against a 10 MiB limit (`docs/DEPLOY.md`, Known notes): re-measure before adding a heavy
+  9.2 MiB gzipped against a 10 MiB limit (`docs/DEPLOY.md`, Known notes): re-measure before adding a heavy
   library. Videos are never rendered in the Worker.
 - Supabase free: 500 MB database, 1 GB file storage (uploads stop at 900 MB), the project pauses after 7 days without
   traffic (the uptime monitor keeps it awake). Videos fill storage fast: a Gallery video can be 50 MB and each company

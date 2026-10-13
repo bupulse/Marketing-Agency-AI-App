@@ -4,7 +4,7 @@ BuPulse 2.0 runs on **Cloudflare Workers, Paid plan** ($5 a month), through Open
 
 Netlify's free plan stays a supported fallback: see `docs/DEPLOY_NETLIFY.md`. The repository variable `DEPLOY_TARGET` (unset or `cloudflare` = this page, `netlify` = that one) chooses which workflow a push to `main` runs; everything that differs between the two hosts lives in `lib/platform/`.
 
-Why the Paid plan: the Worker is about BUNDLE_AFTER gzipped (the free plan allows 3 MiB, Paid 10 MiB), it needs more than 10 ms of CPU per request (Paid: 30 s by default, 2 minutes set in `wrangler.jsonc`), and the publisher runs every minute.
+Why the Paid plan: the Worker is about 9.2 MiB gzipped (the free plan allows 3 MiB, Paid 10 MiB), it needs more than 10 ms of CPU per request (Paid: 30 s by default, 2 minutes set in `wrangler.jsonc`), and the publisher runs every minute.
 
 ## 1. One-time Cloudflare setup (owner)
 
@@ -81,7 +81,7 @@ For staging, create a second worker (copy `wrangler.jsonc` to an environment nam
 
 ## Known notes
 
-- **Bundle size** (`npx wrangler deploy --dry-run --outdir /tmp/cf` after `npm run build:cloudflare` prints it): BUNDLE_AFTER gzipped (BUNDLE_AFTER_RAW before compression) on 13 October 2026, against the Workers Paid limit of 10 MiB gzipped (64 MiB raw). Before the 2.0 trimming it was BUNDLE_BEFORE, over the limit. What was cut: the `@anthropic-ai/sdk` and `@google/genai` packages (Claude and Gemini are called over plain `fetch`, `lib/ai/gemini-rest.ts`; the Google SDK pulled in google-auth-library, ws and more, copied into several route layers), Prisma's query compiler as base64 in the JavaScript (now a `.wasm` module, `scripts/cf-build.mjs`), and the country border data (`@rapideditor/country-coder`) in the pricing page (`lib/geo/availability.ts`). Static files (`public/`, `_next/static`, about 5 MB) are Workers Assets and do not count. Keep heavy libraries out of server code shared by many routes; re-measure before adding one.
+- **Bundle size** (`npx wrangler deploy --dry-run --outdir /tmp/cf` after `npm run build:cloudflare` prints it): 9.2 MiB gzipped (37.7 MiB before compression) on 13 October 2026, against the Workers Paid limit of 10 MiB gzipped (64 MiB raw). Before the 2.0 trimming it was 11.0 MiB gzipped, over the limit. What was cut: the `@anthropic-ai/sdk` and `@google/genai` packages (Claude and Gemini are called over plain `fetch`, `lib/ai/gemini-rest.ts`; the Google SDK pulled in google-auth-library, ws and more, copied into several route layers), Prisma's query compiler as base64 in the JavaScript (now a `.wasm` module, `scripts/cf-build.mjs`), and the country border data (`@rapideditor/country-coder`) in the pricing page (`lib/geo/availability.ts`). Static files (`public/`, `_next/static`, about 5 MB) are Workers Assets and do not count. Keep heavy libraries out of server code shared by many routes; re-measure before adding one.
 - **Workers build**: always `node scripts/cf-build.mjs` (the npm `deploy`, `preview` and `build:cloudflare` scripts and `deploy.yml` use it), not `opennextjs-cloudflare build` alone: workerd cannot compile WebAssembly from bytes, so Prisma's query compiler must be a `.wasm` module imported by `worker.ts`, like the image codecs.
 - `worker.ts` may only export its handler and the Durable Object classes (workerd refuses other named exports); the cron schedules live in `worker-crons.ts`.
 - `pg-cloudflare` is pinned to 1.3.0 in `package.json` (`overrides`) because 1.4.1 is published without the files the bundler needs. Remove the pin once a fixed version ships.
