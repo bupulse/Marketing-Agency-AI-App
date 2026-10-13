@@ -122,7 +122,7 @@ describe("planVisuals (the art director with the content)", () => {
     expect(image).toMatchObject({ businessId: "biz1", contentId: "c1", kind: "image", status: "pending" });
     // AI photos are allowed here, so the cover is a people scene with the album photo as the product reference.
     expect(image.plan).toMatchObject({ directedBy: "ai", pack: "warm", slides: [{ headline: "Light as air", source: "ai", photoPath: photo }] });
-    expect(image.plan.people.who).toBeTruthy();
+    expect(image.plan.people).toMatchObject({ role: expect.any(String), age: expect.any(String) });
     expect(video).toMatchObject({ kind: "video", status: "pending" });
     expect(video.plan.scenes[0].text).toBe("The all-new Aero Sneaker");
   });
@@ -473,6 +473,16 @@ describe("people in the pictures (owner decision, 13 October 2026)", () => {
     expect(mocks.createAiDesign.mock.calls[0][0]).toMatchObject({ usePhotoPath: photo, includePeople: true });
     expect(mocks.createAiDesign.mock.calls[0][0].prompt).toMatch(/Rwandan woman holding the phone/);
     expect(mocks.createTemplateDesign.mock.calls.map(([a]) => a.photoPath)).toEqual([`${U}/designs/ai1.png`, `${U}/designs/ai1.png`, `${U}/designs/ai1.png`]);
+  });
+
+  it("the dollar allowance running out gives the same message, refilled on the 1st of next month", async () => {
+    const { aiPhotosStatus, nextMonthStart } = await import("@/lib/visuals/service");
+    mocks.getUsageSummary.mockResolvedValue({ used: { image: 3, videoSeconds: 0 }, limits: { image: 30, videoSeconds: 0 }, resetsAt: new Date("2026-11-20T00:00:00Z") });
+    mocks.spend.mockResolvedValue({ totalUsd: 6, widgetUsd: 0, ownerUsd: 6, allowanceUsd: 6, widgetCapUsd: 3 });
+    const status = await aiPhotosStatus(owner);
+    expect(status.allowed).toBe(false);
+    expect(status.exhausted?.refillAt).toBe(nextMonthStart(new Date()).toISOString());
+    expect(nextMonthStart(new Date("2026-12-15T10:00:00Z")).toISOString()).toBe("2027-01-01T00:00:00.000Z");
   });
 
   it("AI images used up: the plan says when they come back, and the visual is a free design from real photos", async () => {

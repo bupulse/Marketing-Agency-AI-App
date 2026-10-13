@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
+import { MODEL_PRICES } from "./pricing";
 import { AIProviderError } from "./types";
 
 /** Monthly safety cap on BuPulse's own AI spend (AI_MONTHLY_BUDGET_USD, default $20). */
@@ -83,6 +84,25 @@ export class WidgetBudgetExceededError extends CompanyBudgetExceededError {
   }
 }
 
+/** AI images in one image pack (the `block:image` add-on, lib/offers/shared.ts). */
+export const IMAGE_PACK_SIZE = 50;
+
+/** What one AI image costs us (lib/ai/pricing.ts), for allowances that must cover a plan's images. */
+export function imageUnitUsd(): number {
+  const price = MODEL_PRICES[process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image"]?.perImage;
+  return typeof price === "number" && price > 0 ? price : 0.039;
+}
+
+/** The dollars image packs add to the allowance, rounded up to whole dollars, so a paid pack is always usable. */
+export function packAllowanceUsd(packs: number): number {
+  return packs > 0 ? Math.ceil(packs * IMAGE_PACK_SIZE * imageUnitUsd()) : 0;
+}
+
+/** An allowance for a plan without one of its own (old custom plans): its AI images at cost x 1.5, plus $1 for text. */
+export function derivedAllowanceUsd(imageLimit: number): number {
+  return Math.ceil(Math.max(0, imageLimit) * imageUnitUsd() * 1.5 + 1);
+}
+
 /** Pure: a plan's own allowance when it has a sound one, else the default. */
 export function allowanceFor(planUsd: number | null | undefined, fallback = companyMonthlyBudgetUsd()): number {
   return typeof planUsd === "number" && Number.isFinite(planUsd) && planUsd >= 0 ? planUsd : fallback;
@@ -102,9 +122,12 @@ export async function companyAllowanceUsd(businessId: string, now = Date.now()):
     const business = await prisma.business.findUnique({ where: { id: businessId }, select: { user: { select: { subscription: { select: { plan: true } } } } } });
     const key = business?.user?.subscription?.plan;
     if (key) {
-      const row = await prisma.planDefinition.findUnique({ where: { key }, select: { aiMonthlyUsd: true } });
+      const row = await prisma.planDefinition.findUnique({ where: { key }, select: { aiMonthlyUsd: true, limits: true } });
       const { SEED_PLANS } = await import("@/lib/plans");
-      value = allowanceFor(row?.aiMonthlyUsd ?? SEED_PLANS[key]?.aiMonthlyUsd);
+      const own = row?.aiMonthlyUsd ?? SEED_PLANS[key]?.aiMonthlyUsd;
+      // A plan with no allowance of its own (a custom plan from before) gets one that covers its AI images.
+      const images = Number((row?.limits as { image?: unknown } | null)?.image);
+      value = allowanceFor(own ?? (row && Number.isFinite(images) ? derivedAllowanceUsd(images) : undefined));
     }
   } catch {
     // The default allowance while the plan cannot be read.

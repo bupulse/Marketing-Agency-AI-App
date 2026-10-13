@@ -9,6 +9,7 @@ import { ServiceDisabledError } from "@/lib/admin/switch";
 import { PACKS, recommendPack } from "@/lib/designs/packs";
 import { TEMPLATES } from "@/lib/designs/templates/registry";
 import { logError } from "@/lib/errors";
+import { ageBand, knownCountry, safePhrase } from "./people";
 import { DIRECTION_JSON_SCHEMA, fallbackPlan, slideText, validateDirection, type DirectionContext } from "./direction";
 import { VISUAL_LIMITS, type ImagePlan } from "./types";
 
@@ -23,7 +24,7 @@ Rules:
 - Slide texts are short, taken from the post, in the post's language. Never invent prices, discounts, dates, numbers or claims; a chip may only repeat a price, date or call to action that the post or facts state.
 - Posts show people. When AI photos are allowed, the cover is image "ai": a realistic photo of everyday local people (customers using or enjoying the product or service, staff serving, a family at home) with the product. If the album has a photo of the product, set "photo" to the best one: it is the reference, so the real product stays recognisable. A post without people is the rare exception: a pure price list, a quote card, or when AI photos are not allowed (then use the album photos, image "album").
 - In a carousel only the cover is "ai"; the other slides are "none" (designed slides with the tips or prices over the cover photo) or "album".
-- "people" describes who is in the AI photo, doing what, where, the mood and the framing, in English. They look like the company's customers in its country (see AUDIENCE), in natural everyday clothes, of the ages and genders that fit. Never a real or famous person or a lookalike, no children, nothing medical, no before-and-after.
+- "people" describes who is in the AI photo: age band, gender and role from the lists, then the activity, place, mood and framing in English. They are adults who look like the company's customers in its country (see AUDIENCE), in natural everyday clothes. Never a real or famous person or a lookalike, no children, nothing medical, no before-and-after.
 - The scene describes what is photographed besides the people, in English, with no text, words, logos, prices or offers in the picture.
 - Pick the style pack that fits the brand voice and industry; keep the recommended one unless the post clearly needs another.
 Return only the requested JSON.`;
@@ -40,8 +41,12 @@ export function fence(label: string, text: string): string {
 /** The company's market and customers, for the people brief: country, then up to three personas. */
 export function audienceText(ctx: Pick<DirectionContext, "audience">): string {
   const a = ctx.audience;
-  const lines = [`Country: ${a?.country?.trim() || "not set"}`];
-  for (const p of (a?.personas ?? []).slice(0, 3)) lines.push(`Customer: age ${p.ageRange}${p.gender && p.gender !== "any" ? `, mostly ${p.gender === "female" ? "women" : "men"}` : ""}${p.location ? `, ${p.location}` : ""}${p.occupation ? `, ${p.occupation}` : ""}`);
+  const lines = [`Country: ${knownCountry(a?.country) ?? "not set"}`];
+  for (const p of (a?.personas ?? []).slice(0, 3)) {
+    const location = safePhrase(p.location, 60);
+    const occupation = safePhrase(p.occupation, 60);
+    lines.push(`Customer: age ${ageBand(p.ageRange)}${p.gender === "female" ? ", mostly women" : p.gender === "male" ? ", mostly men" : ""}${location ? `, ${location}` : ""}${occupation ? `, ${occupation}` : ""}`);
+  }
   return lines.join("\n");
 }
 

@@ -43,8 +43,12 @@ Owner decision (13 October 2026): posts almost always show people.
   stays recognisable (a woman in Kigali holding the real phone). Without a photo, the scene is made from the
   description. A post without people is the rare exception: a price list, a quote card, or AI images not available
   (then the real photos and brand designs are used, never a failure).
-- The art director returns a `people` brief (who, doing what, where, mood, framing; `lib/visuals/people.ts`, checked
-  and clipped, unsafe words removed). Missing, BuPulse writes it from the company's country and first persona
+- The art director returns a structured `people` brief (`lib/visuals/people.ts`): age band (18–25, 26–40, 41–60, 60+:
+  adults only), gender (woman, man, mixed group) and role (customer, staff, family adults, team, professional) from
+  fixed lists, plus activity, place, mood and framing as free text that goes through `safePhrase` (fences, control
+  characters, minors, nudity, medical and before-and-after words removed, and a public figure's title together with
+  the name after it). The country reaches a prompt only when it is on the sign-up list (`knownCountry`); the area and
+  persona fields go through `safePhrase` too. Missing, BuPulse writes it from the company's country and first persona
   (Rwanda: Rwandans in Kigali settings, everyday clothes; ages and gender from the persona; under-18 and "all ages"
   personas still give adults).
 - The image prompt (`lib/designs/prompt.ts`) adds: never a real, famous or recognisable person or a lookalike; adults
@@ -62,11 +66,16 @@ Owner decision (13 October 2026): posts almost always show people.
 | Rwanda Business, Pro | 100 | $6 |
 | Trial | 5 | $1 |
 
-Set by `20261016090000_people_images` (`PlanDefinition.aiMonthlyUsd`, `limits.image`, card copy "N AI images a
+Set by `20261016130000_people_images` (`PlanDefinition.aiMonthlyUsd`, `limits.image`, card copy "N AI images a
 month"); `companyAllowanceUsd` reads the plan's allowance (cached 30 s), else the code's seed plan, else
 `AI_COMPANY_MONTHLY_USD`. When the images run out the visual is a free design from real photos and says "AI images for
 this month used — next refill on <date>" with "Get an image pack (+50 AI images)" (add-on `block:image`, 5,000 RWF a
-month in Rwanda, admin-editable).
+month in Rwanda, admin-editable). An image pack raises the dollar allowance too: a custom plan's `aiMonthlyUsd` is set
+when its offer is accepted to its base plan's allowance plus $2 per pack (50 images at cost, rounded up,
+`lib/offers/allowance.ts`); a custom plan without a base or an allowance gets its AI images at cost x 1.5 plus $1. When
+the dollar allowance stops the images first, the same "AI images for this month used" message shows the 1st of next
+month. The drawing lease (`RENDER_LEASE_MS`, 4 minutes) outlasts the slowest AI photo call (120 s timeout plus up to
+30 s of SDK retries) so a second call never pays for the same photo.
 
 ### Carousel or single
 

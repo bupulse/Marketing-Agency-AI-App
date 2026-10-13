@@ -53,6 +53,11 @@ export async function aiPhotosAvailable(owner: Owner): Promise<boolean> {
   return (await aiPhotosStatus(owner)).allowed;
 }
 
+/** The 1st of next month, 00:00 UTC: when the company AI allowance starts again. */
+export function nextMonthStart(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+}
+
 /** "AI images for this month used — next refill on 1 November." */
 export function aiExhaustedNote(refillAt: string | null): string {
   if (!refillAt) return "AI images for this month used. Your real photos and brand designs are used instead.";
@@ -69,7 +74,9 @@ export async function aiPhotosStatus(owner: Owner): Promise<{ allowed: boolean; 
     if (!(await hasFeature(owner.businessId, "aiPhotos"))) return { allowed: false, exhausted: null };
     const [usage, spend] = await Promise.all([getUsageSummary(owner.userId), companySpendThisMonth(owner.businessId)]);
     if (usage.used.image >= usage.limits.image) return { allowed: false, exhausted: { refillAt: usage.resetsAt ? new Date(usage.resetsAt).toISOString() : null } };
-    return { allowed: companyCallAllowed(spend, "image"), exhausted: null };
+    // The company's dollar allowance can stop images before the count does: the same message, refilled on the 1st.
+    if (!companyCallAllowed(spend, "image")) return { allowed: false, exhausted: { refillAt: nextMonthStart(new Date()).toISOString() } };
+    return { allowed: true, exhausted: null };
   } catch {
     return { allowed: false, exhausted: null };
   }
@@ -230,8 +237,12 @@ function aiNote(error: unknown): string {
   return "The AI photo could not be made, so this slide uses a free design.";
 }
 
-/** How long one drawing call holds a visual; longer than a call may run, so a crashed call frees it soon after. */
-export const RENDER_LEASE_MS = 2 * 60 * 1000;
+/**
+ * How long one drawing call holds a visual: longer than the slowest call can run (the Gemini image request alone may
+ * take up to 120 s, then the template and the saves), so a second call never pays for the same AI photo; a crashed
+ * call frees it a few minutes later.
+ */
+export const RENDER_LEASE_MS = 4 * 60 * 1000;
 
 export type DrawState = { aiAllowed: boolean; aiMade: number; maxAi: number };
 

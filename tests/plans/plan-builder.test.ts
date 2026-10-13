@@ -83,7 +83,7 @@ beforeEach(() => {
   h.swap.mockImplementation(async (subId: string, price: string) => ({ id: subId, status: "active", customer_id: "ctm_x", items: [{ price: { id: price } }] }));
 });
 
-// 20261016090000_people_images: the image limit is AI images now, and the cards say so.
+// 20261016130000_people_images: the image limit is AI images now, and the cards say so.
 const AI_IMAGE_COPY: Record<string, string> = { "50 brand designs a month": "30 AI images a month", "150 brand designs a month": "100 AI images a month" };
 
 describe("the migration seeds exactly today's plans", () => {
@@ -104,7 +104,7 @@ describe("the migration seeds exactly today's plans", () => {
   it("is identical to the code fallback (SEED_PLANS) and to the pricing page copy", () => {
     for (const [key, c] of Object.entries(SEED_PLANS)) {
       const r = row(key);
-      // The pricing copy changed later with the AI image limits (20261016090000_people_images).
+      // The pricing copy changed later with the AI image limits (20261016130000_people_images).
       r.features = r.features.map((f: string) => AI_IMAGE_COPY[f] ?? f);
       expect(r).toMatchObject({ name: c.name, description: c.description, isTrial: c.isTrial, trialDays: c.trialDays, sortOrder: c.sortOrder, highlight: c.highlight, monthly: c.priceUsdMonthly * 100, yearly: c.priceUsdYearly * 100, limits: Object.fromEntries(Object.entries(c.limits).filter(([k]) => k !== "seats" && k !== "videoSeconds" && k !== "image")), features: c.highlights, caps: { apiAccess: c.features.includes("apiAccess"), ownComposio: c.features.includes("ownComposio") } });
       // seats arrive with their own migration (the plan_seats one); here only the original five limits are compared
@@ -115,7 +115,7 @@ describe("the migration seeds exactly today's plans", () => {
     expect(video).toContain(`jsonb_set("limits", '{videoSeconds}', '${SEED_PLANS.PRO.limits.videoSeconds}'::jsonb)\nWHERE "key" IN ('BUSINESS', 'PRO')`);
     expect(video).toContain(`jsonb_set("limits", '{videoSeconds}', '${SEED_PLANS.TRIAL.limits.videoSeconds}'::jsonb)\nWHERE "isTrial" = true`);
     expect(row("STANDARD").limits.videoSeconds).toBe(SEED_PLANS.STANDARD.limits.videoSeconds);
-    const people = readFileSync("prisma/migrations/20261016090000_people_images/migration.sql", "utf8");
+    const people = readFileSync("prisma/migrations/20261016130000_people_images/migration.sql", "utf8");
     expect(people).toMatch(/'\{image\}', '30'::jsonb\) WHERE "key" IN \('STARTER', 'STANDARD'\)/);
     expect(people).toMatch(/'\{image\}', '100'::jsonb\) WHERE "key" IN \('BUSINESS', 'PRO'\)/);
     expect(people).toMatch(/'\{image\}', '5'::jsonb\) WHERE "isTrial" = true/);

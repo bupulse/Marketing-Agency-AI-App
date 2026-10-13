@@ -1,5 +1,6 @@
 import { getVoice } from "@/lib/brand/voices";
 import { readKnowledge } from "@/lib/brand/schemas";
+import { knownCountry, safePhrase } from "@/lib/visuals/people";
 import type { AspectRatio } from "./layout";
 
 export type BrandForPrompt = {
@@ -18,8 +19,9 @@ const NO_PEOPLE = /\b(no|without|zero)\s+(people|persons?|humans?|models?|faces?
 
 /** Who appears in the picture: real-looking customers or staff of this business, like a real ad. */
 function peopleLines(business: BrandForPrompt, hasPhoto?: boolean): string[] {
-  const area = readKnowledge(business.knowledge).area;
-  const place = [area, business.country].filter(Boolean).join(", ");
+  // Never raw owner text in the picture prompt: the area is made safe, the country must be a known one.
+  const area = safePhrase(readKnowledge(business.knowledge).area, 80);
+  const place = [area, knownCountry(business.country)].filter(Boolean).join(", ");
   return [
     "People: include one to three realistic people who are this business's typical customers or staff" +
       (business.audience ? ` (${business.audience.slice(0, 160)})` : "") +
