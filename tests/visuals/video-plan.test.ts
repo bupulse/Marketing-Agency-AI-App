@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildVideoPlan, fitDurations, readVideoPlan, sceneDuration, scriptLines, withSceneTexts } from "@/lib/visuals/video-plan";
-import { billableSeconds, captionOpacity, frameCount, frameTimestampUs, kenBurns, layersAt, sceneStarts, totalDuration, wrapText } from "@/lib/visuals/timeline";
+import { billableSeconds, captionAlphas, captionAt, captionOpacity, frameCount, frameTimestampUs, kenBurns, layersAt, sceneStarts, totalDuration, wrapText } from "@/lib/visuals/timeline";
 import { VIDEO_LIMITS, type VideoPlan } from "@/lib/visuals/types";
 
 const SCRIPT = `[0-3s] Hook: Tired of heavy shoes?
@@ -123,6 +123,24 @@ describe("timeline", () => {
     const lines = wrapText("one two three four five six seven", 9, (s) => s.length, 2);
     expect(lines).toEqual(["one two", "three…"]);
     expect(wrapText("supercalifragilistic", 8, (s) => s.length)).toEqual(["supercal", "ifragili", "stic"]);
+  });
+
+  it("captions are sequential: at no time are two captions above 0.1 opacity, and each one is fully shown", () => {
+    for (const p of [buildVideoPlan({ ...base, script: SCRIPT }), buildVideoPlan({ ...base, script: Array.from({ length: 12 }, (_, i) => `Line ${i} of the script.`).join("\n") }), plan]) {
+      const total = totalDuration(p.scenes, p.crossfadeMs);
+      const peak = p.scenes.map(() => 0);
+      for (let t = 0; t <= total; t += 5) {
+        const alphas = captionAlphas(p, t);
+        expect(alphas.filter((a) => a > 0.1).length, `t=${t}`).toBeLessThanOrEqual(1);
+        alphas.forEach((a, i) => (peak[i] = Math.max(peak[i], a)));
+      }
+      expect(peak.every((a) => a === 1)).toBe(true);
+      // Mid-crossfade (where the bug showed both texts) there is no caption at all.
+      const starts = sceneStarts(p);
+      expect(captionAt(p, starts[1] + p.crossfadeMs / 2)).toBeNull();
+      // The last caption stays to the end.
+      expect(captionAt(p, total)?.index).toBe(p.scenes.length - 1);
+    }
   });
 
   it("frames and seconds", () => {

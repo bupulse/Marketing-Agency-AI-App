@@ -1,6 +1,6 @@
 // Browser video renderer (docs/CONTENT_VISUALS.md): turns a VideoPlan into an MP4 (WebCodecs + mp4-muxer) or, where
 // WebCodecs is missing, a real-time WebM (MediaRecorder). Client-only; the timeline maths lives in lib/visuals/timeline.
-import { captionOpacity, captionRise, frameCount, frameTimestampUs, kenBurns, layersAt, wrapText } from "@/lib/visuals/timeline";
+import { captionAt, frameCount, frameTimestampUs, kenBurns, layersAt, wrapText } from "@/lib/visuals/timeline";
 import { VIDEO_LIMITS, type VideoPlan } from "@/lib/visuals/types";
 
 export type VideoSupport = { mp4: boolean; webm: boolean };
@@ -85,25 +85,31 @@ export function drawFrame(ctx: CanvasRenderingContext2D, plan: VideoPlan, images
     ctx.fillStyle = scrim;
     ctx.fillRect(0, H * 0.45, W, H * 0.55);
 
-    const text = font.upper ? scene.text.toUpperCase() : scene.text;
-    const alpha = captionOpacity(layer.progress) * layer.opacity;
-    if (text.trim() && alpha > 0) {
-      const size = scene.role === "body" ? 64 : 84;
-      const lineHeight = size * 1.18;
-      ctx.font = `${font.weight} ${size}px ${font.family}`;
-      const lines = wrapText(text, W - 160, (s) => ctx.measureText(s).width, 4);
-      const top = H * 0.72 - (lines.length * lineHeight) / 2 + (1 - captionRise(layer.progress)) * 40;
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = plan.colors.accent;
-      ctx.fillRect(W / 2 - 60, top - 40, 120, 10);
-      ctx.shadowColor = "rgba(0,0,0,0.45)";
-      ctx.shadowBlur = 18;
-      ctx.shadowOffsetY = 4;
-      ctx.fillStyle = plan.colors.text;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      lines.forEach((line, i) => ctx.fillText(line, W / 2, top + i * lineHeight));
-    }
+    ctx.restore();
+  }
+
+  // One caption at a time, over the photos (lib/visuals/timeline.ts captionAt): the outgoing text is gone before the
+  // incoming one fades in, so captions never overlap during a crossfade.
+  const caption = captionAt(plan, tMs);
+  const scene = caption ? plan.scenes[caption.index] : null;
+  const text = scene ? (font.upper ? scene.text.toUpperCase() : scene.text) : "";
+  if (caption && scene && text.trim() && caption.alpha > 0) {
+    ctx.save();
+    const size = scene.role === "body" ? 64 : 84;
+    const lineHeight = size * 1.18;
+    ctx.font = `${font.weight} ${size}px ${font.family}`;
+    const lines = wrapText(text, W - 160, (s) => ctx.measureText(s).width, 4);
+    const top = H * 0.72 - (lines.length * lineHeight) / 2 + (1 - caption.rise) * 40;
+    ctx.globalAlpha = caption.alpha;
+    ctx.fillStyle = plan.colors.accent;
+    ctx.fillRect(W / 2 - 60, top - 40, 120, 10);
+    ctx.shadowColor = "rgba(0,0,0,0.45)";
+    ctx.shadowBlur = 18;
+    ctx.shadowOffsetY = 4;
+    ctx.fillStyle = plan.colors.text;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    lines.forEach((line, i) => ctx.fillText(line, W / 2, top + i * lineHeight));
     ctx.restore();
   }
 
