@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { writeAudit } from "@/lib/admin/audit";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
+import { logError } from "@/lib/errors";
 
 // Paddle's credentials (docs/BILLING.md, "Connecting Paddle"): set in Admin -> Settings -> Card payments (Paddle) and
 // kept in AdminSetting "billing.paddle", each secret encrypted with ENCRYPTION_KEY (lib/crypto.ts) like the Google
@@ -36,9 +37,9 @@ export type PaddleConfig = {
   last4: Record<PaddleSecretName, string | null>;
 };
 
-// Only the saved values are cached (30 s, per isolate; the writers clear it). The environment variables are read on
-// every call, so the fallback always reflects them.
-const TTL_MS = 30_000;
+// Only the saved values are cached, briefly (5 s, per isolate; the writer clears its own), so a save or "Remove saved
+// values" reaches every other instance within seconds. The environment variables are read on every call.
+const TTL_MS = 5_000;
 type Saved = Partial<Record<PaddleSecretName, string>> & { environment?: PaddleEnvironment };
 let cached: { at: number; value: Saved } | null = null;
 
@@ -58,7 +59,10 @@ async function readStored(db: Pick<typeof prisma, "adminSetting"> = prisma): Pro
   return cleanStored(row?.value);
 }
 
-/** The saved values, decrypted. A database or decryption error counts as nothing saved (the variables then apply). */
+/**
+ * The saved values, decrypted. A value that cannot be decrypted (ENCRYPTION_KEY changed or lost) is logged to ErrorLog
+ * and counts as not saved (its variable, if any, applies); a database error keeps the last good copy.
+ */
 async function savedValues(force: boolean): Promise<Saved> {
   if (!force && cached && Date.now() - cached.at < TTL_MS) return cached.value;
   let value: Saved = {};
@@ -66,7 +70,12 @@ async function savedValues(force: boolean): Promise<Saved> {
     const stored = await readStored();
     for (const name of PADDLE_SECRETS) {
       const enc = stored[name]?.enc;
-      const plain = enc ? await decrypt(enc).catch(() => null) : null;
+      const plain = enc
+        ? await decrypt(enc).catch(async (error) => {
+            await logError(error, { source: "billing.paddle.config", value: name, note: "saved Paddle value could not be decrypted; save it again in Admin -> Settings" }).catch(() => {});
+            return null;
+          })
+        : null;
       if (plain) value[name] = plain;
     }
     if (stored.environment === "sandbox" || stored.environment === "production") value.environment = stored.environment;
@@ -158,9 +167,20 @@ export async function savePaddleSettings(ctx: AdminContext, input: PaddleSetting
   const encrypted = Object.fromEntries(await Promise.all(PADDLE_SECRETS.filter((n) => typed[n]).map(async (n) => [n, { enc: await encrypt(typed[n]), last4: tail(typed[n]) as string }] as const))) as Partial<Record<PaddleSecretName, { enc: string; last4: string }>>;
   const result = await prisma.$transaction(async (tx) => {
     const before = await readStored(tx);
+    // The first save brings the API key and the client-side token together (one account, one environment).
+    if (!before.apiKey?.enc && !before.clientToken?.enc && (typed.apiKey || typed.clientToken) && !(typed.apiKey && typed.clientToken)) {
+      throw new AdminError("invalid", "Paste both the API key and the client-side token the first time (they come from the same Paddle account).");
+    }
     const envChanged = (before.environment ?? null) !== null && before.environment !== environment;
     if (envChanged && (!typed.apiKey || !typed.clientToken)) {
       throw new AdminError("invalid", "Switching between sandbox and live needs that account's API key and client-side token too (they are different Paddle accounts).");
+    }
+    // What will be in use afterwards, saved or environment variable, must all be for the chosen environment.
+    for (const name of ["apiKey", "clientToken"] as const) {
+      const savedPlain = before[name]?.enc ? await decrypt(before[name]!.enc).catch(() => null) : null;
+      const effective = typed[name] || savedPlain || process.env[ENV_NAME[name]] || "";
+      const problem = effective ? paddleValueProblem(name, effective, environment) : null;
+      if (problem) throw new AdminError("invalid", `${typed[name] ? "" : savedPlain ? "The saved one: " : `${ENV_NAME[name]}: `}${problem}`);
     }
     const next: Stored = { ...before, ...encrypted, environment, updatedAt: new Date().toISOString() };
     // A webhook secret belongs to one account: switching environment without a new one drops the old one.

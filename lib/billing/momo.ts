@@ -13,7 +13,7 @@ import { companyPlans } from "@/lib/region-prices";
 import { matchInvoicePayment, readPaymentReviews, withPaymentReview, type PaymentReview } from "@/lib/invoices/shared";
 import { sendInvoiceReviewAlertEmail, sendPaymentRejectedEmail, sendPaymentToCheckEmail, sendPlanActiveEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
-import { checkProofObject, createProofUpload, ProofFileError, removeProofObjects } from "./momo-proofs";
+import { checkProofObject, createProofUpload, ProofFileError, removeProofObjects, verifiedProofPath } from "./momo-proofs";
 import {
   DAY_MS,
   isProofPathOf,
@@ -296,11 +296,11 @@ export async function submitManualProof(userId: string, raw: ProofInput, now: Da
   const sub = await subOf(userId);
   if (transactionId && (await transactionUse(network, transactionId, { live: true, except: paymentId }))) throw new ManualPaymentError(TRANSACTION_REUSED);
   const open = await prisma.manualPayment.findFirst({ where: { id: paymentId, userId, status: "pending", submittedAt: null }, select: { proofPath: true } });
-  let proof: { bytes: number; type: string } | null = null;
+  let proof: { bytes: number; type: string; path: string } | null = null;
   if (open && proofPath) {
     if (!isProofPathOf(proofPath, userId, paymentId) || open.proofPath !== proofPath) throw new ManualPaymentError("That screenshot is not the one uploaded for this payment. Add it again.");
     try {
-      proof = await checkProofObject(proofPath);
+      proof = await checkProofObject(proofPath, verifiedProofPath(proofPath));
     } catch (error) {
       if (error instanceof ProofFileError) throw new ManualPaymentError(error.message);
       throw error;
@@ -313,7 +313,8 @@ export async function submitManualProof(userId: string, raw: ProofInput, now: Da
     ({ count } = await prisma.manualPayment.updateMany({
       // The screenshot must still be the file checked above (a second upload meanwhile is never attached unchecked).
       where: { id: paymentId, userId, status: "pending", submittedAt: null, proofPath: proof ? proofPath : (open?.proofPath ?? null) },
-      data: { transactionId, payerPhone, network, submittedAt: now, ...(proof ? { proofBytes: proof.bytes, proofType: proof.type } : { proofPath: null, proofBytes: null, proofType: null }) },
+      // The payment points at the server's own copy of the checked bytes, never at the client's upload.
+      data: { transactionId, payerPhone, network, submittedAt: now, ...(proof ? { proofPath: proof.path, proofBytes: proof.bytes, proofType: proof.type } : { proofPath: null, proofBytes: null, proofType: null }) },
     }));
   } catch (error) {
     if (isUnique(error)) throw new ManualPaymentError(TRANSACTION_REUSED);
@@ -322,6 +323,8 @@ export async function submitManualProof(userId: string, raw: ProofInput, now: Da
   const row = await prisma.manualPayment.findFirst({ where: { id: paymentId, userId } });
   if (!row) throw new ManualPaymentError("We could not find that payment. Start again from the Billing page.");
   if (count === 1 && dropped) await removeProofObjects([dropped]);
+  // Not submitted after all (closed, or changed meanwhile): the server's copy goes too.
+  if (count !== 1 && proof) await removeProofObjects([proof.path]);
   if (count !== 1) {
     if (row.status === "pending" && row.submittedAt) return toView(row, sub, now); // already submitted: nothing to redo
     if (row.status === "pending") throw new ManualPaymentError("The screenshot changed while sending (another tab?). Check it and send again.");

@@ -9,7 +9,6 @@ import { dateTime, money, param } from "@/lib/admin/format";
 import { listManualPayments, type ManualPaymentAdminView } from "@/lib/billing/momo";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
 import { momoConfigured, mtnMomoPayDial } from "@/lib/billing/momo-shared";
-import { proofSignedUrl } from "@/lib/billing/momo-proofs";
 import { listUnprocessedPaddleEvents } from "@/lib/billing/paddle-events";
 import { confirmPaymentAction, rejectPaymentAction, reprocessCardEventAction } from "./actions";
 
@@ -48,8 +47,8 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
   const toCheck = pendingPage.items.filter((p) => p.submitted);
   const started = pendingPage.items.filter((p) => !p.submitted);
   const decided = history.items.filter((p) => p.status !== "pending");
-  // The screenshots of the payments to check, through 10-minute signed URLs (the bucket is private).
-  const proofUrls = new Map(await Promise.all(toCheck.filter((p) => p.proofPath).map(async (p) => [p.id, await proofSignedUrl(p.proofPath as string)] as const)));
+  // The screenshots of the payments to check, through the admin-only route (re-sniffed, nosniff; the bucket is private).
+  const proofUrls = new Map(toCheck.filter((p) => p.proofPath).map((p) => [p.id, `/admin/payments/proof?id=${encodeURIComponent(p.id)}`] as const));
   const dial = mtnMomoPayDial(settings.merchantCode);
 
   return (
@@ -77,12 +76,12 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                   </p>
                   {proofUrls.get(p.id) ? (
                     <a href={proofUrls.get(p.id) as string} target="_blank" rel="noreferrer" className="mt-2 inline-block" aria-label={`Open the screenshot of ${p.reference} full size`}>
-                      {/* eslint-disable-next-line @next/next/no-img-element -- a short-lived signed URL of a private screenshot */}
+                      {/* eslint-disable-next-line @next/next/no-img-element -- a private screenshot served by the admin-only route */}
                       <img src={proofUrls.get(p.id) as string} alt={`Screenshot of the Mobile Money confirmation for ${p.reference}`} width={160} height={280} loading="lazy" className="h-auto max-h-72 w-40 rounded-lg border border-line bg-surface object-contain" />
                       <span className="block text-[13px] text-muted underline">Click to enlarge</span>
                     </a>
                   ) : (
-                    <p className="text-[13px] text-muted">{p.proofPath ? "Screenshot attached, but Storage did not give a link right now. Reload the page." : "No screenshot."}</p>
+                    <p className="text-[13px] text-muted">No screenshot.</p>
                   )}
                   <p className="text-[13px] text-muted"><Who p={p} /></p>
                   <p className="text-[13px] text-muted">Said paid {p.submittedAt ? dateTime(p.submittedAt) : ""} · started {dateTime(p.createdAt)}</p>
