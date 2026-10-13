@@ -1,12 +1,12 @@
 import { PageHeader } from "@/components/app";
 import { InboxView } from "@/components/admin/inbox-view";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { getInbox } from "@/lib/admin/inbox";
 
 export const metadata = { title: "Inbox" };
 
 export default async function InboxPage() {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("overview"); // pages render alongside the layout, so check here too
   const inbox = await getInbox();
   return (
     <>

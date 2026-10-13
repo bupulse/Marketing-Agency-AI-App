@@ -19,7 +19,7 @@ function photo(): Promise<string> {
 }
 
 export async function GET(request: Request) {
-  if (!(await isAdminSession())) return new Response("Not found", { status: 404 });
+  if (!(await isAdminSession("content"))) return new Response("Not found", { status: 404 });
   const params = new URL(request.url).searchParams;
   const design = getDesign(params.get("id") ?? "");
   const ratio = params.get("ratio") ?? "1:1";

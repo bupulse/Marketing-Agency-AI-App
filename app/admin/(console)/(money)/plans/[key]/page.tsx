@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { PlanForm } from "@/components/admin/plan-form";
@@ -15,7 +15,7 @@ export const metadata = { title: "Plan" };
 export const dynamic = "force-dynamic";
 
 export default async function PlanPage({ params, searchParams }: PageProps<"/admin/plans/[key]">) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("plans.manage"); // pages render alongside the layout, so check here too
   const { key: raw } = await params;
   const key = decodeURIComponent(raw);
   const sp = await searchParams;

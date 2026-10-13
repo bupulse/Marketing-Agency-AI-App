@@ -22,7 +22,7 @@ function go(path: string, kind: "notice" | "error", message: string): never {
 
 /** The editor: save the draft, and with intent=send, send it to the company owner. */
 export async function saveOfferAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("requests");
   const businessId = text(f, "businessId");
   const offerId = text(f, "offerId") || null;
   const send = text(f, "intent") === "send";
@@ -51,13 +51,13 @@ export async function saveOfferAction(f: FormData) {
 }
 
 export async function sendOfferAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("requests");
   const id = text(f, "id");
   await finish(`/admin/offers/${encodeURIComponent(id)}`, (r) => (r.emailed ? `Sent to ${r.to}. Open until ${dateTime(r.validUntil)}.` : `Marked sent, but the email did not go out. The client sees it on Billing.`), () => sendOffer(ctx, id));
 }
 
 export async function withdrawOfferAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("requests");
   const id = text(f, "id");
   await finish(`/admin/offers/${encodeURIComponent(id)}`, "Withdrawn. The client no longer sees it; its open payment or invoice was closed.", () => withdrawOffer(ctx, id, text(f, "reason")));
 }

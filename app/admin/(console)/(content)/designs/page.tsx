@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { Panel } from "@/components/admin/ui";
 import { param } from "@/lib/admin/format";
@@ -20,7 +20,7 @@ const tab = (active: boolean) =>
   cn("inline-flex min-h-9 items-center rounded-full border px-3 text-sm font-medium", active ? "border-pulse-blue bg-pulse-blue text-white" : "border-line text-muted hover:text-text");
 
 export default async function DesignLibraryPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("content"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const style: PackId = isPackId(param(sp.style)) ? (param(sp.style) as PackId) : "clean";
   const ratio: AspectRatio = isAspectRatio(param(sp.ratio)) ? (param(sp.ratio) as AspectRatio) : "1:1";

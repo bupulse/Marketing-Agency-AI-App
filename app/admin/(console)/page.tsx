@@ -1,4 +1,6 @@
-import { requireAdmin } from "@/lib/admin/auth";
+import { notFound, redirect } from "next/navigation";
+import { can, requireAdmin } from "@/lib/admin/auth";
+import { firstPageFor } from "@/components/admin/nav";
 import Link from "next/link";
 import { PageHeader } from "@/components/app";
 import { LineChart } from "@/components/admin/charts";
@@ -20,7 +22,13 @@ export const metadata = { title: "Overview" };
 const monthName = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 
 export default async function AdminOverview() {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  const me = await requireAdmin(); // pages render alongside the layout, so check here too
+  // Without the Overview (a sales agent, the content team...), /admin opens the first page the role may see.
+  if (!can(me, "overview")) {
+    const first = firstPageFor(me.permissions);
+    if (first && first !== "/admin") redirect(first);
+    notFound();
+  }
   const [report, clients, demos, inbox, ai, attention, activity, series] = await Promise.all([
     getMoneyReportCached(6).catch(() => null),
     getClientCounts().catch(() => ({ active: 0, trial: 0, pastDue: 0, waitingDemo: 0, ended: 0, total: 0 })),

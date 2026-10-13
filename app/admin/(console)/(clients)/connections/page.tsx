@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Plug } from "lucide-react";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { EmptyState, PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
@@ -94,7 +94,7 @@ function More({ next }: { next: string | null }) {
 }
 
 export default async function ConnectionsPage({ searchParams }: PageProps<"/admin/connections">) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("clients.view"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const tab = TABS.some(([k]) => k === param(sp.tab)) ? param(sp.tab) : "channels";
   const kind = KINDS.some(([k]) => k === param(sp.kind)) ? param(sp.kind) : "store";

@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 // Polled every 5 seconds by the live feed. Same gate as the pages: anyone else gets a plain 404.
 export async function GET(request: NextRequest) {
-  if (!(await isAdminSession())) return new NextResponse("Not found", { status: 404 });
+  if (!(await isAdminSession(["system", "overview"]))) return new NextResponse("Not found", { status: 404 });
   const q = request.nextUrl.searchParams;
   const page = await getActivity({
     before: q.get("before"),

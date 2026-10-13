@@ -38,7 +38,7 @@ function draftOf(f: FormData): unknown {
  * typed (1 to 90, default the trial setting) or create a draft invoice and open it in the editor.
  */
 export async function activateAccountAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("payments.approve");
   const back = text(f, "back") || "/admin/demos";
   const businessId = text(f, "businessId");
   if (text(f, "mode") === "invoice") {
@@ -61,14 +61,14 @@ export async function activateAccountAction(f: FormData) {
 }
 
 export async function saveInvoiceAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("payments.view");
   const id = text(f, "id");
   await finish(editor(id), (r) => `${r.number} saved. It is still a draft: the client sees it once you send it.`, () => updateInvoiceDraft(ctx, id, draftOf(f)));
 }
 
 /** Saves what the editor shows (when it carries data), then sends. */
 export async function sendInvoiceAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("payments.view");
   const id = text(f, "id");
   await finish(
     editor(id),
@@ -81,13 +81,13 @@ export async function sendInvoiceAction(f: FormData) {
 }
 
 export async function resendInvoiceAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("payments.view");
   const id = text(f, "id");
   await finish(editor(id), (r) => (r.emailed > 0 ? `${r.number} emailed again to ${r.to.join(", ")}.` : "The email did not go out. Check Resend in Services."), () => resendInvoice(ctx, id));
 }
 
 export async function markInvoicePaidAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("payments.approve");
   const id = text(f, "id");
   await finish(
     editor(id),
@@ -97,7 +97,7 @@ export async function markInvoicePaidAction(f: FormData) {
 }
 
 export async function voidInvoiceAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("payments.approve");
   const id = text(f, "id");
   await finish(editor(id), (r) => `${r.number} is void. The client can no longer pay it.`, () => voidInvoice(ctx, id, text(f, "reason"), new Date(), { acknowledgePayment: text(f, "acknowledgePayment") === "yes" }));
 }
@@ -107,7 +107,7 @@ export async function voidInvoiceAction(f: FormData) {
 const SETTINGS_BACK = "/admin/invoices/settings";
 
 export async function saveInvoiceSettingsAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("payments.approve");
   await finish(SETTINGS_BACK, "Invoice settings saved. New invoices and drafts use them; sent invoices keep what they were sent with.", () =>
     saveInvoiceSettings(ctx, {
       businessName: text(f, "businessName"),
@@ -125,7 +125,7 @@ export async function saveInvoiceSettingsAction(f: FormData) {
 }
 
 export async function uploadInvoiceLogoAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("payments.approve");
   await finish(SETTINGS_BACK, "Logo saved.", async () => {
     const file = f.get("logo");
     if (!(file instanceof Blob) || file.size === 0) throw new AdminError("invalid", "Choose a PNG or JPEG logo.");
@@ -135,6 +135,6 @@ export async function uploadInvoiceLogoAction(f: FormData) {
 }
 
 export async function removeInvoiceLogoAction() {
-  const ctx = await adminAction();
+  const ctx = await adminAction("payments.approve");
   await finish(SETTINGS_BACK, "Logo removed.", () => removeInvoiceLogo(ctx));
 }

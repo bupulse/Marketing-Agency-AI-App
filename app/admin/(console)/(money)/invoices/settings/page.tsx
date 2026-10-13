@@ -4,7 +4,7 @@ import { ConfirmButton } from "@/components/admin/confirm-button";
 import { Panel, notice } from "@/components/admin/ui";
 import { InvoicePreview } from "@/components/invoices/invoice-preview";
 import { Button, Field, Input, Textarea } from "@/components/ui";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { param } from "@/lib/admin/format";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
 import { sampleInvoiceDocument } from "@/lib/invoices/service";
@@ -16,7 +16,7 @@ export const metadata = { title: "Invoice settings" };
 export const dynamic = "force-dynamic";
 
 export default async function InvoiceSettingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("payments.view"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const [s, momo, sample] = await Promise.all([getInvoiceSettings(), getMomoSettings(), sampleInvoiceDocument()]);
   const logoSrc = await logoDataUrl(s.logoPath, s.logoType);

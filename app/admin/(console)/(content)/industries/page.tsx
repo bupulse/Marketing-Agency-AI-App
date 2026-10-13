@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { Empty, Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
@@ -12,7 +12,7 @@ export const metadata = { title: "Industries" };
 export const dynamic = "force-dynamic";
 
 export default async function IndustriesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("content"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const [industries, suggestions, dismissed] = await Promise.all([listIndustriesAdmin(), listIndustrySuggestions(), listDismissedSuggestions()]);
 

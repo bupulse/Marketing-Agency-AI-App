@@ -21,7 +21,7 @@ export default async function AdminConsoleLayout({ children }: { children: React
   return (
     <>
       <BackgroundBlobs />
-      <AdminShell email={admin.email} badges={badges}>
+      <AdminShell email={admin.email} roleName={admin.isOwner && !admin.staffId ? undefined : admin.roleName} permissions={admin.permissions} badges={badges}>
         {children}
       </AdminShell>
     </>

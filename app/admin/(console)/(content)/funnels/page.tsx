@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { Bars } from "@/components/admin/charts";
 import { Empty, Panel, RangeTabs, TableWrap, Td, Th } from "@/components/admin/ui";
@@ -40,7 +40,7 @@ function RankedTable({ rows, caption, first }: { rows: Ranked[]; caption: string
 }
 
 export default async function FunnelsPage({ searchParams }: PageProps<"/admin/funnels">) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("content"); // pages render alongside the layout, so check here too
   const { key, range } = parseRange((await searchParams).range);
   const [funnel, working] = await Promise.all([getFunnel(range), getWhatsWorking(range)]);
   const none = funnel.steps.every((s) => s.count === 0);

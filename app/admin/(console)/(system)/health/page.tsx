@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { Bars } from "@/components/admin/charts";
 import { Empty, Panel, Stat, TableWrap, Td, Th } from "@/components/admin/ui";
@@ -19,7 +19,7 @@ const STATUS: Record<HealthStatus, { label: string; tone: "success" | "violet" |
 const mb = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(2)} GB` : `${(b / 1e6).toFixed(b >= 1e8 ? 0 : 1)} MB`);
 
 export default async function HealthPage() {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("system"); // pages render alongside the layout, so check here too
   const [h, services] = await Promise.all([getSystemHealth(), getServicesAttention().catch(() => ({ failing: [], off: [] }))]);
   const s = STATUS[h.status];
   const q = h.queues;

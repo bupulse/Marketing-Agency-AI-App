@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import Link from "next/link";
 import { BadgeCheck } from "lucide-react";
 import { EmptyState, PageHeader } from "@/components/app";
@@ -50,7 +50,7 @@ const needsCheck = approvalNeedsCheck;
 const tone = (s: string) => (s === "executed" ? "success" : s === "failed" || s === "rejected" || needsCheck(s) ? "danger" : s === "pending" ? "violet" : "neutral") as "success" | "danger" | "violet" | "neutral";
 
 export default async function ApprovalsPage({ searchParams }: PageProps<"/admin/approvals">) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("approvals.decide"); // pages render alongside the layout, so check here too
   const paddleEnv = (await getPaddleConfig()).environment;
   const sp = await searchParams;
   // Pending is its own query so a waiting request can never fall off the newest-100 history.

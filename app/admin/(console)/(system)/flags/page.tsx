@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { Empty, Panel, notice } from "@/components/admin/ui";
 import { Badge, Button, Field, Input, Select } from "@/components/ui";
@@ -10,7 +10,7 @@ import { flagOverrideAction, saveFlagAction } from "@/app/admin/(console)/action
 export const metadata = { title: "Feature flags" };
 
 export default async function FlagsPage({ searchParams }: PageProps<"/admin/flags">) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("system"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const flags = await listFeatureFlags();
   const ids = [...new Set(flags.flatMap((f) => Object.keys((f.userOverrides as Record<string, boolean> | null) ?? {})))];

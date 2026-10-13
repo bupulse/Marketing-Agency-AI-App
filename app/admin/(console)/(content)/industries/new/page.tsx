@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { Panel } from "@/components/admin/ui";
 import { EMPTY_INDUSTRY, IndustryForm } from "@/components/admin/industry-form";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /** Blank form, or prefilled from a sign-up suggestion (?from=<key>): name from the clients' text, a drafted description. */
 export default async function NewIndustryPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin();
+  await requirePermission("content");
   const sp = await searchParams;
   const from = param(sp.from);
   const suggestion = from ? await getIndustrySuggestion(from) : null;

@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { Panel, notice } from "@/components/admin/ui";
@@ -22,7 +22,7 @@ const HEALTH: Record<ServiceView["health"], { label: string; tone: "success" | "
 };
 
 export default async function ServicesPage({ searchParams }: PageProps<"/admin/services">) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("system"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const [services, robot] = await Promise.all([listServices(), robotStatus()]);
   return (

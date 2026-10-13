@@ -9,7 +9,8 @@ import { ThemeToggle } from "@/components/theme";
 import { Badge, type BadgeTone } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { CommandPalette } from "./command-palette";
-import { ADMIN_NAV, breadcrumbsFor, findNavItem, type BadgeKey } from "./nav";
+import { breadcrumbsFor, findNavItem, navFor, type BadgeKey } from "./nav";
+import type { Permission } from "@/lib/staff/permissions";
 
 export type ShellBadge = { count: number; tone: BadgeTone; label: string };
 export type ShellBadges = Partial<Record<BadgeKey, ShellBadge>>;
@@ -65,7 +66,7 @@ function CountBadge({ badge }: { badge?: ShellBadge }) {
 }
 
 /** The sidebar: groups that fold (remembered in this browser); the active page's group always stays open. */
-export function Nav({ badges, onNavigate }: { badges: ShellBadges; onNavigate?: () => void }) {
+export function Nav({ badges, permissions, onNavigate }: { badges: ShellBadges; permissions: readonly Permission[]; onNavigate?: () => void }) {
   const pathname = usePathname() ?? "/admin";
   const active = findNavItem(pathname);
   const raw = useSyncExternalStore(subscribe, readRaw, () => "[]");
@@ -74,7 +75,7 @@ export function Nav({ badges, onNavigate }: { badges: ShellBadges; onNavigate?: 
 
   return (
     <nav aria-label="Admin" className="flex flex-col gap-2">
-      {ADMIN_NAV.map((group) => {
+      {navFor(permissions).map((group) => {
         const open = !group.title || !collapsed.includes(group.id) || active?.group.id === group.id;
         const hidden = group.items.reduce((s, i) => s + (i.badge ? (badges[i.badge]?.count ?? 0) : 0), 0);
         const GroupIcon = group.icon;
@@ -147,7 +148,7 @@ export function Breadcrumbs({ pathname }: { pathname: string }) {
   );
 }
 
-export function AdminShell({ email, badges, children }: { email: string; badges: ShellBadges; children: ReactNode }) {
+export function AdminShell({ email, roleName, permissions, badges, children }: { email: string; roleName?: string; permissions: readonly Permission[]; badges: ShellBadges; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState(false);
   const pathname = usePathname() ?? "/admin";
@@ -171,7 +172,7 @@ export function AdminShell({ email, badges, children }: { email: string; badges:
           <span className="flex-1 text-left">Search</span>
           <kbd className="rounded-md border border-line px-1.5 text-[11px] font-sans">⌘K</kbd>
         </button>
-        <Nav badges={badges} />
+        <Nav badges={badges} permissions={permissions} />
       </aside>
 
       <div className="flex min-w-0 flex-1 basis-[min(100%,560px)] flex-col gap-5">
@@ -194,8 +195,9 @@ export function AdminShell({ email, badges, children }: { email: string; badges:
               <Search aria-hidden className="size-5" />
             </button>
             <ThemeToggle />
-            <span className="hidden max-w-[12rem] truncate text-sm text-muted xl:inline" title={email}>
+            <span className="hidden max-w-[14rem] truncate text-sm text-muted xl:inline" title={email}>
               {email}
+              {roleName && <span className="ml-1.5 text-xs">({roleName})</span>}
             </span>
             <Link href="/dashboard" className="hidden min-h-11 items-center px-2 text-sm font-medium text-muted underline sm:inline-flex">
               Customer view
@@ -210,7 +212,7 @@ export function AdminShell({ email, badges, children }: { email: string; badges:
 
         {open && (
           <div id="admin-mobile-nav" className="glass-strong rounded-[24px] p-3 lg:hidden">
-            <Nav badges={badges} onNavigate={() => setOpen(false)} />
+            <Nav badges={badges} permissions={permissions} onNavigate={() => setOpen(false)} />
           </div>
         )}
 
@@ -218,7 +220,7 @@ export function AdminShell({ email, badges, children }: { email: string; badges:
           {children}
         </main>
       </div>
-      <CommandPalette open={search} onOpenChange={onSearch} />
+      <CommandPalette open={search} onOpenChange={onSearch} permissions={permissions} />
     </div>
   );
 }

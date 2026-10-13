@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/app";
 import { OfferEditor } from "@/components/admin/offer-editor";
 import { Panel, notice } from "@/components/admin/ui";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { param } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/types";
 import { featureLabel } from "@/lib/features";
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 // "Customise plan" from the company page (Client 360) or a plan request (?request=), which prefills the features.
 export default async function NewOfferPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("requests"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const businessId = param(sp.businessId).slice(0, 64);
   if (!businessId) notFound();

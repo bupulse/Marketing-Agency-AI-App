@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { Empty, Panel, notice } from "@/components/admin/ui";
@@ -12,7 +12,7 @@ import { CopyField, CreateKeyForm, RotateKey } from "./key-forms";
 export const metadata = { title: "Jarvis" };
 
 export default async function JarvisPage({ searchParams }: PageProps<"/admin/jarvis">) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("jarvis"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const keys = await listAdminKeys();
   const base = siteUrl();

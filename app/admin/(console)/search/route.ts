@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // The console search (Cmd/Ctrl+K) asks here for companies by name or any member's email. Same gate as the pages
 // (admin email, AAL2): anyone else gets a plain 404.
 export async function GET(request: NextRequest) {
-  if (!(await isAdminSession())) return new NextResponse("Not found", { status: 404 });
+  if (!(await isAdminSession("clients.view"))) return new NextResponse("Not found", { status: 404 });
   const q = (request.nextUrl.searchParams.get("q") ?? "").trim().slice(0, 80);
   if (q.length < 2) return NextResponse.json({ companies: [] }, { headers: { "Cache-Control": "no-store" } });
   const rows = await prisma.business.findMany({

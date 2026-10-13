@@ -6,7 +6,7 @@ import { getInvoiceRow, invoicePdf } from "@/lib/invoices/service";
 // "Preview PDF" in the admin console: any invoice, drafts drawn from the current settings. Signed-in AAL2 admins only;
 // anyone else gets a 404 like the rest of the console.
 export async function GET(request: Request, ctx: RouteContext<"/admin/invoices/[id]/pdf">) {
-  if (!(await isAdminSession())) return new Response("Not found", { status: 404 });
+  if (!(await isAdminSession("payments.view"))) return new Response("Not found", { status: 404 });
   const { id } = await ctx.params;
   let row;
   try {

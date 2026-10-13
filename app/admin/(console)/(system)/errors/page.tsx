@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import Link from "next/link";
 import { CircleCheck } from "lucide-react";
 import { EmptyState, PageHeader } from "@/components/app";
@@ -11,7 +11,7 @@ import { scrubSecrets } from "@/lib/admin/scrub";
 export const metadata = { title: "Errors" };
 
 export default async function ErrorsPage({ searchParams }: PageProps<"/admin/errors">) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("system"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const level = param(sp.level);
   const source = param(sp.source);

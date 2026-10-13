@@ -4,7 +4,7 @@ import { EmptyState, PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { Empty, Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
 import { Badge, Field, Input, Textarea } from "@/components/ui";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { dateTime, money, param } from "@/lib/admin/format";
 import { listManualPayments, type ManualPaymentAdminView } from "@/lib/billing/momo";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
@@ -36,7 +36,7 @@ function Who({ p }: { p: ManualPaymentAdminView }) {
 }
 
 export default async function PaymentsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission(["payments.view", "payments.approve"]); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const [pendingPage, history, settings, cardEvents] = await Promise.all([
     listManualPayments({ status: "pending", limit: 100 }),

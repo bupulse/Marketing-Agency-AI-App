@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { Empty, Panel, Stat, TableWrap, Td, Th, notice } from "@/components/admin/ui";
 import { Badge, buttonClasses } from "@/components/ui";
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 const STATUS_TONE = { active: "success", hidden: "neutral", retired: "danger" } as const;
 
 export default async function PlansPage({ searchParams }: PageProps<"/admin/plans">) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("plans.manage"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const { plans, paddleConnected } = await listAdminPlans();
   const totalMrr = plans.reduce((s, p) => s + p.mrrCents, 0);

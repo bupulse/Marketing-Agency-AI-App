@@ -11,7 +11,7 @@ const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 // Each action re-checks the admin (adminAction: allow-listed email, AAL2). Every change is audited.
 
 export async function saveRegionAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("plans.manage");
   await finish(BACK, (r) => `${r.name} (${r.key}) saved.`, () =>
     saveRegion(ctx, {
       key: text(f, "key"),
@@ -26,7 +26,7 @@ export async function saveRegionAction(f: FormData) {
 }
 
 export async function setRegionPriceAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("plans.manage");
   await finish(BACK, (r) => `${r.planKey} in ${r.regionKey}: saved.`, () => {
     const currency = text(f, "currency").toUpperCase();
     const monthly = toMinor(text(f, "monthly"), currency);
@@ -37,6 +37,6 @@ export async function setRegionPriceAction(f: FormData) {
 }
 
 export async function removeRegionPriceAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("plans.manage");
   await finish(BACK, (r) => `${r.planKey} is no longer offered in ${r.regionKey}.`, () => removeRegionPrice(ctx, { planKey: text(f, "planKey"), regionKey: text(f, "regionKey") }));
 }

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { Panel } from "@/components/admin/ui";
 import { IndustryForm } from "@/components/admin/industry-form";
@@ -11,7 +11,7 @@ export const metadata = { title: "Industry" };
 export const dynamic = "force-dynamic";
 
 export default async function EditIndustryPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireAdmin();
+  await requirePermission("content");
   const { id } = await params;
   let industry;
   try {

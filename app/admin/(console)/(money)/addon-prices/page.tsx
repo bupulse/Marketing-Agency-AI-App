@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/app";
 import { Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
 import { Badge, Button, Input } from "@/components/ui";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { param } from "@/lib/admin/format";
 import { moneyInput } from "@/lib/invoices/shared";
 import { addonPriceTable } from "@/lib/offers/addon-prices";
@@ -15,7 +15,7 @@ const kindText = (a: (typeof ADDONS)[number]) =>
   a.kind === "block" ? "Block of a limit" : a.kind === "seat" ? "Per extra user" : a.includes ? `Feature, includes ${a.includes.amount} ${a.includes.metric === "image" ? "designs" : a.includes.metric === "chat" ? "chat replies" : "texts"}` : "Feature";
 
 export default async function AddonPricesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("plans.manage"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const table = await addonPriceTable();
 
