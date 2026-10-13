@@ -17,6 +17,9 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   // ElevenLabs text to speech, per 1M characters (the ledger records characters as input tokens): about $0.30 per
   // 1,000 characters at the paid plans' overage rate; included plan characters cost less (docs/VOICE_AND_MUSIC.md).
   eleven_multilingual_v2: { input: 300, output: 0 },
+  // ElevenLabs Music, per 1M seconds of music (the ledger records seconds as input tokens): an estimate of about
+  // $0.60 a minute on the paid plan; check it against the ElevenLabs invoice (docs/VOICE_AND_MUSIC.md).
+  music_v1: { input: 10_000, output: 0 },
   "claude-sonnet-5-5": { input: 3, output: 15 },
 };
 

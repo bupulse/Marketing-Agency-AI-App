@@ -72,7 +72,7 @@ UPDATE "PlanDefinition" SET "limits" = jsonb_set("limits", '{voiceCharacters}', 
 UPDATE "PlanDefinition" SET "limits" = jsonb_set("limits", '{voiceCharacters}', '600'::jsonb) WHERE "isTrial" = true AND jsonb_typeof("limits") = 'object';
 UPDATE "PlanDefinition" SET "limits" = jsonb_set("limits", '{voiceCharacters}', '0'::jsonb) WHERE "key" IN ('STARTER', 'STANDARD') AND jsonb_typeof("limits") = 'object';
 
--- The voiceover add-on in Rwanda: 5,000 RWF a month, a placeholder for the owner to confirm.
+-- The voiceover add-on in Rwanda: 5,000 RWF a month (owner decision, 13 October 2026).
 INSERT INTO "AddonPrice" ("id", "addonKey", "regionKey", "currency", "monthlyMinor", "updatedBy", "updatedAt") VALUES
-    ('addon_rw_voice', 'voice', 'RW', 'RWF', 5000, 'migration (placeholder)', CURRENT_TIMESTAMP)
+    ('addon_rw_voice', 'voice', 'RW', 'RWF', 5000, 'migration', CURRENT_TIMESTAMP)
 ON CONFLICT ("addonKey", "regionKey") DO NOTHING;

@@ -26,9 +26,21 @@ export const trackInputSchema = z.object({
   moods: z.array(z.enum(MOODS)).min(1, "Pick at least one mood.").max(4),
   bpm: z.number().int().min(30).max(300).nullable().optional(),
   licence: z.string().trim().min(2, "Name the licence.").max(120),
-  sourceUrl: z.string().trim().url("Give the page the track comes from.").max(500).refine((u) => /^https:\/\//.test(u), "Use an https link."),
-  attribution: z.string().trim().min(2, "Write the credit line (the licence asks for it, or write the author and source).").max(300),
-});
+  // The page the track comes from (https), or for owned music the tool it was made with ("ElevenLabs Music").
+  sourceUrl: z.string().trim().min(2, "Give the page the track comes from.").max(500),
+  attribution: z.string().trim().max(300).default(""),
+})
+  .refine((t) => isOwnedLicence(t.licence) || /^https:\/\/\S+$/.test(t.sourceUrl), { path: ["sourceUrl"], message: "Give the https page the track comes from." })
+  .refine((t) => isOwnedLicence(t.licence) || t.attribution.length >= 2, { path: ["attribution"], message: "Write the credit line the licence asks for (it can be empty only for original, owned music)." });
+
+/** Music BuPulse owns (made for it, e.g. with ElevenLabs Music on the paid plan): no credit line is needed. */
+export function isOwnedLicence(licence: string): boolean {
+  return /\b(original|owned|own work|generated with)\b/i.test(licence);
+}
+
+/** The licence of tracks made with ElevenLabs Music for BuPulse (owner decision, 13 October 2026). */
+export const ELEVENLABS_MUSIC_LICENCE = "Original — generated with ElevenLabs Music for BuPulse (commercial use, paid plan)";
+export const ELEVENLABS_MUSIC_SOURCE = "ElevenLabs Music";
 export type TrackInput = z.infer<typeof trackInputSchema>;
 
 /** The first bytes of an MP3 (ID3 tag or an MPEG frame) or an M4A ("ftyp" box). */

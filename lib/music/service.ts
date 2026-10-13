@@ -8,7 +8,11 @@ import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { prisma } from "@/lib/db";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { VideoMusic } from "@/lib/visuals/types";
-import { pickTrack, sniffAudio, TRACK_MAX_BYTES, TRACK_TYPES, trackInputSchema, type TrackInput } from "./tracks";
+import { z } from "zod";
+import { withLedger } from "@/lib/ai/ledger";
+import { composeMusic, ELEVENLABS_MUSIC_MODEL } from "@/lib/ai/tts";
+import { rateLimit, RateLimitError } from "@/lib/rate-limit";
+import { ELEVENLABS_MUSIC_LICENCE, ELEVENLABS_MUSIC_SOURCE, MOOD_LABEL, MOODS, pickTrack, sniffAudio, TRACK_MAX_BYTES, TRACK_TYPES, trackInputSchema, type TrackInput } from "./tracks";
 
 export const MUSIC_BUCKET = "music";
 /** The whole library stays small: it shares the free Storage project with everything else. */
@@ -106,4 +110,51 @@ export async function deleteTrack(ctx: AdminContext, id: string) {
     await writeAudit(tx, ctx, "delete_music_track", `music:${id}`, { title: row.title, licence: row.licence }, null);
   });
   await createAdminClient().storage.from(MUSIC_BUCKET).remove([row.path]).catch(() => {});
+}
+
+/** Tracks the admin may generate a day (each one is paid). */
+export const GENERATE_PER_DAY = { limit: 20, windowSeconds: 24 * 60 * 60 } as const;
+
+export const generateSchema = z.object({
+  title: z.string().trim().min(1, "Give the track a title.").max(120),
+  prompt: z.string().trim().min(10, "Describe the music in a sentence or two.").max(400),
+  mood: z.enum(MOODS),
+  seconds: z.number().int().min(10, "At least 10 seconds.").max(60, "At most 60 seconds."),
+});
+
+/**
+ * "Generate a track": ElevenLabs Music composes an original instrumental (owned by BuPulse on the paid plan, so no
+ * credit line), paid through the AI ledger (feature "music", platform cap applies), checked like an upload, stored in
+ * the music bucket and audited with its prompt. At most 20 a day.
+ */
+export async function generateTrack(ctx: AdminContext, raw: z.input<typeof generateSchema>) {
+  const parsed = generateSchema.safeParse(raw);
+  if (!parsed.success) throw new AdminError("invalid", parsed.error.issues[0]?.message ?? "Check the track details.");
+  const input = { ...parsed.data, prompt: parsed.data.prompt.replace(/[\u0000-\u001f\u007f]/g, " ") };
+  try {
+    await rateLimit("music-generate", GENERATE_PER_DAY);
+  } catch (error) {
+    if (error instanceof RateLimitError) throw new AdminError("conflict", "20 tracks were generated today. Try again tomorrow.");
+    throw error;
+  }
+  const used = (await prisma.musicTrack.aggregate({ _sum: { bytes: true } }))._sum.bytes ?? 0;
+  if (used + 2 * 1024 * 1024 > MUSIC_LIBRARY_MAX_BYTES) throw new AdminError("invalid", "The music library is full (80 MB). Remove a track first.");
+
+  const result = await withLedger(
+    { feature: "music" },
+    { provider: "elevenlabs", model: ELEVENLABS_MUSIC_MODEL },
+    () => composeMusic({ prompt: `${input.prompt} Instrumental, no vocals, ${MOOD_LABEL[input.mood].toLowerCase()} mood, for a short social media advert.`, seconds: input.seconds }),
+    (r) => ({ provider: r.provider, model: r.model, usage: { inputTokens: r.seconds, outputTokens: 0 } }),
+  );
+  if (result.audio.length > TRACK_MAX_BYTES || sniffAudio(result.audio.subarray(0, 32)) !== "audio/mpeg") throw new AdminError("unavailable", "The music service answered with something that is not an MP3. Try again.");
+  const path = `${globalThis.crypto.randomUUID()}.mp3`;
+  const { error } = await createAdminClient().storage.from(MUSIC_BUCKET).upload(path, result.audio, { contentType: "audio/mpeg", upsert: false });
+  if (error) throw new AdminError("unavailable", "Storage did not accept the track. Try again.");
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.musicTrack.create({
+      data: { title: input.title, moods: [input.mood], bpm: null, licence: ELEVENLABS_MUSIC_LICENCE, sourceUrl: ELEVENLABS_MUSIC_SOURCE, attribution: "", path, mimeType: "audio/mpeg", bytes: result.audio.length, durationMs: input.seconds * 1000, createdBy: ctx.actor },
+    });
+    await writeAudit(tx, ctx, "generate_music_track", `music:${row.id}`, null, { title: row.title, mood: input.mood, seconds: input.seconds, prompt: input.prompt });
+    return row;
+  });
 }

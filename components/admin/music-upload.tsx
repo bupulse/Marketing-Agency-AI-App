@@ -67,10 +67,10 @@ export function MusicUpload() {
       <Field label="Licence name" required>
         <Input name="licence" maxLength={120} placeholder="e.g. Pixabay Content License" />
       </Field>
-      <Field label="Source page (https)" required>
-        <Input name="sourceUrl" type="url" maxLength={500} />
+      <Field label="Source page (https)" required hint="For original music you own, the tool it was made with.">
+        <Input name="sourceUrl" maxLength={500} />
       </Field>
-      <Field label="Credit line" required hint="Shown under videos with this track, as the licence asks.">
+      <Field label="Credit line" hint="Shown under videos with this track, as the licence asks. Leave empty for original music you own.">
         <Input name="attribution" maxLength={300} placeholder="Music: Title by Artist (source)" />
       </Field>
       {error && (

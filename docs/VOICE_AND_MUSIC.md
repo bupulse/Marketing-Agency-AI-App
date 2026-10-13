@@ -37,7 +37,7 @@ Code: `lib/ai/tts.ts`, `lib/voice/`, `lib/music/`, `components/visuals/video-ren
 | --- | --- |
 | Rwanda Business, Pro | 5,000 (about 15 videos) |
 | Free trial | 600 (its sample video) |
-| Starter, Standard | 0: "Voiceover" add-on (RW 5,000 RWF a month, placeholder for the owner to confirm) |
+| Starter, Standard | 0: "Voiceover" add-on (RW 5,000 RWF a month, owner decision) |
 
 `voice` is now a built feature (it needs `video`); an offer that adds it gives 5,000 characters
 (`20261017100000_voice_and_music`).
@@ -53,8 +53,22 @@ Code: `lib/ai/tts.ts`, `lib/voice/`, `lib/music/`, `components/visuals/video-ren
   1 to 4 moods (upbeat, calm, corporate, inspiring, afro / amapiano style, acoustic, warm, energetic), optional BPM,
   and the required licence name, https source page and credit line; play, activate or deactivate, remove. The file's
   first bytes are checked (ID3 or MPEG frame, or an M4A "ftyp" box); a bad file is deleted.
-- **The library ships empty.** No music was downloaded: the owner approves a list first. Until then videos have no
-  music ("The music library is empty for now" in the video panel).
+- **Where the music comes from** (owner decision, 13 October 2026): original tracks made with the owner's paid
+  ElevenLabs Music plan, owned by BuPulse: licence "Original — generated with ElevenLabs Music for BuPulse (commercial
+  use, paid plan)", source "ElevenLabs Music", no credit line needed. For original, owned music (a licence that says
+  original, owned or "generated with") the credit line may be empty and the source may name the tool instead of an
+  https page; any other licence still needs both.
+- **Seeding**: `node --env-file=.env scripts/local/seed-music.mjs <folder> [--dry-run]` uploads a folder of
+  `NN-mood-name.mp3` files (title and mood tags from the name, e.g. "02-amapiano-groove.mp3" → "Amapiano Groove",
+  afro + upbeat), with the original-music licence and no credit; safe to run twice (stable `seed-…` paths). The runner
+  sits in the git-ignored `scripts/local/` with the files; its logic is `scripts/music/seed-lib.mjs` (tested). It needs
+  `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY` and `DIRECT_URL`, and prints file names and counts only.
+- **Generate a track** (admin console, `/admin/music`): a title, a mood, a description and a length (10 to 60 s);
+  ElevenLabs Music (`POST /v1/music`, model `music_v1`, instrumental) composes it, paid through the AI ledger (feature
+  `music`, seconds recorded as input tokens, about $0.60 a minute in `lib/ai/pricing.ts`: an estimate to check against
+  the ElevenLabs invoice), checked like an upload, stored, and audited with its prompt. At most 20 a day. A long track
+  can take most of a minute; on Netlify's 60-second limit, keep tracks short.
+- Without tracks (before seeding) videos have no music ("The music library is empty for now" in the video panel).
 - **Choice**: the art director names a mood for each post (`mood` in its answer); without one, the content pack angle
   or the brand voice decides (`moodFor`). `pickTrack` takes an active track with that mood, varied by video so the
   posts of a pack do not all share one; the owner can pick another track or "No music" in the video panel.

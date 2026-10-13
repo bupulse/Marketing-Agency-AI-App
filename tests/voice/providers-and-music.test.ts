@@ -69,7 +69,7 @@ describe("voiceover in the plans", () => {
     expect(SEED_PLANS.STANDARD.features).not.toContain("voice");
     expect(ADDONS.find((a) => a.key === "voice")).toMatchObject({ kind: "feature", label: "Voiceover" });
     const sql = readFileSync("prisma/migrations/20261017100000_voice_and_music/migration.sql", "utf8");
-    expect(sql).toMatch(/\('addon_rw_voice', 'voice', 'RW', 'RWF', 5000, 'migration \(placeholder\)'/);
+    expect(sql).toMatch(/\('addon_rw_voice', 'voice', 'RW', 'RWF', 5000, 'migration', CURRENT_TIMESTAMP\)/);
     expect(sql).toMatch(/ENABLE ROW LEVEL SECURITY[\s\S]*REVOKE ALL ON TABLE "VoiceClip", "MusicTrack"/);
     const base: OfferBase = { key: "STARTER", name: "Starter", monthlyMinor: 15000, yearlyMinor: 150000, features: ["content", "designs", "calendar", "gallery"], limits: { text: 60, image: 30, chat: 0, videoSeconds: 0, voiceCharacters: 0, seats: 1 } };
     const q = quoteOffer({ base, features: ["voice"], limits: { text: 60, image: 30, chat: 0, seats: 1 }, interval: "MONTH", currency: "RWF", regionKey: "RW", prices: [] });

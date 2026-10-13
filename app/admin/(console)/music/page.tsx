@@ -1,12 +1,12 @@
 import { PageHeader } from "@/components/app";
 import { Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
 import { MusicUpload } from "@/components/admin/music-upload";
-import { Badge, Button } from "@/components/ui";
+import { Badge, Button, Field, Input, Select } from "@/components/ui";
 import { requireAdmin } from "@/lib/admin/auth";
 import { param } from "@/lib/admin/format";
 import { listTracks, MUSIC_LIBRARY_MAX_BYTES, musicUrl } from "@/lib/music/service";
-import { isMood, MOOD_LABEL } from "@/lib/music/tracks";
-import { deleteTrackAction, setTrackActiveAction } from "./actions";
+import { isMood, MOOD_LABEL, MOODS } from "@/lib/music/tracks";
+import { deleteTrackAction, generateTrackAction, setTrackActiveAction } from "./actions";
 
 export const metadata = { title: "Music library" };
 export const dynamic = "force-dynamic";
@@ -30,6 +30,29 @@ export default async function MusicPage({ searchParams }: { searchParams: Promis
       <Panel title="Add a track" description={`MP3 or M4A, at most 6 MB. Library: ${mb(used)} of ${mb(MUSIC_LIBRARY_MAX_BYTES)}.`}>
         <MusicUpload />
       </Panel>
+      <Panel title="Generate a track" description="ElevenLabs Music composes an original instrumental that BuPulse owns (paid plan: no credit line needed). Paid per track through the AI cost ledger; at most 20 a day.">
+        <form action={generateTrackAction} className="grid gap-4 sm:grid-cols-2">
+          <Field label="Title" required>
+            <Input name="title" maxLength={120} required />
+          </Field>
+          <Field label="Mood" required>
+            <Select name="mood" defaultValue="upbeat">
+              {MOODS.map((m) => (
+                <option key={m} value={m}>{MOOD_LABEL[m]}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Describe the music" required>
+            <Input name="prompt" minLength={10} maxLength={400} required placeholder="Warm afrobeats groove with light percussion and guitar" />
+          </Field>
+          <Field label="Length (seconds, at most 60)" required>
+            <Input name="seconds" type="number" min={10} max={60} defaultValue={30} required />
+          </Field>
+          <div className="sm:col-span-2">
+            <Button type="submit">Generate a track</Button>
+          </div>
+        </form>
+      </Panel>
       <Panel title={`Tracks (${tracks.length})`} description={tracks.length === 0 ? "The library is empty: videos are made without music until tracks are added." : "Inactive tracks are not picked for new videos."}>
         {tracks.length > 0 && (
           <TableWrap caption="Music tracks">
@@ -49,8 +72,12 @@ export default async function MusicPage({ searchParams }: { searchParams: Promis
                   <Td>{t.moods.map((m) => (isMood(m) ? MOOD_LABEL[m] : m)).join(", ")}</Td>
                   <Td>
                     <div className="flex flex-col gap-1 text-[13px]">
-                      <a href={t.sourceUrl} target="_blank" rel="noreferrer" className="font-medium text-pulse-blue underline">{t.licence}</a>
-                      <span className="text-muted">{t.attribution}</span>
+                      {/^https:\/\//.test(t.sourceUrl) ? (
+                        <a href={t.sourceUrl} target="_blank" rel="noreferrer" className="font-medium text-pulse-blue underline">{t.licence}</a>
+                      ) : (
+                        <span className="font-medium">{t.licence} · {t.sourceUrl}</span>
+                      )}
+                      <span className="text-muted">{t.attribution || "No credit line needed"}</span>
                     </div>
                   </Td>
                   <Td>{t.active ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Inactive</Badge>}</Td>

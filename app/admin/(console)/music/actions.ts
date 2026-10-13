@@ -1,7 +1,7 @@
 "use server";
 
 import { adminAction, actionMessage, finish } from "@/lib/admin/console";
-import { deleteTrack, finishTrackUpload, setTrackActive, startTrackUpload } from "@/lib/music/service";
+import { deleteTrack, finishTrackUpload, generateTrack, setTrackActive, startTrackUpload } from "@/lib/music/service";
 import { isMood, type TrackInput } from "@/lib/music/tracks";
 
 // The music library (docs/VOICE_AND_MUSIC.md). adminAction() re-checks the admin (allow-listed email, AAL2) on every
@@ -37,4 +37,12 @@ export async function setTrackActiveAction(f: FormData) {
 export async function deleteTrackAction(f: FormData) {
   const ctx = await adminAction();
   await finish("/admin/music", () => "Track removed.", () => deleteTrack(ctx, String(f.get("id") ?? "")));
+}
+
+/** "Generate a track" with ElevenLabs Music (paid, audited, 20 a day). */
+export async function generateTrackAction(f: FormData) {
+  const ctx = await adminAction();
+  await finish("/admin/music", () => "Track generated and added.", () =>
+    generateTrack(ctx, { title: String(f.get("title") ?? ""), prompt: String(f.get("prompt") ?? ""), mood: String(f.get("mood") ?? "") as never, seconds: Number(f.get("seconds") ?? 30) }),
+  );
 }

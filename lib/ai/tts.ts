@@ -97,3 +97,40 @@ export async function voicePreviewUrl(voiceId: string, fetchImpl: typeof fetch =
     return null;
   }
 }
+
+// ---- ElevenLabs Music (the admin's "Generate a track", docs/VOICE_AND_MUSIC.md) ----
+
+export const ELEVENLABS_MUSIC_MODEL = "music_v1";
+
+export interface MusicRequest {
+  prompt: string;
+  seconds: number;
+}
+
+export interface MusicResult {
+  audio: Uint8Array;
+  seconds: number;
+  provider: string;
+  model: string;
+}
+
+/** Composes an original instrumental track. Only the HTTP status is kept on errors (the key is never logged). */
+export async function composeMusic(request: MusicRequest, fetchImpl: typeof fetch = fetch): Promise<MusicResult> {
+  const key = process.env.ELEVENLABS_API_KEY;
+  if (!key) throw new AIProviderError("ElevenLabs is not set up", "elevenlabs", false, undefined, ELEVENLABS_MUSIC_MODEL);
+  let response: Response;
+  try {
+    response = await fetchImpl(`${API}/music?output_format=mp3_44100_128`, {
+      method: "POST",
+      headers: { "xi-api-key": key, "content-type": "application/json", accept: "audio/mpeg" },
+      body: JSON.stringify({ prompt: request.prompt, music_length_ms: Math.round(request.seconds * 1000), model_id: ELEVENLABS_MUSIC_MODEL, force_instrumental: true }),
+      signal: AbortSignal.timeout(110_000),
+    });
+  } catch {
+    throw new AIProviderError("The music service did not answer", "elevenlabs", true, undefined, ELEVENLABS_MUSIC_MODEL);
+  }
+  if (!response.ok) throw new AIProviderError(`The music service refused the request (${response.status})`, "elevenlabs", response.status === 429 || response.status >= 500, { inputTokens: 0, outputTokens: 0 }, ELEVENLABS_MUSIC_MODEL);
+  const audio = new Uint8Array(await response.arrayBuffer());
+  if (audio.length === 0) throw new AIProviderError("The music service answered without audio", "elevenlabs", true, undefined, ELEVENLABS_MUSIC_MODEL);
+  return { audio, seconds: request.seconds, provider: "elevenlabs", model: ELEVENLABS_MUSIC_MODEL };
+}
