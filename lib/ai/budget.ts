@@ -39,7 +39,7 @@ export class AIBudgetExceededError extends AIProviderError {
   }
 }
 
-/** Per-company monthly cap on AI spend (AI_COMPANY_MONTHLY_USD, default $3), on top of the platform cap above. */
+/** Default per-company monthly cap on AI spend (AI_COMPANY_MONTHLY_USD, default $3): plans without their own allowance. */
 export function companyMonthlyBudgetUsd(): number {
   const value = Number(process.env.AI_COMPANY_MONTHLY_USD ?? 3);
   return Number.isFinite(value) && value > 0 ? value : 3;
@@ -83,6 +83,40 @@ export class WidgetBudgetExceededError extends CompanyBudgetExceededError {
   }
 }
 
+/** Pure: a plan's own allowance when it has a sound one, else the default. */
+export function allowanceFor(planUsd: number | null | undefined, fallback = companyMonthlyBudgetUsd()): number {
+  return typeof planUsd === "number" && Number.isFinite(planUsd) && planUsd >= 0 ? planUsd : fallback;
+}
+
+const allowanceCache = new Map<string, { at: number; value: number }>();
+
+/**
+ * One company's monthly AI allowance: its plan's (PlanDefinition.aiMonthlyUsd: Starter and Standard $2, Business and
+ * Pro $6, trial $1), else the code's seed plan, else AI_COMPANY_MONTHLY_USD. Cached 30 s per company.
+ */
+export async function companyAllowanceUsd(businessId: string, now = Date.now()): Promise<number> {
+  const hit = allowanceCache.get(businessId);
+  if (hit && now - hit.at < 30_000) return hit.value;
+  let value = companyMonthlyBudgetUsd();
+  try {
+    const business = await prisma.business.findUnique({ where: { id: businessId }, select: { user: { select: { subscription: { select: { plan: true } } } } } });
+    const key = business?.user?.subscription?.plan;
+    if (key) {
+      const row = await prisma.planDefinition.findUnique({ where: { key }, select: { aiMonthlyUsd: true } });
+      const { SEED_PLANS } = await import("@/lib/plans");
+      value = allowanceFor(row?.aiMonthlyUsd ?? SEED_PLANS[key]?.aiMonthlyUsd);
+    }
+  } catch {
+    // The default allowance while the plan cannot be read.
+  }
+  allowanceCache.set(businessId, { at: now, value });
+  return value;
+}
+
+export function clearAllowanceCache() {
+  allowanceCache.clear();
+}
+
 /** What one company's AI calls cost this calendar month (UTC), from the ledger. */
 export async function companySpentThisMonthUsd(businessId: string, now = new Date()): Promise<number> {
   const { _sum } = await prisma.aiCall.aggregate({ where: { businessId, createdAt: { gte: monthStart(now) } }, _sum: { costUsd: true } });
@@ -100,7 +134,7 @@ export async function companySpendThisMonth(businessId: string, now = new Date()
   ]);
   const totalUsd = Number(total._sum.costUsd ?? 0);
   const widgetUsd = Math.min(totalUsd, Number(widget._sum.costUsd ?? 0));
-  const allowanceUsd = companyMonthlyBudgetUsd();
+  const allowanceUsd = await companyAllowanceUsd(businessId);
   return { totalUsd, widgetUsd, ownerUsd: totalUsd - widgetUsd, allowanceUsd, widgetCapUsd: allowanceUsd * widgetAiShare() };
 }
 

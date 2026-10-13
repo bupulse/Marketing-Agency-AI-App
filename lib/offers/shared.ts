@@ -46,7 +46,7 @@ export const ADDONS: readonly AddonDef[] = [
   { key: "managed:light", kind: "feature", feature: "managed", label: "Managed by BuPulse, Light" },
   { key: "managed:full", kind: "feature", feature: "managed", label: "Managed by BuPulse, Full" },
   { key: "block:text", kind: "block", metric: "text", blockSize: 100, label: "+100 AI texts" },
-  { key: "block:image", kind: "block", metric: "image", blockSize: 50, label: "+50 designs" },
+  { key: "block:image", kind: "block", metric: "image", blockSize: 50, label: "Image pack (+50 AI images)" },
   { key: "block:chat", kind: "block", metric: "chat", blockSize: 1000, label: "+1,000 chat replies" },
   { key: "seat", kind: "seat", label: "Extra user" },
 ];
@@ -57,7 +57,7 @@ export const addonOf = (key: string) => ADDONS.find((a) => a.key === key) ?? nul
 /** The price key of a feature in an offer (Managed by BuPulse is priced by tier). */
 export const featureAddonKey = (key: FeatureKey, tier: ManagedTier = "light") => (key === "managed" ? `managed:${tier}` : key);
 
-export const METRIC_LABEL: Record<OfferMetric | "seats", string> = { text: "AI texts a month", image: "Designs a month", chat: "Chat replies a month", seats: "Users" };
+export const METRIC_LABEL: Record<OfferMetric | "seats", string> = { text: "AI texts a month", image: "AI images a month", chat: "Chat replies a month", seats: "Users" };
 
 // ---- pricing ------------------------------------------------------------------------------------------------------
 

@@ -27,6 +27,7 @@ import { mediaForPost } from "./post-media";
 import { billableSeconds } from "./timeline";
 import { VIDEO_LIMITS, VISUAL_LIMITS, type ImagePlan, type VideoPlan, type VisualItem, type VisualKind, type VisualSlide } from "./types";
 import { videoDurationMs } from "./duration";
+import type { Audience } from "./people";
 import { buildVideoPlan, readVideoPlan, withSceneTexts } from "./video-plan";
 
 /** A problem the owner can read and act on (a KnowledgeError, so the content actions show its message). */
@@ -49,13 +50,41 @@ const json = (value: unknown) => value as Prisma.InputJsonValue;
  * checks everything again (consumeUsage, withLedger), so a race only costs a fallback.
  */
 export async function aiPhotosAvailable(owner: Owner): Promise<boolean> {
+  return (await aiPhotosStatus(owner)).allowed;
+}
+
+/** "AI images for this month used — next refill on 1 November." */
+export function aiExhaustedNote(refillAt: string | null): string {
+  if (!refillAt) return "AI images for this month used. Your real photos and brand designs are used instead.";
+  const day = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(refillAt));
+  return `AI images for this month used — next refill on ${day}. Your real photos and brand designs are used instead.`;
+}
+
+/**
+ * Like aiPhotosAvailable, with the reason: the visual says when the plan's AI images are used up (and when they come
+ * back), so the owner knows why the post shows a designed picture.
+ */
+export async function aiPhotosStatus(owner: Owner): Promise<{ allowed: boolean; exhausted: { refillAt: string | null } | null }> {
   try {
-    if (!(await hasFeature(owner.businessId, "aiPhotos"))) return false;
+    if (!(await hasFeature(owner.businessId, "aiPhotos"))) return { allowed: false, exhausted: null };
     const [usage, spend] = await Promise.all([getUsageSummary(owner.userId), companySpendThisMonth(owner.businessId)]);
-    if (usage.used.image >= usage.limits.image) return false;
-    return companyCallAllowed(spend, "image");
+    if (usage.used.image >= usage.limits.image) return { allowed: false, exhausted: { refillAt: usage.resetsAt ? new Date(usage.resetsAt).toISOString() : null } };
+    return { allowed: companyCallAllowed(spend, "image"), exhausted: null };
   } catch {
-    return false;
+    return { allowed: false, exhausted: null };
+  }
+}
+
+/** The company's country and first personas, so the people in AI photos look like its customers. */
+export async function audienceFor(businessId: string): Promise<Audience | undefined> {
+  try {
+    const [business, personas] = await Promise.all([
+      prisma.business.findUnique({ where: { id: businessId }, select: { country: true } }),
+      prisma.persona.findMany({ where: { businessId }, orderBy: { position: "asc" }, take: 3, select: { ageRange: true, gender: true, location: true, occupation: true } }),
+    ]);
+    return { country: business?.country ?? null, personas: personas ?? [] };
+  } catch {
+    return undefined;
   }
 }
 
@@ -100,13 +129,17 @@ export interface PlanInput {
   carouselAllowed: boolean;
   aiAllowed: boolean;
   maxSlides?: number;
+  /** The company's country and personas, for the people in AI photos. */
+  audience?: Audience;
+  /** AI images ran out this month: the plan says so (and when they come back). */
+  aiExhausted?: { refillAt: string | null };
   /** Skip the AI art director (the rules choose). */
   rulesOnly?: boolean;
 }
 
 const mimeOf = (path: string) => (/\.png$/i.test(path) ? "image/png" : /\.jpe?g$/i.test(path) ? "image/jpeg" : /\.webp$/i.test(path) ? "image/webp" : null);
 
-export function directionContext(input: Omit<PlanInput, "owner" | "target" | "video" | "image" | "subjectId">): DirectionContext {
+export function directionContext(input: Omit<PlanInput, "owner" | "target" | "video" | "image" | "subjectId" | "aiExhausted">): DirectionContext {
   return {
     subjectType: input.subjectType,
     title: input.title,
@@ -118,6 +151,7 @@ export function directionContext(input: Omit<PlanInput, "owner" | "target" | "vi
     carouselAllowed: input.carouselAllowed,
     aiAllowed: input.aiAllowed,
     maxSlides: input.maxSlides,
+    audience: input.audience,
   };
 }
 
@@ -135,6 +169,10 @@ export async function planVisuals(input: PlanInput): Promise<{ image: string | n
   try {
     const ctx = directionContext(input);
     const plan = input.rulesOnly || input.image === false ? fallbackPlan(ctx) : await directVisual(ctx, input.owner);
+    if (input.aiExhausted) {
+      plan.aiExhausted = input.aiExhausted;
+      plan.notes = [aiExhaustedNote(input.aiExhausted.refillAt), ...plan.notes];
+    }
     if (input.image !== false) {
       const row = await prisma.contentVisual.create({
         data: { businessId: input.owner.businessId, ...input.target, kind: kindOf(plan), status: "pending", plan: json(plan), items: json([]) },
@@ -186,7 +224,7 @@ async function subjectOf(row: { contentId: string | null; groupId: string | null
 
 /** Why an AI photo was not made, for the slide's note. */
 function aiNote(error: unknown): string {
-  if (error instanceof UsageLimitError) return "Your image credits are used up, so this slide uses your photo or a free design.";
+  if (error instanceof UsageLimitError) return "AI images for this month used, so this slide uses your photo or a brand design.";
   if (error instanceof AIProviderError) return error.message.includes("allowance") ? error.message : "AI photos are paused for a short while, so this slide uses a free design.";
   if (error instanceof RateLimitError) return "You made many AI photos this hour, so this slide uses a free design.";
   return "The AI photo could not be made, so this slide uses a free design.";
@@ -212,7 +250,10 @@ export async function drawSlide(
   onAiPhoto?: (slide: VisualSlide) => Promise<void>,
 ): Promise<VisualSlide> {
   const next: VisualSlide = { ...slide };
-  let photo: string | null = slide.source === "album" ? slide.photoPath : slide.source === "ai" ? (slide.aiPhotoPath ?? null) : null;
+  // A designed carousel slide shows the cover's photo (its AI photo, or its album photo when AI was not possible).
+  const cover = plan.slides[0];
+  const coverPhoto = slide.useCoverPhoto && cover !== slide ? (cover?.aiPhotoPath ?? (cover?.source === "album" ? cover.photoPath : null)) : null;
+  let photo: string | null = slide.source === "album" ? slide.photoPath : slide.source === "ai" ? (slide.aiPhotoPath ?? null) : coverPhoto;
   if (slide.source === "ai" && !slide.aiPhotoPath) {
     if (state.aiAllowed && state.aiMade < state.maxAi) {
       try {
@@ -344,8 +385,10 @@ async function drawClaimed(owner: Owner, visualId: string, started: number, budg
 async function lendPhotoToVideo(row: { businessId: string; contentId: string | null; groupId: string | null }, photo: string) {
   const sibling = await prisma.contentVisual.findFirst({ where: { businessId: row.businessId, kind: "video", status: "pending", ...(row.contentId ? { contentId: row.contentId } : { groupId: row.groupId }) } });
   const plan = sibling && readVideoPlan(sibling.plan);
-  if (!sibling || !plan || plan.scenes.some((s) => s.photoPath)) return;
-  const scenes = plan.scenes.map((s) => (s.role === "cta" ? s : { ...s, photoPath: photo }));
+  if (!sibling || !plan || plan.scenes.some((s) => s.photoPath === photo)) return;
+  // The people photo opens the video and fills scenes without a photo; the product photos keep the rest (no extra
+  // AI image is made for the video).
+  const scenes = plan.scenes.map((s, i) => (i === 0 || (!s.photoPath && s.role !== "cta") ? { ...s, photoPath: photo } : s));
   await prisma.contentVisual.update({ where: { id: sibling.id }, data: { plan: json({ ...plan, scenes }) } });
 }
 
@@ -421,8 +464,10 @@ export async function updateImageVisual(owner: Owner, visualId: string, changes:
     const [chosen] = chooseSources([{ source: "album", template: s.template }], { photos: [{ path: changes.swap.photoPath, mimeType: mimeOf(changes.swap.photoPath) }], aiAllowed: false });
     if (chosen.source !== "album") throw new VisualError("Templates need a JPG or PNG photo. Please pick a different one.");
     const template = s.template === "announcement" && changes.swap.index === 0 ? "new-arrival" : s.template;
-    plan.slides[changes.swap.index] = { ...s, source: "album", photoPath: changes.swap.photoPath, aiPhotoPath: null, template, note: undefined };
+    plan.slides[changes.swap.index] = { ...s, source: "album", photoPath: changes.swap.photoPath, aiPhotoPath: null, useCoverPhoto: false, template, note: undefined };
     changed.add(changes.swap.index);
+    // Designed slides show the cover's photo: a new cover photo redraws them too.
+    if (changes.swap.index === 0) plan.slides.forEach((x, i) => x.useCoverPhoto && changed.add(i));
   }
   if (changed.size === 0) return { status: row.status, plan };
   const old = [...changed].map((i) => before.slides[i]);

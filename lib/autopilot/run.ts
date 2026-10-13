@@ -19,7 +19,7 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import { aspectFor } from "./images";
 import { makeGroupVisuals, newRunState } from "./visuals";
 import { mediaForPost } from "@/lib/visuals/post-media";
-import { videoAvailable } from "@/lib/visuals/service";
+import { audienceFor, videoAvailable } from "@/lib/visuals/service";
 import { noopTrendSource, type TrendSource } from "./learning";
 import { alertRecipients } from "@/lib/team/recipients";
 import { sendReadyEmail } from "./notify";
@@ -168,6 +168,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
     const aiPhotos = await hasFeature(businessId, "aiPhotos");
     // Video ideas get a video plan (made in the owner's browser) when the plan has video.
     const videoAllowed = await videoAvailable(businessId);
+    const audience = await audienceFor(businessId);
     const visualRun = newRunState();
     let aiStopped = false;
     const state: { stop: "credits" | "budget" | "allowance" | null } = { stop: null };
@@ -212,7 +213,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
         const images = await makeGroupVisuals(
           group,
           written,
-          { userId, businessId, businessName: business.name, language: business.contentLanguage, useAiImages: input.config.useAiImages && aiPhotos && !aiStopped, service: options.service ?? false, business: { name: business.name, tone: business.tone, industry: business.industry, brandColors: business.brandColors }, videoAllowed },
+          { userId, businessId, businessName: business.name, language: business.contentLanguage, useAiImages: input.config.useAiImages && aiPhotos && !aiStopped, service: options.service ?? false, business: { name: business.name, tone: business.tone, industry: business.industry, brandColors: business.brandColors }, videoAllowed, audience },
           visualRun,
         );
         if (images.aiStopped) aiStopped = true;

@@ -27,6 +27,7 @@ function peopleLines(business: BrandForPrompt, hasPhoto?: boolean): string[] {
       ", naturally using, wearing, tasting or enjoying what is on offer, so the picture sells it.",
     "Make the people look like a real advertising photo shoot: natural skin and expressions, correct hands and faces, authentic everyday setting, candid and warm rather than stiff stock poses.",
     hasPhoto ? "The product in the attached photo stays the clear focus; the people interact with it." : null,
+    "Never show a real, famous or recognisable person, or anyone who looks like one. Adults only, no children. Respectful everyday clothing and settings; nothing medical, no before-and-after or body-transformation images.",
   ].filter((l): l is string => l !== null);
 }
 

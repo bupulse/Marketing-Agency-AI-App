@@ -171,6 +171,11 @@ function ImagePart({ contentId, visual, album }: { contentId?: string; visual: V
               {n}
             </p>
           ))}
+          {(plan?.aiExhausted || slides.some((s) => s.note?.startsWith("AI images for this month used"))) && (
+            <Button href="/dashboard/billing" size="sm" variant="outline" className="self-start">
+              Get an image pack (+50 AI images)
+            </Button>
+          )}
           {visual.status === "failed" && visual.error && (
             <p role="alert" className="text-[13px] font-medium text-danger">
               {visual.error}
