@@ -243,18 +243,24 @@ describe("renderImageStep", () => {
 
 describe("video upload checks", () => {
   const videoPlan = buildVideoPlan({ script: "One.\nTwo.", hook: "Hook", businessName: "Kigali Kicks", photos: [], pack: "clean" });
-  const row = { id: "vid1", businessId: "biz1", contentId: null, groupId: "g1", kind: "video", status: "pending", items: [], plan: videoPlan };
+  const PATH = `${U}/videos/vid1-abcd1.mp4`;
+  const MB = 1024 * 1024;
+  const inAnHour = () => new Date(Date.now() + 3600_000);
+  // The same visual before any upload was allowed.
+  const freshRow = () => ({ ...row, uploadPath: null, uploadBytes: 0, uploadExpiresAt: null });
+  // A visual with the reservation prepareVideoUpload made for PATH.
+  const row = { id: "vid1", businessId: "biz1", contentId: null, groupId: "g1", kind: "video", status: "pending", items: [] as { path: string }[], plan: videoPlan, bytes: 0, seconds: 0, uploadPath: PATH, uploadBytes: 8 * MB, uploadExpiresAt: inAnHour() };
   const file = { bytes: 3_000_000, mimeType: "video/mp4", durationMs: videoPlan.totalMs };
 
   it("gives a signed upload when the plan, size, length, seconds and quota allow", async () => {
-    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row);
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(freshRow());
     const r = await prepareVideoUpload(owner, "vid1", file);
     expect(r.path).toMatch(new RegExp(`^${U}/videos/vid1-[a-z0-9]+\\.mp4$`));
     expect(r.seconds).toBe(Math.ceil(videoPlan.totalMs / 1000));
   });
 
   it("reserves the upload at 8 MB until it is confirmed, and caps open uploads per company", async () => {
-    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row);
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(freshRow());
     await prepareVideoUpload(owner, "vid1", file);
     const data = mocks.prisma.contentVisual.update.mock.calls[0][0].data;
     expect(data).toMatchObject({ uploadBytes: 8 * 1024 * 1024 });
@@ -269,7 +275,7 @@ describe("video upload checks", () => {
   });
 
   it("refuses without the video feature, too big, too long, no seconds left, or a full gallery", async () => {
-    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row);
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(freshRow());
     mocks.featureStatus.mockResolvedValueOnce("not_in_plan");
     await expect(prepareVideoUpload(owner, "vid1", file)).rejects.toThrow(/not in your plan/);
     await expect(prepareVideoUpload(owner, "vid1", { ...file, bytes: 9 * 1024 * 1024 })).rejects.toThrow(/8 MB/);
@@ -316,7 +322,7 @@ describe("video upload checks", () => {
     await expect(finalizeVideo(owner, "vid1", { path: `${U}/videos/other-abcd1.mp4`, durationMs: 1000 })).rejects.toThrow(/could not be used/);
     mocks.featureStatus.mockResolvedValueOnce("not_in_plan");
     await expect(finalizeVideo(owner, "vid1", { path: `${U}/videos/vid1-abcd1.mp4`, durationMs: 1000 })).rejects.toThrow(/not in your plan/);
-    const path = `${U}/videos/vid1-abcd1.mp4`;
+    const path = PATH;
     upload(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]));
     await expect(finalizeVideo(owner, "vid1", { path, durationMs: 1000 })).rejects.toThrow(/not an MP4/);
     expect(mocks.storage.remove).toHaveBeenCalledWith([path]);
@@ -331,6 +337,38 @@ describe("video upload checks", () => {
     upload(mp4Bytes(10_000));
     mocks.consumeUsage.mockRejectedValueOnce(new UsageLimitError("limit_reached", "videoSeconds"));
     await expect(finalizeVideo(owner, "vid1", { path, durationMs: 10_000 })).rejects.toThrow(/video seconds/);
+  });
+
+  it("finalize takes only the reserved upload: another file in the folder, or an expired reservation, is refused and deleted", async () => {
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...row, uploadPath: `${U}/videos/vid1-other1.mp4` });
+    upload(mp4Bytes(10_000));
+    await expect(finalizeVideo(owner, "vid1", { path: PATH, durationMs: 10_000 })).rejects.toThrow(/could not be used/);
+    expect(mocks.storage.remove).toHaveBeenCalledWith([PATH]);
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...row, uploadExpiresAt: new Date(Date.now() - 1000) });
+    await expect(finalizeVideo(owner, "vid1", { path: PATH, durationMs: 10_000 })).rejects.toThrow(/could not be used/);
+    expect(mocks.consumeUsage).not.toHaveBeenCalled();
+  });
+
+  it("finalize checks the quota again with the real size, not counting the visual's own reservation and old video", async () => {
+    const replacing = { ...row, status: "ready", items: [{ path: `${U}/videos/vid1-old01.mp4` }], bytes: 6 * MB };
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(replacing);
+    upload(mp4Bytes(10_000));
+    // Usage includes the old video (6 MB) and the reservation (8 MB): 2 GB minus 1 MB in all, so the new file fits.
+    mocks.mediaUsage.mockResolvedValueOnce({ count: 500, bytes: 2 * 1024 ** 3 - MB });
+    await expect(finalizeVideo(owner, "vid1", { path: PATH, durationMs: 10_000 })).resolves.toMatchObject({ seconds: 10 });
+    expect(mocks.assertPlatformRoom).toHaveBeenLastCalledWith(0);
+
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row);
+    mocks.mediaUsage.mockResolvedValueOnce({ count: 501, bytes: 0 }); // full without this visual
+    await expect(finalizeVideo(owner, "vid1", { path: PATH, durationMs: 10_000 })).rejects.toThrow(/gallery is full/);
+    expect(mocks.storage.remove).toHaveBeenCalledWith([PATH]);
+  });
+
+  it("replacing a video: the old file and the visual's own reservation are not counted against the new reservation", async () => {
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...row, status: "ready", items: [{ path: `${U}/videos/vid1-old01.mp4` }], bytes: 7 * MB, uploadPath: null, uploadBytes: 0, uploadExpiresAt: null });
+    mocks.mediaUsage.mockResolvedValueOnce({ count: 120, bytes: 2 * 1024 ** 3 - 2 * MB }); // includes the old 7 MB video
+    await expect(prepareVideoUpload(owner, "vid1", file)).resolves.toMatchObject({ seconds: expect.any(Number) });
+    expect(mocks.assertPlatformRoom).toHaveBeenLastCalledWith(1 * MB);
   });
 
   it("sniffs MP4 and WebM", () => {
@@ -354,5 +392,16 @@ describe("fallback plan used when nothing else works", () => {
   it("is always drawable", () => {
     const p = fallbackPlan({ subjectType: "event", title: "Open day", caption: "", headlines: [], business: { name: "B" }, photos: [], carouselAllowed: false, aiAllowed: false });
     expect(p.slides[0]).toMatchObject({ headline: "Open day", source: "text" });
+  });
+});
+
+describe("changing a picture while it is being drawn", () => {
+  it("is refused with a friendly message, and nothing is changed", async () => {
+    const { updateImageVisual } = await import("@/lib/visuals/service");
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: plan([slide()]), renderingUntil: new Date(Date.now() + 60_000) });
+    await expect(updateImageVisual(owner, "v1", { pack: "warm" })).rejects.toThrow(/still being drawn/);
+    expect(mocks.prisma.contentVisual.update).not.toHaveBeenCalled();
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: plan([slide()]), renderingUntil: new Date(Date.now() - 1000) });
+    await expect(updateImageVisual(owner, "v1", { pack: "warm" })).resolves.toMatchObject({ status: "pending" });
   });
 });

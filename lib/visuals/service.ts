@@ -15,7 +15,7 @@ import { isTemplateId } from "@/lib/designs/templates/registry";
 import { featureStatus, hasFeature } from "@/lib/entitlements";
 import { KnowledgeError } from "@/lib/knowledge/service";
 import { assertPlatformRoom, MediaError, mediaUsage } from "@/lib/media/service";
-import { quotaProblem } from "@/lib/media/rules";
+import { quotaProblem, type MediaUsage } from "@/lib/media/rules";
 import { RateLimitError } from "@/lib/rate-limit";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { createSignedUploadUrl } from "@/lib/storage";
@@ -382,6 +382,8 @@ export async function updateImageVisual(owner: Owner, visualId: string, changes:
   const row = await ownVisual(owner.businessId, visualId);
   const before = readImagePlan(row.plan);
   if (!before || row.kind === "video") throw new VisualError("We could not change that picture.");
+  // A drawing in progress would save its plan over these changes.
+  if (row.renderingUntil && row.renderingUntil > new Date()) throw new VisualError("This picture is still being drawn. Try again in a moment.");
   const plan: ImagePlan = structuredClone(before);
   const changed = new Set<number>();
   if (changes.pack && isPackId(changes.pack) && changes.pack !== plan.pack) {
@@ -536,6 +538,20 @@ export const MAX_OPEN_UPLOADS = 3;
 /** How long an allowed upload is held (and counted) before the clean-up lets it go. */
 export const UPLOAD_RESERVATION_MS = 60 * 60 * 1000;
 
+/**
+ * The company's media usage without this visual's own video and open reservation: replacing a video must not count
+ * the old file (or the reservation being replaced) on top of the new one.
+ */
+function usageOwnBytes(row: { bytes: number; uploadBytes: number; uploadExpiresAt: Date | null }, now: Date) {
+  return row.bytes + (row.uploadExpiresAt && row.uploadExpiresAt > now ? row.uploadBytes : 0);
+}
+
+export function usageWithoutOwn(usage: MediaUsage, row: { bytes: number; uploadBytes: number; uploadExpiresAt: Date | null }, now: Date): MediaUsage {
+  const reserved = row.uploadExpiresAt && row.uploadExpiresAt > now ? row.uploadBytes : 0;
+  const count = (row.bytes > 0 ? 1 : 0) + (reserved > 0 ? 1 : 0);
+  return { count: Math.max(0, usage.count - count), bytes: Math.max(0, usage.bytes - row.bytes - reserved) };
+}
+
 /** Video seconds left this month (plan limit minus what was used). */
 async function secondsLeft(userId: string): Promise<number> {
   const usage = await getUsageSummary(userId);
@@ -548,7 +564,7 @@ async function secondsLeft(userId: string): Promise<number> {
  */
 export async function prepareVideoUpload(owner: Owner, visualId: string, file: { bytes: number; mimeType: string; durationMs: number }) {
   if (!(await videoAvailable(owner.businessId))) throw new VisualError("Videos are not in your plan. Add video to your plan to make them.");
-  const { plan } = await videoRow(owner, visualId);
+  const { row, plan } = await videoRow(owner, visualId);
   if (!isVideoType(file.mimeType)) throw new VisualError("The video must be an MP4 or WebM file.");
   if (!(file.bytes > 0) || file.bytes > VIDEO_LIMITS.maxBytes) throw new VisualError("The video is larger than 8 MB. Try fewer scenes or shorter captions.");
   if (!(file.durationMs > 0) || file.durationMs > VIDEO_LIMITS.maxMs + 1000) throw new VisualError("Videos can be at most 30 seconds long.");
@@ -558,10 +574,10 @@ export async function prepareVideoUpload(owner: Owner, visualId: string, file: {
   const open = await prisma.contentVisual.count({ where: { businessId: owner.businessId, kind: "video", uploadExpiresAt: { gt: now }, id: { not: visualId } } });
   if (open >= MAX_OPEN_UPLOADS) throw new VisualError("Other videos are being saved right now. Wait for them to finish, then try again.");
   // The reservation is counted at the most a video may weigh, whatever size the browser announced.
-  const problem = quotaProblem(await mediaUsage(owner.businessId), { count: 1, bytes: VIDEO_LIMITS.maxBytes });
+  const problem = quotaProblem(usageWithoutOwn(await mediaUsage(owner.businessId), row, now), { count: 1, bytes: VIDEO_LIMITS.maxBytes });
   if (problem) throw new VisualError(problem);
   try {
-    await assertPlatformRoom(VIDEO_LIMITS.maxBytes);
+    await assertPlatformRoom(Math.max(0, VIDEO_LIMITS.maxBytes - usageOwnBytes(row, now)));
   } catch (error) {
     if (error instanceof MediaError) throw new VisualError(error.message);
     throw error;
@@ -589,10 +605,22 @@ export async function finalizeVideo(owner: Owner, visualId: string, input: { pat
     await prisma.contentVisual.updateMany({ where: { id: row.id, uploadPath: input.path }, data: { uploadPath: null, uploadBytes: 0, uploadExpiresAt: null } }).catch(() => {});
     throw new VisualError(message);
   };
+  // Only the upload the server allowed (and counted): a file written straight into the folder is not taken.
+  const now = new Date();
+  if (row.uploadPath !== input.path || !row.uploadExpiresAt || row.uploadExpiresAt <= now) return reject("That upload could not be used. Please make the video again.");
   const info = await bucket.info(input.path);
   if (info.error || !info.data) throw new VisualError("We could not find the uploaded video. Please try again.");
   const { size, contentType } = info.data;
   if (!size || size > VIDEO_LIMITS.maxBytes) return reject("The video is larger than 8 MB.");
+  // The quota again, with the real size, in place of this visual's old video and reservation.
+  const problem = quotaProblem(usageWithoutOwn(await mediaUsage(owner.businessId), row, now), { count: 1, bytes: size });
+  if (problem) return reject(problem);
+  try {
+    await assertPlatformRoom(Math.max(0, size - usageOwnBytes(row, now)));
+  } catch (error) {
+    if (error instanceof MediaError) return reject(error.message);
+    throw error;
+  }
   const download = await bucket.download(input.path);
   const bytes = download.data ? new Uint8Array(await download.data.arrayBuffer()) : null;
   if (!bytes || bytes.length > VIDEO_LIMITS.maxBytes) return reject("We could not read the uploaded video. Please try again.");

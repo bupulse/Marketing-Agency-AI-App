@@ -29,7 +29,7 @@ change it. Code: `lib/visuals/`, `components/visuals/`, `app/dashboard/visuals/a
    the visual `failed` with a message; the content itself is never affected. Each call first takes a 2-minute lease
    (`renderingUntil`, compare-and-set), so two tabs never draw (or pay for) the same visual; the other call answers
    "rendering" and the screen waits. An AI photo is saved into the plan the moment it is paid for, before the template
-   is drawn, so a failed draw keeps it and the retry reuses it.
+   is drawn, so a failed draw keeps it and the retry reuses it. Changing a picture while it is being drawn is refused ("still being drawn").
 
 AI photos are offered to the art director only when `aiPhotosAvailable`: the `aiPhotos` feature, an image credit left
 this month, and the company AI allowance not reached.
@@ -61,7 +61,8 @@ screen).
   the video seconds left, the company's media quota and the platform guard, records a **reservation** on the visual
   (`uploadPath`, 8 MB, one hour; counted in the quotas like a stored video; at most 3 open per company), then gives a
   signed upload URL for `<userId>/videos/<visualId>-<n>.mp4` in the `media` bucket. `finishVideoUpload` re-checks the
-  plan, downloads the file (at most 8 MB), checks its first bytes (`ftyp` or EBML), reads its **real length** from the
+  plan, takes only the reserved path (a file written straight into the folder is refused), checks the quota again with
+  the real size (the visual's own old video and reservation are not counted twice; also when preparing), downloads the file (at most 8 MB), checks its first bytes (`ftyp` or EBML), reads its **real length** from the
   file (`lib/visuals/duration.ts`: MP4 `mvhd`; WebM Info Duration, else the last block's timecode, since MediaRecorder
   writes none), refuses more than 30.5 s, bills those seconds, clears the reservation, replaces the old file and, for
   Autopilot, puts the video on the group's posts. A rejected file is deleted. Confirming the same file twice bills once.
