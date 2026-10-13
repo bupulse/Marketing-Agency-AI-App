@@ -117,7 +117,9 @@ free (`docs/DEPLOY_NETLIFY.md`) stays the fallback. This file is the order of wo
    - Free uptime monitor (e.g. UptimeRobot free) on `/api/status` every 5 minutes, alerts to office@bupulse.com.
 10. **Owner, after the deploy** (Admin console):
    - Settings → **Admin currency**: set the Default currency (RWF), and the EUR rate or its daily refresh.
-   - Organisation → **Sales screen**: create the TV link, open it on the TV, click "Start screen" once; add sounds.
+   - Organisation → **Sales screen**: create the TV link, open it on the TV, click "Start screen" once; add sounds
+     with **Generate a sound** (or upload MP3s you hold the rights to): the local sounds script is for the test
+     project only.
    - Organisation → **Staff**: invite the staff with their roles (each signs in with an emailed code and an
      authenticator). Settings → page-loading animation if you want another one.
 11. **Hand-over zip**: `git archive --format=zip -o BuPulse-2.0.0.zip main` (no `node_modules`, `.next` or `.env`).
@@ -137,9 +139,10 @@ database and on the test database.
 `20261018105000_screen_billing_event_time`.
 
 **Test-only scripts, never run against production:** `scripts/local/seed-test-staff.mjs` (one test person per role,
-passwords to `TEST_ACCOUNTS.md`) and the test sounds script for the sales TV (also git-ignored in `scripts/local/`).
-Production staff are invited from Organisation → Staff, and sounds are uploaded or generated in Organisation → Sales
-screen. (`scripts/local/seed-music.mjs` is the one local script that does run against production, step 8.)
+passwords to `TEST_ACCOUNTS.md`) and `scripts/local/generate-screen-sounds.mjs` (sounds for the sales TV; it refuses
+any project that is not the test one). Both are git-ignored; copies are in `~/BuPulse-v2/scripts/local`. On the live
+site, staff are invited from Admin → Organisation → Staff, and the TV's sounds are made in Admin → Organisation →
+Sales screen → **Generate a sound** (or uploaded there). (`scripts/local/seed-music.mjs` is the one local script that does run against production, step 8.)
 
 ## Backups (free plan)
 
