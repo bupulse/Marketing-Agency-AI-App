@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   createPlanRequest: vi.fn(),
   requireActiveUser: vi.fn(),
   rateLimit: vi.fn(async () => {}),
+  owned: ["content", "designs"] as string[],
 }));
 
 vi.mock("next/navigation", () => ({ redirect: h.redirect, notFound: vi.fn() }));
@@ -48,6 +49,7 @@ vi.mock("@/lib/billing/momo", () => ({ ManualPaymentError: class extends Error {
 vi.mock("@/lib/region-prices", () => ({ companyPlans: vi.fn(), regionPriceIdFor: vi.fn() }));
 vi.mock("@/lib/region-check", () => ({ noteRegionMismatch: vi.fn(async () => null) }));
 vi.mock("@/lib/plan-catalog", () => ({ getPlan: vi.fn(), priceIdFor: vi.fn() }));
+vi.mock("@/lib/entitlements", () => ({ companyEntitlements: async () => ({ inPlan: new Set(h.owned) }) }));
 
 import { saveOfferAction, withdrawOfferAction } from "@/app/admin/(console)/(money)/offers/actions";
 import { saveAddonPricesAction } from "@/app/admin/(console)/(money)/addon-prices/actions";
@@ -128,13 +130,14 @@ describe("client actions", () => {
     expect(await acceptOfferAction({ offerId: "offer1", method: "momo" })).toMatchObject({ ok: false, error: expect.stringMatching(/try again in 2 minutes/) });
   });
 
-  it("the request form needs the billing permission and a confirmed email; it passes the ticked features", async () => {
+  it("the request form needs the billing permission and a confirmed email; it passes the ticked features (no goals) and what the plan has", async () => {
     h.requireActiveUser.mockResolvedValue(OWNER);
     h.createPlanRequest.mockResolvedValue({ id: "r1" });
-    const state = await requestCustomPlanAction({}, form({ description: "We sell shoes", goals: "More orders", features: ["websiteChat", "autopilot"], source: "pricing" }));
+    const state = await requestCustomPlanAction({}, form({ description: "We sell shoes", features: ["websiteChat", "autopilot"], source: "pricing" }));
     expect(state).toEqual({ done: true });
     expect(h.requireActiveUser).toHaveBeenCalledWith("billing");
-    expect(h.createPlanRequest.mock.calls[0][0]).toMatchObject({ businessId: "biz1", raw: { features: ["websiteChat", "autopilot"], source: "pricing" } });
+    expect(h.createPlanRequest.mock.calls[0][0]).toMatchObject({ businessId: "biz1", raw: { features: ["websiteChat", "autopilot"], source: "pricing" }, owned: ["content", "designs"] });
+    expect(h.createPlanRequest.mock.calls[0][0].raw).not.toHaveProperty("goals");
     h.requireActiveUser.mockResolvedValue({ ...OWNER, email_confirmed_at: null });
     expect(await requestCustomPlanAction({}, form({}))).toMatchObject({ error: expect.stringMatching(/Confirm your email/) });
     h.requireActiveUser.mockResolvedValue(OWNER);

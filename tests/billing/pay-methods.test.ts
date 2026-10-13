@@ -114,12 +114,12 @@ describe("is card set up? (server)", () => {
     expect((await cardPricedPlans("GLOBAL", ["STANDARD"])).STANDARD).toEqual({ MONTH: true, YEAR: false });
   });
 
-  it("invoices: card where the plan is priced in the region; never for a custom plan's invoice", async () => {
+  it("invoices: card where the plan is priced in the region; a custom plan's invoice shows card, not ready (ask for a card link)", async () => {
     paddleKeys();
     rwPrices({ month: "pri_rw_std_m", year: "pri_rw_std_y" });
     const region = { key: "RW", paymentMethods: RW.paymentMethods };
     expect(await invoicePayMethods({ region, planKey: "STANDARD", interval: "YEAR", custom: false, momoConfigured: true })).toEqual({ momo: "ready", card: "ready" });
-    expect(await invoicePayMethods({ region, planKey: "STANDARD", interval: "YEAR", custom: true, momoConfigured: true })).toEqual({ momo: "ready", card: "off" });
+    expect(await invoicePayMethods({ region, planKey: "STANDARD", interval: "YEAR", custom: true, momoConfigured: true })).toEqual({ momo: "ready", card: "soon" });
     expect(await invoicePayMethods({ region, planKey: null, interval: null, custom: false, momoConfigured: false })).toEqual({ momo: "soon", card: "soon" });
   });
 });

@@ -3,6 +3,7 @@
 
 import { z } from "zod";
 import { featureLabel, FEATURES, isFeatureKey, sortFeatureKeys, validateFeatureSet, withPrerequisites, type FeatureKey } from "@/lib/features";
+import { addMonths as addMonthsUtc } from "@/lib/billing/period";
 import { SEATS_MAX, SEATS_MIN, VIDEO_PLAN_SECONDS, VOICE_PLAN_CHARACTERS, type PlanLimits, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit } from "@/lib/plans";
 
 /** A yearly custom plan costs this many months (the regional plans' rule: yearly = 10 months). */
@@ -172,6 +173,153 @@ export function removalBlockedBy(key: FeatureKey, selected: readonly FeatureKey[
   return sortFeatureKeys(selected.filter((k) => k !== key && (withPrerequisites([k]).includes(key) || (k === "managed" && managedTier === "full" && withPrerequisites(["analytics"]).includes(key)))));
 }
 
+// ---- adding features to a running plan (mid-period) ---------------------------------------------------------------------
+
+/**
+ * Adding features to a plan that is paid and running (docs/OFFERS.md, "Adding features to a paid plan"): the client
+ * pays now only for the added features, prorated for the days left in the current period; the period end does not move;
+ * from the next renewal the price is the full new total (plan + added features).
+ */
+export type CurrentPlanForAddition = { key: string; name: string; priceMinor: number; features: readonly FeatureKey[]; limits: PlanLimits };
+
+/** Days in the period of `interval` that ends at `end` (a month ending 1 November: the 31 days of October). */
+export function periodDaysEnding(end: Date, interval: "MONTH" | "YEAR"): number {
+  return Math.max(1, Math.round((end.getTime() - addMonthsUtc(end, interval === "YEAR" ? -12 : -1).getTime()) / DAY_MS));
+}
+
+/** Whole days left until `end` (a part of a day counts as one; 0 once it has passed). */
+export const additionDaysLeft = (end: Date, now: Date) => Math.max(0, Math.ceil((end.getTime() - now.getTime()) / DAY_MS));
+
+/** `amountMinor` (a whole period's price) for `daysLeft` of `periodDays`, rounded to the currency's smallest unit (whole RWF, US cents). */
+export function prorateMinor(amountMinor: number, daysLeft: number, periodDays: number): number {
+  if (amountMinor <= 0 || daysLeft <= 0 || periodDays <= 0) return 0;
+  return Math.round((amountMinor * daysLeft) / periodDays);
+}
+
+export type AdditionQuote = {
+  /** The plan's features once the added ones are on (prerequisites included). */
+  features: FeatureKey[];
+  /** What is added on top of the current plan. */
+  added: FeatureKey[];
+  /** The plan's limits once the added features are on (an added feature's allowance raises its limit; no blocks are bought). */
+  limits: PlanLimits;
+  /** One line per added feature, for a whole period of the interval. */
+  lines: PricedLine[];
+  /** The sum of the lines (a whole period). */
+  computedMinor: number;
+  /** What the added features cost a whole period: the computed sum, or the admin's price. */
+  addonMinor: number;
+  missing: string[];
+  currentMinor: number;
+  /** From the next renewal: the current plan plus the added features. */
+  nextRenewalMinor: number;
+  daysLeft: number;
+  periodDays: number;
+  /** What the client pays now: `addonMinor` prorated for the days left. */
+  dueNowMinor: number;
+  /** The computed sum prorated the same way (the "before discount" figure). */
+  computedDueMinor: number;
+};
+
+export function quoteAddition(input: {
+  current: CurrentPlanForAddition;
+  features: readonly string[];
+  managedTier?: ManagedTier;
+  interval: "MONTH" | "YEAR";
+  currency: string;
+  regionKey: string;
+  prices: readonly AddonPriceRow[];
+  periodEnd: Date;
+  now: Date;
+  /** The admin's price for the added features, a whole period (rounding or discount). */
+  addonMinor?: number | null;
+}): AdditionQuote {
+  const base: OfferBase = { key: input.current.key, name: input.current.name, monthlyMinor: input.current.priceMinor, yearlyMinor: input.current.priceMinor, features: input.current.features, limits: input.current.limits };
+  const cur = input.current.limits;
+  const common = { base, features: input.features, managedTier: input.managedTier, interval: input.interval, currency: input.currency, regionKey: input.regionKey, prices: input.prices };
+  // First what the added features include, then the limits raised to it, so no block is ever bought here.
+  const first = quoteOffer({ ...common, limits: { text: cur.text, image: cur.image, chat: cur.chat, seats: cur.seats, postsPerAppPerDay: postsPerAppLimit(cur) } });
+  const inc = first.included;
+  const quote = quoteOffer({ ...common, limits: { text: Math.max(cur.text, inc.text), image: Math.max(cur.image, inc.image), chat: Math.max(cur.chat, inc.chat), seats: cur.seats, postsPerAppPerDay: postsPerAppLimit(cur) } });
+  const lines = quote.lines.filter((l) => !l.key.startsWith("plan:"));
+  const computedMinor = lines.reduce((sum, l) => sum + l.totalMinor, 0);
+  const addonMinor = input.addonMinor ?? computedMinor;
+  const periodDays = periodDaysEnding(input.periodEnd, input.interval);
+  const daysLeft = additionDaysLeft(input.periodEnd, input.now);
+  return {
+    features: quote.features,
+    added: quote.added,
+    limits: quote.limits,
+    lines,
+    computedMinor,
+    addonMinor,
+    missing: quote.missing,
+    currentMinor: input.current.priceMinor,
+    nextRenewalMinor: input.current.priceMinor + addonMinor,
+    daysLeft,
+    periodDays,
+    dueNowMinor: prorateMinor(addonMinor, daysLeft, periodDays),
+    computedDueMinor: prorateMinor(computedMinor, daysLeft, periodDays),
+  };
+}
+
+/** What an add-features offer stores (PlanOffer.options.addition), frozen when it is saved and again when accepted. */
+export type OfferAddition = {
+  currentPlanKey: string;
+  currentPlanName: string;
+  currentMinor: number;
+  addonMinor: number;
+  nextRenewalMinor: number;
+  periodEnd: string;
+  daysLeft: number;
+  periodDays: number;
+  /** Made by the client on Billing ("Add features"), not by the BuPulse team. */
+  selfServe: boolean;
+};
+
+export function readAddition(options: unknown): OfferAddition | null {
+  const o = options && typeof options === "object" ? (options as { mode?: unknown; addition?: unknown }) : {};
+  const a = o.mode === "addon" && o.addition && typeof o.addition === "object" ? (o.addition as Record<string, unknown>) : null;
+  if (!a) return null;
+  const int = (k: string) => (typeof a[k] === "number" && Number.isInteger(a[k]) ? (a[k] as number) : 0);
+  if (typeof a.currentPlanKey !== "string" || typeof a.periodEnd !== "string") return null;
+  return { currentPlanKey: a.currentPlanKey, currentPlanName: typeof a.currentPlanName === "string" ? a.currentPlanName : a.currentPlanKey, currentMinor: int("currentMinor"), addonMinor: int("addonMinor"), nextRenewalMinor: int("nextRenewalMinor"), periodEnd: a.periodEnd, daysLeft: int("daysLeft"), periodDays: int("periodDays"), selfServe: a.selfServe === true };
+}
+
+/**
+ * The features a client can add by themselves on Billing ("Add features"): built, not in the plan yet, and priced in
+ * the region (with every prerequisite they would pull in). Managed by BuPulse (two tiers) and anything unpriced go
+ * through "Request a custom change".
+ */
+export function selfServeFeatures(owned: readonly FeatureKey[], prices: readonly AddonPriceRow[], regionKey: string, currency: string): FeatureKey[] {
+  const has = new Set(owned);
+  const priced = (k: FeatureKey) => prices.some((p) => p.addonKey === k && p.regionKey === regionKey && p.currency.toUpperCase() === currency.toUpperCase() && p.monthlyMinor >= 0);
+  return FEATURES.filter((f) => f.status === "built" && f.key !== "managed" && !has.has(f.key) && withPrerequisites([f.key]).every((k) => has.has(k) || priced(k))).map((f) => f.key);
+}
+
+// ---- the request form: what the client already has ------------------------------------------------------------------
+
+/** The features ticked and locked on the request form: the plan's own, with their prerequisites. */
+export const lockedRequestFeatures = (owned: readonly string[]): FeatureKey[] => withPrerequisites(owned);
+
+/**
+ * The request form's ticks after ticking (or unticking) one feature: ticking pulls in its prerequisites; a feature the
+ * client already has stays ticked; a feature another ticked one needs cannot be unticked. Returns only what is new.
+ */
+export function toggleRequestFeature(owned: readonly string[], selected: readonly FeatureKey[], key: FeatureKey, on: boolean): FeatureKey[] {
+  const locked = new Set(lockedRequestFeatures(owned));
+  if (locked.has(key)) return selected.filter((k) => !locked.has(k));
+  if (on) return withPrerequisites([...selected, key]).filter((k) => !locked.has(k));
+  if (selected.some((k) => k !== key && withPrerequisites([k]).includes(key))) return [...selected];
+  return selected.filter((k) => k !== key);
+}
+
+/** What a request asks for on top of the plan: the ticked features with their prerequisites, minus what the client has. */
+export function requestedFeatures(owned: readonly string[], ticked: readonly string[]): FeatureKey[] {
+  const locked = new Set(lockedRequestFeatures(owned));
+  return withPrerequisites(ticked).filter((k) => !locked.has(k));
+}
+
 // ---- offer statuses --------------------------------------------------------------------------------------------------
 
 export const OFFER_STATUSES = ["draft", "sent", "accepted", "paid", "expired", "withdrawn"] as const;
@@ -223,6 +371,8 @@ export const offerDraftSchema = z.object({
   note: z.string().trim().max(1000, "Keep the message under 1,000 characters.").nullish().transform((v) => v || null),
   validDays: z.number().int().min(1).max(OFFER_VALID_DAYS_MAX).default(OFFER_VALID_DAYS),
   requestId: z.string().trim().max(64).nullish().transform((v) => v || null),
+  /** "addon": add features to the client's running plan (prorated now, full price from the next renewal). */
+  mode: z.enum(["plan", "addon"]).default("plan"),
 });
 export type OfferDraftInput = z.input<typeof offerDraftSchema>;
 export type OfferDraft = z.output<typeof offerDraftSchema>;
@@ -283,6 +433,8 @@ export type ClientOfferView = {
   validUntil: string | null;
   payMethod: "momo" | "invoice" | null;
   invoiceId: string | null;
+  /** Set for features added to the running plan: pay `totalMinor` now, then `nextRenewalMinor` a period from `renewsOn`. */
+  addition: { addonMinor: number; nextRenewalMinor: number; renewsOn: string; daysLeft: number; periodDays: number; currentPlanName: string; selfServe: boolean } | null;
 };
 
 /** What the client sees, from an offer's stored fields. Pure: Billing and the admin editor's live preview share it. */
@@ -303,6 +455,7 @@ export function toClientOffer(o: {
   validUntil: Date | string | null;
   payMethod: string | null;
   invoiceId: string | null;
+  addition?: OfferAddition | null;
 }): ClientOfferView {
   return {
     id: o.id,
@@ -321,6 +474,7 @@ export function toClientOffer(o: {
     validUntil: o.validUntil ? new Date(o.validUntil).toISOString() : null,
     payMethod: o.payMethod === "momo" || o.payMethod === "invoice" ? o.payMethod : null,
     invoiceId: o.invoiceId,
+    addition: o.addition ? { addonMinor: o.addition.addonMinor, nextRenewalMinor: o.addition.nextRenewalMinor, renewsOn: o.addition.periodEnd, daysLeft: o.addition.daysLeft, periodDays: o.addition.periodDays, currentPlanName: o.addition.currentPlanName, selfServe: o.addition.selfServe } : null,
   };
 }
 
@@ -349,7 +503,6 @@ export const REQUESTABLE_FEATURES = FEATURES.map((f) => ({ key: f.key, label: f.
 
 export const requestSchema = z.object({
   description: z.string().trim().min(10, "Tell us in a sentence or two what your business does.").max(2000, "Keep it under 2,000 characters."),
-  goals: z.string().trim().min(10, "Tell us what you want to achieve.").max(2000, "Keep it under 2,000 characters."),
   features: z.array(z.string().max(40)).max(40).default([]).transform((keys) => sortFeatureKeys(keys.filter(isFeatureKey))),
   budget: z.string().max(20).nullish().transform((v) => (v && BUDGET_RANGES.some((b) => b.key === v) ? v : null)),
   phone: z.string().trim().max(40).nullish().transform((v) => v || null),

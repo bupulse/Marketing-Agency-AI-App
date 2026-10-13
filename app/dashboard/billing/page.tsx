@@ -22,7 +22,10 @@ import { getPlan, subscriberPriceCents, toPublic } from "@/lib/plan-catalog";
 import { companyPlans, type RegionalPlan } from "@/lib/region-prices";
 import { currencyNote } from "@/lib/region-format";
 import { clientInvoices, openInvoiceOf, payableView } from "@/lib/invoices/service";
-import { clientOffer } from "@/lib/offers/service";
+import { clientOffer, selfServeAddition } from "@/lib/offers/service";
+import { renewalState } from "@/lib/billing/renewal";
+import { AddFeatures } from "@/components/billing/add-features";
+import type { Renewal } from "@/components/billing/plan-actions";
 import { OfferCard } from "@/components/billing/offer-card";
 import { OfferActions } from "@/components/billing/offer-actions";
 import { site } from "@/lib/content/site";
@@ -82,6 +85,26 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   // A custom plan cannot be bought by card through checkout (docs/OFFERS.md, "Card"): its invoice is paid by Mobile Money.
   const payableCustom = payable?.planKey ? (await getPlan(payable.planKey))?.isCustom === true : false;
   const invoiceMethods = payable ? await invoicePayMethods({ region, planKey: payable.planKey, interval: payable.interval, custom: payableCustom, momoConfigured: momoReady }) : null;
+  // Renewing (docs/BILLING.md, "Renewing"): a card plan that renews by itself is never renewed by hand; anything else
+  // only in the last 7 days of its period, by Mobile Money or card, the new period starting when this one ends.
+  const now = new Date();
+  const renewal = paid ? renewalState(subscription, now) : null;
+  const regionHas = (m: "momo" | "card") => region.paymentMethods.includes(m);
+  const renewsCustom = currentPlan?.isCustom === true;
+  const currentPick = pickable.find((p) => p.key === subscription.plan);
+  const renew: Renewal | undefined =
+    renewal?.kind === "open" && currentPlan && !currentPlan.isTrial && !momoPayment && (momoPlan || cancelling)
+      ? {
+          plan: currentPlan.key,
+          interval: subscription.interval,
+          momo: methodState(regionHas("momo"), momoReady && currentPick !== undefined && momoPriceOf(currentPick, subscription.interval) !== null),
+          card: methodState(regionHas("card"), cardOn && (cancelling || Boolean(cardPriced[currentPlan.key]?.[subscription.interval]))),
+          cardVia: cancelling ? "resume" : "checkout",
+          cardReason: renewsCustom && !cancelling ? `Card for a custom plan is set up by our team: ask us for a card link at ${site.email}.` : null,
+        }
+      : undefined;
+  // "Add features" to the running plan (docs/OFFERS.md): a Mobile Money plan, with no payment or team offer in progress.
+  const addition = paid && !pastDue && momoPayment?.status !== "pending" && (!offer || offer.addition?.selfServe) ? await selfServeAddition(business.id, now).catch(() => null) : null;
   const highlighted = typeof query.invoice === "string" ? query.invoice : null;
   const checkoutSuccess = query.checkout === "success";
   // Wait for this purchase specifically: the plan is active and was updated after checkout began.
@@ -129,7 +152,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
         />
       )}
 
-      {payable && invoiceMethods && <InvoicePay invoice={payable} methods={invoiceMethods} highlight={highlighted === payable.number} />}
+      {payable && invoiceMethods && <InvoicePay invoice={payable} methods={invoiceMethods} highlight={highlighted === payable.number} cardReason={payableCustom || !payable.planKey ? `Card for this invoice is set up by our team: ask us for a card link at ${site.email}.` : null} />}
 
       {momoPayment && <MomoPayment payment={momoPayment} details={momoSettings} />}
 
@@ -150,7 +173,17 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
                 {trialDaysLeft ? ` (${trialDaysLeft} ${trialDaysLeft === 1 ? "day" : "days"} left)` : ""}
               </span>
             )}
-            {paid && periodEnd && !cancelling && !pastDue && <span className="text-sm text-muted">{momoPlan ? `Paid until ${periodEnd}` : `Renews ${periodEnd}`}</span>}
+            {paid && periodEnd && !cancelling && !pastDue && renewal?.kind === "auto" && <span className="text-sm text-muted">Renews automatically on {periodEnd}</span>}
+            {paid && !cancelling && !pastDue && renewal?.kind === "paid" && (
+              <span className="text-sm text-muted">
+                Your plan is paid until {formatDate(renewal.until)}. You can renew from {formatDate(renewal.opensAt)}, 7 days before it ends.
+              </span>
+            )}
+            {paid && periodEnd && !cancelling && !pastDue && renewal?.kind === "open" && (
+              <span className="text-sm font-medium">
+                Your plan is paid until {periodEnd} ({renewal.daysLeft} {renewal.daysLeft === 1 ? "day" : "days"} left). Renew now; the new period starts when this one ends.
+              </span>
+            )}
             {cancelling && periodEnd && <span className="text-sm font-medium text-danger">Cancels on {periodEnd}. Your plan stays active until then.</span>}
           </div>
           <Badge tone={status === "ACTIVE" || status === "TRIALING" ? (cancelling ? "neutral" : "success") : "danger"}>
@@ -164,7 +197,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
             pastDue={pastDue}
             periodEnd={periodEnd}
             method={momoPlan ? "momo" : "card"}
-            renew={momoPlan && !momoPayment && currentPlan && !currentPlan.isTrial ? { plan: currentPlan.key, interval: subscription.interval } : undefined}
+            renew={renew}
           />
         )}
 
@@ -184,11 +217,22 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       {/* Hidden while a purchase is being confirmed, so nobody buys a second plan by accident. */}
       {!waitingForCheckout && momoPayment?.status !== "pending" && (
         <>
-          <PlanPicker plans={pickable} current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue, method: paid ? (momoPlan ? "momo" : "card") : null }} pay={{ regionMethods: region.paymentMethods, momoConfigured: momoReady, cardConfigured: cardOn, cardPriced }} />
+          <PlanPicker plans={pickable} current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue, method: paid ? (momoPlan ? "momo" : "card") : null }} pay={{ regionMethods: region.paymentMethods, momoConfigured: momoReady, cardConfigured: cardOn, cardPriced, cardBlocked: momoPlan && renewal?.kind === "paid" ? `By card from ${formatDate(renewal.opensAt)}, 7 days before your plan ends.` : null }} />
           <p className="px-1 text-sm text-muted">
             Prices for {region.name}. {currencyNote(region.currency, region.paymentMethods)}
           </p>
         </>
+      )}
+
+      {addition && (addition.ok || addition.card) && (
+        <AddFeatures
+          data={addition.ok ? { current: { ...addition.current, features: [...addition.current.features] }, interval: addition.interval, periodEnd: addition.periodEnd, region: addition.region, prices: addition.prices, addable: addition.addable } : null}
+          unavailable={addition.ok ? null : addition.reason}
+          momo={addition.ok ? methodState(regionHas("momo"), momoReady) : regionHas("momo") ? "soon" : "off"}
+          card={regionHas("card") ? "soon" : "off"}
+          contactEmail={site.email}
+          now={now.toISOString()}
+        />
       )}
 
       {bpInvoices.length > 0 && <ClientInvoices invoices={bpInvoices} />}
@@ -198,10 +242,10 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       <GlassCard as="aside" className="flex flex-wrap items-center justify-between gap-3 p-5">
         <div>
           <strong>Need something different?</strong>
-          <p className="text-sm text-muted">Tell us what your business needs and we put together a custom plan with only what you use.</p>
+          <p className="text-sm text-muted">{paid ? "Tell us what to change and we send you an offer: you pay only for what you add, for the days left in your period." : "Tell us what your business needs and we put together a custom plan with only what you use."}</p>
         </div>
         <Link href="/custom-plan?from=billing" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold no-underline">
-          Request a custom plan
+          {paid ? "Request a custom change" : "Request a custom plan"}
           <ArrowRight aria-hidden className="size-4" />
         </Link>
       </GlassCard>

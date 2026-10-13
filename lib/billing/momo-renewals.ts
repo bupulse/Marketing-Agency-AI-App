@@ -4,7 +4,7 @@ import { logError } from "@/lib/errors";
 import { writeAudit } from "@/lib/admin/audit";
 import { consoleContext } from "@/lib/admin/types";
 import { isServiceEnabled } from "@/lib/admin/switch";
-import { getPlan } from "@/lib/plan-catalog";
+import { getPlan, priceCents } from "@/lib/plan-catalog";
 import { sendInvoiceReminders } from "@/lib/invoices/service";
 import { sendOfferReminders } from "@/lib/offers/reminders";
 import { sendPlanPausedEmail, sendRenewalReminderEmail } from "./momo-emails";
@@ -65,12 +65,15 @@ async function release(userId: string, periodEnd: Date, kind: string) {
 }
 
 /**
- * What the reminder asks for: the plan's current price in the company's region; when the plan is no longer offered
- * there, what the client paid last time (the owner can still confirm any amount by hand).
+ * What the reminder asks for: a custom plan's own price, else the plan's current price in the company's region; when
+ * the plan is no longer offered there, what the client paid last time (the owner can still confirm any amount by hand).
  */
 async function reminderInput(sub: Sub) {
   const [plan, settings, business] = await Promise.all([getPlan(sub.plan), getMomoSettings(), prisma.business.findUnique({ where: { userId: sub.userId }, select: { id: true } })]);
-  const price = (business ? await getMomoPrice(business.id, sub.plan, sub.interval) : null) ?? (await lastPaid(sub.userId));
+  // A custom plan renews at its own price (after features were added mid-period, the full new total: docs/OFFERS.md),
+  // never at the last payment, which may have been only the prorated add-on.
+  const custom = plan?.isCustom ? { amountMinor: priceCents(plan, sub.interval), currency: plan.currency.toUpperCase() } : null;
+  const price = custom ?? (business ? await getMomoPrice(business.id, sub.plan, sub.interval) : null) ?? (await lastPaid(sub.userId));
   return { planName: plan?.name ?? sub.plan, interval: sub.interval, amountMinor: price?.amountMinor ?? 0, currency: price?.currency ?? "RWF", periodEnd: sub.currentPeriodEnd as Date, details: settings };
 }
 

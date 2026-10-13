@@ -55,9 +55,11 @@ joined to the regions and the demo-first trial (R1, `docs/REGIONS.md`) on 12 Oct
      changed meanwhile the period is recomputed once. One pending payment per company is also a partial unique index.
 6. **Reject** with a reason (3 to 300 characters): the client sees it on Billing for a week with **Try again**, and gets
    an email. Audited, once.
+   - Renewing the same plan opens only in the last 7 days of the period; earlier `startManualPayment` refuses with
+     "Your plan is paid until …" (`docs/BILLING.md`, "Renewing").
 7. **Renewals** (`/api/cron/momo-renewals`, daily 05:41 UTC, `MOMO_RENEWALS_CRON`): for `MANUAL_MOMO` + `ACTIVE`
-   subscriptions, a reminder email 5 days and 1 day before `currentPeriodEnd` (the plan's current regional price, or
-   what the client paid last time when the plan is no longer offered in their region; where to pay; a "Pay now" link
+   subscriptions, a reminder email 5 days and 1 day before `currentPeriodEnd` (a custom plan's own price, i.e. the full total
+   after added features; else the plan's current regional price, or what the client paid last time when the plan is no longer offered in their region; where to pay; a "Pay now" link
    and a WhatsApp-ready text the client can copy), 3 days of grace, then `PAST_DUE` (the existing paywall makes the
    account read-only, nothing is deleted) and a "plan is paused" email. Each email is claimed first in `RenewalNotice`
    (unique per user, period end and kind), so it is never sent twice; a failed send gives the claim back. No reminder

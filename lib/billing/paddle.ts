@@ -137,6 +137,14 @@ export const paddle: BillingAdapter = {
     return subscriptionOrThrow(data);
   },
 
+  async deferNextBilling(id, at) {
+    const data = await paddleApi(`/subscriptions/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: { next_billed_at: at.toISOString(), proration_billing_mode: "do_not_bill" },
+    });
+    return subscriptionOrThrow(data);
+  },
+
   /** Invoice `url` is null here (links expire); resolve one on demand with invoiceUrl(id). */
   async listInvoices(customerId): Promise<Invoice[]> {
     const query = new URLSearchParams({

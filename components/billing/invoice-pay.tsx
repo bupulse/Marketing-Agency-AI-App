@@ -26,7 +26,7 @@ export type PayableInvoice = {
  * and the invoice total as the amount; card opens the checkout for the invoice's plan and interval (charged at the
  * card price of the plan). A method the region takes but that is not set up yet stays visible, disabled ("coming soon").
  */
-export function InvoicePay({ invoice, methods, highlight }: { invoice: PayableInvoice; methods: PayMethods; highlight?: boolean }) {
+export function InvoicePay({ invoice, methods, highlight, cardReason }: { invoice: PayableInvoice; methods: PayMethods; highlight?: boolean; /** Why card is not ready for this invoice, when it is not "coming soon" (a custom plan: ask for a card link). */ cardReason?: string | null }) {
   const momo = methods.momo === "ready";
   const card = methods.card === "ready" && Boolean(invoice.planKey);
   const router = useRouter();
@@ -90,16 +90,17 @@ export function InvoicePay({ invoice, methods, highlight }: { invoice: PayableIn
             {!momo ? MOMO_SOON : busy === "momo" ? "One moment…" : "Mobile Money (MTN / Airtel)"}
           </Button>
         )}
-        {methods.card !== "off" && invoice.planKey && (
+        {methods.card !== "off" && (
           <Button variant={momo ? "outline" : "primary"} onClick={payByCard} disabled={pending || !card} leading={<CreditCard aria-hidden className="size-4" />}>
-            {!card ? CARD_SOON : busy === "card" ? "Opening checkout…" : "Card"}
+            {!card ? (cardReason ? "Card" : CARD_SOON) : busy === "card" ? "Opening checkout…" : "Card"}
           </Button>
         )}
         <a href={`/api/invoices/${encodeURIComponent(invoice.id)}/pdf`} className="glass inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-medium no-underline">
           <FileDown aria-hidden className="size-4" /> Download PDF
         </a>
       </div>
-      {momo && <p className="text-xs text-muted">Mobile Money: use {invoice.number} as the reference. Card: charged in US dollars at the plan&apos;s card price, and renews by itself.</p>}
+      {!card && cardReason && methods.card !== "off" && <p className="text-xs text-muted">{cardReason}</p>}
+      {momo && card && <p className="text-xs text-muted">Mobile Money: use {invoice.number} as the reference. Card: charged in US dollars at the plan&apos;s card price, and renews by itself.</p>}
       {methods.momo === "off" && methods.card === "off" && <p className="text-sm text-muted">Online payment is not available for this invoice yet. Pay with the details on the PDF, using {invoice.number} as the reference.</p>}
     </GlassCard>
   );

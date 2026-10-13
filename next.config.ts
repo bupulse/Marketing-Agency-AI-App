@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 import { version } from "./package.json";
 
 const nextConfig: NextConfig = {
+  // Development only: the dev server blocks its scripts and live-reload for any host but localhost. The test tunnel
+  // (test.bupulse.com → localhost:3001) needs to be allowed, or pages load but no button works there.
+  allowedDevOrigins: ["test.bupulse.com"],
   // Inlined at build time for the admin Updates page (lib/version.ts). BUILD_SHA comes from the deploy workflow.
   // BUPULSE_BUILD_PLATFORM: "netlify" when Netlify builds the app (it sets NETLIFY=true), else PLATFORM or empty, read by
   // lib/platform/detect.ts when PLATFORM is not set at runtime.

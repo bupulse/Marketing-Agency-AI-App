@@ -6,17 +6,26 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/admin/audit";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { logError } from "@/lib/errors";
-import { featureLabel, FEATURES, type FeatureKey } from "@/lib/features";
-import { capabilitiesOf, clearPlanCache, getPlan } from "@/lib/plan-catalog";
+import { featureLabel, FEATURES, isFeatureKey, validateFeatureSet, type FeatureKey } from "@/lib/features";
+import { capabilitiesOf, clearPlanCache, getPlan, priceCents } from "@/lib/plan-catalog";
 import { companyPlans } from "@/lib/region-prices";
-import type { RegionInfo } from "@/lib/region-format";
+import { formatMinor, type RegionInfo } from "@/lib/region-format";
 import { ManualPaymentError, startOfferPayment } from "@/lib/billing/momo";
 import type { ManualPaymentView } from "@/lib/billing/momo-shared";
 import { issuePlanInvoice } from "@/lib/invoices/service";
 import { listAddonPrices } from "./addon-prices";
 import { sendOfferEmail } from "./emails";
 import {
+  additionDaysLeft,
   checkOfferDraft,
+  periodDaysEnding,
+  prorateMinor,
+  quoteAddition,
+  readAddition,
+  selfServeFeatures,
+  type AdditionQuote,
+  type CurrentPlanForAddition,
+  type OfferAddition,
   customPlanKeyFor,
   isOfferExpired,
   isOfferStatus,
@@ -94,6 +103,73 @@ export function quoteWith(pc: PricingContext, draft: OfferDraft): { quote: Offer
   return { quote, base };
 }
 
+// ---- adding features to the running plan ----------------------------------------------------------------------------
+
+export type AdditionContext = {
+  region: RegionInfo;
+  prices: AddonPriceRow[];
+  current: CurrentPlanForAddition;
+  interval: BillingInterval;
+  periodEnd: Date;
+};
+
+/**
+ * What adding features to a company's plan starts from (docs/OFFERS.md, "Adding features to a paid plan"): its running
+ * plan paid by Mobile Money, that plan's price per period and the region's add-on prices. Card plans renew through Paddle
+ * at Paddle's price, so features are added to them by the team (a card link), never here.
+ */
+export async function additionContext(businessId: string, now: Date = new Date()): Promise<{ ok: true; ctx: AdditionContext } | { ok: false; reason: string; card?: boolean }> {
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { userId: true } });
+  const sub = business ? await prisma.subscription.findUnique({ where: { userId: business.userId }, select: { plan: true, status: true, provider: true, interval: true, currentPeriodEnd: true } }) : null;
+  if (!sub || sub.plan === "TRIAL" || sub.status !== "ACTIVE" || !sub.currentPeriodEnd) return { ok: false, reason: "Features are added to a paid plan that is running. Choose a plan first." };
+  if (sub.provider === "PADDLE") return { ok: false, card: true, reason: "This plan renews by card, at the card price. To add features to it, ask us for a card link." };
+  if (sub.provider !== "MANUAL_MOMO") return { ok: false, reason: "Features are added to a paid plan that is running. Choose a plan first." };
+  if (sub.currentPeriodEnd.getTime() <= now.getTime()) return { ok: false, reason: "Your paid period has ended. Renew your plan first, then add features." };
+  const [plan, pc] = await Promise.all([getPlan(sub.plan), pricingContext(businessId)]);
+  if (!plan || plan.isTrial) return { ok: false, reason: "We could not read your plan right now. Please try again in a moment." };
+  const regional = pc.bases.find((b) => b.key === plan.key);
+  const priceMinor = plan.isCustom ? (plan.currency.toUpperCase() === pc.region.currency.toUpperCase() ? priceCents(plan, sub.interval) : null) : regional ? (sub.interval === "YEAR" ? regional.yearlyMinor : regional.monthlyMinor) : null;
+  if (priceMinor === null || priceMinor <= 0) return { ok: false, reason: "Your plan is no longer sold in your region, so features cannot be priced on top of it. Use Request a custom change." };
+  return { ok: true, ctx: { region: pc.region, prices: pc.prices, current: { key: plan.key, name: plan.name, priceMinor, features: plan.features, limits: plan.limits }, interval: sub.interval, periodEnd: sub.currentPeriodEnd } };
+}
+
+/** Prices the ticked features on top of the running plan and checks them. `adjustedMinor` (the admin's) is a whole period. */
+function additionDraft(ac: AdditionContext, draft: Pick<OfferDraft, "features" | "managedTier" | "adjustedMinor" | "adjustReason">, now: Date): { ok: true; quote: AdditionQuote; adjustReason: string | null } | { ok: false; error: string } {
+  const bad = draft.features.find((k) => !isFeatureKey(k) || FEATURES.find((f) => f.key === k)?.status !== "built");
+  if (bad) return { ok: false, error: isFeatureKey(bad) ? `${featureLabel(bad)} is coming soon and cannot be added yet.` : `"${bad}" is not a feature.` };
+  const quote = quoteAddition({ current: ac.current, features: draft.features, managedTier: draft.managedTier, interval: ac.interval, currency: ac.region.currency, regionKey: ac.region.key, prices: ac.prices, periodEnd: ac.periodEnd, now, addonMinor: draft.adjustedMinor });
+  const checked = validateFeatureSet(quote.features);
+  if (!checked.ok) return { ok: false, error: checked.message };
+  if (quote.added.length === 0) return { ok: false, error: "Tick at least one feature the plan does not have yet." };
+  if (quote.addonMinor <= 0) return { ok: false, error: `No price in ${ac.region.name} for ${quote.missing.join(", ") || "these features"}. Add it in Add-on prices, or type the price.` };
+  if (quote.addonMinor !== quote.computedMinor && (!draft.adjustReason || draft.adjustReason.length < 3)) return { ok: false, error: "Say why the price differs from the computed total (rounding, discount...)." };
+  if (quote.dueNowMinor <= 0) return { ok: false, error: "The paid period ends today: renew the plan first, then add the features." };
+  return { ok: true, quote, adjustReason: quote.addonMinor === quote.computedMinor ? null : (draft.adjustReason ?? null) };
+}
+
+function additionOf(ac: AdditionContext, quote: AdditionQuote, selfServe: boolean): OfferAddition {
+  return { currentPlanKey: ac.current.key, currentPlanName: ac.current.name, currentMinor: quote.currentMinor, addonMinor: quote.addonMinor, nextRenewalMinor: quote.nextRenewalMinor, periodEnd: ac.periodEnd.toISOString(), daysLeft: quote.daysLeft, periodDays: quote.periodDays, selfServe };
+}
+
+/** The offer row of an addition: the plan after adding, the add-on lines (a whole period), the prorated amount to pay now. */
+function additionRow(ac: AdditionContext, a: { quote: AdditionQuote; adjustReason: string | null }, draft: Pick<OfferDraft, "managedTier" | "validDays" | "note" | "requestId">, selfServe: boolean) {
+  const options = { managedTier: draft.managedTier, validDays: draft.validDays, added: a.quote.added, basePlanName: ac.current.name, mode: "addon", addition: additionOf(ac, a.quote, selfServe) };
+  return {
+    basePlanKey: ac.current.key,
+    featureKeys: json(a.quote.features),
+    limits: json(a.quote.limits),
+    options: json(options),
+    currency: ac.region.currency,
+    interval: ac.interval,
+    lines: json(a.quote.lines),
+    computedMinor: a.quote.computedDueMinor,
+    adjustedMinor: a.quote.dueNowMinor,
+    adjustReason: a.adjustReason,
+    note: draft.note,
+    requestId: draft.requestId,
+  };
+}
+
 export function parseDraft(raw: unknown): OfferDraft {
   const parsed = offerDraftSchema.safeParse(raw);
   if (!parsed.success) {
@@ -109,35 +185,50 @@ export function parseDraft(raw: unknown): OfferDraft {
  * Saves the editor: creates a draft, or updates one (drafts only). The price is computed here from the region's prices
  * and frozen on the row with the lines, so the client later pays exactly what was sent. Audited.
  */
-export async function saveOfferDraft(ctx: AdminContext, input: { businessId: string; offerId?: string | null; draft: unknown }) {
+export async function saveOfferDraft(ctx: AdminContext, input: { businessId: string; offerId?: string | null; draft: unknown }, now: Date = new Date()) {
   requireConsole(ctx);
   const draft = parseDraft(input.draft);
   const business = await prisma.business.findUnique({ where: { id: input.businessId }, select: { id: true, name: true } });
   if (!business) throw new AdminError("not_found", "No company with that id.");
-  const pc = await pricingContext(business.id);
-  const { quote, base } = quoteWith(pc, draft);
-  const checked = checkOfferDraft(draft, quote);
-  if (!checked.ok) throw new AdminError("invalid", checked.error);
   if (draft.requestId) {
     const request = await prisma.customPlanRequest.findUnique({ where: { id: draft.requestId }, select: { businessId: true } });
     if (!request || (request.businessId && request.businessId !== business.id)) throw new AdminError("invalid", "That request is not this company's.");
   }
-  const options: Options = { managedTier: draft.managedTier, validDays: draft.validDays, added: quote.added, basePlanName: base?.name ?? null };
-  const data = {
-    basePlanKey: base?.key ?? null,
-    featureKeys: json(quote.features),
-    limits: json(quote.limits),
-    options: json(options),
-    currency: pc.region.currency,
-    interval: draft.interval as BillingInterval,
-    lines: json(quote.lines),
-    computedMinor: quote.computedMinor,
-    adjustedMinor: checked.adjustedMinor,
-    adjustReason: checked.adjustReason,
-    note: draft.note,
-    requestId: draft.requestId,
-  };
-  const summary = { basePlanKey: data.basePlanKey, features: quote.features, limits: quote.limits, interval: data.interval, currency: data.currency, computedMinor: data.computedMinor, adjustedMinor: data.adjustedMinor, adjustReason: data.adjustReason };
+  let data: Omit<Prisma.PlanOfferUncheckedCreateInput, "businessId" | "status" | "createdBy">;
+  let quote: OfferQuote | AdditionQuote;
+  if (draft.mode === "addon") {
+    // "Add to current plan": the client's running plan, the ticked features on top, prorated for the days left.
+    const ac = await additionContext(business.id, now);
+    if (!ac.ok) throw new AdminError("invalid", ac.reason);
+    const addition = additionDraft(ac.ctx, draft, now);
+    if (!addition.ok) throw new AdminError("invalid", addition.error);
+    quote = addition.quote;
+    data = additionRow(ac.ctx, addition, draft, false);
+  } else {
+    const pc = await pricingContext(business.id);
+    const priced = quoteWith(pc, draft);
+    const base = priced.base;
+    quote = priced.quote;
+    const checked = checkOfferDraft(draft, priced.quote);
+    if (!checked.ok) throw new AdminError("invalid", checked.error);
+    const options: Options = { managedTier: draft.managedTier, validDays: draft.validDays, added: priced.quote.added, basePlanName: base?.name ?? null };
+    data = {
+      basePlanKey: base?.key ?? null,
+      featureKeys: json(priced.quote.features),
+      limits: json(priced.quote.limits),
+      options: json(options),
+      currency: pc.region.currency,
+      interval: draft.interval as BillingInterval,
+      lines: json(priced.quote.lines),
+      computedMinor: priced.quote.computedMinor,
+      adjustedMinor: checked.adjustedMinor,
+      adjustReason: checked.adjustReason,
+      note: draft.note,
+      requestId: draft.requestId,
+    };
+  }
+  const checked = { adjustedMinor: data.adjustedMinor };
+  const summary = { mode: draft.mode, basePlanKey: data.basePlanKey, features: quote.features, limits: quote.limits, interval: data.interval, currency: data.currency, computedMinor: data.computedMinor, adjustedMinor: data.adjustedMinor, adjustReason: data.adjustReason, ...(draft.mode === "addon" ? { addition: readAddition(data.options) } : {}) };
   if (input.offerId) {
     const row = await prisma.planOffer.findFirst({ where: { id: input.offerId, businessId: business.id } });
     if (!row) throw new AdminError("not_found", "No offer with that id for this company.");
@@ -256,6 +347,8 @@ export type AdminOfferView = {
   added: FeatureKey[];
   limits: { text: number; image: number; chat: number; seats: number; postsPerAppPerDay: number };
   managedTier: ManagedTier;
+  /** Set for "Add to current plan" (and the client's own "Add features"): prorated now, full price from the renewal. */
+  addition: OfferAddition | null;
   validDays: number;
   lines: PricedLine[];
   note: string | null;
@@ -297,6 +390,7 @@ function adminView(row: Row, company: string): AdminOfferView {
     added: o.added,
     limits: limitsOf(row.limits),
     managedTier: o.managedTier,
+    addition: readAddition(row.options),
     validDays: o.validDays,
     lines: readLinesJson(row.lines),
     note: row.note,
@@ -384,9 +478,13 @@ export async function acceptOffer(input: { userId: string; actorId: string; busi
   if (row.status === "sent") {
     const business = await prisma.business.findUnique({ where: { id: input.businessId }, select: { name: true } });
     const features = readFeatureKeys(row.featureKeys);
-    const prices = customPrices(row.adjustedMinor, row.interval);
+    // Features added to the running plan: the amount is prorated again for the days left today (the period shrank
+    // since the offer was made), and the custom plan renews at the full new total (docs/OFFERS.md).
+    const addition = readAddition(row.options);
+    const reprice = addition ? await additionAtAccept(row, addition, input.businessId, now) : null;
+    const prices = customPrices(addition ? addition.nextRenewalMinor : row.adjustedMinor, row.interval);
     const won = await prisma.$transaction(async (tx) => {
-      const claim = await tx.planOffer.updateMany({ where: { id: row.id, status: "sent", validUntil: { gt: now } }, data: { status: "accepted", acceptedAt: now, payMethod: method, customPlanKey: planKey } });
+      const claim = await tx.planOffer.updateMany({ where: { id: row.id, status: "sent", validUntil: { gt: now } }, data: { status: "accepted", acceptedAt: now, payMethod: method, customPlanKey: planKey, ...(reprice ?? {}) } });
       if (claim.count !== 1) return false;
       const existing = await tx.planDefinition.findUnique({ where: { key: planKey }, select: { key: true } });
       if (!existing) {
@@ -415,7 +513,7 @@ export async function acceptOffer(input: { userId: string; actorId: string; busi
           },
         });
       }
-      await writeAudit(tx, ctx, "accept_offer", `offer:${row.id}`, { status: "sent" }, { status: "accepted", method, customPlanKey: planKey, adjustedMinor: row.adjustedMinor, currency: row.currency, interval: row.interval });
+      await writeAudit(tx, ctx, "accept_offer", `offer:${row.id}`, { status: "sent" }, { status: "accepted", method, customPlanKey: planKey, adjustedMinor: reprice?.adjustedMinor ?? row.adjustedMinor, currency: row.currency, interval: row.interval, ...(addition ? { addition: true, nextRenewalMinor: addition.nextRenewalMinor } : {}) });
       return true;
     });
     if (won) clearPlanCache();
@@ -444,6 +542,20 @@ export async function acceptOffer(input: { userId: string; actorId: string; busi
   return { offer: clientViewOf(adminView(after ?? fresh, "")), payment: null, invoiceId };
 }
 
+/** An addition being accepted: the same plan must still be running; the amount is prorated for today's days left. */
+async function additionAtAccept(row: Row, addition: OfferAddition, businessId: string, now: Date) {
+  const ac = await additionContext(businessId, now);
+  if (!ac.ok) throw new OfferError(ac.reason);
+  if (ac.ctx.current.key !== addition.currentPlanKey || ac.ctx.interval !== row.interval) throw new OfferError("Your plan changed since these features were priced. Ask us for a new offer, or add them again from Billing.");
+  const periodDays = periodDaysEnding(ac.ctx.periodEnd, row.interval);
+  const daysLeft = additionDaysLeft(ac.ctx.periodEnd, now);
+  const adjustedMinor = prorateMinor(addition.addonMinor, daysLeft, periodDays);
+  if (adjustedMinor <= 0) throw new OfferError("Your paid period ends today. Renew your plan first, then add the features.");
+  const computed = readLinesJson(row.lines).reduce((sum, l) => sum + l.totalMinor, 0);
+  const options = { ...(row.options as Record<string, unknown>), addition: { ...addition, periodEnd: ac.ctx.periodEnd.toISOString(), daysLeft, periodDays } };
+  return { adjustedMinor, computedMinor: prorateMinor(computed, daysLeft, periodDays), options: json(options) };
+}
+
 /**
  * The invoice of an accepted offer: the open one, or a new one issued now (one line, the offer's price, the custom
  * plan and interval to switch on when paid). Claimed with a token first, so two tabs never issue two invoices. A
@@ -468,13 +580,15 @@ async function ensureOfferInvoice(ctx: AdminContext, offer: Row, userId: string,
   try {
     const plan = offer.customPlanKey ? await getPlan(offer.customPlanKey) : null;
     const features = readFeatureKeys(offer.featureKeys).map(featureLabel);
+    const addition = readAddition(offer.options);
+    const added = readOptions(offer.options).added.map(featureLabel);
     const invoice = await issuePlanInvoice(ctx, {
       businessId: offer.businessId,
       currency: offer.currency,
-      lines: [{ description: `BuPulse ${plan?.name ?? "Custom"} plan, ${offer.interval === "YEAR" ? "yearly (12 months)" : "monthly (1 month)"}`, quantity: 1, unitMinor: offer.adjustedMinor }],
+      lines: [{ description: addition ? `Added to your plan: ${added.join(", ")}, for the ${addition.daysLeft} days left until ${new Date(addition.periodEnd).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Kigali" })}`.slice(0, 300) : `BuPulse ${plan?.name ?? "Custom"} plan, ${offer.interval === "YEAR" ? "yearly (12 months)" : "monthly (1 month)"}`, quantity: 1, unitMinor: offer.adjustedMinor }],
       planKey: offer.customPlanKey as string,
       interval: offer.interval,
-      notes: `Includes: ${features.join(", ")}.`.slice(0, 1000),
+      notes: (addition ? `From the next renewal your plan costs ${formatMinor(addition.nextRenewalMinor, offer.currency)} per ${offer.interval === "YEAR" ? "year" : "month"}. Includes: ${features.join(", ")}.` : `Includes: ${features.join(", ")}.`).slice(0, 1000),
     }, now);
     await prisma.planOffer.updateMany({ where: { id: offer.id, invoiceId: token }, data: { invoiceId: invoice.id } });
     return invoice.id;
@@ -485,6 +599,77 @@ async function ensureOfferInvoice(ctx: AdminContext, offer: Row, userId: string,
   }
 }
 
+/** What Billing's "Add features" needs: the running plan, the features the client can add alone and their prices. */
+export async function selfServeAddition(businessId: string, now: Date = new Date()) {
+  const ac = await additionContext(businessId, now);
+  if (!ac.ok) return { ok: false as const, reason: ac.reason, card: ac.card === true };
+  const { ctx } = ac;
+  return {
+    ok: true as const,
+    current: ctx.current,
+    interval: ctx.interval,
+    periodEnd: ctx.periodEnd.toISOString(),
+    region: { key: ctx.region.key, currency: ctx.region.currency },
+    prices: ctx.prices,
+    addable: selfServeFeatures(ctx.current.features, ctx.prices, ctx.region.key, ctx.region.currency),
+  };
+}
+
+/**
+ * Billing's "Add features" (the client, Owner only): prices the ticked features on top of the running plan, makes an
+ * add-features offer (created by the client, audited `self_serve_addition`) and accepts it with the chosen way to pay,
+ * so the usual offer payment, confirmation and activation run (lib/offers/activate.ts). An unpaid earlier one of the
+ * client's own is replaced; an offer from the BuPulse team that is open must be answered first. Only priced features;
+ * anything else goes through "Request a custom change".
+ */
+export async function startFeatureAddition(input: { userId: string; actorId: string; businessId: string; features: unknown; method: string; ip?: string | null }, now: Date = new Date()): Promise<AcceptResult> {
+  const method: PayMethod | null = input.method === "momo" || input.method === "invoice" ? input.method : null;
+  if (!method) throw new OfferError("Choose how you want to pay.");
+  const ticked = Array.isArray(input.features) ? input.features.filter((k): k is FeatureKey => isFeatureKey(k)).slice(0, 40) : [];
+  if (ticked.length === 0) throw new OfferError("Tick at least one feature to add.");
+  const ac = await additionContext(input.businessId, now);
+  if (!ac.ok) throw new OfferError(ac.reason);
+  const allowed = new Set(selfServeFeatures(ac.ctx.current.features, ac.ctx.prices, ac.ctx.region.key, ac.ctx.region.currency));
+  const notHere = ticked.find((k) => !allowed.has(k) && !ac.ctx.current.features.includes(k));
+  if (notHere) throw new OfferError(`${featureLabel(notHere)} cannot be added here. Use Request a custom change and we will price it for you.`);
+  const priced = additionDraft(ac.ctx, { features: ticked, managedTier: "light", adjustedMinor: null, adjustReason: null }, now);
+  if (!priced.ok) throw new OfferError(priced.error);
+  if (priced.quote.missing.length > 0) throw new OfferError(`${priced.quote.missing.join(", ")} has no price yet. Use Request a custom change.`);
+  const ctx = clientCtx(input.actorId, input.ip ?? null);
+
+  const open = await prisma.planOffer.findFirst({ where: { businessId: input.businessId, status: { in: ["sent", "accepted"] } }, orderBy: { createdAt: "desc" } });
+  if (open && !readAddition(open.options)?.selfServe) throw new OfferError("Our team has sent you an offer (above). Accept it, or ask us to change it, before adding features here.");
+  if (open) {
+    // The client's own earlier "Add features" that was never paid: replaced, unless a payment for it was reported.
+    await prisma.$transaction(async (tx) => {
+      const payments = { OR: [{ offerId: open.id }, ...(open.invoiceId && !open.invoiceId.startsWith("claim:") ? [{ invoiceId: open.invoiceId }] : [])] };
+      await tx.manualPayment.updateMany({ where: { status: "pending", submittedAt: null, ...payments }, data: { status: "expired", decidedAt: now, decidedBy: "client" } });
+      const reported = await tx.manualPayment.findFirst({ where: { status: "pending", submittedAt: { not: null }, ...payments }, select: { reference: true } });
+      if (reported) throw new OfferError(`You have reported a payment (${reported.reference}) for the features you added. Please wait until we have checked it.`);
+      const { count } = await tx.planOffer.updateMany({ where: { id: open.id, status: { in: ["sent", "accepted"] } }, data: { status: "withdrawn", withdrawnAt: now, withdrawReason: "Replaced by the client's new choice of features." } });
+      if (count !== 1) throw new OfferError("Your earlier choice changed a moment ago. Reload Billing and try again.");
+      if (open.invoiceId && !open.invoiceId.startsWith("claim:")) await tx.invoice.updateMany({ where: { id: open.invoiceId, status: "sent" }, data: { status: "void", voidedAt: now, voidReason: "Replaced by the client's new choice of features." } });
+      if (open.customPlanKey) await tx.planDefinition.updateMany({ where: { key: open.customPlanKey, isCustom: true, status: { not: "retired" } }, data: { status: "retired" } });
+      await writeAudit(tx, ctx, "withdraw_offer", `offer:${open.id}`, { status: open.status }, { status: "withdrawn", reason: "replaced_by_client" });
+    });
+    if (open.customPlanKey) clearPlanCache();
+  }
+
+  const data = additionRow(ac.ctx, priced, { managedTier: "light", validDays: 1, note: null, requestId: null }, true);
+  let id: string;
+  try {
+    id = await prisma.$transaction(async (tx) => {
+      const row = await tx.planOffer.create({ data: { ...data, businessId: input.businessId, status: "sent", sentAt: now, validUntil: validUntilOf(now, 1), createdBy: ctx.actor } });
+      await writeAudit(tx, ctx, "self_serve_addition", `offer:${row.id}`, null, { businessId: input.businessId, added: priced.quote.added, addonMinor: priced.quote.addonMinor, dueNowMinor: priced.quote.dueNowMinor, nextRenewalMinor: priced.quote.nextRenewalMinor, currency: data.currency, interval: data.interval, periodEnd: ac.ctx.periodEnd });
+      return row.id;
+    });
+  } catch (error) {
+    if (isUnique(error)) throw new OfferError("Another offer was opened a moment ago. Reload Billing.");
+    throw error;
+  }
+  return acceptOffer({ userId: input.userId, actorId: input.actorId, businessId: input.businessId, offerId: id, method, ip: input.ip }, now);
+}
+
 /** Card payment of an offer: Paddle cannot take a custom price through the adapter yet (docs/OFFERS.md, "Card"). */
 export function offerCardCheckoutAvailable(): boolean {
   return false;
@@ -493,6 +678,7 @@ export function offerCardCheckoutAvailable(): boolean {
 // ---- the admin editor ---------------------------------------------------------------------------------------------
 
 export type EditorInitial = {
+  mode: "plan" | "addon";
   basePlanKey: string | null;
   features: FeatureKey[];
   limits: { text: number; image: number; chat: number; seats: number; postsPerAppPerDay: number };
@@ -522,13 +708,17 @@ export async function offerEditorContext(input: { businessId: string; offerId?: 
   let initial: EditorInitial;
   if (offer) {
     const o = adminView(offer, business.name);
-    initial = { basePlanKey: o.basePlanKey, features: o.features, limits: o.limits, managedTier: o.managedTier, interval: o.interval, adjusted: o.adjustedMinor !== o.computedMinor ? String(o.adjustedMinor) : "", adjustReason: o.adjustReason ?? "", note: o.note ?? "", validDays: o.validDays, requestId: o.requestId };
+    initial = { mode: o.addition ? "addon" : "plan", basePlanKey: o.basePlanKey, features: o.features, limits: o.limits, managedTier: o.managedTier, interval: o.interval, adjusted: o.addition ? (o.addition.addonMinor !== readLinesJson(offer.lines).reduce((sum, l) => sum + l.totalMinor, 0) ? String(o.addition.addonMinor) : "") : o.adjustedMinor !== o.computedMinor ? String(o.adjustedMinor) : "", adjustReason: o.adjustReason ?? "", note: o.note ?? "", validDays: o.validDays, requestId: o.requestId };
   } else {
     const asked = request ? readFeatureKeys(request.featureKeys).filter((k) => FEATURE_BUILT.has(k)) : [];
-    initial = { basePlanKey: startBase?.key ?? null, features: asked, limits: fromBase(startBase), managedTier: "light", interval: sub?.interval === "YEAR" ? "YEAR" : "MONTH", adjusted: "", adjustReason: "", note: "", validDays: OFFER_VALID_DAYS, requestId: request?.id ?? null };
+    initial = { mode: "plan", basePlanKey: startBase?.key ?? null, features: asked, limits: fromBase(startBase), managedTier: "light", interval: sub?.interval === "YEAR" ? "YEAR" : "MONTH", adjusted: "", adjustReason: "", note: "", validDays: OFFER_VALID_DAYS, requestId: request?.id ?? null };
   }
   const currentPlan = sub?.plan ? await getPlan(sub.plan) : null;
+  // "Add to current plan": possible for a running Mobile Money plan (otherwise the reason is shown on the switch).
+  const ac = await additionContext(business.id);
   return {
+    addition: ac.ok ? { current: ac.ctx.current, interval: ac.ctx.interval, periodEnd: ac.ctx.periodEnd.toISOString() } : null,
+    additionUnavailable: ac.ok ? null : ac.reason,
     business: { id: business.id, name: business.name, ownerEmail: business.user?.email ?? null },
     region: pc.region,
     bases: pc.bases,

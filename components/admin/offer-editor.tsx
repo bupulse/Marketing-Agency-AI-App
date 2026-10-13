@@ -16,8 +16,10 @@ import {
   METRIC_LABEL,
   OFFER_METRICS,
   OFFER_VALID_DAYS_MAX,
+  quoteAddition,
   quoteOffer,
   removalBlockedBy,
+  type CurrentPlanForAddition,
   toClientOffer,
   type AddonPriceRow,
   type ManagedTier,
@@ -26,6 +28,7 @@ import {
 } from "@/lib/offers/shared";
 
 export type OfferEditorInitial = {
+  mode: "plan" | "addon";
   basePlanKey: string | null;
   features: FeatureKey[];
   limits: OfferLimits;
@@ -44,8 +47,10 @@ export type OfferEditorInitial = {
  * Round or discount it with a reason, choose monthly or yearly, and preview what the client will see. Save keeps a
  * draft; Save and send emails the company owner. The server prices it again with the same maths (lib/offers/shared.ts).
  */
-export function OfferEditor({ businessId, offerId, region, bases, prices, initial, ownerEmail, now }: { businessId: string; offerId: string | null; region: { key: string; name: string; currency: string }; bases: OfferBase[]; prices: AddonPriceRow[]; initial: OfferEditorInitial; ownerEmail: string | null; /** The page's render time (ISO), for the preview's "open until". */ now: string }) {
+export function OfferEditor({ businessId, offerId, region, bases, prices, initial, addition, additionUnavailable, ownerEmail, now }: { businessId: string; offerId: string | null; region: { key: string; name: string; currency: string }; bases: OfferBase[]; prices: AddonPriceRow[]; initial: OfferEditorInitial; /** The client's running Mobile Money plan, for "Add to current plan" (null: not possible, see additionUnavailable). */ addition?: { current: CurrentPlanForAddition; interval: "MONTH" | "YEAR"; periodEnd: string } | null; additionUnavailable?: string | null; ownerEmail: string | null; /** The page's render time (ISO), for the preview's "open until". */ now: string }) {
   const currency = region.currency;
+  const [mode, setMode] = useState<"plan" | "addon">(initial.mode === "addon" && addition ? "addon" : "plan");
+  const adding = mode === "addon" && addition ? addition : null;
   const [baseKey, setBaseKey] = useState(initial.basePlanKey ?? "");
   const [selected, setSelected] = useState<FeatureKey[]>(initial.features);
   const [limits, setLimits] = useState<Record<keyof OfferLimits, string>>({ text: String(initial.limits.text), image: String(initial.limits.image), chat: String(initial.limits.chat), seats: String(initial.limits.seats), postsPerAppPerDay: String(initial.limits.postsPerAppPerDay) });
@@ -56,7 +61,7 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
   const [note, setNote] = useState(initial.note);
   const [validDays, setValidDays] = useState(String(initial.validDays));
 
-  const base = bases.find((b) => b.key === baseKey) ?? null;
+  const base = adding ? { key: adding.current.key, name: adding.current.name, monthlyMinor: adding.current.priceMinor, yearlyMinor: adding.current.priceMinor, features: adding.current.features, limits: adding.current.limits } : (bases.find((b) => b.key === baseKey) ?? null);
   const baseFeatures = base?.features ?? [];
   const num = (v: string, min: number) => (/^\d+$/.test(v.trim()) ? Math.max(Number(v), min) : min);
   const numericLimits: OfferLimits = { text: num(limits.text, 0), image: num(limits.image, 0), chat: num(limits.chat, 0), seats: num(limits.seats, 1), postsPerAppPerDay: Math.min(10, Math.max(1, num(limits.postsPerAppPerDay, 1))) };
@@ -67,11 +72,17 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
     [base, selected, limits, tier, interval, currency, region.key, prices],
   );
   const adjustedMinor = adjusted.trim() ? parseMoney(adjusted, currency) : null;
-  const total = adjustedMinor ?? quote.computedMinor;
-  const changedPrice = adjustedMinor !== null && adjustedMinor !== quote.computedMinor;
+  // "Add to current plan": only the added features, a whole period, then prorated for the days left (lib/offers/shared.ts).
+  const add = useMemo(
+    () => (adding ? quoteAddition({ current: adding.current, features: selected, managedTier: tier, interval: adding.interval, currency, regionKey: region.key, prices, periodEnd: new Date(adding.periodEnd), now: new Date(now), addonMinor: adjustedMinor }) : null),
+    [adding, selected, tier, currency, region.key, prices, now, adjustedMinor],
+  );
+  const computedForPrice = add ? add.computedMinor : quote.computedMinor;
+  const total = add ? add.dueNowMinor : (adjustedMinor ?? quote.computedMinor);
+  const changedPrice = adjustedMinor !== null && adjustedMinor !== computedForPrice;
   const adjustError = adjusted.trim() && adjustedMinor === null ? `Type a price like ${currency === "RWF" ? "70000" : "49.00"}.` : adjustedMinor !== null && adjustedMinor <= 0 ? "The price must be more than zero." : undefined;
   const reasonError = changedPrice && reason.trim().length < 3 ? "Say why (rounding, discount...)." : undefined;
-  const sameAsBase = quote.added.length === 0 && quote.lines.every((l) => l.key.startsWith("plan:"));
+  const sameAsBase = add ? add.added.length === 0 : quote.added.length === 0 && quote.lines.every((l) => l.key.startsWith("plan:"));
   const ready = !adjustError && !reasonError && total > 0 && !sameAsBase;
 
   const priceHint = (key: FeatureKey) => {
@@ -94,20 +105,22 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
     note: note.trim() || null,
     validDays: num(validDays, 1),
     requestId: initial.requestId,
+    mode: adding ? "addon" : "plan",
   });
   const preview = toClientOffer({
     id: offerId ?? "preview",
     status: "sent",
-    interval,
+    interval: adding ? adding.interval : interval,
     currency,
     adjustedMinor: total,
-    computedMinor: quote.computedMinor,
+    computedMinor: add ? add.computedDueMinor : quote.computedMinor,
     basePlanName: base?.name ?? null,
-    features: quote.features,
-    added: quote.added,
-    limits: numericLimits,
+    features: add ? add.features : quote.features,
+    added: add ? add.added : quote.added,
+    limits: add ? { text: add.limits.text, image: add.limits.image, chat: add.limits.chat, seats: add.limits.seats, postsPerAppPerDay: numericLimits.postsPerAppPerDay } : numericLimits,
     managedTier: tier,
-    lines: quote.lines,
+    lines: add ? add.lines : quote.lines,
+    addition: add && adding ? { currentPlanKey: adding.current.key, currentPlanName: adding.current.name, currentMinor: add.currentMinor, addonMinor: add.addonMinor, nextRenewalMinor: add.nextRenewalMinor, periodEnd: adding.periodEnd, daysLeft: add.daysLeft, periodDays: add.periodDays, selfServe: false } : null,
     note: note.trim() || null,
     validUntil: new Date(new Date(now).getTime() + num(validDays, 1) * 86_400_000),
     payMethod: null,
@@ -121,6 +134,29 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
         {offerId && <input type="hidden" name="offerId" value={offerId} />}
         <input type="hidden" name="data" value={data} />
 
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-1 text-base font-semibold">What kind of offer</legend>
+          <label className="flex min-h-11 items-start gap-2 text-[15px]">
+            <input type="radio" name="mode-choice" checked={!adding} onChange={() => setMode("plan")} className="mt-1 size-5" />
+            <span>
+              <strong>New custom plan</strong>
+              <span className="block text-[13px] text-muted">A plan of its own, paid in full; it starts a new period when paid.</span>
+            </span>
+          </label>
+          <label className={cn("flex min-h-11 items-start gap-2 text-[15px]", !addition && "text-muted")}>
+            <input type="radio" name="mode-choice" checked={Boolean(adding)} disabled={!addition} onChange={() => setMode("addon")} className="mt-1 size-5" />
+            <span>
+              <strong>Add to current plan</strong>
+              <span className="block text-[13px] text-muted">
+                {addition
+                  ? `On top of ${addition.current.name}: the client pays only the added features, prorated for the days left until ${new Date(addition.periodEnd).toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "Africa/Kigali" })}; from then the plan costs the new total.`
+                  : (additionUnavailable ?? "Not possible for this client.")}
+              </span>
+            </span>
+          </label>
+        </fieldset>
+
+        {!adding && (
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Start from" hint={`Plans offered in ${region.name}, at the region's price.`}>
             <Select value={baseKey} onChange={(e) => setBaseKey(e.target.value)}>
@@ -139,6 +175,7 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
             </Select>
           </Field>
         </div>
+        )}
 
         <fieldset className="flex flex-col gap-1">
           <legend className="mb-1 text-base font-semibold">Features</legend>
@@ -181,6 +218,7 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
           </Field>
         )}
 
+        {!adding && (
         <fieldset className="grid gap-3 sm:grid-cols-2">
           <legend className="mb-2 text-base font-semibold">Limits</legend>
           {([...OFFER_METRICS, "seats"] as const).map((m) => (
@@ -192,11 +230,12 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
             <Input value={limits.postsPerAppPerDay} onChange={(e) => setLimits({ ...limits, postsPerAppPerDay: e.target.value })} inputMode="numeric" maxLength={2} />
           </Field>
         </fieldset>
+        )}
 
         <section aria-labelledby="offer-total" className="flex flex-col gap-3 rounded-2xl bg-soft p-4">
           <h2 id="offer-total" className="text-base font-semibold">Total</h2>
           <ul className="flex flex-col gap-1.5 text-[15px]">
-            {quote.lines.map((l) => (
+            {(add ? add.lines : quote.lines).map((l) => (
               <li key={l.key} className="flex justify-between gap-3">
                 <span>
                   {l.label}
@@ -206,16 +245,31 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
                 <span className="tabular-nums">{formatMinor(l.totalMinor, currency)}</span>
               </li>
             ))}
-            {quote.lines.length === 0 && <li className="text-muted">Nothing priced yet.</li>}
+            {(add ? add.lines : quote.lines).length === 0 && <li className="text-muted">Nothing priced yet.</li>}
           </ul>
           <p className="flex justify-between border-t border-line pt-2 font-semibold">
-            <span>Computed, per {interval === "YEAR" ? "year" : "month"}</span>
-            <span className="tabular-nums">{formatMinor(quote.computedMinor, currency)}</span>
+            <span>{add ? "Added features, computed" : "Computed"}, per {(adding ? adding.interval : interval) === "YEAR" ? "year" : "month"}</span>
+            <span className="tabular-nums">{formatMinor(computedForPrice, currency)}</span>
           </p>
-          {quote.missing.length > 0 && <p role="alert" className="text-[13px] text-danger">No price in {region.name} for {quote.missing.join(", ")}. Add it in Add-on prices, or type the price below.</p>}
+          {add && adding && (
+            <>
+              <p className="flex justify-between font-semibold">
+                <span>
+                  Client pays now (prorated, {add.daysLeft} of {add.periodDays} days left)
+                </span>
+                <span className="tabular-nums">{formatMinor(add.dueNowMinor, currency)}</span>
+              </p>
+              <p className="flex justify-between text-[15px]">
+                <span>Next renewal ({new Date(adding.periodEnd).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Africa/Kigali" })}): {adding.current.name} + added features</span>
+                <span className="tabular-nums">{formatMinor(add.nextRenewalMinor, currency)}</span>
+              </p>
+              <p className="text-[13px] text-muted">Prorated again from the days left on the day the client accepts. The period end does not change.</p>
+            </>
+          )}
+          {(add ? add.missing : quote.missing).length > 0 && <p role="alert" className="text-[13px] text-danger">No price in {region.name} for {(add ? add.missing : quote.missing).join(", ")}. Add it in Add-on prices, or type the price below.</p>}
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={`Price the client pays (${currency})`} hint={`Empty = the computed total.${adjustedMinor && quote.computedMinor ? ` ${adjustmentText(quote.computedMinor, adjustedMinor) ?? ""}` : ""}`} error={adjustError}>
-              <Input value={adjusted} onChange={(e) => setAdjusted(e.target.value)} placeholder={moneyInput(quote.computedMinor, currency)} inputMode="decimal" maxLength={14} />
+            <Field label={add ? `Price of the added features per period (${currency})` : `Price the client pays (${currency})`} hint={`Empty = the computed total.${adjustedMinor && computedForPrice ? ` ${adjustmentText(computedForPrice, adjustedMinor) ?? ""}` : ""}`} error={adjustError}>
+              <Input value={adjusted} onChange={(e) => setAdjusted(e.target.value)} placeholder={moneyInput(computedForPrice, currency)} inputMode="decimal" maxLength={14} />
             </Field>
             <Field label="Why the price differs" error={reasonError}>
               <Input value={reason} onChange={(e) => setReason(e.target.value)} disabled={!changedPrice} maxLength={200} placeholder="Rounded, launch discount..." />
@@ -233,7 +287,7 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
         </div>
         <p id="valid-hint" className="-mt-3 text-[13px] text-muted">1 to {OFFER_VALID_DAYS_MAX} days from sending; the client pays at the price above.</p>
 
-        {sameAsBase && <p className="text-[13px] text-muted">Add a feature or raise a limit: this is the same as the base plan.</p>}
+        {sameAsBase && <p className="text-[13px] text-muted">{add ? "Tick a feature the plan does not have yet." : "Add a feature or raise a limit: this is the same as the base plan."}</p>}
         <div className="flex flex-wrap gap-2">
           <Button type="submit" name="intent" value="save" variant="outline" disabled={!ready}>
             Save draft

@@ -186,7 +186,7 @@ tool({
   name: "list_plan_requests",
   title: "List custom plan requests",
   kind: "read",
-  description: "Requests for a custom plan sent by clients (pricing page, Billing, the demo booking), newest first: company, what the business does, goals, features of interest, budget range and status (new, contacted, offered, closed).",
+  description: "Requests for a custom plan sent by clients (pricing page, Billing, the demo booking), newest first: company, what the business does, goals (older requests only), features of interest, budget range and status (new, contacted, offered, closed).",
   schema: z.object({ status: z.enum(REQUEST_STATUSES).optional(), businessId: z.string().max(100).optional(), limit }),
   run: (a) => listPlanRequests(a),
 });

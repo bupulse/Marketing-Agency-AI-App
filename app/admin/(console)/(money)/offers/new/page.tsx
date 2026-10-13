@@ -38,12 +38,12 @@ export default async function NewOfferPage({ searchParams }: { searchParams: Pro
         <Panel title="What they asked for" description={budgetLabel(ctx.request.budget) ? `Budget: ${budgetLabel(ctx.request.budget)}` : undefined}>
           <dl className="grid gap-3 text-[15px] sm:grid-cols-2">
             <div><dt className="text-[13px] text-muted">The business</dt><dd className="whitespace-pre-line">{ctx.request.description}</dd></div>
-            <div><dt className="text-[13px] text-muted">Goals</dt><dd className="whitespace-pre-line">{ctx.request.goals}</dd></div>
+            {ctx.request.goals && <div><dt className="text-[13px] text-muted">Goals</dt><dd className="whitespace-pre-line">{ctx.request.goals}</dd></div>}
             <div className="sm:col-span-2"><dt className="text-[13px] text-muted">Interested in</dt><dd>{ctx.request.features.map(featureLabel).join(", ") || "Not said"}</dd></div>
           </dl>
         </Panel>
       )}
-      <OfferEditor businessId={ctx.business.id} offerId={null} region={ctx.region} bases={ctx.bases} prices={ctx.prices} initial={ctx.initial} ownerEmail={ctx.business.ownerEmail} now={new Date().toISOString()} />
+      <OfferEditor businessId={ctx.business.id} offerId={null} region={ctx.region} bases={ctx.bases} prices={ctx.prices} initial={ctx.initial} addition={ctx.addition} additionUnavailable={ctx.additionUnavailable} ownerEmail={ctx.business.ownerEmail} now={new Date().toISOString()} />
     </>
   );
 }

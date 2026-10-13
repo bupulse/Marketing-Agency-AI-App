@@ -176,13 +176,15 @@ describe("starting a payment", () => {
     expect(p.reference).toBe("BP-AAAAAA");
   });
 
-  it("refuses while a card subscription still renews; a cancelled one hands over at its period end", async () => {
+  it("refuses while a card subscription still renews; a cancelled one hands over at its period end (in its last 7 days)", async () => {
     seed({ plan: "STANDARD", status: "ACTIVE", provider: "PADDLE", providerSubscriptionId: "sub_1", currentPeriodEnd: new Date("2026-11-01T00:00:00Z") });
     settings();
     expect(await msg(start())).toMatch(/pay by card at the moment/);
     h.db.subscription.rows[0].cancelAtPeriodEnd = true;
-    const p = await start();
-    expect(p).toMatchObject({ status: "pending", periodNote: { mode: "extend", daysLeft: 18, currentEnd: "2026-11-01T00:00:00.000Z" } });
+    // 18 days left: too early to renew the same plan (docs/BILLING.md, "Renewing").
+    expect(await msg(start())).toMatch(/paid until 1 November 2026\. You can renew from 25 October 2026/);
+    const p = await start({ now: new Date("2026-10-27T10:00:00Z") });
+    expect(p).toMatchObject({ status: "pending", periodNote: { mode: "extend", daysLeft: 5, currentEnd: "2026-11-01T00:00:00.000Z" } });
     h.db.subscription.rows[0] = { ...h.db.subscription.rows[0], status: "CANCELED", cancelAtPeriodEnd: false };
     expect((await start()).periodNote).toBeNull();
   });
@@ -360,11 +362,11 @@ describe("confirming", () => {
   });
 
   it("a cancelled card plan hands over to Mobile Money from its period end", async () => {
-    const end = new Date("2026-11-01T00:00:00Z");
-    const p = await submitted({ plan: "STANDARD", status: "ACTIVE", provider: "PADDLE", providerSubscriptionId: "sub_1", providerCustomerId: "ctm_1", cancelAtPeriodEnd: true, currentPeriodStart: new Date("2026-10-01T00:00:00Z"), currentPeriodEnd: end });
+    const end = new Date("2026-10-18T00:00:00Z");
+    const p = await submitted({ plan: "STANDARD", status: "ACTIVE", provider: "PADDLE", providerSubscriptionId: "sub_1", providerCustomerId: "ctm_1", cancelAtPeriodEnd: true, currentPeriodStart: new Date("2026-09-18T00:00:00Z"), currentPeriodEnd: end });
     const done = await momo.confirmManualPayment(CONSOLE, p.id, NOW);
-    expect(done).toMatchObject({ periodMode: "extend", periodStart: end, periodEnd: new Date("2026-12-01T00:00:00Z") });
-    expect(h.db.subscription.rows[0]).toMatchObject({ provider: "MANUAL_MOMO", providerSubscriptionId: null, providerCustomerId: null, cancelAtPeriodEnd: false, currentPeriodStart: new Date("2026-10-01T00:00:00Z"), currentPeriodEnd: new Date("2026-12-01T00:00:00Z") });
+    expect(done).toMatchObject({ periodMode: "extend", periodStart: end, periodEnd: new Date("2026-11-18T00:00:00Z") });
+    expect(h.db.subscription.rows[0]).toMatchObject({ provider: "MANUAL_MOMO", providerSubscriptionId: null, providerCustomerId: null, cancelAtPeriodEnd: false, currentPeriodStart: new Date("2026-09-18T00:00:00Z"), currentPeriodEnd: new Date("2026-11-18T00:00:00Z") });
   });
 
   it("a subscription that moves between the read and the write is re-read and the period recomputed, once", async () => {

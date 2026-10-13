@@ -291,7 +291,9 @@ describe("accept -> pay by Mobile Money -> activate", () => {
     const id = await sentOffer();
     const { confirmed } = await payByMomo(id);
     void confirmed;
-    const renewal = await momo.startManualPayment({ userId: USER, plan: customPlanKeyFor(id), interval: "MONTH", now: LATER });
+    // Renewing opens in the last 7 days of the period (docs/BILLING.md, "Renewing").
+    expect(await msg(momo.startManualPayment({ userId: USER, plan: customPlanKeyFor(id), interval: "MONTH", now: LATER }))).toMatch(/is paid until 13 November 2026/);
+    const renewal = await momo.startManualPayment({ userId: USER, plan: customPlanKeyFor(id), interval: "MONTH", now: new Date("2026-11-08T09:00:00Z") });
     expect(renewal).toMatchObject({ amountMinor: 73000, currency: "RWF", offerId: null });
     expect(await msg(momo.startManualPayment({ userId: OTHER, plan: customPlanKeyFor(id), interval: "MONTH", now: LATER }))).toMatch(/not available/);
   });

@@ -156,7 +156,7 @@ describe("statuses and expiry", () => {
 });
 
 describe("request validation", () => {
-  const ok = { description: "We sell shoes in Kigali.", goals: "More orders on WhatsApp.", features: ["websiteChat"] };
+  const ok = { description: "We sell shoes in Kigali.", features: ["websiteChat"] };
 
   it("keeps known features, drops unknown ones, and an unknown budget or source", () => {
     const r = requestSchema.parse({ ...ok, features: ["websiteChat", "teleport", "video"], budget: "lots", source: "spam" });
@@ -164,10 +164,12 @@ describe("request validation", () => {
     expect(requestSchema.parse({ ...ok, budget: "50k_100k", source: "pricing" })).toMatchObject({ budget: "50k_100k", source: "pricing" });
   });
 
-  it("needs a description and goals of a sentence, within limits", () => {
+  it("needs a description of a sentence, within limits; there is no goals field any more (an old one is dropped)", () => {
     expect(requestSchema.safeParse({ ...ok, description: "shoes" }).success).toBe(false);
-    expect(requestSchema.safeParse({ ...ok, goals: "" }).success).toBe(false);
-    expect(requestSchema.safeParse({ ...ok, goals: "x".repeat(2001) }).success).toBe(false);
+    expect(requestSchema.safeParse({ ...ok, description: "x".repeat(2001) }).success).toBe(false);
+    const parsed = requestSchema.safeParse({ ...ok, goals: "" });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).not.toHaveProperty("goals");
   });
 });
 

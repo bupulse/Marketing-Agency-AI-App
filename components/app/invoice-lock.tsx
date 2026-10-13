@@ -7,6 +7,7 @@ import { ClientInvoices } from "@/components/billing/client-invoices";
 import { InvoicePay } from "@/components/billing/invoice-pay";
 import { CheckoutScript } from "@/components/billing/checkout";
 import { invoicePayMethods } from "@/lib/billing/card-ready";
+import { site } from "@/lib/content/site";
 import { MomoPayment } from "@/components/billing/momo-payment";
 import { currentManualPayment } from "@/lib/billing/momo";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
@@ -66,7 +67,7 @@ export async function InvoiceLock({ invoice, businessId, role, firstName, email,
           </p>
         </GlassCard>
 
-        {canPay && (paying && payment ? <MomoPayment payment={payment} details={momoSettings} /> : <InvoicePay invoice={payable} methods={methods} highlight />)}
+        {canPay && (paying && payment ? <MomoPayment payment={payment} details={momoSettings} /> : <InvoicePay invoice={payable} methods={methods} highlight cardReason={custom || !payable.planKey ? `Card for this invoice is set up by our team: ask us for a card link at ${site.email}.` : null} />)}
         {canPay && payment && !paying && payment.status !== "pending" && <MomoPayment payment={payment} details={momoSettings} />}
         {list.length > 0 && <ClientInvoices invoices={list} />}
 

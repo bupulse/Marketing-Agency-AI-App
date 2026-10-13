@@ -29,7 +29,7 @@ export async function sendOfferEmail(to: { email: string; name: string | null },
 }
 
 /** The owner's alert for a new custom plan request. One email per address in ADMIN_EMAILS. */
-export async function sendRequestAlertEmail(p: { id: string; company: string; email: string; phone: string | null; description: string; goals: string; features: string[]; budget: string | null; demo: string | null }): Promise<boolean> {
+export async function sendRequestAlertEmail(p: { id: string; company: string; email: string; phone: string | null; description: string; goals?: string | null; features: string[]; budget: string | null; demo: string | null }): Promise<boolean> {
   const admins = adminEmails();
   if (admins.length === 0) return false;
   const { html, text } = renderEmail({
@@ -37,7 +37,7 @@ export async function sendRequestAlertEmail(p: { id: string; company: string; em
     intro: `${p.company} (${p.email}) asked for a custom plan.`,
     blocks: [
       { label: "The business", value: p.description },
-      { label: "Goals", value: p.goals },
+      ...(p.goals ? [{ label: "Goals", value: p.goals }] : []),
       { label: "Interested in", value: p.features.join(", ") || "Not said" },
       ...(p.budget ? [{ label: "Budget", value: p.budget }] : []),
       ...(p.phone ? [{ label: "Phone", value: p.phone }] : []),

@@ -84,11 +84,48 @@ in `lib/offers/service.ts`. To add it: create a one-off Paddle price for the off
 `lib/billing/paddle-catalog.ts`), store its id on the custom plan (`paddleMonthlyPriceId` / `paddleYearlyPriceId`), open
 checkout for it, and mark the offer paid when the webhook applies the subscription (same steps as `markOfferPaidInTx`).
 
+## Adding features to a paid plan (decided 13 October 2026)
+
+The client pays **only for the added features, prorated for the days left** in the current period; the features switch
+on when that payment is confirmed; **the period end does not move**; from the next renewal the price is the full new
+total (plan + added features).
+
+- **Maths** (`quoteAddition`, `prorateMinor` in `lib/offers/shared.ts`, pure): the added features' monthly prices
+  (yearly: 10 months), a whole period → `round(amount × daysLeft / periodDays)` in the currency's smallest unit (whole
+  RWF, US cents). `periodDays` is the period ending at `currentPeriodEnd` (31 for a month ending 1 November, 365 for a
+  year); `daysLeft` counts a started day as a day; the same day the period started pays the whole period; at the end
+  (0 days) there is nothing to pay, so it is refused ("renew first"). Example: +10,000 RWF/month, 15 of 30 days left →
+  5,000 RWF. An added feature's allowance raises its limit (AI photos +30 designs, Website chat 500 replies).
+- **Who can:** a running plan paid by Mobile Money (`additionContext`). A card plan renews at Paddle's price, so
+  features are added to it by the team ("Ask us for a card link"); a plan no longer sold in the region: use a request.
+- **Stored as** an ordinary `PlanOffer` with `options.mode = "addon"` and `options.addition` (current plan, add-on
+  price per period, next-renewal total, period end, days left, `selfServe`); `adjustedMinor` = the prorated amount to
+  pay now; `lines` = the add-on lines for a whole period. No schema change. Accepting prices it again for the days left
+  that day (`additionAtAccept`) and prepares the custom plan at the **next-renewal total**.
+- **Confirming** (`confirmManualPayment`, also through an invoice made from it): period mode `keep`; the subscription
+  moves to the custom plan, `currentPeriodStart` / `currentPeriodEnd` untouched. Refused when the plan or interval
+  changed since (reject, refund, make a new offer). Reminders and the next renewal use the custom plan's own price.
+- **Admin:** Customise plan → **Add to current plan** (beside "New custom plan"): the current plan is the locked base,
+  its features ticked and locked, no limits or interval; the total shows the add-ons per period, "Client pays now
+  (prorated, N of M days left)" and "Next renewal: plan + added features". A typed price replaces the add-ons' price
+  per period (with a reason). Jarvis `create_offer` refuses this mode (console only).
+- **Client, self-serve:** Billing → **Add features** (`components/billing/add-features.tsx`, `startFeatureAddition`):
+  the plan's features ticked and locked; only built features priced in the region (their prerequisites too; never
+  Managed) can be ticked; an instant quote (now, and from the renewal date); **Pay with Mobile Money**, **Get an
+  invoice**, or **Pay by card** ("Ask us for a card link"). It makes and accepts an add-features offer (`createdBy
+  client:<id>`, audited `self_serve_addition`); a new choice replaces the client's own unpaid one (not after a payment
+  was reported); an open offer from the team must be answered first. Anything else: **Request a custom change**.
+- **Card:** the Paddle adapter has no one-time charge of a custom amount, so card is "Ask us for a card link"
+  (`offerCardCheckoutAvailable()` stays false).
+- Tests: `tests/offers/addition.test.ts`, `tests/billing/renewal.test.ts`.
+
 ## Custom plan requests (R5)
 
 - **Form** `/custom-plan` (signed-in companies in any state, including while waiting for the demo; Owner only):
-  what the business does, goals, features of interest (the registry, coming-soon ones included), an optional budget
-  range and phone. Linked to the company and its live demo booking. The owner of BuPulse (`ADMIN_EMAILS`) is emailed.
+  what the business does, features of interest (the registry, coming-soon ones included), an optional budget range and
+  phone. The plan's own features (with their prerequisites) are ticked and locked ("In your plan"); ticking a feature
+  ticks what it needs; only what is new is stored. There is no goals field any more (13 October 2026; the column is
+  nullable, migration `20261017190000_request_goals_optional`, older requests keep theirs). Linked to the company and its live demo booking. The owner of BuPulse (`ADMIN_EMAILS`) is emailed.
   Rate-limited to 3 a day per company.
 - **Entry points:** pricing page "Need something different? Request a custom plan" (goes to sign-up with
   `next=/custom-plan?from=pricing`; after confirming the email, /welcome and /onboarding the visitor lands on the form;
