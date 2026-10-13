@@ -8,12 +8,25 @@
 // (default "chrome"), ROBOT_CHROME_PATH, ROBOT_FORMAT (auto, mp4 or webm; default auto), ROBOT_CONCURRENCY (1 or 2), ROBOT_MAX_VIDEOS (default 12),
 // ROBOT_BUDGET_MS (default 17 minutes), ROBOT_VIDEO_TIMEOUT_MS (default 5 minutes).
 // It prints only through log.mjs: event names and counts (the repository and its Actions logs are public).
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { createLogger } from "./log.mjs";
 
 const log = createLogger();
 
 const PAGE_ORIGIN = "https://video-robot.invalid";
+const FONT_DIR = new URL("../../public/fonts/video/", import.meta.url);
+const FONT_FILE = /^\/fonts\/video\/([a-z-]+-latin(?:-ext)?-\d{3}-normal\.woff2)$/;
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/** https only; plain http only to this machine (the self-test's fake app). */
+export function allowedUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK.has(url.hostname));
+  } catch {
+    return false;
+  }
+}
 const MAX_PHOTO_BYTES = 12 * 1024 * 1024;
 const PHOTO_TIMEOUT_MS = 20_000;
 const API_TIMEOUT_MS = 55_000;
@@ -29,7 +42,7 @@ export function settings(env = process.env) {
   return {
     app,
     secret,
-    configured: /^https?:\/\/[^\s]+$/.test(app) && secret.length > 0,
+    configured: allowedUrl(app) && secret.length > 0,
     channel: env.ROBOT_CHROME_CHANNEL || "chrome",
     chromePath: env.ROBOT_CHROME_PATH || undefined,
     format: ["mp4", "webm"].includes(env.ROBOT_FORMAT) ? env.ROBOT_FORMAT : "auto",
@@ -69,10 +82,15 @@ export async function api(config, action, body = {}, fetchImpl = fetch) {
   return data;
 }
 
-/** Downloads a scene photo in Node (size and time capped) and hands it to the page as a data URL; failures are skipped. */
-async function photoDataUrls(photoUrls, fetchImpl = fetch) {
+/**
+ * Downloads the scene photos in Node (size and time capped) and hands them to the page as data URLs; failures are
+ * skipped. Only from the storage origin of the job's own signed upload URL (Supabase), nowhere else.
+ */
+export async function photoDataUrls(photoUrls, storageUrl, fetchImpl = fetch) {
   const out = {};
+  const origin = allowedUrl(storageUrl) ? new URL(storageUrl).origin : null;
   for (const [key, url] of Object.entries(photoUrls ?? {})) {
+    if (!origin || !allowedUrl(url) || new URL(url).origin !== origin) continue;
     try {
       const response = await fetchImpl(url, { signal: AbortSignal.timeout(PHOTO_TIMEOUT_MS) });
       if (!response.ok) continue;
@@ -89,6 +107,7 @@ async function photoDataUrls(photoUrls, fetchImpl = fetch) {
 
 /** PUTs the file to its signed upload URL (the request the Supabase client makes for uploadToSignedUrl). */
 async function upload(target, bytes, fetchImpl = fetch) {
+  if (!allowedUrl(target.url)) return false;
   try {
     const response = await fetchImpl(target.url, {
       method: "PUT",
@@ -109,10 +128,22 @@ function withTimeout(promise, ms) {
 
 async function openPage(browser, html, script) {
   const page = await browser.newPage();
-  await page.route(`${PAGE_ORIGIN}/**`, (route) => {
+  // The page reaches nothing but its own in-memory origin: photos arrive as data URLs, fonts from public/fonts/video.
+  await page.route("**/*", (route) => {
     const url = route.request().url();
-    if (url === `${PAGE_ORIGIN}/robot.js`) return route.fulfill({ status: 200, contentType: "text/javascript", body: script });
-    if (url === `${PAGE_ORIGIN}/`) return route.fulfill({ status: 200, contentType: "text/html", body: html });
+    if (url.startsWith("data:") || url.startsWith("blob:")) return route.continue();
+    if (!url.startsWith(`${PAGE_ORIGIN}/`)) return route.abort("blockedbyclient");
+    const path = new URL(url).pathname;
+    if (path === "/robot.js") return route.fulfill({ status: 200, contentType: "text/javascript", body: script });
+    if (path === "/") return route.fulfill({ status: 200, contentType: "text/html", body: html });
+    const font = FONT_FILE.exec(path);
+    if (font) {
+      try {
+        return route.fulfill({ status: 200, contentType: "font/woff2", body: readFileSync(new URL(font[1], FONT_DIR)) });
+      } catch {
+        // Missing file: the fallback font is used.
+      }
+    }
     return route.fulfill({ status: 404, body: "" });
   });
   await page.goto(`${PAGE_ORIGIN}/`);
@@ -122,7 +153,7 @@ async function openPage(browser, html, script) {
 
 /** One claimed video: render, upload, confirm; or tell the app why not. Returns "made" or "failed". */
 async function makeOne(config, browser, page, job, format) {
-  const photos = await photoDataUrls(job.photoUrls);
+  const photos = await photoDataUrls(job.photoUrls, job.upload?.url);
   const leaseLeft = new Date(job.leaseUntil).getTime() - Date.now() - 60_000;
   const result = await withTimeout(
     page.evaluate(({ plan, photos, format }) => globalThis.videoRobot.render(plan, photos, format), { plan: job.plan, photos, format }),

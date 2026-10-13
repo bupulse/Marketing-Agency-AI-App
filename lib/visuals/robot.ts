@@ -10,17 +10,20 @@ import { recordCron } from "@/lib/admin/cron-run";
 import { isOwnDesignPath, isOwnPhotoPath } from "@/lib/designs/assets";
 import { bucketForPath } from "@/lib/publishing/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { finalizeVideo, prepareVideoUpload, videoAvailable, VisualError } from "./service";
+import { rateLimit, RateLimitError, type RateLimitRule } from "@/lib/rate-limit";
+import { finalizeVideo, prepareVideoUpload, ROBOT_LEASE_MS, videoAvailable, VisualError } from "./service";
 import { VIDEO_LIMITS, type VideoPlan } from "./types";
 import { readVideoPlan } from "./video-plan";
 
-/** How long the robot holds a video it claimed (render, upload, confirm). Longer than the browser's lease. */
-export const ROBOT_LEASE_MS = 15 * 60 * 1000;
+export { ROBOT_LEASE_MS };
 /** Failed robot renders after which the video is left to the owner's browser ("needs browser render"). */
 export const ROBOT_MAX_ATTEMPTS = 3;
 /** Videos handed out per claim by default, and at most. */
 export const ROBOT_DEFAULT_CLAIM = 3;
 export const ROBOT_MAX_CLAIM = 5;
+/** Videos the robot may claim in an hour: in all, and per company (a stuck or abused robot cannot burn through storage). */
+export const ROBOT_CLAIMS_PER_HOUR: RateLimitRule = { limit: 60, windowSeconds: 60 * 60 };
+export const ROBOT_CLAIMS_PER_BUSINESS_HOUR: RateLimitRule = { limit: 10, windowSeconds: 60 * 60 };
 /** Pending videos looked at per claim (some may belong to companies without video seconds left). */
 const ROBOT_SCAN = 25;
 /** Lifetime of the photo download URLs: enough for one run. */
@@ -56,8 +59,8 @@ export type RobotState = "queued" | "making" | "browser" | null;
 
 export function robotStateOf(row: { kind: string; status: string; robotAttempts: number; robotJobId: string | null; renderingUntil: Date | null }, now = new Date()): RobotState {
   if (!robotEnabled() || row.kind !== "video" || row.status !== "pending") return null;
-  if (row.robotAttempts >= ROBOT_MAX_ATTEMPTS) return "browser";
   if (row.robotJobId && row.renderingUntil && row.renderingUntil > now) return "making";
+  if (row.robotAttempts >= ROBOT_MAX_ATTEMPTS) return "browser";
   return "queued";
 }
 
@@ -94,7 +97,7 @@ async function signScenePhotos(userId: string, plan: VideoPlan): Promise<Record<
   return out;
 }
 
-async function releaseLease(id: string, job: string, data: { robotAttempts?: { increment: number } } = {}) {
+async function releaseLease(id: string, job: string, data: { robotAttempts?: { increment: number } | { decrement: number } } = {}) {
   await prisma.contentVisual.updateMany({ where: { id, robotJobId: job }, data: { renderingUntil: null, robotJobId: null, ...data } });
 }
 
@@ -103,6 +106,8 @@ async function releaseLease(id: string, job: string, data: { robotAttempts?: { i
  * robot runs, or a robot and an owner's browser, never make the same video), then given an upload reservation through
  * prepareVideoUpload: plan feature, video seconds left, media quota, platform guard and open uploads are checked
  * exactly as for the browser. A video that fails those checks is released untouched (no attempt counted).
+ * The attempt is counted when the video is claimed (a run killed mid-render still counts toward the 3) and set back
+ * to 0 when a video is made. At most 60 claims an hour in all and 10 per company.
  */
 export async function claimRobotVideos(options: { max?: number; format?: RobotFormat } = {}, now = new Date()): Promise<RobotJob[]> {
   const max = Math.min(ROBOT_MAX_CLAIM, Math.max(1, Math.floor(options.max ?? ROBOT_DEFAULT_CLAIM)));
@@ -115,6 +120,22 @@ export async function claimRobotVideos(options: { max?: number; format?: RobotFo
   });
   const owners = new Map<string, string | null>();
   const jobs: RobotJob[] = [];
+  /** Whether one more claim fits the hourly caps; false for this company (or for everyone) until the hour turns. */
+  const withinCaps = async (businessId: string): Promise<"ok" | "business" | "all"> => {
+    try {
+      await rateLimit("video-robot-claims", ROBOT_CLAIMS_PER_HOUR, now);
+    } catch (error) {
+      if (error instanceof RateLimitError) return "all";
+      throw error;
+    }
+    try {
+      await rateLimit(`video-robot-claims:${businessId}`, ROBOT_CLAIMS_PER_BUSINESS_HOUR, now);
+    } catch (error) {
+      if (error instanceof RateLimitError) return "business";
+      throw error;
+    }
+    return "ok";
+  };
   for (const row of rows) {
     if (jobs.length >= max) break;
     const plan = readVideoPlan(row.plan);
@@ -125,10 +146,16 @@ export async function claimRobotVideos(options: { max?: number; format?: RobotFo
     }
     const userId = owners.get(row.businessId);
     if (!userId) continue;
+    const caps = await withinCaps(row.businessId);
+    if (caps === "all") break;
+    if (caps === "business") {
+      owners.set(row.businessId, null);
+      continue;
+    }
 
     const job = crypto.randomUUID();
     const leaseUntil = new Date(now.getTime() + ROBOT_LEASE_MS);
-    const leased = await prisma.contentVisual.updateMany({ where: { id: row.id, ...robotWaitingWhere(now) }, data: { renderingUntil: leaseUntil, robotJobId: job } });
+    const leased = await prisma.contentVisual.updateMany({ where: { id: row.id, ...robotWaitingWhere(now) }, data: { renderingUntil: leaseUntil, robotJobId: job, robotAttempts: { increment: 1 } } });
     if (leased.count !== 1) continue;
 
     const owner = { userId, businessId: row.businessId, service: true };
@@ -136,7 +163,7 @@ export async function claimRobotVideos(options: { max?: number; format?: RobotFo
       const target = await prepareVideoUpload(owner, row.id, { bytes: VIDEO_LIMITS.maxBytes, mimeType, durationMs: plan.totalMs });
       jobs.push({ job, plan, photoUrls: await signScenePhotos(userId, plan), upload: { url: target.signedUrl, contentType: mimeType }, leaseUntil: leaseUntil.toISOString() });
     } catch (error) {
-      await releaseLease(row.id, job).catch(() => {});
+      await releaseLease(row.id, job, { robotAttempts: { decrement: 1 } }).catch(() => {});
       // Seconds used up, quota full, other uploads open: the owner's problem, not the robot's; tried again next run.
       if (!(error instanceof VisualError)) await logError(error, { source: "visuals.robot.claim", level: "warn", businessId: row.businessId });
     }
@@ -144,11 +171,26 @@ export async function claimRobotVideos(options: { max?: number; format?: RobotFo
   return jobs;
 }
 
-/** The video a job is about, while the robot still holds its lease. */
+/**
+ * The video a job is about, while the robot still holds its lease. A job whose lease ran out is ended here: its
+ * reserved upload goes, with the file the robot may have written, so a late robot never leaves a file behind.
+ */
 async function jobRow(job: string, now: Date) {
   const row = await prisma.contentVisual.findUnique({ where: { robotJobId: job }, select: { id: true, businessId: true, plan: true, uploadPath: true, renderingUntil: true, business: { select: { userId: true } } } });
-  if (!row || !row.renderingUntil || row.renderingUntil <= now) return null;
+  if (!row) return null;
+  if (!row.renderingUntil || row.renderingUntil <= now) {
+    await dropUpload(row.id, row.uploadPath);
+    await releaseLease(row.id, job).catch(() => {});
+    return null;
+  }
   return row;
+}
+
+/** Deletes a robot upload and its reservation (only if the reservation is still that file). */
+async function dropUpload(id: string, path: string | null) {
+  if (!path) return;
+  await createAdminClient().storage.from("media").remove([path]).catch(() => {});
+  await prisma.contentVisual.updateMany({ where: { id, uploadPath: path }, data: { uploadPath: null, uploadBytes: 0, uploadExpiresAt: null } }).catch(() => {});
 }
 
 export type RobotOutcome = { ok: true; seconds: number } | { ok: false; error: "unknown_job" | "rejected" };
@@ -156,7 +198,8 @@ export type RobotOutcome = { ok: true; seconds: number } | { ok: false; error: "
 /**
  * The robot uploaded the file: confirm it with finalizeVideo, the browser's own path (the real length read from the
  * file, quota with the real size, video seconds billed once, the old file replaced, Autopilot posts updated, and
- * whatever runs after a video is ready). A rejected file counts as a failed attempt.
+ * whatever runs after a video is ready, such as auto-scheduling). A rejected file is deleted; the attempt was
+ * counted at claim time.
  */
 export async function completeRobotVideo(job: string, now = new Date()): Promise<RobotOutcome> {
   const row = await jobRow(job, now);
@@ -164,11 +207,11 @@ export async function completeRobotVideo(job: string, now = new Date()): Promise
   const owner = { userId: row.business.userId, businessId: row.businessId, service: true };
   try {
     // The length is read from the file by finalizeVideo; the plan's figure is only what the robot was asked to make.
-    const result = await finalizeVideo(owner, row.id, { path: row.uploadPath, durationMs: readVideoPlan(row.plan)?.totalMs ?? VIDEO_LIMITS.maxMs });
+    const result = await finalizeVideo(owner, row.id, { path: row.uploadPath, durationMs: readVideoPlan(row.plan)?.totalMs ?? VIDEO_LIMITS.maxMs }, { robotJob: job });
     await releaseLease(row.id, job);
     return { ok: true, seconds: result.seconds };
   } catch (error) {
-    await releaseLease(row.id, job, { robotAttempts: { increment: 1 } }).catch(() => {});
+    await releaseLease(row.id, job).catch(() => {});
     if (!(error instanceof VisualError)) await logError(error, { source: "visuals.robot.complete", level: "warn", businessId: row.businessId });
     return { ok: false, error: "rejected" };
   }
@@ -176,16 +219,13 @@ export async function completeRobotVideo(job: string, now = new Date()): Promise
 
 /**
  * The robot could not make or upload the video: the lease and the upload reservation go (with the file, if one was
- * written), and the attempt is counted. After ROBOT_MAX_ATTEMPTS the robot leaves it to the owner's browser.
+ * written). The attempt was counted at claim time; after ROBOT_MAX_ATTEMPTS the robot leaves it to the owner's browser.
  */
 export async function failRobotVideo(job: string, reason: RobotFailure, now = new Date()): Promise<{ ok: boolean; attempts?: number }> {
   const row = await jobRow(job, now);
   if (!row) return { ok: false };
-  if (row.uploadPath) {
-    await createAdminClient().storage.from("media").remove([row.uploadPath]).catch(() => {});
-    await prisma.contentVisual.updateMany({ where: { id: row.id, uploadPath: row.uploadPath }, data: { uploadPath: null, uploadBytes: 0, uploadExpiresAt: null } });
-  }
-  await releaseLease(row.id, job, { robotAttempts: { increment: 1 } });
+  await dropUpload(row.id, row.uploadPath);
+  await releaseLease(row.id, job);
   const after = await prisma.contentVisual.findUnique({ where: { id: row.id }, select: { robotAttempts: true } });
   await logError(new Error(`Video robot: ${reason}`), { source: "visuals.robot.fail", level: "warn", businessId: row.businessId });
   return { ok: true, attempts: after?.robotAttempts };
@@ -213,7 +253,7 @@ export async function robotStatus(now = new Date()): Promise<RobotStatus> {
   const [runs, waiting, needsBrowser] = await Promise.all([
     prisma.cronRun.findMany({ where: { job: ROBOT_JOB, startedAt: { gte: since } }, orderBy: { startedAt: "desc" }, take: 200, select: { startedAt: true, ok: true, summary: true } }),
     peekRobotVideos(now),
-    prisma.contentVisual.count({ where: { kind: "video", status: "pending", robotAttempts: { gte: ROBOT_MAX_ATTEMPTS } } }),
+    prisma.contentVisual.count({ where: { kind: "video", status: "pending", robotAttempts: { gte: ROBOT_MAX_ATTEMPTS }, OR: [{ robotJobId: null }, { renderingUntil: { lt: now } }] } }),
   ]);
   const last = runs[0] ?? (await prisma.cronRun.findFirst({ where: { job: ROBOT_JOB }, orderBy: { startedAt: "desc" }, select: { startedAt: true, ok: true, summary: true } }));
   let made = 0;

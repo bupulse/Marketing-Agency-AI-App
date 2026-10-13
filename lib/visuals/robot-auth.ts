@@ -21,6 +21,8 @@ export async function robotGuard(request: Request): Promise<NextResponse | null>
   const secret = process.env.VIDEO_ROBOT_SECRET;
   if (!secret) return json({ error: "Not found" }, 404);
   try {
+    // The host's own client-IP header (lib/platform/headers.ts): x-nf-client-connection-ip on Netlify,
+    // cf-connecting-ip on Cloudflare. x-forwarded-for is read only on plain Node (local development).
     await rateLimit(`video-robot:${clientIp(request.headers) ?? "unknown"}`, RATE_LIMITS.videoRobot);
   } catch (error) {
     if (error instanceof RateLimitError) return json({ error: "Too many requests" }, 429);

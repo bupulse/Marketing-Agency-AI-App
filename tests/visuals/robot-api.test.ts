@@ -74,6 +74,23 @@ describe("robot API auth", () => {
     expect(mocks.claim).not.toHaveBeenCalled();
   });
 
+  it("on a host, keys the limit on the host's trusted client IP, never x-forwarded-for", async () => {
+    const before = process.env.PLATFORM;
+    process.env.PLATFORM = "netlify";
+    try {
+      const request = new Request("https://app.example/api/robot/videos/claim", { method: "POST", headers: { authorization: "Bearer s3cret", "x-forwarded-for": "198.51.100.1", "x-nf-client-connection-ip": "203.0.113.7" }, body: "{}" }) as unknown as NextRequest;
+      await claim(request);
+      expect(mocks.rateLimit).toHaveBeenCalledWith("video-robot:203.0.113.7", expect.anything());
+      mocks.rateLimit.mockClear();
+      // Without the host's header: one shared bucket, not a key the caller picked.
+      await claim(req({}));
+      expect(mocks.rateLimit).toHaveBeenCalledWith("video-robot:unknown", expect.anything());
+    } finally {
+      if (before === undefined) delete process.env.PLATFORM;
+      else process.env.PLATFORM = before;
+    }
+  });
+
   it("compares in constant time, length included", () => {
     expect(safeEqual("Bearer a", "Bearer a")).toBe(true);
     expect(safeEqual("Bearer a", "Bearer ab")).toBe(false);

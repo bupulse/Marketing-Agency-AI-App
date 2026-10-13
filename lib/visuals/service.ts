@@ -596,7 +596,7 @@ export async function prepareVideoUpload(owner: Owner, visualId: string, file: {
  * Confirms an uploaded video: the file exists, is an MP4 or WebM of at most 8 MB, the seconds fit the plan (counted
  * now), then it replaces the visual's old video and goes on the Autopilot posts of its group. A rejected file is deleted.
  */
-export async function finalizeVideo(owner: Owner, visualId: string, input: { path: string; durationMs: number }) {
+export async function finalizeVideo(owner: Owner, visualId: string, input: { path: string; durationMs: number }, options: { robotJob?: string } = {}) {
   const { row } = await videoRow(owner, visualId);
   if (!isOwnVideoPath(owner.userId, visualId, input.path)) throw new VisualError("That upload could not be used.");
   // Asked twice (a lost answer, a double click): the video is already this file, nothing is counted again.
@@ -634,6 +634,12 @@ export async function finalizeVideo(owner: Owner, visualId: string, input: { pat
   if (durationMs === null || !(durationMs > 0)) return reject("We could not read the video's length. Please make it again.");
   if (durationMs > VIDEO_LIMITS.maxMs + 500) return reject("Videos can be at most 30 seconds long.");
   const seconds = billableSeconds(durationMs);
+  // The video robot's file is taken only while it still holds the video: the owner may have taken it over ("Make it
+  // now") or the lease ran out while the file was checked. Read again right before billing.
+  if (options.robotJob) {
+    const held = await prisma.contentVisual.findUnique({ where: { id: row.id }, select: { robotJobId: true, renderingUntil: true } });
+    if (held?.robotJobId !== options.robotJob || !held.renderingUntil || held.renderingUntil <= new Date()) return reject("The video was made elsewhere in the meantime.");
+  }
   try {
     await consumeUsage(owner.userId, "videoSeconds", seconds);
   } catch (error) {
@@ -643,7 +649,7 @@ export async function finalizeVideo(owner: Owner, visualId: string, input: { pat
   const previous = readItems(row.items);
   await prisma.contentVisual.update({
     where: { id: row.id },
-    data: { status: "ready", error: null, items: json([{ path: input.path }]), bytes: size, seconds, renderedAt: new Date(), uploadPath: null, uploadBytes: 0, uploadExpiresAt: null, renderingUntil: null, robotJobId: null },
+    data: { status: "ready", error: null, items: json([{ path: input.path }]), bytes: size, seconds, renderedAt: new Date(), uploadPath: null, uploadBytes: 0, uploadExpiresAt: null, renderingUntil: null, robotJobId: null, robotAttempts: 0 },
   });
   for (const old of previous) {
     if (old.path !== input.path && !(await inUse(owner.businessId, old.path))) await bucket.remove([old.path]).catch(() => {});
@@ -668,19 +674,28 @@ export async function updateVideoPlan(owner: Owner, visualId: string, changes: {
 
 /** How long a browser render holds the video, so the video robot does not make the same video meanwhile. */
 export const BROWSER_RENDER_LEASE_MS = 10 * 60 * 1000;
+/** How long the video robot holds a video it claimed (render, upload, confirm). Longer than the browser's lease. */
+export const ROBOT_LEASE_MS = 15 * 60 * 1000;
+/** After this long without the robot finishing, the owner's "Make it now" takes the video over. */
+export const ROBOT_TAKEOVER_MS = 5 * 60 * 1000;
 
 /**
- * The owner's browser is about to make the video ("Make it now", or on open): it takes the render lease unless the
- * video robot holds a live one (docs/VIDEO_ROBOT.md). A video that is already made can always be made again.
+ * The owner's browser is about to make the video ("Make it now", or on open): it takes the render lease, unless the
+ * video robot claimed it less than 5 minutes ago (docs/VIDEO_ROBOT.md). Past that the owner wins: the robot's job is
+ * cancelled, its reserved upload (and any file written there) goes, and its later "complete" is refused.
+ * A video that is already made can always be made again.
  */
 export async function leaseVideoForBrowser(owner: Owner, visualId: string, now = new Date()) {
   const { row } = await videoRow(owner, visualId);
   if (row.status !== "pending") return;
+  // The robot's lease started ROBOT_LEASE_MS before it ends; it is "recent" while it ends later than this.
+  const recentRobot = new Date(now.getTime() + ROBOT_LEASE_MS - ROBOT_TAKEOVER_MS);
   const taken = await prisma.contentVisual.updateMany({
-    where: { id: row.id, businessId: owner.businessId, OR: [{ robotJobId: null }, { renderingUntil: null }, { renderingUntil: { lt: now } }] },
-    data: { renderingUntil: new Date(now.getTime() + BROWSER_RENDER_LEASE_MS), robotJobId: null },
+    where: { id: row.id, businessId: owner.businessId, robotJobId: row.robotJobId, OR: [{ robotJobId: null }, { renderingUntil: null }, { renderingUntil: { lte: recentRobot } }] },
+    data: { renderingUntil: new Date(now.getTime() + BROWSER_RENDER_LEASE_MS), robotJobId: null, ...(row.robotJobId && row.uploadPath ? { uploadPath: null, uploadBytes: 0, uploadExpiresAt: null } : {}) },
   });
   if (taken.count === 0) throw new VisualError("Your video is being made automatically right now. It will be ready in a few minutes.");
+  if (row.robotJobId && row.uploadPath) await createAdminClient().storage.from("media").remove([row.uploadPath]).catch(() => {});
 }
 
 /** Marks a video as not renderable in this browser, so the screen shows the picture version and a reason. */

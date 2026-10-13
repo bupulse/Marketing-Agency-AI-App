@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   prisma: {
-    contentVisual: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn(), count: vi.fn() },
+    contentVisual: { create: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn(), count: vi.fn() },
     generatedContent: { findFirst: vi.fn() },
     post: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn(), updateMany: vi.fn() },
     connection: { findMany: vi.fn() },
@@ -53,7 +53,7 @@ import { AIBudgetExceededError } from "@/lib/ai/budget";
 import { DesignError } from "@/lib/designs/service";
 import { UsageLimitError } from "@/lib/usage";
 import { fallbackPlan } from "@/lib/visuals/direction";
-import { attachToGroup, drawSlide, finalizeVideo, planVisuals, prepareVideoUpload, renderImageStep, sniffVideo, VisualError, type PlanInput } from "@/lib/visuals/service";
+import { attachToGroup, drawSlide, finalizeVideo, leaseVideoForBrowser, planVisuals, prepareVideoUpload, renderImageStep, sniffVideo, VisualError, type PlanInput } from "@/lib/visuals/service";
 import type { ImagePlan, VisualSlide } from "@/lib/visuals/types";
 import { buildVideoPlan } from "@/lib/visuals/video-plan";
 import { mp4Bytes } from "./video-bytes";
@@ -307,6 +307,39 @@ describe("video upload checks", () => {
     expect(updates.ig).toMatchObject({ format: "POST", mediaPaths: [`${U}/videos/vid1-abcd1.mp4`] });
     expect(updates.tt).toMatchObject({ format: "SCRIPT", mediaPaths: [`${U}/videos/vid1-abcd1.mp4`] });
     expect(updates.li).toBeUndefined();
+  });
+
+  it("a robot's file is taken only while the robot still holds the video", async () => {
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row);
+    upload(mp4Bytes(10_000));
+    mocks.prisma.post.findMany.mockResolvedValue([]);
+    // The owner took it over ("Make it now"): refused before billing, file deleted.
+    mocks.prisma.contentVisual.findUnique.mockResolvedValueOnce({ robotJobId: null, renderingUntil: inAnHour() });
+    await expect(finalizeVideo({ ...owner, service: true }, "vid1", { path: PATH, durationMs: 10_000 }, { robotJob: "job-1" })).rejects.toThrow(/made elsewhere/);
+    expect(mocks.consumeUsage).not.toHaveBeenCalled();
+    expect(mocks.storage.remove).toHaveBeenCalledWith([PATH]);
+    // Still held: billed once, the attempt count goes back to 0.
+    mocks.prisma.contentVisual.findUnique.mockResolvedValueOnce({ robotJobId: "job-1", renderingUntil: inAnHour() });
+    await expect(finalizeVideo({ ...owner, service: true }, "vid1", { path: PATH, durationMs: 10_000 }, { robotJob: "job-1" })).resolves.toMatchObject({ seconds: 10 });
+    expect(mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data).toMatchObject({ status: "ready", robotJobId: null, renderingUntil: null, robotAttempts: 0 });
+  });
+
+  it("the owner's browser waits for a robot that started under 5 minutes ago, then takes over and cancels its upload", async () => {
+    const now = new Date("2026-10-13T10:00:00Z");
+    const robotRow = { ...row, robotJobId: "job-1", renderingUntil: new Date(now.getTime() + 12 * 60_000) };
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(robotRow);
+    mocks.prisma.contentVisual.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(leaseVideoForBrowser(owner, "vid1", now)).rejects.toThrow(/being made automatically/);
+    const where = mocks.prisma.contentVisual.updateMany.mock.calls[0][0].where;
+    // Takeover allowed once the robot's lease ends 10 minutes from now or sooner (it started 5 or more minutes ago).
+    expect(where.robotJobId).toBe("job-1");
+    expect(where.OR).toContainEqual({ renderingUntil: { lte: new Date(now.getTime() + 10 * 60_000) } });
+    expect(mocks.storage.remove).not.toHaveBeenCalled();
+    // Past 5 minutes: the owner wins; the robot's reserved file goes.
+    await leaseVideoForBrowser(owner, "vid1", now);
+    const data = mocks.prisma.contentVisual.updateMany.mock.calls[1][0].data;
+    expect(data).toMatchObject({ robotJobId: null, uploadPath: null, uploadBytes: 0, uploadExpiresAt: null });
+    expect(mocks.storage.remove).toHaveBeenCalledWith([PATH]);
   });
 
   it("finalize is idempotent: the same file again is not billed twice", async () => {

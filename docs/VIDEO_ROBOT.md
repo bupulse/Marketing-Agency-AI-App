@@ -35,23 +35,34 @@ To switch it off, delete the secret in Netlify (owners make videos in their brow
    Google Chrome (`channel: "chrome"`); it downloads no browser.
 3. **Claim** (`POST /api/robot/videos/claim`): up to 2 videos at a time, oldest first. Each is leased for 15 minutes
    (compare-and-set on `renderingUntil`, the same lease the picture drawing uses), so two runs, or the robot and an
-   owner's browser, never make the same video. The upload is reserved through `prepareVideoUpload`, exactly as for the
+   owner's browser, never make the same video. At most 60 claims an hour in all and 10 per company
+   (`ROBOT_CLAIMS_PER_HOUR`, `ROBOT_CLAIMS_PER_BUSINESS_HOUR`). The attempt is counted at claim time, so a run that
+   is killed mid-render still counts. The upload is reserved through `prepareVideoUpload`, exactly as for the
    browser (plan has video, video seconds left, media quota, platform storage guard, at most 3 open uploads). A video
    that fails those checks is released and tried again next run; it does not count as a failure. Each job carries the
    video plan, signed download URLs of its photos (30 minutes, only photos in the owner's own folders) and a signed
    upload URL. No database ids or storage keys are sent apart from what those signed URLs contain.
 4. **Render**: the page is bundled from `scripts/video-robot/page-entry.ts` with the renderer and served to Chrome
    from memory. Photos are downloaded by Node (12 MB and 20 s at most each) and passed as data URLs; a photo that fails
-   draws the brand backdrop, as in the browser. At most 5 minutes per video (less if the lease is shorter).
+   draws the brand backdrop, as in the browser. Photos are fetched only from the storage origin of the job's signed
+   upload URL, and the page itself may load nothing but its in-memory origin (every other request is aborted). The
+   robot talks to the app over https only (plain http only to 127.0.0.1 or localhost, for the self-test). At most 5
+   minutes per video (less if the lease is shorter).
 5. **Upload and confirm** (`POST /api/robot/videos/complete`, job id only): the server runs `finalizeVideo`, the
    browser's own path: the file's real length is read and billed once (`videoSeconds`), the quota is checked with the
-   real size, the old file is replaced, the Autopilot posts get the video, and the post-video hooks run. Confirming
-   twice bills once.
-6. **Fail** (`POST /api/robot/videos/fail`, job id and a reason code): the lease and the reservation go (with the file),
-   and the attempt is counted (`robotAttempts`). After **3** failed robot renders the robot leaves the video alone and
+   real size, the old file is replaced, the Autopilot posts get the video, and the post-video hooks run
+   (`attachToContent`, then auto-scheduling where the app needs no approval). Right before billing it checks the
+   robot still holds the video; a late robot (lease ended, or the owner took over) has its file deleted and nothing
+   billed. Confirming twice bills once. A made video sets the attempt count back to 0.
+6. **Fail** (`POST /api/robot/videos/fail`, job id and a reason code): the lease and the reservation go (with the
+   file). After **3** robot attempts without a video (`robotAttempts`) the robot leaves the video alone and
    the owner's screen says "We could not make it automatically. Make it here in your browser." Editing the captions or
    making the video again starts the count over.
 7. **Report** (`POST /api/robot/videos/report`): claimed, made and failed counts (a `CronRun` row, job `video-robot`).
+
+**The owner always wins:** "Make it now" in the video panel takes the video for the browser unless the robot claimed it
+less than 5 minutes ago (`ROBOT_TAKEOVER_MS`). Past that the robot's job is cancelled, its reserved upload (and any
+file it wrote) is deleted, and its later "complete" is refused.
 
 The run stops claiming when about 17 minutes have passed (the job is killed at 20) or after 12 videos; the workflow's
 concurrency group stops runs overlapping.
@@ -74,8 +85,9 @@ captions drawn; WebM forced: 10.4 s, made in about 23 s. Not yet run on GitHub's
 ## Fonts
 
 The renderer loads the caption font of the video's style (Inter, Playfair Display, Anton or Nunito; Latin and Latin
-Extended) from the same pinned Fontsource CDN the slide designs use, with a 4 s limit, in the browser and in the robot
-alike, so both videos look the same. Without the CDN both fall back to system fonts.
+Extended, woff2) from `public/fonts/video/`, self-hosted: the Fontsource 5.3.0 files of the families the slide designs
+use, all SIL Open Font License 1.1 (licence files next to them). The browser loads them from the app; the robot serves
+them to its page from the checkout. A 4 s limit; a font that does not arrive leaves the system font.
 
 ## Limits
 

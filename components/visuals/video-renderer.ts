@@ -56,11 +56,10 @@ const FONTS: Record<VideoPlan["pack"], { family: string; weight: number; upper: 
   playful: { family: 'Nunito, "Trebuchet MS", system-ui, sans-serif', weight: 800, upper: false },
 };
 
-// The pack's caption font and the business-name weight, from the same pinned Fontsource CDN the slide designs use
-// (lib/designs/templates/fonts.ts), so a video looks the same in every browser and in the video robot's headless
-// Chrome (docs/VIDEO_ROBOT.md). Latin and Latin Extended only; other scripts use the fallback fonts.
-const FONT_CDN = "https://cdn.jsdelivr.net/fontsource/fonts";
-const FONT_VERSION = "5.3.0";
+// The pack's caption font and the business-name weight, self-hosted in public/fonts/video (the Fontsource 5.3.0 files
+// of the families the slide designs use, SIL OFL), so a video looks the same in every browser and in the video
+// robot's headless Chrome (docs/VIDEO_ROBOT.md). Latin and Latin Extended only; other scripts use the fallback fonts.
+const FONT_BASE = "/fonts/video";
 const FONT_FILES: Record<VideoPlan["pack"], { family: string; slug: string; weights: number[] }> = {
   clean: { family: "Inter", slug: "inter", weights: [800, 600] },
   elegant: { family: "Playfair Display", slug: "playfair-display", weights: [700, 600] },
@@ -79,7 +78,7 @@ export async function loadVideoFonts(pack: VideoPlan["pack"], timeoutMs = 4000):
   const files = FONT_FILES[pack] ?? FONT_FILES.clean;
   const faces = files.weights.flatMap((weight) =>
     (Object.keys(FONT_RANGES) as (keyof typeof FONT_RANGES)[]).map((subset) => {
-      const url = `${FONT_CDN}/${files.slug}@${FONT_VERSION}/${subset}-${weight}-normal.woff2`;
+      const url = `${FONT_BASE}/${files.slug}-${subset}-${weight}-normal.woff2`;
       return new FontFace(files.family, `url(${url}) format("woff2")`, { weight: String(weight), unicodeRange: FONT_RANGES[subset] });
     }),
   );

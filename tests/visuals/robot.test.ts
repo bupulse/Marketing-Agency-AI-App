@@ -13,19 +13,25 @@ const mocks = vi.hoisted(() => ({
   finalizeVideo: vi.fn(),
   signedUrls: vi.fn(),
   remove: vi.fn(),
+  rateLimit: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/errors", () => ({ logError: mocks.logError }));
 vi.mock("@/lib/admin/cron-run", () => ({ recordCron: mocks.recordCron }));
+vi.mock("@/lib/rate-limit", () => {
+  class RateLimitError extends Error {}
+  return { rateLimit: mocks.rateLimit, RateLimitError };
+});
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ storage: { from: (bucket: string) => ({ createSignedUrls: (paths: string[], s: number) => mocks.signedUrls(bucket, paths, s), remove: mocks.remove }) } }) }));
 vi.mock("@/lib/visuals/service", () => {
   class VisualError extends Error {}
-  return { VisualError, videoAvailable: mocks.videoAvailable, prepareVideoUpload: mocks.prepareVideoUpload, finalizeVideo: mocks.finalizeVideo };
+  return { ROBOT_LEASE_MS: 15 * 60 * 1000, VisualError, videoAvailable: mocks.videoAvailable, prepareVideoUpload: mocks.prepareVideoUpload, finalizeVideo: mocks.finalizeVideo };
 });
 
+import { RateLimitError } from "@/lib/rate-limit";
 import { VisualError } from "@/lib/visuals/service";
-import { claimRobotVideos, completeRobotVideo, failRobotVideo, parseCounts, recordRobotRun, robotStateOf, ROBOT_LEASE_MS, ROBOT_MAX_ATTEMPTS } from "@/lib/visuals/robot";
+import { claimRobotVideos, completeRobotVideo, failRobotVideo, parseCounts, recordRobotRun, ROBOT_CLAIMS_PER_BUSINESS_HOUR, ROBOT_CLAIMS_PER_HOUR, robotStateOf, ROBOT_LEASE_MS, ROBOT_MAX_ATTEMPTS } from "@/lib/visuals/robot";
 import type { VideoPlan } from "@/lib/visuals/types";
 
 const NOW = new Date("2026-10-13T10:00:00Z");
@@ -59,6 +65,7 @@ beforeEach(() => {
   mocks.signedUrls.mockImplementation(async (_b: string, paths: string[]) => ({ data: paths.map((p) => ({ path: p, signedUrl: `https://storage.example/${p}?sig=1` })) }));
   mocks.recordCron.mockImplementation(async (_job: string, run: () => Promise<unknown>) => run());
   mocks.remove.mockResolvedValue({ data: [], error: null });
+  mocks.rateLimit.mockResolvedValue(undefined);
 });
 
 describe("claiming videos", () => {
@@ -71,6 +78,8 @@ describe("claiming videos", () => {
     expect(lease.where).toMatchObject({ id: "v1", kind: "video", status: "pending", robotAttempts: { lt: ROBOT_MAX_ATTEMPTS }, OR: [{ renderingUntil: null }, { renderingUntil: { lt: NOW } }] });
     expect(lease.data.renderingUntil).toEqual(new Date(NOW.getTime() + ROBOT_LEASE_MS));
     expect(lease.data.robotJobId).toBe(jobs[0].job);
+    // The attempt counts from the claim, so a run killed mid-render still counts toward the 3.
+    expect(lease.data.robotAttempts).toEqual({ increment: 1 });
     expect(mocks.prepareVideoUpload).toHaveBeenCalledWith({ userId: U, businessId: "b1", service: true }, "v1", { bytes: 8 * 1024 * 1024, mimeType: "video/mp4", durationMs: 12_000 });
     expect(jobs[0].upload).toEqual({ url: "https://storage.example/upload?token=t", contentType: "video/mp4" });
     expect(Object.keys(jobs[0].photoUrls).sort()).toEqual([design, own].sort());
@@ -114,8 +123,32 @@ describe("claiming videos", () => {
     mocks.prepareVideoUpload.mockRejectedValue(new VisualError("Your plan's video seconds for this month are used up."));
     expect(await claimRobotVideos({}, NOW)).toEqual([]);
     const release = mocks.prisma.contentVisual.updateMany.mock.calls[1][0];
-    expect(release.data).toEqual({ renderingUntil: null, robotJobId: null });
+    expect(release.data).toEqual({ renderingUntil: null, robotJobId: null, robotAttempts: { decrement: 1 } });
     expect(mocks.logError).not.toHaveBeenCalled();
+  });
+
+  it("claims at most 60 videos an hour in all and 10 per company", async () => {
+    expect(ROBOT_CLAIMS_PER_HOUR).toEqual({ limit: 60, windowSeconds: 3600 });
+    expect(ROBOT_CLAIMS_PER_BUSINESS_HOUR).toEqual({ limit: 10, windowSeconds: 3600 });
+    mocks.prisma.contentVisual.findMany.mockResolvedValue([
+      { id: "v1", businessId: "full", plan: plan() },
+      { id: "v2", businessId: "full", plan: plan() },
+      { id: "v3", businessId: "b1", plan: plan() },
+      { id: "v4", businessId: "b1", plan: plan() },
+    ]);
+    mocks.prisma.business.findUnique.mockResolvedValue({ userId: U });
+    mocks.rateLimit.mockImplementation(async (key: string) => {
+      if (key === "video-robot-claims:full") throw new RateLimitError(60);
+    });
+    let jobs = await claimRobotVideos({ max: 5 }, NOW);
+    expect(mocks.prepareVideoUpload.mock.calls.map((c) => c[1])).toEqual(["v3", "v4"]);
+    expect(jobs).toHaveLength(2);
+    // The global cap stops the claim altogether.
+    vi.clearAllMocks();
+    mocks.rateLimit.mockRejectedValue(new RateLimitError(60));
+    jobs = await claimRobotVideos({ max: 5 }, NOW);
+    expect(jobs).toEqual([]);
+    expect(mocks.prisma.contentVisual.updateMany).not.toHaveBeenCalled();
   });
 
   it("reserves a WebM upload when the robot can only make WebM", async () => {
@@ -134,7 +167,7 @@ describe("completing a job", () => {
     mocks.finalizeVideo.mockResolvedValue({ path: `${U}/videos/v1-abcd1.mp4`, seconds: 12 });
     expect(await completeRobotVideo("job-1", NOW)).toEqual({ ok: true, seconds: 12 });
     expect(mocks.prisma.contentVisual.findUnique.mock.calls[0][0].where).toEqual({ robotJobId: "job-1" });
-    expect(mocks.finalizeVideo).toHaveBeenCalledWith({ userId: U, businessId: "b1", service: true }, "v1", { path: `${U}/videos/v1-abcd1.mp4`, durationMs: 12_000 });
+    expect(mocks.finalizeVideo).toHaveBeenCalledWith({ userId: U, businessId: "b1", service: true }, "v1", { path: `${U}/videos/v1-abcd1.mp4`, durationMs: 12_000 }, { robotJob: "job-1" });
   });
 
   it("refuses an unknown job or one whose lease ran out", async () => {
@@ -143,25 +176,28 @@ describe("completing a job", () => {
     mocks.prisma.contentVisual.findUnique.mockResolvedValueOnce(held({ renderingUntil: new Date(NOW.getTime() - 1) }));
     expect(await completeRobotVideo("late", NOW)).toEqual({ ok: false, error: "unknown_job" });
     expect(mocks.finalizeVideo).not.toHaveBeenCalled();
+    // The late robot's file and reservation go.
+    expect(mocks.remove).toHaveBeenCalledWith([`${U}/videos/v1-abcd1.mp4`]);
+    expect(mocks.prisma.contentVisual.updateMany.mock.calls.map((c) => c[0].data)).toEqual([{ uploadPath: null, uploadBytes: 0, uploadExpiresAt: null }, { renderingUntil: null, robotJobId: null }]);
   });
 
-  it("counts a rejected file as a failed attempt", async () => {
+  it("a rejected file releases the lease (the attempt was counted at claim)", async () => {
     mocks.prisma.contentVisual.findUnique.mockResolvedValueOnce(held());
     mocks.finalizeVideo.mockRejectedValue(new VisualError("Videos can be at most 30 seconds long."));
     expect(await completeRobotVideo("job-1", NOW)).toEqual({ ok: false, error: "rejected" });
     const release = mocks.prisma.contentVisual.updateMany.mock.calls.at(-1)![0];
-    expect(release).toEqual({ where: { id: "v1", robotJobId: "job-1" }, data: { renderingUntil: null, robotJobId: null, robotAttempts: { increment: 1 } } });
+    expect(release).toEqual({ where: { id: "v1", robotJobId: "job-1" }, data: { renderingUntil: null, robotJobId: null } });
   });
 });
 
 describe("failing a job", () => {
-  it("releases lease and reservation, deletes the file and counts the attempt", async () => {
+  it("releases lease and reservation and deletes the file (the attempt was counted at claim)", async () => {
     mocks.prisma.contentVisual.findUnique.mockResolvedValueOnce(held()).mockResolvedValueOnce({ robotAttempts: 3 });
     expect(await failRobotVideo("job-1", "timeout", NOW)).toEqual({ ok: true, attempts: 3 });
     expect(mocks.remove).toHaveBeenCalledWith([`${U}/videos/v1-abcd1.mp4`]);
     const calls = mocks.prisma.contentVisual.updateMany.mock.calls.map((c) => c[0]);
     expect(calls[0].data).toEqual({ uploadPath: null, uploadBytes: 0, uploadExpiresAt: null });
-    expect(calls[1].data).toEqual({ renderingUntil: null, robotJobId: null, robotAttempts: { increment: 1 } });
+    expect(calls[1].data).toEqual({ renderingUntil: null, robotJobId: null });
   });
 
   it("does nothing for a job it does not hold", async () => {
@@ -178,6 +214,8 @@ describe("what the owner sees", () => {
     expect(robotStateOf(row({ robotJobId: "j", renderingUntil: new Date(NOW.getTime() + 1000) }), NOW)).toBe("making");
     expect(robotStateOf(row({ robotJobId: "j", renderingUntil: new Date(NOW.getTime() - 1000) }), NOW)).toBe("queued");
     expect(robotStateOf(row({ robotAttempts: 3 }), NOW)).toBe("browser");
+    // The third try in progress is still "making".
+    expect(robotStateOf(row({ robotAttempts: 3, robotJobId: "j", renderingUntil: new Date(NOW.getTime() + 1000) }), NOW)).toBe("making");
     expect(robotStateOf(row({ status: "ready" }), NOW)).toBeNull();
   });
   it("nothing while the robot is off", () => {

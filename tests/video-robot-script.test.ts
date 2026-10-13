@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { createLogger, formatLine } from "../scripts/video-robot/log.mjs";
-import { api, settings } from "../scripts/video-robot/robot.mjs";
+import { allowedUrl, api, photoDataUrls, settings } from "../scripts/video-robot/robot.mjs";
 
 // The repository is public, so the video robot's GitHub Actions log is public (docs/VIDEO_ROBOT.md): it prints fixed
 // event names with counts and a few known words, nothing else.
@@ -54,6 +54,27 @@ describe("video robot logger", () => {
     }
     expect(lines).toEqual(["[video-robot] The app answered with an error; status: call claim, status 500", "[video-robot] Could not reach the app."]);
     for (const bit of SECRET_BITS) expect(lines.join("\n")).not.toContain(bit);
+  });
+
+  it("talks to the app over https only (plain http only to this machine, for the self-test)", () => {
+    expect(settings({ ROBOT_APP_URL: "http://bupulse.example", VIDEO_ROBOT_SECRET: "s" }).configured).toBe(false);
+    expect(settings({ ROBOT_APP_URL: "ftp://bupulse.example", VIDEO_ROBOT_SECRET: "s" }).configured).toBe(false);
+    expect(settings({ ROBOT_APP_URL: "https://bupulse.example", VIDEO_ROBOT_SECRET: "s" }).configured).toBe(true);
+    expect(settings({ ROBOT_APP_URL: "http://127.0.0.1:4000", VIDEO_ROBOT_SECRET: "s" }).configured).toBe(true);
+    expect(allowedUrl("http://localhost:3000/x")).toBe(true);
+    expect(allowedUrl("http://127.0.0.1.evil.example/")).toBe(false);
+  });
+
+  it("downloads photos only from the storage origin of the job's signed upload URL", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/png" } }));
+    const out = await photoDataUrls(
+      { a: "https://proj.supabase.co/storage/v1/object/sign/media/a.png?token=1", b: "https://evil.example/b.png", c: "http://proj.supabase.co/c.png" },
+      "https://proj.supabase.co/storage/v1/object/upload/sign/media/v.mp4?token=t",
+      fetchImpl,
+    );
+    expect(Object.keys(out)).toEqual(["a"]);
+    expect((out as Record<string, string>).a).toBe("data:image/png;base64,AQID");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it("is not configured without both the URL and the secret, and keeps limits in range", () => {
