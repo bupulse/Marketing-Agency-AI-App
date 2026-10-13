@@ -3,7 +3,7 @@ import "server-only";
 // with in a 30-day cookie (./ref-cookie.ts); sign-up (lib/account.ts) gives the new company to that agent.
 import { randomInt } from "node:crypto";
 import { prisma } from "@/lib/db";
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 import { REF_ALPHABET, isSalesRole, normalizeRef, permissionsOf } from "@/lib/staff/permissions";
 import { REF_COOKIE } from "./ref-cookie";
 
@@ -39,7 +39,7 @@ export async function ensureRefCode(staffId: string): Promise<string> {
 
 /** The full link for a code on a page of the site (default the home page). */
 export function refUrl(code: string, path = "/"): string {
-  const url = new URL(path.startsWith("/") ? path : `/${path}`, siteUrl());
+  const url = new URL(path.startsWith("/") ? path : `/${path}`, publicSiteUrl());
   url.searchParams.set("ref", code);
   return url.toString();
 }

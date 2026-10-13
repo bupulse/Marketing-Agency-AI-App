@@ -4,7 +4,7 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { writeAudit } from "@/lib/admin/audit";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 import { prisma } from "@/lib/db";
 import { LINK_SEEN_EVERY_MS } from "./shared";
 
@@ -45,7 +45,7 @@ export async function createScreenLink(ctx: AdminContext, rawName: string): Prom
     await writeAudit(tx, ctx, "create_screen_link", `screen:${row.id}`, null, { name });
     return row;
   });
-  return { id: row.id, url: `${siteUrl()}/screen/${token}` };
+  return { id: row.id, url: `${publicSiteUrl()}/screen/${token}` };
 }
 
 export async function revokeScreenLink(ctx: AdminContext, id: string): Promise<void> {
