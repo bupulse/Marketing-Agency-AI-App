@@ -65,6 +65,13 @@ ledger, the platform cap (`AI_MONTHLY_BUDGET_USD`) and the company allowance (`A
 - Daily `/api/cron/media-cleanup`: video files go 30 days after their posts were published; videos also go with their
   product, campaign or pruned content (a waiting post keeps its video until then).
 
+## People in most images (13 October 2026)
+
+AI cover with local people (album photo as product reference), one AI image per carousel, people photo reused in
+videos, safety rules in the image prompt, AI images and company allowance per plan (`20261016130000_people_images`),
+"AI images for this month used" note with the image pack add-on. Cost: about $0.04 per post with people (1 AI image);
+at most 100 a month on Business/Pro ($4), within the $6 allowance with text.
+
 ## Not done / next
 
 - Real AI video (Veo or similar): plug into `lib/visuals/ai-video.ts` with credits and the ledger.

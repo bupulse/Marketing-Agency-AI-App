@@ -2,7 +2,7 @@
 // Which network gets a video (the owner's own, or one BuPulse makes from the photos), which gets a picture, and which
 // photo leads each post, rotated so the same photo does not lead every day. Pure.
 import type { Network } from "@/lib/social/types";
-import { seed } from "./angles";
+import { seed } from "./variety";
 import { NETWORK_STYLE, type Shape } from "./networks";
 
 export type GalleryItem = { path: string; name: string; mimeType: string; recentUses?: number };

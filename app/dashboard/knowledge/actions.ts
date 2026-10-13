@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { draftPostsFromContent } from "@/lib/content-board/drafts";
+import { draftPostsFromContent, draftPostsFromPack } from "@/lib/content-board/drafts";
+import { generatePackForSubject } from "@/lib/studio/pack";
 import { z, type ZodError } from "zod";
 import { prisma } from "@/lib/db";
 import { CompanyBudgetExceededError } from "@/lib/ai/budget";
@@ -15,7 +16,7 @@ import { linkPhotos, makeCover, photoAlbums, setPhotoProducts, unlinkPhotos, typ
 import { MEDIA_BULK_MAX } from "@/lib/media/rules";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
 import { editedContentSchema, instructionSchema } from "@/lib/studio/schemas";
-import { generateForSubject, pruneVersions, StudioNotFoundError, variantsJson } from "@/lib/studio/service";
+import { pruneVersions, StudioNotFoundError, variantsJson } from "@/lib/studio/service";
 import { UsageLimitError, type UsageBlockReason } from "@/lib/usage";
 import { carryVisuals } from "@/lib/visuals/content";
 
@@ -44,7 +45,10 @@ function refresh(subject: Subject) {
   revalidatePath("/dashboard", "layout");
 }
 
-/** A new content version for a product or campaign: the first one, or a regeneration with an optional note. */
+/**
+ * New content for a product or campaign: a pack of different posts (docs/CONTENT_PACKS.md), each with its angle, app
+ * and picture, drafted as posts to review. The first pack, or a new one with an optional note. 1 text credit per post.
+ */
 export async function generateContent(subjectId: string, input: { instruction?: string } = {}): Promise<ContentResult> {
   const user = await requireActiveUser();
   const instruction = instructionSchema.safeParse(input?.instruction);
@@ -58,10 +62,12 @@ export async function generateContent(subjectId: string, input: { instruction?: 
   const count = await prisma.generatedContent.count({ where: { businessId: business.id, ...subjectColumns(subject) } });
 
   try {
-    const content = await generateForSubject({ userId: user.id, businessId: business.id, subject, instruction: instruction.data, feature: count > 0 ? "regenerate" : "content" });
-    await draftPosts(business.id, content.id);
+    const pack = await generatePackForSubject({ userId: user.id, businessId: business.id, subject, instruction: instruction.data, feature: count > 0 ? "regenerate" : "content" });
+    await draftPostsFromPack({ businessId: business.id }, pack.packId).catch((e) => logError(e, { source: "content.drafts", level: "warn", businessId: business.id }));
+    revalidatePath("/dashboard/content", "layout");
     refresh(subject);
-    return { ok: true, contentId: content.id };
+    if (!pack.contents[0]) return { ok: false, error: GENERATE_FAILED };
+    return { ok: true, contentId: pack.contents[0].id };
   } catch (error) {
     if (error instanceof StudioNotFoundError) return NOT_FOUND;
     if (error instanceof UsageLimitError) return { ok: false, error: "Your plan does not allow new content right now.", blocked: error.reason };
@@ -90,7 +96,7 @@ export async function saveEditedContent(contentId: string, input: { caption: str
     if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
     throw error;
   }
-  const base = await prisma.generatedContent.findFirst({ where: { id: contentId, businessId: business.id }, select: { productId: true, campaignId: true, language: true } });
+  const base = await prisma.generatedContent.findFirst({ where: { id: contentId, businessId: business.id }, select: { productId: true, campaignId: true, language: true, packId: true, angle: true, network: true } });
   if (!base || (!base.productId && !base.campaignId)) return NOT_FOUND;
   const subject: Subject = base.productId ? { kind: "product", id: base.productId } : { kind: "campaign", id: base.campaignId! };
 
@@ -98,7 +104,7 @@ export async function saveEditedContent(contentId: string, input: { caption: str
   const hashtags = parsed.data.hashtags.map((t) => t.trim()).filter(Boolean).map((t) => (t.startsWith("#") ? t : `#${t}`));
   try {
     const saved = await prisma.generatedContent.create({
-      data: { businessId: business.id, ...subjectColumns(subject), caption, hashtags, videoScript, adHeadlines, language: base.language, variants: variantsJson({ caption, hashtags, videoScript }), edited: true, provider: "edit", model: "owner" },
+      data: { businessId: business.id, ...subjectColumns(subject), caption, hashtags, videoScript, adHeadlines, language: base.language, variants: variantsJson({ caption, hashtags, videoScript }), edited: true, provider: "edit", model: "owner", packId: base.packId, angle: base.angle, network: base.network },
       select: { id: true },
     });
     // The edited version keeps the picture and video of the version it started from.

@@ -21,7 +21,7 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import { aspectFor } from "./images";
 import { makeGroupVisuals, newRunState } from "./visuals";
 import { mediaForPost } from "@/lib/visuals/post-media";
-import { videoAvailable } from "@/lib/visuals/service";
+import { audienceFor, videoAvailable } from "@/lib/visuals/service";
 import { noopTrendSource, type TrendSource } from "./learning";
 import { alertRecipients } from "@/lib/team/recipients";
 import { sendReadyEmail } from "./notify";
@@ -33,7 +33,7 @@ import { getProvider } from "@/lib/social/registry";
 import { localDateISO, nextWeekStart, safeZone, weekdayOfISO, weekKey, weekStartFromKey } from "./timezone";
 import { writeGroup, type WriteRequest, type WriterBrand } from "./writer";
 import { planAutopilotAngles } from "@/lib/content-flow/autopilot";
-import type { AngleChoice } from "@/lib/content-flow/angles";
+import type { AutopilotAngle } from "@/lib/content-flow/autopilot";
 
 export type RunStatus = "planned" | "already_planned" | "nothing_to_plan" | "no_credits" | "failed";
 
@@ -82,7 +82,7 @@ async function claimRun(businessId: string, key: Date, now: Date): Promise<{ id:
   return count === 1 ? { id: run.id } : null;
 }
 
-function factsFor(group: PlannedGroup, angle?: AngleChoice) {
+function factsFor(group: PlannedGroup, angle?: AutopilotAngle) {
   return {
     angle,
     project: group.project && { type: group.project.type, title: group.project.title, price: group.project.price, features: group.project.features, notes: group.project.notes, context: group.project.context },
@@ -173,6 +173,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
     const aiPhotos = await hasFeature(businessId, "aiPhotos");
     // Video ideas get a video plan (made in the owner's browser) when the plan has video.
     const videoAllowed = await videoAvailable(businessId);
+    const audience = await audienceFor(businessId);
     const visualRun = newRunState();
     let aiStopped = false;
     const state: { stop: "credits" | "budget" | "allowance" | null } = { stop: null };
@@ -219,7 +220,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
         const images = await makeGroupVisuals(
           group,
           written,
-          { userId, businessId, businessName: business.name, language: business.contentLanguage, useAiImages: input.config.useAiImages && aiPhotos && !aiStopped, service: options.service ?? false, business: { name: business.name, tone: business.tone, industry: business.industry, brandColors: business.brandColors }, videoAllowed: videoAllowed && !albumVideo },
+          { userId, businessId, businessName: business.name, language: business.contentLanguage, useAiImages: input.config.useAiImages && aiPhotos && !aiStopped, service: options.service ?? false, business: { name: business.name, tone: business.tone, industry: business.industry, brandColors: business.brandColors }, videoAllowed: videoAllowed && !albumVideo, audience },
           visualRun,
         );
         if (images.aiStopped) aiStopped = true;
@@ -281,8 +282,8 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
       }
     };
 
-    // The day's angle per product or campaign post, rotated like "Create today's content" (lib/content-flow/angles.ts).
-    const angles = await planAutopilotAngles(businessId, plan.groups, now);
+    // The next angle per product or campaign post, from the content packs' rotation (lib/content-flow/autopilot.ts).
+    const angles = await planAutopilotAngles(businessId, plan.groups, business.country, now);
 
     // A few groups at a time; each charges and refunds its own credit.
     const queue = [...plan.groups];

@@ -10,8 +10,9 @@ import { DayBar } from "@/components/content-flow/day-bar";
 import { DayVisuals } from "@/components/content-flow/day-visuals";
 import { Button } from "@/components/ui";
 import { activeFilterCount, contentQuery, parseContentFilters, PAGE_SIZE, type ContentScope } from "@/lib/content-board/filters";
-import { loadDayContents, loadDayPosts, loadOnePost, loadSubjectInfo } from "@/lib/content-board/queries";
-import { angleInfo } from "@/lib/content-flow/angles";
+import { loadOnePost, loadSubjectInfo } from "@/lib/content-board/queries";
+import { loadDayContents, loadDayPosts } from "@/lib/content-flow/queries";
+import { ANGLES, isAngleId } from "@/lib/studio/angles";
 import { DAY_SECTION_LABEL, dayLabel, groupDay, parseDay, todayIn, type DaySection } from "@/lib/content-flow/day";
 import { NETWORK_STYLE } from "@/lib/content-flow/networks";
 import { networkChoices, runAllowance } from "@/lib/content-flow/service";
@@ -67,7 +68,7 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
   const sections = groupDay(list.posts, day, zone);
   const visuals = contents
     .filter((c) => c.image || c.video)
-    .map((c) => ({ id: c.id, label: c.network && isNetwork(c.network) ? NETWORK_STYLE[c.network].label : "Post", angle: angleInfo(c.angle)?.label ?? null, image: c.image, video: c.video }));
+    .map((c) => ({ id: c.id, label: c.network && isNetwork(c.network) ? NETWORK_STYLE[c.network].label : "Post", angle: isAngleId(c.angle) ? ANGLES[c.angle].label : null, image: c.image, video: c.video }));
   const create = <CreateDayContent scope={scope} path={path} subjectName={info.name} networks={networks} allowance={allowance} album={album} />;
 
   const empty = filtered ? (

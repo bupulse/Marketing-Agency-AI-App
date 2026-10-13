@@ -24,7 +24,8 @@ export const DEFAULT_CONFIG: AutopilotConfig = {
   postsPerWeek: 3,
   connectionIds: [],
   postingTimes: DEFAULT_POSTING_TIMES,
-  useAiImages: false,
+  // Posts show people (docs/CONTENT_VISUALS.md): AI photos are on unless the owner turns them off.
+  useAiImages: true,
   skipReligious: false,
 };
 

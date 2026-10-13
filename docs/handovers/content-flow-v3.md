@@ -1,6 +1,7 @@
 # Handover: Content flow v3 (day view, "Create today's content")
 
-Built 13 October 2026 on branch `v2-flow` (worktree `~/BuPulse-v2-flow`, from `v2`). Not pushed, not merged. No
+Built 13 October 2026 on branch `v2-flow` (worktree `~/BuPulse-v2-flow`, from `v2`, then merged with v2's people in
+posts and content packs, which mode A now builds on). Not pushed, not merged. No
 database was touched and no AI API was called: the migration was written, `npx prisma generate` was run, the AI is
 mocked in the tests. How it works: `docs/CONTENT.md` ("Content flow v3").
 
@@ -20,15 +21,17 @@ mocked in the tests. How it works: `docs/CONTENT.md` ("Content flow v3").
   for a picture or video still being made now links there.
 - **Create today's content** (dialog): AI makes it for me / I'll create it (Describe today's content, Bring my own),
   apps (connected preselected; others become reminders), design choice (AI designs with people vs Free templates),
-  the cost line before confirming. One text generation per post; angles rotate per subject and day; Gallery photos
-  and videos first; per-network length, hashtags, tone; content language plus the profile's language mix.
-- **Autopilot** gets the same angle rotation (recorded with Studio's) and posts an album video as is for video ideas.
+  the cost line before confirming. Modes A and "Describe" are a content pack (packs' angles and rotation, one call,
+  one text credit per post, people pictures) for the chosen apps, plus the day, Gallery photos and videos first, the
+  design choice, the day's opening and structure, and the language mix. "Bring my own" adapts per app.
+- **Autopilot**: one app per idea (each post its own idea and picture; "Posts per week" counts posts), the next pack
+  angle per product or campaign post, and an album video posted as is for video ideas.
 
 ## Migration
 
-`20261017090000_content_flow_v3`: columns on `GeneratedContent` (`forDate`, `angle`, `network`, `runId`, `mode` with
-CHECK, `brief`) and an index; new table `ContentAngle` with RLS on and all grants revoked
-(`tests/security/rls-coverage.test.ts` passes). Deploy order: back up, `prisma migrate deploy`, then the code.
+`20261017090000_content_flow_v3` (after packs' `20261016140000_content_packs`): columns on `GeneratedContent`
+(`forDate`, `mode` with CHECK, `brief`) and an index. No new table. Deploy order: back up, `prisma migrate deploy`,
+then the code.
 
 ## Decisions to confirm with the owner
 
@@ -37,8 +40,11 @@ CHECK, `brief`) and an index; new table `ContentAngle` with RLS on and all grant
   video uploads are added to the Gallery (a media task, not done here).
 - **Media descriptions** are the Gallery file names (camera names like `IMG_2034` are ignored). There is no separate
   description or alt-text field on `MediaAsset`; adding one would make captions match photos better.
-- **One angle per subject per day** (all the day's posts share it; each network gets its own hook-led text). A second
-  run on the same day takes the next angle and does not replace the first run's drafts.
+- **Each post of a day has its own angle** (packs), and the next day continues the subject's rotation. A second run
+  on the same day continues it too and does not replace the first run's drafts (packs from "Write content" do).
+- **Autopilot volume:** with one app per idea, "Posts per week" (1 to 14) is the total number of posts, one text
+  credit each, spread over the accounts (before, each idea went to every account for one credit). Autopilot's angle
+  choices are not stored, so the rotation counts only Studio and day-run content.
 - **Bring my own:** photos are used as they are (the networks crop them); "Add BuPulse designs" redraws feed posts in
   each network's shape instead. TikTok / YouTube are skipped without a video. A failed adaptation posts the owner's
   caption as typed (uncharged).
@@ -53,5 +59,5 @@ CHECK, `brief`) and an index; new table `ContentAngle` with RLS on and all grant
 - A run makes its text calls in parallel and its art director calls in parallel (about 10 to 20 s for 5 apps); the
   pictures are drawn on the day view afterwards, like before.
 - The design library expansion (`v2-templates`) needs no change here: the art director reads `TEMPLATES` and `PACKS`.
-- People in posts (`v2-media`) plugs in through `planVisuals` / `createAiDesign`; both branches touch
-  `components/content-board/schedule-all.tsx` with the same lint fix (identical text).
+- `tests/content-board/filters.test.ts`: the `cardExcerpt` test imports the queries module inside the test, which
+  now takes more than 5 s on a cold run (the visuals service grew); it has a 30 s timeout.

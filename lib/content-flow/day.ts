@@ -35,7 +35,7 @@ export function dayBounds(day: string, zone: string): { gte: Date; lt: Date } {
   return { gte: at(day), lt: at(addDays(day, 1)) };
 }
 
-/** The day as a DATE column value (midnight UTC of that calendar day), for GeneratedContent.forDate and ContentAngle.day. */
+/** The day as a DATE column value (midnight UTC of that calendar day), for GeneratedContent.forDate. */
 export function dayDate(day: string): Date {
   const { year, month, day: d } = parseDayKey(day);
   return new Date(Date.UTC(year, month - 1, d));

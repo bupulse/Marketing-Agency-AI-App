@@ -4,7 +4,7 @@ const { aggregate, create, logError } = vi.hoisted(() => ({ aggregate: vi.fn(), 
 vi.mock("@/lib/db", () => ({ prisma: { aiCall: { aggregate, create } } }));
 vi.mock("@/lib/errors", () => ({ logError }));
 
-import { AIBudgetExceededError, clearBudgetCache, COMPANY_ALLOWANCE_MESSAGE, CompanyBudgetExceededError, companyCallAllowed, widgetAiShare, WidgetBudgetExceededError } from "@/lib/ai/budget";
+import { AIBudgetExceededError, clearBudgetCache, COMPANY_ALLOWANCE_MESSAGE, CompanyBudgetExceededError, companyCallAllowed, widgetAiShare, WidgetBudgetExceededError, clearAllowanceCache } from "@/lib/ai/budget";
 import { withLedger } from "@/lib/ai/ledger";
 
 const run = () =>
@@ -15,10 +15,14 @@ const run = () =>
     () => ({ provider: "gemini", model: "gemini-2.5-flash", usage: { inputTokens: 10, outputTokens: 10 } }),
   );
 
+// The plan allowance is cached for 30 s per company.
+beforeEach(() => clearAllowanceCache());
+
 describe("monthly AI budget", () => {
   beforeEach(() => {
     clearBudgetCache(); // the cap is cached for 30 s
     for (const m of [aggregate, create, logError]) m.mockReset();
+    clearAllowanceCache();
     delete process.env.AI_MONTHLY_BUDGET_USD;
   });
 

@@ -42,16 +42,20 @@ for `/api/generate`, the visuals).
 
 ## Content flow v3: "Create today's content"
 
-Code: `lib/content-flow/` (`angles.ts`, `day.ts`, `media.ts`, `networks.ts`, `cost.ts` are pure; `writer.ts`,
-`service.ts`, `autopilot.ts`), `components/content-flow/`, `app/dashboard/content/day-actions.ts`.
+Code: `lib/content-flow/` (`variety.ts`, `day.ts`, `media.ts`, `networks.ts`, `cost.ts` are pure; `writer.ts`,
+`service.ts`, `queries.ts`, `autopilot.ts`), `components/content-flow/`, `app/dashboard/content/day-actions.ts`. It is
+built on content packs (`docs/CONTENT_PACKS.md`): the same angles, rotation, writer and people pictures.
 
 The button on a subject's day view opens a dialog with two ways to make the business's **today** (its time zone):
 
-- **AI makes it for me** (`mode ai`). Step 1, captions: one post per chosen app (connected ones are preselected;
-  apps not connected get a reminder post as before), one text call and one text generation each, written for the
-  network (`NETWORK_STYLE`: length, hashtag count, emojis, video or not) from the Knowledge base (product or campaign
-  block, company profile, customers, positioning and competitors, FAQs and policies, quotable reviews only, the
-  Digital Marketing Profile's voice and do / don't) and the **day's angle**. Step 2, visuals: Gallery first (below),
+- **AI makes it for me** (`mode ai`). Step 1, captions: a content pack with one post per chosen app (connected ones
+  are preselected; apps not connected get a reminder post as before): the packs' `chooseAngles` picks one angle per
+  post from the subject's rotation, `spreadNetworks` gives each app the angle that suits it, and `writePack` writes
+  them in one call (one text generation per post, reserved up front, the ones not written given back) from the
+  Knowledge base (product or campaign block, company profile, customers, positioning, policies, quotable reviews only,
+  the Digital Marketing Profile's voice and do / don't). Each post's line in the prompt also says what it shows
+  (Gallery) and the day's opening and structure; then `fitToNetwork` holds each caption to its app (length, hashtag
+  count, no emojis on LinkedIn). Step 2, visuals: Gallery first (below),
   then AI people photos (when "AI designs" was chosen and credits are left; the existing people logic of
   `createAiDesign`) or free designs. The art director (one call per designed post) picks the template from the whole
   registry (`TEMPLATES`), so the owner never picks one.
@@ -73,14 +77,13 @@ text generations and 12 AI images left this month." One text generation per post
 designed post and never more than the credits left; videos BuPulse makes count video seconds when they are made, as
 before. A run whose posts need more text generations than are left is refused before anything is charged.
 
-**Angles** (`angles.ts`): price or offer, how it works, features and benefits, news or announcement, customer story,
-tips, FAQ, why us, behind the scenes, local moment, call to action, plus a hook (6) and a structure (5). Angles the
-facts cannot support are left out (no price: no offer angle; no quotable review: no customer story; no FAQ: no FAQ
-angle; news only for a campaign or a product added in the last 30 days). Each pick is the least recently used for the
-subject (`ContentAngle` rows, Studio and Autopilot together), ties broken by a hash of subject and day, so every angle
-is used before one returns and consecutive days always differ in angle, hook and structure; a second run on the same
-day takes another angle. The writer also gets the subject's last captions (30 days) with "do not repeat their opening,
-wording or structure".
+**Angles, day after day.** The angles are the packs' (`lib/studio/angles.ts`: price, how it works, features, news,
+customer story, behind the scenes, tips, FAQ, why us, local moment, book or buy, each only when its facts exist).
+The rotation reads `GeneratedContent.angle` for the subject (packs, day runs; General has its own history), so the
+angles a subject had are the last to come back and the next day's posts take the ones it has not had lately; a second
+run on the same day continues the rotation. On top, `variety.ts` moves the opening (6 hooks) and the structure (5)
+one step a day and one step per post, so consecutive days never open or flow alike even when an angle returns. The
+writer also gets the subject's last captions (30 days) with "do not repeat their opening, wording or structure".
 
 **Gallery first** (`media.ts`): the subject's album (a campaign without photos uses its first product's album; General
 uses the newest 12 Gallery items), photos and videos. TikTok and YouTube take the album's video when there is one
@@ -98,16 +101,23 @@ path, so they work as soon as the Gallery accepts video uploads.
 language mix (its "languages" answer, for example "Kinyarwanda and English") adds a few short phrases of the other
 language where a local customer would say them, at most one on LinkedIn; prices, names and facts are never translated.
 
-**Results**: one `GeneratedContent` row per post (`forDate`, `angle`, `network`, `runId`, `mode`, `brief`, and
-`postsDraftedAt` set) with its own visuals, and one post per row (`source STUDIO`, `PENDING_APPROVAL`, one `groupId`
-per run). Designed pictures and BuPulse videos are filled in when drawn (`attachToContent`), then auto-approval checks
+**Pictures**: as packs (`planPackVisuals`), the art director is asked per designed post with its angle's people,
+the covers are made to differ (`diversifyPack`), AI photos go to the first posts while the plan's images last (the rest
+say when they refill), but the photos are the Gallery-first ones above, and "Free templates" gives no AI photos.
+
+**Results**: one `GeneratedContent` row per post (the pack's `packId`, `angle`, `network`, and `forDate`, `mode`,
+`brief`, `postsDraftedAt`) with its own visuals, and one post per row (`source STUDIO`, `PENDING_APPROVAL`, `groupId`
+= the pack). Designed pictures and BuPulse videos are filled in when drawn (`attachToContent`), then auto-approval checks
 them again; everything else (approval, auto-approval, reminders for apps not connected, "Schedule all") is as below.
 A new run does not replace earlier drafts. Older content (no `forDate`) shows on the day it was written.
 
-**Autopilot** (`lib/content-flow/autopilot.ts`): before writing, every week's post about a product or campaign gets
-the day's angle from the same rotation (recorded with `source autopilot`); the writer's prompt carries the angle, hook
-and structure. Its photos were already album first, then the least recently used Gallery photos; a video idea whose
-product or campaign has an album video now posts that video as it is (no video plan is made for it).
+**Autopilot.** One app per idea, as packs: the planner (`buildWeekPlan`) puts each idea on one account (ideas that fit
+the fewest accounts choose first; each takes the account with the fewest posts so far), so every post is its own idea
+with its own picture, written for its one app; "Posts per week" is now the number of posts (one text credit each).
+Before writing, every post about a product or campaign gets the next angle of the subject's pack rotation with the
+day's opening and structure (`lib/content-flow/autopilot.ts`; Autopilot's choices are not written back to the
+history, which only content rows hold). Its photos were already album first, then the least recently used Gallery
+photos; a video idea whose product or campaign has an album video now posts that video as it is.
 
 **Permissions**: the `content` permission, the `content` and `calendar` features, 30 runs an hour per company.
 
@@ -262,10 +272,8 @@ The in-app notice on the Content page covers the same posts for 24 hours.
 
 ## Data
 
-Migration `20261017090000_content_flow_v3`: `GeneratedContent.forDate` (DATE), `angle`, `network`, `runId`, `mode`
-(CHECK ai | describe | own), `brief`, index `(businessId, forDate)`; table `ContentAngle` (`businessId`, `subjectKey`
-"product:<id>" | "campaign:<id>" | "general", `day` DATE, `angle`, `hook`, `structure`, `source` CHECK studio |
-autopilot, unique per business, subject, day and source) with RLS on and every grant revoked.
+Migration `20261017090000_content_flow_v3` (after `20261016140000_content_packs`): `GeneratedContent.forDate` (DATE),
+`mode` (CHECK ai | describe | own), `brief`, index `(businessId, forDate)`. Columns only.
 
 Migration `20261016090000_content_auto_approval` (columns only, no new table, so the existing RLS and revoked grants
 cover them): `PostSource` gains `STUDIO`; `Business.contentSettings` (JSONB) and `contentSummarySentAt`;
@@ -282,8 +290,9 @@ need `contentSettings` (Owner, Admin).
 
 ## Tests
 
-`tests/content-flow/`: angle rotation per day (no repeat on consecutive days, all angles before a repeat, facts
-filter, same-day rerun, Autopilot), Gallery first including videos, Bring my own per network (media, text rules,
+`tests/content-flow/`: the day's pack (angles after the subject's last ones, one call, credits per post and refunds,
+design choice and AI image limit, General), day-to-day variety, Autopilot angles, `tests/autopilot/planner.test.ts`
+one app per idea, Gallery first including videos, Bring my own per network (media, text rules,
 adaptation with the AI mocked), the day view (Africa/Kigali bounds, `?day=`, the query, sections), the run (one text
 generation per post, refunds, angle stored, posts and visuals, refusal before charging), the limits preview, and the
 product and campaign pages without content tools. `tests/content-board/`: filters (parsing, query string round trip, date windows, the Prisma query), grouping and counts,

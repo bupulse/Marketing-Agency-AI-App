@@ -105,7 +105,6 @@ model Business {
   products         Product[]
   campaigns        Campaign[]
   contents         GeneratedContent[]
-  contentAngles    ContentAngle[]
   demoBookings     DemoBooking[]
   designs          Design[]
   contentVisuals   ContentVisual[]
@@ -186,13 +185,14 @@ model GeneratedContent {
   // When its posts to review were drafted (lib/content-board/drafts.ts); null for content from before, which is drafted
   // once when its product or campaign is opened.
   postsDraftedAt DateTime?
-  // Content flow v3 (docs/CONTENT.md, lib/content-flow/): one row per post of a day's run. The business-local day it
-  // was made for, the angle it was written from, the network it was written for, the run it belongs to, how it was
-  // made ("ai" | "describe" | "own") and the owner's brief or caption. Null on content from before.
-  forDate     DateTime? @db.Date
+  // Content packs (docs/CONTENT_PACKS.md): the posts written together share packId; each has its angle
+  // (lib/studio/angles.ts) and the one app it is for. All null for content from before packs (one post for every app).
+  packId      String?
   angle       String?
   network     String?
-  runId       String?
+  // Content flow v3 (docs/CONTENT.md, lib/content-flow/): the business-local day a post was made for on the day view,
+  // how it was made ("ai" | "describe" | "own") and the owner's brief or caption. Null on content from before.
+  forDate     DateTime? @db.Date
   mode        String?
   brief       String?
   provider    String // "gemini" | "claude" | "edit"
@@ -204,25 +204,8 @@ model GeneratedContent {
   @@index([productId, createdAt])
   @@index([campaignId, createdAt])
   @@index([businessId, createdAt])
+  @@index([packId])
   @@index([businessId, forDate])
-}
-
-// The angle (and hook and structure) a product's, campaign's or General's posts used on a day, so the next days take
-// another one (lib/content-flow/angles.ts). Written by "Create today's content" and by Autopilot.
-model ContentAngle {
-  id         String   @id @default(cuid())
-  businessId String
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  subjectKey String // "product:<id>" | "campaign:<id>" | "general"
-  day        DateTime @db.Date // business-local day
-  angle      String
-  hook       String
-  structure  String
-  source     String // "studio" | "autopilot"
-  createdAt  DateTime @default(now())
-
-  @@unique([businessId, subjectKey, day, source])
-  @@index([businessId, subjectKey, day])
 }
 
 // ---- Knowledge base (docs/KNOWLEDGE_BASE.md) ----------------------------------------------------------------------
@@ -1026,7 +1009,7 @@ model AutopilotSettings {
   postsPerWeek          Int      @default(3)
   connectionIds         String[] // accounts Autopilot writes for
   postingTimes          String[] @default(["09:00", "18:00"]) // local times (Business.timezone) it may use
-  useAiImages           Boolean  @default(false) // false: gallery photos and free templates only
+  useAiImages           Boolean  @default(true) // AI photos with people (image credits); false: gallery photos and free templates only
   skipReligiousHolidays Boolean  @default(false) // true: no greetings or posts for religious holidays
   updatedAt             DateTime @updatedAt
 }
@@ -1413,6 +1396,8 @@ model PlanDefinition {
   // `features` holds the same bullets as `highlights`; `capabilities` is { apiAccess, ownComposio } derived from featureKeys.
   features             Json
   capabilities         Json
+  // The monthly AI allowance of a company on this plan, in USD (lib/ai/budget.ts); NULL uses AI_COMPANY_MONTHLY_USD.
+  aiMonthlyUsd         Float?
   paddleProductId      String?
   paddleMonthlyPriceId String?
   paddleYearlyPriceId  String?

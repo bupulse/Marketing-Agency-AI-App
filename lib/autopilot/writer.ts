@@ -7,7 +7,7 @@ import { AIProviderError, type TextProvider, type TokenUsage } from "@/lib/ai/ty
 import { getProvider } from "@/lib/social/registry";
 import type { Network } from "@/lib/social/types";
 import { normalizeHashtags, truncateSmart } from "@/lib/studio/variants";
-import { angleLines, type AngleChoice } from "@/lib/content-flow/angles";
+import type { AutopilotAngle } from "@/lib/content-flow/autopilot";
 import type { Trend } from "./learning";
 import type { AutopilotFormat, Idea } from "./playbook";
 
@@ -19,8 +19,8 @@ export interface WriterFacts {
   /** "YYYY-MM-DD" the post goes out, for "time of year" ideas. */
   date: string;
   trends?: Trend[];
-  /** The day's angle, hook and structure for the product or campaign (lib/content-flow/angles.ts), so days differ. */
-  angle?: AngleChoice;
+  /** The product's or campaign's next angle from the content packs' rotation, with the day's opening and structure. */
+  angle?: AutopilotAngle;
 }
 
 export interface WriterBrand extends BrandContext {
@@ -138,7 +138,7 @@ export function buildPrompt(req: WriteRequest): string {
         .filter(Boolean)
         .join("\n"),
     faq && `Question customers ask: ${faq.question}\nThe business's own answer (use only this): ${faq.answer}`,
-    facts.angle && `Write it from this angle where it fits the idea, so it reads differently from other days:\n${angleLines(facts.angle).join("\n")}`,
+    facts.angle && `Write it from this angle where it fits the idea, so it reads differently from the other posts about it: ${facts.angle.label}. ${facts.angle.brief}\nOpening: ${facts.angle.hook} Structure: ${facts.angle.structure}`,
     facts.trends && facts.trends.length > 0 && `Currently popular topics and hashtags you may use if they genuinely fit:\n- ${facts.trends.map((t) => `${t.topic} ${t.hashtags.join(" ")}`).join("\n- ")}`,
     req.previousText && `A previous version read:\n"""${req.previousText}"""\nWrite a clearly different take, not a light rewording.`,
     req.instruction && `The owner asks: ${req.instruction}\nFollow this request while keeping the rules above.`,
