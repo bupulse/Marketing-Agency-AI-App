@@ -106,7 +106,7 @@ describe("the migration seeds exactly today's plans", () => {
       const r = row(key);
       // The pricing copy changed later with the AI image limits (20261016130000_people_images).
       r.features = r.features.map((f: string) => AI_IMAGE_COPY[f] ?? f);
-      expect(r).toMatchObject({ name: c.name, description: c.description, isTrial: c.isTrial, trialDays: c.trialDays, sortOrder: c.sortOrder, highlight: c.highlight, monthly: c.priceUsdMonthly * 100, yearly: c.priceUsdYearly * 100, limits: Object.fromEntries(Object.entries(c.limits).filter(([k]) => k !== "seats" && k !== "videoSeconds" && k !== "image" && k !== "voiceCharacters")), features: c.highlights, caps: { apiAccess: c.features.includes("apiAccess"), ownComposio: c.features.includes("ownComposio") } });
+      expect(r).toMatchObject({ name: c.name, description: c.description, isTrial: c.isTrial, trialDays: c.trialDays, sortOrder: c.sortOrder, highlight: c.highlight, monthly: c.priceUsdMonthly * 100, yearly: c.priceUsdYearly * 100, limits: Object.fromEntries(Object.entries(c.limits).filter(([k]) => k !== "seats" && k !== "videoSeconds" && k !== "image" && k !== "voiceCharacters" && k !== "postsPerAppPerDay")), features: c.highlights, caps: { apiAccess: c.features.includes("apiAccess"), ownComposio: c.features.includes("ownComposio") } });
       // seats arrive with their own migration (the plan_seats one); here only the original five limits are compared
       expect(Object.keys(r.limits).sort()).toEqual(["chat", "image", "text", "videoSeconds", "voiceCharacters"]);
     }

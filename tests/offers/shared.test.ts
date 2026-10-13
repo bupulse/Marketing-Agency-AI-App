@@ -44,7 +44,7 @@ describe("pricing totals", () => {
 
   it("limits above what is included are bought in blocks; add-ons bring their own allowance", () => {
     const q = quote({ features: ["websiteChat"], limits: { text: 450, image: 100, chat: 1500, seats: 5 } });
-    expect(q.included).toEqual({ text: 200, image: 100, chat: 500, seats: 3 });
+    expect(q.included).toEqual({ text: 200, image: 100, chat: 500, seats: 3, postsPerAppPerDay: 1 });
     const line = (k: string) => q.lines.find((l) => l.key === k);
     expect(line("block:text")).toMatchObject({ quantity: 3, totalMinor: 9000 }); // 250 more texts = 3 blocks of 100
     expect(line("block:chat")).toMatchObject({ quantity: 1, totalMinor: 3000 }); // 1,000 more replies
@@ -168,5 +168,16 @@ describe("request validation", () => {
     expect(requestSchema.safeParse({ ...ok, description: "shoes" }).success).toBe(false);
     expect(requestSchema.safeParse({ ...ok, goals: "" }).success).toBe(false);
     expect(requestSchema.safeParse({ ...ok, goals: "x".repeat(2001) }).success).toBe(false);
+  });
+});
+
+describe("posts per app per day in an offer", () => {
+  it("is set (1 to 10), not priced, and the custom plan carries it; the base plan's is the default", () => {
+    const q = quote({ limits: { ...baseLimits, postsPerAppPerDay: 6 } });
+    expect(q.limits.postsPerAppPerDay).toBe(6);
+    expect(q.lines.some((l) => l.key.includes("posts"))).toBe(false);
+    expect(quote({ base: { ...BUSINESS, limits: { ...BUSINESS.limits, postsPerAppPerDay: 3 } } }).limits.postsPerAppPerDay).toBe(3);
+    expect(offerDraftSchema.safeParse({ limits: { text: 1, image: 1, chat: 1, seats: 1, postsPerAppPerDay: 11 }, interval: "MONTH" }).success).toBe(false);
+    expect(offerDraftSchema.parse({ limits: { text: 1, image: 1, chat: 1, seats: 1 }, interval: "MONTH" }).limits.postsPerAppPerDay).toBe(1);
   });
 });

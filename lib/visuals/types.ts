@@ -71,6 +71,8 @@ export interface VisualSlide {
   scene?: string;
   /** A designed carousel slide drawn over the cover's photo (one AI image per carousel). */
   useCoverPhoto?: boolean;
+  /** An image credit reserved for this slide's AI photo when it was planned (ISO period start of the reservation). */
+  prepaidAi?: string | null;
   /** The AI photo once paid for (a Design in the designs bucket), so re-styling the slide never pays twice. */
   aiPhotoPath?: string | null;
   /** The rendered design. Null until the slide is drawn. */

@@ -15,6 +15,10 @@ own app, its own caption and hashtags, and its own picture with people. Code: `l
    least recently used (`GeneratedContent.angle` history), so an angle does not come back until the others had their
    turn. A fresh subject starts with what sells its kind best (products: features, price, story...; services: how it
    works, story...; events: news, book...).
+   Content flow v3 added more ideas (playful, question or poll, breaking news, did you know, trivia, myth vs fact,
+   tip of the day, customer spotlight, before and after, meme-style humour, and contests for "Create today's
+   content" only), each marked fun or professional, with an optional fun share (`chooseAngles` options); see
+   `docs/CONTENT.md`.
 2. **Apps** (`spreadNetworks`). The pack is spread over the company's usable connected apps (none connected:
    Instagram, Facebook, TikTok, LinkedIn): every app gets one post before any gets a second, and each angle goes to the
    app it suits best (how it works on TikTok, news on Facebook, why us on LinkedIn...). Format follows the app: a

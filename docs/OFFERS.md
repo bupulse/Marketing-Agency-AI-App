@@ -27,6 +27,9 @@ payment switches the plan on.
 3. Blocks for each limit above what is included (base plan limit + the add-ons' allowances), rounded up to whole blocks.
 4. Extra users above the base plan's seats.
 
+"Posts per app per day" (1 to 10, the base plan's by default) is set in Limits but not priced; the custom plan carries
+it (`limits.postsPerAppPerDay`, docs/CONTENT.md).
+
 Yearly: the base plan's yearly price plus 10 months of each add-on (the regional plans' rule). A line with no price in
 the region is flagged ("No price in RW") and counted as 0. The admin may type the price the client pays (rounding or
 discount); a price that differs from the computed total needs a reason. The client sees the computed total struck

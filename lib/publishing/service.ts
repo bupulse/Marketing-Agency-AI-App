@@ -15,6 +15,7 @@ import { formatFor, validatePost, type PostFormatName } from "./validate";
 import type { ComposeInput, EditInput } from "./types";
 import { composerMediaFor, isVideoPath, trimNote, videoFitsNetwork } from "@/lib/visuals/post-media";
 import { readyMedia } from "@/lib/visuals/service";
+import { contestBlocked } from "@/lib/content-flow/contest";
 
 /** A problem the owner can fix. `code` tells the action layer whether it was a missing thing, bad input or a race. */
 export class PublishingError extends Error {
@@ -388,15 +389,17 @@ export async function scheduleAtFreeSlot(
 export async function approvePosts(businessId: string, postIds: string[], now = new Date()): Promise<{ approved: number; skipped: number }> {
   const ids = [...new Set(postIds)].slice(0, 200);
   if (ids.length === 0) return { approved: 0, skipped: 0 };
-  const posts = await prisma.post.findMany({ where: { id: { in: ids }, businessId, status: "PENDING_APPROVAL" }, select: { id: true, network: true, connectionId: true, scheduledAt: true } });
-  if (posts.length === 0) return { approved: 0, skipped: 0 };
+  const found = await prisma.post.findMany({ where: { id: { in: ids }, businessId, status: "PENDING_APPROVAL" }, select: { id: true, network: true, connectionId: true, scheduledAt: true, text: true, contest: true } });
+  // A contest waits until the owner confirmed its prize and rules (lib/content-flow/contest.ts).
+  const posts = found.filter((p) => !contestBlocked(p));
+  if (posts.length === 0) return { approved: 0, skipped: found.length };
 
   const stale = posts.filter((p) => !p.scheduledAt || p.scheduledAt.getTime() <= now.getTime());
   const times = stale.length > 0 ? await bestTimesFor(businessId, stale, now) : new Map<string, Date>();
 
   // `skipped`: no free time could be found (every pick was taken by another post on the account): it stays in review.
   let approved = 0;
-  let skipped = 0;
+  let skipped = found.length - posts.length;
   for (const post of posts) {
     const scheduledAt = times.get(post.id);
     const data = { status: "SCHEDULED" as const, reviewNote: null };

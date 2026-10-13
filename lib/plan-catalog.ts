@@ -13,6 +13,7 @@ import {
   type PlanLimits,
   type PlanStatus,
   type UsageMetric,
+  postsPerAppLimit,
 } from "@/lib/plans";
 import type { BillingInterval, BillingProvider } from "@/lib/generated/prisma/client";
 
@@ -109,6 +110,8 @@ export function cleanLimits(value: unknown, base?: PlanLimits): PlanLimits {
     }
     const seats = (value as Record<string, unknown>).seats;
     if (typeof seats === "number" && Number.isInteger(seats)) out.seats = Math.min(Math.max(seats, SEATS_MIN), SEATS_MAX);
+    const perApp = (value as Record<string, unknown>).postsPerAppPerDay;
+    if (typeof perApp === "number" && Number.isInteger(perApp)) out.postsPerAppPerDay = postsPerAppLimit({ postsPerAppPerDay: perApp });
   }
   return out;
 }

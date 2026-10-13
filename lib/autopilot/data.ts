@@ -19,6 +19,8 @@ import { campaignContext, productContext } from "@/lib/knowledge/context";
 import { legacyTypeOf } from "@/lib/knowledge/legacy";
 import { formatPrice } from "@/lib/knowledge/products";
 import { isVideoPath } from "@/lib/visuals/post-media";
+import { postsPerAppLimit } from "@/lib/plans";
+import { getUsageSummary } from "@/lib/usage";
 
 const CONTEXT_FIELDS = { kind: true, name: true, category: true, summary: true, description: true, priceModel: true, priceAmount: true, currency: true, priceNote: true, usps: true, features: true, targetCustomer: true, details: true } as const;
 
@@ -138,6 +140,7 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
     photos: assets.map((a) => ({ id: a.id, path: a.path, folderId: a.folderId, mimeType: a.mimeType, recentUses: uses.get(a.path) ?? 0 })),
     existing: existing.flatMap((e) => (e.connectionId && e.scheduledAt ? [{ connectionId: e.connectionId, scheduledAt: e.scheduledAt }] : [])),
     recentIdeas,
+    postsPerAppPerDay: await getUsageSummary(business.userId).then((u) => postsPerAppLimit(u.limits)).catch(() => 1),
     profile: buildProfile(results, timeZone),
     now,
   };

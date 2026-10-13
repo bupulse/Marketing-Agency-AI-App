@@ -13,6 +13,9 @@ import { getProvider, isNetwork } from "@/lib/social/registry";
 import { NETWORKS, type Network } from "@/lib/social/types";
 import { createClient } from "@/lib/supabase/server";
 import { readItems } from "@/lib/visuals/service";
+import { IDEAS } from "@/lib/autopilot/playbook";
+import { contestBlocked, readContest } from "@/lib/content-flow/contest";
+import { ANGLES, isAngleId } from "@/lib/studio/angles";
 import { scriptLines } from "@/lib/visuals/video-plan";
 import { contentWhere, startOfToday, type ContentFilters, type ContentScope } from "./filters";
 import { buildSubjectCards, GENERAL_LABEL, GENERAL_NAME, type CountRow, type SubjectCard, type SubjectRow } from "./grouping";
@@ -33,6 +36,10 @@ export type ContentPost = CalendarPost & {
   /** A still for a video post (the content's picture), signed; null when there is none. */
   poster: string | null;
   subject: { kind: "product" | "campaign"; id: string; name: string } | null;
+  /** The idea type: the content's angle ("Tip of the day"), or Autopilot's idea. Null for hand-made posts. */
+  idea: string | null;
+  /** A contest the AI suggested: waits for the owner's prize, end date and winner rule (lib/content-flow/contest.ts). */
+  contest: { pending: boolean } | null;
 };
 
 export type SubjectCardView = Omit<SubjectCard, "lastActivity"> & { coverUrl: string | null; lastActivity: string | null };
@@ -75,6 +82,20 @@ async function postersFor(businessId: string, rows: PostRow[]): Promise<Map<stri
   return out;
 }
 
+/** The idea type of each post: its content's angle (packs, day runs), or Autopilot's playbook idea. */
+async function ideasFor(businessId: string, rows: PostRow[]): Promise<Map<string, string>> {
+  const ids = [...new Set(rows.flatMap((r) => (r.contentId ? [r.contentId] : [])))];
+  const contents = ids.length ? await prisma.generatedContent.findMany({ where: { businessId, id: { in: ids }, angle: { not: null } }, select: { id: true, angle: true } }) : [];
+  const angleOf = new Map(contents.map((c) => [c.id, c.angle]));
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    const angle = r.contentId ? angleOf.get(r.contentId) : null;
+    const label = isAngleId(angle) ? ANGLES[angle].label : r.playbookId ? (IDEAS.find((i) => i.id === r.playbookId)?.name ?? null) : null;
+    if (label) out.set(r.id, label);
+  }
+  return out;
+}
+
 /** Captions of the content versions video ideas were written from. */
 async function captionsFor(businessId: string, rows: PostRow[]): Promise<Map<string, string>> {
   const ids = [...new Set(rows.flatMap((r) => (r.format === "SCRIPT" && r.contentId ? [r.contentId] : [])))];
@@ -91,7 +112,7 @@ export function cardExcerpt(post: { format: string; title: string | null; text: 
 
 /** Post rows as cards, with every photo and poster signed in one batch. */
 export async function toContentPosts(businessId: string, rows: PostRow[]): Promise<ContentPost[]> {
-  const [posters, captions] = await Promise.all([postersFor(businessId, rows), captionsFor(businessId, rows)]);
+  const [posters, captions, ideas] = await Promise.all([postersFor(businessId, rows), captionsFor(businessId, rows), ideasFor(businessId, rows)]);
   const signed = await sign([...rows.flatMap((r) => r.mediaPaths), ...posters.values()]);
   return rows.map((r) => {
     const network = r.network as Network;
@@ -127,6 +148,8 @@ export async function toContentPosts(businessId: string, rows: PostRow[]): Promi
       excerpt: cardExcerpt(r, r.contentId ? captions.get(r.contentId) : undefined),
       poster: poster ? (signed.get(poster) ?? null) : null,
       subject: r.product ? { kind: "product", id: r.product.id, name: r.product.name } : r.campaign ? { kind: "campaign", id: r.campaign.id, name: r.campaign.name } : null,
+      idea: ideas.get(r.id) ?? null,
+      contest: readContest(r.contest) ? { pending: contestBlocked(r) } : null,
     };
   });
 }

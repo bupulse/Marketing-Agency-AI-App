@@ -46,11 +46,12 @@ export async function recentAngles(businessId: string, subject: Subject | null):
 
 /** What the subject offers the angles: a price, something new, competitors, FAQs, a local moment soon. */
 export async function angleFacts(businessId: string, subject: Subject | null, item: { type: string; price?: string | null }, country: string | null, now: Date): Promise<AngleFacts> {
-  const [product, campaign, competitors, faqs] = await Promise.all([
+  const [product, campaign, competitors, faqs, reviews] = await Promise.all([
     subject?.kind === "product" ? prisma.product.findFirst({ where: { id: subject.id, businessId }, select: { createdAt: true } }) : null,
     subject?.kind === "campaign" ? prisma.campaign.findFirst({ where: { id: subject.id, businessId }, select: { type: true } }) : null,
     prisma.competitor.count({ where: { businessId } }),
     prisma.knowledgeFaq.count({ where: { businessId } }),
+    prisma.testimonial.count({ where: { businessId, canPublish: true } }),
   ]);
   const today = now.toISOString().slice(0, 10);
   const soon = new Date(now.getTime() + 21 * DAY_MS).toISOString().slice(0, 10);
@@ -62,6 +63,7 @@ export async function angleFacts(businessId: string, subject: Subject | null, it
     hasCompetitors: competitors > 0,
     hasFaqs: faqs > 0,
     moment: moment ? `${moment.name} (${moment.date})` : null,
+    hasReviews: reviews > 0,
   };
 }
 

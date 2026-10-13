@@ -20,10 +20,22 @@ export type Capability = (typeof CAPABILITIES)[number];
 export type PlanStatus = "active" | "hidden" | "retired";
 export const PLAN_STATUSES: PlanStatus[] = ["active", "hidden", "retired"];
 
-/** Usage limits per period, plus `seats` (users per company): a plain number checked by the team code, not a usage metric. */
-export type PlanLimits = Record<UsageMetric, number> & { seats: number };
+/**
+ * Usage limits per period, plus `seats` (users per company): a plain number checked by the team code, not a usage
+ * metric; and `postsPerAppPerDay`: how many posts "Create today's content" and Autopilot make per app per day
+ * (docs/CONTENT.md), 1 when missing.
+ */
+export type PlanLimits = Record<UsageMetric, number> & { seats: number; postsPerAppPerDay?: number };
 export const SEATS_MIN = 1;
 export const SEATS_MAX = 1000;
+export const POSTS_PER_APP_MIN = 1;
+export const POSTS_PER_APP_MAX = 10;
+
+/** Posts per app per day a plan allows (1 to 10; 1 for a plan saved before the limit existed). */
+export function postsPerAppLimit(limits: Pick<PlanLimits, "postsPerAppPerDay"> | null | undefined): number {
+  const v = limits?.postsPerAppPerDay;
+  return typeof v === "number" && Number.isInteger(v) ? Math.min(Math.max(v, POSTS_PER_APP_MIN), POSTS_PER_APP_MAX) : POSTS_PER_APP_MIN;
+}
 
 export interface PlanConfig {
   name: string;
@@ -80,7 +92,7 @@ export const SEED_PLANS: Record<string, PlanConfig> = {
     priceUsdMonthly: 0,
     priceUsdYearly: 0,
     // One 30 s sample video, whatever plan was chosen (docs/CONTENT_VISUALS.md).
-    limits: { text: 10, image: 5, videoSeconds: TRIAL_VIDEO_SECONDS, voiceCharacters: TRIAL_VOICE_CHARACTERS, chat: 50, seats: 1 },
+    limits: { text: 10, image: 5, videoSeconds: TRIAL_VIDEO_SECONDS, voiceCharacters: TRIAL_VOICE_CHARACTERS, chat: 50, seats: 1, postsPerAppPerDay: 1 },
     highlights: [],
     features: sortFeatureKeys([...CORE_FEATURES, "video", "voice"]),
     aiMonthlyUsd: 1,
@@ -94,7 +106,7 @@ export const SEED_PLANS: Record<string, PlanConfig> = {
     highlight: false,
     priceUsdMonthly: 49,
     priceUsdYearly: 490,
-    limits: { text: 100, image: 30, videoSeconds: 0, voiceCharacters: 0, chat: 1000, seats: 3 },
+    limits: { text: 100, image: 30, videoSeconds: 0, voiceCharacters: 0, chat: 1000, seats: 3, postsPerAppPerDay: 1 },
     highlights: ["100 AI text generations a month", "30 AI images a month", "Post to 5 social networks", "Lead-capturing chat widget", "Content calendar and scheduling"],
     features: CORE_FEATURES,
     aiMonthlyUsd: 2,
@@ -108,7 +120,7 @@ export const SEED_PLANS: Record<string, PlanConfig> = {
     highlight: true,
     priceUsdMonthly: 99,
     priceUsdYearly: 990,
-    limits: { text: 300, image: 100, videoSeconds: VIDEO_PLAN_SECONDS, voiceCharacters: VOICE_PLAN_CHARACTERS, chat: 5000, seats: 10 },
+    limits: { text: 300, image: 100, videoSeconds: VIDEO_PLAN_SECONDS, voiceCharacters: VOICE_PLAN_CHARACTERS, chat: 5000, seats: 10, postsPerAppPerDay: 3 },
     highlights: ["300 AI text generations a month", "100 AI images a month", "Everything in Standard", "App connectors and API access", "Use your own Composio account", "Video and voiceover when released"],
     features: PRO_FEATURES,
     aiMonthlyUsd: 6,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ANGLES, ANGLE_IDS, chooseAngles, eligibleAngles, formatFor, spreadNetworks, type AngleFacts } from "@/lib/studio/angles";
+import { ANGLES, ANGLE_IDS, chooseAngles, eligibleAngles, formatFor, funCountFor, funShareFor, spreadNetworks, type AngleFacts } from "@/lib/studio/angles";
 import { diversifyPack, fallbackPlan } from "@/lib/visuals/direction";
 
 const facts = (over: Partial<AngleFacts> = {}): AngleFacts => ({ subjectType: "product", hasPrice: true, isNew: false, hasCompetitors: false, hasFaqs: false, moment: null, ...over });
@@ -10,7 +10,9 @@ describe("angles", () => {
     expect(eligibleAngles(facts())).not.toContain("news");
     expect(eligibleAngles(facts())).not.toContain("why-us");
     expect(eligibleAngles(facts())).not.toContain("seasonal");
-    expect(eligibleAngles(facts({ isNew: true, hasCompetitors: true, moment: "Umuganura (2026-08-07)" }))).toEqual([...ANGLE_IDS]);
+    expect(eligibleAngles(facts({ isNew: true, hasCompetitors: true, moment: "Umuganura (2026-08-07)", hasReviews: true, hasBeforeAfter: true, contests: true }))).toEqual([...ANGLE_IDS]);
+    // Ideas that need real material: breaking news, a customer spotlight, before / after, and contests only where the owner confirms them.
+    for (const id of ["breaking", "spotlight", "before-after", "challenge"]) expect(eligibleAngles(facts())).not.toContain(id);
     // Every angle has a people scene for its picture.
     expect(ANGLE_IDS.every((id) => ANGLES[id].people.length > 10)).toBe(true);
   });
@@ -23,12 +25,32 @@ describe("angles", () => {
   });
 
   it("rotates: angles never used first, then the least recently used, so an angle does not repeat until the others had their turn", () => {
-    const first = chooseAngles(facts(), [], 5);
-    const second = chooseAngles(facts(), [...first].reverse(), 5);
-    // The 8 eligible angles: the 3 not used yet come first, then the oldest of the first pack.
-    expect(second.slice(0, 3).sort()).toEqual(["behind-scenes", "cta", "faq"].sort());
-    expect(second.slice(3)).toEqual([first[0], first[1]]);
-    expect(second.filter((a) => first.includes(a))).toEqual([first[0], first[1]]);
+    const eligible = eligibleAngles(facts()).length;
+    const recent: string[] = [];
+    const seen: string[] = [];
+    for (let day = 0; day < 6; day++) {
+      const pack = chooseAngles(facts(), recent, 3);
+      // No angle comes back while an eligible one was never used.
+      if (seen.length + 3 <= eligible) for (const a of pack) expect(seen).not.toContain(a);
+      seen.push(...pack);
+      recent.unshift(...[...pack].reverse());
+    }
+    // Consecutive days never share an angle.
+    const next = chooseAngles(facts(), recent, 3);
+    for (const a of next) expect(recent.slice(0, 3)).not.toContain(a);
+  });
+
+  it("balances fun and professional ideas by the brand's tone", () => {
+    const playful = chooseAngles(facts(), [], 4, { funShare: funShareFor([{ topic: "tone", answer: "Fun and playful" }]) });
+    expect(playful.filter((a) => ANGLES[a].tone === "fun")).toHaveLength(2);
+    const formal = chooseAngles(facts(), [], 4, { funShare: funShareFor([{ topic: "formality", answer: "Formal and professional" }]) });
+    expect(formal.filter((a) => ANGLES[a].tone === "fun")).toHaveLength(1);
+    expect(funShareFor(null)).toBeCloseTo(0.33);
+    // One post a day: fun on about a third of the days, never stuck on one kind.
+    const days = Array.from({ length: 30 }, (_, d) => funCountFor(0.33, 1, 20_000 + d));
+    expect(days.filter((x) => x === 1).length).toBeGreaterThanOrEqual(8);
+    expect(days.filter((x) => x === 1).length).toBeLessThanOrEqual(12);
+    expect(chooseAngles(facts(), [], 3, { exclude: ["features", "price"] })).not.toContain("price");
   });
 
   it("spreads a pack over the apps: every app once before any gets a second, the angle's favourite app first", () => {
