@@ -54,6 +54,8 @@ jobs:
       NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      # Inlined at build like every NEXT_PUBLIC_* value: the Chat on WhatsApp button (empty hides it).
+      NEXT_PUBLIC_WHATSAPP_NUMBER: ${{ vars.NEXT_PUBLIC_WHATSAPP_NUMBER }}
       PLATFORM: netlify
       NETLIFY_CLI: netlify-cli@27.12.0
     steps:
@@ -99,6 +101,18 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      # Production variables (scripts/check-env.mjs, names and problems only, never a value): the build values above and
+      # the migrations' DIRECT_URL, then the runtime variables set in Netlify. Before `npm ci`, so the token is only
+      # ever in reach of this repository's own script, never of installed packages.
+      - name: Check the build variables
+        run: node scripts/check-env.mjs --build
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      - name: Check Netlify's runtime variables
+        run: node scripts/check-env.mjs --netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
       - run: npm ci
       - run: npx prisma generate --config prisma7.config.ts
         env:
