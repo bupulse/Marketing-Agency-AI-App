@@ -785,6 +785,9 @@ model Post {
   // For an app that is not connected (yet): at its time the owner gets the reminder to post it by hand, like a NOTIFY
   // account (lib/publishing/engine.ts). False on posts that lost their account later: those fail as before.
   remindOnly     Boolean       @default(false)
+  // A challenge or contest the AI suggested (lib/content-flow/contest.ts): {} until the owner confirms the prize, end
+  // date and how the winner is chosen ({ prize, endsOn, howChosen, confirmedAt }). Never auto-approved.
+  contest        Json?
   // "post" | "carousel" | "video" | "article": kept by a database trigger from format and mediaPaths, for the type filter.
   mediaKind      String        @default("post")
   createdAt      DateTime      @default(now())

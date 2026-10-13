@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { CreateDayContent } from "@/components/content-flow/create-day-dialog";
 import { DayBar } from "@/components/content-flow/day-bar";
 import { DayVisuals } from "@/components/content-flow/day-visuals";
+import { ContestConfirm } from "@/components/content-flow/contest-confirm";
 import { Button } from "@/components/ui";
 import { activeFilterCount, contentQuery, parseContentFilters, PAGE_SIZE, type ContentScope } from "@/lib/content-board/filters";
 import { loadOnePost, loadSubjectInfo } from "@/lib/content-board/queries";
@@ -110,6 +111,7 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
       <div className="-mt-3 flex justify-end">
         <ScheduleAllButton query={contentQuery({ ...filters, range: "custom", from: day, to: day })} scope={scope} />
       </div>
+      <ContestConfirm posts={list.posts.filter((p) => p.contest?.pending).map((p) => ({ id: p.id, network: p.network, excerpt: p.excerpt }))} today={today} />
       {shown.length === 0
         ? empty
         : shown.map((s) => (

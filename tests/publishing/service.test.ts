@@ -372,6 +372,15 @@ describe("approvePosts", () => {
     expect(data.scheduledAt.toISOString()).toBe("2026-10-07T16:00:00.000Z");
   });
 
+  it("never approves a contest before the owner confirmed its prize and rules", async () => {
+    prisma.post.findMany.mockResolvedValue([
+      { id: "c1", connectionId: "c-fb", scheduledAt: new Date("2026-10-09T07:00:00Z"), text: "Win [PRIZE]!", contest: {} },
+      { id: "c2", connectionId: "c-fb", scheduledAt: new Date("2026-10-09T07:00:00Z"), text: "Win 50,000 RWF!", contest: {} },
+    ]);
+    expect(await approvePosts("b1", ["c1", "c2"], now)).toEqual({ approved: 0, skipped: 2 });
+    expect(prisma.post.updateMany).not.toHaveBeenCalled();
+  });
+
   it("does nothing for an empty list", async () => {
     expect(await approvePosts("b1", [], now)).toEqual({ approved: 0, skipped: 0 });
     expect(prisma.post.findMany).not.toHaveBeenCalled();

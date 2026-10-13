@@ -33,6 +33,7 @@ export const SAFETY_SELECT = {
   reviewNote: true,
   updatedAt: true,
   remindOnly: true,
+  contest: true,
   connection: { select: { status: true, postingMode: true } },
 } as const;
 
@@ -91,7 +92,8 @@ export async function autoSchedule(businessId: string, postIds: string[], now = 
 
   const posts = await prisma.post.findMany({ where: { id: { in: ids }, businessId, status: "PENDING_APPROVAL" }, select: SAFETY_SELECT });
   // Nothing to decide when every app here waits for approval.
-  const candidates = posts.filter((p) => !requiresApproval(settings, p.network));
+  // A contest is never scheduled on its own, even once confirmed: the owner approves it (lib/content-flow/contest.ts).
+  const candidates = posts.filter((p) => !requiresApproval(settings, p.network) && p.contest == null);
   if (candidates.length === 0) return { scheduled: 0, waiting: posts.length };
   const reasons = await safetyReasons(businessId, candidates);
 

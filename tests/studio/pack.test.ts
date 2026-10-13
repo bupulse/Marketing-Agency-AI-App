@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     campaign: { findFirst: vi.fn() },
     competitor: { count: vi.fn() },
     knowledgeFaq: { count: vi.fn() },
+    testimonial: { count: vi.fn() },
   },
   generate: vi.fn(),
   consumeUsage: vi.fn(),
@@ -70,6 +71,7 @@ beforeEach(() => {
   mocks.prisma.product.findFirst.mockResolvedValue({ createdAt: new Date("2020-01-01") });
   mocks.prisma.competitor.count.mockResolvedValue(0);
   mocks.prisma.knowledgeFaq.count.mockResolvedValue(0);
+  mocks.prisma.testimonial.count.mockResolvedValue(0);
   mocks.prisma.generatedContent.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: `c-${data.angle}`, ...data }));
   mocks.consumeUsage.mockResolvedValue({ periodStart: new Date("2026-10-01") });
   mocks.refundUsage.mockResolvedValue(undefined);

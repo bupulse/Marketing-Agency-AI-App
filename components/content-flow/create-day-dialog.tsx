@@ -15,15 +15,16 @@ import { useRouter } from "next/navigation";
 import { ImagePlus, PenLine, Sparkles, Upload, Wand2, X } from "lucide-react";
 import { createDayContentAction } from "@/app/dashboard/content/day-actions";
 import { MediaPicker, type PickedPhoto } from "@/components/media/media-picker";
-import { Button, Chip, Dialog, Field, Textarea, useToast } from "@/components/ui";
+import { Button, Chip, Dialog, Field, Select, Textarea, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import type { ContentScope } from "@/lib/content-board/filters";
 import { runCost, type DayMode, type DesignChoice } from "@/lib/content-flow/cost";
 import { NETWORK_STYLE } from "@/lib/content-flow/networks";
+import { PRICE_CHOICE_LABEL, PRICE_CHOICES, type PriceChoice } from "@/lib/content-flow/price";
 import type { Network } from "@/lib/social/types";
 
 export type NetworkChoice = { network: Network; label: string; connected: boolean };
-export type Allowance = { textLeft: number; imagesLeft: number; aiPhotos: boolean; videoInPlan: boolean; videoSecondsLeft: number; voice: boolean; voiceCharsLeft: number };
+export type Allowance = { textLeft: number; imagesLeft: number; aiPhotos: boolean; videoInPlan: boolean; videoSecondsLeft: number; voice: boolean; voiceCharsLeft: number; postsPerApp: number };
 
 const DEFAULT_NETWORKS: Network[] = ["instagram", "facebook", "linkedin"];
 
@@ -64,6 +65,8 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
   const [caption, setCaption] = useState("");
   const [media, setMedia] = useState<PickedPhoto[]>([]);
   const [overlays, setOverlays] = useState(false);
+  const [perApp, setPerApp] = useState(1);
+  const [price, setPrice] = useState<PriceChoice>("auto");
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -71,10 +74,12 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
   const [requestKey, setRequestKey] = useState("");
 
   const toggle = (n: Network) => setChosen((list) => (list.includes(n) ? list.filter((x) => x !== n) : [...list, n]));
-  const designed = mode === "own" ? (overlays ? chosen.filter((n) => NETWORK_STYLE[n].video !== "always").length : 0) : chosen.filter((n) => NETWORK_STYLE[n].video !== "always").length;
+  const each = mode === "own" ? 1 : Math.min(perApp, allowance.postsPerApp);
+  const posts = chosen.length * each;
+  const designed = (mode === "own" ? (overlays ? chosen.filter((n) => NETWORK_STYLE[n].video !== "always").length : 0) : chosen.filter((n) => NETWORK_STYLE[n].video !== "always").length) * each;
   // Videos BuPulse may make: TikTok and YouTube when the plan has video (the album's own video, if any, costs nothing).
-  const videos = mode === "own" || !allowance.videoInPlan ? 0 : chosen.filter((n) => NETWORK_STYLE[n].video === "always").length;
-  const cost = runCost({ mode, design, posts: chosen.length, designed, aiPhotos: allowance.aiPhotos, textLeft: allowance.textLeft, imagesLeft: allowance.imagesLeft, videos, videoSecondsLeft: allowance.videoSecondsLeft, voice: allowance.voice, voiceCharsLeft: allowance.voiceCharsLeft });
+  const videos = mode === "own" || !allowance.videoInPlan ? 0 : chosen.filter((n) => NETWORK_STYLE[n].video === "always").length * each;
+  const cost = runCost({ mode, design, posts, designed, aiPhotos: allowance.aiPhotos, textLeft: allowance.textLeft, imagesLeft: allowance.imagesLeft, videos, videoSecondsLeft: allowance.videoSecondsLeft, voice: allowance.voice, voiceCharsLeft: allowance.voiceCharsLeft });
   const missing = mode === "describe" && !brief.trim() ? "Describe today's content." : mode === "own" && media.length === 0 ? "Choose your photos or videos." : mode === "own" && !caption.trim() ? "Write your caption." : null;
 
   function submit() {
@@ -89,12 +94,15 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
         caption: mode === "own" ? caption : undefined,
         mediaPaths: mode === "ai" ? undefined : media.map((m) => m.path),
         overlays: mode === "own" ? overlays : undefined,
+        perApp: mode === "own" ? undefined : each,
+        price: mode === "own" ? undefined : price,
         requestKey,
       });
       if (!res.ok) return setError(res.error);
       const parts = [`${res.posts === 1 ? "1 post" : `${res.posts} posts`} made for today`];
       if (res.scheduled) parts.push(`${res.scheduled} scheduled on their own`);
       if (res.skipped.length) parts.push(res.skipped.map((s) => s.reason).join(" "));
+      if (res.contests) parts.push(`${res.contests === 1 ? "1 contest waits" : `${res.contests} contests wait`} for your prize and rules`);
       if (res.failed.length) parts.push(`${res.failed.map((n) => NETWORK_STYLE[n].label).join(", ")} could not be written (not charged)`);
       toast(parts.join(". ") + ".", "success");
       setOpen(false);
@@ -176,6 +184,29 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
           </fieldset>
 
           {mode !== "own" && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Posts per app" hint={allowance.postsPerApp > 1 ? `Your plan allows up to ${allowance.postsPerApp} per app a day, counting what this ${scope.kind === "general" ? "page" : scope.kind} already has today.` : "Your plan makes 1 post per app a day."}>
+                <Select value={String(each)} onChange={(e) => setPerApp(Number(e.target.value))} disabled={allowance.postsPerApp <= 1}>
+                  {Array.from({ length: allowance.postsPerApp }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>
+                      {i + 1}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Price" hint={price === "auto" ? "At most about 1 post in 4 shows the price, never two in a row." : price === "with" ? "Every post states the price (it needs one)." : "No price in captions or designs: posts that start conversations."}>
+                <Select value={price} onChange={(e) => setPrice(e.target.value as PriceChoice)}>
+                  {PRICE_CHOICES.map((p) => (
+                    <option key={p} value={p}>
+                      {PRICE_CHOICE_LABEL[p]}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+          )}
+
+          {mode !== "own" && (
             <div role="radiogroup" aria-label="Design" className="grid gap-3 sm:grid-cols-2">
               <Option selected={design === "ai"} disabled={!allowance.aiPhotos} onSelect={() => setDesign("ai")} icon={<Sparkles className="size-5" />} title="AI designs (images with people)" text={allowance.aiPhotos ? "AI photos of people with your product where they fit; uses AI image credits." : "No AI images left this month, or not in your plan."} />
               <Option selected={design === "free"} onSelect={() => setDesign("free")} icon={<ImagePlus className="size-5" />} title="Free templates" text="Your photos and BuPulse designs. BuPulse picks the design for each post." />
@@ -195,7 +226,7 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
               Cancel
             </Button>
             <Button onClick={submit} disabled={pending || !cost.enoughText || missing !== null} title={missing ?? undefined}>
-              {pending ? "Writing captions, then pictures…" : `Create ${chosen.length === 1 ? "1 post" : `${chosen.length} posts`}`}
+              {pending ? "Writing captions, then pictures…" : `Create ${posts === 1 ? "1 post" : `${posts} posts`}`}
             </Button>
           </div>
         </div>

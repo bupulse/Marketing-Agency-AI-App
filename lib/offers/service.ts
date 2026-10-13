@@ -1,5 +1,5 @@
 import "server-only";
-import { SEED_PLANS } from "@/lib/plans";
+import { SEED_PLANS, postsPerAppLimit } from "@/lib/plans";
 import { customAllowanceUsd } from "./allowance";
 import type { BillingInterval, Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
@@ -254,7 +254,7 @@ export type AdminOfferView = {
   basePlanName: string | null;
   features: FeatureKey[];
   added: FeatureKey[];
-  limits: { text: number; image: number; chat: number; seats: number };
+  limits: { text: number; image: number; chat: number; seats: number; postsPerAppPerDay: number };
   managedTier: ManagedTier;
   validDays: number;
   lines: PricedLine[];
@@ -276,7 +276,7 @@ export type AdminOfferView = {
 function limitsOf(value: unknown) {
   const v = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   const n = (k: string, d: number) => (typeof v[k] === "number" && Number.isInteger(v[k]) ? (v[k] as number) : d);
-  return { text: n("text", 0), image: n("image", 0), chat: n("chat", 0), seats: n("seats", 1) };
+  return { text: n("text", 0), image: n("image", 0), chat: n("chat", 0), seats: n("seats", 1), postsPerAppPerDay: n("postsPerAppPerDay", 1) };
 }
 
 function adminView(row: Row, company: string): AdminOfferView {
@@ -495,7 +495,7 @@ export function offerCardCheckoutAvailable(): boolean {
 export type EditorInitial = {
   basePlanKey: string | null;
   features: FeatureKey[];
-  limits: { text: number; image: number; chat: number; seats: number };
+  limits: { text: number; image: number; chat: number; seats: number; postsPerAppPerDay: number };
   managedTier: ManagedTier;
   interval: BillingInterval;
   adjusted: string;
@@ -518,7 +518,7 @@ export async function offerEditorContext(input: { businessId: string; offerId?: 
   const request = !offer && input.requestId ? await prisma.customPlanRequest.findUnique({ where: { id: input.requestId } }) : null;
   const startKey = [sub?.plan, sub?.chosenPlan].find((k) => k && pc.bases.some((b) => b.key === k)) ?? null;
   const startBase = pc.bases.find((b) => b.key === startKey) ?? null;
-  const fromBase = (b: OfferBase | null) => ({ text: b?.limits.text ?? 0, image: b?.limits.image ?? 0, chat: b?.limits.chat ?? 0, seats: b?.limits.seats ?? 1 });
+  const fromBase = (b: OfferBase | null) => ({ text: b?.limits.text ?? 0, image: b?.limits.image ?? 0, chat: b?.limits.chat ?? 0, seats: b?.limits.seats ?? 1, postsPerAppPerDay: postsPerAppLimit(b?.limits) });
   let initial: EditorInitial;
   if (offer) {
     const o = adminView(offer, business.name);

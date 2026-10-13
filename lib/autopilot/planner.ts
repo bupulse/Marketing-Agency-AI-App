@@ -74,6 +74,8 @@ export interface PlanInput {
   existing: { connectionId: string | null; scheduledAt: Date }[];
   /** How often each idea was used in the last weeks. */
   recentIdeas: Map<string, number>;
+  /** The plan's posts per app per day for one product, campaign or General (lib/plans.ts; 1 when missing). */
+  postsPerAppPerDay?: number;
   profile: LearningProfile;
   now: Date;
 }
@@ -352,6 +354,9 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
 
   const groups: PlannedGroup[] = [];
   const ordered = [...picks].sort((a, b) => dayOf.get(a)!.localeCompare(dayOf.get(b)!));
+  // Posts per app per day for one subject, as the plan allows (docs/CONTENT.md).
+  const perDayLimit = Math.max(1, input.postsPerAppPerDay ?? 1);
+  const perDay = new Map<string, number>();
   for (const pick of ordered) {
     const { idea } = pick;
     const date = dayOf.get(pick)!;
@@ -379,6 +384,12 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
         notes.push(`Skipped one ${connection.network} post on ${date}: no free time slot.`);
         continue;
       }
+      const dayKey = `${connection.id}|${date}|${pick.project?.id ?? "general"}`;
+      if ((perDay.get(dayKey) ?? 0) >= perDayLimit) {
+        notes.push(`Skipped one ${connection.network} post on ${date}: your plan allows ${perDayLimit} per app a day for the same product or campaign.`);
+        continue;
+      }
+      perDay.set(dayKey, (perDay.get(dayKey) ?? 0) + 1);
       noteTime(connection.id, at);
       posts.push({ connectionId: connection.id, network: connection.network, format: effective, scheduledAt: at });
     }

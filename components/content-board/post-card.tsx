@@ -78,7 +78,11 @@ export function PostCard({ post, zone, onOpen, actions, showSubject = false }: {
         </div>
 
         <div className="flex flex-1 flex-col gap-2.5 p-4">
-          <span className={cn("inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-semibold", CHIP_STYLE[chip.tone])}>{chip.label}</span>
+          <span className="flex flex-wrap gap-1.5">
+            <span className={cn("inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-semibold", CHIP_STYLE[chip.tone])}>{chip.label}</span>
+            {post.idea && <span className="inline-flex w-fit items-center rounded-full bg-soft px-2.5 py-1 text-xs font-semibold text-text">{post.idea}</span>}
+            {post.contest?.pending && <span className="inline-flex w-fit items-center rounded-full bg-new-bg px-2.5 py-1 text-xs font-semibold text-new">Needs your confirmation: prize & rules</span>}
+          </span>
           <p className="line-clamp-3 text-[15px] break-words whitespace-pre-line">{caption.trim() || <span className="text-muted">No caption yet</span>}</p>
           <p className="mt-auto flex flex-wrap gap-x-2 text-[13px] text-muted">
             <time dateTime={post.createdAt} suppressHydrationWarning>
