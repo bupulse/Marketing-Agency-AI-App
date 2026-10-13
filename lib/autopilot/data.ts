@@ -5,7 +5,10 @@ import { readKnowledge } from "@/lib/brand/schemas";
 import { accountUsable } from "@/lib/publishing/service";
 import { isNetwork } from "@/lib/social/registry";
 import { holidaysBetween } from "./calendar";
-import { buildProfile, type PostResult } from "./learning";
+import { buildProfile } from "./learning";
+import { loadPostResults } from "./results";
+
+export { loadPostResults };
 import { industryTags } from "./playbook";
 import type { PlanInput, PlanProject } from "./planner";
 import { readConfig } from "./settings";
@@ -20,19 +23,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const PHOTO_MARK = "photo:";
 
 const ALBUM = { orderBy: [{ position: "asc" as const }, { createdAt: "asc" as const }], take: 10, select: { asset: { select: { path: true } } } };
-
-export async function loadPostResults(businessId: string): Promise<PostResult[]> {
-  const posts = await prisma.post.findMany({
-    where: { businessId, status: "PUBLISHED", publishedAt: { not: null }, metrics: { some: {} } },
-    orderBy: { publishedAt: "desc" },
-    take: 300,
-    select: { playbookId: true, network: true, publishedAt: true, metrics: { orderBy: { capturedAt: "desc" }, take: 1 } },
-  });
-  return posts.flatMap((p) => {
-    const m = p.metrics[0];
-    return m && p.publishedAt ? [{ playbookId: p.playbookId, network: p.network, publishedAt: p.publishedAt, views: m.views, reach: m.reach, likes: m.likes, comments: m.comments, saves: m.saves, shares: m.shares }] : [];
-  });
-}
 
 /** Everything the planner needs for one business and week. Null when the business does not exist. */
 export async function loadPlanInput(businessId: string, weekStart: Date, now: Date): Promise<PlanInput | null> {

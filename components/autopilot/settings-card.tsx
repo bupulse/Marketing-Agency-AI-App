@@ -194,7 +194,7 @@ export function SettingsCard({ initial, accounts, timeZone }: { initial: Autopil
       <div className="flex flex-col divide-y divide-line">
         <ToggleRow
           title="Post without asking"
-          text="Off: posts wait for you and go out only after you approve them (recommended). On: Autopilot schedules them straight away, and you can still edit or remove them before they go out."
+          text="Off: posts follow Content, Settings, where you choose per app which posts wait for your approval (every app waits unless you change it). On: Autopilot schedules all its posts straight away, and you can still edit or remove them before they go out."
           checked={config.autoPublish}
           onChange={(v) => set("autoPublish", v)}
         />

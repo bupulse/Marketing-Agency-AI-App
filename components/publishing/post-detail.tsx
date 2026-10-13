@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCheck, Copy, ExternalLink, Pencil, RotateCw, Trash2, TriangleAlert } from "lucide-react";
+import Link from "next/link";
+import { CheckCheck, Copy, ExternalLink, Pencil, RotateCw, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { Badge, Button, Dialog, useToast } from "@/components/ui";
 import {
   approvePostsAction,
@@ -11,6 +12,7 @@ import {
   markPostedAction,
   reschedulePostAction,
   retryPostAction,
+  unschedulePostAction,
 } from "@/app/dashboard/calendar/actions";
 import { EDITABLE, STATUS_LABEL, STATUS_STYLE } from "@/lib/publishing/status";
 import { parseLocalInput, toLocalInput } from "@/lib/publishing/time";
@@ -24,13 +26,15 @@ type Props = {
   zone: string;
   onClose: () => void;
   onEdit: (post: CalendarPost) => void;
+  /** Where the post's picture or video is made (its product, campaign or Autopilot), for "Needs review" notes. */
+  visualHref?: string | null;
 };
 
 /** One post in full: how it looks, what happened to it, and what the owner can do about it. */
-export function PostDetail({ post, zone, onClose, onEdit }: Props) {
+export function PostDetail({ post, zone, onClose, onEdit, visualHref }: Props) {
   return (
     <Dialog open={post !== null} onOpenChange={(o) => !o && onClose()} title={post ? `${networkName(post.network)} post` : "Post"} className="max-w-2xl">
-      {post && <DetailBody key={post.id} post={post} zone={zone} onClose={onClose} onEdit={onEdit} />}
+      {post && <DetailBody key={post.id} post={post} zone={zone} onClose={onClose} onEdit={onEdit} visualHref={visualHref} />}
     </Dialog>
   );
 }
@@ -43,7 +47,7 @@ function retryMessage(res: Record<string, unknown>): { text: string; tone: "succ
   return { text: "We will try again shortly.", tone: "success" };
 }
 
-function DetailBody({ post, zone, onClose, onEdit }: Omit<Props, "post"> & { post: CalendarPost }) {
+function DetailBody({ post, zone, onClose, onEdit, visualHref }: Omit<Props, "post"> & { post: CalendarPost }) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
@@ -78,6 +82,7 @@ function DetailBody({ post, zone, onClose, onEdit }: Omit<Props, "post"> & { pos
         <span className="text-[15px] font-semibold">{post.accountName}</span>
         <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${style.badge}`}>{STATUS_LABEL[post.status]}</span>
         {post.source === "AUTOPILOT" && <Badge tone="violet">Autopilot</Badge>}
+        {post.autoScheduledAt && post.status !== "PENDING_APPROVAL" && <Badge tone="blue">Auto-scheduled</Badge>}
         {post.scheduledAt && <span className="text-[13px] text-muted">{post.status === "PUBLISHED" && post.publishedAt ? `Published ${formatDateTime(post.publishedAt, zone)}` : formatDateTime(post.scheduledAt, zone)}</span>}
       </div>
 
@@ -86,6 +91,19 @@ function DetailBody({ post, zone, onClose, onEdit }: Omit<Props, "post"> & { pos
           <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
           <p>{post.lastError ?? "This post could not be published."}</p>
         </div>
+      )}
+      {post.status === "PENDING_APPROVAL" && post.reviewNote && (
+        <p role="note" className="rounded-2xl bg-new-bg p-3.5 text-[14px] text-new">
+          {post.reviewNote}{" "}
+          {visualHref && (
+            <Link href={visualHref} className="inline-flex min-h-11 items-center font-semibold underline underline-offset-2">
+              Open it
+            </Link>
+          )}
+        </p>
+      )}
+      {post.status === "SCHEDULED" && post.autoScheduledAt && (
+        <p className="rounded-2xl bg-soft p-3.5 text-[14px] text-muted">Scheduled on its own because this app needs no approval. You can change it, move it, take it back to review or delete it until it goes out.</p>
       )}
       {post.status === "NEEDS_ACTION" && (
         <p className="rounded-2xl bg-amber-500/15 p-3.5 text-[14px] text-amber-900 dark:text-amber-200">
@@ -133,6 +151,9 @@ function DetailBody({ post, zone, onClose, onEdit }: Omit<Props, "post"> & { pos
         )}
         {post.status === "NEEDS_ACTION" && (
           <Button size="sm" leading={<CheckCheck aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => markPostedAction(post.id), "Marked as posted.")}>Mark as posted</Button>
+        )}
+        {post.status === "SCHEDULED" && (
+          <Button variant="outline" size="sm" leading={<Undo2 aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => unschedulePostAction(post.id), "Back in review. It will not go out until you approve it.")}>Back to review</Button>
         )}
         {editable && <Button variant="outline" size="sm" leading={<Pencil aria-hidden className="size-4" />} disabled={pending} onClick={() => onEdit(post)}>Edit</Button>}
         <Button variant="outline" size="sm" leading={<Copy aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => duplicatePostAction(post.id), "Copied to your drafts.")}>Duplicate</Button>

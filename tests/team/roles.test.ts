@@ -5,6 +5,7 @@ import { assignableRoles, askMessage, atLeast, can, PERMISSIONS, type Permission
 const MATRIX: Record<Permission, Record<Role, boolean>> = {
   content: { OWNER: true, ADMIN: true, MEMBER: true },
   autopilotSettings: { OWNER: true, ADMIN: true, MEMBER: false },
+  contentSettings: { OWNER: true, ADMIN: true, MEMBER: false },
   channels: { OWNER: true, ADMIN: true, MEMBER: false },
   connectors: { OWNER: true, ADMIN: true, MEMBER: false },
   widget: { OWNER: true, ADMIN: true, MEMBER: false },

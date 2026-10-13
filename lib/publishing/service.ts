@@ -6,6 +6,9 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { composeSchema, editSchema, isOwnMediaPath, type ComposeParsed } from "./schemas";
 import { cleanSlotTimes, nextFreeSlots } from "./slots";
+import { bestTime } from "./best-time";
+import { buildProfile, preferredHours, preferredWeekdays } from "@/lib/autopilot/learning";
+import { loadPostResults } from "@/lib/autopilot/results";
 import { EDITABLE, QUEUED, type PostStatusName } from "./status";
 import { parseLocalInput } from "./time";
 import { formatFor, validatePost, type PostFormatName } from "./validate";
@@ -174,6 +177,10 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
       }),
     ),
   );
+  // Scheduled from Studio content by hand: the drafts BuPulse made of that content for the same accounts are replaced.
+  if (!draft && content) {
+    await prisma.post.deleteMany({ where: { businessId: owner.businessId, contentId: content.id, source: "STUDIO", status: "PENDING_APPROVAL", connectionId: { in: ordered.map((c) => c.id) } } });
+  }
   if (!draft) await trackEvent(EVENT_NAMES.postScheduled, { businessId: owner.businessId, props: { count: created.length, status: time.status } });
   return { groupId, postIds: created.map((p) => p.id), scheduledAt: time.scheduledAt, status: time.status };
 }
@@ -278,34 +285,79 @@ export async function deletePost(owner: Owner, postId: string): Promise<{ note?:
 }
 
 /**
- * Approves Autopilot posts so they are published at their time. Only this business's posts that are still
- * waiting for approval are touched. Posts whose time already passed move to the next free queue slot.
+ * The best time for each post (lib/publishing/best-time.ts): the business's posting times, ordered by what works on
+ * the post's network (learned from its own results, else the network's defaults), on the account's free slots. Posts
+ * in one call keep 2.5 hours apart on the same account too. Falls back to the next free queue slot.
+ */
+export async function bestTimesFor(businessId: string, posts: { id: string; network: string; connectionId: string | null }[], now = new Date()): Promise<Map<string, Date>> {
+  const out = new Map<string, Date>();
+  if (posts.length === 0) return out;
+  const settings = await businessSettings(businessId);
+  const connectionIds = [...new Set(posts.flatMap((p) => (p.connectionId ? [p.connectionId] : [])))];
+  const [results, queued] = await Promise.all([
+    loadPostResults(businessId).catch(() => []),
+    connectionIds.length
+      ? prisma.post.findMany({ where: { connectionId: { in: connectionIds }, status: { in: [...QUEUED] }, scheduledAt: { gte: now }, id: { notIn: posts.map((p) => p.id) } }, select: { connectionId: true, scheduledAt: true }, take: 2000 })
+      : [],
+  ]);
+  const profile = buildProfile(results, settings.timezone);
+  const taken = new Map<string, Date[]>();
+  for (const q of queued ?? []) if (q.connectionId && q.scheduledAt) taken.set(q.connectionId, [...(taken.get(q.connectionId) ?? []), q.scheduledAt]);
+  for (const post of posts) {
+    const key = post.connectionId ?? `none:${post.id}`;
+    const busy = taken.get(key) ?? [];
+    const at =
+      (isNetwork(post.network)
+        ? bestTime({ zone: settings.timezone, now, postingTimes: settings.slotTimes, hours: preferredHours(profile, post.network), weekdays: preferredWeekdays(profile, post.network), taken: busy })
+        : null) ??
+      nextFreeSlots({ times: settings.slotTimes, zone: settings.timezone, now, taken: busy })[0] ??
+      new Date(now.getTime() + 10 * 60_000);
+    out.set(post.id, at);
+    taken.set(key, [...busy, at]);
+  }
+  return out;
+}
+
+/**
+ * Approves posts waiting for review (Autopilot's and Studio's) so they are published. Only this business's posts
+ * that still wait are touched. A post keeps its planned time when that is still ahead; one without a time, or whose
+ * time passed, goes out at the best time for its network.
  */
 export async function approvePosts(businessId: string, postIds: string[], now = new Date()): Promise<{ approved: number }> {
   const ids = [...new Set(postIds)].slice(0, 200);
   if (ids.length === 0) return { approved: 0 };
-  const posts = await prisma.post.findMany({ where: { id: { in: ids }, businessId, status: "PENDING_APPROVAL" }, select: { id: true, connectionId: true, scheduledAt: true } });
+  const posts = await prisma.post.findMany({ where: { id: { in: ids }, businessId, status: "PENDING_APPROVAL" }, select: { id: true, network: true, connectionId: true, scheduledAt: true } });
   if (posts.length === 0) return { approved: 0 };
 
   const stale = posts.filter((p) => !p.scheduledAt || p.scheduledAt.getTime() <= now.getTime());
-  let slots: Date[] = [];
-  if (stale.length > 0) {
-    const settings = await businessSettings(businessId);
-    const taken = await takenTimes(posts.flatMap((p) => (p.connectionId ? [p.connectionId] : [])), now);
-    slots = nextFreeSlots({ times: settings.slotTimes, zone: settings.timezone, now, taken, count: stale.length });
-  }
+  const times = stale.length > 0 ? await bestTimesFor(businessId, stale, now) : new Map<string, Date>();
 
   let approved = 0;
   for (const post of posts) {
-    const staleIndex = stale.indexOf(post);
-    const scheduledAt = staleIndex >= 0 ? (slots[staleIndex] ?? new Date(now.getTime() + 10 * 60_000)) : undefined;
+    const scheduledAt = times.get(post.id);
     const { count } = await prisma.post.updateMany({
       where: { id: post.id, businessId, status: "PENDING_APPROVAL" },
-      data: { status: "SCHEDULED", ...(scheduledAt ? { scheduledAt } : {}) },
+      data: { status: "SCHEDULED", reviewNote: null, ...(scheduledAt ? { scheduledAt } : {}) },
     });
     approved += count;
   }
   return { approved };
+}
+
+/**
+ * Takes a scheduled post back to "Needs review" (the safety window of auto-approval: nothing goes out that the owner
+ * wants to look at first). Refused once the publisher has picked it up.
+ */
+export async function unschedulePost(owner: Owner, postId: string): Promise<void> {
+  const { count } = await prisma.post.updateMany({
+    where: { id: postId, businessId: owner.businessId, status: "SCHEDULED", lockedAt: null },
+    data: { status: "PENDING_APPROVAL", autoScheduledAt: null },
+  });
+  if (count === 0) {
+    const post = await prisma.post.findFirst({ where: { id: postId, businessId: owner.businessId }, select: { status: true } });
+    if (!post) throw NOT_FOUND();
+    throw new PublishingError(NO_LONGER_EDITABLE, "conflict");
+  }
 }
 
 /** Puts a failed post back in line to be published now. */

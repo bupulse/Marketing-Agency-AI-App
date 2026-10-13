@@ -350,7 +350,7 @@ describe("approvePosts", () => {
     prisma.post.findMany.mockResolvedValue([{ id: "a", connectionId: "c-fb", scheduledAt: new Date("2026-10-09T07:00:00Z") }]);
     expect(await approvePosts("b1", ["a", "b", "a"], now)).toEqual({ approved: 1 });
     expect(prisma.post.findMany.mock.calls[0][0].where).toEqual({ id: { in: ["a", "b"] }, businessId: "b1", status: "PENDING_APPROVAL" });
-    expect(prisma.post.updateMany.mock.calls[0][0]).toEqual({ where: { id: "a", businessId: "b1", status: "PENDING_APPROVAL" }, data: { status: "SCHEDULED" } });
+    expect(prisma.post.updateMany.mock.calls[0][0]).toEqual({ where: { id: "a", businessId: "b1", status: "PENDING_APPROVAL" }, data: { status: "SCHEDULED", reviewNote: null } });
   });
 
   it("approves nothing for another business's posts", async () => {

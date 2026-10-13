@@ -12,6 +12,7 @@ import { getCurrentUser } from "@/lib/supabase/server";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
 import { projectInputSchema } from "@/lib/studio/schemas";
 import { generateForSubject } from "@/lib/studio/service";
+import { draftPostsFromContent } from "@/lib/content-board/drafts";
 import { consumeUsage, refundUsage, UsageLimitError } from "@/lib/usage";
 import { linkInTx, MediaError } from "@/lib/media/service";
 
@@ -132,6 +133,8 @@ export async function POST(request: Request) {
 
   try {
     const content = await generateForSubject({ userId: companyId, businessId: business.id, subject: subject!, feature: "content", reservation });
+    // The posts to review on the Content page (docs/CONTENT.md); never fails the answer.
+    await draftPostsFromContent({ businessId: business.id }, content.id).catch(() => {});
     return NextResponse.json({ ...ids, content });
   } catch (error) {
     if (error instanceof AIProviderError) {

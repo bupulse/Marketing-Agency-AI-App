@@ -14,7 +14,7 @@ export type CalendarPost = {
   notify: boolean;
   status: PostStatusName;
   format: PostFormatName | "ARTICLE" | "THREAD";
-  source: "MANUAL" | "AUTOPILOT";
+  source: "MANUAL" | "AUTOPILOT" | "STUDIO";
   title: string | null;
   text: string;
   hashtags: string[];
@@ -29,6 +29,10 @@ export type CalendarPost = {
   /** The product or campaign the post is about. */
   subjectId: string | null;
   contentId: string | null;
+  /** Why it still waits for review although its app needs no approval (docs/CONTENT.md). */
+  reviewNote?: string | null;
+  /** When auto-approval scheduled it. */
+  autoScheduledAt?: string | null;
 };
 
 export type ComposerAccount = {

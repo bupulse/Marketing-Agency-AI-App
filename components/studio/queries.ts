@@ -1,8 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { createSignedDownloadUrl } from "@/lib/storage";
-import { CAMPAIGN_TYPE_LABEL } from "@/lib/knowledge/campaigns";
-import { KIND_LABEL } from "@/lib/knowledge/products";
 import { loadVisuals, pickVisuals } from "@/lib/visuals/queries";
 import { videoAvailable } from "@/lib/visuals/service";
 import { parseVariants, type StudioContent } from "./helpers";
@@ -45,36 +43,6 @@ export async function signedUrl(bucket: "media" | "designs", path: string): Prom
 export async function signPhotos(paths: string[]): Promise<{ path: string; url: string }[]> {
   const urls = await Promise.all(paths.map((p) => signedUrl("media", p)));
   return paths.flatMap((path, i) => (urls[i] ? [{ path, url: urls[i] as string }] : []));
-}
-
-/** The latest text for each product and campaign, newest first. */
-export async function loadContentLibrary(businessId: string) {
-  const rows = await prisma.generatedContent.findMany({
-    where: { businessId, OR: [{ productId: { not: null } }, { campaignId: { not: null } }] },
-    orderBy: { createdAt: "desc" },
-    distinct: ["productId", "campaignId"],
-    take: 300,
-    include: { product: { select: { id: true, name: true, kind: true } }, campaign: { select: { id: true, name: true, type: true } } },
-  });
-  return rows.flatMap((c) => {
-    const subject = c.product ? { kind: "product" as const, id: c.product.id } : c.campaign ? { kind: "campaign" as const, id: c.campaign.id } : null;
-    if (!subject) return [];
-    return [
-      {
-        id: c.id,
-        subject,
-        title: c.product?.name ?? c.campaign?.name ?? "",
-        label: c.product ? KIND_LABEL[c.product.kind] : CAMPAIGN_TYPE_LABEL[c.campaign!.type],
-        caption: c.caption,
-        hashtags: c.hashtags,
-        videoScript: c.videoScript,
-        variants: parseVariants(c.variants),
-        language: c.language,
-        edited: c.edited,
-        createdAt: c.createdAt.toISOString(),
-      },
-    ];
-  });
 }
 
 /** Content versions and designs of a product or campaign, for its page. */

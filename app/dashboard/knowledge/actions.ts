@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { draftPostsFromContent } from "@/lib/content-board/drafts";
 import { z, type ZodError } from "zod";
 import { prisma } from "@/lib/db";
 import { CompanyBudgetExceededError } from "@/lib/ai/budget";
@@ -58,6 +59,7 @@ export async function generateContent(subjectId: string, input: { instruction?: 
 
   try {
     const content = await generateForSubject({ userId: user.id, businessId: business.id, subject, instruction: instruction.data, feature: count > 0 ? "regenerate" : "content" });
+    await draftPosts(business.id, content.id);
     refresh(subject);
     return { ok: true, contentId: content.id };
   } catch (error) {
@@ -67,6 +69,12 @@ export async function generateContent(subjectId: string, input: { instruction?: 
     if (!(error instanceof AIProviderError)) await logError(error, { source: "studio.generate", level: "error" });
     return { ok: false, error: GENERATE_FAILED };
   }
+}
+
+/** The content's posts to review on the Content page (docs/CONTENT.md). Never fails the content itself. */
+async function draftPosts(businessId: string, contentId: string) {
+  await draftPostsFromContent({ businessId }, contentId).catch((e) => logError(e, { source: "content.drafts", level: "warn", businessId }));
+  revalidatePath("/dashboard/content", "layout");
 }
 
 /** Saves the owner's edits as a new version. Costs no credit. */
@@ -96,6 +104,7 @@ export async function saveEditedContent(contentId: string, input: { caption: str
     // The edited version keeps the picture and video of the version it started from.
     await carryVisuals(business.id, contentId, saved.id).catch(() => {});
     await pruneVersions(subject, { userId: user.id, businessId: business.id }).catch(() => {});
+    await draftPosts(business.id, saved.id);
     refresh(subject);
     return { ok: true, contentId: saved.id };
   } catch {
