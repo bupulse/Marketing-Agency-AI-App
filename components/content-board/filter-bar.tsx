@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { SlidersHorizontal, X } from "lucide-react";
 import { Button, Chip, Dialog, Input } from "@/components/ui";
@@ -32,12 +32,17 @@ export function FilterBar({ filters, apps = NETWORKS, day }: { filters: ContentF
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
+  // The chip a person tapped shows as selected at once; the list follows when the page has loaded the filter.
+  const [statuses, setStatuses] = useOptimistic(filters.statuses);
   const count = activeFilterCount(filters);
 
   function go(next: ContentFilters) {
     const query = contentQuery({ ...next, limit: undefined, ...(day ? { range: undefined } : {}) });
     const withDay = day ? `${query ? `${query}&` : "?"}day=${day}` : query;
-    start(() => router.push(`${pathname}${withDay}`, { scroll: false }));
+    start(() => {
+      setStatuses(next.statuses);
+      router.push(`${pathname}${withDay}`, { scroll: false });
+    });
   }
 
   const chips: { key: string; label: string; remove: ContentFilters }[] = [
@@ -53,15 +58,20 @@ export function FilterBar({ filters, apps = NETWORKS, day }: { filters: ContentF
     <div className="flex flex-col gap-3" aria-busy={pending}>
       <div className="flex flex-wrap items-center gap-2">
         <div role="group" aria-label="Status" className="-mx-1 flex max-w-full gap-2 overflow-x-auto px-1 pb-1">
-          <Chip selected={filters.statuses.length === 0} onClick={() => go({ ...filters, statuses: [] })} className="px-4 py-2 text-[14px]">
+          <Chip selected={statuses.length === 0} onClick={() => go({ ...filters, statuses: [] })} className="px-4 py-2 text-[14px]">
             All
           </Chip>
           {STATUS_FILTERS.map((s) => (
-            <Chip key={s} selected={filters.statuses.length === 1 && filters.statuses[0] === s} onClick={() => go({ ...filters, statuses: [s] })} className="px-4 py-2 text-[14px]">
+            <Chip key={s} selected={statuses.length === 1 && statuses[0] === s} onClick={() => go({ ...filters, statuses: [s] })} className="px-4 py-2 text-[14px]">
               {STATUS_FILTER_LABEL[s]}
             </Chip>
           ))}
         </div>
+        {pending && (
+          <span role="status" className="text-[13px] text-muted">
+            Updating…
+          </span>
+        )}
         <Button variant="outline" size="sm" className="ml-auto" leading={<SlidersHorizontal aria-hidden className="size-4" />} onClick={() => setOpen(true)} aria-haspopup="dialog">
           Filters{count > 0 ? ` (${count})` : ""}
         </Button>
