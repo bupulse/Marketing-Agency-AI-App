@@ -4,6 +4,7 @@
 import type { AspectRatio } from "@/lib/designs/layout";
 import type { PackId } from "@/lib/designs/packs";
 import type { TemplateId } from "@/lib/designs/templates/registry";
+import type { PeopleBrief } from "./people";
 
 export type VisualKind = "image" | "carousel" | "video";
 export type VisualStatus = "pending" | "ready" | "failed";
@@ -68,6 +69,8 @@ export interface VisualSlide {
   photoPath: string | null;
   /** What an AI photo should show. */
   scene?: string;
+  /** A designed carousel slide drawn over the cover's photo (one AI image per carousel). */
+  useCoverPhoto?: boolean;
   /** The AI photo once paid for (a Design in the designs bucket), so re-styling the slide never pays twice. */
   aiPhotoPath?: string | null;
   /** The rendered design. Null until the slide is drawn. */
@@ -85,6 +88,10 @@ export interface ImagePlan {
   /** "ai" when the art director chose it; "rules" when its answer was unusable or AI was not allowed. */
   directedBy: "ai" | "rules";
   notes: string[];
+  /** Who is in the AI photo (lib/visuals/people.ts), when the visual has one. */
+  people?: PeopleBrief;
+  /** AI images ran out: when they come back, for "AI images for this month used — next refill on …". */
+  aiExhausted?: { refillAt: string | null };
 }
 
 export type Motion = "zoom-in" | "zoom-out" | "pan-left" | "pan-right";

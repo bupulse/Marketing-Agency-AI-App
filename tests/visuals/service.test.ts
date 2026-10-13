@@ -120,7 +120,9 @@ describe("planVisuals (the art director with the content)", () => {
     expect(out).toEqual({ image: "v-image", video: "v-video" });
     const [image, video] = mocks.prisma.contentVisual.create.mock.calls.map(([a]) => a.data);
     expect(image).toMatchObject({ businessId: "biz1", contentId: "c1", kind: "image", status: "pending" });
-    expect(image.plan).toMatchObject({ directedBy: "ai", pack: "warm", slides: [{ headline: "Light as air", source: "album", photoPath: photo }] });
+    // AI photos are allowed here, so the cover is a people scene with the album photo as the product reference.
+    expect(image.plan).toMatchObject({ directedBy: "ai", pack: "warm", slides: [{ headline: "Light as air", source: "ai", photoPath: photo }] });
+    expect(image.plan.people).toMatchObject({ role: expect.any(String), age: expect.any(String) });
     expect(video).toMatchObject({ kind: "video", status: "pending" });
     expect(video.plan.scenes[0].text).toBe("The all-new Aero Sneaker");
   });
@@ -167,7 +169,7 @@ describe("drawSlide (image sources and fallbacks)", () => {
     mocks.createAiDesign.mockRejectedValueOnce(new UsageLimitError("limit_reached", "image"));
     const state = { aiAllowed: true, aiMade: 0, maxAi: 2 };
     const out = await drawSlide(owner, null, p, slide({ source: "ai" }), state);
-    expect(out.note).toMatch(/image credits/);
+    expect(out.note).toMatch(/AI images for this month used/);
     expect(out.source).toBe("album");
     expect(state.aiAllowed).toBe(false);
   });
@@ -453,5 +455,48 @@ describe("changing a picture while it is being drawn", () => {
     expect(mocks.prisma.contentVisual.update).not.toHaveBeenCalled();
     mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: plan([slide()]), renderingUntil: new Date(Date.now() - 1000) });
     await expect(updateImageVisual(owner, "v1", { pack: "warm" })).resolves.toMatchObject({ status: "pending" });
+  });
+});
+
+describe("people in the pictures (owner decision, 13 October 2026)", () => {
+  it("a carousel pays for one AI image: the designed slides are drawn over the cover's people photo", async () => {
+    const carousel = plan([
+      slide({ source: "ai", photoPath: photo, scene: "a Rwandan woman holding the phone; the product from the reference photo appears exactly as it is" }),
+      slide({ source: "text", photoPath: null, template: "announcement", useCoverPhoto: true, headline: "Tip 1" }),
+      slide({ source: "text", photoPath: null, template: "announcement", useCoverPhoto: true, headline: "Tip 2" }),
+    ]);
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "carousel", plan: carousel });
+    const r = await renderImageStep(owner, "v1");
+    expect(r.status).toBe("ready");
+    expect(mocks.createAiDesign).toHaveBeenCalledTimes(1);
+    // The real product photo is the reference, and the people scene is the prompt.
+    expect(mocks.createAiDesign.mock.calls[0][0]).toMatchObject({ usePhotoPath: photo, includePeople: true });
+    expect(mocks.createAiDesign.mock.calls[0][0].prompt).toMatch(/Rwandan woman holding the phone/);
+    expect(mocks.createTemplateDesign.mock.calls.map(([a]) => a.photoPath)).toEqual([`${U}/designs/ai1.png`, `${U}/designs/ai1.png`, `${U}/designs/ai1.png`]);
+  });
+
+  it("the dollar allowance running out gives the same message, refilled on the 1st of next month", async () => {
+    const { aiPhotosStatus, nextMonthStart } = await import("@/lib/visuals/service");
+    mocks.getUsageSummary.mockResolvedValue({ used: { image: 3, videoSeconds: 0 }, limits: { image: 30, videoSeconds: 0 }, resetsAt: new Date("2026-11-20T00:00:00Z") });
+    mocks.spend.mockResolvedValue({ totalUsd: 6, widgetUsd: 0, ownerUsd: 6, allowanceUsd: 6, widgetCapUsd: 3 });
+    const status = await aiPhotosStatus(owner);
+    expect(status.allowed).toBe(false);
+    expect(status.exhausted?.refillAt).toBe(nextMonthStart(new Date()).toISOString());
+    expect(nextMonthStart(new Date("2026-12-15T10:00:00Z")).toISOString()).toBe("2027-01-01T00:00:00.000Z");
+  });
+
+  it("AI images used up: the plan says when they come back, and the visual is a free design from real photos", async () => {
+    const { aiPhotosStatus, aiExhaustedNote } = await import("@/lib/visuals/service");
+    mocks.getUsageSummary.mockResolvedValue({ used: { image: 30, videoSeconds: 0 }, limits: { image: 30, videoSeconds: 0 }, resetsAt: new Date("2026-11-01T00:00:00Z") });
+    const status = await aiPhotosStatus(owner);
+    expect(status).toEqual({ allowed: false, exhausted: { refillAt: "2026-11-01T00:00:00.000Z" } });
+    expect(aiExhaustedNote(status.exhausted!.refillAt)).toBe("AI images for this month used — next refill on 1 November. Your real photos and brand designs are used instead.");
+
+    mocks.generate.mockResolvedValue({ text: JSON.stringify({ format: "single", pack: "clean", slides: [{ headline: "Hi", subline: "", chip: "", kicker: "", template: "new-arrival", image: "ai", photo: 0, scene: "" }] }), provider: "gemini", model: "m", usage: { inputTokens: 1, outputTokens: 1 } });
+    await planVisuals(input({ aiAllowed: false, aiExhausted: status.exhausted! }));
+    const saved = mocks.prisma.contentVisual.create.mock.calls[0][0].data.plan;
+    expect(saved.slides[0]).toMatchObject({ source: "album", photoPath: photo });
+    expect(saved.aiExhausted).toEqual({ refillAt: "2026-11-01T00:00:00.000Z" });
+    expect(saved.notes[0]).toMatch(/AI images for this month used — next refill on 1 November/);
   });
 });

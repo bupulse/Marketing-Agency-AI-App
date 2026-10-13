@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prisma = vi.hoisted(() => ({
-  generatedContent: { findFirst: vi.fn(), updateMany: vi.fn() },
+  generatedContent: { findFirst: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
   connection: { findMany: vi.fn() },
   post: { deleteMany: vi.fn(), create: vi.fn(), count: vi.fn() },
   contentVisual: { findMany: vi.fn() },
@@ -13,7 +13,7 @@ vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("@/lib/entitlements", () => import("@/tests/stubs/entitlements"));
 vi.mock("@/lib/content-board/auto", () => auto);
 
-import { draftFor, draftPostsFromContent, latestContentPosts } from "@/lib/content-board/drafts";
+import { draftFor, draftPostsFromContent, draftPostsFromPack, latestContentPosts } from "@/lib/content-board/drafts";
 import { missing } from "@/tests/stubs/entitlements";
 
 const content = {
@@ -79,7 +79,7 @@ describe("draftPostsFromContent", () => {
 
   it("marks the content as drafted, in the same transaction that replaces older untouched drafts", async () => {
     await draftPostsFromContent({ businessId: "b1" }, "content-2");
-    expect(prisma.post.deleteMany).toHaveBeenCalledWith({ where: { businessId: "b1", productId: "p1", source: "STUDIO", status: "PENDING_APPROVAL", ownerEditedAt: null, NOT: { contentId: "content-2" } } });
+    expect(prisma.post.deleteMany).toHaveBeenCalledWith({ where: { businessId: "b1", productId: "p1", source: "STUDIO", status: "PENDING_APPROVAL", ownerEditedAt: null, NOT: { contentId: { in: ["content-2"] } } } });
     expect(prisma.generatedContent.updateMany).toHaveBeenCalledWith({ where: { id: "content-2", businessId: "b1" }, data: { postsDraftedAt: expect.any(Date) } });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
@@ -129,5 +129,42 @@ describe("latestContentPosts (backfill)", () => {
     prisma.generatedContent.findFirst.mockResolvedValue({ id: "c", postsDraftedAt: null });
     expect(await latestContentPosts("b1", { productId: "p1" })).toEqual({ contentId: "c", hasPosts: false });
     expect(prisma.post.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("content packs (docs/CONTENT_PACKS.md)", () => {
+  const packPost = (id: string, angle: string, network: string) => ({ ...content, id, caption: `${angle} post`, packId: "pack-1", angle, network, variants: [] });
+
+  it("a pack post is drafted only on its own app, and keeps the other posts of its pack", async () => {
+    prisma.generatedContent.findFirst.mockResolvedValue(packPost("c-tips", "tips", "instagram"));
+    prisma.generatedContent.findMany.mockResolvedValue([{ id: "c-tips", angle: "tips", network: "instagram" }, { id: "c-price", angle: "price", network: "facebook" }, { id: "c-how", angle: "how-it-works", network: "tiktok" }]);
+    const result = await draftPostsFromContent({ businessId: "b1" }, "c-tips");
+    expect(result.created).toBe(1);
+    const row = prisma.post.create.mock.calls[0][0].data;
+    expect(row).toMatchObject({ network: "instagram", connectionId: "c-ig", contentId: "c-tips", text: "tips post" });
+    expect(prisma.post.deleteMany.mock.calls[0][0].where.NOT).toEqual({ contentId: { in: ["c-tips", "c-price", "c-how"] } });
+  });
+
+  it("an app that is not connected gets a reminder post; an edited pack post replaces only the post it came from", async () => {
+    prisma.generatedContent.findFirst.mockResolvedValue(packPost("c-price-2", "price", "facebook"));
+    prisma.connection.findMany.mockResolvedValue([conn("c-ig", "instagram")]);
+    prisma.generatedContent.findMany.mockResolvedValue([{ id: "c-price", angle: "price", network: "facebook" }, { id: "c-price-2", angle: "price", network: "facebook" }, { id: "c-tips", angle: "tips", network: "instagram" }]);
+    await draftPostsFromContent({ businessId: "b1" }, "c-price-2");
+    expect(prisma.post.create.mock.calls.map((c) => c[0].data)).toEqual([expect.objectContaining({ network: "facebook", connectionId: null, remindOnly: true })]);
+    // The edited post's original ("c-price") is not kept: its draft is replaced.
+    expect(prisma.post.deleteMany.mock.calls[0][0].where.NOT).toEqual({ contentId: { in: ["c-price-2", "c-tips"] } });
+  });
+
+  it("drafts every post of a pack, each on its app", async () => {
+    const posts = [packPost("a", "tips", "instagram"), packPost("b", "price", "linkedin"), packPost("c", "how-it-works", "tiktok")];
+    prisma.generatedContent.findMany.mockImplementation(async (args: { select: { angle?: boolean } }) => (args.select.angle ? posts.map((p) => ({ id: p.id, angle: p.angle, network: p.network })) : posts.map((p) => ({ id: p.id }))));
+    prisma.generatedContent.findFirst.mockImplementation(async (args: { where: { id: string } }) => posts.find((p) => p.id === args.where.id));
+    const result = await draftPostsFromPack({ businessId: "b1" }, "pack-1");
+    expect(result.created).toBe(3);
+    expect(prisma.post.create.mock.calls.map((c) => [c[0].data.contentId, c[0].data.network, c[0].data.format])).toEqual([
+      ["a", "instagram", "CAROUSEL"],
+      ["b", "linkedin", "CAROUSEL"],
+      ["c", "tiktok", "SCRIPT"],
+    ]);
   });
 });

@@ -185,6 +185,11 @@ model GeneratedContent {
   // When its posts to review were drafted (lib/content-board/drafts.ts); null for content from before, which is drafted
   // once when its product or campaign is opened.
   postsDraftedAt DateTime?
+  // Content packs (docs/CONTENT_PACKS.md): the posts written together share packId; each has its angle
+  // (lib/studio/angles.ts) and the one app it is for. All null for content from before packs (one post for every app).
+  packId      String?
+  angle       String?
+  network     String?
   provider    String // "gemini" | "claude" | "edit"
   model       String
   createdAt   DateTime  @default(now())
@@ -194,6 +199,7 @@ model GeneratedContent {
   @@index([productId, createdAt])
   @@index([campaignId, createdAt])
   @@index([businessId, createdAt])
+  @@index([packId])
 }
 
 // ---- Knowledge base (docs/KNOWLEDGE_BASE.md) ----------------------------------------------------------------------
@@ -997,7 +1003,7 @@ model AutopilotSettings {
   postsPerWeek          Int      @default(3)
   connectionIds         String[] // accounts Autopilot writes for
   postingTimes          String[] @default(["09:00", "18:00"]) // local times (Business.timezone) it may use
-  useAiImages           Boolean  @default(false) // false: gallery photos and free templates only
+  useAiImages           Boolean  @default(true) // AI photos with people (image credits); false: gallery photos and free templates only
   skipReligiousHolidays Boolean  @default(false) // true: no greetings or posts for religious holidays
   updatedAt             DateTime @updatedAt
 }
@@ -1384,6 +1390,8 @@ model PlanDefinition {
   // `features` holds the same bullets as `highlights`; `capabilities` is { apiAccess, ownComposio } derived from featureKeys.
   features             Json
   capabilities         Json
+  // The monthly AI allowance of a company on this plan, in USD (lib/ai/budget.ts); NULL uses AI_COMPANY_MONTHLY_USD.
+  aiMonthlyUsd         Float?
   paddleProductId      String?
   paddleMonthlyPriceId String?
   paddleYearlyPriceId  String?

@@ -62,7 +62,8 @@ export class GeminiImageProvider implements ImageProvider {
           store: false,
           response_format: { type: "image", ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}) },
         },
-        { timeout: 120_000 },
+        // One attempt may take up to 120 s (the SDK also retries for up to 30 s): RENDER_LEASE_MS in lib/visuals/service.ts covers both.
+        { timeout: 120_000, timeout_ms: 120_000 },
       );
     } catch (error) {
       const status = (error as { status?: number }).status;

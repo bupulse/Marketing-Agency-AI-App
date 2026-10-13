@@ -9,6 +9,7 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import { recommendPack } from "@/lib/designs/packs";
 import { getProvider } from "@/lib/social/registry";
 import { directVisual } from "@/lib/visuals/art-director";
+import type { Audience } from "@/lib/visuals/people";
 import { shouldCarousel } from "@/lib/visuals/direction";
 import { directionContext, drawSlide, itemsOf, type DrawState } from "@/lib/visuals/service";
 import { VISUAL_LIMITS, type ImagePlan } from "@/lib/visuals/types";
@@ -23,6 +24,8 @@ export interface VisualContext extends ImageContext {
   business: { name: string; tone: string | null; industry: string | null; brandColors: string[] };
   /** The plan has video: video ideas get a video plan. */
   videoAllowed: boolean;
+  /** The company's country and personas, for the people in AI photos. */
+  audience?: Audience;
 }
 
 /** Shared by every group of one run, so the caps hold for the whole week. */
@@ -64,6 +67,7 @@ async function carouselFor(group: PlannedGroup, written: WrittenGroup, ctx: Visu
     carouselAllowed,
     aiAllowed: ctx.useAiImages && !run.aiStopped && run.aiMade < VISUAL_LIMITS.maxAiPhotosPerRun,
     maxSlides: VISUAL_LIMITS.autopilotMaxSlides,
+    audience: ctx.audience,
   });
   // The art director is asked only when a carousel is likely; single images keep the playbook's own template.
   if (!shouldCarousel(dctx)) return null;

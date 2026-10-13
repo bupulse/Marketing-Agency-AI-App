@@ -15,6 +15,9 @@ type ContentRow = {
   variants: unknown;
   edited: boolean;
   createdAt: Date;
+  angle?: string | null;
+  network?: string | null;
+  packId?: string | null;
 };
 
 export function toStudioContent(row: ContentRow): StudioContent {
@@ -28,6 +31,9 @@ export function toStudioContent(row: ContentRow): StudioContent {
     variants: parseVariants(row.variants),
     edited: row.edited,
     createdAt: row.createdAt.toISOString(),
+    angle: row.angle ?? null,
+    network: row.network ?? null,
+    packId: row.packId ?? null,
   };
 }
 

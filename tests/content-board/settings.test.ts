@@ -64,3 +64,15 @@ describe("saveContentSettings", () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
+
+describe("pack size (docs/CONTENT_PACKS.md)", () => {
+  it("5 posts by default; the owner may choose 3 to 7", async () => {
+    const { PACK_SIZE } = await import("@/lib/content-board/settings");
+    expect(readContentSettings(null).packSize).toBe(5);
+    expect(readContentSettings({ requireApproval: {}, packSize: 7 }).packSize).toBe(7);
+    expect(contentSettingsSchema.safeParse({ requireApproval: {}, packSize: 2 }).success).toBe(false);
+    expect(contentSettingsSchema.safeParse({ requireApproval: {}, packSize: 8 }).success).toBe(false);
+    expect(readContentSettings({ requireApproval: { instagram: false }, packSize: 99 })).toEqual({ ...DEFAULT_CONTENT_SETTINGS });
+    expect(PACK_SIZE).toEqual({ min: 3, max: 7, default: 5 });
+  });
+});

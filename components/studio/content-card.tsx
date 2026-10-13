@@ -12,6 +12,9 @@ import { GenerateProgress } from "./generate-progress";
 import { NetworkPreviews } from "./network-previews";
 import { useGenerate } from "./use-generate";
 import { ContentVisual } from "@/components/visuals/content-visual";
+import { networkLabel } from "@/lib/content-board/labels";
+import { NETWORKS } from "@/lib/social/types";
+import { ANGLES, isAngleId } from "@/lib/studio/angles";
 import { REGENERATE_IDEAS, addHashtag, formatCopyText, formatWhenWithTime, usageNote, type StudioContent, type StudioSubject } from "./helpers";
 
 const MAX_HEADLINES = 5;
@@ -28,9 +31,20 @@ function visualMedia(content: StudioContent) {
   return items.length ? items.map((i) => ({ path: i.path, url: i.url })) : undefined;
 }
 
+/** "Tips · Instagram" for a pack post (docs/CONTENT_PACKS.md). */
+function PackBadges({ content }: { content: StudioContent }) {
+  return (
+    <>
+      {isAngleId(content.angle) && <Badge tone="violet">{ANGLES[content.angle].label}</Badge>}
+      {content.network && (NETWORKS as readonly string[]).includes(content.network) && <Badge tone="neutral">{networkLabel(content.network)}</Badge>}
+    </>
+  );
+}
+
 function Meta({ content }: { content: StudioContent }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <PackBadges content={content} />
       <Badge tone={content.edited ? "violet" : "blue"}>{content.edited ? "Edited" : "AI"}</Badge>
       <Badge tone="neutral">{content.language}</Badge>
       <time dateTime={content.createdAt} suppressHydrationWarning className="text-[13px] text-muted">
@@ -336,7 +350,7 @@ export function ContentCard({
           <h2 id="regen-title" className="text-lg font-semibold tracking-[-0.02em]">
             Write it again
           </h2>
-          <p className="text-[14px] text-muted">Your current text stays in the version history.</p>
+          <p className="text-[14px] text-muted">BuPulse writes a new pack of different posts (new angles, one per app, each with its own picture). Each post uses 1 AI text. Your current posts stay in the version history.</p>
         </div>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Quick ideas">
           {REGENERATE_IDEAS.map((idea) => (
@@ -350,7 +364,7 @@ export function ContentCard({
         </Field>
         <div className="flex flex-wrap items-center gap-3">
           <Button onClick={() => run(instruction)} disabled={generating} leading={<RefreshCw aria-hidden className="size-4" />}>
-            {generating ? "Writing…" : "Regenerate"}
+            {generating ? "Writing…" : "Write a new pack"}
           </Button>
           <span className="text-[13px] text-muted">{usageNote(used, limit)}</span>
         </div>
@@ -371,6 +385,7 @@ export function ContentCard({
                     <Badge tone={c.edited ? "violet" : "blue"}>{c.edited ? "Edited" : "AI"}</Badge>
                     <Badge tone="neutral">{c.language}</Badge>
                     {i === 0 && <Badge tone="success">Latest</Badge>}
+                    <PackBadges content={c} />
                     <time dateTime={c.createdAt} suppressHydrationWarning className="text-[13px] text-muted">
                       {formatWhenWithTime(c.createdAt)}
                     </time>

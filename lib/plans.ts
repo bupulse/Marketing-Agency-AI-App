@@ -39,6 +39,8 @@ export interface PlanConfig {
   highlights: string[];
   /** What the plan unlocks: keys of lib/features.ts, prerequisites included. */
   features: FeatureKey[];
+  /** A company's monthly AI allowance on this plan, in USD (PlanDefinition.aiMonthlyUsd). */
+  aiMonthlyUsd?: number;
 }
 
 export const TRIAL_DAYS = 7;
@@ -77,6 +79,7 @@ export const SEED_PLANS: Record<string, PlanConfig> = {
     limits: { text: 10, image: 5, videoSeconds: TRIAL_VIDEO_SECONDS, voiceCharacters: 0, chat: 50, seats: 1 },
     highlights: [],
     features: sortFeatureKeys([...CORE_FEATURES, "video"]),
+    aiMonthlyUsd: 1,
   },
   STANDARD: {
     name: "Standard",
@@ -87,9 +90,10 @@ export const SEED_PLANS: Record<string, PlanConfig> = {
     highlight: false,
     priceUsdMonthly: 49,
     priceUsdYearly: 490,
-    limits: { text: 100, image: 50, videoSeconds: 0, voiceCharacters: 0, chat: 1000, seats: 3 },
-    highlights: ["100 AI text generations a month", "50 brand designs a month", "Post to 5 social networks", "Lead-capturing chat widget", "Content calendar and scheduling"],
+    limits: { text: 100, image: 30, videoSeconds: 0, voiceCharacters: 0, chat: 1000, seats: 3 },
+    highlights: ["100 AI text generations a month", "30 AI images a month", "Post to 5 social networks", "Lead-capturing chat widget", "Content calendar and scheduling"],
     features: CORE_FEATURES,
+    aiMonthlyUsd: 2,
   },
   PRO: {
     name: "Pro",
@@ -100,9 +104,10 @@ export const SEED_PLANS: Record<string, PlanConfig> = {
     highlight: true,
     priceUsdMonthly: 99,
     priceUsdYearly: 990,
-    limits: { text: 300, image: 150, videoSeconds: VIDEO_PLAN_SECONDS, voiceCharacters: 20000, chat: 5000, seats: 10 },
-    highlights: ["300 AI text generations a month", "150 brand designs a month", "Everything in Standard", "App connectors and API access", "Use your own Composio account", "Video and voiceover when released"],
+    limits: { text: 300, image: 100, videoSeconds: VIDEO_PLAN_SECONDS, voiceCharacters: 20000, chat: 5000, seats: 10 },
+    highlights: ["300 AI text generations a month", "100 AI images a month", "Everything in Standard", "App connectors and API access", "Use your own Composio account", "Video and voiceover when released"],
     features: PRO_FEATURES,
+    aiMonthlyUsd: 6,
   },
 };
 

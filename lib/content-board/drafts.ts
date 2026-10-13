@@ -39,15 +39,22 @@ export async function draftPostsFromContent(owner: { businessId: string }, conte
   if (!entitlements.usable.has("calendar") || entitlements.block) return none;
   const content = await prisma.generatedContent.findFirst({
     where: { id: contentId, businessId: owner.businessId },
-    select: { id: true, caption: true, hashtags: true, videoScript: true, variants: true, productId: true, campaignId: true },
+    select: { id: true, caption: true, hashtags: true, videoScript: true, variants: true, productId: true, campaignId: true, packId: true, angle: true, network: true },
   });
   if (!content || (!content.productId && !content.campaignId)) return none;
   const connections = (await prisma.connection.findMany({ where: { businessId: owner.businessId, kind: "SOCIAL" }, orderBy: { createdAt: "asc" } })).filter(
     (c) => isNetwork(c.provider) && accountUsable(c),
   );
-  const writtenFor = [...new Set(parseVariants(content.variants).map((v): string => v.network))].filter(isNetwork);
-  const targets = draftTargets(connections, writtenFor);
+  // A content pack's post is for its one app (docs/CONTENT_PACKS.md); older content goes to every app.
+  const own = content.network && isNetwork(content.network) ? content.network : null;
+  const writtenFor = own ? [own] : [...new Set(parseVariants(content.variants).map((v): string => v.network))].filter(isNetwork);
+  const targets = draftTargets(own ? connections.filter((c) => c.provider === own) : connections, writtenFor);
   if (targets.length === 0) return none;
+  // Drafts the new ones replace: everything older of this subject, except the other posts of the same pack (an edited
+  // pack post replaces only the post it was edited from, on its app).
+  const siblings = content.packId
+    ? (await prisma.generatedContent.findMany({ where: { businessId: owner.businessId, packId: content.packId }, select: { id: true, angle: true, network: true } })).filter((c) => c.id !== content.id && !(c.angle === content.angle && c.network === content.network)).map((c) => c.id)
+    : [];
 
   const subject = content.productId ? { productId: content.productId } : { campaignId: content.campaignId as string };
   const visual = await readyMedia(owner.businessId, { contentId: content.id });
@@ -79,7 +86,7 @@ export async function draftPostsFromContent(owner: { businessId: string }, conte
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`content-drafts:${content.id}`}))`;
     const existing = await tx.post.count({ where: { businessId: owner.businessId, contentId: content.id, source: "STUDIO", status: { not: "CANCELLED" } } });
     if (existing > 0) return { created: [] as { id: string }[], replaced: 0, existing };
-    const { count: replaced } = await tx.post.deleteMany({ where: { businessId: owner.businessId, ...subject, source: "STUDIO", status: "PENDING_APPROVAL", ownerEditedAt: null, NOT: { contentId: content.id } } });
+    const { count: replaced } = await tx.post.deleteMany({ where: { businessId: owner.businessId, ...subject, source: "STUDIO", status: "PENDING_APPROVAL", ownerEditedAt: null, NOT: { contentId: { in: [content.id, ...siblings] } } } });
     const created: { id: string }[] = [];
     for (const data of rows) created.push(await tx.post.create({ data, select: { id: true } }));
     await tx.generatedContent.updateMany({ where: { id: content.id, businessId: owner.businessId }, data: { postsDraftedAt: now } });
@@ -87,6 +94,21 @@ export async function draftPostsFromContent(owner: { businessId: string }, conte
   });
   const auto = await autoSchedule(owner.businessId, outcome.created.map((p) => p.id), now);
   return { created: outcome.created.length, replaced: outcome.replaced, existing: outcome.existing, ...auto };
+}
+
+/** Drafts every post of a content pack, each on its own app (docs/CONTENT_PACKS.md). */
+export async function draftPostsFromPack(owner: { businessId: string }, packId: string, now = new Date()): Promise<DraftResult> {
+  const total: DraftResult = { created: 0, replaced: 0, existing: 0, scheduled: 0, waiting: 0 };
+  const posts = await prisma.generatedContent.findMany({ where: { businessId: owner.businessId, packId }, orderBy: { createdAt: "asc" }, select: { id: true } });
+  for (const post of posts) {
+    const r = await draftPostsFromContent(owner, post.id, now);
+    total.created += r.created;
+    total.replaced += r.replaced;
+    total.existing += r.existing;
+    total.scheduled += r.scheduled;
+    total.waiting += r.waiting;
+  }
+  return total;
 }
 
 /**

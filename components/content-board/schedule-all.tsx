@@ -25,6 +25,8 @@ export function ScheduleAllButton({ query, scope }: { query: string; scope?: Con
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>({ kind: "loading" });
   const [times, setTimes] = useState<Record<string, string>>({});
+  // "Now" for the date pickers' bounds, read once (render must stay pure).
+  const [nowMs] = useState(() => Date.now());
   const [pending, start] = useTransition();
 
   function openDialog() {
@@ -110,8 +112,8 @@ export function ScheduleAllButton({ query, scope }: { query: string; scope?: Con
                       type="datetime-local"
                       disabled={Boolean(p.blocked)}
                       value={times[p.id] ?? ""}
-                      min={toLocalInput(new Date(), step.zone)}
-                      max={toLocalInput(new Date(Date.now() + 90 * 86_400_000), step.zone)}
+                      min={toLocalInput(new Date(nowMs), step.zone)}
+                      max={toLocalInput(new Date(nowMs + 90 * 86_400_000), step.zone)}
                       onChange={(e) => setTimes((t) => ({ ...t, [p.id]: e.target.value }))}
                       className="min-h-11 rounded-[14px] border border-line bg-glass px-3 text-[15px] text-text disabled:opacity-50"
                     />

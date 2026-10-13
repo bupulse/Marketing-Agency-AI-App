@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
+import { MODEL_PRICES } from "./pricing";
 import { AIProviderError } from "./types";
 
 /** Monthly safety cap on BuPulse's own AI spend (AI_MONTHLY_BUDGET_USD, default $20). */
@@ -39,7 +40,7 @@ export class AIBudgetExceededError extends AIProviderError {
   }
 }
 
-/** Per-company monthly cap on AI spend (AI_COMPANY_MONTHLY_USD, default $3), on top of the platform cap above. */
+/** Default per-company monthly cap on AI spend (AI_COMPANY_MONTHLY_USD, default $3): plans without their own allowance. */
 export function companyMonthlyBudgetUsd(): number {
   const value = Number(process.env.AI_COMPANY_MONTHLY_USD ?? 3);
   return Number.isFinite(value) && value > 0 ? value : 3;
@@ -83,6 +84,62 @@ export class WidgetBudgetExceededError extends CompanyBudgetExceededError {
   }
 }
 
+/** AI images in one image pack (the `block:image` add-on, lib/offers/shared.ts). */
+export const IMAGE_PACK_SIZE = 50;
+
+/** What one AI image costs us (lib/ai/pricing.ts), for allowances that must cover a plan's images. */
+export function imageUnitUsd(): number {
+  const price = MODEL_PRICES[process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image"]?.perImage;
+  return typeof price === "number" && price > 0 ? price : 0.039;
+}
+
+/** The dollars image packs add to the allowance, rounded up to whole dollars, so a paid pack is always usable. */
+export function packAllowanceUsd(packs: number): number {
+  return packs > 0 ? Math.ceil(packs * IMAGE_PACK_SIZE * imageUnitUsd()) : 0;
+}
+
+/** An allowance for a plan without one of its own (old custom plans): its AI images at cost x 1.5, plus $1 for text. */
+export function derivedAllowanceUsd(imageLimit: number): number {
+  return Math.ceil(Math.max(0, imageLimit) * imageUnitUsd() * 1.5 + 1);
+}
+
+/** Pure: a plan's own allowance when it has a sound one, else the default. */
+export function allowanceFor(planUsd: number | null | undefined, fallback = companyMonthlyBudgetUsd()): number {
+  return typeof planUsd === "number" && Number.isFinite(planUsd) && planUsd >= 0 ? planUsd : fallback;
+}
+
+const allowanceCache = new Map<string, { at: number; value: number }>();
+
+/**
+ * One company's monthly AI allowance: its plan's (PlanDefinition.aiMonthlyUsd: Starter and Standard $2, Business and
+ * Pro $6, trial $1), else the code's seed plan, else AI_COMPANY_MONTHLY_USD. Cached 30 s per company.
+ */
+export async function companyAllowanceUsd(businessId: string, now = Date.now()): Promise<number> {
+  const hit = allowanceCache.get(businessId);
+  if (hit && now - hit.at < 30_000) return hit.value;
+  let value = companyMonthlyBudgetUsd();
+  try {
+    const business = await prisma.business.findUnique({ where: { id: businessId }, select: { user: { select: { subscription: { select: { plan: true } } } } } });
+    const key = business?.user?.subscription?.plan;
+    if (key) {
+      const row = await prisma.planDefinition.findUnique({ where: { key }, select: { aiMonthlyUsd: true, limits: true } });
+      const { SEED_PLANS } = await import("@/lib/plans");
+      const own = row?.aiMonthlyUsd ?? SEED_PLANS[key]?.aiMonthlyUsd;
+      // A plan with no allowance of its own (a custom plan from before) gets one that covers its AI images.
+      const images = Number((row?.limits as { image?: unknown } | null)?.image);
+      value = allowanceFor(own ?? (row && Number.isFinite(images) ? derivedAllowanceUsd(images) : undefined));
+    }
+  } catch {
+    // The default allowance while the plan cannot be read.
+  }
+  allowanceCache.set(businessId, { at: now, value });
+  return value;
+}
+
+export function clearAllowanceCache() {
+  allowanceCache.clear();
+}
+
 /** What one company's AI calls cost this calendar month (UTC), from the ledger. */
 export async function companySpentThisMonthUsd(businessId: string, now = new Date()): Promise<number> {
   const { _sum } = await prisma.aiCall.aggregate({ where: { businessId, createdAt: { gte: monthStart(now) } }, _sum: { costUsd: true } });
@@ -100,7 +157,7 @@ export async function companySpendThisMonth(businessId: string, now = new Date()
   ]);
   const totalUsd = Number(total._sum.costUsd ?? 0);
   const widgetUsd = Math.min(totalUsd, Number(widget._sum.costUsd ?? 0));
-  const allowanceUsd = companyMonthlyBudgetUsd();
+  const allowanceUsd = await companyAllowanceUsd(businessId);
   return { totalUsd, widgetUsd, ownerUsd: totalUsd - widgetUsd, allowanceUsd, widgetCapUsd: allowanceUsd * widgetAiShare() };
 }
 
