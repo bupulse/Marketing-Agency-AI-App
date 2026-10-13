@@ -4,15 +4,16 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, FolderInput, FolderPlus, ImagePlus, Package, Pencil, Sparkles, Star, Trash2, Upload, X } from "lucide-react";
-import { Button, Chip, Dialog, Input, useToast } from "@/components/ui";
+import { Button, Chip, Dialog, Input, Textarea, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { createFolder, deleteAssets, deleteFolder, listGalleryPage, moveAssets, renameAsset, renameFolder } from "@/app/dashboard/gallery/actions";
+import { createFolder, deleteAssets, deleteFolder, describeAsset, listGalleryPage, moveAssets, renameAsset, renameFolder } from "@/app/dashboard/gallery/actions";
 import { addToAlbum, getPhotoAlbums, removeFromAlbum, setAlbumCover, setPhotoProductsAction } from "@/app/dashboard/knowledge/actions";
 import { destinationKey, destinationOptions, parseDestination, parseFilter, uploadDestinationFor } from "@/lib/media/destinations";
-import { formatBytes, MEDIA_MAX_ASSETS, MEDIA_MAX_TOTAL_BYTES, MEDIA_TYPES } from "@/lib/media/rules";
+import { formatBytes, formatDuration, MEDIA_MAX_ASSETS, MEDIA_MAX_TOTAL_BYTES, UPLOAD_ACCEPT } from "@/lib/media/rules";
 import type { GalleryOverview, MediaItem } from "@/lib/media/service";
 import type { PhotoAlbums } from "@/lib/media/albums";
 import { DestinationDialog } from "./destination-dialog";
+import { GalleryThumb } from "./media-thumb";
 import { ImportMenu } from "./import-menu";
 import { UploadProgress } from "./upload-progress";
 import { useGalleryUpload } from "./use-gallery-upload";
@@ -203,7 +204,7 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
         ref={inputRef}
         type="file"
         multiple
-        accept={MEDIA_TYPES.join(",")}
+        accept={UPLOAD_ACCEPT}
         className="sr-only"
         tabIndex={-1}
         aria-hidden
@@ -301,8 +302,7 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
                       on ? "ring-pulse-blue" : "ring-transparent",
                     )}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
-                    <img src={item.url} alt="" loading="lazy" decoding="async" className={cn("size-full object-cover transition-transform duration-500 ease-out-soft group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100", on && "scale-95")} />
+                    <GalleryThumb item={item} alt="" className={cn("transition-transform duration-500 ease-out-soft group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100", on && "scale-95")} />
                     <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/55 to-transparent px-3 pt-6 pb-2 text-left text-xs font-medium text-white opacity-0 transition-opacity duration-300 group-hover:opacity-100 max-sm:hidden">
                       {item.name}
                     </span>
@@ -340,6 +340,9 @@ export function GalleryView({ folder, overview, initialItems, initialCursor }: {
         {overview.usage.count} of {MEDIA_MAX_ASSETS} photos · {formatBytes(overview.usage.bytes)} of {formatBytes(MEDIA_MAX_TOTAL_BYTES)} used
         {overview.uncounted > 0 ? ` · ${overview.uncounted} photo${overview.uncounted === 1 ? "" : "s"} moved from your old projects, not counted` : ""}
         {count !== overview.total ? ` · ${count} here` : ""}
+      </p>
+      <p className="-mt-3 px-1 text-[13px] text-muted">
+        Videos: MP4, MOV or WebM, up to 60 seconds and 50 MB each · {formatBytes(overview.videos.bytes)} of {formatBytes(overview.videos.max)} for videos used. Storage is small for now, so keep videos short.
       </p>
 
       {dragging && (
@@ -582,11 +585,16 @@ function ViewerBody({ item, folders, products, album, busy, onMove, onDelete, on
 
   return (
         <div className="flex flex-col gap-4">
-          {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
-          <img src={item.url} alt={item.name} className="max-h-[55vh] w-full rounded-2xl bg-soft object-contain" />
+          {item.kind === "video" ? (
+            <video src={item.url} poster={item.posterUrl ?? undefined} controls playsInline preload="metadata" aria-label={item.name} className="max-h-[55vh] w-full rounded-2xl bg-black object-contain" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element -- signed Storage URL
+            <img src={item.url} alt={item.name} className="max-h-[55vh] w-full rounded-2xl bg-soft object-contain" />
+          )}
           <p className="text-[13px] text-muted">
-            {[item.width && item.height ? `${item.width} × ${item.height}` : null, formatBytes(item.bytes), folder ? `In ${folder.name}` : "Not in a folder"].filter(Boolean).join(" · ")}
+            {[item.kind === "video" && item.durationMs ? formatDuration(item.durationMs) : null, item.width && item.height ? `${item.width} × ${item.height}` : null, formatBytes(item.bytes), folder ? `In ${folder.name}` : "Not in a folder"].filter(Boolean).join(" · ")}
           </p>
+          {item.kind === "video" && <Description item={item} onSaved={onRenamed} onError={onError} />}
           <form
             className="flex gap-2"
             onSubmit={(e) => {
@@ -759,5 +767,44 @@ function MoveBody({ ids, folders, busy, onMove, onCreate }: { ids: string[]; fol
         </Button>
       </form>
     </div>
+  );
+}
+
+/** "What's in this video?": the owner's words, so the AI's captions talk about what the video shows. */
+function Description({ item, onSaved, onError }: { item: MediaItem; onSaved: () => void; onError: (error: string) => void }) {
+  const [text, setText] = useState(item.description ?? "");
+  const [saving, start] = useTransition();
+  const changed = text.trim() !== (item.description ?? "");
+  return (
+    <form
+      className="flex flex-col gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!changed) return;
+        start(async () => {
+          const res = await describeAsset(item.id, text);
+          if (res.ok) onSaved();
+          else onError(res.error);
+        });
+      }}
+    >
+      <label htmlFor={`describe-${item.id}`} className="text-[14px] font-semibold">
+        What&apos;s in this video?
+      </label>
+      <Textarea
+        id={`describe-${item.id}`}
+        value={text}
+        maxLength={500}
+        rows={2}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="For example: our barista making a caramel latte at the Kimihurura shop"
+      />
+      <span className="text-[13px] text-muted">BuPulse writes the post&apos;s caption about it.</span>
+      <div>
+        <Button type="submit" size="sm" variant="ghost" disabled={!changed || saving}>
+          Save description
+        </Button>
+      </div>
+    </form>
   );
 }

@@ -103,7 +103,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
         />
       </GlassCard>
 
-      <AlbumCard kind="product" id={product.id} name={product.name} photos={photos.map((p) => ({ id: p.id, path: p.path, url: p.url, name: p.name }))} />
+      <AlbumCard kind="product" id={product.id} name={product.name} photos={photos.map((p) => ({ id: p.id, path: p.path, url: p.url, name: p.name, kind: p.kind, posterUrl: p.posterUrl, durationMs: p.durationMs }))} />
 
       <SubjectContentLink href={`/dashboard/content/products/${product.id}`} label="See this product's content" />
     </>

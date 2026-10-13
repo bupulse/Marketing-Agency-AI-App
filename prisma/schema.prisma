@@ -1039,10 +1039,16 @@ model MediaAsset {
   folder     MediaFolder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
   path       String          @unique // <userId>/gallery/<id>.<ext> in the "media" bucket
   name       String
+  // "photo" or "video" (docs/MEDIA.md). A video's poster is <id>-poster.jpg next to it; bytes include the poster.
+  kind       String          @default("photo")
   mimeType   String
   bytes      Int
   width      Int?
   height     Int?
+  durationMs Int?
+  posterPath String?
+  // The owner's "What's in this video?" (or photo): the AI writes captions about it.
+  description String?
   source     String? // where an import came from: "google_drive" | "dropbox" | "canva" | "store"; null for uploads
   createdAt  DateTime        @default(now())
   products   ProductPhoto[]
