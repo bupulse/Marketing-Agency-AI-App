@@ -20,7 +20,7 @@ export default async function AiPage({ searchParams }: PageProps<"/admin/ai">) {
   const days = u.perDay.map((d) => d.date);
   return (
     <>
-      <PageHeader title="AI usage and budget" description={`Spend on AI for ${u.month}, from the AI call ledger. When the monthly cap is reached every AI feature pauses until next month or until you raise it.`} action={<form className="flex items-center gap-2"><Input type="month" name="month" defaultValue={u.month} aria-label="Month" className="min-h-11" /><Button type="submit" size="sm" variant="outline">Show</Button></form>} />
+      <PageHeader title="AI calls and spend" description={`Spend on AI for ${u.month}, from the AI call ledger. When the monthly cap is reached every AI feature pauses until next month or until you raise it.`} action={<form className="flex items-center gap-2"><Input type="month" name="month" defaultValue={u.month} aria-label="Month" className="min-h-11" /><Button type="submit" size="sm" variant="outline">Show</Button></form>} />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
 
@@ -39,6 +39,16 @@ export default async function AiPage({ searchParams }: PageProps<"/admin/ai">) {
         <Stat label="Failed calls" value={`${u.failed.count}`} source={`${u.failed.percentOfCalls}% of calls`} />
         <Stat label="Projected" value={usd(u.projectedUsd)} source="Spend so far, spread over the month" invert />
       </div>
+
+      <Panel title="Compare with the provider's bill" description="The ledger is an estimate. Once the month's invoice from Google (or Anthropic, ElevenLabs) is in, type it in Costs: it then replaces the estimate in profit." action={<Link href={`/admin/costs?month=${u.month}#bills`} className="text-sm font-medium underline">Enter the bill</Link>}>
+        <ul className="flex flex-col gap-1.5 text-[14px] text-muted">
+          <li>{num(u.calls)} calls recorded this month{u.estimatedCalls > 0 ? `, ${num(u.estimatedCalls)} of them timed out on our side and are counted with estimated usage (the provider still bills them)` : ""}.</li>
+          {u.perModel.some((m) => m.approximatePrice) && (
+            <li className="text-danger">Priced by family, not exactly: {u.perModel.filter((m) => m.approximatePrice).map((m) => m.model).join(", ")}. Add the model to lib/ai/pricing.ts.</li>
+          )}
+          <li>Google bills by Pacific time and adds tax where it applies; the ledger counts UTC months before tax. How the estimate works: docs/AI_COSTS.md.</li>
+        </ul>
+      </Panel>
 
       <Panel title="Spend per day">
         {days.length > 1 ? <LineChart cents={false} labels={days} series={[{ name: "Cost (USD)", color: "var(--color-pulse-blue)", values: u.perDay.map((d) => d.costUsd) }]} summary="AI cost per day" /> : <Empty>Not enough days yet.</Empty>}

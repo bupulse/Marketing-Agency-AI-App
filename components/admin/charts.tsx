@@ -97,3 +97,69 @@ export function Bars({ rows, color = "var(--color-pulse-blue)" }: { rows: { labe
     </ul>
   );
 }
+
+/**
+ * Monthly bars, two per month side by side (e.g. revenue and costs), from zero, with the month under each pair and
+ * a legend. Exact values are in the table next to it and in each bar's tooltip. Values in USD cents.
+ */
+export function MonthBars({ months, a, b, summary }: { months: string[]; a: { name: string; color: string; values: number[] }; b: { name: string; color: string; values: number[] }; summary: string }) {
+  if (months.length === 0) return null;
+  const max = Math.max(1, ...a.values, ...b.values);
+  const W = 600;
+  const H = 170;
+  const base = H - 22;
+  const slot = W / months.length;
+  const bar = Math.max(4, Math.min(22, slot / 3));
+  const h = (v: number) => (Math.max(0, v) / max) * (base - 8);
+  const label = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleString("en-GB", { month: "short", timeZone: "UTC" });
+  return (
+    <figure className="flex flex-col gap-2">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={summary} className="h-44 w-full">
+        <line x1={0} x2={W} y1={base} y2={base} stroke="var(--bp-line)" strokeWidth={1} />
+        {months.map((m, i) => {
+          const cx = slot * i + slot / 2;
+          return (
+            <g key={m}>
+              <rect x={cx - bar - 1} y={base - h(a.values[i])} width={bar} height={h(a.values[i])} rx={3} fill={a.color}>
+                <title>{`${m} ${a.name}: ${money(a.values[i])}`}</title>
+              </rect>
+              <rect x={cx + 1} y={base - h(b.values[i])} width={bar} height={h(b.values[i])} rx={3} fill={b.color}>
+                <title>{`${m} ${b.name}: ${money(b.values[i])}`}</title>
+              </rect>
+              <text x={cx} y={H - 6} textAnchor="middle" fontSize={11} fill="var(--bp-muted)">
+                {label(m)}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+      <figcaption className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted">
+        <span>Highest month {money(max)}</span>
+        <span className="flex gap-3">
+          {[a, b].map((s) => (
+            <span key={s.name} className="inline-flex items-center gap-1.5">
+              <span aria-hidden className="inline-block size-2.5 rounded-sm" style={{ background: s.color }} />
+              {s.name}
+            </span>
+          ))}
+        </span>
+      </figcaption>
+    </figure>
+  );
+}
+
+/** A labelled progress bar against a limit (AI spend vs cap). Turns red from 90%. */
+export function Gauge({ value, max, label, text }: { value: number; max: number; label: string; text: string }) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between gap-2 text-[13px]">
+        <span className="font-medium text-muted">{label}</span>
+        <span className="tabular-nums">{text}</span>
+      </div>
+      <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={max} aria-valuenow={value} aria-valuetext={text} className="h-2.5 overflow-hidden rounded-full bg-soft">
+        <span className="block h-full rounded-full" style={{ width: `${Math.max(1, pct)}%`, background: pct >= 90 ? "var(--bp-danger)" : "var(--color-pulse-blue)" }} />
+      </div>
+    </div>
+  );
+}

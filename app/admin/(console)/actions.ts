@@ -30,7 +30,7 @@ const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 
 export async function saveCostAction(f: FormData) {
   const ctx = await adminAction();
-  await finish("/admin/revenue#costs", "Cost saved.", async () => {
+  await finish("/admin/costs#one-off", "Cost saved.", async () => {
     const month = text(f, "month");
     const category = text(f, "category").toLowerCase();
     const amount = Number(text(f, "amount").replace(/[$,\s]/g, ""));
@@ -44,7 +44,7 @@ export async function saveCostAction(f: FormData) {
 
 export async function deleteCostAction(f: FormData) {
   const ctx = await adminAction();
-  await finish("/admin/revenue#costs", "Cost deleted.", async () => {
+  await finish("/admin/costs#one-off", "Cost deleted.", async () => {
     const month = text(f, "month");
     const category = text(f, "category");
     await deleteMonthlyCost(ctx, { month, category });

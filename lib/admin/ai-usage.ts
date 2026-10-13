@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { isApproximatePrice } from "@/lib/ai/pricing";
 import { BUDGET_MAX_USD, BUDGET_MIN_USD, BUDGET_SETTING_KEY, clearBudgetCache, effectiveBudgetUsd, monthlyBudgetUsd } from "@/lib/ai/budget";
 import { writeAudit } from "./audit";
 import { scrubSecrets } from "./scrub";
@@ -46,7 +47,8 @@ export async function getAiUsage(opts: { month?: string; topLimit?: number; now?
   const where = { createdAt: { gte: b.start, lt: b.end } };
   const top = Math.min(Math.max(Math.trunc(opts.topLimit ?? 10) || 10, 1), 50);
 
-  const [cap, total, perDayRows, perModelRows, perFeatureRows, perUserRows, failedCount, failedByError, failedRecent] = await Promise.all([
+  const [estimatedCalls, cap, total, perDayRows, perModelRows, perFeatureRows, perUserRows, failedCount, failedByError, failedRecent] = await Promise.all([
+    prisma.aiCall.count({ where: { ...where, estimated: true } }).catch(() => 0),
     budgetInfo(),
     prisma.aiCall.aggregate({ where, _sum: { costUsd: true }, _count: { _all: true } }),
     prisma.$queryRaw<{ day: Date; cost: unknown; calls: bigint; failed: bigint }[]>`
@@ -79,8 +81,10 @@ export async function getAiUsage(opts: { month?: string; topLimit?: number; now?
     projectedUsd: round(projectedUsd, 2),
     projectedOverCap: projectedUsd > cap.usd,
     calls: total._count._all,
+    /** Calls that timed out on our side but were still billed: their usage is our estimate (docs/AI_COSTS.md). */
+    estimatedCalls,
     perDay: perDayRows.map((r) => ({ date: new Date(r.day).toISOString().slice(0, 10), costUsd: round(num(r.cost)), calls: Number(r.calls), failed: Number(r.failed) })),
-    perModel: perModelRows.map((r) => ({ provider: r.provider, model: r.model, calls: r._count._all, costUsd: round(num(r._sum.costUsd)), inputTokens: num(r._sum.inputTokens), outputTokens: num(r._sum.outputTokens), images: num(r._sum.images) })),
+    perModel: perModelRows.map((r) => ({ provider: r.provider, model: r.model, approximatePrice: isApproximatePrice(r.model), calls: r._count._all, costUsd: round(num(r._sum.costUsd)), inputTokens: num(r._sum.inputTokens), outputTokens: num(r._sum.outputTokens), images: num(r._sum.images) })),
     perFeature: perFeatureRows.map((r) => ({ feature: r.feature, calls: r._count._all, costUsd: round(num(r._sum.costUsd)) })),
     topSpenders: perUserRows.map((r) => ({
       userId: r.userId as string,
