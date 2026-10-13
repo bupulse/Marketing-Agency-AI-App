@@ -1,5 +1,7 @@
 // Everything the Autopilot page shows, loaded for the signed-in user's business only.
 import "server-only";
+import { byHandId } from "@/lib/content-board/by-hand";
+import { NETWORKS } from "@/lib/social/types";
 import { prisma } from "@/lib/db";
 import { signPaths } from "@/lib/publishing/media";
 import { accountUsable } from "@/lib/publishing/service";
@@ -92,11 +94,23 @@ export async function loadAutopilotView(userId: string, now = new Date()): Promi
     prisma.mediaAsset.count({ where: { businessId: business.id } }),
   ]);
 
-  const accounts: ViewAccount[] = connections.flatMap((c) =>
+  const real: ViewAccount[] = connections.flatMap((c) =>
     isNetwork(c.provider)
       ? [{ id: c.id, network: c.provider, label: getProvider(c.provider).rules.label, displayName: c.displayName ?? getProvider(c.provider).rules.label, avatarUrl: c.avatarUrl, usable: accountUsable(c) }]
       : [],
   );
+  // Apps without a usable account can still be written for: their posts come as reminders to post yourself.
+  const accounts: ViewAccount[] = [
+    ...real,
+    ...NETWORKS.filter((n) => !real.some((a) => a.network === n && a.usable)).map((n) => ({
+      id: byHandId(n),
+      network: n,
+      label: "Not connected: you get a reminder to post it yourself",
+      displayName: getProvider(n).rules.label,
+      avatarUrl: null,
+      usable: true,
+    })),
+  ];
 
   const urls = new Map<string, string>();
   const paths = [...new Set(posts.flatMap((p) => p.mediaPaths))].filter((p) => p.startsWith(`${userId}/`));

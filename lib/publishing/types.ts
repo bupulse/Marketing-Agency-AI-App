@@ -33,6 +33,8 @@ export type CalendarPost = {
   reviewNote?: string | null;
   /** When auto-approval scheduled it. */
   autoScheduledAt?: string | null;
+  /** For an app that is not connected: it goes out as a "post it yourself" reminder. */
+  remindOnly?: boolean;
 };
 
 export type ComposerAccount = {

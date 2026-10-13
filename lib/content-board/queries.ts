@@ -85,7 +85,7 @@ export async function toContentPosts(businessId: string, rows: PostRow[]): Promi
       connectionId: r.connectionId,
       accountName: r.connection?.displayName ?? (isNetwork(r.network) ? getProvider(r.network).rules.label : r.network),
       accountAvatar: r.connection?.avatarUrl ?? null,
-      notify: r.connection?.postingMode === "NOTIFY",
+      notify: r.connection?.postingMode === "NOTIFY" || (!r.connection && r.remindOnly),
       status: r.status as PostStatusName,
       format: r.format as PostFormatName | "ARTICLE" | "THREAD",
       source: r.source,
@@ -104,6 +104,7 @@ export async function toContentPosts(businessId: string, rows: PostRow[]): Promi
       createdAt: r.createdAt.toISOString(),
       reviewNote: r.reviewNote,
       autoScheduledAt: r.autoScheduledAt?.toISOString() ?? null,
+      remindOnly: !r.connection && r.remindOnly,
       kind: isPostKind(r.mediaKind) ? r.mediaKind : "post",
       poster: poster ? (signed.get(poster) ?? null) : null,
       subject: r.product ? { kind: "product", id: r.product.id, name: r.product.name } : r.campaign ? { kind: "campaign", id: r.campaign.id, name: r.campaign.name } : null,
@@ -206,4 +207,20 @@ export async function loadSubjectPosts(businessId: string, scope: ContentScope, 
 export async function loadOnePost(businessId: string, postId: string): Promise<ContentPost | null> {
   const row = await prisma.post.findFirst({ where: { id: postId, businessId }, include: postInclude });
   return row ? (await toContentPosts(businessId, [row]))[0] : null;
+}
+
+/**
+ * Posts made for an app that was not connected, still waiting or scheduled, whose app now has an account BuPulse posts
+ * to: the "publish them automatically" offer.
+ */
+export async function switchableByHand(businessId: string): Promise<string[]> {
+  const accounts = await prisma.connection.findMany({ where: { businessId, kind: "SOCIAL", postingMode: "AUTO", status: { in: ["ACTIVE", "EXPIRING"] } }, select: { provider: true } });
+  const networks = [...new Set(accounts.map((a) => a.provider))];
+  if (networks.length === 0) return [];
+  const rows = await prisma.post.findMany({
+    where: { businessId, remindOnly: true, connectionId: null, network: { in: networks }, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] }, lockedAt: null },
+    select: { id: true },
+    take: 200,
+  });
+  return rows.map((r) => r.id);
 }

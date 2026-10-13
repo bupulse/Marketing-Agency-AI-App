@@ -16,6 +16,11 @@ export function visualHrefFor(post: ContentPost): string | null {
   return null;
 }
 
+/** Apps with an account BuPulse posts to automatically (by-hand posts for them can switch). */
+export function autoNetworksOf(context: ComposerContext): string[] {
+  return [...new Set(context.accounts.filter((a) => a.usable && !a.notify).map((a) => a.network))];
+}
+
 /**
  * A subject's posts as cards. A card opens the post (the calendar's detail: preview, approve, move, edit, delete);
  * Edit opens the composer. More posts load as the list end scrolls into view (or with the button).
@@ -88,7 +93,7 @@ export function PostBoard({
           </Link>
         </div>
       )}
-      <PostDetail post={detail} zone={zone} onClose={() => setDetailId(null)} onEdit={(p) => { setDetailId(null); setEditing(p); }} visualHref={detail ? visualHrefFor(detail) : null} />
+      <PostDetail post={detail} zone={zone} onClose={() => setDetailId(null)} onEdit={(p) => { setDetailId(null); setEditing(p); }} visualHref={detail ? visualHrefFor(detail) : null} autoNetworks={autoNetworksOf(context)} />
       <PostComposer open={editing !== null} onOpenChange={(o) => !o && setEditing(null)} context={context} post={editing ?? undefined} />
     </div>
   );

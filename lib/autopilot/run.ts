@@ -2,6 +2,7 @@
 // draws its images, and saves the posts. Safe to call twice: one run per business and week.
 import "server-only";
 import { autoSchedule } from "@/lib/content-board/auto";
+import { byHandNetwork } from "@/lib/content-board/by-hand";
 import { prisma } from "@/lib/db";
 import { hasShortRequestLimit } from "@/lib/platform/limits";
 import { industryContext } from "@/lib/industry-context";
@@ -234,7 +235,9 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
           return [
             {
               businessId,
-              connectionId: planned.connectionId,
+              // An app chosen while not connected ("network:<app>"): no account, a reminder to post it yourself.
+              connectionId: byHandNetwork(planned.connectionId) ? null : planned.connectionId,
+              remindOnly: byHandNetwork(planned.connectionId) !== null,
               network: planned.network,
               groupId: group.groupId,
               productId: group.project && group.project.subject !== "campaign" ? group.project.id : null,

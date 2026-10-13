@@ -4,12 +4,13 @@ import { EmptyState } from "@/components/app/empty-state";
 import { getAppContext } from "@/components/app/context";
 import { featureGate } from "@/components/app/no-access";
 import { PageHeader } from "@/components/app/page-header";
+import { SwitchToAutoBanner } from "@/components/content-board/content-actions";
 import { FilterBar } from "@/components/content-board/filter-bar";
 import { SubjectGrid } from "@/components/content-board/subject-grid";
 import { TodayReview } from "@/components/content-board/today-review";
 import { Button, GlassCard } from "@/components/ui";
 import { parseContentFilters } from "@/lib/content-board/filters";
-import { loadSubjectCards, loadToday, recentAutoCount } from "@/lib/content-board/queries";
+import { loadSubjectCards, loadToday, recentAutoCount, switchableByHand } from "@/lib/content-board/queries";
 import { loadComposerContext } from "@/lib/publishing/queries";
 
 export const metadata = { title: "Content" };
@@ -25,11 +26,12 @@ export default async function ContentPage({ searchParams }: { searchParams: Sear
   const now = new Date();
   const posting = entitlements.usable.has("calendar");
 
-  const [cards, today, autoCount, context] = await Promise.all([
+  const [cards, today, autoCount, context, switchable] = await Promise.all([
     loadSubjectCards(business.id, filters, zone, now),
     posting ? loadToday(business.id, filters, zone, now) : null,
     posting ? recentAutoCount(business.id, now) : 0,
     posting ? loadComposerContext(business.id) : null,
+    posting ? switchableByHand(business.id) : [],
   ]);
   const nothingYet = cards.length === 1 && cards[0].kind === "general" && cards[0].total === 0 && !today?.posts.length && !today?.older;
 
@@ -56,6 +58,8 @@ export default async function ContentPage({ searchParams }: { searchParams: Sear
           </Link>
         </GlassCard>
       )}
+
+      {switchable.length > 0 && <SwitchToAutoBanner postIds={switchable} />}
 
       {nothingYet ? (
         <EmptyState

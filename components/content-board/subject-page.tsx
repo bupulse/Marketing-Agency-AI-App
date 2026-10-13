@@ -1,15 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, Megaphone, Package, Plug, Sparkles } from "lucide-react";
+import { ChevronLeft, Megaphone, Package, Sparkles } from "lucide-react";
 import { EmptyState } from "@/components/app/empty-state";
 import { getAppContext } from "@/components/app/context";
 import { featureGate } from "@/components/app/no-access";
 import { PageHeader } from "@/components/app/page-header";
-import { Button } from "@/components/ui";
-import { prisma } from "@/lib/db";
+import { Button, GlassCard } from "@/components/ui";
+import { latestContentPosts } from "@/lib/content-board/drafts";
 import { activeFilterCount, contentQuery, parseContentFilters, PAGE_SIZE, type ContentScope } from "@/lib/content-board/filters";
 import { loadOnePost, loadSubjectInfo, loadSubjectPosts } from "@/lib/content-board/queries";
 import { loadComposerContext } from "@/lib/publishing/queries";
+import { CreatePostsButton } from "./content-actions";
 import { FilterBar } from "./filter-bar";
 import { GeneratePostsButton } from "./generate-posts";
 import { PostBoard } from "./post-board";
@@ -28,11 +29,12 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
   const now = new Date();
   const postId = typeof searchParams.post === "string" ? searchParams.post.slice(0, 64) : null;
 
-  const [list, context, openPost, channels] = await Promise.all([
+  // Content written before posts were drafted gets them now, once (the backfill); then the list is read.
+  const latest = scope.kind === "general" ? null : await latestContentPosts(business.id, scope.kind === "product" ? { productId: scope.id } : { campaignId: scope.id }, { backfill: true }).catch(() => null);
+  const [list, context, openPost] = await Promise.all([
     loadSubjectPosts(business.id, scope, filters, zone, now),
     loadComposerContext(business.id),
     postId ? loadOnePost(business.id, postId) : null,
-    prisma.connection.count({ where: { businessId: business.id, kind: "SOCIAL" } }),
   ]);
   const path = scope.kind === "general" ? "/dashboard/content/general" : `/dashboard/content/${scope.kind === "product" ? "products" : "campaigns"}/${scope.id}`;
   const moreHref = list.hasMore ? `${path}${contentQuery({ ...filters, limit: filters.limit + PAGE_SIZE }, { limit: true })}` : null;
@@ -42,12 +44,12 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
 
   const empty = filtered ? (
     <EmptyState icon={Icon} title="No posts match these filters" text="Try another app, type or date, or clear the filters to see every post." action={<Button href={path}>Clear filters</Button>} />
-  ) : channels === 0 ? (
+  ) : latest && !latest.hasPosts ? (
     <EmptyState
-      icon={Plug}
-      title="Connect an app first"
-      text="BuPulse turns your content into a post for each connected app: Instagram, Facebook, TikTok, LinkedIn or YouTube."
-      action={<Button href="/dashboard/connections">Connect an app</Button>}
+      icon={Icon}
+      title={`This ${thing} has content but no posts yet`}
+      text="BuPulse makes a post for each app the content was written for, with its picture or video. Apps you have not connected get a reminder to post it yourself."
+      action={<CreatePostsButton contentId={latest.contentId} />}
     />
   ) : scope.kind === "general" ? (
     <EmptyState
@@ -82,6 +84,12 @@ export async function SubjectPostsPage({ scope, searchParams }: { scope: Content
         }
       />
       <FilterBar filters={filters} />
+      {latest && !latest.hasPosts && list.posts.length > 0 && (
+        <GlassCard className="flex flex-wrap items-center gap-3 p-4">
+          <p className="min-w-0 flex-1 text-[15px]">The newest content for this {thing} has no posts yet.</p>
+          <CreatePostsButton contentId={latest.contentId} />
+        </GlassCard>
+      )}
       <PostBoard posts={list.posts} total={list.total} zone={zone} context={context} moreHref={moreHref} openPost={openPost} empty={empty} />
     </div>
   );

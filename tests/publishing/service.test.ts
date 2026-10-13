@@ -24,6 +24,7 @@ vi.mock("@/lib/db", () => ({ prisma }));
 
 import {
   approvePosts,
+  connectByHandPosts,
   createPosts,
   deletePost,
   duplicatePost,
@@ -431,5 +432,22 @@ describe("approving never stacks two posts on one account", () => {
     expect(clash).toMatchObject({ connectionId: "c-fb", id: { not: "a" } });
     const written = prisma.post.updateMany.mock.calls.at(-1)![0].data.scheduledAt as Date;
     expect(Math.abs(written.getTime() - new Date("2026-10-07T16:00:00Z").getTime())).toBeGreaterThanOrEqual(150 * 60_000);
+  });
+});
+
+describe("connectByHandPosts (Publish automatically)", () => {
+  it("moves reminder posts of a now-connected app to its account, and leaves apps still not connected alone", async () => {
+    prisma.post.findMany.mockResolvedValue([
+      { id: "a", network: "facebook", status: "SCHEDULED" },
+      { id: "b", network: "tiktok", status: "PENDING_APPROVAL" },
+    ]);
+    prisma.connection.findMany.mockResolvedValue([facebook]);
+    expect(await connectByHandPosts(owner, ["a", "b", "a"])).toEqual({ switched: 1 });
+    expect(prisma.post.findMany.mock.calls[0][0].where).toMatchObject({ id: { in: ["a", "b"] }, businessId: "b1", remindOnly: true, connectionId: null });
+    expect(prisma.post.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.post.updateMany.mock.calls[0][0]).toEqual({
+      where: { id: "a", businessId: "b1", remindOnly: true, connectionId: null, status: "SCHEDULED", lockedAt: null },
+      data: { connectionId: "c-fb", remindOnly: false },
+    });
   });
 });

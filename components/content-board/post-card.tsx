@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { FileText, Play, Sparkles } from "lucide-react";
 import { NetworkIcon } from "@/components/publishing/network-icon";
 import { formatDateTime } from "@/components/publishing/helpers";
@@ -84,6 +85,14 @@ export function PostCard({ post, zone, onOpen, actions, showSubject = false }: {
           </p>
         </div>
       </button>
+      {post.remindOnly && (
+        <p className="flex flex-wrap items-center gap-x-1.5 px-4 pb-3 text-[13px]">
+          <span className="rounded-full bg-amber-500/15 px-2.5 py-1 font-semibold text-amber-800 dark:text-amber-300">Not connected</span>
+          <Link href="/dashboard/connections" className="inline-flex min-h-11 items-center font-semibold text-pulse-blue">
+            Connect {networkLabel(post.network)}
+          </Link>
+        </p>
+      )}
       {actions && <div className="flex flex-wrap gap-2 border-t border-line p-3">{actions}</div>}
     </article>
   );

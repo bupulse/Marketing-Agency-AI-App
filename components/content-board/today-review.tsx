@@ -10,7 +10,7 @@ import { PostComposer } from "@/components/publishing/composer";
 import { PostDetail } from "@/components/publishing/post-detail";
 import type { ContentPost } from "@/lib/content-board/queries";
 import type { CalendarPost, ComposerContext } from "@/lib/publishing/types";
-import { visualHrefFor } from "./post-board";
+import { autoNetworksOf, visualHrefFor } from "./post-board";
 import { PostCard } from "./post-card";
 
 /**
@@ -114,7 +114,7 @@ export function TodayReview({ posts, older, zone, context }: { posts: ContentPos
         </Link>
       )}
 
-      <PostDetail post={detail} zone={zone} onClose={() => setDetailId(null)} onEdit={(p) => { setDetailId(null); setEditing(p); }} visualHref={detail ? visualHrefFor(detail) : null} />
+      <PostDetail post={detail} zone={zone} onClose={() => setDetailId(null)} onEdit={(p) => { setDetailId(null); setEditing(p); }} visualHref={detail ? visualHrefFor(detail) : null} autoNetworks={autoNetworksOf(context)} />
       <PostComposer open={editing !== null} onOpenChange={(o) => !o && setEditing(null)} context={context} post={editing ?? undefined} />
     </section>
   );

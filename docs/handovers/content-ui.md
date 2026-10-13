@@ -45,6 +45,13 @@ SCHEDULED posts; the summary cron pages through only due businesses with a curso
 `updatedAt`; slots are claimed under a per-account lock with 2.5 h spacing re-checked. No plan has a post cap, so none
 is enforced.
 
+## Apps not connected (after the Urugo check)
+
+Drafts for every written-for app, connected or not; unconnected ones are `remindOnly` and become "post it yourself"
+reminders when approved or auto-approved; "Publish automatically" once the app is connected; Autopilot can write for
+apps not connected (`network:<app>`); content from before is drafted once when its page is opened, or with "Create
+posts from this content". Migration `20261016110000_posts_for_unconnected_apps`.
+
 ## New cron
 
 `/api/cron/content-summary` hourly at :07 (Cloudflare `7 * * * *`, Netlify `cron-content-summary`, Admin cron list).

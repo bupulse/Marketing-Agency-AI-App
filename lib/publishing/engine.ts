@@ -79,7 +79,7 @@ export async function claimDuePosts(args: { now: Date; limit: number; ids?: stri
   // Reminder posts (NOTIFY accounts and SCRIPT posts) need Resend. While it is off they are not claimed, so they stay
   // SCHEDULED with no attempt used, and go out as soon as it is switched back on.
   const emailOff = !(await isServiceEnabled("resend"));
-  const reminderSql = emailOff ? Prisma.sql`AND "format" <> 'SCRIPT'::"PostFormat" AND ("connectionId" IS NULL OR "connectionId" NOT IN (SELECT "id" FROM "Connection" WHERE "postingMode" = 'NOTIFY'))` : Prisma.empty;
+  const reminderSql = emailOff ? Prisma.sql`AND "format" <> 'SCRIPT'::"PostFormat" AND NOT "remindOnly" AND ("connectionId" IS NULL OR "connectionId" NOT IN (SELECT "id" FROM "Connection" WHERE "postingMode" = 'NOTIFY'))` : Prisma.empty;
   // Companies whose subscription is not live (waiting for a demo, past due, expired, cancelled) are not claimed at all:
   // their posts stay SCHEDULED, held, without using attempts. (A trial that ran out but was not flipped yet is caught
   // by the entitlement check below and released the same way.)
@@ -174,7 +174,9 @@ async function sendReminder(post: ClaimedPost): Promise<"reminders" | "retrying"
         ? hasVideo
           ? `Your ${network} video is scheduled for now. BuPulse cannot upload to ${network} yet, so download your video below and post it with this caption.`
           : `Your ${network} video is scheduled for now. BuPulse cannot publish video yet, so here is the script and caption to film and post it yourself.`
-        : `Your ${network} post is scheduled for now. ${post.connection?.displayName ?? "This account"} is set to remind you instead of posting automatically, so here is everything ready to copy.`,
+        : !post.connection
+          ? `Your ${network} post is scheduled for now. ${network} is not connected to BuPulse yet, so here is everything ready to copy and post yourself. Connect it in Channels and the next posts go out on their own.`
+          : `Your ${network} post is scheduled for now. ${post.connection.displayName ?? "This account"} is set to remind you instead of posting automatically, so here is everything ready to copy.`,
       blocks: [
         { label: isScript ? "Script" : "Caption", value: post.text },
         ...(post.hashtags.length ? [{ label: "Hashtags", value: post.hashtags.join(" ") }] : []),
@@ -326,7 +328,9 @@ async function handleProviderError(post: ClaimedPost, error: unknown): Promise<"
 /** Publishes one claimed post through its network and records the result. Never throws. */
 async function processPost(post: ClaimedPost): Promise<keyof Omit<PublishRunResult, "claimed">> {
   try {
-    if (!post.connection || !isNetwork(post.network)) {
+    // A post for an app that is not connected (remindOnly) is a reminder; one that lost its account fails.
+    const byHand = !post.connection && post.remindOnly;
+    if ((!post.connection && !byHand) || !isNetwork(post.network)) {
       const message = "The account for this post was disconnected.";
       if (await settle(post.id, { status: "FAILED", lastError: message })) await emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
       return "failed";
@@ -345,7 +349,7 @@ async function processPost(post: ClaimedPost): Promise<keyof Omit<PublishRunResu
       return "failed";
     }
     if (!access.usable.has("calendar")) return releaseUnsent(post);
-    if (post.connection.postingMode === "NOTIFY" || post.format === "SCRIPT") return await sendReminder(post);
+    if (!post.connection || post.connection.postingMode === "NOTIFY" || post.format === "SCRIPT") return await sendReminder(post);
 
     const provider = getProvider(post.network);
     let result: { externalId: string; permalink?: string };

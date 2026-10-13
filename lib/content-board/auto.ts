@@ -40,6 +40,7 @@ export async function autoSchedule(businessId: string, postIds: string[], now = 
       groupId: true,
       reviewNote: true,
       updatedAt: true,
+      remindOnly: true,
       connection: { select: { status: true, postingMode: true } },
     },
   });
@@ -72,6 +73,7 @@ export async function autoSchedule(businessId: string, postIds: string[], now = 
       requireApproval: false,
       canSchedule,
       account: post.connection ? { usable: accountUsable(post.connection) } : null,
+      byHand: !post.connection && post.remindOnly,
       requiresMedia: rules?.requiresMedia ?? false,
       hasMedia: post.mediaPaths.length > 0,
       hasVideo: post.mediaPaths.some((p) => VIDEO.test(p)),

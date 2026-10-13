@@ -212,7 +212,7 @@ export async function updatePost(owner: Owner, postId: string, input: EditInput,
   if (!becomesDraft) {
     const issues = validatePost(rules, { format, text: data.text, hashtags: data.hashtags, mediaCount: data.mediaPaths.length, mediaSizes: post.network === "instagram" ? await mediaSizes(owner.businessId, data.mediaPaths) : [] }).errors;
     if (issues.length > 0) throw new PublishingError(issues[0], "invalid", { form: issues.join(" ") });
-    if (time && (!post.connection || !accountUsable(post.connection))) throw new PublishingError("This account needs to be reconnected first. Open Channels to fix it.", "invalid");
+    if (time && !post.remindOnly && (!post.connection || !accountUsable(post.connection))) throw new PublishingError("This account needs to be reconnected first. Open Channels to fix it.", "invalid");
   } else if (!data.text.trim() && data.mediaPaths.length === 0) {
     throw new PublishingError("Write something or add a photo to save a draft.", "invalid");
   }
@@ -402,6 +402,31 @@ export async function unschedulePost(owner: Owner, postId: string, now = new Dat
     if (!post) throw NOT_FOUND();
     throw new PublishingError(NO_LONGER_EDITABLE, "conflict");
   }
+}
+
+/**
+ * "Publish automatically": posts made for an app that was not connected become normal posts of the account now
+ * connected for it (the first usable one that BuPulse posts to), keeping their text, media and time. Only posts that
+ * have not gone out; returns how many switched.
+ */
+export async function connectByHandPosts(owner: Owner, postIds: string[]): Promise<{ switched: number }> {
+  const ids = [...new Set(postIds)].slice(0, 200);
+  if (ids.length === 0) return { switched: 0 };
+  const [posts, connections] = await Promise.all([
+    prisma.post.findMany({ where: { id: { in: ids }, businessId: owner.businessId, remindOnly: true, connectionId: null, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] }, lockedAt: null }, select: { id: true, network: true, status: true } }),
+    prisma.connection.findMany({ where: { businessId: owner.businessId, kind: "SOCIAL" }, orderBy: { createdAt: "asc" } }),
+  ]);
+  let switched = 0;
+  for (const post of posts) {
+    const account = connections.find((c) => c.provider === post.network && accountUsable(c) && c.postingMode === "AUTO") ?? connections.find((c) => c.provider === post.network && accountUsable(c));
+    if (!account) continue;
+    const { count } = await prisma.post.updateMany({
+      where: { id: post.id, businessId: owner.businessId, remindOnly: true, connectionId: null, status: post.status, lockedAt: null },
+      data: { connectionId: account.id, remindOnly: false },
+    });
+    switched += count;
+  }
+  return { switched };
 }
 
 /** Puts a failed post back in line to be published now. */

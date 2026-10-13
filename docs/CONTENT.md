@@ -72,6 +72,31 @@ are signed in one batched request per bucket (`signPaths`) and lazy-loaded.
   still waiting (DRAFT, PENDING_APPROVAL) that the owner did not edit; never a SCHEDULED post. The write is guarded by
   the `updatedAt` it read, so an edit made meanwhile wins.
 
+## Apps that are not connected yet
+
+Most pilot companies cannot connect Instagram, Facebook or TikTok until the networks approve BuPulse, so posts never
+depend on a connection:
+
+- **Drafts.** Studio drafts a post for every app the content was written for (its per-network versions; Instagram,
+  Facebook and LinkedIn when there are none), connected or not. An app without a usable account gets a post with no
+  account and `Post.remindOnly` (`lib/content-board/by-hand.ts`, `draftTargets`). It shows in Today and Needs review
+  with its picture or video and a "Not connected" chip linking to Channels ("Connect Instagram").
+- **Autopilot** lists apps without a usable account in its account choice as "Not connected: you get a reminder"
+  (stored as `network:<app>` in `AutopilotSettings.connectionIds`); their posts are `remindOnly`. Once the app is
+  connected, Autopilot writes for its account instead (`planConnections`), so the next weeks publish on their own.
+- **Approve or auto-approve** schedules it at the best time like any post. At its time the publisher sends the
+  existing reminder (`lib/publishing/engine.ts`, as for NOTIFY accounts and TikTok/YouTube scripts): email with the
+  caption, hashtags, 7-day image and video links and "I posted it", then "Post it yourself" (NEEDS_ACTION) with Mark as
+  posted. The post detail adds Copy caption and the image/video downloads. A post that lost its account later (not
+  `remindOnly`) still fails as before.
+- **Connected later.** A banner on the Content page ("N posts were made as a reminder... Publish automatically") and a
+  button in the post detail switch waiting or scheduled reminder posts of a now-connected app to its account
+  (`connectByHandPosts`; the first usable account that posts automatically), keeping text, media and time.
+- **Backfill.** Content written before drafting existed has `GeneratedContent.postsDraftedAt` null. Its posts are
+  drafted once when its product or campaign is opened (Knowledge page or Content subject page, `latestContentPosts`);
+  content whose drafts the owner rejected is never drafted again on its own. A subject whose newest content has no
+  posts shows "Create posts from this content".
+
 ## Approval and auto-approval
 
 **Settings** (`/dashboard/content/settings`): "Require my approval before posting" per app. Stored as
@@ -100,7 +125,7 @@ post limit to enforce:
 | Rule | Reason shown |
 | --- | --- |
 | no `calendar` feature, or the account is read-only | "Scheduling is not part of your plan right now..." |
-| no account / account must be reconnected | "Connect this app in Channels first." / "<App> needs to be reconnected first..." |
+| no account (and not an app-not-connected reminder post) / account must be reconnected | "Connect this app in Channels first." / "<App> needs to be reconnected first..." |
 | video idea whose video is planned but not rendered | "Video needs to be made: open to render." |
 | picture still being drawn / missing where the app needs one | "The picture is still being made: open it to finish." / "This post needs a picture..." |
 | the network's rules (length, hashtags...) | the rule's own message |
@@ -137,7 +162,8 @@ Migration `20261016090000_content_auto_approval` (columns only, no new table, so
 cover them): `PostSource` gains `STUDIO`; `Business.contentSettings` (JSONB) and `contentSummarySentAt`;
 `Post.reviewNote`, `autoScheduledAt`, `mediaKind` (CHECK, kept by the trigger; existing rows filled by the migration);
 indexes `Post(businessId, createdAt)` and `Post(businessId, autoScheduledAt)`. The trigger function has all EXECUTE
-revoked. `20261016100000_post_owner_edited` adds `Post.ownerEditedAt`.
+revoked. `20261016100000_post_owner_edited` adds `Post.ownerEditedAt`; `20261016110000_posts_for_unconnected_apps`
+adds `Post.remindOnly` and `GeneratedContent.postsDraftedAt`.
 
 ## Permissions and plans
 

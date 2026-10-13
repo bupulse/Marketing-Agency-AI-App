@@ -9,8 +9,10 @@ export interface AutoFacts {
   requireApproval: boolean;
   /** The plan includes scheduling (the calendar feature) and the account is not read-only. */
   canSchedule: boolean;
-  /** The connected account, or null when the post has none (disconnected). */
+  /** The connected account, or null when the post has none (disconnected, or an app not connected yet). */
   account: { usable: boolean } | null;
+  /** A post for an app that is not connected yet: it goes out as a "post it yourself" reminder, no account needed. */
+  byHand?: boolean;
   /** The network needs a picture or video (Instagram, TikTok, YouTube). */
   requiresMedia: boolean;
   hasMedia: boolean;
@@ -40,12 +42,13 @@ export const REVIEW_REASONS = {
  *   waits as "Needs review" rather than going out as a picture: the idea was a video), a picture not drawn yet or
  *   missing, or the network's rules. Then it waits with the reason.
  * - A video idea with no video planned (the plan has no video) is the network's script reminder, as before: scheduled.
+ * - A post for an app that is not connected yet is scheduled as a "post it yourself" reminder (same checks otherwise).
  */
 export function autoDecision(f: AutoFacts): AutoDecision {
   if (f.requireApproval) return { action: "wait" };
   if (!f.canSchedule) return { action: "review", reason: REVIEW_REASONS.plan };
-  if (!f.account) return { action: "review", reason: REVIEW_REASONS.noAccount };
-  if (!f.account.usable) return { action: "review", reason: `${networkLabel(f.network)} needs to be reconnected first. Open Channels to fix it.` };
+  if (!f.account && !f.byHand) return { action: "review", reason: REVIEW_REASONS.noAccount };
+  if (f.account && !f.account.usable) return { action: "review", reason: `${networkLabel(f.network)} needs to be reconnected first. Open Channels to fix it.` };
   const videoIdea = f.format === "SCRIPT";
   if (videoIdea && !f.hasVideo && f.videoPending) return { action: "review", reason: REVIEW_REASONS.video };
   const needsPicture = f.requiresMedia && !videoIdea && f.format !== "ARTICLE";
