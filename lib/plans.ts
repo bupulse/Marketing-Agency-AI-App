@@ -47,6 +47,10 @@ export const TRIAL_DAYS = 7;
 
 /** Video seconds a month of the plans with video (Rwanda Business, Pro): 8 videos of up to 30 s. */
 export const VIDEO_PLAN_SECONDS = 240;
+/** Voiceover characters a month of the plans with voiceover (Rwanda Business, Pro). */
+export const VOICE_PLAN_CHARACTERS = 5000;
+/** The trial's voiceover characters: enough for its sample video. */
+export const TRIAL_VOICE_CHARACTERS = 600;
 /** The trial's one 30 s sample video. */
 export const TRIAL_VIDEO_SECONDS = 30;
 
@@ -54,7 +58,7 @@ export const TRIAL_VIDEO_SECONDS = 30;
  * Every built feature of the app except the API and videos: what the trial and Standard had before plans carried
  * features. Videos came later (docs/CONTENT_VISUALS.md) and come with video seconds, which only Pro has.
  */
-export const CORE_FEATURES: FeatureKey[] = BUILT_APP_FEATURE_KEYS.filter((k) => k !== "apiAccess" && k !== "video");
+export const CORE_FEATURES: FeatureKey[] = BUILT_APP_FEATURE_KEYS.filter((k) => k !== "apiAccess" && k !== "video" && k !== "voice");
 /** Every built feature of the app plus the client's own Composio account: Pro. (Managed by BuPulse is sold apart.) */
 export const PRO_FEATURES: FeatureKey[] = sortFeatureKeys([...BUILT_APP_FEATURE_KEYS, "ownComposio"]);
 
@@ -76,9 +80,9 @@ export const SEED_PLANS: Record<string, PlanConfig> = {
     priceUsdMonthly: 0,
     priceUsdYearly: 0,
     // One 30 s sample video, whatever plan was chosen (docs/CONTENT_VISUALS.md).
-    limits: { text: 10, image: 5, videoSeconds: TRIAL_VIDEO_SECONDS, voiceCharacters: 0, chat: 50, seats: 1 },
+    limits: { text: 10, image: 5, videoSeconds: TRIAL_VIDEO_SECONDS, voiceCharacters: TRIAL_VOICE_CHARACTERS, chat: 50, seats: 1 },
     highlights: [],
-    features: sortFeatureKeys([...CORE_FEATURES, "video"]),
+    features: sortFeatureKeys([...CORE_FEATURES, "video", "voice"]),
     aiMonthlyUsd: 1,
   },
   STANDARD: {
@@ -104,7 +108,7 @@ export const SEED_PLANS: Record<string, PlanConfig> = {
     highlight: true,
     priceUsdMonthly: 99,
     priceUsdYearly: 990,
-    limits: { text: 300, image: 100, videoSeconds: VIDEO_PLAN_SECONDS, voiceCharacters: 20000, chat: 5000, seats: 10 },
+    limits: { text: 300, image: 100, videoSeconds: VIDEO_PLAN_SECONDS, voiceCharacters: VOICE_PLAN_CHARACTERS, chat: 5000, seats: 10 },
     highlights: ["300 AI text generations a month", "100 AI images a month", "Everything in Standard", "App connectors and API access", "Use your own Composio account", "Video and voiceover when released"],
     features: PRO_FEATURES,
     aiMonthlyUsd: 6,

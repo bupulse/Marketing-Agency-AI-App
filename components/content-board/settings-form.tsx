@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { Button, GlassCard, useToast } from "@/components/ui";
 import { Switch } from "@/components/autopilot/switch";
 import { NetworkIcon } from "@/components/publishing/network-icon";
-import { saveContentSettingsAction } from "@/app/dashboard/content/actions";
+import { previewVoiceAction, saveContentSettingsAction } from "@/app/dashboard/content/actions";
+import { VOICES } from "@/lib/voice/voices";
 import { PACK_SIZE, type ContentSettings } from "@/lib/content-board/settings";
 import { networkLabel } from "@/lib/content-board/labels";
 import type { Network } from "@/lib/social/types";
@@ -17,12 +18,21 @@ export function ContentSettingsForm({ initial, apps, connected, canEdit, askText
   const [settings, setSettings] = useState(initial);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const changed = apps.some((a) => settings.requireApproval[a] !== initial.requireApproval[a]) || settings.packSize !== initial.packSize;
+  const changed = apps.some((a) => settings.requireApproval[a] !== initial.requireApproval[a]) || settings.packSize !== initial.packSize || settings.voiceId !== initial.voiceId;
+  const [previewing, setPreviewing] = useState(false);
+
+  async function preview() {
+    setPreviewing(true);
+    const res = await previewVoiceAction(settings.voiceId);
+    setPreviewing(false);
+    if (!res.ok) return toast(res.error, "error");
+    void new Audio(res.url).play().catch(() => toast("Your browser did not play the sample.", "error"));
+  }
 
   function save() {
     setError(null);
     start(async () => {
-      const res = await saveContentSettingsAction({ requireApproval: settings.requireApproval, packSize: settings.packSize });
+      const res = await saveContentSettingsAction({ requireApproval: settings.requireApproval, packSize: settings.packSize, voiceId: settings.voiceId });
       if (!res.ok) return setError(res.error);
       toast("Saved. New posts follow these settings.", "success");
       router.refresh();
@@ -75,6 +85,24 @@ export function ContentSettingsForm({ initial, apps, connected, canEdit, askText
             </option>
           ))}
         </select>
+      </div>
+      <div className="flex flex-col gap-2 border-t border-line pt-5">
+        <label htmlFor="voice" className="text-[15px] font-semibold">
+          Voiceover voice
+        </label>
+        <p className="text-[14px] text-muted">The voice that speaks your videos. You can change it for one video in its panel.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select id="voice" value={settings.voiceId} disabled={!canEdit || pending} onChange={(e) => setSettings((s) => ({ ...s, voiceId: e.target.value }))} className="min-h-12 cursor-pointer rounded-2xl border border-line bg-glass px-4 text-[15px]">
+            {VOICES.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}: {v.description}
+              </option>
+            ))}
+          </select>
+          <Button variant="outline" size="sm" disabled={previewing} onClick={preview}>
+            {previewing ? "Loading..." : "Listen"}
+          </Button>
+        </div>
       </div>
       <div className="flex flex-col gap-2 rounded-2xl bg-soft p-4 text-[14px] text-muted">
         <p>When an app needs no approval, a post still waits for you if it cannot go out safely: the account needs reconnecting, its picture is not drawn yet, or its video still has to be made (videos are made in your browser: open the post to make it).</p>

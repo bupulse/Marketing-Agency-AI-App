@@ -14,6 +14,9 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   "gemini-2.5-flash-lite": { input: 0.1, output: 0.4 },
   "gemini-2.5-flash-image": { input: 0.3, output: 30, perImage: 0.039 },
   "claude-opus-5-5": { input: 5, output: 25 },
+  // ElevenLabs text to speech, per 1M characters (the ledger records characters as input tokens): about $0.30 per
+  // 1,000 characters at the paid plans' overage rate; included plan characters cost less (docs/VOICE_AND_MUSIC.md).
+  eleven_multilingual_v2: { input: 300, output: 0 },
   "claude-sonnet-5-5": { input: 3, output: 15 },
 };
 

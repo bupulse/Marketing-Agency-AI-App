@@ -17,6 +17,7 @@ export const SERVICE_IDS = [
   "shopify",
   "woocommerce",
   "cloudflare",
+  "elevenlabs",
 ] as const;
 export type ServiceId = (typeof SERVICE_IDS)[number];
 
@@ -35,7 +36,7 @@ export const NETWORK_SERVICE: Record<string, ServiceId> = {
 export const networksOf = (service: ServiceId): string[] => Object.entries(NETWORK_SERVICE).filter(([, s]) => s === service).map(([n]) => n);
 
 /** AI provider names in the AiCall ledger -> service. */
-export const AI_PROVIDER_SERVICE: Record<string, ServiceId> = { gemini: "gemini", claude: "claude" };
+export const AI_PROVIDER_SERVICE: Record<string, ServiceId> = { gemini: "gemini", claude: "claude", elevenlabs: "elevenlabs" };
 
 export type ServiceInfo = {
   id: ServiceId;
@@ -54,6 +55,16 @@ export type ServiceInfo = {
 };
 
 export const SERVICES: ServiceInfo[] = [
+  {
+    id: "elevenlabs",
+    name: "ElevenLabs",
+    purpose: "Speaks the voiceover of content videos (text to speech).",
+    env: ["ELEVENLABS_API_KEY"],
+    optionalEnv: ["ELEVENLABS_MODEL"],
+    features: ["Voiceover on videos"],
+    killable: true,
+    whenOff: "Videos are made without a voiceover, with captions and music only.",
+  },
   {
     id: "gemini",
     name: "Google Gemini",

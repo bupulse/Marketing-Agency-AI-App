@@ -228,7 +228,7 @@ async function planPackVisuals(
     carouselAllowed: written[i].format === "carousel",
     aiAllowed: i < ai.count,
     audience,
-    angle: { label: ANGLES[written[i].angle].label, people: ANGLES[written[i].angle].people },
+    angle: { id: written[i].angle, label: ANGLES[written[i].angle].label, people: ANGLES[written[i].angle].people },
   });
   const plans = diversifyPack(await Promise.all(contents.map((c, i) => directVisual(directionContext(base(c, i)), owner))), item.type);
   for (const [i, content] of contents.entries()) {

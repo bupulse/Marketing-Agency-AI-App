@@ -105,6 +105,33 @@ export async function photoDataUrls(photoUrls, storageUrl, fetchImpl = fetch) {
   return out;
 }
 
+const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Downloads the voiceover and the music like the photos (same storage origin only, size and time capped) and hands
+ * them to the page as data URLs. A missing file means a quieter video, never a failed one.
+ */
+export async function audioDataUrls(audioUrls, storageUrl, fetchImpl = fetch) {
+  const out = {};
+  const origin = allowedUrl(storageUrl) ? new URL(storageUrl).origin : null;
+  for (const key of ["voice", "music"]) {
+    const url = audioUrls?.[key];
+    if (!origin || typeof url !== "string" || !allowedUrl(url) || new URL(url).origin !== origin) continue;
+    try {
+      const response = await fetchImpl(url, { signal: AbortSignal.timeout(PHOTO_TIMEOUT_MS) });
+      if (!response.ok) continue;
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length === 0 || bytes.length > MAX_AUDIO_BYTES) continue;
+      const type = (response.headers.get("content-type") ?? "audio/mpeg").split(";")[0].trim();
+      if (!type.startsWith("audio/")) continue;
+      out[key] = `data:${type};base64,${Buffer.from(bytes).toString("base64")}`;
+    } catch {
+      // Without it the video is made without that sound.
+    }
+  }
+  return out;
+}
+
 /** PUTs the file to its signed upload URL (the request the Supabase client makes for uploadToSignedUrl). */
 async function upload(target, bytes, fetchImpl = fetch) {
   if (!allowedUrl(target.url)) return false;
@@ -154,9 +181,10 @@ async function openPage(browser, html, script) {
 /** One claimed video: render, upload, confirm; or tell the app why not. Returns "made" or "failed". */
 async function makeOne(config, browser, page, job, format) {
   const photos = await photoDataUrls(job.photoUrls, job.upload?.url);
+  const audio = await audioDataUrls(job.audioUrls, job.upload?.url);
   const leaseLeft = new Date(job.leaseUntil).getTime() - Date.now() - 60_000;
   const result = await withTimeout(
-    page.evaluate(({ plan, photos, format }) => globalThis.videoRobot.render(plan, photos, format), { plan: job.plan, photos, format }),
+    page.evaluate(({ plan, photos, format, audio }) => globalThis.videoRobot.render(plan, photos, format, audio), { plan: job.plan, photos, format, audio }),
     Math.max(10_000, Math.min(config.videoTimeoutMs, leaseLeft)),
   );
   if (!result.ok) {

@@ -90,6 +90,8 @@ export interface ImagePlan {
   notes: string[];
   /** Who is in the AI photo (lib/visuals/people.ts), when the visual has one. */
   people?: PeopleBrief;
+  /** The mood the art director chose for the video's music (lib/music/tracks.ts). */
+  mood?: string;
   /** AI images ran out: when they come back, for "AI images for this month used — next refill on …". */
   aiExhausted?: { refillAt: string | null };
 }
@@ -120,6 +122,35 @@ export interface VideoPlan {
   crossfadeMs: number;
   /** Length of the finished video, crossfades taken into account. */
   totalMs: number;
+  /** The spoken voiceover (docs/VOICE_AND_MUSIC.md): on by default when the plan has voiceover. */
+  voice?: VideoVoice;
+  /** The background track from the music library, or null for none. */
+  music?: VideoMusic | null;
+  /** The mood the art director chose (lib/music/tracks.ts MOODS), for picking music. */
+  mood?: string | null;
+}
+
+export interface VideoVoice {
+  enabled: boolean;
+  voiceId: string;
+  /** The voiceover MP3 in the media bucket (a VoiceClip), once made for the current captions and voice. */
+  path?: string | null;
+  /** Hash of voice, model and text: a changed caption or voice means a new voiceover. */
+  hash?: string | null;
+  durationMs?: number;
+  /** When each scene's line is spoken. */
+  timings?: { startMs: number; endMs: number }[];
+  /** Why there is no voiceover this time (characters used up, voiceover not in the plan...). */
+  note?: string | null;
+}
+
+export interface VideoMusic {
+  trackId: string;
+  title: string;
+  /** The file in the public music bucket. */
+  path: string;
+  /** Credit line the licence asks for ("" when none is needed). */
+  attribution: string;
 }
 
 /** One stored output of a visual, in order: a design (image or slide) or a media file (the video). */

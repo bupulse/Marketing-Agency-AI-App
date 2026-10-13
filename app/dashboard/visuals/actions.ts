@@ -4,7 +4,13 @@ import { z } from "zod";
 import { knowledgeAction, type Result } from "@/lib/knowledge/guard";
 import { remakeContentVisuals } from "@/lib/visuals/content";
 import { finalizeVideo, leaseVideoForBrowser, markVideoFailed, prepareVideoUpload, removeVisual, renderImageStep, updateImageVisual, updateVideoPlan } from "@/lib/visuals/service";
-import { VISUAL_LIMITS } from "@/lib/visuals/types";
+import { activeTracks } from "@/lib/music/service";
+import { featureStatus } from "@/lib/entitlements";
+import { getUsageSummary } from "@/lib/usage";
+import { audioUrlsFor } from "@/lib/visuals/robot";
+import { VISUAL_LIMITS, type VideoPlan } from "@/lib/visuals/types";
+import { renderPhotoUrls, setVideoMusic } from "@/lib/visuals/sound";
+import { ensureVoiceover, forgetVoiceover, setVideoVoice } from "@/lib/voice/service";
 
 // Content visuals (docs/CONTENT_VISUALS.md): drawing the picture, the owner's changes, and the browser-made video.
 // Every action works inside the signed-in person's company (knowledgeAction), with the `content` permission and feature.
@@ -66,11 +72,35 @@ export async function changeVideo(visualId: string, changes: z.input<typeof vide
   });
 }
 
-/** The browser is about to make the video: it holds it, unless the video robot is making it right now. */
-export async function startVideoRender(visualId: string): Promise<Result> {
+/**
+ * The browser is about to make the video: it holds it (unless the video robot is making it right now), its voiceover
+ * is made or reused (docs/VOICE_AND_MUSIC.md), and the plan to render comes back with its photo and sound URLs.
+ */
+export async function startVideoRender(visualId: string): Promise<Result<{ plan: VideoPlan | null; photoUrls: Record<string, string>; audioUrls: { voice?: string; music?: string } }>> {
   if (!id.safeParse(visualId).success) return BAD;
   return knowledgeAction({ ...GUARD, source: "visuals.video.lease" }, async ({ userId, businessId }) => {
     await leaseVideoForBrowser({ userId, businessId }, visualId);
+    const plan = await ensureVoiceover({ userId, businessId }, visualId);
+    if (!plan) return { plan: null, photoUrls: {}, audioUrls: {} };
+    return { plan, photoUrls: await renderPhotoUrls(userId, plan), audioUrls: await audioUrlsFor(userId, plan) };
+  });
+}
+
+/** The owner's voiceover choices for one video (on or off, which voice); the video is made again with them. */
+export async function changeVideoVoice(visualId: string, choice: { enabled: boolean; voiceId?: string | null; regenerate?: boolean }): Promise<Result> {
+  if (!id.safeParse(visualId).success || typeof choice?.enabled !== "boolean") return BAD;
+  return knowledgeAction({ ...GUARD, source: "visuals.video.voice" }, async ({ userId, businessId }) => {
+    if (choice.regenerate) await forgetVoiceover({ userId, businessId }, visualId);
+    await setVideoVoice({ userId, businessId }, visualId, { enabled: choice.enabled, voiceId: choice.voiceId ?? null });
+    return {};
+  });
+}
+
+/** Another library track for one video, or none (null). */
+export async function changeVideoMusic(visualId: string, trackId: string | null): Promise<Result> {
+  if (!id.safeParse(visualId).success || (trackId !== null && !id.safeParse(trackId).success)) return BAD;
+  return knowledgeAction({ ...GUARD, source: "visuals.video.music" }, async ({ businessId }) => {
+    await setVideoMusic(businessId, visualId, trackId);
     return {};
   });
 }
@@ -100,5 +130,13 @@ export async function reportVideoFailure(visualId: string, message: string): Pro
   return knowledgeAction({ ...GUARD, source: "visuals.video.failed" }, async ({ userId, businessId }) => {
     await markVideoFailed({ userId, businessId }, visualId, String(message ?? "").slice(0, 300));
     return {};
+  });
+}
+
+/** What the video panel's sound choices need: the library's tracks, the voices, and the voiceover characters used. */
+export async function loadSoundOptions(): Promise<Result<{ tracks: { id: string; title: string; moods: string[] }[]; voiceInPlan: boolean; used: number; limit: number }>> {
+  return knowledgeAction({ permission: "content", feature: "content", source: "visuals.sound.options" }, async ({ userId, businessId }) => {
+    const [tracks, voice, usage] = await Promise.all([activeTracks().catch(() => []), featureStatus(businessId, "voice").catch(() => "plan_unknown"), getUsageSummary(userId).catch(() => null)]);
+    return { tracks: tracks.map((t) => ({ id: t.id, title: t.title, moods: t.moods })), voiceInPlan: voice === "ok", used: usage?.used.voiceCharacters ?? 0, limit: usage?.limits.voiceCharacters ?? 0 };
   });
 }

@@ -27,6 +27,8 @@ import { mediaForPost } from "./post-media";
 import { billableSeconds } from "./timeline";
 import { VIDEO_LIMITS, VISUAL_LIMITS, type ImagePlan, type VideoPlan, type VisualItem, type VisualKind, type VisualSlide } from "./types";
 import { videoDurationMs } from "./duration";
+import { moodFor } from "@/lib/music/tracks";
+import { trackForVideo } from "@/lib/music/service";
 import type { Audience } from "./people";
 import { buildVideoPlan, readVideoPlan, withSceneTexts } from "./video-plan";
 
@@ -141,7 +143,7 @@ export interface PlanInput {
   /** AI images ran out this month: the plan says so (and when they come back). */
   aiExhausted?: { refillAt: string | null };
   /** A content pack post's angle (lib/studio/angles.ts): what it says and what its people photo shows. */
-  angle?: { label: string; people: string } | null;
+  angle?: { id?: string; label: string; people: string } | null;
   /** The image plan, when the caller already asked the art director (content packs make all their plans first). */
   precomputed?: ImagePlan;
   /** Skip the AI art director (the rules choose). */
@@ -201,6 +203,10 @@ export async function planVisuals(input: PlanInput): Promise<{ image: string | n
         pack: plan.pack,
         colors: input.business.brandColors,
       });
+      // Music from the library, by the art director's mood (else the angle's or the brand voice's). Empty library: none.
+      const mood = plan.mood ?? moodFor({ angle: input.angle?.id, tone: input.business.tone });
+      video.mood = mood;
+      video.music = await trackForVideo(mood, "contentId" in input.target ? input.target.contentId : input.target.groupId);
       const v = await prisma.contentVisual.create({
         data: { businessId: input.owner.businessId, ...input.target, kind: "video", status: "pending", plan: json(video), items: json([]) },
         select: { id: true },
@@ -769,11 +775,21 @@ export async function markVideoFailed(owner: Owner, visualId: string, message: s
 // ---- posts ----
 
 /** The ready picture slides and video of a content version or group, as storage paths (for posts). */
-export async function readyMedia(businessId: string, key: { contentId: string } | { groupId: string }): Promise<{ images: string[]; video: string | null }> {
+export async function readyMedia(businessId: string, key: { contentId: string } | { groupId: string }): Promise<{ images: string[]; video: string | null; videoCredit?: string | null }> {
   const rows = await prisma.contentVisual.findMany({ where: { businessId, ...key, status: "ready" }, orderBy: { createdAt: "desc" } });
   const image = rows.find((v) => v.kind !== "video");
   const video = rows.find((v) => v.kind === "video");
-  return { images: image ? readItems(image.items).map((i) => i.path) : [], video: video ? (readItems(video.items)[0]?.path ?? null) : null };
+  const videoPath = video ? (readItems(video.items)[0]?.path ?? null) : null;
+  // The music's credit line, when its licence asks for one (docs/VOICE_AND_MUSIC.md).
+  const credit = videoPath && video ? (readVideoPlan(video.plan)?.music?.attribution ?? null) : null;
+  return { images: image ? readItems(image.items).map((i) => i.path) : [], video: videoPath, videoCredit: credit || null };
+}
+
+/** A video post's text with the music credit line at the end (once). Pure. */
+export function withMusicCredit(text: string, credit: string | null | undefined): string {
+  const line = credit?.trim();
+  if (!line || text.includes(line)) return text;
+  return `${text.trimEnd()}\n\n${line}`;
 }
 
 // ---- Autopilot posts ----
@@ -799,8 +815,8 @@ export async function attachToContent(businessId: string, contentId: string, opt
 }
 
 async function attachVisuals(businessId: string, key: { contentId: string } | { groupId: string }, postWhere: Prisma.PostWhereInput, options: { feed?: boolean }) {
-  const { images, video: videoFile } = await readyMedia(businessId, key);
-  const posts = await prisma.post.findMany({ where: { businessId, ...postWhere, lockedAt: null }, select: { id: true, network: true, format: true, mediaPaths: true, status: true, lastError: true, updatedAt: true } });
+  const { images, video: videoFile, videoCredit } = await readyMedia(businessId, key);
+  const posts = await prisma.post.findMany({ where: { businessId, ...postWhere, lockedAt: null }, select: { id: true, network: true, format: true, mediaPaths: true, status: true, lastError: true, updatedAt: true, text: true } });
   for (const post of posts) {
     if (!isNetwork(post.network)) continue;
     const rules = getProvider(post.network).rules;
@@ -810,6 +826,8 @@ async function attachVisuals(businessId: string, key: { contentId: string } | { 
     const { format, mediaPaths } = mediaForPost({ network: post.network, format: planned, rules, images, video: videoFile });
     if (format === post.format && mediaPaths.join("|") === post.mediaPaths.join("|")) continue;
     const fixesDraft = post.status === "DRAFT" && post.lastError?.startsWith("This post needs a picture") && mediaPaths.length > 0;
-    await prisma.post.updateMany({ where: { ...postWhere, id: post.id, lockedAt: null, updatedAt: post.updatedAt }, data: { format, mediaPaths, ...(fixesDraft ? { lastError: null } : {}) } });
+    // A post that carries the video credits its music when the licence asks for it.
+    const text = videoFile && mediaPaths.includes(videoFile) ? withMusicCredit(post.text, videoCredit) : post.text;
+    await prisma.post.updateMany({ where: { ...postWhere, id: post.id, lockedAt: null, updatedAt: post.updatedAt }, data: { format, mediaPaths, ...(text !== post.text ? { text } : {}), ...(fixesDraft ? { lastError: null } : {}) } });
   }
 }
