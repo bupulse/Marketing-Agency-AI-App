@@ -181,6 +181,36 @@ photos; a video idea whose product or campaign has an album video now posts that
 **Permissions**: the `content` permission, the `content` and `calendar` features, 30 runs an hour per company.
 
 
+## Picture or video: BuPulse decides (`format.ts`, pure)
+
+Owner decision (13 October 2026): "the AI decides whether to make video or image content; most of the time TikTok
+must be videos." When content is made ("Create today's content", content packs, Autopilot) each post's format is
+chosen per app and angle, after the angles and before writing, so the writer knows which posts are videos:
+
+| App | Video | Otherwise |
+| --- | --- | --- |
+| TikTok, YouTube Shorts | always (about 9 in 10 when TikTok photo posting is on) | a picture or the script to film, only when video is not in the plan or the month's video seconds are used up; the run says why |
+| Instagram | about 55% (Reels) | a carousel for list angles, a single picture otherwise |
+| Facebook | about 35% | the same |
+| LinkedIn | about 20% (the video goes with a reminder: LinkedIn video is not posted by the API) | the same; Autopilot keeps its articles |
+
+- **Variety:** never the same format on the same app three days running (TikTok and YouTube excepted): after two
+  video days a picture, after two picture days a carousel (and the other way round). The days come from
+  `GeneratedContent.format` (migration `20261017180000_content_format`), every subject counted, business-local days.
+- **Budget:** BuPulse-made videos stay within the plan's video seconds left (30 s a video) and at most
+  `MAX_RUN_VIDEOS` (5) a run; TikTok and YouTube get them first; the owner's own album video costs nothing (TikTok
+  and YouTube take it in turn, Instagram one MP4 Reel and Facebook one video a day).
+- **The dialog** has "Format": Let BuPulse decide (default), Mostly video (Instagram about 85%, Facebook 70%,
+  LinkedIn 50%), Mostly pictures (15%, 10%, 5%; TikTok and YouTube stay videos). The cost line shows the video
+  seconds of the videos BuPulse is likely to make (`expectedVideos`); the result says how many posts are videos and
+  any note ("TikTok gets a video script to film yourself: your video seconds for this month are used up.").
+- **Posts:** a video on Instagram or Facebook is drafted as a video idea (`SCRIPT`) with its caption and becomes a
+  Reel / Page video when the video is attached; TikTok and YouTube keep the script reminder with the video attached.
+- **Autopilot** (`planner.ts`): with video in the plan, feed posts become videos by the same shares within the
+  week's video budget and the three-days rule, and video ideas are no longer held to a quarter of the week; the writer
+  returns a feed video's caption in `text` and its scenes in `videoScript` in the same call.
+- The decision is seeded (business, subject, day and time), so tests use a seeded RNG (`tests/content-flow/format.test.ts`).
+
 ## Filters (`filters.ts`, pure)
 
 | Param | Values | Meaning |

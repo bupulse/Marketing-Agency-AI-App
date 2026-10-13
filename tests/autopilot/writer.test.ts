@@ -98,6 +98,20 @@ describe("writing a group", () => {
     expect(result.versions[0].hashtags).toHaveLength(5);
   });
 
+  it("writes a feed video post's caption and its scenes in the same call", async () => {
+    const req = request({ targets: [{ network: "instagram", format: "SCRIPT" }, { network: "facebook", format: "SCRIPT" }] });
+    const prompt = buildPrompt(req);
+    expect(prompt).toMatch(/- instagram: Instagram Reel: the caption in `text`.*the video in `videoScript`/);
+    expect(prompt).toMatch(/- facebook: .*This post is a video BuPulse makes/);
+    const scenes = "[Oven] Fresh croissants. #pain\n[Box] Six in a box.\n[Shop] Come by today.";
+    const result = await writeGroup(
+      provider({ image: good.image, versions: [{ network: "instagram", title: "", text: "Croissants frais ! #croissant", hashtags: ["#pain"], videoScript: scenes }, { network: "facebook", title: "", text: "Venez goûter.", hashtags: [] }] }),
+      req,
+    );
+    expect(result.versions[0]).toMatchObject({ text: "Croissants frais !", videoScript: "[Oven] Fresh croissants.\n[Box] Six in a box.\n[Shop] Come by today." });
+    expect(result.versions[1].videoScript).toBeUndefined();
+  });
+
   it("drops image text that carries a number the facts do not contain", async () => {
     const result = await writeGroup(provider({ ...good, image: { kicker: "Offre", headline: "Boîte de croissants", subline: "Seulement 2 jours", chip: "-30%" } }), request());
     expect(result.image.headline).toBe("Boîte de croissants");

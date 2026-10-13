@@ -19,6 +19,7 @@ import { Button, Chip, Dialog, Field, Select, Textarea, useToast } from "@/compo
 import { cn } from "@/lib/cn";
 import type { ContentScope } from "@/lib/content-board/filters";
 import { runCost, type DayMode, type DesignChoice } from "@/lib/content-flow/cost";
+import { expectedVideos, FORMAT_PREFERENCE_LABEL, FORMAT_PREFERENCES, type FormatPreference } from "@/lib/content-flow/format";
 import { NETWORK_STYLE } from "@/lib/content-flow/networks";
 import { PRICE_CHOICE_LABEL, PRICE_CHOICES, type PriceChoice } from "@/lib/content-flow/price";
 import type { Network } from "@/lib/social/types";
@@ -27,6 +28,14 @@ export type NetworkChoice = { network: Network; label: string; connected: boolea
 export type Allowance = { textLeft: number; imagesLeft: number; aiPhotos: boolean; videoInPlan: boolean; videoSecondsLeft: number; voice: boolean; voiceCharsLeft: number; postsPerApp: number };
 
 const DEFAULT_NETWORKS: Network[] = ["instagram", "facebook", "linkedin"];
+
+function formatHint(format: FormatPreference, allowance: Allowance): string {
+  if (!allowance.videoInPlan) return "Videos are not in your plan: pictures and carousels, and TikTok / YouTube get a script to film yourself.";
+  if (allowance.videoSecondsLeft < 30) return "Your video seconds for this month are used up: pictures and carousels this time.";
+  if (format === "video") return "Videos wherever they fit, within your video seconds; LinkedIn still gets some pictures.";
+  if (format === "image") return "Pictures and carousels on Instagram, Facebook and LinkedIn; TikTok and YouTube stay videos.";
+  return "BuPulse picks picture, carousel or video for each post: mostly videos on TikTok and YouTube, a mix on Instagram and Facebook, mostly pictures on LinkedIn.";
+}
 
 function Option({ selected, onSelect, icon, title, text, disabled }: { selected: boolean; onSelect: () => void; icon: ReactNode; title: string; text: string; disabled?: boolean }) {
   return (
@@ -67,6 +76,7 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
   const [overlays, setOverlays] = useState(false);
   const [perApp, setPerApp] = useState(1);
   const [price, setPrice] = useState<PriceChoice>("auto");
+  const [format, setFormat] = useState<FormatPreference>("auto");
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -77,8 +87,9 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
   const each = mode === "own" ? 1 : Math.min(perApp, allowance.postsPerApp);
   const posts = chosen.length * each;
   const designed = (mode === "own" ? (overlays ? chosen.filter((n) => NETWORK_STYLE[n].video !== "always").length : 0) : chosen.filter((n) => NETWORK_STYLE[n].video !== "always").length) * each;
-  // Videos BuPulse may make: TikTok and YouTube when the plan has video (the album's own video, if any, costs nothing).
-  const videos = mode === "own" || !allowance.videoInPlan ? 0 : chosen.filter((n) => NETWORK_STYLE[n].video === "always").length * each;
+  // Videos BuPulse is likely to make: it decides picture or video per post when the run starts (format.ts), mostly
+  // video on TikTok and YouTube, within the video seconds left (an album video, if any, costs nothing).
+  const videos = mode === "own" ? 0 : expectedVideos({ networks: chosen, perApp: each, preference: format, videoInPlan: allowance.videoInPlan, videoSecondsLeft: allowance.videoSecondsLeft });
   const cost = runCost({ mode, design, posts, designed, aiPhotos: allowance.aiPhotos, textLeft: allowance.textLeft, imagesLeft: allowance.imagesLeft, videos, videoSecondsLeft: allowance.videoSecondsLeft, voice: allowance.voice, voiceCharsLeft: allowance.voiceCharsLeft });
   const missing = mode === "describe" && !brief.trim() ? "Describe today's content." : mode === "own" && media.length === 0 ? "Choose your photos or videos." : mode === "own" && !caption.trim() ? "Write your caption." : null;
 
@@ -96,11 +107,14 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
         overlays: mode === "own" ? overlays : undefined,
         perApp: mode === "own" ? undefined : each,
         price: mode === "own" ? undefined : price,
+        format: mode === "own" ? undefined : format,
         requestKey,
       });
       if (!res.ok) return setError(res.error);
       const parts = [`${res.posts === 1 ? "1 post" : `${res.posts} posts`} made for today`];
+      if (res.videos) parts.push(`${res.videos === 1 ? "1 is a video" : `${res.videos} are videos`}`);
       if (res.scheduled) parts.push(`${res.scheduled} scheduled on their own`);
+      if (res.notes.length) parts.push(res.notes.join(" "));
       if (res.skipped.length) parts.push(res.skipped.map((s) => s.reason).join(" "));
       if (res.contests) parts.push(`${res.contests === 1 ? "1 contest waits" : `${res.contests} contests wait`} for your prize and rules`);
       if (res.failed.length) parts.push(`${res.failed.map((n) => NETWORK_STYLE[n].label).join(", ")} could not be written (not charged)`);
@@ -204,6 +218,19 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
                 </Select>
               </Field>
             </div>
+          )}
+
+          {mode !== "own" && (
+            <Field label="Format" hint={formatHint(format, allowance)}>
+              <Select value={format} onChange={(e) => setFormat(e.target.value as FormatPreference)}>
+                {FORMAT_PREFERENCES.map((f) => (
+                  <option key={f} value={f}>
+                    {FORMAT_PREFERENCE_LABEL[f]}
+                    {f === "auto" ? " (default)" : ""}
+                  </option>
+                ))}
+              </Select>
+            </Field>
           )}
 
           {mode !== "own" && (

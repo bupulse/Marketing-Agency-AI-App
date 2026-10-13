@@ -10,6 +10,8 @@
  *   image        Its image or carousel visual (lib/visuals/queries.ts loadVisuals / pickVisuals), or null.
  *   video        Its video visual, or null.
  *   videoInPlan  Whether the company's plan has video; false shows "Add video to your plan".
+ *   hasScript    Whether the content has a video script: without one, "Make a video" has the AI write it first
+ *                (1 text generation); "Write my own script" is always offered.
  *   album        The product's or campaign's album ("product:<id>"), where "Swap photo" opens the gallery.
  *   autoVideo    Start making a pending video as soon as this shows (default true). Autopilot cards pass false and
  *                show "Video ready to render" with a button instead, so one page does not make many at once.
@@ -26,16 +28,17 @@ import { DEFAULT_VOICE_ID, VOICES } from "@/lib/voice/voices";
 import { changeVideo, changeVisual, deleteVisual, remakeVisual, renderVisual } from "@/app/dashboard/visuals/actions";
 import { cn } from "@/lib/cn";
 import { PACKS } from "@/lib/designs/packs";
+import { checkScript, SCRIPT_RULES } from "@/lib/visuals/script";
 import { VISUAL_LIMITS, VIDEO_LIMITS, VIDEO_REMOVED_NOTE, VIDEO_RETENTION_MESSAGE, type VisualView } from "@/lib/visuals/types";
 import { useVideoRender } from "./use-video-render";
 
-type Props = { contentId?: string; image: VisualView | null; video: VisualView | null; videoInPlan: boolean; album?: string; autoVideo?: boolean };
+type Props = { contentId?: string; image: VisualView | null; video: VisualView | null; videoInPlan: boolean; album?: string; autoVideo?: boolean; hasScript?: boolean };
 
-export function ContentVisual({ contentId, image, video, videoInPlan, album, autoVideo = true }: Props) {
+export function ContentVisual({ contentId, image, video, videoInPlan, album, autoVideo = true, hasScript = true }: Props) {
   return (
     <div className="@container flex flex-col gap-4">
       <ImagePart contentId={contentId} visual={image} album={album} />
-      <VideoPart contentId={contentId} visual={video} videoInPlan={videoInPlan} autoStart={autoVideo} hasImage={!!image?.items.length} />
+      <VideoPart contentId={contentId} visual={video} videoInPlan={videoInPlan} autoStart={autoVideo} hasImage={!!image?.items.length} hasScript={hasScript} />
     </div>
   );
 }
@@ -282,9 +285,63 @@ function ImagePart({ contentId, visual, album }: { contentId?: string; visual: V
   );
 }
 
+// ---- making a video ----
+
+/**
+ * "Make a video": the AI writes the script first when the content has none (1 text generation), then the video is
+ * planned and made. "Write my own script" takes the owner's lines as they are, one per scene, with the rules beside it.
+ */
+function MakeVideo({ contentId, hasScript }: { contentId: string; hasScript: boolean }) {
+  const { run, pending } = useRun();
+  const [writing, setWriting] = useState(false);
+  const [script, setScript] = useState("");
+  const check = checkScript(script);
+  const cost = hasScript ? "Uses this post's video script; no text generation." : "BuPulse writes the script from this post first: uses 1 text generation.";
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-line p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="flex items-center gap-2 text-[14px] text-muted">
+          <Clapperboard aria-hidden className="size-5" /> No video yet.
+        </span>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="ghost" disabled={pending} aria-expanded={writing} leading={<PenLine aria-hidden className="size-4" />} onClick={() => setWriting((w) => !w)}>
+            Write my own script
+          </Button>
+          <Button size="sm" variant="outline" disabled={pending} title={cost} leading={<Sparkles aria-hidden className="size-4" />} onClick={() => run(() => remakeVisual(contentId, "video"), hasScript ? undefined : "The script is written; your video is on its way.")}>
+            {pending && !writing && !hasScript ? "Writing the script…" : "Make a video"}
+          </Button>
+        </div>
+      </div>
+      {!writing && <p className="text-[13px] text-muted">{cost}</p>}
+      {writing && (
+        <div className="flex flex-col gap-2">
+          <Field
+            label="Your script"
+            hint={`One line per scene, ${SCRIPT_RULES.minScenes} to ${SCRIPT_RULES.maxScenes} scenes, each under ${SCRIPT_RULES.lineChars} characters. A shot idea may go first in [brackets]; the rest is spoken and shown. Your headline opens the video and your business name closes it.`}
+          >
+            <Textarea rows={5} maxLength={SCRIPT_RULES.maxLength} value={script} onChange={(e) => setScript(e.target.value)} placeholder={"[Bread coming out of the oven] Fresh every morning.\n[Customer smiling] Still warm when you get it.\n[Shop front] Come by before 9 for the best choice."} />
+          </Field>
+          <p className={cn("text-[13px]", check.problems.length ? "text-amber-900 dark:text-amber-200" : "text-muted")} role="status">
+            {check.scenes.length} {check.scenes.length === 1 ? "scene" : "scenes"}, {check.spokenChars} spoken characters (about {check.seconds} s of voice).{check.problems.length ? ` ${check.problems.join(" ")}` : ""}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" disabled={pending || check.scenes.length === 0} onClick={() => run(() => remakeVisual(contentId, "video", script), "Your script is saved; your video is on its way.")}>
+              Make the video with my script
+            </Button>
+            <Button size="sm" variant="ghost" disabled={pending} onClick={() => setWriting(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- the video ----
 
-function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage }: { contentId?: string; visual: VisualView | null; videoInPlan: boolean; autoStart: boolean; hasImage: boolean }) {
+function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage, hasScript }: { contentId?: string; visual: VisualView | null; videoInPlan: boolean; autoStart: boolean; hasImage: boolean; hasScript: boolean }) {
   const { run, pending, router } = useRun();
   const render = useVideoRender(visual, () => router.refresh());
   const [captions, setCaptions] = useState<string[] | null>(null);
@@ -330,18 +387,7 @@ function VideoPart({ contentId, visual, videoInPlan, autoStart, hasImage }: { co
       </div>
     );
   }
-  if (!visual || !plan) {
-    return contentId ? (
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-line p-4">
-        <span className="flex items-center gap-2 text-[14px] text-muted">
-          <Clapperboard aria-hidden className="size-5" /> No video yet.
-        </span>
-        <Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => remakeVisual(contentId, "video"))}>
-          Make a video
-        </Button>
-      </div>
-    ) : null;
-  }
+  if (!visual || !plan) return contentId ? <MakeVideo contentId={contentId} hasScript={hasScript} /> : null;
 
   // A video being made again keeps showing (and stays on its posts) until the new one is saved.
   const ready = !!visual.items[0];

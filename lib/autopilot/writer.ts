@@ -7,6 +7,7 @@ import { AIProviderError, type TextProvider, type TokenUsage } from "@/lib/ai/ty
 import { getProvider } from "@/lib/social/registry";
 import type { Network } from "@/lib/social/types";
 import { normalizeHashtags, truncateSmart } from "@/lib/studio/variants";
+import { fitScript, SCRIPT_GUIDE } from "@/lib/visuals/script";
 import type { AutopilotAngle } from "@/lib/content-flow/autopilot";
 import type { Trend } from "./learning";
 import type { AutopilotFormat, Idea } from "./playbook";
@@ -52,6 +53,7 @@ const versionSchema = z.object({
   title: z.string().describe("Article title for ARTICLE posts; empty otherwise"),
   text: z.string().describe("The post text without hashtags (the script for SCRIPT posts)"),
   hashtags: z.array(z.string()).describe("Hashtags each starting with #; empty where the network version needs none"),
+  videoScript: z.string().optional().describe("For video posts on Instagram, Facebook or LinkedIn: the video's scenes, one per line; empty otherwise"),
 });
 
 export const writerOutputSchema = z.object({
@@ -72,6 +74,9 @@ Never write a quote or review as if a customer said it; you may quote one only f
 Hashtags must not contain years, dates or other numbers unless they appear in the facts.
 Return only the requested JSON.`;
 
+/** Feed networks whose video posts carry a caption, with the video's scenes apart (`videoScript`). */
+const FEED_VIDEO = new Set<Network>(["instagram", "facebook", "linkedin"]);
+
 /** Hashtags kept per network. */
 const HASHTAGS: Record<Network, number> = { instagram: 10, facebook: 3, linkedin: 3, tiktok: 5, youtube: 5 };
 
@@ -82,7 +87,7 @@ const NETWORK_BRIEF: Record<Network, (format: AutopilotFormat) => string> = {
       : "LinkedIn post: professional and personal, short paragraphs with blank lines, no emojis unless the brand voice clearly wants them, 600 to 1200 characters. Business-like, not salesy. At most 3 hashtags at the end.",
   instagram: (f) =>
     f === "SCRIPT"
-      ? "Instagram Reel script in `text`: 30 to 45 seconds, timestamped scenes (for example 0-3s), a shot direction and a voiceover line for each. A hook in the first 3 seconds. 5 to 8 hashtags."
+      ? "Instagram Reel: the caption in `text` (a hook in the first line, 1 to 3 short lines, a clear call to action), 5 to 8 hashtags, and the Reel in `videoScript`."
       : "Instagram caption: a hook in the first line, 2 to 4 short paragraphs, emojis in line with the brand voice, a clear call to action. 6 to 10 relevant hashtags.",
   facebook: () =>
     "Facebook post: conversational and friendly, as if talking to local customers, 300 to 700 characters, one clear call to action or a question to get comments. At most 3 hashtags.",
@@ -144,7 +149,7 @@ export function buildPrompt(req: WriteRequest): string {
     req.instruction && `The owner asks: ${req.instruction}\nFollow this request while keeping the rules above.`,
     "",
     "Write one version for each of these networks (the `network` value must match exactly):",
-    ...targets.map((t) => `- ${t.network}: ${NETWORK_BRIEF[t.network](t.format)}`),
+    ...targets.map((t) => `- ${t.network}: ${NETWORK_BRIEF[t.network](t.format)}${t.format === "SCRIPT" && FEED_VIDEO.has(t.network) ? ` This post is a video BuPulse makes: the caption goes in \`text\`, the video in \`videoScript\`. ${SCRIPT_GUIDE}` : ""}`),
     "",
     "Also write the text for the post's image in `image`: kicker (1 to 3 words, may be empty), headline (at most 45 characters, a hook or the key message), subline (at most 70 characters, may be empty) and chip (a price or badge exactly as in the facts, at most 18 characters, otherwise empty). The image text uses only facts you were given and must be in " + language + ".",
     idea.kicker && `Suggested kicker (translate it): ${idea.kicker}`,
@@ -165,6 +170,8 @@ export interface WrittenVersion {
   title: string | null;
   text: string;
   hashtags: string[];
+  /** A video post on Instagram, Facebook or LinkedIn: its scenes (the text is its caption). */
+  videoScript?: string;
 }
 
 export interface WrittenGroup {
@@ -273,13 +280,14 @@ export async function writeGroup(provider: TextProvider, req: WriteRequest): Pro
     const rules = getProvider(target.network).rules;
     const hashtags = normalizeHashtags(v.hashtags).slice(0, Math.min(HASHTAGS[target.network], rules.maxHashtags ?? 99));
     // Hashtags are kept in their own list; a script may keep any it wrote inline.
-    const body = target.format === "SCRIPT" ? text : text.replace(/(^|\s)#[\p{L}\p{N}_]+/gu, "$1").replace(/[ \t]+\n/g, "\n").trim();
+    const body = target.format === "SCRIPT" && !FEED_VIDEO.has(target.network) ? text : text.replace(/(^|\s)#[\p{L}\p{N}_]+/gu, "$1").replace(/[ \t]+\n/g, "\n").trim();
     const reserve = hashtags.join(" ").length + 2;
     versions.push({
       network: target.network,
       title: target.format === "ARTICLE" ? truncateSmart(v.title.trim() || req.idea.name, 120) : null,
       text: truncateSmart(body, Math.max(200, rules.maxText - reserve)),
       hashtags: target.format === "SCRIPT" ? hashtags.slice(0, 5) : hashtags,
+      ...(target.format === "SCRIPT" && FEED_VIDEO.has(target.network) && v.videoScript?.trim() ? { videoScript: fitScript(v.videoScript.trim()) } : {}),
     });
   }
 

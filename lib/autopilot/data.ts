@@ -21,6 +21,8 @@ import { formatPrice } from "@/lib/knowledge/products";
 import { isVideoPath } from "@/lib/visuals/post-media";
 import { postsPerAppLimit } from "@/lib/plans";
 import { getUsageSummary } from "@/lib/usage";
+import { featureStatus } from "@/lib/entitlements";
+import { recentFormats } from "@/lib/content-flow/recent-formats";
 
 const CONTEXT_FIELDS = { kind: true, name: true, category: true, summary: true, description: true, priceModel: true, priceAmount: true, currency: true, priceNote: true, usps: true, features: true, targetCustomer: true, details: true } as const;
 
@@ -127,6 +129,11 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
   }
 
   const knowledge = readKnowledge(business.knowledge);
+  const [usage, videoFeature, formats] = await Promise.all([
+    getUsageSummary(business.userId).catch(() => null),
+    featureStatus(businessId, "video").catch(() => null),
+    recentFormats(businessId, timeZone, dates[0]).catch(() => ({})),
+  ]);
   return {
     businessId,
     weekStart,
@@ -142,7 +149,10 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
     photos: assets.map((a) => ({ id: a.id, path: a.path, folderId: a.folderId, mimeType: a.mimeType, recentUses: uses.get(a.path) ?? 0 })),
     existing: existing.flatMap((e) => (e.scheduledAt ? [{ connectionId: e.connectionId, scheduledAt: e.scheduledAt, network: e.network, subjectId: e.productId ?? e.campaignId ?? null }] : [])),
     recentIdeas,
-    postsPerAppPerDay: await getUsageSummary(business.userId).then((u) => postsPerAppLimit(u.limits)).catch(() => 1),
+    postsPerAppPerDay: usage ? postsPerAppLimit(usage.limits) : 1,
+    // Picture or video per post (lib/content-flow/format.ts): videos BuPulse makes need the plan's video seconds.
+    video: { inPlan: videoFeature === "ok" && (usage?.limits.videoSeconds ?? 0) > 0, secondsLeft: usage ? Math.max(0, usage.limits.videoSeconds - usage.used.videoSeconds) : 0 },
+    recentFormats: formats,
     profile: buildProfile(results, timeZone),
     now,
   };

@@ -3,6 +3,7 @@
 // photo leads each post, rotated so the same photo does not lead every day. Pure.
 import type { Network } from "@/lib/social/types";
 import { seed } from "./variety";
+import type { FormatChoice } from "./format";
 import { NETWORK_STYLE, type Shape } from "./networks";
 
 export type GalleryItem = { path: string; name: string; mimeType: string; recentUses?: number; description?: string | null };
@@ -44,13 +45,22 @@ export function orderVideos(items: GalleryItem[]): GalleryItem[] {
  * - Facebook and LinkedIn: a picture.
  * Each post leads with a different photo when the album has several.
  */
-export function assignMedia(input: { networks: readonly Network[]; gallery: GalleryItem[]; day: string; videoInPlan: boolean }): PostMedia[] {
+export function assignMedia(input: { networks: readonly Network[]; gallery: GalleryItem[]; day: string; videoInPlan: boolean; choices?: readonly FormatChoice[] }): PostMedia[] {
   const photos = orderPhotos(input.gallery, input.day);
   const videos = orderVideos(input.gallery);
   let nextVideo = 0;
   const reels = new Set<Network>();
+  const own = albumVideos(input.networks, input.gallery);
   return input.networks.map((network, index): PostMedia => {
     const lead = photos.length ? [...photos.slice(index % photos.length), ...photos.slice(0, index % photos.length)] : [];
+    // The formats BuPulse decided (format.ts): a video is the album's own where there is one, else made from the photos.
+    const choice = input.choices?.[index];
+    if (choice) {
+      if (choice.format !== "video") return { kind: "image", photos: lead };
+      if (choice.film) return { kind: "script", photos: lead };
+      const video = own[index];
+      return video ? { kind: "gallery-video", video, photos: lead } : { kind: "render-video", photos: lead };
+    }
     const style = NETWORK_STYLE[network];
     if (style.video === "always") {
       if (videos.length) return { kind: "gallery-video", video: videos[nextVideo++ % videos.length], photos: lead };
@@ -63,6 +73,24 @@ export function assignMedia(input: { networks: readonly Network[]; gallery: Gall
       return { kind: "gallery-video", video: reel, photos: lead };
     }
     return { kind: "image", photos: lead };
+  });
+}
+
+/**
+ * The album video each post would carry as it is (no video seconds): TikTok and YouTube take the album's videos in
+ * turn; Instagram (MP4) and Facebook take one a day each, as a Reel or a Page video. LinkedIn takes none.
+ */
+export function albumVideos(networks: readonly Network[], gallery: GalleryItem[]): (GalleryItem | null)[] {
+  const videos = orderVideos(gallery);
+  let next = 0;
+  const used = new Set<Network>();
+  return networks.map((network) => {
+    if (videos.length === 0) return null;
+    if (NETWORK_STYLE[network].video === "always") return videos[next++ % videos.length];
+    if ((network !== "instagram" && network !== "facebook") || used.has(network)) return null;
+    const video = network === "instagram" ? videos.find(isMp4) : videos[0];
+    if (video) used.add(network);
+    return video ?? null;
   });
 }
 

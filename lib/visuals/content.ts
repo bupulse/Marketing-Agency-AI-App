@@ -3,7 +3,11 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { writingSubject, type Subject } from "@/lib/knowledge/service";
+import { checkScript, SCRIPT_RULES } from "./script";
+import { writeContentScript } from "./script-writer";
 import { aiPhotosStatus, audienceFor, carouselNetworks, planVisuals, releaseContentVisuals, removeVisual, VisualError, videoAvailable, type Owner } from "./service";
+
+export const VIDEO_NOT_IN_PLAN = "Videos are not in your plan. Add video to your plan to make them.";
 
 type BusinessBits = { name: string; tone: string | null; industry: string | null; brandColors: string[] };
 type ItemBits = { type: string; title: string; price?: string | null; photoPaths: string[] };
@@ -32,13 +36,36 @@ export async function planContentVisuals(owner: Owner, input: { business: Busine
   });
 }
 
+/** The owner's own video script, as typed (control characters out, within the length limit), or a reason it cannot be used. */
+export function ownScript(script: string): string {
+  const clean = script.replace(/\r/g, "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim();
+  if (!clean || checkScript(clean).scenes.length === 0) throw new VisualError("Write your script first: one line per scene.");
+  if (clean.length > SCRIPT_RULES.maxLength) throw new VisualError(`Keep your script under ${SCRIPT_RULES.maxLength} characters.`);
+  return clean;
+}
+
 /**
  * A new picture (or video plan, or both) for one content version, from a fresh art direction. The visuals it replaces
- * are removed (files a post still uses stay). Costs no text credit; AI photos use image credits as usual.
+ * are removed (files a post still uses stay). AI photos use image credits as usual.
+ *
+ * "Make a video" never stops at a missing script: `script` is the owner's own (used as typed, no credit); without one,
+ * content that has no video script gets one written by the AI first (one text generation, lib/visuals/script-writer.ts).
+ * Only a plan without video stops it.
  */
-export async function remakeContentVisuals(owner: Owner, contentId: string, only?: "image" | "video") {
-  const content = await prisma.generatedContent.findFirst({ where: { id: contentId, businessId: owner.businessId }, select: { id: true, caption: true, adHeadlines: true, videoScript: true, productId: true, campaignId: true } });
-  if (!content) throw new VisualError("We could not find that content.");
+export async function remakeContentVisuals(owner: Owner, contentId: string, only?: "image" | "video", options: { script?: string } = {}) {
+  const row = await prisma.generatedContent.findFirst({ where: { id: contentId, businessId: owner.businessId }, select: { id: true, caption: true, adHeadlines: true, videoScript: true, productId: true, campaignId: true } });
+  if (!row) throw new VisualError("We could not find that content.");
+  let content = row;
+  if (only === "video") {
+    if (!(await videoAvailable(owner.businessId))) throw new VisualError(VIDEO_NOT_IN_PLAN);
+    if (options.script !== undefined) {
+      const videoScript = ownScript(options.script);
+      await prisma.generatedContent.updateMany({ where: { id: contentId, businessId: owner.businessId }, data: { videoScript } });
+      content = { ...content, videoScript };
+    } else if (!content.videoScript.trim()) {
+      content = { ...content, videoScript: await writeContentScript(owner, contentId) };
+    }
+  }
   // Content for General (a day's run, docs/CONTENT.md) is about the business itself: no album.
   const subject: Subject | null = content.productId ? { kind: "product", id: content.productId } : content.campaignId ? { kind: "campaign", id: content.campaignId } : null;
   const [business, found, old] = await Promise.all([
@@ -50,7 +77,7 @@ export async function remakeContentVisuals(owner: Owner, contentId: string, only
   if (!business || !item) throw new VisualError("We could not find that product or campaign.");
   const [ai, videoOk, carouselAllowed, audience] = await Promise.all([aiPhotosStatus(owner), videoAvailable(owner.businessId), carouselNetworks(owner.businessId).catch(() => true), audienceFor(owner.businessId)]);
   const wantVideo = only !== "image" && videoOk && content.videoScript.trim().length > 0;
-  if (only === "video" && !wantVideo) throw new VisualError(videoOk ? "Write a video script first." : "Videos are not in your plan. Add video to your plan to make them.");
+  if (only === "video" && !wantVideo) throw new VisualError(VIDEO_NOT_IN_PLAN);
 
   const made = await planVisuals({
     owner,

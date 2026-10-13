@@ -15,6 +15,9 @@ import { ideaNetworks, isVideoIdea, suitsIndustry, type AutopilotFormat, type Id
 import type { AutopilotConfig } from "./settings";
 import { DEFAULT_POSTING_TIMES } from "./settings";
 import { localDateISO, minutesOf, weekDates, weekdayOfISO, zonedToUtc } from "./timezone";
+import { VIDEO_SECONDS_PER_VIDEO } from "@/lib/content-flow/cost";
+import { MAX_RUN_VIDEOS, repeatedFormat, VIDEO_SHARE, type RecentFormats } from "@/lib/content-flow/format";
+
 
 export interface PlanConnection {
   id: string;
@@ -76,6 +79,13 @@ export interface PlanInput {
   recentIdeas: Map<string, number>;
   /** The plan's posts per app per day for one product, campaign or General (lib/plans.ts; 1 when missing). */
   postsPerAppPerDay?: number;
+  /**
+   * Videos BuPulse can make this week (the plan has video and seconds left). With it, feed posts become videos by the
+   * app's share (lib/content-flow/format.ts) and video ideas are no longer held to a few a week.
+   */
+  video?: { inPlan: boolean; secondsLeft: number };
+  /** Each app's formats on the days before the week (the three-days rule). */
+  recentFormats?: RecentFormats;
   profile: LearningProfile;
   now: Date;
 }
@@ -189,10 +199,10 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
     if (pick.faq) pool.faqs = pool.faqs.filter((f) => f !== pick.faq);
   };
 
-  // Video scripts are reminders for the owner to film: a few a week, not most of the plan, unless
-  // the only accounts are video ones.
+  // Without video in the plan, video scripts are reminders for the owner to film: a few a week, not most of the plan,
+  // unless the only accounts are video ones. With it, BuPulse makes the videos and the formats below decide.
   const onlyVideo = [...networks].every((x) => x === "tiktok" || x === "youtube");
-  const videoCap = onlyVideo ? n : Math.max(1, Math.floor(n / 4));
+  const videoCap = onlyVideo || input.video?.inPlan ? n : Math.max(1, Math.floor(n / 4));
   const videoCount = () => picks.filter((p) => isVideoIdea(p.idea)).length;
 
   const candidates = (filter: (idea: Idea) => boolean = () => true): Pick[] =>
@@ -363,6 +373,28 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
     const key = `${e.network}|${localDateISO(e.scheduledAt, timeZone)}|${e.subjectId ?? "general"}`;
     perDay.set(key, (perDay.get(key) ?? 0) + 1);
   }
+  // Picture or video per post (lib/content-flow/format.ts): feed posts become videos by their app's share, within the
+  // videos BuPulse can make this run, never the same format three days running on one app.
+  let videosLeft = input.video?.inPlan ? Math.min(MAX_RUN_VIDEOS, Math.floor(input.video.secondsLeft / VIDEO_SECONDS_PER_VIDEO)) : 0;
+  const formatsSoFar: RecentFormats = Object.fromEntries(Object.entries(input.recentFormats ?? {}).map(([k, v]) => [k, [...(v ?? [])]]));
+  const decideFormat = (network: Network, format: AutopilotFormat, date: string, photoCount: number): AutopilotFormat => {
+    if (!input.video?.inPlan || format === "ARTICLE") return format;
+    // A video idea stays one (past the budget it is the script to film, as without video in the plan).
+    if (format === "SCRIPT") {
+      videosLeft = Math.max(0, videosLeft - 1);
+      return format;
+    }
+    const repeated = repeatedFormat(formatsSoFar, network, date);
+    if (rng() < VIDEO_SHARE.auto[network] && repeated !== "video" && videosLeft > 0) {
+      videosLeft -= 1;
+      return "SCRIPT";
+    }
+    if (repeated === "image" && format === "POST" && photoCount >= 2 && formatAllowed(network, "CAROUSEL")) return "CAROUSEL";
+    if (repeated === "carousel" && format === "CAROUSEL") return "POST";
+    return format;
+  };
+  const packFormat = (f: AutopilotFormat) => (f === "SCRIPT" ? "video" : f === "CAROUSEL" ? "carousel" : f === "POST" ? "image" : null);
+
   for (const pick of ordered) {
     const { idea } = pick;
     const date = dayOf.get(pick)!;
@@ -384,7 +416,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
       const format = idea.formats[connection.network];
       if (!format) continue;
       // A carousel needs at least two pictures; otherwise it is one image post.
-      const effective: AutopilotFormat = format === "CAROUSEL" && (photos.length < 2 || !formatAllowed(connection.network, "CAROUSEL")) ? "POST" : format;
+      const planned: AutopilotFormat = format === "CAROUSEL" && (photos.length < 2 || !formatAllowed(connection.network, "CAROUSEL")) ? "POST" : format;
       const at = slot(connection.id, connection.network, date);
       if (!at) {
         notes.push(`Skipped one ${connection.network} post on ${date}: no free time slot.`);
@@ -397,6 +429,9 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
       }
       perDay.set(dayKey, (perDay.get(dayKey) ?? 0) + 1);
       noteTime(connection.id, at);
+      const effective = decideFormat(connection.network, planned, date, photos.length);
+      const kind = packFormat(effective);
+      if (kind) (formatsSoFar[connection.network] ??= []).unshift({ day: date, format: kind });
       posts.push({ connectionId: connection.id, network: connection.network, format: effective, scheduledAt: at });
     }
     if (posts.length === 0) continue;

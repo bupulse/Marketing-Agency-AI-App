@@ -19,7 +19,6 @@ import { profileContext } from "@/lib/knowledge/context";
 import { subjectColumns, writingSubject, type Subject } from "@/lib/knowledge/service";
 import { writerKnowledge } from "@/lib/knowledge/writer-context";
 import { accountUsable } from "@/lib/publishing/service";
-import { isNetwork } from "@/lib/social/registry";
 import type { Network } from "@/lib/social/types";
 import { queueWebhookEvent } from "@/lib/webhooks/emit";
 import { contentData } from "@/lib/webhooks/events";
@@ -27,6 +26,12 @@ import { consumeUsage, getUsageSummary, refundUsage, UsageLimitError } from "@/l
 import { directVisual } from "@/lib/visuals/art-director";
 import { diversifyPack } from "@/lib/visuals/direction";
 import { aiPhotosStatus, audienceFor, directionContext, planVisuals, videoAvailable } from "@/lib/visuals/service";
+import { seededRandom } from "@/lib/autopilot/learning";
+import { todayIn } from "@/lib/content-flow/day";
+import { decideFormats, VIDEO_APPS, type FormatChoice } from "@/lib/content-flow/format";
+import { recentFormats } from "@/lib/content-flow/recent-formats";
+import { getProvider, isNetwork } from "@/lib/social/registry";
+import { writeContentScript } from "@/lib/visuals/script-writer";
 import { ANGLES, chooseAngles, spreadNetworks, type AngleFacts } from "./angles";
 import { configuredModel, pruneVersions, StudioNotFoundError, variantsJson, type GenerateFeature } from "./service";
 
@@ -134,6 +139,9 @@ export async function generatePackForSubject(args: {
   let slots: PackSlot[] = spreadNetworks(angles, networks);
   const reserved = await reserveCredits(userId, slots.length);
   slots = slots.slice(0, reserved.count);
+  // Picture, carousel or video per post (lib/content-flow/format.ts): BuPulse decides, within the plan's video seconds.
+  const formats = await packFormats(userId, businessId, business.timezone || "UTC", slots, `${subject.kind}:${subject.id}`, now);
+  slots = slots.map((s, i) => ({ ...s, format: formats[i]?.format ?? s.format }));
 
   let kept = 0;
   try {
@@ -185,6 +193,7 @@ export async function generatePackForSubject(args: {
             packId,
             angle: post.angle,
             network: post.network,
+            format: post.format,
           },
         }),
       );
@@ -199,6 +208,27 @@ export async function generatePackForSubject(args: {
     // One credit per post kept: the rest go back (all of them when the call failed).
     const unused = reserved.count - kept;
     if (unused > 0) await refundUsage(userId, "text", reserved.periodStart, unused).catch((e) => logError(e, { source: "studio.pack.refund", level: "error" }));
+  }
+}
+
+/** The formats of a pack's posts, decided like a day's run (no owner preference: BuPulse decides). */
+async function packFormats(userId: string, businessId: string, zone: string, slots: PackSlot[], subjectKey: string, now: Date): Promise<FormatChoice[]> {
+  try {
+    const day = todayIn(zone, now);
+    const [videoInPlan, usage, recent] = await Promise.all([videoAvailable(businessId).catch(() => false), getUsageSummary(userId).catch(() => null), recentFormats(businessId, zone, day)]);
+    return decideFormats({
+      slots,
+      day,
+      videoInPlan,
+      videoSecondsLeft: usage ? Math.max(0, (usage.limits.videoSeconds ?? 0) - (usage.used.videoSeconds ?? 0)) : 0,
+      photoApps: VIDEO_APPS.filter((n) => getProvider(n).rules.formats.includes("POST")),
+      recent,
+      rng: seededRandom(`${businessId}|${subjectKey}|${now.toISOString()}`),
+    }).choices;
+  } catch (error) {
+    // Formats only vary the pack: without them each app keeps its usual format.
+    await logError(error, { source: "studio.pack.formats", level: "warn", businessId });
+    return [];
   }
 }
 
@@ -233,7 +263,13 @@ async function planPackVisuals(
     angle: { id: written[i].angle, label: ANGLES[written[i].angle].label, people: ANGLES[written[i].angle].people },
   });
   const plans = diversifyPack(await Promise.all(contents.map((c, i) => directVisual(directionContext(base(c, i)), owner))), item.type);
-  for (const [i, content] of contents.entries()) {
+  for (const [i, saved] of contents.entries()) {
+    let content = saved;
+    // A video post the pack writer left without its script gets one (one text generation; lib/visuals/script-writer.ts).
+    if (written[i].format === "video" && videoOk && !content.videoScript.trim()) {
+      const script = await writeContentScript(owner, content.id).catch(() => "");
+      if (script) content = { ...content, videoScript: script };
+    }
     await planVisuals({
       owner,
       target: { contentId: content.id },

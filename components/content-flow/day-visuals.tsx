@@ -4,7 +4,7 @@ import { ContentVisual } from "@/components/visuals/content-visual";
 import { GlassCard } from "@/components/ui";
 import type { VisualView } from "@/lib/visuals/types";
 
-export type DayVisualItem = { id: string; label: string; angle: string | null; image: VisualView | null; video: VisualView | null };
+export type DayVisualItem = { id: string; label: string; angle: string | null; image: VisualView | null; video: VisualView | null; hasScript?: boolean };
 
 /**
  * The pictures and videos of the day's posts: drawn here while they are still pending (each post's picture then goes
@@ -27,7 +27,7 @@ export function DayVisuals({ items, videoInPlan, album }: { items: DayVisualItem
                 {item.label}
                 {item.angle && <span className="font-normal text-muted"> · {item.angle}</span>}
               </p>
-              <ContentVisual contentId={item.id} image={item.image} video={item.video} videoInPlan={videoInPlan} album={album} autoVideo={item.id === firstVideo} />
+              <ContentVisual contentId={item.id} image={item.image} video={item.video} videoInPlan={videoInPlan} album={album} autoVideo={item.id === firstVideo} hasScript={item.hasScript} />
             </GlassCard>
           </li>
         ))}

@@ -130,7 +130,9 @@ async function recordImage(group: PlannedGroup, written: WrittenGroup, ctx: Visu
 async function planGroupVideo(group: PlannedGroup, written: WrittenGroup, ctx: VisualContext) {
   const scriptPost = group.posts.find((p) => p.format === "SCRIPT");
   if (!scriptPost || !ctx.videoAllowed) return;
-  const script = written.versions.find((v) => v.network === scriptPost.network)?.text ?? "";
+  // A feed video post has its scenes apart from its caption; a TikTok / YouTube post's text is the script.
+  const version = written.versions.find((v) => v.network === scriptPost.network);
+  const script = version?.videoScript || version?.text || "";
   const plan = buildVideoPlan({
     script,
     hook: written.image.headline || group.project?.title || ctx.businessName,

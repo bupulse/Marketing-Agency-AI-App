@@ -200,6 +200,9 @@ model GeneratedContent {
   forDate     DateTime? @db.Date
   mode        String?
   brief       String?
+  // The post's format as BuPulse decided it ("image" | "carousel" | "video", lib/content-flow/format.ts), so the next
+  // days vary it per app. Null on content from before.
+  format      String?
   provider    String // "gemini" | "claude" | "edit"
   model       String
   createdAt   DateTime  @default(now())
