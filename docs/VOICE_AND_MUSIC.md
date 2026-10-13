@@ -39,7 +39,8 @@ Code: `lib/ai/tts.ts`, `lib/voice/`, `lib/music/`, `components/visuals/video-ren
 - **Regenerate voiceover**: asks for a new take (a new hash), at most 3 a day per video and 30 seconds apart. The old
   take's row and file are deleted only when no other video of the company uses them.
 - **Billing and limits**: characters spoken are counted on `voiceCharacters` (`consumeUsage`), given back only when
-  ElevenLabs was not paid (its call failed); once it answered they stay counted. The call goes through `withLedger` (provider `elevenlabs`, characters recorded as input tokens, priced at
+  ElevenLabs was not paid (its call failed); once it answered they stay counted, even if recording the call in the
+  ledger fails afterwards (logged as `voice.ledger`). The call goes through `withLedger` (provider `elevenlabs`, characters recorded as input tokens, priced at
   $0.30 per 1,000 in `lib/ai/pricing.ts`), so the platform cap and the company allowance apply. Out of characters, no
   plan feature, allowance used or the service off: the video is made without a voiceover and the panel says why.
 

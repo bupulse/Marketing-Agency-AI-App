@@ -121,6 +121,17 @@ describe("ensureVoiceover", () => {
     expect(second.plan.voice?.path).toBe(voicePath("b1", HASH()));
   });
 
+  it("the voice service answered but the ledger write failed: the audio is used and the characters are not refunded", async () => {
+    mocks.ledger.mockImplementationOnce(() => {
+      throw new Error("ledger down");
+    });
+    const { plan } = (await ensureVoiceover(owner, "v1"))!;
+    expect(mocks.speak).toHaveBeenCalledTimes(1);
+    expect(mocks.refundUsage).not.toHaveBeenCalled();
+    expect(mocks.logError).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ source: "voice.ledger" }));
+    expect(plan.voice).toMatchObject({ enabled: true, path: voicePath("b1", HASH()), note: null });
+  });
+
   it("a voice service error gives the characters back and releases the claim", async () => {
     mocks.speak.mockRejectedValueOnce(new Error("voice service down"));
     const { plan } = (await ensureVoiceover(owner, "v1"))!;

@@ -93,11 +93,27 @@ async function shortenLines(owner: Owner, lines: string[], targetChars: number):
   }
 }
 
-/** Speaks the text through the ledger: characters are billed as input tokens (lib/ai/pricing.ts). */
+/**
+ * Speaks the text through the ledger: characters are billed as input tokens (lib/ai/pricing.ts). Once the voice
+ * service answered, the audio is paid for: a failure after that (recording it in the ledger) is logged, and the
+ * audio is still returned, so its characters stay counted and are never refunded.
+ */
 async function speak(owner: Owner, text: string, voiceId: string): Promise<TtsResult> {
   const tts = getTtsProvider();
   if (!tts) throw new AIProviderError("Voiceover is not set up", "elevenlabs");
-  return withLedger({ ...owner, feature: VOICE_FEATURE }, { provider: tts.name, model: tts.model }, () => tts.speak({ text, voiceId }), (r) => ({ provider: r.provider, model: r.model, usage: { inputTokens: r.characters, outputTokens: 0 } }));
+  let spoken: TtsResult | null = null;
+  try {
+    return await withLedger(
+      { ...owner, feature: VOICE_FEATURE },
+      { provider: tts.name, model: tts.model },
+      async () => (spoken = await tts.speak({ text, voiceId })),
+      (r) => ({ provider: r.provider, model: r.model, usage: { inputTokens: r.characters, outputTokens: 0 } }),
+    );
+  } catch (error) {
+    if (!spoken) throw error;
+    await logError(error, { source: "voice.ledger", level: "warn", businessId: owner.businessId });
+    return spoken;
+  }
 }
 
 type Clip = { status: string; path: string | null; pendingAudio: Uint8Array | null; durationMs: number; timings: unknown; updatedAt: Date };
