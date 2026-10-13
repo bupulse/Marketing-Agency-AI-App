@@ -2,7 +2,7 @@ import "server-only";
 import { adminEmails } from "@/lib/admin/auth";
 import { siteUrl } from "@/lib/auth/site-url";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
-import { formatMomoAmount, GRACE_DAYS, graceEnd, whatsappText, type MomoPayDetails } from "./momo-shared";
+import { formatMomoAmount, GRACE_DAYS, graceEnd, mtnMomoPayDial, whatsappText, type MomoPayDetails } from "./momo-shared";
 
 // Every email of the Mobile Money flow. All of them go through sendEmail (Resend, kill switch respected) and return
 // whether the mail went out; nothing here throws, so a mail problem never stops a payment being recorded.
@@ -14,7 +14,7 @@ const first = (name: string | null | undefined) => (name ? `Hi ${name.split(/\s+
 /** "MoMo Pay 123456 · 078 123 4567 (Aline U.) · Airtel 073 …" as one line for emails. */
 export function payDetailsLine(d: MomoPayDetails): string {
   return [
-    d.merchantCode ? `MoMo Pay code ${d.merchantCode}` : null,
+    d.merchantCode ? `MoMo Pay code ${d.merchantCode}${mtnMomoPayDial(d.merchantCode) ? ` (dial ${mtnMomoPayDial(d.merchantCode)} on MTN)` : ""}` : null,
     d.momoNumber ? `MTN number ${d.momoNumber}` : null,
     d.airtelNumber ? `Airtel number ${d.airtelNumber}` : null,
     d.accountName ? `(${d.accountName})` : null,

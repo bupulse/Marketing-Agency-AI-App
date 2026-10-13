@@ -30,6 +30,33 @@ Decisions:
 - Invoices: `listInvoices` returns `url: null` because Paddle's PDF links expire after an hour. Use
   `invoiceUrl(transactionId)` from `lib/billing/paddle.ts` when the customer clicks "Download".
 
+## Choosing how to pay
+
+Every pay entry point (Billing plans, the demo lock screen, a custom plan offer, an invoice on Billing or the invoice lock
+screen; the trial-ended and paused screens lead to Billing) asks **Mobile Money (MTN / Airtel)** or **Card** wherever
+the company's region lists both (`PricingRegion.paymentMethods`; RW). `lib/billing/pay-methods.ts` decides, per plan and
+interval: a listed method is `ready`, or `soon` (shown disabled: "Card payments coming soon", "Mobile Money coming soon"),
+never hidden; an unlisted one is `off`. A card-only region opens the checkout in one click.
+
+Card is `ready` when (`lib/billing/card-ready.ts`, computed on the server before the page renders):
+
+1. the provider is configured: `BILLING_PROVIDER` (unset = `PADDLE`, which is what you want; setting it explicitly to
+   `PADDLE` changes nothing) with `PADDLE_API_KEY`, `PADDLE_CLIENT_TOKEN` **and** `PADDLE_WEBHOOK_SECRET` set;
+2. Paddle is switched on in Admin → Services;
+3. the plan has a Paddle price for the company's region and interval (`regionPriceIdFor`): in GLOBAL the plan's own ids
+   (Admin → Plans → sync, or `PADDLE_PRICE_<PLAN>_<MONTH|YEAR>`); in Rwanda and EAC `PlanRegionPrice.paddleMonthlyPriceId`
+   / `paddleYearlyPriceId`, written by `npm run paddle:setup -- --regions` (below). Admin → Regions and prices shows
+   "Ready" or "Not in Paddle" per row.
+
+Why the choice was missing (13 October 2026): the dialog only opened when Mobile Money was set up (merchant code or a
+number in Admin → Payments); otherwise "Upgrade" went straight to card, which in Rwanda always failed ("Card payments
+are not ready for your region yet") because nothing ever wrote the RW Paddle price ids. `BILLING_PROVIDER` being unset
+was not a cause (it defaults to Paddle).
+
+Card routes: plans → `startCheckout` (auto-renewing Paddle subscription, activated by the webhooks); invoices → the
+same checkout for the invoice's plan and interval ("Pay online" in the invoice email links to Billing; a custom plan's
+invoice has no card button); offers → "Ask us for a card link" (Paddle cannot take a custom price, `docs/OFFERS.md`).
+
 ## Environment variables
 
 | Variable | Meaning |
@@ -52,7 +79,12 @@ Sandbox and live are separate Paddle accounts with different keys, tokens and pr
    `PRICES` in `lib/billing/catalog.ts`, creates the webhook endpoint, and writes the price ids and
    `PADDLE_WEBHOOK_SECRET` into `.env`. Re-running reuses what exists. Add `--print-secret` to also
    print the new endpoint secret. Without `--webhook-url`, only products and prices are created.
-4. Copy the same variables into the Cloudflare Worker secrets.
+4. Regional card prices (Rwanda's RWF plans charged in USD, EAC): `npm run paddle:setup -- --regions` with
+   `DIRECT_URL` or `DATABASE_URL` pointing at the app's database. It creates a USD price per region row and interval on
+   the plan's Paddle product (tagged `custom_data.regionKey`), reuses an identical one, and writes the ids into
+   `PlanRegionPrice` (`scripts/paddle-regions.mjs`). Run it again after a regional price or the USD rate changes (that
+   clears the ids). Card then shows as ready within a minute (caches).
+5. Copy the same variables into the hosting secrets (Netlify / Cloudflare).
 
 ## Going live
 

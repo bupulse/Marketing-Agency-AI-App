@@ -9,6 +9,7 @@ import { sendInvoiceReminders } from "@/lib/invoices/service";
 import { sendOfferReminders } from "@/lib/offers/reminders";
 import { sendPlanPausedEmail, sendRenewalReminderEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
+import { sweepUnsubmittedProofs } from "./momo";
 import { DAY_MS, graceEnd, reminderDue, UNSUBMITTED_TTL_HOURS } from "./momo-shared";
 
 // The daily job for Mobile Money subscriptions (nothing renews by itself):
@@ -35,6 +36,8 @@ export type RenewalRun = {
   invoiceReminders?: number;
   /** Payment reminders of accepted, unpaid custom plan offers (first call of a sweep only; absent when none went out). */
   offerReminders?: number;
+  /** Screenshots of payments that were never submitted, removed (first call of a sweep only; absent when none). */
+  proofsRemoved?: number;
   nextCursor: string | null;
   /** True when another run holds the lock; nothing was done. */
   busy?: boolean;
@@ -128,6 +131,13 @@ async function runBatch(opts: { now?: Date; cursor?: string | null; batchSize?: 
       data: { status: "expired", decidedAt: now, decidedBy: "system:cron" },
     });
     run.expiredPayments = count;
+    // Their screenshots (and those of cancelled or replaced payments) go too. Best effort, never stops the renewals.
+    try {
+      const removed = await sweepUnsubmittedProofs();
+      if (removed > 0) run.proofsRemoved = removed;
+    } catch (error) {
+      await logError(error, { source: "billing.momo.proofs" });
+    }
     // Invoices due today get their one reminder (docs/INVOICES.md). Its own failure never stops the renewals.
     try {
       const reminded = await sendInvoiceReminders(now);

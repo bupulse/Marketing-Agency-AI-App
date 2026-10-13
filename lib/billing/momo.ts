@@ -13,15 +13,21 @@ import { companyPlans } from "@/lib/region-prices";
 import { matchInvoicePayment, readPaymentReviews, withPaymentReview, type PaymentReview } from "@/lib/invoices/shared";
 import { sendInvoiceReviewAlertEmail, sendPaymentRejectedEmail, sendPaymentToCheckEmail, sendPlanActiveEmail } from "./momo-emails";
 import { getMomoPrice, getMomoSettings } from "./momo-settings";
+import { checkProofObject, createProofUpload, ProofFileError, removeProofObjects } from "./momo-proofs";
 import {
   DAY_MS,
+  isProofPathOf,
+  isProofType,
   isReference,
   makeReference,
   MANUAL_PAYMENT_STATUSES,
   momoConfigured,
   planManualPeriod,
+  proofFileProblem,
+  proofObjectPath,
   proofSchema,
   REJECTED_SHOWN_DAYS,
+  transactionIdSchema,
   usdCentsOf,
   type ManualPaymentStatus,
   type ManualPaymentView,
@@ -82,6 +88,8 @@ async function toView(row: Row, sub: Sub | null, now: Date = new Date()): Promis
     transactionId: row.transactionId,
     payerPhone: row.payerPhone,
     network: (row.network as MomoNetwork | null) ?? null,
+    // Only a screenshot that passed the checks at submit time (proofBytes is set then).
+    proofType: row.proofBytes != null && isProofType(row.proofType) ? row.proofType : null,
     rejectReason: row.rejectReason,
     createdAt: row.createdAt.toISOString(),
     submittedAt: row.submittedAt?.toISOString() ?? null,
@@ -251,21 +259,61 @@ async function openPayment(userId: string, sub: Sub, target: PaymentTarget, now:
 }
 
 /**
- * The client tapped "I've paid": records the transaction id and phone, and alerts the owner. Only the open,
- * not-yet-submitted payment of this company can be submitted, exactly once, and a transaction id that already paid
- * for a pending or confirmed payment of any company is refused (the unique index catches a race).
+ * Before "I've paid": a signed URL to upload the screenshot of the MoMo confirmation, for this client's own open
+ * payment that is not submitted yet. The path is recorded on the payment (a new upload replaces the previous file), so
+ * only the file the server issued can be attached, and an abandoned one is removed with the payment.
+ */
+export async function startProofUpload(userId: string, input: { paymentId: string; type: string; bytes: number }): Promise<{ path: string; token: string }> {
+  const problem = proofFileProblem({ type: input.type, size: input.bytes });
+  if (problem) throw new ManualPaymentError(problem);
+  const paymentId = String(input.paymentId ?? "");
+  const row = paymentId && paymentId.length <= 64 ? await prisma.manualPayment.findFirst({ where: { id: paymentId, userId } }) : null;
+  if (!row) throw new ManualPaymentError("We could not find that payment. Start again from the Billing page.");
+  if (row.status !== "pending" || row.submittedAt) throw new ManualPaymentError("This payment is already sent for approval.");
+  const path = proofObjectPath(userId, row.id, input.type as Parameters<typeof proofObjectPath>[2], globalThis.crypto.randomUUID());
+  const { count } = await prisma.manualPayment.updateMany({ where: { id: row.id, userId, status: "pending", submittedAt: null }, data: { proofPath: path, proofBytes: null, proofType: null } });
+  if (count !== 1) throw new ManualPaymentError("This payment is already sent for approval.");
+  if (row.proofPath && row.proofPath !== path) await removeProofObjects([row.proofPath]);
+  try {
+    return await createProofUpload(path);
+  } catch (error) {
+    await logError(error, { source: "billing.momo.proof", userId, paymentId: row.id });
+    throw new ManualPaymentError("The screenshot could not be uploaded right now. Try again, or send the transaction id only.");
+  }
+}
+
+/**
+ * The client tapped "I've paid": records the transaction id, the phone, the network and the screenshot, and alerts the
+ * owner. Only the open, not-yet-submitted payment of this company can be submitted, exactly once, and a transaction id
+ * that already paid for a pending or confirmed payment of any company is refused (the unique index catches a race).
+ * Without a transaction id ("I can't find it") the screenshot is required and the owner types the id on confirm. The
+ * screenshot must be the file issued for this payment (startProofUpload) and pass the checks (size, first bytes).
  */
 export async function submitManualProof(userId: string, raw: ProofInput, now: Date = new Date()): Promise<ManualPaymentView> {
   const parsed = proofSchema.safeParse(raw);
   if (!parsed.success) throw new ManualPaymentError(parsed.error.issues[0]?.message ?? "Check the details and try again.");
-  const { paymentId, transactionId, payerPhone, network } = parsed.data;
+  const { paymentId, transactionId, payerPhone, network, proofPath } = parsed.data;
   const sub = await subOf(userId);
-  if (await transactionUse(network, transactionId, { live: true, except: paymentId })) throw new ManualPaymentError(TRANSACTION_REUSED);
+  if (transactionId && (await transactionUse(network, transactionId, { live: true, except: paymentId }))) throw new ManualPaymentError(TRANSACTION_REUSED);
+  const open = await prisma.manualPayment.findFirst({ where: { id: paymentId, userId, status: "pending", submittedAt: null }, select: { proofPath: true } });
+  let proof: { bytes: number; type: string } | null = null;
+  if (open && proofPath) {
+    if (!isProofPathOf(proofPath, userId, paymentId) || open.proofPath !== proofPath) throw new ManualPaymentError("That screenshot is not the one uploaded for this payment. Add it again.");
+    try {
+      proof = await checkProofObject(proofPath);
+    } catch (error) {
+      if (error instanceof ProofFileError) throw new ManualPaymentError(error.message);
+      throw error;
+    }
+  }
+  // A screenshot uploaded and then left out of the form is not kept.
+  const dropped = open?.proofPath && !proof ? open.proofPath : null;
   let count = 0;
   try {
     ({ count } = await prisma.manualPayment.updateMany({
-      where: { id: paymentId, userId, status: "pending", submittedAt: null },
-      data: { transactionId, payerPhone, network, submittedAt: now },
+      // The screenshot must still be the file checked above (a second upload meanwhile is never attached unchecked).
+      where: { id: paymentId, userId, status: "pending", submittedAt: null, proofPath: proof ? proofPath : (open?.proofPath ?? null) },
+      data: { transactionId, payerPhone, network, submittedAt: now, ...(proof ? { proofBytes: proof.bytes, proofType: proof.type } : { proofPath: null, proofBytes: null, proofType: null }) },
     }));
   } catch (error) {
     if (isUnique(error)) throw new ManualPaymentError(TRANSACTION_REUSED);
@@ -273,8 +321,10 @@ export async function submitManualProof(userId: string, raw: ProofInput, now: Da
   }
   const row = await prisma.manualPayment.findFirst({ where: { id: paymentId, userId } });
   if (!row) throw new ManualPaymentError("We could not find that payment. Start again from the Billing page.");
+  if (count === 1 && dropped) await removeProofObjects([dropped]);
   if (count !== 1) {
     if (row.status === "pending" && row.submittedAt) return toView(row, sub, now); // already submitted: nothing to redo
+    if (row.status === "pending") throw new ManualPaymentError("The screenshot changed while sending (another tab?). Check it and send again.");
     throw new ManualPaymentError("This payment is closed. Start again from the Billing page.");
   }
   // The alert is best effort: the payment is on record and shows in the admin queue either way.
@@ -286,13 +336,27 @@ export async function submitManualProof(userId: string, raw: ProofInput, now: Da
     ]);
     await sendPaymentToCheckEmail({
       reference: row.reference, amountMinor: row.amountMinor, currency: row.currency, planName: plan?.name ?? row.planKey, interval: row.interval,
-      transactionId, payerPhone, network, company: business?.name ?? "A company", email: user?.email ?? "",
+      transactionId: transactionId ?? "not found by the client (see the screenshot)", payerPhone, network, company: business?.name ?? "A company", email: user?.email ?? "",
     });
   } catch (error) {
     await logError(error, { source: "billing.momo.alert", userId, paymentId });
   }
-  await trackEvent("momo_payment_submitted", { userId, props: { plan: row.planKey, interval: row.interval, amountMinor: row.amountMinor } });
+  await trackEvent("momo_payment_submitted", { userId, props: { plan: row.planKey, interval: row.interval, amountMinor: row.amountMinor, screenshot: proof !== null, transactionId: transactionId !== null } });
   return toView(row, sub, now);
+}
+
+/**
+ * Screenshots of payments that were never submitted (cancelled, replaced by another plan, or closed after 48 hours):
+ * the files are removed and the rows forget them. Best effort, run by the daily renewals job. Submitted payments keep
+ * their screenshot as the record of the money; the account deletion removes those.
+ */
+export async function sweepUnsubmittedProofs(limit = 500): Promise<number> {
+  const rows = await prisma.manualPayment.findMany({ where: { status: "expired", submittedAt: null, proofPath: { not: null } }, select: { id: true, proofPath: true }, take: limit });
+  if (rows.length === 0) return 0;
+  const removed = await removeProofObjects(rows.map((r) => r.proofPath as string));
+  if (removed === 0) return 0;
+  await prisma.manualPayment.updateMany({ where: { id: { in: rows.map((r) => r.id) }, status: "expired", submittedAt: null }, data: { proofPath: null, proofBytes: null, proofType: null } });
+  return removed;
 }
 
 /** The client changed their mind before paying. A submitted payment cannot be cancelled: the owner decides it. */
@@ -329,12 +393,20 @@ class SubscriptionMoved extends Error {}
  * already confirmed and is refused without touching anything; a subscription that changed between the read and the
  * write is re-read and the period recomputed once.
  */
-export async function confirmManualPayment(ctx: AdminContext, paymentId: string, now: Date = new Date()) {
+export async function confirmManualPayment(ctx: AdminContext, paymentId: string, now: Date = new Date(), input: { transactionId?: string | null } = {}) {
   requireConsole(ctx);
   const payment = await prisma.manualPayment.findUnique({ where: { id: paymentId } });
   if (!payment) throw new AdminError("not_found", "No payment with that id.");
   if (payment.status !== "pending") throw new AdminError("conflict", `This payment is already ${payment.status}.`);
-  if (!payment.submittedAt || !payment.transactionId || !payment.network) throw new AdminError("conflict", "The client has not said they paid yet (no transaction id). Wait for them, or ask them to tap I've paid.");
+  if (!payment.submittedAt || !payment.network) throw new AdminError("conflict", "The client has not said they paid yet. Wait for them, or ask them to tap I've paid.");
+  // The client could not find the transaction id and sent a screenshot: the owner reads it from their own MoMo message
+  // and types it here, so the replay guard (one live use per id and network) holds for every confirmed payment.
+  let transactionId = payment.transactionId;
+  if (!transactionId) {
+    const typed = transactionIdSchema.safeParse(input.transactionId ?? "");
+    if (!typed.success) throw new AdminError("invalid", "The client could not find the transaction id: type it from your Mobile Money message before confirming.");
+    transactionId = typed.data;
+  }
   const plan = await freshPlan(payment.planKey);
   if (!plan) throw new AdminError("conflict", "The plan of this payment no longer exists.");
   // A payment of a custom plan offer (directly, or through the invoice made from it) also settles the offer.
@@ -375,13 +447,13 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
     try {
       await prisma.$transaction(async (tx) => {
         // The transaction id must still be unused by any other live payment (the index refuses too; this says why).
-        if (await transactionUse(payment.network as string, payment.transactionId as string, { live: true, except: paymentId, db: tx })) {
-          throw new AdminError("conflict", "This transaction id was confirmed on another payment meanwhile. Reject this one.");
+        if (await transactionUse(payment.network as string, transactionId, { live: true, except: paymentId, db: tx })) {
+          throw new AdminError("conflict", payment.transactionId ? "This transaction id was confirmed on another payment meanwhile. Reject this one." : "That transaction id is already used on another payment. Check the id, or reject this one.");
         }
-        // The claim: only a pending, submitted payment moves to confirmed, once.
+        // The claim: only a pending, submitted payment moves to confirmed, once (with the id the owner typed, if any).
         const claim = await tx.manualPayment.updateMany({
           where: { id: paymentId, status: "pending", submittedAt: { not: null } },
-          data: { status: "confirmed", decidedAt: now, decidedBy: ctx.actor, periodStart: period.start, periodEnd: period.end },
+          data: { status: "confirmed", decidedAt: now, decidedBy: ctx.actor, periodStart: period.start, periodEnd: period.end, ...(payment.transactionId ? {} : { transactionId }) },
         });
         if (claim.count !== 1) throw new AdminError("conflict", "This payment was decided a moment ago. Nothing was changed.");
         // A payment of an invoice (its number is the reference) pays that invoice, once: only a sent invoice moves to
@@ -433,16 +505,18 @@ export async function confirmManualPayment(ctx: AdminContext, paymentId: string,
             payload: {
               event_type: "manual_payment.confirmed",
               occurred_at: now.toISOString(),
-              data: { id: payment.reference, invoice_id: payment.invoiceId, amount_minor: payment.amountMinor, currency: payment.currency, usd_cents: usdCents, plan: plan.key, interval: payment.interval, transaction_id: payment.transactionId, payer_phone: payment.payerPhone, network: payment.network, period_mode: period.mode, period_start: period.start.toISOString(), period_end: period.end.toISOString() },
+              data: { id: payment.reference, invoice_id: payment.invoiceId, amount_minor: payment.amountMinor, currency: payment.currency, usd_cents: usdCents, plan: plan.key, interval: payment.interval, transaction_id: transactionId, payer_phone: payment.payerPhone, network: payment.network, period_mode: period.mode, period_start: period.start.toISOString(), period_end: period.end.toISOString() },
             },
           },
         });
-        await writeAudit(tx, ctx, "confirm_momo_payment", `payment:${paymentId}`, { status: "pending", subscription: before }, { status: "confirmed", reference: payment.reference, invoiceId: payment.invoiceId, amountMinor: payment.amountMinor, currency: payment.currency, period: period.mode, subscription: after });
+        await writeAudit(tx, ctx, "confirm_momo_payment", `payment:${paymentId}`, { status: "pending", subscription: before }, { status: "confirmed", reference: payment.reference, invoiceId: payment.invoiceId, amountMinor: payment.amountMinor, currency: payment.currency, period: period.mode, subscription: after, transactionId, ...(payment.transactionId ? {} : { transactionIdBy: "admin" }), screenshot: payment.proofBytes != null });
       });
     } catch (error) {
       // The subscription changed under us (a webhook, another admin): read it again and recompute the period, once.
       if (error instanceof SubscriptionMoved && attempt === 0) continue;
       if (error instanceof SubscriptionMoved) throw new AdminError("conflict", "The subscription keeps changing while confirming. Look at the client and try again.");
+      // The partial unique index (network + transaction id) caught a confirmation racing this one.
+      if (isUnique(error)) throw new AdminError("conflict", "That transaction id is already used on another payment. Nothing was changed.");
       throw error;
     }
     // After the commit: analytics and the emails. None of them can undo the confirmation.
@@ -487,6 +561,8 @@ export type ManualPaymentAdminView = ManualPaymentView & {
   company: string | null;
   email: string | null;
   decidedBy: string | null;
+  /** The checked screenshot's object path in the private bucket (the console shows it through a short signed URL). */
+  proofPath: string | null;
   /** An older payment (any status, any company) that used the same transaction id on the same network. */
   seenBefore: { id: string; reference: string; status: string; sameCompany: boolean } | null;
 };
@@ -512,6 +588,7 @@ async function adminViews(rows: Row[], now: Date): Promise<ManualPaymentAdminVie
         company: company.get(r.userId) ?? null,
         email: email.get(r.userId) ?? null,
         decidedBy: r.decidedBy,
+        proofPath: r.proofBytes != null ? r.proofPath : null,
         seenBefore: seen ? { id: seen.id, reference: seen.reference, status: seen.status, sameCompany: seen.userId === r.userId } : null,
       };
     }),

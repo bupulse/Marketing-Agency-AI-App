@@ -1,11 +1,17 @@
 // Creates BuPulse's Paddle products, prices and (optionally) the webhook endpoint, then writes the
 // ids into .env. Safe to run again: existing products, prices and endpoints are reused.
 //
-//   npm run paddle:setup -- [--webhook-url https://bupulse.com/api/billing/webhooks/paddle] [--print-secret]
+//   npm run paddle:setup -- [--webhook-url https://bupulse.com/api/billing/webhooks/paddle] [--print-secret] [--regions]
+//
+// --regions also creates the card prices of the regions other than GLOBAL (Rwanda's RWF plans charged in USD, the East
+// Africa prices) and writes their ids into PlanRegionPrice (needs DIRECT_URL or DATABASE_URL). Without them card
+// checkout shows "Card payments coming soon" for those plans (docs/BILLING.md). Run it again after a regional price or
+// the USD rate changes (the ids are cleared then).
 //
 // Reads PADDLE_API_KEY and PADDLE_ENVIRONMENT (sandbox | production, default sandbox) from the
 // environment or .env. Prices must match lib/billing/catalog.ts PRICES.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { pgRegionStore, syncRegionPrices } from "./paddle-regions.mjs";
 
 const ENV_FILE = ".env";
 
@@ -42,6 +48,7 @@ const PLANS = {
 loadEnvFile();
 const args = process.argv.slice(2);
 const printSecret = args.includes("--print-secret");
+const regions = args.includes("--regions");
 const urlIndex = args.indexOf("--webhook-url");
 const webhookUrl = urlIndex >= 0 ? args[urlIndex + 1] : null;
 if (urlIndex >= 0 && !webhookUrl) {
@@ -164,3 +171,21 @@ for (const key of Object.keys(written)) {
 if (secretNote) console.log(secretNote);
 if (!webhookUrl) console.log("\nNo --webhook-url given: webhook endpoint not created.");
 console.log("\nStill to add yourself: PADDLE_API_KEY, PADDLE_CLIENT_TOKEN (Paddle > Developer tools > Authentication), PADDLE_ENVIRONMENT.");
+
+if (regions) {
+  const url = process.env.DIRECT_URL || process.env.DATABASE_URL;
+  if (!url) {
+    console.error("\n--regions needs DIRECT_URL or DATABASE_URL (the database the app uses) to write the regional price ids.");
+    process.exit(1);
+  }
+  const { default: pg } = await import("pg");
+  const client = new pg.Client({ connectionString: url });
+  await client.connect();
+  try {
+    console.log(`\nRegional card prices (Paddle ${environment}):`);
+    const written = await syncRegionPrices({ api: (path, method = "GET", body) => api(path, method, body), db: pgRegionStore(client), log: console.log });
+    console.log(written.length ? `Wrote ${written.length} regional price ids. Card checkout opens for those plans within a minute (cache).` : "Every regional price already has its Paddle ids.");
+  } finally {
+    await client.end();
+  }
+}

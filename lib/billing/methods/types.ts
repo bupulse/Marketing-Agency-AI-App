@@ -1,6 +1,6 @@
 import type { BillingInterval, BillingProvider } from "@/lib/generated/prisma/client";
 import type { AdminContext } from "@/lib/admin/types";
-import type { ManualPaymentView } from "../momo-shared";
+import type { ManualPaymentView, ProofInput } from "../momo-shared";
 
 /**
  * A way to pay other than the card checkout (`BillingAdapter`, which Paddle implements): the client starts a payment,
@@ -11,7 +11,7 @@ import type { ManualPaymentView } from "../momo-shared";
 export type PaymentMethodKey = "MANUAL_MOMO";
 
 export type StartPaymentInput = { userId: string; plan: string; interval: BillingInterval };
-export type SubmitProofInput = { userId: string; paymentId: string; transactionId: string; payerPhone: string; network: string };
+export type SubmitProofInput = { userId: string } & ProofInput;
 
 /** A verified provider webhook, translated to what BuPulse needs to do with a payment. */
 export type PaymentWebhook = {

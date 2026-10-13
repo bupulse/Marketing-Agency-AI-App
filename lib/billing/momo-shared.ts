@@ -168,6 +168,20 @@ export function momoSettingsProblem(s: MomoSettings): string | null {
   return null;
 }
 
+/**
+ * The MTN MoMo Pay USSD string for a merchant code: "*182*8*1*002450#" (MTN Rwanda: MoMo Pay, pay a merchant). The
+ * code is kept as typed, leading zeros included. Null when there is no valid code.
+ */
+export function mtnMomoPayDial(merchantCode: string | null | undefined): string | null {
+  const code = (merchantCode ?? "").trim();
+  return MERCHANT_CODE.test(code) ? `*182*8*1*${code}#` : null;
+}
+
+/** A tap-to-call link for a USSD string: "#" must be escaped in a URI, or the dialer stops before it. */
+export function ussdHref(dial: string): string {
+  return `tel:${dial.replace(/#/g, "%23")}`;
+}
+
 /** Clients can only be offered Mobile Money when there is somewhere to send the money. */
 export function momoConfigured(s: Pick<MomoSettings, "merchantCode" | "momoNumber" | "airtelNumber">): boolean {
   return Boolean(s.merchantCode || s.momoNumber || s.airtelNumber);
@@ -197,14 +211,82 @@ export const payerPhoneSchema = z
     return v;
   });
 
-export const proofSchema = z.object({
-  paymentId: z.string().min(1).max(64),
-  transactionId: transactionIdSchema,
-  payerPhone: payerPhoneSchema,
-  network: z.enum(MOMO_NETWORKS, { message: "Choose MTN or Airtel." }),
-});
+// ---- the screenshot (proof of payment) ---------------------------------------------------------------------
+
+/** The private Storage bucket of the screenshots (migration 20261017170000_payment_proofs). */
+export const PROOF_BUCKET = "payment-proofs";
+/** What a screenshot may be: JPEG, PNG or WebP (an iPhone HEIC photo is converted in the browser first), at most 5 MB. */
+export const PROOF_TYPES = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as const;
+export type ProofType = keyof typeof PROOF_TYPES;
+export const PROOF_MAX_BYTES = 5 * 1024 * 1024;
+
+export function isProofType(value: unknown): value is ProofType {
+  return typeof value === "string" && Object.hasOwn(PROOF_TYPES, value);
+}
+
+/** Why a screenshot cannot be uploaded (type and size the browser reports), or null. The server checks the bytes again. */
+export function proofFileProblem(file: { type: string; size: number }): string | null {
+  if (!isProofType(file.type)) return "Send a screenshot as a JPEG, PNG or WebP image.";
+  if (!(file.size > 0)) return "That file is empty.";
+  if (file.size > PROOF_MAX_BYTES) return "The screenshot can be at most 5 MB.";
+  return null;
+}
+
+/** A screenshot's type from its first bytes (what the file really is, whatever its name or the browser said). */
+export function sniffProofType(head: Uint8Array): ProofType | null {
+  if (head.length >= 8 && head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47 && head[4] === 0x0d && head[5] === 0x0a && head[6] === 0x1a && head[7] === 0x0a) return "image/png";
+  if (head.length >= 12 && String.fromCharCode(...head.subarray(0, 4)) === "RIFF" && String.fromCharCode(...head.subarray(8, 12)) === "WEBP") return "image/webp";
+  if (head.length >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return "image/jpeg";
+  return null;
+}
+
+/** The object path of a screenshot: always under the client's own id and the payment's id. */
+export function proofObjectPath(userId: string, paymentId: string, type: ProofType, id: string): string {
+  return `${userId}/${paymentId}/${id}.${PROOF_TYPES[type]}`;
+}
+
+/** True when `path` is a screenshot path of this client's payment (what the server issued; nothing else is accepted). */
+export function isProofPathOf(path: unknown, userId: string, paymentId: string): path is string {
+  if (typeof path !== "string" || path.length > 200) return false;
+  const prefix = `${userId}/${paymentId}/`;
+  return path.startsWith(prefix) && /^[0-9a-f-]{36}\.(jpg|png|webp)$/.test(path.slice(prefix.length));
+}
+
+const networkSchema = z.enum(MOMO_NETWORKS, { message: "Choose MTN or Airtel." });
+
+/**
+ * "I've paid": the transaction id from the MoMo message, the phone paid from, the network, and the screenshot. The
+ * transaction id is required (it is what stops one MoMo message paying twice) unless the client says they cannot find
+ * it: then the screenshot is required and the owner types the id when confirming. Output: `transactionId` is null in
+ * that case, `proofPath` null without a screenshot.
+ */
+export const proofSchema = z
+  .object({
+    paymentId: z.string().min(1).max(64),
+    transactionId: z.string().max(200).nullish(),
+    noTransactionId: z.boolean().nullish(),
+    payerPhone: payerPhoneSchema,
+    network: networkSchema,
+    proofPath: z.string().max(200).nullish(),
+  })
+  .transform((v, ctx) => {
+    const proofPath = v.proofPath?.trim() || null;
+    if (v.noTransactionId) {
+      if (!proofPath) {
+        ctx.addIssue({ code: "custom", path: ["proof"], message: "Without the transaction id, add a screenshot of the confirmation message so we can find your payment." });
+        return z.NEVER;
+      }
+      return { paymentId: v.paymentId, transactionId: null, payerPhone: v.payerPhone, network: v.network, proofPath };
+    }
+    const id = transactionIdSchema.safeParse(v.transactionId ?? "");
+    if (!id.success) {
+      ctx.addIssue({ code: "custom", path: ["transactionId"], message: id.error.issues[0]?.message ?? "Enter the transaction id." });
+      return z.NEVER;
+    }
+    return { paymentId: v.paymentId, transactionId: id.data, payerPhone: v.payerPhone, network: v.network, proofPath };
+  });
 /** What the form sends; the schema checks it (network is one of MOMO_NETWORKS). */
-export type ProofInput = { paymentId: string; transactionId: string; payerPhone: string; network: string };
+export type ProofInput = { paymentId: string; transactionId?: string | null; noTransactionId?: boolean | null; payerPhone: string; network: string; proofPath?: string | null };
 
 /** How this payment meets the client's running period, shown before they pay and to the owner before confirming. */
 export type PeriodNote = { mode: "extend" | "replace"; daysLeft: number; currentEnd: string };
@@ -229,6 +311,8 @@ export type ManualPaymentView = {
   transactionId: string | null;
   payerPhone: string | null;
   network: MomoNetwork | null;
+  /** A checked screenshot is attached (its type), or null. */
+  proofType: ProofType | null;
   rejectReason: string | null;
   createdAt: string;
   submittedAt: string | null;

@@ -5,6 +5,9 @@ import { ThemeToggle } from "@/components/theme";
 import { Badge, Button, GlassCard, buttonClasses } from "@/components/ui";
 import { formatPrice } from "@/components/billing/helpers";
 import { MomoPayment } from "@/components/billing/momo-payment";
+import { CheckoutScript } from "@/components/billing/checkout";
+import { cardCheckoutConfigured, cardPricedPlans } from "@/lib/billing/card-ready";
+import { methodState, offersChoice, payMethods, soleMethod } from "@/lib/billing/pay-methods";
 import { getSettings } from "@/lib/admin/settings";
 import { currentManualPayment } from "@/lib/billing/momo";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
@@ -42,14 +45,24 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
   ]);
   const chosenKey = business?.user.subscription?.chosenPlan ?? null;
   const plan = chosenKey ? plans.find((p) => p.key === chosenKey) ?? null : null;
-  // Paying by Mobile Money does not have to wait for the demo: where the region takes it and the owner has said where
-  // to pay, the chosen plan can be paid from here; confirming makes the company ACTIVE and opens the dashboard.
-  const canPay = canManage && plan !== null && region.paymentMethods.includes("momo") && momoConfigured(momoSettings) && momoPriceOf(plan, "MONTH") !== null;
+  const canBill = can(role, "billing");
+  // Paying does not have to wait for the demo: the chosen plan (monthly) can be paid from here by Mobile Money or card,
+  // whichever the region takes (a method not set up yet shows as "coming soon"). Confirming a Mobile Money payment, or
+  // the card webhook, makes the company ACTIVE and opens the dashboard.
+  const [cardOn, cardPriced] = plan && canBill && region.paymentMethods.includes("card") ? await Promise.all([cardCheckoutConfigured(), cardPricedPlans(region.key, [plan.key])]) : [false, {}];
+  const methods = plan
+    ? payMethods({
+        regionMethods: region.paymentMethods.filter((m) => (m === "card" ? canBill : canManage)),
+        momoConfigured: momoConfigured(momoSettings),
+        momoPriced: momoPriceOf(plan, "MONTH") !== null,
+        cardConfigured: cardOn,
+        cardPriced: Boolean(plan && (cardPriced as Record<string, { MONTH: boolean }>)[plan.key]?.MONTH),
+      })
+    : null;
+  const canPay = plan !== null && methods !== null && (offersChoice(methods) || soleMethod(methods) !== null);
   const payment = canManage && business ? await currentManualPayment(business.userId) : null;
   // A custom plan offer sent before or after the demo (docs/OFFERS.md): paying it opens the dashboard like any plan.
-  const canBill = can(role, "billing");
   const offer = canBill ? await clientOffer(businessId).catch(() => null) : null;
-  const momoOn = region.paymentMethods.includes("momo") && momoConfigured(momoSettings);
   const meetingLink = booking?.meetingLink || settings.meetingLink || null;
   const googleUrl = booking ? demoGoogleCalendarUrl({ ...booking, meetingLink }, businessName, `${siteUrl()}/dashboard`) : null;
   const movable = booking ? canStillMove(booking) : false;
@@ -150,7 +163,7 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
         {offer && (
           <OfferCard
             offer={offer}
-            actions={offer.status === "sent" || (offer.status === "accepted" && !(payment?.status === "pending" && payment.submitted)) ? <OfferActions offerId={offer.id} momo={momoOn} card={region.paymentMethods.includes("card")} accepted={offer.status === "accepted"} method={offer.payMethod} contactEmail={site.email} /> : undefined}
+            actions={offer.status === "sent" || (offer.status === "accepted" && !(payment?.status === "pending" && payment.submitted)) ? <OfferActions offerId={offer.id} momo={methodState(region.paymentMethods.includes("momo"), momoConfigured(momoSettings))} card={region.paymentMethods.includes("card")} accepted={offer.status === "accepted"} method={offer.payMethod} contactEmail={site.email} /> : undefined}
           />
         )}
 
@@ -196,7 +209,14 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
                 )}
                 {canPay && !payment && (
                   <div className="flex flex-col gap-1.5 border-t border-line pt-3">
-                    <DemoPayButton plan={plan.key} planName={plan.name} />
+                    {methods?.card === "ready" && <CheckoutScript />}
+                    <DemoPayButton
+                      plan={plan.key}
+                      planName={plan.name}
+                      methods={methods!}
+                      momoNote={`${formatPrice(plan.monthlyPriceCents, plan.currency)} per month. Approved within minutes.`}
+                      cardNote={`${formatPrice(plan.card?.monthlyUsdCents ?? plan.monthlyPriceCents, plan.card ? "USD" : plan.currency)} per month${plan.card ? ", charged in USD" : ""}. Renews automatically.`}
+                    />
                     <span className="text-xs text-muted">Already decided? Pay now and your plan starts as soon as we confirm the payment, demo or not.</span>
                   </div>
                 )}

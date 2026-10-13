@@ -5,6 +5,8 @@ import { ThemeToggle } from "@/components/theme";
 import { Badge, GlassCard } from "@/components/ui";
 import { ClientInvoices } from "@/components/billing/client-invoices";
 import { InvoicePay } from "@/components/billing/invoice-pay";
+import { CheckoutScript } from "@/components/billing/checkout";
+import { invoicePayMethods } from "@/lib/billing/card-ready";
 import { MomoPayment } from "@/components/billing/momo-payment";
 import { currentManualPayment } from "@/lib/billing/momo";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
@@ -31,13 +33,14 @@ export async function InvoiceLock({ invoice, businessId, role, firstName, email,
   ]);
   const payment = canPay && business ? await currentManualPayment(business.userId) : null;
   const paying = payment?.status === "pending" && payment.invoiceId === invoice.id;
-  const momo = momoConfigured(momoSettings) && region.paymentMethods.includes("momo");
   const payable = await payableView(invoice);
   // A custom plan's invoice (docs/OFFERS.md) is not payable through card checkout.
   const custom = invoice.planKey ? (await getPlan(invoice.planKey))?.isCustom === true : false;
+  const methods = await invoicePayMethods({ region, planKey: payable.planKey, interval: payable.interval, custom, momoConfigured: momoConfigured(momoSettings) });
 
   return (
     <div className="relative flex min-h-dvh w-full flex-col items-center px-4 pb-10 sm:px-8">
+      {canPay && methods.card === "ready" && <CheckoutScript />}
       <header className="relative flex w-full max-w-3xl items-center justify-between gap-3 py-4 sm:py-6">
         <Link href="/" aria-label="BuPulse home" className="inline-flex min-h-11 items-center">
           <Logo height={32} priority />
@@ -63,7 +66,7 @@ export async function InvoiceLock({ invoice, businessId, role, firstName, email,
           </p>
         </GlassCard>
 
-        {canPay && (paying && payment ? <MomoPayment payment={payment} details={momoSettings} /> : <InvoicePay invoice={payable} momo={momo} card={region.paymentMethods.includes("card") && !custom} highlight />)}
+        {canPay && (paying && payment ? <MomoPayment payment={payment} details={momoSettings} /> : <InvoicePay invoice={payable} methods={methods} highlight />)}
         {canPay && payment && !paying && payment.status !== "pending" && <MomoPayment payment={payment} details={momoSettings} />}
         {list.length > 0 && <ClientInvoices invoices={list} />}
 

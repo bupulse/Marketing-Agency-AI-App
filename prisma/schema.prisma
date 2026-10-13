@@ -609,7 +609,13 @@ model ManualPayment {
   offer         PlanOffer?      @relation(fields: [offerId], references: [id], onDelete: SetNull)
   payerPhone    String?
   network       String? // "MTN" | "AIRTEL"
-  transactionId String? // the MoMo transaction id the client typed
+  transactionId String? // the MoMo transaction id the client typed; null when they could not find it (the owner enters it on confirm)
+  // The screenshot of the MoMo confirmation (docs/MOMO.md, "Proof"): an object in the private "payment-proofs" bucket
+  // under <userId>/<paymentId>/. Set when the upload URL is issued, checked (size, first bytes) when the client submits;
+  // proofBytes and proofType are filled only once it passed. Removed with an expired payment and with the account.
+  proofPath     String?
+  proofBytes    Int?
+  proofType     String?
   // pending (started, or submitted and waiting for the owner) | confirmed | rejected | expired (not submitted in time, or replaced)
   status        String          @default("pending")
   rejectReason  String?

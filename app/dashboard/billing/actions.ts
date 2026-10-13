@@ -12,8 +12,8 @@ import { companyPlans, regionPriceIdFor } from "@/lib/region-prices";
 import { invoiceUrl } from "@/lib/billing/paddle";
 import { applyProviderSubscription } from "@/lib/billing/apply";
 import { paymentMethod } from "@/lib/billing/methods";
-import { cancelManualPayment, currentManualPayment, ManualPaymentError, startInvoicePayment } from "@/lib/billing/momo";
-import type { ManualPaymentView } from "@/lib/billing/momo-shared";
+import { cancelManualPayment, currentManualPayment, ManualPaymentError, startInvoicePayment, startProofUpload } from "@/lib/billing/momo";
+import type { ManualPaymentView, ProofInput } from "@/lib/billing/momo-shared";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
 import { acceptOffer, OfferError } from "@/lib/offers/service";
 import { noteRegionMismatch } from "@/lib/region-check";
@@ -284,8 +284,23 @@ export async function startMomoPayment(input: { plan: string; interval: string }
   }
 }
 
-// "I've paid": the transaction id and the phone the client paid from. BuPulse is alerted and checks within minutes.
-export async function submitMomoProof(input: { paymentId: string; transactionId: string; payerPhone: string; network: string }): Promise<BillingResult<{ payment: ManualPaymentView }>> {
+// Before "I've paid": a signed upload URL for the screenshot of the MoMo confirmation (private bucket, this payment only).
+export async function startMomoProofUpload(input: { paymentId: string; type: string; bytes: number }): Promise<BillingResult<{ path: string; token: string }>> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const limited = await momoLimited(user.id);
+  if (limited) return limited;
+  try {
+    const target = await startProofUpload(user.id, { paymentId: String(input?.paymentId ?? ""), type: String(input?.type ?? ""), bytes: Number(input?.bytes) });
+    return { ok: true, ...target };
+  } catch (error) {
+    return momoError(error);
+  }
+}
+
+// "I've paid": the transaction id (or "I can't find it"), the phone the client paid from, the network and the
+// screenshot. BuPulse is alerted and checks within minutes.
+export async function submitMomoProof(input: ProofInput): Promise<BillingResult<{ payment: ManualPaymentView }>> {
   const user = await requireActiveUser();
   if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
   const limited = await momoLimited(user.id);

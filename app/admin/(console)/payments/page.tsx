@@ -8,7 +8,8 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { dateTime, money, param } from "@/lib/admin/format";
 import { listManualPayments, type ManualPaymentAdminView } from "@/lib/billing/momo";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
-import { momoConfigured } from "@/lib/billing/momo-shared";
+import { momoConfigured, mtnMomoPayDial } from "@/lib/billing/momo-shared";
+import { proofSignedUrl } from "@/lib/billing/momo-proofs";
 import { listUnprocessedPaddleEvents } from "@/lib/billing/paddle-events";
 import { confirmPaymentAction, rejectPaymentAction, reprocessCardEventAction, savePaymentSettingsAction } from "./actions";
 
@@ -47,6 +48,9 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
   const toCheck = pendingPage.items.filter((p) => p.submitted);
   const started = pendingPage.items.filter((p) => !p.submitted);
   const decided = history.items.filter((p) => p.status !== "pending");
+  // The screenshots of the payments to check, through 10-minute signed URLs (the bucket is private).
+  const proofUrls = new Map(await Promise.all(toCheck.filter((p) => p.proofPath).map(async (p) => [p.id, await proofSignedUrl(p.proofPath as string)] as const)));
+  const dial = mtnMomoPayDial(settings.merchantCode);
 
   return (
     <>
@@ -69,8 +73,17 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                     {money(p.amountMinor, p.currency)} · {p.planName} ({interval(p.interval)}) <Badge tone="violet">Pending</Badge>
                   </p>
                   <p className="text-[14px]">
-                    Reference <span className="font-mono font-semibold">{p.reference}</span> · transaction <span className="font-mono">{p.transactionId}</span> · from {p.payerPhone} ({p.network})
+                    Reference <span className="font-mono font-semibold">{p.reference}</span> · {p.transactionId ? <>transaction <span className="font-mono">{p.transactionId}</span></> : <span className="font-medium text-danger">no transaction id (the client could not find it: read it from the screenshot or your MoMo messages)</span>} · from {p.payerPhone} ({p.network})
                   </p>
+                  {proofUrls.get(p.id) ? (
+                    <a href={proofUrls.get(p.id) as string} target="_blank" rel="noreferrer" className="mt-2 inline-block" aria-label={`Open the screenshot of ${p.reference} full size`}>
+                      {/* eslint-disable-next-line @next/next/no-img-element -- a short-lived signed URL of a private screenshot */}
+                      <img src={proofUrls.get(p.id) as string} alt={`Screenshot of the Mobile Money confirmation for ${p.reference}`} width={160} height={280} loading="lazy" className="h-auto max-h-72 w-40 rounded-lg border border-line bg-surface object-contain" />
+                      <span className="block text-[13px] text-muted underline">Click to enlarge</span>
+                    </a>
+                  ) : (
+                    <p className="text-[13px] text-muted">{p.proofPath ? "Screenshot attached, but Storage did not give a link right now. Reload the page." : "No screenshot."}</p>
+                  )}
                   <p className="text-[13px] text-muted"><Who p={p} /></p>
                   <p className="text-[13px] text-muted">Said paid {p.submittedAt ? dateTime(p.submittedAt) : ""} · started {dateTime(p.createdAt)}</p>
                   {p.periodNote?.mode === "replace" && <p className="text-[13px] font-medium text-danger">{periodText(p)}</p>}
@@ -85,7 +98,13 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                   <ConfirmButton action={rejectPaymentAction} fields={{ id: p.id }} label="Reject" title={`Reject ${p.reference}?`} description="The client sees your reason on their Billing page and by email, and can try again. Nothing else changes." confirmLabel="Reject">
                     <Field label="Reason the client will see" required><Textarea name="reason" minLength={3} maxLength={300} rows={3} required placeholder="We received no payment with this reference. Please check the number you paid to." /></Field>
                   </ConfirmButton>
-                  <ConfirmButton action={confirmPaymentAction} fields={{ id: p.id }} variant="primary" label="Confirm" title={`Confirm ${money(p.amountMinor, p.currency)} from ${p.company ?? "this client"}?`} description={`Only after you have seen ${p.reference} arrive. ${periodText(p)} The client is emailed.`} confirmLabel="Confirm payment" />
+                  <ConfirmButton action={confirmPaymentAction} fields={{ id: p.id }} variant="primary" label="Confirm" title={`Confirm ${money(p.amountMinor, p.currency)} from ${p.company ?? "this client"}?`} description={`Only after you have seen ${p.reference} arrive. ${periodText(p)} The client is emailed.`} confirmLabel="Confirm payment">
+                    {!p.transactionId && (
+                      <Field label="Transaction id from your MoMo message" hint="The client could not find it. It is required: it stops one payment being used twice." required>
+                        <Input name="transactionId" minLength={4} maxLength={40} required autoComplete="off" />
+                      </Field>
+                    )}
+                  </ConfirmButton>
                 </div>
               </li>
             ))}
@@ -157,7 +176,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
         <Panel title="Where clients pay" description="Shown on the client's pay screen and in reminder emails. Every change is audited and every admin address is told.">
           <form action={savePaymentSettingsAction} className="flex flex-col gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="MoMo Pay merchant code" hint="From MTN, if you have one."><Input name="merchantCode" defaultValue={settings.merchantCode} maxLength={20} /></Field>
+              <Field label="MoMo Pay merchant code" hint={dial ? <>Clients are told to dial <span className="font-mono font-semibold">{dial}</span> on their MTN line (tap to call on a phone).</> : "From MTN, if you have one. Clients then dial *182*8*1*<code># on their MTN line."}><Input name="merchantCode" defaultValue={settings.merchantCode} maxLength={20} inputMode="numeric" /></Field>
               <Field label="MTN MoMo number"><Input name="momoNumber" defaultValue={settings.momoNumber} maxLength={30} inputMode="tel" /></Field>
               <Field label="Account name" hint="The name clients see on their phone when they pay."><Input name="accountName" defaultValue={settings.accountName} maxLength={80} /></Field>
               <Field label="Airtel Money number"><Input name="airtelNumber" defaultValue={settings.airtelNumber} maxLength={30} inputMode="tel" /></Field>

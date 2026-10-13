@@ -62,6 +62,17 @@ async function removeInvoiceFiles(admin: SupabaseClient, userId: string): Promis
   return paths.length;
 }
 
+// Screenshots of the account's Mobile Money payments (private "payment-proofs" bucket, <userId>/<paymentId>/,
+// docs/MOMO.md). The ManualPayment rows cascade with the user. Errors propagate like above.
+async function removePaymentProofs(admin: SupabaseClient, userId: string): Promise<number> {
+  const paths = await listObjects(admin, "payment-proofs", userId);
+  for (let i = 0; i < paths.length; i += PAGE) {
+    const { error } = await admin.storage.from("payment-proofs").remove(paths.slice(i, i + PAGE));
+    if (error) throw error;
+  }
+  return paths.length;
+}
+
 // The company's voiceovers (media bucket, voice/<businessId>/, docs/VOICE_AND_MUSIC.md): kept by company, not by user,
 // so the user-folder sweep above does not reach them. Errors propagate like above.
 async function removeVoiceFiles(admin: SupabaseClient, userId: string): Promise<number> {
@@ -143,6 +154,7 @@ async function purgeDue(now: Date): Promise<PurgeResult> {
       result.filesRemoved += await removeUserFiles(admin, id);
       result.filesRemoved += await removeInvoiceFiles(admin, id);
       result.filesRemoved += await removeVoiceFiles(admin, id);
+      result.filesRemoved += await removePaymentProofs(admin, id);
       // Teammates go BEFORE the company account: once it is deleted their memberships cascade away, and a failure after that
       // would leave logins that belong to no company for good. A failure here is retried tomorrow, with the company still intact.
       // The last re-check keeps them safe if the owner pressed "Keep" while files were being removed.

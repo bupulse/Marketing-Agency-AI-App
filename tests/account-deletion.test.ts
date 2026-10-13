@@ -25,6 +25,7 @@ import { purgeDueAccounts } from "@/lib/account-deletion";
 vi.mock("@/lib/generated/prisma/client", () => ({ Prisma: { DbNull: "DbNull" } }));
 
 const now = new Date("2026-11-01T00:00:00Z");
+const buckets: string[] = [];
 
 describe("purgeDueAccounts", () => {
   beforeEach(() => {
@@ -33,10 +34,11 @@ describe("purgeDueAccounts", () => {
     queryRaw.mockReset().mockResolvedValue([]);
     eventsUpdate.mockReset().mockResolvedValue({ count: 3 });
     notesDelete.mockReset().mockResolvedValue({ count: 1 });
+    buckets.length = 0;
     for (const m of [subFindUnique, findMany, findFirst, executeRaw, logError, list, remove, createClient]) m.mockReset();
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://x.supabase.co";
     process.env.SUPABASE_SECRET_KEY = "secret";
-    createClient.mockReturnValue({ storage: { from: () => ({ list, remove }) } });
+    createClient.mockReturnValue({ storage: { from: (bucket: string) => (buckets.push(bucket), { list, remove }) } });
     list.mockResolvedValue({ data: [], error: null });
     remove.mockResolvedValue({ error: null });
     executeRaw.mockResolvedValue(1);
@@ -112,7 +114,10 @@ describe("purgeDueAccounts", () => {
     );
     const result = await purgeDueAccounts(now);
     expect(remove.mock.calls[0][0].sort()).toEqual(["u1/a.png", "u1/logo/b.png"]);
-    expect(result.filesRemoved).toBe(8); // two files in each of the four buckets (brand, media, designs, gallery-videos)
+    // Two files in each of the four user buckets (brand, media, designs, gallery-videos) and in the private
+    // payment-proofs bucket (Mobile Money screenshots, <userId>/<paymentId>/).
+    expect(result.filesRemoved).toBe(10);
+    expect(buckets).toContain("payment-proofs");
   });
 
   it("removes the company's invoice PDFs from the private invoices bucket too", async () => {

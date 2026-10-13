@@ -224,7 +224,7 @@ export function createFakeDb() {
         { key: "userId", when: (r) => r.status === "pending" },
         { key: "offerId", when: (r) => r.offerId != null && (r.status === "pending" || r.status === "confirmed") },
       ],
-      defaults: () => ({ currency: "RWF", status: "pending", invoiceId: null, offerId: null, payerPhone: null, network: null, transactionId: null, rejectReason: null, submittedAt: null, decidedAt: null, decidedBy: null, periodStart: null, periodEnd: null, updatedAt: new Date() }),
+      defaults: () => ({ currency: "RWF", status: "pending", invoiceId: null, offerId: null, payerPhone: null, network: null, transactionId: null, proofPath: null, proofBytes: null, proofType: null, rejectReason: null, submittedAt: null, decidedAt: null, decidedBy: null, periodStart: null, periodEnd: null, updatedAt: new Date() }),
     }),
     // Invoices (lib/invoices): unique number, one draft per company.
     invoice: table([], {

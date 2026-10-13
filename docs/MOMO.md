@@ -9,22 +9,32 @@ joined to the regions and the demo-first trial (R1, `docs/REGIONS.md`) on 12 Oct
 
 ## The flow
 
-1. **Choose.** On Billing the client picks a plan and monthly or yearly, then **Card** or **Mobile Money (MoMo / Airtel)**.
-   The choice only appears where the company's region takes Mobile Money (`PricingRegion.paymentMethods`, RW today) and
-   once the owner has filled in where to pay (below). The plans and amounts are the company region's
+1. **Choose.** On Billing the client picks a plan and monthly or yearly, then **Mobile Money (MTN / Airtel)** or
+   **Card**. The choice appears wherever the company's region lists both methods (`PricingRegion.paymentMethods`, RW
+   today), at every pay entry point (Billing plans, the demo lock screen, offers, invoices); a method that is not set up
+   yet stays visible and disabled ("Mobile Money coming soon" until the owner fills in where to pay, below; "Card
+   payments coming soon" until card is set up, `docs/BILLING.md`, "Choosing how to pay"). The plans and amounts are the company region's
    (`companyPlans()`, `docs/REGIONS.md`): in Rwanda, Starter and Business in RWF. Only the company Owner can pay.
 2. **Pay.** `startManualPayment` creates one `ManualPayment` (status `pending`) with the plan's price in the company's
    region (`getMomoPrice(businessId, plan, interval)` = `PlanRegionPrice`, the same amount the pricing page shows; a
    plan not offered there, or a region without Mobile Money, is refused before anything is written) and a reference
-   such as `BP-7K3Q` (no 0/O/1/I). The card shows the amount, the MoMo Pay code or numbers, the account name, the
-   reference and three steps. One open payment per company: starting again returns it; picking another plan before
+   such as `BP-7K3Q` (no 0/O/1/I). The pay screen shows the amount and the reference (copy buttons), "Dial
+   `*182*8*1*<merchant code>#` on your MTN line" with a **Tap to dial** link on phones (`tel:*182*8*1*002450%23`: `#`
+   must be escaped or the dialer drops it) and a copy button, the MTN number if there is one, Airtel instructions
+   ("dial *182#, Send money, to <Airtel number>, reference BP-…") when an Airtel number is set, and the account name.
+   The dial string comes from the admin's merchant code (`mtnMomoPayDial()` in `momo-shared.ts`; MTN Rwanda's MoMo Pay
+   format `*182*8*1*<code>#`, the code kept as typed, leading zeros included). One open payment per company: starting again returns it; picking another plan before
    paying replaces it (the old one becomes `expired`).
-3. **I've paid.** The client types the transaction id, the phone they paid from and the network (checked with zod, in
-   the browser and again on the server). `submittedAt` is set once; every `ADMIN_EMAILS` address gets "New MoMo
+3. **I have paid.** The client chooses the network, types the phone they paid from and the transaction id, and adds a
+   **screenshot** of the MoMo confirmation (see "Proof" below). The transaction id is required (it powers the replay
+   guard) unless the client ticks **I can't find the transaction id**: the screenshot is then required, and the owner
+   types the id when confirming. Checked with zod (`proofSchema`), in the browser and again on the server. `submittedAt` is set once; every `ADMIN_EMAILS` address gets "New MoMo
    payment to check"; the Payments badge in the admin sidebar counts it; the activity feed shows it.
 4. **Waiting.** "Waiting for approval · usually a few minutes" polls `momoPaymentStatus` every 5 seconds and refreshes
    the page when the owner decides.
-5. **Confirm** (admin → Payments). In one transaction: the payment is claimed (`pending` → `confirmed`, so a second click
+5. **Confirm** (admin → Payments). The queue shows the amount, the reference, the phone, the transaction id (or "no
+   transaction id") and the screenshot (a 10-minute signed URL; click to enlarge). Without a client id the Confirm dialog
+   asks for it (`confirmManualPayment(ctx, id, now, { transactionId })`), and it goes through the same replay checks. In one transaction: the payment is claimed (`pending` → `confirmed`, so a second click
    is refused), the subscription becomes `provider MANUAL_MOMO`, the paid plan, `ACTIVE`, the interval, the new period
    (`currentPeriodStart/End`; card ids cleared), a `BillingEvent` (`manual_payment.confirmed`, with the USD value at the
    USD->RWF rate of Admin -> Settings, `pricing.usdToRwf`) is written for revenue, and an audit row with before and after.
@@ -64,13 +74,31 @@ plan blocks card checkout until its period has ended. A late Paddle webhook can 
 (`lib/billing/apply.ts`: ACTIVE with the period end in the future); a new live card subscription on top of one is a
 duplicate, like a second card purchase, while a past-due or lapsed MoMo plan is simply replaced by it.
 
+## Proof (the screenshot)
+
+- **Bucket:** `payment-proofs`, private, 5 MB, JPEG / PNG / WebP (migration `20261017170000_payment_proofs`). No Storage
+  policy names it: signed-in users cannot list, read or write it; only the server key does.
+- **Upload:** `startMomoProofUpload` → `startProofUpload(userId, { paymentId, type, bytes })` checks the type and size,
+  that the payment is the caller's own, pending and not submitted, records the new path on the payment
+  (`<userId>/<paymentId>/<uuid>.<ext>`, a re-upload removes the previous file) and returns a one-file signed upload URL.
+  The browser uploads straight to Storage. A HEIC photo (or any image over 5 MB) is converted to JPEG in the browser
+  first (canvas, long side at most 2400 px); a file the browser cannot read is refused with "JPEG, PNG or WebP".
+- **Check on submit:** the path must be the one recorded for that payment; the server downloads it, checks the size and
+  the first bytes (`sniffProofType`; anything else is deleted and refused), and stores `proofBytes` and `proofType` in the
+  same conditional write that submits the payment. A screenshot uploaded and then left out of the form is deleted.
+- **Clean-up:** screenshots of payments never submitted (cancelled, replaced, closed after 48 hours) are removed by the
+  daily renewals job (`sweepUnsubmittedProofs`, `proofsRemoved` in its result); submitted ones are kept as the record of
+  the money; the account purge removes the whole `<userId>/` folder (`lib/account-deletion.ts`).
+- **Admin:** `ManualPaymentAdminView.proofPath` (only once checked) → `proofSignedUrl()` on the Payments page. The confirm
+  audit row records `transactionId`, `transactionIdBy: "admin"` when the owner typed it, and `screenshot: true|false`.
+
 ## The demo-first trial and Mobile Money
 
 `docs/REGIONS.md` has the trial itself. What matters here:
 
-- **Waiting for the demo** (`PENDING_DEMO`): the lock screen (`components/app/demo-lock.tsx`) offers **Pay for <plan> by
-  Mobile Money** to the Owner when the region takes Mobile Money and the owner has set up where to pay; it starts a
-  monthly payment of the chosen plan (`components/app/demo-pay.tsx`) and shows the pay screen in place. Confirming makes
+- **Waiting for the demo** (`PENDING_DEMO`): the lock screen (`components/app/demo-lock.tsx`) offers **Pay for <plan>**
+  to the Owner, with the same Mobile Money / Card choice as Billing (`components/app/demo-pay.tsx`, monthly). Mobile
+  Money shows the pay screen in place; card opens the Paddle checkout and the webhook activates the plan. Confirming makes
   the company `ACTIVE` and the dashboard opens. **The demo booking is kept** (decided 12 October 2026): a paying client
   may still want the walk-through, so the booking stays `booked` and shows in Demos with the company badged "Paying";
   the owner holds it or marks it done / cancelled. The calendar invite still works for both sides.
@@ -86,7 +114,7 @@ Stored in `AdminSetting` key `billing.momo` (`MomoSettings` in `lib/billing/momo
 
 | Field | Meaning |
 |---|---|
-| MoMo Pay merchant code | Shown first if present |
+| MoMo Pay merchant code | Shown first if present, as the MTN dial string `*182*8*1*<code>#` (the settings form previews it). BuPulse's code: 002450 |
 | MTN MoMo number, Airtel Money number | Shown when there is no code, or beside it |
 | Account name | What the client sees on their phone |
 
@@ -113,7 +141,8 @@ region lists `momo` in its payment methods.
 | Emails | `lib/billing/momo-emails.ts` |
 | Daily job | `lib/billing/momo-renewals.ts`, `app/api/cron/momo-renewals/route.ts` |
 | Method adapter interface and registry | `lib/billing/methods/` |
-| Client | `app/dashboard/billing/actions.ts` (`startMomoPayment`, `submitMomoProof`, `cancelMomoPayment`, `momoPaymentStatus`), `components/billing/momo-payment.tsx`, the method dialog in `plan-picker.tsx`, "Pay now" on the demo lock screen (`components/app/demo-pay.tsx`) |
+| Screenshots (private bucket: upload URL, check, signed URL, removal) | `lib/billing/momo-proofs.ts` |
+| Client | `app/dashboard/billing/actions.ts` (`startMomoPayment`, `startMomoProofUpload`, `submitMomoProof`, `cancelMomoPayment`, `momoPaymentStatus`), `components/billing/momo-payment.tsx`, the method choice (`components/billing/pay-choice.tsx`, `lib/billing/pay-methods.ts`) in `plan-picker.tsx`, "Pay now" on the demo lock screen (`components/app/demo-pay.tsx`) |
 | Admin | `app/admin/(console)/payments/` (queue, history, settings), badge in the sidebar, item in the Overview attention list |
 | Jarvis | `list_momo_payments`, `get_momo_payment` (read only; confirming stays in the console) |
 | Analytics | `BillingEvent` type `manual_payment.confirmed` is read by the roll-up (`MONEY_EVENT_TYPES`), the activity feed and the Client 360 billing tab |

@@ -130,11 +130,16 @@ describe("admin actions", () => {
     f.set("id", "p1");
     await a.confirmPaymentAction(f);
     expect(h.adminAction).toHaveBeenCalledTimes(1);
-    expect(h.confirm).toHaveBeenCalledWith({ actor: "admin", ip: null, viaApi: false }, "p1");
+    expect(h.confirm).toHaveBeenCalledWith({ actor: "admin", ip: null, viaApi: false }, "p1", expect.any(Date), { transactionId: null });
+    // The transaction id the owner typed when the client could not find it, trimmed.
+    f.set("transactionId", "  MP777  ");
+    await a.confirmPaymentAction(f);
+    expect(h.confirm).toHaveBeenLastCalledWith(expect.objectContaining({ actor: "admin" }), "p1", expect.any(Date), { transactionId: "MP777" });
+    f.delete("transactionId");
     expect(h.finish).toHaveBeenCalledWith("/admin/payments", expect.any(Function), expect.any(Function));
     f.set("reason", "  No payment arrived. ");
     await a.rejectPaymentAction(f);
-    expect(h.adminAction).toHaveBeenCalledTimes(2);
+    expect(h.adminAction).toHaveBeenCalledTimes(3);
     expect(h.reject).toHaveBeenCalledWith(expect.objectContaining({ actor: "admin" }), "p1", "No payment arrived.");
   });
 

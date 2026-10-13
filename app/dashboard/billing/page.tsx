@@ -15,6 +15,8 @@ import { PlanPicker } from "@/components/billing/plan-picker";
 import { Badge, GlassCard, Meter } from "@/components/ui";
 import { currentManualPayment } from "@/lib/billing/momo";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
+import { cardCheckoutConfigured, cardPricedPlans, invoicePayMethods } from "@/lib/billing/card-ready";
+import { methodState } from "@/lib/billing/pay-methods";
 import { momoConfigured, momoPriceOf } from "@/lib/billing/momo-shared";
 import { getPlan, subscriberPriceCents, toPublic } from "@/lib/plan-catalog";
 import { companyPlans, type RegionalPlan } from "@/lib/region-prices";
@@ -54,13 +56,14 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
     // A custom plan offer from the BuPulse team (docs/OFFERS.md); a failed lookup never breaks Billing.
     clientOffer(business.id).catch(() => null),
   ]);
-  // Mobile Money is offered where the company's region takes it and the owner has said where to pay (docs/MOMO.md).
-  const momoOn = momoConfigured(momoSettings) && region.paymentMethods.includes("momo");
   // Retired and hidden plans stay listed for the clients already on them, so "Your current plan" is still shown.
   const pickable: RegionalPlan[] = [
     ...regional,
     ...(currentPlan && !currentPlan.isTrial && !regional.some((p) => p.key === currentPlan.key) ? [{ ...toPublic(currentPlan), regionKey: region.key, paymentMethods: region.paymentMethods, card: null }] : []),
   ];
+  // Can card checkout open, and for which plans (a region's card prices must be in Paddle: docs/BILLING.md)?
+  const [cardOn, cardPriced] = await Promise.all([cardCheckoutConfigured(), cardPricedPlans(region.key, pickable.map((p) => p.key))]);
+  const momoReady = momoConfigured(momoSettings);
   // A Mobile Money plan is paid at its regional price; a card plan at the Paddle price the client is on.
   const momoPrice = momoPlan ? momoPriceOf(pickable.find((p) => p.key === subscription.plan) ?? { monthlyPriceCents: 0, yearlyPriceCents: 0, currency: "RWF", paymentMethods: [] }, subscription.interval) : null;
   const price =
@@ -78,6 +81,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   const payable = openInvoice && !payingInvoice ? await payableView(openInvoice) : null;
   // A custom plan cannot be bought by card through checkout (docs/OFFERS.md, "Card"): its invoice is paid by Mobile Money.
   const payableCustom = payable?.planKey ? (await getPlan(payable.planKey))?.isCustom === true : false;
+  const invoiceMethods = payable ? await invoicePayMethods({ region, planKey: payable.planKey, interval: payable.interval, custom: payableCustom, momoConfigured: momoReady }) : null;
   const highlighted = typeof query.invoice === "string" ? query.invoice : null;
   const checkoutSuccess = query.checkout === "success";
   // Wait for this purchase specifically: the plan is active and was updated after checkout began.
@@ -119,13 +123,13 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
           offer={offer}
           actions={
             offer.status === "sent" || (offer.status === "accepted" && !(momoPayment?.status === "pending" && momoPayment.submitted)) ? (
-              <OfferActions offerId={offer.id} momo={momoOn} card={region.paymentMethods.includes("card")} accepted={offer.status === "accepted"} method={offer.payMethod} contactEmail={site.email} />
+              <OfferActions offerId={offer.id} momo={methodState(region.paymentMethods.includes("momo"), momoReady)} card={region.paymentMethods.includes("card")} accepted={offer.status === "accepted"} method={offer.payMethod} contactEmail={site.email} />
             ) : undefined
           }
         />
       )}
 
-      {payable && <InvoicePay invoice={payable} momo={momoOn} card={region.paymentMethods.includes("card") && !payableCustom} highlight={highlighted === payable.number} />}
+      {payable && invoiceMethods && <InvoicePay invoice={payable} methods={invoiceMethods} highlight={highlighted === payable.number} />}
 
       {momoPayment && <MomoPayment payment={momoPayment} details={momoSettings} />}
 
@@ -180,7 +184,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       {/* Hidden while a purchase is being confirmed, so nobody buys a second plan by accident. */}
       {!waitingForCheckout && momoPayment?.status !== "pending" && (
         <>
-          <PlanPicker plans={pickable} current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue, method: paid ? (momoPlan ? "momo" : "card") : null }} momo={momoOn} />
+          <PlanPicker plans={pickable} current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue, method: paid ? (momoPlan ? "momo" : "card") : null }} pay={{ regionMethods: region.paymentMethods, momoConfigured: momoReady, cardConfigured: cardOn, cardPriced }} />
           <p className="px-1 text-sm text-muted">
             Prices for {region.name}. {currencyNote(region.currency, region.paymentMethods)}
           </p>

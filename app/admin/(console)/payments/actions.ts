@@ -13,7 +13,7 @@ const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 export async function confirmPaymentAction(f: FormData) {
   const ctx = await adminAction();
   await finish("/admin/payments", (r) => `Confirmed. The plan is active until ${r.periodEnd.toLocaleDateString("en-GB", { dateStyle: "medium", timeZone: "UTC" })}${r.emailed ? " and the client has been emailed" : ""}.`, () =>
-    confirmManualPayment(ctx, text(f, "id")),
+    confirmManualPayment(ctx, text(f, "id"), new Date(), { transactionId: text(f, "transactionId") || null }),
   );
 }
 

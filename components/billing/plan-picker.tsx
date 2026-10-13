@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CreditCard, Smartphone } from "lucide-react";
+import { Check } from "lucide-react";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Dialog, GlassCard, useToast } from "@/components/ui";
@@ -10,7 +10,9 @@ import { changePlan, startCheckout, startMomoPayment } from "@/app/dashboard/bil
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 import type { Plan } from "@/lib/plans";
 import type { RegionalPlan } from "@/lib/region-prices";
-import { paymentMethodLabel } from "@/lib/region-format";
+import { paymentMethodLabel, type PaymentMethod } from "@/lib/region-format";
+import { CARD_SOON, offersChoice, payMethods, soleMethod, type CardPriced, type PayMethods } from "@/lib/billing/pay-methods";
+import { PayChoice } from "./pay-choice";
 import { openCheckout } from "./checkout";
 import { momoPriceOf } from "@/lib/billing/momo-shared";
 import { formatPlanPrice, formatPrice, intervalWord, planButtonAction, planFeatures, yearlyBadge, yearlySavingsLabel, yearlySavingsMinor } from "./helpers";
@@ -20,11 +22,14 @@ type Props = {
   /** The plans a client can pick (active, in sort order), at the company's region's prices. */
   plans: RegionalPlan[];
   current: { plan: Plan; interval: BillingInterval; paid: boolean; pastDue: boolean; method: "card" | "momo" | null };
-  /** True when Mobile Money can be offered: the company's region takes it and the owner has set up where to pay. */
-  momo: boolean;
+  /**
+   * How the company can pay (lib/billing/pay-methods.ts): the region's methods, whether the owner has set up where to
+   * pay by Mobile Money, whether card checkout is configured, and which plans have a card price in the region.
+   */
+  pay: { regionMethods: PaymentMethod[]; momoConfigured: boolean; cardConfigured: boolean; cardPriced: CardPriced };
 };
 
-export function PlanPicker({ plans, current, momo }: Props) {
+export function PlanPicker({ plans, current, pay }: Props) {
   const router = useRouter();
   const { toast } = useToast();
   const { resolvedTheme } = useTheme();
@@ -35,7 +40,24 @@ export function PlanPicker({ plans, current, momo }: Props) {
   const [chooseFor, setChooseFor] = useState<Plan | null>(null);
   const planOf = (key: Plan) => plans.find((p) => p.key === key)!;
   // A plan can be paid by Mobile Money at its regional price (docs/REGIONS.md: the one source of truth for RWF amounts).
-  const momoPrice = (key: Plan) => (momo ? momoPriceOf(planOf(key), interval) : null);
+  const momoPrice = (key: Plan) => momoPriceOf(planOf(key), interval);
+  const methodsFor = (key: Plan): PayMethods =>
+    payMethods({ regionMethods: pay.regionMethods, momoConfigured: pay.momoConfigured, momoPriced: momoPrice(key) !== null, cardConfigured: pay.cardConfigured, cardPriced: Boolean(pay.cardPriced[key]?.[interval]) });
+  // Both methods listed for the region: ask. Otherwise the one that is ready opens straight away.
+  function choose(key: Plan) {
+    const methods = methodsFor(key);
+    if (offersChoice(methods)) return setChooseFor(key);
+    const only = soleMethod(methods);
+    if (only === "momo") payByMomo(key);
+    else if (only === "card") upgrade(key);
+  }
+  function chooseNote(methods: PayMethods): string {
+    if (offersChoice(methods)) return "Mobile Money or card. Cancel any time.";
+    const only = soleMethod(methods);
+    if (only === "momo") return "Mobile Money (MTN / Airtel). Approved within minutes.";
+    if (only === "card") return "Secure checkout. Cancel any time.";
+    return methods.card !== "off" ? CARD_SOON : "Online payment is not available here yet. Contact us.";
+  }
   // The card price: the derived USD price of a local-currency plan, else the plan's own (USD) price.
   const cardPrice = (key: Plan) => {
     const p = planOf(key);
@@ -151,10 +173,10 @@ export function PlanPicker({ plans, current, momo }: Props) {
                 </Badge>
               ) : action === "upgrade" || current.method === "momo" ? (
                 <div className="flex flex-col gap-2">
-                  <Button className="w-full" onClick={() => (momoPrice(key) ? setChooseFor(key) : upgrade(key))} disabled={pending}>
+                  <Button className="w-full" onClick={() => choose(key)} disabled={pending || (!offersChoice(methodsFor(key)) && !soleMethod(methodsFor(key)))}>
                     {busy ? "One moment…" : current.method === "momo" ? `Switch to ${name}` : `Upgrade to ${name}`}
                   </Button>
-                  <span className="text-center text-xs text-muted">{momoPrice(key) ? "Card or Mobile Money. Cancel any time." : "Secure checkout. Cancel any time."}</span>
+                  <span className="text-center text-xs text-muted">{chooseNote(methodsFor(key))}</span>
                 </div>
               ) : (
                 <Button
@@ -181,28 +203,15 @@ export function PlanPicker({ plans, current, momo }: Props) {
         description={current.method === "momo" ? "Your new plan starts when the payment is confirmed; the time left on your current plan is added on." : "Card renews by itself every period. Mobile Money is paid by hand each period; we remind you before it ends."}
       >
         {chooseFor && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => payByMomo(chooseFor)}
-              disabled={pending || momoPrice(chooseFor) === null}
-              className="glass flex min-h-11 cursor-pointer flex-col items-start gap-2 rounded-2xl p-4 text-left transition-colors hover:bg-soft disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Smartphone aria-hidden className="size-5 text-pulse-blue" />
-              <strong>Mobile Money (MoMo / Airtel)</strong>
-              <span className="text-sm text-muted">{momoPrice(chooseFor) ? `${formatPrice(momoPrice(chooseFor)!.amountMinor, momoPrice(chooseFor)!.currency)} per ${intervalWord(interval)}. Approved within minutes.` : "Not available for this plan."}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => upgrade(chooseFor)}
-              disabled={pending || current.method === "momo"}
-              className="glass flex min-h-11 cursor-pointer flex-col items-start gap-2 rounded-2xl p-4 text-left transition-colors hover:bg-soft disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <CreditCard aria-hidden className="size-5 text-pulse-violet" />
-              <strong>Card</strong>
-              <span className="text-sm text-muted">{current.method === "momo" ? "Available at your next renewal." : `${formatPrice(cardPrice(chooseFor), "USD")} per ${intervalWord(interval)}, charged in USD. Renews automatically.`}</span>
-            </button>
-          </div>
+          <PayChoice
+            methods={methodsFor(chooseFor)}
+            momoNote={momoPrice(chooseFor) ? `${formatPrice(momoPrice(chooseFor)!.amountMinor, momoPrice(chooseFor)!.currency)} per ${intervalWord(interval)}. Approved within minutes.` : ""}
+            cardNote={`${formatPrice(cardPrice(chooseFor), "USD")} per ${intervalWord(interval)}, charged in USD. Renews automatically.`}
+            cardBlocked={current.method === "momo" ? "Available at your next renewal." : null}
+            onMomo={() => payByMomo(chooseFor)}
+            onCard={() => upgrade(chooseFor)}
+            disabled={pending}
+          />
         )}
       </Dialog>
 
