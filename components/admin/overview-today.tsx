@@ -1,17 +1,19 @@
 import Link from "next/link";
 import { BadgeDollarSign, CalendarCheck, CircleX, MessageSquarePlus, Rocket, UserPlus } from "lucide-react";
 import type { TimelineItem, TodayPayment } from "@/lib/admin/today";
-import { money } from "@/lib/admin/format";
+import { BOOKS_FMT, type MoneyFmt } from "./money";
 import { cn } from "@/lib/cn";
 import { Empty, Panel } from "./ui";
 
 const kigaliTime = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Kigali" });
 
 /** Today's confirmed payments, highlighted: who, how much, how, when and which agent brought them in. */
-export function TodayPayments({ payments }: { payments: TodayPayment[] }) {
+export function TodayPayments({ payments, fx = BOOKS_FMT }: { payments: TodayPayment[]; /** Money in the admin's display currency. */ fx?: MoneyFmt }) {
   const total = payments.reduce((s, p) => s + p.usdCents, 0);
+  // RWF payments add up exactly in RWF; only other money is converted.
+  const rwf = payments.reduce((s, p) => (p.currency === "RWF" && p.localMinor !== null ? { rwfMinor: s.rwfMinor + p.localMinor, rwfUsdCents: s.rwfUsdCents + p.usdCents } : s), { rwfMinor: 0, rwfUsdCents: 0 });
   return (
-    <Panel title="Today's payments" description="Confirmed since midnight (Kigali time)." action={<span className="text-xl font-semibold tabular-nums text-success">{money(total)}</span>}>
+    <Panel title="Today's payments" description="Confirmed since midnight (Kigali time)." action={<span className="text-xl font-semibold tabular-nums text-success" title={fx.amountTitle(total, rwf)}>{fx.amount(total, rwf)}</span>}>
       {payments.length === 0 ? (
         <Empty>No payments yet today.</Empty>
       ) : (

@@ -53,7 +53,7 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
     getActivity({ limit: 8 }).catch(() => ({ items: [], newest: null, nextBefore: null, more: false })),
     getMetrics(rangeFor(30), ["visits", "signups"]).catch(() => ({}) as Record<string, { date: string; dimension: string; value: number }[]>),
     seePayments ? listManualPayments({ status: "pending", limit: 20 }).then((p) => p.items.filter((x) => x.submitted)).catch(() => []) : Promise.resolve([]),
-    seePayments || seeMoney ? getTodayPayments().catch(() => [] as TodayPayment[]) : Promise.resolve([] as TodayPayment[]),
+    seePayments || seeMoney ? getTodayPayments(new Date(), fx.display).catch(() => [] as TodayPayment[]) : Promise.resolve([] as TodayPayment[]),
   ]);
   // Each attention line only for someone who may open the page it links to.
   const attentionShown = attention.filter((a) => {
@@ -70,6 +70,7 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
     prevMonthLabel: prev ? monthName(prev.month).split(" ")[0] : "last month",
     revenue: { monthCents: cur?.revenue.netCents ?? 0, prevCents: prev?.revenue.netCents ?? 0, lifetimeCents: report?.lifetime.revenueCents ?? 0, customersEver: report?.lifetime.customersEver ?? 0, spark: months.map((m) => m.revenue.netCents) },
     mrrCents: report?.mrrCents ?? 0,
+    rwf: { month: cur?.revenue ?? { rwfMinor: 0, rwfUsdCents: 0 }, lifetime: report?.lifetime ?? { rwfMinor: 0, rwfUsdCents: 0 }, mrr: report?.mrrRwf ?? { rwfMinor: 0, rwfUsdCents: 0 }, arpu: report?.arpuRwf ?? null },
     arpuCents: report?.arpuCents ?? null,
     profit: { monthCents: cur?.profitCents ?? 0, prevCents: prev?.profitCents ?? 0, costCents: Math.round(cur?.costs.totalCents ?? 0), estimateCents: Math.round(cur?.costs.estimateCents ?? 0), spark: months.map((m) => m.profitCents) },
     clients,
@@ -101,7 +102,7 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
       )}
 
       <div className="grid gap-5 xl:grid-cols-2">
-        {(seePayments || seeMoney) && <TodayPayments payments={todayPayments} />}
+        {(seePayments || seeMoney) && <TodayPayments payments={todayPayments} fx={fx} />}
         <TodayTimeline items={timeline} />
       </div>
 

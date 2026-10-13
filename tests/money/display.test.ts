@@ -17,6 +17,9 @@ import { cleanSetting, getSettings, setSetting } from "@/lib/admin/settings";
 import { consoleContext } from "@/lib/admin/types";
 import { adminMoney, defaultMoney, effectiveUsdToEur, EUR_LIVE_KEY, refreshEurRate } from "@/lib/money/display-server";
 import { screenMoney, screenTotal } from "@/lib/screen/shared";
+import { mrrRwf, rwfPartOf, sumRwf, type RevenueEntry } from "@/lib/money/revenue-shared";
+import { paymentAmount } from "@/lib/admin/today";
+import { leaderboard } from "@/lib/sales/attribution";
 
 const rates = { usdToRwf: 1450, usdToEur: 0.92 };
 const as = (currency: MoneyDisplay["currency"]): MoneyDisplay => ({ currency, rates });
@@ -150,5 +153,46 @@ describe("the sales room TV", () => {
     expect(screenMoney(rwf, 4900, { minor: 4900, currency: "USD" })).toBe("≈ RWF\u00a071,050");
     expect(screenMoney(as("USD"), 4900, { minor: 4900, currency: "USD" })).toBe("$49.00");
     expect(screenTotal(rwf, 2500, 35000, 2500)).toBe("RWF\u00a035,000");
+  });
+});
+
+describe("RWF payments add up exactly (no trip through USD)", () => {
+  const rwfPay = (id: string, rwf: number, usdCents: number, userId = "u1", over: Partial<RevenueEntry> = {}): RevenueEntry => ({ id, at: new Date("2026-10-13T08:00:00Z"), month: "2026-10", userId, kind: "payment", usdCents, method: "momo", localMinor: rwf, currency: "RWF", plan: "STANDARD", priceId: null, partial: false, ...over });
+  const card = (id: string, usdCents: number, userId = "u2"): RevenueEntry => ({ id, at: new Date("2026-10-13T08:00:00Z"), month: "2026-10", userId, kind: "payment", usdCents, method: "card", localMinor: usdCents, currency: "USD", plan: "PRO", priceId: null, partial: false });
+
+  it("one 98,000 RWF payment (booked at $67.59) shows RWF 98,000 exactly in RWF, $67.59 in USD", () => {
+    const part = rwfPartOf([rwfPay("a", 98000, 6759)]);
+    const fx = moneyFmt(as("RWF"));
+    expect(fx.amount(6759, part)).toBe("RWF 98,000");
+    expect(moneyFmt(as("USD")).amount(6759, part)).toBe("$67.59");
+    // Profit: the costs (USD) are converted, so the figure is approximate.
+    expect(fx.amount(6759 - 1000, part)).toBe(`≈ RWF ${(98000 - 14500).toLocaleString("en-US")}`);
+  });
+
+  it("Today's payments: the original amount in its own currency; in USD with the RWF in brackets", () => {
+    const e = { usdCents: 6759, localMinor: 98000, currency: "RWF" };
+    expect(paymentAmount(e, as("RWF"))).toBe("RWF 98,000");
+    expect(paymentAmount(e, as("USD"))).toBe("$67.59 (RWF 98,000)");
+    expect(paymentAmount(e, as("EUR"))).toBe("≈ €62.18");
+    expect(paymentAmount({ usdCents: 4900, localMinor: 4900, currency: "USD" }, as("RWF"))).toBe("≈ RWF 71,050");
+  });
+
+  it("MRR and ARPU of Mobile Money clients keep their RWF; a yearly payment is a twelfth", () => {
+    const entries = [rwfPay("a", 98000, 6759, "u1"), rwfPay("b", 1200000, 82759, "u3"), card("c", 4900, "u2")];
+    const subs = [{ userId: "u1", plan: "STANDARD", interval: "MONTH", provider: "MANUAL_MOMO" }, { userId: "u3", plan: "STANDARD", interval: "YEAR", provider: "MANUAL_MOMO" }, { userId: "u2", plan: "PRO", interval: "MONTH", provider: "PADDLE" }];
+    const byUser = new Map([["u1", 6759], ["u3", 6897], ["u2", 4900]]);
+    const parts = mrrRwf(subs, entries, byUser);
+    expect(parts.get("u1")).toEqual({ rwfMinor: 98000, rwfUsdCents: 6759 });
+    expect(parts.get("u3")).toEqual({ rwfMinor: 100000, rwfUsdCents: 6897 });
+    expect(parts.has("u2")).toBe(false);
+    expect(sumRwf(parts.values(), 3)).toEqual({ rwfMinor: 66000, rwfUsdCents: 4552 });
+  });
+
+  it("the leaderboard keeps each agent's RWF exact, the team share split equally", () => {
+    const rows = leaderboard({ entries: [rwfPay("a", 98000, 6759, "u1"), rwfPay("b", 30000, 2069, "u9")], assignments: [{ userId: "u1", staffId: "A", startsAt: new Date("2026-01-01T00:00:00Z"), endsAt: null }], agents: [{ staffId: "A", name: "Alice" }, { staffId: "B", name: "Bob" }] });
+    const alice = rows.find((r) => r.staffId === "A")!;
+    expect(alice.ownRwf).toEqual({ rwfMinor: 98000, rwfUsdCents: 6759 });
+    expect(alice.teamShareRwf).toEqual({ rwfMinor: 15000, rwfUsdCents: 1035 });
+    expect(moneyFmt(as("RWF")).amount(alice.totalCents, alice.totalRwf)).toBe("RWF 113,000");
   });
 });

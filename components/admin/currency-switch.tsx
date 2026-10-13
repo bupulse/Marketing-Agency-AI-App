@@ -21,8 +21,11 @@ export function CurrencySwitch({ value }: { value: DisplayCurrency }) {
           onClick={() =>
             start(async () => {
               if (c === value) return;
-              await setDisplayCurrencyAction(c);
-              router.refresh();
+              const r = await setDisplayCurrencyAction(c);
+              // Every figure on the page is rendered on the server in the new currency: load the page again in full
+              // (a soft refresh kept some segments from the router cache, so numbers only changed after a reload).
+              if (r.ok) window.location.reload();
+              else router.refresh();
             })
           }
           className={cn("min-h-9 cursor-pointer rounded-full px-3 text-xs font-semibold", c === value ? "bg-text text-surface" : "text-muted hover:text-text")}

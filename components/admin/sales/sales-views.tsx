@@ -62,7 +62,7 @@ function Payment({ c, fx }: { c: SalesClient; fx: MoneyFmt }) {
   return (
     <span className="flex flex-col gap-1">
       {c.status ? <Badge tone={STATUS_TONE[c.status] ?? "neutral"}>{STATUS_LABEL[c.status] ?? c.status}</Badge> : <span className="text-muted">No plan</span>}
-      <span className="text-xs text-muted">{c.lastPayment ? `Last paid ${fx.text(c.lastPayment.usdCents)}, ${dateTime(c.lastPayment.at)}` : "No payment yet"}</span>
+      <span className="text-xs text-muted">{c.lastPayment ? `Last paid ${fx.amount(c.lastPayment.usdCents, c.lastPayment.currency === "RWF" && c.lastPayment.localMinor !== null ? { rwfMinor: c.lastPayment.localMinor, rwfUsdCents: c.lastPayment.usdCents } : null)}, ${dateTime(c.lastPayment.at)}` : "No payment yet"}</span>
     </span>
   );
 }
@@ -148,9 +148,9 @@ function Numbers({ row, rank, of, month, fx }: { row: LeaderRow | null; rank: nu
   return (
     <Section title={`My numbers, ${monthName(month)}`} description="USD, net of refunds. Performance only.">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Own sales" value={fx.text(row?.ownCents ?? 0)} title={fx.title(row?.ownCents ?? 0)} source="Payments of your clients" />
-        <Stat label="Team share" value={fx.text(row?.teamShareCents ?? 0)} title={fx.title(row?.teamShareCents ?? 0)} source="Unassigned clients, split equally" />
-        <Stat label="Total" value={fx.text(row?.totalCents ?? 0)} title={fx.title(row?.totalCents ?? 0)} />
+        <Stat label="Own sales" value={fx.amount(row?.ownCents ?? 0, row?.ownRwf)} title={fx.amountTitle(row?.ownCents ?? 0, row?.ownRwf)} source="Payments of your clients" />
+        <Stat label="Team share" value={fx.amount(row?.teamShareCents ?? 0, row?.teamShareRwf)} title={fx.amountTitle(row?.teamShareCents ?? 0, row?.teamShareRwf)} source="Unassigned clients, split equally" />
+        <Stat label="Total" value={fx.amount(row?.totalCents ?? 0, row?.totalRwf)} title={fx.amountTitle(row?.totalCents ?? 0, row?.totalRwf)} />
         <Stat label="Rank" value={rank ? `${rank} of ${of}` : "-"} href="/admin/sales/leaderboard" source="Leaderboard" />
       </div>
     </Section>
@@ -230,7 +230,7 @@ export function TeamView({ d, reassignAction, fx = BOOKS_FMT }: { d: TeamData; r
   const unassigned = d.clients.filter((c) => !c.agentId).length;
   return (
     <>
-      <Panel title="Agents" description={`Everyone with a sales role, their code and their numbers for ${monthName(d.month)} (USD).`}>
+      <Panel title="Agents" description={`Everyone with a sales role, their code and their numbers for ${monthName(d.month)} (${fx.display.currency}).`}>
         {d.members.length === 0 ? (
           <Empty>No sales staff yet. Add a staff member with the Sales agent or Sales manager role.</Empty>
         ) : (
@@ -260,9 +260,9 @@ export function TeamView({ d, reassignAction, fx = BOOKS_FMT }: { d: TeamData; r
                     <Td>{m.roleName}</Td>
                     <Td><span className="font-mono">{m.refCode ?? "Not yet"}</span></Td>
                     <Td right>{num(clientsOf(m.staffId))}</Td>
-                    <Td right>{fx.el(r?.ownCents ?? 0)}</Td>
-                    <Td right>{fx.el(r?.teamShareCents ?? 0)}</Td>
-                    <Td right>{fx.el(r?.totalCents ?? 0)}</Td>
+                    <Td right>{fx.amountEl(r?.ownCents ?? 0, r?.ownRwf)}</Td>
+                    <Td right>{fx.amountEl(r?.teamShareCents ?? 0, r?.teamShareRwf)}</Td>
+                    <Td right>{fx.amountEl(r?.totalCents ?? 0, r?.totalRwf)}</Td>
                   </tr>
                 );
               })}
@@ -364,9 +364,9 @@ export function LeaderboardView({ rows, month, months, me, fx = BOOKS_FMT }: { r
                   <Td right>{i + 1}</Td>
                   <Td><span className="font-medium">{r.name}{r.staffId === me ? " (you)" : ""}</span></Td>
                   <Td right>{num(r.clients)}</Td>
-                  <Td right>{fx.el(r.ownCents)}</Td>
-                  <Td right>{fx.el(r.teamShareCents)}</Td>
-                  <Td right className="font-semibold">{fx.el(r.totalCents)}</Td>
+                  <Td right>{fx.amountEl(r.ownCents, r.ownRwf)}</Td>
+                  <Td right>{fx.amountEl(r.teamShareCents, r.teamShareRwf)}</Td>
+                  <Td right className="font-semibold">{fx.amountEl(r.totalCents, r.totalRwf)}</Td>
                 </tr>
               ))}
             </tbody>

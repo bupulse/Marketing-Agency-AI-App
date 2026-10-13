@@ -12,13 +12,13 @@ import "server-only";
 // Months are calendar months in Kigali (lib/time/kigali.ts), like the rest of Money.
 import { prisma } from "@/lib/db";
 import { MONEY_EVENT_TYPES } from "@/lib/analytics/math";
-import { dedupe, toRevenueEntry, type RevenueEntry } from "@/lib/money/revenue-shared";
+import { dedupe, rwfPartOf, sumRwf, toRevenueEntry, type RevenueEntry, type RwfPart } from "@/lib/money/revenue-shared";
 import { isSalesRole, permissionsOf } from "@/lib/staff/permissions";
 import { kigaliMonthOf, kigaliMonthRange } from "@/lib/time/kigali";
 
 export type AssignmentSpan = { userId: string; staffId: string | null; startsAt: Date; endsAt: Date | null };
 export type BoardAgent = { staffId: string; name: string };
-export type LeaderRow = { staffId: string; name: string; ownCents: number; teamShareCents: number; totalCents: number; clients: number };
+export type LeaderRow = { staffId: string; name: string; ownCents: number; teamShareCents: number; totalCents: number; clients: number; /** The parts received in RWF (exact in RWF). */ ownRwf?: RwfPart; teamShareRwf?: RwfPart; totalRwf?: RwfPart };
 
 export const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 /** Kigali months (lib/time/kigali.ts), like every money page. */
@@ -51,18 +51,30 @@ export function splitEqually(cents: number, n: number): number[] {
  */
 export function leaderboard(input: { entries: readonly RevenueEntry[]; assignments: readonly AssignmentSpan[]; agents: readonly BoardAgent[]; clients?: ReadonlyMap<string, number> }): LeaderRow[] {
   const own = new Map(input.agents.map((a) => [a.staffId, 0]));
+  const ownEntries = new Map<string, RevenueEntry[]>(input.agents.map((a) => [a.staffId, []]));
+  const potEntries: RevenueEntry[] = [];
   let pot = 0;
   for (const e of input.entries) {
     const staffId = e.userId ? agentAt(input.assignments, e.userId, e.at) : null;
-    if (staffId && own.has(staffId)) own.set(staffId, (own.get(staffId) ?? 0) + e.usdCents);
-    else pot += e.usdCents;
+    if (staffId && own.has(staffId)) {
+      own.set(staffId, (own.get(staffId) ?? 0) + e.usdCents);
+      ownEntries.get(staffId)!.push(e);
+    } else {
+      pot += e.usdCents;
+      potEntries.push(e);
+    }
   }
   const shares = splitEqually(pot, input.agents.length);
+  const potRwf = rwfPartOf(potEntries);
+  const rwfShares = splitEqually(potRwf.rwfMinor, input.agents.length);
+  const rwfUsdShares = splitEqually(potRwf.rwfUsdCents, input.agents.length);
   return input.agents
     .map((a, i) => {
       const ownCents = own.get(a.staffId) ?? 0;
       const teamShareCents = shares[i] ?? 0;
-      return { staffId: a.staffId, name: a.name, ownCents, teamShareCents, totalCents: ownCents + teamShareCents, clients: input.clients?.get(a.staffId) ?? 0 };
+      const ownRwf = rwfPartOf(ownEntries.get(a.staffId) ?? []);
+      const teamShareRwf = { rwfMinor: rwfShares[i] ?? 0, rwfUsdCents: rwfUsdShares[i] ?? 0 };
+      return { staffId: a.staffId, name: a.name, ownCents, teamShareCents, totalCents: ownCents + teamShareCents, clients: input.clients?.get(a.staffId) ?? 0, ownRwf, teamShareRwf, totalRwf: sumRwf([ownRwf, teamShareRwf]) };
     })
     .sort((a, b) => b.totalCents - a.totalCents || a.name.localeCompare(b.name));
 }

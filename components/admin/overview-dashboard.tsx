@@ -1,4 +1,5 @@
 import { BOOKS_FMT, type MoneyFmt } from "@/components/admin/money";
+import { CURRENCY_NAME } from "@/lib/money/display";
 import Link from "next/link";
 import { ArrowRight, CalendarCheck, CircleAlert, Inbox, Smartphone, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
@@ -8,7 +9,10 @@ import { cn } from "@/lib/cn";
 import { Gauge } from "./charts";
 import { Section, Stat } from "./ui";
 
+type Part = { rwfMinor: number; rwfUsdCents: number };
 export type OverviewData = {
+  /** The parts of the figures received in RWF (exact in RWF; lib/money/revenue-shared.ts RwfPart). */
+  rwf?: { month: Part; lifetime: Part; mrr: Part; arpu: Part | null };
   monthLabel: string;
   prevMonthLabel: string;
   revenue: { monthCents: number; prevCents: number; lifetimeCents: number; customersEver: number; spark: number[] };
@@ -49,13 +53,13 @@ export function OverviewDashboard({ d, show = { money: true, clients: true, ai: 
       </Section>
 
       {show.money && (
-      <Section title={`Money, ${d.monthLabel}`} description="USD. Revenue is card, Mobile Money and invoices; profit subtracts every cost, estimated or billed." action={<Link href="/admin/revenue" className="text-sm font-medium underline">Revenue and profit</Link>}>
+      <Section title={`Money, ${d.monthLabel}`} description={`${CURRENCY_NAME[fx.display.currency]}. Revenue is card, Mobile Money and invoices; profit subtracts every cost, estimated or billed.`} action={<Link href="/admin/revenue" className="text-sm font-medium underline">Revenue and profit</Link>}>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
-          <Stat label="MRR" value={fx.text(d.mrrCents)} title={fx.title(d.mrrCents)} source={d.arpuCents == null ? "No paying clients yet" : `ARPU ${fx.text(d.arpuCents)} a month`} href="/admin/revenue#mrr" />
-          <Stat label="Revenue this month" value={fx.text(d.revenue.monthCents)} title={fx.title(d.revenue.monthCents)} previous={{ now: d.revenue.monthCents, before: d.revenue.prevCents, label: d.prevMonthLabel }} spark={d.revenue.spark} href="/admin/revenue" source="By month" />
-          <Stat label="Lifetime revenue" value={fx.text(d.revenue.lifetimeCents)} title={fx.title(d.revenue.lifetimeCents)} source={`${num(d.revenue.customersEver)} paying client${d.revenue.customersEver === 1 ? "" : "s"} ever`} href="/admin/revenue#clients" />
+          <Stat label="MRR" value={fx.amount(d.mrrCents, d.rwf?.mrr)} title={fx.amountTitle(d.mrrCents, d.rwf?.mrr)} source={d.arpuCents == null ? "No paying clients yet" : `ARPU ${fx.amount(d.arpuCents, d.rwf?.arpu)} a month`} href="/admin/revenue#mrr" />
+          <Stat label="Revenue this month" value={fx.amount(d.revenue.monthCents, d.rwf?.month)} title={fx.amountTitle(d.revenue.monthCents, d.rwf?.month)} previous={{ now: d.revenue.monthCents, before: d.revenue.prevCents, label: d.prevMonthLabel }} spark={d.revenue.spark} href="/admin/revenue" source="By month" />
+          <Stat label="Lifetime revenue" value={fx.amount(d.revenue.lifetimeCents, d.rwf?.lifetime)} title={fx.amountTitle(d.revenue.lifetimeCents, d.rwf?.lifetime)} source={`${num(d.revenue.customersEver)} paying client${d.revenue.customersEver === 1 ? "" : "s"} ever`} href="/admin/revenue#clients" />
           <Stat label="Costs this month" value={fx.text(d.profit.costCents)} title={fx.title(d.profit.costCents)} invert source={d.profit.estimateCents > 0 ? `${fx.text(d.profit.estimateCents)} still an estimate` : "All billed amounts"} href="/admin/costs" />
-          <Stat label="Profit this month" value={fx.text(d.profit.monthCents)} title={fx.title(d.profit.monthCents)} previous={{ now: d.profit.monthCents, before: d.profit.prevCents, label: d.prevMonthLabel }} spark={d.profit.spark} tone={d.profit.monthCents < 0 ? "danger" : undefined} href="/admin/revenue#profit" source="Revenue minus all costs" />
+          <Stat label="Profit this month" value={fx.amount(d.profit.monthCents, d.rwf?.month)} title={fx.amountTitle(d.profit.monthCents, d.rwf?.month)} previous={{ now: d.profit.monthCents, before: d.profit.prevCents, label: d.prevMonthLabel }} spark={d.profit.spark} tone={d.profit.monthCents < 0 ? "danger" : undefined} href="/admin/revenue#profit" source="Revenue minus all costs" />
         </div>
       </Section>
       )}

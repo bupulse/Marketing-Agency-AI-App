@@ -62,9 +62,9 @@ describe("leaderboard", () => {
       clients: new Map([["A", 1], ["B", 1]]),
     });
     expect(rows.map((r) => r.staffId)).toEqual(["B", "A", "C"]);
-    expect(rows[0]).toEqual({ staffId: "B", name: "Bob", ownCents: 5000, teamShareCents: 400, totalCents: 5400, clients: 1 });
-    expect(rows[1]).toEqual({ staffId: "A", name: "Alice", ownCents: 2600, teamShareCents: 400, totalCents: 3000, clients: 1 });
-    expect(rows[2]).toEqual({ staffId: "C", name: "Chen", ownCents: 0, teamShareCents: 400, totalCents: 400, clients: 0 });
+    expect(rows[0]).toMatchObject({ staffId: "B", name: "Bob", ownCents: 5000, teamShareCents: 400, totalCents: 5400, clients: 1 });
+    expect(rows[1]).toMatchObject({ staffId: "A", name: "Alice", ownCents: 2600, teamShareCents: 400, totalCents: 3000, clients: 1 });
+    expect(rows[2]).toMatchObject({ staffId: "C", name: "Chen", ownCents: 0, teamShareCents: 400, totalCents: 400, clients: 0 });
     // Every cent is counted once.
     expect(rows.reduce((s, r) => s + r.totalCents, 0)).toBe(2000 + 5000 + 1000 - 400 + 900 + 300);
   });
@@ -111,8 +111,8 @@ describe("loaders", () => {
     expect(rows.map((r) => r.staffId)).toEqual(["A", "B"]);
     // u3's October payment is A's; u2 (unassigned) is split; September's payment is left out. Fay (finance) and Dan
     // (disabled before October) are not on the board.
-    expect(rows[0]).toEqual({ staffId: "A", name: "Alice", ownCents: 1000, teamShareCents: 300, totalCents: 1300, clients: 2 });
-    expect(rows[1]).toEqual({ staffId: "B", name: "Bob", ownCents: 0, teamShareCents: 300, totalCents: 300, clients: 0 });
+    expect(rows[0]).toMatchObject({ staffId: "A", name: "Alice", ownCents: 1000, teamShareCents: 300, totalCents: 1300, clients: 2 });
+    expect(rows[1]).toMatchObject({ staffId: "B", name: "Bob", ownCents: 0, teamShareCents: 300, totalCents: 300, clients: 0 });
   });
 
   it("getLeaderboard is empty without sales staff", async () => {

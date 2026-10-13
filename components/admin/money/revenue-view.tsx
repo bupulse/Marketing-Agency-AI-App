@@ -1,4 +1,5 @@
 import { BOOKS_FMT, type MoneyFmt } from "@/components/admin/money";
+import { CURRENCY_NAME } from "@/lib/money/display";
 import Link from "next/link";
 import { Badge } from "@/components/ui";
 import { money, num, pct } from "@/lib/admin/format";
@@ -24,22 +25,22 @@ export function RevenueView({ r, fx = BOOKS_FMT }: { r: MoneyReport; /** Money i
       )}
       {nothing && <Empty>No payments or costs yet. Revenue appears with the first confirmed payment; costs with the first AI call or recurring cost.</Empty>}
 
-      <Section title={`This month, ${cur ? monthLabel(cur.month) : ""}`} description={`${fx.display.currency}${fx.display.currency === "USD" ? "" : " (≈ converted from the USD books; RWF received is exact)"}. Revenue is net of card fees, tax and refunds.`}>
+      <Section title={`This month, ${cur ? monthLabel(cur.month) : ""}`} description={`${CURRENCY_NAME[fx.display.currency]}${fx.display.currency === "RWF" ? " (money received in RWF is exact; the rest is converted, marked ≈)" : fx.display.currency === "EUR" ? " (converted, marked ≈)" : ""}. Revenue is net of card fees, tax and refunds.`}>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Stat label="Revenue" value={fx.mixed({ usdCents: cur?.revenue.netCents ?? 0, rwfMinor: cur?.revenue.rwfMinor, rwfUsdCents: cur?.revenue.rwfUsdCents })} previous={prev ? { now: cur?.revenue.netCents ?? 0, before: prev.revenue.netCents, label: prevLabel } : undefined} spark={r.months.map((m) => m.revenue.netCents)} source={`${num(cur?.revenue.payingClients ?? 0)} paying this month`} />
+          <Stat label="Revenue" value={fx.amount(cur?.revenue.netCents ?? 0, cur?.revenue)} title={fx.amountTitle(cur?.revenue.netCents ?? 0, cur?.revenue)} previous={prev ? { now: cur?.revenue.netCents ?? 0, before: prev.revenue.netCents, label: prevLabel } : undefined} spark={r.months.map((m) => m.revenue.netCents)} source={`${num(cur?.revenue.payingClients ?? 0)} paying this month`} />
           <Stat label="Costs" value={fx.text(Math.round(cur?.costs.totalCents ?? 0))} title={fx.title(Math.round(cur?.costs.totalCents ?? 0))} invert previous={prev ? { now: cur?.costs.totalCents ?? 0, before: prev.costs.totalCents, label: prevLabel } : undefined} href="/admin/costs" source={(cur?.costs.estimateCents ?? 0) > 0 ? `${fx.text(Math.round(cur!.costs.estimateCents))} estimated` : "All billed"} />
-          <Stat label="Profit" value={fx.text(cur?.profitCents ?? 0)} title={fx.title(cur?.profitCents ?? 0)} previous={prev ? { now: cur?.profitCents ?? 0, before: prev.profitCents, label: prevLabel } : undefined} spark={r.months.map((m) => m.profitCents)} tone={(cur?.profitCents ?? 0) < 0 ? "danger" : undefined} source="Revenue minus all costs" />
+          <Stat label="Profit" value={fx.amount(cur?.profitCents ?? 0, cur?.revenue)} title={fx.amountTitle(cur?.profitCents ?? 0, cur?.revenue)} previous={prev ? { now: cur?.profitCents ?? 0, before: prev.profitCents, label: prevLabel } : undefined} spark={r.months.map((m) => m.profitCents)} tone={(cur?.profitCents ?? 0) < 0 ? "danger" : undefined} source="Revenue minus all costs" />
           <Stat label="RWF rate used" value={cur?.rate ? `${cur.rate}` : `${r.rwfPerUsd}`} source={cur?.rate ? `RWF per USD in this month's payments` : "RWF per USD (Settings); no RWF payments yet"} href="/admin/settings" />
         </div>
       </Section>
 
       <Section id="mrr" title="Recurring and lifetime" description="Every client ever, including those who left or deleted their account.">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-          <Stat label="MRR" value={fx.text(r.mrrCents)} title={fx.title(r.mrrCents)} source={`${num(r.lifetime.payingNow)} paying now`} />
-          <Stat label="ARPU" value={r.arpuCents == null ? "n/a" : fx.text(r.arpuCents)} source="MRR per paying client" />
+          <Stat label="MRR" value={fx.amount(r.mrrCents, r.mrrRwf)} title={fx.amountTitle(r.mrrCents, r.mrrRwf)} source={`${num(r.lifetime.payingNow)} paying now`} />
+          <Stat label="ARPU" value={r.arpuCents == null ? "n/a" : fx.amount(r.arpuCents, r.arpuRwf)} source="MRR per paying client" />
           <Stat label="Churn, 30 days" value={pct(r.churn.pct)} source={`${num(r.churn.lost30)} stopped paying`} tone={(r.churn.pct ?? 0) >= 10 ? "danger" : undefined} />
-          <Stat label="Lifetime revenue" value={fx.mixed({ usdCents: r.lifetime.revenueCents, rwfMinor: r.lifetime.rwfMinor, rwfUsdCents: r.lifetime.rwfUsdCents })} source={r.lifetime.firstMonth ? `Since ${monthLabel(r.lifetime.firstMonth)}` : "Nothing yet"} />
-          <Stat label="Lifetime profit" value={fx.text(r.lifetime.profitCents)} title={fx.title(r.lifetime.profitCents)} source={`${fx.text(r.lifetime.costCents)} costs`} tone={r.lifetime.profitCents < 0 ? "danger" : undefined} />
+          <Stat label="Lifetime revenue" value={fx.amount(r.lifetime.revenueCents, r.lifetime)} title={fx.amountTitle(r.lifetime.revenueCents, r.lifetime)} source={r.lifetime.firstMonth ? `Since ${monthLabel(r.lifetime.firstMonth)}` : "Nothing yet"} />
+          <Stat label="Lifetime profit" value={fx.amount(r.lifetime.profitCents, r.lifetime)} title={fx.amountTitle(r.lifetime.profitCents, r.lifetime)} source={`${fx.text(r.lifetime.costCents)} costs`} tone={r.lifetime.profitCents < 0 ? "danger" : undefined} />
           <Stat label="Clients ever" value={num(r.lifetime.customersEver)} source={`${num(r.lifetime.churned)} no longer paying`} href="#clients" />
         </div>
       </Section>
@@ -64,14 +65,14 @@ export function RevenueView({ r, fx = BOOKS_FMT }: { r: MoneyReport; /** Money i
             {[...r.months].reverse().map((m) => (
               <tr key={m.month}>
                 <Td>{monthLabel(m.month)}</Td>
-                <Td right>{fx.el(m.revenue.byMethod.card + m.revenue.refundsCents)}</Td>
-                <Td right>{fx.el(m.revenue.byMethod.momo)}</Td>
-                <Td right>{fx.el(m.revenue.byMethod.invoice)}</Td>
+                <Td right>{fx.amountEl(m.revenue.byMethod.card + m.revenue.refundsCents, m.rwfByMethod?.card)}</Td>
+                <Td right>{fx.amountEl(m.revenue.byMethod.momo, m.rwfByMethod?.momo)}</Td>
+                <Td right>{fx.amountEl(m.revenue.byMethod.invoice, m.rwfByMethod?.invoice)}</Td>
                 <Td right className="text-muted">{m.revenue.refundsCents ? `-${fx.text(m.revenue.refundsCents)}` : "0"}</Td>
-                <Td right className="font-semibold">{fx.mixedEl({ usdCents: m.revenue.netCents, rwfMinor: m.revenue.rwfMinor, rwfUsdCents: m.revenue.rwfUsdCents })}</Td>
+                <Td right className="font-semibold">{fx.amountEl(m.revenue.netCents, m.revenue)}</Td>
                 <Td right>{m.revenue.rwfMinor ? <>{money(m.revenue.rwfMinor, "RWF")}<span className="block text-xs text-muted">at {m.rate} RWF/USD</span></> : <span className="text-muted">0</span>}</Td>
                 <Td right>{fx.el(Math.round(m.costs.totalCents))}{m.costs.estimateCents > 0 && <span className="block text-xs text-new">part estimated</span>}</Td>
-                <Td right className={m.profitCents < 0 ? "font-semibold text-danger" : "font-semibold"}>{fx.el(m.profitCents)}</Td>
+                <Td right className={m.profitCents < 0 ? "font-semibold text-danger" : "font-semibold"}>{fx.amountEl(m.profitCents, m.revenue)}</Td>
               </tr>
             ))}
           </tbody>
@@ -86,7 +87,7 @@ export function RevenueView({ r, fx = BOOKS_FMT }: { r: MoneyReport; /** Money i
             <thead><tr><Th>Plan</Th><Th right>Paying now</Th><Th right>MRR</Th><Th right>Lifetime revenue</Th><Th right>Clients ever</Th></tr></thead>
             <tbody>
               {r.byPlan.map((p) => (
-                <tr key={p.plan}><Td>{p.plan === "unknown" ? <span className="text-muted">Unknown plan</span> : p.plan}</Td><Td right>{num(p.payingNow)}</Td><Td right>{fx.el(p.mrrCents)}</Td><Td right>{fx.el(p.netCents)}</Td><Td right>{num(p.clients)}</Td></tr>
+                <tr key={p.plan}><Td>{p.plan === "unknown" ? <span className="text-muted">Unknown plan</span> : p.plan}</Td><Td right>{num(p.payingNow)}</Td><Td right>{fx.amountEl(p.mrrCents, p.mrrRwf)}</Td><Td right>{fx.amountEl(p.netCents, p.netRwf)}</Td><Td right>{num(p.clients)}</Td></tr>
               ))}
             </tbody>
           </TableWrap>
@@ -108,11 +109,11 @@ export function RevenueView({ r, fx = BOOKS_FMT }: { r: MoneyReport; /** Money i
                     {c.email && <span className="block truncate text-xs text-muted">{c.email}</span>}
                   </Td>
                   <Td>{c.deleted ? <Badge tone="neutral">deleted</Badge> : c.paying ? <Badge tone="success">{c.plan?.toLowerCase() ?? "paying"}</Badge> : <Badge tone="violet">{c.status?.toLowerCase() ?? "left"}</Badge>}</Td>
-                  <Td right className="font-semibold">{fx.el(c.revenueCents)}</Td>
+                  <Td right className="font-semibold">{fx.amountEl(c.revenueCents, c.revenueRwf)}</Td>
                   <Td right>{num(c.payments)}</Td>
                   <Td className="whitespace-nowrap">{day(c.firstAt)} to {day(c.lastAt)}</Td>
                   <Td right>{fx.el(Math.round(c.aiCostCents))}</Td>
-                  <Td right className={c.revenueCents - c.aiCostCents < 0 ? "text-danger" : undefined}>{fx.el(Math.round(c.revenueCents - c.aiCostCents))}</Td>
+                  <Td right className={c.revenueCents - c.aiCostCents < 0 ? "text-danger" : undefined}>{fx.amountEl(Math.round(c.revenueCents - c.aiCostCents), c.revenueRwf)}</Td>
                 </tr>
               ))}
             </tbody>

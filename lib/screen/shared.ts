@@ -27,7 +27,8 @@ export type ScreenData = {
   /** The admin default currency (Settings) and rates: the TV shows every amount in it (no switch on the TV). */
   money: MoneyDisplay;
   trials: { company: string; daysLeft: number; agent: string | null }[];
-  leaderboard: { agent: string; ownCents: number; teamShareCents: number; totalCents: number; clients: number }[];
+  /** USD cents with the parts received in RWF (exact in RWF on the TV). */
+  leaderboard: { agent: string; ownCents: number; teamShareCents: number; totalCents: number; clients: number; ownRwf?: { rwfMinor: number; rwfUsdCents: number }; teamShareRwf?: { rwfMinor: number; rwfUsdCents: number }; totalRwf?: { rwfMinor: number; rwfUsdCents: number } }[];
   /** Active sounds in rotation order, with short-lived signed URLs. */
   sounds: { id: string; url: string }[];
   /** New confirmed payments since the cursor the screen sent, oldest first. */

@@ -1,3 +1,4 @@
+import { NO_RWF, sumRwf } from "@/lib/money/revenue-shared";
 import { BOOKS_FMT, type MoneyFmt } from "@/components/admin/money";
 import Link from "next/link";
 import type { ClientRow } from "@/lib/admin/client-health";
@@ -18,13 +19,14 @@ export function UsageView({ rows, sort, fx = BOOKS_FMT }: { rows: ClientRow[]; s
   const sorted = [...list].sort((a, b) => (sort === "name" ? a.name.localeCompare(b.name) : sort === "margin" ? a.mrrCents - a.aiCostMonthCents - (b.mrrCents - b.aiCostMonthCents) : b.aiCostMonthCents - a.aiCostMonthCents));
   const ai = list.reduce((s, r) => s + r.aiCostMonthCents, 0);
   const mrr = list.reduce((s, r) => s + r.mrrCents, 0);
+  const mrrRwf = sumRwf(list.map((r) => r.mrrRwf ?? NO_RWF));
   const losing = list.filter((r) => r.mrrCents > 0 && r.aiCostMonthCents > r.mrrCents).length;
   const trialCost = list.filter((r) => r.mrrCents === 0).reduce((s, r) => s + r.aiCostMonthCents, 0);
   return (
     <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="AI cost this month" value={fx.text(Math.round(ai))} title={fx.title(Math.round(ai))} source="All current clients" href="/admin/ai" />
-        <Stat label="They pay (MRR)" value={fx.text(mrr)} title={fx.title(mrr)} source="Per month" href="/admin/revenue#mrr" />
+        <Stat label="They pay (MRR)" value={fx.amount(mrr, mrrRwf)} title={fx.amountTitle(mrr, mrrRwf)} source="Per month" href="/admin/revenue#mrr" />
         <Stat label="AI cost of non-paying clients" value={fx.text(Math.round(trialCost))} title={fx.title(Math.round(trialCost))} source="Trials and demos" />
         <Stat label="Clients costing more than they pay" value={num(losing)} tone={losing ? "danger" : undefined} source="This month's AI alone" />
       </div>
@@ -61,9 +63,9 @@ export function UsageView({ rows, sort, fx = BOOKS_FMT }: { rows: ClientRow[]; s
                     <Td right>{used(r, "voiceCharacters")}</Td>
                     <Td right>{used(r, "chat")}</Td>
                     <Td right>{fx.el(Math.round(r.aiCostMonthCents))}</Td>
-                    <Td right>{r.mrrCents ? fx.text(r.mrrCents) : <span className="text-muted">0</span>}</Td>
+                    <Td right>{r.mrrCents ? fx.amountEl(r.mrrCents, r.mrrRwf) : <span className="text-muted">0</span>}</Td>
                     <Td right className={margin < 0 ? "font-semibold text-danger" : "font-semibold"}>
-                      {fx.el(Math.round(margin))}
+                      {fx.amountEl(Math.round(margin), r.mrrRwf)}
                       {r.mrrCents > 0 && <span className="block text-xs font-normal text-muted">{Math.round((margin / r.mrrCents) * 100)}%</span>}
                     </Td>
                   </tr>

@@ -9,6 +9,7 @@
 
 export const DISPLAY_CURRENCIES = ["RWF", "USD", "EUR"] as const;
 export type DisplayCurrency = (typeof DISPLAY_CURRENCIES)[number];
+export const CURRENCY_NAME: Record<DisplayCurrency, string> = { RWF: "Rwandan francs (RWF)", USD: "US dollars (USD)", EUR: "Euros (EUR)" };
 export const isDisplayCurrency = (v: unknown): v is DisplayCurrency => typeof v === "string" && (DISPLAY_CURRENCIES as readonly string[]).includes(v);
 
 /** RWF per USD (the Settings rate) and EUR per USD (Settings, or the day's ECB rate). */

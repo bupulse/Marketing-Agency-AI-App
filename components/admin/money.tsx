@@ -13,6 +13,10 @@ export type MoneyFmt = {
   /** A USD total with a part received in RWF (exact in RWF). */
   mixed: (input: { usdCents: number; rwfMinor?: number; rwfUsdCents?: number }) => string;
   mixedEl: (input: { usdCents: number; rwfMinor?: number; rwfUsdCents?: number }) => ReactElement;
+  /** A USD figure with its RWF part (lib/money/revenue-shared.ts RwfPart): exact in RWF when it is all RWF. */
+  amount: (usdCents: number, part?: { rwfMinor: number; rwfUsdCents: number } | null) => string;
+  amountEl: (usdCents: number, part?: { rwfMinor: number; rwfUsdCents: number } | null) => ReactElement;
+  amountTitle: (usdCents: number, part?: { rwfMinor: number; rwfUsdCents: number } | null) => string | undefined;
   /** The tooltip text of an amount (for a Stat), or undefined when it is shown exactly. */
   title: (minor: number, currency?: string, opts?: { rwfRate?: number | null }) => string | undefined;
 };
@@ -28,6 +32,9 @@ export function moneyFmt(display: MoneyDisplay): MoneyFmt {
     mixed: (i) => showMixed({ ...i, usdCents: Math.round(i.usdCents) }, display).text,
     mixedEl: (i) => span(showMixed({ ...i, usdCents: Math.round(i.usdCents) }, display)),
     title: (m, c, o) => show(m, c, o).title ?? undefined,
+    amount: (u, p) => showMixed({ usdCents: Math.round(u), ...(p ?? {}) }, display).text,
+    amountEl: (u, p) => span(showMixed({ usdCents: Math.round(u), ...(p ?? {}) }, display)),
+    amountTitle: (u, p) => showMixed({ usdCents: Math.round(u), ...(p ?? {}) }, display).title ?? undefined,
   };
 }
 

@@ -173,3 +173,77 @@ export function stoppedAt(input: { paying: boolean; status: string | null; perio
   if ((input.status === "CANCELED" || input.status === "EXPIRED") && input.periodEnd) return input.periodEnd;
   return new Date(input.lastPaymentAt.getTime() + (input.interval === "YEAR" ? 365 : 30) * DAY_MS);
 }
+
+// ---- the RWF part of a figure (docs/ADMIN.md, "Currency") ------------------------------------------------------------
+// The books are in USD cents. Next to a figure, `RwfPart` is how much of it was received in RWF: the exact RWF and the
+// USD value it was booked at. Shown in RWF, that part is added exactly (never RWF -> USD -> RWF) and only the rest is
+// converted; with nothing else in the figure it is shown exactly, without "≈".
+
+export type RwfPart = { rwfMinor: number; rwfUsdCents: number };
+export const NO_RWF: RwfPart = { rwfMinor: 0, rwfUsdCents: 0 };
+
+const isRwf = (e: RevenueEntry) => e.currency === "RWF" && e.localMinor !== null;
+
+/** The RWF part of a set of payments and refunds. */
+export function rwfPartOf(entries: readonly RevenueEntry[]): RwfPart {
+  let rwfMinor = 0;
+  let rwfUsdCents = 0;
+  for (const e of entries) if (isRwf(e)) {
+    rwfMinor += e.localMinor as number;
+    rwfUsdCents += e.usdCents;
+  }
+  return { rwfMinor, rwfUsdCents };
+}
+
+/** The RWF part per client (key: userId, "" for events without one), like revenueByClient. */
+export function rwfByClient(entries: readonly RevenueEntry[]): Map<string, RwfPart> {
+  const out = new Map<string, RwfPart>();
+  for (const e of entries) if (isRwf(e)) {
+    const key = e.userId ?? "";
+    const p = out.get(key) ?? { rwfMinor: 0, rwfUsdCents: 0 };
+    p.rwfMinor += e.localMinor as number;
+    p.rwfUsdCents += e.usdCents;
+    out.set(key, p);
+  }
+  return out;
+}
+
+/** The RWF part per plan, with the same plan lookup as revenueByPlan. */
+export function rwfByPlan(entries: readonly RevenueEntry[], planOf: (e: RevenueEntry) => string | null): Map<string, RwfPart> {
+  const out = new Map<string, RwfPart>();
+  for (const e of entries) if (isRwf(e)) {
+    const plan = e.plan ?? planOf(e) ?? "unknown";
+    const p = out.get(plan) ?? { rwfMinor: 0, rwfUsdCents: 0 };
+    p.rwfMinor += e.localMinor as number;
+    p.rwfUsdCents += e.usdCents;
+    out.set(plan, p);
+  }
+  return out;
+}
+
+/**
+ * The RWF part of each Mobile Money client's MRR: what they last paid in RWF for a whole period (a yearly payment a
+ * twelfth), against the USD that mrrOf counts for them. Clients paying in another currency, or by card, have none.
+ */
+export function mrrRwf(subs: readonly PayingSub[], entries: readonly RevenueEntry[], mrrByUser: Map<string, number>): Map<string, RwfPart> {
+  const last = new Map<string, RevenueEntry>();
+  for (const e of entries) if (e.userId && e.kind === "payment" && e.method !== "card" && !e.partial) last.set(e.userId, e);
+  const out = new Map<string, RwfPart>();
+  for (const s of subs) {
+    const e = s.provider === "MANUAL_MOMO" ? last.get(s.userId) : undefined;
+    if (!e || !isRwf(e)) continue;
+    out.set(s.userId, { rwfMinor: Math.round((e.localMinor as number) / (s.interval === "YEAR" ? 12 : 1)), rwfUsdCents: mrrByUser.get(s.userId) ?? 0 });
+  }
+  return out;
+}
+
+/** The sum of RWF parts; `scale` divides it (an average). */
+export function sumRwf(parts: Iterable<RwfPart>, scale = 1): RwfPart {
+  let rwfMinor = 0;
+  let rwfUsdCents = 0;
+  for (const p of parts) {
+    rwfMinor += p.rwfMinor;
+    rwfUsdCents += p.rwfUsdCents;
+  }
+  return { rwfMinor: Math.round(rwfMinor / scale), rwfUsdCents: Math.round(rwfUsdCents / scale) };
+}

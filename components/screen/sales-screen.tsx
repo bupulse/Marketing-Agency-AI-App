@@ -204,9 +204,9 @@ function Board({ name, data, offline }: { name: string; data: ScreenData | null;
                       <span className="mr-3 inline-block w-[1.4em] text-muted">{i + 1}</span>
                       {r.agent}
                     </td>
-                    <td className="py-[0.5vh] pl-2 text-right">{screenMoney(data.money, r.ownCents)}</td>
-                    <td className="py-[0.5vh] pl-2 text-right text-muted">{screenMoney(data.money, r.teamShareCents)}</td>
-                    <td className="py-[0.5vh] pl-2 text-right font-semibold">{screenMoney(data.money, r.totalCents)}</td>
+                    <td className="py-[0.5vh] pl-2 text-right">{screenTotal(data.money, r.ownCents, r.ownRwf?.rwfMinor ?? 0, r.ownRwf?.rwfUsdCents ?? 0)}</td>
+                    <td className="py-[0.5vh] pl-2 text-right text-muted">{screenTotal(data.money, r.teamShareCents, r.teamShareRwf?.rwfMinor ?? 0, r.teamShareRwf?.rwfUsdCents ?? 0)}</td>
+                    <td className="py-[0.5vh] pl-2 text-right font-semibold">{screenTotal(data.money, r.totalCents, r.totalRwf?.rwfMinor ?? 0, r.totalRwf?.rwfUsdCents ?? 0)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -74,7 +74,7 @@ async function trials(now: Date): Promise<Snapshot["trials"]> {
 
 async function leaders(now: Date): Promise<Snapshot["leaderboard"]> {
   const rows = await getLeaderboard(monthOf(now));
-  return rows.slice(0, LEADERS_SHOWN).map((r) => ({ agent: screenName(r.name) ?? "Agent", ownCents: r.ownCents, teamShareCents: r.teamShareCents, totalCents: r.totalCents, clients: r.clients }));
+  return rows.slice(0, LEADERS_SHOWN).map((r) => ({ agent: screenName(r.name) ?? "Agent", ownCents: r.ownCents, teamShareCents: r.teamShareCents, totalCents: r.totalCents, clients: r.clients, ownRwf: r.ownRwf, teamShareRwf: r.teamShareRwf, totalRwf: r.totalRwf }));
 }
 
 /** Everything but the celebrations, for any screen. */

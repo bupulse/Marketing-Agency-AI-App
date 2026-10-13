@@ -7,15 +7,27 @@ import { EVENT_NAMES } from "@/lib/analytics/events";
 import { dedupe, METHOD_LABEL, toRevenueEntry, type RevenueEntry } from "@/lib/money/revenue-shared";
 import { agentForPayment } from "@/lib/sales/attribution";
 import { kigaliDayStart } from "@/lib/time/kigali";
+import { BOOKS, showMoney, type MoneyDisplay } from "@/lib/money/display";
 import { money } from "./format";
 
-export type TodayPayment = { id: string; at: string; company: string; person: string | null; usdCents: number; amount: string; method: string; agent: string | null; href: string | null };
+export type TodayPayment = { id: string; at: string; company: string; person: string | null; usdCents: number; /** What the client paid in their own currency (RWF for Mobile Money), when known. */ localMinor: number | null; currency: string; amount: string; method: string; agent: string | null; href: string | null };
 export type TimelineItem = { id: string; at: string; kind: "signup" | "demo" | "trial" | "payment" | "cancel" | "request"; text: string; href: string | null };
 
 const DAY = 86_400_000;
 
 /** Payments (and refunds) confirmed since the start of today, newest first, with the company and the agent. */
-export async function getTodayPayments(now = new Date()): Promise<TodayPayment[]> {
+/**
+ * One payment's amount in the admin's display currency: its own amount when it was paid in that currency (exact), else
+ * in USD the booked dollars with the local amount in brackets ("$67.59 (RWF 98,000)"), else "≈" converted.
+ */
+export function paymentAmount(e: { usdCents: number; localMinor: number | null; currency: string }, d: MoneyDisplay = BOOKS): string {
+  const local = e.localMinor !== null && e.currency !== "USD" ? e.localMinor : null;
+  if (local !== null && e.currency === d.currency) return money(local, e.currency);
+  if (d.currency === "USD") return `${money(e.usdCents)}${local !== null ? ` (${money(local, e.currency)})` : ""}`;
+  return showMoney(e.usdCents, "USD", d).text;
+}
+
+export async function getTodayPayments(now = new Date(), display: MoneyDisplay = BOOKS): Promise<TodayPayment[]> {
   const since = kigaliDayStart(now);
   const rows = await prisma.billingEvent.findMany({
     where: { type: { in: MONEY_EVENT_TYPES }, createdAt: { gte: new Date(since.getTime() - DAY) } },
@@ -31,14 +43,15 @@ export async function getTodayPayments(now = new Date()): Promise<TodayPayment[]
     entries.map(async (e) => {
       const u = e.userId ? userOf.get(e.userId) : undefined;
       const agent = e.userId ? await agentForPayment(e.userId, e.at).catch(() => null) : null;
-      const local = e.localMinor !== null && e.currency !== "USD" ? ` (${money(e.localMinor, e.currency)})` : "";
       return {
         id: e.id,
         at: e.at.toISOString(),
         company: u?.business?.name ?? (e.userId ? "Deleted account" : "Unknown payer"),
         person: u?.name ?? null,
         usdCents: e.usdCents,
-        amount: `${money(e.usdCents)}${local}`,
+        localMinor: e.localMinor,
+        currency: e.currency,
+        amount: paymentAmount(e, display),
         method: e.kind === "refund" ? "Refund" : METHOD_LABEL[e.method],
         agent: agent?.name ?? null,
         href: u?.business ? `/admin/companies/${u.business.id}` : null,

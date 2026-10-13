@@ -53,8 +53,8 @@ describe("overview approval card", () => {
 describe("today", () => {
   it("highlights today's payments with method, time and agent (or team)", () => {
     const out = html(createElement(TodayPayments, { payments: [
-      { id: "a", at: "2026-10-18T08:00:00Z", company: "Kigali Salon", person: "Aline", usdCents: 2000, amount: "$20.00 (RWF 29,000)", method: "Mobile Money", agent: "Eric", href: "/admin/companies/b1" },
-      { id: "b", at: "2026-10-18T09:00:00Z", company: "Nyamirambo Shop", person: null, usdCents: 1500, amount: "$15.00", method: "Card", agent: null, href: null },
+      { id: "a", at: "2026-10-18T08:00:00Z", company: "Kigali Salon", person: "Aline", usdCents: 2000, localMinor: 29000, currency: "RWF", amount: "$20.00 (RWF 29,000)", method: "Mobile Money", agent: "Eric", href: "/admin/companies/b1" },
+      { id: "b", at: "2026-10-18T09:00:00Z", company: "Nyamirambo Shop", person: null, usdCents: 1500, localMinor: 1500, currency: "USD", amount: "$15.00", method: "Card", agent: null, href: null },
     ] }));
     expect(out).toContain("$35.00");
     expect(out).toContain("by Eric");

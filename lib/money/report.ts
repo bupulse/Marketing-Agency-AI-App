@@ -8,7 +8,7 @@ import { getPlans } from "@/lib/plan-catalog";
 import { planForAnyPriceId } from "@/lib/region-prices";
 import { addMonths, monthsBetween, type MonthCosts } from "./costs-shared";
 import { getMonthCosts } from "./costs";
-import { dedupe, lastFullPayments, stoppedAt, mrrOf, rateUsed, revenueByClient, revenueByMonth, revenueByPlan, toRevenueEntry, type PayingSub, type RevenueEntry, type RevenueMonth } from "./revenue-shared";
+import { dedupe, lastFullPayments, mrrRwf, NO_RWF, rwfByClient, rwfByPlan, rwfPartOf, sumRwf, type RwfPart, stoppedAt, mrrOf, rateUsed, revenueByClient, revenueByMonth, revenueByPlan, toRevenueEntry, type PayMethod, type PayingSub, type RevenueEntry, type RevenueMonth } from "./revenue-shared";
 import { kigaliMonthOf } from "@/lib/time/kigali";
 
 const DAY = 86_400_000;
@@ -76,6 +76,9 @@ export type ClientMoney = {
   lastAt: string;
   aiCostCents: number;
   mrrCents: number;
+  /** The RWF parts of revenueCents and mrrCents (shown exactly in RWF). */
+  revenueRwf: RwfPart;
+  mrrRwf: RwfPart;
 };
 
 export type MoneyReport = {
@@ -84,12 +87,15 @@ export type MoneyReport = {
   /** More money events than REVENUE_EVENT_CAP: the oldest are left out of lifetime numbers (shown on the page). */
   truncated: boolean;
   rwfPerUsd: number;
-  months: { month: string; revenue: RevenueMonth; costs: MonthCosts; profitCents: number; rate: number | null }[];
+  months: { month: string; revenue: RevenueMonth; costs: MonthCosts; profitCents: number; rate: number | null; /** The RWF part of each payment method's revenue (exact in RWF). */ rwfByMethod?: Record<PayMethod, RwfPart> }[];
   lifetime: { revenueCents: number; /** The part received in RWF: exact RWF and its USD value at the rates of the day. */ rwfMinor: number; rwfUsdCents: number; costCents: number; profitCents: number; customersEver: number; payingNow: number; churned: number; firstMonth: string | null };
   mrrCents: number;
   arpuCents: number | null;
+  /** The RWF parts of MRR and ARPU (Mobile Money clients paying in RWF). */
+  mrrRwf: RwfPart;
+  arpuRwf: RwfPart | null;
   churn: { lost30: number; pct: number | null };
-  byPlan: { plan: string; netCents: number; clients: number; mrrCents: number; payingNow: number }[];
+  byPlan: { plan: string; netCents: number; clients: number; mrrCents: number; payingNow: number; netRwf: RwfPart; mrrRwf: RwfPart }[];
   clients: ClientMoney[];
 };
 
@@ -141,7 +147,9 @@ export async function getMoneyReport(opts: { months?: number; now?: Date } = {})
   const months = allMonths.map((month, i) => {
     const revenue = revenueMonths[i];
     const costs = costMonths[i];
-    return { month, revenue, costs, profitCents: Math.round(revenue.netCents - costs.totalCents), rate: rateUsed(revenue.rwfMinor, revenue.rwfUsdCents) };
+    const ofMonth = entries.filter((e) => e.month === month);
+    const rwfByMethod = { card: rwfPartOf(ofMonth.filter((e) => e.method === "card")), momo: rwfPartOf(ofMonth.filter((e) => e.method === "momo")), invoice: rwfPartOf(ofMonth.filter((e) => e.method === "invoice")) };
+    return { month, revenue, costs, profitCents: Math.round(revenue.netCents - costs.totalCents), rate: rateUsed(revenue.rwfMinor, revenue.rwfUsdCents), rwfByMethod };
   });
 
   // --- MRR, ARPU, churn ---
@@ -149,6 +157,8 @@ export async function getMoneyReport(opts: { months?: number; now?: Date } = {})
   const lastMomo = lastFullPayments(entries);
   const prices = Object.fromEntries(plans.map((p) => [p.key, { monthlyPriceCents: p.monthlyPriceCents, yearlyPriceCents: p.yearlyPriceCents }]));
   const mrr = mrrOf(payingSubs, lastMomo, prices);
+  const mrrRwfOf = mrrRwf(payingSubs, entries, mrr.byUser);
+  const clientRwf = rwfByClient(entries);
   const payingIds = new Set(payingSubs.map((s) => s.userId));
   const clientRevenue = revenueByClient(entries);
   const everPaid = clientRevenue.filter((c) => c.payments > 0);
@@ -188,16 +198,20 @@ export async function getMoneyReport(opts: { months?: number; now?: Date } = {})
       lastAt: c.lastAt.toISOString(),
       aiCostCents: u?.business ? Math.round((aiOf.get(u.business.id) ?? 0) * 100) / 100 : 0,
       mrrCents: c.userId ? (mrr.byUser.get(c.userId) ?? 0) : 0,
+      revenueRwf: clientRwf.get(c.userId ?? "") ?? NO_RWF,
+      mrrRwf: (c.userId && mrrRwfOf.get(c.userId)) || NO_RWF,
     };
   });
 
   // --- Per plan ---
-  const planRevenue = revenueByPlan(entries, (e) => (e.priceId ? priced.get(e.priceId) : undefined) ?? (e.userId ? (subOf.get(e.userId)?.plan ?? null) : null));
+  const planOfEntry = (e: RevenueEntry) => (e.priceId ? priced.get(e.priceId) : undefined) ?? (e.userId ? (subOf.get(e.userId)?.plan ?? null) : null);
+  const planRevenue = revenueByPlan(entries, planOfEntry);
+  const planRwf = rwfByPlan(entries, planOfEntry);
   const planKeys = new Set([...planRevenue.map((p) => p.plan), ...payingSubs.map((s) => s.plan)]);
   const byPlan = [...planKeys].map((plan) => {
     const r = planRevenue.find((p) => p.plan === plan);
     const subsOf = payingSubs.filter((s) => s.plan === plan);
-    return { plan, netCents: r?.netCents ?? 0, clients: r?.clients ?? 0, payingNow: subsOf.length, mrrCents: subsOf.reduce((s, x) => s + (mrr.byUser.get(x.userId) ?? 0), 0) };
+    return { plan, netCents: r?.netCents ?? 0, clients: r?.clients ?? 0, payingNow: subsOf.length, mrrCents: subsOf.reduce((s, x) => s + (mrr.byUser.get(x.userId) ?? 0), 0), netRwf: planRwf.get(plan) ?? NO_RWF, mrrRwf: sumRwf(subsOf.map((x) => mrrRwfOf.get(x.userId) ?? NO_RWF)) };
   }).sort((a, b) => b.netCents - a.netCents || b.mrrCents - a.mrrCents);
 
   const lifetimeRevenue = entries.reduce((s, e) => s + e.usdCents, 0);
@@ -210,8 +224,7 @@ export async function getMoneyReport(opts: { months?: number; now?: Date } = {})
     months: months.filter((m) => m.month >= recentFrom),
     lifetime: {
       revenueCents: lifetimeRevenue,
-      rwfMinor: entries.reduce((s, e) => s + (e.currency === "RWF" && e.localMinor !== null ? e.localMinor : 0), 0),
-      rwfUsdCents: entries.reduce((s, e) => s + (e.currency === "RWF" && e.localMinor !== null ? e.usdCents : 0), 0),
+      ...rwfPartOf(entries),
       costCents: Math.round(lifetimeCost),
       profitCents: Math.round(lifetimeRevenue - lifetimeCost),
       customersEver: everPaid.length,
@@ -221,6 +234,8 @@ export async function getMoneyReport(opts: { months?: number; now?: Date } = {})
     },
     mrrCents: mrr.totalCents,
     arpuCents: payingIds.size ? Math.round(mrr.totalCents / payingIds.size) : null,
+    mrrRwf: sumRwf(mrrRwfOf.values()),
+    arpuRwf: payingIds.size ? sumRwf(mrrRwfOf.values(), payingIds.size) : null,
     churn: { lost30, pct: payingIds.size + lost30 > 0 ? Math.round((lost30 / (payingIds.size + lost30)) * 1000) / 10 : null },
     byPlan,
     clients,

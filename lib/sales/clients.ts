@@ -21,7 +21,7 @@ export type SalesClient = {
   trialEndsAt: string | null;
   lastSignInAt: string | null;
   posts: number;
-  lastPayment: { at: string; usdCents: number } | null;
+  lastPayment: { at: string; usdCents: number; localMinor: number | null; currency: string } | null;
   agentId: string | null;
 };
 
@@ -49,11 +49,11 @@ export async function loadSalesClients(staffId: string | null): Promise<SalesCli
     }),
   ]);
   const signInOf = new Map(signIns.map((s) => [s.id, s.at]));
-  const lastPay = new Map<string, { at: string; usdCents: number }>();
+  const lastPay = new Map<string, { at: string; usdCents: number; localMinor: number | null; currency: string }>();
   for (const e of events.map(toRevenueEntry)) {
     if (e?.kind !== "payment" || !e.userId) continue;
     const seen = lastPay.get(e.userId);
-    if (!seen || seen.at < e.at.toISOString()) lastPay.set(e.userId, { at: e.at.toISOString(), usdCents: e.usdCents });
+    if (!seen || seen.at < e.at.toISOString()) lastPay.set(e.userId, { at: e.at.toISOString(), usdCents: e.usdCents, localMinor: e.localMinor, currency: e.currency });
   }
   return rows.map((r) => {
     const sub = r.user.subscription;

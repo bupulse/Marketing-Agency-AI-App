@@ -6,7 +6,7 @@ import { usageWindowStart } from "@/lib/billing/period";
 import { getPlans } from "@/lib/plan-catalog";
 import { USAGE_METRICS, type UsageMetric } from "@/lib/plans";
 import { loadRevenueEntries } from "@/lib/money/report";
-import { lastFullPayments, mrrOf } from "@/lib/money/revenue-shared";
+import { lastFullPayments, mrrOf, mrrRwf, NO_RWF, type RwfPart } from "@/lib/money/revenue-shared";
 import { healthFlags, riskLevel, riskScore, usageShareOf, type HealthFlag } from "./client-health-shared";
 import { kigaliMonthStart } from "@/lib/time/kigali";
 
@@ -29,6 +29,8 @@ export type ClientRow = {
   usageShare: number | null;
   aiCostMonthCents: number;
   mrrCents: number;
+  /** The RWF part of mrrCents (a Mobile Money client paying in RWF): exact in RWF. */
+  mrrRwf?: RwfPart;
   flags: HealthFlag[];
   risk: "high" | "medium" | "ok";
   score: number;
@@ -71,6 +73,7 @@ export async function getClientRows(now = new Date()): Promise<ClientRow[]> {
     .map((c) => ({ userId: c.userId, plan: c.user.subscription!.plan, interval: c.user.subscription!.interval, provider: c.user.subscription!.provider }));
   const prices = Object.fromEntries(plans.map((p) => [p.key, { monthlyPriceCents: p.monthlyPriceCents, yearlyPriceCents: p.yearlyPriceCents }]));
   const mrr = mrrOf(paying, lastMomo, prices).byUser;
+  const mrrRwfOf = mrrRwf(paying, entries, mrr);
 
   return companies
     .map((c) => {
@@ -100,6 +103,7 @@ export async function getClientRows(now = new Date()): Promise<ClientRow[]> {
         usageShare,
         aiCostMonthCents: Math.round((aiOf.get(c.id) ?? 0) * 100) / 100,
         mrrCents: mrr.get(c.userId) ?? 0,
+        mrrRwf: mrrRwfOf.get(c.userId) ?? NO_RWF,
         flags,
         risk: riskLevel(score),
         score,
