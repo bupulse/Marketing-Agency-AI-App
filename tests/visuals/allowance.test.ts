@@ -93,9 +93,11 @@ describe("review fixes: image packs, custom plans, refill date, render lease", (
     expect(src).toMatch(/isCustom: true,\s+businessId: input\.businessId,\s+aiMonthlyUsd,/);
   });
 
-  it("the render lease outlasts the slowest AI photo call (120 s attempt + 30 s of SDK retries + drawing)", async () => {
+  it("the render lease outlasts the slowest AI photo call (attempts, retries and waits inside one budget) plus drawing", async () => {
     const { RENDER_LEASE_MS } = await import("@/lib/visuals/service");
-    expect(RENDER_LEASE_MS).toBeGreaterThanOrEqual(120_000 + 30_000 + 60_000);
-    expect(readFileSync("lib/ai/gemini-image.ts", "utf8")).toContain("120_000,");
+    const { GEMINI_IMAGE_BUDGET_MS } = await import("@/lib/ai/gemini-image");
+    expect(GEMINI_IMAGE_BUDGET_MS).toBe(120_000);
+    expect(RENDER_LEASE_MS).toBeGreaterThanOrEqual(GEMINI_IMAGE_BUDGET_MS + 60_000);
+    expect(readFileSync("lib/ai/gemini-image.ts", "utf8")).toContain("GEMINI_IMAGE_BUDGET_MS,\n");
   });
 });

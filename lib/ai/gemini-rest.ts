@@ -3,6 +3,7 @@
 // bignumber.js and gaxios into every server bundle (about 2 MB, duplicated per route layer), too much for a
 // Cloudflare Worker (docs/DEPLOY.md, bundle size).
 import "server-only";
+import { fetchWithRetry, logProviderError } from "./http-retry";
 
 export const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -21,20 +22,30 @@ export type Interaction = {
   usage?: { total_input_tokens?: number; total_output_tokens?: number; total_thought_tokens?: number };
 };
 
-/** Creates one interaction (not stored); throws GeminiHttpError on an HTTP error, a timeout or a network failure. */
-export async function createInteraction(apiKey: string, body: Record<string, unknown>, timeoutMs: number, fetchImpl: typeof fetch = fetch): Promise<Interaction> {
+/**
+ * Creates one interaction (not stored), with retries inside `budgetMs` (lib/ai/http-retry.ts); throws GeminiHttpError on
+ * an HTTP error, a timeout, a network failure or an unreadable answer.
+ */
+export async function createInteraction(apiKey: string, body: Record<string, unknown>, budgetMs: number, fetchImpl: typeof fetch = fetch): Promise<Interaction> {
   let response: Response;
   try {
-    response = await fetchImpl(`${GEMINI_API}/interactions`, {
-      method: "POST",
-      headers: { "content-type": "application/json", accept: "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    response = await fetchWithRetry(
+      `${GEMINI_API}/interactions`,
+      { method: "POST", headers: { "content-type": "application/json", accept: "application/json", "x-goog-api-key": apiKey }, body: JSON.stringify(body) },
+      { budgetMs, fetchImpl },
+    );
   } catch {
     throw new GeminiHttpError(undefined);
   }
-  // Only the status is kept: an error body may echo the prompt.
-  if (!response.ok) throw new GeminiHttpError(response.status);
-  return (await response.json()) as Interaction;
+  if (!response.ok) {
+    // Only the error's status code is logged and kept: the message may echo the prompt.
+    await logProviderError("gemini", response, typeof body.model === "string" ? body.model : undefined);
+    throw new GeminiHttpError(response.status);
+  }
+  try {
+    return (await response.json()) as Interaction;
+  } catch {
+    // A body cut off by the time budget or a broken answer: worth another try.
+    throw new GeminiHttpError(undefined);
+  }
 }

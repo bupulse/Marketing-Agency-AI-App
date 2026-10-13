@@ -277,7 +277,7 @@ function designFor(plan: ImagePlan, slide: VisualSlide, hasPhoto: boolean): stri
 
 /**
  * How long one drawing call holds a visual: longer than the slowest call can run (the Gemini image request alone may
- * take up to 120 s, then the template and the saves), so a second call never pays for the same AI photo; a crashed
+ * take up to 120 s with its retries, GEMINI_IMAGE_BUDGET_MS, then the template and the saves), so a second call never pays for the same AI photo; a crashed
  * call frees it a few minutes later.
  */
 export const RENDER_LEASE_MS = 4 * 60 * 1000;

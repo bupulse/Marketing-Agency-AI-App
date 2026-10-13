@@ -4,7 +4,7 @@
 // forbids ("Wasm code generation disallowed by embedder"), and the base64 adds 4.4 MB to the bundle. So, for this
 // build only, the client takes the module worker.ts imports as a .wasm file (wrangler compiles it at upload, as for
 // the image codecs): the base64 leaves the bundle and the queries work on Workers. The usual client is generated again
-// afterwards unless --keep (CI: the checkout is thrown away).
+// afterwards unless --keep (CI: the checkout is thrown away), also when the build is stopped with Ctrl+C or a kill.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -32,7 +32,33 @@ export function patchClientForWorkers(source) {
 
 const run = (cmd, args) => execFileSync(cmd, args, { stdio: "inherit" });
 
+/**
+ * Runs `restore` once: from the normal end of the build, or when Ctrl+C or a kill stops it (a stopped build must not
+ * leave the patched client behind; recovery by hand is `npx prisma generate`, docs/DEPLOY.md). Returns the restorer.
+ */
+export function restoreOnExit(restore, proc = process) {
+  let done = false;
+  const once = () => {
+    if (done) return;
+    done = true;
+    restore();
+  };
+  for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]]) {
+    proc.on(signal, () => {
+      try {
+        once();
+      } finally {
+        proc.exit(code);
+      }
+    });
+  }
+  return once;
+}
+
 function main(argv) {
+  const restore = restoreOnExit(() => {
+    if (!argv.includes("--keep")) run("npx", ["prisma", "generate"]);
+  });
   run("npx", ["prisma", "generate"]);
   writeFileSync(CLASS, patchClientForWorkers(readFileSync(CLASS, "utf8")));
   try {
@@ -42,7 +68,7 @@ function main(argv) {
     mkdirSync(".open-next/prisma", { recursive: true });
     writeFileSync(WASM_OUT, Buffer.from(wasm, "base64"));
   } finally {
-    if (!argv.includes("--keep")) run("npx", ["prisma", "generate"]);
+    restore();
   }
 }
 

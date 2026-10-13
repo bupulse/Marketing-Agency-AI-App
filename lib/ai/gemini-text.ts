@@ -1,14 +1,12 @@
 import "server-only";
 import { createInteraction, type Interaction } from "./gemini-rest";
+import { isRetryableStatus } from "./http-retry";
 import { AIProviderError, type TextProvider, type TextRequest, type TextResult, type TokenUsage } from "./types";
 
 export const DEFAULT_GEMINI_TEXT_MODEL = "gemini-3.8-flash";
 // Used when the main model is busy (429/5xx). Cheaper, and usually has spare capacity.
 export const DEFAULT_GEMINI_TEXT_FALLBACK = "gemini-3.1-flash-lite";
 
-function isRetryable(status: number | undefined) {
-  return status === 429 || (status !== undefined && status >= 500);
-}
 
 function outputText(interaction: Interaction): string | undefined {
   const parts = (interaction.steps ?? [])
@@ -58,11 +56,12 @@ export class GeminiTextProvider implements TextProvider {
           generation_config: { max_output_tokens: 4096, thinking_level: "low" },
           ...(jsonSchema ? { response_format: { type: "text", mime_type: "application/json", schema: jsonSchema } } : {}),
         },
+        // The call, retries and their waits included (lib/ai/http-retry.ts).
         90_000,
       );
     } catch (error) {
       const status = (error as { status?: number }).status;
-      throw new AIProviderError(`Gemini request failed${status ? ` (${status})` : ""}`, this.name, isRetryable(status), undefined, model);
+      throw new AIProviderError(`Gemini request failed${status ? ` (${status})` : ""}`, this.name, isRetryableStatus(status), undefined, model);
     }
     const usage = usageOf(interaction);
     const text = outputText(interaction);

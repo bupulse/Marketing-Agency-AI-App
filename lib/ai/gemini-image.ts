@@ -1,7 +1,10 @@
 import "server-only";
 import { createInteraction, type Interaction } from "./gemini-rest";
+import { isRetryableStatus } from "./http-retry";
 import { AIProviderError, type ImageProvider, type ImageRequest, type ImageResult } from "./types";
 
+/** One image call, retries and their waits included (lib/ai/http-retry.ts). */
+export const GEMINI_IMAGE_BUDGET_MS = 120_000;
 const MAX_REFERENCE_BYTES = 6 * 1024 * 1024;
 
 export const DEFAULT_GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image";
@@ -60,15 +63,15 @@ export class GeminiImageProvider implements ImageProvider {
           store: false,
           response_format: { type: "image", ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}) },
         },
-        // One attempt may take up to 120 s: RENDER_LEASE_MS in lib/visuals/service.ts covers it.
-        120_000,
+        // The call, retries and their waits included, takes at most 120 s: RENDER_LEASE_MS in lib/visuals/service.ts covers it.
+        GEMINI_IMAGE_BUDGET_MS,
       );
     } catch (error) {
       const status = (error as { status?: number }).status;
       throw new AIProviderError(
         `Gemini image request failed${status ? ` (${status})` : ""}`,
         this.name,
-        status === 429 || (status !== undefined && status >= 500),
+        status === undefined || isRetryableStatus(status),
         undefined,
         this.model,
       );
