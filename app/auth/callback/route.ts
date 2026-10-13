@@ -2,12 +2,13 @@ import { NextResponse, type NextRequest } from "next/server";
 import { allowGoogleSignIn, ensureAccount } from "@/lib/account";
 import { safeNext } from "@/lib/auth/safe-next";
 import { hasReturn, RETURN_COOKIE, returnCookieOptions } from "@/lib/auth/return-path";
-import { siteUrl } from "@/lib/auth/site-url";
+import { originFor } from "@/lib/auth/site-url";
 import { createClient } from "@/lib/supabase/server";
 
 // Supabase sends users here from Google.
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = request.nextUrl;
+  const { searchParams } = request.nextUrl;
+  const origin = originFor(request.headers); // the tunnel's or live address, never the dev server's own
   const code = searchParams.get("code");
   const next = safeNext(searchParams.get("next"));
 
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
       }
       await ensureAccount(data.user, { visitSession: searchParams.get("vs") });
       const response = NextResponse.redirect(`${origin}${next}`);
-      if (hasReturn(next)) response.cookies.set(RETURN_COOKIE, next, returnCookieOptions(siteUrl().startsWith("https://")));
+      if (hasReturn(next)) response.cookies.set(RETURN_COOKIE, next, returnCookieOptions(origin.startsWith("https://")));
       return response;
     }
   }

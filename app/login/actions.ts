@@ -1,11 +1,12 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { findAccountByEmail } from "@/lib/account";
 import { createClient } from "@/lib/supabase/server";
 import { fieldErrors, signInSchema, type FieldErrors } from "@/lib/auth/schemas";
 import { safeNext } from "@/lib/auth/safe-next";
-import { siteUrl } from "@/lib/auth/site-url";
+import { originFor } from "@/lib/auth/site-url";
 import { rememberReturn } from "@/lib/auth/return-server";
 import { publicLimited } from "@/lib/request-limits";
 
@@ -58,7 +59,7 @@ export async function signInWithGoogle(formData: FormData) {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${siteUrl()}/auth/callback?next=${encodeURIComponent(next)}${/^[A-Za-z0-9_-]{8,40}$/.test(visit) ? `&vs=${visit}` : ""}`,
+      redirectTo: `${originFor(await headers())}/auth/callback?next=${encodeURIComponent(next)}${/^[A-Za-z0-9_-]{8,40}$/.test(visit) ? `&vs=${visit}` : ""}`,
     },
   });
   if (error || !data.url) redirect("/login?error=google");

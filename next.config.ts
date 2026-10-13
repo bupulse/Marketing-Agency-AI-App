@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   // Development only: the dev server blocks its scripts and live-reload for any host but localhost. The test tunnel
   // (test.bupulse.com → localhost:3001) needs to be allowed, or pages load but no button works there.
   allowedDevOrigins: ["test.bupulse.com"],
+  // Hide the Next.js dev-tools button (the "N" bubble): the test site is shown to people as the real thing.
+  devIndicators: false,
   // Inlined at build time for the admin Updates page (lib/version.ts). BUILD_SHA comes from the deploy workflow.
   // BUPULSE_BUILD_PLATFORM: "netlify" when Netlify builds the app (it sets NETLIFY=true), else PLATFORM or empty, read by
   // lib/platform/detect.ts when PLATFORM is not set at runtime.

@@ -5,7 +5,8 @@ import { findAccountByEmail } from "@/lib/account";
 import { logError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 import { emailSchema, fieldErrors, signUpSchema, type FieldErrors } from "@/lib/auth/schemas";
-import { siteUrl } from "@/lib/auth/site-url";
+import { headers } from "next/headers";
+import { originFor } from "@/lib/auth/site-url";
 import { cleanReturn } from "@/lib/auth/return-path";
 import { resolveIndustryChoice } from "@/lib/industries/server";
 import { padTo, publicLimited, requestIp } from "@/lib/request-limits";
@@ -108,7 +109,7 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
     email: v.email,
     password: v.password,
     options: {
-      emailRedirectTo: `${siteUrl()}/auth/confirm?next=${encodeURIComponent(next)}`,
+      emailRedirectTo: `${originFor(await headers())}/auth/confirm?next=${encodeURIComponent(next)}`,
       data: {
         organisation_name: v.organisationName,
         ceo_name: v.ceoName,
@@ -148,7 +149,7 @@ export async function resendConfirmation(email: string, next?: string): Promise<
   const { error } = await supabase.auth.resend({
     type: "signup",
     email: parsed.data,
-    options: { emailRedirectTo: `${siteUrl()}/auth/confirm?next=${encodeURIComponent(cleanReturn(next))}` },
+    options: { emailRedirectTo: `${originFor(await headers())}/auth/confirm?next=${encodeURIComponent(cleanReturn(next))}` },
   });
   if (error) {
     await logError(error, { source: "signup.resend", code: error.code, status: error.status });
