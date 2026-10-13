@@ -13,6 +13,7 @@ import { getProvider, isNetwork } from "@/lib/social/registry";
 import { NETWORKS, type Network } from "@/lib/social/types";
 import { createClient } from "@/lib/supabase/server";
 import { readItems } from "@/lib/visuals/service";
+import { scriptLines } from "@/lib/visuals/video-plan";
 import { contentWhere, startOfToday, type ContentFilters, type ContentScope } from "./filters";
 import { buildSubjectCards, GENERAL_LABEL, GENERAL_NAME, type CountRow, type SubjectCard, type SubjectRow } from "./grouping";
 import { isPostKind, type PostKind } from "./kind";
@@ -26,6 +27,9 @@ export type ContentPost = CalendarPost & {
   reviewNote: string | null;
   autoScheduledAt: string | null;
   kind: PostKind;
+  /** What the card shows: the caption. A video idea's text is its script, so its card shows the content's caption
+   * (or the script's spoken lines, without timestamps and scene directions); the script stays in the detail. */
+  excerpt: string;
   /** A still for a video post (the content's picture), signed; null when there is none. */
   poster: string | null;
   subject: { kind: "product" | "campaign"; id: string; name: string } | null;
@@ -71,9 +75,23 @@ async function postersFor(businessId: string, rows: PostRow[]): Promise<Map<stri
   return out;
 }
 
+/** Captions of the content versions video ideas were written from. */
+async function captionsFor(businessId: string, rows: PostRow[]): Promise<Map<string, string>> {
+  const ids = [...new Set(rows.flatMap((r) => (r.format === "SCRIPT" && r.contentId ? [r.contentId] : [])))];
+  if (ids.length === 0) return new Map();
+  const contents = await prisma.generatedContent.findMany({ where: { businessId, id: { in: ids } }, select: { id: true, caption: true } });
+  return new Map(contents.map((c) => [c.id, c.caption]));
+}
+
+/** The card's text: the caption, never a video script's timestamps and directions. Pure. */
+export function cardExcerpt(post: { format: string; title: string | null; text: string }, contentCaption?: string): string {
+  if (post.format === "SCRIPT") return contentCaption?.trim() || scriptLines(post.text).join(" ");
+  return ((post.title ? `${post.title}. ` : "") + post.text).trim();
+}
+
 /** Post rows as cards, with every photo and poster signed in one batch. */
 export async function toContentPosts(businessId: string, rows: PostRow[]): Promise<ContentPost[]> {
-  const posters = await postersFor(businessId, rows);
+  const [posters, captions] = await Promise.all([postersFor(businessId, rows), captionsFor(businessId, rows)]);
   const signed = await sign([...rows.flatMap((r) => r.mediaPaths), ...posters.values()]);
   return rows.map((r) => {
     const network = r.network as Network;
@@ -106,6 +124,7 @@ export async function toContentPosts(businessId: string, rows: PostRow[]): Promi
       autoScheduledAt: r.autoScheduledAt?.toISOString() ?? null,
       remindOnly: !r.connection && r.remindOnly,
       kind: isPostKind(r.mediaKind) ? r.mediaKind : "post",
+      excerpt: cardExcerpt(r, r.contentId ? captions.get(r.contentId) : undefined),
       poster: poster ? (signed.get(poster) ?? null) : null,
       subject: r.product ? { kind: "product", id: r.product.id, name: r.product.name } : r.campaign ? { kind: "campaign", id: r.campaign.id, name: r.campaign.name } : null,
     };
