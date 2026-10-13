@@ -45,9 +45,18 @@ export function useVideoRender(visual: VisualView | null, onDone?: () => void) {
           return;
         }
         setPhase("rendering");
+        // The server made (or reused) the voiceover and timed the scenes to it: render that plan, with its sounds.
+        const plan = lease.plan ?? visual.videoPlan;
         let result;
         try {
-          result = await renderVideo(visual.videoPlan, { photoUrls: visual.photoUrls, music, onProgress: setProgress, signal: controller.signal });
+          result = await renderVideo(plan, {
+            photoUrls: { ...visual.photoUrls, ...lease.photoUrls },
+            music,
+            voiceUrl: lease.audioUrls.voice ?? null,
+            musicUrl: lease.audioUrls.music ?? null,
+            onProgress: setProgress,
+            signal: controller.signal,
+          });
         } catch (e) {
           const message = e instanceof VideoRenderError ? e.message : "We could not make the video in this browser. Please try again.";
           if (!(e instanceof VideoRenderError && e.reason === "aborted")) await reportVideoFailure(visual.id, message);
@@ -55,7 +64,7 @@ export function useVideoRender(visual: VisualView | null, onDone?: () => void) {
           setPhase("error");
           return;
         }
-        setMusicSkipped(!!music && result.musicSkipped);
+        setMusicSkipped(result.musicSkipped);
         setPhase("uploading");
         const target = await startVideoUpload(visual.id, { bytes: result.blob.size, mimeType: result.mimeType, durationMs: result.durationMs });
         if (!target.ok) throw new Error(target.error);

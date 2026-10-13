@@ -135,7 +135,15 @@ On the day view's "Pictures and videos" (Content, docs/CONTENT.md) and the Autop
 | Edit text | headline, subline, chip per slide, redrawn | free |
 | New picture | fresh art direction, the old slides go (unless a post uses them) | art director call; AI photo uses a credit |
 | Remove | slide designs and video file go unless a post uses them; AI photos stay in Designs | none |
-| Edit captions / Make it again / Add your music | new video plan or same plan, rendered again | video seconds again |
+| Edit captions / Make it again / Add your music / music or voice change | new video plan or same plan, rendered again | only the seconds beyond the current video |
+
+**Remakes** (fix from the Chrome test, 13 October 2026): a video that already exists is replaced, not paid again. The
+seconds of the current video (`remakeCredit`: the visual's billed `seconds` while its file is there) are not counted
+again; a longer remake counts only the extra seconds (`prepareVideoUpload` and `finalizeVideo`, browser and robot
+alike). A remake that would need more seconds than are left is refused before it starts, with that message
+(`assertRemakeAllowed`, in captions, photos, music and voice changes). The current file stays on the panel and on its
+posts (`readyMedia` takes a video being made again, pending or failed) until the new one is confirmed; a refused or
+failed remake keeps it. After the 30-day clean-up removed the file, a remake is a new video and counts in full.
 
 Edited content versions keep their visuals (`carryVisuals`); pruned versions release theirs (`releaseContentVisuals`).
 

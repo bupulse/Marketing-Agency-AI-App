@@ -145,7 +145,7 @@ export async function linkInTx(tx: Tx, kind: AlbumKind, albumId: string, assetId
   return fresh.length;
 }
 
-type UsageDb = Pick<Tx, "mediaAsset"> & Partial<Pick<Tx, "contentVisual">>;
+type UsageDb = Pick<Tx, "mediaAsset"> & Partial<Pick<Tx, "contentVisual" | "voiceClip">>;
 
 /**
  * Rendered content videos (docs/CONTENT_VISUALS.md) live in the same bucket and count like photos, and so does every
@@ -158,7 +158,12 @@ async function videoUsage(db: UsageDb, businessId?: string, now = new Date()): P
     db.contentVisual.aggregate({ where: { kind: "video", bytes: { gt: 0 }, ...scope }, _count: { _all: true }, _sum: { bytes: true } }),
     db.contentVisual.aggregate({ where: { kind: "video", uploadExpiresAt: { gt: now }, ...scope }, _count: { _all: true }, _sum: { uploadBytes: true } }),
   ]);
-  return { count: (stored?._count?._all ?? 0) + (reserved?._count?._all ?? 0), bytes: (stored?._sum?.bytes ?? 0) + (reserved?._sum?.uploadBytes ?? 0) };
+  // Voiceovers (docs/VOICE_AND_MUSIC.md) are files in the same bucket too.
+  const voice = db.voiceClip ? await db.voiceClip.aggregate({ where: { ...scope, status: "ready" }, _count: { _all: true }, _sum: { bytes: true } }) : null;
+  return {
+    count: (stored?._count?._all ?? 0) + (reserved?._count?._all ?? 0) + (voice?._count?._all ?? 0),
+    bytes: (stored?._sum?.bytes ?? 0) + (reserved?._sum?.uploadBytes ?? 0) + (voice?._sum?.bytes ?? 0),
+  };
 }
 
 /** What counts toward the company's quota: every photo except the ones the migration copied from old projects, and every rendered video. */

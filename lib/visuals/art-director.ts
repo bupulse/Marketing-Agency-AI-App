@@ -26,6 +26,7 @@ Rules:
 - In a carousel only the cover is "ai"; the other slides are "none" (designed slides with the tips or prices over the cover photo) or "album".
 - "people" describes who is in the AI photo: age band, gender and role from the lists, then the activity, place, mood and framing in English. They are adults who look like the company's customers in its country (see AUDIENCE), in natural everyday clothes. Never a real or famous person or a lookalike, no children, nothing medical, no before-and-after.
 - The scene describes what is photographed besides the people, in English, with no text, words, logos, prices or offers in the picture.
+- "mood" is the feel of the post's video music: upbeat, calm, corporate, inspiring, afro (amapiano style), acoustic, warm or energetic.
 - Pick the style pack that fits the brand voice and industry; keep the recommended one unless the post clearly needs another.
 Return only the requested JSON.`;
 

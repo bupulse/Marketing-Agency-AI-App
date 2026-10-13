@@ -11,7 +11,8 @@ describe("plans", () => {
   it("gives higher plans at least the limits of lower ones", () => {
     for (const metric of Object.keys(PLANS.TRIAL.limits) as (keyof typeof PLANS.TRIAL.limits)[]) {
       // The trial's one sample video is the exception: Standard has no video (it is sold as an add-on).
-      if (metric !== "videoSeconds") expect(PLANS.STANDARD.limits[metric]).toBeGreaterThanOrEqual(PLANS.TRIAL.limits[metric]);
+      // The trial's sample voiceover too.
+      if (metric !== "videoSeconds" && metric !== "voiceCharacters") expect(PLANS.STANDARD.limits[metric]).toBeGreaterThanOrEqual(PLANS.TRIAL.limits[metric]);
       expect(PLANS.PRO.limits[metric]).toBeGreaterThanOrEqual(PLANS.STANDARD.limits[metric]);
     }
   });

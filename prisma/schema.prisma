@@ -108,6 +108,7 @@ model Business {
   demoBookings     DemoBooking[]
   designs          Design[]
   contentVisuals   ContentVisual[]
+  voiceClips       VoiceClip[]
   leads            Lead[]
   connections      Connection[]
   posts            Post[]
@@ -907,6 +908,52 @@ model ContentVisual {
   @@index([groupId])
   @@index([businessId, kind])
   @@index([kind, status, createdAt])
+}
+
+// A voiceover made by the text-to-speech provider (docs/VOICE_AND_MUSIC.md): the MP3 in the media bucket at
+// <userId>/voice/<hash>.mp3, reused for the same text and voice (hash), counted toward the media quota.
+model VoiceClip {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  hash       String // sha-256 of voice id, model, take and text
+  voiceId    String
+  // speaking: one render is asking the voice service now (others wait); ready: the file is stored; spoken: paid for
+  // but not stored yet (the audio waits in pendingAudio, so a retry stores it instead of paying again); too_long: the
+  // voice ran past 30 seconds (never spoken again).
+  status     String   @default("ready")
+  path       String? // voice/<businessId>/<hash>.mp3 in the media bucket, once stored
+  pendingAudio Bytes?
+  bytes      Int
+  characters Int
+  durationMs Int
+  // Start and end of each spoken sentence in milliseconds, in order: [{ startMs, endMs }]
+  timings    Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@unique([businessId, hash])
+}
+
+// The royalty-free music library (docs/VOICE_AND_MUSIC.md): tracks uploaded by the admin, with their licence.
+model MusicTrack {
+  id          String   @id @default(cuid())
+  title       String
+  moods       String[] // lib/music/tracks.ts MOODS
+  bpm         Int?
+  licence     String // licence name, e.g. "Pixabay Content License"
+  sourceUrl   String
+  attribution String // shown where the licence requires it
+  path        String   @unique // <id>.<ext> in the public "music" bucket
+  mimeType    String
+  bytes       Int
+  durationMs  Int?
+  active      Boolean  @default(true)
+  createdBy   String // AuditLog actor
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
 }
 
 model AiCall {

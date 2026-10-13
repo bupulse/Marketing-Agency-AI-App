@@ -11,7 +11,7 @@ import { accountUsable } from "@/lib/publishing/service";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import type { Network } from "@/lib/social/types";
 import { mediaForPost } from "@/lib/visuals/post-media";
-import { readyMedia } from "@/lib/visuals/service";
+import { readyMedia, withMusicCredit } from "@/lib/visuals/service";
 import { autoSchedule, type AutoResult } from "./auto";
 import { draftTargets } from "./by-hand";
 
@@ -74,7 +74,7 @@ export async function draftPostsFromContent(owner: { businessId: string }, conte
       status: "PENDING_APPROVAL" as const,
       format: media.format,
       source: "STUDIO" as const,
-      text: draft.text,
+      text: visual.video && media.mediaPaths.includes(visual.video) ? withMusicCredit(draft.text, visual.videoCredit) : draft.text,
       hashtags: draft.hashtags,
       mediaPaths: media.mediaPaths,
     };

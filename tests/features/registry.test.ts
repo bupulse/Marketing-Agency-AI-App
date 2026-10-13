@@ -31,8 +31,9 @@ describe("the feature registry", () => {
   });
 
   it("covers the catalog of the launch plan (section 4)", () => {
-    expect(BUILT_FEATURE_KEYS).toEqual(["content", "designs", "aiPhotos", "calendar", "gallery", "websiteChat", "autopilot", "analytics", "canva", "storeImport", "driveImport", "webhooks", "apiAccess", "ownComposio", "managed", "video"]);
-    expect(FEATURES.filter((f) => f.status === "coming_soon").map((f) => f.key)).toEqual(["voice"]);
+    expect(BUILT_FEATURE_KEYS).toEqual(["content", "designs", "aiPhotos", "calendar", "gallery", "websiteChat", "autopilot", "analytics", "canva", "storeImport", "driveImport", "webhooks", "apiAccess", "ownComposio", "managed", "video", "voice"]);
+    // Voiceover was the last "coming soon" feature (built 13 October 2026, docs/VOICE_AND_MUSIC.md).
+    expect(FEATURES.filter((f) => f.status === "coming_soon").map((f) => f.key)).toEqual([]);
     expect(FEATURES.filter((f) => f.kind === "service").map((f) => f.key)).toEqual(["ownComposio", "managed"]);
     expect(FEATURES.find((f) => f.key === "autopilot")!.requires).toEqual(["content", "designs", "calendar", "gallery"]);
     expect(FEATURES.find((f) => f.key === "aiPhotos")!.requires).toEqual(["designs"]);
@@ -103,18 +104,16 @@ describe("validateFeatureSet", () => {
     expect(validateFeatureSet([])).toEqual({ ok: true, keys: [] });
   });
 
-  it("names unknown keys, coming-soon keys and missing prerequisites, in words", () => {
-    const out = validateFeatureSet(["autopilot", "voice", "nope", "designs"]);
+  it("names unknown keys and missing prerequisites, in words", () => {
+    const out = validateFeatureSet(["autopilot", "nope", "designs"]);
     expect(out.ok).toBe(false);
     if (out.ok) return;
     expect(out.problems).toEqual([
-      { kind: "coming_soon", key: "voice" },
       { kind: "unknown", key: "nope" },
       { kind: "missing", key: "content", neededBy: ["autopilot"] },
       { kind: "missing", key: "calendar", neededBy: ["autopilot"] },
       { kind: "missing", key: "gallery", neededBy: ["autopilot"] },
     ]);
-    expect(out.message).toContain("Voiceover is coming soon");
     expect(out.message).toContain('"nope" is not a feature');
     expect(out.message).toContain("AI content is needed by Autopilot");
   });
@@ -138,10 +137,10 @@ describe("the seed plans and the plan_features migration agree", () => {
   const sql = readFileSync("prisma/migrations/20261009110000_plan_features/migration.sql", "utf8");
 
   it("core = every built app feature but the API; Pro = all of them plus own Composio; Managed is sold apart", () => {
-    expect(CORE_FEATURES).toEqual(BUILT_APP_FEATURE_KEYS.filter((k) => k !== "apiAccess" && k !== "video"));
+    expect(CORE_FEATURES).toEqual(BUILT_APP_FEATURE_KEYS.filter((k) => k !== "apiAccess" && k !== "video" && k !== "voice"));
     expect(PRO_FEATURES).toEqual(sortFeatureKeys([...BUILT_APP_FEATURE_KEYS, "ownComposio"]));
     expect(PRO_FEATURES).not.toContain("managed");
-    expect(SEED_PLANS.TRIAL.features).toEqual(sortFeatureKeys([...CORE_FEATURES, "video"])); // one sample video
+    expect(SEED_PLANS.TRIAL.features).toEqual(sortFeatureKeys([...CORE_FEATURES, "video", "voice"])); // one sample video
     expect(SEED_PLANS.STANDARD.features).toEqual(CORE_FEATURES);
     expect(SEED_PLANS.PRO.features).toEqual(PRO_FEATURES);
     for (const plan of Object.values(SEED_PLANS)) expect(validateFeatureSet(plan.features).ok, plan.name).toBe(true);

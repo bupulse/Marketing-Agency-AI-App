@@ -7,6 +7,8 @@ import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { recommendPack } from "@/lib/designs/packs";
+import { moodFor } from "@/lib/music/tracks";
+import { trackForVideo } from "@/lib/music/service";
 import { getProvider } from "@/lib/social/registry";
 import { directVisual } from "@/lib/visuals/art-director";
 import type { Audience } from "@/lib/visuals/people";
@@ -134,6 +136,8 @@ async function planGroupVideo(group: PlannedGroup, written: WrittenGroup, ctx: V
     pack: recommendPack(ctx.business),
     colors: ctx.business.brandColors,
   });
+  plan.mood = moodFor({ tone: ctx.business.tone });
+  plan.music = await trackForVideo(plan.mood, group.groupId);
   await prisma.contentVisual.create({ data: { businessId: ctx.businessId, groupId: group.groupId, kind: "video", status: "pending", plan: json(plan), items: json([]) } });
 }
 

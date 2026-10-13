@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { isPackId, PACKS, recommendPack, type PackId } from "@/lib/designs/packs";
 import { isTemplateId, TEMPLATES, templatesForProjectType, type TemplateId } from "@/lib/designs/templates/registry";
+import { isMood, MOODS } from "@/lib/music/tracks";
 import { defaultPeople, peopleSchema, peopleScene, readPeople, type Audience, type PeopleBrief } from "./people";
 import { VISUAL_LIMITS, type ImagePlan, type SlideSource, type VisualSlide } from "./types";
 
@@ -28,6 +29,7 @@ export const directionSchema = z.object({
   pack: z.string().describe(`One of: ${PACKS.map((p) => p.id).join(", ")}`),
   slides: z.array(slideSchema).min(1),
   people: peopleSchema.describe("The people in the AI photo: everyday local customers or staff, in English"),
+  mood: z.enum(MOODS).describe("The mood of the post's video music"),
 });
 
 export type Direction = z.infer<typeof directionSchema>;
@@ -246,7 +248,7 @@ export function fallbackPlan(ctx: DirectionContext, notes: string[] = []): Image
  */
 export function validateDirection(raw: unknown, ctx: DirectionContext): ImagePlan {
   // An answer without the people brief is still usable: BuPulse writes the brief itself.
-  const parsed = directionSchema.extend({ people: z.unknown().optional() }).safeParse(raw);
+  const parsed = directionSchema.extend({ people: z.unknown().optional(), mood: z.unknown().optional() }).safeParse(raw);
   if (!parsed.success) return fallbackPlan(ctx, ["BuPulse chose this design for you."]);
   const d = parsed.data;
   const pack: PackId = isPackId(d.pack) ? d.pack : recommendPack(ctx.business);
@@ -288,7 +290,7 @@ export function validateDirection(raw: unknown, ctx: DirectionContext): ImagePla
   }
   const usesAi = slides.some((s) => s.source === "ai");
   const people = usesAi ? (readPeople(d.people) ?? defaultPeople(ctx.audience, ctx.title, ctx.angle?.people)) : undefined;
-  return { version: 1, pack, aspectRatio: "4:5", slides: withPeople(slides, ctx, people ?? null), directedBy: "ai", notes, ...(people ? { people } : {}) };
+  return { version: 1, pack, aspectRatio: "4:5", slides: withPeople(slides, ctx, people ?? null), directedBy: "ai", notes, ...(people ? { people } : {}), ...(isMood(d.mood) ? { mood: d.mood } : {}) };
 }
 
 /**

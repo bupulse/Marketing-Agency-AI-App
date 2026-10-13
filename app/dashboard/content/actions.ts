@@ -13,6 +13,8 @@ import { assertFeature, FeatureRequiredError } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
 import { ForbiddenError } from "@/lib/team/roles";
+import { voicePreviewUrl } from "@/lib/ai/tts";
+import { isVoiceId } from "@/lib/voice/voices";
 
 export type SettingsResult = { ok: true } | { ok: false; error: string };
 
@@ -116,4 +118,19 @@ export async function scheduleAllAction(items: { id: string; local?: string | nu
     await logError(error, { source: "content.schedule-all" });
     return { ok: false, error: "We could not schedule the posts. Please try again." };
   }
+}
+
+/** A voice's public sample from the voice service (costs no characters), for Content -> Settings. */
+export async function previewVoiceAction(voiceId: string): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  try {
+    const user = await requireActiveUser("content", "throw");
+    await rateLimit(`content:voice-preview:${user.id}`, { limit: 60, windowSeconds: 60 * 60 });
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { ok: false, error: error.message };
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    throw error;
+  }
+  if (!isVoiceId(voiceId)) return { ok: false, error: "Pick one of the voices." };
+  const url = await voicePreviewUrl(voiceId);
+  return url ? { ok: true, url } : { ok: false, error: "This voice's sample is not available right now." };
 }

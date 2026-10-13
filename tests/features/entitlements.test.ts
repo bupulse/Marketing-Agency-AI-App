@@ -63,7 +63,8 @@ describe("a plan's features are validated when saved", () => {
   it("refuses a missing prerequisite, an unknown key and a coming-soon feature, with the reason", async () => {
     const code = async (p: Promise<unknown>) => p.then(() => null, (e: { code: string; message: string }) => `${e.code}: ${e.message}`);
     expect(await code(updatePlan(CONSOLE, "STANDARD", { features: ["autopilot"] }))).toMatch(/^invalid: AI content is needed by Autopilot/);
-    expect(await code(updatePlan(CONSOLE, "STANDARD", { features: ["content", "voice"] }))).toMatch(/^invalid: Voiceover is coming soon/);
+    // Voiceover needs Videos (its prerequisite).
+    expect(await code(updatePlan(CONSOLE, "STANDARD", { features: ["content", "voice"] }))).toMatch(/^invalid: Videos is needed by Voiceover/);
     expect(await code(updatePlan(CONSOLE, "STANDARD", { features: ["content", "nope"] }))).toMatch(/^invalid: "nope" is not a feature/);
     expect((await getPlan("STANDARD"))!.features).toEqual(CORE_FEATURES);
   });

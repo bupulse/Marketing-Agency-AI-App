@@ -14,6 +14,8 @@ import { rateLimit, RateLimitError, type RateLimitRule } from "@/lib/rate-limit"
 import { finalizeVideo, prepareVideoUpload, ROBOT_LEASE_MS, videoAvailable, VisualError } from "./service";
 import { VIDEO_LIMITS, type VideoPlan } from "./types";
 import { readVideoPlan } from "./video-plan";
+import { musicUrl } from "@/lib/music/service";
+import { ensureVoiceover } from "@/lib/voice/service";
 
 export { ROBOT_LEASE_MS };
 /** Failed robot renders after which the video is left to the owner's browser ("needs browser render"). */
@@ -75,6 +77,8 @@ export interface RobotJob {
   plan: VideoPlan;
   /** Signed download URLs of the scene photos, keyed by the plan's photo paths (what the renderer looks up). */
   photoUrls: Record<string, string>;
+  /** The voiceover (signed) and the library track (public), when the video has them (docs/VOICE_AND_MUSIC.md). */
+  audioUrls: { voice?: string; music?: string };
   /** Where to PUT the file: a signed upload URL reserved through the same checks as the browser's upload. */
   upload: { url: string; contentType: "video/mp4" | "video/webm" };
   /** When the lease ends; the robot gives up on the video before then. */
@@ -94,6 +98,22 @@ async function signScenePhotos(userId: string, plan: VideoPlan): Promise<Record<
       for (const d of data ?? []) if (d.path && d.signedUrl) out[d.path] = d.signedUrl;
     }),
   );
+  return out;
+}
+
+/**
+ * The voiceover (signed, only the company's own file; or the audio itself when it could not be stored) and the
+ * library track (public) of a plan.
+ */
+export async function audioUrlsFor(businessId: string, plan: VideoPlan, voiceDataUrl?: string): Promise<{ voice?: string; music?: string }> {
+  const out: { voice?: string; music?: string } = {};
+  const voice = plan.voice?.enabled !== false ? plan.voice?.path : null;
+  if (voiceDataUrl && plan.voice?.enabled !== false) out.voice = voiceDataUrl;
+  else if (voice && voice.startsWith(`voice/${businessId}/`) && !voice.includes("..")) {
+    const { data } = await createAdminClient().storage.from("media").createSignedUrl(voice, PHOTO_URL_SECONDS);
+    if (data?.signedUrl) out.voice = data.signedUrl;
+  }
+  if (plan.music?.path) out.music = musicUrl(plan.music.path);
   return out;
 }
 
@@ -160,8 +180,11 @@ export async function claimRobotVideos(options: { max?: number; format?: RobotFo
 
     const owner = { userId, businessId: row.businessId, service: true };
     try {
-      const target = await prepareVideoUpload(owner, row.id, { bytes: VIDEO_LIMITS.maxBytes, mimeType, durationMs: plan.totalMs });
-      jobs.push({ job, plan, photoUrls: await signScenePhotos(userId, plan), upload: { url: target.signedUrl, contentType: mimeType }, leaseUntil: leaseUntil.toISOString() });
+      // The voiceover is made (or reused) now, so the robot's video sounds like the owner's browser would make it.
+      const prepared = await ensureVoiceover(owner, row.id).catch(() => null);
+      const voiced = prepared?.plan ?? plan;
+      const target = await prepareVideoUpload(owner, row.id, { bytes: VIDEO_LIMITS.maxBytes, mimeType, durationMs: voiced.totalMs });
+      jobs.push({ job, plan: voiced, photoUrls: await signScenePhotos(userId, voiced), audioUrls: await audioUrlsFor(row.businessId, voiced, prepared?.voiceDataUrl), upload: { url: target.signedUrl, contentType: mimeType }, leaseUntil: leaseUntil.toISOString() });
     } catch (error) {
       await releaseLease(row.id, job, { robotAttempts: { decrement: 1 } }).catch(() => {});
       // Seconds used up, quota full, other uploads open: the owner's problem, not the robot's; tried again next run.
