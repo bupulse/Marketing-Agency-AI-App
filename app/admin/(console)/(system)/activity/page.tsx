@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { ActivityFeed } from "@/components/admin/activity-feed";
 import { Panel } from "@/components/admin/ui";
@@ -7,7 +7,7 @@ import { getActivity } from "@/lib/admin/activity";
 export const metadata = { title: "Live activity" };
 
 export default async function ActivityPage() {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("system"); // pages render alongside the layout, so check here too
   const initial = await getActivity({ limit: 40 });
   return (
     <>

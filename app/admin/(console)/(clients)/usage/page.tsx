@@ -1,13 +1,13 @@
 import { PageHeader } from "@/components/app";
 import { UsageView } from "@/components/admin/clients/usage-view";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { getClientRows } from "@/lib/admin/client-health";
 import { param } from "@/lib/admin/format";
 
 export const metadata = { title: "Usage per client" };
 
 export default async function UsagePage({ searchParams }: PageProps<"/admin/usage">) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("clients.view"); // pages render alongside the layout, so check here too
   const s = param((await searchParams).sort);
   const sort = s === "margin" || s === "name" ? s : "cost";
   const rows = await getClientRows();

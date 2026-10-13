@@ -57,7 +57,7 @@ function readForm(f: FormData, isTrial: boolean): Partial<PlanInput> {
 
 /** Create or edit. A price change on an existing plan first answers with the confirm step; the same form then re-submits with confirmPrice=1. */
 export async function savePlanAction(_prev: PlanFormState, f: FormData): Promise<PlanFormState> {
-  const ctx = await adminAction();
+  const ctx = await adminAction("plans.manage");
   const mode = text(f, "mode");
   let destination: string;
   try {
@@ -97,26 +97,26 @@ export async function savePlanAction(_prev: PlanFormState, f: FormData): Promise
 }
 
 export async function syncPlanAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("plans.manage");
   const key = text(f, "key");
   await finish(`/admin/plans/${encodeURIComponent(key)}`, "Synced with Paddle.", () => syncPlanToPaddle(ctx, key));
 }
 
 export async function retirePlanAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("plans.manage");
   const key = text(f, "key");
   const status = text(f, "status") as PlanStatus;
   await finish(`/admin/plans/${encodeURIComponent(key)}`, status === "retired" ? "Plan retired. Existing clients stay on it." : `Plan is now ${status}.`, () => updatePlan(ctx, key, { status }));
 }
 
 export async function cancelPriceChangeAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("plans.manage");
   const key = text(f, "key");
   await finish(`/admin/plans/${encodeURIComponent(key)}`, "Price change stopped. Clients not yet moved keep their price.", () => cancelPriceChange(ctx, text(f, "id")));
 }
 
 export async function retryPriceChangeAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("plans.manage");
   const key = text(f, "key");
   await finish(`/admin/plans/${encodeURIComponent(key)}`, "Queued again. The next run picks them up.", () => retryFailedPriceItems(ctx, text(f, "id")));
 }

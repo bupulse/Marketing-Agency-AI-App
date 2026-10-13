@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { findAccountByEmail } from "@/lib/account";
+import { refFromCookie } from "@/lib/sales/referral";
 import { logError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 import { emailSchema, fieldErrors, signUpSchema, type FieldErrors } from "@/lib/auth/schemas";
@@ -122,6 +123,8 @@ export async function signUp(_prev: SignUpState, formData: FormData): Promise<Si
         phone: v.phone ?? "",
         website: v.website ?? "",
         visit_session: String(formData.get("visitSession") ?? "").slice(0, 40),
+        // A sales agent's referral code from the cookie, so a confirmation opened on another device still counts.
+        ref_code: (await refFromCookie()) ?? "",
       },
     },
   });

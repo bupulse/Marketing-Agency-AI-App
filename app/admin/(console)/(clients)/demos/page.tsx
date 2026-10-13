@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { Empty, Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
@@ -35,7 +35,7 @@ const SUB: Record<string, { label: string; tone: BadgeTone }> = {
 };
 
 export default async function DemosPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("demos"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const when = (["upcoming", "past", "all"] as const).find((w) => w === param(sp.when)) ?? "upcoming";
   const status = param(sp.status);

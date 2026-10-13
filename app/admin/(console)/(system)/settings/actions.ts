@@ -17,24 +17,24 @@ const NAMES: SettingName[] = ["trialDays", "usdToRwf", "cardMarginPercent", "mee
 
 /** Saves whichever settings the form carries (one form per panel). */
 export async function saveSettingsAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("system");
   await finish(BACK, "Settings saved.", async () => {
     for (const name of NAMES) if (f.has(name)) await setSetting(ctx, name, text(f, name));
   });
 }
 
 export async function recomputeCardPricesAction() {
-  const ctx = await adminAction();
+  const ctx = await adminAction("plans.manage");
   await finish(BACK, (r) => (r.changed === 0 ? "Card prices were already up to date." : `${r.changed} card ${r.changed === 1 ? "price" : "prices"} recomputed. Creating them in Paddle is still to do (docs/REGIONS.md).`), () => recomputeCardPrices(ctx));
 }
 
 export async function addAvailabilityAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction(["system", "demos"]);
   await finish(`${BACK}#availability`, "Window added.", () => addAvailability(ctx, { weekday: Number(text(f, "weekday")), start: text(f, "start"), end: text(f, "end") }));
 }
 
 export async function removeAvailabilityAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction(["system", "demos"]);
   await finish(`${BACK}#availability`, "Window removed.", () => removeAvailability(ctx, text(f, "id")));
 }
 
@@ -43,17 +43,17 @@ export async function removeAvailabilityAction(f: FormData) {
 const GOOGLE = `${BACK}#google-calendar`;
 
 export async function testGoogleCalendarAction() {
-  await adminAction(); // read-only, so nothing to audit; the admin gate (AAL2) still runs first
+  await adminAction(["system", "demos"]); // read-only, so nothing to audit; the admin gate (AAL2) still runs first
   await finish(GOOGLE, (r) => `Google Calendar works: ${r.email ?? "the connected account"}, calendar "${r.calendarId}", ${r.busy} busy ${r.busy === 1 ? "time" : "times"} in the next 14 days.`, () => testGoogleCalendar());
 }
 
 export async function googleCalendarIdAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction(["system", "demos"]);
   await finish(GOOGLE, (r) => (r.changed ? `Demo events now go to calendar "${r.calendarId}".` : "That calendar was already chosen."), () => setGoogleCalendarId(ctx, text(f, "calendarId")));
 }
 
 export async function disconnectGoogleCalendarAction() {
-  const ctx = await adminAction();
+  const ctx = await adminAction(["system", "demos"]);
   await finish(GOOGLE, (r) => `Google Calendar disconnected${r.email ? ` (${r.email})` : ""}.${r.revoked ? "" : " Google did not confirm the revoke: remove BuPulse under your Google account's third-party access."} New bookings use the meeting link and .ics invites.`, () => disconnectGoogleCalendar(ctx));
 }
 
@@ -63,7 +63,7 @@ const PADDLE = `${BACK}#paddle`;
 
 /** Saves the environment and any secret typed (an empty field keeps the saved one). Values are never sent back. */
 export async function savePaddleSettingsAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("system");
   await finish(PADDLE, (r) => (r.changed.length ? `Paddle ${r.environment === "production" ? "live" : "sandbox"} saved (${r.changed.map((n) => SECRET_LABEL[n].toLowerCase()).join(", ")}).` : "Nothing changed."), () =>
     savePaddleSettings(ctx, { environment: text(f, "environment"), apiKey: text(f, "apiKey"), clientToken: text(f, "clientToken"), webhookSecret: text(f, "webhookSecret") }),
   );
@@ -71,7 +71,7 @@ export async function savePaddleSettingsAction(f: FormData) {
 
 /** Read-only: the API key typed in the form (with its environment), else the saved one. */
 export async function testPaddleAction(f: FormData) {
-  await adminAction(); // read-only, nothing to audit; the admin gate (AAL2) still runs first
+  await adminAction("system"); // read-only, nothing to audit; the admin gate (AAL2) still runs first
   await finish(PADDLE, (r) => r.message, async () => {
     const r = await testPaddleConnection({ apiKey: text(f, "apiKey") || undefined, environment: text(f, "environment") === "production" ? "production" : "sandbox" });
     if (!r.ok) throw new AdminError("unavailable", r.message);
@@ -80,7 +80,7 @@ export async function testPaddleAction(f: FormData) {
 }
 
 export async function clearPaddleSettingsAction() {
-  const ctx = await adminAction();
+  const ctx = await adminAction("system");
   await finish(PADDLE, "Saved Paddle values removed. The environment variables apply again, if any are set.", () => clearPaddleSettings(ctx));
 }
 
@@ -89,7 +89,7 @@ export async function clearPaddleSettingsAction() {
  * stays within the hosting time limit. Returns the result instead of redirecting.
  */
 export async function paddleSetUpStepAction(step: string, attempted: string[] = []): Promise<{ ok: true; result: StepResult } | { ok: false; error: string }> {
-  const ctx = await adminAction();
+  const ctx = await adminAction("system");
   try {
     const keys = Array.isArray(attempted) ? attempted.filter((k) => typeof k === "string" && k.length <= 64).slice(0, 200) : [];
     return { ok: true, result: await setUpPaddleStep(ctx, step as SetUpStep, keys) };

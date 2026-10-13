@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { REF_COOKIE, refCookieFor } from "@/lib/sales/ref-cookie";
 
 const PROTECTED = ["/dashboard", "/welcome", "/onboarding", "/book-demo", "/custom-plan", "/account"];
 
@@ -48,6 +49,10 @@ export async function proxy(request: NextRequest) {
 
   const region = request.nextUrl.searchParams.get("region")?.toUpperCase();
   if (process.env.REGION_OVERRIDE === "1" && region && REGION_KEY.test(region)) response.cookies.set(REGION_COOKIE, region, { path: "/", maxAge: 30 * 24 * 60 * 60, sameSite: "lax" });
+
+  // A sales agent's link (?ref=CODE on any page): the first valid code is kept 30 days for sign-up (lib/sales/ref-cookie.ts).
+  const ref = refCookieFor(request.nextUrl.searchParams.get("ref"), request.cookies.get(REF_COOKIE)?.value);
+  if (ref) response.cookies.set(ref.name, ref.value, ref.options);
 
   return response;
 }

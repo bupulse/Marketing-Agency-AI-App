@@ -3,7 +3,7 @@ import { MessageSquarePlus } from "lucide-react";
 import { EmptyState, PageHeader } from "@/components/app";
 import { Panel, notice } from "@/components/admin/ui";
 import { Badge, Button, GlassCard, type BadgeTone } from "@/components/ui";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { dateTime, param } from "@/lib/admin/format";
 import { featureLabel } from "@/lib/features";
 import { listPlanRequests } from "@/lib/offers/requests";
@@ -17,7 +17,7 @@ const TONE: Record<string, BadgeTone> = { new: "violet", contacted: "blue", offe
 const SOURCE: Record<string, string> = { billing: "Billing", pricing: "Pricing page", upgrade: "Add to your plan", demo: "Demo screen" };
 
 export default async function PlanRequestsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("requests"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const status = isRequestStatus(param(sp.status)) ? param(sp.status) : "";
   const open = param(sp.open);

@@ -30,7 +30,7 @@ const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
 // ---- Monthly costs ---------------------------------------------------------------------------------------
 
 export async function saveCostAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("money.costs");
   await finish("/admin/costs#one-off", "Cost saved.", async () => {
     const month = text(f, "month");
     const category = text(f, "category").toLowerCase();
@@ -45,7 +45,7 @@ export async function saveCostAction(f: FormData) {
 }
 
 export async function deleteCostAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("money.costs");
   await finish("/admin/costs#one-off", "Cost deleted.", async () => {
     const month = text(f, "month");
     const category = text(f, "category");
@@ -61,7 +61,7 @@ export type KeyState = { error?: string; key?: string; name?: string };
 const allowList = (raw: string) => raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
 
 export async function createKeyAction(_prev: KeyState, f: FormData): Promise<KeyState> {
-  const ctx = await adminAction();
+  const ctx = await adminAction("jarvis");
   try {
     const { key, apiKey } = await createAdminKey(ctx, { name: text(f, "name"), ipAllowList: allowList(text(f, "ips")) });
     revalidatePath("/admin/jarvis");
@@ -72,7 +72,7 @@ export async function createKeyAction(_prev: KeyState, f: FormData): Promise<Key
 }
 
 export async function rotateKeyAction(_prev: KeyState, f: FormData): Promise<KeyState> {
-  const ctx = await adminAction();
+  const ctx = await adminAction("jarvis");
   try {
     const { key, apiKey } = await rotateAdminKey(ctx, text(f, "id"));
     // No revalidate here: re-rendering the list would unmount the row that is showing the new key.
@@ -83,7 +83,7 @@ export async function rotateKeyAction(_prev: KeyState, f: FormData): Promise<Key
 }
 
 export async function revokeKeyAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("jarvis");
   await finish("/admin/jarvis", "Key revoked. Jarvis can no longer use it.", () => revokeAdminKey(ctx, text(f, "id")));
 }
 
@@ -100,31 +100,31 @@ const userBack = (f: FormData) => {
 };
 
 export async function extendTrialAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("clients.manage");
   await finish(userBack(f), "Trial extended.", () => extendTrial(ctx, { userId: uid(f), days: Number(text(f, "days")) }));
 }
 
 export async function suspendAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("clients.manage");
   await finish(userBack(f), "User suspended. They are signed out and cannot use BuPulse until restored.", () =>
     suspendUser(ctx, { userId: uid(f), reason: text(f, "reason") }),
   );
 }
 
 export async function restoreAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("clients.manage");
   await finish(userBack(f), "User restored.", () => restoreUser(ctx, { userId: uid(f) }));
 }
 
 export async function changePlanAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("clients.manage");
   await finish(userBack(f), (r) => r.message, () =>
     requestChangePlan(ctx, { userId: uid(f), plan: text(f, "plan"), interval: text(f, "interval") || undefined, idempotencyKey: text(f, "idem") || undefined }),
   );
 }
 
 export async function refundAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("payments.approve");
   await finish(userBack(f), "Refund request created. Approve it on the Approvals page.", () => {
     const currency = /^[A-Z]{3}$/.test(text(f, "currency")) ? text(f, "currency") : "USD";
     const raw = text(f, "amount");
@@ -145,21 +145,21 @@ export async function refundAction(f: FormData) {
 // ---- Approvals -------------------------------------------------------------------------------------------
 
 export async function approveFormAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("approvals.decide");
   await finish("/admin/approvals", (r) => (r.status === "executed" ? "Approved and done." : r.status === "needs_check" ? "Approved, but check Paddle: it may or may not have gone through. Do not request it again." : `Approved, but it did not complete (${r.status}). See the result below.`), () =>
     approveAction(ctx, text(f, "id")),
   );
 }
 
 export async function rejectFormAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("approvals.decide");
   await finish("/admin/approvals", "Rejected. Nothing was changed.", () => rejectAction(ctx, text(f, "id")));
 }
 
 // ---- Feature flags ---------------------------------------------------------------------------------------
 
 export async function saveFlagAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("system");
   await finish("/admin/flags", "Flag saved.", async () => {
     if (f.get("create") === "1") {
       // Creating must never overwrite: an existing flag keeps its settings.
@@ -177,7 +177,7 @@ export async function saveFlagAction(f: FormData) {
 }
 
 export async function flagOverrideAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("system");
   const back = text(f, "back") || "/admin/flags";
   await finish(back, "Override saved.", async () => {
     let userId = text(f, "userId") ? userIdOf(text(f, "userId")) : "";
@@ -196,7 +196,7 @@ export async function flagOverrideAction(f: FormData) {
 // ---- Announcements ---------------------------------------------------------------------------------------
 
 export async function createAnnouncementAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("content");
   await finish("/admin/announcements", "Announcement saved.", () => {
     const plans = f.getAll("plans").map(String);
     // datetime-local has no zone. The browser sends its offset (minutes, UTC minus local) in "tz"; UTC = local + offset.
@@ -222,20 +222,20 @@ export async function createAnnouncementAction(f: FormData) {
 }
 
 export async function endAnnouncementAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("content");
   await finish("/admin/announcements", "Announcement ended.", () => endAnnouncement(ctx, text(f, "id")));
 }
 
 // ---- Client notes ------------------------------------------------------------------------------------------
 
 export async function addNoteAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction(["clients.manage", "clients.view"]);
   const userId = userIdOf(text(f, "userId"));
   await finish(`/admin/users/${userId}?tab=notes`, "Note saved.", () => addAdminNote(ctx, { userId, body: String(f.get("body") ?? "") }));
 }
 
 export async function deleteNoteAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("clients.manage");
   const userId = userIdOf(text(f, "userId"));
   await finish(`/admin/users/${userId}?tab=notes`, "Note deleted.", async () => {
     // The note must belong to this client: the id alone is not enough.
@@ -248,12 +248,12 @@ export async function deleteNoteAction(f: FormData) {
 // ---- Services and AI budget ----------------------------------------------------------------------------------
 
 export async function testServiceAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("system");
   await finish("/admin/services", (r) => `${r.ok ? "Working" : "Not working"}: ${r.message ?? (r.ok ? "the check passed" : "the check failed")} (${r.latencyMs} ms).`, () => testService(ctx, text(f, "service")));
 }
 
 export async function setServiceEnabledAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("system");
   const enabled = text(f, "enabled") === "1";
   await finish("/admin/services", enabled ? "Service switched on." : "Service switched off. Clients see a friendly unavailable message.", () =>
     setServiceEnabled(ctx, { service: text(f, "service"), enabled, reason: text(f, "reason") || undefined }),
@@ -261,7 +261,7 @@ export async function setServiceEnabledAction(f: FormData) {
 }
 
 export async function setAiBudgetAction(f: FormData) {
-  const ctx = await adminAction();
+  const ctx = await adminAction("ai");
   await finish("/admin/ai", "Monthly AI cap saved.", () => {
     const raw = text(f, "usd");
     const usd = raw === "" ? null : Number(raw.replace(/[$,\s]/g, ""));

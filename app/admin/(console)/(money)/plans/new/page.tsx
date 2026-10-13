@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { PlanForm } from "@/components/admin/plan-form";
 import { paddleConnected } from "@/lib/billing/paddle-catalog";
@@ -6,7 +6,7 @@ import { paddleConnected } from "@/lib/billing/paddle-catalog";
 export const metadata = { title: "New plan" };
 
 export default async function NewPlanPage() {
-  await requireAdmin();
+  await requirePermission("plans.manage");
   return (
     <>
       <PageHeader title="New plan" description="Saved as a draft unless you make it active. Creating it also creates the product and prices in Paddle." />

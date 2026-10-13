@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/app";
 import { Client360, clientHeader } from "@/components/admin/client360";
 import { notice } from "@/components/admin/ui";
 import { Badge } from "@/components/ui";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { param } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/service";
 import { prisma } from "@/lib/db";
@@ -11,7 +11,7 @@ import { prisma } from "@/lib/db";
 // A user's page is now their company's page (the same Client 360 tabs plus the Users tab). Old links keep working.
 // A user with no company yet (signed up, no business) has no company page, so their Client 360 shows here directly.
 export default async function UserRedirect({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin();
+  await requirePermission("clients.view");
   const { id } = await params;
   const sp = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();

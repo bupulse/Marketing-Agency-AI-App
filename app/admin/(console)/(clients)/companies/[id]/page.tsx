@@ -7,7 +7,7 @@ import { CompanyOffers } from "@/components/admin/company-offers";
 import { notice } from "@/components/admin/ui";
 import { Badge } from "@/components/ui";
 import { getCompany } from "@/lib/admin/actions/companies";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { param } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/service";
 
@@ -16,7 +16,7 @@ export const metadata = { title: "Company" };
 const EXTRA_TABS = [{ key: "users", label: "Users" }];
 
 export default async function CompanyPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("clients.view"); // pages render alongside the layout, so check here too
   const { id } = await params;
   const sp = await searchParams;
   let company;

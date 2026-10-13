@@ -8,6 +8,7 @@ import { INDUSTRY_DESCRIPTION_MIN } from "@/lib/industries/shared";
 import { phoneCountry, toE164 } from "@/lib/phone";
 import { regionFromCountryName } from "@/lib/region";
 import { noteRegionMismatch } from "@/lib/region-check";
+import { assignReferral, refFromCookie } from "@/lib/sales/referral";
 import { timezoneForCountryName } from "@/lib/region-format";
 
 type SignUpDetails = {
@@ -148,6 +149,8 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
     // Soft region check: the sign-up's IP country in a dearer region than the declared country is flagged for the
     // admin (docs/REGIONS.md). Google sign-ups pick their country on /welcome, which checks then.
     if (created.business?.id && details.country) await noteRegionMismatch(created.business.id, "signup");
+    // A sales agent's link: the code saved at sign-up, else the cookie (Google). Never fails the sign-up.
+    if (created.business?.id) await assignReferral({ businessId: created.business.id, userId: authUser.id, code: text(authUser.user_metadata?.ref_code, 8) ?? (await refFromCookie()) });
   }
   return true;
 }

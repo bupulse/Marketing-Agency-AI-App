@@ -8,7 +8,7 @@ import { PROOF_TYPES } from "@/lib/billing/momo-shared";
 // sniffed again, and they are served with that type only, nosniff, inline, never cached and sandboxed, so nothing in
 // the file can run as a page on the console's origin.
 export async function GET(request: Request) {
-  if (!(await isAdminSession())) return new Response("Not found", { status: 404 });
+  if (!(await isAdminSession(["payments.view", "payments.approve"]))) return new Response("Not found", { status: 404 });
   const id = new URL(request.url).searchParams.get("id") ?? "";
   if (!id || id.length > 64) return new Response("Not found", { status: 404 });
   const payment = await prisma.manualPayment.findUnique({ where: { id }, select: { proofPath: true, proofBytes: true, reference: true } });

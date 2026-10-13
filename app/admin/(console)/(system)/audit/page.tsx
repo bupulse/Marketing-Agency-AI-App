@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import Link from "next/link";
 import { ScrollText } from "lucide-react";
 import { EmptyState, PageHeader } from "@/components/app";
@@ -11,7 +11,7 @@ import { AdminError, getAuditLog } from "@/lib/admin/service";
 export const metadata = { title: "Audit log" };
 
 export default async function AuditPage({ searchParams }: PageProps<"/admin/audit">) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("system"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const actor = param(sp.actor);
   const action = param(sp.action);

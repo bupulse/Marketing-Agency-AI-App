@@ -10,6 +10,7 @@ import { createSignedDownloadUrl } from "@/lib/storage";
 import { getVoice } from "@/lib/brand/voices";
 import { resolveCompany } from "@/lib/team/company";
 import { can, type Role } from "@/lib/team/roles";
+import { heartbeat } from "@/lib/staff/heartbeat";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -36,6 +37,7 @@ export const getAppContext = cache(async () => {
   // organisation details first, then everyone completes the brand onboarding.
   const account = await prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true, suspendedAt: true, name: true } });
   if (account?.suspendedAt || company?.ownerSuspended) redirect("/suspended");
+  heartbeat(user.id); // "active now" on the sales room TV: throttled, after the response, never fails the page
   if (account?.deletionScheduledFor || company?.ownerDeleting) redirect("/account/deletion");
   // First-time setup belongs to the owner or an admin; a teammate who arrives early waits.
   const setupDone = Boolean(business?.detailsCompletedAt && business.onboardedAt);

@@ -6,7 +6,7 @@ import { OfferEditor } from "@/components/admin/offer-editor";
 import { Panel, notice } from "@/components/admin/ui";
 import { OfferCard } from "@/components/billing/offer-card";
 import { Badge, Field, Input } from "@/components/ui";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { dateTime, param } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/types";
 import { clientViewOf, getOffer, offerEditorContext } from "@/lib/offers/service";
@@ -19,7 +19,7 @@ export const metadata = { title: "Offer" };
 export const dynamic = "force-dynamic";
 
 export default async function OfferPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("requests"); // pages render alongside the layout, so check here too
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   let offer;
   try {

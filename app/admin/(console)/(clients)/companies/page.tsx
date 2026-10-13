@@ -4,7 +4,7 @@ import { EmptyState, PageHeader } from "@/components/app";
 import { Panel, TableWrap, Td, Th } from "@/components/admin/ui";
 import { Badge, Button, Input, Select } from "@/components/ui";
 import { listCompanies } from "@/lib/admin/actions/companies";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { dateTime, param } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/service";
 import { getPlans } from "@/lib/plan-catalog";
@@ -12,7 +12,7 @@ import { getPlans } from "@/lib/plan-catalog";
 export const metadata = { title: "Companies" };
 
 export default async function CompaniesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("clients.view"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const q = param(sp.q);
   const plan = param(sp.plan);

@@ -5,6 +5,7 @@ import { Building2, CornerDownLeft, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { searchPages } from "./nav";
+import type { Permission } from "@/lib/staff/permissions";
 
 type Company = { id: string; name: string; email: string | null; plan: string | null; status: string | null };
 type Result = { key: string; href: string; title: string; sub: string; kind: "page" | "company" };
@@ -13,7 +14,9 @@ type Result = { key: string; href: string; title: string; sub: string; kind: "pa
  * Jump to any admin page or company: Cmd+K (Mac) or Ctrl+K, or the Search button. Arrow keys move, Enter opens, Esc
  * closes. Pages are matched here; companies come from /admin/search (name or any member's email).
  */
-export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function CommandPalette({ open, onOpenChange, permissions }: { open: boolean; onOpenChange: (open: boolean) => void; permissions: readonly Permission[] }) {
+  const allowed = (p: Permission | readonly Permission[]) => (typeof p === "string" ? [p] : p).some((x) => permissions.includes(x));
+  const companies_ = permissions.includes("clients.view");
   const router = useRouter();
   const [q, setQ] = useState("");
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -36,7 +39,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   }, [open]);
 
   useEffect(() => {
-    if (!open || q.trim().length < 2) return;
+    if (!open || !companies_ || q.trim().length < 2) return;
     const ctl = new AbortController();
     const t = setTimeout(() => {
       fetch(`/admin/search?q=${encodeURIComponent(q.trim())}`, { signal: ctl.signal, headers: { accept: "application/json" } })
@@ -48,13 +51,14 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       clearTimeout(t);
       ctl.abort();
     };
-  }, [q, open]);
+  }, [q, open, companies_]);
 
   const results: Result[] = useMemo(() => {
-    const pages = searchPages(q).slice(0, q ? 8 : 40).map((p) => ({ key: p.href, href: p.href, title: p.label, sub: p.group.title ? `${p.group.title} · ${p.description}` : p.description, kind: "page" as const }));
-    const firms = q.trim().length < 2 ? [] : companies.map((c) => ({ key: `c:${c.id}`, href: `/admin/companies/${c.id}`, title: c.name, sub: [c.email, c.plan, c.status?.toLowerCase()].filter(Boolean).join(" · "), kind: "company" as const }));
+    const pages = searchPages(q).filter((p) => allowed(p.perm)).slice(0, q ? 8 : 40).map((p) => ({ key: p.href, href: p.href, title: p.label, sub: p.group.title ? `${p.group.title} · ${p.description}` : p.description, kind: "page" as const }));
+    const firms = !companies_ || q.trim().length < 2 ? [] : companies.map((c) => ({ key: `c:${c.id}`, href: `/admin/companies/${c.id}`, title: c.name, sub: [c.email, c.plan, c.status?.toLowerCase()].filter(Boolean).join(" · "), kind: "company" as const }));
     return [...pages, ...firms];
-  }, [q, companies]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, companies, permissions, companies_]);
 
   if (!open) return null;
   const close = () => {
@@ -99,7 +103,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             aria-expanded="true"
             aria-controls="admin-search-results"
             aria-activedescendant={results[current] ? `res-${results[current].key}` : undefined}
-            placeholder="Find a page or a company..."
+            placeholder={companies_ ? "Find a page or a company..." : "Find a page..."}
             className="min-h-14 flex-1 bg-transparent text-[16px] outline-none placeholder:text-muted"
           />
           <button type="button" onClick={close} aria-label="Close search" className="inline-flex size-11 cursor-pointer items-center justify-center rounded-full text-muted hover:bg-soft">

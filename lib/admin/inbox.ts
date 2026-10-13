@@ -8,12 +8,36 @@ import { prisma } from "@/lib/db";
 import { APPROVAL_TTL_MS } from "./service";
 import { openRegionMismatches } from "@/lib/region-check";
 import { money } from "./format";
+import type { Permission } from "@/lib/staff/permissions";
 
 export type InboxItem = { id: string; text: string; sub?: string; href: string; at?: string };
 export type InboxSection = { key: InboxKey; title: string; why: string; href: string; count: number; tone: "danger" | "violet" | "neutral"; items: InboxItem[] };
 export type InboxKey = "payments" | "approvals" | "demos" | "requests" | "invoices" | "offers" | "contests" | "regions" | "errors";
 
 const SHOW = 5;
+
+/** Who sees each kind of to-do: the permission of the page where it is done. */
+export const INBOX_PERMISSION: Record<InboxKey, readonly Permission[]> = {
+  payments: ["payments.approve", "payments.view"],
+  approvals: ["approvals.decide"],
+  demos: ["demos"],
+  requests: ["requests"],
+  invoices: ["payments.view", "payments.approve"],
+  offers: ["requests"],
+  contests: ["clients.view"],
+  regions: ["clients.manage"],
+  errors: ["system"],
+};
+
+const sees = (key: InboxKey, permissions: readonly Permission[]) => INBOX_PERMISSION[key].some((p) => permissions.includes(p));
+
+/** The inbox badge for one person: only the to-dos they can act on (errors are shown, never counted). */
+export function inboxTotalFor(counts: Record<InboxKey, number>, permissions: readonly Permission[]): number {
+  return (Object.keys(INBOX_PERMISSION) as InboxKey[]).filter((k) => k !== "errors" && sees(k, permissions)).reduce((s, k) => s + counts[k], 0);
+}
+
+/** The inbox sections one person may see. */
+export const inboxFor = (sections: InboxSection[], permissions: readonly Permission[]) => sections.filter((s) => sees(s.key, permissions));
 const HOUR = 3_600_000;
 const safe = async <T>(p: Promise<T>, empty: T): Promise<T> => p.catch(() => empty);
 

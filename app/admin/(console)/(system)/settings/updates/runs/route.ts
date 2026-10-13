@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // Polled every 10 seconds by the Updates page while a deploy is queued or running. Same gate as the pages: anyone
 // else gets a plain 404.
 export async function GET() {
-  if (!(await isAdminSession())) return new NextResponse("Not found", { status: 404 });
+  if (!(await isAdminSession("system"))) return new NextResponse("Not found", { status: 404 });
   try {
     const page = await listDeployRuns();
     return NextResponse.json(page, { headers: { "Cache-Control": "no-store" } });

@@ -35,7 +35,7 @@ function Shortcut({ href, icon, label, value, tone }: { href: string; icon: Reac
 }
 
 /** The Overview's numbers: what needs doing today, money this month, clients and AI. Every card links to its folder. */
-export function OverviewDashboard({ d }: { d: OverviewData }) {
+export function OverviewDashboard({ d, show = { money: true, clients: true, ai: true } }: { d: OverviewData; show?: { money: boolean; clients: boolean; ai: boolean } }) {
   return (
     <>
       <Section title="Today" description="What is waiting for you right now.">
@@ -47,6 +47,7 @@ export function OverviewDashboard({ d }: { d: OverviewData }) {
         </div>
       </Section>
 
+      {show.money && (
       <Section title={`Money, ${d.monthLabel}`} description="USD. Revenue is card, Mobile Money and invoices; profit subtracts every cost, estimated or billed." action={<Link href="/admin/revenue" className="text-sm font-medium underline">Revenue and profit</Link>}>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
           <Stat label="MRR" value={money(d.mrrCents)} source={d.arpuCents == null ? "No paying clients yet" : `ARPU ${money(d.arpuCents)} a month`} href="/admin/revenue#mrr" />
@@ -56,8 +57,10 @@ export function OverviewDashboard({ d }: { d: OverviewData }) {
           <Stat label="Profit this month" value={money(d.profit.monthCents)} previous={{ now: d.profit.monthCents, before: d.profit.prevCents, label: d.prevMonthLabel }} spark={d.profit.spark} tone={d.profit.monthCents < 0 ? "danger" : undefined} href="/admin/revenue#profit" source="Revenue minus all costs" />
         </div>
       </Section>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-2">
+        {show.clients && (
         <Section title="Clients" description="Companies by subscription state." action={<Link href="/admin/client-health" className="text-sm font-medium underline">Client health</Link>}>
           <div className="grid grid-cols-2 gap-3">
             <Stat label="Active, paying" value={num(d.clients.active)} href="/admin/companies?status=ACTIVE" source="See them" />
@@ -66,6 +69,8 @@ export function OverviewDashboard({ d }: { d: OverviewData }) {
             <Stat label="Waiting for a demo" value={num(d.clients.waitingDemo)} href="/admin/demos" source="Demos" />
           </div>
         </Section>
+        )}
+        {show.ai && (
         <Section title="AI this month" description="Spend against the monthly safety cap." action={<Link href="/admin/ai" className="text-sm font-medium underline">AI calls and spend</Link>}>
           <GlassCard padding="md" className="flex flex-col gap-4">
             {d.ai ? (
@@ -84,6 +89,7 @@ export function OverviewDashboard({ d }: { d: OverviewData }) {
             )}
           </GlassCard>
         </Section>
+        )}
       </div>
     </>
   );

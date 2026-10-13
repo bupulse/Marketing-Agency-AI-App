@@ -102,7 +102,7 @@ describe("requireAdmin", () => {
   it("allows an admin at AAL2", async () => {
     signedIn("admin@bupulse.com");
     level("aal2", "aal2");
-    await expect(requireAdmin()).resolves.toEqual({ id: "u1", email: "admin@bupulse.com" });
+    await expect(requireAdmin()).resolves.toMatchObject({ id: "u1", email: "admin@bupulse.com", isOwner: true, staffId: null });
   });
 
   it("matches the email case-insensitively", async () => {

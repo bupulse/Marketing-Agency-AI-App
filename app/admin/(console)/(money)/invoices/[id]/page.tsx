@@ -6,7 +6,7 @@ import { InvoiceEditor } from "@/components/admin/invoice-editor";
 import { Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
 import { InvoicePreview } from "@/components/invoices/invoice-preview";
 import { Badge, Field, Input, Select, Textarea, type BadgeTone } from "@/components/ui";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { dateTime, param } from "@/lib/admin/format";
 import { AdminError } from "@/lib/admin/types";
 import { getInvoiceSettings, logoDataUrl } from "@/lib/invoices/settings";
@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 const TONE: Record<string, BadgeTone> = { draft: "neutral", sent: "blue", paid: "success", void: "neutral" };
 
 export default async function InvoicePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("payments.view"); // pages render alongside the layout, so check here too
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   let row;
   try {

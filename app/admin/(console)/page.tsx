@@ -1,36 +1,62 @@
-import { requireAdmin } from "@/lib/admin/auth";
+import { notFound, redirect } from "next/navigation";
+import { can, requireAdmin } from "@/lib/admin/auth";
+import { findNavItem, firstPageFor } from "@/components/admin/nav";
 import Link from "next/link";
 import { PageHeader } from "@/components/app";
 import { LineChart } from "@/components/admin/charts";
 import { ActivityFeed } from "@/components/admin/activity-feed";
 import { OverviewDashboard, type OverviewData } from "@/components/admin/overview-dashboard";
-import { Empty, Panel } from "@/components/admin/ui";
+import { Empty, Panel, notice } from "@/components/admin/ui";
 import { Badge } from "@/components/ui";
 import { getActivity } from "@/lib/admin/activity";
 import { getAiBudgetStatus } from "@/lib/admin/ai-usage";
 import { getAttention } from "@/lib/admin/attention";
-import { rangeFor } from "@/lib/admin/format";
-import { getInboxCounts } from "@/lib/admin/inbox";
+import { param, rangeFor } from "@/lib/admin/format";
+import { getInboxCounts, inboxTotalFor } from "@/lib/admin/inbox";
 import { getClientCounts, getDemosToday } from "@/lib/admin/overview";
 import { getMetrics } from "@/lib/analytics/queries";
 import { getMoneyReportCached } from "@/lib/money/report";
+import { PendingPaymentList } from "@/components/admin/payments/pending-payments";
+import { TodayPayments, TodayTimeline } from "@/components/admin/overview-today";
+import { getTodayPayments, getTodayTimeline, type TodayPayment } from "@/lib/admin/today";
+import { listManualPayments } from "@/lib/billing/momo";
+import { confirmPaymentAction, rejectPaymentAction } from "@/app/admin/(console)/(money)/payments/actions";
 
 export const metadata = { title: "Overview" };
 
 const monthName = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
 
-export default async function AdminOverview() {
-  await requireAdmin(); // pages render alongside the layout, so check here too
-  const [report, clients, demos, inbox, ai, attention, activity, series] = await Promise.all([
-    getMoneyReportCached(6).catch(() => null),
+export default async function AdminOverview({ searchParams }: PageProps<"/admin">) {
+  const me = await requireAdmin(); // pages render alongside the layout, so check here too
+  // Without the Overview (a sales agent, the content team...), /admin opens the first page the role may see.
+  if (!can(me, "overview")) {
+    const first = firstPageFor(me.permissions);
+    if (first && first !== "/admin") redirect(first);
+    notFound();
+  }
+  const sp = await searchParams;
+  // Each section shows only to someone allowed to see it (the Overview itself needs "overview").
+  const seeMoney = can(me, "money.revenue");
+  const seePayments = can(me, ["payments.view", "payments.approve"]);
+  const canApprove = can(me, "payments.approve");
+  const [report, clients, demos, inbox, ai, attention, activity, series, pending, todayPayments] = await Promise.all([
+    seeMoney ? getMoneyReportCached(6).catch(() => null) : Promise.resolve(null),
     getClientCounts().catch(() => ({ active: 0, trial: 0, pastDue: 0, waitingDemo: 0, ended: 0, total: 0 })),
     getDemosToday().catch(() => ({ today: 0, next: null })),
     getInboxCounts(),
-    getAiBudgetStatus().catch(() => null),
+    can(me, "ai") ? getAiBudgetStatus().catch(() => null) : Promise.resolve(null),
     getAttention().catch(() => []),
     getActivity({ limit: 8 }).catch(() => ({ items: [], newest: null, nextBefore: null, more: false })),
     getMetrics(rangeFor(30), ["visits", "signups"]).catch(() => ({}) as Record<string, { date: string; dimension: string; value: number }[]>),
+    seePayments ? listManualPayments({ status: "pending", limit: 20 }).then((p) => p.items.filter((x) => x.submitted)).catch(() => []) : Promise.resolve([]),
+    seePayments || seeMoney ? getTodayPayments().catch(() => [] as TodayPayment[]) : Promise.resolve([] as TodayPayment[]),
   ]);
+  // Each attention line only for someone who may open the page it links to.
+  const attentionShown = attention.filter((a) => {
+    const page = findNavItem(a.href.split(/[?#]/)[0]);
+    return !!page && can(me, page.perm);
+  });
+  const timeline = await getTodayTimeline(new Date(), seePayments || seeMoney ? todayPayments : []).catch(() => []);
 
   const months = report?.months ?? [];
   const cur = months[months.length - 1];
@@ -43,7 +69,7 @@ export default async function AdminOverview() {
     arpuCents: report?.arpuCents ?? null,
     profit: { monthCents: cur?.profitCents ?? 0, prevCents: prev?.profitCents ?? 0, costCents: Math.round(cur?.costs.totalCents ?? 0), estimateCents: Math.round(cur?.costs.estimateCents ?? 0), spark: months.map((m) => m.profitCents) },
     clients,
-    todo: { inbox: inbox.total, payments: inbox.payments, demosToday: demos.today, nextDemo: demos.next ? `${demos.next.company} at ${demos.next.startsAt.toISOString().slice(11, 16)} UTC` : null, errors24h: inbox.errors },
+    todo: { inbox: inboxTotalFor(inbox, me.permissions), payments: inbox.payments, demosToday: demos.today, nextDemo: demos.next ? `${demos.next.company} at ${demos.next.startsAt.toISOString().slice(11, 16)} UTC` : null, errors24h: inbox.errors },
     ai,
   };
 
@@ -56,14 +82,31 @@ export default async function AdminOverview() {
   return (
     <>
       <PageHeader title="Overview" description="Today and this month at a glance. Every number links to the page behind it." />
-      {!report && <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">The money numbers could not be loaded just now. Reload in a moment.</p>}
+      {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
+      {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
+      {seeMoney && !report && <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">The money numbers could not be loaded just now. Reload in a moment.</p>}
+
+      {seePayments && (
+        <Panel
+          title={pending.length ? `Waiting for approval (${pending.length})` : "Waiting for approval"}
+          description={canApprove ? "Mobile Money payments clients say they made. Check the money arrived, then approve or reject with a reason." : "Mobile Money payments waiting for Finance or the owner."}
+          action={<Link href="/admin/payments" className="text-sm font-medium underline">All payments</Link>}
+        >
+          {pending.length === 0 ? <Empty>Nothing to approve right now.</Empty> : <PendingPaymentList items={pending} canApprove={canApprove} back="/admin" confirmAction={confirmPaymentAction} rejectAction={rejectPaymentAction} />}
+        </Panel>
+      )}
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        {(seePayments || seeMoney) && <TodayPayments payments={todayPayments} />}
+        <TodayTimeline items={timeline} />
+      </div>
 
       <Panel title="Needs your attention" description="Anything waiting for you or looking wrong right now." action={<Link href="/admin/inbox" className="text-sm font-medium underline">Open the inbox</Link>}>
-        {attention.length === 0 ? (
+        {attentionShown.length === 0 ? (
           <p role="status" className="rounded-2xl bg-success-bg px-4 py-3 text-[15px] font-medium text-success">Nothing needs you right now. <Link href="/admin/health" className="underline">System health</Link> is all good.</p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {attention.slice(0, 8).map((a) => (
+            {attentionShown.slice(0, 8).map((a) => (
               <li key={a.key} className="flex items-start gap-3 text-[15px]">
                 <Badge tone={a.level === "problem" ? "danger" : "violet"}>{a.level}</Badge>
                 <Link href={a.href} className="underline">{a.text}</Link>
@@ -73,7 +116,7 @@ export default async function AdminOverview() {
         )}
       </Panel>
 
-      <OverviewDashboard d={data} />
+      <OverviewDashboard d={data} show={{ money: seeMoney, clients: can(me, "clients.view"), ai: can(me, "ai") }} />
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Panel title="Visits and sign-ups, 30 days" description="Daily counts from BuPulse's own tracker." action={<Link href="/admin/funnels" className="text-sm font-medium underline">Funnels</Link>}>

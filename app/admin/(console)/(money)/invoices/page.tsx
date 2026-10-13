@@ -3,7 +3,7 @@ import { FileText } from "lucide-react";
 import { EmptyState, PageHeader } from "@/components/app";
 import { Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
 import { Badge, Input, type BadgeTone } from "@/components/ui";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { param } from "@/lib/admin/format";
 import { listInvoices } from "@/lib/invoices/service";
 import { INVOICE_STATUS_LABEL, longInvoiceDate } from "@/lib/invoices/shared";
@@ -22,7 +22,7 @@ const FILTERS = [
 ];
 
 export default async function InvoicesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("payments.view"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const status = FILTERS.find((f) => f.key === param(sp.status))?.key ?? "";
   const q = param(sp.q).slice(0, 80);

@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { isAdminEmail } from "@/lib/admin/auth";
+import { canReceiveAdminCode } from "@/lib/admin/auth";
 import { emailSchema } from "@/lib/auth/schemas";
 import { publicLimited } from "@/lib/request-limits";
 import { createClient } from "@/lib/supabase/server";
@@ -9,8 +9,9 @@ import { createClient } from "@/lib/supabase/server";
 export type AdminLoginState = { error?: string; sentTo?: string };
 
 /**
- * Admin sign-in, step 1: the admin email. An emailed code is sent only to an address on ADMIN_EMAILS, but every address
- * gets the same answer, so the page does not reveal which addresses are admins. No password, no Google.
+ * Admin sign-in, step 1: the email. An emailed code is sent only to the owner (ADMIN_EMAILS) or an enabled staff member
+ * (Admin -> Organisation), but every address gets the same answer, so the page does not reveal who has access. No
+ * password, no Google.
  */
 export async function sendAdminCode(_prev: AdminLoginState, formData: FormData): Promise<AdminLoginState> {
   const parsed = emailSchema.safeParse(String(formData.get("email") ?? ""));
@@ -18,7 +19,7 @@ export async function sendAdminCode(_prev: AdminLoginState, formData: FormData):
   const email = parsed.data.toLowerCase();
   const limited = await publicLimited("adminCode", email);
   if (limited) return { error: limited };
-  if (isAdminEmail(email)) {
+  if (await canReceiveAdminCode(email)) {
     const supabase = await createClient();
     const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
     if (error?.status === 429 || error?.code === "over_email_send_rate_limit") {
@@ -37,7 +38,7 @@ export async function verifyAdminCode(_prev: AdminLoginState, formData: FormData
   const limited = await publicLimited("login", email);
   if (limited) return { sentTo: email, error: limited };
   const wrong = { sentTo: email, error: "That code did not work. Check the latest email, or send a new one." };
-  if (!isAdminEmail(email)) return wrong;
+  if (!(await canReceiveAdminCode(email))) return wrong;
   const supabase = await createClient();
   const { data, error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
   if (error || !data.user) return wrong;

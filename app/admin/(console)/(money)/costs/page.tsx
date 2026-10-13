@@ -4,7 +4,7 @@ import { ConfirmButton } from "@/components/admin/confirm-button";
 import { CostLinesTable, MonthCostTable, monthLabel } from "@/components/admin/money/cost-tables";
 import { HowCalculated, Panel, Section, Stat, TableWrap, Td, Th, notice, Empty } from "@/components/admin/ui";
 import { Badge, Button, Field, Input, Select } from "@/components/ui";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { money, param } from "@/lib/admin/format";
 import { listMonthlyCosts } from "@/lib/analytics/costs";
 import { getMonthCosts, listProviderBills, listRecurringCosts } from "@/lib/money/costs";
@@ -17,7 +17,7 @@ export const metadata = { title: "Costs" };
 const amountText = (minor: number, currency: string) => (currency === "RWF" ? `${minor.toLocaleString("en-US")} RWF` : money(minor));
 
 export default async function CostsPage({ searchParams }: PageProps<"/admin/costs">) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("money.costs"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const thisMonth = new Date().toISOString().slice(0, 7);
   const lastMonth = addMonths(thisMonth, -1);

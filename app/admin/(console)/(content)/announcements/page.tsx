@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { Empty, Panel, notice } from "@/components/admin/ui";
@@ -12,7 +12,7 @@ import { createAnnouncementAction, endAnnouncementAction } from "@/app/admin/(co
 export const metadata = { title: "Announcements" };
 
 export default async function AnnouncementsPage({ searchParams }: PageProps<"/admin/announcements">) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("content"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const [rows, allPlans] = await Promise.all([listAnnouncements(), getPlans()]);
   const now = nowMs();

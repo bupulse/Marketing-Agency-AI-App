@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { DeployRuns } from "@/components/admin/deploy-runs";
@@ -24,7 +24,7 @@ const STATE: Record<UpdateStatus["state"], { label: string; tone: BadgeTone }> =
 const DOCS = "https://github.com/%s/blob/main/docs/UPDATES.md";
 
 export default async function UpdatesPage({ searchParams }: PageProps<"/admin/settings/updates">) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("system"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const s = await getUpdateStatus();
   const state = STATE[s.state];

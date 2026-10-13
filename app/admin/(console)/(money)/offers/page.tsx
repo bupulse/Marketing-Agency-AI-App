@@ -4,7 +4,7 @@ import { EmptyState, PageHeader } from "@/components/app";
 import { Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
 import { Badge } from "@/components/ui";
 import { OFFER_TONE } from "@/components/admin/offer-tone";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { dateTime, param } from "@/lib/admin/format";
 import { formatMinor } from "@/lib/region-format";
 import { listOffers } from "@/lib/offers/service";
@@ -24,7 +24,7 @@ const FILTERS = [
 ];
 
 export default async function OffersPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("requests"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const status = isOfferStatus(param(sp.status)) ? param(sp.status) : "";
   const businessId = param(sp.businessId).slice(0, 64);

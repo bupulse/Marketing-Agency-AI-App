@@ -10,7 +10,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock("next/headers", () => ({ headers: async () => new Headers({ "cf-connecting-ip": "198.51.100.1" }) }));
 vi.mock("next/navigation", () => ({ redirect: (u: string) => { throw new Error(`redirect:${u}`); }, notFound: () => { throw new Error("404"); } }));
-vi.mock("@/lib/admin/auth", () => ({ requireAdmin: h.requireAdmin, isAdminSession: async () => h.requireAdmin().then(() => true, () => false) }));
+vi.mock("@/lib/admin/auth", () => ({ requireAdmin: h.requireAdmin, requirePermission: h.requireAdmin, isAdminSession: async () => h.requireAdmin().then(() => true, () => false) }));
 vi.mock("@/lib/admin/service", () => ({ APPROVAL_TTL_MS: 1 }));
 vi.mock("@/lib/db", () => ({ prisma: new Proxy({}, { get: (_t, p) => (h.db as never)[p] }) }));
 vi.mock("@/lib/errors", async (orig) => ({ ...(await orig<typeof import("@/lib/errors")>()), logError: vi.fn(async () => {}) }));

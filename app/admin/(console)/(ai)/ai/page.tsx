@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { PageHeader } from "@/components/app";
 import { Bars, LineChart } from "@/components/admin/charts";
 import { Empty, Panel, Stat, TableWrap, Td, Th, notice } from "@/components/admin/ui";
@@ -13,7 +13,7 @@ export const metadata = { title: "AI usage" };
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
 export default async function AiPage({ searchParams }: PageProps<"/admin/ai">) {
-  await requireAdmin(); // pages render alongside the layout, so check here too
+  await requirePermission("ai"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(param(sp.month)) ? param(sp.month) : undefined;
   const u = await getAiUsage({ month });
