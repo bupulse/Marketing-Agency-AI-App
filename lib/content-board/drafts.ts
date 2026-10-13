@@ -26,7 +26,7 @@ export function draftFor(network: Network, content: ContentText): { text: string
   return { text: (variant?.caption ?? content.caption).trim(), hashtags, format: "POST" };
 }
 
-export type DraftResult = AutoResult & { created: number; replaced: number };
+export type DraftResult = AutoResult & { created: number; replaced: number; existing: number };
 
 /**
  * Drafts the posts of one content version for every usable connected app. Earlier drafts of the same product or
@@ -34,7 +34,7 @@ export type DraftResult = AutoResult & { created: number; replaced: number };
  * edited them; posts the owner approved, scheduled or made by hand are never touched. Does nothing without scheduling in the plan.
  */
 export async function draftPostsFromContent(owner: { businessId: string }, contentId: string, now = new Date()): Promise<DraftResult> {
-  const none: DraftResult = { created: 0, replaced: 0, scheduled: 0, waiting: 0 };
+  const none: DraftResult = { created: 0, replaced: 0, existing: 0, scheduled: 0, waiting: 0 };
   const entitlements = await companyEntitlements(owner.businessId);
   if (!entitlements.usable.has("calendar") || entitlements.block) return none;
   const content = await prisma.generatedContent.findFirst({
@@ -72,16 +72,21 @@ export async function draftPostsFromContent(owner: { businessId: string }, conte
       mediaPaths: media.mediaPaths,
     };
   });
-  // Replacing and drafting in one transaction: never the old drafts gone and no new ones. Drafts the owner edited stay.
-  const results = await prisma.$transaction([
-    prisma.post.deleteMany({ where: { businessId: owner.businessId, ...subject, source: "STUDIO", status: "PENDING_APPROVAL", ownerEditedAt: null, NOT: { contentId: content.id } } }),
-    ...rows.map((data) => prisma.post.create({ data, select: { id: true } })),
-    prisma.generatedContent.updateMany({ where: { id: content.id, businessId: owner.businessId }, data: { postsDraftedAt: now } }),
-  ]);
-  const replaced = (results[0] as { count: number }).count;
-  const created = results.slice(1, 1 + rows.length) as { id: string }[];
-  const auto = await autoSchedule(owner.businessId, created.map((p) => p.id), now);
-  return { created: created.length, replaced, ...auto };
+  // One transaction under a per-content lock: replacing and drafting happen together (never the old drafts gone and no
+  // new ones), and two calls at once (two tabs opening the page, a double click) draft once: the second waits for the
+  // lock, then finds the first one's drafts and makes none. Drafts the owner edited stay.
+  const outcome = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`content-drafts:${content.id}`}))`;
+    const existing = await tx.post.count({ where: { businessId: owner.businessId, contentId: content.id, source: "STUDIO", status: { not: "CANCELLED" } } });
+    if (existing > 0) return { created: [] as { id: string }[], replaced: 0, existing };
+    const { count: replaced } = await tx.post.deleteMany({ where: { businessId: owner.businessId, ...subject, source: "STUDIO", status: "PENDING_APPROVAL", ownerEditedAt: null, NOT: { contentId: content.id } } });
+    const created: { id: string }[] = [];
+    for (const data of rows) created.push(await tx.post.create({ data, select: { id: true } }));
+    await tx.generatedContent.updateMany({ where: { id: content.id, businessId: owner.businessId }, data: { postsDraftedAt: now } });
+    return { created, replaced, existing: 0 };
+  });
+  const auto = await autoSchedule(owner.businessId, outcome.created.map((p) => p.id), now);
+  return { created: outcome.created.length, replaced: outcome.replaced, existing: outcome.existing, ...auto };
 }
 
 /**
@@ -94,8 +99,8 @@ export async function latestContentPosts(businessId: string, subject: { productI
   if (!content) return null;
   const hasPosts = (await prisma.post.count({ where: { businessId, contentId: content.id } })) > 0;
   if (!hasPosts && !content.postsDraftedAt && options.backfill) {
-    const { created } = await draftPostsFromContent({ businessId }, content.id);
-    return { contentId: content.id, hasPosts: created > 0 };
+    const { created, existing } = await draftPostsFromContent({ businessId }, content.id);
+    return { contentId: content.id, hasPosts: created + existing > 0 };
   }
   return { contentId: content.id, hasPosts };
 }

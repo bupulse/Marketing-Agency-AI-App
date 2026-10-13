@@ -52,9 +52,10 @@ export async function createPostsFromContentAction(contentId: string): Promise<{
     await rateLimit(`content:drafts:${user.id}`, { limit: 60, windowSeconds: 60 * 60 });
     const content = await prisma.generatedContent.findFirst({ where: { id: String(contentId), businessId: user.businessId }, select: { id: true } });
     if (!content) return { ok: false, error: "We could not find that content." };
-    const { created } = await draftPostsFromContent({ businessId: user.businessId }, content.id);
+    const { created, existing } = await draftPostsFromContent({ businessId: user.businessId }, content.id);
     revalidatePath("/dashboard/content", "layout");
-    return created > 0 ? { ok: true, created } : { ok: false, error: "There was nothing to make posts from. Write the content again and try once more." };
+    if (created > 0) return { ok: true, created };
+    return { ok: false, error: existing > 0 ? "The posts for this content are already made: they are on this page." : "There was nothing to make posts from. Write the content again and try once more." };
   } catch (error) {
     if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
     await logError(error, { source: "content.drafts.manual" });

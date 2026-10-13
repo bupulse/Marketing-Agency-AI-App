@@ -21,7 +21,8 @@ campaign or app. Content -> Settings decides, per app, whether new posts wait fo
    show only while they have posts. With a post filter on, only subjects with matching posts show.
 5. **A subject's posts** (`/dashboard/content/products/<id>`, `/campaigns/<id>`, `/general`): cards that read like a
    social post but in BuPulse's look: the picture, carousel (dots) or video (still with a play mark), the app icon and
-   post type, 2 to 3 lines of caption, a status chip (Needs review, Scheduled for <date time>, Posted <date>, Failed,
+   post type (top right, so a design's own brand name at the top left stays visible), 2 to 3 lines of the caption (a
+   video idea shows its content's caption; the script is only in the detail), a status chip (Needs review, Scheduled for <date time>, Posted <date>, Failed,
    Draft, Post it yourself), the review reason when there is one, and the created date. A card opens the calendar's
    post detail (preview, Approve, Move, Back to review, Edit, Duplicate, Delete); Edit opens the composer. `?post=<id>`
    opens one post on arrival (links in the summary email). More posts load as the end of the list scrolls into view
@@ -65,7 +66,10 @@ are signed in one batched request per bucket (`signPaths`) and lazy-loaded.
   wait are replaced, in the same transaction as the new ones, **unless the owner edited them** (`Post.ownerEditedAt`,
   set by edits in the composer, media changes, moves and "Back to review"); approved, scheduled and hand-made posts are
   never touched. Scheduling a content by hand in the composer replaces its untouched drafts for the chosen accounts,
-  in the same transaction. Nothing is drafted without the `calendar` feature or an account.
+  in the same transaction. Nothing is drafted without the `calendar` feature. Drafting takes a per-content advisory
+  lock and makes nothing when the content already has its drafts, so two page loads at once (the backfill) or a double
+  click draft once; migration `20261016120000_dedupe_studio_drafts` removed the duplicates made before (untouched
+  drafts only, the oldest kept).
 - **Autopilot.** Its posts are saved as before (`PENDING_APPROVAL`, or `SCHEDULED` with "Post without asking").
 - When the content's picture finishes drawing or its video is uploaded, the drafts take it (`attachToContent` in
   `lib/visuals/service.ts`, as `attachToGroup` does for Autopilot) and get another auto-approval check. Only drafts
