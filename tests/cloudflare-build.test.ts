@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { patchClientForWorkers, restoreOnExit, WASM_OUT } from "@/scripts/cf-build.mjs";
+import { DATA_PACKAGE, externalizeClientData, patchClientForWorkers, restoreOnExit, WASM_OUT } from "@/scripts/cf-build.mjs";
 import { ANTHROPIC_MESSAGES_URL, ClaudeTextProvider } from "@/lib/ai/claude-text";
 import { createInteraction, GEMINI_API, GeminiHttpError } from "@/lib/ai/gemini-rest";
 import { AIProviderError } from "@/lib/ai/types";
@@ -18,6 +18,24 @@ describe("Workers build (scripts/cf-build.mjs)", () => {
     expect(patched).not.toContain("decodeBase64AsWasm");
     expect(patched).toContain("__bupulseWasm?.prismaQueryCompiler");
     expect(() => patchClientForWorkers("export {}")).toThrow(/generated Prisma client changed/);
+  });
+
+  it("the client's data moves to one package with the same values (bundled once in the Worker, next.config.ts lists it)", () => {
+    const source = patchClientForWorkers(readFileSync("lib/generated/prisma/internal/class.ts", "utf8"));
+    const { source: patched, data } = externalizeClientData(source);
+    expect(patched.length).toBeLessThan(source.length / 10);
+    expect(patched).toContain(`import * as __dataModule from "${DATA_PACKAGE}"`);
+    for (const ref of ['"inlineSchema": __data.inlineSchema,', "config.runtimeDataModel = __data.runtimeDataModel", "strings: __data.strings,", "graph: __data.graph"]) expect(patched).toContain(ref);
+    // The data module evaluates to exactly what the generated client held.
+    const mod = { exports: {} as Record<string, unknown> };
+    new Function("module", "exports", data)(mod, mod.exports);
+    const inline = /^ {2}"inlineSchema": (".*"),$/m.exec(source)![1];
+    expect(mod.exports.inlineSchema).toBe(JSON.parse(inline));
+    expect(mod.exports.runtimeDataModel).toEqual(JSON.parse(JSON.parse(/^config\.runtimeDataModel = JSON\.parse\((".*")\)$/m.exec(source)![1])));
+    expect((mod.exports.strings as string[]).length).toBeGreaterThan(100);
+    expect(mod.exports.graph).toBe(JSON.parse(/^ {2}graph: (".*")$/m.exec(source)![1]));
+    expect(readFileSync("next.config.ts", "utf8")).toContain(`"${DATA_PACKAGE}"`);
+    expect(() => externalizeClientData("export {}")).toThrow(/generated Prisma client changed/);
   });
 
   it("Ctrl+C or a kill restores the usual client once, then exits", () => {

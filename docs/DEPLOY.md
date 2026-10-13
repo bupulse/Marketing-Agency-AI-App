@@ -4,7 +4,7 @@ BuPulse 2.0 runs on **Cloudflare Workers, Paid plan** ($5 a month), through Open
 
 Netlify's free plan stays a supported fallback: see `docs/DEPLOY_NETLIFY.md`. The repository variable `DEPLOY_TARGET` (unset or `cloudflare` = this page, `netlify` = that one) chooses which workflow a push to `main` runs; everything that differs between the two hosts lives in `lib/platform/`.
 
-Why the Paid plan: the Worker is about 9.2 MiB gzipped (the free plan allows 3 MiB, Paid 10 MiB), it needs more than 10 ms of CPU per request (Paid: 30 s by default, 2 minutes set in `wrangler.jsonc`), and the publisher runs every minute.
+Why the Paid plan: the Worker is about 8.8 MiB gzipped (the free plan allows 3 MiB, Paid 10 MiB), it needs more than 10 ms of CPU per request (Paid: 30 s by default, 2 minutes set in `wrangler.jsonc`), and the publisher runs every minute.
 
 ## 1. One-time Cloudflare setup (owner)
 
@@ -82,6 +82,17 @@ For staging, create a second worker (copy `wrangler.jsonc` to an environment nam
 ## Known notes
 
 - **Bundle size** (`npx wrangler deploy --dry-run --outdir /tmp/cf` after `npm run build:cloudflare` prints it): 9.2 MiB gzipped (37.7 MiB before compression) on 13 October 2026, against the Workers Paid limit of 10 MiB gzipped (64 MiB raw). Before the 2.0 trimming it was 11.0 MiB gzipped, over the limit. What was cut: the `@anthropic-ai/sdk` and `@google/genai` packages (Claude and Gemini are called over plain `fetch`, `lib/ai/gemini-rest.ts`; the Google SDK pulled in google-auth-library, ws and more, copied into several route layers), Prisma's query compiler as base64 in the JavaScript (now a `.wasm` module, `scripts/cf-build.mjs`), and the country border data (`@rapideditor/country-coder`) in the pricing page (`lib/geo/availability.ts`). Static files (`public/`, `_next/static`, about 5 MB) are Workers Assets and do not count. Keep heavy libraries out of server code shared by many routes; re-measure before adding one.
+- **Worker size, 14 October 2026: 8.83 MiB gzipped (9,038 KiB; 36.5 MiB raw)**, down from 9.78 MiB (10,017 KiB) the
+  evening before. Turbopack puts a copy of a module into every chunk group that reaches it (pages and route handlers
+  are separate groups, sometimes two of each), and OpenNext bundles every copy; a package named in
+  `serverExternalPackages` (`next.config.ts`) is bundled once instead. What was done, with no change in behaviour:
+  `zod`, `pdf-lib` (with pako) and `libphonenumber-js` are external packages (-615 KiB); the generated Prisma client's
+  data (schema text, data model, query graph: about 650 KB raw, three copies) moves into a package
+  `@bupulse/prisma-data` that `scripts/cf-build.mjs` writes for the Cloudflare build only (`externalizeClientData`,
+  -275 KiB); the favicon is `public/icon.png` (a static asset, declared in `app/layout.tsx` metadata) instead of the
+  `app/icon.png` route (-90 KiB). Not externalised: `@supabase/supabase-js` (OpenNext's middleware bundle then cannot
+  resolve `tslib`). To find what grew: `.next/server/chunks/**/*.js.map` lists each chunk's sources; the largest
+  gzipped chunks under `.open-next/server-functions/default/.next/server` show the duplicates.
 - **Workers build**: always `node scripts/cf-build.mjs` (the npm `deploy`, `preview` and `build:cloudflare` scripts and `deploy.yml` use it), not `opennextjs-cloudflare build` alone: workerd cannot compile WebAssembly from bytes, so Prisma's query compiler must be a `.wasm` module imported by `worker.ts`, like the image codecs. The script patches the generated client for the build and generates the usual one again afterwards, also when stopped with Ctrl+C. If it was killed hard (or the machine stopped) and `next dev`, tests or `npm run build` then fail on Prisma's query compiler ("was not loaded (worker.ts)"), run `npx prisma generate` to restore the client.
 - `worker.ts` may only export its handler and the Durable Object classes (workerd refuses other named exports); the cron schedules live in `worker-crons.ts`.
 - `pg-cloudflare` is pinned to 1.3.0 in `package.json` (`overrides`) because 1.4.1 is published without the files the bundler needs. Remove the pin once a fixed version ships.
