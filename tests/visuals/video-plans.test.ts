@@ -44,9 +44,9 @@ describe("video by plan", () => {
     expect(SEED_PLANS.STANDARD.limits.videoSeconds).toBe(0);
   });
 
-  it("video is an add-on with a Rwanda placeholder price, and brings 240 s when added to a plan without it", () => {
+  it("video is an add-on at 10,000 RWF a month in Rwanda, and brings 240 s when added to a plan without it", () => {
     expect(ADDONS.find((a) => a.key === "video")).toMatchObject({ kind: "feature", feature: "video" });
-    expect(SQL).toMatch(/\('addon_rw_video', 'video', 'RW', 'RWF', \d+, 'migration \(placeholder\)'/);
+    expect(SQL).toMatch(/\('addon_rw_video', 'video', 'RW', 'RWF', 10000, 'migration', CURRENT_TIMESTAMP\)/);
     expect(SQL).toContain('ON CONFLICT ("addonKey", "regionKey") DO NOTHING');
 
     const prices: AddonPriceRow[] = [{ addonKey: "video", regionKey: "RW", currency: "RWF", monthlyMinor: 10000 }];
