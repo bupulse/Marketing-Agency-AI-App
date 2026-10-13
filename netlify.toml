@@ -8,3 +8,8 @@
 
 [build.environment]
   NODE_VERSION = "24"
+
+# Server rendering, API routes and the proxy run as Netlify Functions through the Next.js adapter. Listed explicitly
+# because automatic detection did not install it on this site.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
