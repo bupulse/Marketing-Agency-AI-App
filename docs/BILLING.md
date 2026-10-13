@@ -41,7 +41,8 @@ never hidden; an unlisted one is `off`. A card-only region opens the checkout in
 Card is `ready` when (`lib/billing/card-ready.ts`, computed on the server before the page renders):
 
 1. the provider is configured: `BILLING_PROVIDER` (unset = `PADDLE`, which is what you want; setting it explicitly to
-   `PADDLE` changes nothing) with `PADDLE_API_KEY`, `PADDLE_CLIENT_TOKEN` **and** `PADDLE_WEBHOOK_SECRET` set;
+   `PADDLE` changes nothing) with an API key, a client-side token **and** a webhook secret, saved in Admin → Settings →
+   Card payments (below) or as `PADDLE_API_KEY`, `PADDLE_CLIENT_TOKEN`, `PADDLE_WEBHOOK_SECRET`;
 2. Paddle is switched on in Admin → Services;
 3. the plan has a Paddle price for the company's region and interval (`regionPriceIdFor`): in GLOBAL the plan's own ids
    (Admin → Plans → sync, or `PADDLE_PRICE_<PLAN>_<MONTH|YEAR>`); in Rwanda and EAC `PlanRegionPrice.paddleMonthlyPriceId`
@@ -57,7 +58,37 @@ Card routes: plans → `startCheckout` (auto-renewing Paddle subscription, activ
 same checkout for the invoice's plan and interval ("Pay online" in the invoice email links to Billing; a custom plan's
 invoice has no card button); offers → "Ask us for a card link" (Paddle cannot take a custom price, `docs/OFFERS.md`).
 
+## Connecting Paddle (Admin → Settings → Card payments)
+
+No environment variable needs editing. In Admin → Settings → **Card payments (Paddle)** (AAL2, every save audited):
+
+1. Choose **Sandbox** or **Live** and paste the **API key** (`pdl_sdbx_apikey_…` / `pdl_live_apikey_…`) and the
+   **client-side token** (`test_…` / `live_…`) from Paddle > Developer tools > Authentication. A value for the other
+   environment is refused. **Test connection** checks the typed (or saved) key with a read-only call (`GET /event-types`).
+2. **Save.** Each value is encrypted with `ENCRYPTION_KEY` (`lib/crypto.ts`, like the Google Calendar token) in
+   `AdminSetting` `billing.paddle` and never shown again: the page shows its last 4 characters and where it comes from.
+   An empty field keeps the saved value. Switching sandbox ↔ live needs that account's key and token (and drops the old
+   webhook secret). The audit row records the environment and the last 4 characters only.
+3. **Set up prices** (`setUpPaddle`, `lib/billing/paddle-setup.ts`): every plan without Paddle prices is synced (the
+   plan builder's own sync: product, monthly and yearly price), every regional card price gets its USD Paddle prices
+   (Rwanda, EAC; ids in `PlanRegionPrice`), and the notification destination `<site>/api/billing/webhooks/paddle` is
+   created or updated with every event BuPulse handles (`PADDLE_EVENTS` in `scripts/paddle-sync.mjs`, incl.
+   `transaction.completed`, `adjustment.created`, `adjustment.updated`); the secret Paddle returns is saved encrypted.
+   Idempotent; audited `paddle_set_up`. Problems (e.g. Paddle refusing a localhost URL) are listed, the rest still runs.
+4. The **status line** says "Card payments: ready" or "not set up — <reason>" (missing values, Paddle switched off in
+   Admin → Services, no plan priced), and how many plans have a card price per region. Card is offered to clients as
+   soon as it is ready, with no deploy (caches: 30 s).
+
+**Precedence:** per value, the one saved in Settings wins; a value not saved there falls back to its `PADDLE_*`
+variable. The environment goes with the saved API key; without a saved key, `PADDLE_ENVIRONMENT` (default sandbox).
+**Remove saved values** returns to the variables. The Services page counts Paddle as configured when Settings has all
+three values. `lib/billing/paddle-config.ts` (`getPaddleConfig`) is the one reader; `paddleApi`, checkout, webhooks,
+the plan builder, the service test and the Approvals links all use it.
+
 ## Environment variables
+
+All `PADDLE_*` values are optional when Paddle is connected in Admin → Settings (above); they are the fallback.
+
 
 | Variable | Meaning |
 | --- | --- |
@@ -70,7 +101,7 @@ invoice has no card button); offers → "Ask us for a card link" (Paddle cannot 
 
 Sandbox and live are separate Paddle accounts with different keys, tokens and price ids.
 
-## Setup (sandbox)
+## Setup from the command line (sandbox), the alternative to Settings
 
 1. Create a Paddle sandbox account, then create an API key and a client-side token.
 2. Put `PADDLE_API_KEY`, `PADDLE_CLIENT_TOKEN` and `PADDLE_ENVIRONMENT=sandbox` in `.env`.
@@ -82,7 +113,7 @@ Sandbox and live are separate Paddle accounts with different keys, tokens and pr
 4. Regional card prices (Rwanda's RWF plans charged in USD, EAC): `npm run paddle:setup -- --regions` with
    `DIRECT_URL` or `DATABASE_URL` pointing at the app's database. It creates a USD price per region row and interval on
    the plan's Paddle product (tagged `custom_data.regionKey`), reuses an identical one, and writes the ids into
-   `PlanRegionPrice` (`scripts/paddle-regions.mjs`). Run it again after a regional price or the USD rate changes (that
+   `PlanRegionPrice` (`scripts/paddle-sync.mjs`). Run it again after a regional price or the USD rate changes (that
    clears the ids). Card then shows as ready within a minute (caches).
 5. Copy the same variables into the hosting secrets (Netlify / Cloudflare).
 

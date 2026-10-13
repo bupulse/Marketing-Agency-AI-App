@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { cardCents, regionPriceJobs, syncRegionPrices } from "../../scripts/paddle-regions.mjs";
+import { cardCents, ensureNotificationSetting, PADDLE_EVENTS, regionPriceJobs, syncRegionPrices } from "../../scripts/paddle-sync.mjs";
 
-// `npm run paddle:setup -- --regions` (scripts/paddle-regions.mjs): the regional card prices Paddle needs before card
+// `npm run paddle:setup -- --regions` (scripts/paddle-sync.mjs): the regional card prices Paddle needs before card
 // checkout is offered in Rwanda (docs/BILLING.md). Paddle and the database are fakes here.
 
 const rw = (over: Record<string, unknown> = {}) => ({ planKey: "STARTER", planName: "Starter", paddleProductId: null, regionKey: "RW", currency: "RWF", monthlyMinor: 15000, yearlyMinor: 150000, cardMonthlyUsdCents: 1200, cardYearlyUsdCents: 11600, paddleMonthlyPriceId: null, paddleYearlyPriceId: null, ...over });
@@ -40,5 +40,18 @@ describe("syncing with Paddle", () => {
     expect(calls.filter((c) => c.path === "/products" && c.method === "POST")).toHaveLength(1);
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ planKey: "STARTER" }), "MONTH", "pri_new");
     expect(save).toHaveBeenCalledTimes(2); // the BUSINESS row already had both ids
+  });
+});
+
+describe("the notification destination", () => {
+  it("an existing one for the URL is reused, its missing events (refunds, completed payments) added, its secret returned", async () => {
+    const api = vi.fn(async (path: string, method: string) => {
+      if (method === "GET") return [{ id: "ntfset_1", type: "url", destination: "https://bupulse.com/api/billing/webhooks/paddle", endpoint_secret_key: "pdl_ntfset_x", subscribed_events: [{ name: "subscription.created" }] }];
+      return {};
+    });
+    const r = await ensureNotificationSetting(api, "https://bupulse.com/api/billing/webhooks/paddle");
+    expect(r).toMatchObject({ secret: "pdl_ntfset_x", created: false });
+    expect(r.updated).toEqual(expect.arrayContaining(["transaction.completed", "adjustment.created", "adjustment.updated"]));
+    expect(api).toHaveBeenCalledWith("/notification-settings/ntfset_1", "PATCH", { subscribed_events: PADDLE_EVENTS });
   });
 });

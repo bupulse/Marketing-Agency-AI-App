@@ -5,6 +5,9 @@ import { adminAction, finish } from "@/lib/admin/console";
 import { recomputeCardPrices } from "@/lib/admin/regions-service";
 import { setSetting, type SettingName } from "@/lib/admin/settings";
 import { disconnectGoogleCalendar, setGoogleCalendarId, testGoogleCalendar } from "@/lib/google-calendar/calendar";
+import { AdminError } from "@/lib/admin/types";
+import { clearPaddleSettings, savePaddleSettings, SECRET_LABEL } from "@/lib/billing/paddle-config";
+import { setUpPaddle, testPaddleConnection } from "@/lib/billing/paddle-setup";
 
 const BACK = "/admin/settings";
 const text = (f: FormData, k: string) => String(f.get(k) ?? "").trim();
@@ -52,4 +55,39 @@ export async function googleCalendarIdAction(f: FormData) {
 export async function disconnectGoogleCalendarAction() {
   const ctx = await adminAction();
   await finish(GOOGLE, (r) => `Google Calendar disconnected${r.email ? ` (${r.email})` : ""}.${r.revoked ? "" : " Google did not confirm the revoke: remove BuPulse under your Google account's third-party access."} New bookings use the meeting link and .ics invites.`, () => disconnectGoogleCalendar(ctx));
+}
+
+// ---- Card payments (Paddle); the Mobile Money form uses savePaymentSettingsAction (../payments/actions.ts) ---------------------------------------------
+
+const PADDLE = `${BACK}#paddle`;
+
+/** Saves the environment and any secret typed (an empty field keeps the saved one). Values are never sent back. */
+export async function savePaddleSettingsAction(f: FormData) {
+  const ctx = await adminAction();
+  await finish(PADDLE, (r) => (r.changed.length ? `Paddle ${r.environment === "production" ? "live" : "sandbox"} saved (${r.changed.map((n) => SECRET_LABEL[n].toLowerCase()).join(", ")}).` : "Nothing changed."), () =>
+    savePaddleSettings(ctx, { environment: text(f, "environment"), apiKey: text(f, "apiKey"), clientToken: text(f, "clientToken"), webhookSecret: text(f, "webhookSecret") }),
+  );
+}
+
+/** Read-only: the API key typed in the form (with its environment), else the saved one. */
+export async function testPaddleAction(f: FormData) {
+  await adminAction(); // read-only, nothing to audit; the admin gate (AAL2) still runs first
+  await finish(PADDLE, (r) => r.message, async () => {
+    const r = await testPaddleConnection({ apiKey: text(f, "apiKey") || undefined, environment: text(f, "environment") === "production" ? "production" : "sandbox" });
+    if (!r.ok) throw new AdminError("unavailable", r.message);
+    return r;
+  });
+}
+
+export async function setUpPaddleAction() {
+  const ctx = await adminAction();
+  await finish(PADDLE, (r) => {
+    const done = `Set up: ${r.plans.length} ${r.plans.length === 1 ? "plan" : "plans"} synced, ${r.regionPrices} regional ${r.regionPrices === 1 ? "price" : "prices"} created, webhook ${r.webhook}${r.secretStored ? " (secret saved)" : ""}.`;
+    return r.problems.length ? `${done} Still to fix: ${r.problems.join(" · ")}` : done;
+  }, () => setUpPaddle(ctx));
+}
+
+export async function clearPaddleSettingsAction() {
+  const ctx = await adminAction();
+  await finish(PADDLE, "Saved Paddle values removed. The environment variables apply again, if any are set.", () => clearPaddleSettings(ctx));
 }

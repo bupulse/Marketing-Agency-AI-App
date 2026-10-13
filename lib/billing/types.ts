@@ -54,7 +54,7 @@ export type Invoice = {
 export interface BillingAdapter {
   provider: BillingProvider;
   /** Whether the keys for this provider are configured. */
-  isConfigured(): boolean;
+  isConfigured(): Promise<boolean>;
   checkoutConfig(input: {
     userId: string;
     email: string;

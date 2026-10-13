@@ -11,7 +11,24 @@ import { siteUrl } from "@/lib/auth/site-url";
 import { cardUsdCents, formatMinor } from "@/lib/region-format";
 import { DEMO_TIME_ZONE, WEEKDAY_NAMES } from "@/lib/demo/slots";
 import { googleCalendarStatus } from "@/lib/google-calendar/calendar";
-import { addAvailabilityAction, disconnectGoogleCalendarAction, googleCalendarIdAction, recomputeCardPricesAction, removeAvailabilityAction, saveSettingsAction, testGoogleCalendarAction } from "./actions";
+import { getMomoSettings } from "@/lib/billing/momo-settings";
+import { momoConfigured, mtnMomoPayDial } from "@/lib/billing/momo-shared";
+import { PADDLE_SECRETS, SECRET_LABEL } from "@/lib/billing/paddle-config";
+import { PADDLE_WEBHOOK_PATH, paddleStatus } from "@/lib/billing/paddle-setup";
+import {
+  addAvailabilityAction,
+  clearPaddleSettingsAction,
+  disconnectGoogleCalendarAction,
+  googleCalendarIdAction,
+  recomputeCardPricesAction,
+  removeAvailabilityAction,
+  savePaddleSettingsAction,
+  saveSettingsAction,
+  setUpPaddleAction,
+  testGoogleCalendarAction,
+  testPaddleAction,
+} from "./actions";
+import { savePaymentSettingsAction } from "../payments/actions";
 
 export const metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
@@ -19,12 +36,13 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireAdmin(); // pages render alongside the layout, so check here too
   const sp = await searchParams;
-  const [s, windows, google] = await Promise.all([getSettings(), listAvailability(), googleCalendarStatus()]);
+  const [s, windows, google, momo, paddle] = await Promise.all([getSettings(), listAvailability(), googleCalendarStatus(), getMomoSettings(), paddleStatus()]);
+  const dial = mtnMomoPayDial(momo.merchantCode);
   const example = cardUsdCents(15000, "RWF", s.usdToRwf, s.cardMarginPercent);
 
   return (
     <>
-      <PageHeader title="Settings" description="The trial, card prices, and the demo calls new clients book. Every change is written to the audit log." />
+      <PageHeader title="Settings" description="The trial, payments (Mobile Money and card), card prices, and the demo calls new clients book. Every change is written to the audit log." />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
 
@@ -63,6 +81,88 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               description="Every RWF (or other local-currency) plan gets a new card price from the rate and margin above. Paddle prices are not created or changed here yet (docs/REGIONS.md), so card checkout for those plans waits for the sync. Written to the audit log."
               confirmLabel="Update card prices"
             />
+          </div>
+        </Panel>
+      </div>
+
+      <div id="momo">
+        <Panel
+          title="Payments: Mobile Money"
+          description="Where clients pay by MTN MoMo or Airtel Money. Shown on the pay screen, the invoices and the reminder emails. Every change is audited and every admin address is told. Clients' payments are checked and confirmed on the Payments page."
+          action={momoConfigured(momo) ? <Badge tone="success">Offered to clients</Badge> : <Badge tone="neutral">Not set up</Badge>}
+        >
+          <form action={savePaymentSettingsAction} className="flex flex-col gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="MTN MoMo Pay merchant code" hint={dial ? <>Clients dial <span className="font-mono font-semibold">{dial}</span> on their MTN line (tap to call on a phone).</> : "From MTN, e.g. 002450. Clients then dial *182*8*1*<code># on their MTN line."}>
+                <Input name="merchantCode" defaultValue={momo.merchantCode} maxLength={20} inputMode="numeric" placeholder="002450" />
+              </Field>
+              <Field label="MTN MoMo number" hint="Optional, shown beside the code.">
+                <Input name="momoNumber" defaultValue={momo.momoNumber} maxLength={30} inputMode="tel" />
+              </Field>
+              <Field label="Account name" hint="The name clients see on their phone when they pay.">
+                <Input name="accountName" defaultValue={momo.accountName} maxLength={80} />
+              </Field>
+              <Field label="Airtel Money number" hint="Clients on Airtel get the steps for this number.">
+                <Input name="airtelNumber" defaultValue={momo.airtelNumber} maxLength={30} inputMode="tel" />
+              </Field>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="submit">Save Mobile Money details</Button>
+              <Link href="/admin/payments" className="text-sm underline">Payments to check</Link>
+            </div>
+          </form>
+        </Panel>
+      </div>
+
+      <div id="paddle">
+        <Panel
+          title="Card payments (Paddle)"
+          description="Connect Paddle here instead of editing environment variables. Saved values are encrypted and never shown again (only their last 4 characters). A value saved here wins over the PADDLE_* environment variable; a value not saved here falls back to it. Card is offered to clients automatically once this is ready."
+          action={paddle.ready ? <Badge tone="success">Ready</Badge> : <Badge tone="neutral">Not set up</Badge>}
+        >
+          <p role="status" className={paddle.ready ? notice.ok : notice.bad}>{paddle.line}</p>
+          <ul className="flex flex-col gap-1 text-[13px] text-muted">
+            <li>Environment: <strong>{paddle.environment === "production" ? "live" : "sandbox"}</strong> ({paddle.config.source.environment === "settings" ? "saved here" : "PADDLE_ENVIRONMENT or default"})</li>
+            {PADDLE_SECRETS.map((n) => (
+              <li key={n}>
+                {SECRET_LABEL[n]}: {paddle.config.last4[n] ? <>…<span className="font-mono">{paddle.config.last4[n]}</span> ({paddle.config.source[n] === "settings" ? "saved here" : "environment variable"})</> : "not set"}
+              </li>
+            ))}
+            {paddle.regions.map((r) => (
+              <li key={r.key}>{r.name}: {r.priced} of {r.total} {r.total === 1 ? "plan" : "plans"} with a card price</li>
+            ))}
+          </ul>
+          <form action={savePaddleSettingsAction} className="flex flex-col gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Environment" hint="Sandbox and live are separate Paddle accounts with their own keys.">
+                <Select name="environment" defaultValue={paddle.environment}>
+                  <option value="sandbox">Sandbox (testing)</option>
+                  <option value="production">Live</option>
+                </Select>
+              </Field>
+              {PADDLE_SECRETS.map((n) => (
+                <Field key={n} label={SECRET_LABEL[n]} hint={paddle.config.last4[n] ? `Leave empty to keep the one ending ${paddle.config.last4[n]}.` : n === "webhookSecret" ? "Set up prices fills this in for you." : n === "apiKey" ? "Paddle > Developer tools > Authentication (pdl_…)." : "Paddle > Developer tools > Authentication (test_… or live_…)."}>
+                  <Input name={n} type="password" autoComplete="off" spellCheck={false} maxLength={300} />
+                </Field>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button type="submit">Save</Button>
+              <Button type="submit" variant="outline" formAction={testPaddleAction} formNoValidate>Test connection</Button>
+            </div>
+            <p className="text-[13px] text-muted">Test connection uses the API key typed above (with the environment chosen), or the saved one; it only reads from Paddle.</p>
+          </form>
+          <div className="flex flex-wrap items-center gap-3 border-t border-line pt-4">
+            <ConfirmButton
+              action={setUpPaddleAction}
+              fields={{}}
+              variant="primary"
+              label="Set up prices"
+              title="Set up Paddle prices and the webhook?"
+              description={`Creates in Paddle ${paddle.environment === "production" ? "live" : "sandbox"} what is missing: a product and monthly and yearly prices for every plan, the card prices of Rwanda and the other regions, and the notification destination ${siteUrl()}${PADDLE_WEBHOOK_PATH} with every event BuPulse handles. Its secret is saved here. Running it again reuses what exists.`}
+              confirmLabel="Set up prices"
+            />
+            <ConfirmButton action={clearPaddleSettingsAction} fields={{}} label="Remove saved values" title="Remove the saved Paddle values?" description="Card payments then use the PADDLE_* environment variables, if they are set; otherwise card shows as coming soon to clients." confirmLabel="Remove" />
           </div>
         </Panel>
       </div>

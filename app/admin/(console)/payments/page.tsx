@@ -3,7 +3,7 @@ import { Smartphone } from "lucide-react";
 import { EmptyState, PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { Empty, Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
-import { Badge, Button, Field, Input, Textarea } from "@/components/ui";
+import { Badge, Field, Input, Textarea } from "@/components/ui";
 import { requireAdmin } from "@/lib/admin/auth";
 import { dateTime, money, param } from "@/lib/admin/format";
 import { listManualPayments, type ManualPaymentAdminView } from "@/lib/billing/momo";
@@ -11,7 +11,7 @@ import { getMomoSettings } from "@/lib/billing/momo-settings";
 import { momoConfigured, mtnMomoPayDial } from "@/lib/billing/momo-shared";
 import { proofSignedUrl } from "@/lib/billing/momo-proofs";
 import { listUnprocessedPaddleEvents } from "@/lib/billing/paddle-events";
-import { confirmPaymentAction, rejectPaymentAction, reprocessCardEventAction, savePaymentSettingsAction } from "./actions";
+import { confirmPaymentAction, rejectPaymentAction, reprocessCardEventAction } from "./actions";
 
 export const metadata = { title: "Payments" };
 
@@ -58,7 +58,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
       {!momoConfigured(settings) && (
-        <p role="alert" className={notice.bad}>Clients are not offered Mobile Money yet: fill in a MoMo Pay code or a number in the settings below.</p>
+        <p role="alert" className={notice.bad}>Clients are not offered Mobile Money yet: fill in a MoMo Pay code or a number in <Link href="/admin/settings#momo" className="underline">Settings → Payments</Link>.</p>
       )}
 
       {toCheck.length === 0 ? (
@@ -173,19 +173,17 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
       </Panel>
 
       <div id="settings">
-        <Panel title="Where clients pay" description="Shown on the client's pay screen and in reminder emails. Every change is audited and every admin address is told.">
-          <form action={savePaymentSettingsAction} className="flex flex-col gap-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="MoMo Pay merchant code" hint={dial ? <>Clients are told to dial <span className="font-mono font-semibold">{dial}</span> on their MTN line (tap to call on a phone).</> : "From MTN, if you have one. Clients then dial *182*8*1*<code># on their MTN line."}><Input name="merchantCode" defaultValue={settings.merchantCode} maxLength={20} inputMode="numeric" /></Field>
-              <Field label="MTN MoMo number"><Input name="momoNumber" defaultValue={settings.momoNumber} maxLength={30} inputMode="tel" /></Field>
-              <Field label="Account name" hint="The name clients see on their phone when they pay."><Input name="accountName" defaultValue={settings.accountName} maxLength={80} /></Field>
-              <Field label="Airtel Money number"><Input name="airtelNumber" defaultValue={settings.airtelNumber} maxLength={30} inputMode="tel" /></Field>
-            </div>
-            <p className="text-[13px] text-muted">
-              What clients pay is the plan&apos;s price in their region (Rwanda: Starter and Business in RWF), set under <Link href="/admin/settings/regions" className="underline">Regions and prices</Link>. The USD rate used to count Mobile Money revenue in dollars is in <Link href="/admin/settings" className="underline">Settings</Link>.
-            </p>
-            <Button type="submit" className="self-start">Save payment details</Button>
-          </form>
+        <Panel title="Where clients pay" description="The MoMo Pay code, numbers and account name are set in Settings, with card payments (Paddle).">
+          <p className="text-[14px]">
+            {settings.merchantCode ? <>MoMo Pay code <span className="font-mono font-semibold">{settings.merchantCode}</span>{dial ? <> (clients dial <span className="font-mono">{dial}</span>)</> : null}</> : "No MoMo Pay code"}
+            {settings.momoNumber ? ` · MTN ${settings.momoNumber}` : ""}
+            {settings.airtelNumber ? ` · Airtel ${settings.airtelNumber}` : ""}
+            {settings.accountName ? ` · ${settings.accountName}` : ""}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/admin/settings#momo" className="text-sm font-semibold underline">Edit Mobile Money details</Link>
+            <Link href="/admin/settings#paddle" className="text-sm font-semibold underline">Card payments (Paddle)</Link>
+          </div>
         </Panel>
       </div>
     </>

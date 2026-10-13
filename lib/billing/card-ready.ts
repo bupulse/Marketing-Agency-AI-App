@@ -10,7 +10,7 @@ import { payMethods, type CardPriced, type PayMethods } from "./pay-methods";
 /** The card provider (BILLING_PROVIDER, default Paddle) has its keys and is switched on in Admin -> Services. */
 export async function cardCheckoutConfigured(): Promise<boolean> {
   try {
-    return billingAdapter(activeProvider()).isConfigured() && (await isServiceEnabled("paddle"));
+    return (await billingAdapter(activeProvider()).isConfigured()) && (await isServiceEnabled("paddle"));
   } catch {
     return false;
   }

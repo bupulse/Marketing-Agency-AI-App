@@ -9,18 +9,19 @@ import { approvalNeedsCheck, isExpiredApproval, splitApprovals } from "@/lib/adm
 import { dateTime, money, nowMs, param } from "@/lib/admin/format";
 import { APPROVAL_TTL_MS, listApprovals, type ApprovalView } from "@/lib/admin/service";
 import { approveFormAction, rejectFormAction } from "../actions";
+import { getPaddleConfig, type PaddleEnvironment } from "@/lib/billing/paddle-config";
 
 export const metadata = { title: "Approvals" };
 
-const paddleHost = () => (process.env.PADDLE_ENVIRONMENT === "production" ? "https://vendors.paddle.com" : "https://sandbox-vendors.paddle.com");
+const paddleHost = (environment: PaddleEnvironment) => (environment === "production" ? "https://vendors.paddle.com" : "https://sandbox-vendors.paddle.com");
 const txnOf = (a: ApprovalView) => String(a.params.transactionId ?? (a.result as { transactionId?: string } | null)?.transactionId ?? "");
 
-function TxnLink({ a }: { a: ApprovalView }) {
+function TxnLink({ a, env }: { a: ApprovalView; env: PaddleEnvironment }) {
   const id = txnOf(a);
   if (!/^txn_\w+$/.test(id)) return null;
   return (
     <p className="text-[13px]">
-      Paddle transaction <a href={`${paddleHost()}/transactions-v2/${id}`} target="_blank" rel="noreferrer" className="underline">{id}</a>
+      Paddle transaction <a href={`${paddleHost(env)}/transactions-v2/${id}`} target="_blank" rel="noreferrer" className="underline">{id}</a>
       {typeof a.params.lineItemId === "string" && a.params.lineItemId ? <span className="text-muted"> · line item {a.params.lineItemId}</span> : null}
     </p>
   );
@@ -50,6 +51,7 @@ const tone = (s: string) => (s === "executed" ? "success" : s === "failed" || s 
 
 export default async function ApprovalsPage({ searchParams }: PageProps<"/admin/approvals">) {
   await requireAdmin(); // pages render alongside the layout, so check here too
+  const paddleEnv = (await getPaddleConfig()).environment;
   const sp = await searchParams;
   // Pending is its own query so a waiting request can never fall off the newest-100 history.
   const [pendingRows, recent] = await Promise.all([listApprovals({ status: "pending", limit: 100 }), listApprovals({ limit: 100 })]);
@@ -74,7 +76,7 @@ export default async function ApprovalsPage({ searchParams }: PageProps<"/admin/
                   <div className="min-w-0">
                     <p className="font-semibold">{d.title} <Badge tone="violet">Pending</Badge></p>
                     {d.lines.map((l) => (<p key={l} className="text-[14px]">{l}</p>))}
-                    <TxnLink a={a} />
+                    <TxnLink a={a} env={paddleEnv} />
                     <p className="text-[13px] text-muted">
                       For <Link href={`/admin/users/${String(a.params.userId)}`} className="underline">this user</Link> · asked by {requester(a.requestedBy)} · {dateTime(a.createdAt)}
                     </p>
@@ -100,7 +102,7 @@ export default async function ApprovalsPage({ searchParams }: PageProps<"/admin/
               return (
                 <li key={a.id} className="flex flex-col gap-0.5 py-3 first:pt-0 last:pb-0">
                   <p className="text-[14px] font-medium">{d.title}: {d.lines[0]} <Badge tone={tone(isExpired(a) ? "rejected" : a.status)}>{isExpired(a) ? "expired" : a.status === "needs_check" ? "needs check" : a.status}</Badge></p>
-                  <TxnLink a={a} />
+                  <TxnLink a={a} env={paddleEnv} />
                   <p className="text-[13px] text-muted">Asked by {requester(a.requestedBy)} on {dateTime(a.createdAt)}{a.decidedAt ? `, decided ${dateTime(a.decidedAt)}` : ""}</p>
                   {needsCheck(a.status) && (
                     <p role="alert" className="rounded-xl bg-danger-bg px-3 py-2 text-[13px] font-medium text-danger">

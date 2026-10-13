@@ -82,7 +82,7 @@ export async function startCheckout(input: { plan: string; interval: string }): 
 
   try {
     const adapter = billingAdapter(activeProvider());
-    if (!adapter.isConfigured()) return { ok: false, error: NOT_READY };
+    if (!(await adapter.isConfigured())) return { ok: false, error: NOT_READY };
     const config = await adapter.checkoutConfig({
       userId: user.id,
       email: user.email,

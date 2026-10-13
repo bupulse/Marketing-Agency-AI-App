@@ -29,7 +29,7 @@ export default async function PlansPage({ searchParams }: PageProps<"/admin/plan
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
       {!paddleConnected && (
         <p role="status" className="rounded-2xl bg-soft px-4 py-3 text-sm">
-          <strong>Paddle not connected.</strong> Plans can be drafted and edited, but nothing is created in Paddle and prices of plans that already sell cannot change until PADDLE_API_KEY is set.
+          <strong>Paddle not connected.</strong> Plans can be drafted and edited, but nothing is created in Paddle and prices of plans that already sell cannot change until Paddle is connected in <Link href="/admin/settings#paddle" className="underline">Settings → Card payments</Link>.
         </p>
       )}
 

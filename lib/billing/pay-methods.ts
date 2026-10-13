@@ -3,7 +3,7 @@
 //
 // A method the company's region lists (PricingRegion.paymentMethods) is always shown: "ready" when it can be used now,
 // "soon" (shown disabled, "coming soon") when it is not set up yet. A method the region does not list is "off" (hidden).
-// Mobile Money is ready once the owner has said where to pay (Admin -> Payments). Card is ready once the card provider
+// Mobile Money is ready once the owner has said where to pay (Admin -> Settings -> Payments). Card is ready once the card provider
 // is configured and switched on AND the plan has a provider price for the company's region and interval (GLOBAL: the
 // plan's own Paddle ids; Rwanda and the other regions: PlanRegionPrice.paddle*PriceId, written by
 // `npm run paddle:setup -- --regions`).

@@ -299,7 +299,7 @@ async function recoverStuck(now: Date): Promise<number> {
  * notice rules as the rest. Their moves are collected in one new change per plan.
  */
 export async function reconcileSubscribers(now: Date): Promise<number> {
-  if (!paddleConnected()) return 0;
+  if (!(await paddleConnected())) return 0;
   let added = 0;
   for (const plan of await getPlans({ force: true })) {
     if (plan.isTrial) continue;
@@ -406,7 +406,7 @@ export async function processPriceChanges(opts: { now?: Date; cursor?: string | 
 
 /** Archives, in Paddle, every old price that no subscription and no waiting move uses any more. */
 export async function archiveUnusedPrices(now: Date = new Date()): Promise<number> {
-  if (!paddleConnected()) return 0;
+  if (!(await paddleConnected())) return 0;
   let archived = 0;
   // Fresh from the database (never the cache) and written back only if nobody changed the plan meanwhile.
   for (const plan of await getPlans({ force: true })) {

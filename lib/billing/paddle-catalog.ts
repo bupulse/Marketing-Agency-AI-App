@@ -1,12 +1,13 @@
 import "server-only";
 import { paddleApi } from "./paddle";
+import { getPaddleConfig } from "./paddle-config";
 
 // Paddle Billing calls the plan builder needs: products and prices (created, never edited in place; old prices are
 // archived), and a subscription's item swap that bills nothing now (the new price starts with the next renewal).
 
-/** True when a Paddle API key is set. Without one, plans can still be drafted; they are synced later. */
-export function paddleConnected(): boolean {
-  return Boolean(process.env.PADDLE_API_KEY);
+/** True when a Paddle API key is set (Admin -> Settings, or PADDLE_API_KEY). Without one, plans can still be drafted; they are synced later. */
+export async function paddleConnected(): Promise<boolean> {
+  return Boolean((await getPaddleConfig()).apiKey);
 }
 
 export async function createPaddleProduct(input: { name: string; description: string; planKey: string }): Promise<string> {

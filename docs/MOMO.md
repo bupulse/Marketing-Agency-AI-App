@@ -108,7 +108,7 @@ duplicate, like a second card purchase, while a past-due or lapsed MoMo plan is 
   `ACTIVE`. The two never see the same subscription, so nobody gets two sets of emails.
 - **Expired or paused** (`EXPIRED`, `PAST_DUE`): a confirmed payment starts a fresh period now and reopens the account.
 
-## Settings (admin → Payments → "Where clients pay")
+## Settings (admin → Settings → "Payments: Mobile Money"; Payments shows them with a link)
 
 Stored in `AdminSetting` key `billing.momo` (`MomoSettings` in `lib/billing/momo-shared.ts`), audited on every save:
 

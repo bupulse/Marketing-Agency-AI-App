@@ -1,3 +1,45 @@
+// Shared by scripts/paddle-setup.mjs (the command line) and Admin -> Settings -> Card payments -> "Set up prices"
+// (lib/billing/paddle-setup.ts). `api(path, method, body)` is the Paddle API and returns its `data`.
+
+// Keep in sync with lib/billing/paddle-map.ts SUBSCRIPTION_EVENTS. A completed card payment may pay an open invoice
+// (docs/INVOICES.md); refunds (adjustment.*) are checked before an admin marks a flagged invoice paid.
+export const PADDLE_EVENTS = [
+  "subscription.created",
+  "subscription.updated",
+  "subscription.activated",
+  "subscription.canceled",
+  "subscription.past_due",
+  "subscription.paused",
+  "subscription.resumed",
+  "transaction.payment_failed",
+  "transaction.completed",
+  "adjustment.created",
+  "adjustment.updated",
+];
+
+/**
+ * The notification destination for `url` with PADDLE_EVENTS: reused (missing events added) or created. Returns its
+ * secret when Paddle gives it (always on creation), whether it was created, and which events were added.
+ */
+export async function ensureNotificationSetting(api, url) {
+  const settings = await api("/notification-settings?per_page=200", "GET");
+  const found = settings.find((s) => s.destination === url && s.type === "url");
+  if (found) {
+    const missing = PADDLE_EVENTS.filter((e) => !(found.subscribed_events ?? []).some((s) => (s.name ?? s) === e));
+    if (missing.length) await api(`/notification-settings/${found.id}`, "PATCH", { subscribed_events: PADDLE_EVENTS });
+    return { secret: found.endpoint_secret_key ?? null, created: false, updated: missing };
+  }
+  const created = await api("/notification-settings", "POST", {
+    description: "BuPulse billing webhooks",
+    type: "url",
+    destination: url,
+    subscribed_events: PADDLE_EVENTS,
+    api_version: 1,
+    include_sensitive_fields: false,
+  });
+  return { secret: created.endpoint_secret_key ?? null, created: true, updated: [] };
+}
+
 // Card prices of the regions other than GLOBAL (Rwanda's RWF plans charged in USD, the East Africa USD prices) as
 // Paddle prices, written to PlanRegionPrice.paddleMonthlyPriceId / paddleYearlyPriceId. Used by
 // `npm run paddle:setup -- --regions` (docs/BILLING.md, "Card for Rwanda and the other regions"). Until a row has its

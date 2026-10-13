@@ -24,9 +24,10 @@ export async function rejectPaymentAction(f: FormData) {
   );
 }
 
+// The form lives in Admin -> Settings -> Payments: Mobile Money (the owner looks for it there).
 export async function savePaymentSettingsAction(f: FormData) {
   const ctx = await adminAction();
-  await finish("/admin/payments#settings", "Payment details saved.", () =>
+  await finish("/admin/settings#momo", "Mobile Money details saved.", () =>
     saveMomoSettings(ctx, {
       merchantCode: text(f, "merchantCode"),
       momoNumber: text(f, "momoNumber"),

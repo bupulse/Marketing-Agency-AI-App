@@ -11,7 +11,7 @@
 // Reads PADDLE_API_KEY and PADDLE_ENVIRONMENT (sandbox | production, default sandbox) from the
 // environment or .env. Prices must match lib/billing/catalog.ts PRICES.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { pgRegionStore, syncRegionPrices } from "./paddle-regions.mjs";
+import { ensureNotificationSetting, pgRegionStore, syncRegionPrices } from "./paddle-sync.mjs";
 
 const ENV_FILE = ".env";
 
@@ -24,22 +24,6 @@ function loadEnvFile() {
   }
 }
 
-// Keep in sync with lib/billing/paddle-map.ts SUBSCRIPTION_EVENTS and lib/billing/catalog.ts PRICES.
-const EVENTS = [
-  "subscription.created",
-  "subscription.updated",
-  "subscription.activated",
-  "subscription.canceled",
-  "subscription.past_due",
-  "subscription.paused",
-  "subscription.resumed",
-  "transaction.payment_failed",
-  // A completed card payment may pay an open invoice (docs/INVOICES.md); refunds are checked before an admin marks a
-  // flagged invoice paid.
-  "transaction.completed",
-  "adjustment.created",
-  "adjustment.updated",
-];
 const PLANS = {
   STANDARD: { name: "BuPulse Standard", MONTH: 49, YEAR: 490 },
   PRO: { name: "BuPulse Pro", MONTH: 99, YEAR: 990 },
@@ -106,29 +90,6 @@ async function ensurePrice(productId, label, interval, dollars) {
   ).id;
 }
 
-async function ensureNotificationSetting(url) {
-  const settings = await api("/notification-settings?per_page=200");
-  const found = settings.find((s) => s.destination === url && s.type === "url");
-  if (found) {
-    // Keep an existing endpoint's events in step with what the webhook handles.
-    const missing = EVENTS.filter((e) => !(found.subscribed_events ?? []).some((s) => (s.name ?? s) === e));
-    if (missing.length) {
-      await api(`/notification-settings/${found.id}`, "PATCH", { subscribed_events: EVENTS });
-      console.log(`Updated the webhook's events (added ${missing.join(", ")}).`);
-    }
-    return { secret: found.endpoint_secret_key ?? null, created: false };
-  }
-  const created = await api("/notification-settings", "POST", {
-    description: "BuPulse billing webhooks",
-    type: "url",
-    destination: url,
-    subscribed_events: EVENTS,
-    api_version: 1,
-    include_sensitive_fields: false,
-  });
-  return { secret: created.endpoint_secret_key ?? null, created: true };
-}
-
 // Sets KEY="value" lines in .env (replacing existing ones, appending new ones).
 function writeEnv(values) {
   const lines = existsSync(ENV_FILE) ? readFileSync(ENV_FILE, "utf8").split("\n") : [];
@@ -154,7 +115,8 @@ for (const [plan, config] of Object.entries(PLANS)) {
 
 let secretNote = "";
 if (webhookUrl) {
-  const { secret, created } = await ensureNotificationSetting(webhookUrl);
+  const { secret, created, updated } = await ensureNotificationSetting((path, method = "GET", body) => api(path, method, body), webhookUrl);
+  if (updated.length) console.log(`Updated the webhook's events (added ${updated.join(", ")}).`);
   if (secret) {
     written.PADDLE_WEBHOOK_SECRET = secret;
     secretNote = printSecret ? `\nWebhook secret (${created ? "new" : "existing"}): ${secret}` : "";

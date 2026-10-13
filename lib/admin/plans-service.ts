@@ -198,7 +198,7 @@ export async function listAdminPlans(): Promise<{ plans: AdminPlanRow[]; paddleC
         : null,
     });
   }
-  return { plans: rows, paddleConnected: paddleConnected() };
+  return { plans: rows, paddleConnected: await paddleConnected() };
 }
 
 async function loadPlan(key: string): Promise<PlanView> {
@@ -222,7 +222,7 @@ export async function getAdminPlan(key: string) {
     priceUse[price.id] = subs + items;
   }
   const struggling = await prisma.planPriceChangeItem.count({ where: { change: { planKey: key }, status: "pending", attempts: { gt: 0 } } });
-  return { plan, changes, failedItems, priceUse, struggling, paddleConnected: paddleConnected() };
+  return { plan, changes, failedItems, priceUse, struggling, paddleConnected: await paddleConnected() };
 }
 
 // ---- price change preview -------------------------------------------------------------------------------------------------
@@ -295,7 +295,7 @@ async function recordSyncFailure(key: string, message: string) {
  * Plans that already have price ids in the environment (the original three) adopt them instead of creating new ones.
  */
 export async function syncPlanToPaddle(ctx: AdminContext, key: string): Promise<{ plan: PlanView; created: string[] }> {
-  if (!paddleConnected()) throw new AdminError("unavailable", "Paddle is not connected (PADDLE_API_KEY is not set), so there is nothing to sync yet.");
+  if (!(await paddleConnected())) throw new AdminError("unavailable", "Paddle is not connected (no API key in Admin -> Settings -> Card payments, or PADDLE_API_KEY), so there is nothing to sync yet.");
   let plan = await loadPlan(key);
   if (plan.isTrial) throw new AdminError("conflict", "The free trial is not sold, so it has nothing in Paddle.");
   const created: string[] = [];
@@ -359,7 +359,7 @@ export async function createPlan(ctx: AdminContext, input: PlanInput): Promise<{
   const wanted = mergePlan(blank, { ...input, trialDays: undefined }, false);
   if (!wanted.name) throw new AdminError("invalid", "The name is required.");
   if (wanted.monthlyPriceCents < 1 || wanted.yearlyPriceCents < 1) throw new AdminError("invalid", "Set a monthly and a yearly price.");
-  const connected = paddleConnected();
+  const connected = await paddleConnected();
   // A plan is only offered for sale once Paddle has its prices; until then it is a hidden draft (also without Paddle).
   const startStatus: PlanStatus = wanted.status === "active" ? "hidden" : wanted.status;
   const created = await prisma.$transaction(async (tx) => {
@@ -441,7 +441,7 @@ export async function updatePlan(ctx: AdminContext, key: string, patch: Partial<
   const priceChanged = "monthlyPriceCents" in dAfter || "yearlyPriceCents" in dAfter;
   const warnings: string[] = [];
 
-  const connected = paddleConnected();
+  const connected = await paddleConnected();
   const hasPaddleIds = Boolean(currentPriceId("PADDLE", plan, "MONTH") || currentPriceId("PADDLE", plan, "YEAR"));
   // Putting a plan on sale needs its Paddle prices. Other edits of a plan that is already active are not blocked by this.
   if (next.status === "active" && plan.status !== "active" && !plan.isTrial && !(currentPriceId("PADDLE", plan, "MONTH") && currentPriceId("PADDLE", plan, "YEAR"))) {
@@ -460,7 +460,7 @@ export async function updatePlan(ctx: AdminContext, key: string, patch: Partial<
       throw new AdminError("confirm_required", `A price change needs your confirmation. ${preview.lines.join(" ")}`);
     }
     if (!connected && hasPaddleIds) {
-      throw new AdminError("unavailable", "Paddle is not connected, so a price change cannot be made: the price clients are charged would differ from the one shown. Set PADDLE_API_KEY first.");
+      throw new AdminError("unavailable", "Paddle is not connected, so a price change cannot be made: the price clients are charged would differ from the one shown. Connect Paddle first (Admin -> Settings -> Card payments).");
     }
     if (connected) {
       try {

@@ -1,4 +1,5 @@
 import "server-only";
+import { getPaddleConfig } from "@/lib/billing/paddle-config";
 import { prisma } from "@/lib/db";
 import { paddleApi } from "@/lib/billing/paddle";
 import { serviceInfo, type ServiceId } from "./service-catalog";
@@ -46,7 +47,7 @@ const PROBES: Partial<Record<ServiceId, Probe>> = {
   },
   paddle: async () => {
     const events = await paddleApi<unknown[]>("/event-types");
-    return { ok: true, message: `Paddle answered (${Array.isArray(events) ? events.length : "?"} event types, ${env("PADDLE_ENVIRONMENT") === "production" ? "production" : "sandbox"}).` };
+    return { ok: true, message: `Paddle answered (${Array.isArray(events) ? events.length : "?"} event types, ${(await getPaddleConfig()).environment}).` };
   },
   supabase: async () => {
     await prisma.$queryRaw`SELECT 1`;

@@ -1,4 +1,5 @@
 import "server-only";
+import { getPaddleConfig, paddleCredentialsComplete } from "@/lib/billing/paddle-config";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "./audit";
 import { SERVICES, isServiceId, networksOf, serviceInfo, type ServiceId, type ServiceInfo } from "./service-catalog";
@@ -37,10 +38,14 @@ export type ServiceView = {
 };
 
 const isSet = (name: string) => Boolean(process.env[name]);
+/** Paddle connected in Admin -> Settings (lib/billing/paddle-config.ts) counts as configured, whatever the env says. */
+const paddleSavedInSettings = async () => paddleCredentialsComplete(await getPaddleConfig().catch(() => ({ apiKey: null, clientToken: null, webhookSecret: null })));
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export function configState(info: ServiceInfo): ServiceView["configured"] {
+/** `paddleSaved`: Paddle's three values are saved in Admin -> Settings (they stand in for the environment variables). */
+export function configState(info: ServiceInfo, opts: { paddleSaved?: boolean } = {}): ServiceView["configured"] {
   if (info.env.length === 0) return "no_keys";
+  if (info.id === "paddle" && opts.paddleSaved) return "configured";
   if (info.id === "claude" && (process.env.AI_TEXT_PROVIDER ?? "gemini").toLowerCase() !== "claude" && !isSet("ANTHROPIC_API_KEY")) return "not_in_use";
   return info.env.every(isSet) ? "configured" : "missing";
 }
@@ -192,12 +197,13 @@ export async function listServices(now = new Date()): Promise<ServiceView[]> {
   ]);
   const switchOf = new Map(switches.map((s) => [s.service, s]));
   const checkOf = new Map(checks.map((c) => [c.service, c]));
+  const paddleSaved = await paddleSavedInSettings();
   return SERVICES.map((info): ServiceView => {
     const sw = switchOf.get(info.id);
     const check = checkOf.get(info.id);
     const base = {
       enabled: !(sw && !sw.enabled && info.killable),
-      configured: configState(info),
+      configured: configState(info, { paddleSaved }),
       lastCheck: check ? { ok: check.ok, latencyMs: check.latencyMs, message: check.message, checkedAt: check.checkedAt.toISOString() } : null,
     };
     return {
@@ -282,13 +288,14 @@ export async function getServicesAttention(): Promise<{ failing: ServiceAttentio
   const off = new Map(switches.filter((s) => !s.enabled).map((s) => [s.service, s]));
   const check = new Map(checks.map((c) => [c.service, c]));
   const failing: ServiceAttention[] = [];
+  const paddleSaved = await paddleSavedInSettings();
   const offList: ServiceAttention[] = [];
   for (const info of SERVICES) {
     if (off.has(info.id) && info.killable) {
       offList.push({ key: info.id, label: info.name, reason: `Switched off${off.get(info.id)!.reason ? `: ${off.get(info.id)!.reason}` : ""}` });
       continue;
     }
-    const state = configState(info);
+    const state = configState(info, { paddleSaved });
     if (state === "missing") failing.push({ key: info.id, label: info.name, reason: `Missing keys: ${info.env.filter((n) => !isSet(n)).join(", ")}` });
     else if (state !== "not_in_use" && check.get(info.id) && !check.get(info.id)!.ok) failing.push({ key: info.id, label: info.name, reason: `Last test failed: ${check.get(info.id)!.message ?? "no details"}` });
   }

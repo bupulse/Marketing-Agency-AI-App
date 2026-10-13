@@ -12,7 +12,7 @@ export default async function NewPlanPage() {
       <PageHeader title="New plan" description="Saved as a draft unless you make it active. Creating it also creates the product and prices in Paddle." />
       <PlanForm
         mode="create"
-        paddleConnected={paddleConnected()}
+        paddleConnected={await paddleConnected()}
         subscribers={0}
         initial={{
           key: "",

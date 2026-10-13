@@ -4,27 +4,25 @@ import { priceIdFor } from "@/lib/plan-catalog";
 import { formatMoney, isUuid, mapSubscription, verifySignature } from "./paddle-map";
 import { signCheckoutUser } from "./signing";
 import type { BillingAdapter, BillingWebhook, Invoice, ProviderSubscription } from "./types";
+import { getPaddleConfig, paddleApiBase, paddleCredentialsComplete, SECRET_LABEL, type PaddleEnvironment } from "./paddle-config";
 
-function environment(): "sandbox" | "production" {
-  return process.env.PADDLE_ENVIRONMENT === "production" ? "production" : "sandbox";
-}
-
-function baseUrl() {
-  return environment() === "production" ? "https://api.paddle.com" : "https://sandbox-api.paddle.com";
-}
-
-function requireEnv(name: "PADDLE_API_KEY" | "PADDLE_CLIENT_TOKEN" | "PADDLE_WEBHOOK_SECRET"): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Paddle is not configured: ${name} is missing`);
+// Credentials: Admin -> Settings -> Card payments (Paddle), else the PADDLE_* environment variables (lib/billing/paddle-config.ts).
+async function required(name: "apiKey" | "clientToken" | "webhookSecret"): Promise<string> {
+  const value = (await getPaddleConfig())[name];
+  if (!value) throw new Error(`Paddle is not configured: ${SECRET_LABEL[name].toLowerCase()} is missing`);
   return value;
 }
 
-// Calls the Paddle Billing API. Errors carry Paddle's error code and detail, never the key.
-export async function paddleApi<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
-  const response = await fetch(`${baseUrl()}${path}`, {
+// Calls the Paddle Billing API. Errors carry Paddle's error code and detail, never the key. `credentials` overrides the
+// saved ones (the settings page's "Test connection" of values being typed).
+export async function paddleApi<T>(path: string, init: { method?: string; body?: unknown; credentials?: { apiKey: string; environment: PaddleEnvironment } } = {}): Promise<T> {
+  const config = init.credentials ? null : await getPaddleConfig();
+  const environment = init.credentials?.environment ?? config!.environment;
+  const apiKey = init.credentials?.apiKey ?? (await required("apiKey"));
+  const response = await fetch(`${paddleApiBase(environment)}${path}`, {
     method: init.method ?? "GET",
     headers: {
-      Authorization: `Bearer ${requireEnv("PADDLE_API_KEY")}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
@@ -74,8 +72,8 @@ export function webhookFromEvent(event: { event_id: string; event_type: string; 
 export const paddle: BillingAdapter = {
   provider: "PADDLE",
 
-  isConfigured() {
-    return Boolean(process.env.PADDLE_API_KEY && process.env.PADDLE_CLIENT_TOKEN && process.env.PADDLE_WEBHOOK_SECRET);
+  async isConfigured() {
+    return paddleCredentialsComplete(await getPaddleConfig());
   },
 
   async checkoutConfig({ userId, email, plan, interval, providerCustomerId, priceId: given }) {
@@ -83,8 +81,8 @@ export const paddle: BillingAdapter = {
     if (!priceId) throw new Error(`Paddle price id missing for plan ${plan} (${interval}): sync the plan with Paddle in /admin/plans`);
     return {
       provider: "PADDLE",
-      environment: environment(),
-      clientToken: requireEnv("PADDLE_CLIENT_TOKEN"),
+      environment: (await getPaddleConfig()).environment,
+      clientToken: await required("clientToken"),
       priceId,
       customerEmail: email,
       customerId: providerCustomerId ?? null,
@@ -158,7 +156,7 @@ export const paddle: BillingAdapter = {
   },
 
   async parseWebhook(rawBody, headers): Promise<BillingWebhook | null> {
-    const secret = requireEnv("PADDLE_WEBHOOK_SECRET");
+    const secret = await required("webhookSecret");
     if (!(await verifySignature(rawBody, headers.get("paddle-signature"), secret))) return null;
 
     let event: { event_id?: unknown; event_type?: unknown; data?: unknown };
