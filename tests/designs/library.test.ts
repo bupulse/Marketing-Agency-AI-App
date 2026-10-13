@@ -20,11 +20,11 @@ const FULL = process.env.DESIGNS_FULL === "1";
 const OUT = process.env.DESIGNS_OUT;
 
 describe("catalogue", () => {
-  it("has 12 styles with 14 families x 7 variants each, ids unique and stable", () => {
+  it("has 12 styles with 15 families x 7 variants each, ids unique and stable", () => {
     expect(PACKS).toHaveLength(12);
     const counts = designCounts();
     for (const p of PACKS) expect(counts[p.id]).toBe(FAMILIES.length * VARIANTS_PER_FAMILY);
-    expect(FAMILIES).toHaveLength(14);
+    expect(FAMILIES).toHaveLength(15);
     expect(new Set(DESIGNS.map((d) => d.id)).size).toBe(DESIGNS.length);
     for (const d of DESIGNS) expect(d.id).toMatch(new RegExp(`^${d.style}/${d.family}-0[1-7]$`));
     expect(getDesign("warm/split-03")?.family).toBe("split");
@@ -173,7 +173,7 @@ describe("rendering", () => {
 
   it("copes with very long text, other scripts and no brand colours", async () => {
     const long = { ...sampleInput("general"), headline: "Supercalifragilisticexpialidocious ".repeat(8), subline: "x ".repeat(200), chip: "A very long call to action that keeps going", colors: [] };
-    for (const id of ["bold/banner-01", "luxe/quote-02", "corporate/features-03", "vibrant/price-04"]) {
+    for (const id of ["bold/banner-01", "luxe/quote-02", "corporate/features-03", "vibrant/price-04", "fresh/spotlight-05"]) {
       expect((await renderDesign(id, long, "4:5")).byteLength).toBeGreaterThan(2000);
     }
     for (const headline of ["Свежий хлеб каждое утро", "خبز طازج كل صباح", "Bánh mì tươi mỗi sáng"]) {

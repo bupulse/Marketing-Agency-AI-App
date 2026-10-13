@@ -42,9 +42,10 @@ const changesSchema = z.object({
     .max(VISUAL_LIMITS.maxCarouselSlides)
     .optional(),
   swap: z.object({ index: z.number().int().min(0).max(VISUAL_LIMITS.maxCarouselSlides - 1), photoPath: z.string().min(1).max(300) }).optional(),
+  redesign: z.boolean().optional(),
 });
 
-/** Style pack, template, slide texts or a photo swap; the changed slides are drawn again (free). */
+/** "New design", style pack, template, slide texts or a photo swap; the changed slides are drawn again (free). */
 export async function changeVisual(visualId: string, changes: z.input<typeof changesSchema>): Promise<Result<{ status: string }>> {
   const parsed = changesSchema.safeParse(changes);
   if (!id.safeParse(visualId).success || !parsed.success) return { ok: false, error: "Check the slide texts and try again." };

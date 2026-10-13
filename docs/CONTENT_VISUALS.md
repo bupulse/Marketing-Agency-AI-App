@@ -133,7 +133,8 @@ On the day view's "Pictures and videos" (Content, docs/CONTENT.md) and the Autop
 | --- | --- | --- |
 | Approve as it is | nothing to do; Schedule takes the visual | none |
 | Swap photo | album or gallery photo for the slide (JPG/PNG), redrawn | free |
-| Style / Template | every slide redrawn in the new pack or template; AI photos are reused | free |
+| New design | every slide gets a different design of the same style (BuPulse picks it); photos and AI photos are reused | free |
+| Style (under "More options") | every slide redrawn with designs of the new style; AI photos are reused | free |
 | Edit text | headline, subline, chip per slide, redrawn | free |
 | New picture | fresh art direction, the old slides go (unless a post uses them) | art director call; AI photo uses a credit |
 | Remove | slide designs and video file go unless a post uses them; AI photos stay in Designs | none |

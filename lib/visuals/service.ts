@@ -471,6 +471,8 @@ export interface ImageChanges {
   slides?: { index: number; headline?: string; subline?: string; chip?: string }[];
   /** Another album or gallery photo for one slide. */
   swap?: { index: number; photoPath: string };
+  /** "New design": every slide gets a different design of the same style; photos (AI ones too) are reused. */
+  redesign?: boolean;
 }
 
 /** Applies the owner's changes to the plan and marks the changed slides to be drawn again (free templates only). */
@@ -522,16 +524,19 @@ export async function updateImageVisual(owner: Owner, visualId: string, changes:
     // Designed slides show the cover's photo: a new cover photo redraws them too.
     if (changes.swap.index === 0) plan.slides.forEach((x, i) => x.useCoverPhoto && changed.add(i));
   }
+  if (changes.redesign) plan.slides.forEach((_, i) => changed.add(i));
   if (changed.size === 0) return { status: row.status, plan };
   // A new style, template or photo gets a fresh design for the changed slides (text edits keep theirs).
   const redesign = new Set([...changed].filter((i) => {
     const was = before.slides[i];
     const now = plan.slides[i];
-    return plan.pack !== before.pack || now.template !== was.template || slideHasPhoto(now) !== slideHasPhoto(was) || !usableDesign(now, plan.pack, slideHasPhoto(now));
+    return !!changes.redesign || plan.pack !== before.pack || now.template !== was.template || slideHasPhoto(now) !== slideHasPhoto(was) || !usableDesign(now, plan.pack, slideHasPhoto(now));
   }));
   if (redesign.size) {
     const recent = await recentVisualChoices(owner.businessId);
-    Object.assign(plan, assignDesigns(plan, { recent: recent.designs, seed: `${row.id}:${Date.now()}`, only: redesign }));
+    // The designs being replaced are avoided too, so "New design" always looks different.
+    const current = before.slides.flatMap((s) => (s.design ? [s.design] : []));
+    Object.assign(plan, assignDesigns(plan, { recent: [...current, ...recent.designs], seed: `${row.id}:${Date.now()}`, only: redesign }));
   }
   const old = [...changed].map((i) => before.slides[i]);
   for (const i of changed) plan.slides[i] = { ...plan.slides[i], designId: null, path: null };

@@ -508,6 +508,20 @@ describe("changing a picture while it is being drawn", () => {
   });
 });
 
+describe("New design (the owner never picks a template)", () => {
+  it("gives every slide a different design of the same style and keeps the paid AI photo", async () => {
+    const { updateImageVisual } = await import("@/lib/visuals/service");
+    const before = plan([slide({ source: "ai", aiPhotoPath: "u1/designs/ai.png", design: "clean/hero-01" })]);
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue({ id: "v1", businessId: "biz1", contentId: "c1", groupId: null, kind: "image", plan: before, renderingUntil: null });
+    const out = await updateImageVisual(owner, "v1", { redesign: true });
+    expect(out.status).toBe("pending");
+    expect(out.plan.slides[0].design).not.toBe("clean/hero-01");
+    expect(out.plan.slides[0].design?.startsWith(`${before.pack}/`)).toBe(true);
+    expect(out.plan.slides[0].aiPhotoPath).toBe("u1/designs/ai.png");
+    expect(out.plan.slides[0].designId).toBeNull();
+  });
+});
+
 describe("people in the pictures (owner decision, 13 October 2026)", () => {
   it("a carousel pays for one AI image: the designed slides are drawn over the cover's people photo", async () => {
     const carousel = plan([

@@ -8,10 +8,10 @@ import { loadFonts } from "@/lib/designs/templates/fonts";
 import type { TemplateId } from "@/lib/designs/templates/registry";
 import { getDesign, type FamilyId } from "./catalog";
 import { circle, diagonal, hero, magazine, polaroid, split } from "./families/photo";
-import { banner, features, minimal, poster, price, quote, steps, testimonial } from "./families/text";
+import { banner, features, minimal, poster, price, quote, spotlight, steps, testimonial } from "./families/text";
 import { makeCtx, type Ctx, type DesignInput } from "./kit";
 
-const FAMILY_LAYOUTS: Record<FamilyId, (c: Ctx) => ReactElement> = { hero, split, polaroid, circle, diagonal, magazine, price, steps, quote, testimonial, features, poster, banner, minimal };
+const FAMILY_LAYOUTS: Record<FamilyId, (c: Ctx) => ReactElement> = { hero, split, polaroid, circle, diagonal, magazine, price, steps, quote, testimonial, features, poster, banner, minimal, spotlight };
 
 export type DesignOptions = {
   /** The template the art director chose, for the default kicker text ("New arrival") when the slide has none. */

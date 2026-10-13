@@ -313,3 +313,51 @@ export function minimal(c: Ctx) {
     </Root>
   );
 }
+
+// ---- spotlight: the product in a large frame with its features called out ----
+
+export function spotlight(c: Ctx) {
+  const { W, H, k, wide, tall } = c;
+  const sf = c.main;
+  const items = featureItems(c.input.subline);
+  const callouts = items.length >= 2 ? items.slice(0, 3) : [];
+  const tile = c.surfaces[sf === c.surfaces.paper ? "tint" : "paper"];
+  const d = wide ? 700 : c.story ? 760 : tall ? 600 : 480;
+  const shape = k.shape === "rect" ? "round" : k.shape;
+  const px = wide ? (k.flip ? W - d - 150 : 150) : (W - d) / 2;
+  const py = wide ? (H - d) / 2 : c.story ? 230 : 100;
+  const chip = chipOf(c);
+  const tx = wide ? (k.flip ? 120 : d + 300) : 80;
+  const tw = wide ? W - d - 420 : W - 160;
+  const center = !wide;
+  const pills = callouts.length ? (
+    <Box style={{ flexDirection: wide ? "column" : "row", flexWrap: "wrap", gap: 14, justifyContent: center ? "center" : "flex-start", width: tw }}>
+      {callouts.map((item, i) => (
+        <Box key={i} style={{ alignItems: "center", gap: 12, padding: "12px 22px", borderRadius: 9999, background: tile.bg, color: tile.fg, boxShadow: cardShadow(c), fontFamily: FONT_FAMILY, fontSize: 28, fontWeight: 800 }}>
+          <Box style={{ width: 14, height: 14, borderRadius: 9999, background: tile.hi }} />
+          {item}
+        </Box>
+      ))}
+    </Box>
+  ) : null;
+  return (
+    <Root c={c} sf={sf}>
+      <Pattern c={c} x={0} y={0} w={W} h={H} color={sf.hi} opacity={0.12} />
+      <Abs x={px - 50} y={py - 50} w={d + 100} h={d + 100} style={{ borderRadius: shape === "circle" ? 9999 : shape === "arch" ? `${(d + 100) / 2}px ${(d + 100) / 2}px 40px 40px` : 60, background: rgba(sf.hi, 0.18) }} />
+      <Picture c={c} x={px} y={py} w={d} h={d} shape={shape} />
+      {!!chip && (
+        <Abs x={px + d - 170} y={py - 40}>
+          <Badge c={c} sf={sf} size={210} text={chip} />
+        </Abs>
+      )}
+      <Abs x={tx} y={wide ? 0 : py + d + 40} w={tw} h={wide ? H : H - py - d - 140} style={{ flexDirection: "column", justifyContent: wide ? "center" : "flex-start", alignItems: center ? "center" : "flex-start", gap: 24 }}>
+        <Kicker c={c} sf={sf} center={center} />
+        <Head c={c} text={c.input.headline} w={tw} h={wide ? 300 : c.story ? 300 : tall ? 220 : 150} max={wide ? 88 : 80} min={36} color={sf.fg} center={center} />
+        {pills ?? <Sub c={c} text={c.input.subline} w={tw} color={sf.muted} max={32} center={center} lines={2} />}
+      </Abs>
+      <Abs x={0} y={H - 100} w={W} h={60} style={{ justifyContent: wide ? (k.flip ? "flex-start" : "flex-end") : "center", paddingLeft: 60, paddingRight: 60 }}>
+        <BrandLine c={c} sf={sf} size={44} />
+      </Abs>
+    </Root>
+  );
+}

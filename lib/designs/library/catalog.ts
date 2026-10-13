@@ -27,7 +27,8 @@ export type FamilyId =
   | "features"
   | "poster"
   | "banner"
-  | "minimal";
+  | "minimal"
+  | "spotlight";
 
 /** Whether a family draws the photo: always (needs one), when there is one (else brand art), or never (text design). */
 export type PhotoUse = "required" | "optional" | "none";
@@ -58,6 +59,7 @@ export const FAMILIES: FamilyInfo[] = [
   { id: "poster", name: "Event poster", description: "A poster with a big date block and the details.", fits: ["event", "announcement", "offer"], photo: "optional", capacity: 150, aspects: ASPECT_RATIOS },
   { id: "banner", name: "Announcement banner", description: "A loud banner message on the brand colours.", fits: ["announcement", "news", "offer", "event"], photo: "optional", capacity: 130, aspects: ASPECT_RATIOS },
   { id: "minimal", name: "Minimal", description: "Small, quiet type with one accent and space around it.", fits: ["general", "quote", "news", "announcement", "tips"], photo: "optional", capacity: 170, aspects: ASPECT_RATIOS },
+  { id: "spotlight", name: "Product spotlight", description: "The product in a large frame, its price as a badge and its features called out.", fits: ["new", "feature", "showcase", "price", "listing"], photo: "optional", capacity: 150, aspects: ASPECT_RATIOS },
 ];
 
 const FAMILY_BY_ID = new Map(FAMILIES.map((f) => [f.id, f]));
@@ -96,9 +98,10 @@ const SPACES: Record<FamilyId, KnobSpace> = {
   poster: { tone: ["night", "brand", "paper", "tint"], motif: [0, 1, 2, -1], flip: [false, true], shape: ["rect", "arch", "round"], accent: ["frame", "bar", "corner"], scale: ["l", "m"], center: [true, false] },
   banner: { tone: ["brand", "night", "tint", "paper"], motif: [0, 1, -1, 2], flip: [false, true], shape: ["rect", "slant"], accent: ["underline", "bar", "dot", "none"], scale: ["l", "m"], center: [true, false] },
   minimal: { tone: ["paper", "night", "tint", "brand"], motif: [-1, 0], flip: [false, true], shape: ["rect", "round", "circle"], accent: ["dot", "underline", "none", "bar"], scale: ["s", "m"], center: [false, true] },
+  spotlight: { tone: ["tint", "paper", "brand", "night"], motif: [0, 1, -1, 2], flip: [false, true], shape: ["circle", "round", "arch"], accent: ["none", "dot", "bar"], scale: ["m", "l"], center: [true] },
 };
 
-/** Variants per family and style: 14 families x 7 = 98 designs per style. */
+/** Variants per family and style: 15 families x 7 = 105 designs per style. */
 export const VARIANTS_PER_FAMILY = 7;
 
 export type DesignInfo = {

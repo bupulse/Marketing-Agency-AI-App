@@ -17,7 +17,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Clapperboard, ImageIcon, Music, PenLine, RefreshCw, Replace, Sparkles, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clapperboard, ImageIcon, Music, PenLine, RefreshCw, Replace, Shuffle, Sparkles, Trash2 } from "lucide-react";
 import { Badge, Button, Field, Input, Select, Textarea, useToast } from "@/components/ui";
 import { MediaPicker } from "@/components/media/media-picker";
 import { changeVideoMusic, changeVideoVoice, loadSoundOptions } from "@/app/dashboard/visuals/actions";
@@ -26,7 +26,6 @@ import { DEFAULT_VOICE_ID, VOICES } from "@/lib/voice/voices";
 import { changeVideo, changeVisual, deleteVisual, remakeVisual, renderVisual } from "@/app/dashboard/visuals/actions";
 import { cn } from "@/lib/cn";
 import { PACKS } from "@/lib/designs/packs";
-import { TEMPLATES } from "@/lib/designs/templates/registry";
 import { VISUAL_LIMITS, VIDEO_LIMITS, VIDEO_REMOVED_NOTE, VIDEO_RETENTION_MESSAGE, type VisualView } from "@/lib/visuals/types";
 import { useVideoRender } from "./use-video-render";
 
@@ -184,27 +183,10 @@ function ImagePart({ contentId, visual, album }: { contentId?: string; visual: V
               {visual.error}
             </p>
           )}
-          <div className="grid gap-3 @xl:grid-cols-2">
-            <Field label="Style">
-              <Select value={plan?.pack} disabled={busy} onChange={(e) => run(() => changeVisual(visual.id, { pack: e.target.value }))}>
-                {PACKS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Template">
-              <Select value={slide?.template} disabled={busy} onChange={(e) => run(() => changeVisual(visual.id, { template: e.target.value }))}>
-                {TEMPLATES.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
           <div className="flex flex-wrap gap-2">
+            <Button size="sm" disabled={busy} title="BuPulse picks a different design. Your photos are kept, so no image credit is used." leading={<Shuffle aria-hidden className="size-4" />} onClick={() => run(() => changeVisual(visual.id, { redesign: true }), "A new design is being drawn.")}>
+              New design
+            </Button>
             <Button variant="outline" size="sm" disabled={busy} leading={<Replace aria-hidden className="size-4" />} onClick={() => setPicker(true)}>
               {isCarousel ? "Swap this slide's photo" : "Swap photo"}
             </Button>
@@ -245,6 +227,20 @@ function ImagePart({ contentId, visual, album }: { contentId?: string; visual: V
               </Button>
             )}
           </div>
+          <details className="text-[14px]">
+            <summary className="cursor-pointer text-muted">More options</summary>
+            <div className="mt-2 max-w-xs">
+              <Field label="Style">
+                <Select value={plan?.pack} disabled={busy} onChange={(e) => run(() => changeVisual(visual.id, { pack: e.target.value }))}>
+                  {PACKS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+          </details>
         </div>
       </div>
 

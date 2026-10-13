@@ -117,7 +117,7 @@ earthy and fresh as warm, retro as bold).
 
 ### Image designs
 
-`lib/designs/library/catalog.ts`: 14 **layout families** x 7 **variants** = **98 designs per style, 1,176 in all**.
+`lib/designs/library/catalog.ts`: 15 **layout families** x 7 **variants** = **105 designs per style, 1,260 in all**.
 
 | Family | Photo | Fits |
 |---|---|---|
@@ -135,6 +135,7 @@ earthy and fresh as warm, retro as bold).
 | `poster` event poster with a date block | optional | event, announcement, offer |
 | `banner` loud announcement | optional | announcement, news, offer, event |
 | `minimal` quiet type, one accent | optional | general, quote, news, tips |
+| `spotlight` product in a large frame, price badge, features called out | optional | new, feature, showcase, price, listing |
 
 A variant is a set of **knobs**: tone (paper, brand, night, tint), motif (one of the style's SVG patterns, or none),
 flip, photo shape (rect, round, arch, circle, slant), accent (bar, dot, underline, corner, frame, none), type scale and
@@ -168,7 +169,7 @@ chip is `price`; text slides inside a carousel are `tips`, numbered with `step`)
 design. `recentVisualChoices` reads the last 24 `ContentVisual` plans of the business. When a slide's photo fails or
 the owner restyles, swaps a photo or changes the template, the changed slides get a new design of the right style
 (`designFor`, `updateImageVisual`). Plans made before the library have no `design` and draw the classic templates.
-The design studio's manual template and style pickers remain as they were (internal use).
+The design studio's manual template and style pickers remain as they were (internal use). On the content card the owner gets one **New design** button (`changeVisual({ redesign: true })`: every slide gets a different design of the same style, photos and paid AI photos reused, so no image credit); the style dropdown sits under a collapsed "More options" and there is no template picker.
 
 ### Video looks
 
@@ -191,7 +192,7 @@ The plan stores `look` (and optional `contact`, `logoPath`); the renderer (`comp
   the browser by the real renderer.
 - `tests/designs/library.test.ts`: catalogue (counts, ids, distinct neighbours), contrast, chooser, the element tree
   of every design in every aspect, and 48 real renders in CI (about a second each). `DESIGNS_FULL=1 npx vitest run
-  tests/designs/library.test.ts` renders all 4,704 (every design x 4 aspects; over an hour), `DESIGNS_OUT=/dir` writes
+  tests/designs/library.test.ts` renders all 5,040 (every design x 4 aspects; over an hour), `DESIGNS_OUT=/dir` writes
   the PNGs. `tests/visuals/video-looks.test.ts` and `tests/visuals/designs.test.ts` cover looks and the wiring.
 
 ### Adding to the library
