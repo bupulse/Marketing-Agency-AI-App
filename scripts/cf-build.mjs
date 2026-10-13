@@ -30,6 +30,34 @@ export function patchClientForWorkers(source) {
   );
 }
 
+/**
+ * The generated client's big data (the schema text, the data model, the query parameterization graph: about 650 KB) as
+ * its own package. Turbopack copies the client into every chunk group that reaches it (three in the Worker); a package
+ * named in next.config.ts serverExternalPackages is bundled once by OpenNext. Same values, read the same way: the data
+ * module holds the generated expressions verbatim. Pure: returns the patched client and the module's source.
+ */
+export const DATA_PACKAGE = "@bupulse/prisma-data";
+export const DATA_DIR = `node_modules/${DATA_PACKAGE}`;
+const INLINE_SCHEMA = /^ {2}"inlineSchema": (".*"),$/m;
+const DATA_MODEL = /^config\.runtimeDataModel = (JSON\.parse\(".*"\))$/m;
+const STRINGS = /^ {2}strings: (JSON\.parse\(".*"\)),$/m;
+const GRAPH = /^ {2}graph: (".*")$/m;
+
+export function externalizeClientData(source) {
+  const found = [INLINE_SCHEMA, DATA_MODEL, STRINGS, GRAPH].map((re) => re.exec(source));
+  if (found.some((m) => !m)) throw new Error("The generated Prisma client changed: update scripts/cf-build.mjs (externalizeClientData).");
+  const [schema, model, strings, graph] = found.map((m) => m[1]);
+  const data = `// Made by scripts/cf-build.mjs for the Cloudflare build only, from the generated Prisma client. Do not edit.\n"use strict";\nexports.inlineSchema = ${schema};\nexports.runtimeDataModel = ${model};\nexports.strings = ${strings};\nexports.graph = ${graph};\n`;
+  const patched = source
+    .replace(INLINE_SCHEMA, () => '  "inlineSchema": __data.inlineSchema,')
+    .replace(DATA_MODEL, () => "config.runtimeDataModel = __data.runtimeDataModel")
+    .replace(STRINGS, () => "  strings: __data.strings,")
+    .replace(GRAPH, () => "  graph: __data.graph")
+    .replace('import * as runtime from "@prisma/client/runtime/client"', () => `import * as runtime from "@prisma/client/runtime/client"\n// Cloudflare build: the client's data lives in one package (scripts/cf-build.mjs, externalizeClientData).\nimport * as __dataModule from "${DATA_PACKAGE}"\nconst __data = ((__dataModule as { default?: unknown }).default ?? __dataModule) as { inlineSchema: string; runtimeDataModel: unknown; strings: string[]; graph: string }`);
+  if (!patched.includes("__dataModule")) throw new Error("The generated Prisma client changed: update scripts/cf-build.mjs (externalizeClientData).");
+  return { source: patched, data };
+}
+
 const run = (cmd, args) => execFileSync(cmd, args, { stdio: "inherit" });
 
 /**
@@ -60,7 +88,11 @@ function main(argv) {
     if (!argv.includes("--keep")) run("npx", ["prisma", "generate"]);
   });
   run("npx", ["prisma", "generate"]);
-  writeFileSync(CLASS, patchClientForWorkers(readFileSync(CLASS, "utf8")));
+  const client = externalizeClientData(patchClientForWorkers(readFileSync(CLASS, "utf8")));
+  mkdirSync(DATA_DIR, { recursive: true });
+  writeFileSync(`${DATA_DIR}/package.json`, JSON.stringify({ name: DATA_PACKAGE, version: "0.0.0", private: true, main: "index.js" }, null, 2));
+  writeFileSync(`${DATA_DIR}/index.js`, client.data);
+  writeFileSync(CLASS, client.source);
   try {
     run("npx", ["opennextjs-cloudflare", "build"]);
     // The same query compiler the client's JavaScript glue was built with, as a plain .wasm file.

@@ -65,8 +65,8 @@ free (`docs/DEPLOY_NETLIFY.md`) stays the fallback. This file is the order of wo
 1. **Freeze**: no new merges into `v2` except fixes found on the day.
 2. **Final checks on v2**: `npx tsc --noEmit`, `npm run lint`, `npx vitest run`, `npx next build`, and the Workers
    build with its size (`npm run build:cloudflare`, then `npx wrangler deploy --dry-run --outdir /tmp/cf`: the gzip
-   size must stay under 10 MiB; it was 9.2 MiB on 13 October afternoon and **9.78 MiB (10,017 KiB) on 13 October
-   evening** with staff, sales, TV, currency and the page loader: about 220 KiB left).
+   size must stay under 10 MiB; it was 9.78 MiB (10,017 KiB) on 13 October evening and **8.83 MiB (9,038 KiB) after the
+   trim of 14 October** (`docs/DEPLOY.md`, Known notes): about 1.2 MiB left).
 3. **Merge v2 into main** (merge commit, version 2.0.0). Push only with the owner's go-ahead.
 4. **Production database**: the deploy workflow runs `prisma migrate deploy` on the new Supabase project. Regions,
    plans, add-ons and industries are seeded by the migrations; check them in Admin → Plans / Regions / Industries.
