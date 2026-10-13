@@ -50,6 +50,11 @@ export type ServiceInfo = {
   features: string[];
   /** false: core to sign-in or abuse protection, so there is no off switch. */
   killable: boolean;
+  /**
+   * BuPulse cannot work properly without it, so missing keys are a problem on the Overview ("always", or only in
+   * "production"). Every other service without keys is simply not set up yet: shown on Services as "Not connected".
+   */
+  core?: "always" | "production";
   /** One line: what "off" does. */
   whenOff: string;
 };
@@ -73,6 +78,7 @@ export const SERVICES: ServiceInfo[] = [
     optionalEnv: ["GEMINI_TEXT_MODEL", "GEMINI_TEXT_FALLBACK_MODEL", "GEMINI_IMAGE_MODEL", "WIDGET_MODEL"],
     features: ["Content generation", "AI images", "Autopilot weekly plans", "Website chat replies"],
     killable: true,
+    core: "always",
     whenOff: "AI writing and images pause with a friendly message. The website chat still collects visitor details.",
   },
   {
@@ -93,6 +99,7 @@ export const SERVICES: ServiceInfo[] = [
     optionalEnv: ["RESEND_FROM"],
     features: ["Lead alert emails", "Daily lead digest", "Post reminders", "Autopilot emails"],
     killable: true,
+    core: "always",
     whenOff: "Emails are skipped (leads are still saved and appear in the dashboard and the next digest).",
   },
   {
@@ -112,6 +119,7 @@ export const SERVICES: ServiceInfo[] = [
     env: ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SECRET_KEY", "DATABASE_URL"],
     features: ["Everything"],
     killable: false,
+    core: "always",
     whenOff: "Not switchable: BuPulse cannot run without it.",
   },
   {
@@ -121,6 +129,7 @@ export const SERVICES: ServiceInfo[] = [
     env: ["TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY"],
     features: ["Sign-up protection", "Website chat bot check"],
     killable: false,
+    core: "production",
     whenOff: "Not switchable: switching abuse protection off is never safe.",
   },
   {

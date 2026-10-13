@@ -13,7 +13,7 @@ import { rangeFor } from "@/lib/admin/format";
 import { getInboxCounts } from "@/lib/admin/inbox";
 import { getClientCounts, getDemosToday } from "@/lib/admin/overview";
 import { getMetrics } from "@/lib/analytics/queries";
-import { getMoneyReport } from "@/lib/money/report";
+import { getMoneyReportCached } from "@/lib/money/report";
 
 export const metadata = { title: "Overview" };
 
@@ -22,7 +22,7 @@ const monthName = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleString("e
 export default async function AdminOverview() {
   await requireAdmin(); // pages render alongside the layout, so check here too
   const [report, clients, demos, inbox, ai, attention, activity, series] = await Promise.all([
-    getMoneyReport({ months: 6 }).catch(() => null),
+    getMoneyReportCached(6).catch(() => null),
     getClientCounts().catch(() => ({ active: 0, trial: 0, pastDue: 0, waitingDemo: 0, ended: 0, total: 0 })),
     getDemosToday().catch(() => ({ today: 0, next: null })),
     getInboxCounts(),

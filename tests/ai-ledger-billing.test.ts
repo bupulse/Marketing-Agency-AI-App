@@ -47,6 +47,16 @@ describe("billed failures", () => {
     expect(Number(row.costUsd)).toBeGreaterThanOrEqual(0.039);
   });
 
+  it("records one estimated call per request, not one per retry or fallback attempt", { timeout: 20_000 }, async () => {
+    // Two busy answers (not billed), then the model times out; the fallback model is busy and then times out too.
+    const busy = () => new Response("{}", { status: 503 });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(busy()).mockResolvedValueOnce(busy()).mockResolvedValueOnce(busy()).mockResolvedValueOnce(busy()).mockResolvedValueOnce(busy()).mockRejectedValue(timeout()));
+    const provider = new GeminiTextProvider("key", "gemini-3.8-flash", "gemini-3.1-flash-lite");
+    await expect(withLedger({ feature: "content" }, { provider: "gemini", model: "gemini-3.8-flash" }, () => provider.generate({ system: "s", prompt: "p".repeat(400) }), (r) => r)).rejects.toBeInstanceOf(AIProviderError);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0][0].data).toMatchObject({ estimated: true, model: "gemini-3.1-flash-lite", inputTokens: 101, outputTokens: 1000 });
+  });
+
   it("records nothing billable for an HTTP error (not billed by Google)", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 400 })));
     const provider = new GeminiTextProvider("key", "gemini-3.8-flash");

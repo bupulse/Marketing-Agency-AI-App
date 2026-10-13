@@ -40,6 +40,14 @@ describe("revenue entries", () => {
     expect(rateUsed(oct.rwfMinor, oct.rwfUsdCents)).toBe(1450);
   });
 
+  it("counts a refund once whether it came as adjustment.created or adjustment.updated", () => {
+    const created = refund("r1", "u3", 500);
+    const updated = { ...refund("r1", "u3", 500), eventId: "r1-upd", type: "adjustment.updated" };
+    const list = entries([card("c", "u3", 1500), created, updated]);
+    expect(list.filter((e) => e.kind === "refund")).toHaveLength(1);
+    expect(list.map((e) => e.id)).toEqual(["pay:txn_c", "refund:adj_r1"]);
+  });
+
   it("counts a payment sent twice once", () => {
     expect(entries([card("x", "u1", 1000), card("x2", "u1", 1000)]).length).toBe(2);
     const twice = [card("x", "u1", 1000), { ...card("x", "u1", 1000), eventId: "dup" }];

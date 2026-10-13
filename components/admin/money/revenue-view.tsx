@@ -17,6 +17,11 @@ export function RevenueView({ r }: { r: MoneyReport }) {
   const nothing = r.lifetime.customersEver === 0 && r.months.every((m) => m.costs.totalCents === 0);
   return (
     <>
+      {r.truncated && (
+        <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
+          There are more payment events than one report reads (200,000): the oldest payments are left out of lifetime numbers. Recent months are complete.
+        </p>
+      )}
       {nothing && <Empty>No payments or costs yet. Revenue appears with the first confirmed payment; costs with the first AI call or recurring cost.</Empty>}
 
       <Section title={`This month, ${cur ? monthLabel(cur.month) : ""}`} description="USD. Revenue is net of card fees, tax and refunds.">
@@ -119,7 +124,7 @@ export function RevenueView({ r }: { r: MoneyReport }) {
           <li>Revenue is every payment ever recorded (BillingEvent), kept when a client leaves or deletes their account. Card: Paddle&apos;s payout after tax and its fee, less approved refunds. Mobile Money: confirmed MTN or Airtel payments. Invoices: payments of an invoice (MoMo with the invoice number, bank or cash) and plain invoices marked paid.</li>
           <li>RWF payments count at the USD value fixed when they were confirmed; the RWF column shows the francs received and that rate.</li>
           <li>MRR: each paying client (active or past due, not on trial) counts their plan&apos;s monthly price; a Mobile Money client counts what they last paid for a whole period (features added mid-period count from the next renewal); yearly plans count a twelfth. ARPU is MRR divided by paying clients.</li>
-          <li>Churn, 30 days: clients who had paid and stopped in the last 30 days (subscription ended, or account deleted within 45 days of their last payment), out of those paying now plus them.</li>
+          <li>Churn, 30 days: clients who had paid and stopped in the last 30 days, out of those paying now plus them. Stopped means the paid period ended after a cancel or expiry, or, without one (deleted account), the period their last payment bought ran out (30 days, a year for yearly).</li>
           <li>Costs and profit: see Costs. A month&apos;s costs are the providers&apos; bills when entered, otherwise the AI ledger&apos;s estimate, plus recurring and one-month costs.</li>
           <li>Per client: AI cost is that company&apos;s calls in the ledger since it started; it leaves out shared costs such as hosting.</li>
         </ul>

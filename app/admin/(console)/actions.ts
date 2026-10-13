@@ -20,6 +20,7 @@ import {
 } from "@/lib/admin/service";
 import { addAdminNote, deleteAdminNote } from "@/lib/admin/notes";
 import { setAiBudget } from "@/lib/admin/ai-usage";
+import { clearMoneyReportCache } from "@/lib/money/report";
 import { setServiceEnabled, testService } from "@/lib/admin/services";
 import { AdminError } from "@/lib/admin/types";
 import { prisma } from "@/lib/db";
@@ -39,6 +40,7 @@ export async function saveCostAction(f: FormData) {
     if (!Number.isFinite(amount) || amount < 0 || amount > 1_000_000) throw new AdminError("invalid", "Enter the amount in dollars, for example 5.00.");
     const amountCents = Math.round(amount * 100);
     await setMonthlyCost(ctx, { month, category, amountCents, note: text(f, "note") || undefined });
+    clearMoneyReportCache();
   });
 }
 
@@ -48,6 +50,7 @@ export async function deleteCostAction(f: FormData) {
     const month = text(f, "month");
     const category = text(f, "category");
     await deleteMonthlyCost(ctx, { month, category });
+    clearMoneyReportCache();
   });
 }
 

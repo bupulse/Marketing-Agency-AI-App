@@ -2,6 +2,7 @@ import "server-only";
 // The admin's to-do list (Admin -> Inbox): everything waiting for a person, one section per kind, newest first, with
 // the counts the sidebar shows. Every source is read on its own and a failing one counts as empty, so one broken table
 // never hides the rest.
+import { cache } from "react";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { APPROVAL_TTL_MS } from "./service";
@@ -16,8 +17,12 @@ const SHOW = 5;
 const HOUR = 3_600_000;
 const safe = async <T>(p: Promise<T>, empty: T): Promise<T> => p.catch(() => empty);
 
-/** Just the counts, for the sidebar badges (cheap: counts only). */
-export async function getInboxCounts(now = new Date()): Promise<Record<InboxKey, number> & { total: number }> {
+/**
+ * Just the counts, for the sidebar badges (cheap: counts only). Cached per request (React cache): the layout, the
+ * Overview and the Inbox page share one set of queries.
+ */
+export const getInboxCounts = cache(async (): Promise<Record<InboxKey, number> & { total: number }> => {
+  const now = new Date();
   const since24h = new Date(now.getTime() - 24 * HOUR);
   const [payments, approvals, demos, requests, invoices, offers, contests, regions, errors] = await Promise.all([
     safe(prisma.manualPayment.count({ where: { status: "pending", submittedAt: { not: null } } }), 0),
@@ -33,7 +38,7 @@ export async function getInboxCounts(now = new Date()): Promise<Record<InboxKey,
   const counts = { payments, approvals, demos, requests, invoices, offers, contests, regions, errors };
   // Errors are shown, but they are not a to-do item of their own (Health and Errors own them).
   return { ...counts, total: payments + approvals + demos + requests + invoices + offers + contests + regions };
-}
+});
 
 const startOfDay = (now: Date) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
@@ -49,7 +54,7 @@ async function contestCount(): Promise<number> {
 
 /** The whole inbox: sections that have something, in the order the owner should work through them. */
 export async function getInbox(now = new Date()): Promise<{ sections: InboxSection[]; total: number; errors24h: number }> {
-  const counts = await getInboxCounts(now);
+  const counts = await getInboxCounts();
   const since24h = new Date(now.getTime() - 24 * HOUR);
   const [payments, approvals, demos, requests, invoices, offers, contests, regions, errors] = await Promise.all([
     safe(prisma.manualPayment.findMany({ where: { status: "pending", submittedAt: { not: null } }, orderBy: { submittedAt: "asc" }, take: SHOW, select: { id: true, reference: true, amountMinor: true, currency: true, network: true, submittedAt: true, user: { select: { email: true, business: { select: { name: true } } } } } }), []),

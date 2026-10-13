@@ -33,8 +33,11 @@ export type ServiceView = {
   lastCheck: CheckView | null;
   lastError: { at: string; message: string; source: string } | null;
   usage: UsageLine[];
-  /** One word for a status badge. off > down > missing > ok > untested. */
-  health: "off" | "down" | "missing" | "ok" | "untested" | "not_in_use";
+  /**
+   * One word for a status badge. off > down > missing > ok > untested. "missing" is a core service without its keys
+   * (a problem); "not_connected" is any other service whose keys are not set yet (not set up, not a failure).
+   */
+  health: "off" | "down" | "missing" | "not_connected" | "ok" | "untested" | "not_in_use";
 };
 
 const isSet = (name: string) => Boolean(process.env[name]);
@@ -50,10 +53,15 @@ export function configState(info: ServiceInfo, opts: { paddleSaved?: boolean } =
   return info.env.every(isSet) ? "configured" : "missing";
 }
 
-function healthOf(v: Pick<ServiceView, "enabled" | "configured" | "lastCheck">): ServiceView["health"] {
+/** Missing keys are a problem only for a core service (lib/admin/service-catalog.ts `core`); Turnstile only in production. */
+export function isCoreService(info: Pick<ServiceInfo, "core">, env: string | undefined = process.env.NODE_ENV): boolean {
+  return info.core === "always" || (info.core === "production" && env === "production");
+}
+
+function healthOf(v: Pick<ServiceView, "enabled" | "configured" | "lastCheck">, core: boolean): ServiceView["health"] {
   if (!v.enabled) return "off";
   if (v.configured === "not_in_use") return "not_in_use";
-  if (v.configured === "missing") return "missing";
+  if (v.configured === "missing") return core ? "missing" : "not_connected";
   if (!v.lastCheck) return "untested";
   return v.lastCheck.ok ? "ok" : "down";
 }
@@ -221,7 +229,7 @@ export async function listServices(now = new Date()): Promise<ServiceView[]> {
       disabledAt: !base.enabled ? (sw?.updatedAt.toISOString() ?? null) : null,
       lastError: lastErrorOf(info, d),
       usage: usageOf(info, d),
-      health: healthOf(base),
+      health: healthOf(base, isCoreService(info)),
     };
   });
 }
@@ -280,7 +288,7 @@ export async function setServiceEnabled(ctx: AdminContext, input: { service: str
 export type ServiceAttention = { key: string; label: string; reason: string };
 
 /**
- * Services that are switched on but not working: the last Test now failed, or a key is missing. Also lists what is
+ * Services that are switched on but not working: the last Test now failed, or a core service's key is missing. Also lists what is
  * switched off (a reminder). Reads only the switches and last test results, so it is cheap enough for every page.
  */
 export async function getServicesAttention(): Promise<{ failing: ServiceAttention[]; off: ServiceAttention[] }> {
@@ -296,8 +304,11 @@ export async function getServicesAttention(): Promise<{ failing: ServiceAttentio
       continue;
     }
     const state = configState(info, { paddleSaved });
-    if (state === "missing") failing.push({ key: info.id, label: info.name, reason: `Missing keys: ${info.env.filter((n) => !isSet(n)).join(", ")}` });
-    else if (state !== "not_in_use" && check.get(info.id) && !check.get(info.id)!.ok) failing.push({ key: info.id, label: info.name, reason: `Last test failed: ${check.get(info.id)!.message ?? "no details"}` });
+    // A service that is not set up yet (optional integration without keys) is not failing: Services shows it as
+    // "Not connected". Only a core service without its keys is a problem here.
+    if (state === "missing") {
+      if (isCoreService(info)) failing.push({ key: info.id, label: info.name, reason: `Missing keys: ${info.env.filter((n) => !isSet(n)).join(", ")}` });
+    } else if (state !== "not_in_use" && check.get(info.id) && !check.get(info.id)!.ok) failing.push({ key: info.id, label: info.name, reason: `Last test failed: ${check.get(info.id)!.message ?? "no details"}` });
   }
   return { failing, off: offList };
 }

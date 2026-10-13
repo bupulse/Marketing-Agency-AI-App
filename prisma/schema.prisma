@@ -1287,6 +1287,7 @@ model AnalyticsEvent {
 
   @@index([name, createdAt])
   @@index([userId, createdAt])
+  @@index([businessId, createdAt])
   @@index([createdAt])
 }
 
@@ -1324,6 +1325,9 @@ model RecurringCost {
   category    String // hosting | domain | ai | email | tools | other
   amountMinor Int
   currency    String   @default("USD")
+  // RWF per USD when an RWF cost was saved: its months keep that rate, so changing the rate in Settings never restates
+  // past costs. Null for USD.
+  usdRate     Float?
   period      String // month | year
   startMonth  String // "YYYY-MM"
   endMonth    String?

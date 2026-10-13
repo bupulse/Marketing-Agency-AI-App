@@ -41,6 +41,7 @@ function report(over: Partial<MoneyReport> = {}): MoneyReport {
   return {
     now: "2026-10-13T00:00:00Z",
     thisMonth: "2026-10",
+    truncated: false,
     rwfPerUsd: 1450,
     months: months.map((m, i) => ({ month: m, revenue: revenue[i], costs: costs[i], profitCents: 0, rate: null })),
     lifetime: { revenueCents: 0, costCents: 0, profitCents: 0, customersEver: 0, payingNow: 0, churned: 0, firstMonth: null },
@@ -102,6 +103,9 @@ describe("revenue and costs", () => {
     expect(out).toContain("No payments or costs yet");
     expect(out).toContain("How we calculate this");
     expect(out).toContain("No client has paid yet");
+  });
+  it("says when the oldest payments were left out", () => {
+    expect(html(createElement(RevenueView, { r: report({ truncated: true }) }))).toContain("oldest payments are left out");
   });
   it("lists deleted clients and their lifetime revenue", () => {
     const out = html(createElement(RevenueView, { r: report({ clients: [{ userId: "gone", businessId: null, name: "Deleted account", email: null, plan: null, status: null, paying: false, deleted: true, revenueCents: 4000, payments: 2, firstAt: "2026-01-05T00:00:00Z", lastAt: "2026-02-05T00:00:00Z", aiCostCents: 0, mrrCents: 0 }], lifetime: { revenueCents: 4000, costCents: 0, profitCents: 4000, customersEver: 1, payingNow: 0, churned: 1, firstMonth: "2026-01" } }) }));

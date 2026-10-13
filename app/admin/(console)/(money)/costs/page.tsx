@@ -177,7 +177,7 @@ export default async function CostsPage({ searchParams }: PageProps<"/admin/cost
         <ul>
           <li>AI and voice: each provider&apos;s bill for the month when you entered it; otherwise the cost ledger&apos;s estimate (every AI call, priced from lib/ai/pricing.ts). Calls that timed out on our side are counted with estimated usage because providers still bill them.</li>
           <li>The ledger counts calls in UTC months; Google bills in Pacific time, so a few hours at each month&apos;s edge can fall in the next month. Taxes on Google&apos;s invoice are not in the estimate: the bill you enter includes them.</li>
-          <li>Recurring costs count from their first to their last month; a yearly cost counts a twelfth each month. RWF amounts use today&apos;s rate ({rwfPerUsd} RWF per USD, Settings); an RWF bill keeps the rate of the day you saved it.</li>
+          <li>Recurring costs count from their first to their last month; a yearly cost counts a twelfth each month. An RWF cost or bill keeps the rate of the day you saved it (today {rwfPerUsd} RWF per USD, Settings), so changing the rate never restates past months.</li>
           <li>Profit on Revenue and profit, the Overview and Jarvis all use these same numbers.</li>
         </ul>
       </HowCalculated>

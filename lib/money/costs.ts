@@ -12,7 +12,7 @@ const firstIssue = (e: { issues: { message: string }[] }) => e.issues[0]?.messag
 export async function listRecurringCosts(): Promise<RecurringCostRow[]> {
   return prisma.recurringCost.findMany({
     orderBy: [{ endMonth: { sort: "asc", nulls: "first" } }, { category: "asc" }, { name: "asc" }],
-    select: { id: true, name: true, provider: true, category: true, amountMinor: true, currency: true, period: true, startMonth: true, endMonth: true, note: true },
+    select: { id: true, name: true, provider: true, category: true, amountMinor: true, currency: true, usdRate: true, period: true, startMonth: true, endMonth: true, note: true },
   });
 }
 
@@ -21,7 +21,9 @@ export async function saveRecurringCost(ctx: AdminContext, input: RecurringCostI
   const parsed = recurringCostSchema.safeParse(input);
   if (!parsed.success) throw new AdminError("invalid", firstIssue(parsed.error));
   const v = parsed.data;
-  const data = { name: v.name, provider: v.provider, category: v.category, amountMinor: toMinorUnits(v.amount, v.currency), currency: v.currency, period: v.period, startMonth: v.startMonth, endMonth: v.endMonth || null, note: v.note || null, updatedBy: ctx.actor };
+  // The rate of today is kept with an RWF cost, so changing it in Settings later never restates the months it covers.
+  const usdRate = v.currency === "RWF" ? await getSetting("usdToRwf") : null;
+  const data = { name: v.name, provider: v.provider, category: v.category, amountMinor: toMinorUnits(v.amount, v.currency), currency: v.currency, usdRate, period: v.period, startMonth: v.startMonth, endMonth: v.endMonth || null, note: v.note || null, updatedBy: ctx.actor };
   return prisma.$transaction(async (tx) => {
     if (input.id) {
       const before = await tx.recurringCost.findUnique({ where: { id: input.id } });

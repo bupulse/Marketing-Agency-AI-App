@@ -57,10 +57,12 @@ export function toRevenueEntry(row: Row): RevenueEntry | null {
     localMinor = m.cents;
   }
   const sign = m.kind === "refund" ? -1 : 1;
-  return { id: `${row.type}:${m.id || row.eventId}`, at: m.at, month: m.at.toISOString().slice(0, 7), userId: row.userId, kind: m.kind, usdCents: sign * m.cents, method, localMinor: localMinor === null ? null : sign * localMinor, currency, plan, priceId, partial };
+  // One key per payment or refund, whatever event carried it (a refund can arrive as adjustment.created and
+  // adjustment.updated): pay:<id> or refund:<id>.
+  return { id: `${m.kind === "refund" ? "refund" : "pay"}:${m.id || row.eventId}`, at: m.at, month: m.at.toISOString().slice(0, 7), userId: row.userId, kind: m.kind, usdCents: sign * m.cents, method, localMinor: localMinor === null ? null : sign * localMinor, currency, plan, priceId, partial };
 }
 
-/** Each payment or refund once (a provider may send the same transaction in more than one event). */
+/** Each payment or refund once (a provider may send the same transaction or refund in more than one event). */
 export function dedupe(entries: RevenueEntry[]): RevenueEntry[] {
   const seen = new Set<string>();
   return entries.filter((e) => (seen.has(e.id) ? false : (seen.add(e.id), true)));
@@ -156,4 +158,17 @@ export function mrrOf(subs: PayingSub[], lastMomoUsdCents: Map<string, number>, 
     byUser.set(s.userId, Math.round(yearly ? price / 12 : price));
   }
   return { totalCents: [...byUser.values()].reduce((a, b) => a + b, 0), byUser };
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * When a client who paid before stopped paying, or null while they still pay: the end of the period they paid for
+ * when their subscription was cancelled or expired, else (deleted account, or back on a trial or another state) their
+ * last payment plus the period it bought (30 days, 365 for a yearly plan).
+ */
+export function stoppedAt(input: { paying: boolean; status: string | null; periodEnd: Date | null; interval: string | null; lastPaymentAt: Date }): Date | null {
+  if (input.paying) return null;
+  if ((input.status === "CANCELED" || input.status === "EXPIRED") && input.periodEnd) return input.periodEnd;
+  return new Date(input.lastPaymentAt.getTime() + (input.interval === "YEAR" ? 365 : 30) * DAY_MS);
 }

@@ -397,7 +397,9 @@ export async function markInvoicePaid(ctx: AdminContext, id: string, input: { me
     const paidBy = first ? `${first.source}:${first.reference}` : `manual:${method}:${ref.data}`;
     // Money that no other event recorded (no MoMo or card payment on file): one revenue event for the roll-up and the
     // Money pages, in USD at today's rate. Kept after the account is deleted (BillingEvent has no foreign key).
-    const usdCents = first ? null : usdCentsOf(row.totalMinor, row.currency.toUpperCase(), await getSetting("usdToRwf"));
+    // Only USD and RWF have a rate here; an invoice in another currency is left out rather than counted at 0.
+    const currency = row.currency.toUpperCase();
+    const usdCents = first || (currency !== "USD" && currency !== "RWF") ? null : usdCentsOf(row.totalMinor, currency, await getSetting("usdToRwf"));
     const payer = first ? null : ((await prisma.business.findUnique({ where: { id: row.businessId }, select: { userId: true } }))?.userId ?? null);
     await prisma.$transaction(async (tx) => {
       const { count } = await tx.invoice.updateMany({ where: { id, status: "sent" }, data: { status: "paid", paidAt: now, paidBy } });

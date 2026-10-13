@@ -238,12 +238,36 @@ describe("overview hooks", () => {
     h.db.serviceCheck.rows.push({ service: "resend", ok: false, latencyMs: 9, message: "Resend returned 401.", checkedAt: new Date() }, { service: "gemini", ok: true, latencyMs: 9, message: "ok", checkedAt: new Date() });
     await setServiceEnabled(CONSOLE, { service: "canva", enabled: false, reason: "app review" });
     const out = await getServicesAttention();
-    expect(out.failing.find((f) => f.key === "linkedin")!.reason).toMatch(/Missing keys: LINKEDIN_CLIENT_ID/);
+    // An optional integration without keys is "not set up", not failing: it stays off the Overview.
+    expect(out.failing.map((f) => f.key)).not.toContain("linkedin");
     expect(out.failing.find((f) => f.key === "resend")!.reason).toMatch(/Last test failed: Resend returned 401/);
     expect(out.failing.map((f) => f.key)).not.toContain("gemini");
     expect(out.failing.map((f) => f.key)).not.toContain("claude"); // not in use
     expect(out.off).toEqual([{ key: "canva", label: "Canva", reason: "Switched off: app review" }]);
     expect(JSON.stringify(out)).not.toContain(SECRETS.GEMINI_API_KEY);
+  });
+
+  it("lists a core service without its keys as failing, and Turnstile only in production", async () => {
+    const saved = { resend: process.env.RESEND_API_KEY, t1: process.env.TURNSTILE_SITE_KEY, env: process.env.NODE_ENV };
+    delete process.env.RESEND_API_KEY;
+    delete process.env.TURNSTILE_SITE_KEY;
+    try {
+      let out = await getServicesAttention();
+      expect(out.failing.find((f) => f.key === "resend")?.reason).toMatch(/Missing keys: RESEND_API_KEY/);
+      expect(out.failing.map((f) => f.key)).not.toContain("turnstile");
+      (process.env as Record<string, string>).NODE_ENV = "production";
+      out = await getServicesAttention();
+      expect(out.failing.find((f) => f.key === "turnstile")?.reason).toMatch(/TURNSTILE_SITE_KEY/);
+      const views = await listServices();
+      expect(views.find((v) => v.id === "turnstile")!.health).toBe("missing");
+      (process.env as Record<string, string>).NODE_ENV = "test";
+      const linkedin = (await listServices()).find((v) => v.id === "linkedin")!;
+      if (linkedin.configured === "missing") expect(linkedin.health).toBe("not_connected");
+    } finally {
+      if (saved.resend) process.env.RESEND_API_KEY = saved.resend;
+      if (saved.t1) process.env.TURNSTILE_SITE_KEY = saved.t1;
+      (process.env as Record<string, string | undefined>).NODE_ENV = saved.env;
+    }
   });
 
   it("getAiBudgetStatus reports month-to-date and the cap in cents", async () => {

@@ -2,13 +2,13 @@ import Link from "next/link";
 import { PageHeader } from "@/components/app";
 import { RevenueView } from "@/components/admin/money/revenue-view";
 import { requireAdmin } from "@/lib/admin/auth";
-import { getMoneyReport } from "@/lib/money/report";
+import { getMoneyReportCached } from "@/lib/money/report";
 
 export const metadata = { title: "Revenue and profit" };
 
 export default async function RevenuePage() {
   await requireAdmin(); // pages render alongside the layout, so check here too
-  const report = await getMoneyReport({ months: 12 });
+  const report = await getMoneyReportCached(12);
   return (
     <>
       <PageHeader

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addMonths, billKeyForLedger, buildMonthCosts, monthAdjustments, monthsBetween, recurringCentsForMonth, recurringCostSchema, usdCentsOf, type RecurringCostRow } from "@/lib/money/costs-shared";
 
-const rec = (over: Partial<RecurringCostRow> = {}): RecurringCostRow => ({ id: "c1", name: "Cloudflare Workers Paid", provider: "cloudflare", category: "hosting", amountMinor: 500, currency: "USD", period: "month", startMonth: "2026-09", endMonth: null, note: null, ...over });
+const rec = (over: Partial<RecurringCostRow> = {}): RecurringCostRow => ({ id: "c1", name: "Cloudflare Workers Paid", provider: "cloudflare", category: "hosting", amountMinor: 500, currency: "USD", usdRate: null, period: "month", startMonth: "2026-09", endMonth: null, note: null, ...over });
 
 describe("months", () => {
   it("lists months across a year end", () => {
@@ -22,6 +22,11 @@ describe("recurring costs", () => {
   it("converts RWF at the rate", () => {
     expect(usdCentsOf(14_500, "RWF", 1450)).toBe(1000);
     expect(recurringCentsForMonth(rec({ currency: "RWF", amountMinor: 29_000 }), "2026-10", 1450)).toBe(2000);
+  });
+  it("keeps the rate saved with an RWF cost when the rate in Settings changes", () => {
+    const cost = rec({ currency: "RWF", amountMinor: 29_000, usdRate: 1450 });
+    expect(recurringCentsForMonth(cost, "2026-10", 1450)).toBe(2000);
+    expect(recurringCentsForMonth(cost, "2026-10", 1000)).toBe(2000);
   });
   it("refuses an end before the start", () => {
     expect(recurringCostSchema.safeParse({ name: "x", provider: "other", category: "tools", amount: 1, currency: "USD", period: "month", startMonth: "2026-10", endMonth: "2026-09" }).success).toBe(false);

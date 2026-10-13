@@ -5,7 +5,8 @@
 //    cost ledger's estimate (AiCall, lib/ai/pricing.ts), marked "estimate".
 // 2. Recurring costs (RecurringCost): hosting, the domain, subscriptions. A yearly cost counts a twelfth each month.
 // 3. Costs entered for one month on the older form (MonthlyCost), kept so nothing entered before disappears.
-// Amounts are USD cents; RWF amounts are converted with the RWF-per-USD rate (Admin -> Settings).
+// Amounts are USD cents; an RWF recurring cost uses the RWF-per-USD rate saved with it, an RWF bill the rate of the
+// day it was entered (Admin -> Settings at that time), so changing the rate never restates past months.
 import { z } from "zod";
 
 export const COST_CATEGORIES = ["hosting", "domain", "ai", "email", "tools", "other"] as const;
@@ -103,12 +104,15 @@ export function addMonths(month: string, n: number): string {
   return d.toISOString().slice(0, 7);
 }
 
-export type RecurringCostRow = { id: string; name: string; provider: string; category: string; amountMinor: number; currency: string; period: string; startMonth: string; endMonth: string | null; note: string | null };
+export type RecurringCostRow = { id: string; name: string; provider: string; category: string; amountMinor: number; currency: string; usdRate: number | null; period: string; startMonth: string; endMonth: string | null; note: string | null };
 
-/** What a recurring cost adds to one month, in USD cents: 0 outside its months, a twelfth of a yearly one. */
-export function recurringCentsForMonth(cost: Pick<RecurringCostRow, "amountMinor" | "currency" | "period" | "startMonth" | "endMonth">, month: string, rwfPerUsd: number): number {
+/**
+ * What a recurring cost adds to one month, in USD cents: 0 outside its months, a twelfth of a yearly one. An RWF cost
+ * uses the rate saved with it (so a later rate change never restates history); `rwfPerUsd` only for an older row without one.
+ */
+export function recurringCentsForMonth(cost: Pick<RecurringCostRow, "amountMinor" | "currency" | "period" | "startMonth" | "endMonth"> & { usdRate?: number | null }, month: string, rwfPerUsd: number): number {
   if (month < cost.startMonth || (cost.endMonth && month > cost.endMonth)) return 0;
-  const usd = usdCentsOf(cost.amountMinor, cost.currency, rwfPerUsd);
+  const usd = usdCentsOf(cost.amountMinor, cost.currency, cost.usdRate && cost.usdRate > 0 ? cost.usdRate : rwfPerUsd);
   return cost.period === "year" ? usd / 12 : usd;
 }
 

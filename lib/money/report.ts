@@ -8,20 +8,45 @@ import { getPlans } from "@/lib/plan-catalog";
 import { planForAnyPriceId } from "@/lib/region-prices";
 import { addMonths, monthsBetween, type MonthCosts } from "./costs-shared";
 import { getMonthCosts } from "./costs";
-import { dedupe, lastFullPayments, mrrOf, rateUsed, revenueByClient, revenueByMonth, revenueByPlan, toRevenueEntry, type PayingSub, type RevenueEntry, type RevenueMonth } from "./revenue-shared";
+import { dedupe, lastFullPayments, stoppedAt, mrrOf, rateUsed, revenueByClient, revenueByMonth, revenueByPlan, toRevenueEntry, type PayingSub, type RevenueEntry, type RevenueMonth } from "./revenue-shared";
 
 const DAY = 86_400_000;
 const PAYING = ["ACTIVE", "PAST_DUE"] as const;
 
-/** Every payment and refund ever recorded, oldest first. */
+/** Safety cap on billing events read for one report. Newest first, so a cap only ever leaves out the oldest. */
+export const REVENUE_EVENT_CAP = 200_000;
+const BATCH = 5_000;
+
+/**
+ * Every payment and refund ever recorded, oldest first, read newest first in batches. `truncated` is true only when
+ * there are more than REVENUE_EVENT_CAP money events: the oldest beyond the cap are left out and the page says so.
+ */
+export async function loadRevenue(): Promise<{ entries: RevenueEntry[]; truncated: boolean }> {
+  const out: RevenueEntry[] = [];
+  let cursor: string | undefined;
+  let read = 0;
+  for (;;) {
+    const rows = await prisma.billingEvent.findMany({
+      where: { type: { in: MONEY_EVENT_TYPES } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { id: true, eventId: true, type: true, payload: true, createdAt: true, userId: true },
+      take: BATCH,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    for (const r of rows) {
+      const e = toRevenueEntry(r);
+      if (e) out.push(e);
+    }
+    read += rows.length;
+    if (rows.length < BATCH) break;
+    if (read >= REVENUE_EVENT_CAP) return { entries: dedupe(out).reverse(), truncated: true };
+    cursor = rows[rows.length - 1].id;
+  }
+  return { entries: dedupe(out).reverse(), truncated: false };
+}
+
 export async function loadRevenueEntries(): Promise<RevenueEntry[]> {
-  const rows = await prisma.billingEvent.findMany({
-    where: { type: { in: MONEY_EVENT_TYPES } },
-    orderBy: { createdAt: "asc" },
-    select: { eventId: true, type: true, payload: true, createdAt: true, userId: true },
-    take: 50_000,
-  });
-  return dedupe(rows.map(toRevenueEntry).filter((e): e is RevenueEntry => e !== null));
+  return (await loadRevenue()).entries;
 }
 
 /** The plan of a card payment from its Paddle price id (one lookup per distinct price). */
@@ -55,6 +80,8 @@ export type ClientMoney = {
 export type MoneyReport = {
   now: string;
   thisMonth: string;
+  /** More money events than REVENUE_EVENT_CAP: the oldest are left out of lifetime numbers (shown on the page). */
+  truncated: boolean;
   rwfPerUsd: number;
   months: { month: string; revenue: RevenueMonth; costs: MonthCosts; profitCents: number; rate: number | null }[];
   lifetime: { revenueCents: number; costCents: number; profitCents: number; customersEver: number; payingNow: number; churned: number; firstMonth: string | null };
@@ -65,6 +92,26 @@ export type MoneyReport = {
   clients: ClientMoney[];
 };
 
+const REPORT_TTL_MS = 60_000;
+const reportCache = new Map<number, { at: number; value: Promise<MoneyReport> }>();
+
+/**
+ * getMoneyReport, kept 60 seconds per server instance (the Overview and the Money pages are opened often; payments
+ * and costs change rarely). A write on the Costs page clears it (clearMoneyReportCache).
+ */
+export function getMoneyReportCached(months = 12): Promise<MoneyReport> {
+  const hit = reportCache.get(months);
+  if (hit && Date.now() - hit.at < REPORT_TTL_MS) return hit.value;
+  const value = getMoneyReport({ months });
+  reportCache.set(months, { at: Date.now(), value });
+  value.catch(() => reportCache.delete(months));
+  return value;
+}
+
+export function clearMoneyReportCache() {
+  reportCache.clear();
+}
+
 /**
  * Everything the Money pages show. `months` is how many recent months the month table covers (lifetime totals always
  * cover every month since the first payment or cost).
@@ -72,7 +119,7 @@ export type MoneyReport = {
 export async function getMoneyReport(opts: { months?: number; now?: Date } = {}): Promise<MoneyReport> {
   const now = opts.now ?? new Date();
   const thisMonth = now.toISOString().slice(0, 7);
-  const entries = await loadRevenueEntries();
+  const { entries, truncated } = await loadRevenue();
   const [firstCall, firstCost] = await Promise.all([
     prisma.aiCall.findFirst({ orderBy: { createdAt: "asc" }, select: { createdAt: true } }),
     prisma.recurringCost.findFirst({ orderBy: { startMonth: "asc" }, select: { startMonth: true } }),
@@ -85,7 +132,7 @@ export async function getMoneyReport(opts: { months?: number; now?: Date } = {})
 
   const [{ months: costMonths, rwfPerUsd }, subs, plans, priced] = await Promise.all([
     getMonthCosts(from, thisMonth),
-    prisma.subscription.findMany({ select: { userId: true, plan: true, status: true, interval: true, provider: true, updatedAt: true } }),
+    prisma.subscription.findMany({ select: { userId: true, plan: true, status: true, interval: true, provider: true, currentPeriodEnd: true } }),
     getPlans().catch(() => []),
     cardPlans(entries),
   ]);
@@ -105,11 +152,13 @@ export async function getMoneyReport(opts: { months?: number; now?: Date } = {})
   const clientRevenue = revenueByClient(entries);
   const everPaid = clientRevenue.filter((c) => c.payments > 0);
   const subOf = new Map(subs.map((s) => [s.userId, s]));
+  // Stopped in the last 30 days: the paid period ended (cancelled or expired), or, without that, the last payment's
+  // period ran out (deleted account, back on another state). Never the subscription's last edit.
   const lost30 = everPaid.filter((c) => {
-    if (!c.userId || payingIds.has(c.userId)) return false;
+    if (!c.userId) return false;
     const sub = subOf.get(c.userId);
-    // Stopped in the last 30 days: the subscription changed then, or the account is gone and its last payment was recent.
-    return sub ? now.getTime() - sub.updatedAt.getTime() <= 30 * DAY : now.getTime() - c.lastAt.getTime() <= 45 * DAY;
+    const stop = stoppedAt({ paying: payingIds.has(c.userId), status: sub?.status ?? null, periodEnd: sub?.currentPeriodEnd ?? null, interval: sub?.interval ?? null, lastPaymentAt: c.lastAt });
+    return !!stop && stop.getTime() <= now.getTime() && now.getTime() - stop.getTime() <= 30 * DAY;
   }).length;
 
   // --- Per client ---
@@ -155,6 +204,7 @@ export async function getMoneyReport(opts: { months?: number; now?: Date } = {})
   return {
     now: now.toISOString(),
     thisMonth,
+    truncated,
     rwfPerUsd,
     months: months.filter((m) => m.month >= recentFrom),
     lifetime: {
