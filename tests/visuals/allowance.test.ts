@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// These tests import large server modules inside the test (actions, the visuals service): the first import
+// can take several seconds when the whole suite runs in parallel.
+vi.setConfig({ testTimeout: 30_000 });
+
 const prisma = vi.hoisted(() => ({ business: { findUnique: vi.fn() }, planDefinition: { findUnique: vi.fn() } }));
 vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
