@@ -3,8 +3,9 @@ import { Smartphone } from "lucide-react";
 import { EmptyState, PageHeader } from "@/components/app";
 import { ConfirmButton } from "@/components/admin/confirm-button";
 import { Empty, Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
-import { Badge, Field, Input, Textarea } from "@/components/ui";
-import { requirePermission } from "@/lib/admin/auth";
+import { Badge } from "@/components/ui";
+import { can, requirePermission } from "@/lib/admin/auth";
+import { PendingPaymentList } from "@/components/admin/payments/pending-payments";
 import { dateTime, money, param } from "@/lib/admin/format";
 import { listManualPayments, type ManualPaymentAdminView } from "@/lib/billing/momo";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
@@ -16,15 +17,6 @@ export const metadata = { title: "Payments" };
 
 const tone = (s: string) => (s === "confirmed" ? "success" : s === "rejected" ? "danger" : s === "pending" ? "violet" : "neutral") as "success" | "danger" | "violet" | "neutral";
 const interval = (i: string) => (i === "YEAR" ? "yearly" : "monthly");
-const day = (iso: string) => dateTime(iso).replace(/, \d\d:\d\d.*/, "");
-
-/** What confirming does to the client's running period, for the dialog and the row. */
-function periodText(p: ManualPaymentAdminView): string {
-  const n = p.periodNote;
-  if (!n) return `The ${p.planName} plan switches on for one ${p.interval === "YEAR" ? "year" : "month"} from now.`;
-  if (n.mode === "extend") return `Adds one ${p.interval === "YEAR" ? "year" : "month"} after the current period (${n.daysLeft} ${n.daysLeft === 1 ? "day" : "days"} left, until ${day(n.currentEnd)}).`;
-  return `Plan change: replaces the current period (${n.daysLeft} ${n.daysLeft === 1 ? "day" : "days"} left, until ${day(n.currentEnd)}) with one ${p.interval === "YEAR" ? "year" : "month"} of ${p.planName} from now. Give credit manually if needed.`;
-}
 
 function Who({ p }: { p: ManualPaymentAdminView }) {
   return (
@@ -36,7 +28,8 @@ function Who({ p }: { p: ManualPaymentAdminView }) {
 }
 
 export default async function PaymentsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requirePermission(["payments.view", "payments.approve"]); // pages render alongside the layout, so check here too
+  const me = await requirePermission(["payments.view", "payments.approve"]); // pages render alongside the layout, so check here too
+  const canApprove = can(me, "payments.approve");
   const sp = await searchParams;
   const [pendingPage, history, settings, cardEvents] = await Promise.all([
     listManualPayments({ status: "pending", limit: 100 }),
@@ -48,7 +41,6 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
   const started = pendingPage.items.filter((p) => !p.submitted);
   const decided = history.items.filter((p) => p.status !== "pending");
   // The screenshots of the payments to check, through the admin-only route (re-sniffed, nosniff; the bucket is private).
-  const proofUrls = new Map(toCheck.filter((p) => p.proofPath).map((p) => [p.id, `/admin/payments/proof?id=${encodeURIComponent(p.id)}`] as const));
   const dial = mtnMomoPayDial(settings.merchantCode);
 
   return (
@@ -64,50 +56,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
         <EmptyState icon={Smartphone} title="Nothing to check" text="When a client pays by Mobile Money and taps I've paid, it appears here with the reference and transaction id." />
       ) : (
         <Panel title={`To check (${toCheck.length})`} description="Oldest first. The client is waiting on their Billing page.">
-          <ul className="flex flex-col divide-y divide-line">
-            {toCheck.map((p) => (
-              <li key={p.id} className="flex flex-wrap items-start justify-between gap-4 py-4 first:pt-0 last:pb-0">
-                <div className="min-w-0">
-                  <p className="font-semibold">
-                    {money(p.amountMinor, p.currency)} · {p.planName} ({interval(p.interval)}) <Badge tone="violet">Pending</Badge>
-                  </p>
-                  <p className="text-[14px]">
-                    Reference <span className="font-mono font-semibold">{p.reference}</span> · {p.transactionId ? <>transaction <span className="font-mono">{p.transactionId}</span></> : <span className="font-medium text-danger">no transaction id (the client could not find it: read it from the screenshot or your MoMo messages)</span>} · from {p.payerPhone} ({p.network})
-                  </p>
-                  {proofUrls.get(p.id) ? (
-                    <a href={proofUrls.get(p.id) as string} target="_blank" rel="noreferrer" className="mt-2 inline-block" aria-label={`Open the screenshot of ${p.reference} full size`}>
-                      {/* eslint-disable-next-line @next/next/no-img-element -- a private screenshot served by the admin-only route */}
-                      <img src={proofUrls.get(p.id) as string} alt={`Screenshot of the Mobile Money confirmation for ${p.reference}`} width={160} height={280} loading="lazy" className="h-auto max-h-72 w-40 rounded-lg border border-line bg-surface object-contain" />
-                      <span className="block text-[13px] text-muted underline">Click to enlarge</span>
-                    </a>
-                  ) : (
-                    <p className="text-[13px] text-muted">No screenshot.</p>
-                  )}
-                  <p className="text-[13px] text-muted"><Who p={p} /></p>
-                  <p className="text-[13px] text-muted">Said paid {p.submittedAt ? dateTime(p.submittedAt) : ""} · started {dateTime(p.createdAt)}</p>
-                  {p.periodNote?.mode === "replace" && <p className="text-[13px] font-medium text-danger">{periodText(p)}</p>}
-                  {p.periodNote?.mode === "extend" && <p className="text-[13px] text-muted">{periodText(p)}</p>}
-                  {p.seenBefore && (
-                    <p role="alert" className="mt-1 rounded-xl bg-danger-bg px-3 py-2 text-[13px] font-medium text-danger">
-                      Transaction id seen before on payment {p.seenBefore.reference} ({p.seenBefore.status}{p.seenBefore.sameCompany ? ", same company" : ", another company"}). Check it is not the same Mobile Money message used twice.
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <ConfirmButton action={rejectPaymentAction} fields={{ id: p.id }} label="Reject" title={`Reject ${p.reference}?`} description="The client sees your reason on their Billing page and by email, and can try again. Nothing else changes." confirmLabel="Reject">
-                    <Field label="Reason the client will see" required><Textarea name="reason" minLength={3} maxLength={300} rows={3} required placeholder="We received no payment with this reference. Please check the number you paid to." /></Field>
-                  </ConfirmButton>
-                  <ConfirmButton action={confirmPaymentAction} fields={{ id: p.id }} variant="primary" label="Confirm" title={`Confirm ${money(p.amountMinor, p.currency)} from ${p.company ?? "this client"}?`} description={`Only after you have seen ${p.reference} arrive. ${periodText(p)} The client is emailed.`} confirmLabel="Confirm payment">
-                    {!p.transactionId && (
-                      <Field label="Transaction id from your MoMo message" hint="The client could not find it. It is required: it stops one payment being used twice." required>
-                        <Input name="transactionId" minLength={4} maxLength={40} required autoComplete="off" />
-                      </Field>
-                    )}
-                  </ConfirmButton>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <PendingPaymentList items={toCheck} canApprove={canApprove} back="/admin/payments" confirmAction={confirmPaymentAction} rejectAction={rejectPaymentAction} />
         </Panel>
       )}
 

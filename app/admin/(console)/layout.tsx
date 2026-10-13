@@ -3,15 +3,17 @@ import { BackgroundBlobs } from "@/components/motion";
 import { AdminShell, type ShellBadges } from "@/components/admin/shell";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getHealthSummary } from "@/lib/admin/health";
-import { getInboxCounts } from "@/lib/admin/inbox";
+import { getInboxCounts, inboxTotalFor } from "@/lib/admin/inbox";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export default async function AdminConsoleLayout({ children }: { children: ReactNode }) {
   const admin = await requireAdmin();
-  const [inbox, health] = await Promise.all([getInboxCounts(), getHealthSummary().catch(() => ({ status: "ok" as const, issues: [] }))]);
+  // Badges only for what the person can see (the sidebar hides the rest anyway); health needs the system permission.
+  const [inbox, health] = await Promise.all([getInboxCounts(), admin.permissions.includes("system") ? getHealthSummary().catch(() => ({ status: "ok" as const, issues: [] })) : Promise.resolve({ status: "ok" as const, issues: [] })]);
+  const mine = inboxTotalFor(inbox, admin.permissions);
   const badges: ShellBadges = {
-    inbox: { count: inbox.total, tone: "danger", label: plural(inbox.total, "item waiting in the inbox", "items waiting in the inbox") },
+    inbox: { count: mine, tone: "danger", label: plural(mine, "item waiting in the inbox", "items waiting in the inbox") },
     payments: { count: inbox.payments, tone: "danger", label: plural(inbox.payments, "Mobile Money payment to check", "Mobile Money payments to check") },
     approvals: { count: inbox.approvals, tone: "danger", label: plural(inbox.approvals, "request waiting for approval", "requests waiting for approval") },
     requests: { count: inbox.requests, tone: "violet", label: plural(inbox.requests, "new plan request", "new plan requests") },
