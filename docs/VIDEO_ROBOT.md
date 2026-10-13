@@ -96,7 +96,7 @@ alike, so both videos look the same. Without the CDN both fall back to system fo
 - `app/api/robot/videos/{peek,claim,complete,fail,report}/route.ts`.
 - `scripts/video-robot/`: `robot.mjs` (the robot), `page-entry.ts` and `build-page.mjs` (the page), `log.mjs` (the only
   printer), `self-test.mjs` (local check against a fake app).
-- Migration `20261016090000_video_robot`: `ContentVisual.robotJobId` (unique) and `robotAttempts`, and the queue index.
+- Migration `20261016110000_video_robot`: `ContentVisual.robotJobId` (unique) and `robotAttempts`, and the queue index.
 - Owner screen: `components/visuals/content-visual.tsx` ("Being made automatically", "Make it now"), the browser takes
   the lease first (`startVideoRender`, `leaseVideoForBrowser`).
 - Tests: `tests/visuals/robot.test.ts`, `tests/visuals/robot-api.test.ts`, `tests/video-robot-script.test.ts`,
