@@ -1,6 +1,43 @@
-# Admin console setup (`/admin`)
+# Admin console (`/admin`)
 
-Only the addresses in `ADMIN_EMAILS` (comma-separated, default `admin@bupulse.com`) can open the console. Everyone else, and signed-out visitors, get a 404. An admin also needs an authenticator-app code (Supabase MFA, AAL2) on every sign-in. Money actions run only after the owner clicks Approve (see `docs/JARVIS.md`).
+Only the addresses in `ADMIN_EMAILS` (comma-separated, default `admin@bupulse.com`) can open the console. Everyone else, and signed-out visitors, get a 404. An admin also needs an authenticator-app code (Supabase MFA, AAL2) on every sign-in, and every server action re-checks it (`adminAction()`). Money actions run only after the owner clicks Approve (see `docs/JARVIS.md`).
+
+## Map
+
+The sidebar groups the pages into folders; the files live in matching route groups under `app/admin/(console)/`, so URLs never changed. The map itself is `components/admin/nav.ts`: the sidebar, the breadcrumbs and the search read it, and `tests/admin-console/nav.test.ts` fails when a page is missing from it.
+
+| Folder | Page | URL | What it is for |
+| --- | --- | --- | --- |
+| | Overview | `/admin` | Today and this month: to-dos, MRR, revenue (month and lifetime), costs, profit, clients by state, AI spend vs the cap, errors in 24 h. |
+| | Inbox | `/admin/inbox` | Everything waiting for a person: payments to confirm, approvals, demos, plan requests, invoices to check, accepted unpaid offers, contests waiting for the client, region mismatches, errors. |
+| Clients | Companies, Users | `/admin/companies`, `/admin/users` | Find a company or person; open one for users, usage and actions. |
+| | Client health | `/admin/client-health` | Inactive 7 days, trial ending in 3 days, past due, low usage, waiting for a demo; one-click WhatsApp and email. |
+| | Usage per client | `/admin/usage` | Texts, images, video seconds, voice characters, chat this period; AI cost this month vs what they pay; margin. |
+| | Demos, Plan requests, Connections | `/admin/demos`, `/admin/requests`, `/admin/connections` | |
+| Money | Revenue and profit | `/admin/revenue` | Revenue by month (card, Mobile Money, invoices; RWF and the rate used), lifetime revenue from every client ever, MRR, ARPU, churn, profit per month, plan and client. |
+| | Costs | `/admin/costs` | Provider bills, recurring costs (hosting, domain, subscriptions), one-month costs; estimate vs billed. |
+| | Payments, Invoices, Offers, Plans and prices, Add-on prices, Regions | `/admin/payments` ... `/admin/settings/regions` | |
+| Content | Content performance, Funnels, Design library, Music library, Industries, Announcements | | |
+| AI and usage | AI calls and spend, Approvals, Jarvis | `/admin/ai`, `/admin/approvals`, `/admin/jarvis` | |
+| System | Health, Services, Errors, Live activity, Audit log, Feature flags, Settings, Updates | | |
+
+- **Search:** Cmd+K (Mac) or Ctrl+K anywhere, or the Search button: any page by name, folder or keyword, and any company by name or member email (`/admin/search`, same admin gate).
+- **Folders** fold with a click; the choice is remembered in this browser only. The folder of the page you are on stays open. A folded folder shows the sum of its badges.
+- **Badges:** Inbox (all to-dos), Payments, Approvals, Plan requests, Errors (24 h), Health.
+- Every page has a one-line explanation under its title, tables keep their header in view while scrolling, and every page shows an empty state when there is no data yet.
+
+## Money
+
+All money is shown in USD; RWF amounts are converted at the rate fixed when a payment was confirmed (Revenue) or at the rate in Settings (recurring RWF costs; an RWF bill keeps the rate of the day it was saved). Code: `lib/money/` (pure rules in `costs-shared.ts` and `revenue-shared.ts`, tested in `tests/money/`).
+
+- **Revenue** is every `BillingEvent` that is money, ever. That table has no foreign key, so clients who left or deleted their account still count. Card: Paddle's payout after tax and fees, less approved refunds. Mobile Money: confirmed MTN or Airtel payments. Invoices: payments of an invoice, and plain invoices marked paid by hand (`invoice.paid_manual`, written since this build and back-filled by migration `20261017200000_admin_money`).
+- **MRR:** each paying client (active or past due, not trial) at their plan's monthly price; a Mobile Money client at what they last paid; yearly a twelfth. **ARPU** = MRR / paying clients. **Churn (30 days):** clients who had paid and stopped in the last 30 days, out of those paying now plus them.
+- **Costs** per month: for each AI or voice provider, its real bill when entered under Costs, Provider bills (it then replaces the estimate everywhere), otherwise the AI ledger's estimate, marked "estimate"; plus recurring costs (a yearly one counts a twelfth a month) and one-month costs. Presets fill the form for Cloudflare Workers, Netlify, Supabase, the domain, ElevenLabs, Google Workspace, email and GitHub; check the amount against the invoice.
+- **Profit** = revenue - all costs. The Overview, Revenue and profit, the analytics roll-up (Jarvis) and Usage per client use the same numbers.
+- Every cost write (add, change, stop, delete a recurring cost; save or delete a bill) is audited.
+- **Enter the bills** at the start of each month for the month before: the Costs page shows "Estimated part" in red until then.
+
+Why the AI estimate can differ from Google's bill, and what is done about it: `docs/AI_COSTS.md`.
 
 ## One-time setup (owner, in this order)
 

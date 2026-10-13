@@ -93,7 +93,7 @@ Recommended (the feature switches off without it; the check warns):
 
 | Name | Default when empty | What it does |
 | --- | --- | --- |
-| `AI_MONTHLY_BUDGET_USD` | built-in (Admin, AI usage can override) | Cap on BuPulse's whole AI spend a month; 30 at launch |
+| `AI_MONTHLY_BUDGET_USD` | built-in (Admin, AI calls and spend can override) | Cap on BuPulse's whole AI spend a month; 30 at launch |
 | `AI_COMPANY_MONTHLY_USD` | 3 | Each company's monthly AI allowance in USD |
 | `WIDGET_AI_SHARE` | 0.5 | Share of that allowance the website chat may use |
 | `MEDIA_PLATFORM_MAX_BYTES` | 900 MB | Shared storage guard (Supabase free: 1 GB in all) |
