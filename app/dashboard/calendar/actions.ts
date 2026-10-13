@@ -14,7 +14,6 @@ import { loadComposerContext } from "@/lib/publishing/queries";
 import { timezoneSchema } from "@/lib/publishing/schemas";
 import {
   approvePosts,
-  connectByHandPosts,
   createPosts,
   deletePost,
   duplicatePost,
@@ -28,6 +27,7 @@ import {
   type Owner,
 } from "@/lib/publishing/service";
 import type { PostStatusName } from "@/lib/publishing/status";
+import { connectByHandPosts } from "@/lib/content-board/connect";
 import type { ActionFailure, ActionResult, ComposeInput, ComposerContext, EditInput, PostOutcome } from "@/lib/publishing/types";
 import { createClient } from "@/lib/supabase/server";
 import { signPaths } from "@/lib/publishing/media";
@@ -143,7 +143,7 @@ export async function approvePostsAction(postIds: string[]): Promise<ActionResul
 }
 
 /** "Publish automatically": posts made for an app that is now connected switch to that account. */
-export async function connectByHandPostsAction(postIds: string[]): Promise<ActionResult<{ switched: number }>> {
+export async function connectByHandPostsAction(postIds: string[]): Promise<ActionResult<{ switched: number; rescheduled: number; toReview: number }>> {
   return run("connect-by-hand", "compose", (o) => connectByHandPosts(o, Array.isArray(postIds) ? postIds.map(String) : []));
 }
 

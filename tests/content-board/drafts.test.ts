@@ -5,7 +5,8 @@ const prisma = vi.hoisted(() => ({
   connection: { findMany: vi.fn() },
   post: { deleteMany: vi.fn(), create: vi.fn(), count: vi.fn() },
   contentVisual: { findMany: vi.fn() },
-  $transaction: vi.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
+  $executeRaw: vi.fn(),
+  $transaction: vi.fn(),
 }));
 const auto = vi.hoisted(() => ({ autoSchedule: vi.fn(async () => ({ scheduled: 0, waiting: 0 })) }));
 vi.mock("@/lib/db", () => ({ prisma }));
@@ -40,6 +41,8 @@ beforeEach(() => {
   prisma.post.create.mockImplementation(async ({ data }: { data: { connectionId: string } }) => ({ id: `post-${data.connectionId}` }));
   prisma.contentVisual.findMany.mockResolvedValue([{ kind: "carousel", status: "ready", items: [{ path: "u1/designs/1.png" }, { path: "u1/designs/2.png" }] }]);
   prisma.generatedContent.updateMany.mockResolvedValue({ count: 1 });
+  prisma.post.count.mockResolvedValue(0);
+  prisma.$transaction.mockImplementation(async (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma));
 });
 
 describe("draftFor", () => {
@@ -79,7 +82,25 @@ describe("draftPostsFromContent", () => {
     expect(prisma.post.deleteMany).toHaveBeenCalledWith({ where: { businessId: "b1", productId: "p1", source: "STUDIO", status: "PENDING_APPROVAL", ownerEditedAt: null, NOT: { contentId: "content-2" } } });
     expect(prisma.generatedContent.updateMany).toHaveBeenCalledWith({ where: { id: "content-2", businessId: "b1" }, data: { postsDraftedAt: expect.any(Date) } });
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(prisma.$transaction.mock.calls[0][0]).toHaveLength(6);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("drafts once when called twice at the same time: the second finds the first one's drafts under the lock", async () => {
+    // A real lock serialises the two transactions; the mock runs them one after the other the same way.
+    let made = 0;
+    prisma.post.create.mockImplementation(async ({ data }: { data: { connectionId: string } }) => {
+      made += 1;
+      return { id: `post-${data.connectionId}` };
+    });
+    prisma.post.count.mockImplementation(async () => made);
+    let queue = Promise.resolve<unknown>(undefined);
+    prisma.$transaction.mockImplementation((fn: (tx: typeof prisma) => Promise<unknown>) => (queue = queue.then(() => fn(prisma))));
+    const [first, second] = await Promise.all([draftPostsFromContent({ businessId: "b1" }, "content-2"), draftPostsFromContent({ businessId: "b1" }, "content-2")]);
+    expect(first.created).toBe(4);
+    expect(second).toMatchObject({ created: 0, existing: 4 });
+    expect(made).toBe(4);
+    const lockKey = (prisma.$executeRaw.mock.calls[0] as unknown[]).slice(1);
+    expect(lockKey).toEqual(["content-drafts:content-2"]);
   });
 
   it("does nothing without scheduling in the plan or for another business's content", async () => {

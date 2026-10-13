@@ -23,12 +23,12 @@ export function PostCard({ post, zone, onOpen, actions, showSubject = false }: {
   const video = post.kind === "video";
   const slides = post.kind === "carousel" ? post.media.length : 0;
   const type = kindLabel(post.kind, post.network);
-  const caption = (post.title ? `${post.title}. ` : "") + post.text;
+  const caption = post.excerpt;
   // Not posted yet: a warning-colour border plus an icon and words, so it does not rely on colour alone.
   const unposted = UNPOSTED.includes(post.status);
 
   return (
-    <article className={cn("glass flex h-full flex-col overflow-hidden rounded-card", unposted && "border-2 border-amber-500 dark:border-amber-400")}>
+    <article className={cn("glass flex h-full flex-col overflow-hidden rounded-card", unposted && "!border-2 !border-amber-600 dark:!border-amber-400")}>
       <button
         type="button"
         onClick={onOpen}
@@ -48,15 +48,18 @@ export function PostCard({ post, zone, onOpen, actions, showSubject = false }: {
               <span className="text-[13px]">{video ? "Video not made yet" : post.kind === "article" ? "Text post" : "No picture yet"}</span>
             </div>
           )}
-          <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-[var(--bp-dialog)]/90 py-1 pr-2.5 pl-1 text-[12px] font-semibold text-text shadow-glass">
-            <NetworkIcon network={post.network} size={22} />
-            {type}
-          </span>
-          {post.autoScheduledAt && post.status !== "PENDING_APPROVAL" && (
-            <span className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-full bg-[var(--bp-dialog)]/90 px-2.5 py-1 text-[12px] font-semibold text-ok shadow-glass">
-              <Sparkles aria-hidden className="size-3.5" /> Auto
+          {/* Top right: designs put the brand name at the top left, which these must not cover. */}
+          <span className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--bp-dialog)]/90 py-1 pr-2.5 pl-1 text-[12px] font-semibold text-text shadow-glass">
+              <NetworkIcon network={post.network} size={22} />
+              {type}
             </span>
-          )}
+            {post.autoScheduledAt && post.status !== "PENDING_APPROVAL" && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-[var(--bp-dialog)]/90 px-2.5 py-1 text-[12px] font-semibold text-ok shadow-glass">
+                <Sparkles aria-hidden className="size-3.5" /> Auto
+              </span>
+            )}
+          </span>
           {video && (
             <span aria-hidden className="absolute inset-0 flex items-center justify-center">
               <span className="inline-flex size-14 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm">

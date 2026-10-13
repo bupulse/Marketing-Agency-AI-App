@@ -69,6 +69,8 @@ const iso = (d: Date) => d.toISOString();
 const slotIsos = async (now = NOW, ignore?: string) => (await availableSlots(now, ignore)).slots.map(iso);
 
 beforeEach(() => {
+  // The bookings use fixed dates (TUE_10); keep the clock at NOW so they stay in the future whatever day the tests run.
+  vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   h.db = createFakeDb();
   h.email.mockClear();
   h.logError.mockClear();
@@ -87,6 +89,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", google.fetch);
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();

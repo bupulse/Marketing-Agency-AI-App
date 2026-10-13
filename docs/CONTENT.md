@@ -21,7 +21,8 @@ campaign or app. Content -> Settings decides, per app, whether new posts wait fo
    show only while they have posts. With a post filter on, only subjects with matching posts show.
 5. **A subject's posts** (`/dashboard/content/products/<id>`, `/campaigns/<id>`, `/general`): cards that read like a
    social post but in BuPulse's look: the picture, carousel (dots) or video (still with a play mark), the app icon and
-   post type, 2 to 3 lines of caption, a status chip (Needs review, Scheduled for <date time>, Posted <date>, Failed,
+   post type (top right, so a design's own brand name at the top left stays visible), 2 to 3 lines of the caption (a
+   video idea shows its content's caption; the script is only in the detail), a status chip (Needs review, Scheduled for <date time>, Posted <date>, Failed,
    Draft, Post it yourself), the review reason when there is one, and the created date. A card opens the calendar's
    post detail (preview, Approve, Move, Back to review, Edit, Duplicate, Delete); Edit opens the composer. `?post=<id>`
    opens one post on arrival (links in the summary email). More posts load as the end of the list scrolls into view
@@ -65,7 +66,10 @@ are signed in one batched request per bucket (`signPaths`) and lazy-loaded.
   wait are replaced, in the same transaction as the new ones, **unless the owner edited them** (`Post.ownerEditedAt`,
   set by edits in the composer, media changes, moves and "Back to review"); approved, scheduled and hand-made posts are
   never touched. Scheduling a content by hand in the composer replaces its untouched drafts for the chosen accounts,
-  in the same transaction. Nothing is drafted without the `calendar` feature or an account.
+  in the same transaction. Nothing is drafted without the `calendar` feature. Drafting takes a per-content advisory
+  lock and makes nothing when the content already has its drafts, so two page loads at once (the backfill) or a double
+  click draft once; migration `20261016120000_dedupe_studio_drafts` removed the duplicates made before (untouched
+  drafts only, the oldest kept).
 - **Autopilot.** Its posts are saved as before (`PENDING_APPROVAL`, or `SCHEDULED` with "Post without asking").
 - When the content's picture finishes drawing or its video is uploaded, the drafts take it (`attachToContent` in
   `lib/visuals/service.ts`, as `attachToGroup` does for Autopilot) and get another auto-approval check. Only drafts
@@ -91,7 +95,10 @@ depend on a connection:
   `remindOnly`) still fails as before.
 - **Connected later.** A banner on the Content page ("N posts were made as a reminder... Publish automatically") and a
   button in the post detail switch waiting or scheduled reminder posts of a now-connected app to its account
-  (`connectByHandPosts`; the first usable account that posts automatically), keeping text, media and time.
+  (`lib/content-board/connect.ts`; the first usable account that posts automatically), keeping text and media. A
+  scheduled one is taken out of the queue first, checked by the safety rules, and scheduled again on a free slot (its
+  time if still ahead, else the best time); if it cannot go it waits in Needs review with the reason, so a post is
+  never published late or stacked.
 - **Backfill.** Content written before drafting existed has `GeneratedContent.postsDraftedAt` null. Its posts are
   drafted once when its product or campaign is opened (Knowledge page or Content subject page, `latestContentPosts`);
   content whose drafts the owner rejected is never drafted again on its own. A subject whose newest content has no
@@ -106,8 +113,8 @@ depend on a connection:
   for review, up to 100): a dialog with "Schedule for me" (best times) or "I'll choose times" (a time per post,
   prefilled with the suggestion, in the business's time zone). `lib/content-board/schedule-all.ts` applies the same
   safety rules as auto-approval (`safetyReasons`), writes each post guarded by its `updatedAt`, keeps 2.5 hours per
-  account (`claimSlot`), and reports what was scheduled and what was skipped, with why (time taken, in the past,
-  changed meanwhile, video not made...). Needs the `content` permission and the `calendar` feature.
+  account (`claimSlot`), and reports what was scheduled and what was skipped, with why (time taken, no free time,
+  in the past, more than 90 days ahead, changed meanwhile, video not made...). Needs the `content` permission and the `calendar` feature.
 - **Approve** reports posts it could not place ("Approved 4 of 5. 1 could not find a free time: open it and pick a
   time"): `approvePosts` returns `skipped`.
 - **Connect your apps.** While posts (or Autopilot) target apps without a usable account (`missingApps`), the Content
