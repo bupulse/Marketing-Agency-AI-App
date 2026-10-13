@@ -3,12 +3,13 @@ import { LeaderboardView } from "@/components/admin/sales/sales-views";
 import { requirePermission } from "@/lib/admin/auth";
 import { param } from "@/lib/admin/format";
 import { MONTH, getLeaderboard, monthOf } from "@/lib/sales/attribution";
+import { addMonths } from "@/lib/money/costs-shared";
 
 export const metadata = { title: "Leaderboard" };
 
 /** The current month and the eleven before it, newest first. */
 function lastMonths(now: Date, n = 12): string[] {
-  return Array.from({ length: n }, (_, i) => monthOf(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1))));
+  return Array.from({ length: n }, (_, i) => addMonths(monthOf(now), -i));
 }
 
 export default async function LeaderboardPage({ searchParams }: PageProps<"/admin/sales/leaderboard">) {

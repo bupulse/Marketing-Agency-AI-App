@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { signInWithOtp, verifyOtp } = vi.hoisted(() => ({ signInWithOtp: vi.fn(), verifyOtp: vi.fn() }));
+const { signInWithOtp, verifyOtp, padTo, publicLimited } = vi.hoisted(() => ({ signInWithOtp: vi.fn(), verifyOtp: vi.fn(), padTo: vi.fn(async (...args: [number, number]) => void args), publicLimited: vi.fn(async () => null) }));
 
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => {
@@ -8,7 +8,8 @@ vi.mock("next/navigation", () => ({
   },
 }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: async () => ({ auth: { signInWithOtp, verifyOtp } }) }));
-vi.mock("@/lib/request-limits", () => ({ publicLimited: vi.fn(async () => null) }));
+vi.mock("@/lib/request-limits", () => ({ publicLimited, padTo }));
+vi.mock("@/lib/db", () => ({ prisma: { staffMember: { findUnique: vi.fn(async () => null) } } }));
 
 import { sendAdminCode, verifyAdminCode } from "@/app/admin/(auth)/login/actions";
 
@@ -33,6 +34,18 @@ describe("admin sign-in by emailed code", () => {
   it("answers the same for any other address but sends nothing", async () => {
     expect(await sendAdminCode({}, form({ email: "ana@example.com" }))).toEqual({ sentTo: "ana@example.com" });
     expect(signInWithOtp).not.toHaveBeenCalled();
+  });
+
+  it("takes the same time for an admin and a stranger, and counts per address and email (no lock-out from elsewhere)", async () => {
+    padTo.mockClear();
+    await sendAdminCode({}, form({ email: "admin@bupulse.com" }));
+    await sendAdminCode({}, form({ email: "ana@example.com" }));
+    expect(padTo).toHaveBeenCalledTimes(2);
+    expect(padTo.mock.calls[0][1]).toBe(padTo.mock.calls[1][1]);
+    expect(publicLimited).toHaveBeenCalledWith("adminCode", "admin@bupulse.com");
+    padTo.mockClear();
+    await verifyAdminCode({}, form({ email: "ana@example.com", code: "12345678" }));
+    expect(padTo).toHaveBeenCalledTimes(1);
   });
 
   it("goes on to the authenticator step after a good code", async () => {

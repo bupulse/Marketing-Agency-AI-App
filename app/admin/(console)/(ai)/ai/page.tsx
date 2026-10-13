@@ -46,7 +46,7 @@ export default async function AiPage({ searchParams }: PageProps<"/admin/ai">) {
           {u.perModel.some((m) => m.approximatePrice) && (
             <li className="text-danger">Priced by family, not exactly: {u.perModel.filter((m) => m.approximatePrice).map((m) => m.model).join(", ")}. Add the model to lib/ai/pricing.ts.</li>
           )}
-          <li>Google bills by Pacific time and adds tax where it applies; the ledger counts UTC months before tax. How the estimate works: docs/AI_COSTS.md.</li>
+          <li>Google bills by Pacific time and adds tax where it applies; the console counts Kigali months, before tax. How the estimate works: docs/AI_COSTS.md.</li>
         </ul>
       </Panel>
 

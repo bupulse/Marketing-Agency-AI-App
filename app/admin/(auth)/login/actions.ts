@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { canReceiveAdminCode } from "@/lib/admin/auth";
 import { emailSchema } from "@/lib/auth/schemas";
-import { publicLimited } from "@/lib/request-limits";
+import { padTo, publicLimited } from "@/lib/request-limits";
 import { createClient } from "@/lib/supabase/server";
 
 export type AdminLoginState = { error?: string; sentTo?: string };
@@ -13,7 +13,17 @@ export type AdminLoginState = { error?: string; sentTo?: string };
  * (Admin -> Organisation), but every address gets the same answer, so the page does not reveal who has access. No
  * password, no Google.
  */
+/** Every answer of the code steps takes at least this long, so the timing does not tell who has access. */
+const ANSWER_MS = 1200;
+
 export async function sendAdminCode(_prev: AdminLoginState, formData: FormData): Promise<AdminLoginState> {
+  const started = Date.now();
+  const result = await sendAdminCodeNow(formData);
+  await padTo(started, ANSWER_MS);
+  return result;
+}
+
+async function sendAdminCodeNow(formData: FormData): Promise<AdminLoginState> {
   const parsed = emailSchema.safeParse(String(formData.get("email") ?? ""));
   if (!parsed.success) return { error: "Enter your admin email." };
   const email = parsed.data.toLowerCase();
@@ -32,15 +42,23 @@ export async function sendAdminCode(_prev: AdminLoginState, formData: FormData):
 
 /** Step 2: the emailed code. Step 3 (/admin/verify) is the authenticator code, which requireAdmin sends the admin to. */
 export async function verifyAdminCode(_prev: AdminLoginState, formData: FormData): Promise<AdminLoginState> {
+  const started = Date.now();
   const email = String(formData.get("email") ?? "").toLowerCase();
   const token = String(formData.get("code") ?? "").trim();
   if (!/^\d{6,10}$/.test(token)) return { sentTo: email, error: "Enter the code from the email." };
-  const limited = await publicLimited("login", email);
+  const limited = await publicLimited("adminVerify", email);
   if (limited) return { sentTo: email, error: limited };
   const wrong = { sentTo: email, error: "That code did not work. Check the latest email, or send a new one." };
-  if (!(await canReceiveAdminCode(email))) return wrong;
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
-  if (error || !data.user) return wrong;
+  let ok = false;
+  if (await canReceiveAdminCode(email)) {
+    const supabase = await createClient();
+    const { data, error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
+    ok = !error && !!data.user;
+  }
+  if (!ok) {
+    // A stranger's "wrong" and an admin's wrong code take the same time.
+    await padTo(started, ANSWER_MS);
+    return wrong;
+  }
   redirect("/admin");
 }

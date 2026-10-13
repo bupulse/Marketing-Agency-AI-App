@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { resolvePrice } from "./pricing";
 import { AIProviderError } from "./types";
+import { kigaliMonthOf, kigaliMonthStart } from "@/lib/time/kigali";
 
 /** Monthly safety cap on BuPulse's own AI spend (AI_MONTHLY_BUDGET_USD, default $20). */
 export function monthlyBudgetUsd(): number {
@@ -59,7 +60,8 @@ export class CompanyBudgetExceededError extends AIBudgetExceededError {
   }
 }
 
-const monthStart = (now: Date) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+/** The cap and the allowances run per Kigali month (lib/time/kigali.ts), like the Money pages. */
+const monthStart = kigaliMonthStart;
 
 /** The ledger feature of website-chat replies (lib/widget/ai.ts). Visitors start these, not the owner. */
 export const WIDGET_FEATURE = "widget";
@@ -193,7 +195,7 @@ export async function assertWithinBudget(provider: string, now = new Date()): Pr
   const cap = await effectiveBudgetUsd();
   const spent = await spentThisMonthUsd(now);
   if (spent < cap) return;
-  const month = now.toISOString().slice(0, 7);
+  const month = kigaliMonthOf(now);
   if (alerted !== month) {
     alerted = month;
     await logError(new Error(`AI budget reached: $${spent.toFixed(2)} of $${cap} in ${month}; AI calls are paused`), {

@@ -24,7 +24,7 @@ import { resetRegionCache } from "@/lib/region";
 import { resetRegionPriceCache } from "@/lib/region-prices";
 
 const CONSOLE = consoleContext("198.51.100.1");
-const API = apiContext("key1", "203.0.113.5");
+const API = apiContext("key1", "203.0.113.5", "all");
 const KEY = "pdl_sdbx_apikey_01abcdefghijklmnopqrstuv_WXYZ";
 const LIVE_KEY = "pdl_live_apikey_01abcdefghijklmnopqrstuv_LIVE";
 const TOKEN = "test_0123456789abcdef9876";

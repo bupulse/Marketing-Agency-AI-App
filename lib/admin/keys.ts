@@ -80,34 +80,48 @@ export async function listAdminKeys() {
   return prisma.adminApiKey.findMany({ orderBy: { createdAt: "desc" }, select: keySelect });
 }
 
+/** Who makes a key: the owner's keys can do everything; a staff member's key carries their permissions (scoped). */
+export type KeyCreator = { isOwner: boolean; staffId: string | null; permissions: readonly string[] };
+const OWNER_CREATOR: KeyCreator = { isOwner: true, staffId: null, permissions: [] };
+const scopeOf = (c: KeyCreator) => (c.isOwner && !c.staffId ? { scoped: false, permissions: [] as string[], createdByStaffId: null } : { scoped: true, permissions: [...c.permissions], createdByStaffId: c.staffId });
+
 /** Creates a key. The full key is returned once; only its hash is stored. */
-export async function createAdminKey(ctx: AdminContext, input: { name?: unknown; ipAllowList?: unknown }) {
+export async function createAdminKey(ctx: AdminContext, input: { name?: unknown; ipAllowList?: unknown }, creator: KeyCreator = OWNER_CREATOR) {
   const name = cleanName(input.name);
   const ipAllowList = cleanAllowList(input.ipAllowList);
   if ((await prisma.adminApiKey.count({ where: { revokedAt: null } })) >= MAX_ADMIN_KEYS) {
     throw new AdminError("conflict", `You can have up to ${MAX_ADMIN_KEYS} active keys. Revoke one first.`);
   }
   const { key, prefix } = generateAdminKey();
-  const apiKey = await prisma.adminApiKey.create({ data: { name, prefix, hash: await hashApiKey(key), ipAllowList }, select: keySelect });
-  await writeAudit(prisma, ctx, "create_admin_key", `admin_key:${apiKey.id}`, null, { name, prefix, ipAllowList });
+  const scope = scopeOf(creator);
+  const apiKey = await prisma.adminApiKey.create({ data: { name, prefix, hash: await hashApiKey(key), ipAllowList, ...scope }, select: keySelect });
+  await writeAudit(prisma, ctx, "create_admin_key", `admin_key:${apiKey.id}`, null, { name, prefix, ipAllowList, scoped: scope.scoped, permissions: scope.permissions });
   return { key, apiKey };
 }
 
-export async function revokeAdminKey(ctx: AdminContext, id: string) {
-  const before = await prisma.adminApiKey.findUnique({ where: { id }, select: keySelect });
+/** Only the owner manages every key; a staff member only the keys they made (rotating an owner's key would hand them all). */
+function assertKeyOwner(creator: KeyCreator, key: { createdByStaffId: string | null }) {
+  if (creator.isOwner && !creator.staffId) return;
+  if (!creator.staffId || key.createdByStaffId !== creator.staffId) throw new AdminError("forbidden", "You can only change keys you made yourself.");
+}
+
+export async function revokeAdminKey(ctx: AdminContext, id: string, creator: KeyCreator = OWNER_CREATOR) {
+  const before = await prisma.adminApiKey.findUnique({ where: { id }, select: { ...keySelect, createdByStaffId: true } });
   if (!before) throw new AdminError("not_found", "That key does not exist.");
+  assertKeyOwner(creator, before);
   const { count } = await prisma.adminApiKey.updateMany({ where: { id, revokedAt: null }, data: { revokedAt: new Date() } });
   if (count !== 1) throw new AdminError("conflict", "That key is already revoked.");
   await writeAudit(prisma, ctx, "revoke_admin_key", `admin_key:${id}`, { name: before.name, prefix: before.prefix }, { revoked: true });
 }
 
-/** Issues a new key with the same name and allow-list and revokes the old one. */
-export async function rotateAdminKey(ctx: AdminContext, id: string) {
-  const old = await prisma.adminApiKey.findUnique({ where: { id }, select: keySelect });
+/** Issues a new key with the same name, allow-list and scope, and revokes the old one. */
+export async function rotateAdminKey(ctx: AdminContext, id: string, creator: KeyCreator = OWNER_CREATOR) {
+  const old = await prisma.adminApiKey.findUnique({ where: { id }, select: { ...keySelect, scoped: true, permissions: true, createdByStaffId: true } });
   if (!old || old.revokedAt) throw new AdminError("not_found", "That key does not exist or is already revoked.");
+  assertKeyOwner(creator, old);
   const { key, prefix } = generateAdminKey();
   const apiKey = await prisma.adminApiKey.create({
-    data: { name: old.name, prefix, hash: await hashApiKey(key), ipAllowList: old.ipAllowList },
+    data: { name: old.name, prefix, hash: await hashApiKey(key), ipAllowList: old.ipAllowList, scoped: old.scoped, permissions: old.permissions, createdByStaffId: old.createdByStaffId },
     select: keySelect,
   });
   await prisma.adminApiKey.updateMany({ where: { id, revokedAt: null }, data: { revokedAt: new Date() } });

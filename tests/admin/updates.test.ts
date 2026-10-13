@@ -30,7 +30,7 @@ import { callTool, findTool } from "@/lib/admin/tools";
 import { AdminError, apiContext, consoleContext } from "@/lib/admin/types";
 
 const CONSOLE = consoleContext("198.51.100.1");
-const API = apiContext("key1", "203.0.113.5");
+const API = apiContext("key1", "203.0.113.5", "all");
 const SHA = "b".repeat(40);
 const TOKEN = "github_pat_FAKE_service_token_0002";
 const code = async (p: Promise<unknown>) => p.then(() => null, (e: AdminError) => e.code);

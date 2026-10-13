@@ -1,4 +1,5 @@
 import "server-only";
+import { builtInRole, permissionsOf, type Permission } from "@/lib/staff/permissions";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { findByKeyHash } from "@/lib/api/keys";
@@ -36,10 +37,12 @@ export async function authenticateAdminRequest(request: Request): Promise<AdminA
   }
   const key = await findByKeyHash(
     match[1],
-    (hash) => prisma.adminApiKey.findUnique({ where: { hash }, select: { id: true, ipAllowList: true, revokedAt: true, lastUsedAt: true } }),
+    (hash) => prisma.adminApiKey.findUnique({ where: { hash }, select: { id: true, ipAllowList: true, revokedAt: true, lastUsedAt: true, scoped: true, permissions: true, createdByStaffId: true } }),
     (id, from, to) => prisma.adminApiKey.updateMany({ where: { id, hash: from }, data: { hash: to } }),
   );
   if (!key || key.revokedAt) return { ok: false, response: adminError(401, "unauthorized", "This key is not valid or was revoked.", challenge) };
+  const permissions = await keyPermissions(key);
+  if (!permissions) return { ok: false, response: adminError(401, "unauthorized", "The person who made this key no longer has access. Make a new key.", challenge) };
   const ip = clientIp(request);
   if (!ipAllowed(ip, key.ipAllowList)) {
     return { ok: false, response: adminError(403, "ip_not_allowed", "This key cannot be used from your address.") };
@@ -58,5 +61,19 @@ export async function authenticateAdminRequest(request: Request): Promise<AdminA
   if (!key.lastUsedAt || Date.now() - key.lastUsedAt.getTime() > LAST_USED_EVERY_MS) {
     await prisma.adminApiKey.updateMany({ where: { id: key.id }, data: { lastUsedAt: new Date() } }).catch(() => {});
   }
-  return { ok: true, ctx: apiContext(key.id, ip), keyId: key.id };
+  return { ok: true, ctx: apiContext(key.id, ip, permissions), keyId: key.id };
+}
+
+/**
+ * What a key may do: everything for the owner's key; for a staff member's key, the permissions saved with it that the
+ * person still holds today. Null when that person is gone or disabled (the key stops working with them).
+ */
+export async function keyPermissions(key: { scoped: boolean; permissions: string[]; createdByStaffId: string | null }): Promise<readonly string[] | "all" | null> {
+  if (!key.scoped) return "all";
+  if (!key.createdByStaffId) return null;
+  const staff = await prisma.staffMember.findUnique({ where: { id: key.createdByStaffId }, select: { roleKey: true, status: true } });
+  if (!staff || staff.status === "disabled") return null;
+  const custom = builtInRole(staff.roleKey) ? [] : await prisma.staffRole.findMany({ where: { key: staff.roleKey }, select: { key: true, permissions: true } });
+  const now = permissionsOf(staff.roleKey, custom);
+  return key.permissions.filter((p) => now.includes(p as Permission));
 }

@@ -19,7 +19,7 @@ Calls that are **not** billed and correctly cost nothing: 429 and 5xx answers th
 
 - **Prices.** `MODEL_PRICES` is maintained by hand; a price change lands only when the table is updated. Gemini 3.8 Flash doubles on 2027-01-01.
 - **Estimates of timed-out calls** are rough (especially output tokens).
-- **Month edges.** The ledger counts UTC months; Google bills in Pacific time.
+- **Month edges.** The console counts Kigali months; Google bills in Pacific time.
 - **Tax and currency.** Google adds VAT where it applies; the estimate is before tax. Enter the invoice total as the bill.
 - **Calls outside production.** Local development, previews, demo captures or scripts that use the same API key are billed by Google but written to another database (or none). Use a separate key per environment to keep the production bill comparable.
 - **ElevenLabs.** The ledger prices characters at the overage rate; characters inside the subscription cost less, and the subscription itself is a recurring cost. Enter only the usage-based part as the ElevenLabs bill.

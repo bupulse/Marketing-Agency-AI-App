@@ -19,10 +19,14 @@ describe("who may give which role", () => {
     expect(() => assertCanGrant({ isOwner: true, permissions: ALL_PERMISSIONS }, "owner", ALL_PERMISSIONS)).not.toThrow();
   });
   it("IT may give roles within its own permissions only (no self-escalation through roles)", () => {
-    expect(() => assertCanGrant(it_, "it", permissionsOf("it"))).not.toThrow();
+    expect(() => assertCanGrant(it_, "custom_ops", ["system", "overview"])).not.toThrow();
     expect(() => assertCanGrant(it_, "finance", permissionsOf("finance"))).toThrow(/permissions you do not have/);
     expect(() => assertCanGrant(it_, "custom_all", ["system", "payments.approve"])).toThrow(/payments.approve/);
     expect(() => assertCanGrant(it_, "owner", [])).toThrow(/Only the owner/);
+  });
+  it("only the owner gives the Jarvis permission (a key runs admin tools)", () => {
+    expect(() => assertCanGrant(it_, "it", permissionsOf("it"))).toThrow(/Jarvis/);
+    expect(() => assertCanGrant({ isOwner: true, permissions: ALL_PERMISSIONS }, "it", permissionsOf("it"))).not.toThrow();
   });
 });
 
