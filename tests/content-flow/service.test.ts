@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prisma = vi.hoisted(() => ({
-  business: { findUnique: vi.fn() },
+  business: { findUnique: vi.fn(), updateMany: vi.fn() },
   productPhoto: { findMany: vi.fn() },
   campaignPhoto: { findMany: vi.fn() },
   campaignProduct: { findFirst: vi.fn() },
@@ -24,6 +24,7 @@ const auto = vi.hoisted(() => ({ autoSchedule: vi.fn() }));
 
 vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("@/lib/usage", () => usage);
+vi.mock("@/lib/entitlements", () => ({ featureStatus: vi.fn(async () => "ok") }));
 vi.mock("@/lib/visuals/service", () => visuals);
 vi.mock("@/lib/studio/pack", () => pack);
 vi.mock("@/lib/visuals/art-director", async (orig) => ({ ...(await orig<typeof import("@/lib/visuals/art-director")>()), directVisual: director.directVisual }));
@@ -39,7 +40,7 @@ vi.mock("@/lib/knowledge/service", async (orig) => ({
   writingSubject: vi.fn(async () => ({ subject: { kind: "product", id: "p1" }, type: "product", title: "Hydro tower", context: null, price: "15,000 RWF", features: ["Grows 40 plants"], photoPaths: [] })),
 }));
 
-import { runDayContent } from "@/lib/content-flow/service";
+import { ALREADY_DONE, ALREADY_RUNNING, runDayContent } from "@/lib/content-flow/service";
 
 const NOW = new Date("2026-10-13T06:00:00Z"); // 08:00 in Kigali
 const owner = { userId: "u1", businessId: "b1" };
@@ -58,6 +59,7 @@ function packAnswer(prompt: string, drop: number[] = []) {
 beforeEach(() => {
   vi.clearAllMocks();
   prisma.business.findUnique.mockResolvedValue({ id: "b1", name: "Green Kigali", timezone: "Africa/Kigali", contentLanguage: "English", industry: null, industryRef: null, description: null, audience: null, tone: "friendly", website: null, knowledge: null, profile: null, marketingProfile: null, brandColors: [] });
+  prisma.business.updateMany.mockResolvedValue({ count: 1 });
   prisma.productPhoto.findMany.mockResolvedValue(album);
   prisma.mediaAsset.findMany.mockResolvedValue([]);
   prisma.contentVisual.findMany.mockResolvedValue([]);
@@ -73,7 +75,7 @@ beforeEach(() => {
   prisma.$transaction.mockImplementation(async (list: unknown[]) => list.map((_, i) => ({ id: `post-${i}` })));
   usage.consumeUsage.mockResolvedValue({ periodStart: new Date("2026-10-01") });
   usage.refundUsage.mockResolvedValue(undefined);
-  usage.getUsageSummary.mockResolvedValue({ used: { text: 2, image: 0 }, limits: { text: 30, image: 10 } });
+  usage.getUsageSummary.mockResolvedValue({ used: { text: 2, image: 0, videoSeconds: 0, voiceCharacters: 0 }, limits: { text: 30, image: 10, videoSeconds: 240, voiceCharacters: 20000 } });
   visuals.aiPhotosAvailable.mockResolvedValue(true);
   visuals.videoAvailable.mockResolvedValue(true);
   visuals.planVisuals.mockResolvedValue({ image: "v1", video: null });
@@ -96,7 +98,7 @@ describe("AI makes it for me (a content pack for the day)", () => {
 
     const prompt = ai.generate.mock.calls[0][0].prompt as string;
     expect(prompt).toContain('"Tower demo"');
-    expect(prompt).toContain("Yesterday's post about the tower.");
+    expect(prompt).toContain("<<<RECENT POSTS\n- Yesterday's post about the tower.");
     expect(prompt).toContain("These posts are for 2026-10-13.");
     expect(prompt).toMatch(/Opening: .* Structure: /);
 
@@ -158,6 +160,46 @@ describe("AI makes it for me (a content pack for the day)", () => {
     expect(pack.recentAngles).toHaveBeenCalledWith("b1", null);
     expect(prisma.generatedContent.create.mock.calls[0][0].data).toMatchObject({ productId: null, campaignId: null });
     expect(ai.generate.mock.calls[0][0].prompt).toContain('"Our shop front"');
+  });
+});
+
+describe("one run at a time per company", () => {
+  const run = (requestKey: string) => runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "ai", design: "free", networks: ["facebook"], requestKey }, NOW);
+
+  it("claims the company, runs, and frees the claim keeping the request key", async () => {
+    await run("key-12345678");
+    expect(prisma.business.updateMany.mock.calls[0][0]).toMatchObject({ where: { id: "b1", OR: [{ contentRunUntil: null }, { contentRunUntil: { lt: NOW } }] }, data: { contentRunKey: "key-12345678" } });
+    expect(prisma.business.updateMany).toHaveBeenLastCalledWith({ where: { id: "b1", contentRunKey: "key-12345678" }, data: { contentRunUntil: null } });
+  });
+
+  it("refuses while another run holds the claim (two tabs, a team member), before anything is charged", async () => {
+    prisma.business.updateMany.mockResolvedValueOnce({ count: 0 });
+    await expect(run("key-other-1")).rejects.toThrow(ALREADY_RUNNING);
+    expect(usage.consumeUsage).not.toHaveBeenCalled();
+  });
+
+  it("never runs the same request twice (a double click)", async () => {
+    prisma.business.findUnique.mockResolvedValueOnce({ contentRunKey: "key-12345678", contentRunUntil: new Date(NOW.getTime() + 60_000) });
+    await expect(run("key-12345678")).rejects.toThrow(ALREADY_RUNNING);
+    prisma.business.findUnique.mockResolvedValueOnce({ contentRunKey: "key-12345678", contentRunUntil: null });
+    await expect(run("key-12345678")).rejects.toThrow(ALREADY_DONE);
+    expect(ai.generate).not.toHaveBeenCalled();
+  });
+
+  it("frees the claim when the run fails", async () => {
+    await expect(runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "describe", design: "free", networks: ["facebook"], requestKey: "key-fail-1" }, NOW)).rejects.toThrow(/Describe/);
+    expect(prisma.business.updateMany).toHaveBeenLastCalledWith({ where: { id: "b1", contentRunKey: "key-fail-1" }, data: { contentRunUntil: null } });
+  });
+});
+
+describe("AI images reserved up front", () => {
+  it("pays the art director's AI photos when the run starts and marks the slides as paid", async () => {
+    const plans = [{ slides: [{ source: "ai" }, { source: "album" }] }, { slides: [{ source: "ai", aiPhotoPath: null }] }];
+    director.directVisual.mockImplementationOnce(async () => plans[0] as never).mockImplementationOnce(async () => plans[1] as never);
+    await runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "ai", design: "ai", networks: ["facebook", "linkedin"] }, NOW);
+    expect(usage.consumeUsage).toHaveBeenCalledWith("u1", "image", 2);
+    expect(plans[0].slides[0]).toMatchObject({ prepaidAi: "2026-10-01T00:00:00.000Z" });
+    expect(plans[0].slides[1]).not.toHaveProperty("prepaidAi");
   });
 });
 

@@ -98,6 +98,10 @@ model Business {
   contentSettings         Json?
   // When the daily "what was auto-scheduled" email last went out (lib/content-board/summary.ts).
   contentSummarySentAt    DateTime?
+  // "Create today's content" (docs/CONTENT.md): one run at a time per company. The run's request key (from the dialog)
+  // and until when it holds the claim; the key stays after the run so the same request is never run twice.
+  contentRunKey           String?
+  contentRunUntil         DateTime?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 

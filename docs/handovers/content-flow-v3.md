@@ -61,3 +61,13 @@ then the code.
 - The design library expansion (`v2-templates`) needs no change here: the art director reads `TEMPLATES` and `PACKS`.
 - `tests/content-board/filters.test.ts`: the `cardExcerpt` test imports the queries module inside the test, which
   now takes more than 5 s on a cold run (the visuals service grew); it has a 30 s timeout.
+
+## Review fixes (after the merge into v2)
+
+- One run at a time per company with a request key from the dialog (`Business.contentRunKey`, `contentRunUntil`,
+  migration `20261017130000_content_run_claim`): "Already making today's content…".
+- AI photos reserved when the run starts and given back when a slide ends without one (`prepaidAi`, `createAiDesign`
+  `prepaid`).
+- The cost line includes video seconds and voiceover characters of the videos BuPulse would make.
+- Recent captions are fenced (`RECENT POSTS`) in the prompt.
+- Autopilot settings say AI images with people are on by default and what turning them off does.

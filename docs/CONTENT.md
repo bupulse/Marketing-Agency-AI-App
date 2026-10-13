@@ -72,10 +72,20 @@ The button on a subject's day view opens a dialog with two ways to make the busi
 The design choice is made once in the dialog: **AI designs (images with people)** or **Free templates (your photos +
 BuPulse designs)** (AI is offered only when `aiPhotosAvailable`).
 
-**What a run uses** (`runCost`, shown before confirming): "Uses 4 text generations and up to 4 AI images; you have 26
-text generations and 12 AI images left this month." One text generation per post (as before); at most one AI image per
-designed post and never more than the credits left; videos BuPulse makes count video seconds when they are made, as
-before. A run whose posts need more text generations than are left is refused before anything is charged.
+**What a run uses** (`runCost`, shown before confirming): "Uses 3 text generations, up to 1 AI image, up to 60 video
+seconds and about 1,200 voiceover characters; you have ... left this month." One text generation per post (as
+before), reserved when the run starts, the ones not written given back; at most one AI image per designed post and
+never more than the credits left: the AI photos the art director planned are **reserved when the run starts**
+(`consumeUsage image`, the slide keeps `prepaidAi`) and drawing uses that credit (`createAiDesign` `prepaid`); a slide
+that ends without its AI photo (cap, swap, removal, failure) gives it back. Videos BuPulse makes (TikTok and YouTube
+without an album video) count up to 30 video seconds each, and with voiceover in the plan up to 600 voice characters
+each, when they are made. A run whose posts need more text generations than are left is refused before anything is
+charged.
+
+**One run at a time.** `runDayContent` claims the company first (`Business.contentRunUntil`, compare-and-set, 5
+minutes for a run that died) with the dialog's request key (`contentRunKey`, new each time the dialog opens): a
+double click, a second tab or another team member gets "Already making today's content… it shows here in a moment.",
+and the same request after it finished gets "already made". Migration `20261017130000_content_run_claim`.
 
 **Angles, day after day.** The angles are the packs' (`lib/studio/angles.ts`: price, how it works, features, news,
 customer story, behind the scenes, tips, FAQ, why us, local moment, book or buy, each only when its facts exist).

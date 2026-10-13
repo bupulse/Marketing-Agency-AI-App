@@ -22,6 +22,8 @@ const inputSchema = z.object({
   caption: z.string().max(MAX_OWN_CAPTION, `Use ${MAX_OWN_CAPTION} characters or fewer.`).optional(),
   mediaPaths: z.array(z.string().min(1).max(300)).max(MAX_OWN_MEDIA, `Choose up to ${MAX_OWN_MEDIA} photos or videos.`).optional(),
   overlays: z.boolean().optional(),
+  /** One per dialog opening: the same request is never run twice (double click, retry). */
+  requestKey: z.string().regex(/^[A-Za-z0-9-]{8,64}$/).optional(),
 });
 
 export type DayRunInputForm = z.input<typeof inputSchema>;

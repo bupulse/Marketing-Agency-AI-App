@@ -23,7 +23,7 @@ import { NETWORK_STYLE } from "@/lib/content-flow/networks";
 import type { Network } from "@/lib/social/types";
 
 export type NetworkChoice = { network: Network; label: string; connected: boolean };
-export type Allowance = { textLeft: number; imagesLeft: number; aiPhotos: boolean; videoInPlan: boolean };
+export type Allowance = { textLeft: number; imagesLeft: number; aiPhotos: boolean; videoInPlan: boolean; videoSecondsLeft: number; voice: boolean; voiceCharsLeft: number };
 
 const DEFAULT_NETWORKS: Network[] = ["instagram", "facebook", "linkedin"];
 
@@ -67,10 +67,14 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  // A new key each time the dialog opens: a double click or a retry of the same request is not run twice.
+  const [requestKey, setRequestKey] = useState("");
 
   const toggle = (n: Network) => setChosen((list) => (list.includes(n) ? list.filter((x) => x !== n) : [...list, n]));
   const designed = mode === "own" ? (overlays ? chosen.filter((n) => NETWORK_STYLE[n].video !== "always").length : 0) : chosen.filter((n) => NETWORK_STYLE[n].video !== "always").length;
-  const cost = runCost({ mode, design, posts: chosen.length, designed, aiPhotos: allowance.aiPhotos, textLeft: allowance.textLeft, imagesLeft: allowance.imagesLeft });
+  // Videos BuPulse may make: TikTok and YouTube when the plan has video (the album's own video, if any, costs nothing).
+  const videos = mode === "own" || !allowance.videoInPlan ? 0 : chosen.filter((n) => NETWORK_STYLE[n].video === "always").length;
+  const cost = runCost({ mode, design, posts: chosen.length, designed, aiPhotos: allowance.aiPhotos, textLeft: allowance.textLeft, imagesLeft: allowance.imagesLeft, videos, videoSecondsLeft: allowance.videoSecondsLeft, voice: allowance.voice, voiceCharsLeft: allowance.voiceCharsLeft });
   const missing = mode === "describe" && !brief.trim() ? "Describe today's content." : mode === "own" && media.length === 0 ? "Choose your photos or videos." : mode === "own" && !caption.trim() ? "Write your caption." : null;
 
   function submit() {
@@ -85,6 +89,7 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
         caption: mode === "own" ? caption : undefined,
         mediaPaths: mode === "ai" ? undefined : media.map((m) => m.path),
         overlays: mode === "own" ? overlays : undefined,
+        requestKey,
       });
       if (!res.ok) return setError(res.error);
       const parts = [`${res.posts === 1 ? "1 post" : `${res.posts} posts`} made for today`];
@@ -103,7 +108,7 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
 
   return (
     <>
-      <Button onClick={() => setOpen(true)} leading={<Sparkles aria-hidden className="size-4" />}>
+      <Button onClick={() => { setRequestKey(globalThis.crypto.randomUUID()); setOpen(true); }} leading={<Sparkles aria-hidden className="size-4" />}>
         {label}
       </Button>
       <Dialog open={open} onOpenChange={(o) => !pending && setOpen(o)} title="Create today's content" description={`Posts for ${subjectName}, for today. They wait for your OK on this page (or go out on their own where your settings say so).`}>
