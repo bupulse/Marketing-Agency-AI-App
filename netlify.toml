@@ -1,0 +1,10 @@
+# Netlify (free plan). Next.js is detected automatically (OpenNext adapter); runtime values come from the site's
+# environment variables (imported from .env), not from this file. Scheduled jobs run from GitHub Actions.
+[build]
+  # Prisma's client is generated into lib/generated (gitignored), and migrations run before the build so a failed
+  # migration stops the deploy.
+  command = "npx prisma generate --config prisma7.config.ts && npx prisma migrate deploy --config prisma7.config.ts && npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "24"

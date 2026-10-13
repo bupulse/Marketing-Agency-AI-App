@@ -6,8 +6,7 @@ name: Deploy
 #   commit, or rolls the Worker back to its previous version. See docs/UPDATES.md.
 
 on:
-  push:
-    branches: [main]
+  # Push-to-deploy is off: the site is hosted on Netlify (netlify.toml). Run by hand to deploy to Cloudflare.
   workflow_dispatch:
     inputs:
       ref:

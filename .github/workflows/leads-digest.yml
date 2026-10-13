@@ -19,7 +19,8 @@ jobs:
       - name: Send the daily leads summaries that are due
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
         run: |
           curl --fail-with-body --silent --show-error --max-time 280 -X POST \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            https://bupulse.com/api/cron/leads-digest
+            ${SITE_URL}/api/cron/leads-digest

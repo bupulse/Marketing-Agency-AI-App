@@ -15,7 +15,8 @@ jobs:
       - name: Erase accounts past their 30-day grace period
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
         run: |
           curl --fail-with-body --silent --show-error -X POST \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            https://bupulse.com/api/cron/purge-accounts
+            ${SITE_URL}/api/cron/purge-accounts

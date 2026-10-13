@@ -21,10 +21,11 @@ jobs:
       - name: Publish posts that are due
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
         run: |
           curl --fail-with-body --silent --show-error --max-time 280 -X POST \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            https://bupulse.com/api/cron/publish
+            ${SITE_URL}/api/cron/publish
 
   metrics:
     # Hourly safety net for /api/cron/metrics (the Cloudflare trigger is the main one).
@@ -35,7 +36,8 @@ jobs:
       - name: Collect post metrics
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
         run: |
           curl --fail-with-body --silent --show-error --max-time 280 -X POST \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            https://bupulse.com/api/cron/metrics
+            ${SITE_URL}/api/cron/metrics

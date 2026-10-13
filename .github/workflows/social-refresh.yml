@@ -15,7 +15,8 @@ jobs:
       - name: Refresh social tokens that expire within 7 days
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
         run: |
           curl --fail-with-body --silent --show-error -X POST \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            https://bupulse.com/api/cron/social-refresh
+            ${SITE_URL}/api/cron/social-refresh

@@ -16,11 +16,12 @@ jobs:
       - name: Plan next week for businesses that have not been planned yet
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
         run: |
           # A few businesses per call; keep calling with the cursor until every enabled business was reached.
           cursor=""
           for i in $(seq 1 40); do
-            url="https://bupulse.com/api/cron/autopilot"
+            url="${SITE_URL}/api/cron/autopilot"
             if [ -n "$cursor" ]; then url="${url}?cursor=${cursor}"; fi
             body=$(curl --fail-with-body --silent --show-error --max-time 290 -X POST \
               -H "Authorization: Bearer ${CRON_SECRET}" "$url")
