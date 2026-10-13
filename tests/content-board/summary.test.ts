@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prisma = vi.hoisted(() => ({
-  post: { groupBy: vi.fn(), findMany: vi.fn() },
-  business: { findUnique: vi.fn(), updateMany: vi.fn() },
+  post: { findMany: vi.fn() },
+  business: { findMany: vi.fn(), updateMany: vi.fn() },
 }));
 const mail = vi.hoisted(() => ({ sendEmail: vi.fn(async () => true) }));
 vi.mock("@/lib/db", () => ({ prisma }));
@@ -10,7 +10,7 @@ vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
 vi.mock("@/lib/team/recipients", () => ({ alertRecipients: vi.fn(async (_b: string, fallback: string) => [fallback]) }));
 vi.mock("@/lib/publishing/email", async (orig) => ({ ...(await orig<typeof import("@/lib/publishing/email")>()), sendEmail: mail.sendEmail }));
 
-import { selectSummaryPosts, sendContentSummaries, summaryDue, summaryEmail, type SummaryPost } from "@/lib/content-board/summary";
+import { afterCursor, decodeCursor, encodeCursor, selectSummaryPosts, sendContentSummaries, summaryDue, summaryEmail, type SummaryPost } from "@/lib/content-board/summary";
 
 const zone = "Africa/Kigali";
 const now = new Date("2026-10-13T07:30:00Z"); // 09:30 in Kigali
@@ -27,10 +27,11 @@ const p = (id: string, extra: Partial<SummaryPost> = {}): SummaryPost => ({
   ...extra,
 });
 
+const business = (extra: Record<string, unknown> = {}) => ({ id: "b1", name: "Sunrise Bakery", timezone: zone, contentSummarySentAt: null, user: { email: "owner@example.com" }, ...extra });
+
 beforeEach(() => {
   vi.clearAllMocks();
-  prisma.post.groupBy.mockResolvedValue([{ businessId: "b1" }]);
-  prisma.business.findUnique.mockResolvedValue({ name: "Sunrise Bakery", timezone: zone, contentSummarySentAt: null, user: { email: "owner@example.com" } });
+  prisma.business.findMany.mockResolvedValue([business()]);
   prisma.business.updateMany.mockResolvedValue({ count: 1 });
   prisma.post.findMany.mockResolvedValue([p("a")]);
 });
@@ -77,9 +78,38 @@ describe("summaryEmail", () => {
 
 describe("sendContentSummaries", () => {
   it("claims the business with compare-and-set, then emails the recipients once", async () => {
-    expect(await sendContentSummaries(now)).toEqual({ checked: 1, sent: 1 });
+    expect(await sendContentSummaries(now)).toEqual({ checked: 1, sent: 1, nextCursor: null });
     expect(prisma.business.updateMany).toHaveBeenCalledWith({ where: { id: "b1", contentSummarySentAt: null }, data: { contentSummarySentAt: now } });
     expect(mail.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: "owner@example.com", subject: "1 post was scheduled for you" }));
+  });
+
+  it("reads only businesses that may be due, longest waiting first", async () => {
+    await sendContentSummaries(now);
+    const args = prisma.business.findMany.mock.calls[0][0];
+    expect(args.where.AND[0]).toEqual({ OR: [{ contentSummarySentAt: null }, { contentSummarySentAt: { lt: new Date(now.getTime() - 8 * 3600_000) } }] });
+    expect(args.where.AND[1]).toEqual({ posts: { some: { autoScheduledAt: { gte: new Date(now.getTime() - 3 * 86_400_000), lte: now } } } });
+    expect(args.orderBy).toEqual([{ contentSummarySentAt: { sort: "asc", nulls: "first" } }, { id: "asc" }]);
+  });
+
+  it("pages through every due business, not only the first page", async () => {
+    const page1 = Array.from({ length: 50 }, (_, i) => business({ id: `b${String(i).padStart(3, "0")}` }));
+    prisma.business.findMany.mockResolvedValueOnce(page1).mockResolvedValueOnce([business({ id: "b999", contentSummarySentAt: new Date("2026-10-11T07:00:00Z") })]);
+    const result = await sendContentSummaries(now);
+    expect(result).toMatchObject({ checked: 51, nextCursor: null });
+    expect(prisma.business.findMany.mock.calls[1][0].where.AND[2]).toEqual(afterCursor({ sentAt: null, id: "b049" }));
+  });
+
+  it("hands back a cursor when the call's time is up, and continues from it", async () => {
+    const result = await sendContentSummaries(now, { budgetMs: -1, cursor: "null|b010" });
+    expect(result).toEqual({ checked: 0, sent: 0, nextCursor: "null|b010" });
+    await sendContentSummaries(now, { cursor: "2026-10-11T07:00:00.000Z|b5" });
+    expect(prisma.business.findMany.mock.calls[0][0].where.AND[2]).toEqual({ OR: [{ contentSummarySentAt: { gt: new Date("2026-10-11T07:00:00Z") } }, { contentSummarySentAt: new Date("2026-10-11T07:00:00Z"), id: { gt: "b5" } }] });
+  });
+
+  it("reads cursors safely", () => {
+    expect(decodeCursor(encodeCursor({ contentSummarySentAt: null, id: "b1" }))).toEqual({ sentAt: null, id: "b1" });
+    expect(decodeCursor("garbage")).toBeNull();
+    expect(decodeCursor("not-a-date|b1")).toBeNull();
   });
 
   it("sends nothing when another run claimed it first", async () => {
@@ -90,9 +120,9 @@ describe("sendContentSummaries", () => {
 
   it("sends nothing before 08:00 local, after today's email, or with nothing new", async () => {
     expect((await sendContentSummaries(new Date("2026-10-13T05:00:00Z"))).sent).toBe(0);
-    prisma.business.findUnique.mockResolvedValue({ name: "B", timezone: zone, contentSummarySentAt: new Date("2026-10-13T06:30:00Z"), user: { email: "o@example.com" } });
+    prisma.business.findMany.mockResolvedValue([business({ contentSummarySentAt: new Date("2026-10-13T06:30:00Z") })]);
     expect((await sendContentSummaries(now)).sent).toBe(0);
-    prisma.business.findUnique.mockResolvedValue({ name: "B", timezone: zone, contentSummarySentAt: null, user: { email: "o@example.com" } });
+    prisma.business.findMany.mockResolvedValue([business()]);
     prisma.post.findMany.mockResolvedValue([]);
     expect((await sendContentSummaries(now)).sent).toBe(0);
     expect(prisma.business.updateMany).not.toHaveBeenCalled();

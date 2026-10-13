@@ -9,7 +9,7 @@
 //   daily 05:41  -> POST /api/cron/momo-renewals  (Mobile Money renewal reminders, grace period, cursor calls)
 //   hourly :53   -> POST /api/cron/trial-reminders  (trial-end reminders for clients without a card, and trial expiry)
 //   daily 03:19  -> POST /api/cron/media-cleanup  (deletes content videos 30 days after their posts went out)
-//   hourly :07   -> POST /api/cron/content-summary  (daily email of auto-scheduled posts, from 08:00 local)
+//   hourly :07   -> POST /api/cron/content-summary  (daily email of auto-scheduled posts, from 08:00 local, cursor calls)
 // The handler calls the app's own routes through the self-reference binding, so the routes keep one set of
 // rules (CRON_SECRET bearer check) whether Cloudflare, GitHub Actions or a person calls them.
 // Not type-checked with the app (tsconfig excludes it): ./.open-next only exists after `opennextjs-cloudflare build`.
@@ -112,6 +112,7 @@ const worker = {
     if (controller.cron === PLAN_PRICE_CRON) return ctx.waitUntil(runCursorCron("/api/cron/plan-price-changes", env));
     if (controller.cron === MOMO_RENEWALS_CRON) return ctx.waitUntil(runCursorCron("/api/cron/momo-renewals", env));
     if (controller.cron === ANALYTICS_ROLLUP_CRON) return ctx.waitUntil(runCursorCron("/api/cron/analytics-rollup", env));
+    if (controller.cron === CONTENT_SUMMARY_CRON) return ctx.waitUntil(runCursorCron("/api/cron/content-summary", env));
     const path = routeForCron(controller.cron);
     if (!path) return console.error(`[cron] unknown schedule "${controller.cron}"; check wrangler.jsonc against worker.ts`);
     ctx.waitUntil(runCron(path, env));

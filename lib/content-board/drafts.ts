@@ -28,8 +28,8 @@ export type DraftResult = AutoResult & { created: number; replaced: number };
 
 /**
  * Drafts the posts of one content version for every usable connected app. Earlier drafts of the same product or
- * campaign that still wait for review are replaced (a rewrite or an edit makes them out of date); posts the owner
- * approved, scheduled or made by hand are never touched. Does nothing without scheduling in the plan.
+ * campaign that still wait for review are replaced (a rewrite or an edit makes them out of date), unless the owner
+ * edited them; posts the owner approved, scheduled or made by hand are never touched. Does nothing without scheduling in the plan.
  */
 export async function draftPostsFromContent(owner: { businessId: string }, contentId: string, now = new Date()): Promise<DraftResult> {
   const none: DraftResult = { created: 0, replaced: 0, scheduled: 0, waiting: 0 };
@@ -46,10 +46,6 @@ export async function draftPostsFromContent(owner: { businessId: string }, conte
   if (connections.length === 0) return none;
 
   const subject = content.productId ? { productId: content.productId } : { campaignId: content.campaignId as string };
-  const { count: replaced } = await prisma.post.deleteMany({
-    where: { businessId: owner.businessId, ...subject, source: "STUDIO", status: "PENDING_APPROVAL", NOT: { contentId: content.id } },
-  });
-
   const visual = await readyMedia(owner.businessId, { contentId: content.id });
   const groupId = globalThis.crypto.randomUUID();
   const rows = connections.map((c) => {
@@ -72,7 +68,12 @@ export async function draftPostsFromContent(owner: { businessId: string }, conte
       mediaPaths: media.mediaPaths,
     };
   });
-  const created = await prisma.$transaction(rows.map((data) => prisma.post.create({ data, select: { id: true } })));
+  // Replacing and drafting in one transaction: never the old drafts gone and no new ones. Drafts the owner edited stay.
+  const [removed, ...created] = (await prisma.$transaction([
+    prisma.post.deleteMany({ where: { businessId: owner.businessId, ...subject, source: "STUDIO", status: "PENDING_APPROVAL", ownerEditedAt: null, NOT: { contentId: content.id } } }),
+    ...rows.map((data) => prisma.post.create({ data, select: { id: true } })),
+  ])) as [{ count: number }, ...{ id: string }[]];
+  const replaced = removed.count;
   const auto = await autoSchedule(owner.businessId, created.map((p) => p.id), now);
   return { created: created.length, replaced, ...auto };
 }

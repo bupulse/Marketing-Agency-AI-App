@@ -4,6 +4,7 @@
 import "server-only";
 import { siteUrl } from "@/lib/auth/site-url";
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@/lib/generated/prisma/client";
 import { logError } from "@/lib/errors";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { dayKey, zonedParts } from "@/lib/publishing/time";
@@ -17,7 +18,6 @@ export const SUMMARY_HOUR = 8;
 export const FIRST_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 /** Posts listed in one email; the rest are counted. */
 export const MAX_LISTED = 20;
-const BUSINESSES_PER_RUN = 100;
 
 /** Is it time for this business's email? Not before 08:00 local, and once per local day. Pure. */
 export function summaryDue(args: { zone: string; now: Date; lastSentAt: Date | null }): boolean {
@@ -81,42 +81,96 @@ export function summaryEmail(args: { businessName: string; zone: string; posts: 
   };
 }
 
+/** A business sent at local 08:00 or later and seen again within 8 hours is either on the same local day or before
+ * 08:00 the next day: never due. So "not sent in the last 8 hours" is a safe database pre-filter for summaryDue. */
+const RECENT_SEND_MS = 8 * 60 * 60 * 1000;
+const PAGE = 50;
+/** One call stops starting new pages after this long and hands back a cursor (the cron calls again). */
+const CALL_BUDGET_MS = 40_000;
+
+/** Keyset cursor over (contentSummarySentAt asc nulls first, id): "<iso or null>|<id>". */
+export function encodeCursor(row: { contentSummarySentAt: Date | null; id: string }): string {
+  return `${row.contentSummarySentAt ? row.contentSummarySentAt.toISOString() : "null"}|${row.id}`;
+}
+
+export function decodeCursor(cursor: string | null | undefined): { sentAt: Date | null; id: string } | null {
+  if (!cursor) return null;
+  const at = cursor.indexOf("|");
+  if (at < 0) return null;
+  const [stamp, id] = [cursor.slice(0, at), cursor.slice(at + 1)];
+  if (!id || id.length > 64) return null;
+  if (stamp === "null") return { sentAt: null, id };
+  const sentAt = new Date(stamp);
+  return Number.isNaN(sentAt.getTime()) ? null : { sentAt, id };
+}
+
+/** Rows after the cursor in (sentAt asc nulls first, id asc) order. */
+export function afterCursor(c: { sentAt: Date | null; id: string } | null): Prisma.BusinessWhereInput {
+  if (!c) return {};
+  if (!c.sentAt) return { OR: [{ contentSummarySentAt: null, id: { gt: c.id } }, { contentSummarySentAt: { not: null } }] };
+  return { OR: [{ contentSummarySentAt: { gt: c.sentAt } }, { contentSummarySentAt: c.sentAt, id: { gt: c.id } }] };
+}
+
 /**
- * Sends the emails that are due. Idempotent: a business is claimed by moving contentSummarySentAt from the value it
- * was read with (compare-and-set), so two runs never send twice; a failed send is not retried until the next day.
+ * Sends the emails that are due. Reads only businesses that may be due (auto-scheduled posts in the last 3 days, no
+ * email in the last 8 hours), the longest-waiting first, page by page through all of them; hands back `nextCursor` when
+ * the call's time is up. Idempotent: a business is claimed by moving contentSummarySentAt from the value it was read
+ * with (compare-and-set), so two runs never send twice; a failed send is not retried until the next day.
  */
-export async function sendContentSummaries(now = new Date()): Promise<{ checked: number; sent: number }> {
-  const recent = await prisma.post.groupBy({
-    by: ["businessId"],
-    where: { autoScheduledAt: { gte: new Date(now.getTime() - 3 * FIRST_LOOKBACK_MS), lte: now } },
-    orderBy: { businessId: "asc" },
-    take: BUSINESSES_PER_RUN,
-  });
+export async function sendContentSummaries(now = new Date(), options: { cursor?: string | null; budgetMs?: number } = {}): Promise<{ checked: number; sent: number; nextCursor: string | null }> {
+  const started = Date.now();
+  const budget = options.budgetMs ?? CALL_BUDGET_MS;
+  let cursor = decodeCursor(options.cursor);
+  let checked = 0;
   let sent = 0;
-  for (const { businessId } of recent) {
-    try {
-      const business = await prisma.business.findUnique({ where: { id: businessId }, select: { name: true, timezone: true, contentSummarySentAt: true, user: { select: { email: true } } } });
-      if (!business) continue;
-      const zone = business.timezone || "UTC";
-      const lastSentAt = business.contentSummarySentAt;
-      if (!summaryDue({ zone, now, lastSentAt })) continue;
-      const rows = await prisma.post.findMany({
-        where: { businessId, autoScheduledAt: { gt: lastSentAt ?? new Date(now.getTime() - FIRST_LOOKBACK_MS), lte: now } },
-        select: { id: true, network: true, status: true, text: true, title: true, scheduledAt: true, autoScheduledAt: true, productId: true, campaignId: true },
-        orderBy: { scheduledAt: "asc" },
-        take: 200,
-      });
-      const posts = selectSummaryPosts(rows, { now, lastSentAt });
-      if (posts.length === 0) continue;
-      const { count } = await prisma.business.updateMany({ where: { id: businessId, contentSummarySentAt: lastSentAt }, data: { contentSummarySentAt: now } });
-      if (count === 0) continue;
-      const email = summaryEmail({ businessName: business.name, zone, posts });
-      for (const to of await alertRecipients(businessId, business.user.email)) {
-        if (await sendEmail({ to, subject: email.subject, html: email.html, text: email.text })) sent += 1;
-      }
-    } catch (error) {
-      await logError(error, { source: "content.summary", businessId });
+  for (;;) {
+    if (Date.now() - started > budget) return { checked, sent, nextCursor: cursor ? encodeCursor({ contentSummarySentAt: cursor.sentAt, id: cursor.id }) : null };
+    const page = await prisma.business.findMany({
+      where: {
+        AND: [
+          { OR: [{ contentSummarySentAt: null }, { contentSummarySentAt: { lt: new Date(now.getTime() - RECENT_SEND_MS) } }] },
+          { posts: { some: { autoScheduledAt: { gte: new Date(now.getTime() - 3 * FIRST_LOOKBACK_MS), lte: now } } } },
+          afterCursor(cursor),
+        ],
+      },
+      orderBy: [{ contentSummarySentAt: { sort: "asc", nulls: "first" } }, { id: "asc" }],
+      take: PAGE,
+      select: { id: true, name: true, timezone: true, contentSummarySentAt: true, user: { select: { email: true } } },
+    });
+    for (const business of page) {
+      checked += 1;
+      if (await sendOne(business, now)) sent += 1;
     }
+    if (page.length < PAGE) return { checked, sent, nextCursor: null };
+    const last = page[page.length - 1];
+    cursor = { sentAt: last.contentSummarySentAt, id: last.id };
   }
-  return { checked: recent.length, sent };
+}
+
+async function sendOne(business: { id: string; name: string; timezone: string; contentSummarySentAt: Date | null; user: { email: string | null } }, now: Date): Promise<boolean> {
+  const businessId = business.id;
+  try {
+    const zone = business.timezone || "UTC";
+    const lastSentAt = business.contentSummarySentAt;
+    if (!summaryDue({ zone, now, lastSentAt })) return false;
+    const rows = await prisma.post.findMany({
+      where: { businessId, autoScheduledAt: { gt: lastSentAt ?? new Date(now.getTime() - FIRST_LOOKBACK_MS), lte: now } },
+      select: { id: true, network: true, status: true, text: true, title: true, scheduledAt: true, autoScheduledAt: true, productId: true, campaignId: true },
+      orderBy: { scheduledAt: "asc" },
+      take: 200,
+    });
+    const posts = selectSummaryPosts(rows, { now, lastSentAt });
+    if (posts.length === 0) return false;
+    const { count } = await prisma.business.updateMany({ where: { id: businessId, contentSummarySentAt: lastSentAt }, data: { contentSummarySentAt: now } });
+    if (count === 0) return false;
+    const email = summaryEmail({ businessName: business.name, zone, posts });
+    let any = false;
+    for (const to of await alertRecipients(businessId, business.user.email)) {
+      if (await sendEmail({ to, subject: email.subject, html: email.html, text: email.text })) any = true;
+    }
+    return any;
+  } catch (error) {
+    await logError(error, { source: "content.summary", businessId });
+    return false;
+  }
 }

@@ -689,7 +689,7 @@ export async function readyMedia(businessId: string, key: { contentId: string } 
  * video ideas (a real video post on Instagram and Facebook, the script reminder's attachment on TikTok and YouTube).
  */
 export async function attachToGroup(businessId: string, groupId: string, options: { feed?: boolean } = {}) {
-  await attachVisuals(businessId, { groupId }, { groupId }, options);
+  await attachVisuals(businessId, { groupId }, { groupId, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] } }, options);
 }
 
 /**
@@ -698,14 +698,15 @@ export async function attachToGroup(businessId: string, groupId: string, options
  * when their app needs no approval.
  */
 export async function attachToContent(businessId: string, contentId: string, options: { feed?: boolean } = {}) {
-  await attachVisuals(businessId, { contentId }, { contentId, source: "STUDIO" }, options);
+  // Only drafts still waiting and untouched: a scheduled post or one the owner edited keeps what it has.
+  await attachVisuals(businessId, { contentId }, { contentId, source: "STUDIO", status: { in: ["DRAFT", "PENDING_APPROVAL"] }, ownerEditedAt: null }, options);
   const { retryAutoSchedule } = await import("@/lib/content-board/auto");
   await retryAutoSchedule(businessId, { contentId });
 }
 
 async function attachVisuals(businessId: string, key: { contentId: string } | { groupId: string }, postWhere: Prisma.PostWhereInput, options: { feed?: boolean }) {
   const { images, video: videoFile } = await readyMedia(businessId, key);
-  const posts = await prisma.post.findMany({ where: { businessId, ...postWhere, status: { in: ["DRAFT", "PENDING_APPROVAL", "SCHEDULED"] }, lockedAt: null }, select: { id: true, network: true, format: true, mediaPaths: true, status: true, lastError: true } });
+  const posts = await prisma.post.findMany({ where: { businessId, ...postWhere, lockedAt: null }, select: { id: true, network: true, format: true, mediaPaths: true, status: true, lastError: true, updatedAt: true } });
   for (const post of posts) {
     if (!isNetwork(post.network)) continue;
     const rules = getProvider(post.network).rules;
@@ -715,6 +716,6 @@ async function attachVisuals(businessId: string, key: { contentId: string } | { 
     const { format, mediaPaths } = mediaForPost({ network: post.network, format: planned, rules, images, video: videoFile });
     if (format === post.format && mediaPaths.join("|") === post.mediaPaths.join("|")) continue;
     const fixesDraft = post.status === "DRAFT" && post.lastError?.startsWith("This post needs a picture") && mediaPaths.length > 0;
-    await prisma.post.updateMany({ where: { id: post.id, lockedAt: null }, data: { format, mediaPaths, ...(fixesDraft ? { lastError: null } : {}) } });
+    await prisma.post.updateMany({ where: { ...postWhere, id: post.id, lockedAt: null, updatedAt: post.updatedAt }, data: { format, mediaPaths, ...(fixesDraft ? { lastError: null } : {}) } });
   }
 }

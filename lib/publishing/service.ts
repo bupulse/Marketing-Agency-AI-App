@@ -6,7 +6,7 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { composeSchema, editSchema, isOwnMediaPath, type ComposeParsed } from "./schemas";
 import { cleanSlotTimes, nextFreeSlots } from "./slots";
-import { bestTime } from "./best-time";
+import { bestTime, MIN_GAP_MINUTES } from "./best-time";
 import { buildProfile, preferredHours, preferredWeekdays } from "@/lib/autopilot/learning";
 import { loadPostResults } from "@/lib/autopilot/results";
 import { EDITABLE, QUEUED, type PostStatusName } from "./status";
@@ -154,33 +154,34 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
   if (!time) throw new PublishingError("Choose when to post.", "invalid");
 
   const groupId = globalThis.crypto.randomUUID();
-  const created = await prisma.$transaction(
-    rows.map((row) =>
-      prisma.post.create({
-        data: {
-          businessId: owner.businessId,
-          connectionId: row.connection.id,
-          network: row.network,
-          groupId,
-          ...subjectColumns(subject),
-          contentId: content?.id,
-          status: time.status,
-          format: row.format,
-          source: "MANUAL",
-          text: row.text,
-          hashtags: row.hashtags,
-          mediaPaths: row.mediaPaths,
-          link: data.link,
-          scheduledAt: time.scheduledAt,
-        },
-        select: { id: true },
-      }),
-    ),
+  const creates = rows.map((row) =>
+    prisma.post.create({
+      data: {
+        businessId: owner.businessId,
+        connectionId: row.connection.id,
+        network: row.network,
+        groupId,
+        ...subjectColumns(subject),
+        contentId: content?.id,
+        status: time.status,
+        format: row.format,
+        source: "MANUAL",
+        text: row.text,
+        hashtags: row.hashtags,
+        mediaPaths: row.mediaPaths,
+        link: data.link,
+        scheduledAt: time.scheduledAt,
+      },
+      select: { id: true },
+    }),
   );
-  // Scheduled from Studio content by hand: the drafts BuPulse made of that content for the same accounts are replaced.
-  if (!draft && content) {
-    await prisma.post.deleteMany({ where: { businessId: owner.businessId, contentId: content.id, source: "STUDIO", status: "PENDING_APPROVAL", connectionId: { in: ordered.map((c) => c.id) } } });
-  }
+  // Scheduled from Studio content by hand: the drafts BuPulse made of that content for the same accounts are replaced,
+  // in the same transaction, unless the owner already edited them.
+  const replace =
+    !draft && content
+      ? [prisma.post.deleteMany({ where: { businessId: owner.businessId, contentId: content.id, source: "STUDIO", status: "PENDING_APPROVAL", ownerEditedAt: null, connectionId: { in: ordered.map((c) => c.id) } } })]
+      : [];
+  const created = (await prisma.$transaction([...creates, ...replace])).slice(0, creates.length) as { id: string }[];
   if (!draft) await trackEvent(EVENT_NAMES.postScheduled, { businessId: owner.businessId, props: { count: created.length, status: time.status } });
   return { groupId, postIds: created.map((p) => p.id), scheduledAt: time.scheduledAt, status: time.status };
 }
@@ -216,7 +217,7 @@ export async function updatePost(owner: Owner, postId: string, input: EditInput,
     throw new PublishingError("Write something or add a photo to save a draft.", "invalid");
   }
 
-  const update: Prisma.PostUpdateManyMutationInput = { text: data.text.trim(), hashtags: data.hashtags, mediaPaths: data.mediaPaths, link: data.link, format };
+  const update: Prisma.PostUpdateManyMutationInput = { text: data.text.trim(), hashtags: data.hashtags, mediaPaths: data.mediaPaths, link: data.link, format, ownerEditedAt: now };
   if (time) {
     update.status = time.status;
     update.scheduledAt = time.scheduledAt;
@@ -241,7 +242,7 @@ export async function reschedulePost(owner: Owner, postId: string, scheduledAt: 
   const revive = post.status === "FAILED" || post.status === "NEEDS_ACTION";
   const { count } = await prisma.post.updateMany({
     where: { id: postId, businessId: owner.businessId, status: post.status },
-    data: revive ? { scheduledAt, status: "SCHEDULED", attempts: 0, nextAttemptAt: null, lockedAt: null, lastError: null } : { scheduledAt },
+    data: revive ? { scheduledAt, status: "SCHEDULED", attempts: 0, nextAttemptAt: null, lockedAt: null, lastError: null, ownerEditedAt: now } : { scheduledAt, ownerEditedAt: now },
   });
   if (count === 0) throw new PublishingError(NO_LONGER_EDITABLE, "conflict");
 }
@@ -318,6 +319,47 @@ export async function bestTimesFor(businessId: string, posts: { id: string; netw
   return out;
 }
 
+type SlotDb = Pick<typeof prisma, "$executeRaw" | "post">;
+
+/**
+ * Writes a post's new time only if no other queued post on the same account is within 2.5 hours of it, checked and
+ * written under a per-account lock, so two approvals or auto-approvals running at once cannot stack posts. `where`
+ * guards the write (status, and for auto-approval the updatedAt read with the safety checks).
+ * "taken": the time collides, pick another; "changed": the post changed meanwhile; "ok": written.
+ */
+export async function claimSlot(
+  args: { businessId: string; postId: string; connectionId: string | null; at: Date; where: Prisma.PostWhereInput; data: Prisma.PostUpdateManyMutationInput },
+): Promise<"ok" | "taken" | "changed"> {
+  const gap = MIN_GAP_MINUTES * 60_000;
+  return prisma.$transaction(async (tx: SlotDb) => {
+    if (args.connectionId) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`post-slot:${args.connectionId}`}))`;
+      const clash = await tx.post.findFirst({
+        where: { connectionId: args.connectionId, id: { not: args.postId }, status: { in: [...QUEUED] }, scheduledAt: { gt: new Date(args.at.getTime() - gap), lt: new Date(args.at.getTime() + gap) } },
+        select: { id: true },
+      });
+      if (clash) return "taken";
+    }
+    const { count } = await tx.post.updateMany({ where: { id: args.postId, businessId: args.businessId, ...args.where }, data: { ...args.data, scheduledAt: args.at } });
+    return count > 0 ? "ok" : "changed";
+  });
+}
+
+/** claimSlot, picking a new best time (up to 3 times) when another post took the slot first. */
+export async function scheduleAtFreeSlot(
+  post: { id: string; network: string; connectionId: string | null },
+  first: Date,
+  args: { businessId: string; where: Prisma.PostWhereInput; data: Prisma.PostUpdateManyMutationInput; now: Date },
+): Promise<boolean> {
+  let at = first;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const result = await claimSlot({ businessId: args.businessId, postId: post.id, connectionId: post.connectionId, at, where: args.where, data: args.data });
+    if (result !== "taken") return result === "ok";
+    at = (await bestTimesFor(args.businessId, [post], args.now)).get(post.id) ?? at;
+  }
+  return false;
+}
+
 /**
  * Approves posts waiting for review (Autopilot's and Studio's) so they are published. Only this business's posts
  * that still wait are touched. A post keeps its planned time when that is still ahead; one without a time, or whose
@@ -335,10 +377,12 @@ export async function approvePosts(businessId: string, postIds: string[], now = 
   let approved = 0;
   for (const post of posts) {
     const scheduledAt = times.get(post.id);
-    const { count } = await prisma.post.updateMany({
-      where: { id: post.id, businessId, status: "PENDING_APPROVAL" },
-      data: { status: "SCHEDULED", reviewNote: null, ...(scheduledAt ? { scheduledAt } : {}) },
-    });
+    const data = { status: "SCHEDULED" as const, reviewNote: null };
+    if (scheduledAt) {
+      if (await scheduleAtFreeSlot(post, scheduledAt, { businessId, where: { status: "PENDING_APPROVAL" }, data, now })) approved += 1;
+      continue;
+    }
+    const { count } = await prisma.post.updateMany({ where: { id: post.id, businessId, status: "PENDING_APPROVAL" }, data });
     approved += count;
   }
   return { approved };
@@ -348,10 +392,10 @@ export async function approvePosts(businessId: string, postIds: string[], now = 
  * Takes a scheduled post back to "Needs review" (the safety window of auto-approval: nothing goes out that the owner
  * wants to look at first). Refused once the publisher has picked it up.
  */
-export async function unschedulePost(owner: Owner, postId: string): Promise<void> {
+export async function unschedulePost(owner: Owner, postId: string, now = new Date()): Promise<void> {
   const { count } = await prisma.post.updateMany({
     where: { id: postId, businessId: owner.businessId, status: "SCHEDULED", lockedAt: null },
-    data: { status: "PENDING_APPROVAL", autoScheduledAt: null },
+    data: { status: "PENDING_APPROVAL", autoScheduledAt: null, ownerEditedAt: now },
   });
   if (count === 0) {
     const post = await prisma.post.findFirst({ where: { id: postId, businessId: owner.businessId }, select: { status: true } });

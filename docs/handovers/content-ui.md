@@ -23,7 +23,7 @@ merged. No database was touched: the migration was written and `npx prisma gener
   as the picture: the idea was written as a video and TikTok/YouTube take no pictures. A script reminder with no video
   planned (plan without video) is scheduled as before.
 - **Studio drafts replace older waiting drafts** of the same product or campaign on every rewrite or edit, so the
-  Today list does not fill up with versions.
+  Today list does not fill up with versions, but never drafts the owner edited (owner confirmed).
 - Autopilot's "Post without asking" stays as a master switch; with it off, Autopilot follows the per-app settings.
 - Changing a setting does not touch posts already waiting.
 - "Story" is not a post type: BuPulse cannot publish stories. "Blog/website" is not an app yet.
@@ -35,6 +35,15 @@ merged. No database was touched: the migration was written and `npx prisma gener
 the trigger `Post_media_kind` (function `bupulse_post_media_kind`, EXECUTE revoked), backfill of `mediaKind`; two
 indexes. Columns only, no new table. `ALTER TYPE ... ADD VALUE` must not share a transaction with a use of the value
 (it does not). Deploy order: back up, `prisma migrate deploy`, then the code.
+
+`20261016100000_post_owner_edited`: `Post.ownerEditedAt` (column only).
+
+## Review fixes (after ad7a1a2)
+
+Owner-edited drafts are never replaced or redrawn; replace and create in one transaction; visuals never touch
+SCHEDULED posts; the summary cron pages through only due businesses with a cursor; auto-approval writes are guarded by
+`updatedAt`; slots are claimed under a per-account lock with 2.5 h spacing re-checked. No plan has a post cap, so none
+is enforced.
 
 ## New cron
 

@@ -62,11 +62,15 @@ are signed in one batched request per bucket (`signPaths`) and lazy-loaded.
   `drafts.ts` drafts one post per usable connected app (`source STUDIO`, `PENDING_APPROVAL`, one `groupId`): Instagram,
   Facebook and LinkedIn get their own version of the caption and the content's picture or carousel; TikTok and YouTube
   get the video script (SCRIPT) with the video once it is made. Older drafts of the same product or campaign that still
-  wait are replaced; approved, scheduled and hand-made posts are never touched. Scheduling a content by hand in the
-  composer replaces its drafts for the chosen accounts. Nothing is drafted without the `calendar` feature or an account.
+  wait are replaced, in the same transaction as the new ones, **unless the owner edited them** (`Post.ownerEditedAt`,
+  set by edits in the composer, media changes, moves and "Back to review"); approved, scheduled and hand-made posts are
+  never touched. Scheduling a content by hand in the composer replaces its untouched drafts for the chosen accounts,
+  in the same transaction. Nothing is drafted without the `calendar` feature or an account.
 - **Autopilot.** Its posts are saved as before (`PENDING_APPROVAL`, or `SCHEDULED` with "Post without asking").
 - When the content's picture finishes drawing or its video is uploaded, the drafts take it (`attachToContent` in
-  `lib/visuals/service.ts`, as `attachToGroup` does for Autopilot) and get another auto-approval check.
+  `lib/visuals/service.ts`, as `attachToGroup` does for Autopilot) and get another auto-approval check. Only drafts
+  still waiting (DRAFT, PENDING_APPROVAL) that the owner did not edit; never a SCHEDULED post. The write is guarded by
+  the `updatedAt` it read, so an edit made meanwhile wins.
 
 ## Approval and auto-approval
 
@@ -83,10 +87,15 @@ only affects new posts.
 the network's preferred hours first (learned from its own results when there are 6 or more, else `NETWORK_DEFAULTS`),
 the coming week's preferred weekdays first, never in the past or within 15 minutes, and 2.5 hours from other posts on
 the same account (posts approved together included). Falls back to the next free queue slot. Clears `reviewNote`.
+The time is written by `claimSlot`: under a per-account advisory lock it checks that no queued post on the account is
+within 2.5 hours, and picks a new best time (up to 3 tries) when another approval took the slot meanwhile.
 
 **Auto-approval** (`auto.ts`, rules in `rules.ts`, pure): after Studio drafts posts, after an Autopilot run, and when a
 post's picture or video is finished, every waiting post whose app needs no approval is scheduled at the best time,
-with `autoScheduledAt` set, unless a safety rule keeps it in review with `Post.reviewNote`:
+with `autoScheduledAt` set, unless a safety rule keeps it in review with `Post.reviewNote`. Every write is guarded by
+the post's `updatedAt` as the safety checks read it (a post changed meanwhile is left waiting) and goes through
+`claimSlot`. Plans have no post cap (only text, images, video seconds, voice and chat are metered), so there is no
+post limit to enforce:
 
 | Rule | Reason shown |
 | --- | --- |
@@ -113,7 +122,11 @@ and **Back to review** (`unschedulePost`: SCHEDULED and not picked up by the pub
 `worker.ts`, `wrangler.jsonc`, `netlify/functions/cron-content-summary.mts`, Admin cron list). From 08:00 in the
 business's time zone, once per local day, the Owner and the Admins who chose alerts (`alertRecipients`) get "N posts
 were scheduled for you": each post's app, time and first words, a link to open it (`?post=`), a button to the
-auto-scheduled view and a link to the settings. It lists posts auto-scheduled since the last email (the last 24 hours
+auto-scheduled view and a link to the settings. Each call reads only businesses that may be due (auto-scheduled posts
+in the last 3 days and no email in the last 8 hours: a business emailed at 08:00 local or later and seen within 8 hours
+is on the same local day or before 08:00), ordered by `contentSummarySentAt` (never sent first), page by page through
+all of them (keyset cursor on `contentSummarySentAt, id`); after 40 s it answers `nextCursor` and the cron calls again
+(cursor calls in `worker.ts` and Netlify). It lists posts auto-scheduled since the last email (the last 24 hours
 for the first) that are still going out or went out; posts taken back to review or deleted are left out. The business
 is claimed by compare-and-set on `Business.contentSummarySentAt`, so two runs never send twice; nothing new, no email.
 The in-app notice on the Content page covers the same posts for 24 hours.
@@ -124,7 +137,7 @@ Migration `20261016090000_content_auto_approval` (columns only, no new table, so
 cover them): `PostSource` gains `STUDIO`; `Business.contentSettings` (JSONB) and `contentSummarySentAt`;
 `Post.reviewNote`, `autoScheduledAt`, `mediaKind` (CHECK, kept by the trigger; existing rows filled by the migration);
 indexes `Post(businessId, createdAt)` and `Post(businessId, autoScheduledAt)`. The trigger function has all EXECUTE
-revoked.
+revoked. `20261016100000_post_owner_edited` adds `Post.ownerEditedAt`.
 
 ## Permissions and plans
 

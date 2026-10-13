@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const prisma = vi.hoisted(() => ({
   business: { findUnique: vi.fn() },
   autopilotSettings: { findUnique: vi.fn() },
-  post: { findMany: vi.fn(), updateMany: vi.fn() },
+  post: { findMany: vi.fn(), updateMany: vi.fn(), findFirst: vi.fn() },
   contentVisual: { findMany: vi.fn() },
+  $executeRaw: vi.fn(),
+  $transaction: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("@/lib/entitlements", () => import("@/tests/stubs/entitlements"));
@@ -18,11 +20,12 @@ import { missing, state } from "@/tests/stubs/entitlements";
 
 // Tuesday 13 October 2026, 10:00 in Kigali.
 const now = new Date("2026-10-13T08:00:00Z");
+const read = new Date("2026-10-13T07:59:00Z"); // updatedAt as the safety checks read it
 const active = { status: "ACTIVE", postingMode: "AUTO" };
 
 type Row = Record<string, unknown>;
 function post(id: string, extra: Row = {}): Row {
-  return { id, network: "facebook", format: "POST", text: "Fresh bread today", hashtags: ["#bread"], mediaPaths: ["u1/designs/a.png"], scheduledAt: null, connectionId: `c-${id}`, contentId: "content-1", groupId: null, reviewNote: null, connection: active, ...extra };
+  return { id, network: "facebook", format: "POST", text: "Fresh bread today", hashtags: ["#bread"], mediaPaths: ["u1/designs/a.png"], scheduledAt: null, connectionId: `c-${id}`, contentId: "content-1", groupId: null, reviewNote: null, updatedAt: read, connection: active, ...extra };
 }
 
 let pending: Row[] = [];
@@ -37,6 +40,8 @@ beforeEach(() => {
   prisma.autopilotSettings.findUnique.mockResolvedValue(null);
   prisma.contentVisual.findMany.mockResolvedValue([]);
   prisma.post.updateMany.mockResolvedValue({ count: 1 });
+  prisma.post.findFirst.mockResolvedValue(null);
+  prisma.$transaction.mockImplementation(async (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma));
   // First call: the posts to decide on; later calls: queued posts (none taken).
   prisma.post.findMany.mockImplementation(async (args: { where: { status?: unknown } }) => (args.where.status === "PENDING_APPROVAL" ? pending : []));
 });
@@ -49,7 +54,7 @@ describe("autoSchedule", () => {
     pending = [post("a")];
     expect(await autoSchedule("b1", ["a"], now)).toEqual({ scheduled: 1, waiting: 0 });
     const [call] = scheduledCalls();
-    expect(call.where).toEqual({ id: "a", businessId: "b1", status: "PENDING_APPROVAL" });
+    expect(call.where).toEqual({ id: "a", businessId: "b1", status: "PENDING_APPROVAL", updatedAt: read });
     // Facebook defaults: 13:00 and 18:00 on Tuesday to Thursday and Saturday; the posting times are 09:00 and 18:00.
     expect(call.data).toEqual({ status: "SCHEDULED", scheduledAt: new Date("2026-10-13T16:00:00Z"), autoScheduledAt: now, reviewNote: null });
   });
@@ -78,7 +83,7 @@ describe("autoSchedule", () => {
     pending = [post("t", { network: "tiktok", format: "SCRIPT", mediaPaths: [] })];
     prisma.contentVisual.findMany.mockResolvedValue([{ kind: "video", contentId: "content-1", groupId: null }]);
     expect(await autoSchedule("b1", ["t"], now)).toEqual({ scheduled: 0, waiting: 1 });
-    expect(noteCalls()[0]).toEqual({ where: { id: "t", businessId: "b1", status: "PENDING_APPROVAL" }, data: { reviewNote: REVIEW_REASONS.video } });
+    expect(noteCalls()[0]).toEqual({ where: { id: "t", businessId: "b1", status: "PENDING_APPROVAL", updatedAt: read }, data: { reviewNote: REVIEW_REASONS.video } });
   });
 
   it("waits while the picture is drawn, and for an account that must be reconnected", async () => {
@@ -99,6 +104,7 @@ describe("autoSchedule", () => {
     vi.clearAllMocks();
     prisma.post.findMany.mockImplementation(async (args: { where: { status?: unknown } }) => (args.where.status === "PENDING_APPROVAL" ? pending : []));
     prisma.post.updateMany.mockResolvedValue({ count: 1 });
+    prisma.$transaction.mockImplementation(async (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma));
     expect((await autoSchedule("b1", ["a"], now)).scheduled).toBe(0);
   });
 
@@ -114,6 +120,26 @@ describe("autoSchedule", () => {
     await autoSchedule("b1", ["a", "b"], now);
     const [first, second] = scheduledCalls().map((c) => c.data.scheduledAt as Date);
     expect(Math.abs(second.getTime() - first.getTime())).toBeGreaterThanOrEqual(150 * 60_000);
+  });
+
+  it("does not schedule a post the owner changed after the safety checks read it", async () => {
+    pending = [post("a")];
+    prisma.post.updateMany.mockResolvedValue({ count: 0 }); // updatedAt no longer matches
+    expect(await autoSchedule("b1", ["a"], now)).toEqual({ scheduled: 0, waiting: 1 });
+    expect(scheduledCalls()[0].where.updatedAt).toEqual(read);
+  });
+
+  it("picks another time when the slot was taken on the account meanwhile, checked under a lock", async () => {
+    pending = [post("a", { connectionId: "c1" })];
+    prisma.post.findFirst.mockResolvedValueOnce({ id: "other" }).mockResolvedValue(null);
+    let queued = 0;
+    prisma.post.findMany.mockImplementation(async (args: { where: { status?: unknown } }) =>
+      args.where.status === "PENDING_APPROVAL" ? pending : queued++ === 0 ? [] : [{ connectionId: "c1", scheduledAt: new Date("2026-10-13T16:00:00Z") }],
+    );
+    expect((await autoSchedule("b1", ["a"], now)).scheduled).toBe(1);
+    expect(prisma.$executeRaw).toHaveBeenCalled();
+    const at = scheduledCalls()[0].data.scheduledAt as Date;
+    expect(Math.abs(at.getTime() - new Date("2026-10-13T16:00:00Z").getTime())).toBeGreaterThanOrEqual(150 * 60_000);
   });
 
   it("clears a note once the post can go", async () => {

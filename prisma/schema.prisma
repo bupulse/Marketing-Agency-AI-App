@@ -760,6 +760,8 @@ model Post {
   reviewNote     String?
   // Set when auto-approval (Content -> Settings) scheduled the post; the daily summary email lists these.
   autoScheduledAt DateTime?
+  // Set when the owner changed the post (text, media, time, review state): BuPulse then never replaces or redraws it.
+  ownerEditedAt  DateTime?
   // "post" | "carousel" | "video" | "article": kept by a database trigger from format and mediaPaths, for the type filter.
   mediaKind      String        @default("post")
   createdAt      DateTime      @default(now())

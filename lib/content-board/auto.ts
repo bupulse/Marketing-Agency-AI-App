@@ -1,11 +1,13 @@
 // Auto-approval (docs/CONTENT.md): posts waiting for review whose app needs no approval (Content -> Settings) are
 // scheduled at the best time, unless a safety rule (lib/content-board/rules.ts) keeps them waiting with a reason.
 // Called when Studio drafts posts, after an Autopilot run, and when a picture or video of the post is finished.
+// Plans have no cap on posts (lib/plans.ts meters text, images, video seconds, voice and chat only), so there is no
+// post limit to check here; scheduling itself is gated by the calendar feature and a read-only account.
 import "server-only";
 import { prisma } from "@/lib/db";
 import { companyEntitlements } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
-import { accountUsable, bestTimesFor } from "@/lib/publishing/service";
+import { accountUsable, bestTimesFor, scheduleAtFreeSlot } from "@/lib/publishing/service";
 import { validatePost, type PostFormatName } from "@/lib/publishing/validate";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { autoDecision } from "./rules";
@@ -37,6 +39,7 @@ export async function autoSchedule(businessId: string, postIds: string[], now = 
       contentId: true,
       groupId: true,
       reviewNote: true,
+      updatedAt: true,
       connection: { select: { status: true, postingMode: true } },
     },
   });
@@ -82,21 +85,26 @@ export async function autoSchedule(businessId: string, postIds: string[], now = 
     }
     waiting += 1;
     const note = decision.action === "review" ? decision.reason : null;
-    if (note !== post.reviewNote) await prisma.post.updateMany({ where: { id: post.id, businessId, status: "PENDING_APPROVAL" }, data: { reviewNote: note } });
+    if (note !== post.reviewNote) await prisma.post.updateMany({ where: { id: post.id, businessId, status: "PENDING_APPROVAL", updatedAt: post.updatedAt }, data: { reviewNote: note } });
   }
 
   // Autopilot planned its posts at the best time already: they keep a time still ahead. The rest get the best time now.
   const needTime = toSchedule.filter((p) => !p.scheduledAt || p.scheduledAt.getTime() <= now.getTime() + 5 * 60_000);
   const times = await bestTimesFor(businessId, needTime, now);
+  // Written only if the post is unchanged since the safety checks read it (updatedAt), and only on a free slot
+  // (2.5 hours from other posts on the account, checked under a lock; a new best time when it was taken meanwhile).
   let scheduled = 0;
   for (const post of toSchedule) {
     const at = times.get(post.id) ?? post.scheduledAt;
     if (!at) continue;
-    const { count } = await prisma.post.updateMany({
-      where: { id: post.id, businessId, status: "PENDING_APPROVAL" },
-      data: { status: "SCHEDULED", scheduledAt: at, autoScheduledAt: now, reviewNote: null },
+    const ok = await scheduleAtFreeSlot(post, at, {
+      businessId,
+      where: { status: "PENDING_APPROVAL", updatedAt: post.updatedAt },
+      data: { status: "SCHEDULED", autoScheduledAt: now, reviewNote: null },
+      now,
     });
-    scheduled += count;
+    if (ok) scheduled += 1;
+    else waiting += 1;
   }
   return { scheduled, waiting };
 }

@@ -57,9 +57,12 @@ describe("draftPostsFromContent", () => {
     expect(auto.autoSchedule).toHaveBeenCalledWith("b1", ["post-c-ig", "post-c-li", "post-c-tt"], expect.any(Date));
   });
 
-  it("replaces only older drafts of the same product that still wait for review", async () => {
+  it("replaces only older drafts of the same product that still wait for review and the owner did not edit", async () => {
     await draftPostsFromContent({ businessId: "b1" }, "content-2");
-    expect(prisma.post.deleteMany).toHaveBeenCalledWith({ where: { businessId: "b1", productId: "p1", source: "STUDIO", status: "PENDING_APPROVAL", NOT: { contentId: "content-2" } } });
+    expect(prisma.post.deleteMany).toHaveBeenCalledWith({ where: { businessId: "b1", productId: "p1", source: "STUDIO", status: "PENDING_APPROVAL", ownerEditedAt: null, NOT: { contentId: "content-2" } } });
+    // Delete and create are one transaction.
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction.mock.calls[0][0]).toHaveLength(4);
   });
 
   it("does nothing without scheduling in the plan, without accounts, or for another business's content", async () => {
