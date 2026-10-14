@@ -60,7 +60,7 @@ import { fallbackPlan } from "@/lib/visuals/direction";
 
 const owner = { userId: "u1", businessId: "b1" };
 const subject = { kind: "product" as const, id: "p1" };
-const answer = (n: number) => ({ text: JSON.stringify({ posts: Array.from({ length: n }, (_, i) => ({ index: i + 1, caption: `Post number ${i + 1}`, hashtags: ["#a"], videoScript: "0-3s Hook", headline: `Head ${i + 1}` })) }), provider: "gemini", model: "m", usage: { inputTokens: 1, outputTokens: 1 } });
+const answer = (n: number) => ({ text: JSON.stringify({ posts: Array.from({ length: n }, (_, i) => ({ index: i + 1, caption: `Post number ${i + 1}`, hashtags: ["#a"], videoScript: "0-3s Hook", adHeadlines: [`Head ${i + 1}`, `Second ${i + 1}`, `Third ${i + 1}`] })) }), provider: "gemini", model: "m", usage: { inputTokens: 1, outputTokens: 1 } });
 const plan = () => fallbackPlan({ subjectType: "product", title: "Aero phone", caption: "", headlines: [], business: { name: "B" }, photos: [], carouselAllowed: false, aiAllowed: true });
 
 beforeEach(() => {
@@ -92,21 +92,27 @@ describe("the pack writer", () => {
     expect(prompt).toMatch(/1\. Angle "Tips".*App: Instagram.*Format: a carousel post/);
     expect(prompt).toMatch(/2\. Angle "How it works".*App: TikTok.*Format: a video post \(write the videoScript\)/);
     expect(prompt).not.toMatch(/\nCreate:/);
+    // Every post comes with its 30-second video script and exactly three ad headlines (docs/CONTENT.md).
+    expect(prompt).toContain("Every post's videoScript:");
+    expect(prompt).toContain("adHeadlines: exactly 3 different ad headlines, each at most 40 characters");
   });
 
-  it("matches posts to their slots, drops empty or repeated captions, keeps scripts only for video posts", () => {
+  it("matches posts to their slots, drops empty or repeated captions, keeps every post's script and three headlines", () => {
     const slots = [
       { angle: "tips", network: "instagram", format: "carousel" },
       { angle: "price", network: "facebook", format: "image" },
       { angle: "story", network: "tiktok", format: "video" },
     ] as const;
     const posts = readPack({ posts: [
-      { index: 3, caption: "A day with the phone", hashtags: ["kigali"], videoScript: "0-3s hook", headline: "Day" },
-      { index: 1, caption: "Three tips", hashtags: [], videoScript: "should go", headline: "Tips" },
-      { index: 2, caption: "three  TIPS", hashtags: [], videoScript: "", headline: "Copy" },
+      { index: 3, caption: "A day with the phone", hashtags: ["kigali"], videoScript: "0-3s hook", adHeadlines: ["Day one", "1. A day out", "\"Your day\"", "A fourth"] },
+      { index: 1, caption: "Three tips", hashtags: [], videoScript: "[Phone on a desk] Three tips today.", adHeadlines: ["Tips", "tips", "More tips", "  "] },
+      { index: 2, caption: "three  TIPS", hashtags: [], videoScript: "", adHeadlines: ["Copy"] },
     ] }, slots);
-    expect(posts.map((p) => [p.angle, p.caption, p.videoScript])).toEqual([["tips", "Three tips", ""], ["story", "A day with the phone", "hook"]]);
+    expect(posts.map((p) => [p.angle, p.caption, p.videoScript])).toEqual([["tips", "Three tips", "[Phone on a desk] Three tips today."], ["story", "A day with the phone", "hook"]]);
     expect(posts[1].hashtags).toEqual(["#kigali"]);
+    // At most three, cleaned (list marks, quotes, repeats and empty ones out); the first goes on the picture.
+    expect(posts[1].adHeadlines).toEqual(["Day one", "A day out", "Your day"]);
+    expect(posts[0].adHeadlines).toEqual(["Tips", "More tips"]);
   });
 });
 
@@ -123,7 +129,9 @@ describe("generatePackForSubject", () => {
     expect(rows.map((r) => [r.angle, r.network])).toEqual([["features", "instagram"], ["price", "facebook"], ["story", "tiktok"], ["tips", "instagram"], ["how-it-works", "tiktok"]]);
     // Scripts are held to the voiceover rules (timestamps out, lib/visuals/script.ts); the format BuPulse chose is saved.
     expect(rows.filter((r) => r.network === "tiktok").every((r) => r.videoScript === "Hook" && r.format === "video")).toBe(true);
-    expect(rows.filter((r) => r.network !== "tiktok").every((r) => r.videoScript === "" && r.format !== "video")).toBe(true);
+    // Picture posts keep their script too (to film a Reel by hand, or "Make a video" without writing one first).
+    expect(rows.filter((r) => r.network !== "tiktok").every((r) => r.videoScript === "Hook" && r.format !== "video")).toBe(true);
+    expect(rows.every((r) => Array.isArray(r.adHeadlines) && r.adHeadlines.length === 3)).toBe(true);
     expect(pack.contents).toHaveLength(5);
   });
 

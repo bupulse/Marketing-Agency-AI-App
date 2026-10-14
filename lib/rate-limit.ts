@@ -16,6 +16,7 @@ export const RATE_LIMITS = {
   interviewStep: { limit: 300, windowSeconds: 60 * 60 }, // marketing interview answers, skips, back, start, approve
   interviewAi: { limit: 60, windowSeconds: 60 * 60 }, // marketing interview AI calls (next question, summary), per company
   contentEdit: { limit: 120, windowSeconds: 60 * 60 },
+  contentRegenerate: { limit: 60, windowSeconds: 60 * 60 }, // "Generate again" on one post or piece, per company (each also uses a text generation)
   canvaOpen: { limit: 20, windowSeconds: 60 * 60 },
   canvaReturn: { limit: 30, windowSeconds: 60 * 60 },
   socialConnect: { limit: 30, windowSeconds: 60 * 60 }, // starting a social connection (OAuth or reminder account)

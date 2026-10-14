@@ -6,6 +6,8 @@ export interface TextRequest {
   prompt: string;
   /** When set, the provider must return JSON matching this JSON Schema. */
   jsonSchema?: Record<string, unknown>;
+  /** Longest answer allowed, in tokens (4096 when missing): long JSON answers such as a big content pack need more. */
+  maxOutputTokens?: number;
 }
 
 /** Token counts reported by the provider, for the cost ledger. */

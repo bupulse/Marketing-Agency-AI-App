@@ -45,6 +45,10 @@ export type ScriptRequest = {
   subject: { title: string; context: string | null } | null;
   angle: { label: string; brief: string } | null;
   caption: string;
+  /** The script being replaced ("Generate again"), so the new one is a fresh take. */
+  previous?: string | null;
+  /** "Do not mention any price..." for a post that does not show its price. */
+  priceRule?: string | null;
 };
 
 export function buildScriptPrompt(req: ScriptRequest): string {
@@ -59,6 +63,8 @@ export function buildScriptPrompt(req: ScriptRequest): string {
     req.angle && `The post's angle: ${req.angle.label}. ${req.angle.brief}`,
     "",
     fence("POST", req.caption),
+    req.previous?.trim() ? `${fence("PREVIOUS SCRIPT", req.previous)}\nWrite a clearly different take: another hook, other scenes, other words.` : null,
+    req.priceRule,
     "",
     `Write the video for this post. ${SCRIPT_GUIDE}`,
     `Return the scenes in order, ${SCRIPT_RULES.minScenes} to ${SCRIPT_RULES.maxScenes} of them.`,

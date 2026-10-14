@@ -16,6 +16,8 @@ import type { ComposeInput, EditInput } from "./types";
 import { composerMediaFor, isVideoPath, trimNote, videoFitsNetwork } from "@/lib/visuals/post-media";
 import { readyMedia } from "@/lib/visuals/service";
 import { CONTEST_NOTE, contestAfterEdit, contestBlocked } from "@/lib/content-flow/contest";
+import { addVersion, keepBaseline } from "@/lib/content-flow/post-versions";
+import { piecesOf } from "@/lib/content-flow/versions";
 
 /** A problem the owner can fix. `code` tells the action layer whether it was a missing thing, bad input or a race. */
 export class PublishingError extends Error {
@@ -30,7 +32,8 @@ export class PublishingError extends Error {
 
 const NOT_FOUND = () => new PublishingError("We could not find that post.", "not_found");
 
-export type Owner = { businessId: string; userId: string };
+/** The company (its account and business) and, when known, the person acting: their edits are named in a post's versions. */
+export type Owner = { businessId: string; userId: string; actorId?: string | null };
 
 /** Can this account be posted to (or reminded about) right now? */
 export function accountUsable(c: { status: string; postingMode: string }): boolean {
@@ -254,8 +257,14 @@ export async function updatePost(owner: Owner, postId: string, input: EditInput,
     update.lockedAt = null;
     update.lastError = null;
   }
+  // A change of the words keeps the post's versions (docs/CONTENT.md, "Versions"): the words before, then the new ones.
+  const wordsChanged = update.text !== post.text || data.hashtags.length !== post.hashtags.length || data.hashtags.some((h, i) => h !== post.hashtags[i]);
+  const content = wordsChanged && post.contentId ? await prisma.generatedContent.findFirst({ where: { id: post.contentId, businessId: owner.businessId }, select: { videoScript: true, adHeadlines: true } }) : null;
+  const before = piecesOf(post, content);
+  if (wordsChanged) await keepBaseline(prisma, post, before, now);
   const { count } = await prisma.post.updateMany({ where: { id: postId, businessId: owner.businessId, status: { in: [...EDITABLE] } }, data: update });
   if (count === 0) throw new PublishingError(NO_LONGER_EDITABLE, "conflict");
+  if (wordsChanged) await addVersion(prisma, post, { ...before, text: update.text as string, hashtags: data.hashtags }, { kind: "edit", actorId: owner.actorId }, new Date(Math.max(now.getTime(), Date.now())));
   return { status: (time?.status ?? post.status) as PostStatusName, scheduledAt: time ? time.scheduledAt : post.scheduledAt };
 }
 

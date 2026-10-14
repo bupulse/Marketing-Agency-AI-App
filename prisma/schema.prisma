@@ -143,6 +143,7 @@ model Business {
   faqs             KnowledgeFaq[]
   testimonials     Testimonial[]
   interview        MarketingInterview?
+  postVersions     PostVersion[]
 
   @@index([industryId])
   // The sales staff member the company is assigned to (StaffMember.id), from a referral link at sign-up or a sales
@@ -833,6 +834,7 @@ model Post {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   metrics        PostMetrics[]
+  versions       PostVersion[]
 
   @@unique([connectionId, externalId])
   @@index([status, scheduledAt])
@@ -841,6 +843,30 @@ model Post {
   @@index([businessId, status, publishedAt])
   @@index([businessId, createdAt])
   @@index([businessId, autoScheduledAt])
+}
+
+// A post's words at each change (docs/CONTENT.md, "Versions"): its first text, every edit, every "Generate again" and
+// every restore. Restoring adds a new version; none is overwritten. The newest 50 per post are kept.
+model PostVersion {
+  id             String   @id @default(cuid())
+  businessId     String
+  business       Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  postId         String
+  post           Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  kind           String // "original" | "edit" | "regenerate" | "restore"
+  part           String? // what "Generate again" wrote: "post" | "caption" | "script" | "headlines"
+  restoredFromId String? // the version a restore brought back
+  actorId        String?  @db.Uuid // the person who made the change; null for BuPulse's own text
+  title          String?
+  text           String
+  hashtags       String[]
+  // The post's content (GeneratedContent) pieces at that time: its video script and ad headlines.
+  videoScript    String   @default("")
+  adHeadlines    String[]
+  createdAt      DateTime @default(now())
+
+  @@index([postId, createdAt])
+  @@index([businessId, createdAt])
 }
 
 model PostMetrics {

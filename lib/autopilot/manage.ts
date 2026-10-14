@@ -15,6 +15,8 @@ import { ServiceDisabledError } from "@/lib/admin/switch";
 import { readKnowledge } from "@/lib/brand/schemas";
 import { knowledgeFacts } from "@/lib/business-info/facts";
 import { logError } from "@/lib/errors";
+import { addVersion, keepBaseline } from "@/lib/content-flow/post-versions";
+import { piecesOf } from "@/lib/content-flow/versions";
 import { approvePosts } from "@/lib/publishing/service";
 import { isNetwork } from "@/lib/social/registry";
 import type { Network } from "@/lib/social/types";
@@ -88,7 +90,7 @@ export async function regenerateGroup(userId: string, groupId: string): Promise<
   if (!business) return { ok: false, error: "We could not find your business." };
   const posts = await prisma.post.findMany({
     where: { groupId, businessId: business.id, source: "AUTOPILOT", status: { in: [...CHANGEABLE] } },
-    select: { id: true, text: true, network: true, format: true, playbookId: true, scheduledAt: true, productId: true, campaignId: true },
+    select: { id: true, businessId: true, title: true, text: true, hashtags: true, network: true, format: true, playbookId: true, scheduledAt: true, productId: true, campaignId: true, createdAt: true, updatedAt: true },
   });
   const idea = getIdea(posts[0]?.playbookId);
   if (posts.length === 0 || !idea) return { ok: false, error: "That post can no longer be regenerated." };
@@ -152,10 +154,14 @@ export async function regenerateGroup(userId: string, groupId: string): Promise<
     for (const post of posts) {
       const version = written.versions.find((v) => v.network === post.network);
       if (!version) continue;
-      await prisma.post.updateMany({
+      // The words before and after are kept as the post's versions (docs/CONTENT.md, "Versions").
+      const before = piecesOf(post, null);
+      await keepBaseline(prisma, post, before);
+      const { count } = await prisma.post.updateMany({
         where: { id: post.id, businessId: business.id, status: { in: [...CHANGEABLE] } },
         data: { text: version.text, hashtags: version.hashtags, title: version.title },
       });
+      if (count > 0) await addVersion(prisma, post, { ...before, text: version.text, hashtags: version.hashtags, title: version.title ?? null }, { kind: "regenerate", part: "post" });
     }
     return { ok: true };
   } catch (error) {

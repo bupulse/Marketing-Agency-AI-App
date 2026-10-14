@@ -4,9 +4,10 @@
 import "server-only";
 import { z } from "zod";
 import { ANGLES, type AngleId, type PackFormat } from "@/lib/studio/angles";
+import { AD_HEADLINE_COUNT, cleanHeadlines } from "@/lib/studio/headlines";
 import { MAX_HEADLINE_LENGTH } from "@/lib/studio/schemas";
 import { fitScript, SCRIPT_GUIDE } from "@/lib/visuals/script";
-import { normalizeHashtags, truncateSmart } from "@/lib/studio/variants";
+import { normalizeHashtags } from "@/lib/studio/variants";
 import type { Network } from "@/lib/social/types";
 import { buildPrompt, type BrandContext, type PromotionInput } from "./marketing";
 import { AIProviderError, type TextProvider, type TokenUsage } from "./types";
@@ -15,8 +16,8 @@ const postSchema = z.object({
   index: z.number().int().describe("The post's number from the list, starting at 1"),
   caption: z.string().describe("The post text without hashtags, written for its app and angle"),
   hashtags: z.array(z.string()).describe("Hashtags for its app, each starting with #"),
-  videoScript: z.string().describe("For video posts: the video's scenes, one per line, each a [shot direction] then the spoken line; empty otherwise"),
-  headline: z.string().describe(`A short headline for the picture, at most ${MAX_HEADLINE_LENGTH} characters`),
+  videoScript: z.string().describe("The post's 30-second vertical video script: its scenes, one per line, each a [shot direction] then the spoken line"),
+  adHeadlines: z.array(z.string()).describe(`Exactly ${AD_HEADLINE_COUNT} different ad headlines for this post, each at most ${MAX_HEADLINE_LENGTH} characters; the first also goes on its picture`),
 });
 
 export const packSchema = z.object({ posts: z.array(postSchema).min(1) });
@@ -60,8 +61,8 @@ export function buildPackPrompt(brand: BrandContext, input: PromotionInput, slot
     `Write ${slots.length} posts, one for each line below, in this order:`,
     ...list,
     "",
-    "For each post return its index, caption (without hashtags), hashtags, videoScript (empty unless it is a video post) and a short headline for its picture. No years, dates or other numbers in hashtags unless they appear in the details above.",
-    slots.some((s) => s.format === "video") ? `Every video post's videoScript: ${SCRIPT_GUIDE} Write it from that post's own caption and angle.` : "",
+    `For each post return its index, caption (without hashtags), hashtags, videoScript (a 30-second vertical video for it; a video post's is the video itself) and adHeadlines: exactly ${AD_HEADLINE_COUNT} different ad headlines, each at most ${MAX_HEADLINE_LENGTH} characters, the first also going on its picture. No years, dates or other numbers in hashtags unless they appear in the details above.`,
+    `Every post's videoScript: ${SCRIPT_GUIDE} Write it from that post's own caption and angle.`,
   ]
     .filter((l) => l !== "")
     .join("\n");
@@ -71,7 +72,13 @@ export interface WrittenPost extends PackSlot {
   caption: string;
   hashtags: string[];
   videoScript: string;
-  headline: string;
+  /** Up to three (exactly three when the model kept to the prompt); the first goes on the picture. */
+  adHeadlines: string[];
+}
+
+/** Room for the answer: every post brings its caption, hashtags, video script and headlines (about 600 tokens). */
+export function packOutputTokens(posts: number): number {
+  return Math.min(16_384, Math.max(4096, 700 * posts));
 }
 
 /** Writes the pack in one call. Posts the model left out or garbled are dropped (and not charged by the caller). */
@@ -83,7 +90,7 @@ export async function writePack(
   moment?: string | null,
   extra: readonly string[] = [],
 ): Promise<{ posts: WrittenPost[]; provider: string; model: string; usage: TokenUsage }> {
-  const result = await provider.generate({ system: PACK_SYSTEM, prompt: buildPackPrompt(brand, input, slots, moment, extra), jsonSchema });
+  const result = await provider.generate({ system: PACK_SYSTEM, prompt: buildPackPrompt(brand, input, slots, moment, extra), jsonSchema, maxOutputTokens: packOutputTokens(slots.length) });
   let parsed: z.infer<typeof packSchema>;
   try {
     parsed = packSchema.parse(JSON.parse(result.text.trim().replace(/^```(?:json)?\s*|\s*```$/g, "")));
@@ -107,8 +114,8 @@ export function readPack(parsed: z.infer<typeof packSchema>, slots: readonly Pac
       ...slot,
       caption,
       hashtags: normalizeHashtags(post.hashtags).slice(0, slot.network === "instagram" ? 15 : 5),
-      videoScript: slot.format === "video" && post.videoScript.trim() ? fitScript(post.videoScript.trim()) : "",
-      headline: truncateSmart(post.headline.trim(), MAX_HEADLINE_LENGTH),
+      videoScript: post.videoScript.trim() ? fitScript(post.videoScript.trim()) : "",
+      adHeadlines: cleanHeadlines(post.adHeadlines),
     });
   });
   return out;

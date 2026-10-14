@@ -136,7 +136,7 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
       <Dialog open={open} onOpenChange={(o) => !pending && setOpen(o)} title="Create today's content" description={`Posts for ${subjectName}, for today. They wait for your OK on this page (or go out on their own where your settings say so).`}>
         <div className="@container flex flex-col gap-5">
           <div role="radiogroup" aria-label="How to make it" className="grid gap-3 @md:grid-cols-2">
-            <Option selected={!manual} onSelect={() => { setManual(false); setMode("ai"); }} icon={<Wand2 className="size-5" />} title="AI makes it for me" text="Captions for each app from your Knowledge base, then pictures and videos from your Gallery first." />
+            <Option selected={!manual} onSelect={() => { setManual(false); setMode("ai"); }} icon={<Wand2 className="size-5" />} title="AI makes it for me" text="A caption, a 30-second video script and 3 ad headlines for each app, from your Knowledge base; then pictures and videos, your Gallery first." />
             <Option selected={manual} onSelect={() => { setManual(true); setMode("describe"); }} icon={<PenLine className="size-5" />} title="I'll create it" text="Describe what to post today, or bring your own photos and caption." />
           </div>
 

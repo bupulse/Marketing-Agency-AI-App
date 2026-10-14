@@ -40,7 +40,7 @@ async function owner(permission?: Permission, feature: FeatureKey | null = "cale
   const user = await requireActiveUser(permission, "throw");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (business && feature) await assertFeature(business.id, feature);
-  return business ? { businessId: business.id, userId: user.id } : null;
+  return business ? { businessId: business.id, userId: user.id, actorId: user.actorId } : null;
 }
 
 async function limited(userId: string, name: keyof typeof PUBLISHING_LIMITS, rule: RateLimitRule = PUBLISHING_LIMITS[name]): Promise<ActionFailure | null> {

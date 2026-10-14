@@ -5,6 +5,7 @@ const prisma = vi.hoisted(() => ({
   product: { findFirst: vi.fn() },
   campaign: { findFirst: vi.fn() },
   generatedContent: { findFirst: vi.fn() },
+  postVersion: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn() },
   contentVisual: { findMany: vi.fn() },
   business: { findUnique: vi.fn(), update: vi.fn() },
   autopilotSettings: { findUnique: vi.fn() },
@@ -58,6 +59,7 @@ function code(promise: Promise<unknown>) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  prisma.postVersion.findMany.mockResolvedValue([]);
   prisma.business.findUnique.mockResolvedValue({ timezone: "Africa/Kigali" });
   prisma.autopilotSettings.findUnique.mockResolvedValue(null);
   prisma.connection.findMany.mockResolvedValue([facebook]);
@@ -241,6 +243,10 @@ describe("actions on existing posts are scoped to the business (IDOR)", () => {
     hashtags: [],
     mediaPaths: [],
     scheduledAt: new Date("2026-10-09T07:00:00Z"),
+    title: null,
+    contentId: null,
+    createdAt: new Date("2026-10-06T07:00:00Z"),
+    updatedAt: new Date("2026-10-06T07:00:00Z"),
     connection: { id: "c-fb", displayName: "Page", provider: "facebook", status: "ACTIVE", postingMode: "AUTO" },
     ...extra,
   });
@@ -428,7 +434,7 @@ describe("Instagram photo size", () => {
 });
 
 describe("owner edits are remembered, so BuPulse never replaces or redraws them", () => {
-  const post = { id: "p1", businessId: "b1", connectionId: "c-fb", network: "facebook", status: "PENDING_APPROVAL", format: "POST", text: "Hello", hashtags: [], mediaPaths: [], scheduledAt: null, connection: { id: "c-fb", displayName: "Page", provider: "facebook", status: "ACTIVE", postingMode: "AUTO" } };
+  const post = { id: "p1", businessId: "b1", connectionId: "c-fb", network: "facebook", status: "PENDING_APPROVAL", format: "POST", title: null, text: "Hello", hashtags: [], mediaPaths: [], scheduledAt: null, contentId: "content-1", createdAt: new Date("2026-10-06T07:00:00Z"), updatedAt: new Date("2026-10-06T07:00:00Z"), connection: { id: "c-fb", displayName: "Page", provider: "facebook", status: "ACTIVE", postingMode: "AUTO" } };
 
   it("an edit, a move or taking it back to review sets ownerEditedAt", async () => {
     prisma.post.findFirst.mockResolvedValue(post);
@@ -436,6 +442,27 @@ describe("owner edits are remembered, so BuPulse never replaces or redraws them"
     await reschedulePost(owner, "p1", new Date("2026-10-20T10:00:00Z"), now);
     await unschedulePost(owner, "p1", now);
     for (const call of prisma.post.updateMany.mock.calls) expect(call[0].data.ownerEditedAt).toEqual(now);
+  });
+
+  it("an edit of the words keeps the versions: BuPulse's first text, then the edit, with its script and headlines", async () => {
+    prisma.post.findFirst.mockResolvedValue(post);
+    prisma.post.updateMany.mockResolvedValue({ count: 1 });
+    prisma.generatedContent.findFirst.mockResolvedValue({ videoScript: "[Shop] Hello.", adHeadlines: ["A", "B", "C"] });
+    prisma.postVersion.findFirst.mockResolvedValue(null);
+    prisma.postVersion.findMany.mockResolvedValue([]);
+    await updatePost({ ...owner, actorId: "person-1" }, "p1", { text: "Mine", hashtags: ["#mine"], mediaPaths: [], when: { mode: "keep" } }, now);
+    expect(prisma.generatedContent.findFirst.mock.calls[0][0].where).toEqual({ id: "content-1", businessId: "b1" });
+    const [first, second] = prisma.postVersion.create.mock.calls.map((c) => c[0].data);
+    expect(first).toMatchObject({ businessId: "b1", postId: "p1", kind: "original", text: "Hello", hashtags: [], videoScript: "[Shop] Hello.", adHeadlines: ["A", "B", "C"], createdAt: post.createdAt });
+    expect(second).toMatchObject({ businessId: "b1", postId: "p1", kind: "edit", actorId: "person-1", text: "Mine", hashtags: ["#mine"], videoScript: "[Shop] Hello.", adHeadlines: ["A", "B", "C"] });
+  });
+
+  it("a change of time or photos only keeps no version", async () => {
+    prisma.post.findFirst.mockResolvedValue(post);
+    prisma.post.updateMany.mockResolvedValue({ count: 1 });
+    await updatePost(owner, "p1", { text: "Hello", hashtags: [], mediaPaths: [], when: { mode: "keep" } }, now);
+    expect(prisma.postVersion.findFirst).not.toHaveBeenCalled();
+    expect(prisma.postVersion.create).not.toHaveBeenCalled();
   });
 
   it("scheduling Studio content by hand replaces only its untouched drafts, in the same transaction", async () => {

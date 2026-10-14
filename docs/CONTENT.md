@@ -181,6 +181,41 @@ photos; a video idea whose product or campaign has an album video now posts that
 **Permissions**: the `content` permission, the `content` and `calendar` features, 30 runs an hour per company.
 
 
+## Caption, script and headlines; Generate again; Versions
+
+Every post BuPulse writes ("Create today's content", content packs, `/api/generate`) comes with its caption and
+hashtags, a 30-second vertical video script (`SCRIPT_GUIDE`, for picture posts too: the owner can film a Reel, and
+"Make a video" then needs no text generation) and **exactly three ad headlines** (`lib/studio/headlines.ts`; the first
+also goes on the picture), in the business's content language (Brand -> Content language, Kinyarwanda included) and
+brand voice. The single writer (`lib/ai/marketing.ts`) treats fewer than three usable headlines as a failed answer
+(retryable, the credit goes back); a pack post keeps the ones that are usable. The pack asks for more output room per
+post (`packOutputTokens`, `TextRequest.maxOutputTokens`).
+
+The post's detail (day view, Today, calendar; `components/content-flow/post-writing.tsx`) shows the script and the
+three headlines, each with Copy, and the caption's Copy. Code: `lib/content-flow/versions.ts` (pure),
+`post-versions.ts`, `post-writing.ts`, `app/dashboard/content/post-actions.ts`.
+
+- **Generate again**: the whole post, the caption, the video script or the ad headlines (`rewritePost`), for a post
+  BuPulse wrote (it has content) that has not gone out. One text generation each (ledger feature `regenerate`), given
+  back when the AI fails, gives fewer than three headlines, or the post changed meanwhile (guarded by its text and
+  hashtags, so a picture arriving does not cancel it). The post keeps its angle, app and format; the old text is in
+  the prompt for a fresh take; a post that did not show its price never gets one (the day run's price rule). A contest
+  keeps its caption; a TikTok / YouTube reminder whose text is the script has no separate caption. What is left this
+  month shows when it is 5 or fewer, or a tenth of the plan; with none left the buttons wait and the plans are offered.
+  Pictures and videos are not touched and the post is not marked as owner-edited, so a picture still being drawn
+  still goes on it.
+- **Versions** (`PostVersion`, migration `20261019120000_post_versions`): every change of a post's words keeps the one
+  before and the new one: composer edits (`updatePost`), Generate again, Autopilot's Regenerate and restores. A
+  version holds the title, text, hashtags, video script and headlines. The first is "First version" (dated when the
+  post was made); a change made elsewhere (a confirmed contest) is caught up as "Edited" before the next one. The list
+  shows the newest first with the time, who did it ("you", a teammate's name) and a preview ("Show all of it" for the
+  rest). **Restore** makes that version the newest one (`restorePostVersion`), never deleting any; a scheduled contest
+  restored away from its confirmed prize goes back to waiting. The newest 50 per post are kept. Read only once the post
+  went out.
+- **Permissions**: the `content` permission (Members included) and the `content` feature; 60 Generate again an hour
+  per company, restores under `contentEdit`. Every read and write is scoped to the business, versions by business and
+  post.
+
 ## Picture or video: BuPulse decides (`format.ts`, pure)
 
 Owner decision (13 October 2026): "the AI decides whether to make video or image content; most of the time TikTok
@@ -360,6 +395,9 @@ is claimed by compare-and-set on `Business.contentSummarySentAt`, so two runs ne
 The in-app notice on the Content page covers the same posts for 24 hours.
 
 ## Data
+
+Migration `20261019120000_post_versions`: the `PostVersion` table (business, post, kind, part, restored from, the
+person, the words), RLS on and no grants, cascading with the post and the business.
 
 Migration `20261017090000_content_flow_v3` (after `20261016140000_content_packs`): `GeneratedContent.forDate` (DATE),
 `mode` (CHECK ai | describe | own), `brief`, index `(businessId, forDate)`. Columns only.
