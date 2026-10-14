@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { featureLabel, FEATURES, isFeatureKey, sortFeatureKeys, validateFeatureSet, withPrerequisites, type FeatureKey } from "@/lib/features";
 import { addMonths as addMonthsUtc } from "@/lib/billing/period";
+import { cardUsdCents } from "@/lib/region-format";
 import { SEATS_MAX, SEATS_MIN, VIDEO_PLAN_SECONDS, VOICE_PLAN_CHARACTERS, type PlanLimits, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit } from "@/lib/plans";
 
 /** A yearly custom plan costs this many months (the regional plans' rule: yearly = 10 months). */
@@ -317,6 +318,19 @@ export function selfServeFeatures(owned: readonly FeatureKey[], prices: readonly
   return FEATURES.filter((f) => f.status === "built" && f.key !== "managed" && !has.has(f.key) && withPrerequisites([f.key]).every((k) => has.has(k) || priced(k))).map((f) => f.key);
 }
 
+// ---- card payment of an offer or added features ----------------------------------------------------------------------
+
+/**
+ * What an offer (or added features) costs by card: its price converted to US dollars with the same rule as the card
+ * price of an RWF plan (lib/region-format.ts cardUsdCents: the Settings USD->RWF rate plus the card margin, rounded up to
+ * whole dollars). An offer priced in USD (GLOBAL) is charged as it is. Pure: Billing shows it, the server charges it.
+ */
+export type OfferCardQuote = { usdCents: number; quoteMinor: number; quoteCurrency: string; usdToRwf: number; marginPercent: number };
+export function offerCardQuote(minor: number, currency: string, usdToRwf: number, marginPercent: number): OfferCardQuote {
+  const cur = currency.toUpperCase();
+  return { usdCents: cardUsdCents(minor, cur, usdToRwf, marginPercent), quoteMinor: minor, quoteCurrency: cur, usdToRwf, marginPercent: cur === "USD" ? 0 : marginPercent };
+}
+
 // ---- the request form: what the client already has ------------------------------------------------------------------
 
 /** The features ticked and locked on the request form: the plan's own, with their prerequisites. */
@@ -451,7 +465,7 @@ export type ClientOfferView = {
   lines: PricedLine[];
   note: string | null;
   validUntil: string | null;
-  payMethod: "momo" | "invoice" | null;
+  payMethod: "momo" | "invoice" | "card" | null;
   invoiceId: string | null;
   /** Set for features added to the running plan: pay `totalMinor` now, then `nextRenewalMinor` a period from `renewsOn`. */
   addition: { addonMinor: number; nextRenewalMinor: number; renewsOn: string; daysLeft: number; periodDays: number; currentPlanName: string; selfServe: boolean } | null;
@@ -492,7 +506,7 @@ export function toClientOffer(o: {
     lines: o.lines,
     note: o.note,
     validUntil: o.validUntil ? new Date(o.validUntil).toISOString() : null,
-    payMethod: o.payMethod === "momo" || o.payMethod === "invoice" ? o.payMethod : null,
+    payMethod: o.payMethod === "momo" || o.payMethod === "invoice" || o.payMethod === "card" ? o.payMethod : null,
     invoiceId: o.invoiceId,
     addition: o.addition ? { addonMinor: o.addition.addonMinor, nextRenewalMinor: o.addition.nextRenewalMinor, renewsOn: o.addition.periodEnd, daysLeft: o.addition.daysLeft, periodDays: o.addition.periodDays, currentPlanName: o.addition.currentPlanName, selfServe: o.addition.selfServe } : null,
   };

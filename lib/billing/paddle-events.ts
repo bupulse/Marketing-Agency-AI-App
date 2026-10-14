@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { settleInvoiceFromCardPayment } from "@/lib/invoices/service";
 import { cardPaymentOf } from "@/lib/invoices/shared";
 import { logError } from "@/lib/errors";
+import { applyOfferCardPayment } from "@/lib/offers/card";
 import type { BillingWebhook } from "./types";
 
 // What a stored Paddle event does. Shared by the webhook route (first delivery and Paddle's retries) and the admin's
@@ -41,7 +42,12 @@ export async function processPaddleEvent(webhook: BillingWebhook): Promise<Paddl
     if (outcome === "unknown_user") note = "ignored: no matching account";
     if (outcome === "stale") note = "ignored: older than the stored state";
   }
-  if (webhook.type === "transaction.completed") await settleInvoice(webhook.payload);
+  if (webhook.type === "transaction.completed") {
+    // A custom plan offer or added features paid by card (lib/offers/card.ts): switched on here; never an invoice match.
+    const offerNote = await applyOfferCardPayment((webhook.payload as { data?: unknown } | null)?.data);
+    if (offerNote) note = note ? `${note}; ${offerNote}` : offerNote;
+    else await settleInvoice(webhook.payload);
+  }
   return { status: "processed", note };
 }
 

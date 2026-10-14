@@ -60,8 +60,9 @@ was not a cause (it defaults to Paddle).
 
 Card routes: plans → `startCheckout` (auto-renewing Paddle subscription, activated by the webhooks); invoices → the
 same checkout for the invoice's plan and interval ("Pay online" in the invoice email links to Billing; a custom plan's
-invoice shows card disabled with "ask us for a card link"); offers and added features → "Ask us for a card link"
-(Paddle cannot take a custom price, `docs/OFFERS.md`). Renewals: "Renewing" below.
+invoice shows card disabled with "ask us for a card link"); offers and added features → a one-off Paddle transaction for
+the price converted to USD (`lib/offers/card.ts`, `docs/OFFERS.md` "Card"; hidden when card is not set up). Renewals:
+"Renewing" below.
 
 ## Renewing (decided 13 October 2026)
 

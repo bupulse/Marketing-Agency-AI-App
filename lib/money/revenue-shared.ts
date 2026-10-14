@@ -56,6 +56,17 @@ export function toRevenueEntry(row: Row): RevenueEntry | null {
     const items = Array.isArray(data.items) ? (data.items as Data[]) : [];
     priceId = str((items[0]?.price as Data | undefined)?.id) ?? str(items[0]?.price_id);
     localMinor = m.cents;
+    // A custom plan offer or added features paid by card (lib/offers/card.ts): the quote it paid (RWF in Rwanda) is
+    // what the client bought; its USD value is the card payment's, net, like any card payment.
+    const custom = (data.custom_data ?? {}) as Data;
+    const quoteMinor = int(custom.quoteMinor);
+    const quoteCurrency = str(custom.quoteCurrency)?.toUpperCase();
+    if (custom.kind === "offer" && quoteMinor !== null && quoteCurrency && m.kind === "payment") {
+      localMinor = quoteMinor;
+      currency = quoteCurrency;
+      plan = str(custom.plan);
+      partial = custom.partial === 1 || custom.partial === "1";
+    }
   }
   const sign = m.kind === "refund" ? -1 : 1;
   // One key per payment or refund, whatever event carried it (a refund can arrive as adjustment.created and

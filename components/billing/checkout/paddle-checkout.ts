@@ -58,7 +58,8 @@ export async function openPaddleCheckout(config: CheckoutConfig, theme: "light" 
   }
 
   paddle.Checkout.open({
-    items: [{ priceId: config.priceId, quantity: 1 }],
+    // A one-off payment (custom plan offer, added features) is a transaction the server made for the exact amount.
+    ...(config.transactionId ? { transactionId: config.transactionId } : { items: [{ priceId: config.priceId, quantity: 1 }] }),
     // Paddle takes an existing customer id or an email, never both.
     customer: config.customerId ? { id: config.customerId } : { email: config.customerEmail },
     customData: config.customData,

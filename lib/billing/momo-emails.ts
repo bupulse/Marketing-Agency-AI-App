@@ -83,10 +83,11 @@ export async function sendInvoiceReviewAlertEmail(p: { number: string; company: 
 }
 
 /** The client's confirmation: the plan is on, until when. */
-export async function sendPlanActiveEmail(to: ClientRecipient, p: { planName: string; interval: string; amountMinor: number; currency: string; reference: string; periodEnd: Date }): Promise<boolean> {
+export async function sendPlanActiveEmail(to: ClientRecipient, p: { planName: string; interval: string; amountMinor: number; currency: string; reference: string; periodEnd: Date; /** A card payment of an offer or added features (lib/offers/card.ts): the amount charged, in USD. */ card?: { usdCents: number } }): Promise<boolean> {
+  const paid = p.card ? `card payment of ${formatMomoAmount(p.card.usdCents, "USD")} (for ${formatMomoAmount(p.amountMinor, p.currency)}, reference ${p.reference})` : `Mobile Money payment of ${formatMomoAmount(p.amountMinor, p.currency)} (reference ${p.reference})`;
   const { html, text } = renderEmail({
     heading: `Your ${p.planName} plan is active`,
-    intro: `${first(to.name)}we have received your Mobile Money payment of ${formatMomoAmount(p.amountMinor, p.currency)} (reference ${p.reference}). Your ${p.planName} plan is active until ${longDate(p.periodEnd)}.`,
+    intro: `${first(to.name)}we have received your ${paid}. Your ${p.planName} plan is active until ${longDate(p.periodEnd)}.`,
     blocks: [
       { label: "Plan", value: `${p.planName}, ${p.interval === "YEAR" ? "yearly" : "monthly"}` },
       { label: "Paid until", value: longDate(p.periodEnd) },

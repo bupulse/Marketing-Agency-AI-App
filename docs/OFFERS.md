@@ -77,12 +77,34 @@ are closed, so a proof submitted at the same moment either stops the withdrawal 
 
 ## Card
 
-Paddle cannot take a custom price through the existing adapter (no per-offer price creation, and the Rwanda card
-prices are not in Paddle yet, docs/REGIONS.md). The offer's "Pay by card" button therefore shows "Ask us for a card
-link" with the support address, and an offer invoice hides its card button. The seam: `offerCardCheckoutAvailable()`
-in `lib/offers/service.ts`. To add it: create a one-off Paddle price for the offer (`createPaddlePrice` in
-`lib/billing/paddle-catalog.ts`), store its id on the custom plan (`paddleMonthlyPriceId` / `paddleYearlyPriceId`), open
-checkout for it, and mark the offer paid when the webhook applies the subscription (same steps as `markOfferPaidInTx`).
+Automatic since 14 October 2026 (`lib/offers/card.ts`), for a custom plan offer and for added features alike:
+
+1. **The amount.** The offer's price (RWF in Rwanda) is converted with the card rule of RWF plans
+   (`offerCardQuote` = `cardUsdCents`: Settings USD→RWF rate plus the card margin, rounded up to whole dollars); an
+   offer priced in USD (GLOBAL) is charged as it is. Billing shows it before paying: "≈ $24 by card (RWF 32,000),
+   charged in US dollars once (no subscription)".
+2. **The checkout.** "Pay by card" accepts the offer if needed (`acceptOffer`, method `card`) and
+   `startOfferCardCheckout` creates a **one-off Paddle transaction** for that exact amount: a non-catalog item
+   (`createOneOffTransaction` in `lib/billing/paddle.ts`, `POST /transactions` with an inline price and product; nothing
+   is added to the Paddle catalog). Paddle.js opens it by transaction id, so the browser cannot change the amount. Its
+   custom data carries the offer, the user, the USD amount and the RWF quote, **signed** (`qsig`, `lib/billing/signing.ts`).
+   The amount is quoted again on the server: a client who saw another amount (the rate or the offer changed) gets
+   "The card price is now $X" with the new amount to confirm, and nothing is charged.
+3. **The webhook** (`transaction.completed`, `processPaddleEvent` → `applyOfferCardPayment`): checks both signatures,
+   that the paid subtotal and currency are exactly the signed quote, that the offer is the client's, still accepted,
+   and still costs the quoted amount (the stored quote wins over a later rate). Then, in one transaction, exactly what a
+   confirmed Mobile Money payment does: offer `paid` (`paidBy card:<transaction>`), custom plan on (added features keep
+   the period end; a full offer starts its period like Mobile Money), its unsubmitted Mobile Money payments closed and
+   its invoice voided; audited `offer_paid_card`; the "plan is active" email. A replay finds the offer paid and changes
+   nothing. Anything that cannot be applied (wrong amount, unsigned, offer withdrawn or paid another way, period
+   changed) is logged to ErrorLog `billing.offer_card` as **refund needed** (the money arrived in Paddle).
+4. **Revenue.** The transaction is a card payment in the books like any other (net USD from Paddle), with the RWF quote
+   as its local amount, so the Revenue pages, the leaderboard and the sales TV count it (exact in RWF).
+5. **No card**: when card payments are not set up, switched off in Admin → Services, or not offered in the company's
+   region, the card button is not shown; Mobile Money and invoice stay. A card plan that still renews cannot take an
+   offer by card (as by Mobile Money).
+
+The custom plan then renews by hand (Mobile Money, or card in its last 7 days at the plan's card price), as before.
 
 ## Adding features to a paid plan (decided 13 October 2026)
 
@@ -118,12 +140,11 @@ total (plan + added features).
 - **Client, self-serve:** Billing → **Add features** (`components/billing/add-features.tsx`, `startFeatureAddition`):
   the plan's features ticked and locked; only built features priced in the region (their prerequisites too; never
   Managed) can be ticked; an instant quote (now, and from the renewal date); **Pay with Mobile Money**, **Get an
-  invoice**, or **Pay by card** ("Ask us for a card link"). It makes and accepts an add-features offer (`createdBy
+  invoice**, or **Pay by card** (automatic, "Card" above). It makes and accepts an add-features offer (`createdBy
   client:<id>`, audited `self_serve_addition`); a new choice replaces the client's own unpaid one (not after a payment
   was reported); an open offer from the team must be answered first. Anything else: **Request a custom change**.
-- **Card:** the Paddle adapter has no one-time charge of a custom amount, so card is "Ask us for a card link"
-  (`offerCardCheckoutAvailable()` stays false).
-- Tests: `tests/offers/addition.test.ts`, `tests/billing/renewal.test.ts`.
+- **Card:** a one-off Paddle charge of the prorated amount converted to USD ("Card" above).
+- Tests: `tests/offers/addition.test.ts`, `tests/billing/renewal.test.ts`, `tests/offers/card.test.ts`.
 
 ## Custom plan requests (R5)
 

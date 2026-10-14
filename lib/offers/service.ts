@@ -445,7 +445,8 @@ export async function clientOffer(businessId: string, now: Date = new Date()): P
   return clientViewOf(adminView(row, ""));
 }
 
-export type PayMethod = "momo" | "invoice";
+/** card: the offer is accepted here and paid in the card checkout (lib/offers/card.ts startOfferCardCheckout). */
+export type PayMethod = "momo" | "invoice" | "card";
 export type AcceptResult = { offer: ClientOfferView; payment: ManualPaymentView | null; invoiceId: string | null };
 
 const clientCtx = (actorId: string, ip: string | null = null): AdminContext => ({ actor: `client:${actorId}`, ip, viaApi: false });
@@ -464,7 +465,7 @@ function customPrices(adjustedMinor: number, interval: BillingInterval) {
  * number, or Mark as paid).
  */
 export async function acceptOffer(input: { userId: string; actorId: string; businessId: string; offerId: string; method: string; ip?: string | null }, now: Date = new Date()): Promise<AcceptResult> {
-  const method: PayMethod | null = input.method === "momo" || input.method === "invoice" ? input.method : null;
+  const method: PayMethod | null = input.method === "momo" || input.method === "invoice" || input.method === "card" ? input.method : null;
   if (!method) throw new OfferError("Choose how you want to pay.");
   const row = await prisma.planOffer.findFirst({ where: { id: input.offerId, businessId: input.businessId } });
   if (!row || row.status === "draft") throw new OfferError("We could not find that offer. Open Billing again.");
@@ -473,6 +474,7 @@ export async function acceptOffer(input: { userId: string; actorId: string; busi
   if (row.status === "expired" || isOfferExpired(row, now)) throw new OfferError("This offer has expired. Ask us for a new one and we will send it again.");
   const { region } = await companyPlans(input.businessId);
   if (method === "momo" && !region.paymentMethods.includes("momo")) throw new OfferError("Mobile Money is not available where your business is. Choose Pay by invoice.");
+  if (method === "card" && !region.paymentMethods.includes("card")) throw new OfferError("Card payments are not available where your business is. Pay by Mobile Money or invoice.");
   if (row.currency.toUpperCase() !== region.currency.toUpperCase()) throw new OfferError("This offer was made for another region. Ask us for a new one.");
   const ctx = clientCtx(input.actorId, input.ip ?? null);
   const planKey = customPlanKeyFor(row.id);
@@ -531,6 +533,8 @@ export async function acceptOffer(input: { userId: string; actorId: string; busi
 
   const fresh = await prisma.planOffer.findUnique({ where: { id: row.id } });
   if (!fresh || fresh.status !== "accepted") throw new OfferError("This offer is no longer open. Ask us for a new one.");
+  // Card: accepted; the checkout itself is opened by startOfferCardCheckout (lib/offers/card.ts).
+  if (method === "card") return { offer: clientViewOf(adminView(fresh, "")), payment: null, invoiceId: null };
   if (method === "momo") {
     try {
       const payment = await startOfferPayment({ userId: input.userId, offerId: row.id, now });
@@ -635,7 +639,7 @@ export async function selfServeAddition(businessId: string, now: Date = new Date
  * anything else goes through "Request a custom change".
  */
 export async function startFeatureAddition(input: { userId: string; actorId: string; businessId: string; features: unknown; method: string; ip?: string | null }, now: Date = new Date()): Promise<AcceptResult> {
-  const method: PayMethod | null = input.method === "momo" || input.method === "invoice" ? input.method : null;
+  const method: PayMethod | null = input.method === "momo" || input.method === "invoice" || input.method === "card" ? input.method : null;
   if (!method) throw new OfferError("Choose how you want to pay.");
   const ticked = Array.isArray(input.features) ? input.features.filter((k): k is FeatureKey => isFeatureKey(k)).slice(0, 40) : [];
   if (ticked.length === 0) throw new OfferError("Tick at least one feature to add.");
@@ -680,11 +684,6 @@ export async function startFeatureAddition(input: { userId: string; actorId: str
     throw error;
   }
   return acceptOffer({ userId: input.userId, actorId: input.actorId, businessId: input.businessId, offerId: id, method, ip: input.ip }, now);
-}
-
-/** Card payment of an offer: Paddle cannot take a custom price through the adapter yet (docs/OFFERS.md, "Card"). */
-export function offerCardCheckoutAvailable(): boolean {
-  return false;
 }
 
 // ---- the admin editor ---------------------------------------------------------------------------------------------

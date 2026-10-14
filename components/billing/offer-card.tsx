@@ -81,7 +81,7 @@ export function OfferCard({ offer, actions, preview = false }: { offer: ClientOf
 
       {offer.status === "accepted" && !preview && (
         <p className="text-sm text-muted">
-          {offer.payMethod === "invoice" ? "Your invoice is below. " : "Pay by Mobile Money below. "}
+          {offer.payMethod === "invoice" ? "Your invoice is below. " : offer.payMethod === "card" ? "Pay by card below. " : "Pay by Mobile Money below. "}
           {addition ? "The added features switch on as soon as the payment is confirmed; your period end does not change." : "Your custom plan switches on as soon as the payment is confirmed. Until then your current plan stays as it is."}
         </p>
       )}

@@ -23,6 +23,8 @@ import { companyPlans, type RegionalPlan } from "@/lib/region-prices";
 import { currencyNote } from "@/lib/region-format";
 import { clientInvoices, openInvoiceOf, payableView } from "@/lib/invoices/service";
 import { clientOffer, selfServeAddition, staleAdditionNotice } from "@/lib/offers/service";
+import { cardQuoteOf, offerCardReady } from "@/lib/offers/card";
+import { getSettings } from "@/lib/admin/settings";
 import { renewalState } from "@/lib/billing/renewal";
 import { AddFeatures } from "@/components/billing/add-features";
 import type { Renewal } from "@/components/billing/plan-actions";
@@ -105,6 +107,11 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       : undefined;
   // "Add features" to the running plan (docs/OFFERS.md): a Mobile Money plan, with no payment or team offer in progress.
   const addition = paid && !pastDue && momoPayment?.status !== "pending" && (!offer || offer.addition?.selfServe) ? await selfServeAddition(business.id, now).catch(() => null) : null;
+  // Card for an offer or added features: the price converted like an RWF plan's card price (lib/offers/card.ts); not
+  // shown at all when card payments are not set up or switched off.
+  const cardForOffers = await offerCardReady(region.paymentMethods).catch(() => false);
+  const cardRate = cardForOffers ? await getSettings().then((st) => ({ usdToRwf: st.usdToRwf, marginPercent: st.cardMarginPercent })) : null;
+  const offerCard = offer && cardForOffers ? await cardQuoteOf(offer.totalMinor, offer.currency).then((q) => ({ usdCents: q.usdCents, quoteMinor: q.quoteMinor, currency: q.quoteCurrency })).catch(() => null) : null;
   const staleAddition = offer ? null : await staleAdditionNotice(business.id, now).catch(() => null);
   const highlighted = typeof query.invoice === "string" ? query.invoice : null;
   const checkoutSuccess = query.checkout === "success";
@@ -154,7 +161,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
           offer={offer}
           actions={
             offer.status === "sent" || (offer.status === "accepted" && !(momoPayment?.status === "pending" && momoPayment.submitted)) ? (
-              <OfferActions offerId={offer.id} momo={methodState(region.paymentMethods.includes("momo"), momoReady)} card={region.paymentMethods.includes("card")} accepted={offer.status === "accepted"} method={offer.payMethod} contactEmail={site.email} />
+              <OfferActions offerId={offer.id} momo={methodState(region.paymentMethods.includes("momo"), momoReady)} card={offerCard} accepted={offer.status === "accepted"} method={offer.payMethod} />
             ) : undefined
           }
         />
@@ -238,8 +245,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
           data={addition.ok ? { current: { ...addition.current, features: [...addition.current.features] }, interval: addition.interval, periodEnd: addition.periodEnd, region: addition.region, prices: addition.prices, addable: addition.addable } : null}
           unavailable={addition.ok ? null : addition.reason}
           momo={addition.ok ? methodState(regionHas("momo"), momoReady) : regionHas("momo") ? "soon" : "off"}
-          card={regionHas("card") ? "soon" : "off"}
-          contactEmail={site.email}
+          cardRate={cardForOffers && addition.ok ? cardRate : null}
           now={now.toISOString()}
         />
       )}

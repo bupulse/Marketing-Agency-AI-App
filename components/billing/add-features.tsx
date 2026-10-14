@@ -8,7 +8,9 @@ import { Badge, Button, GlassCard, useToast } from "@/components/ui";
 import { addFeaturesAction } from "@/app/dashboard/billing/actions";
 import { featureLabel, FEATURES, withPrerequisites, type FeatureKey } from "@/lib/features";
 import { methodReason, type MethodState } from "@/lib/billing/pay-methods";
-import { quoteAddition, type AddonPriceRow, type CurrentPlanForAddition } from "@/lib/offers/shared";
+import { offerCardQuote, quoteAddition, type AddonPriceRow, type CurrentPlanForAddition } from "@/lib/offers/shared";
+import { useTheme } from "@/components/theme";
+import { cardQuoteText, payByCard, type CardQuoteView } from "./card-checkout";
 import { formatMinor } from "@/lib/region-format";
 
 export type AddFeaturesData = {
@@ -26,15 +28,19 @@ const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { da
  * "Add features" on Billing (docs/OFFERS.md, "Adding features to a paid plan"): what the plan has is ticked and locked;
  * the client ticks priced features (prerequisites tick themselves) and sees at once what they pay now (only the added
  * features, prorated for the days left) and what the plan costs from the next renewal. Mobile Money or an invoice pays
- * it; card is set up by the team ("Ask us for a card link"). Anything else: "Request a custom change".
+ * it, or card: the amount converted to US dollars with the card rule of RWF plans (`cardRate`, from Settings), shown
+ * before paying and checked again by the server. `cardRate` is null when card payments are not set up or switched off:
+ * no card button then. Anything else: "Request a custom change".
  */
-export function AddFeatures({ data, unavailable, momo, card, contactEmail, now }: { data: AddFeaturesData | null; unavailable: string | null; momo: MethodState; card: MethodState; contactEmail: string; now: string }) {
+export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: AddFeaturesData | null; unavailable: string | null; momo: MethodState; cardRate: { usdToRwf: number; marginPercent: number } | null; contactEmail?: string; now: string }) {
   const router = useRouter();
   const { toast } = useToast();
+  const { resolvedTheme } = useTheme();
   const [pending, start] = useTransition();
-  const [busy, setBusy] = useState<"momo" | "invoice" | null>(null);
+  const [busy, setBusy] = useState<"momo" | "invoice" | "card" | null>(null);
   const [selected, setSelected] = useState<FeatureKey[]>([]);
-  const [cardHelp, setCardHelp] = useState(false);
+  // The rate the server answered with when it changed since the page loaded (its quote wins).
+  const [usdOverride, setUsdOverride] = useState<{ dueMinor: number; usdCents: number } | null>(null);
   const owned = new Set<FeatureKey>(data?.current.features ?? []);
   const quote = useMemo(
     () => (data && selected.length > 0 ? quoteAddition({ current: data.current, features: selected, interval: data.interval, currency: data.region.currency, regionKey: data.region.key, prices: data.prices, periodEnd: new Date(data.periodEnd), now: new Date(now) }) : null),
@@ -43,6 +49,33 @@ export function AddFeatures({ data, unavailable, momo, card, contactEmail, now }
   const per = data?.interval === "YEAR" ? "year" : "month";
   const priceOf = (key: FeatureKey) => data?.prices.find((p) => p.addonKey === key && p.regionKey === data.region.key)?.monthlyMinor ?? null;
   const canPay = Boolean(quote && quote.dueNowMinor > 0 && quote.missing.length === 0);
+  const card: CardQuoteView | null =
+    cardRate && quote && data && canPay
+      ? { usdCents: usdOverride?.dueMinor === quote.dueNowMinor ? usdOverride.usdCents : offerCardQuote(quote.dueNowMinor, data.region.currency, cardRate.usdToRwf, cardRate.marginPercent).usdCents, quoteMinor: quote.dueNowMinor, currency: data.region.currency }
+      : null;
+
+  function payCard() {
+    if (!card) return;
+    const shown = card;
+    setBusy("card");
+    start(async () => {
+      await payByCard(() => addFeaturesAction({ features: selected, method: "card", expectedUsdCents: shown.usdCents }), resolvedTheme, {
+        onRequote: (usdCents, message) => {
+          setUsdOverride({ dueMinor: shown.quoteMinor, usdCents });
+          setBusy(null);
+          toast(message, "error");
+        },
+        onError: (message) => {
+          setBusy(null);
+          toast(message, "error");
+        },
+        onClosed: () => {
+          setBusy(null);
+          router.refresh();
+        },
+      });
+    });
+  }
 
   const toggle = (key: FeatureKey, on: boolean) => {
     if (on) setSelected(withPrerequisites([...selected, key]).filter((k) => !owned.has(k)));
@@ -137,19 +170,13 @@ export function AddFeatures({ data, unavailable, momo, card, contactEmail, now }
         <Button variant="outline" onClick={() => pay("invoice")} disabled={!canPay || pending} leading={<FileText aria-hidden className="size-5" />}>
           {busy === "invoice" ? "Preparing…" : "Get an invoice"}
         </Button>
-        <Button variant="outline" onClick={() => setCardHelp((v) => !v)} disabled={card === "off"} aria-expanded={cardHelp} leading={<CreditCard aria-hidden className="size-5" />}>
-          {card === "off" ? methodReason("card", card) : "Pay by card"}
-        </Button>
+        {cardRate && (
+          <Button variant="outline" onClick={payCard} disabled={!card || pending} leading={<CreditCard aria-hidden className="size-5" />}>
+            {busy === "card" ? "Opening checkout…" : "Pay by card"}
+          </Button>
+        )}
       </div>
-      {cardHelp && (
-        <p role="status" className="rounded-2xl bg-soft px-4 py-3 text-sm">
-          Card payment for added features is set up by our team. Ask us for a card link at{" "}
-          <a href={`mailto:${contactEmail}?subject=${encodeURIComponent("Card link to add features to my plan")}`} className="font-semibold underline">
-            {contactEmail}
-          </a>
-          .
-        </p>
-      )}
+      {card && <p className="text-[13px] text-muted">{cardQuoteText(card)}, charged in US dollars once. The features switch on as soon as the payment goes through.</p>}
       <Link href="/custom-plan?from=billing" className="inline-flex min-h-11 items-center gap-1.5 self-start text-sm font-semibold no-underline">
         Something else? Request a custom change
         <ArrowRight aria-hidden className="size-4" />

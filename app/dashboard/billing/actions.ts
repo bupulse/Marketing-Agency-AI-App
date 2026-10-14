@@ -17,6 +17,7 @@ import { cancelManualPayment, currentManualPayment, ManualPaymentError, startInv
 import type { ManualPaymentView, ProofInput } from "@/lib/billing/momo-shared";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
 import { acceptOffer, OfferError, startFeatureAddition } from "@/lib/offers/service";
+import { CardOfferError, startOfferCardCheckout } from "@/lib/offers/card";
 import { noteRegionMismatch } from "@/lib/region-check";
 import type { CheckoutConfig, Invoice, PaidPlan } from "@/lib/billing";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
@@ -372,10 +373,10 @@ export async function acceptOfferAction(input: { offerId: string; method: string
 
 // "Add features" (docs/OFFERS.md, "Adding features to a paid plan"): the ticked features on top of the running plan,
 // paid now prorated for the days left (Mobile Money, or an invoice), switched on when the payment is confirmed. Owner only.
-export async function addFeaturesAction(input: { features: string[]; method: string }): Promise<BillingResult<{ method: "momo" | "invoice" }>> {
+export async function addFeaturesAction(input: { features: string[]; method: string; expectedUsdCents?: number | null }): Promise<BillingResult<{ method: "momo" | "invoice" | "card"; config?: CheckoutConfig }> & { requoteUsdCents?: number }> {
   const user = await requireActiveUser();
   if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
-  const method = input?.method === "invoice" ? "invoice" : input?.method === "momo" ? "momo" : null;
+  const method = input?.method === "invoice" ? "invoice" : input?.method === "momo" ? "momo" : input?.method === "card" ? "card" : null;
   if (!method) return { ok: false, error: "Choose how you want to pay." };
   const features = Array.isArray(input?.features) ? input.features.map(String).slice(0, 40) : [];
   try {
@@ -386,12 +387,49 @@ export async function addFeaturesAction(input: { features: string[]; method: str
   }
   if (method === "momo") await noteRegionMismatch(user.businessId, "momo");
   try {
-    await startFeatureAddition({ userId: user.id, actorId: user.actorId, businessId: user.businessId, features, method });
+    const accepted = await startFeatureAddition({ userId: user.id, actorId: user.actorId, businessId: user.businessId, features, method });
+    if (method === "card") {
+      if (!user.email) return { ok: false, error: "Add an email address to your account first." };
+      const config = await startOfferCardCheckout({ userId: user.id, email: user.email, businessId: user.businessId, offerId: accepted.offer.id, expectedUsdCents: numberOrNull(input?.expectedUsdCents) });
+      return { ok: true, method, config };
+    }
     revalidatePath("/dashboard", "layout");
     return { ok: true, method };
   } catch (error) {
     if (error instanceof OfferError) return { ok: false, error: error.message };
+    if (error instanceof CardOfferError) return { ok: false, error: error.message, ...(error.requote ? { requoteUsdCents: error.requote.usdCents } : {}) };
     console.error("Adding features failed", error);
+    return { ok: false, error: GENERIC };
+  }
+}
+
+const numberOrNull = (v: unknown) => (typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? v : null);
+
+// "Pay by card" on a custom plan offer (docs/OFFERS.md, "Card"): accepts it if needed, then opens a Paddle checkout for
+// the offer's price converted to USD (the card rule of RWF plans). `expectedUsdCents` is what the client was shown: a
+// different amount today is returned to confirm (`requoteUsdCents`), never charged silently. Owner only.
+export async function payOfferByCardAction(input: { offerId: string; expectedUsdCents?: number | null }): Promise<BillingResult<{ config: CheckoutConfig }> & { requoteUsdCents?: number }> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const offerId = String(input?.offerId ?? "");
+  if (!offerId || offerId.length > 64) return { ok: false, error: "We could not find that offer. Open Billing again." };
+  if (!user.email) return { ok: false, error: "Add an email address to your account first." };
+  if (!(await isServiceEnabled("paddle"))) return { ok: false, error: UNAVAILABLE_MESSAGE };
+  try {
+    await rateLimit(`offer:${user.businessId}`, RATE_LIMITS.offerAccept);
+  } catch (error) {
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    throw error;
+  }
+  await noteRegionMismatch(user.businessId, "card");
+  try {
+    await acceptOffer({ userId: user.id, actorId: user.actorId, businessId: user.businessId, offerId, method: "card" });
+    const config = await startOfferCardCheckout({ userId: user.id, email: user.email, businessId: user.businessId, offerId, expectedUsdCents: numberOrNull(input?.expectedUsdCents) });
+    return { ok: true, config };
+  } catch (error) {
+    if (error instanceof OfferError) return { ok: false, error: error.message };
+    if (error instanceof CardOfferError) return { ok: false, error: error.message, ...(error.requote ? { requoteUsdCents: error.requote.usdCents } : {}) };
+    console.error("Card payment of an offer failed", error);
     return { ok: false, error: GENERIC };
   }
 }

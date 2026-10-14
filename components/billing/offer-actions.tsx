@@ -4,21 +4,47 @@ import { CreditCard, FileText, Smartphone } from "lucide-react";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, useToast } from "@/components/ui";
-import { acceptOfferAction } from "@/app/dashboard/billing/actions";
+import { acceptOfferAction, payOfferByCardAction } from "@/app/dashboard/billing/actions";
 import { methodReason, type MethodState } from "@/lib/billing/pay-methods";
+import { useTheme } from "@/components/theme";
+import { cardQuoteText, payByCard, type CardQuoteView } from "./card-checkout";
 
 /**
  * Accept and pay buttons under the offer card. Mobile Money (where the region takes it) opens the pay screen for the
- * offer's price; invoice issues one from the offer. Card cannot take a custom price yet, so it says how to get a card
- * link from the team instead (docs/OFFERS.md, "Card").
+ * offer's price; invoice issues one from the offer; card opens a checkout for the price converted to US dollars (the
+ * card rule of RWF plans, shown before paying). `card` is null when card cannot be used (not offered where the company
+ * is, or card payments are not set up or switched off): the button is then not shown (docs/OFFERS.md, "Card").
  */
-export function OfferActions({ offerId, momo: momoState, card, accepted, method, contactEmail }: { offerId: string; momo: MethodState; card: boolean; accepted: boolean; method: "momo" | "invoice" | null; contactEmail: string }) {
+export function OfferActions({ offerId, momo: momoState, card, accepted, method }: { offerId: string; momo: MethodState; card: CardQuoteView | null; accepted: boolean; method: "momo" | "invoice" | "card" | null; contactEmail?: string }) {
   const momo = momoState === "ready";
   const router = useRouter();
   const { toast } = useToast();
+  const { resolvedTheme } = useTheme();
   const [pending, start] = useTransition();
-  const [busy, setBusy] = useState<"momo" | "invoice" | null>(null);
-  const [cardHelp, setCardHelp] = useState(false);
+  const [busy, setBusy] = useState<"momo" | "invoice" | "card" | null>(null);
+  const [quote, setQuote] = useState<CardQuoteView | null>(card);
+
+  function cardPay() {
+    if (!quote) return;
+    setBusy("card");
+    start(async () => {
+      await payByCard(() => payOfferByCardAction({ offerId, expectedUsdCents: quote.usdCents }), resolvedTheme, {
+        onRequote: (usdCents, message) => {
+          setQuote({ ...quote, usdCents });
+          setBusy(null);
+          toast(message, "error");
+        },
+        onError: (message) => {
+          setBusy(null);
+          toast(message, "error");
+        },
+        onClosed: () => {
+          setBusy(null);
+          router.refresh();
+        },
+      });
+    });
+  }
 
   function accept(m: "momo" | "invoice") {
     setBusy(m);
@@ -47,19 +73,13 @@ export function OfferActions({ offerId, momo: momoState, card, accepted, method,
             {busy === "invoice" ? "Preparing…" : accepted ? "Get an invoice instead" : "Accept and get an invoice"}
           </Button>
         )}
-        <Button variant="outline" onClick={() => setCardHelp((v) => !v)} disabled={!card} aria-expanded={cardHelp} leading={<CreditCard aria-hidden className="size-5" />}>
-          {card ? "Pay by card" : methodReason("card", "off")}
-        </Button>
+        {quote && (
+          <Button variant="outline" onClick={cardPay} disabled={pending} leading={<CreditCard aria-hidden className="size-5" />}>
+            {busy === "card" ? "Opening checkout…" : "Pay by card"}
+          </Button>
+        )}
       </div>
-      {cardHelp && (
-        <p role="status" className="rounded-2xl bg-soft px-4 py-3 text-sm">
-          Card payment for a custom plan is set up by our team. Ask us for a card link at{" "}
-          <a href={`mailto:${contactEmail}?subject=${encodeURIComponent("Card link for my custom plan")}`} className="font-semibold underline">
-            {contactEmail}
-          </a>{" "}
-          and we will send it to you.
-        </p>
-      )}
+      {quote && <p className="text-[13px] text-muted">{cardQuoteText(quote)}, charged in US dollars once (no subscription). Your custom plan switches on as soon as the payment goes through.</p>}
       {!accepted && <p className="text-[13px] text-muted">Nothing changes until your payment is confirmed. Your current plan and everything you have made stay as they are.</p>}
     </div>
   );

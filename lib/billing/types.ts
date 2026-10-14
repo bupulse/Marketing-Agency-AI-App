@@ -37,7 +37,9 @@ export type CheckoutConfig = {
   /** The provider's customer when they bought before, so a second customer isn't created. */
   customerId: string | null;
   /** `sig` is the server's signature of userId (lib/billing/signing.ts). */
-  customData: { userId: string; sig: string; plan: PaidPlan; interval: BillingInterval };
+  customData: { userId: string; sig: string; plan: PaidPlan; interval: BillingInterval } | Record<string, string | number>;
+  /** A one-off payment (a custom plan offer or added features, lib/offers/card.ts): open this transaction, not a price. */
+  transactionId?: string | null;
   successUrl: string;
 };
 
@@ -78,6 +80,11 @@ export interface BillingAdapter {
    * Money keeps the paid days, docs/BILLING.md "Renewing"). Optional: a provider without it simply starts billing now.
    */
   deferNextBilling?(providerSubscriptionId: string, at: Date): Promise<ProviderSubscription>;
+  /**
+   * A one-off charge of an amount set by the server (not a catalog price): the custom plan offers and added features
+   * paid by card (lib/offers/card.ts). Returns the provider's transaction id for the checkout to open.
+   */
+  createOneOffTransaction?(input: { amountCents: number; currency: "USD"; name: string; description: string; customData: Record<string, string | number>; providerCustomerId?: string | null }): Promise<{ transactionId: string }>;
   listInvoices(providerCustomerId: string): Promise<Invoice[]>;
   /** Verifies the signature; returns null when the request is not genuine. */
   parseWebhook(rawBody: string, headers: Headers): Promise<BillingWebhook | null>;

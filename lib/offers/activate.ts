@@ -34,16 +34,16 @@ export function assertOfferAmount(offer: Pick<OfferRow, "adjustedMinor" | "curre
  * of the offer that this payment did not pay is voided (so the client cannot pay twice), unsubmitted Mobile Money
  * payments of the offer are closed, and the request behind it is marked offered. Audited.
  */
-export async function markOfferPaidInTx(tx: Tx, ctx: AdminContext, input: { offer: OfferRow; paymentId: string; invoiceId: string | null; planKey: string; amountMinor: number; currency: string }, now: Date) {
+export async function markOfferPaidInTx(tx: Tx, ctx: AdminContext, input: { offer: OfferRow; paymentId: string; invoiceId: string | null; planKey: string; amountMinor: number; currency: string; /** Who paid it when not a Mobile Money payment ("card:<Paddle transaction>"). */ paidBy?: string }, now: Date) {
   const { offer } = input;
   if (offer.customPlanKey !== input.planKey) throw new AdminError("conflict", "This payment is for a different plan than the offer's custom plan. Reject it and ask the client to pay again from Billing.");
   assertOfferAmount(offer, input);
-  const paidBy = `manual_payment:${input.paymentId}`;
+  const paidBy = input.paidBy ?? `manual_payment:${input.paymentId}`;
   const claim = await tx.planOffer.updateMany({ where: { id: offer.id, status: "accepted" }, data: { status: "paid", paidAt: now, paidBy } });
   if (claim.count !== 1) throw new AdminError("conflict", "This offer was paid or withdrawn a moment ago. Nothing was changed.");
   const retired = await tx.planDefinition.updateMany({ where: { businessId: offer.businessId, isCustom: true, key: { not: input.planKey }, status: { not: "retired" } }, data: { status: "retired" } });
   if (offer.invoiceId && offer.invoiceId !== input.invoiceId) {
-    await tx.invoice.updateMany({ where: { id: offer.invoiceId, status: "sent" }, data: { status: "void", voidedAt: now, voidReason: "The custom plan offer was paid by Mobile Money." } });
+    await tx.invoice.updateMany({ where: { id: offer.invoiceId, status: "sent" }, data: { status: "void", voidedAt: now, voidReason: input.paidBy?.startsWith("card:") ? "The custom plan offer was paid by card." : "The custom plan offer was paid by Mobile Money." } });
   }
   await tx.manualPayment.updateMany({ where: { offerId: offer.id, status: "pending", submittedAt: null, id: { not: input.paymentId } }, data: { status: "expired", decidedAt: now, decidedBy: ctx.actor } });
   if (offer.requestId) await tx.customPlanRequest.updateMany({ where: { id: offer.requestId, status: { in: ["new", "contacted"] } }, data: { status: "offered" } });

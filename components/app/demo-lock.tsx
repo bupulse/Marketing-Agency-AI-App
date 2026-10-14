@@ -24,7 +24,7 @@ import { DemoPayButton } from "./demo-pay";
 import { OfferCard } from "@/components/billing/offer-card";
 import { OfferActions } from "@/components/billing/offer-actions";
 import { clientOffer } from "@/lib/offers/service";
-import { site } from "@/lib/content/site";
+import { cardQuoteOf, offerCardReady } from "@/lib/offers/card";
 
 /** Reschedule and cancel are only offered up to MIN_LEAD_MINUTES before the call (lib/demo/bookings.ts enforces it too). */
 const canStillMove = (booking: { startsAt: Date }) => booking.startsAt.getTime() - Date.now() >= MIN_LEAD_MINUTES * 60_000;
@@ -63,6 +63,7 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
   const payment = canManage && business ? await currentManualPayment(business.userId) : null;
   // A custom plan offer sent before or after the demo (docs/OFFERS.md): paying it opens the dashboard like any plan.
   const offer = canBill ? await clientOffer(businessId).catch(() => null) : null;
+  const offerCard = offer && (await offerCardReady(region.paymentMethods).catch(() => false)) ? await cardQuoteOf(offer.totalMinor, offer.currency).then((q) => ({ usdCents: q.usdCents, quoteMinor: q.quoteMinor, currency: q.quoteCurrency })).catch(() => null) : null;
   const meetingLink = booking?.meetingLink || settings.meetingLink || null;
   const googleUrl = booking ? demoGoogleCalendarUrl({ ...booking, meetingLink }, businessName, `${siteUrl()}/dashboard`) : null;
   const movable = booking ? canStillMove(booking) : false;
@@ -163,7 +164,7 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
         {offer && (
           <OfferCard
             offer={offer}
-            actions={offer.status === "sent" || (offer.status === "accepted" && !(payment?.status === "pending" && payment.submitted)) ? <OfferActions offerId={offer.id} momo={methodState(region.paymentMethods.includes("momo"), momoConfigured(momoSettings))} card={region.paymentMethods.includes("card")} accepted={offer.status === "accepted"} method={offer.payMethod} contactEmail={site.email} /> : undefined}
+            actions={offer.status === "sent" || (offer.status === "accepted" && !(payment?.status === "pending" && payment.submitted)) ? <OfferActions offerId={offer.id} momo={methodState(region.paymentMethods.includes("momo"), momoConfigured(momoSettings))} card={offerCard} accepted={offer.status === "accepted"} method={offer.payMethod} /> : undefined}
           />
         )}
 

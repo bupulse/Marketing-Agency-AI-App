@@ -145,6 +145,33 @@ export const paddle: BillingAdapter = {
     return subscriptionOrThrow(data);
   },
 
+  // A non-catalog item: the price (and its product) live only on this transaction, nothing is added to the catalog.
+  // Paddle.js opens it by id; the amount cannot be changed in the browser.
+  async createOneOffTransaction({ amountCents, currency, name, description, customData, providerCustomerId }) {
+    if (!Number.isSafeInteger(amountCents) || amountCents <= 0) throw new Error("The card amount must be a whole number of cents above zero.");
+    const data = await paddleApi<{ id: string }>("/transactions", {
+      method: "POST",
+      body: {
+        items: [
+          {
+            quantity: 1,
+            price: {
+              description,
+              name,
+              unit_price: { amount: String(amountCents), currency_code: currency },
+              product: { name, tax_category: "standard" },
+            },
+          },
+        ],
+        ...(providerCustomerId ? { customer_id: providerCustomerId } : {}),
+        custom_data: customData,
+        collection_mode: "automatic",
+      },
+    });
+    if (!data?.id) throw new Error("Paddle returned no transaction id");
+    return { transactionId: data.id };
+  },
+
   /** Invoice `url` is null here (links expire); resolve one on demand with invoiceUrl(id). */
   async listInvoices(customerId): Promise<Invoice[]> {
     const query = new URLSearchParams({
