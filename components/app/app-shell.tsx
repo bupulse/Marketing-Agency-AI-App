@@ -150,7 +150,14 @@ function Sidebar({
   features: FeatureKey[];
   onNavigate?: () => void;
 }) {
-  const missing = addable(features);
+  // Members get no purchase prompts; Admins see what could be added so they can ask the owner (lib/team/roles.ts).
+  const missing = can(role, "upgrade") ? addable(features) : [];
+  const brandRow = (
+    <>
+      <BrandMark name={businessName} brand={brand} size={36} />
+      <span className="min-w-0 truncate text-sm font-semibold">{businessName}</span>
+    </>
+  );
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5">
       <div className="px-2 pt-1">
@@ -158,14 +165,17 @@ function Sidebar({
           <Logo height={28} />
         </Link>
       </div>
-      <Link
-        href="/dashboard/brand"
-        onClick={onNavigate}
-        className="flex min-h-12 items-center gap-2.5 rounded-2xl bg-soft px-2.5 py-1.5 no-underline"
-      >
-        <BrandMark name={businessName} brand={brand} size={36} />
-        <span className="min-w-0 truncate text-sm font-semibold">{businessName}</span>
-      </Link>
+      {can(role, "settings") ? (
+        <Link
+          href="/dashboard/brand"
+          onClick={onNavigate}
+          className="flex min-h-12 items-center gap-2.5 rounded-2xl bg-soft px-2.5 py-1.5 no-underline"
+        >
+          {brandRow}
+        </Link>
+      ) : (
+        <div className="flex min-h-12 items-center gap-2.5 rounded-2xl bg-soft px-2.5 py-1.5">{brandRow}</div>
+      )}
       <nav aria-label="App" className="flex flex-col gap-1">
         {NAV_ITEMS.filter((item) => (!item.permission || can(role, item.permission)) && (!item.feature || features.includes(item.feature))).map(({ href, label, icon: Icon }) => {
           const active = isActive(pathname, href);

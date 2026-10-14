@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildPlatforms, escapeAttr, scriptTag, PASTE_WARNING } from "@/lib/widget/install";
-import { describeSeen, formatAgo, shouldRecordSeen, SEEN_THROTTLE_MS } from "@/lib/widget/seen";
+import { describeSeen, formatAgo, shouldRecordSeen, SEEN_THROTTLE_MS, widgetInstalled } from "@/lib/widget/seen";
 
 const base = "https://bupulse.com";
 const key = "widgetkey12345";
@@ -92,5 +92,23 @@ describe("installation check", () => {
     expect(formatAgo(10_000)).toBe("just now");
     expect(formatAgo(60_000)).toBe("1 minute ago");
     expect(formatAgo(3 * 3600_000)).toBe("3 hours ago");
+  });
+});
+
+describe("dashboard checklist: widget installed", () => {
+  const seen = { lastSeenAt: new Date("2026-10-14T08:00:00Z"), lastSeenHost: "www.shop.rw", allowedDomains: ["shop.rw"] };
+  it("is done once the widget loaded on an allowed site", () => {
+    expect(widgetInstalled({ widget: seen, cloudflareInstalls: 0 })).toBe(true);
+    expect(widgetInstalled({ widget: { ...seen, lastSeenHost: "blog.shop.rw" }, cloudflareInstalls: 0 })).toBe(true);
+    // Any site is allowed until the list is set.
+    expect(widgetInstalled({ widget: { ...seen, allowedDomains: [] }, cloudflareInstalls: 0 })).toBe(true);
+  });
+  it("is not done before it loaded anywhere, or when that site is no longer allowed", () => {
+    expect(widgetInstalled({ widget: null, cloudflareInstalls: 0 })).toBe(false);
+    expect(widgetInstalled({ widget: { ...seen, lastSeenAt: null, lastSeenHost: null }, cloudflareInstalls: 0 })).toBe(false);
+    expect(widgetInstalled({ widget: { ...seen, allowedDomains: ["other.rw"] }, cloudflareInstalls: 0 })).toBe(false);
+  });
+  it("is done when BuPulse added it to a site through Cloudflare", () => {
+    expect(widgetInstalled({ widget: null, cloudflareInstalls: 1 })).toBe(true);
   });
 });

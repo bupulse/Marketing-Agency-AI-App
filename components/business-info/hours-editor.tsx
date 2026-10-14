@@ -173,10 +173,21 @@ export function HoursEditor({
         </p>
       )}
 
-      {schedules.length < MAX_SCHEDULES && (schedules.length === 0 || free.length > 0) && (
-        <Button variant="ghost" size="sm" className="self-start" leading={<Plus aria-hidden className="size-4" />} onClick={add}>
-          Add hours
-        </Button>
+      {schedules.length === 0 ? (
+        // Nothing yet: one obvious button that fills in Monday to Friday, 08:00 to 18:00, ready to adjust.
+        <div className="flex flex-col items-start gap-3 rounded-2xl border border-dashed border-line p-4">
+          <p className="text-[14px] text-muted">No opening hours yet. Add them, then change the days and times to yours.</p>
+          <Button size="sm" leading={<Plus aria-hidden className="size-4" />} onClick={add}>
+            Add hours
+          </Button>
+        </div>
+      ) : (
+        schedules.length < MAX_SCHEDULES &&
+        free.length > 0 && (
+          <Button variant="ghost" size="sm" className="self-start" leading={<Plus aria-hidden className="size-4" />} onClick={add}>
+            Add hours
+          </Button>
+        )
       )}
     </div>
   );

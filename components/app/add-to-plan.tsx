@@ -54,6 +54,15 @@ export function AddToPlan({ feature, reason = "not_in_plan", block = null, role,
       </>
     );
   }
+  // Members get no purchase prompt: what the feature does, and that the plan is the owner's call.
+  if (!can(role, "upgrade")) {
+    return (
+      <>
+        <PageHeader title={def.label} description="Not part of your company's plan." />
+        <EmptyState icon={Icon} title={`${def.label} is not in your company's plan`} text={`${def.description} Your company owner decides what the plan includes.`} />
+      </>
+    );
+  }
   const needs = def.requires.filter((k) => !inPlan.has(k)).map((k) => featureOf(k).label);
   const points = [def.description, ...(needs.length ? [`Comes with ${needs.join(" and ")}, which it needs.`] : [])];
   return (

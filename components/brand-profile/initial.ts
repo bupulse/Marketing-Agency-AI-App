@@ -1,7 +1,7 @@
 import { readKnowledge } from "@/lib/brand/schemas";
 import { contactDisplay, countryNameForCode, isPhoneType, parseLegacyContact, phoneCountryCode } from "@/lib/business-info/contacts";
 import { parseLegacyHours } from "@/lib/business-info/hours";
-import { phoneCountry } from "@/lib/phone";
+import { formatPhone, phoneCountry } from "@/lib/phone";
 import { emptyLocation, type BrandValues, type ContactValue, type LocationValue } from "./steps";
 
 type BusinessProfile = {
@@ -15,7 +15,15 @@ type BusinessProfile = {
   knowledge: unknown;
   /** Sign-up country name: the default phone country of new contacts. */
   country?: string | null;
+  /** The phone from sign-up (E.164): the first contact until contacts are saved, so it is not typed twice. */
+  phone?: string | null;
 };
+
+function signUpContact(phone: string | null | undefined, country: string): ContactValue {
+  const number = phone?.trim();
+  if (!number) return { type: "whatsapp", value: "", country, primary: true };
+  return { type: "whatsapp_call", value: formatPhone(number), country: countryNameForCode(phoneCountryCode(number)) ?? country, primary: true };
+}
 
 /**
  * Form values for the brand sections, from the saved Business row. Free-text hours and contacts from the first
@@ -65,8 +73,9 @@ export function initialValues(b: BusinessProfile): BrandValues {
     hours: legacyHours ? "" : (k.hours ?? ""),
     area: k.area ?? "",
     locations,
-    // A phone or WhatsApp number is required, so the editor starts with an empty WhatsApp row (blank rows are ignored).
-    contacts: contacts.length ? contacts : [{ type: "whatsapp", value: "", country, primary: true }],
+    // A phone or WhatsApp number is required, so the editor starts with the sign-up phone as "WhatsApp + calls" (the
+    // owner can change the type or the number), else an empty WhatsApp row (blank rows are ignored).
+    contacts: contacts.length ? contacts : [signUpContact(b.phone, country)],
     contact: legacyContact ? legacyContact.rest : (k.contact ?? ""),
     faqs: k.faqs,
   };

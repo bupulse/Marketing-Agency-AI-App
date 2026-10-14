@@ -23,6 +23,11 @@ describe("normaliseContact", () => {
     expect(normaliseContact("phone", "+254712345678", "RW", "Rwanda").ok).toBe(false);
     expect(normaliseContact("phone", "+254712345678", "KE", "Kenya")).toEqual({ ok: true, value: "+254712345678" });
   });
+  it("accepts a number pasted after the +250 the field fills in (the step 4 bug)", () => {
+    for (const shown of ["+250 250788123456", "+250 +250 788 123 456", "+250 0788 123 456", "+250 250-788-123-456"]) {
+      expect(normaliseContact("whatsapp", shown, "RW", "Rwanda")).toEqual({ ok: true, value: "+250788123456" });
+    }
+  });
   it("validates emails and websites", () => {
     expect(normaliseContact("email", " Hello@Shop.RW ", null)).toEqual({ ok: true, value: "hello@shop.rw" });
     expect(normaliseContact("email", "not-an-email", null).ok).toBe(false);

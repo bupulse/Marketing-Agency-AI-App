@@ -50,6 +50,19 @@ describe("required: hours, head office, phone", () => {
     const filled: BrandValues = { ...v, ...full };
     expect(validateStep("knowledge", filled)).toEqual({});
   });
+  it("starts the contacts with the phone from sign-up, so it is not typed twice", () => {
+    const base = { description: "x", audience: "y", tone: "z", logoUrl: null, brandColors: [], knowledge: null, country: "Rwanda" };
+    const v = initialValues({ ...base, phone: "+250788123456" });
+    expect(v.contacts).toEqual([{ type: "whatsapp_call", value: "+250 788 123 456", country: "Rwanda", primary: true }]);
+    expect(Object.keys(validateStep("knowledge", v)).sort()).toEqual(["locations.0.address", "openingHours.form"]);
+    expect(validateKnowledge(knowledgeInput({ ...v, openingHours: [weekdays], locations: [head] }), strict)).toMatchObject({ ok: true });
+    // A number from another country keeps its own country in the picker.
+    expect(initialValues({ ...base, phone: "+254712345678" }).contacts[0]).toMatchObject({ value: "+254 712 345678", country: "Kenya" });
+    // No phone: the empty WhatsApp row as before. Saved contacts always win.
+    expect(initialValues(base).contacts).toEqual([{ type: "whatsapp", value: "", country: "Rwanda", primary: true }]);
+    const saved = initialValues({ ...base, phone: "+250788123456", knowledge: { faqs: [], contacts: [{ type: "email", value: "a@b.co", primary: true }] } });
+    expect(saved.contacts).toEqual([{ type: "email", value: "a@b.co", country: "Rwanda", primary: true }]);
+  });
   it("converted first-version text counts once saved in the structured form", () => {
     const v = initialValues({ description: "x", audience: "y", tone: "z", logoUrl: null, brandColors: [], country: "Rwanda", knowledge: { faqs: [], hours: "Mon-Fri 8-18", contact: "WhatsApp 0791954277" } });
     // The legacy text alone is not stored structure yet...

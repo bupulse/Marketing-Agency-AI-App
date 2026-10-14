@@ -16,6 +16,8 @@ export type TrialBannerProps = {
   pastDue?: boolean;
   text: { used: number; max: number };
   image: { used: number; max: number };
+  /** Only the owner pays (lib/team/roles.ts billing): everyone else is told who does instead of being sent to Billing. */
+  canPay?: boolean;
 };
 
 const STORAGE_KEY = "bp-trial-banner-dismissed";
@@ -67,13 +69,13 @@ export function TrialBanner(props: TrialBannerProps) {
     listeners.forEach((l) => l());
   };
 
-  const { trialDaysLeft: days, text, image } = props;
+  const { trialDaysLeft: days, text, image, canPay = true } = props;
   const alert = state !== "normal";
   const Icon = alert ? AlertTriangle : Sparkles;
 
   let title: string;
-  if (state === "pastDue") title = "Payment failed — update your payment method";
-  else if (state === "ended") title = "Your trial has ended — choose a plan to keep creating";
+  if (state === "pastDue") title = canPay ? "Payment failed — update your payment method" : "Payment failed — your company owner can update it";
+  else if (state === "ended") title = canPay ? "Your trial has ended — choose a plan to keep creating" : "Your trial has ended — your company owner can choose a plan";
   else if (state === "usage") title = "You are close to a plan limit";
   else title = `${days} ${days === 1 ? "day" : "days"} left in your free trial`;
 
@@ -117,13 +119,17 @@ export function TrialBanner(props: TrialBannerProps) {
         </div>
       </div>
       <div className="ml-auto flex items-center gap-1">
-        <Link
-          href={href}
-          className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-semibold no-underline hover:bg-soft"
-        >
-          {cta}
-          <ArrowRight aria-hidden className="size-4" />
-        </Link>
+        {canPay || state === "usage" ? (
+          <Link
+            href={href}
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-semibold no-underline hover:bg-soft"
+          >
+            {cta}
+            <ArrowRight aria-hidden className="size-4" />
+          </Link>
+        ) : (
+          <span className="px-3 text-[13px] text-muted">Your company owner manages the plan.</span>
+        )}
         {state === "normal" && (
           <button
             type="button"

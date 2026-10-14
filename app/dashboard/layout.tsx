@@ -103,6 +103,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           pastDue={status === "PAST_DUE"}
           text={{ used: usage.used.text, max: usage.limits.text }}
           image={{ used: usage.used.image, max: usage.limits.image }}
+          canPay={can(role, "billing")}
         />
         {children}
         {can(role, "settings") && <AutoTimezone current={business.timezone} />}

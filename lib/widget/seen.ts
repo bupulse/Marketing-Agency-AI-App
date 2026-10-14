@@ -34,3 +34,18 @@ export function describeSeen(input: { lastSeenAt: Date | null; lastSeenHost: str
   const matches = typed ? typed === input.lastSeenHost || hostAllowed(typed, [input.lastSeenHost]) || hostAllowed(input.lastSeenHost, [typed]) : null;
   return { status: "seen", host: input.lastSeenHost, ago: formatAgo(age), matches, recent: age <= SEEN_RECENT_MS };
 }
+
+/**
+ * "Install the chat widget" on the dashboard checklist is done once the widget has loaded on a website it is allowed
+ * on (the config endpoint records only those, and never BuPulse's own pages), or BuPulse added it to a site through
+ * Cloudflare. A site seen before the allowed list was narrowed no longer counts.
+ */
+export function widgetInstalled(input: {
+  widget: { lastSeenAt: Date | null; lastSeenHost: string | null; allowedDomains: string[] } | null;
+  cloudflareInstalls: number;
+}): boolean {
+  if (input.cloudflareInstalls > 0) return true;
+  const w = input.widget;
+  if (!w?.lastSeenAt || !w.lastSeenHost) return false;
+  return w.allowedDomains.length === 0 || hostAllowed(w.lastSeenHost.replace(/^www\./, ""), w.allowedDomains);
+}
