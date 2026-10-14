@@ -7,6 +7,9 @@ import { prisma } from "@/lib/db";
 import { cn } from "@/lib/cn";
 import { isHexColor } from "@/lib/color-contrast";
 import { formatPrice, KIND_LABEL } from "@/lib/knowledge/products";
+import { homeChecklist } from "@/lib/home-checklist";
+import { can } from "@/lib/team/roles";
+import { widgetInstalled } from "@/lib/widget/seen";
 
 export const metadata = { title: "Dashboard" };
 
@@ -21,10 +24,11 @@ function timeAgo(date: Date) {
 }
 
 export default async function DashboardPage() {
-  const { business, usage, firstName, logoUrl, brandColors, voiceLabel, businessName } = await getAppContext();
+  const { business, usage, role, entitlements, firstName, logoUrl, brandColors, voiceLabel, businessName } = await getAppContext();
 
   const businessId = business?.id;
-  const [productCount, contentCount, leadCount, connectionCount, designCount, recentProducts, recentLeads] = businessId
+  const chatInPlan = entitlements.inPlan.has("websiteChat");
+  const [productCount, contentCount, leadCount, connectionCount, designCount, recentProducts, recentLeads, widget, cloudflareInstalls] = businessId
     ? await Promise.all([
         prisma.product.count({ where: { businessId, status: { not: "ARCHIVED" } } }),
         prisma.generatedContent.count({ where: { businessId } }),
@@ -33,19 +37,25 @@ export default async function DashboardPage() {
         prisma.design.count({ where: { businessId } }),
         prisma.product.findMany({ where: { businessId, status: { not: "ARCHIVED" } }, orderBy: { updatedAt: "desc" }, take: 3 }),
         prisma.lead.findMany({ where: { businessId }, orderBy: { createdAt: "desc" }, take: 3 }),
+        chatInPlan ? prisma.chatWidget.findUnique({ where: { businessId }, select: { lastSeenAt: true, lastSeenHost: true, allowedDomains: true } }) : null,
+        chatInPlan ? prisma.cloudflareInstall.count({ where: { businessId } }) : 0,
       ])
-    : [0, 0, 0, 0, 0, [], []];
+    : [0, 0, 0, 0, 0, [], [], null, 0];
 
   const { used, limits } = usage;
   const brandDone = Boolean(business?.onboardedAt);
   const swatches = brandColors.filter(isHexColor).slice(0, 5);
 
-  const checklist = [
-    { label: "Complete your brand profile", done: brandDone, href: "/dashboard/brand" },
-    { label: "Connect a social account", done: connectionCount > 0, href: "/dashboard/connections" },
-    { label: "Add your first product or service", done: productCount > 0, href: productCount > 0 ? "/dashboard/knowledge/products" : "/dashboard/knowledge/products/new" },
-    { label: "Install the chat widget", done: false, href: "/dashboard/settings" },
-  ];
+  const checklist = homeChecklist({
+    role,
+    inPlan: entitlements.inPlan,
+    brandDone,
+    connections: connectionCount,
+    products: productCount,
+    widgetInstalled: widgetInstalled({ widget, cloudflareInstalls }),
+  });
+  // Brand and business details belong to the owner and admins (lib/team/roles.ts).
+  const canEditBrand = can(role, "settings");
   const doneCount = checklist.filter((c) => c.done).length;
 
   const stats = [
@@ -76,7 +86,7 @@ export default async function DashboardPage() {
         />
       </header>
 
-      {business?.onboardedAt && <EssentialsBanner knowledge={business.knowledge} />}
+      {business?.onboardedAt && canEditBrand && <EssentialsBanner knowledge={business.knowledge} />}
 
       <GlassCard as="section" aria-labelledby="yb" className="flex flex-wrap items-center gap-x-5 gap-y-3 p-4 sm:p-5">
         {logoUrl ? (
@@ -105,9 +115,11 @@ export default async function DashboardPage() {
             <span className="text-[13px] text-muted">{voiceLabel ? `Voice: ${voiceLabel}` : "No voice chosen yet"}</span>
           </div>
         </div>
-        <Link href="/dashboard/brand" className="inline-flex min-h-11 items-center text-sm font-semibold">
-          Edit brand
-        </Link>
+        {canEditBrand && (
+          <Link href="/dashboard/brand" className="inline-flex min-h-11 items-center text-sm font-semibold">
+            Edit brand
+          </Link>
+        )}
       </GlassCard>
 
       <section aria-label="Overview" className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-4">
@@ -131,25 +143,35 @@ export default async function DashboardPage() {
           </Badge>
         </div>
         <ul className="grid gap-2 sm:grid-cols-2">
-          {checklist.map(({ label, done, href }) => (
-            <li key={label}>
-              <Link
-                href={href}
-                className="flex min-h-12 items-center gap-3 rounded-2xl px-3.5 py-2 no-underline hover:bg-soft"
-              >
+          {checklist.map(({ label, done, href, ask }) => {
+            const body = (
+              <>
                 {done ? (
                   <CircleCheck aria-hidden className="size-5 shrink-0 text-success" />
                 ) : (
                   <Circle aria-hidden className="size-5 shrink-0 text-muted" />
                 )}
-                <span className={cn("flex-1 text-[15px] font-medium", done && "text-muted line-through")}>
-                  {label}
+                <span className="flex flex-1 flex-col">
+                  <span className={cn("text-[15px] font-medium", done && "text-muted line-through")}>{label}</span>
+                  {ask && !done && <span className="text-[13px] text-muted">{ask}</span>}
                 </span>
                 <span className="sr-only">{done ? "Done" : "Not done yet"}</span>
-                <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
-              </Link>
-            </li>
-          ))}
+              </>
+            );
+            return (
+              <li key={label}>
+                {/* A step this role cannot open is shown read-only, with who to ask. */}
+                {ask ? (
+                  <div className="flex min-h-12 items-center gap-3 rounded-2xl px-3.5 py-2">{body}</div>
+                ) : (
+                  <Link href={href} className="flex min-h-12 items-center gap-3 rounded-2xl px-3.5 py-2 no-underline hover:bg-soft">
+                    {body}
+                    <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
+                  </Link>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </GlassCard>
 

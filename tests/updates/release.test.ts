@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash, webcrypto } from "node:crypto";
-import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -174,7 +174,12 @@ describe("the workflow's check (scripts/verify-release.mjs)", () => {
     const dir = mkdtempSync(join(tmpdir(), "bp-release-"));
     writeFileSync(join(dir, "r.zip"), zip);
     writeFileSync(join(dir, "r.sig"), sig);
-    const r = spawnSync(process.execPath, ["scripts/verify-release.mjs", join(dir, "r.zip"), join(dir, "r.sig"), expected, join(dir, "out")], { env: { ...process.env, RELEASE_PUBLIC_KEY: publicKey }, encoding: "utf8" });
+    // The script trusts the committed key (scripts/release-public-key.mjs): run a copy beside this test's own key.
+    const scripts = join(dir, "scripts");
+    mkdirSync(scripts);
+    for (const f of ["verify-release.mjs", "release-core.mjs"]) copyFileSync(join("scripts", f), join(scripts, f));
+    writeFileSync(join(scripts, "release-public-key.mjs"), `export const RELEASE_PUBLIC_KEY = ${JSON.stringify(publicKey)};\n`);
+    const r = spawnSync(process.execPath, [join(scripts, "verify-release.mjs"), join(dir, "r.zip"), join(dir, "r.sig"), expected, join(dir, "out")], { env: { ...process.env, RELEASE_PUBLIC_KEY: "" }, encoding: "utf8" });
     return { ...r, dir };
   };
   it.skipIf(!unzip)("unpacks a signed zip and prints its version and commit", async () => {
