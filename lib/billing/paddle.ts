@@ -159,6 +159,8 @@ export const paddle: BillingAdapter = {
               description,
               name,
               unit_price: { amount: String(amountCents), currency_code: currency },
+              // Exactly one: without this Paddle's checkout shows a quantity picker (1 to 100 by default).
+              quantity: { minimum: 1, maximum: 1 },
               product: { name, tax_category: "standard" },
             },
           },

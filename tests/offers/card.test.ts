@@ -60,8 +60,8 @@ function seed(over: Record<string, unknown> = {}) {
 }
 
 /** The Paddle transaction.completed `data` for a checkout the server opened (custom data as signed). */
-function completed(customData: Record<string, string | number>, paid: { subtotal: number; currency?: string }, id = "txn_01") {
-  return { id, status: "completed", custom_data: customData, currency_code: paid.currency ?? "USD", details: { totals: { subtotal: String(paid.subtotal), currency_code: paid.currency ?? "USD", grand_total: String(paid.subtotal) }, payout_totals: { earnings: String(Math.round(paid.subtotal * 0.9)), currency_code: "USD" } } };
+function completed(customData: Record<string, string | number>, paid: { subtotal: number; currency?: string; quantity?: number }, id = "txn_01") {
+  return { id, status: "completed", custom_data: customData, currency_code: paid.currency ?? "USD", items: [{ quantity: paid.quantity ?? 1, price: { id: "pri_custom" } }], details: { totals: { subtotal: String(paid.subtotal), currency_code: paid.currency ?? "USD", grand_total: String(paid.subtotal) }, payout_totals: { earnings: String(Math.round(paid.subtotal * 0.9)), currency_code: "USD" } } };
 }
 
 async function addFeaturesByCard() {
@@ -152,6 +152,9 @@ describe("the webhook (transaction.completed)", () => {
     const usd = Number(customData.usdCents);
     expect(await applyOfferCardPayment(completed(customData, { subtotal: usd - 100 }), NOW)).toMatch(/refund needed/);
     expect(await applyOfferCardPayment(completed(customData, { subtotal: usd, currency: "EUR" }), NOW)).toMatch(/refund needed/);
+    // More than one bought (Paddle's quantity picker): refused whatever the total, never switched on.
+    expect(await applyOfferCardPayment(completed(customData, { subtotal: usd * 2, quantity: 2 }), NOW)).toMatch(/bought 2 instead of 1\): refund needed/);
+    expect(await applyOfferCardPayment(completed(customData, { subtotal: usd, quantity: 2 }), NOW)).toMatch(/bought 2 instead of 1/);
     expect(await applyOfferCardPayment(completed({ ...customData, quoteMinor: 1 }, { subtotal: usd }), NOW)).toMatch(/not signed/);
     expect(await applyOfferCardPayment(completed({ ...customData, usdCents: 100 }, { subtotal: 100 }), NOW)).toMatch(/not signed/);
     expect(offerRow(offerId).status).toBe("accepted");
