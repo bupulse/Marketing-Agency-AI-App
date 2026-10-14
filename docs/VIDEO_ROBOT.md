@@ -38,7 +38,7 @@ To switch it off, delete the secret in Netlify (owners make videos in their brow
    owner's browser, never make the same video. At most 60 claims an hour in all and 10 per company
    (`ROBOT_CLAIMS_PER_HOUR`, `ROBOT_CLAIMS_PER_BUSINESS_HOUR`). The attempt is counted at claim time, so a run that
    is killed mid-render still counts. The upload is reserved through `prepareVideoUpload`, exactly as for the
-   browser (plan has video, video seconds left, media quota, platform storage guard, at most 3 open uploads). A video
+   browser (plan has video, videos left (month and day), media quota, platform storage guard, at most 3 open uploads). A video
    that fails those checks is released and tried again next run; it does not count as a failure. Each job carries the
    video plan, signed download URLs of its photos (30 minutes, only photos in the owner's own folders) and a signed
    upload URL. No database ids or storage keys are sent apart from what those signed URLs contain.
@@ -49,7 +49,7 @@ To switch it off, delete the secret in Netlify (owners make videos in their brow
    robot talks to the app over https only (plain http only to 127.0.0.1 or localhost, for the self-test). At most 5
    minutes per video (less if the lease is shorter).
 5. **Upload and confirm** (`POST /api/robot/videos/complete`, job id only): the server runs `finalizeVideo`, the
-   browser's own path: the file's real length is read and billed once (`videoSeconds`), the quota is checked with the
+   browser's own path: the file's real length is read (at most 30 s) and one video is counted once (`videos`, and the day's `VideoDayUsage`), the quota is checked with the
    real size, the old file is replaced, the Autopilot posts get the video, and the post-video hooks run
    (`attachToContent`, then auto-scheduling where the app needs no approval). Right before billing it checks the
    robot still holds the video; a late robot (lease ended, or the owner took over) has its file deleted and nothing

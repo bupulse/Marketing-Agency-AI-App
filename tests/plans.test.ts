@@ -12,7 +12,7 @@ describe("plans", () => {
     for (const metric of Object.keys(PLANS.TRIAL.limits) as (keyof typeof PLANS.TRIAL.limits)[]) {
       // The trial's one sample video is the exception: Standard has no video (it is sold as an add-on).
       // The trial's sample voiceover too.
-      if (metric !== "videoSeconds" && metric !== "voiceCharacters") expect(PLANS.STANDARD.limits[metric] ?? 0).toBeGreaterThanOrEqual(PLANS.TRIAL.limits[metric] ?? 0);
+      if (metric !== "videos" && metric !== "voiceCharacters") expect(PLANS.STANDARD.limits[metric] ?? 0).toBeGreaterThanOrEqual(PLANS.TRIAL.limits[metric] ?? 0);
       expect(PLANS.PRO.limits[metric] ?? 0).toBeGreaterThanOrEqual(PLANS.STANDARD.limits[metric] ?? 0);
     }
   });

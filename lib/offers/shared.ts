@@ -5,7 +5,7 @@ import { z } from "zod";
 import { featureLabel, FEATURES, isFeatureKey, sortFeatureKeys, validateFeatureSet, withPrerequisites, type FeatureKey } from "@/lib/features";
 import { addMonths as addMonthsUtc } from "@/lib/billing/period";
 import { cardUsdCents } from "@/lib/region-format";
-import { SEATS_MAX, SEATS_MIN, VIDEO_PLAN_SECONDS, VOICE_PLAN_CHARACTERS, type PlanLimits, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit } from "@/lib/plans";
+import { SEATS_MAX, SEATS_MIN, VIDEO_PLAN_VIDEOS, VOICE_PLAN_CHARACTERS, type PlanLimits, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit } from "@/lib/plans";
 
 /** A yearly custom plan costs this many months (the regional plans' rule: yearly = 10 months). */
 export const YEARLY_MONTHS = 10;
@@ -18,7 +18,7 @@ export const MAX_OFFER_MINOR = 2_000_000_000;
 
 // ---- the add-on catalog ---------------------------------------------------------------------------------------------
 
-/** The limits an offer can raise by blocks (video seconds and voice characters stay the base plan's). */
+/** The limits an offer can raise by blocks (videos and voice characters stay the base plan's). */
 export const OFFER_METRICS = ["text", "image", "chat"] as const;
 export type OfferMetric = (typeof OFFER_METRICS)[number];
 
@@ -87,7 +87,7 @@ export type OfferQuote = {
   features: FeatureKey[];
   /** The features the offer adds on top of the base plan. */
   added: FeatureKey[];
-  /** The custom plan's limits (videoSeconds and voiceCharacters stay the base plan's, except video added as an add-on). */
+  /** The custom plan's limits (videos and voiceCharacters stay the base plan's, except video added as an add-on). */
   limits: PlanLimits;
   /** What the base plan and the add-ons already include before any block is bought. */
   included: OfferLimits;
@@ -109,7 +109,7 @@ function priceOf(prices: readonly AddonPriceRow[], key: string, regionKey: strin
   return row && Number.isInteger(row.monthlyMinor) && row.monthlyMinor >= 0 ? row.monthlyMinor : null;
 }
 
-const EMPTY_LIMITS: PlanLimits = { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0, chat: 0, seats: SEATS_MIN };
+const EMPTY_LIMITS: PlanLimits = { text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0, seats: SEATS_MIN };
 
 /**
  * The offer's priced lines and total for its interval, from the base plan's regional price and the region's add-on
@@ -158,7 +158,7 @@ export function quoteOffer(input: OfferQuoteInput): OfferQuote {
     features,
     added,
     // Video sold on top of a plan without it brings the video plans' seconds (8 videos of up to 30 s a month).
-    limits: { ...baseLimits, text: input.limits.text, image: input.limits.image, chat: input.limits.chat, seats: input.limits.seats, postsPerAppPerDay: postsPerAppLimit({ postsPerAppPerDay: input.limits.postsPerAppPerDay ?? postsPerAppLimit(baseLimits) }), ...(added.includes("video") ? { videoSeconds: Math.max(baseLimits.videoSeconds, VIDEO_PLAN_SECONDS) } : {}), ...(added.includes("voice") ? { voiceCharacters: Math.max(baseLimits.voiceCharacters, VOICE_PLAN_CHARACTERS) } : {}) },
+    limits: { ...baseLimits, text: input.limits.text, image: input.limits.image, chat: input.limits.chat, seats: input.limits.seats, postsPerAppPerDay: postsPerAppLimit({ postsPerAppPerDay: input.limits.postsPerAppPerDay ?? postsPerAppLimit(baseLimits) }), ...(added.includes("video") ? { videos: Math.max(baseLimits.videos, VIDEO_PLAN_VIDEOS) } : {}), ...(added.includes("voice") ? { voiceCharacters: Math.max(baseLimits.voiceCharacters, VOICE_PLAN_CHARACTERS) } : {}) },
     included,
     lines,
     computedMinor: lines.reduce((s, l) => s + l.totalMinor, 0),

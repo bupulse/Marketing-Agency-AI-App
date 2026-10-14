@@ -58,7 +58,7 @@ export default async function DashboardPage() {
   const meters = [
     { label: "Text generations", value: used.text, max: limits.text },
     { label: "Images", value: used.image, max: limits.image },
-    { label: "Video seconds", value: used.videoSeconds, max: limits.videoSeconds },
+    { label: "Videos", value: used.videos, max: limits.videos },
     { label: "Voice characters", value: used.voiceCharacters, max: limits.voiceCharacters },
   ];
 

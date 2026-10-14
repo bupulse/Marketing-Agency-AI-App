@@ -19,7 +19,7 @@ function rowsFor(plans: PublicPlan[], trialDays: number): { label: string; cells
     { label: "Autopilot: your week planned and written", cells: each((p) => p.features.includes("autopilot")) },
     { label: "App connectors and API access", cells: each((p) => p.features.includes("apiAccess")) },
     { label: "Use your own Composio account", cells: each((p) => p.features.includes("ownComposio")) },
-    { label: "Video and voiceover (when released)", cells: each((p) => p.limits.videoSeconds > 0 || p.limits.voiceCharacters > 0) },
+    { label: "Video and voiceover (when released)", cells: each((p) => p.limits.videos > 0 || p.limits.voiceCharacters > 0) },
   ];
   return rows;
 }

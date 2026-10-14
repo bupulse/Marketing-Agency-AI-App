@@ -3,6 +3,7 @@
 // written in one AI call, and every post gets its own visual with people (one AI image each while the plan's images
 // and AI allowance last, then designed posts from the real photos). One text credit per post written.
 import "server-only";
+import { videosLeftNow } from "@/lib/plans";
 import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
@@ -139,7 +140,7 @@ export async function generatePackForSubject(args: {
   let slots: PackSlot[] = spreadNetworks(angles, networks);
   const reserved = await reserveCredits(userId, slots.length);
   slots = slots.slice(0, reserved.count);
-  // Picture, carousel or video per post (lib/content-flow/format.ts): BuPulse decides, within the plan's video seconds.
+  // Picture, carousel or video per post (lib/content-flow/format.ts): BuPulse decides, within the plan's videos.
   const formats = await packFormats(userId, businessId, business.timezone || "UTC", slots, `${subject.kind}:${subject.id}`, now);
   slots = slots.map((s, i) => ({ ...s, format: formats[i]?.format ?? s.format }));
 
@@ -220,7 +221,7 @@ async function packFormats(userId: string, businessId: string, zone: string, slo
       slots,
       day,
       videoInPlan,
-      videoSecondsLeft: usage ? Math.max(0, (usage.limits.videoSeconds ?? 0) - (usage.used.videoSeconds ?? 0)) : 0,
+      videosLeft: usage ? videosLeftNow(usage) : 0,
       photoApps: VIDEO_APPS.filter((n) => getProvider(n).rules.formats.includes("POST")),
       recent,
       rng: seededRandom(`${businessId}|${subjectKey}|${now.toISOString()}`),

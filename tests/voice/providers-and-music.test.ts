@@ -62,9 +62,9 @@ describe("ElevenLabs", () => {
 });
 
 describe("voiceover in the plans", () => {
-  it("is built: Business and Pro 5,000 characters, the trial 600, Starter and Standard none (an add-on)", () => {
+  it("is built: Business and Pro 600 characters a video (72,000 for 120 videos), the trial 600, Starter and Standard none (an add-on)", () => {
     expect(FEATURES.find((f) => f.key === "voice")).toMatchObject({ status: "built", metric: "voiceCharacters", requires: ["video"], services: ["elevenlabs"] });
-    expect(SEED_PLANS.PRO.limits.voiceCharacters).toBe(5000);
+    expect(SEED_PLANS.PRO.limits.voiceCharacters).toBe(72_000);
     expect(SEED_PLANS.TRIAL.limits.voiceCharacters).toBe(600);
     expect(SEED_PLANS.TRIAL.features).toContain("voice");
     expect(SEED_PLANS.STANDARD.features).not.toContain("voice");
@@ -72,10 +72,10 @@ describe("voiceover in the plans", () => {
     const sql = readFileSync("prisma/migrations/20261017100000_voice_and_music/migration.sql", "utf8");
     expect(sql).toMatch(/\('addon_rw_voice', 'voice', 'RW', 'RWF', 5000, 'migration', CURRENT_TIMESTAMP\)/);
     expect(sql).toMatch(/ENABLE ROW LEVEL SECURITY[\s\S]*REVOKE ALL ON TABLE "VoiceClip", "MusicTrack"/);
-    const base: OfferBase = { key: "STARTER", name: "Starter", monthlyMinor: 15000, yearlyMinor: 150000, features: ["content", "designs", "calendar", "gallery"], limits: { text: 60, image: 30, chat: 0, videoSeconds: 0, voiceCharacters: 0, seats: 1 } };
+    const base: OfferBase = { key: "STARTER", name: "Starter", monthlyMinor: 15000, yearlyMinor: 150000, features: ["content", "designs", "calendar", "gallery"], limits: { text: 60, image: 30, chat: 0, videos: 0, voiceCharacters: 0, seats: 1 } };
     const q = quoteOffer({ base, features: ["voice"], limits: { text: 60, image: 30, chat: 0, seats: 1 }, interval: "MONTH", currency: "RWF", regionKey: "RW", prices: [] });
     expect(q.added).toEqual(["video", "voice"]);
-    expect(q.limits).toMatchObject({ voiceCharacters: VOICE_PLAN_CHARACTERS, videoSeconds: 240 });
+    expect(q.limits).toMatchObject({ voiceCharacters: VOICE_PLAN_CHARACTERS, videos: 120 });
   });
 });
 

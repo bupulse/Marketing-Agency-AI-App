@@ -33,7 +33,7 @@ import { createPlan, previewPriceChange, updatePlan, cancelPriceChange, syncPlan
 import { businessHasApiAccess } from "@/lib/api/auth";
 import { firstRenewalOnOrAfter, processPriceChanges } from "@/lib/billing/price-changes";
 import { getSellablePlans, getPlans, planForPriceId, priceIdFor, resetPlanCache } from "@/lib/plan-catalog";
-import { SEED_PLANS } from "@/lib/plans";
+import { SEED_PLANS, VIDEOS_PER_DAY } from "@/lib/plans";
 import { AdminError, apiContext, consoleContext } from "@/lib/admin/types";
 import * as svc from "@/lib/admin/service";
 
@@ -106,15 +106,20 @@ describe("the migration seeds exactly today's plans", () => {
       const r = row(key);
       // The pricing copy changed later with the AI image limits (20261016130000_people_images).
       r.features = r.features.map((f: string) => AI_IMAGE_COPY[f] ?? f);
-      expect(r).toMatchObject({ name: c.name, description: c.description, isTrial: c.isTrial, trialDays: c.trialDays, sortOrder: c.sortOrder, highlight: c.highlight, monthly: c.priceUsdMonthly * 100, yearly: c.priceUsdYearly * 100, limits: Object.fromEntries(Object.entries(c.limits).filter(([k]) => k !== "seats" && k !== "videoSeconds" && k !== "image" && k !== "voiceCharacters" && k !== "postsPerAppPerDay")), features: c.highlights, caps: { apiAccess: c.features.includes("apiAccess"), ownComposio: c.features.includes("ownComposio") } });
+      expect(r).toMatchObject({ name: c.name, description: c.description, isTrial: c.isTrial, trialDays: c.trialDays, sortOrder: c.sortOrder, highlight: c.highlight, monthly: c.priceUsdMonthly * 100, yearly: c.priceUsdYearly * 100, limits: Object.fromEntries(Object.entries(c.limits).filter(([k]) => k !== "seats" && k !== "videos" && k !== "videosPerDay" && k !== "image" && k !== "voiceCharacters" && k !== "postsPerAppPerDay")), features: c.highlights, caps: { apiAccess: c.features.includes("apiAccess"), ownComposio: c.features.includes("ownComposio") } });
       // seats arrive with their own migration (the plan_seats one); here only the original five limits are compared
       expect(Object.keys(r.limits).sort()).toEqual(["chat", "image", "text", "videoSeconds", "voiceCharacters"]);
     }
     // Video seconds changed later (20261015090000_content_visuals): trial 30, Pro and Business 240, the rest as seeded.
     const video = readFileSync("prisma/migrations/20261015090000_content_visuals/migration.sql", "utf8");
-    expect(video).toContain(`jsonb_set("limits", '{videoSeconds}', '${SEED_PLANS.PRO.limits.videoSeconds}'::jsonb)\nWHERE "key" IN ('BUSINESS', 'PRO')`);
-    expect(video).toContain(`jsonb_set("limits", '{videoSeconds}', '${SEED_PLANS.TRIAL.limits.videoSeconds}'::jsonb)\nWHERE "isTrial" = true`);
-    expect(row("STANDARD").limits.videoSeconds).toBe(SEED_PLANS.STANDARD.limits.videoSeconds);
+    expect(video).toContain(`jsonb_set("limits", '{videoSeconds}', '240'::jsonb)\nWHERE "key" IN ('BUSINESS', 'PRO')`);
+    expect(video).toContain(`jsonb_set("limits", '{videoSeconds}', '30'::jsonb)\nWHERE "isTrial" = true`);
+    expect(row("STANDARD").limits.videoSeconds).toBe(SEED_PLANS.STANDARD.limits.videos);
+    // Then videos instead of seconds (20261018120000_videos_per_month): 240 s -> 120 videos (4 a day), the trial's 30 s -> 1.
+    const perVideo = readFileSync("prisma/migrations/20261018120000_videos_per_month/migration.sql", "utf8");
+    expect(perVideo).toContain(`<= 30 THEN 1 ELSE ${SEED_PLANS.PRO.limits.videos} END`);
+    expect(perVideo).toContain(`<= 30 THEN 1 ELSE ${VIDEOS_PER_DAY} END`);
+    expect([SEED_PLANS.TRIAL.limits.videos, SEED_PLANS.STANDARD.limits.videos, SEED_PLANS.PRO.limits.videos]).toEqual([1, 0, 120]);
     const people = readFileSync("prisma/migrations/20261016130000_people_images/migration.sql", "utf8");
     expect(people).toMatch(/'\{image\}', '30'::jsonb\) WHERE "key" IN \('STARTER', 'STANDARD'\)/);
     expect(people).toMatch(/'\{image\}', '100'::jsonb\) WHERE "key" IN \('BUSINESS', 'PRO'\)/);
@@ -123,7 +128,10 @@ describe("the migration seeds exactly today's plans", () => {
     for (const [from, to] of Object.entries(AI_IMAGE_COPY)) expect(people).toContain(`'${from}', '${to}'`);
     // Voiceover characters changed with 20261017100000_voice_and_music: trial 600, Business and Pro 5,000, the rest 0.
     const voice = readFileSync("prisma/migrations/20261017100000_voice_and_music/migration.sql", "utf8");
-    expect(voice).toContain(`'{voiceCharacters}', '${SEED_PLANS.PRO.limits.voiceCharacters}'::jsonb) WHERE "key" IN ('BUSINESS', 'PRO')`);
+    expect(voice).toContain(`'{voiceCharacters}', '5000'::jsonb) WHERE "key" IN ('BUSINESS', 'PRO')`);
+    // Then 600 a video for the 120 videos (20261018120000_videos_per_month): 72,000.
+    expect(perVideo).toContain(`("limits"->>'videos')::int * 600`);
+    expect(SEED_PLANS.PRO.limits.voiceCharacters).toBe(72_000);
     expect(voice).toContain(`'{voiceCharacters}', '${SEED_PLANS.TRIAL.limits.voiceCharacters}'::jsonb) WHERE "isTrial" = true`);
     expect(SEED_PLANS.STANDARD.limits.voiceCharacters).toBe(0);
     expect(SEED_PLANS.STANDARD.highlights).toEqual(["100 AI text generations a month", "30 AI images a month", "Post to 5 social networks", "Lead-capturing chat widget", "Content calendar and scheduling"]);

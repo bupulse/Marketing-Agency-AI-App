@@ -77,7 +77,7 @@ export function assignMedia(input: { networks: readonly Network[]; gallery: Gall
 }
 
 /**
- * The album video each post would carry as it is (no video seconds): TikTok and YouTube take the album's videos in
+ * The album video each post would carry as it is (none of the plan's videos): TikTok and YouTube take the album's videos in
  * turn; Instagram (MP4) and Facebook take one a day each, as a Reel or a Page video. LinkedIn takes none.
  */
 export function albumVideos(networks: readonly Network[], gallery: GalleryItem[]): (GalleryItem | null)[] {

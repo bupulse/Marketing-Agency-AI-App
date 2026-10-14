@@ -37,6 +37,8 @@ function readForm(f: FormData, isTrial: boolean): Partial<PlanInput> {
       ...(Object.fromEntries([...USAGE_METRICS, "seats"].map((m) => [m, numberOf(f, `limit_${m}`, m === "seats" ? "Team seats" : `The ${m} limit`)])) as Record<UsageMetric | "seats", number>),
       // Posts per app per day (docs/CONTENT.md): only when the form sends it.
       ...(text(f, "limit_postsPerAppPerDay") ? { postsPerAppPerDay: numberOf(f, "limit_postsPerAppPerDay", "Posts per app per day") } : {}),
+      // Videos a day (docs/CONTENT_VISUALS.md): only when the form sends it.
+      ...(text(f, "limit_videosPerDay") ? { videosPerDay: numberOf(f, "limit_videosPerDay", "Videos per day") } : {}),
     },
     highlights: String(f.get("highlights") ?? "").split("\n").map((l) => l.trim()).filter(Boolean),
     // The checklist; the service validates prerequisites and refuses "coming soon" keys (the form only guides).

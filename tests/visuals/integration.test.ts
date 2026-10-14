@@ -57,7 +57,7 @@ beforeEach(() => {
   mocks.prisma.connection.findMany.mockResolvedValue([{ provider: "instagram" }]);
   mocks.prisma.business.findUnique.mockResolvedValue({ userId: U });
   mocks.prisma.design.update.mockResolvedValue({});
-  mocks.getUsageSummary.mockResolvedValue({ used: { image: 0, videoSeconds: 0 }, limits: { image: 50, videoSeconds: 120 } });
+  mocks.getUsageSummary.mockResolvedValue({ used: { image: 0, videos: 0 }, limits: { image: 50, videos: 120 } });
   mocks.generate.mockResolvedValue(answer([s("Light as air", "album")]));
   mocks.createTemplateDesign.mockImplementation(async () => ({ id: `d${++n}`, path: `${U}/designs/d${n}.png` }));
 });
@@ -78,7 +78,7 @@ describe("Studio feature gating", () => {
     mocks.featureStatus.mockResolvedValue("not_in_plan");
     await planContentVisuals(owner, { business, item, content });
     mocks.featureStatus.mockResolvedValue("ok");
-    mocks.getUsageSummary.mockResolvedValue({ used: { image: 0, videoSeconds: 0 }, limits: { image: 50, videoSeconds: 0 } });
+    mocks.getUsageSummary.mockResolvedValue({ used: { image: 0, videos: 0 }, limits: { image: 50, videos: 0 } });
     await planContentVisuals(owner, { business, item, content });
     expect(mocks.prisma.contentVisual.create.mock.calls.map(([a]) => a.data.kind)).toEqual(["image", "image"]);
   });
@@ -92,7 +92,7 @@ describe("Studio feature gating", () => {
     expect(mocks.prisma.contentVisual.create.mock.calls[0][0].data.plan.slides[0].source).toBe("text");
 
     mocks.hasFeature.mockResolvedValue(true);
-    mocks.getUsageSummary.mockResolvedValue({ used: { image: 50, videoSeconds: 0 }, limits: { image: 50, videoSeconds: 120 } });
+    mocks.getUsageSummary.mockResolvedValue({ used: { image: 50, videos: 0 }, limits: { image: 50, videos: 120 } });
     await planContentVisuals(owner, { business, item, content });
     expect(mocks.generate.mock.calls[1][0].prompt).toMatch(/AI photos allowed: no/);
   });

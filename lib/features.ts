@@ -215,7 +215,7 @@ export const FEATURES: readonly FeatureDef[] = [
     label: "Videos",
     description: "Short vertical videos made from your photos and scripts, with captions, ready for Reels, TikTok and Shorts. AI video is coming soon.",
     requires: ["content"],
-    metric: "videoSeconds",
+    metric: "videos",
     // Slideshow videos are drawn in the owner's browser: no outside service.
     services: [],
     status: "built",

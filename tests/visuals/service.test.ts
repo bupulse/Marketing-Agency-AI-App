@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   hasFeature: vi.fn(),
   featureStatus: vi.fn(),
   consumeUsage: vi.fn(),
+  consumeDailyVideo: vi.fn(async () => ({ day: "2026-10-13" })),
   getUsageSummary: vi.fn(),
   spend: vi.fn(),
   createAiDesign: vi.fn(),
@@ -34,7 +35,7 @@ vi.mock("@/lib/usage", () => {
       super("limit");
     }
   }
-  return { consumeUsage: mocks.consumeUsage, getUsageSummary: mocks.getUsageSummary, refundUsage: mocks.refundUsage, UsageLimitError };
+  return { consumeUsage: mocks.consumeUsage, consumeDailyVideo: mocks.consumeDailyVideo, getUsageSummary: mocks.getUsageSummary, refundUsage: mocks.refundUsage, UsageLimitError };
 });
 vi.mock("@/lib/ai/budget", async (original) => ({ ...(await original<typeof import("@/lib/ai/budget")>()), companySpendThisMonth: mocks.spend }));
 vi.mock("@/lib/ai", () => ({ getCheapTextProvider: () => ({ provider: { name: "gemini", generate: mocks.generate }, model: "gemini-2.5-flash-lite" }) }));
@@ -54,7 +55,7 @@ import { AIBudgetExceededError } from "@/lib/ai/budget";
 import { DesignError } from "@/lib/designs/service";
 import { UsageLimitError } from "@/lib/usage";
 import { fallbackPlan } from "@/lib/visuals/direction";
-import { attachToGroup, drawSlide, finalizeVideo, leaseVideoForBrowser, planVisuals, prepareVideoUpload, readyMedia, remakeCredit, renderImageStep, sniffVideo, updateVideoPlan, VisualError, type PlanInput } from "@/lib/visuals/service";
+import { attachToGroup, drawSlide, finalizeVideo, leaseVideoForBrowser, planVisuals, prepareVideoUpload, readyMedia, countsAsNewVideo, renderImageStep, sniffVideo, updateVideoPlan, VisualError, type PlanInput } from "@/lib/visuals/service";
 import type { ImagePlan, VisualSlide } from "@/lib/visuals/types";
 import { buildVideoPlan } from "@/lib/visuals/video-plan";
 import { mp4Bytes } from "./video-bytes";
@@ -105,7 +106,7 @@ beforeEach(() => {
   mocks.createAiDesign.mockResolvedValue({ id: "ai1", path: `${U}/designs/ai1.png` });
   mocks.hasFeature.mockResolvedValue(true);
   mocks.featureStatus.mockResolvedValue("ok");
-  mocks.getUsageSummary.mockResolvedValue({ used: { image: 0, videoSeconds: 0 }, limits: { image: 50, videoSeconds: 120 } });
+  mocks.getUsageSummary.mockResolvedValue({ used: { image: 0, videos: 0 }, limits: { image: 50, videos: 120 }, videosToday: 0, videosPerDay: 4 });
   mocks.spend.mockResolvedValue({ totalUsd: 0, widgetUsd: 0, ownerUsd: 0, allowanceUsd: 3, widgetCapUsd: 1.5 });
   mocks.mediaUsage.mockResolvedValue({ count: 0, bytes: 0 });
   mocks.storage.remove.mockResolvedValue({ data: [], error: null });
@@ -290,22 +291,24 @@ describe("video upload checks", () => {
     await expect(prepareVideoUpload(owner, "vid1", { ...file, bytes: 1000 })).rejects.toThrow(/out of space/);
   });
 
-  it("refuses without the video feature, too big, too long, no seconds left, or a full gallery", async () => {
+  it("refuses without the video feature, too big, too long, no videos left (this month or today), or a full gallery", async () => {
     mocks.prisma.contentVisual.findFirst.mockResolvedValue(freshRow());
     mocks.featureStatus.mockResolvedValueOnce("not_in_plan");
     await expect(prepareVideoUpload(owner, "vid1", file)).rejects.toThrow(/not in your plan/);
     await expect(prepareVideoUpload(owner, "vid1", { ...file, bytes: 9 * 1024 * 1024 })).rejects.toThrow(/8 MB/);
     await expect(prepareVideoUpload(owner, "vid1", { ...file, durationMs: 45_000 })).rejects.toThrow(/30 seconds/);
     await expect(prepareVideoUpload(owner, "vid1", { ...file, mimeType: "video/quicktime" })).rejects.toThrow(/MP4 or WebM/);
-    mocks.getUsageSummary.mockResolvedValue({ used: { image: 0, videoSeconds: 115 }, limits: { image: 50, videoSeconds: 120 } });
-    await expect(prepareVideoUpload(owner, "vid1", file)).rejects.toThrow(/video seconds/);
-    mocks.getUsageSummary.mockResolvedValue({ used: { image: 0, videoSeconds: 0 }, limits: { image: 50, videoSeconds: 120 } });
+    mocks.getUsageSummary.mockResolvedValue({ used: { image: 0, videos: 120 }, limits: { image: 50, videos: 120 }, videosToday: 0, videosPerDay: 4 });
+    await expect(prepareVideoUpload(owner, "vid1", file)).rejects.toThrow(/120 videos for this month are used up \(120 of 120\)/);
+    mocks.getUsageSummary.mockResolvedValue({ used: { image: 0, videos: 40 }, limits: { image: 50, videos: 120 }, videosToday: 4, videosPerDay: 4 });
+    await expect(prepareVideoUpload(owner, "vid1", file)).rejects.toThrow(/^4 videos today, the most a day: more tomorrow\. 40 of 120 this month\.$/);
+    mocks.getUsageSummary.mockResolvedValue({ used: { image: 0, videos: 0 }, limits: { image: 50, videos: 120 }, videosToday: 0, videosPerDay: 4 });
     mocks.mediaUsage.mockResolvedValueOnce({ count: 500, bytes: 0 });
     await expect(prepareVideoUpload(owner, "vid1", file)).rejects.toThrow(/gallery is full/);
     expect(mocks.signedUpload).not.toHaveBeenCalled();
   });
 
-  it("finalize: reads the real length from the file, bills it, and puts the video on the group's video posts", async () => {
+  it("finalize: reads the real length from the file, counts one video (month and day), and puts it on the group's video posts", async () => {
     mocks.prisma.contentVisual.findFirst.mockResolvedValue(row);
     upload(mp4Bytes(14_200));
     mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "video", status: "ready", items: [{ path: `${U}/videos/vid1-abcd1.mp4` }] }]);
@@ -314,10 +317,11 @@ describe("video upload checks", () => {
       { id: "tt", network: "tiktok", format: "SCRIPT", mediaPaths: [], status: "PENDING_APPROVAL", lastError: null },
       { id: "li", network: "linkedin", format: "POST", mediaPaths: [`${U}/designs/x.png`], status: "PENDING_APPROVAL", lastError: null },
     ]);
-    // The browser says 2 s; the file says 14.2 s: 15 seconds are billed.
+    // The browser says 2 s; the file says 14.2 s: the video is 15 s long and uses one of the plan's videos.
     const r = await finalizeVideo(owner, "vid1", { path: `${U}/videos/vid1-abcd1.mp4`, durationMs: 2000 });
     expect(r.seconds).toBe(15);
-    expect(mocks.consumeUsage).toHaveBeenCalledWith(U, "videoSeconds", 15);
+    expect(mocks.consumeUsage).toHaveBeenCalledWith(U, "videos", 1);
+    expect(mocks.consumeDailyVideo).toHaveBeenCalledWith(U, 4);
     expect(mocks.prisma.contentVisual.update.mock.calls[0][0].data).toMatchObject({ status: "ready", seconds: 15, items: [{ path: `${U}/videos/vid1-abcd1.mp4` }], uploadPath: null, uploadBytes: 0, uploadExpiresAt: null });
     const updates = Object.fromEntries(mocks.prisma.post.updateMany.mock.calls.map(([a]) => [a.where.id, a.data]));
     expect(updates.ig).toMatchObject({ format: "POST", mediaPaths: [`${U}/videos/vid1-abcd1.mp4`] });
@@ -366,7 +370,7 @@ describe("video upload checks", () => {
     expect(mocks.storage.download).not.toHaveBeenCalled();
   });
 
-  it("finalize re-checks the plan, and refuses (and deletes) other paths, non-videos, videos over 30.5 s, unreadable lengths, or no seconds left", async () => {
+  it("finalize re-checks the plan, and refuses (and deletes) other paths, non-videos, videos over 30.5 s, unreadable lengths, or no videos left", async () => {
     mocks.prisma.contentVisual.findFirst.mockResolvedValue(row);
     await expect(finalizeVideo(owner, "vid1", { path: `${U}/videos/other-abcd1.mp4`, durationMs: 1000 })).rejects.toThrow(/could not be used/);
     mocks.featureStatus.mockResolvedValueOnce("not_in_plan");
@@ -384,8 +388,21 @@ describe("video upload checks", () => {
     upload(new Uint8Array([0, 0, 0, 0x10, 0x66, 0x74, 0x79, 0x70, 0, 0, 0, 0, 0, 0, 0, 0]));
     await expect(finalizeVideo(owner, "vid1", { path, durationMs: 10_000 })).rejects.toThrow(/length/);
     upload(mp4Bytes(10_000));
-    mocks.consumeUsage.mockRejectedValueOnce(new UsageLimitError("limit_reached", "videoSeconds"));
-    await expect(finalizeVideo(owner, "vid1", { path, durationMs: 10_000 })).rejects.toThrow(/video seconds/);
+    mocks.consumeUsage.mockRejectedValueOnce(new UsageLimitError("limit_reached", "videos"));
+    await expect(finalizeVideo(owner, "vid1", { path, durationMs: 10_000 })).rejects.toThrow(/videos are used up/);
+  });
+
+  it("finalize: today's cap reached after the month's count is taken gives the month's video back (nothing is used)", async () => {
+    mocks.prisma.contentVisual.findFirst.mockResolvedValue(row);
+    mocks.prisma.post.findMany.mockResolvedValue([]);
+    upload(mp4Bytes(10_000));
+    mocks.consumeUsage.mockResolvedValueOnce({ periodStart: new Date("2026-10-01T00:00:00Z") });
+    mocks.consumeDailyVideo.mockRejectedValueOnce(new UsageLimitError("limit_reached", "videos"));
+    mocks.getUsageSummary.mockResolvedValue({ used: { image: 0, videos: 9 }, limits: { image: 50, videos: 120 }, videosToday: 4, videosPerDay: 4 });
+    await expect(finalizeVideo(owner, "vid1", { path: PATH, durationMs: 10_000 })).rejects.toThrow(/4 videos today, the most a day: more tomorrow/);
+    expect(mocks.refundUsage).toHaveBeenCalledWith(U, "videos", new Date("2026-10-01T00:00:00Z"), 1);
+    expect(mocks.storage.remove).toHaveBeenCalledWith([PATH]);
+    expect(mocks.prisma.contentVisual.update).not.toHaveBeenCalled();
   });
 
   it("finalize takes only the reserved upload: another file in the folder, or an expired reservation, is refused and deleted", async () => {
@@ -422,47 +439,37 @@ describe("video upload checks", () => {
 
   describe("making an existing video again (remake)", () => {
     const OLD = `${U}/videos/vid1-old01.mp4`;
-    // Urugo's case: a 30-second trial, a 28-second video already made and paid for.
+    // A video already made and counted: making it again (captions, photos, music, voice) uses none of the plan's videos.
     const made = { ...row, status: "pending", items: [{ path: OLD }], seconds: 28 };
-    const trialUsage = { used: { image: 0, videoSeconds: 28 }, limits: { image: 50, videoSeconds: 30 } };
+    const usedUp = { used: { image: 0, videos: 120 }, limits: { image: 50, videos: 120 }, videosToday: 4, videosPerDay: 4 };
 
-    it("pays only the seconds beyond the video it replaces (none for the same length), in the browser and for the robot", async () => {
-      mocks.getUsageSummary.mockResolvedValue(trialUsage);
+    it("uses no video, even with the month's and today's videos used up, in the browser and for the robot", async () => {
+      mocks.getUsageSummary.mockResolvedValue(usedUp);
       mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...made, uploadPath: null, uploadExpiresAt: null });
       await expect(prepareVideoUpload(owner, "vid1", { ...file, durationMs: 27_500 })).resolves.toMatchObject({ seconds: 28 });
       mocks.prisma.contentVisual.findFirst.mockResolvedValue(made);
       mocks.prisma.contentVisual.findMany.mockResolvedValue([]);
-      upload(mp4Bytes(27_500));
-      expect((await finalizeVideo(owner, "vid1", { path: PATH, durationMs: 27_500 })).seconds).toBe(28);
+      upload(mp4Bytes(29_000));
+      expect((await finalizeVideo(owner, "vid1", { path: PATH, durationMs: 29_000 })).seconds).toBe(29);
       expect(mocks.consumeUsage).not.toHaveBeenCalled();
-      expect(mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data).toMatchObject({ status: "ready", seconds: 28, items: [{ path: PATH }] });
-
-      // 2 seconds longer: 2 are counted.
-      mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...made, seconds: 13 });
-      upload(mp4Bytes(14_200));
-      await finalizeVideo(owner, "vid1", { path: PATH, durationMs: 14_200 }, {});
-      expect(mocks.consumeUsage).toHaveBeenCalledWith(U, "videoSeconds", 2);
-      expect(remakeCredit({ kind: "video", items: [], seconds: 28 })).toBe(0); // removed by the 30-day clean-up: a new video
+      expect(mocks.consumeDailyVideo).not.toHaveBeenCalled();
+      expect(mocks.prisma.contentVisual.update.mock.calls.at(-1)![0].data).toMatchObject({ status: "ready", seconds: 29, items: [{ path: PATH }] });
+      // Its file removed by the 30-day clean-up: making it is a new video.
+      expect(countsAsNewVideo({ kind: "video", items: [] })).toBe(true);
+      expect(countsAsNewVideo({ kind: "video", items: [{ path: OLD }] })).toBe(false);
     });
 
-    it("a longer remake without the seconds is refused before it starts, and the current video is kept", async () => {
-      mocks.getUsageSummary.mockResolvedValue(trialUsage);
-      mocks.prisma.business.findUnique.mockResolvedValue({ userId: U });
-      mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...made, status: "ready", seconds: Math.ceil(videoPlan.totalMs / 1000) - 3 });
-      await expect(updateVideoPlan(owner, "vid1", { texts: ["New caption"] })).rejects.toThrow(/more seconds than your current video.*2 left.*current video is kept/);
-      expect(mocks.prisma.contentVisual.update).not.toHaveBeenCalled();
-      // The same length: allowed, and the video goes on showing (items are untouched).
-      mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...made, status: "ready", seconds: Math.ceil(videoPlan.totalMs / 1000) });
-      await updateVideoPlan(owner, "vid1", {});
+    it("changing captions of a made video is never refused on the count, and the video goes on showing", async () => {
+      mocks.getUsageSummary.mockResolvedValue(usedUp);
+      mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...made, status: "ready" });
+      await updateVideoPlan(owner, "vid1", { texts: ["New caption"] });
       expect(mocks.prisma.contentVisual.update.mock.calls[0][0].data).not.toHaveProperty("items");
     });
 
-    it("a refused or failed remake keeps the current file on the posts", async () => {
-      mocks.consumeUsage.mockRejectedValueOnce(new UsageLimitError("limit_reached", "videoSeconds"));
-      mocks.prisma.contentVisual.findFirst.mockResolvedValue({ ...made, seconds: 10 });
-      upload(mp4Bytes(14_200));
-      await expect(finalizeVideo(owner, "vid1", { path: PATH, durationMs: 14_200 })).rejects.toThrow(/current video is kept/);
-      expect(mocks.consumeUsage).toHaveBeenCalledWith(U, "videoSeconds", 5);
+    it("a refused remake keeps the current file on the posts", async () => {
+      mocks.prisma.contentVisual.findFirst.mockResolvedValue(made);
+      upload(mp4Bytes(31_000));
+      await expect(finalizeVideo(owner, "vid1", { path: PATH, durationMs: 14_200 })).rejects.toThrow(/30 seconds/);
       expect(mocks.storage.remove).toHaveBeenCalledWith([PATH]);
       expect(mocks.storage.remove).not.toHaveBeenCalledWith([OLD]);
       mocks.prisma.contentVisual.findMany.mockResolvedValue([{ kind: "video", status: "failed", items: [{ path: OLD }], plan: videoPlan }]);
@@ -555,7 +562,7 @@ describe("people in the pictures (owner decision, 13 October 2026)", () => {
 
   it("the dollar allowance running out gives the same message, refilled on the 1st of next month", async () => {
     const { aiPhotosStatus, nextMonthStart } = await import("@/lib/visuals/service");
-    mocks.getUsageSummary.mockResolvedValue({ used: { image: 3, videoSeconds: 0 }, limits: { image: 30, videoSeconds: 0 }, resetsAt: new Date("2026-11-20T00:00:00Z") });
+    mocks.getUsageSummary.mockResolvedValue({ used: { image: 3, videos: 0 }, limits: { image: 30, videos: 0 }, resetsAt: new Date("2026-11-20T00:00:00Z") });
     mocks.spend.mockResolvedValue({ totalUsd: 6, widgetUsd: 0, ownerUsd: 6, allowanceUsd: 6, widgetCapUsd: 3 });
     const status = await aiPhotosStatus(owner);
     expect(status.allowed).toBe(false);
@@ -565,7 +572,7 @@ describe("people in the pictures (owner decision, 13 October 2026)", () => {
 
   it("AI images used up: the plan says when they come back, and the visual is a free design from real photos", async () => {
     const { aiPhotosStatus, aiExhaustedNote } = await import("@/lib/visuals/service");
-    mocks.getUsageSummary.mockResolvedValue({ used: { image: 30, videoSeconds: 0 }, limits: { image: 30, videoSeconds: 0 }, resetsAt: new Date("2026-11-01T00:00:00Z") });
+    mocks.getUsageSummary.mockResolvedValue({ used: { image: 30, videos: 0 }, limits: { image: 30, videos: 0 }, resetsAt: new Date("2026-11-01T00:00:00Z") });
     const status = await aiPhotosStatus(owner);
     expect(status).toEqual({ allowed: false, exhausted: { refillAt: "2026-11-01T00:00:00.000Z" } });
     expect(aiExhaustedNote(status.exhausted!.refillAt)).toBe("AI images for this month used — next refill on 1 November. Your real photos and brand designs are used instead.");

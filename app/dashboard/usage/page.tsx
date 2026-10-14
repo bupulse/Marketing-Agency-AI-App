@@ -10,7 +10,7 @@ export default async function UsagePage() {
   const rows = [
     { label: "Text generations", unit: "generations", key: "text" as const },
     { label: "Images", unit: "images", key: "image" as const },
-    { label: "Video seconds", unit: "seconds", key: "videoSeconds" as const },
+    { label: "Videos", unit: "videos", key: "videos" as const },
     { label: "Voice characters", unit: "characters", key: "voiceCharacters" as const },
   ];
   const periodEnd = subscription.currentPeriodEnd;
@@ -47,6 +47,12 @@ export default async function UsagePage() {
                   </td>
                   <td className="py-4 text-right tabular-nums text-muted">
                     {unavailable ? "Not in plan" : `${used[key]} / ${limits[key]}`}
+                    {/* Videos: at most 30 seconds each and a few a day (lib/usage.ts consumeDailyVideo). */}
+                    {key === "videos" && !unavailable && (
+                      <span className="block text-[13px]">
+                        {usage.videosToday} of {usage.videosPerDay} today · up to 30 s each
+                      </span>
+                    )}
                   </td>
                 </tr>
               );

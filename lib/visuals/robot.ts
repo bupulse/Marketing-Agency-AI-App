@@ -26,7 +26,7 @@ export const ROBOT_MAX_CLAIM = 5;
 /** Videos the robot may claim in an hour: in all, and per company (a stuck or abused robot cannot burn through storage). */
 export const ROBOT_CLAIMS_PER_HOUR: RateLimitRule = { limit: 60, windowSeconds: 60 * 60 };
 export const ROBOT_CLAIMS_PER_BUSINESS_HOUR: RateLimitRule = { limit: 10, windowSeconds: 60 * 60 };
-/** Pending videos looked at per claim (some may belong to companies without video seconds left). */
+/** Pending videos looked at per claim (some may belong to companies without videos left). */
 const ROBOT_SCAN = 25;
 /** Lifetime of the photo download URLs: enough for one run. */
 const PHOTO_URL_SECONDS = 30 * 60;
@@ -124,7 +124,7 @@ async function releaseLease(id: string, job: string, data: { robotAttempts?: { i
 /**
  * Claims up to `max` pending videos, oldest first. Each is leased atomically (compare-and-set on the lease, so two
  * robot runs, or a robot and an owner's browser, never make the same video), then given an upload reservation through
- * prepareVideoUpload: plan feature, video seconds left, media quota, platform guard and open uploads are checked
+ * prepareVideoUpload: plan feature, videos left, media quota, platform guard and open uploads are checked
  * exactly as for the browser. A video that fails those checks is released untouched (no attempt counted).
  * The attempt is counted when the video is claimed (a run killed mid-render still counts toward the 3) and set back
  * to 0 when a video is made. At most 60 claims an hour in all and 10 per company.
@@ -220,7 +220,7 @@ export type RobotOutcome = { ok: true; seconds: number } | { ok: false; error: "
 
 /**
  * The robot uploaded the file: confirm it with finalizeVideo, the browser's own path (the real length read from the
- * file, quota with the real size, video seconds billed once, the old file replaced, Autopilot posts updated, and
+ * file, quota with the real size, the video counted once (one of the plan's videos), the old file replaced, Autopilot posts updated, and
  * whatever runs after a video is ready, such as auto-scheduling). A rejected file is deleted; the attempt was
  * counted at claim time.
  */

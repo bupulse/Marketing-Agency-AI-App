@@ -82,7 +82,7 @@ const userSelect = {
   deletionScheduledFor: true,
   subscription: { select: { plan: true, status: true, provider: true, interval: true, trialEndsAt: true, currentPeriodStart: true, currentPeriodEnd: true, cancelAtPeriodEnd: true } },
   business: { select: { id: true, name: true, industry: true, country: true, onboardedAt: true } },
-  usage: { orderBy: { periodStart: "desc" }, take: 1, select: { periodStart: true, textGenerations: true, imageGenerations: true, videoSeconds: true, voiceCharacters: true, chatMessages: true, updatedAt: true } },
+  usage: { orderBy: { periodStart: "desc" }, take: 1, select: { periodStart: true, textGenerations: true, imageGenerations: true, videos: true, voiceCharacters: true, chatMessages: true, updatedAt: true } },
 } satisfies Prisma.UserSelect;
 
 type UserRow = Prisma.UserGetPayload<{ select: typeof userSelect }>;
@@ -107,7 +107,7 @@ function userView(u: UserRow) {
     cancelAtPeriodEnd: u.subscription?.cancelAtPeriodEnd ?? false,
     business: u.business ? { id: u.business.id, name: u.business.name, industry: u.business.industry, country: u.business.country, onboarded: Boolean(u.business.onboardedAt) } : null,
     usage: usage
-      ? { periodStart: usage.periodStart, text: usage.textGenerations, image: usage.imageGenerations, videoSeconds: usage.videoSeconds, voiceCharacters: usage.voiceCharacters, chat: usage.chatMessages }
+      ? { periodStart: usage.periodStart, text: usage.textGenerations, image: usage.imageGenerations, videos: usage.videos, voiceCharacters: usage.voiceCharacters, chat: usage.chatMessages }
       : null,
     /** The last time the user used a metered feature this period (null when never). */
     lastActivityAt: usage?.updatedAt ?? null,
@@ -485,7 +485,7 @@ export async function getPlanLimitsView() {
   const plans = await getPlans({ force: true });
   return Object.fromEntries(
     plans.map((p) => {
-      const defaults = SEED_PLANS[p.key]?.limits ?? { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0, chat: 0 };
+      const defaults = SEED_PLANS[p.key]?.limits ?? { text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0 };
       // "overrides" = the metrics that differ from what the plan was seeded with.
       const overrides = Object.fromEntries(Object.entries(p.limits).filter(([m, v]) => defaults[m as UsageMetric] !== v));
       return [p.key, { defaults, overrides, effective: p.limits }];
@@ -498,7 +498,7 @@ export async function updatePlanLimits(ctx: AdminContext, input: { plan: string;
   requireConfirm(ctx, input.confirm, "Changing plan limits");
   if (!input.plan) throw new AdminError("invalid", "plan is required.");
   const { plan, effective } = await setPlanLimits(ctx, { plan: input.plan, limits: input.limits });
-  const defaults = SEED_PLANS[plan]?.limits ?? { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0, chat: 0 };
+  const defaults = SEED_PLANS[plan]?.limits ?? { text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0 };
   return { plan, effective, overrides: Object.fromEntries(Object.entries(effective).filter(([m, v]) => defaults[m as UsageMetric] !== v)) };
 }
 

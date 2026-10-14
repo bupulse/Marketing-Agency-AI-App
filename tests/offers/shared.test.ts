@@ -24,7 +24,7 @@ const RW: AddonPriceRow[] = [
 ].map(([addonKey, monthlyMinor]) => ({ addonKey: String(addonKey), regionKey: "RW", currency: "RWF", monthlyMinor: Number(monthlyMinor) }));
 
 // Rwanda's Business plan: website chat and Autopilot are add-ons there (docs/RWANDA_LAUNCH_PLAN.md section 2).
-const BUSINESS: OfferBase = { key: "BUSINESS", name: "Business", monthlyMinor: 35000, yearlyMinor: 350000, features: ["content", "designs", "calendar", "gallery"], limits: { text: 200, image: 100, chat: 0, videoSeconds: 0, voiceCharacters: 0, seats: 3 } };
+const BUSINESS: OfferBase = { key: "BUSINESS", name: "Business", monthlyMinor: 35000, yearlyMinor: 350000, features: ["content", "designs", "calendar", "gallery"], limits: { text: 200, image: 100, chat: 0, videos: 0, voiceCharacters: 0, seats: 3 } };
 const baseLimits = { text: 200, image: 100, chat: 0, seats: 3 };
 const quote = (over: Partial<Parameters<typeof quoteOffer>[0]> = {}) => quoteOffer({ base: BUSINESS, features: [], limits: baseLimits, interval: "MONTH", currency: "RWF", regionKey: "RW", prices: RW, ...over });
 
@@ -50,7 +50,7 @@ describe("pricing totals", () => {
     expect(line("block:chat")).toMatchObject({ quantity: 1, totalMinor: 3000 }); // 1,000 more replies
     expect(line("seat")).toMatchObject({ quantity: 2, totalMinor: 6000 });
     expect(line("block:image")).toBeUndefined();
-    expect(q.limits).toMatchObject({ text: 450, chat: 1500, seats: 5, videoSeconds: 0 });
+    expect(q.limits).toMatchObject({ text: 450, chat: 1500, seats: 5, videos: 0 });
   });
 
   it("a lower limit than the base plan gives no credit", () => {

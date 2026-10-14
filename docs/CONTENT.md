@@ -127,7 +127,7 @@ before), reserved when the run starts, the ones not written given back; at most 
 never more than the credits left: the AI photos the art director planned are **reserved when the run starts**
 (`consumeUsage image`, the slide keeps `prepaidAi`) and drawing uses that credit (`createAiDesign` `prepaid`); a slide
 that ends without its AI photo (cap, swap, removal, failure) gives it back. Videos BuPulse makes (TikTok and YouTube
-without an album video) count up to 30 video seconds each, and with voiceover in the plan up to 600 voice characters
+without an album video) count one of the plan's videos each (at most 30 s; 4 a day), and with voiceover in the plan up to 600 voice characters
 each, when they are made. A run whose posts need more text generations than are left is refused before anything is
 charged.
 
@@ -224,7 +224,7 @@ chosen per app and angle, after the angles and before writing, so the writer kno
 
 | App | Video | Otherwise |
 | --- | --- | --- |
-| TikTok, YouTube Shorts | always (about 9 in 10 when TikTok photo posting is on) | a picture or the script to film, only when video is not in the plan or the month's video seconds are used up; the run says why |
+| TikTok, YouTube Shorts | always (about 9 in 10 when TikTok photo posting is on) | a picture or the script to film, only when video is not in the plan or the plan's videos are used up (today's or this month's); the run says why |
 | Instagram | about 55% (Reels) | a carousel for list angles, a single picture otherwise |
 | Facebook | about 35% | the same |
 | LinkedIn | about 20% (the video goes with a reminder: LinkedIn video is not posted by the API) | the same; Autopilot keeps its articles |
@@ -232,13 +232,13 @@ chosen per app and angle, after the angles and before writing, so the writer kno
 - **Variety:** never the same format on the same app three days running (TikTok and YouTube excepted): after two
   video days a picture, after two picture days a carousel (and the other way round). The days come from
   `GeneratedContent.format` (migration `20261017180000_content_format`), every subject counted, business-local days.
-- **Budget:** BuPulse-made videos stay within the plan's video seconds left (30 s a video) and at most
+- **Budget:** BuPulse-made videos stay within the plan's videos left now (the lower of this month's and today's) and at most
   `MAX_RUN_VIDEOS` (5) a run; TikTok and YouTube get them first; the owner's own album video costs nothing (TikTok
   and YouTube take it in turn, Instagram one MP4 Reel and Facebook one video a day).
 - **The dialog** has "Format": Let BuPulse decide (default), Mostly video (Instagram about 85%, Facebook 70%,
   LinkedIn 50%), Mostly pictures (15%, 10%, 5%; TikTok and YouTube stay videos). The cost line shows the video
   seconds of the videos BuPulse is likely to make (`expectedVideos`); the result says how many posts are videos and
-  any note ("TikTok gets a video script to film yourself: your video seconds for this month are used up.").
+  any note ("TikTok gets a video script to film yourself: your plan's videos are used up for now.").
 - **Posts:** a video on Instagram or Facebook is drafted as a video idea (`SCRIPT`) with its caption and becomes a
   Reel / Page video when the video is attached; TikTok and YouTube keep the script reminder with the video attached.
 - **Autopilot** (`planner.ts`): with video in the plan, feed posts become videos by the same shares within the
@@ -357,7 +357,7 @@ within 2.5 hours, and picks a new best time (up to 3 tries) when another approva
 post's picture or video is finished, every waiting post whose app needs no approval is scheduled at the best time,
 with `autoScheduledAt` set, unless a safety rule keeps it in review with `Post.reviewNote`. Every write is guarded by
 the post's `updatedAt` as the safety checks read it (a post changed meanwhile is left waiting) and goes through
-`claimSlot`. Plans have no post cap (only text, images, video seconds, voice and chat are metered), so there is no
+`claimSlot`. Plans have no post cap (only text, images, videos, voice and chat are metered), so there is no
 post limit to enforce:
 
 | Rule | Reason shown |

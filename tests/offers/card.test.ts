@@ -51,7 +51,7 @@ function seed(over: Record<string, unknown> = {}) {
   h.db.subscription.rows.push({ id: "s1", userId: USER, plan: "STANDARD", status: "ACTIVE", chosenPlan: null, provider: "MANUAL_MOMO", providerCustomerId: null, providerSubscriptionId: null, providerPriceId: null, interval: "MONTH", cancelAtPeriodEnd: false, trialEndsAt: null, currentPeriodStart: new Date("2026-10-01T00:00:00Z"), currentPeriodEnd: END, updatedAt: NOW, ...over });
   const std = h.db.planDefinition.rows.find((r) => r.key === "STANDARD")!;
   std.featureKeys = ["content", "designs", "calendar", "gallery"];
-  std.limits = { text: 200, image: 100, chat: 0, videoSeconds: 0, voiceCharacters: 0, seats: 3 };
+  std.limits = { text: 200, image: 100, chat: 0, videos: 0, voiceCharacters: 0, seats: 3 };
   h.db.planRegionPrice.rows.push({ id: "prp_std", planKey: "STANDARD", regionKey: "RW", currency: "RWF", monthlyMinor: 35000, yearlyMinor: 350000 });
   h.db.addonPrice.rows.push({ id: "a1", addonKey: "websiteChat", regionKey: "RW", currency: "RWF", monthlyMinor: 10000 });
   h.db.adminSetting.rows.push({ key: MOMO_SETTING_KEY, value: { merchantCode: "123456", momoNumber: "0788000000", accountName: "BuPulse Ltd" } });

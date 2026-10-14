@@ -19,7 +19,7 @@ vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({ storage: { 
 vi.mock("@/lib/entitlements", () => ({ hasFeature: vi.fn(), featureStatus: vi.fn() }));
 
 import { ADDONS, quoteOffer, type AddonPriceRow, type OfferBase } from "@/lib/offers/shared";
-import { SEED_PLANS, TRIAL_VIDEO_SECONDS, VIDEO_PLAN_SECONDS } from "@/lib/plans";
+import { SEED_PLANS, TRIAL_VIDEOS, VIDEO_PLAN_VIDEOS, videosPerDayLimit } from "@/lib/plans";
 import { purgeAbandonedUploads, purgePublishedVideos, videoExpired } from "@/lib/visuals/cleanup";
 import { releaseContentVisuals, releaseSubjectVideos } from "@/lib/visuals/service";
 import { VIDEO_REMOVED_NOTE } from "@/lib/visuals/types";
@@ -29,34 +29,37 @@ const now = new Date("2026-12-01T03:19:00Z");
 const daysAgo = (d: number) => new Date(now.getTime() - d * 24 * 3600 * 1000);
 
 describe("video by plan", () => {
-  it("Rwanda Business and Pro (East Africa, Global) get video with 240 s; the trial one 30 s sample; Starter and Standard nothing", () => {
-    expect(VIDEO_PLAN_SECONDS).toBe(8 * 30);
-    expect(TRIAL_VIDEO_SECONDS).toBe(30);
+  it("Rwanda Business and Pro (East Africa, Global) get 120 videos a month (4 a day); the trial one 30 s sample; Starter and Standard nothing", () => {
+    expect(VIDEO_PLAN_VIDEOS).toBe(4 * 30);
+    expect(TRIAL_VIDEOS).toBe(1);
     expect(SQL).toMatch(/SET "featureKeys" = "featureKeys" \|\| '\["video"\]'::jsonb\s+WHERE \("key" IN \('BUSINESS', 'PRO'\) OR "isTrial" = true\)/);
+    // First in seconds (20261015090000_content_visuals), then in videos (20261018120000_videos_per_month).
     expect(SQL).toMatch(/'\{videoSeconds\}', '240'::jsonb\)\s+WHERE "key" IN \('BUSINESS', 'PRO'\)/);
     expect(SQL).toMatch(/'\{videoSeconds\}', '30'::jsonb\)\s+WHERE "isTrial" = true/);
     expect(SQL).not.toMatch(/'STARTER'|'STANDARD'/);
-    expect(SEED_PLANS.PRO).toMatchObject({ limits: { videoSeconds: 240 } });
+    expect(SEED_PLANS.PRO).toMatchObject({ limits: { videos: 120 } });
+    expect(videosPerDayLimit(SEED_PLANS.PRO.limits)).toBe(4);
+    expect(videosPerDayLimit(SEED_PLANS.TRIAL.limits)).toBe(1);
     expect(SEED_PLANS.PRO.features).toContain("video");
-    expect(SEED_PLANS.TRIAL).toMatchObject({ limits: { videoSeconds: 30 } });
+    expect(SEED_PLANS.TRIAL).toMatchObject({ limits: { videos: 1 } });
     expect(SEED_PLANS.TRIAL.features).toContain("video");
     expect(SEED_PLANS.STANDARD.features).not.toContain("video");
-    expect(SEED_PLANS.STANDARD.limits.videoSeconds).toBe(0);
+    expect(SEED_PLANS.STANDARD.limits.videos).toBe(0);
   });
 
-  it("video is an add-on at 10,000 RWF a month in Rwanda, and brings 240 s when added to a plan without it", () => {
+  it("video is an add-on at 10,000 RWF a month in Rwanda, and brings 120 videos a month when added to a plan without it", () => {
     expect(ADDONS.find((a) => a.key === "video")).toMatchObject({ kind: "feature", feature: "video" });
     expect(SQL).toMatch(/\('addon_rw_video', 'video', 'RW', 'RWF', 10000, 'migration', CURRENT_TIMESTAMP\)/);
     expect(SQL).toContain('ON CONFLICT ("addonKey", "regionKey") DO NOTHING');
 
     const prices: AddonPriceRow[] = [{ addonKey: "video", regionKey: "RW", currency: "RWF", monthlyMinor: 10000 }];
-    const starter: OfferBase = { key: "STARTER", name: "Starter", monthlyMinor: 15000, yearlyMinor: 150000, features: ["content", "designs", "calendar", "gallery"], limits: { text: 60, image: 30, chat: 0, videoSeconds: 0, voiceCharacters: 0, seats: 1 } };
+    const starter: OfferBase = { key: "STARTER", name: "Starter", monthlyMinor: 15000, yearlyMinor: 150000, features: ["content", "designs", "calendar", "gallery"], limits: { text: 60, image: 30, chat: 0, videos: 0, voiceCharacters: 0, seats: 1 } };
     const q = quoteOffer({ base: starter, features: ["video"], limits: { text: 60, image: 30, chat: 0, seats: 1 }, interval: "MONTH", currency: "RWF", regionKey: "RW", prices });
     expect(q.added).toEqual(["video"]);
-    expect(q.limits.videoSeconds).toBe(240);
+    expect(q.limits.videos).toBe(120);
     expect(q.lines.find((l) => l.key === "video")).toMatchObject({ totalMinor: 10000 });
     const without = quoteOffer({ base: starter, features: [], limits: { text: 60, image: 30, chat: 0, seats: 1 }, interval: "MONTH", currency: "RWF", regionKey: "RW", prices });
-    expect(without.limits.videoSeconds).toBe(0);
+    expect(without.limits.videos).toBe(0);
   });
 });
 

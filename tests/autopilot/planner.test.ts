@@ -304,7 +304,7 @@ describe("picture or video per post (lib/content-flow/format.ts)", () => {
       .flatMap((p) => p.groups.flatMap((g) => g.posts));
 
   it("makes feed posts videos by their app's share when the plan has video", () => {
-    const all = posts({ video: { inPlan: true, secondsLeft: 100_000 } });
+    const all = posts({ video: { inPlan: true, videosLeft: 1000 } });
     const share = (network: string) => {
       const list = all.filter((p) => p.network === network && p.format !== "ARTICLE");
       return list.filter((p) => p.format === "SCRIPT").length / list.length;
@@ -316,17 +316,17 @@ describe("picture or video per post (lib/content-flow/format.ts)", () => {
   });
 
   it("keeps within the video seconds left, and changes nothing without video in the plan", () => {
-    const weeks = Array.from({ length: 20 }, (_, i) => buildWeekPlan(input({ businessId: `budget-${i}`, connections: feed, video: { inPlan: true, secondsLeft: 60 } })));
+    const weeks = Array.from({ length: 20 }, (_, i) => buildWeekPlan(input({ businessId: `budget-${i}`, connections: feed, video: { inPlan: true, videosLeft: 2 } })));
     for (const w of weeks) expect(w.groups.flatMap((g) => g.posts).filter((p) => p.format === "SCRIPT").length).toBeLessThanOrEqual(2);
     const plain = (over: Partial<PlanInput>) => buildWeekPlan(input({ businessId: "same", connections: feed, ...over })).groups.map((g) => g.posts.map((p) => [p.network, p.format]));
-    expect(plain({ video: { inPlan: false, secondsLeft: 0 } })).toEqual(plain({}));
+    expect(plain({ video: { inPlan: false, videosLeft: 0 } })).toEqual(plain({}));
   });
 
   it("never puts the same format on an app three days running", () => {
     const before = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
     let checked = 0;
     for (let i = 0; i < 30; i++) {
-      const over: Partial<PlanInput> = { businessId: `rule-${i}`, connections: [conn("c-ig", "instagram")], config: { ...DEFAULT_CONFIG, enabled: true, postsPerWeek: 1, connectionIds: ["c-ig"] }, video: { inPlan: true, secondsLeft: 10_000 } };
+      const over: Partial<PlanInput> = { businessId: `rule-${i}`, connections: [conn("c-ig", "instagram")], config: { ...DEFAULT_CONFIG, enabled: true, postsPerWeek: 1, connectionIds: ["c-ig"] }, video: { inPlan: true, videosLeft: 1000 } };
       const day = buildWeekPlan(input(over)).groups[0]?.day;
       if (!day) continue;
       const recentFormats = { instagram: [{ day: before(day, 1), format: "video" as const }, { day: before(day, 2), format: "video" as const }] };

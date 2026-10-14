@@ -44,6 +44,8 @@ function match(row: Row, where: Where): boolean {
       return !!change && match(change, cond as Where);
     }
     if (key === "AND") return (cond as Where[]).every((w) => match(row, w));
+    // A compound unique key (Prisma's userId_day: { userId, day }): every part must match.
+    if (row[key] === undefined && key.includes("_") && cond && typeof cond === "object" && !(cond instanceof Date) && Object.keys(cond).length > 1 && Object.keys(cond).every((k) => k in row)) return match(row, cond as Where);
     const value = row[key] === undefined ? null : row[key];
     if (cond && typeof cond === "object" && !(cond instanceof Date) && !Array.isArray(cond)) {
       const c = cond as Record<string, any>;
@@ -110,12 +112,12 @@ function table(rows: Row[], opts: { pk: string; unique?: string[]; uniqueCombo?:
         }
         return { count };
       }
-      for (const d of data) if (!rows.some((r) => r.userId === d.userId && r.periodStart?.getTime() === d.periodStart?.getTime())) rows.push({ textGenerations: 0, imageGenerations: 0, videoSeconds: 0, voiceCharacters: 0, chatMessages: 0, ...d });
+      for (const d of data) if (!rows.some((r) => r.userId === d.userId && r.periodStart?.getTime() === d.periodStart?.getTime())) rows.push({ textGenerations: 0, imageGenerations: 0, videos: 0, voiceCharacters: 0, chatMessages: 0, ...d });
       return { count: data.length };
     }),
     updateMany: vi.fn(async ({ where, data }: { where?: Where; data: Row }) => {
       const hit = rows.filter((r) => match(r, where));
-      for (const r of hit) for (const [k, v] of Object.entries(data)) r[k] = v && typeof v === "object" && "increment" in v ? (r[k] ?? 0) + v.increment : v;
+      for (const r of hit) for (const [k, v] of Object.entries(data)) r[k] = v && typeof v === "object" && "increment" in v ? (r[k] ?? 0) + v.increment : v && typeof v === "object" && "decrement" in v ? (r[k] ?? 0) - v.decrement : v;
       return { count: hit.length };
     }),
     update: vi.fn(async ({ where, data }: { where: Record<string, any>; data: Row }) => {
@@ -192,6 +194,7 @@ export function createFakeDb() {
     lead: table([], { pk: "id" }),
     errorLog: table([], { pk: "id" }),
     usageRecord: table([], { pk: "id" }),
+    videoDayUsage: table([], { pk: "id", uniqueCombo: ["userId", "day"], defaults: () => ({ videos: 0, updatedAt: new Date() }) }),
     auditLog: table([], { pk: "id" }),
     adminApproval: table([], { pk: "id", unique: ["idempotencyKey"], defaults: () => ({ status: "pending", result: null, decidedBy: null, decidedAt: null }) }),
     adminApiKey: table([], { pk: "id", unique: ["hash"] }),

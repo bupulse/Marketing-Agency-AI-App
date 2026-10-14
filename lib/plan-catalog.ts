@@ -102,7 +102,7 @@ export function resetPlanCache() {
 }
 
 export function cleanLimits(value: unknown, base?: PlanLimits): PlanLimits {
-  const out: PlanLimits = { ...(base ?? { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0, chat: 0, seats: SEATS_MIN }) };
+  const out: PlanLimits = { ...(base ?? { text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0, seats: SEATS_MIN }) };
   if (value && typeof value === "object") {
     for (const m of USAGE_METRICS) {
       const v = (value as Record<string, unknown>)[m];
@@ -112,6 +112,8 @@ export function cleanLimits(value: unknown, base?: PlanLimits): PlanLimits {
     if (typeof seats === "number" && Number.isInteger(seats)) out.seats = Math.min(Math.max(seats, SEATS_MIN), SEATS_MAX);
     const perApp = (value as Record<string, unknown>).postsPerAppPerDay;
     if (typeof perApp === "number" && Number.isInteger(perApp)) out.postsPerAppPerDay = postsPerAppLimit({ postsPerAppPerDay: perApp });
+    const perDay = (value as Record<string, unknown>).videosPerDay;
+    if (typeof perDay === "number" && Number.isInteger(perDay) && perDay >= 0) out.videosPerDay = Math.min(perDay, 100);
   }
   return out;
 }
@@ -159,7 +161,7 @@ export function viewOf(row: Row): PlanView {
     yearlyPriceCents: Number(row.yearlyPriceCents ?? 0),
     currency: String(row.currency ?? "USD"),
     // A plan saved before seats existed gets the seats it was seeded with (1 for plans created later).
-    limits: cleanLimits(row.limits, { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0, chat: 0, seats: SEED_PLANS[String(row.key)]?.limits.seats ?? SEATS_MIN }),
+    limits: cleanLimits(row.limits, { text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0, seats: SEED_PLANS[String(row.key)]?.limits.seats ?? SEATS_MIN }),
     // `highlights` replaced the old `features` bullets; a row from before the migration still has them there.
     highlights: Array.isArray(row.highlights) ? cleanStrings(row.highlights) : cleanStrings(row.features),
     features: sortFeatureKeys(cleanFeatures(row.featureKeys, row.capabilities)),

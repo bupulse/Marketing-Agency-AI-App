@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { seededRandom } from "@/lib/autopilot/learning";
-import { runCost, VIDEO_SECONDS_PER_VIDEO } from "@/lib/content-flow/cost";
+import { runCost } from "@/lib/content-flow/cost";
 import { decideFormats, expectedVideos, MAX_RUN_VIDEOS, recentFormatsOf, repeatedFormat, type FormatInput } from "@/lib/content-flow/format";
 import { albumVideos, assignMedia } from "@/lib/content-flow/media";
 import type { AngleId } from "@/lib/studio/angles";
@@ -8,7 +8,7 @@ import type { Network } from "@/lib/social/types";
 
 const DAY = "2026-10-13";
 const slot = (network: Network, angle: AngleId = "story") => ({ network, angle });
-const base = (over: Partial<FormatInput> = {}): FormatInput => ({ slots: [slot("instagram")], day: DAY, videoInPlan: true, videoSecondsLeft: 10_000, maxVideos: 1, rng: seededRandom("t"), ...over });
+const base = (over: Partial<FormatInput> = {}): FormatInput => ({ slots: [slot("instagram")], day: DAY, videoInPlan: true, videosLeft: 10_000, maxVideos: 1, rng: seededRandom("t"), ...over });
 
 /** The share of video posts on one app over many seeded runs (one post a run, so the budget never binds). */
 function videoShare(network: Network, over: Partial<FormatInput> = {}, runs = 2000): number {
@@ -70,21 +70,21 @@ describe("plan and budget fallbacks", () => {
     expect(photo.notes[0]).toBe("TikTok gets a picture instead of a video: videos are not in your plan.");
   });
 
-  it("gives the month's video seconds to TikTok and YouTube first, then the feed apps", () => {
+  it("gives the plan's videos left to TikTok and YouTube first, then the feed apps", () => {
     const slots = [slot("instagram"), slot("facebook"), slot("tiktok"), slot("youtube")];
-    const { choices, notes } = decideFormats(base({ slots, videoSecondsLeft: 2 * VIDEO_SECONDS_PER_VIDEO + 10, maxVideos: 5, rng: always }));
+    const { choices, notes } = decideFormats(base({ slots, videosLeft: 2, maxVideos: 5, rng: always }));
     expect(choices.map((c) => c.format)).toEqual(["image", "image", "video", "video"]);
     expect(choices.some((c) => c.film)).toBe(false);
     // Feed apps quietly get pictures (BuPulse decided); with "Mostly video" the run says why.
     expect(notes).toEqual([]);
-    const leaning = decideFormats(base({ slots, videoSecondsLeft: 2 * VIDEO_SECONDS_PER_VIDEO, maxVideos: 5, preference: "video", rng: always }));
-    expect(leaning.notes).toEqual(["Instagram gets a picture instead of a video: your video seconds for this month are used up.", "Facebook gets a picture instead of a video: your video seconds for this month are used up."]);
+    const leaning = decideFormats(base({ slots, videosLeft: 2, maxVideos: 5, preference: "video", rng: always }));
+    expect(leaning.notes).toEqual(["Instagram gets a picture instead of a video: your plan's videos are used up for now.", "Facebook gets a picture instead of a video: your plan's videos are used up for now."]);
   });
 
-  it("films TikTok when the month's video seconds are used up, and says so", () => {
-    const { choices, notes } = decideFormats(base({ slots: [slot("tiktok")], videoSecondsLeft: 20, rng: always }));
+  it("films TikTok when the plan's videos are used up (today's or this month's), and says so", () => {
+    const { choices, notes } = decideFormats(base({ slots: [slot("tiktok")], videosLeft: 0, rng: always }));
     expect(choices).toEqual([{ format: "video", film: true }]);
-    expect(notes).toEqual(["TikTok gets a video script to film yourself: your video seconds for this month are used up."]);
+    expect(notes).toEqual(["TikTok gets a video script to film yourself: your plan's videos are used up for now."]);
   });
 
   it("makes at most MAX_RUN_VIDEOS videos a run; the owner's album videos cost nothing", () => {
@@ -92,7 +92,7 @@ describe("plan and budget fallbacks", () => {
     const capped = decideFormats(base({ slots, maxVideos: undefined, rng: always }));
     expect(capped.choices.filter((c) => c.format === "video" && !c.film)).toHaveLength(MAX_RUN_VIDEOS);
     expect(capped.notes).toEqual([`TikTok gets a video script to film yourself: a run makes at most ${MAX_RUN_VIDEOS} videos.`]);
-    const free = decideFormats(base({ slots, videoSecondsLeft: 0, freeVideo: () => true, rng: always }));
+    const free = decideFormats(base({ slots, videosLeft: 0, freeVideo: () => true, rng: always }));
     expect(free.choices.every((c) => c.format === "video" && !c.film)).toBe(true);
     expect(free.notes).toEqual([]);
   });
@@ -142,19 +142,19 @@ describe("media follows the decided formats", () => {
   });
 });
 
-describe("the dialog's cost line with video seconds", () => {
-  it("counts the videos BuPulse is likely to make, within the seconds left and the run's limit", () => {
+describe("the dialog's cost line with videos", () => {
+  it("counts the videos BuPulse is likely to make, within the videos left and the run's limit", () => {
     const networks: Network[] = ["instagram", "facebook", "tiktok"];
-    expect(expectedVideos({ networks, perApp: 1, videoInPlan: true, videoSecondsLeft: 600 })).toBe(2);
-    expect(expectedVideos({ networks, perApp: 1, preference: "video", videoInPlan: true, videoSecondsLeft: 600 })).toBe(3);
-    expect(expectedVideos({ networks, perApp: 1, preference: "image", videoInPlan: true, videoSecondsLeft: 600 })).toBe(1);
-    expect(expectedVideos({ networks, perApp: 3, preference: "video", videoInPlan: true, videoSecondsLeft: 6000 })).toBe(MAX_RUN_VIDEOS);
-    expect(expectedVideos({ networks, perApp: 1, videoInPlan: true, videoSecondsLeft: 45 })).toBe(1);
-    expect(expectedVideos({ networks, perApp: 1, videoInPlan: false, videoSecondsLeft: 600 })).toBe(0);
+    expect(expectedVideos({ networks, perApp: 1, videoInPlan: true, videosLeft: 20 })).toBe(2);
+    expect(expectedVideos({ networks, perApp: 1, preference: "video", videoInPlan: true, videosLeft: 20 })).toBe(3);
+    expect(expectedVideos({ networks, perApp: 1, preference: "image", videoInPlan: true, videosLeft: 20 })).toBe(1);
+    expect(expectedVideos({ networks, perApp: 3, preference: "video", videoInPlan: true, videosLeft: 200 })).toBe(MAX_RUN_VIDEOS);
+    expect(expectedVideos({ networks, perApp: 1, videoInPlan: true, videosLeft: 1 })).toBe(1);
+    expect(expectedVideos({ networks, perApp: 1, videoInPlan: false, videosLeft: 20 })).toBe(0);
 
-    const videos = expectedVideos({ networks, perApp: 1, videoInPlan: true, videoSecondsLeft: 600 });
-    const cost = runCost({ mode: "ai", design: "free", posts: 3, designed: 2, aiPhotos: false, textLeft: 10, imagesLeft: 0, videos, videoSecondsLeft: 600 });
-    expect(cost.videoSeconds).toBe(60);
-    expect(cost.message).toBe("Uses 3 text generations, no AI images and up to 60 video seconds; you have 10 text generations and 600 video seconds left this month.");
+    const videos = expectedVideos({ networks, perApp: 1, videoInPlan: true, videosLeft: 20 });
+    const cost = runCost({ mode: "ai", design: "free", posts: 3, designed: 2, aiPhotos: false, textLeft: 10, imagesLeft: 0, videos, videosLeft: 20 });
+    expect(cost.videos).toBe(2);
+    expect(cost.message).toBe("Uses 3 text generations, no AI images and up to 2 videos; you have 10 text generations and 20 videos left this month.");
   });
 });
