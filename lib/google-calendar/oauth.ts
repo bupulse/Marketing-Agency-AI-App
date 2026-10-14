@@ -31,12 +31,13 @@ export function googleCalendarConfig(): GoogleCalendarConfig | null {
   const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID?.trim();
   const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET?.trim();
   if (!clientId || !clientSecret) return null;
+  // Registered in Google Cloud: stays on siteUrl() on purpose (docs/RELEASE_2.0.md, "Links follow the host").
   return { clientId, clientSecret, redirectUri: `${siteUrl()}/api/admin/google-calendar/callback` };
 }
 
 /** Admin -> Settings, at the Google Calendar panel, with a notice or an error to show. */
-export function googleSettingsUrl(key: "notice" | "error", message: string): URL {
-  const url = new URL("/admin/settings", siteUrl());
+export function googleSettingsUrl(key: "notice" | "error", message: string, base = siteUrl()): URL {
+  const url = new URL("/admin/settings", base);
   url.searchParams.set(key, message);
   url.hash = "google-calendar";
   return url;

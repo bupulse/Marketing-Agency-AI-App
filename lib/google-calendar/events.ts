@@ -1,11 +1,11 @@
 import "server-only";
-import { siteUrl } from "@/lib/auth/site-url";
 import { prisma } from "@/lib/db";
 import { getPlan } from "@/lib/plan-catalog";
 import { demoTitle } from "@/lib/demo/calendar-links";
 import { DEMO_TIME_ZONE, MIN_LEAD_MINUTES } from "@/lib/demo/slots";
 import { logError } from "@/lib/errors";
 import { deleteEvent, eventConnection, GoogleApiError, insertEvent, meetLinkOf, patchEvent, resetGoogleCalendarCache, type GoogleEvent } from "./calendar";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 
 // The demo booking's event in the owner's Google Calendar: created with a Meet link on booking, moved in place on
 // reschedule, deleted on cancel, each time with sendUpdates=all so the client gets Google's own invite or update.
@@ -40,13 +40,13 @@ export function demoEventDescription(business: DemoEventBusiness, planName: stri
       business.website ? `Website: ${business.website}` : "",
       business.description ? `About: ${clip(business.description.replace(/\s+/g, " ").trim(), 400)}` : "",
     ],
-    [`Reschedule or cancel (up to ${MIN_LEAD_MINUTES / 60} hours before): ${siteUrl()}/dashboard`],
+    [`Reschedule or cancel (up to ${MIN_LEAD_MINUTES / 60} hours before): ${publicSiteUrl()}/dashboard`],
   ];
   return sections.map((lines) => lines.filter(Boolean).join("\n")).join("\n\n");
 }
 
 /** The admin-only line kept out of the shared description: the Client 360 link, in the event's private properties. */
-export const client360Url = (businessId: string) => `${siteUrl()}/admin/companies/${encodeURIComponent(businessId)}`;
+export const client360Url = (businessId: string) => `${publicSiteUrl()}/admin/companies/${encodeURIComponent(businessId)}`;
 
 /**
  * The Calendar API body of a new demo event (Africa/Kigali, reminders, the client as attendee). With `conference` (the

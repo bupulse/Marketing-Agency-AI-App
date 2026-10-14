@@ -9,7 +9,7 @@ import { dateTime, param } from "@/lib/admin/format";
 import { getSettings } from "@/lib/admin/settings";
 import { DISPLAY_CURRENCIES } from "@/lib/money/display";
 import { effectiveUsdToEur } from "@/lib/money/display-server";
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl, siteUrl } from "@/lib/auth/site-url";
 import { cardUsdCents, formatMinor } from "@/lib/region-format";
 import { DEMO_TIME_ZONE, WEEKDAY_NAMES } from "@/lib/demo/slots";
 import { googleCalendarStatus } from "@/lib/google-calendar/calendar";
@@ -202,7 +202,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </form>
           <div className="flex flex-wrap items-center gap-3 border-t border-line pt-4">
             <PaddleSetUp
-              description={`Creates in Paddle ${paddle.environment === "production" ? "live" : "sandbox"} what is missing: a product and monthly and yearly prices for every plan, the card prices of Rwanda and the other regions, and the notification destination ${siteUrl()}${PADDLE_WEBHOOK_PATH} with every event BuPulse handles (its secret is saved here). It runs in short steps; running it again reuses what exists.`}
+              description={`Creates in Paddle ${paddle.environment === "production" ? "live" : "sandbox"} what is missing: a product and monthly and yearly prices for every plan, the card prices of Rwanda and the other regions, and the notification destination ${publicSiteUrl()}${PADDLE_WEBHOOK_PATH} with every event BuPulse handles (its secret is saved here). It runs in short steps; running it again reuses what exists.`}
             />
             <ConfirmButton action={clearPaddleSettingsAction} fields={{}} label="Remove saved values" title="Remove the saved Paddle values?" description="Card payments then use the PADDLE_* environment variables, if they are set; otherwise card shows as coming soon to clients." confirmLabel="Remove" />
           </div>

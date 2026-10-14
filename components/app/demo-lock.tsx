@@ -13,7 +13,6 @@ import { currentManualPayment } from "@/lib/billing/momo";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
 import { momoConfigured, momoPriceOf } from "@/lib/billing/momo-shared";
 import { prisma } from "@/lib/db";
-import { siteUrl } from "@/lib/auth/site-url";
 import { currentBooking } from "@/lib/demo/bookings";
 import { demoGoogleCalendarUrl } from "@/lib/demo/calendar-links";
 import { DEMO_TIME_ZONE, formatSlot, MIN_LEAD_MINUTES } from "@/lib/demo/slots";
@@ -25,6 +24,7 @@ import { OfferCard } from "@/components/billing/offer-card";
 import { OfferActions } from "@/components/billing/offer-actions";
 import { clientOffer } from "@/lib/offers/service";
 import { site } from "@/lib/content/site";
+import { linkSiteUrl } from "@/lib/auth/request-site";
 
 /** Reschedule and cancel are only offered up to MIN_LEAD_MINUTES before the call (lib/demo/bookings.ts enforces it too). */
 const canStillMove = (booking: { startsAt: Date }) => booking.startsAt.getTime() - Date.now() >= MIN_LEAD_MINUTES * 60_000;
@@ -64,7 +64,7 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
   // A custom plan offer sent before or after the demo (docs/OFFERS.md): paying it opens the dashboard like any plan.
   const offer = canBill ? await clientOffer(businessId).catch(() => null) : null;
   const meetingLink = booking?.meetingLink || settings.meetingLink || null;
-  const googleUrl = booking ? demoGoogleCalendarUrl({ ...booking, meetingLink }, businessName, `${siteUrl()}/dashboard`) : null;
+  const googleUrl = booking ? demoGoogleCalendarUrl({ ...booking, meetingLink }, businessName, `${(await linkSiteUrl())}/dashboard`) : null;
   const movable = booking ? canStillMove(booking) : false;
   const zone = DEMO_TIME_ZONE.replace("_", " ");
 

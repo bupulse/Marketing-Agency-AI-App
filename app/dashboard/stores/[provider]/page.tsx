@@ -9,7 +9,7 @@ import { WooManualForm } from "@/components/stores/woo-manual-form";
 import { DisconnectStoreButton, PendingButtons } from "@/components/stores/store-actions";
 import { startWooConnectAction } from "@/app/dashboard/stores/actions";
 import { prisma } from "@/lib/db";
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 import { getConnection, getPending } from "@/lib/stores/connection";
 import { relativeSync } from "@/lib/stores/labels";
 import { installRedirect, isShopifyEnabled, shopifyConfig } from "@/lib/stores/shopify";
@@ -111,7 +111,7 @@ export default async function StorePage({ params, searchParams }: { params: Prom
               <Input name="store" type="url" inputMode="url" placeholder="https://yourstore.com" aria-label="Your store address" autoCapitalize="none" autoCorrect="off" spellCheck={false} required className="flex-1" />
               <Button type="submit">Connect</Button>
             </form>
-            {!siteUrl().startsWith("https://") && <p className="text-[13px] text-muted">The one-click way needs BuPulse on https; here, use the manual keys below.</p>}
+            {!publicSiteUrl().startsWith("https://") && <p className="text-[13px] text-muted">The one-click way needs BuPulse on https; here, use the manual keys below.</p>}
           </GlassCard>
           <details className="glass rounded-glass p-5">
             <summary className="cursor-pointer text-[15px] font-semibold">Or paste your keys by hand</summary>

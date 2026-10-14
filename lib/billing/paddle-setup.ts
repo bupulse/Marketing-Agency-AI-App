@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 import { writeAudit } from "@/lib/admin/audit";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
@@ -123,7 +123,7 @@ export async function setUpPaddleStep(ctx: AdminContext, step: SetUpStep, attemp
     }
     clearRegionPriceCache();
   } else {
-    const url = `${siteUrl()}${PADDLE_WEBHOOK_PATH}`;
+    const url = `${publicSiteUrl()}${PADDLE_WEBHOOK_PATH}`;
     try {
       const n = (await ensureNotificationSetting(api, url)) as { secret: string | null; created: boolean; updated: string[] };
       result.done = [n.created ? "created" : n.updated.length ? "updated" : "existing"];

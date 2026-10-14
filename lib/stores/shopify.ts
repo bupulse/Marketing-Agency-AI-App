@@ -1,6 +1,6 @@
 // Shopify: OAuth (authorization-code grant, HMAC-verified), webhooks and the GraphQL Admin API.
 // Scope is read_products only. Env: SHOPIFY_API_KEY, SHOPIFY_API_SECRET (without them the connector is "unavailable").
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl, siteUrl } from "@/lib/auth/site-url";
 import { hmacBase64, hmacHex, safeEqual } from "./hmac";
 import { storeApiFetch } from "./safe-fetch";
 import { cleanFeatures, clip, formatPrice } from "./text";
@@ -16,6 +16,7 @@ export function shopifyConfig(): { apiKey: string; apiSecret: string } | null {
   return apiKey && apiSecret ? { apiKey, apiSecret } : null;
 }
 export const isShopifyEnabled = () => shopifyConfig() !== null;
+/** Listed in the Shopify app ("Allowed redirection URLs"): stays on siteUrl() on purpose (docs/RELEASE_2.0.md). */
 export const shopifyRedirectUri = () => `${siteUrl()}/api/stores/shopify/callback`;
 
 const SHOP_RE = /^[a-z0-9][a-z0-9-]{0,60}\.myshopify\.com$/;
@@ -179,7 +180,7 @@ export async function subscribeUninstall(creds: StoreCredentials, fetchImpl: typ
     await graphql(
       creds,
       `mutation($callbackUrl: URL!) { webhookSubscriptionCreate(topic: APP_UNINSTALLED, webhookSubscription: { callbackUrl: $callbackUrl, format: JSON }) { userErrors { message } } }`,
-      { callbackUrl: `${siteUrl()}/api/stores/shopify/webhooks` },
+      { callbackUrl: `${publicSiteUrl()}/api/stores/shopify/webhooks` },
       fetchImpl,
     );
   } catch {

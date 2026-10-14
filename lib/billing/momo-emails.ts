@@ -1,14 +1,14 @@
 import "server-only";
 import { adminEmails } from "@/lib/admin/auth";
-import { siteUrl } from "@/lib/auth/site-url";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { formatMomoAmount, GRACE_DAYS, graceEnd, mtnMomoPayDial, whatsappText, type MomoPayDetails } from "./momo-shared";
+import { linkSiteUrl } from "@/lib/auth/request-site";
 
 // Every email of the Mobile Money flow. All of them go through sendEmail (Resend, kill switch respected) and return
 // whether the mail went out; nothing here throws, so a mail problem never stops a payment being recorded.
 
 const longDate = (d: Date) => d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
-const billingUrl = () => `${siteUrl()}/dashboard/billing`;
+const billingUrl = async () => `${await linkSiteUrl()}/dashboard/billing`;
 const first = (name: string | null | undefined) => (name ? `Hi ${name.split(/\s+/)[0]}, ` : "");
 
 /** "MoMo Pay 123456 · 078 123 4567 (Aline U.) · Airtel 073 …" as one line for emails. */
@@ -37,7 +37,7 @@ export async function sendPaymentToCheckEmail(p: { reference: string; amountMino
       { label: "Transaction id", value: p.transactionId },
       { label: "Paid from", value: `${p.payerPhone} (${p.network})` },
     ],
-    button: { label: "Open Payments", url: `${siteUrl()}/admin/payments` },
+    button: { label: "Open Payments", url: `${(await linkSiteUrl())}/admin/payments` },
   });
   const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: `New MoMo payment to check: ${p.reference} · ${formatMomoAmount(p.amountMinor, p.currency)}`, html, text })));
   return results.some(Boolean);
@@ -59,7 +59,7 @@ export async function sendUnmappedPriceAlertEmail(p: { priceId: string; subscrip
       { label: "Event", value: p.eventId },
       ...(p.userId ? [{ label: "Client", value: p.userId }] : []),
     ],
-    button: { label: "Open errors", url: `${siteUrl()}/admin/errors` },
+    button: { label: "Open errors", url: `${(await linkSiteUrl())}/admin/errors` },
   });
   const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: `Paddle price not recognised: ${p.priceId}`, html, text })));
   return results.some(Boolean);
@@ -76,7 +76,7 @@ export async function sendInvoiceReviewAlertEmail(p: { number: string; company: 
       { label: "Invoice", value: p.number },
       { label: p.source === "paddle" ? "Paddle transaction" : "Payment reference", value: p.reference },
     ],
-    button: { label: "Open invoice", url: `${siteUrl()}/admin/invoices/${encodeURIComponent(p.invoiceId)}` },
+    button: { label: "Open invoice", url: `${(await linkSiteUrl())}/admin/invoices/${encodeURIComponent(p.invoiceId)}` },
   });
   const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: p.second ? `Second payment received for ${p.number}: possible double payment` : `Payment received for ${p.number}: check and mark paid`, html, text })));
   return results.some(Boolean);
@@ -91,7 +91,7 @@ export async function sendPlanActiveEmail(to: ClientRecipient, p: { planName: st
       { label: "Plan", value: `${p.planName}, ${p.interval === "YEAR" ? "yearly" : "monthly"}` },
       { label: "Paid until", value: longDate(p.periodEnd) },
     ],
-    button: { label: "Open BuPulse", url: `${siteUrl()}/dashboard` },
+    button: { label: "Open BuPulse", url: `${(await linkSiteUrl())}/dashboard` },
     footer: `We will remind you by email a few days before ${longDate(p.periodEnd)}. Nothing renews by itself and nothing is ever deleted.`,
   });
   return sendEmail({ to: to.email, subject: `Your BuPulse ${p.planName} plan is active`, html, text });
@@ -103,7 +103,7 @@ export async function sendPaymentRejectedEmail(to: ClientRecipient, p: { planNam
     heading: "We could not match your payment",
     intro: `${first(to.name)}we could not confirm the Mobile Money payment of ${formatMomoAmount(p.amountMinor, p.currency)} for the ${p.planName} plan (reference ${p.reference}).`,
     blocks: [{ label: "Reason", value: p.reason }],
-    button: { label: "Try again", url: billingUrl() },
+    button: { label: "Try again", url: await billingUrl() },
     footer: "If you did pay, reply to this email with the transaction id and the phone number you paid from and we will sort it out.",
   });
   return sendEmail({ to: to.email, subject: `Your BuPulse payment ${p.reference} needs another look`, html, text });
@@ -136,7 +136,7 @@ export async function sendRenewalReminderEmail(to: ClientRecipient, kind: "5d" |
       { label: "How", value: "Open Billing, choose Pay by Mobile Money, pay with the reference shown, then tap I've paid. Your plan is extended within minutes." },
       { label: "Need help? Copy this into WhatsApp", value: whatsappText({ planName: p.planName, amountMinor: p.amountMinor, currency: p.currency, email: to.email, periodEnd: longDate(p.periodEnd) }) },
     ],
-    button: { label: "Pay now", url: billingUrl() },
+    button: { label: "Pay now", url: await billingUrl() },
   });
   return sendEmail({ to: to.email, subject: ended ? `Your BuPulse ${p.planName} plan has ended: pay to continue` : `Your BuPulse ${p.planName} plan ends ${kind === "5d" ? "in 5 days" : "tomorrow"}`, html, text });
 }
@@ -152,7 +152,7 @@ export async function sendPayDetailsChangedEmail(before: MomoPayDetails, after: 
       { label: "Before", value: payDetailsLine(before) || "Nothing set" },
       { label: "After", value: payDetailsLine(after) || "Nothing set" },
     ],
-    button: { label: "Open Payments", url: `${siteUrl()}/admin/payments#settings` },
+    button: { label: "Open Payments", url: `${(await linkSiteUrl())}/admin/payments#settings` },
   });
   const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: "Mobile Money payment details changed", html, text })));
   return results.some(Boolean);
@@ -167,7 +167,7 @@ export async function sendPlanPausedEmail(to: ClientRecipient, p: ReminderInput)
       { label: "Where to pay", value: payDetailsLine(p.details) || "See the Billing page" },
       { label: "Need help? Copy this into WhatsApp", value: whatsappText({ planName: p.planName, amountMinor: p.amountMinor, currency: p.currency, email: to.email, periodEnd: longDate(p.periodEnd) }) },
     ],
-    button: { label: "Pay and continue", url: billingUrl() },
+    button: { label: "Pay and continue", url: await billingUrl() },
   });
   return sendEmail({ to: to.email, subject: `Your BuPulse ${p.planName} plan is paused`, html, text });
 }
@@ -189,7 +189,7 @@ export async function sendCarryOverAlertEmail(p: { providerSubscriptionId: strin
       { label: "Client user id", value: p.userId ?? "unknown" },
       { label: "Error", value: p.error },
     ],
-    button: { label: "Open the error log", url: `${siteUrl()}/admin/errors` },
+    button: { label: "Open the error log", url: `${(await linkSiteUrl())}/admin/errors` },
   });
   const results = await Promise.all(admins.map((to) => sendEmail({ to, subject: `${p.gaveUp ? "Action needed" : "Retrying"}: card renewal ${p.providerSubscriptionId}, paid days not carried over`, html, text })));
   return results.some(Boolean);

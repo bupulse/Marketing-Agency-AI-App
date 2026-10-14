@@ -3,7 +3,6 @@ import type { BillingInterval, Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/admin/audit";
 import { AdminError, consoleContext, type AdminContext } from "@/lib/admin/types";
-import { siteUrl } from "@/lib/auth/site-url";
 import { readKnowledge } from "@/lib/brand/schemas";
 import { confirmManualPayment } from "@/lib/billing/momo";
 import { sendInvoiceReviewAlertEmail } from "@/lib/billing/momo-emails";
@@ -47,6 +46,7 @@ import {
   type Seller,
 } from "./shared";
 import { getInvoiceObject, invoicePdfPath, putInvoiceObject } from "./storage";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 
 // Invoices (docs/INVOICES.md). The admin side (create on activation, edit a draft, send, mark paid, void) runs in the
 // console only and is audited; every change is one conditional write on the status, so a double click or two admins
@@ -76,7 +76,8 @@ export async function nextInvoiceNumber(db: Db = prisma): Promise<string> {
   return formatInvoiceNumber(typeof row.n === "bigint" ? row.n : BigInt(row.n));
 }
 
-export const payUrlOf = (number: string) => `${siteUrl()}/dashboard/billing?invoice=${encodeURIComponent(number)}`;
+/** On the invoice PDF and in emails, opened later from any device: the public address. */
+export const payUrlOf = (number: string) => `${publicSiteUrl()}/dashboard/billing?invoice=${encodeURIComponent(number)}`;
 
 async function planLabelOf(row: Pick<Row, "planKey" | "interval">): Promise<string | null> {
   if (!row.planKey) return null;

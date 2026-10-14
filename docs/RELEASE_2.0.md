@@ -166,6 +166,32 @@ Restore (only after a failed deploy, into the same or a new project):
 - **Database**: migrations only add tables and columns, so the previous code keeps working on the new schema. Restore
   from the backup only if data was damaged.
 
+## Links follow the host (test machine and production)
+
+Every link and redirect a visitor causes uses the address they are on (`lib/auth/request-site.ts`): `requestSiteUrl()`
+for redirects and Secure cookies, `linkSiteUrl()` for links in emails and pages. Only addresses we serve count
+(`NEXT_PUBLIC_SITE_URL` plus `AUTH_EXTRA_ORIGINS`); any other Host header gets the configured address. Scheduled jobs
+(everything run through `recordCron`) and work outside a request use `publicSiteUrl()` (`PUBLIC_LINK_URL`, else
+`NEXT_PUBLIC_SITE_URL`). **In production** `AUTH_EXTRA_ORIGINS` and `PUBLIC_LINK_URL` stay empty, so every link is
+https://bupulse.com whatever Host arrives (tests/auth/request-site.test.ts).
+
+Kept on a deliberate base, and why:
+
+| Address | Base | Why |
+|---|---|---|
+| Canva OAuth redirect (`/api/canva/callback`, or `CANVA_REDIRECT_URI`) | `siteUrl()` | Registered in the Canva developer portal; Canva accepts only listed URIs. |
+| Social OAuth redirects (`/api/social/<network>/callback`) | `siteUrl()` | Registered in each Meta, LinkedIn, TikTok and YouTube app; a host not listed there is refused. |
+| Shopify OAuth redirect (`/api/stores/shopify/callback`) | `siteUrl()` | Listed under "Allowed redirection URLs" in the Shopify app. |
+| Google Calendar OAuth redirect (`/api/admin/google-calendar/callback`) | `siteUrl()` | Registered in Google Cloud (shown on Admin -> Settings). |
+| WooCommerce `callback_url` | `publicSiteUrl()` | The store posts the keys to us server to server: it must be reachable from the internet (WooCommerce takes any URL per request; `return_url` follows the visitor). |
+| Shopify webhooks, Paddle webhook destination | `publicSiteUrl()` | Called by Shopify and Paddle servers: the public address. |
+| Chat widget script (`scriptTag`, the Cloudflare install, Widget and Domains pages) | `publicSiteUrl()` | Pasted into customers' sites and loaded from anywhere for months: never a visitor's host. |
+| Demo `.ics` link, invoice pay link, lead and calendar-event links | `publicSiteUrl()` | Opened later, from calendar apps, PDFs or phones. |
+
+On the test machine, an OAuth connect started on https://test.bupulse.com still returns to the registered
+`NEXT_PUBLIC_SITE_URL` (localhost) unless that provider also lists the tunnel's callback: connect those from
+http://localhost:3001.
+
 ## Known limits at launch
 
 - Facebook and Instagram publishing for clients needs Meta Business Verification and App Review

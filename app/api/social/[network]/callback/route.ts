@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { safeNext } from "@/lib/auth/safe-next";
-import { siteUrl } from "@/lib/auth/site-url";
+import { requestSiteUrl } from "@/lib/auth/request-site";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { saveConnections } from "@/lib/social/connections";
@@ -15,12 +15,12 @@ import { hasFeature } from "@/lib/entitlements";
 
 type Outcome = { error: ConnectErrorCode } | { connected: string } | { pick: string };
 
-function done(next: string, outcome: Outcome, setCookies: Record<string, string> = {}) {
-  const url = new URL(next, siteUrl());
+async function done(next: string, outcome: Outcome, setCookies: Record<string, string> = {}) {
+  const url = new URL(next, await requestSiteUrl());
   for (const [key, value] of Object.entries(outcome)) url.searchParams.set(key, value);
   const response = NextResponse.redirect(url);
   response.cookies.delete({ name: STATE_COOKIE, path: "/api/social" });
-  for (const [name, value] of Object.entries(setCookies)) response.cookies.set(name, value, cookieOptions(PENDING_PATH));
+  for (const [name, value] of Object.entries(setCookies)) response.cookies.set(name, value, await cookieOptions(PENDING_PATH));
   // A finished or failed connect leaves no half-open account picker behind.
   if (!("pick" in outcome)) for (const name of pendingCookieNames()) response.cookies.delete({ name, path: PENDING_PATH });
   return response;

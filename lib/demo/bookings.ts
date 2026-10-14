@@ -5,7 +5,6 @@ import { getSetting } from "@/lib/admin/settings";
 import { getSettings } from "@/lib/admin/settings";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
-import { siteUrl } from "@/lib/auth/site-url";
 import { logError } from "@/lib/errors";
 import { getPlan } from "@/lib/plan-catalog";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
@@ -15,6 +14,8 @@ import { persistDemoSync, retryPendingDemoSyncs, syncDemoEvent, type DemoEventBu
 import { demoGoogleCalendarUrl } from "./calendar-links";
 import { buildIcs } from "./ics";
 import { BOOKING_WINDOW_DAYS, DEMO_TIME_ZONE, formatSlot, freeSlots, MIN_LEAD_MINUTES, subtractInterval, ymdInZone, zonedToUtc, type AvailabilityWindow, type SlotOptions } from "./slots";
+import { linkSiteUrl } from "@/lib/auth/request-site";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 
 // Booking the demo that comes before the trial (section 12 of docs/RWANDA_LAUNCH_PLAN.md). A new company chooses a
 // plan from its region, picks a free slot from the owner's availability, and both sides get an email with the
@@ -221,8 +222,9 @@ export async function organizerEmail(): Promise<string> {
   return getSetting("organizerEmail");
 }
 
+/** Calendar apps fetch it from anywhere: the public address (lib/auth/site-url.ts). */
 export function icsUrl(token: string): string {
-  return `${siteUrl()}/api/demo/ics/${encodeURIComponent(token)}`;
+  return `${publicSiteUrl()}/api/demo/ics/${encodeURIComponent(token)}`;
 }
 
 /**
@@ -237,7 +239,7 @@ export async function bookingIcs(booking: BookingView, business: { name: string;
     start: booking.startsAt,
     end: booking.endsAt,
     summary: `BuPulse demo: ${business.name}`,
-    description: [`A ${Math.round((booking.endsAt.getTime() - booking.startsAt.getTime()) / MINUTE)}-minute walk through BuPulse for ${business.name}.`, plan ? `Plan chosen: ${plan.name}.` : "", booking.meetingLink ? `Join: ${booking.meetingLink}` : "The meeting link follows by email.", `Reschedule or cancel (up to ${MIN_LEAD_MINUTES / 60} hours before): ${siteUrl()}/dashboard`].filter(Boolean).join("\n"),
+    description: [`A ${Math.round((booking.endsAt.getTime() - booking.startsAt.getTime()) / MINUTE)}-minute walk through BuPulse for ${business.name}.`, plan ? `Plan chosen: ${plan.name}.` : "", booking.meetingLink ? `Join: ${booking.meetingLink}` : "The meeting link follows by email.", `Reschedule or cancel (up to ${MIN_LEAD_MINUTES / 60} hours before): ${(await linkSiteUrl())}/dashboard`].filter(Boolean).join("\n"),
     url: booking.meetingLink,
     organizer: { name: ORGANIZER_NAME, email: organizer },
     attendees: [{ name: business.contact ?? business.name, email: business.email }, ...(audience === "admin" ? adminEmails().map((email) => ({ email })) : [])],
@@ -264,7 +266,7 @@ export async function sendBookingEmails(kind: EmailKind, booking: BookingView, b
       ...(booking.meetingLink && kind !== "cancelled" ? [{ label: booking.meetLink ? "Google Meet" : "Where", value: booking.meetingLink }] : []),
       ...(plan ? [{ label: "Plan you chose", value: plan.name }] : []),
     ];
-    const google = demoGoogleCalendarUrl(booking, business.name, `${siteUrl()}/dashboard`);
+    const google = demoGoogleCalendarUrl(booking, business.name, `${(await linkSiteUrl())}/dashboard`);
     const calendarBlock = { label: "Add to your calendar", value: `Google Calendar: ${google}\nApple or Outlook (.ics): ${icsUrl(booking.icsToken)}` };
     const client = renderEmail({
       heading: headingByKind[kind],
@@ -273,14 +275,14 @@ export async function sendBookingEmails(kind: EmailKind, booking: BookingView, b
           ? `${first ? `Hi ${first}, ` : ""}your demo on ${when} is cancelled. Book a new time from your dashboard whenever you are ready.`
           : `${first ? `Hi ${first}, ` : ""}${kind === "rescheduled" ? "your demo has a new time." : "thanks for booking."} In about ${Math.round((booking.endsAt.getTime() - booking.startsAt.getTime()) / MINUTE)} minutes we will look at ${business.name} together, show you what BuPulse can make for it, and answer your questions. After the demo we start your free trial.`,
       blocks: kind === "cancelled" ? blocks : [...blocks, calendarBlock],
-      button: kind === "cancelled" ? { label: "Book a new time", url: `${siteUrl()}/book-demo?step=time` } : booking.meetingLink ? { label: "Join the meeting", url: booking.meetingLink } : { label: "Add to Google Calendar", url: google },
-      footer: kind === "cancelled" ? undefined : `Need another time? Reschedule or cancel from your dashboard up to ${MIN_LEAD_MINUTES / 60} hours before the call: ${siteUrl()}/dashboard`,
+      button: kind === "cancelled" ? { label: "Book a new time", url: `${(await linkSiteUrl())}/book-demo?step=time` } : booking.meetingLink ? { label: "Join the meeting", url: booking.meetingLink } : { label: "Add to Google Calendar", url: google },
+      footer: kind === "cancelled" ? undefined : `Need another time? Reschedule or cancel from your dashboard up to ${MIN_LEAD_MINUTES / 60} hours before the call: ${(await linkSiteUrl())}/dashboard`,
     });
     const clientSent = await sendEmail({ to: business.email, subject: `${headingByKind[kind]}: ${when}`, html: client.html, text: client.text, attachments: [attachment] });
     const admin = renderEmail({
       heading: `${kind === "cancelled" ? "Demo cancelled" : kind === "rescheduled" ? "Demo moved" : "New demo booked"}: ${business.name}`,
       intro: `${business.contact ?? business.email} (${business.email}) ${kind === "cancelled" ? "cancelled their demo" : kind === "rescheduled" ? "moved their demo to" : "booked a demo for"} ${when}.`,
-      blocks: [...blocks, { label: "Company page", value: `${siteUrl()}/admin/companies/${booking.businessId}` }],
+      blocks: [...blocks, { label: "Company page", value: `${(await linkSiteUrl())}/admin/companies/${booking.businessId}` }],
       button: kind === "cancelled" ? undefined : { label: "Add to your calendar", url: icsUrl(booking.icsToken) },
     });
     let admins = 0;

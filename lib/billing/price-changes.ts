@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { writeAudit } from "@/lib/admin/audit";
 import { consoleContext } from "@/lib/admin/types";
-import { siteUrl } from "@/lib/auth/site-url";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { clearPlanCache, currentPriceId, getPlans, subscriberPriceCents } from "@/lib/plan-catalog";
@@ -12,6 +11,7 @@ import { applyProviderSubscription } from "./apply";
 import { archivePaddlePrice, getPaddleSubscription, paddleConnected, swapSubscriptionPrice } from "./paddle-catalog";
 import { mapSubscription } from "./paddle-map";
 import { addMonths } from "./period";
+import { linkSiteUrl } from "@/lib/auth/request-site";
 
 // Moving existing subscribers to a plan's new price (PlanPriceChange / PlanPriceChangeItem).
 //  - Increase: each client gets an email at least NOTICE_DAYS before the renewal that bills the new price. A renewal less
@@ -77,7 +77,7 @@ async function sendNotice(item: Item, planName: string, effectiveAt: Date, remin
   const user = await prisma.user.findUnique({ where: { id: item.userId }, select: { email: true, name: true } });
   if (!user?.email) return "no_email";
   const per = item.interval === "YEAR" ? "year" : "month";
-  const billing = `${siteUrl()}/dashboard/billing`;
+  const billing = `${(await linkSiteUrl())}/dashboard/billing`;
   const { html, text } = renderEmail({
     heading: reminder ? `A reminder: your ${planName} price changes on ${longDate(effectiveAt)}` : `Your ${planName} price is changing`,
     intro: `${user.name ? `Hi ${user.name.split(/\s+/)[0]}, ` : ""}${reminder ? `this is a reminder that the price of the ${planName} plan changes at your renewal on ${longDate(effectiveAt)}.` : `we are changing the price of the ${planName} plan.`} Nothing changes until your renewal on ${longDate(effectiveAt)}. You will not be charged anything extra before then.`,

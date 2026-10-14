@@ -11,8 +11,9 @@ import { RATE_LIMITS, rateLimit, RateLimitError, rateLimitMessage } from "@/lib/
 import { cancelPending, confirmPending, credentialsOf, getConnection, providerFor, removeConnection, saveConnection } from "@/lib/stores/connection";
 import { importProducts, resyncConnection, type ProductResult, type ResyncSummary } from "@/lib/stores/sync";
 import { IMPORT_CHUNK, isStoreProvider, StoreApiError, type StoreProviderId } from "@/lib/stores/types";
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 import { buildWooAuthorizeUrl, CONSUMER_KEY_RE, CONSUMER_SECRET_RE, normalizeStoreUrl, packKeys, sealWooState, verifyWooKeys } from "@/lib/stores/woocommerce";
+import { linkSiteUrl } from "@/lib/auth/request-site";
 
 export type ListedProduct = { externalId: string; title: string; price: string | null; thumb: string | null; imported: boolean };
 export type ListResult = { ok: true; products: ListedProduct[]; nextCursor: string | null } | { ok: false; error: string };
@@ -186,11 +187,11 @@ export async function startWooConnectAction(formData: FormData): Promise<void> {
   if (!business) return wooBack("no_business");
   if (await featureBlocked(business.id, "storeImport")) return redirect(upgradeHref("storeImport"));
   // WooCommerce only posts keys to an https callback, so a plain-http BuPulse (local development) must use manual keys.
-  if (!siteUrl().startsWith("https://")) return wooBack("needs_https");
+  if (!publicSiteUrl().startsWith("https://")) return wooBack("needs_https");
   let target: string;
   try {
     await rateLimit(`store-connect:${user.id}`, RATE_LIMITS.storeConnect);
-    target = buildWooAuthorizeUrl(store.url, await sealWooState({ userId: user.id, businessId: business.id, storeUrl: store.url }));
+    target = buildWooAuthorizeUrl(store.url, await sealWooState({ userId: user.id, businessId: business.id, storeUrl: store.url }), await linkSiteUrl());
   } catch (error) {
     if (error instanceof RateLimitError) return wooBack("rate_limited");
     await logError(error, { source: "stores.woocommerce.connect", userId: user.id });

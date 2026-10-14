@@ -1,6 +1,6 @@
 // WooCommerce: the store's one-click key flow (/wc-auth/v1/authorize), a manual-keys fallback and the REST API v3.
 import { decrypt, encrypt } from "@/lib/crypto";
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 import { checkWebhookUrl } from "@/lib/leads/webhook";
 import { randomToken } from "@/lib/canva/pkce";
 import { storeApiFetch } from "./safe-fetch";
@@ -43,14 +43,15 @@ export async function openWooState(sealed: string | null | undefined, now = Date
 }
 
 /** The address the merchant is sent to to approve read access. */
-export function buildWooAuthorizeUrl(storeUrl: string, state: string): string {
+export function buildWooAuthorizeUrl(storeUrl: string, state: string, returnBase = publicSiteUrl()): string {
   const url = new URL(`${storeUrl}/wc-auth/v1/authorize`);
   url.search = new URLSearchParams({
     app_name: "BuPulse",
     scope: "read",
     user_id: state,
-    return_url: `${siteUrl()}/dashboard/stores/woocommerce?connected=1`,
-    callback_url: `${siteUrl()}${WOO_CALLBACK_PATH}`,
+    return_url: `${returnBase}/dashboard/stores/woocommerce?connected=1`,
+    // The store posts the keys here server to server: the public address (WooCommerce takes any URL per request).
+    callback_url: `${publicSiteUrl()}${WOO_CALLBACK_PATH}`,
   }).toString();
   return url.toString();
 }
