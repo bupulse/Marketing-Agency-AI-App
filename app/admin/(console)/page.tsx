@@ -52,7 +52,9 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
     getAttention().catch(() => []),
     getActivity({ limit: 8 }).catch(() => ({ items: [], newest: null, nextBefore: null, more: false })),
     getMetrics(rangeFor(30), ["visits", "signups"]).catch(() => ({}) as Record<string, { date: string; dimension: string; value: number }[]>),
-    seePayments ? listManualPayments({ status: "pending", limit: 20 }).then((p) => p.items.filter((x) => x.submitted)).catch(() => []) : Promise.resolve([]),
+    // The same filter as Payments, the Inbox and the sidebar badge (TO_CHECK_WHERE). A failed read says so: it never
+    // shows as "Nothing to approve".
+    seePayments ? listManualPayments({ toCheck: true, limit: 20 }).then((p) => p.items).catch(() => null) : Promise.resolve([]),
     seePayments || seeMoney ? getTodayPayments(new Date(), fx.display).catch(() => [] as TodayPayment[]) : Promise.resolve([] as TodayPayment[]),
   ]);
   // Each attention line only for someone who may open the page it links to.
@@ -62,6 +64,8 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
   });
   const timeline = await getTodayTimeline(new Date(), seePayments || seeMoney ? todayPayments : []).catch(() => []);
 
+  // Payments to check: the count the sidebar shows, never fewer than the list below shows.
+  const waiting = pending === null ? inbox.payments : Math.max(inbox.payments, pending.length);
   const months = report?.months ?? [];
   const cur = months[months.length - 1];
   const prev = months[months.length - 2];
@@ -74,7 +78,7 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
     arpuCents: report?.arpuCents ?? null,
     profit: { monthCents: cur?.profitCents ?? 0, prevCents: prev?.profitCents ?? 0, costCents: Math.round(cur?.costs.totalCents ?? 0), estimateCents: Math.round(cur?.costs.estimateCents ?? 0), spark: months.map((m) => m.profitCents) },
     clients,
-    todo: { inbox: inboxTotalFor(inbox, me.permissions), payments: inbox.payments, demosToday: demos.today, nextDemo: demos.next ? `${demos.next.company} at ${demos.next.startsAt.toISOString().slice(11, 16)} UTC` : null, errors24h: inbox.errors },
+    todo: { inbox: inboxTotalFor(inbox, me.permissions), payments: waiting, demosToday: demos.today, nextDemo: demos.next ? `${demos.next.company} at ${demos.next.startsAt.toISOString().slice(11, 16)} UTC` : null, errors24h: inbox.errors },
     ai,
   };
 
@@ -93,11 +97,22 @@ export default async function AdminOverview({ searchParams }: PageProps<"/admin"
 
       {seePayments && (
         <Panel
-          title={pending.length ? `Waiting for approval (${pending.length})` : "Waiting for approval"}
+          title={waiting ? `Waiting for approval (${waiting})` : "Waiting for approval"}
           description={canApprove ? "Mobile Money payments clients say they made. Check the money arrived, then approve or reject with a reason." : "Mobile Money payments waiting for Finance or the owner."}
           action={<Link href="/admin/payments" className="text-sm font-medium underline">All payments</Link>}
         >
-          {pending.length === 0 ? <Empty>Nothing to approve right now.</Empty> : <PendingPaymentList items={pending} canApprove={canApprove} back="/admin" confirmAction={confirmPaymentAction} rejectAction={rejectPaymentAction} />}
+          {pending === null ? (
+            <p role="alert" className={notice.bad}>
+              The payments waiting could not be loaded just now. Reload in a moment, or open <Link href="/admin/payments" className="underline">Payments</Link>.
+            </p>
+          ) : pending.length === 0 ? (
+            <Empty>Nothing to approve right now.</Empty>
+          ) : (
+            <>
+              <PendingPaymentList items={pending} canApprove={canApprove} confirmAction={confirmPaymentAction} rejectAction={rejectPaymentAction} />
+              {waiting > pending.length && <p className="pt-3 text-sm text-muted"><Link href="/admin/payments" className="underline">{waiting - pending.length} more on Payments</Link></p>}
+            </>
+          )}
         </Panel>
       )}
 

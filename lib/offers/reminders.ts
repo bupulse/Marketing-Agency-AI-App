@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { logError } from "@/lib/errors";
 import { sendOfferReminderEmail } from "./emails";
-import { DAY_MS } from "./shared";
+import { DAY_MS, readAddition } from "./shared";
 
 // Accepted offers that are not paid (docs/OFFERS.md): one reminder to the company owner 3 days after accepting and one
 // after 7, from the daily Mobile Money renewals job. Each is claimed before sending (reminder3SentAt / reminder7SentAt,
@@ -30,7 +30,7 @@ export async function sendOfferReminders(now: Date = new Date(), limit = 100): P
       try {
         const owner = await prisma.business.findUnique({ where: { id: offer.businessId }, select: { ceoName: true, user: { select: { email: true, name: true } } } });
         const ok = owner?.user?.email
-          ? await sendOfferReminderEmail({ email: owner.user.email, name: owner.user.name ?? owner.ceoName }, { day, totalMinor: offer.adjustedMinor, currency: offer.currency, interval: offer.interval, method: offer.payMethod })
+          ? await sendOfferReminderEmail({ email: owner.user.email, name: owner.user.name ?? owner.ceoName }, { day, totalMinor: offer.adjustedMinor, currency: offer.currency, interval: offer.interval, method: offer.payMethod, addition: readAddition(offer.options) })
           : false;
         if (!ok) {
           await release();

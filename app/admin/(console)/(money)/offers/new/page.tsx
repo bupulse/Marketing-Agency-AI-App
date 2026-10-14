@@ -43,7 +43,7 @@ export default async function NewOfferPage({ searchParams }: { searchParams: Pro
           </dl>
         </Panel>
       )}
-      <OfferEditor businessId={ctx.business.id} offerId={null} region={ctx.region} bases={ctx.bases} prices={ctx.prices} initial={ctx.initial} addition={ctx.addition} additionUnavailable={ctx.additionUnavailable} ownerEmail={ctx.business.ownerEmail} now={new Date().toISOString()} />
+      <OfferEditor businessId={ctx.business.id} offerId={null} region={ctx.region} bases={ctx.bases} prices={ctx.prices} initial={ctx.initial} addition={ctx.addition} additionUnavailable={ctx.additionUnavailable} notSetUp={ctx.notSetUp} ownerEmail={ctx.business.ownerEmail} now={new Date().toISOString()} />
     </>
   );
 }

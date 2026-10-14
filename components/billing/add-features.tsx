@@ -11,7 +11,9 @@ import { methodReason, type MethodState } from "@/lib/billing/pay-methods";
 import { offerCardQuote, quoteAddition, type AddonPriceRow, type CurrentPlanForAddition } from "@/lib/offers/shared";
 import { useTheme } from "@/components/theme";
 import { cardQuoteText, payByCard, type CardQuoteView } from "./card-checkout";
+import { PayStateNote, usePayState } from "./pay-state";
 import { formatMinor } from "@/lib/region-format";
+import { cn } from "@/lib/cn";
 
 export type AddFeaturesData = {
   current: CurrentPlanForAddition;
@@ -20,6 +22,8 @@ export type AddFeaturesData = {
   region: { key: string; currency: string };
   prices: AddonPriceRow[];
   addable: FeatureKey[];
+  /** Built but not set up yet (lib/feature-setup.ts): listed as "Coming soon", cannot be ticked. */
+  soon?: FeatureKey[];
 };
 
 const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Kigali" });
@@ -43,6 +47,8 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
   const [selected, setSelected] = useState<FeatureKey[]>([]);
   // The rate the server answered with when it changed since the page loaded (its quote wins).
   const [usdOverride, setUsdOverride] = useState<{ dueMinor: number; usdCents: number } | null>(null);
+  // A payment was just reported or a card payment just went through: nothing more to pay while the page refreshes.
+  const payState = usePayState();
   const owned = new Set<FeatureKey>(data?.current.features ?? []);
   const quote = useMemo(
     () => (data && selected.length > 0 ? quoteAddition({ current: data.current, features: selected, interval: data.interval, currency: data.region.currency, regionKey: data.region.key, prices: data.prices, periodEnd: new Date(data.periodEnd), now: new Date(now) }) : null),
@@ -119,19 +125,21 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
         <fieldset className="flex flex-col gap-1">
           <legend className="sr-only">Features</legend>
           <div className="grid gap-1 sm:grid-cols-2">
-            {FEATURES.filter((f) => owned.has(f.key) || data.addable.includes(f.key)).map((f) => {
+            {FEATURES.filter((f) => owned.has(f.key) || data.addable.includes(f.key) || data.soon?.includes(f.key)).map((f) => {
               const have = owned.has(f.key);
+              const soon = !have && !data.addable.includes(f.key);
               const neededBy = !have ? selected.filter((k) => k !== f.key && withPrerequisites([k]).includes(f.key)) : [];
               const price = priceOf(f.key);
               return (
-                <label key={f.key} className="flex min-h-11 items-start gap-2 text-[15px]">
-                  <input type="checkbox" checked={have || selected.includes(f.key)} disabled={have || neededBy.length > 0 || pending} onChange={(e) => toggle(f.key, e.target.checked)} className="mt-1 size-5" />
+                <label key={f.key} className={cn("flex min-h-11 items-start gap-2 text-[15px]", soon && "text-muted")}>
+                  <input type="checkbox" checked={have || selected.includes(f.key)} disabled={have || soon || neededBy.length > 0 || pending} onChange={(e) => toggle(f.key, e.target.checked)} className="mt-1 size-5" />
                   <span>
                     <span className="flex flex-wrap items-center gap-2">
                       <strong className="font-medium">{f.label}</strong>
                       {have && <Badge tone="success">In your plan</Badge>}
+                      {soon && <Badge tone="violet">Coming soon</Badge>}
                       {neededBy.length > 0 && <Badge tone="blue">Needed by {neededBy.map(featureLabel).join(", ")}</Badge>}
-                      {!have && price !== null && <span className="text-[13px] text-muted">+{formatMinor(price, data.region.currency)} / month</span>}
+                      {!have && !soon && price !== null && <span className="text-[13px] text-muted">+{formatMinor(price, data.region.currency)} / month</span>}
                     </span>
                     <span className="block text-[13px] text-muted">{f.description}</span>
                   </span>
@@ -168,6 +176,9 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
         </dl>
       )}
 
+      {payState ? (
+        <PayStateNote state={payState} />
+      ) : (
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => pay("momo")} disabled={!canPay || pending || momo !== "ready"} leading={<Smartphone aria-hidden className="size-5" />}>
           {methodReason("momo", momo) ?? (busy === "momo" ? "Opening…" : "Pay with Mobile Money")}
@@ -181,7 +192,8 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
           </Button>
         )}
       </div>
-      {card && <p className="text-[13px] text-muted">{cardQuoteText(card)}, charged in US dollars once. The added features switch on as soon as the payment goes through.</p>}
+      )}
+      {card && !payState && <p className="text-[13px] text-muted">{cardQuoteText(card)}, charged in US dollars once. The added features switch on as soon as the payment goes through.</p>}
       {cardError && (
         <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
           {cardError}

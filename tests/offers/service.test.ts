@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeDb, type FakeDb } from "../admin/fake-db";
 
 // Custom plan offers against the in-memory database (lib/offers): add-on prices (audited), save / send / withdraw
@@ -514,5 +514,73 @@ describe("review fixes", () => {
     expect(done.status).toBe("failed");
     expect(JSON.stringify(done.result)).toMatch(/price changed/);
     expect(h.db.planOffer.rows).toHaveLength(0);
+  });
+});
+
+describe("included amounts and features that are not set up", () => {
+  // Drive and Dropbox import runs on the Google Picker or the Dropbox Chooser: without BuPulse's keys it cannot be used.
+  const KEYS = ["GOOGLE_PICKER_API_KEY", "GOOGLE_PICKER_APP_ID", "GOOGLE_CLIENT_ID", "GOOGLE_YOUTUBE_CLIENT_ID", "DROPBOX_APP_KEY"];
+  const before: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    for (const k of KEYS) {
+      before[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+  afterEach(() => {
+    for (const k of KEYS) {
+      if (before[k] === undefined) delete process.env[k];
+      else process.env[k] = before[k];
+    }
+  });
+  const withDrivePrice = () => h.db.addonPrice.rows.push({ id: "a_driveImport", addonKey: "driveImport", regionKey: "RW", currency: "RWF", monthlyMinor: 3000 });
+
+  it("a draft with website chat but 0 chat replies is saved with the 500 included, at the same price (no chat block)", async () => {
+    seed();
+    const saved = await offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft: { ...DRAFT, limits: { text: 200, image: 0, chat: 0, seats: 3 } } });
+    const row = offerRow(saved.id);
+    expect(row.limits).toMatchObject({ chat: 500, image: 130 });
+    expect((row.lines as { key: string }[]).map((l) => l.key)).not.toContain("block:chat");
+    expect(row.computedMinor).toBe(73000);
+  });
+
+  it("an offer saved before that rule (0 chat replies) still makes a custom plan with the 500 included when accepted", async () => {
+    seed();
+    const id = await sentOffer();
+    offerRow(id).limits = { ...(offerRow(id).limits as object), chat: 0 };
+    await offers.acceptOffer({ userId: USER, actorId: USER, businessId: "biz1", offerId: id, method: "momo" }, NOW);
+    expect(h.db.planDefinition.rows.find((p) => p.key === customPlanKeyFor(id))!.limits).toMatchObject({ chat: 500, image: 130, text: 200 });
+  });
+
+  it("Drive and Dropbox import cannot be offered until one of them is set up", async () => {
+    seed();
+    withDrivePrice();
+    const draft = { ...DRAFT, features: ["websiteChat", "driveImport"] };
+    expect(await msg(offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft }))).toMatch(/Drive and Dropbox import is coming soon/);
+    expect(await msg(offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft: { ...draft, mode: "addon" } }))).toMatch(/Drive and Dropbox import is coming soon/);
+    process.env.DROPBOX_APP_KEY = "dropbox-key";
+    const saved = await offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft });
+    expect(offerRow(saved.id).featureKeys).toContain("driveImport");
+  });
+
+  it("the editor starts a request's website chat at 500 replies and leaves features that are not set up unticked", async () => {
+    seed();
+    h.db.customPlanRequest.rows.push({ id: "req1", businessId: "biz1", companyName: "Inzu Fashion", description: "We sell clothes in Kigali", goals: null, featureKeys: ["websiteChat", "driveImport"], status: "new", createdAt: NOW });
+    const ctx = await offers.offerEditorContext({ businessId: "biz1", requestId: "req1" });
+    expect(ctx.initial.features).toEqual(["websiteChat"]);
+    expect(ctx.initial.limits.chat).toBe(500);
+    expect(ctx.notSetUp).toContain("driveImport");
+  });
+
+  it("Billing's Add features lists Drive and Dropbox import as coming soon and refuses to sell it", async () => {
+    seed();
+    withDrivePrice();
+    const add = await offers.selfServeAddition("biz1", NOW);
+    expect(add.ok).toBe(true);
+    if (!add.ok) return;
+    expect(add.addable).not.toContain("driveImport");
+    expect(add.addable).toContain("websiteChat");
+    expect(add.soon).toContain("driveImport");
+    expect(await msg(offers.startFeatureAddition({ userId: USER, actorId: USER, businessId: "biz1", features: ["driveImport"], method: "momo" }, NOW))).toMatch(/cannot be added here/);
   });
 });

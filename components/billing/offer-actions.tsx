@@ -8,6 +8,7 @@ import { acceptOfferAction, payOfferByCardAction } from "@/app/dashboard/billing
 import { methodReason, type MethodState } from "@/lib/billing/pay-methods";
 import { useTheme } from "@/components/theme";
 import { cardQuoteText, payByCard, type CardQuoteView } from "./card-checkout";
+import { PayStateNote, usePayState } from "./pay-state";
 
 /**
  * Accept and pay buttons under the offer card. Mobile Money (where the region takes it) opens the pay screen for the
@@ -25,6 +26,8 @@ export function OfferActions({ offerId, momo: momoState, card, accepted, method,
   // Shown under the card button as well as in a toast, so a failed card start is never silent.
   const [cardError, setCardError] = useState<string | null>(null);
   const [quote, setQuote] = useState<CardQuoteView | null>(card);
+  // A payment was just reported or a card payment just went through: no second way to pay while the page refreshes.
+  const payState = usePayState();
 
   function cardPay() {
     if (!quote) return;
@@ -63,6 +66,14 @@ export function OfferActions({ offerId, momo: momoState, card, accepted, method,
       toast(m === "momo" ? "Offer accepted. Pay by Mobile Money below." : "Offer accepted. Your invoice is below and in your email.", "success");
       router.refresh();
     });
+  }
+
+  if (payState) {
+    return (
+      <div className="border-t border-line pt-5">
+        <PayStateNote state={payState} />
+      </div>
+    );
   }
 
   return (

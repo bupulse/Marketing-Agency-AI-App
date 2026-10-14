@@ -59,7 +59,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
         <EmptyState icon={Smartphone} title="Nothing to check" text="When a client pays by Mobile Money and taps I've paid, it appears here with the reference and transaction id." />
       ) : (
         <Panel title={`To check (${toCheck.length})`} description="Oldest first. The client is waiting on their Billing page.">
-          <PendingPaymentList items={toCheck} canApprove={canApprove} back="/admin/payments" confirmAction={confirmPaymentAction} rejectAction={rejectPaymentAction} />
+          <PendingPaymentList items={toCheck} canApprove={canApprove} confirmAction={confirmPaymentAction} rejectAction={rejectPaymentAction} />
         </Panel>
       )}
 

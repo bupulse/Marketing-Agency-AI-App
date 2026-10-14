@@ -21,6 +21,8 @@ declare global {
 export type CheckoutHandlers = {
   /** Checkout was closed without paying. */
   onClosed?: () => void;
+  /** The payment went through (the plan switches on when the provider's webhook arrives, not here). */
+  onCompleted?: () => void;
   onError?: (message: string) => void;
 };
 
@@ -50,6 +52,7 @@ export async function openPaddleCheckout(config: CheckoutConfig, theme: "light" 
     paddle.Initialize({
       token: config.clientToken,
       eventCallback: (event) => {
+        if (event.name === "checkout.completed") handlers.onCompleted?.();
         if (event.name === "checkout.closed") handlers.onClosed?.();
         if (event.name === "checkout.error") handlers.onError?.("Checkout ran into a problem. You were not charged.");
       },

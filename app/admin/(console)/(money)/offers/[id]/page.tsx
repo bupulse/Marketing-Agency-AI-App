@@ -58,7 +58,7 @@ export default async function OfferPage({ params, searchParams }: { params: Prom
       </p>
 
       {editing && ctx ? (
-        <OfferEditor businessId={offer.businessId} offerId={offer.id} region={ctx.region} bases={ctx.bases} prices={ctx.prices} initial={ctx.initial} addition={ctx.addition} additionUnavailable={ctx.additionUnavailable} ownerEmail={ctx.business.ownerEmail} now={new Date().toISOString()} />
+        <OfferEditor businessId={offer.businessId} offerId={offer.id} region={ctx.region} bases={ctx.bases} prices={ctx.prices} initial={ctx.initial} addition={ctx.addition} additionUnavailable={ctx.additionUnavailable} notSetUp={ctx.notSetUp} ownerEmail={ctx.business.ownerEmail} now={new Date().toISOString()} />
       ) : (
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <Panel title="Details">

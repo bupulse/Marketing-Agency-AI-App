@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { cookies } from "next/headers";
 import { CalendarCheck, CalendarClock, CalendarPlus, ExternalLink, LogOut, MessageSquareText, Sparkles, Video } from "lucide-react";
 import { Logo } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme";
@@ -25,6 +27,24 @@ import { OfferActions } from "@/components/billing/offer-actions";
 import { clientOffer } from "@/lib/offers/service";
 import { cardQuoteOf, offerCardReady } from "@/lib/offers/card";
 import { linkSiteUrl } from "@/lib/auth/request-site";
+import { CheckoutPendingWatch } from "@/components/billing/checkout-pending";
+import { CARD_PAID_EVENTS, CHECKOUT_PENDING_COOKIE, CHECKOUT_PENDING_MS, checkoutPendingSince } from "@/lib/billing/checkout-pending";
+import { offerCheckingReference } from "@/lib/billing/momo-shared";
+
+/**
+ * A card payment that went through but has not switched the plan on yet (lib/billing/checkout-pending.ts): the start
+ * time this browser kept after the checkout, or a Paddle payment event of the company in the last minutes (the
+ * subscription event may still be on its way or failing). Only hides the pay buttons; the webhook switches it on.
+ */
+async function cardPaymentPendingSince(userId: string, now: number = Date.now()): Promise<number | null> {
+  const fromCookie = checkoutPendingSince((await cookies()).get(CHECKOUT_PENDING_COOKIE)?.value, now);
+  if (fromCookie !== null) return fromCookie;
+  const event = await prisma.billingEvent
+    .findFirst({ where: { provider: "PADDLE", userId, type: { in: [...CARD_PAID_EVENTS] }, createdAt: { gte: new Date(now - CHECKOUT_PENDING_MS) } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } })
+    .catch(() => null);
+  // A minute before the event, so the activation check (the subscription changed after it) sees the webhook's write.
+  return event ? event.createdAt.getTime() - 60_000 : null;
+}
 
 /** Reschedule and cancel are only offered up to MIN_LEAD_MINUTES before the call (lib/demo/bookings.ts enforces it too). */
 const canStillMove = (booking: { startsAt: Date }) => booking.startsAt.getTime() - Date.now() >= MIN_LEAD_MINUTES * 60_000;
@@ -60,7 +80,9 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
       })
     : null;
   const canPay = plan !== null && methods !== null && (offersChoice(methods) || soleMethod(methods) !== null);
-  const payment = canManage && business ? await currentManualPayment(business.userId) : null;
+  const payment = (canManage || canBill) && business ? await currentManualPayment(business.userId) : null;
+  // Paid by card a moment ago: "switching on" instead of the pay buttons, so nobody pays twice while the webhook arrives.
+  const cardPending = canBill && business ? await cardPaymentPendingSince(business.userId) : null;
   // A custom plan offer sent before or after the demo (docs/OFFERS.md): paying it opens the dashboard like any plan.
   const offer = canBill ? await clientOffer(businessId).catch(() => null) : null;
   const offerCard = offer && (await offerCardReady(region.paymentMethods).catch(() => false)) ? await cardQuoteOf(offer.totalMinor, offer.currency).then((q) => ({ usdCents: q.usdCents, quoteMinor: q.quoteMinor, currency: q.quoteCurrency })).catch(() => null) : null;
@@ -161,10 +183,17 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
           )}
         </GlassCard>
 
+        {canBill && (
+          <Suspense fallback={null}>
+            <CheckoutPendingWatch pendingSince={cardPending} />
+          </Suspense>
+        )}
+
         {offer && (
           <OfferCard
             offer={offer}
-            actions={offer.status === "sent" || (offer.status === "accepted" && !(payment?.status === "pending" && payment.submitted)) ? <OfferActions offerId={offer.id} momo={methodState(region.paymentMethods.includes("momo"), momoConfigured(momoSettings))} card={offerCard} accepted={offer.status === "accepted"} method={offer.payMethod} addition={Boolean(offer.addition)} /> : undefined}
+            checkingReference={offerCheckingReference(payment, offer)}
+            actions={cardPending === null && (offer.status === "sent" || (offer.status === "accepted" && !(payment?.status === "pending" && payment.submitted))) ? <OfferActions offerId={offer.id} momo={methodState(region.paymentMethods.includes("momo"), momoConfigured(momoSettings))} card={offerCard} accepted={offer.status === "accepted"} method={offer.payMethod} addition={Boolean(offer.addition)} /> : undefined}
           />
         )}
 
@@ -208,7 +237,7 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
                     Change plan
                   </Link>
                 )}
-                {canPay && !payment && (
+                {canPay && !payment && cardPending === null && (
                   <div className="flex flex-col gap-1.5 border-t border-line pt-3">
                     {methods?.card === "ready" && <CheckoutScript />}
                     <DemoPayButton

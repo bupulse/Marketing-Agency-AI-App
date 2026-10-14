@@ -3,6 +3,8 @@
 import { formatMinor } from "@/lib/region-format";
 import type { CheckoutConfig } from "@/lib/billing/types";
 import { openCheckout } from "./checkout";
+import { markCheckoutPending } from "./checkout-pending";
+import { sinceOfSuccessUrl } from "@/lib/billing/checkout-pending";
 
 /** What an offer or added features cost by card, as the client sees it before paying (lib/offers/shared.ts offerCardQuote). */
 export type CardQuoteView = { usdCents: number; quoteMinor: number; currency: string };
@@ -36,8 +38,10 @@ export async function payByCard(startOnServer: CardStart, theme: "light" | "dark
     return;
   }
   if (!result.config) return h.onError("Card payments are not available right now. Please try again.");
+  const since = sinceOfSuccessUrl(result.config.successUrl);
   try {
-    await openCheckout(result.config, theme, { onClosed: h.onClosed, onError: h.onError });
+    // Paid: hide every other pay button until the webhook has switched it on (lib/billing/checkout-pending.ts).
+    await openCheckout(result.config, theme, { onClosed: h.onClosed, onError: h.onError, onCompleted: () => since !== null && markCheckoutPending(since) });
   } catch (error) {
     h.onError(error instanceof Error ? error.message : "Checkout could not open. Please try again.");
   }

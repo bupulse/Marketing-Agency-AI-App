@@ -8,6 +8,7 @@ import { useTheme } from "@/components/theme";
 import { startCheckout, startMomoPayment } from "@/app/dashboard/billing/actions";
 import { openCheckout } from "./checkout";
 import { methodReason, type PayMethods } from "@/lib/billing/pay-methods";
+import { PayStateNote, usePayState } from "./pay-state";
 
 export type PayableInvoice = {
   id: string;
@@ -34,6 +35,8 @@ export function InvoicePay({ invoice, methods, highlight, cardReason }: { invoic
   const { resolvedTheme } = useTheme();
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<"momo" | "card" | null>(null);
+  // A payment was just reported or a card payment just went through: no second way to pay while the page refreshes.
+  const payState = usePayState();
 
   function payByMomo() {
     setBusy("momo");
@@ -84,11 +87,12 @@ export function InvoicePay({ invoice, methods, highlight, cardReason }: { invoic
         </div>
         <Badge tone={invoice.overdue ? "danger" : "blue"}>{invoice.overdue ? "Overdue" : "To pay"}</Badge>
       </div>
+      {payState && <PayStateNote state={payState} />}
       <div className="flex flex-wrap gap-3">
-        <Button onClick={payByMomo} disabled={pending || !momo} leading={<Smartphone aria-hidden className="size-4" />}>
+        <Button onClick={payByMomo} disabled={pending || !momo || Boolean(payState)} leading={<Smartphone aria-hidden className="size-4" />}>
           {!momo ? methodReason("momo", methods.momo) : busy === "momo" ? "One moment…" : "Mobile Money (MTN / Airtel)"}
         </Button>
-        <Button variant={momo ? "outline" : "primary"} onClick={payByCard} disabled={pending || !card} leading={<CreditCard aria-hidden className="size-4" />}>
+        <Button variant={momo ? "outline" : "primary"} onClick={payByCard} disabled={pending || !card || Boolean(payState)} leading={<CreditCard aria-hidden className="size-4" />}>
           {!card ? (cardReason && methods.card !== "off" ? "Card" : methodReason("card", methods.card)) : busy === "card" ? "Opening checkout…" : "Card"}
         </Button>
         <a href={`/api/invoices/${encodeURIComponent(invoice.id)}/pdf`} className="glass inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-medium no-underline">

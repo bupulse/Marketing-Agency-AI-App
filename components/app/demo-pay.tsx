@@ -9,6 +9,9 @@ import { startCheckout, startMomoPayment } from "@/app/dashboard/billing/actions
 import { openCheckout } from "@/components/billing/checkout";
 import { PayChoice } from "@/components/billing/pay-choice";
 import { offersChoice, soleMethod, type PayMethods } from "@/lib/billing/pay-methods";
+import { sinceOfSuccessUrl } from "@/lib/billing/checkout-pending";
+import { markCheckoutPending } from "@/components/billing/checkout-pending";
+import { PayStateNote, usePayState } from "@/components/billing/pay-state";
 
 /**
  * "Pay now" on the demo lock screen: a company that does not want to wait for its demo pays for the plan it chose
@@ -22,6 +25,8 @@ export function DemoPayButton({ plan, planName, methods, momoNote, cardNote }: {
   const { resolvedTheme } = useTheme();
   const [pending, start] = useTransition();
   const [choosing, setChoosing] = useState(false);
+  // Paid a moment ago (card completed, or Mobile Money reported): no second payment while the page catches up.
+  const payState = usePayState();
 
   const payByMomo = () =>
     start(async () => {
@@ -36,13 +41,16 @@ export function DemoPayButton({ plan, planName, methods, momoNote, cardNote }: {
       setChoosing(false);
       const result = await startCheckout({ plan, interval: "MONTH" });
       if (!result.ok) return toast(result.error, "error");
+      const since = sinceOfSuccessUrl(result.config.successUrl);
       try {
-        await openCheckout(result.config, resolvedTheme, { onError: (message) => toast(message, "error") });
+        // Paid: "switching on" at once and the buttons hidden until the webhook has done it (lib/billing/checkout-pending.ts).
+        await openCheckout(result.config, resolvedTheme, { onError: (message) => toast(message, "error"), onCompleted: () => since !== null && markCheckoutPending(since) });
       } catch (error) {
         toast(error instanceof Error ? error.message : "Checkout could not open. Please try again.", "error");
       }
     });
 
+  if (payState) return <PayStateNote state={payState} />;
   const only = soleMethod(methods);
   const click = offersChoice(methods) ? () => setChoosing(true) : only === "momo" ? payByMomo : payByCard;
   const label = offersChoice(methods) ? `Pay for ${planName}` : only === "momo" ? `Pay for ${planName} by Mobile Money` : `Pay for ${planName} by card`;

@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
   current: vi.fn(),
   adminAction: vi.fn(),
   finish: vi.fn(async (_back: string, _ok: unknown, fn: () => Promise<unknown>) => fn()),
+  refresh: vi.fn(),
   confirm: vi.fn(),
   reject: vi.fn(),
   save: vi.fn(),
@@ -20,7 +21,8 @@ const h = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth/require-user", () => ({ requireActiveUser: h.requireActiveUser }));
 vi.mock("@/lib/db", () => ({ prisma: { subscription: { findUnique: vi.fn() } } }));
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// Confirm and Reject refresh the admin page in place (refresh(), only callable inside a real Server Action).
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), refresh: h.refresh }));
 vi.mock("@/lib/admin/switch", () => ({ isServiceEnabled: async () => true, UNAVAILABLE_MESSAGE: "off" }));
 vi.mock("@/lib/billing", () => ({ activeProvider: () => "PADDLE", billingAdapter: () => ({}), isInterval: (v: unknown) => v === "MONTH" || v === "YEAR" }));
 vi.mock("@/lib/plan-catalog", () => ({ getPlan: vi.fn(), priceIdFor: vi.fn(), getSellablePlans: async () => [{ key: "STANDARD", name: "Standard" }] }));
@@ -40,6 +42,7 @@ vi.mock("@/lib/admin/console", async () => {
 });
 
 import { ManualPaymentError } from "@/lib/billing/momo";
+import { AdminError } from "@/lib/admin/types";
 
 const OWNER = { id: "owner", actorId: "owner", role: "OWNER", businessId: "b1", email: "o@x.rw" };
 const MEMBER = { ...OWNER, actorId: "m1", role: "MEMBER" };
@@ -145,7 +148,8 @@ describe("admin actions", () => {
     h.confirm.mockResolvedValue({ id: "p1", status: "confirmed", periodEnd: new Date("2026-11-14T00:00:00Z"), emailed: true });
     const f = new FormData();
     f.set("id", "p1");
-    await a.confirmPaymentAction(f);
+    // They answer in words (the dialog closes, shows it and refreshes the page) instead of redirecting.
+    expect(await a.confirmPaymentAction(f)).toEqual({ ok: true, message: "Confirmed. The plan is active until 14 Nov 2026 and the client has been emailed." });
     expect(h.adminAction).toHaveBeenCalledTimes(1);
     expect(h.confirm).toHaveBeenCalledWith({ actor: "admin", ip: null, viaApi: false }, "p1", expect.any(Date), { transactionId: null });
     // The transaction id the owner typed when the client could not find it, trimmed.
@@ -153,11 +157,16 @@ describe("admin actions", () => {
     await a.confirmPaymentAction(f);
     expect(h.confirm).toHaveBeenLastCalledWith(expect.objectContaining({ actor: "admin" }), "p1", expect.any(Date), { transactionId: "MP777" });
     f.delete("transactionId");
-    expect(h.finish).toHaveBeenCalledWith("/admin/payments", expect.any(Function), expect.any(Function));
+    expect(h.finish).not.toHaveBeenCalled();
+    expect(h.refresh).toHaveBeenCalledTimes(2);
     f.set("reason", "  No payment arrived. ");
-    await a.rejectPaymentAction(f);
+    h.reject.mockResolvedValue({ id: "p1", status: "rejected", emailed: true });
+    expect(await a.rejectPaymentAction(f)).toEqual({ ok: true, message: "Rejected. The client has been told the reason." });
     expect(h.adminAction).toHaveBeenCalledTimes(3);
     expect(h.reject).toHaveBeenCalledWith(expect.objectContaining({ actor: "admin" }), "p1", "No payment arrived.");
+    // A refusal comes back in words; the dialog stays open with it.
+    h.confirm.mockRejectedValueOnce(new AdminError("conflict", "This payment was decided a moment ago."));
+    expect(await a.confirmPaymentAction(f)).toEqual({ ok: false, error: "This payment was decided a moment ago." });
   });
 
   it("the settings form saves where clients pay, trimmed; prices are not here (they are regional prices)", async () => {

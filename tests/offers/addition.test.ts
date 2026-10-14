@@ -175,9 +175,16 @@ describe("Add to current plan (admin) -> accept -> pay -> features on", () => {
     const saved = await offers.saveOfferDraft(CONSOLE, { businessId: "biz1", draft: ADDON_DRAFT }, NOW);
     expect(offerRow(saved.id)).toMatchObject({ basePlanKey: "STANDARD", adjustedMinor: 6129, computedMinor: 6129, interval: "MONTH", currency: "RWF" });
     expect(offerRow(saved.id).options).toMatchObject({ mode: "addon", addition: { currentPlanKey: "STANDARD", addonMinor: 10000, nextRenewalMinor: 45000, daysLeft: 19, periodDays: 31 } });
+    h.sendEmail.mockClear();
     await offers.sendOffer(CONSOLE, saved.id, NOW);
     const view = await offers.clientOffer("biz1", NOW);
     expect(view).toMatchObject({ totalMinor: 6129, addition: { nextRenewalMinor: 45000, renewsOn: END.toISOString(), selfServe: false } });
+    // The email says what it is: one prorated payment now, the new price from the renewal (not "a custom plan a month").
+    const email = h.sendEmail.mock.calls[0][0];
+    expect(email.subject).toBe("Features for your BuPulse plan: 6,129 RWF, paid once");
+    expect(email.text).toMatch(/6,129 RWF, paid once for the 19 days left of your period/);
+    expect(email.text).toMatch(/45,000 RWF a month/);
+    expect(email.text).not.toMatch(/6,129 RWF a month/);
 
     // Accepted three days later: prorated again for the days left that day (16 of 31).
     const ACCEPT = new Date("2026-10-16T08:00:00Z");

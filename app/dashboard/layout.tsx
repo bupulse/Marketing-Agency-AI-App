@@ -16,6 +16,8 @@ import { can } from "@/lib/team/roles";
 import { getActiveAnnouncements } from "@/lib/admin/service";
 import { OfferBanner } from "@/components/app/offer-banner";
 import { clientOffer } from "@/lib/offers/service";
+import { currentManualPayment } from "@/lib/billing/momo";
+import { offerCheckingReference } from "@/lib/billing/momo-shared";
 
 export const metadata: Metadata = {
   title: { default: "Dashboard", template: "%s · BuPulse" },
@@ -57,6 +59,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const announcements = await getActiveAnnouncements({ id: business.userId, plan: usage.subscription.plan }).catch(() => []);
   // A custom plan offer waiting for the owner (docs/OFFERS.md): only those who can pay see it.
   const offer = can(role, "billing") ? await clientOffer(business.id).catch(() => null) : null;
+  // A Mobile Money payment of that offer reported and being checked: the banner says so instead of "Pay now".
+  const offerPayment = offer?.status === "accepted" ? await currentManualPayment(business.userId).catch(() => null) : null;
   // Apps posts are made for that are not connected (docs/CONTENT.md): under the bell until they are.
   const missing = entitlements.usable.has("content") ? await missingApps(business.id).catch(() => []) : [];
   const notices: ShellNotice[] = missing.length
@@ -91,7 +95,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         }}
       >
         <AnnouncementBanner items={announcements} />
-        {offer && <OfferBanner offer={offer} />}
+        {offer && <OfferBanner offer={offer} checkingReference={offerCheckingReference(offerPayment, offer)} />}
         <TrialBanner
           isTrial={isTrial}
           trialDaysLeft={trialDaysLeft}

@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { ConfirmButton } from "@/components/admin/confirm-button";
+import { ConfirmButton, type ConfirmResult } from "@/components/admin/confirm-button";
 import { Badge, Field, Input, Textarea } from "@/components/ui";
 import { dateTime, money } from "@/lib/admin/format";
 import type { ManualPaymentAdminView } from "@/lib/billing/momo";
 
 // The Mobile Money payments waiting for a decision: on Payments and at the top of the Overview. Approve and Reject run
-// the same audited actions (payments.approve); without that permission the list is read-only. `back` is where the
-// action returns (an /admin path only).
+// the same audited actions (payments.approve); without that permission the list is read-only. Each answers in words:
+// the dialog closes, the notice shows and the page refreshes in place (components/admin/confirm-button.tsx).
 
 const interval = (i: string) => (i === "YEAR" ? "yearly" : "monthly");
 const day = (iso: string) => dateTime(iso).replace(/, \d\d:\d\d.*/, "");
@@ -28,7 +28,7 @@ function Who({ p }: { p: ManualPaymentAdminView }) {
   );
 }
 
-export function PendingPaymentList({ items, canApprove, back, confirmAction, rejectAction }: { items: ManualPaymentAdminView[]; canApprove: boolean; back: string; confirmAction: (f: FormData) => Promise<void>; rejectAction: (f: FormData) => Promise<void> }) {
+export function PendingPaymentList({ items, canApprove, confirmAction, rejectAction }: { items: ManualPaymentAdminView[]; canApprove: boolean; confirmAction: (f: FormData) => Promise<ConfirmResult>; rejectAction: (f: FormData) => Promise<ConfirmResult> }) {
   const confirmPaymentAction = confirmAction;
   const rejectPaymentAction = rejectAction;
   const proofUrls = new Map(items.filter((p) => p.proofPath).map((p) => [p.id, `/admin/payments/proof?id=${encodeURIComponent(p.id)}`] as const));
@@ -65,10 +65,10 @@ export function PendingPaymentList({ items, canApprove, back, confirmAction, rej
                 </div>
                 {canApprove ? (
                 <div className="flex gap-2">
-                  <ConfirmButton action={rejectPaymentAction} fields={{ id: p.id, back }} label="Reject" title={`Reject ${p.reference}?`} description="The client sees your reason on their Billing page and by email, and can try again. Nothing else changes." confirmLabel="Reject">
+                  <ConfirmButton action={rejectPaymentAction} fields={{ id: p.id }} label="Reject" pendingLabel="Rejecting…" title={`Reject ${p.reference}?`} description="The client sees your reason on their Billing page and by email, and can try again. Nothing else changes." confirmLabel="Reject">
                     <Field label="Reason the client will see" required><Textarea name="reason" minLength={3} maxLength={300} rows={3} required placeholder="We received no payment with this reference. Please check the number you paid to." /></Field>
                   </ConfirmButton>
-                  <ConfirmButton action={confirmPaymentAction} fields={{ id: p.id, back }} variant="primary" label="Confirm" title={`Confirm ${money(p.amountMinor, p.currency)} from ${p.company ?? "this client"}?`} description={`Only after you have seen ${p.reference} arrive. ${periodText(p)} The client is emailed.`} confirmLabel="Confirm payment">
+                  <ConfirmButton action={confirmPaymentAction} fields={{ id: p.id }} variant="primary" label="Confirm" pendingLabel="Confirming…" title={`Confirm ${money(p.amountMinor, p.currency)} from ${p.company ?? "this client"}?`} description={`Only after you have seen ${p.reference} arrive. ${periodText(p)} The client is emailed.`} confirmLabel="Confirm payment">
                     {!p.transactionId && (
                       <Field label="Transaction id from your MoMo message" hint="The client could not find it. It is required: it stops one payment being used twice." required>
                         <Input name="transactionId" minLength={4} maxLength={40} required autoComplete="off" />

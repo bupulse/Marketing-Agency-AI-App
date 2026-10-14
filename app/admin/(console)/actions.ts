@@ -25,6 +25,7 @@ import { addAdminNote, deleteAdminNote } from "@/lib/admin/notes";
 import { setAiBudget } from "@/lib/admin/ai-usage";
 import { clearMoneyReportCache } from "@/lib/money/report";
 import { requirePermission } from "@/lib/admin/auth";
+import { countsSignature, getInboxCounts } from "@/lib/admin/inbox";
 import { setServiceEnabled, testService } from "@/lib/admin/services";
 import { AdminError } from "@/lib/admin/types";
 import { prisma } from "@/lib/db";
@@ -284,4 +285,15 @@ export async function setDisplayCurrencyAction(currency: string): Promise<{ ok: 
   (await cookies()).set(ADMIN_CURRENCY_COOKIE, currency, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/admin", maxAge: 365 * 86_400 });
   revalidatePath("/admin", "layout");
   return { ok: true };
+}
+
+/**
+ * The to-do counts the sidebar badges, the Overview and the Inbox show, as one string (lib/admin/inbox.ts). The console
+ * asks every few seconds (components/admin/live-counts.tsx) and refreshes the page when it changed, so a payment
+ * reported while the Overview is open shows up there and on the badges without a reload. For whoever sees one of the
+ * counted lists (LIVE_COUNT_PERMISSIONS; the layout polls only for them).
+ */
+export async function adminCountsAction(): Promise<string> {
+  await adminAction(["payments.view", "payments.approve", "approvals.decide", "demos", "requests", "clients.view", "clients.manage", "system", "overview"]);
+  return countsSignature(await getInboxCounts());
 }
