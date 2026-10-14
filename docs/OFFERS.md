@@ -106,6 +106,10 @@ Automatic since 14 October 2026 (`lib/offers/card.ts`), for a custom plan offer 
 
 The custom plan then renews by hand (Mobile Money, or card in its last 7 days at the plan's card price), as before.
 
+`PlanOffer.payMethod` may be `card` (migration `20261018110000_offer_card_pay_method` widens
+`PlanOffer_pay_method_check`; `tests/offers/pay-method-constraint.test.ts` checks the constraint allows every
+`OFFER_PAY_METHODS` value). A card start that fails is shown under the button as well as in a toast.
+
 ## Adding features to a paid plan (decided 13 October 2026)
 
 The client pays **only for the added features, prorated for the days left** in the current period; the features switch

@@ -318,6 +318,9 @@ export function selfServeFeatures(owned: readonly FeatureKey[], prices: readonly
   return FEATURES.filter((f) => f.status === "built" && f.key !== "managed" && !has.has(f.key) && withPrerequisites([f.key]).every((k) => has.has(k) || priced(k))).map((f) => f.key);
 }
 
+/** How an accepted offer is paid (PlanOffer.payMethod; the database's PlanOffer_pay_method_check must allow each). */
+export const OFFER_PAY_METHODS = ["momo", "invoice", "card"] as const;
+
 // ---- card payment of an offer or added features ----------------------------------------------------------------------
 
 /**

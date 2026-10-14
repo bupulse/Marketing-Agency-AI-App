@@ -19,8 +19,17 @@ type CardStart = () => Promise<({ ok: true; config?: CheckoutConfig } | { ok: fa
  * Runs a card payment: asks the server for the checkout (which re-quotes; a new amount comes back as `requoteUsdCents`
  * for the client to confirm), then opens it. Calls `onRequote` with the new amount, `onError` with a message.
  */
+export const CARD_FAILED = "The card payment could not start. You were not charged. Please try again, or pay by Mobile Money.";
+
 export async function payByCard(startOnServer: CardStart, theme: "light" | "dark", h: { onRequote: (usdCents: number, message: string) => void; onError: (message: string) => void; onClosed: () => void }) {
-  const result = await startOnServer();
+  let result: Awaited<ReturnType<CardStart>>;
+  try {
+    result = await startOnServer();
+  } catch {
+    // A failed server action (network, or an error the server could not explain) still tells the client something.
+    return h.onError(CARD_FAILED);
+  }
+  if (!result) return h.onError(CARD_FAILED);
   if (!result.ok) {
     if (result.requoteUsdCents) h.onRequote(result.requoteUsdCents, result.error);
     else h.onError(result.error);

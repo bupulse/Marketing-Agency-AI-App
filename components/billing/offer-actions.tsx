@@ -15,27 +15,32 @@ import { cardQuoteText, payByCard, type CardQuoteView } from "./card-checkout";
  * card rule of RWF plans, shown before paying). `card` is null when card cannot be used (not offered where the company
  * is, or card payments are not set up or switched off): the button is then not shown (docs/OFFERS.md, "Card").
  */
-export function OfferActions({ offerId, momo: momoState, card, accepted, method }: { offerId: string; momo: MethodState; card: CardQuoteView | null; accepted: boolean; method: "momo" | "invoice" | "card" | null; contactEmail?: string }) {
+export function OfferActions({ offerId, momo: momoState, card, accepted, method, addition = false }: { offerId: string; momo: MethodState; card: CardQuoteView | null; accepted: boolean; method: "momo" | "invoice" | "card" | null; contactEmail?: string; /** Features added to the running plan (not a whole custom plan): the wording says so. */ addition?: boolean }) {
   const momo = momoState === "ready";
   const router = useRouter();
   const { toast } = useToast();
   const { resolvedTheme } = useTheme();
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<"momo" | "invoice" | "card" | null>(null);
+  // Shown under the card button as well as in a toast, so a failed card start is never silent.
+  const [cardError, setCardError] = useState<string | null>(null);
   const [quote, setQuote] = useState<CardQuoteView | null>(card);
 
   function cardPay() {
     if (!quote) return;
     setBusy("card");
+    setCardError(null);
     start(async () => {
       await payByCard(() => payOfferByCardAction({ offerId, expectedUsdCents: quote.usdCents }), resolvedTheme, {
         onRequote: (usdCents, message) => {
+          setCardError(message);
           setQuote({ ...quote, usdCents });
           setBusy(null);
           toast(message, "error");
         },
         onError: (message) => {
           setBusy(null);
+          setCardError(message);
           toast(message, "error");
         },
         onClosed: () => {
@@ -79,7 +84,12 @@ export function OfferActions({ offerId, momo: momoState, card, accepted, method 
           </Button>
         )}
       </div>
-      {quote && <p className="text-[13px] text-muted">{cardQuoteText(quote)}, charged in US dollars once (no subscription). Your custom plan switches on as soon as the payment goes through.</p>}
+      {quote && <p className="text-[13px] text-muted">{cardQuoteText(quote)}, charged in US dollars once (no subscription). {addition ? "The added features switch on" : "Your custom plan switches on"} as soon as the payment goes through.</p>}
+      {cardError && (
+        <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
+          {cardError}
+        </p>
+      )}
       {!accepted && <p className="text-[13px] text-muted">Nothing changes until your payment is confirmed. Your current plan and everything you have made stay as they are.</p>}
     </div>
   );
