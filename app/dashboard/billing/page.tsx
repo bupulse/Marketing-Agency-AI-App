@@ -161,7 +161,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
           offer={offer}
           actions={
             offer.status === "sent" || (offer.status === "accepted" && !(momoPayment?.status === "pending" && momoPayment.submitted)) ? (
-              <OfferActions offerId={offer.id} momo={methodState(region.paymentMethods.includes("momo"), momoReady)} card={offerCard} accepted={offer.status === "accepted"} method={offer.payMethod} />
+              <OfferActions offerId={offer.id} momo={methodState(region.paymentMethods.includes("momo"), momoReady)} card={offerCard} accepted={offer.status === "accepted"} method={offer.payMethod} addition={Boolean(offer.addition)} />
             ) : undefined
           }
         />

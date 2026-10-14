@@ -16,6 +16,7 @@ import { issuePlanInvoice } from "@/lib/invoices/service";
 import { listAddonPrices } from "./addon-prices";
 import { sendOfferEmail } from "./emails";
 import {
+  OFFER_PAY_METHODS,
   additionDaysLeft,
   checkOfferDraft,
   periodDaysEnding,
@@ -446,7 +447,7 @@ export async function clientOffer(businessId: string, now: Date = new Date()): P
 }
 
 /** card: the offer is accepted here and paid in the card checkout (lib/offers/card.ts startOfferCardCheckout). */
-export type PayMethod = "momo" | "invoice" | "card";
+export type PayMethod = (typeof OFFER_PAY_METHODS)[number];
 export type AcceptResult = { offer: ClientOfferView; payment: ManualPaymentView | null; invoiceId: string | null };
 
 const clientCtx = (actorId: string, ip: string | null = null): AdminContext => ({ actor: `client:${actorId}`, ip, viaApi: false });

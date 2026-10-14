@@ -164,7 +164,7 @@ export async function DemoLock({ businessId, role, firstName, email, businessNam
         {offer && (
           <OfferCard
             offer={offer}
-            actions={offer.status === "sent" || (offer.status === "accepted" && !(payment?.status === "pending" && payment.submitted)) ? <OfferActions offerId={offer.id} momo={methodState(region.paymentMethods.includes("momo"), momoConfigured(momoSettings))} card={offerCard} accepted={offer.status === "accepted"} method={offer.payMethod} /> : undefined}
+            actions={offer.status === "sent" || (offer.status === "accepted" && !(payment?.status === "pending" && payment.submitted)) ? <OfferActions offerId={offer.id} momo={methodState(region.paymentMethods.includes("momo"), momoConfigured(momoSettings))} card={offerCard} accepted={offer.status === "accepted"} method={offer.payMethod} addition={Boolean(offer.addition)} /> : undefined}
           />
         )}
 

@@ -38,6 +38,8 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
   const { resolvedTheme } = useTheme();
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<"momo" | "invoice" | "card" | null>(null);
+  // Shown under the card button as well as in a toast, so a failed card start is never silent.
+  const [cardError, setCardError] = useState<string | null>(null);
   const [selected, setSelected] = useState<FeatureKey[]>([]);
   // The rate the server answered with when it changed since the page loaded (its quote wins).
   const [usdOverride, setUsdOverride] = useState<{ dueMinor: number; usdCents: number } | null>(null);
@@ -58,15 +60,18 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
     if (!card) return;
     const shown = card;
     setBusy("card");
+    setCardError(null);
     start(async () => {
       await payByCard(() => addFeaturesAction({ features: selected, method: "card", expectedUsdCents: shown.usdCents }), resolvedTheme, {
         onRequote: (usdCents, message) => {
+          setCardError(message);
           setUsdOverride({ dueMinor: shown.quoteMinor, usdCents });
           setBusy(null);
           toast(message, "error");
         },
         onError: (message) => {
           setBusy(null);
+          setCardError(message);
           toast(message, "error");
         },
         onClosed: () => {
@@ -176,7 +181,12 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
           </Button>
         )}
       </div>
-      {card && <p className="text-[13px] text-muted">{cardQuoteText(card)}, charged in US dollars once. The features switch on as soon as the payment goes through.</p>}
+      {card && <p className="text-[13px] text-muted">{cardQuoteText(card)}, charged in US dollars once. The added features switch on as soon as the payment goes through.</p>}
+      {cardError && (
+        <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
+          {cardError}
+        </p>
+      )}
       <Link href="/custom-plan?from=billing" className="inline-flex min-h-11 items-center gap-1.5 self-start text-sm font-semibold no-underline">
         Something else? Request a custom change
         <ArrowRight aria-hidden className="size-4" />
