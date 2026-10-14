@@ -49,7 +49,9 @@ export interface GroupImages {
 }
 
 function templateFor(group: PlannedGroup, hasPhoto: boolean): TemplateId | null {
-  const id = group.idea.template;
+  // Every feed post (a picture or a carousel) shows a picture: an idea without a template of its own gets the
+  // announcement layout. Articles and scripts to film have none.
+  const id = group.idea.template ?? (group.posts.some((p) => p.format === "POST" || p.format === "CAROUSEL") ? "announcement" : null);
   if (!id) return null;
   return !hasPhoto && PHOTO_TEMPLATES.includes(id) ? "announcement" : id;
 }

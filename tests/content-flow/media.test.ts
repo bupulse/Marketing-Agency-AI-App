@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assignMedia, describeItem, hasBeforeAfter, mediaLines, orderPhotos, type GalleryItem, type PostMedia } from "@/lib/content-flow/media";
+import { assignMedia, describeItem, hasBeforeAfter, mediaLines, NO_FILE_NAMES, orderPhotos, type GalleryItem, type PostMedia } from "@/lib/content-flow/media";
 
 const NETS = new WeakMap<PostMedia[], string[]>();
 function plan(input: Parameters<typeof assignMedia>[0]) {
@@ -56,15 +56,20 @@ describe("gallery first", () => {
     expect(leads.size).toBeGreaterThan(1);
   });
 
-  it("tells the writer what the post shows, from the file names (camera names are not descriptions)", () => {
-    expect(describeItem({ name: "hydro-tower_in class.jpg" })).toBe("hydro tower in class");
+  it("tells the writer what the post shows in the owner's own words, never the file names", () => {
     expect(describeItem({ name: "IMG_1.jpg", description: "Students watering the tower" })).toBe("Students watering the tower");
     expect(hasBeforeAfter([{ name: "garden before.jpg" }, { name: "x.jpg", description: "The garden after we planted" }])).toBe(true);
     expect(hasBeforeAfter([{ name: "garden before.jpg" }])).toBe(false);
-    expect(describeItem({ name: "IMG_2034.JPG" })).toBeNull();
-    expect(describeItem({ name: "WhatsApp Image 2026-10-01.jpeg" })).toBeNull();
-    expect(mediaLines({ kind: "gallery-video", video: mp4, photos: [] })[0]).toContain('"Tower demo in class"');
-    expect(mediaLines({ kind: "image", photos: [photo(1, 0, "IMG_1.jpg"), photo(2)] })[0]).toContain('"a photo", "tower 2"');
+    // A file name is not a description: "dress 1.jpg" ended up in captions as "swipe to see dress 1, dress 2 and dress 3".
+    for (const name of ["hydro-tower_in class.jpg", "dress 1.jpg", "IMG_2034.JPG", "WhatsApp Image 2026-10-01.jpeg"]) expect(describeItem({ name })).toBeNull();
+    const video = mediaLines({ kind: "gallery-video", video: mp4, photos: [] });
+    expect(video[0]).toContain('"a video"');
+    expect(video.join(" ")).not.toContain("Tower demo");
+    const lines = mediaLines({ kind: "image", photos: [photo(1, 0, "dress 1.jpg"), { ...photo(2), description: "The blue kitenge dress" }] });
+    expect(lines[0]).toContain('"a photo", "The blue kitenge dress"');
+    expect(lines.join(" ")).not.toMatch(/dress 1|tower 2/);
+    expect(lines).toContain(NO_FILE_NAMES);
+    expect(mediaLines({ kind: "own", items: [photo(1, 0, "dress 2.jpg")] })).toEqual(['The post shows the owner\'s own media: "a photo".', NO_FILE_NAMES]);
     expect(mediaLines({ kind: "image", photos: [] })[0]).toContain("designed text image");
   });
 });

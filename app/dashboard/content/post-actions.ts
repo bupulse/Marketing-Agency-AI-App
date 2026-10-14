@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireActiveUser } from "@/lib/auth/require-user";
-import { postWritingView, PostWriteError, restorePostVersion, rewritePost, type Actor, type PostWritingView } from "@/lib/content-flow/post-writing";
-import { isRewritePart } from "@/lib/content-flow/versions";
+import { editPostWords, postWritingView, PostWriteError, restorePostVersion, rewritePost, type Actor, type PostWritingView } from "@/lib/content-flow/post-writing";
+import { isRewritePart, MAX_EDITED_SCRIPT } from "@/lib/content-flow/versions";
+import { AD_HEADLINE_COUNT } from "@/lib/studio/headlines";
+import { MAX_EDITED_HEADLINE_LENGTH } from "@/lib/studio/schemas";
 import { prisma } from "@/lib/db";
 import { featureBlocked } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
@@ -19,6 +21,12 @@ import type { UsageBlockReason } from "@/lib/usage";
 export type PostWritingResult = { ok: true; view: PostWritingView; message?: string } | { ok: false; error: string; blocked?: UsageBlockReason; quiet?: boolean };
 
 const id = z.string().min(1).max(64);
+const wordsSchema = z
+  .object({
+    videoScript: z.string().max(MAX_EDITED_SCRIPT, `Keep the video script to ${MAX_EDITED_SCRIPT.toLocaleString("en-US")} characters or fewer.`).optional(),
+    adHeadlines: z.array(z.string().max(MAX_EDITED_HEADLINE_LENGTH, `Keep each ad headline to ${MAX_EDITED_HEADLINE_LENGTH} characters or fewer.`)).max(AD_HEADLINE_COUNT, `Keep it to ${AD_HEADLINE_COUNT} ad headlines.`).optional(),
+  })
+  .strict();
 const FAILED = "That did not work. Please try again.";
 
 async function actor(): Promise<Actor | { error: string }> {
@@ -99,5 +107,23 @@ export async function restorePostVersionAction(postId: string, versionId: string
     return { ok: true, view: await postWritingView(a, postId), message: changed ? "Restored. It is the current version now." : "That version is already the current one." };
   } catch (error) {
     return failure(error, "content.post-writing.restore", a);
+  }
+}
+
+/** The owner's own video script or ad headlines, saved as a new version. Costs nothing; needs no connected account. */
+export async function editPostWordsAction(postId: string, input: unknown): Promise<PostWritingResult> {
+  const parsed = wordsSchema.safeParse(input);
+  if (!id.safeParse(postId).success) return { ok: false, error: "We could not find that post." };
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the text and try again." };
+  const a = await actor();
+  if ("error" in a) return { ok: false, error: a.error };
+  const blocked = await limited(`edit:${a.userId}`, RATE_LIMITS.contentEdit);
+  if (blocked) return { ok: false, error: blocked };
+  try {
+    const { changed } = await editPostWords(a, postId, parsed.data);
+    if (changed) refresh();
+    return { ok: true, view: await postWritingView(a, postId), message: changed ? "Saved. The one before is in Versions." : "Nothing changed." };
+  } catch (error) {
+    return failure(error, "content.post-writing.edit", a);
   }
 }

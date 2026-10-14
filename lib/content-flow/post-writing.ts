@@ -32,9 +32,11 @@ import { fence } from "@/lib/visuals/art-director";
 import { writeVideoScript } from "@/lib/visuals/script-writer";
 import { CONTEST_NOTE, contestAfterEdit, contestBlocked } from "./contest";
 import { fitToNetwork, languageLine, languageMixOf } from "./networks";
-import { addVersion, findVersion, keepBaseline, listVersions } from "./post-versions";
+import { addVersion, findVersion, keepBaseline, latestVersion, listVersions } from "./post-versions";
 import { isPriceLike, mentionsPrice, priceFreeLines, stripPriceLike, withoutPriceLines } from "./price";
-import { isScriptPost, piecesOf, rewriteParts, samePieces, versionLabel, versionPreview, type PostPieces, type RewritePart } from "./versions";
+import { AD_HEADLINE_COUNT } from "@/lib/studio/headlines";
+import { MAX_EDITED_HEADLINE_LENGTH } from "@/lib/studio/schemas";
+import { currentLanguages, isScriptPost, languagesAfter, MAX_EDITED_SCRIPT, piecesOf, readLanguages, rewriteParts, samePieces, versionLabel, versionPreview, type PartLanguages, type PostPieces, type RewritePart } from "./versions";
 
 /** The company account (usage is counted on it), its business, and the person acting (for the versions). */
 export type Actor = { userId: string; businessId: string; actorId?: string | null };
@@ -59,7 +61,7 @@ const PAUSED = "Writing is paused for a short while. You were not charged, pleas
 const NO_PRICE = "Do not mention any price, cost, discount, free offer or amount in this post.";
 
 const POST_SELECT = { id: true, businessId: true, network: true, status: true, format: true, title: true, text: true, hashtags: true, contest: true, contentId: true, createdAt: true, updatedAt: true } as const;
-const CONTENT_SELECT = { id: true, caption: true, videoScript: true, adHeadlines: true, angle: true, format: true, mode: true, brief: true, productId: true, campaignId: true } as const;
+const CONTENT_SELECT = { id: true, caption: true, videoScript: true, adHeadlines: true, language: true, angle: true, format: true, mode: true, brief: true, productId: true, campaignId: true } as const;
 
 type LoadedPost = Prisma.PostGetPayload<{ select: typeof POST_SELECT }>;
 type LoadedContent = Prisma.GeneratedContentGetPayload<{ select: typeof CONTENT_SELECT }>;
@@ -83,6 +85,8 @@ export type PostWritingView = {
   adHeadlines: string[];
   /** The language new versions are written in (Brand -> Content language). */
   language: string;
+  /** The language each piece is written in now; null for a post BuPulse did not write. */
+  languages: PartLanguages | null;
   parts: RewritePart[];
   canRestore: boolean;
   /** This month's text generations; null when the plan cannot be read. */
@@ -116,6 +120,7 @@ export async function postWritingView(actor: Actor, postId: string): Promise<Pos
     videoScript: content?.videoScript ?? "",
     adHeadlines: content?.adHeadlines ?? [],
     language: business?.contentLanguage || "English",
+    languages: content ? currentLanguages(stored[0], current, content.language || "English") : null,
     parts: rewriteParts(post, content),
     canRestore: (EDITABLE as readonly string[]).includes(post.status),
     usage: usage ? { left: Math.max(0, usage.limits.text - usage.used.text), limit: usage.limits.text } : null,
@@ -206,6 +211,8 @@ export async function rewritePost(actor: Actor, postId: string, part: RewritePar
   const current = piecesOf(post, content);
   const next: PostPieces = { ...current };
   const contentData: Prisma.GeneratedContentUpdateManyMutationInput = {};
+  // The piece written now is in the Brand's language of today; the others keep theirs.
+  const languages = languagesAfter(currentLanguages(await latestVersion(actor.businessId, post.id), current, content.language || "English"), part, brand.contentLanguage?.trim() || "English", scriptPost);
 
   const { periodStart } = await consumeUsage(actor.userId, "text").catch((error) => {
     if (error instanceof UsageLimitError) throw new PostWriteError(error.reason === "limit_reached" ? NO_TEXT_LEFT : "Your plan does not allow new writing right now.", error.reason);
@@ -307,7 +314,7 @@ export async function rewritePost(actor: Actor, postId: string, part: RewritePar
       });
       if (count === 0) throw new PostWriteError(CHANGED);
       await tx.generatedContent.updateMany({ where: { id: content.id, businessId: actor.businessId }, data: contentData });
-      await addVersion(tx, post, next, { kind: "regenerate", part, actorId: actor.actorId }, new Date(Math.max(now.getTime(), Date.now())));
+      await addVersion(tx, post, next, { kind: "regenerate", part, actorId: actor.actorId, languages }, new Date(Math.max(now.getTime(), Date.now())));
     });
     saved = true;
   } catch (error) {
@@ -351,7 +358,56 @@ export async function restorePostVersion(actor: Actor, postId: string, versionId
     const { count } = await tx.post.updateMany({ where: { id: post.id, businessId: actor.businessId, status: post.status, text: post.text, hashtags: { equals: post.hashtags } }, data });
     if (count === 0) throw new PostWriteError("This post changed meanwhile. Open it again and restore once more.");
     if (content) await tx.generatedContent.updateMany({ where: { id: content.id, businessId: actor.businessId }, data: { videoScript: next.videoScript, adHeadlines: next.adHeadlines } });
-    await addVersion(tx, post, next, { kind: "restore", restoredFromId: version.id, actorId: actor.actorId }, new Date(Math.max(now.getTime(), Date.now())));
+    await addVersion(tx, post, next, { kind: "restore", restoredFromId: version.id, actorId: actor.actorId, languages: readLanguages(version.languages, content?.language || "English") }, new Date(Math.max(now.getTime(), Date.now())));
+  });
+  return { changed: true };
+}
+
+// ---- Edit by hand -----------------------------------------------------------------------------------------------
+
+/** What the owner may change by hand in the post's panel: its video script, its ad headlines, or both. */
+export type WordsEdit = { videoScript?: string; adHeadlines?: string[] };
+
+/**
+ * Saves the owner's own video script or ad headlines as a new version ("Edited"). Costs nothing and needs no connected
+ * account: the post only has to be one BuPulse wrote that has not gone out. On a script post the post's text is the
+ * script, so it changes with it. The caption is edited in the post's editor (lib/publishing/service.ts updatePost).
+ */
+export async function editPostWords(actor: Actor, postId: string, edit: WordsEdit, now = new Date()): Promise<{ changed: boolean }> {
+  const loaded = await loadPost(actor.businessId, postId);
+  if (!loaded) throw new PostWriteError(NOT_FOUND);
+  const { post, content } = loaded;
+  if (!content) throw new PostWriteError("This post has no video script or ad headlines. Edit its caption instead.");
+  if (!(EDITABLE as readonly string[]).includes(post.status)) throw new PostWriteError(GONE_OUT);
+  const current = piecesOf(post, content);
+  const scriptPost = isScriptPost(post, content);
+  const next: PostPieces = { ...current };
+  if (edit.videoScript !== undefined) {
+    const script = edit.videoScript.replace(/\r\n/g, "\n").trim();
+    if (script.length > MAX_EDITED_SCRIPT) throw new PostWriteError(`Keep the video script to ${MAX_EDITED_SCRIPT.toLocaleString("en-US")} characters or fewer.`);
+    if (!script && scriptPost) throw new PostWriteError("This post's text is its video script, so it cannot be empty.");
+    next.videoScript = script;
+    if (scriptPost) next.text = script;
+  }
+  if (edit.adHeadlines !== undefined) {
+    const headlines = edit.adHeadlines.map((h) => h.replace(/\s+/g, " ").trim()).filter(Boolean);
+    if (headlines.length > AD_HEADLINE_COUNT) throw new PostWriteError(`Keep it to ${AD_HEADLINE_COUNT} ad headlines.`);
+    if (headlines.some((h) => h.length > MAX_EDITED_HEADLINE_LENGTH)) throw new PostWriteError(`Keep each ad headline to ${MAX_EDITED_HEADLINE_LENGTH} characters or fewer.`);
+    const seen = new Set<string>();
+    next.adHeadlines = headlines.filter((h) => !seen.has(h.toLowerCase()) && Boolean(seen.add(h.toLowerCase())));
+  }
+  if (samePieces(current, next)) return { changed: false };
+  const problem = wordsProblem(post, next);
+  if (problem) throw new PostWriteError(problem);
+
+  await prisma.$transaction(async (tx) => {
+    await keepBaseline(tx, post, current, now);
+    if (next.text !== current.text) {
+      const { count } = await tx.post.updateMany({ where: { id: post.id, businessId: actor.businessId, status: { in: [...EDITABLE] }, text: post.text, hashtags: { equals: post.hashtags } }, data: { text: next.text, ownerEditedAt: now } });
+      if (count === 0) throw new PostWriteError("This post changed meanwhile. Open it again and edit once more.");
+    }
+    await tx.generatedContent.updateMany({ where: { id: content.id, businessId: actor.businessId }, data: { videoScript: next.videoScript, adHeadlines: next.adHeadlines, edited: true } });
+    await addVersion(tx, post, next, { kind: "edit", actorId: actor.actorId }, new Date(Math.max(now.getTime(), Date.now())));
   });
   return { changed: true };
 }

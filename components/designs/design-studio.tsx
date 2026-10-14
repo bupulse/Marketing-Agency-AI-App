@@ -186,15 +186,38 @@ function PhotoPicker({
   );
 }
 
-function Result({ created, ratio, onAgain }: { created: Created; ratio: string; onAgain: () => void }) {
+/** The box a new design is shown in, at the design's own shape (a story is held to the screen's height). */
+const RESULT_BOX: Record<AspectRatio, string> = {
+  "1:1": "aspect-square w-full",
+  "4:5": "aspect-[4/5] w-full",
+  "16:9": "aspect-video w-full",
+  "9:16": "aspect-[9/16] h-[70vh] max-w-full self-center",
+};
+
+function Result({ created, ratio, onAgain }: { created: Created; ratio: AspectRatio; onAgain: () => void }) {
+  // The design is a large image: until it has arrived, a placeholder of its shape, never a half-drawn picture (on a
+  // slow connection the bottom, with the subline and price, looked cut off).
+  const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
   return (
     <div className="flex flex-col gap-4">
-      {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
-      <img
-        src={created.url}
-        alt="Your new design"
-        className={cn("w-full rounded-2xl border border-line object-contain", ratio === "9:16" ? "max-h-[70vh] self-center" : "")}
-      />
+      <div className={cn("relative overflow-hidden rounded-2xl border border-line bg-soft", RESULT_BOX[ratio])}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
+        <img
+          ref={(img) => {
+            if (img?.complete && img.naturalWidth > 0) setState("ready");
+          }}
+          src={created.url}
+          alt="Your new design"
+          onLoad={() => setState("ready")}
+          onError={() => setState("failed")}
+          className={cn("absolute inset-0 size-full object-contain transition-opacity duration-300", state === "ready" ? "opacity-100" : "opacity-0")}
+        />
+        {state !== "ready" && (
+          <p role="status" className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
+            {state === "loading" ? "Loading your design…" : "The preview did not load. Your design is saved: download it, or find it under Your designs."}
+          </p>
+        )}
+      </div>
       <div className="flex flex-wrap gap-3">
         <DownloadButton id={created.designId} />
         <EditInCanva designId={created.designId} enabled={useContext(CanvaEnabled)} />
@@ -339,6 +362,20 @@ function TemplateTab({
   const [includePeople, setIncludePeople] = useState(true);
   const [error, setError] = useState<string | undefined>();
   const [created, setCreated] = useState<Created | null>(null);
+  // Another product chosen under "Make a design for": its name, price and photo fill the form, and the template,
+  // style, shape and kind chosen so far stay. The studio is not rebuilt for it, so a template clicked while the
+  // product's page was still on its way (a slow connection) is not lost when the page arrives.
+  const [forSubject, setForSubject] = useState(subjectId);
+  if (forSubject !== subjectId) {
+    setForSubject(subjectId);
+    setHeadline(defaults?.headline ?? "");
+    setSubline(defaults?.subline ?? "");
+    setChip(defaults?.chip ?? "");
+    setPhoto(galleryPhoto?.path ?? photoPaths[0] ?? null);
+    setReference(galleryPhoto?.path ?? null);
+    setError(undefined);
+    setCreated(null);
+  }
   const activeId = templates.some((t) => t.id === template) ? template : templates[0].id;
   const current = templates.find((t) => t.id === activeId)!;
   const note = credits ? `${Math.max(0, credits.limit - credits.used)} of ${credits.limit} left.` : "";
@@ -497,6 +534,14 @@ function AiTab({ subjectId, defaults, credits, hasLogo, galleryPhoto }: Pick<Des
   const [photo, setPhoto] = useState<string | null>(galleryPhoto?.path ?? null);
   const [error, setError] = useState<string | undefined>();
   const [created, setCreated] = useState<Created | null>(null);
+  // Another product chosen above: the description written so far stays (as in the template tab).
+  const [forSubject, setForSubject] = useState(subjectId);
+  if (forSubject !== subjectId) {
+    setForSubject(subjectId);
+    setPhoto(galleryPhoto?.path ?? null);
+    setError(undefined);
+    setCreated(null);
+  }
 
   const note = credits ? `Uses 1 of your ${credits.limit} image credits (${Math.max(0, credits.limit - credits.used)} left).` : "Uses 1 image credit.";
 
@@ -595,13 +640,14 @@ function Gallery({ designs, timeZone = "UTC" }: { designs: StudioDesign[]; timeZ
     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
       {g.items.map((d) => (
         <li key={d.id} className="flex flex-col gap-2">
-          <div className="flex aspect-square items-center justify-center overflow-hidden rounded-2xl border border-line bg-soft">
+          {/* The whole design, whatever its shape: fitted inside the square tile, never cut. */}
+          <div className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-soft">
             {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
             <img
               src={d.url}
               alt={`${d.kind === "AI" ? "AI image" : "Template design"}, ${d.aspectRatio}`}
               loading="lazy"
-              className="max-h-full max-w-full object-contain"
+              className="absolute inset-0 size-full object-contain"
             />
           </div>
           <div className="flex items-center justify-between gap-2">

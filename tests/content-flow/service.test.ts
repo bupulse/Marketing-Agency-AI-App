@@ -104,7 +104,9 @@ describe("AI makes it for me (a content pack for the day)", () => {
     expect(result.angles).not.toContain("price");
 
     const prompt = ai.generate.mock.calls[0][0].prompt as string;
-    expect(prompt).toContain('"Tower demo"');
+    // What the post shows, never its file names ("Tower demo.mp4").
+    expect(prompt).not.toContain("Tower demo");
+    expect(prompt).toContain("Never mention file names");
     expect(prompt).toContain("<<<RECENT POSTS\n- Yesterday's post about the tower.");
     expect(prompt).toContain("These posts are for 2026-10-13.");
     expect(prompt).toMatch(/Opening: .* Structure: /);
@@ -182,7 +184,7 @@ describe("AI makes it for me (a content pack for the day)", () => {
     expect(result.posts).toBe(1);
     expect(pack.recentAngles).toHaveBeenCalledWith("b1", null);
     expect(prisma.generatedContent.create.mock.calls[0][0].data).toMatchObject({ productId: null, campaignId: null });
-    expect(ai.generate.mock.calls[0][0].prompt).toContain('"Our shop front"');
+    expect(ai.generate.mock.calls[0][0].prompt).not.toContain("Our shop front");
   });
 });
 

@@ -31,9 +31,15 @@ export function TodayReview({ posts, older, zone, context }: { posts: ContentPos
   function run(id: string | null, action: () => Promise<{ ok: boolean; error?: string } & Record<string, unknown>>, done: (res: Record<string, unknown>) => string | { text: string; tone: "success" | "error" }) {
     setBusyId(id);
     start(async () => {
-      const res = await action();
+      // A request lost on the way back must not take the page down: refresh to show where things stand.
+      const res = await action().catch(() => null);
       setBusyId(null);
       setRejecting(null);
+      if (!res) {
+        toast("We lost the connection before BuPulse answered. The page now shows where things stand: check it before trying again.", "error");
+        router.refresh();
+        return;
+      }
       if (!res.ok) return toast(res.error ?? "That did not work. Please try again.", "error");
       const message = done(res);
       if (typeof message === "string") toast(message, "success");

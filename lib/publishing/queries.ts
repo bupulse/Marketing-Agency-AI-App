@@ -56,9 +56,9 @@ export async function loadComposerContext(businessId: string): Promise<ComposerC
       },
     ];
   });
-  const present = new Set(accounts.map((a) => a.network));
+  // Every app's rules, not only the connected ones': a reminder post for an app that is not connected is checked too.
   const rules: ComposerContext["rules"] = {};
-  for (const network of NETWORKS) if (present.has(network)) rules[network] = ruleSummary(network);
+  for (const network of NETWORKS) rules[network] = ruleSummary(network);
   return { accounts, rules, timezone: business?.timezone || "UTC", slotTimes: cleanSlotTimes(autopilot?.postingTimes), timingNote: publishTimingNote() };
 }
 

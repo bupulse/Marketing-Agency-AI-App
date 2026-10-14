@@ -3,21 +3,24 @@
 /**
  * A post's words, in its detail (docs/CONTENT.md, "Caption, script and headlines"): the 30-second video script and the
  * three ad headlines BuPulse wrote with the caption, each with Copy; "Generate again" for the whole post or one piece
- * (1 text generation each, what is left shown when it runs low); and Versions, where every edit, new take and restore
- * is kept and any earlier one can be restored as the newest.
+ * (1 text generation each, what is left shown when it runs low); Edit, to change the script or the headlines by hand (free,
+ * no connected account needed); and Versions, where every edit, new take and restore is kept and any earlier one can be
+ * restored as the newest. Each piece says its language when they differ (a caption written again in another language).
  */
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { History, RefreshCw, RotateCcw } from "lucide-react";
-import { loadPostWritingAction, regeneratePostAction, restorePostVersionAction, type PostWritingResult } from "@/app/dashboard/content/post-actions";
+import { History, Pencil, RefreshCw, RotateCcw } from "lucide-react";
+import { editPostWordsAction, loadPostWritingAction, regeneratePostAction, restorePostVersionAction, type PostWritingResult } from "@/app/dashboard/content/post-actions";
 import { UpgradeDialog } from "@/components/billing/upgrade-dialog";
 import { formatDateTime } from "@/components/publishing/helpers";
 import { CopyButton } from "@/components/studio/copy-button";
-import { Badge, Button, Skeleton } from "@/components/ui";
+import { Badge, Button, Input, Skeleton, Textarea } from "@/components/ui";
 import type { PostWritingView, VersionView } from "@/lib/content-flow/post-writing";
-import { textNearLimit, timeAgo, type RewritePart } from "@/lib/content-flow/versions";
+import { MAX_EDITED_SCRIPT, sameLanguage, textNearLimit, timeAgo, type RewritePart } from "@/lib/content-flow/versions";
+import { AD_HEADLINE_COUNT } from "@/lib/studio/headlines";
+import { MAX_EDITED_HEADLINE_LENGTH } from "@/lib/studio/schemas";
 import { cn } from "@/lib/cn";
 import type { UsageBlockReason } from "@/lib/usage";
 
@@ -45,6 +48,10 @@ export function PostWriting({ postId, zone, copyCaption }: { postId: string; zon
   const [blocked, setBlocked] = useState<UsageBlockReason | null>(null);
   // Said in the panel, not in a toast: the post's dialog stays open over the page.
   const [feedback, setFeedback] = useState<{ text: string; ok: boolean; where: "writing" | "versions" } | null>(null);
+  // Editing by hand: the piece open in its editor and what is written there so far.
+  const [editing, setEditing] = useState<"script" | "headlines" | null>(null);
+  const [draftScript, setDraftScript] = useState("");
+  const [draftHeadlines, setDraftHeadlines] = useState<string[]>([]);
 
   useEffect(() => {
     let live = true;
@@ -59,8 +66,8 @@ export function PostWriting({ postId, zone, copyCaption }: { postId: string; zon
   }, [postId, attempt]);
 
   // The buttons wait only for the action; the page behind (the post's preview) refreshes on its own afterwards.
-  async function run(key: string, action: () => Promise<PostWritingResult>, done: (res: Extract<PostWritingResult, { ok: true }>) => string) {
-    if (busy) return;
+  async function run(key: string, action: () => Promise<PostWritingResult>, done: (res: Extract<PostWritingResult, { ok: true }>) => string): Promise<boolean> {
+    if (busy) return false;
     const where = key.startsWith("restore:") ? "versions" : "writing";
     setBusy(key);
     setFeedback(null);
@@ -72,11 +79,12 @@ export function PostWriting({ postId, zone, copyCaption }: { postId: string; zon
         if (res.blocked === "limit_reached") setView((v) => (v?.usage ? { ...v, usage: { ...v.usage, left: 0 } } : v));
       }
       setFeedback({ text: res.error, ok: false, where });
-      return;
+      return false;
     }
     setView(res.view);
     setFeedback({ text: done(res), ok: true, where });
     router.refresh();
+    return true;
   }
 
   const pending = busy !== null;
@@ -112,6 +120,38 @@ export function PostWriting({ postId, zone, copyCaption }: { postId: string; zon
   if (!view.written && view.versions.length === 0) return null;
 
   const left = view.usage?.left ?? null;
+  // One language for every piece, or each piece says its own (null when they differ).
+  const one = view.languages ? sameLanguage(view.languages) : null;
+  const inLanguage = (language: string | undefined) => (one || !language ? null : `In ${language}`);
+  const captionIn = inLanguage(view.languages?.caption);
+  const canEdit = view.canRestore;
+  function startEdit(piece: "script" | "headlines") {
+    setFeedback(null);
+    setDraftScript(view!.videoScript);
+    setDraftHeadlines(Array.from({ length: AD_HEADLINE_COUNT }, (_, i) => view!.adHeadlines[i] ?? ""));
+    setEditing(piece);
+  }
+  async function saveEdit() {
+    const input = editing === "script" ? { videoScript: draftScript } : { adHeadlines: draftHeadlines };
+    if (await run(`edit:${editing}`, () => editPostWordsAction(postId, input), (res) => res.message ?? "Saved.")) setEditing(null);
+  }
+  const editButton = (piece: "script" | "headlines", label: string) =>
+    canEdit &&
+    editing !== piece && (
+      <Button variant="outline" size="sm" disabled={pending} aria-label={label} title="Free: no text generation used." leading={<Pencil aria-hidden className="size-4" />} onClick={() => startEdit(piece)}>
+        Edit
+      </Button>
+    );
+  const editActions = (
+    <div className="flex flex-wrap gap-2">
+      <Button size="sm" disabled={pending} onClick={() => void saveEdit()}>
+        {busy?.startsWith("edit:") ? "Saving…" : "Save"}
+      </Button>
+      <Button variant="ghost" size="sm" disabled={pending} onClick={() => setEditing(null)}>
+        Cancel
+      </Button>
+    </div>
+  );
   const out = left === 0;
   const can = (part: RewritePart) => view.parts.includes(part);
   const regenerate = (part: RewritePart) => void run(part, () => regeneratePostAction(postId, part), () => `${DONE[part]} The one before is in Versions.`);
@@ -138,14 +178,17 @@ export function PostWriting({ postId, zone, copyCaption }: { postId: string; zon
             <h3 id={`writing-${postId}`} className="text-[15px] font-semibold">
               Caption, script and headlines
             </h3>
-            <p className="text-[13px] text-muted">Written in {view.language}, in your brand voice.</p>
+            <p className="text-[13px] text-muted">
+              {one ? `Written in ${one}, in your brand voice.` : "In your brand voice. Each piece says its language."}
+              {view.parts.length > 0 && (one ?? "") !== view.language ? ` Generate again writes in ${view.language}.` : ""}
+            </p>
           </div>
 
           {(can("caption") || copyCaption) && (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-col">
                 <p className="text-[14px] font-semibold">Caption and hashtags</p>
-                <p className="text-[13px] text-muted">As in the preview above.</p>
+                <p className="text-[13px] text-muted">{captionIn ? `${captionIn}, as in the preview above.` : "As in the preview above."}</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {copyCaption && <CopyButton text={copyCaption} variant="outline" ariaLabel="Copy the caption and hashtags" />}
@@ -156,13 +199,22 @@ export function PostWriting({ postId, zone, copyCaption }: { postId: string; zon
 
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-[14px] font-semibold">30-second video script</p>
+              <div className="flex flex-col">
+                <p className="text-[14px] font-semibold">30-second video script</p>
+                {view.videoScript.trim() && inLanguage(view.languages?.script) && <p className="text-[13px] text-muted">{inLanguage(view.languages?.script)}</p>}
+              </div>
               <div className="flex flex-wrap gap-2">
                 {view.videoScript.trim() && <CopyButton text={view.videoScript} variant="outline" ariaLabel="Copy the video script" />}
+                {editButton("script", "Edit the video script")}
                 {again("script", view.videoScript.trim() ? "Generate again" : "Write one")}
               </div>
             </div>
-            {view.videoScript.trim() ? (
+            {editing === "script" ? (
+              <div className="flex flex-col gap-2">
+                <Textarea rows={8} aria-label="Video script" value={draftScript} maxLength={MAX_EDITED_SCRIPT} onChange={(e) => setDraftScript(e.target.value)} />
+                {editActions}
+              </div>
+            ) : view.videoScript.trim() ? (
               <p className="rounded-2xl bg-soft p-3.5 text-[14px] break-words whitespace-pre-wrap">{view.videoScript}</p>
             ) : (
               <p className="text-[14px] text-muted">No video script yet.</p>
@@ -171,10 +223,23 @@ export function PostWriting({ postId, zone, copyCaption }: { postId: string; zon
 
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-[14px] font-semibold">Ad headlines</p>
-              {again("headlines", view.adHeadlines.length ? "Generate again" : "Write them")}
+              <div className="flex flex-col">
+                <p className="text-[14px] font-semibold">Ad headlines</p>
+                {view.adHeadlines.length > 0 && inLanguage(view.languages?.headlines) && <p className="text-[13px] text-muted">{inLanguage(view.languages?.headlines)}</p>}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {editButton("headlines", "Edit the ad headlines")}
+                {again("headlines", view.adHeadlines.length ? "Generate again" : "Write them")}
+              </div>
             </div>
-            {view.adHeadlines.length > 0 ? (
+            {editing === "headlines" ? (
+              <div className="flex flex-col gap-2">
+                {draftHeadlines.map((h, i) => (
+                  <Input key={i} aria-label={`Ad headline ${i + 1}`} value={h} maxLength={MAX_EDITED_HEADLINE_LENGTH} onChange={(e) => setDraftHeadlines((list) => list.map((x, j) => (j === i ? e.target.value : x)))} />
+                ))}
+                {editActions}
+              </div>
+            ) : view.adHeadlines.length > 0 ? (
               <ol aria-label="Ad headlines" className="flex flex-col gap-2">
                 {view.adHeadlines.map((h, i) => (
                   <li key={`${i}-${h}`} className="flex items-center justify-between gap-2 rounded-2xl bg-soft py-1.5 pr-1.5 pl-3.5 text-[14px]">

@@ -96,6 +96,30 @@ function accountsOf(context: ComposerContext, ids: string[]): ComposerAccount[] 
   return ids.flatMap((id) => context.accounts.filter((a) => a.id === id));
 }
 
+/**
+ * The account a post is edited for. A post for an app that is not connected (a reminder to post it yourself, or a
+ * post whose account was removed) still has its app: its words can be changed and checked against that app's rules
+ * without connecting anything.
+ */
+function postAccount(context: ComposerContext, post: CalendarPost): ComposerAccount {
+  const connected = context.accounts.find((a) => a.id === post.connectionId);
+  if (connected) return connected;
+  const label = context.rules[post.network]?.label ?? networkName(post.network);
+  return { id: "", network: post.network, label, displayName: post.connectionId ? post.accountName || label : label, avatarUrl: post.connectionId ? post.accountAvatar : null, accountType: null, notify: true, usable: Boolean(post.remindOnly) };
+}
+
+/** Scheduling a post whose app is not connected: what happens, and Channels, where a personal Instagram takes seconds. */
+function ConnectNote({ network, remindOnly }: { network: Network; remindOnly: boolean }) {
+  const name = networkName(network);
+  return (
+    <p className="text-[13px] text-muted">
+      {remindOnly ? `${name} is not connected, so at its time you get a reminder to post it yourself. To have BuPulse post it for you, connect ${name}.` : `To schedule or post it, connect ${name} again.`}
+      {network === "instagram" && " No business account? Add your Instagram as a personal account: it takes seconds, needs no Instagram login, and the reminder comes with the caption and pictures ready."}{" "}
+      <Link href="/dashboard/connections" className="font-semibold text-pulse-blue">Open Channels</Link>
+    </p>
+  );
+}
+
 /** The post composer: pick accounts, write once, tune per network, attach photos, then queue, schedule, save or post. */
 export function PostComposer(props: Props) {
   return (
@@ -113,6 +137,7 @@ function ComposerBody({ onOpenChange, context, post, prefill, day, onDone }: Pro
   const zone = context.timezone;
 
   const usable = context.accounts.filter((a) => a.usable);
+  const editedAccount = useMemo(() => (post ? postAccount(context, post) : null), [context, post]);
   const [accountIds, setAccountIds] = useState<string[]>(() => {
     if (post?.connectionId) return [post.connectionId];
     const wanted = (prefill?.connectionIds ?? []).filter((id) => usable.some((a) => a.id === id));
@@ -128,7 +153,7 @@ function ComposerBody({ onOpenChange, context, post, prefill, day, onDone }: Pro
   const [local, setLocal] = useState(() => (post?.scheduledAt ? toLocalInput(new Date(post.scheduledAt), zone) : defaultLocal(zone, day)));
   const [error, setError] = useState<string | null>(null);
 
-  const selected = useMemo(() => accountsOf(context, accountIds), [context, accountIds]);
+  const selected = useMemo(() => (editedAccount ? [editedAccount] : accountsOf(context, accountIds)), [context, accountIds, editedAccount]);
   const networks = useMemo(() => [...new Set(selected.map((a) => a.network))], [selected]);
   const activeTab = tab !== "main" && !networks.includes(tab) ? "main" : tab;
 
@@ -137,11 +162,12 @@ function ComposerBody({ onOpenChange, context, post, prefill, day, onDone }: Pro
     hashtags: overrides[network]?.hashtags ?? hashtags,
   });
 
-  const checks = selected.map((account) => {
-    const rules = context.rules[account.network] as RuleSummary;
+  const checks = selected.flatMap((account) => {
+    const rules = context.rules[account.network] as RuleSummary | undefined;
+    if (!rules) return [];
     const values = effective(account.network);
     const format = formatFor(rules, media.length);
-    return { account, rules, format, values, ...validatePost(rules, { format, ...values, mediaCount: media.length }) };
+    return [{ account, rules, format, values, ...validatePost(rules, { format, ...values, mediaCount: media.length }) }];
   });
   const problems = checks.flatMap((c) => c.errors.map((e) => ({ network: c.account.network, message: e })));
   const hasContent = text.trim() !== "" || media.length > 0 || Object.values(overrides).some((o) => o?.text?.trim());
@@ -201,11 +227,15 @@ function ComposerBody({ onOpenChange, context, post, prefill, day, onDone }: Pro
     });
   }
 
-  if (context.accounts.length === 0) {
+  // A new post needs an account to go to. An existing one can always be edited: it already has its app.
+  if (!editing && context.accounts.length === 0) {
     return (
       <div className="flex flex-col items-start gap-4 py-2">
         <p className="text-[15px] text-muted">Connect a social account first, then you can write and schedule posts for it.</p>
-        <Button href="/dashboard/connections">Connect an account</Button>
+        <p className="text-[15px] text-muted">
+          No business account? Add your Instagram as a personal account: it takes seconds and needs no Instagram login. At each post&apos;s time BuPulse reminds you, with the caption and pictures ready to post.
+        </p>
+        <Button href="/dashboard/connections">Connect an account or add Instagram</Button>
       </div>
     );
   }
@@ -279,13 +309,13 @@ function ComposerBody({ onOpenChange, context, post, prefill, day, onDone }: Pro
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-1 text-sm font-semibold">{editing ? "Account" : "Post to"}</legend>
           {editing && post && !post.connectionId && post.remindOnly && (
-            <p className="text-[14px] text-muted">{networkName(post.network)}: not connected. This post is sent to you as a reminder to post it yourself.</p>
+            <p className="text-[14px] text-muted">{networkName(post.network)}: not connected. You can change every word now; at its time the post is sent to you as a reminder to post it yourself.</p>
           )}
           <ul className="flex flex-wrap gap-3">
-            {(editing ? context.accounts.filter((a) => a.id === post?.connectionId) : context.accounts).map((a) => {
-              const on = accountIds.includes(a.id);
+            {(editedAccount ? [editedAccount] : context.accounts).map((a) => {
+              const on = editedAccount !== null || accountIds.includes(a.id);
               return (
-                <li key={a.id}>
+                <li key={a.id || a.network}>
                   <button
                     type="button"
                     disabled={!a.usable || editing}
@@ -392,6 +422,7 @@ function ComposerBody({ onOpenChange, context, post, prefill, day, onDone }: Pro
             : `Times are in ${zone}.`}
           {context.timingNote && mode !== "now" && mode !== "keep" && ` ${context.timingNote}`}
         </p>
+        {editing && post && editedAccount && !editedAccount.id && mode !== "keep" && <ConnectNote network={post.network} remindOnly={Boolean(post.remindOnly)} />}
         {error && <p role="alert" className="text-[14px] font-medium text-danger">{error}</p>}
         <div className="flex flex-wrap items-center justify-end gap-3">
           <Button variant="ghost" className="max-sm:hidden" onClick={() => onOpenChange(false)} disabled={pending}>Cancel</Button>

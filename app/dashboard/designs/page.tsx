@@ -48,8 +48,8 @@ export default async function DesignsPage({ searchParams }: { searchParams: Prom
         none="Nothing in particular"
         options={[...options.products.map((p) => ({ id: p.id, name: p.name, group: "Products & services" as const })), ...options.campaigns.map((c) => ({ id: c.id, name: c.name, group: "Campaigns" as const }))]}
       />
+      {/* Not keyed by the product: choosing one keeps the template chosen so far (DesignStudio fills in its details). */}
       <DesignStudio
-        key={subject?.id ?? "none"}
         subjectId={subject?.id}
         album={subject ? `${subject.kind}:${subject.id}` : undefined}
         defaults={

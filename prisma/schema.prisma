@@ -901,6 +901,9 @@ model PostVersion {
   // The post's content (GeneratedContent) pieces at that time: its video script and ad headlines.
   videoScript    String   @default("")
   adHeadlines    String[]
+  // Each piece's language at that time: {caption, script, headlines} (lib/content-flow/versions.ts PartLanguages).
+  // Null when not recorded: the pieces are in the content's language.
+  languages      Json?
   createdAt      DateTime @default(now())
 
   @@index([postId, createdAt])

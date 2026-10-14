@@ -1,6 +1,7 @@
 // The weekly planner: chooses what to post, on which accounts and when. It decides; it does not
 // write text or draw images (writer.ts and images.ts do), and `buildWeekPlan` is pure so the
 // distribution and the time slots can be tested without a database or the AI.
+import { byHandNetwork } from "@/lib/content-board/by-hand";
 import { getProvider } from "@/lib/social/registry";
 import type { Network } from "@/lib/social/types";
 import type { Holiday } from "./calendar";
@@ -11,7 +12,7 @@ import {
   seededRandom,
   type LearningProfile,
 } from "./learning";
-import { ideaNetworks, isVideoIdea, suitsIndustry, type AutopilotFormat, type Idea, type IndustryTag, IDEAS } from "./playbook";
+import { ideaNetworks, isVideoIdea, PICTURE_NETWORKS, POST_MIX, suitsIndustry, type AutopilotFormat, type Idea, type IndustryTag, IDEAS } from "./playbook";
 import type { AutopilotConfig } from "./settings";
 import { DEFAULT_POSTING_TIMES } from "./settings";
 import { localDateISO, minutesOf, weekDates, weekdayOfISO, zonedToUtc } from "./timezone";
@@ -19,9 +20,13 @@ import { MAX_RUN_VIDEOS, repeatedFormat, VIDEO_SHARE, type RecentFormats } from 
 
 
 export interface PlanConnection {
+  /** A connection's id, or "network:<app>" for an app chosen while not connected (its posts are reminders). */
   id: string;
   network: Network;
 }
+
+/** A connected account (one in reminder mode too), not an app chosen while it was not connected. */
+const isConnected = (c: PlanConnection) => byHandNetwork(c.id) === null;
 
 /** A product or campaign Autopilot may post about (the name is from before the Knowledge base). */
 export interface PlanProject {
@@ -136,9 +141,9 @@ type Pick = { idea: Idea; project?: PlanProject; faq?: PlanFaq; holiday?: Holida
 
 function eligible(
   idea: Idea,
-  ctx: { networks: Set<Network>; tags: IndustryTag[]; pool: Pool; holidays: Holiday[]; hasHours: boolean },
+  ctx: { targets: (idea: Idea) => Network[]; tags: IndustryTag[]; pool: Pool; holidays: Holiday[]; hasHours: boolean },
 ): Pick[] {
-  if (!ideaNetworks(idea).some((n) => ctx.networks.has(n))) return [];
+  if (ctx.targets(idea).length === 0) return [];
   if (!suitsIndustry(idea, ctx.tags)) return [];
   if (idea.needs.includes("hours") && !ctx.hasHours) return [];
   if (idea.needs.includes("faq") && ctx.pool.faqs.length === 0) return [];
@@ -170,6 +175,13 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
 
   const networks = new Set(input.connections.map((c) => c.network));
   if (networks.size === 0) return { groups: [], notes: ["No accounts are connected to Autopilot."] };
+  // The accounts the owner connected (reminder-mode ones too) come before apps chosen while not connected, whose posts
+  // are reminders to post by hand: with a few posts a week, the connected accounts get them.
+  const connectedNets = new Set(input.connections.filter(isConnected).map((c) => c.network));
+  const preferred = connectedNets.size > 0 ? connectedNets : networks;
+  // Instagram and Facebook posts always show a picture: a video idea goes there only when BuPulse makes the video.
+  const canPost = (idea: Idea, network: Network) => !!idea.formats[network] && !(PICTURE_NETWORKS.has(network) && idea.formats[network] === "SCRIPT" && !input.video?.inPlan);
+  const targets = (idea: Idea) => ideaNetworks(idea).filter((x) => networks.has(x) && canPost(idea, x));
 
   // Remembrance days stay quiet; past days are gone.
   const quiet = new Set(input.holidays.filter((h) => h.sensitive).map((h) => h.date));
@@ -182,7 +194,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
     faqs: [...input.faqs].sort(() => rng() - 0.5),
     photos: input.photos,
   };
-  const ctx = { networks, tags: input.industryTags, pool, holidays: input.holidays.filter((h) => days.includes(h.date)), hasHours: input.hasHours };
+  const ctx = { targets, tags: input.industryTags, pool, holidays: input.holidays.filter((h) => days.includes(h.date)), hasHours: input.hasHours };
   const hasFresh = input.projects.some((p) => p.postedCount === 0);
 
   const picks: Pick[] = [];
@@ -194,7 +206,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
     picks.push(pick);
     chosenIds.add(pick.idea.id);
     chosenGoals.push(pick.idea.goal);
-    for (const net of ideaNetworks(pick.idea)) if (networks.has(net)) covered.add(net);
+    for (const net of targets(pick.idea)) covered.add(net);
     if (pick.project) pool.projects = pool.projects.filter((p) => p !== pick.project);
     if (pick.faq) pool.faqs = pool.faqs.filter((f) => f !== pick.faq);
   };
@@ -217,7 +229,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
       const idea = ps[0].idea;
       const boost = hasFresh && ps.some((p) => p.project?.postedCount === 0) ? 2 : 1;
       // An idea that serves more of the connected accounts makes the week go further.
-      const reach = ideaNetworks(idea).filter((x) => networks.has(x)).length / networks.size;
+      const reach = targets(idea).filter((x) => preferred.has(x)).length / preferred.size;
       return { ...idea, weight: (idea.weight ?? 1) * boost * (0.4 + 0.6 * reach) };
     });
     const idea = chooseIdea(weighted, { profile, rng, recent: input.recentIdeas, chosenGoals });
@@ -242,14 +254,29 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
   }
   const pinned = new Map<Pick, string>(picks.map((p) => [p, p.holiday!.date]));
 
-  // 2. Every connected network gets at least one post, and LinkedIn some long-form.
+  // 2. With products, a mix of post types (something new, a tip, an offer) as the week has room, each for an account
+  // the owner connected and each a designed picture (never turned into a video below).
+  const mixed = new Set<Pick>();
+  if (input.projects.length > 0) {
+    for (const ids of POST_MIX) {
+      if (picks.length >= n) break;
+      if (picks.some((p) => ids.includes(p.idea.id))) continue;
+      const pick = chooseFrom(candidates((i) => ids.includes(i.id) && !i.needs.includes("holiday") && targets(i).some((x) => preferred.has(x))));
+      if (pick) {
+        take(pick);
+        mixed.add(pick);
+      }
+    }
+  }
+
+  // 3. Every network gets at least one post, the connected ones first, and LinkedIn some long-form.
   const need: ((idea: Idea) => boolean)[] = [];
-  const wantsArticle = networks.has("linkedin") && n >= 3 && !picks.some((p) => p.idea.formats.linkedin === "ARTICLE");
+  const wantsArticle = preferred.has("linkedin") && n >= 3 && !picks.some((p) => p.idea.formats.linkedin === "ARTICLE");
   const order: Network[] = ["tiktok", "youtube", "linkedin", "instagram", "facebook"];
-  for (const net of order) {
+  for (const net of [...order.filter((x) => connectedNets.has(x)), ...order.filter((x) => !connectedNets.has(x))]) {
     // An article covers LinkedIn by itself.
     if (net === "linkedin" && wantsArticle) continue;
-    if (networks.has(net) && !covered.has(net)) need.push((i) => ideaNetworks(i).includes(net));
+    if (networks.has(net) && !covered.has(net)) need.push((i) => targets(i).includes(net));
   }
   if (wantsArticle) need.push((i) => i.formats.linkedin === "ARTICLE");
   for (const filter of need) {
@@ -261,7 +288,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
     if (pick) take(pick);
   }
 
-  // 3. The rest by exploiting what works and exploring the rest.
+  // 4. The rest by exploiting what works and exploring the rest.
   while (picks.length < n) {
     const pick = chooseFrom(candidates((i) => !i.needs.includes("holiday")));
     if (!pick) break;
@@ -271,7 +298,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
     notes.push(`Only ${picks.length} of ${n} post ideas fit your accounts and details this week. Add a product, offer or photos to get more variety.`);
   }
 
-  // 4. Days: spread the posts over the week, holiday posts on the day itself.
+  // 5. Days: spread the posts over the week, holiday posts on the day itself.
   const dayLoad = new Map<string, number>();
   const chosenDays: string[] = [];
   const dayOf = new Map<Pick, string>();
@@ -283,7 +310,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
   const rest = picks.filter((p) => !pinned.has(p));
   const hardest = [...rest].sort((a, b) => ideaNetworks(a.idea).length - ideaNetworks(b.idea).length);
   for (const pick of hardest) {
-    const nets = ideaNetworks(pick.idea).filter((x) => networks.has(x));
+    const nets = targets(pick.idea);
     const scored = days.map((date) => {
       const wd = weekdayOfISO(date);
       const pref =
@@ -302,7 +329,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
     chosenDays.push(date);
   }
 
-  // 5. Photos: unused ones first, varying folders.
+  // 6. Photos: unused ones first, varying folders.
   const photoPool = [...input.photos].sort((a, b) => a.recentUses - b.recentUses || rng() - 0.5);
   const usedPhotos = new Set<string>();
   let lastFolder: string | null | undefined;
@@ -315,7 +342,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
     return other;
   };
 
-  // 6. Posts and times, in day order so clashes resolve predictably.
+  // 7. Posts and times, in day order so clashes resolve predictably.
   const clashes: Map<string, Date[]> = new Map();
   const noteTime = (connectionId: string | null, at: Date) => {
     if (!connectionId) return;
@@ -351,12 +378,14 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
   // One app per idea (as content packs, docs/CONTENT_PACKS.md): each idea goes to one account, so every post is its
   // own idea with its own picture. The ideas that fit the fewest accounts choose first; each takes the account with
   // the fewest posts so far, the idea's own app order breaking ties, so every account gets one before any gets two.
+  // An app chosen while not connected counts as one post fuller, and loses ties: the connected accounts fill first.
   const accountOf = new Map<Pick, PlanConnection>();
   const load = new Map<string, number>(input.connections.map((c) => [c.id, 0]));
-  const fits = (pick: Pick) => input.connections.filter((c) => pick.idea.formats[c.network]);
+  const fits = (pick: Pick) => input.connections.filter((c) => canPost(pick.idea, c.network));
+  const weight = (c: PlanConnection) => load.get(c.id)! + (connectedNets.size > 0 && !isConnected(c) ? 1 : 0);
   for (const pick of [...picks].sort((a, b) => fits(a).length - fits(b).length)) {
     const order = ideaNetworks(pick.idea);
-    const best = fits(pick).sort((a, b) => load.get(a.id)! - load.get(b.id)! || order.indexOf(a.network) - order.indexOf(b.network))[0];
+    const best = fits(pick).sort((a, b) => weight(a) - weight(b) || Number(isConnected(b)) - Number(isConnected(a)) || order.indexOf(a.network) - order.indexOf(b.network))[0];
     if (!best) continue;
     accountOf.set(pick, best);
     load.set(best.id, load.get(best.id)! + 1);
@@ -377,7 +406,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
   // videos BuPulse can make this run, never the same format three days running on one app.
   let videosLeft = input.video?.inPlan ? Math.min(MAX_RUN_VIDEOS, Math.max(0, Math.floor(input.video.videosLeft))) : 0;
   const formatsSoFar: RecentFormats = Object.fromEntries(Object.entries(input.recentFormats ?? {}).map(([k, v]) => [k, [...(v ?? [])]]));
-  const decideFormat = (network: Network, format: AutopilotFormat, date: string, photoCount: number): AutopilotFormat => {
+  const decideFormat = (network: Network, format: AutopilotFormat, date: string, photoCount: number, pictureOnly: boolean): AutopilotFormat => {
     if (!input.video?.inPlan || format === "ARTICLE") return format;
     // A video idea stays one (past the budget it is the script to film, as without video in the plan).
     if (format === "SCRIPT") {
@@ -385,7 +414,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
       return format;
     }
     const repeated = repeatedFormat(formatsSoFar, network, date);
-    if (rng() < VIDEO_SHARE.auto[network] && repeated !== "video" && videosLeft > 0) {
+    if (!pictureOnly && rng() < VIDEO_SHARE.auto[network] && repeated !== "video" && videosLeft > 0) {
       videosLeft -= 1;
       return "SCRIPT";
     }
@@ -398,7 +427,10 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
   for (const pick of ordered) {
     const { idea } = pick;
     const date = dayOf.get(pick)!;
-    const wantsImage = idea.template !== null;
+    const account = accountOf.get(pick);
+    const accountFormat = account ? idea.formats[account.network] : undefined;
+    // Every feed post shows a picture: an idea without a template of its own gets the announcement layout (images.ts).
+    const wantsImage = idea.template !== null || accountFormat === "POST" || accountFormat === "CAROUSEL";
     const projectPhotos = (pick.project?.photoPaths ?? []).map((path) => ({ path, fromProject: true }));
     const carousel = Object.values(idea.formats).includes("CAROUSEL");
     const photos: PlannedGroup["photos"] = [...projectPhotos.slice(0, carousel ? 3 : 1)];
@@ -412,7 +444,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
     }
 
     const posts: PlannedPost[] = [];
-    for (const connection of input.connections.filter((c) => c === accountOf.get(pick))) {
+    for (const connection of input.connections.filter((c) => c === account)) {
       const format = idea.formats[connection.network];
       if (!format) continue;
       // A carousel needs at least two pictures; otherwise it is one image post.
@@ -429,7 +461,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
       }
       perDay.set(dayKey, (perDay.get(dayKey) ?? 0) + 1);
       noteTime(connection.id, at);
-      const effective = decideFormat(connection.network, planned, date, photos.length);
+      const effective = decideFormat(connection.network, planned, date, photos.length, mixed.has(pick));
       const kind = packFormat(effective);
       if (kind) (formatsSoFar[connection.network] ??= []).unshift({ day: date, format: kind });
       posts.push({ connectionId: connection.id, network: connection.network, format: effective, scheduledAt: at });

@@ -72,6 +72,7 @@ Be specific to the business. Use only the facts you are given: never invent pric
 If a price or offer is given you may state it exactly as written; if none is given, do not mention a price.
 Never write a quote or review as if a customer said it; you may quote one only from the CUSTOMER REVIEWS block, word for word with the name given. Never name a competitor. Never claim the business is open, closed or running an offer unless the facts say so.
 Hashtags must not contain years, dates or other numbers unless they appear in the facts.
+Never mention file names, photo numbers or labels like "photo 1": describe what the pictures show in your own words.
 Return only the requested JSON.`;
 
 /** Feed networks whose video posts carry a caption, with the video's scenes apart (`videoScript`). */

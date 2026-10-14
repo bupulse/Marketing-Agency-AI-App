@@ -38,7 +38,7 @@ vi.mock("@/lib/knowledge/service", async (orig) => ({
 
 import { AIProviderError } from "@/lib/ai/types";
 import { addVersion } from "@/lib/content-flow/post-versions";
-import { postWritingView, PostWriteError, restorePostVersion, rewritePost, WRITE_FAILED } from "@/lib/content-flow/post-writing";
+import { editPostWords, postWritingView, PostWriteError, restorePostVersion, rewritePost, WRITE_FAILED } from "@/lib/content-flow/post-writing";
 import { UsageLimitError } from "@/lib/usage";
 
 const actor = { userId: "owner-account", businessId: "b1", actorId: "person-1" };
@@ -176,6 +176,88 @@ describe("Generate again", () => {
     prisma.generatedContent.findFirst.mockResolvedValueOnce(null);
     await expect(rewritePost(actor, "p1", "script")).rejects.toThrow(/BuPulse did not write this post/);
     expect(prisma.generatedContent.findFirst.mock.calls[0][0].where).toEqual({ id: "c1", businessId: "b1" });
+  });
+});
+
+describe("each piece's language", () => {
+  const ENGLISH = { caption: "English", script: "English", headlines: "English" };
+
+  it("a piece written again takes the Brand's language of today; the others keep theirs", async () => {
+    prisma.generatedContent.findFirst.mockResolvedValue(content({ language: "English" }));
+    ai.generate.mockResolvedValue(reply({ posts: [{ index: 1, caption: "Imboga nshya ku ishuri.", hashtags: ["#green"], videoScript: SCRIPT, adHeadlines: HEADLINES }] }));
+    await rewritePost(actor, "p1", "caption");
+    expect(versionsMade()[1]).toMatchObject({ kind: "regenerate", part: "caption", languages: { caption: "Kinyarwanda", script: "English", headlines: "English" } });
+
+    vi.clearAllMocks();
+    prisma.postVersion.create.mockImplementation(async ({ data }: { data: object }) => ({ id: "v-new", ...data }));
+    prisma.postVersion.findFirst.mockResolvedValue(null);
+    ai.generate.mockResolvedValue(reply({ posts: [{ index: 1, caption: "Byose bishya.", hashtags: ["#a"], videoScript: "[Shot] Umurongo.\n[Logo] Muze.", adHeadlines: ["Rimwe", "Kabiri", "Gatatu"] }] }));
+    await rewritePost(actor, "p1", "post");
+    expect(versionsMade().at(-1)).toMatchObject({ part: "post", languages: { caption: "Kinyarwanda", script: "Kinyarwanda", headlines: "Kinyarwanda" } });
+  });
+
+  it("the panel names each piece's language from the newest version, else the content's", async () => {
+    prisma.generatedContent.findFirst.mockResolvedValue(content({ language: "English" }));
+    expect((await postWritingView(actor, "p1")).languages).toEqual(ENGLISH);
+    prisma.postVersion.findMany.mockResolvedValue([
+      { id: "v2", kind: "regenerate", part: "caption", restoredFromId: null, actorId: "person-1", createdAt: new Date("2026-10-14T08:00:00Z"), title: null, text: "Fresh greens at school.", hashtags: ["#green"], videoScript: SCRIPT, adHeadlines: HEADLINES, languages: { caption: "Kinyarwanda", script: "English", headlines: "English" } },
+    ]);
+    expect((await postWritingView(actor, "p1")).languages).toEqual({ caption: "Kinyarwanda", script: "English", headlines: "English" });
+    // Changed outside the versions since: the content's language.
+    prisma.post.findFirst.mockResolvedValue(post({ text: "Changed elsewhere." }));
+    expect((await postWritingView(actor, "p1")).languages).toEqual(ENGLISH);
+  });
+
+  it("a restored version brings its languages back; one from before they were kept is in the content's", async () => {
+    prisma.generatedContent.findFirst.mockResolvedValue(content({ language: "English" }));
+    const v1 = { id: "v1", kind: "regenerate", part: "caption", restoredFromId: null, actorId: null, createdAt: CREATED, title: null, text: "Imboga.", hashtags: [], videoScript: SCRIPT, adHeadlines: HEADLINES, languages: { caption: "Kinyarwanda", script: "English", headlines: "English" } };
+    prisma.postVersion.findFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => ("id" in where ? v1 : null));
+    await restorePostVersion(actor, "p1", "v1");
+    expect(versionsMade().at(-1)).toMatchObject({ kind: "restore", languages: v1.languages });
+    prisma.postVersion.findFirst.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => ("id" in where ? { ...v1, languages: null } : null));
+    await restorePostVersion(actor, "p1", "v1");
+    expect(versionsMade().at(-1)).toMatchObject({ kind: "restore", languages: ENGLISH });
+  });
+});
+
+describe("editing the script and headlines by hand", () => {
+  it("saves the owner's script as a new version: free, the words before kept, the languages carried on", async () => {
+    prisma.postVersion.findFirst.mockImplementation(async ({ select }: { select: Record<string, unknown> }) => ("text" in select ? null : { languages: { caption: "Kinyarwanda", script: "English", headlines: "English" } }));
+    expect(await editPostWords(actor, "p1", { videoScript: "  [Tower] Grow greens at school.\r\n[Logo] Call us.  " })).toEqual({ changed: true });
+    expect(usage.consumeUsage).not.toHaveBeenCalled();
+    expect(ai.generate).not.toHaveBeenCalled();
+    expect(prisma.generatedContent.updateMany).toHaveBeenCalledWith({ where: { id: "c1", businessId: "b1" }, data: { videoScript: "[Tower] Grow greens at school.\n[Logo] Call us.", adHeadlines: HEADLINES, edited: true } });
+    // A feed post's caption is not its script: the post itself is not touched.
+    expect(prisma.post.updateMany).not.toHaveBeenCalled();
+    expect(versionsMade()).toEqual([
+      expect.objectContaining({ kind: "original", videoScript: SCRIPT }),
+      expect.objectContaining({ kind: "edit", actorId: "person-1", videoScript: "[Tower] Grow greens at school.\n[Logo] Call us.", languages: { caption: "Kinyarwanda", script: "English", headlines: "English" } }),
+    ]);
+  });
+
+  it("saves the owner's headlines (blank and repeated ones dropped); on a script post the text is the script", async () => {
+    await editPostWords(actor, "p1", { adHeadlines: ["  Greens  at school ", "", "greens at school", "Call us"] });
+    expect(prisma.generatedContent.updateMany.mock.calls[0][0].data).toEqual({ videoScript: SCRIPT, adHeadlines: ["Greens at school", "Call us"], edited: true });
+
+    vi.clearAllMocks();
+    prisma.postVersion.create.mockImplementation(async ({ data }: { data: object }) => ({ id: "v-new", ...data }));
+    prisma.postVersion.findFirst.mockResolvedValue(null);
+    prisma.post.findFirst.mockResolvedValue(post({ network: "tiktok", format: "SCRIPT", text: SCRIPT }));
+    await editPostWords(actor, "p1", { videoScript: "[Lettuce] Grown in class." });
+    expect(prisma.post.updateMany.mock.calls[0][0]).toMatchObject({ where: { id: "p1", businessId: "b1", text: SCRIPT }, data: { text: "[Lettuce] Grown in class." } });
+    await expect(editPostWords(actor, "p1", { videoScript: " " })).rejects.toThrow(/cannot be empty/);
+  });
+
+  it("changes nothing when nothing changed, and refuses a post that went out, one BuPulse did not write or too many headlines", async () => {
+    expect(await editPostWords(actor, "p1", { videoScript: SCRIPT, adHeadlines: HEADLINES })).toEqual({ changed: false });
+    expect(prisma.postVersion.create).not.toHaveBeenCalled();
+    await expect(editPostWords(actor, "p1", { adHeadlines: ["a", "b", "c", "d"] })).rejects.toThrow(/3 ad headlines/);
+    prisma.post.findFirst.mockResolvedValueOnce(post({ status: "PUBLISHED" }));
+    await expect(editPostWords(actor, "p1", { videoScript: "x" })).rejects.toThrow(/can no longer be changed/);
+    prisma.post.findFirst.mockResolvedValueOnce(post({ contentId: null }));
+    await expect(editPostWords(actor, "p1", { videoScript: "x" })).rejects.toThrow(/Edit its caption instead/);
+    prisma.post.findFirst.mockResolvedValueOnce(null);
+    await expect(editPostWords(actor, "p-other", { videoScript: "x" })).rejects.toThrow(/could not find that post/);
   });
 });
 

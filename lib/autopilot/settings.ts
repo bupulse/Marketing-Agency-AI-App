@@ -1,5 +1,6 @@
 // Autopilot settings: validation and the mapping between the form and AutopilotSettings.
 import { z } from "zod";
+import { BY_HAND_PREFIX } from "@/lib/content-board/by-hand";
 import { minutesOf } from "./timezone";
 
 export const MIN_POSTS_PER_WEEK = 2;
@@ -65,6 +66,16 @@ export function toRow(config: AutopilotConfig): Row {
     useAiImages: config.useAiImages,
     skipReligiousHolidays: config.skipReligious,
   };
+}
+
+/**
+ * The accounts Autopilot writes for when it is switched on with none chosen: the connected ones (reminder-mode ones
+ * too), else every app, as reminders to post by hand ("network:<app>", lib/content-board/by-hand.ts).
+ */
+export function defaultAccountIds(accounts: readonly { id: string; usable: boolean }[]): string[] {
+  const usable = accounts.filter((a) => a.usable);
+  const connected = usable.filter((a) => !a.id.startsWith(BY_HAND_PREFIX));
+  return (connected.length > 0 ? connected : usable).map((a) => a.id);
 }
 
 const time = z.string().refine((t) => minutesOf(t) !== null, "Use a time like 09:00.");

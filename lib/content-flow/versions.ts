@@ -11,11 +11,50 @@ export type VersionKind = (typeof VERSION_KINDS)[number];
 export const REWRITE_PARTS = ["post", "caption", "script", "headlines"] as const;
 export type RewritePart = (typeof REWRITE_PARTS)[number];
 
+/** The longest video script the owner may write by hand (as when editing content, lib/studio/schemas.ts). */
+export const MAX_EDITED_SCRIPT = 8000;
+
 /** Versions kept per post: the newest ones. */
 export const MAX_POST_VERSIONS = 50;
 
 /** A post's words: its own title, text and hashtags, with its content's video script and ad headlines. */
 export type PostPieces = { title: string | null; text: string; hashtags: string[]; videoScript: string; adHeadlines: string[] };
+
+/** The language each piece is written in. "Generate again" writes in the Brand's language of the day, so they can differ. */
+export type PartLanguages = { caption: string; script: string; headlines: string };
+
+export const allIn = (language: string): PartLanguages => ({ caption: language, script: language, headlines: language });
+
+/** A version's stored languages (PostVersion.languages), each piece missing from it in `fallback`. */
+export function readLanguages(value: unknown, fallback: string): PartLanguages {
+  const stored = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const pick = (key: keyof PartLanguages) => {
+    const v = stored[key];
+    return typeof v === "string" && v.trim() ? v.trim().slice(0, 40) : fallback;
+  };
+  return { caption: pick("caption"), script: pick("script"), headlines: pick("headlines") };
+}
+
+/**
+ * The languages of the words a post has now: its newest version's when that version holds them (the words were not
+ * changed outside the versions since), else the language its content was written in.
+ */
+export function currentLanguages(latest: (PostPieces & { languages?: unknown }) | null | undefined, current: PostPieces, fallback: string): PartLanguages {
+  return latest && samePieces(latest, current) ? readLanguages(latest.languages, fallback) : allIn(fallback);
+}
+
+/** The languages after "Generate again" wrote `part` in `language`. A script post's caption is its script. */
+export function languagesAfter(before: PartLanguages, part: RewritePart, language: string, scriptPost = false): PartLanguages {
+  if (part === "post") return allIn(language);
+  if (part === "caption") return { ...before, caption: language };
+  if (part === "script") return { ...before, script: language, ...(scriptPost ? { caption: language } : {}) };
+  return { ...before, headlines: language };
+}
+
+/** The one language every piece is in, or null when they differ. */
+export function sameLanguage(languages: PartLanguages): string | null {
+  return languages.caption === languages.script && languages.script === languages.headlines ? languages.caption : null;
+}
 
 export function isRewritePart(value: unknown): value is RewritePart {
   return typeof value === "string" && (REWRITE_PARTS as readonly string[]).includes(value);

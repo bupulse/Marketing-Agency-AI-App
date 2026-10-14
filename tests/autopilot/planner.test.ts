@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { holidaysBetween } from "@/lib/autopilot/calendar";
 import { buildProfile, EMPTY_PROFILE, type PostResult } from "@/lib/autopilot/learning";
 import { buildWeekPlan, type PlanInput, type PlanPhoto, type PlanProject } from "@/lib/autopilot/planner";
-import { ideaNetworks } from "@/lib/autopilot/playbook";
+import { ideaNetworks, POST_MIX } from "@/lib/autopilot/playbook";
 import { DEFAULT_CONFIG } from "@/lib/autopilot/settings";
 import { localDateISO, localParts, nextWeekStart, weekDates } from "@/lib/autopilot/timezone";
 
@@ -114,6 +114,57 @@ describe("week plan distribution", () => {
       used.push(...ids);
     }
     expect(used.filter((id) => id === "fresh").length).toBeGreaterThanOrEqual(used.filter((id) => id === "old").length);
+  });
+});
+
+// The week found in the end-to-end test: a personal Instagram (reminder mode, but connected) and every other app ticked
+// while not connected, 2 posts a week. Both posts went to the apps that were not connected, without a picture.
+describe("connected accounts first, every picture post with a picture, a mix of post types", () => {
+  const NOVA = [conn("c-ig", "instagram"), conn("network:facebook", "facebook"), conn("network:linkedin", "linkedin"), conn("network:tiktok", "tiktok"), conn("network:youtube", "youtube")];
+  const nova = (seed: string, over: Partial<PlanInput> = {}) =>
+    buildWeekPlan(input({ businessId: seed, connections: NOVA, config: { ...DEFAULT_CONFIG, enabled: true, postsPerWeek: 2, connectionIds: NOVA.map((c) => c.id) }, ...over }));
+  const SEEDS = Array.from({ length: 12 }, (_, i) => `nova-${i}`);
+
+  it("gives the connected account the posts when the week is short, as designed pictures (video in the plan or not)", () => {
+    for (const seed of SEEDS) {
+      for (const video of [undefined, { inPlan: true, videosLeft: 100 }]) {
+        const plan = nova(seed, { video });
+        expect(plan.groups.length, seed).toBe(2);
+        for (const g of plan.groups) expect(g.posts.map((p) => [p.connectionId, p.format === "SCRIPT" ? "video" : "picture"]), seed).toEqual([["c-ig", "picture"]]);
+      }
+    }
+  });
+
+  it("still writes for the apps chosen while not connected once the connected ones have theirs", () => {
+    for (const seed of SEEDS) {
+      const plan = nova(seed, { config: { ...DEFAULT_CONFIG, enabled: true, postsPerWeek: 5, connectionIds: NOVA.map((c) => c.id) } });
+      const ids = plan.groups.flatMap((g) => g.posts.map((p) => p.connectionId));
+      expect(ids.filter((id) => id === "c-ig").length, seed).toBeGreaterThanOrEqual(2);
+      expect(ids.some((id) => id.startsWith("network:")), seed).toBe(true);
+    }
+    // Nothing connected at all: every app is written for, as before.
+    const byHand = buildWeekPlan(input({ connections: NOVA.slice(1), config: { ...DEFAULT_CONFIG, enabled: true, postsPerWeek: 4, connectionIds: [] } }));
+    expect(new Set(byHand.groups.flatMap((g) => g.posts.map((p) => p.network))).size).toBeGreaterThanOrEqual(3);
+  });
+
+  it("gives every Instagram and Facebook post a picture: no script to film there without video in the plan", () => {
+    for (const seed of [...SEEDS, "a", "b", "c"]) {
+      for (const plan of [nova(seed), buildWeekPlan(input({ businessId: seed, config: { ...DEFAULT_CONFIG, postsPerWeek: 10, connectionIds: [] } }))]) {
+        for (const g of plan.groups) for (const p of g.posts) if (p.network === "instagram" || p.network === "facebook") expect(p.format, `${seed} ${g.idea.id}`).not.toBe("SCRIPT");
+      }
+      // A Gallery photo for each design while there are some (images.ts draws a design for every feed post).
+      for (const g of nova(seed).groups) expect(g.photos.length, `${seed} ${g.idea.id}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("mixes something new, a tip and an offer through a week with products", () => {
+    const kinds = (plan: ReturnType<typeof buildWeekPlan>) => POST_MIX.map((ids) => plan.groups.filter((g) => ids.includes(g.idea.id)).length);
+    for (const seed of SEEDS) {
+      expect(kinds(nova(seed)), seed).toEqual([1, 1, 0]);
+      expect(kinds(nova(seed, { config: { ...DEFAULT_CONFIG, enabled: true, postsPerWeek: 3, connectionIds: NOVA.map((c) => c.id) } })), seed).toEqual([1, 1, 1]);
+      // The new arrival is about a product.
+      expect(nova(seed).groups.find((g) => POST_MIX[0].includes(g.idea.id))?.project, seed).toBeDefined();
+    }
   });
 });
 
@@ -299,20 +350,25 @@ describe("posts per app per day count what is already there", () => {
 
 describe("picture or video per post (lib/content-flow/format.ts)", () => {
   const feed = [conn("c-ig", "instagram"), conn("c-fb", "facebook"), conn("c-li", "linkedin")];
-  const posts = (over: Partial<PlanInput>) =>
-    Array.from({ length: 40 }, (_, i) => buildWeekPlan(input({ businessId: `video-${i}`, connections: feed, config: { ...DEFAULT_CONFIG, enabled: true, postsPerWeek: 6, connectionIds: feed.map((c) => c.id) }, ...over })))
-      .flatMap((p) => p.groups.flatMap((g) => g.posts));
+  const groups = (over: Partial<PlanInput>) =>
+    Array.from({ length: 40 }, (_, i) => buildWeekPlan(input({ businessId: `video-${i}`, connections: feed, config: { ...DEFAULT_CONFIG, enabled: true, postsPerWeek: 6, connectionIds: feed.map((c) => c.id) }, ...over }))).flatMap((p) => p.groups);
+  const isMix = (g: { idea: { id: string } }) => POST_MIX.some((ids) => ids.includes(g.idea.id));
 
-  it("makes feed posts videos by their app's share when the plan has video", () => {
-    const all = posts({ video: { inPlan: true, videosLeft: 1000 } });
+  it("makes feed posts videos by their app's share when the plan has video; the week's mix stays designed pictures", () => {
+    const all = groups({ video: { inPlan: true, videosLeft: 1000 } });
     const share = (network: string) => {
-      const list = all.filter((p) => p.network === network && p.format !== "ARTICLE");
+      const list = all.filter((g) => !isMix(g)).flatMap((g) => g.posts).filter((p) => p.network === network && p.format !== "ARTICLE");
       return list.filter((p) => p.format === "SCRIPT").length / list.length;
     };
     expect(share("instagram")).toBeGreaterThan(0.35);
     expect(share("instagram")).toBeGreaterThan(share("facebook"));
     expect(share("facebook")).toBeGreaterThan(share("linkedin"));
     expect(share("linkedin")).toBeLessThan(0.35);
+    // Every week has its new arrival, tip and offer as pictures (the products allow all three).
+    for (let i = 0; i < 40; i++) {
+      const week = buildWeekPlan(input({ businessId: `video-${i}`, connections: feed, config: { ...DEFAULT_CONFIG, enabled: true, postsPerWeek: 6, connectionIds: feed.map((c) => c.id) }, video: { inPlan: true, videosLeft: 1000 } }));
+      for (const ids of POST_MIX) expect(week.groups.some((g) => ids.includes(g.idea.id) && g.posts.every((p) => p.format !== "SCRIPT")), `video-${i} ${ids[0]}`).toBe(true);
+    }
   });
 
   it("keeps within the video seconds left, and changes nothing without video in the plan", () => {

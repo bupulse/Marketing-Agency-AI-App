@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // again and restore their company's posts; the company account is charged; the person is named in the versions.
 
 const auth = vi.hoisted(() => ({ requireActiveUser: vi.fn() }));
-const writing = vi.hoisted(() => ({ postWritingView: vi.fn(), rewritePost: vi.fn(), restorePostVersion: vi.fn() }));
+const writing = vi.hoisted(() => ({ postWritingView: vi.fn(), rewritePost: vi.fn(), restorePostVersion: vi.fn(), editPostWords: vi.fn() }));
 const gate = vi.hoisted(() => ({ featureBlocked: vi.fn(), rateLimit: vi.fn() }));
 vi.mock("@/lib/auth/require-user", () => auth);
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -24,7 +24,7 @@ vi.mock("@/lib/content-flow/post-writing", async () => {
   return { ...writing, PostWriteError };
 });
 
-import { loadPostWritingAction, regeneratePostAction, restorePostVersionAction } from "@/app/dashboard/content/post-actions";
+import { editPostWordsAction, loadPostWritingAction, regeneratePostAction, restorePostVersionAction } from "@/app/dashboard/content/post-actions";
 import { PostWriteError } from "@/lib/content-flow/post-writing";
 import { ForbiddenError } from "@/lib/team/roles";
 
@@ -39,6 +39,7 @@ beforeEach(() => {
   writing.postWritingView.mockResolvedValue(view);
   writing.rewritePost.mockResolvedValue(undefined);
   writing.restorePostVersion.mockResolvedValue({ changed: true });
+  writing.editPostWords.mockResolvedValue({ changed: true });
 });
 
 describe("Generate again and Versions", () => {
@@ -76,5 +77,23 @@ describe("Generate again and Versions", () => {
   it("passes on why the plan stopped it, so the screen can offer the plans", async () => {
     writing.rewritePost.mockRejectedValueOnce(new PostWriteError("No text generations left this month.", "limit_reached"));
     expect(await regeneratePostAction("p1", "script")).toEqual({ ok: false, error: "No text generations left this month.", blocked: "limit_reached" });
+  });
+});
+
+describe("editing the script and headlines by hand", () => {
+  it("saves them as a new version for a Member, free: no credit, the edit rate limit, the person in the versions", async () => {
+    expect(await editPostWordsAction("p1", { adHeadlines: ["Grow at school", "Greens for class"] })).toEqual({ ok: true, view, message: "Saved. The one before is in Versions." });
+    expect(writing.editPostWords).toHaveBeenCalledWith({ userId: "owner-account", businessId: "b1", actorId: "member-1" }, "p1", { adHeadlines: ["Grow at school", "Greens for class"] });
+    expect(gate.rateLimit.mock.calls[0][0]).toBe("edit:owner-account");
+    writing.editPostWords.mockResolvedValueOnce({ changed: false });
+    expect(await editPostWordsAction("p1", { videoScript: "[Tower] Grow greens." })).toMatchObject({ ok: true, message: "Nothing changed." });
+  });
+
+  it("refuses anything else, or too much, before anything runs", async () => {
+    expect(await editPostWordsAction("p1", { caption: "x" })).toMatchObject({ ok: false });
+    expect(await editPostWordsAction("p1", { adHeadlines: ["a", "b", "c", "d"] })).toEqual({ ok: false, error: "Keep it to 3 ad headlines." });
+    expect(await editPostWordsAction("p1", { videoScript: "x".repeat(8001) })).toMatchObject({ ok: false, error: expect.stringMatching(/8,000 characters/) });
+    expect(auth.requireActiveUser).not.toHaveBeenCalled();
+    expect(writing.editPostWords).not.toHaveBeenCalled();
   });
 });

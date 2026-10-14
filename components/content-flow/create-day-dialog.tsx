@@ -29,6 +29,9 @@ export type Allowance = { textLeft: number; imagesLeft: number; aiPhotos: boolea
 
 const DEFAULT_NETWORKS: Network[] = ["instagram", "facebook", "linkedin"];
 
+/** When the answer never arrived: the run may have finished all the same. */
+export const LOST = "We lost the connection before BuPulse answered. Your posts may have been made: the page behind now shows what is there. Check it before trying again.";
+
 function formatHint(format: FormatPreference, allowance: Allowance): string {
   if (!allowance.videoInPlan) return "Videos are not in your plan: pictures and carousels, and TikTok / YouTube get a script to film yourself.";
   if (allowance.videosLeft < 1) return "Your plan's videos are used up for now (today's or this month's): pictures and carousels this time.";
@@ -96,6 +99,8 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
   function submit() {
     setError(null);
     start(async () => {
+      // A request lost on the way back (the phone slept, the network dropped) must not take the page down: the posts
+      // may well have been made, so the page behind is refreshed to show them and the dialog says so.
       const res = await createDayContentAction({
         scope,
         mode,
@@ -109,7 +114,12 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
         price: mode === "own" ? undefined : price,
         format: mode === "own" ? undefined : format,
         requestKey,
-      });
+      }).catch(() => null);
+      if (!res) {
+        setError(LOST);
+        router.refresh();
+        return;
+      }
       if (!res.ok) return setError(res.error);
       const parts = [`${res.posts === 1 ? "1 post" : `${res.posts} posts`} made for today`];
       if (res.videos) parts.push(`${res.videos === 1 ? "1 is a video" : `${res.videos} are videos`}`);

@@ -100,26 +100,26 @@ export function hasBeforeAfter(items: readonly Pick<GalleryItem, "name" | "descr
   return items.some((m) => /\bbefore\b|\bavant\b/.test(said(m))) && items.some((m) => /\bafter\b|\baprès\b|\bapres\b/.test(said(m)));
 }
 
-const MEANINGLESS = /^(img|dsc|dscn|pxl|photo|image|video|vid|whatsapp( image| video)?|screenshot|screen shot|mvimg)[\W_]*\d/i;
-
-/** A file's name as a description of what it shows ("hydro-tower_in class.jpg" -> "hydro tower in class"), or null. */
+/**
+ * What a Gallery item shows, in the owner's own words (its Gallery description), or null. Never its file name: names
+ * like "dress 1.jpg" ended up in captions ("swipe to see dress 1, dress 2 and dress 3").
+ */
 export function describeItem(item: Pick<GalleryItem, "name" | "description">): string | null {
-  // The owner's description in the Gallery says best what it shows.
   const description = item.description?.replace(/\s+/g, " ").trim();
-  if (description) return description.slice(0, 160);
-  const name = item.name.replace(/\.[a-z0-9]{2,4}$/i, "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
-  if (!name || MEANINGLESS.test(item.name) || /^\d+$/.test(name)) return null;
-  return name.slice(0, 120);
+  return description ? description.slice(0, 160) : null;
 }
+
+/** Said to the writer with every post that shows the owner's media. */
+export const NO_FILE_NAMES = "Never mention file names, photo numbers or labels like \"photo 1\" in the post: describe what is shown in your own words.";
 
 /** The lines that tell the writer what the post shows, so the caption talks about it. */
 export function mediaLines(media: PostMedia | { kind: "own"; items: GalleryItem[] }): string[] {
   const label = (m: GalleryItem) => describeItem(m) ?? (isVideoItem(m) ? "a video" : "a photo");
-  if (media.kind === "own") return media.items.length ? [`The post shows the owner's own ${media.items.length === 1 ? "media" : "media, in order"}: ${media.items.map((m) => `"${label(m)}"`).join(", ")}.`] : [];
-  if (media.kind === "gallery-video") return [`The post is the owner's own video: "${label(media.video)}". Write the caption and script about what it shows.`];
+  if (media.kind === "own") return media.items.length ? [`The post shows the owner's own ${media.items.length === 1 ? "media" : "media, in order"}: ${media.items.map((m) => `"${label(m)}"`).join(", ")}.`, NO_FILE_NAMES] : [];
+  if (media.kind === "gallery-video") return [`The post is the owner's own video: "${label(media.video)}". Write the caption and script about what it shows.`, NO_FILE_NAMES];
   const shown = media.photos.slice(0, 3);
   if (shown.length === 0) return media.kind === "image" ? ["There is no photo: the picture will be a designed text image."] : [];
-  return [`The ${media.kind === "image" ? "picture" : "video"} uses the owner's photos: ${shown.map((m) => `"${label(m)}"`).join(", ")}. Relate the caption to what they show.`];
+  return [`The ${media.kind === "image" ? "picture" : "video"} uses the owner's photos: ${shown.map((m) => `"${label(m)}"`).join(", ")}. Relate the caption to what they show.`, NO_FILE_NAMES];
 }
 
 export type OwnPostMedia = { format: "POST" | "CAROUSEL" | "SCRIPT"; mediaPaths: string[]; shape: Shape } | { skip: string };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedPieces, isRewritePart, isScriptPost, piecesOf, rewriteParts, samePieces, textNearLimit, timeAgo, versionLabel, versionPreview } from "@/lib/content-flow/versions";
+import { allIn, changedPieces, currentLanguages, isRewritePart, isScriptPost, languagesAfter, piecesOf, readLanguages, rewriteParts, sameLanguage, samePieces, textNearLimit, timeAgo, versionLabel, versionPreview } from "@/lib/content-flow/versions";
 import { AD_HEADLINE_COUNT, cleanHeadlines, exactlyThreeHeadlines } from "@/lib/studio/headlines";
 
 const pieces = { title: null, text: "Fresh greens at school.", hashtags: ["#green"], videoScript: "[Tower] Grow at school.", adHeadlines: ["A", "B", "C"] };
@@ -95,5 +95,31 @@ describe("what Generate again may write", () => {
     expect(textNearLimit(31, 300)).toBe(false);
     expect(textNearLimit(30, 300)).toBe(true);
     expect(textNearLimit(0, 30)).toBe(true);
+  });
+});
+
+describe("each piece's language", () => {
+  it("reads what a version stored, anything missing or broken in the content's language", () => {
+    expect(readLanguages({ caption: "Kinyarwanda", script: "English" }, "French")).toEqual({ caption: "Kinyarwanda", script: "English", headlines: "French" });
+    expect(readLanguages(null, "English")).toEqual(allIn("English"));
+    expect(readLanguages({ caption: 3, script: " ", headlines: ["x"] }, "English")).toEqual(allIn("English"));
+  });
+
+  it("takes the newest version's only while it still holds the post's words", () => {
+    const latest = { ...pieces, languages: { caption: "Kinyarwanda" } };
+    expect(currentLanguages(latest, pieces, "English")).toEqual({ caption: "Kinyarwanda", script: "English", headlines: "English" });
+    expect(currentLanguages(latest, { ...pieces, text: "Edited elsewhere." }, "English")).toEqual(allIn("English"));
+    expect(currentLanguages(null, pieces, "English")).toEqual(allIn("English"));
+  });
+
+  it("after Generate again: the piece written is in the new language; a script post's caption is its script", () => {
+    const en = allIn("English");
+    expect(languagesAfter(en, "caption", "Kinyarwanda")).toEqual({ caption: "Kinyarwanda", script: "English", headlines: "English" });
+    expect(languagesAfter(en, "headlines", "French")).toEqual({ caption: "English", script: "English", headlines: "French" });
+    expect(languagesAfter(en, "script", "French")).toEqual({ caption: "English", script: "French", headlines: "English" });
+    expect(languagesAfter(en, "script", "French", true)).toEqual({ caption: "French", script: "French", headlines: "English" });
+    expect(languagesAfter({ caption: "Kinyarwanda", script: "English", headlines: "French" }, "post", "Swahili")).toEqual(allIn("Swahili"));
+    expect(sameLanguage(en)).toBe("English");
+    expect(sameLanguage(languagesAfter(en, "caption", "Kinyarwanda"))).toBeNull();
   });
 });
