@@ -15,6 +15,31 @@ The pricing page, the in-app Billing page, checkout, usage limits, trial length 
 - **Failure:** the plan is only changed after Paddle accepted the new prices; if anything fails nothing is changed and the error is shown on the plan page.
 - Without `PADDLE_API_KEY` plans can be drafted and edited; prices of plans that already sell cannot be changed.
 
+## Video prices (owner decision, 14 October 2026)
+
+Every plan with video may make 120 voiced videos a month (docs/CONTENT_VISUALS.md), so the prices rose (migration
+`20261019140000_video_prices`, audited as `migration:20261019140000_video_prices`; only rows still at the old amounts):
+
+| | Before | Now |
+| --- | --- | --- |
+| Rwanda Business, monthly | 35,000 RWF | **50,000 RWF** (card ≈ $39 by the usual rule with the default rate and margin) |
+| Rwanda Business, yearly (10 months) | 350,000 RWF | **500,000 RWF** (card ≈ $387) |
+| Video add-on (RW) | 10,000 RWF a month | **20,000 RWF** |
+| Voiceover add-on (RW) | 5,000 RWF a month | **15,000 RWF** |
+| Pro | $99 / $990 | unchanged |
+
+Later changes: Admin → Regions and prices (plans) and Admin → Money → Add-on prices (add-ons), both audited.
+
+**Existing subscribers.** The 30-day notice flow (`PlanPriceChange`, below) covers the plans' own GLOBAL Paddle prices
+only; regional prices have none. So:
+- **Mobile Money** clients keep what they paid until their period ends; their next renewal is at the new price (the
+  renewal reminders 5 days and 1 day before show it). There is no 30-day notice email.
+- **Card** clients in Rwanda keep their current Paddle price (their subscription is not moved: regional card prices
+  have no move-subscribers step yet, the TODO in `recomputeCardPrices`).
+- **Custom plans** keep their own price; new offers are priced with the new add-on prices.
+- The plan's own USD price (`PlanDefinition`, the derived card price of a Rwanda plan) is not changed by the
+  migration; the regional row's card price is.
+
 ## Regions and the demo-first trial
 
 Full description in `docs/REGIONS.md`. In short: `lib/region.ts` says which region a visitor or a company is in; `lib/region-prices.ts` lists the plans a region offers with that region's prices (`getRegionPlans`, `companyPlans`); checkout uses `regionPriceIdFor` (GLOBAL = the plan's own Paddle ids, other regions wait for the Paddle sync). `lib/entitlements.ts` grants nothing while a company waits for its demo and the chosen plan's features during the trial. The migrations are `20261010100000_subscription_pending_demo` and `20261010100100_regions_and_demos` (deploy before the code).

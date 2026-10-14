@@ -119,6 +119,9 @@ free (`docs/DEPLOY_NETLIFY.md`) stays the fallback. This file is the order of wo
      MoMo (temporary test plan or price), confirm in Admin → Payments, company becomes active.
    - Free uptime monitor (e.g. UptimeRobot free) on `/api/status` every 5 minutes, alerts to office@bupulse.com.
 10. **Owner, after the deploy** (Admin console):
+   - Settings → **Card payments** → **Set up prices** (live Paddle): run it again after the deploy. The video prices
+     (Rwanda Business 50,000 RWF, `docs/PLANS.md`) cleared the old Rwanda Business card prices; until this runs,
+     card for Rwanda Business shows "coming soon" (Mobile Money works).
    - Settings → **Admin currency**: set the Default currency (RWF), and the EUR rate or its daily refresh.
    - Organisation → **Sales screen**: create the TV link, open it on the TV, click "Start screen" once; add sounds
      with **Generate a sound** (or upload MP3s you hold the rights to): the local sounds script is for the test

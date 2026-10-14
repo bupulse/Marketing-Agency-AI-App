@@ -675,7 +675,7 @@ export async function openInvoiceOf(businessId: string): Promise<Row | null> {
 /** A made-up invoice drawn with the current settings, for the settings page preview. */
 export async function sampleInvoiceDocument(now: Date = new Date()): Promise<{ doc: InvoiceDocument; logo: { path: string; type: string } }> {
   const [snap, settings] = await Promise.all([sellerSnapshot(), getInvoiceSettings()]);
-  const lines: InvoiceLine[] = [{ description: "BuPulse Business plan, monthly (1 month)", quantity: 1, unitMinor: 35000 }];
+  const lines: InvoiceLine[] = [{ description: "BuPulse Business plan, monthly (1 month)", quantity: 1, unitMinor: 50000 }];
   const totals = computeTotals(lines, settings.vatRatePercent);
   const today = invoiceToday(now);
   return {

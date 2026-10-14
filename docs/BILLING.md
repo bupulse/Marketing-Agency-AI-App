@@ -89,6 +89,10 @@ the price converted to USD (`lib/offers/card.ts`, `docs/OFFERS.md` "Card"; hidde
   plan cancelled at its end; checked before anything else) and `resumeSubscription` (resuming a cancelled card plan is
   its renewal; Billing hides "Resume plan" until the window opens).
 
+**Price changes of regional plans** (e.g. the video prices of 14 October 2026, `docs/PLANS.md`): the region's Paddle
+price ids are cleared, so card for that plan shows "Card payments coming soon" until **Set up prices** (below) has made
+the new ones; Mobile Money uses the new amount at once.
+
 ## Connecting Paddle (Admin → Settings → Card payments)
 
 No environment variable needs editing. In Admin → Settings → **Card payments (Paddle)** (AAL2, every save audited):
