@@ -16,6 +16,8 @@ import { linkSiteUrl } from "@/lib/auth/request-site";
 
 // The admin side of the demo-first trial: the Demos list, marking a demo done or a no-show, and "Start trial", which
 // moves a PENDING_DEMO company onto its trial. Every action is audited; the console re-checks AAL2 in adminAction().
+// The Demos list also shows the custom plan calls (kind "custom_plan", lib/demo/plan-calls.ts); the trial steps
+// (startTrial, demoPanel) only ever touch demos.
 
 const DAY_MS = 86_400_000;
 
@@ -32,13 +34,15 @@ export async function listDemos(opts: DemoListFilter = {}, now = new Date()) {
     orderBy: { startsAt: when === "past" ? "desc" : "asc" },
     take: Math.min(Math.max(opts.limit ?? 100, 1), 500),
     select: {
-      id: true, businessId: true, planKey: true, startsAt: true, endsAt: true, status: true, notes: true, meetingLink: true, createdAt: true, googleSyncPending: true, googleSyncError: true,
+      id: true, businessId: true, kind: true, requestId: true, planKey: true, startsAt: true, endsAt: true, status: true, notes: true, meetingLink: true, createdAt: true, googleSyncPending: true, googleSyncError: true,
       business: { select: { name: true, country: true, pricingRegion: true, user: { select: { id: true, email: true, name: true, subscription: { select: { status: true, chosenPlan: true, trialEndsAt: true } } } } } },
     },
   });
   return rows.map((r) => ({
     id: r.id,
     businessId: r.businessId,
+    kind: r.kind === "custom_plan" ? ("custom_plan" as const) : ("demo" as const),
+    requestId: r.requestId,
     businessName: r.business.name,
     country: r.business.country,
     region: r.business.pricingRegion,
@@ -60,7 +64,7 @@ export async function listDemos(opts: DemoListFilter = {}, now = new Date()) {
   }));
 }
 
-/** Marks a demo done, a no-show, or cancelled. Audited on the company. Cancelling also cancels its Google event (Google emails the client). */
+/** Marks a demo (or custom plan call) done, a no-show, or cancelled. Audited on the company. Cancelling also cancels its Google event (Google emails the client). */
 export async function setDemoStatus(ctx: AdminContext, input: { id: string; status: string; notes?: string }) {
   if (!isBookingStatus(input.status) || input.status === "booked") throw new AdminError("invalid", "status must be done, no_show or cancelled.");
   const booking = await prisma.demoBooking.findUnique({ where: { id: input.id }, select: { id: true, businessId: true, status: true, notes: true, startsAt: true, endsAt: true, googleEventId: true, business: { select: { name: true, user: { select: { email: true, name: true } } } } } });
@@ -124,7 +128,7 @@ export async function startTrial(ctx: AdminContext, input: { businessId: string;
     // Guarded on the status we read, so two clicks cannot start two trials.
     const { count } = await tx.subscription.updateMany({ where: { userId: business.userId, status: "PENDING_DEMO" }, data: after });
     if (count !== 1) throw new AdminError("conflict", "The subscription changed while starting the trial. Reload and try again.");
-    await tx.demoBooking.updateMany({ where: { businessId: business.id, status: "booked" }, data: { status: "done" } });
+    await tx.demoBooking.updateMany({ where: { businessId: business.id, kind: "demo", status: "booked" }, data: { status: "done" } });
     await writeAudit(tx, ctx, "start_trial", `business:${business.id}`, before, { ...after, days });
   });
   await trackEvent(EVENT_NAMES.trialStarted, { userId: business.userId, businessId: business.id, props: { plan: chosen.key, days } });
@@ -152,7 +156,7 @@ export async function startTrial(ctx: AdminContext, input: { businessId: string;
 export async function demoPanel(businessId: string) {
   const [business, booking, settings] = await Promise.all([
     prisma.business.findUnique({ where: { id: businessId }, select: { pricingRegion: true, regionMismatch: true, regionMismatchAt: true, user: { select: { subscription: { select: { status: true, plan: true, chosenPlan: true, trialEndsAt: true } } } } } }),
-    prisma.demoBooking.findFirst({ where: { businessId }, orderBy: { startsAt: "desc" } }),
+    prisma.demoBooking.findFirst({ where: { businessId, kind: "demo" }, orderBy: { startsAt: "desc" } }),
     getSettings(),
   ]);
   const sub = business?.user.subscription ?? null;

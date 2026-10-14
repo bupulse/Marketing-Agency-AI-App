@@ -65,7 +65,7 @@ function seed() {
     { id: "prp_pro", planKey: "PRO", regionKey: "RW", currency: "RWF", monthlyMinor: 35000, yearlyMinor: 350000 },
   );
   h.db.adminSetting.rows.push({ key: MOMO_SETTING_KEY, value: { merchantCode: "123456", momoNumber: "0788000000", accountName: "BuPulse Ltd" } });
-  h.db.demoBooking.rows.push({ id: "demo1", businessId: "biz1", status: "booked", startsAt: new Date("2026-10-13T07:00:00Z"), endsAt: new Date("2026-10-13T07:30:00Z") });
+  h.db.demoBooking.rows.push({ id: "demo1", businessId: "biz1", kind: "demo", status: "booked", startsAt: new Date("2026-10-13T07:00:00Z"), endsAt: new Date("2026-10-13T07:30:00Z") });
   resetRegionPriceCache();
   clearMomoSettingsCache();
 }

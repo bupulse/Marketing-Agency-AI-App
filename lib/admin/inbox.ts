@@ -84,7 +84,7 @@ export async function getInbox(now = new Date()): Promise<{ sections: InboxSecti
   const [payments, approvals, demos, requests, invoices, offers, contests, regions, errors] = await Promise.all([
     safe(prisma.manualPayment.findMany({ where: { status: "pending", submittedAt: { not: null } }, orderBy: { submittedAt: "asc" }, take: SHOW, select: { id: true, reference: true, amountMinor: true, currency: true, network: true, submittedAt: true, user: { select: { email: true, business: { select: { name: true } } } } } }), []),
     safe(prisma.adminApproval.findMany({ where: { status: "pending", createdAt: { gt: new Date(now.getTime() - APPROVAL_TTL_MS) } }, orderBy: { createdAt: "asc" }, take: SHOW, select: { id: true, kind: true, requestedBy: true, createdAt: true } }), []),
-    safe(prisma.demoBooking.findMany({ where: demoWhere(now), orderBy: { startsAt: "asc" }, take: SHOW, select: { id: true, startsAt: true, planKey: true, business: { select: { id: true, name: true } } } }), []),
+    safe(prisma.demoBooking.findMany({ where: demoWhere(now), orderBy: { startsAt: "asc" }, take: SHOW, select: { id: true, kind: true, startsAt: true, planKey: true, business: { select: { id: true, name: true } } } }), []),
     safe(prisma.customPlanRequest.findMany({ where: { status: "new" }, orderBy: { createdAt: "asc" }, take: SHOW, select: { id: true, companyName: true, budget: true, createdAt: true } }), []),
     safe(prisma.invoice.findMany({ where: { status: "sent", OR: [{ paymentReview: { not: Prisma.AnyNull } }, { dueDate: { lt: startOfDay(now) } }] }, orderBy: { dueDate: "asc" }, take: SHOW, select: { id: true, number: true, totalMinor: true, currency: true, dueDate: true, paymentReview: true, business: { select: { name: true } } } }), []),
     safe(prisma.planOffer.findMany({ where: { status: "accepted" }, orderBy: { acceptedAt: "asc" }, take: SHOW, select: { id: true, adjustedMinor: true, currency: true, acceptedAt: true, payMethod: true, business: { select: { name: true } } } }), []),
@@ -107,7 +107,7 @@ export async function getInbox(now = new Date()): Promise<{ sections: InboxSecti
     },
     {
       key: "demos", title: "Demos", why: "Booked demos in the next 48 hours, and past ones still to mark done or no-show.", href: "/admin/demos", count: counts.demos, tone: "violet",
-      items: demos.map((d) => ({ id: d.id, text: d.business.name, sub: `${d.startsAt < now ? "Past, not marked yet" : "Booked"} · ${d.planKey}`, href: `/admin/companies/${d.business.id}`, at: d.startsAt.toISOString() })),
+      items: demos.map((d) => ({ id: d.id, text: d.business.name, sub: `${d.startsAt < now ? "Past, not marked yet" : "Booked"} · ${d.kind === "custom_plan" ? "custom plan call" : d.planKey}`, href: `/admin/companies/${d.business.id}`, at: d.startsAt.toISOString() })),
     },
     {
       key: "requests", title: "Plan requests", why: "Businesses asked for a custom plan. Reply with an offer or mark them contacted.", href: "/admin/requests", count: counts.requests, tone: "violet",

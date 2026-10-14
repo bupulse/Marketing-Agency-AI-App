@@ -6,7 +6,7 @@ import { logError } from "@/lib/errors";
 import { createPlanRequest, PlanRequestError } from "@/lib/offers/requests";
 import { RateLimitError } from "@/lib/rate-limit";
 
-export type RequestState = { error?: string; done?: boolean };
+export type RequestState = { error?: string; done?: boolean; requestId?: string };
 
 /**
  * "Request a custom plan" (docs/OFFERS.md): owner (billing permission) only, rate-limited per company. The owner of
@@ -25,8 +25,8 @@ export async function requestCustomPlanAction(_prev: RequestState, formData: For
   try {
     // What the plan already has is ticked and locked on the form; only the features on top of it are the request.
     const owned = user.businessId ? [...(await companyEntitlements(user.businessId)).inPlan] : [];
-    await createPlanRequest({ userId: user.id, actorId: user.actorId, businessId: user.businessId, raw, owned });
-    return { done: true };
+    const { id } = await createPlanRequest({ userId: user.id, actorId: user.actorId, businessId: user.businessId, raw, owned });
+    return { done: true, requestId: id };
   } catch (error) {
     if (error instanceof PlanRequestError) return { error: error.message };
     if (error instanceof RateLimitError) return { error: "You have sent a few requests today already. We will be in touch; you can also reply to our emails." };

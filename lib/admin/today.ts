@@ -66,8 +66,8 @@ export async function getTodayTimeline(now = new Date(), payments?: TodayPayment
   const range = { gte: since, lte: now };
   const [signups, booked, done, trialsStarted, trialsEnding, cancels, requests, paid] = await Promise.all([
     prisma.business.findMany({ where: { createdAt: range }, take: 50, orderBy: { createdAt: "desc" }, select: { id: true, name: true, createdAt: true, user: { select: { subscription: { select: { chosenPlan: true } } } } } }),
-    prisma.demoBooking.findMany({ where: { createdAt: range }, take: 50, select: { id: true, createdAt: true, startsAt: true, business: { select: { id: true, name: true } } } }),
-    prisma.demoBooking.findMany({ where: { status: "done", updatedAt: range }, take: 50, select: { id: true, updatedAt: true, business: { select: { id: true, name: true } } } }),
+    prisma.demoBooking.findMany({ where: { createdAt: range }, take: 50, select: { id: true, kind: true, createdAt: true, startsAt: true, business: { select: { id: true, name: true } } } }),
+    prisma.demoBooking.findMany({ where: { status: "done", updatedAt: range }, take: 50, select: { id: true, kind: true, updatedAt: true, business: { select: { id: true, name: true } } } }),
     prisma.analyticsEvent.findMany({ where: { name: EVENT_NAMES.trialStarted, createdAt: range }, take: 50, select: { id: true, createdAt: true, businessId: true } }),
     prisma.subscription.findMany({ where: { status: "TRIALING", trialEndsAt: { gte: since, lt: new Date(since.getTime() + DAY) } }, take: 50, select: { id: true, trialEndsAt: true, user: { select: { business: { select: { id: true, name: true } } } } } }),
     prisma.analyticsEvent.findMany({ where: { name: EVENT_NAMES.cancel, createdAt: range }, take: 50, select: { id: true, createdAt: true, businessId: true } }),
@@ -81,8 +81,8 @@ export async function getTodayTimeline(now = new Date(), payments?: TodayPayment
   const time = (d: Date) => d.toISOString();
   const items: TimelineItem[] = [
     ...signups.map((b) => ({ id: `signup:${b.id}`, at: time(b.createdAt), kind: "signup" as const, text: `${b.name} signed up${b.user.subscription?.chosenPlan ? ` and chose the ${b.user.subscription.chosenPlan.toLowerCase()} plan` : ""}.`, href: link(b.id) })),
-    ...booked.map((d) => ({ id: `booked:${d.id}`, at: time(d.createdAt), kind: "demo" as const, text: `${d.business.name} booked a demo for ${d.startsAt.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Kigali" })}.`, href: "/admin/demos" })),
-    ...done.map((d) => ({ id: `done:${d.id}`, at: time(d.updatedAt), kind: "demo" as const, text: `The demo with ${d.business.name} was done.`, href: link(d.business.id) })),
+    ...booked.map((d) => ({ id: `booked:${d.id}`, at: time(d.createdAt), kind: "demo" as const, text: `${d.business.name} booked ${d.kind === "custom_plan" ? "a custom plan call" : "a demo"} for ${d.startsAt.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Kigali" })}.`, href: "/admin/demos" })),
+    ...done.map((d) => ({ id: `done:${d.id}`, at: time(d.updatedAt), kind: "demo" as const, text: `The ${d.kind === "custom_plan" ? "custom plan call" : "demo"} with ${d.business.name} was done.`, href: link(d.business.id) })),
     ...trialsStarted.map((e) => ({ id: `trial:${e.id}`, at: time(e.createdAt), kind: "trial" as const, text: `${company(e.businessId)} started a free trial.`, href: link(e.businessId) })),
     ...trialsEnding.map((s) => ({ id: `trialend:${s.id}`, at: time(s.trialEndsAt as Date), kind: "trial" as const, text: `${s.user.business?.name ?? "A company"}'s trial ends today.`, href: link(s.user.business?.id ?? null) })),
     ...paid.map((p) => ({ id: `pay:${p.id}`, at: p.at, kind: "payment" as const, text: p.usdCents < 0 ? `${p.company} was refunded ${p.amount}.` : `${p.company} paid ${p.amount} by ${p.method}${p.agent ? ` (brought in by ${p.agent})` : ""}.`, href: p.href })),

@@ -53,7 +53,7 @@ export default async function DemosPage({ searchParams }: { searchParams: Promis
     <>
       <PageHeader
         title="Demos"
-        description={`Demo calls booked by new clients, in Africa/Kigali time. After the call, Activate account: start the trial (${settings.trialDays} ${settings.trialDays === 1 ? "day" : "days"} by default, set in Settings) or send an invoice.`}
+        description={`Demo calls booked by new clients, and custom plan calls booked by existing clients after a request, in Africa/Kigali time. After a demo, Activate account: start the trial (${settings.trialDays} ${settings.trialDays === 1 ? "day" : "days"} by default, set in Settings) or send an invoice. After a custom plan call, Customise plan from the request.`}
       />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
@@ -116,6 +116,12 @@ export default async function DemosPage({ searchParams }: { searchParams: Promis
                     <Td className="max-w-[14rem]">
                       <Link href={`/admin/companies/${d.businessId}`} className="block truncate font-medium underline">{d.businessName}</Link>
                       <span className="block text-xs text-muted">{[d.country, d.region].filter(Boolean).join(" · ")}</span>
+                      {d.kind === "custom_plan" && (
+                        <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <Badge tone="violet">Custom plan call</Badge>
+                          {d.requestId && <Link href={`/admin/requests?open=${d.requestId}#request-${d.requestId}`} className="text-xs underline">Request</Link>}
+                        </span>
+                      )}
                     </Td>
                     <Td className="max-w-[14rem]">
                       <span className="block truncate">{d.contactName ?? "-"}</span>

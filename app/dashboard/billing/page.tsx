@@ -23,6 +23,8 @@ import { companyPlans, type RegionalPlan } from "@/lib/region-prices";
 import { currencyNote } from "@/lib/region-format";
 import { clientInvoices, openInvoiceOf, payableView } from "@/lib/invoices/service";
 import { clientOffer, selfServeAddition, staleAdditionNotice } from "@/lib/offers/service";
+import { currentPlanCall } from "@/lib/demo/plan-calls";
+import { formatSlot } from "@/lib/demo/slots";
 import { cardQuoteOf, offerCardReady } from "@/lib/offers/card";
 import { getSettings } from "@/lib/admin/settings";
 import { renewalState } from "@/lib/billing/renewal";
@@ -52,7 +54,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   const trialEnd = formatDate(subscription.trialEndsAt);
   const cancelling = paid && subscription.cancelAtPeriodEnd;
   // The plans and prices of the company's region (never the visitor's IP), plus the plan the client chose at sign-up.
-  const [{ region, plans: regional }, currentPlan, chosen, momoSettings, momoPayment, offer] = await Promise.all([
+  const [{ region, plans: regional }, currentPlan, chosen, momoSettings, momoPayment, offer, planCall] = await Promise.all([
     companyPlans(business.id),
     getPlan(subscription.plan),
     chosenPlan ? getPlan(chosenPlan) : Promise.resolve(null),
@@ -60,6 +62,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
     currentManualPayment(subscription.userId),
     // A custom plan offer from the BuPulse team (docs/OFFERS.md); a failed lookup never breaks Billing.
     clientOffer(business.id).catch(() => null),
+    // The short call booked after a custom plan request (lib/demo/plan-calls.ts), if one is coming up.
+    currentPlanCall(business.id).catch(() => null),
   ]);
   // Retired and hidden plans stay listed for the clients already on them, so "Your current plan" is still shown.
   const pickable: RegionalPlan[] = [
@@ -258,6 +262,14 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
         <div>
           <strong>Need something different?</strong>
           <p className="text-sm text-muted">{paid ? "Tell us what to change and we send you an offer: you pay only for what you add, for the days left in your period." : "Tell us what your business needs and we put together a custom plan with only what you use."}</p>
+          {planCall && (
+            <p className="mt-1 text-sm">
+              Your call about it is on {formatSlot(planCall.startsAt)} (Kigali).{" "}
+              <Link href="/custom-plan/call" className="font-semibold underline">
+                See or move your call
+              </Link>
+            </p>
+          )}
         </div>
         <Link href="/custom-plan?from=billing" className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold no-underline">
           {paid ? "Request a custom change" : "Request a custom plan"}

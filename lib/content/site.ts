@@ -16,6 +16,7 @@ import {
   PenLine,
   Scissors,
   Smartphone,
+  Sparkles,
   Stethoscope,
   Store,
   Utensils,
@@ -82,6 +83,10 @@ export interface Feature {
   text: string;
   icon: LucideIcon;
   soon?: boolean;
+  /** A short badge saying how the feature comes (e.g. not in every plan). */
+  note?: string;
+  /** Takes the whole row of the grid (the last card, so the grid never ends on a lone card). */
+  wide?: boolean;
 }
 
 export const features: Feature[] = [
@@ -91,6 +96,8 @@ export const features: Feature[] = [
   { title: "Lead-capturing chat", icon: MessageCircle, text: "One line of code on your website. It answers visitors and saves their name, email and what they need." },
   { title: "Brand designs", icon: Image, text: "Ready-to-post graphics with your logo and colors. Or just describe the image you want." },
   { title: "Video and voiceover", icon: Video, text: "Turn your photos and scripts into short videos with a natural voice.", soon: true },
+  // Not in the standard plans: it comes with a custom plan or as an add-on (lib/offers/shared.ts ADDONS), so the card says so.
+  { title: "Autopilot", icon: Sparkles, text: "AI plans your week of posts: new arrivals, offers and tips, each written for every network with a design. You approve them all with one tap and they go out on schedule. Comes with a custom plan, or as an add-on to yours.", note: "Custom plan or add-on", wide: true },
 ];
 
 export const steps = [

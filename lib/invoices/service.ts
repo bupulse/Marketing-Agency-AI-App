@@ -220,7 +220,7 @@ export async function createActivationInvoice(ctx: AdminContext, input: { busine
         },
       });
       // The demo has happened: the booking is done, as Start trial does.
-      await tx.demoBooking.updateMany({ where: { businessId: business.id, status: "booked" }, data: { status: "done" } });
+      await tx.demoBooking.updateMany({ where: { businessId: business.id, kind: "demo", status: "booked" }, data: { status: "done" } });
       await writeAudit(tx, ctx, "create_invoice", `invoice:${row.id}`, null, { number, businessId: business.id, planKey: plan.key, interval, currency: row.currency, totalMinor: totals.totalMinor, activation: true });
       return row;
     });

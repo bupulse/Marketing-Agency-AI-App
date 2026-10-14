@@ -46,7 +46,7 @@ async function afterDemo(n: number) {
   await ensureAccount(authUser(n, "Rwanda") as never);
   const company = companyOf(h.db, n);
   company.subscription.chosenPlan = "BUSINESS";
-  h.db.demoBooking.rows.push({ id: `demo${n}`, businessId: company.businessId, status: "booked", planKey: "BUSINESS", startsAt: new Date("2026-10-13T07:00:00Z"), endsAt: new Date("2026-10-13T07:30:00Z") });
+  h.db.demoBooking.rows.push({ id: `demo${n}`, businessId: company.businessId, kind: "demo", status: "booked", planKey: "BUSINESS", startsAt: new Date("2026-10-13T07:00:00Z"), endsAt: new Date("2026-10-13T07:30:00Z") });
   return company;
 }
 

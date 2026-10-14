@@ -1722,30 +1722,37 @@ model AdminAvailability {
   @@index([weekday])
 }
 
-// A demo call booked by a new client. One live ("booked") booking per start time and one per company (partial unique
-// indexes in the migration). A reschedule updates the row in place (same UID, SEQUENCE + 1).
+// A call with the owner, on the same slots, buffers, daily cap and calendar: the demo a new client books before its
+// trial (kind "demo"), or a short call about a custom plan request from an existing client (kind "custom_plan",
+// lib/demo/plan-calls.ts; never part of the PENDING_DEMO -> trial steps). One live ("booked") booking per start time,
+// and one per company and kind (partial unique indexes in the migrations). A reschedule updates the row in place (same
+// UID, SEQUENCE + 1).
 model DemoBooking {
-  id                  String    @id @default(cuid())
+  id                  String             @id @default(cuid())
   businessId          String
-  business            Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  planKey             String // the plan chosen when booking
+  business            Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  kind                String             @default("demo") // demo | custom_plan
+  requestId           String? // the custom plan request a custom_plan call was booked from
+  request             CustomPlanRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  planKey             String // the plan chosen when booking (a call: the company's plan at the time)
   startsAt            DateTime
   endsAt              DateTime
-  status              String    @default("booked") // booked | done | no_show | cancelled
+  status              String             @default("booked") // booked | done | no_show | cancelled
   notes               String?
   meetingLink         String? // the reusable meeting link at the time of booking
-  icsToken            String    @unique // 32 random bytes, base64url (lib/demo/bookings.ts newIcsToken): the secret of the .ics route
-  sequence            Int       @default(0) // iCalendar SEQUENCE: bumped on every reschedule and on cancel, so calendars move the same event
+  icsToken            String             @unique // 32 random bytes, base64url (lib/demo/bookings.ts newIcsToken): the secret of the .ics route
+  sequence            Int                @default(0) // iCalendar SEQUENCE: bumped on every reschedule and on cancel, so calendars move the same event
   googleEventId       String? // the event in the owner's Google Calendar (lib/google-calendar), when it was connected at booking time
   meetLink            String? // the Google Meet link Google generated for that event (also copied into meetingLink)
-  googleSyncPending   Boolean   @default(false) // a change to the booking has not reached the Google event yet (retried: lib/google-calendar/events.ts)
+  googleSyncPending   Boolean            @default(false) // a change to the booking has not reached the Google event yet (retried: lib/google-calendar/events.ts)
   googleSyncError     String? // why the last attempt failed, shown on Admin -> Demos
   googleSyncAttemptAt DateTime? // the last attempt, so retries are spaced out
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
   @@index([startsAt])
   @@index([businessId, status])
+  @@index([requestId])
 }
 
 // One price change of one plan. Existing subscribers move to the new price at a renewal, after notice (increase).
@@ -2015,6 +2022,7 @@ model CustomPlanRequest {
   updatedAt     DateTime  @updatedAt
 
   offers PlanOffer[]
+  calls  DemoBooking[] // the short calls booked right after sending it (lib/demo/plan-calls.ts)
 
   @@index([status, createdAt])
   @@index([businessId, createdAt])

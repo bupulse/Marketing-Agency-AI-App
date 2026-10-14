@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
-import { CustomPlanForm } from "@/components/offers/custom-plan-form";
+import { CustomPlanForm, type CallStep } from "@/components/offers/custom-plan-form";
+import { getSettings } from "@/lib/admin/settings";
 import { checkActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
+import { currentPlanCall } from "@/lib/demo/plan-calls";
+import { formatSlot } from "@/lib/demo/slots";
 import { isFeatureKey } from "@/lib/features";
 import { companyEntitlements } from "@/lib/entitlements";
 import { askMessage, can } from "@/lib/team/roles";
@@ -17,7 +20,8 @@ export const metadata: Metadata = {
 
 // "Need something different? Request a custom plan" from the pricing page, Billing, "Add to your plan" and the demo
 // screen (docs/OFFERS.md). Signed-in companies only (a visitor signs up first; proxy.ts sends them to sign in), in any
-// state, including while waiting for the demo, so the request can be talked through in the demo call.
+// state, including while waiting for the demo, so the request can be talked through in the demo call. An existing client
+// may then pick a time for a short call about it (/custom-plan/call, lib/demo/plan-calls.ts).
 export default async function CustomPlanPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const check = await checkActiveUser();
   if (check.status === "signed_out") redirect(`/signup?next=${encodeURIComponent("/custom-plan")}`);
@@ -41,6 +45,12 @@ export default async function CustomPlanPage({ searchParams }: { searchParams: P
   // What the plan already includes is ticked and locked on the form, so only missing features can be asked for.
   const owned = user.businessId ? [...(await companyEntitlements(user.businessId)).inPlan] : [];
   const back = pendingDemo ? { href: "/dashboard", label: "Back to your demo" } : { href: "/dashboard/billing", label: "Back to Billing" };
+  // The call step after sending: not while waiting for the demo (the demo is that call).
+  let call: CallStep | null = null;
+  if (!pendingDemo && user.businessId && can(user.role, "billing")) {
+    const [live, settings] = await Promise.all([currentPlanCall(user.businessId), getSettings()]);
+    call = { minutes: settings.slotMinutes, booked: live ? formatSlot(live.startsAt) : null };
+  }
 
   return (
     <OnboardingShell>
@@ -58,6 +68,7 @@ export default async function CustomPlanPage({ searchParams }: { searchParams: P
           initial={{ description: business.description ?? business.industryDescription ?? "", phone: business.phone ?? "", features: isFeatureKey(feature) ? [feature] : [] }}
           owned={owned}
           back={back}
+          call={call}
         />
       ) : (
         <p className="rounded-2xl bg-soft px-4 py-3 text-[15px]">{askMessage("billing")}</p>
