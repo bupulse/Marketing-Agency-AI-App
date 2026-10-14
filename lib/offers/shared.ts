@@ -112,6 +112,37 @@ function priceOf(prices: readonly AddonPriceRow[], key: string, regionKey: strin
 const EMPTY_LIMITS: PlanLimits = { text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0, seats: SEATS_MIN };
 
 /**
+ * What a custom plan includes before any block is bought: the base plan's limits plus what each added feature brings
+ * (website chat: 500 chat replies; AI photos: 30 images). The editor's fields start there and never go below it.
+ */
+export function offerIncluded(base: OfferBase | null, features: readonly string[], managedTier: ManagedTier = "light"): OfferLimits {
+  const baseFeatures = base?.features ?? [];
+  const baseLimits = base?.limits ?? EMPTY_LIMITS;
+  const included: OfferLimits = { text: baseLimits.text, image: baseLimits.image, chat: baseLimits.chat, seats: baseLimits.seats, postsPerAppPerDay: postsPerAppLimit(baseLimits) };
+  for (const key of resolveOfferFeatures(features, managedTier, baseFeatures)) {
+    if (baseFeatures.includes(key)) continue;
+    const addon = addonOf(featureAddonKey(key, managedTier));
+    const inc = addon?.kind === "feature" ? addon.includes : undefined;
+    if (inc) included[inc.metric] += inc.amount;
+  }
+  return included;
+}
+
+/**
+ * A plan's limits with every included amount kept: a feature in the plan that brings units (website chat, AI photos)
+ * never ends up with less than it includes. A limit of 0 would refuse every use (lib/usage.ts consumeUsage), so the
+ * client's chat would never answer. Used when a custom plan is made from an offer that was saved before this rule.
+ */
+export function withIncludedLimits<T extends Pick<PlanLimits, OfferMetric>>(limits: T, features: readonly string[]): T {
+  const out = { ...limits };
+  for (const key of features) {
+    const inc = isFeatureKey(key) ? FEATURE_INCLUDES[key] : undefined;
+    if (inc && !(out[inc.metric] >= inc.amount)) out[inc.metric] = inc.amount;
+  }
+  return out;
+}
+
+/**
  * The offer's priced lines and total for its interval, from the base plan's regional price and the region's add-on
  * prices: one line per feature added on top of the base plan, then blocks for limits above what is included, then
  * extra users. Yearly add-ons cost YEARLY_MONTHS months; a yearly base plan costs its own yearly price.
@@ -133,7 +164,7 @@ export function quoteOffer(input: OfferQuoteInput): OfferQuote {
   };
   if (input.base) lines.push({ key: `plan:${input.base.key}`, label: `${input.base.name} plan`, quantity: 1, unitMinor: yearly ? input.base.yearlyMinor : input.base.monthlyMinor, totalMinor: yearly ? input.base.yearlyMinor : input.base.monthlyMinor });
 
-  const included: OfferLimits = { text: baseLimits.text, image: baseLimits.image, chat: baseLimits.chat, seats: baseLimits.seats, postsPerAppPerDay: postsPerAppLimit(baseLimits) };
+  const included = offerIncluded(input.base, input.features, tier);
   for (const key of added) {
     const def = FEATURES.find((f) => f.key === key);
     if (!def) continue;
@@ -141,24 +172,24 @@ export function quoteOffer(input: OfferQuoteInput): OfferQuote {
     const addon = addonOf(addonKey);
     const label = addon?.label ?? def.label;
     line(addonKey, label, 1, priceOf(input.prices, addonKey, input.regionKey, input.currency));
-    const inc = addon?.kind === "feature" ? addon.includes : undefined;
-    if (inc) included[inc.metric] += inc.amount;
   }
+  // A limit is never below what the plan and its features include (they are paid for already): 0 chat replies with
+  // website chat in the plan would refuse every reply.
+  const limit = (m: OfferMetric | "seats") => Math.max(input.limits[m], included[m]);
   for (const metric of OFFER_METRICS) {
-    const want = input.limits[metric];
-    const extra = want - included[metric];
+    const extra = limit(metric) - included[metric];
     if (extra <= 0) continue;
     const block = ADDONS.find((a) => a.kind === "block" && a.metric === metric) as Extract<AddonDef, { kind: "block" }>;
     line(block.key, block.label, Math.ceil(extra / block.blockSize), priceOf(input.prices, block.key, input.regionKey, input.currency));
   }
-  const extraSeats = input.limits.seats - included.seats;
+  const extraSeats = limit("seats") - included.seats;
   if (extraSeats > 0) line("seat", "Extra user", extraSeats, priceOf(input.prices, "seat", input.regionKey, input.currency));
 
   return {
     features,
     added,
     // Video sold on top of a plan without it brings the video plans' seconds (8 videos of up to 30 s a month).
-    limits: { ...baseLimits, text: input.limits.text, image: input.limits.image, chat: input.limits.chat, seats: input.limits.seats, postsPerAppPerDay: postsPerAppLimit({ postsPerAppPerDay: input.limits.postsPerAppPerDay ?? postsPerAppLimit(baseLimits) }), ...(added.includes("video") ? { videos: Math.max(baseLimits.videos, VIDEO_PLAN_VIDEOS) } : {}), ...(added.includes("voice") ? { voiceCharacters: Math.max(baseLimits.voiceCharacters, VOICE_PLAN_CHARACTERS) } : {}) },
+    limits: { ...baseLimits, text: limit("text"), image: limit("image"), chat: limit("chat"), seats: limit("seats"), postsPerAppPerDay: postsPerAppLimit({ postsPerAppPerDay: input.limits.postsPerAppPerDay ?? postsPerAppLimit(baseLimits) }), ...(added.includes("video") ? { videos: Math.max(baseLimits.videos, VIDEO_PLAN_VIDEOS) } : {}), ...(added.includes("voice") ? { voiceCharacters: Math.max(baseLimits.voiceCharacters, VOICE_PLAN_CHARACTERS) } : {}) },
     included,
     lines,
     computedMinor: lines.reduce((s, l) => s + l.totalMinor, 0),
@@ -308,14 +339,24 @@ export function additionFits(addition: Pick<OfferAddition, "currentPlanKey" | "p
 }
 
 /**
- * The features a client can add by themselves on Billing ("Add features"): built, not in the plan yet, and priced in
- * the region (with every prerequisite they would pull in). Managed by BuPulse (two tiers) and anything unpriced go
- * through "Request a custom change".
+ * The features a client can add by themselves on Billing ("Add features"): built, set up (not in `notSetUp`: none of
+ * their services has BuPulse's keys yet, lib/feature-setup.ts), not in the plan yet, and priced in the region (with
+ * every prerequisite they would pull in). Managed by BuPulse (two tiers) and anything unpriced go through "Request a custom
+ * change".
  */
-export function selfServeFeatures(owned: readonly FeatureKey[], prices: readonly AddonPriceRow[], regionKey: string, currency: string): FeatureKey[] {
+export function selfServeFeatures(owned: readonly FeatureKey[], prices: readonly AddonPriceRow[], regionKey: string, currency: string, notSetUp: readonly FeatureKey[] = []): FeatureKey[] {
   const has = new Set(owned);
   const priced = (k: FeatureKey) => prices.some((p) => p.addonKey === k && p.regionKey === regionKey && p.currency.toUpperCase() === currency.toUpperCase() && p.monthlyMinor >= 0);
-  return FEATURES.filter((f) => f.status === "built" && f.key !== "managed" && !has.has(f.key) && withPrerequisites([f.key]).every((k) => has.has(k) || priced(k))).map((f) => f.key);
+  return FEATURES.filter((f) => f.status === "built" && f.key !== "managed" && !has.has(f.key) && withPrerequisites([f.key]).every((k) => has.has(k) || (priced(k) && !notSetUp.includes(k)))).map((f) => f.key);
+}
+
+/** Features not in the plan that cannot be sold yet because they are not set up: "Coming soon" on Billing and in the editor. */
+export const comingSoonAddons = (owned: readonly FeatureKey[], notSetUp: readonly FeatureKey[]): FeatureKey[] => notSetUp.filter((k) => !owned.includes(k));
+
+/** An offer may not sell a feature that is not set up (it may keep one its base plan already has). Null when fine. */
+export function notSetUpProblem(added: readonly FeatureKey[], notSetUp: readonly FeatureKey[]): string | null {
+  const bad = added.find((k) => notSetUp.includes(k));
+  return bad ? `${featureLabel(bad)} is coming soon (it is not set up yet), so it cannot be sold. Untick it, or set it up first in Admin → Services.` : null;
 }
 
 /** How an accepted offer is paid (PlanOffer.payMethod; the database's PlanOffer_pay_method_check must allow each). */

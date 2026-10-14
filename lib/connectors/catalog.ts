@@ -1,5 +1,6 @@
 import "server-only";
 import { disabledServices } from "@/lib/admin/switch";
+import { serviceSetUp } from "@/lib/feature-setup";
 import type { FeatureKey } from "@/lib/features";
 import type { ConnectorEntry, ConnectorGroup, ConnectorId, ConnectorStatus } from "./types";
 
@@ -68,9 +69,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 /**
  * Every connector's status for one business, fetched in parallel. A connector that throws or is slow shows as
  * "needs attention"; it never breaks the page or the other cards. With `features` (the plan's, from
- * lib/entitlements.ts), a connector whose feature is missing shows "Add to your plan" instead of Connect.
+ * lib/entitlements.ts), a connector whose feature is missing shows "Add to your plan" instead of Connect, unless
+ * BuPulse's own keys for it are not set (`isSetUp`, lib/feature-setup.ts): then it is "Coming soon", never sold.
  */
-export async function getCatalog(ctx: { userId: string; businessId: string; features?: ReadonlySet<FeatureKey> }, entries: ConnectorEntry[] = ENTRIES): Promise<CatalogItem[]> {
+export async function getCatalog(ctx: { userId: string; businessId: string; features?: ReadonlySet<FeatureKey> }, entries: ConnectorEntry[] = ENTRIES, isSetUp: (id: ConnectorId) => boolean = serviceSetUp): Promise<CatalogItem[]> {
   const byId = new Map(entries.map((e) => [e.id, e]));
   const off = await disabledServices(); // switched off in the admin console
   const ids = [...new Set<ConnectorId>([...(Object.keys(PLANNED) as ConnectorId[]), ...entries.map((e) => e.id)])];
@@ -81,6 +83,8 @@ export async function getCatalog(ctx: { userId: string; businessId: string; feat
       if (!entry) return { id, ...planned, status: { state: "unavailable" }, connectHref: null, manageHref: null };
       let status: ConnectorStatus;
       if (ctx.features && !ctx.features.has(CONNECTOR_FEATURE[id])) {
+        // Not set up yet (no keys): nothing to add to a plan, it cannot be used by anyone.
+        if (!isSetUp(id)) return { id, name: entry.name, group: entry.group, description: entry.description, icon: entry.icon, status: { state: "unavailable" }, connectHref: null, manageHref: null };
         return { id, name: entry.name, group: entry.group, description: entry.description, icon: entry.icon, status: { state: "not_in_plan", detail: "Not part of your plan yet." }, connectHref: null, manageHref: `/dashboard/upgrade?feature=${CONNECTOR_FEATURE[id]}` };
       }
       if (off.has(id)) {

@@ -5,10 +5,11 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Field, GlassCard, Input, Select, useToast } from "@/components/ui";
 import { cancelMomoPayment, momoPaymentStatus, startMomoPayment, startMomoProofUpload, submitMomoProof } from "@/app/dashboard/billing/actions";
-import { formatMomoAmount, MOMO_NETWORKS, mtnMomoPayDial, NETWORK_LABEL, PROOF_BUCKET, PROOF_TYPES, proofFileProblem, proofSchema, ussdHref, type ManualPaymentView, type MomoPayDetails } from "@/lib/billing/momo-shared";
+import { checkingText, formatMomoAmount, MOMO_NETWORKS, mtnMomoPayDial, NETWORK_LABEL, PROOF_BUCKET, PROOF_TYPES, proofFileProblem, proofSchema, ussdHref, type ManualPaymentView, type MomoPayDetails } from "@/lib/billing/momo-shared";
 import { scaledSize } from "@/lib/media/rules";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, intervalWord } from "./helpers";
+import { clearMomoPayState, setPayState } from "./pay-state";
 
 const POLL_MS = 5000;
 
@@ -38,8 +39,15 @@ export function MomoPayment({ payment, details }: Props) {
   const [noTransactionId, setNoTransactionId] = useState(false);
   const [screenshot, setScreenshot] = useState<File | null>(null);
   const [preparing, setPreparing] = useState(false);
-  const waiting = payment.status === "pending" && payment.submitted;
+  // Sent a moment ago: shown as being checked at once, before the page has refreshed (and pay buttons elsewhere hide).
+  const [justSent, setJustSent] = useState(false);
+  const waiting = payment.status === "pending" && (payment.submitted || justSent);
   const announced = useRef(false);
+
+  // Decided (confirmed, rejected) or gone: the pay buttons elsewhere on the page may show again.
+  useEffect(() => {
+    if (!waiting) clearMomoPayState(payment.reference);
+  }, [waiting, payment.reference]);
 
   // Waiting for approval: ask for the payment's status every few seconds; the page re-renders once it is decided.
   useEffect(() => {
@@ -52,6 +60,7 @@ export function MomoPayment({ payment, details }: Props) {
         const now = await momoPaymentStatus();
         if (!now || now.id !== payment.id || now.status !== "pending") {
           clearInterval(timer);
+          clearMomoPayState(payment.reference);
           if (now?.id === payment.id && now.status === "confirmed" && !announced.current) {
             announced.current = true;
             toast("You are all set. Your plan is active.", "success");
@@ -65,7 +74,7 @@ export function MomoPayment({ payment, details }: Props) {
       }
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [waiting, payment.id, router, toast]);
+  }, [waiting, payment.id, payment.reference, router, toast]);
 
   function copy(text: string, what: string) {
     navigator.clipboard?.writeText(text).then(
@@ -114,6 +123,8 @@ export function MomoPayment({ payment, details }: Props) {
       }
       const result = await submitMomoProof({ ...fields, proofPath });
       if (result.ok) {
+        setJustSent(true);
+        setPayState({ kind: "momo", reference: payment.reference });
         toast("Thanks. We are checking your payment now.", "success");
         router.refresh();
       } else {
@@ -149,7 +160,11 @@ export function MomoPayment({ payment, details }: Props) {
     details.airtelNumber ? `Airtel: dial *182#, choose Send money, send ${amount} to ${details.airtelNumber}${details.accountName ? ` (${details.accountName})` : ""} and put ${payment.reference} as the reference.` : null,
     "Wait for the confirmation message, then tap I have paid: add the transaction id from it and a screenshot.",
   ].filter((x): x is string => Boolean(x));
-  const title = payment.invoiceId ? `Invoice ${payment.reference} · ${payment.planName} · ${amount}` : `${payment.planName} · ${amount} per ${intervalWord(payment.interval)}`;
+  const title = payment.invoiceId
+    ? `Invoice ${payment.reference} · ${payment.addition ? "Added features" : payment.planName} · ${amount}`
+    : payment.addition
+      ? `Added features · ${amount}, paid once`
+      : `${payment.planName} · ${amount} per ${intervalWord(payment.interval)}`;
 
   if (payment.status === "confirmed") {
     return (
@@ -187,13 +202,14 @@ export function MomoPayment({ payment, details }: Props) {
   }
 
   if (waiting) {
+    const sentTransaction = payment.transactionId ?? (justSent && !noTransactionId ? transactionId.trim() : null);
     return (
       <GlassCard role="status" className="flex items-start gap-3 border border-pulse-blue/30 p-5">
         <Loader2 aria-hidden className="mt-0.5 size-5 shrink-0 animate-spin text-pulse-blue motion-reduce:animate-none" />
         <div className="flex flex-col gap-1">
-          <strong>Waiting for approval · usually a few minutes</strong>
+          <strong>{checkingText(payment.reference)}</strong>
           <p className="text-sm text-muted">
-            {title}. Reference <span className="font-mono">{payment.reference}</span>, {payment.transactionId ? `transaction ${payment.transactionId}` : "screenshot sent"}. We are checking it now; this page updates by itself and we also email you.
+            {title}. {sentTransaction ? `Transaction ${sentTransaction}` : "Screenshot sent"}. You do not need to pay again: this page updates by itself once it is confirmed, and we also email you.
           </p>
         </div>
       </GlassCard>
@@ -209,7 +225,9 @@ export function MomoPayment({ payment, details }: Props) {
             {amount}
           </strong>
           <span className="text-sm text-muted">
-            {payment.invoiceId ? `Invoice ${payment.reference}: ${payment.planName}, ${payment.interval === "YEAR" ? "one year" : "one month"}.` : `${payment.planName}, billed ${payment.interval === "YEAR" ? "yearly" : "every month"}.`} Nothing renews by itself: we remind you before it ends.
+            {payment.addition
+              ? `${payment.invoiceId ? `Invoice ${payment.reference}: the` : "The"} features you added, for the days left of your ${payment.interval === "YEAR" ? "year" : "month"}, paid once. Your plan's renewal date does not change.`
+              : `${payment.invoiceId ? `Invoice ${payment.reference}: ${payment.planName}, ${payment.interval === "YEAR" ? "one year" : "one month"}.` : `${payment.planName}, billed ${payment.interval === "YEAR" ? "yearly" : "every month"}.`} Nothing renews by itself: we remind you before it ends.`}
           </span>
           {payment.periodNote && (
             <span className={payment.periodNote.mode === "replace" ? "text-sm font-medium text-danger" : "text-sm text-muted"}>

@@ -9,6 +9,7 @@ import { cancelSubscription, openPortal, resumeSubscription, startCheckout, star
 import { methodReason, type MethodState } from "@/lib/billing/pay-methods";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 import { openCheckout } from "./checkout";
+import { PayStateNote, usePayState } from "./pay-state";
 
 /**
  * Renewing the current plan, shown only in the last days of the paid period (lib/billing/renewal.ts): Mobile Money and
@@ -37,6 +38,8 @@ export function PlanActions({ cancelAtPeriodEnd, pastDue, periodEnd, method = "c
   const [pending, start] = useTransition();
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState<"momo" | "card" | null>(null);
+  // A payment was just reported or a card payment just went through: no renewing while the page refreshes.
+  const payState = usePayState();
   const { resolvedTheme } = useTheme();
 
   const renewByMomo = (r: Renewal) => {
@@ -80,7 +83,9 @@ export function PlanActions({ cancelAtPeriodEnd, pastDue, periodEnd, method = "c
       }
     });
   };
-  const renewal = renew ? (
+  const renewal = renew && payState ? (
+    <PayStateNote state={payState} />
+  ) : renew ? (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-3">
         <Button onClick={() => renewByMomo(renew)} disabled={pending || renew.momo !== "ready"} leading={<Smartphone aria-hidden className="size-4" />}>

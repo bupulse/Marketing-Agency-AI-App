@@ -10,6 +10,7 @@ import { openRegionMismatches } from "@/lib/region-check";
 import { money } from "./format";
 import type { Permission } from "@/lib/staff/permissions";
 import { kigaliDayStart } from "@/lib/time/kigali";
+import { TO_CHECK_WHERE } from "@/lib/billing/momo-shared";
 
 export type InboxItem = { id: string; text: string; sub?: string; href: string; at?: string };
 export type InboxSection = { key: InboxKey; title: string; why: string; href: string; count: number; tone: "danger" | "violet" | "neutral"; items: InboxItem[] };
@@ -50,7 +51,7 @@ export const getInboxCounts = cache(async (): Promise<Record<InboxKey, number> &
   const now = new Date();
   const since24h = new Date(now.getTime() - 24 * HOUR);
   const [payments, approvals, demos, requests, invoices, offers, contests, regions, errors] = await Promise.all([
-    safe(prisma.manualPayment.count({ where: { status: "pending", submittedAt: { not: null } } }), 0),
+    safe(prisma.manualPayment.count({ where: TO_CHECK_WHERE }), 0),
     safe(prisma.adminApproval.count({ where: { status: "pending", createdAt: { gt: new Date(now.getTime() - APPROVAL_TTL_MS) } } }), 0),
     safe(prisma.demoBooking.count({ where: demoWhere(now) }), 0),
     safe(prisma.customPlanRequest.count({ where: { status: "new" } }), 0),
@@ -64,6 +65,12 @@ export const getInboxCounts = cache(async (): Promise<Record<InboxKey, number> &
   // Errors are shown, but they are not a to-do item of their own (Health and Errors own them).
   return { ...counts, total: payments + approvals + demos + requests + invoices + offers + contests + regions };
 });
+
+/** Who the console keeps the counts live for: anyone who sees one of the counted lists (or the Overview). */
+export const LIVE_COUNT_PERMISSIONS: readonly Permission[] = ["payments.view", "payments.approve", "approvals.decide", "demos", "requests", "clients.view", "clients.manage", "system", "overview"];
+
+/** The counts as one comparable string: the console refreshes when it changes (components/admin/live-counts.tsx). */
+export const countsSignature = (counts: Record<InboxKey, number>): string => (Object.keys(INBOX_PERMISSION) as InboxKey[]).map((k) => `${k}:${counts[k] ?? 0}`).join(",");
 
 const startOfDay = kigaliDayStart;
 
@@ -82,7 +89,7 @@ export async function getInbox(now = new Date()): Promise<{ sections: InboxSecti
   const counts = await getInboxCounts();
   const since24h = new Date(now.getTime() - 24 * HOUR);
   const [payments, approvals, demos, requests, invoices, offers, contests, regions, errors] = await Promise.all([
-    safe(prisma.manualPayment.findMany({ where: { status: "pending", submittedAt: { not: null } }, orderBy: { submittedAt: "asc" }, take: SHOW, select: { id: true, reference: true, amountMinor: true, currency: true, network: true, submittedAt: true, user: { select: { email: true, business: { select: { name: true } } } } } }), []),
+    safe(prisma.manualPayment.findMany({ where: TO_CHECK_WHERE, orderBy: { submittedAt: "asc" }, take: SHOW, select: { id: true, reference: true, amountMinor: true, currency: true, network: true, submittedAt: true, user: { select: { email: true, business: { select: { name: true } } } } } }), []),
     safe(prisma.adminApproval.findMany({ where: { status: "pending", createdAt: { gt: new Date(now.getTime() - APPROVAL_TTL_MS) } }, orderBy: { createdAt: "asc" }, take: SHOW, select: { id: true, kind: true, requestedBy: true, createdAt: true } }), []),
     safe(prisma.demoBooking.findMany({ where: demoWhere(now), orderBy: { startsAt: "asc" }, take: SHOW, select: { id: true, kind: true, startsAt: true, planKey: true, business: { select: { id: true, name: true } } } }), []),
     safe(prisma.customPlanRequest.findMany({ where: { status: "new" }, orderBy: { createdAt: "asc" }, take: SHOW, select: { id: true, companyName: true, budget: true, createdAt: true } }), []),

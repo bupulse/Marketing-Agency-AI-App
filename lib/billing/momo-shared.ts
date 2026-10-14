@@ -306,6 +306,8 @@ export type ManualPaymentView = {
   invoiceId: string | null;
   /** The custom plan offer this payment pays (docs/OFFERS.md), or null. */
   offerId: string | null;
+  /** It pays features added to the running plan: one prorated payment, not a plan per month. */
+  addition?: boolean;
   status: ManualPaymentStatus;
   submitted: boolean;
   transactionId: string | null;
@@ -319,6 +321,31 @@ export type ManualPaymentView = {
   decidedAt: string | null;
   periodEnd: string | null;
 };
+
+/**
+ * The payments the owner has to check: reported ("I have paid") and not decided. The one filter behind the Payments
+ * page, the Overview card and count, the Inbox and the sidebar badge, so they always agree.
+ */
+export const TO_CHECK_WHERE = { status: "pending", submittedAt: { not: null } } as const;
+
+/** How long checking a reported Mobile Money payment usually takes, as the client reads it. */
+export const MOMO_CHECK_TIME = "a few minutes";
+
+/** What the client sees once they tapped "I have paid": the other ways to pay are hidden until it is decided. */
+export const checkingText = (reference: string) => `We're checking your payment (reference ${reference}), usually within ${MOMO_CHECK_TIME}.`;
+
+/** A reported payment the owner has not decided yet: the client waits, and must not be offered to pay again. */
+export const isBeingChecked = (p: Pick<ManualPaymentView, "status" | "submitted"> | null | undefined): boolean => p?.status === "pending" && p.submitted === true;
+
+/**
+ * The reference of a reported payment of this offer (its own, or of the invoice made from it) that is being checked,
+ * or null. While it is set the offer shows "we're checking your payment" instead of its pay buttons.
+ */
+export function offerCheckingReference(payment: Pick<ManualPaymentView, "status" | "submitted" | "reference" | "offerId" | "invoiceId"> | null | undefined, offer: { id: string; invoiceId: string | null } | null | undefined): string | null {
+  if (!payment || !offer || !isBeingChecked(payment)) return null;
+  const mine = payment.offerId === offer.id || (offer.invoiceId !== null && payment.invoiceId === offer.invoiceId);
+  return mine ? payment.reference : null;
+}
 
 /** The owner's payment details, as shown on the pay screen. */
 export type MomoPayDetails = Pick<MomoSettings, "merchantCode" | "momoNumber" | "accountName" | "airtelNumber">;

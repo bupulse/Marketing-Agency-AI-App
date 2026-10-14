@@ -16,6 +16,7 @@ import {
   METRIC_LABEL,
   OFFER_METRICS,
   OFFER_VALID_DAYS_MAX,
+  offerIncluded,
   quoteAddition,
   quoteOffer,
   removalBlockedBy,
@@ -47,13 +48,18 @@ export type OfferEditorInitial = {
  * Round or discount it with a reason, choose monthly or yearly, and preview what the client will see. Save keeps a
  * draft; Save and send emails the company owner. The server prices it again with the same maths (lib/offers/shared.ts).
  */
-export function OfferEditor({ businessId, offerId, region, bases, prices, initial, addition, additionUnavailable, ownerEmail, now }: { businessId: string; offerId: string | null; region: { key: string; name: string; currency: string }; bases: OfferBase[]; prices: AddonPriceRow[]; initial: OfferEditorInitial; /** The client's running Mobile Money plan, for "Add to current plan" (null: not possible, see additionUnavailable). */ addition?: { current: CurrentPlanForAddition; interval: "MONTH" | "YEAR"; periodEnd: string } | null; additionUnavailable?: string | null; ownerEmail: string | null; /** The page's render time (ISO), for the preview's "open until". */ now: string }) {
+export function OfferEditor({ businessId, offerId, region, bases, prices, initial, addition, additionUnavailable, notSetUp = [], ownerEmail, now }: { businessId: string; offerId: string | null; region: { key: string; name: string; currency: string }; bases: OfferBase[]; prices: AddonPriceRow[]; initial: OfferEditorInitial; /** The client's running Mobile Money plan, for "Add to current plan" (null: not possible, see additionUnavailable). */ addition?: { current: CurrentPlanForAddition; interval: "MONTH" | "YEAR"; periodEnd: string } | null; additionUnavailable?: string | null; /** Built features that are not set up yet (lib/feature-setup.ts): "Coming soon", not sold. */ notSetUp?: readonly FeatureKey[]; ownerEmail: string | null; /** The page's render time (ISO), for the preview's "open until". */ now: string }) {
   const currency = region.currency;
   const [mode, setMode] = useState<"plan" | "addon">(initial.mode === "addon" && addition ? "addon" : "plan");
   const adding = mode === "addon" && addition ? addition : null;
   const [baseKey, setBaseKey] = useState(initial.basePlanKey ?? "");
   const [selected, setSelected] = useState<FeatureKey[]>(initial.features);
-  const [limits, setLimits] = useState<Record<keyof OfferLimits, string>>({ text: String(initial.limits.text), image: String(initial.limits.image), chat: String(initial.limits.chat), seats: String(initial.limits.seats), postsPerAppPerDay: String(initial.limits.postsPerAppPerDay) });
+  // Each limit starts at what the plan and its features include at least (website chat asked for in a request: 500
+  // chat replies, not the base plan's 0).
+  const [limits, setLimits] = useState<Record<keyof OfferLimits, string>>(() => {
+    const inc = offerIncluded(bases.find((b) => b.key === initial.basePlanKey) ?? null, initial.features, initial.managedTier);
+    return { text: String(Math.max(initial.limits.text, inc.text)), image: String(Math.max(initial.limits.image, inc.image)), chat: String(Math.max(initial.limits.chat, inc.chat)), seats: String(Math.max(initial.limits.seats, inc.seats)), postsPerAppPerDay: String(initial.limits.postsPerAppPerDay) };
+  });
   const [tier, setTier] = useState<ManagedTier>(initial.managedTier);
   const [interval, setInterval] = useState<"MONTH" | "YEAR">(initial.interval);
   const [adjusted, setAdjusted] = useState(initial.adjusted);
@@ -64,7 +70,24 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
   const base = adding ? { key: adding.current.key, name: adding.current.name, monthlyMinor: adding.current.priceMinor, yearlyMinor: adding.current.priceMinor, features: adding.current.features, limits: adding.current.limits } : (bases.find((b) => b.key === baseKey) ?? null);
   const baseFeatures = base?.features ?? [];
   const num = (v: string, min: number) => (/^\d+$/.test(v.trim()) ? Math.max(Number(v), min) : min);
-  const numericLimits: OfferLimits = { text: num(limits.text, 0), image: num(limits.image, 0), chat: num(limits.chat, 0), seats: num(limits.seats, 1), postsPerAppPerDay: Math.min(10, Math.max(1, num(limits.postsPerAppPerDay, 1))) };
+  const included = offerIncluded(base, selected, tier);
+  // Never below what is included (the server applies the same floor: lib/offers/shared.ts quoteOffer).
+  const numericLimits: OfferLimits = { text: num(limits.text, included.text), image: num(limits.image, included.image), chat: num(limits.chat, included.chat), seats: num(limits.seats, Math.max(1, included.seats)), postsPerAppPerDay: Math.min(10, Math.max(1, num(limits.postsPerAppPerDay, 1))) };
+  /**
+   * The base plan or the ticked features changed what is included: a field below the new amount rises to it, and a
+   * field that was exactly the old included amount follows it (unticking website chat takes 500 back down to 0).
+   */
+  const followIncluded = (next: { base?: OfferBase | null; features?: FeatureKey[]; tier?: ManagedTier }) => {
+    const after = offerIncluded(next.base !== undefined ? next.base : base, next.features ?? selected, next.tier ?? tier);
+    setLimits((cur) => {
+      const out = { ...cur };
+      for (const m of [...OFFER_METRICS, "seats"] as const) {
+        const value = num(cur[m], 0);
+        if (value < after[m] || value === included[m]) out[m] = String(after[m]);
+      }
+      return out;
+    });
+  };
   const quote = useMemo(
     () => quoteOffer({ base, features: selected, limits: numericLimits, managedTier: tier, interval, currency, regionKey: region.key, prices }),
     // numericLimits is derived from limits
@@ -83,15 +106,21 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
   const adjustError = adjusted.trim() && adjustedMinor === null ? `Type a price like ${currency === "RWF" ? "70000" : "49.00"}.` : adjustedMinor !== null && adjustedMinor <= 0 ? "The price must be more than zero." : undefined;
   const reasonError = changedPrice && reason.trim().length < 3 ? "Say why (rounding, discount...)." : undefined;
   const sameAsBase = add ? add.added.length === 0 : quote.added.length === 0 && quote.lines.every((l) => l.key.startsWith("plan:"));
-  const ready = !adjustError && !reasonError && total > 0 && !sameAsBase;
+  // A feature ticked in an older draft that is not set up yet cannot be sold (the server refuses it too).
+  const notReady = (add ? add.added : quote.added).filter((k) => notSetUp.includes(k));
+  const ready = !adjustError && !reasonError && total > 0 && !sameAsBase && notReady.length === 0;
 
   const priceHint = (key: FeatureKey) => {
     const row = prices.find((p) => p.addonKey === featureAddonKey(key, tier) && p.regionKey === region.key && p.currency === currency);
     return row ? `${formatMinor(row.monthlyMinor, currency)} / month` : "No price set";
   };
   const toggle = (key: FeatureKey, on: boolean) => {
-    if (on) setSelected(withPrerequisites([...selected, key]));
-    else if (removalBlockedBy(key, quote.features, tier).length === 0) setSelected(selected.filter((k) => k !== key));
+    let next: FeatureKey[] | null = null;
+    if (on) next = withPrerequisites([...selected, key]);
+    else if (removalBlockedBy(key, quote.features, tier).length === 0) next = selected.filter((k) => k !== key);
+    if (!next) return;
+    setSelected(next);
+    if (!adding) followIncluded({ features: next });
   };
 
   const data = JSON.stringify({
@@ -159,7 +188,13 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
         {!adding && (
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Start from" hint={`Plans offered in ${region.name}, at the region's price.`}>
-            <Select value={baseKey} onChange={(e) => setBaseKey(e.target.value)}>
+            <Select
+              value={baseKey}
+              onChange={(e) => {
+                setBaseKey(e.target.value);
+                followIncluded({ base: bases.find((b) => b.key === e.target.value) ?? null });
+              }}
+            >
               <option value="">No plan, features only</option>
               {bases.map((b) => (
                 <option key={b.key} value={b.key}>
@@ -184,10 +219,11 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
             const inBase = baseFeatures.includes(f.key);
             const on = quote.features.includes(f.key);
             const neededBy = on && !inBase ? removalBlockedBy(f.key, quote.features, tier) : [];
-            const soon = f.status === "coming_soon";
+            // Coming soon: not built, or built but not set up (no service keys yet). Kept if the base plan has it.
+            const soon = f.status === "coming_soon" || (notSetUp.includes(f.key) && !inBase);
             return (
               <label key={f.key} className={cn("flex min-h-11 items-start gap-2 text-[15px]", (soon || inBase) && "text-muted")}>
-                <input type="checkbox" checked={on} disabled={soon || inBase || neededBy.length > 0} onChange={(e) => toggle(f.key, e.target.checked)} className="mt-1 size-5" />
+                <input type="checkbox" checked={on} disabled={(soon && !on) || inBase || neededBy.length > 0} onChange={(e) => toggle(f.key, e.target.checked)} className="mt-1 size-5" />
                 <span className="min-w-0">
                   <span className="flex flex-wrap items-center gap-2">
                     <strong className="text-text">{f.label}</strong>
@@ -208,7 +244,14 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
 
         {quote.features.includes("managed") && !baseFeatures.includes("managed") && (
           <Field label="Managed by BuPulse" hint="Full also brings Analytics (the monthly report).">
-            <Select value={tier} onChange={(e) => setTier(e.target.value === "full" ? "full" : "light")}>
+            <Select
+              value={tier}
+              onChange={(e) => {
+                const next = e.target.value === "full" ? "full" : "light";
+                setTier(next);
+                if (!adding) followIncluded({ tier: next });
+              }}
+            >
               {MANAGED_TIERS.map((t) => (
                 <option key={t} value={t}>
                   {MANAGED_TIER_LABEL[t]}
@@ -222,8 +265,19 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
         <fieldset className="grid gap-3 sm:grid-cols-2">
           <legend className="mb-2 text-base font-semibold">Limits</legend>
           {([...OFFER_METRICS, "seats"] as const).map((m) => (
-            <Field key={m} label={METRIC_LABEL[m]} hint={`${quote.included[m].toLocaleString("en-US")} included; more is priced in blocks.`}>
-              <Input value={limits[m]} onChange={(e) => setLimits({ ...limits, [m]: e.target.value })} inputMode="numeric" maxLength={8} />
+            <Field
+              key={m}
+              label={METRIC_LABEL[m]}
+              hint={`${quote.included[m].toLocaleString("en-US")} included; more is priced in blocks.`}
+              error={/^\d+$/.test(limits[m].trim()) && Number(limits[m]) < quote.included[m] ? `At least ${quote.included[m].toLocaleString("en-US")}: that much is included.` : undefined}
+            >
+              <Input
+                value={limits[m]}
+                onChange={(e) => setLimits({ ...limits, [m]: e.target.value })}
+                onBlur={() => setLimits((cur) => (num(cur[m], 0) < quote.included[m] ? { ...cur, [m]: String(quote.included[m]) } : cur))}
+                inputMode="numeric"
+                maxLength={8}
+              />
             </Field>
           ))}
           <Field label={METRIC_LABEL.postsPerAppPerDay} hint={`1 to 10; ${quote.included.postsPerAppPerDay} in the base plan. Not priced.`}>
@@ -287,6 +341,7 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
         </div>
         <p id="valid-hint" className="-mt-3 text-[13px] text-muted">1 to {OFFER_VALID_DAYS_MAX} days from sending; the client pays at the price above.</p>
 
+        {notReady.length > 0 && <p role="alert" className="text-[13px] text-danger">{notReady.map(featureLabel).join(", ")} {notReady.length === 1 ? "is" : "are"} coming soon (not set up yet), so {notReady.length === 1 ? "it" : "they"} cannot be sold. Untick {notReady.length === 1 ? "it" : "them"}.</p>}
         {sameAsBase && <p className="text-[13px] text-muted">{add ? "Tick a feature the plan does not have yet." : "Add a feature or raise a limit: this is the same as the base plan."}</p>}
         <div className="flex flex-wrap gap-2">
           <Button type="submit" name="intent" value="save" variant="outline" disabled={!ready}>

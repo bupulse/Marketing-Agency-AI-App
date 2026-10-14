@@ -17,6 +17,7 @@ import { openCheckout } from "./checkout";
 import { momoPriceOf } from "@/lib/billing/momo-shared";
 import { formatPlanPrice, formatPrice, intervalWord, planButtonAction, planFeatures, yearlyBadge, yearlySavingsLabel, yearlySavingsMinor } from "./helpers";
 import { PriceTag } from "./price-tag";
+import { usePayState } from "./pay-state";
 
 type Props = {
   /** The plans a client can pick (active, in sort order), at the company's region's prices. */
@@ -38,6 +39,8 @@ export function PlanPicker({ plans, current, pay }: Props) {
   const [busyPlan, setBusyPlan] = useState<Plan | null>(null);
   const [switchTo, setSwitchTo] = useState<Plan | null>(null);
   const [chooseFor, setChooseFor] = useState<Plan | null>(null);
+  // A payment was just reported or a card payment just went through: no second plan while the page refreshes.
+  const payState = usePayState();
   const planOf = (key: Plan) => plans.find((p) => p.key === key)!;
   // A plan can be paid by Mobile Money at its regional price (docs/REGIONS.md: the one source of truth for RWF amounts).
   const momoPrice = (key: Plan) => momoPriceOf(planOf(key), interval);
@@ -173,7 +176,7 @@ export function PlanPicker({ plans, current, pay }: Props) {
                 </Badge>
               ) : action === "upgrade" || current.method === "momo" ? (
                 <div className="flex flex-col gap-2">
-                  <Button className="w-full" onClick={() => choose(key)} disabled={pending || (!offersChoice(methodsFor(key)) && !soleMethod(methodsFor(key)))}>
+                  <Button className="w-full" onClick={() => choose(key)} disabled={pending || Boolean(payState) || (!offersChoice(methodsFor(key)) && !soleMethod(methodsFor(key)))}>
                     {busy ? "One moment…" : current.method === "momo" ? `Switch to ${name}` : `Upgrade to ${name}`}
                   </Button>
                   <span className="text-center text-xs text-muted">{chooseNote(methodsFor(key))}</span>

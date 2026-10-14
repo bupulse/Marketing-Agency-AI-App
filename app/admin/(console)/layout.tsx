@@ -3,7 +3,8 @@ import { BackgroundBlobs } from "@/components/motion";
 import { AdminShell, type ShellBadges } from "@/components/admin/shell";
 import { requireAdmin } from "@/lib/admin/auth";
 import { getHealthSummary } from "@/lib/admin/health";
-import { getInboxCounts, inboxTotalFor } from "@/lib/admin/inbox";
+import { countsSignature, getInboxCounts, inboxTotalFor, LIVE_COUNT_PERMISSIONS } from "@/lib/admin/inbox";
+import { LiveCounts } from "@/components/admin/live-counts";
 import { adminMoney } from "@/lib/money/display-server";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -27,6 +28,7 @@ export default async function AdminConsoleLayout({ children }: { children: React
       <AdminShell email={admin.email} roleName={admin.isOwner && !admin.staffId ? undefined : admin.roleName} permissions={admin.permissions} badges={badges} currency={display.currency}>
         {children}
       </AdminShell>
+      {admin.permissions.some((p) => LIVE_COUNT_PERMISSIONS.includes(p)) && <LiveCounts signature={countsSignature(inbox)} />}
     </>
   );
 }

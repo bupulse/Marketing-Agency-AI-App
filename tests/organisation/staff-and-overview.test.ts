@@ -3,10 +3,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/db", () => ({ prisma: {} }));
+// The confirm buttons show their outcome as a toast; rendered here without the app's ToastProvider.
+vi.mock("@/components/ui/toast", async (orig) => ({ ...(await orig<typeof import("@/components/ui/toast")>()), useToast: () => ({ toast: () => {} }) }));
 
 import { PendingPaymentList } from "@/components/admin/payments/pending-payments";
 import { TodayPayments, TodayTimeline } from "@/components/admin/overview-today";
-import { inboxFor, inboxTotalFor } from "@/lib/admin/inbox";
+import { countsSignature, inboxFor, inboxTotalFor, INBOX_PERMISSION, LIVE_COUNT_PERMISSIONS } from "@/lib/admin/inbox";
 import { assertCanGrant } from "@/lib/staff/service";
 import { ALL_PERMISSIONS, permissionsOf } from "@/lib/staff/permissions";
 import type { ManualPaymentAdminView } from "@/lib/billing/momo";
@@ -35,8 +37,8 @@ const payment = (over: Partial<ManualPaymentAdminView> = {}) =>
 
 describe("overview approval card", () => {
   const actions = { confirmAction: vi.fn(), rejectAction: vi.fn() };
-  it("lets Finance or the owner approve and reject in place, returning to the Overview, with the screenshot", () => {
-    const out = html(createElement(PendingPaymentList, { items: [payment()], canApprove: true, back: "/admin", ...actions }));
+  it("lets Finance or the owner approve and reject in place (the dialog answers in words and the page refreshes), with the screenshot", () => {
+    const out = html(createElement(PendingPaymentList, { items: [payment()], canApprove: true, ...actions }));
     expect(out).toContain("Kigali Salon");
     expect(out).toContain("BP-7K3Q");
     expect(out).toContain("/admin/payments/proof?id=p1");
@@ -44,9 +46,21 @@ describe("overview approval card", () => {
     expect(out).toContain("Reject");
   });
   it("is read-only without the approve permission", () => {
-    const out = html(createElement(PendingPaymentList, { items: [payment()], canApprove: false, back: "/admin", ...actions }));
+    const out = html(createElement(PendingPaymentList, { items: [payment()], canApprove: false, ...actions }));
     expect(out).not.toContain(">Confirm<");
     expect(out).toContain("Finance or the owner approves");
+  });
+});
+
+describe("live to-do counts", () => {
+  it("are one comparable string: a payment reported while the Overview is open changes it, so the console refreshes", () => {
+    const counts = { payments: 0, approvals: 0, demos: 1, requests: 0, invoices: 0, offers: 0, contests: 0, regions: 0, errors: 3 };
+    expect(countsSignature(counts)).toBe(countsSignature({ ...counts }));
+    expect(countsSignature({ ...counts, payments: 2 })).not.toBe(countsSignature(counts));
+    expect(countsSignature(counts)).toContain("payments:0");
+  });
+  it("are kept live for everyone who sees one of the counted lists", () => {
+    for (const perms of Object.values(INBOX_PERMISSION)) expect(perms.some((p) => LIVE_COUNT_PERMISSIONS.includes(p))).toBe(true);
   });
 });
 

@@ -241,6 +241,16 @@ export function isFeatureKey(value: unknown): value is FeatureKey {
   return typeof value === "string" && (FEATURE_KEYS as readonly string[]).includes(value);
 }
 
+/**
+ * Features nobody can use yet: built, but none of the outside services they run on is set up (BuPulse's own keys are
+ * missing: Drive and Dropbox import without a Google Picker key or a Dropbox app key). They are not sold (Billing's
+ * "Add features", the offer editor) and show as "Coming soon" until a key is set. A service switched off in the admin
+ * console is a pause, not "not set up": the feature stays on sale. `isSetUp` comes from lib/feature-setup.ts.
+ */
+export function featuresNotSetUp(isSetUp: (service: ServiceId) => boolean): FeatureKey[] {
+  return FEATURES.filter((f) => f.status === "built" && f.services.length > 0 && !f.services.some(isSetUp)).map((f) => f.key);
+}
+
 export function featureOf(key: FeatureKey): FeatureDef {
   return BY_KEY[key];
 }

@@ -3,14 +3,16 @@ import { Check, Sparkles } from "lucide-react";
 import { Badge, GlassCard } from "@/components/ui";
 import { formatMinor } from "@/lib/region-format";
 import { MANAGED_TIER_LABEL, METRIC_LABEL, OFFER_STATUS_LABEL, type ClientOfferView } from "@/lib/offers/shared";
+import { checkingText } from "@/lib/billing/momo-shared";
 
 const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Kigali" });
 
 /**
  * A custom plan offer as the client sees it (Billing, and the admin editor's preview): the price, what is added on
  * top of the base plan, the limits, the team's note and until when it is open. `actions` are the Accept / pay buttons.
+ * `checkingReference`: the owner reported a Mobile Money payment of it that is being checked (no pay buttons then).
  */
-export function OfferCard({ offer, actions, preview = false }: { offer: ClientOfferView; actions?: ReactNode; preview?: boolean }) {
+export function OfferCard({ offer, actions, preview = false, checkingReference = null }: { offer: ClientOfferView; actions?: ReactNode; preview?: boolean; checkingReference?: string | null }) {
   const added = offer.features.filter((f) => f.added);
   const kept = offer.features.filter((f) => !f.added);
   const addition = offer.addition;
@@ -43,7 +45,7 @@ export function OfferCard({ offer, actions, preview = false }: { offer: ClientOf
             {offer.validUntil && offer.status === "sent" ? ` Open until ${longDate(offer.validUntil)}.` : ""}
           </span>
         </div>
-        {offer.status !== "sent" && <Badge tone={offer.status === "accepted" ? "blue" : offer.status === "paid" ? "success" : "neutral"}>{OFFER_STATUS_LABEL[offer.status]}</Badge>}
+        {offer.status !== "sent" && <Badge tone={offer.status === "accepted" ? "blue" : offer.status === "paid" ? "success" : "neutral"}>{checkingReference && offer.status === "accepted" ? "Checking your payment" : OFFER_STATUS_LABEL[offer.status]}</Badge>}
       </div>
 
       {offer.note && <p className="rounded-2xl bg-soft px-4 py-3 text-[15px] whitespace-pre-line">{offer.note}</p>}
@@ -79,7 +81,13 @@ export function OfferCard({ offer, actions, preview = false }: { offer: ClientOf
         </div>
       </div>
 
-      {offer.status === "accepted" && !preview && (
+      {offer.status === "accepted" && !preview && checkingReference && (
+        <p role="status" className="text-sm">
+          <strong>{checkingText(checkingReference)}</strong>{" "}
+          <span className="text-muted">{addition ? "The added features switch on as soon as it is confirmed; your period end does not change." : "Your custom plan switches on as soon as it is confirmed. You do not need to pay again."}</span>
+        </p>
+      )}
+      {offer.status === "accepted" && !preview && !checkingReference && (
         <p className="text-sm text-muted">
           {offer.payMethod === "invoice" ? "Your invoice is below. " : offer.payMethod === "card" ? "Pay by card below. " : "Pay by Mobile Money below. "}
           {addition ? "The added features switch on as soon as the payment is confirmed; your period end does not change." : "Your custom plan switches on as soon as the payment is confirmed. Until then your current plan stays as it is."}

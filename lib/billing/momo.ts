@@ -29,6 +29,7 @@ import {
   proofObjectPath,
   proofSchema,
   REJECTED_SHOWN_DAYS,
+  TO_CHECK_WHERE,
   transactionIdSchema,
   usdCentsOf,
   type ManualPaymentStatus,
@@ -75,8 +76,9 @@ async function freshPlan(key: string) {
 }
 
 async function toView(row: Row, sub: Sub | null, now: Date = new Date()): Promise<ManualPaymentView> {
-  // Features added to the running plan keep its period: no "replaces the current period" note for them.
-  const keeps = row.status === "pending" && (row.offerId || row.invoiceId) ? Boolean(readAddition((await offerForPayment(row))?.options)) : false;
+  // Features added to the running plan: paid once (prorated), and they keep its period (no "replaces" note).
+  const addition = row.offerId || row.invoiceId ? Boolean(readAddition((await offerForPayment(row))?.options)) : false;
+  const keeps = row.status === "pending" && addition;
   return {
     id: row.id,
     planKey: row.planKey,
@@ -100,6 +102,7 @@ async function toView(row: Row, sub: Sub | null, now: Date = new Date()): Promis
     decidedAt: row.decidedAt?.toISOString() ?? null,
     periodEnd: row.periodEnd?.toISOString() ?? null,
     periodNote: keeps ? null : periodNoteOf(row, sub, now),
+    ...(addition ? { addition: true } : {}),
   };
 }
 
@@ -642,14 +645,15 @@ function parseCursor(cursor: string | undefined): Prisma.ManualPaymentWhereInput
  * Payments, newest first. `status: "pending"` lists the queue instead: submitted ones first and oldest first (they
  * have waited longest), then started-only ones; ordered by the database.
  */
-export async function listManualPayments(opts: { status?: string; userId?: string; reference?: string; cursor?: string; limit?: number } = {}, now: Date = new Date()): Promise<Page<ManualPaymentAdminView>> {
+export async function listManualPayments(opts: { status?: string; userId?: string; reference?: string; cursor?: string; limit?: number; /** Only the reported ones to check (TO_CHECK_WHERE), oldest first. */ toCheck?: boolean } = {}, now: Date = new Date()): Promise<Page<ManualPaymentAdminView>> {
   const status = opts.status && (MANUAL_PAYMENT_STATUSES as readonly string[]).includes(opts.status) ? (opts.status as ManualPaymentStatus) : undefined;
   if (opts.status && !status) throw new AdminError("invalid", `status must be one of: ${MANUAL_PAYMENT_STATUSES.join(", ")}.`);
   if (opts.reference && !isReference(opts.reference.toUpperCase())) throw new AdminError("invalid", "A reference looks like BP-7K3Q.");
   const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 25) || 25, 1), 100);
-  const queue = status === "pending";
+  const queue = status === "pending" || opts.toCheck === true;
   const where: Prisma.ManualPaymentWhereInput = {
     ...(status ? { status } : {}),
+    ...(opts.toCheck ? TO_CHECK_WHERE : {}),
     ...(opts.userId ? { userId: opts.userId } : {}),
     ...(opts.reference ? { reference: opts.reference.toUpperCase() } : {}),
     ...(!queue ? (parseCursor(opts.cursor) ?? {}) : {}),
@@ -671,5 +675,5 @@ export async function getManualPayment(id: string, now: Date = new Date()): Prom
 
 /** Submitted payments waiting for a decision (sidebar badge and the Overview attention list). */
 export async function pendingManualPaymentCount(): Promise<number> {
-  return prisma.manualPayment.count({ where: { status: "pending", submittedAt: { not: null } } });
+  return prisma.manualPayment.count({ where: TO_CHECK_WHERE });
 }

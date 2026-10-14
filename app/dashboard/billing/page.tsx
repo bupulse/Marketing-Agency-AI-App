@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { CHECKOUT_PENDING_COOKIE, checkoutPendingSince } from "@/lib/billing/checkout-pending";
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import { pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
@@ -17,7 +19,7 @@ import { currentManualPayment } from "@/lib/billing/momo";
 import { getMomoSettings } from "@/lib/billing/momo-settings";
 import { cardCheckoutConfigured, cardPricedPlans, invoicePayMethods } from "@/lib/billing/card-ready";
 import { methodState } from "@/lib/billing/pay-methods";
-import { momoConfigured, momoPriceOf } from "@/lib/billing/momo-shared";
+import { momoConfigured, momoPriceOf, offerCheckingReference } from "@/lib/billing/momo-shared";
 import { getPlan, subscriberPriceCents, toPublic } from "@/lib/plan-catalog";
 import { companyPlans, type RegionalPlan } from "@/lib/region-prices";
 import { currencyNote } from "@/lib/region-format";
@@ -119,11 +121,14 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
   const staleAddition = offer ? null : await staleAdditionNotice(business.id, now).catch(() => null);
   const highlighted = typeof query.invoice === "string" ? query.invoice : null;
   const checkoutSuccess = query.checkout === "success";
+  // A card payment completed in this browser a moment ago (lib/billing/checkout-pending.ts): still waiting for its
+  // webhook after a reload or from another page, so the plans stay hidden and nobody pays twice.
+  const pendingCookie = checkoutSuccess ? null : checkoutPendingSince((await cookies()).get(CHECKOUT_PENDING_COOKIE)?.value, now.getTime());
   // Wait for this purchase specifically: the plan is active and was updated after checkout began.
-  const since = Number(query.since);
+  const since = checkoutSuccess ? Number(query.since) : (pendingCookie ?? Number.NaN);
   const activated =
     !isTrial && status === "ACTIVE" && (!Number.isFinite(since) || subscription.updatedAt.getTime() >= since);
-  const waitingForCheckout = checkoutSuccess && !activated;
+  const waitingForCheckout = (checkoutSuccess || pendingCookie !== null) && !activated;
 
   const meters = [
     { label: "Text generations", used: used.text, max: limits.text },
@@ -137,7 +142,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       <CheckoutScript />
       <PageHeader title="Billing" description="Your plan, your usage and your receipts." />
 
-      {checkoutSuccess && <CheckoutReturn waiting={waitingForCheckout} since={since} />}
+      {(checkoutSuccess || waitingForCheckout) && <CheckoutReturn waiting={waitingForCheckout} since={since} />}
 
       {pastDue && (
         <GlassCard role="alert" className="flex items-start gap-3 border border-danger/40 p-5">
@@ -163,6 +168,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       {offer && (
         <OfferCard
           offer={offer}
+          checkingReference={offerCheckingReference(momoPayment, offer)}
           actions={
             offer.status === "sent" || (offer.status === "accepted" && !(momoPayment?.status === "pending" && momoPayment.submitted)) ? (
               <OfferActions offerId={offer.id} momo={methodState(region.paymentMethods.includes("momo"), momoReady)} card={offerCard} accepted={offer.status === "accepted"} method={offer.payMethod} addition={Boolean(offer.addition)} />
@@ -246,7 +252,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
 
       {addition && (addition.ok || addition.card) && (
         <AddFeatures
-          data={addition.ok ? { current: { ...addition.current, features: [...addition.current.features] }, interval: addition.interval, periodEnd: addition.periodEnd, region: addition.region, prices: addition.prices, addable: addition.addable } : null}
+          data={addition.ok ? { current: { ...addition.current, features: [...addition.current.features] }, interval: addition.interval, periodEnd: addition.periodEnd, region: addition.region, prices: addition.prices, addable: addition.addable, soon: addition.soon } : null}
           unavailable={addition.ok ? null : addition.reason}
           momo={addition.ok ? methodState(regionHas("momo"), momoReady) : regionHas("momo") ? "soon" : "off"}
           cardRate={cardForOffers && addition.ok ? cardRate : null}

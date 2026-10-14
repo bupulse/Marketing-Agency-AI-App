@@ -1,5 +1,5 @@
 import "server-only";
-import { SEED_PLANS, postsPerAppLimit } from "@/lib/plans";
+import { SEED_PLANS, postsPerAppLimit, type PlanLimits } from "@/lib/plans";
 import { customAllowanceUsd } from "./allowance";
 import type { BillingInterval, Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
@@ -13,6 +13,7 @@ import { formatMinor, type RegionInfo } from "@/lib/region-format";
 import { ManualPaymentError, startOfferPayment } from "@/lib/billing/momo";
 import type { ManualPaymentView } from "@/lib/billing/momo-shared";
 import { issuePlanInvoice } from "@/lib/invoices/service";
+import { notSetUpFeatures } from "@/lib/feature-setup";
 import { listAddonPrices } from "./addon-prices";
 import { sendOfferEmail } from "./emails";
 import {
@@ -24,6 +25,8 @@ import {
   quoteAddition,
   readAddition,
   selfServeFeatures,
+  comingSoonAddons,
+  notSetUpProblem,
   STALE_ADDITION_REASON,
   DAY_MS,
   type AdditionQuote,
@@ -41,6 +44,7 @@ import {
   readManagedTier,
   toClientOffer,
   validUntilOf,
+  withIncludedLimits,
   YEARLY_MONTHS,
   type AddonPriceRow,
   type ClientOfferView,
@@ -205,6 +209,8 @@ export async function saveOfferDraft(ctx: AdminContext, input: { businessId: str
     if (!ac.ok) throw new AdminError("invalid", ac.reason);
     const addition = additionDraft(ac.ctx, draft, now);
     if (!addition.ok) throw new AdminError("invalid", addition.error);
+    const notReady = notSetUpProblem(addition.quote.added, notSetUpFeatures());
+    if (notReady) throw new AdminError("invalid", notReady);
     quote = addition.quote;
     data = additionRow(ac.ctx, addition, draft, false);
   } else {
@@ -214,6 +220,8 @@ export async function saveOfferDraft(ctx: AdminContext, input: { businessId: str
     quote = priced.quote;
     const checked = checkOfferDraft(draft, priced.quote);
     if (!checked.ok) throw new AdminError("invalid", checked.error);
+    const notReady = notSetUpProblem(priced.quote.added, notSetUpFeatures());
+    if (notReady) throw new AdminError("invalid", notReady);
     const options: Options = { managedTier: draft.managedTier, validDays: draft.validDays, added: priced.quote.added, basePlanName: base?.name ?? null };
     data = {
       basePlanKey: base?.key ?? null,
@@ -281,7 +289,7 @@ export async function sendOffer(ctx: AdminContext, id: string, now: Date = new D
   }
   const emailed = await sendOfferEmail(
     { email: owner.user.email, name: owner.user.name ?? owner.ceoName },
-    { company: owner.name, totalMinor: row.adjustedMinor, currency: row.currency, interval: row.interval, features: options.added.map(featureLabel), validUntil, note: row.note },
+    { company: owner.name, totalMinor: row.adjustedMinor, currency: row.currency, interval: row.interval, features: options.added.map(featureLabel), validUntil, note: row.note, addition: readAddition(row.options) },
   ).catch(() => false);
   return { id, status: "sent" as const, validUntil, emailed, to: owner.user.email };
 }
@@ -508,7 +516,8 @@ export async function acceptOffer(input: { userId: string; actorId: string; busi
             highlight: false,
             ...prices,
             currency: row.currency,
-            limits: json(row.limits),
+            // Never less than the features include (an offer saved with 0 chat replies and website chat would refuse every reply).
+            limits: json(row.limits && typeof row.limits === "object" ? withIncludedLimits(row.limits as unknown as PlanLimits, features) : row.limits),
             highlights: json([]),
             featureKeys: json(features),
             features: json([]),
@@ -621,6 +630,7 @@ export async function selfServeAddition(businessId: string, now: Date = new Date
   const ac = await additionContext(businessId, now);
   if (!ac.ok) return { ok: false as const, reason: ac.reason, card: ac.card === true };
   const { ctx } = ac;
+  const notSetUp = notSetUpFeatures();
   return {
     ok: true as const,
     current: ctx.current,
@@ -628,7 +638,9 @@ export async function selfServeAddition(businessId: string, now: Date = new Date
     periodEnd: ctx.periodEnd.toISOString(),
     region: { key: ctx.region.key, currency: ctx.region.currency },
     prices: ctx.prices,
-    addable: selfServeFeatures(ctx.current.features, ctx.prices, ctx.region.key, ctx.region.currency),
+    addable: selfServeFeatures(ctx.current.features, ctx.prices, ctx.region.key, ctx.region.currency, notSetUp),
+    // Built but not set up yet (no service keys): shown as "Coming soon", never sold (lib/feature-setup.ts).
+    soon: comingSoonAddons(ctx.current.features, notSetUp),
   };
 }
 
@@ -646,7 +658,7 @@ export async function startFeatureAddition(input: { userId: string; actorId: str
   if (ticked.length === 0) throw new OfferError("Tick at least one feature to add.");
   const ac = await additionContext(input.businessId, now);
   if (!ac.ok) throw new OfferError(ac.reason);
-  const allowed = new Set(selfServeFeatures(ac.ctx.current.features, ac.ctx.prices, ac.ctx.region.key, ac.ctx.region.currency));
+  const allowed = new Set(selfServeFeatures(ac.ctx.current.features, ac.ctx.prices, ac.ctx.region.key, ac.ctx.region.currency, notSetUpFeatures()));
   const notHere = ticked.find((k) => !allowed.has(k) && !ac.ctx.current.features.includes(k));
   if (notHere) throw new OfferError(`${featureLabel(notHere)} cannot be added here. Use Request a custom change and we will price it for you.`);
   const priced = additionDraft(ac.ctx, { features: ticked, managedTier: "light", adjustedMinor: null, adjustReason: null }, now);
@@ -716,14 +728,17 @@ export async function offerEditorContext(input: { businessId: string; offerId?: 
   const request = !offer && input.requestId ? await prisma.customPlanRequest.findUnique({ where: { id: input.requestId } }) : null;
   const startKey = [sub?.plan, sub?.chosenPlan].find((k) => k && pc.bases.some((b) => b.key === k)) ?? null;
   const startBase = pc.bases.find((b) => b.key === startKey) ?? null;
+  const notSetUp = notSetUpFeatures();
   const fromBase = (b: OfferBase | null) => ({ text: b?.limits.text ?? 0, image: b?.limits.image ?? 0, chat: b?.limits.chat ?? 0, seats: b?.limits.seats ?? 1, postsPerAppPerDay: postsPerAppLimit(b?.limits) });
   let initial: EditorInitial;
   if (offer) {
     const o = adminView(offer, business.name);
     initial = { mode: o.addition ? "addon" : "plan", basePlanKey: o.basePlanKey, features: o.features, limits: o.limits, managedTier: o.managedTier, interval: o.interval, adjusted: o.addition ? (o.addition.addonMinor !== readLinesJson(offer.lines).reduce((sum, l) => sum + l.totalMinor, 0) ? String(o.addition.addonMinor) : "") : o.adjustedMinor !== o.computedMinor ? String(o.adjustedMinor) : "", adjustReason: o.adjustReason ?? "", note: o.note ?? "", validDays: o.validDays, requestId: o.requestId };
   } else {
-    const asked = request ? readFeatureKeys(request.featureKeys).filter((k) => FEATURE_BUILT.has(k)) : [];
-    initial = { mode: "plan", basePlanKey: startBase?.key ?? null, features: asked, limits: fromBase(startBase), managedTier: "light", interval: sub?.interval === "YEAR" ? "YEAR" : "MONTH", adjusted: "", adjustReason: "", note: "", validDays: OFFER_VALID_DAYS, requestId: request?.id ?? null };
+    // A feature asked for that is not set up yet (lib/feature-setup.ts) is not ticked: it cannot be sold.
+    const asked = request ? readFeatureKeys(request.featureKeys).filter((k) => FEATURE_BUILT.has(k) && !notSetUp.includes(k)) : [];
+    // Website chat asked for starts at its 500 chat replies, not the base plan's 0.
+    initial = { mode: "plan", basePlanKey: startBase?.key ?? null, features: asked, limits: withIncludedLimits(fromBase(startBase), asked), managedTier: "light", interval: sub?.interval === "YEAR" ? "YEAR" : "MONTH", adjusted: "", adjustReason: "", note: "", validDays: OFFER_VALID_DAYS, requestId: request?.id ?? null };
   }
   const currentPlan = sub?.plan ? await getPlan(sub.plan) : null;
   // "Add to current plan": possible for a running Mobile Money plan (otherwise the reason is shown on the switch).
@@ -736,6 +751,8 @@ export async function offerEditorContext(input: { businessId: string; offerId?: 
     bases: pc.bases,
     prices: pc.prices,
     initial,
+    /** Built features that are not set up yet: "Coming soon" in the editor, refused on save. */
+    notSetUp,
     offer: offer ? adminView(offer, business.name) : null,
     request: request ? { id: request.id, description: request.description, goals: request.goals, features: readFeatureKeys(request.featureKeys), budget: request.budget } : null,
     current: { planName: currentPlan?.name ?? sub?.plan ?? "None", status: sub?.status ?? "none", features: currentPlan?.features ?? [] },
