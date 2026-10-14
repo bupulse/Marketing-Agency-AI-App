@@ -16,23 +16,26 @@ export function Features() {
           />
         </Reveal>
         <ul className="m-0 grid list-none grid-cols-1 gap-5 p-0 md:grid-cols-2 lg:grid-cols-3">
-          {features.map(({ title, text, icon: Icon, soon }) => (
-            <li key={title} className="flex">
+          {features.map(({ title, text, icon: Icon, soon, note, wide }) => (
+            <li key={title} className={cn("flex", wide && "md:col-span-2 lg:col-span-3")}>
               <Reveal className="flex w-full">
-                <GlassCard interactive padding="none" className="flex w-full flex-col gap-3.5 p-7">
+                <GlassCard interactive padding="none" className={cn("flex w-full flex-col gap-3.5 p-7", wide && "lg:flex-row lg:items-center lg:gap-6")}>
                   <span
                     className={cn(
-                      "flex size-12 items-center justify-center rounded-2xl",
+                      "flex size-12 shrink-0 items-center justify-center rounded-2xl",
                       soon ? "bg-soft text-new" : "bg-brand-gradient text-white",
                     )}
                   >
                     <Icon aria-hidden className="size-[22px]" />
                   </span>
-                  <div className="flex items-center gap-2">
-                    <h3 className="m-0 text-xl font-semibold">{title}</h3>
-                    {soon && <Badge tone="violet">SOON</Badge>}
+                  <div className="flex flex-col gap-3.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="m-0 text-xl font-semibold">{title}</h3>
+                      {soon && <Badge tone="violet">SOON</Badge>}
+                      {note && <Badge tone="blue">{note}</Badge>}
+                    </div>
+                    <p className="m-0 leading-relaxed text-muted">{text}</p>
                   </div>
-                  <p className="m-0 leading-relaxed text-muted">{text}</p>
                 </GlassCard>
               </Reveal>
             </li>

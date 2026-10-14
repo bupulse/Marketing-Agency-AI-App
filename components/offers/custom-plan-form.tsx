@@ -1,18 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { CheckCircle2 } from "lucide-react";
+import { CalendarClock, CheckCircle2 } from "lucide-react";
 import { useActionState, useState } from "react";
 import { requestCustomPlanAction, type RequestState } from "@/app/custom-plan/actions";
 import { Badge, Button, Field, GlassCard, Input, Select, Textarea } from "@/components/ui";
 import { featureLabel, type FeatureKey } from "@/lib/features";
 import { BUDGET_RANGES, lockedRequestFeatures, REQUESTABLE_FEATURES, toggleRequestFeature, type RequestSource } from "@/lib/offers/shared";
 
+/** The optional call step after sending (existing clients only): its length, or the call already booked. */
+export type CallStep = { minutes: number; booked: string | null };
+
 /**
  * The custom plan request: the business, the features it would like, an optional budget range. What the plan already
  * includes is ticked and locked ("In your plan"), so only missing features can be ticked; ticking one ticks what it needs.
+ * Once sent, an existing client may pick a time for a short call about it (`call`; /custom-plan/call).
  */
-export function CustomPlanForm({ source, initial, owned = [], back }: { source: RequestSource; initial: { description: string; phone: string; features: string[] }; owned?: string[]; back: { href: string; label: string } }) {
+export function CustomPlanForm({ source, initial, owned = [], back, call = null }: { source: RequestSource; initial: { description: string; phone: string; features: string[] }; owned?: string[]; back: { href: string; label: string }; call?: CallStep | null }) {
   const [state, formAction, pending] = useActionState<RequestState, FormData>(requestCustomPlanAction, {});
   const locked = new Set<string>(lockedRequestFeatures(owned));
   const [selected, setSelected] = useState<FeatureKey[]>(() => initial.features.reduce<FeatureKey[]>((acc, k) => toggleRequestFeature(owned, acc, k as FeatureKey, true), []));
@@ -23,7 +27,27 @@ export function CustomPlanForm({ source, initial, owned = [], back }: { source: 
         <CheckCircle2 aria-hidden className="size-8 text-success" />
         <h2 className="text-lg font-semibold">Thanks, we have your request</h2>
         <p className="text-[15px] text-muted">We will look at what you need and come back to you, usually within a working day, with an offer in Billing (and by email).</p>
-        <Button href={back.href}>{back.label}</Button>
+        {call?.booked ? (
+          <div className="flex w-full flex-col items-start gap-2 rounded-2xl bg-soft p-4">
+            <p className="text-[15px]">
+              <strong>Your call is on {call.booked}.</strong> We will go through this request too.
+            </p>
+            <Button href="/custom-plan/call" variant="outline" size="sm">
+              See or move your call
+            </Button>
+          </div>
+        ) : call && state.requestId ? (
+          <div className="flex w-full flex-col items-start gap-2 rounded-2xl bg-soft p-4">
+            <p className="text-[15px] font-semibold">Want to talk it through? Pick a time for a short call</p>
+            <p className="text-sm text-muted">Optional. A {call.minutes}-minute video call with us; the meeting link and calendar invitation arrive by email straight away.</p>
+            <Button href={`/custom-plan/call?request=${encodeURIComponent(state.requestId)}`} leading={<CalendarClock aria-hidden className="size-[18px]" />}>
+              Pick a time
+            </Button>
+          </div>
+        ) : null}
+        <Button href={back.href} variant={call && !call.booked ? "ghost" : "primary"}>
+          {call && !call.booked ? "Not now" : back.label}
+        </Button>
       </GlassCard>
     );
   }

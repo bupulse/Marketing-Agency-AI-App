@@ -23,8 +23,17 @@ export function googleCalendarUrl(e: { title: string; start: Date; end: Date; de
 /** The title every copy of the demo event carries (Google event, template link). */
 export const demoTitle = (businessName: string) => `BuPulse demo — ${businessName}`;
 
-/** The template link for a booking, with the join link as the location. */
-export function demoGoogleCalendarUrl(booking: { startsAt: Date; endsAt: Date; meetingLink?: string | null }, businessName: string, dashboardUrl: string): string {
-  const details = [booking.meetingLink ? `Join: ${booking.meetingLink}` : "The meeting link follows by email.", `Reschedule or cancel: ${dashboardUrl}`].join("\n");
-  return googleCalendarUrl({ title: demoTitle(businessName), start: booking.startsAt, end: booking.endsAt, details, location: booking.meetingLink });
+/** Where the client moves or cancels a booking of this kind: the demo screen, or the custom plan call page. */
+export const managePath = (kind: string | null | undefined) => (kind === "custom_plan" ? "/custom-plan/call" : "/dashboard");
+
+/** The file name of a booking's invite (.ics), by its kind. */
+export const icsFilename = (kind: string | null | undefined, cancelled = false) => `bupulse-${kind === "custom_plan" ? "call" : "demo"}${cancelled ? "-cancelled" : ""}.ics`;
+
+/** The title of a booking's event by its kind: the demo, or a call about a custom plan (lib/demo/plan-calls.ts). */
+export const bookingTitle = (kind: string | null | undefined, businessName: string) => (kind === "custom_plan" ? `BuPulse custom plan call — ${businessName}` : demoTitle(businessName));
+
+/** The template link for a booking, with the join link as the location. `manageUrl`: where it is moved or cancelled. */
+export function demoGoogleCalendarUrl(booking: { startsAt: Date; endsAt: Date; meetingLink?: string | null; kind?: string | null }, businessName: string, manageUrl: string): string {
+  const details = [booking.meetingLink ? `Join: ${booking.meetingLink}` : "The meeting link follows by email.", `Reschedule or cancel: ${manageUrl}`].join("\n");
+  return googleCalendarUrl({ title: bookingTitle(booking.kind, businessName), start: booking.startsAt, end: booking.endsAt, details, location: booking.meetingLink });
 }

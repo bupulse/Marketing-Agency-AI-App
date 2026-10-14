@@ -1,20 +1,20 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { getPlan } from "@/lib/plan-catalog";
-import { demoTitle } from "@/lib/demo/calendar-links";
+import { bookingTitle, managePath } from "@/lib/demo/calendar-links";
 import { DEMO_TIME_ZONE, MIN_LEAD_MINUTES } from "@/lib/demo/slots";
 import { logError } from "@/lib/errors";
 import { deleteEvent, eventConnection, GoogleApiError, insertEvent, meetLinkOf, patchEvent, resetGoogleCalendarCache, type GoogleEvent } from "./calendar";
 import { publicSiteUrl } from "@/lib/auth/site-url";
 
-// The demo booking's event in the owner's Google Calendar: created with a Meet link on booking, moved in place on
+// The demo booking's (or custom plan call's, by its kind) event in the owner's Google Calendar: created with a Meet link on booking, moved in place on
 // reschedule, deleted on cancel, each time with sendUpdates=all so the client gets Google's own invite or update.
 // Never in the way of a booking: when Google is not connected or fails, the caller keeps the .ics + meeting-link flow.
 // A change that did not reach Google (failure, timeout, login to reconnect) is marked on the booking
 // (googleSyncPending) and retried from the booking's current state: on the next booking request, by the hourly
 // trial-reminders cron, and with Retry on Admin -> Demos.
 
-export type DemoEventBooking = { id: string; businessId: string; startsAt: Date; endsAt: Date; googleEventId?: string | null; meetingLink?: string | null };
+export type DemoEventBooking = { id: string; businessId: string; startsAt: Date; endsAt: Date; googleEventId?: string | null; meetingLink?: string | null; kind?: string | null };
 export type DemoEventBusiness = {
   name: string;
   email: string;
@@ -29,9 +29,10 @@ export type DemoEventBusiness = {
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
 /** The event description: what the call is for and what the owner needs during it. The client sees it too. */
-export function demoEventDescription(business: DemoEventBusiness, planName: string | null): string {
+export function demoEventDescription(business: DemoEventBusiness, planName: string | null, kind?: string | null): string {
+  const call = kind === "custom_plan";
   const sections = [
-    [`A walk through BuPulse for ${business.name}.`, planName ? `Plan chosen: ${planName}` : ""],
+    call ? [`A short call about a custom plan for ${business.name}.`, planName ? `Current plan: ${planName}` : ""] : [`A walk through BuPulse for ${business.name}.`, planName ? `Plan chosen: ${planName}` : ""],
     [
       `Contact: ${business.contact ?? business.name} <${business.email}>`,
       business.phone ? `Phone: ${business.phone}` : "",
@@ -40,7 +41,7 @@ export function demoEventDescription(business: DemoEventBusiness, planName: stri
       business.website ? `Website: ${business.website}` : "",
       business.description ? `About: ${clip(business.description.replace(/\s+/g, " ").trim(), 400)}` : "",
     ],
-    [`Reschedule or cancel (up to ${MIN_LEAD_MINUTES / 60} hours before): ${publicSiteUrl()}/dashboard`],
+    [`Reschedule or cancel (up to ${MIN_LEAD_MINUTES / 60} hours before): ${publicSiteUrl()}${managePath(kind)}`],
   ];
   return sections.map((lines) => lines.filter(Boolean).join("\n")).join("\n\n");
 }
@@ -55,8 +56,8 @@ export const client360Url = (businessId: string) => `${publicSiteUrl()}/admin/co
 export function demoEventBody(booking: DemoEventBooking, business: DemoEventBusiness, planName: string | null, opts: { withUid?: boolean; conference?: boolean } = {}): Record<string, unknown> {
   const conference = opts.conference !== false;
   return {
-    summary: demoTitle(business.name),
-    description: demoEventDescription(business, planName),
+    summary: bookingTitle(booking.kind, business.name),
+    description: demoEventDescription(business, planName, booking.kind),
     start: { dateTime: booking.startsAt.toISOString(), timeZone: DEMO_TIME_ZONE },
     end: { dateTime: booking.endsAt.toISOString(), timeZone: DEMO_TIME_ZONE },
     attendees: [{ email: business.email, displayName: business.contact ?? business.name }],
@@ -115,8 +116,8 @@ export async function syncDemoEvent(kind: SyncKind, booking: DemoEventBooking, b
     if (booking.googleEventId) {
       try {
         event = await patchEvent(c, booking.googleEventId, {
-          summary: demoTitle(business.name),
-          description: demoEventDescription(business, planName),
+          summary: bookingTitle(booking.kind, business.name),
+          description: demoEventDescription(business, planName, booking.kind),
           start: { dateTime: booking.startsAt.toISOString(), timeZone: DEMO_TIME_ZONE },
           end: { dateTime: booking.endsAt.toISOString(), timeZone: DEMO_TIME_ZONE },
           status: "confirmed",

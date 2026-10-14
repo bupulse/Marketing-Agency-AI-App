@@ -134,7 +134,7 @@ describe("client actions", () => {
     h.requireActiveUser.mockResolvedValue(OWNER);
     h.createPlanRequest.mockResolvedValue({ id: "r1" });
     const state = await requestCustomPlanAction({}, form({ description: "We sell shoes", features: ["websiteChat", "autopilot"], source: "pricing" }));
-    expect(state).toEqual({ done: true });
+    expect(state).toEqual({ done: true, requestId: "r1" }); // the call step links to it
     expect(h.requireActiveUser).toHaveBeenCalledWith("billing");
     expect(h.createPlanRequest.mock.calls[0][0]).toMatchObject({ businessId: "biz1", raw: { features: ["websiteChat", "autopilot"], source: "pricing" }, owned: ["content", "designs"] });
     expect(h.createPlanRequest.mock.calls[0][0].raw).not.toHaveProperty("goals");

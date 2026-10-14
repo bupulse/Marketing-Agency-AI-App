@@ -15,6 +15,12 @@ export const dynamic = "force-dynamic";
 
 const TONE: Record<string, BadgeTone> = { new: "violet", contacted: "blue", offered: "success", closed: "neutral" };
 const SOURCE: Record<string, string> = { billing: "Billing", pricing: "Pricing page", upgrade: "Add to your plan", demo: "Demo screen" };
+const CALL: Record<string, { label: string; tone: BadgeTone }> = {
+  booked: { label: "Call booked", tone: "blue" },
+  done: { label: "Call done", tone: "success" },
+  no_show: { label: "Call: no-show", tone: "danger" },
+  cancelled: { label: "Call cancelled", tone: "neutral" },
+};
 
 export default async function PlanRequestsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requirePermission("requests"); // pages render alongside the layout, so check here too
@@ -55,6 +61,14 @@ export default async function PlanRequestsPage({ searchParams }: { searchParams:
                     </div>
                     <Badge tone={TONE[r.status] ?? "neutral"}>{REQUEST_STATUS_LABEL[r.status]}</Badge>
                   </div>
+                  {r.call && (
+                    <p className="flex flex-wrap items-center gap-2 text-[15px]">
+                      <Badge tone={CALL[r.call.status]?.tone ?? "neutral"}>{CALL[r.call.status]?.label ?? `Call: ${r.call.status}`}</Badge>
+                      <span>{r.call.when} (Kigali)</span>
+                      {r.call.status === "booked" && r.call.meetingLink && <a href={r.call.meetingLink} target="_blank" rel="noreferrer noopener" className="text-sm underline">Join</a>}
+                      <Link href="/admin/demos?when=all" className="text-sm underline">Demos</Link>
+                    </p>
+                  )}
                   <dl className="grid gap-3 text-[15px] sm:grid-cols-2">
                     <div><dt className="text-[13px] text-muted">The business</dt><dd className="whitespace-pre-line break-words">{r.description}</dd></div>
                     {r.goals && <div><dt className="text-[13px] text-muted">Goals</dt><dd className="whitespace-pre-line break-words">{r.goals}</dd></div>}

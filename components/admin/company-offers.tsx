@@ -26,7 +26,10 @@ export async function CompanyOffers({ businessId }: { businessId: string }) {
           {requests.map((r) => (
             <li key={r.id} className="flex flex-wrap items-center justify-between gap-2">
               <Link href={`/admin/requests?open=${r.id}`} className="underline">Request of {dateTime(r.createdAt)}</Link>
-              <Badge tone={r.status === "new" ? "violet" : "neutral"}>{REQUEST_STATUS_LABEL[r.status]}</Badge>
+              <span className="flex flex-wrap items-center gap-2">
+                {r.call?.status === "booked" && <span className="text-[13px] text-muted">Call {r.call.when}</span>}
+                <Badge tone={r.status === "new" ? "violet" : "neutral"}>{REQUEST_STATUS_LABEL[r.status]}</Badge>
+              </span>
             </li>
           ))}
           {offers.map((o) => (

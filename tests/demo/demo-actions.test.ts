@@ -9,6 +9,8 @@ const h = vi.hoisted(() => ({
   choosePlan: vi.fn(),
   bookDemo: vi.fn(),
   cancelDemo: vi.fn(),
+  bookPlanCall: vi.fn(),
+  cancelPlanCall: vi.fn(),
   findUnique: vi.fn(),
   bookingIcs: vi.fn(async () => "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n"),
 }));
@@ -29,6 +31,7 @@ vi.mock("@/lib/demo/bookings", () => {
   }
   return { DemoError, choosePlan: h.choosePlan, bookDemo: h.bookDemo, cancelDemo: h.cancelDemo, bookingIcs: h.bookingIcs };
 });
+vi.mock("@/lib/demo/plan-calls", () => ({ bookPlanCall: h.bookPlanCall, cancelPlanCall: h.cancelPlanCall }));
 vi.mock("@/lib/db", () => ({ prisma: { demoBooking: { findUnique: h.findUnique } } }));
 vi.mock("@/lib/errors", () => ({ logError: vi.fn(async () => {}) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -87,6 +90,40 @@ describe("demo actions", () => {
     h.requireActiveUser.mockResolvedValue({ ...OWNER, email_confirmed_at: undefined });
     expect(await a.bookDemoAction({}, b)).toEqual({ error: expect.stringMatching(/Confirm your email/) });
     expect(h.bookDemo).toHaveBeenCalledTimes(1);
+  });
+
+  it("the custom plan call: the owner (billing) with a confirmed email, the demo's limits, linked to the request", async () => {
+    const a = { ...(await import("@/app/custom-plan/call/actions")), ...(await import("@/lib/demo/limits")) };
+    const b = new FormData();
+    b.set("startsAt", "2026-10-13T08:00:00.000Z");
+    b.set("request", "req1");
+    h.bookPlanCall.mockResolvedValue({ rescheduled: false });
+    await expect(a.bookPlanCallAction({}, b)).rejects.toThrow("NEXT_REDIRECT /custom-plan/call?booked=1");
+    h.bookPlanCall.mockResolvedValueOnce({ rescheduled: true });
+    await expect(a.bookPlanCallAction({}, b)).rejects.toThrow("NEXT_REDIRECT /custom-plan/call?moved=1");
+    expect(h.requireActiveUser).toHaveBeenCalledWith("billing");
+    expect(h.bookPlanCall).toHaveBeenCalledWith({ businessId: "b1", startsAt: new Date("2026-10-13T08:00:00.000Z"), requestId: "req1" });
+    expect(h.rateLimit).toHaveBeenCalledWith("demo:book:b1", a.DEMO_LIMITS.book);
+    expect(h.bookDemo).not.toHaveBeenCalled();
+    h.rateLimit.mockRejectedValueOnce(new RateLimitError(60));
+    expect(await a.bookPlanCallAction({}, b)).toMatchObject({ error: expect.stringMatching(/doing that a lot/) });
+    const bad = new FormData();
+    bad.set("startsAt", "soon");
+    expect(await a.bookPlanCallAction({}, bad)).toEqual({ error: "Pick a time from the list." });
+    const { DemoError } = await import("@/lib/demo/bookings");
+    h.bookPlanCall.mockRejectedValueOnce(new DemoError("conflict", "That time is no longer free. Pick another one."));
+    expect(await a.bookPlanCallAction({}, b)).toEqual({ error: "That time is no longer free. Pick another one." });
+    h.requireActiveUser.mockResolvedValue({ ...OWNER, email_confirmed_at: undefined });
+    expect(await a.bookPlanCallAction({}, b)).toEqual({ error: expect.stringMatching(/Confirm your email/) });
+    expect(h.bookPlanCall).toHaveBeenCalledTimes(3);
+
+    h.requireActiveUser.mockResolvedValue(OWNER);
+    expect(await a.cancelPlanCallAction()).toEqual({ ok: true });
+    expect(h.cancelPlanCall).toHaveBeenCalledWith({ businessId: "b1" });
+    expect(h.rateLimit).toHaveBeenCalledWith("demo:cancel:b1", a.DEMO_LIMITS.cancel);
+    expect(h.cancelDemo).not.toHaveBeenCalled();
+    h.requireActiveUser.mockRejectedValueOnce(new Error("forbidden"));
+    expect(await a.cancelPlanCallAction()).toEqual({ ok: false, error: "Ask your company owner to do this." });
   });
 
   it("no \"use server\" file exports anything but async functions (each export is a public endpoint)", async () => {

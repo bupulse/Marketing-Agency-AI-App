@@ -10,8 +10,10 @@ import { getPlan } from "@/lib/plan-catalog";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { companyPlans } from "@/lib/region-prices";
 import { calendarBusy } from "@/lib/google-calendar/calendar";
-import { persistDemoSync, retryPendingDemoSyncs, syncDemoEvent, type DemoEventBusiness } from "@/lib/google-calendar/events";
-import { demoGoogleCalendarUrl } from "./calendar-links";
+import { persistDemoSync, retryPendingDemoSyncs, syncDemoEvent, type DemoEventBusiness, type DemoSyncResult } from "@/lib/google-calendar/events";
+import { featureLabel } from "@/lib/features";
+import { readFeatureKeys } from "@/lib/offers/shared";
+import { demoGoogleCalendarUrl, icsFilename, managePath } from "./calendar-links";
 import { buildIcs } from "./ics";
 import { BOOKING_WINDOW_DAYS, DEMO_TIME_ZONE, formatSlot, freeSlots, MIN_LEAD_MINUTES, subtractInterval, ymdInZone, zonedToUtc, type AvailabilityWindow, type SlotOptions } from "./slots";
 import { linkSiteUrl } from "@/lib/auth/request-site";
@@ -24,6 +26,9 @@ import { publicSiteUrl } from "@/lib/auth/site-url";
 // booked slot has passed without the admin marking it, the client may book again (the same row moves).
 // When the owner has connected Google Calendar (lib/google-calendar), its busy times are taken out of the free slots
 // and each booking is also an event there with a Meet link; without it (or when Google fails) the .ics flow above runs alone.
+// The same machinery (placeBooking, cancelBooking, the invites and emails) books the short call an existing client may
+// add right after a custom plan request (kind "custom_plan", lib/demo/plan-calls.ts): same slots, buffers, daily cap and
+// lead time, but never part of the demo -> trial steps (every demo query here and in lib/admin/demos.ts filters kind "demo").
 
 export type DemoErrorCode = "invalid" | "conflict" | "not_allowed";
 export class DemoError extends Error {
@@ -40,6 +45,11 @@ const MINUTE = 60_000;
 const BOOKING_STATUSES = ["booked", "done", "no_show", "cancelled"] as const;
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 export const isBookingStatus = (v: unknown): v is BookingStatus => (BOOKING_STATUSES as readonly string[]).includes(v as string);
+/** demo: the call before the trial. custom_plan: a call about a custom plan request (lib/demo/plan-calls.ts). */
+export const BOOKING_KINDS = ["demo", "custom_plan"] as const;
+export type BookingKind = (typeof BOOKING_KINDS)[number];
+/** How the client-facing text names a booking of this kind. */
+const nounOf = (kind: string | null | undefined) => (kind === "custom_plan" ? "call" : "demo");
 
 export async function availabilityWindows(): Promise<AvailabilityWindow[]> {
   const rows = await prisma.adminAvailability.findMany({ orderBy: [{ weekday: "asc" }, { startMinute: "asc" }] });
@@ -77,9 +87,9 @@ export async function availableSlots(now = new Date(), ignoreBookingId?: string 
   return { slots: freeSlots(opts), slotMinutes: opts.slotMinutes ?? 30 };
 }
 
-/** The company's live booking (the one still "booked"; the partial unique index allows one), or null. */
-export async function currentBooking(businessId: string) {
-  return prisma.demoBooking.findFirst({ where: { businessId, status: "booked" }, orderBy: { startsAt: "desc" } });
+/** The company's live booking of a kind (the one still "booked"; the partial unique index allows one), or null. */
+export async function currentBooking(businessId: string, kind: BookingKind = "demo") {
+  return prisma.demoBooking.findFirst({ where: { businessId, kind, status: "booked" }, orderBy: { startsAt: "desc" } });
 }
 
 /** The secret of the .ics route: 32 random bytes, base64url (43 characters). */
@@ -130,35 +140,38 @@ export async function choosePlan(input: { businessId: string; planKey: string })
   if (!plan) throw new DemoError("invalid", "Choose one of the plans shown.");
   await prisma.$transaction(async (tx) => {
     await tx.subscription.updateMany({ where: { userId: business.userId, status: "PENDING_DEMO" }, data: { chosenPlan: plan.key } });
-    await tx.demoBooking.updateMany({ where: { businessId: business.id, status: "booked" }, data: { planKey: plan.key } });
+    await tx.demoBooking.updateMany({ where: { businessId: business.id, kind: "demo", status: "booked" }, data: { planKey: plan.key } });
   });
   return { planKey: plan.key, planName: plan.name };
 }
 
 export type BookingView = NonNullable<Awaited<ReturnType<typeof currentBooking>>>;
 
+/** The company a booking is for: who gets the invite, and what the Google event says about it. */
+export type BookingCompany = { id: string; userId: string; name: string; email: string; contact: string | null; event: DemoEventBusiness };
+
 /**
- * Step 2: books a free slot, or moves the live booking to it (in place: same row and calendar UID, SEQUENCE + 1). The
- * slot is checked against the same rules the page used; two partial unique indexes back it up: one live booking per
- * start time, one per company. The slot check and the write are not one transaction: a second client taking a
- * neighbouring slot in the same instant can land inside the buffer (accepted: the owner sees both in Demos).
+ * Books a free slot for a company, or moves its live booking of that kind to it (in place: same row and calendar UID,
+ * SEQUENCE + 1). The slot is checked against the same rules the page used; two partial unique indexes back it up: one
+ * live booking per start time, one per company and kind. The slot check and the write are not one transaction: a
+ * second client taking a neighbouring slot in the same instant can land inside the buffer (accepted: the owner sees
+ * both in Demos). Shared by the demo (bookDemo) and the custom plan call (lib/demo/plan-calls.ts).
  */
-export async function bookDemo(input: { businessId: string; startsAt: Date; now?: Date }): Promise<{ booking: BookingView; rescheduled: boolean }> {
-  const now = input.now ?? new Date();
-  const { business, sub } = await pendingSubscription(input.businessId);
-  if (!sub.chosenPlan) throw new DemoError("invalid", "Choose a plan first.");
+export async function placeBooking(input: { kind: BookingKind; company: BookingCompany; startsAt: Date; planKey: string; planName: string | null; requestId?: string | null; now: Date }): Promise<{ booking: BookingView; rescheduled: boolean; google: DemoSyncResult["status"] | null }> {
+  const { kind, company, now } = input;
+  const noun = nounOf(kind);
   if (Number.isNaN(input.startsAt.getTime())) throw new DemoError("invalid", "Pick a time from the list.");
-  const existing = await currentBooking(business.id);
+  const existing = await currentBooking(company.id, kind);
   // A booking that is about to start cannot be moved; one whose slot has passed can (the client books again).
   if (existing && !slotPassed(existing, now) && !canMoveBooking(existing, now)) {
-    throw new DemoError("not_allowed", `Your demo starts in less than ${MIN_LEAD_MINUTES / 60} hours, so it can no longer be moved. Join the call, or email us.`);
+    throw new DemoError("not_allowed", `Your ${noun} starts in less than ${MIN_LEAD_MINUTES / 60} hours, so it can no longer be moved. Join the call, or email us.`);
   }
-  // A global cap on new bookings per day (Admin -> Settings): each one emails every admin, so a flood of sign-ups
-  // cannot fill the calendar or the inbox. Moving the company's own booking does not count.
+  // A global cap on new bookings per day, demos and calls together (Admin -> Settings): each one emails every admin, so
+  // a flood of sign-ups cannot fill the calendar or the inbox. Moving the company's own booking does not count.
   if (!existing) {
     const cap = await getSetting("demoDailyCap");
     const today = await prisma.demoBooking.count({ where: { status: "booked", createdAt: { gte: startOfDemoDay(now) } } });
-    if (today >= cap) throw new DemoError("not_allowed", "We have reached today's limit for new demo bookings. Please try again tomorrow, or email hello@bupulse.com.");
+    if (today >= cap) throw new DemoError("not_allowed", `We have reached today's limit for new ${noun === "demo" ? "demo bookings" : "calls"}. Please try again tomorrow, or email hello@bupulse.com.`);
   }
   // The final check asks Google afresh (still 3 s at most, availability alone if it fails), not the page's cached list.
   const opts = await slotOptions(now, existing?.id, { fresh: true });
@@ -167,51 +180,73 @@ export async function bookDemo(input: { businessId: string; startsAt: Date; now?
   const settings = await getSettings();
   const endsAt = new Date(input.startsAt.getTime() + slotMinutes * MINUTE);
   // A moved booking keeps the Meet link of its Google event (the event moves too); otherwise the reusable link.
-  const data = { planKey: sub.chosenPlan, startsAt: input.startsAt, endsAt, meetingLink: existing?.meetLink || settings.meetingLink || null };
+  const data = { planKey: input.planKey, startsAt: input.startsAt, endsAt, meetingLink: existing?.meetLink || settings.meetingLink || null };
   let booking: BookingView;
   try {
     if (existing) {
-      const { count } = await prisma.demoBooking.updateMany({ where: { id: existing.id, status: "booked" }, data: { ...data, sequence: { increment: 1 } } });
-      if (count !== 1) throw new DemoError("conflict", "That demo was just changed. Reload the page.");
+      // A moved call keeps the request it was booked from (relinked only when that request was deleted meanwhile).
+      const link = kind === "custom_plan" && !existing.requestId && input.requestId ? { requestId: input.requestId } : {};
+      const { count } = await prisma.demoBooking.updateMany({ where: { id: existing.id, status: "booked" }, data: { ...data, ...link, sequence: { increment: 1 } } });
+      if (count !== 1) throw new DemoError("conflict", `That ${noun} was just changed. Reload the page.`);
       booking = (await prisma.demoBooking.findUnique({ where: { id: existing.id } })) as BookingView;
     } else {
-      booking = await prisma.demoBooking.create({ data: { businessId: business.id, ...data, icsToken: newIcsToken() } });
+      booking = await prisma.demoBooking.create({ data: { businessId: company.id, kind, requestId: input.requestId ?? null, ...data, icsToken: newIcsToken() } });
     }
   } catch (error) {
     if ((error as { code?: string }).code !== "P2002") throw error;
     // Either this company got its booking from another request (return it) or the start time was taken meanwhile.
-    const current = await currentBooking(business.id);
-    if (current && !existing) return { booking: current, rescheduled: false };
+    const current = await currentBooking(company.id, kind);
+    if (current && !existing) return { booking: current, rescheduled: false, google: null };
     throw new DemoError("conflict", "Someone just took that time. Pick another one.");
   }
   // The Google event (Meet link, Google's invite to the client). Without a connection nothing changes; a failure keeps
   // the reusable link for now and marks the booking so the event is made (or moved) on a retry.
-  const plan = await getPlan(booking.planKey);
-  const synced = await syncDemoEvent(existing ? "rescheduled" : "booked", booking, eventBusiness(business), plan?.name ?? null);
+  const synced = await syncDemoEvent(existing ? "rescheduled" : "booked", booking, company.event, input.planName);
   booking = ((await persistDemoSync(booking, synced)) as BookingView | null) ?? booking;
-  await trackEvent(EVENT_NAMES.demoBooked, { userId: business.userId, businessId: business.id, props: { plan: sub.chosenPlan, rescheduled: Boolean(existing), google: synced.status } });
-  await sendBookingEmails(existing ? "rescheduled" : "booked", booking, { name: business.name, email: business.user.email, contact: business.user.name });
+  await sendBookingEmails(existing ? "rescheduled" : "booked", booking, company);
   await retryPendingDemoSyncs({ limit: 3 });
-  return { booking, rescheduled: Boolean(existing) };
+  return { booking, rescheduled: Boolean(existing), google: synced.status };
 }
 
-/** Cancels the live booking (at least MIN_LEAD_MINUTES ahead). The invite goes out as METHOD:CANCEL for the same UID. */
-export async function cancelDemo(input: { businessId: string; now?: Date }): Promise<BookingView> {
-  const now = input.now ?? new Date();
-  const { business } = await pendingSubscription(input.businessId);
-  const existing = await currentBooking(business.id);
-  if (!existing) throw new DemoError("invalid", "There is no demo to cancel.");
+/** Cancels the company's live booking of a kind (at least MIN_LEAD_MINUTES ahead). The invite goes out as METHOD:CANCEL for the same UID. */
+export async function cancelBooking(input: { kind: BookingKind; company: BookingCompany; now: Date }): Promise<BookingView> {
+  const { kind, company, now } = input;
+  const noun = nounOf(kind);
+  const existing = await currentBooking(company.id, kind);
+  if (!existing) throw new DemoError("invalid", `There is no ${noun} to cancel.`);
   if (!slotPassed(existing, now) && !canMoveBooking(existing, now)) {
-    throw new DemoError("not_allowed", `Your demo starts in less than ${MIN_LEAD_MINUTES / 60} hours, so it can no longer be cancelled here. Email us instead.`);
+    throw new DemoError("not_allowed", `Your ${noun} starts in less than ${MIN_LEAD_MINUTES / 60} hours, so it can no longer be cancelled here. Email us instead.`);
   }
   const { count } = await prisma.demoBooking.updateMany({ where: { id: existing.id, status: "booked" }, data: { status: "cancelled", sequence: { increment: 1 } } });
-  if (count !== 1) throw new DemoError("conflict", "That demo was already changed. Reload the page.");
+  if (count !== 1) throw new DemoError("conflict", `That ${noun} was already changed. Reload the page.`);
   const cancelled = { ...existing, status: "cancelled", sequence: existing.sequence + 1 };
   // Google tells the client too (sendUpdates=all); the event id stays on the row as a record.
-  await persistDemoSync(cancelled, await syncDemoEvent("cancelled", cancelled, eventBusiness(business), null));
+  await persistDemoSync(cancelled, await syncDemoEvent("cancelled", cancelled, company.event, null));
   await retryPendingDemoSyncs({ limit: 3 });
-  await sendBookingEmails("cancelled", cancelled, { name: business.name, email: business.user.email, contact: business.user.name });
+  await sendBookingEmails("cancelled", cancelled, company);
   return cancelled;
+}
+
+function bookingCompany(business: Awaited<ReturnType<typeof pendingSubscription>>["business"]): BookingCompany {
+  return { id: business.id, userId: business.userId, name: business.name, email: business.user.email, contact: business.user.name, event: eventBusiness(business) };
+}
+
+/** Step 2 of /book-demo: books a free slot for the demo, or moves the live demo booking to it (placeBooking). */
+export async function bookDemo(input: { businessId: string; startsAt: Date; now?: Date }): Promise<{ booking: BookingView; rescheduled: boolean }> {
+  const now = input.now ?? new Date();
+  const { business, sub } = await pendingSubscription(input.businessId);
+  if (!sub.chosenPlan) throw new DemoError("invalid", "Choose a plan first.");
+  const plan = await getPlan(sub.chosenPlan);
+  const result = await placeBooking({ kind: "demo", company: bookingCompany(business), startsAt: input.startsAt, planKey: sub.chosenPlan, planName: plan?.name ?? null, now });
+  // google null: another request of this company made the booking a moment ago (and counted it).
+  if (result.google !== null) await trackEvent(EVENT_NAMES.demoBooked, { userId: business.userId, businessId: business.id, props: { plan: sub.chosenPlan, rescheduled: result.rescheduled, google: result.google } });
+  return { booking: result.booking, rescheduled: result.rescheduled };
+}
+
+/** Cancels the live demo booking (at least MIN_LEAD_MINUTES ahead). */
+export async function cancelDemo(input: { businessId: string; now?: Date }): Promise<BookingView> {
+  const { business } = await pendingSubscription(input.businessId);
+  return cancelBooking({ kind: "demo", company: bookingCompany(business), now: input.now ?? new Date() });
 }
 
 // ---- invites and emails ---------------------------------------------------------------------------------------------
@@ -233,13 +268,20 @@ export function icsUrl(token: string): string {
  */
 export async function bookingIcs(booking: BookingView, business: { name: string; email: string; contact?: string | null }, audience: "client" | "admin" = "client"): Promise<string> {
   const [plan, organizer] = await Promise.all([getPlan(booking.planKey), organizerEmail()]);
+  const call = booking.kind === "custom_plan";
+  const minutes = Math.round((booking.endsAt.getTime() - booking.startsAt.getTime()) / MINUTE);
   return buildIcs({
     uid: `${booking.id}@bupulse.com`,
     sequence: booking.sequence,
     start: booking.startsAt,
     end: booking.endsAt,
-    summary: `BuPulse demo: ${business.name}`,
-    description: [`A ${Math.round((booking.endsAt.getTime() - booking.startsAt.getTime()) / MINUTE)}-minute walk through BuPulse for ${business.name}.`, plan ? `Plan chosen: ${plan.name}.` : "", booking.meetingLink ? `Join: ${booking.meetingLink}` : "The meeting link follows by email.", `Reschedule or cancel (up to ${MIN_LEAD_MINUTES / 60} hours before): ${(await linkSiteUrl())}/dashboard`].filter(Boolean).join("\n"),
+    summary: call ? `BuPulse custom plan call: ${business.name}` : `BuPulse demo: ${business.name}`,
+    description: [
+      call ? `A ${minutes}-minute call about a custom plan for ${business.name}.` : `A ${minutes}-minute walk through BuPulse for ${business.name}.`,
+      plan ? `${call ? "Current plan" : "Plan chosen"}: ${plan.name}.` : "",
+      booking.meetingLink ? `Join: ${booking.meetingLink}` : "The meeting link follows by email.",
+      `Reschedule or cancel (up to ${MIN_LEAD_MINUTES / 60} hours before): ${await linkSiteUrl()}${managePath(booking.kind)}`,
+    ].filter(Boolean).join("\n"),
     url: booking.meetingLink,
     organizer: { name: ORGANIZER_NAME, email: organizer },
     attendees: [{ name: business.contact ?? business.name, email: business.email }, ...(audience === "admin" ? adminEmails().map((email) => ({ email })) : [])],
@@ -250,44 +292,73 @@ export async function bookingIcs(booking: BookingView, business: { name: string;
 
 type EmailKind = "booked" | "rescheduled" | "cancelled";
 
+/** What the admins' copy of a custom plan call email says about the request it came from. Never throws. */
+async function requestBlocks(booking: BookingView, site: string): Promise<{ label: string; value: string }[]> {
+  if (booking.kind !== "custom_plan" || !booking.requestId) return [];
+  const request = await prisma.customPlanRequest.findUnique({ where: { id: booking.requestId }, select: { id: true, featureKeys: true } }).catch(() => null);
+  if (!request) return [];
+  const features = readFeatureKeys(request.featureKeys).map(featureLabel);
+  return [
+    ...(features.length ? [{ label: "Interested in", value: features.join(", ") }] : []),
+    { label: "Request", value: `${site}/admin/requests?open=${encodeURIComponent(request.id)}#request-${encodeURIComponent(request.id)}` },
+  ];
+}
+
 /** One email to the client and one to every admin address, each with the .ics attached and linked. Never throws. */
 export async function sendBookingEmails(kind: EmailKind, booking: BookingView, business: { name: string; email: string; contact?: string | null }): Promise<{ client: boolean; admins: number }> {
   if (!(await isServiceEnabled("resend"))) return { client: false, admins: 0 };
   try {
+    const call = booking.kind === "custom_plan";
+    const site = await linkSiteUrl();
+    const manageUrl = `${site}${managePath(booking.kind)}`;
     const plan = await getPlan(booking.planKey);
     const when = `${formatSlot(booking.startsAt)} (${DEMO_TIME_ZONE.replace("_", " ")})`;
-    const filename = kind === "cancelled" ? "bupulse-demo-cancelled.ics" : "bupulse-demo.ics";
+    const minutes = Math.round((booking.endsAt.getTime() - booking.startsAt.getTime()) / MINUTE);
+    const filename = icsFilename(booking.kind, kind === "cancelled");
     const attachment = { filename, content: Buffer.from(await bookingIcs(booking, business, "client"), "utf8").toString("base64") };
     const adminAttachment = { filename, content: Buffer.from(await bookingIcs(booking, business, "admin"), "utf8").toString("base64") };
     const first = business.contact?.split(/\s+/)[0];
-    const headingByKind: Record<EmailKind, string> = { booked: "Your BuPulse demo is booked", rescheduled: "Your BuPulse demo has moved", cancelled: "Your BuPulse demo is cancelled" };
+    const hi = first ? `Hi ${first}, ` : "";
+    const headingByKind: Record<EmailKind, string> = call
+      ? { booked: "Your BuPulse call is booked", rescheduled: "Your BuPulse call has moved", cancelled: "Your BuPulse call is cancelled" }
+      : { booked: "Your BuPulse demo is booked", rescheduled: "Your BuPulse demo has moved", cancelled: "Your BuPulse demo is cancelled" };
     const blocks = [
       { label: "When", value: when },
       ...(booking.meetingLink && kind !== "cancelled" ? [{ label: booking.meetLink ? "Google Meet" : "Where", value: booking.meetingLink }] : []),
-      ...(plan ? [{ label: "Plan you chose", value: plan.name }] : []),
+      ...(plan ? [{ label: call ? "Your plan" : "Plan you chose", value: plan.name }] : []),
     ];
-    const google = demoGoogleCalendarUrl(booking, business.name, `${(await linkSiteUrl())}/dashboard`);
+    const google = demoGoogleCalendarUrl(booking, business.name, manageUrl);
     const calendarBlock = { label: "Add to your calendar", value: `Google Calendar: ${google}\nApple or Outlook (.ics): ${icsUrl(booking.icsToken)}` };
+    const intro =
+      kind === "cancelled"
+        ? call
+          ? `${hi}your call on ${when} is cancelled. We still answer your custom plan request by email; book a new time whenever you would like to talk it through.`
+          : `${hi}your demo on ${when} is cancelled. Book a new time from your dashboard whenever you are ready.`
+        : call
+          ? `${hi}${kind === "rescheduled" ? "your call has a new time." : "thanks for your custom plan request."} In about ${minutes} minutes we go through what ${business.name} needs and how BuPulse can do it. Afterwards we send you an offer to accept in Billing.`
+          : `${hi}${kind === "rescheduled" ? "your demo has a new time." : "thanks for booking."} In about ${minutes} minutes we will look at ${business.name} together, show you what BuPulse can make for it, and answer your questions. After the demo we start your free trial.`;
     const client = renderEmail({
       heading: headingByKind[kind],
-      intro:
-        kind === "cancelled"
-          ? `${first ? `Hi ${first}, ` : ""}your demo on ${when} is cancelled. Book a new time from your dashboard whenever you are ready.`
-          : `${first ? `Hi ${first}, ` : ""}${kind === "rescheduled" ? "your demo has a new time." : "thanks for booking."} In about ${Math.round((booking.endsAt.getTime() - booking.startsAt.getTime()) / MINUTE)} minutes we will look at ${business.name} together, show you what BuPulse can make for it, and answer your questions. After the demo we start your free trial.`,
+      intro,
       blocks: kind === "cancelled" ? blocks : [...blocks, calendarBlock],
-      button: kind === "cancelled" ? { label: "Book a new time", url: `${(await linkSiteUrl())}/book-demo?step=time` } : booking.meetingLink ? { label: "Join the meeting", url: booking.meetingLink } : { label: "Add to Google Calendar", url: google },
-      footer: kind === "cancelled" ? undefined : `Need another time? Reschedule or cancel from your dashboard up to ${MIN_LEAD_MINUTES / 60} hours before the call: ${(await linkSiteUrl())}/dashboard`,
+      button: kind === "cancelled" ? { label: "Book a new time", url: call ? manageUrl : `${site}/book-demo?step=time` } : booking.meetingLink ? { label: "Join the meeting", url: booking.meetingLink } : { label: "Add to Google Calendar", url: google },
+      footer: kind === "cancelled" ? undefined : `Need another time? Reschedule or cancel ${call ? "" : "from your dashboard "}up to ${MIN_LEAD_MINUTES / 60} hours before the call: ${manageUrl}`,
     });
     const clientSent = await sendEmail({ to: business.email, subject: `${headingByKind[kind]}: ${when}`, html: client.html, text: client.text, attachments: [attachment] });
+    const what = call ? "Custom plan call" : "Demo";
+    const adminTitle = kind === "cancelled" ? `${what} cancelled` : kind === "rescheduled" ? `${what} moved` : `New ${what.toLowerCase()}`;
+    const did = call
+      ? kind === "cancelled" ? "cancelled their custom plan call on" : kind === "rescheduled" ? "moved their custom plan call to" : "booked a call about their custom plan request for"
+      : kind === "cancelled" ? "cancelled their demo" : kind === "rescheduled" ? "moved their demo to" : "booked a demo for";
     const admin = renderEmail({
-      heading: `${kind === "cancelled" ? "Demo cancelled" : kind === "rescheduled" ? "Demo moved" : "New demo booked"}: ${business.name}`,
-      intro: `${business.contact ?? business.email} (${business.email}) ${kind === "cancelled" ? "cancelled their demo" : kind === "rescheduled" ? "moved their demo to" : "booked a demo for"} ${when}.`,
-      blocks: [...blocks, { label: "Company page", value: `${(await linkSiteUrl())}/admin/companies/${booking.businessId}` }],
+      heading: `${kind === "booked" && !call ? "New demo booked" : adminTitle}: ${business.name}`,
+      intro: `${business.contact ?? business.email} (${business.email}) ${did} ${when}.`,
+      blocks: [...blocks, ...(await requestBlocks(booking, site)), { label: "Company page", value: `${site}/admin/companies/${booking.businessId}` }],
       button: kind === "cancelled" ? undefined : { label: "Add to your calendar", url: icsUrl(booking.icsToken) },
     });
     let admins = 0;
     for (const to of adminEmails()) {
-      if (await sendEmail({ to, subject: `${kind === "cancelled" ? "Demo cancelled" : kind === "rescheduled" ? "Demo moved" : "New demo"}: ${business.name}, ${when}`, html: admin.html, text: admin.text, attachments: [adminAttachment] })) admins++;
+      if (await sendEmail({ to, subject: `${adminTitle}: ${business.name}, ${when}`, html: admin.html, text: admin.text, attachments: [adminAttachment] })) admins++;
     }
     return { client: clientSent, admins };
   } catch (error) {

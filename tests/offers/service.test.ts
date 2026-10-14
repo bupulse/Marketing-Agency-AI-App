@@ -385,7 +385,7 @@ describe("custom plan requests", () => {
 
   it("records the request against the company (and its demo booking) and emails the owner", async () => {
     seed();
-    h.db.demoBooking.rows.push({ id: "demo1", businessId: "biz1", status: "booked", startsAt: new Date("2026-10-14T07:00:00Z"), endsAt: new Date("2026-10-14T07:30:00Z") });
+    h.db.demoBooking.rows.push({ id: "demo1", businessId: "biz1", kind: "demo", status: "booked", startsAt: new Date("2026-10-14T07:00:00Z"), endsAt: new Date("2026-10-14T07:30:00Z") });
     const r = await createPlanRequest({ userId: USER, actorId: USER, businessId: "biz1", raw }, NOW);
     const row = h.db.customPlanRequest.rows[0];
     expect(row).toMatchObject({ id: r.id, businessId: "biz1", demoBookingId: "demo1", companyName: "Inzu Fashion", email: "biz1@example.rw", status: "new", source: "pricing", budget: "50k_100k" });
