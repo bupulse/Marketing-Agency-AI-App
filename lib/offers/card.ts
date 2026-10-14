@@ -130,12 +130,12 @@ export async function startOfferCardCheckout(input: { userId: string; email: str
   };
 }
 
-type Txn = { id?: unknown; status?: unknown; custom_data?: Record<string, unknown> | null; currency_code?: unknown; details?: { totals?: Record<string, unknown> } };
+type Txn = { id?: unknown; status?: unknown; custom_data?: Record<string, unknown> | null; currency_code?: unknown; items?: { quantity?: unknown }[]; details?: { totals?: Record<string, unknown> } };
 const str = (v: unknown) => (typeof v === "string" && v ? v : null);
 const int = (v: unknown) => (typeof v === "number" && Number.isSafeInteger(v) ? v : typeof v === "string" && /^\d+$/.test(v) ? Number(v) : null);
 
 /** A transaction.completed of an offer paid by card, read from its signed custom data; null for every other payment. */
-export function offerCardPaymentOf(data: unknown): { transactionId: string; offerId: string; userId: string; sig: string; qsig: string; usdCents: number; quoteMinor: number; quoteCurrency: string; paidCents: number | null; paidCurrency: string | null } | null {
+export function offerCardPaymentOf(data: unknown): { transactionId: string; offerId: string; userId: string; sig: string; qsig: string; usdCents: number; quoteMinor: number; quoteCurrency: string; paidCents: number | null; paidCurrency: string | null; /** The units bought: always 1 (each item's quantity, summed). */ quantity: number } | null {
   const d = (data ?? {}) as Txn;
   const c = d.custom_data ?? {};
   if (c.kind !== "offer") return null;
@@ -147,7 +147,10 @@ export function offerCardPaymentOf(data: unknown): { transactionId: string; offe
   const quoteCurrency = str(c.quoteCurrency);
   if (!transactionId || !offerId || !userId || usdCents === null || quoteMinor === null || !quoteCurrency) return null;
   const totals = d.details?.totals ?? {};
-  return { transactionId, offerId, userId, sig: str(c.sig) ?? "", qsig: str(c.qsig) ?? "", usdCents, quoteMinor, quoteCurrency, paidCents: int(totals.subtotal), paidCurrency: str(totals.currency_code ?? d.currency_code)?.toUpperCase() ?? null };
+  const items = Array.isArray(d.items) ? d.items : [];
+  const quantity = items.length === 0 ? 1 : items.reduce((n, item) => n + (int(item?.quantity) ?? 0), 0);
+  return {
+    quantity, transactionId, offerId, userId, sig: str(c.sig) ?? "", qsig: str(c.qsig) ?? "", usdCents, quoteMinor, quoteCurrency, paidCents: int(totals.subtotal), paidCurrency: str(totals.currency_code ?? d.currency_code)?.toUpperCase() ?? null };
 }
 
 /** Money arrived but cannot switch anything on: logged as an error for the owner to refund it in Paddle. */
@@ -166,6 +169,7 @@ export async function applyOfferCardPayment(data: unknown, now: Date = new Date(
   const p = offerCardPaymentOf(data);
   if (!p) return null;
   if (!(await verifyCheckoutUser(p.userId, p.sig)) || !(await verifyCheckoutUser(quoteMessage(p), p.qsig))) return refundNeeded("the transaction's custom data is not signed by BuPulse", p);
+  if (p.quantity !== 1) return refundNeeded(`bought ${p.quantity} instead of 1`, p);
   if (p.paidCurrency !== "USD" || p.paidCents !== p.usdCents) return refundNeeded(`paid ${p.paidCents ?? "?"} ${p.paidCurrency ?? "?"}, quoted ${p.usdCents} USD`, p);
   const [offer, business] = await Promise.all([prisma.planOffer.findUnique({ where: { id: p.offerId } }), prisma.business.findUnique({ where: { userId: p.userId }, select: { id: true } })]);
   if (!offer || !business || offer.businessId !== business.id) return refundNeeded("the offer is not this client's", p);
