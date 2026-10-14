@@ -3,4 +3,4 @@
 // main) only install zips signed by the matching private key, kept in the owner's macOS Keychain (docs/UPDATES.md).
 // Empty until the owner runs --init: then RELEASE_PUBLIC_KEY (the environment) is used, and installs are refused
 // when neither is set.
-export const RELEASE_PUBLIC_KEY = "";
+export const RELEASE_PUBLIC_KEY = "JeuxR48MsmHVdoXBWlt8BIQCC4LN6qb30dhV7Awpv84=";
