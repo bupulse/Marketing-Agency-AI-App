@@ -9,7 +9,11 @@ import { dateTime, param } from "@/lib/admin/format";
 import { notesToBlocks } from "@/lib/admin/release-notes";
 import { DEPLOY_HOSTS } from "@/lib/admin/deploy-host";
 import { getUpdateStatus, type UpdateStatus } from "@/lib/admin/updates";
-import { installUpdateAction, rollbackAction } from "./actions";
+import { installReleaseAction, installUpdateAction, restoreReleaseAction, rollbackAction } from "./actions";
+import { ReleaseUpload } from "@/components/admin/release-upload";
+import { listReleases, KEEP_DAYS, isDryRun } from "@/lib/updates/releases";
+import { resolvePublicKey } from "@/scripts/release-core.mjs";
+import { RELEASE_PUBLIC_KEY } from "@/scripts/release-public-key.mjs";
 
 export const metadata = { title: "Updates" };
 
@@ -24,9 +28,12 @@ const STATE: Record<UpdateStatus["state"], { label: string; tone: BadgeTone }> =
 const DOCS = "https://github.com/%s/blob/main/docs/UPDATES.md";
 
 export default async function UpdatesPage({ searchParams }: PageProps<"/admin/settings/updates">) {
-  await requirePermission("system"); // pages render alongside the layout, so check here too
+  const me = await requirePermission("system"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
-  const s = await getUpdateStatus();
+  const [s, releases] = await Promise.all([getUpdateStatus(), listReleases().catch(() => [])]);
+  // Uploading, installing and restoring a zip: the owner from ADMIN_EMAILS only (lib/updates/releases.ts).
+  const isOwner = me.isOwner && !me.staffId;
+  const signingKey = resolvePublicKey(RELEASE_PUBLIC_KEY, process.env.RELEASE_PUBLIC_KEY);
   const state = STATE[s.state];
   const host = DEPLOY_HOSTS[s.host];
   const docsUrl = s.repo ? DOCS.replace("%s", s.repo) : null;
@@ -36,7 +43,7 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/admin/se
 
   return (
     <>
-      <PageHeader title="Updates" description="The version BuPulse is running, the newest release on GitHub, and the deploys. Installing or rolling back starts the official deploy workflow on GitHub Actions; nothing is uploaded from here." />
+      <PageHeader title="Updates" description="The version BuPulse is running, the newest release on GitHub, the deploys, and versions the owner uploaded as signed zips. Every install, restore or rollback runs the official deploy workflow on GitHub Actions." />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
       {param(sp.error) && <p role="alert" className={notice.bad}>{param(sp.error)}</p>}
       {s.error && <p role="alert" className={notice.bad}>{s.error}</p>}
@@ -132,6 +139,8 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/admin/se
         </Panel>
       )}
 
+      <Versions releases={releases} isOwner={isOwner} signingKey={signingKey} dryRun={isDryRun()} />
+
       {s.connected && (
         <Panel title="Roll back" description={`Puts the previous ${host.runtime} version back. Use it when an update breaks the site.`}>
           <p className="text-[14px] text-muted">
@@ -163,6 +172,84 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/admin/se
           </div>
         </Panel>
       )}
+    </>
+  );
+}
+
+const RELEASE_STATUS: Record<string, { label: string; tone: BadgeTone }> = {
+  verified: { label: "Verified, not installed", tone: "blue" },
+  installing: { label: "Installing", tone: "violet" },
+  installed: { label: "Running", tone: "success" },
+  failed: { label: "Failed", tone: "danger" },
+  superseded: { label: "Installed before", tone: "neutral" },
+};
+
+/** Upload a signed version, and every version of the last 30 days with Install or Restore. */
+function Versions({ releases, isOwner, signingKey, dryRun }: { releases: Awaited<ReturnType<typeof listReleases>>; isOwner: boolean; signingKey: string | null; dryRun: boolean }) {
+  return (
+    <>
+      <Panel title="Upload a version" description="Install a version built and signed on the owner's computer (npm run release:zip). Only zips signed with the owner's release key are accepted, so a stolen admin sign-in alone cannot change the site.">
+        {!signingKey ? (
+          <p className="text-[14px] text-muted">No release signing key is set up yet. On the owner&apos;s Mac run <code className="font-mono text-[13px]">npm run release:zip -- --init</code> and commit <code className="font-mono text-[13px]">scripts/release-public-key.mjs</code> (docs/UPDATES.md, &quot;Install from a zip&quot;).</p>
+        ) : isOwner ? (
+          <ReleaseUpload />
+        ) : (
+          <p className="text-[14px] text-muted">Only the owner can upload, install or restore a version.</p>
+        )}
+        {dryRun && <p className="text-[13px] text-muted">Dry run (UPDATES_DRY_RUN=1): every check runs, but Install and Restore do not start the deploy workflow.</p>}
+      </Panel>
+      <div id="versions" />
+      <Panel title={`Versions (last ${KEEP_DAYS} days)`} description="Every uploaded version, kept 30 days (the current and the previous installed version always). Restore puts an earlier version back.">
+        <p className="rounded-2xl bg-soft px-4 py-3 text-[14px]">
+          <strong>Database changes are not undone automatically.</strong> Each install backs up the database before its migrations; to go back to the old data, restore that version&apos;s backup by hand (Supabase, SQL or <code className="font-mono text-[13px]">pg_restore</code>, docs/UPDATES.md).
+        </p>
+        {releases.length === 0 ? (
+          <p className="text-[14px] text-muted">No uploaded versions yet.</p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-line">
+            {releases.map((r) => {
+              const st = RELEASE_STATUS[r.status] ?? { label: r.status, tone: "neutral" as BadgeTone };
+              return (
+                <li key={r.id} className="flex flex-wrap items-start justify-between gap-4 py-4 first:pt-0 last:pb-0">
+                  <div className="min-w-0 text-[14px]">
+                    <p className="font-semibold">
+                      {r.version} <Badge tone={st.tone}>{st.label}</Badge>
+                    </p>
+                    <p className="text-muted">
+                      <code className="font-mono text-[12px]">{r.commit.slice(0, 7)}</code> · uploaded {dateTime(r.createdAt)} by {r.uploadedBy}
+                      {r.installedAt && <> · installed {dateTime(r.installedAt)}{r.installRequestedBy ? ` by ${r.installRequestedBy}` : ""}</>}
+                    </p>
+                    {r.notes && <p className="whitespace-pre-wrap break-words">{r.notes}</p>}
+                    <p className="text-[13px] text-muted">
+                      {r.cloudflareVersionId ? <>Cloudflare version <code className="font-mono text-[12px]">{r.cloudflareVersionId}</code> · </> : null}
+                      Zip: {r.zipPath ? <code className="font-mono text-[12px]">releases/{r.zipPath}</code> : "removed after 30 days"} · Backup: {r.backupPath ? <code className="font-mono text-[12px]">releases/{r.backupPath}</code> : r.installedAt ? "removed after 30 days" : "taken at install"}
+                    </p>
+                    {r.error && <p className="text-[13px] text-danger">{r.error}</p>}
+                  </div>
+                  {isOwner && signingKey && (
+                    <div className="flex gap-2">
+                      {(r.status === "verified" || r.status === "failed") && r.zipPath && (
+                        <ConfirmButton action={installReleaseAction} fields={{ id: r.id }} label={`Install ${r.version}`} variant="primary" title={`Install ${r.version}?`} description="GitHub checks the zip and its signature again with the key on main, backs up the database, runs the migrations, then builds and deploys. A failed build or migration leaves the live site as it is. Audited." confirmLabel="Install">
+                          <Field label={`Type ${r.version} to confirm`} required>
+                            <Input name="typed" autoComplete="off" required placeholder={r.version} />
+                          </Field>
+                        </ConfirmButton>
+                      )}
+                      {r.status === "superseded" && (r.cloudflareVersionId || r.zipPath) && (
+                        <ConfirmButton action={restoreReleaseAction} fields={{ id: r.id }} label="Restore" title={`Restore ${r.version}?`} description={`${r.cloudflareVersionId ? "Cloudflare switches back to this version within a minute." : "This version's zip is installed again."} Database changes since are not undone: the old code must work with today's database, or restore the backup by hand. Audited.`} confirmLabel="Restore">
+                          <Field label={`Type ${r.version} to confirm`} required>
+                            <Input name="typed" autoComplete="off" required placeholder={r.version} />
+                          </Field>
+                        </ConfirmButton>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Panel>
     </>
   );
 }

@@ -111,10 +111,14 @@ function gatedActions(): { file: string; name: string; perms: string[] }[] {
   const out: { file: string; name: string; perms: string[] }[] = [];
   for (const file of actionFiles) {
     const src = readFileSync(file, "utf8");
-    const helper = /async function staffManager\(\)[\s\S]*?adminAction\(([^)]*)\)/.exec(src);
+    // Local helpers that open with adminAction (staffManager, owner...) count as the gate of the actions calling them.
+    const helpers = [...src.matchAll(/^async function (\w+)\(\)[^{]*\{([\s\S]*?)\n\}/gm)].flatMap((h) => {
+      const gate = /adminAction\(([^)]*)\)/.exec(h[2]);
+      return gate ? [{ name: h[1], gate }] : [];
+    });
     for (const m of src.matchAll(/export async function (\w+)\([^)]*\)[^{]*\{([\s\S]*?)\n\}/g)) {
       const body = m[2];
-      const gate = /adminAction\(([^)]*)\)/.exec(body) ?? (/staffManager\(\)/.test(body) ? helper : null);
+      const gate = /adminAction\(([^)]*)\)/.exec(body) ?? helpers.find((h) => new RegExp(`\\b${h.name}\\(\\)`).test(body))?.gate ?? null;
       out.push({ file, name: m[1], perms: gate ? permsIn(gate[1]) : [] });
     }
   }

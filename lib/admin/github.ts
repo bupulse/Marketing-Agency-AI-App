@@ -12,6 +12,21 @@ export const DEFAULT_BRANCH = "main";
 const API = "https://api.github.com";
 const TIMEOUT_MS = 10_000;
 
+/**
+ * The deploy workflow's inputs. deploy-zip and restore come from Updates, "Upload a version" (docs/UPDATES.md): the
+ * signed zip's storage path and sha256 and the ReleaseVersion id the workflow reports back to, or the Cloudflare
+ * version to put back.
+ */
+export type DeployInputs = {
+  ref: string;
+  action: "deploy" | "rollback" | "deploy-zip" | "restore";
+  environment: string;
+  zip_path?: string;
+  zip_sha256?: string;
+  release_id?: string;
+  cf_version_id?: string;
+};
+
 /** `workflow`: the deploy workflow file of the host (deploy.yml for Cloudflare, deploy-netlify.yml for Netlify). */
 export type GitHubConfig = { repo: string; token: string; workflow?: string };
 
@@ -179,7 +194,7 @@ export class GitHubClient {
   }
 
   /** Starts the deploy workflow (workflow_dispatch). GitHub answers 204 and the run appears a few seconds later. */
-  async dispatchDeploy(inputs: { ref: string; action: "deploy" | "rollback"; environment: string }): Promise<void> {
+  async dispatchDeploy(inputs: DeployInputs): Promise<void> {
     const res = await this.request(`/repos/${this.cfg.repo}/actions/workflows/${this.workflow}/dispatches`, {
       method: "POST",
       body: { ref: DEFAULT_BRANCH, inputs },
