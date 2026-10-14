@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { scrubSecrets } from "./scrub";
+import { runAsBackgroundJob } from "@/lib/platform/background-job";
 
 const KEEP_DAYS = 14;
 
@@ -22,7 +23,8 @@ export async function recordCron<T>(job: string, run: () => Promise<T>): Promise
   const startedAt = new Date();
   let result: T;
   try {
-    result = await run();
+    // Emails a job sends link to the public address, not to the host the cron was called on.
+    result = await runAsBackgroundJob(run);
   } catch (error) {
     await write(job, startedAt, false, null, error instanceof Error ? error.message : String(error));
     throw error;

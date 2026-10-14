@@ -2,7 +2,7 @@
 // (and Admins who chose alerts) get an email listing what was scheduled on its own since the last one, when each goes
 // out, and a link to change or cancel it. The cron (/api/cron/content-summary) runs hourly; this file decides.
 import "server-only";
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { logError } from "@/lib/errors";
@@ -58,7 +58,7 @@ const excerpt = (p: SummaryPost) => {
 /** The email for one business. Pure apart from the site URL. */
 export function summaryEmail(args: { businessName: string; zone: string; posts: readonly SummaryPost[] }) {
   const when = new Intl.DateTimeFormat("en-US", { timeZone: args.zone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-  const base = siteUrl();
+  const base = publicSiteUrl();
   const listed = args.posts.slice(0, MAX_LISTED);
   const more = args.posts.length - listed.length;
   const count = args.posts.length === 1 ? "1 post was" : `${args.posts.length} posts were`;

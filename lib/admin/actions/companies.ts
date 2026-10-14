@@ -2,7 +2,6 @@ import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db";
 import { eraseTeammateLogin } from "@/lib/account-deletion";
-import { siteUrl } from "@/lib/auth/site-url";
 import { logError } from "@/lib/errors";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
 import { RateLimitError, rateLimit, rateLimitMessage } from "@/lib/rate-limit";
@@ -11,6 +10,7 @@ import { isRole, ROLE_LABEL, type Role } from "@/lib/team/roles";
 import { lockSeats, normalizeEmail, seatLimit, seatsUsed } from "@/lib/team/service";
 import { writeAudit } from "../audit";
 import { AdminError, type AdminContext, type Page } from "../types";
+import { linkSiteUrl } from "@/lib/auth/request-site";
 
 // Actions on companies and their users. The super admin never sets or sees a password: people get links and choose their own.
 // Each action is one database transaction with its audit row (before and after), refuses a missing target, is rate limited,
@@ -47,7 +47,8 @@ function publicAuth() {
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } }).auth;
 }
 
-const RECOVERY_REDIRECT = () => `${siteUrl()}/auth/confirm?type=recovery&next=/reset-password`;
+/** Where the reset link lands: the admin's own address (one Supabase allows), never localhost from the tunnel. */
+const RECOVERY_REDIRECT = async () => `${await linkSiteUrl()}/auth/confirm?type=recovery&next=/reset-password`;
 
 // ---- reads ----------------------------------------------------------------------------------------------------------
 
@@ -214,7 +215,7 @@ async function sendSetPasswordEmail(args: { userId: string; email: string; name:
     const { data, error } = await createAdminClient().auth.admin.generateLink({ type: "recovery", email: args.email });
     const hash = data?.properties?.hashed_token;
     if (error || !hash) throw error ?? new Error("generateLink returned no token");
-    const url = `${siteUrl()}/auth/confirm?token_hash=${encodeURIComponent(hash)}&type=recovery&next=/reset-password`;
+    const url = `${(await linkSiteUrl())}/auth/confirm?token_hash=${encodeURIComponent(hash)}&type=recovery&next=/reset-password`;
     const { html, text } = renderEmail({
       heading: `You were added to ${args.company} on BuPulse`,
       intro: `${args.name ? `Hi ${args.name}, ` : ""}BuPulse support added you to ${args.company} as ${args.role === "ADMIN" ? "an Admin" : "a Member"}. Choose your password to sign in. We never set or see passwords for you.`,
@@ -236,7 +237,7 @@ export async function sendPasswordReset(ctx: AdminContext, input: { userId: stri
   const m = await membershipOf(input.userId);
   await limit(ctx, `reset:${input.userId}`, { limit: 5, windowSeconds: 3600 });
   await limit(ctx, `reset-all:${ctx.actor}`, { limit: 60, windowSeconds: 3600 });
-  const { error } = await publicAuth().resetPasswordForEmail(m.user.email, { redirectTo: RECOVERY_REDIRECT() });
+  const { error } = await publicAuth().resetPasswordForEmail(m.user.email, { redirectTo: await RECOVERY_REDIRECT() });
   if (error) {
     await logError(error, { source: "admin.send_password_reset", userId: input.userId });
     // Supabase allows one recovery email per person a minute (also after the "choose a password" mail of a new user).
@@ -312,7 +313,7 @@ export async function changeUserEmail(ctx: AdminContext, input: { userId: string
   const noticeSent = await sendEmail({ to: oldEmail, subject: "Your BuPulse sign-in email was changed", html, text });
   let resetSent = false;
   if (input.sendReset) {
-    const { error } = await publicAuth().resetPasswordForEmail(newEmail, { redirectTo: RECOVERY_REDIRECT() });
+    const { error } = await publicAuth().resetPasswordForEmail(newEmail, { redirectTo: await RECOVERY_REDIRECT() });
     resetSent = !error;
     if (error) await logError(error, { source: "admin.change_user_email.reset", userId: input.userId });
   }

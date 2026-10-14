@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkActiveUser } from "@/lib/auth/require-user";
-import { siteUrl } from "@/lib/auth/site-url";
+import { requestSiteUrl } from "@/lib/auth/request-site";
 import { isCanvaEnabled } from "@/lib/canva/config";
 import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { CanvaError, finishCanvaReturn, startCanvaReturn } from "@/lib/canva/service";
@@ -14,8 +14,8 @@ import { keepAlive } from "@/lib/platform/background";
  */
 const waitMs = () => timeBudget(30 * 1000, 15 * 1000);
 
-function toDesigns(params: Record<string, string>) {
-  const url = new URL("/dashboard/designs", siteUrl());
+async function toDesigns(params: Record<string, string>) {
+  const url = new URL("/dashboard/designs", await requestSiteUrl());
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   return NextResponse.redirect(url);
 }
@@ -42,13 +42,13 @@ export async function GET(request: Request) {
   const check = await checkActiveUser();
   if (check.status === "signed_out") {
     const next = `/api/canva/return?correlation_jwt=${encodeURIComponent(jwt)}`;
-    return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(next)}`, siteUrl()));
+    return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(next)}`, await requestSiteUrl()));
   }
-  if (check.status === "unconfirmed") return NextResponse.redirect(new URL("/login?error=confirm", siteUrl()));
-  if (check.status === "locked") return NextResponse.redirect(new URL("/account/deletion", siteUrl()));
-  if (check.status === "suspended") return NextResponse.redirect(new URL("/suspended", siteUrl()));
+  if (check.status === "unconfirmed") return NextResponse.redirect(new URL("/login?error=confirm", await requestSiteUrl()));
+  if (check.status === "locked") return NextResponse.redirect(new URL("/account/deletion", await requestSiteUrl()));
+  if (check.status === "suspended") return NextResponse.redirect(new URL("/suspended", await requestSiteUrl()));
   // The plan lost Canva while the person was editing there: nothing is imported.
-  if (!(await hasFeature(check.user, "canva"))) return NextResponse.redirect(new URL(upgradeHref("canva"), siteUrl()));
+  if (!(await hasFeature(check.user, "canva"))) return NextResponse.redirect(new URL(upgradeHref("canva"), await requestSiteUrl()));
 
   try {
     const job = await startCanvaReturn(check.user.id, jwt, check.user.actorId);

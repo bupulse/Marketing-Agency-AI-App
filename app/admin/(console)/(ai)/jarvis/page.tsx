@@ -5,9 +5,9 @@ import { Empty, Panel, notice } from "@/components/admin/ui";
 import { Badge } from "@/components/ui";
 import { dateTime, param } from "@/lib/admin/format";
 import { listAdminKeys } from "@/lib/admin/keys";
-import { siteUrl } from "@/lib/auth/site-url";
 import { revokeKeyAction } from "@/app/admin/(console)/actions";
 import { CopyField, CreateKeyForm, RotateKey } from "./key-forms";
+import { linkSiteUrl } from "@/lib/auth/request-site";
 
 export const metadata = { title: "Jarvis" };
 
@@ -15,7 +15,7 @@ export default async function JarvisPage({ searchParams }: PageProps<"/admin/jar
   await requirePermission("jarvis"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
   const keys = await listAdminKeys();
-  const base = siteUrl();
+  const base = (await linkSiteUrl());
   const mcp = `${base}/api/mcp`;
   const active = keys.filter((k) => !k.revokedAt);
   const revoked = keys.filter((k) => k.revokedAt);

@@ -21,14 +21,22 @@ function servedOrigins(): string[] {
 }
 
 /**
+ * The served origin a request came in on (siteUrl() or one of AUTH_EXTRA_ORIGINS), or null for any other Host header:
+ * a forged Host can never steer a link or a redirect.
+ */
+export function servedOriginOf(headers: Headers): string | null {
+  const host = (headers.get("x-forwarded-host") ?? headers.get("host") ?? "").split(",")[0].trim();
+  if (!host) return null;
+  const local = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
+  const proto = (headers.get("x-forwarded-proto") ?? (local ? "http" : "https")).split(",")[0].trim();
+  const origin = `${proto}://${host}`;
+  return servedOrigins().includes(origin) ? origin : null;
+}
+
+/**
  * The address the visitor is actually on, so a Google sign-in started on https://test.bupulse.com comes back there and
  * not to localhost. Only an origin from servedOrigins() is trusted; any other Host header gets siteUrl().
  */
 export function originFor(headers: Headers): string {
-  const host = (headers.get("x-forwarded-host") ?? headers.get("host") ?? "").split(",")[0].trim();
-  if (!host) return siteUrl();
-  const local = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
-  const proto = (headers.get("x-forwarded-proto") ?? (local ? "http" : "https")).split(",")[0].trim();
-  const origin = `${proto}://${host}`;
-  return servedOrigins().includes(origin) ? origin : siteUrl();
+  return servedOriginOf(headers) ?? siteUrl();
 }

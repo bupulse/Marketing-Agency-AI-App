@@ -12,7 +12,7 @@ const h = vi.hoisted(() => ({
   logError: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/db", () => ({ prisma: new Proxy({}, { get: (_t, p) => (h.db as never)[p] }) }));
-vi.mock("@/lib/admin/auth", () => ({ requireAdmin: h.requireAdmin, adminEmails: () => [] }));
+vi.mock("@/lib/admin/auth", () => ({ requireAdmin: h.requireAdmin, requirePermission: h.requireAdmin, adminEmails: () => [] }));
 vi.mock("@/lib/errors", async (orig) => ({ ...(await orig<typeof import("@/lib/errors")>()), logError: h.logError }));
 
 import { GET as connect } from "@/app/api/admin/google-calendar/connect/route";

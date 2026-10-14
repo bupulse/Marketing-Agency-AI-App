@@ -1,7 +1,7 @@
 import "server-only";
 import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { decrypt, encrypt } from "@/lib/crypto";
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 import { prisma } from "@/lib/db";
 import { scriptTag } from "@/lib/widget/install";
 import { defaultAllowedDomains, hostAllowed, MAX_ALLOWED_DOMAINS, normalizeDomain } from "@/lib/widget/origin";
@@ -112,7 +112,7 @@ export async function installChat(businessId: string, zoneId: string): Promise<I
   await allowDomain(businessId, zone.name);
   let result: { toolId: string; changed: boolean };
   try {
-    result = await installWidget(token, zone.id, scriptTag(siteUrl(), business.widgetKey), business.widgetKey);
+    result = await installWidget(token, zone.id, scriptTag(publicSiteUrl(), business.widgetKey), business.widgetKey);
   } catch (error) {
     if (error instanceof CloudflareError) {
       if (error.authFailed) return { status: "manual", reason: "This token cannot change Zaraz on this domain. Add the Zaraz Edit permission to the token, or copy the code below into your site." };

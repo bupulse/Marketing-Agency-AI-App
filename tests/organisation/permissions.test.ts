@@ -94,6 +94,16 @@ describe("every admin route names its permission", () => {
   });
 });
 
+describe("admin routes outside the console folder", () => {
+  it("the Google Calendar connect and callback name their permission too", () => {
+    for (const f of ["app/api/admin/google-calendar/connect/route.ts", "app/api/admin/google-calendar/callback/route.ts"]) {
+      const src = readFileSync(join(process.cwd(), f), "utf8");
+      expect(src, f).toMatch(/requirePermission\(\["system", "demos"\]\)/);
+      expect(src, f).not.toMatch(/\brequireAdmin\(\)/);
+    }
+  });
+});
+
 const actionFiles = files(ROOT, "actions.ts");
 
 /** Each exported action and the permission(s) its gate names, from the source. */

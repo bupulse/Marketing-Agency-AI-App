@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePersonalUser } from "@/lib/auth/require-user";
 import { safeNext } from "@/lib/auth/safe-next";
-import { siteUrl } from "@/lib/auth/site-url";
+import { requestSiteUrl } from "@/lib/auth/request-site";
 import { CanvaApiError, exchangeCode, getCanvaUserId } from "@/lib/canva/client";
 import { isCanvaEnabled } from "@/lib/canva/config";
 import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
@@ -10,8 +10,8 @@ import { saveTokens } from "@/lib/canva/tokens";
 import { hasFeature } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 
-function back(next: string, result: "connected" | "denied" | "error") {
-  const url = new URL(next, siteUrl());
+async function back(next: string, result: "connected" | "denied" | "error") {
+  const url = new URL(next, await requestSiteUrl());
   url.searchParams.set("canva", result);
   const response = NextResponse.redirect(url);
   response.cookies.delete({ name: OAUTH_COOKIE, path: "/api/canva" });

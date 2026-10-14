@@ -1,7 +1,7 @@
 import "server-only";
 import { renderEmail } from "@/lib/publishing/email";
-import { siteUrl } from "@/lib/auth/site-url";
 import { sourceLabel } from "./filters";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 
 export type EmailLead = {
   id: string;
@@ -25,7 +25,7 @@ export function leadLabel(lead: Pick<EmailLead, "name" | "email" | "phone">): st
 }
 
 export function leadsUrl(leadId?: string): string {
-  return `${siteUrl()}/dashboard/leads${leadId ? `?lead=${encodeURIComponent(leadId)}` : ""}`;
+  return `${publicSiteUrl()}/dashboard/leads${leadId ? `?lead=${encodeURIComponent(leadId)}` : ""}`;
 }
 
 function contactLines(lead: EmailLead): string {

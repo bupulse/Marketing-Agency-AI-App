@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { siteUrl } from "@/lib/auth/site-url";
+import { requestSiteUrl } from "@/lib/auth/request-site";
 import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
@@ -10,8 +10,8 @@ import { saveConnection } from "@/lib/stores/connection";
 import { exchangeCode, normalizeShopDomain, shopifyConfig, subscribeUninstall, verifyOAuthHmac } from "@/lib/stores/shopify";
 import { openShopifyState, SHOPIFY_COOKIE } from "@/lib/stores/state";
 
-function back(result: string) {
-  const response = NextResponse.redirect(new URL(`/dashboard/stores/shopify?${result === "connected" ? "connected=1" : `error=${result}`}`, siteUrl()));
+async function back(result: string) {
+  const response = NextResponse.redirect(new URL(`/dashboard/stores/shopify?${result === "connected" ? "connected=1" : `error=${result}`}`, await requestSiteUrl()));
   response.cookies.delete({ name: SHOPIFY_COOKIE, path: "/api/stores/shopify" });
   return response;
 }

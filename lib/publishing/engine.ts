@@ -18,6 +18,7 @@ import { postData } from "@/lib/webhooks/events";
 import { createMarkPostedToken } from "./token";
 import { composeText } from "./validate";
 import { CONTEST_NOTE, contestBlocked } from "@/lib/content-flow/contest";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 
 /** A claimed post whose lock is older than this was abandoned by a crashed run and is taken again. */
 export const STALE_LOCK_MINUTES = 10;
@@ -135,10 +136,6 @@ async function loadClaimed(ids: string[]): Promise<ClaimedPost[]> {
   return prisma.post.findMany({ where: { id: { in: ids }, status: "PUBLISHING" }, include: postInclude, orderBy: { scheduledAt: "asc" } });
 }
 
-function siteUrl() {
-  return (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
-}
-
 const NETWORK_LABEL: Record<string, string> = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube" };
 const label = (network: string) => NETWORK_LABEL[network] ?? network;
 
@@ -184,7 +181,7 @@ async function sendReminder(post: ClaimedPost): Promise<"reminders" | "retrying"
         ...(post.link ? [{ label: "Link", value: post.link }] : []),
       ],
       links,
-      button: { label: "I posted it", url: `${siteUrl()}/posted?token=${encodeURIComponent(token)}` },
+      button: { label: "I posted it", url: `${publicSiteUrl()}/posted?token=${encodeURIComponent(token)}` },
       footer: links.length ? (hasVideo ? "Download links work for 7 days." : "Image links work for 7 days.") : post.mediaPaths.length ? "Open BuPulse to download the images for this post." : undefined,
     }),
   };
@@ -240,7 +237,7 @@ async function emailOwner(post: ClaimedPost, kind: "failed" | "uncertain", messa
         { label: uncertain ? "What happened" : "What went wrong", value: message },
         { label: "The post", value: composeText(post.text, post.hashtags).slice(0, 500) },
       ],
-      button: { label: reconnect ? "Reconnect your account" : "Open your calendar", url: `${siteUrl()}/dashboard/${reconnect ? "connections" : "calendar"}` },
+      button: { label: reconnect ? "Reconnect your account" : "Open your calendar", url: `${publicSiteUrl()}/dashboard/${reconnect ? "connections" : "calendar"}` },
     }),
   };
   for (const to of recipients) await sendEmail({ to, ...email });

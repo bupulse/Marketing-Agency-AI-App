@@ -2,6 +2,7 @@ import { decrypt, encrypt } from "@/lib/crypto";
 import { siteUrl } from "@/lib/auth/site-url";
 import { base64Url, codeChallenge, newCodeVerifier, randomToken, sameString } from "@/lib/canva/pkce";
 import type { Network, OAuthResult } from "./types";
+import { secureCookies } from "@/lib/auth/request-site";
 
 // Shared connect flow for every network: a sealed, expiring "pending login" cookie carries the state,
 // the PKCE verifier, the user, the network, the variant and a safe `next`. The cookie is AES-GCM sealed
@@ -31,6 +32,7 @@ export function isValidVariant(network: Network, variant: string | null | undefi
   return !!allowed && allowed.includes(variant);
 }
 
+/** Registered with each network's app (Meta, LinkedIn, TikTok, YouTube): stays on siteUrl() on purpose (docs/RELEASE_2.0.md). */
 export function redirectUri(network: Network): string {
   return `${siteUrl()}/api/social/${network}/callback`;
 }
@@ -69,8 +71,9 @@ export async function openState(sealed: string | undefined, userId: string, netw
   }
 }
 
-export function cookieOptions(path: string, maxAge = 600) {
-  return { httpOnly: true, secure: siteUrl().startsWith("https://"), sameSite: "lax" as const, path, maxAge };
+/** The OAuth cookies: Secure when the visitor's address is https (lib/auth/request-site.ts). */
+export async function cookieOptions(path: string, maxAge = 600) {
+  return { httpOnly: true, secure: await secureCookies(), sameSite: "lax" as const, path, maxAge };
 }
 
 // ---- Pending accounts: an OAuth result waiting for the user to choose accounts ----

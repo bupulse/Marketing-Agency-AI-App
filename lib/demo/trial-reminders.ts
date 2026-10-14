@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/admin/audit";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { consoleContext } from "@/lib/admin/types";
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 import { logError } from "@/lib/errors";
 import { getPlan } from "@/lib/plan-catalog";
 import { renderEmail, sendEmail } from "@/lib/publishing/email";
@@ -42,7 +42,7 @@ async function sendReminder(row: Row, lastDay: boolean, now: Date): Promise<bool
     heading: lastDay ? "Your free trial ends today" : "Your free trial ends tomorrow",
     intro: `${first ? `Hi ${first}, ` : ""}your BuPulse trial${plan ? ` of the ${plan.name} plan` : ""} ends ${lastDay ? `in about ${hoursLeft} ${hoursLeft === 1 ? "hour" : "hours"}` : "tomorrow"}, on ${formatSlot(ends)} (Africa/Kigali). To keep creating, pay from the Billing page before then. If you do nothing, your account becomes read-only: everything you made stays saved, and you can pay later to carry on.`,
     blocks: [{ label: "Trial ends", value: `${formatSlot(ends)} (Africa/Kigali)` }, ...(plan ? [{ label: "Your plan", value: plan.name }] : [])],
-    button: { label: "Choose how to pay", url: `${siteUrl()}/dashboard/billing` },
+    button: { label: "Choose how to pay", url: `${publicSiteUrl()}/dashboard/billing` },
     footer: "Questions? Reply to this email and we will help.",
   });
   return sendEmail({ to: row.user.email, subject: lastDay ? "Your BuPulse trial ends today" : "Your BuPulse trial ends tomorrow", html, text });
@@ -54,7 +54,7 @@ async function sendEnded(row: Row): Promise<boolean> {
   const { html, text } = renderEmail({
     heading: "Your free trial has ended",
     intro: `${first ? `Hi ${first}, ` : ""}your BuPulse trial is over. Your account is now read-only: everything you made is saved, nothing is deleted. Pay for ${plan ? `the ${plan.name} plan` : "a plan"} from the Billing page whenever you want to pick up where you left off.`,
-    button: { label: "Keep going", url: `${siteUrl()}/dashboard/billing` },
+    button: { label: "Keep going", url: `${publicSiteUrl()}/dashboard/billing` },
     footer: "Questions? Reply to this email and we will help.",
   });
   return sendEmail({ to: row.user.email, subject: "Your BuPulse trial has ended", html, text });

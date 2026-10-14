@@ -1,7 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
-import { siteUrl } from "@/lib/auth/site-url";
 import { isBookingStatus, type BookingStatus } from "@/lib/demo/bookings";
 import { formatSlot } from "@/lib/demo/slots";
 import { logError } from "@/lib/errors";
@@ -13,6 +12,7 @@ import { writeAudit } from "./audit";
 import { getSettings } from "./settings";
 import { AdminError, type AdminContext } from "./types";
 import { parseMismatch } from "@/lib/region-check";
+import { linkSiteUrl } from "@/lib/auth/request-site";
 
 // The admin side of the demo-first trial: the Demos list, marking a demo done or a no-show, and "Start trial", which
 // moves a PENDING_DEMO company onto its trial. Every action is audited; the console re-checks AAL2 in adminAction().
@@ -138,7 +138,7 @@ export async function startTrial(ctx: AdminContext, input: { businessId: string;
         { label: "Trial ends", value: `${formatSlot(trialEndsAt)} (Africa/Kigali)` },
         { label: "During the trial", value: `${trialPlan.limits.text} AI texts and ${trialPlan.limits.image} designs to try on your own business.` },
       ],
-      button: { label: "Open BuPulse", url: `${siteUrl()}/dashboard` },
+      button: { label: "Open BuPulse", url: `${(await linkSiteUrl())}/dashboard` },
       footer: "Nothing is charged automatically. If you do nothing, the trial simply stops and your work stays saved.",
     });
     await sendEmail({ to: business.user.email, subject: `Your BuPulse trial has started: ${chosen.name} until ${formatSlot(trialEndsAt)}`, html, text });

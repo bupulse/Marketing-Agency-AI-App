@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { requireAdmin } from "@/lib/admin/auth";
+import { requirePermission } from "@/lib/admin/auth";
 import { consoleContext } from "@/lib/admin/types";
 import { logError } from "@/lib/errors";
 import { clientIp } from "@/lib/platform/headers";
 import { saveGoogleConnection } from "@/lib/google-calendar/calendar";
 import { exchangeGoogleCode, googleCalendarConfig, googleSettingsUrl, GoogleOAuthError, openGoogleState, sameString, STATE_COOKIE, STATE_COOKIE_PATH } from "@/lib/google-calendar/oauth";
+import { requestSiteUrl } from "@/lib/auth/request-site";
 
 // Google sends the admin back here. Checks the admin again (AAL2), the sealed state and its PKCE verifier, swaps the
 // code for tokens, and saves the encrypted refresh token (audited as connect_google_calendar). Always back to Settings.
@@ -18,15 +19,15 @@ const MESSAGES: Record<string, string> = {
   failed: "Google Calendar could not be connected. Try again; if it keeps failing, check docs/GOOGLE_CALENDAR.md.",
 };
 
-function done(key: "notice" | "error", message: string) {
-  const response = NextResponse.redirect(googleSettingsUrl(key, message));
+async function done(key: "notice" | "error", message: string) {
+  const response = NextResponse.redirect(googleSettingsUrl(key, message, await requestSiteUrl()));
   response.cookies.delete({ name: STATE_COOKIE, path: STATE_COOKIE_PATH });
   response.headers.set("cache-control", "no-store");
   return response;
 }
 
 export async function GET(request: NextRequest) {
-  const admin = await requireAdmin();
+  const admin = await requirePermission(["system", "demos"]);
   const config = googleCalendarConfig();
   if (!config) return done("error", "Google Calendar is not set up: add GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET (docs/GOOGLE_CALENDAR.md).");
   const query = request.nextUrl.searchParams;
