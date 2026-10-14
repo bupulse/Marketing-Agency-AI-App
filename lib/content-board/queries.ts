@@ -6,6 +6,7 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import { CAMPAIGN_TYPE_LABEL } from "@/lib/knowledge/campaigns";
 import { KIND_LABEL } from "@/lib/knowledge/products";
 import { signPaths } from "@/lib/publishing/media";
+import { resultsConnectionSelect, resultsForPosts } from "@/lib/publishing/results-query";
 import type { PostStatusName } from "@/lib/publishing/status";
 import type { CalendarPost } from "@/lib/publishing/types";
 import type { PostFormatName } from "@/lib/publishing/validate";
@@ -45,7 +46,7 @@ export type ContentPost = CalendarPost & {
 export type SubjectCardView = Omit<SubjectCard, "lastActivity"> & { coverUrl: string | null; lastActivity: string | null };
 
 export const postInclude = {
-  connection: { select: { displayName: true, avatarUrl: true, postingMode: true } },
+  connection: { select: { displayName: true, avatarUrl: true, ...resultsConnectionSelect } },
   product: { select: { id: true, name: true } },
   campaign: { select: { id: true, name: true } },
 } satisfies Prisma.PostInclude;
@@ -112,7 +113,7 @@ export function cardExcerpt(post: { format: string; title: string | null; text: 
 
 /** Post rows as cards, with every photo and poster signed in one batch. */
 export async function toContentPosts(businessId: string, rows: PostRow[]): Promise<ContentPost[]> {
-  const [posters, captions, ideas] = await Promise.all([postersFor(businessId, rows), captionsFor(businessId, rows), ideasFor(businessId, rows)]);
+  const [posters, captions, ideas, results] = await Promise.all([postersFor(businessId, rows), captionsFor(businessId, rows), ideasFor(businessId, rows), resultsForPosts(businessId, rows)]);
   const signed = await sign([...rows.flatMap((r) => r.mediaPaths), ...posters.values()]);
   return rows.map((r) => {
     const network = r.network as Network;
@@ -150,6 +151,7 @@ export async function toContentPosts(businessId: string, rows: PostRow[]): Promi
       subject: r.product ? { kind: "product", id: r.product.id, name: r.product.name } : r.campaign ? { kind: "campaign", id: r.campaign.id, name: r.campaign.name } : null,
       idea: ideas.get(r.id) ?? null,
       contest: readContest(r.contest) ? { pending: contestBlocked(r) } : null,
+      ...(results.has(r.id) ? { results: results.get(r.id) } : {}),
     };
   });
 }

@@ -21,6 +21,7 @@ import type { CalendarPost, PostOutcome } from "@/lib/publishing/types";
 import { formatDateTime } from "./helpers";
 import { NetworkIcon, networkName } from "./network-icon";
 import { PostPreview } from "./post-preview";
+import { ResultsPanel } from "./post-results";
 
 type Props = {
   post: CalendarPost | null;
@@ -31,13 +32,15 @@ type Props = {
   visualHref?: string | null;
   /** Apps with a connected account BuPulse posts to: a post made for one before it was connected can switch to it. */
   autoNetworks?: readonly string[];
+  /** The posts written together with this one (same groupId): a published post shows the results of each network. */
+  group?: readonly CalendarPost[];
 };
 
 /** One post in full: how it looks, what happened to it, and what the owner can do about it. */
-export function PostDetail({ post, zone, onClose, onEdit, visualHref, autoNetworks }: Props) {
+export function PostDetail({ post, zone, onClose, onEdit, visualHref, autoNetworks, group }: Props) {
   return (
     <Dialog open={post !== null} onOpenChange={(o) => !o && onClose()} title={post ? `${networkName(post.network)} post` : "Post"} className="max-w-2xl">
-      {post && <DetailBody key={post.id} post={post} zone={zone} onClose={onClose} onEdit={onEdit} visualHref={visualHref} autoNetworks={autoNetworks} />}
+      {post && <DetailBody key={post.id} post={post} zone={zone} onClose={onClose} onEdit={onEdit} visualHref={visualHref} autoNetworks={autoNetworks} group={group} />}
     </Dialog>
   );
 }
@@ -50,7 +53,7 @@ function retryMessage(res: Record<string, unknown>): { text: string; tone: "succ
   return { text: "We will try again shortly.", tone: "success" };
 }
 
-function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = [] }: Omit<Props, "post"> & { post: CalendarPost }) {
+function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = [], group = [] }: Omit<Props, "post"> & { post: CalendarPost }) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
@@ -59,6 +62,8 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = []
   const [error, setError] = useState<string | null>(null);
   const style = STATUS_STYLE[post.status];
   const editable = (EDITABLE as readonly string[]).includes(post.status);
+  // Results (when the plan shows them, lib/publishing/results.ts): this post first, then its other networks.
+  const withResults = post.status === "PUBLISHED" && post.results ? [post, ...group.filter((p) => p.id !== post.id && p.status === "PUBLISHED" && p.results)] : null;
 
   function act(run: () => Promise<{ ok: boolean; error?: string } & Record<string, unknown>>, success: string | ((res: Record<string, unknown>) => { text: string; tone: "success" | "error" }), closeAfter = true) {
     setError(null);
@@ -129,6 +134,8 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = []
       )}
       {post.status === "SCHEDULED" && post.lastError && <p className="rounded-2xl bg-soft p-3.5 text-[14px] text-muted">Last try: {post.lastError} We will try again automatically.</p>}
 
+      {withResults && <ResultsPanel posts={withResults} zone={zone} />}
+
       <PostPreview
         network={post.network}
         accountName={post.accountName}
@@ -141,7 +148,7 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = []
         className="max-w-md"
       />
 
-      {post.permalink && (
+      {post.permalink && !withResults && (
         <a href={post.permalink} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 text-[14px] font-semibold text-pulse-blue">
           View on {networkName(post.network)} <ExternalLink aria-hidden className="size-4" />
         </a>

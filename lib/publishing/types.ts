@@ -1,5 +1,6 @@
 // Shapes shared by the publishing server code and the calendar and composer screens. Client-safe.
 import type { Network } from "@/lib/social/types";
+import type { PostResults } from "./results";
 import type { PostStatusName } from "./status";
 import type { PostFormatName, RuleSummary } from "./validate";
 
@@ -35,6 +36,8 @@ export type CalendarPost = {
   autoScheduledAt?: string | null;
   /** For an app that is not connected: it goes out as a "post it yourself" reminder. */
   remindOnly?: boolean;
+  /** Published posts only: views, likes and comments, or why there are none (lib/publishing/results.ts). Absent when the plan does not show them. */
+  results?: PostResults;
 };
 
 export type ComposerAccount = {

@@ -285,7 +285,7 @@ export function Calendar({ posts, context, todayKey, nowIso, canSetZone = true }
       )}
 
       <PostComposer open={composer !== null} onOpenChange={(o) => !o && setComposer(null)} context={context} post={composer?.post} day={composer?.day} />
-      <PostDetail post={detail} zone={zone} onClose={() => setDetailId(null)} onEdit={(post) => { setDetailId(null); setComposer({ post }); }} autoNetworks={[...new Set(context.accounts.filter((a) => a.usable && !a.notify).map((a) => a.network))]} />
+      <PostDetail post={detail} zone={zone} onClose={() => setDetailId(null)} onEdit={(post) => { setDetailId(null); setComposer({ post }); }} autoNetworks={[...new Set(context.accounts.filter((a) => a.usable && !a.notify).map((a) => a.network))]} group={detail?.groupId ? shown.filter((p) => p.groupId === detail.groupId) : undefined} />
       <Dialog open={tzOpen} onOpenChange={setTzOpen} title="Time zone" description="The calendar, the queue and scheduled times all use this zone.">
         <TimezoneForm current={zone} onSaved={() => setTzOpen(false)} label="Save" />
       </Dialog>
