@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DISPLAY_CURRENCIES, isDisplayCurrency, type DisplayCurrency, type MoneyDisplay } from "@/lib/money/display";
-import { POLL_MS, nextSound, screenMoney, screenTotal, type Celebration, type ScreenData } from "@/lib/screen/shared";
+import { DISPLAY_CURRENCIES, formatMoney, isDisplayCurrency, type DisplayCurrency, type MoneyDisplay } from "@/lib/money/display";
+import { POLL_MS, compactMoney, goalProgress, mixedMinor, nextSound, screenMoney, screenTotal, shares, trialLeftShare, type Celebration, type ScreenData } from "@/lib/screen/shared";
 
 // The sales room TV. Dark whatever the theme (the "dark" class switches the tokens for this subtree), type sized for a
 // room, 16:9 first. One big "Start screen" button comes first: browsers only let a page play sound after a click, so
@@ -151,7 +151,56 @@ export function SalesScreen({ token, name }: { token: string; name: string }) {
   );
 }
 
-const fmtDays = (d: number) => (d === 0 ? "Ends today" : d === 1 ? "1 day" : `${d} days`);
+const fmtDays = (d: number) => (d === 0 ? "Ends today" : d === 1 ? "1 day left" : `${d} days left`);
+
+/**
+ * A list that, when its box has a fixed height (the one-screen TV layout), shows only the rows that fit whole and
+ * says how many more there are: no row is ever cut in half. Elsewhere every row shows and the page scrolls.
+ */
+function FitList({ as: Tag = "ul", className, children, count }: { as?: "ul" | "ol"; className: string; children: React.ReactNode; count: number }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [hidden, setHidden] = useState(0);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const fit = () => {
+      const list = el.firstElementChild as HTMLElement | null;
+      if (!list) return;
+      const rows = [...list.children] as HTMLElement[];
+      rows.forEach((r) => (r.style.display = ""));
+      const limit = el.getBoundingClientRect().bottom;
+      // Only a box shorter than its content (the TV layout) hides rows.
+      if (el.scrollHeight <= el.clientHeight + 1) return setHidden(0);
+      let n = 0;
+      // The first row that does not fit whole (leaving room for the "and N more" line) and every row after it.
+      const first = rows.findIndex((r) => r.getBoundingClientRect().bottom > limit - 28);
+      if (first >= 0) {
+        for (const r of rows.slice(first)) r.style.display = "none";
+        n = rows.length - first;
+      }
+      setHidden(n);
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [count]);
+  return (
+    <div ref={box} className="flex h-full min-h-0 flex-col overflow-hidden">
+      <Tag className={className}>{children}</Tag>
+      {hidden > 0 && <p className={`mt-auto pt-1 ${T.small} text-muted`}>and {hidden} more</p>}
+    </div>
+  );
+}
+
+// Type scales with the screen: phone sizes at the low end, readable across a room on a 1080p or 4K TV.
+// The vh term keeps a wide but short screen (a 16:9 TV) from overflowing; a 4K TV gets twice the 1080p size.
+const T = {
+  small: "text-[clamp(0.8rem,min(0.75vw+0.4rem,1.6vh),3rem)]",
+  body: "text-[clamp(0.95rem,min(0.95vw+0.45rem,2vh),3.6rem)]",
+  title: "text-[clamp(1.05rem,min(1.05vw+0.5rem,2.3vh),4rem)]",
+  big: "text-[clamp(2rem,min(2.6vw+0.8rem,5.4vh),9rem)]",
+};
 
 function Board({ name, data, money, onPick, offline }: { name: string; data: ScreenData | null; money: MoneyDisplay | null; onPick: (c: DisplayCurrency) => void; offline: boolean }) {
   const [clock, setClock] = useState("");
@@ -161,22 +210,33 @@ function Board({ name, data, money, onPick, offline }: { name: string; data: Scr
     const t = setInterval(set, 15_000);
     return () => clearInterval(t);
   }, []);
+  const total = (usd: number, rwf: number, rwfUsd: number) => (data && money ? screenTotal(money, usd, rwf, rwfUsd) : "–");
+  const goal = data && money ? goalProgress(data.revenue, money.rates, data.goalRwf) : null;
+  const signupTotal = data ? data.signups.reduce((s, d) => s + d.count, 0) : 0;
 
   return (
-    <main className="relative flex min-h-dvh flex-col gap-[2.2vh] p-[clamp(16px,2.5vw,48px)]">
-      <header className="flex items-center justify-between gap-4">
-        <h1 className="text-[clamp(1.5rem,2.4vw,2.75rem)] font-semibold tracking-tight">{name}</h1>
-        <div className="flex items-center gap-6 text-[clamp(1.25rem,2vw,2.5rem)] font-medium tabular-nums">
-          <span className={offline ? "text-danger" : "text-success"}>{offline ? "Reconnecting…" : "● Live"}</span>
-          <span>{clock}</span>
-          <div role="group" aria-label="Currency" className="flex overflow-hidden rounded-full border border-line text-[0.6em]">
+    <main className="relative mx-auto flex min-h-dvh w-full max-w-[3840px] flex-col gap-[clamp(12px,1.4vw,40px)] p-[clamp(12px,2vw,56px)] 2xl:h-dvh 2xl:overflow-hidden">
+      <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <h1 className="min-w-0 truncate text-[clamp(1.35rem,min(1.6vw+0.6rem,3.4vh),5.5rem)] font-semibold tracking-tight">{name}</h1>
+          <span className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-1 font-semibold ${T.small} ${offline ? "bg-danger-bg text-danger" : "bg-success-bg text-success"}`}>
+            <span aria-hidden className="relative flex size-[0.6em]">
+              {!offline && <span className="absolute inline-flex size-full animate-ping-soft rounded-full bg-current opacity-60" />}
+              <span className="relative inline-flex size-[0.6em] rounded-full bg-current" />
+            </span>
+            {offline ? "Reconnecting…" : "Live"}
+          </span>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className={`font-semibold tabular-nums ${T.title}`}>{clock}</span>
+          <div role="group" aria-label="Currency" className={`flex overflow-hidden rounded-full border border-line ${T.small}`}>
             {DISPLAY_CURRENCIES.map((c) => (
               <button
                 key={c}
                 type="button"
                 aria-pressed={money?.currency === c}
                 onClick={() => onPick(c)}
-                className={`px-[0.9em] py-[0.35em] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-white ${money?.currency === c ? "bg-brand-gradient text-white" : "text-muted hover:text-text"}`}
+                className={`min-h-[clamp(44px,4.2vh,96px)] px-[0.9em] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-white ${money?.currency === c ? "bg-brand-gradient text-white" : "text-muted hover:text-text"}`}
               >
                 {c}
               </button>
@@ -185,83 +245,216 @@ function Board({ name, data, money, onPick, offline }: { name: string; data: Scr
         </div>
       </header>
 
-      <section aria-label="Today" className="grid grid-cols-2 gap-[1.5vw] lg:grid-cols-4">
-        <Stat label="Active now" value={data ? String(data.activeNow) : "–"} />
-        <Stat label="Active today" value={data ? String(data.activeToday) : "–"} />
-        <Stat label="Revenue today" value={data && money ? screenTotal(money, data.revenue.todayCents, data.revenue.todayRwfMinor, data.revenue.todayRwfUsdCents) : "–"} accent />
-        <Stat label="Revenue this month" value={data && money ? screenTotal(money, data.revenue.monthCents, data.revenue.monthRwfMinor, data.revenue.monthRwfUsdCents) : "–"} accent />
+      <section aria-label="Today" className="grid grid-cols-1 gap-[clamp(10px,1.2vw,32px)] min-[480px]:grid-cols-2 xl:grid-cols-4">
+        <Stat label="Active now" value={data ? String(data.activeNow) : "–"} hint="Used BuPulse in the last 5 minutes" />
+        <Stat label="Active today" value={data ? String(data.activeToday) : "–"} hint={data ? `${signupTotal} new ${signupTotal === 1 ? "company" : "companies"} in ${data.signups.length} days` : undefined}>
+          {data && <Sparkline values={data.signups.map((d) => d.count)} label={`New companies per day, last ${data.signups.length} days`} />}
+        </Stat>
+        <Stat label="Revenue today" value={data ? total(data.revenue.todayCents, data.revenue.todayRwfMinor, data.revenue.todayRwfUsdCents) : "–"} accent />
+        <Stat label="Revenue this month" value={data ? total(data.revenue.monthCents, data.revenue.monthRwfMinor, data.revenue.monthRwfUsdCents) : "–"} accent>
+          {goal && data && <GoalBar share={goal.share} goal={formatMoney(data.goalRwf, "RWF")} />}
+        </Stat>
       </section>
 
-      <div className="grid min-h-0 flex-1 gap-[1.5vw] lg:grid-cols-2">
-        <Card title="Trials to follow up">
-          {data && data.trials.length === 0 ? (
-            <p className="text-[clamp(1.1rem,1.6vw,1.75rem)] text-muted">No trials running.</p>
-          ) : (
-            <table className="w-full text-left text-[clamp(1.1rem,1.7vw,2rem)]">
-              <thead className="text-[0.7em] uppercase tracking-wider text-muted">
-                <tr><th scope="col" className="pb-2 font-medium">Company</th><th scope="col" className="pb-2 font-medium">Left</th><th scope="col" className="pb-2 font-medium">Agent</th></tr>
-              </thead>
-              <tbody>
-                {data?.trials.map((t, i) => (
-                  <tr key={i} className="border-t border-line">
-                    <td className="max-w-0 truncate py-[0.5vh] pr-4 font-medium">{t.company}</td>
-                    <td className={`whitespace-nowrap py-[0.5vh] pr-4 tabular-nums ${t.daysLeft <= 2 ? "text-danger" : ""}`}>{fmtDays(t.daysLeft)}</td>
-                    <td className="truncate py-[0.5vh] text-muted">{t.agent ?? "Team"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+      <div className="grid gap-[clamp(10px,1.2vw,32px)] xl:grid-cols-3 2xl:min-h-0 2xl:flex-[1]">
+        <Card title="Revenue per day this month" className="xl:col-span-2">
+          {data && money ? <DailyBars days={data.daily} money={money} /> : <Placeholder />}
         </Card>
+        <Card title="Monthly goal">
+          {goal && data ? <GoalRing share={goal.share} reached={formatMoney(goal.rwf, "RWF")} goal={formatMoney(data.goalRwf, "RWF")} daysLeft={daysLeftInMonth(data.at)} toGo={Math.max(0, data.goalRwf - goal.rwf)} /> : <Placeholder />}
+        </Card>
+      </div>
+
+      <div className="grid gap-[clamp(10px,1.2vw,32px)] lg:grid-cols-2 2xl:min-h-0 2xl:flex-[1.35]">
         <Card title="Leaderboard this month">
           {data && data.leaderboard.length === 0 ? (
-            <p className="text-[clamp(1.1rem,1.6vw,1.75rem)] text-muted">No sales agents yet.</p>
+            <p className={`${T.body} text-muted`}>No sales agents yet.</p>
           ) : (
-            <table className="w-full text-left text-[clamp(1.1rem,1.7vw,2rem)]">
-              <thead className="text-[0.7em] uppercase tracking-wider text-muted">
-                <tr>
-                  <th scope="col" className="pb-2 font-medium">Agent</th>
-                  <th scope="col" className="pb-2 text-right font-medium">Own</th>
-                  <th scope="col" className="pb-2 text-right font-medium">Team share</th>
-                  <th scope="col" className="pb-2 text-right font-medium">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {money && data?.leaderboard.map((r, i) => (
-                  <tr key={i} className="border-t border-line tabular-nums">
-                    <td className="max-w-0 truncate py-[0.5vh] pr-4 font-medium">
-                      <span className="mr-3 inline-block w-[1.4em] text-muted">{i + 1}</span>
-                      {r.agent}
-                    </td>
-                    <td className="py-[0.5vh] pl-2 text-right">{screenTotal(money, r.ownCents, r.ownRwf?.rwfMinor ?? 0, r.ownRwf?.rwfUsdCents ?? 0)}</td>
-                    <td className="py-[0.5vh] pl-2 text-right text-muted">{screenTotal(money, r.teamShareCents, r.teamShareRwf?.rwfMinor ?? 0, r.teamShareRwf?.rwfUsdCents ?? 0)}</td>
-                    <td className="py-[0.5vh] pl-2 text-right font-semibold">{screenTotal(money, r.totalCents, r.totalRwf?.rwfMinor ?? 0, r.totalRwf?.rwfUsdCents ?? 0)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            money && data && <Leaderboard rows={data.leaderboard} money={money} />
           )}
+        </Card>
+        <Card title="Trials to follow up">
+          {data && data.trials.length === 0 ? <p className={`${T.body} text-muted`}>No trials running.</p> : data && <Trials rows={data.trials} />}
         </Card>
       </div>
     </main>
   );
 }
 
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+const daysLeftInMonth = (iso: string) => {
+  const k = new Date(new Date(iso).getTime() + 2 * 3600_000);
+  const last = new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth() + 1, 0)).getUTCDate();
+  return last - k.getUTCDate() + 1;
+};
+
+function Stat({ label, value, accent, hint, children }: { label: string; value: string; accent?: boolean; hint?: string; children?: React.ReactNode }) {
   return (
-    <div className="glass rounded-card px-[1.6vw] py-[2vh]">
-      <p className="text-[clamp(1rem,1.5vw,1.75rem)] font-medium text-muted">{label}</p>
-      <p className={`mt-1 text-[clamp(2.5rem,5.2vw,6.5rem)] font-semibold leading-none tracking-tight tabular-nums ${accent ? "text-success" : ""}`}>{value}</p>
+    <div className="glass flex min-w-0 animate-rise flex-col gap-[0.6vh] rounded-card px-[clamp(14px,1.4vw,40px)] py-[clamp(12px,1.6vh,36px)]">
+      <p className={`${T.small} font-medium uppercase tracking-wider text-muted`}>{label}</p>
+      <p className={`${T.big} truncate font-semibold leading-none tracking-tight tabular-nums ${accent ? "text-success" : ""}`} title={value}>
+        {value}
+      </p>
+      {children}
+      {hint && <p className={`${T.small} text-muted`}>{hint}</p>}
     </div>
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, className = "", children }: { title: string; className?: string; children: React.ReactNode }) {
   return (
-    <section className="glass flex min-h-0 flex-col overflow-hidden rounded-card px-[1.6vw] py-[2vh]">
-      <h2 className="mb-[1.2vh] text-[clamp(1.25rem,2vw,2.25rem)] font-semibold">{title}</h2>
-      <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+    <section className={`glass flex min-h-0 min-w-0 flex-col overflow-hidden rounded-card px-[clamp(14px,1.4vw,40px)] py-[clamp(12px,1.6vh,36px)] ${className}`}>
+      <h2 className={`mb-[clamp(8px,1vh,24px)] ${T.title} font-semibold`}>{title}</h2>
+      <div className="min-h-0 flex-1">{children}</div>
     </section>
+  );
+}
+
+const Placeholder = () => <div className="h-full min-h-24 animate-pulse rounded-2xl bg-soft motion-reduce:animate-none" />;
+
+/** Revenue per day: one bar per day of the month so far, today's highlighted; amounts in the chosen currency. */
+function DailyBars({ days, money }: { days: ScreenData["daily"]; money: MoneyDisplay }) {
+  const values = days.map((d) => Math.max(0, mixedMinor(d, money) ?? 0));
+  const best = Math.max(0, ...values);
+  const max = Math.max(1, best);
+  const W = 100;
+  const gap = days.length > 20 ? 0.6 : 1.2;
+  const bar = (W - gap * (days.length - 1)) / Math.max(1, days.length);
+  return (
+    <figure className="flex h-[clamp(170px,26vh,340px)] flex-col gap-2 2xl:h-full">
+      <svg viewBox="0 0 100 50" preserveAspectRatio="none" role="img" aria-label={`Revenue per day this month; the best day was ${compactMoney(best, money.currency)}`} className="min-h-0 w-full flex-1">
+        <line x1={0} x2={100} y1={49.8} y2={49.8} stroke="var(--bp-line)" strokeWidth={0.4} vectorEffect="non-scaling-stroke" />
+        {values.map((v, i) => {
+          const h = v === 0 ? 0.6 : Math.max(1.5, (v / max) * 46);
+          const today = i === values.length - 1;
+          return (
+            <rect key={days[i].day} x={i * (bar + gap)} y={50 - h} width={bar} height={h} rx={0.8} fill={today ? "url(#bp-today)" : "var(--color-pulse-blue)"} opacity={today || v > 0 ? 1 : 0.35} className="origin-bottom transition-[height,y] duration-700 motion-reduce:transition-none">
+              <title>{`${days[i].day}: ${formatMoney(v, money.currency)}`}</title>
+            </rect>
+          );
+        })}
+        <defs>
+          <linearGradient id="bp-today" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stopColor="#7b5cff" />
+            <stop offset="1" stopColor="#2f6bff" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <figcaption className={`flex flex-wrap justify-between gap-x-4 ${T.small} text-muted`}>
+        <span>1st to today</span>
+        <span>
+          Best day {compactMoney(best, money.currency)} · today {compactMoney(values[values.length - 1] ?? 0, money.currency)}
+        </span>
+      </figcaption>
+    </figure>
+  );
+}
+
+/** The month so far against the goal (RWF), as a ring, with what is left to reach it. */
+function GoalRing({ share, reached, goal, daysLeft, toGo }: { share: number; reached: string; goal: string; daysLeft: number; toGo: number }) {
+  const pct = Math.round(share * 100);
+  const r = 42;
+  const c = 2 * Math.PI * r;
+  return (
+    <div className="flex h-full flex-wrap items-center justify-center gap-[clamp(12px,1.5vw,40px)]">
+      <svg viewBox="0 0 100 100" role="img" aria-label={`${pct}% of the monthly goal`} className="size-[clamp(110px,min(11vw,19vh),420px)] shrink-0 -rotate-90">
+        <circle cx={50} cy={50} r={r} fill="none" stroke="var(--bp-line)" strokeWidth={10} />
+        <circle cx={50} cy={50} r={r} fill="none" stroke="url(#bp-goal)" strokeWidth={10} strokeLinecap="round" strokeDasharray={`${Math.min(1, share) * c} ${c}`} className="transition-[stroke-dasharray] duration-1000 motion-reduce:transition-none" />
+        <defs>
+          <linearGradient id="bp-goal" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0" stopColor="#2f6bff" />
+            <stop offset="1" stopColor="#7b5cff" />
+          </linearGradient>
+        </defs>
+        <text x={50} y={50} transform="rotate(90 50 50)" textAnchor="middle" dominantBaseline="central" fill="currentColor" fontSize={20} fontWeight={700}>
+          {pct}%
+        </text>
+      </svg>
+      <dl className={`flex min-w-0 flex-col gap-1 ${T.body}`}>
+        <dt className="text-muted">So far</dt>
+        <dd className="font-semibold tabular-nums">{reached}</dd>
+        <dt className="mt-1 text-muted">Goal</dt>
+        <dd className="font-semibold tabular-nums">{goal}</dd>
+        <dd className={`mt-1 ${T.small} text-muted`}>{share >= 1 ? "Goal reached. Well done!" : `${compactMoney(toGo, "RWF")} to go, ${daysLeft} ${daysLeft === 1 ? "day" : "days"} left`}</dd>
+      </dl>
+    </div>
+  );
+}
+
+function GoalBar({ share, goal }: { share: number; goal: string }) {
+  return (
+    <div className="mt-1">
+      <div className="h-2 overflow-hidden rounded-full bg-soft" aria-hidden>
+        <div className="h-full rounded-full bg-brand-gradient transition-[width] duration-1000 motion-reduce:transition-none" style={{ width: `${Math.min(100, Math.round(share * 100))}%` }} />
+      </div>
+      <p className={`mt-1 ${T.small} text-muted`}>{Math.round(share * 100)}% of {goal}</p>
+    </div>
+  );
+}
+
+/** A tiny line of the last days (sign-ups), no axes. */
+function Sparkline({ values, label }: { values: number[]; label: string }) {
+  if (values.length < 2) return null;
+  const max = Math.max(1, ...values);
+  const pts = values.map((v, i) => `${(i / (values.length - 1)) * 100},${28 - (v / max) * 24}`).join(" ");
+  return (
+    <svg viewBox="0 0 100 30" preserveAspectRatio="none" role="img" aria-label={label} className="h-[clamp(24px,3vh,64px)] w-full">
+      <polygon points={`0,30 ${pts} 100,30`} fill="var(--color-pulse-violet)" opacity={0.18} />
+      <polyline points={pts} fill="none" stroke="var(--color-pulse-violet)" strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+const MEDAL = ["bg-[linear-gradient(135deg,#f9d976,#e0a526)] text-[#3a2a00]", "bg-[linear-gradient(135deg,#e8edf3,#a9b4c2)] text-[#1f2933]", "bg-[linear-gradient(135deg,#f0b27a,#b8692e)] text-[#2d1606]"];
+
+function Leaderboard({ rows, money }: { rows: ScreenData["leaderboard"]; money: MoneyDisplay }) {
+  const part = shares(rows.map((r) => r.totalCents));
+  return (
+    <FitList as="ol" count={rows.length} className="flex flex-col gap-[clamp(6px,0.8vh,18px)]">
+      {rows.map((r, i) => (
+        <li
+          key={i}
+          className={`grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-2xl px-3 py-[clamp(6px,0.9vh,20px)] ${i === 0 ? "bg-[linear-gradient(90deg,rgba(47,107,255,0.2),rgba(123,92,255,0.2))] ring-1 ring-pulse-violet/40" : "bg-soft/40"}`}
+        >
+          <span className={`inline-flex size-[clamp(28px,2.2vw,64px)] items-center justify-center rounded-full font-bold tabular-nums ${T.body} ${MEDAL[i] ?? "bg-soft text-muted"}`} aria-label={`Rank ${i + 1}`}>
+            {i + 1}
+          </span>
+          <span className="min-w-0">
+            <span className={`block truncate font-semibold ${T.body}`}>{r.agent}</span>
+            <span className={`block truncate ${T.small} text-muted`}>
+              Own {screenTotal(money, r.ownCents, r.ownRwf?.rwfMinor ?? 0, r.ownRwf?.rwfUsdCents ?? 0)} · team {screenTotal(money, r.teamShareCents, r.teamShareRwf?.rwfMinor ?? 0, r.teamShareRwf?.rwfUsdCents ?? 0)}
+            </span>
+          </span>
+          <span className={`font-semibold tabular-nums ${T.title} ${i === 0 ? "text-success" : ""}`}>{screenTotal(money, r.totalCents, r.totalRwf?.rwfMinor ?? 0, r.totalRwf?.rwfUsdCents ?? 0)}</span>
+          <span aria-hidden className="col-span-3 h-1.5 overflow-hidden rounded-full bg-soft">
+            <span className="block h-full rounded-full bg-brand-gradient transition-[width] duration-1000 motion-reduce:transition-none" style={{ width: `${Math.round(part[i] * 100)}%` }} />
+          </span>
+        </li>
+      ))}
+    </FitList>
+  );
+}
+
+function Trials({ rows }: { rows: ScreenData["trials"] }) {
+  return (
+    <FitList count={rows.length} className="flex flex-col gap-[clamp(6px,0.8vh,18px)]">
+      {rows.map((t, i) => {
+        const urgent = t.daysLeft <= 2;
+        return (
+          <li key={i} className={`grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 rounded-2xl bg-soft/40 px-3 py-[clamp(6px,0.9vh,20px)]`}>
+            <span className="min-w-0">
+              <span className={`block truncate font-semibold ${T.body}`}>{t.company}</span>
+              <span className={`block truncate ${T.small} text-muted`}>{t.agent ?? "Team"}</span>
+            </span>
+            <span className={`inline-flex min-w-[clamp(110px,9vw,280px)] flex-col gap-1 ${T.small}`}>
+              <span className={`text-right font-semibold tabular-nums ${urgent ? "text-danger" : ""}`}>{fmtDays(t.daysLeft)}</span>
+              <span aria-hidden className="h-2 overflow-hidden rounded-full bg-soft">
+                <span className={`block h-full rounded-full ${urgent ? "bg-danger" : "bg-brand-gradient"}`} style={{ width: `${Math.max(4, Math.round(trialLeftShare(t.daysLeft, t.totalDays) * 100))}%` }} />
+              </span>
+            </span>
+          </li>
+        );
+      })}
+    </FitList>
   );
 }
 

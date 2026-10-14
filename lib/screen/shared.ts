@@ -1,4 +1,5 @@
-import { formatMoney, showMixed, showMoney, type MoneyDisplay } from "@/lib/money/display";
+import { convertMinor, digitsOf, formatMoney, showMixed, showMoney, type MoneyDisplay } from "@/lib/money/display";
+import { kigaliDayOf } from "@/lib/time/kigali";
 // The sales room TV (/screen/<token>): the rules that need no server, shared by the screen, its data route, the admin
 // page and the tests. Nothing here reads the database.
 
@@ -26,7 +27,14 @@ export type ScreenData = {
   revenue: { todayCents: number; monthCents: number; todayRwfMinor: number; todayRwfUsdCents: number; monthRwfMinor: number; monthRwfUsdCents: number };
   /** The admin default currency (Settings) and rates. The TV shows every amount in it until someone picks RWF, USD or EUR on the TV (kept in that browser). */
   money: MoneyDisplay;
-  trials: { company: string; daysLeft: number; agent: string | null }[];
+  /** `totalDays`: the trial's length, for the "days left" pill (the Settings trial length when the start is unknown). */
+  trials: { company: string; daysLeft: number; totalDays: number; agent: string | null }[];
+  /** Revenue per Kigali day of this month so far (1st to today), USD cents with the RWF part. */
+  daily: DayRevenue[];
+  /** New companies per Kigali day, the last SIGNUP_DAYS days (oldest first, today last). */
+  signups: { day: string; count: number }[];
+  /** The month's sales goal in RWF (SALES_MONTHLY_GOAL_RWF, default 9,000,000). */
+  goalRwf: number;
   /** USD cents with the parts received in RWF (exact in RWF on the TV). */
   leaderboard: { agent: string; ownCents: number; teamShareCents: number; totalCents: number; clients: number; ownRwf?: { rwfMinor: number; rwfUsdCents: number }; teamShareRwf?: { rwfMinor: number; rwfUsdCents: number }; totalRwf?: { rwfMinor: number; rwfUsdCents: number } }[];
   /** Active sounds in rotation order, with short-lived signed URLs. */
@@ -36,6 +44,87 @@ export type ScreenData = {
   /** Send this back as ?after= on the next poll. */
   cursor: string;
 };
+
+export type DayRevenue = { day: string; usdCents: number; rwfMinor: number; rwfUsdCents: number };
+
+/** Days of sign-ups on the sparkline. */
+export const SIGNUP_DAYS = 14;
+export const DEFAULT_GOAL_RWF = 9_000_000;
+
+/** The goal from SALES_MONTHLY_GOAL_RWF when it is a sound whole number of francs, else 9,000,000. */
+export function goalRwfFrom(raw: string | undefined): number {
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 && n < 1e12 ? n : DEFAULT_GOAL_RWF;
+}
+
+/**
+ * Pure: payments and refunds bucketed per Kigali day from `monthStart` to `now` (every day present, zero when quiet).
+ * The RWF part of each day is kept, so the TV shows it exactly in RWF.
+ */
+export function dailyRevenue(entries: readonly { at: Date; usdCents: number; currency: string; localMinor: number | null }[], monthStart: Date, now: Date): DayRevenue[] {
+  const days: DayRevenue[] = [];
+  for (let t = monthStart.getTime(); t <= now.getTime(); t += 86_400_000) days.push({ day: kigaliDayOf(new Date(t)), usdCents: 0, rwfMinor: 0, rwfUsdCents: 0 });
+  const index = new Map(days.map((d, i) => [d.day, i]));
+  for (const e of entries) {
+    if (e.at < monthStart || e.at > now) continue;
+    const i = index.get(kigaliDayOf(e.at));
+    if (i === undefined) continue;
+    days[i].usdCents += e.usdCents;
+    if (e.currency === "RWF" && e.localMinor !== null) {
+      days[i].rwfMinor += e.localMinor;
+      days[i].rwfUsdCents += e.usdCents;
+    }
+  }
+  return days;
+}
+
+/** Pure: grouped counts per day turned into `n` days ending today (missing days are zero). */
+export function fillDays(rows: readonly { day: string; count: number }[], today: string, n = SIGNUP_DAYS): { day: string; count: number }[] {
+  const by = new Map(rows.map((r) => [r.day, r.count]));
+  const [y, m, d] = today.split("-").map(Number);
+  return Array.from({ length: n }, (_, i) => {
+    const day = new Date(Date.UTC(y, m - 1, d - (n - 1 - i))).toISOString().slice(0, 10);
+    return { day, count: by.get(day) ?? 0 };
+  });
+}
+
+/**
+ * A mixed total (USD cents with an exact RWF part) as a number in the display currency's smallest unit, for charts:
+ * the RWF part exact in RWF, the rest converted (the same rule as screenTotal). Null without a rate.
+ */
+export function mixedMinor(input: { usdCents: number; rwfMinor?: number; rwfUsdCents?: number }, d: MoneyDisplay): number | null {
+  if (d.currency === "USD") return input.usdCents;
+  if (d.currency === "RWF") {
+    const rest = input.usdCents - (input.rwfUsdCents ?? 0);
+    const restRwf = rest === 0 ? 0 : convertMinor(rest, "USD", "RWF", d.rates);
+    return restRwf === null ? null : (input.rwfMinor ?? 0) + restRwf;
+  }
+  return convertMinor(input.usdCents, "USD", d.currency, d.rates);
+}
+
+/** The month so far against the goal: the RWF total (RWF part exact) and the share reached, 0 to 1 (more than 1 past it). */
+export function goalProgress(revenue: { monthCents: number; monthRwfMinor: number; monthRwfUsdCents: number }, rates: MoneyDisplay["rates"], goalRwf: number): { rwf: number; share: number } {
+  const rwf = mixedMinor({ usdCents: revenue.monthCents, rwfMinor: revenue.monthRwfMinor, rwfUsdCents: revenue.monthRwfUsdCents }, { currency: "RWF", rates }) ?? revenue.monthRwfMinor;
+  return { rwf, share: goalRwf > 0 ? Math.max(0, rwf) / goalRwf : 0 };
+}
+
+/** The pill of a trial: the share of the trial still left, 0 (ends today) to 1. */
+export const trialLeftShare = (daysLeft: number, totalDays: number) => (totalDays > 0 ? Math.min(1, Math.max(0, daysLeft / totalDays)) : 0);
+
+/** Short money for chart labels: "RWF 1.2M", "$4.5k", "€980". */
+export function compactMoney(minor: number, currency: string): string {
+  const major = minor / 10 ** digitsOf(currency);
+  const sign = currency === "USD" ? "$" : currency === "EUR" ? "€" : "RWF ";
+  const abs = Math.abs(major);
+  const text = abs >= 1e6 ? `${(abs / 1e6).toFixed(abs >= 1e7 ? 0 : 1)}M` : abs >= 1e3 ? `${(abs / 1e3).toFixed(abs >= 1e4 ? 0 : 1)}k` : `${Math.round(abs)}`;
+  return `${major < 0 ? "-" : ""}${sign}${text}`;
+}
+
+/** Each agent's part of the board's total, 0 to 1 (for the bar in the leaderboard). */
+export function shares(totals: readonly number[]): number[] {
+  const sum = totals.reduce((s, t) => s + Math.max(0, t), 0);
+  return totals.map((t) => (sum > 0 ? Math.max(0, t) / sum : 0));
+}
 
 /** A new payment: its USD value and what the client paid in their own currency (RWF for Mobile Money), when known. */
 export type Celebration = { id: string; client: string; usdCents: number; localMinor: number | null; currency: string; agent: string | null };

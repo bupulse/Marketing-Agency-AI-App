@@ -7,7 +7,9 @@ import { dedupe, toRevenueEntry, type RevenueEntry } from "@/lib/money/revenue-s
 import { agentForPayment, getLeaderboard, monthOf, staffName } from "@/lib/sales/attribution";
 import { defaultMoney } from "@/lib/money/display-server";
 import { activeSoundUrls } from "./sounds";
-import { ACTIVE_WINDOW_MS, advanceCursor, formatCursor, kigaliDayStart, parseCursor, screenName, kigaliMonthStart, type Celebration, type Cursor, type ScreenData } from "./shared";
+import { ACTIVE_WINDOW_MS, SIGNUP_DAYS, advanceCursor, dailyRevenue, fillDays, formatCursor, goalRwfFrom, kigaliDayStart, parseCursor, screenName, kigaliMonthStart, type Celebration, type Cursor, type ScreenData } from "./shared";
+import { getSetting } from "@/lib/admin/settings";
+import { kigaliDayOf } from "@/lib/time/kigali";
 
 const DAY = 86_400_000;
 const TRIALS_SHOWN = 12;
@@ -19,8 +21,11 @@ type Snapshot = Omit<ScreenData, "celebrations" | "cursor" | "sounds" | "money">
 
 const moneyRow = { id: true, eventId: true, type: true, payload: true, createdAt: true, userId: true } as const;
 
-/** Today's and this month's (Kigali) confirmed revenue in US cents, net of refunds, like the Revenue page. */
-async function revenue(now: Date): Promise<Snapshot["revenue"]> {
+/**
+ * Today's and this month's (Kigali) confirmed revenue in US cents, net of refunds, like the Revenue page, and the
+ * month's revenue per day for the chart (from the same rows: no second query).
+ */
+async function revenue(now: Date): Promise<{ revenue: Snapshot["revenue"]; daily: Snapshot["daily"] }> {
   const month = kigaliMonthStart(now);
   const day = kigaliDayStart(now);
   // A payment's time can sit a little before its event was stored (Paddle's own time): read two days more, then filter.
@@ -44,7 +49,7 @@ async function revenue(now: Date): Promise<Snapshot["revenue"]> {
   const month_ = entries.filter((e) => e.month === monthOf(now) && e.at <= now);
   const usd = (list: RevenueEntry[]) => list.reduce((s, e) => s + e.usdCents, 0);
   const rwf = (list: RevenueEntry[]) => list.filter((e) => e.currency === "RWF" && e.localMinor !== null);
-  return {
+  const totals = {
     todayCents: usd(today),
     monthCents: usd(month_),
     todayRwfMinor: rwf(today).reduce((s, e) => s + (e.localMinor as number), 0),
@@ -52,6 +57,15 @@ async function revenue(now: Date): Promise<Snapshot["revenue"]> {
     monthRwfMinor: rwf(month_).reduce((s, e) => s + (e.localMinor as number), 0),
     monthRwfUsdCents: usd(rwf(month_)),
   };
+  return { revenue: totals, daily: dailyRevenue(month_, month, now) };
+}
+
+/** New companies per Kigali day, the last SIGNUP_DAYS days: one grouped query. */
+async function signups(now: Date): Promise<Snapshot["signups"]> {
+  const since = new Date(kigaliDayStart(now).getTime() - (SIGNUP_DAYS - 1) * DAY);
+  const rows = await prisma.$queryRaw<{ day: Date; count: bigint }[]>`
+    SELECT ("createdAt" + interval '2 hours')::date AS day, COUNT(*)::bigint AS count FROM "Business" WHERE "createdAt" >= ${since} GROUP BY 1`;
+  return fillDays(rows.map((r) => ({ day: new Date(r.day).toISOString().slice(0, 10), count: Number(r.count) })), kigaliDayOf(now));
 }
 
 /** Trials still running (or ending today), soonest end first, with the company's sales agent. */
@@ -60,16 +74,24 @@ async function trials(now: Date): Promise<Snapshot["trials"]> {
     where: { status: "TRIALING", trialEndsAt: { gte: kigaliDayStart(now) } },
     orderBy: { trialEndsAt: "asc" },
     take: TRIALS_SHOWN,
-    select: { trialEndsAt: true, user: { select: { business: { select: { name: true, salesAgentId: true } } } } },
+    select: { trialEndsAt: true, currentPeriodStart: true, user: { select: { business: { select: { name: true, salesAgentId: true } } } } },
   });
+  const settingDays = await getSetting("trialDays").catch(() => 14);
   const agentIds = [...new Set(subs.map((s) => s.user.business?.salesAgentId).filter((id): id is string => !!id))];
   const staff = agentIds.length ? await prisma.staffMember.findMany({ where: { id: { in: agentIds } }, select: { id: true, name: true, email: true } }) : [];
   const names = new Map(staff.map((s) => [s.id, screenName(staffName(s))]));
   return subs.map((s) => ({
     company: screenName(s.user.business?.name) ?? "A new client",
     daysLeft: Math.max(0, Math.ceil(((s.trialEndsAt as Date).getTime() - now.getTime()) / DAY)),
+    // The trial runs from its period start (Start trial resets it); a missing or odd start falls back to Settings.
+    totalDays: trialLength(s.currentPeriodStart, s.trialEndsAt as Date, settingDays),
     agent: (s.user.business?.salesAgentId && names.get(s.user.business.salesAgentId)) || null,
   }));
+}
+
+function trialLength(start: Date | null, end: Date, fallback: number): number {
+  const days = start ? Math.round((end.getTime() - start.getTime()) / DAY) : 0;
+  return days >= 1 && days <= 90 ? days : Math.max(1, fallback);
 }
 
 async function leaders(now: Date): Promise<Snapshot["leaderboard"]> {
@@ -79,14 +101,15 @@ async function leaders(now: Date): Promise<Snapshot["leaderboard"]> {
 
 /** Everything but the celebrations, for any screen. */
 export async function loadSnapshot(now = new Date()): Promise<Snapshot> {
-  const [activeNow, activeToday, money, trialList, board] = await Promise.all([
+  const [activeNow, activeToday, money, trialList, board, signupDays] = await Promise.all([
     prisma.user.count({ where: { lastSeenAt: { gte: new Date(now.getTime() - ACTIVE_WINDOW_MS) } } }),
     prisma.user.count({ where: { lastSeenAt: { gte: kigaliDayStart(now) } } }),
     revenue(now),
     trials(now),
     leaders(now),
+    signups(now).catch(() => fillDays([], kigaliDayOf(now))),
   ]);
-  return { at: now.toISOString(), activeNow, activeToday, revenue: money, trials: trialList, leaderboard: board };
+  return { at: now.toISOString(), activeNow, activeToday, revenue: money.revenue, daily: money.daily, signups: signupDays, goalRwf: goalRwfFrom(process.env.SALES_MONTHLY_GOAL_RWF), trials: trialList, leaderboard: board };
 }
 
 const SNAPSHOT_TTL_MS = 8_000;

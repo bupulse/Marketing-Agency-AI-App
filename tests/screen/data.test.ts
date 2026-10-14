@@ -7,11 +7,13 @@ const h = vi.hoisted(() => ({
     subscription: { findMany: vi.fn() },
     staffMember: { findMany: vi.fn() },
     business: { findMany: vi.fn() },
+    $queryRaw: vi.fn(async () => [] as unknown[]),
   },
   getLeaderboard: vi.fn(),
   agentForPayment: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ prisma: h.prisma }));
+vi.mock("@/lib/admin/settings", async (orig) => ({ ...(await orig<typeof import("@/lib/admin/settings")>()), getSetting: async () => 14 }));
 vi.mock("@/lib/screen/sounds", () => ({ activeSoundUrls: async () => [{ id: "s1", url: "https://x.supabase.co/storage/v1/object/sign/sounds/a.mp3?token=t" }] }));
 vi.mock("@/lib/sales/attribution", () => ({
   getLeaderboard: h.getLeaderboard,
@@ -84,6 +86,22 @@ describe("what the screen shows", () => {
     expect(nowCall).toBe("2026-10-13T07:55:00.000Z");
     expect(todayCall).toBe("2026-10-12T22:00:00.000Z");
     expect(kigaliDayStart(new Date("2026-10-12T23:30:00Z")).toISOString()).toBe("2026-10-12T22:00:00.000Z");
+  });
+
+  it("shapes the charts from the same rows: revenue per day, sign-ups from one grouped query, trial lengths", async () => {
+    const now = new Date("2026-10-13T08:00:00Z");
+    h.prisma.billingEvent.findMany.mockResolvedValue([momo("a", "2026-10-02T09:00:00Z", 1000), momo("b", "2026-10-13T07:00:00Z", 2500)]);
+    h.prisma.$queryRaw.mockResolvedValueOnce([{ day: new Date("2026-10-12T00:00:00Z"), count: BigInt(2) }]);
+    h.prisma.subscription.findMany.mockResolvedValue([{ trialEndsAt: new Date("2026-10-16T08:00:00Z"), currentPeriodStart: new Date("2026-10-09T08:00:00Z"), user: { business: { name: "Kigali Salon", salesAgentId: null } } }]);
+    const snap = await loadSnapshot(now);
+    expect(snap.daily).toHaveLength(13);
+    expect(snap.daily[1]).toMatchObject({ day: "2026-10-02", usdCents: 1000 });
+    expect(snap.daily[12]).toMatchObject({ day: "2026-10-13", usdCents: 2500 });
+    expect(snap.signups).toHaveLength(14);
+    expect(snap.signups.find((d) => d.day === "2026-10-12")?.count).toBe(2);
+    expect(h.prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(snap.trials[0]).toMatchObject({ company: "Kigali Salon", daysLeft: 3, totalDays: 7 });
+    expect(snap.goalRwf).toBe(9_000_000);
   });
 
   it("names are trimmed and refused when they hold contact details", () => {
