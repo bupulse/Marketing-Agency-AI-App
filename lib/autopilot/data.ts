@@ -150,8 +150,8 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
     existing: existing.flatMap((e) => (e.scheduledAt ? [{ connectionId: e.connectionId, scheduledAt: e.scheduledAt, network: e.network, subjectId: e.productId ?? e.campaignId ?? null }] : [])),
     recentIdeas,
     postsPerAppPerDay: usage ? postsPerAppLimit(usage.limits) : 1,
-    // Picture or video per post (lib/content-flow/format.ts): videos BuPulse makes need the plan's video seconds.
-    video: { inPlan: videoFeature === "ok" && (usage?.limits.videoSeconds ?? 0) > 0, secondsLeft: usage ? Math.max(0, usage.limits.videoSeconds - usage.used.videoSeconds) : 0 },
+    // Picture or video per post (lib/content-flow/format.ts): videos BuPulse makes need the plan's videos.
+    video: { inPlan: videoFeature === "ok" && (usage?.limits.videos ?? 0) > 0, videosLeft: usage ? Math.max(0, usage.limits.videos - usage.used.videos) : 0 },
     recentFormats: formats,
     profile: buildProfile(results, timeZone),
     now,

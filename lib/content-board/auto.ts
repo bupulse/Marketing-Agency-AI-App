@@ -1,7 +1,7 @@
 // Auto-approval (docs/CONTENT.md): posts waiting for review whose app needs no approval (Content -> Settings) are
 // scheduled at the best time, unless a safety rule (lib/content-board/rules.ts) keeps them waiting with a reason.
 // Called when Studio drafts posts, after an Autopilot run, and when a picture or video of the post is finished.
-// Plans have no cap on posts (lib/plans.ts meters text, images, video seconds, voice and chat only), so there is no
+// Plans have no cap on posts (lib/plans.ts meters text, images, videos, voice and chat only), so there is no
 // post limit to check here; scheduling itself is gated by the calendar feature and a read-only account.
 import "server-only";
 import { prisma } from "@/lib/db";

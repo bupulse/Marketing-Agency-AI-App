@@ -24,7 +24,7 @@ own app, its own caption and hashtags, and its own picture with people. Code: `l
    app it suits best (how it works on TikTok, news on Facebook, why us on LinkedIn...). BuPulse then decides each
    post's format (`lib/content-flow/format.ts`, docs/CONTENT.md "Picture or video"): mostly video on TikTok and
    YouTube, a mix on Instagram and Facebook, mostly pictures on LinkedIn, a carousel for list angles (tips, how it
-   works, features, FAQ) when a post is not a video, within the plan's video seconds. Saved on
+   works, features, FAQ) when a post is not a video, within the plan's videos (this month's and today's). Saved on
    `GeneratedContent.format`.
 3. **Writing** (`writePack`). One AI call writes every post, each for its angle and app (Instagram hooks and hashtags,
    Facebook conversational, LinkedIn professional, TikTok and Shorts with a video script). Every video post's script

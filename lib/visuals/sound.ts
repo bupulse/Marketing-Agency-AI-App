@@ -8,7 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isOwnedLicence } from "@/lib/music/tracks";
 import type { VideoPlan } from "./types";
 import { readVideoPlan } from "./video-plan";
-import { assertRemakeAllowed, VisualError } from "./service";
+import { VisualError } from "./service";
 
 /** Signed URLs (an hour) of a plan's scene photos that are the owner's own. */
 export async function renderPhotoUrls(userId: string, plan: VideoPlan): Promise<Record<string, string>> {
@@ -35,7 +35,6 @@ export async function setVideoMusic(businessId: string, visualId: string, trackI
     if (!track) throw new VisualError("That track is no longer in the library.");
     music = { trackId: track.id, title: track.title, path: track.path, attribution: track.attribution, owned: isOwnedLicence(track.licence) };
   }
-  // A new mix is a remake: the video it has stays until the new one is saved, and only longer videos pay more.
-  await assertRemakeAllowed(businessId, row, plan);
+  // A new mix is a remake: the video it has stays until the new one is saved, and it uses none of the plan's videos.
   await prisma.contentVisual.update({ where: { id: row.id }, data: { plan: { ...plan, music } as unknown as Prisma.InputJsonValue, status: "pending", error: null, robotAttempts: 0 } });
 }

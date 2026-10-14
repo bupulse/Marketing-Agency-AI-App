@@ -19,8 +19,8 @@ export const BUSINESS_FEATURES = ["content", "designs", "calendar", "gallery", "
 /** Regions fall back to the seeds (RW, EAC, GLOBAL). Plans: Starter and Business; RW prices in RWF; EAC and GLOBAL use the plan's USD price. */
 export function seedCatalog(db: FakeDb, opts: { availability?: boolean } = {}) {
   db.planDefinition.rows.push(
-    { ...BASE_PLAN, id: "plan_starter", key: "STARTER", name: "Starter", sortOrder: 5, monthlyPriceCents: 2500, yearlyPriceCents: 25000, limits: { text: 60, image: 30, chat: 0, videoSeconds: 0, voiceCharacters: 0, seats: 1 }, featureKeys: STARTER_FEATURES, paddleMonthlyPriceId: "pri_starter_m" },
-    { ...BASE_PLAN, id: "plan_business", key: "BUSINESS", name: "Business", sortOrder: 6, monthlyPriceCents: 4900, yearlyPriceCents: 49000, limits: { text: 200, image: 100, chat: 500, videoSeconds: 0, voiceCharacters: 0, seats: 3 }, featureKeys: BUSINESS_FEATURES, paddleMonthlyPriceId: "pri_business_m" },
+    { ...BASE_PLAN, id: "plan_starter", key: "STARTER", name: "Starter", sortOrder: 5, monthlyPriceCents: 2500, yearlyPriceCents: 25000, limits: { text: 60, image: 30, chat: 0, videos: 0, voiceCharacters: 0, seats: 1 }, featureKeys: STARTER_FEATURES, paddleMonthlyPriceId: "pri_starter_m" },
+    { ...BASE_PLAN, id: "plan_business", key: "BUSINESS", name: "Business", sortOrder: 6, monthlyPriceCents: 4900, yearlyPriceCents: 49000, limits: { text: 200, image: 100, chat: 500, videos: 0, voiceCharacters: 0, seats: 3 }, featureKeys: BUSINESS_FEATURES, paddleMonthlyPriceId: "pri_business_m" },
   );
   db.planRegionPrice.rows.push(
     { id: "prp_starter_rw", planKey: "STARTER", regionKey: "RW", currency: "RWF", monthlyMinor: 15000, yearlyMinor: 150000, cardMonthlyUsdCents: 1200, cardYearlyUsdCents: 11600 },

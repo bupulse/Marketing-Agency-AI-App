@@ -15,7 +15,6 @@ import { ideaNetworks, isVideoIdea, suitsIndustry, type AutopilotFormat, type Id
 import type { AutopilotConfig } from "./settings";
 import { DEFAULT_POSTING_TIMES } from "./settings";
 import { localDateISO, minutesOf, weekDates, weekdayOfISO, zonedToUtc } from "./timezone";
-import { VIDEO_SECONDS_PER_VIDEO } from "@/lib/content-flow/cost";
 import { MAX_RUN_VIDEOS, repeatedFormat, VIDEO_SHARE, type RecentFormats } from "@/lib/content-flow/format";
 
 
@@ -83,7 +82,8 @@ export interface PlanInput {
    * Videos BuPulse can make this week (the plan has video and seconds left). With it, feed posts become videos by the
    * app's share (lib/content-flow/format.ts) and video ideas are no longer held to a few a week.
    */
-  video?: { inPlan: boolean; secondsLeft: number };
+  /** Videos the plan has left this month (each video BuPulse makes uses one; 4 a day at most, checked when made). */
+  video?: { inPlan: boolean; videosLeft: number };
   /** Each app's formats on the days before the week (the three-days rule). */
   recentFormats?: RecentFormats;
   profile: LearningProfile;
@@ -375,7 +375,7 @@ export function buildWeekPlan(input: PlanInput): WeekPlan {
   }
   // Picture or video per post (lib/content-flow/format.ts): feed posts become videos by their app's share, within the
   // videos BuPulse can make this run, never the same format three days running on one app.
-  let videosLeft = input.video?.inPlan ? Math.min(MAX_RUN_VIDEOS, Math.floor(input.video.secondsLeft / VIDEO_SECONDS_PER_VIDEO)) : 0;
+  let videosLeft = input.video?.inPlan ? Math.min(MAX_RUN_VIDEOS, Math.max(0, Math.floor(input.video.videosLeft))) : 0;
   const formatsSoFar: RecentFormats = Object.fromEntries(Object.entries(input.recentFormats ?? {}).map(([k, v]) => [k, [...(v ?? [])]]));
   const decideFormat = (network: Network, format: AutopilotFormat, date: string, photoCount: number): AutopilotFormat => {
     if (!input.video?.inPlan || format === "ARTICLE") return format;

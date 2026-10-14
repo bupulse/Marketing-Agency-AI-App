@@ -2,6 +2,7 @@
 // designs engine a few at a time, let the owner change them, and take the video the browser rendered.
 // A visual never fails the content it belongs to: every step falls back to something free.
 import "server-only";
+import { videosLeftNow } from "@/lib/plans";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import type { Prisma } from "@/lib/generated/prisma/client";
@@ -20,7 +21,7 @@ import { RateLimitError } from "@/lib/rate-limit";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { createSignedUploadUrl } from "@/lib/storage";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { consumeUsage, getUsageSummary, refundUsage, UsageLimitError } from "@/lib/usage";
+import { consumeDailyVideo, consumeUsage, getUsageSummary, refundUsage, UsageLimitError } from "@/lib/usage";
 import { directVisual } from "./art-director";
 import { chooseSources, fallbackPlan, listItems, PHOTO_TEMPLATES, readImagePlan, slideText, type DirectionContext } from "./direction";
 import { mediaForPost } from "./post-media";
@@ -98,12 +99,12 @@ export async function audienceFor(businessId: string): Promise<Audience | undefi
   }
 }
 
-/** Whether the company's plan has video: the `video` feature and some video seconds a month. */
+/** Whether the company's plan has video: the `video` feature and some videos a month. */
 export async function videoAvailable(businessId: string): Promise<boolean> {
   try {
     if ((await featureStatus(businessId, "video")) !== "ok") return false;
     const business = await prisma.business.findUnique({ where: { id: businessId }, select: { userId: true } });
-    return !!business && (await getUsageSummary(business.userId)).limits.videoSeconds > 0;
+    return !!business && (await getUsageSummary(business.userId)).limits.videos > 0;
   } catch {
     return false;
   }
@@ -679,37 +680,32 @@ export function usageWithoutOwn(usage: MediaUsage, row: { bytes: number; uploadB
   return { count: Math.max(0, usage.count - count), bytes: Math.max(0, usage.bytes - row.bytes - reserved) };
 }
 
-/** Video seconds left this month (plan limit minus what was used). */
-async function secondsLeft(userId: string): Promise<number> {
+/** The plan's videos: what is left this month and today (the daily cap), for the messages. */
+async function videoAllowance(userId: string) {
   const usage = await getUsageSummary(userId);
-  return Math.max(0, usage.limits.videoSeconds - usage.used.videoSeconds);
+  return { left: videosLeftNow(usage), monthLeft: Math.max(0, usage.limits.videos - usage.used.videos), monthly: usage.limits.videos, perDay: usage.videosPerDay, today: usage.videosToday };
+}
+
+/** Why no new video can be made right now (today's or this month's videos used up), or null. Shown as it is. */
+export function videoCapMessage(a: { monthLeft: number; monthly: number; perDay: number; today: number }): string | null {
+  if (a.monthLeft <= 0) return `Your plan's ${a.monthly} videos for this month are used up (${a.monthly} of ${a.monthly}). Use the picture instead, or add more video to your plan.`;
+  if (a.today >= a.perDay) return `${a.perDay} ${a.perDay === 1 ? "video" : "videos"} today, the most a day: more tomorrow. ${a.monthly - a.monthLeft} of ${a.monthly} this month.`;
+  return null;
 }
 
 /**
- * The seconds a remake of this visual does not pay again: those of the video it already has (billed when it was
- * made). A remake replaces that video and pays only the extra seconds when the new one is longer. Nothing when the
- * visual has no video (never made, or its file was removed by the 30-day clean-up).
+ * Whether saving this visual's video uses one of the plan's videos: a new one does; making it again (captions,
+ * photos, music, voice, "Make it again") replaces the video it already has and uses none. A visual whose file was
+ * removed by the 30-day clean-up counts again.
  */
-export function remakeCredit(row: { kind: string; items: unknown; seconds: number }): number {
-  return row.kind === "video" && readItems(row.items)[0]?.path ? Math.max(0, row.seconds) : 0;
+export function countsAsNewVideo(row: { kind: string; items: unknown }): boolean {
+  return !(row.kind === "video" && readItems(row.items)[0]?.path);
 }
 
-/**
- * Before a video that already exists is made again (captions, photos, music, voice, "Make it again"): refused, with
- * the old video kept, when the remake would need more seconds than the plan has left this month.
- */
-export async function assertRemakeAllowed(businessId: string, row: { kind: string; items: unknown; seconds: number }, plan: VideoPlan) {
-  const credit = remakeCredit(row);
-  if (credit === 0) return;
-  const extra = billableSeconds(plan.totalMs) - credit;
-  if (extra <= 0) return;
-  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { userId: true } });
-  const left = business ? await secondsLeft(business.userId) : 0;
-  if (extra > left) throw new VisualError(`Making this video again needs ${extra} more seconds than your current video, and your plan has ${left} left this month. Your current video is kept.`);
-}
+
 
 /**
- * Checks a video the browser is about to upload (plan feature, length, size, video seconds left, media quota) and
+ * Checks a video the browser is about to upload (plan feature, length, size, videos left, media quota) and
  * gives it a signed upload URL. The seconds are counted when the upload is confirmed (finalizeVideo).
  */
 export async function prepareVideoUpload(owner: Owner, visualId: string, file: { bytes: number; mimeType: string; durationMs: number }) {
@@ -717,12 +713,12 @@ export async function prepareVideoUpload(owner: Owner, visualId: string, file: {
   const { row, plan } = await videoRow(owner, visualId);
   if (!isVideoType(file.mimeType)) throw new VisualError("The video must be an MP4 or WebM file.");
   if (!(file.bytes > 0) || file.bytes > VIDEO_LIMITS.maxBytes) throw new VisualError("The video is larger than 8 MB. Try fewer scenes or shorter captions.");
-  if (!(file.durationMs > 0) || file.durationMs > VIDEO_LIMITS.maxMs + 1000) throw new VisualError("Videos can be at most 30 seconds long.");
+  if (!(file.durationMs > 0) || file.durationMs > VIDEO_LIMITS.maxMs + 1000 || plan.totalMs > VIDEO_LIMITS.maxMs + 1000) throw new VisualError("Videos can be at most 30 seconds long.");
   const seconds = billableSeconds(Math.max(file.durationMs, plan.totalMs));
-  // A remake pays only the seconds beyond the video it replaces.
-  const extra = Math.max(0, seconds - remakeCredit(row));
-  if (extra > 0 && (await secondsLeft(owner.userId)) < extra) {
-    throw new VisualError(remakeCredit(row) ? "Your plan does not have enough video seconds left this month for a longer video. Your current video is kept." : "Your plan's video seconds for this month are used up. Use the picture instead, or add more video to your plan.");
+  // A new video uses one of the plan's videos (today's and this month's); a remake uses none.
+  if (countsAsNewVideo(row)) {
+    const cap = videoCapMessage(await videoAllowance(owner.userId));
+    if (cap) throw new VisualError(cap);
   }
   const now = new Date();
   const open = await prisma.contentVisual.count({ where: { businessId: owner.businessId, kind: "video", uploadExpiresAt: { gt: now }, id: { not: visualId } } });
@@ -792,13 +788,18 @@ export async function finalizeVideo(owner: Owner, visualId: string, input: { pat
     const held = await prisma.contentVisual.findUnique({ where: { id: row.id }, select: { robotJobId: true, renderingUntil: true } });
     if (held?.robotJobId !== options.robotJob || !held.renderingUntil || held.renderingUntil <= new Date()) return reject("The video was made elsewhere in the meantime.");
   }
-  // A remake replaces the video it had: only the seconds beyond those already paid for are counted.
-  const extra = Math.max(0, seconds - remakeCredit(row));
-  try {
-    if (extra > 0) await consumeUsage(owner.userId, "videoSeconds", extra);
-  } catch (error) {
-    if (error instanceof UsageLimitError) return reject(remakeCredit(row) ? "Your plan does not have enough video seconds left this month for a longer video. Your current video is kept." : "Your plan's video seconds for this month are used up.");
-    throw error;
+  // A new video uses one video of the month and one of the day, only now that it is made and checked (a failed
+  // render never gets here, so it uses nothing). A remake replaces the video it had and uses none.
+  if (countsAsNewVideo(row)) {
+    let month: { periodStart: Date } | null = null;
+    try {
+      month = await consumeUsage(owner.userId, "videos", 1);
+      await consumeDailyVideo(owner.userId, (await getUsageSummary(owner.userId)).videosPerDay);
+    } catch (error) {
+      if (month) await refundUsage(owner.userId, "videos", month.periodStart, 1).catch(() => {});
+      if (error instanceof UsageLimitError) return reject(videoCapMessage(await videoAllowance(owner.userId)) ?? "Your plan's videos are used up for now.");
+      throw error;
+    }
   }
   const previous = readItems(row.items);
   await prisma.contentVisual.update({
@@ -822,8 +823,7 @@ export async function updateVideoPlan(owner: Owner, visualId: string, changes: {
     if (!photos.every((p) => p === null || isOwnPhotoPath(owner.userId, p) || isOwnDesignPath(owner.userId, p))) throw new VisualError("That photo could not be used.");
     next = { ...next, scenes: next.scenes.map((s, i) => (i < photos.length ? { ...s, photoPath: photos[i] } : s)) };
   }
-  // The video it has stays (and stays on its posts) until the new one is saved.
-  await assertRemakeAllowed(owner.businessId, row, next);
+  // The video it has stays (and stays on its posts) until the new one is saved; a remake uses none of the plan's videos.
   await prisma.contentVisual.update({ where: { id: row.id }, data: { plan: json(next), status: "pending", error: null, robotAttempts: 0 } });
   return next;
 }

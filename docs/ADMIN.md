@@ -13,7 +13,7 @@ The sidebar groups the pages into folders; the files live in matching route grou
 | Sales | My clients, Sales team, Leaderboard | `/admin/sales`, `/admin/sales/team`, `/admin/sales/leaderboard` | An agent's own clients (contact, plan, trial days left, last sign-in, posts, payment status) and referral link; every agent and reassigning; this month's sales per agent. |
 | Clients | Companies, Users | `/admin/companies`, `/admin/users` | Find a company or person; open one for users, usage and actions. |
 | | Client health | `/admin/client-health` | Inactive 7 days, trial ending in 3 days, past due, low usage, waiting for a demo; one-click WhatsApp and email. |
-| | Usage per client | `/admin/usage` | Texts, images, video seconds, voice characters, chat this period; AI cost this month vs what they pay; margin. |
+| | Usage per client | `/admin/usage` | Texts, images, videos, voice characters, chat this period; AI cost this month vs what they pay; margin. |
 | | Demos, Plan requests, Connections | `/admin/demos`, `/admin/requests`, `/admin/connections` | |
 | Money | Revenue and profit | `/admin/revenue` | Revenue by month (card, Mobile Money, invoices; RWF and the rate used), lifetime revenue from every client ever, MRR, ARPU, churn, profit per month, plan and client. |
 | | Costs | `/admin/costs` | Provider bills, recurring costs (hosting, domain, subscriptions), one-month costs; estimate vs billed. |

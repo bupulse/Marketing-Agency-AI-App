@@ -11,7 +11,7 @@ import { AdminError } from "./types";
 export const CLIENT_TABS = ["overview", "billing", "usage", "channels", "content", "leads", "errors", "audit", "notes"] as const;
 export type ClientTab = (typeof CLIENT_TABS)[number];
 
-const METRIC_LABELS: Record<string, string> = { text: "Text generations", image: "Images", videoSeconds: "Video seconds", voiceCharacters: "Voice characters", chat: "Chat replies" };
+const METRIC_LABELS: Record<string, string> = { text: "Text generations", image: "Images", videos: "Videos", voiceCharacters: "Voice characters", chat: "Chat replies" };
 const PAYING = new Set(["ACTIVE", "PAST_DUE"]);
 const iso = (d: Date | null | undefined) => d?.toISOString() ?? null;
 const DAY = 86_400_000;
@@ -84,7 +84,7 @@ export async function usageSection(c: Client, now = new Date()) {
     prisma.aiCall.aggregate({ where: { userId: c.id, createdAt: { gte: since } }, _sum: { costUsd: true }, _count: { _all: true } }),
     c.subscription ? getPlanLimits(c.subscription.plan) : null,
   ]);
-  const used: Record<string, number> = usage ? { text: usage.textGenerations, image: usage.imageGenerations, videoSeconds: usage.videoSeconds, voiceCharacters: usage.voiceCharacters, chat: usage.chatMessages } : {};
+  const used: Record<string, number> = usage ? { text: usage.textGenerations, image: usage.imageGenerations, videos: usage.videos, voiceCharacters: usage.voiceCharacters, chat: usage.chatMessages } : {};
   const failures = await prisma.aiCall.count({ where: { userId: c.id, createdAt: { gte: since }, success: false } });
   // The company's own monthly AI allowance (AI_COMPANY_MONTHLY_USD), counted on the business like the cap is.
   // The website chat has its own share of it (WIDGET_AI_SHARE); the rest is the owner's features.

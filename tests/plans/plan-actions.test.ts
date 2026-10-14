@@ -34,7 +34,7 @@ function form(over: Record<string, string> = {}) {
   const f = new FormData();
   const base: Record<string, string> = {
     mode: "edit", key: "STANDARD", name: "Standard", description: "d", sortOrder: "10", status: "active", monthly: "49", yearly: "490",
-    limit_text: "100", limit_image: "50", limit_chat: "1000", limit_videoSeconds: "0", limit_voiceCharacters: "0", limit_seats: "3", features: "one\ntwo",
+    limit_text: "100", limit_image: "50", limit_chat: "1000", limit_videos: "0", limit_voiceCharacters: "0", limit_seats: "3", features: "one\ntwo",
     version: plan("STANDARD").updatedAt.toISOString(),
   };
   for (const [k, v] of Object.entries({ ...base, ...over })) f.set(k, v);

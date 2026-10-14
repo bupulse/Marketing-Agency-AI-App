@@ -54,7 +54,7 @@ async function businessClient() {
   Object.assign(c.subscription, { status: "ACTIVE", plan: "BUSINESS", chosenPlan: "BUSINESS", provider: "MANUAL_MOMO", interval: "MONTH", trialEndsAt: null, currentPeriodStart: new Date(AT.getTime() - 12 * DAY), currentPeriodEnd: new Date(AT.getTime() + 18 * DAY) });
   Object.assign(h.user, { id: c.userId, actorId: c.userId, businessId: c.businessId });
   h.db.lead.rows.push({ id: "l1", businessId: c.businessId, name: "Jean", email: "jean@example.com", status: "NEW", createdAt: AT });
-  h.db.usageRecord.rows.push({ userId: c.userId, periodStart: c.subscription.currentPeriodStart, textGenerations: 100, imageGenerations: 0, videoSeconds: 0, voiceCharacters: 0, chatMessages: 0 });
+  h.db.usageRecord.rows.push({ userId: c.userId, periodStart: c.subscription.currentPeriodStart, textGenerations: 100, imageGenerations: 0, videos: 0, voiceCharacters: 0, chatMessages: 0 });
   return c;
 }
 

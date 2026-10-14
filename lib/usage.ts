@@ -1,13 +1,15 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { usageWindowEnd, usageWindowStart } from "@/lib/billing/period";
-import type { UsageMetric } from "@/lib/plans";
+import { videosPerDayLimit, type UsageMetric } from "@/lib/plans";
+export { videosLeftNow } from "@/lib/plans";
+import { kigaliDayOf } from "@/lib/time/kigali";
 import { getPlan, getPlanLimits, getTrialPlan } from "@/lib/plan-catalog";
 
 const FIELD = {
   text: "textGenerations",
   image: "imageGenerations",
-  videoSeconds: "videoSeconds",
+  videos: "videos",
   voiceCharacters: "voiceCharacters",
   chat: "chatMessages",
 } as const satisfies Record<UsageMetric, string>;
@@ -76,13 +78,38 @@ export async function refundUsage(userId: string, metric: UsageMetric, periodSta
   });
 }
 
+/**
+ * One more video today (Kigali day), within the plan's videosPerDay: an atomic conditional increment, like
+ * consumeUsage. Throws UsageLimitError("limit_reached", "videos") with `daily` set when today's videos are used up.
+ * Called together with consumeUsage(userId, "videos") when a video is saved; refundDailyVideo gives it back.
+ */
+export class DailyVideoLimitError extends UsageLimitError {
+  constructor(public perDay: number) {
+    super("limit_reached", "videos");
+  }
+}
+
+export async function consumeDailyVideo(userId: string, perDay: number, now: Date = new Date()): Promise<{ day: string }> {
+  const day = kigaliDayOf(now);
+  if (perDay <= 0) throw new DailyVideoLimitError(perDay);
+  await prisma.videoDayUsage.createMany({ data: [{ userId, day }], skipDuplicates: true });
+  const { count } = await prisma.videoDayUsage.updateMany({ where: { userId, day, videos: { lte: perDay - 1 } }, data: { videos: { increment: 1 } } });
+  if (count === 0) throw new DailyVideoLimitError(perDay);
+  return { day };
+}
+
+export async function refundDailyVideo(userId: string, day: string) {
+  await prisma.videoDayUsage.updateMany({ where: { userId, day, videos: { gte: 1 } }, data: { videos: { decrement: 1 } } });
+}
+
 export async function getUsageSummary(userId: string) {
   const sub = await activePeriod(userId);
   const now = new Date();
   const periodStart = usageWindowStart(sub.currentPeriodStart, now);
-  const record = await prisma.usageRecord.findUnique({
-    where: { userId_periodStart: { userId, periodStart } },
-  });
+  const [record, today] = await Promise.all([
+    prisma.usageRecord.findUnique({ where: { userId_periodStart: { userId, periodStart } } }),
+    prisma.videoDayUsage.findUnique({ where: { userId_day: { userId, day: kigaliDayOf(now) } } }).catch(() => null),
+  ]);
   const limits = await getPlanLimits(sub.plan);
   const planConfig = (await getPlan(sub.plan)) ?? (await getTrialPlan());
   return {
@@ -91,11 +118,14 @@ export async function getUsageSummary(userId: string) {
     used: {
       text: record?.textGenerations ?? 0,
       image: record?.imageGenerations ?? 0,
-      videoSeconds: record?.videoSeconds ?? 0,
+      videos: record?.videos ?? 0,
       voiceCharacters: record?.voiceCharacters ?? 0,
       chat: record?.chatMessages ?? 0,
     },
     limits,
+    /** Videos made today (Kigali day) and the plan's daily cap. */
+    videosToday: today?.videos ?? 0,
+    videosPerDay: videosPerDayLimit(limits),
     /** When usage next resets (trial: when the trial ends). */
     resetsAt: sub.plan === "TRIAL" ? sub.trialEndsAt : usageWindowEnd(sub.currentPeriodStart, now),
   };

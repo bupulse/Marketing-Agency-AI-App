@@ -2,15 +2,14 @@
 // content packs, Autopilot) BuPulse chooses each post's format per app and angle, so the owner never has to ask for
 // videos. Owner rules (13 October 2026):
 // - TikTok and YouTube Shorts: video (about 9 in 10 where the app also takes photo posts); a picture or a script to
-//   film only when video is not in the plan or the month's video seconds are used up, and the run says why;
+//   film only when video is not in the plan or the plan's videos are used up, and the run says why;
 // - Instagram: a mix, Reels about half the time, carousels for tips and lists, single pictures otherwise;
 // - Facebook: video about a third of the time; LinkedIn: mostly pictures, carousels and articles, video about 1 in 5;
 // - day to day variety: never the same format on the same app three days running (TikTok and YouTube excepted);
-// - within the plan's video seconds and at most MAX_RUN_VIDEOS videos BuPulse makes per run.
+// - within the plan's videos and at most MAX_RUN_VIDEOS videos BuPulse makes per run.
 // The owner can lean a run towards video or pictures ("Format" in the dialog). Pure: the RNG is passed in.
 import { ANGLES, type AngleId, type PackFormat } from "@/lib/studio/angles";
 import type { Network } from "@/lib/social/types";
-import { VIDEO_SECONDS_PER_VIDEO } from "./cost";
 import { NETWORK_STYLE } from "./networks";
 
 export const FORMAT_PREFERENCES = ["auto", "video", "image"] as const;
@@ -44,11 +43,11 @@ export type FormatInput = {
   day: string;
   preference?: FormatPreference;
   videoInPlan: boolean;
-  /** Video seconds left this month. */
-  videoSecondsLeft: number;
+  /** Videos the plan has left: this month's, and today's (the daily cap) when it is lower. */
+  videosLeft: number;
   /** Videos this run may make at most (MAX_RUN_VIDEOS by default). */
   maxVideos?: number;
-  /** Whether a slot's video would be the owner's own album video (it costs no video seconds). */
+  /** Whether a slot's video would be the owner's own album video (it uses none of the plan's videos). */
   freeVideo?: (index: number) => boolean;
   /** Apps among TikTok / YouTube that also take photo posts (TikTok with photo posting on). */
   photoApps?: readonly Network[];
@@ -97,9 +96,9 @@ export function decideFormats(input: FormatInput): FormatDecision {
     return draws[i] < (photos ? VIDEO_SHARE[pref][network] : 1);
   });
 
-  // The budget: BuPulse-made videos within the month's seconds and the run's limit, video apps first.
-  const bySeconds = Math.max(0, Math.floor(input.videoSecondsLeft / VIDEO_SECONDS_PER_VIDEO));
-  const budget = Math.min(bySeconds, input.maxVideos ?? MAX_RUN_VIDEOS);
+  // The budget: BuPulse-made videos within what the plan has left and the run's limit, video apps first.
+  const byPlan = Math.max(0, Math.floor(input.videosLeft));
+  const budget = Math.min(byPlan, input.maxVideos ?? MAX_RUN_VIDEOS);
   const order = input.slots.map((_, i) => i).sort((a, b) => Number(isVideoApp(input.slots[b].network)) - Number(isVideoApp(input.slots[a].network)) || a - b);
   const makes = new Set<number>();
   const blocked = new Map<number, string>();
@@ -111,7 +110,7 @@ export function decideFormats(input: FormatInput): FormatDecision {
     else if (made < budget) {
       makes.add(i);
       made += 1;
-    } else blocked.set(i, bySeconds <= budget ? "your video seconds for this month are used up" : `a run makes at most ${budget} videos`);
+    } else blocked.set(i, byPlan <= budget ? "your plan's videos are used up for now" : `a run makes at most ${budget} videos`);
   }
 
   const choices = input.slots.map(({ network, angle }, i): FormatChoice => {
@@ -134,11 +133,11 @@ export function decideFormats(input: FormatInput): FormatDecision {
 }
 
 /** How many videos a run is likely to make, for the dialog's cost line (the decision itself is made when it runs). */
-export function expectedVideos(input: { networks: readonly Network[]; perApp: number; preference?: FormatPreference; videoInPlan: boolean; videoSecondsLeft: number; maxVideos?: number }): number {
+export function expectedVideos(input: { networks: readonly Network[]; perApp: number; preference?: FormatPreference; videoInPlan: boolean; videosLeft: number; maxVideos?: number }): number {
   if (!input.videoInPlan) return 0;
   const pref = input.preference ?? "auto";
   const expected = input.networks.reduce((n, network) => n + VIDEO_SHARE[pref][network] * Math.max(1, input.perApp), 0);
-  const budget = Math.min(Math.floor(Math.max(0, input.videoSecondsLeft) / VIDEO_SECONDS_PER_VIDEO), input.maxVideos ?? MAX_RUN_VIDEOS);
+  const budget = Math.min(Math.floor(Math.max(0, input.videosLeft)), input.maxVideos ?? MAX_RUN_VIDEOS);
   return Math.min(budget, Math.ceil(expected - 0.25));
 }
 

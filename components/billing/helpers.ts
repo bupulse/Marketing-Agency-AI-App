@@ -1,5 +1,5 @@
 import type { BillingInterval } from "@/lib/generated/prisma/client";
-import type { Plan, PlanLimits } from "@/lib/plans";
+import { videosPerDayLimit, type Plan, type PlanLimits } from "@/lib/plans";
 import { formatMinor } from "@/lib/region-format";
 
 /** The price part of a plan in the currency's smallest unit (the shape of PublicPlan); `currency` defaults to USD. */
@@ -76,11 +76,11 @@ export function planButtonAction(
 
 /** A feature list built from limits alone (the fallback when a plan has none of its own). */
 export function planFeatures(limits: PlanLimits) {
-  const { text, image, videoSeconds, voiceCharacters } = limits;
+  const { text, image, videos, voiceCharacters } = limits;
   return [
     `${text} text generations per month`,
     `${image} brand designs per month`,
-    ...(videoSeconds > 0 ? [`${videoSeconds} seconds of video`] : []),
+    ...(videos > 0 ? [`${videos} ${videos === 1 ? "video" : "videos"} a month (up to 30 s each${videos > 1 ? `, ${videosPerDayLimit(limits)} a day` : ""})`] : []),
     ...(voiceCharacters > 0 ? [`${voiceCharacters.toLocaleString("en-US")} voice characters`] : []),
   ];
 }

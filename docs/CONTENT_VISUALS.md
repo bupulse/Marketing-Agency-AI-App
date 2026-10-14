@@ -95,7 +95,7 @@ screen).
   through the scenes (none: the brand backdrop; an AI photo from the image visual is lent when there is one); Ken Burns
   moves alternate; colours from the brand (`buildTheme`), style from the pack. A **video look** (docs/DESIGNS.md,
   "Video looks") chosen by BuPulse sets layouts, transition, captions and motion; plans without one render as before. Made with the text when the plan has
-  video (`videoAvailable`: the `video` feature and more than 0 video seconds a month) and there is a script.
+  video (`videoAvailable`: the `video` feature and more than 0 videos a month) and there is a script.
 - **"Make a video" never asks for a script first** (`remakeContentVisuals`, `lib/visuals/script-writer.ts`). Content
   without a video script gets one written by the AI from its own post (caption, angle, the subject's Knowledge base,
   the Digital Marketing Profile's voice and language mix): one text call through `withLedger`, **1 text generation**
@@ -114,7 +114,7 @@ screen).
   owner picks (decoded and encoded to AAC in the browser, never stored, no bundled music); skipped with a note when the
   browser cannot encode it. Timeline maths is pure and tested (`lib/visuals/timeline.ts`).
 - **Upload** (`use-video-render.ts`): `startVideoUpload` checks the plan feature, MP4 or WebM, at most 8 MB and 30 s,
-  the video seconds left, the company's media quota and the platform guard, records a **reservation** on the visual
+  the videos left (this month's and today's, unless it remakes a video it already has), the company's media quota and the platform guard, records a **reservation** on the visual
   (`uploadPath`, 8 MB, one hour; counted in the quotas like a stored video; at most 3 open per company), then gives a
   signed upload URL for `<userId>/videos/<visualId>-<n>.mp4` in the `media` bucket. `finishVideoUpload` re-checks the
   plan, takes only the reserved path (a file written straight into the folder is refused), checks the quota again with
@@ -148,8 +148,8 @@ On the day view's "Pictures and videos" (Content, docs/CONTENT.md) and the Autop
 | Style (under "More options") | every slide redrawn with designs of the new style; AI photos are reused | free |
 | Edit text | headline, subline, chip per slide, redrawn | free |
 | New picture | fresh art direction, the old slides go (unless a post uses them) | art director call; AI photo uses a credit |
-| Make a video | the AI writes the script when there is none, then the video is made | 1 text generation without a script; video seconds when made |
-| Write my own script | the owner's lines, one per scene, used as typed; then the video is made | video seconds when made |
+| Make a video | the AI writes the script when there is none, then the video is made | 1 text generation without a script; one video when made |
+| Write my own script | the owner's lines, one per scene, used as typed; then the video is made | one video when made |
 | Remove | slide designs and video file go unless a post uses them; AI photos stay in Designs | none |
 | Edit captions / Make it again / Add your music / music or voice change | new video plan or same plan, rendered again | only the seconds beyond the current video |
 
@@ -187,23 +187,42 @@ Edited content versions keep their visuals (`carryVisuals`); pruned versions rel
 cascade) or `groupId` (Autopilot post group), `kind` image | carousel | video, `status` pending | ready | failed,
 `items` (ordered `{ designId?, path }`), `plan` (ImagePlan or VideoPlan, `lib/visuals/types.ts`), `bytes`, `seconds`,
 `error`, `renderedAt`. CHECK constraints on kind, status and owner; RLS on and all grants revoked. The migration also
-widens the media bucket's types and gives the Pro plan row the `video` key (Pro has the video seconds).
+widens the media bucket's types and gives the Pro plan row the `video` key (Pro has the videos).
 
 ## Features and plans
 
-`video` is a built feature ("Videos", metric `videoSeconds`). Owner decision (12 October 2026):
+`video` is a built feature ("Videos", metric `videos`). Usage counts **videos, not seconds** (owner decision,
+14 October 2026; it was 240 video seconds a month before): each video is at most **30 seconds** (refused when saved,
+`VIDEO_LIMITS.maxMs`; the plans BuPulse builds never pass it), at most **4 a day** (Kigali day, `VideoDayUsage`), and
+the plans with video allow 4 × 30 = **120 a month**.
 
-| Plan | Video | Video seconds a month |
-| --- | --- | --- |
-| Rwanda Business, East Africa / Global Pro | yes | 240 (8 videos of up to 30 s) |
-| Free trial (whatever plan was chosen) | yes | 30 (one sample video) |
-| Starter, Standard | no: "Add video to your plan" | 0 |
+| Plan | Video | Videos a month | A day | Voiceover characters |
+| --- | --- | --- | --- | --- |
+| Rwanda Business, East Africa / Global Pro | yes | 120 | 4 | 72,000 (600 a video) |
+| Free trial (whatever plan was chosen) | yes | 1 (one sample video) | 1 | 600 |
+| Starter, Standard | no: "Add video to your plan" | 0 | 0 | 0 |
 
-The migration sets this on the `PlanDefinition` rows (features and limits are per plan key; regions only price them);
-`lib/plans.ts` (`VIDEO_PLAN_SECONDS`, `TRIAL_VIDEO_SECONDS`) holds the same for the code's fallback plans. Video is in
-the add-on catalog and the offer builder like every built feature; Rwanda's price is 10,000 RWF a month (owner decision; row
-`addon_rw_video`, editable in Add-on prices). Added on top of a plan without video, an offer's custom plan gets 240 video
-seconds. `voice` stays coming soon.
+Both are **plan settings** (Admin → Plans: "Videos a month", "Videos per day"; `limits.videos`, `limits.videosPerDay`,
+4 when missing; Jarvis `update_plan_limits`). `lib/plans.ts` (`VIDEO_PLAN_VIDEOS`, `VIDEOS_PER_DAY`, `TRIAL_VIDEOS`,
+`VIDEO_MAX_SECONDS`) holds the same for the code's fallback plans.
+
+**Counting** (`finalizeVideo`): a video uses one of the month (`consumeUsage(…, "videos", 1)`) and one of the day
+(`consumeDailyVideo`, an atomic conditional increment) only once the file is saved and checked, so a failed or refused
+render uses nothing (when today's cap is hit after the month's count, the month's is given back). Making an existing
+video again (captions, photos, music, voice, "Make it again") replaces it and uses none; a video whose file the 30-day
+clean-up removed counts again. `prepareVideoUpload` refuses before anything is rendered: "4 videos today, the most a
+day: more tomorrow. 40 of 120 this month." or "Your plan's 120 videos for this month are used up (120 of 120)."
+"Create today's content" and the packs plan at most the videos left now (the lower of this month's and today's,
+`videosLeftNow`); Autopilot within the month's. Usage shows "N / 120" and "N of 4 today · up to 30 s each".
+
+**Migration** `20261018120000_videos_per_month`: `UsageRecord.videoSeconds` is renamed `videos` and each started 30 s
+becomes one video; plan limits `videoSeconds` become `videos` (> 30 s: 120 and `videosPerDay` 4; the trial's 30 s: 1)
+and voiceover characters 600 a video on plans with voice; stored offers are renamed too; `VideoDayUsage` is created
+(RLS on, no grants).
+
+Video is in the add-on catalog and the offer builder like every built feature; Rwanda's price is 10,000 RWF a month
+(owner decision; row `addon_rw_video`, editable in Add-on prices). Added on top of a plan without video, an offer's
+custom plan gets 120 videos a month.
 
 ## Storage clean-up
 

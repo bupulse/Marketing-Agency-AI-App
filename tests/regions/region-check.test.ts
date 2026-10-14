@@ -30,7 +30,7 @@ function seed() {
   );
   const rwPlan = (key: string, name: string, sortOrder: number, text: number, image: number, seats: number, highlight: boolean) => ({
     id: `plan_${key.toLowerCase()}`, key, name, description: "", isTrial: false, trialDays: null, status: "active", sortOrder, highlight, monthlyPriceCents: 1200, yearlyPriceCents: 11600, currency: "USD",
-    limits: { text, image, chat: 0, videoSeconds: 0, voiceCharacters: 0, seats }, highlights: [`${text} AI texts`], featureKeys: ["content", "designs", "calendar", "gallery"], features: [], capabilities: {}, paddlePrices: [], syncState: "not_synced", syncError: null, createdAt: new Date(), updatedAt: new Date(),
+    limits: { text, image, chat: 0, videos: 0, voiceCharacters: 0, seats }, highlights: [`${text} AI texts`], featureKeys: ["content", "designs", "calendar", "gallery"], features: [], capabilities: {}, paddlePrices: [], syncState: "not_synced", syncError: null, createdAt: new Date(), updatedAt: new Date(),
   });
   h.db.planDefinition.rows.push(rwPlan("STARTER", "Starter", 5, 60, 30, 1, false), rwPlan("BUSINESS", "Business", 6, 200, 100, 3, true));
   const price = (planKey: string, regionKey: string, currency: string, monthlyMinor: number, yearlyMinor: number, card?: [number, number]) => ({

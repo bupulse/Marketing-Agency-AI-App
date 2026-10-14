@@ -25,14 +25,14 @@ import { PRICE_CHOICE_LABEL, PRICE_CHOICES, type PriceChoice } from "@/lib/conte
 import type { Network } from "@/lib/social/types";
 
 export type NetworkChoice = { network: Network; label: string; connected: boolean };
-export type Allowance = { textLeft: number; imagesLeft: number; aiPhotos: boolean; videoInPlan: boolean; videoSecondsLeft: number; voice: boolean; voiceCharsLeft: number; postsPerApp: number };
+export type Allowance = { textLeft: number; imagesLeft: number; aiPhotos: boolean; videoInPlan: boolean; videosLeft: number; voice: boolean; voiceCharsLeft: number; postsPerApp: number };
 
 const DEFAULT_NETWORKS: Network[] = ["instagram", "facebook", "linkedin"];
 
 function formatHint(format: FormatPreference, allowance: Allowance): string {
   if (!allowance.videoInPlan) return "Videos are not in your plan: pictures and carousels, and TikTok / YouTube get a script to film yourself.";
-  if (allowance.videoSecondsLeft < 30) return "Your video seconds for this month are used up: pictures and carousels this time.";
-  if (format === "video") return "Videos wherever they fit, within your video seconds; LinkedIn still gets some pictures.";
+  if (allowance.videosLeft < 1) return "Your plan's videos are used up for now (today's or this month's): pictures and carousels this time.";
+  if (format === "video") return "Videos wherever they fit, within your videos; LinkedIn still gets some pictures.";
   if (format === "image") return "Pictures and carousels on Instagram, Facebook and LinkedIn; TikTok and YouTube stay videos.";
   return "BuPulse picks picture, carousel or video for each post: mostly videos on TikTok and YouTube, a mix on Instagram and Facebook, mostly pictures on LinkedIn.";
 }
@@ -88,9 +88,9 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
   const posts = chosen.length * each;
   const designed = (mode === "own" ? (overlays ? chosen.filter((n) => NETWORK_STYLE[n].video !== "always").length : 0) : chosen.filter((n) => NETWORK_STYLE[n].video !== "always").length) * each;
   // Videos BuPulse is likely to make: it decides picture or video per post when the run starts (format.ts), mostly
-  // video on TikTok and YouTube, within the video seconds left (an album video, if any, costs nothing).
-  const videos = mode === "own" ? 0 : expectedVideos({ networks: chosen, perApp: each, preference: format, videoInPlan: allowance.videoInPlan, videoSecondsLeft: allowance.videoSecondsLeft });
-  const cost = runCost({ mode, design, posts, designed, aiPhotos: allowance.aiPhotos, textLeft: allowance.textLeft, imagesLeft: allowance.imagesLeft, videos, videoSecondsLeft: allowance.videoSecondsLeft, voice: allowance.voice, voiceCharsLeft: allowance.voiceCharsLeft });
+  // video on TikTok and YouTube, within the videos left (an album video, if any, costs nothing).
+  const videos = mode === "own" ? 0 : expectedVideos({ networks: chosen, perApp: each, preference: format, videoInPlan: allowance.videoInPlan, videosLeft: allowance.videosLeft });
+  const cost = runCost({ mode, design, posts, designed, aiPhotos: allowance.aiPhotos, textLeft: allowance.textLeft, imagesLeft: allowance.imagesLeft, videos, videosLeft: allowance.videosLeft, voice: allowance.voice, voiceCharsLeft: allowance.voiceCharsLeft });
   const missing = mode === "describe" && !brief.trim() ? "Describe today's content." : mode === "own" && media.length === 0 ? "Choose your photos or videos." : mode === "own" && !caption.trim() ? "Write your caption." : null;
 
   function submit() {

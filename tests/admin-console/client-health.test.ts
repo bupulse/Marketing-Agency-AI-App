@@ -27,7 +27,7 @@ describe("client health", () => {
     expect(healthFlags({ ...base, usageShare: 0.02, periodDays: 3 }, now)).not.toContain("low_usage");
   });
   it("uses the busiest limit", () => {
-    expect(usageShareOf({ text: 10, image: 9 }, { text: 100, image: 10, videoSeconds: 0 })).toBeCloseTo(0.9);
+    expect(usageShareOf({ text: 10, image: 9 }, { text: 100, image: 10, videos: 0 })).toBeCloseTo(0.9);
     expect(usageShareOf({ text: 1 }, { text: 0 })).toBeNull();
   });
   it("builds WhatsApp links with the Rwandan code for local numbers", () => {

@@ -5,6 +5,7 @@
 // "Bring my own" adapts the owner's caption per network. Then the visuals, then the posts as drafts, which go through
 // approval or auto-approval like every Studio post.
 import "server-only";
+import { videosLeftNow } from "@/lib/plans";
 import { prisma } from "@/lib/db";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
@@ -139,13 +140,13 @@ export async function networkChoices(businessId: string): Promise<{ network: Net
 }
 
 /** What the dialog needs to say what a run uses. */
-export type RunAllowance = { textLeft: number; imagesLeft: number; aiPhotos: boolean; videoInPlan: boolean; videoSecondsLeft: number; voice: boolean; voiceCharsLeft: number; postsPerApp: number };
+export type RunAllowance = { textLeft: number; imagesLeft: number; aiPhotos: boolean; videoInPlan: boolean; videosLeft: number; voice: boolean; voiceCharsLeft: number; postsPerApp: number };
 
 export async function runAllowance(owner: Owner): Promise<RunAllowance> {
   const [usage, aiPhotos, videoInPlan, voiceFeature] = await Promise.all([getUsageSummary(owner.userId), aiPhotosAvailable(owner), videoAvailable(owner.businessId), featureStatus(owner.businessId, VOICE_FEATURE).catch(() => null)]);
-  const left = (metric: "text" | "image" | "videoSeconds" | "voiceCharacters") => Math.max(0, (usage.limits[metric] ?? 0) - (usage.used[metric] ?? 0));
+  const left = (metric: "text" | "image" | "videos" | "voiceCharacters") => Math.max(0, (usage.limits[metric] ?? 0) - (usage.used[metric] ?? 0));
   const voiceCharsLeft = left("voiceCharacters");
-  return { textLeft: left("text"), imagesLeft: left("image"), aiPhotos, videoInPlan, videoSecondsLeft: left("videoSeconds"), voice: videoInPlan && voiceFeature === "ok" && voiceCharsLeft > 0, voiceCharsLeft, postsPerApp: postsPerAppLimit(usage.limits) };
+  return { textLeft: left("text"), imagesLeft: left("image"), aiPhotos, videoInPlan, videosLeft: videosLeftNow(usage), voice: videoInPlan && voiceFeature === "ok" && voiceCharsLeft > 0, voiceCharsLeft, postsPerApp: postsPerAppLimit(usage.limits) };
 }
 
 /** How long a run holds the company's claim; a run that died lets the next one in after this. */
@@ -273,7 +274,7 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
       day,
       preference: input.format,
       videoInPlan: allowance.videoInPlan,
-      videoSecondsLeft: allowance.videoSecondsLeft,
+      videosLeft: allowance.videosLeft,
       freeVideo: (i) => own[i] !== null,
       photoApps: VIDEO_APPS.filter((n) => getProvider(n).rules.formats.includes("POST")),
       recent: await recentFormats(businessId, zone, day),
@@ -287,7 +288,7 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
 
   const designedCount = input.mode === "own" ? (input.overlays ? slotNetworks.filter((n) => own.get(n)!.format !== "SCRIPT" && !own.get(n)!.mediaPaths.some(isVideoPath)).length : 0) : media.filter((m) => m.kind === "image").length;
   const videos = media.filter((m) => m.kind === "render-video").length;
-  const cost = runCost({ mode: input.mode, design: input.design, posts: slotNetworks.length, designed: designedCount, aiPhotos: allowance.aiPhotos, textLeft: allowance.textLeft, imagesLeft: allowance.imagesLeft, videos, videoSecondsLeft: allowance.videoSecondsLeft, voice: allowance.voice, voiceCharsLeft: allowance.voiceCharsLeft });
+  const cost = runCost({ mode: input.mode, design: input.design, posts: slotNetworks.length, designed: designedCount, aiPhotos: allowance.aiPhotos, textLeft: allowance.textLeft, imagesLeft: allowance.imagesLeft, videos, videosLeft: allowance.videosLeft, voice: allowance.voice, voiceCharsLeft: allowance.voiceCharsLeft });
   if (!cost.enoughText) throw new DayRunError(`Not enough text generations left for ${slotNetworks.length} posts. ${cost.message}`);
 
   const brand: BrandContext = {

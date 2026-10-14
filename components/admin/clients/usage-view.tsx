@@ -32,7 +32,7 @@ export function UsageView({ rows, sort, fx = BOOKS_FMT }: { rows: ClientRow[]; s
       </div>
       <Panel
         title="Usage this period"
-        description="Texts, images, video seconds, voice characters and chat replies since each client's period started, against their plan."
+        description="Texts, images, videos, voice characters and chat replies since each client's period started, against their plan."
         action={
           <nav aria-label="Sort" className="flex gap-2 text-sm">
             {(["cost", "margin", "name"] as const).map((s) => (
@@ -59,7 +59,7 @@ export function UsageView({ rows, sort, fx = BOOKS_FMT }: { rows: ClientRow[]; s
                     <Td>{r.plan ?? "none"}</Td>
                     <Td right>{used(r, "text")}</Td>
                     <Td right>{used(r, "image")}</Td>
-                    <Td right>{used(r, "videoSeconds")}</Td>
+                    <Td right>{used(r, "videos")}</Td>
                     <Td right>{used(r, "voiceCharacters")}</Td>
                     <Td right>{used(r, "chat")}</Td>
                     <Td right>{fx.el(Math.round(r.aiCostMonthCents))}</Td>

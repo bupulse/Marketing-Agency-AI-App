@@ -79,7 +79,7 @@ beforeEach(() => {
   prisma.$transaction.mockImplementation(async (list: unknown[]) => list.map((_, i) => ({ id: `post-${i}` })));
   usage.consumeUsage.mockResolvedValue({ periodStart: new Date("2026-10-01") });
   usage.refundUsage.mockResolvedValue(undefined);
-  usage.getUsageSummary.mockResolvedValue({ used: { text: 2, image: 0, videoSeconds: 0, voiceCharacters: 0 }, limits: { text: 30, image: 10, videoSeconds: 240, voiceCharacters: 20000, postsPerAppPerDay: 3 } });
+  usage.getUsageSummary.mockResolvedValue({ used: { text: 2, image: 0, videos: 0, voiceCharacters: 0 }, limits: { text: 30, image: 10, videos: 120, voiceCharacters: 20000, postsPerAppPerDay: 3 }, videosToday: 0, videosPerDay: 4 });
   visuals.aiPhotosAvailable.mockResolvedValue(true);
   visuals.videoAvailable.mockResolvedValue(true);
   visuals.planVisuals.mockResolvedValue({ image: "v1", video: null });
@@ -189,11 +189,11 @@ describe("picture or video, decided per post", () => {
     expect(visuals.planVisuals.mock.calls.find((c) => c[0].video)?.[0]).toMatchObject({ image: false, video: true });
   });
 
-  it("with no video seconds left, TikTok gets the script to film and the run says why", async () => {
+  it("with no videos left, TikTok gets the script to film and the run says why", async () => {
     prisma.productPhoto.findMany.mockResolvedValue(photosOnly);
-    usage.getUsageSummary.mockResolvedValue({ used: { text: 2, image: 0, videoSeconds: 240, voiceCharacters: 0 }, limits: { text: 30, image: 10, videoSeconds: 240, voiceCharacters: 20000, postsPerAppPerDay: 3 } });
+    usage.getUsageSummary.mockResolvedValue({ used: { text: 2, image: 0, videos: 120, voiceCharacters: 0 }, limits: { text: 30, image: 10, videos: 120, voiceCharacters: 20000, postsPerAppPerDay: 3 }, videosToday: 0, videosPerDay: 4 });
     const result = await runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "ai", design: "free", networks: ["tiktok"], format: "video" }, NOW);
-    expect(result.notes).toEqual(["TikTok gets a video script to film yourself: your video seconds for this month are used up."]);
+    expect(result.notes).toEqual(["TikTok gets a video script to film yourself: your plan's videos are used up for now."]);
     expect(result.videos).toBe(0);
     const tiktok = prisma.post.create.mock.calls[0][0].data;
     expect(tiktok).toMatchObject({ format: "SCRIPT", mediaPaths: [] });
@@ -276,7 +276,7 @@ describe("posts per app, price and ideas", () => {
   });
 
   it("skips an app that already has its posts for today", async () => {
-    usage.getUsageSummary.mockResolvedValue({ used: { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0 }, limits: { text: 30, image: 10, videoSeconds: 0, voiceCharacters: 0 } });
+    usage.getUsageSummary.mockResolvedValue({ used: { text: 0, image: 0, videos: 0, voiceCharacters: 0 }, limits: { text: 30, image: 10, videos: 0, voiceCharacters: 0 }, videosToday: 0, videosPerDay: 0 });
     prisma.post.groupBy.mockResolvedValue([{ network: "facebook", _count: { _all: 1 } }]);
     await expect(runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "ai", design: "free", networks: ["facebook"], perApp: 3 }, NOW)).rejects.toThrow("Facebook already has its post for today");
     expect(usage.consumeUsage).not.toHaveBeenCalled();

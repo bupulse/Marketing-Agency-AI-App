@@ -46,6 +46,7 @@ model User {
   membership           Membership?
   subscription         Subscription?
   usage                UsageRecord[]
+  videoDays            VideoDayUsage[]
   canva                CanvaConnection?
   canvaEdits           CanvaEdit[]
   manualPayments       ManualPayment[]
@@ -717,12 +718,24 @@ model UsageRecord {
   periodStart      DateTime
   textGenerations  Int      @default(0)
   imageGenerations Int      @default(0)
-  videoSeconds     Int      @default(0)
+  videos           Int      @default(0) // videos made this month (each up to 30 s; until 14 Oct 2026: seconds)
   voiceCharacters  Int      @default(0)
   chatMessages     Int      @default(0) // AI replies of the website chat widget
   updatedAt        DateTime @updatedAt
 
   @@unique([userId, periodStart])
+}
+
+// Videos made per day (Kigali day, lib/time/kigali.ts): at most the plan's videosPerDay (4 by default) a day, on top of
+// the monthly count in UsageRecord.videos. A failed render counts nothing (lib/usage.ts consumeDailyVideo).
+model VideoDayUsage {
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  day       String // YYYY-MM-DD in Africa/Kigali
+  videos    Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, day])
 }
 
 // ---- Phase 2: performance learning (tables exist now so nothing needs reworking later) ----
@@ -1658,7 +1671,7 @@ model PlanDefinition {
   monthlyPriceCents    Int       @default(0)
   yearlyPriceCents     Int       @default(0)
   currency             String    @default("USD")
-  limits               Json // { text, image, chat, videoSeconds, voiceCharacters, seats }
+  limits               Json // { text, image, chat, videos, videosPerDay, voiceCharacters, seats }
   // string[] marketing bullets on the pricing card (replaced `features` in 20261009110000_plan_features).
   highlights           Json      @default("[]")
   // FeatureKey[] (lib/features.ts): what the plan unlocks, prerequisites included. The source of truth for entitlements.

@@ -76,7 +76,7 @@ function seed() {
   // features only (website chat and Autopilot are add-ons in Rwanda).
   const std = h.db.planDefinition.rows.find((r) => r.key === "STANDARD")!;
   std.featureKeys = ["content", "designs", "calendar", "gallery"];
-  std.limits = { text: 200, image: 100, chat: 0, videoSeconds: 0, voiceCharacters: 0, seats: 3 };
+  std.limits = { text: 200, image: 100, chat: 0, videos: 0, voiceCharacters: 0, seats: 3 };
   h.db.planRegionPrice.rows.push({ id: "prp_std", planKey: "STANDARD", regionKey: "RW", currency: "RWF", monthlyMinor: 35000, yearlyMinor: 350000 });
   for (const [addonKey, monthlyMinor] of PRICES) h.db.addonPrice.rows.push({ id: `a_${addonKey}`, addonKey, regionKey: "RW", currency: "RWF", monthlyMinor });
   h.db.adminSetting.rows.push({ key: MOMO_SETTING_KEY, value: { merchantCode: "123456", momoNumber: "0788000000", accountName: "BuPulse Ltd" } });
