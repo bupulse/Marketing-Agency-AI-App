@@ -29,7 +29,7 @@ export class ClaudeTextProvider implements TextProvider {
     private fetchImpl: typeof fetch = fetch,
   ) {}
 
-  async generate({ system, prompt, jsonSchema }: TextRequest): Promise<TextResult> {
+  async generate({ system, prompt, jsonSchema, maxOutputTokens }: TextRequest): Promise<TextResult> {
     let res: Response;
     try {
       res = await fetchWithRetry(
@@ -39,7 +39,7 @@ export class ClaudeTextProvider implements TextProvider {
           headers: { "content-type": "application/json", "x-api-key": this.apiKey, "anthropic-version": "2023-06-01", "anthropic-beta": CLAUDE_BETAS.join(",") },
           body: JSON.stringify({
             model: this.model,
-            max_tokens: 4096,
+            max_tokens: maxOutputTokens ?? 4096,
             system,
             messages: [{ role: "user", content: prompt }],
             output_config: {

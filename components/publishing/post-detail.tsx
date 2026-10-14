@@ -15,6 +15,7 @@ import {
   retryPostAction,
   unschedulePostAction,
 } from "@/app/dashboard/calendar/actions";
+import { PostWriting } from "@/components/content-flow/post-writing";
 import { EDITABLE, STATUS_LABEL, STATUS_STYLE } from "@/lib/publishing/status";
 import { parseLocalInput, toLocalInput } from "@/lib/publishing/time";
 import type { CalendarPost, PostOutcome } from "@/lib/publishing/types";
@@ -202,14 +203,21 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = []
       {confirmDelete && post.status === "PUBLISHED" && (
         <p className="text-[13px] text-muted">This only removes it from BuPulse. The post stays live on {networkName(post.network)}, so delete it there too if you want it gone.</p>
       )}
+
+      {/* The script, headlines, Generate again and Versions; Copy caption sits above for reminder posts. */}
+      <PostWriting postId={post.id} zone={zone} copyCaption={post.remindOnly || post.notify || post.status === "NEEDS_ACTION" ? null : captionText(post)} />
     </div>
   );
 }
 
+/** The caption and hashtags as they are posted. */
+function captionText(post: CalendarPost): string {
+  return [post.title, post.text.trim(), post.hashtags.join(" ")].filter(Boolean).join("\n\n");
+}
+
 /** The caption and hashtags as they are posted, on the clipboard. */
 function copyCaption(post: CalendarPost, toast: (message: string, tone?: "info" | "success" | "error") => void) {
-  const text = [post.title, post.text.trim(), post.hashtags.join(" ")].filter(Boolean).join("\n\n");
-  navigator.clipboard?.writeText(text).then(
+  navigator.clipboard?.writeText(captionText(post)).then(
     () => toast("Caption copied.", "success"),
     () => toast("Could not copy. Select the text and copy it instead.", "error"),
   );

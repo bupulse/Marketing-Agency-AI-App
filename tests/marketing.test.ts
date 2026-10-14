@@ -37,7 +37,7 @@ describe("generateMarketingContent", () => {
 
   it("puts the brand and promotion details in the prompt", async () => {
     const provider = fakeProvider(
-      JSON.stringify({ caption: "c", hashtags: [], videoScript: "s", adHeadlines: ["h"] }),
+      JSON.stringify({ caption: "c", hashtags: [], videoScript: "s", adHeadlines: ["h1", "h2", "h3"] }),
     );
     await generateMarketingContent(provider, brand, input);
     expect(provider.prompts[0]).toContain("Business: Sunrise Bakery");
@@ -47,7 +47,7 @@ describe("generateMarketingContent", () => {
 
   it("puts the voice guide, language, audience and knowledge in the prompt", async () => {
     const provider = fakeProvider(
-      JSON.stringify({ caption: "c", hashtags: [], videoScript: "s", adHeadlines: ["h"] }),
+      JSON.stringify({ caption: "c", hashtags: [], videoScript: "s", adHeadlines: ["h1", "h2", "h3"] }),
     );
     await generateMarketingContent(
       provider,
@@ -72,7 +72,7 @@ describe("generateMarketingContent", () => {
 
   it("defaults to English", async () => {
     const provider = fakeProvider(
-      JSON.stringify({ caption: "c", hashtags: [], videoScript: "s", adHeadlines: ["h"] }),
+      JSON.stringify({ caption: "c", hashtags: [], videoScript: "s", adHeadlines: ["h1", "h2", "h3"] }),
     );
     await generateMarketingContent(provider, brand, input);
     expect(provider.prompts[0]).toContain("Write all content in English");
@@ -81,10 +81,26 @@ describe("generateMarketingContent", () => {
   it("keeps ad headlines within 40 characters", async () => {
     const long = "A very long headline that goes on and on and on forever";
     const provider = fakeProvider(
-      JSON.stringify({ caption: "c", hashtags: [], videoScript: "s", adHeadlines: [long] }),
+      JSON.stringify({ caption: "c", hashtags: [], videoScript: "s", adHeadlines: [long, "b", "c"] }),
     );
     const { content } = await generateMarketingContent(provider, brand, input);
     expect(content.adHeadlines[0].length).toBeLessThanOrEqual(40);
+  });
+
+  it("asks for exactly three ad headlines", async () => {
+    const provider = fakeProvider(JSON.stringify({ caption: "c", hashtags: [], videoScript: "s", adHeadlines: ["a", "b", "c"] }));
+    await generateMarketingContent(provider, brand, input);
+    expect(provider.prompts[0]).toContain("adHeadlines: exactly 3 different ad headlines");
+    expect(provider.prompts[0]).not.toMatch(/2 or 3/);
+  });
+
+  it("fewer than three usable headlines is a failed answer (retryable, so the credit goes back)", async () => {
+    for (const adHeadlines of [["only one"], ["Same", "same", "Other"], ["a", " ", "b"]]) {
+      const provider = fakeProvider(JSON.stringify({ caption: "c", hashtags: [], videoScript: "s", adHeadlines }));
+      const error = await generateMarketingContent(provider, brand, input).catch((e) => e);
+      expect(error).toBeInstanceOf(AIProviderError);
+      expect(error.retryable).toBe(true);
+    }
   });
 
   it("throws a retryable AIProviderError for non-JSON output", async () => {

@@ -60,7 +60,7 @@ const product = {
   targetCustomer: "Families in Kigali",
   details: { variants: ["Large", "Small"], condition: "new", delivery: "Moto in Kigali", warranty: null },
 };
-const aiJson = JSON.stringify({ caption: "Pain frais.", hashtags: ["pain"], videoScript: "0-5s four", adHeadlines: ["Pain frais"] });
+const aiJson = JSON.stringify({ caption: "Pain frais.", hashtags: ["pain"], videoScript: "0-5s four", adHeadlines: ["Pain frais", "Du four ce matin", "Chaud et croustillant"] });
 const args = { userId: "u1", businessId: "b1", subject: { kind: "product" as const, id: "p1" }, feature: "content" as const };
 
 beforeEach(() => {

@@ -44,7 +44,7 @@ export class GeminiTextProvider implements TextProvider {
     }
   }
 
-  private async generateWith(model: string, { system, prompt, jsonSchema }: TextRequest): Promise<TextResult> {
+  private async generateWith(model: string, { system, prompt, jsonSchema, maxOutputTokens }: TextRequest): Promise<TextResult> {
     let interaction: Interaction;
     try {
       interaction = await createInteraction(
@@ -54,7 +54,7 @@ export class GeminiTextProvider implements TextProvider {
           system_instruction: system,
           input: prompt,
           store: false,
-          generation_config: { max_output_tokens: 4096, thinking_level: "low" },
+          generation_config: { max_output_tokens: maxOutputTokens ?? 4096, thinking_level: "low" },
           ...(jsonSchema ? { response_format: { type: "text", mime_type: "application/json", schema: jsonSchema } } : {}),
         },
         // The call, retries and their waits included (lib/ai/http-retry.ts).

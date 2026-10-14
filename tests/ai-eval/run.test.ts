@@ -36,7 +36,7 @@ describe("eval checks", () => {
     caption: "TechHub Kigali brings you the Galaxy A55 128GB for the price of 420,000 RWF. Visit us today and get yours.",
     hashtags: ["#a","#b","#c","#d","#e","#f","#g","#h"],
     videoScript: "0-5s: Open on the phone. Voiceover: for you and your friends.",
-    adHeadlines: ["Galaxy A55 is here", "Upgrade with TechHub"],
+    adHeadlines: ["Galaxy A55 is here", "Upgrade with TechHub", "Your new phone awaits"],
   };
 
   it("has 20 cases with unique ids", () => {
@@ -57,6 +57,7 @@ describe("eval checks", () => {
     });
     expect(problems.join("|")).toMatch(/99000/);
     expect(problems.join("|")).toMatch(/headline over 40/);
+    expect(problems.join("|")).toMatch(/2 headlines \(want exactly 3\)/);
     expect(problems.join("|")).toMatch(/hashtags/);
   });
 

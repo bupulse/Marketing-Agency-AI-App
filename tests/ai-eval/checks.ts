@@ -41,7 +41,7 @@ export function checkContent(c: EvalCase, content: MarketingContent): string[] {
 
   if (!content.caption.trim()) problems.push("empty caption");
   if (!content.videoScript.trim()) problems.push("empty video script");
-  if (content.adHeadlines.length < 2 || content.adHeadlines.length > 3) problems.push(`${content.adHeadlines.length} headlines (want 2-3)`);
+  if (content.adHeadlines.length !== 3) problems.push(`${content.adHeadlines.length} headlines (want exactly 3)`);
   for (const h of content.adHeadlines) if (h.length > 40) problems.push(`headline over 40 chars: "${h}"`);
   if (content.hashtags.length < 8 || content.hashtags.length > 15) problems.push(`${content.hashtags.length} hashtags (want 8-15)`);
   if (content.hashtags.some((t) => !/^#\S+$/.test(t))) problems.push("malformed hashtag");

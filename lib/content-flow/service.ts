@@ -323,7 +323,7 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
       written = await Promise.all(
         slotNetworks.map(async (network, slot) => {
           const m = own.get(network)!;
-          const base = { slot, angle: "cta" as const, network, format: (m.format === "SCRIPT" ? "video" : m.format === "CAROUSEL" ? "carousel" : "image") as WrittenPost["format"], headline: "", videoScript: "", showsPrice: true };
+          const base = { slot, angle: "cta" as const, network, format: (m.format === "SCRIPT" ? "video" : m.format === "CAROUSEL" ? "carousel" : "image") as WrittenPost["format"], adHeadlines: [] as string[], videoScript: "", showsPrice: true };
           try {
             const r = await withLedger(ledger, model, () => adaptOwnPost(getTextProvider(), { brand, network, caption: ownCaption, media: mediaLines({ kind: "own", items: picked }), languageLine: null }), usage);
             return { ...base, caption: r.caption, hashtags: r.hashtags, provider: r.provider, model: r.model };
@@ -375,7 +375,7 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
         const caption = stripPriceLike(p.caption, item.price);
         if (!caption.trim()) return [];
         const fitted = fitToNetwork(p.network, caption, p.hashtags.filter((h) => !isPriceLike(h.replace(/^#/, ""), item.price)));
-        return [{ ...p, ...fitted, videoScript: stripPriceLike(p.videoScript, item.price), headline: stripPriceLike(p.headline, item.price), slot, showsPrice: false, provider: pack.provider, model: pack.model }];
+        return [{ ...p, ...fitted, videoScript: stripPriceLike(p.videoScript, item.price), adHeadlines: p.adHeadlines.map((h) => stripPriceLike(h, item.price)).filter(Boolean), slot, showsPrice: false, provider: pack.provider, model: pack.model }];
       });
       kept = written.length;
     }
@@ -399,7 +399,7 @@ async function makeDayContent(owner: Owner, input: DayRunInput, now: Date): Prom
           caption: contestOf(w) ? contestDraftText(w.caption) : w.caption,
           hashtags: w.hashtags,
           videoScript: w.videoScript,
-          adHeadlines: w.headline ? [w.headline] : [],
+          adHeadlines: w.adHeadlines,
           language: business.contentLanguage,
           edited: input.mode === "own",
           provider: w.provider,

@@ -184,7 +184,7 @@ export async function generatePackForSubject(args: {
             caption: post.caption,
             hashtags: post.hashtags,
             videoScript: post.videoScript,
-            adHeadlines: post.headline ? [post.headline] : [],
+            adHeadlines: post.adHeadlines,
             language: business.contentLanguage,
             variants: variantsJson({ caption: post.caption, hashtags: post.hashtags, videoScript: post.videoScript }),
             edited: false,

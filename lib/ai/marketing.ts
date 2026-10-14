@@ -1,8 +1,9 @@
 import "server-only";
 import { z } from "zod";
 import { getVoice } from "@/lib/brand/voices";
+import { AD_HEADLINE_COUNT, exactlyThreeHeadlines } from "@/lib/studio/headlines";
 import { MAX_HEADLINE_LENGTH } from "@/lib/studio/schemas";
-import { normalizeHashtags, truncateSmart } from "@/lib/studio/variants";
+import { normalizeHashtags } from "@/lib/studio/variants";
 import { AIProviderError, type TextProvider, type TokenUsage } from "./types";
 
 export const marketingContentSchema = z.object({
@@ -11,7 +12,7 @@ export const marketingContentSchema = z.object({
   videoScript: z
     .string()
     .describe("30-second vertical video script with timestamps, scene directions and voiceover lines"),
-  adHeadlines: z.array(z.string()).describe(`2 or 3 ad headlines, each at most ${MAX_HEADLINE_LENGTH} characters`),
+  adHeadlines: z.array(z.string()).describe(`Exactly ${AD_HEADLINE_COUNT} different ad headlines, each at most ${MAX_HEADLINE_LENGTH} characters`),
 });
 
 export type MarketingContent = z.infer<typeof marketingContentSchema>;
@@ -114,7 +115,7 @@ export function buildPrompt(brand: BrandContext, input: PromotionInput): string 
     "1. caption: a social media caption without hashtags. Open with a hook, say what is on offer and why it matters, and end with a clear, friendly call to action.",
     "2. hashtags: 8 to 15 relevant hashtags, each starting with #. No years, dates or other numbers in hashtags unless they appear in the details above.",
     "3. videoScript: a 30-second vertical video script. Use timestamps (for example 0-5s), a scene direction and a voiceover line for each part.",
-    `4. adHeadlines: 2 or 3 ad headlines, each at most ${MAX_HEADLINE_LENGTH} characters.`,
+    `4. adHeadlines: exactly ${AD_HEADLINE_COUNT} different ad headlines, each at most ${MAX_HEADLINE_LENGTH} characters.`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -139,16 +140,16 @@ export async function generateMarketingContent(
       result.model,
     );
   }
+  // Exactly three, every time: fewer usable ones is a failed answer (retryable; the caller gives the credit back).
+  const adHeadlines = exactlyThreeHeadlines(parsed.adHeadlines);
+  if (!adHeadlines) throw new AIProviderError(`The AI returned fewer than ${AD_HEADLINE_COUNT} ad headlines`, result.provider, true, result.usage, result.model);
 
   return {
     content: {
       caption: parsed.caption.trim(),
       videoScript: parsed.videoScript.trim(),
       hashtags: normalizeHashtags(parsed.hashtags).slice(0, 15),
-      adHeadlines: parsed.adHeadlines
-        .map((h) => truncateSmart(h, MAX_HEADLINE_LENGTH))
-        .filter(Boolean)
-        .slice(0, 3),
+      adHeadlines,
     },
     provider: result.provider,
     model: result.model,

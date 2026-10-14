@@ -55,7 +55,7 @@ const album = [
 /** The pack writer's answer: one post per line of the prompt's list. */
 function packAnswer(prompt: string, drop: number[] = []) {
   const count = (prompt.match(/^\d+\. Angle "/gm) ?? []).length;
-  const posts = Array.from({ length: count }, (_, i) => ({ index: i + 1, caption: `Post ${i + 1}: fresh greens at school.`, hashtags: ["#green", "#school"], videoScript: "0-3s: hook", headline: "Grow at school" })).filter((p) => !drop.includes(p.index));
+  const posts = Array.from({ length: count }, (_, i) => ({ index: i + 1, caption: `Post ${i + 1}: fresh greens at school.`, hashtags: ["#green", "#school"], videoScript: "0-3s: hook", adHeadlines: ["Grow at school", "Greens for every class", "Lettuce by Friday"] })).filter((p) => !drop.includes(p.index));
   return { text: JSON.stringify({ posts }), provider: "gemini", model: "m", usage: { inputTokens: 1, outputTokens: 1 } };
 }
 
@@ -129,6 +129,22 @@ describe("AI makes it for me (a content pack for the day)", () => {
     expect(auto.autoSchedule).toHaveBeenCalledWith("b1", ["post-0", "post-1", "post-2"], NOW);
   });
 
+  it("every post comes with its 30-second video script and exactly three ad headlines, picture posts too", async () => {
+    await runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "ai", design: "free", networks: ["facebook", "linkedin"] }, NOW);
+    const prompt = ai.generate.mock.calls[0][0].prompt as string;
+    expect(prompt).toContain("adHeadlines: exactly 3 different ad headlines");
+    expect(prompt).toContain("Every post's videoScript:");
+    const contents = prisma.generatedContent.create.mock.calls.map((c) => c[0].data);
+    expect(contents).toHaveLength(2);
+    for (const c of contents) {
+      expect(c.format).toBe("image");
+      expect(c.videoScript).toBe("hook");
+      expect(c.adHeadlines).toEqual(["Grow at school", "Greens for every class", "Lettuce by Friday"]);
+    }
+    // A picture post's script is not its text: the post keeps its caption.
+    expect(prisma.post.create.mock.calls.every((c) => /^Post \d: fresh greens/.test(c[0].data.text))).toBe(true);
+  });
+
   it("uses free designs only with Free templates", async () => {
     await runDayContent(owner, { scope: { kind: "product", id: "p1" }, mode: "ai", design: "free", networks: ["facebook", "linkedin"] }, NOW);
     expect(director.directVisual).toHaveBeenCalledTimes(2);
@@ -182,7 +198,7 @@ describe("picture or video, decided per post", () => {
     expect(Object.fromEntries(contents.map((c) => [c.network, c.format]))).toEqual({ instagram: "video", facebook: "image" });
     const prompt = ai.generate.mock.calls[0][0].prompt as string;
     expect(prompt).toMatch(/Format: a video post \(write the videoScript\)/);
-    expect(prompt).toContain("Every video post's videoScript:");
+    expect(prompt).toContain("Every post's videoScript:");
     const ig = prisma.post.create.mock.calls.map((c) => c[0].data).find((p) => p.network === "instagram")!;
     expect(ig).toMatchObject({ format: "SCRIPT", mediaPaths: [] });
     expect(ig.text).toMatch(/^Post \d: fresh greens/);
@@ -307,7 +323,7 @@ describe("posts per app, price and ideas", () => {
       for (const p of parsed.posts) {
         p.caption = `Post ${p.index}: fresh greens at school. Now 10k only! Price on request for schools.`;
         p.videoScript = "0-3s: Only 15,000 RWF!\n3-6s: Grow at school.";
-        p.headline = "Only 15,000 RWF";
+        p.adHeadlines = ["Only 15,000 RWF", "Grow at school", "Free delivery today"];
       }
       return { ...answer, text: JSON.stringify(parsed) };
     });
@@ -322,7 +338,7 @@ describe("posts per app, price and ideas", () => {
     for (const c of unpriced) {
       expect(c.caption).toMatch(/^Post \d: fresh greens at school\.$/);
       expect(c.videoScript).not.toMatch(/15,000/);
-      expect(c.adHeadlines).toEqual([]);
+      expect(c.adHeadlines).toEqual(["Grow at school"]);
     }
   });
 
