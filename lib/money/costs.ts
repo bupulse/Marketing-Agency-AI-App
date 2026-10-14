@@ -7,6 +7,7 @@ import { getSetting } from "@/lib/admin/settings";
 import { AdminError, type AdminContext } from "@/lib/admin/types";
 import { buildMonthCosts, monthsBetween, providerBillSchema, recurringCostSchema, toMinorUnits, usdCentsOf, type LedgerMonth, type MonthCosts, type ProviderBillInput, type RecurringCostInput, type RecurringCostRow } from "./costs-shared";
 import { kigaliMonthRange } from "@/lib/time/kigali";
+import { WHATSAPP_UTILITY_USD } from "@/lib/leads/whatsapp";
 
 const firstIssue = (e: { issues: { message: string }[] }) => e.issues[0]?.message ?? "Check the form.";
 
@@ -96,7 +97,7 @@ export async function deleteProviderBill(ctx: AdminContext, id: string) {
   });
 }
 
-/** The AI ledger summed per month and provider (USD cents), from `from` ("YYYY-MM") to now. */
+/** The AI ledger (and the WhatsApp alert count) summed per month and provider (USD cents), from `from` ("YYYY-MM") to now. */
 export async function ledgerByMonth(from: string, to?: string): Promise<LedgerMonth[]> {
   // Kigali months (lib/time/kigali.ts): the bounds, and each call's month from its Kigali wall clock.
   const start = kigaliMonthRange(from).start;
@@ -105,7 +106,14 @@ export async function ledgerByMonth(from: string, to?: string): Promise<LedgerMo
     SELECT to_char("createdAt" + interval '2 hours', 'YYYY-MM') AS month, "provider", COALESCE(SUM("costUsd"), 0) AS cost,
            COUNT(*) AS calls, COUNT(*) FILTER (WHERE "estimated") AS estimated
     FROM "AiCall" WHERE "createdAt" >= ${start} AND "createdAt" < ${end} GROUP BY 1, 2`;
-  return rows.map((r) => ({ month: r.month, provider: r.provider, cents: Number(r.cost ?? 0) * 100, calls: Number(r.calls), estimatedCalls: Number(r.estimated) }));
+  // WhatsApp lead alerts (lib/leads/whatsapp.ts) are counted per day in ServiceUsage and priced at the estimate there.
+  const whatsapp = await prisma.$queryRaw<{ month: string; sent: bigint }[]>`
+    SELECT to_char("day", 'YYYY-MM') AS month, COALESCE(SUM("ok"), 0) AS sent
+    FROM "ServiceUsage" WHERE "service" = 'whatsapp' AND "day" >= ${start} AND "day" < ${end} GROUP BY 1`;
+  return [
+    ...rows.map((r) => ({ month: r.month, provider: r.provider, cents: Number(r.cost ?? 0) * 100, calls: Number(r.calls), estimatedCalls: Number(r.estimated) })),
+    ...whatsapp.filter((w) => Number(w.sent) > 0).map((w) => ({ month: w.month, provider: "whatsapp", cents: Number(w.sent) * WHATSAPP_UTILITY_USD * 100, calls: Number(w.sent), estimatedCalls: Number(w.sent) })),
+  ];
 }
 
 /** Every cost line of each month from `from` to `to` (inclusive). */

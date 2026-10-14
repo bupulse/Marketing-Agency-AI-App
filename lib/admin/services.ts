@@ -3,6 +3,7 @@ import { getPaddleConfig, paddleCredentialsComplete } from "@/lib/billing/paddle
 import { prisma } from "@/lib/db";
 import { writeAudit } from "./audit";
 import { SERVICES, isServiceId, networksOf, serviceInfo, type ServiceId, type ServiceInfo } from "./service-catalog";
+import { WHATSAPP_UTILITY_USD } from "@/lib/leads/whatsapp";
 import { runProbe } from "./service-tests";
 import { scrubSecrets } from "./scrub";
 import { clearSwitchCache } from "./switch";
@@ -72,6 +73,7 @@ type Loaded = {
   ai: Map<string, { calls: number; failed: number; costUsd: number }>;
   aiLastFailure: Map<string, { at: Date; error: string }>;
   emails: { ok: number; failed: number };
+  whatsapp: { ok: number; failed: number };
   paddleEvents: number;
   published: Map<string, number>;
   postFailed: Map<string, { at: Date; error: string }>;
@@ -81,6 +83,7 @@ type Loaded = {
 };
 
 const empty = <T,>(value: T) => (p: Promise<T>) => p.catch(() => value);
+const tally = (rows: { ok: number; failed: number }[]) => ({ ok: rows.reduce((n, r) => n + r.ok, 0), failed: rows.reduce((n, r) => n + r.failed, 0) });
 
 async function load(since: Date): Promise<Loaded> {
   const [aiRows, aiFail, usage, paddle, pubRows, failedPosts, imports, canva, stores, cf, errors] = await Promise.all([
@@ -88,7 +91,7 @@ async function load(since: Date): Promise<Loaded> {
       prisma.aiCall.groupBy({ by: ["provider", "success"], where: { createdAt: { gte: since } }, _count: { _all: true }, _sum: { costUsd: true } }) as never,
     ),
     empty<{ provider: string; error: string | null; createdAt: Date }[]>([])(prisma.aiCall.findMany({ where: { success: false }, orderBy: { createdAt: "desc" }, take: 20, select: { provider: true, error: true, createdAt: true } })),
-    empty<{ ok: number; failed: number }[]>([])(prisma.serviceUsage.findMany({ where: { service: "resend", day: { gte: since } }, select: { ok: true, failed: true } })),
+    empty<{ service: string; ok: number; failed: number }[]>([])(prisma.serviceUsage.findMany({ where: { service: { in: ["resend", "whatsapp"] }, day: { gte: since } }, select: { service: true, ok: true, failed: true } })),
     empty(0)(prisma.billingEvent.count({ where: { createdAt: { gte: since }, type: { startsWith: "transaction." } } })),
     empty<{ network: string; _count: { _all: number } }[]>([])(prisma.post.groupBy({ by: ["network"], where: { status: "PUBLISHED", publishedAt: { gte: since } }, _count: { _all: true } }) as never),
     empty<{ network: string; lastError: string | null; updatedAt: Date }[]>([])(prisma.post.findMany({ where: { status: "FAILED" }, orderBy: { updatedAt: "desc" }, take: 30, select: { network: true, lastError: true, updatedAt: true } })),
@@ -116,7 +119,8 @@ async function load(since: Date): Promise<Loaded> {
   return {
     ai,
     aiLastFailure,
-    emails: { ok: usage.reduce((n, r) => n + r.ok, 0), failed: usage.reduce((n, r) => n + r.failed, 0) },
+    emails: tally(usage.filter((r) => r.service === "resend")),
+    whatsapp: tally(usage.filter((r) => r.service === "whatsapp")),
     paddleEvents: paddle,
     published,
     postFailed,
@@ -138,6 +142,7 @@ const ERROR_SOURCES: Partial<Record<ServiceId, string[]>> = {
   shopify: ["shopify", "stores.", "store-sync"],
   woocommerce: ["woo", "stores."],
   cloudflare: ["cloudflare", "domains"],
+  whatsapp: ["whatsapp"],
 };
 
 function lastErrorOf(info: ServiceInfo, d: Loaded): ServiceView["lastError"] {
@@ -171,6 +176,12 @@ function usageOf(info: ServiceInfo, d: Loaded): UsageLine[] {
     }
     case "resend":
       return [{ label: "Emails sent (30 days)", value: d.emails.ok }, { label: "Emails refused", value: d.emails.failed }];
+    case "whatsapp":
+      return [
+        { label: "Alerts sent (30 days)", value: d.whatsapp.ok },
+        { label: "Alerts refused", value: d.whatsapp.failed },
+        { label: "Estimated cost (30 days, USD)", value: Number((d.whatsapp.ok * WHATSAPP_UTILITY_USD).toFixed(4)) },
+      ];
     case "paddle":
       return [{ label: "Transaction events (30 days)", value: d.paddleEvents }];
     case "meta":
@@ -210,7 +221,7 @@ export async function listServices(now = new Date()): Promise<ServiceView[]> {
     const sw = switchOf.get(info.id);
     const check = checkOf.get(info.id);
     const base = {
-      enabled: !(sw && !sw.enabled && info.killable),
+      enabled: sw ? sw.enabled || !info.killable : !info.defaultOff,
       configured: configState(info, { paddleSaved }),
       lastCheck: check ? { ok: check.ok, latencyMs: check.latencyMs, message: check.message, checkedAt: check.checkedAt.toISOString() } : null,
     };
@@ -224,7 +235,7 @@ export async function listServices(now = new Date()): Promise<ServiceView[]> {
       env: info.env.map((name) => ({ name, set: isSet(name) })),
       optionalEnv: (info.optionalEnv ?? []).map((name) => ({ name, set: isSet(name) })),
       ...base,
-      disabledReason: !base.enabled ? (sw?.reason ?? null) : null,
+      disabledReason: !base.enabled ? (sw ? sw.reason : info.defaultOff ? "off until it is set up and switched on" : null) : null,
       disabledBy: !base.enabled ? (sw?.changedBy ?? null) : null,
       disabledAt: !base.enabled ? (sw?.updatedAt.toISOString() ?? null) : null,
       lastError: lastErrorOf(info, d),
@@ -270,7 +281,7 @@ export async function setServiceEnabled(ctx: AdminContext, input: { service: str
   }
   const result = await prisma.$transaction(async (tx) => {
     const before = await tx.serviceSwitch.findUnique({ where: { service: input.service } });
-    const wasEnabled = before ? before.enabled : true;
+    const wasEnabled = before ? before.enabled : !info.defaultOff;
     const row = await tx.serviceSwitch.upsert({
       where: { service: input.service },
       create: { service: input.service, enabled: input.enabled, reason: input.enabled ? null : reason, changedBy: ctx.actor },

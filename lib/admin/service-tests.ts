@@ -76,6 +76,11 @@ const PROBES: Partial<Record<ServiceId, Probe>> = {
     if (json?.error === "invalid_client") return { ok: false, message: "Google rejected the client id or secret." };
     return { ok: true, message: "Google accepted the client id and secret." };
   },
+  whatsapp: async () => {
+    // Reading the sending number's own details is free and proves the token may use it.
+    const res = await get(`https://graph.facebook.com/v21.0/${encodeURIComponent(env("WHATSAPP_PHONE_NUMBER_ID"))}?fields=display_phone_number,quality_rating`, { authorization: `Bearer ${env("WHATSAPP_CLOUD_TOKEN")}` });
+    return res.ok ? { ok: true, message: "Meta accepted the WhatsApp token and phone number id." } : { ok: false, message: `Meta returned ${res.status} for the WhatsApp phone number.` };
+  },
   cloudflare: async () => {
     const res = await get("https://api.cloudflare.com/client/v4/ips");
     return res.ok ? { ok: true, message: "Cloudflare's API is reachable (each client uses their own token)." } : { ok: false, message: `Cloudflare's API returned ${res.status}.` };

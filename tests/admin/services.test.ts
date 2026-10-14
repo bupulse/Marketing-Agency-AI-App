@@ -137,6 +137,24 @@ describe("kill switch", () => {
     expect(await code(setServiceEnabled(CONSOLE, { service: "bogus", enabled: false, reason: "no" }))).toBe("not_found");
   });
 
+  it("WhatsApp is off until switched on: no row means off, the admin turns it on, and it is not an 'off' reminder until then", async () => {
+    expect(await isServiceEnabled("whatsapp")).toBe(false);
+    expect(await isServiceEnabled("resend")).toBe(true);
+    const view = (await listServices()).find((v) => v.id === "whatsapp")!;
+    expect(view).toMatchObject({ enabled: false, health: "off", configured: "missing", killable: true });
+    expect(view.env.map((e) => e.name)).toEqual(["WHATSAPP_CLOUD_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"]);
+    expect((await getServicesAttention()).off.map((o) => o.key)).not.toContain("whatsapp");
+
+    const on = await setServiceEnabled(CONSOLE, { service: "whatsapp", enabled: true });
+    expect(on).toMatchObject({ enabled: true, changed: true });
+    expect(lastAudit()).toMatchObject({ before: { enabled: false }, after: { enabled: true } });
+    expect(await isServiceEnabled("whatsapp")).toBe(true);
+    expect((await listServices()).find((v) => v.id === "whatsapp")!.enabled).toBe(true);
+
+    await setServiceEnabled(CONSOLE, { service: "whatsapp", enabled: false, reason: "pause the cost" });
+    expect(await isServiceEnabled("whatsapp")).toBe(false);
+  });
+
   it("a read failure keeps features on when nothing was ever read, keeps the last good answer otherwise, and does not hammer the database", async () => {
     // never read successfully in this isolate: fail open, and do not ask again until the interval has passed
     h.db.serviceSwitch.findMany.mockRejectedValue(new Error("db down"));

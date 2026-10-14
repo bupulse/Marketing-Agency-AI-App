@@ -30,6 +30,7 @@ export const RATE_LIMITS = {
   geoCountry: { limit: 20, windowSeconds: 60 * 60 }, // "Use my location" on the pricing page (a Google Geocoding call), per IP
   placesDetails: { limit: 60, windowSeconds: 60 * 60 }, // the chosen address's details, per company
   videoRobot: { limit: 120, windowSeconds: 60 * 60 }, // video robot API calls (a run makes about 10), per IP
+  pushDevice: { limit: 20, windowSeconds: 60 * 60 }, // "Alerts on this device" switched on (per person)
 } satisfies Record<string, RateLimitRule>;
 
 export class RateLimitError extends Error {
