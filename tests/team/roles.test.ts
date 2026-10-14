@@ -12,6 +12,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
   webhooks: { OWNER: true, ADMIN: true, MEMBER: false },
   settings: { OWNER: true, ADMIN: true, MEMBER: false },
   team: { OWNER: true, ADMIN: true, MEMBER: false },
+  upgrade: { OWNER: true, ADMIN: true, MEMBER: false },
   billing: { OWNER: true, ADMIN: false, MEMBER: false },
   company: { OWNER: true, ADMIN: false, MEMBER: false },
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Plus, Trash2 } from "lucide-react";
+import { ExternalLink, PenLine, Plus, Trash2 } from "lucide-react";
 import { Button, Field, Input, Select } from "@/components/ui";
 import { FLOORS, HEAD_OFFICE_LABEL, LOCATION_LIMITS, isFloorValue, MAX_BRANCHES, locationText, manualAddressText, mapsUrl, type Location } from "@/lib/business-info/locations";
 import { emptyLocation, type LocationValue } from "@/components/brand-profile/steps";
@@ -101,7 +101,15 @@ export function LocationsEditor({
                   onType={typed(i)}
                   onPick={picked(i)}
                 />
-                <LinkButton onClick={() => update(i, { manual: true, placeId: undefined, lat: undefined, lng: undefined })}>Can&apos;t find it? Enter it yourself</LinkButton>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 self-start"
+                  leading={<PenLine aria-hidden className="size-4" />}
+                  onClick={() => update(i, { manual: true, placeId: undefined, lat: undefined, lng: undefined })}
+                >
+                  Can&apos;t find it? Enter it yourself
+                </Button>
               </div>
             )}
 

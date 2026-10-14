@@ -32,6 +32,11 @@ export const PERMISSIONS = {
   settings: "ADMIN",
   /** Invite, remove and change the role of teammates. */
   team: "ADMIN",
+  /**
+   * "Add to your plan": the features the plan lacks and the way to ask for them. Admins see it so they can ask the
+   * owner; Members get no purchase prompts. Paying follows `billing`.
+   */
+  upgrade: "ADMIN",
   /** Plan, payment, invoices, cancel. */
   billing: "OWNER",
   /** Delete the company, transfer ownership. */

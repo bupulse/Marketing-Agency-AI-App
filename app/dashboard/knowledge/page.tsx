@@ -19,6 +19,8 @@ export default async function KnowledgePage() {
   const today = `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
   const progress = await knowledgeProgress(business, today);
   const overall = overallPercent(progress);
+  // Members get no purchase prompts (lib/team/roles.ts upgrade).
+  const canUpgrade = can(role, "upgrade");
 
   return (
     <>
@@ -50,7 +52,11 @@ export default async function KnowledgePage() {
                 {soon ? (
                   <Badge tone="neutral">Coming soon</Badge>
                 ) : missingFeature ? (
-                  <Badge tone="violet">Add to your plan</Badge>
+                  canUpgrade ? (
+                    <Badge tone="violet">Add to your plan</Badge>
+                  ) : (
+                    <Badge tone="neutral">Not in your plan</Badge>
+                  )
                 ) : viewOnly ? (
                   <Badge tone="neutral">
                     <Lock aria-hidden className="mr-1 inline size-3" />

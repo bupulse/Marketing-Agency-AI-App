@@ -6,7 +6,9 @@ import {
   getCountryCallingCode,
   getExampleNumber,
   isSupportedCountry,
+  isValidPhoneNumber,
   parsePhoneNumberFromString,
+  validatePhoneNumberLength,
   type CountryCode,
 } from "libphonenumber-js/max";
 import examples from "libphonenumber-js/mobile/examples";
@@ -24,20 +26,68 @@ export function dialCode(country: CountryCode | null | undefined): string {
   return `+${getCountryCallingCode(country)}`;
 }
 
+const trunkZero = new Map<CountryCode, boolean>();
+
 /**
- * The typed text as an international number: "+250...", "00250..." stay as they are; a national number ("0791..." or
- * "791...") gets the country's dial code. Anything that is not a digit or a leading + is dropped.
+ * Whether a leading 0 is the country's trunk prefix, dropped after the dial code (Rwanda, Kenya, UK: yes; Italy,
+ * Portugal, Côte d'Ivoire: no). Asked of libphonenumber: the country's example number written with a 0 in front
+ * still reads as the same number only when 0 is the trunk prefix.
+ */
+function zeroIsTrunk(country: CountryCode): boolean {
+  let known = trunkZero.get(country);
+  if (known === undefined) {
+    const example = getExampleNumber(country, examples);
+    const withZero = example ? parsePhoneNumberFromString(`0${example.nationalNumber}`, country) : undefined;
+    known = !!example && !!withZero?.isValid() && withZero.nationalNumber === example.nationalNumber;
+    trunkZero.set(country, known);
+  }
+  return known;
+}
+
+/**
+ * The digits after the dial code, without what people add by habit: the trunk 0 ("+250 0788...") and the dial code
+ * a second time ("+250 250788...", which is what typing or pasting "250788..." after the +250 the field shows gives).
+ * A 0 that is not a trunk prefix goes only when that makes the number valid (Portugal), so Italy's "+39 06..." stays.
+ * A complete number is shown as libphonenumber stores it, which also drops other trunk prefixes ("+1 1 201...").
+ * The repeated dial code goes only when the number with it is not valid and either is too long or valid without it.
+ */
+function nationalPart(rest: string, country: CountryCode, code: string): string {
+  const withoutZero = (digits: string) => {
+    const bare = digits.replace(/^0+/, "");
+    if (bare === digits || zeroIsTrunk(country)) return bare;
+    return !isValidPhoneNumber(`+${code}${digits}`) && isValidPhoneNumber(`+${code}${bare}`) ? bare : digits;
+  };
+  const valid = (digits: string) => {
+    const parsed = parsePhoneNumberFromString(`+${code}${digits}`);
+    return parsed?.isValid() ? parsed.nationalNumber : null;
+  };
+  const national = withoutZero(rest);
+  const asTyped = valid(national);
+  if (asTyped) return asTyped;
+  if (!national.startsWith(code)) return national;
+  const again = withoutZero(national.slice(code.length));
+  return valid(again) ?? (validatePhoneNumberLength(`+${code}${national}`) === "TOO_LONG" ? again : national);
+}
+
+/**
+ * The typed text as an international number. "+250...", "00250..." and a national number ("0791..." or "791...") all
+ * give "+250791..." for Rwanda; so does any of them typed or pasted after the "+250 " the field already shows. A
+ * number with its own "+" pasted after it replaces the dial code ("+250 +254..." is "+254..."). Anything that is not
+ * a digit or a + is dropped.
  */
 export function toInternational(input: string, country: CountryCode | null | undefined): string {
-  const raw = input.replace(/[^\d+]/g, "");
+  let raw = input.replace(/[^\d+]/g, "");
   if (!raw) return "";
-  if (raw.startsWith("+")) return `+${raw.slice(1).replace(/\D/g, "")}`;
-  if (raw.startsWith("00")) return `+${raw.slice(2)}`;
+  raw = raw.slice(Math.max(0, raw.lastIndexOf("+")));
   const code = country ? getCountryCallingCode(country) : null;
-  if (!code) return raw;
-  const national = raw.replace(/^0+/, "");
-  // Someone who typed the dial code without the plus ("250791...") meant the same number.
-  return national.startsWith(code) && national.length > code.length + 3 ? `+${national}` : `+${code}${national}`;
+  if (raw.startsWith("+")) {
+    const digits = raw.slice(1);
+    return country && code && digits.startsWith(code) ? `+${code}${nationalPart(digits.slice(code.length), country, code)}` : `+${digits}`;
+  }
+  if (raw.startsWith("00")) return toInternational(`+${raw.slice(2)}`, country);
+  if (!country || !code) return raw;
+  // Someone who typed the dial code without the plus ("250791...") meant the same number: nationalPart drops it.
+  return `+${code}${nationalPart(raw, country, code)}`;
 }
 
 /** The text to show while typing: "+250 791 954 277". Pasting with or without +250 or a leading 0 gives the same result. */
