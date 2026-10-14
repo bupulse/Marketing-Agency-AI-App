@@ -64,6 +64,14 @@ describe("month costs", () => {
     expect(m.totalCents).toBe(700);
   });
 
+  it("counts WhatsApp lead alerts as an estimate under email and messaging, outside the AI total", () => {
+    const [m] = buildMonthCosts({ ...base, recurring: [], ledger: [{ month: "2026-10", provider: "whatsapp", cents: 12, calls: 30, estimatedCalls: 30 }], bills: [] });
+    expect(m.lines.find((l) => l.key === "ai:meta_whatsapp")).toMatchObject({ label: "Meta (WhatsApp lead alerts)", category: "email", source: "estimate", cents: 12, calls: 30 });
+    expect(m.aiCents).toBe(0);
+    expect(m.totalCents).toBe(12);
+    expect(billKeyForLedger("whatsapp")).toBe("meta_whatsapp");
+  });
+
   it("maps ledger providers to bill providers", () => {
     expect(billKeyForLedger("gemini")).toBe("google_ai");
     expect(billKeyForLedger("claude")).toBe("anthropic");

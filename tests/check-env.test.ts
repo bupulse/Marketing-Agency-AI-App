@@ -66,6 +66,18 @@ describe("check-env: runtime", () => {
     expect(checkEnv({ ...good, PLATFORM_CHECK: "1" }, "runtime").warnings).toContain("PLATFORM_CHECK is set: remove it after the post-deploy check.");
   });
 
+  it("checks the Web Push keys' shape when they are set (they are optional)", () => {
+    const pub = Buffer.alloc(65, 4).toString("base64url");
+    const priv = Buffer.alloc(32, 7).toString("base64url");
+    expect(checkEnv({ ...good, VAPID_PUBLIC_KEY: pub, VAPID_PRIVATE_KEY: priv, VAPID_SUBJECT: "mailto:office@bupulse.com" }, "runtime").errors).toEqual([]);
+    expect(checkEnv({ ...good, VAPID_PUBLIC_KEY: priv, VAPID_PRIVATE_KEY: pub, VAPID_SUBJECT: "office@bupulse.com" }, "runtime").errors).toEqual([
+      "VAPID_PUBLIC_KEY must be a P-256 public key in base64url (65 bytes); see .env.example.",
+      "VAPID_PRIVATE_KEY must be a P-256 private key in base64url (32 bytes); see .env.example.",
+      "VAPID_SUBJECT must be a mailto: address or an https:// link.",
+    ]);
+    expect(checkEnv(good, "runtime").warnings).toContain("VAPID_PUBLIC_KEY is not set: phone and browser alerts for new leads are off (the switch is hidden).");
+  });
+
   it("never prints a value, only names", () => {
     const all = checkEnv({ ...good, CRON_SECRET: "tiny-secret", ENCRYPTION_KEY: SECRET }, "runtime");
     for (const line of [...all.errors, ...all.warnings]) {

@@ -50,6 +50,7 @@ model User {
   canvaEdits           CanvaEdit[]
   manualPayments       ManualPayment[]
   renewalNotices       RenewalNotice[]
+  pushSubscriptions    PushSubscription[]
 
   @@index([lastSeenAt])
 }
@@ -133,6 +134,7 @@ model Business {
   pendingStores    StoreConnectionPending[]
   cloudflare       CloudflareConnection?
   memberships      Membership[]
+  pushSubscriptions PushSubscription[]
   invites          Invite[]
   invoices         Invoice[]
   customPlans      PlanDefinition[]
@@ -493,6 +495,9 @@ model ChatWidget {
   allowedDomains         String[] // hostnames the widget may run on; empty = not yet installed, any site allowed until set
   notifyInstant          Boolean   @default(true) // email the owner for every new lead
   notifyDaily            Boolean   @default(true) // daily summary email
+  // WhatsApp alert for every new lead (lib/leads/whatsapp.ts). Only offered while the admin has the WhatsApp service on.
+  notifyWhatsapp         Boolean   @default(false)
+  whatsappNumber         String? // where the WhatsApp alerts go; empty = the business phone from sign-up
   webhookUrl             String? // POST lead.created events here (signed)
   webhookSecretEncrypted String? // HMAC secret, encrypted with lib/crypto.ts
   lastDigestAt           DateTime?
@@ -501,6 +506,26 @@ model ChatWidget {
   disabledByAdminAt      DateTime? // set by the admin console (switch off the widget); the owner cannot turn it back on
   disabledByAdminReason  String?
   updatedAt              DateTime  @default(now()) @updatedAt
+}
+
+// A phone or browser that gets a push notification for every new lead (Web Push, lib/push). One person can have
+// several; each is switched on from that device ("Alerts on this device" on the Leads page). Removed when the push
+// service says it is gone (404/410), when the person turns it off, or with the person or the company.
+model PushSubscription {
+  id         String    @id @default(cuid())
+  businessId String
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId     String    @db.Uuid // the person who switched it on (a teammate's own account, not the company's)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  device     String? // a short label from the browser, e.g. "Chrome on Android"
+  createdAt  DateTime  @default(now())
+  lastSentAt DateTime?
+
+  @@index([businessId])
+  @@index([userId])
 }
 
 // One visitor conversation on a business's website.

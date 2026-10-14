@@ -11,7 +11,7 @@ import { z } from "zod";
 
 export const COST_CATEGORIES = ["hosting", "domain", "ai", "email", "tools", "other"] as const;
 export type CostCategory = (typeof COST_CATEGORIES)[number];
-export const CATEGORY_LABEL: Record<CostCategory, string> = { hosting: "Hosting", domain: "Domain", ai: "AI and voice", email: "Email", tools: "Tools", other: "Other" };
+export const CATEGORY_LABEL: Record<CostCategory, string> = { hosting: "Hosting", domain: "Domain", ai: "AI and voice", email: "Email and messaging", tools: "Tools", other: "Other" };
 
 export type CostPreset = { key: string; name: string; category: CostCategory; amount: number; currency: "USD" | "RWF"; period: "month" | "year"; hint: string };
 
@@ -27,7 +27,8 @@ export const COST_PRESETS: CostPreset[] = [
   { key: "github", name: "GitHub", category: "tools", amount: 0, currency: "USD", period: "month", hint: "Free plan: $0" },
 ];
 
-export type BillProvider = { key: string; label: string; ledger: string[]; hint: string };
+/** `category`: where its line counts (default "ai"). */
+export type BillProvider = { key: string; label: string; ledger: string[]; hint: string; category?: CostCategory };
 
 /** Providers that send a usage bill. `ledger` is the AiCall.provider whose estimate a real bill replaces. */
 export const BILL_PROVIDERS: BillProvider[] = [
@@ -35,6 +36,8 @@ export const BILL_PROVIDERS: BillProvider[] = [
   { key: "anthropic", label: "Anthropic (Claude)", ledger: ["claude"], hint: "console.anthropic.com, Billing" },
   { key: "elevenlabs", label: "ElevenLabs (usage beyond the plan)", ledger: ["elevenlabs"], hint: "Only the usage-based part; the subscription is a recurring cost" },
   { key: "higgsfield", label: "Higgsfield", ledger: ["higgsfield"], hint: "Credits bought or used in the month" },
+  // Counted from ServiceUsage (lib/money/costs.ts), not AiCall, so WhatsApp never eats into a company's AI allowance.
+  { key: "meta_whatsapp", label: "Meta (WhatsApp lead alerts)", ledger: ["whatsapp"], category: "email", hint: "WhatsApp Manager, Insights or Billing, for the month" },
   { key: "other", label: "Other provider", ledger: [], hint: "Anything else billed by usage" },
 ];
 
@@ -150,7 +153,7 @@ export function buildMonthCosts(input: { months: string[]; ledger: LedgerMonth[]
       lines.push({
         key: `ai:${key}`,
         label: providerLabel(key),
-        category: "ai",
+        category: billProviderOf(key)?.category ?? "ai",
         source: bill !== undefined ? "actual" : "estimate",
         cents: r2(bill ?? est?.cents ?? 0),
         estimateCents: est ? r2(est.cents) : 0,

@@ -1,6 +1,7 @@
 import "server-only";
 import { renderEmail } from "@/lib/publishing/email";
 import { sourceLabel } from "./filters";
+import { whatsappLink } from "./normalize";
 import { publicSiteUrl } from "@/lib/auth/site-url";
 
 export type EmailLead = {
@@ -51,11 +52,14 @@ export function renderInstantLeadEmail(args: { lead: EmailLead; businessName: st
     });
   }
   if (lead.pageUrl) blocks.push({ label: "Page", value: lead.pageUrl });
+  const whatsapp = whatsappLink(lead.phone);
   const mail = renderEmail({
     heading: `New lead from ${sourceLabel(lead.source).toLowerCase()}`,
     intro: `${leadLabel(lead)} got in touch with ${businessName}. Reply quickly: the first business to answer usually wins.`,
     blocks,
     button: { label: "Open in BuPulse", url: leadsUrl(lead.id) },
+    // Only when the visitor left a phone number: one tap opens a WhatsApp chat with them.
+    ...(whatsapp ? { secondButton: { label: "Reply on WhatsApp", url: whatsapp, color: "#0a7d4f" } } : {}),
     footer: "You get this email for every new lead. Turn it off, or switch to a daily summary, in Leads > Notifications.",
   });
   return { subject: `New lead: ${leadLabel(lead)} — ${oneLine(businessName)}`, ...mail };

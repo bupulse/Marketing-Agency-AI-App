@@ -44,6 +44,9 @@ export const RUNTIME_RECOMMENDED = [
   ["TURNSTILE_SITE_KEY", "sign-up and chat rely on rate limits only"],
   ["TURNSTILE_SECRET_KEY", "sign-up and chat rely on rate limits only"],
   ["GOOGLE_CALENDAR_CLIENT_ID", "demo bookings use a meeting link and .ics only"],
+  ["VAPID_PUBLIC_KEY", "phone and browser alerts for new leads are off (the switch is hidden)"],
+  ["VAPID_PRIVATE_KEY", "phone and browser alerts for new leads are off (the switch is hidden)"],
+  ["VAPID_SUBJECT", "phone and browser alerts for new leads are off (the switch is hidden)"],
   ["GITHUB_REPO", "Admin, Settings, Updates shows Not connected"],
   ["GITHUB_TOKEN", "Admin, Settings, Updates shows Not connected"],
 ];
@@ -110,6 +113,11 @@ export function checkEnv(env, mode, known = "values") {
       if (present(env, "MEDIA_PLATFORM_MAX_BYTES") && Number(env.MEDIA_PLATFORM_MAX_BYTES) > 1024 ** 3) {
         warnings.push("MEDIA_PLATFORM_MAX_BYTES is over 1 GB: more than the Supabase free plan stores.");
       }
+      // Web Push keys (lib/push): base64url, a 65-byte uncompressed P-256 public key and its 32-byte private key.
+      const b64urlBytes = (value) => (/^[A-Za-z0-9_-]+$/.test(value) ? Buffer.from(value, "base64url").length : -1);
+      if (present(env, "VAPID_PUBLIC_KEY") && b64urlBytes(env.VAPID_PUBLIC_KEY.trim()) !== 65) errors.push("VAPID_PUBLIC_KEY must be a P-256 public key in base64url (65 bytes); see .env.example.");
+      if (present(env, "VAPID_PRIVATE_KEY") && b64urlBytes(env.VAPID_PRIVATE_KEY.trim()) !== 32) errors.push("VAPID_PRIVATE_KEY must be a P-256 private key in base64url (32 bytes); see .env.example.");
+      if (present(env, "VAPID_SUBJECT") && !/^(mailto:\S+@\S+|https:\/\/\S+)$/.test(env.VAPID_SUBJECT.trim())) errors.push("VAPID_SUBJECT must be a mailto: address or an https:// link.");
       if (present(env, "NEXT_PUBLIC_WHATSAPP_NUMBER") && !/^\+?[\d\s-]{8,20}$/.test(env.NEXT_PUBLIC_WHATSAPP_NUMBER.trim())) {
         errors.push("NEXT_PUBLIC_WHATSAPP_NUMBER must be an international phone number.");
       }

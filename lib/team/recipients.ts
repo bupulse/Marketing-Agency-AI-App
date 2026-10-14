@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { can } from "./roles";
 
 /**
  * Who gets a company's alert emails (new leads, the daily digest, post reminders and failures, Autopilot's weekly plan):
@@ -21,4 +22,17 @@ export async function alertRecipients(businessId: string, fallback?: string | nu
     // fall through to the company account's email
   }
   return fallback ? [fallback] : [];
+}
+
+/**
+ * Who may get a company's lead alerts on their own devices (push, lib/push/service.ts): every live member whose role
+ * may see leads (Members included: they work the leads too). Each person still opts in per device; this only says who
+ * is allowed. A person who left the team, or whose account is suspended or being deleted, gets nothing.
+ */
+export async function leadAlertMembers(businessId: string): Promise<Set<string>> {
+  const rows = await prisma.membership.findMany({
+    where: { businessId },
+    select: { userId: true, role: true, user: { select: { suspendedAt: true, deletionScheduledFor: true } } },
+  });
+  return new Set(rows.filter((r) => can(r.role, "content") && !r.user.suspendedAt && !r.user.deletionScheduledFor).map((r) => r.userId));
 }

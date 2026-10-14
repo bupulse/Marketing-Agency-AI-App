@@ -20,6 +20,8 @@ import { clientOffer } from "@/lib/offers/service";
 export const metadata: Metadata = {
   title: { default: "Dashboard", template: "%s · BuPulse" },
   robots: { index: false, follow: false },
+  // Lets a phone add the dashboard to its Home Screen: on an iPhone that is what makes lead alerts (lib/push) possible.
+  manifest: "/manifest.webmanifest",
 };
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {

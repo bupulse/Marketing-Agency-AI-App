@@ -28,6 +28,8 @@ free (`docs/DEPLOY_NETLIFY.md`) stays the fallback. This file is the order of wo
 - **Add features to your plan any time**: pay only for the added features for the days left in your period; renew
   in the last 7 days of a period by Mobile Money or card without losing a day.
 - **Account menu** on the public pages, and **one sign-in method per account**.
+- **Lead alerts on your phone**: switch on "Alerts on this device" on the Leads page and every new lead pops up on
+  that phone or computer, free; the lead email has a **Reply on WhatsApp** button when the visitor left a number.
 - Coming next: the design library (templates you can browse and reuse).
 
 **For the BuPulse team (admin console, 13 October):**
@@ -78,7 +80,8 @@ free (`docs/DEPLOY_NETLIFY.md`) stays the fallback. This file is the order of wo
    `WIDGET_AI_SHARE` (0.5), `MEDIA_PLATFORM_MAX_BYTES` (900 MB), `MEDIA_COMPANY_VIDEO_MAX_BYTES` (100 MB at launch),
    `ELEVENLABS_API_KEY` (voiceover and Generate a track), `VIDEO_ROBOT_SECRET` (plus the GitHub secret of that name and
    the repository variable `ROBOT_APP_URL`), `NEXT_PUBLIC_WHATSAPP_NUMBER`, `GEO_PROVIDER=builtin`,
-   `API_KEY_PEPPER` (new random value), `GOOGLE_CALENDAR_CLIENT_ID/SECRET`. Never copy `ANALYTICS_DEV_COUNTRY` or
+   `API_KEY_PEPPER` (new random value), `GOOGLE_CALENDAR_CLIENT_ID/SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`,
+   `VAPID_SUBJECT` (a NEW pair for production, see "Lead alerts" below). Never copy `ANALYTICS_DEV_COUNTRY` or
    `REGION_OVERRIDE` to production (the check refuses them). **`AUTH_EXTRA_ORIGINS` and `PUBLIC_LINK_URL` must be EMPTY
    in production**: they exist for the test tunnel (test.bupulse.com); set, they let sign-in accept that origin and
    make shareable links (sales TV, referral links, staff invitations) point at the tunnel. The check warns when either
@@ -136,13 +139,61 @@ database and on the test database.
 `20261017150200_contest_posts`, `20261017170000_payment_proofs`, `20261017180000_content_format`,
 `20261017190000_request_goals_optional`, `20261017191000_card_carry_over`, `20261017200000_admin_money`,
 `20261017200100_admin_money_rates`, `20261018100000_organisation`, `20261018100100_admin_key_scope`,
-`20261018105000_screen_billing_event_time`.
+`20261018105000_screen_billing_event_time`, `20261018110000_offer_card_pay_method`, `20261018120000_lead_alerts`
+(push subscriptions, and the WhatsApp alert toggle and number on the widget settings).
 
 **Test-only scripts, never run against production:** `scripts/local/seed-test-staff.mjs` (one test person per role,
 passwords to `TEST_ACCOUNTS.md`) and `scripts/local/generate-screen-sounds.mjs` (sounds for the sales TV; it refuses
 any project that is not the test one). Both are git-ignored; copies are in `~/BuPulse-v2/scripts/local`. On the live
 site, staff are invited from Admin → Organisation → Staff, and the TV's sounds are made in Admin → Organisation →
 Sales screen → **Generate a sound** (or uploaded there). (`scripts/local/seed-music.mjs` is the one local script that does run against production, step 8.)
+
+## Lead alerts: push and WhatsApp
+
+Every new lead runs four independent channels side by side (`lib/leads/notify.ts`): the instant email, the
+lead.created webhook, **push** to the devices that switched alerts on, and **WhatsApp** when it is switched on. A slow
+or failing channel never stops or delays the email.
+
+**Phone and browser push (free, on at launch once the keys are set).** Web Push with VAPID, no paid service and no
+library (`lib/push/web-push.ts`, WebCrypto, so it runs in the Worker). Each person turns on "Alerts on this device" on
+the Leads page, per device (Members too: they work the leads). The alert says "New lead: <name>" with the first
+message or the phone number; tapping it opens `/dashboard/leads/<id>`. Devices the push service no longer knows (404,
+410) are removed. On an iPhone it works once BuPulse is added to the Home Screen (iOS 16.4+), which the switch explains.
+
+- Production needs its **own** key pair (never the local one): run the one-line command in `.env.example` once, then
+  `npx wrangler secret put VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` (`mailto:office@bupulse.com`).
+  Without them the switch is hidden; nothing breaks. Changing the pair later means every device must switch alerts on
+  again, so set it once. `scripts/check-env.mjs` warns when they are missing and refuses malformed ones.
+
+**Official WhatsApp alerts (built, OFF).** A utility template sent with the WhatsApp Cloud API to the owner's number
+(the "WhatsApp number for alerts" in Leads → Notifications, else the business phone). Nothing is sent and clients see
+no WhatsApp option until both the keys are set and the service is on. To switch it on:
+
+1. **Meta Business Verification** for BuPulse's Business Manager (business.facebook.com → Security centre), if not
+   done already for Facebook publishing (`docs/META_APP_REVIEW.md`).
+2. **A WhatsApp business number**: in the Meta app (developers.facebook.com → the BuPulse app → WhatsApp → API
+   setup), add a phone number BuPulse owns that is not used in the WhatsApp app, verify it by SMS or call, and set
+   the display name "BuPulse". Note its **Phone number ID**.
+3. **The template**, WhatsApp Manager → Message templates → Create: category **Utility**, name **`new_lead_alert`**,
+   language **English (en)**:
+   - Body: `New lead for {{1}}: {{2}} got in touch through your website chat and wrote: "{{3}}". Open BuPulse to see the details and reply.`
+     (samples: `Nova Phones Kigali`, `Jane Uwase`, `Do you have the Galaxy A15 in blue?`)
+   - Button: **Visit website**, text `Open lead`, URL type **Dynamic**, `https://bupulse.com/dashboard/leads/{{1}}`
+     (sample: `https://bupulse.com/dashboard/leads/cm123example`).
+   - Wait for "Approved". If you change the name or language, set `WHATSAPP_ALERT_TEMPLATE` /
+     `WHATSAPP_TEMPLATE_LANGUAGE`.
+4. **A permanent token**: Business settings → System users → add one (Admin), assign the app and the WhatsApp
+   account, generate a token with `whatsapp_business_messaging` and `whatsapp_business_management`, no expiry.
+5. **The values**: `WHATSAPP_CLOUD_TOKEN` (the token) and `WHATSAPP_PHONE_NUMBER_ID` as Worker secrets (`npx wrangler
+   secret put NAME`), then redeploy.
+6. **A payment method** in WhatsApp Manager (utility messages are paid per message, by the recipient's country).
+7. **Admin → Services → WhatsApp Cloud API**: Test now (it reads the number's details, free), then switch it **on**.
+   Owners and Admins then see "WhatsApp alerts" with their number in Leads → Notifications.
+
+Cost: each alert is counted (Admin → Services → WhatsApp: alerts sent, estimated cost) and appears in Money → Costs as
+"Meta (WhatsApp lead alerts)", an estimate at `WHATSAPP_UTILITY_USD` (`lib/leads/whatsapp.ts`, a placeholder: **check
+Meta's rate card** and change it) until you enter Meta's real bill for the month under Provider bills. It is not
+counted in any company's AI allowance. To stop it, switch the service off: nothing else changes.
 
 ## Backups (free plan)
 

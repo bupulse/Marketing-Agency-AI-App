@@ -18,6 +18,7 @@ export const SERVICE_IDS = [
   "woocommerce",
   "cloudflare",
   "elevenlabs",
+  "whatsapp",
 ] as const;
 export type ServiceId = (typeof SERVICE_IDS)[number];
 
@@ -57,6 +58,11 @@ export type ServiceInfo = {
   core?: "always" | "production";
   /** One line: what "off" does. */
   whenOff: string;
+  /**
+   * Off until an admin switches it on (a missing switch row means off, not on): for a service that costs money per
+   * use and needs setup outside BuPulse first.
+   */
+  defaultOff?: true;
 };
 
 export const SERVICES: ServiceInfo[] = [
@@ -227,6 +233,17 @@ export const SERVICES: ServiceInfo[] = [
     features: ["Connect Cloudflare", "One-click widget install"],
     killable: true,
     whenOff: "Cloudflare connect and install show as temporarily unavailable; the copy-paste snippet still works.",
+  },
+  {
+    id: "whatsapp",
+    name: "WhatsApp Cloud API (Meta)",
+    purpose: "Sends new-lead alerts to business owners on WhatsApp (an approved utility template, paid per message).",
+    env: ["WHATSAPP_CLOUD_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"],
+    optionalEnv: ["WHATSAPP_ALERT_TEMPLATE", "WHATSAPP_TEMPLATE_LANGUAGE"],
+    features: ["WhatsApp lead alerts"],
+    killable: true,
+    defaultOff: true,
+    whenOff: "No WhatsApp alerts are sent and clients do not see the option; email and phone alerts carry on. Off until switched on (docs/RELEASE_2.0.md).",
   },
 ];
 
