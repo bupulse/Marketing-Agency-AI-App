@@ -1522,6 +1522,37 @@ model SoundClip {
   @@index([active])
 }
 
+// A version of the web app uploaded as a signed zip (Admin -> Settings -> Updates, docs/UPDATES.md "Install from a
+// zip"). The zip and the database backup taken before its migrations live in the private "releases" Storage bucket
+// and are kept 30 days (always the current and the previous installed version). The deploy workflow writes back the
+// install's outcome (status, Cloudflare version id, backup path).
+model ReleaseVersion {
+  id                  String    @id @default(cuid())
+  version             String
+  commit              String
+  sha256              String
+  size                Int
+  zipPath             String // zips/<uuid>.zip in the "releases" bucket (kept as a record after zipPurgedAt)
+  zipPurgedAt         DateTime?
+  manifest            Json // the signed manifest and its signature, as uploaded
+  notes               String?
+  // verified -> installing -> installed (or failed); superseded once a newer version is installed
+  status              String    @default("verified")
+  uploadedBy          String // AuditLog actor
+  installRequestedAt  DateTime?
+  installRequestedBy  String?
+  installedAt         DateTime?
+  cloudflareVersionId String?
+  backupPath          String? // backups/<id>.dump in the "releases" bucket
+  backupPurgedAt      DateTime?
+  error               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([createdAt])
+  @@index([status, installedAt])
+}
+
 // ---- Phase 8: admin console and Jarvis (lib/admin/*, docs/JARVIS.md) ----
 
 // Append-only record of every admin action. actor is "admin" (the console) or "jarvis:<AdminApiKey id>".

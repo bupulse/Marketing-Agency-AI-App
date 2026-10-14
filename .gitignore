@@ -74,3 +74,6 @@ TEST_ACCOUNTS.md
 
 # Netlify (local builds and the CLI link)
 .netlify
+
+# Release zips made by npm run release:zip (docs/UPDATES.md)
+dist/release/
