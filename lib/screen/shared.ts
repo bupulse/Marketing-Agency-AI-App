@@ -24,7 +24,7 @@ export type ScreenData = {
   activeToday: number;
   /** Today's and this month's revenue in USD cents (the books), with the part received in RWF (exact RWF, its USD value). */
   revenue: { todayCents: number; monthCents: number; todayRwfMinor: number; todayRwfUsdCents: number; monthRwfMinor: number; monthRwfUsdCents: number };
-  /** The admin default currency (Settings) and rates: the TV shows every amount in it (no switch on the TV). */
+  /** The admin default currency (Settings) and rates. The TV shows every amount in it until someone picks RWF, USD or EUR on the TV (kept in that browser). */
   money: MoneyDisplay;
   trials: { company: string; daysLeft: number; agent: string | null }[];
   /** USD cents with the parts received in RWF (exact in RWF on the TV). */

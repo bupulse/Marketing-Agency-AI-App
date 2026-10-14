@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { DISPLAY_CURRENCIES, isDisplayCurrency, type DisplayCurrency, type MoneyDisplay } from "@/lib/money/display";
 import { POLL_MS, nextSound, screenMoney, screenTotal, type Celebration, type ScreenData } from "@/lib/screen/shared";
 
 // The sales room TV. Dark whatever the theme (the "dark" class switches the tokens for this subtree), type sized for a
@@ -8,6 +9,8 @@ import { POLL_MS, nextSound, screenMoney, screenTotal, type Celebration, type Sc
 // that click unlocks the audio element used for every celebration afterwards.
 
 const SOUND_KEY = "bp-screen-last-sound";
+/** The currency picked on this TV (RWF, USD or EUR); none means Admin -> Settings "Default currency". */
+const CURRENCY_KEY = "bp-screen-currency";
 const CELEBRATION_MS = 7_000;
 /** An empty WAV: played inside the start click so the browser allows sound later. */
 const SILENT_WAV = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
@@ -23,6 +26,17 @@ export function SalesScreen({ token, name }: { token: string; name: string }) {
   const sounds = useRef<ScreenData["sounds"]>([]);
   const audio = useRef<HTMLAudioElement | null>(null);
   const lastSound = useRef<string | null>(null);
+  const [picked, setPicked] = useState<DisplayCurrency | null>(null);
+  const money: MoneyDisplay | null = data ? (picked ? { ...data.money, currency: picked } : data.money) : null;
+
+  function pickCurrency(c: DisplayCurrency) {
+    setPicked(c);
+    try {
+      localStorage.setItem(CURRENCY_KEY, c);
+    } catch {
+      /* private window: back to the default on reload */
+    }
+  }
 
   const poll = useCallback(async (): Promise<boolean> => {
     try {
@@ -94,6 +108,8 @@ export function SalesScreen({ token, name }: { token: string; name: string }) {
   async function start() {
     try {
       lastSound.current = localStorage.getItem(SOUND_KEY);
+      const saved = localStorage.getItem(CURRENCY_KEY);
+      if (isDisplayCurrency(saved)) setPicked(saved);
     } catch {
       /* no storage */
     }
@@ -128,16 +144,16 @@ export function SalesScreen({ token, name }: { token: string; name: string }) {
           <p role="alert" className="text-[clamp(1.5rem,3vw,3rem)] font-semibold">This screen link is no longer valid. Ask for a new one.</p>
         </main>
       ) : (
-        <Board name={name} data={data} offline={status === "offline"} />
+        <Board name={name} data={data} money={money} onPick={pickCurrency} offline={status === "offline"} />
       )}
-      {current && data && <CelebrationOverlay key={current.id} celebration={current} money={data.money} />}
+      {current && money && <CelebrationOverlay key={current.id} celebration={current} money={money} />}
     </div>
   );
 }
 
 const fmtDays = (d: number) => (d === 0 ? "Ends today" : d === 1 ? "1 day" : `${d} days`);
 
-function Board({ name, data, offline }: { name: string; data: ScreenData | null; offline: boolean }) {
+function Board({ name, data, money, onPick, offline }: { name: string; data: ScreenData | null; money: MoneyDisplay | null; onPick: (c: DisplayCurrency) => void; offline: boolean }) {
   const [clock, setClock] = useState("");
   useEffect(() => {
     const set = () => setClock(new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Kigali" }));
@@ -153,14 +169,27 @@ function Board({ name, data, offline }: { name: string; data: ScreenData | null;
         <div className="flex items-center gap-6 text-[clamp(1.25rem,2vw,2.5rem)] font-medium tabular-nums">
           <span className={offline ? "text-danger" : "text-success"}>{offline ? "Reconnecting…" : "● Live"}</span>
           <span>{clock}</span>
+          <div role="group" aria-label="Currency" className="flex overflow-hidden rounded-full border border-line text-[0.6em]">
+            {DISPLAY_CURRENCIES.map((c) => (
+              <button
+                key={c}
+                type="button"
+                aria-pressed={money?.currency === c}
+                onClick={() => onPick(c)}
+                className={`px-[0.9em] py-[0.35em] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-white ${money?.currency === c ? "bg-brand-gradient text-white" : "text-muted hover:text-text"}`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
       <section aria-label="Today" className="grid grid-cols-2 gap-[1.5vw] lg:grid-cols-4">
         <Stat label="Active now" value={data ? String(data.activeNow) : "–"} />
         <Stat label="Active today" value={data ? String(data.activeToday) : "–"} />
-        <Stat label="Revenue today" value={data ? screenTotal(data.money, data.revenue.todayCents, data.revenue.todayRwfMinor, data.revenue.todayRwfUsdCents) : "–"} accent />
-        <Stat label="Revenue this month" value={data ? screenTotal(data.money, data.revenue.monthCents, data.revenue.monthRwfMinor, data.revenue.monthRwfUsdCents) : "–"} accent />
+        <Stat label="Revenue today" value={data && money ? screenTotal(money, data.revenue.todayCents, data.revenue.todayRwfMinor, data.revenue.todayRwfUsdCents) : "–"} accent />
+        <Stat label="Revenue this month" value={data && money ? screenTotal(money, data.revenue.monthCents, data.revenue.monthRwfMinor, data.revenue.monthRwfUsdCents) : "–"} accent />
       </section>
 
       <div className="grid min-h-0 flex-1 gap-[1.5vw] lg:grid-cols-2">
@@ -198,15 +227,15 @@ function Board({ name, data, offline }: { name: string; data: ScreenData | null;
                 </tr>
               </thead>
               <tbody>
-                {data?.leaderboard.map((r, i) => (
+                {money && data?.leaderboard.map((r, i) => (
                   <tr key={i} className="border-t border-line tabular-nums">
                     <td className="max-w-0 truncate py-[0.5vh] pr-4 font-medium">
                       <span className="mr-3 inline-block w-[1.4em] text-muted">{i + 1}</span>
                       {r.agent}
                     </td>
-                    <td className="py-[0.5vh] pl-2 text-right">{screenTotal(data.money, r.ownCents, r.ownRwf?.rwfMinor ?? 0, r.ownRwf?.rwfUsdCents ?? 0)}</td>
-                    <td className="py-[0.5vh] pl-2 text-right text-muted">{screenTotal(data.money, r.teamShareCents, r.teamShareRwf?.rwfMinor ?? 0, r.teamShareRwf?.rwfUsdCents ?? 0)}</td>
-                    <td className="py-[0.5vh] pl-2 text-right font-semibold">{screenTotal(data.money, r.totalCents, r.totalRwf?.rwfMinor ?? 0, r.totalRwf?.rwfUsdCents ?? 0)}</td>
+                    <td className="py-[0.5vh] pl-2 text-right">{screenTotal(money, r.ownCents, r.ownRwf?.rwfMinor ?? 0, r.ownRwf?.rwfUsdCents ?? 0)}</td>
+                    <td className="py-[0.5vh] pl-2 text-right text-muted">{screenTotal(money, r.teamShareCents, r.teamShareRwf?.rwfMinor ?? 0, r.teamShareRwf?.rwfUsdCents ?? 0)}</td>
+                    <td className="py-[0.5vh] pl-2 text-right font-semibold">{screenTotal(money, r.totalCents, r.totalRwf?.rwfMinor ?? 0, r.totalRwf?.rwfUsdCents ?? 0)}</td>
                   </tr>
                 ))}
               </tbody>
