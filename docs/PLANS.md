@@ -28,6 +28,16 @@ Every plan with video may make 120 voiced videos a month (docs/CONTENT_VISUALS.m
 | Voiceover add-on (RW) | 5,000 RWF a month | **15,000 RWF** |
 | Pro | $99 / $990 | unchanged |
 
+## Business includes AI photos and the website chat (owner decision, 14 October 2026)
+
+Rwanda Business (50,000 RWF) now includes **AI photos** (its 100 AI images a month) and the **website chat with leads,
+500 replies a month** (the same allowance as the website chat add-on). Before, the Business card promised "100 AI images a
+month" while AI photos were not in the plan, and Members were told they "see leads" with no leads in the plan. Migration
+`20261019150000_business_photos_chat` (audited as `migration:20261019150000_business_photos_chat`) adds `aiPhotos` and
+`websiteChat` to the BUSINESS row, sets `limits.chat` to at least 500 and adds the chat line to the card. Cost per client at
+full use: about $3.90 for 100 AI photos ($0.039 each, lib/ai/pricing.ts) and about $0.40 for 500 chat replies, on top of the
+120 voiced videos (about $21.60): about $25.90 against about $34.50 (50,000 RWF) before payment fees.
+
 Later changes: Admin → Regions and prices (plans) and Admin → Money → Add-on prices (add-ons), both audited.
 
 **Existing subscribers.** The 30-day notice flow (`PlanPriceChange`, below) covers the plans' own GLOBAL Paddle prices

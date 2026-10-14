@@ -55,9 +55,11 @@ Regions are data, not code: a `PricingRegion` table (key, name, currency, countr
 
 | | Starter | Business |
 |---|---|---|
-| Price | 15,000 RWF/month · 150,000/year | 35,000 RWF/month · 350,000/year |
+| Price | 15,000 RWF/month · 150,000/year | 50,000 RWF/month · 500,000/year (since 14 Oct 2026, docs/PLANS.md) |
 | AI texts (captions, scripts, headlines) | 60 | 200 |
 | Branded designs | 30 | 100 |
+| AI photos (AI images) | – | 100 (since 14 Oct 2026) |
+| Website chat and leads | – | ✓, 500 replies a month (since 14 Oct 2026) |
 | Calendar, scheduling, gallery | ✓ | ✓ |
 | Social channels | 3 | 5 |
 | Users | 1 | 3 |
