@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { usageWindowEnd, usageWindowStart } from "@/lib/billing/period";
+import { periodState, usageWindowEnd, usageWindowStart } from "@/lib/billing/period";
 import { videosPerDayLimit, type UsageMetric } from "@/lib/plans";
 export { videosLeftNow } from "@/lib/plans";
 import { kigaliDayOf } from "@/lib/time/kigali";
@@ -42,14 +42,16 @@ export async function consumeUsage(userId: string, metric: UsageMetric, amount =
   if (sub.user?.suspendedAt) throw new UsageLimitError("inactive", metric);
   // Waiting for the demo: nothing is generated until an admin starts the trial (docs/REGIONS.md).
   if (sub.status === "PENDING_DEMO") throw new UsageLimitError("pending_demo", metric);
-  if (sub.plan === "TRIAL" && sub.trialEndsAt && sub.trialEndsAt < now) {
-    throw new UsageLimitError("trial_expired", metric);
-  }
+  // The paid time (lib/billing/period.ts): the trial's end, or the period's end plus its grace.
+  const period = periodState(sub, now);
+  if (sub.plan === "TRIAL" && period === "ended") throw new UsageLimitError("trial_expired", metric);
   // A failed payment limits the account: everything stays, but nothing new is generated.
   if (sub.status === "PAST_DUE") throw new UsageLimitError("past_due", metric);
   if (sub.status !== "TRIALING" && sub.status !== "ACTIVE") {
     throw new UsageLimitError("inactive", metric);
   }
+  // Still ACTIVE after its period and grace (a card webhook late or lost, a Mobile Money renewal not handled yet): ended.
+  if (period === "ended") throw new UsageLimitError("inactive", metric);
 
   // The plan's limits from the plan catalog (database, cached for 30 s).
   const limit = (await getPlanLimits(sub.plan))[metric];

@@ -127,6 +127,17 @@ describe("claiming", () => {
     expect(values).toContain(MAX_ATTEMPTS);
   });
 
+  it("does not claim posts of companies whose paid period is over for longer than any grace (lib/billing/period.ts)", async () => {
+    await claimDuePosts({ now, limit: 7 });
+    const [, ...values] = claimCalls()[0];
+    // The live-subscription filter is a nested SQL fragment among the values: ACTIVE or TRIALING, and a period that
+    // ended after now minus the longest grace (the trial is held by trialEndsAt, in the entitlement check).
+    const text = JSON.stringify(values);
+    expect(text).toContain("currentPeriodEnd");
+    expect(text).toContain(`s.\\"plan\\" = 'TRIAL'`);
+    expect(text).toContain(new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString());
+  });
+
   it("limits a manual publish to the business and the given posts", async () => {
     await publishPostsNow("b1", ["p1", "p2"], now);
     const [, ...values] = claimCalls()[0];

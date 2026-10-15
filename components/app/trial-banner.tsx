@@ -18,8 +18,13 @@ export type TrialBannerProps = {
   image: { used: number; max: number };
   /** Only the owner pays (lib/team/roles.ts billing): everyone else is told who does instead of being sent to Billing. */
   canPay?: boolean;
-  /** A paid plan that ended (CANCELED or EXPIRED: lib/entitlements.ts accountBlock "inactive"); nothing new is made. */
+  /**
+   * A paid plan that ended (CANCELED, EXPIRED, or still ACTIVE past its period and grace: lib/entitlements.ts
+   * accountBlock "inactive"); nothing new is made.
+   */
   planEnded?: boolean;
+  /** A plan renewed by hand in its grace days (lib/billing/period.ts manualGrace): when it ended, and when it stops working. */
+  grace?: { ended: string; until: string } | null;
   /** A paid plan cancelled at its period end that still runs: when it ends, and from when it can be renewed ("now" once open). */
   endsOn?: { end: string; renewFrom: string } | null;
 };
@@ -44,12 +49,14 @@ function subscribe(cb: () => void) {
 
 const pct = (u: { used: number; max: number }) => (u.max > 0 ? (u.used / u.max) * 100 : 0);
 
-export type BannerState = "normal" | "warning" | "ended" | "planEnded" | "ending" | "usage" | "pastDue" | "hidden";
+export type BannerState = "normal" | "warning" | "ended" | "planEnded" | "grace" | "ending" | "usage" | "pastDue" | "hidden";
 
 export function bannerState(p: TrialBannerProps): BannerState {
   if (p.pastDue) return "pastDue";
   // A paid plan that ended looked fully active on Home (its old limits, 0 used): say so, whatever the usage.
   if (!p.isTrial && p.planEnded) return "planEnded";
+  // Its period is over and it stops in a few days: more pressing than a usage limit.
+  if (!p.isTrial && p.grace) return "grace";
   const nearLimit = pct(p.text) >= 80 || pct(p.image) >= 80;
   if (!p.isTrial) return nearLimit ? "usage" : p.endsOn ? "ending" : "hidden";
   if (p.trialDaysLeft === 0 || !p.subscriptionActive) return "ended";
@@ -76,7 +83,7 @@ export function TrialBanner(props: TrialBannerProps) {
     listeners.forEach((l) => l());
   };
 
-  const { trialDaysLeft: days, text, image, canPay = true, endsOn } = props;
+  const { trialDaysLeft: days, text, image, canPay = true, endsOn, grace } = props;
   const alert = state !== "normal" && state !== "ending";
   const Icon = alert ? AlertTriangle : state === "ending" ? CalendarClock : Sparkles;
 
@@ -85,16 +92,17 @@ export function TrialBanner(props: TrialBannerProps) {
   else if (state === "ended") title = canPay ? "Your trial has ended — choose a plan to keep creating" : "Your trial has ended — your company owner can choose a plan";
   // Only the owner pays (lib/team/roles.ts billing); everyone else is told to ask them, in askMessage's words.
   else if (state === "planEnded") title = canPay ? "Your plan has ended. Choose a plan to keep creating" : "Your plan has ended. Ask your company owner to choose a plan";
+  else if (state === "grace" && grace) title = canPay ? `Your plan ended on ${grace.ended}. Renew it before ${grace.until} to keep creating` : `Your plan ended on ${grace.ended}. Ask your company owner to renew it before ${grace.until}`;
   else if (state === "ending" && endsOn) title = canPay ? `Your plan ends on ${endsOn.end}. ${endsOn.renewFrom === "now" ? "You can renew it now" : `You can renew from ${endsOn.renewFrom}`}` : `Your plan ends on ${endsOn.end}. Ask your company owner to renew it`;
   else if (state === "usage") title = "You are close to a plan limit";
   else title = `${days} ${days === 1 ? "day" : "days"} left in your free trial`;
 
   const href = state === "usage" ? "/dashboard/usage" : "/dashboard/billing";
   const cta =
-    state === "usage" ? "View usage" : state === "ended" || state === "planEnded" ? "Choose a plan" : state === "pastDue" ? "Update payment" : state === "ending" ? "See billing" : "See plans";
+    state === "usage" ? "View usage" : state === "ended" || state === "planEnded" ? "Choose a plan" : state === "pastDue" ? "Update payment" : state === "grace" ? "Renew" : state === "ending" ? "See billing" : "See plans";
 
-  // An ended plan's meters (0 of its old limits) would read as still active; the quiet "ends on" notice needs none.
-  const meters = state === "planEnded" || state === "ending" ? [] : [
+  // An ended plan's meters (0 of its old limits) would read as still active; the "ends on" and grace notices need none.
+  const meters = state === "planEnded" || state === "grace" || state === "ending" ? [] : [
     { label: "Text generations", ...text },
     { label: "Image generations", ...image },
   ].filter((m) => m.max > 0);
@@ -105,7 +113,7 @@ export function TrialBanner(props: TrialBannerProps) {
       role="status"
       className={cn(
         "glass-strong flex flex-wrap items-center gap-x-4 gap-y-3 rounded-[20px] border p-3.5 pr-3 sm:px-4",
-        danger ? "border-danger/40" : state === "warning" ? "border-pulse-violet/40" : state === "ending" ? "border-line" : "border-pulse-blue/30",
+        danger ? "border-danger/40" : state === "warning" || state === "grace" ? "border-pulse-violet/40" : state === "ending" ? "border-line" : "border-pulse-blue/30",
       )}
     >
       <span

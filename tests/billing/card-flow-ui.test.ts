@@ -24,9 +24,10 @@ const paid: TrialBannerProps = { isTrial: false, trialDaysLeft: null, subscripti
 describe("Home notice when a paid plan ended", () => {
   it("a cancelled or expired plan is read-only, the same rule that refuses generation (lib/usage.ts: inactive)", () => {
     const end = new Date("2026-10-14T00:00:00Z");
-    expect(accountBlock({ plan: "STARTER", status: "CANCELED", trialEndsAt: null, currentPeriodEnd: end } as never)).toBe("inactive");
-    expect(accountBlock({ plan: "STARTER", status: "EXPIRED", trialEndsAt: null, currentPeriodEnd: end } as never)).toBe("inactive");
-    expect(accountBlock({ plan: "STARTER", status: "ACTIVE", trialEndsAt: null, currentPeriodEnd: end } as never)).toBeNull();
+    const now = new Date("2026-10-13T00:00:00Z");
+    expect(accountBlock({ plan: "STARTER", status: "CANCELED", trialEndsAt: null, currentPeriodEnd: end } as never, now)).toBe("inactive");
+    expect(accountBlock({ plan: "STARTER", status: "EXPIRED", trialEndsAt: null, currentPeriodEnd: end } as never, now)).toBe("inactive");
+    expect(accountBlock({ plan: "STARTER", status: "ACTIVE", trialEndsAt: null, currentPeriodEnd: end } as never, now)).toBeNull();
   });
 
   it("says so with Choose a plan to the owner, and who can to everyone else; no meters of the old limits", () => {

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeDb, type FakeDb } from "./admin/fake-db";
 
 // Video usage in videos, not seconds (owner decision, 14 October 2026; docs/CONTENT_VISUALS.md): 120 a month on the
@@ -24,6 +24,13 @@ function seed(plan = "PRO") {
 beforeEach(() => {
   h.db = createFakeDb();
   resetPlanCache();
+  // Inside the seeded October period (a period over for longer than its grace refuses generation: lib/billing/period.ts).
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-13T12:00:00Z"));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("the rule (pure)", () => {

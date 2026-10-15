@@ -61,7 +61,8 @@ joined to the regions and the demo-first trial (R1, `docs/REGIONS.md`) on 12 Oct
    subscriptions, a reminder email 5 days and 1 day before `currentPeriodEnd` (a custom plan's own price, i.e. the full total
    after added features; else the plan's current regional price, or what the client paid last time when the plan is no longer offered in their region; where to pay; a "Pay now" link
    and a WhatsApp-ready text the client can copy), 3 days of grace, then `PAST_DUE` (the existing paywall makes the
-   account read-only, nothing is deleted) and a "plan is paused" email. Each email is claimed first in `RenewalNotice`
+   account read-only, nothing is deleted) and a "plan is paused" email. Generation stops at that same moment even when
+   the job has not run yet (`docs/BILLING.md`, "When a plan ends"). Each email is claimed first in `RenewalNotice`
    (unique per user, period end and kind), so it is never sent twice; a failed send gives the claim back. No reminder
    while a submitted payment waits for the owner. Payments started but never submitted are closed after 48 hours.
    Runs under an advisory lock with a cursor, like the price-change job.

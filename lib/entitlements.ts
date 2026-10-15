@@ -6,6 +6,7 @@ import { disabledServices, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { prisma } from "@/lib/db";
 import { featureLabel, featureOf, type FeatureKey } from "@/lib/features";
 import { getPlan } from "@/lib/plan-catalog";
+import { periodState, type PeriodSubscription } from "@/lib/billing/period";
 import type { ServiceId } from "@/lib/admin/service-catalog";
 
 // What a company may use: the features of its plan (lib/plan-catalog.ts) whose outside services are switched on
@@ -24,9 +25,10 @@ export const PLAN_UNKNOWN_MESSAGE = "We could not check your plan right now. Ple
 
 /**
  * Why an account is read-only, whatever its plan says: waiting for its demo, trial over, a failed payment, or a plan
- * that ended (EXPIRED, CANCELED). Mirrors lib/usage.ts, which refuses generation for the same reasons. "Keep your data"
- * stays: pages still render (viewing), export and delete stay open; everything that does something new is refused,
- * crons skip the company, and the publisher holds its posts (lib/publishing/engine.ts).
+ * that ended (EXPIRED, CANCELED, or still ACTIVE after its paid period and grace: lib/billing/period.ts). Mirrors
+ * lib/usage.ts, which refuses generation for the same reasons. "Keep your data" stays: pages still render (viewing),
+ * export and delete stay open; everything that does something new is refused, crons skip the company, and the
+ * publisher holds its posts (lib/publishing/engine.ts).
  */
 export type AccountBlock = "pending_demo" | "trial_expired" | "past_due" | "inactive";
 
@@ -65,17 +67,19 @@ export class FeatureRequiredError extends Error {
   }
 }
 
-type SubscriptionBits = { plan: string; status: string; chosenPlan: string | null; trialEndsAt?: Date | null };
+type SubscriptionBits = PeriodSubscription & { status: string; chosenPlan: string | null };
 
 /** The subscription of a company. Cached per request, like getAppContext. */
 const subscriptionOf = cache(async (businessId: string): Promise<SubscriptionBits | null> => {
   if (!businessId) return null;
   const business = await prisma.business.findUnique({
     where: { id: businessId },
-    select: { user: { select: { subscription: { select: { plan: true, status: true, chosenPlan: true, trialEndsAt: true } } } } },
+    select: { user: { select: { subscription: { select: { plan: true, status: true, chosenPlan: true, trialEndsAt: true, provider: true, cancelAtPeriodEnd: true, currentPeriodEnd: true } } } } },
   });
   const sub = business?.user.subscription;
-  return sub ? { plan: sub.plan, status: sub.status, chosenPlan: sub.chosenPlan ?? null, trialEndsAt: sub.trialEndsAt ?? null } : null;
+  return sub
+    ? { plan: sub.plan, status: sub.status, chosenPlan: sub.chosenPlan ?? null, trialEndsAt: sub.trialEndsAt ?? null, provider: sub.provider ?? null, cancelAtPeriodEnd: sub.cancelAtPeriodEnd ?? false, currentPeriodEnd: sub.currentPeriodEnd ?? null }
+    : null;
 });
 
 /**
@@ -95,8 +99,11 @@ export function accountBlock(sub: SubscriptionBits | null, now: Date = new Date(
   if (!sub) return null;
   if (sub.status === "PENDING_DEMO") return "pending_demo";
   if (sub.status === "PAST_DUE") return "past_due";
-  if (sub.plan === "TRIAL" && sub.trialEndsAt && sub.trialEndsAt.getTime() < now.getTime()) return "trial_expired";
+  const period = periodState(sub, now);
+  if (sub.plan === "TRIAL" && period === "ended") return "trial_expired";
   if (sub.status !== "ACTIVE" && sub.status !== "TRIALING") return "inactive";
+  // Still ACTIVE after its paid period and grace (a renewal that never reached us): ended, as lib/usage.ts refuses it.
+  if (period === "ended") return "inactive";
   return null;
 }
 

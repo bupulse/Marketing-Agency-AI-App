@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { timeBudget } from "@/lib/platform/limits";
 import { disabledNetworks, isServiceEnabled } from "@/lib/admin/switch";
 import { blockMessage, companyEntitlements, notInPlanMessage } from "@/lib/entitlements";
+import { MAX_GRACE_MS } from "@/lib/billing/period";
 import { logError } from "@/lib/errors";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { getProvider, isNetwork } from "@/lib/social/registry";
@@ -82,10 +83,12 @@ export async function claimDuePosts(args: { now: Date; limit: number; ids?: stri
   // SCHEDULED with no attempt used, and go out as soon as it is switched back on.
   const emailOff = !(await isServiceEnabled("resend"));
   const reminderSql = emailOff ? Prisma.sql`AND "format" <> 'SCRIPT'::"PostFormat" AND NOT "remindOnly" AND ("connectionId" IS NULL OR "connectionId" NOT IN (SELECT "id" FROM "Connection" WHERE "postingMode" = 'NOTIFY'))` : Prisma.empty;
-  // Companies whose subscription is not live (waiting for a demo, past due, expired, cancelled) are not claimed at all:
-  // their posts stay SCHEDULED, held, without using attempts. (A trial that ran out but was not flipped yet is caught
-  // by the entitlement check below and released the same way.)
-  const liveSql = Prisma.sql`AND "businessId" IN (SELECT b."id" FROM "Business" b JOIN "Subscription" s ON s."userId" = b."userId" WHERE s."status" IN ('ACTIVE'::"SubscriptionStatus", 'TRIALING'::"SubscriptionStatus"))`;
+  // Companies whose subscription is not live (waiting for a demo, past due, expired, cancelled, or a paid period over
+  // for longer than any grace: lib/billing/period.ts) are not claimed at all: their posts stay SCHEDULED, held, without
+  // using attempts. (A trial that ran out but was not flipped yet, or a card plan past its shorter grace, is caught by
+  // the entitlement check below and released the same way.)
+  const graceOver = new Date(now.getTime() - MAX_GRACE_MS);
+  const liveSql = Prisma.sql`AND "businessId" IN (SELECT b."id" FROM "Business" b JOIN "Subscription" s ON s."userId" = b."userId" WHERE s."status" IN ('ACTIVE'::"SubscriptionStatus", 'TRIALING'::"SubscriptionStatus") AND (s."plan" = 'TRIAL' OR s."currentPeriodEnd" IS NULL OR s."currentPeriodEnd" > ${graceOver}))`;
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     UPDATE "Post" SET "status" = 'PUBLISHING'::"PostStatus", "lockedAt" = ${now}, "attempts" = "attempts" + 1, "updatedAt" = ${now}
     WHERE "id" IN (

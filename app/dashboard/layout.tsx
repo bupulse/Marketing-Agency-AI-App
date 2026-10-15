@@ -6,7 +6,8 @@ import { networkLabel } from "@/lib/content-board/labels";
 import { missingApps } from "@/lib/content-board/queries";
 import { getAppContext } from "@/components/app/context";
 import { TrialBanner } from "@/components/app/trial-banner";
-import { endingNotice } from "@/components/billing/helpers";
+import { endingNotice, formatDate } from "@/components/billing/helpers";
+import { manualGrace } from "@/lib/billing/period";
 import { brandPalette, isHexColor } from "@/lib/color-contrast";
 import { AutoTimezone } from "@/components/publishing/auto-timezone";
 import { AnnouncementBanner } from "@/components/app/announcement-banner";
@@ -49,7 +50,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     );
   }
 
-  // A paid plan that ended (CANCELED or EXPIRED): read-only, like lib/usage.ts, which refuses generation as "inactive".
+  // A paid plan that ended (CANCELED, EXPIRED, or ACTIVE past its period and grace: lib/billing/period.ts): read-only,
+  // like lib/usage.ts, which refuses generation as "inactive".
   const planEnded = !isTrial && entitlements.block === "inactive";
   const trialLabel = isTrial
     ? trialDaysLeft === 0
@@ -60,6 +62,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
       : null;
 
   const status = usage.subscription.status;
+  // A Mobile Money (or custom) plan whose period ended still works for its grace days: say until when.
+  const grace = !isTrial && !entitlements.block && status === "ACTIVE" ? manualGrace(usage.subscription) : null;
   // A failing lookup must never break the dashboard.
   const announcements = await getActiveAnnouncements({ id: business.userId, plan: usage.subscription.plan }).catch(() => []);
   // A custom plan offer waiting for the owner (docs/OFFERS.md): only those who can pay see it.
@@ -111,6 +115,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           canPay={can(role, "billing")}
           planEnded={planEnded}
           endsOn={endingNotice(usage.subscription)}
+          grace={grace ? { ended: formatDate(grace.ended) ?? "", until: formatDate(grace.until) ?? "" } : null}
         />
         {children}
         {can(role, "settings") && <AutoTimezone current={business.timezone} />}

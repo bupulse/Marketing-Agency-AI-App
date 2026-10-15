@@ -2,7 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { RateLimitError, rateLimit, type RateLimitRule } from "@/lib/rate-limit";
-import { featureStatus, type FeatureBlockReason } from "@/lib/entitlements";
+import { accountBlock, featureStatus, type FeatureBlockReason } from "@/lib/entitlements";
 import { featureLabel, type FeatureKey } from "@/lib/features";
 import { findByKeyHash, KEY_PREFIX, type ApiScope } from "./keys";
 
@@ -22,10 +22,14 @@ export function apiJson(body: unknown, status = 200) {
 
 /** "ok" while the business is on an active plan with the apiAccess feature; "inactive" (suspended, lapsed) or the feature's block reason otherwise. */
 async function apiAccessStatus(businessId: string): Promise<"ok" | "inactive" | FeatureBlockReason> {
-  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { user: { select: { suspendedAt: true, subscription: { select: { status: true } } } } } });
+  const business = await prisma.business.findUnique({
+    where: { id: businessId },
+    select: { user: { select: { suspendedAt: true, subscription: { select: { plan: true, status: true, chosenPlan: true, trialEndsAt: true, provider: true, cancelAtPeriodEnd: true, currentPeriodEnd: true } } } } },
+  });
   if (business?.user.suspendedAt) return "inactive";
   const sub = business?.user.subscription;
-  if (!sub || (sub.status !== "ACTIVE" && sub.status !== "TRIALING")) return "inactive";
+  // Lapsed: not ACTIVE or TRIALING, or past the paid period and its grace (lib/billing/period.ts), whatever the status.
+  if (!sub || accountBlock(sub)) return "inactive";
   return featureStatus(businessId, "apiAccess");
 }
 

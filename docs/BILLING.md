@@ -93,6 +93,42 @@ the price converted to USD (`lib/offers/card.ts`, `docs/OFFERS.md` "Card"; hidde
 price ids are cleared, so card for that plan shows "Card payments coming soon" until **Set up prices** (below) has made
 the new ones; Mobile Money uses the new amount at once.
 
+## When a plan ends (decided 15 October 2026)
+
+A subscription can stay `ACTIVE` after its paid period: a Paddle `subscription.canceled` or renewal webhook that is late
+or lost, or a Mobile Money plan not renewed before the daily renewals job has run. It used to keep generating with no
+notice. Now one rule decides, from the dates alone: `periodState(sub, now)` in `lib/billing/period.ts` answers
+`active` (inside the period, or no end known), `grace` (after it, still working) or `ended`.
+
+| Plan | Ends at | Grace | Why |
+| --- | --- | --- | --- |
+| Free trial (`plan` TRIAL) | `trialEndsAt` | none | As before (`trial_expired`). `currentPeriodEnd` is not read: extending a trial does not move it. The hourly trial job then marks it `EXPIRED`. |
+| Mobile Money, incl. custom plans (offers paid by Mobile Money or card become `MANUAL_MOMO`) and invoices paid by Mobile Money or marked paid | `currentPeriodEnd` | 3 days (`MANUAL_GRACE_DAYS`) | The renewals job's pause: reminders 5 and 1 days before the end, `PAST_DUE` 3 days after it (`GRACE_DAYS` in `momo-shared.ts` is now this constant; the job's timing is unchanged). |
+| Card that renews by itself (Paddle, incl. an invoice paid by card) | `currentPeriodEnd` | 1 day (`CARD_RENEWAL_GRACE_DAYS`) | Paddle renews on its own; this is time for the renewal's `subscription.updated` (or `past_due`) webhook. |
+| Card cancelled at its end (`cancelAtPeriodEnd`) | `currentPeriodEnd` | none | Nothing renews; Paddle's `canceled` webhook ends it at that moment anyway. |
+| No provider, with an end | `currentPeriodEnd` | 3 days | Renewed by hand, like Mobile Money. |
+
+A renewal that reached us (webhook, Mobile Money confirmation, card carry-over) moves `currentPeriodEnd`, so the plan is
+`active` again. `PAST_DUE`, `CANCELED` and `EXPIRED` keep their own reasons; the rule only adds "ended" for an `ACTIVE`
+(or `TRIALING` card) subscription whose end plus grace has passed. It is refused as **inactive**, the reason the UI
+already shows ("Your plan has ended. Choose a plan to keep creating" on the dashboard, "Ended" in the sidebar, "Your
+plan is not active" when a generation is refused):
+
+- generation: `consumeUsage` (`lib/usage.ts`), so every AI call, Autopilot and the website chat's replies;
+- features: `accountBlock` (`lib/entitlements.ts`), so pages' actions and routes, Autopilot, the publisher (posts are
+  held `SCHEDULED` with the reason, never failed), the leads digest, store sync, outgoing webhooks, the widget and
+  `/api/v1` keys (`lib/api/auth.ts`);
+- the publisher's claim query skips companies whose period ended before now minus the longest grace (3 days); inside
+  that window the entitlement check releases the post as for any read-only account;
+- the dashboard (`app/dashboard/layout.tsx`, `components/app/trial-banner.tsx`): the ended notice above, and during the
+  grace of a plan renewed by hand "Your plan ended on <date>. Renew it before <end + 3 days> to keep creating" (members:
+  "Ask your company owner to renew it before …"), not dismissible. A card plan's 1-day grace shows nothing (its renewal
+  is on its way).
+
+Known limits: the Billing page still shows the stored status (an "Active" badge and "paid until <date>") until the job
+or the webhook updates it; a card plan whose webhook was lost for good stays refused until the event is replayed in
+Paddle or reprocessed; usage during the grace days counts in the next monthly usage window.
+
 ## Connecting Paddle (Admin → Settings → Card payments)
 
 No environment variable needs editing. In Admin → Settings → **Card payments (Paddle)** (AAL2, every save audited):

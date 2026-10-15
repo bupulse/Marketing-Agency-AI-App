@@ -2,7 +2,7 @@
 // admin pages and the tests share one set of rules (docs/MOMO.md).
 import { z } from "zod";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
-import { addMonths } from "./period";
+import { addMonths, MANUAL_GRACE_DAYS } from "./period";
 
 export const MANUAL_PAYMENT_STATUSES = ["pending", "confirmed", "rejected", "expired"] as const;
 export type ManualPaymentStatus = (typeof MANUAL_PAYMENT_STATUSES)[number];
@@ -11,8 +11,11 @@ export const MOMO_NETWORKS = ["MTN", "AIRTEL"] as const;
 export type MomoNetwork = (typeof MOMO_NETWORKS)[number];
 export const NETWORK_LABEL: Record<MomoNetwork, string> = { MTN: "MTN Mobile Money", AIRTEL: "Airtel Money" };
 
-/** Days after the paid period ends before the account becomes read-only (PAST_DUE). Nothing is deleted. */
-export const GRACE_DAYS = 3;
+/**
+ * Days after the paid period ends before the account becomes read-only (PAST_DUE). Nothing is deleted. The same grace
+ * stops generation even before the job has run (lib/billing/period.ts periodState).
+ */
+export const GRACE_DAYS = MANUAL_GRACE_DAYS;
 /** Reminder emails go out this many days before the period ends. */
 export const REMINDER_DAYS = [5, 1] as const;
 /** A payment the client started but never submitted a transaction id for is closed after this long. */
