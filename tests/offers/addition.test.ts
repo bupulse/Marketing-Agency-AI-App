@@ -299,6 +299,6 @@ describe("Add features on Billing (the client, self-serve)", () => {
     await offers.sendOffer(CONSOLE, team.id, NOW);
     expect(await msg(offers.startFeatureAddition({ userId: USER, actorId: USER, businessId: "biz1", features: ["aiPhotos"], method: "momo" }, NOW))).toMatch(/Our team has sent you an offer/);
     Object.assign(sub(), { provider: "PADDLE", providerSubscriptionId: "sub_1" });
-    expect(await msg(offers.startFeatureAddition({ userId: USER, actorId: USER, businessId: "biz1", features: ["aiPhotos"], method: "momo" }, NOW))).toMatch(/card link/);
+    expect(await msg(offers.startFeatureAddition({ userId: USER, actorId: USER, businessId: "biz1", features: ["aiPhotos"], method: "momo" }, NOW))).toMatch(/Add to my card plan/);
   });
 });
