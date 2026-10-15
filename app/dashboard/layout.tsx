@@ -6,6 +6,7 @@ import { networkLabel } from "@/lib/content-board/labels";
 import { missingApps } from "@/lib/content-board/queries";
 import { getAppContext } from "@/components/app/context";
 import { TrialBanner } from "@/components/app/trial-banner";
+import { endingNotice } from "@/components/billing/helpers";
 import { brandPalette, isHexColor } from "@/lib/color-contrast";
 import { AutoTimezone } from "@/components/publishing/auto-timezone";
 import { AnnouncementBanner } from "@/components/app/announcement-banner";
@@ -48,11 +49,15 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     );
   }
 
+  // A paid plan that ended (CANCELED or EXPIRED): read-only, like lib/usage.ts, which refuses generation as "inactive".
+  const planEnded = !isTrial && entitlements.block === "inactive";
   const trialLabel = isTrial
     ? trialDaysLeft === 0
       ? "Trial ended"
       : `${trialDaysLeft} ${trialDaysLeft === 1 ? "day" : "days"} left`
-    : null;
+    : planEnded
+      ? "Ended"
+      : null;
 
   const status = usage.subscription.status;
   // A failing lookup must never break the dashboard.
@@ -104,6 +109,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           text={{ used: usage.used.text, max: usage.limits.text }}
           image={{ used: usage.used.image, max: usage.limits.image }}
           canPay={can(role, "billing")}
+          planEnded={planEnded}
+          endsOn={endingNotice(usage.subscription)}
         />
         {children}
         {can(role, "settings") && <AutoTimezone current={business.timezone} />}

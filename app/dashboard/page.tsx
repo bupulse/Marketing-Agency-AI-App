@@ -24,7 +24,7 @@ function timeAgo(date: Date) {
 }
 
 export default async function DashboardPage() {
-  const { business, usage, role, entitlements, firstName, logoUrl, brandColors, voiceLabel, businessName } = await getAppContext();
+  const { business, usage, role, entitlements, firstName, logoUrl, brandColors, voiceLabel, businessName, isTrial } = await getAppContext();
 
   const businessId = business?.id;
   const chatInPlan = entitlements.inPlan.has("websiteChat");
@@ -43,6 +43,8 @@ export default async function DashboardPage() {
     : [0, 0, 0, 0, 0, [], [], null, 0];
 
   const { used, limits } = usage;
+  // A paid plan that ended (lib/entitlements.ts "inactive", refused by lib/usage.ts too): its old limits are not usable.
+  const planEnded = !isTrial && entitlements.block === "inactive";
   const brandDone = Boolean(business?.onboardedAt);
   const swatches = brandColors.filter(isHexColor).slice(0, 5);
 
@@ -233,7 +235,8 @@ export default async function DashboardPage() {
           <h2 id="us" className="text-lg font-semibold">Usage this period</h2>
           <Link href="/dashboard/usage" className="text-sm font-semibold">Details</Link>
         </div>
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-5">
+        {planEnded && <p className="-mt-2 mb-4 text-sm text-muted">Your plan has ended, so nothing new can be made until a plan is chosen. Everything you made is saved.</p>}
+        <div className={cn("grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-5", planEnded && "opacity-60")}>
           {meters.map((m) => {
             const unavailable = m.max === 0;
             return (

@@ -33,6 +33,7 @@ const KEY_RE = /^[A-Za-z][A-Za-z0-9_-]{1,31}$/;
 const MAX_LIMIT = 10_000_000;
 const MAX_PRICE_CENTS = 10_000_000;
 export const NOTICE_DAYS = 30;
+export const CUSTOM_PRICE_MESSAGE = "A custom plan's price comes from its offer and cannot be changed here. To change it, make a new offer from the company's page.";
 
 export type PlanInput = {
   key?: string;
@@ -180,22 +181,37 @@ export type AdminPlanRow = PlanView & {
   latestChange: { id: string; direction: string; status: string; subscribers: number; notifiedCount: number; appliedCount: number; failedCount: number; createdAt: Date } | null;
 };
 
+/** Subscriptions counted by plan, interval and status (prisma groupBy). */
+export type SubscriptionGroup = { plan: string; interval: BillingInterval | string; status: string; _count: { _all: number } };
+
+export type PlanCounts = {
+  /** Companies on the plan now: ACTIVE, PAST_DUE or TRIALING (a Mobile Money or custom plan counts like a card one). */
+  subscribers: number;
+  /** The paying part (ACTIVE or PAST_DUE); none for the trial. */
+  payingSubscribers: number;
+  /** Monthly recurring revenue of the paying ones, in the plan's own currency's smallest unit (RWF for a custom RWF plan). */
+  mrrCents: number;
+};
+
+/** Pure: a plan's clients and MRR from the subscription groups. */
+export function planCounts(plan: Pick<PlanView, "key" | "isTrial" | "monthlyPriceCents" | "yearlyPriceCents">, groups: SubscriptionGroup[]): PlanCounts {
+  const mine = groups.filter((g) => g.plan === plan.key);
+  const live = mine.filter((g) => ["ACTIVE", "PAST_DUE", "TRIALING"].includes(g.status));
+  const paying = plan.isTrial ? [] : mine.filter((g) => g.status === "ACTIVE" || g.status === "PAST_DUE");
+  const mrr = paying.reduce((s, g) => s + g._count._all * (g.interval === "YEAR" ? plan.yearlyPriceCents / 12 : plan.monthlyPriceCents), 0);
+  return { subscribers: live.reduce((s, g) => s + g._count._all, 0), payingSubscribers: paying.reduce((s, g) => s + g._count._all, 0), mrrCents: Math.round(mrr) };
+}
+
 /** The plan builder's plans. Companies' custom plans (docs/OFFERS.md) are left out: they live on each company's offers. */
 export async function listAdminPlans(): Promise<{ plans: AdminPlanRow[]; paddleConnected: boolean }> {
   const plans = (await getPlans({ force: true })).filter((p) => !p.isCustom);
   const groups = await prisma.subscription.groupBy({ by: ["plan", "interval", "status"], _count: { _all: true } });
   const rows: AdminPlanRow[] = [];
   for (const plan of plans) {
-    const mine = groups.filter((g) => g.plan === plan.key);
-    const live = mine.filter((g) => ["ACTIVE", "PAST_DUE", "TRIALING"].includes(g.status));
-    const paying = plan.isTrial ? [] : mine.filter((g) => g.status === "ACTIVE" || g.status === "PAST_DUE");
-    const mrr = paying.reduce((s, g) => s + g._count._all * (g.interval === "YEAR" ? plan.yearlyPriceCents / 12 : plan.monthlyPriceCents), 0);
     const latest = await prisma.planPriceChange.findFirst({ where: { planKey: plan.key }, orderBy: { createdAt: "desc" } });
     rows.push({
       ...plan,
-      subscribers: live.reduce((s, g) => s + g._count._all, 0),
-      payingSubscribers: paying.reduce((s, g) => s + g._count._all, 0),
-      mrrCents: Math.round(mrr),
+      ...planCounts(plan, groups),
       paddleReady: Boolean(currentPriceId("PADDLE", plan, "MONTH") && currentPriceId("PADDLE", plan, "YEAR")),
       latestChange: latest
         ? { id: latest.id, direction: latest.direction, status: latest.status, subscribers: latest.subscribers, notifiedCount: latest.notifiedCount, appliedCount: latest.appliedCount, failedCount: latest.failedCount, createdAt: latest.createdAt }
@@ -226,7 +242,9 @@ export async function getAdminPlan(key: string) {
     priceUse[price.id] = subs + items;
   }
   const struggling = await prisma.planPriceChangeItem.count({ where: { change: { planKey: key }, status: "pending", attempts: { gt: 0 } } });
-  return { plan, changes, failedItems, priceUse, struggling, paddleConnected: await paddleConnected() };
+  // Counted here for any plan: listAdminPlans leaves custom plans out, so their page said "0 clients" for a company on one.
+  const groups = await prisma.subscription.groupBy({ by: ["plan", "interval", "status"], where: { plan: key }, _count: { _all: true } });
+  return { plan, counts: planCounts(plan, groups), changes, failedItems, priceUse, struggling, paddleConnected: await paddleConnected() };
 }
 
 // ---- price change preview -------------------------------------------------------------------------------------------------
@@ -443,6 +461,8 @@ export async function updatePlan(ctx: AdminContext, key: string, patch: Partial<
   const changed = Object.keys(dAfter);
   if (changed.length === 0) return { plan, changed, priceChange: null, warnings: [] };
   const priceChanged = "monthlyPriceCents" in dAfter || "yearlyPriceCents" in dAfter;
+  // A custom plan is priced by its offer, in the offer's currency (docs/OFFERS.md); it never gets new Paddle prices here.
+  if (priceChanged && plan.isCustom) throw new AdminError("conflict", CUSTOM_PRICE_MESSAGE);
   const warnings: string[] = [];
 
   const connected = await paddleConnected();

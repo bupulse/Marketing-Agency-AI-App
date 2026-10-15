@@ -15,7 +15,7 @@ import { CARD_SOON, offersChoice, payMethods, soleMethod, type CardPriced, type 
 import { PayChoice } from "./pay-choice";
 import { openCheckout } from "./checkout";
 import { momoPriceOf } from "@/lib/billing/momo-shared";
-import { formatPlanPrice, formatPrice, intervalWord, planButtonAction, planFeatures, yearlyBadge, yearlySavingsLabel, yearlySavingsMinor } from "./helpers";
+import { formatPlanPrice, formatPrice, intervalWord, planButtonAction, planFeatures, unpaidPlanLabel, yearlyBadge, yearlySavingsLabel, yearlySavingsMinor } from "./helpers";
 import { PriceTag } from "./price-tag";
 import { usePayState } from "./pay-state";
 
@@ -27,7 +27,7 @@ type Props = {
    * How the company can pay (lib/billing/pay-methods.ts): the region's methods, whether the owner has set up where to
    * pay by Mobile Money, whether card checkout is configured, and which plans have a card price in the region.
    */
-  pay: { regionMethods: PaymentMethod[]; momoConfigured: boolean; cardConfigured: boolean; cardPriced: CardPriced; /** Why card cannot be chosen yet (a Mobile Money plan before its renewal window). */ cardBlocked?: string | null };
+  pay: { regionMethods: PaymentMethod[]; momoConfigured: boolean; cardConfigured: boolean; cardPriced: CardPriced; /** Why card cannot be chosen yet (a Mobile Money plan before its renewal window). */ cardBlocked?: string | null; /** A card plan: why its plan changes go by card, and the way to Mobile Money (helpers.ts cardChangeNote). */ cardNote?: string | null };
 };
 
 export function PlanPicker({ plans, current, pay }: Props) {
@@ -42,6 +42,8 @@ export function PlanPicker({ plans, current, pay }: Props) {
   // A payment was just reported or a card payment just went through: no second plan while the page refreshes.
   const payState = usePayState();
   const planOf = (key: Plan) => plans.find((p) => p.key === key)!;
+  // The plan that ended (not paid now): choosing it again is a renewal, not an upgrade.
+  const ended = !current.paid ? (plans.find((p) => p.key === current.plan) ?? null) : null;
   // A plan can be paid by Mobile Money at its regional price (docs/REGIONS.md: the one source of truth for RWF amounts).
   const momoPrice = (key: Plan) => momoPriceOf(planOf(key), interval);
   const methodsFor = (key: Plan): PayMethods =>
@@ -177,7 +179,7 @@ export function PlanPicker({ plans, current, pay }: Props) {
               ) : action === "upgrade" || current.method === "momo" ? (
                 <div className="flex flex-col gap-2">
                   <Button className="w-full" onClick={() => choose(key)} disabled={pending || Boolean(payState) || (!offersChoice(methodsFor(key)) && !soleMethod(methodsFor(key)))}>
-                    {busy ? "One moment…" : current.method === "momo" ? `Switch to ${name}` : `Upgrade to ${name}`}
+                    {busy ? "One moment…" : current.method === "momo" ? `Switch to ${name}` : unpaidPlanLabel(current.plan, plan, ended)}
                   </Button>
                   <span className="text-center text-xs text-muted">{chooseNote(methodsFor(key))}</span>
                 </div>
@@ -198,6 +200,7 @@ export function PlanPicker({ plans, current, pay }: Props) {
       {current.pastDue && (
         <p className="px-1 text-sm text-muted">Update your payment method above before changing plan.</p>
       )}
+      {current.method === "card" && pay.cardNote && <p className="px-1 text-sm text-muted">{pay.cardNote}</p>}
 
       <Dialog
         open={chooseFor !== null}

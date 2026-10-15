@@ -7,7 +7,7 @@ import { PlanForm } from "@/components/admin/plan-form";
 import { Empty, Panel, TableWrap, Td, Th, notice } from "@/components/admin/ui";
 import { Badge, Button } from "@/components/ui";
 import { dateTime, money, param } from "@/lib/admin/format";
-import { getAdminPlan, listAdminPlans } from "@/lib/admin/plans-service";
+import { getAdminPlan } from "@/lib/admin/plans-service";
 import { AdminError } from "@/lib/admin/types";
 import { cancelPriceChangeAction, retirePlanAction, retryPriceChangeAction, syncPlanAction } from "../actions";
 
@@ -26,15 +26,16 @@ export default async function PlanPage({ params, searchParams }: PageProps<"/adm
     if (e instanceof AdminError && e.code === "not_found") notFound();
     throw e;
   }
-  const { plan, changes, failedItems, priceUse, struggling, paddleConnected } = detail;
-  const row = (await listAdminPlans()).plans.find((p) => p.key === key);
-  const subscribers = row?.subscribers ?? 0;
+  const { plan, counts, changes, failedItems, priceUse, struggling, paddleConnected } = detail;
+  const { subscribers } = counts;
+  // A custom plan is priced in its offer's currency (98,000 RWF), never in dollars.
+  const cur = plan.currency;
 
   return (
     <>
       <PageHeader
         title={plan.name}
-        description={`${plan.key} · ${subscribers} ${subscribers === 1 ? "client" : "clients"}${row && !plan.isTrial ? ` · ${money(row.mrrCents)} MRR` : ""}`}
+        description={`${plan.key} · ${subscribers} ${subscribers === 1 ? "client" : "clients"}${!plan.isTrial ? ` · ${money(counts.mrrCents, cur)} MRR` : ""}`}
         action={<Link href="/admin/plans" className="text-sm font-medium underline">All plans</Link>}
       />
       {param(sp.notice) && <p role="status" className={notice.ok}>{param(sp.notice)}</p>}
@@ -47,12 +48,14 @@ export default async function PlanPage({ params, searchParams }: PageProps<"/adm
         mode="edit"
         paddleConnected={paddleConnected}
         version={plan.updatedAt?.toISOString()}
-        subscribers={row?.payingSubscribers ?? 0}
+        subscribers={counts.payingSubscribers}
         initial={{
           key: plan.key,
           name: plan.name,
           description: plan.description,
           isTrial: plan.isTrial,
+          isCustom: plan.isCustom,
+          currency: cur,
           trialDays: plan.trialDays,
           status: plan.status,
           sortOrder: plan.sortOrder,
@@ -93,7 +96,7 @@ export default async function PlanPage({ params, searchParams }: PageProps<"/adm
                     <tr key={p.id}>
                       <Td className="break-all">{p.id}</Td>
                       <Td>{p.interval === "YEAR" ? "Yearly" : "Monthly"}</Td>
-                      <Td right>{money(p.amountCents)}</Td>
+                      <Td right>{money(p.amountCents, cur)}</Td>
                       <Td>{current ? <Badge tone="success">Current</Badge> : p.archivedAt ? <Badge tone="neutral">Archived</Badge> : (priceUse[p.id] ?? 0) > 0 ? <Badge tone="violet">Old, still used by {priceUse[p.id]}</Badge> : <Badge tone="neutral">Old, no longer used</Badge>}</Td>
                     </tr>
                   );
@@ -117,7 +120,7 @@ export default async function PlanPage({ params, searchParams }: PageProps<"/adm
                 {changes.map((c) => (
                   <tr key={c.id}>
                     <Td>{dateTime(c.createdAt)}</Td>
-                    <Td>{money(c.oldMonthlyCents)} to {money(c.newMonthlyCents)} / mo<br /><span className="text-xs text-muted">{money(c.oldYearlyCents)} to {money(c.newYearlyCents)} / yr · {c.direction}</span></Td>
+                    <Td>{money(c.oldMonthlyCents, cur)} to {money(c.newMonthlyCents, cur)} / mo<br /><span className="text-xs text-muted">{money(c.oldYearlyCents, cur)} to {money(c.newYearlyCents, cur)} / yr · {c.direction}</span></Td>
                     <Td><Badge tone={c.status === "completed" ? "success" : c.status === "scheduled" ? "violet" : "neutral"}>{c.status}</Badge></Td>
                     <Td right>{c.subscribers}</Td>
                     <Td right>{c.notifiedCount}</Td>

@@ -7,7 +7,7 @@ import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { CheckoutScript } from "@/components/billing/checkout";
 import { CheckoutReturn } from "@/components/billing/checkout-return";
-import { formatDate, formatPrice, intervalWord, formatUsd, statusLabel } from "@/components/billing/helpers";
+import { cardChangeNote, formatDate, formatPrice, intervalWord, formatUsd, statusLabel } from "@/components/billing/helpers";
 import { ClientInvoices } from "@/components/billing/client-invoices";
 import { InvoiceList } from "@/components/billing/invoice-list";
 import { InvoicePay } from "@/components/billing/invoice-pay";
@@ -40,6 +40,18 @@ import { getInvoices } from "./actions";
 export const metadata = { title: "Billing" };
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
+
+/**
+ * Why features cannot be added here to a card plan (it renews by card, at the card price), and the honest way to Mobile
+ * Money when there is one: a card plan cancelled at its end can be renewed by Mobile Money in its last days, and a
+ * Mobile Money plan can add features here. Mobile Money itself works: it is never "coming soon".
+ */
+function cardAdditionNote(reason: string, renewal: ReturnType<typeof renewalState> | null, momo: boolean): string {
+  if (!momo || !renewal) return reason;
+  if (renewal.kind === "paid") return `${reason} Or renew by Mobile Money from ${formatDate(renewal.opensAt)} and add them here yourself.`;
+  if (renewal.kind === "open") return `${reason} Or renew by Mobile Money now (above) and add them here yourself.`;
+  return reason;
+}
 
 export default async function BillingPage({ searchParams }: { searchParams: SearchParams }) {
   const blocked = await pageGate("billing");
@@ -111,6 +123,9 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
           cardReason: renewsCustom && !cancelling ? `Card for a custom plan is set up by our team: ask us for a card link at ${site.email}.` : null,
         }
       : undefined;
+  // A card plan changes plan by card only (changePlan goes through the card provider): say so, and how to move to Mobile
+  // Money, under the plan cards. It used to read "Mobile Money coming soon" (below, in Add features) on a method that works.
+  const cardNote = paid && !momoPlan && !pastDue && renewal ? cardChangeNote(renewal, regionHas("momo") && momoReady) : null;
   // "Add features" to the running plan (docs/OFFERS.md): a Mobile Money plan, with no payment or team offer in progress.
   const addition = paid && !pastDue && momoPayment?.status !== "pending" && (!offer || offer.addition?.selfServe) ? await selfServeAddition(business.id, now).catch(() => null) : null;
   // Card for an offer or added features: the price converted like an RWF plan's card price (lib/offers/card.ts); not
@@ -243,7 +258,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       {/* Hidden while a purchase is being confirmed, so nobody buys a second plan by accident. */}
       {!waitingForCheckout && momoPayment?.status !== "pending" && (
         <>
-          <PlanPicker plans={pickable} current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue, method: paid ? (momoPlan ? "momo" : "card") : null }} pay={{ regionMethods: region.paymentMethods, momoConfigured: momoReady, cardConfigured: cardOn, cardPriced, cardBlocked: momoPlan && renewal?.kind === "paid" ? `By card from ${formatDate(renewal.opensAt)}, 7 days before your plan ends.` : null }} />
+          <PlanPicker plans={pickable} current={{ plan: subscription.plan, interval: subscription.interval, paid, pastDue, method: paid ? (momoPlan ? "momo" : "card") : null }} pay={{ regionMethods: region.paymentMethods, momoConfigured: momoReady, cardConfigured: cardOn, cardPriced, cardBlocked: momoPlan && renewal?.kind === "paid" ? `By card from ${formatDate(renewal.opensAt)}, 7 days before your plan ends.` : null, cardNote }} />
           <p className="px-1 text-sm text-muted">
             Prices for {region.name}. {currencyNote(region.currency, region.paymentMethods)}
           </p>
@@ -253,8 +268,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       {addition && (addition.ok || addition.card) && (
         <AddFeatures
           data={addition.ok ? { current: { ...addition.current, features: [...addition.current.features] }, interval: addition.interval, periodEnd: addition.periodEnd, region: addition.region, prices: addition.prices, addable: addition.addable, soon: addition.soon } : null}
-          unavailable={addition.ok ? null : addition.reason}
-          momo={addition.ok ? methodState(regionHas("momo"), momoReady) : regionHas("momo") ? "soon" : "off"}
+          unavailable={addition.ok ? null : cardAdditionNote(addition.reason, cancelling ? renewal : null, regionHas("momo") && momoReady)}
+          momo={methodState(regionHas("momo"), momoReady)}
           cardRate={cardForOffers && addition.ok ? cardRate : null}
           now={now.toISOString()}
         />

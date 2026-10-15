@@ -3,7 +3,7 @@
 import { Check } from "lucide-react";
 import { useActionState, useState } from "react";
 import { savePlanAction, type PlanFormState } from "@/app/admin/(console)/(money)/plans/actions";
-import { formatCents } from "@/components/billing/helpers";
+import { formatPrice } from "@/components/billing/helpers";
 import { Badge, Button, Field, GlassCard, Input, Select, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { FEATURES, dependentsOf, featureLabel, withPrerequisites, type FeatureKey } from "@/lib/features";
@@ -14,6 +14,10 @@ export type PlanFormInitial = {
   name: string;
   description: string;
   isTrial: boolean;
+  /** A company's custom plan (docs/OFFERS.md): priced by its offer, in the offer's currency; its price is read-only here. */
+  isCustom?: boolean;
+  /** The currency of monthlyPriceCents and yearlyPriceCents (smallest unit); USD for the plan builder's plans. */
+  currency?: string;
   trialDays: number | null;
   status: PlanStatus;
   sortOrder: number;
@@ -83,7 +87,7 @@ export function FeatureChecklist({ selected, onChange }: { selected: FeatureKey[
 }
 
 /** The pricing card as clients will see it (monthly price, features, badge), updated while typing. */
-function CardPreview({ name, description, monthly, yearly, features, highlight, status, isTrial, trialDays }: { name: string; description: string; monthly: number; yearly: number; features: string[]; highlight: boolean; status: PlanStatus; isTrial: boolean; trialDays: number | null }) {
+function CardPreview({ name, description, monthly, yearly, currency, features, highlight, status, isTrial, trialDays }: { name: string; description: string; monthly: number; yearly: number; currency: string; features: string[]; highlight: boolean; status: PlanStatus; isTrial: boolean; trialDays: number | null }) {
   const savings = monthly > 0 ? Math.round(((monthly * 12 - yearly) / (monthly * 12)) * 100) : 0;
   return (
     <GlassCard strong={highlight} padding="lg" className={cn("relative flex flex-col gap-5", highlight && "shadow-glow ring-2 ring-pulse-violet/60")} aria-label="Pricing card preview">
@@ -96,8 +100,8 @@ function CardPreview({ name, description, monthly, yearly, features, highlight, 
         <p className="text-3xl font-bold tracking-[-0.03em]">Free for {trialDays ?? 7} days</p>
       ) : (
         <div>
-          <p className="flex items-baseline gap-1.5"><span className="text-4xl font-bold tracking-[-0.04em]">{formatCents(monthly)}</span><span className="text-muted">/ month</span></p>
-          <p className="mt-1 text-sm text-muted">or {formatCents(yearly)} / year{savings > 0 ? ` (${savings}% off)` : ""}</p>
+          <p className="flex items-baseline gap-1.5"><span className="text-4xl font-bold tracking-[-0.04em]">{formatPrice(monthly, currency)}</span><span className="text-muted">/ month</span></p>
+          <p className="mt-1 text-sm text-muted">or {formatPrice(yearly, currency)} / year{savings > 0 ? ` (${savings}% off)` : ""}</p>
         </div>
       )}
       <ul className="flex flex-col gap-2">
@@ -129,8 +133,14 @@ export function PlanForm({ mode, initial, paddleConnected, subscribers, version 
   // "Back" hides the confirm step of one particular answer; a changed price hides it too (it was not reviewed).
   const [backed, setBacked] = useState<object | null>(null);
   const highlightList = highlights.split("\n").map((l) => l.trim()).filter(Boolean);
+  // Prices are typed in US dollars. A custom plan (or any plan in another currency) shows its price but never posts one,
+  // so saving a limit or a feature cannot touch its price, its currency or its Paddle prices (the server refuses too).
+  const currency = initial.currency ?? "USD";
+  const priceLocked = mode === "edit" && !initial.isTrial && (initial.isCustom === true || currency !== "USD");
+  const monthlyMinor = priceLocked ? initial.monthlyPriceCents : cents(monthly);
+  const yearlyMinor = priceLocked ? initial.yearlyPriceCents : cents(yearly);
   const confirm = state.confirm && state.confirm !== backed && state.confirm.monthlyCents === cents(monthly) && state.confirm.yearlyCents === cents(yearly) ? state.confirm : null;
-  const priceChanged = mode === "edit" && !initial.isTrial && (cents(monthly) !== initial.monthlyPriceCents || cents(yearly) !== initial.yearlyPriceCents);
+  const priceChanged = mode === "edit" && !initial.isTrial && !priceLocked && (cents(monthly) !== initial.monthlyPriceCents || cents(yearly) !== initial.yearlyPriceCents);
 
   return (
     <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
@@ -170,7 +180,21 @@ export function PlanForm({ mode, initial, paddleConnected, subscribers, version 
           )}
         </GlassCard>
 
-        {!initial.isTrial && (
+        {priceLocked && (
+          <GlassCard className="flex flex-col gap-3 p-5 sm:p-6">
+            <h2 className="text-lg font-semibold tracking-[-0.02em]">Price</h2>
+            <dl className="grid gap-4 sm:grid-cols-2">
+              <div><dt className="text-sm text-muted">Per month</dt><dd className="text-[15px] font-semibold tabular-nums">{formatPrice(initial.monthlyPriceCents, currency)}</dd></div>
+              <div><dt className="text-sm text-muted">Per year</dt><dd className="text-[15px] font-semibold tabular-nums">{formatPrice(initial.yearlyPriceCents, currency)}</dd></div>
+            </dl>
+            <p className="text-[13px] text-muted">
+              {initial.isCustom
+                ? "A custom plan's price comes from its offer, in the offer's currency. To change it, make a new offer from the company's page; saving here never changes it."
+                : `This plan is priced in ${currency}; its price cannot be changed here.`}
+            </p>
+          </GlassCard>
+        )}
+        {!initial.isTrial && !priceLocked && (
           <GlassCard className="flex flex-col gap-4 p-5 sm:p-6">
             <h2 className="text-lg font-semibold tracking-[-0.02em]">Price (US dollars)</h2>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -233,7 +257,7 @@ export function PlanForm({ mode, initial, paddleConnected, subscribers, version 
 
       <div className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-4">
         <h2 className="px-1 text-sm font-medium text-muted">Preview</h2>
-        <CardPreview name={name} description={description} monthly={cents(monthly)} yearly={cents(yearly)} features={highlightList} highlight={highlight} status={status} isTrial={initial.isTrial} trialDays={Number(trialDays) || null} />
+        <CardPreview name={name} description={description} monthly={monthlyMinor} yearly={yearlyMinor} currency={currency} features={highlightList} highlight={highlight} status={status} isTrial={initial.isTrial} trialDays={Number(trialDays) || null} />
       </div>
     </div>
   );

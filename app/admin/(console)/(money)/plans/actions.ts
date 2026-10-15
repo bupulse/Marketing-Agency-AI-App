@@ -26,8 +26,11 @@ function numberOf(f: FormData, k: string, label: string): number {
   return n;
 }
 
-/** Reads the plan form. Prices are typed in dollars. */
-function readForm(f: FormData, isTrial: boolean): Partial<PlanInput> {
+/**
+ * Reads the plan form. Prices are typed in dollars, so only a plan priced in dollars takes them: a custom plan (priced by
+ * its offer, e.g. in RWF) keeps its price, currency and Paddle prices whatever the form sends.
+ */
+function readForm(f: FormData, isTrial: boolean, priced = true): Partial<PlanInput> {
   const input: Partial<PlanInput> = {
     name: text(f, "name"),
     description: text(f, "description"),
@@ -50,6 +53,7 @@ function readForm(f: FormData, isTrial: boolean): Partial<PlanInput> {
     const status = text(f, "status");
     if (!(PLAN_STATUSES as string[]).includes(status)) throw new AdminError("invalid", "Choose active, hidden or retired.");
     input.status = status as PlanStatus;
+    if (!priced) return input;
     input.monthlyPriceCents = dollarsToCents(text(f, "monthly"));
     input.yearlyPriceCents = dollarsToCents(text(f, "yearly"));
     if (!Number.isFinite(input.monthlyPriceCents) || !Number.isFinite(input.yearlyPriceCents)) throw new AdminError("invalid", "Enter the prices in dollars, for example 49 or 49.50.");
@@ -75,8 +79,8 @@ export async function savePlanAction(_prev: PlanFormState, f: FormData): Promise
       const key = text(f, "key");
       const current = await getPlan(key);
       if (!current) throw new AdminError("not_found", "No plan with that key.");
-      const input = readForm(f, current.isTrial);
-      const priceChanged = !current.isTrial && (input.monthlyPriceCents !== current.monthlyPriceCents || input.yearlyPriceCents !== current.yearlyPriceCents);
+      const input = readForm(f, current.isTrial, !current.isCustom && current.currency === "USD");
+      const priceChanged = !current.isTrial && input.monthlyPriceCents !== undefined && (input.monthlyPriceCents !== current.monthlyPriceCents || input.yearlyPriceCents !== current.yearlyPriceCents);
       if (priceChanged && text(f, "confirmPrice") !== "1") {
         const preview = await previewPriceChange(key, { monthlyPriceCents: input.monthlyPriceCents!, yearlyPriceCents: input.yearlyPriceCents! });
         return { confirm: { lines: preview.lines, direction: preview.direction, affected: preview.affected, monthlyCents: input.monthlyPriceCents!, yearlyCents: input.yearlyPriceCents! } };

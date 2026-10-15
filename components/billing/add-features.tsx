@@ -176,7 +176,9 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
         </dl>
       )}
 
-      {payState ? (
+      {/* Nothing can be added here (a card plan): no pay buttons, only the reason above. They used to show disabled,
+          with "Mobile Money coming soon" on a method that works. */}
+      {!data ? null : payState ? (
         <PayStateNote state={payState} />
       ) : (
       <div className="flex flex-wrap gap-2">
