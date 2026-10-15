@@ -11,11 +11,12 @@ import { cardCheckoutConfigured } from "@/lib/billing/card-ready";
 import { signCheckoutUser } from "@/lib/billing/signing";
 import type { ProviderSubscription } from "@/lib/billing/types";
 import { site } from "@/lib/content/site";
-import { clearPlanCache } from "@/lib/plan-catalog";
+import { featureLabel, featureOf, isFeatureKey } from "@/lib/features";
+import { clearPlanCache, getPlan, priceCents } from "@/lib/plan-catalog";
 import { planForAnyPriceId } from "@/lib/region-prices";
-import { cardPlanAddons } from "./card-plan-items";
-import { additionContext, OfferError, selfServeQuote, startFeatureAddition } from "./service";
-import { CARD_ADDON_KIND, cardAddonMessage, cardAdditionQuote, readCardPlan, type CardAdditionQuote, type OfferCardPlan } from "./shared";
+import { isRemoval, signedAddons } from "./card-plan-items";
+import { additionContext, createCustomPlanInTx, OfferError, pricingContext, selfServeQuote, startFeatureAddition } from "./service";
+import { additionDaysLeft, CARD_ADDON_KIND, cardAddonMessage, cardAdditionQuote, customPlanKeyFor, periodDaysEnding, prorateMinor, quoteAddition, readCardPlan, validUntilOf, type CardAdditionQuote, type CardAddonItem, type OfferCardPlan } from "./shared";
 
 // Adding features to a card plan (docs/OFFERS.md, "Adding features to a card plan"). A card plan is a Paddle
 // subscription that renews by itself, so the added features become recurring items on it: one price per feature that
@@ -35,6 +36,7 @@ export class CardPlanError extends OfferError {
 
 /** The last resort, when the card provider cannot take the change from here. */
 export const CARD_PLAN_UNAVAILABLE = `Adding features by card is not available right now. Write to us at ${site.email} and we will add them to your plan for you.`;
+const CARD_CHANGE_UNAVAILABLE = `Changing the features of your card plan is not available right now. Write to us at ${site.email} and we will do it for you.`;
 
 const SYSTEM: AdminContext = { actor: "system:offers", ip: null, viaApi: false };
 const IN_FLIGHT_MS = 60_000;
@@ -83,6 +85,27 @@ async function withdrawUnconfirmed(offer: Pick<Prisma.PlanOfferGetPayload<object
 }
 
 /**
+ * An earlier change of the card plan whose answer never came back: held for a minute (it may still be going through),
+ * then settled from the subscription as Paddle has it (applying it settles the change when the items say so; the client
+ * is told) or withdrawn. Never sent to Paddle twice.
+ */
+async function settleEarlier(adapter: ReturnType<typeof billingAdapter>, businessId: string, subscriptionId: string, now: Date) {
+  const open = await prisma.planOffer.findFirst({ where: { businessId, status: "accepted" }, orderBy: { createdAt: "desc" } });
+  const openCard = open ? readCardPlan(open.options) : null;
+  if (!open || !openCard) return;
+  if (now.getTime() - new Date(openCard.at).getTime() < IN_FLIGHT_MS) throw new OfferError("Your earlier change is still going through. Reload Billing in a moment.");
+  if (adapter.getSubscription) await applyProviderSubscription("PADDLE", await adapter.getSubscription(subscriptionId));
+  clearPlanCache();
+  const after = await prisma.planOffer.findUnique({ where: { id: open.id }, select: { status: true } });
+  if (after?.status === "paid") {
+    const removal = isRemoval(open.options);
+    const labels = (removal ? openCard.removed : openCard.items).map((i) => i.label);
+    throw new OfferError(`Your earlier change went through: ${labels.join(", ")} ${labels.length === 1 ? "is" : "are"} ${removal ? "off" : "on"}. Reload Billing to see it.`);
+  }
+  await withdrawUnconfirmed(open, "The card provider never confirmed this change, so it was not made.", now);
+}
+
+/**
  * Billing's "Add to my card plan", once the client confirmed the card price they saw (`expectedUsdCents`, per period: a
  * different price today is returned to confirm, never charged). Prices the ticked features like Mobile Money's "Add
  * features", makes and accepts the add-features offer (its custom plan: the plan plus the features, at the regional
@@ -97,20 +120,10 @@ export async function addFeaturesByCard(input: { userId: string; actorId: string
   const adapter = billingAdapter("PADDLE");
   if (!adapter.addRecurringItems || !(await cardPlanAdditionsReady())) throw new OfferError(CARD_PLAN_UNAVAILABLE);
 
-  // An earlier "Add to my card plan" whose answer never came back: settled from the subscription as Paddle has it (its
-  // items are there), or withdrawn (they are not). Never added twice.
-  const open = await prisma.planOffer.findFirst({ where: { businessId: input.businessId, status: "accepted" }, orderBy: { createdAt: "desc" } });
-  const openCard = open ? readCardPlan(open.options) : null;
-  if (open && openCard) {
-    if (now.getTime() - new Date(openCard.at).getTime() < IN_FLIGHT_MS) throw new OfferError("Your earlier change is still going through. Reload Billing in a moment.");
-    const current = adapter.getSubscription ? await adapter.getSubscription(subscriptionId) : null;
-    if (current?.addons?.some((a) => a.offerId === open.id)) {
-      await applyProviderSubscription("PADDLE", current);
-      clearPlanCache();
-      throw new OfferError(`Your earlier change went through: ${openCard.items.map((i) => i.label).join(", ")} ${openCard.items.length === 1 ? "is" : "are"} on. Reload Billing to see it.`);
-    }
-    await withdrawUnconfirmed(open, "The card provider never confirmed these features, so they were not added.", now);
-  }
+  await settleEarlier(adapter, input.businessId, subscriptionId, now);
+  // The card plan as Paddle has it: the added features already on it (signed by BuPulse) and what they cost.
+  const live = adapter.getSubscription ? await adapter.getSubscription(subscriptionId) : null;
+  const before = live ? await signedAddons(input.userId, live.addons ?? []) : [];
 
   const ac = await additionContext(input.businessId, now);
   if (!ac.ok) throw new OfferError(ac.reason);
@@ -127,12 +140,12 @@ export async function addFeaturesByCard(input: { userId: string; actorId: string
   if (input.expectedUsdCents != null && input.expectedUsdCents !== quote.perPeriodUsdCents) {
     throw new CardPlanError(`The card price is now ${usd(quote.perPeriodUsdCents)} a ${ac.ctx.interval === "YEAR" ? "year" : "month"} (today's rate). Check it and confirm again.`, quote.perPeriodUsdCents);
   }
-  const earlier = await cardPlanAddons(input.businessId, sub.plan);
 
   const accepted = await startFeatureAddition({ userId: input.userId, actorId: input.actorId, businessId: input.businessId, features: input.features, method: "card", ip: input.ip }, now, { cardPlan: true });
   const row = await prisma.planOffer.findUnique({ where: { id: accepted.offer.id } });
   if (!row || row.status !== "accepted" || !row.customPlanKey) throw new OfferError("Your choice changed a moment ago. Reload Billing and try again.");
-  const cardPlan: OfferCardPlan = { subscriptionId, basePlanKey: base.plan, interval: ac.ctx.interval, items: quote.items, addedUsdCents: quote.perPeriodUsdCents, addonsUsdCents: (earlier?.usdCents ?? 0) + quote.perPeriodUsdCents, dueNowUsdCents: quote.dueNowUsdCents, ...rate, at: now.toISOString() };
+  const keys = [...new Set([...before.map((i) => i.key), ...quote.items.map((i) => i.key)])];
+  const cardPlan: OfferCardPlan = { subscriptionId, basePlanKey: base.plan, interval: ac.ctx.interval, items: quote.items, removed: [], keys, addedUsdCents: quote.perPeriodUsdCents, addonsUsdCents: before.reduce((sum, i) => sum + (i.amountCents ?? 0), 0) + quote.perPeriodUsdCents, dueNowUsdCents: quote.dueNowUsdCents, ...rate, at: now.toISOString() };
   await prisma.planOffer.updateMany({ where: { id: row.id, status: "accepted" }, data: { options: { ...((row.options ?? {}) as Record<string, unknown>), cardPlan } as Prisma.InputJsonValue } });
   await writeAudit(prisma, { actor: `client:${input.actorId}`, ip: input.ip ?? null, viaApi: false }, "card_plan_addition", `offer:${row.id}`, null, { subscriptionId, items: quote.items, perPeriodUsdCents: quote.perPeriodUsdCents, dueNowUsdCents: quote.dueNowUsdCents, interval: ac.ctx.interval, ...rate });
 
@@ -157,4 +170,110 @@ export async function addFeaturesByCard(input: { userId: string; actorId: string
   clearPlanCache();
   const after = await prisma.planOffer.findUnique({ where: { id: row.id }, select: { status: true } });
   return { applied: after?.status === "paid", added: quote.items.map((i) => i.label), quote };
+}
+
+/**
+ * Billing's "Remove" next to a feature added to a card plan, once the client confirmed (docs/OFFERS.md, "Removing a
+ * feature from a card plan"). Recorded as a removal (a PlanOffer with options.mode "removal", nothing to pay), with the
+ * custom plan of the features left (none left: the plan's own); then the item comes off the card subscription, every
+ * other item kept, and Paddle credits its unused days. The feature switches off only when Paddle confirms: its answer
+ * here or the webhook, through applyProviderSubscription like every change. Another added feature that needs it stops
+ * the removal (remove that one first).
+ */
+export async function removeFeatureFromCardPlan(input: { userId: string; actorId: string; businessId: string; feature: string; ip?: string | null }, now: Date = new Date()): Promise<{ applied: boolean; removed: string; creditUsdCents: number }> {
+  const sub = await prisma.subscription.findUnique({ where: { userId: input.userId } });
+  if (!sub || sub.provider !== "PADDLE" || !sub.providerSubscriptionId || sub.plan === "TRIAL") throw new OfferError("Your plan is not paid by card, so there is nothing to remove here.");
+  if (sub.status === "PAST_DUE") throw new OfferError("Your last card payment did not go through. Update your payment method above first.");
+  if (sub.status !== "ACTIVE" || !sub.currentPeriodEnd) throw new OfferError("Your plan is not running, so there is nothing to remove.");
+  if (sub.cancelAtPeriodEnd) throw new OfferError(`Your plan is set to end on ${sub.currentPeriodEnd.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Kigali" })}: the features you added end with it.`);
+  const subscriptionId = sub.providerSubscriptionId;
+  const adapter = billingAdapter("PADDLE");
+  if (!adapter.removeRecurringItems || !adapter.getSubscription || !(await cardPlanAdditionsReady())) throw new OfferError(CARD_CHANGE_UNAVAILABLE);
+
+  await settleEarlier(adapter, input.businessId, subscriptionId, now);
+  const live = await adapter.getSubscription(subscriptionId);
+  const items = await signedAddons(input.userId, live.addons ?? []);
+  const target = items.filter((i) => i.key === input.feature);
+  if (target.length === 0) {
+    await applyProviderSubscription("PADDLE", live);
+    clearPlanCache();
+    throw new OfferError("That feature is not on your card plan any more. Reload Billing.");
+  }
+  const remaining = [...new Set(items.filter((i) => i.key !== input.feature).map((i) => i.key))];
+  const needs = remaining.filter((k) => isFeatureKey(k) && featureOf(k).requires.includes(input.feature as never));
+  const label = isFeatureKey(input.feature) ? featureLabel(input.feature) : input.feature;
+  if (needs.length > 0) throw new OfferError(`${needs.map((k) => featureLabel(k as never)).join(" and ")} ${needs.length === 1 ? "needs" : "need"} ${label}: remove ${needs.length === 1 ? "it" : "them"} first.`);
+
+  const base = await planForAnyPriceId("PADDLE", live.providerPriceId);
+  const basePlan = base ? await getPlan(base.plan) : null;
+  if (!base || !basePlan) {
+    await logError(new Error(`The card plan's price ${live.providerPriceId} is not one of our plans: a feature cannot be removed from it`), { source: "billing.card_addons", level: "error", userId: input.userId, subscriptionId });
+    throw new OfferError(CARD_CHANGE_UNAVAILABLE);
+  }
+  // The plan left: the plan's own plus the features left, at today's regional prices (what a Mobile Money renewal of it
+  // would cost), with the limits those features include.
+  const pc = await pricingContext(input.businessId);
+  const regional = pc.bases.find((b) => b.key === basePlan.key);
+  const priceMinor = regional ? (sub.interval === "YEAR" ? regional.yearlyMinor : regional.monthlyMinor) : basePlan.currency.toUpperCase() === pc.region.currency.toUpperCase() ? priceCents(basePlan, sub.interval) : 0;
+  const left = quoteAddition({ current: { key: basePlan.key, name: basePlan.name, priceMinor, features: basePlan.features, limits: basePlan.limits }, features: remaining, interval: sub.interval, currency: pc.region.currency, regionKey: pc.region.key, prices: pc.prices, periodEnd: sub.currentPeriodEnd, now });
+  const removedItems: CardAddonItem[] = target.map((i) => ({ key: i.key, label, usdCents: i.amountCents ?? 0 }));
+  const removedUsd = removedItems.reduce((sum, i) => sum + i.usdCents, 0);
+  const creditUsdCents = prorateMinor(removedUsd, additionDaysLeft(sub.currentPeriodEnd, now), periodDaysEnding(sub.currentPeriodEnd, sub.interval));
+  const rate = await cardRate();
+  const cardPlan: OfferCardPlan = { subscriptionId, basePlanKey: basePlan.key, interval: sub.interval, items: [], removed: removedItems, keys: remaining, addedUsdCents: 0, addonsUsdCents: items.filter((i) => i.key !== input.feature).reduce((sum, i) => sum + (i.amountCents ?? 0), 0), dueNowUsdCents: 0, ...rate, at: now.toISOString() };
+  const ctx: AdminContext = { actor: `client:${input.actorId}`, ip: input.ip ?? null, viaApi: false };
+  const business = await prisma.business.findUnique({ where: { id: input.businessId }, select: { name: true } });
+
+  let row: Prisma.PlanOfferGetPayload<object>;
+  try {
+    row = await prisma.$transaction(async (tx) => {
+      const created = await tx.planOffer.create({
+        data: {
+          businessId: input.businessId,
+          status: "accepted",
+          sentAt: now,
+          acceptedAt: now,
+          validUntil: validUntilOf(now, 1),
+          payMethod: "card",
+          basePlanKey: basePlan.key,
+          featureKeys: (remaining.length > 0 ? left.features : basePlan.features) as Prisma.InputJsonValue,
+          limits: (remaining.length > 0 ? left.limits : basePlan.limits) as unknown as Prisma.InputJsonValue,
+          options: { mode: "removal", added: [], removed: [input.feature], basePlanName: basePlan.name, cardPlan } as unknown as Prisma.InputJsonValue,
+          currency: pc.region.currency,
+          interval: sub.interval,
+          lines: [] as Prisma.InputJsonValue,
+          computedMinor: 0,
+          adjustedMinor: 0,
+          createdBy: ctx.actor,
+        },
+      });
+      if (remaining.length === 0) return created;
+      const planKey = customPlanKeyFor(created.id);
+      const prices = sub.interval === "YEAR" ? { monthlyPriceCents: Math.ceil(left.nextRenewalMinor / 10), yearlyPriceCents: left.nextRenewalMinor } : { monthlyPriceCents: left.nextRenewalMinor, yearlyPriceCents: left.nextRenewalMinor * 10 };
+      await createCustomPlanInTx(tx, { planKey, businessId: input.businessId, businessName: business?.name ?? null, basePlanKey: basePlan.key, currency: pc.region.currency, prices, limits: left.limits, features: left.features, lines: left.lines });
+      return tx.planOffer.update({ where: { id: created.id }, data: { customPlanKey: planKey } });
+    });
+  } catch (error) {
+    if (error && typeof error === "object" && (error as { code?: string }).code === "P2002") throw new OfferError("There is an offer open on your account (above): answer it before changing your card plan.");
+    throw error;
+  }
+  clearPlanCache();
+  await writeAudit(prisma, ctx, "card_plan_remove_feature", `offer:${row.id}`, null, { subscriptionId, removed: removedItems, keys: remaining, plan: row.customPlanKey ?? basePlan.key, creditUsdCents });
+
+  let updated: ProviderSubscription;
+  try {
+    updated = await adapter.removeRecurringItems(subscriptionId, target.map((i) => i.priceId));
+  } catch (error) {
+    if (uncertain(error)) {
+      await logError(error, { source: "billing.card_addons", level: "warn", userId: input.userId, offerId: row.id, subscriptionId });
+      throw new OfferError(`We could not hear back from the card provider. If the change went through, ${label} switches off in a few minutes. Reload Billing in a moment.`);
+    }
+    await withdrawUnconfirmed(row, "The card provider did not accept this change, so nothing was removed.", now);
+    await logError(error, { source: "billing.card_addons", level: /^Paddle API (401|403) /.test(error instanceof Error ? error.message : "") ? "error" : "warn", userId: input.userId, offerId: row.id, subscriptionId });
+    throw new OfferError(/^Paddle API (401|403) /.test(error instanceof Error ? error.message : "") ? CARD_CHANGE_UNAVAILABLE : `The card provider did not accept the change, so nothing was removed. Please try again in a moment, or write to us at ${site.email}.`);
+  }
+  await applyProviderSubscription("PADDLE", updated);
+  clearPlanCache();
+  const after = await prisma.planOffer.findUnique({ where: { id: row.id }, select: { status: true } });
+  return { applied: after?.status === "paid", removed: label, creditUsdCents };
 }

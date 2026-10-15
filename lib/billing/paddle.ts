@@ -171,6 +171,20 @@ export const paddle: BillingAdapter = {
     return subscriptionOrThrow(data);
   },
 
+  // A feature removed from a card plan: every other item is sent back by its price id. prorated_immediately credits the
+  // removed item's unused part at once (Paddle puts it on the customer's credit balance, which pays the next bills).
+  async removeRecurringItems(id, priceIds) {
+    const all = subscriptionItemsOf(await paddleApi(`/subscriptions/${encodeURIComponent(id)}`));
+    const keep = all.filter((i) => !priceIds.includes(i.priceId)).map((i) => ({ price_id: i.priceId, quantity: i.quantity }));
+    if (keep.length === all.length) throw new Error("Those items are not on the subscription any more");
+    if (keep.length === 0) throw new Error("A subscription keeps at least its plan");
+    const data = await paddleApi(`/subscriptions/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: { items: keep, proration_billing_mode: "prorated_immediately", on_payment_failure: "prevent_change" },
+    });
+    return subscriptionOrThrow(data);
+  },
+
   async getSubscription(id) {
     return subscriptionOrThrow(await paddleApi(`/subscriptions/${encodeURIComponent(id)}`));
   },

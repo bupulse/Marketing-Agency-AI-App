@@ -24,3 +24,14 @@ describe("PlanOffer.payMethod in the database", () => {
     expect([...latestPayMethodCheck()].sort()).toEqual([...OFFER_PAY_METHODS].sort());
   });
 });
+
+describe("PlanOffer amounts in the database", () => {
+  it("only a removal from a card plan may cost nothing; every other offer costs more than zero", () => {
+    let check: string | null = null;
+    for (const dir of readdirSync(DIR).filter((d) => /^\d{14}_/.test(d)).sort()) {
+      const sql = readFileSync(join(DIR, dir, "migration.sql"), "utf8");
+      for (const m of sql.matchAll(/"PlanOffer_amounts_check"\s+CHECK\s*(\(.*\));/g)) check = m[1];
+    }
+    expect(check).toBe(`("computedMinor" >= 0 AND ("adjustedMinor" > 0 OR ("adjustedMinor" = 0 AND "options"->>'mode' = 'removal')))`);
+  });
+});

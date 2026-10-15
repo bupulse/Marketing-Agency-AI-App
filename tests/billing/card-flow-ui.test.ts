@@ -188,3 +188,22 @@ describe("Add features on a card plan that takes them (lib/offers/card-plan.ts)"
     expect(out).toContain("The features you added (Website chat and leads) end with this change and their unused part is credited");
   });
 });
+
+describe("the features added to a card plan, each with Remove", () => {
+  it("lists them with their card price and a Remove button; the confirm dialog opens from it", () => {
+    const data = {
+      current: { key: "CUSTOM-X", name: "Custom", priceMinor: 25000, features: ["content", "designs", "websiteChat"] as never, limits: { text: 60, image: 30, chat: 500, videos: 0, voiceCharacters: 0, seats: 1 } as never },
+      interval: "MONTH" as const,
+      periodEnd: "2026-11-14T10:00:00Z",
+      region: { key: "RW", currency: "RWF" },
+      prices: [{ addonKey: "aiPhotos", regionKey: "RW", currency: "RWF", monthlyMinor: 8000 }],
+      addable: ["aiPhotos"] as never,
+      method: "card" as const,
+    };
+    const out = html(createElement(AddFeatures, { data, unavailable: null, momo: "ready", cardRate: null, cardPlan: { usdToRwf: 1450, marginPercent: 12, planUsdCents: 2000 }, cardAddons: [{ key: "websiteChat", label: "Website chat and leads", usdCents: 800 }], now: "2026-10-15T12:00:00Z" }));
+    expect(out).toContain("Added to your card plan");
+    expect(out).toContain("Website chat and leads");
+    expect(out).toContain("+$8 / month");
+    expect(out).toMatch(/Remove <span class="sr-only">Website chat and leads<\/span>/);
+  });
+});

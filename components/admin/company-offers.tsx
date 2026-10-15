@@ -35,7 +35,7 @@ export async function CompanyOffers({ businessId }: { businessId: string }) {
           {offers.map((o) => (
             <li key={o.id} className="flex flex-wrap items-center justify-between gap-2">
               <Link href={`/admin/offers/${o.id}`} className="underline">
-                Offer {formatMinor(o.adjustedMinor, o.currency)} / {o.interval === "YEAR" ? "year" : "month"}, {dateTime(o.createdAt)}
+                {o.removed.length > 0 ? `Removed ${o.removed.join(", ")} from the card plan` : `Offer ${formatMinor(o.adjustedMinor, o.currency)} / ${o.interval === "YEAR" ? "year" : "month"}`}, {dateTime(o.createdAt)}
               </Link>
               <span className="flex flex-wrap items-center gap-2">
                 {o.status === "accepted" && o.acceptedAt && <span className="text-[13px] text-muted">{acceptedAgoText(o.acceptedAt, now)}</span>}

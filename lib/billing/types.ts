@@ -92,6 +92,11 @@ export interface BillingAdapter {
    * not added to card plans here.
    */
   addRecurringItems?(providerSubscriptionId: string, items: NewRecurringItem[]): Promise<ProviderSubscription>;
+  /**
+   * Takes recurring items (features added to a card plan) off the subscription, keeping every other item, and credits
+   * their unused part now. Optional, like addRecurringItems.
+   */
+  removeRecurringItems?(providerSubscriptionId: string, priceIds: string[]): Promise<ProviderSubscription>;
   /** The subscription as the provider has it now (to settle a change whose answer was lost). */
   getSubscription?(providerSubscriptionId: string): Promise<ProviderSubscription>;
   /**

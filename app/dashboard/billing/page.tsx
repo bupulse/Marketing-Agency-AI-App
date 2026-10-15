@@ -268,7 +268,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
       {cardPending && (
         <GlassCard role="status" className="flex items-start gap-3 border border-line p-5">
           <AlertTriangle aria-hidden className="mt-0.5 size-5 shrink-0 text-muted" />
-          <p className="text-sm">Adding {cardPending.labels.join(", ")} to your card plan: waiting for the card payment to be confirmed. This takes a moment; reload Billing to see them on.</p>
+          <p className="text-sm">{cardPending.removal ? `Removing ${cardPending.labels.join(", ")} from your card plan: waiting for the card provider to confirm. This takes a moment; reload Billing to see it off.` : `Adding ${cardPending.labels.join(", ")} to your card plan: waiting for the card payment to be confirmed. This takes a moment; reload Billing to see them on.`}</p>
         </GlassCard>
       )}
 
@@ -279,6 +279,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
           momo={methodState(regionHas("momo"), momoReady)}
           cardRate={cardForOffers && addition.ok && !onCardPlan ? cardRate : null}
           cardPlan={cardPlanTerms}
+          cardAddons={onCardPlan ? (planAddons?.features ?? []) : []}
           now={now.toISOString()}
         />
       )}

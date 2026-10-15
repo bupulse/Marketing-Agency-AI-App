@@ -379,6 +379,8 @@ export type AdminOfferView = {
   managedTier: ManagedTier;
   /** Set for "Add to current plan" (and the client's own "Add features"): prorated now, full price from the renewal. */
   addition: OfferAddition | null;
+  /** A feature removed from a card plan (options.mode "removal", nothing paid): which one. Empty for every other offer. */
+  removed: FeatureKey[];
   validDays: number;
   lines: PricedLine[];
   note: string | null;
@@ -421,6 +423,7 @@ function adminView(row: Row, company: string): AdminOfferView {
     limits: limitsOf(row.limits),
     managedTier: o.managedTier,
     addition: readAddition(row.options),
+    removed: (row.options as { mode?: unknown } | null)?.mode === "removal" ? readFeatureKeys((row.options as { removed?: unknown }).removed) : [],
     validDays: o.validDays,
     lines: readLinesJson(row.lines),
     note: row.note,
@@ -487,6 +490,41 @@ function customPrices(adjustedMinor: number, interval: BillingInterval) {
 }
 
 /**
+ * The company's private plan (docs/OFFERS.md, "Accept"): hidden, its key from the offer (so a second call never makes a
+ * second plan), the features and limits given, priced in the offer's currency. Also the plan a card plan is left with
+ * when a feature is removed from it (lib/offers/card-plan.ts).
+ */
+export async function createCustomPlanInTx(tx: Prisma.TransactionClient, input: { planKey: string; businessId: string; businessName: string | null; basePlanKey: string | null; currency: string; prices: { monthlyPriceCents: number; yearlyPriceCents: number }; limits: unknown; features: FeatureKey[]; lines: unknown }) {
+  const existing = await tx.planDefinition.findUnique({ where: { key: input.planKey }, select: { key: true } });
+  if (existing) return;
+  // The custom plan's AI allowance: its base plan's, plus what its image packs need (docs/CONTENT_VISUALS.md).
+  const base = input.basePlanKey ? await tx.planDefinition.findUnique({ where: { key: input.basePlanKey }, select: { aiMonthlyUsd: true } }) : null;
+  const aiMonthlyUsd = customAllowanceUsd({ baseUsd: base?.aiMonthlyUsd ?? (input.basePlanKey ? SEED_PLANS[input.basePlanKey]?.aiMonthlyUsd : undefined), lines: input.lines, limits: input.limits });
+  await tx.planDefinition.create({
+    data: {
+      key: input.planKey,
+      name: "Custom",
+      description: `${input.businessName ?? "Your company"}'s own plan`,
+      isTrial: false,
+      status: "hidden",
+      sortOrder: 900,
+      highlight: false,
+      ...input.prices,
+      currency: input.currency,
+      // Never less than the features include (an offer saved with 0 chat replies and website chat would refuse every reply).
+      limits: json(input.limits && typeof input.limits === "object" ? withIncludedLimits(input.limits as unknown as PlanLimits, input.features) : input.limits),
+      highlights: json([]),
+      featureKeys: json(input.features),
+      features: json([]),
+      capabilities: json(capabilitiesOf(input.features)),
+      isCustom: true,
+      businessId: input.businessId,
+      aiMonthlyUsd,
+    },
+  });
+}
+
+/**
  * The client accepts the offer and chooses how to pay: sent -> accepted, and the company's private plan is prepared
  * (a hidden PlanDefinition with isCustom; its key comes from the offer id, so a second accept can never make a second
  * plan). Nothing switches on yet: that happens when the payment is confirmed. Accepting again (or choosing the other
@@ -521,34 +559,7 @@ export async function acceptOffer(input: { userId: string; actorId: string; busi
     const won = await prisma.$transaction(async (tx) => {
       const claim = await tx.planOffer.updateMany({ where: { id: row.id, status: "sent", validUntil: { gt: now } }, data: { status: "accepted", acceptedAt: now, payMethod: method, customPlanKey: planKey, ...(reprice ?? {}) } });
       if (claim.count !== 1) return false;
-      const existing = await tx.planDefinition.findUnique({ where: { key: planKey }, select: { key: true } });
-      if (!existing) {
-        // The custom plan's AI allowance: its base plan's, plus what its image packs need (docs/CONTENT_VISUALS.md).
-        const base = row.basePlanKey ? await tx.planDefinition.findUnique({ where: { key: row.basePlanKey }, select: { aiMonthlyUsd: true } }) : null;
-        const aiMonthlyUsd = customAllowanceUsd({ baseUsd: base?.aiMonthlyUsd ?? (row.basePlanKey ? SEED_PLANS[row.basePlanKey]?.aiMonthlyUsd : undefined), lines: row.lines, limits: row.limits });
-        await tx.planDefinition.create({
-          data: {
-            key: planKey,
-            name: "Custom",
-            description: `${business?.name ?? "Your company"}'s own plan`,
-            isTrial: false,
-            status: "hidden",
-            sortOrder: 900,
-            highlight: false,
-            ...prices,
-            currency: row.currency,
-            // Never less than the features include (an offer saved with 0 chat replies and website chat would refuse every reply).
-            limits: json(row.limits && typeof row.limits === "object" ? withIncludedLimits(row.limits as unknown as PlanLimits, features) : row.limits),
-            highlights: json([]),
-            featureKeys: json(features),
-            features: json([]),
-            capabilities: json(capabilitiesOf(features)),
-            isCustom: true,
-            businessId: input.businessId,
-            aiMonthlyUsd,
-          },
-        });
-      }
+      await createCustomPlanInTx(tx, { planKey, businessId: input.businessId, businessName: business?.name ?? null, basePlanKey: row.basePlanKey, currency: row.currency, prices, limits: row.limits, features, lines: row.lines });
       await writeAudit(tx, ctx, "accept_offer", `offer:${row.id}`, { status: "sent" }, { status: "accepted", method, customPlanKey: planKey, adjustedMinor: reprice?.adjustedMinor ?? row.adjustedMinor, currency: row.currency, interval: row.interval, ...(repriced ? { addition: true, nextRenewalMinor: repriced.nextRenewalMinor } : {}) });
       return true;
     });

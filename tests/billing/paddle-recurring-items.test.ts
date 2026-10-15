@@ -89,3 +89,20 @@ describe("addRecurringItems", () => {
     expect((e as Error).message).not.toMatch(/pdl_sdbx_apikey_test/);
   });
 });
+
+describe("removeRecurringItems", () => {
+  it("sends back every other item by price id, prorated_immediately (the unused part is credited), never the plan alone gone", async () => {
+    fetchMock.mockImplementation(async (_url, init) => new Response(JSON.stringify({ data: init?.method === "PATCH" ? subscription([plan, added]) : subscription([earlier, plan, added]) }), { status: 200 }));
+    const out = await paddle.removeRecurringItems!("sub_1", ["pri_add_old"]);
+    expect(fetchMock.mock.calls.map(([url, init]) => `${init?.method ?? "GET"} ${url}`)).toEqual(["GET https://sandbox-api.paddle.com/subscriptions/sub_1", "PATCH https://sandbox-api.paddle.com/subscriptions/sub_1"]);
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ items: [{ price_id: "pri_plan", quantity: 1 }, { price_id: "pri_add_new", quantity: 1 }], proration_billing_mode: "prorated_immediately", on_payment_failure: "prevent_change" });
+    expect(out.addons?.map((a) => a.key)).toEqual(["websiteChat"]);
+  });
+
+  it("an item no longer there, or taking every item off, is refused before any change", async () => {
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({ data: subscription([plan, added]) }), { status: 200 }));
+    await expect(paddle.removeRecurringItems!("sub_1", ["pri_gone"])).rejects.toThrow(/not on the subscription/);
+    await expect(paddle.removeRecurringItems!("sub_1", ["pri_plan", "pri_add_new"])).rejects.toThrow(/keeps at least its plan/);
+    expect(fetchMock.mock.calls.every(([, init]) => (init?.method ?? "GET") === "GET")).toBe(true);
+  });
+});

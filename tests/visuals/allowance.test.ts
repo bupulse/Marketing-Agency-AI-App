@@ -93,7 +93,9 @@ describe("review fixes: image packs, custom plans, refill date, render lease", (
 
   it("offers set the custom plan's allowance when they are accepted", () => {
     const src = readFileSync("lib/offers/service.ts", "utf8");
-    expect(src).toMatch(/customAllowanceUsd\(\{ baseUsd: .*lines: row\.lines, limits: row\.limits \}\)/);
+    // createCustomPlanInTx, used by acceptOffer (and by a removal from a card plan), with the offer's lines and limits.
+    expect(src).toMatch(/customAllowanceUsd\(\{ baseUsd: .*lines: input\.lines, limits: input\.limits \}\)/);
+    expect(src).toMatch(/createCustomPlanInTx\(tx, \{ planKey, businessId: input\.businessId, .*limits: row\.limits, features, lines: row\.lines \}\)/);
     expect(src).toMatch(/isCustom: true,\s+businessId: input\.businessId,\s+aiMonthlyUsd,/);
   });
 

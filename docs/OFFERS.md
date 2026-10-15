@@ -172,24 +172,58 @@ no team, no card link (`lib/offers/card-plan.ts`, `lib/offers/card-plan-items.ts
   nothing; the offer is withdrawn and the client told).
 - **Switching on:** never from the browser. Paddle's answer to the change and its `subscription.updated` webhook go
   through the same `applyProviderSubscription`: `mapSubscription` takes the plan's own price (the first item that is
-  not an added feature; items come in any order) and reads the added items; `cardAddonPlan` checks each signature and
-  puts the client on the custom plan of the newest offer whose items are there, and the first event carrying a new one
-  settles that offer (`markOfferPaidInTx`, `paidBy card:<subscription>`), once, in the same write. Renewals keep the
-  items and the plan; items BuPulse cannot match are logged (`billing.card_addons`) for the owner to check in Paddle.
+  not an added feature; items come in any order) and reads the added items. Every change of a card plan (an
+  add-features offer, or a removal) records the add-ons the plan has once it is on (`cardPlan.keys`; for the first
+  offers, their custom plan's features beyond the plan's own). `cardAddonPlan` checks each item's signature and puts
+  the client on the change whose keys are exactly the signed items, the one waiting first, else the latest: its custom
+  plan, or the plan's own when none are left. Nothing is switched on that the card is not paying for (items that match
+  no change: the latest paid change whose features are all still there, logged). The first event carrying a change
+  settles it (`settleCardPlanChangeInTx`: an offer is paid with `markOfferPaidInTx`, `paidBy card:<subscription>`; a
+  removal is marked done), once, in the same write. Renewals keep the items and the plan; items BuPulse cannot match
+  are logged (`billing.card_addons`) for the owner to check in Paddle.
 - **Lost answers:** a network error or a 5xx leaves the offer open for the webhook; the next "Add to my card plan"
   (after a minute) reads the subscription from Paddle and settles it when the items are there, or withdraws it: never
   added twice. Billing says "waiting for the card payment to be confirmed" meanwhile and shows no pay buttons for it
   (`clientOffer` never shows a card plan's offer).
-- **Removing and plan changes:** a plan change (`changePlan`) sends only the new price, so the added features end with
-  it (Paddle credits their unused part); the switch dialog says so, naming them. Choosing the plan's own price again
-  ("Switch to Starter") is how they are removed. Billing shows the card plan's price as the plan's plus the added
-  features' ("$17 per month: Starter plus AI photos").
+- **Plan changes:** a plan change (`changePlan`) sends only the new price, so the added features end with it (Paddle
+  credits their unused part); the switch dialog says so, naming them. Billing shows the card plan's price as the plan's
+  plus the added features' ("$17 per month: Starter plus AI photos"). One feature at a time: "Removing a feature from a
+  card plan" below.
 - **Not possible, and why:** set to end ("Renew it from <date>, then add the features here"), past due ("Update your
   payment method above, then add features"). Card not set up, switched off, or the provider unable to take the change
   (a key without permission): "Adding features by card is not available right now. Write to us at … and we will add
   them to your plan for you." An admin "Add to current plan" offer is refused for a card plan (it could only be paid
   by Mobile Money or a one-off card payment).
 - Tests: `tests/offers/card-plan.test.ts`.
+
+## Removing a feature from a card plan (decided 15 October 2026)
+
+Billing → Add features lists the features added to a card plan ("Added to your card plan"), each with its card price
+and **Remove** (`removeFeatureFromCardPlan` in `lib/offers/card-plan.ts`).
+
+- **Confirm first:** "Remove Website chat and leads? It stops when Paddle confirms. The unused days go back as credit on
+  your card plan, which then costs $X a month", with what it leaves behind (`cardRemovalEffects`): Website chat stops
+  answering (the widget reads the plan, `lib/widget/config.ts`) and the leads already captured stay; AI photos' images
+  go back to the plan's own number and the designs made stay; anything used above the new limits is not refunded and
+  new use waits for the next period.
+- **Recorded as a removal:** a PlanOffer with `options.mode = "removal"`, `removed`, `cardPlan.keys` (what is left) and
+  nothing to pay (`adjustedMinor` 0; migration `20261020100000_offer_removal_amount` lets only a removal be 0), created
+  accepted by the client, audited `card_plan_remove_feature`. Its custom plan is the plan's own plus the features left
+  (`quoteAddition` on the plan's regional price: limits and the price a Mobile Money renewal of it would take); none
+  left: no custom plan, the plan's own.
+- **The change:** `PATCH /subscriptions/{id}` with every other item kept by its price id (`removeRecurringItems` in
+  `lib/billing/paddle.ts`), `prorated_immediately`: Paddle puts the removed item's unused days on the customer's credit
+  balance, which pays the next bills (checked in the sandbox).
+- **Switching off:** only when Paddle confirms (its answer, or the webhook), through `applyProviderSubscription` like
+  every change: the removal's keys match the items left, so the client moves to its plan and it is marked done
+  (audited `card_plan_feature_removed`). A refusal withdraws the removal (its plan retired); a lost answer is settled on
+  the next try, like adding.
+- **Not removed:** a feature another added one needs ("Voiceover needs Videos: remove it first."), a plan set to end
+  (they end with it), past due (update the payment first).
+- **Mobile Money plans:** no self-serve removal (not built). Dropping a feature at the renewal would need the renewal
+  payment, its reminders and the confirmation to move to the smaller plan only when the paid period ends; Billing says
+  "Request a custom change" for it, as before.
+- Tests: `tests/offers/card-plan.test.ts` ("Remove a feature from a card plan").
 
 ## Custom plan requests (R5)
 

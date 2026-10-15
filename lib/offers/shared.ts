@@ -411,15 +411,25 @@ export function cardAdditionQuote(input: { lines: readonly PricedLine[]; currenc
   return { items, perPeriodUsdCents, dueNowUsdCents: prorateMinor(perPeriodUsdCents, daysLeft, periodDays), daysLeft, periodDays };
 }
 
-/** What an add-features offer on a card plan stores (PlanOffer.options.cardPlan). */
+/**
+ * What a change to a card plan's added features stores (PlanOffer.options.cardPlan): an add-features offer, or a
+ * removal (options.mode "removal": one feature taken off, nothing paid).
+ */
 export type OfferCardPlan = {
   /** The card subscription the items were added to. */
   subscriptionId: string;
   /** The plan the subscription's own price is (the custom plan is that plan plus the added features). */
   basePlanKey: string;
   interval: "MONTH" | "YEAR";
-  /** This offer's items. */
+  /** This offer's items (none for a removal). */
   items: CardAddonItem[];
+  /** A removal's item taken off the card plan. */
+  removed: CardAddonItem[];
+  /**
+   * The added features' keys on the card plan once this change is on: the subscription's items then say which change
+   * it is on (lib/offers/card-plan-items.ts). Null for the first add-features offers, made before removals existed.
+   */
+  keys: string[] | null;
   /** This offer's items per period. */
   addedUsdCents: number;
   /** Every added feature on the card plan once this offer is on (earlier ones included), per period. */
@@ -438,9 +448,22 @@ export function readCardPlan(options: unknown): OfferCardPlan | null {
   const v = c as Record<string, unknown>;
   const num = (k: string) => (typeof v[k] === "number" && Number.isFinite(v[k]) ? (v[k] as number) : 0);
   if (typeof v.subscriptionId !== "string" || typeof v.basePlanKey !== "string") return null;
-  const items = Array.isArray(v.items) ? v.items.filter((i): i is CardAddonItem => Boolean(i) && typeof i.key === "string" && typeof i.label === "string" && Number.isSafeInteger(i.usdCents)) : [];
-  return { subscriptionId: v.subscriptionId, basePlanKey: v.basePlanKey, interval: v.interval === "YEAR" ? "YEAR" : "MONTH", items, addedUsdCents: num("addedUsdCents"), addonsUsdCents: num("addonsUsdCents"), dueNowUsdCents: num("dueNowUsdCents"), usdToRwf: num("usdToRwf"), marginPercent: num("marginPercent"), at: typeof v.at === "string" ? v.at : "" };
+  const itemsOf = (list: unknown) => (Array.isArray(list) ? list.filter((i): i is CardAddonItem => Boolean(i) && typeof i.key === "string" && typeof i.label === "string" && Number.isSafeInteger(i.usdCents)) : []);
+  const keys = Array.isArray(v.keys) ? v.keys.filter((k): k is string => typeof k === "string") : null;
+  return { subscriptionId: v.subscriptionId, basePlanKey: v.basePlanKey, interval: v.interval === "YEAR" ? "YEAR" : "MONTH", items: itemsOf(v.items), removed: itemsOf(v.removed), keys, addedUsdCents: num("addedUsdCents"), addonsUsdCents: num("addonsUsdCents"), dueNowUsdCents: num("dueNowUsdCents"), usdToRwf: num("usdToRwf"), marginPercent: num("marginPercent"), at: typeof v.at === "string" ? v.at : "" };
 }
+
+/**
+ * What removing a feature from a card plan leaves behind, for the confirm dialog: the feature gate switches it off
+ * everywhere; what it made stays; usage above the new limits is not refunded and new use waits for the next period.
+ */
+export function cardRemovalEffects(key: string): string[] {
+  const own = key === "websiteChat" ? ["Your website chat stops answering visitors; the leads it already captured stay."] : key === "aiPhotos" ? ["AI photos stop, and your AI images a month go back to your plan's own number; the designs you made stay."] : [];
+  return [...own, "Anything already used above the plan's new limits is not refunded; new use waits for the next period."];
+}
+
+/** Two sets of add-on keys are the same (order does not matter). */
+export const sameKeys = (a: readonly string[], b: readonly string[]) => a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",");
 
 // ---- the request form: what the client already has ------------------------------------------------------------------
 

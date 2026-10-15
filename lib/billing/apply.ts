@@ -3,8 +3,7 @@ import type { BillingProvider, Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { planForAnyPriceId } from "@/lib/region-prices";
 import { logError } from "@/lib/errors";
-import { AdminError, type AdminContext } from "@/lib/admin/types";
-import { markOfferPaidInTx } from "@/lib/offers/activate";
+import { AdminError } from "@/lib/admin/types";
 import { addMonths } from "./period";
 import { tooEarlyToRenew } from "./renewal";
 import { verifyCheckoutUser } from "./signing";
@@ -21,7 +20,6 @@ import type { ProviderSubscription } from "./types";
 export type ApplyOutcome = "applied" | "stale" | "unknown_price" | "unknown_user" | "duplicate";
 
 const LIVE = new Set(["ACTIVE", "PAST_DUE", "TRIALING"]);
-const PADDLE_SYSTEM: AdminContext = { actor: "system:paddle", ip: null, viaApi: false };
 
 /**
  * Writes a provider subscription onto the user's Subscription row. Called from webhooks and
@@ -35,12 +33,12 @@ export async function applyProviderSubscription(provider: BillingProvider, sub: 
   // user id from checkout, but only when the server's signature proves we put it there.
   let row = await prisma.subscription.findFirst({
     where: { providerSubscriptionId: sub.providerSubscriptionId },
-    select: { userId: true, providerSubscriptionId: true, status: true, provider: true, currentPeriodEnd: true },
+    select: { userId: true, plan: true, providerSubscriptionId: true, status: true, provider: true, currentPeriodEnd: true },
   });
   if (!row && sub.userId && (await verifyCheckoutUser(sub.userId, sub.userIdSignature))) {
     row = await prisma.subscription.findUnique({
       where: { userId: sub.userId },
-      select: { userId: true, providerSubscriptionId: true, status: true, provider: true, currentPeriodEnd: true },
+      select: { userId: true, plan: true, providerSubscriptionId: true, status: true, provider: true, currentPeriodEnd: true },
     });
   }
   if (!row) return "unknown_user";
@@ -65,10 +63,12 @@ export async function applyProviderSubscription(provider: BillingProvider, sub: 
     if (!LIVE.has(sub.status)) return "stale";
   }
 
-  // Features added to a card plan (docs/OFFERS.md): recurring items next to the plan's price put the client on the custom
-  // plan they made, and the first event that carries a new one switches it on and settles its offer. Without them, the
-  // plan's own features (an added feature that was removed, or a plan change, ends with its item).
-  const addon = sub.addons?.length ? await (await import("@/lib/offers/card-plan-items")).cardAddonPlan(row.userId, sub, match.plan) : null;
+  // Features added to a card plan (docs/OFFERS.md): the recurring items next to the plan's price say which change of the
+  // card plan it is on (its custom plan, or the plan's own once the last added feature is removed), and the first event
+  // that carries a change switches it and settles it. A plan change ends them with their items.
+  // Asked only when there is something to tell: added items on it, or a custom plan on it now (the last one removed).
+  const cardItems = provider === "PADDLE" && (sub.addons?.length || row.plan?.startsWith("CUSTOM-")) ? await import("@/lib/offers/card-plan-items") : null;
+  const addon = cardItems ? await cardItems.cardAddonPlan(row.userId, sub, match.plan) : null;
 
   const data: Prisma.SubscriptionUncheckedUpdateManyInput = {
     provider,
@@ -96,18 +96,15 @@ export async function applyProviderSubscription(provider: BillingProvider, sub: 
   };
   const settle = addon?.settle ?? null;
   let count: number;
-  if (!settle) {
+  if (!settle || !cardItems) {
     ({ count } = await prisma.subscription.updateMany({ where, data }));
   } else {
-    // The added features' offer is paid by this card subscription: settled with the same write, once. The API answer
-    // and the webhook may race: the loser of the offer's conditional write finds it paid and only writes the plan.
-    const write = (settleOffer: boolean) =>
+    // The card plan change (added features paid, or a feature removed) is settled with the same write, once. The API
+    // answer and the webhook may race: the loser of the change's conditional write finds it settled and only writes the plan.
+    const write = (settleChange: boolean) =>
       prisma.$transaction(async (tx) => {
         const written = await tx.subscription.updateMany({ where, data });
-        if (written.count > 0 && settleOffer) {
-          const fresh = await tx.planOffer.findUnique({ where: { id: settle.id }, select: { status: true } });
-          if (fresh?.status === "accepted") await markOfferPaidInTx(tx, PADDLE_SYSTEM, { offer: settle, paymentId: sub.providerSubscriptionId, invoiceId: null, planKey: settle.customPlanKey as string, amountMinor: settle.adjustedMinor, currency: settle.currency, paidBy: `card:${sub.providerSubscriptionId}` }, new Date());
-        }
+        if (written.count > 0 && settleChange) await cardItems.settleCardPlanChangeInTx(tx, settle, sub.providerSubscriptionId, new Date());
         return written.count;
       });
     try {

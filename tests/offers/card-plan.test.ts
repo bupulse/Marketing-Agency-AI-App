@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
   logError: vi.fn<(error: unknown, context?: Record<string, unknown>) => Promise<void>>(async () => {}),
   paddle: { items: [] as Item[], status: "active", scheduled: null as null | { action: string; effective_at: string }, n: 0, updatedAt: 0 },
   add: vi.fn(),
+  remove: vi.fn(),
   get: vi.fn(),
   fail: null as Error | null,
   /** Paddle made the change but the answer was lost. */
@@ -29,7 +30,7 @@ vi.mock("@/lib/billing/card-ready", () => ({ cardCheckoutConfigured: async () =>
 vi.mock("@/lib/billing", async (orig) => ({
   ...(await orig<typeof import("@/lib/billing")>()),
   activeProvider: () => "PADDLE",
-  billingAdapter: () => ({ provider: "PADDLE", isConfigured: async () => true, addRecurringItems: h.add, getSubscription: h.get }),
+  billingAdapter: () => ({ provider: "PADDLE", isConfigured: async () => true, addRecurringItems: h.add, removeRecurringItems: h.remove, getSubscription: h.get }),
 }));
 
 import { mapSubscription, subscriptionItemsOf } from "@/lib/billing/paddle-map";
@@ -41,9 +42,9 @@ import { resetRegionCache } from "@/lib/region";
 import { resetRegionPriceCache } from "@/lib/region-prices";
 import { cardUsdCents } from "@/lib/region-format";
 import * as offers from "@/lib/offers/service";
-import { addFeaturesByCard, CARD_PLAN_UNAVAILABLE, CardPlanError } from "@/lib/offers/card-plan";
+import { addFeaturesByCard, CARD_PLAN_UNAVAILABLE, CardPlanError, removeFeatureFromCardPlan } from "@/lib/offers/card-plan";
 import { cardPlanAddons, pendingCardAddition } from "@/lib/offers/card-plan-items";
-import { CARD_ADDON_KIND, cardAddonMessage, cardAdditionQuote, customPlanKeyFor, readCardPlan } from "@/lib/offers/shared";
+import { CARD_ADDON_KIND, cardAddonMessage, cardAdditionQuote, cardRemovalEffects, customPlanKeyFor, prorateMinor, readCardPlan } from "@/lib/offers/shared";
 import type { NewRecurringItem } from "@/lib/billing/types";
 
 const USER = "22222222-2222-4222-8222-222222222222";
@@ -101,6 +102,13 @@ beforeEach(() => {
     return mapSubscription(raw())!;
   });
   h.get.mockImplementation(async () => mapSubscription(raw())!);
+  // Paddle: the given items come off, every other item stays, the unused days are credited.
+  h.remove.mockImplementation(async (_id: string, priceIds: string[]) => {
+    if (h.fail) throw h.fail;
+    h.paddle.items = h.paddle.items.filter((i) => !priceIds.includes(i.price.id));
+    if (h.lose) throw new TypeError("fetch failed");
+    return mapSubscription(raw())!;
+  });
   resetPlanCache();
   resetRegionCache();
   resetRegionPriceCache();
@@ -272,5 +280,106 @@ describe("Add to my card plan", () => {
     await applyProviderSubscription("PADDLE", mapSubscription(raw())!);
     expect(sub().plan).toBe("STANDARD");
     expect(h.logError.mock.calls.some((c) => (c[1] as { source?: string }).source === "billing.card_addons")).toBe(true);
+  });
+});
+
+const remove = (feature: string, at: Date) => removeFeatureFromCardPlan({ userId: USER, actorId: USER, businessId: "biz1", feature }, at);
+const planOf = (key: string) => h.db.planDefinition.rows.find((r) => r.key === key)!;
+
+describe("Remove a feature from a card plan", () => {
+  it("one of two: Paddle keeps the plan and the other, the client moves to a custom plan of what is left, the removal is on record", async () => {
+    seed();
+    const usd = await rate();
+    await add(["websiteChat"]);
+    await add(["aiPhotos"], later(5 * 60_000));
+    const at = later(24 * 3600_000);
+    const done = await remove("websiteChat", at);
+    expect(h.remove).toHaveBeenCalledWith("sub_1", ["pri_add_1"]);
+    expect(h.paddle.items.map((i) => i.price.id)).toEqual([PLAN_PRICE, "pri_add_2"]);
+    // 18 of the 31 days left a day later: the unused part of $8 comes back as credit.
+    expect(done).toEqual({ applied: true, removed: "Website chat and leads", creditUsdCents: prorateMinor(usd(10000), 18, 31) });
+
+    const removal = h.db.planOffer.rows.find((r) => (r.options as { mode?: string }).mode === "removal")!;
+    expect(removal).toMatchObject({ status: "paid", paidBy: "card:sub_1", adjustedMinor: 0, computedMinor: 0, payMethod: "card", basePlanKey: "STANDARD" });
+    expect(readCardPlan(removal.options)).toMatchObject({ keys: ["aiPhotos"], items: [], removed: [{ key: "websiteChat", usdCents: usd(10000) }], addonsUsdCents: usd(8000) });
+    expect(sub()).toMatchObject({ plan: customPlanKeyFor(removal.id as string), provider: "PADDLE", providerPriceId: PLAN_PRICE, currentPeriodEnd: END });
+    const plan = planOf(sub().plan as string);
+    expect(plan.featureKeys).toEqual(expect.arrayContaining(["content", "designs", "aiPhotos"]));
+    expect(plan.featureKeys).not.toContain("websiteChat");
+    // Website chat's 500 replies go with it: the widget stops answering (lib/widget/config.ts reads the plan).
+    expect((plan.limits as { chat: number }).chat).toBe(0);
+    // The plan left is priced like a Mobile Money renewal of it: the plan's own plus AI photos.
+    expect(plan).toMatchObject({ monthlyPriceCents: 35000 + 8000, currency: "RWF", isCustom: true });
+    expect(h.db.auditLog.rows.map((a) => a.action)).toEqual(expect.arrayContaining(["card_plan_remove_feature", "card_plan_feature_removed"]));
+    expect(await cardPlanAddons("biz1", sub().plan as string)).toMatchObject({ usdCents: usd(8000), features: [{ key: "aiPhotos", label: "AI photos", usdCents: usd(8000) }] });
+  });
+
+  it("the last one: back on the plan's own; the webhook of the same change keeps it there and settles nothing twice", async () => {
+    seed();
+    await add(["websiteChat"]);
+    const done = await remove("websiteChat", later(5 * 60_000));
+    expect(done.applied).toBe(true);
+    expect(h.paddle.items.map((i) => i.price.id)).toEqual([PLAN_PRICE]);
+    expect(sub().plan).toBe("STANDARD");
+    const removal = h.db.planOffer.rows.find((r) => (r.options as { mode?: string }).mode === "removal")!;
+    expect(removal).toMatchObject({ status: "paid", customPlanKey: null });
+    await applyProviderSubscription("PADDLE", mapSubscription(raw())!);
+    expect(sub().plan).toBe("STANDARD");
+    expect(h.db.auditLog.rows.filter((a) => a.action === "card_plan_feature_removed")).toHaveLength(1);
+    // Added again later: on again, on a new custom plan.
+    await add(["websiteChat"], later(10 * 60_000));
+    expect(planOf(sub().plan as string).featureKeys).toContain("websiteChat");
+  });
+
+  it("a feature another added one needs is not removed first; a feature not on the plan, set to end or past due: nothing is sent", async () => {
+    seed();
+    const sig = await signCheckoutUser(cardAddonMessage("o_x", USER));
+    h.paddle.items.push(
+      { quantity: 1, price: { id: "pri_video", custom_data: { kind: CARD_ADDON_KIND, key: "video", offerId: "o_x", userId: USER, sig }, unit_price: { amount: "1600" } } },
+      { quantity: 1, price: { id: "pri_voice", custom_data: { kind: CARD_ADDON_KIND, key: "voice", offerId: "o_x", userId: USER, sig }, unit_price: { amount: "1200" } } },
+    );
+    expect((await err(remove("video", NOW)))?.message).toBe("Voiceover needs Videos: remove it first.");
+    expect((await err(remove("analytics", NOW)))?.message).toMatch(/not on your card plan any more/);
+    Object.assign(sub(), { cancelAtPeriodEnd: true });
+    expect((await err(remove("voice", NOW)))?.message).toMatch(/set to end on 1 November 2026: the features you added end with it/);
+    Object.assign(sub(), { cancelAtPeriodEnd: false, status: "PAST_DUE" });
+    expect((await err(remove("voice", NOW)))?.message).toMatch(/Update your payment method above first/);
+    expect(h.remove).not.toHaveBeenCalled();
+    expect(h.db.planOffer.rows.filter((r) => (r.options as { mode?: string }).mode === "removal")).toHaveLength(0);
+  });
+
+  it("Paddle refuses: nothing removed, the removal withdrawn and its plan retired; a lost answer settles on the next try", async () => {
+    seed();
+    await add(["websiteChat"]);
+    h.fail = new Error("Paddle API 400 on /subscriptions/sub_1: bad_request something");
+    expect((await err(remove("websiteChat", later(5 * 60_000))))?.message).toMatch(/did not accept the change, so nothing was removed/);
+    expect(h.db.planOffer.rows.find((r) => (r.options as { mode?: string }).mode === "removal")).toMatchObject({ status: "withdrawn" });
+    expect(planOf(sub().plan as string).featureKeys).toContain("websiteChat");
+
+    h.fail = null;
+    h.lose = true;
+    expect((await err(remove("websiteChat", later(10 * 60_000))))?.message).toMatch(/could not hear back from the card provider/);
+    expect(await pendingCardAddition("biz1")).toMatchObject({ removal: true, labels: ["Website chat and leads"] });
+    h.lose = false;
+    expect((await err(remove("websiteChat", later(12 * 60_000))))?.message).toMatch(/earlier change went through: Website chat and leads is off/);
+    expect(sub().plan).toBe("STANDARD");
+    expect(h.remove).toHaveBeenCalledTimes(2);
+  });
+
+  it("the first card plans, made before removals, still map from their custom plan's features", async () => {
+    seed();
+    await add(["websiteChat"]);
+    const key = sub().plan;
+    const offer = h.db.planOffer.rows[0];
+    const options = offer.options as { cardPlan: Record<string, unknown> };
+    delete options.cardPlan.keys;
+    sub().plan = "STANDARD";
+    await applyProviderSubscription("PADDLE", mapSubscription(raw())!);
+    expect(sub().plan).toBe(key);
+  });
+
+  it("what the dialog says a removal leaves behind", () => {
+    expect(cardRemovalEffects("websiteChat")).toEqual(["Your website chat stops answering visitors; the leads it already captured stay.", "Anything already used above the plan's new limits is not refunded; new use waits for the next period."]);
+    expect(cardRemovalEffects("analytics")).toHaveLength(1);
   });
 });

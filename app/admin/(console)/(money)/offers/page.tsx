@@ -64,7 +64,7 @@ export default async function OffersPage({ searchParams }: { searchParams: Promi
               {offers.map((o) => (
                 <tr key={o.id}>
                   <Td className="max-w-[14rem]"><Link href={`/admin/offers/${o.id}`} className="block truncate font-semibold underline">{o.company}</Link></Td>
-                  <Td className="max-w-[16rem]"><span className="line-clamp-2 text-muted">{[o.basePlanName, ...o.added.map(String)].filter(Boolean).join(" + ") || "—"}</span></Td>
+                  <Td className="max-w-[16rem]"><span className="line-clamp-2 text-muted">{o.removed.length > 0 ? `${o.basePlanName ?? "Plan"} − ${o.removed.map(String).join(", ")} (removed from the card plan)` : [o.basePlanName, ...o.added.map(String)].filter(Boolean).join(" + ") || "—"}</span></Td>
                   <Td right>{formatMinor(o.adjustedMinor, o.currency)} / {o.interval === "YEAR" ? "yr" : "mo"}</Td>
                   <Td className="whitespace-nowrap">{dateTime(o.createdAt)}</Td>
                   <Td className="whitespace-nowrap">{o.status === "accepted" && o.acceptedAt ? acceptedAgoText(o.acceptedAt, now) : o.validUntil && (o.status === "sent" || o.status === "expired") ? dateTime(o.validUntil) : "—"}</Td>

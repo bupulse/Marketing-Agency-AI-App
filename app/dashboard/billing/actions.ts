@@ -18,7 +18,7 @@ import type { ManualPaymentView, ProofInput } from "@/lib/billing/momo-shared";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
 import { acceptOffer, OfferError, startFeatureAddition } from "@/lib/offers/service";
 import { CardOfferError, startOfferCardCheckout } from "@/lib/offers/card";
-import { addFeaturesByCard, CardPlanError } from "@/lib/offers/card-plan";
+import { addFeaturesByCard, CardPlanError, removeFeatureFromCardPlan } from "@/lib/offers/card-plan";
 import { noteRegionMismatch } from "@/lib/region-check";
 import type { CheckoutConfig, Invoice, PaidPlan } from "@/lib/billing";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
@@ -417,6 +417,31 @@ export async function addFeaturesAction(input: { features: string[]; method: str
     if (error instanceof OfferError) return { ok: false, error: error.message };
     if (error instanceof CardOfferError) return { ok: false, error: error.message, ...(error.requote ? { requoteUsdCents: error.requote.usdCents } : {}) };
     console.error("Adding features failed", error);
+    return { ok: false, error: GENERIC };
+  }
+}
+
+// "Remove" next to a feature added to a card plan (docs/OFFERS.md, "Removing a feature from a card plan"): its item
+// comes off the card subscription and Paddle credits the unused days; it switches off when Paddle confirms. Owner only.
+export async function removeCardFeatureAction(input: { feature: string }): Promise<BillingResult<{ applied: boolean; removed: string; creditUsdCents: number }>> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const feature = typeof input?.feature === "string" ? input.feature.slice(0, 64) : "";
+  if (!feature) return { ok: false, error: "Choose the feature to remove." };
+  if (!(await isServiceEnabled("paddle"))) return { ok: false, error: UNAVAILABLE_MESSAGE };
+  try {
+    await rateLimit(`offer:${user.businessId}`, RATE_LIMITS.offerAccept);
+  } catch (error) {
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    throw error;
+  }
+  try {
+    const done = await removeFeatureFromCardPlan({ userId: user.id, actorId: user.actorId, businessId: user.businessId, feature });
+    revalidatePath("/dashboard", "layout");
+    return { ok: true, ...done };
+  } catch (error) {
+    if (error instanceof OfferError) return { ok: false, error: error.message };
+    console.error("Removing a feature from a card plan failed", error);
     return { ok: false, error: GENERIC };
   }
 }

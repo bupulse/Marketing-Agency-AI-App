@@ -5,10 +5,10 @@ import { ArrowRight, CreditCard, FileText, Smartphone } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Dialog, GlassCard, useToast } from "@/components/ui";
-import { addFeaturesAction } from "@/app/dashboard/billing/actions";
+import { addFeaturesAction, removeCardFeatureAction } from "@/app/dashboard/billing/actions";
 import { featureLabel, FEATURES, withPrerequisites, type FeatureKey } from "@/lib/features";
 import { methodReason, type MethodState } from "@/lib/billing/pay-methods";
-import { cardAdditionQuote, offerCardQuote, quoteAddition, YEARLY_MONTHS, type AddonPriceRow, type CurrentPlanForAddition } from "@/lib/offers/shared";
+import { cardAdditionQuote, cardRemovalEffects, offerCardQuote, quoteAddition, YEARLY_MONTHS, type AddonPriceRow, type CardAddonItem, type CurrentPlanForAddition } from "@/lib/offers/shared";
 import { cardUsdCents } from "@/lib/region-format";
 import { useTheme } from "@/components/theme";
 import { cardQuoteText, payByCard, type CardQuoteView } from "./card-checkout";
@@ -48,7 +48,7 @@ const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { da
  * each feature's card price per period, "≈ $3 now for the 25 days left" and the plan's new price, and "Add to my card
  * plan" with a confirm step before the card is charged (lib/offers/card-plan.ts).
  */
-export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null, now }: { data: AddFeaturesData | null; unavailable: string | null; momo: MethodState; cardRate: { usdToRwf: number; marginPercent: number } | null; /** A card plan whose card subscription takes the features (Paddle set up): the terms; null otherwise. */ cardPlan?: CardPlanTerms | null; contactEmail?: string; now: string }) {
+export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null, cardAddons = [], now }: { data: AddFeaturesData | null; unavailable: string | null; momo: MethodState; cardRate: { usdToRwf: number; marginPercent: number } | null; /** A card plan whose card subscription takes the features (Paddle set up): the terms; null otherwise. */ cardPlan?: CardPlanTerms | null; /** The features already added to that card plan, each with its card price per period (each can be removed). */ cardAddons?: CardAddonItem[]; contactEmail?: string; now: string }) {
   const router = useRouter();
   const { toast } = useToast();
   const { resolvedTheme } = useTheme();
@@ -62,6 +62,9 @@ export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null
   // A card plan: the confirm step before the card is charged, and a price per period the server answered with.
   const [confirming, setConfirming] = useState(false);
   const [planOverride, setPlanOverride] = useState<{ features: string; usdCents: number } | null>(null);
+  // The added feature being removed (its confirm dialog), and why the removal was refused.
+  const [removing, setRemoving] = useState<CardAddonItem | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   // A payment was just reported or a card payment just went through: nothing more to pay while the page refreshes.
   const payState = usePayState();
   const owned = new Set<FeatureKey>(data?.current.features ?? []);
@@ -146,6 +149,23 @@ export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null
     });
   }
 
+  function removeFromCardPlan() {
+    if (!removing) return;
+    const feature = removing;
+    setRemoveError(null);
+    start(async () => {
+      const result = await removeCardFeatureAction({ feature: feature.key });
+      if (!result.ok) {
+        setRemoveError(result.error);
+        toast(result.error, "error");
+        return;
+      }
+      setRemoving(null);
+      toast(result.applied ? `${result.removed} is off. Its unused days are credited to your card plan.` : `${result.removed} switches off when the card provider confirms, in a moment.`, "success");
+      router.refresh();
+    });
+  }
+
   function pay(method: "momo" | "invoice") {
     setBusy(method);
     start(async () => {
@@ -175,6 +195,24 @@ export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null
               : unavailable}
         </p>
       </div>
+
+      {onCard && data && cardAddons.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-2xl border border-line p-4">
+          <h3 className="text-[15px] font-semibold">Added to your card plan</h3>
+          <ul className="flex flex-col divide-y divide-line">
+            {cardAddons.map((f) => (
+              <li key={f.key} className="flex flex-wrap items-center justify-between gap-3 py-2">
+                <span className="text-[15px]">
+                  <strong className="font-medium">{f.label}</strong> <span className="text-[13px] text-muted">+{dollars(f.usdCents)} / {per}</span>
+                </span>
+                <Button size="sm" variant="outline" onClick={() => { setRemoveError(null); setRemoving(f); }} disabled={pending}>
+                  Remove <span className="sr-only">{f.label}</span>
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {data && (
         <fieldset className="flex flex-col gap-1">
@@ -288,6 +326,35 @@ export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null
         <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
           {cardError}
         </p>
+      )}
+      {onCard && cardPlan && removing && (
+        <Dialog
+          open
+          onOpenChange={(open) => !open && !pending && setRemoving(null)}
+          title={`Remove ${removing.label}?`}
+          description={`It stops when Paddle confirms. The unused days go back as credit on your card plan, which then costs ${dollars(Math.max(0, cardPlan.planUsdCents - removing.usdCents))} a ${per}.`}
+        >
+          <div className="flex flex-col gap-4">
+            <ul className="flex list-disc flex-col gap-1 pl-5 text-[15px]">
+              {cardRemovalEffects(removing.key).map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            {removeError && (
+              <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
+                {removeError}
+              </p>
+            )}
+            <div className="flex flex-wrap justify-end gap-3">
+              <Button variant="ghost" onClick={() => setRemoving(null)} disabled={pending}>
+                Keep it
+              </Button>
+              <Button onClick={removeFromCardPlan} disabled={pending} className="bg-danger bg-none text-white shadow-none">
+                {pending ? "Removing…" : `Remove ${removing.label}`}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
       )}
       {onCard && cardQuote && data && cardPlan && (
         <Dialog
