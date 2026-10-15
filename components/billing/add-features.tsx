@@ -4,11 +4,12 @@ import Link from "next/link";
 import { ArrowRight, CreditCard, FileText, Smartphone } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Button, GlassCard, useToast } from "@/components/ui";
+import { Badge, Button, Dialog, GlassCard, useToast } from "@/components/ui";
 import { addFeaturesAction } from "@/app/dashboard/billing/actions";
 import { featureLabel, FEATURES, withPrerequisites, type FeatureKey } from "@/lib/features";
 import { methodReason, type MethodState } from "@/lib/billing/pay-methods";
-import { offerCardQuote, quoteAddition, type AddonPriceRow, type CurrentPlanForAddition } from "@/lib/offers/shared";
+import { cardAdditionQuote, offerCardQuote, quoteAddition, YEARLY_MONTHS, type AddonPriceRow, type CurrentPlanForAddition } from "@/lib/offers/shared";
+import { cardUsdCents } from "@/lib/region-format";
 import { useTheme } from "@/components/theme";
 import { cardQuoteText, payByCard, type CardQuoteView } from "./card-checkout";
 import { PayStateNote, usePayState } from "./pay-state";
@@ -24,7 +25,14 @@ export type AddFeaturesData = {
   addable: FeatureKey[];
   /** Built but not set up yet (lib/feature-setup.ts): listed as "Coming soon", cannot be ticked. */
   soon?: FeatureKey[];
+  /** "card": a card plan; the features become part of its card subscription (`cardPlan` below), never paid apart. */
+  method?: "momo" | "card";
 };
+
+/** A card plan's card rule (Settings) and what it costs per period now (the plan plus features added before). */
+export type CardPlanTerms = { usdToRwf: number; marginPercent: number; planUsdCents: number };
+
+const dollars = (cents: number) => `$${(cents / 100).toLocaleString("en-US", cents % 100 === 0 ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Kigali" });
 
@@ -35,8 +43,12 @@ const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { da
  * it, or card: the amount converted to US dollars with the card rule of RWF plans (`cardRate`, from Settings), shown
  * before paying and checked again by the server. `cardRate` is null when card payments are not set up or switched off:
  * no card button then. Anything else: "Request a custom change".
+ *
+ * A card plan (`data.method` "card", `cardPlan` its terms) adds them to its card subscription instead: the same list,
+ * each feature's card price per period, "≈ $3 now for the 25 days left" and the plan's new price, and "Add to my card
+ * plan" with a confirm step before the card is charged (lib/offers/card-plan.ts).
  */
-export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: AddFeaturesData | null; unavailable: string | null; momo: MethodState; cardRate: { usdToRwf: number; marginPercent: number } | null; contactEmail?: string; now: string }) {
+export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null, now }: { data: AddFeaturesData | null; unavailable: string | null; momo: MethodState; cardRate: { usdToRwf: number; marginPercent: number } | null; /** A card plan whose card subscription takes the features (Paddle set up): the terms; null otherwise. */ cardPlan?: CardPlanTerms | null; contactEmail?: string; now: string }) {
   const router = useRouter();
   const { toast } = useToast();
   const { resolvedTheme } = useTheme();
@@ -47,6 +59,9 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
   const [selected, setSelected] = useState<FeatureKey[]>([]);
   // The rate the server answered with when it changed since the page loaded (its quote wins).
   const [usdOverride, setUsdOverride] = useState<{ dueMinor: number; usdCents: number } | null>(null);
+  // A card plan: the confirm step before the card is charged, and a price per period the server answered with.
+  const [confirming, setConfirming] = useState(false);
+  const [planOverride, setPlanOverride] = useState<{ features: string; usdCents: number } | null>(null);
   // A payment was just reported or a card payment just went through: nothing more to pay while the page refreshes.
   const payState = usePayState();
   const owned = new Set<FeatureKey>(data?.current.features ?? []);
@@ -55,6 +70,20 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
     [data, selected, now],
   );
   const per = data?.interval === "YEAR" ? "year" : "month";
+  const onCard = data?.method === "card" && cardPlan !== null;
+  // A card plan's items: each feature's regional price for a period, at the card rule of plans (lib/offers/shared.ts).
+  const cardQuote = onCard && quote && data && cardPlan ? cardAdditionQuote({ lines: quote.lines, currency: data.region.currency, usdToRwf: cardPlan.usdToRwf, marginPercent: cardPlan.marginPercent, interval: data.interval, periodEnd: new Date(data.periodEnd), now: new Date(now) }) : null;
+  const pickedKey = [...selected].sort().join(",");
+  const cardPerPeriod = cardQuote ? (planOverride?.features === pickedKey ? planOverride.usdCents : cardQuote.perPeriodUsdCents) : 0;
+  const cardPriceOf = (key: FeatureKey) => {
+    const p = priceOf(key);
+    if (p === null || !cardPlan || !data) return null;
+    try {
+      return cardUsdCents(data.interval === "YEAR" ? p * YEARLY_MONTHS : p, data.region.currency, cardPlan.usdToRwf, cardPlan.marginPercent);
+    } catch {
+      return null;
+    }
+  };
   const priceOf = (key: FeatureKey) => data?.prices.find((p) => p.addonKey === key && p.regionKey === data.region.key)?.monthlyMinor ?? null;
   const canPay = Boolean(quote && quote.dueNowMinor > 0 && quote.missing.length === 0);
   const card: CardQuoteView | null =
@@ -93,6 +122,30 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
     else if (!selected.some((k) => k !== key && withPrerequisites([k]).includes(key))) setSelected(selected.filter((k) => k !== key));
   };
 
+  function addToCardPlan() {
+    if (!cardQuote) return;
+    const expected = cardPerPeriod;
+    setBusy("card");
+    setCardError(null);
+    start(async () => {
+      const result = await addFeaturesAction({ features: selected, method: "card_plan", expectedUsdCents: expected });
+      setBusy(null);
+      if (!result.ok) {
+        setCardError(result.error);
+        if (result.requoteUsdCents) setPlanOverride({ features: pickedKey, usdCents: result.requoteUsdCents });
+        else setConfirming(false);
+        toast(result.error, "error");
+        return;
+      }
+      setConfirming(false);
+      setSelected([]);
+      setPlanOverride(null);
+      const names = (result.added ?? []).join(", ");
+      toast(result.applied ? `Done: ${names} ${result.added?.length === 1 ? "is" : "are"} on.` : `Payment received: ${names} switch${result.added?.length === 1 ? "es" : ""} on in a moment.`, "success");
+      router.refresh();
+    });
+  }
+
   function pay(method: "momo" | "invoice") {
     setBusy(method);
     start(async () => {
@@ -115,9 +168,11 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
           Add features to your plan
         </h2>
         <p className="text-sm text-muted">
-          {data
-            ? `You pay now only for what you add, for the days left until ${longDate(data.periodEnd)}. From then on your plan costs the new total.`
-            : unavailable}
+          {data && onCard
+            ? `Added to your card plan: your card is charged now only for the days left until ${longDate(data.periodEnd)}, then with your plan every ${per}.`
+            : data
+              ? `You pay now only for what you add, for the days left until ${longDate(data.periodEnd)}. From then on your plan costs the new total.`
+              : unavailable}
         </p>
       </div>
 
@@ -139,7 +194,8 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
                       {have && <Badge tone="success">In your plan</Badge>}
                       {soon && <Badge tone="violet">Coming soon</Badge>}
                       {neededBy.length > 0 && <Badge tone="blue">Needed by {neededBy.map(featureLabel).join(", ")}</Badge>}
-                      {!have && !soon && price !== null && <span className="text-[13px] text-muted">+{formatMinor(price, data.region.currency)} / month</span>}
+                      {!have && !soon && price !== null && !onCard && <span className="text-[13px] text-muted">+{formatMinor(price, data.region.currency)} / month</span>}
+                      {!have && !soon && onCard && cardPriceOf(f.key) !== null && <span className="text-[13px] text-muted">+{dollars(cardPriceOf(f.key) as number)} / {per} by card</span>}
                     </span>
                     <span className="block text-[13px] text-muted">{f.description}</span>
                   </span>
@@ -151,7 +207,32 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
         </fieldset>
       )}
 
-      {quote && data && (
+      {cardQuote && data && cardPlan && (
+        <dl className="grid gap-1.5 rounded-2xl bg-soft p-4 text-[15px]" aria-live="polite">
+          {cardQuote.items.map((i) => (
+            <div key={i.key} className="flex justify-between gap-3">
+              <dt>{i.label}</dt>
+              <dd className="tabular-nums">
+                {dollars(i.usdCents)} / {per}
+              </dd>
+            </div>
+          ))}
+          <div className="flex justify-between gap-3 border-t border-line pt-2 font-semibold">
+            <dt>
+              Now, for the {cardQuote.daysLeft} {cardQuote.daysLeft === 1 ? "day" : "days"} left
+            </dt>
+            <dd className="tabular-nums">≈ {dollars(Math.round((cardPerPeriod * cardQuote.daysLeft) / Math.max(1, cardQuote.periodDays)))}</dd>
+          </div>
+          <div className="flex justify-between gap-3 text-muted">
+            <dt>Your card plan from {longDate(data.periodEnd)}</dt>
+            <dd className="tabular-nums">
+              {dollars(cardPlan.planUsdCents + cardPerPeriod)} / {per}
+            </dd>
+          </div>
+        </dl>
+      )}
+
+      {quote && data && !onCard && (
         <dl className="grid gap-1.5 rounded-2xl bg-soft p-4 text-[15px]" aria-live="polite">
           {quote.lines.map((l) => (
             <div key={l.key} className="flex justify-between gap-3">
@@ -180,6 +261,13 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
           with "Mobile Money coming soon" on a method that works. */}
       {!data ? null : payState ? (
         <PayStateNote state={payState} />
+      ) : onCard ? (
+        <div className="flex flex-col gap-2">
+          <Button className="self-start" onClick={() => { setCardError(null); setConfirming(true); }} disabled={!cardQuote || !canPay || pending} leading={<CreditCard aria-hidden className="size-5" />}>
+            Add to my card plan
+          </Button>
+          <p className="text-[13px] text-muted">Charged to the card your plan renews with. The card provider works out the exact amount for the days left; nothing is added or charged if the payment fails.</p>
+        </div>
       ) : (
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => pay("momo")} disabled={!canPay || pending || momo !== "ready"} leading={<Smartphone aria-hidden className="size-5" />}>
@@ -195,11 +283,35 @@ export function AddFeatures({ data, unavailable, momo, cardRate, now }: { data: 
         )}
       </div>
       )}
-      {card && !payState && <p className="text-[13px] text-muted">{cardQuoteText(card)}, charged in US dollars once. The added features switch on as soon as the payment goes through.</p>}
-      {cardError && (
+      {card && !payState && !onCard && <p className="text-[13px] text-muted">{cardQuoteText(card)}, charged in US dollars once. The added features switch on as soon as the payment goes through.</p>}
+      {cardError && !confirming && (
         <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
           {cardError}
         </p>
+      )}
+      {onCard && cardQuote && data && cardPlan && (
+        <Dialog
+          open={confirming}
+          onOpenChange={(open) => !pending && setConfirming(open)}
+          title={`Add ${cardQuote.items.map((i) => i.label).join(", ")} to your card plan?`}
+          description={`Your card is charged about ${dollars(Math.round((cardPerPeriod * cardQuote.daysLeft) / Math.max(1, cardQuote.periodDays)))} now for the ${cardQuote.daysLeft} ${cardQuote.daysLeft === 1 ? "day" : "days"} left, then ${dollars(cardPerPeriod)} more each ${per} with your plan: ${dollars(cardPlan.planUsdCents + cardPerPeriod)} a ${per} from ${longDate(data.periodEnd)}. Nothing is added or charged if the payment fails.`}
+        >
+          <div className="flex flex-col gap-4">
+            {cardError && (
+              <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
+                {cardError}
+              </p>
+            )}
+            <div className="flex flex-wrap justify-end gap-3">
+              <Button variant="ghost" onClick={() => setConfirming(false)} disabled={pending}>
+                Not now
+              </Button>
+              <Button onClick={addToCardPlan} disabled={pending} leading={<CreditCard aria-hidden className="size-5" />}>
+                {busy === "card" ? "Charging your card…" : "Confirm and charge my card"}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
       )}
       <Link href="/custom-plan?from=billing" className="inline-flex min-h-11 items-center gap-1.5 self-start text-sm font-semibold no-underline">
         Something else? Request a custom change

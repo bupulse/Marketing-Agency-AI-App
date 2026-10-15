@@ -60,9 +60,10 @@ was not a cause (it defaults to Paddle).
 
 Card routes: plans → `startCheckout` (auto-renewing Paddle subscription, activated by the webhooks); invoices → the
 same checkout for the invoice's plan and interval ("Pay online" in the invoice email links to Billing; a custom plan's
-invoice shows card disabled with "ask us for a card link"); offers and added features → a one-off Paddle transaction for
-the price converted to USD (`lib/offers/card.ts`, `docs/OFFERS.md` "Card"; hidden when card is not set up). Renewals:
-"Renewing" below.
+invoice shows card disabled: pay it by Mobile Money, or write to us); offers and added features → a one-off Paddle
+transaction for the price converted to USD (`lib/offers/card.ts`, `docs/OFFERS.md` "Card"; hidden when card is not set
+up); features added to a card plan → recurring items on its own Paddle subscription (`lib/offers/card-plan.ts`,
+`docs/OFFERS.md` "Adding features to a card plan"). Renewals: "Renewing" below.
 
 ## Renewing (decided 13 October 2026)
 
@@ -74,7 +75,7 @@ the price converted to USD (`lib/offers/card.ts`, `docs/OFFERS.md` "Card"; hidde
   (`RENEWAL_WINDOW_DAYS`) Billing says "Your plan is paid until <date>. You can renew from <date − 7 days>" and shows no
   renewal. In the last 7 days (and after the end, past due) it shows **Renew with Mobile Money** and **Renew with card**
   side by side; a method that is not ready stays visible, disabled, with its reason ("Mobile Money coming soon", "Card
-  payments coming soon", a custom plan: "ask us for a card link").
+  payments coming soon", a custom plan: renew it by Mobile Money, or write to us).
 - **No day is lost.** Mobile Money extends from the period end (`planManualPeriod`, mode `extend`). Card for a Mobile
   Money plan opens the checkout; when its webhook arrives inside the window, `applyProviderSubscription` lets the card
   subscription take over (outside it, it is still a `duplicate`) and moves its first renewal to one period after the

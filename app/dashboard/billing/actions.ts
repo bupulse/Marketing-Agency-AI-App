@@ -18,6 +18,7 @@ import type { ManualPaymentView, ProofInput } from "@/lib/billing/momo-shared";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
 import { acceptOffer, OfferError, startFeatureAddition } from "@/lib/offers/service";
 import { CardOfferError, startOfferCardCheckout } from "@/lib/offers/card";
+import { addFeaturesByCard, CardPlanError } from "@/lib/offers/card-plan";
 import { noteRegionMismatch } from "@/lib/region-check";
 import type { CheckoutConfig, Invoice, PaidPlan } from "@/lib/billing";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
@@ -129,7 +130,9 @@ export async function changePlan(input: { plan: string; interval: string }): Pro
   if (plan !== sub.plan && !plans.some((p) => p.key === plan)) return { ok: false, error: NOT_IN_REGION };
   const priceId = (await regionPriceIdFor(sub.provider, plan, region.key, interval)) ?? (plan === sub.plan ? await priceIdFor(sub.provider, plan, interval) : null);
   if (!priceId) return { ok: false, error: NOT_READY };
-  if (priceId === sub.providerPriceId) return { ok: false, error: "You are already on that plan." };
+  // On a custom plan made by "Add features" (the plan's price plus added features), the same price is the plan without
+  // them: the change removes the added features (the switch dialog says so), Paddle crediting their unused part.
+  if (priceId === sub.providerPriceId && !(await getPlan(sub.plan))?.isCustom) return { ok: false, error: "You are already on that plan." };
 
   try {
     const updated = await billingAdapter(sub.provider).changePlan(sub.providerSubscriptionId, priceId);
@@ -372,11 +375,13 @@ export async function acceptOfferAction(input: { offerId: string; method: string
 }
 
 // "Add features" (docs/OFFERS.md, "Adding features to a paid plan"): the ticked features on top of the running plan,
-// paid now prorated for the days left (Mobile Money, or an invoice), switched on when the payment is confirmed. Owner only.
-export async function addFeaturesAction(input: { features: string[]; method: string; expectedUsdCents?: number | null }): Promise<BillingResult<{ method: "momo" | "invoice" | "card"; config?: CheckoutConfig }> & { requoteUsdCents?: number }> {
+// paid now prorated for the days left (Mobile Money, an invoice or a one-off card payment), switched on when the payment
+// is confirmed. On a card plan ("card_plan"), they become recurring items of its card subscription, charged now prorated
+// and switched on by the card provider's confirmation (lib/offers/card-plan.ts). Owner only.
+export async function addFeaturesAction(input: { features: string[]; method: string; expectedUsdCents?: number | null }): Promise<BillingResult<{ method: "momo" | "invoice" | "card" | "card_plan"; config?: CheckoutConfig; applied?: boolean; added?: string[] }> & { requoteUsdCents?: number }> {
   const user = await requireActiveUser();
   if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
-  const method = input?.method === "invoice" ? "invoice" : input?.method === "momo" ? "momo" : input?.method === "card" ? "card" : null;
+  const method = input?.method === "invoice" ? "invoice" : input?.method === "momo" ? "momo" : input?.method === "card" ? "card" : input?.method === "card_plan" ? "card_plan" : null;
   if (!method) return { ok: false, error: "Choose how you want to pay." };
   const features = Array.isArray(input?.features) ? input.features.map(String).slice(0, 40) : [];
   try {
@@ -386,6 +391,19 @@ export async function addFeaturesAction(input: { features: string[]; method: str
     throw error;
   }
   if (method === "momo") await noteRegionMismatch(user.businessId, "momo");
+  if (method === "card_plan") {
+    if (!(await isServiceEnabled("paddle"))) return { ok: false, error: UNAVAILABLE_MESSAGE };
+    try {
+      const done = await addFeaturesByCard({ userId: user.id, actorId: user.actorId, businessId: user.businessId, features, expectedUsdCents: numberOrNull(input?.expectedUsdCents) });
+      revalidatePath("/dashboard", "layout");
+      return { ok: true, method, applied: done.applied, added: done.added };
+    } catch (error) {
+      if (error instanceof CardPlanError) return { ok: false, error: error.message, ...(error.requoteUsdCents ? { requoteUsdCents: error.requoteUsdCents } : {}) };
+      if (error instanceof OfferError) return { ok: false, error: error.message };
+      console.error("Adding features to a card plan failed", error);
+      return { ok: false, error: GENERIC };
+    }
+  }
   try {
     const accepted = await startFeatureAddition({ userId: user.id, actorId: user.actorId, businessId: user.businessId, features, method });
     if (method === "card") {

@@ -122,8 +122,9 @@ total (plan + added features).
   year); `daysLeft` counts a started day as a day; the same day the period started pays the whole period; at the end
   (0 days) there is nothing to pay, so it is refused ("renew first"). Example: +10,000 RWF/month, 15 of 30 days left →
   5,000 RWF. An added feature's allowance raises its limit (AI photos +30 designs, Website chat 500 replies).
-- **Who can:** a running plan paid by Mobile Money (`additionContext`). A card plan renews at Paddle's price, so
-  features are added to it by the team ("Ask us for a card link"); a plan no longer sold in the region: use a request.
+- **Who can:** a running plan paid by Mobile Money, or a card plan that renews by itself (`additionContext`; see
+  "Adding features to a card plan" below). A card plan set to end or past due takes nothing new (Billing says why); a
+  plan no longer sold in the region: use a request.
 - **Stored as** an ordinary `PlanOffer` with `options.mode = "addon"` and `options.addition` (current plan, add-on
   price per period, next-renewal total, period end, days left, `selfServe`); `adjustedMinor` = the prorated amount to
   pay now; `lines` = the add-on lines for a whole period. No schema change. Accepting prices it again for the days left
@@ -149,6 +150,46 @@ total (plan + added features).
   was reported); an open offer from the team must be answered first. Anything else: **Request a custom change**.
 - **Card:** a one-off Paddle charge of the prorated amount converted to USD ("Card" above).
 - Tests: `tests/offers/addition.test.ts`, `tests/billing/renewal.test.ts`, `tests/offers/card.test.ts`.
+
+## Adding features to a card plan (decided 15 October 2026)
+
+A card plan (a Paddle subscription that renews by itself) takes added features on that same subscription, self-serve:
+no team, no card link (`lib/offers/card-plan.ts`, `lib/offers/card-plan-items.ts`).
+
+- **Same list and rules** as Mobile Money's "Add features": the plan's features ticked and locked, built features priced
+  in the region (prerequisites too, never Managed), "Coming soon" for those not set up yet (`selfServeQuote`).
+- **Card price:** each added feature's regional price for a whole period (yearly: 10 months) at the card rule of plans
+  (`cardAdditionQuote` = `cardUsdCents`: Settings USD→RWF rate plus the card margin, whole dollars up). Billing shows
+  each feature's "+$4 / month by card", "≈ $3 now for the 25 days left" (our estimate; Paddle prorates to the second)
+  and the card plan's new price from the renewal date, then **Add to my card plan** and a confirm step before the card
+  is charged. A rate changed since the page loaded is answered with the new price to confirm, never charged.
+- **The change:** the same add-features offer and custom plan as Mobile Money (plan + features, at the regional price;
+  `options.cardPlan` keeps the card items, the subscription and the rate). Then `PATCH /subscriptions/{id}` with every
+  current item kept by its price id plus one **non-catalog price** per feature (`addRecurringItems` in
+  `lib/billing/paddle.ts`; nothing is added to the catalog): monthly or yearly like the plan, USD, custom data
+  `{ kind: "bupulse_addon", key, offerId, userId, sig }` (`sig` signs `addon:<offer>:<user>`),
+  `proration_billing_mode: "prorated_immediately"`, `on_payment_failure: "prevent_change"` (a declined card changes
+  nothing; the offer is withdrawn and the client told).
+- **Switching on:** never from the browser. Paddle's answer to the change and its `subscription.updated` webhook go
+  through the same `applyProviderSubscription`: `mapSubscription` takes the plan's own price (the first item that is
+  not an added feature; items come in any order) and reads the added items; `cardAddonPlan` checks each signature and
+  puts the client on the custom plan of the newest offer whose items are there, and the first event carrying a new one
+  settles that offer (`markOfferPaidInTx`, `paidBy card:<subscription>`), once, in the same write. Renewals keep the
+  items and the plan; items BuPulse cannot match are logged (`billing.card_addons`) for the owner to check in Paddle.
+- **Lost answers:** a network error or a 5xx leaves the offer open for the webhook; the next "Add to my card plan"
+  (after a minute) reads the subscription from Paddle and settles it when the items are there, or withdraws it: never
+  added twice. Billing says "waiting for the card payment to be confirmed" meanwhile and shows no pay buttons for it
+  (`clientOffer` never shows a card plan's offer).
+- **Removing and plan changes:** a plan change (`changePlan`) sends only the new price, so the added features end with
+  it (Paddle credits their unused part); the switch dialog says so, naming them. Choosing the plan's own price again
+  ("Switch to Starter") is how they are removed. Billing shows the card plan's price as the plan's plus the added
+  features' ("$17 per month: Starter plus AI photos").
+- **Not possible, and why:** set to end ("Renew it from <date>, then add the features here"), past due ("Update your
+  payment method above, then add features"). Card not set up, switched off, or the provider unable to take the change
+  (a key without permission): "Adding features by card is not available right now. Write to us at … and we will add
+  them to your plan for you." An admin "Add to current plan" offer is refused for a card plan (it could only be paid
+  by Mobile Money or a one-off card payment).
+- Tests: `tests/offers/card-plan.test.ts`.
 
 ## Custom plan requests (R5)
 

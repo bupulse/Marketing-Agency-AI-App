@@ -27,7 +27,7 @@ type Props = {
    * How the company can pay (lib/billing/pay-methods.ts): the region's methods, whether the owner has set up where to
    * pay by Mobile Money, whether card checkout is configured, and which plans have a card price in the region.
    */
-  pay: { regionMethods: PaymentMethod[]; momoConfigured: boolean; cardConfigured: boolean; cardPriced: CardPriced; /** Why card cannot be chosen yet (a Mobile Money plan before its renewal window). */ cardBlocked?: string | null; /** A card plan: why its plan changes go by card, and the way to Mobile Money (helpers.ts cardChangeNote). */ cardNote?: string | null };
+  pay: { regionMethods: PaymentMethod[]; momoConfigured: boolean; cardConfigured: boolean; cardPriced: CardPriced; /** Why card cannot be chosen yet (a Mobile Money plan before its renewal window). */ cardBlocked?: string | null; /** A card plan: why its plan changes go by card, and the way to Mobile Money (helpers.ts cardChangeNote). */ cardNote?: string | null; /** Features added to the card plan on Billing: a plan change ends them (the switch dialog says so). */ cardAddons?: string[] | null };
 };
 
 export function PlanPicker({ plans, current, pay }: Props) {
@@ -225,7 +225,7 @@ export function PlanPicker({ plans, current, pay }: Props) {
         open={switchTo !== null}
         onOpenChange={(open) => !open && setSwitchTo(null)}
         title={switchTo ? `Switch to ${planOf(switchTo).name} ${interval === "YEAR" ? "yearly" : "monthly"}?` : "Switch plan"}
-        description="The change starts now. You are charged or credited only the difference for the time left in your current period (prorated), and your new limits apply straight away."
+        description={`The change starts now. You are charged or credited only the difference for the time left in your current period (prorated), and your new limits apply straight away.${pay.cardAddons?.length ? ` The features you added (${pay.cardAddons.join(", ")}) end with this change and their unused part is credited; add them again afterwards if you want them.` : ""}`}
       >
         {switchTo && (
           <div className="flex flex-col gap-5">

@@ -11,6 +11,7 @@ import { capabilitiesOf, clearPlanCache, getPlan, priceCents } from "@/lib/plan-
 import { companyPlans } from "@/lib/region-prices";
 import { formatMinor, type RegionInfo } from "@/lib/region-format";
 import { ManualPaymentError, startOfferPayment } from "@/lib/billing/momo";
+import { renewalOpensAt } from "@/lib/billing/renewal";
 import type { ManualPaymentView } from "@/lib/billing/momo-shared";
 import { issuePlanInvoice } from "@/lib/invoices/service";
 import { notSetUpFeatures } from "@/lib/feature-setup";
@@ -24,6 +25,7 @@ import {
   prorateMinor,
   quoteAddition,
   readAddition,
+  readCardPlan,
   selfServeFeatures,
   comingSoonAddons,
   notSetUpProblem,
@@ -118,27 +120,43 @@ export type AdditionContext = {
   current: CurrentPlanForAddition;
   interval: BillingInterval;
   periodEnd: Date;
+  /**
+   * How the plan is paid: "momo" (paid by hand: the added features are paid now, prorated, by Mobile Money, an invoice
+   * or a one-off card payment) or "card" (a card subscription that renews by itself: they become recurring items on it,
+   * lib/offers/card-plan.ts).
+   */
+  method: "momo" | "card";
 };
+
+const longDay = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Kigali" });
 
 /**
  * What adding features to a company's plan starts from (docs/OFFERS.md, "Adding features to a paid plan"): its running
- * plan paid by Mobile Money, that plan's price per period and the region's add-on prices. Card plans renew through Paddle
- * at Paddle's price, so features are added to them by the team (a card link), never here.
+ * plan, paid by Mobile Money or by a card subscription that renews by itself, that plan's price per period and the
+ * region's add-on prices. A card plan set to end, or whose last payment failed, takes nothing new (the reason says why).
  */
 export async function additionContext(businessId: string, now: Date = new Date()): Promise<{ ok: true; ctx: AdditionContext } | { ok: false; reason: string; card?: boolean }> {
   const business = await prisma.business.findUnique({ where: { id: businessId }, select: { userId: true } });
-  const sub = business ? await prisma.subscription.findUnique({ where: { userId: business.userId }, select: { plan: true, status: true, provider: true, interval: true, currentPeriodEnd: true } }) : null;
+  const sub = business ? await prisma.subscription.findUnique({ where: { userId: business.userId }, select: { plan: true, status: true, provider: true, providerSubscriptionId: true, cancelAtPeriodEnd: true, interval: true, currentPeriodEnd: true } }) : null;
+  const card = sub?.provider === "PADDLE" && Boolean(sub.providerSubscriptionId);
+  if (card && sub?.plan !== "TRIAL" && sub?.status === "PAST_DUE") return { ok: false, card: true, reason: "Your last card payment did not go through. Update your payment method above, then add features." };
   if (!sub || sub.plan === "TRIAL" || sub.status !== "ACTIVE" || !sub.currentPeriodEnd) return { ok: false, reason: "Features are added to a paid plan that is running. Choose a plan first." };
-  if (sub.provider === "PADDLE") return { ok: false, card: true, reason: "This plan renews by card, at the card price. To add features to it, ask us for a card link." };
-  if (sub.provider !== "MANUAL_MOMO") return { ok: false, reason: "Features are added to a paid plan that is running. Choose a plan first." };
+  if (card && sub.cancelAtPeriodEnd) {
+    const opens = renewalOpensAt(sub.currentPeriodEnd);
+    return { ok: false, card: true, reason: `Your plan is set to end on ${longDay(sub.currentPeriodEnd)}, so nothing can be added to it. Renew it ${now.getTime() < opens.getTime() ? `from ${longDay(opens)}` : "above"}, then add the features here.` };
+  }
+  if (!card && sub.provider !== "MANUAL_MOMO") return { ok: false, reason: "Features are added to a paid plan that is running. Choose a plan first." };
   if (sub.currentPeriodEnd.getTime() <= now.getTime()) return { ok: false, reason: "Your paid period has ended. Renew your plan first, then add features." };
   const [plan, pc] = await Promise.all([getPlan(sub.plan), pricingContext(businessId)]);
   if (!plan || plan.isTrial) return { ok: false, reason: "We could not read your plan right now. Please try again in a moment." };
   const regional = pc.bases.find((b) => b.key === plan.key);
   const priceMinor = plan.isCustom ? (plan.currency.toUpperCase() === pc.region.currency.toUpperCase() ? priceCents(plan, sub.interval) : null) : regional ? (sub.interval === "YEAR" ? regional.yearlyMinor : regional.monthlyMinor) : null;
   if (priceMinor === null || priceMinor <= 0) return { ok: false, reason: "Your plan is no longer sold in your region, so features cannot be priced on top of it. Use Request a custom change." };
-  return { ok: true, ctx: { region: pc.region, prices: pc.prices, current: { key: plan.key, name: plan.name, priceMinor, features: plan.features, limits: plan.limits }, interval: sub.interval, periodEnd: sub.currentPeriodEnd } };
+  return { ok: true, ctx: { region: pc.region, prices: pc.prices, current: { key: plan.key, name: plan.name, priceMinor, features: plan.features, limits: plan.limits }, interval: sub.interval, periodEnd: sub.currentPeriodEnd, method: card ? "card" : "momo" } };
 }
+
+/** An admin "Add to current plan" offer is paid like a Mobile Money plan's; a card plan takes added features itself. */
+const CARD_PLAN_OFFER = "This plan renews by card: the client adds features on Billing (Add features), and they are charged to the card with the plan. An offer here would be paid by Mobile Money or a one-off card payment, which a card plan cannot take.";
 
 /** Prices the ticked features on top of the running plan and checks them. `adjustedMinor` (the admin's) is a whole period. */
 function additionDraft(ac: AdditionContext, draft: Pick<OfferDraft, "features" | "managedTier" | "adjustedMinor" | "adjustReason">, now: Date): { ok: true; quote: AdditionQuote; adjustReason: string | null } | { ok: false; error: string } {
@@ -207,6 +225,7 @@ export async function saveOfferDraft(ctx: AdminContext, input: { businessId: str
     // "Add to current plan": the client's running plan, the ticked features on top, prorated for the days left.
     const ac = await additionContext(business.id, now);
     if (!ac.ok) throw new AdminError("invalid", ac.reason);
+    if (ac.ctx.method === "card") throw new AdminError("invalid", CARD_PLAN_OFFER);
     const addition = additionDraft(ac.ctx, draft, now);
     if (!addition.ok) throw new AdminError("invalid", addition.error);
     const notReady = notSetUpProblem(addition.quote.added, notSetUpFeatures());
@@ -451,6 +470,8 @@ export async function clientOffer(businessId: string, now: Date = new Date()): P
   await expireOffers(now, businessId).catch(() => undefined);
   const row = await prisma.planOffer.findFirst({ where: { businessId, status: { in: ["sent", "accepted"] } }, orderBy: { createdAt: "desc" } });
   if (!row || isOfferExpired(row, now)) return null;
+  // Features being added to a card plan are paid by the card subscription itself, never with the offer's pay buttons.
+  if (readCardPlan(row.options)) return null;
   return clientViewOf(adminView(row, ""));
 }
 
@@ -633,6 +654,7 @@ export async function selfServeAddition(businessId: string, now: Date = new Date
   const notSetUp = notSetUpFeatures();
   return {
     ok: true as const,
+    method: ctx.method,
     current: ctx.current,
     interval: ctx.interval,
     periodEnd: ctx.periodEnd.toISOString(),
@@ -644,6 +666,19 @@ export async function selfServeAddition(businessId: string, now: Date = new Date
   };
 }
 
+/** The client's ticked features on top of the running plan, checked and priced (Billing's "Add features"). */
+export function selfServeQuote(ac: AdditionContext, features: unknown, now: Date): { quote: AdditionQuote; adjustReason: string | null } {
+  const ticked = Array.isArray(features) ? features.filter((k): k is FeatureKey => isFeatureKey(k)).slice(0, 40) : [];
+  if (ticked.length === 0) throw new OfferError("Tick at least one feature to add.");
+  const allowed = new Set(selfServeFeatures(ac.current.features, ac.prices, ac.region.key, ac.region.currency, notSetUpFeatures()));
+  const notHere = ticked.find((k) => !allowed.has(k) && !ac.current.features.includes(k));
+  if (notHere) throw new OfferError(`${featureLabel(notHere)} cannot be added here. Use Request a custom change and we will price it for you.`);
+  const priced = additionDraft(ac, { features: ticked, managedTier: "light", adjustedMinor: null, adjustReason: null }, now);
+  if (!priced.ok) throw new OfferError(priced.error);
+  if (priced.quote.missing.length > 0) throw new OfferError(`${priced.quote.missing.join(", ")} has no price yet. Use Request a custom change.`);
+  return priced;
+}
+
 /**
  * Billing's "Add features" (the client, Owner only): prices the ticked features on top of the running plan, makes an
  * add-features offer (created by the client, audited `self_serve_addition`) and accepts it with the chosen way to pay,
@@ -651,19 +686,17 @@ export async function selfServeAddition(businessId: string, now: Date = new Date
  * client's own is replaced; an offer from the BuPulse team that is open must be answered first. Only priced features;
  * anything else goes through "Request a custom change".
  */
-export async function startFeatureAddition(input: { userId: string; actorId: string; businessId: string; features: unknown; method: string; ip?: string | null }, now: Date = new Date()): Promise<AcceptResult> {
+export async function startFeatureAddition(input: { userId: string; actorId: string; businessId: string; features: unknown; method: string; ip?: string | null }, now: Date = new Date(), opts: { /** lib/offers/card-plan.ts: the card subscription pays it. */ cardPlan?: boolean } = {}): Promise<AcceptResult> {
   const method: PayMethod | null = input.method === "momo" || input.method === "invoice" || input.method === "card" ? input.method : null;
   if (!method) throw new OfferError("Choose how you want to pay.");
-  const ticked = Array.isArray(input.features) ? input.features.filter((k): k is FeatureKey => isFeatureKey(k)).slice(0, 40) : [];
-  if (ticked.length === 0) throw new OfferError("Tick at least one feature to add.");
   const ac = await additionContext(input.businessId, now);
   if (!ac.ok) throw new OfferError(ac.reason);
-  const allowed = new Set(selfServeFeatures(ac.ctx.current.features, ac.ctx.prices, ac.ctx.region.key, ac.ctx.region.currency, notSetUpFeatures()));
-  const notHere = ticked.find((k) => !allowed.has(k) && !ac.ctx.current.features.includes(k));
-  if (notHere) throw new OfferError(`${featureLabel(notHere)} cannot be added here. Use Request a custom change and we will price it for you.`);
-  const priced = additionDraft(ac.ctx, { features: ticked, managedTier: "light", adjustedMinor: null, adjustReason: null }, now);
-  if (!priced.ok) throw new OfferError(priced.error);
-  if (priced.quote.missing.length > 0) throw new OfferError(`${priced.quote.missing.join(", ")} has no price yet. Use Request a custom change.`);
+  // A card plan takes added features on its card subscription only (Mobile Money, an invoice or a one-off card payment
+  // of them could never be confirmed on it); a plan paid by hand never does.
+  if ((ac.ctx.method === "card") !== Boolean(opts.cardPlan) || (opts.cardPlan && method !== "card")) {
+    throw new OfferError(ac.ctx.method === "card" ? "Your plan renews by card: add the features with Add to my card plan." : "Your plan is paid by Mobile Money: choose how to pay for the features.");
+  }
+  const priced = selfServeQuote(ac.ctx, input.features, now);
   const ctx = clientCtx(input.actorId, input.ip ?? null);
 
   const open = await prisma.planOffer.findFirst({ where: { businessId: input.businessId, status: { in: ["sent", "accepted"] } }, orderBy: { createdAt: "desc" } });
@@ -744,8 +777,8 @@ export async function offerEditorContext(input: { businessId: string; offerId?: 
   // "Add to current plan": possible for a running Mobile Money plan (otherwise the reason is shown on the switch).
   const ac = await additionContext(business.id);
   return {
-    addition: ac.ok ? { current: ac.ctx.current, interval: ac.ctx.interval, periodEnd: ac.ctx.periodEnd.toISOString() } : null,
-    additionUnavailable: ac.ok ? null : ac.reason,
+    addition: ac.ok && ac.ctx.method === "momo" ? { current: ac.ctx.current, interval: ac.ctx.interval, periodEnd: ac.ctx.periodEnd.toISOString() } : null,
+    additionUnavailable: ac.ok ? (ac.ctx.method === "card" ? CARD_PLAN_OFFER : null) : ac.reason,
     business: { id: business.id, name: business.name, ownerEmail: business.user?.email ?? null },
     region: pc.region,
     bases: pc.bases,

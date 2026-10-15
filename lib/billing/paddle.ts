@@ -1,6 +1,6 @@
 import "server-only";
 import { priceIdFor } from "@/lib/plan-catalog";
-import { formatMoney, isUuid, mapSubscription, verifySignature } from "./paddle-map";
+import { formatMoney, isUuid, mapSubscription, subscriptionItemsOf, verifySignature } from "./paddle-map";
 import { signCheckoutUser } from "./signing";
 import type { BillingAdapter, BillingWebhook, Invoice, ProviderSubscription } from "./types";
 import { getPaddleConfig, paddleApiBase, paddleCredentialsComplete, SECRET_LABEL, type PaddleEnvironment } from "./paddle-config";
@@ -135,6 +135,44 @@ export const paddle: BillingAdapter = {
       },
     });
     return subscriptionOrThrow(data);
+  },
+
+  // Features added to a card plan (docs/OFFERS.md): Paddle replaces the whole item list, so every current item is sent
+  // back by its price id, plus one price per added feature that exists only on this subscription (nothing is added to
+  // the catalog), marked in its custom data. Charged now, prorated; with prevent_change nothing changes when that
+  // payment fails (Paddle answers with an error instead).
+  async addRecurringItems(id, items) {
+    const current = await paddleApi<{ currency_code?: string }>(`/subscriptions/${encodeURIComponent(id)}`);
+    const keep = subscriptionItemsOf(current).map((i) => ({ price_id: i.priceId, quantity: i.quantity }));
+    if (keep.length === 0) throw new Error("Paddle returned a subscription without items");
+    if (items.some((i) => i.currency !== current.currency_code)) throw new Error(`The subscription is billed in ${current.currency_code ?? "another currency"}, not ${items[0]?.currency}`);
+    const data = await paddleApi(`/subscriptions/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: {
+        items: [
+          ...keep,
+          ...items.map((i) => ({
+            quantity: 1,
+            price: {
+              name: i.name,
+              description: i.description,
+              billing_cycle: { interval: i.interval === "YEAR" ? "year" : "month", frequency: 1 },
+              unit_price: { amount: String(i.amountCents), currency_code: i.currency },
+              quantity: { minimum: 1, maximum: 1 },
+              product: { name: i.name, tax_category: "saas" },
+              custom_data: i.customData,
+            },
+          })),
+        ],
+        proration_billing_mode: "prorated_immediately",
+        on_payment_failure: "prevent_change",
+      },
+    });
+    return subscriptionOrThrow(data);
+  },
+
+  async getSubscription(id) {
+    return subscriptionOrThrow(await paddleApi(`/subscriptions/${encodeURIComponent(id)}`));
   },
 
   async deferNextBilling(id, at) {

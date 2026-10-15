@@ -32,7 +32,7 @@ export async function cardPricedPlans(regionKey: string, planKeys: string[]): Pr
 /**
  * How an invoice can be paid: Mobile Money where the region takes it, card where the region takes it and the
  * invoice's plan and interval has a card price there. A custom plan's invoice is never paid through card checkout
- * (docs/OFFERS.md, "Card"): card stays visible but not ready for it (the client asks the team for a card link).
+ * (docs/OFFERS.md, "Card"): card stays visible but not ready for it (it is paid by Mobile Money, or the team helps).
  */
 export async function invoicePayMethods(input: { region: { key: string; paymentMethods: readonly string[] }; planKey: string | null; interval: "MONTH" | "YEAR" | null; custom: boolean; momoConfigured: boolean }): Promise<PayMethods> {
   const regionMethods = input.region.paymentMethods;

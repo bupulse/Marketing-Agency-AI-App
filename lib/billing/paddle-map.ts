@@ -1,5 +1,6 @@
 import type { SubscriptionStatus } from "@/lib/generated/prisma/client";
-import type { ProviderSubscription } from "./types";
+import { CARD_ADDON_KIND } from "@/lib/offers/shared";
+import type { ProviderAddonItem, ProviderSubscription } from "./types";
 
 // Pure helpers for Paddle Billing (v2): status mapping, subscription translation, money
 // formatting and webhook signature checks. No network or database access here.
@@ -52,11 +53,42 @@ type PaddleSubscription = {
   started_at?: unknown;
   canceled_at?: unknown;
   updated_at?: unknown;
-  items?: { price?: { id?: unknown } | null }[] | null;
+  items?: PaddleItem[] | null;
   custom_data?: { userId?: unknown; sig?: unknown } | null;
   current_billing_period?: { starts_at?: unknown; ends_at?: unknown } | null;
   scheduled_change?: { action?: unknown; effective_at?: unknown } | null;
 };
+
+type PaddleItem = { quantity?: unknown; price?: { id?: unknown; custom_data?: Record<string, unknown> | null; unit_price?: { amount?: unknown } | null } | null };
+
+const isAddonItem = (item: PaddleItem | null | undefined) => item?.price?.custom_data?.kind === CARD_ADDON_KIND;
+const text = (v: unknown) => (typeof v === "string" && v ? v : null);
+
+/** An added feature's item (docs/OFFERS.md, "Adding features to a card plan"), read from its price's custom data. */
+function addonOf(item: PaddleItem): ProviderAddonItem | null {
+  const id = item.price?.id;
+  if (typeof id !== "string") return null;
+  const c = item.price?.custom_data ?? {};
+  const amount = Number(item.price?.unit_price?.amount);
+  return { priceId: id, key: text(c.key), offerId: text(c.offerId), userId: text(c.userId), sig: text(c.sig), amountCents: Number.isSafeInteger(amount) ? amount : null };
+}
+
+function addonsOf(items: PaddleItem[]): { addons?: ProviderAddonItem[] } {
+  const addons = items.filter(isAddonItem).map(addonOf).filter((a): a is ProviderAddonItem => a !== null);
+  return addons.length > 0 ? { addons } : {};
+}
+
+/**
+ * The items of a Paddle subscription as they must be sent back when it is updated (Paddle replaces the whole list):
+ * each price id with its quantity, the plan first.
+ */
+export function subscriptionItemsOf(data: unknown): { priceId: string; quantity: number; addon: boolean }[] {
+  const items = (data && typeof data === "object" ? (data as PaddleSubscription).items : null) ?? [];
+  return items
+    .filter((i): i is PaddleItem & { price: { id: string } } => typeof i?.price?.id === "string")
+    .map((i) => ({ priceId: i.price.id, quantity: typeof i.quantity === "number" && Number.isInteger(i.quantity) && i.quantity > 0 ? i.quantity : 1, addon: isAddonItem(i) }))
+    .sort((a, b) => Number(a.addon) - Number(b.addon));
+}
 
 function toDate(value: unknown): Date | null {
   if (typeof value !== "string") return null;
@@ -69,7 +101,9 @@ export function mapSubscription(data: unknown, now: Date = new Date()): Provider
   if (!data || typeof data !== "object") return null;
   const sub = data as PaddleSubscription;
   const status = mapStatus(sub.status);
-  const priceId = sub.items?.[0]?.price?.id;
+  // The plan's own price: the first item that is not a feature added to the card plan (those can come in any order).
+  const items = sub.items ?? [];
+  const priceId = (items.find((i) => !isAddonItem(i)) ?? items[0])?.price?.id;
   if (!status || typeof sub.id !== "string" || typeof sub.customer_id !== "string" || typeof priceId !== "string") {
     return null;
   }
@@ -92,6 +126,7 @@ export function mapSubscription(data: unknown, now: Date = new Date()): Provider
     currentPeriodEnd: end,
     cancelAtPeriodEnd: scheduled?.action === "cancel",
     updatedAt: toDate(sub.updated_at),
+    ...addonsOf(items),
   };
 }
 

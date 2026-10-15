@@ -3,6 +3,8 @@ import type { BillingProvider, Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { planForAnyPriceId } from "@/lib/region-prices";
 import { logError } from "@/lib/errors";
+import { AdminError, type AdminContext } from "@/lib/admin/types";
+import { markOfferPaidInTx } from "@/lib/offers/activate";
 import { addMonths } from "./period";
 import { tooEarlyToRenew } from "./renewal";
 import { verifyCheckoutUser } from "./signing";
@@ -19,6 +21,7 @@ import type { ProviderSubscription } from "./types";
 export type ApplyOutcome = "applied" | "stale" | "unknown_price" | "unknown_user" | "duplicate";
 
 const LIVE = new Set(["ACTIVE", "PAST_DUE", "TRIALING"]);
+const PADDLE_SYSTEM: AdminContext = { actor: "system:paddle", ip: null, viaApi: false };
 
 /**
  * Writes a provider subscription onto the user's Subscription row. Called from webhooks and
@@ -62,9 +65,14 @@ export async function applyProviderSubscription(provider: BillingProvider, sub: 
     if (!LIVE.has(sub.status)) return "stale";
   }
 
+  // Features added to a card plan (docs/OFFERS.md): recurring items next to the plan's price put the client on the custom
+  // plan they made, and the first event that carries a new one switches it on and settles its offer. Without them, the
+  // plan's own features (an added feature that was removed, or a plan change, ends with its item).
+  const addon = sub.addons?.length ? await (await import("@/lib/offers/card-plan-items")).cardAddonPlan(row.userId, sub, match.plan) : null;
+
   const data: Prisma.SubscriptionUncheckedUpdateManyInput = {
     provider,
-    plan: match.plan,
+    plan: addon?.planKey ?? match.plan,
     interval: match.interval,
     status: sub.status,
     providerSubscriptionId: sub.providerSubscriptionId,
@@ -79,16 +87,36 @@ export async function applyProviderSubscription(provider: BillingProvider, sub: 
 
   // One conditional write: it only lands if nobody changed the subscription id meanwhile and this
   // update is not older than the one stored, so concurrent webhooks can't leave an older state.
-  const { count } = await prisma.subscription.updateMany({
-    where: {
-      userId: row.userId,
-      providerSubscriptionId: row.providerSubscriptionId,
-      ...(sameSubscription && sub.updatedAt
-        ? { OR: [{ providerUpdatedAt: null }, { providerUpdatedAt: { lte: sub.updatedAt } }] }
-        : {}),
-    },
-    data,
-  });
+  const where: Prisma.SubscriptionWhereInput = {
+    userId: row.userId,
+    providerSubscriptionId: row.providerSubscriptionId,
+    ...(sameSubscription && sub.updatedAt
+      ? { OR: [{ providerUpdatedAt: null }, { providerUpdatedAt: { lte: sub.updatedAt } }] }
+      : {}),
+  };
+  const settle = addon?.settle ?? null;
+  let count: number;
+  if (!settle) {
+    ({ count } = await prisma.subscription.updateMany({ where, data }));
+  } else {
+    // The added features' offer is paid by this card subscription: settled with the same write, once. The API answer
+    // and the webhook may race: the loser of the offer's conditional write finds it paid and only writes the plan.
+    const write = (settleOffer: boolean) =>
+      prisma.$transaction(async (tx) => {
+        const written = await tx.subscription.updateMany({ where, data });
+        if (written.count > 0 && settleOffer) {
+          const fresh = await tx.planOffer.findUnique({ where: { id: settle.id }, select: { status: true } });
+          if (fresh?.status === "accepted") await markOfferPaidInTx(tx, PADDLE_SYSTEM, { offer: settle, paymentId: sub.providerSubscriptionId, invoiceId: null, planKey: settle.customPlanKey as string, amountMinor: settle.adjustedMinor, currency: settle.currency, paidBy: `card:${sub.providerSubscriptionId}` }, new Date());
+        }
+        return written.count;
+      });
+    try {
+      count = await write(true);
+    } catch (error) {
+      if (!(error instanceof AdminError && error.code === "conflict")) throw error;
+      count = await write(false);
+    }
+  }
   // The card renewal of a Mobile Money plan: its first charge moves to one period after the days paid by Mobile Money
   // (`do_not_bill`). Recorded first and retried by the daily job when the provider fails (lib/billing/carry-over.ts).
   if (count > 0 && carryFrom) {

@@ -375,6 +375,73 @@ export function offerCardQuote(minor: number, currency: string, usdToRwf: number
   return { usdCents: cardUsdCents(minor, cur, usdToRwf, marginPercent), quoteMinor: minor, quoteCurrency: cur, usdToRwf, marginPercent: cur === "USD" ? 0 : marginPercent };
 }
 
+// ---- added features on a card plan -----------------------------------------------------------------------------------
+
+/**
+ * A card plan (a Paddle subscription that renews by itself) takes added features as recurring items on that same
+ * subscription (docs/OFFERS.md, "Adding features to a card plan"): one item per added feature, in US dollars, at the
+ * card rule of plans (cardUsdCents on the feature's regional price for a whole period), charged now prorated by the card
+ * provider and from then on with every renewal. Each item's price carries this kind in its custom data, signed, so a
+ * subscription event can tell an added feature from the plan itself.
+ */
+export const CARD_ADDON_KIND = "bupulse_addon";
+
+/** The message signed into an added feature's item: whose it is and which add-features offer made it. */
+export const cardAddonMessage = (offerId: string, userId: string) => `addon:${offerId}:${userId}`;
+
+/** One added feature as a card item: its add-on key and label, and its price per period in US cents. */
+export type CardAddonItem = { key: string; label: string; usdCents: number };
+
+export type CardAdditionQuote = {
+  items: CardAddonItem[];
+  /** What the added features add to the card plan per period (a month, or a year). */
+  perPeriodUsdCents: number;
+  /** Our estimate of what is charged now for the days left (the card provider prorates to the second). */
+  dueNowUsdCents: number;
+  daysLeft: number;
+  periodDays: number;
+};
+
+/** The card items of an addition's priced lines (each a whole period, in the region's currency), and the charge now. */
+export function cardAdditionQuote(input: { lines: readonly PricedLine[]; currency: string; usdToRwf: number; marginPercent: number; interval: "MONTH" | "YEAR"; periodEnd: Date; now: Date }): CardAdditionQuote {
+  const items = input.lines.filter((l) => l.totalMinor > 0).map((l) => ({ key: l.key, label: l.label, usdCents: cardUsdCents(l.totalMinor, input.currency, input.usdToRwf, input.marginPercent) }));
+  const perPeriodUsdCents = items.reduce((sum, i) => sum + i.usdCents, 0);
+  const periodDays = periodDaysEnding(input.periodEnd, input.interval);
+  const daysLeft = additionDaysLeft(input.periodEnd, input.now);
+  return { items, perPeriodUsdCents, dueNowUsdCents: prorateMinor(perPeriodUsdCents, daysLeft, periodDays), daysLeft, periodDays };
+}
+
+/** What an add-features offer on a card plan stores (PlanOffer.options.cardPlan). */
+export type OfferCardPlan = {
+  /** The card subscription the items were added to. */
+  subscriptionId: string;
+  /** The plan the subscription's own price is (the custom plan is that plan plus the added features). */
+  basePlanKey: string;
+  interval: "MONTH" | "YEAR";
+  /** This offer's items. */
+  items: CardAddonItem[];
+  /** This offer's items per period. */
+  addedUsdCents: number;
+  /** Every added feature on the card plan once this offer is on (earlier ones included), per period. */
+  addonsUsdCents: number;
+  /** The estimate shown before confirming. */
+  dueNowUsdCents: number;
+  usdToRwf: number;
+  marginPercent: number;
+  /** When the card provider was asked. */
+  at: string;
+};
+
+export function readCardPlan(options: unknown): OfferCardPlan | null {
+  const c = options && typeof options === "object" ? (options as { cardPlan?: unknown }).cardPlan : null;
+  if (!c || typeof c !== "object") return null;
+  const v = c as Record<string, unknown>;
+  const num = (k: string) => (typeof v[k] === "number" && Number.isFinite(v[k]) ? (v[k] as number) : 0);
+  if (typeof v.subscriptionId !== "string" || typeof v.basePlanKey !== "string") return null;
+  const items = Array.isArray(v.items) ? v.items.filter((i): i is CardAddonItem => Boolean(i) && typeof i.key === "string" && typeof i.label === "string" && Number.isSafeInteger(i.usdCents)) : [];
+  return { subscriptionId: v.subscriptionId, basePlanKey: v.basePlanKey, interval: v.interval === "YEAR" ? "YEAR" : "MONTH", items, addedUsdCents: num("addedUsdCents"), addonsUsdCents: num("addonsUsdCents"), dueNowUsdCents: num("dueNowUsdCents"), usdToRwf: num("usdToRwf"), marginPercent: num("marginPercent"), at: typeof v.at === "string" ? v.at : "" };
+}
+
 // ---- the request form: what the client already has ------------------------------------------------------------------
 
 /** The features ticked and locked on the request form: the plan's own, with their prerequisites. */

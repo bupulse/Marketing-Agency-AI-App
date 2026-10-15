@@ -157,3 +157,34 @@ describe("the plan cards on Billing", () => {
     expect(out).toContain("Upgrade to Business");
   });
 });
+
+describe("Add features on a card plan that takes them (lib/offers/card-plan.ts)", () => {
+  const data = {
+    current: { key: "STARTER", name: "Starter", priceMinor: 15000, features: ["content", "designs"] as never, limits: { text: 60, image: 30, chat: 0, videos: 0, voiceCharacters: 0, seats: 1 } as never },
+    interval: "MONTH" as const,
+    periodEnd: "2026-11-14T10:00:00Z",
+    region: { key: "RW", currency: "RWF" },
+    prices: [{ addonKey: "websiteChat", regionKey: "RW", currency: "RWF", monthlyMinor: 10000 }],
+    addable: ["websiteChat"] as never,
+    soon: ["video"] as never,
+    method: "card" as const,
+  };
+
+  it("each feature's card price, coming-soon ones listed, one 'Add to my card plan' and no Mobile Money, invoice or card link", () => {
+    const out = html(createElement(AddFeatures, { data, unavailable: null, momo: "ready", cardRate: null, cardPlan: { usdToRwf: 1450, marginPercent: 12, planUsdCents: 1200 }, now: "2026-10-15T12:00:00Z" }));
+    expect(out).toContain("+$8 / month by card");
+    expect(out).toContain("Coming soon");
+    expect(out).toContain("Add to my card plan");
+    expect(out).toContain("Added to your card plan: your card is charged now only for the days left until 14 November 2026");
+    expect(out).not.toContain("Pay with Mobile Money");
+    expect(out).not.toContain("Get an invoice");
+    expect(out).not.toMatch(/card link/i);
+  });
+
+  it("a plan change on a card plan with added features says they end with it", () => {
+    const plan = (key: string, name: string, monthly: number) => ({ key, name, description: "", isTrial: false, trialDays: null, highlight: false, monthlyPriceCents: monthly, yearlyPriceCents: monthly * 10, currency: "RWF", limits: { text: 60, image: 30, chat: 0, videos: 0, voiceCharacters: 0, seats: 1 }, highlights: [], features: [], regionKey: "RW", paymentMethods: ["momo", "card"], card: null });
+    const out = html(createElement(PlanPicker, { plans: [plan("CUSTOM-ABC", "Custom", 25000), plan("STARTER", "Starter", 15000)] as never, current: { plan: "CUSTOM-ABC", interval: "MONTH", paid: true, pastDue: false, method: "card" }, pay: { regionMethods: ["momo", "card"] as never, momoConfigured: true, cardConfigured: true, cardPriced: {}, cardAddons: ["Website chat and leads"] } }));
+    expect(out).toContain("Switch to Starter monthly");
+    expect(out).toContain("The features you added (Website chat and leads) end with this change and their unused part is credited");
+  });
+});
