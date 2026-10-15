@@ -14,6 +14,7 @@ vi.mock("@/components/ui/toast", async (orig) => ({ ...(await orig<typeof import
 import { bannerState, TrialBanner, type TrialBannerProps } from "@/components/app/trial-banner";
 import { AddFeatures } from "@/components/billing/add-features";
 import { PlanPicker } from "@/components/billing/plan-picker";
+import { AddToPlan } from "@/components/app/add-to-plan";
 import { cardChangeNote, endingNotice, unpaidPlanLabel } from "@/components/billing/helpers";
 import { Dialog } from "@/components/ui/dialog";
 import { accountBlock } from "@/lib/entitlements";
@@ -205,5 +206,21 @@ describe("the features added to a card plan, each with Remove", () => {
     expect(out).toContain("Website chat and leads");
     expect(out).toContain("+$8 / month");
     expect(out).toMatch(/Remove <span class="sr-only">Website chat and leads<\/span>/);
+  });
+});
+
+describe("the \"Add to your plan\" page", () => {
+  const inPlan = new Set(["content", "designs", "calendar", "gallery"]) as never;
+  it("a feature the owner can add on Billing: straight there with it ticked, a custom plan still possible", () => {
+    const out = html(createElement(AddToPlan, { feature: "websiteChat", role: "OWNER", inPlan, addOnBilling: true }));
+    expect(out).toContain("Add it on Billing");
+    expect(out).toContain('href="/dashboard/billing?add=websiteChat#add-features-heading"');
+    expect(out).toContain("Or ask for a custom plan");
+  });
+  it("anything else: a custom plan request, as before; members are told the owner decides", () => {
+    const out = html(createElement(AddToPlan, { feature: "websiteChat", role: "OWNER", inPlan }));
+    expect(out).toContain("Ask for a custom plan");
+    expect(out).not.toContain("Add it on Billing");
+    expect(html(createElement(AddToPlan, { feature: "websiteChat", role: "MEMBER", inPlan, addOnBilling: true }))).not.toContain("Add it on Billing");
   });
 });

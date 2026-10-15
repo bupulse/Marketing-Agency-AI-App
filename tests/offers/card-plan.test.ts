@@ -42,7 +42,7 @@ import { resetRegionCache } from "@/lib/region";
 import { resetRegionPriceCache } from "@/lib/region-prices";
 import { cardUsdCents } from "@/lib/region-format";
 import * as offers from "@/lib/offers/service";
-import { addFeaturesByCard, CARD_PLAN_UNAVAILABLE, CardPlanError, removeFeatureFromCardPlan } from "@/lib/offers/card-plan";
+import { addableOnBilling, addFeaturesByCard, CARD_PLAN_UNAVAILABLE, CardPlanError, removeFeatureFromCardPlan } from "@/lib/offers/card-plan";
 import { cardPlanAddons, pendingCardAddition } from "@/lib/offers/card-plan-items";
 import { CARD_ADDON_KIND, cardAddonMessage, cardAdditionQuote, cardRemovalEffects, customPlanKeyFor, prorateMinor, readCardPlan } from "@/lib/offers/shared";
 import type { NewRecurringItem } from "@/lib/billing/types";
@@ -381,5 +381,33 @@ describe("Remove a feature from a card plan", () => {
   it("what the dialog says a removal leaves behind", () => {
     expect(cardRemovalEffects("websiteChat")).toEqual(["Your website chat stops answering visitors; the leads it already captured stay.", "Anything already used above the plan's new limits is not refunded; new use waits for the next period."]);
     expect(cardRemovalEffects("analytics")).toHaveLength(1);
+  });
+});
+
+describe("the \"Add to your plan\" page sends owners to Billing when they can add the feature there", () => {
+  const biz = { id: "biz1", userId: USER };
+  it("a card plan with card set up: yes for a feature Billing sells, no for one it does not", async () => {
+    seed();
+    expect(await addableOnBilling(biz, "websiteChat", NOW)).toBe(true);
+    expect(await addableOnBilling(biz, "managed", NOW)).toBe(false);
+    expect(await addableOnBilling(biz, "content", NOW)).toBe(false);
+  });
+
+  it("no when Billing would not offer it: card not set up, set to end, a change waiting", async () => {
+    seed();
+    h.cardOn = false;
+    expect(await addableOnBilling(biz, "websiteChat", NOW)).toBe(false);
+    h.cardOn = true;
+    sub().cancelAtPeriodEnd = true;
+    expect(await addableOnBilling(biz, "websiteChat", NOW)).toBe(false);
+    sub().cancelAtPeriodEnd = false;
+    h.lose = true;
+    await err(add(["aiPhotos"]));
+    expect(await addableOnBilling(biz, "websiteChat", NOW)).toBe(false);
+  });
+
+  it("a Mobile Money plan: yes (paid by Mobile Money, an invoice or card)", async () => {
+    seed({ provider: "MANUAL_MOMO", providerSubscriptionId: null, providerCustomerId: null, providerPriceId: null });
+    expect(await addableOnBilling(biz, "websiteChat", NOW)).toBe(true);
   });
 });

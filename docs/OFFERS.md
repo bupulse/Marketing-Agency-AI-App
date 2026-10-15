@@ -149,6 +149,11 @@ total (plan + added features).
   client:<id>`, audited `self_serve_addition`); a new choice replaces the client's own unpaid one (not after a payment
   was reported); an open offer from the team must be answered first. Anything else: **Request a custom change**.
 - **Card:** a one-off Paddle charge of the prorated amount converted to USD ("Card" above).
+- **From a locked feature:** the "Add to your plan" page (`components/app/add-to-plan.tsx`) shows the owner **Add it on
+  Billing** (`/dashboard/billing?add=<feature>`, the feature ticked) whenever Billing would sell it to them
+  (`addableOnBilling` in `lib/offers/card-plan.ts`: addable there, no team offer or card plan change waiting, no Mobile
+  Money payment open, card set up for a card plan), with "Or ask for a custom plan" under it; anything else keeps
+  **Ask for a custom plan**.
 - Tests: `tests/offers/addition.test.ts`, `tests/billing/renewal.test.ts`, `tests/offers/card.test.ts`.
 
 ## Adding features to a card plan (decided 15 October 2026)

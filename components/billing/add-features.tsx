@@ -48,7 +48,7 @@ const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { da
  * each feature's card price per period, "≈ $3 now for the 25 days left" and the plan's new price, and "Add to my card
  * plan" with a confirm step before the card is charged (lib/offers/card-plan.ts).
  */
-export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null, cardAddons = [], now }: { data: AddFeaturesData | null; unavailable: string | null; momo: MethodState; cardRate: { usdToRwf: number; marginPercent: number } | null; /** A card plan whose card subscription takes the features (Paddle set up): the terms; null otherwise. */ cardPlan?: CardPlanTerms | null; /** The features already added to that card plan, each with its card price per period (each can be removed). */ cardAddons?: CardAddonItem[]; contactEmail?: string; now: string }) {
+export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null, cardAddons = [], preselect = null, now }: { data: AddFeaturesData | null; unavailable: string | null; momo: MethodState; cardRate: { usdToRwf: number; marginPercent: number } | null; /** A card plan whose card subscription takes the features (Paddle set up): the terms; null otherwise. */ cardPlan?: CardPlanTerms | null; /** The features already added to that card plan, each with its card price per period (each can be removed). */ cardAddons?: CardAddonItem[]; /** A feature to start ticked (the "Add to your plan" page's "Add it on Billing"). */ preselect?: FeatureKey | null; contactEmail?: string; now: string }) {
   const router = useRouter();
   const { toast } = useToast();
   const { resolvedTheme } = useTheme();
@@ -56,7 +56,7 @@ export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null
   const [busy, setBusy] = useState<"momo" | "invoice" | "card" | null>(null);
   // Shown under the card button as well as in a toast, so a failed card start is never silent.
   const [cardError, setCardError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<FeatureKey[]>([]);
+  const [selected, setSelected] = useState<FeatureKey[]>(() => (preselect && data?.addable.includes(preselect) ? withPrerequisites([preselect]).filter((k) => !(data?.current.features ?? []).includes(k)) : []));
   // The rate the server answered with when it changed since the page loaded (its quote wins).
   const [usdOverride, setUsdOverride] = useState<{ dueMinor: number; usdCents: number } | null>(null);
   // A card plan: the confirm step before the card is charged, and a price per period the server answered with.

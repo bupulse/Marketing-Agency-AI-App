@@ -37,6 +37,7 @@ import type { Renewal } from "@/components/billing/plan-actions";
 import { OfferCard } from "@/components/billing/offer-card";
 import { OfferActions } from "@/components/billing/offer-actions";
 import { site } from "@/lib/content/site";
+import type { FeatureKey } from "@/lib/features";
 import { getInvoices } from "./actions";
 
 export const metadata = { title: "Billing" };
@@ -280,6 +281,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Sear
           cardRate={cardForOffers && addition.ok && !onCardPlan ? cardRate : null}
           cardPlan={cardPlanTerms}
           cardAddons={onCardPlan ? (planAddons?.features ?? []) : []}
+          preselect={addition.ok && typeof query.add === "string" && (addition.addable as string[]).includes(query.add) ? (query.add as FeatureKey) : null}
           now={now.toISOString()}
         />
       )}

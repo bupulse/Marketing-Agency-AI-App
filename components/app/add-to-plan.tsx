@@ -10,10 +10,10 @@ import { askMessage, can, type Role } from "@/lib/team/roles";
 
 /**
  * The friendly page for a feature the company's plan does not include (or whose service is off right now):
- * what it does, what it needs, and how to get it. Custom plans are arranged with the BuPulse team; until the
- * request form exists (R5) the button goes to Billing. (R5 is built: it opens /custom-plan with this feature ticked.)
+ * what it does, what it needs, and how to get it: on Billing ("Add features") when the owner can add it there
+ * themselves, otherwise a custom plan request (/custom-plan with this feature ticked).
  */
-export function AddToPlan({ feature, reason = "not_in_plan", block = null, role, inPlan }: { feature: FeatureKey; reason?: FeatureBlockReason; block?: AccountBlock | null; role: Role; inPlan: ReadonlySet<FeatureKey> }) {
+export function AddToPlan({ feature, reason = "not_in_plan", block = null, role, inPlan, addOnBilling = false }: { feature: FeatureKey; reason?: FeatureBlockReason; block?: AccountBlock | null; role: Role; inPlan: ReadonlySet<FeatureKey>; /** The owner can add it on Billing themselves (lib/offers/card-plan.ts addableOnBilling). */ addOnBilling?: boolean }) {
   const def = featureOf(feature);
   const Icon = FEATURE_ICONS[feature];
   // The account is read-only (lib/entitlements.ts accountBlock): the feature itself is not the problem.
@@ -65,6 +65,31 @@ export function AddToPlan({ feature, reason = "not_in_plan", block = null, role,
   }
   const needs = def.requires.filter((k) => !inPlan.has(k)).map((k) => featureOf(k).label);
   const points = [def.description, ...(needs.length ? [`Comes with ${needs.join(" and ")}, which it needs.`] : [])];
+  // Addable on Billing (by Mobile Money, an invoice or card, or on a card plan's card subscription): straight there,
+  // with it ticked. A custom plan request stays for anything else.
+  if (addOnBilling && can(role, "billing")) {
+    return (
+      <>
+        <PageHeader title={def.label} description="Not part of your plan yet." />
+        <EmptyState
+          icon={Icon}
+          title={`Add ${def.label} to your plan`}
+          text="Add it yourself on Billing: you pay only for the days left in this period, then it renews with your plan."
+          points={points}
+          action={
+            <div className="flex flex-col items-center gap-2">
+              <Button href={`/dashboard/billing?add=${encodeURIComponent(def.key)}#add-features-heading`} leading={<Check aria-hidden className="size-5" />}>
+                Add it on Billing
+              </Button>
+              <a href={`/custom-plan?from=upgrade&feature=${encodeURIComponent(def.key)}`} className="text-sm font-medium text-muted underline">
+                Or ask for a custom plan
+              </a>
+            </div>
+          }
+        />
+      </>
+    );
+  }
   return (
     <>
       <PageHeader title={def.label} description="Not part of your plan yet." />

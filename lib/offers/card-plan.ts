@@ -15,8 +15,10 @@ import { featureLabel, featureOf, isFeatureKey } from "@/lib/features";
 import { clearPlanCache, getPlan, priceCents } from "@/lib/plan-catalog";
 import { planForAnyPriceId } from "@/lib/region-prices";
 import { isRemoval, signedAddons } from "./card-plan-items";
-import { additionContext, createCustomPlanInTx, OfferError, pricingContext, selfServeQuote, startFeatureAddition } from "./service";
-import { additionDaysLeft, CARD_ADDON_KIND, cardAddonMessage, cardAdditionQuote, customPlanKeyFor, periodDaysEnding, prorateMinor, quoteAddition, readCardPlan, validUntilOf, type CardAdditionQuote, type CardAddonItem, type OfferCardPlan } from "./shared";
+import { currentManualPayment } from "@/lib/billing/momo";
+import type { FeatureKey } from "@/lib/features";
+import { additionContext, createCustomPlanInTx, OfferError, pricingContext, selfServeAddition, selfServeQuote, startFeatureAddition } from "./service";
+import { additionDaysLeft, CARD_ADDON_KIND, cardAddonMessage, cardAdditionQuote, customPlanKeyFor, periodDaysEnding, prorateMinor, quoteAddition, readAddition, readCardPlan, validUntilOf, type CardAdditionQuote, type CardAddonItem, type OfferCardPlan } from "./shared";
 
 // Adding features to a card plan (docs/OFFERS.md, "Adding features to a card plan"). A card plan is a Paddle
 // subscription that renews by itself, so the added features become recurring items on it: one price per feature that
@@ -82,6 +84,24 @@ async function withdrawUnconfirmed(offer: Pick<Prisma.PlanOfferGetPayload<object
     await writeAudit(tx, SYSTEM, "withdraw_offer", `offer:${offer.id}`, { status: "accepted" }, { status: "withdrawn", reason: "card_plan_not_confirmed" });
   });
   clearPlanCache();
+}
+
+/**
+ * Whether the company's owner can add this feature on Billing themselves ("Add features": paid now by Mobile Money, an
+ * invoice or a one-off card payment on a Mobile Money plan; on its card subscription on a card plan), so the "Add to
+ * your plan" page sends them there instead of to a custom plan request. False whenever Billing would not show it: the
+ * feature not addable there, a team offer or a card plan change waiting, a Mobile Money payment open, or card not set up.
+ */
+export async function addableOnBilling(business: { id: string; userId: string }, feature: FeatureKey, now: Date = new Date()): Promise<boolean> {
+  const s = await selfServeAddition(business.id, now).catch(() => null);
+  if (!s?.ok || !s.addable.includes(feature)) return false;
+  const [open, payment] = await Promise.all([
+    prisma.planOffer.findFirst({ where: { businessId: business.id, status: { in: ["sent", "accepted"] } }, select: { options: true } }),
+    currentManualPayment(business.userId, now).catch(() => null),
+  ]);
+  if (open && (!readAddition(open.options)?.selfServe || readCardPlan(open.options))) return false;
+  if (payment?.status === "pending") return false;
+  return s.method === "card" ? cardPlanAdditionsReady() : true;
 }
 
 /**

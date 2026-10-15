@@ -4,6 +4,7 @@ import { getAppContext } from "./context";
 import { EmptyState } from "./empty-state";
 import { PageHeader } from "./page-header";
 import { blockReason } from "@/lib/entitlements";
+import { addableOnBilling } from "@/lib/offers/card-plan";
 import type { FeatureKey } from "@/lib/features";
 import { askMessage, can, type Permission } from "@/lib/team/roles";
 
@@ -28,7 +29,9 @@ export async function pageGate(permission: Permission) {
  * The matching actions and routes call `assertFeature` themselves (lib/entitlements.ts).
  */
 export async function featureGate(feature: FeatureKey) {
-  const { role, entitlements } = await getAppContext();
+  const { role, entitlements, business } = await getAppContext();
   if (entitlements.usable.has(feature)) return null;
-  return <AddToPlan feature={feature} reason={blockReason(entitlements, feature)} block={entitlements.block} role={role} inPlan={entitlements.inPlan} />;
+  const reason = blockReason(entitlements, feature);
+  const addOnBilling = reason === "not_in_plan" && !entitlements.block && can(role, "billing") ? await addableOnBilling(business, feature).catch(() => false) : false;
+  return <AddToPlan feature={feature} reason={reason} block={entitlements.block} role={role} inPlan={entitlements.inPlan} addOnBilling={addOnBilling} />;
 }
