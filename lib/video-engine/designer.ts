@@ -213,6 +213,9 @@ async function callClaude(apiKey: string, model: string, system: string, content
   return { text, usage, stop: body.stop_reason };
 }
 
+/** The API transport: the default way `designVideo` and the prompt writer reach Claude. */
+export const apiTransport = (apiKey: string, fetchImpl: typeof fetch = fetch): ClaudeTransport => (call) => callClaude(apiKey, call.model, call.system, call.content, fetchImpl);
+
 /**
  * Designs one video. One call; if the answer cannot be read, one more call with the problem explained. Usage of every
  * call is returned (also on failure, in DesignError.usage), so the caller can record what was spent.

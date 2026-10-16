@@ -118,6 +118,35 @@ export async function uploadNote(id: string): Promise<string | null> {
   }
 }
 
+const MEDIA_ID = /^um-[0-9a-f]{12}$/;
+const MEDIA_TYPES: Record<string, string> = { "video/mp4": "mp4", "video/quicktime": "mov", "audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/wav": "wav", "audio/x-wav": "wav" };
+
+/** Saves a video or audio reference (MP4, MOV, MP3, WAV; at most 60 MB) for Seedance. Returns its id. */
+export async function saveMedia(bytes: Buffer, mimeType: string): Promise<{ id: string; mimeType: string; bytes: number }> {
+  const type = mimeType.split(";")[0].trim().toLowerCase();
+  const ext = MEDIA_TYPES[type];
+  if (!ext) throw new Error("Upload an MP4 or MOV video, or an MP3 or WAV audio file.");
+  const head = bytes.subarray(0, 12);
+  const looksRight = ext === "mp4" || ext === "mov" ? head.subarray(4, 8).toString("latin1") === "ftyp" : ext === "mp3" ? head.subarray(0, 3).toString("latin1") === "ID3" || (head[0] === 0xff && (head[1] & 0xe0) === 0xe0) : head.subarray(0, 4).toString("latin1") === "RIFF";
+  if (!looksRight) throw new Error("That file does not look like the type it says it is.");
+  const id = `um-${randomBytes(6).toString("hex")}`;
+  const dir = path.join(DATA, "media");
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, `${id}.${ext}`), bytes);
+  await fs.writeFile(path.join(dir, `${id}.json`), JSON.stringify({ mimeType: type === "audio/mp3" ? "audio/mpeg" : type, ext }));
+  return { id, mimeType: type, bytes: bytes.length };
+}
+
+export async function mediaBytes(id: string): Promise<{ bytes: Buffer; mimeType: string } | null> {
+  if (!MEDIA_ID.test(id)) return null;
+  try {
+    const meta = JSON.parse(await fs.readFile(path.join(DATA, "media", `${id}.json`), "utf8")) as { mimeType: string; ext: string };
+    return { bytes: await fs.readFile(path.join(DATA, "media", `${id}.${meta.ext}`)), mimeType: meta.mimeType };
+  } catch {
+    return null;
+  }
+}
+
 export async function uploadExists(id: string): Promise<boolean> {
   if (!UPLOAD_ID.test(id)) return false;
   return fs.access(uploadFile(id)).then(() => true, () => false);

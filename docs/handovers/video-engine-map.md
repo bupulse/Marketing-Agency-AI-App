@@ -15,6 +15,13 @@ seedance2ai.io and Higgsfield work, BytePlus Seedance facts), docs/CONTENT_VISUA
 - **Claude access for tests:** the owner's **Claude subscription** (Claude Code CLI) for tests only. **Remind the
   owner to switch to the API key (`ANTHROPIC_API_KEY`) before any deploy, release zip or wiring into the app.**
 
+## 17 October: the Video Studio
+
+The owner wants real videos (moving people), "fully like Seedance and Higgsfield", BuPulse-branded, Seedance via
+BytePlus. Built: the studio site (home, create with one prompt bar for both engines, showcase, my videos, pricing,
+guide), the BytePlus Seedance connection with jobs, polling, download and credit refunds, Claude as the prompt writer
+for Seedance, RWF credits and a test wallet. Seedance cannot run until `SEEDANCE_API_KEY` is in `.env`.
+
 ## State
 
 - **Done:**

@@ -143,7 +143,42 @@ Measured, 16 October 2026 (Galaxy A56):
 
 Each one is a short art direction added to Claude's brief.
 
-## The Video Lab
+## The Video Studio (17 October 2026)
+
+Owner decisions: the studio is **BuPulse's video studio** (BuPulse brand, RWF credits, BuPulse clients later), built
+"fully like Seedance and Higgsfield", with **Seedance 2.0 through BytePlus** for real video and the Claude engine for
+instant motion videos. It runs outside the app for now (`npm run lab`, http://localhost:3100) so it can be tested
+today; it joins the app once the design is approved.
+
+| Page | What it is |
+| --- | --- |
+| `/` | Home like seedance2ai.io: hero video, the two engines, showcase, features, use cases, how it works, pricing, FAQ |
+| `/create` | The studio, like Higgsfield's Marketing Studio: a hero carousel of videos, one prompt bar for both engines (Real video / Motion), pill settings (mode, template, ratio, duration, quality, more, versions), Avatar and Product tiles, Generate with the credits, your generations, the template gallery with live previews. A drawer shows each video with edit and extend |
+| `/showcase`, `/videos` | Every finished video of both engines, with a viewer showing the prompt or caption and the cost |
+| `/pricing` | Credit packs in RWF (test wallet top-ups, no payment), the Seedance rate table, the wallet |
+| `/guide` | How to use it, prompt tips, FAQ |
+| `/lab` | The earlier developer lab page, kept |
+
+**Seedance (real video)** (`lib/video-engine/seedance.ts`, `video-lab/seedance-jobs.ts`):
+
+- Modes: reference (up to 9 images, 3 videos, 3 audio), text, image to video (first frame), first and last frame,
+  edit (the finished video as Video 1 plus the change) and extend. Quality Mini, Fast or Pro; 480p, 720p, 1080p;
+  7 ratios; 4 to 15 s; sound; fixed lens; offline (flex, cheaper); draft (480p preview); seed; 1 to 3 versions.
+- A job charges credits first, creates the BytePlus task, polls every 10 s, downloads the MP4 as soon as it is ready
+  (the BytePlus link lasts 24 hours) and refunds the credits when the task fails or is cancelled. Polling resumes after
+  a restart. References go as embedded data (the lab has no public address); real usage tokens are priced and logged.
+- **Write it with Claude** (`lib/video-engine/seedance-prompt.ts`): Claude writes the Seedance shot list from the
+  product facts, the template and the references (only facts, references by number, product fidelity, no real faces).
+- Waiting for `SEEDANCE_API_KEY` (BytePlus ModelArk, ap-southeast-1) and the digital character library. Everything
+  else is built and unit-tested against the documented API; the first real clip will confirm it.
+
+**Credits** (`video-lab/credits.ts`): 1 credit = 10 RWF. A price is the estimated provider cost x 2.2 margin, rounded
+to 5 credits: for example Seedance Fast 720p 5 s = 190 credits (1,900 RWF), Mini 480p 5 s = 55, Pro 1080p 5 s = 590;
+a Motion video = 30 credits; a presenter image = 15. Packs: 1,000 credits for 10,000 RWF, 3,500 for 30,000, 7,500 for
+60,000. The lab wallet starts with 5,000 test credits (`VIDEO_LAB_START_CREDITS`). In the app these become plan
+allowances and MoMo add-ons.
+
+## The Video Lab (developer page, `/lab`)
 
 A small local site for testing the engine, separate from the app (`video-lab/`, `scripts/video-lab/start.mjs`).
 
@@ -233,5 +268,7 @@ Later the same night (house listing, Kibagabaga):
 | Free sample design | `lib/video-engine/sample.ts` |
 | Cartoon presenters | `lib/video-engine/cast.ts` (drawn in `draw.ts`) |
 | Realistic influencers (lab) | `video-lab/influencers.ts` |
+| Seedance (BytePlus) | `lib/video-engine/seedance.ts`, `lib/video-engine/seedance-prompt.ts`, `video-lab/seedance-jobs.ts` |
+| Studio site | `video-lab/site/` (layout, `site.css`, `pages/`, `client/`), `video-lab/credits.ts`, `scripts/video-lab/start.mjs` |
 | Video Lab | `video-lab/server.ts`, `video-lab/data-source.ts`, `video-lab/store.ts`, `video-lab/client/`, `scripts/video-lab/start.mjs` (`npm run lab`) |
-| Tests | `tests/video-engine/engine.test.ts`, `tests/video-engine/camera-and-modes.test.ts` |
+| Tests | `tests/video-engine/engine.test.ts`, `tests/video-engine/camera-and-modes.test.ts`, `tests/video-engine/seedance.test.ts`, `tests/video-engine/credits.test.ts` |

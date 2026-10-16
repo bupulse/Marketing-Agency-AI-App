@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}} · BuPulse Video Studio</title>
+<link rel="stylesheet" href="/site.css">
+</head>
+<body data-page="{{page}}">
+<header class="nav">
+  <a class="brand" href="/"><span class="logo">B</span> BuPulse <b>Video Studio</b></a>
+  <nav>
+    <a href="/app/video/seedance" data-nav="seedance">Seedance 2.0</a>
+    <a href="/app/video/motion" data-nav="motion">Motion (Claude)</a>
+    <a href="/templates" data-nav="templates">Templates</a>
+    <a href="/showcase" data-nav="showcase">Showcase</a>
+    <a href="/pricing" data-nav="pricing">Pricing</a>
+    <a href="/guide" data-nav="guide">Guide</a>
+  </nav>
+  <div class="navRight">
+    <a class="wallet" href="/pricing" id="walletChip">… credits</a>
+    <a class="btn primary" href="/app/video/seedance">Start creating</a>
+  </div>
+</header>
+<div class="notice" id="labNotice"></div>
+{{content}}
+<footer class="foot">
+  <div class="cols">
+    <div><h4>AI video</h4><a href="/app/video/seedance">Seedance 2.0</a><a href="/app/video/seedance?tier=fast">Seedance 2.0 Fast</a><a href="/app/video/seedance?tier=mini">Seedance 2.0 Mini</a><a href="/app/video/motion">Motion videos (Claude)</a></div>
+    <div><h4>Create</h4><a href="/templates">Templates</a><a href="/app/video/motion#influencers">AI influencers</a><a href="/videos">My videos</a><a href="/showcase">Showcase</a></div>
+    <div><h4>Account</h4><a href="/pricing">Pricing and credits</a><a href="/guide">Guide</a><a href="/guide#faq">FAQ</a></div>
+    <div><h4>BuPulse</h4><p class="muted">AI marketing for businesses in Rwanda and East Africa. Video Studio is in testing: the TEST database only, no client sees it.</p></div>
+  </div>
+  <p class="muted small">© 2026 BuPulse. Seedance is a model by ByteDance, used through BytePlus ModelArk; Claude is by Anthropic. BuPulse is not affiliated with them.</p>
+</footer>
+<script src="/js/site.js"></script>
+{{scripts}}
+</body>
+</html>
