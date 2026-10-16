@@ -87,12 +87,13 @@ export const SHOTS: Record<string, Shot> = {
   "onboarding/steps": {
     eyebrow: "Step 2 · Your brand", title: <>BuPulse learns <Grad>your business.</Grad></>, text: "Four short steps, under five minutes.", url: "bupulse.com/onboarding",
     frames: [
+      // Timed to the voice (14 Oct 2026): what you sell, how you talk, the logo, then hours and contact for the chat.
       { file: "onboarding/step-1-offer", from: 0, cam: [{ p: 0, x: 0.5, y: 0.42, z: 1.12 }] },
-      { file: "onboarding/step-2-voice", from: 0.28, cam: [{ p: 0, x: 0.5, y: 0.42, z: 1.12 }] },
-      { file: "onboarding/step-3-look-extracted", from: 0.55, cam: [{ p: 0.55, x: 0.5, y: 0.42, z: 1.12 }, { p: 0.8, x: 0.42, y: 0.55, z: 1.4 }] },
-      { file: "onboarding/step-4-chat", from: 0.86, cam: [{ p: 0, x: 0.5, y: 0.42, z: 1.12 }] },
+      { file: "onboarding/step-2-voice", from: 0.16, cam: [{ p: 0, x: 0.5, y: 0.42, z: 1.12 }] },
+      { file: "onboarding/step-3-look-extracted", from: 0.29, cam: [{ p: 0.29, x: 0.5, y: 0.42, z: 1.12 }, { p: 0.48, x: 0.42, y: 0.55, z: 1.4 }] },
+      { file: "onboarding/step-4-chat", from: 0.53, cam: [{ p: 0, x: 0.5, y: 0.42, z: 1.12 }] },
     ],
-    callouts: [{ p: 0.05, to: 0.27, text: "What you sell", x: 40, y: 640 }, { p: 0.3, to: 0.54, text: "How you talk", x: 40, y: 640 }, { p: 0.62, to: 0.85, text: "Colours picked from your logo", x: 40, y: 640 }, { p: 0.88, text: "Facts for your website chat", x: 40, y: 640 }],
+    callouts: [{ p: 0.03, to: 0.15, text: "What you sell", x: 40, y: 640 }, { p: 0.17, to: 0.28, text: "How you talk", x: 40, y: 640 }, { p: 0.33, to: 0.52, text: "Colours picked from your logo", x: 40, y: 640 }, { p: 0.56, text: "Hours and contact for your website chat", x: 40, y: 640 }],
   },
   "inzu/project": {
     eyebrow: "New product", title: <>Add what you <Grad>sell.</Grad></>, text: "Name, price, key features and photos.", url: "bupulse.com/dashboard/projects/new",

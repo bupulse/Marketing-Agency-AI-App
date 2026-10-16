@@ -94,7 +94,7 @@ export const PayMethod: React.FC = () => {
         <div style={{ width: 64, height: 64, borderRadius: 18, background: kind === "momo" ? MOMO.header : C.gradient, color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>{kind === "momo" ? "📲" : "💳"}</div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 24, fontWeight: 700 }}>{kind === "momo" ? "Mobile Money" : "Card"}</div>
-          <div style={{ fontSize: 17, color: C.muted, marginTop: 4 }}>{kind === "momo" ? "MoMo or Airtel Money · we confirm in minutes" : "Visa or Mastercard · renews automatically"}</div>
+          <div style={{ fontSize: 17, color: C.muted, marginTop: 4 }}>{kind === "momo" ? "MoMo or Airtel Money · confirmed the same day" : "Visa or Mastercard · renews automatically"}</div>
           <div style={{ fontSize: 26, fontWeight: 700, marginTop: 8 }}>
             {kind === "momo" ? rwf(plan.rwf) : `${usd(plan.usd)} / month`}
             {kind === "card" && <span style={{ fontSize: 17, color: C.muted, fontWeight: 500 }}> {approxRwf(plan.usd)}</span>}
@@ -254,7 +254,7 @@ export const Waiting: React.FC = () => {
               </svg>
             </div>
             <div style={{ fontSize: 28, fontWeight: 700 }}>Waiting for approval</div>
-            <div style={{ fontSize: 20, color: C.muted, marginTop: 8 }}>Usually a few minutes</div>
+            <div style={{ fontSize: 20, color: C.muted, marginTop: 8 }}>Usually the same day</div>
             <div style={{ height: 8, borderRadius: 4, background: "rgba(47,107,255,0.12)", marginTop: 24, overflow: "hidden" }}>
               <div style={{ width: `${30 + 40 * prog(f, click + 10, 120)}%`, height: "100%", background: C.gradient }} />
             </div>
@@ -284,7 +284,7 @@ export const OwnerApprove: React.FC = () => {
   const approved = f >= approve + 4;
   const shake = f >= sms - 4 && f < sms + 14 ? Math.sin(f * 2.4) * 6 : 0;
   return (
-    <SceneLayout eyebrow="Our side" title={<>We check and <Grad>approve</Grad></>} text="Usually within minutes, every day.">
+    <SceneLayout eyebrow="Our side" title={<>We check and <Grad>approve</Grad></>} text="Usually the same day.">
       <div style={{ position: "absolute", left: 0, top: 20, transform: `translateX(${shake}px) rotate(${shake * 0.2}deg)` }}>
         <PhoneFrame width={340} dark>
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(160deg,#1b1e2b,#2c2346)", fontFamily, color: "white" }}>
@@ -401,7 +401,7 @@ export const QuickPay: React.FC = () => {
   ];
   const line = interpolate(f, [t[0], t[3]], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   return (
-    <SceneLayout eyebrow={biz.name} title={<>Business plan, <Grad>paid in minutes</Grad></>} text={`${rwf(plan.rwf)} a month with Mobile Money.`}>
+    <SceneLayout eyebrow={biz.name} title={<>Business plan, <Grad>paid and active</Grad></>} text={`${rwf(plan.rwf)} a month with Mobile Money.`}>
       <div style={{ position: "absolute", left: 70, top: 120, width: 4, height: 520, background: "rgba(47,107,255,0.12)", borderRadius: 2 }}>
         <div style={{ width: "100%", height: `${line * 100}%`, background: C.gradient, borderRadius: 2 }} />
       </div>
@@ -594,37 +594,44 @@ export const Reminder: React.FC = () => {
   const f = useCurrentFrame();
   const plan = PLAN_PRICE.business;
   const mail = 6;
-  const wa = at(s, 0.35);
+  const second = at(s, 0.35);
+  // v2 (lib/billing/momo-emails.ts): Mobile Money plans get a reminder email 5 days and 1 day before the period ends.
+  const inbox: { when: string; subject: string; at: number }[] = [
+    { when: "8 Nov", subject: `Your BuPulse ${plan.name} plan ends tomorrow`, at: second },
+    { when: "4 Nov", subject: `Your BuPulse ${plan.name} plan ends in 5 days`, at: mail },
+  ];
   return (
-    <SceneLayout eyebrow="Before the month ends" title={<>A friendly <Grad>reminder</Grad></>} text="By email and on WhatsApp. No surprises.">
+    <SceneLayout eyebrow="Before the month ends" title={<>A friendly <Grad>reminder</Grad></>} text="By email, 5 days and 1 day before. No surprises.">
       <Glass style={{ position: "absolute", left: 0, top: 120, width: 560, ...rise(f, mail, 30) }} pad={30}>
         <div style={{ fontSize: 16, color: C.muted }}>✉️ hello@bupulse.com · to Eric</div>
-        <div style={{ fontSize: 28, fontWeight: 800, marginTop: 12, lineHeight: 1.2 }}>Your Business plan renews in 5 days</div>
-        <div style={{ fontSize: 20, color: C.muted, marginTop: 10, lineHeight: 1.4 }}>{rwf(plan.rwf)} for November. Pay with Mobile Money any time before 9 Nov.</div>
+        <div style={{ fontSize: 28, fontWeight: 800, marginTop: 12, lineHeight: 1.2 }}>Your Business plan ends in 5 days</div>
+        <div style={{ fontSize: 20, color: C.muted, marginTop: 10, lineHeight: 1.4 }}>Pay {rwf(plan.rwf)} by Mobile Money to keep creating. It ends on 9 Nov.</div>
         <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
           <Button>Pay now</Button>
           <Badge tone="warn" style={{ alignSelf: "center" }}>Due 9 Nov</Badge>
         </div>
       </Glass>
-      <div style={{ position: "absolute", left: 640, top: 0, ...rise(f, wa - 8, 60, 18) }}>
+      <div style={{ position: "absolute", left: 640, top: 0, ...rise(f, second - 8, 60, 18) }}>
         <PhoneFrame width={360}>
-          <div style={{ position: "absolute", inset: 0, background: "#ECE5DD", fontFamily }}>
-            <div style={{ background: "#1F7A5C", color: "white", padding: "56px 18px 14px", display: "flex", alignItems: "center", gap: 12 }}>
-              <Avatar name="Bu Pulse" size={40} color="#2F6BFF" />
-              <div><div style={{ fontSize: 19, fontWeight: 700 }}>BuPulse</div><div style={{ fontSize: 13, opacity: 0.8 }}>Business account</div></div>
-            </div>
-            {f >= wa && (
-              <div style={{ margin: "22px 16px", background: "white", borderRadius: "4px 18px 18px 18px", padding: 16, boxShadow: "0 2px 4px rgba(0,0,0,0.08)", ...rise(f, wa, 20, 12) }}>
-                <div style={{ fontSize: 17, lineHeight: 1.45 }}>Hi Eric 👋 Your BuPulse <b>Business</b> plan renews in <b>5 days</b> · {rwf(plan.rwf)}.</div>
-                <div style={{ fontSize: 17, color: "#1F7A5C", fontWeight: 700, marginTop: 10 }}>Pay now → bupulse.com/pay</div>
-                <div style={{ fontSize: 12, color: C.muted, textAlign: "right", marginTop: 6 }}>09:00 ✓✓</div>
-              </div>
+          <div style={{ position: "absolute", inset: 0, background: "#F2F2F7", fontFamily }}>
+            <div style={{ padding: "58px 18px 10px", fontSize: 30, fontWeight: 800 }}>Inbox</div>
+            {inbox.map((m) =>
+              f >= m.at ? (
+                <div key={m.when} style={{ margin: "0 12px 10px", background: "white", borderRadius: 16, padding: "12px 14px", display: "flex", gap: 10, boxShadow: "0 2px 6px rgba(0,0,0,0.06)", ...rise(f, m.at, 20, 12) }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 5, marginTop: 6, flexShrink: 0, background: m.at === second ? C.blue : "transparent" }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15 }}><b>BuPulse</b><span style={{ color: C.muted }}>{m.when}</span></div>
+                    <div style={{ fontSize: 16, fontWeight: 600, marginTop: 2, lineHeight: 1.3 }}>{m.subject}</div>
+                    <div style={{ fontSize: 14, color: C.muted, marginTop: 2 }}>Pay {rwf(plan.rwf)} by Mobile Money…</div>
+                  </div>
+                </div>
+              ) : null,
             )}
           </div>
         </PhoneFrame>
       </div>
       <Sfx name="ping" at={mail} volume={0.35} />
-      <Sfx name="ping" at={wa} />
+      <Sfx name="ping" at={second} />
     </SceneLayout>
   );
 };

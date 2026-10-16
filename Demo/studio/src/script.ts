@@ -66,7 +66,7 @@ export const VIDEOS: Video[] = [
         visual: "PricingRW",
         lines: [
           ["Prices are in Rwandan francs.", "Ibiciro biri mu mafaranga y'u Rwanda."],
-          ["Starter is fifteen thousand francs a month. Business is thirty-five thousand.", "Starter ni amafaranga ibihumbi cumi na bitanu ku kwezi. Business ni ibihumbi mirongo itatu na bitanu."],
+          ["Starter is fifteen thousand francs a month. Business is fifty thousand.", "Starter ni amafaranga ibihumbi cumi na bitanu ku kwezi. Business ni ibihumbi mirongo itanu."],
           ["Or ask for a custom plan, built around your business. Pay with Mobile Money, or by card.", "Cyangwa usabe gahunda yihariye, ikozwe ku bucuruzi bwawe. Wishyura na Mobile Money cyangwa ikarita."],
         ],
       },
@@ -87,19 +87,19 @@ export const VIDEOS: Video[] = [
         demoOnly: true,
         lines: [
           ["Next, tell BuPulse what you sell, who your customers are, and how you like to talk to them.", "Hanyuma, bwira BuPulse ibyo ucuruza, abakiriya bawe abo ari bo, n'uburyo ukunda kuvugana na bo."],
-          ["Upload your logo, and BuPulse picks your brand colours from it. It takes less than five minutes.", "Shyiraho ikirango cyawe, BuPulse ihitemo amabara yawe. Bitwara iminota itarenze itanu."],
+          ["Upload your logo, and BuPulse picks your brand colours from it. Then add your opening hours and contact details, so your website chat can answer customers. It takes less than five minutes.", "Shyiraho ikirango cyawe, BuPulse ihitemo amabara yawe. Hanyuma wongeremo amasaha ukoreraho n'uburyo bwo kukubona, kugira ngo ikiganiro ku rubuga rwawe gisubize abakiriya. Bitwara iminota itarenze itanu."],
         ],
       },
       {
         id: "dashboard",
         visual: "Dashboard",
         demoOnly: true,
-        lines: [["Your dashboard is ready, in your colours, with your logo.", "Urubuga rwawe rwiteguye, mu mabara yawe, n'ikirango cyawe."]],
+        lines: [["Once your plan starts, your dashboard opens in your colours, with your logo.", "Gahunda yawe nimara gutangira, urubuga rwawe rufunguka mu mabara yawe, n'ikirango cyawe."]],
       },
       {
         id: "choose",
         visual: "PlanPick",
-        lines: [["Now choose the plan that fits you. Let's look at each one.", "Noneho hitamo gahunda ikubereye. Reka turebe buri imwe."]],
+        lines: [["Now choose the plan that fits you, then pick a time for a short free demo, or pay straight away. Let's look at each plan.", "Noneho hitamo gahunda ikubereye, hanyuma uhitemo igihe cyo kwerekwa uko bikora ku buntu, cyangwa wishyure ako kanya. Reka turebe buri gahunda."]],
       },
       END,
     ],
@@ -144,7 +144,7 @@ export const VIDEOS: Video[] = [
       {
         id: "paid",
         visual: "Waiting:starter",
-        lines: [["Then she taps I've paid, and enters the transaction ID. Approval usually takes a few minutes.", "Hanyuma akanda \"Narishyuye\", akandika nimero y'igikorwa. Kwemezwa bitwara iminota mike."]],
+        lines: [["Then she taps I've paid, and enters the transaction ID. We check the payment and approve it, usually the same day.", "Hanyuma akanda \"Narishyuye\", akandika nimero y'igikorwa. Turagenzura ubwishyu tukabwemeza, akenshi uwo munsi."]],
       },
       {
         id: "approve",
@@ -228,7 +228,7 @@ export const VIDEOS: Video[] = [
         id: "pay",
         hold: 1.4,
         visual: "QuickPay:business",
-        lines: [["Eric chooses Business, thirty-five thousand francs a month. He pays with Mobile Money, we approve, and his plan is active.", "Eric ahitamo Business, ibihumbi mirongo itatu na bitanu ku kwezi. Yishyura na Mobile Money, tukemeza, gahunda ye igatangira."]],
+        lines: [["Eric chooses Business, fifty thousand francs a month. He pays with Mobile Money, we approve, and his plan is active.", "Eric ahitamo Business, ibihumbi mirongo itanu ku kwezi. Yishyura na Mobile Money, tukemeza, gahunda ye igatangira."]],
       },
       {
         id: "team",
@@ -254,7 +254,7 @@ export const VIDEOS: Video[] = [
       {
         id: "volume",
         visual: "Screen:urugo/design",
-        lines: [["Business includes two hundred AI texts and one hundred designs a month.", "Business irimo inyandiko magana abiri za AI n'amafoto ijana buri kwezi."]],
+        lines: [["Business includes two hundred AI texts and one hundred AI photo designs a month, plus the website chat.", "Business irimo inyandiko magana abiri za AI n'amafoto ijana ya AI buri kwezi, hamwe n'ikiganiro ku rubuga."]],
       },
       {
         id: "channels",
@@ -271,7 +271,7 @@ export const VIDEOS: Video[] = [
         id: "variants",
         visual: "Screen:urugo/composer",
         demoOnly: true,
-        lines: [["Each network gets its own version: a short caption with photos for Instagram and Facebook, and a longer business post for LinkedIn.", "Buri rubuga rubona uburyo bwarwo: amagambo make n'amafoto kuri Instagram na Facebook, n'inyandiko ndende kuri LinkedIn."]],
+        lines: [["Each network gets its own version: a short caption with photos for Instagram and Facebook. LinkedIn, with a longer business post, is coming soon.", "Buri rubuga rubona uburyo bwarwo: amagambo make n'amafoto kuri Instagram na Facebook. LinkedIn, n'inyandiko ndende, biri hafi."]],
       },
       {
         id: "calendar",
@@ -293,7 +293,7 @@ export const VIDEOS: Video[] = [
       {
         id: "upsell",
         visual: "Upsell:custom",
-        lines: [["Want a website chat that catches new buyers, or Autopilot that plans your week? Ask for a custom plan.", "Urashaka ikiganiro ku rubuga rwawe kizana abaguzi bashya, cyangwa Autopilot igutegurira icyumweru? Saba gahunda yihariye."]],
+        lines: [["Want Autopilot to plan your week, or our team to run your pages? Ask for a custom plan.", "Urashaka Autopilot igutegurira icyumweru, cyangwa itsinda ryacu rigucungira imbuga? Saba gahunda yihariye."]],
       },
       END,
     ],
@@ -310,7 +310,7 @@ export const VIDEOS: Video[] = [
       {
         id: "request",
         visual: "CustomRequest",
-        lines: [["Patrick asks for a custom plan. He describes his shop, his goals, and the features he wants.", "Patrick asaba gahunda yihariye. Asobanura iduka rye, intego ze, n'ibyo yifuza."]],
+        lines: [["Patrick asks for a custom plan. He describes his shop and the features he wants.", "Patrick asaba gahunda yihariye. Asobanura iduka rye n'ibyo yifuza."]],
       },
       {
         id: "booking",
@@ -328,7 +328,7 @@ export const VIDEOS: Video[] = [
         visual: "CustomBuilder",
         lines: [
           ["In the BuPulse admin, we open Nova Phones and add features. When we add Autopilot, everything it needs comes with it.", "Muri BuPulse admin, dufungura Nova Phones tukongeramo serivisi. Iyo twongeyemo Autopilot, ibyo ikenera byose biza hamwe na yo."],
-          ["We add the website chat with WhatsApp alerts, three hundred AI photo designs a month, analytics, and our team to manage his pages. The price adds up as we go.", "Twongeramo ikiganiro ku rubuga n'ubutumwa bwa WhatsApp, amafoto magana atatu ya AI buri kwezi, isesengura, n'itsinda ryacu ricunga imbuga ze. Igiciro kiyongera uko tugenda."],
+          ["Business already has the website chat, so we raise his AI photo designs to three hundred a month, and add analytics and our team to manage his pages. The price adds up as we go.", "Business isanzwe ifite ikiganiro ku rubuga, bityo tuzamura amafoto ye ya AI akagera kuri magana atatu buri kwezi, tukongeramo isesengura n'itsinda ryacu ricunga imbuga ze. Igiciro kiyongera uko tugenda."],
         ],
       },
       {
@@ -363,7 +363,7 @@ export const VIDEOS: Video[] = [
         visual: "WebsiteChat",
         lines: [
           ["On his website, a visitor asks if the Samsung A56 is in stock. The chat answers from Patrick's own information, then asks for a name and phone number.", "Ku rubuga rwe, umushyitsi abaza niba Samsung A56 ihari. Ikiganiro gisubiza gikoresheje amakuru ya Patrick, hanyuma kikamubaza izina na telefone."],
-          ["Patrick gets a WhatsApp alert, and the lead is waiting in BuPulse.", "Patrick yakira ubutumwa kuri WhatsApp, kandi umukiriya amutegereje muri BuPulse."],
+          ["Patrick gets an alert on his phone, and the lead is waiting in BuPulse.", "Patrick yakira ubutumwa kuri telefone ye, kandi umukiriya amutegereje muri BuPulse."],
         ],
       },
       {

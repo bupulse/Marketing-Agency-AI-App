@@ -150,8 +150,8 @@ const PlanCard: React.FC<PlanCardProps> = ({ name, price, sub, features, highlig
 
 const RW_PLANS: PlanCardProps[] = [
   { name: "Starter", price: rwf(PLAN_PRICE.starter.rwf), sub: `per month · card $${PLAN_PRICE.starter.usd}`, features: ["60 AI texts a month", "30 brand designs", "Calendar & scheduling", "Photo gallery"], cta: "Choose Starter" },
-  { name: "Business", price: rwf(PLAN_PRICE.business.rwf), sub: `per month · card $${PLAN_PRICE.business.usd}`, features: ["200 AI texts a month", "100 brand designs", "3 team members", "5 social channels"], highlight: true, badge: "Most popular", cta: "Choose Business" },
-  { name: "Custom", price: "Your plan", sub: "built after a short call", features: ["Autopilot", "Website chat + WhatsApp", "AI photo designs", "Managed by our team"], cta: "Book a call" },
+  { name: "Business", price: rwf(PLAN_PRICE.business.rwf), sub: `per month · card $${PLAN_PRICE.business.usd}`, features: ["200 AI texts a month", "100 AI photo designs", "120 voiced videos a month", "Website chat and leads", "3 team members"], highlight: true, badge: "Most popular", cta: "Choose Business" },
+  { name: "Custom", price: "Your plan", sub: "built after a short call", features: ["Autopilot", "More AI photo designs", "Analytics", "Managed by our team"], cta: "Book a call" },
 ];
 
 /** Rwanda pricing page with RWF prices and payment badges. */
@@ -242,7 +242,7 @@ export const Upsell: React.FC = () => {
   const from = toCustom ? RW_PLANS[1] : RW_PLANS[0];
   const to = toCustom ? [RW_PLANS[2]] : [RW_PLANS[1], RW_PLANS[2]];
   return (
-    <SceneLayout eyebrow="Grow when you're ready" title={toCustom ? <>Want <Grad>more?</Grad></> : <>Need <Grad>more?</Grad></>} text={toCustom ? "Website chat, Autopilot and more, in a custom plan." : "Upgrade any time. Nothing is lost."}>
+    <SceneLayout eyebrow="Grow when you're ready" title={toCustom ? <>Want <Grad>more?</Grad></> : <>Need <Grad>more?</Grad></>} text={toCustom ? "Autopilot, our team and more, in a custom plan." : "Upgrade any time. Nothing is lost."}>
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 24 }}>
         <PlanCard {...from} style={{ ...rise(f, 4), opacity: 0.55, transform: "scale(0.92)" }} cta="Current plan" />
         <div style={{ ...rise(f, 14), fontSize: 50, color: C.blue }}>→</div>

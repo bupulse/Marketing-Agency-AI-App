@@ -53,11 +53,11 @@ export const PLAN_PRICE = {
 /** The owner's side (BuPulse), receiving MoMo payments. */
 export const OWNER = { momoPayCode: "184 772", momoName: "BuPulse", phone: "+250 791 954 277" };
 
-/** Custom plan add-ons as shown in the admin (RWF / month). */
+/** Custom plan add-ons as shown in the admin (RWF / month; v2 Rwanda add-on prices). */
 export const ADDONS = [
   { key: "autopilot", name: "Autopilot", price: 20000, needs: ["calendar", "designs"] },
-  { key: "chat", name: "Website chat + WhatsApp leads", price: 10000, needs: [] },
-  { key: "aiphoto", name: "AI photo designs · 300 / month", price: 20000, needs: ["designs"] },
+  { key: "chat", name: "Website chat and leads", price: 10000, needs: [] }, // included in Business
+  { key: "imagepack", name: "Image pack (+50 AI images)", price: 5000, needs: [] },
   { key: "analytics", name: "Analytics", price: 5000, needs: ["calendar"] },
-  { key: "managed", name: "Managed by BuPulse", price: 100000, needs: ["calendar"] },
+  { key: "managed", name: "Managed by BuPulse, Light", price: 100000, needs: ["calendar"] },
 ];

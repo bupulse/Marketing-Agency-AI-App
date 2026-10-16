@@ -67,3 +67,7 @@ next-env.d.ts
 /Demo/capture/assets/
 /Demo/capture/site/
 /Demo/studio/public/screens/
+.claude/settings.local.json
+
+# Local Netlify folder
+.netlify

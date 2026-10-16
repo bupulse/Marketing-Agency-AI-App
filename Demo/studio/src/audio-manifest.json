@@ -57,20 +57,20 @@
    ]
   },
   "pricing": {
-   "file": "audio/voice/aa342cc458f8.mp3",
-   "duration": 13.235,
+   "file": "audio/voice/d38ca69773e8.mp3",
+   "duration": 11.981,
    "lines": [
     {
      "start": 0,
-     "end": 1.765
+     "end": 1.881
     },
     {
-     "start": 2.043,
-     "end": 7.512
+     "start": 2.125,
+     "end": 5.619
     },
     {
-     "start": 7.721,
-     "end": 13.235
+     "start": 5.944,
+     "end": 11.981
     }
    ]
   },
@@ -95,36 +95,36 @@
    ]
   },
   "onboarding": {
-   "file": "audio/voice/cbd1c6be9357.mp3",
-   "duration": 9.752,
+   "file": "audio/voice/0b0e1180dd18.mp3",
+   "duration": 17.043,
    "lines": [
     {
      "start": 0,
-     "end": 4.168
+     "end": 4.725
     },
     {
-     "start": 4.493,
-     "end": 9.752
+     "start": 4.969,
+     "end": 17.043
     }
    ]
   },
   "dashboard": {
-   "file": "audio/voice/a2e8d56f473c.mp3",
-   "duration": 3.344,
+   "file": "audio/voice/b8dadac8a8f7.mp3",
+   "duration": 4.04,
    "lines": [
     {
      "start": 0,
-     "end": 3.344
+     "end": 4.04
     }
    ]
   },
   "choose": {
-   "file": "audio/voice/1a5b0bedf790.mp3",
-   "duration": 3.065,
+   "file": "audio/voice/d6e222c30e3a.mp3",
+   "duration": 6.734,
    "lines": [
     {
      "start": 0,
-     "end": 3.065
+     "end": 6.734
     }
    ]
   },
@@ -199,12 +199,12 @@
    ]
   },
   "paid": {
-   "file": "audio/voice/72744a5f4ca9.mp3",
-   "duration": 5.759,
+   "file": "audio/voice/5ea6232016bf.mp3",
+   "duration": 6.641,
    "lines": [
     {
      "start": 0,
-     "end": 5.759
+     "end": 6.641
     }
    ]
   },
@@ -351,12 +351,12 @@
    ]
   },
   "pay": {
-   "file": "audio/voice/caac6913b430.mp3",
-   "duration": 6.316,
+   "file": "audio/voice/a38b2adbe92c.mp3",
+   "duration": 6.92,
    "lines": [
     {
      "start": 0,
-     "end": 6.316
+     "end": 6.92
     }
    ]
   },
@@ -401,12 +401,12 @@
    ]
   },
   "volume": {
-   "file": "audio/voice/e4318f868856.mp3",
-   "duration": 3.762,
+   "file": "audio/voice/50ccb537397a.mp3",
+   "duration": 6.177,
    "lines": [
     {
      "start": 0,
-     "end": 3.762
+     "end": 6.177
     }
    ]
   },
@@ -431,12 +431,12 @@
    ]
   },
   "variants": {
-   "file": "audio/voice/44518bbbcfb3.mp3",
-   "duration": 8.499,
+   "file": "audio/voice/6f873d5d1bb8.mp3",
+   "duration": 8.081,
    "lines": [
     {
      "start": 0,
-     "end": 8.499
+     "end": 8.081
     }
    ]
   },
@@ -471,12 +471,12 @@
    ]
   },
   "upsell": {
-   "file": "audio/voice/d868ab51da73.mp3",
-   "duration": 5.433,
+   "file": "audio/voice/4424bd469662.mp3",
+   "duration": 4.783,
    "lines": [
     {
      "start": 0,
-     "end": 5.433
+     "end": 4.783
     }
    ]
   },
@@ -503,12 +503,12 @@
    ]
   },
   "request": {
-   "file": "audio/voice/316253b6200d.mp3",
-   "duration": 5.201,
+   "file": "audio/voice/a1946d6218c6.mp3",
+   "duration": 4.319,
    "lines": [
     {
      "start": 0,
-     "end": 5.201
+     "end": 4.319
     }
    ]
   },
@@ -533,16 +533,16 @@
    ]
   },
   "builder": {
-   "file": "audio/voice/0fda93712b3e.mp3",
-   "duration": 18.994,
+   "file": "audio/voice/443600a8cba8.mp3",
+   "duration": 20.341,
    "lines": [
     {
      "start": 0,
-     "end": 7.721
+     "end": 7.616
     },
     {
-     "start": 7.964,
-     "end": 18.994
+     "start": 7.941,
+     "end": 20.341
     }
    ]
   },
@@ -597,16 +597,16 @@
    ]
   },
   "chat": {
-   "file": "audio/voice/744cb1a30426.mp3",
-   "duration": 12.446,
+   "file": "audio/voice/7afa515cb348.mp3",
+   "duration": 13.282,
    "lines": [
     {
      "start": 0,
-     "end": 8.766
+     "end": 8.986
     },
     {
-     "start": 9.044,
-     "end": 12.446
+     "start": 9.23,
+     "end": 13.282
     }
    ]
   },

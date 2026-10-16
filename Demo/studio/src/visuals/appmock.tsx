@@ -495,7 +495,7 @@ const InzuUsage: React.FC = () => {
           </Card>
           <Card pad={22} style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12, ...rise(f, 30) }}>
             <div style={{ fontSize: 16, fontWeight: 700 }}>Need more?</div>
-            <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.5 }}>Business gives you 200 AI texts, 100 designs and 3 team members.</div>
+            <div style={{ fontSize: 14, color: C.muted, lineHeight: 1.5 }}>Business gives you 200 AI texts, 100 AI photo designs, 120 voiced videos, website chat and 3 team members.</div>
             <Button style={{ height: 44, fontSize: 15, alignSelf: "flex-start" }}>See plans</Button>
           </Card>
         </div>
@@ -627,7 +627,7 @@ const UrugoDesign: React.FC = () => {
   const f = useCurrentFrame();
   const tiles = [["urugo-house.jpg", "JUST LISTED"], ["urugo-apartment.jpg", "FOR RENT"], ["urugo-villa.jpg", "OPEN HOUSE"], ["urugo-living.jpg", "NEW PRICE"], ["urugo-villa.jpg", "SOLD"], ["urugo-apartment.jpg", "JUST LISTED"]];
   return (
-    <SceneLayout eyebrow="More every month" title={<>200 texts. <Grad>100 designs.</Grad></>} text="Plenty for a busy agency.">
+    <SceneLayout eyebrow="More every month" title={<>200 texts. <Grad>100 AI images.</Grad></>} text="Plus the website chat, 500 replies a month.">
       <Shell biz={URUGO} active="Designs" url="bupulse.com/dashboard/designs" title="Designs" sub="14 made this month" action={<Small>+ New design</Small>}>
         <div style={{ display: "flex", gap: 14 }}>
           <div style={{ flex: 1, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
@@ -642,8 +642,9 @@ const UrugoDesign: React.FC = () => {
           <Card pad={20} style={{ width: 260, display: "flex", flexDirection: "column", gap: 20, alignSelf: "flex-start" }}>
             <Badge tone="violet">Business plan</Badge>
             <Meter label="AI texts" value={38} max={200} f={f} start={14} />
-            <Meter label="Designs" value={14} max={100} f={f} start={24} />
-            <Meter label="Team" value={3} max={3} f={f} start={34} />
+            <Meter label="AI images" value={14} max={100} f={f} start={24} />
+            <Meter label="Chat replies" value={46} max={500} f={f} start={34} />
+            <Meter label="Team" value={3} max={3} f={f} start={44} />
           </Card>
         </div>
       </Shell>
@@ -670,9 +671,10 @@ const UrugoChannels: React.FC = () => {
   const nets = [
     { n: "Facebook", acct: "Urugo Homes · Page", at: c1 },
     { n: "Instagram", acct: "@urugohomes", at: c2 },
-    { n: "LinkedIn", acct: "", at: 1e9 },
-    { n: "TikTok", acct: "", at: 1e9 },
-    { n: "YouTube", acct: "", at: 1e9 },
+    // Not connectable yet in v2 (no app keys): the Channels page says "Coming soon" for these.
+    { n: "LinkedIn", acct: "", at: 1e9, soon: true },
+    { n: "TikTok", acct: "", at: 1e9, soon: true },
+    { n: "YouTube", acct: "", at: 1e9, soon: true },
   ];
   return (
     <SceneLayout eyebrow="Channels" title={<>One click <Grad>per network.</Grad></>} text="Connect Facebook and Instagram.">
@@ -687,7 +689,7 @@ const UrugoChannels: React.FC = () => {
                   <div style={{ fontSize: 16, fontWeight: 700 }}>{x.n}</div>
                   <div style={{ fontSize: 13, color: on ? C.success : C.muted }}>{on ? `Connected · ${x.acct}` : "Not connected"}</div>
                 </div>
-                {on ? <Badge tone="success">✓ Connected</Badge> : <span style={{ fontSize: 14, fontWeight: 600, padding: "9px 16px", borderRadius: 999, border: `1.5px solid ${C.line}`, transform: f >= x.at && f < x.at + 8 ? "scale(0.94)" : undefined }}>Connect</span>}
+                {on ? <Badge tone="success">✓ Connected</Badge> : "soon" in x ? <Badge tone="neutral">Coming soon</Badge> : <span style={{ fontSize: 14, fontWeight: 600, padding: "9px 16px", borderRadius: 999, border: `1.5px solid ${C.line}`, transform: f >= x.at && f < x.at + 8 ? "scale(0.94)" : undefined }}>Connect</span>}
               </Card>
             );
           })}
@@ -711,11 +713,11 @@ const UrugoComposer: React.FC = () => {
     : URUGO_CAPTION;
   const checks = ["Photo attached", tab === 2 ? "Long post fits LinkedIn" : "Under 2,200 characters", "4 hashtags", "Posting Fri 18:00"];
   return (
-    <SceneLayout eyebrow="Composer" title={variants ? <>A version <Grad>for each network.</Grad></> : <>See it <Grad>before it posts.</Grad></>} text={variants ? "Short for Instagram, longer for LinkedIn." : "Previews and checks for every network."}>
+    <SceneLayout eyebrow="Composer" title={variants ? <>A version <Grad>for each network.</Grad></> : <>See it <Grad>before it posts.</Grad></>} text={variants ? "Short for Instagram and Facebook. LinkedIn coming soon." : "Previews and checks for every network."}>
       <Shell biz={URUGO} active="Calendar" url="bupulse.com/dashboard/compose" title="New post" sub="3-bedroom house, Kibagabaga" action={<Small>Schedule</Small>}>
         <div style={{ display: "flex", gap: 14, height: "100%" }}>
           <Card style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", gap: 8 }}>{tabs.map((t) => <div key={t} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px 5px 5px", borderRadius: 999, background: "rgba(47,107,255,0.08)", fontSize: 13, fontWeight: 600 }}><NetGlyph net={t} size={22} />{t}</div>)}</div>
+            <div style={{ display: "flex", gap: 8 }}>{tabs.map((t) => <div key={t} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px 5px 5px", borderRadius: 999, background: "rgba(47,107,255,0.08)", fontSize: 13, fontWeight: 600 }}><NetGlyph net={t} size={22} />{t}{t === "LinkedIn" && <span style={{ color: C.muted, fontWeight: 500 }}>· soon</span>}</div>)}</div>
             <div style={{ fontSize: 14.5, lineHeight: 1.5, border: `1px solid ${C.line}`, borderRadius: 12, padding: 12, flex: 1 }}>{text}<div style={{ color: C.blue, marginTop: 6 }}>{URUGO_TAGS}</div></div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <Photo name="urugo-house.jpg" w={90} h={64} r={10} />

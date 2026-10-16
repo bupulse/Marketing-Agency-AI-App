@@ -2,7 +2,7 @@
 import { interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import manifest from "../audio-manifest.json";
 import { rwf } from "../config";
-import { ADDONS, BIZ } from "../data";
+import { ADDONS, BIZ, PLAN_PRICE } from "../data";
 import { at, useScene, type SceneInfo } from "../scene-context";
 import { prog, pop, rise, typed } from "../ui/motion";
 import { Avatar, Badge, BrowserFrame, Button, Callout, Cursor, Glass, Mark, PhoneFrame } from "../ui/primitives";
@@ -79,19 +79,19 @@ export const CustomRequest: React.FC = () => {
   const f = useCurrentFrame();
   const s = useScene();
   const A = (p: number) => at(s, p);
-  const desc = "Smartphones, accessories and repairs in Kigali city centre.";
-  const goals = "More customers from Instagram, answer questions faster.";
-  const chips = ["Autopilot", "Website chat", "AI photos", "Managed by BuPulse", "Analytics", "Online store"];
+  const desc = "Smartphones, accessories and repairs in Kigali city centre. Customers ask about stock and prices all day.";
+  // Feature names as on v2's request form (lib/features.ts).
+  const chips = ["Autopilot", "Website chat and leads", "AI photos", "Managed by BuPulse", "Analytics", "Canva editing"];
   const picked = [0, 1, 2, 3];
-  const chipAt = (i: number) => A(0.58 + i * 0.08);
-  const chipPos = (i: number): [number, number] => [70 + (i % 3) * 320 + 120, 520 + Math.floor(i / 3) * 70 + 28];
+  const chipAt = (i: number) => A(0.5 + i * 0.08);
+  const chipPos = (i: number): [number, number] => [70 + (i % 3) * 320 + 120, 462 + Math.floor(i / 3) * 70 + 28];
   const sendAt = A(0.95);
   return (
     <SceneLayout eyebrow="Custom plan · Step 1" title={<>Tell us what you <Grad>need</Grad></>}>
       <BrowserFrame url="bupulse.com/custom-plan" width={W} height={H}>
         <div style={{ padding: "30px 60px", display: "flex", flexDirection: "column", gap: 22 }}>
           <div style={{ ...rise(f, 0), display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: -0.8 }}>Ask for a custom plan</div>
+            <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: -0.8 }}>Request a custom plan</div>
             <Badge tone="violet">Free meeting</Badge>
           </div>
           <div style={{ ...rise(f, 4), display: "grid", gridTemplateColumns: "1fr 1fr", gap: 22 }}>
@@ -99,10 +99,7 @@ export const CustomRequest: React.FC = () => {
             <Field label="Owner" value={NOVA.owner} />
           </div>
           <div style={rise(f, 8)}>
-            <Field label="What do you sell?" value={typeIn(desc, f, A(0.06), A(0.3))} caret={f >= A(0.04) && f < A(0.33)} active={f >= A(0.04) && f < A(0.33)} />
-          </div>
-          <div style={rise(f, 12)}>
-            <Field label="Your goals" value={typeIn(goals, f, A(0.34), A(0.55))} caret={f >= A(0.33) && f < A(0.57)} active={f >= A(0.33) && f < A(0.57)} />
+            <Field label="What does your business do?" height={170} value={typeIn(desc, f, A(0.06), A(0.42))} caret={f >= A(0.04) && f < A(0.45)} active={f >= A(0.04) && f < A(0.45)} />
           </div>
           <div style={{ ...rise(f, 16) }}>
             <div style={{ fontSize: 18, fontWeight: 600, color: C.muted, marginBottom: 10 }}>Features you're interested in</div>
@@ -118,24 +115,21 @@ export const CustomRequest: React.FC = () => {
             </div>
           </div>
           <div style={{ ...rise(f, 20), display: "flex", justifyContent: "flex-end" }}>
-            <Button pressed={f >= sendAt && f < sendAt + 6}>Continue to booking →</Button>
+            <Button pressed={f >= sendAt && f < sendAt + 6}>Send my request</Button>
           </div>
         </div>
         <Cursor
           path={[
             [0, 900, 640],
             [A(0.03), 500, 300, true],
-            [A(0.31), 520, 300],
-            [A(0.33), 500, 400, true],
-            [A(0.55), 560, 400],
+            [A(0.44), 560, 360],
             ...picked.map((p, i): [number, number, number, boolean] => [chipAt(i), ...chipPos(p), true]),
-            [sendAt, 940, 670, true],
+            [sendAt, 940, 636, true],
           ]}
         />
       </BrowserFrame>
       <Sfx name="click" at={A(0.03)} />
       <Sfx name="typing" at={A(0.07)} volume={0.3} />
-      <Sfx name="typing" at={A(0.36)} volume={0.3} />
       {picked.map((_, i) => <Sfx key={i} name="click" at={chipAt(i)} volume={0.35} />)}
       <Sfx name="click" at={sendAt} />
     </SceneLayout>
@@ -161,7 +155,7 @@ export const Booking: React.FC = () => {
   const invite = pop(f, fps, inviteAt, 16);
   return (
     <SceneLayout eyebrow="Custom plan · Step 2" title={<>Book a short <Grad>online meeting</Grad></>}>
-      <BrowserFrame url="bupulse.com/custom-plan/book" width={W} height={H}>
+      <BrowserFrame url="bupulse.com/custom-plan/call" width={W} height={H}>
         <div style={{ padding: "30px 60px" }}>
           <div style={{ ...rise(f, 0), display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <div style={{ fontSize: 32, fontWeight: 700 }}>Pick a time · 30 minutes</div>
@@ -187,7 +181,7 @@ export const Booking: React.FC = () => {
         )}
         <div style={{ position: "absolute", left: 60, right: 60, bottom: 30, display: "flex", justifyContent: "space-between", alignItems: "center", opacity: picked ? 1 : 0.4 }}>
           <div style={{ fontSize: 22, fontWeight: 600 }}>{picked ? "Tue 14 Oct · 10:00–10:30" : "Choose a time"}</div>
-          <Button pressed={f >= confirmAt && f < confirmAt + 6}>Confirm booking</Button>
+          <Button pressed={f >= confirmAt && f < confirmAt + 6}>Book this time</Button>
         </div>
         {f >= inviteAt && (
           <div style={{ position: "absolute", inset: 0, background: `rgba(11,11,15,${0.35 * invite})`, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -228,7 +222,7 @@ export const Meeting: React.FC = () => {
   const f = useCurrentFrame();
   const s = useScene();
   const A = (p: number) => at(s, p);
-  const needs = ["Post every day without losing hours", "Answer stock and price questions online", "Catch leads and get them on WhatsApp", "Branded photos of new phones", "Someone to run the pages"];
+  const needs = ["Post every day without losing hours", "Answer stock and price questions online", "Catch leads, with an alert on his phone", "Branded photos of new phones", "Someone to run the pages"];
   const speaking = Math.floor(f / 40) % 2; // alternate who is talking
   const Tile: React.FC<{ who: "patrick" | "bupulse"; talk: boolean }> = ({ who, talk }) => (
     <div style={{ position: "relative", flex: 1, borderRadius: 22, background: who === "patrick" ? "linear-gradient(160deg, #23324F, #121826)" : "linear-gradient(160deg, #2A2350, #141226)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: talk ? "0 0 0 4px #4ADE80" : undefined }}>
@@ -278,6 +272,13 @@ export const Meeting: React.FC = () => {
 
 type Row = { key: string; name: string; price: number; included?: boolean; prereq?: boolean; stepper?: boolean };
 
+// v2 (14 Oct 2026): Business is 50,000 RWF and already has the website chat and AI photos (100 images a month). The
+// custom plan adds Autopilot, 4 image packs of 50 (300 images a month), Analytics and Managed by BuPulse (Light):
+// 50,000 + 20,000 + 20,000 + 5,000 + 100,000 = 195,000 RWF, rounded to 190,000 in the offer.
+const BUILDER_BASE = PLAN_PRICE.business.rwf;
+const IMAGES_INCLUDED = 100;
+const IMAGE_PACK = 50;
+
 export const CustomBuilder: React.FC = () => {
   const f = useCurrentFrame();
   const s = useScene();
@@ -289,41 +290,41 @@ export const CustomBuilder: React.FC = () => {
   const rows: Row[] = [
     { key: "calendar", name: "Calendar & scheduling", price: 0, included: true, prereq: true },
     { key: "designs", name: "Branded designs", price: 0, included: true, prereq: true },
+    { key: "chat", name: "Website chat and leads", price: 0, included: true },
     { key: "autopilot", name: "Autopilot", price: price("autopilot") },
-    { key: "chat", name: "Website chat + WhatsApp leads", price: price("chat") },
-    { key: "aiphoto", name: "AI photo designs", price: price("aiphoto"), stepper: true },
+    { key: "aiphoto", name: "AI photo designs", price: 0, included: true, stepper: true },
     { key: "analytics", name: "Analytics", price: price("analytics") },
-    { key: "managed", name: "Managed by BuPulse", price: price("managed") },
+    { key: "managed", name: "Managed by BuPulse, Light", price: price("managed") },
   ];
   const clickAt: Record<string, number> = {
     autopilot: l1 + Math.round((l2 - l1) * 0.3),
-    chat: B(0.08),
-    aiphoto: B(0.2),
-    analytics: B(0.52),
-    managed: B(0.64),
+    analytics: B(0.6),
+    managed: B(0.73),
   };
-  const step1 = B(0.32), step2 = B(0.42);
-  const aiAmount = f < step1 ? 100 : f < step2 ? 200 : 300;
-  const aiPrice = aiAmount === 100 ? 8000 : aiAmount === 200 ? 14000 : price("aiphoto");
-  const roundAt = B(0.78);
-  const sendAt = B(0.94);
-  const BASE = 35000;
+  const chatFlash = prog(f, B(0.02), 10) * (1 - prog(f, B(0.2), 12));
+  const step1 = B(0.32), step2 = B(0.45);
+  const aiAmount = f < step1 ? IMAGES_INCLUDED : f < step2 ? 200 : 300;
+  const packs = (aiAmount - IMAGES_INCLUDED) / IMAGE_PACK;
+  const aiPrice = packs * price("imagepack");
+  const roundAt = B(0.84);
+  const sendAt = B(0.95);
   const steps: [number, number][] = [];
-  let tot = BASE;
-  for (const k of ["autopilot", "chat", "aiphoto"]) {
-    tot += k === "aiphoto" ? 8000 : price(k);
-    steps.push([clickAt[k], tot]);
-  }
-  tot += 14000 - 8000; steps.push([step1, tot]);
-  tot += price("aiphoto") - 14000; steps.push([step2, tot]);
+  let tot = BUILDER_BASE;
+  tot += price("autopilot"); steps.push([clickAt.autopilot, tot]);
+  tot += 2 * price("imagepack"); steps.push([step1, tot]);
+  tot += 2 * price("imagepack"); steps.push([step2, tot]);
   tot += price("analytics"); steps.push([clickAt.analytics, tot]);
   tot += price("managed"); steps.push([clickAt.managed, tot]);
-  const total = Math.round(stepValue(f, steps, BASE) / 100) * 100;
-  const finalTotal = tot; // 190,000
-  const rounded = 185000;
+  const total = Math.round(stepValue(f, steps, BUILDER_BASE) / 100) * 100;
+  const finalTotal = tot; // 195,000
+  const rounded = OFFER_TOTAL; // 190,000
   const rowY = (i: number) => 150 + i * 72;
+  const rowOf = (k: string) => rows.findIndex((r) => r.key === k);
   const prereqFlash = prog(f, clickAt.autopilot + 6, 12) * (1 - prog(f, clickAt.autopilot + 60, 30));
-  const added = rows.filter((r) => !r.included && f >= clickAt[r.key]);
+  const added = [
+    ...rows.filter((r) => !r.included && f >= clickAt[r.key]),
+    ...(f >= step1 ? [{ key: "aiphoto", name: `AI photos +${aiAmount - IMAGES_INCLUDED} / month`, price: aiPrice }] : []),
+  ].sort((a, b) => rowOf(a.key) - rowOf(b.key));
   return (
     <SceneLayout eyebrow="Step 4 · BuPulse admin" title={<>Build the plan, <Grad>feature by feature</Grad></>}>
       <BrowserFrame url="bupulse.com/admin/companies/nova-phones" width={W} height={H}>
@@ -341,7 +342,7 @@ export const CustomBuilder: React.FC = () => {
             <div style={{ position: "absolute", top: 108, left: 28, fontSize: 15, fontWeight: 700, color: C.muted, letterSpacing: 1.5, textTransform: "uppercase" }}>Features</div>
             {rows.map((r, i) => {
               const on = r.included ? 1 : prog(f, clickAt[r.key], 8);
-              const flash = r.prereq ? prereqFlash : 0;
+              const flash = r.prereq ? prereqFlash : r.key === "chat" ? chatFlash : 0;
               const showNeeded = r.prereq && f >= clickAt.autopilot + 6;
               return (
                 <div key={r.key} style={{ position: "absolute", left: 20, width: 620, top: rowY(i), height: 62, borderRadius: 16, display: "flex", alignItems: "center", gap: 14, padding: "0 14px", background: flash > 0 ? `rgba(123,92,255,${0.14 * flash})` : on > 0.5 && !r.included ? "rgba(47,107,255,0.06)" : "transparent", boxShadow: flash > 0 ? `0 0 0 ${2 * flash}px rgba(123,92,255,0.5)` : undefined, ...rise(f, 4 + i * 2) }}>
@@ -350,7 +351,7 @@ export const CustomBuilder: React.FC = () => {
                     {r.name}
                     {r.stepper && <span style={{ color: C.muted, fontWeight: 500 }}> · {aiAmount} / month</span>}
                   </div>
-                  {r.stepper && on > 0.5 && (
+                  {r.stepper && (
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       {["−", "+"].map((b, bi) => (
                         <div key={b} style={{ width: 34, height: 34, borderRadius: 10, border: `1.5px solid ${C.line}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 700, background: bi === 1 && ((f >= step1 && f < step1 + 6) || (f >= step2 && f < step2 + 6)) ? "rgba(47,107,255,0.15)" : "white" }}>{b}</div>
@@ -359,10 +360,12 @@ export const CustomBuilder: React.FC = () => {
                   )}
                   {showNeeded ? (
                     <Badge tone="violet" style={{ fontSize: 15 }}>🔒 needed by Autopilot</Badge>
+                  ) : r.stepper ? (
+                    <div style={{ fontSize: aiPrice > 0 ? 19 : 15, fontWeight: 600, color: aiPrice > 0 ? C.text : C.muted, width: 110, textAlign: "right" }}>{aiPrice > 0 ? `+${fmt(aiPrice)}` : "In Business"}</div>
                   ) : r.included ? (
-                    <Badge tone="neutral" style={{ fontSize: 15 }}>Included</Badge>
+                    <Badge tone="neutral" style={{ fontSize: 15 }}>{r.key === "chat" || r.stepper ? "In Business" : "Included"}</Badge>
                   ) : (
-                    <div style={{ fontSize: 19, fontWeight: 600, color: on > 0.5 ? C.text : C.muted, width: 110, textAlign: "right" }}>+{fmt(r.stepper ? aiPrice : r.price)}</div>
+                    <div style={{ fontSize: 19, fontWeight: 600, color: on > 0.5 ? C.text : C.muted, width: 110, textAlign: "right" }}>+{fmt(r.price)}</div>
                   )}
                 </div>
               );
@@ -372,13 +375,13 @@ export const CustomBuilder: React.FC = () => {
           <div style={{ flex: 1, padding: "24px 26px", display: "flex", flexDirection: "column", background: "#FAFAFC" }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: C.muted, letterSpacing: 1.5, textTransform: "uppercase" }}>Monthly price</div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 19, marginTop: 16 }}>
-              <span>Business plan</span><span style={{ fontWeight: 600 }}>{fmt(BASE)}</span>
+              <span>Business plan</span><span style={{ fontWeight: 600 }}>{fmt(BUILDER_BASE)}</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10, minHeight: 210 }}>
               {added.map((r) => (
-                <div key={r.key} style={{ display: "flex", justifyContent: "space-between", fontSize: 18, ...rise(f, clickAt[r.key], 12, 10) }}>
-                  <span style={{ color: C.muted, maxWidth: 270 }}>{r.name.replace(" + WhatsApp leads", "")}</span>
-                  <span style={{ fontWeight: 600 }}>+{fmt(r.stepper ? aiPrice : r.price)}</span>
+                <div key={r.key} style={{ display: "flex", justifyContent: "space-between", fontSize: 18, ...rise(f, clickAt[r.key] ?? step1, 12, 10) }}>
+                  <span style={{ color: C.muted, maxWidth: 270 }}>{r.name}</span>
+                  <span style={{ fontWeight: 600 }}>+{fmt(r.price)}</span>
                 </div>
               ))}
             </div>
@@ -405,18 +408,17 @@ export const CustomBuilder: React.FC = () => {
         <Cursor
           path={[
             [0, 400, 650],
-            [clickAt.autopilot, 52, rowY(2) + 31, true],
-            [clickAt.chat, 52, rowY(3) + 31, true],
-            [clickAt.aiphoto, 52, rowY(4) + 31, true],
-            [step1, 551, rowY(4) + 31, true],
-            [step2, 551, rowY(4) + 31, true],
-            [clickAt.analytics, 52, rowY(5) + 31, true],
-            [clickAt.managed, 52, rowY(6) + 31, true],
+            [clickAt.autopilot, 52, rowY(rowOf("autopilot")) + 31, true],
+            [step1, 485, rowY(rowOf("aiphoto")) + 31, true],
+            [step2, 485, rowY(rowOf("aiphoto")) + 31, true],
+            [clickAt.analytics, 52, rowY(rowOf("analytics")) + 31, true],
+            [clickAt.managed, 52, rowY(rowOf("managed")) + 31, true],
             [roundAt, 900, 525, true],
             [sendAt, 880, 662, true],
           ]}
         />
         {f < clickAt.autopilot + 110 && <Callout at={clickAt.autopilot + 14} x={225} y={92}>Everything it needs comes with it</Callout>}
+        {f >= B(0.02) && f < B(0.24) && <Callout at={B(0.02)} x={225} y={rowY(rowOf("chat")) - 64}>Already in Business</Callout>}
       </BrowserFrame>
       {Object.values(clickAt).map((t, i) => <Sfx key={i} name="click" at={t} volume={0.35} />)}
       <Sfx name="click" at={step1} volume={0.3} />
@@ -431,12 +433,11 @@ export const CustomBuilder: React.FC = () => {
 /* ---------------------------------------------------------------- Offer (+ payforneed) */
 
 const OFFER_ITEMS: [string, number][] = [
-  ["Business plan", 35000],
+  ["Business plan (website chat included)", PLAN_PRICE.business.rwf],
   ["Autopilot", 20000],
-  ["Website chat + WhatsApp leads", 10000],
-  ["AI photo designs · 300 / month", 20000],
+  ["AI photo designs · 300 / month (4 image packs)", 20000],
   ["Analytics", 5000],
-  ["Managed by BuPulse", 100000],
+  ["Managed by BuPulse, Light", 100000],
   ["Rounding", -5000],
 ];
 const OFFER_TOTAL = OFFER_ITEMS.reduce((n, [, p]) => n + p, 0);
@@ -448,8 +449,8 @@ const NAV: { label: string; icon: string; locked?: boolean }[] = [
   { label: "Calendar", icon: "🗓️" },
   { label: "Gallery", icon: "🖼️" },
   { label: "Autopilot", icon: "✨", locked: true },
-  { label: "Website chat", icon: "💬", locked: true },
-  { label: "Leads", icon: "📥", locked: true },
+  { label: "Website chat", icon: "💬" }, // in Business since 14 Oct 2026
+  { label: "Leads", icon: "📥" },
   { label: "Analytics", icon: "📈", locked: true },
   { label: "Billing", icon: "💳" },
 ];
@@ -544,7 +545,7 @@ export const Offer: React.FC = () => {
                     ) : f < approvedAt ? (
                       <div style={{ height: 52, borderRadius: 999, background: "rgba(255,170,0,0.14)", color: "#9A5B00", fontWeight: 700, fontSize: 19, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                         <span style={{ display: "inline-block", width: 20, height: 20, borderRadius: 10, border: "3px solid #E0A526", borderTopColor: "transparent", transform: `rotate(${f * 12}deg)` }} />
-                        Waiting for approval · usually a few minutes
+                        Waiting for approval · usually the same day
                       </div>
                     ) : (
                       <div style={{ height: 52, borderRadius: 999, background: C.successBg, color: C.success, fontWeight: 700, fontSize: 20, display: "flex", alignItems: "center", justifyContent: "center" }}>✓ Payment approved</div>
@@ -906,12 +907,13 @@ export const WebsiteChat: React.FC = () => {
             <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, #1B2B44, #0E1626)", padding: "64px 14px 0" }}>
               <div style={{ textAlign: "center", color: "white", fontSize: 54, fontWeight: 300 }}>10:24</div>
               <div style={{ textAlign: "center", color: "rgba(255,255,255,0.7)", fontSize: 15, marginBottom: 18 }}>Tuesday 14 October</div>
+              {/* BuPulse's push alert (v2 lib/leads/notify.ts: "New lead: <name>" and the visitor's first message). */}
               <div style={{ background: "rgba(255,255,255,0.92)", borderRadius: 18, padding: 12, display: "flex", gap: 10, transform: `scale(${0.9 + 0.1 * phone})` }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: "#25D366", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>💬</div>
-                <div style={{ fontSize: 14, lineHeight: 1.3 }}>
-                  <div style={{ fontWeight: 700 }}>BuPulse · New lead</div>
-                  <div>Claudine · 078 334 9021</div>
-                  <div style={{ color: C.muted }}>Interested in: Samsung A56</div>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: "white", boxShadow: "0 0 0 1px rgba(0,0,0,0.06)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Mark size={26} /></div>
+                <div style={{ fontSize: 14, lineHeight: 1.3, minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}><span>BuPulse</span><span>now</span></div>
+                  <div style={{ fontWeight: 700 }}>New lead: Claudine</div>
+                  <div style={{ color: "#3A3A40" }}>Do you have the Samsung A56? What's the price?</div>
                 </div>
               </div>
             </div>
