@@ -150,6 +150,51 @@ the pack or subscription. A 10-second 1080p Pro clip = 240 credits = about $1.85
   Edit", "Brand Kit". Its SEO page targets "URL to Video Ad Generator", "AI UGC Generator", "Shopify video ad",
   "AI Talking Head Video".
 
+### Inside the Marketing Studio editor (logged in, 16 October 2026)
+
+The owner logged in to a Higgsfield account in a separate Chrome window. We opened menus and pickers only: nothing was
+generated, saved or paid for.
+
+- **One prompt bar** ("Describe the video you want to create...") with an Image / Video switch and these choices:
+  - **Style.** Image styles: Product shot, Ads, Marketplace. Video styles:
+    - **UGC** (20 styles): Shopping, At home, Delivery, Review, Try-on, Unboxing, Tutorial, Before/after, Giant Figure,
+      Unboxing ASMR, Virtual Try-On, Crush Test, Mystery Box, Reboxing, TV Spot and others.
+    - **Motion** (8 styles): 2D product motion, Hypermotion, Typography, Dark Minimalism, Color pop, Mixed media, SaaS,
+      Product Showcase.
+    - **TikTok**: This Gadget Saved Me, Couple Sharing At Home, Selfie Testimonial, Direct-to-Camera, Secret Hack
+      Reveal, Camera POV, Classic Meets Modern, Mess to Fresh.
+  - **Hook** (UGC only): "Hooks that stop the scroll. The first 3 seconds decide if your ad gets watched or skipped."
+    About 10 openers, grouped Stunt and Subtle (Product Hit, Interview, Random Object Mic, Product Crash, Camera Bump,
+    Product Dodge, Epic Fail and others). Each is a one-paragraph scene description.
+  - **Setting** (UGC only): about 15 places, Realistic or Unrealistic (Bedroom, Kitchen, Bathroom, Gym, Office, Street,
+    In Car, Nature, plus stunts like Airplane Wing, Volcano Rim, Tiny Reviewer). Again a short scene description each.
+  - **Aspect ratio:** auto, 21:9, 16:9, 4:3, 1:1, 3:4, 9:16.
+  - **Duration:** set by the style (Hypermotion 15 s, UGC 20 s).
+  - **Batch:** 1 to 4 videos at once.
+  - **Avatar:** UGC styles only. About 40 preset people (Jayden, Mei, Malik, Nia, Priya...). Can be filtered by
+    gender, pinned, or created from a photo (`/marketing-studio/avatars/extract`). Very few look African.
+  - **Product:** from your uploads, past generations or saved products, or "Upload from link" (paste a product page)
+    or "Create manually". A product is a title, subtitle, description, icon and photos
+    (`/marketing-studio/webproducts`, `/webproducts/manual`). Brand kits are separate (`/marketing-studio/brand-kits`).
+- **Price before you click.** Every change calls `POST /marketing-studio/v2/costs/quote` with the job's settings and
+  shows the credits on the Generate button. Example answers: Motion "Hypermotion" 15 s, 3:4 = **90 credits**; UGC
+  "Unboxing" 20 s with avatar, 3:4 = **142 credits** (`delivery_specs.mode = "talking"`). Prices are kept in cost
+  units (100 per credit) with a pricing version, so they can change prices without breaking old quotes.
+- **Request shape (observed in the quote call):**
+  `{ job_set_type: "marketing_studio_v2_video", type: "ugc" | "hypermotion", params: { style_id, batch_size,
+  product_photo | input_images, aspect_ratio, duration, delivery_specs } }`. The generate call uses the same job
+  system (`/jobs/v2/<type>`, `/job-sets/<id>`, `/jobs/<id>/cancel`).
+- **Wallet:** credits per workspace, with an expiry (`expire_days` 90), bonus credits and a credit limit per member.
+  Results are filed into "projects" (folders per surface).
+- **Templates** under the bar ("Explore templates") are finished examples (ICE CUBE HOVER, BEFORE AND AFTER...).
+  Clicking one fills the bar with its style and prompt.
+
+**What this means for us.** Higgsfield's "magic" is a catalogue of named presets: style, hook and setting, each a
+short scene description, which are sent to the video model together with the product photos, an avatar and the
+user's line. BuPulse can do the same. Our presets would be written for Rwandan businesses (shop counter, market,
+salon, boda delivery, Kigali street, home kitchen), with our own African AI avatars, and filled automatically from
+the knowledge base instead of typed by the user.
+
 ### Prices (observed on /pricing; the plan figures were read from a mixed list, so check before quoting them)
 
 Credits per clip:
