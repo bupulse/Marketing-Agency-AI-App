@@ -159,7 +159,7 @@ async function shareLinkedInToken(businessId: string, network: Network, oauth: O
 type Row = NonNullable<Awaited<ReturnType<typeof prisma.connection.findUnique>>>;
 
 function credentialsOf(row: Row, accessToken: string): ConnectionCredentials {
-  return { connectionId: row.id, externalAccountId: row.externalAccountId, accountType: row.accountType, accessToken, method: row.method };
+  return { connectionId: row.id, externalAccountId: row.externalAccountId, accountType: row.accountType, accessToken, method: row.method, ...(row.method === "COMPOSIO" ? { composioUserId: row.businessId } : {}) };
 }
 
 const inflight = new Map<string, Promise<string>>();

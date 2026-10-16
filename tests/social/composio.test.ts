@@ -18,6 +18,7 @@ const viaSocials = (network: "facebook" | "instagram" | "linkedin", externalAcco
   accountType,
   accessToken: "ca_123",
   method: "COMPOSIO",
+  composioUserId: "biz1",
 });
 
 beforeEach(() => {
@@ -72,7 +73,7 @@ describe("publishing through BuPulse-Socials", () => {
     expect(result).toEqual({ externalId: "111_222", permalink: "https://www.facebook.com/111/posts/222" });
     expect(callAt(fetch, 0).url).toBe("https://backend.composio.dev/api/v3.1/tools/execute/FACEBOOK_CREATE_PHOTO_POST");
     expect(callAt(fetch, 0).headers["x-api-key"]).toBe("ak_test_key");
-    expect(body(fetch, 0)).toEqual({ connected_account_id: "ca_123", arguments: { page_id: "111", url: "https://storage.example/a.jpg?token=x", message: "New phones in stock", published: true } });
+    expect(body(fetch, 0)).toEqual({ connected_account_id: "ca_123", user_id: "biz1", arguments: { page_id: "111", url: "https://storage.example/a.jpg?token=x", message: "New phones in stock", published: true } });
   });
 
   it("leaves direct accounts on BuPulse's own app", async () => {
@@ -96,7 +97,7 @@ describe("publishing through BuPulse-Socials", () => {
       media: [{ url: "https://storage.example/a.jpg", mimeType: "image/jpeg" }],
     });
     expect(result).toEqual({ externalId: "media1", permalink: "https://www.instagram.com/p/abc/" });
-    expect(body(fetch, 0).arguments).toEqual({ ig_user_id: "1784", image_url: "https://storage.example/a.jpg", caption: "Galaxy A56 %23Kigali" });
+    expect(body(fetch, 0).arguments).toEqual({ ig_user_id: "1784", image_url: "https://storage.example/a.jpg", caption: "Galaxy A56 #Kigali" });
     expect(callAt(fetch, 1).url).toMatch(/INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH$/);
     expect(body(fetch, 1).arguments).toMatchObject({ ig_user_id: "1784", creation_id: "cont1" });
   });
@@ -116,7 +117,7 @@ describe("publishing through BuPulse-Socials", () => {
   });
 
   it("posts LinkedIn text as the member, escaped for LinkedIn", async () => {
-    const fetch = mockFetch(ok({ id: "urn:li:share:7" }));
+    const fetch = mockFetch(ok({ x_restli_id: "urn:li:share:7" }));
     const result = await getProvider("linkedin").publish(viaSocials("linkedin", "abc", "member"), { format: "POST", text: "Open (Mon-Sat) #Kigali", media: [] });
     expect(result.externalId).toBe("urn:li:share:7");
     expect(body(fetch, 0).arguments).toMatchObject({ author: "urn:li:person:abc", commentary: "Open \\(Mon-Sat\\) {hashtag|\\#|Kigali}", visibility: "PUBLIC", lifecycleState: "PUBLISHED" });

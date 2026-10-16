@@ -71,7 +71,7 @@ const facebook: ComposioNetwork = {
   async publish(c, post) {
     const F = "facebook" as const;
     const page = c.externalAccountId;
-    const run = (slug: string, args: Json) => runTool(F, slug, c.accessToken, undefined, { page_id: page, ...args });
+    const run = (slug: string, args: Json) => runTool(F, slug, c.accessToken, c.composioUserId, { page_id: page, ...args });
     const videos = post.media.filter(isVideo);
     const images = post.media.filter((m) => m.mimeType.startsWith("image/"));
     let data: unknown;
@@ -86,7 +86,7 @@ const facebook: ComposioNetwork = {
       else data = await finalStage(F, () => run("FACEBOOK_CREATE_MULTI_PHOTO_POST", { photo_urls: images.map((m) => m.url), message: post.text || undefined }));
     }
     const externalId = requireId(F, data, "post_id", "id");
-    const permalink = await runTool(F, "FACEBOOK_GET_POST", c.accessToken, undefined, { post_id: externalId, fields: "permalink_url" }).then(
+    const permalink = await runTool(F, "FACEBOOK_GET_POST", c.accessToken, c.composioUserId, { post_id: externalId, fields: "permalink_url" }).then(
       (d) => text(field(d, "permalink_url")),
       () => undefined,
     );
@@ -94,7 +94,7 @@ const facebook: ComposioNetwork = {
   },
 
   async metrics(c, externalId) {
-    const d = await runTool("facebook", "FACEBOOK_GET_POST", c.accessToken, undefined, { post_id: externalId, fields: "reactions.summary(true).limit(0),comments.summary(true).limit(0),shares" });
+    const d = await runTool("facebook", "FACEBOOK_GET_POST", c.accessToken, c.composioUserId, { post_id: externalId, fields: "reactions.summary(true).limit(0),comments.summary(true).limit(0),shares" });
     const summary = (key: string) => num(asObject(asObject(field(d, key)).summary).total_count);
     return { likes: summary("reactions"), comments: summary("comments"), shares: num(asObject(field(d, "shares")).count) ?? 0 };
   },
@@ -132,9 +132,9 @@ const instagram: ComposioNetwork = {
     const E = "instagram" as const;
     assertInstagramMedia(post);
     const ig = c.externalAccountId;
-    const run = (slug: string, args: Json) => runTool(E, slug, c.accessToken, undefined, { ig_user_id: ig, ...args });
-    // The tool sends the caption as-is in the request, so a raw "#" would cut it off (Composio's own advice).
-    const caption = post.text.replace(/#/g, "%23");
+    const run = (slug: string, args: Json) => runTool(E, slug, c.accessToken, c.composioUserId, { ig_user_id: ig, ...args });
+    // The caption goes as-is: Composio encodes it (its tool notes say to write "#" as %23, but that shows "%23" on Instagram).
+    const caption = post.text;
     let container: unknown;
     if (post.media.length === 1 && isVideo(post.media[0])) container = await run("INSTAGRAM_POST_IG_USER_MEDIA", { media_type: "REELS", video_url: post.media[0].url, caption, share_to_feed: true });
     else if (post.media.length === 1) container = await run("INSTAGRAM_POST_IG_USER_MEDIA", { image_url: post.media[0].url, caption });
@@ -145,7 +145,7 @@ const instagram: ComposioNetwork = {
     // container still processing is retried later (nothing was published yet).
     const published = await finalStage(E, () => run("INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH", { creation_id: creationId, max_wait_seconds: 25 }));
     const externalId = requireId(E, published, "id", "media_id");
-    const permalink = await runTool(E, "INSTAGRAM_GET_IG_MEDIA", c.accessToken, undefined, { ig_media_id: externalId, fields: "permalink" }).then(
+    const permalink = await runTool(E, "INSTAGRAM_GET_IG_MEDIA", c.accessToken, c.composioUserId, { ig_media_id: externalId, fields: "permalink" }).then(
       (d) => text(field(d, "permalink")),
       () => undefined,
     );
@@ -153,7 +153,7 @@ const instagram: ComposioNetwork = {
   },
 
   async metrics(c, externalId) {
-    const d = await runTool("instagram", "INSTAGRAM_GET_IG_MEDIA", c.accessToken, undefined, { ig_media_id: externalId, fields: "like_count,comments_count" });
+    const d = await runTool("instagram", "INSTAGRAM_GET_IG_MEDIA", c.accessToken, c.composioUserId, { ig_media_id: externalId, fields: "like_count,comments_count" });
     return { likes: num(field(d, "like_count")), comments: num(field(d, "comments_count")) };
   },
 };
@@ -191,9 +191,10 @@ const linkedin: ComposioNetwork = {
     const files: Awaited<ReturnType<typeof uploadFile>>[] = [];
     for (const [i, m] of images.entries()) files.push(await uploadFile(E, "LINKEDIN_CREATE_LINKED_IN_POST", m.url, m.mimeType, `photo-${i + 1}.${m.mimeType.split("/")[1] ?? "jpg"}`));
     const data = await finalStage(E, () =>
-      runTool(E, "LINKEDIN_CREATE_LINKED_IN_POST", c.accessToken, undefined, { author, commentary, visibility: "PUBLIC", lifecycleState: "PUBLISHED", ...(files.length ? { images: files } : {}) }),
+      runTool(E, "LINKEDIN_CREATE_LINKED_IN_POST", c.accessToken, c.composioUserId, { author, commentary, visibility: "PUBLIC", lifecycleState: "PUBLISHED", ...(files.length ? { images: files } : {}) }),
     );
-    const externalId = requireId(E, data, "id", "post_id", "x-restli-id", "urn");
+    // Composio answers { x_restli_id: "urn:li:share:..." } (LinkedIn's x-restli-id header).
+    const externalId = requireId(E, data, "x_restli_id", "id", "post_id", "x-restli-id", "urn");
     return { externalId, permalink: `https://www.linkedin.com/feed/update/${externalId}` };
   },
 };

@@ -81,6 +81,8 @@ export interface ConnectionCredentials {
   accessToken: string;
   /** How the account was connected (Connection.method); DIRECT when absent. */
   method?: "DIRECT" | "OWN_COMPOSIO" | "COMPOSIO";
+  /** BuPulse-Socials only: the Composio user the account belongs to (the business id); Composio asks for it on every call. */
+  composioUserId?: string;
 }
 
 export interface SocialProvider {
