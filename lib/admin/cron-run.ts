@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { scrubSecrets } from "./scrub";
 import { runAsBackgroundJob } from "@/lib/platform/background-job";
+import { loadServiceKeys } from "./service-keys";
 
 const KEEP_DAYS = 14;
 
@@ -21,6 +22,8 @@ function summarise(result: unknown): string | null {
  */
 export async function recordCron<T>(job: string, run: () => Promise<T>): Promise<T> {
   const startedAt = new Date();
+  // Jobs use the keys saved in Admin -> Services like pages do.
+  await loadServiceKeys();
   let result: T;
   try {
     // Emails a job sends link to the public address, not to the host the cron was called on.

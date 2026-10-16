@@ -1,10 +1,12 @@
 import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { loadServiceKeys } from "@/lib/admin/service-keys";
 
 // Create a new client per request (never share one across requests).
 export async function createClient() {
-  const cookieStore = await cookies();
+  // Every page and action that reads the session also gets the keys saved in Admin -> Services (cached, 30 s).
+  const [cookieStore] = await Promise.all([cookies(), loadServiceKeys()]);
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

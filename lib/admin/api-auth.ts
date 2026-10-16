@@ -7,6 +7,7 @@ import { trustedClientIp } from "@/lib/platform/headers";
 import { RateLimitError, rateLimit, type RateLimitRule } from "@/lib/rate-limit";
 import { ADMIN_KEY_PREFIX, ipAllowed } from "./keys";
 import { apiContext, type AdminContext } from "./types";
+import { loadServiceKeys } from "./service-keys";
 
 export const ADMIN_API_RATE_LIMIT: RateLimitRule = { limit: 120, windowSeconds: 60 }; // per key
 const LAST_USED_EVERY_MS = 60_000;
@@ -30,6 +31,7 @@ export function clientIp(request: Request): string | null {
  * key's allow-list (when it has one), then the per-key rate limit.
  */
 export async function authenticateAdminRequest(request: Request): Promise<AdminAuth> {
+  await loadServiceKeys(); // the keys saved in Admin -> Services
   const challenge = { "www-authenticate": "Bearer" };
   const match = /^Bearer\s+(\S+)$/i.exec(request.headers.get("authorization") ?? "");
   if (!match || !match[1].startsWith(ADMIN_KEY_PREFIX) || match[1].length > 200) {

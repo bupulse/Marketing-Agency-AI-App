@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { AIProviderError } from "@/lib/ai/types";
 import { NETWORK_SERVICE, SERVICES, serviceInfo, type ServiceId } from "./service-catalog";
+import { loadServiceKeys } from "./service-keys";
 
 // The kill switch. A missing ServiceSwitch row means "on", except for services that are off until switched on
 // (`defaultOff`, e.g. WhatsApp): for those only a row with enabled = true means on. Reads are cached for a few seconds
@@ -21,6 +22,9 @@ export function clearSwitchCache() {
 
 /** Services that are switched off right now. */
 export async function disabledServices(): Promise<Set<ServiceId>> {
+  // Every feature asks the switch before it uses its service, so this is where the keys saved in Admin -> Services
+  // reach it (lib/admin/service-keys.ts; cached and never throws).
+  await loadServiceKeys();
   if (cache && Date.now() - cache.at < TTL_MS) return cache.off;
   try {
     const rows: { service: string; enabled?: boolean }[] =

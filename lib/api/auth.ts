@@ -5,6 +5,7 @@ import { RateLimitError, rateLimit, type RateLimitRule } from "@/lib/rate-limit"
 import { accountBlock, featureStatus, type FeatureBlockReason } from "@/lib/entitlements";
 import { featureLabel, type FeatureKey } from "@/lib/features";
 import { findByKeyHash, KEY_PREFIX, type ApiScope } from "./keys";
+import { loadServiceKeys } from "@/lib/admin/service-keys";
 
 export const API_RATE_LIMIT: RateLimitRule = { limit: 60, windowSeconds: 60 }; // per key
 const LAST_USED_EVERY_MS = 60_000;
@@ -54,6 +55,7 @@ export async function apiFeatureDenied(businessId: string, key: FeatureKey): Pro
  * to query with (always scoped by businessId) or the error response to send.
  */
 export async function authenticate(request: Request, scope: ApiScope): Promise<{ ok: true; ctx: ApiContext } | { ok: false; response: NextResponse }> {
+  await loadServiceKeys(); // the keys saved in Admin -> Services, for whatever the call goes on to do
   const header = request.headers.get("authorization") ?? "";
   const match = /^Bearer\s+(\S+)$/i.exec(header);
   if (!match || !match[1].startsWith(KEY_PREFIX) || match[1].length > 200) {

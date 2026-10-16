@@ -58,7 +58,7 @@ describe("service registry", () => {
     h.db.serviceCheck.rows.push({ service: "resend", ok: false, latencyMs: 5, message: "Resend returned 401.", checkedAt: new Date() });
     const views = await listServices();
     const gemini = views.find((v) => v.id === "gemini")!;
-    expect(gemini.env).toEqual([{ name: "GEMINI_API_KEY", set: true }]);
+    expect(gemini.env).toEqual([{ name: "GEMINI_API_KEY", set: true, source: "host", shown: null, savedAt: null, savedBy: null, hostSet: true }]);
     expect(gemini.configured).toBe("configured");
     delete process.env.TIKTOK_CLIENT_KEY;
     const tiktok = (await listServices()).find((v) => v.id === "tiktok")!;

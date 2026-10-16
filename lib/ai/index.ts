@@ -12,10 +12,23 @@ function required(name: string) {
 }
 
 let textProvider: TextProvider | undefined;
+let textProviderFor: string | undefined;
+
+/**
+ * What a provider was built from: the choice and its key. A key saved (or replaced) in Admin -> Services changes it,
+ * so the next call builds a provider with the new key instead of keeping the old one.
+ */
+function settingsSignature(): string {
+  const choice = (process.env.AI_TEXT_PROVIDER ?? "gemini").toLowerCase();
+  const key = choice === "claude" ? process.env.ANTHROPIC_API_KEY : process.env.GEMINI_API_KEY;
+  return [choice, key ?? "", process.env.GEMINI_TEXT_MODEL ?? "", process.env.GEMINI_TEXT_FALLBACK_MODEL ?? "", process.env.CLAUDE_TEXT_MODEL ?? "", process.env.CLAUDE_EFFORT ?? "", process.env.CHEAP_TEXT_MODEL ?? ""].join("\u0000");
+}
 
 // AI_TEXT_PROVIDER=gemini (default) or claude.
 export function getTextProvider(): TextProvider {
-  if (textProvider) return textProvider;
+  const signature = settingsSignature();
+  if (textProvider && textProviderFor === signature) return textProvider;
+  textProvider = undefined;
   const choice = (process.env.AI_TEXT_PROVIDER ?? "gemini").toLowerCase();
 
   switch (choice) {
@@ -38,10 +51,12 @@ export function getTextProvider(): TextProvider {
     default:
       throw new Error(`Unknown AI_TEXT_PROVIDER "${choice}" (use "gemini" or "claude")`);
   }
+  textProviderFor = signature;
   return textProvider;
 }
 
 let cheapProvider: { provider: TextProvider; model: string } | undefined;
+let cheapProviderFor: string | undefined;
 
 /**
  * The same provider as getTextProvider (AI_TEXT_PROVIDER), on its cheapest model, for short structured calls such as
@@ -49,7 +64,9 @@ let cheapProvider: { provider: TextProvider; model: string } | undefined;
  * the busy fallback), or Claude Sonnet at low effort. `model` is what the cost ledger records before the call.
  */
 export function getCheapTextProvider(): { provider: TextProvider; model: string } {
-  if (cheapProvider) return cheapProvider;
+  const signature = settingsSignature();
+  if (cheapProvider && cheapProviderFor === signature) return cheapProvider;
+  cheapProvider = undefined;
   const choice = (process.env.AI_TEXT_PROVIDER ?? "gemini").toLowerCase();
   if (choice === "claude") {
     const model = process.env.CHEAP_TEXT_MODEL || "claude-sonnet-5-5";
@@ -60,6 +77,7 @@ export function getCheapTextProvider(): { provider: TextProvider; model: string 
   } else {
     throw new Error(`Unknown AI_TEXT_PROVIDER "${choice}" (use "gemini" or "claude")`);
   }
+  cheapProviderFor = signature;
   return cheapProvider;
 }
 

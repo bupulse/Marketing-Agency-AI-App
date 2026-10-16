@@ -111,10 +111,23 @@ Legend: **confirm** = refused without `confirm: true`. **approval** = does not r
 
 ## 5. Services, the kill switch and the AI budget
 
-`list_services` shows one card per outside service. Keys stay in the Cloudflare environment: BuPulse only reports whether each
-variable is **set** or **missing**, and every message it stores is scrubbed of secrets. `test_service` runs a free check (Gemini and
-Claude: models list; Resend: domains list; Paddle: event types; Supabase: database and sign-in health; Turnstile: a made-up token;
-Meta: app id and secret; YouTube: a made-up code; OAuth-only services: configuration present).
+`list_services` shows one card per outside service. It reports whether each variable is **set** or **missing** and where it comes
+from (`source`: `saved` in Admin -> Services, or `host`, the hosting environment), never a value, and every message it stores is
+scrubbed of secrets. Keys are entered only by a person on the Services page (below); Jarvis and the API cannot set them.
+`test_service` runs a free check (Gemini and Claude: models list; Resend: domains list; Paddle: event types; Supabase: database and
+sign-in health; Turnstile: a made-up token; Meta: app id and secret; YouTube: a made-up code; Seedance: BytePlus ModelArk video tasks
+list; Composio: one toolkit; OAuth-only services: configuration present).
+
+**Entering keys (Admin -> Services).** Each card has **Add key** / **Replace** / **Remove** next to every variable (optional
+settings such as model names under "Optional settings"). A saved value is encrypted with `ENCRYPTION_KEY` in AdminSetting
+`services.keys` (`lib/admin/service-keys.ts`), shown again only by its last 4 characters (a plain setting such as a model name in
+full), audited without the value, and put in `process.env` for the code that reads it: within 30 seconds on every server instance,
+no redeploy. A saved value wins over the hosting environment's; **Remove** brings the hosting value back. Saving runs Test now when
+the service has all its keys. Supabase's keys stay in the hosting environment only (BuPulse needs them to start) and Paddle's are
+entered in Settings -> Card payments. **Custom keys** (bottom of the page) keep a key for any other service: a name, details, a
+website and a variable name of the owner's choice (capital letters, digits, `_`), never one of BuPulse's own settings or a variable
+the hosting environment already sets; code reads it by that name (`getCustomKey(NAME)`). Seedance 2.0 and Composio are listed so
+their keys can be entered now; no feature calls them yet.
 
 `set_service_enabled` switches a service off without deleting anything:
 

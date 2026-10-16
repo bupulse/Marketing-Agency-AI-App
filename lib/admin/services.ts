@@ -7,12 +7,16 @@ import { WHATSAPP_UTILITY_USD } from "@/lib/leads/whatsapp";
 import { runProbe } from "./service-tests";
 import { scrubSecrets } from "./scrub";
 import { clearSwitchCache } from "./switch";
+import { hostValue, listSavedKeys, loadServiceKeys, type CustomKeyView } from "./service-keys";
+import { keysWhere, type KeysWhere } from "./service-keys-rules";
 import { AdminError, type AdminContext } from "./types";
 
 // Services control: the registry with live configuration state, the last health test, the last error, usage and the
-// kill switch. Reports only whether environment variables are SET, never their values.
+// kill switch. Reports only whether each key is set and where it comes from (saved in Admin -> Services, or the hosting
+// environment), never its value: a saved secret shows only its last 4 characters (lib/admin/service-keys.ts).
 
-export type EnvState = { name: string; set: boolean };
+/** `source`: "saved" in Admin -> Services (wins), "host" (the hosting environment), or null (not set). */
+export type EnvState = { name: string; set: boolean; source: "saved" | "host" | null; shown: string | null; savedAt: string | null; savedBy: string | null; hostSet: boolean };
 export type CheckView = { ok: boolean; latencyMs: number; message: string | null; checkedAt: string };
 export type UsageLine = { label: string; value: number | string };
 
@@ -25,6 +29,8 @@ export type ServiceView = {
   whenOff: string;
   env: EnvState[];
   optionalEnv: EnvState[];
+  /** Where its keys are entered: on this page, in Settings (Paddle), only in the hosting environment, or none needed. */
+  keysWhere: KeysWhere;
   /** configured: every required variable is set. missing: some are not. not_in_use: optional service not selected. no_keys: needs none. */
   configured: "configured" | "missing" | "not_in_use" | "no_keys";
   enabled: boolean;
@@ -208,16 +214,37 @@ function usageOf(info: ServiceInfo, d: Loaded): UsageLine[] {
 // ---- reads -------------------------------------------------------------------------------------------------
 
 export async function listServices(now = new Date()): Promise<ServiceView[]> {
+  return (await listServicesWithKeys(now)).services;
+}
+
+/** The services plus the custom keys and any saved key that could not be decrypted (for the Services page). */
+export async function listServicesWithKeys(now = new Date()): Promise<{ services: ServiceView[]; custom: CustomKeyView[]; unreadable: string[] }> {
   const since = new Date(now.getTime() - 30 * DAY_MS);
-  const [switches, checks, d] = await Promise.all([
+  await loadServiceKeys();
+  const [switches, checks, d, saved] = await Promise.all([
     prisma.serviceSwitch.findMany().catch(() => []),
     prisma.serviceCheck.findMany().catch(() => []),
     load(since),
+    listSavedKeys().catch(() => ({ values: new Map(), custom: [], unreadable: [] }) as Awaited<ReturnType<typeof listSavedKeys>>),
   ]);
+  const envState = (name: string): EnvState => {
+    const k = saved.values.get(name);
+    const fromSaved = Boolean(k) && !saved.unreadable.includes(name);
+    const host = Boolean(hostValue(name));
+    return {
+      name,
+      set: isSet(name),
+      source: fromSaved ? "saved" : host ? "host" : null,
+      shown: fromSaved ? k!.shown : null,
+      savedAt: k?.savedAt ?? null,
+      savedBy: k?.savedBy ?? null,
+      hostSet: host,
+    };
+  };
   const switchOf = new Map(switches.map((s) => [s.service, s]));
   const checkOf = new Map(checks.map((c) => [c.service, c]));
   const paddleSaved = await paddleSavedInSettings();
-  return SERVICES.map((info): ServiceView => {
+  const services = SERVICES.map((info): ServiceView => {
     const sw = switchOf.get(info.id);
     const check = checkOf.get(info.id);
     const base = {
@@ -232,8 +259,9 @@ export async function listServices(now = new Date()): Promise<ServiceView[]> {
       features: info.features,
       killable: info.killable,
       whenOff: info.whenOff,
-      env: info.env.map((name) => ({ name, set: isSet(name) })),
-      optionalEnv: (info.optionalEnv ?? []).map((name) => ({ name, set: isSet(name) })),
+      env: info.env.map(envState),
+      optionalEnv: (info.optionalEnv ?? []).map(envState),
+      keysWhere: keysWhere(info.id),
       ...base,
       disabledReason: !base.enabled ? (sw ? sw.reason : info.defaultOff ? "off until it is set up and switched on" : null) : null,
       disabledBy: !base.enabled ? (sw?.changedBy ?? null) : null,
@@ -243,6 +271,7 @@ export async function listServices(now = new Date()): Promise<ServiceView[]> {
       health: healthOf(base, isCoreService(info)),
     };
   });
+  return { services, custom: saved.custom, unreadable: saved.unreadable };
 }
 
 export async function getService(id: string): Promise<ServiceView> {
@@ -303,6 +332,7 @@ export type ServiceAttention = { key: string; label: string; reason: string };
  * switched off (a reminder). Reads only the switches and last test results, so it is cheap enough for every page.
  */
 export async function getServicesAttention(): Promise<{ failing: ServiceAttention[]; off: ServiceAttention[] }> {
+  await loadServiceKeys();
   const [switches, checks] = await Promise.all([prisma.serviceSwitch.findMany().catch(() => []), prisma.serviceCheck.findMany().catch(() => [])]);
   const off = new Map(switches.filter((s) => !s.enabled).map((s) => [s.service, s]));
   const check = new Map(checks.map((c) => [c.service, c]));

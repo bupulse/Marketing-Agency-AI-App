@@ -19,6 +19,8 @@ export const SERVICE_IDS = [
   "cloudflare",
   "elevenlabs",
   "whatsapp",
+  "seedance",
+  "composio",
 ] as const;
 export type ServiceId = (typeof SERVICE_IDS)[number];
 
@@ -244,6 +246,25 @@ export const SERVICES: ServiceInfo[] = [
     killable: true,
     defaultOff: true,
     whenOff: "No WhatsApp alerts are sent and clients do not see the option; email and phone alerts carry on. Off until switched on (docs/RELEASE_2.0.md).",
+  },
+  {
+    id: "seedance",
+    name: "Seedance 2.0 (BytePlus ModelArk)",
+    purpose: "ByteDance's AI video model: makes short videos from text or a photo. Kept ready here; no BuPulse feature calls it yet.",
+    env: ["SEEDANCE_API_KEY"],
+    optionalEnv: ["SEEDANCE_MODEL", "SEEDANCE_BASE_URL"],
+    features: ["AI video generation (not built yet)"],
+    killable: true,
+    whenOff: "Nothing changes for clients today: no feature uses Seedance yet. Once AI video is built, it pauses with a friendly message.",
+  },
+  {
+    id: "composio",
+    name: "Composio",
+    purpose: "BuPulse's own Composio account: one key that connects hundreds of apps (Gmail, Slack, HubSpot and more). Kept ready here; Pro clients can still use their own account.",
+    env: ["COMPOSIO_API_KEY"],
+    features: ["App connectors through BuPulse's Composio account (not built yet)"],
+    killable: true,
+    whenOff: "Nothing changes for clients today: no feature uses BuPulse's Composio account yet.",
   },
 ];
 

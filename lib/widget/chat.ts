@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import { loadServiceKeys } from "@/lib/admin/service-keys";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { WidgetBudgetExceededError } from "@/lib/ai/budget";
@@ -115,6 +116,7 @@ async function releaseMessage(sessionId: string, previous: Date) {
 
 /** One visitor message in, one assistant reply out. */
 export async function handleChat(raw: unknown, ctx: RequestContext): Promise<ServiceResult> {
+  await loadServiceKeys(); // Gemini and Turnstile keys saved in Admin -> Services (the widget routes skip the session)
   const parsed = chatBodySchema.safeParse(raw);
   if (!parsed.success) return fail(400, "invalid_request");
   const body = parsed.data;
@@ -270,6 +272,7 @@ export async function handleChat(raw: unknown, ctx: RequestContext): Promise<Ser
 
 /** The visitor filled in the contact card. */
 export async function handleLead(raw: unknown, ctx: RequestContext): Promise<ServiceResult> {
+  await loadServiceKeys();
   const parsed = leadBodySchema.safeParse(raw);
   if (!parsed.success) return fail(400, "invalid_request");
   const body = parsed.data;
