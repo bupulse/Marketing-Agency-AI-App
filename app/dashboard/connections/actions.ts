@@ -6,10 +6,9 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
-import { featureBlocked, hasFeature, upgradeHref } from "@/lib/entitlements";
+import { hasFeature, upgradeHref } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
-import { RATE_LIMITS, rateLimit, RateLimitError, rateLimitMessage } from "@/lib/rate-limit";
-import { disconnect, saveConnections, saveReminderConnection } from "@/lib/social/connections";
+import { disconnect, saveConnections } from "@/lib/social/connections";
 import { openPending, PENDING_PATH, pendingCookieNames } from "@/lib/social/oauth";
 import { deleteConnectedAccount, isComposioResult, scopeAccount } from "@/lib/social/composio/client";
 
@@ -24,35 +23,6 @@ export async function disconnectAction(formData: FormData) {
   const businessId = await businessIdFor(user.id);
   if (id.success && businessId) await disconnect(id.data, { businessId });
   revalidatePath("/dashboard/connections");
-}
-
-export type ReminderState = { error?: string; ok?: boolean };
-
-const reminderSchema = z.object({
-  handle: z.string().trim().regex(/^@?[A-Za-z0-9._]{1,30}$/, "Enter your Instagram username, like @yourshop"),
-  displayName: z.string().trim().max(60).optional(),
-});
-
-/** Personal Instagram: no OAuth, the publisher sends a reminder instead of posting. */
-export async function connectReminderAction(_prev: ReminderState, formData: FormData): Promise<ReminderState> {
-  const user = await requireActiveUser("channels");
-  const parsed = reminderSchema.safeParse({ handle: formData.get("handle"), displayName: formData.get("displayName") || undefined });
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the username and try again." };
-  const businessId = await businessIdFor(user.id);
-  if (!businessId) return { error: "Finish setting up your business first." };
-  // Channels belong to the calendar feature: connecting one needs it in the plan (disconnecting never does).
-  const missing = await featureBlocked(businessId, "calendar");
-  if (missing) return { error: missing };
-  try {
-    await rateLimit(`social-connect:${user.id}`, RATE_LIMITS.socialConnect);
-    await saveReminderConnection(businessId, "instagram", parsed.data.handle, parsed.data.displayName || `@${parsed.data.handle.replace(/^@/, "")}`);
-  } catch (error) {
-    if (error instanceof RateLimitError) return { error: rateLimitMessage(error) };
-    await logError(error, { source: "social.reminder", userId: user.id });
-    return { error: "We could not add that account. Please try again." };
-  }
-  revalidatePath("/dashboard/connections");
-  return { ok: true };
 }
 
 async function clearPending() {

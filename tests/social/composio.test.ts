@@ -142,6 +142,13 @@ describe("listing accounts after sign-in", () => {
     ]);
   });
 
+  it("takes Instagram professional accounts only", async () => {
+    mockFetch(ok({ user_id: "1784", username: "novaphones", account_type: "BUSINESS" }));
+    expect((await composioNetwork("instagram").accounts("ca_1", "biz1"))[0]).toMatchObject({ externalAccountId: "1784", displayName: "@novaphones", accountType: "business" });
+    mockFetch(ok({ user_id: "99", username: "me.personal", account_type: "PERSONAL" }));
+    await expect(composioNetwork("instagram").accounts("ca_1", "biz1")).rejects.toThrow(/professional/);
+  });
+
   it("says so when the sign-in has no Facebook Page", async () => {
     mockFetch(ok({ data: [] }));
     await expect(composioNetwork("facebook").accounts("ca_1", "biz1")).rejects.toThrow(/No Facebook Pages/);

@@ -24,7 +24,6 @@ export type AccountInfo = {
   postingMode: "AUTO" | "NOTIFY";
 };
 
-/** Personal Instagram is reminder posting and needs no Meta app, so Instagram can always be added; other networks need their keys. */
 /** Instagram: automatic posting needs Instagram Login keys or, failing that, Facebook Login keys. */
 export const automaticAvailable = (c: ChannelInfo) => c.configured || !!c.viaFacebook || !!c.viaComposio;
 /** The login variant the main Connect button uses: Instagram Login when set up, otherwise Facebook Login. */
@@ -32,7 +31,8 @@ export const primaryVariant = (c: ChannelInfo) => (c.viaComposio ? undefined : c
 /** The separate "through Facebook" link only makes sense when it is not already the main button. */
 export const showFacebookLink = (c: ChannelInfo) => !c.viaComposio && c.configured && !!c.viaFacebook;
 
-export const canConnect = (c: ChannelInfo) => c.configured || c.network === "instagram";
+/** Instagram connects professional (Business or Creator) accounts only, through whichever sign-in is set up. */
+export const canConnect = (c: ChannelInfo) => c.configured || (c.network === "instagram" && automaticAvailable(c));
 
 export const NEXT = "/dashboard/connections";
 export const connectHref = (network: Network, variant?: string) =>

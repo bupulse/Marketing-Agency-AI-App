@@ -121,8 +121,11 @@ const instagram: ComposioNetwork = {
     const d = await runTool("instagram", "INSTAGRAM_GET_USER_INFO", account, userId, { ig_user_id: "me", fields: "id,user_id,username,name,account_type,profile_picture_url" });
     const id = text(field(d, "user_id", "id"));
     if (!id) throw new SocialError("No Instagram account found for this login", "invalid", "instagram");
+    // Professional accounts only: Instagram does not let apps post to personal ones.
+    const type = String(field(d, "account_type") ?? "").toUpperCase();
+    if (type && !IG_TYPES[type]) throw new SocialError("No Instagram professional account found for this login", "invalid", "instagram");
     const username = text(field(d, "username"));
-    return [{ externalAccountId: id, displayName: username ? `@${username}` : (text(field(d, "name")) ?? id), avatarUrl: text(field(d, "profile_picture_url")), accountType: IG_TYPES[String(field(d, "account_type") ?? "").toUpperCase()] ?? "business" }];
+    return [{ externalAccountId: id, displayName: username ? `@${username}` : (text(field(d, "name")) ?? id), avatarUrl: text(field(d, "profile_picture_url")), accountType: IG_TYPES[type] ?? "business" }];
   },
 
   async publish(c, post) {

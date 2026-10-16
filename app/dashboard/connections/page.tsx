@@ -23,7 +23,7 @@ import { isServiceEnabled } from "@/lib/admin/switch";
 export const metadata = { title: "Channels" };
 
 const NOTES: Record<string, string> = {
-  instagram: "Business, Creator or personal accounts",
+  instagram: "Business and Creator accounts",
   facebook: "Facebook Pages",
   linkedin: "Profiles and Pages",
   tiktok: "Videos",

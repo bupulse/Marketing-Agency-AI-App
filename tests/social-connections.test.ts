@@ -38,7 +38,7 @@ vi.mock("@/lib/db", () => {
 });
 
 import { decrypt, encrypt } from "@/lib/crypto";
-import { deleteConnections, disconnect, loadCredentials, markConnectionError, saveConnections, saveReminderConnection } from "@/lib/social/connections";
+import { deleteConnections, disconnect, loadCredentials, markConnectionError, saveConnections } from "@/lib/social/connections";
 import { SocialError } from "@/lib/social/types";
 
 const MIN = 60_000;
@@ -83,11 +83,6 @@ describe("saveConnections", () => {
     expect(second).toBe(first);
     expect(state.rows.get(first)!.status).toBe("ACTIVE");
     expect(state.rows.get(first)!.lastError).toBeNull();
-  });
-
-  it("saves a reminder connection without tokens", async () => {
-    const id = await saveReminderConnection("biz1", "instagram", "@MyShop", "My Shop");
-    expect(state.rows.get(id)).toMatchObject({ externalAccountId: "myshop", postingMode: "NOTIFY", accountType: "personal", accessTokenEncrypted: null });
   });
 });
 

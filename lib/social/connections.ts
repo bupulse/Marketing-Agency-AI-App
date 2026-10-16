@@ -156,21 +156,6 @@ async function shareLinkedInToken(businessId: string, network: Network, oauth: O
   return others;
 }
 
-/**
- * A reminder-only account (e.g. a personal Instagram profile, which the API cannot post to). No OAuth and no tokens:
- * the publisher sends the owner a reminder instead of posting.
- */
-export async function saveReminderConnection(businessId: string, network: Network, handle: string, displayName: string, accountType = "personal") {
-  const clean = handle.replace(/^@/, "").trim().toLowerCase();
-  const data = { kind: "SOCIAL" as const, method: "DIRECT" as const, displayName: displayName.trim() || `@${clean}`, accountType, postingMode: "NOTIFY" as const, status: "ACTIVE" as const, accessTokenEncrypted: null, refreshTokenEncrypted: null, scopes: [] as string[], expiresAt: null, lastError: null };
-  const row = await prisma.connection.upsert({
-    where: { businessId_provider_externalAccountId: { businessId, provider: network, externalAccountId: clean } },
-    create: { businessId, provider: network, externalAccountId: clean, ...data },
-    update: data,
-  });
-  return row.id;
-}
-
 type Row = NonNullable<Awaited<ReturnType<typeof prisma.connection.findUnique>>>;
 
 function credentialsOf(row: Row, accessToken: string): ConnectionCredentials {
