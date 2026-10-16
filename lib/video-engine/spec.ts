@@ -4,12 +4,21 @@
 // Client-safe and pure: shared by the designer (server), the renderer (browser), the Video Lab and the tests.
 
 /** Shapes a video can be made in, and their canvas size in pixels. */
+/** Shapes at 1080p (the short side is 1080). Other qualities scale these (QUALITIES). */
 export const RATIOS = {
   "9:16": { width: 1080, height: 1920 },
+  "3:4": { width: 1080, height: 1440 },
   "4:5": { width: 1080, height: 1350 },
   "1:1": { width: 1080, height: 1080 },
+  "4:3": { width: 1440, height: 1080 },
   "16:9": { width: 1920, height: 1080 },
+  "21:9": { width: 2520, height: 1080 },
 } as const;
+
+/** Output quality: the short side in pixels. Seedance offers 480p, 720p and 1080p too. */
+export const QUALITIES = { "480p": 480, "720p": 720, "1080p": 1080 } as const;
+export type Quality = keyof typeof QUALITIES;
+export const isQuality = (v: unknown): v is Quality => typeof v === "string" && v in QUALITIES;
 export type Ratio = keyof typeof RATIOS;
 export const isRatio = (v: unknown): v is Ratio => typeof v === "string" && v in RATIOS;
 
@@ -31,7 +40,57 @@ export type Ease = (typeof EASES)[number];
 export const TEXT_ANIMATIONS = ["none", "fade", "rise", "drop", "pop", "zoom", "slideLeft", "slideRight", "typewriter", "words", "wordsPop", "blurIn"] as const;
 export type TextAnimation = (typeof TEXT_ANIMATIONS)[number];
 
-export const TRANSITIONS = ["cut", "fade", "slideUp", "slideLeft", "zoom", "wipe", "flash"] as const;
+export const TRANSITIONS = ["cut", "fade", "slideUp", "slideLeft", "zoom", "wipe", "flash", "whip", "blurZoom", "spin", "dip"] as const;
+
+/**
+ * The virtual camera of a scene (docs/VIDEO_ENGINE.md, "Camera"). It moves over the whole scene; layers move with it by
+ * their depth, so near layers shift more than far ones (parallax), like a real camera in a 3D set.
+ */
+export const CAMERA_MOVES = [
+  "static",
+  "dollyIn",
+  "dollyOut",
+  "panLeft",
+  "panRight",
+  "tiltUp",
+  "tiltDown",
+  "orbitLeft",
+  "orbitRight",
+  "craneUp",
+  "craneDown",
+  "crashZoom",
+  "pushPull",
+  "dutchRoll",
+  "handheld",
+] as const;
+export type CameraMove = (typeof CAMERA_MOVES)[number];
+
+export interface Camera {
+  move: CameraMove;
+  /** How strong the move is, 0 to 1 (default 0.5). */
+  intensity?: number;
+  /** Extra handheld shake on top, 0 to 1. */
+  shake?: number;
+  ease?: Ease;
+  /** Focus pull: the depth in focus at the start and at the end (0 = far, 1 = near); others blur. */
+  focusFrom?: number;
+  focusTo?: number;
+}
+
+/** The film look over the whole video: colour grade and lens effects. */
+export const GRADES = ["none", "warm", "cool", "tealOrange", "vivid", "mono", "film", "faded", "night"] as const;
+export type Grade = (typeof GRADES)[number];
+export interface Look {
+  grade?: Grade;
+  grain?: number;
+  vignette?: number;
+  /** Soft glow around bright parts, 0 to 1. */
+  glow?: number;
+  /** Warm light leaks drifting across, 0 to 1. */
+  lightLeak?: number;
+  /** Cinema bars (only on 16:9 and wider ratios it is subtle). */
+  letterbox?: boolean;
+}
 export type Transition = (typeof TRANSITIONS)[number];
 
 export const SHAPES = ["rect", "circle", "ring", "line", "burst", "blob", "arrow"] as const;
@@ -61,6 +120,8 @@ interface LayerBase {
   from?: number;
   to?: number;
   keyframes?: Keyframe[];
+  /** Distance from the camera: 0 = far (moves least), 1 = near (moves most). Default: photos 0.4, text 0.8, shapes 0.5. */
+  depth?: number;
 }
 
 export interface PhotoLayer extends LayerBase {
@@ -134,6 +195,8 @@ export interface Scene {
   transition?: Transition;
   /** What the voice says during this scene (optional; for the voice-over step). */
   say?: string;
+  /** The camera move over this scene (default static). */
+  camera?: Camera;
 }
 
 export interface MotionSpec {
@@ -148,6 +211,8 @@ export interface MotionSpec {
   /** Post caption and hashtags to publish with the video. */
   caption: string;
   hashtags: string[];
+  /** Film look over the whole video. */
+  look?: Look;
 }
 
 export const SPEC_LIMITS = {
@@ -164,9 +229,12 @@ export const SPEC_LIMITS = {
   hashtags: 12,
 } as const;
 
-/** Canvas size of a spec. */
-export function canvasSize(spec: Pick<MotionSpec, "ratio">): { width: number; height: number } {
-  return RATIOS[spec.ratio] ?? RATIOS["9:16"];
+/** Canvas size of a spec at a quality (default 1080p). Sizes are even, as H.264 needs. */
+export function canvasSize(spec: Pick<MotionSpec, "ratio">, quality: Quality = "1080p"): { width: number; height: number } {
+  const base = RATIOS[spec.ratio] ?? RATIOS["9:16"];
+  const k = QUALITIES[quality] / 1080;
+  const even = (n: number) => Math.max(2, Math.round((n * k) / 2) * 2);
+  return { width: even(base.width), height: even(base.height) };
 }
 
 /** Total length in milliseconds. */

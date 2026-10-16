@@ -3,7 +3,7 @@
 // Client-only. Fonts are loaded from the self-hosted files in public/fonts/video before the first frame.
 import { frameCount, frameUs } from "./animate";
 import { drawSpecFrame, type Img } from "./draw";
-import { FONTS, canvasSize, totalMs, type FontId, type MotionSpec } from "./spec";
+import { FONTS, canvasSize, totalMs, type FontId, type MotionSpec, type Quality } from "./spec";
 
 const FONT_RANGES = {
   latin: "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
@@ -47,16 +47,20 @@ export async function loadPhotos(urls: string[]): Promise<Map<number, Img>> {
   return map;
 }
 
-export type EncodeOptions = { musicUrl?: string | null; bitrate?: number; onProgress?: (fraction: number) => void; signal?: AbortSignal };
+export type EncodeOptions = { musicUrl?: string | null; quality?: Quality; bitrate?: number; onProgress?: (fraction: number) => void; signal?: AbortSignal };
 
 /** Encodes the whole spec to an MP4 Blob. Throws when this browser has no H.264 encoder. */
 export async function encodeSpecMp4(spec: MotionSpec, photos: Map<number, Img>, options: EncodeOptions = {}): Promise<Blob> {
   if (typeof VideoEncoder === "undefined") throw new Error("This browser cannot make MP4 videos. Use the latest Chrome or Edge.");
-  const { width, height } = canvasSize(spec);
+  const quality = options.quality ?? "1080p";
+  const { width, height } = canvasSize(spec, quality);
   const { Muxer, ArrayBufferTarget } = await import("mp4-muxer");
-  const bitrate = options.bitrate ?? (width * height > 1_500_000 ? 4_000_000 : 3_000_000);
+  // About 0.1 bits per pixel per frame: 1080x1920 at 30 fps is ~6 Mbit/s, 720p ~2.7, 480p ~1.2.
+  const bitrate = options.bitrate ?? Math.round(Math.min(8_000_000, Math.max(1_000_000, width * height * spec.fps * 0.1)));
   let config: VideoEncoderConfig | null = null;
-  for (const codec of ["avc1.640028", "avc1.4d0028", "avc1.42e028"]) {
+  // H.264 level 4.0 (…28) holds up to about 1920x1088; the widest shapes (21:9 at 2520x1080) need level 5.1 (…33).
+  const codecs = width * height > 2_088_960 ? ["avc1.640033", "avc1.4d0033"] : ["avc1.640028", "avc1.4d0028", "avc1.42e028"];
+  for (const codec of codecs) {
     const candidate: VideoEncoderConfig = { codec, width, height, bitrate, framerate: spec.fps, avc: { format: "avc" } };
     if ((await VideoEncoder.isConfigSupported(candidate).catch(() => ({ supported: false }))).supported) {
       config = candidate;
@@ -85,7 +89,7 @@ export async function encodeSpecMp4(spec: MotionSpec, photos: Map<number, Img>, 
     for (let i = 0; i < total; i++) {
       if (options.signal?.aborted) throw new Error("Cancelled");
       if (failure) throw failure;
-      drawSpecFrame(ctx, spec, photos, (i * 1000) / spec.fps);
+      drawSpecFrame(ctx, spec, photos, (i * 1000) / spec.fps, { quality });
       const frame = new VideoFrame(canvas, { timestamp: frameUs(i, spec.fps), duration });
       try {
         encoder.encode(frame, { keyFrame: i % (spec.fps * 2) === 0 });

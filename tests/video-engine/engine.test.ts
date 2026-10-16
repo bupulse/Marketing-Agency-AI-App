@@ -170,7 +170,7 @@ describe("draw helpers", () => {
       get: (target, prop: string) => {
         if (prop in target) return target[prop];
         if (prop === "measureText") return (s: string) => ({ width: s.length * 20 });
-        if (prop === "createLinearGradient") return () => gradient;
+        if (prop === "createLinearGradient" || prop === "createRadialGradient") return () => gradient;
         return (...args: unknown[]) => void calls.push(`${prop}:${args.length}`);
       },
       set: (target, prop: string, value) => {
@@ -180,7 +180,7 @@ describe("draw helpers", () => {
     });
     const img = { width: 800, height: 600 } as unknown as CanvasImageSource & { width: number; height: number };
     const photos = new Map([[1, img], [2, img]]);
-    for (let t = 0; t < totalMs(spec); t += 250) drawSpecFrame(ctx as unknown as CanvasRenderingContext2D, spec, photos, t);
+    for (let t = 0; t < totalMs(spec); t += 125) drawSpecFrame(ctx as unknown as CanvasRenderingContext2D, spec, photos, t, { makeCanvas: null });
     expect(calls.some((c) => c.startsWith("fillText"))).toBe(true);
     expect(calls.some((c) => c.startsWith("drawImage"))).toBe(true);
   });

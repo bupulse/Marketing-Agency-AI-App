@@ -1,6 +1,6 @@
 // Timing maths of the Claude video engine (docs/VIDEO_ENGINE.md): easing, keyframes, which scene shows when, and how
 // far each entrance animation has got. Pure and unit tested; draw.ts turns these numbers into pixels.
-import { SPEC_LIMITS, type Ease, type Keyframe, type Layer, type MotionSpec, type TextAnimation } from "./spec";
+import { SPEC_LIMITS, type Camera, type Ease, type Keyframe, type Layer, type MotionSpec, type TextAnimation } from "./spec";
 
 export const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -154,3 +154,103 @@ export function textEntrance(kind: TextAnimation | undefined, e: number): { dx: 
 /** Number of frames and the timestamp of frame `i` in microseconds. */
 export const frameCount = (spec: Pick<MotionSpec, "scenes" | "fps">) => Math.max(1, Math.round((spec.scenes.reduce((s, x) => s + x.seconds, 0) * spec.fps)));
 export const frameUs = (i: number, fps: number) => Math.round((i * 1_000_000) / fps);
+
+// ---- The virtual camera ------------------------------------------------------------------------------------------
+
+/** The camera at scene progress `p`: zoom, pan (fractions of the canvas), roll (degrees), orbit (parallax) and focus. */
+export type CameraState = { zoom: number; panX: number; panY: number; roll: number; orbit: number; dollyZoom: number; shakeX: number; shakeY: number; focus: number | null; moving: boolean };
+
+/** Deterministic smooth noise in -1..1, so a re-render of the same frame is identical. */
+export function noise(t: number, seed: number): number {
+  return (Math.sin(t * 1.7 + seed) * 0.5 + Math.sin(t * 3.1 + seed * 2.3) * 0.3 + Math.sin(t * 7.3 + seed * 0.7) * 0.2);
+}
+
+export function cameraAt(camera: Camera | undefined, p: number, tMs: number): CameraState {
+  const still: CameraState = { zoom: 1, panX: 0, panY: 0, roll: 0, orbit: 0, dollyZoom: 0, shakeX: 0, shakeY: 0, focus: null, moving: false };
+  if (!camera) return still;
+  const I = camera.intensity ?? 0.5;
+  const e = ease(camera.ease ?? "inOut", p);
+  const c = { ...still, moving: camera.move !== "static" };
+  const lerpI = (a: number, b: number) => a + (b - a) * e;
+  switch (camera.move) {
+    case "dollyIn":
+      c.zoom = lerpI(1, 1 + 0.28 * I);
+      break;
+    case "dollyOut":
+      c.zoom = lerpI(1 + 0.28 * I, 1);
+      break;
+    case "panLeft":
+      c.panX = lerpI(-0.07 * I, 0.07 * I);
+      c.zoom = 1.04;
+      break;
+    case "panRight":
+      c.panX = lerpI(0.07 * I, -0.07 * I);
+      c.zoom = 1.04;
+      break;
+    case "tiltUp":
+      c.panY = lerpI(-0.06 * I, 0.06 * I);
+      c.zoom = 1.04;
+      break;
+    case "tiltDown":
+      c.panY = lerpI(0.06 * I, -0.06 * I);
+      c.zoom = 1.04;
+      break;
+    case "orbitLeft":
+      c.orbit = lerpI(-0.14 * I, 0.14 * I);
+      c.zoom = 1.06;
+      break;
+    case "orbitRight":
+      c.orbit = lerpI(0.14 * I, -0.14 * I);
+      c.zoom = 1.06;
+      break;
+    case "craneUp":
+      c.panY = lerpI(-0.05 * I, 0.06 * I);
+      c.zoom = lerpI(1.12 * (1 + 0.1 * I), 1.02);
+      break;
+    case "craneDown":
+      c.panY = lerpI(0.06 * I, -0.05 * I);
+      c.zoom = lerpI(1.02, 1.12 * (1 + 0.1 * I));
+      break;
+    case "crashZoom":
+      c.zoom = 1 + 0.5 * I * ease("out", Math.min(1, p / 0.18));
+      break;
+    case "pushPull":
+      c.dollyZoom = lerpI(0, 0.35 * I);
+      break;
+    case "dutchRoll":
+      c.roll = lerpI(-4 * I, 4 * I);
+      c.zoom = 1.1;
+      break;
+    case "handheld":
+      c.zoom = 1.05;
+      break;
+    default:
+      break;
+  }
+  const shake = Math.max(camera.move === "handheld" ? 0.5 + 0.5 * I : 0, camera.shake ?? 0);
+  if (shake > 0) {
+    const t = tMs / 1000;
+    c.shakeX = noise(t, 1) * 0.006 * shake;
+    c.shakeY = noise(t, 5) * 0.006 * shake;
+    c.roll += noise(t, 9) * 0.5 * shake;
+    c.moving = true;
+  }
+  if (camera.focusFrom !== undefined || camera.focusTo !== undefined) {
+    const a = camera.focusFrom ?? camera.focusTo ?? 0.5;
+    const b = camera.focusTo ?? a;
+    c.focus = a + (b - a) * ease("inOut", p);
+  }
+  return c;
+}
+
+/** How the camera moves a layer at `depth` (0 far .. 1 near): its scale and shift (fractions of the canvas). */
+export function parallax(cam: CameraState, depth: number): { scale: number; dx: number; dy: number } {
+  const d = Math.min(1, Math.max(0, depth));
+  const weight = 0.3 + 0.7 * d;
+  const scale = (1 + (cam.zoom - 1) * weight) * (1 + cam.dollyZoom * (1 - d));
+  return {
+    scale,
+    dx: cam.panX * weight + cam.orbit * (d - 0.35) + cam.shakeX,
+    dy: cam.panY * weight + cam.shakeY,
+  };
+}

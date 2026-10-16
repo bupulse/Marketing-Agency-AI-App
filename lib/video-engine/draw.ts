@@ -1,27 +1,64 @@
 // Draws one frame of a motion spec on a 2D canvas (docs/VIDEO_ENGINE.md). Plain canvas calls only, so the owner's
 // browser, the Video Lab and the video robot's headless Chrome draw exactly the same pixels. No network, no DOM:
-// photos come in already decoded, fonts are loaded by the caller (fonts.ts).
-import { clamp01, ease, layerWindow, poseAt, scenesAt, textEntrance, type ActiveScene } from "./animate";
-import { FONTS, canvasSize, type Background, type Layer, type MotionSpec, type PhotoLayer, type Scene, type ShapeLayer, type TextLayer } from "./spec";
+// photos come in already decoded, fonts are loaded by the caller (encode.ts).
+//
+// A frame: each scene is drawn through its virtual camera (cameraAt): layers move by their depth, so near ones shift
+// more than far ones (parallax), with an optional focus pull. Between scenes, a transition. Over everything, the film
+// look (colour grade, glow, light leaks, vignette, grain, cinema bars), drawn from an off-screen buffer.
+import { cameraAt, clamp01, ease, layerWindow, noise, parallax, poseAt, scenesAt, textEntrance, type ActiveScene, type CameraState } from "./animate";
+import { FONTS, canvasSize, type Background, type Layer, type Look, type MotionSpec, type PhotoLayer, type Quality, type Scene, type ShapeLayer, type TextLayer } from "./spec";
 
 export type Img = CanvasImageSource & { width: number; height: number };
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 type Rect = { x: number; y: number; w: number; h: number };
+type AnyCanvas = OffscreenCanvas | HTMLCanvasElement;
+
+export type DrawOptions = {
+  /** Output quality (the canvas must have that size; default 1080p). */
+  quality?: Quality;
+  /** Makes the off-screen buffer the film look needs; default OffscreenCanvas. Null: no look (tests, old browsers). */
+  makeCanvas?: ((w: number, h: number) => AnyCanvas | null) | null;
+};
+
+const buffers = new WeakMap<object, { canvas: AnyCanvas; ctx: Ctx }>();
+const defaultCanvas = (w: number, h: number): AnyCanvas | null => (typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : null);
+
+function bufferFor(owner: object, w: number, h: number, make: (w: number, h: number) => AnyCanvas | null): { canvas: AnyCanvas; ctx: Ctx } | null {
+  const have = buffers.get(owner);
+  if (have && have.canvas.width === w && have.canvas.height === h) return have;
+  const canvas = make(w, h);
+  const ctx = canvas?.getContext("2d") as Ctx | null | undefined;
+  if (!canvas || !ctx) return null;
+  const made = { canvas, ctx };
+  buffers.set(owner, made);
+  return made;
+}
+
+/** Whether the look needs the buffer (a grade or glow); vignette, leaks, grain and bars are drawn on top directly. */
+const needsBuffer = (look?: Look) => !!look && ((look.grade && look.grade !== "none") || (look.glow ?? 0) > 0);
 
 /** Draws the frame at `tMs`. `photos` maps the spec's 1-based photo numbers to decoded images. */
-export function drawSpecFrame(ctx: Ctx, spec: MotionSpec, photos: Map<number, Img>, tMs: number): void {
-  const { width: W, height: H } = canvasSize(spec);
+export function drawSpecFrame(ctx: Ctx, spec: MotionSpec, photos: Map<number, Img>, tMs: number, opts: DrawOptions = {}): void {
+  const { width: W, height: H } = canvasSize(spec, opts.quality ?? "1080p");
+  const make = opts.makeCanvas === undefined ? defaultCanvas : opts.makeCanvas;
+  const buffer = needsBuffer(spec.look) && make ? bufferFor(ctx, W, H, make) : null;
+  const target = buffer ? buffer.ctx : ctx;
+  drawScenes(target, spec, photos, tMs, W, H);
+  if (buffer) composite(ctx, buffer.canvas, spec.look as Look, W, H);
+  drawOverlays(ctx, spec.look, W, H, tMs);
+}
+
+function drawScenes(ctx: Ctx, spec: MotionSpec, photos: Map<number, Img>, tMs: number, W: number, H: number): void {
   const { current, previous, transition } = scenesAt(spec, tMs);
-  ctx.save();
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = spec.palette.background;
-  ctx.fillRect(0, 0, W, H);
-  if (previous) drawScene(ctx, spec, spec.scenes[previous.index], previous, photos, W, H, tMs);
   const kind = spec.scenes[current.index].transition ?? "fade";
   ctx.save();
-  if (previous) applyTransition(ctx, kind, transition, W, H);
-  drawScene(ctx, spec, spec.scenes[current.index], current, photos, W, H, tMs);
-  ctx.restore();
+  ctx.globalAlpha = 1;
+  ctx.filter = "none";
+  ctx.fillStyle = kind === "dip" && previous ? "#000000" : spec.palette.background;
+  ctx.fillRect(0, 0, W, H);
+  const tf = previous ? transitionTransforms(kind, transition, W, H) : null;
+  if (previous && tf) withTransform(ctx, tf.prev, W, H, () => drawScene(ctx, spec, spec.scenes[previous.index], previous, photos, W, H, tMs));
+  withTransform(ctx, tf?.cur ?? IDENTITY, W, H, () => drawScene(ctx, spec, spec.scenes[current.index], current, photos, W, H, tMs));
   if (previous && kind === "flash") {
     ctx.globalAlpha = Math.sin(transition * Math.PI) * 0.9;
     ctx.fillStyle = "#ffffff";
@@ -30,56 +67,207 @@ export function drawSpecFrame(ctx: Ctx, spec: MotionSpec, photos: Map<number, Im
   ctx.restore();
 }
 
-function applyTransition(ctx: Ctx, kind: Scene["transition"], t: number, W: number, H: number): void {
+type Tf = { dx: number; dy: number; scale: number; rot: number; alpha: number; blur: number; wipe?: number };
+const IDENTITY: Tf = { dx: 0, dy: 0, scale: 1, rot: 0, alpha: 1, blur: 0 };
+
+/** How the outgoing (prev) and incoming (cur) scenes are moved during a transition at `t` (0..1). Pure. */
+export function transitionTransforms(kind: Scene["transition"], t: number, W: number, H: number): { prev: Tf; cur: Tf } {
   const e = ease("inOut", t);
+  const k = Math.min(W, H) / 1080;
+  const id = { ...IDENTITY };
   switch (kind) {
+    case "cut":
+      return { prev: { ...id, alpha: 0 }, cur: id };
     case "slideUp":
-      ctx.translate(0, (1 - e) * H);
-      break;
+      return { prev: { ...id, dy: -e * H * 0.3 }, cur: { ...id, dy: (1 - e) * H } };
     case "slideLeft":
-      ctx.translate((1 - e) * W, 0);
-      break;
+      return { prev: { ...id, dx: -e * W * 0.3 }, cur: { ...id, dx: (1 - e) * W } };
     case "zoom":
-      ctx.globalAlpha = e;
-      ctx.translate(W / 2, H / 2);
-      ctx.scale(1.25 - 0.25 * e, 1.25 - 0.25 * e);
-      ctx.translate(-W / 2, -H / 2);
-      break;
+      return { prev: id, cur: { ...id, scale: 1.25 - 0.25 * e, alpha: e } };
     case "wipe":
-      ctx.beginPath();
-      ctx.rect(0, 0, W * e, H);
-      ctx.clip();
-      break;
+      return { prev: id, cur: { ...id, wipe: e } };
     case "flash":
-      ctx.globalAlpha = t < 0.5 ? 0 : 1;
-      break;
+      return { prev: id, cur: { ...id, alpha: t < 0.5 ? 0 : 1 } };
+    case "whip":
+      return { prev: { ...id, dx: -e * W, blur: e * 40 * k }, cur: { ...id, dx: (1 - e) * W, blur: (1 - e) * 40 * k } };
+    case "blurZoom":
+      return { prev: { ...id, scale: 1 + e * 0.6, alpha: 1 - e, blur: e * 30 * k }, cur: { ...id, scale: 0.7 + 0.3 * e, alpha: e, blur: (1 - e) * 30 * k } };
+    case "spin":
+      return { prev: { ...id, alpha: 1 - e }, cur: { ...id, rot: (1 - e) * -90, scale: 0.5 + 0.5 * ease("back", t), alpha: e } };
+    case "dip":
+      return { prev: { ...id, alpha: t < 0.5 ? 1 - 2 * t : 0 }, cur: { ...id, alpha: t < 0.5 ? 0 : 2 * t - 1 } };
     case "fade":
     default:
-      ctx.globalAlpha = e;
+      return { prev: id, cur: { ...id, alpha: e } };
   }
 }
 
+function withTransform(ctx: Ctx, tf: Tf, W: number, H: number, draw: () => void): void {
+  if (tf.alpha <= 0.001) return;
+  ctx.save();
+  ctx.globalAlpha *= tf.alpha;
+  if (tf.wipe !== undefined) {
+    ctx.beginPath();
+    ctx.rect(0, 0, W * tf.wipe, H);
+    ctx.clip();
+  }
+  if (tf.dx || tf.dy) ctx.translate(tf.dx, tf.dy);
+  if (tf.scale !== 1 || tf.rot) {
+    ctx.translate(W / 2, H / 2);
+    if (tf.rot) ctx.rotate((tf.rot * Math.PI) / 180);
+    ctx.scale(tf.scale, tf.scale);
+    ctx.translate(-W / 2, -H / 2);
+  }
+  if (tf.blur > 0.5) ctx.filter = `blur(${tf.blur.toFixed(1)}px)`;
+  draw();
+  ctx.restore();
+}
+
+const DEFAULT_DEPTH = { photo: 0.45, text: 0.85, shape: 0.6 } as const;
+
 function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene, photos: Map<number, Img>, W: number, H: number, tMs: number): void {
-  drawBackground(ctx, scene.background, active.progress, photos, W, H, tMs);
+  const cam = cameraAt(scene.camera, active.progress, tMs);
+  const k = Math.min(W, H) / 1080;
+  const outerFilter = ctx.filter && ctx.filter !== "none" ? ctx.filter : "";
+  ctx.save();
+  if (cam.roll) {
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate((cam.roll * Math.PI) / 180);
+    ctx.translate(-W / 2, -H / 2);
+  }
+  // The background is the farthest layer; when the camera moves it is drawn larger so its edges never show.
+  ctx.save();
+  const bg = parallax(cam, 0);
+  const over = cam.moving || cam.zoom !== 1 || cam.dollyZoom ? 1.14 : 1;
+  ctx.translate(W / 2 + bg.dx * W, H / 2 + bg.dy * H);
+  ctx.scale(bg.scale * over, bg.scale * over);
+  ctx.translate(-W / 2, -H / 2);
+  ctx.filter = joinFilters(outerFilter, focusBlur(cam, 0, k));
+  drawBackground(ctx, scene.background, active.progress, photos, W, H, tMs, k);
+  ctx.restore();
+
   for (const layer of scene.layers) {
     const win = layerWindow(layer, active.progress, scene.seconds, layer.kind === "text" ? (layer.animateFor ?? 0.6) : 0.4);
     if (!win.visible) continue;
     ctx.save();
+    const depth = layer.depth ?? DEFAULT_DEPTH[layer.kind];
+    const par = parallax(cam, depth);
     const pose = poseAt(layer.keyframes, active.progress);
     const rect = boxOf(layer, W, H);
-    const cx = rect.x + rect.w / 2 + pose.dx * W;
-    const cy = rect.y + rect.h / 2 + pose.dy * H;
-    const ownOpacity = layer.keyframes?.some((k) => k.opacity !== undefined) ? 1 : layer.kind === "text" ? 1 : ease("out", win.enter);
+    // Camera: positions spread out from the centre by the zoom and shift by the pan, both weighted by depth.
+    const cx = W / 2 + (rect.x + rect.w / 2 + pose.dx * W - W / 2) * par.scale + par.dx * W;
+    const cy = H / 2 + (rect.y + rect.h / 2 + pose.dy * H - H / 2) * par.scale + par.dy * H;
+    const ownOpacity = layer.keyframes?.some((f) => f.opacity !== undefined) ? 1 : layer.kind === "text" ? 1 : ease("out", win.enter);
     ctx.globalAlpha *= clamp01(pose.opacity * ownOpacity * win.exit);
+    // Text is a graphic on top of the shot, as in real ads: it moves with the camera but always stays sharp.
+    ctx.filter = joinFilters(outerFilter, layer.kind === "text" ? "" : focusBlur(cam, depth, k));
     ctx.translate(cx, cy);
     if (pose.rotate) ctx.rotate((pose.rotate * Math.PI) / 180);
-    if (pose.scale !== 1) ctx.scale(Math.max(0.0001, pose.scale), Math.max(0.0001, pose.scale));
+    const scale = Math.max(0.0001, pose.scale * par.scale);
+    if (scale !== 1) ctx.scale(scale, scale);
     const local: Rect = { x: -rect.w / 2, y: -rect.h / 2, w: rect.w, h: rect.h };
     if (layer.kind === "photo") drawPhoto(ctx, layer, local, photos.get(layer.photo), active.progress, spec);
     else if (layer.kind === "text") drawText(ctx, layer, local, win.enter, W);
     else drawShape(ctx, layer, local, win.enter, W, tMs);
     ctx.restore();
   }
+  ctx.restore();
+}
+
+/** Blur for a layer at `depth` when the camera has a focus point: the farther from focus, the softer. */
+function focusBlur(cam: CameraState, depth: number, k: number): string {
+  if (cam.focus === null) return "";
+  const px = Math.abs(depth - cam.focus) * 18 * k;
+  return px > 0.6 ? `blur(${px.toFixed(1)}px)` : "";
+}
+
+const joinFilters = (...parts: string[]) => parts.filter(Boolean).join(" ") || "none";
+
+/** The colour grade of each look, as canvas filters (applied once to the whole frame). */
+export const GRADE_FILTERS: Record<string, string> = {
+  none: "",
+  warm: "sepia(0.22) saturate(1.15) contrast(1.05)",
+  cool: "saturate(1.05) contrast(1.06) hue-rotate(-8deg)",
+  tealOrange: "contrast(1.12) saturate(1.25)",
+  vivid: "saturate(1.4) contrast(1.1)",
+  mono: "grayscale(1) contrast(1.18)",
+  film: "contrast(1.08) saturate(0.9) sepia(0.12)",
+  faded: "contrast(0.86) saturate(0.78) brightness(1.06)",
+  night: "brightness(0.82) contrast(1.15) saturate(0.85) hue-rotate(-12deg)",
+};
+
+function composite(ctx: Ctx, frame: AnyCanvas, look: Look, W: number, H: number): void {
+  const k = Math.min(W, H) / 1080;
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.filter = GRADE_FILTERS[look.grade ?? "none"] || "none";
+  ctx.drawImage(frame as CanvasImageSource, 0, 0, W, H);
+  if ((look.glow ?? 0) > 0) {
+    // Bloom: the frame blurred and brightened, added on top.
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = Math.min(1, look.glow ?? 0) * 0.45;
+    ctx.filter = `blur(${Math.round(22 * k)}px) brightness(1.15)`;
+    ctx.drawImage(frame as CanvasImageSource, 0, 0, W, H);
+  }
+  ctx.restore();
+  if (look.grade === "tealOrange" || look.grade === "cool" || look.grade === "warm") {
+    ctx.save();
+    ctx.globalCompositeOperation = "soft-light";
+    ctx.globalAlpha = 0.35;
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    const [a, b] = look.grade === "tealOrange" ? ["#008b8b", "#ff8c32"] : look.grade === "cool" ? ["#2f6bff", "#7fd4ff"] : ["#ff9a3c", "#ffd27f"];
+    g.addColorStop(0, a);
+    g.addColorStop(1, b);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+}
+
+/** Vignette, drifting light leaks, grain and cinema bars, on top of everything. */
+function drawOverlays(ctx: Ctx, look: Look | undefined, W: number, H: number, tMs: number): void {
+  if (!look) return;
+  const t = tMs / 1000;
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.filter = "none";
+  if ((look.lightLeak ?? 0) > 0) {
+    ctx.globalCompositeOperation = "screen";
+    const x = W * (0.5 + 0.6 * noise(t * 0.25, 3));
+    const y = H * (0.3 + 0.4 * noise(t * 0.2, 7));
+    const g = ctx.createRadialGradient(x, y, 0, x, y, Math.max(W, H) * 0.6);
+    g.addColorStop(0, `rgba(255,150,60,${0.45 * Math.min(1, look.lightLeak ?? 0)})`);
+    g.addColorStop(0.5, `rgba(255,60,120,${0.18 * Math.min(1, look.lightLeak ?? 0)})`);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "source-over";
+  }
+  if ((look.vignette ?? 0) > 0) {
+    const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.hypot(W, H) * 0.55);
+    g.addColorStop(0, "rgba(0,0,0,0)");
+    g.addColorStop(1, `rgba(0,0,0,${0.75 * Math.min(1, look.vignette ?? 0)})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+  if ((look.grain ?? 0) > 0) {
+    ctx.globalAlpha = 0.12 * Math.min(1, look.grain ?? 0);
+    let seed = Math.floor(tMs / 41) * 9301 + 49297;
+    const rand = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+    const dot = Math.max(1, Math.round(Math.min(W, H) / 540));
+    for (let i = 0; i < 2200; i++) {
+      ctx.fillStyle = rand() > 0.5 ? "#ffffff" : "#000000";
+      ctx.fillRect(rand() * W, rand() * H, dot, dot);
+    }
+    ctx.globalAlpha = 1;
+  }
+  if (look.letterbox) {
+    const bar = Math.round(Math.min(W, H) * 0.06);
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, W, bar);
+    ctx.fillRect(0, H - bar, W, bar);
+  }
+  ctx.restore();
 }
 
 const boxOf = (l: Layer, W: number, H: number): Rect => ({ x: (l.x - l.w / 2) * W, y: (l.y - l.h / 2) * H, w: l.w * W, h: l.h * H });
@@ -117,13 +305,14 @@ function drawImageInto(ctx: Ctx, img: Img, r: Rect, fit: "cover" | "contain", zo
   ctx.drawImage(img, c.sx, c.sy, c.sw, c.sh, r.x, r.y, r.w, r.h);
 }
 
-function drawBackground(ctx: Ctx, bg: Background, progress: number, photos: Map<number, Img>, W: number, H: number, tMs: number): void {
+function drawBackground(ctx: Ctx, bg: Background, progress: number, photos: Map<number, Img>, W: number, H: number, tMs: number, k = 1): void {
   const full: Rect = { x: 0, y: 0, w: W, h: H };
   const img = bg.kind === "photo" && bg.photo ? photos.get(bg.photo) : undefined;
   if (img && img.width > 0) {
     ctx.save();
-    if (bg.blur) ctx.filter = `blur(${bg.blur}px)`;
-    const pad = bg.blur ? bg.blur * 2 : 0;
+    const blur = (bg.blur ?? 0) * k;
+    if (blur) ctx.filter = joinFilters(ctx.filter && ctx.filter !== "none" ? ctx.filter : "", `blur(${blur.toFixed(1)}px)`);
+    const pad = blur ? blur * 2 : 0;
     drawImageInto(ctx, img, { x: -pad, y: -pad, w: W + pad * 2, h: H + pad * 2 }, "cover", 1 + 0.08 * progress, 0.5, 0.5);
     ctx.restore();
     if (bg.dim) {

@@ -1,5 +1,6 @@
 // Video Lab (docs/VIDEO_ENGINE.md): reads the TEST database and storage, read-only. Businesses, products and their
 // photos (resized and cached on disk), and the music library. Never writes to the database.
+import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
@@ -92,7 +93,30 @@ export async function listProducts(businessId: string): Promise<LabProduct[]> {
 }
 
 /** The photo, resized (longest side `max` px) to JPEG and cached on disk. Only photos that belong to the business. */
+const UPLOAD_ID = /^up-[0-9a-f]{12}$/;
+const uploadFile = (id: string) => path.join(DATA, "uploads", `${id}.jpg`);
+
+/** Saves an owner's photo (JPEG, PNG, WebP or HEIC as sharp reads it), at most 2,000 px, as JPEG. Returns its id. */
+export async function saveUpload(bytes: Buffer): Promise<{ id: string; width: number; height: number }> {
+  const out = await sharp(bytes).rotate().resize({ width: 2000, height: 2000, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer({ resolveWithObject: true }).catch(() => {
+    throw new Error("That file is not a photo we can read (use JPG, PNG or WebP).");
+  });
+  const id = `up-${randomBytes(6).toString("hex")}`;
+  await fs.mkdir(path.dirname(uploadFile(id)), { recursive: true });
+  await fs.writeFile(uploadFile(id), out.data);
+  return { id, width: out.info.width, height: out.info.height };
+}
+
+export async function uploadExists(id: string): Promise<boolean> {
+  if (!UPLOAD_ID.test(id)) return false;
+  return fs.access(uploadFile(id)).then(() => true, () => false);
+}
+
 export async function photoJpeg(assetId: string, max: number, businessId?: string): Promise<{ bytes: Buffer; width: number; height: number }> {
+  if (UPLOAD_ID.test(assetId)) {
+    const out = await sharp(await fs.readFile(uploadFile(assetId))).resize({ width: max, height: max, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 86 }).toBuffer({ resolveWithObject: true });
+    return { bytes: out.data, width: out.info.width, height: out.info.height };
+  }
   if (!/^[a-z0-9-]{10,40}$/i.test(assetId)) throw new Error("Bad photo id");
   const file = path.join(DATA, "photos", `${assetId}-${max}.jpg`);
   try {

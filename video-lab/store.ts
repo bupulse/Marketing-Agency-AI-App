@@ -36,8 +36,13 @@ export type LabJob = {
   billedTo?: "api" | "subscription";
   status: "designed" | "failed";
   error: string | null;
-  video: { bytes: number; renderMs: number; savedAt: string } | null;
+  video: { bytes: number; renderMs: number; savedAt: string; quality?: string } | null;
   edited: boolean;
+  /** Seedance-style mode, fixed lens, the test it edits or extends, and "k/n" when several versions were made. */
+  mode?: string;
+  fixedLens?: boolean;
+  parentId?: string | null;
+  version?: string | null;
 };
 
 type LedgerRow = { at: string; jobId: string; kind: string; model: string; inputTokens: number; outputTokens: number; costUsd: number; billedTo?: string; apiEquivalentUsd?: number };
@@ -119,4 +124,33 @@ export async function readVideo(id: string): Promise<Buffer | null> {
   } catch {
     return null;
   }
+}
+
+// ---- Template previews: one example design per template, shown live in the template gallery ------------------------
+const PREVIEWS = path.join(DATA, "template-previews");
+const safeTemplate = (id: string) => /^[a-z0-9-]{2,40}$/.test(id);
+
+export async function savePreview(templateId: string, preview: { spec: MotionSpec; photoIds: string[]; jobId: string }): Promise<void> {
+  if (!safeTemplate(templateId)) return;
+  await fs.mkdir(PREVIEWS, { recursive: true });
+  await fs.writeFile(path.join(PREVIEWS, `${templateId}.json`), JSON.stringify(preview));
+}
+
+export async function listPreviews(): Promise<Record<string, { spec: MotionSpec; photoIds: string[] }>> {
+  let files: string[] = [];
+  try {
+    files = await fs.readdir(PREVIEWS);
+  } catch {
+    return {};
+  }
+  const out: Record<string, { spec: MotionSpec; photoIds: string[] }> = {};
+  for (const f of files.filter((x) => x.endsWith(".json"))) {
+    try {
+      const v = JSON.parse(await fs.readFile(path.join(PREVIEWS, f), "utf8"));
+      out[f.slice(0, -5)] = { spec: v.spec, photoIds: v.photoIds };
+    } catch {
+      // A broken preview is skipped.
+    }
+  }
+  return out;
 }

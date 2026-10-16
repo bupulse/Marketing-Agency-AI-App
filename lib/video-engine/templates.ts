@@ -1,0 +1,96 @@
+// Templates of the Claude video engine (docs/VIDEO_ENGINE.md): a catalogue like Higgsfield's Marketing Studio and
+// seedance2ai's showcase, grouped the same way (product shots, motion, UGC, TikTok, ads, promo posters, marketplace,
+// cinematic). Each template is an art direction for the designer: layout, camera work, film look and pacing. Written
+// for small businesses in Rwanda and East Africa. Data only.
+
+export const TEMPLATE_CATEGORIES = [
+  { id: "product", name: "Product shot" },
+  { id: "motion", name: "Motion" },
+  { id: "ugc", name: "UGC" },
+  { id: "tiktok", name: "TikTok" },
+  { id: "ads", name: "Ads" },
+  { id: "promo", name: "Posters & offers" },
+  { id: "marketplace", name: "Marketplace" },
+  { id: "cinematic", name: "Cinematic" },
+] as const;
+export type TemplateCategory = (typeof TEMPLATE_CATEGORIES)[number]["id"];
+
+export type VideoTemplate = {
+  id: string;
+  category: TemplateCategory;
+  name: string;
+  blurb: string;
+  direction: string;
+  /** Suggested length and hook; the owner can change them. */
+  seconds?: number;
+  hook?: string;
+  /** Needs a presenter (AI influencer); until influencers exist, the designer uses the product and captions instead. */
+  presenter?: boolean;
+};
+
+const T = (t: VideoTemplate) => t;
+
+export const VIDEO_TEMPLATES: VideoTemplate[] = [
+  // ---- Product shot
+  T({ id: "product-hero", category: "product", name: "Product hero", blurb: "The product floats, turns and shines; features appear around it.", seconds: 15,
+    direction: "Premium product showcase. The product photo is the hero (fit contain on a clean gradient when its background is plain; cover for lifestyle photos), depth 0.6, gentle rotate and scale keyframes so it feels alive. Feature callouts slide in beside it with thin drawn lines. Camera: slow dollyIn or orbitLeft with intensity 0.4, a focus pull from the background to the product in the first scene. Look: grade vivid or none, glow 0.25, vignette 0.3." }),
+  T({ id: "studio-turntable", category: "product", name: "Studio turntable", blurb: "Like a pro studio shoot: soft light, slow orbit, clean text.", seconds: 12,
+    direction: "Studio product photography in motion. Soft grey or brand-tinted gradient backgrounds with a floor shadow (an ellipse shape, dark, low opacity, under the product). Camera orbitRight then orbitLeft, intensity 0.5, every scene. Minimal Inter text, small, at the top. Look: glow 0.3, vignette 0.35, grain 0.15." }),
+  T({ id: "macro-detail", category: "product", name: "Macro details", blurb: "Extreme close-ups of textures and details, then the full product.", seconds: 12,
+    direction: "Macro detail film. First scenes are tight crops of the product photos (cover, zoomTo 1.35, focusX/focusY on details) with crashZoom or dollyIn cameras and a focus pull; one word per scene. The final scene pulls back (dollyOut) to show the whole product with the name. Look: film grade, grain 0.25, vignette 0.4." }),
+  T({ id: "ice-splash", category: "product", name: "Fresh splash", blurb: "Cool, fresh, energetic: bubbles and splashes for drinks and cosmetics.", seconds: 10,
+    direction: "Fresh and cool. Light blue and white gradients, many small circle shapes as bubbles rising (keyframes dy -0.4 over the scene, varied sizes, depth 0.2 to 0.9 so they parallax), blob shapes as splashes behind the product. Camera craneUp intensity 0.5. Look: cool grade, glow 0.4." }),
+  // ---- Motion
+  T({ id: "kinetic-type", category: "motion", name: "Bold words", blurb: "Huge words punch in on the beat; photos flash between them.", seconds: 10, hook: "bold-claim",
+    direction: "Kinetic typography. Short scenes (1.2 to 2 s) with 1 to 4 huge words (size 0.12 to 0.2) in Anton or Poppins 800, uppercase, wordsPop, pop or zoom. Alternate strong backgrounds, whip and flash transitions, crashZoom cameras on the words. Quick photo scenes between. Look: vivid, grain 0.2." }),
+  T({ id: "hypermotion", category: "motion", name: "Hypermotion", blurb: "Fast, glossy and dynamic, like Higgsfield's Hypermotion.", seconds: 12,
+    direction: "Hyper-dynamic product motion. Every scene has a strong camera (crashZoom, orbitLeft/Right intensity 0.8, dutchRoll), whip and blurZoom transitions, the product rotating 10 to 20 degrees with ease back, speed lines (line shapes drawn in fast, depth 0.9). Glossy gradients from the brand colours. Look: vivid, glow 0.45, vignette 0.3." }),
+  T({ id: "dark-minimal", category: "motion", name: "Dark minimal", blurb: "Black background, elegant serif, slow and luxurious.", seconds: 15,
+    direction: "Luxury minimalism. Near-black backgrounds, one thin accent colour (gold, cream or brand). Playfair or DM Serif headlines, Inter for small lines. blurIn and fade, long scenes (3 to 5 s), slow dollyIn intensity 0.3 with focus pulls, rounded photos with shadows. Never more than 6 words on screen. Look: film grade, glow 0.3, vignette 0.5, letterbox on wide shapes." }),
+  T({ id: "colour-pop", category: "motion", name: "Colour pop", blurb: "Bright colour blocks, bouncy stickers and a price burst.", seconds: 12,
+    direction: "Playful and loud. Bright saturated backgrounds changing every scene, blobs and bursts as stickers behind the product, bouncy keyframes (back, bounce, elastic), wordsPop text with a highlighted key word, a burst behind any price. Poppins or Nunito 800. Camera handheld shake 0.2 or panLeft. Look: vivid." }),
+  T({ id: "typography-poster", category: "motion", name: "Typography poster", blurb: "Big graphic type layouts, like an animated poster.", seconds: 10,
+    direction: "Swiss-poster typography. Large text blocks aligned left, grids of thin lines (line shapes), numbers as huge graphic elements, two colours only. Text animates with typewriter or words, lines draw in. Camera tiltDown slow. Look: none or faded, grain 0.2." }),
+  // ---- UGC
+  T({ id: "ugc-review", category: "ugc", name: "Customer review", blurb: "A customer's words on screen like a phone video review.", seconds: 15, presenter: true,
+    direction: "UGC-style review, as if filmed on a phone. Full-screen product photos with handheld camera (shake 0.4) and slight dutchRoll, captions in the TikTok style (white text with black box, words animation, lower third), a 5-star row (5 small burst or circle shapes in gold) and a short first-person review from the product's selling points. No invented customer names or quotes beyond the facts; write it as 'what customers love'." }),
+  T({ id: "ugc-unboxing", category: "ugc", name: "Unboxing", blurb: "The reveal: box, open, wow, the product.", seconds: 15, hook: "pov", presenter: true,
+    direction: "Unboxing reveal. Scene 1: a closed 'box' (rect shapes in kraft brown with a ribbon line) with 'Unboxing time' text, handheld camera. Scene 2: the box lid flies up (keyframes) and the product photo pops out (scale 0 to 1, ease back) with a flash transition. Then detail scenes with captions, and an outro. Look: warm, grain 0.2." }),
+  T({ id: "ugc-pov", category: "ugc", name: "POV moment", blurb: "'POV:' a relatable everyday moment, then the product saves the day.", seconds: 12, hook: "pov", presenter: true,
+    direction: "POV storytelling. Open with 'POV:' and a relatable everyday moment of the customer in big caption text over a softly blurred photo, handheld camera. Then the product as the answer, with crashZoom. Keep captions TikTok-style (white on black box). Look: none, grain 0.15." }),
+  T({ id: "ugc-before-after", category: "ugc", name: "Problem → fix", blurb: "The everyday problem, then the product as the fix (no body before/after).", seconds: 12, hook: "before-after",
+    direction: "Problem then solution. First half: dull grey or desaturated scene, the problem in text, slow camera. Hard flash cut to bright, saturated scenes with the product and the benefit, energetic camera. Never show bodies, health or medical before-and-after. Look: the first scenes faded, the rest vivid (use the background colours to show the change)." }),
+  // ---- TikTok
+  T({ id: "tiktok-gadget", category: "tiktok", name: "This saved me", blurb: "'This [product] saved me...' trend format.", seconds: 12, hook: "bold-claim",
+    direction: "TikTok trend format 'This saved me'. Big caption hook at the top third, white text with black outline box, words animation. Fast cuts every 1.5 to 2 s, crashZoom and whip transitions, handheld shake 0.3. Ends with 'Link / WhatsApp' style call to action. Look: vivid." }),
+  T({ id: "tiktok-3-reasons", category: "tiktok", name: "3 reasons", blurb: "A numbered list of benefits that tick in one by one.", seconds: 15, hook: "countdown",
+    direction: "List video. Hook scene with the promise, then one scene per benefit (3 at most): a huge number in the accent colour with a ring shape drawing around it, the benefit in 3 to 7 words, the product photo beside it, same layout each time. Camera panLeft on each benefit. End with product and call to action. Look: none, vignette 0.2." }),
+  T({ id: "tiktok-secret", category: "tiktok", name: "Secret hack", blurb: "'Nobody talks about this...' reveal format.", seconds: 10, hook: "question",
+    direction: "Secret reveal. Dark first scene with 'Nobody tells you this' style hook in typewriter, focus pull, then a blurZoom reveal of the product with glow. Short punchy captions. Look: night grade then vivid, glow 0.3." }),
+  // ---- Ads
+  T({ id: "offer-flash", category: "ads", name: "Offer flash", blurb: "A sale or offer, loud and clear, ending with how to buy.", seconds: 12, hook: "price-reveal",
+    direction: "Promotion ad. Hook with the offer itself in huge text (only offers, prices and dates present in the facts). Product, then 2 to 3 short reasons to buy now, then the price in a burst and how to order (phone, WhatsApp, location if given). Fast cuts, slideUp and whip, crashZoom on the price. Look: vivid." }),
+  T({ id: "tv-spot", category: "ads", name: "TV spot", blurb: "A polished 'TV commercial' with cinematic moves and a tagline.", seconds: 20,
+    direction: "Broadcast-quality commercial. 16:9 feel even in vertical: letterbox, full-bleed photos with slow dolly and orbit, elegant lower-third titles, a tagline scene in serif, an end card with logo-style business name, price and contact. Dip and fade transitions. Look: tealOrange or film, glow 0.25, vignette 0.35, letterbox true." }),
+  T({ id: "brand-story", category: "ads", name: "Brand story", blurb: "Who you are, what you make, why people love you.", seconds: 20,
+    direction: "Brand film. Calm pace, 4 to 6 scenes: who the business is (from its description), what it makes, how it helps customers, where to find it. Photos full-bleed with slow cameras (dollyIn, craneUp), captions with rise animation. Look: warm or film, grain 0.2, light leaks 0.3." }),
+  // ---- Posters & offers
+  T({ id: "event-poster", category: "promo", name: "Event poster", blurb: "An animated event or launch poster: date, place, CTA.", seconds: 10,
+    direction: "Animated poster. One strong composition built up over the video: title, big date and place (only if in the facts), product photo cut into a shape, bursts and lines. Each element animates in staggered; camera slow dollyIn on the whole poster. Look: vivid, grain 0.2." }),
+  T({ id: "price-drop", category: "promo", name: "Price drop", blurb: "Big price, big badge, countdown energy.", seconds: 8, hook: "price-reveal",
+    direction: "Price-led promo. The price huge in Anton inside a spinning burst, the product beside it, 'Limited stock' style urgency only if true in the facts. Flash and whip transitions, crashZoom, handheld shake 0.3. Look: vivid." }),
+  // ---- Marketplace
+  T({ id: "marketplace-listing", category: "marketplace", name: "Listing video", blurb: "Clean e-commerce listing: product, features, price, delivery.", seconds: 12,
+    direction: "Marketplace listing. White or very light backgrounds, product with fit contain and a soft floor shadow, feature chips (text with rounded boxes) appearing one by one, price and delivery or payment info (only from the facts). Calm camera orbit. Look: none." }),
+  T({ id: "colour-options", category: "marketplace", name: "Colour options", blurb: "Show every colour or variant one after another.", seconds: 10,
+    direction: "Variants showcase. One scene per colour or variant named in the facts, the background changing to match each colour, the product photo with a quick spin transition, the variant name in a pill box. Camera dollyIn. Look: vivid." }),
+  // ---- Cinematic
+  T({ id: "story-cinematic", category: "cinematic", name: "Cinematic story", blurb: "Full-screen photos with real camera moves and calm captions.", seconds: 15,
+    direction: "Cinematic slideshow done like film. Full-bleed photo backgrounds (dim 0.2 to 0.35), every scene a different camera (dollyIn, panLeft, craneUp, orbitRight, pushPull), focus pulls, captions in the lower third (Inter 600 or Playfair) with rise, short sentences telling a small story. Dip and fade transitions. Look: tealOrange, glow 0.2, vignette 0.4, light leaks 0.3, grain 0.2, letterbox true." }),
+  T({ id: "golden-hour", category: "cinematic", name: "Golden hour", blurb: "Warm sunset light, slow and emotional.", seconds: 15,
+    direction: "Golden hour mood. Warm grade, strong light leaks (0.6) drifting, slow craneUp and dollyIn, soft serif captions with blurIn, long dissolves (fade, dip). Look: warm, glow 0.4, vignette 0.4, grain 0.2." }),
+  T({ id: "kigali-market", category: "cinematic", name: "Local market", blurb: "Warm earthy colours and a friendly local feel.", seconds: 15,
+    direction: "Warm and local. Earthy palette (terracotta, ochre, deep green, cream) unless the brand says otherwise, textured backgrounds (dots or lines), rounded photo frames, friendly Nunito text, handheld camera shake 0.25. Speak like a neighbour recommending a good shop. A greeting in the business's language may open the video (for Kinyarwanda: Muraho!). End with where to find the business. Look: warm, grain 0.25, light leaks 0.25." }),
+];
+
+export const templateById = (id: string): VideoTemplate => VIDEO_TEMPLATES.find((t) => t.id === id) ?? VIDEO_TEMPLATES[0];

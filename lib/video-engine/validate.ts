@@ -2,18 +2,22 @@
 // unchecked: unknown values fall back to safe defaults, numbers are clamped to the canvas, text is cut to length,
 // layers pointing at photos we do not have are dropped, and the scenes are fitted to the length that was asked for.
 import {
+  CAMERA_MOVES,
   EASES,
   FONTS,
+  GRADES,
   SHAPES,
   SPEC_LIMITS,
   TEXT_ANIMATIONS,
   TRANSITIONS,
   isRatio,
   type Background,
+  type Camera,
   type Ease,
   type FontId,
   type Keyframe,
   type Layer,
+  type Look,
   type MotionSpec,
   type Ratio,
   type Scene,
@@ -82,6 +86,32 @@ function box(l: Obj) {
     from,
     to: Math.max(from + 0.05, num(l.to, 0.05, 1, 1)),
     keyframes: keyframes(l.keyframes),
+    depth: optNum(l.depth, 0, 1),
+  };
+}
+
+function camera(v: unknown, fixedLens: boolean): Camera | undefined {
+  if (!isObj(v)) return undefined;
+  const move = fixedLens ? "static" : oneOf(v.move, CAMERA_MOVES, "static");
+  return {
+    move,
+    intensity: optNum(v.intensity, 0, 1),
+    shake: fixedLens ? undefined : optNum(v.shake, 0, 1),
+    ease: v.ease === undefined ? undefined : oneOf<Ease>(v.ease, EASES, "inOut"),
+    focusFrom: optNum(v.focusFrom, 0, 1),
+    focusTo: optNum(v.focusTo, 0, 1),
+  };
+}
+
+function look(v: unknown): Look | undefined {
+  if (!isObj(v)) return undefined;
+  return {
+    grade: oneOf(v.grade, GRADES, "none"),
+    grain: optNum(v.grain, 0, 1),
+    vignette: optNum(v.vignette, 0, 1),
+    glow: optNum(v.glow, 0, 1),
+    lightLeak: optNum(v.lightLeak, 0, 1),
+    letterbox: v.letterbox === true,
   };
 }
 
@@ -163,7 +193,7 @@ function background(v: unknown, photoCount: number, palette: MotionSpec["palette
  * Repairs Claude's answer into a spec the renderer can always draw. Throws SpecError only when nothing usable is left
  * (no scenes). `photoCount` is how many photos the designer was given; `seconds` is the length that was asked for.
  */
-export function validateSpec(raw: unknown, opts: { ratio: Ratio; photoCount: number; seconds: number }): MotionSpec {
+export function validateSpec(raw: unknown, opts: { ratio: Ratio; photoCount: number; seconds: number; fixedLens?: boolean }): MotionSpec {
   if (!isObj(raw)) throw new SpecError("The design was not a JSON object.");
   const p = isObj(raw.palette) ? raw.palette : {};
   const palette = {
@@ -184,6 +214,7 @@ export function validateSpec(raw: unknown, opts: { ratio: Ratio; photoCount: num
         .filter((l): l is Layer => l !== null),
       transition: i === 0 ? "cut" : oneOf(s.transition, TRANSITIONS, "fade"),
       say: cleanText(s.say, 160) || undefined,
+      camera: camera(s.camera, opts.fixedLens === true),
     }));
   if (scenes.length < SPEC_LIMITS.minScenes) throw new SpecError("The design had too few scenes.");
   fitLength(scenes, opts.seconds);
@@ -200,6 +231,7 @@ export function validateSpec(raw: unknown, opts: { ratio: Ratio; photoCount: num
       .map((h) => cleanText(h, 40).replace(/^#*/, "").replace(/[^\p{L}\p{N}_]/gu, ""))
       .filter(Boolean)
       .slice(0, SPEC_LIMITS.hashtags),
+    look: look(raw.look),
   };
 }
 

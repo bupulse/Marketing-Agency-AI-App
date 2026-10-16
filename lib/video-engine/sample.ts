@@ -15,6 +15,7 @@ export function sampleSpec(input: { business: string; product: string; price?: s
       {
         seconds: 2.4,
         transition: "cut",
+        camera: { move: "crashZoom", intensity: 0.5 },
         background: { kind: "gradient", colors: ["#0b0b0f", "#2f6bff"], angle: 20, texture: "dots" },
         layers: [
           { kind: "shape", shape: "blob", color: "#2f6bff", x: 0.5, y: 0.42, w: 0.95, h: 0.55, keyframes: [{ at: 0, scale: 0.6, opacity: 0 }, { at: 0.3, scale: 1, opacity: 0.9, ease: "back" }] },
@@ -24,7 +25,8 @@ export function sampleSpec(input: { business: string; product: string; price?: s
       },
       {
         seconds: 3.2,
-        transition: "slideUp",
+        transition: "whip",
+        camera: { move: "orbitLeft", intensity: 0.7 },
         background: { kind: "solid", colors: ["#f5f5f7"], texture: "grain" },
         layers: [
           { kind: "shape", shape: "circle", color: "#7b5cff", x: 0.5, y: 0.45, w: 0.8, h: 0.45, keyframes: [{ at: 0, scale: 0.2 }, { at: 0.25, scale: 1, ease: "elastic" }] },
@@ -36,7 +38,8 @@ export function sampleSpec(input: { business: string; product: string; price?: s
       },
       {
         seconds: 3,
-        transition: "zoom",
+        transition: "blurZoom",
+        camera: { move: "dollyIn", intensity: 0.6, focusFrom: 0, focusTo: 0.5 },
         background: hasPhoto ? { kind: "photo", colors: ["#000000"], photo: second, blur: 24, dim: 0.45 } : { kind: "solid", colors: ["#2f6bff"] },
         layers: [
           ...(hasPhoto ? [{ kind: "photo" as const, photo: second, x: 0.5, y: 0.4, w: 0.7, h: 0.42, radius: 0.08, shadow: true, zoomTo: 1.15, border: "#ffffff" }] : []),
@@ -46,7 +49,8 @@ export function sampleSpec(input: { business: string; product: string; price?: s
       },
       {
         seconds: 3.4,
-        transition: "wipe",
+        transition: "spin",
+        camera: { move: "handheld", intensity: 0.4 },
         background: { kind: "solid", colors: ["#7b5cff"], texture: "lines" },
         layers: [
           { kind: "shape", shape: "burst", color: "#0b0b0f", x: 0.5, y: 0.4, w: 0.72, h: 0.4, keyframes: [{ at: 0, scale: 0, rotate: -90 }, { at: 0.3, scale: 1, rotate: 0, ease: "back" }] },
@@ -60,5 +64,6 @@ export function sampleSpec(input: { business: string; product: string; price?: s
     music: "upbeat",
     caption: `${input.product} is here at ${input.business}. Come and see it today.`,
     hashtags: ["Kigali", "Rwanda", "NewArrival"],
+    look: { grade: "vivid", glow: 0.3, vignette: 0.35, grain: 0.15, lightLeak: 0.2 },
   };
 }
