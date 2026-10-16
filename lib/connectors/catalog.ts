@@ -1,5 +1,7 @@
 import "server-only";
 import { disabledServices } from "@/lib/admin/switch";
+import { serviceSetUp } from "@/lib/feature-setup";
+import type { FeatureKey } from "@/lib/features";
 import type { ConnectorEntry, ConnectorGroup, ConnectorId, ConnectorStatus } from "./types";
 
 // The catalog for /dashboard/connectors. To add a connector: create lib/connectors/entries/<id>.ts that exports
@@ -25,9 +27,19 @@ export const PLANNED: Record<ConnectorId, { name: string; group: ConnectorGroup;
   "google-drive": { name: "Google Drive", group: "files", description: "Pick photos and files from your Drive and add them to your gallery.", icon: "HardDrive" },
   dropbox: { name: "Dropbox", group: "files", description: "Pick photos and files from Dropbox and add them to your gallery.", icon: "Folder" },
   canva: { name: "Canva", group: "design", description: "Bring your Canva designs into BuPulse to use in posts.", icon: "Palette" },
-  shopify: { name: "Shopify", group: "store", description: "Import your products as projects, with photos and prices.", icon: "ShoppingBag" },
-  woocommerce: { name: "WooCommerce", group: "store", description: "Import your products as projects, with photos and prices.", icon: "ShoppingCart" },
+  shopify: { name: "Shopify", group: "store", description: "Import your products, with photos and prices.", icon: "ShoppingBag" },
+  woocommerce: { name: "WooCommerce", group: "store", description: "Import your products, with photos and prices.", icon: "ShoppingCart" },
   cloudflare: { name: "Cloudflare", group: "website", description: "See your domains and add the chat widget to your website in one click.", icon: "Globe" },
+};
+
+/** The plan feature each connector belongs to (lib/features.ts). */
+export const CONNECTOR_FEATURE: Record<ConnectorId, FeatureKey> = {
+  "google-drive": "driveImport",
+  dropbox: "driveImport",
+  canva: "canva",
+  shopify: "storeImport",
+  woocommerce: "storeImport",
+  cloudflare: "websiteChat",
 };
 
 export type CatalogItem = {
@@ -56,9 +68,11 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 /**
  * Every connector's status for one business, fetched in parallel. A connector that throws or is slow shows as
- * "needs attention"; it never breaks the page or the other cards.
+ * "needs attention"; it never breaks the page or the other cards. With `features` (the plan's, from
+ * lib/entitlements.ts), a connector whose feature is missing shows "Add to your plan" instead of Connect, unless
+ * BuPulse's own keys for it are not set (`isSetUp`, lib/feature-setup.ts): then it is "Coming soon", never sold.
  */
-export async function getCatalog(ctx: { userId: string; businessId: string }, entries: ConnectorEntry[] = ENTRIES): Promise<CatalogItem[]> {
+export async function getCatalog(ctx: { userId: string; businessId: string; features?: ReadonlySet<FeatureKey> }, entries: ConnectorEntry[] = ENTRIES, isSetUp: (id: ConnectorId) => boolean = serviceSetUp): Promise<CatalogItem[]> {
   const byId = new Map(entries.map((e) => [e.id, e]));
   const off = await disabledServices(); // switched off in the admin console
   const ids = [...new Set<ConnectorId>([...(Object.keys(PLANNED) as ConnectorId[]), ...entries.map((e) => e.id)])];
@@ -68,6 +82,11 @@ export async function getCatalog(ctx: { userId: string; businessId: string }, en
       const planned = PLANNED[id];
       if (!entry) return { id, ...planned, status: { state: "unavailable" }, connectHref: null, manageHref: null };
       let status: ConnectorStatus;
+      if (ctx.features && !ctx.features.has(CONNECTOR_FEATURE[id])) {
+        // Not set up yet (no keys): nothing to add to a plan, it cannot be used by anyone.
+        if (!isSetUp(id)) return { id, name: entry.name, group: entry.group, description: entry.description, icon: entry.icon, status: { state: "unavailable" }, connectHref: null, manageHref: null };
+        return { id, name: entry.name, group: entry.group, description: entry.description, icon: entry.icon, status: { state: "not_in_plan", detail: "Not part of your plan yet." }, connectHref: null, manageHref: `/dashboard/upgrade?feature=${CONNECTOR_FEATURE[id]}` };
+      }
       if (off.has(id)) {
         // Paused by the admin: shown as unavailable (no Connect button); nothing is disconnected or lost.
         return { id, name: entry.name, group: entry.group, description: entry.description, icon: entry.icon, status: { state: "unavailable", detail: "Temporarily unavailable. Please try again later." }, connectHref: null, manageHref: null };

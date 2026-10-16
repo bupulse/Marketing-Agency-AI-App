@@ -4,7 +4,8 @@ import { checkActiveUser } from "@/lib/auth/require-user";
 import { leadsToCsv } from "@/lib/leads/csv";
 import { MAX_EXPORT, leadWhere, parseFilters } from "@/lib/leads/filters";
 
-// The leads inbox as a CSV file. Respects the same filters as the page (status, source, q).
+// The leads inbox as a CSV file. Respects the same filters as the page (status, source, q). Not gated by the
+// website chat feature on purpose: the leads a company already has are its own data, exportable on any plan.
 export async function GET(request: NextRequest) {
   const check = await checkActiveUser();
   if (check.status !== "ok") return NextResponse.json({ error: "Please sign in." }, { status: check.status === "signed_out" ? 401 : 403 });

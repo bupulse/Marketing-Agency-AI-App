@@ -2,7 +2,7 @@ import { Check } from "lucide-react";
 import { Badge, Button, GlassCard } from "@/components/ui";
 import type { PublicPlan } from "@/lib/plan-catalog";
 import { cn } from "@/lib/cn";
-import { formatCents } from "@/components/billing/helpers";
+import { formatPrice } from "@/components/billing/helpers";
 
 /** Static plan cards (monthly price only). The plans come from the database via the page. */
 export function PlanCards({ plans }: { plans: PublicPlan[] }) {
@@ -25,11 +25,11 @@ export function PlanCards({ plans }: { plans: PublicPlan[] }) {
             <p className="text-muted">{plan.description}</p>
           </div>
           <p className="flex items-baseline gap-1.5">
-            <span className="text-5xl font-bold tracking-[-0.04em]">{formatCents(plan.monthlyPriceCents)}</span>
+            <span className="text-5xl font-bold tracking-[-0.04em]">{formatPrice(plan.monthlyPriceCents, plan.currency)}</span>
             <span className="text-muted">/ month</span>
           </p>
           <ul className="flex flex-1 flex-col gap-3">
-            {plan.features.map((feature) => (
+            {plan.highlights.map((feature) => (
               <li key={feature} className="flex items-start gap-3">
                 <Check aria-hidden className="mt-0.5 size-5 shrink-0 text-success" />
                 <span>{feature}</span>
@@ -37,7 +37,7 @@ export function PlanCards({ plans }: { plans: PublicPlan[] }) {
             ))}
           </ul>
           <Button href="/signup" size="lg" variant={plan.highlight ? "primary" : "ghost"}>
-            Start free trial
+            Book a free demo
           </Button>
         </GlassCard>
       ))}

@@ -1,4 +1,5 @@
 // Pure helpers for the content studio screens (no React, no server code), so they are easy to test.
+import type { VisualView } from "@/lib/visuals/types";
 
 export const MAX_FEATURES = 10;
 export const MAX_PHOTOS = 10;
@@ -177,7 +178,10 @@ export function aspectNote(ratio: string): string {
   return note ? `${ratio} · ${note}` : ratio;
 }
 
-/** A project's content, as the screens use it (dates as ISO strings so it can cross to the browser). */
+/** What content is written for: a product or a campaign (Knowledge base). */
+export type StudioSubject = { kind: "product" | "campaign"; id: string };
+
+/** A product's or campaign's content, as the screens use it (dates as ISO strings so it can cross to the browser). */
 export type StudioContent = {
   id: string;
   caption: string;
@@ -188,6 +192,13 @@ export type StudioContent = {
   variants: StudioVariant[];
   edited: boolean;
   createdAt: string;
+  /** A content pack post (docs/CONTENT_PACKS.md): its angle id, the one app it is for, and its pack. */
+  angle?: string | null;
+  network?: string | null;
+  packId?: string | null;
+  /** The picture (image or carousel) and the video that come with this version (docs/CONTENT_VISUALS.md). */
+  image?: VisualView | null;
+  video?: VisualView | null;
 };
 
 export const REGENERATE_IDEAS = ["Make it shorter", "More playful", "More professional", "Mention free delivery", "Add a call to action"];

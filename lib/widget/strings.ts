@@ -21,6 +21,7 @@ export interface WidgetStrings {
   verify: string; // shown with an interactive Turnstile challenge
   close: string;
   open: string;
+  call: string; // the Call button next to WhatsApp in the chat header
 }
 
 const en: WidgetStrings = {
@@ -43,6 +44,7 @@ const en: WidgetStrings = {
   verify: "Please confirm you are human.",
   close: "Close",
   open: "Open chat",
+  call: "Call",
 };
 
 const STRINGS: Record<string, WidgetStrings> = {
@@ -67,6 +69,7 @@ const STRINGS: Record<string, WidgetStrings> = {
     verify: "Veuillez confirmer que vous êtes humain.",
     close: "Fermer",
     open: "Ouvrir le chat",
+    call: "Appeler",
   },
   Kinyarwanda: {
     greeting: "Muraho! Mumbaze icyo mushaka kumenya kuri {name}.",
@@ -88,6 +91,7 @@ const STRINGS: Record<string, WidgetStrings> = {
     verify: "Emeza ko uri umuntu.",
     close: "Funga",
     open: "Fungura ikiganiro",
+    call: "Hamagara",
   },
   Swahili: {
     greeting: "Habari! Niulize chochote kuhusu {name}.",
@@ -109,6 +113,7 @@ const STRINGS: Record<string, WidgetStrings> = {
     verify: "Tafadhali thibitisha kuwa wewe ni binadamu.",
     close: "Funga",
     open: "Fungua gumzo",
+    call: "Piga simu",
   },
   Spanish: {
     greeting: "¡Hola! Pregúntame lo que quieras sobre {name}.",
@@ -130,6 +135,7 @@ const STRINGS: Record<string, WidgetStrings> = {
     verify: "Confirma que eres una persona.",
     close: "Cerrar",
     open: "Abrir chat",
+    call: "Llamar",
   },
   Portuguese: {
     greeting: "Olá! Pergunte-me o que quiser sobre {name}.",
@@ -151,6 +157,7 @@ const STRINGS: Record<string, WidgetStrings> = {
     verify: "Confirme que é uma pessoa.",
     close: "Fechar",
     open: "Abrir chat",
+    call: "Ligar",
   },
   Arabic: {
     greeting: "مرحبًا! اسألني أي شيء عن {name}.",
@@ -172,6 +179,7 @@ const STRINGS: Record<string, WidgetStrings> = {
     verify: "يرجى تأكيد أنك إنسان.",
     close: "إغلاق",
     open: "افتح المحادثة",
+    call: "اتصل",
   },
   German: {
     greeting: "Hallo! Fragen Sie mich alles über {name}.",
@@ -193,6 +201,7 @@ const STRINGS: Record<string, WidgetStrings> = {
     verify: "Bitte bestätigen Sie, dass Sie ein Mensch sind.",
     close: "Schließen",
     open: "Chat öffnen",
+    call: "Anrufen",
   },
   Italian: {
     greeting: "Ciao! Chiedimi pure qualsiasi cosa su {name}.",
@@ -214,6 +223,7 @@ const STRINGS: Record<string, WidgetStrings> = {
     verify: "Conferma di essere una persona.",
     close: "Chiudi",
     open: "Apri la chat",
+    call: "Chiama",
   },
   Dutch: {
     greeting: "Hallo! Vraag me gerust alles over {name}.",
@@ -235,6 +245,7 @@ const STRINGS: Record<string, WidgetStrings> = {
     verify: "Bevestig dat je een mens bent.",
     close: "Sluiten",
     open: "Chat openen",
+    call: "Bellen",
   },
   Hindi: {
     greeting: "नमस्ते! {name} के बारे में कुछ भी पूछें।",
@@ -256,6 +267,7 @@ const STRINGS: Record<string, WidgetStrings> = {
     verify: "कृपया पुष्टि करें कि आप इंसान हैं।",
     close: "बंद करें",
     open: "चैट खोलें",
+    call: "कॉल करें",
   },
   "Chinese (Simplified)": {
     greeting: "您好！关于{name}，请随时提问。",
@@ -277,6 +289,7 @@ const STRINGS: Record<string, WidgetStrings> = {
     verify: "请确认您是真人。",
     close: "关闭",
     open: "打开聊天",
+    call: "打电话",
   },
   Japanese: {
     greeting: "こんにちは！{name}についてお気軽にご質問ください。",
@@ -298,6 +311,7 @@ const STRINGS: Record<string, WidgetStrings> = {
     verify: "人間であることを確認してください。",
     close: "閉じる",
     open: "チャットを開く",
+    call: "電話する",
   },
   Turkish: {
     greeting: "Merhaba! {name} hakkında bana istediğinizi sorun.",
@@ -319,6 +333,7 @@ const STRINGS: Record<string, WidgetStrings> = {
     verify: "Lütfen insan olduğunuzu doğrulayın.",
     close: "Kapat",
     open: "Sohbeti aç",
+    call: "Ara",
   },
   Indonesian: {
     greeting: "Halo! Tanyakan apa saja tentang {name}.",
@@ -340,6 +355,7 @@ const STRINGS: Record<string, WidgetStrings> = {
     verify: "Harap konfirmasi bahwa Anda manusia.",
     close: "Tutup",
     open: "Buka obrolan",
+    call: "Telepon",
   },
 };
 

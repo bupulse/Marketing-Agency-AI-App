@@ -1,10 +1,10 @@
-import { pageGate } from "@/components/app/no-access";
+import { featureGate, pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { Badge, GlassCard } from "@/components/ui";
 import { TokenForm } from "@/components/domains/token-form";
 import { ZoneList } from "@/components/domains/zone-list";
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 import { tokenPageUrl } from "@/lib/cloudflare/client";
 import { CloudflareUserError, listZoneRows, type ZoneRow } from "@/lib/cloudflare/service";
 import { prisma } from "@/lib/db";
@@ -14,7 +14,7 @@ import { DisconnectCloudflareButton } from "@/components/domains/disconnect-butt
 export const metadata = { title: "Your domains" };
 
 export default async function DomainsPage() {
-  const blocked = await pageGate("connectors");
+  const blocked = (await pageGate("connectors")) ?? (await featureGate("websiteChat"));
   if (blocked) return blocked;
   const { business } = await getAppContext();
   if (!business) return null;
@@ -54,7 +54,7 @@ export default async function DomainsPage() {
             <div className="flex items-center gap-2"><strong>Cloudflare</strong><Badge tone="success">Connected</Badge></div>
             <DisconnectCloudflareButton />
           </GlassCard>
-          <ZoneList zones={zones} snippet={scriptTag(siteUrl(), business.widgetKey)} />
+          <ZoneList zones={zones} snippet={scriptTag(publicSiteUrl(), business.widgetKey)} />
           <p className="px-1 text-[13px] text-muted">
             Installing adds a small &quot;Custom HTML&quot; tool in your domain&apos;s Zaraz settings and the domain to your chat&apos;s allowed websites. Remove undoes it. Disconnecting keeps chats that are already installed.
           </p>

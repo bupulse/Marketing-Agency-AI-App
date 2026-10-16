@@ -1,13 +1,15 @@
 "use client";
 
-import { CalendarCheck, CheckCheck, ImageIcon, Info, Pencil, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { CalendarCheck, CheckCheck, Clapperboard, ImageIcon, Info, Pencil, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { approveAllPosts, planNextWeek, regeneratePlannedPost, removePlannedPost } from "@/app/dashboard/autopilot/actions";
 import { AccountAvatar } from "@/components/publishing/network-icon";
+import { ContentVisual } from "@/components/visuals/content-visual";
 import { Badge, Button, GlassCard, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import type { AutopilotView, ViewCard, ViewDay } from "@/lib/autopilot/view";
+import { MediaThumb } from "@/components/visuals/media-thumb";
 
 const GOAL_LABEL = { awareness: "Awareness", engagement: "Engagement", sales: "Sales", trust: "Trust" } as const;
 
@@ -22,8 +24,10 @@ function timeLabel(iso: string | null, timeZone: string) {
 
 const FORMAT_LABEL: Record<string, string> = { ARTICLE: "Article", CAROUSEL: "Carousel", SCRIPT: "Video script" };
 
-function PostCard({ card, timeZone }: { card: ViewCard; timeZone: string }) {
+function PostCard({ card, timeZone, videoInPlan }: { card: ViewCard; timeZone: string; videoInPlan: boolean }) {
   const [active, setActive] = useState(card.posts[0]?.id);
+  // The picture and video panel; opening it makes a pending video (one card at a time, not the whole week at once).
+  const [visualOpen, setVisualOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [pending, start] = useTransition();
@@ -43,9 +47,7 @@ function PostCard({ card, timeZone }: { card: ViewCard; timeZone: string }) {
       <div className="flex gap-4">
         <div className="relative aspect-[4/5] w-24 shrink-0 overflow-hidden rounded-2xl bg-soft sm:w-28">
           {cover ? (
-            // Signed storage URL: next/image would need the host configured, so a plain img is simpler here.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={cover} alt="" className="size-full object-cover" loading="lazy" />
+            <MediaThumb url={cover} className="size-full object-cover" loading="lazy" />
           ) : (
             <span className="flex size-full items-center justify-center text-muted">
               <ImageIcon aria-hidden className="size-6" />
@@ -61,6 +63,9 @@ function PostCard({ card, timeZone }: { card: ViewCard; timeZone: string }) {
             {card.status === "PENDING_APPROVAL" && <Badge tone="blue">Needs your approval</Badge>}
             {card.status === "SCHEDULED" && <Badge tone="success">Scheduled</Badge>}
             {card.status === "DRAFT" && <Badge tone="danger">Needs a picture</Badge>}
+            {card.image?.kind === "carousel" && <Badge tone="neutral">Carousel</Badge>}
+            {card.video?.status === "pending" && <Badge tone="violet">{card.video.robot === "queued" || card.video.robot === "making" ? "Video being made" : "Video ready to render"}</Badge>}
+            {card.video && card.video.items.length > 0 && <Badge tone="success">Video ready</Badge>}
           </div>
           <p className="text-[13px] text-muted">
             {card.posts.map((p) => `${p.label} ${timeLabel(p.scheduledAt, timeZone)}`).join(" · ")}
@@ -106,7 +111,18 @@ function PostCard({ card, timeZone }: { card: ViewCard; timeZone: string }) {
         </div>
       )}
 
+      {visualOpen && (card.image || card.video) && (
+        <div className="rounded-2xl border border-line p-4">
+          <ContentVisual image={card.image ?? null} video={card.video ?? null} videoInPlan={videoInPlan} />
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
+        {(card.image || card.video) && (
+          <Button variant="outline" size="sm" aria-expanded={visualOpen} leading={card.video ? <Clapperboard aria-hidden className="size-4" /> : <ImageIcon aria-hidden className="size-4" />} onClick={() => setVisualOpen((o) => !o)}>
+            {visualOpen ? "Hide picture" : card.video?.status === "pending" ? "Make the video" : "Picture and video"}
+          </Button>
+        )}
         <Button href={`/dashboard/calendar?post=${post?.id ?? ""}`} variant="outline" size="sm" leading={<Pencil aria-hidden className="size-4" />}>
           Edit
         </Button>
@@ -139,13 +155,13 @@ function PostCard({ card, timeZone }: { card: ViewCard; timeZone: string }) {
   );
 }
 
-function DaySection({ day, timeZone }: { day: ViewDay; timeZone: string }) {
+function DaySection({ day, timeZone, videoInPlan }: { day: ViewDay; timeZone: string; videoInPlan: boolean }) {
   return (
     <section aria-label={dayLabel(day.date)} className="flex flex-col gap-3">
       <h3 className="px-1 text-[15px] font-semibold text-muted">{dayLabel(day.date)}</h3>
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 2xl:grid-cols-2">
         {day.cards.map((card) => (
-          <PostCard key={card.groupId} card={card} timeZone={timeZone} />
+          <PostCard key={card.groupId} card={card} timeZone={timeZone} videoInPlan={videoInPlan} />
         ))}
       </div>
     </section>
@@ -237,7 +253,7 @@ export function PlanBoard({ view, creditsLeft }: { view: AutopilotView; creditsL
       ) : (
         <div className="flex flex-col gap-6">
           {view.days.map((day) => (
-            <DaySection key={day.date} day={day} timeZone={view.timeZone} />
+            <DaySection key={day.date} day={day} timeZone={view.timeZone} videoInPlan={view.videoInPlan} />
           ))}
         </div>
       )}

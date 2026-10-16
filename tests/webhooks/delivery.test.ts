@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as grant from "@/tests/stubs/entitlements";
+// Plans are not part of this test's database: every plan feature is granted (tests/stubs/entitlements.ts).
+vi.mock("@/lib/entitlements", () => import("@/tests/stubs/entitlements"));
 
 const prisma = vi.hoisted(() => ({
   lead: { findMany: vi.fn(), updateMany: vi.fn() },
@@ -18,7 +21,7 @@ import { adoptLegacyPendingLeads, retryDueWebhooks } from "@/lib/webhooks/retry"
 
 const HOUR = 3_600_000;
 const t0 = new Date("2026-10-08T10:00:00Z");
-const endpoint = { id: "e1", url: "https://hooks.zapier.com/x", secretEncrypted: "enc", enabled: true };
+const endpoint = { id: "e1", businessId: "b1", url: "https://hooks.zapier.com/x", secretEncrypted: "enc", enabled: true };
 const delivery = (over: Partial<{ id: string; attempts: number; createdAt: Date }> = {}) => ({ id: "d1", event: "lead.created", payload: { event: "lead.created" }, attempts: 0, createdAt: t0, ...over });
 
 beforeEach(() => {
@@ -141,6 +144,23 @@ describe("retryDueWebhooks (hourly cron)", () => {
     await retryDueWebhooks(now);
     expect(deliverWebhook).not.toHaveBeenCalled();
   });
+  it.each([
+    ["without the webhooks feature", () => grant.missing.add("webhooks")],
+    ["while the plan cannot be checked", () => void (grant.state.planUnknown = true)],
+  ])("skips a due delivery untouched %s: not sent, not failed, not claimed", async (_name, arrange) => {
+    arrange();
+    try {
+      prisma.webhookDelivery.findMany.mockResolvedValue([row("x", t0)]);
+      const result = await retryDueWebhooks(now);
+      expect(result).toMatchObject({ checked: 1, skipped: 1, delivered: 0, gaveUp: 0, stillFailing: 0 });
+      expect(deliverWebhook).not.toHaveBeenCalled();
+      expect(prisma.webhookDelivery.updateMany).not.toHaveBeenCalled();
+      expect(prisma.webhookDelivery.findMany.mock.calls[0][0].include.endpoint.select.businessId).toBe(true);
+    } finally {
+      grant.missing.clear();
+      grant.state.planUnknown = false;
+    }
+  });
   it("deletes the log after 30 days", async () => {
     prisma.webhookDelivery.findMany.mockResolvedValue([]);
     prisma.webhookDelivery.deleteMany.mockResolvedValue({ count: 7 });
@@ -162,6 +182,21 @@ describe("leads left waiting by the old per-widget webhook", () => {
     const data = prisma.webhookDelivery.create.mock.calls[0][0].data;
     expect(data).toMatchObject({ endpointId: "e1", event: "lead.created", status: "pending", createdAt: pendingSince });
     expect(data.payload).toMatchObject({ event: "lead.created", lead: { id: "l1", email: "a@x.com" } });
+  });
+  it.each([
+    ["without the webhooks feature", () => grant.missing.add("webhooks")],
+    ["while the plan cannot be checked", () => void (grant.state.planUnknown = true)],
+  ])("are left in the old queue, unclaimed, %s", async (_name, arrange) => {
+    arrange();
+    try {
+      prisma.lead.findMany.mockResolvedValue([lead("l1", [{ id: "e1" }])]);
+      expect(await adoptLegacyPendingLeads(t0)).toBe(0);
+      expect(prisma.lead.updateMany).not.toHaveBeenCalled();
+      expect(prisma.webhookDelivery.create).not.toHaveBeenCalled();
+    } finally {
+      grant.missing.clear();
+      grant.state.planUnknown = false;
+    }
   });
   it("does not adopt a lead another run already claimed", async () => {
     prisma.lead.findMany.mockResolvedValue([lead("l1", [{ id: "e1" }])]);

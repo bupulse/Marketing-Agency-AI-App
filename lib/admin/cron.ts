@@ -20,8 +20,13 @@ export const CRON_JOBS: CronJob[] = [
   { job: "store-sync", label: "Store sync", cron: "47 3 * * *", via: "Cloudflare", what: "Re-syncs imported store products" },
   { job: "analytics-rollup", label: "Analytics roll-up", cron: "17 2 * * *", via: "Cloudflare", what: "Daily numbers for the admin console" },
   { job: "plan-price-changes", label: "Plan price changes", cron: "29 4 * * *", via: "Cloudflare", what: "Notices and renewals when a plan price changes" },
+  { job: "momo-renewals", label: "Mobile Money renewals", cron: "41 5 * * *", via: "Cloudflare", what: "Renewal reminders, then read-only after the grace period" },
+  { job: "trial-reminders", label: "Trial reminders", cron: "53 * * * *", via: "Cloudflare", what: "Trial-end reminders and read-only when a trial ends" },
+  { job: "media-cleanup", label: "Video clean-up", cron: "19 3 * * *", via: "Cloudflare", what: "Deletes content videos 30 days after their posts went out" },
+  { job: "content-summary", label: "Auto-scheduled summary", cron: "7 * * * *", via: "Cloudflare", what: "Daily email of posts scheduled without approval, from 08:00 local" },
   { job: "purge-accounts", label: "Delete scheduled accounts", cron: "17 3 * * *", via: "GitHub Actions", what: "Erases accounts past their 30-day grace period" },
   { job: "social-refresh", label: "Refresh social tokens", cron: "43 4 * * *", via: "GitHub Actions", what: "Renews channel tokens before they expire" },
+  { job: "video-robot", label: "Video robot", cron: "*/15 * * * *", via: "GitHub Actions", what: "Makes pending content videos in headless Chrome (only when VIDEO_ROBOT_SECRET is set)" },
 ];
 
 const MINUTE = 60_000;

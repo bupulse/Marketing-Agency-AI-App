@@ -51,13 +51,18 @@ export default function AboutPage() {
 
         <section className="flex flex-col gap-4">
           <h2 className="text-3xl font-bold tracking-tight">Our story</h2>
-          <p className="text-lg leading-relaxed text-muted">[Founding story: who started BuPulse, and the problem they saw first-hand while helping local businesses.]</p>
-          <p className="text-lg leading-relaxed text-muted">[Where the team is based and how many people work on BuPulse today.]</p>
-          <p className="text-lg leading-relaxed text-muted">[One sentence about what is coming next.]</p>
+          <p className="text-lg leading-relaxed text-muted">
+            BuPulse is built in Kigali, Rwanda, for small businesses: the shops, schools, builders, salons, clinics and IT firms whose owners have
+            customers to win and no hours left for marketing.
+          </p>
+          <p className="text-lg leading-relaxed text-muted">
+            We are a small team. BuPulse writes, designs and answers in your brand voice; you review and post. Everything you make stays yours.
+          </p>
+          <p className="text-lg leading-relaxed text-muted">What is next: video and voice, so your posts can speak as well as show.</p>
         </section>
 
         <div className="flex flex-wrap gap-3">
-          <Button href="/signup" size="lg">Start free trial</Button>
+          <Button href="/signup" size="lg">Book a free demo</Button>
           <Button href="/contact" size="lg" variant="ghost">Get in touch</Button>
         </div>
       </Container>

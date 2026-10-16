@@ -4,7 +4,7 @@ import { Label } from "./label";
 
 type FieldProps = {
   label: string;
-  hint?: string;
+  hint?: ReactNode;
   error?: string;
   required?: boolean;
   className?: string;

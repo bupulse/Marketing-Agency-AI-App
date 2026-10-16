@@ -1,7 +1,11 @@
 import "server-only";
-import { GoogleGenAI } from "@google/genai";
+import { createInteraction, type Interaction } from "./gemini-rest";
+import { isRetryableStatus } from "./http-retry";
+import { estimateTokens } from "./pricing";
 import { AIProviderError, type ImageProvider, type ImageRequest, type ImageResult } from "./types";
 
+/** One image call, retries and their waits included (lib/ai/http-retry.ts). */
+export const GEMINI_IMAGE_BUDGET_MS = 120_000;
 const MAX_REFERENCE_BYTES = 6 * 1024 * 1024;
 
 export const DEFAULT_GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image";
@@ -35,14 +39,11 @@ async function referencePart(url: string): Promise<ImageInput> {
 /** Gemini image model ("Nano Banana"): text, plus optional reference images, in; one image out. */
 export class GeminiImageProvider implements ImageProvider {
   readonly name = "gemini";
-  private ai: GoogleGenAI;
 
   constructor(
-    apiKey: string,
+    private apiKey: string,
     private model: string,
-  ) {
-    this.ai = new GoogleGenAI({ apiKey });
-  }
+  ) {}
 
   async generate({ prompt, referenceImageUrls = [], aspectRatio }: ImageRequest): Promise<ImageResult> {
     let references: ImageInput[];
@@ -53,25 +54,32 @@ export class GeminiImageProvider implements ImageProvider {
       references = [];
     }
 
-    let interaction;
+    let interaction: Interaction;
     try {
-      interaction = await this.ai.interactions.create(
+      interaction = await createInteraction(
+        this.apiKey,
         {
           model: this.model,
           input: [...references, { type: "text", text: prompt }],
           store: false,
           response_format: { type: "image", ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}) },
         },
-        { timeout: 120_000 },
+        // The call, retries and their waits included, takes at most 120 s: RENDER_LEASE_MS in lib/visuals/service.ts covers it.
+        GEMINI_IMAGE_BUDGET_MS,
       );
     } catch (error) {
       const status = (error as { status?: number }).status;
+      // Timed out on our side: Google most likely still made (and billed) the image, so the ledger records one
+      // image and the prompt as an estimate (docs/AI_COSTS.md).
+      const billable = Boolean((error as { billable?: boolean }).billable);
       throw new AIProviderError(
         `Gemini image request failed${status ? ` (${status})` : ""}`,
         this.name,
-        status === 429 || (status !== undefined && status >= 500),
-        undefined,
+        status === undefined || isRetryableStatus(status),
+        billable ? { inputTokens: estimateTokens(prompt) + 258 * references.length, outputTokens: 0 } : undefined,
         this.model,
+        billable ? 1 : undefined,
+        billable,
       );
     }
 

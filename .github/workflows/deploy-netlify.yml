@@ -1,0 +1,291 @@
+name: Deploy (Netlify)
+
+# Netlify (docs/DEPLOY_NETLIFY.md). The same rules as deploy.yml (Cloudflare): migrations first, only release tags or
+# full SHAs on main, one run at a time, the `production` environment's secrets and reviewers.
+# Two ways in:
+# - every push to main deploys that commit, when the repository variable DEPLOY_TARGET is "netlify";
+# - "Run workflow" / the admin console's Settings, Updates page (workflow_dispatch) deploys a chosen release tag or
+#   commit, or restores the production deploy before the live one. See docs/UPDATES.md.
+# - The owner's signed zip (Updates, "Upload a version"): action deploy-zip installs it, verified again with main's
+#   release key and with the database backed up before the migrations. A Restore from the console installs the kept
+#   zip of that version again (Netlify has no version id to switch to).
+# Free plan: every production deploy costs 15 of the 300 monthly credits; a rollback (restore) costs none.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Release tag (vX.Y.Z) or full 40-character commit SHA on main (ignored for a rollback)"
+        required: false
+        default: ""
+        type: string
+      action:
+        description: "deploy, rollback or deploy-zip (a signed zip from the console)"
+        required: true
+        default: deploy
+        type: choice
+        options: [deploy, rollback, deploy-zip]
+      zip_path:
+        description: "deploy-zip: the zip's path in the private releases bucket (zips/<uuid>.zip)"
+        required: false
+        default: ""
+        type: string
+      zip_sha256:
+        description: "deploy-zip: the sha256 the console verified"
+        required: false
+        default: ""
+        type: string
+      release_id:
+        description: "deploy-zip: the ReleaseVersion the outcome is written to"
+        required: false
+        default: ""
+        type: string
+      environment:
+        description: "GitHub environment (its secrets and required reviewers apply). Production is the only one."
+        required: true
+        default: production
+        type: choice
+        options: [production]
+
+# One deploy at a time; a second request waits for the first (the console also refuses while one is running).
+# The same group as deploy.yml, so a Cloudflare and a Netlify deploy never run at once either.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: (github.event_name == 'push' && vars.DEPLOY_TARGET == 'netlify') || (github.event_name == 'workflow_dispatch' && inputs.action == 'deploy')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Supabase Free has no backup API to check, so the safety step is human: add required reviewers to this
+    # environment (GitHub: Settings, Environments, production) and take a backup before approving. Pushes to main
+    # also wait for that approval once reviewers are set.
+    environment: production
+    env:
+      # Build-time values (public). Real runtime secrets live in Netlify (Project configuration, Environment variables).
+      NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      # Inlined at build like every NEXT_PUBLIC_* value: the Chat on WhatsApp button (empty hides it).
+      NEXT_PUBLIC_WHATSAPP_NUMBER: ${{ vars.NEXT_PUBLIC_WHATSAPP_NUMBER }}
+      PLATFORM: netlify
+      NETLIFY_CLI: netlify-cli@27.12.0
+    steps:
+      # The workflow's own commit first (the pushed commit, or main for a manual start). A requested ref is checked
+      # before any of its code runs: only a vX.Y.Z tag or a full SHA, and only if it is on main's history, so a branch
+      # or an unreviewed commit can never be deployed with the production secrets (docs/UPDATES.md).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check and check out the requested release
+        id: build
+        env:
+          EVENT: ${{ github.event_name }}
+          REQUESTED: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          # fetch-depth 0 already brought every branch and tag (origin/main included), so nothing is fetched here:
+          # the checkout keeps no credentials (persist-credentials: false), so no later step can read a GitHub token.
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null || { echo "::error::origin/main is missing from the checkout."; exit 1; }
+            if [[ "$REQUESTED" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              TARGET="$(git rev-parse --verify "refs/tags/$REQUESTED^{commit}")"
+            elif [[ "$REQUESTED" =~ ^[0-9a-f]{40}$ ]]; then
+              TARGET="$REQUESTED"
+              if ! git cat-file -e "$TARGET^{commit}" 2>/dev/null; then
+                echo "::error::Commit $TARGET was not found in the repository."
+                exit 1
+              fi
+            else
+              echo "::error::ref must be a release tag (vX.Y.Z) or a full 40-character commit SHA on main."
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$TARGET" origin/main; then
+              echo "::error::$REQUESTED is not on main. Only commits merged into main can be deployed."
+              exit 1
+            fi
+            git checkout --detach "$TARGET"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "Deploying $(git rev-parse HEAD) (requested: ${REQUESTED:-$GITHUB_SHA})" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      # Production variables (scripts/check-env.mjs, names and problems only, never a value): the build values above and
+      # the migrations' DIRECT_URL, then the runtime variables set in Netlify. Before `npm ci`, so the token is only
+      # ever in reach of this repository's own script, never of installed packages.
+      - name: Check the build variables
+        run: node scripts/check-env.mjs --build
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      - name: Check Netlify's runtime variables
+        run: node scripts/check-env.mjs --netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      - run: npm ci
+      - run: npx prisma generate --config prisma7.config.ts
+        env:
+          DATABASE_URL: ${{ secrets.DIRECT_URL }}
+
+      # Migrations first: a failed migration stops the deploy. They are never rolled back by the rollback job.
+      - run: npx prisma migrate deploy --config prisma7.config.ts
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+
+      # Build and upload are two steps, so the build (npm packages, Next.js, the Netlify runtime plugin: third-party
+      # code) never sees the Netlify token. `netlify build` runs netlify.toml's build command and the pinned Next.js
+      # runtime, which writes its server and edge functions under .netlify/; --offline: nothing is read from Netlify, so
+      # build-time values come from this workflow (the env above), never from Netlify's UI. Netlify's own builds stay
+      # stopped, so nothing deploys around the migrations.
+      - name: Build for Netlify (no Netlify token)
+        run: npx --yes "$NETLIFY_CLI" build --offline --context production
+        env:
+          BUILD_SHA: ${{ steps.build.outputs.sha }}
+
+      # Uploads what the build step made (the publish directory, the functions and edge functions under .netlify/, the
+      # runtime's blobs) as the production deploy; --no-build: nothing is built or run with the token in reach.
+      - name: Deploy to Netlify
+        run: npx --yes "$NETLIFY_CLI" deploy --no-build --prod --context production --message "Deploy ${{ steps.build.outputs.sha }} (run ${{ github.run_id }})"
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+
+  rollback:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      # Netlify's restore deploy: the production deploy before the live one is published again (no build, no credits).
+      - name: Restore the previous production deploy
+        run: node scripts/netlify-rollback.mjs
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      - run: echo "Restored the previous Netlify production deploy. Database migrations were not changed." >> "$GITHUB_STEP_SUMMARY"
+
+  # A signed zip uploaded by the owner (docs/UPDATES.md, "Install from a zip"): the same checks and order as
+  # deploy.yml's deploy-zip job, with Netlify's two-step build and upload (the token never reaches the build).
+  deploy-zip:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'deploy-zip'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      NEXT_PUBLIC_WHATSAPP_NUMBER: ${{ vars.NEXT_PUBLIC_WHATSAPP_NUMBER }}
+      RELEASE_PUBLIC_KEY: ${{ vars.RELEASE_PUBLIC_KEY }}
+      PLATFORM: netlify
+      NETLIFY_CLI: netlify-cli@27.12.0
+      ZIP_PATH: ${{ inputs.zip_path }}
+      ZIP_SHA256: ${{ inputs.zip_sha256 }}
+      RELEASE_ID: ${{ inputs.release_id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Check the request
+        run: |
+          set -euo pipefail
+          [[ "$ZIP_PATH" =~ ^zips/[0-9a-f-]{36}\.zip$ ]] || { echo "::error::zip_path is malformed."; exit 1; }
+          [[ "$ZIP_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::zip_sha256 is malformed."; exit 1; }
+          [[ "$RELEASE_ID" =~ ^c[a-z0-9]{20,32}$ ]] || { echo "::error::release_id is malformed."; exit 1; }
+      - name: Install the PostgreSQL 17 client (backup and status updates)
+        run: |
+          set -euo pipefail
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
+          sudo apt-get install -y -q postgresql-client-17 >/dev/null
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+      - name: Download the zip and its signed manifest
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          curl -fsS -o release.zip -H "Authorization: Bearer $SUPABASE_SECRET_KEY" -H "apikey: $SUPABASE_SECRET_KEY" "$NEXT_PUBLIC_SUPABASE_URL/storage/v1/object/releases/$ZIP_PATH"
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -v id="$RELEASE_ID" -At > release.sig <<'SQL'
+          SELECT "manifest"::text FROM "ReleaseVersion" WHERE "id" = :'id';
+          SQL
+          test -s release.sig || { echo "::error::No such release."; exit 1; }
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -v id="$RELEASE_ID" -q <<'SQL'
+          UPDATE "ReleaseVersion" SET "status" = 'installing', "error" = NULL, "updatedAt" = now() WHERE "id" = :'id';
+          SQL
+      - name: Verify the signature, the hash and every path, then unpack
+        id: release
+        run: node scripts/verify-release.mjs release.zip release.sig "$ZIP_SHA256" release-src | tee -a "$GITHUB_OUTPUT"
+      - name: Check the build variables
+        working-directory: release-src
+        run: node scripts/check-env.mjs --build
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      - working-directory: release-src
+        run: npm ci
+      - working-directory: release-src
+        run: npx prisma generate --config prisma7.config.ts
+        env:
+          DATABASE_URL: ${{ secrets.DIRECT_URL }}
+      - name: Build the release for Netlify (no Netlify token)
+        working-directory: release-src
+        run: npx --yes "$NETLIFY_CLI" build --offline --context production
+        env:
+          BUILD_SHA: ${{ steps.release.outputs.commit }}
+      - name: Back up the database (kept 30 days in the private releases bucket)
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          pg_dump "$DIRECT_URL" --schema=public --no-owner --no-privileges -Fc -f backup.dump
+          BACKUP="backups/$RELEASE_ID-$(date -u +%Y%m%dT%H%M%SZ).dump"
+          curl -fsS -X POST -H "Authorization: Bearer $SUPABASE_SECRET_KEY" -H "apikey: $SUPABASE_SECRET_KEY" -H "Content-Type: application/octet-stream" --data-binary @backup.dump "$NEXT_PUBLIC_SUPABASE_URL/storage/v1/object/releases/$BACKUP"
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -v id="$RELEASE_ID" -v backup="$BACKUP" -q <<'SQL'
+          UPDATE "ReleaseVersion" SET "backupPath" = :'backup', "updatedAt" = now() WHERE "id" = :'id';
+          SQL
+      - working-directory: release-src
+        run: npx prisma migrate deploy --config prisma7.config.ts
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      - name: Deploy the release to Netlify
+        working-directory: release-src
+        run: npx --yes "$NETLIFY_CLI" deploy --no-build --prod --context production --message "Release ${{ steps.release.outputs.version }} (run ${{ github.run_id }})"
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      - name: Record the installed version
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          set -euo pipefail
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -v id="$RELEASE_ID" -q <<'SQL'
+          UPDATE "ReleaseVersion" SET "status" = 'superseded', "updatedAt" = now() WHERE "status" = 'installed' AND "id" <> :'id';
+          UPDATE "ReleaseVersion" SET "status" = 'installed', "installedAt" = now(), "error" = NULL, "updatedAt" = now() WHERE "id" = :'id';
+          SQL
+      - name: Mark the version failed
+        if: failure()
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          psql "$DIRECT_URL" -v id="$RELEASE_ID" -v run="${{ github.run_id }}" -q <<'SQL' || true
+          UPDATE "ReleaseVersion" SET "status" = 'failed', "error" = 'The install failed (GitHub run ' || :'run' || '); the live site was not changed unless the deploy step had finished.', "updatedAt" = now() WHERE "id" = :'id' AND "status" = 'installing';
+          SQL

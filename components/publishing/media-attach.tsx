@@ -4,12 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Images, LoaderCircle, Palette, Upload, X } from "lucide-react";
 import { Dialog } from "@/components/ui";
 import { MediaPicker } from "@/components/media/media-picker";
+import { DestinationDialog } from "@/components/media/destination-dialog";
+import { getGalleryOverview } from "@/app/dashboard/gallery/actions";
+import { destinationOptions, type DestinationOption } from "@/lib/media/destinations";
 import { UploadProgress } from "@/components/media/upload-progress";
 import { useGalleryUpload } from "@/components/media/use-gallery-upload";
 import { listDesignsAction, type DesignChoice } from "@/app/dashboard/calendar/actions";
 import { MEDIA_TYPES } from "@/lib/media/rules";
 import { cn } from "@/lib/cn";
 import type { MediaItem } from "@/lib/publishing/types";
+import { MediaThumb } from "@/components/visuals/media-thumb";
 
 const pill =
   "inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-line bg-glass px-4 text-sm font-semibold text-text transition-colors hover:bg-soft disabled:pointer-events-none disabled:opacity-50";
@@ -85,8 +89,11 @@ function DesignPicker({ open, onOpenChange, onPick, max }: { open: boolean; onOp
 }
 
 /** Photos on a post: from the Gallery, from Designs, or uploaded from the computer (straight into the Gallery). */
-export function MediaAttach({ media, onChange, max }: { media: MediaItem[]; onChange: (media: MediaItem[]) => void; max: number }) {
+export function MediaAttach({ media, onChange, max, album }: { media: MediaItem[]; onChange: (media: MediaItem[]) => void; max: number; /** "product:<id>" / "campaign:<id>": the post's album, where uploads go and the gallery opens. */ album?: string }) {
   const [gallery, setGallery] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [destinations, setDestinations] = useState<DestinationOption[]>([]);
+  const [target, setTarget] = useState<string | null>(null);
   const [designs, setDesigns] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const latest = useRef(media);
@@ -107,8 +114,7 @@ export function MediaAttach({ media, onChange, max }: { media: MediaItem[]; onCh
         <ul aria-label="Attached photos" className="flex flex-wrap gap-2">
           {media.map((m, i) => (
             <li key={m.path} className="relative size-20 overflow-hidden rounded-xl bg-soft">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={m.url} alt={`Photo ${i + 1}`} className="size-full object-cover" />
+              <MediaThumb url={m.url} alt={`Photo ${i + 1}`} className="size-full object-cover" />
               <button type="button" aria-label={`Remove photo ${i + 1}`} onClick={() => onChange(media.filter((x) => x.path !== m.path))} className="absolute top-1 right-1 inline-flex size-7 cursor-pointer items-center justify-center rounded-full bg-black/65 text-white">
                 <X aria-hidden className="size-4" />
               </button>
@@ -123,16 +129,40 @@ export function MediaAttach({ media, onChange, max }: { media: MediaItem[]; onCh
         <button type="button" className={pill} disabled={room <= 0} onClick={() => setDesigns(true)}>
           <Palette aria-hidden className="size-4" /> Designs
         </button>
-        <button type="button" className={pill} disabled={room <= 0 || uploader.state.active} onClick={() => input.current?.click()}>
+        <button
+          type="button"
+          className={pill}
+          disabled={room <= 0 || uploader.state.active}
+          onClick={() => {
+            if (album) {
+              setTarget(album);
+              input.current?.click();
+              return;
+            }
+            // Every upload goes somewhere: a folder or an album (lib/media/destinations.ts).
+            void getGalleryOverview().then((res) => res.ok && setDestinations(destinationOptions(res.overview)));
+            setAsking(true);
+          }}
+        >
           <Upload aria-hidden className="size-4" /> Upload
         </button>
         <input ref={input} type="file" multiple accept={MEDIA_TYPES.join(",")} className="sr-only" tabIndex={-1} aria-label="Upload photos" onChange={(e) => {
-          if (e.target.files) void uploader.start(Array.from(e.target.files).slice(0, room), null);
+          if (e.target.files && target) void uploader.start(Array.from(e.target.files).slice(0, room), target);
           e.target.value = "";
         }} />
       </div>
       <UploadProgress state={uploader.state} onDismiss={uploader.dismiss} />
-      <MediaPicker open={gallery} onOpenChange={setGallery} multiple max={Math.max(room, 1)} onPick={(photos) => add(photos.map((p) => ({ path: p.path, url: p.url, mimeType: p.mimeType })))} />
+      <DestinationDialog
+        open={asking}
+        onOpenChange={setAsking}
+        destinations={destinations}
+        onPick={(key) => {
+          setAsking(false);
+          setTarget(key);
+          input.current?.click();
+        }}
+      />
+      <MediaPicker open={gallery} onOpenChange={setGallery} initialFolder={album} videos multiple max={Math.max(room, 1)} onPick={(photos) => add(photos.map((p) => ({ path: p.path, url: p.url, mimeType: p.mimeType })))} />
       <DesignPicker open={designs} onOpenChange={setDesigns} max={Math.max(room, 1)} onPick={add} />
     </div>
   );

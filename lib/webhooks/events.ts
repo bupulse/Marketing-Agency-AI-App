@@ -51,10 +51,15 @@ export function leadData(lead: { id: string; name: string | null; email: string 
   };
 }
 
-export function contentData(c: { id: string; projectId: string; caption: string; hashtags: string[]; videoScript: string; adHeadlines: string[]; language: string; createdAt: Date }) {
+/** The subject ids of content and posts. `projectId` stays for older integrations: it is the product's or campaign's id (the migration kept project ids). */
+export function subjectIds(r: { productId?: string | null; campaignId?: string | null; projectId?: string | null }) {
+  return { productId: r.productId ?? null, campaignId: r.campaignId ?? null, projectId: r.productId ?? r.campaignId ?? r.projectId ?? null };
+}
+
+export function contentData(c: { id: string; productId?: string | null; campaignId?: string | null; projectId?: string | null; caption: string; hashtags: string[]; videoScript: string; adHeadlines: string[]; language: string; createdAt: Date }) {
   return {
     id: c.id,
-    projectId: c.projectId,
+    ...subjectIds(c),
     caption: c.caption,
     hashtags: c.hashtags,
     videoScript: c.videoScript,
@@ -64,14 +69,14 @@ export function contentData(c: { id: string; projectId: string; caption: string;
   };
 }
 
-export function postData(p: { id: string; network: string; status: string; text: string; hashtags: string[]; projectId: string | null; permalink: string | null; scheduledAt: Date | null; publishedAt: Date | null; lastError: string | null }) {
+export function postData(p: { id: string; network: string; status: string; text: string; hashtags: string[]; productId?: string | null; campaignId?: string | null; projectId?: string | null; permalink: string | null; scheduledAt: Date | null; publishedAt: Date | null; lastError: string | null }) {
   return {
     id: p.id,
     network: p.network,
     status: p.status.toLowerCase(),
     text: p.text,
     hashtags: p.hashtags,
-    projectId: p.projectId,
+    ...subjectIds(p),
     permalink: p.permalink,
     scheduledAt: p.scheduledAt?.toISOString() ?? null,
     publishedAt: p.publishedAt?.toISOString() ?? null,

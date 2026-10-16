@@ -1,5 +1,7 @@
 # Billing
 
+Mobile Money payments made by hand (Rwanda) are a separate flow beside the card checkout: `docs/MOMO.md`.
+
 BuPulse bills through a payment provider behind one interface, `BillingAdapter` (`lib/billing/types.ts`).
 Paddle is the first adapter (`lib/billing/paddle.ts`); Stripe and PayPal will add their own and be
 registered in `lib/billing/index.ts`. The rest of the app never talks to a provider directly.
@@ -28,7 +30,144 @@ Decisions:
 - Invoices: `listInvoices` returns `url: null` because Paddle's PDF links expire after an hour. Use
   `invoiceUrl(transactionId)` from `lib/billing/paddle.ts` when the customer clicks "Download".
 
+## Choosing how to pay
+
+**Both methods are always shown** (13 October 2026): a method the region does not list is "off" but still visible,
+disabled, "Mobile Money: not available in your region" / "Card: not available in your region" (`methodReason`), so a
+card-only region (GLOBAL) also gets the choice, with Mobile Money disabled.
+
+Every pay entry point (Billing plans, the demo lock screen, a custom plan offer, an invoice on Billing or the invoice lock
+screen; the trial-ended and paused screens lead to Billing) asks **Mobile Money (MTN / Airtel)** or **Card** wherever
+the company's region lists both (`PricingRegion.paymentMethods`; RW). `lib/billing/pay-methods.ts` decides, per plan and
+interval: a listed method is `ready`, or `soon` (shown disabled: "Card payments coming soon", "Mobile Money coming soon"),
+never hidden; an unlisted one is `off`. A card-only region opens the checkout in one click.
+
+Card is `ready` when (`lib/billing/card-ready.ts`, computed on the server before the page renders):
+
+1. the provider is configured: `BILLING_PROVIDER` (unset = `PADDLE`, which is what you want; setting it explicitly to
+   `PADDLE` changes nothing) with an API key, a client-side token **and** a webhook secret, saved in Admin → Settings →
+   Card payments (below) or as `PADDLE_API_KEY`, `PADDLE_CLIENT_TOKEN`, `PADDLE_WEBHOOK_SECRET`;
+2. Paddle is switched on in Admin → Services;
+3. the plan has a Paddle price for the company's region and interval (`regionPriceIdFor`): in GLOBAL the plan's own ids
+   (Admin → Plans → sync, or `PADDLE_PRICE_<PLAN>_<MONTH|YEAR>`); in Rwanda and EAC `PlanRegionPrice.paddleMonthlyPriceId`
+   / `paddleYearlyPriceId`, written by `npm run paddle:setup -- --regions` (below). Admin → Regions and prices shows
+   "Ready" or "Not in Paddle" per row.
+
+Why the choice was missing (13 October 2026): the dialog only opened when Mobile Money was set up (merchant code or a
+number in Admin → Payments); otherwise "Upgrade" went straight to card, which in Rwanda always failed ("Card payments
+are not ready for your region yet") because nothing ever wrote the RW Paddle price ids. `BILLING_PROVIDER` being unset
+was not a cause (it defaults to Paddle).
+
+Card routes: plans → `startCheckout` (auto-renewing Paddle subscription, activated by the webhooks); invoices → the
+same checkout for the invoice's plan and interval ("Pay online" in the invoice email links to Billing; a custom plan's
+invoice shows card disabled: pay it by Mobile Money, or write to us); offers and added features → a one-off Paddle
+transaction for the price converted to USD (`lib/offers/card.ts`, `docs/OFFERS.md` "Card"; hidden when card is not set
+up); features added to a card plan → recurring items on its own Paddle subscription (`lib/offers/card-plan.ts`,
+`docs/OFFERS.md` "Adding features to a card plan"). Renewals: "Renewing" below.
+
+## Renewing (decided 13 October 2026)
+
+`lib/billing/renewal.ts` (pure; the Billing page, the server actions, the card webhook and the tests share it):
+
+- **Card that renews by itself** (Paddle, not cancelled): Billing says "Renews automatically on <date>"; there is no
+  manual renew button.
+- **Anything else** (a Mobile Money plan, or a card plan cancelled at its period end): before the last 7 days
+  (`RENEWAL_WINDOW_DAYS`) Billing says "Your plan is paid until <date>. You can renew from <date − 7 days>" and shows no
+  renewal. In the last 7 days (and after the end, past due) it shows **Renew with Mobile Money** and **Renew with card**
+  side by side; a method that is not ready stays visible, disabled, with its reason ("Mobile Money coming soon", "Card
+  payments coming soon", a custom plan: renew it by Mobile Money, or write to us).
+- **No day is lost.** Mobile Money extends from the period end (`planManualPeriod`, mode `extend`). Card for a Mobile
+  Money plan opens the checkout; when its webhook arrives inside the window, `applyProviderSubscription` lets the card
+  subscription take over (outside it, it is still a `duplicate`) and moves its first renewal to one period after the
+  Mobile Money end (`BillingAdapter.deferNextBilling`, Paddle `PATCH /subscriptions/{id}` with `next_billed_at` and
+  `proration_billing_mode: do_not_bill`). The intent is written first (`CardCarryOver`, `lib/billing/carry-over.ts`,
+  migration `20261017191000_card_carry_over`); a failure is logged (`ErrorLog` `billing.carry_over`), the admins are
+  emailed, and the daily Mobile Money renewals job retries it (`carryOvers` in its result). After 5 failed tries it is
+  marked `failed` and the admins get an "Action needed" email: move the next billing date in Paddle by hand. Paid days
+  are never lost silently. Card for a card plan cancelled at its end = resume it.
+- **The server refuses early renewals** with the same sentence: `startManualPayment` (the same plan and interval; a
+  switch to another plan is not a renewal), `startCheckout` (any card checkout on a paid-up Mobile Money plan or a card
+  plan cancelled at its end; checked before anything else) and `resumeSubscription` (resuming a cancelled card plan is
+  its renewal; Billing hides "Resume plan" until the window opens).
+
+**Price changes of regional plans** (e.g. the video prices of 14 October 2026, `docs/PLANS.md`): the region's Paddle
+price ids are cleared, so card for that plan shows "Card payments coming soon" until **Set up prices** (below) has made
+the new ones; Mobile Money uses the new amount at once.
+
+## When a plan ends (decided 15 October 2026)
+
+A subscription can stay `ACTIVE` after its paid period: a Paddle `subscription.canceled` or renewal webhook that is late
+or lost, or a Mobile Money plan not renewed before the daily renewals job has run. It used to keep generating with no
+notice. Now one rule decides, from the dates alone: `periodState(sub, now)` in `lib/billing/period.ts` answers
+`active` (inside the period, or no end known), `grace` (after it, still working) or `ended`.
+
+| Plan | Ends at | Grace | Why |
+| --- | --- | --- | --- |
+| Free trial (`plan` TRIAL) | `trialEndsAt` | none | As before (`trial_expired`). `currentPeriodEnd` is not read: extending a trial does not move it. The hourly trial job then marks it `EXPIRED`. |
+| Mobile Money, incl. custom plans (offers paid by Mobile Money or card become `MANUAL_MOMO`) and invoices paid by Mobile Money or marked paid | `currentPeriodEnd` | 3 days (`MANUAL_GRACE_DAYS`) | The renewals job's pause: reminders 5 and 1 days before the end, `PAST_DUE` 3 days after it (`GRACE_DAYS` in `momo-shared.ts` is now this constant; the job's timing is unchanged). |
+| Card that renews by itself (Paddle, incl. an invoice paid by card) | `currentPeriodEnd` | 1 day (`CARD_RENEWAL_GRACE_DAYS`) | Paddle renews on its own; this is time for the renewal's `subscription.updated` (or `past_due`) webhook. |
+| Card cancelled at its end (`cancelAtPeriodEnd`) | `currentPeriodEnd` | none | Nothing renews; Paddle's `canceled` webhook ends it at that moment anyway. |
+| No provider, with an end | `currentPeriodEnd` | 3 days | Renewed by hand, like Mobile Money. |
+
+A renewal that reached us (webhook, Mobile Money confirmation, card carry-over) moves `currentPeriodEnd`, so the plan is
+`active` again. `PAST_DUE`, `CANCELED` and `EXPIRED` keep their own reasons; the rule only adds "ended" for an `ACTIVE`
+(or `TRIALING` card) subscription whose end plus grace has passed. It is refused as **inactive**, the reason the UI
+already shows ("Your plan has ended. Choose a plan to keep creating" on the dashboard, "Ended" in the sidebar, "Your
+plan is not active" when a generation is refused):
+
+- generation: `consumeUsage` (`lib/usage.ts`), so every AI call, Autopilot and the website chat's replies;
+- features: `accountBlock` (`lib/entitlements.ts`), so pages' actions and routes, Autopilot, the publisher (posts are
+  held `SCHEDULED` with the reason, never failed), the leads digest, store sync, outgoing webhooks, the widget and
+  `/api/v1` keys (`lib/api/auth.ts`);
+- the publisher's claim query skips companies whose period ended before now minus the longest grace (3 days); inside
+  that window the entitlement check releases the post as for any read-only account;
+- the dashboard (`app/dashboard/layout.tsx`, `components/app/trial-banner.tsx`): the ended notice above, and during the
+  grace of a plan renewed by hand "Your plan ended on <date>. Renew it before <end + 3 days> to keep creating" (members:
+  "Ask your company owner to renew it before …"), not dismissible. A card plan's 1-day grace shows nothing (its renewal
+  is on its way).
+
+Known limits: the Billing page still shows the stored status (an "Active" badge and "paid until <date>") until the job
+or the webhook updates it; a card plan whose webhook was lost for good stays refused until the event is replayed in
+Paddle or reprocessed; usage during the grace days counts in the next monthly usage window.
+
+## Connecting Paddle (Admin → Settings → Card payments)
+
+No environment variable needs editing. In Admin → Settings → **Card payments (Paddle)** (AAL2, every save audited):
+
+1. Choose **Sandbox** or **Live** and paste the **API key** (`pdl_sdbx_apikey_…` / `pdl_live_apikey_…`) and the
+   **client-side token** (`test_…` / `live_…`) from Paddle > Developer tools > Authentication. A value for the other
+   environment is refused. **Test connection** checks the typed (or saved) key with a read-only call (`GET /event-types`).
+2. **Save.** Each value is encrypted with `ENCRYPTION_KEY` (`lib/crypto.ts`, like the Google Calendar token) in
+   `AdminSetting` `billing.paddle` and never shown again: the page shows its last 4 characters and where it comes from.
+   An empty field keeps the saved value. The first save needs the API key and the client-side token together, and every
+   save checks the values that will be in use afterwards (saved, typed or environment variable) against the chosen
+   environment, so a sandbox key never runs with a live token. Switching sandbox ↔ live needs that account's key and token (and drops the old
+   webhook secret). The audit row records the environment and the last 4 characters only.
+3. **Set up prices** (`setUpPaddleStep`, `lib/billing/paddle-setup.ts`; the page runs it step by step so every request
+   stays inside the hosting time limit: `plans` two at a time, `regions` four prices at a time, then `webhook`, each
+   repeated while it answers `more`; a plan that fails is not retried in the same run; each step is audited): every plan without Paddle prices is synced (the
+   plan builder's own sync: product, monthly and yearly price), every regional card price gets its USD Paddle prices
+   (Rwanda, EAC; ids in `PlanRegionPrice`), and the notification destination `<site>/api/billing/webhooks/paddle` is
+   created or updated with every event BuPulse handles (`PADDLE_EVENTS` in `scripts/paddle-sync.mjs`, incl.
+   `transaction.completed`, `adjustment.created`, `adjustment.updated`); the secret Paddle returns is saved encrypted.
+   Idempotent (stopping half-way and running again carries on); audited `paddle_set_up` per step. Problems (e.g. Paddle refusing a localhost URL) are listed, the rest still runs.
+4. The **status line** says "Card payments: ready" or "not set up — <reason>" (missing values, Paddle switched off in
+   Admin → Services, no plan priced), and how many plans have a card price per region. Card is offered to clients as
+   soon as it is ready, with no deploy (caches: 30 s).
+
+**Precedence:** per value, the one saved in Settings wins; a value not saved there falls back to its `PADDLE_*`
+variable. The environment goes with the saved API key; without a saved key, `PADDLE_ENVIRONMENT` (default sandbox).
+**Remove saved values** returns to the variables. The saved values are cached 5 s per instance, so a change reaches every
+instance within seconds. A saved value that cannot be decrypted (ENCRYPTION_KEY changed) is logged to ErrorLog
+(`billing.paddle.config`) and its variable, if any, applies: save it again. The webhook URL comes from
+`NEXT_PUBLIC_SITE_URL` (`siteUrl()`), never from the request's host. The Services page counts Paddle as configured when Settings has all
+three values. `lib/billing/paddle-config.ts` (`getPaddleConfig`) is the one reader; `paddleApi`, checkout, webhooks,
+the plan builder, the service test and the Approvals links all use it.
+
 ## Environment variables
+
+All `PADDLE_*` values are optional when Paddle is connected in Admin → Settings (above); they are the fallback.
+
 
 | Variable | Meaning |
 | --- | --- |
@@ -41,7 +180,7 @@ Decisions:
 
 Sandbox and live are separate Paddle accounts with different keys, tokens and price ids.
 
-## Setup (sandbox)
+## Setup from the command line (sandbox), the alternative to Settings
 
 1. Create a Paddle sandbox account, then create an API key and a client-side token.
 2. Put `PADDLE_API_KEY`, `PADDLE_CLIENT_TOKEN` and `PADDLE_ENVIRONMENT=sandbox` in `.env`.
@@ -50,7 +189,12 @@ Sandbox and live are separate Paddle accounts with different keys, tokens and pr
    `PRICES` in `lib/billing/catalog.ts`, creates the webhook endpoint, and writes the price ids and
    `PADDLE_WEBHOOK_SECRET` into `.env`. Re-running reuses what exists. Add `--print-secret` to also
    print the new endpoint secret. Without `--webhook-url`, only products and prices are created.
-4. Copy the same variables into the Cloudflare Worker secrets.
+4. Regional card prices (Rwanda's RWF plans charged in USD, EAC): `npm run paddle:setup -- --regions` with
+   `DIRECT_URL` or `DATABASE_URL` pointing at the app's database. It creates a USD price per region row and interval on
+   the plan's Paddle product (tagged `custom_data.regionKey`), reuses an identical one, and writes the ids into
+   `PlanRegionPrice` (`scripts/paddle-sync.mjs`). Run it again after a regional price or the USD rate changes (that
+   clears the ids). Card then shows as ready within a minute (caches).
+5. Copy the same variables into the hosting secrets (Netlify / Cloudflare).
 
 ## Going live
 

@@ -1,5 +1,11 @@
 // The demo accounts (all fictional). Everything created for the videos hangs off these emails.
-export const PASSWORD = "Demo-Pulse-Kigali-2026!";
+// Their password comes from the environment and is never committed: DEMO_CAPTURE_PASSWORD="..." node Demo/capture/...
+// (A password that was once committed here must be treated as known: rotate the demo accounts with a new one.)
+export function demoPassword() {
+  const password = process.env.DEMO_CAPTURE_PASSWORD;
+  if (!password) throw new Error("Set DEMO_CAPTURE_PASSWORD to the demo accounts' password (it is not stored in the repository).");
+  return password;
+}
 
 export const ACCOUNTS = {
   inzu: {

@@ -3,7 +3,7 @@ import { Empty, Panel, TableWrap, Td, Th } from "@/components/admin/ui";
 import { Badge, Button, Select } from "@/components/ui";
 import { dateTime } from "@/lib/admin/format";
 import { ROLE_LABEL, type Role } from "@/lib/team/roles";
-import { addCompanyUserAction, changeEmailAction, changeRoleAction, removeUserAction, sendResetAction } from "@/app/admin/(console)/companies/actions";
+import { addCompanyUserAction, changeEmailAction, changeRoleAction, removeUserAction, sendResetAction } from "@/app/admin/(console)/(clients)/companies/actions";
 import { AddUserDialog, ChangeEmailDialog } from "./company-users-client";
 
 type CompanyUsers = {

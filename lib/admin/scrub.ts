@@ -4,7 +4,7 @@ const SECRET_NAME = /KEY|SECRET|TOKEN|PASSWORD|DATABASE_URL|DIRECT_URL|SIGNING/i
 
 /** Values of the secret-looking environment variables of every registered service (plus a few core ones). */
 function secretValues(): string[] {
-  const names = new Set<string>(["DATABASE_URL", "DIRECT_URL", "ENCRYPTION_KEY", "CRON_SECRET", "BILLING_SIGNING_SECRET"]);
+  const names = new Set<string>(["DATABASE_URL", "DIRECT_URL", "ENCRYPTION_KEY", "API_KEY_PEPPER", "CRON_SECRET", "VIDEO_ROBOT_SECRET", "BILLING_SIGNING_SECRET"]);
   for (const s of SERVICES) for (const n of [...s.env, ...(s.optionalEnv ?? [])]) names.add(n);
   const out: string[] = [];
   for (const name of names) {

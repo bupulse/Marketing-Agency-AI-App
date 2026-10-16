@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CONFIG, readConfig, toRow } from "@/lib/autopilot/settings";
+import { defaultAccountIds, DEFAULT_CONFIG, readConfig, toRow } from "@/lib/autopilot/settings";
 
 describe("autopilot settings mapping", () => {
-  it("starts off, asking first, with free images", () => {
-    expect(DEFAULT_CONFIG).toMatchObject({ enabled: false, autoPublish: false, useAiImages: false });
+  it("starts off and asking first, with AI photos of people on (docs/CONTENT_VISUALS.md)", () => {
+    expect(DEFAULT_CONFIG).toMatchObject({ enabled: false, autoPublish: false, useAiImages: true });
     expect(readConfig(null)).toEqual(DEFAULT_CONFIG);
   });
 
@@ -21,5 +21,19 @@ describe("autopilot settings mapping", () => {
     const config = readConfig(row);
     expect(config.postsPerWeek).toBe(14);
     expect(config.postingTimes).toEqual(["09:00", "18:00"]);
+  });
+});
+
+describe("switching Autopilot on with no account chosen", () => {
+  it("writes for the connected accounts (reminder-mode ones too), else every app as reminders", () => {
+    const accounts = [
+      { id: "c-ig", usable: true },
+      { id: "c-fb", usable: false },
+      { id: "network:linkedin", usable: true },
+      { id: "network:tiktok", usable: true },
+    ];
+    expect(defaultAccountIds(accounts)).toEqual(["c-ig"]);
+    expect(defaultAccountIds(accounts.slice(1))).toEqual(["network:linkedin", "network:tiktok"]);
+    expect(defaultAccountIds([])).toEqual([]);
   });
 });

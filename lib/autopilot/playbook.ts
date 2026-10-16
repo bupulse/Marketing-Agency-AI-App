@@ -584,6 +584,19 @@ export function industryTags(industry: string | null | undefined): IndustryTag[]
 }
 
 /** The networks an idea can be written for. */
+/**
+ * The post types a week with products mixes (planner.ts): something new, a tip, an offer, in that order as the week
+ * has room, each a designed picture. Each is a set of ideas; one of them is chosen as usual.
+ */
+export const POST_MIX: readonly (readonly string[])[] = [
+  ["new-arrival", "just-listed", "menu-special", "service-spotlight"],
+  ["tip-how-to", "did-you-know", "myth-buster", "health-tip", "learning-tip", "safety-tip", "faq-answer", "buyer-guide"],
+  ["offer-promo", "offer-last-chance", "holiday-offer"],
+];
+
+/** Networks whose posts always show a picture (or a video BuPulse makes): never a script to film by hand. */
+export const PICTURE_NETWORKS: ReadonlySet<Network> = new Set<Network>(["instagram", "facebook"]);
+
 export function ideaNetworks(idea: Idea): Network[] {
   return Object.keys(idea.formats) as Network[];
 }

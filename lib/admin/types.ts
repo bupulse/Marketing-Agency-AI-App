@@ -6,10 +6,15 @@ export type AdminContext = {
   actor: string;
   ip?: string | null;
   viaApi: boolean;
+  /**
+   * API only: the permissions of the key (lib/staff/permissions.ts names). "all" for an owner's key. Tools check it
+   * (lib/admin/tools.ts TOOL_PERMISSION); a key without it runs nothing (deny by default).
+   */
+  permissions?: readonly string[] | "all";
 };
 
 export const consoleContext = (ip?: string | null): AdminContext => ({ actor: "admin", ip: ip ?? null, viaApi: false });
-export const apiContext = (keyId: string, ip?: string | null): AdminContext => ({ actor: `jarvis:${keyId}`, ip: ip ?? null, viaApi: true });
+export const apiContext = (keyId: string, ip?: string | null, permissions: readonly string[] | "all" = []): AdminContext => ({ actor: `jarvis:${keyId}`, ip: ip ?? null, viaApi: true, permissions });
 
 export type AdminErrorCode =
   | "invalid"
@@ -43,7 +48,7 @@ export class AdminError extends Error {
 
 export type Page<T> = { items: T[]; nextCursor: string | null };
 
-export type ApprovalKind = "issue_refund" | "change_plan" | "plan_price_change" | "change_user_email" | "make_company_owner";
+export type ApprovalKind = "issue_refund" | "change_plan" | "plan_price_change" | "change_user_email" | "make_company_owner" | "create_offer";
 /** needs_check: the provider may or may not have done it. Never retried automatically; verify in Paddle first. */
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "executed" | "failed" | "needs_check";
 export const APPROVAL_STATUSES: ApprovalStatus[] = ["pending", "approved", "rejected", "executed", "failed", "needs_check"];

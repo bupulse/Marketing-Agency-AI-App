@@ -91,7 +91,7 @@ export default async function DataDeletionPage({ searchParams }: PageProps<"/dat
       </LegalSection>
 
       <LegalSection title="Questions">
-        <p>Email {mail} or write to [Company legal name], [Address].</p>
+        <p>Email {mail} or write to BuPulse, Kigali, Rwanda.</p>
       </LegalSection>
     </LegalPage>
   );

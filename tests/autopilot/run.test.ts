@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// Plans are not part of this test's database: every plan feature is granted (tests/stubs/entitlements.ts).
+vi.mock("@/lib/entitlements", () => import("@/tests/stubs/entitlements"));
 
 const mocks = vi.hoisted(() => ({
   prisma: {
@@ -18,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }));
+vi.mock("@/lib/knowledge/writer-context", () => ({ writerKnowledge: async () => ({ knowledgeBase: null, voiceProfile: null }) }));
 vi.mock("@/lib/errors", () => ({ logError: mocks.logError }));
 vi.mock("@/lib/ai", () => ({ getTextProvider: () => ({ name: "gemini" }) }));
 vi.mock("@/lib/ai/ledger", () => ({ withLedger: async (_c: unknown, _m: unknown, call: () => unknown) => call() }));
@@ -234,6 +237,23 @@ describe("an Autopilot run", () => {
     expect(mocks.consumeUsage).not.toHaveBeenCalled();
     mocks.prisma.serviceSwitch.findMany.mockResolvedValue([]);
     clearSwitchCache();
+  });
+
+  it("says why when the plan lacks Autopilot or cannot be checked, without claiming the week", async () => {
+    const grant = await import("@/tests/stubs/entitlements");
+    mocks.prisma.business.findUnique.mockResolvedValue(business);
+    try {
+      grant.missing.add("autopilot");
+      expect(await runAutopilot("biz1", { now })).toMatchObject({ status: "nothing_to_plan", note: expect.stringMatching(/not part of your plan/) });
+      grant.missing.clear();
+      grant.state.planUnknown = true;
+      expect(await runAutopilot("biz1", { now })).toMatchObject({ status: "nothing_to_plan", note: expect.stringMatching(/could not check your plan/) });
+      expect(mocks.prisma.autopilotRun.create).not.toHaveBeenCalled();
+      expect(mocks.consumeUsage).not.toHaveBeenCalled();
+    } finally {
+      grant.missing.clear();
+      grant.state.planUnknown = false;
+    }
   });
 
   it("leaves accounts waiting for deletion alone", async () => {

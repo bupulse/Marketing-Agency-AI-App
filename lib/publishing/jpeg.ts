@@ -3,7 +3,10 @@ import { INSTAGRAM_MAX_SIDE } from "./validate";
 
 // PNG and WebP to JPEG for networks that only take JPEG (Instagram). Uses the squoosh codecs from @jsquash,
 // which are small WebAssembly modules (about 0.6 MB in all) that run in Workers and in Node.
-// In Workers worker.ts hands us the compiled .wasm modules; in Node we compile the files from node_modules.
+// In Workers worker.ts hands us the compiled .wasm modules; in Node (next start, Netlify Functions, tests) we compile
+// the files from node_modules. On Netlify they reach the function only through next.config.ts
+// (outputFileTracingIncludes, which the server function is built from); they are looked up from the working directory,
+// then from the function's root (LAMBDA_TASK_ROOT).
 
 export const JPEG_QUALITY = 88;
 
@@ -17,11 +20,23 @@ declare global {
 async function wasmModule(key: WasmKey, file: string): Promise<WebAssembly.Module> {
   const fromWorker = globalThis.__bupulseWasm?.[key];
   if (fromWorker) return fromWorker;
-  // Node (next start, tests): compile the file from node_modules.
+  // Node (next start, Netlify Functions, tests): compile the file from node_modules.
   const { readFile } = await import(/* webpackIgnore: true */ "node:fs/promises");
+  return WebAssembly.compile(await readFile(await resolveWasm(file)));
+}
+
+/** The path of a package file, looked up from the working directory, then from the Lambda root (Netlify). */
+export async function resolveWasm(file: string, roots: (string | undefined)[] = [process.cwd(), process.env.LAMBDA_TASK_ROOT]): Promise<string> {
   const { createRequire } = await import(/* webpackIgnore: true */ "node:module");
-  const resolved = createRequire(`${process.cwd()}/package.json`).resolve(file);
-  return WebAssembly.compile(await readFile(resolved));
+  let lastError: unknown = new Error(`Cannot find ${file}`);
+  for (const root of new Set(roots.filter((r): r is string => Boolean(r)))) {
+    try {
+      return createRequire(`${root}/package.json`).resolve(file);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 const ready: Record<string, Promise<void>> = {};

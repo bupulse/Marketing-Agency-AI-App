@@ -62,3 +62,16 @@ describe("getCatalog", () => {
     expect(status).toHaveBeenCalledWith(ctx);
   });
 });
+
+describe("getCatalog: not in the plan", () => {
+  const notInPlan = { ...ctx, features: new Set<never>() };
+  const connected = async () => ({ state: "not_connected" as const });
+  it("offers Add to your plan for a connector that works, Coming soon for one whose keys are not set", async () => {
+    const items = await getCatalog(notInPlan, [entry("woocommerce", connected), entry("dropbox", connected)], (id) => id === "woocommerce");
+    const by = Object.fromEntries(items.map((i) => [i.id, i]));
+    expect(by.woocommerce.status.state).toBe("not_in_plan");
+    expect(by.woocommerce.manageHref).toBe("/dashboard/upgrade?feature=storeImport");
+    expect(by.dropbox.status.state).toBe("unavailable");
+    expect(by.dropbox.manageHref).toBeNull();
+  });
+});

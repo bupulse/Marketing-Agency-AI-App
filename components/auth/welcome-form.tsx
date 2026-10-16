@@ -5,10 +5,11 @@ import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui";
 import { fieldErrors, welcomeSchema, type FieldErrors } from "@/lib/auth/schemas";
 import { saveOrganisation, type WelcomeState } from "@/app/welcome/actions";
+import type { IndustryOption } from "@/lib/industries/shared";
 import { OrganisationFields, TermsField, type OrganisationValues } from "./organisation-fields";
 
 /** /welcome: organisation details for people who signed up with Google (no password needed). */
-export function WelcomeForm({ email, defaults, trialDays = 7 }: { email: string; defaults: OrganisationValues; trialDays?: number }) {
+export function WelcomeForm({ email, defaults, industries }: { email: string; defaults: OrganisationValues; industries: IndustryOption[] }) {
   const [values, setValues] = useState({ ...defaults, terms: false });
   const [errors, setErrors] = useState<FieldErrors>({});
   const [state, formAction, pending] = useActionState<WelcomeState, FormData>(saveOrganisation, {});
@@ -47,7 +48,7 @@ export function WelcomeForm({ email, defaults, trialDays = 7 }: { email: string;
       <div className="flex flex-col gap-1.5">
         <h1 className="text-2xl font-semibold tracking-[-0.03em]">About your organisation</h1>
         <p className="text-[15px] text-muted">
-          One last step before your {trialDays}-day trial. This helps us write in your brand voice from day one.
+          One last step before you choose a plan and book your free demo. This helps us write in your brand voice from day one.
         </p>
       </div>
 
@@ -57,7 +58,7 @@ export function WelcomeForm({ email, defaults, trialDays = 7 }: { email: string;
             {state.error}
           </p>
         )}
-        <OrganisationFields values={values} errors={errors} onChange={set} />
+        <OrganisationFields values={values} errors={errors} onChange={set} industries={industries} />
         <TermsField checked={values.terms} error={errors.terms} onChange={(v) => set("terms", v)} />
         <Button type="submit" disabled={pending} className="w-full" trailing={<ArrowRight aria-hidden className="size-4" />}>
           {pending ? "Saving…" : "Go to my dashboard"}

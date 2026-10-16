@@ -17,7 +17,7 @@ import { clearSwitchCache, disabledNetworks, isServiceEnabled, ServiceDisabledEr
 import { AdminError, apiContext, consoleContext } from "@/lib/admin/types";
 import { sendEmail } from "@/lib/publishing/email";
 
-const API = apiContext("key1", "203.0.113.5");
+const API = apiContext("key1", "203.0.113.5", "all");
 const CONSOLE = consoleContext("198.51.100.1");
 const code = async (p: Promise<unknown>) => p.then(() => null, (e: AdminError) => e.code);
 const audit = () => h.db.auditLog.rows;
@@ -137,6 +137,24 @@ describe("kill switch", () => {
     expect(await code(setServiceEnabled(CONSOLE, { service: "bogus", enabled: false, reason: "no" }))).toBe("not_found");
   });
 
+  it("WhatsApp is off until switched on: no row means off, the admin turns it on, and it is not an 'off' reminder until then", async () => {
+    expect(await isServiceEnabled("whatsapp")).toBe(false);
+    expect(await isServiceEnabled("resend")).toBe(true);
+    const view = (await listServices()).find((v) => v.id === "whatsapp")!;
+    expect(view).toMatchObject({ enabled: false, health: "off", configured: "missing", killable: true });
+    expect(view.env.map((e) => e.name)).toEqual(["WHATSAPP_CLOUD_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"]);
+    expect((await getServicesAttention()).off.map((o) => o.key)).not.toContain("whatsapp");
+
+    const on = await setServiceEnabled(CONSOLE, { service: "whatsapp", enabled: true });
+    expect(on).toMatchObject({ enabled: true, changed: true });
+    expect(lastAudit()).toMatchObject({ before: { enabled: false }, after: { enabled: true } });
+    expect(await isServiceEnabled("whatsapp")).toBe(true);
+    expect((await listServices()).find((v) => v.id === "whatsapp")!.enabled).toBe(true);
+
+    await setServiceEnabled(CONSOLE, { service: "whatsapp", enabled: false, reason: "pause the cost" });
+    expect(await isServiceEnabled("whatsapp")).toBe(false);
+  });
+
   it("a read failure keeps features on when nothing was ever read, keeps the last good answer otherwise, and does not hammer the database", async () => {
     // never read successfully in this isolate: fail open, and do not ask again until the interval has passed
     h.db.serviceSwitch.findMany.mockRejectedValue(new Error("db down"));
@@ -186,15 +204,15 @@ describe("kill switch", () => {
 });
 
 describe("AI budget", () => {
-  it("projects the month end and handles month bounds", () => {
-    const b = monthBounds("2026-10", new Date("2026-10-11T00:00:00Z"));
+  it("projects the month end and handles month bounds (Kigali months)", () => {
+    const b = monthBounds("2026-10", new Date("2026-10-10T22:00:00Z"));
     expect(b).toMatchObject({ month: "2026-10", days: 31, current: true });
-    expect(projectMonthEnd(10, b, new Date("2026-10-11T00:00:00Z"))).toBeCloseTo(31, 5); // $10 in 10 days
-    expect(projectMonthEnd(0, b, new Date("2026-10-11T00:00:00Z"))).toBe(0);
-    const past = monthBounds("2026-09", new Date("2026-10-11T00:00:00Z"));
+    expect(projectMonthEnd(10, b, new Date("2026-10-10T22:00:00Z"))).toBeCloseTo(31, 5); // $10 in 10 days
+    expect(projectMonthEnd(0, b, new Date("2026-10-10T22:00:00Z"))).toBe(0);
+    const past = monthBounds("2026-09", new Date("2026-10-10T22:00:00Z"));
     expect(past.current).toBe(false);
-    expect(projectMonthEnd(12.5, past, new Date("2026-10-11T00:00:00Z"))).toBe(12.5);
-    expect(monthBounds("garbage", new Date("2026-10-11T00:00:00Z")).month).toBe("2026-10");
+    expect(projectMonthEnd(12.5, past, new Date("2026-10-10T22:00:00Z"))).toBe(12.5);
+    expect(monthBounds("garbage", new Date("2026-10-10T22:00:00Z")).month).toBe("2026-10");
   });
 
   it("setAiBudget validates, needs confirm from the API, audits before/after and takes effect", async () => {
@@ -238,12 +256,36 @@ describe("overview hooks", () => {
     h.db.serviceCheck.rows.push({ service: "resend", ok: false, latencyMs: 9, message: "Resend returned 401.", checkedAt: new Date() }, { service: "gemini", ok: true, latencyMs: 9, message: "ok", checkedAt: new Date() });
     await setServiceEnabled(CONSOLE, { service: "canva", enabled: false, reason: "app review" });
     const out = await getServicesAttention();
-    expect(out.failing.find((f) => f.key === "linkedin")!.reason).toMatch(/Missing keys: LINKEDIN_CLIENT_ID/);
+    // An optional integration without keys is "not set up", not failing: it stays off the Overview.
+    expect(out.failing.map((f) => f.key)).not.toContain("linkedin");
     expect(out.failing.find((f) => f.key === "resend")!.reason).toMatch(/Last test failed: Resend returned 401/);
     expect(out.failing.map((f) => f.key)).not.toContain("gemini");
     expect(out.failing.map((f) => f.key)).not.toContain("claude"); // not in use
     expect(out.off).toEqual([{ key: "canva", label: "Canva", reason: "Switched off: app review" }]);
     expect(JSON.stringify(out)).not.toContain(SECRETS.GEMINI_API_KEY);
+  });
+
+  it("lists a core service without its keys as failing, and Turnstile only in production", async () => {
+    const saved = { resend: process.env.RESEND_API_KEY, t1: process.env.TURNSTILE_SITE_KEY, env: process.env.NODE_ENV };
+    delete process.env.RESEND_API_KEY;
+    delete process.env.TURNSTILE_SITE_KEY;
+    try {
+      let out = await getServicesAttention();
+      expect(out.failing.find((f) => f.key === "resend")?.reason).toMatch(/Missing keys: RESEND_API_KEY/);
+      expect(out.failing.map((f) => f.key)).not.toContain("turnstile");
+      (process.env as Record<string, string>).NODE_ENV = "production";
+      out = await getServicesAttention();
+      expect(out.failing.find((f) => f.key === "turnstile")?.reason).toMatch(/TURNSTILE_SITE_KEY/);
+      const views = await listServices();
+      expect(views.find((v) => v.id === "turnstile")!.health).toBe("missing");
+      (process.env as Record<string, string>).NODE_ENV = "test";
+      const linkedin = (await listServices()).find((v) => v.id === "linkedin")!;
+      if (linkedin.configured === "missing") expect(linkedin.health).toBe("not_connected");
+    } finally {
+      if (saved.resend) process.env.RESEND_API_KEY = saved.resend;
+      if (saved.t1) process.env.TURNSTILE_SITE_KEY = saved.t1;
+      (process.env as Record<string, string | undefined>).NODE_ENV = saved.env;
+    }
   });
 
   it("getAiBudgetStatus reports month-to-date and the cap in cents", async () => {

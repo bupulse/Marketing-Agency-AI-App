@@ -1,21 +1,24 @@
 import "server-only";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { requireAdmin } from "./auth";
+import { requirePermission } from "./auth";
+import type { Permission } from "@/lib/staff/permissions";
 import { AdminError, consoleContext, type AdminContext } from "./types";
 import { prisma } from "@/lib/db";
 import { APPROVAL_TTL_MS } from "./service";
 import { logError } from "@/lib/errors";
+import { clientIp } from "@/lib/platform/headers";
 
 /**
- * Start of every console server action: re-checks the admin (email, verified, AAL2) and returns the
- * audit context. Server actions are public POST endpoints, so the layout's check is never enough.
+ * Start of every console server action: re-checks the person (owner or staff, verified, AAL2) and that they have the
+ * permission the action needs (any of a list), then returns the audit context. Server actions are public POST
+ * endpoints, so the layout's check is never enough. Staff act as "staff:<StaffMember id>" in the audit log.
  */
-export async function adminAction(): Promise<AdminContext> {
-  await requireAdmin();
+export async function adminAction(permission: Permission | readonly Permission[]): Promise<AdminContext> {
+  const identity = await requirePermission(permission);
   const h = await headers();
-  const ip = h.get("cf-connecting-ip") ?? h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
-  return consoleContext(ip);
+  const ip = clientIp(h);
+  return { ...consoleContext(ip), ...(identity.staffId ? { actor: `staff:${identity.staffId}` } : {}) };
 }
 
 /** Message to show for a failed action. AdminError text is written for people; anything else is generic. */

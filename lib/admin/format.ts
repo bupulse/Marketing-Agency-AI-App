@@ -1,4 +1,5 @@
 import type { DateRange } from "@/lib/analytics/types";
+import { digitsOf, formatMoney } from "@/lib/money/display";
 
 /** The range keys used in ?range= on admin pages. */
 export const RANGES = { today: 1, "7d": 7, "30d": 30 } as const;
@@ -19,27 +20,14 @@ export function parseRange(value: string | string[] | undefined, fallback: Range
   return { key, range: rangeFor(RANGES[key]) };
 }
 
-/** Digits after the decimal point for a currency (2 for USD, 0 for JPY). */
-export function currencyDigits(currency = "USD"): number {
-  try {
-    return new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2;
-  } catch {
-    return 2;
-  }
-}
+/** Digits after the decimal point for a currency (RWF none, USD and EUR two). */
+export const currencyDigits = (currency = "USD") => digitsOf(currency);
 
-/** Amount in the currency's smallest unit (cents for USD). Defaults to USD; pass the stored currency for payments. */
-export function money(minor: number, currency = "USD"): string {
-  const digits = currencyDigits(currency);
-  const abs = Math.abs(minor) / 10 ** digits;
-  let text: string;
-  try {
-    text = abs.toLocaleString("en-US", { style: "currency", currency, minimumFractionDigits: digits === 2 && abs >= 1000 ? 0 : digits });
-  } catch {
-    text = `${abs.toFixed(digits)} ${currency}`;
-  }
-  return minor < 0 ? `-${text}` : text;
-}
+/**
+ * Amount in the currency's smallest unit, in that currency (no conversion): the one formatter (lib/money/display.ts).
+ * Admin figures that follow the console's display currency use moneyFmt (components/admin/money.tsx) instead.
+ */
+export const money = (minor: number, currency = "USD") => formatMoney(minor, currency);
 
 /** Whole major-unit text typed by the owner ("12.50") to the smallest unit, or null if it is not a valid amount. */
 export function toMinor(input: string, currency = "USD"): number | null {

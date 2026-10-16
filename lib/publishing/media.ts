@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { logError } from "@/lib/errors";
 import { SocialError } from "@/lib/social/types";
 import { ImageTooLargeError, prepareForInstagram } from "./jpeg";
+import { isVideoPath } from "@/lib/visuals/post-media";
 import { bucketForPath } from "./schemas";
 
 /** Signed links stay valid for an hour when a network fetches them, and a week in reminder emails. */
@@ -20,7 +21,7 @@ export function adminStorageClient(): SupabaseClient | null {
 /** Signs stored files (either bucket) in one request per bucket. Files that cannot be signed are left out. */
 export async function signPaths(client: SupabaseClient, paths: string[], expiresInSeconds: number): Promise<Map<string, string>> {
   const out = new Map<string, string>();
-  const byBucket = new Map<"media" | "designs", string[]>();
+  const byBucket = new Map<ReturnType<typeof bucketForPath>, string[]>();
   for (const path of new Set(paths)) {
     const bucket = bucketForPath(path);
     byBucket.set(bucket, [...(byBucket.get(bucket) ?? []), path]);
@@ -59,6 +60,8 @@ export async function signPathsForNetwork(
 
   const converted = new Set<string>();
   for (const path of paths) {
+    // Reels are sent as they are (MP4); only images need the JPEG copy.
+    if (isVideoPath(path)) continue;
     const bucket = client.storage.from(bucketForPath(path));
     const copy = jpegCopyPath(path);
     try {

@@ -55,9 +55,11 @@ Regions are data, not code: a `PricingRegion` table (key, name, currency, countr
 
 | | Starter | Business |
 |---|---|---|
-| Price | 15,000 RWF/month · 150,000/year | 35,000 RWF/month · 350,000/year |
+| Price | 15,000 RWF/month · 150,000/year | 50,000 RWF/month · 500,000/year (since 14 Oct 2026, docs/PLANS.md) |
 | AI texts (captions, scripts, headlines) | 60 | 200 |
 | Branded designs | 30 | 100 |
+| AI photos (AI images) | – | 100 (since 14 Oct 2026) |
+| Website chat and leads | – | ✓, 500 replies a month (since 14 Oct 2026) |
 | Calendar, scheduling, gallery | ✓ | ✓ |
 | Social channels | 3 | 5 |
 | Users | 1 | 3 |
@@ -116,7 +118,7 @@ Everything is audited.
 4. Confirm extends the paid-until date by a month or a year and resets usage.
 5. Reminders go out by email, with a WhatsApp-ready message, 5 days and 1 day before the end. There are 3 days of grace, then the account is read-only. Nothing is deleted.
 
-**Location.** Public pages read the IP country and show that region's prices, with a "Not in Rwanda? See other prices" switch. At sign-up the country chosen sets the company's region. Billing always uses the company's region, not the IP.
+**Location.** Public pages read the IP country and show that region's prices, (no manual switch: "Use my location" with the browser's permission corrects VPN users; see docs/REGIONS.md). At sign-up the country chosen sets the company's region. Billing always uses the company's region, not the IP.
 
 ## 6. Reaching 9,000,000 RWF a month
 
@@ -246,3 +248,62 @@ About 57 hours of build work, plus about 9 hours from the owner.
 **Waits outside our control:** Paddle live approval takes a few days (card payments switch on when it arrives). Meta review takes 2–6 weeks and needs business verification. Until it's approved, Instagram and Facebook use reminder + copy-and-post, and the custom-plan video is used for in-person demos only.
 
 **Gap between the videos and v1:** the custom-plan video shows the lead alert arriving on WhatsApp. Real WhatsApp alerts need the WhatsApp Business Platform, which also needs Meta business verification. v1 sends an instant email and a browser notification, with a "Reply on WhatsApp" button that opens a chat with the visitor. Real WhatsApp alerts plug in once Meta verification is done.
+
+## 12. Decisions of 9 October 2026 (afternoon): pilot launch on 12 October
+
+**Two versions side by side**
+- **v1** is `~/BuPulse` on branch `main` (version 1.0.0). It stays as it is, apart from the update screen below.
+- **v2** is `~/BuPulse-v2` on branch `v2` (version 2.0.0). It is a git worktree of the same repository and runs on `localhost:3001` (`npm run dev`).
+- v2 uses its **own free Supabase project** for testing, so v1's data is never touched. Its `.env` has the database and Supabase values left empty until the owner fills them in.
+- When v2 is approved, it is merged into `main`, deployed, and handed over as a zip (without `node_modules`, `.next` or `.env`).
+
+**Updates from the admin (built in v1 and v2)**
+- Admin → Settings → **Updates** shows the running version, the newest release and its notes.
+- **Install update** needs a fresh authenticator code (AAL2). It starts the official deploy through GitHub Actions (`workflow_dispatch`): database backup check, migrations, then the new Worker.
+- The page shows the deploy's progress and offers **Roll back** to the previous Worker version.
+- The admin never uploads code. The button needs the repository on GitHub, a GitHub token with Actions permission in the Worker environment, and the deploy workflow.
+
+**No free trial at sign-up: demo first, then a trial**
+1. A new client signs up, chooses a plan, and books a demo time. Before the demo the dashboard only shows "Your demo is on …" and a short tour. Nothing else works.
+2. In the demo meeting we learn the business and show BuPulse.
+3. After the demo, the admin clicks **Start trial** on the company. The trial length is set in Admin → Settings (default **3 days**; this replaces the 7-day trial).
+4. When the trial ends:
+   - **MoMo clients** get reminders on days 2 and 3 and must pay to continue. If they don't, the account becomes read-only; nothing is deleted.
+   - **Card clients** add their card when the trial starts and are charged automatically at the end, unless they cancel.
+- This applies to every region. Section 2's "Rwanda: no trial" is replaced by this rule.
+
+**Scope for the pilot launch on Monday 12 October**
+- In:
+  - R2 (features and plan checks)
+  - R1 (regions, RWF prices by location)
+  - R4 (manual MoMo payments with admin approval)
+  - The demo-first trial, with a simple demo booking: pick a time from the owner's availability; email + calendar invite with the owner's reusable Google Meet link
+  - Admin "Start trial"
+  - The Updates screen
+  - Essential security checks
+  - Deploy
+- Custom plans are made by hand in the existing plan builder (a private plan per company).
+- Later in the week: R3 custom-plan builder and offers, the R5 request form, card payments (once Paddle is live), the full R7 review, and re-recording the videos.
+
+## 13. Fix list found while recording the demo videos (9 October 2026)
+
+To fix before the pilot launch on 12 October:
+1. **Home page placeholders.** The testimonials section is placeholder text, and the hero illustration shows placeholders such as "[your.shop]". Remove the testimonials until real pilot quotes exist, and replace the placeholders with real example text.
+2. **Autopilot posting times.** Kigali times were saved as UTC, so 09:00 showed as 11:00 local (found with Nova Phones' planned week). Check the time-zone conversion in the Autopilot planner and add a test with Africa/Kigali.
+3. **Dashboard "Designs" card.** The count is hard-coded to 0 (`app/dashboard/page.tsx`, about line 52). Show the company's real design count.
+
+Demo data in the v1 development database (4 demo accounts and their content) is listed in `Demo/capture/MANIFEST.md`.
+- Remove it with `node Demo/capture/cleanup.mjs --yes` (without `--yes` it only lists what it would delete).
+- Don't press "Approve all" on Nova's 14 Autopilot posts: its social connections are fake rows.
+
+## 14. Pilot moved to Wednesday 14 October (decided 12 October 2026)
+
+| Day | Work | Owner |
+|---|---|---|
+| Mon 12 Oct | Finish R1 (regions, RWF prices) and the demo-first trial on top of R2 + R4. Fold MoMo's RWF prices into regional prices. Review and fix. Fix list from section 13 | Create the v2 test Supabase project and paste its keys into `~/BuPulse-v2/.env`; send the MoMo Pay code, demo availability and Meet link |
+| Tue 13 Oct | Apply migrations to the v2 test database, seed regions and plans, run v2 on localhost:3001. Owner tests every flow. Security pass and fixes. Production setup | Test v2 (about 1 hour); Cloudflare token and account ID, production Supabase, Resend DNS, admin authenticator |
+| Wed 14 Oct | Merge v2 into `main`, back up the database, deploy to bupulse.com, one real 100 RWF MoMo payment, onboard the first pilot businesses | Approve the deploy; test payment; pilot visits |
+
+Also on 12 October:
+- The demo accounts and their data were deleted from the development database. Their password had been published in the public GitHub repository.
+- The owner chose to keep the repository public. No API keys or database passwords are in it; `.env` has never been committed.

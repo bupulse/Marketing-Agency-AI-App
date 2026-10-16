@@ -1,0 +1,389 @@
+"use client";
+
+import Link from "next/link";
+import { ArrowRight, CreditCard, FileText, Smartphone } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Badge, Button, Dialog, GlassCard, useToast } from "@/components/ui";
+import { addFeaturesAction, removeCardFeatureAction } from "@/app/dashboard/billing/actions";
+import { featureLabel, FEATURES, withPrerequisites, type FeatureKey } from "@/lib/features";
+import { methodReason, type MethodState } from "@/lib/billing/pay-methods";
+import { cardAdditionQuote, cardRemovalEffects, offerCardQuote, quoteAddition, YEARLY_MONTHS, type AddonPriceRow, type CardAddonItem, type CurrentPlanForAddition } from "@/lib/offers/shared";
+import { cardUsdCents } from "@/lib/region-format";
+import { useTheme } from "@/components/theme";
+import { cardQuoteText, payByCard, type CardQuoteView } from "./card-checkout";
+import { PayStateNote, usePayState } from "./pay-state";
+import { formatMinor } from "@/lib/region-format";
+import { cn } from "@/lib/cn";
+
+export type AddFeaturesData = {
+  current: CurrentPlanForAddition;
+  interval: "MONTH" | "YEAR";
+  periodEnd: string;
+  region: { key: string; currency: string };
+  prices: AddonPriceRow[];
+  addable: FeatureKey[];
+  /** Built but not set up yet (lib/feature-setup.ts): listed as "Coming soon", cannot be ticked. */
+  soon?: FeatureKey[];
+  /** "card": a card plan; the features become part of its card subscription (`cardPlan` below), never paid apart. */
+  method?: "momo" | "card";
+};
+
+/** A card plan's card rule (Settings) and what it costs per period now (the plan plus features added before). */
+export type CardPlanTerms = { usdToRwf: number; marginPercent: number; planUsdCents: number };
+
+const dollars = (cents: number) => `$${(cents / 100).toLocaleString("en-US", cents % 100 === 0 ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Kigali" });
+
+/**
+ * "Add features" on Billing (docs/OFFERS.md, "Adding features to a paid plan"): what the plan has is ticked and locked;
+ * the client ticks priced features (prerequisites tick themselves) and sees at once what they pay now (only the added
+ * features, prorated for the days left) and what the plan costs from the next renewal. Mobile Money or an invoice pays
+ * it, or card: the amount converted to US dollars with the card rule of RWF plans (`cardRate`, from Settings), shown
+ * before paying and checked again by the server. `cardRate` is null when card payments are not set up or switched off:
+ * no card button then. Anything else: "Request a custom change".
+ *
+ * A card plan (`data.method` "card", `cardPlan` its terms) adds them to its card subscription instead: the same list,
+ * each feature's card price per period, "≈ $3 now for the 25 days left" and the plan's new price, and "Add to my card
+ * plan" with a confirm step before the card is charged (lib/offers/card-plan.ts).
+ */
+export function AddFeatures({ data, unavailable, momo, cardRate, cardPlan = null, cardAddons = [], preselect = null, now }: { data: AddFeaturesData | null; unavailable: string | null; momo: MethodState; cardRate: { usdToRwf: number; marginPercent: number } | null; /** A card plan whose card subscription takes the features (Paddle set up): the terms; null otherwise. */ cardPlan?: CardPlanTerms | null; /** The features already added to that card plan, each with its card price per period (each can be removed). */ cardAddons?: CardAddonItem[]; /** A feature to start ticked (the "Add to your plan" page's "Add it on Billing"). */ preselect?: FeatureKey | null; contactEmail?: string; now: string }) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const { resolvedTheme } = useTheme();
+  const [pending, start] = useTransition();
+  const [busy, setBusy] = useState<"momo" | "invoice" | "card" | null>(null);
+  // Shown under the card button as well as in a toast, so a failed card start is never silent.
+  const [cardError, setCardError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<FeatureKey[]>(() => (preselect && data?.addable.includes(preselect) ? withPrerequisites([preselect]).filter((k) => !(data?.current.features ?? []).includes(k)) : []));
+  // The rate the server answered with when it changed since the page loaded (its quote wins).
+  const [usdOverride, setUsdOverride] = useState<{ dueMinor: number; usdCents: number } | null>(null);
+  // A card plan: the confirm step before the card is charged, and a price per period the server answered with.
+  const [confirming, setConfirming] = useState(false);
+  const [planOverride, setPlanOverride] = useState<{ features: string; usdCents: number } | null>(null);
+  // The added feature being removed (its confirm dialog), and why the removal was refused.
+  const [removing, setRemoving] = useState<CardAddonItem | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  // A payment was just reported or a card payment just went through: nothing more to pay while the page refreshes.
+  const payState = usePayState();
+  const owned = new Set<FeatureKey>(data?.current.features ?? []);
+  const quote = useMemo(
+    () => (data && selected.length > 0 ? quoteAddition({ current: data.current, features: selected, interval: data.interval, currency: data.region.currency, regionKey: data.region.key, prices: data.prices, periodEnd: new Date(data.periodEnd), now: new Date(now) }) : null),
+    [data, selected, now],
+  );
+  const per = data?.interval === "YEAR" ? "year" : "month";
+  const onCard = data?.method === "card" && cardPlan !== null;
+  // A card plan's items: each feature's regional price for a period, at the card rule of plans (lib/offers/shared.ts).
+  const cardQuote = onCard && quote && data && cardPlan ? cardAdditionQuote({ lines: quote.lines, currency: data.region.currency, usdToRwf: cardPlan.usdToRwf, marginPercent: cardPlan.marginPercent, interval: data.interval, periodEnd: new Date(data.periodEnd), now: new Date(now) }) : null;
+  const pickedKey = [...selected].sort().join(",");
+  const cardPerPeriod = cardQuote ? (planOverride?.features === pickedKey ? planOverride.usdCents : cardQuote.perPeriodUsdCents) : 0;
+  const cardPriceOf = (key: FeatureKey) => {
+    const p = priceOf(key);
+    if (p === null || !cardPlan || !data) return null;
+    try {
+      return cardUsdCents(data.interval === "YEAR" ? p * YEARLY_MONTHS : p, data.region.currency, cardPlan.usdToRwf, cardPlan.marginPercent);
+    } catch {
+      return null;
+    }
+  };
+  const priceOf = (key: FeatureKey) => data?.prices.find((p) => p.addonKey === key && p.regionKey === data.region.key)?.monthlyMinor ?? null;
+  const canPay = Boolean(quote && quote.dueNowMinor > 0 && quote.missing.length === 0);
+  const card: CardQuoteView | null =
+    cardRate && quote && data && canPay
+      ? { usdCents: usdOverride?.dueMinor === quote.dueNowMinor ? usdOverride.usdCents : offerCardQuote(quote.dueNowMinor, data.region.currency, cardRate.usdToRwf, cardRate.marginPercent).usdCents, quoteMinor: quote.dueNowMinor, currency: data.region.currency }
+      : null;
+
+  function payCard() {
+    if (!card) return;
+    const shown = card;
+    setBusy("card");
+    setCardError(null);
+    start(async () => {
+      await payByCard(() => addFeaturesAction({ features: selected, method: "card", expectedUsdCents: shown.usdCents }), resolvedTheme, {
+        onRequote: (usdCents, message) => {
+          setCardError(message);
+          setUsdOverride({ dueMinor: shown.quoteMinor, usdCents });
+          setBusy(null);
+          toast(message, "error");
+        },
+        onError: (message) => {
+          setBusy(null);
+          setCardError(message);
+          toast(message, "error");
+        },
+        onClosed: () => {
+          setBusy(null);
+          router.refresh();
+        },
+      });
+    });
+  }
+
+  const toggle = (key: FeatureKey, on: boolean) => {
+    if (on) setSelected(withPrerequisites([...selected, key]).filter((k) => !owned.has(k)));
+    else if (!selected.some((k) => k !== key && withPrerequisites([k]).includes(key))) setSelected(selected.filter((k) => k !== key));
+  };
+
+  function addToCardPlan() {
+    if (!cardQuote) return;
+    const expected = cardPerPeriod;
+    setBusy("card");
+    setCardError(null);
+    start(async () => {
+      const result = await addFeaturesAction({ features: selected, method: "card_plan", expectedUsdCents: expected });
+      setBusy(null);
+      if (!result.ok) {
+        setCardError(result.error);
+        if (result.requoteUsdCents) setPlanOverride({ features: pickedKey, usdCents: result.requoteUsdCents });
+        else setConfirming(false);
+        toast(result.error, "error");
+        return;
+      }
+      setConfirming(false);
+      setSelected([]);
+      setPlanOverride(null);
+      const names = (result.added ?? []).join(", ");
+      toast(result.applied ? `Done: ${names} ${result.added?.length === 1 ? "is" : "are"} on.` : `Payment received: ${names} switch${result.added?.length === 1 ? "es" : ""} on in a moment.`, "success");
+      router.refresh();
+    });
+  }
+
+  function removeFromCardPlan() {
+    if (!removing) return;
+    const feature = removing;
+    setRemoveError(null);
+    start(async () => {
+      const result = await removeCardFeatureAction({ feature: feature.key });
+      if (!result.ok) {
+        setRemoveError(result.error);
+        toast(result.error, "error");
+        return;
+      }
+      setRemoving(null);
+      toast(result.applied ? `${result.removed} is off. Its unused days are credited to your card plan.` : `${result.removed} switches off when the card provider confirms, in a moment.`, "success");
+      router.refresh();
+    });
+  }
+
+  function pay(method: "momo" | "invoice") {
+    setBusy(method);
+    start(async () => {
+      const result = await addFeaturesAction({ features: selected, method });
+      setBusy(null);
+      if (!result.ok) {
+        toast(result.error, "error");
+        return;
+      }
+      toast(method === "momo" ? "Pay by Mobile Money above. The features switch on once the payment is confirmed." : "Your invoice is above and in your email. The features switch on once it is paid.", "success");
+      setSelected([]);
+      router.refresh();
+    });
+  }
+
+  return (
+    <GlassCard as="section" aria-labelledby="add-features-heading" className="flex flex-col gap-4 p-5 sm:p-6">
+      <div className="flex flex-col gap-1">
+        <h2 id="add-features-heading" className="text-xl font-semibold tracking-[-0.02em]">
+          Add features to your plan
+        </h2>
+        <p className="text-sm text-muted">
+          {data && onCard
+            ? `Added to your card plan: your card is charged now only for the days left until ${longDate(data.periodEnd)}, then with your plan every ${per}.`
+            : data
+              ? `You pay now only for what you add, for the days left until ${longDate(data.periodEnd)}. From then on your plan costs the new total.`
+              : unavailable}
+        </p>
+      </div>
+
+      {onCard && data && cardAddons.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-2xl border border-line p-4">
+          <h3 className="text-[15px] font-semibold">Added to your card plan</h3>
+          <ul className="flex flex-col divide-y divide-line">
+            {cardAddons.map((f) => (
+              <li key={f.key} className="flex flex-wrap items-center justify-between gap-3 py-2">
+                <span className="text-[15px]">
+                  <strong className="font-medium">{f.label}</strong> <span className="text-[13px] text-muted">+{dollars(f.usdCents)} / {per}</span>
+                </span>
+                <Button size="sm" variant="outline" onClick={() => { setRemoveError(null); setRemoving(f); }} disabled={pending}>
+                  Remove <span className="sr-only">{f.label}</span>
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {data && (
+        <fieldset className="flex flex-col gap-1">
+          <legend className="sr-only">Features</legend>
+          <div className="grid gap-1 sm:grid-cols-2">
+            {FEATURES.filter((f) => owned.has(f.key) || data.addable.includes(f.key) || data.soon?.includes(f.key)).map((f) => {
+              const have = owned.has(f.key);
+              const soon = !have && !data.addable.includes(f.key);
+              const neededBy = !have ? selected.filter((k) => k !== f.key && withPrerequisites([k]).includes(f.key)) : [];
+              const price = priceOf(f.key);
+              return (
+                <label key={f.key} className={cn("flex min-h-11 items-start gap-2 text-[15px]", soon && "text-muted")}>
+                  <input type="checkbox" checked={have || selected.includes(f.key)} disabled={have || soon || neededBy.length > 0 || pending} onChange={(e) => toggle(f.key, e.target.checked)} className="mt-1 size-5" />
+                  <span>
+                    <span className="flex flex-wrap items-center gap-2">
+                      <strong className="font-medium">{f.label}</strong>
+                      {have && <Badge tone="success">In your plan</Badge>}
+                      {soon && <Badge tone="violet">Coming soon</Badge>}
+                      {neededBy.length > 0 && <Badge tone="blue">Needed by {neededBy.map(featureLabel).join(", ")}</Badge>}
+                      {!have && !soon && price !== null && !onCard && <span className="text-[13px] text-muted">+{formatMinor(price, data.region.currency)} / month</span>}
+                      {!have && !soon && onCard && cardPriceOf(f.key) !== null && <span className="text-[13px] text-muted">+{dollars(cardPriceOf(f.key) as number)} / {per} by card</span>}
+                    </span>
+                    <span className="block text-[13px] text-muted">{f.description}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          {data.addable.length === 0 && <p className="text-sm text-muted">Everything that can be added here is already in your plan.</p>}
+        </fieldset>
+      )}
+
+      {cardQuote && data && cardPlan && (
+        <dl className="grid gap-1.5 rounded-2xl bg-soft p-4 text-[15px]" aria-live="polite">
+          {cardQuote.items.map((i) => (
+            <div key={i.key} className="flex justify-between gap-3">
+              <dt>{i.label}</dt>
+              <dd className="tabular-nums">
+                {dollars(i.usdCents)} / {per}
+              </dd>
+            </div>
+          ))}
+          <div className="flex justify-between gap-3 border-t border-line pt-2 font-semibold">
+            <dt>
+              Now, for the {cardQuote.daysLeft} {cardQuote.daysLeft === 1 ? "day" : "days"} left
+            </dt>
+            <dd className="tabular-nums">≈ {dollars(Math.round((cardPerPeriod * cardQuote.daysLeft) / Math.max(1, cardQuote.periodDays)))}</dd>
+          </div>
+          <div className="flex justify-between gap-3 text-muted">
+            <dt>Your card plan from {longDate(data.periodEnd)}</dt>
+            <dd className="tabular-nums">
+              {dollars(cardPlan.planUsdCents + cardPerPeriod)} / {per}
+            </dd>
+          </div>
+        </dl>
+      )}
+
+      {quote && data && !onCard && (
+        <dl className="grid gap-1.5 rounded-2xl bg-soft p-4 text-[15px]" aria-live="polite">
+          {quote.lines.map((l) => (
+            <div key={l.key} className="flex justify-between gap-3">
+              <dt>{l.label}</dt>
+              <dd className="tabular-nums">
+                {formatMinor(l.totalMinor, data.region.currency)} / {per}
+              </dd>
+            </div>
+          ))}
+          <div className="flex justify-between gap-3 border-t border-line pt-2 font-semibold">
+            <dt>
+              To pay now ({quote.daysLeft} of {quote.periodDays} days left)
+            </dt>
+            <dd className="tabular-nums">{formatMinor(quote.dueNowMinor, data.region.currency)}</dd>
+          </div>
+          <div className="flex justify-between gap-3 text-muted">
+            <dt>From {longDate(data.periodEnd)}</dt>
+            <dd className="tabular-nums">
+              {formatMinor(quote.nextRenewalMinor, data.region.currency)} / {per}
+            </dd>
+          </div>
+        </dl>
+      )}
+
+      {/* Nothing can be added here (a card plan): no pay buttons, only the reason above. They used to show disabled,
+          with "Mobile Money coming soon" on a method that works. */}
+      {!data ? null : payState ? (
+        <PayStateNote state={payState} />
+      ) : onCard ? (
+        <div className="flex flex-col gap-2">
+          <Button className="self-start" onClick={() => { setCardError(null); setConfirming(true); }} disabled={!cardQuote || !canPay || pending} leading={<CreditCard aria-hidden className="size-5" />}>
+            Add to my card plan
+          </Button>
+          <p className="text-[13px] text-muted">Charged to the card your plan renews with. The card provider works out the exact amount for the days left; nothing is added or charged if the payment fails.</p>
+        </div>
+      ) : (
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={() => pay("momo")} disabled={!canPay || pending || momo !== "ready"} leading={<Smartphone aria-hidden className="size-5" />}>
+          {methodReason("momo", momo) ?? (busy === "momo" ? "Opening…" : "Pay with Mobile Money")}
+        </Button>
+        <Button variant="outline" onClick={() => pay("invoice")} disabled={!canPay || pending} leading={<FileText aria-hidden className="size-5" />}>
+          {busy === "invoice" ? "Preparing…" : "Get an invoice"}
+        </Button>
+        {cardRate && (
+          <Button variant="outline" onClick={payCard} disabled={!card || pending} leading={<CreditCard aria-hidden className="size-5" />}>
+            {busy === "card" ? "Opening checkout…" : "Pay by card"}
+          </Button>
+        )}
+      </div>
+      )}
+      {card && !payState && !onCard && <p className="text-[13px] text-muted">{cardQuoteText(card)}, charged in US dollars once. The added features switch on as soon as the payment goes through.</p>}
+      {cardError && !confirming && (
+        <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
+          {cardError}
+        </p>
+      )}
+      {onCard && cardPlan && removing && (
+        <Dialog
+          open
+          onOpenChange={(open) => !open && !pending && setRemoving(null)}
+          title={`Remove ${removing.label}?`}
+          description={`It stops when Paddle confirms. The unused days go back as credit on your card plan, which then costs ${dollars(Math.max(0, cardPlan.planUsdCents - removing.usdCents))} a ${per}.`}
+        >
+          <div className="flex flex-col gap-4">
+            <ul className="flex list-disc flex-col gap-1 pl-5 text-[15px]">
+              {cardRemovalEffects(removing.key).map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            {removeError && (
+              <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
+                {removeError}
+              </p>
+            )}
+            <div className="flex flex-wrap justify-end gap-3">
+              <Button variant="ghost" onClick={() => setRemoving(null)} disabled={pending}>
+                Keep it
+              </Button>
+              <Button onClick={removeFromCardPlan} disabled={pending} className="bg-danger bg-none text-white shadow-none">
+                {pending ? "Removing…" : `Remove ${removing.label}`}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+      {onCard && cardQuote && data && cardPlan && (
+        <Dialog
+          open={confirming}
+          onOpenChange={(open) => !pending && setConfirming(open)}
+          title={`Add ${cardQuote.items.map((i) => i.label).join(", ")} to your card plan?`}
+          description={`Your card is charged about ${dollars(Math.round((cardPerPeriod * cardQuote.daysLeft) / Math.max(1, cardQuote.periodDays)))} now for the ${cardQuote.daysLeft} ${cardQuote.daysLeft === 1 ? "day" : "days"} left, then ${dollars(cardPerPeriod)} more each ${per} with your plan: ${dollars(cardPlan.planUsdCents + cardPerPeriod)} a ${per} from ${longDate(data.periodEnd)}. Nothing is added or charged if the payment fails.`}
+        >
+          <div className="flex flex-col gap-4">
+            {cardError && (
+              <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-sm font-medium text-danger">
+                {cardError}
+              </p>
+            )}
+            <div className="flex flex-wrap justify-end gap-3">
+              <Button variant="ghost" onClick={() => setConfirming(false)} disabled={pending}>
+                Not now
+              </Button>
+              <Button onClick={addToCardPlan} disabled={pending} leading={<CreditCard aria-hidden className="size-5" />}>
+                {busy === "card" ? "Charging your card…" : "Confirm and charge my card"}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+      <Link href="/custom-plan?from=billing" className="inline-flex min-h-11 items-center gap-1.5 self-start text-sm font-semibold no-underline">
+        Something else? Request a custom change
+        <ArrowRight aria-hidden className="size-4" />
+      </Link>
+    </GlassCard>
+  );
+}

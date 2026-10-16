@@ -3,6 +3,7 @@ import { checkActiveUser } from "@/lib/auth/require-user";
 import { isCanvaEnabled } from "@/lib/canva/config";
 import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { CanvaError, openDesignInCanva } from "@/lib/canva/service";
+import { assertFeature, FeatureRequiredError, featureErrorResponse } from "@/lib/entitlements";
 
 const body = z.object({ designId: z.string().min(1).max(60) });
 
@@ -13,6 +14,12 @@ export async function POST(request: Request) {
   const check = await checkActiveUser();
   if (check.status === "signed_out") return Response.json({ error: "Please sign in again.", code: "signed_out" }, { status: 401 });
   if (check.status !== "ok") return Response.json({ error: "This account is not available right now.", code: "locked" }, { status: 403 });
+  try {
+    await assertFeature(check.user, "canva");
+  } catch (error) {
+    if (error instanceof FeatureRequiredError) return featureErrorResponse(error);
+    throw error;
+  }
 
   const parsed = body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "Pick a design first.", code: "failed" }, { status: 400 });

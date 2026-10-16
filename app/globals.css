@@ -483,3 +483,43 @@ dialog.bp-dialog[open] {
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
   mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
 }
+
+/* ---- Page-loading animation (components/page-loader.tsx; Admin -> Settings -> Loading animation) ---- */
+.bp-loader-bar {
+  width: 0;
+  animation: bp-loader-trickle 8s cubic-bezier(0.1, 0.7, 0.2, 1) forwards;
+}
+@keyframes bp-loader-trickle {
+  0% { width: 0; }
+  20% { width: 45%; }
+  100% { width: 90%; }
+}
+.bp-preloader {
+  display: flex;
+  /* no flash on fast pages; and it can never stay up: gone after 3 s even if the page is still loading */
+  animation: bp-fade-in 0.2s ease-out 0.12s both, bp-fade-away 0.3s ease-in 3s forwards;
+}
+#bp-first-load {
+  display: none;
+  animation: bp-fade-away 0.3s ease-in 3s forwards;
+}
+.bp-preloading #bp-first-load {
+  display: flex;
+}
+.bp-preloader-ring {
+  background: conic-gradient(from 0deg, #2f6bff, #7b5cff, transparent 70%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  animation: bp-spin 0.9s linear infinite;
+}
+.bp-preloader-mark {
+  animation: bp-pulse 1.4s ease-in-out infinite;
+}
+@keyframes bp-spin { to { transform: rotate(360deg); } }
+@keyframes bp-pulse { 0%, 100% { transform: scale(0.92); opacity: 0.85; } 50% { transform: scale(1.04); opacity: 1; } }
+@keyframes bp-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes bp-fade-away { to { opacity: 0; visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  .bp-preloader-ring, .bp-preloader-mark { animation-duration: 3s; }
+  .bp-loader-bar { animation-duration: 16s; }
+}

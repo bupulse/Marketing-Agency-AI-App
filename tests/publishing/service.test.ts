@@ -2,8 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prisma = vi.hoisted(() => ({
   connection: { findMany: vi.fn() },
-  project: { findFirst: vi.fn() },
+  product: { findFirst: vi.fn() },
+  campaign: { findFirst: vi.fn() },
   generatedContent: { findFirst: vi.fn() },
+  postVersion: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn() },
+  contentVisual: { findMany: vi.fn() },
   business: { findUnique: vi.fn(), update: vi.fn() },
   autopilotSettings: { findUnique: vi.fn() },
   mediaAsset: { findMany: vi.fn() },
@@ -16,6 +19,7 @@ const prisma = vi.hoisted(() => ({
     deleteMany: vi.fn(),
   },
   $transaction: vi.fn(),
+  $executeRaw: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ prisma }));
 
@@ -29,6 +33,7 @@ import {
   PublishingError,
   reschedulePost,
   retryPost,
+  unschedulePost,
   updatePost,
 } from "@/lib/publishing/service";
 import type { ComposeInput } from "@/lib/publishing/types";
@@ -54,13 +59,14 @@ function code(promise: Promise<unknown>) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  prisma.postVersion.findMany.mockResolvedValue([]);
   prisma.business.findUnique.mockResolvedValue({ timezone: "Africa/Kigali" });
   prisma.autopilotSettings.findUnique.mockResolvedValue(null);
   prisma.connection.findMany.mockResolvedValue([facebook]);
   prisma.post.findMany.mockResolvedValue([]);
   prisma.mediaAsset.findMany.mockResolvedValue([]);
   prisma.post.create.mockImplementation(async ({ data }: { data: { connectionId: string } }) => ({ id: `post-${data.connectionId}` }));
-  prisma.$transaction.mockImplementation(async (ops: Promise<unknown>[]) => Promise.all(ops));
+  prisma.$transaction.mockImplementation(async (ops: Promise<unknown>[] | ((tx: typeof prisma) => Promise<unknown>)) => (typeof ops === "function" ? ops(prisma) : Promise.all(ops)));
   prisma.post.updateMany.mockResolvedValue({ count: 1 });
   prisma.post.deleteMany.mockResolvedValue({ count: 1 });
 });
@@ -179,14 +185,49 @@ describe("createPosts", () => {
       expect(prisma.post.create).not.toHaveBeenCalled();
     });
 
-    it("rejects another business's project or content", async () => {
-      prisma.project.findFirst.mockResolvedValue(null);
-      expect(await code(createPosts(owner, compose({ projectId: "other-project" }), now))).toBe("not_found");
-      expect(prisma.project.findFirst.mock.calls[0][0].where).toEqual({ id: "other-project", businessId: "b1" });
+    it("rejects another business's product, campaign or content", async () => {
+      prisma.product.findFirst.mockResolvedValue(null);
+      prisma.campaign.findFirst.mockResolvedValue(null);
+      expect(await code(createPosts(owner, compose({ subjectId: "other-product" }), now))).toBe("not_found");
+      expect(prisma.product.findFirst.mock.calls[0][0].where).toEqual({ id: "other-product", businessId: "b1" });
+      expect(prisma.campaign.findFirst.mock.calls[0][0].where).toEqual({ id: "other-product", businessId: "b1" });
       prisma.generatedContent.findFirst.mockResolvedValue(null);
       expect(await code(createPosts(owner, compose({ contentId: "other-content" }), now))).toBe("not_found");
-      expect(prisma.generatedContent.findFirst.mock.calls[0][0].where).toEqual({ id: "other-content", project: { businessId: "b1" } });
+      expect(prisma.generatedContent.findFirst.mock.calls[0][0].where).toEqual({ id: "other-content", businessId: "b1" });
     });
+  });
+});
+
+describe("a post made from content takes its visual (docs/CONTENT_VISUALS.md)", () => {
+  const linkedin = { id: "c-li", provider: "linkedin", displayName: "Bakery LI", status: "ACTIVE", postingMode: "AUTO", kind: "SOCIAL", businessId: "b1" };
+  const slides = ["u1/designs/s1.png", "u1/designs/s2.png", "u1/designs/s3.png"];
+  const video = "u1/videos/v1-abcd1.mp4";
+
+  beforeEach(() => {
+    prisma.generatedContent.findFirst.mockResolvedValue({ id: "content-1" });
+    prisma.contentVisual.findMany.mockResolvedValue([
+      { kind: "carousel", status: "ready", items: slides.map((path) => ({ path })) },
+      { kind: "video", status: "ready", items: [{ path: video }] },
+    ]);
+    prisma.connection.findMany.mockResolvedValue([instagram, linkedin, tiktok]);
+  });
+
+  it("the carousel goes out as a carousel; TikTok's script reminder carries the video", async () => {
+    await createPosts(owner, compose({ connectionIds: ["c-ig", "c-li", "c-tt"], contentId: "content-1", mediaPaths: slides, overrides: { tiktok: { text: "Hook: look" } } }), now);
+    const rows = Object.fromEntries(prisma.post.create.mock.calls.map((c) => [c[0].data.network, c[0].data]));
+    expect(rows.instagram).toMatchObject({ format: "CAROUSEL", mediaPaths: slides, contentId: "content-1" });
+    expect(rows.linkedin).toMatchObject({ format: "CAROUSEL", mediaPaths: slides });
+    expect(rows.tiktok).toMatchObject({ format: "SCRIPT", mediaPaths: [video] });
+    // Ready visuals, and a video being made again (its current file stays on the posts until the new one is saved).
+    expect(prisma.contentVisual.findMany.mock.calls[0][0].where).toMatchObject({ businessId: "b1", contentId: "content-1", OR: [{ status: "ready" }, { kind: "video" }] });
+  });
+
+  it("the video as media: a Reel on Instagram, the content's pictures on LinkedIn", async () => {
+    prisma.connection.findMany.mockResolvedValue([instagram, linkedin]);
+    await createPosts(owner, compose({ connectionIds: ["c-ig", "c-li"], contentId: "content-1", mediaPaths: [video] }), now);
+    const rows = Object.fromEntries(prisma.post.create.mock.calls.map((c) => [c[0].data.network, c[0].data]));
+    expect(rows.instagram).toMatchObject({ format: "POST", mediaPaths: [video] });
+    expect(rows.linkedin).toMatchObject({ format: "CAROUSEL", mediaPaths: slides });
   });
 });
 
@@ -202,6 +243,10 @@ describe("actions on existing posts are scoped to the business (IDOR)", () => {
     hashtags: [],
     mediaPaths: [],
     scheduledAt: new Date("2026-10-09T07:00:00Z"),
+    title: null,
+    contentId: null,
+    createdAt: new Date("2026-10-06T07:00:00Z"),
+    updatedAt: new Date("2026-10-06T07:00:00Z"),
     connection: { id: "c-fb", displayName: "Page", provider: "facebook", status: "ACTIVE", postingMode: "AUTO" },
     ...extra,
   });
@@ -302,6 +347,29 @@ describe("actions on existing posts are scoped to the business (IDOR)", () => {
     expect(data).not.toHaveProperty("scheduledAt");
   });
 
+  it("a contest without its confirmed prize and rules cannot be revived, retried or scheduled by an edit", async () => {
+    const contest = { text: "Win [PRIZE]!", contest: {} };
+    prisma.post.findFirst.mockResolvedValue(post("FAILED", contest));
+    expect(await code(reschedulePost(owner, "p1", new Date("2026-10-20T10:00:00Z"), now))).toBe("invalid");
+    expect(await code(retryPost(owner, "p1", now))).toBe("invalid");
+    prisma.post.findFirst.mockResolvedValue(post("SCHEDULED", { text: "Win 50,000 RWF! Rules: Most likes. Ends Friday 16 October. Prize: 50,000 RWF.", contest: { prize: "50,000 RWF", endsOn: "2026-10-16", howChosen: "Most likes", confirmedAt: "2026-10-13T08:00:00Z" } }));
+    expect(await code(updatePost(owner, "p1", { ...edit, text: "Win 50,000 RWF!", when: { mode: "schedule", local: "2026-10-20T10:00" } } as never, now))).toBe("invalid");
+    expect(prisma.post.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("editing a confirmed contest's prize, end date or rule needs confirming again; a scheduled one goes back to waiting", async () => {
+    const confirmed = { prize: "50,000 RWF", endsOn: "2026-10-16", howChosen: "Most likes", confirmedAt: "2026-10-13T08:00:00Z" };
+    prisma.post.findFirst.mockResolvedValue(post("SCHEDULED", { text: "Win 50,000 RWF! Rules: Most likes. Ends Friday 16 October. Prize: 50,000 RWF.", contest: confirmed }));
+    await updatePost(owner, "p1", { ...edit, text: "Win 100,000 RWF! Rules: Most likes. Ends Friday 16 October. Prize: 100,000 RWF." }, now);
+    const data = prisma.post.updateMany.mock.calls[0][0].data;
+    expect(data.contest).toEqual({ prize: "50,000 RWF", endsOn: "2026-10-16", howChosen: "Most likes" });
+    expect(data).toMatchObject({ status: "PENDING_APPROVAL", reviewNote: "Needs your confirmation: prize & rules", autoScheduledAt: null });
+    // A wording change that keeps the prize, date and rule stays confirmed.
+    prisma.post.updateMany.mockClear();
+    await updatePost(owner, "p1", { ...edit, text: "Join in! Win 50,000 RWF! Rules: Most likes. Ends Friday 16 October. Prize: 50,000 RWF." }, now);
+    expect(prisma.post.updateMany.mock.calls[0][0].data.contest).toEqual(confirmed);
+  });
+
   it("editing validates against the post's own network", async () => {
     prisma.post.findFirst.mockResolvedValue(post("SCHEDULED", { network: "instagram", connection: { ...instagram, provider: "instagram" } }));
     expect(await code(updatePost(owner, "p1", edit, now))).toBe("invalid"); // Instagram needs a photo
@@ -312,14 +380,14 @@ describe("actions on existing posts are scoped to the business (IDOR)", () => {
 describe("approvePosts", () => {
   it("only approves this business's posts that are waiting for approval", async () => {
     prisma.post.findMany.mockResolvedValue([{ id: "a", connectionId: "c-fb", scheduledAt: new Date("2026-10-09T07:00:00Z") }]);
-    expect(await approvePosts("b1", ["a", "b", "a"], now)).toEqual({ approved: 1 });
+    expect(await approvePosts("b1", ["a", "b", "a"], now)).toEqual({ approved: 1, skipped: 0 });
     expect(prisma.post.findMany.mock.calls[0][0].where).toEqual({ id: { in: ["a", "b"] }, businessId: "b1", status: "PENDING_APPROVAL" });
-    expect(prisma.post.updateMany.mock.calls[0][0]).toEqual({ where: { id: "a", businessId: "b1", status: "PENDING_APPROVAL" }, data: { status: "SCHEDULED" } });
+    expect(prisma.post.updateMany.mock.calls[0][0]).toEqual({ where: { id: "a", businessId: "b1", status: "PENDING_APPROVAL" }, data: { status: "SCHEDULED", reviewNote: null } });
   });
 
   it("approves nothing for another business's posts", async () => {
     prisma.post.findMany.mockResolvedValue([]);
-    expect(await approvePosts("b1", ["x"], now)).toEqual({ approved: 0 });
+    expect(await approvePosts("b1", ["x"], now)).toEqual({ approved: 0, skipped: 0 });
     expect(prisma.post.updateMany).not.toHaveBeenCalled();
   });
 
@@ -333,8 +401,17 @@ describe("approvePosts", () => {
     expect(data.scheduledAt.toISOString()).toBe("2026-10-07T16:00:00.000Z");
   });
 
+  it("never approves a contest before the owner confirmed its prize and rules", async () => {
+    prisma.post.findMany.mockResolvedValue([
+      { id: "c1", connectionId: "c-fb", scheduledAt: new Date("2026-10-09T07:00:00Z"), text: "Win [PRIZE]!", contest: {} },
+      { id: "c2", connectionId: "c-fb", scheduledAt: new Date("2026-10-09T07:00:00Z"), text: "Win 50,000 RWF!", contest: {} },
+    ]);
+    expect(await approvePosts("b1", ["c1", "c2"], now)).toEqual({ approved: 0, skipped: 2 });
+    expect(prisma.post.updateMany).not.toHaveBeenCalled();
+  });
+
   it("does nothing for an empty list", async () => {
-    expect(await approvePosts("b1", [], now)).toEqual({ approved: 0 });
+    expect(await approvePosts("b1", [], now)).toEqual({ approved: 0, skipped: 0 });
     expect(prisma.post.findMany).not.toHaveBeenCalled();
   });
 });
@@ -353,5 +430,81 @@ describe("Instagram photo size", () => {
     prisma.mediaAsset.findMany.mockResolvedValue([{ width: 6000, height: 4000 }]);
     expect(await code(createPosts(owner, compose({ mediaPaths: [photo] }), now))).toBe("ok");
     expect(prisma.mediaAsset.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("owner edits are remembered, so BuPulse never replaces or redraws them", () => {
+  const post = { id: "p1", businessId: "b1", connectionId: "c-fb", network: "facebook", status: "PENDING_APPROVAL", format: "POST", title: null, text: "Hello", hashtags: [], mediaPaths: [], scheduledAt: null, contentId: "content-1", createdAt: new Date("2026-10-06T07:00:00Z"), updatedAt: new Date("2026-10-06T07:00:00Z"), connection: { id: "c-fb", displayName: "Page", provider: "facebook", status: "ACTIVE", postingMode: "AUTO" } };
+
+  it("an edit, a move or taking it back to review sets ownerEditedAt", async () => {
+    prisma.post.findFirst.mockResolvedValue(post);
+    await updatePost(owner, "p1", { text: "Mine", hashtags: [], mediaPaths: [], when: { mode: "keep" } }, now);
+    await reschedulePost(owner, "p1", new Date("2026-10-20T10:00:00Z"), now);
+    await unschedulePost(owner, "p1", now);
+    for (const call of prisma.post.updateMany.mock.calls) expect(call[0].data.ownerEditedAt).toEqual(now);
+  });
+
+  it("an edit of the words keeps the versions: BuPulse's first text, then the edit, with its script and headlines", async () => {
+    prisma.post.findFirst.mockResolvedValue(post);
+    prisma.post.updateMany.mockResolvedValue({ count: 1 });
+    prisma.generatedContent.findFirst.mockResolvedValue({ videoScript: "[Shop] Hello.", adHeadlines: ["A", "B", "C"] });
+    prisma.postVersion.findFirst.mockResolvedValue(null);
+    prisma.postVersion.findMany.mockResolvedValue([]);
+    await updatePost({ ...owner, actorId: "person-1" }, "p1", { text: "Mine", hashtags: ["#mine"], mediaPaths: [], when: { mode: "keep" } }, now);
+    expect(prisma.generatedContent.findFirst.mock.calls[0][0].where).toEqual({ id: "content-1", businessId: "b1" });
+    const [first, second] = prisma.postVersion.create.mock.calls.map((c) => c[0].data);
+    expect(first).toMatchObject({ businessId: "b1", postId: "p1", kind: "original", text: "Hello", hashtags: [], videoScript: "[Shop] Hello.", adHeadlines: ["A", "B", "C"], createdAt: post.createdAt });
+    expect(second).toMatchObject({ businessId: "b1", postId: "p1", kind: "edit", actorId: "person-1", text: "Mine", hashtags: ["#mine"], videoScript: "[Shop] Hello.", adHeadlines: ["A", "B", "C"] });
+  });
+
+  it("a change of time or photos only keeps no version", async () => {
+    prisma.post.findFirst.mockResolvedValue(post);
+    prisma.post.updateMany.mockResolvedValue({ count: 1 });
+    await updatePost(owner, "p1", { text: "Hello", hashtags: [], mediaPaths: [], when: { mode: "keep" } }, now);
+    expect(prisma.postVersion.findFirst).not.toHaveBeenCalled();
+    expect(prisma.postVersion.create).not.toHaveBeenCalled();
+  });
+
+  it("scheduling Studio content by hand replaces only its untouched drafts, in the same transaction", async () => {
+    prisma.generatedContent.findFirst.mockResolvedValue({ id: "content-1" });
+    prisma.contentVisual.findMany.mockResolvedValue([]);
+    await createPosts(owner, compose({ contentId: "content-1" }), now);
+    const ops = prisma.$transaction.mock.calls[0][0] as unknown[];
+    expect(ops).toHaveLength(3);
+    const drafts = { businessId: "b1", contentId: "content-1", source: "STUDIO", status: "PENDING_APPROVAL", connectionId: { in: ["c-fb"] } };
+    expect(prisma.post.deleteMany).toHaveBeenCalledWith({ where: { ...drafts, ownerEditedAt: null } });
+    // A draft the owner edited for the same account is cancelled as superseded, never left as a second post.
+    expect(prisma.post.updateMany).toHaveBeenCalledWith({ where: { ...drafts, ownerEditedAt: { not: null } }, data: { status: "CANCELLED", reviewNote: "Replaced by the post you scheduled." } });
+  });
+});
+
+describe("approving never stacks two posts on one account", () => {
+  it("re-picks the time when another post took the slot meanwhile", async () => {
+    // The first pick (today 18:00) collides with a post another approval just wrote; the second is free.
+    prisma.post.findFirst.mockResolvedValueOnce({ id: "other" }).mockResolvedValue(null);
+    let call = 0;
+    prisma.post.findMany.mockImplementation(async (args: { where: { status?: unknown; connectionId?: unknown } }) => {
+      if (args.where.status === "PENDING_APPROVAL") return [{ id: "a", network: "facebook", connectionId: "c-fb", scheduledAt: null }];
+      // Queued posts on the account: none at first, then the one that took 18:00.
+      return call++ === 0 ? [] : [{ connectionId: "c-fb", scheduledAt: new Date("2026-10-07T16:00:00Z") }];
+    });
+    expect(await approvePosts("b1", ["a"], now)).toEqual({ approved: 1, skipped: 0 });
+    expect(prisma.$executeRaw).toHaveBeenCalled();
+    const clash = prisma.post.findFirst.mock.calls[0][0].where;
+    expect(clash).toMatchObject({ connectionId: "c-fb", id: { not: "a" } });
+    const written = prisma.post.updateMany.mock.calls.at(-1)![0].data.scheduledAt as Date;
+    expect(Math.abs(written.getTime() - new Date("2026-10-07T16:00:00Z").getTime())).toBeGreaterThanOrEqual(150 * 60_000);
+  });
+});
+
+
+describe("approvePosts reports what it could not schedule", () => {
+  it("counts a post as skipped when no free time is left after three tries", async () => {
+    prisma.post.findMany.mockImplementation(async (args: { where: { status?: unknown } }) =>
+      args.where.status === "PENDING_APPROVAL" ? [{ id: "a", network: "facebook", connectionId: "c-fb", scheduledAt: null }] : [],
+    );
+    prisma.post.findFirst.mockResolvedValue({ id: "other" });
+    expect(await approvePosts("b1", ["a"], now)).toEqual({ approved: 0, skipped: 1 });
+    expect(prisma.post.updateMany).not.toHaveBeenCalled();
   });
 });

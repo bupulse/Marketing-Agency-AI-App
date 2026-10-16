@@ -3,8 +3,12 @@
 import { useActionState, useState, type ReactNode } from "react";
 import { Button, Field, GlassCard, Input } from "@/components/ui";
 import type { FieldErrors } from "@/lib/auth/schemas";
+import Link from "next/link";
 import { saveBusiness, saveProfile, type SettingsState } from "@/app/dashboard/settings/actions";
-import { OrganisationFields, type OrganisationValues } from "@/components/auth/organisation-fields";
+import { PhoneField } from "@/components/auth/phone-field";
+
+/** Settings -> Business: the details the owner may change. The sector lives on the Brand page; the country is fixed. */
+export type BusinessDetailsValues = { organisationName: string; ceoName: string; phone: string; website: string };
 
 function Section({ id, title, text, children }: { id: string; title: string; text: string; children: ReactNode }) {
   return (
@@ -81,7 +85,7 @@ export function ProfileSection({
   );
 }
 
-export function BusinessSection({ defaults }: { defaults: OrganisationValues }) {
+export function BusinessSection({ defaults, country, industryLabel }: { defaults: BusinessDetailsValues; country: string; industryLabel: string }) {
   const [state, formAction, pending] = useActionState<SettingsState, FormData>(saveBusiness, {});
   const [values, setValues] = useState(defaults);
   const { errors, clear } = useServerErrors(state);
@@ -91,18 +95,30 @@ export function BusinessSection({ defaults }: { defaults: OrganisationValues }) 
     for (const [k, v] of Object.entries(values)) fd.set(k, v);
     formAction(fd);
   }
+  const set = (key: keyof BusinessDetailsValues, value: string) => {
+    setValues((v) => ({ ...v, [key]: value }));
+    clear(key);
+  };
 
   return (
-    <Section id="business" title="Business" text="Used to write in your brand voice.">
+    <Section id="business" title="Business" text="Your company's details. The sector and description are on the Brand page.">
       <form action={submitAction} noValidate className="flex flex-col gap-4">
-        <OrganisationFields
-          values={values}
-          errors={errors}
-          onChange={(key, value) => {
-            setValues((v) => ({ ...v, [key]: value }));
-            clear(key);
-          }}
-        />
+        <Field label="Organisation name" required error={errors.organisationName}>
+          <Input name="organisationName" autoComplete="organization" value={values.organisationName} onChange={(e) => set("organisationName", e.target.value)} />
+        </Field>
+        <Field label="CEO name" required error={errors.ceoName}>
+          <Input name="ceoName" autoComplete="name" value={values.ceoName} onChange={(e) => set("ceoName", e.target.value)} />
+        </Field>
+        <Field label="Business sector" hint={<>Change it on the <Link href="/dashboard/brand" className="underline">Brand page</Link>.</>}>
+          <Input value={industryLabel || "Not set yet"} readOnly />
+        </Field>
+        <Field label="Country" hint="Decides your prices and currency. To change it, contact us.">
+          <Input name="countryDisplay" value={country || "Not set"} readOnly />
+        </Field>
+        <PhoneField value={values.phone} country={country} error={errors.phone} onChange={(v) => set("phone", v)} />
+        <Field label="Website (optional)" error={errors.website}>
+          <Input name="website" type="url" inputMode="url" autoComplete="url" placeholder="yourbusiness.com" value={values.website} onChange={(e) => set("website", e.target.value)} />
+        </Field>
         <div className="flex flex-wrap items-center gap-4">
           <Button type="submit" disabled={pending}>
             {pending ? "Saving…" : "Save business"}

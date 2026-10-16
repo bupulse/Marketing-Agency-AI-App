@@ -1,5 +1,5 @@
 import { ShoppingBag, Store } from "lucide-react";
-import { pageGate } from "@/components/app/no-access";
+import { featureGate, pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { Badge, Button, GlassCard } from "@/components/ui";
@@ -9,7 +9,7 @@ import { isShopifyEnabled } from "@/lib/stores/shopify";
 export const metadata = { title: "Import from your store" };
 
 export default async function StoresPage() {
-  const blocked = await pageGate("connectors");
+  const blocked = (await pageGate("connectors")) ?? (await featureGate("storeImport"));
   if (blocked) return blocked;
   const { business } = await getAppContext();
   if (!business) return null;
@@ -21,7 +21,7 @@ export default async function StoresPage() {
   ];
   return (
     <>
-      <PageHeader title="Import from your store" description="Turn your online shop's products into projects, with photos, then create posts from them." />
+      <PageHeader title="Import from your store" description="Bring your online shop's products into your Knowledge base, with photos, then create posts from them." />
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
         {cards.map(({ id, name, icon: Icon, off }) => (
           <GlassCard as="li" key={id} className="flex flex-col gap-4">

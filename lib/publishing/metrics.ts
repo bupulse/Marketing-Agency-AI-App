@@ -1,29 +1,45 @@
 import "server-only";
 import { disabledNetworks } from "@/lib/admin/switch";
 import { prisma } from "@/lib/db";
+import { timeBudget } from "@/lib/platform/limits";
 import { logError } from "@/lib/errors";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { loadCredentials, markConnectionError } from "@/lib/social/connections";
 import { SocialError } from "@/lib/social/types";
+import { RESULTS_ACCOUNT_TYPES, RESULTS_DAYS } from "./results";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Posts newer than this are tracked; older ones stop being measured. */
-export const METRICS_DAYS = 30;
+export const METRICS_DAYS = RESULTS_DAYS;
 /** A post measured within this long ago is skipped, so a repeated run does not hit the networks twice. */
 const FRESH_HOURS = 20;
 const MAX_POSTS_PER_RUN = 150;
+/**
+ * Posts of one account read per run. Instagram takes five calls per post, so one busy account's posts are spread
+ * over several hourly runs instead of bursting its hourly per-account call limit.
+ */
+export const MAX_POSTS_PER_ACCOUNT = 25;
 const PAUSE_MS = 250;
-const TIME_BUDGET_MS = 45_000;
+
+/** Only networks and account types that share results, so posts that can never have any do not take a run's places. */
+const readableNetworks = () =>
+  Object.entries(RESULTS_ACCOUNT_TYPES).map(([network, types]) => (types === "all" ? { network } : { network, connection: { accountType: { in: [...types] } } }));
+
+/** Netlify stops a function at 60 s, so the run stops sooner there; the next hourly run does the rest. */
+const timeBudgetMs = () => timeBudget(45_000, 30_000);
 
 export type MetricsRunResult = { checked: number; saved: number; skipped: number; failed: number };
 
 /**
- * Daily: for posts published in the last 30 days, asks the network for views, likes and so on and stores a
- * PostMetrics row. Throttled (a pause between calls, a cap and a time budget); one bad post never stops the run.
+ * Hourly: for posts published in the last 30 days, asks the network for views, likes and so on and stores a
+ * PostMetrics row (each post at most once every 20 hours). Every publishing business is read, whatever its plan:
+ * per-post results show on every plan that publishes (POST_RESULTS_FEATURE in lib/publishing/results.ts).
+ * Throttled (a pause between calls, caps per run and per account, a time budget); one bad post never stops the run.
+ * Accounts that must be reconnected are left out until they are, and one that fails sign-in mid-run is marked so.
  */
 export async function collectMetrics(now = new Date(), options: { limit?: number; budgetMs?: number; pauseMs?: number } = {}): Promise<MetricsRunResult> {
   const result: MetricsRunResult = { checked: 0, saved: 0, skipped: 0, failed: 0 };
-  const deadline = Date.now() + (options.budgetMs ?? TIME_BUDGET_MS);
+  const deadline = Date.now() + (options.budgetMs ?? timeBudgetMs());
   // Networks switched off in the admin console are skipped (their tokens and posts are left alone).
   const paused = await disabledNetworks();
   const posts = await prisma.post.findMany({
@@ -33,7 +49,8 @@ export async function collectMetrics(now = new Date(), options: { limit?: number
       externalId: { not: null },
       connectionId: { not: null },
       publishedAt: { gte: new Date(now.getTime() - METRICS_DAYS * DAY_MS) },
-      connection: { postingMode: "AUTO" },
+      connection: { postingMode: "AUTO", status: { notIn: ["EXPIRED", "REVOKED"] } },
+      OR: readableNetworks(),
       metrics: { none: { capturedAt: { gte: new Date(now.getTime() - FRESH_HOURS * 60 * 60_000) } } },
     },
     orderBy: { publishedAt: "desc" },
@@ -42,9 +59,10 @@ export async function collectMetrics(now = new Date(), options: { limit?: number
   });
 
   const stoppedConnections = new Set<string>();
+  const perAccount = new Map<string, number>();
   for (const post of posts) {
     if (Date.now() > deadline) break;
-    if (!isNetwork(post.network) || !post.externalId || !post.connectionId || stoppedConnections.has(post.connectionId)) {
+    if (!isNetwork(post.network) || !post.externalId || !post.connectionId || stoppedConnections.has(post.connectionId) || (perAccount.get(post.connectionId) ?? 0) >= MAX_POSTS_PER_ACCOUNT) {
       result.skipped++;
       continue;
     }
@@ -54,6 +72,7 @@ export async function collectMetrics(now = new Date(), options: { limit?: number
       continue;
     }
     result.checked++;
+    perAccount.set(post.connectionId, (perAccount.get(post.connectionId) ?? 0) + 1);
     try {
       const snapshot = await provider.metrics(await loadCredentials(post.connectionId), post.externalId);
       await prisma.postMetrics.create({

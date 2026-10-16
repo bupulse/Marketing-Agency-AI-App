@@ -88,6 +88,13 @@ describe("group images", () => {
     expect(mocks.createTemplateDesign).not.toHaveBeenCalled();
   });
 
+  it("gives a feed post of an idea without a template of its own the announcement design", async () => {
+    const at = new Date("2026-10-13T07:00:00Z");
+    const made = await makeGroupImages(group("li-company-story", { networks: ["linkedin"], posts: [{ connectionId: "c-li", network: "linkedin", format: "POST", scheduledAt: at }] }), text, ctx);
+    expect(made.designs).toEqual({ "1:1": "user1/designs/1x1.png" });
+    expect(mocks.createTemplateDesign).toHaveBeenCalledWith(expect.objectContaining({ template: "announcement", photoPath: "user1/gallery/a.jpg", aspectRatio: "1:1" }));
+  });
+
   it("falls back to the business name for scripts the image font cannot draw", async () => {
     await makeGroupImages(group("tip-how-to"), text, { ...ctx, language: "Hindi" });
     expect(mocks.createTemplateDesign).toHaveBeenCalledWith(expect.objectContaining({ headline: "Sunrise Bakery", subline: null, chip: null, kicker: "" }));

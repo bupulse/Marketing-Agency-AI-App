@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { hasFeature } from "@/lib/entitlements";
 import { runInBackground } from "@/lib/leads/background";
 import { attemptDelivery, toJson } from "./delivery";
 import { buildPayload, type WebhookEvent } from "./events";
@@ -11,6 +12,8 @@ import { buildPayload, type WebhookEvent } from "./events";
  */
 export async function emitWebhookEvent(businessId: string, event: WebhookEvent, data: unknown): Promise<number> {
   try {
+    // Webhooks are a plan feature: endpoints of a company without it stay but receive nothing.
+    if (!(await hasFeature(businessId, "webhooks"))) return 0;
     const endpoints = await prisma.webhookEndpoint.findMany({
       where: { businessId, enabled: true, pausedByAdminAt: null, events: { has: event } },
       select: { id: true, url: true, secretEncrypted: true, business: { select: { id: true, name: true } } },
@@ -39,11 +42,13 @@ export async function emitWebhookEvent(businessId: string, event: WebhookEvent, 
  * event data from what the caller already has; if it throws, the event is dropped and logged, so a hook can
  * never break the action it sits in.
  */
-export function queueWebhookEvent(businessId: string, event: WebhookEvent, build: () => unknown): void {
+export function queueWebhookEvent(businessId: string, event: WebhookEvent, build: () => unknown): Promise<void> {
   try {
     const data = build();
-    runInBackground(() => emitWebhookEvent(businessId, event, data), `webhook ${event}`);
+    // Resolves at once unless Netlify could not take the work (lib/leads/background.ts); callers await it.
+    return runInBackground(() => emitWebhookEvent(businessId, event, data), `webhook ${event}`);
   } catch (error) {
     console.error(`[webhooks] could not queue ${event}:`, error instanceof Error ? error.message : error);
+    return Promise.resolve();
   }
 }

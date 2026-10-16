@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// These tests import large server modules inside the test (actions, the visuals service): the first import
+// can take several seconds when the whole suite runs in parallel.
+vi.setConfig({ testTimeout: 30_000 });
+
 // A Member who calls a settings action directly (not through the hidden button) is refused before anything is written.
 
 const h = vi.hoisted(() => ({

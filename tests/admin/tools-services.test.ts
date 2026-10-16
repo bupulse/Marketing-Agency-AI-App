@@ -35,7 +35,7 @@ import { clearSwitchCache, isServiceEnabled } from "@/lib/admin/switch";
 import { clearBudgetCache, effectiveBudgetUsd } from "@/lib/ai/budget";
 import { apiContext } from "@/lib/admin/types";
 
-const API = apiContext("key1", "203.0.113.5");
+const API = apiContext("key1", "203.0.113.5", "all");
 const call = (name: string, args: unknown) => callTool(name, args, API);
 const failure = async (name: string, args: unknown) => call(name, args).then(() => null, (e: { code: string }) => e.code);
 

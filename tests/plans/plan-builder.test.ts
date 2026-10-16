@@ -33,12 +33,12 @@ import { createPlan, previewPriceChange, updatePlan, cancelPriceChange, syncPlan
 import { businessHasApiAccess } from "@/lib/api/auth";
 import { firstRenewalOnOrAfter, processPriceChanges } from "@/lib/billing/price-changes";
 import { getSellablePlans, getPlans, planForPriceId, priceIdFor, resetPlanCache } from "@/lib/plan-catalog";
-import { SEED_PLANS } from "@/lib/plans";
+import { SEED_PLANS, VIDEOS_PER_DAY } from "@/lib/plans";
 import { AdminError, apiContext, consoleContext } from "@/lib/admin/types";
 import * as svc from "@/lib/admin/service";
 
 const CONSOLE = consoleContext("198.51.100.1");
-const API = apiContext("key1", "203.0.113.5");
+const API = apiContext("key1", "203.0.113.5", "all");
 const DAY = 86_400_000;
 const NOW = new Date("2026-10-09T10:00:00Z");
 const code = async (p: Promise<unknown>) => p.then(() => null, (e: AdminError) => e.code);
@@ -83,6 +83,9 @@ beforeEach(() => {
   h.swap.mockImplementation(async (subId: string, price: string) => ({ id: subId, status: "active", customer_id: "ctm_x", items: [{ price: { id: price } }] }));
 });
 
+// 20261016130000_people_images: the image limit is AI images now, and the cards say so.
+const AI_IMAGE_COPY: Record<string, string> = { "50 brand designs a month": "30 AI images a month", "150 brand designs a month": "100 AI images a month" };
+
 describe("the migration seeds exactly today's plans", () => {
   const sql = readFileSync("prisma/migrations/20261009095000_plan_builder/migration.sql", "utf8");
   const row = (key: string) => {
@@ -101,11 +104,37 @@ describe("the migration seeds exactly today's plans", () => {
   it("is identical to the code fallback (SEED_PLANS) and to the pricing page copy", () => {
     for (const [key, c] of Object.entries(SEED_PLANS)) {
       const r = row(key);
-      expect(r).toMatchObject({ name: c.name, description: c.description, isTrial: c.isTrial, trialDays: c.trialDays, sortOrder: c.sortOrder, highlight: c.highlight, monthly: c.priceUsdMonthly * 100, yearly: c.priceUsdYearly * 100, limits: Object.fromEntries(Object.entries(c.limits).filter(([k]) => k !== "seats")), features: c.features, caps: c.capabilities });
+      // The pricing copy changed later with the AI image limits (20261016130000_people_images).
+      r.features = r.features.map((f: string) => AI_IMAGE_COPY[f] ?? f);
+      expect(r).toMatchObject({ name: c.name, description: c.description, isTrial: c.isTrial, trialDays: c.trialDays, sortOrder: c.sortOrder, highlight: c.highlight, monthly: c.priceUsdMonthly * 100, yearly: c.priceUsdYearly * 100, limits: Object.fromEntries(Object.entries(c.limits).filter(([k]) => k !== "seats" && k !== "videos" && k !== "videosPerDay" && k !== "image" && k !== "voiceCharacters" && k !== "postsPerAppPerDay")), features: c.highlights, caps: { apiAccess: c.features.includes("apiAccess"), ownComposio: c.features.includes("ownComposio") } });
       // seats arrive with their own migration (the plan_seats one); here only the original five limits are compared
       expect(Object.keys(r.limits).sort()).toEqual(["chat", "image", "text", "videoSeconds", "voiceCharacters"]);
     }
-    expect(SEED_PLANS.STANDARD.features).toEqual(["100 AI text generations a month", "50 brand designs a month", "Post to 5 social networks", "Lead-capturing chat widget", "Content calendar and scheduling"]);
+    // Video seconds changed later (20261015090000_content_visuals): trial 30, Pro and Business 240, the rest as seeded.
+    const video = readFileSync("prisma/migrations/20261015090000_content_visuals/migration.sql", "utf8");
+    expect(video).toContain(`jsonb_set("limits", '{videoSeconds}', '240'::jsonb)\nWHERE "key" IN ('BUSINESS', 'PRO')`);
+    expect(video).toContain(`jsonb_set("limits", '{videoSeconds}', '30'::jsonb)\nWHERE "isTrial" = true`);
+    expect(row("STANDARD").limits.videoSeconds).toBe(SEED_PLANS.STANDARD.limits.videos);
+    // Then videos instead of seconds (20261018120000_videos_per_month): 240 s -> 120 videos (4 a day), the trial's 30 s -> 1.
+    const perVideo = readFileSync("prisma/migrations/20261018120000_videos_per_month/migration.sql", "utf8");
+    expect(perVideo).toContain(`<= 30 THEN 1 ELSE ${SEED_PLANS.PRO.limits.videos} END`);
+    expect(perVideo).toContain(`<= 30 THEN 1 ELSE ${VIDEOS_PER_DAY} END`);
+    expect([SEED_PLANS.TRIAL.limits.videos, SEED_PLANS.STANDARD.limits.videos, SEED_PLANS.PRO.limits.videos]).toEqual([1, 0, 120]);
+    const people = readFileSync("prisma/migrations/20261016130000_people_images/migration.sql", "utf8");
+    expect(people).toMatch(/'\{image\}', '30'::jsonb\) WHERE "key" IN \('STARTER', 'STANDARD'\)/);
+    expect(people).toMatch(/'\{image\}', '100'::jsonb\) WHERE "key" IN \('BUSINESS', 'PRO'\)/);
+    expect(people).toMatch(/'\{image\}', '5'::jsonb\) WHERE "isTrial" = true/);
+    expect([SEED_PLANS.TRIAL.limits.image, SEED_PLANS.STANDARD.limits.image, SEED_PLANS.PRO.limits.image]).toEqual([5, 30, 100]);
+    for (const [from, to] of Object.entries(AI_IMAGE_COPY)) expect(people).toContain(`'${from}', '${to}'`);
+    // Voiceover characters changed with 20261017100000_voice_and_music: trial 600, Business and Pro 5,000, the rest 0.
+    const voice = readFileSync("prisma/migrations/20261017100000_voice_and_music/migration.sql", "utf8");
+    expect(voice).toContain(`'{voiceCharacters}', '5000'::jsonb) WHERE "key" IN ('BUSINESS', 'PRO')`);
+    // Then 600 a video for the 120 videos (20261018120000_videos_per_month): 72,000.
+    expect(perVideo).toContain(`("limits"->>'videos')::int * 600`);
+    expect(SEED_PLANS.PRO.limits.voiceCharacters).toBe(72_000);
+    expect(voice).toContain(`'{voiceCharacters}', '${SEED_PLANS.TRIAL.limits.voiceCharacters}'::jsonb) WHERE "isTrial" = true`);
+    expect(SEED_PLANS.STANDARD.limits.voiceCharacters).toBe(0);
+    expect(SEED_PLANS.STANDARD.highlights).toEqual(["100 AI text generations a month", "30 AI images a month", "Post to 5 social networks", "Lead-capturing chat widget", "Content calendar and scheduling"]);
   });
 
   it("keeps existing subscriptions: the column becomes the same words as text, with a foreign key, and the overrides are folded in", () => {
@@ -175,7 +204,7 @@ describe("Paddle price ids map back to a plan, old ones too", () => {
 
 describe("creating a plan", () => {
   it("creates the Paddle product and both prices, goes live, and is audited", async () => {
-    const out = await createPlan(CONSOLE, { key: "starter", name: "Starter", description: "Small", monthlyPriceCents: 1900, yearlyPriceCents: 19000, status: "active", limits: { text: 20 }, features: ["20 posts"] });
+    const out = await createPlan(CONSOLE, { key: "starter", name: "Starter", description: "Small", monthlyPriceCents: 1900, yearlyPriceCents: 19000, status: "active", limits: { text: 20 }, highlights: ["20 posts"] });
     expect(out.paddle).toBe("synced");
     expect(out.plan).toMatchObject({ key: "starter", status: "active", syncState: "synced", paddleProductId: "pro_new" });
     expect(out.plan.paddleMonthlyPriceId).toMatch(/^pri_new_m/);
@@ -216,7 +245,7 @@ describe("creating a plan", () => {
     expect(await code(createPlan(CONSOLE, { key: "standard", name: "Dup", monthlyPriceCents: 100, yearlyPriceCents: 1000 }))).toBe("conflict");
     expect(await code(createPlan(CONSOLE, { key: "free-ish", name: "Free", monthlyPriceCents: 0, yearlyPriceCents: 0 }))).toBe("invalid");
     expect(await code(createPlan(CONSOLE, { key: "ok-plan", name: "Ok", monthlyPriceCents: 100, yearlyPriceCents: 1000, limits: { text: -1 } }))).toBe("invalid");
-    expect(await code(createPlan(CONSOLE, { key: "ok-plan", name: "Ok", monthlyPriceCents: 100, yearlyPriceCents: 1000, features: Array(13).fill("x") }))).toBe("invalid");
+    expect(await code(createPlan(CONSOLE, { key: "ok-plan", name: "Ok", monthlyPriceCents: 100, yearlyPriceCents: 1000, highlights: Array(13).fill("x") }))).toBe("invalid");
   });
 });
 
@@ -499,11 +528,11 @@ describe("retiring, hiding and the trial", () => {
 
 describe("audit rows", () => {
   it("every change writes one row with before and after, including for the API actor", async () => {
-    await updatePlan(API, "PRO", { name: "Pro Max", features: ["a", "b"] });
+    await updatePlan(API, "PRO", { name: "Pro Max", highlights: ["a", "b"] });
     const a = audits()[0];
     expect(a).toMatchObject({ action: "update_plan", target: "plan:PRO", actor: API.actor });
-    expect(a.before).toMatchObject({ name: "Pro", features: SEED_PLANS.PRO.features });
-    expect(a.after).toEqual({ name: "Pro Max", features: ["a", "b"] });
+    expect(a.before).toMatchObject({ name: "Pro", highlights: SEED_PLANS.PRO.highlights });
+    expect(a.after).toEqual({ name: "Pro Max", highlights: ["a", "b"] });
     await updatePlan(API, "PRO", { name: "Pro Max" }); // no change, no row
     expect(audits()).toHaveLength(1);
     await svc.updatePlanLimits(API, { plan: "PRO", limits: { chat: 1 }, confirm: true });
@@ -904,5 +933,20 @@ describe("team seats", () => {
     expect(USAGE_METRICS).not.toContain("seats");
     await svc.updatePlanLimits(API, { plan: "STANDARD", limits: { seats: null }, confirm: true });
     expect(plan("STANDARD").limits.seats).toBe(3);
+  });
+});
+
+describe("posts per app per day", () => {
+  it("is edited in the plan form (1 to 10), validated and audited; the limits tool sets and resets it", async () => {
+    await updatePlan(CONSOLE, "STANDARD", { limits: { postsPerAppPerDay: 4 } });
+    expect(plan("STANDARD").limits).toMatchObject({ postsPerAppPerDay: 4, text: 100, seats: 3 });
+    expect(audits()[0]).toMatchObject({ action: "update_plan", after: { limits: expect.objectContaining({ postsPerAppPerDay: 4 }) } });
+    expect(await code(updatePlan(CONSOLE, "STANDARD", { limits: { postsPerAppPerDay: 0 } }))).toBe("invalid");
+    expect(await code(updatePlan(CONSOLE, "STANDARD", { limits: { postsPerAppPerDay: 11 } }))).toBe("invalid");
+    await svc.updatePlanLimits(API, { plan: "PRO", limits: { postsPerAppPerDay: 7 }, confirm: true });
+    expect(plan("PRO").limits.postsPerAppPerDay).toBe(7);
+    await svc.updatePlanLimits(API, { plan: "PRO", limits: { postsPerAppPerDay: null }, confirm: true });
+    expect(plan("PRO").limits.postsPerAppPerDay).toBe(3);
+    expect(await code(svc.updatePlanLimits(API, { plan: "PRO", limits: { postsPerAppPerDay: 12 }, confirm: true }))).toBe("invalid");
   });
 });

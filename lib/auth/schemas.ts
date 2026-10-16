@@ -1,11 +1,13 @@
 import { z } from "zod";
 import { countries } from "@/lib/content/countries";
 import { industries } from "@/lib/content/site";
+import { checkIndustryOther, industryFields } from "@/lib/industries/shared";
+import { phoneCountry, phoneErrorMessage, toE164 } from "@/lib/phone";
 
 // Shared by the sign-up wizard (client-side step checks) and the server actions.
 
-export const INDUSTRY_OTHER = "Other";
-export const industryOptions: string[] = [...industries.map((i) => i.name), INDUSTRY_OTHER];
+/** Legacy: the sector names of the marketing list plus "Other", as Business.industry stored them before industries became data. */
+export const industryOptions: string[] = [...industries.map((i) => i.name), "Other"];
 
 export const PASSWORD_MIN = 8;
 
@@ -32,7 +34,7 @@ export const passwordSchema = z
   });
 
 // Accepts "example.com" as well as full URLs; stores a normalised https URL.
-const websiteSchema = z
+export const websiteSchema = z
   .string()
   .trim()
   .max(200, "That website address is too long.")
@@ -49,43 +51,67 @@ const websiteSchema = z
     }
   });
 
-const phoneSchema = z
-  .string()
-  .trim()
-  .max(30, "That phone number is too long.")
-  .transform((v, ctx) => {
-    if (!v) return undefined;
-    const digits = v.replace(/\D/g, "").length;
-    if (!/^[+\d\s().-]+$/.test(v) || digits < 6 || digits > 15) {
-      ctx.addIssue({ code: "custom", message: "Enter a valid phone number, like +1 555 123 4567." });
-      return z.NEVER;
-    }
-    return v;
-  });
+// The phone is checked against the chosen country (see withOrganisationChecks): here only the shape and length.
+const phoneSchema = z.string().trim().max(30, "That phone number is too long.");
 
-export const organisationSchema = z.object({
+export const countrySchema = z
+  .string()
+  .min(1, "Choose your country.")
+  .refine((v) => (countries as readonly string[]).includes(v), "Choose your country from the list.");
+
+/** Name, CEO, sector and contact details. The country is part of sign-up only: afterwards only an admin changes it. */
+const organisationShape = {
   organisationName: z.string().trim().min(1, "Enter your organisation name.").max(120, "Use 120 characters or fewer."),
   ceoName: z.string().trim().min(1, "Enter the CEO's name.").max(100, "Use 100 characters or fewer."),
-  industry: z
-    .string()
-    .min(1, "Choose your industry.")
-    .refine((v) => industryOptions.includes(v), "Choose your industry from the list."),
-  country: z
-    .string()
-    .min(1, "Choose your country.")
-    .refine((v) => (countries as readonly string[]).includes(v), "Choose your country from the list."),
+  ...industryFields,
+  country: countrySchema,
   phone: phoneSchema,
   website: websiteSchema,
-});
+};
+
+type OrganisationIn = { industry: string; industryOther: string; country: string; phone: string };
+
+// Zod skips object-level checks when a field already failed; run them regardless so every problem shows at once.
+const always = { when: () => true } as const;
+
+/**
+ * The cross-field checks every organisation form shares: "Other" needs the industry text, and the phone (optional)
+ * must be a valid number for the chosen country; it is stored as E.164 ("+250791954277").
+ */
+function organisationChecks(v: OrganisationIn, ctx: z.RefinementCtx) {
+  checkIndustryOther({ industry: String(v.industry ?? ""), industryOther: String(v.industryOther ?? "") }, ctx);
+  if (typeof v.phone === "string" && v.phone && !toE164(v.phone, phoneCountry(v.country))) {
+    ctx.addIssue({ code: "custom", path: ["phone"], message: phoneErrorMessage(v.country) });
+  }
+}
+
+function withPhoneE164<T extends OrganisationIn>(v: T): Omit<T, "phone"> & { phone: string | undefined } {
+  return { ...v, phone: v.phone ? (toE164(v.phone, phoneCountry(v.country)) ?? undefined) : undefined };
+}
+
+export const organisationSchema = z.object(organisationShape).superRefine(organisationChecks, always).transform(withPhoneE164);
 
 // /welcome: Google sign-ups give the organisation details and accept the terms (no password).
-export const welcomeSchema = organisationSchema.extend({
-  terms: z.literal(true, { error: "Agree to the Terms and Privacy Policy to continue." }),
-});
+export const welcomeSchema = z
+  .object({ ...organisationShape, terms: z.literal(true, { error: "Agree to the Terms and Privacy Policy to continue." }) })
+  .superRefine(organisationChecks, always)
+  .transform(withPhoneE164);
 
-// Zod skips object-level checks when a field already failed; run the match check regardless
-// so a mismatch is reported alongside other problems.
-const always = { when: () => true } as const;
+/**
+ * Settings -> Business: everything but the sector and the country. The phone is checked against the company's saved
+ * country, which the action passes in (the owner cannot change the country or the region: docs/REGIONS.md).
+ */
+export function businessDetailsSchema(country: string | null | undefined) {
+  return z
+    .object({ organisationName: organisationShape.organisationName, ceoName: organisationShape.ceoName, phone: phoneSchema, website: websiteSchema })
+    .superRefine((v, ctx) => {
+      if (typeof v.phone === "string" && v.phone && !toE164(v.phone, phoneCountry(country))) ctx.addIssue({ code: "custom", path: ["phone"], message: phoneErrorMessage(country) });
+    }, always)
+    .transform((v) => ({ ...v, phone: v.phone ? (toE164(v.phone, phoneCountry(country)) ?? undefined) : undefined }));
+}
+
+/** Brand -> Industry: the sector, the "Other" text and the description, editable by the owner at any time. */
+export const industrySchema = z.object(industryFields).superRefine((v, ctx) => checkIndustryOther({ industry: String(v.industry ?? ""), industryOther: String(v.industryOther ?? "") }, ctx), always);
 
 export const emailStepSchema = z.object({ email: emailSchema });
 
@@ -101,17 +127,19 @@ export const passwordStepSchema = z
     ...always,
   });
 
-export const signUpSchema = z.object({
-  ...emailStepSchema.shape,
-  ...organisationSchema.shape,
-  password: passwordSchema,
-  confirmPassword: z.string().min(1, "Confirm your password."),
-  terms: z.literal(true, { error: "Agree to the Terms and Privacy Policy to continue." }),
-}).refine((v) => v.password === v.confirmPassword, {
-  path: ["confirmPassword"],
-  message: "Passwords do not match.",
-  ...always,
-});
+export const signUpSchema = z
+  .object({
+    ...emailStepSchema.shape,
+    ...organisationShape,
+    password: passwordSchema,
+    confirmPassword: z.string().min(1, "Confirm your password."),
+    terms: z.literal(true, { error: "Agree to the Terms and Privacy Policy to continue." }),
+  })
+  .superRefine((v, ctx) => {
+    organisationChecks(v, ctx);
+    if (v.password !== v.confirmPassword) ctx.addIssue({ code: "custom", path: ["confirmPassword"], message: "Passwords do not match." });
+  }, always)
+  .transform(withPhoneE164);
 
 export const signInSchema = z.object({
   email: emailSchema,

@@ -5,6 +5,8 @@ import { utcDay } from "./collect";
 import { getPriceTable } from "@/lib/plan-catalog";
 import { addDays, computeMrrCents, conversionPct, eachDay, fixedCostForDay, pct, profitCents, round2 } from "./math";
 import { rollupDay } from "./rollup";
+import { getMonthCosts } from "@/lib/money/costs";
+import { monthAdjustments, type MonthCosts } from "@/lib/money/costs-shared";
 import type {
   Costs, DateRange, Funnel, FunnelStep, MetricKey, MetricPoint, Overview, Profit, Ranked, Revenue, TopContent, WeeklyReport, WhatsWorking,
 } from "./types";
@@ -70,11 +72,24 @@ const byDimension = (points: KeyedPoint[], key: string) => {
   return m;
 };
 
-/** Monthly costs entered by the owner, spread over the days of their month (fractions of a cent kept). */
+/**
+ * Costs besides the AI ledger, spread over the days of their month (fractions of a cent kept): the monthly costs entered
+ * by the owner, recurring costs (hosting, the domain...) and, for a provider whose real bill was entered, the bill
+ * minus the ledger's estimate (lib/money/costs-shared.ts), so these numbers match Admin -> Money.
+ */
 async function fixedCosts(range: DateRange) {
-  const months = [...new Set(eachDay(range.from, range.to).map((d) => d.slice(0, 7)))];
-  const costs = await prisma.monthlyCost.findMany({ where: { month: { in: months } }, select: { month: true, category: true, amountCents: true } });
-  return (day: string) => fixedCostForDay(day, costs);
+  const months = [...new Set(eachDay(range.from, range.to).map((d) => d.slice(0, 7)))].sort();
+  const [costs, report] = await Promise.all([
+    prisma.monthlyCost.findMany({ where: { month: { in: months } }, select: { month: true, category: true, amountCents: true } }),
+    getMonthCosts(months[0], months[months.length - 1]).catch(() => ({ months: [] as MonthCosts[] })),
+  ]);
+  const adjustments: { month: string; category: string; amountCents: number }[] = [];
+  for (const m of report.months) {
+    const a = monthAdjustments(m);
+    if (a.recurringCents) adjustments.push({ month: m.month, category: "recurring", amountCents: a.recurringCents });
+    if (a.billDeltaCents) adjustments.push({ month: m.month, category: "ai bills vs estimate", amountCents: a.billDeltaCents });
+  }
+  return (day: string) => fixedCostForDay(day, [...costs, ...adjustments]);
 }
 
 async function latestSnapshot(key: string, to: string): Promise<number> {

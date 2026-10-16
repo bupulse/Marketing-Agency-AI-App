@@ -1,3 +1,5 @@
+import { moneyFmt } from "@/components/admin/money";
+import { adminMoney } from "@/lib/money/display-server";
 import { notFound } from "next/navigation";
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
@@ -7,6 +9,7 @@ import { Badge, Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { Meter } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { currencyDigits, dateTime, money, num } from "@/lib/admin/format";
+import { formatPhone } from "@/lib/phone";
 import { diffJson, show } from "@/lib/admin/diff";
 import { AdminError, getBusiness, getUser, listFeatureFlags } from "@/lib/admin/service";
 import {
@@ -60,7 +63,11 @@ export async function Client360({ userId, tab: asked, basePath, extraTabs = [] }
           );
         })}
       </nav>
-      {showActions && <Actions id={id} c={c} />}
+      {showActions && (
+        <div id="actions" className="scroll-mt-24">
+          <Actions id={id} c={c} />
+        </div>
+      )}
       {!extra && tab === "overview" && <OverviewTab id={id} c={c} here={here} />}
       {!extra && tab === "billing" && <BillingTab c={c} />}
       {!extra && tab === "usage" && <UsageTab c={c} />}
@@ -134,13 +141,14 @@ async function Actions({ id, c }: { id: string; c: C }) {
 }
 
 async function OverviewTab({ id, c, here }: { id: string; c: C; here: string }) {
+  const fx = moneyFmt(await adminMoney());
   const [o, user, flags] = await Promise.all([overviewSection(c), getUser(id), listFeatureFlags()]);
   const business = c.business ? await getBusiness(c.business.id) : null;
   return (
     <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Plan" value={o.subscription ? `${o.subscription.plan.toLowerCase()}` : "none"} source={o.subscription?.status.toLowerCase() ?? "no subscription"} />
-        <Stat label="MRR from this client" value={money(o.mrrCents)} source="Plan price, if paying" href="/admin/revenue" />
+        <Stat label="MRR from this client" value={fx.text(o.mrrCents)} title={fx.title(o.mrrCents)} source="Plan price, if paying" href="/admin/revenue" />
         <Stat label="Signed up from" value={o.signupSource?.source ?? "unknown"} source={o.signupSource ? `first page ${o.signupSource.landingPage}` : "No tracked visit linked to the sign-up"} href="/admin/funnels" />
         <Stat label="Last active" value={o.lastActiveAt ? dateTime(o.lastActiveAt).replace(/ UTC$/, "") : "never"} source="Latest product event or AI call" />
       </div>
@@ -162,9 +170,12 @@ async function OverviewTab({ id, c, here }: { id: string; c: C; here: string }) 
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[14px]">
               <dt className="text-muted">Name</dt><dd>{business.name}</dd>
               <dt className="text-muted">Industry</dt><dd>{business.industry ?? "n/a"}</dd>
+              {business.industryDescription && (<><dt className="text-muted">Describes itself</dt><dd className="text-[13px]">{business.industryDescription}</dd></>)}
+              <dt className="text-muted">CEO</dt><dd>{business.ceoName ?? "n/a"}</dd>
+              <dt className="text-muted">Phone</dt><dd>{business.phone ? <a href={`tel:${business.phone}`} className="underline">{formatPhone(business.phone)}</a> : "n/a"}</dd>
               <dt className="text-muted">Country</dt><dd>{business.country ?? "n/a"}</dd>
               <dt className="text-muted">Onboarded</dt><dd>{business.onboarded ? "Yes" : "No"}</dd>
-              <dt className="text-muted">Projects, posts, leads</dt><dd>{business.counts.projects}, {business.counts.posts}, {business.counts.leads}</dd>
+              <dt className="text-muted">Products, posts, leads</dt><dd>{business.counts.projects}, {business.counts.posts}, {business.counts.leads}</dd>
               <dt className="text-muted">Posts by status</dt><dd>{Object.entries(business.posts).map(([s, n]) => `${s.toLowerCase()} ${n}`).join(", ") || "none"}</dd>
             </dl>
           )}
@@ -203,6 +214,7 @@ async function OverviewTab({ id, c, here }: { id: string; c: C; here: string }) 
 }
 
 async function BillingTab({ c }: { c: C }) {
+  const fx = moneyFmt(await adminMoney());
   const b = await billingSection(c);
   return (
     <Panel title="Payments and refunds" description={b.provider ? `From ${b.provider.toLowerCase()} webhooks, newest first. Amounts are what the customer was charged or refunded, tax included.` : "This client has never paid."}>
@@ -217,7 +229,7 @@ async function BillingTab({ c }: { c: C }) {
                 <Td className="whitespace-nowrap">{dateTime(i.at)}</Td>
                 <Td>{i.kind === "payment" ? <Badge tone="success">Payment</Badge> : <Badge tone="danger">Refund</Badge>}</Td>
                 <Td className="font-mono text-xs">{i.providerId ?? ""}</Td>
-                <Td right>{i.amountMinor === null ? "n/a" : money(i.kind === "refund" ? -i.amountMinor : i.amountMinor, /^[A-Z]{3}$/.test(i.currency) ? i.currency : "USD")}</Td>
+                <Td right>{i.amountMinor === null ? "n/a" : fx.text(i.kind === "refund" ? -i.amountMinor : i.amountMinor, /^[A-Z]{3}$/.test(i.currency) ? i.currency : "USD")}</Td>
               </tr>
             ))}
           </tbody>
@@ -228,6 +240,7 @@ async function BillingTab({ c }: { c: C }) {
 }
 
 async function UsageTab({ c }: { c: C }) {
+  const fx = moneyFmt(await adminMoney());
   const u = await usageSection(c);
   return (
     <>
@@ -242,9 +255,12 @@ async function UsageTab({ c }: { c: C }) {
         </ul>
       </Panel>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <Stat label="AI cost, 30 days" value={`$${u.ai.costUsd30d.toFixed(2)}`} source="AI call ledger" href="/admin/ai" />
+        <Stat label="AI cost, 30 days" value={fx.text(u.ai.costUsd30d * 100)} title={fx.title(u.ai.costUsd30d * 100)} source="AI call ledger" href="/admin/ai" />
         <Stat label="AI calls, 30 days" value={num(u.ai.calls30d)} source="AI call ledger" />
         <Stat label="Failed AI calls" value={num(u.ai.failures30d)} source="AI call ledger" />
+        <Stat label="AI spend this month" value={`${fx.text(u.ai.monthUsd * 100)} of ${fx.text(u.ai.allowanceUsd * 100)}`} source="Company allowance (the plan's AI allowance, else AI_COMPANY_MONTHLY_USD)" />
+        <Stat label="Website chat AI, this month" value={`${fx.text(u.ai.widgetUsd * 100)} of ${fx.text(u.ai.widgetCapUsd * 100)}`} source="Chat share (WIDGET_AI_SHARE); when used, the chat collects details" />
+        <Stat label="Owner features AI, this month" value={fx.text(u.ai.ownerUsd * 100)} source="Studio, Autopilot, designs and the rest" />
       </div>
     </>
   );

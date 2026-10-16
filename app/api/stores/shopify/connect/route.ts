@@ -1,16 +1,17 @@
 import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
 import { NextResponse } from "next/server";
-import { siteUrl } from "@/lib/auth/site-url";
+import { requestSiteUrl, secureCookies } from "@/lib/auth/request-site";
 import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { randomToken } from "@/lib/canva/pkce";
 import { prisma } from "@/lib/db";
+import { hasFeature, upgradeHref } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { RATE_LIMITS, rateLimit, RateLimitError } from "@/lib/rate-limit";
 import { buildAuthorizeUrl, isShopifyEnabled, normalizeShopDomain, shopifyConfig, verifyOAuthHmac } from "@/lib/stores/shopify";
 import { SHOPIFY_COOKIE, sealShopifyState } from "@/lib/stores/state";
 
-const back = (error: string) => NextResponse.redirect(new URL(`/dashboard/stores/shopify?error=${error}`, siteUrl()), 303);
+const back = async (error: string) => NextResponse.redirect(new URL(`/dashboard/stores/shopify?error=${error}`, await requestSiteUrl()), 303);
 const INSTALL_MAX_AGE_S = 15 * 60;
 
 async function start(shopInput: string | null) {
@@ -25,13 +26,15 @@ async function start(shopInput: string | null) {
   if (!shop) return back("invalid_shop");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (!business) return back("no_business");
+  // Store import is a plan feature: "Add to your plan" instead of Shopify's consent page.
+  if (!(await hasFeature(business.id, "storeImport"))) return NextResponse.redirect(new URL(upgradeHref("storeImport"), await requestSiteUrl()), 303);
   try {
     await rateLimit(`store-connect:${user.id}`, RATE_LIMITS.storeConnect);
     const state = randomToken(24);
     const response = NextResponse.redirect(buildAuthorizeUrl(shop, state), 303);
     response.cookies.set(SHOPIFY_COOKIE, await sealShopifyState({ state, shop, userId: user.id }), {
       httpOnly: true,
-      secure: siteUrl().startsWith("https://"),
+      secure: await secureCookies(),
       sameSite: "lax", // must come back on Shopify's redirect
       path: "/api/stores/shopify",
       maxAge: 600,
@@ -68,7 +71,7 @@ export async function POST(request: Request) {
   if (!isShopifyEnabled()) return new Response("Not found", { status: 404 });
   if (!(await isServiceEnabled("shopify"))) return new Response(UNAVAILABLE_MESSAGE, { status: 503 });
   const origin = request.headers.get("origin");
-  if (!origin || origin !== new URL(siteUrl()).origin) return back("invalid_request");
+  if (!origin || origin !== new URL(await requestSiteUrl()).origin) return back("invalid_request");
   const form = await request.formData().catch(() => null);
   const shop = form?.get("shop");
   return start(typeof shop === "string" ? shop : null);

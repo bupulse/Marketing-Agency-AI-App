@@ -1,7 +1,9 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { isFeatureKey, sortFeatureKeys, withPrerequisites, type FeatureKey } from "@/lib/features";
 import {
   CAPABILITIES,
+  CORE_FEATURES,
   SEATS_MAX,
   SEATS_MIN,
   SEED_PLANS,
@@ -11,6 +13,7 @@ import {
   type PlanLimits,
   type PlanStatus,
   type UsageMetric,
+  postsPerAppLimit,
 } from "@/lib/plans";
 import type { BillingInterval, BillingProvider } from "@/lib/generated/prisma/client";
 
@@ -31,8 +34,10 @@ export interface PlanView {
   yearlyPriceCents: number;
   currency: string;
   limits: PlanLimits;
-  features: string[];
-  capabilities: Record<Capability, boolean>;
+  /** Marketing bullets on the pricing card. */
+  highlights: string[];
+  /** What the plan unlocks (lib/features.ts), prerequisites included. Companies are checked through lib/entitlements.ts. */
+  features: FeatureKey[];
   paddleProductId: string | null;
   paddleMonthlyPriceId: string | null;
   paddleYearlyPriceId: string | null;
@@ -41,6 +46,10 @@ export interface PlanView {
   syncError: string | null;
   /** The row's last change, to detect two admins editing at once. Null for the built-in fallback. */
   updatedAt: Date | null;
+  /** A company's private plan made from an offer (docs/OFFERS.md): never sold to anyone else. */
+  isCustom: boolean;
+  /** The company a custom plan belongs to. */
+  businessId: string | null;
 }
 
 /** The part of a plan that is safe to send to the browser (no Paddle ids). */
@@ -51,11 +60,13 @@ export interface PublicPlan {
   isTrial: boolean;
   trialDays: number | null;
   highlight: boolean;
+  /** In the currency's smallest unit. For a region's prices see lib/region-prices.ts (RegionalPlan). */
   monthlyPriceCents: number;
   yearlyPriceCents: number;
+  currency: string;
   limits: PlanLimits;
-  features: string[];
-  capabilities: Record<Capability, boolean>;
+  highlights: string[];
+  features: FeatureKey[];
 }
 
 export function toPublic(p: PlanView): PublicPlan {
@@ -68,9 +79,10 @@ export function toPublic(p: PlanView): PublicPlan {
     highlight: p.highlight,
     monthlyPriceCents: p.monthlyPriceCents,
     yearlyPriceCents: p.yearlyPriceCents,
+    currency: p.currency,
     limits: p.limits,
+    highlights: p.highlights,
     features: p.features,
-    capabilities: p.capabilities,
   };
 }
 
@@ -90,7 +102,7 @@ export function resetPlanCache() {
 }
 
 export function cleanLimits(value: unknown, base?: PlanLimits): PlanLimits {
-  const out: PlanLimits = { ...(base ?? { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0, chat: 0, seats: SEATS_MIN }) };
+  const out: PlanLimits = { ...(base ?? { text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0, seats: SEATS_MIN }) };
   if (value && typeof value === "object") {
     for (const m of USAGE_METRICS) {
       const v = (value as Record<string, unknown>)[m];
@@ -98,18 +110,32 @@ export function cleanLimits(value: unknown, base?: PlanLimits): PlanLimits {
     }
     const seats = (value as Record<string, unknown>).seats;
     if (typeof seats === "number" && Number.isInteger(seats)) out.seats = Math.min(Math.max(seats, SEATS_MIN), SEATS_MAX);
+    const perApp = (value as Record<string, unknown>).postsPerAppPerDay;
+    if (typeof perApp === "number" && Number.isInteger(perApp)) out.postsPerAppPerDay = postsPerAppLimit({ postsPerAppPerDay: perApp });
+    const perDay = (value as Record<string, unknown>).videosPerDay;
+    if (typeof perDay === "number" && Number.isInteger(perDay) && perDay >= 0) out.videosPerDay = Math.min(perDay, 100);
   }
   return out;
 }
 
-function cleanCapabilities(value: unknown): Record<Capability, boolean> {
-  const out = Object.fromEntries(CAPABILITIES.map((c) => [c, false])) as Record<Capability, boolean>;
-  if (value && typeof value === "object") for (const c of CAPABILITIES) out[c] = (value as Record<string, unknown>)[c] === true;
-  return out;
+function cleanStrings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
-function cleanFeatures(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+/**
+ * The plan's feature keys. A row written by a build from before the plan_features migration has NULL in `featureKeys`
+ * (the column has no default): it gets what the migration gives such a plan (the core features plus the capabilities
+ * it had), so an older build's plans never lose anything. An array, even an empty one, is the plan's own list.
+ */
+function cleanFeatures(value: unknown, capabilities: unknown): FeatureKey[] {
+  if (Array.isArray(value)) return withPrerequisites(value.filter(isFeatureKey));
+  const caps = capabilities && typeof capabilities === "object" ? (capabilities as Record<string, unknown>) : {};
+  return withPrerequisites([...CORE_FEATURES, ...CAPABILITIES.filter((c) => caps[c] === true)]);
+}
+
+/** The legacy capabilities column, derived from the features so anything still reading it stays right. */
+export function capabilitiesOf(features: readonly FeatureKey[]): Record<Capability, boolean> {
+  return Object.fromEntries(CAPABILITIES.map((c) => [c, features.includes(c)])) as Record<Capability, boolean>;
 }
 
 function cleanPrices(value: unknown): PaddlePriceRecord[] {
@@ -135,9 +161,10 @@ export function viewOf(row: Row): PlanView {
     yearlyPriceCents: Number(row.yearlyPriceCents ?? 0),
     currency: String(row.currency ?? "USD"),
     // A plan saved before seats existed gets the seats it was seeded with (1 for plans created later).
-    limits: cleanLimits(row.limits, { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0, chat: 0, seats: SEED_PLANS[String(row.key)]?.limits.seats ?? SEATS_MIN }),
-    features: cleanFeatures(row.features),
-    capabilities: cleanCapabilities(row.capabilities),
+    limits: cleanLimits(row.limits, { text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0, seats: SEED_PLANS[String(row.key)]?.limits.seats ?? SEATS_MIN }),
+    // `highlights` replaced the old `features` bullets; a row from before the migration still has them there.
+    highlights: Array.isArray(row.highlights) ? cleanStrings(row.highlights) : cleanStrings(row.features),
+    features: sortFeatureKeys(cleanFeatures(row.featureKeys, row.capabilities)),
     paddleProductId: (row.paddleProductId as string | null) ?? null,
     paddleMonthlyPriceId: (row.paddleMonthlyPriceId as string | null) ?? null,
     paddleYearlyPriceId: (row.paddleYearlyPriceId as string | null) ?? null,
@@ -145,6 +172,8 @@ export function viewOf(row: Row): PlanView {
     syncState: sync,
     syncError: (row.syncError as string | null) ?? null,
     updatedAt: row.updatedAt instanceof Date ? row.updatedAt : null,
+    isCustom: row.isCustom === true,
+    businessId: typeof row.businessId === "string" ? row.businessId : null,
   };
 }
 
@@ -164,14 +193,14 @@ function seedViews(): PlanView[] {
       yearlyPriceCents: c.priceUsdYearly * 100,
       currency: "USD",
       limits: c.limits,
-      features: c.features,
-      capabilities: c.capabilities,
+      highlights: c.highlights,
+      featureKeys: c.features,
     }),
   );
 }
 
 /** Every plan (any status), in sort order. Cached for 30 s; on a database error the last good copy (or the seed plans) is used. */
-export async function getPlans(opts: { force?: boolean; now?: number } = {}): Promise<PlanView[]> {
+export async function getPlans(opts: { force?: boolean; now?: number; strict?: boolean } = {}): Promise<PlanView[]> {
   const now = opts.now ?? Date.now();
   if (!opts.force && lastGood && now - fetchedAt < TTL_MS) return lastGood;
   try {
@@ -180,7 +209,9 @@ export async function getPlans(opts: { force?: boolean; now?: number } = {}): Pr
     lastGood = rows.map(viewOf).sort((a, b) => a.sortOrder - b.sortOrder);
     fetchedAt = now;
     return lastGood;
-  } catch {
+  } catch (error) {
+    // `strict` (webhook price lookups): a database error must not look like "no such plan", so it is thrown.
+    if (opts.strict) throw error;
     // The database blinking must never stop generation or reset limits: keep the last good copy, and retry on the next call.
     return lastGood ?? seedViews();
   }
@@ -196,14 +227,14 @@ export async function getTrialPlan(): Promise<PlanView> {
   return plans.find((p) => p.isTrial) ?? seedViews().find((p) => p.isTrial)!;
 }
 
-/** Plans a new client can buy: active, not the trial, in sort order. */
+/** Plans a new client can buy: active, not the trial, not a company's custom plan, in sort order. */
 export async function getSellablePlans(): Promise<PlanView[]> {
-  return (await getPlans()).filter((p) => p.status === "active" && !p.isTrial);
+  return (await getPlans()).filter((p) => p.status === "active" && !p.isTrial && !p.isCustom);
 }
 
-/** A plan's capability. An unknown plan has none. */
-export async function planHasCapability(key: string, capability: Capability): Promise<boolean> {
-  return (await getPlan(key))?.capabilities[capability] === true;
+/** Whether a plan includes a feature. An unknown plan has none. Companies are checked through lib/entitlements.ts. */
+export async function planHasFeature(key: string, feature: FeatureKey): Promise<boolean> {
+  return (await getPlan(key))?.features.includes(feature) === true;
 }
 
 export async function getPlanLimits(key: string): Promise<PlanLimits> {
@@ -236,8 +267,8 @@ export async function priceIdFor(provider: BillingProvider, planKey: string, int
  * Which plan and interval a provider price id stands for, or null if it is not ours. Current ids and every old id in a
  * plan's price history count, so subscriptions still on an old price keep their plan.
  */
-export async function planForPriceId(provider: BillingProvider, priceId: string): Promise<{ plan: Plan; interval: BillingInterval } | null> {
-  const plans = await getPlans();
+export async function planForPriceId(provider: BillingProvider, priceId: string, opts: { strict?: boolean } = {}): Promise<{ plan: Plan; interval: BillingInterval } | null> {
+  const plans = await getPlans(opts.strict ? { force: true, strict: true } : {});
   for (const plan of plans) {
     for (const interval of ["MONTH", "YEAR"] as const) {
       if (currentPriceId(provider, plan, interval) === priceId) return { plan: plan.key, interval };

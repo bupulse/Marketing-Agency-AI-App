@@ -1,30 +1,57 @@
 name: Deploy
 
+# Cloudflare Workers. Netlify has its own workflow (deploy-netlify.yml); the repository variable DEPLOY_TARGET
+# (Settings, Secrets and variables, Actions, Variables) chooses which one a push to main deploys: unset or
+# "cloudflare" = this one, "netlify" = that one. The admin console starts the workflow of the host it runs on.
+#
 # Two ways in:
 # - every push to main deploys that commit (as before);
 # - "Run workflow" / the admin console's Settings, Updates page (workflow_dispatch) deploys a chosen release tag or
 #   commit, or rolls the Worker back to its previous version. See docs/UPDATES.md.
+# - The owner's signed zip (Updates, "Upload a version"): action deploy-zip installs it (verified again here with
+#   main's release key, database backed up before the migrations), action restore puts a kept Worker version back.
 
 on:
   # Push-to-deploy is off: the site is hosted on Netlify (netlify.toml). Run by hand to deploy to Cloudflare.
   workflow_dispatch:
     inputs:
       ref:
-        description: "Release tag or commit SHA to deploy (ignored for a rollback)"
+        description: "Release tag (vX.Y.Z) or full 40-character commit SHA on main (ignored for a rollback)"
         required: false
-        default: main
+        default: ""
         type: string
       action:
-        description: "deploy or rollback"
+        description: "deploy, rollback, deploy-zip (a signed zip from the console) or restore (a kept Worker version)"
         required: true
         default: deploy
         type: choice
-        options: [deploy, rollback]
-      environment:
-        description: "GitHub environment (its secrets and required reviewers apply)"
+        options: [deploy, rollback, deploy-zip, restore]
+      zip_path:
+        description: "deploy-zip: the zip's path in the private releases bucket (zips/<uuid>.zip)"
         required: false
-        default: production
+        default: ""
         type: string
+      zip_sha256:
+        description: "deploy-zip: the sha256 the console verified"
+        required: false
+        default: ""
+        type: string
+      release_id:
+        description: "deploy-zip and restore: the ReleaseVersion the outcome is written to"
+        required: false
+        default: ""
+        type: string
+      cf_version_id:
+        description: "restore: the Cloudflare Worker version to deploy again"
+        required: false
+        default: ""
+        type: string
+      environment:
+        description: "GitHub environment (its secrets and required reviewers apply). Production is the only one."
+        required: true
+        default: production
+        type: choice
+        options: [production]
 
 # One deploy at a time; a second request waits for the first (the console also refuses while one is running).
 concurrency:
@@ -36,33 +63,76 @@ permissions:
 
 jobs:
   deploy:
-    if: github.event_name == 'push' || inputs.action == 'deploy'
+    # A push deploys here unless the repository variable DEPLOY_TARGET is "netlify" (then deploy-netlify.yml does).
+    if: (github.event_name == 'push' && vars.DEPLOY_TARGET != 'netlify') || (github.event_name == 'workflow_dispatch' && inputs.action == 'deploy')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     # Supabase Free has no backup API to check, so the safety step is human: add required reviewers to this
     # environment (GitHub: Settings, Environments, production) and take a backup before approving. Pushes to main
     # also wait for that approval once reviewers are set.
-    environment: ${{ inputs.environment || 'production' }}
+    environment: production
     env:
       # Build-time values (public). Real runtime secrets live in Cloudflare.
       NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      # Inlined at build like every NEXT_PUBLIC_* value: the Chat on WhatsApp button (empty hides it).
+      NEXT_PUBLIC_WHATSAPP_NUMBER: ${{ vars.NEXT_PUBLIC_WHATSAPP_NUMBER }}
     steps:
-      - uses: actions/checkout@v4
+      # The workflow's own commit first (the pushed commit, or main for a manual start). A requested ref is checked
+      # before any of its code runs: only a vX.Y.Z tag or a full SHA, and only if it is on main's history, so a branch
+      # or an unreviewed commit can never be deployed with the production secrets (docs/UPDATES.md).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ inputs.ref || github.sha }}
-      - name: Record the commit being deployed
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check and check out the requested release
         id: build
         env:
-          REQUESTED: ${{ inputs.ref || github.sha }}
+          EVENT: ${{ github.event_name }}
+          REQUESTED: ${{ inputs.ref }}
         run: |
+          set -euo pipefail
+          # fetch-depth 0 already brought every branch and tag (origin/main included), so nothing is fetched here:
+          # the checkout keeps no credentials (persist-credentials: false), so no later step can read a GitHub token.
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null || { echo "::error::origin/main is missing from the checkout."; exit 1; }
+            if [[ "$REQUESTED" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              TARGET="$(git rev-parse --verify "refs/tags/$REQUESTED^{commit}")"
+            elif [[ "$REQUESTED" =~ ^[0-9a-f]{40}$ ]]; then
+              TARGET="$REQUESTED"
+              if ! git cat-file -e "$TARGET^{commit}" 2>/dev/null; then
+                echo "::error::Commit $TARGET was not found in the repository."
+                exit 1
+              fi
+            else
+              echo "::error::ref must be a release tag (vX.Y.Z) or a full 40-character commit SHA on main."
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$TARGET" origin/main; then
+              echo "::error::$REQUESTED is not on main. Only commits merged into main can be deployed."
+              exit 1
+            fi
+            git checkout --detach "$TARGET"
+          fi
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "Deploying $(git rev-parse HEAD) (requested: $REQUESTED)" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/setup-node@v4
+          echo "Deploying $(git rev-parse HEAD) (requested: ${REQUESTED:-$GITHUB_SHA})" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
+      # Production variables (scripts/check-env.mjs, names and problems only, never a value): the build values above and
+      # the migrations' DIRECT_URL, then the Worker's secrets in Cloudflare and the Hyperdrive id in wrangler.jsonc.
+      # Before `npm ci`, so the token is only ever in reach of this repository's own script, never of installed packages.
+      - name: Check the build variables
+        run: node scripts/check-env.mjs --build
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      - name: Check the Worker's secrets
+        run: node scripts/check-env.mjs --cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - run: npm ci
       - run: npx prisma generate --config prisma7.config.ts
         env:
@@ -73,7 +143,9 @@ jobs:
         env:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
 
-      - run: npx opennextjs-cloudflare build
+      # The OpenNext build with Prisma's query compiler as a .wasm module (scripts/cf-build.mjs, docs/DEPLOY.md).
+      # --keep: the checkout is thrown away, no need to generate the usual client again.
+      - run: node scripts/cf-build.mjs --keep
         env:
           BUILD_SHA: ${{ steps.build.outputs.sha }}
       - run: npx opennextjs-cloudflare deploy
@@ -86,10 +158,12 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: ${{ inputs.environment || 'production' }}
+    environment: production
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -102,3 +176,169 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - run: echo "Rolled the Worker back to its previous version. Database migrations were not changed." >> "$GITHUB_STEP_SUMMARY"
+
+  # A signed zip uploaded by the owner (docs/UPDATES.md, "Install from a zip"). Main's checkout verifies it first (the
+  # release key in main's scripts/release-public-key.mjs, the sha256 the console checked, every path); only then does
+  # any of its code run. The database is backed up before the migrations; a failure anywhere leaves the live Worker
+  # as it is and marks the version failed.
+  deploy-zip:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'deploy-zip'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      NEXT_PUBLIC_WHATSAPP_NUMBER: ${{ vars.NEXT_PUBLIC_WHATSAPP_NUMBER }}
+      RELEASE_PUBLIC_KEY: ${{ vars.RELEASE_PUBLIC_KEY }}
+      ZIP_PATH: ${{ inputs.zip_path }}
+      ZIP_SHA256: ${{ inputs.zip_sha256 }}
+      RELEASE_ID: ${{ inputs.release_id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Check the request
+        run: |
+          set -euo pipefail
+          [[ "$ZIP_PATH" =~ ^zips/[0-9a-f-]{36}\.zip$ ]] || { echo "::error::zip_path is malformed."; exit 1; }
+          [[ "$ZIP_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::zip_sha256 is malformed."; exit 1; }
+          [[ "$RELEASE_ID" =~ ^c[a-z0-9]{20,32}$ ]] || { echo "::error::release_id is malformed."; exit 1; }
+      - name: Install the PostgreSQL 17 client (backup and status updates)
+        run: |
+          set -euo pipefail
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
+          sudo apt-get install -y -q postgresql-client-17 >/dev/null
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+      - name: Download the zip and its signed manifest
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          curl -fsS -o release.zip -H "Authorization: Bearer $SUPABASE_SECRET_KEY" -H "apikey: $SUPABASE_SECRET_KEY" "$NEXT_PUBLIC_SUPABASE_URL/storage/v1/object/releases/$ZIP_PATH"
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -v id="$RELEASE_ID" -At > release.sig <<'SQL'
+          SELECT "manifest"::text FROM "ReleaseVersion" WHERE "id" = :'id';
+          SQL
+          test -s release.sig || { echo "::error::No such release."; exit 1; }
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -v id="$RELEASE_ID" -q <<'SQL'
+          UPDATE "ReleaseVersion" SET "status" = 'installing', "error" = NULL, "updatedAt" = now() WHERE "id" = :'id';
+          SQL
+      # Main's code and main's key: the zip has not run anything yet.
+      - name: Verify the signature, the hash and every path, then unpack
+        id: release
+        run: node scripts/verify-release.mjs release.zip release.sig "$ZIP_SHA256" release-src | tee -a "$GITHUB_OUTPUT"
+      - name: Check the build variables
+        working-directory: release-src
+        run: node scripts/check-env.mjs --build
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      - name: Check the Worker's secrets
+        working-directory: release-src
+        run: node scripts/check-env.mjs --cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - working-directory: release-src
+        run: npm ci
+      - working-directory: release-src
+        run: npx prisma generate --config prisma7.config.ts
+        env:
+          DATABASE_URL: ${{ secrets.DIRECT_URL }}
+      # The build before the migrations: a release that does not build never touches the database.
+      - working-directory: release-src
+        run: node scripts/cf-build.mjs --keep
+        env:
+          BUILD_SHA: ${{ steps.release.outputs.commit }}
+      - name: Back up the database (kept 30 days in the private releases bucket)
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          pg_dump "$DIRECT_URL" --schema=public --no-owner --no-privileges -Fc -f backup.dump
+          BACKUP="backups/$RELEASE_ID-$(date -u +%Y%m%dT%H%M%SZ).dump"
+          curl -fsS -X POST -H "Authorization: Bearer $SUPABASE_SECRET_KEY" -H "apikey: $SUPABASE_SECRET_KEY" -H "Content-Type: application/octet-stream" --data-binary @backup.dump "$NEXT_PUBLIC_SUPABASE_URL/storage/v1/object/releases/$BACKUP"
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -v id="$RELEASE_ID" -v backup="$BACKUP" -q <<'SQL'
+          UPDATE "ReleaseVersion" SET "backupPath" = :'backup', "updatedAt" = now() WHERE "id" = :'id';
+          SQL
+          echo "Database backed up to releases/$BACKUP" >> "$GITHUB_STEP_SUMMARY"
+      - working-directory: release-src
+        run: npx prisma migrate deploy --config prisma7.config.ts
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      - working-directory: release-src
+        run: npx opennextjs-cloudflare deploy
+        env:
+          BUILD_SHA: ${{ steps.release.outputs.commit }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Record the installed version
+        working-directory: release-src
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          CF_VERSION="$(npx wrangler deployments status --name bupulse --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const m=s.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);process.stdout.write(m?m[0]:"")})' || true)"
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -v id="$RELEASE_ID" -v cf="$CF_VERSION" -q <<'SQL'
+          UPDATE "ReleaseVersion" SET "status" = 'superseded', "updatedAt" = now() WHERE "status" = 'installed' AND "id" <> :'id';
+          UPDATE "ReleaseVersion" SET "status" = 'installed', "installedAt" = now(), "cloudflareVersionId" = NULLIF(:'cf', ''), "error" = NULL, "updatedAt" = now() WHERE "id" = :'id';
+          SQL
+          echo "Installed ${{ steps.release.outputs.version }} (Worker version ${CF_VERSION:-unknown})." >> "$GITHUB_STEP_SUMMARY"
+      - name: Mark the version failed
+        if: failure()
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          psql "$DIRECT_URL" -v id="$RELEASE_ID" -v run="${{ github.run_id }}" -q <<'SQL' || true
+          UPDATE "ReleaseVersion" SET "status" = 'failed', "error" = 'The install failed (GitHub run ' || :'run' || '); the live site was not changed unless the deploy step had finished.', "updatedAt" = now() WHERE "id" = :'id' AND "status" = 'installing';
+          SQL
+
+  # Puts a Worker version kept by Cloudflare back (Updates, Restore). No build, no migration; database changes made
+  # since are not undone.
+  restore:
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'restore'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      CF_VERSION_ID: ${{ inputs.cf_version_id }}
+      RELEASE_ID: ${{ inputs.release_id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Check the request
+        run: |
+          set -euo pipefail
+          [[ "$CF_VERSION_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || { echo "::error::cf_version_id is malformed."; exit 1; }
+          [[ "$RELEASE_ID" =~ ^c[a-z0-9]{20,32}$ ]] || { echo "::error::release_id is malformed."; exit 1; }
+      - run: npm ci
+      - run: mkdir -p .open-next/assets
+      - name: Deploy the kept Worker version
+        run: npx wrangler versions deploy "$CF_VERSION_ID@100%" --name bupulse --yes --message "Restore from the admin console (run ${{ github.run_id }})"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Record the restore
+        env:
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: |
+          set -euo pipefail
+          psql "$DIRECT_URL" -v ON_ERROR_STOP=1 -v id="$RELEASE_ID" -q <<'SQL'
+          UPDATE "ReleaseVersion" SET "status" = 'superseded', "updatedAt" = now() WHERE "status" = 'installed' AND "id" <> :'id';
+          UPDATE "ReleaseVersion" SET "status" = 'installed', "installedAt" = now(), "error" = NULL, "updatedAt" = now() WHERE "id" = :'id';
+          SQL
+          echo "Restored Worker version $CF_VERSION_ID. Database changes were not undone." >> "$GITHUB_STEP_SUMMARY"

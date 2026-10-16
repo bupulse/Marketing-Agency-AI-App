@@ -2,7 +2,8 @@ import "server-only";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { recordServiceUse } from "@/lib/admin/usage-counter";
 
-export type Email = { to: string; subject: string; html: string; text: string };
+/** `attachments` are base64 file bodies (Resend's shape), used for the demo calendar invites. */
+export type Email = { to: string; subject: string; html: string; text: string; attachments?: { filename: string; content: string }[] };
 
 const DEFAULT_FROM = "BuPulse <register@bupulse.com>";
 
@@ -39,6 +40,7 @@ async function deliver(email: Email): Promise<boolean> {
         subject: email.subject,
         html: email.html,
         text: email.text,
+        ...(email.attachments?.length ? { attachments: email.attachments } : {}),
       }),
     });
     if (!response.ok) {
@@ -62,10 +64,16 @@ export function renderEmail(args: {
   intro: string;
   blocks?: { label: string; value: string }[];
   links?: { label: string; url: string }[];
+  /** Heading over `links` (the reminder emails list their images). */
+  linksLabel?: string;
   button?: { label: string; url: string };
+  /** A second button beside the first, e.g. "Reply on WhatsApp" (green). */
+  secondButton?: { label: string; url: string; color?: string };
   footer?: string;
 }): { html: string; text: string } {
-  const { heading, intro, blocks = [], links = [], button, footer } = args;
+  const { heading, intro, blocks = [], links = [], linksLabel = "Images", button, secondButton, footer } = args;
+  const buttonHtml = (b: { label: string; url: string }, color: string) =>
+    `<a href="${escapeHtml(b.url)}" style="display:inline-block;margin:0 8px 8px 0;background:${escapeHtml(color)};color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:13px 22px;border-radius:24px">${escapeHtml(b.label)}</a>`;
   const html = `<!doctype html><html><body style="margin:0;background:#f5f5f7;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1d1d1f">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:20px;padding:28px">
@@ -78,8 +86,8 @@ ${blocks
       `<p style="margin:0 0 6px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#6e6e73">${escapeHtml(b.label)}</p><div style="margin:0 0 18px;padding:14px 16px;background:#f5f5f7;border-radius:12px;font-size:15px;line-height:1.5;white-space:pre-wrap;word-break:break-word">${escapeHtml(b.value)}</div>`,
   )
   .join("")}
-${links.length ? `<p style="margin:0 0 6px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#6e6e73">Images</p><p style="margin:0 0 18px;font-size:15px;line-height:1.7">${links.map((l) => `<a href="${escapeHtml(l.url)}" style="color:#2f6bff">${escapeHtml(l.label)}</a>`).join("<br>")}</p>` : ""}
-${button ? `<p style="margin:8px 0 4px"><a href="${escapeHtml(button.url)}" style="display:inline-block;background:#2f6bff;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:13px 22px;border-radius:24px">${escapeHtml(button.label)}</a></p>` : ""}
+${links.length ? `<p style="margin:0 0 6px;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#6e6e73">${escapeHtml(linksLabel)}</p><p style="margin:0 0 18px;font-size:15px;line-height:1.7">${links.map((l) => `<a href="${escapeHtml(l.url)}" style="color:#2f6bff">${escapeHtml(l.label)}</a>`).join("<br>")}</p>` : ""}
+${button || secondButton ? `<p style="margin:8px 0 4px">${button ? buttonHtml(button, "#2f6bff") : ""}${secondButton ? buttonHtml(secondButton, secondButton.color ?? "#2f6bff") : ""}</p>` : ""}
 ${footer ? `<p style="margin:20px 0 0;font-size:13px;line-height:1.5;color:#6e6e73">${escapeHtml(footer)}</p>` : ""}
 </td></tr></table></td></tr></table></body></html>`;
   const text = [
@@ -87,8 +95,9 @@ ${footer ? `<p style="margin:20px 0 0;font-size:13px;line-height:1.5;color:#6e6e
     "",
     intro,
     ...blocks.flatMap((b) => ["", `${b.label.toUpperCase()}`, b.value]),
-    ...(links.length ? ["", "IMAGES", ...links.map((l) => `${l.label}: ${l.url}`)] : []),
+    ...(links.length ? ["", linksLabel.toUpperCase(), ...links.map((l) => `${l.label}: ${l.url}`)] : []),
     ...(button ? ["", `${button.label}: ${button.url}`] : []),
+    ...(secondButton ? [...(button ? [] : [""]), `${secondButton.label}: ${secondButton.url}`] : []),
     ...(footer ? ["", footer] : []),
   ].join("\n");
   return { html, text };

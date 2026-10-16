@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { PageLoaderLayer, PageLoaderScript } from "@/components/page-loader";
 import { ThemeProvider, ThemeScript } from "@/components/theme";
 import { ToastProvider } from "@/components/ui/toast";
 import "./globals.css";
@@ -30,6 +31,9 @@ export const metadata: Metadata = {
     url: "/",
   },
   twitter: { card: "summary_large_image", title: "BuPulse", description },
+  // A static file (public/icon.png), served by Cloudflare's assets: as app/icon.png it was a route inside the Worker
+  // (about 60 KB gzipped of the 10 MiB budget, docs/DEPLOY.md "Worker size").
+  icons: { icon: [{ url: "/icon.png", type: "image/png", sizes: "256x256" }] },
 };
 
 export const viewport: Viewport = {
@@ -49,9 +53,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <head>
         <ThemeScript />
+        <PageLoaderScript />
       </head>
       <body className="flex min-h-full flex-col bg-bg text-text">
         <ThemeProvider>
+          <PageLoaderLayer />
           <ToastProvider>{children}</ToastProvider>
         </ThemeProvider>
       </body>

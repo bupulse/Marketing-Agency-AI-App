@@ -58,7 +58,7 @@ async function run(request: Request, path: string[], method: "GET" | "POST") {
   const auth = await authenticateAdminRequest(request);
   if (!auth.ok) return auth.response;
   try {
-    if (path.length === 1 && path[0] === "tools" && method === "GET") return ok({ tools: listTools() });
+    if (path.length === 1 && path[0] === "tools" && method === "GET") return ok({ tools: listTools(auth.ctx) });
     if (path[0] === "tools" && path.length === 2) {
       const name = path[1];
       if (!findTool(name)) throw new AdminError("not_found", `Unknown tool "${name}".`);

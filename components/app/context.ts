@@ -4,11 +4,13 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { ensureAccount } from "@/lib/account";
 import { getCurrentUser } from "@/lib/supabase/server";
+import { companyEntitlements } from "@/lib/entitlements";
 import { getUsageSummary } from "@/lib/usage";
 import { createSignedDownloadUrl } from "@/lib/storage";
 import { getVoice } from "@/lib/brand/voices";
 import { resolveCompany } from "@/lib/team/company";
 import { can, type Role } from "@/lib/team/roles";
+import { heartbeat } from "@/lib/staff/heartbeat";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -35,12 +37,19 @@ export const getAppContext = cache(async () => {
   // organisation details first, then everyone completes the brand onboarding.
   const account = await prisma.user.findUnique({ where: { id: user.id }, select: { deletionScheduledFor: true, suspendedAt: true, name: true } });
   if (account?.suspendedAt || company?.ownerSuspended) redirect("/suspended");
+  heartbeat(user.id); // "active now" on the sales room TV: throttled, after the response, never fails the page
   if (account?.deletionScheduledFor || company?.ownerDeleting) redirect("/account/deletion");
   // First-time setup belongs to the owner or an admin; a teammate who arrives early waits.
   const setupDone = Boolean(business?.detailsCompletedAt && business.onboardedAt);
   if (!setupDone && company && !can(company.role, "settings")) redirect("/account/waiting");
   if (!business?.detailsCompletedAt) redirect("/welcome");
   if (!business.onboardedAt) redirect("/onboarding");
+  // Demo first (docs/REGIONS.md): a new company chooses a plan and books a demo before the dashboard opens. Until an
+  // admin starts the trial, the dashboard layout shows only the demo (components/app/demo-lock.tsx).
+  const pendingDemo = usage.subscription.status === "PENDING_DEMO";
+  if (pendingDemo && !usage.subscription.chosenPlan && (!company || can(company.role, "settings"))) redirect("/book-demo");
+  // What the plan unlocks (lib/entitlements.ts): the sidebar and featureGate read it; actions and routes check again.
+  const entitlements = await companyEntitlements(business.id);
 
   const meta = user.user_metadata as { full_name?: string; name?: string } | undefined;
   // The name saved in Settings wins; Google sign-ups start with their Google name.
@@ -76,8 +85,11 @@ export const getAppContext = cache(async () => {
     business,
     businessName: business?.name ?? "My business",
     usage,
+    entitlements,
     isTrial,
     trialDaysLeft,
+    pendingDemo,
+    chosenPlan: usage.subscription.chosenPlan ?? null,
     logoUrl,
     brandColors: business.brandColors,
     voiceLabel: getVoice(business.tone)?.label ?? null,

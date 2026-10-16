@@ -1,7 +1,11 @@
 import "server-only";
 import type { BillingProvider, Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { planForPriceId } from "@/lib/plan-catalog";
+import { planForAnyPriceId } from "@/lib/region-prices";
+import { logError } from "@/lib/errors";
+import { AdminError } from "@/lib/admin/types";
+import { addMonths } from "./period";
+import { tooEarlyToRenew } from "./renewal";
 import { verifyCheckoutUser } from "./signing";
 import type { ProviderSubscription } from "./types";
 
@@ -22,24 +26,36 @@ const LIVE = new Set(["ACTIVE", "PAST_DUE", "TRIALING"]);
  * after actions (cancel/resume/change). Upgrading from the trial ends the trial: paid starts now.
  */
 export async function applyProviderSubscription(provider: BillingProvider, sub: ProviderSubscription): Promise<ApplyOutcome> {
-  const match = await planForPriceId(provider, sub.providerPriceId);
+  const match = await planForAnyPriceId(provider, sub.providerPriceId, { strict: true });
   if (!match) return "unknown_price";
 
   // The owner is whoever already holds this subscription id (set by us earlier). Otherwise the
   // user id from checkout, but only when the server's signature proves we put it there.
   let row = await prisma.subscription.findFirst({
     where: { providerSubscriptionId: sub.providerSubscriptionId },
-    select: { userId: true, providerSubscriptionId: true, status: true },
+    select: { userId: true, plan: true, providerSubscriptionId: true, status: true, provider: true, currentPeriodEnd: true },
   });
   if (!row && sub.userId && (await verifyCheckoutUser(sub.userId, sub.userIdSignature))) {
     row = await prisma.subscription.findUnique({
       where: { userId: sub.userId },
-      select: { userId: true, providerSubscriptionId: true, status: true },
+      select: { userId: true, plan: true, providerSubscriptionId: true, status: true, provider: true, currentPeriodEnd: true },
     });
   }
   if (!row) return "unknown_user";
 
   const sameSubscription = row.providerSubscriptionId === sub.providerSubscriptionId;
+  // A paid-up Mobile Money plan (no provider subscription id, ACTIVE, period not over) is not ended by a late event of
+  // an old card subscription, and a new live card subscription on top of it is a duplicate, like a second card
+  // purchase. Once the MoMo period is over or past due, a new card subscription simply replaces it.
+  // In the plan's last RENEWAL_WINDOW_DAYS days, a new card subscription is the client's renewal by card ("Renew with card",
+  // docs/BILLING.md): it takes over, and its first renewal is moved by the days still paid by Mobile Money (carry-over).
+  const momoPaidUp = row.provider === "MANUAL_MOMO" && row.status === "ACTIVE" && row.currentPeriodEnd !== null && row.currentPeriodEnd > new Date();
+  let carryFrom: Date | null = null;
+  if (!sameSubscription && momoPaidUp) {
+    if (!LIVE.has(sub.status)) return "stale";
+    if (tooEarlyToRenew({ ...row, cancelAtPeriodEnd: false })) return "duplicate";
+    carryFrom = row.currentPeriodEnd;
+  }
   if (!sameSubscription && row.providerSubscriptionId) {
     // The account holds another subscription. Only a live new one may replace one that has ended
     // (re-subscribing after cancelling). Anything else must not touch the current plan.
@@ -47,9 +63,16 @@ export async function applyProviderSubscription(provider: BillingProvider, sub: 
     if (!LIVE.has(sub.status)) return "stale";
   }
 
+  // Features added to a card plan (docs/OFFERS.md): the recurring items next to the plan's price say which change of the
+  // card plan it is on (its custom plan, or the plan's own once the last added feature is removed), and the first event
+  // that carries a change switches it and settles it. A plan change ends them with their items.
+  // Asked only when there is something to tell: added items on it, or a custom plan on it now (the last one removed).
+  const cardItems = provider === "PADDLE" && (sub.addons?.length || row.plan?.startsWith("CUSTOM-")) ? await import("@/lib/offers/card-plan-items") : null;
+  const addon = cardItems ? await cardItems.cardAddonPlan(row.userId, sub, match.plan) : null;
+
   const data: Prisma.SubscriptionUncheckedUpdateManyInput = {
     provider,
-    plan: match.plan,
+    plan: addon?.planKey ?? match.plan,
     interval: match.interval,
     status: sub.status,
     providerSubscriptionId: sub.providerSubscriptionId,
@@ -64,15 +87,45 @@ export async function applyProviderSubscription(provider: BillingProvider, sub: 
 
   // One conditional write: it only lands if nobody changed the subscription id meanwhile and this
   // update is not older than the one stored, so concurrent webhooks can't leave an older state.
-  const { count } = await prisma.subscription.updateMany({
-    where: {
-      userId: row.userId,
-      providerSubscriptionId: row.providerSubscriptionId,
-      ...(sameSubscription && sub.updatedAt
-        ? { OR: [{ providerUpdatedAt: null }, { providerUpdatedAt: { lte: sub.updatedAt } }] }
-        : {}),
-    },
-    data,
-  });
+  const where: Prisma.SubscriptionWhereInput = {
+    userId: row.userId,
+    providerSubscriptionId: row.providerSubscriptionId,
+    ...(sameSubscription && sub.updatedAt
+      ? { OR: [{ providerUpdatedAt: null }, { providerUpdatedAt: { lte: sub.updatedAt } }] }
+      : {}),
+  };
+  const settle = addon?.settle ?? null;
+  let count: number;
+  if (!settle || !cardItems) {
+    ({ count } = await prisma.subscription.updateMany({ where, data }));
+  } else {
+    // The card plan change (added features paid, or a feature removed) is settled with the same write, once. The API
+    // answer and the webhook may race: the loser of the change's conditional write finds it settled and only writes the plan.
+    const write = (settleChange: boolean) =>
+      prisma.$transaction(async (tx) => {
+        const written = await tx.subscription.updateMany({ where, data });
+        if (written.count > 0 && settleChange) await cardItems.settleCardPlanChangeInTx(tx, settle, sub.providerSubscriptionId, new Date());
+        return written.count;
+      });
+    try {
+      count = await write(true);
+    } catch (error) {
+      if (!(error instanceof AdminError && error.code === "conflict")) throw error;
+      count = await write(false);
+    }
+  }
+  // The card renewal of a Mobile Money plan: its first charge moves to one period after the days paid by Mobile Money
+  // (`do_not_bill`). Recorded first and retried by the daily job when the provider fails (lib/billing/carry-over.ts).
+  if (count > 0 && carryFrom) {
+    const nextBilledAt = addMonths(carryFrom, match.interval === "YEAR" ? 12 : 1);
+    if (!sub.currentPeriodEnd || sub.currentPeriodEnd.getTime() < nextBilledAt.getTime()) {
+      try {
+        const { carryOverMomoDays } = await import("./carry-over");
+        await carryOverMomoDays({ provider, providerSubscriptionId: sub.providerSubscriptionId, userId: row.userId, nextBilledAt });
+      } catch (error) {
+        await logError(error, { source: "billing.carry_over", providerSubscriptionId: sub.providerSubscriptionId, nextBilledAt: nextBilledAt.toISOString() });
+      }
+    }
+  }
   return count > 0 ? "applied" : "stale";
 }

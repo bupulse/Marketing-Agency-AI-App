@@ -1,16 +1,27 @@
 // Runs Autopilot for a business: plans the week, writes each post group (1 text credit each),
 // draws its images, and saves the posts. Safe to call twice: one run per business and week.
 import "server-only";
+import { autoSchedule } from "@/lib/content-board/auto";
+import { byHandNetwork } from "@/lib/content-board/by-hand";
 import { prisma } from "@/lib/db";
+import { hasShortRequestLimit } from "@/lib/platform/limits";
+import { industryContext } from "@/lib/industry-context";
+import { profileContext } from "@/lib/knowledge/context";
+import { writerKnowledge } from "@/lib/knowledge/writer-context";
 import { getTextProvider } from "@/lib/ai";
 import { withLedger } from "@/lib/ai/ledger";
-import { AIBudgetExceededError } from "@/lib/ai/budget";
+import { AIBudgetExceededError, COMPANY_ALLOWANCE_MESSAGE, CompanyBudgetExceededError } from "@/lib/ai/budget";
 import { isServiceEnabled, ServiceDisabledError, textAiService } from "@/lib/admin/switch";
+import { FeatureRequiredError, featureStatus, hasFeature } from "@/lib/entitlements";
 import { AIProviderError } from "@/lib/ai/types";
 import { readKnowledge } from "@/lib/brand/schemas";
+import { knowledgeFacts } from "@/lib/business-info/facts";
 import { logError } from "@/lib/errors";
 import { Prisma } from "@/lib/generated/prisma/client";
-import { makeGroupImages, aspectFor } from "./images";
+import { aspectFor } from "./images";
+import { makeGroupVisuals, newRunState } from "./visuals";
+import { mediaForPost } from "@/lib/visuals/post-media";
+import { audienceFor, videoAvailable } from "@/lib/visuals/service";
 import { noopTrendSource, type TrendSource } from "./learning";
 import { alertRecipients } from "@/lib/team/recipients";
 import { sendReadyEmail } from "./notify";
@@ -21,6 +32,8 @@ import { consumeUsage, refundUsage, UsageLimitError } from "@/lib/usage";
 import { getProvider } from "@/lib/social/registry";
 import { localDateISO, nextWeekStart, safeZone, weekdayOfISO, weekKey, weekStartFromKey } from "./timezone";
 import { writeGroup, type WriteRequest, type WriterBrand } from "./writer";
+import { planAutopilotAngles } from "@/lib/content-flow/autopilot";
+import type { AutopilotAngle } from "@/lib/content-flow/autopilot";
 
 export type RunStatus = "planned" | "already_planned" | "nothing_to_plan" | "no_credits" | "failed";
 
@@ -69,9 +82,10 @@ async function claimRun(businessId: string, key: Date, now: Date): Promise<{ id:
   return count === 1 ? { id: run.id } : null;
 }
 
-function factsFor(group: PlannedGroup) {
+function factsFor(group: PlannedGroup, angle?: AutopilotAngle) {
   return {
-    project: group.project && { type: group.project.type, title: group.project.title, price: group.project.price, features: group.project.features, notes: group.project.notes },
+    angle,
+    project: group.project && { type: group.project.type, title: group.project.title, price: group.project.price, features: group.project.features, notes: group.project.notes, context: group.project.context },
     faq: group.faq,
     holiday: group.holiday ? { name: group.holiday.name, date: group.holiday.date } : undefined,
     date: group.day,
@@ -101,12 +115,17 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
   const now = options.now ?? new Date();
   const business = await prisma.business.findUnique({
     where: { id: businessId },
-    include: { autopilot: true, user: { select: { id: true, email: true, deletionScheduledFor: true, suspendedAt: true } } },
+    include: { autopilot: true, industryRef: true, user: { select: { id: true, email: true, deletionScheduledFor: true, suspendedAt: true } } },
   });
   if (!business) return { status: "nothing_to_plan", postCount: 0, groupCount: 0, note: "We could not find your business." };
 
   // Accounts waiting to be deleted, or suspended by the admin, are left alone (before the week is claimed).
   if (business.user.deletionScheduledFor || business.user.suspendedAt) return { status: "nothing_to_plan", postCount: 0, groupCount: 0 };
+
+  // Autopilot is a plan feature: a company without it is left alone (the cron skips it, the button explains). While
+  // the plan cannot be checked, the same: nothing is claimed, so it plans normally once the catalog is back.
+  const autopilot = await featureStatus(businessId, "autopilot");
+  if (autopilot !== "ok") return { status: "nothing_to_plan", postCount: 0, groupCount: 0, note: new FeatureRequiredError("autopilot", autopilot).message };
 
   // AI switched off in the admin console: wait, without claiming the week, so it plans normally once it is back.
   if (!(await isServiceEnabled(textAiService()))) return { status: "nothing_to_plan", postCount: 0, groupCount: 0, note: "Autopilot is paused for a short while. Please try again later." };
@@ -136,19 +155,28 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
     const brand: WriterBrand = {
       businessName: business.name,
       industry: business.industry,
+      industryContext: industryContext(business),
+      profile: profileContext(business.profile),
+      ...(await writerKnowledge(business.id)),
       description: business.description,
       audience: business.audience,
       tone: business.tone,
       website: business.website,
       contentLanguage: business.contentLanguage,
-      knowledge,
+      knowledge: knowledgeFacts(knowledge),
       ownerName: business.ceoName,
       country: business.country,
     };
     const trendSource = options.trends ?? noopTrendSource;
 
+    // AI photos are their own plan feature; without it Autopilot draws the free templates only.
+    const aiPhotos = await hasFeature(businessId, "aiPhotos");
+    // Video ideas get a video plan (made in the owner's browser) when the plan has video.
+    const videoAllowed = await videoAvailable(businessId);
+    const audience = await audienceFor(businessId);
+    const visualRun = newRunState();
     let aiStopped = false;
-    const state: { stop: "credits" | "budget" | null } = { stop: null };
+    const state: { stop: "credits" | "budget" | "allowance" | null } = { stop: null };
     let postCount = 0;
     let groupCount = 0;
 
@@ -179,7 +207,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
       try {
         const targets = group.networks.map((network) => ({ network, format: group.posts.find((p) => p.network === network)!.format }));
         const trends = (await trendSource.trends({ network: targets[0].network, country: business.country, industry: business.industry }).catch(() => [])).slice(0, 3);
-        const request: WriteRequest = { brand, idea: group.idea, facts: { ...factsFor(group), trends }, targets };
+        const request: WriteRequest = { brand, idea: group.idea, facts: { ...factsFor(group, angles.get(group.groupId)), trends }, targets };
         const written = await withLedger(
           { userId, businessId, feature: "autopilot" },
           { provider: configured, model: configuredModel(configured) },
@@ -187,7 +215,14 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
           (r) => ({ provider: r.provider, model: r.model, usage: r.usage }),
         );
 
-        const images = await makeGroupImages(group, written.image, { userId, businessId, businessName: business.name, language: business.contentLanguage, useAiImages: input.config.useAiImages && !aiStopped, service: options.service ?? false }, { aiStopped });
+        // Gallery first: a video idea about a product or campaign with its own album video posts that video as it is.
+        const albumVideo = group.project?.videoPaths?.[0] ?? null;
+        const images = await makeGroupVisuals(
+          group,
+          written,
+          { userId, businessId, businessName: business.name, language: business.contentLanguage, useAiImages: input.config.useAiImages && aiPhotos && !aiStopped, service: options.service ?? false, business: { name: business.name, tone: business.tone, industry: business.industry, brandColors: business.brandColors }, videoAllowed: videoAllowed && !albumVideo, audience },
+          visualRun,
+        );
         if (images.aiStopped) aiStopped = true;
         for (const note of images.notes) if (!notes.includes(note)) notes.push(note);
 
@@ -195,23 +230,32 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
           const version = written.versions.find((v) => v.network === planned.network);
           if (!version) return [];
           const design = images.designs[aspectFor(planned.network)];
+          const rules = getProvider(planned.network).rules;
+          // A carousel the art director made goes on every feed post whose network has carousels.
+          const fromCarousel = images.carousel && (planned.format === "POST" || planned.format === "CAROUSEL") ? mediaForPost({ network: planned.network, format: planned.format, rules, images: images.carousel, video: null }) : null;
           const extras = planned.format === "CAROUSEL" ? group.photos.slice(1).map((p) => p.path) : [];
-          const mediaPaths = planned.format === "SCRIPT" || planned.format === "ARTICLE" ? [] : [...(design ? [design] : []), ...extras].slice(0, getProvider(planned.network).rules.maxImages || 10);
-          const format = planned.format === "CAROUSEL" && mediaPaths.length < 2 ? "POST" : planned.format;
+          const fromVideo = albumVideo && planned.format === "SCRIPT" ? mediaForPost({ network: planned.network, format: "SCRIPT", rules, images: [], video: albumVideo }) : null;
+          const mediaPaths = fromVideo?.mediaPaths ?? fromCarousel?.mediaPaths ?? (planned.format === "SCRIPT" || planned.format === "ARTICLE" ? [] : [...(design ? [design] : []), ...extras].slice(0, rules.maxImages || 10));
+          const format = fromVideo?.format ?? fromCarousel?.format ?? (planned.format === "CAROUSEL" && mediaPaths.length < 2 ? "POST" : planned.format);
           // Networks that need a picture cannot publish without one: leave it as a draft to finish.
           const needsPicture = getProvider(planned.network).rules.requiresMedia && format !== "SCRIPT" && mediaPaths.length === 0;
           return [
             {
               businessId,
-              connectionId: planned.connectionId,
+              // An app chosen while not connected ("network:<app>"): no account, a reminder to post it yourself.
+              connectionId: byHandNetwork(planned.connectionId) ? null : planned.connectionId,
+              remindOnly: byHandNetwork(planned.connectionId) !== null,
               network: planned.network,
               groupId: group.groupId,
-              projectId: group.project?.id ?? null,
+              productId: group.project && group.project.subject !== "campaign" ? group.project.id : null,
+              campaignId: group.project?.subject === "campaign" ? group.project.id : null,
               status: needsPicture ? ("DRAFT" as const) : autoPublish ? ("SCHEDULED" as const) : ("PENDING_APPROVAL" as const),
               format,
               source: "AUTOPILOT" as const,
               title: version.title,
-              text: version.text,
+              // A feed video post no video is made for (no video in the plan, or the album's own) is the script to
+              // film, with its caption.
+              text: format === "SCRIPT" && version.videoScript && !(videoAllowed && !albumVideo) && !fromVideo ? `${version.videoScript}\n\nCaption: ${version.text}` : version.text,
               hashtags: version.hashtags,
               mediaPaths,
               scheduledAt: planned.scheduledAt,
@@ -229,7 +273,7 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
         await prisma.autopilotRun.update({ where: { id: runId }, data: { postCount } });
       } catch (error) {
         if (error instanceof AIBudgetExceededError || error instanceof ServiceDisabledError) {
-          state.stop = "budget";
+          state.stop = error instanceof CompanyBudgetExceededError ? "allowance" : "budget";
           return;
         }
         await logError(error, { source: "autopilot.group", userId, businessId, idea: group.idea.id, level: error instanceof AIProviderError ? "warn" : "error" });
@@ -239,6 +283,9 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
         if (!finished) await refundUsage(userId, "text", reservation.periodStart).catch((e) => logError(e, { source: "autopilot.refund", userId, businessId }));
       }
     };
+
+    // The next angle per product or campaign post, from the content packs' rotation (lib/content-flow/autopilot.ts).
+    const angles = await planAutopilotAngles(businessId, plan.groups, business.country, now);
 
     // A few groups at a time; each charges and refunds its own credit.
     const queue = [...plan.groups];
@@ -259,12 +306,26 @@ export async function runAutopilot(businessId: string, options: RunOptions = {})
       );
     } else if (state.stop === "budget") {
       notes.unshift("Autopilot is paused for a short while. Please try again later.");
+    } else if (state.stop === "allowance") {
+      notes.unshift(`${COMPANY_ALLOWANCE_MESSAGE} Autopilot wrote what it could before that.`);
     }
     const note = notes.length > 0 ? notes.join(" ") : null;
 
     await prisma.autopilotRun.update({ where: { id: runId }, data: { status: "DONE", postCount, error: note } });
 
-    if (postCount > 0 && !autoPublish && business.user.email) {
+    // Content -> Settings: posts for apps that need no approval are scheduled now (docs/CONTENT.md). Only the posts
+    // still waiting are worth the "approve them" email.
+    let waiting = postCount;
+    if (postCount > 0 && !autoPublish) {
+      try {
+        const pending = await prisma.post.findMany({ where: { autopilotRunId: runId, businessId, status: "PENDING_APPROVAL" }, select: { id: true }, take: 500 });
+        waiting = pending.length ? (await autoSchedule(businessId, pending.map((p) => p.id))).waiting : 0;
+      } catch (error) {
+        await logError(error, { source: "autopilot.auto", businessId, level: "warn" });
+      }
+    }
+
+    if (postCount > 0 && waiting > 0 && !autoPublish && business.user.email) {
       for (const to of await alertRecipients(businessId, business.user.email)) {
         await sendReadyEmail({ to, businessName: business.name, postCount, groupCount, weekLabel: weekLabel(weekStart, tz) }).catch((e) => logError(e, { source: "autopilot.email", businessId, level: "warn" }));
       }
@@ -300,7 +361,8 @@ const PAGE = 100;
  */
 export async function runDueBusinesses(options: { now?: Date; limit?: number; cursor?: string | null } = {}): Promise<DueResult> {
   const now = options.now ?? new Date();
-  const limit = options.limit ?? 2;
+  // Each plan writes with AI and draws images; Netlify stops a function at 60 s, so one business per call there.
+  const limit = options.limit ?? (hasShortRequestLimit() ? 1 : 2);
   const result: DueResult = { checked: 0, planned: 0, skipped: 0, failed: 0, nextCursor: null };
   let cursor = options.cursor ?? null;
   for (;;) {

@@ -1,23 +1,25 @@
 import { Check, Minus } from "lucide-react";
-import { formatCents } from "@/components/billing/helpers";
+import { formatPrice } from "@/components/billing/helpers";
 import type { PublicPlan } from "@/lib/plan-catalog";
 
 type Cell = string | boolean;
 
-function rowsFor(plans: PublicPlan[]): { label: string; cells: Cell[] }[] {
+function rowsFor(plans: PublicPlan[], trialDays: number): { label: string; cells: Cell[] }[] {
   const each = (f: (p: PublicPlan) => Cell) => plans.map(f);
   const total = (p: PublicPlan, n: number) => (p.isTrial ? `${n} total` : `${n} / month`);
   const rows: { label: string; cells: Cell[] }[] = [
-    { label: "Price", cells: each((p) => (p.isTrial ? `Free for ${p.trialDays ?? 7} days` : `${formatCents(p.monthlyPriceCents)}/month`)) },
+    // The trial length is the admin setting (docs/REGIONS.md), not the TRIAL plan's own column.
+    { label: "Price", cells: each((p) => (p.isTrial ? `Free for ${trialDays} ${trialDays === 1 ? "day" : "days"}` : `${formatPrice(p.monthlyPriceCents, p.currency)}/month`)) },
     { label: "AI text generations", cells: each((p) => total(p, p.limits.text)) },
     { label: "Brand designs", cells: each((p) => total(p, p.limits.image)) },
     { label: "Brand voice and business knowledge", cells: each(() => true) },
-    { label: "Post to Instagram, Facebook, TikTok, LinkedIn, YouTube", cells: each(() => true) },
-    { label: "Content calendar and scheduling", cells: each(() => true) },
-    { label: "Lead-capturing website chat widget", cells: each(() => true) },
-    { label: "App connectors and API access", cells: each((p) => p.capabilities.apiAccess) },
-    { label: "Use your own Composio account", cells: each((p) => p.capabilities.ownComposio) },
-    { label: "Video and voiceover (when released)", cells: each((p) => p.limits.videoSeconds > 0 || p.limits.voiceCharacters > 0) },
+    { label: "Post to Instagram, Facebook, TikTok, LinkedIn, YouTube", cells: each((p) => p.features.includes("calendar")) },
+    { label: "Content calendar and scheduling", cells: each((p) => p.features.includes("calendar")) },
+    { label: "Lead-capturing website chat widget", cells: each((p) => p.features.includes("websiteChat")) },
+    { label: "Autopilot: your week planned and written", cells: each((p) => p.features.includes("autopilot")) },
+    { label: "App connectors and API access", cells: each((p) => p.features.includes("apiAccess")) },
+    { label: "Use your own Composio account", cells: each((p) => p.features.includes("ownComposio")) },
+    { label: "Video and voiceover (when released)", cells: each((p) => p.limits.videos > 0 || p.limits.voiceCharacters > 0) },
   ];
   return rows;
 }
@@ -29,8 +31,8 @@ function Value({ value }: { value: Cell }) {
 }
 
 /** Plan comparison. The columns and numbers come from the plans in the database. Scrolls sideways inside its own box on narrow screens. */
-export function PlanComparison({ plans }: { plans: PublicPlan[] }) {
-  const rows = rowsFor(plans);
+export function PlanComparison({ plans, trialDays }: { plans: PublicPlan[]; trialDays: number }) {
+  const rows = rowsFor(plans, trialDays);
   return (
     <div className="glass-strong overflow-x-auto rounded-card" tabIndex={0} role="region" aria-label="Plan comparison table">
       <table className="w-full min-w-[640px] border-collapse text-left text-[15px]">

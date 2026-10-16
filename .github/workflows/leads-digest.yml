@@ -4,6 +4,10 @@ name: Leads daily summary (fallback)
 # Each run only emails the businesses where it is 08:00 local time and no summary went out today, so running
 # both is safe.
 
+# On Netlify (repository variable DEPLOY_TARGET=netlify) the scheduled runs are skipped: Netlify's scheduled functions
+# run this job, and a second caller would cost free-plan credits twice (docs/DEPLOY_NETLIFY.md). "Run workflow" by hand
+# still works there.
+
 on:
   schedule:
     - cron: "41 * * * *"
@@ -13,6 +17,7 @@ permissions: {}
 
 jobs:
   digest:
+    if: vars.DEPLOY_TARGET != 'netlify' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

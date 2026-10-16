@@ -6,7 +6,7 @@ export const API_SCOPES = ["projects:read", "content:read", "posts:read", "posts
 export type ApiScope = (typeof API_SCOPES)[number];
 
 export const SCOPE_LABELS: Record<ApiScope, string> = {
-  "projects:read": "Read projects",
+  "projects:read": "Read products and campaigns",
   "content:read": "Read generated content",
   "posts:read": "Read posts",
   "posts:write": "Create draft posts",
@@ -25,9 +25,56 @@ function toHex(bytes: ArrayBuffer | Uint8Array): string {
   return Array.from(new Uint8Array(bytes instanceof Uint8Array ? bytes : bytes), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** SHA-256 of the key, hex. Keys are long random strings, so a plain fast hash is enough. */
+const encoder = new TextEncoder();
+const PEPPER_INFO = "bupulse:api-key-pepper:v1";
+
+/**
+ * The server secret mixed into every key hash: API_KEY_PEPPER, or else a key derived (HKDF) from ENCRYPTION_KEY for
+ * this one purpose. With it, a leaked copy of the hash column cannot be checked against guessed keys offline.
+ * Changing it (or ENCRYPTION_KEY while API_KEY_PEPPER is unset) makes every existing key invalid (docs/API.md).
+ */
+async function pepperKey(): Promise<CryptoKey> {
+  const pepper = process.env.API_KEY_PEPPER;
+  if (pepper) return crypto.subtle.importKey("raw", encoder.encode(pepper), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const base = process.env.ENCRYPTION_KEY;
+  if (!base) throw new Error("API_KEY_PEPPER (or ENCRYPTION_KEY) is not set");
+  const ikm = await crypto.subtle.importKey("raw", encoder.encode(base), "HKDF", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(), info: encoder.encode(PEPPER_INFO) },
+    ikm,
+    { name: "HMAC", hash: "SHA-256", length: 256 },
+    false,
+    ["sign"],
+  );
+}
+
+/** HMAC-SHA256 of the key with the server pepper, hex. What is stored for every new key (REST API and admin keys). */
 export async function hashApiKey(key: string): Promise<string> {
-  return toHex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key)));
+  return toHex(await crypto.subtle.sign("HMAC", await pepperKey(), encoder.encode(key)));
+}
+
+/** The plain SHA-256 hash keys had before the pepper (Phase 9). Only for finding and rehashing those keys. */
+export async function legacyHashApiKey(key: string): Promise<string> {
+  return toHex(await crypto.subtle.digest("SHA-256", encoder.encode(key)));
+}
+
+/**
+ * Finds a key by its hash: the peppered hash first, then the legacy unpeppered one. A key found by its legacy hash is
+ * rehashed in place on this use, so old keys keep working and move to the pepper one by one. `find` and `rehash` are
+ * the table's own lookup and update (ApiKey or AdminApiKey).
+ */
+export async function findByKeyHash<T extends { id: string }>(
+  key: string,
+  find: (hash: string) => Promise<T | null>,
+  rehash: (id: string, from: string, to: string) => Promise<unknown>,
+): Promise<T | null> {
+  const hash = await hashApiKey(key);
+  const current = await find(hash);
+  if (current) return current;
+  const legacy = await legacyHashApiKey(key);
+  const old = await find(legacy);
+  if (old) await rehash(old.id, legacy, hash).catch(() => {});
+  return old;
 }
 
 /** A new key: bp_live_ + 32 random bytes in base64url. */

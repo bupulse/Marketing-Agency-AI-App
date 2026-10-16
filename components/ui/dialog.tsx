@@ -15,7 +15,7 @@ type DialogProps = {
 
 /**
  * Modal built on native <dialog>: focus trap, Esc to close and inert background come from the browser.
- * Click on the backdrop also closes. Controlled via `open`.
+ * Click on the backdrop also closes. Controlled via `open`. Exposed as role="dialog", aria-modal, named by its title.
  */
 export function Dialog({ open, onOpenChange, title, description, children, className }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -37,9 +37,25 @@ export function Dialog({ open, onOpenChange, title, description, children, class
     <dialog
       ref={ref}
       tabIndex={-1}
+      // The browser gives an open <dialog> its role, but tools that read attributes (and older screen readers) need
+      // them spelled out. Closed, it is display: none and hidden from the accessibility tree too, so its buttons
+      // (a "Reject" next to the "Reject" that opens it) are never found instead of the visible ones.
+      role="dialog"
+      aria-modal="true"
+      aria-hidden={open ? undefined : true}
       aria-labelledby={`${uid}-t`}
       aria-describedby={description ? `${uid}-d` : undefined}
-      onClose={() => onOpenChange(false)}
+      // Esc goes through `open` like every other close, so the parent's state and the browser's never disagree. Closed
+      // by the browser first, the parent heard of it only a moment later: a click on the button that opens it in
+      // between (fast keyboard or scripted use) set `open` to what it still was, nothing re-ran, and nothing opened.
+      onCancel={(e) => {
+        e.preventDefault();
+        onOpenChange(false);
+      }}
+      // The close event comes a moment after the dialog closed: when it was opened again meanwhile, that is old news.
+      onClose={() => {
+        if (!ref.current?.open) onOpenChange(false);
+      }}
       onClick={(e) => {
         if (e.target === ref.current) onOpenChange(false);
       }}

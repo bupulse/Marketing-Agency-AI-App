@@ -136,6 +136,42 @@ describe("Instagram publish", () => {
   });
 });
 
+describe("content videos (docs/CONTENT_VISUALS.md)", () => {
+  const mp4 = { url: "https://signed.example.com/v.mp4", mimeType: "video/mp4" };
+
+  it("Instagram posts an MP4 as a Reel: REELS container, polled, then published", async () => {
+    const calls = fakeFetch((url) => {
+      if (url.includes("content_publishing_limit")) return { data: [] };
+      if (url.endsWith("/17841/media")) return { id: "reel1" };
+      if (url.includes("/reel1?")) return { status_code: "FINISHED" };
+      if (url.endsWith("/media_publish")) return { id: "media9" };
+      return { permalink: "https://instagram.com/reel/x" };
+    });
+    const result = await instagramProvider.publish(IG, { format: "POST", text: "Watch", media: [mp4] });
+    expect(result.externalId).toBe("media9");
+    const create = calls.find((c) => c.url.endsWith("/17841/media"))!;
+    expect(create.body!.get("media_type")).toBe("REELS");
+    expect(create.body!.get("video_url")).toBe(mp4.url);
+    expect(create.body!.get("image_url")).toBeNull();
+  });
+
+  it("Instagram refuses a WebM or a video mixed with photos, before any request", async () => {
+    const calls = fakeFetch(() => ({}));
+    await expect(instagramProvider.publish(IG, { format: "POST", text: "x", media: [{ ...mp4, mimeType: "video/webm" }] })).rejects.toMatchObject({ kind: "invalid" });
+    await expect(instagramProvider.publish(IG, { format: "POST", text: "x", media: [mp4, jpeg(1)] })).rejects.toMatchObject({ kind: "invalid" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("Facebook uploads the video to the Page by URL", async () => {
+    const calls = fakeFetch((url) => (url.endsWith("/page1/videos") ? { id: "vid1" } : { permalink_url: "/page1/videos/vid1" }));
+    const result = await facebookProvider.publish(FB, { format: "POST", text: "Watch", media: [mp4] });
+    expect(result).toEqual({ externalId: "vid1", permalink: "https://www.facebook.com/page1/videos/vid1" });
+    const upload = calls.find((c) => c.url.endsWith("/page1/videos"))!;
+    expect(upload.body!.get("file_url")).toBe(mp4.url);
+    expect(upload.body!.get("description")).toBe("Watch");
+  });
+});
+
 describe("Instagram tokens and metrics", () => {
   it("refreshes Instagram Login tokens and leaves Facebook Page tokens alone", async () => {
     const calls = fakeFetch(() => ({ access_token: "IGnew", expires_in: 5_184_000 }));

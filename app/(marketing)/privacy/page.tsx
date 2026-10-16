@@ -23,7 +23,7 @@ export default function PrivacyPage() {
       intro="We keep this simple: what we collect, why, who sees it, and how you can delete it."
     >
       <p>
-        BuPulse (&quot;BuPulse&quot;, &quot;we&quot;, &quot;us&quot;) is operated by [Company legal name], [Address], United States. This policy explains how
+        BuPulse (&quot;BuPulse&quot;, &quot;we&quot;, &quot;us&quot;) is operated by BuPulse, Kigali, Rwanda. This policy explains how
         we handle personal data when you visit bupulse.com or use the BuPulse app (together, the &quot;Service&quot;). If you have a question, email {mail}.
       </p>
 
@@ -32,7 +32,7 @@ export default function PrivacyPage() {
           items={[
             <><strong>Account data:</strong> your name, email address and sign-in details (we use email sign-in links and Google sign-in through Supabase Auth).</>,
             <><strong>Business profile:</strong> your business name, industry, description, brand voice, logo, colours, website, and the facts you give the chat widget (hours, service area, FAQs).</>,
-            <><strong>Content you create:</strong> projects, photos you upload, and the text and designs BuPulse generates for you.</>,
+            <><strong>Content you create:</strong> your company profile, products and campaigns, photos you upload, and the text and designs BuPulse generates for you.</>,
             <><strong>Connected accounts:</strong> if you connect Instagram, Facebook Pages, TikTok, LinkedIn or YouTube, we receive your account or Page identifier, display name, profile picture, the permissions you granted, and an access token (and refresh token where the network provides one). We also read the performance numbers of posts made through BuPulse, such as views, reach, likes, comments and shares.</>,
             <><strong>Website chat leads:</strong> if you install our chat widget, we store the conversations and any name, email, phone number or request your visitors share, on your behalf.</>,
             <><strong>Billing data:</strong> your plan and subscription status. Card details are collected and held by our payment provider, Paddle; we never see or store full card numbers.</>,
@@ -171,15 +171,15 @@ export default function PrivacyPage() {
 
       <LegalSection title="12. International users">
         <p>
-          BuPulse is operated from the United States and your data is stored there. If you use the Service from another country, you understand your data
-          will be transferred to and processed in the United States.
+          BuPulse is operated from Rwanda and your data is stored with our hosting providers, mainly in the United States. If you use the Service from another country, you understand your data
+          will be transferred to and processed in those places.
         </p>
       </LegalSection>
 
       <LegalSection title="13. Changes and contact">
         <p>
           If we change this policy in a meaningful way, we will update the date above and, where appropriate, notify you. Questions or requests: {mail}
-          {" "}or [Company legal name], [Address].
+          {" "}or BuPulse, Kigali, Rwanda.
         </p>
       </LegalSection>
     </LegalPage>

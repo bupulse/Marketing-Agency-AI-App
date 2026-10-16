@@ -5,12 +5,14 @@ import { assignableRoles, askMessage, atLeast, can, PERMISSIONS, type Permission
 const MATRIX: Record<Permission, Record<Role, boolean>> = {
   content: { OWNER: true, ADMIN: true, MEMBER: true },
   autopilotSettings: { OWNER: true, ADMIN: true, MEMBER: false },
+  contentSettings: { OWNER: true, ADMIN: true, MEMBER: false },
   channels: { OWNER: true, ADMIN: true, MEMBER: false },
   connectors: { OWNER: true, ADMIN: true, MEMBER: false },
   widget: { OWNER: true, ADMIN: true, MEMBER: false },
   webhooks: { OWNER: true, ADMIN: true, MEMBER: false },
   settings: { OWNER: true, ADMIN: true, MEMBER: false },
   team: { OWNER: true, ADMIN: true, MEMBER: false },
+  upgrade: { OWNER: true, ADMIN: true, MEMBER: false },
   billing: { OWNER: true, ADMIN: false, MEMBER: false },
   company: { OWNER: true, ADMIN: false, MEMBER: false },
 };

@@ -11,6 +11,7 @@ import { PACKS, recommendPack, type PackId } from "@/lib/designs/packs";
 import { buildTemplateElement, renderTemplate, TEMPLATES, templatesForProjectType } from "@/lib/designs/templates";
 
 const IDS = ["new-arrival", "offer", "event", "just-listed", "project-done", "quote", "announcement"];
+const CLASSIC_PACKS: PackId[] = ["clean", "elegant", "bold", "warm", "playful"];
 
 describe("template registry", () => {
   it("has the seven templates with fields and project types", () => {
@@ -89,7 +90,7 @@ describe("template rendering", () => {
   });
 
   // next/og runs in vitest's node env; fonts come from a CDN and fall back to the built-in one offline.
-  it("renders PNG bytes for 5 packs x 7 templates x 4 ratios, with and without a photo", async () => {
+  it("renders PNG bytes for 5 classic packs x 7 templates x 4 ratios, with and without a photo", async () => {
     const photoPng = await new ImageResponse(
       createElement("div", { style: { display: "flex", width: "100%", height: "100%", backgroundImage: "radial-gradient(circle at 30% 35%, #f4d35e 0%, rgba(244,211,94,0) 28%), radial-gradient(circle at 75% 70%, #ee964b 0%, rgba(238,150,75,0) 30%), linear-gradient(160deg, #1d3557, #e63946 60%, #f1faee)" } }),
       { width: 800, height: 800 },
@@ -98,7 +99,9 @@ describe("template rendering", () => {
     const out = process.env.DESIGNS_OUT;
     if (out) mkdirSync(out, { recursive: true });
 
-    for (const pack of PACKS.map((p) => p.id)) for (const id of IDS) {
+    // The seven newer styles draw these templates with the closest classic pack (lib/designs/templates/packs), so
+    // the five classic packs cover every layout; the newer styles' own designs are tested in tests/designs/library.
+    for (const pack of CLASSIC_PACKS) for (const id of IDS) {
       for (const ratio of ASPECT_RATIOS) {
         for (const withPhoto of ratio === "1:1" || ratio === "9:16" || out ? [false, true] : [false]) {
           const bytes = await renderTemplate(id, { ...base, pack, photoDataUrl: withPhoto ? photoDataUrl : null }, ratio);
@@ -138,8 +141,12 @@ describe("template rendering", () => {
 });
 
 describe("style packs", () => {
-  it("lists five packs", () => {
-    expect(PACKS.map((p) => p.id).sort()).toEqual(["bold", "clean", "elegant", "playful", "warm"]);
+  it("lists twelve packs", () => {
+    expect(PACKS.map((p) => p.id).sort()).toEqual(["bold", "clean", "corporate", "earthy", "elegant", "fresh", "luxe", "minimal", "playful", "retro", "vibrant", "warm"]);
+  });
+
+  it("draws the classic templates in every new style without throwing", () => {
+    for (const pack of PACKS.map((p): PackId => p.id)) expect(buildTemplateElement("offer", { ...base, pack }, "1:1")).toBeTruthy();
   });
 
   it("picks the pack from the brand voice first", () => {
@@ -154,7 +161,8 @@ describe("style packs", () => {
     expect(recommendPack({ tone: "professional", industry: "Gyms & fitness" })).toBe("bold");
     expect(recommendPack({ tone: null, industry: "Restaurants & cafés" })).toBe("warm");
     expect(recommendPack({ tone: "friendly", industry: "Shops & retail" })).toBe("warm");
-    expect(recommendPack({ tone: "professional", industry: "Phones & electronics" })).toBe("clean");
+    expect(recommendPack({ tone: "professional", industry: "Phones & electronics" })).toBe("corporate");
+    expect(recommendPack({ tone: "professional", industry: "Professional services" })).toBe("clean");
     expect(recommendPack({})).toBe("clean");
   });
 

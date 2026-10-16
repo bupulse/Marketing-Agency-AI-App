@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarClock, Sparkles, X } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
 import { Meter } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -16,6 +16,17 @@ export type TrialBannerProps = {
   pastDue?: boolean;
   text: { used: number; max: number };
   image: { used: number; max: number };
+  /** Only the owner pays (lib/team/roles.ts billing): everyone else is told who does instead of being sent to Billing. */
+  canPay?: boolean;
+  /**
+   * A paid plan that ended (CANCELED, EXPIRED, or still ACTIVE past its period and grace: lib/entitlements.ts
+   * accountBlock "inactive"); nothing new is made.
+   */
+  planEnded?: boolean;
+  /** A plan renewed by hand in its grace days (lib/billing/period.ts manualGrace): when it ended, and when it stops working. */
+  grace?: { ended: string; until: string } | null;
+  /** A paid plan cancelled at its period end that still runs: when it ends, and from when it can be renewed ("now" once open). */
+  endsOn?: { end: string; renewFrom: string } | null;
 };
 
 const STORAGE_KEY = "bp-trial-banner-dismissed";
@@ -38,12 +49,16 @@ function subscribe(cb: () => void) {
 
 const pct = (u: { used: number; max: number }) => (u.max > 0 ? (u.used / u.max) * 100 : 0);
 
-export type BannerState = "normal" | "warning" | "ended" | "usage" | "pastDue" | "hidden";
+export type BannerState = "normal" | "warning" | "ended" | "planEnded" | "grace" | "ending" | "usage" | "pastDue" | "hidden";
 
 export function bannerState(p: TrialBannerProps): BannerState {
   if (p.pastDue) return "pastDue";
+  // A paid plan that ended looked fully active on Home (its old limits, 0 used): say so, whatever the usage.
+  if (!p.isTrial && p.planEnded) return "planEnded";
+  // Its period is over and it stops in a few days: more pressing than a usage limit.
+  if (!p.isTrial && p.grace) return "grace";
   const nearLimit = pct(p.text) >= 80 || pct(p.image) >= 80;
-  if (!p.isTrial) return nearLimit ? "usage" : "hidden";
+  if (!p.isTrial) return nearLimit ? "usage" : p.endsOn ? "ending" : "hidden";
   if (p.trialDaysLeft === 0 || !p.subscriptionActive) return "ended";
   if ((p.trialDaysLeft !== null && p.trialDaysLeft <= 2) || nearLimit) return "warning";
   return "normal";
@@ -55,7 +70,8 @@ export function TrialBanner(props: TrialBannerProps) {
   const [localDismissed, setLocalDismissed] = useState(false);
 
   if (state === "hidden") return null;
-  if (state === "normal" && (storedDismissed || localDismissed)) return null;
+  const dismissible = state === "normal" || state === "ending";
+  if (dismissible && (storedDismissed || localDismissed)) return null;
 
   const dismiss = () => {
     setLocalDismissed(true);
@@ -67,38 +83,44 @@ export function TrialBanner(props: TrialBannerProps) {
     listeners.forEach((l) => l());
   };
 
-  const { trialDaysLeft: days, text, image } = props;
-  const alert = state !== "normal";
-  const Icon = alert ? AlertTriangle : Sparkles;
+  const { trialDaysLeft: days, text, image, canPay = true, endsOn, grace } = props;
+  const alert = state !== "normal" && state !== "ending";
+  const Icon = alert ? AlertTriangle : state === "ending" ? CalendarClock : Sparkles;
 
   let title: string;
-  if (state === "pastDue") title = "Payment failed — update your payment method";
-  else if (state === "ended") title = "Your trial has ended — choose a plan to keep creating";
+  if (state === "pastDue") title = canPay ? "Payment failed — update your payment method" : "Payment failed — your company owner can update it";
+  else if (state === "ended") title = canPay ? "Your trial has ended — choose a plan to keep creating" : "Your trial has ended — your company owner can choose a plan";
+  // Only the owner pays (lib/team/roles.ts billing); everyone else is told to ask them, in askMessage's words.
+  else if (state === "planEnded") title = canPay ? "Your plan has ended. Choose a plan to keep creating" : "Your plan has ended. Ask your company owner to choose a plan";
+  else if (state === "grace" && grace) title = canPay ? `Your plan ended on ${grace.ended}. Renew it before ${grace.until} to keep creating` : `Your plan ended on ${grace.ended}. Ask your company owner to renew it before ${grace.until}`;
+  else if (state === "ending" && endsOn) title = canPay ? `Your plan ends on ${endsOn.end}. ${endsOn.renewFrom === "now" ? "You can renew it now" : `You can renew from ${endsOn.renewFrom}`}` : `Your plan ends on ${endsOn.end}. Ask your company owner to renew it`;
   else if (state === "usage") title = "You are close to a plan limit";
   else title = `${days} ${days === 1 ? "day" : "days"} left in your free trial`;
 
   const href = state === "usage" ? "/dashboard/usage" : "/dashboard/billing";
   const cta =
-    state === "usage" ? "View usage" : state === "ended" ? "Choose a plan" : state === "pastDue" ? "Update payment" : "See plans";
+    state === "usage" ? "View usage" : state === "ended" || state === "planEnded" ? "Choose a plan" : state === "pastDue" ? "Update payment" : state === "grace" ? "Renew" : state === "ending" ? "See billing" : "See plans";
 
-  const meters = [
+  // An ended plan's meters (0 of its old limits) would read as still active; the "ends on" and grace notices need none.
+  const meters = state === "planEnded" || state === "grace" || state === "ending" ? [] : [
     { label: "Text generations", ...text },
     { label: "Image generations", ...image },
   ].filter((m) => m.max > 0);
+  const danger = state === "ended" || state === "planEnded" || state === "usage" || state === "pastDue";
 
   return (
     <div
       role="status"
       className={cn(
         "glass-strong flex flex-wrap items-center gap-x-4 gap-y-3 rounded-[20px] border p-3.5 pr-3 sm:px-4",
-        state === "ended" || state === "usage" || state === "pastDue" ? "border-danger/40" : state === "warning" ? "border-pulse-violet/40" : "border-pulse-blue/30",
+        danger ? "border-danger/40" : state === "warning" || state === "grace" ? "border-pulse-violet/40" : state === "ending" ? "border-line" : "border-pulse-blue/30",
       )}
     >
       <span
         aria-hidden
         className={cn(
           "inline-flex size-10 shrink-0 items-center justify-center rounded-2xl",
-          state === "ended" || state === "usage" || state === "pastDue" ? "bg-danger-bg text-danger" : "bg-brand-gradient text-white",
+          danger ? "bg-danger-bg text-danger" : state === "ending" ? "bg-soft text-muted" : "bg-brand-gradient text-white",
         )}
       >
         <Icon className="size-5" />
@@ -117,18 +139,22 @@ export function TrialBanner(props: TrialBannerProps) {
         </div>
       </div>
       <div className="ml-auto flex items-center gap-1">
-        <Link
-          href={href}
-          className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-semibold no-underline hover:bg-soft"
-        >
-          {cta}
-          <ArrowRight aria-hidden className="size-4" />
-        </Link>
-        {state === "normal" && (
+        {canPay || state === "usage" ? (
+          <Link
+            href={href}
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-sm font-semibold no-underline hover:bg-soft"
+          >
+            {cta}
+            <ArrowRight aria-hidden className="size-4" />
+          </Link>
+        ) : (
+          <span className="px-3 text-[13px] text-muted">Your company owner manages the plan.</span>
+        )}
+        {dismissible && (
           <button
             type="button"
             onClick={dismiss}
-            aria-label="Dismiss trial banner"
+            aria-label={state === "ending" ? "Dismiss plan notice" : "Dismiss trial banner"}
             className="inline-flex size-11 cursor-pointer items-center justify-center rounded-full text-muted hover:bg-soft"
           >
             <X aria-hidden className="size-4" />

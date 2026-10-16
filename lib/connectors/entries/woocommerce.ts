@@ -7,7 +7,7 @@ export const connector: ConnectorEntry = {
   id: "woocommerce",
   name: "WooCommerce",
   group: "store",
-  description: "Bring your WordPress shop's products into BuPulse as projects, with photos, and keep them up to date.",
+  description: "Bring your WordPress shop's products into BuPulse as products, with photos, and keep them up to date.",
   icon: "Store",
   async status({ businessId }) {
     const row = await prisma.storeConnection.findUnique({ where: { businessId_provider: { businessId, provider: "woocommerce" } }, select: { storeUrl: true, status: true, lastSyncAt: true } });

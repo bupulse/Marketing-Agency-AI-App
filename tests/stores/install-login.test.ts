@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw new Error(`REDIRECT:${url}`); } }));
 vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ "cf-connecting-ip": "203.0.113.20" }),
   cookies: async () => ({
     get: (name: string) => (jar.values.has(name) ? { name, value: jar.values.get(name)! } : undefined),
     set: (name: string, value: string, options: Record<string, unknown>) => { jar.values.set(name, value); jar.sets.push({ name, value, options }); },
@@ -23,6 +24,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 vi.mock("@/lib/account", () => ({ findAccountByEmail: async () => mocks.existing, ensureAccount: async () => true }));
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
+vi.mock("@/lib/rate-limit", async (orig) => ({ ...(await orig<typeof import("@/lib/rate-limit")>()), rateLimit: vi.fn(async () => {}) }));
 
 import { NextRequest } from "next/server";
 import { proxy } from "@/proxy";
@@ -31,7 +33,6 @@ import { signUp } from "@/app/signup/actions";
 import { GET as confirm } from "@/app/auth/confirm/route";
 import { cleanReturn, hasReturn, RETURN_COOKIE } from "@/lib/auth/return-path";
 import { readReturn, takeReturn } from "@/lib/auth/return-server";
-import { industryOptions } from "@/lib/auth/schemas";
 import { countries } from "@/lib/content/countries";
 
 const INSTALL = "/dashboard/stores/shopify?shop=my-shop.myshopify.com&hmac=abc123&host=YWRtaW4&timestamp=1700000000";
@@ -88,7 +89,7 @@ describe("the install URL survives sign-in", () => {
 describe("the install URL survives sign-up for brand-new users", () => {
   const signup = (next: string) => {
     const f = new FormData();
-    for (const [k, v] of Object.entries({ email: "new@shop.co", organisationName: "Shop", ceoName: "Ann Lee", industry: industryOptions[0], country: countries[0], phone: "", website: "", password: "Password-12345!", confirmPassword: "Password-12345!", terms: "true", next })) f.set(k, v);
+    for (const [k, v] of Object.entries({ email: "new@shop.co", organisationName: "Shop", ceoName: "Ann Lee", industry: "other", industryOther: "Corner shop", industryDescription: "A corner shop selling groceries and airtime in Kigali.", country: countries[0], phone: "", website: "", password: "Password-12345!", confirmPassword: "Password-12345!", terms: "true", next })) f.set(k, v);
     return signUp({ status: "idle" }, f);
   };
 

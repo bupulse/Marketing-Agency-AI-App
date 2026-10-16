@@ -11,6 +11,8 @@ datasource db {
 }
 
 enum SubscriptionStatus {
+  // New sign-ups: a plan is chosen and a demo booked, nothing else works until an admin starts the trial (docs/REGIONS.md).
+  PENDING_DEMO
   TRIALING
   ACTIVE
   PAST_DUE
@@ -36,13 +38,22 @@ model User {
   // Set by the admin console (suspend_user). A suspended user cannot sign in or use the app; data is kept.
   suspendedAt          DateTime?
   suspendedReason      String?
+  // Last time this person used the dashboard (a throttled heartbeat, lib/staff/heartbeat.ts): "active now" on the
+  // sales screen counts the last 5 minutes.
+  lastSeenAt           DateTime?
   createdAt            DateTime         @default(now())
   business             Business?
   membership           Membership?
   subscription         Subscription?
   usage                UsageRecord[]
+  videoDays            VideoDayUsage[]
   canva                CanvaConnection?
   canvaEdits           CanvaEdit[]
+  manualPayments       ManualPayment[]
+  renewalNotices       RenewalNotice[]
+  pushSubscriptions    PushSubscription[]
+
+  @@index([lastSeenAt])
 }
 
 // One business per user for now. Industry-neutral: a phone shop, a school,
@@ -52,8 +63,15 @@ model Business {
   userId                  String    @unique @db.Uuid
   user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   name                    String
-  industry                String? // e.g. "Phone store", "School", "Construction"
-  description             String? // what they sell
+  // Deprecated, kept readable: the sector's name, or the owner's own words when they chose "Other". Written alongside
+  // industryId / industryOther on every save so analytics, the Autopilot playbook tags and the design packs keep working.
+  industry                String?
+  // The sector chosen at sign-up (Admin -> Industries). Null when the owner picked "Other" (industryOther) or signed up before industries were data.
+  industryId              String?
+  industryRef             Industry? @relation(fields: [industryId], references: [id], onDelete: SetNull)
+  industryOther           String? // "Other": the owner's own industry text, grouped into suggestions for the admin
+  industryDescription     String? // "Describe your business" at sign-up (required from 12 October 2026); the AI's first facts about the company
+  description             String? // what they sell (onboarding step 1; prefilled from industryDescription)
   audience                String? // who their customers are
   tone                    String? // brand voice preset id from lib/brand/voices.ts, e.g. "friendly"
   contentLanguage         String    @default("English") // language the AI writes in (lib/brand/languages.ts)
@@ -67,33 +85,80 @@ model Business {
   onboardedAt             DateTime? // set when the brand onboarding (/onboarding) is finished
   instagramHandle         String?
   knowledge               Json? // facts the chat widget may answer from (lib/brand/schemas.ts knowledgeSchema)
+  profile                 Json? // Knowledge base -> Company profile: tagline, mission, values... (lib/knowledge/profile.ts)
+  audienceNotes           String? // Knowledge base -> Customers & audience: overall notes next to the personas
+  positioning             Json? // Knowledge base -> Competitors: differentiators and positioning statement (lib/knowledge/competitors.ts)
+  policies                Json? // Knowledge base -> FAQs & policies: delivery, returns, payment... (lib/knowledge/policies.ts)
+  marketingProfile        Json? // Knowledge base -> AI marketing interview: the approved brand voice (lib/knowledge/interview.ts)
   widgetKey               String    @unique @default(cuid()) // public id used by the embed snippet
   composioApiKeyEncrypted String? // Pro users' own Composio key, encrypted with lib/crypto.ts
   timezone                String    @default("UTC") // IANA zone for the calendar and posting times, e.g. "Africa/Kigali"
+  // PricingRegion.key, set from the sign-up country (lib/region.ts). Billing always uses this, never the visitor's IP.
+  pricingRegion           String    @default("GLOBAL")
+  // Soft region check (lib/region-check.ts): the IP country seen at sign-up or a payment start mapped to a dearer
+  // region than pricingRegion. Never blocks; shown to the admin with "Change region". Kept after a dismissal (dismissedAt)
+  // so the same country is not flagged again; regionMismatchAt is set only while the flag is open (the attention list).
+  regionMismatch          Json?
+  regionMismatchAt        DateTime?
+  // Content -> Settings (docs/CONTENT.md): per app, whether new posts wait for approval (lib/content-board/settings.ts).
+  // Null: approval required for every app.
+  contentSettings         Json?
+  // When the daily "what was auto-scheduled" email last went out (lib/content-board/summary.ts).
+  contentSummarySentAt    DateTime?
+  // "Create today's content" (docs/CONTENT.md): one run at a time per company. The run's request key (from the dialog)
+  // and until when it holds the claim; the key stays after the run so the same request is never run twice.
+  contentRunKey           String?
+  contentRunUntil         DateTime?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
-  projects      Project[]
-  designs       Design[]
-  leads         Lead[]
-  connections   Connection[]
-  posts         Post[]
-  mediaFolders  MediaFolder[]
-  mediaAssets   MediaAsset[]
-  autopilot     AutopilotSettings?
-  autopilotRuns AutopilotRun[]
-  chatWidgets   ChatWidget[]
-  chatSessions  ChatSession[]
+  projects         Project[]
+  products         Product[]
+  campaigns        Campaign[]
+  contents         GeneratedContent[]
+  demoBookings     DemoBooking[]
+  designs          Design[]
+  contentVisuals   ContentVisual[]
+  voiceClips       VoiceClip[]
+  leads            Lead[]
+  connections      Connection[]
+  posts            Post[]
+  mediaFolders     MediaFolder[]
+  mediaAssets      MediaAsset[]
+  autopilot        AutopilotSettings?
+  autopilotRuns    AutopilotRun[]
+  chatWidgets      ChatWidget[]
+  chatSessions     ChatSession[]
   webhookEndpoints WebhookEndpoint[]
   apiKeys          ApiKey[]
   storeConnections StoreConnection[]
   pendingStores    StoreConnectionPending[]
   cloudflare       CloudflareConnection?
   memberships      Membership[]
+  pushSubscriptions PushSubscription[]
   invites          Invite[]
+  invoices         Invoice[]
+  customPlans      PlanDefinition[]
+  planOffers       PlanOffer[]
+  planRequests     CustomPlanRequest[]
+  personas         Persona[]
+  competitors      Competitor[]
+  faqs             KnowledgeFaq[]
+  testimonials     Testimonial[]
+  interview        MarketingInterview?
+  postVersions     PostVersion[]
+
+  @@index([industryId])
+  // The sales staff member the company is assigned to (StaffMember.id), from a referral link at sign-up or a sales
+  // manager's reassignment; null = unassigned (its revenue is the sales team's shared). History: ClientAssignment.
+  salesAgentId            String?
+  @@index([regionMismatchAt])
+  @@index([salesAgentId])
 }
 
-// Anything the business wants to promote. A real estate "listing" is just one type.
+// LEGACY, read-only since the Knowledge base (docs/KNOWLEDGE_BASE.md): what the business promoted before Products and
+// Campaigns. Migration 20261013100000_knowledge_base copied every row into Product or Campaign with the SAME id, so an
+// old projectId is still the id of its product or campaign. New code never writes here.
 model Project {
   id         String   @id @default(cuid())
   businessId String
@@ -107,32 +172,285 @@ model Project {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  contents GeneratedContent[]
-  designs  Design[]
-  posts    Post[]
+  contents  GeneratedContent[]
+  designs   Design[]
+  posts     Post[]
   storeSync ProductSync?
 
   @@index([businessId, createdAt])
 }
 
 // Every generation is kept, so users can regenerate and compare versions.
+// Belongs to one product or one campaign. projectId is the legacy link, kept readable.
 model GeneratedContent {
-  id          String   @id @default(cuid())
-  projectId   String
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id          String    @id @default(cuid())
+  businessId  String
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  campaignId  String?
+  campaign    Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   caption     String
   hashtags    String[]
   videoScript String
   adHeadlines String[]
-  language    String   @default("English")
+  language    String    @default("English")
   // Per-network versions (caption length, hashtags, aspect ratio) prepared for publishing.
   variants    Json?
-  edited      Boolean  @default(false) // true once the owner changed the AI's text
+  edited      Boolean   @default(false) // true once the owner changed the AI's text
+  // When its posts to review were drafted (lib/content-board/drafts.ts); null for content from before, which is drafted
+  // once when its product or campaign is opened.
+  postsDraftedAt DateTime?
+  // Content packs (docs/CONTENT_PACKS.md): the posts written together share packId; each has its angle
+  // (lib/studio/angles.ts) and the one app it is for. All null for content from before packs (one post for every app).
+  packId      String?
+  angle       String?
+  network     String?
+  // Content flow v3 (docs/CONTENT.md, lib/content-flow/): the business-local day a post was made for on the day view,
+  // how it was made ("ai" | "describe" | "own") and the owner's brief or caption. Null on content from before.
+  forDate     DateTime? @db.Date
+  mode        String?
+  brief       String?
+  // The post's format as BuPulse decided it ("image" | "carousel" | "video", lib/content-flow/format.ts), so the next
+  // days vary it per app. Null on content from before.
+  format      String?
   provider    String // "gemini" | "claude" | "edit"
   model       String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
+  visuals     ContentVisual[]
 
   @@index([projectId, createdAt])
+  @@index([productId, createdAt])
+  @@index([campaignId, createdAt])
+  @@index([businessId, createdAt])
+  @@index([packId])
+  @@index([businessId, forDate])
+}
+
+// ---- Knowledge base (docs/KNOWLEDGE_BASE.md) ----------------------------------------------------------------------
+
+enum ProductKind {
+  PHYSICAL
+  DIGITAL
+  SERVICE
+}
+
+enum PriceModel {
+  FIXED
+  FROM
+  PER_MONTH
+  PER_YEAR
+  PER_UNIT
+  ON_REQUEST
+}
+
+enum ItemStatus {
+  ACTIVE
+  DRAFT
+  ARCHIVED
+}
+
+enum CampaignType {
+  EVENT
+  OFFER
+  PROMOTION
+  LAUNCH
+  OTHER
+}
+
+// Something the business sells: a physical product, a digital product or a service.
+model Product {
+  id             String      @id @default(cuid())
+  businessId     String
+  business       Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  kind           ProductKind
+  name           String
+  category       String?
+  summary        String // short description, one or two sentences
+  description    String?
+  priceModel     PriceModel  @default(ON_REQUEST)
+  priceAmount    Int? // in the currency's smallest unit (RWF has none: whole francs)
+  currency       String // ISO 4217; the company's region currency unless the owner picked another
+  priceNote      String? // extra price text ("Discount from 3 pieces"); also the free-text price of a migrated project
+  usps           String[] // unique selling points: why buy this one
+  features       String[]
+  targetCustomer String?
+  status         ItemStatus  @default(ACTIVE)
+  details        Json? // kind-specific fields (lib/knowledge/products.ts productDetailsSchema)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  photos       ProductPhoto[]
+  campaigns    CampaignProduct[]
+  contents     GeneratedContent[]
+  designs      Design[]
+  posts        Post[]
+  storeSync    ProductSync?
+  testimonials Testimonial[]
+
+  @@index([businessId, status, createdAt])
+}
+
+// An event, offer, promotion or launch, usually with dates and the products it is about.
+model Campaign {
+  id          String       @id @default(cuid())
+  businessId  String
+  business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  type        CampaignType
+  name        String
+  description String?
+  startsAt    DateTime?    @db.Date
+  endsAt      DateTime?    @db.Date
+  priceInfo   String? // "20% off", "Free entry", "Buy 2 get 1 free"
+  highlights  String[]
+  status      ItemStatus   @default(ACTIVE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  products CampaignProduct[]
+  photos   CampaignPhoto[]
+  contents GeneratedContent[]
+  designs  Design[]
+  posts    Post[]
+
+  @@index([businessId, status, createdAt])
+}
+
+model CampaignProduct {
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([campaignId, productId])
+  @@index([productId])
+}
+
+// A product's album: gallery photos linked to it. A photo can be in several albums; deleting a product keeps its photos.
+model ProductPhoto {
+  productId String
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  assetId   String
+  asset     MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  position  Int        @default(0)
+  createdAt DateTime   @default(now())
+
+  @@id([productId, assetId])
+  @@index([assetId])
+}
+
+model CampaignPhoto {
+  campaignId String
+  campaign   Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  assetId    String
+  asset      MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  position   Int        @default(0)
+  createdAt  DateTime   @default(now())
+
+  @@id([campaignId, assetId])
+  @@index([assetId])
+}
+
+// Knowledge base, part 2 (docs/KNOWLEDGE_BASE.md). A customer persona: who buys, what they need and how they decide.
+model Persona {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String // "Busy office worker"
+  ageRange   String // lib/knowledge/audience.ts AGE_RANGES
+  gender     String? // optional: "female" | "male" | "any"
+  location   String
+  occupation String?
+  incomeBand String? // "low" | "middle" | "high"
+  needs      String[]
+  pains      String[]
+  objections String[]
+  channels   String[] // where they spend time online
+  triggers   String[] // what makes them buy now
+  language   String? // preferred language
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([businessId, position])
+}
+
+model Competitor {
+  id            String   @id @default(cuid())
+  businessId    String
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name          String
+  link          String? // website or social profile, as typed (normalised to https:// or @handle)
+  strengths     String[] // what they do well
+  weaknesses    String[]
+  pricePosition String? // "lower" | "similar" | "higher" | "varies"
+  position      Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([businessId, position])
+}
+
+// The company's FAQs, in order. Replaces Business.knowledge.faqs (copied by the migration; the JSON stays for older builds).
+model KnowledgeFaq {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  question   String
+  answer     String
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([businessId, position])
+}
+
+enum ReviewSource {
+  GOOGLE
+  WHATSAPP
+  IN_PERSON
+  FACEBOOK
+  INSTAGRAM
+  EMAIL
+  OTHER
+}
+
+// A customer review or testimonial. The AI may quote it only when canPublish is true (the customer agreed).
+model Testimonial {
+  id           String       @id @default(cuid())
+  businessId   String
+  business     Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  quote        String
+  customerName String // name or initials, as the customer agreed to be shown
+  source       ReviewSource
+  rating       Int? // 1 to 5
+  receivedOn   DateTime?    @db.Date
+  productId    String?
+  product      Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+  canPublish   Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([businessId, createdAt])
+  @@index([productId])
+}
+
+// The AI marketing interview in progress (one per company): its questions and answers, in order. The approved result
+// is Business.marketingProfile (lib/knowledge/interview.ts).
+model MarketingInterview {
+  id         String   @id @default(cuid())
+  businessId String   @unique
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  status     String   @default("active") // active | review (summary written, waiting for approval) | approved
+  mode       String   @default("ai") // ai (next question by the AI) | fixed (the fixed question set)
+  steps      Json // InterviewStep[]
+  cursor     Int      @default(0)
+  aiCalls    Int      @default(0)
+  summary    Json? // the draft brand-voice summary before approval
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 enum LeadStatus {
@@ -178,6 +496,9 @@ model ChatWidget {
   allowedDomains         String[] // hostnames the widget may run on; empty = not yet installed, any site allowed until set
   notifyInstant          Boolean   @default(true) // email the owner for every new lead
   notifyDaily            Boolean   @default(true) // daily summary email
+  // WhatsApp alert for every new lead (lib/leads/whatsapp.ts). Only offered while the admin has the WhatsApp service on.
+  notifyWhatsapp         Boolean   @default(false)
+  whatsappNumber         String? // where the WhatsApp alerts go; empty = the business phone from sign-up
   webhookUrl             String? // POST lead.created events here (signed)
   webhookSecretEncrypted String? // HMAC secret, encrypted with lib/crypto.ts
   lastDigestAt           DateTime?
@@ -186,6 +507,26 @@ model ChatWidget {
   disabledByAdminAt      DateTime? // set by the admin console (switch off the widget); the owner cannot turn it back on
   disabledByAdminReason  String?
   updatedAt              DateTime  @default(now()) @updatedAt
+}
+
+// A phone or browser that gets a push notification for every new lead (Web Push, lib/push). One person can have
+// several; each is switched on from that device ("Alerts on this device" on the Leads page). Removed when the push
+// service says it is gone (404/410), when the person turns it off, or with the person or the company.
+model PushSubscription {
+  id         String    @id @default(cuid())
+  businessId String
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId     String    @db.Uuid // the person who switched it on (a teammate's own account, not the company's)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  device     String? // a short label from the browser, e.g. "Chrome on Android"
+  createdAt  DateTime  @default(now())
+  lastSentAt DateTime?
+
+  @@index([businessId])
+  @@index([userId])
 }
 
 // One visitor conversation on a business's website.
@@ -224,6 +565,9 @@ enum BillingProvider {
   PADDLE
   STRIPE
   PAYPAL
+  // Mobile Money paid by hand and confirmed in the admin console (lib/billing/momo.ts). An automatic MoMo provider
+  // (Paypack, Flutterwave, MTN) gets its own value and adapter later; see docs/MOMO.md.
+  MANUAL_MOMO
 }
 
 enum BillingInterval {
@@ -247,6 +591,13 @@ model Subscription {
   cancelAtPeriodEnd      Boolean            @default(false) // stays active until currentPeriodEnd
   providerUpdatedAt      DateTime? // the provider's last change; older webhooks arriving late are ignored
   trialEndsAt            DateTime?
+  // The plan chosen at sign-up (PlanDefinition.key, no foreign key so a plan can be retired freely). While the status is
+  // PENDING_DEMO nothing is usable; during the trial the company has this plan's features with the TRIAL plan's limits;
+  // `plan` becomes this key when the client pays.
+  chosenPlan             String?
+  // Trial-end reminders (lib/demo/trial-reminders.ts), recorded before sending so each goes out at most once.
+  trialReminder1SentAt   DateTime?
+  trialReminder2SentAt   DateTime?
   // Start of the billing period. Usage resets monthly from here (yearly plans too).
   currentPeriodStart     DateTime           @default(now())
   currentPeriodEnd       DateTime?
@@ -268,6 +619,96 @@ model BillingEvent {
 
   @@unique([provider, eventId])
   @@index([userId])
+  // The sales room TV reads new payments every 10 s by time (lib/screen/data.ts).
+  @@index([createdAt])
+}
+
+// One Mobile Money payment a client makes by hand (docs/MOMO.md). The client starts it (a reference to quote),
+// pays on their phone, submits the transaction id and phone (submittedAt), and the owner confirms or rejects it in the
+// admin console. Confirming writes the paid period onto the Subscription (periodStart/periodEnd kept here as the record).
+// userId is the company account (Business.userId), like Subscription.
+model ManualPayment {
+  id            String          @id @default(cuid())
+  userId        String          @db.Uuid
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planKey       String
+  plan          PlanDefinition  @relation(fields: [planKey], references: [key], onUpdate: Cascade, onDelete: Restrict)
+  interval      BillingInterval
+  amountMinor   Int // RWF has no minor unit: whole francs
+  currency      String          @default("RWF")
+  // "BP-7K3Q": what the client types as the payment note; unambiguous characters. A payment of an invoice uses the
+  // invoice number instead ("BP-INV-0001"), so several attempts at one invoice share it: uniqueness is two partial
+  // indexes in SQL ("ManualPayment_reference_key" where the reference does not start with BP-INV-,
+  // "ManualPayment_invoice_live_key").
+  reference     String
+  // The invoice this payment settles (docs/INVOICES.md); confirming it marks the invoice paid.
+  invoiceId     String?
+  invoice       Invoice?        @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  // The custom plan offer this payment pays (docs/OFFERS.md); confirming it marks the offer paid and switches the
+  // company onto the offer's custom plan (planKey). Null for plan, renewal and invoice payments.
+  offerId       String?
+  offer         PlanOffer?      @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  payerPhone    String?
+  network       String? // "MTN" | "AIRTEL"
+  transactionId String? // the MoMo transaction id the client typed; null when they could not find it (the owner enters it on confirm)
+  // The screenshot of the MoMo confirmation (docs/MOMO.md, "Proof"): an object in the private "payment-proofs" bucket
+  // under <userId>/<paymentId>/. Set when the upload URL is issued, checked (size, first bytes) when the client submits;
+  // proofBytes and proofType are filled only once it passed. Removed with an expired payment and with the account.
+  proofPath     String?
+  proofBytes    Int?
+  proofType     String?
+  // pending (started, or submitted and waiting for the owner) | confirmed | rejected | expired (not submitted in time, or replaced)
+  status        String          @default("pending")
+  rejectReason  String?
+  submittedAt   DateTime? // when the client tapped "I've paid"
+  decidedAt     DateTime?
+  decidedBy     String? // AuditLog actor
+  periodStart   DateTime? // the period this payment bought, set on confirm
+  periodEnd     DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  // Also two partial unique indexes in SQL (the migration): one pending payment per company
+  // ("ManualPayment_one_pending_per_user") and one live use of a transaction id per network across all companies
+  // ("ManualPayment_live_transaction_key": network + upper(transactionId) where status is pending or confirmed).
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@index([reference])
+  @@index([invoiceId])
+  @@index([offerId])
+}
+
+// A card renewal of a Mobile Money plan whose first card charge must be moved by the days already paid
+// (lib/billing/carry-over.ts, docs/BILLING.md "Renewing"). Written before the provider is asked, so a failed request is
+// retried by the daily renewals job and the admins are alerted; paid days are never lost silently.
+model CardCarryOver {
+  id                     String    @id @default(cuid())
+  provider               String // BillingProvider of the card subscription
+  providerSubscriptionId String    @unique
+  userId                 String?   @db.Uuid
+  nextBilledAt           DateTime // one period after the end of the days paid by Mobile Money
+  status                 String    @default("pending") // pending | done | failed (gave up: credit by hand)
+  attempts               Int       @default(0)
+  lastError              String?
+  alertedAt              DateTime?
+  doneAt                 DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@index([status, createdAt])
+}
+
+// One renewal email of a Mobile Money subscription (lib/billing/momo-renewals.ts): "5d" and "1d" before the period
+// ends, and "paused" when the grace period is over. The unique key is the claim, so a reminder is never sent twice.
+model RenewalNotice {
+  id        String   @id @default(cuid())
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  periodEnd DateTime
+  kind      String // "5d" | "1d" | "paused"
+  sentAt    DateTime @default(now())
+
+  @@unique([userId, periodEnd, kind])
 }
 
 // One row per user per billing period. Limits per plan live in lib/plans.ts.
@@ -278,12 +719,24 @@ model UsageRecord {
   periodStart      DateTime
   textGenerations  Int      @default(0)
   imageGenerations Int      @default(0)
-  videoSeconds     Int      @default(0)
+  videos           Int      @default(0) // videos made this month (each up to 30 s; until 14 Oct 2026: seconds)
   voiceCharacters  Int      @default(0)
   chatMessages     Int      @default(0) // AI replies of the website chat widget
   updatedAt        DateTime @updatedAt
 
   @@unique([userId, periodStart])
+}
+
+// Videos made per day (Kigali day, lib/time/kigali.ts): at most the plan's videosPerDay (4 by default) a day, on top of
+// the monthly count in UsageRecord.videos. A failed render counts nothing (lib/usage.ts consumeDailyVideo).
+model VideoDayUsage {
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  day       String // YYYY-MM-DD in Africa/Kigali
+  videos    Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, day])
 }
 
 // ---- Phase 2: performance learning (tables exist now so nothing needs reworking later) ----
@@ -364,6 +817,7 @@ enum PostFormat {
 enum PostSource {
   MANUAL
   AUTOPILOT
+  STUDIO // drafted automatically from Studio content (lib/content-board/drafts.ts)
 }
 
 // One post for one connected account. Posts written together for several accounts share a groupId.
@@ -375,8 +829,12 @@ model Post {
   connection     Connection?   @relation(fields: [connectionId], references: [id], onDelete: SetNull)
   network        String // "instagram" | "facebook" | "linkedin" | "tiktok" | "youtube"; kept if the connection goes
   groupId        String?
-  projectId      String?
+  projectId      String? // legacy; new posts set productId or campaignId
   project        Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  productId      String?
+  product        Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  campaignId     String?
+  campaign       Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   contentId      String? // GeneratedContent it came from
   status         PostStatus    @default(DRAFT)
   format         PostFormat    @default(POST)
@@ -397,15 +855,59 @@ model Post {
   autopilotRunId String?
   autopilotRun   AutopilotRun? @relation(fields: [autopilotRunId], references: [id], onDelete: SetNull)
   playbookId     String? // the playbook idea Autopilot used, for learning what works
+  // Why a post that could have been scheduled on its own still waits for review ("Video needs to be made").
+  reviewNote     String?
+  // Set when auto-approval (Content -> Settings) scheduled the post; the daily summary email lists these.
+  autoScheduledAt DateTime?
+  // Set when the owner changed the post (text, media, time, review state): BuPulse then never replaces or redraws it.
+  ownerEditedAt  DateTime?
+  // For an app that is not connected (yet): at its time the owner gets the reminder to post it by hand, like a NOTIFY
+  // account (lib/publishing/engine.ts). False on posts that lost their account later: those fail as before.
+  remindOnly     Boolean       @default(false)
+  // A challenge or contest the AI suggested (lib/content-flow/contest.ts): {} until the owner confirms the prize, end
+  // date and how the winner is chosen ({ prize, endsOn, howChosen, confirmedAt }). Never auto-approved.
+  contest        Json?
+  // "post" | "carousel" | "video" | "article": kept by a database trigger from format and mediaPaths, for the type filter.
+  mediaKind      String        @default("post")
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   metrics        PostMetrics[]
+  versions       PostVersion[]
 
   @@unique([connectionId, externalId])
   @@index([status, scheduledAt])
   @@index([businessId, scheduledAt])
   @@index([groupId])
   @@index([businessId, status, publishedAt])
+  @@index([businessId, createdAt])
+  @@index([businessId, autoScheduledAt])
+}
+
+// A post's words at each change (docs/CONTENT.md, "Versions"): its first text, every edit, every "Generate again" and
+// every restore. Restoring adds a new version; none is overwritten. The newest 50 per post are kept.
+model PostVersion {
+  id             String   @id @default(cuid())
+  businessId     String
+  business       Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  postId         String
+  post           Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  kind           String // "original" | "edit" | "regenerate" | "restore"
+  part           String? // what "Generate again" wrote: "post" | "caption" | "script" | "headlines"
+  restoredFromId String? // the version a restore brought back
+  actorId        String?  @db.Uuid // the person who made the change; null for BuPulse's own text
+  title          String?
+  text           String
+  hashtags       String[]
+  // The post's content (GeneratedContent) pieces at that time: its video script and ad headlines.
+  videoScript    String   @default("")
+  adHeadlines    String[]
+  // Each piece's language at that time: {caption, script, headlines} (lib/content-flow/versions.ts PartLanguages).
+  // Null when not recorded: the pieces are in the content's language.
+  languages      Json?
+  createdAt      DateTime @default(now())
+
+  @@index([postId, createdAt])
+  @@index([businessId, createdAt])
 }
 
 model PostMetrics {
@@ -466,8 +968,12 @@ model Design {
   id          String     @id @default(cuid())
   businessId  String
   business    Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  projectId   String?
+  projectId   String? // legacy; new designs set productId or campaignId
   project     Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  productId   String?
+  product     Product?   @relation(fields: [productId], references: [id], onDelete: SetNull)
+  campaignId  String?
+  campaign    Campaign?  @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   kind        DesignKind
   template    String? // template id from lib/designs/templates, for TEMPLATE
   prompt      String? // the description, for AI
@@ -481,6 +987,89 @@ model Design {
 }
 
 // AI cost ledger: one row per call to an AI provider, successful or not.
+// The image, carousel or video that comes with a piece of content (docs/CONTENT_VISUALS.md). Studio content links
+// by contentId; an Autopilot post group (Post.groupId) by groupId. Designs keep their own rows; a video is a file in
+// the media bucket (<userId>/videos/<id>.mp4) whose size counts toward the company's media quota.
+model ContentVisual {
+  id         String            @id @default(cuid())
+  businessId String
+  business   Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  contentId  String?
+  content    GeneratedContent? @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  groupId    String?
+  kind       String // "image" | "carousel" | "video"
+  status     String            @default("pending") // "pending" | "ready" | "failed"
+  items      Json              @default("[]") // ordered [{ designId?, path }]
+  plan       Json // ImagePlan or VideoPlan (lib/visuals/types.ts)
+  bytes      Int               @default(0) // the video file, counted toward the media quota
+  seconds    Int               @default(0) // the video's length, counted toward the plan's video seconds
+  error      String?
+  renderedAt DateTime?
+  // A render in progress (lease, so two tabs cannot both pay for the same AI photo).
+  renderingUntil  DateTime?
+  // A video upload the server allowed and has not confirmed yet: counted toward the quotas until it expires.
+  uploadPath      String?
+  uploadBytes     Int       @default(0)
+  uploadExpiresAt DateTime?
+  // The video robot (docs/VIDEO_ROBOT.md): its job while it holds the render lease, and its failed renders (3 = left to the browser).
+  robotJobId      String?   @unique
+  robotAttempts   Int       @default(0)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([contentId])
+  @@index([uploadExpiresAt])
+  @@index([groupId])
+  @@index([businessId, kind])
+  @@index([kind, status, createdAt])
+}
+
+// A voiceover made by the text-to-speech provider (docs/VOICE_AND_MUSIC.md): the MP3 in the media bucket at
+// <userId>/voice/<hash>.mp3, reused for the same text and voice (hash), counted toward the media quota.
+model VoiceClip {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  hash       String // sha-256 of voice id, model, take and text
+  voiceId    String
+  // speaking: one render is asking the voice service now (others wait); ready: the file is stored; spoken: paid for
+  // but not stored yet (the audio waits in pendingAudio, so a retry stores it instead of paying again); too_long: the
+  // voice ran past 30 seconds (never spoken again).
+  status     String   @default("ready")
+  path       String? // voice/<businessId>/<hash>.mp3 in the media bucket, once stored
+  pendingAudio Bytes?
+  bytes      Int
+  characters Int
+  durationMs Int
+  // Start and end of each spoken sentence in milliseconds, in order: [{ startMs, endMs }]
+  timings    Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@unique([businessId, hash])
+}
+
+// The royalty-free music library (docs/VOICE_AND_MUSIC.md): tracks uploaded by the admin, with their licence.
+model MusicTrack {
+  id          String   @id @default(cuid())
+  title       String
+  moods       String[] // lib/music/tracks.ts MOODS
+  bpm         Int?
+  licence     String // licence name, e.g. "Pixabay Content License"
+  sourceUrl   String
+  attribution String // shown where the licence requires it
+  path        String   @unique // <id>.<ext> in the public "music" bucket
+  mimeType    String
+  bytes       Int
+  durationMs  Int?
+  active      Boolean  @default(true)
+  createdBy   String // AuditLog actor
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
+}
+
 model AiCall {
   id           String   @id @default(cuid())
   userId       String?  @db.Uuid
@@ -492,6 +1081,9 @@ model AiCall {
   outputTokens Int      @default(0)
   images       Int      @default(0)
   costUsd      Decimal  @default(0) @db.Decimal(12, 6) // estimated from lib/ai/pricing.ts
+  // True when the provider never reported usage (a call that timed out on our side but was still billed) and the
+  // tokens or images are our estimate (docs/AI_COSTS.md).
+  estimated    Boolean  @default(false)
   durationMs   Int      @default(0)
   success      Boolean
   error        String?
@@ -552,20 +1144,41 @@ model MediaFolder {
   @@unique([businessId, name])
 }
 
-model MediaAsset {
-  id         String       @id @default(cuid())
+// A Gallery video upload the server allowed and has not confirmed yet (docs/MEDIA.md): its signed upload token is tied
+// to this row, its bytes count toward the quotas until it expires, and finalize takes only a reserved path.
+model MediaUploadReservation {
+  id         String   @id @default(cuid())
   businessId String
-  business   Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  path       String   @unique // <userId>/clips/<id>.<ext> in the gallery-videos bucket
+  bytes      Int // the announced size, the most finalize accepts
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([businessId, expiresAt])
+}
+
+model MediaAsset {
+  id         String          @id @default(cuid())
+  businessId String
+  business   Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
   folderId   String? // null = not in a folder
-  folder     MediaFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  path       String       @unique // <userId>/gallery/<id>.<ext> in the "media" bucket
+  folder     MediaFolder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  path       String          @unique // <userId>/gallery/<id>.<ext> in the "media" bucket
   name       String
+  // "photo" or "video" (docs/MEDIA.md). A video's poster is <id>-poster.jpg next to it; bytes include the poster.
+  kind       String          @default("photo")
   mimeType   String
   bytes      Int
   width      Int?
   height     Int?
-  source     String? // where an import came from: "google_drive" | "dropbox" | "canva"; null for uploads
-  createdAt  DateTime     @default(now())
+  durationMs Int?
+  posterPath String?
+  // The owner's "What's in this video?" (or photo): the AI writes captions about it.
+  description String?
+  source     String? // where an import came from: "google_drive" | "dropbox" | "canva" | "store"; null for uploads
+  createdAt  DateTime        @default(now())
+  products   ProductPhoto[]
+  campaigns  CampaignPhoto[]
 
   @@index([businessId, folderId, createdAt])
 }
@@ -579,7 +1192,7 @@ model AutopilotSettings {
   postsPerWeek          Int      @default(3)
   connectionIds         String[] // accounts Autopilot writes for
   postingTimes          String[] @default(["09:00", "18:00"]) // local times (Business.timezone) it may use
-  useAiImages           Boolean  @default(false) // false: gallery photos and free templates only
+  useAiImages           Boolean  @default(true) // AI photos with people (image credits); false: gallery photos and free templates only
   skipReligiousHolidays Boolean  @default(false) // true: no greetings or posts for religious holidays
   updatedAt             DateTime @updatedAt
 }
@@ -601,20 +1214,20 @@ model AutopilotRun {
 // Outgoing webhooks (Phase 7), on every plan. One business can have a few endpoints, each with its own
 // signing secret and the events it wants.
 model WebhookEndpoint {
-  id              String            @id @default(cuid())
-  businessId      String
-  business        Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  url             String
-  events          String[] // lead.created, content.generated, post.published, post.failed
-  secretEncrypted String // HMAC secret, encrypted with lib/crypto.ts
-  enabled         Boolean           @default(true)
-  createdAt       DateTime          @default(now())
-  lastSuccessAt   DateTime?
-  lastFailureAt   DateTime?
-  failureCount    Int               @default(0) // failed deliveries in a row; reset by a success
+  id                  String            @id @default(cuid())
+  businessId          String
+  business            Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  url                 String
+  events              String[] // lead.created, content.generated, post.published, post.failed
+  secretEncrypted     String // HMAC secret, encrypted with lib/crypto.ts
+  enabled             Boolean           @default(true)
+  createdAt           DateTime          @default(now())
+  lastSuccessAt       DateTime?
+  lastFailureAt       DateTime?
+  failureCount        Int               @default(0) // failed deliveries in a row; reset by a success
   pausedByAdminAt     DateTime? // set by the admin console; the owner cannot turn the webhook back on
   pausedByAdminReason String?
-  deliveries      WebhookDelivery[]
+  deliveries          WebhookDelivery[]
 
   @@index([businessId])
 }
@@ -639,7 +1252,7 @@ model WebhookDelivery {
   @@index([createdAt])
 }
 
-// Pro plan REST API keys (bp_live_...). Only the SHA-256 hash is stored; the key is shown once.
+// Pro plan REST API keys (bp_live_...). Only a peppered hash (HMAC-SHA256, lib/api/keys.ts) is stored; the key is shown once.
 model ApiKey {
   id         String    @id @default(cuid())
   businessId String
@@ -679,15 +1292,17 @@ model StoreConnection {
   @@index([lastAttemptAt])
 }
 
-// Maps one store product to one Project so a re-sync updates instead of duplicating.
-// `baseline` holds the fields as the last sync wrote them: a Project field is only overwritten
+// Maps one store product to one Product so a re-sync updates instead of duplicating.
+// `baseline` holds the fields as the last sync wrote them: a Product field is only overwritten
 // while it still equals its baseline (the user has not edited it). See lib/stores/sync.ts.
 model ProductSync {
   id            String          @id @default(cuid())
   connectionId  String
   connection    StoreConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  projectId     String          @unique
-  project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  productId     String?         @unique // null only for a mapping an older build wrote after the migration
+  product       Product?        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  projectId     String?         @unique // legacy
+  project       Project?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   externalId    String
   baseline      Json
   imageMap      Json // { "<source image url>": "<storage path>" }
@@ -740,19 +1355,19 @@ model StoreConnectionPending {
 
 // One marketing-page view from public/t.js. No raw IP is stored: visitorHash is SHA-256(IP + UA + daily salt).
 model PageView {
-  id          String   @id @default(cuid())
-  createdAt   DateTime @default(now())
-  sessionId   String? // random id from the visitor's sessionStorage
-  visitorHash String // changes every UTC day, so it never follows a person across days
-  path        String
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  sessionId    String? // random id from the visitor's sessionStorage
+  visitorHash  String // changes every UTC day, so it never follows a person across days
+  path         String
   referrerHost String?
-  source      String // "direct" | "google" | "facebook" ... | utm_source
-  utmSource   String?
-  utmMedium   String?
-  utmCampaign String?
-  device      String // "mobile" | "tablet" | "desktop"
-  country     String? // ISO 3166 alpha-2
-  screenWidth Int?
+  source       String // "direct" | "google" | "facebook" ... | utm_source
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  device       String // "mobile" | "tablet" | "desktop"
+  country      String? // ISO 3166 alpha-2
+  screenWidth  Int?
 
   @@index([createdAt])
   @@index([sessionId])
@@ -770,6 +1385,7 @@ model AnalyticsEvent {
 
   @@index([name, createdAt])
   @@index([userId, createdAt])
+  @@index([businessId, createdAt])
   @@index([createdAt])
 }
 
@@ -795,6 +1411,162 @@ model MonthlyCost {
   updatedAt   DateTime @updatedAt
 
   @@unique([month, category])
+}
+
+// A cost that repeats (Admin -> Money -> Costs, docs/ADMIN.md): hosting, the domain, a subscription. Counted in every
+// month from startMonth to endMonth (inclusive; null = still running); a yearly cost counts a twelfth each month.
+// amountMinor is in `currency` (USD or RWF), converted to USD with the current rate when shown.
+model RecurringCost {
+  id          String   @id @default(cuid())
+  name        String
+  provider    String // a preset key (lib/money/costs-shared.ts COST_PRESETS) or "other"
+  category    String // hosting | domain | ai | email | tools | other
+  amountMinor Int
+  currency    String   @default("USD")
+  // RWF per USD when an RWF cost was saved: its months keep that rate, so changing the rate in Settings never restates
+  // past costs. Null for USD.
+  usdRate     Float?
+  period      String // month | year
+  startMonth  String // "YYYY-MM"
+  endMonth    String?
+  note        String?
+  updatedBy   String? // AuditLog actor of the last change
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([startMonth])
+}
+
+// What a provider really billed for one month (its invoice), entered by the admin. When present it replaces the
+// ledger's estimate for that provider and month in every cost and profit number (lib/money/costs-shared.ts).
+model ProviderBill {
+  id          String   @id @default(cuid())
+  provider    String // google_ai | anthropic | elevenlabs | higgsfield | other provider keys
+  month       String // "YYYY-MM"
+  amountMinor Int
+  currency    String   @default("USD")
+  usdCents    Int // amountMinor in USD cents at the rate of the day it was entered
+  usdRate     Float? // RWF per USD used for an RWF bill
+  note        String?
+  enteredBy   String? // AuditLog actor
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([provider, month])
+}
+
+// ---- Organisation: staff, roles, referrals, the sales screen (docs/ADMIN.md, "Organisation") ----------------------
+
+// A person who works in the admin console besides the owner (ADMIN_EMAILS is always Owner). Signs in with their own
+// account (Google or password) plus an authenticator (AAL2), like the owner; every page and action checks the role's
+// permissions (lib/staff/permissions.ts). userId is linked on the first sign-in.
+model StaffMember {
+  id           String    @id @default(cuid())
+  email        String    @unique // lower case
+  name         String?
+  phone        String?
+  userId       String?   @unique @db.Uuid
+  roleKey      String // a built-in role (lib/staff/permissions.ts BUILT_IN_ROLES) or StaffRole.key
+  status       String    @default("invited") // invited | active | disabled
+  // The referral code of sales staff (?ref=CODE on any page): 4 to 8 unambiguous characters.
+  refCode      String?   @unique
+  invitedBy    String // AuditLog actor
+  lastSignInAt DateTime?
+  disabledAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status])
+}
+
+// A role the owner (or IT) made: a name and ticked permissions. Built-in roles are code, not rows.
+model StaffRole {
+  id          String   @id @default(cuid())
+  key         String   @unique // "custom_<slug>"
+  name        String
+  permissions String[]
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Which sales staff member a company belonged to, and when: payments count for the agent assigned on the payment's
+// date, so a reassignment never moves past payments. staffId null = unassigned (team share). No foreign keys: the
+// history outlives a deleted company or staff member. userId is the company account (Business.userId, BillingEvent.userId).
+model ClientAssignment {
+  id         String    @id @default(cuid())
+  businessId String
+  userId     String    @db.Uuid
+  staffId    String?
+  startsAt   DateTime
+  endsAt     DateTime?
+  source     String // referral | manager | script
+  reason     String?
+  by         String // AuditLog actor, or "referral"
+  createdAt  DateTime  @default(now())
+
+  @@index([businessId, startsAt])
+  @@index([userId, startsAt])
+  @@index([staffId, startsAt])
+}
+
+// A view-only link to the sales room TV (/screen/<token>). Only the token's SHA-256 is stored; revoking stops it at once.
+model ScreenLink {
+  id         String    @id @default(cuid())
+  name       String
+  tokenHash  String    @unique
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+  lastSeenAt DateTime?
+}
+
+// A celebration sound for the sales screen: uploaded by the owner (their rights) or generated with ElevenLabs Sound
+// Effects. The MP3 is in the private "sounds" Storage bucket at `path`. At most 10 active.
+model SoundClip {
+  id         String   @id @default(cuid())
+  name       String
+  path       String   @unique
+  source     String // upload | generated
+  prompt     String?
+  bytes      Int
+  durationMs Int?
+  active     Boolean  @default(true)
+  createdBy  String
+  createdAt  DateTime @default(now())
+
+  @@index([active])
+}
+
+// A version of the web app uploaded as a signed zip (Admin -> Settings -> Updates, docs/UPDATES.md "Install from a
+// zip"). The zip and the database backup taken before its migrations live in the private "releases" Storage bucket
+// and are kept 30 days (always the current and the previous installed version). The deploy workflow writes back the
+// install's outcome (status, Cloudflare version id, backup path).
+model ReleaseVersion {
+  id                  String    @id @default(cuid())
+  version             String
+  commit              String
+  sha256              String
+  size                Int
+  zipPath             String // zips/<uuid>.zip in the "releases" bucket (kept as a record after zipPurgedAt)
+  zipPurgedAt         DateTime?
+  manifest            Json // the signed manifest and its signature, as uploaded
+  notes               String?
+  // verified -> installing -> installed (or failed); superseded once a newer version is installed
+  status              String    @default("verified")
+  uploadedBy          String // AuditLog actor
+  installRequestedAt  DateTime?
+  installRequestedBy  String?
+  installedAt         DateTime?
+  cloudflareVersionId String?
+  backupPath          String? // backups/<id>.dump in the "releases" bucket
+  backupPurgedAt      DateTime?
+  error               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([createdAt])
+  @@index([status, installedAt])
 }
 
 // ---- Phase 8: admin console and Jarvis (lib/admin/*, docs/JARVIS.md) ----
@@ -832,25 +1604,30 @@ model AdminApproval {
   @@index([status, createdAt])
 }
 
-// Bearer keys for the Jarvis REST API and MCP server. Only the SHA-256 hash is stored.
+// Bearer keys for the Jarvis REST API and MCP server. Only a peppered hash (HMAC-SHA256, lib/api/keys.ts) is stored.
 model AdminApiKey {
   id          String    @id @default(cuid())
   name        String
   prefix      String
   hash        String    @unique
   ipAllowList String[] // empty = any address
+  // A key made by a staff member (not the owner) is scoped: it may run only the tools its permissions allow, and only
+  // while that person is enabled and still holds them (lib/admin/api-auth.ts). An owner's key has every permission.
+  scoped           Boolean  @default(false)
+  permissions      String[] @default([])
+  createdByStaffId String?
   lastUsedAt  DateTime?
   revokedAt   DateTime?
   createdAt   DateTime  @default(now())
 }
 
 model FeatureFlag {
-  key             String   @id
-  enabled         Boolean  @default(false)
-  rolloutPercent  Int      @default(100) // 0-100, applied per user by a stable hash when enabled
-  userOverrides   Json? // { "<userId>": true | false }
-  description     String?
-  updatedAt       DateTime @updatedAt
+  key            String   @id
+  enabled        Boolean  @default(false)
+  rolloutPercent Int      @default(100) // 0-100, applied per user by a stable hash when enabled
+  userOverrides  Json? // { "<userId>": true | false }
+  description    String?
+  updatedAt      DateTime @updatedAt
 }
 
 model Announcement {
@@ -867,7 +1644,6 @@ model Announcement {
 
   @@index([startsAt, endsAt])
 }
-
 
 // The random key behind one UTC day's visitor hashes (lib/analytics/salt.ts). Deleted once the day has ended,
 // so yesterday's hashes can no longer be recomputed from an IP and browser.
@@ -915,11 +1691,11 @@ model ServiceSwitch {
 
 // Result of the last "Test now" per service (secrets scrubbed before saving).
 model ServiceCheck {
-  service    String   @id
-  ok         Boolean
-  latencyMs  Int
-  message    String?
-  checkedAt  DateTime @default(now())
+  service   String   @id
+  ok        Boolean
+  latencyMs Int
+  message   String?
+  checkedAt DateTime @default(now())
 }
 
 // Small counters per service and UTC day (e.g. emails sent through Resend).
@@ -939,64 +1715,167 @@ model AdminSetting {
   updatedAt DateTime @updatedAt
 }
 
-
 // A plan the admin manages (/admin/plans). Replaces the hard-coded plans of lib/plans.ts, whose values remain only as the
 // seed and as the fallback when the database cannot be read. Paddle prices are never edited in place: a price change
 // creates new Paddle prices and the old ids move to paddlePrices (history), so old subscriptions still map to this plan.
 model PlanDefinition {
-  id                   String   @id @default(cuid())
-  key                  String   @unique // slug; TRIAL, STANDARD and PRO keep their old enum names
+  id                   String    @id @default(cuid())
+  key                  String    @unique // slug; TRIAL, STANDARD and PRO keep their old enum names
   name                 String
-  description          String   @default("")
-  isTrial              Boolean  @default(false) // exactly one plan: TRIAL
+  description          String    @default("")
+  isTrial              Boolean   @default(false) // exactly one plan: TRIAL
   trialDays            Int? // trial only
-  status               String   @default("active") // active | hidden | retired
-  sortOrder            Int      @default(0)
-  highlight            Boolean  @default(false)
-  monthlyPriceCents    Int      @default(0)
-  yearlyPriceCents     Int      @default(0)
-  currency             String   @default("USD")
-  limits               Json // { text, image, chat, videoSeconds, voiceCharacters }
-  features             Json // string[] shown on the pricing page
-  capabilities         Json // { apiAccess: boolean, ownComposio: boolean }
+  status               String    @default("active") // active | hidden | retired
+  sortOrder            Int       @default(0)
+  highlight            Boolean   @default(false)
+  monthlyPriceCents    Int       @default(0)
+  yearlyPriceCents     Int       @default(0)
+  currency             String    @default("USD")
+  limits               Json // { text, image, chat, videos, videosPerDay, voiceCharacters, seats }
+  // string[] marketing bullets on the pricing card (replaced `features` in 20261009110000_plan_features).
+  highlights           Json      @default("[]")
+  // FeatureKey[] (lib/features.ts): what the plan unlocks, prerequisites included. The source of truth for entitlements.
+  // NULL (a row written by a build from before 20261009110000_plan_features) reads as the core features plus `capabilities`.
+  featureKeys          Json?
+  // Legacy columns, written in step with the two above so a build from before the migration keeps working:
+  // `features` holds the same bullets as `highlights`; `capabilities` is { apiAccess, ownComposio } derived from featureKeys.
+  features             Json
+  capabilities         Json
+  // The monthly AI allowance of a company on this plan, in USD (lib/ai/budget.ts); NULL uses AI_COMPANY_MONTHLY_USD.
+  aiMonthlyUsd         Float?
   paddleProductId      String?
   paddleMonthlyPriceId String?
   paddleYearlyPriceId  String?
   // Every Paddle price this plan has had: [{ id, interval, amountCents, createdAt, archivedAt? }]. The current ones are in here too.
-  paddlePrices         Json     @default("[]")
+  paddlePrices         Json      @default("[]")
   // "not_synced" (draft or Paddle not connected) | "synced" | "failed"
-  syncState            String   @default("not_synced")
+  syncState            String    @default("not_synced")
   syncError            String?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  // A company's private plan, made from an accepted offer (docs/OFFERS.md). Never on the pricing page or in the plan
+  // pickers (status "hidden" and filtered by isCustom); priced in its own currency (RWF in Rwanda), so Mobile Money
+  // renewals charge what the offer said. A newer paid offer retires the older custom plan of the same company.
+  isCustom             Boolean   @default(false)
+  businessId           String?
+  business             Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  subscriptions Subscription[]
-  priceChanges  PlanPriceChange[]
+  subscriptions  Subscription[]
+  priceChanges   PlanPriceChange[]
+  regionPrices   PlanRegionPrice[]
+  manualPayments ManualPayment[]
+
+  @@index([businessId])
+}
+
+// ---- Regions, regional prices and demo bookings (docs/REGIONS.md) ---------------------------------------------------
+
+// Where a business is, for prices and payment methods. RW, EAC and GLOBAL are seeded; admins can add more.
+model PricingRegion {
+  key            String   @id // "RW", "EAC", "GLOBAL" or an admin-created key
+  name           String
+  currency       String // ISO 4217: "RWF", "USD"
+  countries      String[] // ISO 3166-1 alpha-2 codes; GLOBAL has none and takes everything else
+  paymentMethods String[] // "momo" | "card"
+  active         Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  prices PlanRegionPrice[]
+}
+
+// A plan is offered in a region only when it has a price there. Amounts are in the currency's smallest unit
+// (RWF has no minor unit, so monthlyMinor = whole francs). For a non-USD region the card (Paddle, USD) price is derived
+// from the admin's USD rate and card margin and kept here; the Paddle price ids are filled by the (TODO) Paddle sync.
+model PlanRegionPrice {
+  id                   String         @id @default(cuid())
+  planKey              String
+  plan                 PlanDefinition @relation(fields: [planKey], references: [key], onUpdate: Cascade, onDelete: Cascade)
+  regionKey            String
+  region               PricingRegion  @relation(fields: [regionKey], references: [key], onUpdate: Cascade, onDelete: Cascade)
+  currency             String
+  monthlyMinor         Int
+  yearlyMinor          Int
+  cardMonthlyUsdCents  Int?
+  cardYearlyUsdCents   Int?
+  paddleMonthlyPriceId String?
+  paddleYearlyPriceId  String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  @@unique([planKey, regionKey])
+  @@index([regionKey])
+}
+
+// When the owner takes demo calls: one row per weekly window, in Africa/Kigali time (lib/demo/slots.ts). Slot length,
+// buffer and blocked dates are AdminSetting keys (lib/admin/settings.ts).
+model AdminAvailability {
+  id          String   @id @default(cuid())
+  weekday     Int // 0 = Sunday ... 6 = Saturday
+  startMinute Int // minutes after midnight, Africa/Kigali
+  endMinute   Int
+  createdAt   DateTime @default(now())
+
+  @@index([weekday])
+}
+
+// A call with the owner, on the same slots, buffers, daily cap and calendar: the demo a new client books before its
+// trial (kind "demo"), or a short call about a custom plan request from an existing client (kind "custom_plan",
+// lib/demo/plan-calls.ts; never part of the PENDING_DEMO -> trial steps). One live ("booked") booking per start time,
+// and one per company and kind (partial unique indexes in the migrations). A reschedule updates the row in place (same
+// UID, SEQUENCE + 1).
+model DemoBooking {
+  id                  String             @id @default(cuid())
+  businessId          String
+  business            Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  kind                String             @default("demo") // demo | custom_plan
+  requestId           String? // the custom plan request a custom_plan call was booked from
+  request             CustomPlanRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  planKey             String // the plan chosen when booking (a call: the company's plan at the time)
+  startsAt            DateTime
+  endsAt              DateTime
+  status              String             @default("booked") // booked | done | no_show | cancelled
+  notes               String?
+  meetingLink         String? // the reusable meeting link at the time of booking
+  icsToken            String             @unique // 32 random bytes, base64url (lib/demo/bookings.ts newIcsToken): the secret of the .ics route
+  sequence            Int                @default(0) // iCalendar SEQUENCE: bumped on every reschedule and on cancel, so calendars move the same event
+  googleEventId       String? // the event in the owner's Google Calendar (lib/google-calendar), when it was connected at booking time
+  meetLink            String? // the Google Meet link Google generated for that event (also copied into meetingLink)
+  googleSyncPending   Boolean            @default(false) // a change to the booking has not reached the Google event yet (retried: lib/google-calendar/events.ts)
+  googleSyncError     String? // why the last attempt failed, shown on Admin -> Demos
+  googleSyncAttemptAt DateTime? // the last attempt, so retries are spaced out
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([startsAt])
+  @@index([businessId, status])
+  @@index([requestId])
 }
 
 // One price change of one plan. Existing subscribers move to the new price at a renewal, after notice (increase).
 model PlanPriceChange {
-  id               String   @id @default(cuid())
-  planKey          String
-  plan             PlanDefinition @relation(fields: [planKey], references: [key], onUpdate: Cascade, onDelete: Restrict)
-  direction        String // increase | decrease | mixed
-  oldMonthlyCents  Int
-  newMonthlyCents  Int
-  oldYearlyCents   Int
-  newYearlyCents   Int
+  id                String         @id @default(cuid())
+  planKey           String
+  plan              PlanDefinition @relation(fields: [planKey], references: [key], onUpdate: Cascade, onDelete: Restrict)
+  direction         String // increase | decrease | mixed
+  oldMonthlyCents   Int
+  newMonthlyCents   Int
+  oldYearlyCents    Int
+  newYearlyCents    Int
   oldMonthlyPriceId String?
   oldYearlyPriceId  String?
   newMonthlyPriceId String?
   newYearlyPriceId  String?
   // scheduled (waiting for notices and renewals) | completed | cancelled
-  status           String   @default("scheduled")
-  subscribers      Int      @default(0)
-  notifiedCount    Int      @default(0)
-  appliedCount     Int      @default(0)
-  failedCount      Int      @default(0)
-  createdBy        String
-  createdAt        DateTime @default(now())
-  completedAt      DateTime?
+  status            String         @default("scheduled")
+  subscribers       Int            @default(0)
+  notifiedCount     Int            @default(0)
+  appliedCount      Int            @default(0)
+  failedCount       Int            @default(0)
+  createdBy         String
+  createdAt         DateTime       @default(now())
+  completedAt       DateTime?
 
   items PlanPriceChangeItem[]
 
@@ -1006,10 +1885,10 @@ model PlanPriceChange {
 
 // One subscriber of a price change: notified, then moved to the new price shortly before the renewal on effectiveAt.
 model PlanPriceChangeItem {
-  id                     String   @id @default(cuid())
+  id                     String          @id @default(cuid())
   changeId               String
   change                 PlanPriceChange @relation(fields: [changeId], references: [id], onDelete: Cascade)
-  userId                 String   @db.Uuid
+  userId                 String          @db.Uuid
   providerSubscriptionId String
   interval               BillingInterval
   oldPriceId             String
@@ -1017,14 +1896,14 @@ model PlanPriceChangeItem {
   oldCents               Int
   newCents               Int
   // pending -> notified (increase only) -> applied | skipped | failed
-  status                 String   @default("pending")
+  status                 String          @default("pending")
   noticeSentAt           DateTime?
   reminderSentAt         DateTime? // the second email, about 30 days before the renewal, for notices sent long ahead
-  attempts               Int      @default(0) // failed tries to send the notice; the item is failed after a few
+  attempts               Int             @default(0) // failed tries to send the notice; the item is failed after a few
   effectiveAt            DateTime? // the renewal the new price starts with
   appliedAt              DateTime?
   error                  String?
-  updatedAt              DateTime @updatedAt
+  updatedAt              DateTime        @updatedAt
 
   @@unique([changeId, userId])
   @@index([changeId, status])
@@ -1040,19 +1919,19 @@ enum MemberRole {
 // company account: the billing account, the Storage folder and the subject of every service call. The Owner role normally
 // sits on that user; transferring ownership moves the role, not the account (see lib/team/service.ts).
 model Membership {
-  id         String     @id @default(cuid())
-  businessId String
-  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  userId     String     @unique @db.Uuid
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role       MemberRole
-  invitedBy  String?    @db.Uuid
+  id          String     @id @default(cuid())
+  businessId  String
+  business    Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId      String     @unique @db.Uuid
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        MemberRole
+  invitedBy   String?    @db.Uuid
   /// Admins opt in to the lead, digest and post alerts that go to the Owner.
-  notifyEmail Boolean   @default(false)
-  createdAt  DateTime   @default(now())
+  notifyEmail Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  // Also a partial unique index in SQL ("Membership_one_owner_per_business"): one OWNER per business.
 
   @@index([businessId])
-  // Also a partial unique index in SQL ("Membership_one_owner_per_business"): one OWNER per business.
 }
 
 // A pending invitation. The token is emailed once; only its SHA-256 hash is stored.
@@ -1070,4 +1949,179 @@ model Invite {
 
   @@index([businessId])
   @@index([email])
+}
+
+// A business sector offered at sign-up, with the guidance the AI writes from (Admin -> Industries, docs/INDUSTRIES.md).
+// The marketing /industries page keeps its own static list (lib/content/site.ts); the migration seeds the same names.
+model Industry {
+  id               String   @id @default(cuid())
+  slug             String   @unique // stable form value, e.g. "retail"
+  name             String // "Shops & retail"
+  shortDescription String
+  customers        String // typical customers
+  offerings        String // typical products and services
+  postIdeas        String // post ideas that work for this sector
+  tone             String // tone of voice
+  hashtags         String[]
+  seasons          String // important dates and seasons in Rwanda / East Africa
+  avoid            String // words, claims and compliance notes to avoid
+  active           Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  businesses Business[]
+}
+
+// "New from sign-ups" suggestions the admin dismissed: the normalised (trimmed, lower-cased) industryOther text.
+model DismissedIndustrySuggestion {
+  key       String   @id
+  label     String // the text as one client wrote it, for the audit log and the list
+  createdAt DateTime @default(now())
+}
+
+// Invoices (docs/INVOICES.md): made by an admin, mostly from "Activate account -> No trial, send invoice" after the
+// demo, edited while a draft, then sent (PDF by email), paid (Mobile Money confirmed with the invoice number as the
+// reference, card, or marked paid by hand) or voided. Amounts are in the currency's smallest unit like everywhere else.
+model Invoice {
+  id             String           @id @default(cuid())
+  // "BP-INV-0001": from the Postgres sequence "Invoice_number_seq" (lib/invoices/service.ts nextInvoiceNumber), so
+  // two admins creating invoices at the same instant never get the same number. Numbers are never reused.
+  number         String           @unique
+  businessId     String
+  business       Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  status         String           @default("draft") // draft | sent | paid | void
+  currency       String // RWF for Rwanda, USD otherwise (the company region's currency)
+  lines          Json // [{ description, quantity, unitMinor }]
+  subtotalMinor  Int
+  taxRatePercent Float? // VAT rate from the invoice settings when the invoice was last edited; null = no tax line
+  taxMinor       Int              @default(0)
+  totalMinor     Int
+  issueDate      DateTime         @db.Date
+  dueDate        DateTime         @db.Date
+  notes          String?
+  billingEmail   String? // a billing contact who gets the invoice too, besides the owner
+  // What the invoice activates when paid (from the client's chosen plan); null on a plain invoice.
+  planKey        String?
+  interval       BillingInterval?
+  // Snapshots taken when the invoice is sent, so the PDF and the email never change afterwards.
+  billTo         Json?
+  seller         Json?
+  pdfPath        String? // object path in the private "invoices" Storage bucket
+  sentAt         DateTime?
+  sentTo         String[]         @default([])
+  reminderSentAt DateTime? // the due-date reminder, claimed before sending
+  paidAt         DateTime?
+  paidBy         String? // "momo:<ManualPayment id>" | "manual:<ManualPayment id>" | "paddle:<subscription id>"
+  // A payment that arrived for this invoice but could not be matched to its total (a card payment at the plan's USD
+  // price for an RWF invoice, an invoice with extra lines): { source, reference, transactionId, amountMinor, currency,
+  // receivedAt, planKey, interval }. The invoice stays "sent" until an admin checks and marks it paid.
+  paymentReview  Json?
+  voidedAt       DateTime?
+  voidReason     String?
+  createdBy      String // AuditLog actor
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  manualPayments ManualPayment[]
+  // Also a partial unique index in SQL ("Invoice_one_draft_per_business"): one draft per company.
+
+  @@index([businessId, createdAt])
+  @@index([status, dueDate])
+}
+
+// ---- Custom plans: add-on prices, offers and requests (docs/OFFERS.md) -----------------------------------------------
+
+// What one add-on costs per month in one region: a feature (key from lib/features.ts, e.g. "websiteChat"), a tier of
+// one ("managed:full") or a block of a usage limit ("block:text" = +blockSize texts, "seat" = one extra user). The list
+// of add-ons is code (lib/offers/shared.ts ADDONS); the amounts are data, edited in Admin -> Add-on prices (audited).
+model AddonPrice {
+  id           String   @id @default(cuid())
+  addonKey     String
+  regionKey    String
+  currency     String
+  monthlyMinor Int // smallest currency unit; RWF has none (whole francs)
+  updatedBy    String? // AuditLog actor of the last change
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([addonKey, regionKey])
+  @@index([regionKey])
+}
+
+// A custom plan offered to one company (docs/OFFERS.md): draft -> sent -> accepted -> paid, or expired (a sent offer
+// past validUntil) or withdrawn. The priced lines and totals are frozen when the offer is saved, so the client pays
+// exactly what they were shown. Accepting prepares the company's private plan (customPlanKey, a PlanDefinition with
+// isCustom) and the payment (Mobile Money with offerId, or an invoice); confirming the payment switches it on.
+model PlanOffer {
+  id              String             @id @default(cuid())
+  businessId      String
+  business        Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  requestId       String?
+  request         CustomPlanRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  basePlanKey     String? // the regional plan it starts from, or null for features only
+  featureKeys     Json // FeatureKey[], prerequisites included
+  limits          Json // PlanLimits of the custom plan
+  options         Json               @default("{}") // { managedTier?: "light" | "full" }
+  currency        String
+  interval        BillingInterval
+  lines           Json // [{ key, label, quantity, unitMinor, totalMinor }] for the interval
+  computedMinor   Int // the sum of the lines
+  adjustedMinor   Int // what the client pays (the computed total, or the admin's rounding / discount)
+  adjustReason    String?
+  note            String? // the admin's message to the client
+  status          String             @default("draft") // draft | sent | accepted | paid | expired | withdrawn
+  validUntil      DateTime?
+  sentAt          DateTime?
+  acceptedAt      DateTime?
+  payMethod       String? // "momo" | "invoice"
+  customPlanKey   String? // PlanDefinition.key prepared on accept
+  invoiceId       String? // the invoice made from the offer, when paid that way
+  // Payment reminders of an accepted, unpaid offer (day 3 and day 7 after accepting), claimed before sending.
+  reminder3SentAt DateTime?
+  reminder7SentAt DateTime?
+  paidAt          DateTime?
+  paidBy          String? // "manual_payment:<id>"
+  withdrawnAt     DateTime?
+  withdrawReason  String?
+  createdBy       String // AuditLog actor
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  manualPayments ManualPayment[]
+  // Also a partial unique index in SQL ("PlanOffer_one_open_per_business"): at most one sent or accepted offer per company.
+
+  @@index([businessId, createdAt])
+  @@index([status, validUntil])
+  @@index([invoiceId])
+}
+
+// "Request a custom plan" (pricing page, Billing, "Add to your plan", the demo booking): what the business needs, for
+// the admin to answer with an offer. Linked to the company (and its demo booking, when it has one).
+model CustomPlanRequest {
+  id            String    @id @default(cuid())
+  businessId    String?
+  // Cascade: a deleted company takes its requests (names, emails and phones) with it.
+  business      Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId        String?   @db.Uuid // who sent it
+  demoBookingId String? // the company's live demo booking when it was sent
+  name          String
+  email         String
+  phone         String?
+  companyName   String
+  description   String // what the business does
+  goals         String? // no longer asked on the form (13 October 2026); older requests keep theirs
+  featureKeys   Json // FeatureKey[] of interest
+  budget        String? // a budget range key (lib/offers/shared.ts BUDGET_RANGES)
+  source        String    @default("billing") // billing | pricing | upgrade | demo
+  status        String    @default("new") // new | contacted | offered | closed
+  handledBy     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  offers PlanOffer[]
+  calls  DemoBooking[] // the short calls booked right after sending it (lib/demo/plan-calls.ts)
+
+  @@index([status, createdAt])
+  @@index([businessId, createdAt])
 }

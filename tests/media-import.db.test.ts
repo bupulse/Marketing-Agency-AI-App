@@ -25,6 +25,7 @@ describe.skipIf(!enabled)("importAsset against Supabase", { timeout: 60_000 }, (
     if (error) throw error;
     await prisma.user.create({ data: { id: userId, email: `delivered+imp${userId.slice(0, 8)}@resend.dev` } });
     await prisma.business.create({ data: { id: businessId, userId, name: "Import test", widgetKey: `k${userId.replace(/-/g, "")}`.slice(0, 20) } as never });
+    await prisma.mediaFolder.create({ data: { id: `f${businessId}`, businessId, name: "Imports" } });
   });
 
   afterAll(async () => {
@@ -37,7 +38,7 @@ describe.skipIf(!enabled)("importAsset against Supabase", { timeout: 60_000 }, (
 
   it("stores the file, records source/size/dimensions, and signs a URL that serves the same bytes", async () => {
     const { importAsset } = await import("@/lib/media/service");
-    const item = await importAsset({ userId, businessId }, { bytes: PNG, name: "dropbox_photo-1.png", folderId: null, source: "dropbox" });
+    const item = await importAsset({ userId, businessId }, { bytes: PNG, name: "dropbox_photo-1.png", destination: `folder:f${businessId}`, source: "dropbox" });
     expect(item.path.startsWith(`${userId}/gallery/`)).toBe(true);
     expect(item).toMatchObject({ name: "dropbox photo 1", mimeType: "image/png", bytes: PNG.length, width: 1, height: 1 });
     const row = await prisma.mediaAsset.findUnique({ where: { path: item.path } });

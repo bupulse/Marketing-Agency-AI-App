@@ -2,12 +2,13 @@ import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
+import { WidgetBudgetExceededError } from "@/lib/ai/budget";
 import { consumeUsage, refundUsage, UsageLimitError } from "@/lib/usage";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { RateLimitError, rateLimit } from "@/lib/rate-limit";
 import { createLeadFromChat } from "@/lib/leads/service";
 import { generateChatReply } from "./ai";
-import { loadProjectFacts, loadPublicWidget, type PublicWidget } from "./config";
+import { loadFaqs, loadProjectFacts, loadPublicWidget, type PublicWidget } from "./config";
 import { cleanEmail, cleanPhone, hasContact, mergeDetected, shouldAskContact, type Detected } from "./detect";
 import { BOT_SPEED_MS, CHALLENGE_EVERY, HISTORY_FOR_AI, MAX_MESSAGE_LENGTH, MAX_SESSION_MESSAGES, WIDGET_LIMITS } from "./limits";
 import { checkOrigin } from "./origin";
@@ -210,7 +211,7 @@ export async function handleChat(raw: unknown, ctx: RequestContext): Promise<Ser
 
   if (reservation) {
     try {
-      const [rows, projects] = await Promise.all([
+      const [rows, projects, faqs] = await Promise.all([
         prisma.chatMessage.findMany({
           where: { sessionId: session.id, role: { in: ["visitor", "assistant"] } },
           orderBy: { createdAt: "desc" },
@@ -218,16 +219,18 @@ export async function handleChat(raw: unknown, ctx: RequestContext): Promise<Ser
           select: { role: true, content: true },
         }),
         loadProjectFacts(widget.businessId),
+        loadFaqs(widget.businessId),
       ]);
       const history = rows.reverse().map((m) => ({ role: m.role === "assistant" ? ("assistant" as const) : ("visitor" as const), content: m.content }));
-      const result = await generateChatReply({ facts: { ...widget.facts, projects }, history, leadCaptured, userId: widget.userId, businessId: widget.businessId });
+      const result = await generateChatReply({ facts: { ...widget.facts, projects, faqs }, history, leadCaptured, userId: widget.userId, businessId: widget.businessId });
       reply = result.reply;
       aiWantsContact = result.wantsContact;
       aiDetected = result.detected;
       language = result.language;
     } catch (error) {
       await refundUsage(widget.userId, "chat", reservation.periodStart).catch(() => {});
-      await logError(error, { source: "widget.ai", level: "warn", businessId: widget.businessId });
+      // The chat's share of the allowance used is expected, not an error: the widget collects details until the 1st.
+      if (!(error instanceof WidgetBudgetExceededError)) await logError(error, { source: "widget.ai", level: "warn", businessId: widget.businessId });
       unanswered = true;
       reply = text.limited;
     }

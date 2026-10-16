@@ -7,7 +7,7 @@ import { AccountAvatar } from "@/components/publishing/network-icon";
 import { Badge, Button, GlassCard, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import type { AutopilotConfig } from "@/lib/autopilot/settings";
-import { MAX_POSTING_TIMES, MAX_POSTS_PER_WEEK, MIN_POSTS_PER_WEEK } from "@/lib/autopilot/settings";
+import { defaultAccountIds, MAX_POSTING_TIMES, MAX_POSTS_PER_WEEK, MIN_POSTS_PER_WEEK } from "@/lib/autopilot/settings";
 import type { ViewAccount } from "@/lib/autopilot/view";
 import { Switch } from "./switch";
 
@@ -44,6 +44,8 @@ export function SettingsCard({ initial, accounts, timeZone }: { initial: Autopil
         toast(message, "success");
       } else {
         setError(result.error);
+        // Said where the switch is too: the message under the form may be out of sight.
+        toast(result.error, "error");
         if (next.enabled !== saved.enabled) setConfig((c) => ({ ...c, enabled: saved.enabled }));
       }
     });
@@ -77,16 +79,20 @@ export function SettingsCard({ initial, accounts, timeZone }: { initial: Autopil
           disabled={pending}
           label="Turn Autopilot on"
           onChange={(enabled) => {
-            const next = { ...config, enabled };
+            // Switched on with no account chosen yet: it writes for the connected ones (else every app, as reminders),
+            // so the first "On" is saved instead of refused.
+            const picked = enabled && config.connectionIds.length === 0 ? defaultAccountIds(accounts) : config.connectionIds;
+            const next = { ...config, enabled, connectionIds: picked };
             setConfig(next);
-            save(next, enabled ? "Autopilot is on." : "Autopilot is off.");
+            const names = accounts.filter((a) => picked.includes(a.id)).map((a) => a.displayName);
+            save(next, !enabled ? "Autopilot is off." : picked !== config.connectionIds && names.length ? `Autopilot is on. It writes for ${names.join(", ")}.` : "Autopilot is on.");
           }}
         />
       </div>
 
       <hr className="my-2 border-line" />
 
-      <fieldset className="flex flex-col gap-3 border-0 p-0">
+      <fieldset className="flex min-w-0 flex-col gap-3 border-0 p-0">
         <legend className="mb-1 font-semibold">Accounts to write for</legend>
         {accounts.length === 0 ? (
           <div className="flex flex-col items-start gap-3">
@@ -194,13 +200,13 @@ export function SettingsCard({ initial, accounts, timeZone }: { initial: Autopil
       <div className="flex flex-col divide-y divide-line">
         <ToggleRow
           title="Post without asking"
-          text="Off: posts wait for you and go out only after you approve them (recommended). On: Autopilot schedules them straight away, and you can still edit or remove them before they go out."
+          text="Off: posts follow Content, Settings, where you choose per app which posts wait for your approval (every app waits unless you change it). On: Autopilot schedules all its posts straight away, and you can still edit or remove them before they go out."
           checked={config.autoPublish}
           onChange={(v) => set("autoPublish", v)}
         />
         <ToggleRow
-          title="Use AI images (uses image credits)"
-          text="Off: your own photos in free brand templates. On: Autopilot creates a new picture for each post, using 1 image credit each. It falls back to free templates when credits run out."
+          title="AI images with people (on by default, uses image credits)"
+          text="On (the default): most posts get a new AI picture with people who look like your customers, using 1 image credit each, and free templates with your photos when the month's AI images run out. Off: only your own photos in free brand templates, no image credits used."
           checked={config.useAiImages}
           onChange={(v) => set("useAiImages", v)}
         />

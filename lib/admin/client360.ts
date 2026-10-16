@@ -1,7 +1,8 @@
 import "server-only";
+import { companyMonthlyBudgetUsd, companySpendThisMonth } from "@/lib/ai/budget";
 import { prisma } from "@/lib/db";
 import { getPriceTable } from "@/lib/plan-catalog";
-import { computeMrrCents } from "@/lib/analytics/math";
+import { computeMrrCents, MANUAL_PAYMENT_EVENT, MONEY_EVENT_TYPES } from "@/lib/analytics/math";
 import { getPlanLimits, USAGE_METRICS } from "./plan-limits";
 import { getClientConnections } from "./connections";
 import { scrubSecrets } from "./scrub";
@@ -10,7 +11,7 @@ import { AdminError } from "./types";
 export const CLIENT_TABS = ["overview", "billing", "usage", "channels", "content", "leads", "errors", "audit", "notes"] as const;
 export type ClientTab = (typeof CLIENT_TABS)[number];
 
-const METRIC_LABELS: Record<string, string> = { text: "Text generations", image: "Images", videoSeconds: "Video seconds", voiceCharacters: "Voice characters", chat: "Chat replies" };
+const METRIC_LABELS: Record<string, string> = { text: "Text generations", image: "Images", videos: "Videos", voiceCharacters: "Voice characters", chat: "Chat replies" };
 const PAYING = new Set(["ACTIVE", "PAST_DUE"]);
 const iso = (d: Date | null | undefined) => d?.toISOString() ?? null;
 const DAY = 86_400_000;
@@ -25,7 +26,7 @@ async function loadClient(userId: string) {
     select: {
       id: true, email: true, name: true, createdAt: true, suspendedAt: true, suspendedReason: true, deletionScheduledFor: true,
       subscription: { select: { plan: true, status: true, provider: true, interval: true, trialEndsAt: true, currentPeriodEnd: true, cancelAtPeriodEnd: true } },
-      business: { select: { id: true, name: true, industry: true, country: true, website: true, onboardedAt: true, createdAt: true } },
+      business: { select: { id: true, name: true, industry: true, industryOther: true, industryDescription: true, country: true, phone: true, ceoName: true, website: true, onboardedAt: true, createdAt: true } },
     },
   });
   if (!user) throw new AdminError("not_found", "No user with that id.");
@@ -48,7 +49,7 @@ export async function overviewSection(c: Client) {
   return {
     user: { id: c.id, email: c.email, name: c.name, createdAt: iso(c.createdAt), suspendedAt: iso(c.suspendedAt), suspendedReason: c.suspendedReason, deletionScheduledFor: iso(c.deletionScheduledFor) },
     subscription: sub ? { ...sub, trialEndsAt: iso(sub.trialEndsAt), currentPeriodEnd: iso(sub.currentPeriodEnd) } : null,
-    business: c.business ? { id: c.business.id, name: c.business.name, industry: c.business.industry, country: c.business.country, website: c.business.website, onboarded: !!c.business.onboardedAt } : null,
+    business: c.business ? { id: c.business.id, name: c.business.name, industry: c.business.industry, industryDescription: c.business.industryDescription, country: c.business.country, phone: c.business.phone, ceoName: c.business.ceoName, website: c.business.website, onboarded: !!c.business.onboardedAt } : null,
     mrrCents,
     signupSource: visit ? { source: visit.source, landingPage: visit.path, campaign: visit.utmCampaign, country: visit.country } : null,
     lastActiveAt: times.length ? new Date(Math.max(...times.map((t) => t.getTime()))).toISOString() : null,
@@ -57,13 +58,15 @@ export async function overviewSection(c: Client) {
 
 export async function billingSection(c: Client) {
   const rows = await prisma.billingEvent.findMany({
-    where: { userId: c.id, type: { in: ["transaction.completed", "adjustment.created", "adjustment.updated"] } },
+    where: { userId: c.id, type: { in: MONEY_EVENT_TYPES } },
     orderBy: { createdAt: "desc" },
     take: 40,
     select: { id: true, type: true, payload: true, createdAt: true },
   });
   const items = rows.flatMap((r): { kind: "payment" | "refund"; id: string; at: string; providerId: string | null; amountMinor: number | null; currency: string }[] => {
     const data = ((r.payload ?? {}) as { data?: Record<string, any> }).data ?? {}; // eslint-disable-line @typescript-eslint/no-explicit-any
+    // A confirmed Mobile Money payment carries its own amount (RWF) and our reference as the id.
+    if (r.type === MANUAL_PAYMENT_EVENT) return [{ kind: "payment" as const, id: r.id, at: r.createdAt.toISOString(), providerId: typeof data.id === "string" ? data.id : null, amountMinor: typeof data.amount_minor === "number" ? data.amount_minor : null, currency: typeof data.currency === "string" ? data.currency : "RWF" }];
     const totals = data.details?.totals ?? data.totals;
     const minor = Number(totals?.grand_total ?? totals?.total);
     const base = { id: r.id, at: r.createdAt.toISOString(), providerId: typeof data.id === "string" ? data.id : null, amountMinor: Number.isFinite(minor) ? minor : null, currency: typeof (data.currency_code ?? totals?.currency_code) === "string" ? String(data.currency_code ?? totals?.currency_code) : "USD" };
@@ -81,12 +84,15 @@ export async function usageSection(c: Client, now = new Date()) {
     prisma.aiCall.aggregate({ where: { userId: c.id, createdAt: { gte: since } }, _sum: { costUsd: true }, _count: { _all: true } }),
     c.subscription ? getPlanLimits(c.subscription.plan) : null,
   ]);
-  const used: Record<string, number> = usage ? { text: usage.textGenerations, image: usage.imageGenerations, videoSeconds: usage.videoSeconds, voiceCharacters: usage.voiceCharacters, chat: usage.chatMessages } : {};
+  const used: Record<string, number> = usage ? { text: usage.textGenerations, image: usage.imageGenerations, videos: usage.videos, voiceCharacters: usage.voiceCharacters, chat: usage.chatMessages } : {};
   const failures = await prisma.aiCall.count({ where: { userId: c.id, createdAt: { gte: since }, success: false } });
+  // The company's own monthly AI allowance (AI_COMPANY_MONTHLY_USD), counted on the business like the cap is.
+  // The website chat has its own share of it (WIDGET_AI_SHARE); the rest is the owner's features.
+  const month = c.business ? await companySpendThisMonth(c.business.id, now) : null;
   return {
     periodStart: iso(usage?.periodStart),
     metrics: USAGE_METRICS.map((k) => ({ key: k, label: METRIC_LABELS[k] ?? k, used: used[k] ?? 0, limit: limits ? limits[k] : null })),
-    ai: { calls30d: ai._count._all, failures30d: failures, costUsd30d: Number(ai._sum.costUsd ?? 0) },
+    ai: { calls30d: ai._count._all, failures30d: failures, costUsd30d: Number(ai._sum.costUsd ?? 0), monthUsd: month?.totalUsd ?? 0, allowanceUsd: month?.allowanceUsd ?? companyMonthlyBudgetUsd(), widgetUsd: month?.widgetUsd ?? 0, widgetCapUsd: month?.widgetCapUsd ?? 0, ownerUsd: month?.ownerUsd ?? 0 },
   };
 }
 

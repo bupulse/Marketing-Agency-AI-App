@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { pageGate } from "@/components/app/no-access";
+import { featureGate, pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { Badge, Button, GlassCard, Input } from "@/components/ui";
@@ -9,7 +9,7 @@ import { WooManualForm } from "@/components/stores/woo-manual-form";
 import { DisconnectStoreButton, PendingButtons } from "@/components/stores/store-actions";
 import { startWooConnectAction } from "@/app/dashboard/stores/actions";
 import { prisma } from "@/lib/db";
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 import { getConnection, getPending } from "@/lib/stores/connection";
 import { relativeSync } from "@/lib/stores/labels";
 import { installRedirect, isShopifyEnabled, shopifyConfig } from "@/lib/stores/shopify";
@@ -30,7 +30,7 @@ const ERRORS: Record<string, string> = {
 };
 
 export default async function StorePage({ params, searchParams }: { params: Promise<{ provider: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const blocked = await pageGate("connectors");
+  const blocked = (await pageGate("connectors")) ?? (await featureGate("storeImport"));
   if (blocked) return blocked;
   const { provider } = await params;
   if (!isStoreProvider(provider)) notFound();
@@ -54,7 +54,7 @@ export default async function StorePage({ params, searchParams }: { params: Prom
 
   return (
     <>
-      <PageHeader title={`Products from ${name}`} description="Pick the products you want to promote. BuPulse copies the name, price, description and photos into projects." />
+      <PageHeader title={`Products from ${name}`} description="Pick the products you want to promote. BuPulse copies the name, price, description and photos into your products, each with its own album." />
       {notice && <p role="alert" className="rounded-2xl bg-danger-bg px-4 py-3 text-[14px] text-danger">{notice}</p>}
       {connected && conn && !pending && <p role="status" className="rounded-2xl bg-success-bg px-4 py-3 text-[14px] text-success">Connected to {conn.storeUrl.replace(/^https:\/\//, "")}. Choose your products below.</p>}
 
@@ -111,7 +111,7 @@ export default async function StorePage({ params, searchParams }: { params: Prom
               <Input name="store" type="url" inputMode="url" placeholder="https://yourstore.com" aria-label="Your store address" autoCapitalize="none" autoCorrect="off" spellCheck={false} required className="flex-1" />
               <Button type="submit">Connect</Button>
             </form>
-            {!siteUrl().startsWith("https://") && <p className="text-[13px] text-muted">The one-click way needs BuPulse on https; here, use the manual keys below.</p>}
+            {!publicSiteUrl().startsWith("https://") && <p className="text-[13px] text-muted">The one-click way needs BuPulse on https; here, use the manual keys below.</p>}
           </GlassCard>
           <details className="glass rounded-glass p-5">
             <summary className="cursor-pointer text-[15px] font-semibold">Or paste your keys by hand</summary>

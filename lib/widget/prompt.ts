@@ -1,16 +1,26 @@
 import { z } from "zod";
 import type { Knowledge } from "@/lib/brand/schemas";
+import { businessFactsContext } from "@/lib/business-info/facts";
+import { faqContext, policiesContext } from "@/lib/knowledge/context";
 import type { Detected } from "./detect";
 
 export interface BusinessFacts {
   name: string;
   industry?: string | null;
+  /** The sector's guidance and the owner's own description (lib/industry-context.ts). */
+  industryContext?: string | null;
   description?: string | null;
   audience?: string | null;
   website?: string | null;
   contentLanguage?: string | null;
+  /** IANA zone of the opening hours (Business.timezone). UTC when missing. */
+  timezone?: string | null;
   knowledge: Knowledge;
-  /** Recent projects, offers and products. */
+  /** Knowledge base -> FAQs (KnowledgeFaq rows, in order). */
+  faqs?: { question: string; answer: string }[];
+  /** Knowledge base -> Policies (Business.policies JSON): delivery, returns, payment, warranty, booking. */
+  policies?: unknown;
+  /** Active products and services and current campaigns (lib/widget/config.ts loadProjectFacts). */
   projects: { type: string; title: string; price?: string | null; features: string[] }[];
 }
 
@@ -59,30 +69,32 @@ function line(label: string, value: string | null | undefined) {
 }
 
 /** The system prompt: rules plus ONLY this business's facts. */
-export function buildSystemPrompt(facts: BusinessFacts, state: { leadCaptured: boolean }): string {
+// `now` decides the "Right now it is ..." line of the opening hours (tests pass a fixed time).
+export function buildSystemPrompt(facts: BusinessFacts, state: { leadCaptured: boolean }, now: Date = new Date()): string {
   const k = facts.knowledge;
   const projects = facts.projects.slice(0, 15).map((p) => {
     const parts = [`${p.title} (${p.type})`, p.price ? `price: ${p.price}` : null, p.features.length ? `details: ${p.features.slice(0, 6).join("; ")}` : null];
     return `- ${parts.filter(Boolean).join(", ")}`;
   });
-  const faqs = k.faqs.map((f) => `- Q: ${f.question}\n  A: ${f.answer}`);
+  const faqs = faqContext(facts.faqs ?? []);
+  const policies = policiesContext(facts.policies);
 
   const sections = [
     [
       "BUSINESS FACTS",
       line("Name", facts.name),
-      line("Industry", facts.industry),
+      facts.industryContext ? null : line("Industry", facts.industry),
       line("What it sells or does", facts.description),
       line("Its customers", facts.audience),
       line("Website", facts.website),
       line("Content language", facts.contentLanguage || "English"),
-      line("Opening hours", k.hours),
-      line("Area served", k.area),
-      line("Contact", k.contact),
     ]
       .filter(Boolean)
       .join("\n"),
-    faqs.length ? `FREQUENTLY ASKED QUESTIONS\n${faqs.join("\n")}` : null,
+    facts.industryContext?.trim() ? `ABOUT THE BUSINESS AND ITS SECTOR\n${facts.industryContext.trim()}\nThe sector guidance is background for tone and understanding only: it is NOT a list of what this business offers, so never present it as fact.` : null,
+    businessFactsContext(k, { timeZone: facts.timezone, now }),
+    faqs ? `FREQUENTLY ASKED QUESTIONS (the owner's own answers: give them as written, in the visitor's language)\n${faqs}` : null,
+    policies ? `DELIVERY, RETURNS, PAYMENT, WARRANTY AND BOOKING (answer questions about these only from this block; never promise anything it does not say)\n${policies}` : null,
     projects.length ? `PRODUCTS, SERVICES AND OFFERS\n${projects.join("\n")}` : null,
     state.leadCaptured ? "The visitor's contact details are already saved. Do not ask for them again; set wantsContact to false." : null,
   ];

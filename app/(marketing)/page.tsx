@@ -6,18 +6,15 @@ import { FinalCta } from "@/components/marketing/home/final-cta";
 import { Hero } from "@/components/marketing/home/hero";
 import { HowItWorks } from "@/components/marketing/home/how-it-works";
 import { IndustryCards, IndustryMarquee } from "@/components/marketing/home/industries";
-import { Testimonials } from "@/components/marketing/home/testimonials";
-import { getTrialInfo } from "@/lib/plan-catalog";
 
-// The trial length comes from the Trial plan, which an admin can change.
+// The FAQ reads the trial length, an admin setting.
 export const dynamic = "force-dynamic";
 
 const title = "BuPulse: the marketing team for every small business";
-const describe = (days: number) =>
-  `Tell BuPulse about your business once. It writes your posts, designs your graphics and chats with your website visitors. Try it free for ${days} days.`;
+const description =
+  "Tell BuPulse about your business once. It writes your posts, designs your graphics and chats with your website visitors. Book a free demo to see it on your own business.";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const description = describe((await getTrialInfo()).days);
   return {
     title: { absolute: title },
     description,
@@ -35,7 +32,6 @@ export default function HomePage() {
       <IndustryCards />
       <Features />
       <HowItWorks />
-      <Testimonials />
       <Faq />
       <BlogTeaser />
       <FinalCta />

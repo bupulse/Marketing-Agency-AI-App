@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as grant from "@/tests/stubs/entitlements";
+// Plans are not part of this test's database: every plan feature is granted (tests/stubs/entitlements.ts).
+vi.mock("@/lib/entitlements", () => import("@/tests/stubs/entitlements"));
 
 const prisma = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
@@ -124,6 +127,17 @@ describe("claiming", () => {
     expect(values).toContain(MAX_ATTEMPTS);
   });
 
+  it("does not claim posts of companies whose paid period is over for longer than any grace (lib/billing/period.ts)", async () => {
+    await claimDuePosts({ now, limit: 7 });
+    const [, ...values] = claimCalls()[0];
+    // The live-subscription filter is a nested SQL fragment among the values: ACTIVE or TRIALING, and a period that
+    // ended after now minus the longest grace (the trial is held by trialEndsAt, in the entitlement check).
+    const text = JSON.stringify(values);
+    expect(text).toContain("currentPeriodEnd");
+    expect(text).toContain(`s.\\"plan\\" = 'TRIAL'`);
+    expect(text).toContain(new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString());
+  });
+
   it("limits a manual publish to the business and the given posts", async () => {
     await publishPostsNow("b1", ["p1", "p2"], now);
     const [, ...values] = claimCalls()[0];
@@ -208,6 +222,13 @@ describe("publishing", () => {
     expect(request).toMatchObject({ format: "POST", text: "Fresh bread today\n\n#bread", media: [{ url: "https://signed.example/u1/gallery/a.jpg", mimeType: "image/jpeg", width: 1080 }] });
     expect(settled().data).toMatchObject({ status: "PUBLISHED", externalId: "ext1", permalink: "https://facebook.com/ext1", lockedAt: null });
     expect(settled().data.publishedAt instanceof Date).toBe(true);
+  });
+
+  it("never publishes a contest without its confirmed prize and rules: it goes back to waiting for the owner", async () => {
+    claimOnce(post({ text: "Win [PRIZE]!", contest: {} }));
+    await publishDue(now);
+    expect(provider.publish).not.toHaveBeenCalled();
+    expect(settled().data).toMatchObject({ status: "PENDING_APPROVAL", reviewNote: "Needs your confirmation: prize & rules" });
   });
 
   it("only settles posts that are still PUBLISHING", async () => {
@@ -305,6 +326,18 @@ describe("reminders (NOTIFY accounts and SCRIPT posts)", () => {
     expect(settled().data).toMatchObject({ status: "NEEDS_ACTION", lastError: null });
   });
 
+  it("sends a post made for an app that is not connected (remindOnly) as a reminder", async () => {
+    claimOnce(post({ network: "instagram", connection: null, connectionId: null, remindOnly: true, mediaPaths: ["u1/designs/d.png"] }));
+    const result = await publishDue(now);
+    expect(result).toMatchObject({ claimed: 1, reminders: 1, failed: 0 });
+    expect(provider.publish).not.toHaveBeenCalled();
+    const sent = email.sendEmail.mock.calls[0][0];
+    expect(sent.subject).toBe("Time to post on Instagram");
+    expect(sent.text).toContain("not connected to BuPulse yet");
+    expect(sent.text).toContain("https://signed.example/u1/designs/d.png");
+    expect(settled().data).toMatchObject({ status: "NEEDS_ACTION" });
+  });
+
   it("sends SCRIPT posts as reminders even on an AUTO account", async () => {
     claimOnce(post({ network: "tiktok", format: "SCRIPT", text: "0-5s: show the oven" }));
     const result = await publishDue(now);
@@ -330,6 +363,42 @@ describe("reminders (NOTIFY accounts and SCRIPT posts)", () => {
   });
 });
 
+describe("the calendar plan feature", () => {
+  afterEach(() => {
+    grant.missing.clear();
+    grant.state.planUnknown = false;
+    grant.state.block = null;
+  });
+
+  it("holds (never fails) the posts of a read-only account, with the reason on the post, until it pays", async () => {
+    claimOnce(post({ attempts: 4 }));
+    grant.state.block = "trial_expired";
+    const result = await publishDue(now);
+    expect(result).toMatchObject({ claimed: 1, retrying: 1, failed: 0, published: 0 });
+    expect(provider.publish).not.toHaveBeenCalled();
+    expect(settled().data).toMatchObject({ status: "SCHEDULED", attempts: 3, nextAttemptAt: null, lastError: grant.blockMessage("trial_expired") });
+  });
+
+  it("fails a claimed post of a company whose plan (resolved) lacks it, with the reason, instead of sending it", async () => {
+    claimOnce(post({ attempts: 1 }));
+    grant.missing.add("calendar");
+    const result = await publishDue(now);
+    expect(result).toMatchObject({ claimed: 1, failed: 1, published: 0, retrying: 0 });
+    expect(provider.publish).not.toHaveBeenCalled();
+    expect(settled().data).toMatchObject({ status: "FAILED", lastError: expect.stringMatching(/not part of your plan/) });
+  });
+
+  it("hands the post back to retry while the plan cannot be checked (catalog degraded, unknown plan key): never FAILED for good", async () => {
+    claimOnce(post({ attempts: 4 })); // even on the last attempt
+    grant.state.planUnknown = true;
+    const result = await publishDue(now);
+    expect(result).toMatchObject({ claimed: 1, retrying: 1, failed: 0, published: 0 });
+    expect(provider.publish).not.toHaveBeenCalled();
+    expect(email.sendEmail).not.toHaveBeenCalled();
+    expect(settled().data).toMatchObject({ status: "SCHEDULED", attempts: 3, nextAttemptAt: null, lastError: null, lockedAt: null });
+  });
+});
+
 describe("reminders while Resend is switched off in the admin console", () => {
   const resendOff = () => {
     prisma.serviceSwitch.findMany.mockResolvedValue([{ service: "resend" }]);
@@ -342,6 +411,7 @@ describe("reminders while Resend is switched off in the admin console", () => {
     const [, ...values] = claimCalls()[0];
     expect(JSON.stringify(values)).toContain("NOTIFY");
     expect(JSON.stringify(values)).toContain("SCRIPT");
+    expect(JSON.stringify(values)).toContain("remindOnly");
     prisma.serviceSwitch.findMany.mockResolvedValue([]);
     clearSwitchCache();
     prisma.$queryRaw.mockClear();

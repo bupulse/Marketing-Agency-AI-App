@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
-import { siteUrl } from "@/lib/auth/site-url";
+import { requestSiteUrl } from "@/lib/auth/request-site";
 import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
+import { hasFeature } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { sameString } from "@/lib/canva/pkce";
 import { saveConnection } from "@/lib/stores/connection";
 import { exchangeCode, normalizeShopDomain, shopifyConfig, subscribeUninstall, verifyOAuthHmac } from "@/lib/stores/shopify";
 import { openShopifyState, SHOPIFY_COOKIE } from "@/lib/stores/state";
 
-function back(result: string) {
-  const response = NextResponse.redirect(new URL(`/dashboard/stores/shopify?${result === "connected" ? "connected=1" : `error=${result}`}`, siteUrl()));
+async function back(result: string) {
+  const response = NextResponse.redirect(new URL(`/dashboard/stores/shopify?${result === "connected" ? "connected=1" : `error=${result}`}`, await requestSiteUrl()));
   response.cookies.delete({ name: SHOPIFY_COOKIE, path: "/api/stores/shopify" });
   return response;
 }
@@ -43,6 +44,8 @@ export async function GET(request: Request) {
   try {
     const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
     if (!business) return back("no_business");
+    // The plan lost store import while the merchant was on Shopify's consent page: nothing is saved.
+    if (!(await hasFeature(business.id, "storeImport"))) return back("error");
     const { accessToken, scope } = await exchangeCode(shop, code);
     await saveConnection({ businessId: business.id, provider: "shopify", storeUrl: shop, secret: accessToken, scopes: scope });
     await subscribeUninstall({ provider: "shopify", storeUrl: shop, secret: accessToken });

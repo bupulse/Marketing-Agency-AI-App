@@ -17,6 +17,8 @@ export const SERVICE_IDS = [
   "shopify",
   "woocommerce",
   "cloudflare",
+  "elevenlabs",
+  "whatsapp",
 ] as const;
 export type ServiceId = (typeof SERVICE_IDS)[number];
 
@@ -35,7 +37,7 @@ export const NETWORK_SERVICE: Record<string, ServiceId> = {
 export const networksOf = (service: ServiceId): string[] => Object.entries(NETWORK_SERVICE).filter(([, s]) => s === service).map(([n]) => n);
 
 /** AI provider names in the AiCall ledger -> service. */
-export const AI_PROVIDER_SERVICE: Record<string, ServiceId> = { gemini: "gemini", claude: "claude" };
+export const AI_PROVIDER_SERVICE: Record<string, ServiceId> = { gemini: "gemini", claude: "claude", elevenlabs: "elevenlabs" };
 
 export type ServiceInfo = {
   id: ServiceId;
@@ -49,11 +51,31 @@ export type ServiceInfo = {
   features: string[];
   /** false: core to sign-in or abuse protection, so there is no off switch. */
   killable: boolean;
+  /**
+   * BuPulse cannot work properly without it, so missing keys are a problem on the Overview ("always", or only in
+   * "production"). Every other service without keys is simply not set up yet: shown on Services as "Not connected".
+   */
+  core?: "always" | "production";
   /** One line: what "off" does. */
   whenOff: string;
+  /**
+   * Off until an admin switches it on (a missing switch row means off, not on): for a service that costs money per
+   * use and needs setup outside BuPulse first.
+   */
+  defaultOff?: true;
 };
 
 export const SERVICES: ServiceInfo[] = [
+  {
+    id: "elevenlabs",
+    name: "ElevenLabs",
+    purpose: "Speaks the voiceover of content videos (text to speech).",
+    env: ["ELEVENLABS_API_KEY"],
+    optionalEnv: ["ELEVENLABS_MODEL"],
+    features: ["Voiceover on videos"],
+    killable: true,
+    whenOff: "Videos are made without a voiceover, with captions and music only.",
+  },
   {
     id: "gemini",
     name: "Google Gemini",
@@ -62,6 +84,7 @@ export const SERVICES: ServiceInfo[] = [
     optionalEnv: ["GEMINI_TEXT_MODEL", "GEMINI_TEXT_FALLBACK_MODEL", "GEMINI_IMAGE_MODEL", "WIDGET_MODEL"],
     features: ["Content generation", "AI images", "Autopilot weekly plans", "Website chat replies"],
     killable: true,
+    core: "always",
     whenOff: "AI writing and images pause with a friendly message. The website chat still collects visitor details.",
   },
   {
@@ -82,6 +105,7 @@ export const SERVICES: ServiceInfo[] = [
     optionalEnv: ["RESEND_FROM"],
     features: ["Lead alert emails", "Daily lead digest", "Post reminders", "Autopilot emails"],
     killable: true,
+    core: "always",
     whenOff: "Emails are skipped (leads are still saved and appear in the dashboard and the next digest).",
   },
   {
@@ -101,6 +125,7 @@ export const SERVICES: ServiceInfo[] = [
     env: ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SECRET_KEY", "DATABASE_URL"],
     features: ["Everything"],
     killable: false,
+    core: "always",
     whenOff: "Not switchable: BuPulse cannot run without it.",
   },
   {
@@ -110,6 +135,7 @@ export const SERVICES: ServiceInfo[] = [
     env: ["TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY"],
     features: ["Sign-up protection", "Website chat bot check"],
     killable: false,
+    core: "production",
     whenOff: "Not switchable: switching abuse protection off is never safe.",
   },
   {
@@ -207,6 +233,17 @@ export const SERVICES: ServiceInfo[] = [
     features: ["Connect Cloudflare", "One-click widget install"],
     killable: true,
     whenOff: "Cloudflare connect and install show as temporarily unavailable; the copy-paste snippet still works.",
+  },
+  {
+    id: "whatsapp",
+    name: "WhatsApp Cloud API (Meta)",
+    purpose: "Sends new-lead alerts to business owners on WhatsApp (an approved utility template, paid per message).",
+    env: ["WHATSAPP_CLOUD_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"],
+    optionalEnv: ["WHATSAPP_ALERT_TEMPLATE", "WHATSAPP_TEMPLATE_LANGUAGE"],
+    features: ["WhatsApp lead alerts"],
+    killable: true,
+    defaultOff: true,
+    whenOff: "No WhatsApp alerts are sent and clients do not see the option; email and phone alerts carry on. Off until switched on (docs/RELEASE_2.0.md).",
   },
 ];
 

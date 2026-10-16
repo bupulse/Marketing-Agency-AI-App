@@ -1,14 +1,14 @@
 import { Suspense } from "react";
 import { cookies } from "next/headers";
-import { Plug } from "lucide-react";
-import { pageGate } from "@/components/app/no-access";
+import { featureGate, pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
-import { Badge, Button, GlassCard } from "@/components/ui";
+import { Badge, GlassCard } from "@/components/ui";
+import { ConnectorCard } from "@/components/connectors/connector-card";
+import { getCatalog } from "@/lib/connectors/catalog";
 import { CanvaCard } from "@/components/settings/canva-card";
 import { isCanvaEnabled } from "@/lib/canva/config";
 import { CanvaReturnToast } from "@/components/designs/canva-return-toast";
-import { prisma } from "@/lib/db";
 import { AccountPicker } from "@/components/connections/account-picker";
 import { ChannelList } from "@/components/connections/channel-list";
 import { ConnectToast } from "@/components/connections/connect-toast";
@@ -20,42 +20,6 @@ import { allProviders, isNetwork } from "@/lib/social/registry";
 
 export const metadata = { title: "Channels" };
 
-const APPS = [
-  { provider: "canva", name: "Canva", note: "Open and export designs" },
-  { provider: "google_drive", name: "Google Drive", note: "Import photos and files" },
-  { provider: "dropbox", name: "Dropbox", note: "Import photos and files" },
-  { provider: "shopify", name: "Shopify", note: "Import products" },
-  { provider: "woocommerce", name: "WooCommerce", note: "Import products" },
-  { provider: "cloudflare", name: "Cloudflare", note: "Website and widget setup" },
-];
-
-function Group({ title, items, connected }: { title: string; items: typeof APPS; connected: Set<string> }) {
-  return (
-    <section aria-label={title} className="flex flex-col gap-3">
-      <h2 className="px-1 text-lg font-semibold">{title}</h2>
-      <ul className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
-        {items.map((c) => (
-          <GlassCard as="li" key={c.provider} className="flex flex-col gap-4 rounded-card p-5">
-            <div className="flex items-center gap-3">
-              <span aria-hidden className="inline-flex size-11 shrink-0 items-center justify-center rounded-2xl bg-brand-gradient text-white">
-                <Plug className="size-5" />
-              </span>
-              <div className="min-w-0">
-                <p className="truncate font-semibold">{c.name}</p>
-                <p className="truncate text-[13px] text-muted">{c.note}</p>
-              </div>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              {connected.has(c.provider) ? <Badge tone="success">Connected</Badge> : <Badge tone="neutral">Coming soon</Badge>}
-              <Button variant="ghost" size="sm" disabled aria-disabled="true">Connect</Button>
-            </div>
-          </GlassCard>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 const NOTES: Record<string, string> = {
   instagram: "Business, Creator or personal accounts",
   facebook: "Facebook Pages",
@@ -65,12 +29,13 @@ const NOTES: Record<string, string> = {
 };
 
 export default async function ConnectionsPage({ searchParams }: PageProps<"/dashboard/connections">) {
-  const blocked = await pageGate("channels");
+  const blocked = (await pageGate("channels")) ?? (await featureGate("calendar"));
   if (blocked) return blocked;
-  const { user, actorId, business } = await getAppContext();
+  const { user, actorId, business, entitlements } = await getAppContext();
   const social = business ? await listConnections(business.id) : [];
-  const apps = business ? await prisma.connection.findMany({ where: { businessId: business.id, kind: "APP" }, select: { provider: true } }) : [];
-  const connected = new Set(apps.map((r) => r.provider));
+  // The apps are the connectors' real state (lib/connectors/catalog.ts): Connect where it works, "Coming soon" only
+  // where BuPulse's own keys are not set, "Add to your plan" where the plan lacks the feature. Canva has its own card above.
+  const apps = business ? (await getCatalog({ userId: actorId, businessId: business.id, features: entitlements.inPlan })).filter((a) => a.id !== "canva" || !isCanvaEnabled()) : [];
 
   const channels: ChannelInfo[] = allProviders().map((p) => ({
     network: p.network,
@@ -107,7 +72,14 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/dash
         <CanvaReturnToast />
       </Suspense>
       <CanvaCard userId={actorId} next="/dashboard/connections" />
-      <Group title="Apps" items={isCanvaEnabled() ? APPS.filter((a) => a.provider !== "canva") : APPS} connected={connected} />
+      <section aria-labelledby="apps-heading" className="flex flex-col gap-3">
+        <h2 id="apps-heading" className="px-1 text-lg font-semibold">Apps</h2>
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))] gap-4">
+          {apps.map((item) => (
+            <ConnectorCard key={item.id} item={item} />
+          ))}
+        </ul>
+      </section>
       <GlassCard className="flex flex-wrap items-center gap-3 p-5 text-[15px]">
         <Badge tone="violet">Pro</Badge>
         <p className="min-w-0 flex-1 basis-64 text-muted">

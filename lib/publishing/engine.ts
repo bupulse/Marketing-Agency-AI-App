@@ -1,7 +1,10 @@
 import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import { prisma } from "@/lib/db";
+import { timeBudget } from "@/lib/platform/limits";
 import { disabledNetworks, isServiceEnabled } from "@/lib/admin/switch";
+import { blockMessage, companyEntitlements, notInPlanMessage } from "@/lib/entitlements";
+import { MAX_GRACE_MS } from "@/lib/billing/period";
 import { logError } from "@/lib/errors";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { getProvider, isNetwork } from "@/lib/social/registry";
@@ -9,11 +12,14 @@ import { loadCredentials, markConnectionError } from "@/lib/social/connections";
 import { SocialError, type PublishRequest } from "@/lib/social/types";
 import { alertRecipients } from "@/lib/team/recipients";
 import { sendEmail, renderEmail } from "./email";
+import { isVideoPath } from "@/lib/visuals/post-media";
 import { adminStorageClient, EMAIL_URL_SECONDS, PUBLISH_URL_SECONDS, signPaths, signPathsForNetwork } from "./media";
 import { queueWebhookEvent } from "@/lib/webhooks/emit";
 import { postData } from "@/lib/webhooks/events";
 import { createMarkPostedToken } from "./token";
 import { composeText } from "./validate";
+import { CONTEST_NOTE, contestBlocked } from "@/lib/content-flow/contest";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 
 /** A claimed post whose lock is older than this was abandoned by a crashed run and is taken again. */
 export const STALE_LOCK_MINUTES = 10;
@@ -22,7 +28,8 @@ export const MAX_ATTEMPTS = 5;
 export const BACKOFF_MINUTES = [1, 5, 15, 60] as const;
 export const MAX_POSTS_PER_RUN = 20;
 const CLAIM_BATCH = 5;
-const TIME_BUDGET_MS = 45_000;
+/** Stop claiming posts after this long; posts in flight still finish. Netlify stops a function at 60 s, so 15 s there. */
+const timeBudgetMs = () => timeBudget(45_000, 15_000);
 
 export type PublishRunResult = {
   claimed: number;
@@ -75,7 +82,13 @@ export async function claimDuePosts(args: { now: Date; limit: number; ids?: stri
   // Reminder posts (NOTIFY accounts and SCRIPT posts) need Resend. While it is off they are not claimed, so they stay
   // SCHEDULED with no attempt used, and go out as soon as it is switched back on.
   const emailOff = !(await isServiceEnabled("resend"));
-  const reminderSql = emailOff ? Prisma.sql`AND "format" <> 'SCRIPT'::"PostFormat" AND ("connectionId" IS NULL OR "connectionId" NOT IN (SELECT "id" FROM "Connection" WHERE "postingMode" = 'NOTIFY'))` : Prisma.empty;
+  const reminderSql = emailOff ? Prisma.sql`AND "format" <> 'SCRIPT'::"PostFormat" AND NOT "remindOnly" AND ("connectionId" IS NULL OR "connectionId" NOT IN (SELECT "id" FROM "Connection" WHERE "postingMode" = 'NOTIFY'))` : Prisma.empty;
+  // Companies whose subscription is not live (waiting for a demo, past due, expired, cancelled, or a paid period over
+  // for longer than any grace: lib/billing/period.ts) are not claimed at all: their posts stay SCHEDULED, held, without
+  // using attempts. (A trial that ran out but was not flipped yet, or a card plan past its shorter grace, is caught by
+  // the entitlement check below and released the same way.)
+  const graceOver = new Date(now.getTime() - MAX_GRACE_MS);
+  const liveSql = Prisma.sql`AND "businessId" IN (SELECT b."id" FROM "Business" b JOIN "Subscription" s ON s."userId" = b."userId" WHERE s."status" IN ('ACTIVE'::"SubscriptionStatus", 'TRIALING'::"SubscriptionStatus") AND (s."plan" = 'TRIAL' OR s."currentPeriodEnd" IS NULL OR s."currentPeriodEnd" > ${graceOver}))`;
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     UPDATE "Post" SET "status" = 'PUBLISHING'::"PostStatus", "lockedAt" = ${now}, "attempts" = "attempts" + 1, "updatedAt" = ${now}
     WHERE "id" IN (
@@ -83,7 +96,7 @@ export async function claimDuePosts(args: { now: Date; limit: number; ids?: stri
       WHERE "status" = 'SCHEDULED'::"PostStatus" AND "scheduledAt" <= ${now}
         AND "attempts" < ${MAX_ATTEMPTS}
         AND ("nextAttemptAt" IS NULL OR "nextAttemptAt" <= ${now})
-        ${NOT_BEING_DELETED} ${NOT_FORCE_DISCONNECTED} ${only} ${business} ${pausedSql} ${reminderSql}
+        ${NOT_BEING_DELETED} ${NOT_FORCE_DISCONNECTED} ${liveSql} ${only} ${business} ${pausedSql} ${reminderSql}
       ORDER BY "scheduledAt" ASC
       LIMIT ${limit}
       FOR UPDATE SKIP LOCKED
@@ -116,7 +129,7 @@ export async function sweepStalePosts(now: Date): Promise<number> {
   for (const post of await prisma.post.findMany({ where: { id: { in: ids } }, include: postInclude })) {
     const uncertain = post.status === "NEEDS_ACTION";
     if (uncertain) await prisma.post.update({ where: { id: post.id }, data: { lastError: UNCONFIRMED_MESSAGE(label(post.network)) } });
-    if (!uncertain) emitPostEvent(post, "post.failed", { status: "FAILED", lastError: OUT_OF_ATTEMPTS });
+    if (!uncertain) await emitPostEvent(post, "post.failed", { status: "FAILED", lastError: OUT_OF_ATTEMPTS });
     await emailOwner(post, uncertain ? "uncertain" : "failed", uncertain ? UNCONFIRMED_MESSAGE(label(post.network)) : OUT_OF_ATTEMPTS);
   }
   return ids.length;
@@ -124,10 +137,6 @@ export async function sweepStalePosts(now: Date): Promise<number> {
 
 async function loadClaimed(ids: string[]): Promise<ClaimedPost[]> {
   return prisma.post.findMany({ where: { id: { in: ids }, status: "PUBLISHING" }, include: postInclude, orderBy: { scheduledAt: "asc" } });
-}
-
-function siteUrl() {
-  return (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
 }
 
 const NETWORK_LABEL: Record<string, string> = { instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", tiktok: "TikTok", youtube: "YouTube" };
@@ -152,7 +161,8 @@ async function sendReminder(post: ClaimedPost): Promise<"reminders" | "retrying"
   const isScript = post.format === "SCRIPT";
   const admin = adminStorageClient();
   const signed = admin && post.mediaPaths.length ? await signPaths(admin, post.mediaPaths, EMAIL_URL_SECONDS) : new Map<string, string>();
-  const links = post.mediaPaths.flatMap((path, i) => (signed.has(path) ? [{ label: `Image ${i + 1}`, url: signed.get(path) as string }] : []));
+  const links = post.mediaPaths.flatMap((path, i) => (signed.has(path) ? [{ label: isVideoPath(path) ? "Your video" : `Image ${i + 1}`, url: signed.get(path) as string }] : []));
+  const hasVideo = post.mediaPaths.some(isVideoPath);
   const token = await createMarkPostedToken(post.id);
   const heading = isScript ? `Time to film and post on ${network}` : `Time to post on ${network}`;
 
@@ -162,16 +172,20 @@ async function sendReminder(post: ClaimedPost): Promise<"reminders" | "retrying"
     ...renderEmail({
       heading,
       intro: isScript
-        ? `Your ${network} video is scheduled for now. BuPulse cannot publish video yet, so here is the script and caption to film and post it yourself.`
-        : `Your ${network} post is scheduled for now. ${post.connection?.displayName ?? "This account"} is set to remind you instead of posting automatically, so here is everything ready to copy.`,
+        ? hasVideo
+          ? `Your ${network} video is scheduled for now. BuPulse cannot upload to ${network} yet, so download your video below and post it with this caption.`
+          : `Your ${network} video is scheduled for now. BuPulse cannot publish video yet, so here is the script and caption to film and post it yourself.`
+        : !post.connection
+          ? `Your ${network} post is scheduled for now. ${network} is not connected to BuPulse yet, so here is everything ready to copy and post yourself. Connect it in Channels and the next posts go out on their own.`
+          : `Your ${network} post is scheduled for now. ${post.connection.displayName ?? "This account"} is set to remind you instead of posting automatically, so here is everything ready to copy.`,
       blocks: [
         { label: isScript ? "Script" : "Caption", value: post.text },
         ...(post.hashtags.length ? [{ label: "Hashtags", value: post.hashtags.join(" ") }] : []),
         ...(post.link ? [{ label: "Link", value: post.link }] : []),
       ],
       links,
-      button: { label: "I posted it", url: `${siteUrl()}/posted?token=${encodeURIComponent(token)}` },
-      footer: links.length ? "Image links work for 7 days." : post.mediaPaths.length ? "Open BuPulse to download the images for this post." : undefined,
+      button: { label: "I posted it", url: `${publicSiteUrl()}/posted?token=${encodeURIComponent(token)}` },
+      footer: links.length ? (hasVideo ? "Download links work for 7 days." : "Image links work for 7 days.") : post.mediaPaths.length ? "Open BuPulse to download the images for this post." : undefined,
     }),
   };
   const sent = await sendEmail(sentEmail);
@@ -186,9 +200,12 @@ async function sendReminder(post: ClaimedPost): Promise<"reminders" | "retrying"
   return "reminders";
 }
 
-/** Puts a claimed post back to SCHEDULED, undoing the attempt the claim counted, because a service it needs is switched off. */
-async function releaseUnsent(post: ClaimedPost): Promise<"retrying"> {
-  await settle(post.id, { status: "SCHEDULED", attempts: Math.max(0, post.attempts - 1), nextAttemptAt: null, lastError: null });
+/**
+ * Puts a claimed post back to SCHEDULED, undoing the attempt the claim counted, because a service it needs is switched
+ * off or its account is read-only. `held` is shown on the post as the reason it waits (cleared when it is tried again).
+ */
+async function releaseUnsent(post: ClaimedPost, held: string | null = null): Promise<"retrying"> {
+  await settle(post.id, { status: "SCHEDULED", attempts: Math.max(0, post.attempts - 1), nextAttemptAt: null, lastError: held });
   return "retrying";
 }
 
@@ -223,21 +240,21 @@ async function emailOwner(post: ClaimedPost, kind: "failed" | "uncertain", messa
         { label: uncertain ? "What happened" : "What went wrong", value: message },
         { label: "The post", value: composeText(post.text, post.hashtags).slice(0, 500) },
       ],
-      button: { label: reconnect ? "Reconnect your account" : "Open your calendar", url: `${siteUrl()}/dashboard/${reconnect ? "connections" : "calendar"}` },
+      button: { label: reconnect ? "Reconnect your account" : "Open your calendar", url: `${publicSiteUrl()}/dashboard/${reconnect ? "connections" : "calendar"}` },
     }),
   };
   for (const to of recipients) await sendEmail({ to, ...email });
 }
 
 /** Outgoing webhooks (post.published / post.failed): queued after the state is saved, never slows or breaks publishing. */
-function emitPostEvent(post: ClaimedPost, event: "post.published" | "post.failed", changes: { status: string; lastError: string | null; permalink?: string | null; publishedAt?: Date | null }) {
-  queueWebhookEvent(post.businessId, event, () => postData({ ...post, ...changes, permalink: changes.permalink ?? post.permalink, publishedAt: changes.publishedAt ?? post.publishedAt }));
+function emitPostEvent(post: ClaimedPost, event: "post.published" | "post.failed", changes: { status: string; lastError: string | null; permalink?: string | null; publishedAt?: Date | null }): Promise<void> {
+  return queueWebhookEvent(post.businessId, event, () => postData({ ...post, ...changes, permalink: changes.permalink ?? post.permalink, publishedAt: changes.publishedAt ?? post.publishedAt }));
 }
 
 /** Marks the post FAILED and tells the owner by email. */
 async function failFinally(post: ClaimedPost, message: string, reconnect = false) {
   const saved = await settle(post.id, { status: "FAILED", lastError: message, nextAttemptAt: null });
-  if (saved) emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
+  if (saved) await emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
   await emailOwner(post, "failed", message, reconnect);
 }
 
@@ -250,7 +267,7 @@ async function leaveUncertain(post: ClaimedPost) {
 
 function guessMime(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase();
-  return ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "mp4" ? "video/mp4" : "image/jpeg";
+  return ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "mp4" ? "video/mp4" : ext === "webm" ? "video/webm" : "image/jpeg";
 }
 
 /** The network has the post but we could not record it: shout, with everything needed to fix it by hand. */
@@ -273,8 +290,8 @@ async function saveSuccess(post: ClaimedPost, result: { externalId: string; perm
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       if (await settle(post.id, data)) {
-        trackEvent(EVENT_NAMES.postPublished, { businessId: post.businessId, props: { network: post.network } });
-        emitPostEvent(post, "post.published", { status: "PUBLISHED", lastError: null, permalink: data.permalink, publishedAt: data.publishedAt });
+        await trackEvent(EVENT_NAMES.postPublished, { businessId: post.businessId, props: { network: post.network } });
+        await emitPostEvent(post, "post.published", { status: "PUBLISHED", lastError: null, permalink: data.permalink, publishedAt: data.publishedAt });
         return;
       }
       return await logSaveFailure(post, result, new Error("The post was no longer in PUBLISHING state"));
@@ -312,12 +329,34 @@ async function handleProviderError(post: ClaimedPost, error: unknown): Promise<"
 /** Publishes one claimed post through its network and records the result. Never throws. */
 async function processPost(post: ClaimedPost): Promise<keyof Omit<PublishRunResult, "claimed">> {
   try {
-    if (!post.connection || !isNetwork(post.network)) {
+    // Last line of defence: a contest without the owner's confirmed prize and rules never goes out; it goes back to
+    // waiting for the owner (lib/content-flow/contest.ts).
+    if (contestBlocked(post)) {
+      await settle(post.id, { status: "PENDING_APPROVAL", reviewNote: CONTEST_NOTE, autoScheduledAt: null });
+      return "retrying";
+    }
+    // A post for an app that is not connected (remindOnly) is a reminder; one that lost its account fails.
+    const byHand = !post.connection && post.remindOnly;
+    if ((!post.connection && !byHand) || !isNetwork(post.network)) {
       const message = "The account for this post was disconnected.";
-      if (await settle(post.id, { status: "FAILED", lastError: message })) emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
+      if (await settle(post.id, { status: "FAILED", lastError: message })) await emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
       return "failed";
     }
-    if (post.connection.postingMode === "NOTIFY" || post.format === "SCRIPT") return await sendReminder(post);
+    // Scheduling is a plan feature. A post of a company whose plan (resolved) lost it fails with the reason, instead
+    // of going out. While the plan cannot be checked (catalog degraded, unknown plan key) the post is handed back and
+    // retried later: a deploy or database blip must never fail scheduled posts for good. A read-only account (demo
+    // pending, trial over, past due, plan ended) keeps its posts too: SCHEDULED and held, with the reason on them,
+    // until it pays (then they go out, late ones first).
+    const access = await companyEntitlements(post.businessId);
+    if (!access.resolved) return releaseUnsent(post);
+    if (access.block) return releaseUnsent(post, blockMessage(access.block));
+    if (!access.inPlan.has("calendar")) {
+      const message = notInPlanMessage("calendar");
+      if (await settle(post.id, { status: "FAILED", lastError: message })) await emitPostEvent(post, "post.failed", { status: "FAILED", lastError: message });
+      return "failed";
+    }
+    if (!access.usable.has("calendar")) return releaseUnsent(post);
+    if (!post.connection || post.connection.postingMode === "NOTIFY" || post.format === "SCRIPT") return await sendReminder(post);
 
     const provider = getProvider(post.network);
     let result: { externalId: string; permalink?: string };
@@ -367,7 +406,7 @@ async function runClaimed(ids: string[], totals: PublishRunResult) {
  */
 export async function publishDue(now = new Date(), options: { limit?: number; budgetMs?: number } = {}): Promise<PublishRunResult> {
   const limit = options.limit ?? MAX_POSTS_PER_RUN;
-  const deadline = Date.now() + (options.budgetMs ?? TIME_BUDGET_MS);
+  const deadline = Date.now() + (options.budgetMs ?? timeBudgetMs());
   const totals: PublishRunResult = { claimed: 0, published: 0, reminders: 0, retrying: 0, failed: 0, uncertain: 0 };
   await sweepStalePosts(now).catch((error) => logError(error, { source: "publishing.sweep" }));
   while (totals.claimed < limit && Date.now() < deadline) {

@@ -16,6 +16,7 @@ import {
   PenLine,
   Scissors,
   Smartphone,
+  Sparkles,
   Stethoscope,
   Store,
   Utensils,
@@ -82,6 +83,10 @@ export interface Feature {
   text: string;
   icon: LucideIcon;
   soon?: boolean;
+  /** A short badge saying how the feature comes (e.g. not in every plan). */
+  note?: string;
+  /** Takes the whole row of the grid (the last card, so the grid never ends on a lone card). */
+  wide?: boolean;
 }
 
 export const features: Feature[] = [
@@ -91,6 +96,8 @@ export const features: Feature[] = [
   { title: "Lead-capturing chat", icon: MessageCircle, text: "One line of code on your website. It answers visitors and saves their name, email and what they need." },
   { title: "Brand designs", icon: Image, text: "Ready-to-post graphics with your logo and colors. Or just describe the image you want." },
   { title: "Video and voiceover", icon: Video, text: "Turn your photos and scripts into short videos with a natural voice.", soon: true },
+  // Not in the standard plans: it comes with a custom plan or as an add-on (lib/offers/shared.ts ADDONS), so the card says so.
+  { title: "Autopilot", icon: Sparkles, text: "AI plans your week of posts: new arrivals, offers and tips, each written for every network with a design. You approve them all with one tap and they go out on schedule. Comes with a custom plan, or as an add-on to yours.", note: "Custom plan or add-on", wide: true },
 ];
 
 export const steps = [
@@ -99,10 +106,10 @@ export const steps = [
   { title: "Post and win customers", text: "Publish to your socials while the chat widget turns website visitors into leads." },
 ];
 
-/** Answers may contain {trialDays}; fill it with fillFaq() where they are shown (the trial length is a plan setting). */
+/** Answers may contain {trialDays}; fill it with fillFaq() where they are shown (the trial length is an admin setting). */
 export const faqs = [
   { q: "Does BuPulse work for my type of business?", a: "Yes. Shops, schools, construction, IT, restaurants, salons, clinics and more. You tell BuPulse what you do, and it writes for your customers." },
-  { q: "How does the free trial work?", a: "Sign up and use BuPulse free for {trialDays} days, with a limited number of generations so you can see real results. No card needed. Pick a plan to keep going." },
+  { q: "How do I get started?", a: "Sign up, choose a plan and book a free demo: a short call where we look at your business together and show you what BuPulse makes for it. After the demo you get a {trialDays}-day free trial with a limited number of generations, so you can see real results before you pay. No card needed for the trial." },
   { q: "Do I need marketing experience?", a: "No. If you can describe what you sell, BuPulse does the rest. You review and post." },
   { q: "Which social networks can I post to?", a: "Instagram, Facebook, TikTok, LinkedIn and YouTube. You connect your own accounts with a normal login." },
   { q: "How does the chat widget get on my website?", a: "You paste one line of code into your site. It answers visitors from the information you gave BuPulse and saves their details in your Leads list." },
@@ -110,12 +117,8 @@ export const faqs = [
   { q: "What is done-for-you?", a: "If you would rather not do it yourself, our team runs your social content and lead capture with BuPulse for a monthly fee." },
 ];
 
-// Placeholders until real customers give permission to be quoted.
-export const testimonials = [
-  { quote: "[Testimonial from a store owner]", name: "[Owner name]", business: "[Store name]" },
-  { quote: "[Testimonial from a school]", name: "[Name]", business: "[School name]" },
-  { quote: "[Testimonial from a construction company]", name: "[Name]", business: "[Company name]" },
-];
+// Testimonials: none yet. The home page section (components/marketing/home/testimonials.tsx, removed 12 October 2026,
+// in git history) comes back once pilot clients have agreed to be quoted; until then nothing made up is shown.
 
 // Plans, prices and the trial now come from the database (lib/plan-catalog.ts, managed at /admin/plans).
 

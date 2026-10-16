@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireActiveUser } from "@/lib/auth/require-user";
+import { assertFeature, FeatureRequiredError } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import {
   businessIdFor,
@@ -17,6 +18,7 @@ import {
   moveAssets as moveInto,
   prepareUploads,
   renameAsset as renamePhoto,
+  setAssetDescription,
   renameFolder as renameFolderRow,
   type FolderSummary,
   type GalleryOverview,
@@ -25,6 +27,8 @@ import {
 } from "@/lib/media/service";
 import { MEDIA_BULK_MAX, MEDIA_RATE, UPLOAD_BATCH_MAX } from "@/lib/media/rules";
 import { RateLimitError, rateLimit, rateLimitMessage } from "@/lib/rate-limit";
+import { parseDestination, parseFilter } from "@/lib/media/destinations";
+import type { FeatureKey } from "@/lib/features";
 
 export type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -35,16 +39,20 @@ const ids = z.array(id).min(1).max(MEDIA_BULK_MAX);
 
 type Ctx = { userId: string; businessId: string };
 
-/** Signed-in, active user plus their business; maps expected failures to messages the user can read. */
-async function guard<T extends object>(fn: (ctx: Ctx) => Promise<T>, options: { limit?: boolean } = {}): Promise<Result<T>> {
+/**
+ * Signed-in, active user plus their business; maps expected failures to messages the user can read. The Gallery needs
+ * the `gallery` feature; adding photos to a product's or campaign's album is part of products (`content`).
+ */
+async function guard<T extends object>(fn: (ctx: Ctx) => Promise<T>, options: { limit?: boolean; feature?: FeatureKey } = {}): Promise<Result<T>> {
   const user = await requireActiveUser();
   try {
     const businessId = await businessIdFor(user.id);
     if (!businessId) return { ok: false, error: "Set up your business first." };
+    await assertFeature(businessId, options.feature ?? "gallery");
     if (options.limit) await rateLimit(`media-edit:${user.id}`, MEDIA_RATE.edit);
     return { ok: true, ...(await fn({ userId: user.id, businessId })) };
   } catch (error) {
-    if (error instanceof MediaError) return { ok: false, error: error.message };
+    if (error instanceof MediaError || error instanceof FeatureRequiredError) return { ok: false, error: error.message };
     if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
     void logError(error, { source: "gallery.action", userId: user.id });
     return { ok: false, error: FAILED };
@@ -55,8 +63,16 @@ function refresh() {
   revalidatePath("/dashboard/gallery");
 }
 
+/** The plan feature a destination needs: folders are the Gallery's, albums belong to products. */
+function featureFor(destination: string | null | undefined): FeatureKey {
+  const d = parseDestination(destination);
+  return d && d.kind !== "folder" ? "content" : "gallery";
+}
+
+const destination = z.string().max(80).nullish().transform((v) => v || null);
+
 const uploadSchema = z.object({
-  folderId,
+  destination,
   files: z.array(z.object({ name: z.string().max(260), type: z.string().max(100), size: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) })).min(1).max(UPLOAD_BATCH_MAX),
 });
 
@@ -64,13 +80,13 @@ const uploadSchema = z.object({
 export async function createUploadTargets(input: z.input<typeof uploadSchema>): Promise<Result<{ targets: UploadTarget[] }>> {
   const parsed = uploadSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Add up to 20 photos at a time." };
-  return guard(async (ctx) => ({ targets: await prepareUploads(ctx, parsed.data.files, parsed.data.folderId) }));
+  return guard(async (ctx) => ({ targets: await prepareUploads(ctx, parsed.data.files, parsed.data.destination) }), { feature: featureFor(parsed.data.destination) });
 }
 
 const finalizeSchema = z.object({
   path: z.string().min(1).max(300),
   name: z.string().max(260),
-  folderId,
+  destination,
   width: z.number().int().nullish(),
   height: z.number().int().nullish(),
 });
@@ -79,7 +95,7 @@ export async function finalizeUpload(input: z.input<typeof finalizeSchema>): Pro
   const parsed = finalizeSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That upload could not be used." };
   // No revalidation here: the browser refreshes once after the whole drop, instead of once per file.
-  return guard(async (ctx) => ({ item: await saveUpload(ctx, parsed.data) }));
+  return guard(async (ctx) => ({ item: await saveUpload(ctx, parsed.data) }), { feature: featureFor(parsed.data.destination) });
 }
 
 /** Cleans up an upload that failed after reaching Storage. */
@@ -90,15 +106,27 @@ export async function discardUpload(path: string): Promise<void> {
   } catch {}
 }
 
-const FOLDER_FILTER = z.string().max(60).optional();
+const FOLDER_FILTER = z.string().max(80).optional();
 const pageSchema = z.object({ folder: FOLDER_FILTER, search: z.string().max(80).optional(), cursor: z.string().max(60).nullish() });
 
-/** One page of photos for "Load more" and the picker. `folder` is "all" (default), "none" or a folder id. */
+/**
+ * One page of photos for "Load more" and the picker. `folder` is "all" (default), "none", a folder id, or a typed key
+ * ("folder:<id>", "product:<id>", "campaign:<id>"; lib/media/destinations.ts parseFilter).
+ */
 export async function listGalleryPage(input: z.input<typeof pageSchema>): Promise<Result<{ items: MediaItem[]; nextCursor: string | null }>> {
   const parsed = pageSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: FAILED };
   const { folder, search, cursor } = parsed.data;
-  return guard(async ({ businessId }) => listMedia(businessId, { folderId: !folder || folder === "all" ? undefined : folder === "none" ? null : folder, search, cursor, take: 48 }));
+  const f = parseFilter(folder);
+  return guard(async ({ businessId }) =>
+    listMedia(businessId, {
+      folderId: f.kind === "all" || f.kind === "product" || f.kind === "campaign" ? undefined : f.kind === "none" ? null : f.id,
+      album: f.kind === "product" || f.kind === "campaign" ? f : undefined,
+      search,
+      cursor,
+      take: 48,
+    }),
+  { feature: f.kind === "product" || f.kind === "campaign" ? "content" : "gallery" });
 }
 
 export async function getGalleryOverview(): Promise<Result<{ overview: GalleryOverview }>> {
@@ -140,7 +168,16 @@ export async function renameAsset(assetId: string, name: string): Promise<Result
   return result;
 }
 
-/** Moves photos into a folder; `null` takes them out of any folder. */
+/** The owner's "What's in this video?" for one photo or video (the AI writes captions about it). */
+export async function describeAsset(assetId: string, description: string): Promise<Result<{ description: string | null }>> {
+  const parsed = z.object({ id, description: z.string().max(1000) }).safeParse({ id: assetId, description });
+  if (!parsed.success) return { ok: false, error: "Keep the description under 500 characters." };
+  const result = await guard(async ({ businessId }) => ({ description: await setAssetDescription(businessId, parsed.data.id, parsed.data.description) }), { limit: true });
+  if (result.ok) refresh();
+  return result;
+}
+
+/** Moves photos into a folder; `null` takes them out of any folder (they stay in their albums). */
 export async function moveAssets(assetIds: string[], target: string | null): Promise<Result<{ moved: number }>> {
   const parsed = z.object({ ids, folderId }).safeParse({ ids: assetIds, folderId: target });
   if (!parsed.success) return { ok: false, error: FAILED };

@@ -1,11 +1,17 @@
 // Creates BuPulse's Paddle products, prices and (optionally) the webhook endpoint, then writes the
 // ids into .env. Safe to run again: existing products, prices and endpoints are reused.
 //
-//   npm run paddle:setup -- [--webhook-url https://bupulse.com/api/billing/webhooks/paddle] [--print-secret]
+//   npm run paddle:setup -- [--webhook-url https://bupulse.com/api/billing/webhooks/paddle] [--print-secret] [--regions]
+//
+// --regions also creates the card prices of the regions other than GLOBAL (Rwanda's RWF plans charged in USD, the East
+// Africa prices) and writes their ids into PlanRegionPrice (needs DIRECT_URL or DATABASE_URL). Without them card
+// checkout shows "Card payments coming soon" for those plans (docs/BILLING.md). Run it again after a regional price or
+// the USD rate changes (the ids are cleared then).
 //
 // Reads PADDLE_API_KEY and PADDLE_ENVIRONMENT (sandbox | production, default sandbox) from the
 // environment or .env. Prices must match lib/billing/catalog.ts PRICES.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { ensureNotificationSetting, pgRegionStore, syncRegionPrices } from "./paddle-sync.mjs";
 
 const ENV_FILE = ".env";
 
@@ -18,17 +24,6 @@ function loadEnvFile() {
   }
 }
 
-// Keep in sync with lib/billing/paddle-map.ts SUBSCRIPTION_EVENTS and lib/billing/catalog.ts PRICES.
-const EVENTS = [
-  "subscription.created",
-  "subscription.updated",
-  "subscription.activated",
-  "subscription.canceled",
-  "subscription.past_due",
-  "subscription.paused",
-  "subscription.resumed",
-  "transaction.payment_failed",
-];
 const PLANS = {
   STANDARD: { name: "BuPulse Standard", MONTH: 49, YEAR: 490 },
   PRO: { name: "BuPulse Pro", MONTH: 99, YEAR: 990 },
@@ -37,6 +32,7 @@ const PLANS = {
 loadEnvFile();
 const args = process.argv.slice(2);
 const printSecret = args.includes("--print-secret");
+const regions = args.includes("--regions");
 const urlIndex = args.indexOf("--webhook-url");
 const webhookUrl = urlIndex >= 0 ? args[urlIndex + 1] : null;
 if (urlIndex >= 0 && !webhookUrl) {
@@ -94,29 +90,6 @@ async function ensurePrice(productId, label, interval, dollars) {
   ).id;
 }
 
-async function ensureNotificationSetting(url) {
-  const settings = await api("/notification-settings?per_page=200");
-  const found = settings.find((s) => s.destination === url && s.type === "url");
-  if (found) {
-    // Keep an existing endpoint's events in step with what the webhook handles.
-    const missing = EVENTS.filter((e) => !(found.subscribed_events ?? []).some((s) => (s.name ?? s) === e));
-    if (missing.length) {
-      await api(`/notification-settings/${found.id}`, "PATCH", { subscribed_events: EVENTS });
-      console.log(`Updated the webhook's events (added ${missing.join(", ")}).`);
-    }
-    return { secret: found.endpoint_secret_key ?? null, created: false };
-  }
-  const created = await api("/notification-settings", "POST", {
-    description: "BuPulse billing webhooks",
-    type: "url",
-    destination: url,
-    subscribed_events: EVENTS,
-    api_version: 1,
-    include_sensitive_fields: false,
-  });
-  return { secret: created.endpoint_secret_key ?? null, created: true };
-}
-
 // Sets KEY="value" lines in .env (replacing existing ones, appending new ones).
 function writeEnv(values) {
   const lines = existsSync(ENV_FILE) ? readFileSync(ENV_FILE, "utf8").split("\n") : [];
@@ -142,7 +115,8 @@ for (const [plan, config] of Object.entries(PLANS)) {
 
 let secretNote = "";
 if (webhookUrl) {
-  const { secret, created } = await ensureNotificationSetting(webhookUrl);
+  const { secret, created, updated } = await ensureNotificationSetting((path, method = "GET", body) => api(path, method, body), webhookUrl);
+  if (updated.length) console.log(`Updated the webhook's events (added ${updated.join(", ")}).`);
   if (secret) {
     written.PADDLE_WEBHOOK_SECRET = secret;
     secretNote = printSecret ? `\nWebhook secret (${created ? "new" : "existing"}): ${secret}` : "";
@@ -159,3 +133,21 @@ for (const key of Object.keys(written)) {
 if (secretNote) console.log(secretNote);
 if (!webhookUrl) console.log("\nNo --webhook-url given: webhook endpoint not created.");
 console.log("\nStill to add yourself: PADDLE_API_KEY, PADDLE_CLIENT_TOKEN (Paddle > Developer tools > Authentication), PADDLE_ENVIRONMENT.");
+
+if (regions) {
+  const url = process.env.DIRECT_URL || process.env.DATABASE_URL;
+  if (!url) {
+    console.error("\n--regions needs DIRECT_URL or DATABASE_URL (the database the app uses) to write the regional price ids.");
+    process.exit(1);
+  }
+  const { default: pg } = await import("pg");
+  const client = new pg.Client({ connectionString: url });
+  await client.connect();
+  try {
+    console.log(`\nRegional card prices (Paddle ${environment}):`);
+    const written = await syncRegionPrices({ api: (path, method = "GET", body) => api(path, method, body), db: pgRegionStore(client), log: console.log });
+    console.log(written.length ? `Wrote ${written.length} regional price ids. Card checkout opens for those plans within a minute (cache).` : "Every regional price already has its Paddle ids.");
+  } finally {
+    await client.end();
+  }
+}

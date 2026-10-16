@@ -19,6 +19,8 @@ export const PERMISSIONS = {
   content: "MEMBER",
   /** Autopilot settings (the plan, runs and approvals follow `content`). */
   autopilotSettings: "ADMIN",
+  /** Content -> Settings: which apps' posts go out without approval (approving posts follows `content`). */
+  contentSettings: "ADMIN",
   /** Social channels, store connections, Cloudflare, Drive and the other connectors. */
   channels: "ADMIN",
   connectors: "ADMIN",
@@ -30,6 +32,11 @@ export const PERMISSIONS = {
   settings: "ADMIN",
   /** Invite, remove and change the role of teammates. */
   team: "ADMIN",
+  /**
+   * "Add to your plan": the features the plan lacks and the way to ask for them. Admins see it so they can ask the
+   * owner; Members get no purchase prompts. Paying follows `billing`.
+   */
+  upgrade: "ADMIN",
   /** Plan, payment, invoices, cancel. */
   billing: "OWNER",
   /** Delete the company, transfer ownership. */

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  adminClient: vi.fn(),
   prisma: {
     business: { findFirst: vi.fn(), findUnique: vi.fn() },
     project: { findFirst: vi.fn() },
@@ -27,6 +28,13 @@ vi.mock("@/lib/ai/image", () => ({ getImageProvider: () => ({ name: "gemini", ge
 vi.mock("@/lib/designs/templates", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/designs/templates/registry")>()),
   renderTemplate: mocks.renderTemplate,
+}));
+// Server-side writes use the service key (Phase 9, H2): the session's Storage policies are for the browser's uploads.
+vi.mock("@/lib/supabase/admin", () => ({
+  createAdminClient: (...args: unknown[]) => {
+    mocks.adminClient(...args);
+    return { storage: { from: () => ({ upload: mocks.upload, download: mocks.download, remove: mocks.remove, info: mocks.info }) } };
+  },
 }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
@@ -59,6 +67,7 @@ describe("template designs", () => {
     const { id, path } = await createTemplateDesign({ ...owner, template: "offer", aspectRatio: "4:5", headline: "Sale" });
     expect(path).toBe(`${USER}/designs/${id}.png`);
     expect(mocks.upload).toHaveBeenCalledWith(path, expect.any(Uint8Array), expect.objectContaining({ contentType: "image/png" }));
+    expect(mocks.adminClient).toHaveBeenCalled();
     expect(mocks.prisma.design.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ kind: "TEMPLATE", template: "offer", aspectRatio: "4:5", width: 1080, height: 1350, businessId: "biz1" }),
     });

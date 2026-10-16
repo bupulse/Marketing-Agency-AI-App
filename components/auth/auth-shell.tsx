@@ -5,18 +5,15 @@ import { CalendarCheck, CreditCard, Sparkles } from "lucide-react";
 import { BackgroundBlobs } from "@/components/motion";
 import { ThemeToggle } from "@/components/theme";
 import { GlassCard } from "@/components/ui";
-import { getTrialInfo } from "@/lib/plan-catalog";
 
-const facts = (trialDays: number) => [
-  { icon: CalendarCheck, text: `${trialDays}-day free trial` },
+const FACTS = [
+  { icon: CalendarCheck, text: "A free demo first, then a free trial" },
   { icon: CreditCard, text: "No credit card needed to start" },
   { icon: Sparkles, text: "Posts, images and ads in your brand voice" },
 ];
 
 /** Split layout shared by /login, /signup, /forgot-password and /reset-password: brand side + glass card. */
-export async function AuthShell({ children, wide }: { children: ReactNode; wide?: boolean }) {
-  // The trial length is a plan setting an admin can change.
-  const FACTS = facts((await getTrialInfo()).days);
+export function AuthShell({ children, wide }: { children: ReactNode; wide?: boolean }) {
   return (
     <div className="relative grid min-h-dvh w-full lg:grid-cols-[1.05fr_1fr]">
       <BackgroundBlobs />

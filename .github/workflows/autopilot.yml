@@ -1,5 +1,9 @@
 name: Autopilot plans next week
 
+# On Netlify (repository variable DEPLOY_TARGET=netlify) the scheduled runs are skipped: Netlify's scheduled functions
+# run this job, and a second caller would cost free-plan credits twice (docs/DEPLOY_NETLIFY.md). "Run workflow" by hand
+# still works there.
+
 on:
   schedule:
     # Friday and Saturday every three hours (UTC): each business is planned from its own Friday on, a few per call.
@@ -10,6 +14,7 @@ permissions: {}
 
 jobs:
   plan:
+    if: vars.DEPLOY_TARGET != 'netlify' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:

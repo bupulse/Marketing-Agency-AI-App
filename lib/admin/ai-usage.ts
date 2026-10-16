@@ -1,9 +1,11 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { isApproximatePrice } from "@/lib/ai/pricing";
 import { BUDGET_MAX_USD, BUDGET_MIN_USD, BUDGET_SETTING_KEY, clearBudgetCache, effectiveBudgetUsd, monthlyBudgetUsd } from "@/lib/ai/budget";
 import { writeAudit } from "./audit";
 import { scrubSecrets } from "./scrub";
 import { AdminError, type AdminContext } from "./types";
+import { kigaliMonthOf, kigaliMonthRange } from "@/lib/time/kigali";
 
 // AI spend against the monthly cap: per day, model, feature and client, failures and a month-end projection.
 // Cost comes from the AiCall ledger (estimated from lib/ai/pricing.ts), the same table the cap itself is checked against.
@@ -13,10 +15,9 @@ const num = (v: unknown) => Number(v ?? 0);
 const round = (n: number, digits = 4) => Number(n.toFixed(digits));
 
 export function monthBounds(month: string | undefined, now = new Date()) {
-  const m = month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : now.toISOString().slice(0, 7);
-  const [y, mo] = m.split("-").map(Number);
-  const start = new Date(Date.UTC(y, mo - 1, 1));
-  const end = new Date(Date.UTC(y, mo, 1));
+  // Kigali months (lib/time/kigali.ts), the same as the cap in lib/ai/budget.ts and the Money pages.
+  const m = month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : kigaliMonthOf(now);
+  const { start, end } = kigaliMonthRange(m);
   const days = Math.round((end.getTime() - start.getTime()) / DAY_MS);
   return { month: m, start, end, days, current: now >= start && now < end };
 }
@@ -46,11 +47,12 @@ export async function getAiUsage(opts: { month?: string; topLimit?: number; now?
   const where = { createdAt: { gte: b.start, lt: b.end } };
   const top = Math.min(Math.max(Math.trunc(opts.topLimit ?? 10) || 10, 1), 50);
 
-  const [cap, total, perDayRows, perModelRows, perFeatureRows, perUserRows, failedCount, failedByError, failedRecent] = await Promise.all([
+  const [estimatedCalls, cap, total, perDayRows, perModelRows, perFeatureRows, perUserRows, failedCount, failedByError, failedRecent] = await Promise.all([
+    prisma.aiCall.count({ where: { ...where, estimated: true } }).catch(() => 0),
     budgetInfo(),
     prisma.aiCall.aggregate({ where, _sum: { costUsd: true }, _count: { _all: true } }),
     prisma.$queryRaw<{ day: Date; cost: unknown; calls: bigint; failed: bigint }[]>`
-      SELECT date_trunc('day', "createdAt")::date AS day, COALESCE(SUM("costUsd"), 0) AS cost, COUNT(*) AS calls,
+      SELECT ("createdAt" + interval '2 hours')::date AS day, COALESCE(SUM("costUsd"), 0) AS cost, COUNT(*) AS calls,
              COUNT(*) FILTER (WHERE NOT "success") AS failed
       FROM "AiCall" WHERE "createdAt" >= ${b.start} AND "createdAt" < ${b.end} GROUP BY 1 ORDER BY 1`,
     prisma.aiCall.groupBy({ by: ["provider", "model"], where, _sum: { costUsd: true, inputTokens: true, outputTokens: true, images: true }, _count: { _all: true }, orderBy: { _sum: { costUsd: "desc" } } }),
@@ -79,8 +81,10 @@ export async function getAiUsage(opts: { month?: string; topLimit?: number; now?
     projectedUsd: round(projectedUsd, 2),
     projectedOverCap: projectedUsd > cap.usd,
     calls: total._count._all,
+    /** Calls that timed out on our side but were still billed: their usage is our estimate (docs/AI_COSTS.md). */
+    estimatedCalls,
     perDay: perDayRows.map((r) => ({ date: new Date(r.day).toISOString().slice(0, 10), costUsd: round(num(r.cost)), calls: Number(r.calls), failed: Number(r.failed) })),
-    perModel: perModelRows.map((r) => ({ provider: r.provider, model: r.model, calls: r._count._all, costUsd: round(num(r._sum.costUsd)), inputTokens: num(r._sum.inputTokens), outputTokens: num(r._sum.outputTokens), images: num(r._sum.images) })),
+    perModel: perModelRows.map((r) => ({ provider: r.provider, model: r.model, approximatePrice: isApproximatePrice(r.model), calls: r._count._all, costUsd: round(num(r._sum.costUsd)), inputTokens: num(r._sum.inputTokens), outputTokens: num(r._sum.outputTokens), images: num(r._sum.images) })),
     perFeature: perFeatureRows.map((r) => ({ feature: r.feature, calls: r._count._all, costUsd: round(num(r._sum.costUsd)) })),
     topSpenders: perUserRows.map((r) => ({
       userId: r.userId as string,

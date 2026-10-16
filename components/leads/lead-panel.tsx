@@ -19,8 +19,8 @@ function ContactButton({ href, icon, children, external }: { href: string; icon:
   );
 }
 
-/** One lead: contact buttons, status, notes (saved as you type) and the whole chat. */
-export function LeadPanel({ lead, onClose, onStatus }: { lead: InboxLead; onClose: () => void; onStatus: (id: string, status: LeadStatusValue) => void }) {
+/** One lead: contact buttons, status, notes (saved as you type) and the whole chat. Read-only (no status, no notes) without website chat in the plan. */
+export function LeadPanel({ lead, readOnly = false, onClose, onStatus }: { lead: InboxLead; readOnly?: boolean; onClose: () => void; onStatus: (id: string, status: LeadStatusValue) => void }) {
   const { toast } = useToast();
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -71,9 +71,9 @@ export function LeadPanel({ lead, onClose, onStatus }: { lead: InboxLead; onClos
   }, [notes]);
   useEffect(
     () => () => {
-      if (notesRef.current !== lastSaved.current) void saveNotes(lead.id, notesRef.current);
+      if (!readOnly && notesRef.current !== lastSaved.current) void saveNotes(lead.id, notesRef.current);
     },
-    [lead.id],
+    [lead.id, readOnly],
   );
 
   async function setStatus(status: LeadStatusValue) {
@@ -147,28 +147,39 @@ export function LeadPanel({ lead, onClose, onStatus }: { lead: InboxLead; onClos
         )}
       </dl>
 
-      <label className="flex flex-col gap-1.5 text-[14px] font-medium">
-        Status
-        <Select value={lead.status} onChange={(e) => void setStatus(e.target.value as LeadStatusValue)}>
-          {LEAD_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {STATUS_LABELS[s]}
-            </option>
-          ))}
-        </Select>
-      </label>
-
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between">
-          <label htmlFor={`notes-${lead.id}`} className="text-[14px] font-medium">
-            Notes
+      {readOnly ? (
+        lead.notes && (
+          <div className="flex flex-col gap-1.5">
+            <h3 className="text-[14px] font-medium">Notes</h3>
+            <p className="text-[14px] whitespace-pre-wrap">{lead.notes}</p>
+          </div>
+        )
+      ) : (
+        <>
+          <label className="flex flex-col gap-1.5 text-[14px] font-medium">
+            Status
+            <Select value={lead.status} onChange={(e) => void setStatus(e.target.value as LeadStatusValue)}>
+              {LEAD_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {STATUS_LABELS[s]}
+                </option>
+              ))}
+            </Select>
           </label>
-          <span role="status" className={cn("text-[12px]", saveState === "error" ? "text-danger" : "text-muted")}>
-            {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : saveState === "error" ? "Not saved. Retrying on your next edit." : ""}
-          </span>
-        </div>
-        <Textarea id={`notes-${lead.id}`} rows={4} maxLength={5000} value={notes} onChange={(e) => changeNotes(e.target.value)} onBlur={() => void flush()} placeholder="Called on Monday, wants a quote…" />
-      </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <label htmlFor={`notes-${lead.id}`} className="text-[14px] font-medium">
+                Notes
+              </label>
+              <span role="status" className={cn("text-[12px]", saveState === "error" ? "text-danger" : "text-muted")}>
+                {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : saveState === "error" ? "Not saved. Retrying on your next edit." : ""}
+              </span>
+            </div>
+            <Textarea id={`notes-${lead.id}`} rows={4} maxLength={5000} value={notes} onChange={(e) => changeNotes(e.target.value)} onBlur={() => void flush()} placeholder="Called on Monday, wants a quote…" />
+          </div>
+        </>
+      )}
 
       <section aria-label="Chat" className="flex flex-col gap-2">
         <h3 className="text-[14px] font-medium">Chat</h3>

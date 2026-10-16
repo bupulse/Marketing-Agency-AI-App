@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+// Plans are not part of this test's database: every plan feature is granted (tests/stubs/entitlements.ts).
+vi.mock("@/lib/entitlements", () => import("@/tests/stubs/entitlements"));
 
 const prisma = vi.hoisted(() => ({
   business: { findUnique: vi.fn(), update: vi.fn() },
@@ -74,7 +76,7 @@ describe("calendar actions", () => {
 
   it("approve is scoped to the user's business", async () => {
     const result = await approvePostsAction(["p-other"]);
-    expect(result).toEqual({ ok: true, approved: 0 });
+    expect(result).toEqual({ ok: true, approved: 0, skipped: 0 });
     expect(prisma.post.findMany.mock.calls[0][0].where).toMatchObject({ businessId: "b1", status: "PENDING_APPROVAL" });
   });
 

@@ -1,14 +1,23 @@
 import { EVENT_NAMES, trackEvent } from "@/lib/analytics/events";
 import "server-only";
 import { prisma } from "@/lib/db";
+import { resolveSubject, subjectColumns } from "@/lib/knowledge/service";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { composeSchema, editSchema, isOwnMediaPath, type ComposeParsed } from "./schemas";
 import { cleanSlotTimes, nextFreeSlots } from "./slots";
+import { bestTime, MIN_GAP_MINUTES } from "./best-time";
+import { buildProfile, preferredHours, preferredWeekdays } from "@/lib/autopilot/learning";
+import { loadPostResults } from "@/lib/autopilot/results";
 import { EDITABLE, QUEUED, type PostStatusName } from "./status";
 import { parseLocalInput } from "./time";
 import { formatFor, validatePost, type PostFormatName } from "./validate";
 import type { ComposeInput, EditInput } from "./types";
+import { composerMediaFor, isVideoPath, trimNote, videoFitsNetwork } from "@/lib/visuals/post-media";
+import { readyMedia } from "@/lib/visuals/service";
+import { CONTEST_NOTE, contestAfterEdit, contestBlocked } from "@/lib/content-flow/contest";
+import { addVersion, keepBaseline } from "@/lib/content-flow/post-versions";
+import { piecesOf } from "@/lib/content-flow/versions";
 
 /** A problem the owner can fix. `code` tells the action layer whether it was a missing thing, bad input or a race. */
 export class PublishingError extends Error {
@@ -23,7 +32,8 @@ export class PublishingError extends Error {
 
 const NOT_FOUND = () => new PublishingError("We could not find that post.", "not_found");
 
-export type Owner = { businessId: string; userId: string };
+/** The company (its account and business) and, when known, the person acting: their edits are named in a post's versions. */
+export type Owner = { businessId: string; userId: string; actorId?: string | null };
 
 /** Can this account be posted to (or reminded about) right now? */
 export function accountUsable(c: { status: string; postingMode: string }): boolean {
@@ -79,8 +89,16 @@ async function resolveTime(
 /** Sizes of the owner's Gallery photos among these paths (designs and others are not recorded, so are skipped). */
 async function mediaSizes(businessId: string, paths: string[]) {
   if (paths.length === 0) return [];
-  const rows = await prisma.mediaAsset.findMany({ where: { businessId, path: { in: paths } }, select: { width: true, height: true } });
+  // Photos only: a video's shape is not held to Instagram's photo ratios.
+  const rows = await prisma.mediaAsset.findMany({ where: { businessId, path: { in: paths }, kind: "photo" }, select: { width: true, height: true } });
   return rows;
+}
+
+async function galleryVideoLengths(businessId: string, paths: string[]): Promise<Map<string, number>> {
+  const videos = paths.filter(isVideoPath);
+  if (videos.length === 0) return new Map();
+  const rows = await prisma.mediaAsset.findMany({ where: { businessId, path: { in: videos }, kind: "video" }, select: { path: true, durationMs: true } });
+  return new Map(rows.flatMap((r) => (r.durationMs ? [[r.path, r.durationMs] as const] : [])));
 }
 
 function checkMedia(userId: string, paths: string[]) {
@@ -110,15 +128,20 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
   if (connections.length !== new Set(data.connectionIds).size) throw new PublishingError("One of those accounts is not connected.", "not_found");
   const ordered = data.connectionIds.flatMap((id) => connections.filter((c) => c.id === id));
 
-  const [project, content] = await Promise.all([
-    data.projectId ? prisma.project.findFirst({ where: { id: data.projectId, businessId: owner.businessId }, select: { id: true } }) : null,
-    data.contentId ? prisma.generatedContent.findFirst({ where: { id: data.contentId, project: { businessId: owner.businessId } }, select: { id: true } }) : null,
+  const [subject, content] = await Promise.all([
+    data.subjectId ? resolveSubject(owner.businessId, data.subjectId) : null,
+    data.contentId ? prisma.generatedContent.findFirst({ where: { id: data.contentId, businessId: owner.businessId }, select: { id: true } }) : null,
   ]);
-  if ((data.projectId && !project) || (data.contentId && !content)) throw new PublishingError("We could not find that project.", "not_found");
+  if ((data.subjectId && !subject) || (data.contentId && !content)) throw new PublishingError("We could not find that product or campaign.", "not_found");
 
   const draft = data.when.mode === "draft";
   const problems: string[] = [];
   const sizes = !draft && ordered.some((c) => c.provider === "instagram") ? await mediaSizes(owner.businessId, data.mediaPaths) : [];
+  // The content's visuals (docs/CONTENT_VISUALS.md): a video goes only where the network takes it, and with the script
+  // reminder of TikTok and YouTube; the other networks get the photos (or the content's picture).
+  const visual = content ? await readyMedia(owner.businessId, { contentId: content.id }) : { images: [], video: null };
+  // The owner's own Gallery videos and their lengths (docs/MEDIA.md): one too long for a network stays out of it.
+  const videoMs = await galleryVideoLengths(owner.businessId, data.mediaPaths);
   const rows = ordered.map((connection) => {
     if (!isNetwork(connection.provider)) throw new PublishingError("That account cannot be posted to.", "invalid");
     const network = connection.provider;
@@ -126,15 +149,19 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
     const override = data.overrides[network];
     const text = override?.text ?? data.text;
     const hashtags = override?.hashtags ?? data.hashtags;
-    const format: PostFormatName = formatFor(rules, data.mediaPaths.length);
+    let mediaPaths = composerMediaFor(network, rules.videoOnly, data.mediaPaths, visual.images, videoMs);
+    const tooLong = data.mediaPaths.some((p) => isVideoPath(p) && !videoFitsNetwork(network, videoMs.get(p)));
+    if (!draft && tooLong && rules.videoOnly && !mediaPaths.some(isVideoPath) && !visual.video) problems.push(`${connection.displayName ?? rules.label}: ${trimNote(network)}`);
+    if (rules.videoOnly && visual.video && !mediaPaths.some(isVideoPath)) mediaPaths = [visual.video];
+    const format: PostFormatName = formatFor(rules, mediaPaths.length);
     const label = connection.displayName ?? rules.label;
     if (draft) {
       if (!text.trim() && data.mediaPaths.length === 0) problems.push("Write something or add a photo to save a draft.");
     } else {
       if (!accountUsable(connection)) problems.push(`${label} needs to be reconnected first. Open Channels to fix it.`);
-      for (const issue of validatePost(rules, { format, text, hashtags, mediaCount: data.mediaPaths.length, mediaSizes: sizes }).errors) problems.push(`${label}: ${issue}`);
+      for (const issue of validatePost(rules, { format, text, hashtags, mediaCount: mediaPaths.length, mediaSizes: sizes }).errors) problems.push(`${label}: ${issue}`);
     }
-    return { connection, network, text: text.trim(), hashtags, format };
+    return { connection, network, text: text.trim(), hashtags, format, mediaPaths };
   });
   if (problems.length > 0) throw new PublishingError([...new Set(problems)][0], "invalid", { form: [...new Set(problems)].join(" ") });
 
@@ -143,30 +170,40 @@ export async function createPosts(owner: Owner, input: ComposeInput, now = new D
   if (!time) throw new PublishingError("Choose when to post.", "invalid");
 
   const groupId = globalThis.crypto.randomUUID();
-  const created = await prisma.$transaction(
-    rows.map((row) =>
-      prisma.post.create({
-        data: {
-          businessId: owner.businessId,
-          connectionId: row.connection.id,
-          network: row.network,
-          groupId,
-          projectId: project?.id,
-          contentId: content?.id,
-          status: time.status,
-          format: row.format,
-          source: "MANUAL",
-          text: row.text,
-          hashtags: row.hashtags,
-          mediaPaths: data.mediaPaths,
-          link: data.link,
-          scheduledAt: time.scheduledAt,
-        },
-        select: { id: true },
-      }),
-    ),
+  const creates = rows.map((row) =>
+    prisma.post.create({
+      data: {
+        businessId: owner.businessId,
+        connectionId: row.connection.id,
+        network: row.network,
+        groupId,
+        ...subjectColumns(subject),
+        contentId: content?.id,
+        status: time.status,
+        format: row.format,
+        source: "MANUAL",
+        text: row.text,
+        hashtags: row.hashtags,
+        mediaPaths: row.mediaPaths,
+        link: data.link,
+        scheduledAt: time.scheduledAt,
+      },
+      select: { id: true },
+    }),
   );
-  if (!draft) trackEvent(EVENT_NAMES.postScheduled, { businessId: owner.businessId, props: { count: created.length, status: time.status } });
+  // Scheduled from Studio content by hand: the drafts BuPulse made of that content for the same accounts are replaced,
+  // in the same transaction, unless the owner already edited them.
+  // The owner's edited drafts are kept as history but cancelled (superseded), so the account never gets two posts.
+  const draftsOf = { businessId: owner.businessId, contentId: content?.id, source: "STUDIO" as const, status: "PENDING_APPROVAL" as const, connectionId: { in: ordered.map((c) => c.id) } };
+  const replace =
+    !draft && content
+      ? [
+          prisma.post.deleteMany({ where: { ...draftsOf, ownerEditedAt: null } }),
+          prisma.post.updateMany({ where: { ...draftsOf, ownerEditedAt: { not: null } }, data: { status: "CANCELLED", reviewNote: "Replaced by the post you scheduled." } }),
+        ]
+      : [];
+  const created = (await prisma.$transaction([...creates, ...replace])).slice(0, creates.length) as { id: string }[];
+  if (!draft) await trackEvent(EVENT_NAMES.postScheduled, { businessId: owner.businessId, props: { count: created.length, status: time.status } });
   return { groupId, postIds: created.map((p) => p.id), scheduledAt: time.scheduledAt, status: time.status };
 }
 
@@ -196,12 +233,22 @@ export async function updatePost(owner: Owner, postId: string, input: EditInput,
   if (!becomesDraft) {
     const issues = validatePost(rules, { format, text: data.text, hashtags: data.hashtags, mediaCount: data.mediaPaths.length, mediaSizes: post.network === "instagram" ? await mediaSizes(owner.businessId, data.mediaPaths) : [] }).errors;
     if (issues.length > 0) throw new PublishingError(issues[0], "invalid", { form: issues.join(" ") });
-    if (time && (!post.connection || !accountUsable(post.connection))) throw new PublishingError("This account needs to be reconnected first. Open Channels to fix it.", "invalid");
+    if (time && !post.remindOnly && (!post.connection || !accountUsable(post.connection))) throw new PublishingError("This account needs to be reconnected first. Open Channels to fix it.", "invalid");
   } else if (!data.text.trim() && data.mediaPaths.length === 0) {
     throw new PublishingError("Write something or add a photo to save a draft.", "invalid");
   }
 
-  const update: Prisma.PostUpdateManyMutationInput = { text: data.text.trim(), hashtags: data.hashtags, mediaPaths: data.mediaPaths, link: data.link, format };
+  const update: Prisma.PostUpdateManyMutationInput = { text: data.text.trim(), hashtags: data.hashtags, mediaPaths: data.mediaPaths, link: data.link, format, ownerEditedAt: now };
+  // A contest edited away from its confirmed prize, end date or winner rule needs confirming again; until then it
+  // cannot be scheduled, and a scheduled one goes back to waiting (lib/content-flow/contest.ts).
+  const contest = contestAfterEdit(post.contest, update.text as string);
+  if (contest) {
+    update.contest = contest;
+    if (contestBlocked({ text: update.text as string, contest })) {
+      if (time?.status === "SCHEDULED") throw new PublishingError(CONTEST_NOTE, "invalid", { form: CONTEST_NOTE });
+      if (!time && post.status === "SCHEDULED") Object.assign(update, { status: "PENDING_APPROVAL", reviewNote: CONTEST_NOTE, autoScheduledAt: null });
+    }
+  }
   if (time) {
     update.status = time.status;
     update.scheduledAt = time.scheduledAt;
@@ -210,8 +257,14 @@ export async function updatePost(owner: Owner, postId: string, input: EditInput,
     update.lockedAt = null;
     update.lastError = null;
   }
+  // A change of the words keeps the post's versions (docs/CONTENT.md, "Versions"): the words before, then the new ones.
+  const wordsChanged = update.text !== post.text || data.hashtags.length !== post.hashtags.length || data.hashtags.some((h, i) => h !== post.hashtags[i]);
+  const content = wordsChanged && post.contentId ? await prisma.generatedContent.findFirst({ where: { id: post.contentId, businessId: owner.businessId }, select: { videoScript: true, adHeadlines: true } }) : null;
+  const before = piecesOf(post, content);
+  if (wordsChanged) await keepBaseline(prisma, post, before, now);
   const { count } = await prisma.post.updateMany({ where: { id: postId, businessId: owner.businessId, status: { in: [...EDITABLE] } }, data: update });
   if (count === 0) throw new PublishingError(NO_LONGER_EDITABLE, "conflict");
+  if (wordsChanged) await addVersion(prisma, post, { ...before, text: update.text as string, hashtags: data.hashtags }, { kind: "edit", actorId: owner.actorId }, new Date(Math.max(now.getTime(), Date.now())));
   return { status: (time?.status ?? post.status) as PostStatusName, scheduledAt: time ? time.scheduledAt : post.scheduledAt };
 }
 
@@ -224,9 +277,10 @@ export async function reschedulePost(owner: Owner, postId: string, scheduledAt: 
     throw new PublishingError("A post that is live or going out cannot be moved.", "conflict");
   }
   const revive = post.status === "FAILED" || post.status === "NEEDS_ACTION";
+  if (revive && contestBlocked(post)) throw new PublishingError(CONTEST_NOTE, "invalid");
   const { count } = await prisma.post.updateMany({
     where: { id: postId, businessId: owner.businessId, status: post.status },
-    data: revive ? { scheduledAt, status: "SCHEDULED", attempts: 0, nextAttemptAt: null, lockedAt: null, lastError: null } : { scheduledAt },
+    data: revive ? { scheduledAt, status: "SCHEDULED", attempts: 0, nextAttemptAt: null, lockedAt: null, lastError: null, ownerEditedAt: now } : { scheduledAt, ownerEditedAt: now },
   });
   if (count === 0) throw new PublishingError(NO_LONGER_EDITABLE, "conflict");
 }
@@ -241,6 +295,8 @@ export async function duplicatePost(owner: Owner, postId: string): Promise<{ id:
       network: post.network,
       groupId: globalThis.crypto.randomUUID(),
       projectId: post.projectId,
+      productId: post.productId,
+      campaignId: post.campaignId,
       contentId: post.contentId,
       status: "DRAFT",
       format: post.format,
@@ -268,40 +324,137 @@ export async function deletePost(owner: Owner, postId: string): Promise<{ note?:
 }
 
 /**
- * Approves Autopilot posts so they are published at their time. Only this business's posts that are still
- * waiting for approval are touched. Posts whose time already passed move to the next free queue slot.
+ * The best time for each post (lib/publishing/best-time.ts): the business's posting times, ordered by what works on
+ * the post's network (learned from its own results, else the network's defaults), on the account's free slots. Posts
+ * in one call keep 2.5 hours apart on the same account too. Falls back to the next free queue slot.
  */
-export async function approvePosts(businessId: string, postIds: string[], now = new Date()): Promise<{ approved: number }> {
+export async function bestTimesFor(businessId: string, posts: { id: string; network: string; connectionId: string | null }[], now = new Date()): Promise<Map<string, Date>> {
+  const out = new Map<string, Date>();
+  if (posts.length === 0) return out;
+  const settings = await businessSettings(businessId);
+  const connectionIds = [...new Set(posts.flatMap((p) => (p.connectionId ? [p.connectionId] : [])))];
+  const [results, queued] = await Promise.all([
+    loadPostResults(businessId).catch(() => []),
+    connectionIds.length
+      ? prisma.post.findMany({ where: { connectionId: { in: connectionIds }, status: { in: [...QUEUED] }, scheduledAt: { gte: now }, id: { notIn: posts.map((p) => p.id) } }, select: { connectionId: true, scheduledAt: true }, take: 2000 })
+      : [],
+  ]);
+  const profile = buildProfile(results, settings.timezone);
+  const taken = new Map<string, Date[]>();
+  for (const q of queued ?? []) if (q.connectionId && q.scheduledAt) taken.set(q.connectionId, [...(taken.get(q.connectionId) ?? []), q.scheduledAt]);
+  for (const post of posts) {
+    const key = post.connectionId ?? `none:${post.id}`;
+    const busy = taken.get(key) ?? [];
+    const at =
+      (isNetwork(post.network)
+        ? bestTime({ zone: settings.timezone, now, postingTimes: settings.slotTimes, hours: preferredHours(profile, post.network), weekdays: preferredWeekdays(profile, post.network), taken: busy })
+        : null) ??
+      nextFreeSlots({ times: settings.slotTimes, zone: settings.timezone, now, taken: busy })[0] ??
+      new Date(now.getTime() + 10 * 60_000);
+    out.set(post.id, at);
+    taken.set(key, [...busy, at]);
+  }
+  return out;
+}
+
+type SlotDb = Pick<typeof prisma, "$executeRaw" | "post">;
+
+/**
+ * Writes a post's new time only if no other queued post on the same account is within 2.5 hours of it, checked and
+ * written under a per-account lock, so two approvals or auto-approvals running at once cannot stack posts. `where`
+ * guards the write (status, and for auto-approval the updatedAt read with the safety checks).
+ * "taken": the time collides, pick another; "changed": the post changed meanwhile; "ok": written.
+ */
+export async function claimSlot(
+  args: { businessId: string; postId: string; connectionId: string | null; at: Date; where: Prisma.PostWhereInput; data: Prisma.PostUpdateManyMutationInput },
+): Promise<"ok" | "taken" | "changed"> {
+  const gap = MIN_GAP_MINUTES * 60_000;
+  return prisma.$transaction(async (tx: SlotDb) => {
+    if (args.connectionId) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`post-slot:${args.connectionId}`}))`;
+      const clash = await tx.post.findFirst({
+        where: { connectionId: args.connectionId, id: { not: args.postId }, status: { in: [...QUEUED] }, scheduledAt: { gt: new Date(args.at.getTime() - gap), lt: new Date(args.at.getTime() + gap) } },
+        select: { id: true },
+      });
+      if (clash) return "taken";
+    }
+    const { count } = await tx.post.updateMany({ where: { id: args.postId, businessId: args.businessId, ...args.where }, data: { ...args.data, scheduledAt: args.at } });
+    return count > 0 ? "ok" : "changed";
+  });
+}
+
+/**
+ * claimSlot, picking a new best time (up to 3 times) when another post took the slot first. "ok": written; "taken": no
+ * free time was found; "changed": the post changed meanwhile (the guard in `where` failed).
+ */
+export async function scheduleAtFreeSlot(
+  post: { id: string; network: string; connectionId: string | null },
+  first: Date,
+  args: { businessId: string; where: Prisma.PostWhereInput; data: Prisma.PostUpdateManyMutationInput; now: Date },
+): Promise<"ok" | "taken" | "changed"> {
+  let at = first;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const result = await claimSlot({ businessId: args.businessId, postId: post.id, connectionId: post.connectionId, at, where: args.where, data: args.data });
+    if (result !== "taken") return result;
+    at = (await bestTimesFor(args.businessId, [post], args.now)).get(post.id) ?? at;
+  }
+  return "taken";
+}
+
+/**
+ * Approves posts waiting for review (Autopilot's and Studio's) so they are published. Only this business's posts
+ * that still wait are touched. A post keeps its planned time when that is still ahead; one without a time, or whose
+ * time passed, goes out at the best time for its network.
+ */
+export async function approvePosts(businessId: string, postIds: string[], now = new Date()): Promise<{ approved: number; skipped: number }> {
   const ids = [...new Set(postIds)].slice(0, 200);
-  if (ids.length === 0) return { approved: 0 };
-  const posts = await prisma.post.findMany({ where: { id: { in: ids }, businessId, status: "PENDING_APPROVAL" }, select: { id: true, connectionId: true, scheduledAt: true } });
-  if (posts.length === 0) return { approved: 0 };
+  if (ids.length === 0) return { approved: 0, skipped: 0 };
+  const found = await prisma.post.findMany({ where: { id: { in: ids }, businessId, status: "PENDING_APPROVAL" }, select: { id: true, network: true, connectionId: true, scheduledAt: true, text: true, contest: true } });
+  // A contest waits until the owner confirmed its prize and rules (lib/content-flow/contest.ts).
+  const posts = found.filter((p) => !contestBlocked(p));
+  if (posts.length === 0) return { approved: 0, skipped: found.length };
 
   const stale = posts.filter((p) => !p.scheduledAt || p.scheduledAt.getTime() <= now.getTime());
-  let slots: Date[] = [];
-  if (stale.length > 0) {
-    const settings = await businessSettings(businessId);
-    const taken = await takenTimes(posts.flatMap((p) => (p.connectionId ? [p.connectionId] : [])), now);
-    slots = nextFreeSlots({ times: settings.slotTimes, zone: settings.timezone, now, taken, count: stale.length });
-  }
+  const times = stale.length > 0 ? await bestTimesFor(businessId, stale, now) : new Map<string, Date>();
 
+  // `skipped`: no free time could be found (every pick was taken by another post on the account): it stays in review.
   let approved = 0;
+  let skipped = found.length - posts.length;
   for (const post of posts) {
-    const staleIndex = stale.indexOf(post);
-    const scheduledAt = staleIndex >= 0 ? (slots[staleIndex] ?? new Date(now.getTime() + 10 * 60_000)) : undefined;
-    const { count } = await prisma.post.updateMany({
-      where: { id: post.id, businessId, status: "PENDING_APPROVAL" },
-      data: { status: "SCHEDULED", ...(scheduledAt ? { scheduledAt } : {}) },
-    });
+    const scheduledAt = times.get(post.id);
+    const data = { status: "SCHEDULED" as const, reviewNote: null };
+    if (scheduledAt) {
+      if ((await scheduleAtFreeSlot(post, scheduledAt, { businessId, where: { status: "PENDING_APPROVAL" }, data, now })) === "ok") approved += 1;
+      else skipped += 1;
+      continue;
+    }
+    const { count } = await prisma.post.updateMany({ where: { id: post.id, businessId, status: "PENDING_APPROVAL" }, data });
     approved += count;
   }
-  return { approved };
+  return { approved, skipped };
+}
+
+/**
+ * Takes a scheduled post back to "Needs review" (the safety window of auto-approval: nothing goes out that the owner
+ * wants to look at first). Refused once the publisher has picked it up.
+ */
+export async function unschedulePost(owner: Owner, postId: string, now = new Date()): Promise<void> {
+  const { count } = await prisma.post.updateMany({
+    where: { id: postId, businessId: owner.businessId, status: "SCHEDULED", lockedAt: null },
+    data: { status: "PENDING_APPROVAL", autoScheduledAt: null, ownerEditedAt: now },
+  });
+  if (count === 0) {
+    const post = await prisma.post.findFirst({ where: { id: postId, businessId: owner.businessId }, select: { status: true } });
+    if (!post) throw NOT_FOUND();
+    throw new PublishingError(NO_LONGER_EDITABLE, "conflict");
+  }
 }
 
 /** Puts a failed post back in line to be published now. */
 export async function retryPost(owner: Owner, postId: string, now = new Date()): Promise<void> {
   const post = await ownedPost(owner.businessId, postId);
   if (post.status !== "FAILED") throw new PublishingError("Only a failed post can be retried.", "conflict");
+  if (contestBlocked(post)) throw new PublishingError(CONTEST_NOTE, "invalid");
   const { count } = await prisma.post.updateMany({
     where: { id: postId, businessId: owner.businessId, status: "FAILED" },
     data: { status: "SCHEDULED", scheduledAt: now, attempts: 0, nextAttemptAt: null, lockedAt: null, lastError: null },

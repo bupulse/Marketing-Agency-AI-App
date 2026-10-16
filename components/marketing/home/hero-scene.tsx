@@ -49,19 +49,18 @@ export function HeroScene() {
             <div className="flex items-center gap-2.5 px-1.5 pt-1 pb-2.5">
               <Mark variant="icon" size={30} alt="" className="rounded-[9px]" />
               <div className="flex flex-col">
-                <strong className="text-[13px]">[your.shop]</strong>
-                <span className="text-[11px] text-muted">Phone &amp; electronics store</span>
+                <strong className="text-[13px]">Kigali Tech Hub</strong>
+                <span className="text-[11px] text-muted">Phone &amp; electronics store · Kigali</span>
               </div>
             </div>
             <div
               className="relative flex h-[180px] items-end overflow-hidden rounded-[20px] p-3.5 text-white md:h-[210px]"
               style={{ background: "linear-gradient(160deg, #2F6BFF 0%, #7B5CFF 100%)" }}
             >
-              <div className="absolute inset-x-0 top-4 text-center text-[13px] text-white/75">[Product photo]</div>
               <div className="relative flex flex-col gap-1">
                 <span className="text-[11px] font-semibold tracking-[0.12em]">NEW ARRIVALS</span>
-                <strong className="text-[22px] tracking-[-0.02em]">[Phone model] in stock</strong>
-                <span className="text-[13px]">This weekend only: [offer]</span>
+                <strong className="text-[22px] tracking-[-0.02em]">New smartphones in stock</strong>
+                <span className="text-[13px]">This weekend only: free screen protector</span>
               </div>
             </div>
             <p className="m-0 px-1.5 pt-2.5 pb-1 text-[13px] leading-snug">
@@ -91,8 +90,8 @@ export function HeroScene() {
               <span className="size-2 shrink-0 animate-ping-soft rounded-full bg-pulse-blue" />
               New lead from your website
             </span>
-            <strong className="text-[15px]">[Visitor name]</strong>
-            <span className="text-[13px] text-muted">Asked for a quote</span>
+            <strong className="text-[15px]">Aline M.</strong>
+            <span className="text-[13px] text-muted">Asked for a quote on 3 laptops</span>
           </div>
         </Slot>
 

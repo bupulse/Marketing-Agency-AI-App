@@ -1,8 +1,8 @@
-import { pageGate } from "@/components/app/no-access";
+import { featureGate, pageGate } from "@/components/app/no-access";
 import { getAppContext } from "@/components/app/context";
 import { PageHeader } from "@/components/app/page-header";
 import { WidgetSettings } from "@/components/widget/widget-settings";
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 import { prisma } from "@/lib/db";
 import { resolveAccent } from "@/lib/widget/config";
 import { defaultAllowedDomains } from "@/lib/widget/origin";
@@ -12,7 +12,7 @@ import { isHexColor } from "@/lib/color-contrast";
 export const metadata = { title: "Website chat" };
 
 export default async function WidgetPage() {
-  const blocked = await pageGate("widget");
+  const blocked = (await pageGate("widget")) ?? (await featureGate("websiteChat"));
   if (blocked) return blocked;
   const { business, usage } = await getAppContext();
   if (!business) return null;
@@ -36,7 +36,7 @@ export default async function WidgetPage() {
         brandColors={business.brandColors.filter(isHexColor)}
         lockedBySupport={Boolean(widget.disabledByAdminAt)}
         widgetKey={business.widgetKey}
-        baseUrl={siteUrl()}
+        baseUrl={publicSiteUrl()}
         usage={{ used: usage.used.chat, limit: usage.limits.chat }}
       />
     </>

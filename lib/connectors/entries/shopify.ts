@@ -8,7 +8,7 @@ export const connector: ConnectorEntry = {
   id: "shopify",
   name: "Shopify",
   group: "store",
-  description: "Bring your products into BuPulse as projects, with photos, and keep them up to date.",
+  description: "Bring your products into BuPulse as products, with photos, and keep them up to date.",
   icon: "ShoppingBag",
   async status({ businessId }) {
     if (!isShopifyEnabled()) return { state: "unavailable" };

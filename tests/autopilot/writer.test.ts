@@ -98,6 +98,20 @@ describe("writing a group", () => {
     expect(result.versions[0].hashtags).toHaveLength(5);
   });
 
+  it("writes a feed video post's caption and its scenes in the same call", async () => {
+    const req = request({ targets: [{ network: "instagram", format: "SCRIPT" }, { network: "facebook", format: "SCRIPT" }] });
+    const prompt = buildPrompt(req);
+    expect(prompt).toMatch(/- instagram: Instagram Reel: the caption in `text`.*the video in `videoScript`/);
+    expect(prompt).toMatch(/- facebook: .*This post is a video BuPulse makes/);
+    const scenes = "[Oven] Fresh croissants. #pain\n[Box] Six in a box.\n[Shop] Come by today.";
+    const result = await writeGroup(
+      provider({ image: good.image, versions: [{ network: "instagram", title: "", text: "Croissants frais ! #croissant", hashtags: ["#pain"], videoScript: scenes }, { network: "facebook", title: "", text: "Venez goûter.", hashtags: [] }] }),
+      req,
+    );
+    expect(result.versions[0]).toMatchObject({ text: "Croissants frais !", videoScript: "[Oven] Fresh croissants.\n[Box] Six in a box.\n[Shop] Come by today." });
+    expect(result.versions[1].videoScript).toBeUndefined();
+  });
+
   it("drops image text that carries a number the facts do not contain", async () => {
     const result = await writeGroup(provider({ ...good, image: { kicker: "Offre", headline: "Boîte de croissants", subline: "Seulement 2 jours", chip: "-30%" } }), request());
     expect(result.image.headline).toBe("Boîte de croissants");
@@ -126,5 +140,18 @@ describe("number helpers", () => {
   });
   it("collects the facts it was given", () => {
     expect(factsText(request())).toMatch(/5,000 RWF/);
+  });
+});
+
+describe("industry context", () => {
+  it("goes into the prompt before the post idea and counts as facts for the number check", () => {
+    const context = "Industry: Restaurants & cafés (Restaurants and cafés.)\nAbout this business, in the owner's words: Brochettes and chips in Kimironko since 2019.\n- Dates and seasons in Rwanda and East Africa: Kwibohora (4 July); no promotions during Kwibuka (7 to 13 April).";
+    const req = request({ brand: { ...request().brand, industryContext: context } });
+    const prompt = buildPrompt(req);
+    expect(prompt).toContain(context);
+    expect(prompt).not.toContain("Industry: Food");
+    expect(prompt.indexOf("Kwibohora")).toBeLessThan(prompt.indexOf("Post idea:"));
+    expect(numbersIn(factsText(req))).toEqual(expect.arrayContaining(["2019", "4", "7", "13"]));
+    expect(buildPrompt(request())).toContain("Industry: Food");
   });
 });

@@ -1,10 +1,12 @@
 import "server-only";
+import { publishTimingNote } from "@/lib/platform/limits";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { NETWORKS, type Network } from "@/lib/social/types";
 import { createClient } from "@/lib/supabase/server";
 import { signPaths } from "./media";
+import { resultsConnectionSelect, resultsForPosts } from "./results-query";
 import { accountUsable } from "./service";
 import { cleanSlotTimes } from "./slots";
 import type { PostStatusName } from "./status";
@@ -16,7 +18,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const CALENDAR_PAST_DAYS = 60;
 export const CALENDAR_FUTURE_DAYS = 240;
 
-const postInclude = { connection: { select: { displayName: true, avatarUrl: true, postingMode: true } } } satisfies Prisma.PostInclude;
+const postInclude = { connection: { select: { displayName: true, avatarUrl: true, ...resultsConnectionSelect } } } satisfies Prisma.PostInclude;
 type PostRow = Prisma.PostGetPayload<{ include: typeof postInclude }>;
 
 const FALLBACK_PROBLEM: Record<string, string> = {
@@ -54,23 +56,25 @@ export async function loadComposerContext(businessId: string): Promise<ComposerC
       },
     ];
   });
-  const present = new Set(accounts.map((a) => a.network));
+  // Every app's rules, not only the connected ones': a reminder post for an app that is not connected is checked too.
   const rules: ComposerContext["rules"] = {};
-  for (const network of NETWORKS) if (present.has(network)) rules[network] = ruleSummary(network);
-  return { accounts, rules, timezone: business?.timezone || "UTC", slotTimes: cleanSlotTimes(autopilot?.postingTimes) };
+  for (const network of NETWORKS) rules[network] = ruleSummary(network);
+  return { accounts, rules, timezone: business?.timezone || "UTC", slotTimes: cleanSlotTimes(autopilot?.postingTimes), timingNote: publishTimingNote() };
 }
 
-/** Post rows as the calendar shows them, with signed links for their photos. */
-export async function toCalendarPosts(rows: PostRow[]): Promise<CalendarPost[]> {
+/** Post rows as the calendar shows them, with signed links for their photos and the results of published ones. */
+export async function toCalendarPosts(businessId: string, rows: PostRow[], now = new Date()): Promise<CalendarPost[]> {
   const paths = [...new Set(rows.flatMap((r) => r.mediaPaths))];
-  let signed = new Map<string, string>();
-  if (paths.length > 0) {
+  const sign = async () => {
+    if (paths.length === 0) return new Map<string, string>();
     try {
-      signed = await signPaths(await createClient(), paths, 2 * 60 * 60);
+      return await signPaths(await createClient(), paths, 2 * 60 * 60);
     } catch {
       // Cards without thumbnails are better than no calendar.
+      return new Map<string, string>();
     }
-  }
+  };
+  const [signed, results] = await Promise.all([sign(), resultsForPosts(businessId, rows, now)]);
   return rows.map((r) => ({
     id: r.id,
     groupId: r.groupId,
@@ -78,7 +82,7 @@ export async function toCalendarPosts(rows: PostRow[]): Promise<CalendarPost[]> 
     connectionId: r.connectionId,
     accountName: r.connection?.displayName ?? (isNetwork(r.network) ? getProvider(r.network).rules.label : r.network),
     accountAvatar: r.connection?.avatarUrl ?? null,
-    notify: r.connection?.postingMode === "NOTIFY",
+    notify: r.connection?.postingMode === "NOTIFY" || (!r.connection && r.remindOnly),
     status: r.status as PostStatusName,
     format: r.format as PostFormatName | "ARTICLE" | "THREAD",
     source: r.source,
@@ -92,8 +96,12 @@ export async function toCalendarPosts(rows: PostRow[]): Promise<CalendarPost[]> 
     publishedAt: r.publishedAt?.toISOString() ?? null,
     permalink: r.permalink,
     lastError: r.lastError,
-    projectId: r.projectId,
+    subjectId: r.productId ?? r.campaignId ?? r.projectId,
     contentId: r.contentId,
+    reviewNote: r.reviewNote,
+    autoScheduledAt: r.autoScheduledAt?.toISOString() ?? null,
+    remindOnly: !r.connection && r.remindOnly,
+    ...(results.has(r.id) ? { results: results.get(r.id) } : {}),
   }));
 }
 
@@ -111,5 +119,5 @@ export async function loadCalendarPosts(businessId: string, now = new Date()): P
     take: 1500,
     include: postInclude,
   });
-  return toCalendarPosts(rows);
+  return toCalendarPosts(businessId, rows, now);
 }

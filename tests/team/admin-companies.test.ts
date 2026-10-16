@@ -51,7 +51,7 @@ import { AdminError, apiContext, consoleContext } from "@/lib/admin/types";
 const UID = "11111111-1111-4111-8111-111111111111";
 const OWNER = "22222222-2222-4222-8222-222222222222";
 const console_ = consoleContext("1.2.3.4");
-const api = apiContext("key1", "9.9.9.9");
+const api = apiContext("key1", "9.9.9.9", "all");
 
 const audits = () => h.tx.auditLog.create.mock.calls.map((c) => c[0].data);
 

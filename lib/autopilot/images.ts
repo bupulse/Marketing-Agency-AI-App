@@ -49,7 +49,9 @@ export interface GroupImages {
 }
 
 function templateFor(group: PlannedGroup, hasPhoto: boolean): TemplateId | null {
-  const id = group.idea.template;
+  // Every feed post (a picture or a carousel) shows a picture: an idea without a template of its own gets the
+  // announcement layout. Articles and scripts to film have none.
+  const id = group.idea.template ?? (group.posts.some((p) => p.format === "POST" || p.format === "CAROUSEL") ? "announcement" : null);
   if (!id) return null;
   return !hasPhoto && PHOTO_TEMPLATES.includes(id) ? "announcement" : id;
 }
@@ -78,7 +80,7 @@ export async function makeGroupImages(group: PlannedGroup, image: ImageText, ctx
   const template = templateFor(group, !!cover);
   if (!template) return result;
 
-  const owner = { userId: ctx.userId, businessId: ctx.businessId, projectId: group.project?.id ?? null, service: ctx.service };
+  const owner = { userId: ctx.userId, businessId: ctx.businessId, subjectId: group.project?.id ?? null, service: ctx.service };
   const text = imageText(group, image, ctx);
   const aspects = [...new Set(group.networks.filter((n) => n !== "tiktok" && n !== "youtube").map(aspectFor))];
   if (aspects.length === 0) return result;

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
+import { assertFeature, FeatureRequiredError } from "@/lib/entitlements";
 import { RateLimitError, rateLimit, rateLimitMessage } from "@/lib/rate-limit";
 import { WebhookError, createEndpoint, deleteEndpoint, retryDelivery, rotateEndpointSecret, sendTestEvent, setEndpointEnabled, updateEndpoint } from "@/lib/webhooks/endpoints";
 
@@ -11,10 +12,16 @@ export type WebhookActionResult<T = object> = ({ ok: true } & T) | { ok: false; 
 
 const GENERIC = "Something went wrong. Nothing was changed. Please try again.";
 
-async function owner() {
+/**
+ * The signed-in owner's business id. Creating, editing, switching on, testing or retrying an endpoint needs webhooks in
+ * the plan; switching one off or deleting it never does (`gated: false`), like disconnecting a store or revoking an API
+ * key, so a company whose plan lost the feature can still clean up.
+ */
+async function owner({ gated = true } = {}) {
   const user = await requireActiveUser("webhooks", "throw");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (!business) throw new WebhookError("not_found", "Finish setting up your business first.");
+  if (gated) await assertFeature(business.id, "webhooks");
   return { userId: user.id, businessId: business.id };
 }
 
@@ -25,7 +32,7 @@ async function guarded<T extends object>(run: () => Promise<T>): Promise<Webhook
     return { ok: true, ...value };
   } catch (error) {
     if (error instanceof WebhookError) return { ok: false, error: error.message };
-    if (error instanceof ForbiddenError) return { ok: false, error: error.message };
+    if (error instanceof ForbiddenError || error instanceof FeatureRequiredError) return { ok: false, error: error.message };
     if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
     // requireActiveUser redirects by throwing; let Next handle that.
     if (error && typeof error === "object" && "digest" in error) throw error;
@@ -54,14 +61,14 @@ export async function updateWebhook(id: string, input: { url: string; events: st
 
 export async function toggleWebhook(id: string, enabled: boolean) {
   return guarded(async () => {
-    await setEndpointEnabled((await owner()).businessId, id, Boolean(enabled));
+    await setEndpointEnabled((await owner({ gated: Boolean(enabled) })).businessId, id, Boolean(enabled));
     return {};
   });
 }
 
 export async function deleteWebhook(id: string) {
   return guarded(async () => {
-    await deleteEndpoint((await owner()).businessId, id);
+    await deleteEndpoint((await owner({ gated: false })).businessId, id);
     return {};
   });
 }

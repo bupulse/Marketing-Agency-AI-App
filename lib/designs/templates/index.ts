@@ -6,6 +6,7 @@ import { ASPECT_SIZES, buildTheme, orientationOf, type AspectRatio, type Templat
 import { announcement } from "./announcement";
 import { event } from "./event";
 import { loadFonts } from "./fonts";
+import { classicPack } from "./packs";
 import { justListed } from "./just-listed";
 import { newArrival } from "./new-arrival";
 import { offer } from "./offer";
@@ -50,7 +51,7 @@ export async function renderTemplate(id: string, input: TemplateInput, ratio: As
   const element = buildTemplateElement(id, input, ratio);
   const { width, height } = ASPECT_SIZES[ratio];
   const text = [input.businessName, input.headline, input.subline, input.chip, input.kicker, defaultKicker(isTemplateId(id) ? id : "offer", input.language)].filter(Boolean).join(" ");
-  const fonts = await loadFonts(text, input.pack ?? DEFAULT_PACK);
+  const fonts = await loadFonts(text, classicPack(input.pack ?? DEFAULT_PACK));
   const response = new ImageResponse(element, { width, height, ...(fonts.length ? { fonts } : {}) });
   return response.arrayBuffer();
 }

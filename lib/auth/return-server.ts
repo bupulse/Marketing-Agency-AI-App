@@ -1,12 +1,12 @@
 import "server-only";
 import { cookies } from "next/headers";
-import { siteUrl } from "./site-url";
 import { cleanReturn, hasReturn, RETURN_COOKIE, returnCookieOptions } from "./return-path";
+import { secureCookies } from "./request-site";
 
 /** Remembers `next` for the sign-up steps (server actions and route handlers that can write cookies). */
 export async function rememberReturn(next: string | null | undefined) {
   if (!hasReturn(next)) return;
-  (await cookies()).set(RETURN_COOKIE, cleanReturn(next), returnCookieOptions(siteUrl().startsWith("https://")));
+  (await cookies()).set(RETURN_COOKIE, cleanReturn(next), returnCookieOptions(await secureCookies()));
 }
 
 /** The remembered path, or the dashboard. Safe to call from pages (does not clear it). */

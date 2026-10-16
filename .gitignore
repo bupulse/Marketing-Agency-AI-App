@@ -69,5 +69,15 @@ next-env.d.ts
 /Demo/studio/public/screens/
 .claude/settings.local.json
 
-# Local Netlify folder
+# local-only scripts (may hold credentials)
+scripts/local/
+TEST_ACCOUNTS.md
+
+# Netlify (local builds and the CLI link)
 .netlify
+
+# Release zips made by npm run release:zip (docs/UPDATES.md)
+dist/release/
+
+# v1's local environment file, kept after the v2 merge (points to v1's database)
+.env.v1

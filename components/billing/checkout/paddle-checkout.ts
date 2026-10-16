@@ -21,6 +21,8 @@ declare global {
 export type CheckoutHandlers = {
   /** Checkout was closed without paying. */
   onClosed?: () => void;
+  /** The payment went through (the plan switches on when the provider's webhook arrives, not here). */
+  onCompleted?: () => void;
   onError?: (message: string) => void;
 };
 
@@ -50,6 +52,7 @@ export async function openPaddleCheckout(config: CheckoutConfig, theme: "light" 
     paddle.Initialize({
       token: config.clientToken,
       eventCallback: (event) => {
+        if (event.name === "checkout.completed") handlers.onCompleted?.();
         if (event.name === "checkout.closed") handlers.onClosed?.();
         if (event.name === "checkout.error") handlers.onError?.("Checkout ran into a problem. You were not charged.");
       },
@@ -58,7 +61,8 @@ export async function openPaddleCheckout(config: CheckoutConfig, theme: "light" 
   }
 
   paddle.Checkout.open({
-    items: [{ priceId: config.priceId, quantity: 1 }],
+    // A one-off payment (custom plan offer, added features) is a transaction the server made for the exact amount.
+    ...(config.transactionId ? { transactionId: config.transactionId } : { items: [{ priceId: config.priceId, quantity: 1 }] }),
     // Paddle takes an existing customer id or an email, never both.
     customer: config.customerId ? { id: config.customerId } : { email: config.customerEmail },
     customData: config.customData,

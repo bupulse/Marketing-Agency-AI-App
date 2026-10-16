@@ -170,6 +170,7 @@ export function Calendar({ posts, context, todayKey, nowIso, canSetZone = true }
           </div>
         )}
         <div className="ml-auto flex items-center gap-2">
+          {context.timingNote && <span className="text-[13px] text-muted max-md:hidden">{context.timingNote}</span>}
           {canSetZone ? (
             <button type="button" onClick={() => setTzOpen(true)} className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[13px] text-muted hover:bg-soft hover:text-text">
               <Globe aria-hidden className="size-4" /> {zone.replace(/_/g, " ")}
@@ -284,7 +285,7 @@ export function Calendar({ posts, context, todayKey, nowIso, canSetZone = true }
       )}
 
       <PostComposer open={composer !== null} onOpenChange={(o) => !o && setComposer(null)} context={context} post={composer?.post} day={composer?.day} />
-      <PostDetail post={detail} zone={zone} onClose={() => setDetailId(null)} onEdit={(post) => { setDetailId(null); setComposer({ post }); }} />
+      <PostDetail post={detail} zone={zone} onClose={() => setDetailId(null)} onEdit={(post) => { setDetailId(null); setComposer({ post }); }} autoNetworks={[...new Set(context.accounts.filter((a) => a.usable && !a.notify).map((a) => a.network))]} group={detail?.groupId ? shown.filter((p) => p.groupId === detail.groupId) : undefined} />
       <Dialog open={tzOpen} onOpenChange={setTzOpen} title="Time zone" description="The calendar, the queue and scheduled times all use this zone.">
         <TimezoneForm current={zone} onSaved={() => setTzOpen(false)} label="Save" />
       </Dialog>

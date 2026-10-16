@@ -1,7 +1,9 @@
 import "server-only";
+import { getPaddleConfig, paddleCredentialsComplete } from "@/lib/billing/paddle-config";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "./audit";
 import { SERVICES, isServiceId, networksOf, serviceInfo, type ServiceId, type ServiceInfo } from "./service-catalog";
+import { WHATSAPP_UTILITY_USD } from "@/lib/leads/whatsapp";
 import { runProbe } from "./service-tests";
 import { scrubSecrets } from "./scrub";
 import { clearSwitchCache } from "./switch";
@@ -32,23 +34,35 @@ export type ServiceView = {
   lastCheck: CheckView | null;
   lastError: { at: string; message: string; source: string } | null;
   usage: UsageLine[];
-  /** One word for a status badge. off > down > missing > ok > untested. */
-  health: "off" | "down" | "missing" | "ok" | "untested" | "not_in_use";
+  /**
+   * One word for a status badge. off > down > missing > ok > untested. "missing" is a core service without its keys
+   * (a problem); "not_connected" is any other service whose keys are not set yet (not set up, not a failure).
+   */
+  health: "off" | "down" | "missing" | "not_connected" | "ok" | "untested" | "not_in_use";
 };
 
 const isSet = (name: string) => Boolean(process.env[name]);
+/** Paddle connected in Admin -> Settings (lib/billing/paddle-config.ts) counts as configured, whatever the env says. */
+const paddleSavedInSettings = async () => paddleCredentialsComplete(await getPaddleConfig().catch(() => ({ apiKey: null, clientToken: null, webhookSecret: null })));
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export function configState(info: ServiceInfo): ServiceView["configured"] {
+/** `paddleSaved`: Paddle's three values are saved in Admin -> Settings (they stand in for the environment variables). */
+export function configState(info: ServiceInfo, opts: { paddleSaved?: boolean } = {}): ServiceView["configured"] {
   if (info.env.length === 0) return "no_keys";
+  if (info.id === "paddle" && opts.paddleSaved) return "configured";
   if (info.id === "claude" && (process.env.AI_TEXT_PROVIDER ?? "gemini").toLowerCase() !== "claude" && !isSet("ANTHROPIC_API_KEY")) return "not_in_use";
   return info.env.every(isSet) ? "configured" : "missing";
 }
 
-function healthOf(v: Pick<ServiceView, "enabled" | "configured" | "lastCheck">): ServiceView["health"] {
+/** Missing keys are a problem only for a core service (lib/admin/service-catalog.ts `core`); Turnstile only in production. */
+export function isCoreService(info: Pick<ServiceInfo, "core">, env: string | undefined = process.env.NODE_ENV): boolean {
+  return info.core === "always" || (info.core === "production" && env === "production");
+}
+
+function healthOf(v: Pick<ServiceView, "enabled" | "configured" | "lastCheck">, core: boolean): ServiceView["health"] {
   if (!v.enabled) return "off";
   if (v.configured === "not_in_use") return "not_in_use";
-  if (v.configured === "missing") return "missing";
+  if (v.configured === "missing") return core ? "missing" : "not_connected";
   if (!v.lastCheck) return "untested";
   return v.lastCheck.ok ? "ok" : "down";
 }
@@ -59,6 +73,7 @@ type Loaded = {
   ai: Map<string, { calls: number; failed: number; costUsd: number }>;
   aiLastFailure: Map<string, { at: Date; error: string }>;
   emails: { ok: number; failed: number };
+  whatsapp: { ok: number; failed: number };
   paddleEvents: number;
   published: Map<string, number>;
   postFailed: Map<string, { at: Date; error: string }>;
@@ -68,6 +83,7 @@ type Loaded = {
 };
 
 const empty = <T,>(value: T) => (p: Promise<T>) => p.catch(() => value);
+const tally = (rows: { ok: number; failed: number }[]) => ({ ok: rows.reduce((n, r) => n + r.ok, 0), failed: rows.reduce((n, r) => n + r.failed, 0) });
 
 async function load(since: Date): Promise<Loaded> {
   const [aiRows, aiFail, usage, paddle, pubRows, failedPosts, imports, canva, stores, cf, errors] = await Promise.all([
@@ -75,7 +91,7 @@ async function load(since: Date): Promise<Loaded> {
       prisma.aiCall.groupBy({ by: ["provider", "success"], where: { createdAt: { gte: since } }, _count: { _all: true }, _sum: { costUsd: true } }) as never,
     ),
     empty<{ provider: string; error: string | null; createdAt: Date }[]>([])(prisma.aiCall.findMany({ where: { success: false }, orderBy: { createdAt: "desc" }, take: 20, select: { provider: true, error: true, createdAt: true } })),
-    empty<{ ok: number; failed: number }[]>([])(prisma.serviceUsage.findMany({ where: { service: "resend", day: { gte: since } }, select: { ok: true, failed: true } })),
+    empty<{ service: string; ok: number; failed: number }[]>([])(prisma.serviceUsage.findMany({ where: { service: { in: ["resend", "whatsapp"] }, day: { gte: since } }, select: { service: true, ok: true, failed: true } })),
     empty(0)(prisma.billingEvent.count({ where: { createdAt: { gte: since }, type: { startsWith: "transaction." } } })),
     empty<{ network: string; _count: { _all: number } }[]>([])(prisma.post.groupBy({ by: ["network"], where: { status: "PUBLISHED", publishedAt: { gte: since } }, _count: { _all: true } }) as never),
     empty<{ network: string; lastError: string | null; updatedAt: Date }[]>([])(prisma.post.findMany({ where: { status: "FAILED" }, orderBy: { updatedAt: "desc" }, take: 30, select: { network: true, lastError: true, updatedAt: true } })),
@@ -103,7 +119,8 @@ async function load(since: Date): Promise<Loaded> {
   return {
     ai,
     aiLastFailure,
-    emails: { ok: usage.reduce((n, r) => n + r.ok, 0), failed: usage.reduce((n, r) => n + r.failed, 0) },
+    emails: tally(usage.filter((r) => r.service === "resend")),
+    whatsapp: tally(usage.filter((r) => r.service === "whatsapp")),
     paddleEvents: paddle,
     published,
     postFailed,
@@ -125,6 +142,7 @@ const ERROR_SOURCES: Partial<Record<ServiceId, string[]>> = {
   shopify: ["shopify", "stores.", "store-sync"],
   woocommerce: ["woo", "stores."],
   cloudflare: ["cloudflare", "domains"],
+  whatsapp: ["whatsapp"],
 };
 
 function lastErrorOf(info: ServiceInfo, d: Loaded): ServiceView["lastError"] {
@@ -158,6 +176,12 @@ function usageOf(info: ServiceInfo, d: Loaded): UsageLine[] {
     }
     case "resend":
       return [{ label: "Emails sent (30 days)", value: d.emails.ok }, { label: "Emails refused", value: d.emails.failed }];
+    case "whatsapp":
+      return [
+        { label: "Alerts sent (30 days)", value: d.whatsapp.ok },
+        { label: "Alerts refused", value: d.whatsapp.failed },
+        { label: "Estimated cost (30 days, USD)", value: Number((d.whatsapp.ok * WHATSAPP_UTILITY_USD).toFixed(4)) },
+      ];
     case "paddle":
       return [{ label: "Transaction events (30 days)", value: d.paddleEvents }];
     case "meta":
@@ -192,12 +216,13 @@ export async function listServices(now = new Date()): Promise<ServiceView[]> {
   ]);
   const switchOf = new Map(switches.map((s) => [s.service, s]));
   const checkOf = new Map(checks.map((c) => [c.service, c]));
+  const paddleSaved = await paddleSavedInSettings();
   return SERVICES.map((info): ServiceView => {
     const sw = switchOf.get(info.id);
     const check = checkOf.get(info.id);
     const base = {
-      enabled: !(sw && !sw.enabled && info.killable),
-      configured: configState(info),
+      enabled: sw ? sw.enabled || !info.killable : !info.defaultOff,
+      configured: configState(info, { paddleSaved }),
       lastCheck: check ? { ok: check.ok, latencyMs: check.latencyMs, message: check.message, checkedAt: check.checkedAt.toISOString() } : null,
     };
     return {
@@ -210,12 +235,12 @@ export async function listServices(now = new Date()): Promise<ServiceView[]> {
       env: info.env.map((name) => ({ name, set: isSet(name) })),
       optionalEnv: (info.optionalEnv ?? []).map((name) => ({ name, set: isSet(name) })),
       ...base,
-      disabledReason: !base.enabled ? (sw?.reason ?? null) : null,
+      disabledReason: !base.enabled ? (sw ? sw.reason : info.defaultOff ? "off until it is set up and switched on" : null) : null,
       disabledBy: !base.enabled ? (sw?.changedBy ?? null) : null,
       disabledAt: !base.enabled ? (sw?.updatedAt.toISOString() ?? null) : null,
       lastError: lastErrorOf(info, d),
       usage: usageOf(info, d),
-      health: healthOf(base),
+      health: healthOf(base, isCoreService(info)),
     };
   });
 }
@@ -256,7 +281,7 @@ export async function setServiceEnabled(ctx: AdminContext, input: { service: str
   }
   const result = await prisma.$transaction(async (tx) => {
     const before = await tx.serviceSwitch.findUnique({ where: { service: input.service } });
-    const wasEnabled = before ? before.enabled : true;
+    const wasEnabled = before ? before.enabled : !info.defaultOff;
     const row = await tx.serviceSwitch.upsert({
       where: { service: input.service },
       create: { service: input.service, enabled: input.enabled, reason: input.enabled ? null : reason, changedBy: ctx.actor },
@@ -274,7 +299,7 @@ export async function setServiceEnabled(ctx: AdminContext, input: { service: str
 export type ServiceAttention = { key: string; label: string; reason: string };
 
 /**
- * Services that are switched on but not working: the last Test now failed, or a key is missing. Also lists what is
+ * Services that are switched on but not working: the last Test now failed, or a core service's key is missing. Also lists what is
  * switched off (a reminder). Reads only the switches and last test results, so it is cheap enough for every page.
  */
 export async function getServicesAttention(): Promise<{ failing: ServiceAttention[]; off: ServiceAttention[] }> {
@@ -282,15 +307,19 @@ export async function getServicesAttention(): Promise<{ failing: ServiceAttentio
   const off = new Map(switches.filter((s) => !s.enabled).map((s) => [s.service, s]));
   const check = new Map(checks.map((c) => [c.service, c]));
   const failing: ServiceAttention[] = [];
+  const paddleSaved = await paddleSavedInSettings();
   const offList: ServiceAttention[] = [];
   for (const info of SERVICES) {
     if (off.has(info.id) && info.killable) {
       offList.push({ key: info.id, label: info.name, reason: `Switched off${off.get(info.id)!.reason ? `: ${off.get(info.id)!.reason}` : ""}` });
       continue;
     }
-    const state = configState(info);
-    if (state === "missing") failing.push({ key: info.id, label: info.name, reason: `Missing keys: ${info.env.filter((n) => !isSet(n)).join(", ")}` });
-    else if (state !== "not_in_use" && check.get(info.id) && !check.get(info.id)!.ok) failing.push({ key: info.id, label: info.name, reason: `Last test failed: ${check.get(info.id)!.message ?? "no details"}` });
+    const state = configState(info, { paddleSaved });
+    // A service that is not set up yet (optional integration without keys) is not failing: Services shows it as
+    // "Not connected". Only a core service without its keys is a problem here.
+    if (state === "missing") {
+      if (isCoreService(info)) failing.push({ key: info.id, label: info.name, reason: `Missing keys: ${info.env.filter((n) => !isSet(n)).join(", ")}` });
+    } else if (state !== "not_in_use" && check.get(info.id) && !check.get(info.id)!.ok) failing.push({ key: info.id, label: info.name, reason: `Last test failed: ${check.get(info.id)!.message ?? "no details"}` });
   }
   return { failing, off: offList };
 }

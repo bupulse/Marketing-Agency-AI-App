@@ -1,10 +1,11 @@
 # Plan builder
 
 Plans live in the `PlanDefinition` table and are managed at `/admin/plans` (and by Jarvis: `list_plans`, `update_plan`, `update_plan_limits`, `change_plan`).
-The pricing page, the in-app Billing page, checkout, usage limits, trial length and capability checks (API access) all read them through `lib/plan-catalog.ts` (`getPlans()`, `getPlan(key)`, cached 30 seconds, with the last good copy kept if the database blinks).
+The pricing page, the in-app Billing page, checkout, usage limits, trial length and feature checks (`lib/entitlements.ts`) all read them through `lib/plan-catalog.ts` (`getPlans()`, `getPlan(key)`, cached 30 seconds, with the last good copy kept if the database blinks).
 
-- `Subscription.plan` is the plan key as text (`TRIAL`, `STANDARD`, `PRO`, or any key you create). It has a foreign key to `PlanDefinition.key`.
-- The `TRIAL` plan is special: it can be edited (length, limits, features) but not priced, hidden or retired.
+- `Subscription.plan` is the plan key as text (`TRIAL`, `STANDARD`, `PRO`, `STARTER`, `BUSINESS`, or any key you create). It has a foreign key to `PlanDefinition.key`.
+- The `TRIAL` plan is special: it can be edited (limits, features) but not priced, hidden or retired. **Nobody starts on it at sign-up any more:** a new company waits for a demo (`SubscriptionStatus.PENDING_DEMO`), then an admin's **Start trial** puts it on the TRIAL plan for the number of days in **Admin → Settings** (`trial.days`, default 3). During the trial the company has the features of the plan it chose at sign-up (`Subscription.chosenPlan`) with the TRIAL plan's limits. The TRIAL plan's own `trialDays` column no longer drives anything. See `docs/REGIONS.md`.
+- **Prices depend on the region** (`docs/REGIONS.md`). A plan's own `monthlyPriceCents` / `yearlyPriceCents` are its GLOBAL (USD, Paddle) prices; other regions price it in `PlanRegionPrice` (Admin → Regions and prices), and a plan is offered in a region only when it has a price there. `STARTER` and `BUSINESS` are the Rwanda plans, priced only in RW (RWF); their plan-level USD price is the derived card price.
 - **Status:** `active` is for sale; `hidden` (draft) and `retired` are closed to new sign-ups. Clients already on them keep the plan, its limits and their price.
 - **Env price ids:** `PADDLE_PRICE_<KEY>_<MONTH|YEAR>` (e.g. `PADDLE_PRICE_STANDARD_MONTH`) are still read as a fallback for any plan that has no Paddle price id in the database. They are the seed source for the original three plans. After the first price change, or "Sync with Paddle", the plan's ids are in the database and the env values only help map old subscriptions (the old ids are copied into the plan's price history).
 - **Price changes:** Paddle prices are never edited. A change creates new prices, points the plan at them and schedules every live subscriber (`PlanPriceChange`, `PlanPriceChangeItem`). The daily cron `/api/cron/plan-price-changes` (04:29 UTC, `PLAN_PRICE_CRON` in `worker.ts` and `wrangler.jsonc`):
@@ -13,6 +14,64 @@ The pricing page, the in-app Billing page, checkout, usage limits, trial length 
   - archives old Paddle prices when no subscription and no waiting move uses them.
 - **Failure:** the plan is only changed after Paddle accepted the new prices; if anything fails nothing is changed and the error is shown on the plan page.
 - Without `PADDLE_API_KEY` plans can be drafted and edited; prices of plans that already sell cannot be changed.
+
+## Video prices (owner decision, 14 October 2026)
+
+Every plan with video may make 120 voiced videos a month (docs/CONTENT_VISUALS.md), so the prices rose (migration
+`20261019140000_video_prices`, audited as `migration:20261019140000_video_prices`; only rows still at the old amounts):
+
+| | Before | Now |
+| --- | --- | --- |
+| Rwanda Business, monthly | 35,000 RWF | **50,000 RWF** (card ≈ $39 by the usual rule with the default rate and margin) |
+| Rwanda Business, yearly (10 months) | 350,000 RWF | **500,000 RWF** (card ≈ $387) |
+| Video add-on (RW) | 10,000 RWF a month | **20,000 RWF** |
+| Voiceover add-on (RW) | 5,000 RWF a month | **15,000 RWF** |
+| Pro | $99 / $990 | unchanged |
+
+## Business includes AI photos and the website chat (owner decision, 14 October 2026)
+
+Rwanda Business (50,000 RWF) now includes **AI photos** (its 100 AI images a month) and the **website chat with leads,
+500 replies a month** (the same allowance as the website chat add-on). Before, the Business card promised "100 AI images a
+month" while AI photos were not in the plan, and Members were told they "see leads" with no leads in the plan. Migration
+`20261019150000_business_photos_chat` (audited as `migration:20261019150000_business_photos_chat`) adds `aiPhotos` and
+`websiteChat` to the BUSINESS row, sets `limits.chat` to at least 500 and adds the chat line to the card. Cost per client at
+full use: about $3.90 for 100 AI photos ($0.039 each, lib/ai/pricing.ts) and about $0.40 for 500 chat replies, on top of the
+120 voiced videos (about $21.60): about $25.90 against about $34.50 (50,000 RWF) before payment fees.
+
+Later changes: Admin → Regions and prices (plans) and Admin → Money → Add-on prices (add-ons), both audited.
+
+**Existing subscribers.** The 30-day notice flow (`PlanPriceChange`, below) covers the plans' own GLOBAL Paddle prices
+only; regional prices have none. So:
+- **Mobile Money** clients keep what they paid until their period ends; their next renewal is at the new price (the
+  renewal reminders 5 days and 1 day before show it). There is no 30-day notice email.
+- **Card** clients in Rwanda keep their current Paddle price (their subscription is not moved: regional card prices
+  have no move-subscribers step yet, the TODO in `recomputeCardPrices`).
+- **Custom plans** keep their own price; new offers are priced with the new add-on prices.
+- The plan's own USD price (`PlanDefinition`, the derived card price of a Rwanda plan) is not changed by the
+  migration; the regional row's card price is.
+
+## Regions and the demo-first trial
+
+Full description in `docs/REGIONS.md`. In short: `lib/region.ts` says which region a visitor or a company is in; `lib/region-prices.ts` lists the plans a region offers with that region's prices (`getRegionPlans`, `companyPlans`); checkout uses `regionPriceIdFor` (GLOBAL = the plan's own Paddle ids, other regions wait for the Paddle sync). `lib/entitlements.ts` grants nothing while a company waits for its demo and the chosen plan's features during the trial. The migrations are `20261010100000_subscription_pending_demo` and `20261010100100_regions_and_demos` (deploy before the code).
+
+## Features and entitlements
+
+Every feature BuPulse has is described once in `lib/features.ts` (key, label, description, prerequisites, usage metric, the outside services it runs on, `built` or `coming_soon`, the dashboard routes it unlocks). A plan carries a list of these keys, and that list is the only thing that decides what a company may use.
+
+- **Storage.** `PlanDefinition.featureKeys` (JSON `FeatureKey[]`) is the plan's features; `PlanDefinition.highlights` (JSON `string[]`) holds the marketing bullets on the pricing card, which used to live in `features`. The old `features` and `capabilities` columns are still there and are written in step on every save (`features` = the highlights, `capabilities` = `{ apiAccess, ownComposio }` derived from the keys), so a build from before migration `20261009110000_plan_features` keeps working against the migrated table. `featureKeys` is nullable with no default: a row whose value is NULL (written by such an older build) is read as the core features plus its capabilities; an array, even an empty one, is the plan's own list.
+- **Reading.** `getPlan(key).features` / `.highlights` (`lib/plan-catalog.ts`). `planHasFeature(key, feature)` for a plan; for a company use `lib/entitlements.ts`: `companyFeatures(businessId)`, `hasFeature(businessId | sessionUser, key)`, `featureStatus` (`ok`, `not_in_plan`, `service_off` or `plan_unknown`), `assertFeature` (throws `FeatureRequiredError`, mapped to 403 / 503 JSON by `featureErrorResponse`), `featureBlocked` (the message for actions that answer in words) and `featureGate(key)` for dashboard pages (`components/app/no-access.tsx`, shows "Add to your plan" in place). A feature is usable only when the plan has it **and** at least one of its outside services is switched on (`lib/admin/switch.ts`).
+- **An unresolved plan is not an empty one.** When the company's plan key is not in the catalog (`companyEntitlements(...).resolved === false`: no subscription, or a custom plan while the catalog is degraded to the seed plans because the database cannot be read), `featureStatus` is `plan_unknown`. Gates stay closed (503, "try again in a moment"), but nothing permanent may follow from it: the publisher only fails a post when the plan is resolved and lacks `calendar` (otherwise the post is handed back and retried), crons skip without writing, and nothing is failed or deleted. Code that acts on `hasFeature(...) === false` with a lasting effect must use `featureStatus` and treat `plan_unknown` as "wait".
+- **Keeping your data.** Losing a feature never locks a company out of what it already has: the leads page stays open read-only (look, export CSV, delete) without `websiteChat`, `deleteWebhook` / `toggleWebhook(off)` work without `webhooks`, and disconnecting a store, channel or revoking an API key never needed the feature. Only using the feature (working leads, switching an endpoint on, connecting) is gated.
+- **Editing.** The plan form (`/admin/plans`) shows a checklist: ticking a feature ticks its prerequisites, a feature another ticked one needs cannot be unticked ("Needed by …"), and "coming soon" features are disabled. The service validates the same rules (`validateFeatureSet`): unknown keys, coming-soon keys and missing prerequisites are refused with the reason. Jarvis `update_plan` takes `features` (the full list) and `highlights`; `capabilities: { apiAccess, ownComposio }` still works as an alias.
+- **Prerequisites.** `autopilot` needs `content`, `designs`, `calendar` and `gallery`; `aiPhotos` and `canva` need `designs`; `analytics` and `managed` need `calendar`; `driveImport` needs `gallery`. `withPrerequisites(keys)` closes a list, `dependentsOf(key, keys)` says what would break, `findCycle()` keeps the registry a DAG (tested).
+- **Today's plans** (backfilled by the migration, mirrored in `CORE_FEATURES` / `PRO_FEATURES` in `lib/plans.ts`): TRIAL and STANDARD have every built feature of the app except `apiAccess`; PRO has them all plus `ownComposio`. `managed` (Managed by BuPulse) and `ownComposio` are "service" features: sold, but nothing in the app is gated by them. `video` and `voice` are `coming_soon` and cannot be put in a plan.
+- **Adding a feature.** Add the key to `FEATURE_KEYS` and its entry to `FEATURES` in `lib/features.ts`, an icon in `components/app/nav.ts`, then gate its pages (`featureGate`), actions (`assertFeature` / `featureBlocked`) and routes (`featureErrorResponse`). Existing plans do not get it until an admin ticks it (or a migration adds the key).
+
+## Deploying the plan features migration
+
+`20261009110000_plan_features` adds two columns (`highlights` with a default, `featureKeys` nullable without one) and backfills them in place (no table rewrite, no drops): `highlights` is copied from `features`, and `featureKeys` is filled on every row so that nothing changes for any existing company (see above).
+
+**Hard rule: the migration runs before the code that reads `featureKeys` is deployed** (`npx prisma migrate deploy` with `DIRECT_URL`, then the build). Until it has run, the plan catalog cannot read `PlanDefinition` and serves the seed plans (`SEED_PLANS`). Companies on TRIAL, STANDARD or PRO keep their features (the seeds carry the same lists), but a company on any plan that exists only in the database (custom, Rwanda) is `plan_unknown` for the whole window: every gated page and route is closed for it and its API keys answer 503. Nothing is lost (posts are retried, crons skip, nothing is failed or deleted), but that company cannot use the app until the migration has run, so the window is not harmless. The migration is safe to re-run on a database that already has the columns only after removing the `ADD COLUMN` lines; Prisma records it once, so this never comes up with `prisma migrate deploy`.
 
 ## Deploying the plan builder migration
 

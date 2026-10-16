@@ -1,10 +1,14 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { AIProviderError } from "@/lib/ai/types";
-import { NETWORK_SERVICE, serviceInfo, type ServiceId } from "./service-catalog";
+import { NETWORK_SERVICE, SERVICES, serviceInfo, type ServiceId } from "./service-catalog";
 
-// The kill switch. A missing ServiceSwitch row means "on". Reads are cached for a few seconds per isolate and fail
-// open: if the database cannot be read, features keep working rather than everything going dark.
+// The kill switch. A missing ServiceSwitch row means "on", except for services that are off until switched on
+// (`defaultOff`, e.g. WhatsApp): for those only a row with enabled = true means on. Reads are cached for a few seconds
+// per isolate and fail open: if the database cannot be read, features keep working rather than everything going dark
+// (a default-off service stays off).
+
+const DEFAULT_OFF: ServiceId[] = SERVICES.filter((s) => s.defaultOff).map((s) => s.id);
 
 export const UNAVAILABLE_MESSAGE = "This feature is temporarily unavailable. Please try again later.";
 const TTL_MS = 15_000;
@@ -19,11 +23,14 @@ export function clearSwitchCache() {
 export async function disabledServices(): Promise<Set<ServiceId>> {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.off;
   try {
-    const rows = await prisma.serviceSwitch.findMany({ where: { enabled: false }, select: { service: true } });
-    cache = { at: Date.now(), off: new Set((rows ?? []).map((r) => r.service as ServiceId).filter((id) => serviceInfo(id)?.killable)) };
+    const rows: { service: string; enabled?: boolean }[] =
+      (await prisma.serviceSwitch.findMany({ where: { OR: [{ enabled: false }, { service: { in: DEFAULT_OFF } }] }, select: { service: true, enabled: true } })) ?? [];
+    const switchedOn = new Set(rows.filter((r) => r.enabled === true).map((r) => r.service));
+    const off = [...rows.filter((r) => r.enabled !== true).map((r) => r.service as ServiceId), ...DEFAULT_OFF.filter((id) => !switchedOn.has(id))];
+    cache = { at: Date.now(), off: new Set(off.filter((id) => serviceInfo(id)?.killable)) };
   } catch {
     // Keep the last good answer and wait a full interval before asking again, so an outage is not hit on every call.
-    cache = { at: Date.now(), off: cache?.off ?? new Set() };
+    cache = { at: Date.now(), off: cache?.off ?? new Set(DEFAULT_OFF) };
     return cache.off;
   }
   return cache.off;

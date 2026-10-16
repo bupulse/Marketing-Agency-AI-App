@@ -20,7 +20,7 @@ export async function credentialsOf(row: { provider: string; storeUrl: string; c
   return { provider: row.provider as StoreProviderId, storeUrl: row.storeUrl, secret: await decrypt(row.credentialsEncrypted), currency: row.currency };
 }
 
-/** Creates or replaces the business's connection to a provider; imported projects keep their mappings only if the store is the same. */
+/** Creates or replaces the business's connection to a provider; imported products keep their mappings only if the store is the same. */
 export async function saveConnection(input: { businessId: string; provider: StoreProviderId; storeUrl: string; secret: string; scopes?: string; currency?: string | null }) {
   const credentialsEncrypted = await encrypt(input.secret);
   const existing = await getConnection(input.businessId, input.provider);
@@ -34,7 +34,7 @@ export async function saveConnection(input: { businessId: string; provider: Stor
   });
 }
 
-/** Removes the keys and the product mappings. Projects that were imported stay. */
+/** Removes the keys and the product mappings. Products that were imported stay. */
 export async function removeConnection(businessId: string, provider: StoreProviderId) {
   await prisma.storeConnection.deleteMany({ where: { businessId, provider } });
 }

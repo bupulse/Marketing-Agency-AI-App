@@ -11,6 +11,7 @@ import {
 } from "@/lib/billing/paddle-catalog";
 import { OPEN_ITEM_STATUSES, refreshChange } from "@/lib/billing/price-changes";
 import {
+  capabilitiesOf,
   clearPlanCache,
   currentPriceId,
   getPlans,
@@ -19,7 +20,8 @@ import {
   type PaddlePriceRecord,
   type PlanView,
 } from "@/lib/plan-catalog";
-import { CAPABILITIES, PLAN_STATUSES, SEATS_MAX, SEATS_MIN, SEED_PLANS, TRIAL_PLAN_KEY, USAGE_METRICS, type Capability, type PlanLimits, type PlanStatus, type UsageMetric } from "@/lib/plans";
+import { validateFeatureSet, type FeatureKey } from "@/lib/features";
+import { CAPABILITIES, PLAN_STATUSES, SEATS_MAX, SEATS_MIN, SEED_PLANS, TRIAL_PLAN_KEY, USAGE_METRICS, type Capability, type PlanLimits, type PlanStatus, type UsageMetric, POSTS_PER_APP_MAX, POSTS_PER_APP_MIN, postsPerAppLimit, VIDEOS_PER_DAY } from "@/lib/plans";
 import { writeAudit } from "./audit";
 import { AdminError, type AdminContext } from "./types";
 
@@ -31,6 +33,7 @@ const KEY_RE = /^[A-Za-z][A-Za-z0-9_-]{1,31}$/;
 const MAX_LIMIT = 10_000_000;
 const MAX_PRICE_CENTS = 10_000_000;
 export const NOTICE_DAYS = 30;
+export const CUSTOM_PRICE_MESSAGE = "A custom plan's price comes from its offer and cannot be changed here. To change it, make a new offer from the company's page.";
 
 export type PlanInput = {
   key?: string;
@@ -42,9 +45,13 @@ export type PlanInput = {
   status?: PlanStatus;
   sortOrder?: number;
   highlight?: boolean;
-  /** The usage limits and `seats` (users per company, 1 to 1000). */
-  limits?: Partial<Record<UsageMetric | "seats", number>>;
+  /** The usage limits, `seats` (users per company, 1 to 1000) and `postsPerAppPerDay` (1 to 10, docs/CONTENT.md). */
+  limits?: Partial<Record<UsageMetric | "seats" | "postsPerAppPerDay" | "videosPerDay", number>>;
+  /** Marketing bullets on the pricing card. */
+  highlights?: string[];
+  /** Feature keys (lib/features.ts). Every prerequisite must be in the list; "coming soon" features are refused. */
   features?: string[];
+  /** Alias from before the feature registry: apiAccess / ownComposio switch those two features. */
   capabilities?: Partial<Record<Capability, boolean>>;
 };
 
@@ -58,8 +65,8 @@ type Snapshot = {
   monthlyPriceCents: number;
   yearlyPriceCents: number;
   limits: PlanLimits;
-  features: string[];
-  capabilities: Record<Capability, boolean>;
+  highlights: string[];
+  features: FeatureKey[];
 };
 
 const snap = (p: PlanView): Snapshot => ({
@@ -72,11 +79,19 @@ const snap = (p: PlanView): Snapshot => ({
   monthlyPriceCents: p.monthlyPriceCents,
   yearlyPriceCents: p.yearlyPriceCents,
   limits: p.limits,
+  highlights: p.highlights,
   features: p.features,
-  capabilities: p.capabilities,
 });
 
 const json = (v: unknown) => v as Prisma.InputJsonValue;
+
+/** The four feature columns written together: the new pair and the legacy pair kept in step (see prisma/schema.prisma). */
+const featureColumns = (s: Pick<Snapshot, "highlights" | "features">) => ({
+  highlights: json(s.highlights),
+  featureKeys: json(s.features),
+  features: json(s.highlights),
+  capabilities: json(capabilitiesOf(s.features)),
+});
 
 function int(value: unknown, field: string, min: number, max: number): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
@@ -87,7 +102,7 @@ function int(value: unknown, field: string, min: number, max: number): number {
 
 /** Validates and merges a (partial) input over the current snapshot. Pure. */
 export function mergePlan(base: Snapshot, patch: Partial<PlanInput>, isTrial: boolean): Snapshot {
-  const next: Snapshot = { ...base, limits: { ...base.limits }, features: [...base.features], capabilities: { ...base.capabilities } };
+  const next: Snapshot = { ...base, limits: { ...base.limits }, highlights: [...base.highlights], features: [...base.features] };
   if (patch.name !== undefined) {
     const name = String(patch.name).trim();
     if (!name || name.length > 60) throw new AdminError("invalid", "The name is required (max 60 characters).");
@@ -121,21 +136,37 @@ export function mergePlan(base: Snapshot, patch: Partial<PlanInput>, isTrial: bo
         next.limits.seats = int(value, "Team seats", SEATS_MIN, SEATS_MAX);
         continue;
       }
-      if (!(USAGE_METRICS as string[]).includes(metric)) throw new AdminError("invalid", `Unknown limit "${metric}". Use: seats, ${USAGE_METRICS.join(", ")}.`);
+      if (metric === "postsPerAppPerDay") {
+        next.limits.postsPerAppPerDay = int(value, "Posts per app per day", POSTS_PER_APP_MIN, POSTS_PER_APP_MAX);
+        continue;
+      }
+      if (metric === "videosPerDay") {
+        next.limits.videosPerDay = int(value, "Videos per day", 0, 100);
+        continue;
+      }
+      if (!(USAGE_METRICS as string[]).includes(metric)) throw new AdminError("invalid", `Unknown limit "${metric}". Use: seats, postsPerAppPerDay, videosPerDay, ${USAGE_METRICS.join(", ")}.`);
       next.limits[metric as UsageMetric] = int(value, `The ${metric} limit`, 0, MAX_LIMIT);
     }
   }
-  if (patch.features !== undefined) {
-    const list = patch.features.map((f) => String(f).trim()).filter(Boolean);
-    if (list.length > 12) throw new AdminError("invalid", "A plan can list at most 12 features.");
-    if (list.some((f) => f.length > 120)) throw new AdminError("invalid", "Each feature can be at most 120 characters.");
-    next.features = list;
+  if (patch.highlights !== undefined) {
+    const list = patch.highlights.map((f) => String(f).trim()).filter(Boolean);
+    if (list.length > 12) throw new AdminError("invalid", "A plan can list at most 12 highlights.");
+    if (list.some((f) => f.length > 120)) throw new AdminError("invalid", "Each highlight can be at most 120 characters.");
+    next.highlights = list;
   }
+  let features: string[] | null = patch.features !== undefined ? patch.features.map((f) => String(f).trim()).filter(Boolean) : null;
   if (patch.capabilities !== undefined) {
+    features ??= [...next.features];
     for (const [cap, value] of Object.entries(patch.capabilities)) {
       if (!(CAPABILITIES as readonly string[]).includes(cap)) throw new AdminError("invalid", `Unknown capability "${cap}".`);
-      next.capabilities[cap as Capability] = value === true;
+      features = value === true ? [...new Set([...features, cap])] : features.filter((k) => k !== cap);
     }
+  }
+  if (features !== null) {
+    // Prerequisites are not added quietly: the form ticks them itself, and the API is told what is missing.
+    const checked = validateFeatureSet(features);
+    if (!checked.ok) throw new AdminError("invalid", checked.message);
+    next.features = checked.keys;
   }
   return next;
 }
@@ -150,28 +181,44 @@ export type AdminPlanRow = PlanView & {
   latestChange: { id: string; direction: string; status: string; subscribers: number; notifiedCount: number; appliedCount: number; failedCount: number; createdAt: Date } | null;
 };
 
+/** Subscriptions counted by plan, interval and status (prisma groupBy). */
+export type SubscriptionGroup = { plan: string; interval: BillingInterval | string; status: string; _count: { _all: number } };
+
+export type PlanCounts = {
+  /** Companies on the plan now: ACTIVE, PAST_DUE or TRIALING (a Mobile Money or custom plan counts like a card one). */
+  subscribers: number;
+  /** The paying part (ACTIVE or PAST_DUE); none for the trial. */
+  payingSubscribers: number;
+  /** Monthly recurring revenue of the paying ones, in the plan's own currency's smallest unit (RWF for a custom RWF plan). */
+  mrrCents: number;
+};
+
+/** Pure: a plan's clients and MRR from the subscription groups. */
+export function planCounts(plan: Pick<PlanView, "key" | "isTrial" | "monthlyPriceCents" | "yearlyPriceCents">, groups: SubscriptionGroup[]): PlanCounts {
+  const mine = groups.filter((g) => g.plan === plan.key);
+  const live = mine.filter((g) => ["ACTIVE", "PAST_DUE", "TRIALING"].includes(g.status));
+  const paying = plan.isTrial ? [] : mine.filter((g) => g.status === "ACTIVE" || g.status === "PAST_DUE");
+  const mrr = paying.reduce((s, g) => s + g._count._all * (g.interval === "YEAR" ? plan.yearlyPriceCents / 12 : plan.monthlyPriceCents), 0);
+  return { subscribers: live.reduce((s, g) => s + g._count._all, 0), payingSubscribers: paying.reduce((s, g) => s + g._count._all, 0), mrrCents: Math.round(mrr) };
+}
+
+/** The plan builder's plans. Companies' custom plans (docs/OFFERS.md) are left out: they live on each company's offers. */
 export async function listAdminPlans(): Promise<{ plans: AdminPlanRow[]; paddleConnected: boolean }> {
-  const plans = await getPlans({ force: true });
+  const plans = (await getPlans({ force: true })).filter((p) => !p.isCustom);
   const groups = await prisma.subscription.groupBy({ by: ["plan", "interval", "status"], _count: { _all: true } });
   const rows: AdminPlanRow[] = [];
   for (const plan of plans) {
-    const mine = groups.filter((g) => g.plan === plan.key);
-    const live = mine.filter((g) => ["ACTIVE", "PAST_DUE", "TRIALING"].includes(g.status));
-    const paying = plan.isTrial ? [] : mine.filter((g) => g.status === "ACTIVE" || g.status === "PAST_DUE");
-    const mrr = paying.reduce((s, g) => s + g._count._all * (g.interval === "YEAR" ? plan.yearlyPriceCents / 12 : plan.monthlyPriceCents), 0);
     const latest = await prisma.planPriceChange.findFirst({ where: { planKey: plan.key }, orderBy: { createdAt: "desc" } });
     rows.push({
       ...plan,
-      subscribers: live.reduce((s, g) => s + g._count._all, 0),
-      payingSubscribers: paying.reduce((s, g) => s + g._count._all, 0),
-      mrrCents: Math.round(mrr),
+      ...planCounts(plan, groups),
       paddleReady: Boolean(currentPriceId("PADDLE", plan, "MONTH") && currentPriceId("PADDLE", plan, "YEAR")),
       latestChange: latest
         ? { id: latest.id, direction: latest.direction, status: latest.status, subscribers: latest.subscribers, notifiedCount: latest.notifiedCount, appliedCount: latest.appliedCount, failedCount: latest.failedCount, createdAt: latest.createdAt }
         : null,
     });
   }
-  return { plans: rows, paddleConnected: paddleConnected() };
+  return { plans: rows, paddleConnected: await paddleConnected() };
 }
 
 async function loadPlan(key: string): Promise<PlanView> {
@@ -195,7 +242,9 @@ export async function getAdminPlan(key: string) {
     priceUse[price.id] = subs + items;
   }
   const struggling = await prisma.planPriceChangeItem.count({ where: { change: { planKey: key }, status: "pending", attempts: { gt: 0 } } });
-  return { plan, changes, failedItems, priceUse, struggling, paddleConnected: paddleConnected() };
+  // Counted here for any plan: listAdminPlans leaves custom plans out, so their page said "0 clients" for a company on one.
+  const groups = await prisma.subscription.groupBy({ by: ["plan", "interval", "status"], where: { plan: key }, _count: { _all: true } });
+  return { plan, counts: planCounts(plan, groups), changes, failedItems, priceUse, struggling, paddleConnected: await paddleConnected() };
 }
 
 // ---- price change preview -------------------------------------------------------------------------------------------------
@@ -268,7 +317,7 @@ async function recordSyncFailure(key: string, message: string) {
  * Plans that already have price ids in the environment (the original three) adopt them instead of creating new ones.
  */
 export async function syncPlanToPaddle(ctx: AdminContext, key: string): Promise<{ plan: PlanView; created: string[] }> {
-  if (!paddleConnected()) throw new AdminError("unavailable", "Paddle is not connected (PADDLE_API_KEY is not set), so there is nothing to sync yet.");
+  if (!(await paddleConnected())) throw new AdminError("unavailable", "Paddle is not connected (no API key in Admin -> Settings -> Card payments, or PADDLE_API_KEY), so there is nothing to sync yet.");
   let plan = await loadPlan(key);
   if (plan.isTrial) throw new AdminError("conflict", "The free trial is not sold, so it has nothing in Paddle.");
   const created: string[] = [];
@@ -325,14 +374,14 @@ export async function createPlan(ctx: AdminContext, input: PlanInput): Promise<{
     trialDays: null,
     monthlyPriceCents: 0,
     yearlyPriceCents: 0,
-    limits: { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0, chat: 0, seats: 1 },
+    limits: { text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0, seats: 1 },
+    highlights: [],
     features: [],
-    capabilities: { apiAccess: false, ownComposio: false },
   };
   const wanted = mergePlan(blank, { ...input, trialDays: undefined }, false);
   if (!wanted.name) throw new AdminError("invalid", "The name is required.");
   if (wanted.monthlyPriceCents < 1 || wanted.yearlyPriceCents < 1) throw new AdminError("invalid", "Set a monthly and a yearly price.");
-  const connected = paddleConnected();
+  const connected = await paddleConnected();
   // A plan is only offered for sale once Paddle has its prices; until then it is a hidden draft (also without Paddle).
   const startStatus: PlanStatus = wanted.status === "active" ? "hidden" : wanted.status;
   const created = await prisma.$transaction(async (tx) => {
@@ -349,8 +398,7 @@ export async function createPlan(ctx: AdminContext, input: PlanInput): Promise<{
         yearlyPriceCents: wanted.yearlyPriceCents,
         currency: "USD",
         limits: json(wanted.limits),
-        features: json(wanted.features),
-        capabilities: json(wanted.capabilities),
+        ...featureColumns(wanted),
         paddlePrices: json([]),
         syncState: "not_synced",
       },
@@ -413,9 +461,11 @@ export async function updatePlan(ctx: AdminContext, key: string, patch: Partial<
   const changed = Object.keys(dAfter);
   if (changed.length === 0) return { plan, changed, priceChange: null, warnings: [] };
   const priceChanged = "monthlyPriceCents" in dAfter || "yearlyPriceCents" in dAfter;
+  // A custom plan is priced by its offer, in the offer's currency (docs/OFFERS.md); it never gets new Paddle prices here.
+  if (priceChanged && plan.isCustom) throw new AdminError("conflict", CUSTOM_PRICE_MESSAGE);
   const warnings: string[] = [];
 
-  const connected = paddleConnected();
+  const connected = await paddleConnected();
   const hasPaddleIds = Boolean(currentPriceId("PADDLE", plan, "MONTH") || currentPriceId("PADDLE", plan, "YEAR"));
   // Putting a plan on sale needs its Paddle prices. Other edits of a plan that is already active are not blocked by this.
   if (next.status === "active" && plan.status !== "active" && !plan.isTrial && !(currentPriceId("PADDLE", plan, "MONTH") && currentPriceId("PADDLE", plan, "YEAR"))) {
@@ -434,7 +484,7 @@ export async function updatePlan(ctx: AdminContext, key: string, patch: Partial<
       throw new AdminError("confirm_required", `A price change needs your confirmation. ${preview.lines.join(" ")}`);
     }
     if (!connected && hasPaddleIds) {
-      throw new AdminError("unavailable", "Paddle is not connected, so a price change cannot be made: the price clients are charged would differ from the one shown. Set PADDLE_API_KEY first.");
+      throw new AdminError("unavailable", "Paddle is not connected, so a price change cannot be made: the price clients are charged would differ from the one shown. Connect Paddle first (Admin -> Settings -> Card payments).");
     }
     if (connected) {
       try {
@@ -487,8 +537,7 @@ export async function updatePlan(ctx: AdminContext, key: string, patch: Partial<
         monthlyPriceCents: next.monthlyPriceCents,
         yearlyPriceCents: next.yearlyPriceCents,
         limits: json(next.limits),
-        features: json(next.features),
-        capabilities: json(next.capabilities),
+        ...featureColumns(next),
         ...(priceChanged && connected
           ? { paddleProductId: productId, paddleMonthlyPriceId: monthlyId, paddleYearlyPriceId: yearlyId, paddlePrices: json(history), syncState: "synced", syncError: null }
           : {}),
@@ -612,12 +661,24 @@ export async function retryFailedPriceItems(ctx: AdminContext, id: string) {
 // ---- limits only (the update_plan_limits tool) -----------------------------------------------------------------------------------
 
 /** Sets a plan's limits. A metric set to null goes back to the value the plan was seeded with (0 for plans created later). */
-export async function setPlanLimits(ctx: AdminContext, input: { plan: string; limits: Partial<Record<UsageMetric | "seats", number | null>> }) {
+export async function setPlanLimits(ctx: AdminContext, input: { plan: string; limits: Partial<Record<UsageMetric | "seats" | "postsPerAppPerDay" | "videosPerDay", number | null>> }) {
   const plan = await loadPlan(input.plan);
   const entries = Object.entries(input.limits ?? {});
   if (entries.length === 0) throw new AdminError("invalid", "limits must set at least one metric.");
-  const patch: Partial<Record<UsageMetric | "seats", number>> = {};
+  const patch: Partial<Record<UsageMetric | "seats" | "postsPerAppPerDay" | "videosPerDay", number>> = {};
   for (const [metric, value] of entries) {
+    if (metric === "videosPerDay") {
+      if (value === null) patch.videosPerDay = VIDEOS_PER_DAY;
+      else if (!Number.isInteger(value) || value < 0 || value > 100) throw new AdminError("invalid", "videosPerDay must be a whole number from 0 to 100, or null to reset.");
+      else patch.videosPerDay = value;
+      continue;
+    }
+    if (metric === "postsPerAppPerDay") {
+      if (value === null) patch.postsPerAppPerDay = postsPerAppLimit(SEED_PLANS[plan.key]?.limits);
+      else if (!Number.isInteger(value) || value < POSTS_PER_APP_MIN || value > POSTS_PER_APP_MAX) throw new AdminError("invalid", `postsPerAppPerDay must be a whole number from ${POSTS_PER_APP_MIN} to ${POSTS_PER_APP_MAX}, or null to reset.`);
+      else patch.postsPerAppPerDay = value;
+      continue;
+    }
     if (metric === "seats") {
       if (value === null) patch.seats = SEED_PLANS[plan.key]?.limits.seats ?? SEATS_MIN;
       else if (!Number.isInteger(value) || value < SEATS_MIN || value > SEATS_MAX) throw new AdminError("invalid", `seats must be a whole number from ${SEATS_MIN} to ${SEATS_MAX}, or null to reset.`);

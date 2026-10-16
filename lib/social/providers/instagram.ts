@@ -1,3 +1,4 @@
+import { timeBudget } from "@/lib/platform/limits";
 import { graphGet, graphJson, graphPost, GRAPH_VERSION } from "../graph";
 import {
   finalStage,
@@ -130,8 +131,16 @@ async function checkQuota(token: string, igId: string): Promise<void> {
   }
 }
 
+const isVideo = (m: { mimeType: string }) => m.mimeType.toLowerCase().startsWith("video/");
+
 function assertJpeg(post: PublishRequest) {
   if (!post.media.length) throw new SocialError("Instagram posts need at least one image", "invalid", E);
+  // A content video (docs/CONTENT_VISUALS.md) is posted alone, as a Reel, and must be an MP4.
+  if (post.media.some(isVideo)) {
+    if (post.media.length > 1) throw new SocialError("Instagram posts a video on its own, without photos", "invalid", E);
+    if (post.media[0].mimeType.toLowerCase() !== "video/mp4") throw new SocialError("Instagram only accepts MP4 videos", "invalid", E);
+    return;
+  }
   if (post.media.length > 10) throw new SocialError("Instagram carousels have at most 10 images", "invalid", E);
   for (const m of post.media) {
     if (m.mimeType.toLowerCase() !== "image/jpeg") throw new SocialError("Instagram only accepts JPEG images. Please use a JPG photo.", "invalid", E);
@@ -146,10 +155,14 @@ async function publish(credentials: ConnectionCredentials, post: PublishRequest)
   const caption = post.text;
   await checkQuota(token, igId);
 
-  // One deadline covers every container, children and parent together.
-  const deadline = Date.now() + POLL.deadlineMs;
+  // One deadline covers every container, children and parent together. Netlify stops a function at 60 s, so the wait
+  // is 25 s there; a container still processing is retried later ("temporary"), nothing was published yet.
+  const deadline = Date.now() + timeBudget(POLL.deadlineMs, 25_000);
   let creationId: string;
-  if (post.media.length === 1) {
+  if (post.media.length === 1 && isVideo(post.media[0])) {
+    // A Reel: Instagram fetches and processes the video; a container still processing is retried later ("temporary").
+    creationId = (await graphPost<{ id: string }>(E, `${base}/${igId}/media`, { media_type: "REELS", video_url: post.media[0].url, caption, share_to_feed: true, access_token: token })).id;
+  } else if (post.media.length === 1) {
     creationId = (await graphPost<{ id: string }>(E, `${base}/${igId}/media`, { image_url: post.media[0].url, caption, access_token: token })).id;
   } else {
     const children = await Promise.all(post.media.map(async (m) => (await graphPost<{ id: string }>(E, `${base}/${igId}/media`, { image_url: m.url, is_carousel_item: true, access_token: token })).id));

@@ -8,8 +8,18 @@ import { requireActiveUser } from "@/lib/auth/require-user";
 import { askMessage, can } from "@/lib/team/roles";
 import { activeProvider, billingAdapter, isInterval } from "@/lib/billing";
 import { getPlan, priceIdFor } from "@/lib/plan-catalog";
+import { companyPlans, regionPriceIdFor } from "@/lib/region-prices";
 import { invoiceUrl } from "@/lib/billing/paddle";
 import { applyProviderSubscription } from "@/lib/billing/apply";
+import { earlyRenewalMessage, tooEarlyToRenew } from "@/lib/billing/renewal";
+import { paymentMethod } from "@/lib/billing/methods";
+import { cancelManualPayment, currentManualPayment, ManualPaymentError, startInvoicePayment, startProofUpload } from "@/lib/billing/momo";
+import type { ManualPaymentView, ProofInput } from "@/lib/billing/momo-shared";
+import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
+import { acceptOffer, OfferError, startFeatureAddition } from "@/lib/offers/service";
+import { CardOfferError, startOfferCardCheckout } from "@/lib/offers/card";
+import { addFeaturesByCard, CardPlanError, removeFeatureFromCardPlan } from "@/lib/offers/card-plan";
+import { noteRegionMismatch } from "@/lib/region-check";
 import type { CheckoutConfig, Invoice, PaidPlan } from "@/lib/billing";
 import type { BillingInterval } from "@/lib/generated/prisma/client";
 
@@ -21,6 +31,9 @@ const planSchema = z.object({
 });
 
 const NOT_READY = "Payments are not available right now. Please try again in a little while.";
+const NOT_IN_REGION = "That plan is not offered where your business is. Choose one of the plans shown.";
+// A region's card prices exist in Paddle only once they are synced (docs/REGIONS.md); until then the region's other method is the way.
+const CARD_NOT_READY = "Card payments are not ready for your region yet. Pay by Mobile Money instead, or contact support.";
 const GENERIC = "Something went wrong. Nothing was changed. Please try again.";
 
 /** A paying subscription the customer can manage: has a provider subscription and is not cancelled. */
@@ -53,20 +66,33 @@ export async function startCheckout(input: { plan: string; interval: string }): 
   if (!target || target.isTrial || target.status !== "active") return { ok: false, error: "That plan is not available. Choose one of the plans shown." };
 
   const sub = await prisma.subscription.findUnique({ where: { userId: user.id } });
+  // A plan that is still paid for (Mobile Money, or a card plan cancelled at its end): renewing opens in its last
+  // RENEWAL_WINDOW_DAYS days. A Mobile Money plan renewed by card is first billed when the paid period ends
+  // (lib/billing/apply.ts), so no paid day is lost (docs/BILLING.md, "Renewing"). Checked first, for both.
+  const early = tooEarlyToRenew(sub);
+  if (early) return { ok: false, error: earlyRenewalMessage(early) };
   if (managed(sub) && sub?.plan !== "TRIAL") {
-    return { ok: false, error: "You already have a paid plan. Use Switch plan to change it." };
+    return { ok: false, error: sub?.cancelAtPeriodEnd ? "Your card plan is cancelled at the end of its period. Use Renew with card to keep it: it resumes, with no new checkout." : "You already have a paid plan. Use Switch plan to change it." };
   }
   if (!user.email) return { ok: false, error: "Add an email address to your account first." };
+  // Soft region check: a checkout from a dearer region's IP is flagged for the admin, never refused (docs/REGIONS.md).
+  await noteRegionMismatch(user.businessId, "card");
+  // The plan must be offered in the company's region, at the region's price. Billing never looks at the visitor's IP.
+  const { region, plans } = await companyPlans(user.businessId);
+  if (!plans.some((p) => p.key === plan)) return { ok: false, error: NOT_IN_REGION };
+  const priceId = await regionPriceIdFor("PADDLE", plan, region.key, interval);
+  if (!priceId) return { ok: false, error: region.paymentMethods.includes("momo") ? CARD_NOT_READY : NOT_READY };
 
   try {
     const adapter = billingAdapter(activeProvider());
-    if (!adapter.isConfigured()) return { ok: false, error: NOT_READY };
+    if (!(await adapter.isConfigured())) return { ok: false, error: NOT_READY };
     const config = await adapter.checkoutConfig({
       userId: user.id,
       email: user.email,
       plan,
       interval,
       providerCustomerId: sub?.provider === adapter.provider ? sub.providerCustomerId : null,
+      priceId,
     });
     return { ok: true, config };
   } catch (error) {
@@ -99,9 +125,14 @@ export async function changePlan(input: { plan: string; interval: string }): Pro
   if (!target || target.isTrial || (target.status !== "active" && plan !== sub.plan)) {
     return { ok: false, error: "That plan is not available. Choose one of the plans shown." };
   }
-  const priceId = await priceIdFor(sub.provider, plan, interval);
+  // Another plan must be offered in the company's region; staying on the current plan only changes the interval.
+  const { region, plans } = await companyPlans(user.businessId);
+  if (plan !== sub.plan && !plans.some((p) => p.key === plan)) return { ok: false, error: NOT_IN_REGION };
+  const priceId = (await regionPriceIdFor(sub.provider, plan, region.key, interval)) ?? (plan === sub.plan ? await priceIdFor(sub.provider, plan, interval) : null);
   if (!priceId) return { ok: false, error: NOT_READY };
-  if (priceId === sub.providerPriceId) return { ok: false, error: "You are already on that plan." };
+  // On a custom plan made by "Add features" (the plan's price plus added features), the same price is the plan without
+  // them: the change removes the added features (the switch dialog says so), Paddle crediting their unused part.
+  if (priceId === sub.providerPriceId && !(await getPlan(sub.plan))?.isCustom) return { ok: false, error: "You are already on that plan." };
 
   try {
     const updated = await billingAdapter(sub.provider).changePlan(sub.providerSubscriptionId, priceId);
@@ -121,6 +152,9 @@ async function setCancellation(cancel: boolean): Promise<BillingResult> {
   const sub = managed(await prisma.subscription.findUnique({ where: { userId: user.id } }));
   if (!sub || !sub.provider || !sub.providerSubscriptionId) return { ok: false, error: "You do not have a paid plan." };
   if (!(await isServiceEnabled("paddle"))) return { ok: false, error: BILLING_PAUSED };
+  // Resuming a card plan cancelled at its end is its renewal: like any renewal, only in its last 7 days.
+  const early = cancel ? null : tooEarlyToRenew(sub);
+  if (early) return { ok: false, error: earlyRenewalMessage(early) };
 
   try {
     const adapter = billingAdapter(sub.provider);
@@ -151,6 +185,7 @@ export async function openPortal(): Promise<BillingResult<{ url: string }>> {
   const user = await requireActiveUser();
   if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
   const sub = await prisma.subscription.findUnique({ where: { userId: user.id } });
+  if (sub?.provider === "MANUAL_MOMO") return { ok: false, error: "You pay by Mobile Money, so there is no card to update. Renew from the Billing page when your plan ends." };
   if (!sub?.provider || !sub.providerCustomerId) return { ok: false, error: "You do not have a paid plan." };
   if (!(await isServiceEnabled("paddle"))) return { ok: false, error: BILLING_PAUSED };
 
@@ -205,4 +240,239 @@ export async function checkoutActivated(since: number): Promise<boolean> {
   });
   if (!sub || sub.plan === "TRIAL" || sub.status !== "ACTIVE") return false;
   return !Number.isFinite(since) || sub.updatedAt.getTime() >= since;
+}
+
+// ---- Mobile Money (MoMo / Airtel), paid by hand and confirmed by BuPulse (docs/MOMO.md) -------------------------
+
+/** Start, "I've paid" and cancel share one limit per company: each can alert the owner or write a payment row. */
+async function momoLimited(userId: string): Promise<BillingResult<never> | null> {
+  try {
+    await rateLimit(`momo:${userId}`, RATE_LIMITS.momo);
+    return null;
+  } catch (error) {
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    throw error;
+  }
+}
+
+function momoError(error: unknown): BillingResult<never> {
+  if (error instanceof ManualPaymentError) return { ok: false, error: error.message };
+  console.error("Mobile Money action failed", error);
+  return { ok: false, error: GENERIC };
+}
+
+// Starts (or returns the open) Mobile Money payment for a plan and period: the amount, the reference and where to pay.
+// With `invoiceId`: the payment of that invoice of the caller's company (amount = invoice total, reference = invoice number).
+export async function startMomoPayment(input: { plan: string; interval: string } | { invoiceId: string }): Promise<BillingResult<{ payment: ManualPaymentView }>> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const limited = await momoLimited(user.id);
+  if (limited) return limited;
+  // Soft region check: a payment started from a dearer region's IP is flagged for the admin, never refused (docs/REGIONS.md).
+  await noteRegionMismatch(user.businessId, "momo");
+  if (input && typeof input === "object" && "invoiceId" in input) {
+    const invoiceId = String(input.invoiceId ?? "");
+    if (!invoiceId || invoiceId.length > 64) return { ok: false, error: "We could not find that invoice." };
+    try {
+      const payment = await startInvoicePayment({ userId: user.id, invoiceId });
+      revalidatePath("/dashboard", "layout");
+      return { ok: true, payment };
+    } catch (error) {
+      return momoError(error);
+    }
+  }
+  const parsed = planSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Choose a plan." };
+  try {
+    const payment = await paymentMethod("MANUAL_MOMO").startPayment({ userId: user.id, plan: parsed.data.plan, interval: parsed.data.interval as BillingInterval });
+    revalidatePath("/dashboard/billing");
+    return { ok: true, payment };
+  } catch (error) {
+    return momoError(error);
+  }
+}
+
+// Before "I've paid": a signed upload URL for the screenshot of the MoMo confirmation (private bucket, this payment only).
+export async function startMomoProofUpload(input: { paymentId: string; type: string; bytes: number }): Promise<BillingResult<{ path: string; token: string }>> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  // Its own limit (20 an hour per user): each call issues an upload URL into the private bucket.
+  try {
+    await rateLimit(`momo-proof:${user.id}`, RATE_LIMITS.momoProof);
+  } catch (error) {
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    throw error;
+  }
+  try {
+    const target = await startProofUpload(user.id, { paymentId: String(input?.paymentId ?? ""), type: String(input?.type ?? ""), bytes: Number(input?.bytes) });
+    return { ok: true, ...target };
+  } catch (error) {
+    return momoError(error);
+  }
+}
+
+// "I've paid": the transaction id (or "I can't find it"), the phone the client paid from, the network and the
+// screenshot. BuPulse is alerted and checks within minutes.
+export async function submitMomoProof(input: ProofInput): Promise<BillingResult<{ payment: ManualPaymentView }>> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const limited = await momoLimited(user.id);
+  if (limited) return limited;
+  try {
+    const payment = await paymentMethod("MANUAL_MOMO").submitProof({ userId: user.id, ...input });
+    revalidatePath("/dashboard/billing");
+    return { ok: true, payment };
+  } catch (error) {
+    return momoError(error);
+  }
+}
+
+// The client changed their mind before paying. A payment they already reported stays with BuPulse to decide.
+export async function cancelMomoPayment(paymentId: string): Promise<BillingResult> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const limited = await momoLimited(user.id);
+  if (limited) return limited;
+  const done = await cancelManualPayment(user.id, String(paymentId));
+  revalidatePath("/dashboard/billing");
+  return done ? { ok: true } : { ok: false, error: "This payment can no longer be cancelled. If you have paid, wait for it to be confirmed." };
+}
+
+// Cheap check the waiting screen polls: the client's current payment (pending, or recently rejected), or null.
+export async function momoPaymentStatus(): Promise<ManualPaymentView | null> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return null;
+  return currentManualPayment(user.id);
+}
+
+// ---- custom plan offers (docs/OFFERS.md) ---------------------------------------------------------------------------
+
+// Accept the company's offer and choose how to pay: Mobile Money opens the usual pay screen for the offer's price;
+// invoice issues an invoice from the offer (shown on Billing, payable by Mobile Money with its number). Owner only.
+export async function acceptOfferAction(input: { offerId: string; method: string }): Promise<BillingResult<{ method: "momo" | "invoice" }>> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const offerId = String(input?.offerId ?? "");
+  const method = input?.method === "invoice" ? "invoice" : input?.method === "momo" ? "momo" : null;
+  if (!offerId || offerId.length > 64 || !method) return { ok: false, error: "Choose how you want to pay." };
+  try {
+    await rateLimit(`offer:${user.businessId}`, RATE_LIMITS.offerAccept);
+  } catch (error) {
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    throw error;
+  }
+  // Same soft region check as the other Mobile Money starts (flagged for the admin, never refused).
+  if (method === "momo") await noteRegionMismatch(user.businessId, "momo");
+  try {
+    await acceptOffer({ userId: user.id, actorId: user.actorId, businessId: user.businessId, offerId, method });
+    revalidatePath("/dashboard", "layout");
+    return { ok: true, method };
+  } catch (error) {
+    if (error instanceof OfferError) return { ok: false, error: error.message };
+    console.error("Accepting an offer failed", error);
+    return { ok: false, error: GENERIC };
+  }
+}
+
+// "Add features" (docs/OFFERS.md, "Adding features to a paid plan"): the ticked features on top of the running plan,
+// paid now prorated for the days left (Mobile Money, an invoice or a one-off card payment), switched on when the payment
+// is confirmed. On a card plan ("card_plan"), they become recurring items of its card subscription, charged now prorated
+// and switched on by the card provider's confirmation (lib/offers/card-plan.ts). Owner only.
+export async function addFeaturesAction(input: { features: string[]; method: string; expectedUsdCents?: number | null }): Promise<BillingResult<{ method: "momo" | "invoice" | "card" | "card_plan"; config?: CheckoutConfig; applied?: boolean; added?: string[] }> & { requoteUsdCents?: number }> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const method = input?.method === "invoice" ? "invoice" : input?.method === "momo" ? "momo" : input?.method === "card" ? "card" : input?.method === "card_plan" ? "card_plan" : null;
+  if (!method) return { ok: false, error: "Choose how you want to pay." };
+  const features = Array.isArray(input?.features) ? input.features.map(String).slice(0, 40) : [];
+  try {
+    await rateLimit(`offer:${user.businessId}`, RATE_LIMITS.offerAccept);
+  } catch (error) {
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    throw error;
+  }
+  if (method === "momo") await noteRegionMismatch(user.businessId, "momo");
+  if (method === "card_plan") {
+    if (!(await isServiceEnabled("paddle"))) return { ok: false, error: UNAVAILABLE_MESSAGE };
+    try {
+      const done = await addFeaturesByCard({ userId: user.id, actorId: user.actorId, businessId: user.businessId, features, expectedUsdCents: numberOrNull(input?.expectedUsdCents) });
+      revalidatePath("/dashboard", "layout");
+      return { ok: true, method, applied: done.applied, added: done.added };
+    } catch (error) {
+      if (error instanceof CardPlanError) return { ok: false, error: error.message, ...(error.requoteUsdCents ? { requoteUsdCents: error.requoteUsdCents } : {}) };
+      if (error instanceof OfferError) return { ok: false, error: error.message };
+      console.error("Adding features to a card plan failed", error);
+      return { ok: false, error: GENERIC };
+    }
+  }
+  try {
+    const accepted = await startFeatureAddition({ userId: user.id, actorId: user.actorId, businessId: user.businessId, features, method });
+    if (method === "card") {
+      if (!user.email) return { ok: false, error: "Add an email address to your account first." };
+      const config = await startOfferCardCheckout({ userId: user.id, email: user.email, businessId: user.businessId, offerId: accepted.offer.id, expectedUsdCents: numberOrNull(input?.expectedUsdCents) });
+      return { ok: true, method, config };
+    }
+    revalidatePath("/dashboard", "layout");
+    return { ok: true, method };
+  } catch (error) {
+    if (error instanceof OfferError) return { ok: false, error: error.message };
+    if (error instanceof CardOfferError) return { ok: false, error: error.message, ...(error.requote ? { requoteUsdCents: error.requote.usdCents } : {}) };
+    console.error("Adding features failed", error);
+    return { ok: false, error: GENERIC };
+  }
+}
+
+// "Remove" next to a feature added to a card plan (docs/OFFERS.md, "Removing a feature from a card plan"): its item
+// comes off the card subscription and Paddle credits the unused days; it switches off when Paddle confirms. Owner only.
+export async function removeCardFeatureAction(input: { feature: string }): Promise<BillingResult<{ applied: boolean; removed: string; creditUsdCents: number }>> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const feature = typeof input?.feature === "string" ? input.feature.slice(0, 64) : "";
+  if (!feature) return { ok: false, error: "Choose the feature to remove." };
+  if (!(await isServiceEnabled("paddle"))) return { ok: false, error: UNAVAILABLE_MESSAGE };
+  try {
+    await rateLimit(`offer:${user.businessId}`, RATE_LIMITS.offerAccept);
+  } catch (error) {
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    throw error;
+  }
+  try {
+    const done = await removeFeatureFromCardPlan({ userId: user.id, actorId: user.actorId, businessId: user.businessId, feature });
+    revalidatePath("/dashboard", "layout");
+    return { ok: true, ...done };
+  } catch (error) {
+    if (error instanceof OfferError) return { ok: false, error: error.message };
+    console.error("Removing a feature from a card plan failed", error);
+    return { ok: false, error: GENERIC };
+  }
+}
+
+const numberOrNull = (v: unknown) => (typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? v : null);
+
+// "Pay by card" on a custom plan offer (docs/OFFERS.md, "Card"): accepts it if needed, then opens a Paddle checkout for
+// the offer's price converted to USD (the card rule of RWF plans). `expectedUsdCents` is what the client was shown: a
+// different amount today is returned to confirm (`requoteUsdCents`), never charged silently. Owner only.
+export async function payOfferByCardAction(input: { offerId: string; expectedUsdCents?: number | null }): Promise<BillingResult<{ config: CheckoutConfig }> & { requoteUsdCents?: number }> {
+  const user = await requireActiveUser();
+  if (!can(user.role, "billing")) return { ok: false, error: askMessage("billing") };
+  const offerId = String(input?.offerId ?? "");
+  if (!offerId || offerId.length > 64) return { ok: false, error: "We could not find that offer. Open Billing again." };
+  if (!user.email) return { ok: false, error: "Add an email address to your account first." };
+  if (!(await isServiceEnabled("paddle"))) return { ok: false, error: UNAVAILABLE_MESSAGE };
+  try {
+    await rateLimit(`offer:${user.businessId}`, RATE_LIMITS.offerAccept);
+  } catch (error) {
+    if (error instanceof RateLimitError) return { ok: false, error: rateLimitMessage(error) };
+    throw error;
+  }
+  await noteRegionMismatch(user.businessId, "card");
+  try {
+    await acceptOffer({ userId: user.id, actorId: user.actorId, businessId: user.businessId, offerId, method: "card" });
+    const config = await startOfferCardCheckout({ userId: user.id, email: user.email, businessId: user.businessId, offerId, expectedUsdCents: numberOrNull(input?.expectedUsdCents) });
+    return { ok: true, config };
+  } catch (error) {
+    if (error instanceof OfferError) return { ok: false, error: error.message };
+    if (error instanceof CardOfferError) return { ok: false, error: error.message, ...(error.requote ? { requoteUsdCents: error.requote.usdCents } : {}) };
+    console.error("Card payment of an offer failed", error);
+    return { ok: false, error: GENERIC };
+  }
 }

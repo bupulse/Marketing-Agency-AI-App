@@ -33,7 +33,7 @@ vi.mock("@/lib/db", () => ({
       }),
   }),
 }));
-vi.mock("@/lib/admin/plan-limits", () => ({ getPlanLimits: async () => ({ text: 10, image: 5, videoSeconds: 0, voiceCharacters: 0, chat: 20 }), USAGE_METRICS: ["text", "image", "videoSeconds", "voiceCharacters", "chat"] }));
+vi.mock("@/lib/admin/plan-limits", () => ({ getPlanLimits: async () => ({ text: 10, image: 5, videos: 0, voiceCharacters: 0, chat: 20 }), USAGE_METRICS: ["text", "image", "videos", "voiceCharacters", "chat"] }));
 vi.mock("@/lib/admin/connections", () => ({ getClientConnections: async (businessId: string) => { calls.push({ model: "connections", method: "getClientConnections", args: { where: { businessId } } }); return { stores: 0, cloudflare: 0, importedFiles: 0 }; } }));
 
 const { getClient360, loadClient } = await import("@/lib/admin/client360");

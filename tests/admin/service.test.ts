@@ -25,7 +25,7 @@ import * as svc from "@/lib/admin/service";
 import { AdminError, apiContext, consoleContext } from "@/lib/admin/types";
 import { consumeUsage, UsageLimitError } from "@/lib/usage";
 
-const API = apiContext("key1", "203.0.113.5");
+const API = apiContext("key1", "203.0.113.5", "all");
 const CONSOLE = consoleContext("198.51.100.1");
 const USER = "11111111-1111-4111-8111-111111111111";
 const code = async (p: Promise<unknown>) => p.then(() => null, (e: AdminError) => e.code);
@@ -356,9 +356,11 @@ describe("direct actions: confirm and audit", () => {
 
   it("extend_trial revives an expired trial and refuses paid users and bad day counts", async () => {
     seedUser();
-    seedSub({ plan: "TRIAL", status: "EXPIRED", provider: null, providerSubscriptionId: null, trialEndsAt: new Date(Date.now() - 3 * 86_400_000) });
+    seedSub({ plan: "TRIAL", status: "EXPIRED", provider: null, providerSubscriptionId: null, trialEndsAt: new Date(Date.now() - 3 * 86_400_000), trialReminder1SentAt: new Date(), trialReminder2SentAt: new Date() });
     const out = await svc.extendTrial(API, { userId: USER, days: 3 });
     expect(out.status).toBe("TRIALING");
+    // The end-of-trial reminders go out again for the new end.
+    expect(h.db.subscription.rows[0]).toMatchObject({ trialReminder1SentAt: null, trialReminder2SentAt: null });
     expect(out.trialEndsAt.getTime()).toBeGreaterThan(Date.now() + 2.9 * 86_400_000);
     expect(await code(svc.extendTrial(API, { userId: USER, days: 0 }))).toBe("invalid");
     expect(await code(svc.extendTrial(API, { userId: USER, days: 91 }))).toBe("invalid");

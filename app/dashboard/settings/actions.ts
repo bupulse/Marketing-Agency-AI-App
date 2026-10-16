@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { fieldErrors, organisationSchema, type FieldErrors } from "@/lib/auth/schemas";
+import { businessDetailsSchema, fieldErrors, type FieldErrors } from "@/lib/auth/schemas";
 import { ForbiddenError } from "@/lib/team/roles";
 import { requireActiveUser, requirePersonalUser } from "@/lib/auth/require-user";
 import { billingAdapter } from "@/lib/billing";
@@ -41,20 +41,21 @@ export async function saveBusiness(_prev: SettingsState, formData: FormData): Pr
     throw error;
   }
 
-  const parsed = organisationSchema.safeParse({
+  // The country (and with it the region and prices) is set at sign-up and changed only by an admin (docs/REGIONS.md);
+  // the phone is checked against it. The sector is edited on the Brand page (app/dashboard/brand/actions.ts).
+  const current = await prisma.business.findUnique({ where: { userId: user.id }, select: { country: true } });
+  const parsed = businessDetailsSchema(current?.country).safeParse({
     organisationName: formData.get("organisationName") ?? "",
     ceoName: formData.get("ceoName") ?? "",
-    industry: formData.get("industry") ?? "",
-    country: formData.get("country") ?? "",
     phone: formData.get("phone") ?? "",
     website: formData.get("website") ?? "",
   });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
 
-  const { organisationName, ceoName, industry, country, phone, website } = parsed.data;
+  const { organisationName, ceoName, phone, website } = parsed.data;
   await prisma.business.update({
     where: { userId: user.id },
-    data: { name: organisationName, ceoName, industry, country, phone: phone ?? null, website: website ?? null },
+    data: { name: organisationName, ceoName, phone: phone ?? null, website: website ?? null },
   });
   revalidatePath("/dashboard", "layout");
   return { saved: true };

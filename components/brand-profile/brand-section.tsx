@@ -48,7 +48,7 @@ export function BrandSection({ step, initial, context }: { step: StepId; initial
           </h2>
           <p className="text-[14px] text-muted">{description}</p>
         </div>
-        <StepFields step={step} values={values} errors={errors} onChange={onChange} onBusyChange={setBusy} context={context} maxFaqs={10} />
+        <StepFields step={step} values={values} errors={errors} onChange={onChange} onBusyChange={setBusy} context={context} />
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={pending || busy}>
             {pending ? "Saving…" : "Save"}

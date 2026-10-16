@@ -1,40 +1,35 @@
 // Database reads for planning: everything buildWeekPlan needs, scoped to one business.
 import "server-only";
+import { byHandNetwork } from "@/lib/content-board/by-hand";
+import type { Network } from "@/lib/social/types";
 import { prisma } from "@/lib/db";
 import { readKnowledge } from "@/lib/brand/schemas";
 import { accountUsable } from "@/lib/publishing/service";
 import { isNetwork } from "@/lib/social/registry";
 import { holidaysBetween } from "./calendar";
-import { buildProfile, type PostResult } from "./learning";
+import { buildProfile } from "./learning";
+import { loadPostResults } from "./results";
+
+export { loadPostResults };
 import { industryTags } from "./playbook";
 import type { PlanInput, PlanProject } from "./planner";
 import { readConfig } from "./settings";
-import { safeZone, weekDates } from "./timezone";
+import { localDateISO, safeZone, weekDates } from "./timezone";
+import { campaignContext, productContext } from "@/lib/knowledge/context";
+import { legacyTypeOf } from "@/lib/knowledge/legacy";
+import { formatPrice } from "@/lib/knowledge/products";
+import { isVideoPath } from "@/lib/visuals/post-media";
+import { postsPerAppLimit } from "@/lib/plans";
+import { getUsageSummary } from "@/lib/usage";
+import { featureStatus } from "@/lib/entitlements";
+import { recentFormats } from "@/lib/content-flow/recent-formats";
+
+const CONTEXT_FIELDS = { kind: true, name: true, category: true, summary: true, description: true, priceModel: true, priceAmount: true, currency: true, priceNote: true, usps: true, features: true, targetCustomer: true, details: true } as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PHOTO_MARK = "photo:";
 
-/** Free-text notes live in Project.details as { notes } (same as lib/studio/service.ts). */
-function notesOf(details: unknown): string | undefined {
-  if (details && typeof details === "object" && "notes" in details) {
-    const notes = (details as { notes?: unknown }).notes;
-    if (typeof notes === "string" && notes) return notes;
-  }
-  return undefined;
-}
-
-export async function loadPostResults(businessId: string): Promise<PostResult[]> {
-  const posts = await prisma.post.findMany({
-    where: { businessId, status: "PUBLISHED", publishedAt: { not: null }, metrics: { some: {} } },
-    orderBy: { publishedAt: "desc" },
-    take: 300,
-    select: { playbookId: true, network: true, publishedAt: true, metrics: { orderBy: { capturedAt: "desc" }, take: 1 } },
-  });
-  return posts.flatMap((p) => {
-    const m = p.metrics[0];
-    return m && p.publishedAt ? [{ playbookId: p.playbookId, network: p.network, publishedAt: p.publishedAt, views: m.views, reach: m.reach, likes: m.likes, comments: m.comments, saves: m.saves, shares: m.shares }] : [];
-  });
-}
+const ALBUM = { orderBy: [{ position: "asc" as const }, { createdAt: "asc" as const }], take: 10, select: { asset: { select: { path: true } } } };
 
 /** Everything the planner needs for one business and week. Null when the business does not exist. */
 export async function loadPlanInput(businessId: string, weekStart: Date, now: Date): Promise<PlanInput | null> {
@@ -46,12 +41,26 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
   const since = new Date(now.getTime() - 28 * DAY_MS);
   const photoSince = new Date(now.getTime() - 60 * DAY_MS);
 
-  const [connections, projects, postedByProject, assets, recentDesigns, recentPosts, existing, results] = await Promise.all([
-    prisma.connection.findMany({ where: { businessId, kind: "SOCIAL", id: { in: config.connectionIds } }, orderBy: { createdAt: "asc" } }),
-    prisma.project.findMany({ where: { businessId }, orderBy: { createdAt: "desc" }, take: 30 }),
+  const today = localDateISO(now, timeZone);
+  const [connections, products, campaigns, postedByProduct, postedByCampaign, assets, recentDesigns, recentPosts, existing, results, faqs] = await Promise.all([
+    prisma.connection.findMany({ where: { businessId, kind: "SOCIAL" }, orderBy: { createdAt: "asc" } }),
+    // Active products and campaigns only: drafts and archived ones are not posted about.
+    prisma.product.findMany({ where: { businessId, status: "ACTIVE" }, orderBy: { createdAt: "desc" }, take: 30, include: { photos: ALBUM } }),
+    prisma.campaign.findMany({
+      where: { businessId, status: "ACTIVE", OR: [{ endsAt: null }, { endsAt: { gte: new Date(`${today}T00:00:00.000Z`) } }] },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      include: { photos: ALBUM, products: { take: 5, select: { product: { select: CONTEXT_FIELDS } } } },
+    }),
     prisma.post.groupBy({
-      by: ["projectId"],
-      where: { businessId, projectId: { not: null }, status: { notIn: ["CANCELLED", "FAILED"] } },
+      by: ["productId"],
+      where: { businessId, productId: { not: null }, status: { notIn: ["CANCELLED", "FAILED"] } },
+      _count: { _all: true },
+      _max: { scheduledAt: true },
+    }),
+    prisma.post.groupBy({
+      by: ["campaignId"],
+      where: { businessId, campaignId: { not: null }, status: { notIn: ["CANCELLED", "FAILED"] } },
       _count: { _all: true },
       _max: { scheduledAt: true },
     }),
@@ -59,25 +68,47 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
     prisma.design.findMany({ where: { businessId, createdAt: { gte: photoSince }, prompt: { startsWith: PHOTO_MARK } }, select: { prompt: true } }),
     prisma.post.findMany({ where: { businessId, createdAt: { gte: photoSince } }, select: { mediaPaths: true, playbookId: true, groupId: true, source: true, createdAt: true } }),
     prisma.post.findMany({
-      where: { businessId, connectionId: { not: null }, scheduledAt: { gte: new Date(weekStart.getTime() - DAY_MS), lt: new Date(weekStart.getTime() + 8 * DAY_MS) }, status: { notIn: ["CANCELLED", "FAILED"] } },
-      select: { connectionId: true, scheduledAt: true },
+      // Every post of the week, also reminders without an account: times clash per account, and the posts per app per
+      // day count per app and product or campaign.
+      where: { businessId, scheduledAt: { gte: new Date(weekStart.getTime() - DAY_MS), lt: new Date(weekStart.getTime() + 8 * DAY_MS) }, status: { notIn: ["CANCELLED", "FAILED"] } },
+      select: { connectionId: true, scheduledAt: true, network: true, productId: true, campaignId: true },
     }),
     loadPostResults(businessId),
+    // FAQs live in the Knowledge base now (KnowledgeFaq, in the owner's order).
+    prisma.knowledgeFaq.findMany({ where: { businessId }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], take: 50, select: { question: true, answer: true } }),
   ]);
 
-  const posted = new Map(postedByProject.map((g) => [g.projectId, g]));
-  const planProjects: PlanProject[] = projects.map((p) => ({
-    id: p.id,
-    title: p.title,
-    type: p.type,
-    price: p.price,
-    features: p.features,
-    notes: notesOf(p.details),
-    photoPaths: p.photoPaths,
-    createdAt: p.createdAt,
-    postedCount: posted.get(p.id)?._count._all ?? 0,
-    lastPostedAt: posted.get(p.id)?._max.scheduledAt ?? null,
-  }));
+  const posted = new Map<string | null, { _count: { _all: number }; _max: { scheduledAt: Date | null } }>([...postedByProduct.map((g) => [g.productId, g] as const), ...postedByCampaign.map((g) => [g.campaignId, g] as const)]);
+  const planProjects: PlanProject[] = [
+    ...products.map((p) => ({
+      id: p.id,
+      subject: "product" as const,
+      title: p.name,
+      type: legacyTypeOf(p),
+      price: formatPrice(p),
+      features: [...p.usps, ...p.features].slice(0, 10),
+      context: productContext(p),
+      photoPaths: p.photos.map((x) => x.asset.path).filter((path) => !isVideoPath(path)),
+      videoPaths: p.photos.map((x) => x.asset.path).filter(isVideoPath),
+      createdAt: p.createdAt,
+      postedCount: posted.get(p.id)?._count._all ?? 0,
+      lastPostedAt: posted.get(p.id)?._max.scheduledAt ?? null,
+    })),
+    ...campaigns.map((c) => ({
+      id: c.id,
+      subject: "campaign" as const,
+      title: c.name,
+      type: legacyTypeOf(c),
+      price: c.priceInfo,
+      features: c.highlights,
+      context: campaignContext({ ...c, products: c.products.map((x) => x.product) }),
+      photoPaths: c.photos.map((x) => x.asset.path).filter((path) => !isVideoPath(path)),
+      videoPaths: c.photos.map((x) => x.asset.path).filter(isVideoPath),
+      createdAt: c.createdAt,
+      postedCount: posted.get(c.id)?._count._all ?? 0,
+      lastPostedAt: posted.get(c.id)?._max.scheduledAt ?? null,
+    })),
+  ];
 
   const uses = new Map<string, number>();
   for (const d of recentDesigns) {
@@ -98,6 +129,11 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
   }
 
   const knowledge = readKnowledge(business.knowledge);
+  const [usage, videoFeature, formats] = await Promise.all([
+    getUsageSummary(business.userId).catch(() => null),
+    featureStatus(businessId, "video").catch(() => null),
+    recentFormats(businessId, timeZone, dates[0]).catch(() => ({})),
+  ]);
   return {
     businessId,
     weekStart,
@@ -105,15 +141,37 @@ export async function loadPlanInput(businessId: string, weekStart: Date, now: Da
     country: business.country,
     industryTags: industryTags(business.industry),
     config,
-    connections: connections.flatMap((c) => (isNetwork(c.provider) && accountUsable(c) ? [{ id: c.id, network: c.provider }] : [])),
+    connections: planConnections(connections, config.connectionIds),
     projects: planProjects,
-    faqs: knowledge.faqs,
-    hasHours: !!knowledge.hours,
+    faqs,
+    hasHours: !!(knowledge.hours || knowledge.openingHours.length),
     holidays: holidaysBetween(business.country, dates[0], dates[6], { skipReligious: config.skipReligious }),
     photos: assets.map((a) => ({ id: a.id, path: a.path, folderId: a.folderId, mimeType: a.mimeType, recentUses: uses.get(a.path) ?? 0 })),
-    existing: existing.flatMap((e) => (e.connectionId && e.scheduledAt ? [{ connectionId: e.connectionId, scheduledAt: e.scheduledAt }] : [])),
+    existing: existing.flatMap((e) => (e.scheduledAt ? [{ connectionId: e.connectionId, scheduledAt: e.scheduledAt, network: e.network, subjectId: e.productId ?? e.campaignId ?? null }] : [])),
     recentIdeas,
+    postsPerAppPerDay: usage ? postsPerAppLimit(usage.limits) : 1,
+    // Picture or video per post (lib/content-flow/format.ts): videos BuPulse makes need the plan's videos.
+    video: { inPlan: videoFeature === "ok" && (usage?.limits.videos ?? 0) > 0, videosLeft: usage ? Math.max(0, usage.limits.videos - usage.used.videos) : 0 },
+    recentFormats: formats,
     profile: buildProfile(results, timeZone),
     now,
   };
+}
+
+/**
+ * The accounts Autopilot writes for: the chosen usable accounts, and for each app chosen while it was not connected
+ * ("network:<app>") its account once one is connected (so the posts publish on their own), else the app itself, whose
+ * posts become reminders to post yourself (docs/CONTENT.md).
+ */
+export function planConnections(all: { id: string; provider: string; status: string; postingMode: string }[], chosen: string[]): { id: string; network: Network }[] {
+  const usable = all.filter((c) => isNetwork(c.provider) && accountUsable(c));
+  const out: { id: string; network: Network }[] = usable.filter((c) => chosen.includes(c.id)).map((c) => ({ id: c.id, network: c.provider as Network }));
+  for (const id of chosen) {
+    const network = byHandNetwork(id);
+    if (!network) continue;
+    const account = usable.find((c) => c.provider === network && c.postingMode === "AUTO") ?? usable.find((c) => c.provider === network);
+    const entry = account ? { id: account.id, network } : { id, network };
+    if (!out.some((o) => o.id === entry.id)) out.push(entry);
+  }
+  return out;
 }

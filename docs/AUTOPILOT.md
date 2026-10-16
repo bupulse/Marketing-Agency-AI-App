@@ -10,9 +10,10 @@ The page is `/dashboard/autopilot`. Everything lives in `lib/autopilot/`.
 2. **Run.** `runAutopilot(businessId)` claims an `AutopilotRun` (unique per business and week, so calling it twice is safe). The week is keyed by its local Monday date stored as midnight UTC, so changing the time zone cannot create a second run. A RUNNING run that went quiet (15 minutes) and saved posts is closed as DONE, never planned again; one with no posts is retaken, plans, writes and saves. The same function serves the "Plan next week now" button through `runAutopilotForUser(userId)`, which resolves the business from the signed-in user.
 3. **Plan.** `planWeek` loads what the planner needs (`data.ts`) and `buildWeekPlan` (pure, `planner.ts`) decides.
 4. **Write.** One Gemini call per post group (`writer.ts`), recorded in the cost ledger with feature `autopilot`.
-5. **Draw.** `images.ts` makes the picture (`createTemplateDesign`, or `createAiPhotoDesign` when "Use AI images" is on).
+5. **Draw.** `visuals.ts` gives the group its visual (`docs/CONTENT_VISUALS.md`): a short carousel when the idea is a list or the product has several photos, else the picture from `images.ts` (`createTemplateDesign`, or `createAiPhotoDesign` when "Use AI images" is on), and a video plan for video ideas when the plan has video.
 6. **Save.** One `Post` per chosen account, `source AUTOPILOT`, `status PENDING_APPROVAL` (or `SCHEDULED` with "Post without asking"), with `autopilotRunId`, `playbookId` and a `groupId` shared by the posts of one idea.
-7. **Email.** When approval is needed, the owner gets "Your posts for next week are ready. Approve them" through `lib/publishing/email.ts` (Resend).
+7. **Auto-approval.** Without "Post without asking", the posts of apps that need no approval (Content -> Settings, `docs/CONTENT.md`) are scheduled now, keeping their planned time, unless a safety rule keeps them in review (for example a video still to render).
+8. **Email.** When posts still wait for approval, the owner gets "Your posts for next week are ready. Approve them" through `lib/publishing/email.ts` (Resend).
 
 A group is one idea. The week's `postsPerWeek` counts groups, and each group becomes one post for every connected account the idea suits (a tip becomes an Instagram caption, a Facebook post and a LinkedIn post, each written for its network).
 
@@ -53,7 +54,7 @@ With at least 6 posts with metrics the scores steer the plan: about 70% of picks
 `buildWeekPlan(input)` is pure and seeded by business and week, so it is repeatable and testable.
 
 - Holidays in the week come first, on the day itself (a greeting, or an offer on shopping days when an offer exists), at most one per three posts.
-- Every connected network gets at least one post when there is room, and LinkedIn gets an article when there are three or more posts. Video scripts are capped at about a quarter of the plan unless only video accounts are connected.
+- Every connected network gets at least one post when there is room, and LinkedIn gets an article when there are three or more posts. Without video in the plan, video scripts are capped at about a quarter of the plan unless only video accounts are connected; with it, BuPulse makes the videos and each post's format is decided per app (docs/CONTENT.md, "Picture or video").
 - Days are spread over the week (posts avoid piling on one day) and lean on each network's best weekdays.
 - Times come from the owner's posting times (or learned best hours when confident), in `Business.timezone`, never in the past, and never closer than 2.5 hours to another post on the same account, including posts already scheduled.
 - Projects: new, never-posted ones first, each used at most once a week.

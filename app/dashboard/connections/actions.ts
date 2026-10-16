@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
+import { featureBlocked, hasFeature, upgradeHref } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { RATE_LIMITS, rateLimit, RateLimitError, rateLimitMessage } from "@/lib/rate-limit";
 import { disconnect, saveConnections, saveReminderConnection } from "@/lib/social/connections";
@@ -38,6 +39,9 @@ export async function connectReminderAction(_prev: ReminderState, formData: Form
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the username and try again." };
   const businessId = await businessIdFor(user.id);
   if (!businessId) return { error: "Finish setting up your business first." };
+  // Channels belong to the calendar feature: connecting one needs it in the plan (disconnecting never does).
+  const missing = await featureBlocked(businessId, "calendar");
+  if (missing) return { error: missing };
   try {
     await rateLimit(`social-connect:${user.id}`, RATE_LIMITS.socialConnect);
     await saveReminderConnection(businessId, "instagram", parsed.data.handle, parsed.data.displayName || `@${parsed.data.handle.replace(/^@/, "")}`);
@@ -63,6 +67,7 @@ export async function savePickedAccountsAction(formData: FormData) {
   const businessId = await businessIdFor(user.id);
   const ids = formData.getAll("account").filter((v): v is string => typeof v === "string");
   if (!pending || !businessId) redirect("/dashboard/connections?error=expired");
+  if (!(await hasFeature(businessId, "calendar"))) redirect(upgradeHref("calendar"));
   if (!ids.length) redirect(`/dashboard/connections?pick=${pending.network}`);
   try {
     await saveConnections(businessId, pending.network, pending.result, ids, "AUTO");

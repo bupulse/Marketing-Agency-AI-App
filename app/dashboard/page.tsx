@@ -1,10 +1,15 @@
-import { ArrowRight, CircleCheck, Circle, FolderKanban, Image as ImageIcon, Palette, PenLine, Users } from "lucide-react";
+import { ArrowRight, CircleCheck, Circle, Image as ImageIcon, Package, Palette, PenLine, Users } from "lucide-react";
 import Link from "next/link";
 import { getAppContext } from "@/components/app/context";
+import { EssentialsBanner } from "@/components/business-info/essentials-banner";
 import { Badge, GlassCard, Meter } from "@/components/ui";
 import { prisma } from "@/lib/db";
 import { cn } from "@/lib/cn";
 import { isHexColor } from "@/lib/color-contrast";
+import { formatPrice, KIND_LABEL } from "@/lib/knowledge/products";
+import { homeChecklist } from "@/lib/home-checklist";
+import { can } from "@/lib/team/roles";
+import { widgetInstalled } from "@/lib/widget/seen";
 
 export const metadata = { title: "Dashboard" };
 
@@ -19,43 +24,53 @@ function timeAgo(date: Date) {
 }
 
 export default async function DashboardPage() {
-  const { business, usage, firstName, logoUrl, brandColors, voiceLabel, businessName } = await getAppContext();
+  const { business, usage, role, entitlements, firstName, logoUrl, brandColors, voiceLabel, businessName, isTrial } = await getAppContext();
 
   const businessId = business?.id;
-  const [projectCount, contentCount, leadCount, connectionCount, recentProjects, recentLeads] = businessId
+  const chatInPlan = entitlements.inPlan.has("websiteChat");
+  const [productCount, contentCount, leadCount, connectionCount, designCount, recentProducts, recentLeads, widget, cloudflareInstalls] = businessId
     ? await Promise.all([
-        prisma.project.count({ where: { businessId } }),
-        prisma.generatedContent.count({ where: { project: { businessId } } }),
+        prisma.product.count({ where: { businessId, status: { not: "ARCHIVED" } } }),
+        prisma.generatedContent.count({ where: { businessId } }),
         prisma.lead.count({ where: { businessId } }),
         prisma.connection.count({ where: { businessId } }),
-        prisma.project.findMany({ where: { businessId }, orderBy: { createdAt: "desc" }, take: 3 }),
+        prisma.design.count({ where: { businessId } }),
+        prisma.product.findMany({ where: { businessId, status: { not: "ARCHIVED" } }, orderBy: { updatedAt: "desc" }, take: 3 }),
         prisma.lead.findMany({ where: { businessId }, orderBy: { createdAt: "desc" }, take: 3 }),
+        chatInPlan ? prisma.chatWidget.findUnique({ where: { businessId }, select: { lastSeenAt: true, lastSeenHost: true, allowedDomains: true } }) : null,
+        chatInPlan ? prisma.cloudflareInstall.count({ where: { businessId } }) : 0,
       ])
-    : [0, 0, 0, 0, [], []];
+    : [0, 0, 0, 0, 0, [], [], null, 0];
 
   const { used, limits } = usage;
+  // A paid plan that ended (lib/entitlements.ts "inactive", refused by lib/usage.ts too): its old limits are not usable.
+  const planEnded = !isTrial && entitlements.block === "inactive";
   const brandDone = Boolean(business?.onboardedAt);
   const swatches = brandColors.filter(isHexColor).slice(0, 5);
 
-  const checklist = [
-    { label: "Complete your brand profile", done: brandDone, href: "/dashboard/brand" },
-    { label: "Connect a social account", done: connectionCount > 0, href: "/dashboard/connections" },
-    { label: "Create your first project", done: projectCount > 0, href: projectCount > 0 ? "/dashboard/projects" : "/dashboard/projects/new" },
-    { label: "Install the chat widget", done: false, href: "/dashboard/settings" },
-  ];
+  const checklist = homeChecklist({
+    role,
+    inPlan: entitlements.inPlan,
+    brandDone,
+    connections: connectionCount,
+    products: productCount,
+    widgetInstalled: widgetInstalled({ widget, cloudflareInstalls }),
+  });
+  // Brand and business details belong to the owner and admins (lib/team/roles.ts).
+  const canEditBrand = can(role, "settings");
   const doneCount = checklist.filter((c) => c.done).length;
 
   const stats = [
-    { label: "Projects", value: projectCount, note: "Things you are promoting", icon: FolderKanban },
+    { label: "Products & services", value: productCount, note: "What you sell", icon: Package },
     { label: "Content pieces", value: contentCount, note: "Captions, scripts and ads", icon: PenLine },
     { label: "Leads", value: leadCount, note: "From your chat widget", icon: Users },
-    { label: "Designs", value: 0, note: "Branded posts made", icon: ImageIcon },
+    { label: "Designs", value: designCount, note: "Branded posts made", icon: ImageIcon },
   ];
 
   const meters = [
     { label: "Text generations", value: used.text, max: limits.text },
     { label: "Images", value: used.image, max: limits.image },
-    { label: "Video seconds", value: used.videoSeconds, max: limits.videoSeconds },
+    { label: "Videos", value: used.videos, max: limits.videos },
     { label: "Voice characters", value: used.voiceCharacters, max: limits.voiceCharacters },
   ];
 
@@ -72,6 +87,8 @@ export default async function DashboardPage() {
           style={{ background: "linear-gradient(90deg, var(--brand-1), var(--brand-2))" }}
         />
       </header>
+
+      {business?.onboardedAt && canEditBrand && <EssentialsBanner knowledge={business.knowledge} />}
 
       <GlassCard as="section" aria-labelledby="yb" className="flex flex-wrap items-center gap-x-5 gap-y-3 p-4 sm:p-5">
         {logoUrl ? (
@@ -100,9 +117,11 @@ export default async function DashboardPage() {
             <span className="text-[13px] text-muted">{voiceLabel ? `Voice: ${voiceLabel}` : "No voice chosen yet"}</span>
           </div>
         </div>
-        <Link href="/dashboard/brand" className="inline-flex min-h-11 items-center text-sm font-semibold">
-          Edit brand
-        </Link>
+        {canEditBrand && (
+          <Link href="/dashboard/brand" className="inline-flex min-h-11 items-center text-sm font-semibold">
+            Edit brand
+          </Link>
+        )}
       </GlassCard>
 
       <section aria-label="Overview" className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-4">
@@ -126,50 +145,61 @@ export default async function DashboardPage() {
           </Badge>
         </div>
         <ul className="grid gap-2 sm:grid-cols-2">
-          {checklist.map(({ label, done, href }) => (
-            <li key={label}>
-              <Link
-                href={href}
-                className="flex min-h-12 items-center gap-3 rounded-2xl px-3.5 py-2 no-underline hover:bg-soft"
-              >
+          {checklist.map(({ label, done, href, ask }) => {
+            const body = (
+              <>
                 {done ? (
                   <CircleCheck aria-hidden className="size-5 shrink-0 text-success" />
                 ) : (
                   <Circle aria-hidden className="size-5 shrink-0 text-muted" />
                 )}
-                <span className={cn("flex-1 text-[15px] font-medium", done && "text-muted line-through")}>
-                  {label}
+                <span className="flex flex-1 flex-col">
+                  <span className={cn("text-[15px] font-medium", done && "text-muted line-through")}>{label}</span>
+                  {ask && !done && <span className="text-[13px] text-muted">{ask}</span>}
                 </span>
                 <span className="sr-only">{done ? "Done" : "Not done yet"}</span>
-                <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
-              </Link>
-            </li>
-          ))}
+              </>
+            );
+            return (
+              <li key={label}>
+                {/* A step this role cannot open is shown read-only, with who to ask. */}
+                {ask ? (
+                  <div className="flex min-h-12 items-center gap-3 rounded-2xl px-3.5 py-2">{body}</div>
+                ) : (
+                  <Link href={href} className="flex min-h-12 items-center gap-3 rounded-2xl px-3.5 py-2 no-underline hover:bg-soft">
+                    {body}
+                    <ArrowRight aria-hidden className="size-4 shrink-0 text-muted" />
+                  </Link>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </GlassCard>
 
       <div className="flex flex-wrap gap-5">
         <GlassCard as="section" aria-labelledby="rp" className="min-w-0 flex-[1.5_1_340px] p-5 sm:p-6">
           <div className="mb-3 flex items-center justify-between">
-            <h2 id="rp" className="text-lg font-semibold">Recent projects</h2>
-            <Link href="/dashboard/projects" className="text-sm font-semibold">View all</Link>
+            <h2 id="rp" className="text-lg font-semibold">Products & services</h2>
+            <Link href="/dashboard/knowledge/products" className="text-sm font-semibold">View all</Link>
           </div>
-          {recentProjects.length === 0 ? (
+          {recentProducts.length === 0 ? (
             <p className="rounded-2xl bg-soft px-4 py-8 text-center text-[15px] text-muted">
-              No projects yet. A project is anything you want to promote: a product, a service, an event or an offer.
+              Nothing here yet. Add what you sell in the <Link href="/dashboard/knowledge" className="font-semibold">Knowledge base</Link>: products, services, events and offers.
             </p>
           ) : (
             <ul className="flex flex-col">
-              {recentProjects.map((p) => (
-                <li key={p.id} className="flex items-center gap-3.5 rounded-2xl p-3 hover:bg-soft">
-                  <span aria-hidden className="size-12 shrink-0 rounded-[14px] bg-brand-gradient" />
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <strong className="truncate text-[15px]">{p.title}</strong>
-                    <span className="truncate text-[13px] capitalize text-muted">
-                      {p.type}
-                      {p.price ? ` · ${p.price}` : ""}
-                    </span>
-                  </div>
+              {recentProducts.map((p) => (
+                <li key={p.id}>
+                  <Link href={`/dashboard/knowledge/products/${p.id}`} className="flex items-center gap-3.5 rounded-2xl p-3 no-underline hover:bg-soft">
+                    <span aria-hidden className="size-12 shrink-0 rounded-[14px] bg-brand-gradient" />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <strong className="truncate text-[15px]">{p.name}</strong>
+                      <span className="truncate text-[13px] text-muted">
+                        {KIND_LABEL[p.kind]} · {formatPrice(p)}
+                      </span>
+                    </div>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -205,7 +235,8 @@ export default async function DashboardPage() {
           <h2 id="us" className="text-lg font-semibold">Usage this period</h2>
           <Link href="/dashboard/usage" className="text-sm font-semibold">Details</Link>
         </div>
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-5">
+        {planEnded && <p className="-mt-2 mb-4 text-sm text-muted">Your plan has ended, so nothing new can be made until a plan is chosen. Everything you made is saved.</p>}
+        <div className={cn("grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-5", planEnded && "opacity-60")}>
           {meters.map((m) => {
             const unavailable = m.max === 0;
             return (

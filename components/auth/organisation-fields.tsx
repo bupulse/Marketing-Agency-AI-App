@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { Field, Input, Select } from "@/components/ui";
 import { countries } from "@/lib/content/countries";
-import { industryOptions, type FieldErrors } from "@/lib/auth/schemas";
+import type { FieldErrors } from "@/lib/auth/schemas";
+import type { IndustryFieldValues, IndustryOption } from "@/lib/industries/shared";
+import { IndustryFields } from "./industry-fields";
+import { PhoneField } from "./phone-field";
 
-export type OrganisationValues = {
+export type OrganisationValues = IndustryFieldValues & {
   organisationName: string;
   ceoName: string;
-  industry: string;
   country: string;
   phone: string;
   website: string;
@@ -21,10 +23,13 @@ export function OrganisationFields({
   values,
   errors,
   onChange,
+  industries,
 }: {
   values: OrganisationValues;
   errors: FieldErrors;
   onChange: OnChange;
+  /** Active sectors from Admin -> Industries (the form adds "Other"). */
+  industries: IndustryOption[];
 }) {
   return (
     <>
@@ -39,17 +44,8 @@ export function OrganisationFields({
       <Field label="CEO name" required error={errors.ceoName}>
         <Input name="ceoName" autoComplete="name" value={values.ceoName} onChange={(e) => onChange("ceoName", e.target.value)} />
       </Field>
-      <Field label="Industry" required error={errors.industry}>
-        <Select name="industry" value={values.industry} onChange={(e) => onChange("industry", e.target.value)}>
-          <option value="">Select your industry</option>
-          {industryOptions.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="Country" required error={errors.country}>
+      <IndustryFields industries={industries} values={values} errors={errors} onChange={onChange} />
+      <Field label="Country" required error={errors.country} hint="Decides your prices and currency. Only our team can change it later.">
         <Select name="country" autoComplete="country-name" value={values.country} onChange={(e) => onChange("country", e.target.value)}>
           <option value="">Select your country</option>
           {countries.map((name) => (
@@ -59,16 +55,7 @@ export function OrganisationFields({
           ))}
         </Select>
       </Field>
-      <Field label="Phone (optional)" error={errors.phone}>
-        <Input
-          name="phone"
-          type="tel"
-          autoComplete="tel"
-          placeholder="+1 555 123 4567"
-          value={values.phone}
-          onChange={(e) => onChange("phone", e.target.value)}
-        />
-      </Field>
+      <PhoneField value={values.phone} country={values.country} error={errors.phone} onChange={(v) => onChange("phone", v)} />
       <Field label="Website (optional)" error={errors.website}>
         <Input
           name="website"

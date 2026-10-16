@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { logError } from "@/lib/errors";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SEED_PLANS, type Plan, type UsageMetric } from "@/lib/plans";
-import { getPlan, getPlans, getTrialPlan, priceIdFor } from "@/lib/plan-catalog";
+import { getPlan, getPlans, priceIdFor } from "@/lib/plan-catalog";
 import { listAdminPlans, previewPriceChange, setPlanLimits, updatePlan, type PlanInput } from "./plans-service";
 import { isInterval, type PaidPlan } from "@/lib/billing/catalog";
 import { applyProviderSubscription } from "@/lib/billing/apply";
@@ -13,9 +13,12 @@ import { createRefund, describeRefundTarget } from "@/lib/billing/paddle-admin";
 import { retryPost, PublishingError } from "@/lib/publishing/service";
 import { monthlyCostSchema, type MonthlyCostInput } from "@/lib/analytics/costs";
 import { writeAudit } from "./audit";
+import { getSetting } from "./settings";
 import * as companies from "./actions/companies";
 import { isServiceEnabled } from "./switch";
 import { clearFlagCache } from "./flags";
+import { checkOfferDraft } from "@/lib/offers/shared";
+import { parseDraft, pricingContext, quoteWith, saveOfferDraft, sendOffer } from "@/lib/offers/service";
 import {
   AdminError,
   APPROVAL_STATUSES,
@@ -33,7 +36,7 @@ export { isEnabled } from "./flags";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const APPROVAL_TTL_MS = 7 * DAY_MS;
-const SUBSCRIPTION_STATUSES = ["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"] as const;
+const SUBSCRIPTION_STATUSES = ["PENDING_DEMO", "TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"] as const;
 const POST_STATUSES = ["DRAFT", "PENDING_APPROVAL", "SCHEDULED", "PUBLISHING", "PUBLISHED", "NEEDS_ACTION", "FAILED", "CANCELLED"] as const;
 
 // ---- small helpers ----------------------------------------------------------------------------------------
@@ -79,7 +82,7 @@ const userSelect = {
   deletionScheduledFor: true,
   subscription: { select: { plan: true, status: true, provider: true, interval: true, trialEndsAt: true, currentPeriodStart: true, currentPeriodEnd: true, cancelAtPeriodEnd: true } },
   business: { select: { id: true, name: true, industry: true, country: true, onboardedAt: true } },
-  usage: { orderBy: { periodStart: "desc" }, take: 1, select: { periodStart: true, textGenerations: true, imageGenerations: true, videoSeconds: true, voiceCharacters: true, chatMessages: true, updatedAt: true } },
+  usage: { orderBy: { periodStart: "desc" }, take: 1, select: { periodStart: true, textGenerations: true, imageGenerations: true, videos: true, voiceCharacters: true, chatMessages: true, updatedAt: true } },
 } satisfies Prisma.UserSelect;
 
 type UserRow = Prisma.UserGetPayload<{ select: typeof userSelect }>;
@@ -104,7 +107,7 @@ function userView(u: UserRow) {
     cancelAtPeriodEnd: u.subscription?.cancelAtPeriodEnd ?? false,
     business: u.business ? { id: u.business.id, name: u.business.name, industry: u.business.industry, country: u.business.country, onboarded: Boolean(u.business.onboardedAt) } : null,
     usage: usage
-      ? { periodStart: usage.periodStart, text: usage.textGenerations, image: usage.imageGenerations, videoSeconds: usage.videoSeconds, voiceCharacters: usage.voiceCharacters, chat: usage.chatMessages }
+      ? { periodStart: usage.periodStart, text: usage.textGenerations, image: usage.imageGenerations, videos: usage.videos, voiceCharacters: usage.voiceCharacters, chat: usage.chatMessages }
       : null,
     /** The last time the user used a metered feature this period (null when never). */
     lastActivityAt: usage?.updatedAt ?? null,
@@ -168,15 +171,18 @@ const businessSelect = {
   userId: true,
   name: true,
   industry: true,
+  industryDescription: true,
   description: true,
   website: true,
   country: true,
+  phone: true,
+  ceoName: true,
   timezone: true,
   contentLanguage: true,
   onboardedAt: true,
   createdAt: true,
   user: { select: { email: true, suspendedAt: true, subscription: { select: { plan: true, status: true } } } },
-  _count: { select: { projects: true, posts: true, leads: true, connections: true } },
+  _count: { select: { products: true, posts: true, leads: true, connections: true } },
 } satisfies Prisma.BusinessSelect;
 
 type BusinessRow = Prisma.BusinessGetPayload<{ select: typeof businessSelect }>;
@@ -188,9 +194,12 @@ function businessView(b: BusinessRow) {
     ownerEmail: b.user.email,
     name: b.name,
     industry: b.industry,
+    industryDescription: b.industryDescription,
     description: b.description,
     website: b.website,
     country: b.country,
+    phone: b.phone,
+    ceoName: b.ceoName,
     timezone: b.timezone,
     contentLanguage: b.contentLanguage,
     onboarded: Boolean(b.onboardedAt),
@@ -198,7 +207,7 @@ function businessView(b: BusinessRow) {
     plan: b.user.subscription?.plan ?? null,
     subscriptionStatus: b.user.subscription?.status ?? null,
     suspended: Boolean(b.user.suspendedAt),
-    counts: { projects: b._count.projects, posts: b._count.posts, leads: b._count.leads, connections: b._count.connections },
+    counts: { projects: b._count.products, posts: b._count.posts, leads: b._count.leads, connections: b._count.connections },
   };
 }
 
@@ -301,7 +310,8 @@ export async function extendTrial(ctx: AdminContext, input: { userId: string; da
   const trialEndsAt = new Date(base.getTime() + days * DAY_MS);
   const before = { trialEndsAt: sub.trialEndsAt, status: sub.status };
   const status = sub.status === "EXPIRED" || sub.status === "CANCELED" ? "TRIALING" : sub.status;
-  const after = { trialEndsAt, status };
+  // A longer trial gets its two end-of-trial reminders again (lib/demo/trial-reminders.ts).
+  const after = { trialEndsAt, status, trialReminder1SentAt: null, trialReminder2SentAt: null };
   await prisma.$transaction(async (tx) => {
     // Guarded on the value we read, so two extensions at once cannot silently overwrite each other.
     const { count } = await tx.subscription.updateMany({ where: { userId: input.userId, plan: "TRIAL", trialEndsAt: sub.trialEndsAt }, data: after });
@@ -475,7 +485,7 @@ export async function getPlanLimitsView() {
   const plans = await getPlans({ force: true });
   return Object.fromEntries(
     plans.map((p) => {
-      const defaults = SEED_PLANS[p.key]?.limits ?? { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0, chat: 0 };
+      const defaults = SEED_PLANS[p.key]?.limits ?? { text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0 };
       // "overrides" = the metrics that differ from what the plan was seeded with.
       const overrides = Object.fromEntries(Object.entries(p.limits).filter(([m, v]) => defaults[m as UsageMetric] !== v));
       return [p.key, { defaults, overrides, effective: p.limits }];
@@ -484,11 +494,11 @@ export async function getPlanLimitsView() {
 }
 
 /** Sets a plan's limits (they live on the plan; /admin/plans edits the same numbers). A metric set to null goes back to its seed value. */
-export async function updatePlanLimits(ctx: AdminContext, input: { plan: string; limits: Partial<Record<UsageMetric | "seats", number | null>>; confirm?: boolean }) {
+export async function updatePlanLimits(ctx: AdminContext, input: { plan: string; limits: Partial<Record<UsageMetric | "seats" | "postsPerAppPerDay", number | null>>; confirm?: boolean }) {
   requireConfirm(ctx, input.confirm, "Changing plan limits");
   if (!input.plan) throw new AdminError("invalid", "plan is required.");
   const { plan, effective } = await setPlanLimits(ctx, { plan: input.plan, limits: input.limits });
-  const defaults = SEED_PLANS[plan]?.limits ?? { text: 0, image: 0, videoSeconds: 0, voiceCharacters: 0, chat: 0 };
+  const defaults = SEED_PLANS[plan]?.limits ?? { text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0 };
   return { plan, effective, overrides: Object.fromEntries(Object.entries(effective).filter(([m, v]) => defaults[m as UsageMetric] !== v)) };
 }
 
@@ -663,13 +673,15 @@ export async function requestChangePlan(ctx: AdminContext, input: { userId: stri
       throw new AdminError("conflict", "That user has a live paid subscription. Cancel it in Paddle first; BuPulse never ends a paid subscription from here.");
     }
     const before = { plan: sub.plan, status: sub.status, trialEndsAt: sub.trialEndsAt };
-    const trialEndsAt = new Date(Date.now() + ((await getTrialPlan()).trialDays ?? 7) * DAY_MS);
-    const after = { plan: target.key, status: "TRIALING" as const, trialEndsAt };
+    // The trial length is the admin setting (Admin -> Settings), not the TRIAL plan's trialDays (docs/REGIONS.md).
+    const trialDays = await getSetting("trialDays");
+    const trialEndsAt = new Date(Date.now() + trialDays * DAY_MS);
+    const after = { plan: target.key, status: "TRIALING" as const, trialEndsAt, trialReminder1SentAt: null, trialReminder2SentAt: null };
     await prisma.$transaction(async (tx) => {
       await tx.subscription.update({ where: { userId: input.userId }, data: after });
       await writeAudit(tx, ctx, "change_plan", `user:${input.userId}`, before, after);
     });
-    return { id: null, status: "applied", kind: "change_plan" as const, replayed: false, message: `The user is back on a ${(await getTrialPlan()).trialDays ?? 7}-day free trial. No money was involved.` };
+    return { id: null, status: "applied", kind: "change_plan" as const, replayed: false, message: `The user is back on a ${trialDays}-day free trial. No money was involved.` };
   }
   if (target.status === "retired") throw new AdminError("conflict", `The ${target.name} plan is retired and cannot be given to anyone new.`);
   await requirePaddleOn();
@@ -720,6 +732,35 @@ export async function requestPlanPriceChange(ctx: AdminContext, input: { plan: s
   return createApproval(ctx, "plan_price_change", { plan: plan.key, monthlyPriceCents, yearlyPriceCents }, async () => params, input.idempotencyKey);
 }
 
+/**
+ * A custom plan offer asked for through the API (Jarvis create_offer). An offer sets what a client pays, so it is a
+ * money action: only an approval is created, with the priced lines and the price locked in, and nothing is saved or
+ * sent until the owner approves it in the console (which then saves the draft and, with `send`, sends it).
+ */
+export async function requestCreateOffer(ctx: AdminContext, input: { businessId: string; draft: Record<string, unknown>; send?: boolean; idempotencyKey?: string }) {
+  const business = await prisma.business.findUnique({ where: { id: input.businessId }, select: { id: true, name: true } });
+  if (!business) throw new AdminError("not_found", "No company with that id.");
+  const draft = parseDraft(input.draft);
+  if (draft.mode === "addon") throw new AdminError("invalid", "Adding features to a client's running plan (prorated) is done in the console: Customise plan, Add to current plan.");
+  const pc = await pricingContext(business.id);
+  const { quote } = quoteWith(pc, draft);
+  const checked = checkOfferDraft(draft, quote);
+  if (!checked.ok) throw new AdminError("invalid", checked.error);
+  const request = { businessId: business.id, draft: input.draft, send: input.send === true };
+  return createApproval(ctx, "create_offer", request, async () => ({
+    businessId: business.id,
+    company: business.name,
+    draft: input.draft,
+    send: input.send === true,
+    currency: pc.region.currency,
+    interval: draft.interval,
+    features: quote.features,
+    lines: quote.lines.map((l) => `${l.label}${l.quantity > 1 ? ` x${l.quantity}` : ""}: ${l.totalMinor} ${pc.region.currency}${l.missingPrice ? " (no price set)" : ""}`),
+    computedMinor: quote.computedMinor,
+    adjustedMinor: checked.adjustedMinor,
+  }), input.idempotencyKey);
+}
+
 /** The plans for Jarvis (list_plans): what clients can buy, with clients and MRR. */
 export async function listPlansForTools() {
   const { plans, paddleConnected } = await listAdminPlans();
@@ -727,7 +768,7 @@ export async function listPlansForTools() {
     paddleConnected,
     plans: plans.map((p) => ({
       key: p.key, name: p.name, description: p.description, status: p.status, isTrial: p.isTrial, trialDays: p.trialDays, sortOrder: p.sortOrder, highlight: p.highlight,
-      monthlyPriceCents: p.monthlyPriceCents, yearlyPriceCents: p.yearlyPriceCents, currency: p.currency, limits: p.limits, features: p.features, capabilities: p.capabilities,
+      monthlyPriceCents: p.monthlyPriceCents, yearlyPriceCents: p.yearlyPriceCents, currency: p.currency, limits: p.limits, highlights: p.highlights, features: p.features,
       clients: p.subscribers, payingClients: p.payingSubscribers, mrrCents: p.mrrCents, paddleSync: p.syncState, paddleSyncError: p.syncError,
     })),
   };
@@ -791,6 +832,20 @@ async function executeApproval(kind: string, params: Record<string, unknown>, on
     await onProviderDone(result);
     return result;
   }
+  if (kind === "create_offer") {
+    // Not Paddle: runs the console's own save (and send), with the approving admin as the actor. Only if the price is
+    // still the one the owner saw.
+    // Priced again first: nothing is saved when the add-on or plan prices moved since the request.
+    const businessId = String(params.businessId);
+    const draft = parseDraft(params.draft);
+    const { quote } = quoteWith(await pricingContext(businessId), draft);
+    const checked = checkOfferDraft(draft, quote);
+    if (!checked.ok) throw new Error(checked.error);
+    if (checked.adjustedMinor !== params.adjustedMinor) throw new Error(`The price changed since this request was made (now ${checked.adjustedMinor}, requested ${String(params.adjustedMinor)}). Nothing was saved; ask for the offer again.`);
+    const saved = await saveOfferDraft(ctx, { businessId, draft: params.draft });
+    const sent = params.send === true ? await sendOffer(ctx, saved.id) : null;
+    return { offerId: saved.id, status: sent ? "sent" : "draft", emailed: sent?.emailed ?? false };
+  }
   if (kind === "change_user_email" || kind === "make_company_owner") {
     // Not money: runs as the console action, with the approving admin as the actor (audited, old address notified).
     const result = kind === "change_user_email"
@@ -838,7 +893,7 @@ export async function approveAction(ctx: AdminContext, id: string): Promise<Appr
   if (ctx.viaApi || ctx.actor !== "admin") throw new AdminError("forbidden", "Only the owner can approve a money action, in the admin console.");
   const row = await prisma.adminApproval.findUnique({ where: { id } });
   // Only the money kinds need Paddle; checked before claiming, so the request stays pending and can be approved later.
-  if (!row || (row.kind !== "change_user_email" && row.kind !== "make_company_owner")) await requirePaddleOn();
+  if (!row || (row.kind !== "change_user_email" && row.kind !== "make_company_owner" && row.kind !== "create_offer")) await requirePaddleOn();
   if (!row) throw new AdminError("not_found", "No approval with that id.");
   const decidedAt = new Date();
   // Pending AND not expired, in the same conditional update that claims it.

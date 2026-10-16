@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
     connection: { findMany: vi.fn() },
     autopilotSettings: { upsert: vi.fn() },
     post: { findMany: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn() },
+    postVersion: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn() },
   },
   approvePosts: vi.fn(),
   consumeUsage: vi.fn(),
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }));
+vi.mock("@/lib/knowledge/writer-context", () => ({ writerKnowledge: async () => ({ knowledgeBase: null, voiceProfile: null }) }));
 vi.mock("@/lib/errors", () => ({ logError: mocks.logError }));
 vi.mock("@/lib/ai", () => ({ getTextProvider: () => ({ name: "gemini" }) }));
 vi.mock("@/lib/ai/ledger", () => ({ withLedger: async (_c: unknown, _m: unknown, call: () => unknown) => call() }));
@@ -45,12 +47,14 @@ beforeEach(() => {
   mocks.consumeUsage.mockResolvedValue({ periodStart });
   mocks.refundUsage.mockResolvedValue(undefined);
   mocks.logError.mockResolvedValue(undefined);
+  mocks.prisma.post.updateMany.mockResolvedValue({ count: 1 });
+  mocks.prisma.postVersion.findMany.mockResolvedValue([]);
 });
 
 describe("saving settings", () => {
   it("saves for the signed-in user's business, including the skip-religious-holidays choice", async () => {
     expect(await saveSettings("user1", { ...valid, skipReligious: true })).toEqual({ ok: true });
-    expect(mocks.prisma.business.findUnique).toHaveBeenCalledWith({ where: { userId: "user1" } });
+    expect(mocks.prisma.business.findUnique).toHaveBeenCalledWith({ where: { userId: "user1" }, include: { industryRef: true } });
     const call = mocks.prisma.autopilotSettings.upsert.mock.calls[0][0];
     expect(call.where).toEqual({ businessId: "biz1" });
     expect(call.update).toMatchObject({ enabled: true, postsPerWeek: 4, connectionIds: ["c1"], postingTimes: ["09:00", "18:00"], skipReligiousHolidays: true });
@@ -61,6 +65,12 @@ describe("saving settings", () => {
     await saveSettings("user1", { ...valid, connectionIds: ["c1", "someone-elses"] });
     expect(mocks.prisma.connection.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ businessId: "biz1", kind: "SOCIAL" }) }));
     expect(mocks.prisma.autopilotSettings.upsert.mock.calls[0][0].update.connectionIds).toEqual(["c1"]);
+  });
+
+  it("accepts apps that are not connected yet (network:<app>), and nothing else that is not the user's", async () => {
+    mocks.prisma.connection.findMany.mockResolvedValue([]);
+    expect(await saveSettings("user1", { ...valid, connectionIds: ["network:instagram", "network:myspace", "someone-elses"] })).toEqual({ ok: true });
+    expect(mocks.prisma.autopilotSettings.upsert.mock.calls[0][0].update.connectionIds).toEqual(["network:instagram"]);
   });
 
   it("refuses to switch on with no valid account", async () => {
@@ -110,7 +120,7 @@ describe("approve, remove (IDOR)", () => {
 });
 
 describe("regenerating a post", () => {
-  const post = { id: "p1", network: "instagram", format: "POST", text: "Old text about bread", playbookId: "tip-how-to", scheduledAt: new Date("2026-10-13T07:00:00Z"), project: null };
+  const post = { id: "p1", businessId: "biz1", network: "instagram", format: "POST", title: null, text: "Old text about bread", hashtags: ["#bread"], playbookId: "tip-how-to", scheduledAt: new Date("2026-10-13T07:00:00Z"), createdAt: new Date("2026-10-10T07:00:00Z"), updatedAt: new Date("2026-10-10T07:00:00Z"), project: null };
 
   it("charges 1 text credit and rewrites every post of the group", async () => {
     mocks.prisma.post.findMany.mockResolvedValue([post, { ...post, id: "p2", network: "linkedin" }]);
@@ -128,6 +138,21 @@ describe("regenerating a post", () => {
     expect(mocks.writeGroup.mock.calls[0][1]).toMatchObject({ previousText: "Old text about bread" });
     expect(mocks.prisma.post.updateMany).toHaveBeenCalledTimes(2);
     expect(mocks.prisma.post.updateMany.mock.calls[0][0].where).toMatchObject({ businessId: "biz1" });
+  });
+
+  it("keeps the words before and after as the post's versions", async () => {
+    mocks.prisma.post.findMany.mockResolvedValue([post]);
+    mocks.prisma.post.updateMany.mockResolvedValue({ count: 1 });
+    mocks.prisma.postVersion.findFirst.mockResolvedValue(null);
+    mocks.prisma.postVersion.create.mockResolvedValue({ id: "v" });
+    mocks.prisma.postVersion.findMany.mockResolvedValue([]);
+    mocks.writeGroup.mockResolvedValue({ image: {}, versions: [{ network: "instagram", title: null, text: "New IG", hashtags: ["#a"] }] });
+    expect(await regenerateGroup("user1", "g1")).toEqual({ ok: true });
+    const rows = mocks.prisma.postVersion.create.mock.calls.map((c) => c[0].data);
+    expect(rows).toEqual([
+      expect.objectContaining({ businessId: "biz1", postId: "p1", kind: "original", text: "Old text about bread", hashtags: ["#bread"] }),
+      expect.objectContaining({ businessId: "biz1", postId: "p1", kind: "regenerate", part: "post", text: "New IG", hashtags: ["#a"] }),
+    ]);
   });
 
   it("looks the group up inside the user's business only (IDOR)", async () => {

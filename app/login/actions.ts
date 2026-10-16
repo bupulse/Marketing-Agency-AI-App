@@ -1,12 +1,14 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { findAccountByEmail } from "@/lib/account";
+import { findAccountByEmail, switchToPasswordOnly } from "@/lib/account";
 import { createClient } from "@/lib/supabase/server";
 import { fieldErrors, signInSchema, type FieldErrors } from "@/lib/auth/schemas";
 import { safeNext } from "@/lib/auth/safe-next";
-import { siteUrl } from "@/lib/auth/site-url";
+import { originFor } from "@/lib/auth/site-url";
 import { rememberReturn } from "@/lib/auth/return-server";
+import { publicLimited } from "@/lib/request-limits";
 
 export type LoginState = {
   error?: string;
@@ -21,9 +23,12 @@ export async function signInWithPassword(_prev: LoginState, formData: FormData):
     password: formData.get("password") ?? "",
   });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  // Per IP and per address, before Supabase: password guessing is slowed for one account from many IPs too.
+  const limited = await publicLimited("login", parsed.data.email);
+  if (limited) return { error: limited };
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword(parsed.data);
+  const { data, error } = await supabase.auth.signInWithPassword(parsed.data);
   if (error) {
     if (error.code === "email_not_confirmed") return { unconfirmedEmail: parsed.data.email };
     if (error.status === 429 || error.code === "over_request_rate_limit") {
@@ -35,13 +40,15 @@ export async function signInWithPassword(_prev: LoginState, formData: FormData):
       if (account?.method === "GOOGLE" && !account.hasPassword) {
         return {
           error:
-            "This account was created with Google. Use Continue with Google, or choose “Forgot password?” to add a password.",
+            "This account was created with Google, so sign in with “Continue with Google”. To use a password instead, choose “Forgot password?”: after that you sign in with your password only, not Google.",
         };
       }
       return { error: "Incorrect email or password." };
     }
     return { error: "We could not sign you in. Please try again." };
   }
+  // A Google account only has a password after "Forgot password?" (set before that page switched it): password only now.
+  if (data?.user) await switchToPasswordOnly(data.user.id);
   const next = safeNext(String(formData.get("next") ?? ""));
   await rememberReturn(next); // a brand-new account still has to pass /welcome and /onboarding first
   redirect(next);
@@ -54,7 +61,7 @@ export async function signInWithGoogle(formData: FormData) {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${siteUrl()}/auth/callback?next=${encodeURIComponent(next)}${/^[A-Za-z0-9_-]{8,40}$/.test(visit) ? `&vs=${visit}` : ""}`,
+      redirectTo: `${originFor(await headers())}/auth/callback?next=${encodeURIComponent(next)}${/^[A-Za-z0-9_-]{8,40}$/.test(visit) ? `&vs=${visit}` : ""}`,
     },
   });
   if (error || !data.url) redirect("/login?error=google");

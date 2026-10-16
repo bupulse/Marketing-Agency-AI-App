@@ -3,17 +3,19 @@
 /**
  * <DesignStudio> makes branded designs: from a template in one of five style packs (free,
  * unlimited), from a template over an AI-made photo (1 image credit), or from a description
- * (AI, 1 image credit). Embed it on a project page or use it alone.
+ * (AI, 1 image credit). Embed it on a product's or campaign's page or use it alone.
  *
  * Props (all optional except `designs`):
- *   projectId   Attach new designs to this project. Omit on the Designs page.
- *   defaults    Prefill from the project:
+ *   subjectId   Attach new designs to this product or campaign. Omit on the Designs page.
+ *   album       Its album ("product:<id>"), where the gallery picker opens.
+ *   defaults    Prefill from the product or campaign:
  *                 headline, subline, chip   template text
- *                 photoPaths                object paths in the private "media" bucket (<userId>/projects/...)
+ *                 photoPaths                its album's object paths in the private "media" bucket, cover first
  *                 photoUrls                 signed display URLs, same order as photoPaths
  *                                           (lib/designs/service.ts photoPreviewUrls); without them the
  *                                           picker shows "Photo 1", "Photo 2"...
- *                 projectType               Project.type, to list the best-fitting templates first
+ *                 projectType               the old project type (lib/knowledge/legacy.ts legacyTypeOf), to list
+ *                                           the best-fitting templates first
  *   designs     Existing designs to show in the gallery: { id, url, kind, aspectRatio, template }[]
  *               (lib/designs/service.ts listDesigns returns exactly this).
  *   credits     { used, limit, resetsAt? } of the plan's image credits, for "Uses 1 of your N" and the paywall.
@@ -25,7 +27,8 @@
  *   showGallery Show the gallery under the studio (default true).
  */
 
-import { createContext, useContext, useMemo, useState, useTransition } from "react";
+import { createContext, useContext, useMemo, useState, useTransition, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Download, ImageIcon, Images, Sparkles, Trash2 } from "lucide-react";
 import { Button, Field, GlassCard, Input, Tabs, Textarea, useToast } from "@/components/ui";
@@ -35,6 +38,7 @@ import { EditInCanva } from "./edit-in-canva";
 import { createAiDesign, createAiPhotoDesign, createTemplateDesign, deleteDesign, getDesignDownloadUrl } from "@/app/dashboard/designs/actions";
 import { cn } from "@/lib/cn";
 import { ASPECT_LABELS, ASPECT_RATIOS, type AspectRatio } from "@/lib/designs/layout";
+import { groupByDay } from "@/lib/designs/list";
 import { PACKS, type PackId } from "@/lib/designs/packs";
 import { TEMPLATES, templatesForProjectType } from "@/lib/designs/templates/registry";
 
@@ -44,10 +48,13 @@ export type StudioDesign = {
   kind: string;
   aspectRatio: string;
   template: string | null;
+  /** ISO time it was made; when given, the gallery groups designs by day. */
+  createdAt?: string;
 };
 
 export type DesignStudioProps = {
-  projectId?: string;
+  subjectId?: string;
+  album?: string;
   defaults?: {
     headline?: string;
     subline?: string;
@@ -61,12 +68,21 @@ export type DesignStudioProps = {
   hasLogo?: boolean;
   pack?: PackId;
   showGallery?: boolean;
+  /** Shown above and below the gallery, e.g. the date filter and the page links on the Designs page. */
+  galleryTop?: ReactNode;
+  galleryBottom?: ReactNode;
+  /** The business's time zone, for the gallery's day headings. */
+  timeZone?: string;
   galleryPhoto?: { path: string; url: string } | null;
-  /** Pass `isCanvaEnabled()` from the server page to show "Edit in Canva" on designs. */
+  /** Pass `isCanvaEnabled()` (and the plan's canva feature) from the server page to show "Edit in Canva" on designs. */
   canva?: boolean;
+  /** The plan's aiPhotos feature: shows the "Describe an image" tab. Templates are always there with the designs feature. */
+  aiPhotos?: boolean;
 };
 
 const CanvaEnabled = createContext(false);
+/** The product's or campaign's album key ("product:<id>"): the gallery picker opens there. */
+const AlbumKey = createContext<string | undefined>(undefined);
 
 type Created = { designId: string; url: string };
 
@@ -117,6 +133,7 @@ function PhotoPicker({
   // Photos taken from "From my gallery" stay in the list, so the choice can be changed back and forth.
   const [picks, setPicks] = useState<{ path: string; url: string }[]>(gallery ? [gallery] : []);
   const [open, setOpen] = useState(false);
+  const album = useContext(AlbumKey);
   const tile = (selected: boolean) =>
     cn("flex size-16 cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 text-xs font-semibold", selected ? "border-pulse-blue" : "border-transparent hover:border-line");
 
@@ -164,20 +181,43 @@ function PhotoPicker({
           From my gallery
         </button>
       </div>
-      <MediaPicker open={open} onOpenChange={setOpen} onPick={pick} />
+      <MediaPicker open={open} onOpenChange={setOpen} onPick={pick} initialFolder={album} />
     </fieldset>
   );
 }
 
-function Result({ created, ratio, onAgain }: { created: Created; ratio: string; onAgain: () => void }) {
+/** The box a new design is shown in, at the design's own shape (a story is held to the screen's height). */
+const RESULT_BOX: Record<AspectRatio, string> = {
+  "1:1": "aspect-square w-full",
+  "4:5": "aspect-[4/5] w-full",
+  "16:9": "aspect-video w-full",
+  "9:16": "aspect-[9/16] h-[70vh] max-w-full self-center",
+};
+
+function Result({ created, ratio, onAgain }: { created: Created; ratio: AspectRatio; onAgain: () => void }) {
+  // The design is a large image: until it has arrived, a placeholder of its shape, never a half-drawn picture (on a
+  // slow connection the bottom, with the subline and price, looked cut off).
+  const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
   return (
     <div className="flex flex-col gap-4">
-      {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
-      <img
-        src={created.url}
-        alt="Your new design"
-        className={cn("w-full rounded-2xl border border-line object-contain", ratio === "9:16" ? "max-h-[70vh] self-center" : "")}
-      />
+      <div className={cn("relative overflow-hidden rounded-2xl border border-line bg-soft", RESULT_BOX[ratio])}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
+        <img
+          ref={(img) => {
+            if (img?.complete && img.naturalWidth > 0) setState("ready");
+          }}
+          src={created.url}
+          alt="Your new design"
+          onLoad={() => setState("ready")}
+          onError={() => setState("failed")}
+          className={cn("absolute inset-0 size-full object-contain transition-opacity duration-300", state === "ready" ? "opacity-100" : "opacity-0")}
+        />
+        {state !== "ready" && (
+          <p role="status" className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-muted">
+            {state === "loading" ? "Loading your design…" : "The preview did not load. Your design is saved: download it, or find it under Your designs."}
+          </p>
+        )}
+      </div>
       <div className="flex flex-wrap gap-3">
         <DownloadButton id={created.designId} />
         <EditInCanva designId={created.designId} enabled={useContext(CanvaEnabled)} />
@@ -288,13 +328,13 @@ function StylePicker({ value, onChange, matches }: { value: PackId; onChange: (v
 }
 
 function TemplateTab({
-  projectId,
+  subjectId,
   defaults,
   order,
   pack: matchingPack = "clean",
   credits,
   galleryPhoto,
-}: Pick<DesignStudioProps, "projectId" | "defaults" | "credits" | "galleryPhoto"> & {
+}: Pick<DesignStudioProps, "subjectId" | "defaults" | "credits" | "galleryPhoto"> & {
   order: string[];
   pack?: PackId;
 }) {
@@ -322,6 +362,20 @@ function TemplateTab({
   const [includePeople, setIncludePeople] = useState(true);
   const [error, setError] = useState<string | undefined>();
   const [created, setCreated] = useState<Created | null>(null);
+  // Another product chosen under "Make a design for": its name, price and photo fill the form, and the template,
+  // style, shape and kind chosen so far stay. The studio is not rebuilt for it, so a template clicked while the
+  // product's page was still on its way (a slow connection) is not lost when the page arrives.
+  const [forSubject, setForSubject] = useState(subjectId);
+  if (forSubject !== subjectId) {
+    setForSubject(subjectId);
+    setHeadline(defaults?.headline ?? "");
+    setSubline(defaults?.subline ?? "");
+    setChip(defaults?.chip ?? "");
+    setPhoto(galleryPhoto?.path ?? photoPaths[0] ?? null);
+    setReference(galleryPhoto?.path ?? null);
+    setError(undefined);
+    setCreated(null);
+  }
   const activeId = templates.some((t) => t.id === template) ? template : templates[0].id;
   const current = templates.find((t) => t.id === activeId)!;
   const note = credits ? `${Math.max(0, credits.limit - credits.used)} of ${credits.limit} left.` : "";
@@ -330,7 +384,7 @@ function TemplateTab({
     setError(undefined);
     start(async () => {
       const text = {
-        projectId,
+        subjectId,
         template: activeId,
         pack,
         aspectRatio: ratio,
@@ -464,7 +518,7 @@ function TemplateTab({
   );
 }
 
-function AiTab({ projectId, defaults, credits, hasLogo, galleryPhoto }: Pick<DesignStudioProps, "projectId" | "defaults" | "credits" | "hasLogo" | "galleryPhoto">) {
+function AiTab({ subjectId, defaults, credits, hasLogo, galleryPhoto }: Pick<DesignStudioProps, "subjectId" | "defaults" | "credits" | "hasLogo" | "galleryPhoto">) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
@@ -480,6 +534,14 @@ function AiTab({ projectId, defaults, credits, hasLogo, galleryPhoto }: Pick<Des
   const [photo, setPhoto] = useState<string | null>(galleryPhoto?.path ?? null);
   const [error, setError] = useState<string | undefined>();
   const [created, setCreated] = useState<Created | null>(null);
+  // Another product chosen above: the description written so far stays (as in the template tab).
+  const [forSubject, setForSubject] = useState(subjectId);
+  if (forSubject !== subjectId) {
+    setForSubject(subjectId);
+    setPhoto(galleryPhoto?.path ?? null);
+    setError(undefined);
+    setCreated(null);
+  }
 
   const note = credits ? `Uses 1 of your ${credits.limit} image credits (${Math.max(0, credits.limit - credits.used)} left).` : "Uses 1 image credit.";
 
@@ -487,7 +549,7 @@ function AiTab({ projectId, defaults, credits, hasLogo, galleryPhoto }: Pick<Des
     setError(undefined);
     start(async () => {
       const res = await createAiDesign({
-        projectId,
+        subjectId,
         prompt,
         aspectRatio: ratio,
         useLogo,
@@ -550,7 +612,7 @@ function AiTab({ projectId, defaults, credits, hasLogo, galleryPhoto }: Pick<Des
   );
 }
 
-function Gallery({ designs }: { designs: StudioDesign[] }) {
+function Gallery({ designs, timeZone = "UTC" }: { designs: StudioDesign[]; timeZone?: string }) {
   const canva = useContext(CanvaEnabled);
   const router = useRouter();
   const { toast } = useToast();
@@ -568,17 +630,24 @@ function Gallery({ designs }: { designs: StudioDesign[] }) {
     });
   }
 
+  const groups = designs.every((d) => d.createdAt) ? groupByDay(designs as (StudioDesign & { createdAt: string })[], new Date(), timeZone) : [{ day: "", label: "", items: designs }];
+
   return (
+    <div className="flex flex-col gap-6">
+      {groups.map((g) => (
+        <section key={g.day || "all"} aria-label={g.label || undefined} className="flex flex-col gap-3">
+          {g.label && <h3 className="px-1 text-[14px] font-semibold text-muted">{g.label}</h3>}
     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-      {designs.map((d) => (
+      {g.items.map((d) => (
         <li key={d.id} className="flex flex-col gap-2">
-          <div className="flex aspect-square items-center justify-center overflow-hidden rounded-2xl border border-line bg-soft">
+          {/* The whole design, whatever its shape: fitted inside the square tile, never cut. */}
+          <div className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-soft">
             {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
             <img
               src={d.url}
               alt={`${d.kind === "AI" ? "AI image" : "Template design"}, ${d.aspectRatio}`}
               loading="lazy"
-              className="max-h-full max-w-full object-contain"
+              className="absolute inset-0 size-full object-contain"
             />
           </div>
           <div className="flex items-center justify-between gap-2">
@@ -599,13 +668,17 @@ function Gallery({ designs }: { designs: StudioDesign[] }) {
         </li>
       ))}
     </ul>
+        </section>
+      ))}
+    </div>
   );
 }
 
-export function DesignStudio({ projectId, defaults, designs, credits, hasLogo, pack, showGallery = true, galleryPhoto = null, canva = false }: DesignStudioProps) {
+export function DesignStudio({ subjectId, album, defaults, designs, credits, hasLogo, pack, showGallery = true, galleryTop, galleryBottom, timeZone, galleryPhoto = null, canva = false, aiPhotos = true }: DesignStudioProps) {
   const order = useMemo(() => templatesForProjectType(defaults?.projectType ?? ""), [defaults?.projectType]);
   return (
     <CanvaEnabled value={canva}>
+      <AlbumKey value={album}>
       <div className="flex flex-col gap-8">
         <GlassCard strong padding="lg">
           <Tabs
@@ -614,23 +687,40 @@ export function DesignStudio({ projectId, defaults, designs, credits, hasLogo, p
               {
                 value: "template",
                 label: "From a template",
-                content: <TemplateTab projectId={projectId} defaults={defaults} order={order} pack={pack} credits={credits} galleryPhoto={galleryPhoto} />,
+                content: <TemplateTab subjectId={subjectId} defaults={defaults} order={order} pack={pack} credits={credits} galleryPhoto={galleryPhoto} />,
               },
-              {
-                value: "ai",
-                label: "Describe an image",
-                content: <AiTab projectId={projectId} defaults={defaults} credits={credits} hasLogo={hasLogo} galleryPhoto={galleryPhoto} />,
-              },
+              ...(aiPhotos
+                ? [
+                    {
+                      value: "ai",
+                      label: "Describe an image",
+                      content: <AiTab subjectId={subjectId} defaults={defaults} credits={credits} hasLogo={hasLogo} galleryPhoto={galleryPhoto} />,
+                    },
+                  ]
+                : [
+                    {
+                      value: "ai",
+                      label: "Describe an image",
+                      content: (
+                        <p className="text-[15px] text-muted">
+                          AI photos are not part of your plan. <Link href="/dashboard/upgrade?feature=aiPhotos" className="font-semibold underline">See what they do and add them to your plan.</Link>
+                        </p>
+                      ),
+                    },
+                  ]),
             ]}
           />
         </GlassCard>
         {showGallery && (
           <section aria-label="Your designs" className="flex flex-col gap-4">
             <h2 className="px-1 text-lg font-semibold">Your designs</h2>
-            <Gallery designs={designs} />
+            {galleryTop}
+            <Gallery designs={designs} timeZone={timeZone} />
+            {galleryBottom}
           </section>
         )}
       </div>
+      </AlbumKey>
     </CanvaEnabled>
   );
 }

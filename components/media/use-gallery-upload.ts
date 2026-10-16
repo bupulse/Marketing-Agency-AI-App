@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { createUploadTargets, discardUpload, finalizeUpload } from "@/app/dashboard/gallery/actions";
-import { fileProblem, inferMimeType, MEDIA_MAX_BYTES, nameFromFile, scaledSize, UPLOAD_BATCH_MAX } from "@/lib/media/rules";
+import { fileProblem, GALLERY_VIDEO_BUCKET, inferMimeType, isVideoType, MEDIA_MAX_BYTES, nameFromFile, POSTER_MAX_BYTES, POSTER_MAX_SIDE, scaledSize, storedVideoType, UPLOAD_BATCH_MAX, VIDEO_MAX_MS } from "@/lib/media/rules";
 import type { MediaItem } from "@/lib/media/service";
 
 export type UploadState = { active: boolean; total: number; done: number; failed: number; errors: string[]; /** The file being worked on (imports only). */ current?: string };
@@ -11,7 +11,54 @@ export type UploadState = { active: boolean; total: number; done: number; failed
 const IDLE: UploadState = { active: false, total: 0, done: 0, failed: 0, errors: [] };
 const PARALLEL = 3;
 
-type Prepared = { file: File; width: number | null; height: number | null } | "broken";
+type Prepared = { file: File; width: number | null; height: number | null; poster?: Blob | null } | "broken" | { tooLong: true };
+
+/**
+ * A video's length, size and first frame (the poster, a small JPEG), read in the browser before upload. A format this
+ * browser cannot play (some iPhone HEVC MOVs in Chrome) still uploads: the server reads its length from the file.
+ */
+async function prepareVideo(file: File): Promise<Prepared> {
+  const url = URL.createObjectURL(file);
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "auto";
+  try {
+    const loaded = await new Promise<boolean>((resolve) => {
+      video.onloadeddata = () => resolve(true);
+      video.onerror = () => resolve(false);
+      setTimeout(() => resolve(false), 15_000);
+      video.src = url;
+    });
+    if (!loaded) return { file, width: null, height: null, poster: null };
+    if (Number.isFinite(video.duration) && video.duration * 1000 > VIDEO_MAX_MS + 500) return { tooLong: true };
+    const width = video.videoWidth || null;
+    const height = video.videoHeight || null;
+    let poster: Blob | null = null;
+    if (width && height) {
+      await new Promise<void>((resolve) => {
+        video.onseeked = () => resolve();
+        setTimeout(resolve, 3000);
+        video.currentTime = Math.min(0.1, (video.duration || 1) / 2);
+      });
+      const target = scaledSize(width, height, POSTER_MAX_SIDE);
+      const canvas = document.createElement("canvas");
+      canvas.width = target.width;
+      canvas.height = target.height;
+      canvas.getContext("2d")?.drawImage(video, 0, 0, target.width, target.height);
+      poster = await toBlob(canvas, "image/jpeg", 0.75);
+      if (poster && poster.size > POSTER_MAX_BYTES) poster = await toBlob(canvas, "image/jpeg", 0.5);
+      if (poster && poster.size > POSTER_MAX_BYTES) poster = null;
+    }
+    return { file, width, height, poster };
+  } catch {
+    return { file, width: null, height: null, poster: null };
+  } finally {
+    video.removeAttribute("src");
+    video.load();
+    URL.revokeObjectURL(url);
+  }
+}
 
 async function decode(file: File): Promise<{ source: CanvasImageSource; width: number; height: number; close: () => void } | null> {
   try {
@@ -82,7 +129,8 @@ async function prepareImage(file: File): Promise<Prepared> {
 
 /**
  * Uploads photos straight from the browser to Storage, three at a time. Each batch asks the server for
- * signed upload URLs (type, size, quota and folder are checked there), uploads, then finalizes each file.
+ * signed upload URLs (type, size, quota and the destination are checked there), uploads, then finalizes each file.
+ * `destination` is "folder:<id>", "product:<id>" or "campaign:<id>" (lib/media/destinations.ts): every upload needs one.
  * `onUploaded` gets the photos that made it, once the whole drop is finished.
  */
 export function useGalleryUpload(onUploaded?: (items: MediaItem[]) => void) {
@@ -93,7 +141,7 @@ export function useGalleryUpload(onUploaded?: (items: MediaItem[]) => void) {
   const dismiss = useCallback(() => setState((s) => (s.active ? s : IDLE)), []);
 
   const start = useCallback(
-    async (list: FileList | File[], folderId: string | null) => {
+    async (list: FileList | File[], destination: string) => {
       if (running.current) return;
       const files = Array.from(list);
       if (files.length === 0) return;
@@ -111,15 +159,17 @@ export function useGalleryUpload(onUploaded?: (items: MediaItem[]) => void) {
       try {
         for (let i = 0; i < valid.length; i += UPLOAD_BATCH_MAX) {
           // Scale down first so the sizes sent to the server are the real ones.
-          const prepared: { file: File; width: number | null; height: number | null }[] = [];
+          const prepared: { file: File; width: number | null; height: number | null; poster?: Blob | null }[] = [];
           for (const original of valid.slice(i, i + UPLOAD_BATCH_MAX)) {
-            const p = await prepareImage(original);
+            const video = isVideoType(inferMimeType(original.name, original.type));
+            const p = video ? await prepareVideo(original) : await prepareImage(original);
             if (p === "broken") fail(`${original.name} could not be read as a photo.`);
+            else if ("tooLong" in p) fail(`${original.name} is longer than 60 seconds. Trim it on your phone and upload it again.`);
             else prepared.push(p);
           }
           if (prepared.length === 0) continue;
           const batch = prepared.map((p) => p.file);
-          const res = await createUploadTargets({ folderId, files: batch.map((f) => ({ name: f.name, type: inferMimeType(f.name, f.type), size: f.size })) });
+          const res = await createUploadTargets({ destination, files: batch.map((f) => ({ name: f.name, type: inferMimeType(f.name, f.type), size: f.size })) });
           if (!res.ok) {
             batch.forEach(() => fail(res.error));
             continue;
@@ -129,16 +179,22 @@ export function useGalleryUpload(onUploaded?: (items: MediaItem[]) => void) {
           const worker = async () => {
             while (next < batch.length) {
               const index = next++;
-              const { file, width, height } = prepared[index];
+              const { file, width, height, poster } = prepared[index];
               const target = res.targets[index];
               if (!target?.ok) {
                 fail(target?.error ?? `${file.name} could not be uploaded.`);
                 continue;
               }
               try {
-                const { error } = await storage.uploadToSignedUrl(target.path, target.token, file, { contentType: inferMimeType(file.name, file.type) });
+                const type = inferMimeType(file.name, file.type);
+                const video = isVideoType(type);
+                // Videos go to their own private bucket with the server's upload token; a MOV is stored and served as
+                // MP4 (the same file family; the networks take it).
+                const bucket = video ? createClient().storage.from(GALLERY_VIDEO_BUCKET) : storage;
+                const { error } = await bucket.uploadToSignedUrl(target.path, target.token, file, { contentType: video ? storedVideoType(type) : type });
                 if (error) throw error;
-                const saved = await finalizeUpload({ path: target.path, name: nameFromFile(file.name), folderId, width, height });
+                if (target.poster && poster) await bucket.uploadToSignedUrl(target.poster.path, target.poster.token, poster, { contentType: "image/jpeg" }).catch(() => null);
+                const saved = await finalizeUpload({ path: target.path, name: nameFromFile(file.name), destination, width, height });
                 if (!saved.ok) {
                   void discardUpload(target.path);
                   fail(saved.error);

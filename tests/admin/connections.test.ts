@@ -38,7 +38,7 @@ vi.mock("@/lib/admin/console", async () => ({
 
 import * as actions from "@/lib/admin/actions/connections";
 import * as reads from "@/lib/admin/connections";
-import * as consoleActions from "@/app/admin/(console)/connections/actions";
+import * as consoleActions from "@/app/admin/(console)/(clients)/connections/actions";
 import { apiContext, consoleContext } from "@/lib/admin/types";
 
 const ctx = consoleContext("203.0.113.5");
@@ -102,7 +102,7 @@ describe("force disconnect", () => {
     await expect(actions.forceDisconnectChannel(ctx, { connectionId: "c1" })).resolves.toMatchObject({ status: "REVOKED" });
     h.db.connection.findUnique.mockResolvedValue(null);
     await expect(actions.forceDisconnectChannel(ctx, { connectionId: "nope" })).rejects.toMatchObject({ code: "not_found" });
-    await expect(actions.forceDisconnectChannel(apiContext("k1"), { connectionId: "c1" })).rejects.toMatchObject({ code: "confirm_required" });
+    await expect(actions.forceDisconnectChannel(apiContext("k1", null, "all"), { connectionId: "c1" })).rejects.toMatchObject({ code: "confirm_required" });
   });
 });
 
@@ -155,7 +155,7 @@ describe("other actions audit", () => {
     h.db.chatWidget.findUnique.mockResolvedValue({ businessId: "b1", disabledByAdminAt: new Date(), disabledByAdminReason: "Spam flood" });
     await actions.switchOnWidget(ctx, { businessId: "b1" });
     expect(audits().map((a: any) => a.action)).toEqual(["switch_off_widget", "switch_on_widget"]);
-    await expect(actions.switchOffWidget(apiContext("k"), { businessId: "b1", reason: "x" })).rejects.toMatchObject({ code: "confirm_required" });
+    await expect(actions.switchOffWidget(apiContext("k", null, "all"), { businessId: "b1", reason: "x" })).rejects.toMatchObject({ code: "confirm_required" });
   });
 });
 

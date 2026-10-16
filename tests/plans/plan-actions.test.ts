@@ -25,7 +25,7 @@ vi.mock("@/lib/admin/console", async () => {
 vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw new Error(`NEXT_REDIRECT ${url}`); } }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
-import { savePlanAction } from "@/app/admin/(console)/plans/actions";
+import { savePlanAction } from "@/app/admin/(console)/(money)/plans/actions";
 import { resetPlanCache } from "@/lib/plan-catalog";
 
 const plan = (key: string) => h.db.planDefinition.rows.find((r) => r.key === key)!;
@@ -34,7 +34,7 @@ function form(over: Record<string, string> = {}) {
   const f = new FormData();
   const base: Record<string, string> = {
     mode: "edit", key: "STANDARD", name: "Standard", description: "d", sortOrder: "10", status: "active", monthly: "49", yearly: "490",
-    limit_text: "100", limit_image: "50", limit_chat: "1000", limit_videoSeconds: "0", limit_voiceCharacters: "0", limit_seats: "3", features: "one\ntwo",
+    limit_text: "100", limit_image: "50", limit_chat: "1000", limit_videos: "0", limit_voiceCharacters: "0", limit_seats: "3", features: "one\ntwo",
     version: plan("STANDARD").updatedAt.toISOString(),
   };
   for (const [k, v] of Object.entries({ ...base, ...over })) f.set(k, v);
@@ -68,6 +68,13 @@ describe("saving a plan from the form", () => {
     await expect(savePlanAction({}, form({ monthly: "59", yearly: "590", limit_text: "123", confirmPrice: "1", previewMonthly: "5900", previewYearly: "59000" }))).rejects.toThrow(/NEXT_REDIRECT/);
     expect(plan("STANDARD")).toMatchObject({ monthlyPriceCents: 5900, yearlyPriceCents: 59000 });
     expect(plan("STANDARD").limits.text).toBe(123);
+  });
+
+  it("saves posts per app per day from the form, and refuses one outside 1 to 10", async () => {
+    await expect(savePlanAction({}, form({ limit_postsPerAppPerDay: "2" }))).rejects.toThrow(/NEXT_REDIRECT/);
+    expect(plan("STANDARD").limits.postsPerAppPerDay).toBe(2);
+    const out = await savePlanAction({}, form({ limit_postsPerAppPerDay: "11", version: plan("STANDARD").updatedAt.toISOString() }));
+    expect(out).toMatchObject({ error: expect.stringContaining("Posts per app per day") });
   });
 
   it("a form opened before another admin saved is refused, and nothing is overwritten", async () => {

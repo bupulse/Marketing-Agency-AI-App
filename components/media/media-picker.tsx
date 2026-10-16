@@ -1,14 +1,15 @@
 "use client";
 
 /**
- * <MediaPicker> is a dialog for choosing photos from the business's gallery, with folder tabs,
- * search by name and "Upload new" inline (new photos land in the open folder and are selected).
+ * <MediaPicker> is a dialog for choosing photos from the business's gallery, with folder and album tabs,
+ * search by name and "Upload new" inline (new photos land in the open folder or album and are selected; from
+ * "All photos" the person picks where they go first).
  *
  * Props:
  *   open           Whether the dialog is shown (controlled).
  *   onOpenChange   Called with false when the person closes it.
  *   onPick         Called once with the chosen photos, then the dialog closes:
- *                    { path, url, width, height, mimeType }[]
+ *                    { id, path, url, width, height, mimeType }[]  (`id` is the gallery photo's id)
  *                  `path` is the object path in the private "media" bucket (<userId>/gallery/<id>.<ext>),
  *                  `url` a signed display URL that expires after about an hour. Store the `path`.
  *                  On the server, verify paths with assetsByPaths(businessId, paths) from lib/media/service.
@@ -16,6 +17,8 @@
  *   max            The most photos that can be chosen when `multiple` (default 10).
  *   title          Dialog title (default "Choose from my gallery" / "Choose photos").
  *   confirmLabel   Button text in multiple mode; gets the count (default "Use N photos").
+ *   initialFolder  The tab to open on: "all" (default), or an album such as "product:<id>" (a product's page and
+ *                  the posts and designs made for it start in its album).
  *
  * The "Import" menu (Google Drive, Dropbox, Canva) is built in: imported photos land in the open folder and are selected.
  */
@@ -25,14 +28,17 @@ import { Check, ImagePlus, LoaderCircle, Search, Upload } from "lucide-react";
 import { Dialog } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { getGalleryOverview, listGalleryPage } from "@/app/dashboard/gallery/actions";
-import { MEDIA_TYPES } from "@/lib/media/rules";
-import type { FolderSummary, MediaItem } from "@/lib/media/service";
+import { MEDIA_TYPES, UPLOAD_ACCEPT } from "@/lib/media/rules";
+import { GalleryThumb } from "./media-thumb";
+import type { GalleryOverview, MediaItem } from "@/lib/media/service";
+import { destinationKey, destinationOptions, parseFilter, uploadDestinationFor } from "@/lib/media/destinations";
+import { DestinationDialog } from "./destination-dialog";
 import { ImportMenu } from "./import-menu";
 import { UploadProgress } from "./upload-progress";
 import { useGalleryUpload } from "./use-gallery-upload";
 import { useImporter } from "./use-importer";
 
-export type PickedPhoto = { path: string; url: string; width: number | null; height: number | null; mimeType: string };
+export type PickedPhoto = { id: string; path: string; url: string; width: number | null; height: number | null; mimeType: string };
 
 export type MediaPickerProps = {
   open: boolean;
@@ -42,13 +48,16 @@ export type MediaPickerProps = {
   max?: number;
   title?: string;
   confirmLabel?: (count: number) => string;
+  initialFolder?: string;
+  /** Offer the owner's Gallery videos too (the post composer); photo pickers (designs, video scenes) leave them out. */
+  videos?: boolean;
 };
 
 type Folder = "all" | "none" | string;
 
-export const toPicked = (m: Pick<MediaItem, "path" | "url" | "width" | "height" | "mimeType">): PickedPhoto => ({ path: m.path, url: m.url, width: m.width, height: m.height, mimeType: m.mimeType });
+export const toPicked = (m: Pick<MediaItem, "id" | "path" | "url" | "width" | "height" | "mimeType">): PickedPhoto => ({ id: m.id, path: m.path, url: m.url, width: m.width, height: m.height, mimeType: m.mimeType });
 
-export function MediaPicker({ open, onOpenChange, onPick, multiple = false, max = 10, title, confirmLabel }: MediaPickerProps) {
+export function MediaPicker({ open, onOpenChange, onPick, multiple = false, max = 10, title, confirmLabel, initialFolder, videos = false }: MediaPickerProps) {
   // Google's Picker cannot show above a modal <dialog>, so while it is open this dialog steps aside (its state stays).
   const [aside, setAside] = useState(false);
   const asideRef = useRef(false);
@@ -67,16 +76,19 @@ export function MediaPicker({ open, onOpenChange, onPick, multiple = false, max 
       className="max-w-3xl"
     >
       {/* Mounted only while open, so every opening starts on "All photos" with nothing selected. */}
-      {open && <PickerBody onOpenChange={onOpenChange} onPick={onPick} multiple={multiple} max={max} confirmLabel={confirmLabel} onPickerVisible={stepAside} />}
+      {open && <PickerBody onOpenChange={onOpenChange} onPick={onPick} multiple={multiple} max={max} confirmLabel={confirmLabel} initialFolder={initialFolder} onPickerVisible={stepAside} videos={videos} />}
     </Dialog>
   );
 }
 
 type Page = { key: string; items: MediaItem[]; cursor: string | null; error: string | null };
 
-function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, onPickerVisible }: Pick<MediaPickerProps, "onOpenChange" | "onPick" | "confirmLabel"> & { multiple: boolean; max: number; onPickerVisible: (visible: boolean) => void }) {
-  const [folders, setFolders] = useState<FolderSummary[]>([]);
-  const [folder, setFolder] = useState<Folder>("all");
+function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, initialFolder, onPickerVisible, videos }: Pick<MediaPickerProps, "onOpenChange" | "onPick" | "confirmLabel" | "initialFolder"> & { multiple: boolean; max: number; onPickerVisible: (visible: boolean) => void; videos: boolean }) {
+  const [overview, setOverview] = useState<Pick<GalleryOverview, "folders" | "albums">>({ folders: [], albums: [] });
+  const folders = overview.folders;
+  const [folder, setFolder] = useState<Folder>(initialFolder ?? "all");
+  const [asking, setAsking] = useState(false);
+  const [target, setTarget] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState<Page | null>(null);
@@ -84,18 +96,20 @@ function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, onPicke
   const [selected, setSelected] = useState<MediaItem[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const uploadFolder = folder === "all" || folder === "none" ? null : folder;
+  const viewDestination = uploadDestinationFor(parseFilter(folder));
+  const uploadDestination = viewDestination ? destinationKey(viewDestination) : null;
+  const destinations = destinationOptions(overview);
   const key = `${folder}|${query}`;
   const loading = page?.key !== key;
   // While another folder or search loads, the previous photos stay (dimmed) instead of flashing empty.
-  const items = page?.items ?? [];
+  const items = (page?.items ?? []).filter((i) => videos || i.kind !== "video");
   const cursor = loading ? null : (page?.cursor ?? null);
   const error = loading ? null : (page?.error ?? null);
   const first = page === null;
 
   const loadOverview = useCallback(async () => {
     const res = await getGalleryOverview();
-    if (res.ok) setFolders(res.overview.folders);
+    if (res.ok) setOverview(res.overview);
   }, []);
 
   const added = useCallback(
@@ -110,7 +124,7 @@ function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, onPicke
   const importer = useImporter(added);
 
   useEffect(() => {
-    void getGalleryOverview().then((res) => res.ok && setFolders(res.overview.folders));
+    void getGalleryOverview().then((res) => res.ok && setOverview(res.overview));
   }, []);
 
   useEffect(() => {
@@ -155,7 +169,12 @@ function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, onPicke
     onOpenChange(false);
   }
 
-  const tabs: { value: Folder; label: string }[] = [{ value: "all", label: "All photos" }, { value: "none", label: "Not in a folder" }, ...folders.map((f) => ({ value: f.id, label: f.name }))];
+  const tabs: { value: Folder; label: string }[] = [
+    { value: "all", label: "All photos" },
+    { value: "none", label: "Not in a folder" },
+    ...folders.map((f) => ({ value: f.id, label: f.name })),
+    ...overview.albums.map((a) => ({ value: `${a.kind}:${a.id}`, label: a.name })),
+  ];
   const filtering = query.trim() !== "";
 
   return (
@@ -176,28 +195,45 @@ function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, onPicke
             ref={inputRef}
             type="file"
             multiple
-            accept={MEDIA_TYPES.join(",")}
+            accept={videos ? UPLOAD_ACCEPT : MEDIA_TYPES.join(",")}
             className="sr-only"
             tabIndex={-1}
             aria-hidden
             onChange={(e) => {
-              if (e.target.files) void uploader.start(e.target.files, uploadFolder);
+              const to = target ?? uploadDestination;
+              if (e.target.files && to) void uploader.start(e.target.files, to);
               e.target.value = "";
             }}
           />
           <button
             type="button"
             disabled={uploader.state.active}
-            onClick={() => inputRef.current?.click()}
+            onClick={() => {
+              if (uploadDestination) {
+                setTarget(null);
+                inputRef.current?.click();
+              } else setAsking(true);
+            }}
             className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-line px-4 text-sm font-semibold hover:bg-soft disabled:opacity-50"
           >
             <Upload aria-hidden className="size-4" />
             Upload new
           </button>
-          <ImportMenu importer={importer} folders={folders} defaultFolderId={uploadFolder} onPickerVisible={onPickerVisible} />
+          <ImportMenu importer={importer} destinations={destinations} defaultDestination={uploadDestination} onPickerVisible={onPickerVisible} />
         </div>
+        <DestinationDialog
+          open={asking}
+          onOpenChange={setAsking}
+          destinations={destinations}
+          onPick={(key) => {
+            setAsking(false);
+            setTarget(key);
+            void loadOverview();
+            inputRef.current?.click();
+          }}
+        />
 
-        <div role="tablist" aria-label="Folders" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        <div role="tablist" aria-label="Folders and albums" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
           {tabs.map((t) => (
             <button
               key={t.value}
@@ -245,8 +281,7 @@ function PickerBody({ onOpenChange, onPick, multiple, max, confirmLabel, onPicke
                         on ? "ring-pulse-blue" : "ring-transparent",
                       )}
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
-                      <img src={item.url} alt="" loading="lazy" decoding="async" className="size-full object-cover" />
+                      <GalleryThumb item={item} alt="" />
                       {on && (
                         <span className="absolute top-1.5 right-1.5 inline-flex size-6 items-center justify-center rounded-full bg-pulse-blue text-white">
                           <Check aria-hidden className="size-4" />

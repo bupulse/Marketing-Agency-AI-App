@@ -51,7 +51,7 @@ function signedIn(email: string, confirmed = true) {
   });
 }
 function level(currentLevel: string, nextLevel: string) {
-  getAal.mockResolvedValue({ data: { currentLevel, nextLevel }, error: null });
+  getAal.mockResolvedValue({ data: { currentLevel, nextLevel, currentAuthenticationMethods: [{ method: "password" }] }, error: null });
 }
 
 beforeEach(() => {
@@ -60,24 +60,31 @@ beforeEach(() => {
   getSession.mockResolvedValue({ data: { session: { access_token: `x.${Buffer.from(JSON.stringify({ session_id: "sess-aaaa-1111" })).toString("base64url")}.y` } } });
   listFactors.mockResolvedValue({ data: { totp: [verifiedFactor], all: [verifiedFactor] }, error: null });
   rateLimit.mockResolvedValue(undefined);
+  getAal.mockResolvedValue({ data: { currentLevel: "aal1", nextLevel: "aal2", currentAuthenticationMethods: [{ method: "password" }] }, error: null });
 });
 
 describe("requireAdmin", () => {
-  it("returns 404 for a signed-in non-admin", async () => {
+  it("sends a signed-in non-admin to the admin sign-in with a note", async () => {
     signedIn("ana@example.com");
     level("aal2", "aal2");
-    await expect(requireAdmin()).rejects.toBeInstanceOf(NotFound);
+    await expect(requireAdmin()).rejects.toMatchObject({ url: "/admin/login?error=no_access" });
   });
 
-  it("returns 404 when signed out", async () => {
+  it("sends a signed-out visitor to the admin sign-in", async () => {
     getUser.mockResolvedValue({ data: { user: null }, error: null });
-    await expect(requireAdmin()).rejects.toBeInstanceOf(NotFound);
+    await expect(requireAdmin()).rejects.toMatchObject({ url: "/admin/login" });
   });
 
   it("refuses an unverified email even if it is on the list", async () => {
     signedIn("admin@bupulse.com", false);
     level("aal2", "aal2");
-    await expect(requireAdmin()).rejects.toBeInstanceOf(NotFound);
+    await expect(requireAdmin()).rejects.toMatchObject({ url: "/admin/login?error=no_access" });
+  });
+
+  it("refuses an admin session opened with Google: email and password only", async () => {
+    signedIn("admin@bupulse.com");
+    getAal.mockResolvedValue({ data: { currentLevel: "aal2", nextLevel: "aal2", currentAuthenticationMethods: [{ method: "oauth" }] }, error: null });
+    await expect(requireAdmin()).rejects.toMatchObject({ url: "/admin/login?error=email_only" });
   });
 
   it("sends an admin at AAL1 with an enrolled app to /admin/verify", async () => {
@@ -95,7 +102,7 @@ describe("requireAdmin", () => {
   it("allows an admin at AAL2", async () => {
     signedIn("admin@bupulse.com");
     level("aal2", "aal2");
-    await expect(requireAdmin()).resolves.toEqual({ id: "u1", email: "admin@bupulse.com" });
+    await expect(requireAdmin()).resolves.toMatchObject({ id: "u1", email: "admin@bupulse.com", isOwner: true, staffId: null });
   });
 
   it("matches the email case-insensitively", async () => {
@@ -115,7 +122,7 @@ describe("requireAdmin", () => {
   it("refuses everyone when ADMIN_EMAILS is empty", async () => {
     vi.stubEnv("ADMIN_EMAILS", "");
     signedIn("admin@bupulse.com");
-    await expect(requireAdminIdentity()).rejects.toBeInstanceOf(NotFound);
+    await expect(requireAdminIdentity()).rejects.toMatchObject({ url: "/admin/login?error=no_access" });
   });
 });
 
@@ -149,11 +156,11 @@ describe("verification step", () => {
     await expect(verifyCode({}, form)).rejects.toMatchObject({ url: "/admin" });
   });
 
-  it("is a 404 for a non-admin trying the verify action", async () => {
+  it("sends a non-admin trying the verify action to the admin sign-in", async () => {
     signedIn("ana@example.com");
     const form = new FormData();
     form.set("code", "123456");
-    await expect(verifyCode({}, form)).rejects.toBeInstanceOf(NotFound);
+    await expect(verifyCode({}, form)).rejects.toMatchObject({ url: "/admin/login?error=no_access" });
   });
 });
 

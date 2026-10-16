@@ -1,5 +1,6 @@
 // Shapes shared by the publishing server code and the calendar and composer screens. Client-safe.
 import type { Network } from "@/lib/social/types";
+import type { PostResults } from "./results";
 import type { PostStatusName } from "./status";
 import type { PostFormatName, RuleSummary } from "./validate";
 
@@ -14,7 +15,7 @@ export type CalendarPost = {
   notify: boolean;
   status: PostStatusName;
   format: PostFormatName | "ARTICLE" | "THREAD";
-  source: "MANUAL" | "AUTOPILOT";
+  source: "MANUAL" | "AUTOPILOT" | "STUDIO";
   title: string | null;
   text: string;
   hashtags: string[];
@@ -26,8 +27,17 @@ export type CalendarPost = {
   publishedAt: string | null;
   permalink: string | null;
   lastError: string | null;
-  projectId: string | null;
+  /** The product or campaign the post is about. */
+  subjectId: string | null;
   contentId: string | null;
+  /** Why it still waits for review although its app needs no approval (docs/CONTENT.md). */
+  reviewNote?: string | null;
+  /** When auto-approval scheduled it. */
+  autoScheduledAt?: string | null;
+  /** For an app that is not connected: it goes out as a "post it yourself" reminder. */
+  remindOnly?: boolean;
+  /** Published posts only: views, likes and comments, or why there are none (lib/publishing/results.ts). Absent when the plan does not show them. */
+  results?: PostResults;
 };
 
 export type ComposerAccount = {
@@ -48,6 +58,8 @@ export type ComposerContext = {
   rules: Partial<Record<Network, RuleSummary>>;
   timezone: string;
   slotTimes: string[];
+  /** "Posts go out within 5 minutes of the scheduled time." on Netlify (lib/platform/limits.ts); absent elsewhere. */
+  timingNote?: string | null;
 };
 
 export type MediaItem = { path: string; url: string; mimeType?: string };
@@ -60,7 +72,9 @@ export type ComposerPrefill = {
   hashtags?: string[];
   overrides?: Overrides;
   media?: MediaItem[];
-  projectId?: string;
+  subjectId?: string;
+  /** The product's or campaign's album ("product:<id>"), where the composer's uploads go and its gallery opens. */
+  album?: string;
   contentId?: string;
   connectionIds?: string[];
 };
@@ -78,7 +92,7 @@ export type ComposeInput = {
   overrides: Overrides;
   mediaPaths: string[];
   link?: string | null;
-  projectId?: string | null;
+  subjectId?: string | null;
   contentId?: string | null;
   when: When;
 };

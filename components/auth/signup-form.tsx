@@ -15,12 +15,14 @@ import {
 import { signInWithGoogle } from "@/app/login/actions";
 import { checkEmail, signUp, type SignUpState } from "@/app/signup/actions";
 import { cn } from "@/lib/cn";
+import type { IndustryOption } from "@/lib/industries/shared";
 import { VisitSessionField } from "./visit-session-field";
 import { ConfirmEmail } from "./confirm-email";
 import { GoogleIcon } from "./google-icon";
 import { OrganisationFields, TermsField } from "./organisation-fields";
 import { PasswordChecks } from "./password-checks";
 import { PasswordInput } from "./password-input";
+import { TurnstileField } from "./turnstile-field";
 
 type Step = 1 | 2 | 3;
 
@@ -32,21 +34,23 @@ const STEPS = [
 
 const STEP_FIELDS: Record<Step, string[]> = {
   1: ["email"],
-  2: ["organisationName", "ceoName", "industry", "country", "phone", "website"],
+  2: ["organisationName", "ceoName", "industry", "industryOther", "industryDescription", "country", "phone", "website"],
   3: ["password", "confirmPassword", "terms"],
 };
 
-const titles = (trialDays: number): Record<Step, { title: string; sub: string }> => ({
-  1: { title: "Create your account", sub: `Start your ${trialDays}-day free trial. No credit card needed.` },
+const TITLES: Record<Step, { title: string; sub: string }> = {
+  1: { title: "Create your account", sub: "Then choose a plan and book a free demo. No credit card needed." },
   2: { title: "About your organisation", sub: "This helps us write in your brand voice from day one." },
   3: { title: "Secure your account", sub: "Choose a password to finish." },
-});
+};
 
 const empty = {
   email: "",
   organisationName: "",
   ceoName: "",
   industry: "",
+  industryOther: "",
+  industryDescription: "",
   country: "",
   phone: "",
   website: "",
@@ -83,9 +87,18 @@ function Progress({ step }: { step: Step }) {
   );
 }
 
-export default function SignupForm({ next = "/dashboard", trialDays = 7 }: { next?: string; trialDays?: number }) {
-  const TITLES = titles(trialDays);
+export default function SignupForm({
+  next = "/dashboard",
+  industries,
+  turnstileSiteKey = null,
+}: {
+  next?: string;
+  industries: IndustryOption[];
+  /** Set when Cloudflare Turnstile is configured: the last step then shows the security check. */
+  turnstileSiteKey?: string | null;
+}) {
   const [step, setStep] = useState<Step>(1);
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [checkingEmail, setCheckingEmail] = useState(false);
   const router = useRouter();
   const [values, setValues] = useState<Values>(empty);
@@ -166,6 +179,7 @@ export default function SignupForm({ next = "/dashboard", trialDays = 7 }: { nex
     const fd = new FormData();
     for (const [k, v] of Object.entries(values)) fd.set(k, String(v));
     fd.set("next", next);
+    if (turnstileSiteKey) fd.set("turnstileToken", turnstileToken);
     formAction(fd);
   }
 
@@ -233,7 +247,7 @@ export default function SignupForm({ next = "/dashboard", trialDays = 7 }: { nex
           </Field>
         )}
 
-        {step === 2 && <OrganisationFields values={values} errors={errors} onChange={set} />}
+        {step === 2 && <OrganisationFields values={values} errors={errors} onChange={set} industries={industries} />}
 
         {step === 3 && (
           <>
@@ -255,6 +269,7 @@ export default function SignupForm({ next = "/dashboard", trialDays = 7 }: { nex
               />
             </Field>
             <TermsField checked={values.terms} error={errors.terms} onChange={(v) => set("terms", v)} />
+            {turnstileSiteKey && <TurnstileField siteKey={turnstileSiteKey} onToken={setTurnstileToken} resetKey={state.status === "error" ? state : undefined} />}
           </>
         )}
 

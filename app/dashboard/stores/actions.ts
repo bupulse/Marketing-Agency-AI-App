@@ -5,13 +5,15 @@ import { redirect } from "next/navigation";
 import { requireActiveUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/db";
 import { isServiceEnabled, UNAVAILABLE_MESSAGE } from "@/lib/admin/switch";
+import { featureBlocked, upgradeHref } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { RATE_LIMITS, rateLimit, RateLimitError, rateLimitMessage } from "@/lib/rate-limit";
 import { cancelPending, confirmPending, credentialsOf, getConnection, providerFor, removeConnection, saveConnection } from "@/lib/stores/connection";
 import { importProducts, resyncConnection, type ProductResult, type ResyncSummary } from "@/lib/stores/sync";
 import { IMPORT_CHUNK, isStoreProvider, StoreApiError, type StoreProviderId } from "@/lib/stores/types";
-import { siteUrl } from "@/lib/auth/site-url";
+import { publicSiteUrl } from "@/lib/auth/site-url";
 import { buildWooAuthorizeUrl, CONSUMER_KEY_RE, CONSUMER_SECRET_RE, normalizeStoreUrl, packKeys, sealWooState, verifyWooKeys } from "@/lib/stores/woocommerce";
+import { linkSiteUrl } from "@/lib/auth/request-site";
 
 export type ListedProduct = { externalId: string; title: string; price: string | null; thumb: string | null; imported: boolean };
 export type ListResult = { ok: true; products: ListedProduct[]; nextCursor: string | null } | { ok: false; error: string };
@@ -26,11 +28,16 @@ async function connectionFor(provider: string) {
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (!business) return null;
   const conn = await getConnection(business.id, provider);
-  return conn ? { user, conn } : null;
+  return conn ? { user, conn, businessId: business.id } : null;
 }
 
-/** Shopify / WooCommerce switched off in the admin console: stop with a friendly message; stored products stay. */
-async function paused(provider: string): Promise<string | null> {
+/**
+ * Store import missing from the plan, or Shopify / WooCommerce switched off in the admin console: stop with a friendly
+ * message; stored products stay.
+ */
+async function paused(provider: string, businessId: string): Promise<string | null> {
+  const missing = await featureBlocked(businessId, "storeImport");
+  if (missing) return missing;
   return (provider === "shopify" || provider === "woocommerce") && !(await isServiceEnabled(provider)) ? UNAVAILABLE_MESSAGE : null;
 }
 
@@ -53,7 +60,7 @@ function friendly(error: unknown) {
 export async function listProductsAction(provider: string, opts: { cursor?: string | null; search?: string }): Promise<ListResult> {
   const found = await connectionFor(provider);
   if (!found) return { ok: false, error: NOT_CONNECTED };
-  const off = await paused(found.conn.provider);
+  const off = await paused(found.conn.provider, found.businessId);
   if (off) return { ok: false, error: off };
   const tooMany = await limited(found.user.id);
   if (tooMany) return { ok: false, error: tooMany };
@@ -81,14 +88,14 @@ export async function listProductsAction(provider: string, opts: { cursor?: stri
 export async function importChunkAction(provider: string, ids: string[]): Promise<ImportResult> {
   const found = await connectionFor(provider);
   if (!found) return { ok: false, error: NOT_CONNECTED };
-  const off = await paused(found.conn.provider);
+  const off = await paused(found.conn.provider, found.businessId);
   if (off) return { ok: false, error: off };
   if (!Array.isArray(ids) || ids.length === 0 || ids.length > IMPORT_CHUNK || ids.some((id) => typeof id !== "string" || id.length > 100)) return { ok: false, error: "Choose some products first." };
   const tooMany = await limited(found.user.id);
   if (tooMany) return { ok: false, error: tooMany };
   try {
     const results = await importProducts(found.conn, ids);
-    revalidatePath("/dashboard/projects");
+    revalidatePath("/dashboard/knowledge/products");
     revalidatePath(`/dashboard/stores/${provider}`);
     return { ok: true, results };
   } catch (error) {
@@ -104,7 +111,7 @@ export async function importChunkAction(provider: string, ids: string[]): Promis
 export async function resyncAction(provider: string, since?: string): Promise<SyncResult> {
   const found = await connectionFor(provider);
   if (!found) return { ok: false, error: NOT_CONNECTED };
-  const off = await paused(found.conn.provider);
+  const off = await paused(found.conn.provider, found.businessId);
   if (off) return { ok: false, error: off };
   const tooMany = await limited(found.user.id);
   if (tooMany) return { ok: false, error: tooMany };
@@ -112,7 +119,7 @@ export async function resyncAction(provider: string, since?: string): Promise<Sy
   const passStart = Number.isNaN(parsed.getTime()) || parsed.getTime() > Date.now() + 1000 ? new Date() : parsed;
   try {
     const summary = await resyncConnection(found.conn, { since: passStart });
-    revalidatePath("/dashboard/projects");
+    revalidatePath("/dashboard/knowledge/products");
     revalidatePath(`/dashboard/stores/${provider}`);
     return { ok: true, summary, since: passStart.toISOString() };
   } catch (error) {
@@ -121,13 +128,13 @@ export async function resyncAction(provider: string, since?: string): Promise<Sy
   }
 }
 
-/** Forgets the store's keys and product mappings (imported projects stay). The screen then reloads the page. */
+/** Forgets the store's keys and product mappings (imported products stay). The screen then reloads the page. */
 export async function disconnectStoreAction(provider: string): Promise<{ ok: boolean }> {
   const user = await requireActiveUser("connectors");
   if (!isStoreProvider(provider)) return { ok: false };
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (business) await removeConnection(business.id, provider);
-  revalidatePath("/dashboard/projects");
+  revalidatePath("/dashboard/knowledge/products");
   revalidatePath(`/dashboard/stores/${provider}`);
   return { ok: true };
 }
@@ -149,6 +156,8 @@ export async function connectWooManualAction(_prev: ManualState, formData: FormD
   if (!CONSUMER_SECRET_RE.test(secret)) return { error: "The consumer secret starts with cs_. Copy it exactly from WooCommerce.", values };
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (!business) return { error: "Finish setting up your business first.", values };
+  const missing = await featureBlocked(business.id, "storeImport");
+  if (missing) return { error: missing, values };
   try {
     await rateLimit(`store-connect:${user.id}`, RATE_LIMITS.storeConnect);
     const packed = packKeys(key, secret);
@@ -176,12 +185,13 @@ export async function startWooConnectAction(formData: FormData): Promise<void> {
   if (!store.ok) return wooBack("invalid_store");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
   if (!business) return wooBack("no_business");
+  if (await featureBlocked(business.id, "storeImport")) return redirect(upgradeHref("storeImport"));
   // WooCommerce only posts keys to an https callback, so a plain-http BuPulse (local development) must use manual keys.
-  if (!siteUrl().startsWith("https://")) return wooBack("needs_https");
+  if (!publicSiteUrl().startsWith("https://")) return wooBack("needs_https");
   let target: string;
   try {
     await rateLimit(`store-connect:${user.id}`, RATE_LIMITS.storeConnect);
-    target = buildWooAuthorizeUrl(store.url, await sealWooState({ userId: user.id, businessId: business.id, storeUrl: store.url }));
+    target = buildWooAuthorizeUrl(store.url, await sealWooState({ userId: user.id, businessId: business.id, storeUrl: store.url }), await linkSiteUrl());
   } catch (error) {
     if (error instanceof RateLimitError) return wooBack("rate_limited");
     await logError(error, { source: "stores.woocommerce.connect", userId: user.id });
@@ -197,7 +207,8 @@ export async function startWooConnectAction(formData: FormData): Promise<void> {
 export async function confirmPendingAction(pendingId: string): Promise<{ ok: boolean }> {
   const user = await requireActiveUser("connectors");
   const business = await prisma.business.findUnique({ where: { userId: user.id }, select: { id: true } });
-  const ok = !!business && typeof pendingId === "string" && pendingId.length <= 64 && (await confirmPending(business.id, "woocommerce", pendingId));
+  const allowed = !!business && !(await featureBlocked(business.id, "storeImport"));
+  const ok = allowed && typeof pendingId === "string" && pendingId.length <= 64 && (await confirmPending(business.id, "woocommerce", pendingId));
   revalidatePath("/dashboard/stores/woocommerce");
   return { ok };
 }
