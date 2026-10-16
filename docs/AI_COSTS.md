@@ -28,3 +28,11 @@ Calls that are **not** billed and correctly cost nothing: 429 and 5xx answers th
 ## Checking
 
 Each month: Admin, Money, Costs, Provider bills: enter Google's (and Anthropic's, ElevenLabs', Higgsfield's) amount for the month before. The Costs and AI pages show the estimate next to the bill and the difference in percent. A persistent gap of more than about 20% means a price or a call path is missing: look at the AI page's "priced by family" list and the models table first.
+
+## Video engine (October 2026)
+
+The Claude video engine (docs/VIDEO_ENGINE.md) makes one Sonnet call per video design (two when the first answer
+cannot be read), with up to 4 product photos as images: about $0.05 to $0.12 a video. Rendering, the MP4 and music are
+free. Seedance clips (BytePlus, next) are about $0.35 (480p) to $0.76 (720p) per 5 seconds, an estimate until the first
+BytePlus usage is read back. While in the Video Lab, every call is written to `video-lab/data/ledger.jsonl` with its
+tokens and cost, under a $5 daily cap; once in the app, designs go through `withLedger` like every other AI call.

@@ -113,6 +113,14 @@ or revoked link answers 404.
 5. When the post is published, Instagram gets a Reel and Facebook a Page video
    ([Calendar and publishing](07-calendar-and-publishing.md)); 30 days later `purgePublishedVideos` deletes the file.
 
+## Claude-designed videos (in testing)
+
+A new engine is being tested outside the app, in the **Video Lab** (`npm run lab`, http://localhost:3100, TEST
+database only). Claude looks at the product and its photos and designs the whole video: scenes, moving photos,
+animated text, shapes, colours, transitions, music mood, caption and hashtags. BuPulse draws it and makes the MP4 for
+free. One design costs about $0.05 to $0.12. Clients do not see it yet; it reaches the "Pictures and videos" panel once
+the tests are done. How it works and where the code lives: [docs/VIDEO_ENGINE.md](../../VIDEO_ENGINE.md).
+
 ## If something goes wrong
 
 | Symptom | First place to look | Usual fix |

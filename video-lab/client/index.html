@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BuPulse Video Lab</title>
+<style>
+  /* BuPulse brand (app/globals.css): Pulse Blue #2f6bff, Pulse Violet #7b5cff, Ink #0b0b0f, Cloud #f5f5f7. */
+  :root { --bg:#0b0b0f; --panel:#1a1a20; --line:#2a2a33; --text:#f5f5f7; --muted:#a1a1a6; --blue:#2f6bff; --violet:#7b5cff; --accent:#8db0ff; --brand:linear-gradient(120deg,#2f6bff,#7b5cff); --danger:#ff7a8f; --ok:#5fd9a0; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 Inter, system-ui, sans-serif; }
+  header { display:flex; align-items:center; gap:16px; padding:12px 20px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:2; }
+  header h1 { font-size:16px; margin:0; letter-spacing:.02em; background:var(--brand); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  header .tag { color:var(--muted); font-size:12px; }
+  header .spend { margin-left:auto; font-size:13px; }
+  .bar { height:6px; width:140px; background:var(--line); border-radius:3px; overflow:hidden; display:inline-block; vertical-align:middle; margin-left:8px; }
+  .bar > i { display:block; height:100%; background:var(--brand); }
+  main { display:grid; grid-template-columns: 360px 1fr 340px; gap:16px; padding:16px 20px; align-items:start; }
+  @media (max-width: 1200px) { main { grid-template-columns: 1fr; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:14px 0 8px; }
+  h2:first-child { margin-top:0; }
+  select, textarea, input { width:100%; background:#0d0f14; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font:inherit; }
+  textarea { min-height:64px; resize:vertical; }
+  .tabs { display:flex; gap:6px; margin-bottom:12px; }
+  .tabs button { flex:1; }
+  button { background:#232836; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 12px; font:inherit; cursor:pointer; }
+  button:hover { border-color:#3a4152; }
+  button.on { background:var(--brand); color:#fff; border-color:transparent; font-weight:600; }
+  button.primary { background:var(--brand); color:#fff; font-weight:700; width:100%; padding:12px; font-size:15px; border:0; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; }
+  .photos { display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; }
+  .photos img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:6px; border:2px solid transparent; cursor:pointer; opacity:.45; }
+  .photos img.on { border-color:var(--blue); opacity:1; }
+  .styles { display:grid; grid-template-columns: 1fr 1fr; gap:6px; }
+  .style { text-align:left; padding:8px; }
+  .style b { display:block; font-size:13px; }
+  .style span { color:var(--muted); font-size:11.5px; }
+  .style.on span { color:rgba(255,255,255,.85); }
+  .hint { color:var(--muted); font-size:12px; margin-top:6px; }
+  .stage { display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .frame { background:#000; border-radius:14px; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,.5); }
+  canvas#preview { display:block; height:min(72vh, 820px); width:auto; max-width:100%; }
+  .controls { display:flex; align-items:center; gap:8px; width:100%; max-width:640px; }
+  .controls input[type=range] { flex:1; padding:0; }
+  .time { color:var(--muted); font-variant-numeric:tabular-nums; min-width:90px; text-align:right; }
+  .status { min-height:20px; color:var(--muted); font-size:13px; text-align:center; }
+  .status.err { color:var(--danger); }
+  .status.ok { color:var(--ok); }
+  .progress { width:100%; max-width:640px; height:6px; background:var(--line); border-radius:3px; overflow:hidden; display:none; }
+  .progress > i { display:block; height:100%; width:0; background:var(--brand); transition:width .2s; }
+  .caption { white-space:pre-wrap; background:#0d0f14; border:1px solid var(--line); border-radius:8px; padding:10px; font-size:13px; }
+  .tags { color:var(--accent); margin-top:6px; font-size:13px; }
+  .cost { display:grid; grid-template-columns: 1fr auto; gap:4px 12px; font-size:13px; }
+  .cost .k { color:var(--muted); }
+  .jobs { display:flex; flex-direction:column; gap:6px; max-height:46vh; overflow:auto; }
+  .job { text-align:left; display:grid; grid-template-columns: 1fr auto; gap:2px 8px; padding:8px; }
+  .job small { color:var(--muted); grid-column: 1 / -1; }
+  .job.failed b { color:var(--danger); }
+  .job.active { border-color:var(--violet); }
+  details summary { cursor:pointer; color:var(--muted); margin:10px 0 6px; }
+  textarea.json { font:12px/1.4 ui-monospace, Menlo, monospace; min-height:260px; }
+  .seedance { color:var(--muted); font-size:13px; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>BuPulse Video Lab</h1>
+  <span class="tag">Test engine · not seen by clients · TEST database</span>
+  <span class="spend" id="spend">Today: …</span>
+</header>
+<main>
+  <section id="form">
+    <div class="tabs">
+      <button class="on" data-engine="claude">Claude-designed</button>
+      <button data-engine="seedance">Seedance (realistic)</button>
+    </div>
+    <div id="claudeForm">
+      <h2>Business</h2>
+      <select id="business"></select>
+      <h2>Product</h2>
+      <select id="product"></select>
+      <div class="hint" id="productInfo"></div>
+      <h2>Photos Claude may use</h2>
+      <div class="photos" id="photos"></div>
+      <div class="hint">Up to 4. Claude sees them and decides how to use them.</div>
+      <h2>Style</h2>
+      <div class="styles" id="styles"></div>
+      <h2>Opening hook</h2>
+      <select id="hook"></select>
+      <h2>Shape</h2>
+      <div class="row" id="ratios"></div>
+      <h2>Length</h2>
+      <div class="row" id="lengths"></div>
+      <h2>Your line (optional)</h2>
+      <textarea id="note" placeholder="e.g. Weekend offer, mention free delivery in Kigali"></textarea>
+      <h2></h2>
+      <button class="primary" id="go">Design with Claude</button>
+      <div class="hint" id="estimate"></div>
+      <button id="sample" style="width:100%;margin-top:8px">Sample design (free, no AI)</button>
+    </div>
+    <div id="seedanceForm" class="seedance" hidden>
+      <p>Realistic video clips with moving people come from Seedance (BytePlus). This tab switches on once the BytePlus key is saved in <code>.env</code> as <code>SEEDANCE_API_KEY</code> and the Digital character library is activated.</p>
+      <p id="seedanceState"></p>
+    </div>
+  </section>
+
+  <section class="stage">
+    <div class="frame"><canvas id="preview" width="1080" height="1920"></canvas></div>
+    <div class="controls">
+      <button id="play">Play</button>
+      <button id="restart">⟲</button>
+      <input type="range" id="scrub" min="0" max="1000" value="0">
+      <span class="time" id="time">0.0 / 0.0 s</span>
+    </div>
+    <div class="row">
+      <button id="music">Music: on</button>
+      <button id="export" disabled>Make MP4</button>
+      <a id="download" hidden>Download MP4</a>
+    </div>
+    <div class="progress" id="progress"><i></i></div>
+    <div class="status" id="status">Pick a product and a style, then press "Design with Claude".</div>
+  </section>
+
+  <section>
+    <h2>Post caption</h2>
+    <div class="caption" id="caption">—</div>
+    <div class="tags" id="hashtags"></div>
+    <h2>This test</h2>
+    <div class="cost" id="cost"><span class="k">Nothing yet</span><span></span></div>
+    <details>
+      <summary>Design (JSON): edit and apply, no AI cost</summary>
+      <textarea class="json" id="json" spellcheck="false"></textarea>
+      <button id="apply" disabled>Apply my changes</button>
+    </details>
+    <h2>Tests</h2>
+    <div class="jobs" id="jobs"></div>
+  </section>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

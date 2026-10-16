@@ -84,3 +84,7 @@ dist/release/
 
 # Signed-in sessions of the guide capture script (scripts/docs/capture-guide.mjs)
 /.playwright-guide/
+
+# Video Lab (docs/VIDEO_ENGINE.md): tests, videos and builds stay local
+/video-lab/data/
+/video-lab/.build/
