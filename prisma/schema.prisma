@@ -749,6 +749,7 @@ enum ConnectionKind {
 enum ConnectionMethod {
   DIRECT // BuPulse's own developer app and OAuth tokens
   OWN_COMPOSIO // the user's own Composio account (Pro)
+  COMPOSIO // "BuPulse-Socials": BuPulse's own Composio account; the token stays at Composio (lib/social/composio)
 }
 
 // How posts reach the network: AUTO publishes through the API; NOTIFY (e.g. a personal Instagram

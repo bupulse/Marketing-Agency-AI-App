@@ -5,6 +5,7 @@ import { ENTRIES } from "@/lib/connectors/catalog";
 import type { ConnectorId } from "@/lib/connectors/types";
 import { getProvider, isNetwork } from "@/lib/social/registry";
 import { NEEDS_RECONNECT_PREFIX } from "@/lib/social/connections";
+import { deleteConnectedAccount, scopeAccount } from "@/lib/social/composio/client";
 import { hostOnly as hostOf } from "../connections";
 import { writeAudit } from "../audit";
 import { AdminError, type AdminContext } from "../types";
@@ -37,7 +38,7 @@ export async function forceDisconnectChannel(ctx: AdminContext, input: { connect
   requireConfirm(ctx, input.confirm, "Force-disconnecting an account");
   const row = await prisma.connection.findUnique({
     where: { id: input.connectionId },
-    select: { id: true, kind: true, provider: true, businessId: true, displayName: true, externalAccountId: true, status: true, postingMode: true, accessTokenEncrypted: true, refreshTokenEncrypted: true, expiresAt: true },
+    select: { id: true, kind: true, provider: true, businessId: true, displayName: true, externalAccountId: true, status: true, postingMode: true, accessTokenEncrypted: true, refreshTokenEncrypted: true, expiresAt: true, method: true, scopes: true },
   });
   if (!row || row.kind !== "SOCIAL" || !isNetwork(row.provider)) throw new AdminError("not_found", "No social account with that id.");
   if (row.status === "REVOKED" && !row.accessTokenEncrypted && !row.refreshTokenEncrypted) throw new AdminError("conflict", "That account is already disconnected.");
@@ -70,9 +71,15 @@ export async function forceDisconnectChannel(ctx: AdminContext, input: { connect
   // is a second audit row and part of the result.
   const provider = getProvider(row.provider);
   let networkRevoke: "revoked" | "failed" | "not_supported" = "not_supported";
-  if (plain && provider.revoke) {
+  const composioAccount = row.method === "COMPOSIO" ? scopeAccount(row.scopes) : null;
+  if (plain && composioAccount) {
+    // BuPulse-Socials: Composio holds the tokens. Its sign-in goes once no other account of that sign-in still uses it.
+    const others = await prisma.connection.count({ where: { id: { not: row.id }, method: "COMPOSIO", scopes: { has: `composio_account:${composioAccount}` }, accessTokenEncrypted: { not: null } } });
+    if (!others) await deleteConnectedAccount(row.provider, composioAccount);
+    networkRevoke = others ? "not_supported" : "revoked";
+  } else if (plain && provider.revoke) {
     try {
-      await provider.revoke({ connectionId: row.id, externalAccountId: row.externalAccountId, accountType: null, accessToken: plain });
+      await provider.revoke({ connectionId: row.id, externalAccountId: row.externalAccountId, accountType: null, accessToken: plain, method: row.method });
       networkRevoke = "revoked";
     } catch {
       networkRevoke = "failed";

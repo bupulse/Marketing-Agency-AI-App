@@ -12,6 +12,7 @@ import { SocialError } from "@/lib/social/types";
 import { NETWORK_SERVICE } from "@/lib/admin/service-catalog";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { hasFeature, upgradeHref } from "@/lib/entitlements";
+import { createConnectLink, viaComposio } from "@/lib/social/composio/client";
 
 async function back(next: string, error: ConnectErrorCode) {
   const url = new URL(next, await requestSiteUrl());
@@ -48,6 +49,24 @@ export async function GET(request: Request, { params }: { params: Promise<{ netw
   } catch (error) {
     if (error instanceof RateLimitError) return back(next, "rate_limit");
     throw error;
+  }
+
+  // BuPulse-Socials: while BuPulse's own apps wait for the networks' approval, sign-in goes through BuPulse's Composio
+  // account (lib/social/composio). The person signs in on the network through Composio's page and comes back to
+  // /api/social/<network>/composio, which checks this sealed cookie the same way as the direct callback.
+  // Composio switched off in Admin -> Services: the network's own app is used if it is set up.
+  if (viaComposio(network) && (await isServiceEnabled("composio"))) {
+    try {
+      const state = newState();
+      const callback = `${await requestSiteUrl()}/api/social/${network}/composio?state=${state}`;
+      const link = await createConnectLink(network, business.id, callback);
+      const response = NextResponse.redirect(link.url);
+      response.cookies.set(STATE_COOKIE, await sealState({ state, verifier: "", userId: user.id, network, variant, next, composioAccount: link.connectedAccountId }), await cookieOptions("/api/social"));
+      return response;
+    } catch (error) {
+      await logError(error, { source: "social.connect.composio", userId: user.id, network });
+      return back(next, "failed");
+    }
   }
 
   try {

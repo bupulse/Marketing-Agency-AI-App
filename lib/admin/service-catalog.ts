@@ -260,11 +260,12 @@ export const SERVICES: ServiceInfo[] = [
   {
     id: "composio",
     name: "Composio",
-    purpose: "BuPulse's own Composio account: one key that connects hundreds of apps (Gmail, Slack, HubSpot and more). Kept ready here; Pro clients can still use their own account.",
+    purpose: "\"BuPulse-Socials\": BuPulse's own Composio account. Clients connect Facebook, Instagram, LinkedIn and YouTube through Composio's approved apps (no Composio account for them), and BuPulse posts through it, while BuPulse's own apps wait for Meta, LinkedIn and Google. SOCIALS_DIRECT (optional, e.g. facebook,instagram) sends those networks back to BuPulse's own apps once approved.",
     env: ["COMPOSIO_API_KEY"],
-    features: ["App connectors through BuPulse's Composio account (not built yet)"],
+    optionalEnv: ["SOCIALS_DIRECT"],
+    features: ["Connecting Facebook, Instagram, LinkedIn and YouTube (BuPulse-Socials)", "Posting and post numbers for accounts connected that way"],
     killable: true,
-    whenOff: "Nothing changes for clients today: no feature uses BuPulse's Composio account yet.",
+    whenOff: "New social connections use BuPulse's own apps instead (\"Coming soon\" where those are not set up). Accounts already connected through BuPulse-Socials keep posting through it.",
   },
 ];
 

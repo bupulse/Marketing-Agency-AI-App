@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { logError } from "@/lib/errors";
 import { getProvider } from "./registry";
+import { deleteConnectedAccount, isComposioResult, scopeAccount } from "./composio/client";
 import { SocialError, type ConnectionCredentials, type Network, type OAuthResult } from "./types";
 
 // Everything that touches stored connections: saving after OAuth, handing the publisher decrypted
@@ -81,6 +82,9 @@ export async function saveConnections(
   postingMode: PostingMode = "AUTO",
 ): Promise<string[]> {
   const chosen = oauth.accounts.filter((a) => selectedAccountIds.includes(a.externalAccountId));
+  const method = isComposioResult(oauth.scopes) ? ("COMPOSIO" as const) : ("DIRECT" as const);
+  // Reconnecting through BuPulse-Socials makes a new Composio sign-in; the one it replaces is removed afterwards.
+  const replaced = method === "COMPOSIO" ? await composioAccountsOf({ businessId, provider: network, externalAccountId: { in: chosen.map((a) => a.externalAccountId) } }) : [];
   const ids: string[] = [];
   for (const account of chosen) {
     const own = oauth.accountTokens?.[account.externalAccountId];
@@ -88,7 +92,7 @@ export async function saveConnections(
     const expiresAt = own ? own.expiresAt : oauth.expiresAt;
     const data = {
       kind: "SOCIAL" as const,
-      method: "DIRECT" as const,
+      method,
       displayName: account.displayName,
       accountType: account.accountType,
       avatarUrl: account.avatarUrl ?? null,
@@ -110,7 +114,22 @@ export async function saveConnections(
   }
   const shared = await shareLinkedInToken(businessId, network, oauth, ids);
   await restoreQueuedPosts([...ids, ...shared]);
+  await forgetUnusedComposioAccounts(network, replaced.filter((id) => id !== scopeAccount(oauth.scopes)));
   return ids;
+}
+
+/** The Composio sign-ins (connected-account ids) used by the matching connections. */
+async function composioAccountsOf(where: Parameters<typeof prisma.connection.findMany>[0] extends infer A ? (A extends { where?: infer W } ? W : never) : never): Promise<string[]> {
+  const rows = await prisma.connection.findMany({ where: { ...where, method: "COMPOSIO" }, select: { scopes: true } });
+  return [...new Set(rows.map((r) => scopeAccount(r.scopes)).filter((id): id is string => !!id))];
+}
+
+/** Removes Composio sign-ins no connection uses any more (best effort), so Composio forgets their tokens. */
+async function forgetUnusedComposioAccounts(network: Network, accountIds: string[]): Promise<void> {
+  for (const id of accountIds) {
+    const still = await prisma.connection.count({ where: { method: "COMPOSIO", scopes: { has: `composio_account:${id}` } } });
+    if (!still) await deleteConnectedAccount(network, id);
+  }
 }
 
 /**
@@ -155,7 +174,7 @@ export async function saveReminderConnection(businessId: string, network: Networ
 type Row = NonNullable<Awaited<ReturnType<typeof prisma.connection.findUnique>>>;
 
 function credentialsOf(row: Row, accessToken: string): ConnectionCredentials {
-  return { connectionId: row.id, externalAccountId: row.externalAccountId, accountType: row.accountType, accessToken };
+  return { connectionId: row.id, externalAccountId: row.externalAccountId, accountType: row.accountType, accessToken, method: row.method };
 }
 
 const inflight = new Map<string, Promise<string>>();
@@ -298,6 +317,9 @@ export async function disconnect(connectionId: string, scope: { businessId?: str
     }
   }
   await deleteConnections([connectionId]);
+  // Several Pages can share one BuPulse-Socials sign-in: Composio forgets it once the last of them is gone.
+  const composioAccount = row.method === "COMPOSIO" ? scopeAccount(row.scopes) : null;
+  if (composioAccount) await forgetUnusedComposioAccounts(row.provider as Network, [composioAccount]).catch(() => {});
   return true;
 }
 

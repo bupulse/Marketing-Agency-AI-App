@@ -1,6 +1,6 @@
 // Social network providers. Feature code (composer, publisher, Autopilot, metrics) depends only on these
 // types and on lib/social/registry.ts, never on a network's API, so networks and connection methods
-// (direct OAuth now, the user's own Composio later) can be added without touching the features.
+// (direct OAuth, BuPulse-Socials through Composio, the user's own Composio later) can be added without touching the features.
 
 export type Network = "instagram" | "facebook" | "linkedin" | "tiktok" | "youtube";
 
@@ -77,7 +77,10 @@ export interface ConnectionCredentials {
   connectionId: string;
   externalAccountId: string;
   accountType: string | null;
+  /** For BuPulse-Socials connections (method COMPOSIO) this is the Composio connected-account id, not a token. */
   accessToken: string;
+  /** How the account was connected (Connection.method); DIRECT when absent. */
+  method?: "DIRECT" | "OWN_COMPOSIO" | "COMPOSIO";
 }
 
 export interface SocialProvider {

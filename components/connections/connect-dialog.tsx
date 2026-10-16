@@ -8,6 +8,9 @@ import { cn } from "@/lib/cn";
 import { NetworkIcon } from "./network-icon";
 import { automaticAvailable, connectHref, primaryVariant, showFacebookLink, type ChannelInfo } from "./types";
 
+// BuPulse-Socials: the sign-in page is Composio's, so say who that is before the person sees its name.
+const COMPOSIO_NOTE = "You sign in on a secure page from Composio, the partner BuPulse uses to connect social accounts. We never see your password.";
+
 const PROFESSIONAL = ["Posts automatically at the time you choose", "Photos and carousels of up to 10 images", "Reach, likes and saves in your reports", "For Business and Creator accounts"];
 const PERSONAL = ["We remind you when it is time to post", "Caption and photos ready to copy", "No Instagram login needed", "You press post in the Instagram app"];
 
@@ -95,7 +98,11 @@ function InstagramBody({ channel, onDone }: { channel: ChannelInfo; onDone: () =
           <a href={connectHref("instagram", primaryVariant(channel))} className={buttonClasses({ size: "lg", className: "w-full" })}>
             {viaFacebookOnly ? "Continue with Facebook" : "Connect Instagram"}
           </a>
-          {viaFacebookOnly ? (
+          {channel.viaComposio ? (
+            <p className="text-center text-xs text-muted">
+              {COMPOSIO_NOTE} It must be a Business or Creator account.
+            </p>
+          ) : viaFacebookOnly ? (
             <p className="text-center text-xs text-muted">
               Not linked yet? In the Instagram app open your profile settings, choose Business tools (or Account type and tools), and connect your Facebook Page.
             </p>
@@ -127,7 +134,7 @@ export function ConnectDialog({ channel, onClose }: { channel: ChannelInfo; onCl
         <div className="flex flex-col items-center gap-5 py-2 text-center">
           <NetworkIcon network={channel.network} className="size-14" />
           <p className="max-w-sm text-[15px] text-muted">
-            You will sign in on {channel.label} and choose what BuPulse may post to. We never see your password.
+            {channel.viaComposio ? `You will sign in to ${channel.label} and choose what BuPulse may post to. ${COMPOSIO_NOTE}` : `You will sign in on ${channel.label} and choose what BuPulse may post to. We never see your password.`}
           </p>
           <a href={connectHref(channel.network)} className={buttonClasses({ size: "lg", className: "w-full" })}>
             Connect {channel.label}

@@ -11,6 +11,7 @@ import { logError } from "@/lib/errors";
 import { RATE_LIMITS, rateLimit, RateLimitError, rateLimitMessage } from "@/lib/rate-limit";
 import { disconnect, saveConnections, saveReminderConnection } from "@/lib/social/connections";
 import { openPending, PENDING_PATH, pendingCookieNames } from "@/lib/social/oauth";
+import { deleteConnectedAccount, isComposioResult, scopeAccount } from "@/lib/social/composio/client";
 
 async function businessIdFor(userId: string) {
   return (await prisma.business.findUnique({ where: { userId }, select: { id: true } }))?.id ?? null;
@@ -82,7 +83,12 @@ export async function savePickedAccountsAction(formData: FormData) {
 
 /** Drops a half-finished connect (the user closed the account picker). */
 export async function cancelPickAction() {
-  await requireActiveUser("channels");
+  const user = await requireActiveUser("channels");
+  const store = await cookies();
+  const pending = await openPending((name) => store.get(name)?.value, user.id);
+  // A BuPulse-Socials sign-in nobody picked an account from is removed from Composio too.
+  const composioAccount = pending && isComposioResult(pending.result.scopes) ? scopeAccount(pending.result.scopes) : null;
+  if (pending && composioAccount) await deleteConnectedAccount(pending.network, composioAccount);
   await clearPending();
   redirect("/dashboard/connections");
 }

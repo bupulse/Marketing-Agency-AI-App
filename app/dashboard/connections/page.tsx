@@ -17,6 +17,8 @@ import { listConnections } from "@/lib/social/connections";
 import { openPending } from "@/lib/social/oauth";
 import { isInstagramViaFacebookConfigured } from "@/lib/social/providers/instagram";
 import { allProviders, isNetwork } from "@/lib/social/registry";
+import { viaComposio } from "@/lib/social/composio/client";
+import { isServiceEnabled } from "@/lib/admin/switch";
 
 export const metadata = { title: "Channels" };
 
@@ -37,13 +39,20 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/dash
   // where BuPulse's own keys are not set, "Add to your plan" where the plan lacks the feature. Canva has its own card above.
   const apps = business ? (await getCatalog({ userId: actorId, businessId: business.id, features: entitlements.inPlan })).filter((a) => a.id !== "canva" || !isCanvaEnabled()) : [];
 
-  const channels: ChannelInfo[] = allProviders().map((p) => ({
-    network: p.network,
-    label: p.rules.label,
-    note: NOTES[p.network] ?? "",
-    configured: p.isConfigured(),
-    viaFacebook: p.network === "instagram" ? isInstagramViaFacebookConfigured() : undefined,
-  }));
+  // BuPulse-Socials (Composio) replaces BuPulse's own apps where it is on; switched off in Admin -> Services, those
+  // networks fall back to their own apps (or "Coming soon" when those are not set up).
+  const composioOn = await isServiceEnabled("composio");
+  const channels: ChannelInfo[] = allProviders().map((p) => {
+    const composio = composioOn && viaComposio(p.network);
+    return {
+      network: p.network,
+      label: p.rules.label,
+      note: NOTES[p.network] ?? "",
+      configured: composio || p.isConfigured(),
+      viaFacebook: p.network === "instagram" && !composio ? isInstagramViaFacebookConfigured() : undefined,
+      viaComposio: composio || undefined,
+    };
+  });
   const accounts: AccountInfo[] = social.map((a) => ({ id: a.id, network: a.network, displayName: a.displayName, externalAccountId: a.externalAccountId, accountType: a.accountType, avatarUrl: a.avatarUrl, status: a.status, postingMode: a.postingMode }));
 
   // After OAuth with several accounts, the encrypted cookie holds them until the user picks.

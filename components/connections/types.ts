@@ -9,6 +9,8 @@ export type ChannelInfo = {
   configured: boolean;
   /** Instagram only: Facebook Login keys are set, so Instagram can be connected through Facebook. */
   viaFacebook?: boolean;
+  /** New connections go through BuPulse-Socials (BuPulse's Composio account) instead of BuPulse's own app. */
+  viaComposio?: boolean;
 };
 
 export type AccountInfo = {
@@ -24,11 +26,11 @@ export type AccountInfo = {
 
 /** Personal Instagram is reminder posting and needs no Meta app, so Instagram can always be added; other networks need their keys. */
 /** Instagram: automatic posting needs Instagram Login keys or, failing that, Facebook Login keys. */
-export const automaticAvailable = (c: ChannelInfo) => c.configured || !!c.viaFacebook;
+export const automaticAvailable = (c: ChannelInfo) => c.configured || !!c.viaFacebook || !!c.viaComposio;
 /** The login variant the main Connect button uses: Instagram Login when set up, otherwise Facebook Login. */
-export const primaryVariant = (c: ChannelInfo) => (c.configured ? "instagram" : "facebook");
+export const primaryVariant = (c: ChannelInfo) => (c.viaComposio ? undefined : c.configured ? "instagram" : "facebook");
 /** The separate "through Facebook" link only makes sense when it is not already the main button. */
-export const showFacebookLink = (c: ChannelInfo) => c.configured && !!c.viaFacebook;
+export const showFacebookLink = (c: ChannelInfo) => !c.viaComposio && c.configured && !!c.viaFacebook;
 
 export const canConnect = (c: ChannelInfo) => c.configured || c.network === "instagram";
 
