@@ -81,3 +81,6 @@ dist/release/
 
 # v1's local environment file, kept after the v2 merge (points to v1's database)
 .env.v1
+
+# Signed-in sessions of the guide capture script (scripts/docs/capture-guide.mjs)
+/.playwright-guide/
