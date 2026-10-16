@@ -24,8 +24,8 @@ type CliResult = {
 };
 
 /** The environment for the CLI: no API key (so it uses the subscription login) and no nested-session markers. */
-function cliEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
+function cliEnv(): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (k === "ANTHROPIC_API_KEY" || k === "ANTHROPIC_AUTH_TOKEN" || k === "CLAUDECODE" || k.startsWith("CLAUDE_CODE_")) continue;
     env[k] = v;
@@ -35,7 +35,7 @@ function cliEnv(): NodeJS.ProcessEnv {
 
 function run(args: string[], input: string, cwd: string): Promise<{ code: number | null; stdout: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.env.VIDEO_LAB_CLAUDE_BIN || "claude", args, { cwd, env: cliEnv(), stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(process.env.VIDEO_LAB_CLAUDE_BIN || "claude", args, { cwd, env: cliEnv() as NodeJS.ProcessEnv, stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     child.stdout.on("data", (d) => (stdout += d));
     child.stderr.on("data", () => undefined);
