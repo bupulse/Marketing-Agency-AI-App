@@ -27,8 +27,15 @@ export type DesignBrief = {
   note?: string | null;
 };
 
-export type DesignUsage = { model: string; inputTokens: number; outputTokens: number; costUsd: number };
-export type DesignResult = { spec: MotionSpec; usage: DesignUsage[]; costUsd: number; attempts: number };
+/**
+ * One Claude call. `costUsd` is what was actually spent (0 on a subscription); `apiEquivalentUsd` is what the same call
+ * costs through the API, so subscription tests still show the real price of the engine.
+ */
+export type DesignUsage = { model: string; inputTokens: number; outputTokens: number; costUsd: number; billedTo?: "api" | "subscription"; apiEquivalentUsd?: number };
+
+/** One call to Claude: the API (default) or another way in, such as the Video Lab's Claude Code subscription. */
+export type ClaudeTransport = (call: { model: string; system: string; content: unknown[]; maxTokens: number }) => Promise<{ text: string; usage: DesignUsage; stop: string | null | undefined }>;
+export type DesignResult = { spec: MotionSpec; usage: DesignUsage[]; costUsd: number; apiEquivalentUsd: number; attempts: number };
 
 export class DesignError extends Error {
   constructor(message: string, readonly usage: DesignUsage[] = []) {
@@ -75,6 +82,7 @@ export function systemPrompt(): string {
     "- Use ONLY facts in the brief. Never invent prices, discounts, dates, awards, guarantees, ingredients or numbers. If no price is given, do not show one.",
     "- Write all on-screen text, the caption and the voice lines in the business's content language. Short: hooks 2 to 6 words, other lines at most about 10 words.",
     "- Safe area for 9:16: keep text between y 0.12 and 0.82 and x 0.07 to 0.93 (the apps cover the edges). Text boxes must be wide enough for their words (w 0.6 to 0.86 for most text).",
+    "- Fill the frame: compose every scene for the whole canvas. No empty band taller than about a quarter of the height: make photos larger, spread the layers, or add a supporting shape or line of text.",
     "- Contrast: text must read on its background. On photos use a box, a shadow, or a background dim.",
     "- At most 2 fonts per video. Use the brand colours when given; otherwise choose a palette that suits the product.",
     "- Photos: you can see them. Use fit \"contain\" for a product shot on a plain background (place it on a solid or gradient background), \"cover\" for lifestyle shots. Set focusX/focusY on the product. Use each good photo at least once; never stretch a bad one full-screen.",
@@ -154,7 +162,8 @@ async function callClaude(apiKey: string, model: string, system: string, content
   const inputTokens = body.usage?.input_tokens ?? 0;
   const outputTokens = body.usage?.output_tokens ?? 0;
   const usedModel = body.model ?? model;
-  const usage = { model: usedModel, inputTokens, outputTokens, costUsd: estimateCostUsd(usedModel, { inputTokens, outputTokens }) };
+  const costUsd = estimateCostUsd(usedModel, { inputTokens, outputTokens });
+  const usage: DesignUsage = { model: usedModel, inputTokens, outputTokens, costUsd, billedTo: "api", apiEquivalentUsd: costUsd };
   const text = (body.content ?? []).flatMap((b) => (b.type === "text" && b.text ? [b.text] : [])).join("");
   return { text, usage, stop: body.stop_reason };
 }
@@ -163,9 +172,12 @@ async function callClaude(apiKey: string, model: string, system: string, content
  * Designs one video. One call; if the answer cannot be read, one more call with the problem explained. Usage of every
  * call is returned (also on failure, in DesignError.usage), so the caller can record what was spent.
  */
-export async function designVideo(brief: DesignBrief, opts: { apiKey: string; model?: string; fetchImpl?: typeof fetch }): Promise<DesignResult> {
+export async function designVideo(brief: DesignBrief, opts: { apiKey?: string; model?: string; fetchImpl?: typeof fetch; transport?: ClaudeTransport }): Promise<DesignResult> {
   const model = opts.model || DESIGNER_MODEL;
   const fetchImpl = opts.fetchImpl ?? fetch;
+  const apiKey = opts.apiKey;
+  if (!opts.transport && !apiKey) throw new DesignError("The Claude API key is not set.");
+  const send: ClaudeTransport = opts.transport ?? ((call) => callClaude(apiKey as string, call.model, call.system, call.content, fetchImpl));
   const system = systemPrompt();
   const content: unknown[] = [
     { type: "text", text: briefText(brief) },
@@ -178,14 +190,14 @@ export async function designVideo(brief: DesignBrief, opts: { apiKey: string; mo
   let lastError = "";
   for (let attempt = 1; attempt <= 2; attempt++) {
     const turn = attempt === 1 ? content : [...content, { type: "text", text: `Your previous answer could not be used (${lastError}). Answer again with one complete, valid JSON MotionSpec object only, shorter if needed.` }];
-    const answer = await callClaude(opts.apiKey, model, system, turn, fetchImpl).catch((e: unknown) => {
-      throw e instanceof DesignError ? new DesignError(e.message, usage) : e;
+    const answer = await send({ model, system, content: turn, maxTokens: MAX_OUTPUT_TOKENS }).catch((e: unknown) => {
+      throw e instanceof DesignError ? new DesignError(e.message, [...usage, ...e.usage]) : e;
     });
     usage.push(answer.usage);
     if (answer.stop === "refusal") throw new DesignError("Claude declined to design this video.", usage);
     try {
       const spec = validateSpec(extractJson(answer.text), { ratio: brief.ratio, photoCount: brief.photos.length, seconds: brief.seconds });
-      return { spec, usage, costUsd: sum(usage), attempts: attempt };
+      return { spec, usage, costUsd: sum(usage), apiEquivalentUsd: apiSum(usage), attempts: attempt };
     } catch (error) {
       lastError = error instanceof SpecError ? error.message : "invalid answer";
       if (answer.stop === "max_tokens") lastError = "it was cut off because it was too long";
@@ -194,7 +206,10 @@ export async function designVideo(brief: DesignBrief, opts: { apiKey: string; mo
   throw new DesignError("Claude's design could not be used. Please try again.", usage);
 }
 
-const sum = (usage: DesignUsage[]) => Math.round(usage.reduce((s, u) => s + u.costUsd, 0) * 1_000_000) / 1_000_000;
+const round = (n: number) => Math.round(n * 1_000_000) / 1_000_000;
+const sum = (usage: DesignUsage[]) => round(usage.reduce((s, u) => s + u.costUsd, 0));
+/** What the calls cost (or would cost) through the API. */
+export const apiSum = (usage: DesignUsage[]) => round(usage.reduce((s, u) => s + (u.apiEquivalentUsd ?? u.costUsd), 0));
 
 /** A typical design's cost, shown before the call: the brief (~3,500 tokens), ~1,600 per photo, ~6,000 tokens out. */
 export function estimateDesignCost(photoCount: number, model = DESIGNER_MODEL): number {

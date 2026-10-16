@@ -12,6 +12,8 @@ seedance2ai.io and Higgsfield work, BytePlus Seedance facts), docs/CONTENT_VISUA
 - **Seedance avatars:** from the BytePlus digital-character library.
 - **Test photos:** from the test database's products.
 - **Colours:** BuPulse brand colours in the lab (Pulse Blue #2f6bff, Pulse Violet #7b5cff, Ink #0b0b0f).
+- **Claude access for tests:** the owner's **Claude subscription** (Claude Code CLI) for tests only. **Remind the
+  owner to switch to the API key (`ANTHROPIC_API_KEY`) before any deploy, release zip or wiring into the app.**
 
 ## State
 
@@ -20,11 +22,11 @@ seedance2ai.io and Higgsfield work, BytePlus Seedance facts), docs/CONTENT_VISUA
   - the lab;
   - 26 tests;
   - checked in Chrome: the sample renders with photos and saves a 12 s MP4 with sound (5.3 MB).
-- **Waiting:**
-  - `ANTHROPIC_API_KEY`: empty in `.env` and not saved in the TEST Admin, Services, so no Claude design has run yet;
-  - the BytePlus key (`SEEDANCE_API_KEY`) and the digital-character library.
+- **First real design:** made through the subscription (Galaxy A56, 15 s, $0.103 API-equivalent, 35 s), and its
+  MP4 (6.9 MB, 23 s).
+- **Waiting:** the BytePlus key (`SEEDANCE_API_KEY`) and the digital-character library; the API key at deploy time.
 - **Next:**
-  1. Run the first real designs and record the measured costs.
+  1. Run more designs across styles and products, and record the measured costs.
   2. Tune the prompt and styles on what comes out.
   3. Add voice-over from `say` lines.
   4. Add Seedance tasks in the lab.

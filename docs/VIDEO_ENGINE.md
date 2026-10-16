@@ -57,17 +57,23 @@ Each one is a short art direction added to Claude's brief.
 
 A small local site for testing the engine, separate from the app (`video-lab/`, `scripts/video-lab/start.mjs`).
 
-1. `.env` must point at the TEST database (the lab refuses any other) and have `ANTHROPIC_API_KEY`, or the key saved in
-   the TEST project's Admin, Services (the lab reads saved keys like the app, `loadSavedKeys`). An empty value (`""`)
-   counts as missing.
-2. `npm run lab`, then open `http://localhost:3100` in Chrome.
-3. Pick a business and product from the test database. Choose the photos Claude may use (up to 4), a style, a hook,
+1. `.env` must point at the TEST database (the lab refuses any other).
+2. **How the lab reaches Claude:**
+   - **Testing (now):** the owner's **Claude subscription**, through the Claude Code CLI logged in on this computer
+     (`video-lab/claude-cli.ts`, `claude -p` in restricted mode with only the Read tool, in a temporary folder holding
+     the photos). It is used when `ANTHROPIC_API_KEY` is empty, or with `VIDEO_LAB_CLAUDE=subscription`. It costs
+     nothing extra; the lab still shows what the same call would cost on the API.
+   - **Before any deploy: switch to the API key.** Set `ANTHROPIC_API_KEY` (in `.env`, or saved in Admin, Services,
+     which the lab reads like the app, `loadSavedKeys`). A subscription is for the owner's own use and must never run
+     the app for clients; the app's code path (`designVideo` default transport) uses the API only.
+3. `npm run lab`, then open `http://localhost:3100` in Chrome.
+4. Pick a business and product from the test database. Choose the photos Claude may use (up to 4), a style, a hook,
    the shape and the length. Add your own line if you like, and see the estimated cost. Then press **Design with
    Claude**.
-4. The video plays live in the preview: play, pause and scrub.
-5. **Make MP4** renders it in the browser, saves it and offers the download.
-6. The design JSON can be edited by hand and applied (no AI, no cost).
-7. **Sample design** is a free, hand-made design that tests the renderer without Claude (`lib/video-engine/sample.ts`).
+5. The video plays live in the preview: play, pause and scrub.
+6. **Make MP4** renders it in the browser, saves it and offers the download.
+7. The design JSON can be edited by hand and applied (no AI, no cost).
+8. **Sample design** is a free, hand-made design that tests the renderer without Claude (`lib/video-engine/sample.ts`).
 
 What it keeps (`video-lab/data/`, git-ignored):
 
@@ -93,8 +99,14 @@ only.
 | Voice-over (next) | ElevenLabs characters, as today (docs/VOICE_AND_MUSIC.md) | |
 | Seedance clip (next, premium) | about $0.35 (480p) to $0.76 (720p) per 5 s, BytePlus estimate | |
 
-The lab shows the real tokens and cost of every test, so these figures are replaced by measured ones after the first
-tests (`docs/AI_COSTS.md`).
+The lab shows the real tokens and cost of every test (`docs/AI_COSTS.md`).
+
+**Measured** (16 October 2026, Nova Phones Kigali, Samsung Galaxy A56, Product hero, 9:16, 15 s, 2 photos):
+
+- **Design:** Sonnet, 12,121 tokens in and 4,447 out, **$0.103 on the API** ($0 through the subscription), 35 s.
+  The result was 5 scenes, the brand's blue and yellow, and only facts from the product data (specs, colours, price,
+  MoMo, warranty, the WhatsApp number).
+- **MP4:** 6.9 MB, made in 23 s in Chrome, with library music.
 
 ## Not yet
 

@@ -20,12 +20,14 @@ type Job = {
   spec: MotionSpec | null;
   usage: { model: string; inputTokens: number; outputTokens: number; costUsd: number }[];
   costUsd: number;
+  apiEquivalentUsd?: number;
+  billedTo?: "api" | "subscription";
   status: "designed" | "failed";
   error: string | null;
   video: { bytes: number; renderMs: number } | null;
   edited: boolean;
 };
-type Options = { styles: { id: string; name: string; blurb: string }[]; hooks: { id: string; name: string }[]; ratios: string[]; model: string; capUsd: number; spentUsd: number; estimateUsd: number[]; seedanceReady: boolean; claudeReady: boolean };
+type Options = { styles: { id: string; name: string; blurb: string }[]; hooks: { id: string; name: string }[]; ratios: string[]; model: string; capUsd: number; spentUsd: number; estimateUsd: number[]; seedanceReady: boolean; claudeReady: boolean; claudeMode: "api" | "subscription" };
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const api = async <T>(url: string, init?: RequestInit): Promise<T> => {
@@ -138,7 +140,9 @@ function renderSide() {
         ["Model", job.usage[0]?.model ?? "—"],
         ["Claude calls", String(job.usage.length)],
         ["Tokens in / out", job.usage.map((u) => `${u.inputTokens.toLocaleString()} / ${u.outputTokens.toLocaleString()}`).join(" + ") || "—"],
+        ["Claude reached by", job.usage.length ? (job.billedTo === "subscription" ? "your subscription (tests only)" : "API key") : "—"],
         ["Claude cost", usd(job.costUsd)],
+        ["Same on the API", usd(job.apiEquivalentUsd ?? job.costUsd)],
         ["Rendering", "free (this browser)"],
         ["Video", job.video ? `${(job.video.bytes / 1024 / 1024).toFixed(1)} MB, made in ${(job.video.renderMs / 1000).toFixed(0)} s` : "not made yet"],
         ["Length", spec ? `${(totalMs(spec) / 1000).toFixed(1)} s, ${spec.scenes.length} scenes` : "—"],
@@ -182,7 +186,7 @@ function renderJobs() {
     const title = document.createElement("b");
     title.textContent = j.productName;
     const cost = document.createElement("span");
-    cost.textContent = usd(j.costUsd);
+    cost.textContent = j.billedTo === "subscription" ? `$0 · API ${usd(j.apiEquivalentUsd ?? 0)}` : usd(j.costUsd);
     const meta = document.createElement("small");
     meta.textContent = `${new Date(j.createdAt).toLocaleString()} · ${j.styleId} · ${j.ratio} · ${j.seconds}s${j.video ? " · MP4" : ""}${j.status === "failed" ? " · failed" : ""}`;
     b.append(title, cost, meta);
@@ -210,7 +214,11 @@ function chips(containerId: string, values: string[], current: () => string, set
 
 function updateEstimate() {
   const est = state.options?.estimateUsd[Math.min(4, state.photoIds.size)] ?? 0;
-  $("estimate").textContent = `About ${usd(est)} with ${state.options?.model ?? "Claude"} (${state.photoIds.size} photo${state.photoIds.size === 1 ? "" : "s"}). Rendering is free.`;
+  const photos = `${state.photoIds.size} photo${state.photoIds.size === 1 ? "" : "s"}`;
+  $("estimate").textContent =
+    state.options?.claudeMode === "subscription"
+      ? `Uses your Claude subscription: $0 now (tests only). Through the API it would be about ${usd(est)} (${photos}). Rendering is free.`
+      : `About ${usd(est)} with ${state.options?.model ?? "Claude"} (${photos}). Rendering is free.`;
 }
 
 function renderPhotos() {
@@ -248,7 +256,7 @@ async function design() {
   const go = $<HTMLButtonElement>("go");
   go.disabled = true;
   play(false);
-  status("Claude is designing the video… (usually 30 to 90 seconds)");
+  status(state.options?.claudeMode === "subscription" ? "Claude is designing the video through your subscription… (usually 1 to 3 minutes)" : "Claude is designing the video… (usually 30 to 90 seconds)");
   try {
     const job = await api<Job>("/api/design", {
       method: "POST",
@@ -336,6 +344,7 @@ async function applyJson() {
 async function init() {
   const options = await api<Options>("/api/options");
   state.options = options;
+  $("mode").textContent = options.claudeMode === "subscription" ? "· Claude: your subscription (switch to the API key before deploying)" : "· Claude: API key";
   const styles = $("styles");
   const renderStyles = () => {
     styles.replaceChildren();

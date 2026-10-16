@@ -30,13 +30,17 @@ export type LabJob = {
   spec: MotionSpec | null;
   usage: DesignUsage[];
   costUsd: number;
+  /** What the Claude calls would cost through the API (equal to costUsd when the API was used). */
+  apiEquivalentUsd?: number;
+  /** How Claude was reached: the API key, or the owner's subscription (tests only). */
+  billedTo?: "api" | "subscription";
   status: "designed" | "failed";
   error: string | null;
   video: { bytes: number; renderMs: number; savedAt: string } | null;
   edited: boolean;
 };
 
-type LedgerRow = { at: string; jobId: string; kind: string; model: string; inputTokens: number; outputTokens: number; costUsd: number };
+type LedgerRow = { at: string; jobId: string; kind: string; model: string; inputTokens: number; outputTokens: number; costUsd: number; billedTo?: string; apiEquivalentUsd?: number };
 
 /** Today's date in Kigali (UTC+2), the day the cap counts. */
 export const kigaliDay = (d = new Date()) => new Date(d.getTime() + 2 * 3600_000).toISOString().slice(0, 10);
@@ -60,7 +64,7 @@ export async function spentToday(): Promise<number> {
 
 export async function record(jobId: string, kind: string, usage: DesignUsage[]): Promise<void> {
   await fs.mkdir(DATA, { recursive: true });
-  const rows = usage.map((u): LedgerRow => ({ at: new Date().toISOString(), jobId, kind, model: u.model, inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: u.costUsd }));
+  const rows = usage.map((u): LedgerRow => ({ at: new Date().toISOString(), jobId, kind, model: u.model, inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: u.costUsd, billedTo: u.billedTo, apiEquivalentUsd: u.apiEquivalentUsd }));
   if (rows.length) await fs.appendFile(LEDGER, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
 }
 

@@ -4,7 +4,8 @@
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { DESIGNER_MODEL, DesignError, designVideo, estimateDesignCost, maxDesignCost, type BriefPhoto } from "@/lib/video-engine/designer";
+import { DESIGNER_MODEL, DesignError, apiSum, designVideo, estimateDesignCost, maxDesignCost, type BriefPhoto } from "@/lib/video-engine/designer";
+import { subscriptionTransport } from "./claude-cli";
 import { VIDEO_HOOKS, VIDEO_STYLES } from "@/lib/video-engine/styles";
 import { RATIOS, isRatio, SPEC_LIMITS } from "@/lib/video-engine/spec";
 import { validateSpec } from "@/lib/video-engine/validate";
@@ -45,9 +46,15 @@ async function file(res: http.ServerResponse, full: string, type: string, cache 
   }
 }
 
+/**
+ * How the lab reaches Claude. "subscription" (the owner's Claude Code login, tests only) when there is no API key or
+ * VIDEO_LAB_CLAUDE=subscription; "api" otherwise. Before deploying anything, switch to the API key (docs/VIDEO_ENGINE.md).
+ */
+const claudeMode = (): "api" | "subscription" => (process.env.VIDEO_LAB_CLAUDE === "subscription" || !process.env.ANTHROPIC_API_KEY ? "subscription" : "api");
+
 async function design(body: Record<string, unknown>): Promise<{ status: number; body: unknown }> {
+  const mode = claudeMode();
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return { status: 503, body: { error: "ANTHROPIC_API_KEY is not set in .env." } };
   const businessId = String(body.businessId ?? "");
   const productId = String(body.productId ?? "");
   const ratio = isRatio(body.ratio) ? body.ratio : "9:16";
@@ -65,7 +72,7 @@ async function design(body: Record<string, unknown>): Promise<{ status: number; 
 
   const spent = await spentToday();
   const worst = maxDesignCost(photoIds.length);
-  if (spent + worst > DAILY_CAP_USD) {
+  if (mode === "api" && spent + worst > DAILY_CAP_USD) {
     return { status: 429, body: { error: `Today's test budget is used: $${spent.toFixed(2)} of $${DAILY_CAP_USD.toFixed(2)}. More tomorrow (Kigali time).` } };
   }
 
@@ -110,14 +117,14 @@ async function design(body: Record<string, unknown>): Promise<{ status: number; 
         seconds,
         note,
       },
-      { apiKey, model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL },
+      mode === "api" ? { apiKey, model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL } : { transport: subscriptionTransport(), model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL },
     );
     await record(job.id, "claude-design", result.usage);
-    Object.assign(job, { spec: result.spec, usage: result.usage, costUsd: result.costUsd });
+    Object.assign(job, { spec: result.spec, usage: result.usage, costUsd: result.costUsd, apiEquivalentUsd: result.apiEquivalentUsd, billedTo: mode });
   } catch (error) {
     const usage = error instanceof DesignError ? error.usage : [];
     await record(job.id, "claude-design", usage);
-    Object.assign(job, { status: "failed", usage, costUsd: usage.reduce((s, u) => s + u.costUsd, 0), error: error instanceof Error ? error.message : "Design failed." });
+    Object.assign(job, { status: "failed", usage, costUsd: usage.reduce((s, u) => s + u.costUsd, 0), apiEquivalentUsd: apiSum(usage), billedTo: mode, error: error instanceof Error ? error.message : "Design failed." });
   }
   await saveJob(job);
   return { status: job.status === "failed" ? 502 : 200, body: job };
@@ -144,7 +151,8 @@ const server = http.createServer(async (req, res) => {
         spentUsd: await spentToday(),
         estimateUsd: [0, 1, 2, 3, 4].map((n) => estimateDesignCost(n)),
         seedanceReady: !!process.env.SEEDANCE_API_KEY,
-        claudeReady: !!process.env.ANTHROPIC_API_KEY,
+        claudeReady: true,
+        claudeMode: claudeMode(),
       });
     }
     if (req.method === "GET" && p === "/api/businesses") return json(res, 200, await listBusinesses());
@@ -228,7 +236,12 @@ void loadSavedKeys(LAB_KEYS)
     server.listen(PORT, "127.0.0.1", () => {
       console.log(`BuPulse Video Lab: http://localhost:${PORT}  (daily test budget $${DAILY_CAP_USD})`);
       if (loaded.length) console.log(`Keys from Admin -> Services: ${loaded.join(", ")}`);
-      for (const name of ["ANTHROPIC_API_KEY", "SEEDANCE_API_KEY"]) if (!process.env[name]) console.log(`Not set: ${name} (add it to .env or Admin -> Services)`);
+      console.log(
+        claudeMode() === "subscription"
+          ? "Claude: your SUBSCRIPTION (claude CLI), tests only. Before deploying, switch to ANTHROPIC_API_KEY."
+          : "Claude: the API key (ANTHROPIC_API_KEY).",
+      );
+      if (!process.env.SEEDANCE_API_KEY) console.log("Not set: SEEDANCE_API_KEY (add it to .env or Admin -> Services)");
     });
   });
 const stop = () => server.close(() => void closeDb().then(() => process.exit(0)));
