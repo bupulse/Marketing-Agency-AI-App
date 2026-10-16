@@ -6,6 +6,7 @@
 import { estimateCostUsd } from "@/lib/ai/pricing";
 import { hookById } from "./styles";
 import { templateById } from "./templates";
+import { castById } from "./cast";
 import { CAMERA_MOVES, GRADES, RATIOS, SPEC_LIMITS, totalMs, type MotionSpec, type Ratio } from "./spec";
 import { SpecError, extractJson, validateSpec } from "./validate";
 
@@ -36,6 +37,8 @@ export type DesignBrief = {
   base?: MotionSpec | null;
   /** Seedance's "fixed lens": no camera moves. */
   fixedLens?: boolean;
+  /** A cartoon presenter (cast.ts id) who appears and "talks" in the video. */
+  cartoonId?: string | null;
   /** Version k of n, when several versions are made at once: each must look clearly different. */
   variation?: { index: number; of: number } | null;
 };
@@ -86,6 +89,7 @@ type Scene = {
 type Layer =
   | { kind: "photo"; photo: number /*1-based*/; x; y; w; h; from?; to?; keyframes?; depth?; fit?: "cover" | "contain"; radius?: number /*0-0.5*/; shadow?: boolean; border?: Hex | null; zoomTo?: number /*1-1.4 slow zoom inside*/; focusX?: number; focusY?: number }
   | { kind: "text"; text: string /*max ${SPEC_LIMITS.maxText} chars*/; font: "inter" | "poppins" | "nunito" | "space-grotesk" | "anton" | "playfair" | "dm-serif"; weight?: number; size: number /*fraction of canvas WIDTH, 0.02-0.22*/; color: Hex; x; y; w; h; from?; to?; keyframes?; depth?; align?: "left" | "center" | "right"; uppercase?: boolean; lineHeight?: number; box?: { color: Hex; padding?: number; radius?: number } | null; highlight?: { words: string[]; color: Hex } | null; shadow?: boolean; animate?: "none" | "fade" | "rise" | "drop" | "pop" | "zoom" | "slideLeft" | "slideRight" | "typewriter" | "words" | "wordsPop" | "blurIn"; animateFor?: number /*seconds*/ }
+  | { kind: "character" /*cartoon presenter, only when the brief names one*/; x; y; w; h /*the whole body: h 0.4-0.7, w about h*0.6*/; from?; to?; keyframes?; depth?; skin: Hex; hair: "short" | "afro" | "braids" | "bun" | "twists" | "long" | "bald"; hairColor: Hex; outfit: Hex; accent?: Hex; glasses?: boolean; pose?: "stand" | "wave" | "point" | "present" | "thumbsUp" | "hold"; side?: "left" | "right" /*where the gesture goes*/; talk?: [number, number][] /*when the mouth moves, scene fractions*/ }
   | { kind: "shape"; shape: "rect" | "circle" | "ring" | "line" | "burst" | "blob" | "arrow"; color: Hex; x; y; w; h; from?; to?; keyframes?; depth?; stroke?: number; radius?: number; draw?: boolean /*draws itself in*/ };
 type Hex = string; // "#rrggbb" or "#rrggbbaa" or "rgba(r,g,b,a)"`;
 
@@ -110,6 +114,7 @@ export function systemPrompt(): string {
     "- Motion: every scene must move. Combine entrances (animate), keyframes (scale 0.92 to 1.05, small rotate, dx/dy drifts), slow zoomTo on photos, and varied transitions. Stagger layers with from (0, 0.1, 0.2...) so they arrive one after another.",
     "- Pacing: scenes of 1.5 to 4 seconds; the scene lengths should add up to the requested length. Transitions: match the energy (whip, flash and blurZoom for fast, fade and dip for calm).",
     "- No people's faces are drawn by you; only the business's own photos show people, if any.",
+    "- A photo described as an AI presenter (influencer) shot is the presenter on camera: use it like UGC footage (full-bleed or large, handheld or slow camera, depth 0.5), with captions written as the presenter speaking in the first person (only true facts about the product). The presenter's lips do not move, so prefer captions over 'talking' close-ups.",
   ].join("\n");
 }
 
@@ -133,6 +138,12 @@ export function briefText(brief: DesignBrief): string {
     mode === "text" ? "Mode: TEXT TO VIDEO. Do not use any photo: design with text, shapes, colour and camera only." : "",
     mode === "image" ? "Mode: IMAGE TO VIDEO. The first scene must open on Photo 1 as a full-frame background (no blur, no dim at the start), then bring it to life with the camera, layers and text." : "",
     mode === "firstLast" ? "Mode: FIRST AND LAST FRAME. The first scene opens on Photo 1 full frame; the last scene ends on Photo 2 full frame (both as backgrounds, no blur). Everything between connects them." : "",
+    castById(brief.cartoonId)
+      ? (() => {
+          const c = castById(brief.cartoonId)!;
+          return `Cartoon presenter: ${c.name} (${c.about}). Use a character layer with skin ${c.skin}, hair ${c.hair}, hairColor ${c.hairColor}, outfit ${c.outfit}${c.accent ? `, accent ${c.accent}` : ""}${c.glasses ? ", glasses true" : ""}. ${c.name} presents the product: appears in most scenes (body height h 0.4 to 0.5, standing at the bottom of the frame, x 0.22 or 0.78). The presenter owns that lower corner: never put text, prices, phone numbers or the product over the presenter; keep them in the other two thirds of the frame (top half, or the opposite side), waves in the first scene, points or presents towards the product (side), thumbsUp at the end. Set talk windows while their caption is on screen (their lines are captions written in the first person, speech-bubble or lower-third style). The presenter is a cartoon: keep the rest of the design clean and bright so it fits.`;
+        })()
+      : "",
     brief.fixedLens ? "Fixed lens: no camera moves (camera static in every scene); motion comes from the layers only." : "",
     brief.variation && brief.variation.of > 1 ? `This is version ${brief.variation.index} of ${brief.variation.of}: make it clearly different from the other versions (another layout, palette use, camera language and hook wording), same facts.` : "",
     note && mode !== "edit" && mode !== "extend" ? `The owner asks: <<<${note}>>>` : "",

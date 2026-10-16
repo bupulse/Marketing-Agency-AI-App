@@ -6,7 +6,7 @@
 // more than far ones (parallax), with an optional focus pull. Between scenes, a transition. Over everything, the film
 // look (colour grade, glow, light leaks, vignette, grain, cinema bars), drawn from an off-screen buffer.
 import { cameraAt, clamp01, ease, layerWindow, noise, parallax, poseAt, scenesAt, textEntrance, type ActiveScene, type CameraState } from "./animate";
-import { FONTS, canvasSize, type Background, type Layer, type Look, type MotionSpec, type PhotoLayer, type Quality, type Scene, type ShapeLayer, type TextLayer } from "./spec";
+import { FONTS, canvasSize, type Background, type CharacterLayer, type Layer, type Look, type MotionSpec, type PhotoLayer, type Quality, type Scene, type ShapeLayer, type TextLayer } from "./spec";
 
 export type Img = CanvasImageSource & { width: number; height: number };
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -123,7 +123,7 @@ function withTransform(ctx: Ctx, tf: Tf, W: number, H: number, draw: () => void)
   ctx.restore();
 }
 
-const DEFAULT_DEPTH = { photo: 0.45, text: 0.85, shape: 0.6 } as const;
+const DEFAULT_DEPTH = { photo: 0.45, text: 0.85, shape: 0.6, character: 0.7 } as const;
 
 function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene, photos: Map<number, Img>, W: number, H: number, tMs: number): void {
   const cam = cameraAt(scene.camera, active.progress, tMs);
@@ -168,6 +168,7 @@ function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene
     const local: Rect = { x: -rect.w / 2, y: -rect.h / 2, w: rect.w, h: rect.h };
     if (layer.kind === "photo") drawPhoto(ctx, layer, local, photos.get(layer.photo), active.progress, spec);
     else if (layer.kind === "text") drawText(ctx, layer, local, win.enter, W);
+    else if (layer.kind === "character") drawCharacter(ctx, layer, local, active.progress, tMs);
     else drawShape(ctx, layer, local, win.enter, W, tMs);
     ctx.restore();
   }
@@ -601,5 +602,245 @@ function drawShape(ctx: Ctx, layer: ShapeLayer, r: Rect, enter: number, W: numbe
     default:
       roundRectPath(ctx, { x: r.x, y: r.y, w: r.w * (layer.draw ? progress : 1), h: r.h }, (layer.radius ?? 0) * Math.min(r.w, r.h));
       ctx.fill();
+  }
+}
+
+// ---- Cartoon presenter ----------------------------------------------------------------------------------------------
+
+/** How open the mouth is at scene progress `p`: 0 closed, up to 1 wide, inside the talk windows only. Pure. */
+export function mouthOpen(talk: [number, number][] | undefined, p: number, tMs: number): number {
+  if (!talk?.some(([a, b]) => p >= a && p <= b)) return 0;
+  const t = tMs / 1000;
+  // Syllable-like rhythm: two mixed frequencies, never perfectly regular.
+  return Math.max(0, Math.min(1, 0.55 + 0.45 * Math.sin(t * 17) * Math.sin(t * 5.3 + 1)));
+}
+
+/** Eyes closed for 120 ms every few seconds, at a deterministic rhythm per character position. */
+export function blinking(tMs: number, seed: number): boolean {
+  const period = 2800 + (seed % 7) * 230;
+  return (tMs + seed * 97) % period < 120;
+}
+
+function shade(hex: string, amount: number): string {
+  const m = /^#([0-9a-f]{6})/i.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const ch = (shift: number) => Math.max(0, Math.min(255, Math.round(((n >> shift) & 255) * (1 + amount))));
+  return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+}
+
+function drawCharacter(ctx: Ctx, c: CharacterLayer, r: Rect, progress: number, tMs: number): void {
+  // Built on the box height: head at the top, body below, centred on x = 0.
+  const h = r.h;
+  const t = tMs / 1000;
+  const seed = Math.round((c.x * 1000 + c.y * 100) % 997);
+  const bob = Math.sin(t * 2.1 + seed) * h * 0.006;
+  const top = r.y + bob;
+  const headR = h * 0.13;
+  const headY = top + h * 0.2;
+  const shoulderY = top + h * 0.42;
+  const armW = h * 0.075;
+  const side = c.side === "left" ? -1 : 1;
+  const skinDark = shade(c.skin, -0.18);
+
+  // Hair behind the head (long, braids, afro).
+  ctx.fillStyle = c.hairColor;
+  if (c.hair === "afro") {
+    ctx.beginPath();
+    ctx.arc(0, headY - headR * 0.25, headR * 1.45, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (c.hair === "long" || c.hair === "braids") {
+    const drop = c.hair === "braids" ? h * 0.32 : h * 0.26;
+    for (const sx of [-1, 1]) {
+      ctx.beginPath();
+      roundRectPath(ctx, { x: sx * headR * 0.65 - headR * 0.45, y: headY - headR * 0.6, w: headR * 0.9, h: drop }, headR * 0.4);
+      ctx.fill();
+      if (c.hair === "braids") {
+        ctx.strokeStyle = shade(c.hairColor, 0.35);
+        ctx.lineWidth = h * 0.004;
+        for (let k = 1; k < 7; k++) {
+          const yy = headY - headR * 0.6 + (drop / 7) * k;
+          ctx.beginPath();
+          ctx.moveTo(sx * headR * 0.65 - headR * 0.4, yy);
+          ctx.lineTo(sx * headR * 0.65 + headR * 0.4, yy + h * 0.01);
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  // Body: rounded shoulders wider than the waist (waist-up framing), with a collar in the accent colour.
+  const shoulderW = h * 0.56;
+  const waistW = h * 0.46;
+  const bottom = r.y + r.h;
+  ctx.fillStyle = c.outfit;
+  ctx.beginPath();
+  ctx.moveTo(-waistW / 2, bottom);
+  ctx.lineTo(-shoulderW / 2, shoulderY + h * 0.09);
+  ctx.quadraticCurveTo(-shoulderW / 2, shoulderY, -shoulderW / 2 + h * 0.09, shoulderY);
+  ctx.lineTo(shoulderW / 2 - h * 0.09, shoulderY);
+  ctx.quadraticCurveTo(shoulderW / 2, shoulderY, shoulderW / 2, shoulderY + h * 0.09);
+  ctx.lineTo(waistW / 2, bottom);
+  ctx.closePath();
+  ctx.fill();
+  if (c.accent) {
+    ctx.fillStyle = c.accent;
+    ctx.beginPath();
+    ctx.moveTo(-headR * 0.6, shoulderY + h * 0.004);
+    ctx.lineTo(0, shoulderY + h * 0.1);
+    ctx.lineTo(headR * 0.6, shoulderY + h * 0.004);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Neck.
+  ctx.fillStyle = skinDark;
+  ctx.fillRect(-headR * 0.32, headY + headR * 0.7, headR * 0.64, shoulderY - headY - headR * 0.6);
+
+  // Arms: angles (radians from straight down) per pose; the gesture arm moves. Sleeves are a shade darker than the
+  // shirt so the arm reads in front of the body.
+  const wave = Math.sin(t * 7) * 0.35;
+  const poses: Record<string, { left: [number, number]; right: [number, number] }> = {
+    stand: { left: [0.18, 0.08], right: [-0.18, -0.08] },
+    wave: { left: [0.18, 0.08], right: [-2.6 + wave, -0.5 + wave * 0.5] },
+    point: { left: [0.18, 0.08], right: [-1.5, -1.6] },
+    present: { left: [0.6, 1.25], right: [-1.25, -1.65] },
+    thumbsUp: { left: [0.18, 0.08], right: [-0.45, -2.7] },
+    hold: { left: [0.3, 1.5], right: [-0.3, -1.5] },
+  };
+  const pose = poses[c.pose ?? "stand"] ?? poses.stand;
+  const upper = h * 0.18;
+  const lower = h * 0.16;
+  const sleeve = shade(c.outfit, -0.16);
+  const gestures = c.pose === "point" || c.pose === "present" || c.pose === "wave" || c.pose === "thumbsUp";
+  const arm = (sx: number, [a1, a2]: [number, number], gesture: boolean) => {
+    const flip = side < 0 && gestures ? -1 : 1;
+    const sxx = sx * flip;
+    const ax = sxx * (shoulderW / 2 - armW * 0.55);
+    const ay = shoulderY + armW * 0.7;
+    const ex = ax + Math.sin(a1 * flip) * upper;
+    const ey = ay + Math.cos(a1) * upper;
+    const hx = ex + Math.sin(a2 * flip) * lower;
+    const hy = ey + Math.cos(a2) * lower;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = sleeve;
+    ctx.lineWidth = armW;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    ctx.strokeStyle = c.skin;
+    ctx.lineWidth = armW * 0.8;
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(hx, hy);
+    ctx.stroke();
+    ctx.fillStyle = c.skin;
+    ctx.beginPath();
+    ctx.arc(hx, hy, armW * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    if (gesture && c.pose === "thumbsUp") {
+      roundRectPath(ctx, { x: hx - armW * 0.17, y: hy - armW * 1.25, w: armW * 0.34, h: armW * 0.8 }, armW * 0.17);
+      ctx.fill();
+    }
+    if (gesture && c.pose === "point") {
+      const dir = Math.sign(hx - ex) || 1;
+      roundRectPath(ctx, { x: dir > 0 ? hx : hx - armW * 0.9, y: hy - armW * 0.15, w: armW * 0.9, h: armW * 0.3 }, armW * 0.15);
+      ctx.fill();
+    }
+  };
+  arm(-1, pose.left, false);
+  arm(1, pose.right, true);
+
+  // Head and ears.
+  ctx.fillStyle = c.skin;
+  for (const sx of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(sx * headR * 0.98, headY + headR * 0.05, headR * 0.16, headR * 0.24, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.ellipse(0, headY, headR * 0.92, headR, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hair on top.
+  ctx.fillStyle = c.hairColor;
+  if (c.hair === "short" || c.hair === "long" || c.hair === "braids") {
+    ctx.beginPath();
+    ctx.ellipse(0, headY - headR * 0.45, headR * 0.95, headR * 0.62, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+  } else if (c.hair === "afro") {
+    ctx.beginPath();
+    ctx.ellipse(0, headY - headR * 0.55, headR * 1.05, headR * 0.6, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+  } else if (c.hair === "bun") {
+    ctx.beginPath();
+    ctx.ellipse(0, headY - headR * 0.45, headR * 0.95, headR * 0.6, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(0, headY - headR * 1.2, headR * 0.42, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (c.hair === "twists") {
+    for (let k = -3; k <= 3; k++) {
+      ctx.beginPath();
+      ctx.arc(k * headR * 0.27, headY - headR * 0.82 + Math.abs(k) * headR * 0.08, headR * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Face: eyes (with blink), brows, cheeks, mouth (talks inside the talk windows).
+  const eyeY = headY + headR * 0.05;
+  const eyeX = headR * 0.36;
+  const closed = blinking(tMs, seed);
+  for (const sx of [-1, 1]) {
+    ctx.fillStyle = "#1a1a1a";
+    ctx.beginPath();
+    ctx.ellipse(sx * eyeX, eyeY, headR * 0.1, closed ? headR * 0.015 : headR * 0.13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (!closed) {
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(sx * eyeX + headR * 0.03, eyeY - headR * 0.04, headR * 0.035, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = shade(c.hairColor, 0.1);
+    ctx.lineWidth = headR * 0.06;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(sx * eyeX - headR * 0.13, eyeY - headR * 0.26);
+    ctx.lineTo(sx * eyeX + headR * 0.13, eyeY - headR * 0.28 - (mouthOpen(c.talk, progress, tMs) > 0 ? headR * 0.03 : 0));
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,120,120,0.18)";
+    ctx.beginPath();
+    ctx.arc(sx * headR * 0.55, eyeY + headR * 0.3, headR * 0.16, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (c.glasses) {
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = headR * 0.05;
+    for (const sx of [-1, 1]) {
+      roundRectPath(ctx, { x: sx * eyeX - headR * 0.22, y: eyeY - headR * 0.18, w: headR * 0.44, h: headR * 0.34 }, headR * 0.08);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(-eyeX + headR * 0.22, eyeY - headR * 0.05);
+    ctx.lineTo(eyeX - headR * 0.22, eyeY - headR * 0.05);
+    ctx.stroke();
+  }
+  const open = mouthOpen(c.talk, progress, tMs);
+  const mouthY = headY + headR * 0.52;
+  if (open > 0.05) {
+    ctx.fillStyle = "#5a1a1a";
+    ctx.beginPath();
+    ctx.ellipse(0, mouthY, headR * 0.22, headR * (0.04 + 0.16 * open), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(-headR * 0.14, mouthY - headR * (0.04 + 0.16 * open), headR * 0.28, headR * 0.05);
+  } else {
+    ctx.strokeStyle = "#5a1a1a";
+    ctx.lineWidth = headR * 0.06;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(0, mouthY - headR * 0.14, headR * 0.22, Math.PI * 0.2, Math.PI * 0.8);
+    ctx.stroke();
   }
 }

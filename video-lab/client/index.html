@@ -38,6 +38,12 @@
   .ph b { position:absolute; top:4px; left:4px; background:var(--brand); color:#fff; font-size:11px; border-radius:10px; padding:0 6px; display:none; }
   .ph.on b { display:block; }
   .up { aspect-ratio:1; display:flex; align-items:center; justify-content:center; border:1px dashed var(--line); border-radius:8px; color:var(--muted); font-size:22px; cursor:pointer; }
+  .infl { display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; }
+  .pres { padding:0; overflow:hidden; text-align:left; }
+  .pres .face { aspect-ratio: 3/4; background:var(--panel2); display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:22px; }
+  .pres img { width:100%; aspect-ratio:3/4; object-fit:cover; display:block; }
+  .pres span { display:block; font-size:11.5px; padding:4px 6px; }
+  .pres.on { outline:2px solid var(--violet); }
   .templateBtn { width:100%; text-align:left; display:flex; justify-content:space-between; align-items:center; padding:10px 12px; }
   .templateBtn small { color:var(--muted); }
   .hint { color:var(--muted); font-size:12px; margin-top:6px; }
@@ -116,6 +122,21 @@
       <div class="photos" id="photos"></div>
       <div class="hint" id="photosHint">Click to choose, in order (up to 4). Claude sees them.</div>
       <input type="file" id="file" accept="image/*" hidden>
+      <h2>Cartoon presenter (free)</h2>
+      <select id="cartoon"><option value="">None</option></select>
+      <h2>AI influencer: realistic photo (optional)</h2>
+      <div class="infl" id="infl"></div>
+      <div id="inflTools" hidden>
+        <div class="grid2" style="margin-top:8px">
+          <select id="inflAction"></select>
+          <input type="text" id="inflSetting" placeholder="Setting (optional), e.g. a busy market">
+        </div>
+        <div class="row" style="margin-top:6px">
+          <button id="inflPortrait" style="flex:1">Make portrait</button>
+          <button id="inflShot" style="flex:1">Make shot with this product</button>
+        </div>
+        <div class="hint" id="inflHint"></div>
+      </div>
       <h2>Template</h2>
       <button class="templateBtn" id="templateBtn"><span id="templateName">Product hero</span><small>All templates ▸</small></button>
       <div class="hint" id="templateBlurb"></div>

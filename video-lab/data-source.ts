@@ -97,14 +97,25 @@ const UPLOAD_ID = /^up-[0-9a-f]{12}$/;
 const uploadFile = (id: string) => path.join(DATA, "uploads", `${id}.jpg`);
 
 /** Saves an owner's photo (JPEG, PNG, WebP or HEIC as sharp reads it), at most 2,000 px, as JPEG. Returns its id. */
-export async function saveUpload(bytes: Buffer): Promise<{ id: string; width: number; height: number }> {
+export async function saveUpload(bytes: Buffer, description?: string): Promise<{ id: string; width: number; height: number }> {
   const out = await sharp(bytes).rotate().resize({ width: 2000, height: 2000, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 88 }).toBuffer({ resolveWithObject: true }).catch(() => {
     throw new Error("That file is not a photo we can read (use JPG, PNG or WebP).");
   });
   const id = `up-${randomBytes(6).toString("hex")}`;
   await fs.mkdir(path.dirname(uploadFile(id)), { recursive: true });
   await fs.writeFile(uploadFile(id), out.data);
+  if (description) await fs.writeFile(uploadFile(id).replace(/\.jpg$/, ".json"), JSON.stringify({ description: description.slice(0, 300) }));
   return { id, width: out.info.width, height: out.info.height };
+}
+
+/** What an upload shows, when it was described (presenter shots are), for Claude's brief. */
+export async function uploadNote(id: string): Promise<string | null> {
+  if (!UPLOAD_ID.test(id)) return null;
+  try {
+    return (JSON.parse(await fs.readFile(uploadFile(id).replace(/\.jpg$/, ".json"), "utf8")) as { description?: string }).description ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function uploadExists(id: string): Promise<boolean> {

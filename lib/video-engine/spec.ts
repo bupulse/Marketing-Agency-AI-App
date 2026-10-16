@@ -171,7 +171,26 @@ export interface ShapeLayer extends LayerBase {
   draw?: boolean;
 }
 
-export type Layer = PhotoLayer | TextLayer | ShapeLayer;
+/** A cartoon presenter drawn by the engine (no AI image): flat illustration, blinks, breathes, talks and gestures. */
+export const CHARACTER_HAIR = ["short", "afro", "braids", "bun", "twists", "long", "bald"] as const;
+export const CHARACTER_POSES = ["stand", "wave", "point", "present", "thumbsUp", "hold"] as const;
+export interface CharacterLayer extends LayerBase {
+  kind: "character";
+  skin: string;
+  hair: (typeof CHARACTER_HAIR)[number];
+  hairColor: string;
+  outfit: string;
+  /** Second outfit colour (collar, pattern). */
+  accent?: string;
+  glasses?: boolean;
+  pose?: (typeof CHARACTER_POSES)[number];
+  /** When the mouth moves, as [from, to] fractions of the scene. */
+  talk?: [number, number][];
+  /** Which side the gesture goes to (point, present). */
+  side?: "left" | "right";
+}
+
+export type Layer = PhotoLayer | TextLayer | ShapeLayer | CharacterLayer;
 
 export interface Background {
   kind: "solid" | "gradient" | "photo";

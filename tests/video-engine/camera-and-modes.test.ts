@@ -154,3 +154,31 @@ describe("modes", () => {
     expect(totalMs(extended.spec)).toBe(17_000);
   });
 });
+
+describe("cartoon presenters", () => {
+  it("talk only inside the talk windows, and blink briefly", async () => {
+    const { mouthOpen, blinking } = await import("@/lib/video-engine/draw");
+    expect(mouthOpen([[0.2, 0.5]], 0.1, 1000)).toBe(0);
+    const open = [0.21, 0.3, 0.4, 0.49].map((p) => mouthOpen([[0.2, 0.5]], p, p * 4000));
+    expect(open.some((v) => v > 0)).toBe(true);
+    expect(open.every((v) => v >= 0 && v <= 1)).toBe(true);
+    const closed = Array.from({ length: 300 }, (_, i) => blinking(i * 20, 3)).filter(Boolean).length;
+    expect(closed).toBeGreaterThan(0);
+    expect(closed).toBeLessThan(30);
+  });
+
+  it("a character layer is checked: unknown hair and pose fall back, talk windows are clamped", () => {
+    const spec = validateSpec(
+      { palette: {}, scenes: [{ seconds: 3, background: {}, layers: [{ kind: "character", x: 0.5, y: 0.8, w: 0.3, h: 0.5, skin: "red", hair: "mohawk", pose: "dab", talk: [[0.5, 0.2], [-1, 9], "x"] }] }, { seconds: 3, background: {}, layers: [] }] },
+      { ratio: "9:16", photoCount: 0, seconds: 6 },
+    );
+    expect(spec.scenes[0].layers[0]).toMatchObject({ kind: "character", skin: "#8d5524", hair: "short", pose: "stand", talk: [[0.5, 0.5], [0, 1]] });
+  });
+
+  it("the brief describes the chosen cartoon presenter", async () => {
+    const { CARTOON_CAST } = await import("@/lib/video-engine/cast");
+    const text = briefText({ business: { name: "B" }, product: { name: "P" }, photos: [], styleId: "colour-pop", hookId: "auto", ratio: "9:16", seconds: 10, cartoonId: CARTOON_CAST[0].id });
+    expect(text).toContain(`Cartoon presenter: ${CARTOON_CAST[0].name}`);
+    expect(text).toContain("talk windows");
+  });
+});

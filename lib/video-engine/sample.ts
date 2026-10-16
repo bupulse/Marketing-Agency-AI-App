@@ -58,6 +58,7 @@ export function sampleSpec(input: { business: string; product: string; price?: s
           { kind: "text", text: input.business, font: "poppins", weight: 800, size: 0.06, color: "#0b0b0f", x: 0.5, y: 0.7, w: 0.86, h: 0.08, animate: "rise", from: 0.35 },
           { kind: "text", text: "Order on WhatsApp", font: "inter", weight: 600, size: 0.045, color: "#ffffff", x: 0.5, y: 0.8, w: 0.7, h: 0.06, animate: "fade", from: 0.5, box: { color: "#0b0b0f", padding: 0.03, radius: 0.5 } },
           { kind: "shape", shape: "arrow", color: "#0b0b0f", x: 0.5, y: 0.88, w: 0.2, h: 0.03, draw: true, from: 0.6 },
+          { kind: "character", x: 0.82, y: 0.8, w: 0.3, h: 0.36, skin: "#8d5524", hair: "braids", hairColor: "#1b1b1b", outfit: "#f5b700", accent: "#2f6bff", pose: "thumbsUp", side: "left", talk: [[0.1, 0.7]], from: 0.1 },
         ],
       },
     ],

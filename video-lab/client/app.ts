@@ -47,8 +47,10 @@ type Options = {
   estimateUsd: number[];
   seedanceReady: boolean;
   claudeMode: "api" | "subscription";
+  cast: { id: string; name: string; about: string }[];
 };
 type Preview = { spec: MotionSpec; photoIds: string[] };
+type Influencer = { id: string; name: string; gender: string; age: number; vibe: string; portrait: boolean; shots: { id: string; product: string; action: string }[] };
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, ...children: (Node | string)[]) => {
@@ -92,6 +94,8 @@ const state = {
   last: 0,
   previews: {} as Record<string, Preview>,
   category: "all",
+  influencers: [] as Influencer[],
+  influencer: null as string | null,
 };
 
 const canvas = $<HTMLCanvasElement>("preview");
@@ -330,6 +334,67 @@ function setTemplate(id: string) {
   if (t.hook) $<HTMLSelectElement>("hook").value = t.hook;
 }
 
+// ---- AI influencers ------------------------------------------------------------------------------------------------
+
+async function loadInfluencers() {
+  const out = await api<{ influencers: Influencer[]; actions: { id: string; text: string }[] }>("/api/influencers");
+  state.influencers = out.influencers;
+  const sel = $<HTMLSelectElement>("inflAction");
+  if (!sel.options.length) sel.replaceChildren(...out.actions.map((a) => new Option(a.text, a.id)));
+  renderInfluencers();
+}
+
+function renderInfluencers() {
+  const box = $("infl");
+  box.replaceChildren(
+    ...state.influencers.map((i) => {
+      const face = i.portrait ? el("img", { src: `/api/influencers/${i.id}/portrait?v=${Date.now() % 100000}`, alt: i.name }) : el("div", { className: "face", textContent: i.name[0] });
+      const b = el("button", { className: `pres${state.influencer === i.id ? " on" : ""}`, title: `${i.name}, ${i.age}: ${i.vibe}` }, face, el("span", { textContent: `${i.name}, ${i.age}` }));
+      b.onclick = () => {
+        state.influencer = state.influencer === i.id ? null : i.id;
+        renderInfluencers();
+      };
+      return b;
+    }),
+  );
+  const i = state.influencers.find((x) => x.id === state.influencer);
+  $("inflTools").hidden = !i;
+  if (!i) return;
+  $("inflPortrait").textContent = i.portrait ? `New portrait of ${i.name} (~$0.04)` : `Make ${i.name}'s portrait (~$0.04)`;
+  $<HTMLButtonElement>("inflShot").disabled = !i.portrait;
+  $("inflHint").textContent = i.portrait
+    ? `A shot is a realistic photo of ${i.name} with this product (Gemini, ~$0.04). It goes into the references; Claude puts it in the video with camera moves. ${i.name} does not talk yet (that comes with Seedance).`
+    : `First make ${i.name}'s portrait: every shot keeps this face.`;
+}
+
+async function influencerCall(kind: "portrait" | "shot") {
+  const i = state.influencers.find((x) => x.id === state.influencer);
+  if (!i) return;
+  const btn = $<HTMLButtonElement>(kind === "portrait" ? "inflPortrait" : "inflShot");
+  btn.disabled = true;
+  status(kind === "portrait" ? `Making ${i.name}'s portrait with Gemini…` : `Making a shot of ${i.name} with ${currentProduct()?.name ?? "the product"}…`);
+  try {
+    const productPhoto = state.photoIds.find((id) => !id.startsWith("up-")) ?? currentProduct()?.photos[0]?.assetId;
+    const out = await api<{ uploadId?: string; costUsd: number }>(`/api/influencers/${i.id}/${kind}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ businessId: $<HTMLSelectElement>("business").value, productId: $<HTMLSelectElement>("product").value, photoId: productPhoto, action: $<HTMLSelectElement>("inflAction").value, setting: $<HTMLInputElement>("inflSetting").value, ratio: state.ratio }),
+    });
+    if (out.uploadId) {
+      state.uploads.unshift(out.uploadId);
+      state.photoIds = [out.uploadId, ...state.photoIds].slice(0, 4);
+      renderPhotos();
+    }
+    await loadInfluencers();
+    status(`${kind === "portrait" ? "Portrait" : "Shot"} ready (${usd(out.costUsd)}).${out.uploadId ? " It is reference 1 now." : ""}`, "ok");
+    await refreshSpend();
+  } catch (error) {
+    status(error instanceof Error ? error.message : "The image could not be made.", "err");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---- Templates gallery ----------------------------------------------------------------------------------------------
 
 const previewPhotos = new Map<string, Promise<Map<number, Img>>>();
@@ -434,6 +499,7 @@ function newVideo() {
       seconds: state.seconds,
       note: $<HTMLTextAreaElement>("note").value,
       fixedLens: $<HTMLInputElement>("fixedLens").checked,
+      cartoonId: $<HTMLSelectElement>("cartoon").value || null,
       versions,
     },
     `Claude is designing ${versions > 1 ? `${versions} versions` : "the video"}${sub() ? " through your subscription" : ""}… (about ${versions > 2 ? "2 to 4" : "1 to 2"} minutes)`,
@@ -525,6 +591,7 @@ async function init() {
   state.options = options;
   $("mode").textContent = options.claudeMode === "subscription" ? "· Claude: your subscription (switch to the API key before deploying)" : "· Claude: API key";
   renderModes();
+  $<HTMLSelectElement>("cartoon").append(...options.cast.map((c) => new Option(`${c.name}: ${c.about}`, c.id)));
   const hook = $<HTMLSelectElement>("hook");
   hook.replaceChildren(...options.hooks.map((h) => new Option(h.name, h.id)));
   chips("ratios", options.ratios, () => state.ratio, (v) => (state.ratio = v));
@@ -551,6 +618,9 @@ async function init() {
     (e.target as HTMLInputElement).value = "";
   };
   $<HTMLSelectElement>("versions").onchange = updateEstimate;
+  $("inflPortrait").onclick = () => void influencerCall("portrait");
+  $("inflShot").onclick = () => void influencerCall("shot");
+  await loadInfluencers().catch(() => undefined);
   $("go").onclick = newVideo;
   $("sample").onclick = () => void sample();
   $("editBtn").onclick = editVideo;

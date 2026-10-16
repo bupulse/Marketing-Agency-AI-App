@@ -4,14 +4,16 @@
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { DESIGNER_MODEL, DESIGN_MODES, DesignError, apiSum, designVideo, estimateDesignCost, maxDesignCost, type BriefPhoto, type DesignMode } from "@/lib/video-engine/designer";
+import { DESIGNER_MODEL, DESIGN_MODES, DesignError, apiSum, designVideo, estimateDesignCost, maxDesignCost, type BriefPhoto, type DesignMode, type DesignUsage } from "@/lib/video-engine/designer";
 import { subscriptionTransport } from "./claude-cli";
 import { VIDEO_HOOKS } from "@/lib/video-engine/styles";
 import { TEMPLATE_CATEGORIES, VIDEO_TEMPLATES } from "@/lib/video-engine/templates";
+import { CARTOON_CAST, castById } from "@/lib/video-engine/cast";
 import { CAMERA_MOVES, GRADES, QUALITIES, RATIOS, isRatio, SPEC_LIMITS, totalMs, type MotionSpec, type Ratio } from "@/lib/video-engine/spec";
 import { validateSpec } from "@/lib/video-engine/validate";
 import { sampleSpec } from "@/lib/video-engine/sample";
-import { closeDb, getBusiness, loadSavedKeys, listBusinesses, listProducts, musicBytes, musicFor, photoJpeg, saveUpload, uploadExists } from "./data-source";
+import { closeDb, getBusiness, loadSavedKeys, listBusinesses, listProducts, musicBytes, musicFor, photoJpeg, saveUpload, uploadExists, uploadNote } from "./data-source";
+import { INFLUENCERS, SHOT_ACTIONS, listInfluencers, makePortrait, makeShot, portraitBytes } from "./influencers";
 import { DAILY_CAP_USD, getJob, listJobs, listPreviews, newJobId, readVideo, record, savePreview, saveJob, saveVideo, spentToday, type LabJob } from "./store";
 
 const PORT = Number(process.env.VIDEO_LAB_PORT || 3100);
@@ -65,6 +67,7 @@ type DesignRequest = {
   mode: DesignMode;
   fixedLens: boolean;
   base: LabJob | null;
+  cartoonId: string | null;
 };
 
 /** Reads and checks a design request (new video, or edit / extend of an earlier test). */
@@ -97,6 +100,7 @@ async function readRequest(body: Record<string, unknown>): Promise<DesignRequest
     mode,
     fixedLens: body.fixedLens === true,
     base,
+    cartoonId: castById(String(body.cartoonId ?? ""))?.id ?? null,
   };
 }
 
@@ -137,7 +141,8 @@ async function designOne(req: DesignRequest, variation: { index: number; of: num
     for (const id of req.photoIds) {
       const p = await photoJpeg(id, 1280, req.businessId);
       const meta = product.photos.find((x) => x.assetId === id);
-      photos.push({ base64: p.bytes.toString("base64"), mediaType: "image/jpeg", width: p.width, height: p.height, note: meta?.description ?? (id.startsWith("up-") ? "uploaded by the owner" : undefined) });
+      const note = meta?.description ?? (id.startsWith("up-") ? ((await uploadNote(id)) ?? "uploaded by the owner") : undefined);
+      photos.push({ base64: p.bytes.toString("base64"), mediaType: "image/jpeg", width: p.width, height: p.height, note });
     }
     const result = await designVideo(
       {
@@ -152,6 +157,7 @@ async function designOne(req: DesignRequest, variation: { index: number; of: num
         mode: req.mode,
         base: req.base?.spec ?? null,
         fixedLens: req.fixedLens,
+        cartoonId: req.cartoonId,
         variation,
       },
       mode === "api" ? { apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL } : { transport: subscriptionTransport(), model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL },
@@ -207,6 +213,7 @@ const server = http.createServer(async (req, res) => {
         modes: DESIGN_MODES,
         cameraMoves: CAMERA_MOVES,
         grades: GRADES,
+        cast: CARTOON_CAST.map(({ id, name, about }) => ({ id, name, about })),
         model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL,
         capUsd: DAILY_CAP_USD,
         spentUsd: await spentToday(),
@@ -224,6 +231,42 @@ const server = http.createServer(async (req, res) => {
       const out = await photoJpeg(photo[1], size);
       res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "max-age=3600" });
       return res.end(out.bytes);
+    }
+    if (req.method === "GET" && p === "/api/influencers") return json(res, 200, { influencers: await listInfluencers(), actions: SHOT_ACTIONS });
+    const infl = p.match(/^\/api\/influencers\/([a-z-]{2,20})\/(portrait|shot)$/);
+    if (infl && INFLUENCERS.some((i) => i.id === infl[1])) {
+      if (req.method === "GET" && infl[2] === "portrait") {
+        const bytes = await portraitBytes(infl[1]);
+        if (!bytes) return fail(res, 404, "No portrait yet.");
+        res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "no-store" });
+        return res.end(bytes);
+      }
+      if (req.method === "POST") {
+        // Gemini images cost real money (about $0.039 each): checked against the daily cap and recorded first.
+        const spent = await spentToday();
+        if (spent + 0.08 > DAILY_CAP_USD) return fail(res, 429, `Today's test budget is used: $${spent.toFixed(2)} of $${DAILY_CAP_USD.toFixed(2)}.`);
+        const jobId = newJobId();
+        if (infl[2] === "portrait") {
+          const call = await makePortrait(infl[1]).catch(async (e: Error & { call?: DesignUsage }) => {
+            if (e.call) await record(jobId, "gemini-portrait", [e.call]);
+            throw e;
+          });
+          await record(jobId, "gemini-portrait", [call]);
+          return json(res, 200, { ok: true, costUsd: call.costUsd });
+        }
+        const body = JSON.parse((await readBody(req, 16 * 1024)).toString("utf8") || "{}");
+        const product = (await listProducts(String(body.businessId ?? ""))).find((x) => x.id === String(body.productId ?? ""));
+        if (!product) return fail(res, 404, "Product not found.");
+        const photoId = String(body.photoId ?? product.photos[0]?.assetId ?? "");
+        if (!photoId) return fail(res, 400, "This product has no photo for the presenter to hold.");
+        const photo = await photoJpeg(photoId, 1280, String(body.businessId));
+        const out = await makeShot(infl[1], { name: product.name, photo: photo.bytes }, String(body.action ?? "holding"), typeof body.setting === "string" ? body.setting : null, isRatio(body.ratio) && ["9:16", "3:4", "1:1", "4:3", "16:9"].includes(body.ratio) ? body.ratio : "9:16").catch(async (e: Error & { call?: DesignUsage }) => {
+          if (e.call) await record(jobId, "gemini-shot", [e.call]);
+          throw e;
+        });
+        await record(jobId, "gemini-shot", [out.call]);
+        return json(res, 200, { uploadId: out.uploadId, costUsd: out.call.costUsd });
+      }
     }
     if (req.method === "GET" && p === "/api/template-previews") return json(res, 200, await listPreviews());
     if (req.method === "POST" && p === "/api/template-previews") {

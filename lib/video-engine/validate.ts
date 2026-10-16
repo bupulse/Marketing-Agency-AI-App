@@ -3,6 +3,8 @@
 // layers pointing at photos we do not have are dropped, and the scenes are fitted to the length that was asked for.
 import {
   CAMERA_MOVES,
+  CHARACTER_HAIR,
+  CHARACTER_POSES,
   EASES,
   FONTS,
   GRADES,
@@ -159,6 +161,28 @@ function layer(v: unknown, photoCount: number, palette: MotionSpec["palette"]): 
       shadow: v.shadow === true,
       animate: oneOf(v.animate, TEXT_ANIMATIONS, "fade"),
       animateFor: optNum(v.animateFor, 0.1, 3),
+    };
+  }
+  if (v.kind === "character") {
+    const talk = (Array.isArray(v.talk) ? v.talk : [])
+      .filter((w): w is unknown[] => Array.isArray(w) && w.length === 2)
+      .slice(0, 6)
+      .map((w) => {
+        const a = num(w[0], 0, 1, 0);
+        return [a, Math.max(a, num(w[1], 0, 1, a))] as [number, number];
+      });
+    return {
+      kind: "character",
+      ...box(v),
+      skin: color(v.skin, "#8d5524"),
+      hair: oneOf(v.hair, CHARACTER_HAIR, "short"),
+      hairColor: color(v.hairColor, "#1b1b1b"),
+      outfit: color(v.outfit, palette.primary),
+      accent: v.accent ? color(v.accent, palette.accent) : undefined,
+      glasses: v.glasses === true,
+      pose: oneOf(v.pose, CHARACTER_POSES, "stand"),
+      talk,
+      side: v.side === "left" ? "left" : "right",
     };
   }
   if (v.kind === "shape") {

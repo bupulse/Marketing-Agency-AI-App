@@ -43,13 +43,103 @@ It is in testing in the **Video Lab**, outside the app. Clients do not see it ye
    library track (looped, faded in 1 s and out 1.5 s, at 85%) encoded to AAC. A 12 s 9:16 video is about 5 MB and takes
    about 30 s to make on a laptop.
 
+## Camera, look and transitions (the "Seedance feel")
+
+Claude is also the director of photography: every scene can have a **camera** (`Scene.camera`, `cameraAt` and
+`parallax` in `animate.ts`).
+
+- **15 moves:** static, dolly in/out, pan left/right, tilt up/down, orbit left/right, crane up/down, crash zoom,
+  push-pull (dolly zoom), dutch roll and handheld. Each has an intensity, an optional extra shake (deterministic, so a
+  re-render is identical) and an optional **focus pull** (`focusFrom` and `focusTo`, depths).
+- **Depth and parallax:** every layer has a depth, 0 (far) to 1 (near). Near layers move and zoom more than far ones,
+  like a real camera in a 3D set. The background is drawn larger while the camera moves, so its edges never show.
+- **Focus:** layers away from the focus depth are blurred. Text is a graphic on top of the shot, so it always stays
+  sharp.
+- **Film look (`MotionSpec.look`):** colour grades (warm, cool, teal-orange, vivid, mono, film, faded, night), glow,
+  drifting light leaks, vignette, grain and cinema bars. The grade and glow are applied to the whole frame from an
+  off-screen buffer; the rest is drawn on top.
+- **Transitions:** cut, fade, slide up, slide left, zoom, wipe and flash, plus whip (motion blur), blur zoom, spin and
+  dip to black.
+
+## Modes and settings (like Seedance)
+
+| Mode | What Claude does |
+| --- | --- |
+| Reference (default) | Uses up to 4 photos freely (Seedance's "omni reference") |
+| Text | No photos: text, shapes, colour and camera only |
+| Image | Photo 1 is the opening frame, brought to life |
+| First + last | Opens on photo 1, ends on photo 2, and connects them |
+| Edit | Gets the current design and the owner's change ("make the price bigger"), returns the whole updated design; the length may change |
+| Extend | Keeps every scene and adds about 3 to 8 seconds of new ones (at most 30 s in all) |
+
+**Settings:**
+
+- **Shape:** 9:16, 3:4, 4:5, 1:1, 4:3, 16:9 or 21:9.
+- **Length:** 4 to 30 s.
+- **Quality:** 480p, 720p or 1080p. This only changes the MP4's pixel size, since the design uses fractions of the
+  canvas; the encoder picks the H.264 level for the size.
+- **Fixed lens:** no camera moves.
+- **Music:** on or off.
+- **Versions:** 1 to 4, each told to look clearly different, made two at a time.
+
+**References:** the owner can also upload photos to the lab (`video-lab/data/uploads`).
+
+## Templates
+
+`lib/video-engine/templates.ts`: 26 templates in 8 categories, like Higgsfield's Marketing Studio:
+
+| Category | Templates |
+| --- | --- |
+| Product shot | Product hero, Studio turntable, Macro details, Fresh splash |
+| Motion | Bold words, Hypermotion, Dark minimal, Colour pop, Typography poster |
+| UGC | Customer review, Unboxing, POV moment, Problem to fix |
+| TikTok | This saved me, 3 reasons, Secret hack |
+| Ads | Offer flash, TV spot, Brand story |
+| Posters & offers | Event poster, Price drop |
+| Marketplace | Listing video, Colour options |
+| Cinematic | Cinematic story, Golden hour, Local market |
+
+- **Art direction:** each template gives the layout, the camera language, the look and the pacing.
+- **UGC templates:** these are marked `presenter`. Until AI influencers exist, they are carried by the product and
+  first-person captions.
+- **Gallery previews:** each template has a live example video, made once (`POST /api/template-previews`, kept in
+  `video-lab/data/template-previews/`). It plays when the mouse is over its card.
+
+## AI influencers (owner decision: both kinds)
+
+- **Realistic photo influencers** (`video-lab/influencers.ts`): 8 fictional East African presenters (Aline, Eric,
+  Grace, Kevin, Diane, Patrick, Sandrine, Jean-Paul), each with an age, a look, a vibe and a usual place.
+  - **Portrait:** made once with Gemini (`gemini-2.5-flash-image`, about $0.039). Every later image keeps this face.
+  - **Shot:** the presenter holding, showing, using or unboxing the product, made from the portrait and the product
+    photo, so the face and the product stay the same (about $0.039).
+  - **In the video:** a shot becomes a reference photo with a note ("Aline (AI presenter) holding..."). Claude uses
+    it like UGC footage: full frame, handheld camera, first-person captions. The lips do not move; talking presenters
+    come with Seedance.
+  - **Rules** (as in `lib/designs/prompt.ts`): fictional adults only, never a real or famous person or a lookalike,
+    same clothes, and no added or changed brand logos.
+  - **Spending:** real money, counted in the lab ledger and the daily cap.
+- **Cartoon presenters** (`lib/video-engine/cast.ts`, `CharacterLayer`, `drawCharacter`): Keza, Bosco, Mama Uwase,
+  Ganza, Ineza and Teta, drawn by the engine, so they are free.
+  - They have skin, hair (short, afro, braids, bun, twists, long, bald), outfit and accent colours, and optional
+    glasses.
+  - They breathe, blink and gesture (stand, wave, point, present, thumbs up, hold), and their mouth moves inside the
+    talk windows Claude sets.
+  - The presenter keeps a lower corner to themselves; text and the product go elsewhere.
+
+Measured, 16 October 2026 (Galaxy A56):
+
+- **Aline:** portrait 28 s, $0.039; shot holding the phone 32 s, $0.039.
+- **Customer review design with the shot:** 15 s, $0.113 on the API (subscription $0). The result: handheld,
+  TikTok-style captions, 5 stars, macro detail shots with a ring on the camera, an end card.
+- **Colour pop with Keza:** 12 s, $0.161 on the API.
+
 ## Styles and hooks
 
 `lib/video-engine/styles.ts`, written for Rwanda and East Africa (like Higgsfield's Marketing Studio presets).
 
-| Styles | Product hero, Bold words, Dark minimal, Colour pop, Offer flash, Cinematic story, 3 reasons, Local market |
+| Styles | now the templates above (`VIDEO_STYLES` is kept as an alias) |
 | --- | --- |
-| Hooks | Let Claude choose, A question, Bold claim, Price reveal, Problem then fix, POV, Countdown |
+| Hooks | Let Claude choose, A question, Bold claim, Price reveal, Problem then fix, POV, Countdown, Product hit, Stop scrolling, Did you know?, Big reveal |
 
 Each one is a short art direction added to Claude's brief.
 
@@ -108,6 +198,13 @@ The lab shows the real tokens and cost of every test (`docs/AI_COSTS.md`).
   MoMo, warranty, the WhatsApp number).
 - **MP4:** 6.9 MB, made in 23 s in Chrome, with library music.
 
+Later the same night (house listing, Kibagabaga):
+
+- **Cinematic story design:** 15 s, 6 scenes. Claude chose dolly in, pan, crane up, orbit, push-pull and dolly out,
+  with dip and fade transitions, a teal-orange grade, light leaks, grain and cinema bars. Every claim was in the
+  listing. It took 29 s, with 15,264 tokens in and 3,313 out: $0.095 on the API.
+- **Edit ("bigger price, own final scene, longer opening"):** 32 s, $0.138 on the API.
+
 ## Not yet
 
 - **Voice-over** from the scenes' `say` lines (ElevenLabs, timed like `fitPlanToVoice`).
@@ -131,7 +228,10 @@ The lab shows the real tokens and cost of every test (`docs/AI_COSTS.md`).
 | Canvas renderer | `lib/video-engine/draw.ts` |
 | Fonts, photos, MP4 | `lib/video-engine/encode.ts` |
 | Claude designer | `lib/video-engine/designer.ts` |
+| Templates | `lib/video-engine/templates.ts` |
 | Styles and hooks | `lib/video-engine/styles.ts` |
 | Free sample design | `lib/video-engine/sample.ts` |
+| Cartoon presenters | `lib/video-engine/cast.ts` (drawn in `draw.ts`) |
+| Realistic influencers (lab) | `video-lab/influencers.ts` |
 | Video Lab | `video-lab/server.ts`, `video-lab/data-source.ts`, `video-lab/store.ts`, `video-lab/client/`, `scripts/video-lab/start.mjs` (`npm run lab`) |
-| Tests | `tests/video-engine/engine.test.ts` |
+| Tests | `tests/video-engine/engine.test.ts`, `tests/video-engine/camera-and-modes.test.ts` |
