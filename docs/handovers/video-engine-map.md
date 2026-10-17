@@ -127,3 +127,4 @@ brief.
   browser on TEST first (none of the app page has been opened in a browser yet; it is covered by mocked tests only).
 - Still planned (docs/VIDEO_APP_INTEGRATION.md tasks 9 to 16): Seedance in the app, cut-outs in the browser, the Mac
   render worker for Premium 3D, Admin cards, Autopilot videos.
+- End of the motion engine day: a fresh 33-template Galaxy sweep through the whole committed pipeline scores a mean of 99.9 (32 at 100), with one true fact warning and one true language warning; other products 99.3 to 99.6; the 1080p clip-sound proof passes unpatched. Sheets and score table in /private/tmp/claude-502/-Users-macbook1-BuPulse-video/quality/loop10/.
