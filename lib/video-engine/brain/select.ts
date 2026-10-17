@@ -376,7 +376,7 @@ export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: 
     { lines: lengthNote ? [lengthNote] : [], optional: 1 },
     { lines: [seedance ? "Shots and sound:" : "On-screen text and look:", ...doLines(textRules, 6)], optional: 0, trim: true },
     { lines: [cta], optional: 0 },
-    { lines: sound ? [sound] : [], optional: 2 },
+    { lines: sound ? [sound] : [], optional: 0 },
     { lines: mixed ? [line(mixed)] : [], optional: 0 },
     { lines: seedance ? [] : [caption], optional: 0 },
     { lines: donts, optional: 0, trim: true },

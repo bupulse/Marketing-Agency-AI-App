@@ -14,11 +14,11 @@ Code: `lib/video-engine/brain/` (data in `brain/data/*.json`). Tests: `tests/vid
 
 | Part | Count | What it holds |
 | --- | --- | --- |
-| Research rows | 508: 383 videos and ads (317 watched first-hand: TikTok 133, Facebook 90, Instagram 58, YouTube Shorts 36) and 125 post captions (111 Rwandan); 8 income-chain posts kept only as what not to copy |
+| Research rows | 538: 383 videos and ads (317 watched first-hand: TikTok 133, Facebook 90, Instagram 58, YouTube Shorts 36), 125 post captions (111 Rwandan) and 30 clips whose 450 comments were read; 8 income-chain posts kept only as what not to copy |
 | Hooks (openings) | 62 | The first 2 seconds: the line, what is on screen, where it was seen, real example lines |
 | Formats | 10 | Product reveal, UGC testimonial, before/after, unboxing, tour, offer, 3D motion, kinetic typography, tutorial, list or price list |
 | Captions | 4 platforms, all researched, 28 formulas including 5 model captions by sector, 10 ways to order, the caption corpus counts |
-| Rules | 75 (61 do, 14 don't) |
+| Rules | 81 (66 do, 15 don't) |
 | Sectors | 11 | Restaurant, phone shop, salon, fashion, real estate, school, car rental, clinic, events, services, and "shop" for everything else |
 
 The Facebook "Rwanda playbook" (round 2) is folded in: its verbatim opening lines (the price pill, the counter seller
@@ -40,6 +40,13 @@ SCHOOLS"); a clean CONTACT US card at the end; and the sound rules from 30 clips
 7 by a subtitled speaker): never depend on audio, a library music mood per sector (afro for salons, fashion and travel;
 calm for clinics and schools; never a trending track), a voice only when a person carries the clip. Each sector's mood
 and voice go into the designer's brief as a "Sound:" line.
+What viewers ask (450 comments on 30 TikTok business clips, `tiktok-comments.jsonl`; only the clip summaries are indexed,
+as `cm-` rows, with the clip's comment count as its signal) added: the full price with its condition on screen (21% of
+comments ask the price, 69 of 94 on clips that show none; a shown "8k" answered "18k" was called a lie), the area and a
+landmark in the last 3 seconds, a labelled number ("WhatsApp …"), the caption's first line pre-answering the standard
+questions, insurers on screen for clinics, a real shop in frame (two clips drew "is this AI?"), and no bare "Inbox"
+replies. Only Rwandan clips are cited for Rwandan findings; the Kenyan, Nigerian, Tanzanian and Chinese-campus clips keep
+their own country (or none).
 
 ## The pipeline, step by step
 

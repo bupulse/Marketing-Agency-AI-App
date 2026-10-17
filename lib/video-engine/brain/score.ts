@@ -226,6 +226,9 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
       : { id: "contact-last", rule: "cta-route", points: 12, ok: false, reason: `The last scene does not show the number (${phone}).`, scene: last });
     const missing = scenes.map((s, i) => (texts(s).some((l) => hasPhone(l.text, phone)) ? -1 : i)).filter((i) => i >= 0);
     const everyScene = limits.phoneEveryScene === "always" || (limits.phoneEveryScene === "facebook" && platform === "facebook");
+    // Viewers ask "is that number WhatsApp?" (tiktok-comments.jsonl): the number says what it is for, at least once.
+    const labelled = scenes.some((sc) => texts(sc).some((l) => hasPhone(l.text, phone) && /whats\s?app|call|tel|phone|📞|📲|☎|hamagara|duhamagare|appelez/i.test(l.text)));
+    add({ id: "number-labelled", rule: "number-labelled", points: 4, ok: labelled, reason: labelled ? "The number says what it is for." : "Label the number at least once ('WhatsApp 0788 …', 'Call 0788 …'): viewers ask whether it is WhatsApp.", scene: null });
     if (everyScene) add({ id: "phone-bar", rule: "phone-bar", points: 6, ok: missing.length === 0, reason: missing.length ? `The number is missing from scene${missing.length > 1 ? "s" : ""} ${missing.map((i) => i + 1).join(", ")}; keep it on screen from 0 s to the end (a small quiet line is enough${style === "luxury" || style === "brand" ? " for this template" : ""}).` : "The number stays on screen in every scene.", scene: missing[0] ?? null });
   } else {
     add({ id: "contact-last", rule: "cta-route", points: 12, ok: ROUTE.test(lastText), reason: ROUTE.test(lastText) ? "The last scene names a way to order." : "The last scene does not say how to order (WhatsApp, call, visit, the website).", scene: last });

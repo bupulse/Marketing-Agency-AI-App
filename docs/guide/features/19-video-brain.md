@@ -15,18 +15,18 @@ testing; clients do not see it yet.
 
 ## The numbers
 
-The one place to update when new research comes in (last updated 17 October 2026, after TikTok round 2):
+The one place to update when new research comes in (last updated 17 October 2026, after the comments research):
 
 | What | Count |
 | --- | --- |
-| Research rows (videos, ads and captions) | 508: TikTok 179, Facebook 110, Instagram 58, YouTube Shorts 36, post captions 125 |
+| Research rows (videos, ads, captions and comments) | 538: TikTok 179, Facebook 110, Instagram 58, YouTube Shorts 36, post captions 125, clips whose comments were read 30 (450 comments) |
 | Watched first-hand by a researcher | 344: TikTok 133, Facebook 90, Instagram 58, YouTube 36, TikTok captions 27 |
-| Rwandan rows | 275 |
+| Rwandan rows | 297 |
 | Rows set aside as income-chain or scam posts | 8 |
 | Openings (hooks) | 62 |
 | Video formats | 10 |
 | Business sectors | 11 |
-| Rules | 75 (61 do, 14 don't) |
+| Rules | 81 (66 do, 15 don't) |
 | Caption formulas | 28, plus 10 ways to order |
 
 ## What you see

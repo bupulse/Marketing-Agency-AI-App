@@ -125,6 +125,24 @@ describe("income-chain and scam rows", () => {
   });
 });
 
+describe("what viewers ask (TikTok comments)", () => {
+  it("indexes one evidence row per clip summary, not the 450 comments, and a clip's comments count is its signal", () => {
+    const cm = BRAIN.evidence.filter((e) => e.source === "comments");
+    expect(cm).toHaveLength(30);
+    expect(cm.find((e) => e.who === "@kibo_electronics")!.strength).toBeGreaterThan(cm.find((e) => e.who === "@kigali_fashion_hub")!.strength);
+    // Clips that are not Rwandan sellers are not counted as Rwandan.
+    expect(cm.find((e) => e.who === "@village988")!.country).not.toBe("RW");
+    expect(cm.find((e) => e.who === "@brandnewpharma")!.country).toBe("KE");
+  });
+
+  it("asks clinics for trust, not a price first, and every design to label its number", () => {
+    const clinic = brainFor({ ...base, sector: "clinic", format: "tutorial" }).rules.map((r) => r.id);
+    expect(clinic).toEqual(expect.arrayContaining(["trust-first", "insurers-on-screen"]));
+    expect(clinic).not.toContain("price-first-frame");
+    expect(brainFor({ ...base, sector: "phone-shop" }).rules.map((r) => r.id)).toContain("price-with-condition");
+  });
+});
+
 describe("variants live (Facebook)", () => {
   it("counts rows sharing an advertiser, or the researchers' stated count, and raises strength with it", () => {
     const rows = [{ page: "Shop A" }, { page: "shop a" }, { page: "Elohome" }, { page: "Solo" }];
@@ -339,6 +357,12 @@ describe("scoring a design", () => {
     expect(r.failed).toEqual([]);
     expect(r.score).toBe(100);
     expect(r.passed.map((p) => p.id)).toEqual(expect.arrayContaining(["hook-text", "price-shown", "price-early", "contact-last", "phone-bar", "cta", "motion", "safe-area", "length", "scene-count", "say-lines", "caption", "do-not-copy", "facts"]));
+  });
+
+  it("the number must say what it is for at least once", () => {
+    const bare: MotionSpec = { ...good, scenes: good.scenes.map((sc) => ({ ...sc, layers: sc.layers.map((l) => (l.kind === "text" && l.text.includes("0788") ? { ...l, text: "0788 300 400" } : l)) })) };
+    expect(scoreDesign(bare, brief).failed.map((f) => f.id)).toContain("number-labelled");
+    expect(scoreDesign(good, brief).passed.map((f) => f.id)).toContain("number-labelled");
   });
 
   it("a bad design fails with the rule, a plain reason and the scene", () => {

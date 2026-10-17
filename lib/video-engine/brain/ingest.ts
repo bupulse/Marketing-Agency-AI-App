@@ -164,7 +164,8 @@ export function evidenceFromRows(source: ResearchSource, rows: Row[], existing: 
     used.add(id);
     const url = str(row.url) ?? str(row.clip_url);
     const stats = (row.stats_as_reported ?? {}) as Row;
-    const likes = parseCount(stats.likes ?? row.likes);
+    // A comments row's signal is how many comments the clip drew (729 is a lot for a Kigali shop); it stands in for likes.
+    const likes = parseCount(stats.likes ?? row.likes ?? (source === "comments" ? row.total_comments_shown : null));
     const runningDays = typeof row.running_days === "number" ? row.running_days : null;
     const variants = variantsLive(source, row, rows);
     const scam = looksLikeScam(row);

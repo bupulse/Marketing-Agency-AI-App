@@ -12,7 +12,7 @@ data changes.
 
 Brief: Nova Phones Kigali, Samsung Galaxy A56, 420,000 RWF, WhatsApp 0788 300 400, English, template Kigali price-first, 15 s.
 
-3328 characters, about 832 tokens.
+3378 characters, about 845 tokens.
 
 ```text
 What works: phone and electronics shop, product reveal, TikTok, 15 s (from 344 ads and reels BuPulse watched).
@@ -32,7 +32,7 @@ On-screen text and look:
 - Burn in captions for every spoken line (most people watch muted).
 - A real place behind the product (shelf, counter, table, compound) and real people or hands; no blank studio.
 - Labels, prices and menus are drawn as text on top, never left to a generated image.
-- A first caption of about 5 words at 0.0 s, upper-middle.
+- The full price on screen with its condition in the same label ('28k with extension', '133k for 3 nights').
 Call to action: WhatsApp or call {phone}; the shop address and room number (Makuza Peace Plaza, Room 35).
 Caption: {product}: {claim}. Available now at {business} 📞 {phone} 🚚 {offer} (e.g. "✨ AQUOS Sense 9 — compact, powerful and seriously impressive. Available now at KIBO Electronics �..."). Include: the offer or the product in the first line; the route to order (WhatsApp, call, DM, the app); the area in the city; 4 to 6 hashtags with the city. Hashtags 4 to 6, local first: #kigalitiktok #rwandatiktok #KigaliRwanda #KigaliBusiness.
 Don't:
@@ -86,7 +86,7 @@ Don't:
 
 Brief: Ikaze Homes, 4 bedroom house in Kibagabaga, 180,000,000 RWF, Seedance tour, 15 s, with sound. The phone is overlaid by BuPulse.
 
-3315 characters, about 829 tokens.
+3419 characters, about 855 tokens.
 
 ```text
 What works: real estate (sale and rent), tour, Instagram Reels, 15 s (from 344 ads and reels BuPulse watched).
@@ -102,6 +102,7 @@ Timeline (15 s, 2 to 3 changes per 10 s):
 Shots and sound:
 - No text in the clip: open on motion, keep the top third and a lower-middle band calm for BuPulse's price strip and phone bar, end on a clean hero shot with space above.
 - Labels, prices and menus are drawn as text on top, never left to a generated image.
+- Real shop, stock and hands in frame; AI visuals keep the real product photo and never invent a place.
 - Open on the best visual in frame 0, never a logo card.
 Call to action (BuPulse overlays it on the last shot; keep that shot clean): WhatsApp {phone}; district, sector and street (Kicukiro, Kanombe, Kabeza); the property ID.
 Don't:
@@ -125,7 +126,7 @@ East Africa: Kigali buyers filter on district, sector and size first: put them i
 
 Brief: The same house, made from the listing photos, template Brand story (a tour), 20 s.
 
-3521 characters, about 880 tokens.
+3571 characters, about 893 tokens.
 
 ```text
 What works: real estate (sale and rent), tour, Instagram Reels, 20 s (from 344 ads and reels BuPulse watched).
@@ -144,7 +145,7 @@ On-screen text and look:
 - Burn in captions for every spoken line (most people watch muted).
 - A real place behind the product (shelf, counter, table, compound) and real people or hands; no blank studio.
 - Labels, prices and menus are drawn as text on top, never left to a generated image.
-- A first caption of about 5 words at 0.0 s, upper-middle.
+- The full price on screen with its condition in the same label ('28k with extension', '133k for 3 nights').
 Call to action: WhatsApp {phone}; district, sector and street (Kicukiro, Kanombe, Kabeza); the property ID.
 Caption: {product} {price} {offer} Call or WhatsApp {phone} 📍 {area} (e.g. "Samsung s22 ₹10000/- Downpayment Call or whatsapp📞 =99108450…"). Include: the offer or the price first; one line of benefit; the contact: phone, WhatsApp or 'DM to order'; the place (street, neighbourhood or a location tag); 3 to 6 hashtags: 2 broad, 2 local (#kigali, #rwanda), 1 or 2 niche. Hashtags 3 to 6, local first: #kigali #rwanda #kigalirwanda #kigalifood.
 Don't:
@@ -162,7 +163,7 @@ East Africa: Kigali buyers filter on district, sector and size first: put them i
 
 Brief: Cave Kitchen Kicukiro, 'Buy one pizza, get one free every Tuesday', pizza 12,000 RWF, call 0791 000 111, template Offer flash, 15 s.
 
-3402 characters, about 851 tokens.
+3452 characters, about 863 tokens.
 
 ```text
 What works: restaurant, café, bakery, offer, Facebook, 15 s (from 344 ads and reels BuPulse watched).
@@ -182,7 +183,7 @@ On-screen text and look:
 - Burn in captions for every spoken line (most people watch muted).
 - A real place behind the product (shelf, counter, table, compound) and real people or hands; no blank studio.
 - Labels, prices and menus are drawn as text on top, never left to a generated image.
-- A first caption of about 5 words at 0.0 s, upper-middle.
+- The full price on screen with its condition in the same label ('28k with extension', '133k for 3 nights').
 Call to action: Order on {app} or call {phone}; the area (Kicukiro Sonatube, Kimironko).
 Caption: 🍔 {product} for only {price} {day}
 Abakiriya bacu barishimye 😍 ntucikwe!
@@ -204,7 +205,7 @@ Don't:
 
 Brief: Amahoro Braids, knotless braids, from 25,000 RWF, Seedance transformation, 10 s, with sound. The phone is overlaid by BuPulse.
 
-3490 characters, about 873 tokens.
+3594 characters, about 899 tokens.
 
 ```text
 What works: salon, barber, nails, beauty, before and after, TikTok, 10 s (from 344 ads and reels BuPulse watched).
@@ -221,6 +222,7 @@ Research length for this format: 14 to 20 s; keep the same beats at this length.
 Shots and sound:
 - No text in the clip: open on motion, keep the top third and a lower-middle band calm for BuPulse's price strip and phone bar, end on a clean hero shot with space above.
 - Labels, prices and menus are drawn as text on top, never left to a generated image.
+- Real shop, stock and hands in frame; AI visuals keep the real product photo and never invent a place.
 - Open on the best visual in frame 0, never a logo card.
 Call to action (BuPulse overlays it on the last shot; keep that shot clean): Book on WhatsApp {phone}; the street (Roysambu, Lumumba Drive style).
 Sound: music mood afro (mid-tempo Afrobeats or amapiano loops) from BuPulse's library, never a trending track; voice: a voice-over with word-by-word captions for a client story; otherwise the text carries it. The clip must work muted.
@@ -245,7 +247,7 @@ East Africa: One flat price that includes a free extra (braids and a free wash) 
 
 Brief: Bright Future Academy, evening English course, 30,000 RWF a month, WhatsApp 0782 000 333, template 3 reasons, 15 s.
 
-3480 characters, about 870 tokens.
+3524 characters, about 881 tokens.
 
 ```text
 What works: school, training, courses, list or price list, YouTube Shorts, 15 s (from 344 ads and reels BuPulse watched).
@@ -258,12 +260,12 @@ Timeline (15 s, 5 to 8 changes per 10 s):
 - 1.5-12 s body: One item per beat, about 2 s each: a product in a hand in front of the stock, or one reason or lesson point. On screen: A big number and the item; a price label on each product.
 - 12-15 s cta: The shop, the class or the team. On screen: 'Call / WhatsApp {phone}'.
 On-screen text and look:
-- The price (or the offer) in the first frame, large, top third.
 - The phone/WhatsApp number on screen from 0 s to the last frame, in a fixed bar above the app's UI, digits grouped.
 - Burn in captions for every spoken line (most people watch muted).
 - A real place behind the product (shelf, counter, table, compound) and real people or hands; no blank studio.
 - Shorts: top 10% clear (auto-captions), bottom 25% clear (title, Subscribe); price and number at 40 to 60% height.
 - Labels, prices and menus are drawn as text on top, never left to a generated image.
+- The full price on screen with its condition in the same label ('28k with extension', '133k for 3 nights').
 Call to action: WhatsApp {phone} to register; the campus area.
 Sound: music mood calm or inspiring (quiet and clean; inspiring for a brand film) from BuPulse's library, never a trending track; voice: a student or a teacher speaking, always subtitled. The clip must work muted.
 Caption: {count} reasons to {claim} / {product} in {city}: {offer} (e.g. "5 reasons to invest in Rwanda"). Include: the promise, the number or the product name in the first 40 characters; the shop name and the city (people search for them); the phone number in the title for a local shop; 1 to 3 hashtags at the end (#shorts and the city). Hashtags 1 to 3, local first: #shorts #kigali #kigali_250 #rwanda.
