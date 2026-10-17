@@ -386,3 +386,8 @@ dialog.narrow { width:min(640px, 94vw); }
 .madeWith { overflow-x:clip; }
 .picker .pk.cut img { object-fit:contain; background:repeating-conic-gradient(#22222a 0% 25%, #2c2c36 0% 50%) 50% / 16px 16px; }
 .picker .pk.off { opacity:.55; cursor:not-allowed; }
+/* Opening-line chips (the Brain's suggestions) above the prompt bar */
+.hookChips { max-width:1100px; margin:18px auto 0; display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:flex-start; }
+.hookChip { background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:7px 13px; color:var(--text); font:inherit; font-size:13px; font-weight:600; cursor:pointer; }
+.hookChip:hover { border-color:var(--violet); }
+.hookChip.on { background:var(--brand); border-color:transparent; color:#fff; }

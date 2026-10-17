@@ -31,6 +31,8 @@ type FactWarning = { where: string; found: string; problem: "not-in-brief" | "bu
 type DesignScore = { score: number; failed: { rule: string; reason: string; scene?: number | null }[] };
 type ClaudeJob = { warnings?: FactWarning[]; score?: DesignScore; captionScore?: number; captionMissed?: string[]; id: string; createdAt: string; productName: string; styleId: string; ratio: string; photoIds: string[]; spec: MotionSpec | null; usage: unknown[]; apiEquivalentUsd?: number; status: string; error: string | null; video: { bytes: number; quality?: string } | null; mode?: string };
 type SdJob = { id: string; createdAt: string; status: string; credits: number; estimateUsd: number; costUsd: number; tokens: number; videoFile: string | null; error: string | null; title: string; request: { prompt: string; tier: string; resolution: string; ratio: string; seconds: number; referenceNotes: string[] }; preview?: { notice: string; readyAt: string; wouldCostCredits: number } };
+/** An opening line from the Brain (lib/video-engine/brain/suggest.ts). */
+type HookSuggestion = { hookId: string; name: string; line: string; why: string };
 type Issue = { level: "error" | "warning" | "info"; code: string; message: string };
 type StoryShot = { n: number; from: number; to: number; shot: string; camera: string; action: string; sound: string | null; spoken: string | null; references: string[] };
 type Storyboard = { notice: string; model: string; resolution: string; ratio: string; seconds: number; audio: boolean; setting: string | null; shots: StoryShot[]; frames: { at: number; shot: number; caption: string; svg: string }[]; references: { label: string; kind: string; thumb: string | null }[]; estimate: { usd: number; credits: number; wait: string }; issues: Issue[] };
@@ -98,6 +100,10 @@ const state = {
   planVariant: 0,
   checkErrors: [] as Issue[],
   photos: new Map() as Photos,
+  /** The Brain's opening lines for the product (Motion), and the one the owner clicked. */
+  hooks: [] as HookSuggestion[],
+  chosenHook: null as HookSuggestion | null,
+  hooksKey: "",
   /** Motion videos: where the video will be posted (optional; null = any). */
   platform: null as string | null,
   playing: false,
@@ -179,6 +185,47 @@ function renderPills() {
   $("tAvatar").hidden = false;
   void quote();
   scheduleCheck();
+  void loadHooks();
+}
+
+// ---- Opening lines (the Brain's suggestions, Motion only for now) -----------------------------------------------------
+
+/** Fetches the three opening lines when the product, template, platform or length changes. */
+async function loadHooks() {
+  const box = $("hookChips");
+  if (state.engine !== "claude" || !state.productId) {
+    box.hidden = true;
+    return;
+  }
+  const key = [state.businessId, state.productId, state.templateId, state.platform, state.seconds].join("|");
+  if (key === state.hooksKey) return renderHooks();
+  state.hooksKey = key;
+  const q = new URLSearchParams({ business: state.businessId, product: state.productId, template: state.templateId, seconds: String(state.seconds), platform: state.platform ?? "" });
+  const out = await api<{ hooks: HookSuggestion[] }>(`/api/hooks?${q}`).catch(() => ({ hooks: [] as HookSuggestion[] }));
+  if (key !== state.hooksKey) return;
+  state.hooks = out.hooks;
+  if (state.chosenHook && !out.hooks.some((h) => h.line === state.chosenHook?.line)) state.chosenHook = null;
+  renderHooks();
+}
+
+function renderHooks() {
+  const box = $("hookChips");
+  box.hidden = state.engine !== "claude" || !state.hooks.length;
+  box.replaceChildren(
+    el("span", { className: "muted small", textContent: "Opening line:" }),
+    ...state.hooks.map((h) => {
+      const on = state.chosenHook?.line === h.line;
+      const b = el("button", { className: `hookChip${on ? " on" : ""}`, textContent: h.line, title: `${h.name}. ${h.why}` });
+      b.onclick = () => {
+        // A second click lets Claude choose again.
+        state.chosenHook = on ? null : h;
+        if (!on) state.hookId = h.hookId;
+        renderHooks();
+        msg(on ? "Claude will choose the opening line." : `Opening line: "${h.line}". ${h.why}`, "ok");
+      };
+      return b;
+    }),
+  );
 }
 
 // ---- Seedance checks (lib/video-engine/seedance-brain.ts, through /api/seedance/check) -------------------------------
@@ -386,6 +433,7 @@ function renderRefs() {
   ta.classList.toggle("on", !!state.avatar);
   void quote();
   scheduleCheck();
+  void loadHooks();
 }
 
 function addRef(r: Ref) {
@@ -650,7 +698,7 @@ async function generate() {
       const out = await api<{ jobs: ClaudeJob[]; error: string | null }>("/api/design", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: state.mode, businessId: state.businessId, productId: state.productId, photoIds: state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]), styleId: state.templateId, hookId: state.hookId, ratio: state.ratio, seconds: state.seconds, note: prompt, fixedLens: state.fixedLens, cartoonId: state.avatar?.kind === "cartoon" ? state.avatar.id : null, versions: state.versions, platform: state.platform }),
+        body: JSON.stringify({ mode: state.mode, businessId: state.businessId, productId: state.productId, photoIds: state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]), styleId: state.templateId, hookId: state.hookId, ratio: state.ratio, seconds: state.seconds, note: prompt, fixedLens: state.fixedLens, cartoonId: state.avatar?.kind === "cartoon" ? state.avatar.id : null, versions: state.versions, platform: state.platform, chosenHook: state.chosenHook ? { hookId: state.chosenHook.hookId, line: state.chosenHook.line } : null }),
       });
       if (out.error) throw new Error(out.error);
       msg("Designed. Press a generation to play it and make the MP4.", "ok");

@@ -310,6 +310,11 @@ pages read it). Videos are served with Range requests, so a page full of videos 
   under "Check these facts" (red: not in the product's facts; amber: only in the business description) and cards show
   "N facts to check". When the designer returns a \`score\`, the drawer and cards show "Research score N/100" and what
   it missed.
+- **Opening lines (Motion):** once a product is chosen, three chips above the prompt bar give the Brain's opening
+  lines for that product, template, platform and length (\`GET /api/hooks\` → \`suggestHooks\`; the reason is the
+  tooltip). A click chooses one (a second click lets Claude choose); the design then gets the Brain's context for it
+  (\`brainContext(brainBriefFromDesign(brief), { chosenHook })\` as the brief's research). Tested: "Samsung Galaxy A56 ·
+  420,000 RWF" became scene 1's opening text, caption check and research score 100.
 - **Caption check (Motion):** after each design the Brain's \`scoreCaption\` checks the post caption and hashtags for
   the platform; the job keeps \`captionScore\` and \`captionMissed\` (an edit or extend with the same caption keeps the
   parent's). The drawer shows "Caption check N/100", the caption and what it misses; cards under 70 get a badge.

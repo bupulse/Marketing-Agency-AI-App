@@ -9,6 +9,8 @@ import { cutoutForPhoto } from "./cutouts";
 import { loadReferenceSources, type StudioRef } from "./seedance-sources";
 import { prepareSeedanceReferences, type ReferenceSummary } from "./seedance-references";
 import { scoreCaption } from "@/lib/video-engine/brain/score";
+import { suggestHooks } from "@/lib/video-engine/brain";
+import { brainBriefFromDesign, brainContext } from "@/lib/video-engine/brain/select";
 import { blenderAvailable } from "./blender-jobs";
 import { BLENDER_MIXES_AUDIO, getPremiumJob, listPremiumJobs, premiumVideoBytes, recoverPremiumJobs, rerenderPremium, startPremium3d } from "./premium-jobs";
 import { subscriptionTransport } from "./claude-cli";
@@ -111,7 +113,15 @@ type DesignRequest = {
   cartoonId: string | null;
   /** Where the video will be posted (optional): its safe area and best length go in the brief. */
   platform: Platform | null;
+  /** An opening line the owner chose from the Brain's suggestions (GET /api/hooks). */
+  chosenHook: { hookId: string; line: string } | null;
 };
+
+/** The opening line the page sent (both parts must be text), or null. */
+function chosenHookOf(v: unknown): { hookId: string; line: string } | null {
+  const h = v as { hookId?: unknown; line?: unknown } | null | undefined;
+  return h && typeof h.hookId === "string" && typeof h.line === "string" ? { hookId: h.hookId.slice(0, 60), line: h.line.slice(0, 120) } : null;
+}
 
 /** Reads and checks a design request (new video, or edit / extend of an earlier test). */
 async function readRequest(body: Record<string, unknown>): Promise<DesignRequest | { error: string; status: number }> {
@@ -145,6 +155,7 @@ async function readRequest(body: Record<string, unknown>): Promise<DesignRequest
     base,
     cartoonId: castById(String(body.cartoonId ?? ""))?.id ?? null,
     platform: isPlatform(body.platform) ? body.platform : null,
+    chosenHook: chosenHookOf(body.chosenHook),
   };
 }
 
@@ -152,13 +163,14 @@ async function readRequest(body: Record<string, unknown>): Promise<DesignRequest
  * The designer's brief for a request: the business, the product and the chosen photos (with whether each can be cut
  * out), plus the photo files themselves (JPEG and cut-out PNG) for engines that render on this Mac (Blender).
  */
-async function briefFor(req: DesignRequest, variation: { index: number; of: number } | null): Promise<{ brief: DesignBrief; files: { jpeg: Buffer; cutout: Buffer | null }[] }> {
+async function briefFor(req: DesignRequest, variation: { index: number; of: number } | null, opts: { photos?: boolean } = {}): Promise<{ brief: DesignBrief; files: { jpeg: Buffer; cutout: Buffer | null }[] }> {
   const business = await getBusiness(req.businessId);
   const product = (await listProducts(req.businessId)).find((p) => p.id === req.productId);
   if (!business || !product) throw new Error("Product not found.");
   const photos: BriefPhoto[] = [];
   const files: { jpeg: Buffer; cutout: Buffer | null }[] = [];
-  for (const id of req.photoIds) {
+  // Text-only briefs (the opening-line suggestions) skip the photos, which take the longest to load.
+  for (const id of opts.photos === false ? [] : req.photoIds) {
     const p = await photoJpeg(id, 1280, req.businessId);
     const meta = product.photos.find((x) => x.assetId === id);
     const note = meta?.description ?? (id.startsWith("up-") ? ((await uploadNote(id)) ?? "uploaded by the owner") : undefined);
@@ -221,6 +233,8 @@ async function designOne(req: DesignRequest, variation: { index: number; of: num
   try {
     if (!business || !product) throw new Error("Product not found.");
     const { brief } = await briefFor(req, variation);
+    // The opening line the owner picked: the Brain's context for it goes in as research (Claude follows it).
+    if (req.chosenHook) brief.research = brainContext(brainBriefFromDesign(brief, req.platform === "youtube" ? "shorts" : req.platform), { chosenHook: req.chosenHook });
     const result = await designVideo(brief, mode === "api" ? { apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL } : { transport: subscriptionTransport(), model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL });
     await record(job.id, "claude-design", result.usage);
     Object.assign(job, { spec: result.spec, usage: result.usage, costUsd: result.costUsd, apiEquivalentUsd: result.apiEquivalentUsd, billedTo: mode });
@@ -724,6 +738,15 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && blVideo) {
       const bytes = await premiumVideoBytes(blVideo[1]);
       return bytes ? sendMedia(req, res, bytes, "video/mp4", { "content-disposition": `inline; filename="bupulse-${blVideo[1]}.mp4"` }) : fail(res, 404, "Not found");
+    }
+    if (req.method === "GET" && p === "/api/hooks") {
+      // The Brain's three opening lines for this product, template and platform (lib/video-engine/brain/suggest.ts).
+      const q = Object.fromEntries(url.searchParams);
+      const reqd = await readRequest({ businessId: q.business, productId: q.product, styleId: q.template, seconds: Number(q.seconds) || 15, platform: q.platform, mode: "text" });
+      if ("error" in reqd) return fail(res, reqd.status, reqd.error);
+      const { brief } = await briefFor(reqd, null, { photos: false });
+      // The Brain calls YouTube Shorts "shorts".
+      return json(res, 200, { hooks: suggestHooks(brief, { platform: reqd.platform === "youtube" ? "shorts" : (reqd.platform ?? "any") }) });
     }
     if (req.method === "GET" && p === "/api/images") return json(res, 200, { images: (await listImages()).map((i) => ({ ...i, url: `/api/photo/${i.id}` })) });
     if (req.method === "POST" && p === "/api/image") {

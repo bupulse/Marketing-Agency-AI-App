@@ -16,7 +16,7 @@ export type Pricing = {
   premium3dCredits?: { "540p": number; "720p": number; rerender: number };
 };
 
-/** "55 to 120 credits per 5 s", "30 credits a video", "15 credits an image". */
+/** "55 to 120 credits per 5 s", "35 credits a video", "15 credits an image". */
 export function creditsLabel(m: Model, p: Pricing): string {
   if (m.soon) return "Price set when it arrives";
   if (m.engine === "claude") return `${p.claudeCredits} credits a video`;
