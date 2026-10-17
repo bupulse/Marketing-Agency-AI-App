@@ -188,7 +188,7 @@ describe("the .ics route", () => {
   });
 
   it("is rate limited per address", async () => {
-    const { ICS_RATE_LIMIT } = await route();
+    const { ICS_RATE_LIMIT } = await import("@/lib/demo/ics-config");
     h.findUnique.mockResolvedValue(booking());
     await get(TOKEN, "198.51.100.7");
     expect(h.rateLimit).toHaveBeenCalledWith("demo-ics:198.51.100.7", ICS_RATE_LIMIT);
