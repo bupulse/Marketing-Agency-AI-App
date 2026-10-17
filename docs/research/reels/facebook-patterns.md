@@ -189,3 +189,59 @@ Also seen: "RENT A CAR, RENT FREEDOM", "New and improved breastfeeding Diras", "
 - 3-25 s: either the expert explaining one thing in Kinyarwanda with sentence captions, or the students doing the work (hands, tools, close-ups).
 - 25-35 s: one proof beat (before/after, a student result, a certificate).
 - 35-40 s: phone numbers per branch in the lower third, WhatsApp book button, landmark address.
+
+---
+
+# Long runners (round 5, 17 Oct 2026)
+
+## How this was made, and what is missing
+
+- Source: Meta Ad Library, Rwandan active video ads, started before 15 August 2026 (60+ days live on 17 October). I pooled every Rwandan ad from my searches (372 ads with text) and found 69 that started before 15 August.
+- **About half of those 69 are the "Tajyira Akakanya Gukorere Akayabo Kama Faranga..." income-chain posts and "earn 30K a day" recruiters** (about 30 ads from 12 or more pages, running since June and July). They are the longest-running Rwandan ads in the library after the sector ads. That is a warning for the whole "long running = works" idea: scam-style ads run long because they are cheap and constantly re-posted. I skipped all of them. Add "skip" logic for this pattern in any future mining.
+- The 20 rows below are non-scam, are marked `long_runner: true` in `facebook.jsonl`, and span 97 to 565 days. 10 are rows I had already watched or logged; 10 are new this round (`round: 3`).
+- **Chrome stopped mid-round.** While running more searches, the Facebook tab crashed ("Page crashed") and the debugging port 9334 went down, so I could not watch any new video this round. The new rows are text and card only (`watched: false`, with a `video_not_watched_reason`). `hook`, `structure`, `on_screen_text` and `why_it_works` are `null` on them. I did not restart or relaunch the owner's Chrome. I need the lead or the owner to start it again (or say if I may use a separate headless Chrome for the public Ad Library) to watch the new rows.
+- `advertiser_live_ads_seen` is a lower bound: the number of that advertiser's ads my searches saw, not the true total.
+
+## The 20 long runners
+
+| Days | Advertiser (sector) | Live ads seen | Length | Language | Phone in caption | Price or offer |
+| --- | --- | --- | --- | --- | --- | --- |
+| 565 | Judith Safaris (tours) | 1 | 87 s | en | no | no |
+| 495 | tuza_officall (shoes) | 1 | 6 s | en | yes (DM number) | free delivery |
+| 468 | homeofhybrid (car hire) | 1 | 35 s | en | no (in video) | no |
+| 235 | SagaPoll (app) | 1 | 46 s | mixed | no | no |
+| 229 | HT26 Paris (wine, French) | 1 | 27 s | fr | WhatsApp link | no |
+| 228 | petal_florist_kigali | 1 | 3 s | en | no (DM, address) | no |
+| 228 | isaro_interiors_design | 1 | 36 s | en | yes | no |
+| 222 | Derma Skin Clinic Rwanda (clinic) | 17 | 43 to 90 s | en and rw | yes, 2 numbers | no |
+| 167 | avenue group (furniture) | 1 | 48 s | en | yes | no |
+| 166 | Dilara Collection (furniture) | 1 | 18 s | en | yes | no |
+| 164 | framegrw (travel) | 1 | 49 s | en | on poster | up to 35% off |
+| 157 | British English Language Institute | 1 | 88 s | en | yes | no |
+| 145 | Rweshereka Adolphe (travel) | 1 | 23 s | en and rw | no | no |
+| 131 | thermalgridafrica (hot water) | 1 | 85 s | rw | yes | discount, 2 weeks |
+| 124 | LUNA Residence (hotel) | 1 | 54 s | en | WhatsApp | from 20,000 RWF a night |
+| 106 | Taxacle (tax services) | 1 | 69 s | en | no | no |
+| 102 | AutoXpress Rwanda (auto service) | 2 | 67 s | en | no | no |
+| 101 | Website design Rwanda | 1 | 73 s | en | on poster | 20% off |
+| 97 | Primeskincare Rwanda | 1 | 5 s | en | yes | free consultation, delivery |
+| 96 | Kex Group (projector) | 1 | 42 s | en | yes (in video) | 40,000 RWF, free delivery |
+
+## What they have in common
+
+- **Length**: median 48 s, a wide spread (3 to 90 s). Rwandan long runners are not short. Two thirds are over 35 s. The exceptions are three tiny loops (3 s flower bouquet, 5 s skincare, 6 s shoes) that cost almost nothing to run for months.
+- **Hook**: where I watched them, the first frame carries a label or an object, not a person talking: a title ("RENT A CAR, RENT FREEDOM"), a "NEW COLLECTION" tag, a product (the bouquet, the galaxy projector, a poster slide). Caption openers are plain statements or one question ("Need a furniture upgrade?", "Need a place to stay in Kigali?", "Hair loss is not the end of your story").
+- **Price**: only 7 of 20 show a price or an offer. This differs from the new, short-lived Rwandan ads, where the price strip is almost universal. Long runners are mostly services and considered purchases (clinic, school, travel, furniture, internet), where the offer is a visit or a consultation.
+- **Phone and ordering route**: 11 of 20 put a number in the caption; 5 use the WhatsApp button, 2 "Call now", 5 an Instagram or Messenger profile. The seven with no number in the caption (the SagaPoll app, the tours, Taxacle, AutoXpress) rely on the button.
+- **Language**: 17 of 20 are English; 1 French, 1 mixed, and only thermalgridafrica is mostly Kinyarwanda. Derma alternates English and Kinyarwanda by video, same address block each time. The Kinyarwanda ads in my newer, short-lived set are mostly plots and cheap goods; the long runners are the opposite, a more English, service-led, mid-to-high price group.
+- **Hashtags**: 0 to 12, median 2 to 3, and 8 of 20 have none; the clinic's block of eight is the same in every ad.
+- **Volume**: the advertiser with the most live ads (Derma, 17 seen) has run them since March. One advertiser, one explainer or testimonial format, many variants.
+- **Not seen in any**: a MoMo mention, a countdown timer, or an income claim (excluded by design).
+
+## 5 rules for the engine from the long runners
+
+1. Build campaigns, not one clip: a template that outputs 8 to 15 variants of one format (the clinic's one-topic-per-video series, Piramie's five-beat template), each with its own hook line, all sharing the same address, number and button.
+2. Allow long, talking-person videos for services: 45 to 90 s with a named expert or owner, sentence-by-sentence captions, and a fixed contact block. Keep a 3 to 6 s still-image loop as the cheap always-on variant for gifts, flowers, shoes and skincare.
+3. For services and considered purchases, the offer can be "book a consultation / visit us / free quote" instead of a price; require a price only for goods. Show the price when there is a real one (from 20,000 RWF a night, 40,000 RWF + free delivery).
+4. Put the ordering route in two places: the platform button (WhatsApp, Call now, or Messages) and the caption (number and landmark address). Never rely on the button alone.
+5. Default to English with Kinyarwanda touches for services, hotels, clinics and schools, and Kinyarwanda for plots, household goods and baby products; offer the language switch per ad, not per account. And do not use "long running" as a quality signal on its own: filter out income-claim chains and recruiters before the engine learns from them.
