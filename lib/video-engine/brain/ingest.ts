@@ -10,15 +10,16 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Evidence, ResearchSource } from "./types";
 
-const PREFIX: Record<ResearchSource, string> = { tiktok: "tt", facebook: "fb", instagram: "ig", youtube: "yt", captions: "cp", comments: "cm" };
-const SOURCES: ResearchSource[] = ["tiktok", "facebook", "instagram", "youtube", "captions", "comments"];
+const PREFIX: Record<ResearchSource, string> = { tiktok: "tt", facebook: "fb", instagram: "ig", youtube: "yt", captions: "cp", comments: "cm", "instagram-comments": "ic" };
+const SOURCES: ResearchSource[] = ["tiktok", "facebook", "instagram", "youtube", "captions", "comments", "instagram-comments"];
 /** The file each source lives in (docs/research/reels/), when it is not "<source>.jsonl". */
 const FILES: Partial<Record<ResearchSource, string>> = { comments: "tiktok-comments.jsonl" };
+const COMMENTS: ResearchSource[] = ["comments", "instagram-comments"];
 /**
  * Which rows of a file are evidence. The comments file has one summary per clip and 15 comments under it: the
  * summaries are indexed, the comments stay in the file as their detail.
  */
-const INDEXED: Partial<Record<ResearchSource, (row: Row) => boolean>> = { comments: (row) => row.type === "clip_summary" };
+const INDEXED: Partial<Record<ResearchSource, (row: Row) => boolean>> = { comments: (row) => row.type === "clip_summary", "instagram-comments": (row) => row.type === "clip_summary" };
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 type Row = Record<string, unknown>;
@@ -52,22 +53,32 @@ export function parseDate(v: unknown): string | null {
 }
 
 const COUNTRY_WORDS: [string, RegExp][] = [
-  ["RW", /kigali|rwanda|\brw\b|kicukiro|kimironko|gasogi|kabeza|vubavuba|rwf|\bfrw\b/i],
-  ["KE", /nairobi|kenya|\bkes\b|\bksh\b|roysambu|mombasa/i],
-  ["UG", /kampala|uganda|_ug\b|\.ug\b|luganda|jumia uganda/i],
-  ["TZ", /tanzania|zanzibar|dar es salaam|\btzs?\b/i],
+  ["RW", /🇷🇼|kigali|rwanda|\brw\b|kicukiro|kimironko|gasogi|kabeza|vubavuba|rwf|\bfrw\b/i],
+  ["KE", /🇰🇪|nairobi|kenya|\bkes\b|\bksh\b|roysambu|mombasa/i],
+  ["UG", /🇺🇬|kampala|uganda|_ug\b|\.ug\b|luganda|jumia uganda/i],
+  ["TZ", /🇹🇿|tanzania|zanzibar|dar es salaam|\btzs?\b|\btsh\b/i],
   ["NG", /nigeria|lagos|osigbo|\.ng\b/i],
+  ["GH", /ghana|accra|kumasi|\bghs\b|\bcedis?\b/i],
   ["ZA", /joburg|johannesburg|south africa/i],
-  ["US", /texas|north carolina|new jersey|las vegas|ohio|houston|frisco/i],
+  ["US", /texas(?! roadhouse)|north carolina|new jersey|las vegas|ohio|houston|frisco/i],
 ];
 
-/** The country a row is from: its own field, else words in its author, caption and text. */
+/**
+ * Accounts whose country the researchers could not confirm (tiktok-patterns.md recount): a Kigali studio's clip for a UK
+ * wings shop, a restaurant group listing foreign brands, a group with no address.
+ */
+const COUNTRY_UNCONFIRMED = new Set(["@biko_group", "@thebistrogroup", "@cohvisuals"]);
+
+/** The country a row is from: its own field, else words (and flags) in its author, account, caption and text. */
 export function rowCountry(row: Row): string | null {
+  if (COUNTRY_UNCONFIRMED.has(str(row.author) ?? "")) return null;
   const own = str(row.country);
   if (own && /^[A-Z]{2}$/.test(own)) return own;
   const NAMES: Record<string, string> = { rwanda: "RW", kenya: "KE", uganda: "UG", tanzania: "TZ", nigeria: "NG", "south africa": "ZA", china: "CN", "united states": "US", usa: "US" };
   if (own && NAMES[own.toLowerCase()]) return NAMES[own.toLowerCase()];
-  const text = [row.author, row.page, row.channel, row.title, row.caption, row.on_screen_text, row.hook, row.why_it_works, (row.hashtags as unknown[] | null)?.join(" ")].filter((x) => typeof x === "string").join(" ");
+  const text = [row.author, row.page, row.channel, row.account, row.account_name, row.title, row.caption, row.on_screen_text, row.hook, row.structure, row.cta, row.why_it_works, (row.hashtags as unknown[] | null)?.join(" ")].filter((x) => typeof x === "string").join(" ")
+    // A run of flags ("#tiktokeastafrica🇺🇬🇷🇼🇧🇮🇰🇪🇹🇿") tags a region, not a country.
+    .replace(/(?:[\u{1F1E6}-\u{1F1FF}]{2}){2,}/gu, " ");
   if (row.language === "rw") return "RW";
   // The country named most often (a caption listing stockists abroad still belongs to its own country); ties go to
   // the one named first.
@@ -107,22 +118,29 @@ const advertiser = (row: Row) => (str(row.page) ?? str(row.author) ?? "").toLowe
  */
 export function variantsLive(source: ResearchSource, row: Row, rows: Row[]): number | null {
   if (source !== "facebook") return null;
+  // A page's organic reels are posts, not ads live at once.
+  if (row.organic === true) return 1;
   const name = advertiser(row);
   if (!name) return 1;
-  return Math.max(rows.filter((r) => advertiser(r) === name).length, STATED_VARIANTS[name] ?? 0);
+  return Math.max(rows.filter((r) => r.organic !== true && advertiser(r) === name).length, STATED_VARIANTS[name] ?? 0);
 }
 
 /**
- * 0 to 1: likes on a log scale (1M likes = 1, 10K = 0.67), days running (a year = 1), and on Facebook the variants
- * live at once (one ad = 0, 10 or more = 1): Rwandan ads are young, so the playbook counts variants above age.
+ * 0 to 1: likes on a log scale (1M likes = 1, 10K = 0.67), days running (a year = 1), on Facebook the variants live at
+ * once (one ad = 0, 10 or more = 1): Rwandan ads are young, so the playbook counts variants above age; and plays
+ * against the account's followers (1x = 0, 100x or more = 1) or plays alone (10M = 1): Kigali reels get likes on about
+ * 0.55% of plays because people call or WhatsApp instead (instagram-patterns.md, "East Africa, first-hand").
  * Articles get a low fixed value.
  */
-export function rowStrength(source: ResearchSource, row: Row, likes: number | null, runningDays: number | null, variants: number | null = null): number {
+export function rowStrength(source: ResearchSource, row: Row, likes: number | null, runningDays: number | null, variants: number | null = null, reach: { views: number | null; followers: number | null } = { views: null, followers: null }): number {
   if (row.secondary === true) return 0.3;
   const fromLikes = likes ? Math.min(1, Math.log10(Math.max(1, likes)) / 6) : 0;
   const fromDays = runningDays ? Math.min(1, runningDays / 365) : 0;
   const fromVariants = variants && variants > 1 ? Math.min(1, (variants - 1) / 9) : 0;
-  return Math.round(Math.max(0.2, fromLikes, fromDays, fromVariants) * 100) / 100;
+  const { views, followers } = reach;
+  const fromPlays = views ? Math.min(1, Math.log10(Math.max(1, views)) / 7) : 0;
+  const fromReach = views && followers ? Math.min(1, Math.max(0, Math.log10(views / followers)) / 2) : 0;
+  return Math.round(Math.max(0.2, fromLikes, fromDays, fromVariants, fromPlays, fromReach) * 100) / 100;
 }
 
 /**
@@ -165,8 +183,10 @@ export function evidenceFromRows(source: ResearchSource, rows: Row[], existing: 
     const url = str(row.url) ?? str(row.clip_url);
     const stats = (row.stats_as_reported ?? {}) as Row;
     // A comments row's signal is how many comments the clip drew (729 is a lot for a Kigali shop); it stands in for likes.
-    const likes = parseCount(stats.likes ?? row.likes ?? (source === "comments" ? row.total_comments_shown : null));
+    const likes = parseCount(stats.likes ?? row.likes ?? (COMMENTS.includes(source) ? row.total_comments_shown : null));
     const runningDays = typeof row.running_days === "number" ? row.running_days : null;
+    const views = parseCount(stats.views ?? row.views);
+    const followers = parseCount(row.account_followers);
     const variants = variantsLive(source, row, rows);
     const scam = looksLikeScam(row);
     out.push({
@@ -186,8 +206,14 @@ export function evidenceFromRows(source: ResearchSource, rows: Row[], existing: 
       likes,
       runningDays,
       variantsLive: variants,
-      // A scam row's age and variants say nothing about what works: only its likes (if any) count.
-      strength: scam ? rowStrength(source, row, likes, null, null) : rowStrength(source, row, likes, runningDays, variants),
+      ...(views !== null ? { views } : {}),
+      ...(followers !== null ? { followers } : {}),
+      // A page's own post, not an ad (Facebook round 6): the brain keeps these for "post" purpose (BrainBrief.purpose).
+      ...(row.organic === true ? { organic: true as const } : {}),
+      // TikTok round 4: generated or real (checkBrain keeps AI-made clips out of hooks, formats and sectors).
+      ...(str(row.ai) ? { ai: str(row.ai)!, aiLabel: !!str(row.ai_label_shown) } : {}),
+      // A scam row's age, variants and plays say nothing about what works: only its likes (if any) count.
+      strength: scam ? rowStrength(source, row, likes, null, null) : rowStrength(source, row, likes, runningDays, variants, { views, followers }),
       ...(scam ? { scam: true as const } : {}),
     });
   });
@@ -219,7 +245,9 @@ function main() {
     console.log(`${source}: ${rows.length} rows (${rows.filter((r) => r.watched).length} watched, ${rows.filter((r) => r.scam).length} income-chain or scam)`);
     all.push(...rows);
   }
-  fs.writeFileSync(out, `[\n${all.map((e) => JSON.stringify(e)).join(",\n")}\n]\n`);
+  // In one step (a temp file renamed over it): the studio bundles the brain and must never read half a file.
+  fs.writeFileSync(`${out}.tmp`, `[\n${all.map((e) => JSON.stringify(e)).join(",\n")}\n]\n`);
+  fs.renameSync(`${out}.tmp`, out);
   console.log(`Wrote ${all.length} evidence rows to ${path.relative(root, out)}.`);
 }
 

@@ -7,8 +7,8 @@ import type { Layer, MotionSpec, Scene, TextLayer } from "../spec";
 import { voiceLanguage } from "../voice-language";
 import { BRAIN, SAFE_AREAS, formatById } from "./database";
 import { hasKinyarwanda } from "./language";
-import { brainFor, formatFromTemplate } from "./select";
-import type { FormatId, Platform } from "./types";
+import { brainFor, formatFromTemplate, sectorFromText } from "./select";
+import type { FormatId, Purpose, Platform, SectorId } from "./types";
 
 export { SAFE_AREAS, hasKinyarwanda };
 
@@ -26,8 +26,16 @@ export type ScoreBrief = {
   platform?: string | null;
   note?: string | null;
   fixedLens?: boolean;
+  /** An ad (the default) or a post on the business's own page (no price strip, phone bar or order line expected). */
+  purpose?: Purpose | null;
 };
-export type ScoreOptions = { platform?: string | null; format?: FormatId | null; voice?: boolean };
+export type ScoreOptions = { platform?: string | null; format?: FormatId | null; voice?: boolean; purpose?: Purpose | null };
+const purposeOf = (brief: ScoreBrief, options: ScoreOptions): Purpose => ((options.purpose ?? brief.purpose) === "post" ? "post" : "ad");
+/** A page post's length (post-short-visual) and caption (post-caption): 12 to 25 s; 10 to 25 words, 0 to 3 hashtags. */
+const POST_SECONDS: [number, number] = [12, 25];
+const POST_WORDS: [number, number] = [5, 40];
+/** A hard sell in a post's last scene (post-warm-sound): order and price lines. */
+const HARD_SELL = /\b(order now|buy now|call now|shop now|limited offer|hurry|tumiza nonaha)\b/i;
 
 /** Wide and square shapes only keep a small margin. */
 const WIDE_AREA = { top: 0.05, bottom: 0.95, left: 0.04, right: 0.96 };
@@ -92,8 +100,9 @@ export function amounts(text: string): number[] {
   const out: number[] = [];
   for (const m of withoutPhones(text).matchAll(/(?<![\p{L}\d.,])(\d{1,3}(?:[,.]\d{3})+|\d+(?:\.\d+)?)\s*([kKmM]\b|%)?(?!(?!(?:rwf|frw|rfw|ksh|kes|ugx|tzs)\b|[km]\b)\p{L})/giu)) {
     const raw = m[1];
-    if (digits(raw).length >= 9) continue;
     const grouped = /^\d{1,3}([,.]\d{3})+$/.test(raw);
+    // An ungrouped run of 9 or more digits is a phone; grouped, it is money (120,000,000 RWF for a house).
+    if (!grouped && digits(raw).length >= 9) continue;
     let n = grouped ? Number(digits(raw)) : Number(raw);
     if (m[2] && /k/i.test(m[2])) n *= 1_000;
     if (m[2] && /m/i.test(m[2])) n *= 1_000_000;
@@ -113,7 +122,7 @@ function moneyAmounts(text: string): number[] {
 }
 
 const ROUTE = /\b(whats\s?app|call|order|dm|inbox|book|visit|find us|shop now|buy|tel|phone|contact|vubavuba|location|website|www\.|\.com|\.rw|commandez|appelez|réservez|hamagara|twandikire|tumiza|gura|sura|ahantu)\b/i;
-const CTA_VERB = /\b(order|call|whats\s?app|book|visit|buy|shop|dm|get yours|come|reserve|register|enrol|join|message|commandez|appelez|réservez|venez|hamagara|duhamagare|uhamagare|uduhamagare|tumiza|gura|iyandikishe|ngwino|muze|sura|twandikire|utwandikire|tuvugishe)\b/i;
+const CTA_VERB = /\b(order|call|whats\s?app|book|visit|find us|buy|shop|dm|get yours|come|reserve|register|enrol|join|message|commandez|appelez|réservez|venez|hamagara|duhamagare|uhamagare|uduhamagare|tumiza|gura|iyandikishe|ngwino|muze|sura|twandikire|utwandikire|tuvugishe)\b/i;
 
 const isText = (l: Layer): l is TextLayer => l.kind === "text";
 const texts = (s: Scene) => s.layers.filter(isText).filter((l) => l.text.trim());
@@ -152,9 +161,13 @@ function briefText(b: ScoreBrief): string {
 
 type Check = { id: string; rule: string | null; points: number; ok: boolean; reason: string; scene?: number | null };
 
+/** A check on an early-evidence rule (Rule.weak) counts half. */
+const WEAK_RULES = new Set(BRAIN.rules.filter((r) => r.weak).map((r) => r.id));
+const weight = (c: Check) => (c.rule && WEAK_RULES.has(c.rule) ? c.points / 2 : c.points);
+
 function result(checks: Check[]): DesignScore {
-  const total = checks.reduce((s, c) => s + c.points, 0);
-  const got = checks.filter((c) => c.ok).reduce((s, c) => s + c.points, 0);
+  const total = checks.reduce((s, c) => s + weight(c), 0);
+  const got = checks.filter((c) => c.ok).reduce((s, c) => s + weight(c), 0);
   const item = (c: Check): ScoreItem => ({ id: c.id, rule: c.rule, points: c.points, reason: c.reason, scene: c.scene ?? null });
   return { score: total ? Math.round((100 * got) / total) : 100, passed: checks.filter((c) => c.ok).map(item), failed: checks.filter((c) => !c.ok).map(item) };
 }
@@ -180,7 +193,9 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
   const total = Math.round(scenes.reduce((s, x) => s + x.seconds, 0) * 10) / 10;
   const platform = platformOf(options.platform ?? brief.platform);
   const format = formatById(options.format) ?? formatById(formatFromTemplate(brief.styleId)) ?? null;
-  const pick = brainFor({ platform, sector: null, format: format?.id ?? null, engine: "claude", language: brief.business.language, hasPrice: !!brief.product.price, hasPhone: !!brief.business.phone, seconds: total });
+  const purpose = purposeOf(brief, options);
+  const post = purpose === "post";
+  const pick = brainFor({ platform, sector: null, format: format?.id ?? null, engine: "claude", language: brief.business.language, hasPrice: !!brief.product.price, hasPhone: !!brief.business.phone, seconds: total, purpose });
   const facts = briefText(brief);
   const last = scenes.length - 1;
   const lastText = [...texts(scenes[last]).map((l) => l.text), scenes[last].say ?? ""].join(" \n ");
@@ -189,9 +204,9 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
   const style = templateStyle(brief.styleId);
   const limits = STYLE_LIMITS[style];
 
-  // 1. The hook: text on screen within the first 1.5 s.
+  // 1. The hook: text on screen within the first 1.5 s (an ad; a post may open on the picture alone).
   const early = scenes.flatMap((s, i) => texts(s).map((l) => ({ l, i, t: at[i] + (l.from ?? 0) * s.seconds }))).filter((x) => x.t <= 1.5);
-  add(early.length
+  if (!post) add(early.length
     ? { id: "hook-text", rule: "hook-3s", points: 15, ok: true, reason: `The hook "${snippet(early[0].l.text)}" is on screen at ${early[0].t.toFixed(1)} s.`, scene: early[0].i }
     : { id: "hook-text", rule: "hook-3s", points: 15, ok: false, reason: "No text is on screen in the first 1.5 seconds: open with the hook in big words (most people watch muted).", scene: 0 });
   const hook = early[0]?.l.text ?? "";
@@ -200,8 +215,20 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
     add({ id: "hook-short", rule: "first-caption-0s", points: 4, ok: n <= 8, reason: n <= 8 ? `The hook is ${n} words.` : `The hook is ${n} words; keep it to about 5 (at most 8).`, scene: early[0].i });
   }
 
-  // 2. The price, when the brief has one: on screen, and early.
-  if (price) {
+  // A page post: no price strip and no phone bar on screen, and no hard sell at the end (post-no-overlay,
+  // post-warm-sound); the ad checks for the price, the number and the call to action do not apply.
+  if (post) {
+    const sceneShows = (re: (t: string) => boolean) => scenes.filter((sc) => texts(sc).some((l) => re(l.text))).length;
+    const priceScenes = price ? sceneShows((t) => amounts(t).some((v) => amounts(price).includes(v))) : 0;
+    const phoneScenes = phone ? sceneShows((t) => hasPhone(t, phone)) : 0;
+    const strip = scenes.length > 1 && (priceScenes === scenes.length || phoneScenes === scenes.length);
+    add({ id: "post-no-overlay", rule: "post-no-overlay", points: 12, ok: !strip, reason: strip ? `The ${priceScenes === scenes.length ? "price" : "number"} stays on screen in every scene; a page post keeps it in the caption.` : "No price strip or phone bar: the post shows the place and the moment.", scene: null });
+    const sell = lastText.match(HARD_SELL);
+    add({ id: "post-end", rule: "post-warm-sound", points: 8, ok: !sell, reason: sell ? `"${sell[0]}" in the last scene is a hard sell; a post ends on the logo or the shop sign.` : "The post ends without a hard sell.", scene: last });
+  }
+
+  // 2. The price, when the brief has one: on screen, and early (ads).
+  if (price && !post) {
     const wanted = amounts(price);
     const shows = (t: string) => (wanted.length ? amounts(t).some((v) => wanted.includes(v)) : t.toLowerCase().includes(price.toLowerCase()));
     const i = firstScene(spec, shows);
@@ -219,8 +246,10 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
     }
   }
 
-  // 3. The way to order in the last scene, and the number to the end.
-  if (phone) {
+  // 3. The way to order in the last scene, and the number to the end (ads).
+  if (post) {
+    // nothing: a post's contact is in its caption
+  } else if (phone) {
     add(hasPhone(lastText, phone)
       ? { id: "contact-last", rule: "cta-route", points: 12, ok: true, reason: "The phone or WhatsApp number is in the last scene.", scene: last }
       : { id: "contact-last", rule: "cta-route", points: 12, ok: false, reason: `The last scene does not show the number (${phone}).`, scene: last });
@@ -233,7 +262,7 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
   } else {
     add({ id: "contact-last", rule: "cta-route", points: 12, ok: ROUTE.test(lastText), reason: ROUTE.test(lastText) ? "The last scene names a way to order." : "The last scene does not say how to order (WhatsApp, call, visit, the website).", scene: last });
   }
-  add({ id: "cta", rule: "cta-route", points: 8, ok: CTA_VERB.test(lastText), reason: CTA_VERB.test(lastText) ? "The last scene has a call to action." : "The last scene has no call to action (Order, Call, WhatsApp, Book, Visit...).", scene: last });
+  if (!post) add({ id: "cta", rule: "cta-route", points: 8, ok: CTA_VERB.test(lastText), reason: CTA_VERB.test(lastText) ? "The last scene has a call to action." : "The last scene has no call to action (Order, Call, WhatsApp, Book, Visit...).", scene: last });
 
   // 4. Every scene moves.
   const still = brief.fixedLens ? [] : scenes.map((s, i) => (sceneMoves(s) ? -1 : i)).filter((i) => i >= 0);
@@ -261,13 +290,14 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
   add({ id: "safe-area", rule: "text-placement", points: 3, ok: strays.length === 0, reason: strays.length ? `${describe(strays)} goes outside the safe area (${box}).` : "All other text is inside the safe area.", scene: strays[0]?.i ?? null });
 
   // 6. Length and scene count for the format.
-  const [lo, hi] = pick.length.range;
+  const [lo, hi] = post ? POST_SECONDS : pick.length.range;
   // The length is the owner's (or the template's) choice: a design that keeps the requested length passes.
   const asked = brief.seconds && Math.abs(total - brief.seconds) <= 1.5;
   const inRange = total >= Math.max(6, Math.min(lo, 30)) - 0.5 && total <= Math.min(30, hi) + 0.5;
   add({ id: "length", rule: "length", points: 6, ok: !!asked || inRange, reason: asked ? `${total} s, the requested length${inRange ? "" : ` (the research range for ${pick.format.name.toLowerCase()} is ${lo} to ${hi} s)`}.` : inRange ? `${total} s fits ${pick.format.name.toLowerCase()} (${lo} to ${hi} s).` : `${total} s is outside ${lo} to ${Math.min(30, hi)} s for ${pick.format.name.toLowerCase()}${platform === "any" ? "" : ` on ${platform}`}.`, scene: null });
   // Scenes: one fewer to two more than the format's beats, or as many as its cut rhythm allows (kinetic type: many).
-  const beats = pick.timeline.length;
+  // A page post runs in about 3 beats of 5 s (post-short-visual).
+  const beats = post ? 3 : pick.timeline.length;
   const [sLo, sHi] = [Math.max(2, beats - 1), Math.min(8, Math.max(beats + 2, Math.ceil((pick.format.cutsPer10s[1] * total) / 10)))];
   add({ id: "scene-count", rule: "cut-rhythm", points: 5, ok: scenes.length >= sLo && scenes.length <= sHi, reason: scenes.length >= sLo && scenes.length <= sHi ? `${scenes.length} scenes for ${beats} beats.` : `${scenes.length} scenes; ${pick.format.name.toLowerCase()} at ${total} s works with ${sLo} to ${sHi} (${beats} beats).`, scene: null });
 
@@ -288,8 +318,11 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
 
   // 9. The post caption.
   const caption = `${spec.caption ?? ""} ${(spec.hashtags ?? []).join(" ")}`;
-  const captionMisses = [!spec.caption?.trim() ? "a caption" : "", phone && !hasPhone(caption, phone) ? "the number" : "", price && !amounts(caption).some((v) => amounts(price).includes(v)) ? "the price" : "", (spec.hashtags?.length ?? 0) < 2 ? "2 or more hashtags" : ""].filter(Boolean);
-  add({ id: "caption", rule: "caption-complete", points: 6, ok: captionMisses.length === 0 && (spec.caption?.length ?? 0) <= 600, reason: captionMisses.length ? `The post caption is missing ${captionMisses.join(", ")}.` : (spec.caption?.length ?? 0) > 600 ? "The post caption is over 600 characters." : "The post caption has the facts.", scene: null });
+  const captionMisses = post
+    ? [!spec.caption?.trim() ? "a caption" : "", (spec.hashtags?.length ?? 0) > 3 ? "at most 3 hashtags" : ""].filter(Boolean)
+    : [!spec.caption?.trim() ? "a caption" : "", phone && !hasPhone(caption, phone) ? "the number" : "", price && !amounts(caption).some((v) => amounts(price).includes(v)) ? "the price" : "", (spec.hashtags?.length ?? 0) < 2 ? "2 or more hashtags" : ""].filter(Boolean);
+  const capMax = captionMax("facebook", sectorOfBrief(brief));
+  add({ id: "caption", rule: post ? "post-caption" : "caption-complete", points: 6, ok: captionMisses.length === 0 && (spec.caption?.length ?? 0) <= capMax, reason: captionMisses.length ? `The post caption is missing ${captionMisses.join(", ")}.` : (spec.caption?.length ?? 0) > capMax ? `The post caption is over ${capMax} characters.` : "The post caption has the facts.", scene: null });
 
   // 10. Nothing from the do-not-copy list, and no facts the brief does not give.
   const all = scenes.map((s, i) => ({ i, text: [...texts(s).map((l) => l.text), s.say ?? ""].join(" \n ") }));
@@ -444,6 +477,11 @@ const PLACE_WORDS = /📍|\b(next to|opposite|near|behind|in front of|same build
 const DELIVERY_WORDS = /(?<![\p{L}])(deliver(y|ies|ed)?|livraisons?|livr(é|e)(e?s?)|livrons|livrer|à domicile|tuyikujyezaho|tuyikugezaho|tubagezaho|tukugezaho|kugeza)(?![\p{L}])/iu;
 const NO_SUBSCRIBE = /\b(subscribe|like and follow|hit the bell|turn on notifications|abonne[zr]?)\b/i;
 const MAX_CHARS: Record<Platform | "any", number> = { facebook: 600, tiktok: 300, instagram: 300, shorts: 100, any: 600 };
+/** Long captions are normal for these sectors (19 of 125 real captions run past 600: schools, clinics, services, property). */
+const LONG_CAPTION_SECTORS: SectorId[] = ["school", "clinic", "services", "real-estate"];
+const sectorOfBrief = (brief: ScoreBrief): SectorId => sectorFromText([brief.business.name, brief.business.description, brief.product.name, brief.product.summary].filter(Boolean).join(" "));
+/** The caption's length limit, soft: 1,000 characters on Facebook for the sectors that write long captions. */
+const captionMax = (platform: Platform | "any", sector: SectorId) => ((platform === "facebook" || platform === "any") && LONG_CAPTION_SECTORS.includes(sector) ? 1000 : MAX_CHARS[platform]);
 
 const tagsOf = (caption: string, hashtags: string[]) => [...new Set([...hashtags, ...(caption.match(/#[\p{L}\p{N}_]+/gu) ?? [])].map((t) => t.replace(/^#/, "").trim().toLowerCase()).filter(Boolean))];
 
@@ -465,50 +503,62 @@ export function scoreCaption(caption: string, hashtags: string[], brief: ScoreBr
   const price = brief.product.price?.trim() || "";
   const shorts = platform === "shorts";
   const body = text.replace(/#[\p{L}\p{N}_]+/gu, " ").trim();
-
-  add({ id: "caption-present", rule: "caption-complete", points: 10, ok: body.length > 0, reason: body ? "There is a caption." : text ? "The caption is hashtags only; write what is sold, the price and how to order." : "There is no caption; write one." });
-
-  // The product, and the price or offer, in the first 60 characters (a Short's title: 40).
-  const head = text.slice(0, shorts ? 40 : 60).toLowerCase();
-  const nameWords = brief.product.name.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3);
-  const named = nameWords.some((w) => head.includes(w));
-  const offerWords = (brief.note ?? "").toLowerCase().split(/[^\p{L}\p{N}%]+/u).filter((w) => w.length >= 4);
-  const priced = (price !== "" && amounts(head).some((v) => amounts(price).includes(v))) || offerWords.some((w) => head.includes(w)) || (shorts && /\d/.test(head));
-  const wantsPrice = (price !== "" || offerWords.length > 0) && !shorts;
-  const leads = (named || (shorts && priced)) && (!wantsPrice || priced);
-  add({ id: "first-line", rule: shorts ? "shorts-title" : "caption-complete", points: 10, ok: leads, reason: leads ? `The product${wantsPrice ? " and the price or offer" : ""} come first.` : `Put the product${wantsPrice ? " and the price or offer" : ""} in the first ${shorts ? 40 : 60} characters ("Jumpsuit Diras kuri 18k gusa", "Commercial blender, 48,000 RWF").` });
-
-  // The way to order, and the number when the business has one (any written form: 0788218567, 0788 218 567, +250 788 218 567).
-  const routed = CTA_VERB.test(text) || ROUTE.test(text);
-  add({ id: "caption-cta", rule: shorts ? "shorts-pointer" : "cta-route", points: 12, ok: routed, reason: routed ? "The caption says how to order." : `Say how to order: "Call/WhatsApp: ${phone || "…"}", "DM to order"${/kinyarwanda/i.test(brief.business.language ?? "") ? ', "Duhamagare cyangwa utwandikire kuri WhatsApp"' : ""}.` });
-  if (phone) {
-    const ok = hasPhone(text, phone);
-    add({ id: "caption-phone", rule: "caption-complete", points: 12, ok, reason: ok ? "The phone number is in the caption." : `Add the number: "Call/WhatsApp: ${phone}".` });
-  }
-  if (price) {
-    const shown = amounts(text).some((v) => amounts(price).includes(v));
-    add({ id: "caption-price", rule: "caption-complete", points: platform === "facebook" ? 8 : 4, ok: shown, reason: shown ? "The price is in the caption." : `Add the price (${price}).` });
-  }
-  if (PLACE_WORDS.test([brief.business.description, brief.note].filter(Boolean).join(" "))) {
-    const placed = PLACE_WORDS.test(text);
-    add({ id: "caption-place", rule: "landmark", points: 6, ok: placed, reason: placed ? "The caption says where the business is." : "Add a 📍 line with the area and a landmark ('next to …', 'opposite …')." });
-  }
-  if (DELIVERY_WORDS.test(facts)) {
-    const said = DELIVERY_WORDS.test(text);
-    add({ id: "caption-delivery", rule: "trust-line", points: 6, ok: said, reason: said ? "The delivery line is there." : "The business delivers: say it ('Free delivery in Kigali', 'Delivery available')." });
-  }
-
-  // Hashtags: the platform's count (Facebook 0 to 3, TikTok and Instagram 4 to 6, Shorts 1 to 3); when there are any, a
-  // local one and at most two broad ones (#shorts is Shorts' own tag, not a broad one).
+  const post = purposeOf(brief, options) === "post";
   const tags = tagsOf(text, hashtags ?? []);
-  const [lo, hi] = guide.hashtags.count;
-  add({ id: "hashtag-count", rule: "local-hashtags", points: 8, ok: tags.length >= lo && tags.length <= hi, reason: tags.length >= lo && tags.length <= hi ? `${tags.length} hashtags (${lo} to ${hi} on ${where}).` : `${tags.length} hashtags; captions that work on ${where} use ${lo} to ${hi}.` });
-  if (tags.length) {
-    const country = COUNTRY_CODES.find(([re]) => re.test(brief.business.description ?? "") || re.test(brief.business.country ?? ""))?.[1] ?? "RW";
-    const local = tags.filter((t) => LOCAL_TAGS[country].test(t));
-    const broad = tags.filter((t) => BROAD_TAGS.test(t));
-    const mixed = local.length >= 1 && broad.length <= 2;
-    add({ id: "hashtag-mix", rule: "local-hashtags", points: 8, ok: mixed, reason: mixed ? `Local tags (${local.map((t) => `#${t}`).join(" ")}) with ${broad.length} broad tag${broad.length === 1 ? "" : "s"}.` : !local.length ? `Add a local tag (${guide.hashtags.local.slice(0, 3).join(" ")}).` : `${broad.length} broad tags (${broad.map((t) => `#${t}`).join(" ")}); keep at most 2 and lead with the city.` });
+
+  add({ id: "caption-present", rule: post ? "post-caption" : "caption-complete", points: 10, ok: body.length > 0, reason: body ? "There is a caption." : text ? "The caption is hashtags only; write what is sold, the price and how to order." : "There is no caption; write one." });
+
+  // A page post: one friendly line and 0 to 3 hashtags; the ad's product-price-number checks do not apply.
+  if (post) {
+    const n = words(body);
+    const sized = n >= POST_WORDS[0] && n <= POST_WORDS[1];
+    add({ id: "post-length", rule: "post-caption", points: 10, ok: sized, reason: sized ? `${n} words.` : `${n} words; a post caption is one friendly line of about 10 to 25 words.` });
+    add({ id: "hashtag-count", rule: "post-caption", points: 8, ok: tags.length <= 3, reason: tags.length <= 3 ? `${tags.length} hashtags.` : `${tags.length} hashtags; a post keeps 0 to 3 (the city and the brand).` });
+  }
+
+  // An ad: the product and the price first, the way to order, the number, the place, and the platform's hashtags.
+  if (!post) {
+    // The product, and the price or offer, in the first 60 characters (a Short's title: 40).
+    const head = text.slice(0, shorts ? 40 : 60).toLowerCase();
+    const nameWords = brief.product.name.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3);
+    const named = nameWords.some((w) => head.includes(w));
+    const offerWords = (brief.note ?? "").toLowerCase().split(/[^\p{L}\p{N}%]+/u).filter((w) => w.length >= 4);
+    const priced = (price !== "" && amounts(head).some((v) => amounts(price).includes(v))) || offerWords.some((w) => head.includes(w)) || (shorts && /\d/.test(head));
+    const wantsPrice = (price !== "" || offerWords.length > 0) && !shorts;
+    const leads = (named || (shorts && priced)) && (!wantsPrice || priced);
+    add({ id: "first-line", rule: shorts ? "shorts-title" : "caption-complete", points: 10, ok: leads, reason: leads ? `The product${wantsPrice ? " and the price or offer" : ""} come first.` : `Put the product${wantsPrice ? " and the price or offer" : ""} in the first ${shorts ? 40 : 60} characters ("Jumpsuit Diras kuri 18k gusa", "Commercial blender, 48,000 RWF").` });
+
+    // The way to order, and the number when the business has one (any written form: 0788218567, 0788 218 567, +250 788 218 567).
+    const routed = CTA_VERB.test(text) || ROUTE.test(text);
+    add({ id: "caption-cta", rule: shorts ? "shorts-pointer" : "cta-route", points: 12, ok: routed, reason: routed ? "The caption says how to order." : `Say how to order: "Call/WhatsApp: ${phone || "…"}", "DM to order"${/kinyarwanda/i.test(brief.business.language ?? "") ? ', "Duhamagare cyangwa utwandikire kuri WhatsApp"' : ""}.` });
+    if (phone) {
+      const ok = hasPhone(text, phone);
+      add({ id: "caption-phone", rule: "caption-complete", points: 12, ok, reason: ok ? "The phone number is in the caption." : `Add the number: "Call/WhatsApp: ${phone}".` });
+    }
+    if (price) {
+      const shown = amounts(text).some((v) => amounts(price).includes(v));
+      add({ id: "caption-price", rule: "caption-complete", points: platform === "facebook" ? 8 : 4, ok: shown, reason: shown ? "The price is in the caption." : `Add the price (${price}).` });
+    }
+    if (PLACE_WORDS.test([brief.business.description, brief.note].filter(Boolean).join(" "))) {
+      const placed = PLACE_WORDS.test(text);
+      add({ id: "caption-place", rule: "landmark", points: 6, ok: placed, reason: placed ? "The caption says where the business is." : "Add a 📍 line with the area and a landmark ('next to …', 'opposite …')." });
+    }
+    if (DELIVERY_WORDS.test(facts)) {
+      const said = DELIVERY_WORDS.test(text);
+      add({ id: "caption-delivery", rule: "trust-line", points: 6, ok: said, reason: said ? "The delivery line is there." : "The business delivers: say it ('Free delivery in Kigali', 'Delivery available')." });
+    }
+
+    // Hashtags: the platform's count (Facebook 0 to 3, TikTok and Instagram 4 to 6, Shorts 1 to 3); when there are any, a
+    // local one and at most two broad ones (#shorts is Shorts' own tag, not a broad one).
+    const [lo, hi] = guide.hashtags.count;
+    add({ id: "hashtag-count", rule: "local-hashtags", points: 8, ok: tags.length >= lo && tags.length <= hi, reason: tags.length >= lo && tags.length <= hi ? `${tags.length} hashtags (${lo} to ${hi} on ${where}).` : `${tags.length} hashtags; captions that work on ${where} use ${lo} to ${hi}.` });
+    if (tags.length) {
+      const country = COUNTRY_CODES.find(([re]) => re.test(brief.business.description ?? "") || re.test(brief.business.country ?? ""))?.[1] ?? "RW";
+      const local = tags.filter((t) => LOCAL_TAGS[country].test(t));
+      const broad = tags.filter((t) => BROAD_TAGS.test(t));
+      const mixed = local.length >= 1 && broad.length <= 2;
+      add({ id: "hashtag-mix", rule: "local-hashtags", points: 8, ok: mixed, reason: mixed ? `Local tags (${local.map((t) => `#${t}`).join(" ")}) with ${broad.length} broad tag${broad.length === 1 ? "" : "s"}.` : !local.length ? `Add a local tag (${guide.hashtags.local.slice(0, 3).join(" ")}).` : `${broad.length} broad tags (${broad.map((t) => `#${t}`).join(" ")}); keep at most 2 and lead with the city.` });
+    }
   }
 
   // Kinyarwanda businesses: Kinyarwanda in the caption (mixed is fine; models, sizes and RWF stay as they are).
@@ -517,8 +567,9 @@ export function scoreCaption(caption: string, hashtags: string[], brief: ScoreBr
     add({ id: "caption-language", rule: "language-mix", points: 8, ok: rw, reason: rw ? "The caption speaks Kinyarwanda." : "This business writes in Kinyarwanda: write the offer and the invitation in Kinyarwanda ('kuri … gusa', 'Duhamagare'), keep the model and the price as they are." });
   }
 
-  // Length: a Short's title under 100 characters, TikTok and Instagram one or two lines, Facebook under 600.
-  const max = MAX_CHARS[platform];
+  // Length: a Short's title under 100 characters, TikTok and Instagram one or two lines, Facebook under 600 (a soft
+  // limit: schools, clinics, services and property may run to 1,000).
+  const max = captionMax(platform, sectorOfBrief(brief));
   add({ id: "caption-length", rule: shorts ? "shorts-title" : "caption-layout", points: 4, ok: text.length <= max, reason: text.length <= max ? `${text.length} characters.` : `${text.length} characters; keep it under ${max} on ${where}.` });
 
   // Forbidden lines and facts the brief does not give.

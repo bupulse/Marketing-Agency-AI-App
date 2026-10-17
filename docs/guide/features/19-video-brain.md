@@ -15,19 +15,20 @@ testing; clients do not see it yet.
 
 ## The numbers
 
-The one place to update when new research comes in (last updated 17 October 2026, after the comments research):
+The one place to update when new research comes in (last updated 17 October 2026, after TikTok round 4 and the Instagram comments):
 
 | What | Count |
 | --- | --- |
-| Research rows (videos, ads, captions and comments) | 538: TikTok 179, Facebook 110, Instagram 58, YouTube Shorts 36, post captions 125, clips whose comments were read 30 (450 comments) |
-| Watched first-hand by a researcher | 344: TikTok 133, Facebook 90, Instagram 58, YouTube 36, TikTok captions 27 |
-| Rwandan rows | 297 |
+| Research rows (videos, ads, captions and comments) | 687: TikTok 216, Facebook 159, Instagram 101, YouTube Shorts 36, post captions 125, clips whose comments were read 50 (30 TikTok with 450 comments, 20 Instagram with 177) |
+| Watched first-hand by a researcher | 467: TikTok 170, Facebook 133, Instagram 101, YouTube 36, TikTok captions 27 |
+| Rwandan rows | 421 |
 | Rows set aside as income-chain or scam posts | 8 |
-| Openings (hooks) | 62 |
+| AI-made clips, never used as an example to copy | 25 |
+| Openings (hooks) | 63 |
 | Video formats | 10 |
 | Business sectors | 11 |
-| Rules | 81 (66 do, 15 don't) |
-| Caption formulas | 28, plus 10 ways to order |
+| Rules | 92 (77 do, 15 don't) |
+| Caption formulas | 32, plus 10 ways to order |
 
 ## What you see
 
@@ -108,7 +109,7 @@ The **caption score** (coming) checks the post text the same way:
 - where to find you (a landmark);
 - the delivery line, when you deliver;
 - Kinyarwanda when your business writes in Kinyarwanda;
-- the hashtag habits of each platform: Facebook 0 to 3, TikTok and Instagram 4 to 6, Shorts 1 to 3.
+- the hashtag habits of each platform: Facebook 0 to 3, TikTok and Instagram 4 to 6, Shorts 0 to 3.
 
 These habits come from 125 real Rwandan and East African captions.
 
@@ -180,8 +181,9 @@ missed".
   each design.
 - The Brain only advises and checks. It never changes a design, and a low score never stops you from downloading or
   posting.
-- East Africa is thin on Instagram (7 of 58 reels) and YouTube Shorts (few local ads); Facebook stays the main evidence
-  for Rwandan ads.
+- East Africa is thin on YouTube Shorts (few local ads). Instagram has 43 East African reels (34 from Kigali), but
+  they are each account's best reels, so they show what wins rather than the average post. Facebook stays the main
+  evidence for Rwandan ads.
 - All the videos were watched with the sound off, so music and voice advice comes from articles, not from listening.
 
 ## For developers

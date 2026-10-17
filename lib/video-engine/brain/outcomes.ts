@@ -37,10 +37,10 @@ export function checkOutcome(o: Outcome): string[] {
 /** The latest stats of a post (7 days, else 24 hours); null when nothing has been read yet. */
 const latest = (o: Outcome): OutcomeStats | null => o.stats7d ?? o.stats24h ?? null;
 const reachOf = (s: OutcomeStats) => s.views ?? s.reach ?? null;
-/** Engagement per view: comments, saves and shares count more than a like. */
+/** Engagement per view: comments, saves and shares count more than a like, and a message (a customer asking) most. */
 const engagementOf = (s: OutcomeStats) => {
   const seen = reachOf(s);
-  const acts = (s.likes ?? 0) + 2 * (s.comments ?? 0) + 2 * (s.saves ?? 0) + 3 * (s.shares ?? 0);
+  const acts = (s.likes ?? 0) + 2 * (s.comments ?? 0) + 2 * (s.saves ?? 0) + 3 * (s.shares ?? 0) + 5 * (s.messages ?? 0);
   return seen ? acts / seen : null;
 };
 /** Where a value stands among others, 0 to 1 (ties count half). */

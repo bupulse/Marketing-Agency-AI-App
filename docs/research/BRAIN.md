@@ -14,11 +14,11 @@ Code: `lib/video-engine/brain/` (data in `brain/data/*.json`). Tests: `tests/vid
 
 | Part | Count | What it holds |
 | --- | --- | --- |
-| Research rows | 538: 383 videos and ads (317 watched first-hand: TikTok 133, Facebook 90, Instagram 58, YouTube Shorts 36), 125 post captions (111 Rwandan) and 30 clips whose 450 comments were read; 8 income-chain posts kept only as what not to copy |
-| Hooks (openings) | 62 | The first 2 seconds: the line, what is on screen, where it was seen, real example lines |
+| Research rows | 687: 512 videos, ads and page posts (440 watched first-hand: TikTok 170, Facebook 133, Instagram 101, YouTube Shorts 36), 125 post captions (111 Rwandan), 30 TikTok clips whose 450 comments were read and 20 Instagram reels whose 177 comments were read; 8 income-chain posts kept only as what not to copy; 25 AI-made clips kept out of hooks, formats and sectors |
+| Hooks (openings) | 63 | The first 2 seconds: the line, what is on screen, where it was seen, real example lines |
 | Formats | 10 | Product reveal, UGC testimonial, before/after, unboxing, tour, offer, 3D motion, kinetic typography, tutorial, list or price list |
-| Captions | 4 platforms, all researched, 28 formulas including 5 model captions by sector, 10 ways to order, the caption corpus counts |
-| Rules | 81 (66 do, 15 don't) |
+| Captions | 4 platforms, all researched, 32 formulas including 5 model captions by sector and a page-post line per platform, 10 ways to order, the caption corpus counts |
+| Rules | 92 (77 do, 15 don't): 29 for ads only, 5 for page posts only, 15 marked early evidence |
 | Sectors | 11 | Restaurant, phone shop, salon, fashion, real estate, school, car rental, clinic, events, services, and "shop" for everything else |
 
 The Facebook "Rwanda playbook" (round 2) is folded in: its verbatim opening lines (the price pill, the counter seller
@@ -33,7 +33,24 @@ Instagram (58 reels watched) added: reels of 6 to 16 s that loop, the first text
 the before shown first with one lowercase word on Instagram (the result first on TikTok), the right 15% of the frame left
 to the app's buttons (a small shop or phone line in the lower-left corner is the one exception), a comment keyword beside
 the number, the platform's own "AI-generated" label, and the empty-frame, owner-with-stock and "this is what {price}
-buys you" hooks. East Africa is thin there (7 rows).
+buys you" hooks.
+Facebook round 4 (49 rows): 16 event ads (a poster or animated slide first, venue footage at night, tickets by a USSD
+code such as "dial *669*3426#"), 8 school ads (Action School, Saint Charles study-abroad, Kigali English Academy, British
+Council, ALX) and 5 clinic and optician ads; no Rwandan pharmacy ads exist in the Ad Library, and herbal-remedy pages
+were left out as likely quackery. Round 6 added 20 organic reels from 12 big Rwandan pages (RwandAir, Simba, Inyange,
+Skol, Bourbon, CANAL+, Bralirwa, ONOMO, Piramie, Inzovu, Abby Home, Java House): see "Ads and page posts".
+Instagram round 2 (43 reels from 36 East African business accounts, 34 of them in Kigali, each account's top reels)
+added (counts as recounted from the 34 Kigali rows): Kigali reels run a median 27 s (global 13 s) in one continuous take,
+1 to 4 cuts per 10 s; 10 of 34 keep the number on screen for all or most of the clip (12 at some point), and those 10
+had median 73.4K plays against 36.0K for the rest (46 against 6.5 plays per follower, a direction, not proof); none of
+the 34 shows the price on screen (an amount appears in 3 captions), so a price badge is a free edge; the caption is the
+shop card (17 of 34 give a phone or a DM/WhatsApp line, 13 a number); plays run a median 21 times the followers while
+likes are only 0.55% of plays (people call or WhatsApp instead). A row's strength now
+also counts plays against followers (100 times or more = 1), so a 751-follower shop with 161K plays ranks as strong. The
+Instagram lengths for product reveals, offers, UGC and before/after now reach 25 to 30 s, services get the
+one-take-process rule, and a Kinyarwanda-first bilingual hook ("Turi kuri Promotion / We are on promotion") is a
+priority-3 rule marked as a bet: only 4 Kigali rows use Kinyarwanda. Each account's best reels were chosen, so these show
+what wins, not the average post.
 TikTok round 2 (40 Kigali clips for salons, fashion, transport and travel, schools, clinics and pharmacies) added: product
 sectors lead with the price, clinics and schools with trust and numbers ("since 1969", "6 Branches", the insurers, "17
 SCHOOLS"); a clean CONTACT US card at the end; and the sound rules from 30 clips (12 carried by text, 11 by the picture,
@@ -101,6 +118,30 @@ their own country (or none).
 When the Instagram research and the Facebook "Rwanda playbook" are ready, step 2 picks up `instagram.jsonl` by itself;
 step 3 adds Instagram to the hooks' platforms, replaces the interim Instagram caption guide, and adds the playbook's
 rules (marked `rwanda`).
+
+## Early evidence
+
+The researchers audited every rule and hook against its rows (`docs/research/brain-evidence-audit.md`). A research rule
+or hook that cites fewer than 3 rows is marked `weak: true` (15 rules with the provisional AI rules, 25 hooks; checkBrain refuses an unmarked one);
+`brainContext` adds "(early evidence)" after it, and `scoreDesign` and `scoreCaption` count a check on a weak rule at
+half its points. Reasons say only what the cited rows show: `no-vague-discount` is now a BuPulse policy (its one row was a
+Ghanaian store whose vague discount did well), `price-first-frame` says it is what short-lived product ads do (only 7 of
+20 long runners show a price), and MoMo is "rare", not "absent" (the Sofar Kigali ticket ad writes "MoMo: 0788617015").
+
+Caption formulas follow the same rule: one citing fewer than 3 rows is `weak`, and the four Facebook "model" captions
+(`model-shop`, `model-salon`, `model-school`, `now-available-cod`) are marked `model: true`, so the context says
+"Caption (BuPulse model, not observed)". `model-school` now follows real school captions (445 to 990 characters, 17 to
+19 short lines). The Instagram formulas now rest on the Kigali account reels (`ig-owner-contact`, `ig-price-stock`,
+`ig-dm-order`, and a new `ig-service-card` from the spa and clinic captions); `ig-owner-question` is a page post. The
+TikTok `question-then-offer` no longer uses the Ghanaian "Drop 40% or 60%" line. Shorts take 0 to 3 hashtags (14 of 36
+titles use none), and the Facebook 600-character cap is soft: schools, clinics, services and property may run to 1,000
+(19 of 125 real captions do).
+
+The TikTok recount: 6 of 10 Rwandan seller ads put the price, the offer or the number in the first 3 s (not 11 of 17,
+which included a Ghanaian and a Ugandan store and creator clips). The most-liked Rwandan phone-shop clip is
+@rujamaphones (5,200 likes), then Hadidja Collection (3,086) and KIBO Electronics (3,016); the 67.8K "Drop 40% or 60%"
+clip is Ghanaian (country GH in the index). Biko Group, The Bistro Group and the Wings n More clip have no confirmed
+country.
 
 ## How hooks are ranked
 
@@ -199,11 +240,11 @@ and TikTok and Shorts leave the right 15% to the app's buttons.
 - the price, in any form (20,000 RWF, 48,000RWF, 38000FRW, 18k gusa, Price:3.5M);
 - where the business is (a 📍 line, a landmark), when the brief has a place, and the delivery line when it delivers;
 - hashtags as the platform's sellers use them: Facebook 0 to 3 (half of Rwandan ads use none), TikTok and Instagram 4 to
-  6, Shorts 1 to 3, with a local tag and at most two broad ones. #MadeInRwanda is never required, and only allowed for
+  6, Shorts 0 to 3, with a local tag and at most two broad ones. #MadeInRwanda is never required, and only allowed for
   goods made in Rwanda;
 - a Kinyarwanda business's caption has Kinyarwanda in it (a mixed caption counts). The detector agrees with the
   researcher's labels on 14 of 14 Kinyarwanda, 18 of 19 mixed and 76 of 77 English Rwandan captions;
-- the length (Facebook under 600 characters, TikTok and Instagram under 300, a Short's title under 100);
+- the length (Facebook under 600 characters, a soft limit raised to 1,000 for schools, clinics, services and property; TikTok and Instagram under 300, a Short's title under 100);
 - no made-up superlatives, income claims ("earn X a day", MoMo screenshots), cures, "subscribe" on Shorts, or facts the
   brief does not give.
 
@@ -249,6 +290,82 @@ Examples: a Kigali phone shop gets "Samsung Galaxy A56 · WhatsApp 0788 300 400"
 "Samsung Galaxy A56 · 50 MP camera"; a Kinyarwanda house listing "INZU IGURISHWA I KIBAGABAGA · 180M RWF"; a clinic
 "Since 2015 in Kigali" and "We take RSSB, MMI, Old Mutual".
 
+## A week of videos
+
+`planSeries(brief, { platform, count = 7, outcomes, businessId, startDay, presenter })` (`brain/series.ts`) plans a
+week of distinct posts for one product or offer, for Autopilot. Each day has its own hook (with the filled-in line from
+`suggestHooks`), its own Claude template, a format, a length from the format's research range for that platform (6 to
+30 s), the platform's caption formula, a music mood from the sector's research (else by format), whether to use a voice,
+and one line of direction for the designer. The rules:
+
+- No hook and no template repeats; the format used least so far comes first, so the week varies.
+- Day 1 leads with the price for product sectors and with trust (an authority hook) for clinics and schools; trust
+  sectors never get a price hook or a price template, and a clinic never gets a before/after.
+- The middle post is a list, or a before/after where the work shows (salons, services, real estate, fashion).
+- No offer video without an offer in the owner's note or a "was ... now ..." price; no price-drop without the old price;
+  no price hook without a price.
+- Presenter-led and UGC posts, and the voice, only when the business has a presenter.
+- With platform "any" the days rotate TikTok, Instagram, Facebook, Shorts.
+- The same number and the same place in every post: the long-running Rwandan advertisers run 8 to 15 variants of one
+  format sharing the address, the number and the button, so every note says which number and place to keep on screen.
+
+The Kigali phone shop (Samsung Galaxy A56, 420,000 RWF, Makuza Peace Plaza, 0788 300 400), starting Monday 19 October:
+
+| Day | Platform | Hook | Opening line | Template | Format | Length | Caption | Music |
+|---|---|---|---|---|---|---|---|---|
+| Mon 19 Oct | TikTok | price-banner | Samsung Galaxy A56 · 420,000 RWF | kigali-price-first | product-reveal | 15 s | available-now | upbeat |
+| Tue 20 Oct | Instagram | number-in-hand | Samsung Galaxy A56 · WhatsApp 0788 300 400 | kigali-market | tour | 15 s | ig-owner-contact | warm |
+| Wed 21 Oct | Facebook | spec-words | Samsung Galaxy A56 · 50 MP camera | product-hero | product-reveal | 15 s | stock-list | upbeat |
+| Thu 22 Oct | Shorts | numbered-list | 3 reasons to choose Samsung Galaxy A56 | tiktok-3-reasons | list | 15 s | store-list-title | upbeat |
+| Fri 23 Oct | TikTok | model-badge | Samsung Galaxy A56 available now | studio-turntable | product-reveal | 15 s | available-now | upbeat |
+| Sat 24 Oct | Instagram | now-available | Samsung Galaxy A56 is here | macro-detail | product-reveal | 12 s | ig-owner-contact | upbeat |
+| Sun 25 Oct | Facebook | what-x-buys | What 420,000 RWF buys in Kigali | brand-story | tour | 20 s | stock-list | warm |
+
+Every note ends "Keep the number (0788 300 400) and the place (Makuza Peace Plaza, Kigali) on screen, as in every post
+this week." A skin clinic in Gishushu gets "Since 2015 in Kigali" first, then "We take RSSB, MMI, Old Mutual", the
+three reasons in the middle and "Still dealing with acne?", all calm music, no price and no before/after. When a brief
+has fewer usable hooks than days, fewer posts come back rather than repeats.
+
+Instagram comments (20 Kigali reels, 177 comments, `instagram-comments.jsonl`, ids `ic-`): 72 of 177 comments (41%) ask
+the price, 61 to 63% under shoes, skincare and hair reels and 50% under phones; food, event and brand reels draw 97 to
+100% praise and no questions; sellers answered 46 of 86 questions and 19 of 38 price replies only said "DM"; viewers
+complain "Mujye muvuga n'ibiciro" (say the prices too) and "Jyuvuga cyane twumve" (speak up). It strengthens
+`price-stays`, `number-labelled`, `caption-preanswer`, `cta-route` and `voice-with-person`, and adds the seller's first
+comment: `firstCommentFor(brief)` (exported from the index) fills "Price / 📍 place / Delivery / WhatsApp" (or the
+researcher's Kinyarwanda reply-kit lines "Igiciro ni ...", "Turi i ..., hafi ya ...", "Turohereza i ...", "Nandikira kuri
+WhatsApp ...") from the brief's facts only, and the ad context asks Claude for it with the caption.
+
+TikTok round 4 (37 clips, partial: comments blocked by a captcha): 20 AI-made, 12 real-shop controls, 5 unclear. No
+East African retailer was found using AI for its own ad; the AI business clips are AI studios' sales demos, with a median
+309 likes and 5 comments against 1,213 and 42 for real Rwandan shop clips with the price and the number on screen. The
+index keeps `ai` and `aiLabel` on these rows; checkBrain lets only the AI rules (`ai-real-product`, `ai-real-place`,
+`ai-real-face`, `ai-disclose`, `ai-label`, `look-real`, `native-look`, `no-fake-customers`) cite an AI-made clip, so no
+hook, format or sector learns from them. The four new AI rules are early evidence; `look-real` now cites the controls.
+
+## Ads and page posts
+
+A brief is an **ad** (the default) or a **post** on the business's own page (`purpose: "post"` on the BrainBrief, or on
+the designer's and the prompt writer's briefs, which `brainBriefFromDesign` and `brainBriefFromPrompt` pass through).
+The two do not mix:
+
+- 29 rules are for ads only (`purposes: ["ad"]`: the phone bar, the price in the first frame, the contact card, the full
+  shop-card caption, the platform hashtag counts, "no polished brand film without a price"...), and 5 are for posts only
+  (`post-no-overlay`, `post-short-visual`, `post-caption`, `post-moments`, `post-warm-sound`). checkBrain refuses an
+  ad rule that cites an organic reel.
+- A post's hooks leave out the price-first and contact-first ones (and offer badges without an offer); its format is
+  never "offer" without an offer; its caption is the `page-post` line (one friendly line, 0 to 3 tags); its call to
+  action is the logo or the shop sign, with the number in the caption.
+- An ad's hook ranking leaves out the 20 organic reels (`organic: true` in the index; a page's reels are never counted
+  as live ad variants); a post's ranking counts them half again as much.
+- `scoreDesign` and `scoreCaption` take the purpose (`brief.purpose` or `options.purpose`). A post is not marked down for having
+  no hook text at 0 s, no price, no number and no order line; it fails instead if the price or number stays on screen
+  in every scene (`post-no-overlay`) or the last scene is a hard sell (`post-end`), and it is held to 12 to 25 s, about
+  3 scenes, a caption of about 10 to 25 words and at most 3 hashtags.
+
+Why: on the 12 pages only 1 of 20 reels shows a price and a phone; they run a median 20 s (ads 34 s), 14 of 20 carry
+no hashtag, and reach came from places and moments (ONOMO's silent dining-room film 310K views, CANAL+'s national-team
+highlights 54K, RwandAir's staff moments 18K), while the one organic post with a real offer got 163 views.
+
 ## Learning from our own results
 
 The research tells the brain what works for other sellers. Once clients post through BuPulse, the brain also learns
@@ -293,13 +410,14 @@ from what BuPulse's own videos did (`brain/outcomes.ts`).
 
 - **Sound.** Everything was watched muted. The sound rules come from TikTok's printed sound labels and from what the
   picture shows (a speaker, burned-in text), not from listening. The owner (or a later pass) should check sound on the top 10 rows.
-- **Instagram** and **YouTube Shorts** are thin on East Africa (7 of 58 reels; few local Shorts): Facebook stays the main evidence for Rwandan ads.
-- **Thin sectors**: events is now the thinnest (6 event and venue rows, plus 2 hotels and residences); Kigali salon
-  ads are young (at most 24 days live). Transport and travel (car hire, tours, travel agencies) has 12 Rwandan ads.
+- **YouTube Shorts** is thin on East Africa (few local Shorts). Instagram now has 43 East African reels (34 Kigali), but they are each account's top reels: good for what wins, not for the average post. Facebook stays the main evidence for Rwandan ads.
+- **Thin sectors**: events now has 24 rows (16 Facebook ads from round 4) but few prices; there are no Rwandan pharmacy
+  ads at all; Kigali salon ads are young (at most 24 days live). Transport and travel (car hire, tours, travel agencies) has 12 Rwandan ads.
   Clinic rules are education-only by policy.
 - **Rwandan ads are young**: most started in the last two weeks, so days running says little in Rwanda; the number of
   variants live at once (Derma 15, Elohome 8, Magic Chef 7, Piramie 6) is the better signal but is not yet a field in the
   research rows, so it does not count in a row's strength.
-- **"Works" is a proxy**: TikTok likes and Facebook days running, not sales. BuPulse's own results now feed the
-  ranking (see "Learning from our own results"), but views and likes are not orders either; WhatsApp messages and
-  sales would be the next signal to record.
+- **"Works" is a proxy**: TikTok likes, Facebook days running and Instagram plays against followers, not sales.
+  BuPulse's own results now feed the ranking (see "Learning from our own results"); an outcome's `messages` (WhatsApp
+  taps or DM conversations, when the network reports them) counts five times a like, since Kigali viewers message rather
+  than like. Sales would be the next signal to record.

@@ -24,7 +24,8 @@ export type HookType = (typeof HOOK_TYPES)[number];
 export const HOOK_NEEDS = ["price", "phone", "offer", "old-price", "location", "result", "claim", "person", "series"] as const;
 export type HookNeed = (typeof HOOK_NEEDS)[number];
 
-export const RESEARCH_SOURCES = ["tiktok", "facebook", "instagram", "youtube", "captions", "comments"] as const;
+/** Research files: comments is TikTok's comments study, instagram-comments Instagram's (each indexed by clip summary). */
+export const RESEARCH_SOURCES = ["tiktok", "facebook", "instagram", "youtube", "captions", "comments", "instagram-comments"] as const;
 export type ResearchSource = (typeof RESEARCH_SOURCES)[number];
 
 /**
@@ -55,6 +56,16 @@ export type Evidence = {
   runningDays: number | null;
   /** Facebook: ads the advertiser has live at once (rows sharing its name, or the researchers' count); null elsewhere. */
   variantsLive: number | null;
+  /** Plays as reported (Instagram account grids, Facebook page reels), when the row has them. */
+  views?: number | null;
+  /** The account's followers when the row was found from the account (Instagram round 2). */
+  followers?: number | null;
+  /** TikTok round 4: how the clip was made ("generated people", "generated scene", "motion graphics", "none" for a real-shop control, "unknown"). */
+  ai?: string;
+  /** TikTok's own AI label was shown on the clip. */
+  aiLabel?: boolean;
+  /** A business page's own post (organic reel), not an ad: evidence for page posts only (BrainBrief.purpose "post"). */
+  organic?: true;
   /** An income-chain, recruiter or MoMo-screenshot post: cited only by the fake-income and income-promise don'ts. */
   scam?: true;
   /** 0 to 1: how strongly the row shows "this works" (likes on TikTok; days running or variants live on Facebook). */
@@ -65,6 +76,8 @@ export type Hook = {
   id: string;
   name: string;
   type: HookType;
+  /** Early evidence: fewer than 3 research rows (brain-evidence-audit.md); brainContext says so. */
+  weak?: true;
   /** The line or frame, with placeholders: {product} {price} {old_price} {offer} {city} {area} {business} {phone} {day} {problem} {result} {count} {claim}. */
   pattern: string;
   /** What is on screen in the first 2 seconds. */
@@ -107,7 +120,22 @@ export type Format = {
   evidence: string[];
 };
 
-export type CaptionFormula = { id: string; name: string; pattern: string; examples: string[]; sectors: (SectorId | "any")[]; evidence: string[] };
+export type CaptionFormula = {
+  id: string;
+  name: string;
+  pattern: string;
+  examples: string[];
+  sectors: (SectorId | "any")[];
+  evidence: string[];
+  /** Ads only or posts only; ads when absent. */
+  purposes?: Purpose[];
+  /** Early evidence: fewer than 3 rows, or not yet observed on this platform. */
+  weak?: true;
+  /** BuPulse's own synthesis of several captions, not a caption seen as is (brain-evidence-audit.md). */
+  model?: true;
+  /** Where the examples come from when it is not obvious. */
+  note?: string;
+};
 export type PlatformCaptions = {
   platform: Platform;
   /** "researched" when the platform's own research is in; "interim" while it borrows from the others. */
@@ -121,7 +149,16 @@ export type PlatformCaptions = {
   findings?: string[];
   evidence: string[];
 };
-export type CaptionsData = { platforms: PlatformCaptions[]; tradeRoutes: { id: string; words: string; when: string }[] };
+/** The first comment for the seller to pin (Instagram comments study): one line each for price, place, delivery, number. */
+export type FirstCommentGuide = { why: string; en: string[]; rw: string[]; evidence: string[] };
+export type CaptionsData = { platforms: PlatformCaptions[]; tradeRoutes: { id: string; words: string; when: string }[]; firstComment: FirstCommentGuide };
+
+/**
+ * What the video is for: an "ad" (the default: price, number and one way to order on screen) or a "post" on the
+ * business's own page (organic: a place, a face or a moment; the offer and contact in the caption; Facebook round 6).
+ */
+export const PURPOSES = ["ad", "post"] as const;
+export type Purpose = (typeof PURPOSES)[number];
 
 export const RULE_STAGES = ["hook", "structure", "text", "cta", "offer", "voice", "sound", "caption", "claims", "people", "language", "series", "visual"] as const;
 export type RuleStage = (typeof RULE_STAGES)[number];
@@ -144,6 +181,10 @@ export type Rule = {
   formats?: FormatId[];
   /** Only applies when the brief has (true) or lacks (false) these facts. */
   when?: { hasPrice?: boolean; hasPhone?: boolean };
+  /** Only for ads, or only for page posts; both when absent. */
+  purposes?: Purpose[];
+  /** Early evidence: fewer than 3 research rows, or provisional rules from a thin round; brainContext says so and the scorer weighs it at half. */
+  weak?: true;
   evidence: string[];
 };
 
@@ -188,6 +229,8 @@ export type BrainBrief = {
   hasLocation?: boolean;
   hasPresenter?: boolean;
   seconds: number;
+  /** An ad (the default) or a post on the business's own page. */
+  purpose?: Purpose;
 };
 
 export type ScoredHook = Hook & { score: number; why: string[] };
@@ -195,6 +238,7 @@ export type TimedBeat = { from: number; to: number; role: BeatRole; beat: string
 
 export type BrainPick = {
   platform: Platform | "any";
+  purpose: Purpose;
   sector: SectorId;
   format: Format;
   engine: Engine;
@@ -206,15 +250,20 @@ export type BrainPick = {
   length: { range: SecondsRange; ok: boolean };
   rules: Rule[];
   donts: Rule[];
-  caption: { formula: CaptionFormula; mustInclude: string[]; hashtags: string };
+  /** firstComment: the lines for the seller's pinned first comment (ads only; suggest.ts firstCommentFor fills them). */
+  caption: { formula: CaptionFormula; mustInclude: string[]; hashtags: string; firstComment: string[] | null };
   cta: string;
   sectorInfo: Sector;
 };
 
 // ---- What BuPulse's own posted videos did (outcomes.ts)
 
-/** A post's numbers as the publisher reads them (Prisma PostMetrics: every field may be missing on some networks). */
-export type OutcomeStats = { views: number | null; reach: number | null; likes: number | null; comments: number | null; saves: number | null; shares: number | null };
+/**
+ * A post's numbers as the publisher reads them (Prisma PostMetrics: every field may be missing on some networks).
+ * `messages` is the WhatsApp taps or DM conversations the post started, when the network reports them: Kigali viewers
+ * message or call rather than like (likes are about 0.55% of plays), so a message counts most.
+ */
+export type OutcomeStats = { views: number | null; reach: number | null; likes: number | null; comments: number | null; saves: number | null; shares: number | null; messages?: number | null };
 
 /**
  * One video BuPulse made and a client posted, with what it did after 24 hours and after 7 days. The lab keeps these in

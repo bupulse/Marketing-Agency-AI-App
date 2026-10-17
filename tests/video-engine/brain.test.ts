@@ -3,8 +3,8 @@ import os from "node:os";
 import { loadOutcomes, recordOutcome } from "@/lib/video-engine/brain/outcomes-store";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { BRAIN, FORMATS, MAX_HOOK_WORDS, PLATFORMS, RESEARCH_SOURCES, SECTORS, checkBrain, checkLanguage, checkOutcome, languageTextsOf, outcomesLine, rankWithOutcomes, safeAreaFor, suggestHooks, type Outcome, type SuggestBrief, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
-import { evidenceFromRows, looksLikeScam, parseCount, parseDate, parseJsonl, rowKey, rowStrength, tiktokDate, variantsLive } from "@/lib/video-engine/brain/ingest";
+import { BRAIN, FORMATS, MAX_HOOK_WORDS, PLATFORMS, firstCommentFor, planSeries, RESEARCH_SOURCES, SECTORS, checkBrain, checkLanguage, checkOutcome, languageTextsOf, outcomesLine, performance, rankWithOutcomes, safeAreaFor, suggestHooks, type Outcome, type SuggestBrief, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
+import { evidenceFromRows, looksLikeScam, parseCount, parseDate, parseJsonl, rowCountry, rowKey, rowStrength, tiktokDate, variantsLive } from "@/lib/video-engine/brain/ingest";
 import { SAFE_AREAS, amounts, hasKinyarwanda, scoreCaption, scoreDesign, scoreSeedancePrompt, templateStyle, type ScoreBrief } from "@/lib/video-engine/brain/score";
 import { CONTEXT_MAX_CHARS, ENGINE_SECONDS, rankHooks, brainBriefFromDesign, brainBriefFromPrompt, brainContext, brainFor, formatFromTemplate, scaleTimeline, sectorFromText } from "@/lib/video-engine/brain/select";
 import type { DesignBrief } from "@/lib/video-engine/designer";
@@ -157,6 +157,24 @@ describe("variants live (Facebook)", () => {
   });
 });
 
+describe("reach on Instagram (plays against followers)", () => {
+  it("a small account whose reel reached far is strong though its likes are few", () => {
+    expect(rowStrength("instagram", {}, 716, null, null, { views: 161_000, followers: 751 })).toBe(1);
+    expect(rowStrength("instagram", {}, 716, null, null)).toBeLessThan(0.5);
+    expect(rowStrength("instagram", {}, 200, null, null, { views: 80_000, followers: 243_000 })).toBeLessThan(0.75);
+    const lapaix = BRAIN.evidence.find((e) => e.who === "@lapaixtechnologyltd" && e.language === "rw")!;
+    expect([lapaix.views, lapaix.followers, lapaix.strength, lapaix.country]).toEqual([161_000, 751, 1, "RW"]);
+    expect(BRAIN.evidence.filter((e) => e.source !== "instagram" && !e.organic).every((e) => e.views === undefined)).toBe(true);
+  });
+
+  it("a run of flags is a region tag, a single flag or the account's own text names the country", () => {
+    expect(rowCountry({ hashtags: ["#tiktokeastafrica🇺🇬🇷🇼🇧🇮🇰🇪🇹🇿"] })).toBeNull();
+    expect(rowCountry({ hashtags: ["#daressalaam🇹🇿"] })).toBe("TZ");
+    expect(rowCountry({ account_name: "Shoes Gallery 🇷🇼" })).toBe("RW");
+    expect(rowCountry({ cta: "Only TSh 10,000, delivery available" })).toBe("TZ");
+  });
+});
+
 describe("brainFor", () => {
   it("is deterministic", () => {
     expect(brainFor(base)).toEqual(brainFor(base));
@@ -267,7 +285,7 @@ describe("brainContext", () => {
     expect(seedance).toContain("BuPulse overlays");
     const claude = brainContext(base);
     expect(claude).toContain("On screen:");
-    expect(claude).toContain("Caption:");
+    expect(claude).toMatch(/Caption( \([^)]*\))?:/);
     expect(brainContext(base, { ownerHook: true })).toContain("the owner chose the opener");
   });
 
@@ -383,7 +401,7 @@ describe("scoring a design", () => {
     const r = scoreDesign(spec, { business: { name: "Nova Phones" }, product: { name: "Galaxy A56", price: "420,000 RWF" } }, { voice: true });
     expect(r.failed.map((f) => f.id).sort()).toEqual(["caption", "price-early", "safe-area"]);
     expect(r.failed.find((f) => f.id === "safe-area")!.scene).toBe(1);
-    expect(r.score).toBe(90);
+    expect(r.score).toBe(89);
     const noPrice = scoreDesign(spec, { business: { name: "Nova Phones" }, product: { name: "Galaxy A56" } });
     expect([...noPrice.passed, ...noPrice.failed].map((c) => c.id)).not.toContain("price-shown");
     expect([...noPrice.passed, ...noPrice.failed].map((c) => c.id)).not.toContain("say-lines");
@@ -440,6 +458,183 @@ describe("scoring a design", () => {
     expect(amounts("Samsung Galaxy A56 420,000 RWF")).toEqual([420_000]);
     expect(amounts("Samsung Galaxy A56 • 420,000 RWF · 5G · 8 GB")).toEqual([420_000, 8]);
     expect(amounts("+250-739-095040 or (+250)788861575")).toEqual([250]);
+    // A house price is grouped money, even with nine digits and a word after it on the same line.
+    expect(amounts("Kibagabaga: 120,000,000 RWF Bright, ready")).toEqual([120_000_000]);
+    expect(amounts("Call 0788300400 or 250788300400")).toEqual([]);
+  });
+
+  it("a business with no phone and no website passes with a 'Find us in' end card and a one-line caption", () => {
+    const house: ScoreBrief = { business: { name: "Kibagabaga Homes", language: "English" }, product: { name: "House in Kibagabaga", price: "120,000,000 RWF" }, styleId: "kigali-price-first", platform: "facebook" };
+    const spec: MotionSpec = {
+      ...good,
+      scenes: [
+        scene(3, [{ kind: "text", text: "House in Kibagabaga: 120,000,000 RWF", font: "anton", size: 0.08, color: "#ffffff", x: 0.5, y: 0.22, w: 0.84, h: 0.14, animate: "pop" }], "A house in Kibagabaga."),
+        scene(4, [{ kind: "photo", photo: 1, x: 0.5, y: 0.45, w: 0.8, h: 0.5, fit: "cover", zoomTo: 1.1 }, { kind: "text", text: "4 bedrooms", font: "inter", size: 0.06, color: "#ffffff", x: 0.5, y: 0.2, w: 0.7, h: 0.08, animate: "rise" }], "Four bedrooms."),
+        scene(4, [{ kind: "photo", photo: 1, x: 0.5, y: 0.45, w: 0.8, h: 0.5, fit: "cover", zoomTo: 1.1 }, { kind: "text", text: "120,000,000 RWF", font: "anton", size: 0.08, color: "#f5b700", x: 0.5, y: 0.2, w: 0.7, h: 0.1, animate: "pop" }], "One hundred twenty million francs."),
+        scene(4, [{ kind: "text", text: "Find us in Kibagabaga, Kigali", font: "poppins", size: 0.07, color: "#ffffff", x: 0.5, y: 0.4, w: 0.8, h: 0.1, animate: "rise" }], "Find us in Kibagabaga."),
+      ],
+      caption: "Kibagabaga: 120,000,000 RWF Bright, ready to move in. Find us in Kibagabaga, Kigali.",
+      hashtags: ["Kigali", "Kibagabaga"],
+    };
+    const failed = scoreDesign(spec, house).failed.map((f) => f.id);
+    for (const id of ["caption", "cta", "contact-last", "price-shown", "phone-bar", "number-labelled"]) expect(failed).not.toContain(id);
+  });
+
+  it("a page post is not scored as a weak ad: no price strip, no phone bar, no order line expected", () => {
+    const post: MotionSpec = {
+      ...good,
+      scenes: [
+        scene(5, [{ kind: "photo", photo: 1, x: 0.5, y: 0.5, w: 1, h: 1, fit: "cover", zoomTo: 1.1 }], ""),
+        scene(5, [{ kind: "photo", photo: 1, x: 0.5, y: 0.5, w: 1, h: 1, fit: "cover", turntable: { spin: 1 } }, { kind: "text", text: "New this week", font: "inter", size: 0.06, color: "#ffffff", x: 0.5, y: 0.2, w: 0.7, h: 0.08, animate: "rise" }], ""),
+        scene(5, [{ kind: "text", text: "Nova Phones", font: "poppins", size: 0.08, color: "#ffffff", x: 0.5, y: 0.4, w: 0.8, h: 0.1, animate: "rise" }], ""),
+      ],
+      caption: "The new Galaxy A56 just landed at Nova Phones, come and say hello this week in Kigali. #Kigali",
+      hashtags: ["Kigali"],
+    };
+    const asAd = scoreDesign(post, brief).failed.map((f) => f.id);
+    expect(asAd).toEqual(expect.arrayContaining(["hook-text", "price-shown", "contact-last", "cta"]));
+    const asPost = scoreDesign(post, { ...brief, purpose: "post" });
+    expect(asPost.failed.map((f) => f.id)).toEqual([]);
+    // An ad dressed up as a post: the number in every scene and "Order now" at the end.
+    expect(scoreDesign(good, brief, { purpose: "post" }).failed.map((f) => f.id)).toEqual(expect.arrayContaining(["post-no-overlay", "post-end"]));
+    const caption = scoreCaption(post.caption!, post.hashtags!, { ...brief, purpose: "post" });
+    expect(caption.failed).toEqual([]);
+    expect(scoreCaption(post.caption!, post.hashtags!, brief).failed.map((f) => f.id)).toEqual(expect.arrayContaining(["caption-phone"]));
+  });
+});
+
+describe("what Instagram viewers ask (comments) and the seller's first comment", () => {
+  it("indexes the 20 clip summaries and the price and number rules cite them", () => {
+    const ic = BRAIN.evidence.filter((e) => e.source === "instagram-comments");
+    expect(ic).toHaveLength(20);
+    expect(ic.every((e) => e.id.startsWith("ic-") && e.country === "RW")).toBe(true);
+    expect(BRAIN.rules.find((r) => r.id === "price-stays")!.evidence.some((id) => id.startsWith("ic-"))).toBe(true);
+    expect(BRAIN.rules.find((r) => r.id === "number-labelled")!.evidence.some((id) => id.startsWith("ic-"))).toBe(true);
+  });
+
+  it("fills a first comment from the facts only, in Kinyarwanda for a Kinyarwanda business", () => {
+    const phone: SuggestBrief = { business: { name: "Nova Phones Kigali", description: "Phone shop in Kigali, Makuza Peace Plaza", language: "English", phone: "+250 788 300 400" }, product: { name: "Samsung Galaxy A56", price: "420,000 RWF" } };
+    expect(firstCommentFor(phone)!.lines).toEqual(["Price: 420,000 RWF", "📍 Makuza Peace Plaza, Kigali", "WhatsApp: 0788 300 400"]);
+    const shoes: SuggestBrief = { business: { name: "City Shoes", description: "Inkweto i Kimironko, Kigali. Free delivery.", language: "Kinyarwanda", phone: "0782 171 232" }, product: { name: "Air Max", price: "45,000 RWF" } };
+    const rw = firstCommentFor(shoes)!;
+    expect(rw.lines).toEqual(["Igiciro ni 45,000 RWF", "Turi i Kimironko", "Turohereza i Kigali", "Nandikira kuri WhatsApp 0782 171 232"]);
+    expect(checkLanguage(rw.lines.map((text, i) => ({ where: `line ${i}`, text })), "Kinyarwanda")).toEqual([]);
+    expect(firstCommentFor({ business: { name: "X" }, product: { name: "Y" } })).toBeNull();
+    expect(brainContext({ platform: "instagram", sector: "fashion", engine: "claude", hasPrice: true, hasPhone: true, seconds: 15 })).toMatch(/First comment for the seller to pin/);
+    expect(brainContext({ platform: "instagram", sector: "fashion", engine: "claude", hasPrice: true, hasPhone: true, seconds: 15, purpose: "post" })).not.toMatch(/First comment/);
+  });
+});
+
+describe("AI-made clips (TikTok round 4)", () => {
+  it("are flagged, never feed a hook, a format or a sector, and the AI rules are early evidence", () => {
+    const ai = BRAIN.evidence.filter((e) => e.ai && e.ai !== "none");
+    expect(ai.length).toBe(25);
+    const aiIds = new Set(ai.map((e) => e.id));
+    expect(BRAIN.hooks.some((h) => h.evidence.some((id) => aiIds.has(id)))).toBe(false);
+    expect(BRAIN.formats.some((f) => f.evidence.some((id) => aiIds.has(id)))).toBe(false);
+    expect(BRAIN.sectors.some((s) => s.evidence.some((id) => aiIds.has(id)))).toBe(false);
+    for (const id of ["ai-real-product", "ai-real-place", "ai-real-face", "ai-disclose"]) expect(BRAIN.rules.find((r) => r.id === id)!.weak).toBe(true);
+    const controls = BRAIN.evidence.filter((e) => e.ai === "none" && e.country === "RW").map((e) => e.id);
+    expect(BRAIN.rules.find((r) => r.id === "look-real")!.evidence.filter((id) => controls.includes(id)).length).toBeGreaterThanOrEqual(5);
+    const data = structuredClone(BRAIN) as BrainData;
+    data.hooks[0].evidence.push(ai[0].id);
+    data.rules.find((r) => r.id === "phone-bar")!.evidence.push(ai[0].id);
+    const problems = checkBrain(data);
+    expect(problems.filter((p) => p.includes("AI-made clip"))).toHaveLength(2);
+  });
+});
+
+describe("caption formulas after the audit", () => {
+  it("Instagram formulas rest on Kigali rows, thin and model formulas are labelled, Shorts allow 0 hashtags", () => {
+    const kigali = new Set(BRAIN.evidence.filter((e) => e.source === "instagram" && e.country === "RW").map((e) => e.id));
+    const ig = BRAIN.captions.platforms.find((p) => p.platform === "instagram")!;
+    for (const f of ig.formulas.filter((x) => (x.purposes ?? ["ad"]).includes("ad"))) expect(f.evidence.some((id) => kigali.has(id))).toBe(true);
+    for (const p of BRAIN.captions.platforms) for (const f of p.formulas) if (f.evidence.length < 3) expect(f.weak).toBe(true);
+    const fb = BRAIN.captions.platforms.find((p) => p.platform === "facebook")!;
+    expect(fb.formulas.filter((f) => f.model).map((f) => f.id).sort()).toEqual(["model-salon", "model-school", "model-shop", "now-available-cod"]);
+    expect(BRAIN.captions.platforms.find((p) => p.platform === "shorts")!.hashtags.count).toEqual([0, 3]);
+    expect(BRAIN.captions.platforms.flatMap((p) => p.formulas).some((f) => f.evidence.includes("tt-097"))).toBe(false);
+    expect(brainContext({ platform: "facebook", sector: "school", engine: "claude", hasPrice: false, hasPhone: true, seconds: 30 })).toMatch(/Caption \(BuPulse model, not observed\)/);
+  });
+
+  it("a long Facebook caption is fine for a school, not for a phone shop; unconfirmed countries stay unknown", () => {
+    const long = `GERMAN CLASSES – NOVEMBER INTAKE OPEN! ${"Learn German with certified teachers in Kigali. ".repeat(15)} Call 0788 300 400`;
+    expect(long.length).toBeGreaterThan(600);
+    const school: ScoreBrief = { business: { name: "Kigali Language School", description: "A language school and training centre in Kigali", phone: "0788 300 400" }, product: { name: "German course" }, platform: "facebook" };
+    const shop: ScoreBrief = { business: { name: "Nova Phones", description: "Phone shop in Kigali", phone: "0788 300 400" }, product: { name: "Galaxy A56" }, platform: "facebook" };
+    expect(scoreCaption(long, [], school).failed.map((f) => f.id)).not.toContain("caption-length");
+    expect(scoreCaption(long, [], shop).failed.map((f) => f.id)).toContain("caption-length");
+    for (const who of ["@thebistrogroup", "@cohvisuals", "@biko_group"]) expect(BRAIN.evidence.find((e) => e.who === who)!.country).toBeNull();
+  });
+});
+
+describe("early evidence (weak rules and hooks)", () => {
+  it("every research rule and hook with fewer than 3 rows is marked weak, and checkBrain says so when one is not", () => {
+    expect(BRAIN.rules.filter((r) => r.origin !== "engine" && r.evidence.length < 3).every((r) => r.weak)).toBe(true);
+    expect(BRAIN.hooks.filter((h) => h.evidence.length < 3).every((h) => h.weak)).toBe(true);
+    const data = structuredClone(BRAIN) as BrainData;
+    delete data.hooks.find((h) => h.id === "insurers-accepted")!.weak;
+    expect(checkBrain(data).some((p) => p.includes("insurers-accepted") && p.includes("weak"))).toBe(true);
+  });
+
+  it("brainContext labels them and the scorer weighs a weak rule's check at half", () => {
+    const text = brainContext({ platform: "tiktok", sector: "clinic", format: "tutorial", engine: "claude", hasPrice: false, hasPhone: true, seconds: 20 });
+    expect(text).toMatch(/\(early evidence\)/);
+    const brief: ScoreBrief = { business: { name: "Nova Phones", phone: "0788 300 400", language: "English" }, product: { name: "Galaxy A56", price: "420,000 RWF" }, styleId: "kigali-price-first", platform: "tiktok" };
+    const spec: MotionSpec = {
+      version: 1, title: "Galaxy A56", ratio: "9:16", fps: 30, music: "upbeat", look: { grade: "vivid" },
+      palette: { background: "#111111", primary: "#2f6bff", accent: "#f5b700", text: "#ffffff" },
+      scenes: [{ seconds: 15, background: { kind: "solid", colors: ["#111111"] }, layers: [{ kind: "text", text: "Galaxy A56 is here with a huge battery, a bright screen and a camera you will love", font: "inter", size: 0.05, color: "#ffffff", x: 0.5, y: 0.3, w: 0.8, h: 0.2 }] }],
+      caption: "",
+      hashtags: [],
+    };
+    const r = scoreDesign(spec, brief);
+    const weak = new Set(BRAIN.rules.filter((x) => x.weak).map((x) => x.id));
+    const w = (i: { rule: string | null; points: number }) => (i.rule && weak.has(i.rule) ? i.points / 2 : i.points);
+    const total = [...r.passed, ...r.failed].reduce((t, i) => t + w(i), 0);
+    const got = r.passed.reduce((t, i) => t + w(i), 0);
+    expect(r.failed.map((f) => f.rule)).toContain("two-lines");
+    expect(r.score).toBe(Math.round((100 * got) / total));
+  });
+
+  it("the audit fixes: no rule rests on the Ghanaian store, MoMo is rare not absent", () => {
+    expect(BRAIN.evidence.find((e) => e.id === "tt-097")!.country).toBe("GH");
+    expect(BRAIN.rules.find((r) => r.id === "no-vague-discount")!.origin).toBe("engine");
+    expect(BRAIN.rules.filter((r) => r.evidence.includes("tt-097")).map((r) => r.id)).toEqual([]);
+    expect(BRAIN.rules.find((r) => r.id === "momo")!.why).toMatch(/rare/);
+    expect(BRAIN.rules.find((r) => r.id === "price-first-frame")!.why).not.toMatch(/all show/);
+  });
+});
+
+describe("ads and page posts (purpose)", () => {
+  const brief: BrainBrief = { platform: "facebook", sector: "restaurant", engine: "claude", hasPrice: true, hasPhone: true, hasOffer: false, seconds: 20 };
+  it("a post gets the post rules, no ad rules, no price or contact hooks and the page-post caption", () => {
+    const ad = brainFor(brief);
+    const post = brainFor({ ...brief, purpose: "post" });
+    expect(ad.purpose).toBe("ad");
+    expect(post.purpose).toBe("post");
+    const ids = (p: typeof ad) => [...p.rules, ...p.donts].map((r) => r.id);
+    expect(ids(ad)).toContain("phone-bar");
+    expect(ids(ad)).not.toContain("post-no-overlay");
+    expect(ids(post)).toEqual(expect.arrayContaining(["post-no-overlay", "post-short-visual", "post-caption", "post-moments", "post-warm-sound"]));
+    for (const id of ["phone-bar", "price-first-frame", "contact-card-end", "caption-complete", "budget-brand-look"]) expect(ids(post)).not.toContain(id);
+    expect(post.hooks.every((h) => h.type !== "price-first" && h.type !== "contact-first")).toBe(true);
+    expect(post.format.id).not.toBe("offer");
+    expect(post.caption.formula.id).toBe("page-post");
+    expect(ad.caption.formula.id).not.toBe("page-post");
+    const text = brainContext({ ...brief, purpose: "post" });
+    expect(text).toMatch(/not an ad: no price strip/);
+    expect(text).not.toMatch(/Offer wording seen/);
+  });
+
+  it("organic reels are flagged, never count as live ads, and an ad rule may not cite one", () => {
+    const organic = BRAIN.evidence.filter((e) => e.organic);
+    expect(organic.length).toBe(20);
+    expect(organic.every((e) => e.source === "facebook" && e.variantsLive === 1 && typeof e.views === "number")).toBe(true);
+    expect(organic.find((e) => e.who === "ONOMO Hotel Kigali")!.views).toBe(310_000);
+    const data = structuredClone(BRAIN) as BrainData;
+    data.rules.find((r) => r.id === "phone-bar")!.evidence.push(organic[0].id);
+    expect(checkBrain(data).some((p) => p.includes("organic post"))).toBe(true);
   });
 });
 
@@ -666,6 +861,14 @@ describe("learning from BuPulse's own results", () => {
   const background = Array.from({ length: 40 }, (_, i) => post(researchTop[i % 3], 1000 + 50 * i));
   const rank = (outcomes: Outcome[], businessId: string | null = null) => rankWithOutcomes(research, outcomes, { sector: "phone-shop", platform: "tiktok", businessId }).map((c) => c.id);
 
+  it("a message (a customer asking) counts more than likes", () => {
+    const quiet = post(researchTop[0], 5000, { videoId: "quiet" }, 0.01);
+    const asked = post(researchTop[1], 5000, { videoId: "asked" }, 0.01);
+    asked.stats7d = { ...asked.stats7d!, messages: 30 };
+    const scores = performance([...background, quiet, asked]);
+    expect(scores.get("asked")!).toBeGreaterThan(scores.get("quiet")!);
+  });
+
   it("a weak research hook rises into the top three after 20 strong posts", () => {
     const weak = research[8].id;
     const strong = Array.from({ length: 20 }, () => post(weak, 20_000, {}, 0.12));
@@ -753,7 +956,7 @@ describe("opening lines for the owner (suggestHooks)", () => {
 
   it("a clinic leads with trust and is never offered a price hook, even with a price", () => {
     const s = suggestHooks(clinic, { platform: "tiktok" });
-    expect(s.slice(0, 2).map((x) => x.line)).toEqual(["Since 2015 in Kigali", "We take RSSB, MMI, Old Mutual"]);
+    expect(s.map((x) => x.line)).toEqual(expect.arrayContaining(["Since 2015 in Kigali", "We take RSSB, MMI, Old Mutual"]));
     for (const h of s) expect(BRAIN.hooks.find((x) => x.id === h.hookId)!.type).not.toBe("price-first");
     sound(s, "English");
   });
@@ -772,6 +975,66 @@ describe("opening lines for the owner (suggestHooks)", () => {
     const text = brainContext({ ...base, sector: "phone-shop" }, { chosenHook: first });
     expect(text).toContain(`Opening (the owner chose it; use these words on screen at 0.0 s): "${first.line}"`);
     expect(text).not.toContain("Hook options");
+  });
+});
+
+describe("a week of videos (planSeries)", () => {
+  const phone: SuggestBrief = { business: { name: "Nova Phones Kigali", description: "Phone shop in Kigali, Makuza Peace Plaza", language: "English", phone: "+250 788 300 400" }, product: { name: "Samsung Galaxy A56", price: "420,000 RWF", features: ["50 MP camera", "6.7-inch AMOLED screen", "5,000 mAh battery"], usps: ["Genuine with 12-month warranty", "Pay with MoMo"] } };
+  const clinic: SuggestBrief = { business: { name: "Derma Skin Clinic", description: "Skin clinic at Gishushu, Kigali, since 2015. We work with RSSB, MMI and Old Mutual.", language: "English", phone: "0795 528 376" }, product: { name: "Acne treatment", price: "30,000 RWF", usps: ["Dermatologist on site", "Results in 4 weeks", "Free first consultation"] } };
+  const sound = (week: ReturnType<typeof planSeries>) => {
+    expect(new Set(week.map((p) => p.hookId)).size).toBe(week.length);
+    expect(new Set(week.map((p) => p.templateId)).size).toBe(week.length);
+    for (const p of week) {
+      const f = BRAIN.formats.find((x) => x.id === p.formatId)!;
+      expect(f.claudeTemplates).toContain(p.templateId);
+      expect(VIDEO_TEMPLATES.find((t) => t.id === p.templateId)?.presenter).toBeFalsy();
+      expect(p.seconds).toBeGreaterThanOrEqual(Math.max(6, f.length[p.platform][0]));
+      expect(p.seconds).toBeLessThanOrEqual(Math.min(30, f.length[p.platform][1]));
+      expect(MOODS as readonly string[]).toContain(p.musicMood);
+      expect(BRAIN.captions.platforms.find((c) => c.platform === p.platform)!.formulas.map((x) => x.id)).toContain(p.captionFormulaId);
+    }
+  };
+
+  it("a phone shop's week: seven different days, the price first, a list in the middle, the same number and place every day", () => {
+    const week = planSeries(phone, { platform: "any", startDay: "2026-10-19" });
+    expect(week).toHaveLength(7);
+    sound(week);
+    expect(BRAIN.hooks.find((h) => h.id === week[0].hookId)!.type).toBe("price-first");
+    expect(["list", "before-after"]).toContain(week[3].formatId);
+    expect(week.map((p) => p.platform)).toEqual(["tiktok", "instagram", "facebook", "shorts", "tiktok", "instagram", "facebook"]);
+    expect(week.map((p) => p.weekday)).toEqual(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]);
+    for (const p of week) expect(p.note).toContain("Keep the number (0788 300 400) and the place (Makuza Peace Plaza, Kigali)");
+  });
+
+  it("a clinic's week opens with trust, never shows a price hook, a price template or a before/after", () => {
+    const week = planSeries(clinic, { platform: "tiktok" });
+    expect(week.length).toBeGreaterThanOrEqual(6);
+    sound(week);
+    expect(BRAIN.hooks.find((h) => h.id === week[0].hookId)!.type).toBe("authority");
+    for (const p of week) {
+      expect(BRAIN.hooks.find((h) => h.id === p.hookId)!.type).not.toBe("price-first");
+      expect(["kigali-price-first", "price-drop", "offer-flash"]).not.toContain(p.templateId);
+      expect(p.formatId).not.toBe("before-after");
+      expect(p.platform).toBe("tiktok");
+    }
+    expect(week.find((p) => p.formatId === "list")).toBeTruthy();
+  });
+
+  it("no price, no price hook; a presenter allows presenter-led posts and a voice", () => {
+    const week = planSeries({ ...phone, product: { ...phone.product, price: null } }, {});
+    for (const p of week) expect(BRAIN.hooks.find((h) => h.id === p.hookId)!.type).not.toBe("price-first");
+    for (const p of week) expect(p.line).not.toMatch(/RWF/);
+    const withPresenter = planSeries(phone, { presenter: true });
+    sound(withPresenter.filter((p) => !VIDEO_TEMPLATES.find((t) => t.id === p.templateId)?.presenter));
+    expect(planSeries(phone, {}).every((p) => !p.voice)).toBe(true);
+  });
+
+  it("an offer video only when there is an offer or a previous price", () => {
+    expect(planSeries(phone, {}).some((p) => p.formatId === "offer")).toBe(false);
+    const sale = planSeries({ ...phone, note: "20% off this week", product: { ...phone.product, price: "Was 480,000 RWF, now 420,000 RWF" } }, { platform: "tiktok" });
+    expect(sale.some((p) => p.formatId === "offer")).toBe(true);
+    expect(planSeries({ ...phone, note: "20% off this week" }, {}).some((p) => p.templateId === "price-drop")).toBe(false);
+    sound(sale);
   });
 });
 

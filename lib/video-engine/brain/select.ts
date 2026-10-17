@@ -8,7 +8,7 @@ import { seedanceTemplateById } from "../seedance-brain";
 import { voiceLanguage } from "../voice-language";
 import { BRAIN, evidenceById, formatById, formatForTemplate, hookById, sectorById } from "./database";
 import { outcomesLine, rankWithOutcomes } from "./outcomes";
-import { SECTORS, type BeatRole, type BrainBrief, type BrainPick, type Engine, type Evidence, type Format, type FormatId, type Hook, type Outcome, type Platform, type Rule, type ScoredHook, type SectorId, type SecondsRange, type TimedBeat } from "./types";
+import { SECTORS, type BeatRole, type BrainBrief, type BrainPick, type Engine, type Evidence, type Format, type FormatId, type Hook, type Purpose, type Outcome, type Platform, type Rule, type ScoredHook, type SectorId, type SecondsRange, type TimedBeat } from "./types";
 
 /** Length limits of the two engines (validate.ts scales Claude videos to 6-30 s; Seedance films 4-15 s). */
 export const ENGINE_SECONDS: Record<Engine, SecondsRange> = { claude: [6, 30], seedance: [4, 15] };
@@ -86,6 +86,8 @@ export function brainBriefFromDesign(b: DesignBrief, platform: Platform | "any" 
     hasPhone: !!b.business.phone?.trim(),
     hasPresenter: !!b.cartoonId || b.photos.some((p) => /presenter|influencer/i.test(p.note ?? "")),
     seconds: b.seconds,
+    // A page post rather than an ad, when the brief says so (DesignBrief and PromptBrief may carry a purpose).
+    purpose: (b as { purpose?: string | null }).purpose === "post" ? "post" : "ad",
     ...factsFrom([...texts, b.business.website], b.product.price),
   };
 }
@@ -107,6 +109,8 @@ export function brainBriefFromPrompt(b: PromptBrief, opts: { platform?: string |
     hasPhone: opts.hasPhone ?? false,
     hasPresenter: !!b.presenter,
     seconds: b.seconds,
+    // A page post rather than an ad, when the brief says so (DesignBrief and PromptBrief may carry a purpose).
+    purpose: (b as { purpose?: string | null }).purpose === "post" ? "post" : "ad",
     ...factsFrom(texts, b.product.price),
   };
 }
@@ -118,7 +122,9 @@ function pickFormat(b: FullBrief, sector: SectorId): Format {
   const asked = formatById(b.format);
   if (asked && asked.engines.includes(b.engine)) return asked;
   const s = sectorById(sector)!;
-  const id = s.formats.find((f) => formatById(f)?.engines.includes(b.engine)) ?? "product-reveal";
+  // A page post is a place, a face or a moment: no offer video unless there is a real offer.
+  const post = b.purpose === "post";
+  const id = s.formats.find((f) => formatById(f)?.engines.includes(b.engine) && !(post && f === "offer" && !b.hasOffer)) ?? (post ? "tour" : "product-reveal");
   return formatById(id)!;
 }
 
@@ -138,7 +144,10 @@ function needsMet(h: Hook, b: FullBrief, format: FormatId, sector: SectorId): bo
   });
 }
 
-const rows = (h: Hook): Evidence[] => h.evidence.map(evidenceById).filter((e): e is Evidence => !!e);
+/** A hook's research rows; an ad's ranking leaves out the pages' own organic posts (they are evidence for posts). */
+const rows = (h: Hook, purpose: Purpose = "ad"): Evidence[] => h.evidence.map(evidenceById).filter((e): e is Evidence => !!e && (purpose === "post" || !e.organic));
+/** Hook types that sell on screen; a page post leaves them out (the offer and the contact go in its caption). */
+const AD_HOOK_TYPES = new Set(["price-first", "contact-first"]);
 
 /**
  * The hook score (docs/research/BRAIN.md, "How hooks are ranked"):
@@ -150,11 +159,12 @@ const rows = (h: Hook): Evidence[] => h.evidence.map(evidenceById).filter((e): e
  *   presenter, series);
  * - local: up to 10 for Rwandan rows (East African rows count half);
  * - recency: up to 10 for rows from the newest year of research.
+ * For a page post, the pages' own organic reels count half again as much; an ad leaves them out.
  */
-export function scoreHook(h: Hook, ctx: { platform: Platform | "any"; sector: SectorId; format: Format }): ScoredHook {
+export function scoreHook(h: Hook, ctx: { platform: Platform | "any"; sector: SectorId; format: Format; purpose?: Purpose }): ScoredHook {
   const why: string[] = [];
-  const ev = rows(h);
-  const weight = ev.reduce((s, e) => s + (e.watched ? 1 : 0.4) * (0.5 + e.strength), 0);
+  const ev = rows(h, ctx.purpose);
+  const weight = ev.reduce((s, e) => s + (e.watched ? 1 : 0.4) * (0.5 + e.strength) * (e.organic ? 1.5 : 1), 0);
   const evidence = Math.min(25, weight * 6.25);
   why.push(`${ev.length} research rows`);
 
@@ -189,11 +199,12 @@ export function scoreHook(h: Hook, ctx: { platform: Platform | "any"; sector: Se
 /** The ranked hooks a brief can use (needs met, made by the engine), best first; ties by id. */
 export function rankHooks(b: FullBrief, sector: SectorId, format: Format): ScoredHook[] {
   const platform = b.platform ?? "any";
-  const usable = BRAIN.hooks.filter((h) => h.engines.includes(b.engine) && needsMet(h, b, format.id, sector));
+  const post = b.purpose === "post";
+  const usable = BRAIN.hooks.filter((h) => h.engines.includes(b.engine) && needsMet(h, b, format.id, sector) && !(post && (AD_HOOK_TYPES.has(h.type) || (h.type === "offer-badge" && !b.hasOffer))));
   // Hooks made for another sector only come in when this sector has too few of its own.
   const fits = (h: Hook) => h.sectors.includes(sector) || h.sectors.includes("any") || sectorById(sector)!.hooks.includes(h.id);
   const pool = usable.filter(fits).length >= HOOK_OPTIONS ? usable.filter(fits) : usable;
-  return pool.map((h) => scoreHook(h, { platform, sector, format })).sort((a, z) => z.score - a.score || a.id.localeCompare(z.id));
+  return pool.map((h) => scoreHook(h, { platform, sector, format, purpose: b.purpose })).sort((a, z) => z.score - a.score || a.id.localeCompare(z.id));
 }
 
 /** The research ranking moved by our own results, when there are any (rankWithOutcomes keeps its safeguards). */
@@ -255,6 +266,7 @@ function ruleApplies(r: Rule, b: FullBrief, platform: Platform | "any", sector: 
   if (r.formats && !r.formats.includes(format)) return false;
   if (r.when?.hasPrice !== undefined && r.when.hasPrice !== b.hasPrice) return false;
   if (r.when?.hasPhone !== undefined && r.when.hasPhone !== b.hasPhone) return false;
+  if (r.purposes && !r.purposes.includes(b.purpose ?? "ad")) return false;
   return true;
 }
 
@@ -276,16 +288,19 @@ export function brainFor(brief: BrainBrief, opts: OutcomeOptions = {}): BrainPic
 
   const rules = BRAIN.rules.filter((r) => ruleApplies(r, b, platform, sector, format.id)).sort((a, z) => a.priority - z.priority);
 
+  const purpose: Purpose = b.purpose === "post" ? "post" : "ad";
   const captions = BRAIN.captions.platforms.find((p) => p.platform === (platform === "any" ? "tiktok" : platform))!;
-  // The formula that names this sector earliest (its main sector first), else a general one.
+  // The formula for this purpose that names this sector earliest (its main sector first), else a general one.
   const rank = (f: { sectors: string[] }) => (f.sectors.includes(sector) ? f.sectors.indexOf(sector) : f.sectors.includes("any") ? 50 : 99);
-  const formula = [...captions.formulas].sort((a, z) => rank(a) - rank(z))[0];
+  const formulas = captions.formulas.filter((f) => (f.purposes ?? ["ad"]).includes(purpose));
+  const formula = [...(formulas.length ? formulas : captions.formulas)].sort((a, z) => rank(a) - rank(z))[0];
   const v = voiceLanguage(b.language);
   const reliable = v.spokenLanguage === v.captionLanguage && ["English", "French"].includes(v.spokenLanguage);
   const route = b.hasPhone ? "WhatsApp {phone}" : b.hasLocation ? "Find us at {area}" : "DM to order";
 
   return {
     platform,
+    purpose,
     sector,
     format,
     engine: b.engine,
@@ -300,11 +315,20 @@ export function brainFor(brief: BrainBrief, opts: OutcomeOptions = {}): BrainPic
     length: { range, ok: seconds >= range[0] && seconds <= range[1] },
     rules: rules.filter((r) => r.kind === "do"),
     donts: rules.filter((r) => r.kind === "dont"),
-    caption: { formula, mustInclude: captions.mustInclude, hashtags: `${captions.hashtags.count[0]} to ${captions.hashtags.count[1]}, local first: ${captions.hashtags.local.slice(0, 4).join(" ")}` },
-    cta: b.hasPhone ? sectorInfo.cta : `${route} (the brief has no number), with the area and a landmark if it gives them.`,
+    caption:
+      purpose === "post"
+        ? { formula, mustInclude: POST_CAPTION, hashtags: `0 to 3, the city and the brand only: ${captions.hashtags.local.slice(0, 2).join(" ")}`, firstComment: null }
+        : { formula, mustInclude: captions.mustInclude, hashtags: `${captions.hashtags.count[0]} to ${captions.hashtags.count[1]}, local first: ${captions.hashtags.local.slice(0, 4).join(" ")}`, firstComment: /kinyarwanda/i.test(v.captionLanguage) ? BRAIN.captions.firstComment.rw : BRAIN.captions.firstComment.en },
+    cta:
+      purpose === "post"
+        ? "None on screen: end on a clean logo card or the shop sign; the number and the place go in the caption."
+        : b.hasPhone ? sectorInfo.cta : `${route} (the brief has no number), with the area and a landmark if it gives them.`,
     sectorInfo,
   };
 }
+
+/** What a page post's caption carries (facebook-patterns.md, "Organic reels"): short, friendly, contact only for a real offer. */
+const POST_CAPTION = ["one friendly line of 10 to 25 words in the owner's language mix", "the phone, the price and the place on a second line only for a real offer or an event"];
 
 // ---- The text for Claude
 
@@ -340,7 +364,7 @@ export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: 
   const seedance = p.engine === "seedance";
   const covered = new Set(CONTEXT_SKIP[p.engine]);
   const rules = p.rules.filter((r) => !covered.has(r.id));
-  const head = `What works: ${p.sectorInfo.name.toLowerCase()}, ${p.format.name.toLowerCase()}, ${PLATFORM_NAMES[p.platform]}, ${p.seconds} s (from ${WATCHED} ads and reels BuPulse watched).`;
+  const head = `What works: ${p.sectorInfo.name.toLowerCase()}, ${p.format.name.toLowerCase()}, ${PLATFORM_NAMES[p.platform]}, ${p.seconds} s (from ${WATCHED} ads and reels BuPulse watched).${p.purpose === "post" ? " This is a post on the business's own page, not an ad: no price strip, no phone bar, no order line on screen." : ""}`;
   // The owner clicked one of the suggested lines (suggest.ts): it is the opening, with its hook's first-frame picture.
   const chosen = opts.chosenHook ? hookById(opts.chosenHook.hookId) : null;
   const hooks = chosen
@@ -349,7 +373,7 @@ export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: 
     opts.ownerHook
       ? "Hook ideas (the owner chose the opener above: use these for its wording and first frame only):"
       : "Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):",
-    ...p.hooks.map((h, i) => `${i + 1}. ${h.name}: "${h.pattern}". First 2 s: ${h.visual} Seen: ${h.examples.slice(0, 2).map((e) => `"${e}"`).join(", ")}.${h.note && CONSTRAINT.test(h.note) ? ` ${h.note}` : ""}`),
+    ...p.hooks.map((h, i) => `${i + 1}. ${h.name}${h.weak ? " (early evidence)" : ""}: "${h.pattern}". First 2 s: ${h.visual} Seen: ${h.examples.slice(0, 2).map((e) => `"${e}"`).join(", ")}.${h.note && CONSTRAINT.test(h.note) ? ` ${h.note}` : ""}`),
       ];
   const timeline = [
     `Timeline (${p.seconds} s, ${p.format.cutsPer10s[0]} to ${p.format.cutsPer10s[1]} changes per 10 s):`,
@@ -358,7 +382,7 @@ export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: 
   const lengthNote = p.length.ok ? "" : `Research length for this format: ${p.length.range[0]} to ${p.length.range[1]} s; keep the same beats at this length.`;
   const textRules = rules.filter((r) => r.stage === "text" || r.stage === "hook" || r.stage === "visual");
   const otherRules = rules.filter((r) => !textRules.includes(r) && r.stage !== "caption" && r.stage !== "cta" && r.id !== "language-mix");
-  const line = (r: Rule) => `- ${r.short ?? r.rule}`;
+  const line = (r: Rule) => `- ${r.short ?? r.rule}${r.weak ? " (early evidence)" : ""}`;
   const doLines = (list: Rule[], max: number) => list.slice(0, max).map(line);
   const local = `East Africa: ${p.format.eastAfrica.slice(0, 2).join(" ")} Settings that fit: ${p.sectorInfo.settings.slice(0, 2).join("; ")}.`;
   const offers = `Offer wording seen (only if true for this business): ${p.sectorInfo.offers.slice(0, 3).join("; ")}.`;
@@ -366,7 +390,10 @@ export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: 
   const sound = p.sectorInfo.music || p.sectorInfo.voice ? `Sound: ${p.sectorInfo.music ? `music mood ${p.sectorInfo.music.moods.join(" or ")} (${p.sectorInfo.music.note}) from BuPulse's library, never a trending track` : "any calm library mood"}${p.sectorInfo.voice ? `; voice: ${p.sectorInfo.voice.charAt(0).toLowerCase()}${p.sectorInfo.voice.slice(1).replace(/\.$/, "")}` : ""}. The clip must work muted.` : "";
   const cta = seedance ? `Call to action (BuPulse overlays it on the last shot; keep that shot clean): ${p.cta}` : `Call to action: ${p.cta}`;
   const example = p.caption.formula.examples[0];
-  const caption = `Caption: ${p.caption.formula.pattern} (e.g. "${example.length > 100 ? `${example.slice(0, 97)}...` : example}"). Include: ${p.caption.mustInclude.join("; ")}. Hashtags ${p.caption.hashtags}.`;
+  // The seller pins a first comment under the post: it answers the price, place, delivery and number questions once.
+  const firstComment = p.caption.firstComment ? ` First comment for the seller to pin (facts from the brief only): ${p.caption.firstComment.join(" / ")}.` : "";
+  const label = p.caption.formula.model ? " (BuPulse model, not observed)" : p.caption.formula.weak ? " (early evidence)" : "";
+  const caption = `Caption${label}: ${p.caption.formula.pattern} (e.g. "${example.length > 100 ? `${example.slice(0, 97)}...` : example}"). Include: ${p.caption.mustInclude.join("; ")}. Hashtags ${p.caption.hashtags}.${firstComment}`;
   // For Kinyarwanda and Swahili content the language mix is part of the design, so it is never cut for length.
   const mixed = /kinyarwanda|swahili/i.test(p.language.screen) ? rules.find((r) => r.id === "language-mix") : undefined;
   const donts = ["Don't:", ...p.donts.filter((r) => !covered.has(r.id)).slice(0, 7).map(line)];
@@ -385,7 +412,7 @@ export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: 
     { lines: seedance ? [] : [caption], optional: 0 },
     { lines: donts, optional: 0, trim: true },
     { lines: ["Also:", ...doLines(otherRules, 5)], optional: 5, trim: true },
-    { lines: seedance ? [] : [offers], optional: 4 },
+    { lines: seedance || p.purpose === "post" ? [] : [offers], optional: 4 },
     { lines: [local], optional: 3 },
   ];
   const render = () => parts.filter((x) => x.lines.length > (x.trim ? 1 : 0)).map((x) => x.lines.join("\n")).join("\n");

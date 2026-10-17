@@ -5,6 +5,7 @@
 import { drawSpecFrame, type Photos } from "@/lib/video-engine/draw";
 import { encodeSpecMp4, loadPhotos, loadSpecFonts } from "@/lib/video-engine/encode";
 import { canvasSize, totalMs, type MotionSpec, type Quality } from "@/lib/video-engine/spec";
+import { openVideoFrames } from "@/lib/video-engine/video-frames";
 import type { VoiceCue } from "@/lib/video-engine/voice";
 import { carousel } from "./carousel";
 import { categoryName } from "./i18n";
@@ -773,6 +774,8 @@ async function loadGens() {
     if (g.claude?.warnings?.length) badges.push(el("span", { className: "factTag", textContent: `${g.claude.warnings.length} fact${g.claude.warnings.length === 1 ? "" : "s"} to check` }));
     if (g.claude?.captionScore !== undefined && g.claude.captionScore < 70) badges.push(el("span", { className: "capTag", textContent: `Caption ${g.claude.captionScore}/100` }));
     if (badges.length) card.append(el("div", { className: "badges" }, ...badges));
+    // The shape, so feed versions (1:1, 4:5) stand out from the vertical ones.
+    if (g.claude?.ratio) card.append(el("span", { className: `shapeTag${g.claude.ratio !== "9:16" ? " feed" : ""}`, textContent: g.claude.mode === "reshape" ? `${g.claude.ratio} · re-shaped` : g.claude.ratio }));
     card.onclick = () => openDrawer(g);
     grid.append(card);
   }
@@ -837,7 +840,7 @@ async function showPreview(g: Gen, j: SdJob) {
     window.scrollTo({ top: 0, behavior: "smooth" });
     scheduleCheck();
   };
-  $("dActions").replaceChildren(motion, edit);
+  $("dActions").replaceChildren(motion, edit, textButton(g, j, "Try BuPulse text on a stand-in clip"));
 }
 
 /** The drawer for a Premium 3D clip: progress while Claude designs and Blender renders, then the video. */
@@ -928,6 +931,103 @@ function showFacts(j: { warnings?: FactWarning[]; score?: DesignScore; captionSc
   );
 }
 
+// ---- "Add BuPulse text" on a Seedance clip (video-lab/seedance-overlays.ts) -----------------------------------------------
+
+type Overlay = { jobId: string; spec: MotionSpec; clipUrl: string; standIn: boolean; captionScore: number; captionMissed: string[]; video: { bytes: number } | null };
+/** The clip's frames for the live preview; closed when the drawer changes or closes. */
+let overlayFrames: { close(): void } | null = null;
+function closeOverlayFrames() {
+  overlayFrames?.close();
+  overlayFrames = null;
+}
+
+/** The button that adds (or opens) BuPulse's text over a clip: the hook, price, phone bar and call to action. */
+function textButton(g: Gen, j: SdJob, label: string): HTMLElement {
+  const b = el("button", { className: "btn sm", textContent: label });
+  b.onclick = async () => {
+    b.disabled = true;
+    try {
+      const existing = await api<Overlay>(`/api/seedance/jobs/${j.id}/overlay`).catch(() => null);
+      const o = existing ?? (await api<Overlay>(`/api/seedance/jobs/${j.id}/overlay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ platform: state.platform }) }));
+      void showOverlay(g, o);
+    } catch (e) {
+      $("dMsg").textContent = (e as Error).message;
+      b.disabled = false;
+    }
+  };
+  return b;
+}
+
+/** The clip with BuPulse's text: the live preview (the clip's frames under the text), then the MP4. */
+async function showOverlay(g: Gen, o: Overlay) {
+  closeOverlayFrames();
+  cancelAnimationFrame(drawerAnim);
+  const spec = o.spec;
+  const media = $("dMedia");
+  const actions = $("dActions");
+  $("dTitle").textContent = `Seedance · ${g.title} · with BuPulse text`;
+  media.replaceChildren(...(o.standIn ? [el("div", { className: "pvNotice", textContent: "Stand-in clip: a finished studio video plays where the Seedance clip will be. The real clip arrives with the BytePlus key." })] : []));
+  const dl = $<HTMLAnchorElement>("dDl");
+  const textUrl = `/videos/seedance/${o.jobId}-text.mp4`;
+  dl.hidden = !o.video;
+  if (o.video) {
+    dl.href = textUrl;
+    dl.download = `bupulse-${o.jobId}-text.mp4`;
+    media.append(el("video", { src: `${textUrl}?v=${o.video.bytes}`, controls: true, autoplay: true, loop: true, playsInline: true }));
+  } else {
+    const c = el("canvas");
+    const size = canvasSize(spec, "720p");
+    c.width = size.width;
+    c.height = size.height;
+    media.append(c);
+    const ctx = c.getContext("2d") as CanvasRenderingContext2D;
+    const photos: Photos = new Map();
+    await loadSpecFonts(spec);
+    const frames = await openVideoFrames(spec);
+    overlayFrames = frames;
+    if (frames.failed.length) $("dMsg").textContent = `The clip could not be opened here (${frames.failed.join(", ")}).`;
+    const total = totalMs(spec);
+    let t = 0;
+    let last = performance.now();
+    // The clip's frames are prepared before each draw, in time order.
+    const loop = async (now: number) => {
+      if (state.open !== g || !c.isConnected || overlayFrames !== frames) return;
+      t = (t + now - last) % total;
+      last = now;
+      // A frame that does not decode in time (a busy computer) is skipped: the last one stays on screen.
+      const ready = await frames.prepare(t, photos).then(() => true, () => false);
+      if (ready) drawSpecFrame(ctx, spec, photos, t, { quality: "720p" });
+      drawerAnim = requestAnimationFrame((n) => void loop(n));
+    };
+    drawerAnim = requestAnimationFrame((n) => void loop(n));
+  }
+  const make = el("button", { className: "btn sm primary", textContent: `${o.video ? "Make the MP4 again" : "Make MP4 with text"} (${state.quality}, free)` });
+  make.onclick = async () => {
+    make.disabled = true;
+    const bar = $("dProgress");
+    bar.hidden = false;
+    const fill = bar.firstElementChild as HTMLElement;
+    $("dMsg").textContent = "Making the MP4 with the clip and the text in this browser…";
+    try {
+      const blob = await encodeSpecMp4(spec, new Map(), { quality: state.quality, onProgress: (f) => (fill.style.width = `${Math.round(f * 100)}%`) });
+      const saved = await api<Overlay & { tracks: string[] }>(`/api/seedance/jobs/${o.jobId}/overlay/video?q=${state.quality}`, { method: "POST", headers: { "content-type": "video/mp4" }, body: blob });
+      await showOverlay(g, saved);
+      $("dMsg").textContent = `MP4 with text ready (${(blob.size / 1024 / 1024).toFixed(1)} MB; ${saved.tracks.includes("soun") ? "with the clip's sound" : "no sound track"}).`;
+    } catch (e) {
+      $("dMsg").textContent = (e as Error).message;
+      make.disabled = false;
+    } finally {
+      bar.hidden = true;
+      fill.style.width = "0";
+    }
+  };
+  const back = el("button", { className: "btn sm", textContent: "Back to the clip" });
+  back.onclick = () => openDrawer(g);
+  actions.replaceChildren(make, back);
+  $("dInfo").replaceChildren(...([["Overlay", "hook, price, phone bar, call to action"], ["Credits", "0 (made in this browser)"], ["Clip", o.standIn ? "stand-in (preview mode)" : "the Seedance clip"]] as [string, string][]).flatMap(([k, v]) => [el("span", { className: "k", textContent: k }), el("span", { textContent: v })]));
+  showFacts({ captionScore: o.captionScore, captionMissed: o.captionMissed, caption: `${spec.caption}\n${spec.hashtags.map((h) => `#${h}`).join(" ")}` });
+}
+
 let drawerAnim = 0;
 function openDrawer(g: Gen | null) {
   if (!g) return;
@@ -951,6 +1051,7 @@ function openDrawer(g: Gen | null) {
   $("dFacts").hidden = true;
   const info: [string, string][] = [];
   cancelAnimationFrame(drawerAnim);
+  closeOverlayFrames();
   if (g.engine === "seedance" && g.sd?.preview) {
     $("dPrompt").textContent = g.sd.request.prompt;
     void showPreview(g, g.sd);
@@ -969,6 +1070,7 @@ function openDrawer(g: Gen | null) {
       };
       actions.append(c);
     }
+    if (g.videoUrl) actions.append(textButton(g, j, "Add BuPulse text (free)"));
     if (g.videoUrl) {
       const use = el("button", { className: "btn sm", textContent: "Use as Video reference" });
       use.onclick = () => {
@@ -1035,6 +1137,29 @@ function openDrawer(g: Gen | null) {
       const mk = el("button", { className: "btn sm primary", textContent: `Make MP4 (${state.quality}${state.voice ? " + voice-over" : ""})` });
       mk.onclick = () => void makeMp4(g);
       actions.append(mk);
+      // The same design for the feeds, free: the validator re-lays it for the new shape (no Claude call).
+      const others = (["1:1", "4:5"] as const).filter((r) => r !== spec.ratio);
+      if (others.length) {
+        const row = el("div", { className: "row reshapes" }, el("span", { className: "muted small", textContent: "Other shapes (free):" }));
+        for (const r of others) {
+          const b = el("button", { className: "btn sm", textContent: r === "1:1" ? "1:1 · Facebook feed" : "4:5 · Instagram feed" });
+          b.onclick = async () => {
+            b.disabled = true;
+            try {
+              const child = await api<ClaudeJob>(`/api/jobs/${j.id}/reshape`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ratio: r }) });
+              fullClaude.set(child.id, child);
+              await loadGens();
+              openDrawer(state.gens.find((x) => x.id === child.id) ?? null);
+              $("dMsg").textContent = `The ${r} version is ready: no credits used. Press Make MP4 to render it${voices.has(j.id) || state.voice ? " (the voice-over take is reused for free)" : ""}.`;
+            } catch (e) {
+              $("dMsg").textContent = (e as Error).message;
+              b.disabled = false;
+            }
+          };
+          row.append(b);
+        }
+        actions.append(row);
+      }
       $("dEdit").hidden = false;
       $("dEditBtn").onclick = () => void editClaude(g, "edit");
       $("dExtendBtn").onclick = () => void editClaude(g, "extend");
@@ -1281,6 +1406,7 @@ async function start() {
   $("dClose").onclick = () => {
     $("drawer").classList.remove("open");
     state.open = null;
+    closeOverlayFrames();
   };
   $<HTMLInputElement>("file").onchange = (e) => {
     const f = (e.target as HTMLInputElement).files?.[0];

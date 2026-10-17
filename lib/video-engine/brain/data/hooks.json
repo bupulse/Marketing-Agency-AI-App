@@ -11,7 +11,7 @@
     "engines": ["claude", "seedance"],
     "needs": ["price"],
     "examples": ["48,000RWF", "PRICE 28K", "COMMERCIAL BLENDER PRICE: 48,000RWF", "One bedroom In Gasogi Full furnished 400k / Month", "Spinning bike / Price: 500k / Home workout Gym", "Price: 16M", "*199/- (with a 'Flipkart Finds' badge)", "299 (Meesho badge, top-left, whole clip)", "Your next ride for only 50,000 RWF per day!", "7$ FOR 15 MIN"],
-    "evidence": ["fb-011", "tt-079", "fb-029", "fb-005", "fb-012", "fb-049", "fb-068", "fb-067", "ig-003", "ig-010", "tt-160", "tt-161"]
+    "evidence": ["fb-011", "tt-079", "fb-029", "fb-005", "fb-012", "fb-049", "fb-068", "fb-067", "ig-003", "ig-010", "tt-160", "tt-161", "ig-078"]
   },
   {
     "id": "promo-price",
@@ -32,6 +32,7 @@
     "id": "was-now",
     "name": "Was / now price anchor",
     "type": "price-first",
+    "weak": true,
     "pattern": "Was {old_price}, now {price}",
     "visual": "The product in use, a black bar on top with today's price; the old price crossed out beside it.",
     "platforms": ["facebook"],
@@ -77,13 +78,13 @@
     "type": "contact-first",
     "pattern": "{phone} (top or lower-middle, whole clip) over {product} in a hand",
     "visual": "Hands turn the product to show front and back; the phone or WhatsApp number is fixed on screen from the first frame to the last.",
-    "platforms": ["tiktok", "facebook", "shorts"],
+    "platforms": ["tiktok", "facebook", "shorts", "instagram"],
     "sectors": ["phone-shop", "shop", "car-rental", "fashion"],
     "formats": ["product-reveal", "tour"],
     "engines": ["claude", "seedance"],
     "needs": ["phone"],
     "examples": ["+250 785 478 140", "Whatsapp/Call: 0796148484", "0761 487 464", "+256708735746 Retail and wholesale", "KIGALI RWANDA CAR HIRE / +250 78 233 6854 / WWW.KIGALIRWANDACARHIRE.COM", "Nairobi Thrift shop(0757233779)"],
-    "evidence": ["tt-096", "fb-001", "fb-005", "tt-136", "tt-137", "fb-065", "yt-018", "yt-033"]
+    "evidence": ["tt-096", "fb-001", "fb-005", "tt-136", "tt-137", "fb-065", "yt-018", "yt-033", "ig-070", "ig-094", "ig-101", "ig-061"]
   },
   {
     "id": "offer-badge-day",
@@ -118,6 +119,7 @@
     "id": "free-but",
     "name": "Free, you only pay for ...",
     "type": "offer-badge",
+    "weak": true,
     "pattern": "{offer} free. You only pay for {product}.",
     "visual": "The venue dressed and lit; the free things listed as ticks.",
     "platforms": ["facebook"],
@@ -147,6 +149,7 @@
     "id": "pov-rescue",
     "name": "POV: the panic, then the rescue",
     "type": "pov",
+    "weak": true,
     "pattern": "POV: {problem} ... then you remember {business}",
     "visual": "A relatable panic moment in 2 to 3 s (a guest is coming, nothing at home), then the product or service saves it.",
     "platforms": ["facebook", "tiktok", "instagram"],
@@ -155,7 +158,7 @@
     "engines": ["claude", "seedance"],
     "needs": [],
     "examples": ["POV: She says “I’m close” and you have NOTHING at home", "A BAD LUCK you don't wish"],
-    "evidence": ["fb-009"]
+    "evidence": ["fb-009", "ig-089"]
   },
   {
     "id": "me-when",
@@ -184,7 +187,7 @@
     "engines": ["claude", "seedance"],
     "needs": [],
     "examples": ["Urgent order?", "Bulk orders?", "Why keep watching others upgrade?", "ese wakwitwika kubera urukundo?", "Ufite gahunda yo gukora urugendo", "Still paying for AI assistants."],
-    "evidence": ["tt-064", "tt-097", "tt-058", "fb-056", "ig-037"]
+    "evidence": ["tt-064", "tt-097", "tt-058", "fb-056", "ig-037", "ig-097"]
   },
   {
     "id": "pain-question",
@@ -197,7 +200,7 @@
     "formats": ["before-after", "product-reveal"],
     "engines": ["claude", "seedance"],
     "needs": [],
-    "examples": ["Tired of Snoring Ruining Your Sleep?", "Nobody warns you how annoying juicers are to actually clean", "Say goodbye to: Smudged polish, Chipped nails", "Ready to see your skin exactly how it used to be?", "Still dealing with razor bumps and ingrown hairs?"],
+    "examples": ["Tired of Snoring Ruining Your Sleep?", "Nobody warns you how annoying juicers are to actually clean", "Say goodbye to: Smudged polish, Chipped nails", "Ready to see your skin exactly how it used to be?", "Still dealing with razor bumps and ingrown hairs?", "Still dealing with razor bumps and ingrown hairs?"],
     "evidence": ["fb-034", "tt-018", "fb-018", "tt-003", "fb-071"]
   },
   {
@@ -227,7 +230,7 @@
     "engines": ["claude", "seedance"],
     "needs": [],
     "examples": ["New and improved breastfeeding Diras", "Watch this stain lift in 8 seconds"],
-    "evidence": ["tt-071", "fb-011", "fb-024", "fb-010", "fb-012", "ig-005", "ig-029", "ig-003"],
+    "evidence": ["tt-071", "fb-011", "fb-024", "fb-010", "fb-012", "ig-005", "ig-029", "ig-003", "ig-069", "ig-095"],
     "note": "The steamer demo (235.8K likes) has no on-screen text at all: the picture is the hook."
   },
   {
@@ -313,13 +316,14 @@
     "engines": ["seedance", "claude"],
     "needs": ["person"],
     "examples": ["DR. BOSCO / DERMA SKIN CLINIC", "And I'm A Dermatologist Here At Derma Skin Clinic.", "JUDITH SAFARIS | INGABIRE DORICE FINANCE & ADMINISTRATION OFFICER", "The September intake is here, grab your seat now"],
-    "evidence": ["fb-002", "fb-031", "tt-081", "fb-062", "fb-093", "tt-166", "tt-177"],
+    "evidence": ["fb-002", "fb-031", "tt-081", "fb-062", "fb-093", "tt-166", "tt-177", "fb-138", "fb-139"],
     "note": "Needs a real or digital-library presenter the owner chose; never invent a doctor or a title."
   },
   {
     "id": "local-greeting",
     "name": "Greeting in Kinyarwanda",
     "type": "greeting",
+    "weak": true,
     "pattern": "Muraho! Murakaza neza kuri {business}",
     "visual": "A host (a shop assistant or the owner) walks the aisle and greets the camera; the price entry point and delivery line follow.",
     "platforms": ["facebook", "tiktok"],
@@ -379,6 +383,7 @@
     "id": "cards-in-hand",
     "name": "The rumours are true (cards in hand)",
     "type": "reveal",
+    "weak": true,
     "pattern": "THE RUMORS ARE TRUE! | {business} | {offer}",
     "visual": "A person holds paper cards up one by one; each card is one line of the announcement.",
     "platforms": ["tiktok", "instagram"],
@@ -393,6 +398,7 @@
     "id": "comment-reply",
     "name": "Reply to a customer's question",
     "type": "social-proof",
+    "weak": true,
     "pattern": "Replying to: \"{problem}?\"",
     "visual": "A comment card on screen at 0 s (Do you deliver? Is this price real?), then the answer shown with proof.",
     "platforms": ["tiktok", "instagram"],
@@ -416,7 +422,7 @@
     "engines": ["claude", "seedance"],
     "needs": [],
     "examples": ["Happy customer alert!", "Abakiriya bacu barishimye", "From confusion to confidence!"],
-    "evidence": ["tt-131", "fb-006", "fb-002"],
+    "evidence": ["tt-131", "fb-006", "fb-002", "ig-093"],
     "note": "Only real customers and their real words; a fictional presenter must not pose as one."
   },
   {
@@ -437,6 +443,7 @@
     "id": "dont-say-say",
     "name": "Don't say / Say",
     "type": "before-after",
+    "weak": true,
     "pattern": "Don't say: {problem} | Say: {result}",
     "visual": "A red wrong line and a green right line in one frame, the teacher pointing up at them.",
     "platforms": ["facebook", "tiktok"],
@@ -452,20 +459,22 @@
     "id": "curiosity",
     "name": "More than you think",
     "type": "curiosity",
+    "weak": true,
     "pattern": "Your {product} can do more than you think!",
     "visual": "The device's screen or a surprising feature in close-up.",
-    "platforms": ["facebook", "tiktok"],
+    "platforms": ["facebook", "tiktok", "instagram"],
     "sectors": ["phone-shop", "school", "services"],
     "formats": ["tutorial", "list"],
     "engines": ["claude"],
     "needs": [],
     "examples": ["Your phone can do more than you think!"],
-    "evidence": ["fb-038"]
+    "evidence": ["fb-038", "ig-084"]
   },
   {
     "id": "occasion-title",
     "name": "Occasion title over a grid",
     "type": "list",
+    "weak": true,
     "pattern": "{claim} GIFT OPTIONS",
     "visual": "A title card over four photos of the options, cross-fading; a 5 s loop is enough.",
     "platforms": ["facebook", "instagram"],
@@ -480,6 +489,7 @@
     "id": "home-service",
     "name": "We come to you",
     "type": "offer-badge",
+    "weak": true,
     "pattern": "Book your {product} home service | {phone}",
     "visual": "Close-ups of the finished work alternating with a 2x2 grid of options; a bottom bar with the service and the number.",
     "platforms": ["facebook"],
@@ -550,6 +560,7 @@
     "id": "price-pill",
     "name": "Price pill pinned on every frame",
     "type": "price-first",
+    "weak": true,
     "pattern": "{product} | {claim} | {price} / month",
     "visual": "A rounded pill at the top with the plan and the price, on every frame; a person holding the product below and one benefit line per beat.",
     "platforms": ["facebook"],
@@ -580,6 +591,7 @@
     "id": "model-badge",
     "name": "Model name badge",
     "type": "announcement",
+    "weak": true,
     "pattern": "{product} available {offer}",
     "visual": "A yellow badge or sticker with the exact model over the boxes on the counter, or a hand fanning several phones.",
     "platforms": ["facebook", "tiktok"],
@@ -597,19 +609,20 @@
     "type": "price-first",
     "pattern": "KURI {price} TUGUHA {product}",
     "visual": "One line in capitals over the product in use, the numbers in a bar below.",
-    "platforms": ["facebook"],
+    "platforms": ["facebook", "instagram"],
     "sectors": ["shop", "real-estate", "services"],
     "formats": ["offer", "product-reveal"],
     "engines": ["claude"],
     "needs": ["price"],
     "examples": ["KURI 38000FRW TUGUHA IYI TWO IN ONE SMARTWATCH", "HA AHANTU HAWE ISURA YIHARIYE WIGURIRA INTEBE NZIZA KUGICIRO CYIZA", "TERA NEZA MUGIHE..."],
-    "evidence": ["fb-005", "fb-064"],
+    "evidence": ["fb-005", "fb-064", "ig-094"],
     "note": "For Kinyarwanda businesses: written on screen and in the caption only (the voice speaks English). Use the owner's own wording when given."
   },
   {
     "id": "talk-to-city",
     "name": "Kigali, we need to talk",
     "type": "curiosity",
+    "weak": true,
     "pattern": "{city}, we need to talk.",
     "visual": "The new product on a tray or counter, the line in big text, the logo small in a corner; then 'made fresh' proof shots.",
     "platforms": ["facebook", "instagram"],
@@ -625,6 +638,7 @@
     "id": "service-claim",
     "name": "Service claim in capitals, address on screen",
     "type": "bold-claim",
+    "weak": true,
     "pattern": "{claim} | {area}, next to {landmark}",
     "visual": "The service being done in close-up, the claim in capitals and a map pin with the landmark address at the bottom of the safe area.",
     "platforms": ["facebook"],
@@ -639,6 +653,7 @@
     "id": "loss-line",
     "name": "Stop losing ... (a loss or scare line)",
     "type": "problem",
+    "weak": true,
     "pattern": "STOP {problem}! / {problem}?",
     "visual": "The problem in one bold line (a rusty railing, an empty shop page), then the fix and the free quote or consultation.",
     "platforms": ["facebook"],
@@ -668,6 +683,7 @@
     "id": "search-bar",
     "name": "Search bar question",
     "type": "curiosity",
+    "weak": true,
     "pattern": "why choose {product}",
     "visual": "A search bar types the question over the product in close-up, then the answer in two or three short cards.",
     "platforms": ["facebook", "instagram"],
@@ -691,7 +707,7 @@
     "engines": ["seedance", "claude"],
     "needs": [],
     "examples": ["Master the skills of a professional mechanic"],
-    "evidence": ["fb-059", "fb-103", "tt-169", "tt-171"]
+    "evidence": ["fb-059", "fb-103", "tt-169", "tt-171", "fb-127"]
   },
   {
     "id": "poster-first",
@@ -705,7 +721,7 @@
     "engines": ["claude"],
     "needs": ["offer"],
     "examples": ["FRIDAY UNLOCKED / BUY 4 GET 5 / 6PM-10PM / KICUKIRO, KN 432 opposite IPRC traffic lights", "EXPLORE THE WORLD / UP TO 35% OFF / BOOK NOW", "HIKE MOUNT JALI WITH CAMP & EXPLORER | HIKING EVERY DAY MONDAY - SUNDAY | CONTACT US ON +250…"],
-    "evidence": ["fb-069", "fb-044", "fb-099"]
+    "evidence": ["fb-069", "fb-044", "fb-099", "ig-060", "ig-092", "fb-123"]
   },
   {
     "id": "splash-hero",
@@ -726,6 +742,7 @@
     "id": "explode-reassemble",
     "name": "Explode and reassemble",
     "type": "reveal",
+    "weak": true,
     "pattern": "{product}: what is inside",
     "visual": "The device floats on a dark floor glow, then its parts fly apart (screen, camera, battery) each with a two-word label, and lock back together.",
     "platforms": ["shorts", "tiktok"],
@@ -740,6 +757,7 @@
     "id": "menu-card-loop",
     "name": "Menu card loop",
     "type": "list",
+    "weak": true,
     "pattern": "{product} {price} | ORDER NOW (dish after dish)",
     "visual": "A menu card with an 'ORDER NOW' button; the dish and its price slide to the next dish every 3 s and loop back.",
     "platforms": ["shorts", "instagram", "facebook"],
@@ -754,6 +772,7 @@
     "id": "step-routine",
     "name": "Step 1, 2, 3 (one verb each)",
     "type": "list",
+    "weak": true,
     "pattern": "STEP 1 {claim} | STEP 2 {claim} | STEP 3 {claim}",
     "visual": "The product on a coloured circle with 'STEP 1' typing in; one verb per step (CLEANSE, TREAT, NOURISH), then the result close-up.",
     "platforms": ["shorts", "instagram", "tiktok"],
@@ -782,6 +801,7 @@
     "id": "price-card-split",
     "name": "Red price block beside the product",
     "type": "price-first",
+    "weak": true,
     "pattern": "{product} | RWF {price} | {product} | RWF {price}",
     "visual": "A split card: the product picture on the left, the price in a red (or black and gold) block on the right; one card per model, the presenter or the real stock before and after it.",
     "platforms": ["facebook"],
@@ -796,6 +816,7 @@
     "id": "key-in-door",
     "name": "A key turns in the door",
     "type": "reveal",
+    "weak": true,
     "pattern": "(a hand turns the key) {product} | from {price} a night",
     "visual": "POV: a hand turns a key in the wooden door, the door opens on the room; the phone strip at the bottom, the rates in the caption.",
     "platforms": ["facebook", "instagram"],
@@ -825,6 +846,7 @@
     "id": "empty-frame",
     "name": "Something is missing (an empty frame, then the product)",
     "type": "curiosity",
+    "weak": true,
     "pattern": "{claim}! (over an empty space, then the products pop in)",
     "visual": "An empty shelf, vanity or room with one big line ('miss, you forgot something!'), or a 3, 2 countdown on black; then the products pop in or the room is revealed.",
     "platforms": ["instagram"],
@@ -839,6 +861,7 @@
     "id": "what-x-buys",
     "name": "This is what {price} buys you",
     "type": "price-first",
+    "weak": true,
     "pattern": "This is what {price} buys you in {city}",
     "visual": "The agent or owner walks towards the camera in front of the house or the stock; the line stacked in huge text, the price word coloured.",
     "platforms": ["instagram", "facebook"],
@@ -861,7 +884,7 @@
     "engines": ["seedance", "claude"],
     "needs": ["person"],
     "examples": ["iPhone Pro Series Ka Buffet… 13 Pro to 16 Pro Max.", "Still paying for AI assistants."],
-    "evidence": ["ig-022", "ig-023", "ig-037", "fb-027", "fb-090"]
+    "evidence": ["ig-022", "ig-023", "ig-037", "fb-027", "fb-090", "ig-091", "ig-096"]
   },
   {
     "id": "trust-number",
@@ -882,6 +905,7 @@
     "id": "colour-swap",
     "name": "One mannequin, a new colour every beat",
     "type": "list",
+    "weak": true,
     "pattern": "{product} | {phone} (the colour changes every 1 to 2 s)",
     "visual": "A locked shot of one mannequin or one pair of hands; the outfit swaps colour every 1 to 2 s while the number stays on screen for the whole clip.",
     "platforms": ["tiktok", "facebook"],
@@ -891,5 +915,21 @@
     "needs": [],
     "examples": ["Original complete 0787789066", "Karibu guys all sizes available"],
     "evidence": ["tt-154", "tt-149"]
+  },
+  {
+    "id": "insurers-accepted",
+    "name": "The insurers you take",
+    "type": "authority",
+    "weak": true,
+    "pattern": "We take {insurers}",
+    "visual": "The clinic or pharmacy at its best (the lit counter, the doctor in scrubs) with the insurers accepted written large for 2 to 3 seconds.",
+    "platforms": ["tiktok", "facebook"],
+    "sectors": ["clinic"],
+    "formats": ["tutorial", "tour"],
+    "engines": ["claude", "seedance"],
+    "needs": [],
+    "examples": ["We work with EDENCARE, SONARWA, and RSSB"],
+    "evidence": ["tt-177", "cm-026"],
+    "note": "Only the insurers the owner gives; viewers ask about them more than anything else on a clinic clip."
   }
 ]

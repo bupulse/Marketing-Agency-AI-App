@@ -2,7 +2,7 @@
 // best hooks for the sector and platform, each filled in from the brief's own facts (product, price, area, number,
 // offer...), in the business's language, at most 7 words on screen, and passing the language check. A hook that needs
 // a fact the brief lacks is skipped. Pure, no I/O.
-import { evidenceById, formatById, hookById, sectorById } from "./database";
+import { BRAIN, evidenceById, formatById, hookById, sectorById } from "./database";
 import { checkLanguage } from "./language";
 import { rankWithOutcomes } from "./outcomes";
 import { formatFromTemplate, rankHooks, sectorFromText } from "./select";
@@ -86,11 +86,16 @@ function offerLabel(note: string | null | undefined): string | null {
   return /\b(free|promo|offer|discount|deal)\b/i.test(n) && words.length <= 6 ? n.replace(/[.!]+$/, "") : null;
 }
 
-type Facts = {
+export type Facts = {
   product: string; price: string | null; oldPrice: string | null; phone: string | null; area: string | null; city: string | null;
   offer: string | null; delivery: boolean; year: string | null; branches: string | null; insurers: string[]; bedrooms: string | null; spec: string | null; reasons: number;
+  /** For a treatment or a repair, the problem it fixes ("Acne treatment" -> "acne"); null for a product. */
+  problem: string | null;
+  /** A named building or landmark ("Makuza Peace Plaza", "T2000 House", "Room 35"), the way Kigali gives directions. */
+  landmark: string | null;
 };
-function factsOf(b: SuggestBrief): Facts {
+/** The brief's facts as suggestions use them (the series planner shares the number and the area). */
+export function briefFacts(b: SuggestBrief): Facts {
   const text = factsText(b);
   // The product's own place first (a house in Kibagabaga sold by an agency in Gasabo), then the business's.
   const productText = [b.product.name, b.product.summary, b.product.description].filter(Boolean).join(" ");
@@ -112,6 +117,8 @@ function factsOf(b: SuggestBrief): Facts {
     bedrooms: text.match(/\b(\d) ?(?:-| )?bed(?:room)?s?\b|\bibyumba (\d)\b/i)?.slice(1).find(Boolean) ?? null,
     spec,
     reasons: (b.product.usps ?? []).length + (b.product.features ?? []).length,
+    landmark: text.match(/\b((?:[A-Z][\w']*|\d+)(?:\s+(?:[A-Z][\w']*|\d+)){0,3}\s+(?:Plaza|House|Building|Mall|Tower|Centre|Center|Market|Arcade))\b(?:,?\s+(Room\s+\d+\w?))?/)?.slice(1).filter(Boolean).join(", ") ?? null,
+    problem: b.product.name.match(/^(.{2,30}?)\s+(treatment|removal|repair|therapy|care)$/i)?.[1].toLowerCase() ?? null,
   };
 }
 
@@ -139,8 +146,10 @@ const LINES: Record<string, Template> = {
   "location-stack": { any: ["{CITY} · {AREA} | {bedrooms} BEDROOMS | {price}", "{CITY} · {AREA} | {price}"], rw: "INZU IGURISHWA I {AREA} · {price}" },
   "what-x-buys": { en: "What {price} buys in {city}" },
   "spec-words": { any: "{product} · {spec}" },
-  // Clinics and schools get both trust lines when they have both facts (the founding year and the insurers).
-  "trust-number": { en: ["Since {year} · {branches} branches in {city}", "Since {year} in {city}", "We take {insurers}"], fr: ["Depuis {year} · {branches} agences", "Depuis {year} à {city}", "Nous acceptons {insurers}"] },
+  "trust-number": { en: ["Since {year} · {branches} branches in {city}", "Since {year} in {city}"], fr: ["Depuis {year} · {branches} agences", "Depuis {year} à {city}"] },
+  "insurers-accepted": { en: "We take {insurers}", fr: "Nous acceptons {insurers}" },
+  "pain-question": { en: "Still dealing with {problem}?", fr: "Encore des problèmes de {problem} ?" },
+  "service-claim": { any: "{area}, {city} · {phone}" },
   "result-first": { en: "Wait for it...", fr: "Attendez la fin..." },
   "before-after-word": { en: "before... | after" },
   "numbered-list": { en: "{reasons} reasons to choose {product}" },
@@ -164,7 +173,7 @@ const langKey = (language: string | null | undefined): "en" | "rw" | "fr" | "oth
 function fill(template: string, f: Facts): string | null {
   const values: Record<string, string | null> = {
     product: f.product, price: f.price, oldPrice: f.oldPrice, phone: f.phone, area: f.area, AREA: f.area?.toUpperCase() ?? null, city: f.city, CITY: f.city?.toUpperCase() ?? null,
-    offer: f.offer, year: f.year, branches: f.branches, insurers: f.insurers.length ? f.insurers.join(", ") : null, bedrooms: f.bedrooms, spec: f.spec, reasons: f.reasons >= 3 ? "3" : null,
+    offer: f.offer, year: f.year, branches: f.branches, insurers: f.insurers.length ? f.insurers.join(", ") : null, bedrooms: f.bedrooms, spec: f.spec, reasons: f.reasons >= 3 ? "3" : null, problem: f.problem,
   };
   let missing = false;
   const line = template.replace(/\{(\w+)\}/g, (_, k: string) => {
@@ -175,6 +184,43 @@ function fill(template: string, f: Facts): string | null {
   return missing ? null : line.replace(/\s+/g, " ").trim();
 }
 const wordCount = (line: string) => line.split(/\s+/).filter((w) => w && !/^[·|/:+]+$/.test(w)).length;
+
+/**
+ * The first comment for the seller to pin under the post (brain/data/captions.json firstComment, from the Instagram
+ * comments study): the price, the place, delivery and the WhatsApp number, one line each, in Kinyarwanda for a
+ * Kinyarwanda business (the researcher's reply-kit lines), else English. Lines whose facts the brief lacks are left
+ * out; delivery only when the brief says the business delivers. Null when fewer than two lines are left. Pure.
+ */
+export function firstCommentFor(brief: SuggestBrief): { text: string; lines: string[] } | null {
+  const f = briefFacts(brief);
+  const delivers = f.delivery || /\b(deliver(y|ies)?|we deliver|livraison|turohereza|tukugezaho)\b/i.test(factsText(brief));
+  const place = f.landmark ? [f.landmark, f.area ?? f.city].filter(Boolean).join(", ") : [f.area, f.city].filter((x, i, a) => x && a.indexOf(x) === i).join(", ") || null;
+  const values: Record<string, string | null> = {
+    price: f.price,
+    place,
+    area: f.area ?? f.city,
+    city: delivers ? f.city ?? "Kigali" : null,
+    delivery: delivers ? (f.delivery ? `free in ${f.city ?? "Kigali"}` : "available") : null,
+    phone: f.phone,
+  };
+  const guide = BRAIN.captions.firstComment;
+  const rw = langKey(brief.business.language) === "rw";
+  const lines = (rw ? guide.rw : guide.en)
+    .map((line) => (rw && line.includes("{landmark}") && !f.landmark ? line.replace(/, hafi ya \{landmark\}/, "") : line.replace("{landmark}", f.landmark ?? "")))
+    .map((line) => {
+      let missing = false;
+      const out = line.replace(/\{(\w+)\}/g, (_, k: string) => {
+        if (!values[k]) missing = true;
+        return values[k] ?? "";
+      });
+      return missing ? null : out;
+    })
+    .filter((x): x is string => !!x);
+  return lines.length >= 2 ? { text: lines.join("\n"), lines } : null;
+}
+
+/** The brief's sector, from its business and product words. */
+export const briefSector = (brief: SuggestBrief): SectorId => sectorFromText([brief.business.name, brief.business.description, brief.product.name, brief.product.summary].filter(Boolean).join(" "));
 
 /** One plain sentence on why a hook, from its research rows (how many, how many Rwandan, its strongest signal). */
 function whyOf(h: Hook, sector: SectorId): { why: string; evidence: string[] } {
@@ -201,15 +247,15 @@ function whyOf(h: Hook, sector: SectorId): { why: string; evidence: string[] } {
  * MAX_HOOK_WORDS words and passing checkLanguage. Clinics and schools never get a price hook (they lead with trust).
  * Pure and deterministic.
  */
-export function suggestHooks(brief: SuggestBrief, opts: { platform?: Platform | "any" | null; count?: number; outcomes?: Outcome[] | null; businessId?: string | null; sector?: SectorId | null } = {}): HookSuggestion[] {
+export function suggestHooks(brief: SuggestBrief, opts: { platform?: Platform | "any" | null; count?: number; outcomes?: Outcome[] | null; businessId?: string | null; sector?: SectorId | null; presenter?: boolean } = {}): HookSuggestion[] {
   const count = opts.count ?? 3;
-  const f = factsOf(brief);
-  const sector = opts.sector ?? sectorFromText([brief.business.name, brief.business.description, brief.product.name, brief.product.summary].filter(Boolean).join(" "));
+  const f = briefFacts(brief);
+  const sector = opts.sector ?? briefSector(brief);
   const format = formatById(formatFromTemplate(brief.styleId)) ?? formatById(sectorById(sector)!.formats.find((id) => formatById(id)?.engines.includes("claude")) ?? "product-reveal")!;
   const platform = opts.platform ?? "any";
   const lang = langKey(brief.business.language);
   const ranked = rankHooks(
-    { platform, sector, format: format.id, engine: "claude", language: brief.business.language, hasPrice: !!f.price, hasPhone: !!f.phone, hasOffer: !!f.offer, hasOldPrice: !!f.oldPrice, hasLocation: !!f.area, seconds: brief.seconds ?? format.refSeconds },
+    { platform, sector, format: format.id, engine: "claude", language: brief.business.language, hasPrice: !!f.price, hasPhone: !!f.phone, hasOffer: !!f.offer, hasOldPrice: !!f.oldPrice, hasLocation: !!f.area, hasPresenter: !!opts.presenter, seconds: brief.seconds ?? format.refSeconds },
     sector,
     format,
   );
@@ -226,11 +272,6 @@ export function suggestHooks(brief: SuggestBrief, opts: { platform?: Platform | 
       .find((l): l is string => !!l && wordCount(l) <= MAX_HOOK_WORDS && !checkLanguage([{ where: "hook", text: l, kind: "screen" }], brief.business.language).length && !out.some((x) => x.line === l));
     if (!line) continue;
     out.push({ hookId: h.id, name: hookById(h.id)!.name, line, ...whyOf(h, sector) });
-    // A trust hook may offer its second fact as a second line (the insurers after the founding year).
-    if (h.id === "trust-number" && out.length < count) {
-      const second = options.map((o) => fill(o, f)).find((l): l is string => !!l && l !== line && wordCount(l) <= MAX_HOOK_WORDS && !checkLanguage([{ where: "hook", text: l, kind: "screen" }], brief.business.language).length);
-      if (second) out.push({ hookId: h.id, name: hookById(h.id)!.name, line: second, ...whyOf(h, sector) });
-    }
   }
   return out;
 }

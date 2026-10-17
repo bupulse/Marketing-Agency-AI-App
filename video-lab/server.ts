@@ -27,6 +27,8 @@ import { DAILY_CAP_USD, getJob, listJobs, listPreviews, newJobId, readVideo, rec
 import { SEEDANCE_LIMITS, SEEDANCE_MODELS, SEEDANCE_RATIOS, SEEDANCE_RESOLUTIONS, checkSeedanceConnection, estimateSeedanceUsd, type SeedanceConnection, type SeedanceReference, type SeedanceRequest, type SeedanceResolution, type SeedanceTier } from "@/lib/video-engine/seedance";
 import { BUSINESS_KINDS, SEEDANCE_FORMATS, checkSeedanceRequest, planSeedanceShots, type BusinessKind, type SeedanceFormat } from "@/lib/video-engine/seedance-brain";
 import { listSeedanceExamples } from "./seedance-mock/preview";
+import { seedanceOverlayCaption, seedanceOverlaySpec } from "@/lib/video-engine/seedance-overlay";
+import { getOverlay, mp4Tracks, overlayVideoBytes, saveOverlay, saveOverlayVideo } from "./seedance-overlays";
 import { listCharacters, previewPortraitPng } from "@/lib/video-engine/seedance-characters";
 import { writeSeedancePrompt } from "@/lib/video-engine/seedance-prompt";
 import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PREMIUM_3D_CREDITS, PREMIUM_RERENDER_CREDITS, PRESENTER_IMAGE_CREDITS, isPremiumQuality, type PremiumQuality, VOICE_OVER_CREDITS, charge, readWallet, refund, seedanceCredits, topUp } from "./credits";
@@ -246,6 +248,7 @@ async function designOne(req: DesignRequest, variation: { index: number; of: num
     const sameCaption = parent?.spec && parent.captionScore !== undefined && parent.spec.caption === result.spec.caption && parent.spec.hashtags.join(" ") === result.spec.hashtags.join(" ");
     if (sameCaption) Object.assign(job, { captionScore: parent.captionScore, captionMissed: parent.captionMissed ?? [] });
     else {
+      // The Brain's "mode" means ad or post, not the design mode: our designs are ads (its default).
       const cap = scoreCaption(result.spec.caption, result.spec.hashtags, brief, { platform: brief.platform });
       Object.assign(job, { captionScore: cap.score, captionMissed: cap.missed });
     }
@@ -308,6 +311,8 @@ const REDIRECTS: Record<string, string> = {
   "/explore": "/showcase",
   "/prompt-guide": "/guide",
 };
+/** Free re-shapes of a finished Motion design, and the network each is for. */
+const RESHAPES: Record<string, { platform: Platform }> = { "1:1": { platform: "facebook" }, "4:5": { platform: "instagram" } };
 const TIER_PAGES: Record<string, string> = { pro: "/app/video/seedance-2-0", fast: "/app/video/seedance-2-0-fast", mini: "/app/video/seedance-2-0-mini" };
 
 const labelFor = (r: { kind: string; label?: unknown }, n: number) => `${r.kind === "image" ? "Image" : r.kind === "video" ? "Video" : "Audio"} ${n}: ${typeof r.label === "string" ? r.label.slice(0, 120) : r.kind}`;
@@ -347,6 +352,20 @@ async function knownCutouts(): Promise<{ ok: Set<string>; refused: Set<string> }
   const files = await fs.readdir(path.resolve("video-lab/data/cutouts")).catch(() => [] as string[]);
   const ids = (ext: string) => new Set(files.filter((f) => f.endsWith(ext)).map((f) => f.slice(0, -ext.length)));
   return { ok: ids(".png"), refused: ids(".json") };
+}
+
+/**
+ * A stand-in for a Seedance clip while there is none (preview mode): the newest finished Motion MP4 with a sound track
+ * (of the same product when there is one), so the overlay's video layer and the clip's own audio can be tried end to end.
+ */
+async function standInClip(productId: string): Promise<string | null> {
+  // The same product when it has a finished video with sound, else any: closer to what the real clip will show.
+  const jobs = (await listJobs()).filter((j) => j.video);
+  for (const j of [...jobs.filter((x) => x.productId === productId), ...jobs]) {
+    const bytes = await readVideo(j.id);
+    if (bytes && mp4Tracks(bytes).includes("soun")) return `/videos/${j.id}.mp4`;
+  }
+  return null;
 }
 
 /** The BytePlus connection, checked at most every 5 minutes (the check lists one task: free). */
@@ -583,6 +602,61 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { jobs, problems });
     }
     if (req.method === "GET" && p === "/api/seedance/jobs") return json(res, 200, { jobs: await listSeedanceJobs() });
+    const sdOverlay = p.match(/^\/api\/seedance\/jobs\/(sd-[0-9a-f]{12})\/overlay(\/video)?$/);
+    if (sdOverlay) {
+      const id = sdOverlay[1];
+      if (req.method === "GET" && !sdOverlay[2]) {
+        const o = await getOverlay(id);
+        return o ? json(res, 200, o) : fail(res, 404, "No text added yet.");
+      }
+      if (req.method === "POST" && !sdOverlay[2]) {
+        // "Add BuPulse text": the hook, price, phone bar and call to action drawn over the clip (free, no AI).
+        const job = await getSeedanceJob(id);
+        if (!job) return fail(res, 404, "Not found");
+        const preview = !!job.preview;
+        if (!preview && (job.status !== "succeeded" || !job.videoFile)) return fail(res, 400, "The clip is not ready yet.");
+        const business = job.businessId ? await getBusiness(job.businessId) : null;
+        const product = business && job.productId ? (await listProducts(business.id)).find((x) => x.id === job.productId) : undefined;
+        if (!business || !product) return fail(res, 400, "This clip was made without a product, so there is no price or number to add.");
+        // Until a real clip exists (preview mode), a finished studio MP4 with sound stands in, so the step can be tried.
+        const clipUrl = preview ? await standInClip(product.id) : `/videos/seedance/${id}.mp4`;
+        if (!clipUrl) return fail(res, 400, "There is no finished studio video to stand in for the Seedance clip yet.");
+        const body = JSON.parse((await readBody(req, 4096)).toString("utf8") || "{}");
+        const platform = isPlatform(body.platform) ? body.platform : null;
+        const brief = {
+          business: { name: business.name, description: business.description, language: business.language, country: business.country, phone: business.phone },
+          product: { name: product.name, summary: product.summary, description: product.description, price: product.price, usps: product.usps, features: product.features },
+          references: job.request.referenceNotes,
+          templateId: "product-hero",
+          seconds: job.request.seconds,
+          ratio: job.request.ratio === "adaptive" ? "9:16" : job.request.ratio,
+          audio: job.request.audio,
+          platform,
+        };
+        const raw = seedanceOverlaySpec({ brief, clipUrl, prompt: job.request.prompt, seconds: job.request.seconds });
+        const spec = validateSpec(raw, { ratio: (isRatio(raw.ratio) ? raw.ratio : "9:16") as Ratio, photoCount: 0, seconds: totalMs(raw) / 1000, platform, phone: business.phone });
+        const cap = seedanceOverlayCaption(brief);
+        const overlay = { jobId: id, createdAt: new Date().toISOString(), spec, clipUrl, standIn: preview, captionScore: cap.score.score, captionMissed: cap.score.missed, video: null };
+        await saveOverlay(overlay);
+        return json(res, 200, overlay);
+      }
+      if (req.method === "POST" && sdOverlay[2]) {
+        // The MP4 the browser made from the overlay: kept as the job's "with text" version.
+        const o = await getOverlay(id);
+        if (!o) return fail(res, 404, "Add the text first.");
+        const bytes = await readBody(req, MAX_UPLOAD);
+        if (bytes.length < 1000 || bytes.subarray(4, 8).toString("latin1") !== "ftyp") return fail(res, 400, "That is not an MP4 file.");
+        await saveOverlayVideo(id, bytes);
+        o.video = { bytes: bytes.length, savedAt: new Date().toISOString(), quality: String(url.searchParams.get("q") ?? "1080p") };
+        await saveOverlay(o);
+        return json(res, 200, { ...o, tracks: mp4Tracks(bytes) });
+      }
+    }
+    const sdText = p.match(/^\/videos\/seedance\/(sd-[0-9a-f]{12})-text\.mp4$/);
+    if (req.method === "GET" && sdText) {
+      const bytes = await overlayVideoBytes(sdText[1]);
+      return bytes ? sendMedia(req, res, bytes, "video/mp4", { "content-disposition": `inline; filename="bupulse-${sdText[1]}-text.mp4"` }) : fail(res, 404, "Not found");
+    }
     const sdJob = p.match(/^\/api\/seedance\/jobs\/(sd-[0-9a-f]{12})(\/cancel|\/preview)?$/);
     if (sdJob) {
       if (req.method === "GET" && sdJob[2] === "/preview") {
@@ -846,7 +920,7 @@ const server = http.createServer(async (req, res) => {
       const bytes = await readVoiceMp3(voiceFile[1]);
       return bytes ? sendMedia(req, res, bytes, "audio/mpeg") : fail(res, 404, "Not found");
     }
-    const jobMatch = p.match(/^\/api\/jobs\/([0-9]{8}-[0-9a-f]{8})(\/video|\/spec|\/voice)?$/);
+    const jobMatch = p.match(/^\/api\/jobs\/([0-9]{8}-[0-9a-f]{8})(\/video|\/spec|\/voice|\/reshape)?$/);
     if (jobMatch) {
       const job = await getJob(jobMatch[1]);
       if (!job) return fail(res, 404, "Test not found.");
@@ -858,6 +932,43 @@ const server = http.createServer(async (req, res) => {
         job.edited = true;
         await saveJob(job);
         return json(res, 200, job);
+      }
+      if (req.method === "POST" && jobMatch[2] === "/reshape") {
+        // The same design for another network's shape: the validator re-lays it for the new canvas (safe area, no
+        // overlaps, the product kept clear). No Claude call and no charge; saved as a child job.
+        if (!job.spec) return fail(res, 400, "This design failed, so it has nothing to re-shape.");
+        const body = JSON.parse((await readBody(req, 4096)).toString("utf8") || "{}");
+        const shape = RESHAPES[String(body.ratio)];
+        if (!shape) return fail(res, 400, "Choose 1:1 (Facebook feed) or 4:5 (Instagram feed).");
+        const business = await getBusiness(job.businessId);
+        const photos = await Promise.all(
+          job.photoIds.map(async (id) => {
+            const ph = await photoJpeg(id, 1280, id.startsWith("up-") ? undefined : job.businessId);
+            const cut = await cutoutForPhoto(id, id.startsWith("up-") ? undefined : job.businessId);
+            return { width: ph.width, height: ph.height, subject: cut.ok ? cut.box : null };
+          }),
+        );
+        const spec = validateSpec({ ...job.spec, ratio: body.ratio }, { ratio: body.ratio as Ratio, photoCount: job.photoIds.length, seconds: totalMs(job.spec) / 1000, fixedLens: job.fixedLens, photos, platform: shape.platform, phone: business?.phone ?? null });
+        const parent = job as LabJob & { warnings?: unknown; captionScore?: number; captionMissed?: string[] };
+        const child: LabJob & { warnings?: unknown; captionScore?: number; captionMissed?: string[] } = {
+          ...parent,
+          id: newJobId(),
+          createdAt: new Date().toISOString(),
+          ratio: body.ratio,
+          spec,
+          usage: [],
+          costUsd: 0,
+          apiEquivalentUsd: 0,
+          status: "designed",
+          error: null,
+          video: null,
+          edited: false,
+          mode: "reshape",
+          parentId: job.id,
+          version: null,
+        };
+        await saveJob(child);
+        return json(res, 200, child);
       }
       if (req.method === "POST" && jobMatch[2] === "/voice") {
         // The voice-over of a design (ElevenLabs, video-lab/voice.ts). Credits are taken first and given back when it
