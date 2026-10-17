@@ -421,3 +421,64 @@ from what BuPulse's own videos did (`brain/outcomes.ts`).
   BuPulse's own results now feed the ranking (see "Learning from our own results"); an outcome's `messages` (WhatsApp
   taps or DM conversations, when the network reports them) counts five times a like, since Kigali viewers message rather
   than like. Sales would be the next signal to record.
+
+## 17 October changelog
+
+Everything in the brain was built on 17 October 2026 (commits 1297ba6 to fc8d270); this is the one-page summary for the
+next session.
+
+**Sources and counts at the end of the day.** 687 research rows in `data/evidence.json`, made by
+`node lib/video-engine/brain/ingest.ts` from `docs/research/reels/` (ids stay stable; `--no-new` refreshes only, and
+`--skip=<source>` leaves a file that is still being written):
+
+| Source (id prefix) | Rows | What |
+| --- | --- | --- |
+| TikTok (`tt-`) | 216 | 170 watched; round 2 thin sectors, round 3 sounds, round 4 AI-made clips (`ai`, `aiLabel`) |
+| Facebook (`fb-`) | 159 | Ad Library ads, the Rwanda playbook, long runners, round 4 events, schools, clinics; 20 organic page reels (`organic`) |
+| Instagram (`ig-`) | 101 | 58 global reels and 43 Kigali account reels (plays and followers) |
+| YouTube Shorts (`yt-`) | 36 | |
+| Captions (`cp-`) | 125 | 111 Rwandan post captions |
+| TikTok comments (`cm-`) | 30 | clip summaries of 450 comments |
+| Instagram comments (`ic-`) | 20 | clip summaries of 177 comments |
+
+421 rows are Rwandan; 8 are income-chain or scam posts (only `no-fake-income` and `no-income-promise` may cite them);
+25 are AI-made clips (only the AI rules may cite them). 63 hooks (25 weak), 10 formats, 11 sectors, 92 rules (77 do, 15
+don't; 29 ads only, 5 posts only, 15 weak), 33 caption formulas on 4 platforms plus the seller's first comment.
+
+**The pieces, all exported from `lib/video-engine/brain/index.ts` (browser-safe; `outcomes-store.ts` is the only
+file-system part):**
+
+- `brainFor` / `brainContext` (select.ts): the pick for a brief and the about-900-token research block for Claude
+  (hooks, timeline, rules, call to action, Sound line, caption with the first comment, don'ts).
+- Scorers (score.ts): `scoreDesign`, `scoreCaption`, `scoreSeedancePrompt`; `templateStyle` / `STYLE_LIMITS` (direct,
+  list, showcase, brand, luxury); `amounts` reads grouped money of any size and skips phone numbers.
+- `SAFE_AREAS` / `safeAreaFor` (database.ts): per platform (Instagram's right edge 0.85; Shorts and YouTube the same);
+  wide and square shapes keep a 5% margin.
+- `checkLanguage` (language.ts): Kinyarwanda and French price and call-to-action forms from the corpus.
+- `rankWithOutcomes` / `outcomesLine` (outcomes.ts): our own posted results move the ranking (prior worth 10 posts,
+  own business 3, sector 1, others 0.5; 5 posts minimum; under 20 posts a research top-three hook keeps its place);
+  `messages` counts five times a like.
+- `suggestHooks` (suggest.ts): three filled-in opening lines from the facts, at most 7 words, English or Kinyarwanda,
+  trust-first for clinics and schools, never a price line without a price.
+- `planSeries` (series.ts): a week of distinct posts for Autopilot (see "A week of videos").
+- `firstCommentFor` (suggest.ts): the seller's pinned comment (price, place, delivery, WhatsApp) from the facts only.
+- `purpose: "ad" | "post"` (BrainBrief, ScoreBrief, ScoreOptions; `purposes` on rules and caption formulas): page
+  posts get their own rules, hooks, caption and scoring (see "Ads and page posts"). It is not `mode`: DesignBrief
+  already uses `mode` for reference, text and image.
+- `weak: true` on rules, hooks and formulas with fewer than 3 rows, `model: true` on BuPulse's own model captions:
+  the context says "(early evidence)" or "(BuPulse model, not observed)", and a weak rule's check counts half.
+- checkBrain refuses: an unknown reference, an uncited research rule, a scam or AI-made row cited outside its rules,
+  an ad rule citing an organic reel, and an unmarked rule, hook or formula with fewer than 3 rows.
+
+**Checked today.** The researchers' evidence audit (`brain-evidence-audit.md`): reasons rewritten to say only what the
+rows show, the Ghanaian "Drop 40% or 60%" clip supports no rule, MoMo is "rare", 6 of 10 Rwandan seller ads show the
+price, the offer or the number in the first 3 s. The 33-template sweep scores a mean 89.9 for designs and 96.3 for
+captions (`brain-audit.md`). The motion engine's loop-6 designs, run through today's `validateSpec` and scorer: dress
+100, restaurant 99.5, house 98.8 (from 91.6: the 120,000,000 RWF price is now read and "Find us in Kibagabaga" counts
+as a call to action), dress 1:1 100, dress 4:5 100; no design dropped. What is left there: three text-crowd misses
+(luxury and direct templates with one line too many) and "5 stars" in the house `ugc-review` (no-fake-customers).
+
+**Open for the next session.** The app side of `purpose` (a "post" switch on Create and Autopilot), recording
+`messages` in PostMetrics, the AI rules' evidence (TikTok comments under AI clips were blocked by a captcha), Shorts
+captions from East African shops, and the owner's listening pass on sound.
+
