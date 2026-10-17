@@ -21,6 +21,7 @@ import { writeSeedancePrompt } from "@/lib/video-engine/seedance-prompt";
 import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PRESENTER_IMAGE_CREDITS, charge, readWallet, refund, seedanceCredits, topUp } from "./credits";
 import { cancelSeedance, getSeedanceJob, imageDataUrl, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
 import { mediaBytes, saveMedia } from "./data-source";
+import { RateLimiter, clearCookieHeader, clientIp, cookieValue, isLocal, loadSecret, loginPage, safeNext, sameText, setCookieHeader, tokenFor } from "./gate";
 
 const PORT = Number(process.env.VIDEO_LAB_PORT || 3100);
 const BUILD = path.resolve("video-lab/.build");
@@ -288,10 +289,73 @@ async function resolveReferences(refs: { id: string; kind: string; role?: string
   return { references, notes };
 }
 
+const loginTries = new RateLimiter(10, 10 * 60_000);
+let gateSecret: Buffer | null = null;
+const html = (res: http.ServerResponse, status: number, body: string) => {
+  res.writeHead(status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  res.end(body);
+};
+
+/**
+ * The password gate (video-lab/gate.ts) for online access. True when the request may go on; otherwise it has been
+ * answered: the sign-in page, the sign-in itself, a redirect to it, or 401 for the API.
+ */
+async function gate(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<boolean> {
+  const p = url.pathname;
+  const password = process.env.STUDIO_PASSWORD ?? "";
+  const secret = (gateSecret ??= await loadSecret());
+  const signedIn = !!password && sameText(cookieValue(req.headers) ?? "", tokenFor(password, secret));
+  if (p === "/logout") {
+    res.writeHead(303, { "set-cookie": clearCookieHeader(req.headers), location: "/login" });
+    res.end();
+    return false;
+  }
+  if (isLocal(req.headers, PORT) || signedIn) {
+    if (p !== "/login") return true;
+    res.writeHead(303, { location: safeNext(url.searchParams.get("next")) });
+    res.end();
+    return false;
+  }
+  if (req.method === "GET" && p === "/site.css") return true;
+  if (!password) {
+    fail(res, 503, "The studio is locked: STUDIO_PASSWORD is not set on the studio computer.");
+    return false;
+  }
+  if (p === "/login" && req.method === "GET") {
+    html(res, 200, loginPage(safeNext(url.searchParams.get("next")), null));
+    return false;
+  }
+  if (p === "/login" && req.method === "POST") {
+    const form = new URLSearchParams((await readBody(req, 4096)).toString("utf8"));
+    const next = safeNext(form.get("next"));
+    if (!loginTries.hit(clientIp(req))) {
+      html(res, 429, loginPage(next, "Too many tries. Wait 10 minutes, then try again."));
+      return false;
+    }
+    if (!sameText(form.get("password") ?? "", password)) {
+      html(res, 401, loginPage(next, "That password is not right. Try again."));
+      return false;
+    }
+    res.writeHead(303, { "set-cookie": setCookieHeader(tokenFor(password, secret), req.headers), location: next });
+    res.end();
+    return false;
+  }
+  if (p.startsWith("/api/") || req.method !== "GET") {
+    fail(res, 401, "Sign in first: open the studio and enter the password.");
+    return false;
+  }
+  res.writeHead(302, { location: `/login?next=${encodeURIComponent(p + url.search)}` });
+  res.end();
+  return false;
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
   const p = url.pathname;
+  // The studio is a private test site: never in search results, online or not.
+  res.setHeader("x-robots-tag", "noindex, nofollow");
   try {
+    if (!(await gate(req, res, url))) return;
     if (req.method === "GET" && PAGE_ROUTES[p]) return file(res, path.join(PAGES, `${PAGE_ROUTES[p]}.html`), "text/html; charset=utf-8");
     if (req.method === "GET" && REDIRECTS[p]) {
       // Keeps the query (the old ?tier= links go to that model's page; ?prompt= and ?ref= pass through).
@@ -647,6 +711,7 @@ void loadSavedKeys(LAB_KEYS)
           : "Claude: the API key (ANTHROPIC_API_KEY).",
       );
       if (!process.env.SEEDANCE_API_KEY) console.log("Not set: SEEDANCE_API_KEY (add it to .env or Admin -> Services)");
+      console.log(process.env.STUDIO_PASSWORD ? "Online access: password gate on (this computer needs no password)." : "Not set: STUDIO_PASSWORD, so online visitors are refused.");
     });
   });
 const stop = () => server.close(() => void closeDb().then(() => process.exit(0)));
