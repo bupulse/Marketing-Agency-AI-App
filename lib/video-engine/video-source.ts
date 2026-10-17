@@ -92,16 +92,22 @@ export function keyframeFor(samples: Mp4Sample[], index: number): number {
 
 /**
  * What the decoder must do to show sample `target`, given the decode-order range already fed, [fedFrom, next).
- * Continue when the target is ahead in the same run (or its keyframe is the very next sample); otherwise reset and
- * start again from the target's keyframe (a seek back, or a jump past whole keyframe intervals).
+ * Continue when the target is ahead in the same run and getting there costs at most a few samples more than starting
+ * from its keyframe (so a source asked two nearby times in turn keeps its run and the frames it has), or when it is
+ * already fed but not output yet; otherwise reset and start again from the target's keyframe (a seek back, or a jump
+ * past whole keyframe intervals). `passed`: the decoder has already output a frame after the target's time, so the target came out
+ * earlier and is no longer kept (the cache let it go): it never comes again in this run, so a new run is needed.
  */
-export function planDecode(samples: Mp4Sample[], fed: { from: number; next: number } | null, target: number): { reset: boolean; from: number } {
+export function planDecode(samples: Mp4Sample[], fed: { from: number; next: number } | null, target: number, passed = false): { reset: boolean; from: number } {
   const key = keyframeFor(samples, target);
   if (!fed || fed.next <= fed.from) return { reset: true, from: key };
-  if (target >= fed.next && key <= fed.next) return { reset: false, from: fed.next };
-  if (target >= fed.from && target < fed.next && key >= fed.from) return { reset: false, from: fed.next };
+  if (target >= fed.next && target - fed.next <= target - key + CONTINUE_SLACK) return { reset: false, from: fed.next };
+  if (target >= fed.from && target < fed.next && key >= fed.from && !passed) return { reset: false, from: fed.next };
   return { reset: true, from: key };
 }
+
+/** Samples a run may decode past its target's keyframe rather than start again there (and lose its frames). */
+const CONTINUE_SLACK = 6;
 
 type Closable = { close(): void };
 /**
@@ -191,6 +197,12 @@ export class VideoSource {
   private waiters: (() => void)[] = [];
   /** Frames output by the current decoder (0: it is still cold, its first frame takes a few hundred ms). */
   private outputs = 0;
+  /**
+   * The time of the frame the previous request handed out. It and the frames after it are kept too, so a caller that
+   * alternates between two times (a transition draws the scene going out and the one coming in) never makes the cache
+   * let go of the earlier one and the decoder start again for every frame.
+   */
+  private lastOut: number | null = null;
   private failure: Error | null = null;
   private closed = false;
 
@@ -230,6 +242,7 @@ export class VideoSource {
     this.cache.clear();
     this.failure = null;
     this.outputs = 0;
+    this.lastOut = null;
     this.decoder = new VideoDecoder({
       output: (frame) => {
         if (this.closed) return frame.close();
@@ -267,15 +280,16 @@ export class VideoSource {
     const target = frameIndexAt(this.table, tMs);
     const ts = samples[target].ptsUs;
     const hit = this.cache.get(ts);
-    if (hit) return hit;
-    const plan = planDecode(samples, this.fed, target);
+    if (hit) return this.handOut(hit);
+    // Not in the cache although a later frame has come out: the target was output before and let go (a seek back).
+    const plan = planDecode(samples, this.fed, target, this.cache.reached(ts));
     if (plan.reset || !this.decoder) {
       this.restart();
       this.fed = { from: plan.from, next: plan.from };
     }
     const fed = this.fed as { from: number; next: number };
-    // The target and everything after it stay in the cache while the decoder catches up.
-    this.cache.keepAtOrAfter(ts);
+    // The target and everything after it (and the previous request's frame onward) stay while the decoder catches up.
+    this.cache.keepAtOrAfter(Math.min(ts, this.lastOut ?? ts));
     const until = Math.min(samples.length, target + 1 + LOOKAHEAD);
     while (fed.next < until) this.feed(fed.next++);
     // Then wait for output. One more sample is fed only when a warm decoder is hungry (nothing queued, no output for a
@@ -309,8 +323,13 @@ export class VideoSource {
     if (this.failure) throw new Error(`The clip could not be decoded: ${this.failure.message}`);
     const frame = this.cache.get(ts) ?? this.cache.atOrBefore(ts);
     if (!frame) throw new Error("The clip's frame did not decode in time.");
-    // The frame handed out stays valid until the next request: frames still arriving cannot close it.
-    this.cache.keepAtOrAfter(frame.timestamp);
+    return this.handOut(frame);
+  }
+
+  /** The frame handed out stays valid until the next request: frames still arriving cannot close it. */
+  private handOut(frame: VideoFrame): VideoFrame {
+    this.cache.keepAtOrAfter(Math.min(frame.timestamp, this.lastOut ?? frame.timestamp));
+    this.lastOut = frame.timestamp;
     return frame;
   }
 

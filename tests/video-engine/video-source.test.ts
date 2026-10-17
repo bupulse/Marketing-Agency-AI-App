@@ -7,9 +7,9 @@ import { FrameCache, VideoSource, frameIndexAt, keyframeFor, planDecode, readMp4
 const AVCC = new Uint8Array([1, 0x64, 0x00, 0x1f, 0xff, 0xe1, 0x00, 0x04, 0x67, 0x64, 0x00, 0x1f, 0x01, 0x00, 0x04, 0x68, 0xee, 0x3c, 0x80]);
 
 /** A 2-second, 30 fps MP4 with a keyframe every 15 frames; `reorder` adds B-frame-like presentation offsets. */
-function tinyMp4(reorder = false): ArrayBuffer {
+function tinyMp4(reorder = false, size: { width: number; height: number } = { width: 320, height: 568 }): ArrayBuffer {
   const target = new ArrayBufferTarget();
-  const muxer = new Muxer({ target, video: { codec: "avc", width: 320, height: 568 }, fastStart: "in-memory" });
+  const muxer = new Muxer({ target, video: { codec: "avc", ...size }, fastStart: "in-memory" });
   const frame = 1_000_000 / 30;
   for (let i = 0; i < 60; i++) {
     const key = i % 15 === 0;
@@ -19,7 +19,7 @@ function tinyMp4(reorder = false): ArrayBuffer {
     const j = i % 15;
     const dts = i * frame;
     const pts = !reorder ? dts : j === 0 ? dts + frame : j % 2 === 1 ? dts + 2 * frame : dts;
-    muxer.addVideoChunkRaw(new Uint8Array([i, i, i, i]), key ? "key" : "delta", Math.round(pts), Math.round(frame), i === 0 ? { decoderConfig: { codec: "avc1.64001f", codedWidth: 320, codedHeight: 568, description: AVCC } } : undefined, Math.round(pts - dts));
+    muxer.addVideoChunkRaw(new Uint8Array([i, i, i, i]), key ? "key" : "delta", Math.round(pts), Math.round(frame), i === 0 ? { decoderConfig: { codec: "avc1.64001f", codedWidth: size.width, codedHeight: size.height, description: AVCC } } : undefined, Math.round(pts - dts));
   }
   muxer.finalize();
   return target.buffer;
@@ -83,6 +83,11 @@ describe("timing", () => {
     expect(planDecode(samples, null, 20)).toEqual({ reset: true, from: 15 });
     expect(planDecode(samples, { from: 15, next: 21 }, 25)).toEqual({ reset: false, from: 21 }); // ahead, same run
     expect(planDecode(samples, { from: 15, next: 30 }, 31)).toEqual({ reset: false, from: 30 }); // next keyframe is next
+    // A keyframe only a sample or two ahead: the run goes on through it (keeping its frames) rather than starting again.
+    expect(planDecode(samples, { from: 0, next: 14 }, 15)).toEqual({ reset: false, from: 14 });
+    // Already fed, but a later frame has come out: the target was let go, so a new run.
+    expect(planDecode(samples, { from: 15, next: 25 }, 20, true)).toEqual({ reset: true, from: 15 });
+    expect(planDecode(samples, { from: 15, next: 25 }, 20)).toEqual({ reset: false, from: 25 });
     expect(planDecode(samples, { from: 15, next: 21 }, 50)).toEqual({ reset: true, from: 45 }); // jump ahead
     expect(planDecode(samples, { from: 15, next: 21 }, 3)).toEqual({ reset: true, from: 0 }); // seek back
   });
@@ -203,5 +208,93 @@ describe("decoding a clip for drawing (a cold decoder)", () => {
     for (const ts of [14, 15, 16]) cache.put(ts, frame(ts));
     expect(cache.get(10)).not.toBeNull();
     expect(cache.size).toBeLessThanOrEqual(6);
+  });
+});
+
+/**
+ * A warm decoder: each sample comes out a millisecond after it is fed, in presentation order, like Chrome's once
+ * running. `configures` counts the decoder runs a source starts (each seek that cannot continue starts one).
+ */
+class WarmDecoder {
+  static isConfigSupported = async () => ({ supported: true });
+  static configures = 0;
+  state = "unconfigured";
+  decodeQueueSize = 0;
+  private pending: number[] = [];
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  constructor(private readonly init: { output: (f: unknown) => void; error: (e: unknown) => void }) {}
+  configure() {
+    this.state = "configured";
+    WarmDecoder.configures++;
+  }
+  decode(chunk: { timestamp: number }) {
+    this.pending.push(chunk.timestamp);
+    this.pending.sort((a, b) => a - b);
+    if (this.timer) return;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      if (this.state === "closed") return;
+      for (const timestamp of this.pending.splice(0)) {
+        const frame = { timestamp, closed: false, close() { this.closed = true; } };
+        this.init.output(frame);
+      }
+    }, 1);
+  }
+  async flush() {
+    while (this.pending.length) await new Promise((r) => setTimeout(r, 2));
+  }
+  close() {
+    this.state = "closed";
+  }
+}
+
+describe("a square clip (1080 x 1080 re-shapes): seeks and transitions", () => {
+  const open = async (bytes: ArrayBuffer) => {
+    vi.stubGlobal("VideoDecoder", WarmDecoder);
+    vi.stubGlobal("EncodedVideoChunk", class { timestamp: number; constructor(init: { timestamp: number }) { this.timestamp = init.timestamp; } });
+    WarmDecoder.configures = 0;
+    return VideoSource.open("https://x.test/square.mp4", (async () => new Response(bytes)) as unknown as typeof fetch);
+  };
+
+  it("reads a square MP4's table like any other shape", () => {
+    const t = readMp4Table(tinyMp4(false, { width: 320, height: 320 }));
+    expect(t).toMatchObject({ width: 320, height: 320, codec: "avc1.64001f" });
+    expect(t.samples).toHaveLength(60);
+  });
+
+  it("going back to a frame the cache already let go starts a new run instead of waiting for it forever", async () => {
+    const bytes = tinyMp4(false, { width: 320, height: 320 });
+    const table = readMp4Table(bytes);
+    const source = await open(bytes);
+    try {
+      for (let t = 0; t <= 900; t += 100) await source.frameAt(t);
+      // Frame 9 (300 ms) came out long ago and was let go; a later scene starts the clip there again.
+      const back = (await source.frameAt(300)) as unknown as { timestamp: number; closed: boolean };
+      expect(back.timestamp).toBe(table.samples[frameIndexAt(table, 300)].ptsUs);
+      expect(back.closed).toBe(false);
+    } finally {
+      source.close();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("two times asked in turn, close together, stay in one run: the earlier frames are kept while the later is drawn", async () => {
+    const bytes = tinyMp4(false, { width: 320, height: 320 });
+    const table = readMp4Table(bytes);
+    const source = await open(bytes);
+    try {
+      for (let i = 0; i < 20; i++) {
+        for (const t of [(i * 1000) / 30, 200 + (i * 1000) / 30]) {
+          const f = (await source.frameAt(t)) as unknown as { timestamp: number; closed: boolean };
+          expect(f.timestamp, `${Math.round(t)} ms`).toBe(table.samples[frameIndexAt(table, t)].ptsUs);
+          expect(f.closed).toBe(false);
+        }
+      }
+      // One run from the start (the decoder never starts again for the earlier time).
+      expect(WarmDecoder.configures).toBe(1);
+    } finally {
+      source.close();
+      vi.unstubAllGlobals();
+    }
   });
 });
