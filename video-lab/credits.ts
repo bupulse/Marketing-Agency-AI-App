@@ -24,6 +24,11 @@ export const CLAUDE_VIDEO_CREDITS = roundCredits(0.1);
 export const PRESENTER_IMAGE_CREDITS = roundCredits(0.04);
 /** Credits for one voice-over take (ElevenLabs, a 15 to 30 s script costs about $0.05 to $0.15). Cached takes are free. */
 export const VOICE_OVER_CREDITS = 10;
+/**
+ * Credits for one Premium 3D clip (Claude designs a Blender scene, rendered on this Mac in minutes). Blender is free;
+ * the price covers the design and the machine time. 120 until docs/BLENDER.md proposes a figure.
+ */
+export const PREMIUM_3D_CREDITS = 120;
 
 const WALLET = path.resolve("video-lab/data/wallet.json");
 const START_CREDITS = Number(process.env.VIDEO_LAB_START_CREDITS) || 5000;

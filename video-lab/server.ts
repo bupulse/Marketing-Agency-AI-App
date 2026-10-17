@@ -4,8 +4,10 @@
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { DESIGNER_MODEL, DESIGN_MODES, DesignError, apiSum, apiTransport, designVideo, estimateDesignCost, isPlatform, maxDesignCost, type BriefPhoto, type DesignMode, type DesignUsage, type Platform } from "@/lib/video-engine/designer";
+import { DESIGNER_MODEL, DESIGN_MODES, DesignError, apiSum, apiTransport, designVideo, estimateDesignCost, isPlatform, maxDesignCost, type BriefPhoto, type DesignBrief, type DesignMode, type DesignUsage, type Platform } from "@/lib/video-engine/designer";
 import { cutoutForPhoto } from "./cutouts";
+import { blenderAvailable } from "./blender-jobs";
+import { getPremiumJob, listPremiumJobs, premiumVideoBytes, recoverPremiumJobs, startPremium3d } from "./premium-jobs";
 import { subscriptionTransport } from "./claude-cli";
 import { VIDEO_HOOKS } from "@/lib/video-engine/styles";
 import { TEMPLATE_CATEGORIES, VIDEO_TEMPLATES } from "@/lib/video-engine/templates";
@@ -21,7 +23,7 @@ import { SEEDANCE_LIMITS, SEEDANCE_MODELS, SEEDANCE_RATIOS, SEEDANCE_RESOLUTIONS
 import { BUSINESS_KINDS, SEEDANCE_FORMATS, checkSeedanceRequest, planSeedanceShots, type BusinessKind, type SeedanceFormat } from "@/lib/video-engine/seedance-brain";
 import { listSeedanceExamples } from "./seedance-mock/preview";
 import { writeSeedancePrompt } from "@/lib/video-engine/seedance-prompt";
-import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PRESENTER_IMAGE_CREDITS, VOICE_OVER_CREDITS, charge, readWallet, refund, seedanceCredits, topUp } from "./credits";
+import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PREMIUM_3D_CREDITS, PRESENTER_IMAGE_CREDITS, VOICE_OVER_CREDITS, charge, readWallet, refund, seedanceCredits, topUp } from "./credits";
 import { VOICE_ROUTE, makeVoiceForJob, readVoiceMp3 } from "./voice";
 import { cancelSeedance, getSeedanceJob, getSeedancePreview, imageDataUrl, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
 import { mediaBytes, saveMedia } from "./data-source";
@@ -142,6 +144,44 @@ async function readRequest(body: Record<string, unknown>): Promise<DesignRequest
   };
 }
 
+/**
+ * The designer's brief for a request: the business, the product and the chosen photos (with whether each can be cut
+ * out), plus the photo files themselves (JPEG and cut-out PNG) for engines that render on this Mac (Blender).
+ */
+async function briefFor(req: DesignRequest, variation: { index: number; of: number } | null): Promise<{ brief: DesignBrief; files: { jpeg: Buffer; cutout: Buffer | null }[] }> {
+  const business = await getBusiness(req.businessId);
+  const product = (await listProducts(req.businessId)).find((p) => p.id === req.productId);
+  if (!business || !product) throw new Error("Product not found.");
+  const photos: BriefPhoto[] = [];
+  const files: { jpeg: Buffer; cutout: Buffer | null }[] = [];
+  for (const id of req.photoIds) {
+    const p = await photoJpeg(id, 1280, req.businessId);
+    const meta = product.photos.find((x) => x.assetId === id);
+    const note = meta?.description ?? (id.startsWith("up-") ? ((await uploadNote(id)) ?? "uploaded by the owner") : undefined);
+    // Whether the product can be lifted off its background (cached after the first time, 100 to 800 ms).
+    const cut = await cutoutForPhoto(id, id.startsWith("up-") ? undefined : req.businessId);
+    photos.push({ base64: p.bytes.toString("base64"), mediaType: "image/jpeg", width: p.width, height: p.height, note, cutout: cut.ok });
+    files.push({ jpeg: p.bytes, cutout: cut.ok ? cut.png : null });
+  }
+  const brief: DesignBrief = {
+    business: { name: business.name, description: business.description, language: business.language, colors: business.colors, phone: business.phone, website: business.website, country: business.country, tone: business.tone },
+    product: { name: product.name, summary: product.summary, description: product.description, price: product.price, usps: product.usps, features: product.features, targetCustomer: product.targetCustomer },
+    photos,
+    styleId: req.styleId,
+    hookId: req.hookId,
+    ratio: req.ratio,
+    seconds: req.seconds,
+    note: req.note,
+    mode: req.mode,
+    base: req.base?.spec ?? null,
+    fixedLens: req.fixedLens,
+    cartoonId: req.cartoonId,
+    variation,
+    platform: req.platform,
+  };
+  return { brief, files };
+}
+
 /** One design (one version). Records the usage before anything else, saves the test, never throws. */
 async function designOne(req: DesignRequest, variation: { index: number; of: number } | null): Promise<LabJob> {
   const mode = claudeMode();
@@ -175,34 +215,8 @@ async function designOne(req: DesignRequest, variation: { index: number; of: num
   };
   try {
     if (!business || !product) throw new Error("Product not found.");
-    const photos: BriefPhoto[] = [];
-    for (const id of req.photoIds) {
-      const p = await photoJpeg(id, 1280, req.businessId);
-      const meta = product.photos.find((x) => x.assetId === id);
-      const note = meta?.description ?? (id.startsWith("up-") ? ((await uploadNote(id)) ?? "uploaded by the owner") : undefined);
-      // Whether the product can be lifted off its background (cached after the first time, 100 to 800 ms).
-      const cut = await cutoutForPhoto(id, id.startsWith("up-") ? undefined : req.businessId);
-      photos.push({ base64: p.bytes.toString("base64"), mediaType: "image/jpeg", width: p.width, height: p.height, note, cutout: cut.ok });
-    }
-    const result = await designVideo(
-      {
-        business: { name: business.name, description: business.description, language: business.language, colors: business.colors, phone: business.phone, website: business.website, country: business.country, tone: business.tone },
-        product: { name: product.name, summary: product.summary, description: product.description, price: product.price, usps: product.usps, features: product.features, targetCustomer: product.targetCustomer },
-        photos,
-        styleId: req.styleId,
-        hookId: req.hookId,
-        ratio: req.ratio,
-        seconds: req.seconds,
-        note: req.note,
-        mode: req.mode,
-        base: req.base?.spec ?? null,
-        fixedLens: req.fixedLens,
-        cartoonId: req.cartoonId,
-        variation,
-        platform: req.platform,
-      },
-      mode === "api" ? { apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL } : { transport: subscriptionTransport(), model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL },
-    );
+    const { brief } = await briefFor(req, variation);
+    const result = await designVideo(brief, mode === "api" ? { apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL } : { transport: subscriptionTransport(), model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL });
     await record(job.id, "claude-design", result.usage);
     Object.assign(job, { spec: result.spec, usage: result.usage, costUsd: result.costUsd, apiEquivalentUsd: result.apiEquivalentUsd, billedTo: mode });
     // The fact check's warnings, and the research score once the designer returns one; saved with the job for the page.
@@ -428,6 +442,7 @@ const server = http.createServer(async (req, res) => {
         claudeCredits: CLAUDE_VIDEO_CREDITS,
         presenterCredits: PRESENTER_IMAGE_CREDITS,
         voiceCredits: VOICE_OVER_CREDITS,
+        premium3dCredits: PREMIUM_3D_CREDITS,
       });
     }
     if (req.method === "POST" && p === "/api/quote") {
@@ -439,15 +454,17 @@ const server = http.createServer(async (req, res) => {
         const seconds = Math.min(SEEDANCE_LIMITS.maxSeconds, Math.max(SEEDANCE_LIMITS.minSeconds, Number(body.seconds) || 5));
         return json(res, 200, { credits: seedanceCredits(tier, resolution, seconds) * versions, usd: estimateSeedanceUsd({ tier, resolution, seconds }) * versions });
       }
+      if (body.engine === "blender") return json(res, 200, { credits: PREMIUM_3D_CREDITS, usd: estimateDesignCost(Math.min(4, Number(body.photos) || 0)) });
       // A Motion video with a voice-over: the design now, the voice when the MP4 is made.
       const voice = body.voice === true ? VOICE_OVER_CREDITS : 0;
       return json(res, 200, { credits: (CLAUDE_VIDEO_CREDITS + voice) * versions, usd: estimateDesignCost(Math.min(4, Number(body.photos) || 0)) * versions, voiceCredits: voice * versions });
     }
     if (req.method === "GET" && p === "/api/showcase") {
-      const [cl, sd] = await Promise.all([listJobs(), listSeedanceJobs()]);
+      const [cl, sd, pm] = await Promise.all([listJobs(), listSeedanceJobs(), listPremiumJobs()]);
       const items = [
         // Preview jobs (no key yet) are storyboards, not videos: they stay out of the showcase.
         ...sd.filter((j) => !j.preview).map((j) => ({ id: j.id, engine: "seedance", title: j.title, createdAt: j.createdAt, status: j.status, videoUrl: j.videoFile ? `/videos/seedance/${j.id}.mp4` : null, prompt: j.request.prompt, info: { Quality: `${j.request.tier} · ${j.request.resolution} · ${j.request.seconds} s`, Credits: String(j.credits), "Provider cost": j.costUsd ? `$${j.costUsd.toFixed(3)}` : `about $${j.estimateUsd.toFixed(2)}` } })),
+        ...pm.filter((j) => j.videoFile).map((j) => ({ id: j.id, engine: "blender", title: j.title, createdAt: j.createdAt, status: j.status, videoUrl: `/videos/blender/${j.id}.mp4`, prompt: j.caption ?? j.note ?? "", info: { Engine: "Premium 3D (Blender)", Length: `${j.seconds} s`, Credits: String(j.credits), "Render time": j.renderSeconds ? `${j.renderSeconds} s` : "" } })),
         ...cl.filter((j) => j.styleId !== "sample").map((j) => ({ id: j.id, engine: "claude", title: j.productName, createdAt: j.createdAt, status: j.video ? "succeeded" : j.status, videoUrl: j.video ? `/videos/${j.id}.mp4` : null, prompt: j.note ?? "", info: { Template: j.styleId, Shape: j.ratio, "API-equivalent cost": `$${(j.apiEquivalentUsd ?? 0).toFixed(3)}` } })),
       ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       return json(res, 200, { items });
@@ -642,6 +659,37 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { uploadId: out.uploadId, costUsd: out.call.costUsd });
       }
     }
+    if (req.method === "GET" && p === "/api/blender/status") return json(res, 200, { available: await blenderAvailable(), credits: PREMIUM_3D_CREDITS });
+    if (req.method === "POST" && p === "/api/blender/render") {
+      // Premium 3D: Claude designs a Blender scene from the same brief as a Motion video, then Blender renders it here.
+      if (!(await blenderAvailable())) return fail(res, 503, "Premium 3D needs Blender on the studio computer, and it is not installed.");
+      const body = JSON.parse((await readBody(req, 64 * 1024)).toString("utf8") || "{}");
+      const reqd = await readRequest({ ...body, mode: "reference" });
+      if ("error" in reqd) return fail(res, reqd.status, reqd.error);
+      if (claudeMode() === "api") {
+        const spent = await spentToday();
+        if (spent + maxDesignCost(reqd.photoIds.length) > DAILY_CAP_USD) return fail(res, 429, `Today's test budget is used: $${spent.toFixed(2)} of $${DAILY_CAP_USD.toFixed(2)}. More tomorrow (Kigali time).`);
+      }
+      const { brief, files } = await briefFor(reqd, null);
+      const product = (await listProducts(reqd.businessId)).find((x) => x.id === reqd.productId);
+      try {
+        const job = await startPremium3d({ brief, files, send: claudeMode() === "api" ? apiTransport(process.env.ANTHROPIC_API_KEY as string) : subscriptionTransport(), model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL, meta: { businessId: reqd.businessId, productId: reqd.productId, title: product?.name ?? "Premium 3D" } });
+        return json(res, 200, { job });
+      } catch (error) {
+        return fail(res, 402, error instanceof Error ? error.message : "Not enough credits.");
+      }
+    }
+    if (req.method === "GET" && p === "/api/blender/jobs") return json(res, 200, { jobs: await listPremiumJobs() });
+    const blJob = p.match(/^\/api\/blender\/jobs\/(bl-[0-9a-f]{12})$/);
+    if (req.method === "GET" && blJob) {
+      const j = await getPremiumJob(blJob[1]);
+      return j ? json(res, 200, j) : fail(res, 404, "Not found");
+    }
+    const blVideo = p.match(/^\/videos\/blender\/(bl-[0-9a-f]{12})\.mp4$/);
+    if (req.method === "GET" && blVideo) {
+      const bytes = await premiumVideoBytes(blVideo[1]);
+      return bytes ? sendMedia(req, res, bytes, "video/mp4", { "content-disposition": `inline; filename="bupulse-${blVideo[1]}.mp4"` }) : fail(res, 404, "Not found");
+    }
     if (req.method === "GET" && p === "/api/images") return json(res, 200, { images: (await listImages()).map((i) => ({ ...i, url: `/api/photo/${i.id}` })) });
     if (req.method === "POST" && p === "/api/image") {
       // The AI image page (Nano Banana): a prompt and up to 3 reference photos. Charged like a presenter image,
@@ -818,6 +866,7 @@ void loadSavedKeys(LAB_KEYS)
     server.listen(PORT, "127.0.0.1", () => {
       console.log(`BuPulse Video Studio: http://localhost:${PORT}  (daily test budget $${DAILY_CAP_USD}; the old lab page is /lab)`);
       void resumeSeedanceJobs();
+      void recoverPremiumJobs().then((n) => n && console.log(`[lab] ${n} Premium 3D job(s) stopped by the restart: credits given back.`));
       if (loaded.length) console.log(`Keys from Admin -> Services: ${loaded.join(", ")}`);
       console.log(
         claudeMode() === "subscription"

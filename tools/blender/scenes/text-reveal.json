@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "title": "Extruded 3D text reveal with confetti and sparkles",
+  "title": "Extruded 3D product name reveal with confetti and sparkles",
   "canvas": {
     "ratio": "9:16",
     "quality": "540p",
@@ -42,7 +42,7 @@
   "product": null,
   "texts": [
     {
-      "text": "NEW",
+      "text": "A56",
       "font": "anton",
       "size": 2.0,
       "position": [
@@ -61,9 +61,9 @@
       "face": 0.5
     },
     {
-      "text": "ARRIVALS",
+      "text": "SAMSUNG GALAXY",
       "font": "anton",
-      "size": 0.85,
+      "size": 0.62,
       "position": [
         0,
         -0.4,

@@ -290,6 +290,21 @@ pages read it). Videos are served with Range requests, so a page full of videos 
   it). A **platform** pill (Any, Instagram, TikTok, Facebook, YouTube Shorts) goes into the design brief. Every
   template has a live preview, including the six 3D ones and Kigali price-first (made 17 October with Claude on the
   subscription).
+- **Premium 3D (Blender)** (Motion, Quality menu; \`video-lab/premium-jobs.ts\`): Claude designs one Blender scene from
+  the same brief as a Motion video (\`designBlenderScene\`), then Blender renders it on this Mac (\`renderBlenderScene\`,
+  540p, 4 to 8 s, one render at a time). **120 credits** (\`PREMIUM_3D_CREDITS\`), taken first and given back when the
+  design or the render fails, or when the studio restarts during it. The server copies the photos it already holds
+  (and their cut-outs) into the job's own folder and gives Blender only those paths: nothing from the browser or from
+  Claude becomes a file path. Routes: \`GET /api/blender/status\` (the option is disabled with a note when Blender is
+  missing), \`POST /api/blender/render\` (the Motion design body; answers the job at once), \`GET /api/blender/jobs\`,
+  \`GET /api/blender/jobs/<id>\` (status, progress 0 to 1, then the video), \`/videos/blender/<id>.mp4\`. The drawer shows
+  the progress, then the video, the caption and the fact warnings; finished clips appear in the showcase as
+  "Premium 3D". First real clip (17 October, Kitenge summer dress, Showroom turntable, 6 s, with the cut-out): 5
+  minutes in all, 4 min 31 s of it Blender, while other agents used the Mac.
+- **Fact check and research score (Motion):** each design keeps the designer's \`warnings\`; the drawer lists them
+  under "Check these facts" (red: not in the product's facts; amber: only in the business description) and cards show
+  "N facts to check". When the designer returns a \`score\`, the drawer and cards show "Research score N/100" and what
+  it missed.
 - **Builds never take the studio down:** `npm run lab` builds into `video-lab/.build-next` and swaps it in only when
   every step worked; when a build fails (an agent mid-edit in a shared file) it prints the error and starts the last
   good build.
@@ -401,9 +416,9 @@ allowances and MoMo add-ons.
 ## Studio pages and buttons (QA 17 Oct)
 
 A Playwright pass over every studio page (Chrome, 1440 px and 390 px wide): every link on every page was opened, and
-every button that does not spend credits was clicked, plus the sign-in page as an online visitor. **98 of 98 work**,
-with no script errors on any page (third pass, after the Seedance previews and gallery, voice-over, 3D templates,
-cut-outs, the platform picker and the password gate). Fixed during the passes: links that lost their query (`/app/video/seedance?tier=mini` opened the
+every button that does not spend credits was clicked, plus the sign-in page as an online visitor. **101 of 101 work**,
+with no script errors on any page (fourth pass, after the Seedance previews and gallery, voice-over, 3D templates,
+cut-outs, the platform picker, Premium 3D, the fact checks and the password gate). Fixed during the passes: links that lost their query (`/app/video/seedance?tier=mini` opened the
 default tier), `#influencers` that opened nothing, the quality and options menus cut off by the hero, pill buttons
 that did nothing until the database had answered, pickers that opened only after their data arrived, the nav wrapping
 at 1280 px, and pages full of videos that downloaded every MP4 in full (no Range support) and blocked the browser's
@@ -423,6 +438,7 @@ connections to the studio.
 | every page (nav/footer) | link "Pricing" | /pricing | yes |
 | every page (nav/footer) | link "Guide" | /guide | yes |
 | every page (nav/footer) | link "API NEW" | /api-docs | yes |
+| / | link "Premium 3DKitenge summer dress" | /showcase#bl-ccf2f2564cd3 (lands on /showcase) | yes |
 | / | link "Video tile: 3-bedroom house with garden, Kibag" | /showcase#20261017-a87cc367 (lands on /showcase) | yes |
 | / | link "Video tile: 3-bedroom house with garden, Kibag" | /showcase#20261016-3a334e91 (lands on /showcase) | yes |
 | / | link "Video tile: Samsung Galaxy A56" | /showcase#20261016-f0ba04ce (lands on /showcase) | yes |
@@ -465,7 +481,7 @@ connections to the studio.
 | /app/video/<model> | Template pill | scrolls to the templates | yes |
 | /app/video/<model> | Template card | selects the template; Macro details | yes |
 | /app/video/<model> | Engine Motion / Real video | switches engine | yes |
-| /app/video/<model> | + (references) | picker with upload, videos and photos; 1 choices | yes |
+| /app/video/<model> | + (references) | picker with upload, videos and photos; 8 choices | yes |
 | /app/video/<model> | Reference tile (click) | removes it | yes |
 | /app/video/<model> | Upload (in + picker) | opens the file chooser | yes |
 | /app/video/<model> | PRODUCT tile | product picker, sets product and photos | yes |
@@ -483,9 +499,11 @@ connections to the studio.
 | /app/video/seedance-2-0 | Get inspired: card | detail: frames, shot list, notes, credits per quality, product | yes |
 | /app/video/seedance-2-0 | Get inspired: Use this | /create with Seedance, the prompt, 9:16, the length, the product and its photos; 12s, 2 photo(s) | yes |
 | /app/video/motion | Platform pill | Any / Instagram / TikTok / Facebook / YouTube; only for Motion | yes |
+| /app/video/motion | Quality: Premium 3D (Blender) | Generate shows 120 credits; lengths 4 to 8 s; the wait is stated | yes |
+| /app/video/motion | Premium 3D clip card | drawer with the video, length, credits, render time; StatusReadyLength6 sCredits120Render time4 min 31 sVoice lineBright ki | yes |
 | /api/photo/<id>?cutout=1 | Cut-out of a product photo | PNG for a plain background, 404 with the reason otherwise | yes |
-| /create | Generation card | opens the drawer; Close; no generations | yes |
-| /create | Drawer Download | the MP4 file; no finished video | yes |
+| /create | Generation card | opens the drawer; Close; drawer actions: Make it as a Motion video instead, Edit the prompt | yes |
+| /create | Drawer Download | the MP4 file; /videos/blender/bl-ccf2f2564cd3.mp4 | yes |
 | /templates | Templates link | /create#tgrid scrolled to the gallery | yes |
 | /app/video/motion#influencers | AI influencers link | opens the presenter picker | yes |
 | /app/video/seedance-2-5 | Example prompt | opens Seedance 2.0 with the prompt | yes |
@@ -499,11 +517,11 @@ connections to the studio.
 | /app/image/nano-banana | Example prompt | fills the prompt | yes |
 | /app/image/nano-banana | Use in a video | /create?ref=<image> with it as Image 1 | yes |
 | /app/image/nano-banana | Use in a 3D motion video | /app/video/motion?ref=<image> | yes |
-| /pricing | Buy (test: adds credits) | adds the pack to the test wallet; 9900 -> 10900 test credits | yes |
+| /pricing | Buy (test: adds credits) | adds the pack to the test wallet; 10750 -> 11750 test credits | yes |
 | /showcase | Filters | All / Seedance / Motion | yes |
-| /showcase | Video tile | viewer with Download; Close; 3 videos | yes |
+| /showcase | Video tile | viewer with Download; Close; 4 videos | yes |
 | /videos | Filters | All / Seedance / Motion / In progress | yes |
-| /videos | Video tile | viewer with Download; Close; 3 videos | yes |
+| /videos | Video tile | viewer with Download; Close; 4 videos | yes |
 | /guide | FAQ items | open | yes |
 | /api-docs | Contents links | jump to each section | yes |
 | /api-docs | Rates table | filled from /api/pricing | yes |
@@ -516,7 +534,8 @@ page (15 credits; tested for real twice on 17 October, about $0.04 each, both fi
 real once through the API, $0.066, then reused for free; the MP4 with voice was made in Chrome and has video and sound
 tracks), choosing a realistic AI presenter (15 credits), "Make it as a Motion video instead" when a product is picked
 (starts a Motion design), the drawer's Apply change and Extend +5 s, Make MP4 (free, but slow), Write with Claude (a
-Claude call on the owner's subscription), and Seedance with the key (waits for `SEEDANCE_API_KEY`; until then
+Claude call on the owner's subscription), Generate with Premium 3D (120 credits and minutes of rendering; made for real once on 17 October, see above), and
+Seedance with the key (waits for `SEEDANCE_API_KEY`; until then
 Generate makes a free preview, which was clicked). The test wallet gained 1,000 pretend credits per QA run from the
 "Buy (test)" check.
 

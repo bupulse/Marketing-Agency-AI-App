@@ -1,7 +1,7 @@
 // Showcase and My videos: a grid of finished videos from both engines, with a viewer.
 import { $, api, el } from "./site";
 
-type Item = { id: string; engine: "seedance" | "claude"; title: string; createdAt: string; status: string; videoUrl: string | null; prompt: string; info: Record<string, string> };
+type Item = { id: string; engine: "seedance" | "claude" | "blender"; title: string; createdAt: string; status: string; videoUrl: string | null; prompt: string; info: Record<string, string> };
 
 let filter = "all";
 let items: Item[] = [];
@@ -18,7 +18,7 @@ function render() {
       tile.onmouseleave = () => v.pause();
       tile.append(v);
     } else tile.append(el("div", { className: "cap", textContent: i.status }));
-    tile.append(el("span", { className: `eng ${i.engine === "seedance" ? "sd" : "cl"}`, textContent: i.engine === "seedance" ? "Seedance" : "Motion" }), el("div", { className: "cap", textContent: i.title }));
+    tile.append(el("span", { className: `eng ${i.engine === "seedance" ? "sd" : "cl"}`, textContent: i.engine === "seedance" ? "Seedance" : i.engine === "blender" ? "Premium 3D" : "Motion" }), el("div", { className: "cap", textContent: i.title }));
     tile.onclick = () => open(i);
     grid.append(tile);
   }

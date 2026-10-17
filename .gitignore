@@ -92,3 +92,4 @@ dist/release/
 /video-lab/.build-old/
 /tools/bin/
 /tools/bin/
+__pycache__/

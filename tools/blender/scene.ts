@@ -37,6 +37,9 @@ export interface BlenderMotion {
 }
 
 export interface BlenderProduct extends BlenderMotion {
+  /** Which of the server's photos it is (1-based; null for a hand-written path). Kept so a checked scene can be checked
+   * again with the same photo list. */
+  photo: number | null;
   /** The product photo (a path the server resolved from `photo`). */
   image: string | null;
   /** The product cut out of its background (PNG with transparency): stands free on the floor. */
@@ -231,10 +234,12 @@ export function normalizeBlenderScene(input: unknown, opts: NormalizeOptions = {
     const p = s.product;
     let image: string | null = null;
     let cutout: string | null = null;
-    if (p.photo !== undefined) {
+    let photoNumber: number | null = null;
+    if (p.photo !== undefined && p.photo !== null) {
       const i = Math.round(num(p.photo, 0, 0, 99)) - 1;
       const photo = opts.photos?.[i];
       if (photo) {
+        photoNumber = i + 1;
         image = photo.image;
         cutout = photo.cutout ?? null;
       } else warnings.push(`Product photo ${String(p.photo)} does not exist: the clip has no product.`);
@@ -246,6 +251,7 @@ export function normalizeBlenderScene(input: unknown, opts: NormalizeOptions = {
     }
     if (image || cutout) {
       scene.product = {
+        photo: photoNumber,
         image,
         cutout,
         shape: p.shape === "box" ? "box" : "card",

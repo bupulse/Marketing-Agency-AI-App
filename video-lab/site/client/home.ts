@@ -2,7 +2,7 @@
 import { loadPricing } from "./models";
 import { $, api, el, rwf } from "./site";
 
-type Item = { id: string; engine: "seedance" | "claude"; title: string; videoUrl: string | null; prompt: string };
+type Item = { id: string; engine: "seedance" | "claude" | "blender"; title: string; videoUrl: string | null; prompt: string };
 
 async function start() {
   const [{ items }, pricing] = await Promise.all([api<{ items: Item[] }>("/api/showcase"), loadPricing()]);
@@ -22,7 +22,7 @@ async function start() {
   const grid = $("showcaseGrid");
   for (const i of done.slice(0, 12)) {
     const v = el("video", { src: i.videoUrl as string, muted: true, loop: true, playsInline: true, preload: "metadata" });
-    const tile = el("a", { className: "tile", href: `/showcase#${i.id}` }, v, el("span", { className: `eng ${i.engine === "seedance" ? "sd" : "cl"}`, textContent: i.engine === "seedance" ? "Seedance" : "Motion" }), el("div", { className: "cap", textContent: i.title }));
+    const tile = el("a", { className: "tile", href: `/showcase#${i.id}` }, v, el("span", { className: `eng ${i.engine === "seedance" ? "sd" : "cl"}`, textContent: i.engine === "seedance" ? "Seedance" : i.engine === "blender" ? "Premium 3D" : "Motion" }), el("div", { className: "cap", textContent: i.title }));
     tile.onmouseenter = () => void v.play().catch(() => undefined);
     tile.onmouseleave = () => v.pause();
     grid.append(tile);

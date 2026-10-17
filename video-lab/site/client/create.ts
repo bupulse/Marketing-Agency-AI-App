@@ -34,7 +34,9 @@ type Issue = { level: "error" | "warning" | "info"; code: string; message: strin
 type StoryShot = { n: number; from: number; to: number; shot: string; camera: string; action: string; sound: string | null; spoken: string | null; references: string[] };
 type Storyboard = { notice: string; model: string; resolution: string; ratio: string; seconds: number; audio: boolean; setting: string | null; shots: StoryShot[]; frames: { at: number; shot: number; caption: string; svg: string }[]; references: { label: string; kind: string; thumb: string | null }[]; estimate: { usd: number; credits: number; wait: string }; issues: Issue[] };
 type PreviewAnswer = { ready: false; readyInMs: number; notice: string } | { ready: true; storyboard: Storyboard };
-type Gen = { engine: Engine; id: string; title: string; status: string; at: string; videoUrl: string | null; claude?: ClaudeJob; sd?: SdJob };
+/** A Premium 3D clip (Blender), video-lab/premium-jobs.ts. */
+type PremiumJob = { id: string; createdAt: string; status: "designing" | "rendering" | "succeeded" | "failed"; progress: number; credits: number; title: string; seconds: number; caption: string | null; hashtags: string[]; say: string | null; warnings: FactWarning[]; renderSeconds: number | null; videoFile: string | null; error: string | null };
+type Gen = { engine: Engine; id: string; title: string; status: string; at: string; videoUrl: string | null; claude?: ClaudeJob; sd?: SdJob; pm?: PremiumJob };
 type Product = { id: string; name: string; summary: string; price: string | null; photos: { assetId: string; description: string | null }[] };
 type Preview = { spec: MotionSpec; photoIds: string[] };
 type Influencer = { id: string; name: string; age: number; vibe: string; portrait: boolean; shots: { id: string; product: string; action: string }[] };
@@ -48,6 +50,7 @@ const PLATFORMS = [
   { id: "youtube", name: "YouTube Shorts" },
 ];
 const SEEDANCE_SECONDS = [4, 5, 6, 8, 10, 12, 15];
+const PREMIUM_SECONDS = [4, 5, 6, 8];
 const CLAUDE_SECONDS = [8, 10, 12, 15, 20, 30];
 
 const state = {
@@ -81,6 +84,9 @@ const state = {
   open: null as Gen | null,
   credits: 0,
   claudeCredits: 0,
+  /** Motion's "Premium 3D (Blender)" quality: Claude designs a Blender scene, rendered on the studio computer. */
+  premium: false,
+  blender: { available: false, credits: 120 },
   voiceCredits: 10,
   planVariant: 0,
   checkErrors: [] as Issue[],
@@ -156,7 +162,7 @@ function renderPills() {
   $("pTemplateV").textContent = o.templates.find((t) => t.id === state.templateId)?.name ?? "Template";
   $("pRatioV").textContent = state.ratio;
   $("pSecondsV").textContent = `${state.seconds}s`;
-  $("pQualityV").textContent = sd ? `${o.seedance.tiers.find((t) => t.id === state.tier)?.name.replace("Seedance 2.0 ", "") || "Pro"} · ${state.resolution}` : state.quality;
+  $("pQualityV").textContent = sd ? `${o.seedance.tiers.find((t) => t.id === state.tier)?.name.replace("Seedance 2.0 ", "") || "Pro"} · ${state.resolution}` : state.premium ? "Premium 3D (Blender)" : state.quality;
   $("pVersionsV").textContent = `${state.versions}/4`;
   $("go").className = `genBtn${sd ? " bp" : ""}`;
   $("pWrite").hidden = !sd;
@@ -209,7 +215,7 @@ async function quote() {
     const q = await api<{ credits: number; usd: number }>("/api/quote", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(sd ? { engine: "seedance", tier: state.tier, resolution: state.draft ? "480p" : state.resolution, seconds: state.seconds, versions: state.versions } : { engine: "claude", versions: state.versions, photos: state.refs.filter((r) => r.kind === "image").length, voice: state.voice }),
+      body: JSON.stringify(sd ? { engine: "seedance", tier: state.tier, resolution: state.draft ? "480p" : state.resolution, seconds: state.seconds, versions: state.versions } : state.premium ? { engine: "blender", photos: state.refs.filter((r) => r.kind === "image").length } : { engine: "claude", versions: state.versions, photos: state.refs.filter((r) => r.kind === "image").length, voice: state.voice }),
     });
     state.credits = q.credits;
     $("goCredits").textContent = `✦ ${q.credits}`;
@@ -243,7 +249,7 @@ function setupPills() {
     box.append(el("h6", { textContent: "Aspect ratio" }), chips(state.engine === "seedance" ? o.seedance.ratios : o.ratios, state.ratio, (v) => (state.ratio = v)));
   });
   pop("pSeconds", (box) => {
-    box.append(el("h6", { textContent: "Duration" }), chips((state.engine === "seedance" ? SEEDANCE_SECONDS : CLAUDE_SECONDS).map(String), String(state.seconds), (v) => (state.seconds = Number(v)), (v) => `${v} s`));
+    box.append(el("h6", { textContent: "Duration" }), chips((state.engine === "seedance" ? SEEDANCE_SECONDS : state.premium ? PREMIUM_SECONDS : CLAUDE_SECONDS).map(String), String(state.seconds), (v) => (state.seconds = Number(v)), (v) => `${v} s`));
   });
   pop("pQuality", (box) => {
     if (state.engine === "seedance") {
@@ -255,7 +261,24 @@ function setupPills() {
       box.append(el("h6", { textContent: "Resolution" }), chips(o.seedance.tiers.find((t) => t.id === state.tier)?.resolutions ?? ["720p"], state.resolution, (v) => (state.resolution = v)));
       box.append(el("p", { className: "hint", textContent: o.seedance.tiers.find((t) => t.id === state.tier)?.blurb ?? "" }));
     } else {
-      box.append(el("h6", { textContent: "MP4 quality" }), chips(o.qualities, state.quality, (v) => (state.quality = v as Quality)));
+      box.append(el("h6", { textContent: "MP4 quality" }), chips(o.qualities, state.premium ? "" : state.quality, (v) => {
+        state.quality = v as Quality;
+        state.premium = false;
+      }));
+      // Premium 3D: a real 3D scene rendered by Blender on the studio computer (minutes, not seconds).
+      const premium = el("button", { className: `btn sm${state.premium ? " on" : ""}`, textContent: "Premium 3D (Blender)", disabled: !state.blender.available });
+      premium.onclick = (e) => {
+        e.stopPropagation();
+        state.premium = true;
+        if (!PREMIUM_SECONDS.includes(state.seconds)) state.seconds = 6;
+        document.querySelectorAll(".pop.open").forEach((x) => x.classList.remove("open"));
+        renderPills();
+      };
+      box.append(
+        el("h6", { textContent: "Premium 3D" }),
+        premium,
+        el("p", { className: "hint", textContent: state.blender.available ? `A real 3D scene rendered in Blender on the studio computer: about 3 to 6 minutes, 4 to 8 seconds long, ${state.blender.credits} credits.` : "Not available: Blender is not installed on the studio computer." }),
+      );
     }
   });
   pop("pMore", (box) => {
@@ -543,6 +566,18 @@ async function generate() {
       openDrawer(state.gens.find((g) => g.id === out.jobs[0].id) ?? null);
     } else {
       if (!state.productId) throw new Error("Pick a product (the PRODUCT tile).");
+      if (state.premium) {
+        msg("Premium 3D: Claude designs the 3D scene, then Blender renders it here. About 3 to 6 minutes; you can keep working.");
+        const out = await api<{ job: PremiumJob }>("/api/blender/render", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ businessId: state.businessId, productId: state.productId, photoIds: state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]), styleId: state.templateId, hookId: state.hookId, ratio: state.ratio, seconds: state.seconds, note: prompt, platform: state.platform }),
+        });
+        await loadGens();
+        openDrawer(state.gens.find((g) => g.id === out.job.id) ?? null);
+        await refreshWallet();
+        return;
+      }
       msg(`Claude is designing ${state.versions > 1 ? `${state.versions} versions` : "the video"}… (about 1 to 2 minutes)`);
       const out = await api<{ jobs: ClaudeJob[]; error: string | null }>("/api/design", {
         method: "POST",
@@ -573,9 +608,10 @@ async function withSpecs(jobs: ClaudeJob[]): Promise<ClaudeJob[]> {
 }
 
 async function loadGens() {
-  const [cl0, sd] = await Promise.all([api<{ jobs: ClaudeJob[] }>("/api/jobs"), api<{ jobs: SdJob[] }>("/api/seedance/jobs")]);
+  const [cl0, sd, pm] = await Promise.all([api<{ jobs: ClaudeJob[] }>("/api/jobs"), api<{ jobs: SdJob[] }>("/api/seedance/jobs"), api<{ jobs: PremiumJob[] }>("/api/blender/jobs").catch(() => ({ jobs: [] as PremiumJob[] }))]);
   const cl = { jobs: await withSpecs(cl0.jobs) };
   const gens: Gen[] = [
+    ...pm.jobs.map((j): Gen => ({ engine: "claude", id: j.id, title: j.title, status: j.status, at: j.createdAt, videoUrl: j.videoFile ? `/videos/blender/${j.id}.mp4` : null, pm: j })),
     ...sd.jobs.map((j): Gen => ({ engine: "seedance", id: j.id, title: j.title, status: j.status, at: j.createdAt, videoUrl: j.videoFile ? `/videos/seedance/${j.id}.mp4` : null, sd: j })),
     ...cl.jobs.filter((j) => j.styleId !== "sample").map((j): Gen => ({ engine: "claude", id: j.id, title: j.productName, status: j.status === "failed" ? "failed" : j.video ? "succeeded" : "designed", at: j.createdAt, videoUrl: j.video ? `/videos/${j.id}.mp4` : null, claude: j })),
   ].sort((a, b) => b.at.localeCompare(a.at));
@@ -598,6 +634,9 @@ async function loadGens() {
       c.height = size.height;
       card.append(c);
       void photosFor(g.claude.photoIds ?? []).then((ph) => drawSpecFrame(c.getContext("2d") as CanvasRenderingContext2D, g.claude?.spec as MotionSpec, ph, 1500, { quality: "480p" }));
+    } else if (g.pm) {
+      const j = g.pm;
+      card.append(el("div", { className: "wait" }, j.status === "failed" ? el("span", { textContent: j.error ?? "Failed" }) : el("span", { className: "spin" }), el("span", { textContent: j.status === "designing" ? "Designing the 3D scene…" : j.status === "rendering" ? `Rendering in Blender… ${Math.round(j.progress * 100)}%` : "" })));
     } else if (g.sd?.preview) {
       // A free preview (no BytePlus key yet): its first storyboard frame, or a spinner while it is drawn.
       if (g.status === "preview-ready") {
@@ -608,7 +647,7 @@ async function loadGens() {
     } else {
       card.append(el("div", { className: "wait" }, g.status === "failed" || g.status === "cancelled" ? el("span", { textContent: g.sd?.error ?? g.claude?.error ?? g.status }) : el("span", { className: "spin" }), el("span", { textContent: g.status === "queued" ? "Queued at Seedance" : g.status === "running" ? "Seedance is filming…" : g.status })));
     }
-    card.append(el("span", { className: `st ${g.status}`, textContent: g.sd?.preview ? "Seedance preview" : g.engine === "seedance" ? "Seedance" : "Motion" }), el("div", { className: "cap", textContent: g.title }));
+    card.append(el("span", { className: `st ${g.status}`, textContent: g.pm ? "Premium 3D" : g.sd?.preview ? "Seedance preview" : g.engine === "seedance" ? "Seedance" : "Motion" }), el("div", { className: "cap", textContent: g.title }));
     if (g.claude?.score) card.append(el("span", { className: "scoreTag", textContent: `Research score ${g.claude.score.score}/100` }));
     if (g.claude?.warnings?.length) card.append(el("span", { className: "factTag", textContent: `${g.claude.warnings.length} fact${g.claude.warnings.length === 1 ? "" : "s"} to check` }));
     card.onclick = () => openDrawer(g);
@@ -678,11 +717,43 @@ async function showPreview(g: Gen, j: SdJob) {
   $("dActions").replaceChildren(motion, edit);
 }
 
+/** The drawer for a Premium 3D clip: progress while Claude designs and Blender renders, then the video. */
+function showPremium(g: Gen, j: PremiumJob): [string, string][] {
+  $("dTitle").textContent = `Premium 3D · ${j.title}`;
+  const media = $("dMedia");
+  if (g.videoUrl) media.append(el("video", { src: g.videoUrl, controls: true, autoplay: true, loop: true, playsInline: true }));
+  else if (j.status === "failed") media.append(el("p", { className: "err", textContent: j.error ?? "The 3D clip could not be made." }));
+  else {
+    media.append(el("div", { className: "wait", style: "padding:30px;text-align:center" }, el("span", { className: "spin" }), el("div", { className: "muted", textContent: j.status === "designing" ? "Claude is designing the 3D scene…" : `Blender is rendering: ${Math.round(j.progress * 100)}%. About 3 to 6 minutes in all; this updates by itself.` })));
+    const bar = $("dProgress");
+    bar.hidden = false;
+    (bar.firstElementChild as HTMLElement).style.width = `${Math.round((j.status === "designing" ? 0.03 : j.progress) * 100)}%`;
+    // Follow this job closely while the drawer shows it.
+    setTimeout(async () => {
+      if (state.open?.id !== j.id) return;
+      const fresh = await api<PremiumJob>(`/api/blender/jobs/${j.id}`).catch(() => null);
+      if (!fresh || state.open?.id !== j.id) return;
+      await loadGens();
+      openDrawer(state.gens.find((x) => x.id === j.id) ?? null);
+      if (fresh.status !== "designing" && fresh.status !== "rendering") await refreshWallet();
+    }, 4000);
+  }
+  $("dPrompt").textContent = j.caption ? `${j.caption}\n\n${j.hashtags.map((h) => `#${h}`).join(" ")}` : "";
+  showFacts(j);
+  return [
+    ["Status", j.status === "succeeded" ? "Ready" : j.status],
+    ["Length", `${j.seconds} s`],
+    ["Credits", String(j.credits)],
+    ...(j.renderSeconds ? ([["Render time", `${Math.floor(j.renderSeconds / 60)} min ${j.renderSeconds % 60} s`]] as [string, string][]) : []),
+    ...(j.say ? ([["Voice line", j.say]] as [string, string][]) : []),
+  ];
+}
+
 /**
  * "Check these facts": claims the fact check could not find in the product's facts (red) or found only in the
  * business's general description (amber), and the research rules the design missed.
  */
-function showFacts(j: ClaudeJob) {
+function showFacts(j: { warnings?: FactWarning[]; score?: DesignScore }) {
   const box = $("dFacts");
   const warnings = j.warnings ?? [];
   const failed = j.score?.failed ?? [];
@@ -762,6 +833,8 @@ function openDrawer(g: Gen | null) {
       };
     }
     $("dPrompt").textContent = j.request.prompt;
+  } else if (g.pm) {
+    info.push(...showPremium(g, g.pm));
   } else if (g.claude) {
     const j = g.claude;
     if (j.spec) {
@@ -1043,12 +1116,16 @@ async function start() {
   void loadPricing()
     .then((p) => {
       state.claudeCredits = p.claudeCredits;
+      state.blender.credits = p.premium3dCredits ?? state.blender.credits;
       state.voiceCredits = p.voiceCredits ?? state.voiceCredits;
     })
     .catch(() => undefined);
   $<HTMLInputElement>("tsearch").oninput = renderTemplates;
   window.addEventListener("studio:lang", renderTemplates);
   setupInspire();
+  void api<{ available: boolean; credits: number }>("/api/blender/status")
+    .then((b) => (state.blender = b))
+    .catch(() => undefined);
   void showInspire(state.engine === "seedance");
   $("go").onclick = () => void generate();
   $("pickClose").onclick = () => ($("pickDlg") as HTMLDialogElement).close();
@@ -1070,7 +1147,7 @@ async function start() {
   const show = await api<{ items: { id: string; engine: Engine; title: string; videoUrl: string | null }[] }>("/api/showcase");
   carousel(show.items.filter((i) => i.videoUrl).map((i) => ({ videoUrl: i.videoUrl as string, title: i.title, engine: i.engine })));
   setInterval(async () => {
-    if (state.gens.some((g) => g.engine === "seedance" && (g.status === "queued" || g.status === "running" || g.status === "submitting" || g.status === "preview"))) {
+    if (state.gens.some((g) => (g.engine === "seedance" && (g.status === "queued" || g.status === "running" || g.status === "submitting" || g.status === "preview")) || (g.pm && (g.status === "designing" || g.status === "rendering")))) {
       await loadGens();
       if (state.open?.engine === "seedance") openDrawer(state.gens.find((g) => g.id === state.open?.id) ?? null);
       await refreshWallet();
