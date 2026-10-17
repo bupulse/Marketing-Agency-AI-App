@@ -2,7 +2,7 @@
 // a reflective floor, particles, glass and metal surfaces, and the key light's highlights and shadows. Plain 2D canvas
 // calls only (no WebGL), so the owner's browser and the video robot's headless Chrome draw the same pixels; every
 // value comes from the frame time (animate.ts), so a re-render of a frame is identical. Used by draw.ts.
-import { clamp01, extrusion, extrusionSteps, fogAmount, particleAt, spinAngle, turntableAt, turntableColumn, type CameraState, type LightState } from "./animate";
+import { clamp01, ease, extrusion, extrusionSteps, fogAmount, particleAt, spinAngle, turntableAt, turntableColumn, type CameraState, type LightState } from "./animate";
 import type { Material, MotionSpec, ParticlesLayer, PhotoLayer, Text3d } from "./spec";
 
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -258,7 +258,7 @@ const BANDS = 6;
  * columns that shrink as they turn away), floats a little over a contact shadow, mirrors in a reflective floor that fades
  * out, is shaded by the key light as it turns, and a specular shine glides across it.
  */
-export function drawTurntable(ctx: Ctx, layer: PhotoLayer, r: Rect, img: Img | undefined, progress: number, env: Env): void {
+export function drawTurntable(ctx: Ctx, layer: PhotoLayer, r: Rect, img: Img | undefined, progress: number, env: Env, cutout = false): void {
   const tt = layer.turntable ?? {};
   const { yaw, lift, sweep } = turntableAt(tt, progress);
   const iw0 = img && img.width > 0 ? img.width : 1;
@@ -408,8 +408,8 @@ export function drawTurntable(ctx: Ctx, layer: PhotoLayer, r: Rect, img: Img | u
     ctx.restore();
   }
 
-  // The card's edge: turned, the side nearer the camera shows its thickness.
-  if (Math.abs(yaw) > 0.02) {
+  // The card's edge: turned, the side nearer the camera shows its thickness (a cut-out product has no card).
+  if (!cutout && Math.abs(yaw) > 0.02) {
     const e = yaw > 0 ? 0 : COLUMNS;
     const d = (yaw > 0 ? -1 : 1) * w * 0.035 * Math.abs(Math.sin(yaw));
     const he = half(e);
@@ -428,46 +428,75 @@ export function drawTurntable(ctx: Ctx, layer: PhotoLayer, r: Rect, img: Img | u
     ctx.restore();
   }
 
-  // The product itself.
-  ctx.save();
-  outline();
-  ctx.clip();
-  for (let i = 0; i < COLUMNS; i++) {
-    column(i, (dx, dw, hh, fullH, sx0, sw) => {
-      if (img && img.width > 0) ctx.drawImage(img, sx0, 0, sw, ih0, dx, cy - hh, dw, fullH);
-      else {
-        ctx.fillStyle = env.palette.primary;
-        ctx.fillRect(dx, cy - hh, dw, fullH);
-      }
-    });
-  }
-  // Shading and shine, still inside the outline.
+  // The product itself, then its shading and shine. On a cut-out the light must land on the product's pixels only
+  // ("source-atop"), which needs the scratch buffer; without one a cut-out is drawn unshaded.
   const left = Math.min(X(0), X(COLUMNS));
   const right = Math.max(X(0), X(COLUMNS));
-  // Shading: a positive yaw sends the right edge back, so the face turns to the right; turned towards the light it is
-  // brighter, turned away darker.
-  const facing = Math.sin(yaw) * Math.sign(env.toLight.x || 1);
-  const I = env.light.intensity;
-  const shadeG = ctx.createLinearGradient(left, 0, right, 0);
-  const lit = `rgba(255,255,255,${(0.1 + 0.15 * Math.max(0, facing)) * I})`;
-  const dark = `rgba(0,0,0,${(0.08 + 0.32 * Math.max(0, -facing)) * I})`;
-  shadeG.addColorStop(0, env.toLight.x < 0 ? lit : dark);
-  shadeG.addColorStop(1, env.toLight.x < 0 ? dark : lit);
-  ctx.fillStyle = shadeG;
-  ctx.fillRect(left, cy - h, right - left, h * 2);
-  if (tt.sweep !== false) {
-    // The shine: a slanted bright band that glides across as the face turns through the light.
-    const at = left + (right - left) * sweep;
-    const band = (right - left) * 0.22;
-    const g = ctx.createLinearGradient(at - band, cy - h * 0.3, at + band, cy + h * 0.3);
-    g.addColorStop(0, "rgba(255,255,255,0)");
-    g.addColorStop(0.5, mix(env.light.color, env.light.color, 0, 0.55 * (0.5 + 0.5 * I)));
-    g.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.globalCompositeOperation = "screen";
-    ctx.fillStyle = g;
-    ctx.fillRect(left, cy - h, right - left, h * 2);
-  }
-  ctx.restore();
+  const paintFace = (c: Ctx, shade: boolean, atop: boolean) => {
+    c.save();
+    c.beginPath();
+    c.moveTo(X(0), cy - half(0));
+    c.lineTo(X(COLUMNS), cy - half(COLUMNS));
+    c.lineTo(X(COLUMNS), cy + half(COLUMNS));
+    c.lineTo(X(0), cy + half(0));
+    c.closePath();
+    c.clip();
+    for (let i = 0; i < COLUMNS; i++) {
+      column(i, (dx, dw, hh, fullH, sx0, sw) => {
+        if (img && img.width > 0) c.drawImage(img, sx0, 0, sw, ih0, dx, cy - hh, dw, fullH);
+        else {
+          c.fillStyle = env.palette.primary;
+          c.fillRect(dx, cy - hh, dw, fullH);
+        }
+      });
+    }
+    if (shade) {
+      // A positive yaw sends the right edge back, so the face turns to the right; turned towards the light it is
+      // brighter, turned away darker.
+      const facing = Math.sin(yaw) * Math.sign(env.toLight.x || 1);
+      const I = env.light.intensity;
+      const shadeG = c.createLinearGradient(left, 0, right, 0);
+      const lit = `rgba(255,255,255,${(0.1 + 0.15 * Math.max(0, facing)) * I})`;
+      const dark = `rgba(0,0,0,${(0.08 + 0.32 * Math.max(0, -facing)) * I})`;
+      shadeG.addColorStop(0, env.toLight.x < 0 ? lit : dark);
+      shadeG.addColorStop(1, env.toLight.x < 0 ? dark : lit);
+      if (atop) c.globalCompositeOperation = "source-atop";
+      c.fillStyle = shadeG;
+      c.fillRect(left, cy - h, right - left, h * 2);
+      if (tt.sweep !== false) {
+        // The shine: a slanted bright band that glides across as the face turns through the light.
+        const at = left + (right - left) * sweep;
+        const band = (right - left) * 0.22;
+        const g = c.createLinearGradient(at - band, cy - h * 0.3, at + band, cy + h * 0.3);
+        g.addColorStop(0, "rgba(255,255,255,0)");
+        g.addColorStop(0.5, mix(env.light.color, env.light.color, 0, 0.55 * (0.5 + 0.5 * I)));
+        g.addColorStop(1, "rgba(255,255,255,0)");
+        c.globalCompositeOperation = atop ? "source-atop" : "screen";
+        c.fillStyle = g;
+        c.fillRect(left, cy - h, right - left, h * 2);
+      }
+    }
+    c.restore();
+  };
+  const faceBuffer = cutout ? env.scratch() : null;
+  const faceTransform = faceBuffer && "getTransform" in ctx ? ctx.getTransform() : null;
+  if (faceBuffer && faceTransform && typeof faceTransform.a === "number") {
+    const b = faceBuffer.ctx;
+    b.save();
+    b.setTransform(1, 0, 0, 1, 0, 0);
+    b.globalAlpha = 1;
+    b.globalCompositeOperation = "source-over";
+    b.filter = "none";
+    b.clearRect(0, 0, env.W, env.H);
+    b.setTransform(faceTransform);
+    paintFace(b, true, true);
+    b.restore();
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(faceBuffer.canvas, 0, 0, env.W, env.H);
+    ctx.restore();
+  } else paintFace(ctx, !cutout, false);
+  if (cutout) return;
   if (layer.border) {
     ctx.save();
     ctx.strokeStyle = layer.border;
@@ -476,6 +505,27 @@ export function drawTurntable(ctx: Ctx, layer: PhotoLayer, r: Rect, img: Img | u
     ctx.stroke();
     ctx.restore();
   }
+}
+
+/**
+ * A cut-out product (no background, cutout.ts) in a "contain" photo layer: it floats free of any frame, with a shadow
+ * that follows its own shape (away from the key light when the scene has one).
+ */
+export function drawCutout(ctx: Ctx, layer: PhotoLayer, r: Rect, img: Img, progress: number, env: Env): void {
+  const zoom = 1 + ((layer.zoomTo ?? 1) - 1) * ease("inOut", progress);
+  const s = Math.min(r.w / img.width, r.h / img.height) * zoom;
+  const w = img.width * s;
+  const h = img.height * s;
+  ctx.save();
+  if (layer.shadow) {
+    const m = Math.min(w, h);
+    ctx.shadowColor = "rgba(0,0,0,0.45)";
+    ctx.shadowBlur = m * 0.06;
+    ctx.shadowOffsetX = env.light.set ? -env.toLight.x * m * 0.05 : 0;
+    ctx.shadowOffsetY = env.light.set ? -env.toLight.y * m * 0.05 : m * 0.03;
+  }
+  ctx.drawImage(img, r.x + (r.w - w) / 2, r.y + (r.h - h) / 2, w, h);
+  ctx.restore();
 }
 
 /** The key light on a flat photo (scenes with a light only): a highlight on the near side, shade on the far side. */

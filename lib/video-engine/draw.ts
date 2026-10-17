@@ -7,10 +7,12 @@
 // look (colour grade, glow, light leaks, vignette, grain, cinema bars), drawn from an off-screen buffer. The 3D look
 // (key light, fog, extruded text, turntables, particles, glass and metal) is drawn by draw3d.ts.
 import { cameraAt, clamp01, ease, layerWindow, lightState, noise, parallax, poseAt, scenesAt, spinAngle, textEntrance, towardLight, vanishingPoint, type ActiveScene, type CameraState } from "./animate";
-import { drawFogHaze, drawLightGlow, drawParticles, drawTurntable, fogFilter, lightPhoto, materialFill, materialFinish, paintText3d, text3dPaint, type Env } from "./draw3d";
+import { drawCutout, drawFogHaze, drawLightGlow, drawParticles, drawTurntable, fogFilter, lightPhoto, materialFill, materialFinish, paintText3d, text3dPaint, type Env } from "./draw3d";
 import { FONTS, canvasSize, type Background, type CharacterLayer, type Layer, type Look, type MotionSpec, type PhotoLayer, type Quality, type Scene, type ShapeLayer, type TextLayer } from "./spec";
 
 export type Img = CanvasImageSource & { width: number; height: number };
+/** Decoded photos by the spec's 1-based number; a product cut-out (cutout.ts) of photo n under the key `${n}:cutout`. */
+export type Photos = Map<number | string, Img>;
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 type Rect = { x: number; y: number; w: number; h: number };
 type AnyCanvas = OffscreenCanvas | HTMLCanvasElement;
@@ -42,7 +44,7 @@ function bufferFor(owner: object, w: number, h: number, make: (w: number, h: num
 const needsBuffer = (look?: Look) => !!look && ((look.grade && look.grade !== "none") || (look.glow ?? 0) > 0);
 
 /** Draws the frame at `tMs`. `photos` maps the spec's 1-based photo numbers to decoded images. */
-export function drawSpecFrame(ctx: Ctx, spec: MotionSpec, photos: Map<number, Img>, tMs: number, opts: DrawOptions = {}): void {
+export function drawSpecFrame(ctx: Ctx, spec: MotionSpec, photos: Photos, tMs: number, opts: DrawOptions = {}): void {
   const { width: W, height: H } = canvasSize(spec, opts.quality ?? "1080p");
   const make = opts.makeCanvas === undefined ? defaultCanvas : opts.makeCanvas;
   const buffer = needsBuffer(spec.look) && make ? bufferFor(ctx, W, H, make) : null;
@@ -53,7 +55,7 @@ export function drawSpecFrame(ctx: Ctx, spec: MotionSpec, photos: Map<number, Im
   drawOverlays(ctx, spec.look, W, H, tMs);
 }
 
-function drawScenes(ctx: Ctx, spec: MotionSpec, photos: Map<number, Img>, tMs: number, W: number, H: number, scratch: Env["scratch"]): void {
+function drawScenes(ctx: Ctx, spec: MotionSpec, photos: Photos, tMs: number, W: number, H: number, scratch: Env["scratch"]): void {
   const { current, previous, transition } = scenesAt(spec, tMs);
   const kind = spec.scenes[current.index].transition ?? "fade";
   ctx.save();
@@ -130,7 +132,7 @@ function withTransform(ctx: Ctx, tf: Tf, W: number, H: number, draw: () => void)
 
 const DEFAULT_DEPTH = { photo: 0.45, text: 0.85, shape: 0.6, character: 0.7, particles: 0.5 } as const;
 
-function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene, photos: Map<number, Img>, W: number, H: number, tMs: number, scratch: Env["scratch"]): void {
+function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene, photos: Photos, W: number, H: number, tMs: number, scratch: Env["scratch"]): void {
   const cam = cameraAt(scene.camera, active.progress, tMs);
   const k = Math.min(W, H) / 1080;
   const outerFilter = ctx.filter && ctx.filter !== "none" ? ctx.filter : "";
@@ -182,7 +184,10 @@ function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene
     if (scale !== 1) ctx.scale(scale, scale);
     const local: Rect = { x: -rect.w / 2, y: -rect.h / 2, w: rect.w, h: rect.h };
     if (layer.kind === "photo") {
-      if (layer.turntable) drawTurntable(ctx, layer, local, photos.get(layer.photo), active.progress, env);
+      // The cut-out (product without its background) when the design asks for it and the page loaded one.
+      const cut = layer.cutout && (layer.turntable || layer.fit === "contain") ? photos.get(`${layer.photo}:cutout`) : undefined;
+      if (layer.turntable) drawTurntable(ctx, layer, local, cut ?? photos.get(layer.photo), active.progress, env, !!cut);
+      else if (cut) drawCutout(ctx, layer, local, cut, active.progress, env);
       else drawPhoto(ctx, layer, local, photos.get(layer.photo), active.progress, spec, env);
     } else if (layer.kind === "text") drawText(ctx, layer, local, win.enter, W, env);
     else if (layer.kind === "character") drawCharacter(ctx, layer, local, active.progress, tMs);
@@ -324,7 +329,7 @@ function drawImageInto(ctx: Ctx, img: Img, r: Rect, fit: "cover" | "contain", zo
   ctx.drawImage(img, c.sx, c.sy, c.sw, c.sh, r.x, r.y, r.w, r.h);
 }
 
-function drawBackground(ctx: Ctx, bg: Background, progress: number, photos: Map<number, Img>, W: number, H: number, tMs: number, k = 1): void {
+function drawBackground(ctx: Ctx, bg: Background, progress: number, photos: Photos, W: number, H: number, tMs: number, k = 1): void {
   const full: Rect = { x: 0, y: 0, w: W, h: H };
   const img = bg.kind === "photo" && bg.photo ? photos.get(bg.photo) : undefined;
   if (img && img.width > 0) {

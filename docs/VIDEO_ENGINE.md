@@ -147,6 +147,11 @@ so a re-render of a frame is identical (a test draws the same frame twice and co
   - The turntable turns the whole photo like a card; it looks best with product photos on plain backgrounds (there
     is no background removal).
   - Glass has no real backdrop blur, and fog is a filter approximation.
+- **Cut-outs (free, no AI):** `cutout.ts` lifts a product off a plain background (border check, flood by colour that
+  stops at edges, the photo's own shadow removed, 2-pixel shave and feather, trimmed PNG). Busy photos (shops, rooms,
+  streets) are refused with a reason. `video-lab/cutouts.ts` caches them in `video-lab/data/cutouts/`. A photo layer
+  with `cutout: true` (turntable or `fit: "contain"`) uses the cut-out loaded under the key `${n}:cutout`
+  (`loadPhotos(urls, cutoutUrls)`), and the brief marks such photos "cut-out available".
 - **Speed:** 2 to 27 ms per frame at 720p in headless Chrome. A 13-second 480p MP4 with sound takes about 20 s.
 
 ## Voice-over
@@ -380,11 +385,13 @@ allowances and MoMo add-ons.
 ## Studio pages and buttons (QA 17 Oct)
 
 A Playwright pass over every studio page (Chrome, 1440 px and 390 px wide): every link on every page was opened, and
-every button that does not spend credits was clicked. **86 of 86 work**, with no script errors on any page. Fixed during
-the pass: links that lost their query (`/app/video/seedance?tier=mini` opened the default tier), `#influencers` that
-opened nothing, the quality and options menus cut off by the hero, pill buttons that did nothing until the database
-had answered, the nav wrapping at 1280 px, and pages full of videos that downloaded every MP4 in full (no Range support)
-and blocked the browser's connections to the studio.
+every button that does not spend credits was clicked, plus the sign-in page as an online visitor. **92 of 92 work**,
+with no script errors on any page (second pass, after the Seedance previews, voice-over, 3D templates and the
+password gate). Fixed during the passes: links that lost their query (`/app/video/seedance?tier=mini` opened the
+default tier), `#influencers` that opened nothing, the quality and options menus cut off by the hero, pill buttons
+that did nothing until the database had answered, pickers that opened only after their data arrived, the nav wrapping
+at 1280 px, and pages full of videos that downloaded every MP4 in full (no Range support) and blocked the browser's
+connections to the studio.
 
 | Page | Button or link | Where it goes / what it does | Works |
 | --- | --- | --- | --- |
@@ -400,6 +407,7 @@ and blocked the browser's connections to the studio.
 | every page (nav/footer) | link "Pricing" | /pricing | yes |
 | every page (nav/footer) | link "Guide" | /guide | yes |
 | every page (nav/footer) | link "API NEW" | /api-docs | yes |
+| / | link "Video tile: 3-bedroom house with garden, Kibag" | /showcase#20261017-a87cc367 (lands on /showcase) | yes |
 | / | link "Video tile: 3-bedroom house with garden, Kibag" | /showcase#20261016-3a334e91 (lands on /showcase) | yes |
 | / | link "Video tile: Samsung Galaxy A56" | /showcase#20261016-f0ba04ce (lands on /showcase) | yes |
 | / | link "Get credits" | /pricing#pack-starter (lands on /pricing) | yes |
@@ -429,7 +437,7 @@ and blocked the browser's connections to the studio.
 | /app/video/seedance-2-0-fast | Example prompt | fills the prompt box | yes |
 | /app/video/seedance-2-0-mini | Opens preselected | seedance, Mini ·; quality Mini · 720p, Generate shows ✦ 120 | yes |
 | /app/video/seedance-2-0-mini | Example prompt | fills the prompt box | yes |
-| /app/video/motion | Opens preselected | claude, 1080p; quality 1080p, Generate shows ✦ 30 | yes |
+| /app/video/motion | Opens preselected | claude, 1080p; quality 1080p, Generate shows ✦ 40 | yes |
 | /app/video/motion | Example prompt | fills the prompt box | yes |
 | /create | Opens preselected | seedance, Fast ·; quality Fast · 720p, Generate shows ✦ 190 | yes |
 | /app/video/<model>, /create | Mode pill | opens its menu, a choice applies | yes |
@@ -441,17 +449,21 @@ and blocked the browser's connections to the studio.
 | /app/video/<model> | Template pill | scrolls to the templates | yes |
 | /app/video/<model> | Template card | selects the template; Macro details | yes |
 | /app/video/<model> | Engine Motion / Real video | switches engine | yes |
-| /app/video/<model> | + (references) | picker with upload, videos and photos; 6 choices | yes |
+| /app/video/<model> | + (references) | picker with upload, videos and photos; 7 choices | yes |
 | /app/video/<model> | Reference tile (click) | removes it | yes |
 | /app/video/<model> | Upload (in + picker) | opens the file chooser | yes |
 | /app/video/<model> | PRODUCT tile | product picker, sets product and photos | yes |
 | /app/video/<model> | AVATAR tile | presenter picker (closed without choosing: a choice can cost credits); 8 presenters | yes |
-| /app/video/<model> | GENERATE (Real video, no BytePlus key) | opens 'Seedance arrives with the BytePlus key' | yes |
-| /app/video/<model> | Modal: example prompt | fills the prompt, closes | yes |
-| /app/video/<model> | Modal: Keep preparing / Close | closes | yes |
-| /app/video/seedance-2-0-mini | Modal: Make it as a Motion video instead (no product) | switches to Motion, keeps the prompt, opens the product picker; with a product picked it starts the Motion design (30 credits), not clicked | yes |
-| /create | Generation card | opens the drawer; Close; drawer actions: Make MP4 (1080p) | yes |
-| /create | Drawer Download | the MP4 file; /videos/20261016-3a334e91.mp4 | yes |
+| /app/video/<model> | Prompt naming a missing photo | error under the prompt bar; Generate blocked | yes |
+| /app/video/<model> | ⚡ Quick plan | free shot plan in the prompt box; Quick plan: Golden hour exterior. Press again for another pl | yes |
+| /app/video/<model> | GENERATE (Real video, no BytePlus key) | free preview: storyboard frames, shot list, price; no credits; 3 frames; 590 credits with the key; wallet unchanged | yes |
+| /app/video/<model> | Preview: Edit the prompt | closes the drawer, prompt back in the box | yes |
+| /app/video/seedance-2-0-mini | Preview: Make it as a Motion video instead (no product) | switches to Motion, keeps the prompt, opens the product picker; with a product picked it starts the Motion design (30 credits), not clicked | yes |
+| /app/video/motion | Opens on 3D templates | category 3D motion, template 3D title drop; 3D motion, 3D title drop | yes |
+| /app/video/motion | More: Voice-over toggle | on by default; Generate shows design + voice credits; ✦ 40 with voice, ✦ 30 without | yes |
+| /app/video/motion | Language RW | template categories in Kinyarwanda | yes |
+| /create | Generation card | opens the drawer; Close; drawer actions: Make it as a Motion video instead, Edit the prompt | yes |
+| /create | Drawer Download | the MP4 file; /videos/20261017-a87cc367.mp4 | yes |
 | /templates | Templates link | /create#tgrid scrolled to the gallery | yes |
 | /app/video/motion#influencers | AI influencers link | opens the presenter picker | yes |
 | /app/video/seedance-2-5 | Example prompt | opens Seedance 2.0 with the prompt | yes |
@@ -465,24 +477,26 @@ and blocked the browser's connections to the studio.
 | /app/image/nano-banana | Example prompt | fills the prompt | yes |
 | /app/image/nano-banana | Use in a video | /create?ref=<image> with it as Image 1 | yes |
 | /app/image/nano-banana | Use in a 3D motion video | /app/video/motion?ref=<image> | yes |
-| /pricing | Buy (test: adds credits) | adds the pack to the test wallet; 6910 -> 7910 test credits | yes |
+| /pricing | Buy (test: adds credits) | adds the pack to the test wallet; 8900 -> 9900 test credits | yes |
 | /showcase | Filters | All / Seedance / Motion | yes |
-| /showcase | Video tile | viewer with Download; Close; 2 videos | yes |
+| /showcase | Video tile | viewer with Download; Close; 3 videos | yes |
 | /videos | Filters | All / Seedance / Motion / In progress | yes |
-| /videos | Video tile | viewer with Download; Close; 2 videos | yes |
+| /videos | Video tile | viewer with Download; Close; 3 videos | yes |
 | /guide | FAQ items | open | yes |
 | /api-docs | Contents links | jump to each section | yes |
 | /api-docs | Rates table | filled from /api/pricing | yes |
+| online (video.bupulse.com) | Any page, not signed in | /login page; API answers 401; wrong password: 'That password is not right' | yes |
 | /nope-404 | Unknown page | 404 page with links | yes |
 
-**Not clicked, because they spend credits or call a paid model** (each was built to the same pattern and checked by
-reading the code): Generate on Motion (30 credits a version), Generate on the AI image page (15 credits; tested for real
-twice on 17 October: a product photo on a marble table, and a fictional presenter holding the Samsung A56, about /bin/zsh.04
-each, both fine), choosing a realistic AI presenter (portrait or shot, 15 credits), "Make it as a Motion video instead"
-when a product is picked (starts a Motion design), the drawer's Apply change and Extend +5 s, Make MP4 (free, but slow),
-Cancel (refund) on a queued Seedance job (no job exists until the key), Write with Claude (a Claude call on the owner's
-subscription), and Seedance Generate with the key (waits for `SEEDANCE_API_KEY`). The test wallet gained 1,000 credits
-per QA run from the "Buy (test)" check; it is pretend money.
+**Not clicked, because they spend credits or call a paid model** (each follows the same charge-first,
+refund-on-failure pattern): Generate on Motion (30 credits a version, 40 with the voice-over), Generate on the AI image
+page (15 credits; tested for real twice on 17 October, about $0.04 each, both fine), the voice-over itself (tested for
+real once through the API, $0.066, then reused for free; the MP4 with voice was made in Chrome and has video and sound
+tracks), choosing a realistic AI presenter (15 credits), "Make it as a Motion video instead" when a product is picked
+(starts a Motion design), the drawer's Apply change and Extend +5 s, Make MP4 (free, but slow), Write with Claude (a
+Claude call on the owner's subscription), and Seedance with the key (waits for `SEEDANCE_API_KEY`; until then
+Generate makes a free preview, which was clicked). The test wallet gained 1,000 pretend credits per QA run from the
+"Buy (test)" check.
 
 ## Online access (video.bupulse.com)
 

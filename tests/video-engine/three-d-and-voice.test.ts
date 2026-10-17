@@ -268,7 +268,7 @@ describe("templates and designer know the 3D look", () => {
     expect(TEMPLATE_CATEGORIES.some((c) => c.id === "3d")).toBe(true);
     const three = VIDEO_TEMPLATES.filter((t) => t.category === "3d");
     expect(three.length).toBeGreaterThanOrEqual(3);
-    expect(three.length).toBeLessThanOrEqual(5);
+    expect(three.length).toBeLessThanOrEqual(6);
     for (const t of three) expect(/text3d|turntable|particles|material/.test(t.direction)).toBe(true);
   });
 

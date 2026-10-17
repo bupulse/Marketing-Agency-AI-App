@@ -191,6 +191,11 @@ export interface PhotoLayer extends LayerBase {
   focusY?: number;
   /** Show the photo on a 3D turntable (best with fit contain on a clean background). */
   turntable?: Turntable | null;
+  /**
+   * Use the product cut out of its plain background (cutout.ts), when the renderer has one for this photo (key
+   * `${photo}:cutout` in the photos map); for turntables and `fit: "contain"` photos. Without one, the photo as it is.
+   */
+  cutout?: boolean;
 }
 
 export interface TextLayer extends LayerBase {

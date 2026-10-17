@@ -174,6 +174,7 @@ function layer(v: unknown, photoCount: number, palette: MotionSpec["palette"]): 
       focusX: optNum(v.focusX, 0, 1),
       focusY: optNum(v.focusY, 0, 1),
       turntable: turntable(v.turntable),
+      cutout: v.cutout === true ? true : undefined,
     };
   }
   if (v.kind === "text") {
@@ -190,7 +191,8 @@ function layer(v: unknown, photoCount: number, palette: MotionSpec["palette"]): 
       text,
       font,
       weight,
-      size: num(v.size, 0.02, 0.22, 0.07),
+      // Up to 0.22 of the width; a short word far back (depth <= 0.35) may be giant, up to 0.4, behind the product.
+      size: num(v.size, 0.02, text.length <= 16 && num(v.depth, 0, 1, 1) <= 0.35 ? 0.4 : 0.22, 0.07),
       color: color(v.color, palette.text),
       align: oneOf(v.align, ["left", "center", "right"] as const, "center"),
       uppercase: v.uppercase === true,

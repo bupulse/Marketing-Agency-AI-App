@@ -5,7 +5,7 @@
 // in public/fonts/video before the first frame.
 import { mixSamples } from "@/lib/voice/mix";
 import { frameCount, frameUs } from "./animate";
-import { drawSpecFrame, type Img } from "./draw";
+import { drawSpecFrame, type Img, type Photos } from "./draw";
 import { FONTS, canvasSize, totalMs, type FontId, type MotionSpec, type Quality } from "./spec";
 import { cueTimings, placeVoice, type VoiceCue } from "./voice";
 
@@ -32,22 +32,27 @@ export async function loadSpecFonts(spec: MotionSpec, base = "/fonts/video", tim
   await Promise.race([Promise.all(loads), new Promise((r) => setTimeout(r, timeoutMs))]);
 }
 
-/** Decodes the spec's photos from URLs (1-based numbers). A photo that fails is left out: its layers draw a colour. */
-export async function loadPhotos(urls: string[]): Promise<Map<number, Img>> {
-  const map = new Map<number, Img>();
-  await Promise.all(
-    urls.map(async (url, i) => {
-      try {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.src = url;
-        await img.decode();
-        map.set(i + 1, img);
-      } catch {
-        // Drawn as a colour block instead.
-      }
-    }),
-  );
+/**
+ * Decodes the spec's photos from URLs (1-based numbers). A photo that fails is left out: its layers draw a colour.
+ * `cutoutUrls` (same order, null for none) are the product cut-outs, kept under `${n}:cutout`; one that fails (the
+ * photo cannot be cut out) is left out and the layer shows the photo as it is.
+ */
+export function loadPhotos(urls: string[]): Promise<Map<number, Img>>;
+export function loadPhotos(urls: string[], cutoutUrls: (string | null)[]): Promise<Photos>;
+export async function loadPhotos(urls: string[], cutoutUrls: (string | null)[] = []): Promise<Photos> {
+  const map: Photos = new Map();
+  const load = async (url: string, key: number | string) => {
+    try {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = url;
+      await img.decode();
+      map.set(key, img);
+    } catch {
+      // Drawn as a colour block (or the plain photo) instead.
+    }
+  };
+  await Promise.all([...urls.map((url, i) => load(url, i + 1)), ...cutoutUrls.map((url, i) => (url ? load(url, `${i + 1}:cutout`) : null))]);
   return map;
 }
 
@@ -62,7 +67,7 @@ export type EncodeOptions = {
 };
 
 /** Encodes the whole spec to an MP4 Blob. Throws when this browser has no H.264 encoder. */
-export async function encodeSpecMp4(spec: MotionSpec, photos: Map<number, Img>, options: EncodeOptions = {}): Promise<Blob> {
+export async function encodeSpecMp4(spec: MotionSpec, photos: Photos, options: EncodeOptions = {}): Promise<Blob> {
   if (typeof VideoEncoder === "undefined") throw new Error("This browser cannot make MP4 videos. Use the latest Chrome or Edge.");
   const quality = options.quality ?? "1080p";
   const { width, height } = canvasSize(spec, quality);
