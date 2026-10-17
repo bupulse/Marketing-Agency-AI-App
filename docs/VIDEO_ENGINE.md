@@ -310,6 +310,16 @@ pages read it). Videos are served with Range requests, so a page full of videos 
   under "Check these facts" (red: not in the product's facts; amber: only in the business description) and cards show
   "N facts to check". When the designer returns a \`score\`, the drawer and cards show "Research score N/100" and what
   it missed.
+- **Add BuPulse text (Seedance):** a finished clip's drawer offers "Add BuPulse text (free)": \`POST
+  /api/seedance/jobs/<id>/overlay\` builds \`seedanceOverlaySpec\` (the clip as a full-frame video layer, the hook in the
+  first 3 s, the price on the product shot, the phone bar on every scene, the call to action at the end) and checks it
+  with \`validateSpec\`. The drawer plays it live (the clip's frames under the text, \`openVideoFrames\`), then "Make MP4
+  with text" encodes it in the browser like a Motion video and saves it as the job's "with text" version
+  (\`/videos/seedance/<id>-text.mp4\`, kept in \`video-lab/seedance-overlays.ts\`, not in the Seedance job). It shows the
+  caption and hashtags with their caption check. No credits. In preview mode (no key, no clip) the same step runs on
+  a **stand-in**, a finished studio MP4 with sound of the same product when there is one, labelled "Stand-in clip" in
+  the drawer only. Tested 17 October on a Galaxy A56 preview: 5.09 s MP4 with video and sound tracks, the stand-in's
+  frames moving under the hook, price, call to action and phone bar, caption check 100.
 - **Opening lines (Motion):** once a product is chosen, three chips above the prompt bar give the Brain's opening
   lines for that product, template, platform and length (\`GET /api/hooks\` → \`suggestHooks\`; the reason is the
   tooltip). A click chooses one (a second click lets Claude choose); the design then gets the Brain's context for it
