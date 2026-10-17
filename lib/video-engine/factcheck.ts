@@ -51,6 +51,12 @@ export const CLAIM_WORDS = [
   "no. 1",
   "#1",
   "certified",
+  "stars",
+  "star rating",
+  "rating",
+  "rated",
+  "reviews",
+  "customers love",
 ] as const;
 
 const SMALL = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];

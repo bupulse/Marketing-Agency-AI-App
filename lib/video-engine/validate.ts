@@ -4,7 +4,7 @@
 import { safeAreaFor as brainSafeArea, type SafeArea } from "@/lib/video-engine/brain";
 import { cameraAt } from "./animate";
 import { luminance, rgba } from "./draw3d";
-import { CONTACT, badgesOffProduct, cutoutBox, drawnHeight, isBackdropWord, keepOffSubject, productArea, sceneSubject, type PhotoInfo } from "./subject";
+import { CONTACT, badgesOffProduct, cutoutBox, drawnHeight, isBackdropWord, keepOffSubject, productArea, productBox, sceneSubject, type PhotoInfo } from "./subject";
 import {
   CAMERA_MOVES,
   CHARACTER_HAIR,
@@ -530,20 +530,20 @@ function withOrderWords(layers: Layer[]): Layer[] {
 }
 
 /**
- * A cut-out product big enough to sell (lead's review of the dress sheets, 17 October 2026): when a scene's one
- * cut-out fills less than `min` of the frame height, its box grows (the product no wider than 90% of the frame) into
- * the room the scene's text leaves: the lines above the product keep a band at the top of the safe area, the lines
- * below (and the quiet phone line still to come) a band at the bottom; with no text on a side the product may reach
- * the frame's edge. A cut-out too big for its text shrinks to that room (not below 35% of the frame). The product
- * repair that follows settles the text in those bands. Scenes with two or more cut-outs
- * (colour options side by side) are left as designed.
+ * A product big enough to sell (lead's review of the dress sheets, 17 October 2026): when a scene's one product photo
+ * (a cut-out, a turntable or a photo card: subject.ts productBox) fills less than `min` of the frame height, its box
+ * grows (the product no wider than 90% of the frame) into the room the scene's text leaves: the lines above the
+ * product keep a band at the top of the safe area, the lines below (and the quiet phone line still to come) a band at
+ * the bottom; with no text on a side the product may reach the frame's edge. A product too big for its text shrinks
+ * to that room (not below 35% of the frame). The product repair that follows settles the text in those bands. Scenes
+ * with two or more product photos (colour options side by side) are left as designed.
  */
 function bigEnough(layers: Layer[], ratio: Ratio, photos: (PhotoInfo | undefined)[], min: number, area: SafeArea, phone: boolean, camera?: Camera): Layer[] {
   if (min <= 0) return layers;
-  const cuts = layers.filter((l): l is PhotoLayer => l.kind === "photo" && !!cutoutBox(l, ratio, photos[l.photo - 1]));
+  const cuts = layers.filter((l): l is PhotoLayer => l.kind === "photo" && !!productBox(l, ratio, photos[l.photo - 1]));
   if (cuts.length !== 1) return layers;
   const l = cuts[0];
-  const b = cutoutBox(l, ratio, photos[l.photo - 1]) as NonNullable<ReturnType<typeof cutoutBox>>;
+  const b = productBox(l, ratio, photos[l.photo - 1]) as NonNullable<ReturnType<typeof productBox>>;
   // What the text must clear: the product (on a turntable with its shadow and the top of its reflection), as the
   // product repair (subject.ts sceneSubject) sees it.
   const o = productArea(l, ratio, photos[l.photo - 1]) as NonNullable<ReturnType<typeof productArea>>;
@@ -552,7 +552,7 @@ function bigEnough(layers: Layer[], ratio: Ratio, photos: (PhotoInfo | undefined
   // Only the lines over or under the product take height from it: a column of text beside it (a side-by-side layout)
   // does not, as long as the grown product stays clear of it.
   // Measured as it first shows: a slow zoom (zoomTo) grows a cut-out past that by the end of the scene.
-  const z = l.turntable ? 1 : Math.max(1, l.zoomTo ?? 1);
+  const z = l.turntable || !cutoutBox(l, ratio, photos[l.photo - 1]) ? 1 : Math.max(1, l.zoomTo ?? 1);
   const want = b.h / z < min * 0.95 ? min * z : b.h;
   const half = Math.min(0.9, (b.w * want) / b.h) / 2;
   const pcx = b.x + b.w / 2;
@@ -590,6 +590,63 @@ function bigEnough(layers: Layer[], ratio: Ratio, photos: (PhotoInfo | undefined
   // A card or frame made for the photo (a shape on the same centre, about its size) grows and moves with it.
   const card = (x: Layer) => x.kind === "shape" && Math.abs(x.x - l.x) <= 0.05 && Math.abs(x.y - l.y) <= 0.05 && x.w >= l.w * 0.7 && x.w <= l.w * 1.4 && x.h >= l.h * 0.7 && x.h <= l.h * 1.4;
   return layers.map((x) => (x === l ? grown : card(x) ? { ...x, w: r3(Math.min(2, x.w * k)), h: r3(Math.min(2, x.h * k)), x: r3(grown.x + (x.x - l.x) * k), y: r3(grown.y + (x.y - l.y) * k) } : x));
+}
+
+/** A star rating, a review count or "customers love": social proof only the facts can give. */
+export const RATING = /(?:\b(?:[1-5](?:\.\d)?|one|two|three|four|five)[- ]?stars?\b|★|⭐|\b\d[\d,.]*\s*k?\+?\s*(?:reviews?|ratings?)\b|\b(?:top[- ])?rated\b|\bratings?\b|\bcustomers? love\b|\b\d[\d,.]*\s*k?\+?\s*(?:happy|satisfied)\s+(?:customers|clients)\b)/i;
+const sentences = (text: string) => text.match(/[^.!?]+[.!?]*/g)?.map((x) => x.trim()).filter(Boolean) ?? [];
+/** A caption without the sentences that claim a rating (line breaks kept). */
+const withoutRatings = (caption: string) =>
+  caption
+    .split("\n")
+    .map((line) => (RATING.test(line) ? sentences(line).filter((x) => !RATING.test(x)).join(" ") : line))
+    .filter((line, i, all) => line.trim() || (i > 0 && all[i - 1].trim()))
+    .join("\n")
+    .trim();
+/** A shape right behind a text (a pill, a badge): its centre inside the text's box, not much taller than it. */
+const backs = (s: Layer, t: TextLayer) => s.kind === "shape" && Math.abs(s.x - t.x) <= t.w / 2 && Math.abs(s.y - t.y) <= t.h / 2 && s.h <= t.h * 2.2;
+
+/**
+ * The template's line limit (the Brain's STYLE_LIMITS: luxury 2, direct and showcase 3, lists 5), besides the price
+ * and the phone number: an extra line moves, with its pill, to the next scene (or the one before) that has room, and is
+ * dropped when none has (the voice line says the scene's message anyway). The smallest lines go first.
+ */
+function keepLineLimit(scenes: Scene[], max: number): void {
+  const fixed = (t: TextLayer) => /\d{3}[\s-]?\d{3}/.test(t.text) || /\d{1,3}(?:,\d{3})+|\b\d+(?:\.\d+)?\s*k\b|\b(?:rwf|frw)\b/i.test(t.text);
+  const lines = (s: Scene) => s.layers.filter((l): l is TextLayer => l.kind === "text" && l.text.trim() !== "" && !fixed(l));
+  scenes.forEach((s, i) => {
+    const extra = lines(s).length - max;
+    if (extra <= 0) return;
+    const out = [...lines(s)].sort((a, b) => a.size - b.size || s.layers.indexOf(b) - s.layers.indexOf(a)).slice(0, extra);
+    for (const t of out) {
+      const moving = s.layers.filter((l) => l === t || backs(l, t));
+      s.layers = s.layers.filter((l) => !moving.includes(l));
+      const to = [scenes[i + 1], scenes[i - 1]].find((x) => x && lines(x).length < max && x.layers.length + moving.length <= SPEC_LIMITS.maxLayers);
+      if (to) to.layers.push(...moving);
+    }
+  });
+}
+
+/**
+ * A ring, circle, burst or blob meant to sit inside the frame (its box within 5% of the edges) stays inside it at its
+ * largest keyframe scale: a ring around a title, scaled to 1.15, ran off the left edge (and a re-shape to 1:1 brings
+ * the edges closer). It shrinks evenly to fit, then moves in. Shapes that bleed off the frame on purpose are left.
+ */
+function shapesInFrame(layers: Layer[]): Layer[] {
+  return layers.map((l) => {
+    if (l.kind !== "shape" || !["ring", "circle", "burst", "blob"].includes(l.shape)) return l;
+    if (l.x - l.w / 2 < -0.05 || l.x + l.w / 2 > 1.05 || l.y - l.h / 2 < -0.05 || l.y + l.h / 2 > 1.05) return l;
+    const grow = Math.max(1, ...(l.keyframes ?? []).map((f) => f.scale ?? 1));
+    const k = Math.min(1, 0.98 / (l.w * grow), 0.98 / (l.h * grow));
+    const w = l.w * k;
+    const h = l.h * k;
+    const half = { x: (w * grow) / 2, y: (h * grow) / 2 };
+    const x = Math.min(0.99 - half.x, Math.max(0.01 + half.x, l.x));
+    const y = Math.min(0.99 - half.y, Math.max(0.01 + half.y, l.y));
+    if (k === 1 && Math.abs(x - l.x) < 1e-9 && Math.abs(y - l.y) < 1e-9) return l;
+    const r3 = (v: number) => Math.round(v * 1000) / 1000;
+    return { ...l, w: r3(w), h: r3(h), x: r3(x), y: r3(y) };
+  });
 }
 
 /** The phone number as people read it in Rwanda: "+250 788 300 400" -> "0788 300 400"; other numbers as given. */
@@ -680,6 +737,13 @@ export type ValidateOptions = {
   phone?: string | null;
   /** The smallest share of the frame height a cut-out product fills (templates.ts productMinHeight); 0 or none: as designed. */
   productMin?: number;
+  /**
+   * The brief's facts (product, business description, the owner's note): a star rating or review count they do not
+   * give is dropped. Undefined: not checked (edits of a stored design keep what the owner wrote).
+   */
+  facts?: string;
+  /** Text lines a scene may hold besides the price and the number (the Brain's STYLE_LIMITS for the template); none: no limit. */
+  maxLines?: number;
 };
 
 export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
@@ -714,6 +778,16 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
     const first = s.layers.findIndex((l) => l.kind === "video");
     if (first >= 0) s.layers = s.layers.filter((l, i) => l.kind !== "video" || i === first);
   }
+  // Star ratings and review counts the facts do not give are fake social proof (the Brain's no-fake-customers): the
+  // line goes (with the pill or badge behind it), and so does the sentence that says it aloud.
+  if (opts.facts !== undefined && !RATING.test(opts.facts)) {
+    for (const s of all) {
+      const fake = s.layers.filter((l): l is TextLayer => l.kind === "text" && RATING.test(l.text));
+      s.layers = s.layers.filter((l) => !fake.includes(l as TextLayer) && !fake.some((t) => backs(l, t)));
+      if (s.say && RATING.test(s.say)) s.say = sentences(s.say).filter((x) => !RATING.test(x)).join(" ").trim() || undefined;
+    }
+  }
+  if (opts.maxLines) keepLineLimit(all, opts.maxLines);
   const hasVideo = all.some((s) => s.layers.some((l) => l.kind === "video"));
   const minScenes = hasVideo ? 1 : SPEC_LIMITS.minScenes;
   // A scene with nothing in it (no layer, no voice line) is a dead second at most: dropped, keeping at least two.
@@ -735,7 +809,7 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
     for (let pass = 0, before = ""; pass < 4; pass++) {
       s.layers = sized(s.layers);
       const subject = tall ? sceneSubject(s, ratio, opts.photos ?? []) : null;
-      s.layers = safe(keepOffSubject(apartTexts(safe(badgesOffProduct(s.layers, subject)), ratio, area), subject, area, ratio));
+      s.layers = shapesInFrame(safe(keepOffSubject(apartTexts(safe(badgesOffProduct(s.layers, subject)), ratio, area), subject, area, ratio)));
       const now = JSON.stringify(s.layers);
       if (now === before) break;
       before = now;
@@ -757,7 +831,7 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
     palette,
     scenes,
     music: typeof raw.music === "string" ? cleanText(raw.music, 30).toLowerCase() || null : null,
-    caption: cleanCaption(raw.caption),
+    caption: opts.facts !== undefined && !RATING.test(opts.facts) ? withoutRatings(cleanCaption(raw.caption)) : cleanCaption(raw.caption),
     hashtags: (Array.isArray(raw.hashtags) ? raw.hashtags : [])
       .map((h) => cleanText(h, 40).replace(/^#*/, "").replace(/[^\p{L}\p{N}_]/gu, ""))
       .filter(Boolean)

@@ -74,8 +74,22 @@ const boxOf = (l: Pick<Layer, "x" | "y" | "w" | "h">): Box => ({ x: l.x - l.w / 
  * or none known for the photo: only cut-out photos carry a subject box).
  */
 export function cutoutBox(l: PhotoLayer, ratio: Ratio, photo: PhotoInfo | undefined): Box | null {
-  const s = photo?.subject;
-  if (!l.cutout || !s || !photo?.width || !photo.height || (!l.turntable && l.fit !== "contain")) return null;
+  return l.cutout && photo?.subject ? drawnBox(l, ratio, photo, photo.subject) : null;
+}
+
+/**
+ * Where a product photo is drawn: a cut-out (cutoutBox), or a whole photo on a turntable or fitted ("contain") into an
+ * inset card. Null for a cover photo, a photo filling the frame, or a photo whose size is not known.
+ */
+export function productBox(l: PhotoLayer, ratio: Ratio, photo: PhotoInfo | undefined): Box | null {
+  const cut = cutoutBox(l, ratio, photo);
+  if (cut) return cut;
+  const inset = Math.min(l.w, 1) * Math.min(l.h, 1) < 0.5;
+  return l.turntable || (l.fit === "contain" && inset) ? drawnBox({ ...l, zoomTo: undefined }, ratio, photo, { x: 0, y: 0, w: 1, h: 1 }) : null;
+}
+
+function drawnBox(l: PhotoLayer, ratio: Ratio, photo: PhotoInfo | undefined, s: Box): Box | null {
+  if (!photo?.width || !photo.height || (!l.turntable && l.fit !== "contain")) return null;
   const { width: W, height: H } = RATIOS[ratio] ?? RATIOS["9:16"];
   const cw = s.w * photo.width;
   const ch = s.h * photo.height;
@@ -102,11 +116,11 @@ export function cutoutBox(l: PhotoLayer, ratio: Ratio, photo: PhotoInfo | undefi
 const area = (b: Box) => b.w * b.h;
 
 /**
- * What text must keep off for a cut-out: the product, and on a turntable its contact shadow and the top of its floor
- * reflection too (the reflection fades out below; text may sit on its faint end). Null when it is not a cut-out.
+ * What text must keep off for a product photo (productBox): the product, and on a turntable its contact shadow and the
+ * top of its floor reflection too (the reflection fades out below; text may sit on its faint end).
  */
 export function productArea(l: PhotoLayer, ratio: Ratio, photo: PhotoInfo | undefined): Box | null {
-  const b = cutoutBox(l, ratio, photo);
+  const b = productBox(l, ratio, photo);
   if (!b || !l.turntable) return b;
   return { ...b, h: Math.min(l.y + l.h / 2 - b.y, b.h + l.h * 0.1) };
 }
@@ -123,8 +137,16 @@ export function sceneSubject(scene: Pick<Scene, "layers" | "background">, ratio:
   const layers = scene.layers.filter((l): l is PhotoLayer | VideoLayer => (l.kind === "photo" || l.kind === "video") && area(clip(boxOf(l)) ?? { x: 0, y: 0, w: 0, h: 0 }) >= 0.02);
   const boxes = layers
     // A turntable fills its own box (product, floor and reflection): the box is the subject.
-    // A cut-out fills its box with the product alone (not the product's place in the whole photo).
-    .map((l) => (l.kind === "video" ? subjectOnCanvas(boxOf(l), ratio, undefined, l.fit) : cutoutBox(l, ratio, photos[l.photo - 1]) ? clip(productArea(l, ratio, photos[l.photo - 1]) as Box) : l.turntable ? clip(boxOf(l)) : subjectOnCanvas(boxOf(l), ratio, photos[l.photo - 1], l.fit ?? "cover", l.focusX ?? 0.5, l.focusY ?? 0.5)))
+    // A cut-out fills its box with the product alone (not the product's place in the whole photo); a photo card (an
+    // inset, not filling the frame) is kept clear whole, as it shows: text on its edge reads as a mistake, especially
+    // once a re-shape to 1:1 or 4:5 moves things closer.
+    .map((l) => {
+      if (l.kind === "video") return subjectOnCanvas(boxOf(l), ratio, undefined, l.fit);
+      const product = productArea(l, ratio, photos[l.photo - 1]);
+      if (product) return clip(product);
+      if (l.turntable || area(clip(boxOf(l)) ?? { x: 0, y: 0, w: 0, h: 0 }) < 0.5) return clip(boxOf(l));
+      return subjectOnCanvas(boxOf(l), ratio, photos[l.photo - 1], l.fit ?? "cover", l.focusX ?? 0.5, l.focusY ?? 0.5);
+    })
     .filter((b): b is Box => !!b);
   if (boxes.length) {
     const x0 = Math.min(...boxes.map((b) => b.x));

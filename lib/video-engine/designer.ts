@@ -12,7 +12,7 @@ import { SpecError, extractJson, validateSpec } from "./validate";
 import { voiceLanguage } from "./voice-language";
 import { factCheck, type FactWarning } from "./factcheck";
 import { brainBriefFromDesign, brainContext } from "./brain/select";
-import { scoreDesign, type DesignScore } from "./brain/score";
+import { STYLE_LIMITS, scoreDesign, templateStyle, type DesignScore } from "./brain/score";
 import { PREFERRED_PHRASES, checkLanguage, languageTextsOf } from "./brain";
 
 const MESSAGES_URL = "https://api.anthropic.com/v1/messages";
@@ -146,7 +146,7 @@ export function systemPrompt(): string {
     "- A cut-out product is the star of its scene: give its layer a box that makes the product at least 45% of the frame height (55% on product-hero, studio and showroom turntable and floating-reveal templates), with the text above and below it, never a small product in a field of empty colour. Text-led templates (Bold words, Typography poster, Event poster) may keep it smaller.",
     "- At least one scene for every 4 seconds of video (12 s: 3 scenes; 15 s: 4; 20 s: 5): a 7-second scene feels stuck.",
     "- Never repeat a layout in consecutive scenes: alternate full-frame photo, framed photo, detail crop (zoomTo with focusX/focusY), text-only, split and turntable layouts, and vary the background between scenes. With few photos, crop them differently.",
-    "- Every number, price, percentage, duration (1-year, 12-month) and claim word (new, refurbished, genuine, original, free, guarantee, warranty, discount, award, best, number one, certified) you write must come from the product facts or the owner's note. The business description is about the shop in general: a claim found only there (\"we sell new and refurbished phones\") is not a claim about this product. A checker compares every text, say line and the caption with the brief and shows the owner anything it cannot find.",
+    "- Every number, price, percentage, duration (1-year, 12-month) and claim word (new, refurbished, genuine, original, free, guarantee, warranty, discount, award, best, number one, certified, star ratings, review counts, 'customers love') you write must come from the product facts or the owner's note; never invent a rating or reviews (a line with one is removed). The business description is about the shop in general: a claim found only there (\"we sell new and refurbished phones\") is not a claim about this product. A checker compares every text, say line and the caption with the brief and shows the owner anything it cannot find.",
     "- Use ONLY facts in the brief. Never invent prices, discounts, dates, awards, guarantees, ingredients or numbers. If no price is given, do not show one.",
     "- Write all on-screen text and the caption in the business's content language; write the say lines in the voice-over language the brief names (the same language unless the brief says otherwise). Short: hooks 2 to 6 words, other lines at most about 10 words.",
     "- Safe area for 9:16: keep text between y 0.12 and 0.82 and x 0.07 to 0.93 (the apps cover the edges). Text boxes must be wide enough for their words (w 0.6 to 0.86 for most text).",
@@ -287,6 +287,10 @@ export const apiTransport = (apiKey: string, fetchImpl: typeof fetch = fetch): C
  * Designs one video. One call; if the answer cannot be read, one more call with the problem explained. Usage of every
  * call is returned (also on failure, in DesignError.usage), so the caller can record what was spent.
  */
+/** Everything the brief states (the product, the business, the owner's note), for the validator's fact checks. */
+const briefFacts = (b: DesignBrief): string =>
+  [b.product.name, b.product.summary, b.product.description, b.product.price, ...(b.product.usps ?? []), ...(b.product.features ?? []), b.business.description, b.note].filter(Boolean).join("\n");
+
 export async function designVideo(brief: DesignBrief, opts: { apiKey?: string; model?: string; fetchImpl?: typeof fetch; transport?: ClaudeTransport }): Promise<DesignResult> {
   const model = opts.model || DESIGNER_MODEL;
   const fetchImpl = opts.fetchImpl ?? fetch;
@@ -315,7 +319,7 @@ export async function designVideo(brief: DesignBrief, opts: { apiKey?: string; m
       // An edit may lengthen or shorten the video (Claude's own scene lengths, 6 to 30 s); an extend adds the asked seconds.
       const answered = rawSeconds(raw);
       const seconds = brief.mode === "edit" && brief.base ? answered || totalMs(brief.base) / 1000 : brief.mode === "extend" && brief.base ? totalMs(brief.base) / 1000 + brief.seconds : brief.seconds;
-      const spec = validateSpec(raw, { ratio: brief.base?.ratio ?? brief.ratio, photoCount: brief.photos.length, seconds, fixedLens: brief.fixedLens, photos: brief.photos.map((p) => ({ width: p.width, height: p.height, subject: p.subject ?? null })), platform: brief.platform ?? null, phone: brief.business.phone ?? null, productMin: productMinHeight(brief.styleId) });
+      const spec = validateSpec(raw, { ratio: brief.base?.ratio ?? brief.ratio, photoCount: brief.photos.length, seconds, fixedLens: brief.fixedLens, photos: brief.photos.map((p) => ({ width: p.width, height: p.height, subject: p.subject ?? null })), platform: brief.platform ?? null, phone: brief.business.phone ?? null, productMin: productMinHeight(brief.styleId), facts: briefFacts(brief), maxLines: STYLE_LIMITS[templateStyle(brief.styleId)].maxLines });
       // Facts first, then the language: price forms, English calls to action in a Kinyarwanda video, word-for-word lines.
       const language = checkLanguage(languageTextsOf(spec), brief.business.language).map((i) => ({ where: i.where, found: i.found, problem: "language" as const, message: i.message, suggestion: i.suggestion }));
       const warnings = [...factCheck(spec, brief), ...language];

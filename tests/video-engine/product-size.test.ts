@@ -104,3 +104,36 @@ describe("a badge moved off the product keeps its shape", () => {
     expect(validateSpec(spec, opts())).toEqual(spec);
   });
 });
+
+describe("no invented ratings, and the template's line limit", () => {
+  const base = (layers: unknown[], say?: string) => ({ palette: {}, caption: "Kitenge summer dress, 25,000 RWF. Rated 5 stars by our customers!\nWhatsApp 0788 123 456", scenes: [{ seconds: 3, background: {}, say, layers }, { seconds: 3, background: {}, layers: [text({ text: "Order on WhatsApp" })] }] });
+  const o = { ratio: "9:16" as const, photoCount: 0, seconds: 6 };
+
+  it("a star rating or review count the facts do not give is dropped, with its pill, its spoken sentence and its caption sentence", () => {
+    const spec = validateSpec(base([text({ text: "Kitenge summer dress", y: 0.3 }), { kind: "shape", shape: "rect", color: "#ffd200", x: 0.5, y: 0.6, w: 0.6, h: 0.06 }, text({ text: "★★★★★ 5 stars", y: 0.6, h: 0.05 })], "A light summer dress. Our customers love it."), { ...o, facts: "Kitenge summer dress. Light cotton." });
+    const s = spec.scenes[0];
+    expect(s.layers.some((l) => l.kind === "text" && /star/i.test(l.text))).toBe(false);
+    expect(s.layers.some((l) => l.kind === "shape")).toBe(false);
+    expect(s.say).toBe("A light summer dress.");
+    expect(spec.caption).toBe("Kitenge summer dress, 25,000 RWF.\nWhatsApp 0788 123 456");
+    // When the facts give the rating, it stays; without facts (an owner's edit), nothing is checked.
+    expect(validateSpec(base([text({ text: "Rated 4.8 stars" })]), { ...o, facts: "Rated 4.8 stars on Google" }).scenes[0].layers).toHaveLength(1);
+    expect(validateSpec(base([text({ text: "5 stars" })]), o).scenes[0].layers).toHaveLength(1);
+  });
+
+  it("a scene over the line limit sends its smallest line to a scene with room; the price and the number do not count", () => {
+    const spec = validateSpec(
+      {
+        palette: {},
+        scenes: [
+          { seconds: 3, background: {}, layers: [text({ text: "Lunch offer", size: 0.08, y: 0.2 }), text({ text: "Grilled tilapia", size: 0.05, y: 0.35 }), text({ text: "Chips and kachumbari", size: 0.035, y: 0.45 }), text({ text: "8,500 RWF", size: 0.07, y: 0.55 }), text({ text: "WhatsApp 0788 123 456", size: 0.04, y: 0.7 })] },
+          { seconds: 3, background: {}, layers: [text({ text: "Kigali Grill House", y: 0.3 })] },
+        ],
+      },
+      { ...o, maxLines: 2 },
+    );
+    const lines = (i: number) => spec.scenes[i].layers.filter((l) => l.kind === "text").map((l) => (l as { text: string }).text);
+    expect(lines(0)).toEqual(["Lunch offer", "Grilled tilapia", "8,500 RWF", "WhatsApp 0788 123 456"]);
+    expect(lines(1)).toContain("Chips and kachumbari");
+  });
+});

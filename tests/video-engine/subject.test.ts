@@ -32,13 +32,18 @@ describe("where the product is on the canvas", () => {
     expect(cut.h * 1920).toBeCloseTo(0.8 * 768, 0);
   });
 
-  it("the scene's subject: the biggest photo layer, a turntable's whole box, or an unblurred background photo", () => {
+  it("the scene's subject: the biggest photo layer, a turntable's product with its shadow (its whole box when the photo is unknown), or an unblurred background photo", () => {
     const bg = { kind: "photo" as const, colors: ["#000"], photo: 1 };
     expect(sceneSubject({ background: bg, layers: [] }, "9:16", [square])).not.toBeNull();
     expect(sceneSubject({ background: { ...bg, blur: 20 }, layers: [] }, "9:16", [square])).toBeNull();
     const tt = { kind: "photo" as const, photo: 1, x: 0.5, y: 0.5, w: 0.7, h: 0.5, turntable: { spin: 1 } };
     const t = sceneSubject({ background: { kind: "solid", colors: ["#000"] }, layers: [tt] }, "9:16", [square])!;
-    for (const [k, v] of Object.entries({ x: 0.15, y: 0.25, w: 0.7, h: 0.5 })) expect(t[k as "x"]).toBeCloseTo(v, 9);
+    // The product on its turntable, inside the box, with the shadow under it but not the whole reflection.
+    expect(t.y).toBeGreaterThanOrEqual(0.25 - 1e-9);
+    expect(t.y + t.h).toBeLessThan(0.75);
+    expect(t.x).toBeGreaterThanOrEqual(0.15 - 1e-9);
+    const unknown = sceneSubject({ background: { kind: "solid", colors: ["#000"] }, layers: [tt] }, "9:16", [])!;
+    for (const [k, v] of Object.entries({ x: 0.15, y: 0.25, w: 0.7, h: 0.5 })) expect(unknown[k as "x"]).toBeCloseTo(v, 9);
     expect(DEFAULT_SUBJECT).toEqual({ x: 0.2, y: 0.2, w: 0.6, h: 0.6 });
   });
 });

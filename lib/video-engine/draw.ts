@@ -171,20 +171,24 @@ function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene
     const pose = poseAt(layer.keyframes, active.progress);
     const rect = boxOf(layer, W, H);
     const par = { ...parallax(cam, layer.depth ?? DEFAULT_DEPTH[layer.kind]) };
-    // A camera zoom moves text with the shot but never pushes it past the safe area: at most 92% of the width.
+    // A camera zoom moves text with the shot but never pushes it past the safe area: at most 92% of the width. A ring,
+    // circle, burst or blob that was inside the frame (a ring around the title) is held the same way: at most 98%.
+    const held = layer.kind === "text" || (layer.kind === "shape" && ["ring", "circle", "burst", "blob"].includes(layer.shape) && layer.w <= 0.98 && layer.h <= 0.98);
     if (layer.kind === "text") par.scale = Math.min(par.scale, Math.max(1, (W * 0.92) / Math.max(1, rect.w)));
+    else if (held) par.scale = Math.min(par.scale, Math.max(1, (W * 0.98) / Math.max(1, rect.w)), Math.max(1, (H * 0.98) / Math.max(1, rect.h)));
     // Camera: positions spread out from the centre by the zoom and shift by the pan, both weighted by depth.
     let cx = W / 2 + (rect.x + rect.w / 2 + pose.dx * W - W / 2) * par.scale + par.dx * W;
     let cy = H / 2 + (rect.y + rect.h / 2 + pose.dy * H - H / 2) * par.scale + par.dy * H;
-    if (layer.kind === "text") {
+    if (held) {
       // A camera zoom spreads layers out from the centre; it never pushes a text that was in the frame out of it
       // (a crash zoom cut the top price off). Keyframed slides from off-screen are left as they are.
       const half = { x: (rect.w * par.scale) / 2, y: (rect.h * par.scale) / 2 };
       const bx = rect.x + rect.w / 2 + pose.dx * W;
       const by = rect.y + rect.h / 2 + pose.dy * H;
       const keep = (v: number, base: number, lo: number, hi: number) => (base >= lo && base <= hi && lo <= hi ? Math.min(hi, Math.max(lo, v)) : v);
-      cx = keep(cx, bx, half.x + 0.02 * W, W - half.x - 0.02 * W);
-      cy = keep(cy, by, half.y + 0.04 * H, H - half.y - 0.04 * H);
+      const m = layer.kind === "text" ? { x: 0.02, y: 0.04 } : { x: 0.005, y: 0.005 };
+      cx = keep(cx, bx, half.x + m.x * W, W - half.x - m.x * W);
+      cy = keep(cy, by, half.y + m.y * H, H - half.y - m.y * H);
     } else if (layer.kind === "shape") {
       // A shape right behind a text (a phone bar, a price pill) follows that text's camera hold and scale, or the
       // zoom would pull them apart.
@@ -193,7 +197,11 @@ function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene
         const t = place(text);
         const ox = (layer.x - text.x) * W + pose.dx * W;
         const oy = (layer.y - text.y) * H + pose.dy * H;
-        return { pose, rect, par: { ...par, scale: t.par.scale }, cx: t.cx + ox * t.par.scale, cy: t.cy + oy * t.par.scale };
+        // A ring or badge around the text stays inside the frame too (a ring wider than its title ran off the edge).
+        const hx = (rect.w * t.par.scale) / 2;
+        const hy = (rect.h * t.par.scale) / 2;
+        const inside = (v: number, lo: number, hi: number) => (held && lo <= hi ? Math.min(hi, Math.max(lo, v)) : v);
+        return { pose, rect, par: { ...par, scale: t.par.scale }, cx: inside(t.cx + ox * t.par.scale, hx + 0.005 * W, W - hx - 0.005 * W), cy: inside(t.cy + oy * t.par.scale, hy + 0.005 * H, H - hy - 0.005 * H) };
       }
     }
     return { pose, rect, par, cx, cy };
