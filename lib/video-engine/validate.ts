@@ -409,9 +409,13 @@ export function inSafeArea(layers: Layer[], ratio: Ratio, platform: string | nul
     const y = round(Math.min(A.bottom - half, Math.max(A.top + half, l.y)));
     if (x === l.x && y === l.y && w === l.w && h === l.h) return;
     out[i] = { ...l, x, y, w, h };
-    // The shape right behind it (a phone bar, a price pill) moves with it, or the bar is left empty below the number.
+    // The shape right behind it (a phone bar, a price pill, a badge it sits on) moves with it, or the bar is left
+    // empty below the number.
     layers.forEach((s, j) => {
-      if (s.kind !== "shape" || Math.abs(s.x - l.x) > l.w / 2 || Math.abs(s.y - l.y) > l.h / 2 || s.h > l.h * 2) return;
+      if (s.kind !== "shape") return;
+      const pill = Math.abs(s.x - l.x) <= l.w / 2 && Math.abs(s.y - l.y) <= l.h / 2 && s.h <= l.h * 2;
+      const badge = ["burst", "circle", "blob"].includes(s.shape) && Math.abs(l.x - s.x) <= s.w / 2 && Math.abs(l.y - s.y) <= s.h / 2 && s.w * s.h <= 0.25;
+      if (!pill && !badge) return;
       out[j] = { ...s, x: round(s.x + x - l.x), y: round(s.y + y - l.y), w: Math.min(s.w, round(A.right - A.left)) };
     });
   });
@@ -448,7 +452,8 @@ export function apartTexts(layers: Layer[], ratio: Ratio, area: SafeArea): Layer
       if (!together(a, b) || Math.abs(a.x - b.x) >= (a.w + b.w) / 2) continue;
       const ha = drawnHeight(a, ratio) / 2;
       const hb = drawnHeight(b, ratio) / 2;
-      const overlapBy = a.y + ha + gap - (b.y - hb);
+      // Plain letters right above a pill (a column of words over the phone bar) read as touching it: a wider gap.
+      const overlapBy = a.y + ha + (!a.box && b.box ? 2 * gap : gap) - (b.y - hb);
       if (overlapBy <= 0.002) continue;
       if (b.y + hb + overlapBy <= area.bottom) move(list[k].i, overlapBy);
       else if (a.y - ha - overlapBy >= area.top) move(list[k - 1].i, -overlapBy);
@@ -744,6 +749,11 @@ export type ValidateOptions = {
   facts?: string;
   /** Text lines a scene may hold besides the price and the number (the Brain's STYLE_LIMITS for the template); none: no limit. */
   maxLines?: number;
+  /**
+   * An ad (the default) or a post on the business's own page: a post is for followers, so no quiet phone line is
+   * added, the number may show on the end card only, and no "Call or WhatsApp" is put in front of it.
+   */
+  purpose?: "ad" | "post" | null;
 };
 
 export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
@@ -788,6 +798,15 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
     }
   }
   if (opts.maxLines) keepLineLimit(all, opts.maxLines);
+  const post = opts.purpose === "post";
+  // A page post keeps the number for its end card: a number line (and its pill) in an earlier scene goes.
+  if (post) {
+    all.forEach((s, i) => {
+      if (i === all.length - 1) return;
+      const numbers = s.layers.filter((l): l is TextLayer => l.kind === "text" && /\d{3}[\s-]?\d{3}[\s-]?\d{3}|\d{9,}/.test(l.text.replace(/\+?250\s?/, "0")));
+      s.layers = s.layers.filter((l) => !numbers.includes(l as TextLayer) && !numbers.some((t) => backs(l, t)));
+    });
+  }
   const hasVideo = all.some((s) => s.layers.some((l) => l.kind === "video"));
   const minScenes = hasVideo ? 1 : SPEC_LIMITS.minScenes;
   // A scene with nothing in it (no layer, no voice line) is a dead second at most: dropped, keeping at least two.
@@ -803,26 +822,24 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
   const safe = (layers: Layer[]) => inSafeArea(layers, ratio, opts.platform ?? null);
   for (const s of scenes) {
     const tall = VERTICAL.has(ratio) || ratio === "1:1";
-    const sized = (layers: Layer[]) => (tall ? bigEnough(layers, ratio, opts.photos ?? [], opts.productMin ?? 0, area, !!opts.phone, s.camera) : layers);
-    // The product's size depends on where the text sits, and each text move can make room for (or push into) another:
-    // repeated until nothing moves (at most four times), so a second check of the result changes nothing.
-    for (let pass = 0, before = ""; pass < 4; pass++) {
+    const sized = (layers: Layer[]) => (tall ? bigEnough(layers, ratio, opts.photos ?? [], opts.productMin ?? 0, area, !!opts.phone && !post, s.camera) : layers);
+    // The product's size depends on where the text sits and the text's place on the product's size: repeated while
+    // the size repair still changes something (at most three times). Not until nothing moves at all: a band of text
+    // over a full-frame photo is restacked on every pass and would shrink a little more each time.
+    for (let pass = 0; pass === 0 || (pass < 3 && sized(s.layers) !== s.layers); pass++) {
       s.layers = sized(s.layers);
       const subject = tall ? sceneSubject(s, ratio, opts.photos ?? []) : null;
       s.layers = shapesInFrame(safe(keepOffSubject(apartTexts(safe(badgesOffProduct(s.layers, subject)), ratio, area), subject, area, ratio)));
-      const now = JSON.stringify(s.layers);
-      if (now === before) break;
-      before = now;
     }
   }
   fitLength(scenes, opts.seconds, hasVideo ? SPEC_LIMITS.minSceneSeconds * scenes.length : SPEC_LIMITS.minTotalSeconds);
   for (const s of scenes) {
     s.layers = s.layers.map((l) => readable(l, s.seconds));
     if (s.say) s.say = fitSay(s.say, s.seconds);
-    if (VERTICAL.has(ratio) && opts.phone) s.layers = withPhoneLine(s, opts.phone, palette, area, opts.platform ?? null, ratio, opts.photos ?? []);
+    if (VERTICAL.has(ratio) && opts.phone && !post) s.layers = withPhoneLine(s, opts.phone, palette, area, opts.platform ?? null, ratio, opts.photos ?? []);
     s.layers = readableOnBackground(s.layers, s.background);
   }
-  scenes[scenes.length - 1].layers = withOrderWords(scenes[scenes.length - 1].layers);
+  if (!post) scenes[scenes.length - 1].layers = withOrderWords(scenes[scenes.length - 1].layers);
   return {
     version: 1,
     title: cleanText(raw.title, 80) || "Video",

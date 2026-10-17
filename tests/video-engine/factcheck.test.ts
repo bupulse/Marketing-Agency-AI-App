@@ -132,3 +132,11 @@ describe("language warnings and preferred phrases (the brain's language check)",
     expect(briefText({ ...rwBrief, business: { name: "Nova", language: "English" } })).not.toContain("Rwandan sellers write it");
   });
 });
+
+describe("a page post brief", () => {
+  it("tells Claude a post is for followers and ends on the shop sign; an ad brief does not", () => {
+    const brief: DesignBrief = { business: { name: "Nova Phones", phone: "+250 788 300 400" }, product: { name: "Galaxy A56", price: "420,000 RWF" }, photos: [], styleId: "dark-minimal", hookId: "auto", ratio: "9:16", seconds: 8 };
+    expect(briefText({ ...brief, purpose: "post" })).toContain("Purpose: a POST on the business's own page");
+    expect(briefText(brief)).not.toContain("Purpose: a POST");
+  });
+});

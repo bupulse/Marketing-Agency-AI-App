@@ -52,6 +52,8 @@ export type DesignBrief = {
   variation?: { index: number; of: number } | null;
   /** Where the video will be posted: its safe area and best length differ (PLATFORMS). */
   platform?: Platform | null;
+  /** An ad (the default) or a post on the business's own page, for its followers (no price or contact push). */
+  purpose?: "ad" | "post" | null;
   /**
    * What works for this kind of video on this platform, from the research database (the Brain agent's brainContext,
    * docs/research/). Sent fenced as data; Claude follows it where it fits the facts.
@@ -188,6 +190,9 @@ export function briefText(brief: DesignBrief): string {
         ? `EXTEND an existing video by about ${brief.seconds} seconds. Here is its current design (data):\n<<<DESIGN\n${base}\nDESIGN>>>\nKeep all its scenes unchanged and add new scenes after them that continue the story and end with the call to action${note ? `, following this request: <<<${note}>>>` : ""}. Answer with the complete MotionSpec (old scenes plus new ones).`
         : `Make a ${brief.seconds}-second video, ratio ${brief.ratio} (${width}x${height}).`,
     brief.platform && isPlatform(brief.platform) ? `Platform: ${PLATFORMS[brief.platform]}` : "",
+    brief.purpose === "post"
+      ? "Purpose: a POST on the business's own page, for its followers (not an ad). Show the product and its story; no price push and no contact push: no phone line or 'call now' in the scenes, the number at most once on the end card. End on the shop sign (the shop name, its place). The caption may end on the shop name instead of how to order."
+      : "",
     mode === "edit" || mode === "extend" ? "" : `Template "${template.name}": ${template.direction}`,
     template.presenter && mode !== "edit" && mode !== "extend" ? "This template normally has a presenter on camera. There is no presenter yet: carry it with the product, captions written in the first person of a happy customer (only true facts), and handheld camera realism." : "",
     mode === "edit" || mode === "extend" ? "" : `Opening hook: ${hook.direction}`,
@@ -319,11 +324,11 @@ export async function designVideo(brief: DesignBrief, opts: { apiKey?: string; m
       // An edit may lengthen or shorten the video (Claude's own scene lengths, 6 to 30 s); an extend adds the asked seconds.
       const answered = rawSeconds(raw);
       const seconds = brief.mode === "edit" && brief.base ? answered || totalMs(brief.base) / 1000 : brief.mode === "extend" && brief.base ? totalMs(brief.base) / 1000 + brief.seconds : brief.seconds;
-      const spec = validateSpec(raw, { ratio: brief.base?.ratio ?? brief.ratio, photoCount: brief.photos.length, seconds, fixedLens: brief.fixedLens, photos: brief.photos.map((p) => ({ width: p.width, height: p.height, subject: p.subject ?? null })), platform: brief.platform ?? null, phone: brief.business.phone ?? null, productMin: productMinHeight(brief.styleId), facts: briefFacts(brief), maxLines: STYLE_LIMITS[templateStyle(brief.styleId)].maxLines });
+      const spec = validateSpec(raw, { ratio: brief.base?.ratio ?? brief.ratio, photoCount: brief.photos.length, seconds, fixedLens: brief.fixedLens, photos: brief.photos.map((p) => ({ width: p.width, height: p.height, subject: p.subject ?? null })), platform: brief.platform ?? null, phone: brief.business.phone ?? null, productMin: productMinHeight(brief.styleId), facts: briefFacts(brief), maxLines: STYLE_LIMITS[templateStyle(brief.styleId)].maxLines, purpose: brief.purpose ?? "ad" });
       // Facts first, then the language: price forms, English calls to action in a Kinyarwanda video, word-for-word lines.
       const language = checkLanguage(languageTextsOf(spec), brief.business.language).map((i) => ({ where: i.where, found: i.found, problem: "language" as const, message: i.message, suggestion: i.suggestion }));
       const warnings = [...factCheck(spec, brief), ...language];
-      const score = scoreDesign(spec, brief, { platform: brief.platform ?? null, voice: brief.voice ?? true });
+      const score = scoreDesign(spec, brief, { platform: brief.platform ?? null, voice: brief.voice ?? true, purpose: brief.purpose ?? "ad" });
       return { spec, usage, costUsd: sum(usage), apiEquivalentUsd: apiSum(usage), attempts: attempt, warnings, score };
     } catch (error) {
       lastError = error instanceof SpecError ? error.message : "invalid answer";

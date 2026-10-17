@@ -177,10 +177,29 @@ export function textHeight(t: TextLayer, ratio: Ratio): number {
 }
 
 /** The height the renderer will actually draw (it lets text grow past a short box rather than shrink it to nothing). */
-export function drawnHeight(t: Pick<TextLayer, "text" | "size" | "font" | "w" | "lineHeight" | "box">, ratio: Ratio): number {
+export function drawnHeight(t: Pick<TextLayer, "text" | "size" | "font" | "w" | "lineHeight" | "box"> & { weight?: number }, ratio: Ratio): number {
   const { width: W, height: H } = RATIOS[ratio] ?? RATIOS["9:16"];
-  const lines = Math.max(1, Math.ceil((t.text.length * t.size * (CHAR_WIDTH[t.font] ?? 0.55)) / Math.max(0.1, t.w)));
   const pad = t.box ? 1.2 * (t.box.padding ?? 0.025) : 0;
+  // Wrapped word by word, as the renderer does: a narrow column of long words takes more lines than its letters
+  // suggest ("cy'amabara" does not split), and the line breaks the text has are kept.
+  // Bold letters are wider (about 8% at weight 700 and above).
+  const perLine = Math.max(1, Math.floor(Math.max(0.1, t.w) / (t.size * (CHAR_WIDTH[t.font] ?? 0.55) * ((t.weight ?? 400) >= 700 ? 1.08 : 1))));
+  let lines = 0;
+  for (const para of t.text.split("\n")) {
+    let used = 0;
+    lines++;
+    for (const word of para.split(/\s+/).filter(Boolean)) {
+      if (used > 0 && used + 1 + word.length > perLine) {
+        lines++;
+        used = 0;
+      }
+      if (word.length > perLine) {
+        lines += Math.ceil(word.length / perLine) - 1;
+        used = word.length % perLine;
+      } else used += (used > 0 ? 1 : 0) + word.length;
+    }
+  }
+  lines = Math.max(1, lines);
   return ((lines * t.size * (t.lineHeight ?? 1.12) + pad) * W) / H + 0.01;
 }
 
@@ -214,7 +233,7 @@ export function badgesOffProduct(layers: Layer[], subject: Box | null): Layer[] 
 export function keepOffSubject(layers: Layer[], subject: Box | null, safe: { top: number; bottom: number }, ratio: Ratio = "9:16"): Layer[] {
   if (!subject) return layers;
   const texts = layers.map((l, i) => ({ l, i })).filter((t): t is { l: TextLayer; i: number } => t.l.kind === "text" && !isBackdropWord(t.l));
-  const hits = texts.filter((t) => overlap(boxOf(t.l), subject) > area(boxOf(t.l)) * OVERLAP_ALLOWED);
+  let hits = texts.filter((t) => overlap(boxOf(t.l), subject) > area(boxOf(t.l)) * OVERLAP_ALLOWED);
   if (hits.length === 0) return layers;
   let top: [number, number] = [safe.top, subject.y - GAP];
   let bottom: [number, number] = [subject.y + subject.h + GAP, safe.bottom];
@@ -222,6 +241,14 @@ export function keepOffSubject(layers: Layer[], subject: Box | null, safe: { top
   if (fullFrame) {
     top = [safe.top, Math.max(safe.top + 0.1, FULL_FRAME_BANDS.top[1])];
     bottom = [Math.min(safe.bottom - 0.1, FULL_FRAME_BANDS.bottom[0]), safe.bottom];
+    // Over a full-frame product every line lies on it: a line already in a band, in its caption box, is settled.
+    // Restacked again on each check (an edit, a re-shape), the band would shrink a little more every time.
+    const settled = (t: TextLayer) => {
+      const half = drawnHeight(t, ratio) / 2;
+      return !!t.box && [top, bottom].some((b) => t.y - half >= b[0] - 0.005 && t.y + half <= b[1] + 0.005);
+    };
+    hits = hits.filter((t) => !settled(t.l));
+    if (hits.length === 0) return layers;
   }
   const centre = subject.y + subject.h / 2;
   const roomy = (band: [number, number]) => band[1] - band[0] >= 0.06;
@@ -278,8 +305,9 @@ export function keepOffSubject(layers: Layer[], subject: Box | null, safe: { top
     const gaps = GAP * (members.length - 1);
     const heights = members.reduce((s, m) => s + tight(m), 0);
     const room = band[1] - band[0];
-    // Shrink only what does not fit, never below 0.7 (a little rounding slack, so a repaired band is left as it is).
-    const k = heights + gaps > room + 0.003 ? Math.max(0.7, (room - gaps) / heights) : 1;
+    // Shrink only what does not fit, never below 0.7 (with slack for rounding and the wrap estimate, so a repaired
+    // band is left as it is on the next pass).
+    const k = heights + gaps > room + 0.01 ? Math.max(0.7, (room - gaps) / heights) : 1;
     // Top band stacks from its top; bottom band ends at its bottom (where the call to action is read).
     let y = name === "top" ? band[0] : band[1] - Math.min(heights * k + gaps, room);
     for (const m of members) {

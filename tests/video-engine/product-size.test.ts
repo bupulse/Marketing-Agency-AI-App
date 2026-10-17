@@ -137,3 +137,29 @@ describe("no invented ratings, and the template's line limit", () => {
     expect(lines(1)).toContain("Chips and kachumbari");
   });
 });
+
+describe("page posts (purpose post)", () => {
+  const raw = {
+    palette: {},
+    scenes: [
+      { seconds: 3, background: {}, layers: [text({ text: "New kitenge prints", y: 0.3 }), text({ text: "WhatsApp 0788 123 456", y: 0.7, size: 0.035 })] },
+      { seconds: 3, background: {}, layers: [text({ text: "Made in Kigali", y: 0.3 })] },
+      { seconds: 3, background: {}, layers: [text({ text: "E2E Starter Test", y: 0.4 }), text({ text: "0788 123 456", y: 0.6 })] },
+    ],
+  };
+  const o = { ratio: "9:16" as const, photoCount: 0, seconds: 9, phone: "+250788123456" };
+  const texts = (spec: ReturnType<typeof validateSpec>, i: number) => spec.scenes[i].layers.filter((l) => l.kind === "text").map((l) => (l as { text: string }).text);
+
+  it("a post shows the number on the end card only: no quiet line added, earlier number lines removed, no 'Call or WhatsApp' push", () => {
+    const post = validateSpec(raw, { ...o, purpose: "post" });
+    expect(texts(post, 0)).toEqual(["New kitenge prints"]);
+    expect(texts(post, 1)).toEqual(["Made in Kigali"]);
+    expect(texts(post, 2)).toEqual(["E2E Starter Test", "0788 123 456"]);
+  });
+
+  it("an ad is unchanged: the quiet line in every scene and the labelled number at the end", () => {
+    const ad = validateSpec(raw, o);
+    expect(texts(ad, 1).some((t) => t.includes("0788 123 456"))).toBe(true);
+    expect(texts(ad, 2)).toContain("Call or WhatsApp 0788 123 456");
+  });
+});
