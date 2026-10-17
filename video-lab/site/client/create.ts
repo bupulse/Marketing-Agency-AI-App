@@ -8,7 +8,7 @@ import { canvasSize, totalMs, type MotionSpec, type Quality } from "@/lib/video-
 import { openVideoFrames } from "@/lib/video-engine/video-frames";
 import type { VoiceCue } from "@/lib/video-engine/voice";
 import { carousel } from "./carousel";
-import { categoryName } from "./i18n";
+import { categoryName, translate } from "./i18n";
 import { setupInspire, showInspire } from "./inspire";
 import { loadPricing, modelById, wireExamples } from "./models";
 import { $, api, el, refreshWallet } from "./site";
@@ -411,7 +411,7 @@ function setupPills() {
       box.append(
         el("h6", { textContent: "Premium 3D" }),
         premium,
-        ...(state.premium ? [resolution, ...sound] : []),
+        ...(state.premium ? [resolution, lookLine(), ...sound] : []),
         el("p", { className: "hint", textContent: state.blender.available ? `A real 3D scene rendered in Blender on the studio computer: about 3 to 6 minutes (720p takes about twice as long), 4 to 8 seconds long. ${c["540p"]} credits at 540p, ${c["720p"]} at 720p.` : "Not available: Blender is not installed on the studio computer." }),
       );
     }
@@ -454,6 +454,16 @@ function setupPills() {
       msg(state.engine === "seedance" ? "Real video with Seedance 2.0: moving people, places and sound. 1 to 10 minutes." : "Motion video designed by Claude: instant, a few credits.");
     };
   });
+}
+
+/** "Look: Dark showroom": the look a Premium 3D clip gets for the chosen template and product (lookForTemplate). */
+function lookLine(): HTMLElement {
+  const line = el("p", { className: "hint lookLine", textContent: "…" });
+  const product = state.products.find((x) => x.id === state.productId)?.name ?? "";
+  void api<{ look: string; name: string }>(`/api/blender/look?${new URLSearchParams({ template: state.templateId, product })}`)
+    .then((l) => (line.textContent = `${translate("look.label", "Look:")} ${translate(`look.${l.look}`, l.name)}`))
+    .catch(() => line.remove());
+  return line;
 }
 
 /** A labelled checkbox for a popover. */
@@ -824,7 +834,7 @@ async function loadGens() {
       void photosFor(g.claude.photoIds ?? []).then((ph) => drawSpecFrame(c.getContext("2d") as CanvasRenderingContext2D, g.claude?.spec as MotionSpec, ph, 1500, { quality: "480p" }));
     } else if (g.pm) {
       const j = g.pm;
-      card.append(el("div", { className: "wait" }, j.status === "failed" ? el("span", { textContent: j.error ?? "Failed" }) : el("span", { className: "spin" }), el("span", { textContent: j.status === "designing" ? "Designing the 3D scene…" : j.status === "voicing" ? "Recording the voice-over…" : j.status === "rendering" ? `Rendering in Blender… ${Math.round(j.progress * 100)}%` : "" })));
+      card.append(el("div", { className: "wait" }, j.status === "failed" ? el("span", { textContent: `Failed: ${j.error ?? "the 3D clip could not be made."}` }) : el("span", { className: "spin" }), el("span", { textContent: j.status === "designing" ? "Designing the 3D scene…" : j.status === "voicing" ? "Recording the voice-over…" : j.status === "rendering" ? `Rendering in Blender… ${Math.round(j.progress * 100)}%` : "" })));
     } else if (g.sd?.preview) {
       // A free preview (no BytePlus key yet): its first storyboard frame, or a spinner while it is drawn.
       if (g.status === "preview-ready") {

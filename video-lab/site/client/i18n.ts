@@ -22,6 +22,10 @@ export const T: Record<string, Entry> = {
   "nav.showcase": { fr: "Galerie", rw: "Ingero" },
   "nav.pricing": { fr: "Tarifs", rw: "Ibiciro" },
   "nav.guide": { fr: "Guide", rw: "Amabwiriza" },
+  "look.label": { fr: "Ambiance :", rw: "Isura:" },
+  "look.studio": { fr: "Showroom sombre", rw: "Icyumba cyijimye cyo kwerekaniramo" },
+  "look.daylight": { fr: "Studio en lumière du jour", rw: "Studio y'urumuri rw'umunsi" },
+  "look.neon": { fr: "Néon", rw: "Amatara ya neon" },
   "nav.home": { fr: "Accueil", rw: "Ahabanza" },
   "nav.start": { fr: "Commencer", rw: "Tangira gukora" },
   "foot.video": { fr: "Vidéo IA", rw: "Video za AI" },
@@ -207,6 +211,12 @@ const CATEGORY_NAMES: Record<string, Entry> = {
   marketplace: { fr: "Marketplace", rw: "Isoko" },
   cinematic: { fr: "Cinéma", rw: "Nka filime" },
 };
+
+/** Text a script writes (not in the HTML), in the current language; English when there is no translation. */
+export function translate(key: string, english: string): string {
+  const lang = currentLang();
+  return lang === "en" ? english : (T[key]?.[lang] ?? english);
+}
 
 /** A category's name in the current language (English from the engine otherwise). */
 export function categoryName(id: string, english: string): string {

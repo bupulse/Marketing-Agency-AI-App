@@ -6,6 +6,7 @@
 // Motion video's, given back when it fails) and a library track is chosen; both are copied into the job's photo
 // folder and Blender mixes them into the MP4 (renderBlenderScene's audio, music and jobDir).
 import { randomBytes } from "node:crypto";
+import sharp from "sharp";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { designBlenderScene } from "@/lib/video-engine/blender-design";
@@ -152,7 +153,7 @@ async function run(job: PremiumJob, input: Parameters<typeof startPremium3d>[0])
         cutout = path.join(dir, `photo-${i + 1}-cutout.png`);
         await fs.writeFile(cutout, f.cutout);
       }
-      photos.push({ image, cutout });
+      photos.push({ image, cutout, cutoutAspect: f.cutout ? await aspectOf(f.cutout) : null });
     }
     job.photoFiles = photos;
     const design = await designBlenderScene(input.brief, input.send, input.model, { photos, quality: input.quality }).catch(async (error: Error & { usage?: [] }) => {
@@ -199,12 +200,26 @@ async function render(job: PremiumJob, scene: BlenderScene): Promise<void> {
   await save(job);
 }
 
+/**
+ * A cut-out's width / height. It is trimmed to the product, so it differs from the photo's; Blender sizes the
+ * product by it (so a cut-out fills about 40% of the frame).
+ */
+async function aspectOf(png: Buffer | string): Promise<number | null> {
+  const m = await sharp(png).metadata().catch(() => null);
+  return m?.width && m.height ? Math.round((m.width / m.height) * 1000) / 1000 : null;
+}
+
 /** The photos written for a job (photo-N.jpg, and photo-N-cutout.png when there is one), in order. */
 async function photosInFolder(id: string): Promise<BlenderPhoto[]> {
   const dir = path.join(DATA, "photos", id);
   const files = await fs.readdir(dir).catch(() => [] as string[]);
   const numbers = files.map((f) => /^photo-(\d+)\.jpg$/.exec(f)?.[1]).filter((n): n is string => !!n).map(Number).sort((a, b) => a - b);
-  return numbers.map((n) => ({ image: path.join(dir, `photo-${n}.jpg`), cutout: files.includes(`photo-${n}-cutout.png`) ? path.join(dir, `photo-${n}-cutout.png`) : null }));
+  return Promise.all(
+    numbers.map(async (n) => {
+      const cutout = files.includes(`photo-${n}-cutout.png`) ? path.join(dir, `photo-${n}-cutout.png`) : null;
+      return { image: path.join(dir, `photo-${n}.jpg`), cutout, cutoutAspect: cutout ? await aspectOf(cutout) : null };
+    }),
+  );
 }
 
 /**
@@ -220,7 +235,9 @@ export async function rerenderPremium(sourceId: string, quality: PremiumQuality,
     .then((t) => JSON.parse(t) as BlenderScene)
     .catch(() => null);
   // Clips made before the photo list was kept: the same files, found in the job's own folder.
-  const photoFiles = source.photoFiles?.length ? source.photoFiles : await photosInFolder(source.id);
+  const listed = source.photoFiles?.length ? source.photoFiles : await photosInFolder(source.id);
+  // Lists kept before cut-out aspects were recorded get them now.
+  const photoFiles = await Promise.all(listed.map(async (ph) => (ph.cutout && !ph.cutoutAspect ? { ...ph, cutoutAspect: await aspectOf(ph.cutout) } : ph)));
   if (!scene || !photoFiles.length) throw new Error("This clip's scene was not kept, so it cannot be rendered again.");
   const id = `bl-${randomBytes(6).toString("hex")}`;
   await charge(PREMIUM_RERENDER_CREDITS, `Premium 3D re-render ${quality}`, id);

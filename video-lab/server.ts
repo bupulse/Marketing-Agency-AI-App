@@ -12,6 +12,7 @@ import { STYLE_LIMITS, scoreCaption, templateStyle } from "@/lib/video-engine/br
 import { firstCommentFor, planSeries, suggestHooks } from "@/lib/video-engine/brain";
 import { brainBriefFromDesign, brainContext } from "@/lib/video-engine/brain/select";
 import { blenderAvailable } from "./blender-jobs";
+import { BLENDER_LOOK_NAMES, lookForTemplate } from "@/lib/video-engine/blender-design";
 import { BLENDER_MIXES_AUDIO, getPremiumJob, listPremiumJobs, premiumVideoBytes, recoverPremiumJobs, rerenderPremium, startPremium3d } from "./premium-jobs";
 import { subscriptionTransport } from "./claude-cli";
 import { VIDEO_HOOKS } from "@/lib/video-engine/styles";
@@ -780,6 +781,11 @@ const server = http.createServer(async (req, res) => {
       }
     }
     if (req.method === "GET" && p === "/api/blender/status") return json(res, 200, { available: await blenderAvailable(), credits: { ...PREMIUM_3D_CREDITS, rerender: PREMIUM_RERENDER_CREDITS }, sound: BLENDER_MIXES_AUDIO, voiceReady: !!process.env.ELEVENLABS_API_KEY, voiceCredits: VOICE_OVER_CREDITS });
+    if (req.method === "GET" && p === "/api/blender/look") {
+      // The look a Premium 3D clip gets for this template and product (dark showroom, daylight studio or neon).
+      const look = lookForTemplate(url.searchParams.get("template") ?? "", url.searchParams.get("product") ?? "");
+      return json(res, 200, { look, name: BLENDER_LOOK_NAMES[look] });
+    }
     if (req.method === "POST" && p === "/api/blender/render") {
       // Premium 3D: Claude designs a Blender scene from the same brief as a Motion video, then Blender renders it here.
       if (!(await blenderAvailable())) return fail(res, 503, "Premium 3D needs Blender on the studio computer, and it is not installed.");
