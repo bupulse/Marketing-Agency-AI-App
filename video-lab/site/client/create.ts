@@ -217,6 +217,8 @@ async function loadHooks() {
 function renderHooks() {
   const box = $("hookChips");
   box.hidden = state.engine !== "claude" || !state.hooks.length;
+  const plan = el("button", { className: "hookChip plan", textContent: "📅 Plan a week", title: "Seven different posts for this product, one a day (free to plan; each video costs the usual credits)" });
+  plan.onclick = () => void planWeek();
   box.replaceChildren(
     el("span", { className: "muted small", textContent: "Opening line:" }),
     ...state.hooks.map((h) => {
@@ -231,7 +233,65 @@ function renderHooks() {
       };
       return b;
     }),
+    plan,
   );
+}
+
+// ---- Plan a week (the Brain's planSeries) -----------------------------------------------------------------------------
+
+type SeriesPost = { day: number; date: string | null; weekday: string | null; platform: string; hookId: string; line: string; templateId: string; seconds: number; voice: boolean; note: string; why: string };
+const PLATFORM_NAMES: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook", youtube: "YouTube Shorts" };
+
+/** Seven distinct posts for the product (free); each row's Generate makes it as a normal Motion design. */
+async function planWeek() {
+  const dlg = $("planDlg") as HTMLDialogElement;
+  const table = $("planTable");
+  const product = state.products.find((x) => x.id === state.productId);
+  $("planTitle").textContent = `Plan a week${product ? `: ${product.name}` : ""}`;
+  $("planNote").textContent = "Free to plan. Each Generate makes that day's video as a Motion design (the usual credits).";
+  table.replaceChildren(el("tr", {}, el("td", {}, el("span", { className: "spin" }))));
+  if (!dlg.open) dlg.showModal();
+  const q = new URLSearchParams({ business: state.businessId, product: state.productId, template: state.templateId, seconds: String(state.seconds), platform: state.platform ?? "", purpose: state.purpose, presenter: state.avatar ? "1" : "0" });
+  let posts: SeriesPost[] = [];
+  try {
+    posts = (await api<{ posts: SeriesPost[] }>(`/api/plan?${q}`)).posts;
+  } catch (e) {
+    table.replaceChildren(el("tr", {}, el("td", { className: "err", textContent: (e as Error).message })));
+    return;
+  }
+  const o = state.o as Options;
+  table.replaceChildren(el("tr", {}, ...["Day", "Platform", "Opening line", "Template", "Length", "Note", ""].map((h) => el("th", { textContent: h }))));
+  for (const post of posts) {
+    const go = el("button", { className: "btn sm primary", textContent: `Generate (${state.claudeCredits || "…"})` });
+    go.onclick = () => {
+      dlg.close();
+      // The row fills the form, then it is made like any Motion design.
+      setEngine("claude");
+      state.templateId = post.templateId;
+      state.platform = post.platform && post.platform !== "any" ? post.platform : null;
+      state.seconds = post.seconds;
+      state.voice = post.voice;
+      state.hookId = post.hookId;
+      state.chosenHook = { hookId: post.hookId, name: "", line: post.line, why: post.why };
+      renderPills();
+      renderTemplates();
+      void generate();
+    };
+    table.append(
+      el(
+        "tr",
+        {},
+        el("td", { textContent: post.weekday ? `${post.weekday.slice(0, 3)} ${post.date?.slice(5) ?? ""}` : `Day ${post.day}` }),
+        el("td", { textContent: PLATFORM_NAMES[post.platform] ?? "Any" }),
+        el("td", { textContent: post.line, title: post.why }),
+        el("td", { textContent: o.templates.find((t) => t.id === post.templateId)?.name ?? post.templateId }),
+        el("td", { textContent: `${post.seconds} s${post.voice ? " · voice" : ""}` }),
+        el("td", { className: "muted small", textContent: post.note }),
+        el("td", {}, go),
+      ),
+    );
+  }
+  if (!posts.length) table.append(el("tr", {}, el("td", { className: "muted", textContent: "This product has too few facts for a week of different posts yet. Add a price, a phone number or more details." })));
 }
 
 // ---- Seedance checks (lib/video-engine/seedance-brain.ts, through /api/seedance/check) -------------------------------
@@ -1414,6 +1474,7 @@ async function start() {
   void showInspire(state.engine === "seedance");
   $("go").onclick = () => void generate();
   $("pickClose").onclick = () => ($("pickDlg") as HTMLDialogElement).close();
+  $("planClose").onclick = () => ($("planDlg") as HTMLDialogElement).close();
   $("dClose").onclick = () => {
     $("drawer").classList.remove("open");
     state.open = null;

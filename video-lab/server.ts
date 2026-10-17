@@ -9,7 +9,7 @@ import { cutoutForPhoto } from "./cutouts";
 import { loadReferenceSources, type StudioRef } from "./seedance-sources";
 import { prepareSeedanceReferences, type ReferenceSummary } from "./seedance-references";
 import { scoreCaption } from "@/lib/video-engine/brain/score";
-import { suggestHooks } from "@/lib/video-engine/brain";
+import { planSeries, suggestHooks } from "@/lib/video-engine/brain";
 import { brainBriefFromDesign, brainContext } from "@/lib/video-engine/brain/select";
 import { blenderAvailable } from "./blender-jobs";
 import { BLENDER_MIXES_AUDIO, getPremiumJob, listPremiumJobs, premiumVideoBytes, recoverPremiumJobs, rerenderPremium, startPremium3d } from "./premium-jobs";
@@ -23,7 +23,7 @@ import { sampleSpec } from "@/lib/video-engine/sample";
 import { closeDb, getBusiness, loadSavedKeys, listBusinesses, listProducts, musicBytes, musicFor, photoJpeg, saveUpload, uploadExists, uploadNote } from "./data-source";
 import { IMAGE_RATIOS, INFLUENCERS, SHOT_ACTIONS, addImage, generateImage, listImages, listInfluencers, makePortrait, makeShot, portraitBytes } from "./influencers";
 import MODELS from "./site/models.json";
-import { DAILY_CAP_USD, getJob, listJobs, listPreviews, newJobId, readVideo, record, savePreview, saveJob, saveVideo, spentToday, type LabJob } from "./store";
+import { DAILY_CAP_USD, getJob, kigaliDay, listJobs, listPreviews, newJobId, readVideo, record, savePreview, saveJob, saveVideo, spentToday, type LabJob } from "./store";
 import { SEEDANCE_LIMITS, SEEDANCE_MODELS, SEEDANCE_RATIOS, SEEDANCE_RESOLUTIONS, checkSeedanceConnection, estimateSeedanceUsd, type SeedanceConnection, type SeedanceReference, type SeedanceRequest, type SeedanceResolution, type SeedanceTier } from "@/lib/video-engine/seedance";
 import { BUSINESS_KINDS, SEEDANCE_FORMATS, checkSeedanceRequest, planSeedanceShots, type BusinessKind, type SeedanceFormat } from "@/lib/video-engine/seedance-brain";
 import { listSeedanceExamples } from "./seedance-mock/preview";
@@ -827,6 +827,18 @@ const server = http.createServer(async (req, res) => {
       const { brief } = await briefFor(reqd, null, { photos: false });
       // The Brain calls YouTube Shorts "shorts".
       return json(res, 200, { hooks: suggestHooks(brief, { platform: reqd.platform === "youtube" ? "shorts" : (reqd.platform ?? "any") }) });
+    }
+    if (req.method === "GET" && p === "/api/plan") {
+      // "Plan a week": seven distinct posts for this product (the Brain's planSeries; free, no AI). Each row is then
+      // generated as a normal Motion design.
+      const q = Object.fromEntries(url.searchParams);
+      const reqd = await readRequest({ businessId: q.business, productId: q.product, styleId: q.template, seconds: Number(q.seconds) || 15, platform: q.platform, mode: "text", purpose: q.purpose });
+      if ("error" in reqd) return fail(res, reqd.status, reqd.error);
+      const { brief } = await briefFor(reqd, null, { photos: false });
+      const today = kigaliDay();
+      const posts = planSeries(brief, { platform: reqd.platform === "youtube" ? "shorts" : (reqd.platform ?? "any"), count: 7, presenter: q.presenter === "1", businessId: reqd.businessId, startDay: today });
+      // The page speaks designer.ts's platform keys: the Brain's "shorts" is YouTube.
+      return json(res, 200, { posts: posts.map((x) => ({ ...x, platform: x.platform === "shorts" ? "youtube" : x.platform })) });
     }
     if (req.method === "GET" && p === "/api/images") return json(res, 200, { images: (await listImages()).map((i) => ({ ...i, url: `/api/photo/${i.id}` })) });
     if (req.method === "POST" && p === "/api/image") {
