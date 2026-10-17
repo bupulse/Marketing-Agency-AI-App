@@ -41,6 +41,34 @@ const TOLERANCE = 0.01;
 const PLATFORM_KEYS: Record<string, Platform> = { tiktok: "tiktok", instagram: "instagram", facebook: "facebook", youtube: "shorts", shorts: "shorts" };
 const platformOf = (v: string | null | undefined): Platform | "any" => (v && PLATFORM_KEYS[v]) || "any";
 
+// ---- How a template treats text and contact
+
+/**
+ * Templates are not all direct-response ads (docs/research/brain-audit.md): luxury and cinematic ones are meant to have
+ * few words and the number only at the end, list and poster ones stack several lines on purpose. The checks below use
+ * these thresholds instead of one rule for all.
+ */
+export type TemplateStyle = "direct" | "list" | "showcase" | "brand" | "luxury";
+const STYLE_BY_TEMPLATE: Record<string, TemplateStyle> = {
+  "kigali-price-first": "direct", "offer-flash": "direct", "price-drop": "direct", "tiktok-gadget": "direct", "tiktok-secret": "direct",
+  "tiktok-3-reasons": "list", "glass-cards": "list", "typography-poster": "list", "event-poster": "list", "product-hero": "list", "marketplace-listing": "list", "colour-options": "list",
+  "brand-story": "brand", "tv-spot": "brand", "kigali-market": "brand",
+  "dark-minimal": "luxury", "chrome-luxe": "luxury", "golden-hour": "luxury", "story-cinematic": "luxury",
+};
+/** The template's style; templates not listed (product shots, motion, 3D, UGC) are "showcase". */
+export const templateStyle = (id: string | null | undefined): TemplateStyle => STYLE_BY_TEMPLATE[id ?? ""] ?? "showcase";
+/**
+ * Per style: whether the number must be in every scene (always, only for Facebook, or never: the last scene is enough),
+ * how many text lines a scene may hold besides the price and the number, and whether the price must come early.
+ */
+export const STYLE_LIMITS: Record<TemplateStyle, { phoneEveryScene: "always" | "facebook" | "never"; maxLines: number; priceEarly: boolean }> = {
+  direct: { phoneEveryScene: "always", maxLines: 3, priceEarly: true },
+  list: { phoneEveryScene: "facebook", maxLines: 5, priceEarly: true },
+  showcase: { phoneEveryScene: "facebook", maxLines: 3, priceEarly: true },
+  brand: { phoneEveryScene: "never", maxLines: 3, priceEarly: false },
+  luxury: { phoneEveryScene: "never", maxLines: 2, priceEarly: false },
+};
+
 // ---- Reading text
 
 const digits = (s: string) => s.replace(/\D/g, "");
@@ -51,17 +79,20 @@ const hasPhone = (text: string, phone: string) => {
   return key.length >= 6 && digits(text).includes(key);
 };
 
-/** Phone numbers (9+ digits written with spaces, dashes or a +) taken out before amounts are read. */
-const PHONE_RUN = /\+?\(?\d[\d\s()-]{7,}\d/g;
+/**
+ * Phone numbers (9+ digits in groups split by spaces or dashes, or one run of 9 to 13 digits) taken out before amounts
+ * are read. A group never runs into a price ("0788 300 400 420,000 RWF") or across a line break.
+ */
+const PHONE_RUN = /\(?\+?\d{1,4}\)?(?:[ \t-]+\d{2,6}(?![\d,.]))+|\b\d{9,13}\b/g;
 const withoutPhones = (text: string) => text.replace(PHONE_RUN, (m) => (digits(m).length >= 9 ? " " : m));
 
 /** Money-like amounts in a text (420,000 / 420.000 / 420K / 1.2M / 15%), as numbers; phone numbers are skipped. */
 export function amounts(text: string): number[] {
   const out: number[] = [];
-  for (const m of withoutPhones(text).matchAll(/(\d{1,3}(?:[,.\s]\d{3})+|\d+(?:\.\d+)?)\s*([kKmM]\b|%)?/g)) {
+  for (const m of withoutPhones(text).matchAll(/(\d{1,3}(?:[,.]\d{3})+|\d+(?:\.\d+)?)\s*([kKmM]\b|%)?/g)) {
     const raw = m[1];
     if (digits(raw).length >= 9) continue;
-    const grouped = /^\d{1,3}([,.\s]\d{3})+$/.test(raw);
+    const grouped = /^\d{1,3}([,.]\d{3})+$/.test(raw);
     let n = grouped ? Number(digits(raw)) : Number(raw);
     if (m[2] && /k/i.test(m[2])) n *= 1_000;
     if (m[2] && /m/i.test(m[2])) n *= 1_000_000;
@@ -72,7 +103,7 @@ export function amounts(text: string): number[] {
 /** Amounts that look like money or a discount: 1,000 and up, anything with K/M, RWF/FRW or %. */
 function moneyAmounts(text: string): number[] {
   const out: number[] = [];
-  for (const m of withoutPhones(text).matchAll(/(\d{1,3}(?:[,.\s]\d{3})+|\d+(?:\.\d+)?)\s*([kKmM]\b|%|rwf|frw|ksh|kes|ugx|tzs)?/gi)) {
+  for (const m of withoutPhones(text).matchAll(/(\d{1,3}(?:[,.]\d{3})+|\d+(?:\.\d+)?)\s*([kKmM]\b|%|rwf|frw|ksh|kes|ugx|tzs)?/gi)) {
     const value = amounts(m[0])[0];
     if (value === undefined) continue;
     if (m[2] || value >= 1000) out.push(value);
@@ -154,6 +185,8 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
   const lastText = [...texts(scenes[last]).map((l) => l.text), scenes[last].say ?? ""].join(" \n ");
   const price = brief.product.price?.trim() || "";
   const phone = brief.business.phone?.trim() || "";
+  const style = templateStyle(brief.styleId);
+  const limits = STYLE_LIMITS[style];
 
   // 1. The hook: text on screen within the first 1.5 s.
   const early = scenes.flatMap((s, i) => texts(s).map((l) => ({ l, i, t: at[i] + (l.from ?? 0) * s.seconds }))).filter((x) => x.t <= 1.5);
@@ -174,10 +207,14 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
     add(i === null
       ? { id: "price-shown", rule: "price-stays", points: 12, ok: false, reason: `The price (${price}) is in the brief but never on screen.`, scene: null }
       : { id: "price-shown", rule: "price-stays", points: 12, ok: true, reason: `The price is on screen from scene ${i + 1}.`, scene: i });
-    if (i !== null) {
+    // When the price must appear: in the hook for formats whose first beat carries it (1.5 s on Facebook for direct
+    // ads, else 3 s); otherwise by the beat that first shows it (a before/after shows it after the result). Luxury and
+    // brand templates may keep it for the end.
+    const beat = pick.timeline.find((b) => /price/i.test(b.onScreen));
+    if (i !== null && limits.priceEarly && beat) {
       const t = at[i] + Math.min(...texts(scenes[i]).filter((l) => shows(l.text)).map((l) => (l.from ?? 0) * scenes[i].seconds));
-      const by = platform === "facebook" ? 1.5 : 3;
-      add({ id: "price-early", rule: "price-first-frame", points: platform === "facebook" ? 8 : 5, ok: t <= by, reason: t <= by ? `The price appears at ${t.toFixed(1)} s.` : `The price first appears at ${t.toFixed(1)} s; show it in the first ${by} s (top third).`, scene: i });
+      const by = beat.role === "hook" ? (platform === "facebook" && style === "direct" ? 1.5 : 3) : beat.from + 1;
+      add({ id: "price-early", rule: "price-first-frame", points: platform === "facebook" ? 8 : 5, ok: t <= by, reason: t <= by ? `The price appears at ${t.toFixed(1)} s.` : `The price first appears at ${t.toFixed(1)} s; for this format show it by ${by} s${beat.role === "hook" ? " (top third)" : ""}.`, scene: i });
     }
   }
 
@@ -187,7 +224,8 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
       ? { id: "contact-last", rule: "cta-route", points: 12, ok: true, reason: "The phone or WhatsApp number is in the last scene.", scene: last }
       : { id: "contact-last", rule: "cta-route", points: 12, ok: false, reason: `The last scene does not show the number (${phone}).`, scene: last });
     const missing = scenes.map((s, i) => (texts(s).some((l) => hasPhone(l.text, phone)) ? -1 : i)).filter((i) => i >= 0);
-    add({ id: "phone-bar", rule: "phone-bar", points: 6, ok: missing.length === 0, reason: missing.length ? `The number is missing from scene${missing.length > 1 ? "s" : ""} ${missing.map((i) => i + 1).join(", ")}; keep it on screen from 0 s to the end.` : "The number stays on screen in every scene.", scene: missing[0] ?? null });
+    const everyScene = limits.phoneEveryScene === "always" || (limits.phoneEveryScene === "facebook" && platform === "facebook");
+    if (everyScene) add({ id: "phone-bar", rule: "phone-bar", points: 6, ok: missing.length === 0, reason: missing.length ? `The number is missing from scene${missing.length > 1 ? "s" : ""} ${missing.map((i) => i + 1).join(", ")}; keep it on screen from 0 s to the end.` : "The number stays on screen in every scene.", scene: missing[0] ?? null });
   } else {
     add({ id: "contact-last", rule: "cta-route", points: 12, ok: ROUTE.test(lastText), reason: ROUTE.test(lastText) ? "The last scene names a way to order." : "The last scene does not say how to order (WhatsApp, call, visit, the website).", scene: last });
   }
@@ -200,19 +238,28 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
   // 5. Text inside the platform's safe area.
   const vertical = spec.ratio === "9:16" || spec.ratio === "3:4" || spec.ratio === "4:5";
   const area = vertical ? SAFE_AREAS[platform] : WIDE_AREA;
-  const outside = scenes.flatMap((s, i) =>
-    texts(s)
-      .filter((l) => l.y - l.h / 2 < area.top - TOLERANCE || l.y + l.h / 2 > area.bottom + TOLERANCE || l.x - l.w / 2 < area.left - TOLERANCE || l.x + l.w / 2 > area.right + TOLERANCE)
-      .map((l) => ({ l, i })),
-  );
-  add({ id: "safe-area", rule: "text-placement", points: 10, ok: outside.length === 0, reason: outside.length ? `"${snippet(outside[0].l.text)}" in scene ${outside[0].i + 1} goes outside the safe area (${platform === "any" ? "the apps' edges" : platform}: y ${area.top} to ${area.bottom}, x ${area.left} to ${area.right})${outside.length > 1 ? `, and ${outside.length - 1} more` : ""}.` : "All text is inside the safe area.", scene: outside[0]?.i ?? null });
+  const outsideArea = (l: TextLayer) => l.y - l.h / 2 < area.top - TOLERANCE || l.y + l.h / 2 > area.bottom + TOLERANCE || l.x - l.w / 2 < area.left - TOLERANCE || l.x + l.w / 2 > area.right + TOLERANCE;
+  const offCanvas = (l: TextLayer) => l.x - l.w / 2 < 0 || l.x + l.w / 2 > 1 || l.y - l.h / 2 < 0 || l.y + l.h / 2 > 1;
+  const contact = (l: TextLayer) => (phone && hasPhone(l.text, phone)) || (price && amounts(l.text).some((v) => amounts(price).includes(v))) || CTA_VERB.test(l.text);
+  const outside = scenes.flatMap((s, i) => texts(s).filter(outsideArea).map((l) => ({ l, i })));
+  const box = `${platform === "any" ? "the apps' edges" : platform}: y ${area.top} to ${area.bottom}, x ${area.left} to ${area.right}`;
+  const describe = (list: typeof outside) => `"${snippet(list[0].l.text)}" in scene ${list[0].i + 1}${list.length > 1 ? ` and ${list.length - 1} more` : ""}`;
+  // The price, the number and the call to action must never sit under the app's buttons; other text matters less, and
+  // a giant word that runs off the canvas on purpose (cut by the frame edge) is a design choice, not a mistake.
+  const hidden = outside.filter((x) => contact(x.l));
+  const strays = outside.filter((x) => !contact(x.l) && !offCanvas(x.l));
+  add({ id: "safe-area-contact", rule: "text-placement", points: 7, ok: hidden.length === 0, reason: hidden.length ? `${describe(hidden)}: the price, number or call to action goes under the app's buttons (${box}).` : "The price, number and call to action are inside the safe area.", scene: hidden[0]?.i ?? null });
+  add({ id: "safe-area", rule: "text-placement", points: 3, ok: strays.length === 0, reason: strays.length ? `${describe(strays)} goes outside the safe area (${box}).` : "All other text is inside the safe area.", scene: strays[0]?.i ?? null });
 
   // 6. Length and scene count for the format.
   const [lo, hi] = pick.length.range;
-  const okLength = total >= Math.max(6, Math.min(lo, 30)) - 0.5 && total <= Math.min(30, hi) + 0.5;
-  add({ id: "length", rule: "length", points: 6, ok: okLength, reason: okLength ? `${total} s fits ${pick.format.name.toLowerCase()} (${lo} to ${hi} s).` : `${total} s is outside ${lo} to ${Math.min(30, hi)} s for ${pick.format.name.toLowerCase()}${platform === "any" ? "" : ` on ${platform}`}.`, scene: null });
+  // The length is the owner's (or the template's) choice: a design that keeps the requested length passes.
+  const asked = brief.seconds && Math.abs(total - brief.seconds) <= 1.5;
+  const inRange = total >= Math.max(6, Math.min(lo, 30)) - 0.5 && total <= Math.min(30, hi) + 0.5;
+  add({ id: "length", rule: "length", points: 6, ok: !!asked || inRange, reason: asked ? `${total} s, the requested length${inRange ? "" : ` (the research range for ${pick.format.name.toLowerCase()} is ${lo} to ${hi} s)`}.` : inRange ? `${total} s fits ${pick.format.name.toLowerCase()} (${lo} to ${hi} s).` : `${total} s is outside ${lo} to ${Math.min(30, hi)} s for ${pick.format.name.toLowerCase()}${platform === "any" ? "" : ` on ${platform}`}.`, scene: null });
+  // Scenes: one fewer to two more than the format's beats, or as many as its cut rhythm allows (kinetic type: many).
   const beats = pick.timeline.length;
-  const [sLo, sHi] = [Math.max(2, beats - 1), Math.min(8, beats + 2)];
+  const [sLo, sHi] = [Math.max(2, beats - 1), Math.min(8, Math.max(beats + 2, Math.ceil((pick.format.cutsPer10s[1] * total) / 10)))];
   add({ id: "scene-count", rule: "cut-rhythm", points: 5, ok: scenes.length >= sLo && scenes.length <= sHi, reason: scenes.length >= sLo && scenes.length <= sHi ? `${scenes.length} scenes for ${beats} beats.` : `${scenes.length} scenes; ${pick.format.name.toLowerCase()} at ${total} s works with ${sLo} to ${sHi} (${beats} beats).`, scene: null });
 
   // 7. A say line per scene when the voice is on.
@@ -227,8 +274,8 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
   const wordy = scenes.flatMap((s, i) => texts(s).filter((l) => words(l.text) > 12).map((l) => ({ l, i })));
   add({ id: "text-length", rule: "two-lines", points: 5, ok: wordy.length === 0, reason: wordy.length ? `"${snippet(wordy[0].l.text)}" in scene ${wordy[0].i + 1} has ${words(wordy[0].l.text)} words; keep lines to about 10.` : "Every text line is short.", scene: wordy[0]?.i ?? null });
   const fixed = (l: TextLayer) => (phone && hasPhone(l.text, phone)) || (price && amounts(l.text).some((v) => amounts(price).includes(v)));
-  const crowded = scenes.map((s, i) => ({ i, n: texts(s).filter((l) => !fixed(l)).length })).filter((x) => x.n > 3);
-  add({ id: "text-crowd", rule: "two-lines", points: 4, ok: crowded.length === 0, reason: crowded.length ? `Scene ${crowded[0].i + 1} has ${crowded[0].n} text lines besides the price and number; at most 2 or 3.` : "No scene is crowded with text.", scene: crowded[0]?.i ?? null });
+  const crowded = scenes.map((s, i) => ({ i, n: texts(s).filter((l) => !fixed(l)).length })).filter((x) => x.n > limits.maxLines);
+  add({ id: "text-crowd", rule: "two-lines", points: 4, ok: crowded.length === 0, reason: crowded.length ? `Scene ${crowded[0].i + 1} has ${crowded[0].n} text lines besides the price and number; a ${style} template keeps to ${limits.maxLines}.` : "No scene is crowded with text.", scene: crowded[0]?.i ?? null });
 
   // 9. The post caption.
   const caption = `${spec.caption ?? ""} ${(spec.hashtags ?? []).join(" ")}`;

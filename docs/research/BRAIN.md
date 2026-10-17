@@ -154,7 +154,7 @@ engine can compare templates. It only checks what a program can measure; taste i
   exist; no spoken line without sound or in Kinyarwanda or Swahili; a clean hero shot at the end.
 
 Each failed check says which rule it enforces, why, and in which scene. Checks that do not apply (a price check with
-no price) are left out of the 100. BuPulse's own Seedance shot plans score 100; the hand-made sample design scores 85
+no price) are left out of the 100. BuPulse's own Seedance shot plans score 100; the hand-made sample design scores 90
 (the price comes late, one line sits too low, and its caption lacks the price).
 
 ## Scoring a caption

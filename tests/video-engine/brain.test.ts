@@ -3,14 +3,14 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { BRAIN, FORMATS, PLATFORMS, RESEARCH_SOURCES, SECTORS, checkBrain, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
 import { evidenceFromRows, parseCount, parseDate, parseJsonl, rowKey, rowStrength, tiktokDate, variantsLive } from "@/lib/video-engine/brain/ingest";
-import { amounts, hasKinyarwanda, scoreCaption, scoreDesign, scoreSeedancePrompt, type ScoreBrief } from "@/lib/video-engine/brain/score";
+import { SAFE_AREAS, amounts, hasKinyarwanda, scoreCaption, scoreDesign, scoreSeedancePrompt, templateStyle, type ScoreBrief } from "@/lib/video-engine/brain/score";
 import { CONTEXT_MAX_CHARS, ENGINE_SECONDS, brainBriefFromDesign, brainBriefFromPrompt, brainContext, brainFor, formatFromTemplate, scaleTimeline, sectorFromText } from "@/lib/video-engine/brain/select";
 import type { DesignBrief } from "@/lib/video-engine/designer";
 import { BUSINESS_KINDS, SEEDANCE_FORMATS, planSeedanceShots } from "@/lib/video-engine/seedance-brain";
 import { sampleSpec } from "@/lib/video-engine/sample";
 import type { MotionSpec, Scene } from "@/lib/video-engine/spec";
 import type { PromptBrief } from "@/lib/video-engine/seedance-prompt";
-import { VIDEO_TEMPLATES } from "@/lib/video-engine/templates";
+import { VIDEO_TEMPLATES, templateById } from "@/lib/video-engine/templates";
 
 const REELS = path.join(process.cwd(), "docs/research/reels");
 const refs = { claudeTemplates: VIDEO_TEMPLATES.map((t) => t.id), seedanceFormats: SEEDANCE_FORMATS.map((f) => f.id), seedanceKinds: BUSINESS_KINDS.map((k) => k.id) };
@@ -321,7 +321,7 @@ describe("scoring a design", () => {
     const r = scoreDesign(spec, { business: { name: "Nova Phones" }, product: { name: "Galaxy A56", price: "420,000 RWF" } }, { voice: true });
     expect(r.failed.map((f) => f.id).sort()).toEqual(["caption", "price-early", "safe-area"]);
     expect(r.failed.find((f) => f.id === "safe-area")!.scene).toBe(1);
-    expect(r.score).toBe(85);
+    expect(r.score).toBe(90);
     const noPrice = scoreDesign(spec, { business: { name: "Nova Phones" }, product: { name: "Galaxy A56" } });
     expect([...noPrice.passed, ...noPrice.failed].map((c) => c.id)).not.toContain("price-shown");
     expect([...noPrice.passed, ...noPrice.failed].map((c) => c.id)).not.toContain("say-lines");
@@ -336,6 +336,9 @@ describe("scoring a design", () => {
   it("reads amounts and skips phone numbers", () => {
     expect(amounts("420K, 420,000 RWF, 1.2M, 15%")).toEqual([420_000, 420_000, 1_200_000, 15]);
     expect(amounts("Call 0788 300 400 or +250 788 300 400")).toEqual([]);
+    expect(amounts("WhatsApp 0788 300 400\n420,000 RWF")).toEqual([420_000]);
+    expect(amounts("Samsung Galaxy A56 420,000 RWF")).toEqual([56, 420_000]);
+    expect(amounts("+250-739-095040 or (+250)788861575")).toEqual([250]);
   });
 });
 
@@ -502,5 +505,120 @@ describe.runIf(process.env.BRAIN_SAMPLES)("brain samples", () => {
     ].join("\n");
     fs.writeFileSync(path.join(process.cwd(), "docs/research/brain-samples.md"), doc);
     for (const s of samples) expect(s.text.length).toBeLessThanOrEqual(CONTEXT_MAX_CHARS);
+  });
+});
+
+// The judgement part of docs/research/brain-audit.md (17 October 2026), kept with the generator so a rerun keeps it.
+const AUDIT_FINDINGS = `## Whose fault (17 October 2026)
+
+### The designer's (for the motion engine: designer.ts and the templates)
+
+1. **The platform never reached the designer.** The sweep briefs had no platform field, so the designer used its default safe area
+   (bottom 0.82, right 0.93): phone bars end at y 0.82 to 0.83 and text reaches x 0.90 to 0.93. Instagram and TikTok cover
+   the bottom 20%, and TikTok and Shorts cover the right edge, so 27 of 33 designs put the price, the number or the call to
+   action under the app's buttons. Fixes: pass the platform field in every brief (DesignBrief already has it); when none is given,
+   make the default the strictest common box (y 0.12 to 0.78, x 0.07 to 0.85) and say "the phone bar ends at y 0.78 at the
+   latest". Text outside even the designer's own default box (the "outside own box" column: kinetic-type 10, macro-detail 9,
+   product-hero 9, showroom-turntable 8, colour-options 8) is a plain miss; validate.ts could pull such boxes inside.
+2. **Voice lines too long for their scenes** (15 of 33): 8 to 13 words for 1.3 to 3 s. The prompt says about 2.5 words a
+   second; it should give the counts outright ("2 s: at most 5 words; 3 s: at most 7") or the validator should stretch the
+   scene or flag the line.
+3. **Captions:** start with the product and the price (5 of 33 did not); always include the price when the brief has one
+   (dark-minimal, hypermotion left it out); always say how to order (offer-flash did not); hashtags by platform: Facebook 0
+   to 3, TikTok and Instagram 4 to 6, Shorts 1 to 3 (all six Facebook designs wrote 5 or 6).
+4. **offer-flash** is a direct offer ad but dropped the number in scenes 2 to 4: its template direction should ask for the
+   phone bar from the first frame to the last, as kigali-price-first does.
+5. **Few words where the template says so:** golden-hour put four lines in one scene; luxury and cinematic directions should
+   say "at most two short lines per scene; the features go in the voice". Showcase templates stacked three features and a
+   tagline in one scene (ice-splash, ugc-before-after): one feature per scene.
+6. **Template lengths** (templates.ts seconds, an owner decision): colour-options 10 s, tiktok-secret 10 s, marketplace-listing,
+   offer-flash, tiktok-gadget and ugc-pov 12 s are below the research range for their platform (15 to 25 s for products,
+   offers and UGC on TikTok and Facebook). The scorer no longer counts this against a design that keeps the requested length.
+
+### The scorer's (fixed in brain/score.ts)
+
+Before these fixes the same 33 designs averaged 89.3 (design) and 96.3 (caption).
+
+1. **The number in every scene** is now asked only of direct-response templates (and of list and showcase templates on
+   Facebook). Luxury, brand and cinematic templates (dark-minimal, chrome-luxe, golden-hour, story-cinematic, brand-story,
+   tv-spot, kigali-market) only need it in the last scene: 9 false misses gone.
+2. **Lines per scene** by style: luxury 2, direct, brand and showcase 3, list, poster and card templates 5 (glass-cards,
+   typography-poster, event-poster, product-hero, tiktok-3-reasons, the marketplace templates).
+3. **The price early** follows the format: in the hook only when the format's first beat carries it (1.5 s on Facebook for
+   direct ads), otherwise by the beat that shows it (a before/after shows it after the result); luxury and brand templates
+   may keep it for the end.
+4. **Length:** a design that keeps the requested length passes; the research range is a template question, not the design's.
+5. **Scene count** follows the format's cut rhythm (kinetic typography may use up to 8 scenes in 10 s).
+6. **Safe area** is split: the price, the number or the call to action under the app's buttons costs 7 points; other text 3;
+   a giant word that runs off the canvas on purpose is not counted.
+7. **Two reading bugs:** "Galaxy A56 420,000 RWF" was read as 56,420,000, and a phone number on one line swallowed the price
+   on the next. Both made false "invented fact" misses.
+`;
+
+// Writes docs/research/brain-audit.md: the brain's scorers over the motion engine's template sweep. Run with the sweep:
+//   BRAIN_AUDIT=/path/to/quality/sweep/final npx vitest run tests/video-engine/brain.test.ts -t "brain audit"
+describe.runIf(process.env.BRAIN_AUDIT)("brain audit", () => {
+  it("writes docs/research/brain-audit.md", () => {
+    const dir = process.env.BRAIN_AUDIT!;
+    // The brief the sweep used (Nova Phones Kigali, Galaxy A56; quality/score-entry.ts).
+    const nova = {
+      business: { name: "Nova Phones Kigali", description: "We sell new and refurbished smartphones, chargers and accessories in Kigali, with a one-year warranty.", language: "English", phone: "+250 788 300 400", country: "Rwanda" },
+      product: { name: "Samsung Galaxy A56", summary: "Samsung Galaxy A56 5G, 8 GB RAM, 256 GB, in stock now in black, light blue and pink.", price: "420,000 RWF", usps: ["Genuine with 12-month warranty", "Pay with MoMo, instalments available"], features: ["6.7-inch AMOLED screen", "50 MP camera", "5,000 mAh battery"] },
+    };
+    const platformOf = (category: string) => (category === "tiktok" ? "tiktok" : category === "marketplace" || category === "ads" ? "facebook" : "instagram");
+    const any = SAFE_AREAS.any;
+    const rows = fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(".json"))
+      .map((f) => {
+        const d = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")) as { spec: MotionSpec; template: string; category: string };
+        const platform = platformOf(d.category);
+        const brief: ScoreBrief = { ...nova, styleId: d.template, seconds: templateById(d.template).seconds ?? 12, platform };
+        const design = scoreDesign(d.spec, brief, { voice: true });
+        const caption = scoreCaption(d.spec.caption, d.spec.hashtags, brief);
+        // Text outside the designer's own default box (no platform given), whatever the platform.
+        const ownBox = d.spec.scenes.flatMap((sc) => sc.layers).filter((l) => l.kind === "text" && (l.y - l.h / 2 < any.top - 0.01 || l.y + l.h / 2 > any.bottom + 0.01 || l.x - l.w / 2 < any.left - 0.01 || l.x + l.w / 2 > any.right + 0.01) && l.x - l.w / 2 >= 0 && l.x + l.w / 2 <= 1).length;
+        return { template: d.template, category: d.category, platform, style: templateStyle(d.template), design, caption, ownBox };
+      })
+      .sort((a, z) => a.design.score - z.design.score || a.template.localeCompare(z.template));
+    const misses = new Map<string, { n: number; reason: string; where: string[] }>();
+    for (const r of rows)
+      for (const f of [...r.design.failed.map((x) => ({ ...x, kind: "design" })), ...r.caption.failed.map((x) => ({ ...x, kind: "caption" }))]) {
+        const key = `${f.kind} ${f.id}`;
+        const m = misses.get(key) ?? { n: 0, reason: f.reason, where: [] };
+        m.n++;
+        m.where.push(r.template);
+        misses.set(key, m);
+      }
+    const top = [...misses.entries()].sort((a, z) => z[1].n - a[1].n || a[0].localeCompare(z[0]));
+    const mean = (xs: number[]) => Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10;
+    const doc = [
+      "# Brain audit of the 33-template sweep",
+      "",
+      "The motion engine's sweep (every template once, Samsung Galaxy A56 at Nova Phones Kigali, 420,000 RWF, WhatsApp, the brain's",
+      "research block on) scored with the brain's own scorers (`lib/video-engine/brain/score.ts`): `scoreDesign` with the voice on, and",
+      "`scoreCaption`. Platform by template category: TikTok for the TikTok templates, Facebook for marketplace and ads, Instagram",
+      "otherwise. **The sweep briefs carried no platform**, so the designer used its default safe area (y 0.12 to 0.82, x 0.07 to 0.93)",
+      "and default hashtags; the column \"outside own box\" counts text outside that default, which is the designer's own rule.",
+      "",
+      `Made by \`BRAIN_AUDIT=<sweep dir> npx vitest run tests/video-engine/brain.test.ts -t "brain audit"\`. Means: design ${mean(rows.map((r) => r.design.score))}, caption ${mean(rows.map((r) => r.caption.score))}.`,
+      "",
+      "| Template | Category | Platform | Style | Design | Caption | Outside own box | Design misses | Caption misses |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+      ...[...rows].sort((a, z) => a.template.localeCompare(z.template)).map((r) => `| ${r.template} | ${r.category} | ${r.platform} | ${r.style} | ${r.design.score} | ${r.caption.score} | ${r.ownBox} | ${r.design.failed.map((f) => f.id).join(", ") || "none"} | ${r.caption.failed.map((f) => f.id).join(", ") || "none"} |`),
+      "",
+      "## The three most common misses",
+      "",
+      ...top.slice(0, 3).map(([key, m], i) => `${i + 1}. **${key}** in ${m.n} of ${rows.length} designs. Example: ${m.reason}`),
+      "",
+      "All misses by count: " + top.map(([key, m]) => `${key} ${m.n}`).join(", ") + ".",
+      "",
+      "## The five lowest designs",
+      "",
+      ...rows.slice(0, 5).flatMap((r) => [`**${r.template}** (${r.category}, ${r.platform}, ${r.style}): design ${r.design.score}, caption ${r.caption.score}.`, "", ...[...r.design.failed, ...r.caption.failed].map((f) => `- ${f.id}${f.scene !== null ? ` (scene ${f.scene + 1})` : ""}: ${f.reason}`), ""]),
+      AUDIT_FINDINGS,
+    ].join("\n");
+    fs.writeFileSync(path.join(process.cwd(), "docs/research/brain-audit.md"), `${doc}\n`);
+    expect(rows.length).toBe(33);
   });
 });
