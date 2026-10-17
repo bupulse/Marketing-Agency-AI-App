@@ -13,28 +13,8 @@ import type { PromptBrief } from "./seedance-prompt";
 import { RATIOS, SPEC_LIMITS, YOUTUBE_MIDDLE_BAND, isRatio, type Layer, type MotionSpec, type Ratio, type Scene, type TextLayer } from "./spec";
 import { localPhone } from "./validate";
 
-/**
- * The clip as a layer. `start` is where in the clip this scene begins (seconds), so consecutive scenes play the clip
- * straight through; `sound` keeps the clip's own audio (Seedance's ambient sound and lines) under any music.
- */
-export type VideoLayer = {
-  kind: "video";
-  url: string;
-  fit: "cover" | "contain";
-  start: number;
-  sound?: boolean;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  from?: number;
-  to?: number;
-  depth?: number;
-};
-export type OverlayLayer = Layer | VideoLayer;
-export type OverlayScene = Omit<Scene, "layers"> & { layers: OverlayLayer[] };
-/** A MotionSpec whose scenes may hold a video layer (spec.ts gains the kind when the motion engine wires it). */
-export type OverlaySpec = Omit<MotionSpec, "scenes"> & { scenes: OverlayScene[] };
+// The clip is a spec.ts VideoLayer: `start` is where in the clip each scene begins (seconds), so consecutive scenes play
+// the clip straight through; `sound` keeps the clip's own audio (Seedance's ambient sound and lines) under any music.
 
 export type OverlayInput = {
   /** The brief the clip was made from: business (with phone), product, platform, seconds, ratio, template. */
@@ -172,7 +152,7 @@ function productShot(shots: { action: string }[], b: PromptBrief): number {
 }
 
 /** The overlay spec for a finished Seedance clip (see the file header). */
-export function seedanceOverlaySpec(input: OverlayInput): OverlaySpec {
+export function seedanceOverlaySpec(input: OverlayInput): MotionSpec {
   const b = input.brief;
   const ratio: Ratio = isRatio(b.ratio) ? b.ratio : "9:16";
   const { width, height } = RATIOS[ratio];
@@ -198,9 +178,9 @@ export function seedanceOverlaySpec(input: OverlayInput): OverlaySpec {
   const W = round(area.right - area.left);
   const hook = overlayHook(b);
 
-  const scenes: OverlayScene[] = shots.map((s, i) => {
+  const scenes: Scene[] = shots.map((s, i) => {
     const seconds = round(s.to - s.from);
-    const layers: OverlayLayer[] = [{ kind: "video", url: input.clipUrl, fit: "cover", start: s.from, sound: true, x: 0.5, y: 0.5, w: 1, h: 1, depth: 0 }];
+    const layers: Layer[] = [{ kind: "video", url: input.clipUrl, fit: "cover", start: s.from, sound: true, x: 0.5, y: 0.5, w: 1, h: 1, depth: 0 }];
     const texts: TextLayer[] = [];
     let top = area.top;
     // The hook, in the first 3 s (on every scene that starts before then, while it has time to be read there).

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { safeAreaFor } from "@/lib/video-engine/brain";
 import { hasKinyarwanda } from "@/lib/video-engine/brain/score";
-import { overlayHook, overlayTimings, seedanceOverlayCaption, seedanceOverlaySpec, type OverlaySpec, type VideoLayer } from "@/lib/video-engine/seedance-overlay";
+import { overlayHook, overlayTimings, seedanceOverlayCaption, seedanceOverlaySpec } from "@/lib/video-engine/seedance-overlay";
 import type { PromptBrief } from "@/lib/video-engine/seedance-prompt";
-import { YOUTUBE_MIDDLE_BAND, type MotionSpec, type TextLayer } from "@/lib/video-engine/spec";
+import { YOUTUBE_MIDDLE_BAND, type MotionSpec, type TextLayer, type VideoLayer } from "@/lib/video-engine/spec";
 import { validateSpec } from "@/lib/video-engine/validate";
 
 const brief = (over: Partial<PromptBrief> = {}, business: Partial<PromptBrief["business"]> = {}): PromptBrief => ({
@@ -18,8 +18,8 @@ const brief = (over: Partial<PromptBrief> = {}, business: Partial<PromptBrief["b
   ...over,
 });
 const URL = "/videos/seedance/sd-0123456789ab.mp4";
-const texts = (spec: OverlaySpec, i: number) => spec.scenes[i].layers.filter((l): l is TextLayer => l.kind === "text");
-const all = (spec: OverlaySpec) => spec.scenes.flatMap((s) => s.layers.filter((l): l is TextLayer => l.kind === "text"));
+const texts = (spec: MotionSpec, i: number) => spec.scenes[i].layers.filter((l): l is TextLayer => l.kind === "text");
+const all = (spec: MotionSpec) => spec.scenes.flatMap((s) => s.layers.filter((l): l is TextLayer => l.kind === "text"));
 const digits = (s: string) => s.replace(/\D/g, "");
 const hasPhone = (l: TextLayer) => digits(l.text).includes("788300400");
 
