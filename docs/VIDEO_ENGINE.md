@@ -305,10 +305,17 @@ pages read it). Videos are served with Range requests, so a page full of videos 
   under "Check these facts" (red: not in the product's facts; amber: only in the business description) and cards show
   "N facts to check". When the designer returns a \`score\`, the drawer and cards show "Research score N/100" and what
   it missed.
+- **Caption check (Motion):** after each design the Brain's \`scoreCaption\` checks the post caption and hashtags for
+  the platform; the job keeps \`captionScore\` and \`captionMissed\` (an edit or extend with the same caption keeps the
+  parent's). The drawer shows "Caption check N/100", the caption and what it misses; cards under 70 get a badge.
+- **Premium 3D sound (prepared):** a "Recording the voice-over…" step between design and render makes the scene's
+  spoken line with ElevenLabs (10 credits, given back when it fails or the take is reused) and picks a library track,
+  both kept in the job's folder. It is switched off (\`BLENDER_MIXES_AUDIO\` in \`video-lab/premium-jobs.ts\`) until
+  \`renderBlenderScene\` mixes sound in: until then clips are silent and the menu says so.
 - **Generations and the drawer:** every card shows a poster (the MP4 one second in, the live first frame of a design,
   or a storyboard frame with its name in a bar underneath). The drawer is two columns: the player as tall as the screen
   allows on the left (the finished MP4 with its voice when there is one, else the live preview), the details on the
-  right. The hero carousel shows 7 real clips (5 MP4s were made on 17 October through the page, 1080p with voice-over:
+  right. The hero carousel shows 7 real clips (only the centre one plays; the others show a still) (5 MP4s were made on 17 October through the page, 1080p with voice-over:
   Launch party, 3D title drop, Kigali price-first, Showroom turntable and Floating product reveal). Cut-outs are asked
   for only when they exist or were never tried (`GET /api/cutouts`; `/api/products` marks each photo `cutout`
   true, false or null), so the console shows no 404 per photo.

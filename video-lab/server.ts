@@ -6,8 +6,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { DESIGNER_MODEL, DESIGN_MODES, DesignError, apiSum, apiTransport, designVideo, estimateDesignCost, isPlatform, maxDesignCost, type BriefPhoto, type DesignBrief, type DesignMode, type DesignUsage, type Platform } from "@/lib/video-engine/designer";
 import { cutoutForPhoto } from "./cutouts";
+import { scoreCaption } from "@/lib/video-engine/brain/score";
 import { blenderAvailable } from "./blender-jobs";
-import { getPremiumJob, listPremiumJobs, premiumVideoBytes, recoverPremiumJobs, startPremium3d } from "./premium-jobs";
+import { BLENDER_MIXES_AUDIO, getPremiumJob, listPremiumJobs, premiumVideoBytes, recoverPremiumJobs, startPremium3d } from "./premium-jobs";
 import { subscriptionTransport } from "./claude-cli";
 import { VIDEO_HOOKS } from "@/lib/video-engine/styles";
 import { TEMPLATE_CATEGORIES, VIDEO_TEMPLATES } from "@/lib/video-engine/templates";
@@ -160,7 +161,8 @@ async function briefFor(req: DesignRequest, variation: { index: number; of: numb
     const note = meta?.description ?? (id.startsWith("up-") ? ((await uploadNote(id)) ?? "uploaded by the owner") : undefined);
     // Whether the product can be lifted off its background (cached after the first time, 100 to 800 ms).
     const cut = await cutoutForPhoto(id, id.startsWith("up-") ? undefined : req.businessId);
-    photos.push({ base64: p.bytes.toString("base64"), mediaType: "image/jpeg", width: p.width, height: p.height, note, cutout: cut.ok });
+    // The product's box in the photo (from its cut-out) keeps text off the product.
+    photos.push({ base64: p.bytes.toString("base64"), mediaType: "image/jpeg", width: p.width, height: p.height, note, cutout: cut.ok, subject: cut.ok ? cut.box : null });
     files.push({ jpeg: p.bytes, cutout: cut.ok ? cut.png : null });
   }
   const brief: DesignBrief = {
@@ -222,6 +224,14 @@ async function designOne(req: DesignRequest, variation: { index: number; of: num
     // The fact check's warnings, and the research score once the designer returns one; saved with the job for the page.
     const checked = result as typeof result & { score?: DesignScore };
     Object.assign(job, { warnings: checked.warnings ?? [], ...(checked.score ? { score: checked.score } : {}) });
+    // The caption check (lib/video-engine/brain/score.ts). An edit or extend that kept the caption keeps its check.
+    const parent = req.base as (LabJob & { captionScore?: number; captionMissed?: string[] }) | null;
+    const sameCaption = parent?.spec && parent.captionScore !== undefined && parent.spec.caption === result.spec.caption && parent.spec.hashtags.join(" ") === result.spec.hashtags.join(" ");
+    if (sameCaption) Object.assign(job, { captionScore: parent.captionScore, captionMissed: parent.captionMissed ?? [] });
+    else {
+      const cap = scoreCaption(result.spec.caption, result.spec.hashtags, brief, { platform: brief.platform });
+      Object.assign(job, { captionScore: cap.score, captionMissed: cap.missed });
+    }
   } catch (error) {
     const usage = error instanceof DesignError ? error.usage : [];
     await record(job.id, "claude-design", usage);
@@ -679,7 +689,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { uploadId: out.uploadId, costUsd: out.call.costUsd });
       }
     }
-    if (req.method === "GET" && p === "/api/blender/status") return json(res, 200, { available: await blenderAvailable(), credits: PREMIUM_3D_CREDITS });
+    if (req.method === "GET" && p === "/api/blender/status") return json(res, 200, { available: await blenderAvailable(), credits: PREMIUM_3D_CREDITS, sound: BLENDER_MIXES_AUDIO, voiceReady: !!process.env.ELEVENLABS_API_KEY, voiceCredits: VOICE_OVER_CREDITS });
     if (req.method === "POST" && p === "/api/blender/render") {
       // Premium 3D: Claude designs a Blender scene from the same brief as a Motion video, then Blender renders it here.
       if (!(await blenderAvailable())) return fail(res, 503, "Premium 3D needs Blender on the studio computer, and it is not installed.");
@@ -693,7 +703,7 @@ const server = http.createServer(async (req, res) => {
       const { brief, files } = await briefFor(reqd, null);
       const product = (await listProducts(reqd.businessId)).find((x) => x.id === reqd.productId);
       try {
-        const job = await startPremium3d({ brief, files, send: claudeMode() === "api" ? apiTransport(process.env.ANTHROPIC_API_KEY as string) : subscriptionTransport(), model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL, meta: { businessId: reqd.businessId, productId: reqd.productId, title: product?.name ?? "Premium 3D" } });
+        const job = await startPremium3d({ brief, files, send: claudeMode() === "api" ? apiTransport(process.env.ANTHROPIC_API_KEY as string) : subscriptionTransport(), model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL, meta: { businessId: reqd.businessId, productId: reqd.productId, title: product?.name ?? "Premium 3D" }, voice: body.voice !== false && !!process.env.ELEVENLABS_API_KEY, music: body.music !== false });
         return json(res, 200, { job });
       } catch (error) {
         return fail(res, 402, error instanceof Error ? error.message : "Not enough credits.");

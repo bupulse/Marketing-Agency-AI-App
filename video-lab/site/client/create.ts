@@ -28,14 +28,14 @@ type Options = {
 };
 type FactWarning = { where: string; found: string; problem: "not-in-brief" | "business-only"; message: string };
 type DesignScore = { score: number; failed: { rule: string; reason: string; scene?: number | null }[] };
-type ClaudeJob = { warnings?: FactWarning[]; score?: DesignScore; id: string; createdAt: string; productName: string; styleId: string; ratio: string; photoIds: string[]; spec: MotionSpec | null; usage: unknown[]; apiEquivalentUsd?: number; status: string; error: string | null; video: { bytes: number; quality?: string } | null; mode?: string };
+type ClaudeJob = { warnings?: FactWarning[]; score?: DesignScore; captionScore?: number; captionMissed?: string[]; id: string; createdAt: string; productName: string; styleId: string; ratio: string; photoIds: string[]; spec: MotionSpec | null; usage: unknown[]; apiEquivalentUsd?: number; status: string; error: string | null; video: { bytes: number; quality?: string } | null; mode?: string };
 type SdJob = { id: string; createdAt: string; status: string; credits: number; estimateUsd: number; costUsd: number; tokens: number; videoFile: string | null; error: string | null; title: string; request: { prompt: string; tier: string; resolution: string; ratio: string; seconds: number; referenceNotes: string[] }; preview?: { notice: string; readyAt: string; wouldCostCredits: number } };
 type Issue = { level: "error" | "warning" | "info"; code: string; message: string };
 type StoryShot = { n: number; from: number; to: number; shot: string; camera: string; action: string; sound: string | null; spoken: string | null; references: string[] };
 type Storyboard = { notice: string; model: string; resolution: string; ratio: string; seconds: number; audio: boolean; setting: string | null; shots: StoryShot[]; frames: { at: number; shot: number; caption: string; svg: string }[]; references: { label: string; kind: string; thumb: string | null }[]; estimate: { usd: number; credits: number; wait: string }; issues: Issue[] };
 type PreviewAnswer = { ready: false; readyInMs: number; notice: string } | { ready: true; storyboard: Storyboard };
 /** A Premium 3D clip (Blender), video-lab/premium-jobs.ts. */
-type PremiumJob = { id: string; createdAt: string; status: "designing" | "rendering" | "succeeded" | "failed"; progress: number; credits: number; title: string; seconds: number; caption: string | null; hashtags: string[]; say: string | null; warnings: FactWarning[]; renderSeconds: number | null; videoFile: string | null; error: string | null };
+type PremiumJob = { audio?: { voice: boolean; music: boolean; voiceFile: string | null; voiceNote: string | null; musicTitle: string | null }; id: string; createdAt: string; status: "designing" | "voicing" | "rendering" | "succeeded" | "failed"; progress: number; credits: number; title: string; seconds: number; caption: string | null; hashtags: string[]; say: string | null; warnings: FactWarning[]; renderSeconds: number | null; videoFile: string | null; error: string | null };
 type Gen = { engine: Engine; id: string; title: string; status: string; at: string; videoUrl: string | null; claude?: ClaudeJob; sd?: SdJob; pm?: PremiumJob };
 type Product = { id: string; name: string; summary: string; price: string | null; photos: { assetId: string; description: string | null }[] };
 type Preview = { spec: MotionSpec; photoIds: string[] };
@@ -86,7 +86,10 @@ const state = {
   claudeCredits: 0,
   /** Motion's "Premium 3D (Blender)" quality: Claude designs a Blender scene, rendered on the studio computer. */
   premium: false,
-  blender: { available: false, credits: 120 },
+  blender: { available: false, credits: 120, sound: false, voiceReady: false, voiceCredits: 10 },
+  /** Premium 3D sound (once Blender mixes it): the ElevenLabs voice-over of the scene's line, and library music. */
+  premiumVoice: true,
+  premiumMusic: true,
   voiceCredits: 10,
   planVariant: 0,
   checkErrors: [] as Issue[],
@@ -274,9 +277,16 @@ function setupPills() {
         document.querySelectorAll(".pop.open").forEach((x) => x.classList.remove("open"));
         renderPills();
       };
+      const sound = state.blender.sound
+        ? [
+            toggleRow(`Voice-over (${state.blender.voiceCredits} credits)`, () => state.premiumVoice && state.blender.voiceReady, (v) => (state.premiumVoice = v), !state.blender.voiceReady),
+            toggleRow("Music from the library", () => state.premiumMusic, (v) => (state.premiumMusic = v)),
+          ]
+        : [el("p", { className: "hint", textContent: "Sound (voice-over and music) comes with the next Blender update; clips are silent for now." })];
       box.append(
         el("h6", { textContent: "Premium 3D" }),
         premium,
+        ...(state.premium ? sound : []),
         el("p", { className: "hint", textContent: state.blender.available ? `A real 3D scene rendered in Blender on the studio computer: about 3 to 6 minutes, 4 to 8 seconds long, ${state.blender.credits} credits.` : "Not available: Blender is not installed on the studio computer." }),
       );
     }
@@ -319,6 +329,14 @@ function setupPills() {
       msg(state.engine === "seedance" ? "Real video with Seedance 2.0: moving people, places and sound. 1 to 10 minutes." : "Motion video designed by Claude: instant, a few credits.");
     };
   });
+}
+
+/** A labelled checkbox for a popover. */
+function toggleRow(label: string, get: () => boolean, set: (v: boolean) => void, disabled = false): HTMLElement {
+  const input = el("input", { type: "checkbox", checked: get(), disabled });
+  input.onchange = () => set(input.checked);
+  input.onclick = (e) => e.stopPropagation();
+  return el("label", { className: "toggle" }, label, input);
 }
 
 /** Switches the engine (the prompt and the references stay). */
@@ -571,7 +589,7 @@ async function generate() {
         const out = await api<{ job: PremiumJob }>("/api/blender/render", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ businessId: state.businessId, productId: state.productId, photoIds: state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]), styleId: state.templateId, hookId: state.hookId, ratio: state.ratio, seconds: state.seconds, note: prompt, platform: state.platform }),
+          body: JSON.stringify({ businessId: state.businessId, productId: state.productId, photoIds: state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]), styleId: state.templateId, hookId: state.hookId, ratio: state.ratio, seconds: state.seconds, note: prompt, platform: state.platform, voice: state.premiumVoice, music: state.premiumMusic }),
         });
         await loadGens();
         openDrawer(state.gens.find((g) => g.id === out.job.id) ?? null);
@@ -637,7 +655,7 @@ async function loadGens() {
       void photosFor(g.claude.photoIds ?? []).then((ph) => drawSpecFrame(c.getContext("2d") as CanvasRenderingContext2D, g.claude?.spec as MotionSpec, ph, 1500, { quality: "480p" }));
     } else if (g.pm) {
       const j = g.pm;
-      card.append(el("div", { className: "wait" }, j.status === "failed" ? el("span", { textContent: j.error ?? "Failed" }) : el("span", { className: "spin" }), el("span", { textContent: j.status === "designing" ? "Designing the 3D scene…" : j.status === "rendering" ? `Rendering in Blender… ${Math.round(j.progress * 100)}%` : "" })));
+      card.append(el("div", { className: "wait" }, j.status === "failed" ? el("span", { textContent: j.error ?? "Failed" }) : el("span", { className: "spin" }), el("span", { textContent: j.status === "designing" ? "Designing the 3D scene…" : j.status === "voicing" ? "Recording the voice-over…" : j.status === "rendering" ? `Rendering in Blender… ${Math.round(j.progress * 100)}%` : "" })));
     } else if (g.sd?.preview) {
       // A free preview (no BytePlus key yet): its first storyboard frame, or a spinner while it is drawn.
       if (g.status === "preview-ready") {
@@ -651,8 +669,12 @@ async function loadGens() {
     // A preview's storyboard frame draws its own labels: its name goes in a bar under the frame instead of over it.
     if (g.sd?.preview) card.append(el("div", { className: "cap", textContent: `Seedance preview · ${g.title}` }));
     else card.append(el("span", { className: `st ${g.status}`, textContent: g.pm ? "Premium 3D" : g.engine === "seedance" ? "Seedance" : "Motion" }), el("div", { className: "cap", textContent: g.title }));
-    if (g.claude?.score) card.append(el("span", { className: "scoreTag", textContent: `Research score ${g.claude.score.score}/100` }));
-    if (g.claude?.warnings?.length) card.append(el("span", { className: "factTag", textContent: `${g.claude.warnings.length} fact${g.claude.warnings.length === 1 ? "" : "s"} to check` }));
+    // Check badges, stacked top right: the research score, facts to check, and a weak caption (under 70).
+    const badges: HTMLElement[] = [];
+    if (g.claude?.score) badges.push(el("span", { className: "scoreTag", textContent: `Research score ${g.claude.score.score}/100` }));
+    if (g.claude?.warnings?.length) badges.push(el("span", { className: "factTag", textContent: `${g.claude.warnings.length} fact${g.claude.warnings.length === 1 ? "" : "s"} to check` }));
+    if (g.claude?.captionScore !== undefined && g.claude.captionScore < 70) badges.push(el("span", { className: "capTag", textContent: `Caption ${g.claude.captionScore}/100` }));
+    if (badges.length) card.append(el("div", { className: "badges" }, ...badges));
     card.onclick = () => openDrawer(g);
     grid.append(card);
   }
@@ -727,7 +749,7 @@ function showPremium(g: Gen, j: PremiumJob): [string, string][] {
   if (g.videoUrl) media.append(el("video", { src: g.videoUrl, controls: true, autoplay: true, loop: true, playsInline: true }));
   else if (j.status === "failed") media.append(el("p", { className: "err", textContent: j.error ?? "The 3D clip could not be made." }));
   else {
-    media.append(el("div", { className: "wait", style: "padding:30px;text-align:center" }, el("span", { className: "spin" }), el("div", { className: "muted", textContent: j.status === "designing" ? "Claude is designing the 3D scene…" : `Blender is rendering: ${Math.round(j.progress * 100)}%. About 3 to 6 minutes in all; this updates by itself.` })));
+    media.append(el("div", { className: "wait", style: "padding:30px;text-align:center" }, el("span", { className: "spin" }), el("div", { className: "muted", textContent: j.status === "designing" ? "Claude is designing the 3D scene…" : j.status === "voicing" ? "Recording the voice-over…" : `Blender is rendering: ${Math.round(j.progress * 100)}%. About 3 to 6 minutes in all; this updates by itself.` })));
     const bar = $("dProgress");
     bar.hidden = false;
     (bar.firstElementChild as HTMLElement).style.width = `${Math.round((j.status === "designing" ? 0.03 : j.progress) * 100)}%`;
@@ -749,6 +771,9 @@ function showPremium(g: Gen, j: PremiumJob): [string, string][] {
     ["Credits", String(j.credits)],
     ...(j.renderSeconds ? ([["Render time", `${Math.floor(j.renderSeconds / 60)} min ${j.renderSeconds % 60} s`]] as [string, string][]) : []),
     ...(j.say ? ([["Voice line", j.say]] as [string, string][]) : []),
+    ...(j.audio?.voiceFile ? ([["Voice-over", "yes"]] as [string, string][]) : []),
+    ...(j.audio?.voiceNote ? ([["Voice note", j.audio.voiceNote]] as [string, string][]) : []),
+    ...(j.audio?.musicTitle ? ([["Music", j.audio.musicTitle]] as [string, string][]) : []),
   ];
 }
 
@@ -756,12 +781,21 @@ function showPremium(g: Gen, j: PremiumJob): [string, string][] {
  * "Check these facts": claims the fact check could not find in the product's facts (red) or found only in the
  * business's general description (amber), and the research rules the design missed.
  */
-function showFacts(j: { warnings?: FactWarning[]; score?: DesignScore }) {
+function showFacts(j: { warnings?: FactWarning[]; score?: DesignScore; captionScore?: number; captionMissed?: string[]; caption?: string | null }) {
   const box = $("dFacts");
   const warnings = j.warnings ?? [];
   const failed = j.score?.failed ?? [];
-  box.hidden = !warnings.length && !failed.length;
+  const hasCaption = j.captionScore !== undefined;
+  box.hidden = !warnings.length && !failed.length && !hasCaption;
   box.replaceChildren(
+    // The post caption, with the Brain's caption check under it.
+    ...(hasCaption
+      ? [
+          el("h5", { textContent: `Caption check ${j.captionScore}/100` }),
+          ...(j.caption ? [el("p", { className: "capText", textContent: j.caption })] : []),
+          ...(j.captionMissed ?? []).map((m) => el("div", { className: `issue ${(j.captionScore ?? 100) < 70 ? "error" : "warning"}`, textContent: m })),
+        ]
+      : []),
     ...(warnings.length ? [el("h5", { textContent: "Check these facts" }), ...warnings.map((w) => el("div", { className: `issue ${w.problem === "not-in-brief" ? "error" : "warning"}`, textContent: `${w.where}: ${w.message}` }))] : []),
     ...(failed.length ? [el("h5", { textContent: `Research score ${j.score?.score}/100: what it missed` }), ...failed.map((f) => el("div", { className: "issue warning", textContent: `${f.scene ? `Scene ${f.scene}: ` : ""}${f.reason}` }))] : []),
   );
@@ -879,7 +913,8 @@ function openDrawer(g: Gen | null) {
       $("dExtendBtn").onclick = () => void editClaude(g, "extend");
       info.push(["Length", `${(totalMs(spec) / 1000).toFixed(1)} s · ${spec.scenes.length} scenes`], ["Camera", [...new Set(spec.scenes.map((s) => s.camera?.move ?? "static"))].join(", ")], ["Look", spec.look?.grade ?? "none"], ["API-equivalent cost", `$${(j.apiEquivalentUsd ?? 0).toFixed(3)}`]);
       if (j.score) info.push(["Research score", `${j.score.score}/100`]);
-      showFacts(j);
+      if (j.captionScore !== undefined) info.push(["Caption check", `${j.captionScore}/100`]);
+      showFacts({ ...j, caption: [spec.caption, spec.hashtags.map((h) => `#${h}`).join(" ")].filter(Boolean).join("\n") });
       const v = voices.get(j.id);
       if (v) info.push(["Voice-over", `spoken in ${v.spokenLanguage}${v.fits ? "" : ", cut to fit 30 s"}`]);
       $("dPrompt").textContent = `${spec.caption}\n\n${spec.hashtags.map((h) => `#${h}`).join(" ")}`;
@@ -1030,7 +1065,7 @@ async function mountPreview(host: HTMLElement, pv: Preview, card: HTMLElement) {
   card.onmouseleave = () => (hover = false);
 }
 
-function carousel(items: { videoUrl: string; title: string; engine: Engine }[]) {
+function carousel(items: { id: string; videoUrl: string; title: string; engine: Engine }[]) {
   const box = $("carousel");
   box.replaceChildren();
   if (!items.length) {
@@ -1038,7 +1073,9 @@ function carousel(items: { videoUrl: string; title: string; engine: Engine }[]) 
     return;
   }
   const cards = items.slice(0, 7).map((i) => {
-    const c = el("a", { className: "cardV", href: "/showcase" }, el("video", { src: i.videoUrl, muted: true, loop: true, playsInline: true, autoplay: true, preload: "metadata" }), el("span", { className: "lbl", textContent: i.engine === "seedance" ? "Real video" : (i.engine as string) === "blender" ? "Premium 3D" : "Motion" }));
+    // Only the centre card plays (place() below); the others show a still one second in. Seven videos playing at once
+    // is heavy for a phone.
+    const c = el("a", { className: "cardV", href: `/showcase#${i.id}` }, el("video", { src: `${i.videoUrl}#t=1`, muted: true, loop: true, playsInline: true, preload: "metadata" }), el("span", { className: "lbl", textContent: i.engine === "seedance" ? "Real video" : (i.engine as string) === "blender" ? "Premium 3D" : "Motion" }));
     box.append(c);
     return c;
   });
@@ -1052,6 +1089,9 @@ function carousel(items: { videoUrl: string; title: string; engine: Engine }[]) 
       c.style.opacity = a > 2 ? "0" : String(1 - a * 0.25);
       c.style.zIndex = String(10 - a);
       c.style.filter = a ? "brightness(.6)" : "none";
+      const v = c.querySelector("video") as HTMLVideoElement;
+      if (a === 0) void v.play().catch(() => undefined);
+      else v.pause();
     });
   };
   place();
@@ -1141,7 +1181,7 @@ async function start() {
   $<HTMLInputElement>("tsearch").oninput = renderTemplates;
   window.addEventListener("studio:lang", renderTemplates);
   setupInspire();
-  void api<{ available: boolean; credits: number }>("/api/blender/status")
+  void api<typeof state.blender>("/api/blender/status")
     .then((b) => (state.blender = b))
     .catch(() => undefined);
   void showInspire(state.engine === "seedance");
@@ -1163,9 +1203,9 @@ async function start() {
   renderRefs();
   await loadGens();
   const show = await api<{ items: { id: string; engine: Engine; title: string; videoUrl: string | null }[] }>("/api/showcase");
-  carousel(show.items.filter((i) => i.videoUrl).map((i) => ({ videoUrl: i.videoUrl as string, title: i.title, engine: i.engine })));
+  carousel(show.items.filter((i) => i.videoUrl).map((i) => ({ id: i.id, videoUrl: i.videoUrl as string, title: i.title, engine: i.engine })));
   setInterval(async () => {
-    if (state.gens.some((g) => (g.engine === "seedance" && (g.status === "queued" || g.status === "running" || g.status === "submitting" || g.status === "preview")) || (g.pm && (g.status === "designing" || g.status === "rendering")))) {
+    if (state.gens.some((g) => (g.engine === "seedance" && (g.status === "queued" || g.status === "running" || g.status === "submitting" || g.status === "preview")) || (g.pm && (g.status === "designing" || g.status === "voicing" || g.status === "rendering")))) {
       await loadGens();
       if (state.open?.engine === "seedance") openDrawer(state.gens.find((g) => g.id === state.open?.id) ?? null);
       await refreshWallet();

@@ -370,12 +370,15 @@ dialog.narrow { width:min(640px, 94vw); }
 .frames.four { grid-template-columns:repeat(4, 1fr); }
 @media (max-width: 700px) { .frames.four { grid-template-columns:repeat(2, 1fr); } }
 .promptPre { white-space:pre-wrap; font:12.5px/1.5 Inter, sans-serif; color:#d6d6dc; }
-.genCard .scoreTag, .genCard .factTag { position:absolute; right:8px; font-size:10.5px; font-weight:700; border-radius:10px; padding:2px 7px; }
-.genCard .scoreTag { top:8px; background:rgba(20,59,43,.9); color:var(--ok); }
-.genCard .factTag { top:30px; background:rgba(58,26,34,.9); color:var(--danger); }
+.genCard .badges { position:absolute; top:8px; right:8px; display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+.genCard .scoreTag, .genCard .factTag, .genCard .capTag { font-size:10.5px; font-weight:700; border-radius:10px; padding:2px 7px; }
+.genCard .scoreTag { background:rgba(20,59,43,.9); color:var(--ok); }
+.genCard .factTag { background:rgba(58,26,34,.9); color:var(--danger); }
 #dFacts { display:flex; flex-direction:column; gap:4px; }
 #dFacts[hidden] { display:none; }
 
 /* Seedance preview cards: the storyboard frame, then a solid bar with its name (no text over the frame's own labels). */
 .genCard.pv img.frame { height:calc(100% - 34px); object-fit:contain; background:#0d0d12; }
 .genCard.pv .cap { background:var(--panel2); height:34px; padding:9px 10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.genCard .capTag { background:rgba(42,36,18,.92); color:var(--warn); }
+#dFacts .capText { white-space:pre-wrap; font-size:13px; color:#d6d6dc; background:var(--panel2); border-radius:10px; padding:9px 11px; margin:0; }

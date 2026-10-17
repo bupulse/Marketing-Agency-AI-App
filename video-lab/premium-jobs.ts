@@ -2,19 +2,29 @@
 // the same brief as a Motion video (lib/video-engine/blender-design.ts), then Blender renders it on this Mac
 // (video-lab/blender-jobs.ts), one render at a time. A job is charged first and given back when the design or the
 // render fails. The photos Blender reads are copied by the server into the job's own folder: no path ever comes from
-// the browser or from Claude.
+// the browser or from Claude. Before the render, the scene's spoken line becomes an ElevenLabs voice-over (charged like a
+// Motion video's, given back when it fails) and a library track can be chosen; both are kept in the job's folder for
+// Blender to mix in (renderBlenderScene's audio options, being added by the Blender pipeline).
 import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { designBlenderScene } from "@/lib/video-engine/blender-design";
 import type { ClaudeTransport, DesignBrief } from "@/lib/video-engine/designer";
+import type { MotionSpec } from "@/lib/video-engine/spec";
 import type { FactWarning } from "@/lib/video-engine/factcheck";
 import type { BlenderPhoto } from "@/tools/blender/scene";
 import { renderBlenderScene } from "./blender-jobs";
-import { PREMIUM_3D_CREDITS, charge, refund } from "./credits";
+import { PREMIUM_3D_CREDITS, VOICE_OVER_CREDITS, charge, refund } from "./credits";
+import { musicBytes, musicFor } from "./data-source";
+import { makeVoiceForJob, readVoiceMp3 } from "./voice";
 import { record } from "./store";
 
 const DATA = path.resolve("video-lab/data/blender");
+/**
+ * Whether renderBlenderScene mixes a voice and music into the clip yet (the Blender pipeline is adding it). Until it
+ * does, no voice is made (it would be charged but not heard) and the page says the sound comes later.
+ */
+export const BLENDER_MIXES_AUDIO = false;
 const JOBS = path.join(DATA, "jobs");
 const VIDEOS = path.join(DATA, "videos");
 
@@ -22,7 +32,7 @@ export type PremiumJob = {
   id: string;
   createdAt: string;
   updatedAt: string;
-  status: "designing" | "rendering" | "succeeded" | "failed";
+  status: "designing" | "voicing" | "rendering" | "succeeded" | "failed";
   /** 0 to 1 while Blender renders. */
   progress: number;
   credits: number;
@@ -40,6 +50,8 @@ export type PremiumJob = {
   repairs: string[];
   warnings: FactWarning[];
   apiEquivalentUsd: number;
+  /** The voice-over and music asked for, and what was made (files in the job's folder). */
+  audio: { voice: boolean; music: boolean; voiceFile: string | null; voiceNote: string | null; voiceCredits: number; musicFile: string | null; musicTitle: string | null };
   renderSeconds: number | null;
   bytes: number | null;
   videoFile: string | null;
@@ -79,7 +91,7 @@ export async function premiumVideoBytes(id: string): Promise<Buffer | null> {
  * Starts a Premium 3D clip: charges the credits (throws in plain English when there are not enough), saves the job and
  * returns it at once; the design and the render run on. The page polls getPremiumJob.
  */
-export async function startPremium3d(input: { brief: DesignBrief; files: { jpeg: Buffer; cutout: Buffer | null }[]; send: ClaudeTransport; model: string; meta: { businessId: string; productId: string; title: string } }): Promise<PremiumJob> {
+export async function startPremium3d(input: { brief: DesignBrief; files: { jpeg: Buffer; cutout: Buffer | null }[]; send: ClaudeTransport; model: string; meta: { businessId: string; productId: string; title: string }; voice: boolean; music: boolean }): Promise<PremiumJob> {
   const id = `bl-${randomBytes(6).toString("hex")}`;
   await charge(PREMIUM_3D_CREDITS, "Premium 3D (Blender)", id);
   const at = new Date().toISOString();
@@ -101,6 +113,7 @@ export async function startPremium3d(input: { brief: DesignBrief; files: { jpeg:
     repairs: [],
     warnings: [],
     apiEquivalentUsd: 0,
+    audio: { voice: input.voice, music: input.music, voiceFile: null, voiceNote: null, voiceCredits: 0, musicFile: null, musicTitle: null },
     renderSeconds: null,
     bytes: null,
     videoFile: null,
@@ -132,7 +145,9 @@ async function run(job: PremiumJob, input: Parameters<typeof startPremium3d>[0])
       throw error;
     });
     await record(job.id, "claude-blender-design", design.usage);
-    Object.assign(job, { status: "rendering", seconds: design.scene.duration, caption: design.caption, hashtags: design.hashtags, say: design.say || null, repairs: design.warnings, warnings: design.factWarnings, apiEquivalentUsd: design.apiEquivalentUsd });
+    Object.assign(job, { seconds: design.scene.duration, caption: design.caption, hashtags: design.hashtags, say: design.say || null, repairs: design.warnings, warnings: design.factWarnings, apiEquivalentUsd: design.apiEquivalentUsd });
+    await addAudio(job, dir, design.say, input.brief.business.language ?? null);
+    job.status = "rendering";
     await save(job);
     let saved = 0;
     const out = await renderBlenderScene(design.scene, premiumVideoPath(job.id), {
@@ -151,7 +166,47 @@ async function run(job: PremiumJob, input: Parameters<typeof startPremium3d>[0])
   } catch (error) {
     Object.assign(job, { status: "failed", error: `${error instanceof Error ? error.message : "The 3D clip could not be made."} The credits are given back.` });
     await save(job);
-    await refund(job.credits, "Premium 3D failed", job.id);
+    await refund(job.credits + job.audio.voiceCredits, "Premium 3D failed", job.id);
+  }
+}
+
+/**
+ * The voice-over of the scene's spoken line (ElevenLabs, in the business's language rules: Kinyarwanda is spoken in
+ * English) and a library music track, written into the job's folder. A voice that fails is given back and the clip is
+ * made without it, as for Motion videos.
+ */
+async function addAudio(job: PremiumJob, dir: string, say: string, language: string | null): Promise<void> {
+  if (!BLENDER_MIXES_AUDIO) return;
+  if (job.audio.voice && say.trim()) {
+    job.status = "voicing";
+    await save(job);
+    try {
+      await charge(VOICE_OVER_CREDITS, "Premium 3D voice-over", job.id);
+      job.audio.voiceCredits = VOICE_OVER_CREDITS;
+      // makeVoiceForJob speaks a design's scene lines: the clip is one scene with one line.
+      const oneScene = { scenes: [{ seconds: job.seconds, say, layers: [] }] } as unknown as MotionSpec;
+      const v = await makeVoiceForJob(oneScene, job.id, { language });
+      const mp3 = v ? await readVoiceMp3(v.hash) : null;
+      if (!v || !mp3) throw new Error("No voice line to speak.");
+      if (v.cached) {
+        await refund(VOICE_OVER_CREDITS, "Voice-over already made (free)", job.id);
+        job.audio.voiceCredits = 0;
+      }
+      await fs.writeFile(path.join(dir, "voice.mp3"), mp3);
+      Object.assign(job.audio, { voiceFile: "voice.mp3", voiceNote: v.note ?? (v.fits ? null : "The voice is longer than the clip; it is cut at the end.") });
+    } catch (error) {
+      if (job.audio.voiceCredits) await refund(job.audio.voiceCredits, "Premium 3D voice-over failed", job.id);
+      Object.assign(job.audio, { voiceCredits: 0, voiceNote: `No voice-over: ${error instanceof Error ? error.message : "it failed"} The clip is made without it.` });
+    }
+  }
+  if (job.audio.music) {
+    const track = await musicFor("upbeat").catch(() => null);
+    if (track) {
+      const t = await musicBytes(track.id);
+      const file = `music.${t.mimeType.includes("wav") ? "wav" : "mp3"}`;
+      await fs.writeFile(path.join(dir, file), t.bytes);
+      Object.assign(job.audio, { musicFile: file, musicTitle: track.title });
+    }
   }
 }
 
@@ -159,10 +214,10 @@ async function run(job: PremiumJob, input: Parameters<typeof startPremium3d>[0])
 export async function recoverPremiumJobs(): Promise<number> {
   let n = 0;
   for (const job of await listPremiumJobs()) {
-    if (job.status !== "designing" && job.status !== "rendering") continue;
+    if (job.status !== "designing" && job.status !== "voicing" && job.status !== "rendering") continue;
     Object.assign(job, { status: "failed", error: "The studio restarted during this 3D clip. The credits are given back." });
     await save(job);
-    await refund(job.credits, "Premium 3D stopped by a restart", job.id);
+    await refund(job.credits + (job.audio?.voiceCredits ?? 0), "Premium 3D stopped by a restart", job.id);
     n += 1;
   }
   return n;
