@@ -363,13 +363,15 @@ async function knownCutouts(): Promise<{ ok: Set<string>; refused: Set<string> }
 }
 
 /**
- * A stand-in for a Seedance clip while there is none (preview mode): the newest finished Motion MP4 with a sound track
- * (of the same product when there is one), so the overlay's video layer and the clip's own audio can be tried end to end.
+ * A stand-in for a Seedance clip while there is none (preview mode): the newest finished Motion MP4 with a sound track,
+ * of the same product and shape when there is one, so the overlay's video layer and the clip's own audio can be tried
+ * end to end.
  */
-async function standInClip(productId: string): Promise<string | null> {
-  // The same product when it has a finished video with sound, else any: closer to what the real clip will show.
-  const jobs = (await listJobs()).filter((j) => j.video);
-  for (const j of [...jobs.filter((x) => x.productId === productId), ...jobs]) {
+async function standInClip(productId: string, ratio: string): Promise<string | null> {
+  // Closest to what the real clip will show first: the same product and shape (re-shapes left out), then any.
+  const jobs = (await listJobs()).filter((j) => j.video && j.mode !== "reshape");
+  const rank = (j: { productId: string; ratio: string }) => (j.productId === productId ? 0 : 2) + (j.ratio === ratio ? 0 : 1);
+  for (const j of [...jobs].sort((a, b) => rank(a) - rank(b))) {
     const bytes = await readVideo(j.id);
     if (bytes && mp4Tracks(bytes).includes("soun")) return `/videos/${j.id}.mp4`;
   }
@@ -627,7 +629,7 @@ const server = http.createServer(async (req, res) => {
         const product = business && job.productId ? (await listProducts(business.id)).find((x) => x.id === job.productId) : undefined;
         if (!business || !product) return fail(res, 400, "This clip was made without a product, so there is no price or number to add.");
         // Until a real clip exists (preview mode), a finished studio MP4 with sound stands in, so the step can be tried.
-        const clipUrl = preview ? await standInClip(product.id) : `/videos/seedance/${id}.mp4`;
+        const clipUrl = preview ? await standInClip(product.id, job.request.ratio === "adaptive" ? "9:16" : job.request.ratio) : `/videos/seedance/${id}.mp4`;
         if (!clipUrl) return fail(res, 400, "There is no finished studio video to stand in for the Seedance clip yet.");
         const body = JSON.parse((await readBody(req, 4096)).toString("utf8") || "{}");
         const platform = isPlatform(body.platform) ? body.platform : null;

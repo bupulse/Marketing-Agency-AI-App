@@ -589,14 +589,18 @@ allowances and MoMo add-ons.
 
 ## Studio pages and buttons (QA 17 Oct)
 
-A Playwright pass over every studio page (Chrome, 1440 px and 390 px wide): every link on every page was opened, and
-every button that does not spend credits was clicked, plus the sign-in page as an online visitor. **110 of 110 work**,
-with no script errors on any page (fifth pass, after the Seedance previews and gallery, voice-over, 3D templates,
-cut-outs, the platform picker, Premium 3D, the fact checks, the password gate and the visual pass on /create). Fixed during the passes: links that lost their query (`/app/video/seedance?tier=mini` opened the
-default tier), `#influencers` that opened nothing, the quality and options menus cut off by the hero, pill buttons
-that did nothing until the database had answered, pickers that opened only after their data arrived, the nav wrapping
-at 1280 px, and pages full of videos that downloaded every MP4 in full (no Range support) and blocked the browser's
-connections to the studio.
+A Playwright pass over every studio page (a private headless Chrome, 1440 px and 390 px wide): every link on every
+page was opened, and every button that does not spend credits was clicked, plus the sign-in page as an online
+visitor. **Last full crawl (end of day, 17 October): 127 of 129**, no script errors on any page. The two misses were the
+AI image page's "+ Product photo" (and the reference check after it): a real race. Clicking "+ Product photo" before
+the business list had arrived opened an empty picker; the picker now waits for the list (checked by clicking it the
+instant the page loads). Earlier passes during the day fixed:
+- links that lost their query, and `#influencers` that opened nothing;
+- menus cut off by the hero, and pill buttons and pickers that did nothing or opened late until the database answered;
+- the nav wrapping at 1280 px;
+- pages full of videos that downloaded every MP4 in full (no Range support);
+- a 1:1 carousel playing seven videos at once;
+- cut-outs wrongly treated as refused.
 
 | Page | Button or link | Where it goes / what it does | Works |
 | --- | --- | --- | --- |
@@ -612,15 +616,18 @@ connections to the studio.
 | every page (nav/footer) | link "Pricing" | /pricing | yes |
 | every page (nav/footer) | link "Guide" | /guide | yes |
 | every page (nav/footer) | link "API NEW" | /api-docs | yes |
-| / | link "Premium 3DKitenge summer dress" | /showcase#bl-ccf2f2564cd3 (lands on /showcase) | yes |
+| /, /app/video/seedance-2-0-mini, /app/video/motion | link "Video tile: " | /showcase#20261017-1464a33b (lands on /showcase) | yes |
+| /, /app/video/seedance-2-0-mini, /app/video/motion | link "Video tile: " | /showcase#20261017-8b7bc45e (lands on /showcase) | yes |
+| /, /app/video/seedance-2-0-mini, /app/video/motion | link "Video tile: " | /showcase#20261017-a9ff9b95 (lands on /showcase) | yes |
+| /, /app/video/seedance-2-0-mini, /app/video/motion | link "Video tile: " | /showcase#20261017-5ad536e5 (lands on /showcase) | yes |
+| /, /app/video/seedance-2-0-mini, /app/video/motion | link "Video tile: " | /showcase#20261017-ea60c437 (lands on /showcase) | yes |
+| /, /app/video/seedance-2-0-mini, /app/video/motion | link "Video tile: " | /showcase#20261017-100e74d1 (lands on /showcase) | yes |
+| /, /app/video/seedance-2-0-mini, /app/video/motion | link "Video tile: " | /showcase#20261017-e22757ae (lands on /showcase) | yes |
+| / | link "Video tile: Samsung Galaxy A56" | /showcase#20261017-a9f5e5c2 (lands on /showcase) | yes |
+| / | link "Premium 3DKitenge summer dress" | /showcase#bl-af4f9820102f (lands on /showcase) | yes |
 | / | link "Video tile: Samsung Galaxy A56" | /showcase#20261017-f81fcb95 (lands on /showcase) | yes |
 | / | link "Video tile: Samsung Galaxy A56" | /showcase#20261017-a7150886 (lands on /showcase) | yes |
 | / | link "Video tile: Kitenge summer dress" | /showcase#20261017-6cade78f (lands on /showcase) | yes |
-| / | link "Video tile: Kitenge summer dress" | /showcase#20261017-843b1a68 (lands on /showcase) | yes |
-| / | link "Video tile: Samsung Galaxy A56" | /showcase#20261017-89f68a6a (lands on /showcase) | yes |
-| / | link "Video tile: 3-bedroom house with garden, Kibag" | /showcase#20261017-a87cc367 (lands on /showcase) | yes |
-| / | link "Video tile: 3-bedroom house with garden, Kibag" | /showcase#20261016-3a334e91 (lands on /showcase) | yes |
-| / | link "Video tile: Samsung Galaxy A56" | /showcase#20261016-f0ba04ce (lands on /showcase) | yes |
 | / | link "Get credits" | /pricing#pack-starter (lands on /pricing) | yes |
 | / | link "Get credits" | /pricing#pack-business (lands on /pricing) | yes |
 | / | link "Get credits" | /pricing#pack-studio (lands on /pricing) | yes |
@@ -648,7 +655,7 @@ connections to the studio.
 | /app/video/seedance-2-0-fast | Example prompt | fills the prompt box | yes |
 | /app/video/seedance-2-0-mini | Opens preselected | seedance, Mini ·; quality Mini · 720p, Generate shows ✦ 120 | yes |
 | /app/video/seedance-2-0-mini | Example prompt | fills the prompt box | yes |
-| /app/video/motion | Opens preselected | claude, 1080p; quality 1080p, Generate shows ✦ 40 | yes |
+| /app/video/motion | Opens preselected | claude, 1080p; quality 1080p, Generate shows ✦ 50 | yes |
 | /app/video/motion | Example prompt | fills the prompt box | yes |
 | /create | Opens preselected | seedance, Fast ·; quality Fast · 720p, Generate shows ✦ 190 | yes |
 | /app/video/<model>, /create | Mode pill | opens its menu, a choice applies | yes |
@@ -660,38 +667,54 @@ connections to the studio.
 | /app/video/<model> | Template pill | scrolls to the templates | yes |
 | /app/video/<model> | Template card | selects the template; Macro details | yes |
 | /app/video/<model> | Engine Motion / Real video | switches engine | yes |
-| /app/video/<model> | + (references) | picker with upload, videos and photos; 1 choices | yes |
+| /app/video/<model> | + (references) | picker with upload, videos and photos; 17 choices | yes |
 | /app/video/<model> | Reference tile (click) | removes it | yes |
 | /app/video/<model> | Upload (in + picker) | opens the file chooser | yes |
 | /app/video/<model> | PRODUCT tile | product picker, sets product and photos | yes |
-| /app/video/<model> | AVATAR tile | presenter picker (closed without choosing: a choice can cost credits); 8 presenters | yes |
+| /app/video/<model> | AVATAR tile | presenter picker (closed without choosing: a choice can cost credits); 14 presenters | yes |
 | /app/video/<model> | Prompt naming a missing photo | error under the prompt bar; Generate blocked | yes |
 | /app/video/<model> | ⚡ Quick plan | free shot plan in the prompt box; Quick plan: Golden hour exterior. Press again for another pl | yes |
 | /app/video/<model> | GENERATE (Real video, no BytePlus key) | free preview: storyboard frames, shot list, price; no credits; 3 frames; 590 credits with the key; wallet unchanged | yes |
 | /app/video/<model> | Preview: Edit the prompt | closes the drawer, prompt back in the box | yes |
 | /app/video/seedance-2-0-mini | Preview: Make it as a Motion video instead (no product) | switches to Motion, keeps the prompt, opens the product picker; with a product picked it starts the Motion design (30 credits), not clicked | yes |
 | /app/video/motion | Opens on 3D templates | category 3D motion, template 3D title drop; 3D motion, 3D title drop | yes |
-| /app/video/motion | More: Voice-over toggle | on by default; Generate shows design + voice credits; ✦ 40 with voice, ✦ 30 without | yes |
+| /app/video/motion | More: Voice-over toggle | on by default; Generate shows design + voice credits; ✦ 50 with voice, ✦ 35 without | yes |
 | /app/video/motion | Language RW | template categories in Kinyarwanda | yes |
 | /app/video/seedance-2-0 | Get inspired: cards | example storyboards; hover flips frames; 12 examples | yes |
 | /app/video/seedance-2-0 | Get inspired: sector and format chips | filter the cards; real estate 2, tour 2 | yes |
 | /app/video/seedance-2-0 | Get inspired: card | detail: frames, shot list, notes, credits per quality, product | yes |
 | /app/video/seedance-2-0 | Get inspired: Use this | /create with Seedance, the prompt, 9:16, the length, the product and its photos; 12s, 2 photo(s) | yes |
 | /app/video/motion | Platform pill | Any / Instagram / TikTok / Facebook / YouTube; only for Motion | yes |
-| /app/video/motion | Quality: Premium 3D (Blender) | Generate shows 120 credits; lengths 4 to 8 s; the wait is stated | yes |
-| /app/video/motion | Premium 3D clip card | drawer with the video, length, credits, render time; StatusReadyLength6 sCredits120Render time4 min 31 sVoice lineBright ki | yes |
-| /create | Hero carousel | at least 7 real clips; 7 clips | yes |
+| /app/video/motion | Quality: Premium 3D (Blender) | Generate shows 100 credits at 540p, 150 at 720p; lengths 4 to 8 s; the wait is stated | yes |
+| /app/video/motion | Premium 3D clip card | drawer with the video, length, credits, render time; no clip yet | yes |
+| /create | Hero carousel | at least 7 real clips; only the centre one plays; 7 clips, 1 playing | yes |
 | /create | Finished Motion video card | drawer plays the MP4 (with voice) beside the details; player 675 x 800 px | yes |
 | /create | Every generation card | shows a poster (video, live frame or storyboard frame) | yes |
 | /create | Cut-outs | no 404 for photos known to have none | yes |
+| /app/video/motion | Premium 3D sound | says sound comes with the next Blender update (switches appear once it mixes sound) | yes |
+| /create | Caption check | drawer shows 'Caption check N/100' under the caption; no checked design | yes |
+| / | Made with BuPulse row | 7 clips, only the centre one plays | yes |
+| /pricing | Premium 3D line | 100 / 150 / 70 to render again; voice-over 10; 100 credits at 540p, 150 at 720p, 70 to render again | yes |
+| /app/video/seedance-2-0 | + references: cut-outs and presenter portraits | co: and pp: tiles add references | yes |
+| /app/video/seedance-2-0 | AVATAR: digital characters | listed with the notice; previews say 'arrives with the key'; 6 preview characters | yes |
+| /app/video/seedance-2-0 | More: Draft and Offline | relabelled | yes |
+| /app/video/motion | Premium 3D: voice and music switches | shown now that Blender mixes sound | yes |
+| /app/video/motion | Opening-line chips | three lines from the Brain once a product is chosen; a click selects one; 4 lines | yes |
+| / | Test-mode bar | amber reminder while Claude runs on the subscription (none in API mode); French when FR is chosen; subscription: bar shown | yes |
+| /create | Test-mode bar | amber reminder while Claude runs on the subscription (none in API mode); French when FR is chosen; subscription: bar shown | yes |
+| /app/video/motion | Other shapes (free) | a vertical design offers 1:1 and 4:5; re-shaped cards show their shape; 5 feed-shape cards; buttons: 1:1 · Facebook feed, 4:5 · Instagram feed | yes |
+| /app/video/seedance-2-0 | Add BuPulse text (stand-in in preview mode) | a preview offers the text step on a stand-in clip, labelled as such, with its caption check; Caption check 100/100🔥 S; Make the MP4 again (1080p, free) | yes |
+| /app/video/motion | Ad / Post switch | toggles; post designs show a Post badge; 1 post card(s) | yes |
+| /app/video/motion | Plan a week | seven rows with day, platform, opening line, template, length, note and Generate (not clicked: 35 credits); 7 days | yes |
+| /app/video/motion | First comment (pin it) | shown under the caption with a Copy button; First comment (pin it)Price: 420,000 RWF 📍 Kigali WhatsApp: 0788 300  | yes |
 | /api/photo/<id>?cutout=1 | Cut-out of a product photo | PNG for a plain background, 404 with the reason otherwise | yes |
-| /create | Generation card | opens the drawer; Close; drawer actions: Make it as a Motion video instead, Edit the prompt | yes |
-| /create | Drawer Download | the MP4 file; /videos/blender/bl-ccf2f2564cd3.mp4 | yes |
+| /create | Generation card | opens the drawer; Close; drawer actions: Make it as a Motion video instead, Edit the prompt, Try BuPulse text on a stand-in clip | yes |
+| /create | Drawer Download | the MP4 file; /videos/20261017-1464a33b.mp4 | yes |
 | /templates | Templates link | /create#tgrid scrolled to the gallery | yes |
 | /app/video/motion#influencers | AI influencers link | opens the presenter picker | yes |
 | /app/video/seedance-2-5 | Example prompt | opens Seedance 2.0 with the prompt | yes |
-| /app/image/nano-banana | + Product photo | picker, adds Image 1 | yes |
-| /app/image/nano-banana | Reference tile (click) | removes it | yes |
+| /app/image/nano-banana | + Product photo | picker, adds Image 1; page.waitForSelector: Timeout 30000ms exceeded. | no (see below) |
+| /app/image/nano-banana | Reference tile (click) | removes it; page.click: Timeout 30000ms exceeded. | no (see below) |
 | /app/image/nano-banana | + Upload a photo | opens the file chooser | yes |
 | /app/image/nano-banana | Shape chips | select 9:16 | yes |
 | /app/image/nano-banana | GENERATE with empty prompt | says 'Describe the image first' | yes |
@@ -700,27 +723,48 @@ connections to the studio.
 | /app/image/nano-banana | Example prompt | fills the prompt | yes |
 | /app/image/nano-banana | Use in a video | /create?ref=<image> with it as Image 1 | yes |
 | /app/image/nano-banana | Use in a 3D motion video | /app/video/motion?ref=<image> | yes |
-| /pricing | Buy (test: adds credits) | adds the pack to the test wallet; 12700 -> 13700 test credits | yes |
+| /pricing | Buy (test: adds credits) | adds the pack to the test wallet; 26350 -> 27350 test credits | yes |
 | /showcase | Filters | All / Seedance / Motion | yes |
-| /showcase | Video tile | viewer with Download; Close; 9 videos | yes |
+| /showcase | Video tile | viewer with Download; Close; 17 videos | yes |
 | /videos | Filters | All / Seedance / Motion / In progress | yes |
-| /videos | Video tile | viewer with Download; Close; 9 videos | yes |
+| /videos | Video tile | viewer with Download; Close; 17 videos | yes |
 | /guide | FAQ items | open | yes |
 | /api-docs | Contents links | jump to each section | yes |
 | /api-docs | Rates table | filled from /api/pricing | yes |
 | online (video.bupulse.com) | Any page, not signed in | /login page; API answers 401; wrong password: 'That password is not right' | yes |
 | /nope-404 | Unknown page | 404 page with links | yes |
 
-**Not clicked, because they spend credits or call a paid model** (each follows the same charge-first,
-refund-on-failure pattern): Generate on Motion (30 credits a version, 40 with the voice-over), Generate on the AI image
-page (15 credits; tested for real twice on 17 October, about $0.04 each, both fine), the voice-over itself (tested for
-real once through the API, $0.066, then reused for free; the MP4 with voice was made in Chrome and has video and sound
-tracks), choosing a realistic AI presenter (15 credits), "Make it as a Motion video instead" when a product is picked
-(starts a Motion design), the drawer's Apply change and Extend +5 s, Make MP4 (free, but slow), Write with Claude (a
-Claude call on the owner's subscription), Generate with Premium 3D (120 credits and minutes of rendering; made for real once on 17 October, see above), and
-Seedance with the key (waits for `SEEDANCE_API_KEY`; until then
-Generate makes a free preview, which was clicked). The test wallet gained 1,000 pretend credits per QA run from the
-"Buy (test)" check.
+**Not clicked in the crawl, because they spend credits or call a paid model:** Generate (Motion, AI image, Premium
+3D, Seedance with the key), the voice-over, realistic presenters, Apply change and Extend, Write with Claude, and
+"Generate" on a Plan a week row. They are run for real in the end-of-day regression below. The "Buy (test)" check adds
+1,000 pretend credits per crawl.
+
+## End-of-day regression (17 Oct)
+
+Each path once, through the page as the owner uses it (private headless Chrome, studio on this Mac, Claude on the
+owner's subscription). Credits are test credits; the only real money spent was one ElevenLabs take (about /bin/zsh.06).
+
+| Path | What was done | Result | Credits | Time |
+| --- | --- | --- | --- | --- |
+| Motion with an opening line | Nova Phones → Galaxy A56, chip "Samsung Galaxy A56 · 6.7-inch AMOLED screen", Generate | Designed (job 20261017-dd22cab0), research score 100, caption check 100 | 35 | 66 s |
+| Motion MP4 with voice | Make MP4 (1080p, voice-over on) | 11.9 MB MP4, video and sound tracks, a new voice take | 15 | 7 min 21 s (the Mac at load 40 to 70) |
+| Re-shape | "1:1 · Facebook feed", then Make MP4 | 6.9 MB MP4, the voice take reused | 0 | 7 min 37 s (same load) |
+| Premium 3D with music | Kitenge dress, Showroom turntable, 540p, music on, voice off (a new scene line has no cached take) | First try: stopped by the 15-minute render limit at 74% while the Mac was loaded; the 100 credits were given back. Second try at load 2: ready, 6 s, video and sound tracks, music "Fashion Runway" | 100 (the failed try: 0) | 2 min 7 s (render 1 min 31 s) |
+| Seedance preview + BuPulse text | Real video, Galaxy A56, ⚡ Quick plan, Generate, then "Try BuPulse text on a stand-in clip", Make MP4 with text | Storyboard (would cost 190 credits with the key); MP4 with text 2.9 MB, 1080 × 1920, video and sound tracks | 0 | 18 s |
+| Plan a week | 📅 Plan a week on the Galaxy A56, then Generate on Monday's row (Facebook, "…6.7-inch AMOLED screen", Product hero, 15 s) | 7 days; the row's design: research 100, caption check 100 | 35 | 74 s |
+| Post mode | Ad / Post → Post, Generate | Designed, "Post" badge on the card, research 100, caption check 100 | 35 | 71 s |
+| **Total** | | | **220** | |
+
+Found and fixed in the regression:
+- **The stand-in for the text step.** The first try picked the 1:1 re-shape made minutes before; its MP4 (1080 × 1080,
+  H.264 level 3.2) failed to decode in the video source ("Decoding error", reported to the motion engine). The stand-in
+  now prefers the job's own shape and leaves re-shapes out.
+- **The live preview while encoding.** A second try took 12 minutes on the loaded Mac while the live preview kept
+  decoding the same clip. The preview now stops while the MP4 is made; the same encode then took 13 to 18 s.
+- **The text step at 1080p** (after the video-source fix a84376c): no frame was late in 12 s of live preview, and the
+  MP4 is 1080 × 1920 with video and sound tracks.
+- **Open, not in the site's files:** Premium 3D's 15-minute render limit is reached when the Mac is busy (another 6 s
+  clip took 1 min 31 s when quiet). The failed try refunded correctly.
 
 ## Online access (video.bupulse.com)
 

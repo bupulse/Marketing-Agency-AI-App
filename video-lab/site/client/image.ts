@@ -56,7 +56,14 @@ function renderRatios() {
   );
 }
 
+/** The businesses, loaded once at start; the picker waits for them (a click can come before they arrive). */
+const businessesReady: Promise<{ id: string; name: string }[]> = api<{ id: string; name: string }[]>("/api/businesses").catch(() => []);
+
 async function pickProduct() {
+  if (!state.businesses.length) {
+    state.businesses = await businessesReady;
+    state.businessId ||= state.businesses[0]?.id ?? "";
+  }
   const dlg = $("imgPick") as HTMLDialogElement;
   const sel = el("select", { style: "width:auto" });
   sel.append(...state.businesses.map((b) => new Option(b.name, b.id)));
@@ -165,7 +172,7 @@ async function start() {
     window.scrollTo({ top: 0, behavior: "smooth" });
     msg("Example prompt added. Add your product photo as Image 1, then Generate.", "ok");
   });
-  const [pricing, businesses, images] = await Promise.all([loadPricing(), api<{ id: string; name: string }[]>("/api/businesses"), api<{ images: Image[] }>("/api/images")]);
+  const [pricing, businesses, images] = await Promise.all([loadPricing(), businessesReady, api<{ images: Image[] }>("/api/images")]);
   $("imgCredits").textContent = `✦ ${pricing.presenterCredits}`;
   state.businesses = businesses;
   state.businessId = businesses[0]?.id ?? "";

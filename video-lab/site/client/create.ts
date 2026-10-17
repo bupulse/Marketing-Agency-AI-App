@@ -1067,6 +1067,8 @@ async function showOverlay(g: Gen, o: Overlay) {
       last = now;
       // A frame that does not decode in time (a busy computer) is skipped: the last one stays on screen.
       const ready = await frames.prepare(t, photos).then(() => true, () => false);
+      // Counted on the canvas, so a check can see whether frames arrive late.
+      if (!ready) c.dataset.skipped = String(Number(c.dataset.skipped ?? 0) + 1);
       if (ready) drawSpecFrame(ctx, spec, photos, t, { quality: "720p" });
       drawerAnim = requestAnimationFrame((n) => void loop(n));
     };
@@ -1078,6 +1080,9 @@ async function showOverlay(g: Gen, o: Overlay) {
     const bar = $("dProgress");
     bar.hidden = false;
     const fill = bar.firstElementChild as HTMLElement;
+    // The live preview stops while the MP4 is made: one decoder per clip, and the computer's time for the encoder.
+    cancelAnimationFrame(drawerAnim);
+    closeOverlayFrames();
     $("dMsg").textContent = "Making the MP4 with the clip and the text in this browser…";
     try {
       const blob = await encodeSpecMp4(spec, new Map(), { quality: state.quality, onProgress: (f) => (fill.style.width = `${Math.round(f * 100)}%`) });
