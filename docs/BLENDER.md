@@ -503,3 +503,66 @@ Claude mocked: the call, the retry with the problems, a refusal, fact warnings, 
 entrance and layout repairs, and the brief text. Runner tests: photo paths, limits, the three example
 scenes (no repairs needed), canvas sizes, the command line, progress lines, and the job runner with Blender mocked
 (progress, log, errors, the timeout, a missing Blender). Vitest never needs Blender.
+
+## 17 October changelog
+
+**What changed today:**
+- **Pipeline:**
+  - Claude writes a JSON scene; `tools/blender/render.py` renders it in Eevee with Blender 5.2 and writes an H.264 MP4
+    with Blender's own FFmpeg.
+  - `video-lab/blender-jobs.ts` runs one render at a time, with progress, a log and a 15-minute limit.
+  - `designBlenderScene` (`lib/video-engine/blender-design.ts`) designs the scene from the motion engine's brief, with
+    a retry, a fact check and house repairs.
+- **Three looks:**
+  - dark showroom: brand glow on a black mirror floor;
+  - daylight studio: white set, brand accent wall 7.5 x 11, soft shadow;
+  - neon: arch and tubes in the brand colour.
+  - Every engine template has one (`TEMPLATE_LOOKS`, names in `BLENDER_LOOK_NAMES`).
+- **Plinth and plates:**
+  - The product always stands on a plinth.
+  - The price and the phone bar are flat plates on its front: white or accent price, brand-colour bar.
+  - The bar is labelled ("WhatsApp …", "Call …", "Hamagara …").
+- **Sound:** the voice-over (from `sound.voiceAt`) and a music bed (0.18 under the voice, faded out) are mixed by
+  Blender into AAC. It adds no measurable render time.
+- **Cut-outs** stand on the plinth with a little thickness (7 stacked silhouettes) and their own shadow.
+- **Photo cards:**
+  - 0.14 thick and bevelled, with a light sweep.
+  - Wide subjects get a wide card (1.15 in 9:16, 1.6 in square and wide frames).
+  - With 2 or 3 photos the card flips to the next one, at the middle or the thirds, with a small camera push.
+- **Frame 0** is the thumbnail: the product and title "settle" in from the first frame, and the look's accent is
+  there at once. The camera finishes 0.8 s before the end, so the last moment holds still and front-on.
+- **fillFrame:** a card or a cut-out fills at least 40 % of the frame's height at the widest moment of the camera move.
+- **Text:** bold poppins titles, two weights, shallow labels, lines kept inside the accent wall, Brief spellings and
+  phone numbers restored.
+
+**Measured** (Apple M1, 540p final = 16 samples, 6 s = 144 frames):
+
+| What | Time |
+| --- | --- |
+| Claude design (Sonnet, API price) | 18 to 36 s, $0.08 to $0.11, one attempt |
+| 540p final, quiet Mac | about 0.8 s a frame: 113 s for the dress |
+| 720p final, quiet Mac | 1.75 times 540p: 198 s for the dress |
+| 540p final, Mac busy with other agents (load 50 to 100) | 136 to 800 s |
+| Sound mix | no measurable cost |
+
+**Credits (owner decision):** 100 credits for a 540p clip of up to 8 s, 150 at 720p, and 70 for a re-render of the
+same scene. A failed render is refunded.
+
+**What the site passes** to `renderBlenderScene(scene, out, { … })`:
+
+| Option | What |
+| --- | --- |
+| `photos` | the photo list the scene was designed with: `{ image, cutout?, cutoutAspect? }`, files the server put in the job's folder; `cutoutAspect` is the cut-out PNG's width / height (from sharp's metadata) |
+| `audio` | the voice-over take (MP3, WAV, M4A, AAC, OGG or FLAC), inside `jobDir` |
+| `music` | the music bed, inside `jobDir` |
+| `jobDir` | the job's own folder; sound files outside it, links out of it and other file types are refused |
+| `voiceAt`, `musicVolume` | optional overrides of the scene's cue and the music level |
+| `onProgress` | 0 to 1 as frames finish |
+
+**Still open:**
+- **Plinth labels mid-orbit:** while the camera orbits, the flat price and bar are seen at an angle. They are straight
+  only at the front-on end.
+- **The neon arch behind large cards:** since fillFrame made cards bigger, the card hides most of the arch. It should
+  grow with the product, or sit higher and wider.
+- **A render worker for the app:** renders run on this Mac only (one at a time, minutes each). The app needs a Mac
+  (or a Linux machine with a GPU) running Blender as a queue worker, with the same job folder rules.
