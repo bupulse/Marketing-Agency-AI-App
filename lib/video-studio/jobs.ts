@@ -15,6 +15,12 @@ import { choosePhotos, loadBriefFacts, readPhotos, type StoredPhoto } from "./br
 // through the API key ONLY (never the lab's subscription transport), every call recorded by withLedger
 // ("video-design"). A version that fails gives its credits back. The browser draws and encodes the MP4 later.
 
+/**
+ * How long a design may run before the sweep (/api/cron/video-jobs) may fail it and give the credits back: longer than
+ * the route's 300 s, so a request still working is never swept.
+ */
+export const DESIGN_LEASE_MS = 10 * 60_000;
+
 export class VideoStudioError extends Error {
   constructor(
     message: string,
@@ -148,7 +154,7 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
   const jobs = await prisma.$transaction(
     Array.from({ length: versions }, () =>
       prisma.videoJob.create({
-        data: { businessId: owner.businessId, userId: owner.actorId, productId: facts.productId, parentId: input.parentId ?? null, engine: "motion", mode: input.mode, status: "designing", templateId: input.templateId, hookId: input.hookId, platform: input.platform ?? null, ratio: brief.ratio, seconds: Math.min(30, Math.max(4, Math.round(input.seconds))), brief: storedBrief as object, credits: CLAUDE_VIDEO_CREDITS, periodStart: reservation.periodStart, leaseUntil: new Date(Date.now() + 5 * 60_000) },
+        data: { businessId: owner.businessId, userId: owner.actorId, productId: facts.productId, parentId: input.parentId ?? null, engine: "motion", mode: input.mode, status: "designing", templateId: input.templateId, hookId: input.hookId, platform: input.platform ?? null, ratio: brief.ratio, seconds: Math.min(30, Math.max(4, Math.round(input.seconds))), brief: storedBrief as object, credits: CLAUDE_VIDEO_CREDITS, periodStart: reservation.periodStart, leaseUntil: new Date(Date.now() + DESIGN_LEASE_MS) },
         select: { id: true },
       }),
     ),
@@ -164,14 +170,18 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
       try {
         const result = await designVideo({ ...brief, variation: versions > 1 ? { index: i + 1, of: versions } : null }, { transport, model });
         const captionScore = scoreCaption(result.spec.caption, result.spec.hashtags, { business: brief.business, product: brief.product, styleId: brief.styleId, seconds: brief.seconds, platform: brief.platform ?? null, note: brief.note ?? null }, { platform: brief.platform ?? null });
-        return await prisma.videoJob.update({
-          where: { id },
+        // Finished only if still ours: once the lease passed, the sweep may have failed and refunded it (then it stays so).
+        await prisma.videoJob.updateMany({
+          where: { id, status: "designing", refundedAt: null },
           data: { status: "designed", spec: result.spec as object, caption: result.spec.caption, hashtags: result.spec.hashtags, warnings: (result.warnings ?? []) as object, score: (result.score ?? null) as object, captionScore: captionScore as object, costUsd: result.apiEquivalentUsd, seconds: Math.min(30, Math.max(4, Math.round(result.spec.scenes.reduce((s, x) => s + x.seconds, 0)))), leaseUntil: null, error: null },
         });
+        return await prisma.videoJob.findUniqueOrThrow({ where: { id } });
       } catch (error) {
         const message = error instanceof DesignError || error instanceof ServiceDisabledError ? error.message : error instanceof Error && error.name.endsWith("BudgetExceededError") ? error.message : "The design could not be made. Your credits are back; please try again.";
-        await refundUsage(owner.userId, "videoCredits", reservation.periodStart, CLAUDE_VIDEO_CREDITS).catch(() => {});
-        return prisma.videoJob.update({ where: { id }, data: { status: "failed", error: message, refundedAt: new Date(), leaseUntil: null } });
+        // Refunded once: only if this request still holds the job (the sweep refunds the ones it took).
+        const { count } = await prisma.videoJob.updateMany({ where: { id, status: "designing", refundedAt: null }, data: { status: "failed", error: message, refundedAt: new Date(), leaseUntil: null } });
+        if (count === 1) await refundUsage(owner.userId, "videoCredits", reservation.periodStart, CLAUDE_VIDEO_CREDITS).catch(() => {});
+        return prisma.videoJob.findUniqueOrThrow({ where: { id } });
       }
     }),
   );

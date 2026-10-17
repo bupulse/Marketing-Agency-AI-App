@@ -24,6 +24,13 @@ const prisma = vi.hoisted(() => ({
       store.jobs.set(where.id, next);
       return next;
     }),
+    updateMany: vi.fn(async ({ where, data }: { where: { id: string; status?: string; refundedAt?: null }; data: Record<string, unknown> }) => {
+      const cur = store.jobs.get(where.id);
+      if (!cur || (where.status && cur.status !== where.status) || (where.refundedAt === null && cur.refundedAt)) return { count: 0 };
+      store.jobs.set(where.id, { ...cur, ...data });
+      return { count: 1 };
+    }),
+    findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => store.jobs.get(where.id)!),
     findFirst: vi.fn(async (): Promise<Record<string, unknown> | null> => null),
   },
   $transaction: vi.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
@@ -108,6 +115,22 @@ describe("POST /api/video/design", () => {
     }
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(ledger.calls).toEqual([{ feature: "video-design", provider: "claude" }, { feature: "video-design", provider: "claude" }]);
+    expect(usage.refundUsage).not.toHaveBeenCalled();
+    // The lease outlasts the route's 300 s, so the sweep never takes a request that is still working.
+    const lease = (prisma.videoJob.create.mock.calls[0] as unknown as [{ data: { leaseUntil: Date } }])[0].data.leaseUntil;
+    expect(lease.getTime() - Date.now()).toBeGreaterThan(300_000);
+  });
+
+  it("a design the sweep already failed and refunded stays failed: finishing late refunds and charges nothing again", async () => {
+    const fetchMock = vi.fn(async () => {
+      // While Claude works, the sweep takes the job (its lease passed).
+      for (const [id, j] of store.jobs) store.jobs.set(id, { ...j, status: "failed", refundedAt: new Date(), error: "swept" });
+      return claudeAnswer()("https://api.anthropic.com/v1/messages", { headers: { "x-api-key": "sk-ant-test" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await call({ productId: "p1" });
+    const out = (await res.json()) as { jobs: Job[] };
+    expect(out.jobs[0]).toMatchObject({ status: "failed", error: "swept" });
     expect(usage.refundUsage).not.toHaveBeenCalled();
   });
 

@@ -109,6 +109,7 @@ All in `worker-crons.ts` and `wrangler.jsonc` (11 triggers; Workers Paid allows 
 | --- | --- | --- |
 | every minute | `/api/cron/publish` | publish due posts |
 | hourly at :07 | `/api/cron/content-summary` (cursor) | the daily email of posts auto-approval scheduled, from 08:00 local |
+| every 4 minutes | `/api/cron/video-jobs` | Video Studio designs whose request died are failed and refunded once (Seedance polling later) |
 | hourly at :23 | `/api/cron/metrics` | post views and likes |
 | hourly at :37 | `/api/cron/leads-digest` | leads summary where it is 08:00 |
 | hourly at :53 | `/api/cron/trial-reminders` | trial-end reminders and expiry |

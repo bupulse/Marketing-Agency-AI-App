@@ -45,8 +45,14 @@ Provisional; the owner may change them.
       Claude through `apiTransport(ANTHROPIC_API_KEY)` wrapped in `withLedger("video-design")` → each job "designed"
       (spec, caption, hashtags, warnings, score, captionScore, cost) or "failed" with its 35 credits given back.
     - **Errors:** 401 / 403 / 400 / 404 / 402 / 429 / 503; 502 when every version failed.
-    - **Still open:** a job left "designing" when the request dies (the Worker stops) keeps its credits until the cron
-      sweep of task 8 refunds jobs whose lease has passed.
+    - **Lease:** 10 minutes, so the route's 300 s always fits inside it.
+  - Task 8a: **`/api/cron/video-jobs`**, every 4 minutes (`VIDEO_JOBS_CRON`).
+    - **Registered in:** `worker-crons.ts`, `wrangler.jsonc`, `netlify/functions/cron-video-jobs.mts`,
+      `netlify/lib/cron.ts`, Admin → Health (`lib/admin/cron.ts`) and the deploy docs. `*/5` was taken on Netlify by the
+      publisher.
+    - **What it does:** fails a "designing" job whose lease passed and refunds its credits to the company account,
+      exactly once. The sweep and the design request both claim the job with a conditional update (still "designing",
+      never refunded), and only the winner refunds or finishes it.
 
 ## 0. THE CLAUDE KEY
 

@@ -32,9 +32,9 @@
     // The schedules and their routes are in worker-crons.ts (tests/worker-crons.test.ts keeps both lists equal). Every
     // minute: publish due posts. Hourly: metrics (:23), leads summary (:37), trial reminders (:53), content summary (:07).
     // Daily (UTC): analytics roll-up 02:17, media cleanup 03:19, store sync 03:47, plan price changes 04:29, Mobile
-    // Money renewals and offer reminders 05:41. Every 3 hours on Fridays and Saturdays: Autopilot. 11 triggers; Workers
-    // Paid allows 250 per account.
-    "crons": ["* * * * *", "23 * * * *", "11 */3 * * 5,6", "37 * * * *", "47 3 * * *", "17 2 * * *", "29 4 * * *", "41 5 * * *", "53 * * * *", "19 3 * * *", "7 * * * *"]
+    // Money renewals and offer reminders 05:41. Every 3 hours on Fridays and Saturdays: Autopilot. Every 4 minutes: the
+    // Video Studio's sweep. 12 triggers; Workers Paid allows 250 per account.
+    "crons": ["* * * * *", "23 * * * *", "11 */3 * * 5,6", "37 * * * *", "47 3 * * *", "17 2 * * *", "29 4 * * *", "41 5 * * *", "53 * * * *", "19 3 * * *", "7 * * * *", "*/4 * * * *"]
   },
   "observability": { "enabled": true }
   // Custom domains (bupulse.com, staging.bupulse.com) are added later, see docs/DEPLOY.md.
