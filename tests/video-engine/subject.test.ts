@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SAFE_AREAS as BRAIN_SAFE_AREAS } from "@/lib/video-engine/brain/score";
-import { SAFE_AREAS, safeAreaFor } from "@/lib/video-engine/spec";
+import { STRICT_AREA, safeAreaFor } from "@/lib/video-engine/validate";
 import { DEFAULT_SUBJECT, keepOffSubject, sceneSubject, subjectOnCanvas, textHeight } from "@/lib/video-engine/subject";
 import { MIN_READ_SECONDS, validateSpec } from "@/lib/video-engine/validate";
 import type { Layer, TextLayer } from "@/lib/video-engine/spec";
@@ -96,9 +96,11 @@ describe("text is kept off the product", () => {
 });
 
 describe("safe areas per platform and reading time", () => {
-  it("the safe areas are the brain's (YouTube Shorts is 'shorts' there)", () => {
-    expect(SAFE_AREAS.youtube).toEqual(BRAIN_SAFE_AREAS.shorts);
-    for (const k of ["any", "tiktok", "instagram", "facebook"] as const) expect(SAFE_AREAS[k]).toEqual(BRAIN_SAFE_AREAS[k]);
+  it("the safe areas are the brain's (YouTube Shorts is 'shorts' there); no platform: the strictest common box", () => {
+    expect(safeAreaFor("youtube")).toEqual(BRAIN_SAFE_AREAS.shorts);
+    for (const k of ["tiktok", "instagram", "facebook"] as const) expect(safeAreaFor(k)).toEqual(BRAIN_SAFE_AREAS[k]);
+    expect(safeAreaFor(null)).toEqual(STRICT_AREA);
+    expect(STRICT_AREA).toEqual({ top: 0.12, bottom: 0.78, left: 0.07, right: 0.85 });
   });
 
   it("on YouTube Shorts the price, the phone and the call to action sit in the middle band; other text in the Shorts area", () => {

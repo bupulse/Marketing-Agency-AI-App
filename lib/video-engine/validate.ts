@@ -1,6 +1,7 @@
 // Checks and repairs a motion spec from Claude (docs/VIDEO_ENGINE.md). Pure. Nothing Claude writes reaches the renderer
 // unchecked: unknown values fall back to safe defaults, numbers are clamped to the canvas, text is cut to length,
 // layers pointing at photos we do not have are dropped, and the scenes are fitted to the length that was asked for.
+import { safeAreaFor as brainSafeArea, type SafeArea } from "@/lib/video-engine/brain";
 import { luminance, rgba } from "./draw3d";
 import { keepOffSubject, sceneSubject, type PhotoInfo } from "./subject";
 import {
@@ -13,7 +14,6 @@ import {
   MATERIALS,
   PARTICLE_KINDS,
   YOUTUBE_MIDDLE_BAND,
-  safeAreaFor,
   SHAPES,
   SPEC_LIMITS,
   TEXT_ANIMATIONS,
@@ -342,6 +342,15 @@ export function legible(input: Layer[]): Layer[] {
 }
 
 const VERTICAL = new Set<Ratio>(["9:16", "3:4", "4:5"]);
+/**
+ * Where text must stay on a vertical video: the brain's area for the platform (brain SAFE_AREAS, youtube = Shorts);
+ * with no platform, the strictest common box (TikTok's: Instagram and TikTok cover the bottom 20%, TikTok and Shorts
+ * the right edge), so a video is safe wherever it is posted.
+ */
+export const STRICT_AREA: SafeArea = { top: 0.12, bottom: 0.78, left: 0.07, right: 0.85 };
+export const safeAreaFor = (platform: string | null | undefined): SafeArea => (platform ? brainSafeArea(platform) : STRICT_AREA);
+/** Most hashtags per platform (the brain audit: Facebook 0 to 3, TikTok and Instagram 4 to 6, Shorts 1 to 3). */
+const HASHTAGS: Record<string, number> = { facebook: 3, tiktok: 6, instagram: 6, youtube: 3 };
 /** A price, a phone number or a call to action (on YouTube Shorts it goes in the middle band). */
 const CONTACT = /\d{3}[\s-]?\d{3}|\d{1,3}(?:,\d{3})+|\b(?:whatsapp|call|order|contact|rwf|frw|ksh|tsh|ugx|price)\b/i;
 
@@ -355,15 +364,145 @@ export function inSafeArea(layers: Layer[], ratio: Ratio, platform: string | nul
   if (!VERTICAL.has(ratio)) return layers;
   const area = safeAreaFor(platform);
   const round = (n: number) => Math.round(n * 1000) / 1000;
-  return layers.map((l) => {
-    if (l.kind !== "text" || l.size > 0.22) return l;
+  const out = [...layers];
+  layers.forEach((l, i) => {
+    if (l.kind !== "text" || l.size > 0.22) return;
     const A = platform === "youtube" && CONTACT.test(l.text) ? { ...area, ...YOUTUBE_MIDDLE_BAND } : area;
     const w = Math.min(l.w, round(A.right - A.left));
     const h = Math.min(l.h, round(A.bottom - A.top));
     const x = round(Math.min(A.right - w / 2, Math.max(A.left + w / 2, l.x)));
     const y = round(Math.min(A.bottom - h / 2, Math.max(A.top + h / 2, l.y)));
-    return x === l.x && y === l.y && w === l.w && h === l.h ? l : { ...l, x, y, w, h };
+    if (x === l.x && y === l.y && w === l.w && h === l.h) return;
+    out[i] = { ...l, x, y, w, h };
+    // The shape right behind it (a phone bar, a price pill) moves with it, or the bar is left empty below the number.
+    layers.forEach((s, j) => {
+      if (s.kind !== "shape" || Math.abs(s.x - l.x) > l.w / 2 || Math.abs(s.y - l.y) > l.h / 2 || s.h > l.h * 2) return;
+      out[j] = { ...s, x: round(s.x + x - l.x), y: round(s.y + y - l.y), w: Math.min(s.w, round(A.right - A.left)) };
+    });
   });
+  return out;
+}
+
+/** WCAG contrast ratio of two colours (1 to 21). */
+function contrast(a: string, b: string): number {
+  const L = (c: string) => {
+    const lin = (v: number) => (v / 255 <= 0.03928 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4);
+    const [r, g, bl] = rgba(c);
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(bl);
+  };
+  const [x, y] = [L(a), L(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+
+/**
+ * Small text lying straight on a plain or gradient background (not on a photo, a shape or a box) reads on it: under
+ * 3:1 contrast with the background's colours it takes near-black or white (the sweep found a faded white phone line on
+ * a pale grey studio background).
+ */
+function readableOnBackground(layers: Layer[], bg: Background): Layer[] {
+  if (bg.kind === "photo") return layers;
+  return layers.map((l, i) => {
+    if (l.kind !== "text" || l.box || l.size > 0.06) return l;
+    const covered = layers.slice(0, i).some((s) => (s.kind === "photo" || s.kind === "shape") && covers(s, l));
+    if (covered) return l;
+    const worst = Math.min(...bg.colors.map((c) => contrast(l.color, c)));
+    if (worst >= 3) return l;
+    const pick = readableOn(bg.colors[Math.floor(bg.colors.length / 2)] ?? bg.colors[0]);
+    return Math.min(...bg.colors.map((c) => contrast(pick, c))) > worst ? { ...l, color: pick } : l;
+  });
+}
+
+/** Words a voice says in a second (an advert's clear pace). */
+export const WORDS_PER_SECOND = 2.5;
+
+/**
+ * A say line far longer than its scene (more than 1.3 times the words it has time for) is cut back to its first whole
+ * clauses that fit; a line with no clause that fits is kept (the voice-over then stretches the scene, voice.ts).
+ */
+export function fitSay(say: string, seconds: number): string {
+  const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
+  const most = Math.floor(seconds * WORDS_PER_SECOND * 1.3) + 1;
+  if (words(say) <= most) return say;
+  const clauses = say.split(/(?<=[.!?;,])\s+/);
+  let out = "";
+  for (const c of clauses) {
+    const next = out ? `${out} ${c}` : c;
+    if (words(next) > most) break;
+    out = next;
+  }
+  if (!out) return say;
+  return /[.!?…]$/.test(out) ? out : `${out.replace(/[,;:]$/, "")}.`;
+}
+
+const ORDER_WORDS = /\b(?:order|call|whatsapp|book|visit|buy|shop|dm|message|contact|hamagara|twandikire|commandez|appelez)\b/i;
+
+/**
+ * The last scene must say how to order (the brain audit found end cards with a bare number): when it shows a phone
+ * number but no ordering word, the number reads "Call or WhatsApp <number>" (the brief's phone is its phone and
+ * WhatsApp line).
+ */
+function withOrderWords(layers: Layer[]): Layer[] {
+  const texts = layers.filter((l): l is Extract<Layer, { kind: "text" }> => l.kind === "text");
+  if (texts.some((t) => ORDER_WORDS.test(t.text))) return layers;
+  const phone = texts.find((t) => t.text.replace(/\D/g, "").length >= 9 && /^[+\d\s().-]+$/.test(t.text.trim()));
+  if (!phone) return layers;
+  return layers.map((l) => (l === phone ? { ...phone, text: cleanText(`Call or WhatsApp ${phone.text}`, SPEC_LIMITS.maxText) } : l));
+}
+
+/** The phone number as people read it in Rwanda: "+250 788 300 400" -> "0788 300 400"; other numbers as given. */
+export function localPhone(phone: string): string {
+  const d = phone.replace(/\D/g, "");
+  if (/^2507\d{8}$/.test(d)) return `0${d.slice(3, 6)} ${d.slice(6, 9)} ${d.slice(9)}`;
+  if (/^07\d{8}$/.test(d)) return `${d.slice(0, 4)} ${d.slice(4, 7)} ${d.slice(7)}`;
+  return phone.trim();
+}
+
+/**
+ * Every scene of a vertical video carries the phone number (owner decision, 17 October 2026: the research shows the
+ * number on screen from the first frame to the last). A scene without it gets a small, quiet line (size 0.03, the
+ * palette's text colour slightly faded, no pill) at the bottom of the safe area, or the top when that is taken or
+ * covers the product; on YouTube Shorts at the bottom of the middle band. Calm templates keep their look.
+ */
+function withPhoneLine(scene: Scene, phone: string, palette: MotionSpec["palette"], area: SafeArea, platform: string | null, ratio: Ratio, photos: (PhotoInfo | undefined)[]): Layer[] {
+  const digits = phone.replace(/\D/g, "").replace(/^(?:250|0)/, "");
+  if (digits.length < 7 || scene.layers.length >= SPEC_LIMITS.maxLayers) return scene.layers;
+  const has = scene.layers.some((l) => l.kind === "text" && l.text.replace(/\D/g, "").replace(/^(?:250|0)/, "").includes(digits.slice(-6)));
+  if (has) return scene.layers;
+  const [r, g, b] = rgba(palette.text);
+  const h = 0.04;
+  const subject = sceneSubject(scene, ratio, photos);
+  const free = (y: number) => {
+    const box = { x: 0.5, y, w: 0.7, h };
+    const hitsText = scene.layers.some((l) => l.kind === "text" && overlaps(l, box as Layer));
+    const hitsProduct = subject ? Math.abs(y - (subject.y + subject.h / 2)) < (h + subject.h) / 2 : false;
+    return !hitsText && !hitsProduct;
+  };
+  const spots = platform === "youtube" ? [YOUTUBE_MIDDLE_BAND.bottom - h / 2] : [area.bottom - h / 2, area.top + h / 2];
+  const y = spots.find(free);
+  if (y === undefined) return scene.layers;
+  const line: Layer = {
+    kind: "text",
+    x: 0.5,
+    y: Math.round(y * 1000) / 1000,
+    w: 0.7,
+    h,
+    from: 0,
+    to: 1,
+    depth: 0.95,
+    text: localPhone(phone),
+    font: "inter",
+    weight: 600,
+    size: 0.03,
+    color: `rgba(${r},${g},${b},0.85)`,
+    align: "center",
+    uppercase: false,
+    box: null,
+    highlight: null,
+    shadow: true,
+    text3d: null,
+    animate: "none",
+  };
+  return [...scene.layers, line];
 }
 
 /** The shortest time a text stays fully on screen after its entrance, in seconds (the sweep found lines arriving too late to read). */
@@ -387,7 +526,7 @@ function readable(l: Layer, sceneSeconds: number): Layer {
  * `photos`: what is known about photo n (index n - 1): its size and the product's box in it (the cut-out's box), so
  * text can be kept off the product. `platform`: the safe area to keep text in (designer.ts PLATFORMS keys).
  */
-export type ValidateOptions = { ratio: Ratio; photoCount: number; seconds: number; fixedLens?: boolean; photos?: (PhotoInfo | undefined)[]; platform?: string | null };
+export type ValidateOptions = { ratio: Ratio; photoCount: number; seconds: number; fixedLens?: boolean; photos?: (PhotoInfo | undefined)[]; platform?: string | null; phone?: string | null };
 
 export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
   if (!isObj(raw)) throw new SpecError("The design was not a JSON object.");
@@ -398,7 +537,7 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
     accent: color(p.accent, "#ffcc00"),
     text: color(p.text, "#ffffff"),
   };
-  const scenes: Scene[] = (Array.isArray(raw.scenes) ? raw.scenes : [])
+  const all: Scene[] = (Array.isArray(raw.scenes) ? raw.scenes : [])
     .filter(isObj)
     .slice(0, SPEC_LIMITS.maxScenes)
     .map((s, i) => ({
@@ -415,7 +554,12 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
       camera: camera(s.camera, opts.fixedLens === true),
       light: light(s.light),
     }));
+  // A scene with nothing in it (no layer, no voice line) is a dead second at most: dropped, keeping at least two.
+  let empty = all.filter((s) => s.layers.length === 0 && !s.say).length;
+  const scenes = all.filter((s) => (s.layers.length > 0 || !!s.say || all.length - empty-- < SPEC_LIMITS.minScenes ? true : false));
   if (scenes.length < SPEC_LIMITS.minScenes) throw new SpecError("The design had too few scenes.");
+  // The first scene arrives with a cut, whichever scene it was.
+  scenes[0].transition = "cut";
   const ratio = isRatio(raw.ratio) ? raw.ratio : opts.ratio;
   const area = safeAreaFor(opts.platform);
   // Into the safe area first, then off the product (it restacks inside the safe bands), then the safe area again for
@@ -423,7 +567,13 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
   const safe = (layers: Layer[]) => inSafeArea(layers, ratio, opts.platform ?? null);
   for (const s of scenes) s.layers = safe(keepOffSubject(safe(s.layers), VERTICAL.has(ratio) ? sceneSubject(s, ratio, opts.photos ?? []) : null, area, ratio));
   fitLength(scenes, opts.seconds);
-  for (const s of scenes) s.layers = s.layers.map((l) => readable(l, s.seconds));
+  for (const s of scenes) {
+    s.layers = s.layers.map((l) => readable(l, s.seconds));
+    if (s.say) s.say = fitSay(s.say, s.seconds);
+    if (VERTICAL.has(ratio) && opts.phone) s.layers = withPhoneLine(s, opts.phone, palette, area, opts.platform ?? null, ratio, opts.photos ?? []);
+    s.layers = readableOnBackground(s.layers, s.background);
+  }
+  scenes[scenes.length - 1].layers = withOrderWords(scenes[scenes.length - 1].layers);
   return {
     version: 1,
     title: cleanText(raw.title, 80) || "Video",
@@ -436,7 +586,7 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
     hashtags: (Array.isArray(raw.hashtags) ? raw.hashtags : [])
       .map((h) => cleanText(h, 40).replace(/^#*/, "").replace(/[^\p{L}\p{N}_]/gu, ""))
       .filter(Boolean)
-      .slice(0, SPEC_LIMITS.hashtags),
+      .slice(0, HASHTAGS[opts.platform ?? ""] ?? SPEC_LIMITS.hashtags),
     look: look(raw.look),
   };
 }

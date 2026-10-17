@@ -63,8 +63,9 @@ describe("safe area", () => {
     // A plain background, so only the safe area moves text (a photo would also keep text off the product).
     const plain = (layers: unknown[]) => validateSpec({ palette: {}, scenes: [{ seconds: 3, background: {}, layers }, { seconds: 3, background: {}, layers: [] }] }, { ratio: "9:16", photoCount: 0, seconds: 6 }).scenes[0].layers;
     const [low, wide, giant] = plain([text({ y: 0.9, h: 0.06 }), text({ x: 0.5, w: 1.2 }), text({ text: "NOVA", size: 0.4, depth: 0.2, y: 0.95, w: 1.4 })]);
-    expect(low).toMatchObject({ y: 0.79 });
-    expect(wide).toMatchObject({ w: 0.86, x: 0.5 });
+    // No platform: the strictest common box (y 0.12 to 0.78, x 0.07 to 0.85).
+    expect(low).toMatchObject({ y: 0.75 });
+    expect(wide).toMatchObject({ w: 0.78, x: 0.46 });
     expect(giant).toMatchObject({ y: 0.95, w: 1.4 });
     const landscape = validateSpec({ palette: {}, scenes: [{ seconds: 3, background: {}, layers: [text({ y: 0.9, h: 0.06 })] }, { seconds: 3, background: {}, layers: [] }] }, { ratio: "16:9", photoCount: 0, seconds: 6 });
     expect(landscape.scenes[0].layers[0]).toMatchObject({ y: 0.9 });
@@ -78,5 +79,76 @@ describe("fact check: list markers", () => {
     expect(said("One. Genuine, with a twelve-month warranty. Two. Pay with MoMo.")).toEqual([]);
     expect(said("Reason 3: it is genuine. Step 2, order.")).toEqual([]);
     expect(said("Comes with 2 chargers.").map((w) => w.found)).toEqual(["2"]);
+  });
+});
+
+describe("phone line, voice lines and hashtags", () => {
+  const scene = (layers: unknown[], say?: string, seconds = 3) => ({ seconds, background: {}, layers, say });
+  const run = (scenes: unknown[], over: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) =>
+    validateSpec({ palette: { text: "#ffffff" }, scenes, ...extra }, { ratio: "9:16", photoCount: 0, seconds: 6, phone: "+250 788 300 400", ...over });
+
+  it("a scene without the number gets a small quiet phone line; a scene with it, or a wide video, does not", () => {
+    const spec = run([scene([text({ text: "Nova Phones Kigali", y: 0.3, h: 0.08 })]), scene([text({ text: "WhatsApp 0788 300 400", y: 0.5, h: 0.08 })])]);
+    const added = spec.scenes[0].layers.find((l) => l.kind === "text" && l.text === "0788 300 400");
+    expect(added).toMatchObject({ size: 0.03, box: null, animate: "none", y: 0.76, color: "rgba(255,255,255,0.85)" });
+    expect(spec.scenes[1].layers).toHaveLength(1);
+    expect(validateSpec(JSON.parse(JSON.stringify(spec)), { ratio: "9:16", photoCount: 0, seconds: 6, phone: "+250 788 300 400" })).toEqual(spec);
+    expect(run([scene([]), scene([])], { ratio: "16:9" }).scenes[0].layers).toHaveLength(0);
+    expect(run([scene([]), scene([])], { phone: null }).scenes[0].layers).toHaveLength(0);
+  });
+
+  it("on Shorts the quiet line sits at the bottom of the middle band", () => {
+    const [line] = run([scene([]), scene([])], { platform: "youtube" }).scenes[0].layers;
+    expect(line).toMatchObject({ y: 0.68 });
+  });
+
+  it("a voice line far too long for its scene is cut back to its first clauses; a fitting one is kept", () => {
+    const long = "The Galaxy A56 is here. It has a big screen, a great camera and a battery that lasts all day long for you.";
+    const spec = run([scene([], long, 2), scene([], "Order on WhatsApp today.", 3)], { seconds: 5 });
+    expect(spec.scenes[0].say).toBe("The Galaxy A56 is here.");
+    expect(spec.scenes[1].say).toBe("Order on WhatsApp today.");
+  });
+
+  it("hashtags are capped per platform", () => {
+    const tags = ["a", "b", "c", "d", "e", "f", "g", "h"];
+    expect(run([scene([]), scene([])], { platform: "facebook" }, { hashtags: tags }).hashtags).toHaveLength(3);
+    expect(run([scene([]), scene([])], { platform: "tiktok" }, { hashtags: tags }).hashtags).toHaveLength(6);
+    expect(run([scene([]), scene([])], {}, { hashtags: tags }).hashtags).toHaveLength(8);
+  });
+});
+
+describe("empty scenes and the last scene's call to action", () => {
+  const t = (over: Record<string, unknown>) => text(over);
+  it("an empty scene (no layer, no voice line) is dropped, keeping at least two scenes", () => {
+    const spec = validateSpec({ palette: {}, scenes: [{ seconds: 3, background: {}, layers: [t({})] }, { seconds: 3, background: {}, layers: [] }, { seconds: 3, background: {}, layers: [t({ text: "Order on WhatsApp" })] }] }, { ratio: "9:16", photoCount: 0, seconds: 9 });
+    expect(spec.scenes).toHaveLength(2);
+    expect(spec.scenes.reduce((s, x) => s + x.seconds, 0)).toBeCloseTo(9, 1);
+    const two = validateSpec({ palette: {}, scenes: [{ seconds: 3, background: {}, layers: [] }, { seconds: 3, background: {}, layers: [] }] }, { ratio: "9:16", photoCount: 0, seconds: 6 });
+    expect(two.scenes).toHaveLength(2);
+    expect(two.scenes[0].transition).toBe("cut");
+  });
+
+  it("a bare number on the last scene gets the ordering words; a scene that already says how to order is left", () => {
+    const end = (layers: unknown[]) => validateSpec({ palette: {}, scenes: [{ seconds: 3, background: {}, layers: [t({ text: "Galaxy A56" })] }, { seconds: 3, background: {}, layers }] }, { ratio: "9:16", photoCount: 0, seconds: 6 }).scenes[1].layers;
+    expect(end([t({ text: "+250 788 300 400" })])[0]).toMatchObject({ text: "Call or WhatsApp +250 788 300 400" });
+    expect(end([t({ text: "Order on WhatsApp", y: 0.3 }), t({ text: "+250 788 300 400" })])[1]).toMatchObject({ text: "+250 788 300 400" });
+    expect(end([t({ text: "Nova Phones Kigali" })])[0]).toMatchObject({ text: "Nova Phones Kigali" });
+  });
+});
+
+describe("phone bars and quiet lines", () => {
+  it("a phone bar moves with its number into the safe area", () => {
+    const spec = validateSpec({ palette: {}, scenes: [{ seconds: 3, background: {}, layers: [{ kind: "shape", shape: "rect", color: "#25D366", x: 0.5, y: 0.86, w: 0.86, h: 0.065, radius: 0.5 }, text({ text: "WhatsApp 0788 300 400", y: 0.86, h: 0.05, color: "#111111" })] }, { seconds: 3, background: {}, layers: [] }] }, { ratio: "9:16", photoCount: 0, seconds: 6 });
+    const [bar, number] = spec.scenes[0].layers;
+    expect(Math.abs(bar.y - number.y)).toBeLessThan(1e-9);
+    expect(number.y + number.h / 2).toBeLessThanOrEqual(0.78 + 1e-9);
+  });
+
+  it("a faded light line on a pale background turns dark; a readable one is left", () => {
+    const pale = { kind: "gradient", colors: ["#f4f6fb", "#c9d2e4"] };
+    const [faded] = validateSpec({ palette: {}, scenes: [{ seconds: 3, background: pale, layers: [text({ text: "0788 300 400", size: 0.03, color: "rgba(255,255,255,0.85)", y: 0.75, h: 0.04 })] }, { seconds: 3, background: {}, layers: [] }] }, { ratio: "9:16", photoCount: 0, seconds: 6 }).scenes[0].layers;
+    expect((faded as { color: string }).color).toBe("#111111");
+    const [kept] = validateSpec({ palette: {}, scenes: [{ seconds: 3, background: { kind: "solid", colors: ["#0b0b0f"] }, layers: [text({ text: "0788 300 400", size: 0.03, color: "#ffffff", y: 0.75, h: 0.04 })] }, { seconds: 3, background: {}, layers: [] }] }, { ratio: "9:16", photoCount: 0, seconds: 6 }).scenes[0].layers;
+    expect((kept as { color: string }).color).toBe("#ffffff");
   });
 });
