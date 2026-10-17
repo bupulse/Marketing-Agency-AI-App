@@ -70,8 +70,8 @@ same again in `render.py`). Claude gets the short version, `BLENDER_SCENE_FORMAT
 | `canvas.samples` | 1 to 128 (16) | Eevee samples: render time grows with it; 16 is clean, 32 to 64 for finals |
 | `duration` | 1 to 15 s (4) | |
 | `seed` | integer (1) | the only source of randomness (particles): same scene, same video |
-| `background.kind` | studio, gradient, solid (studio) | the set is always a round "infinite" studio sweep (floor curving into a wall), so the camera can orbit anywhere; studio adds a soft glow of the second colour on the wall behind the product |
-| `background.colors` | [hex, hex] (#1a1d24, #3a4255) | studio: the backdrop and the glow behind the product; gradient: low and high wall colours; solid: one colour |
+| `background.kind` | studio, daylight, neon, gradient, solid (studio) | the set is always a round "infinite" studio sweep (floor curving into a wall), so the camera can orbit anywhere. studio: the dark showroom with a soft glow of the second colour behind the product; daylight: a bright set under a white sky with a brand-colour accent wall (7.5 x 8.2, rounded) behind the product; neon: a dark set with a neon arch behind the product and two neon tubes, in the second colour (see "Premium looks") |
+| `background.colors` | [hex, hex] (#1a1d24, #3a4255) | studio: the backdrop and the glow; daylight: the light set and the accent wall; neon: the dark set and the neon colour; gradient: low and high wall colours; solid: one colour |
 | `background.floor.color` | hex (the first colour) | |
 | `background.floor.reflect` | 0 to 1 (0.55) | 0 = matte, 1 = mirror; 0.6 to 0.85 is the glossy studio floor |
 | `background.light.preset` | studio, soft, dramatic, warm (studio) | key, fill, two rim strips and a top softbox in different balances |
@@ -104,6 +104,8 @@ same again in `render.py`). Claude gets the short version, `BLENDER_SCENE_FORMAT
 | `material` | metal, chrome, gloss, matte, glass, neon (metal) | metal and chrome mirror the studio softboxes; gloss is lacquered plastic; neon glows |
 | `color` | hex (#ffffff) | |
 | `face` | 0 to 1 (0.6) | how much the letters turn towards a moving camera, so they stay readable while their sides still show |
+| `weight` | bold, regular (bold) | the font's two weights (inter, poppins, nunito 800/600; space-grotesk 700/500; playfair 700/600; anton and dm-serif have one) |
+| `plate` | null or hex (null) | a clean flat label on a rounded bar of this colour (the phone number, a call to action): no extrusion, a slight glow of its own so it reads in any light |
 | props: `props[]` (up to 12) | | |
 | `kind` | plinth, sphere, ring, box, cylinder (sphere) | |
 | `position` | [x, y, z] | sphere and ring: centre; plinth, box, cylinder: bottom centre |
@@ -124,7 +126,7 @@ same again in `render.py`). Claude gets the short version, `BLENDER_SCENE_FORMAT
 | `spin`, `angle` | 0 to 4 (1), 5 to 360 (30) | |
 | `look.contrast` | base, medium, high, punchy (medium) | AgX looks |
 | `look.exposure` | -3 to 3 (0) | |
-| `look.bloom` | 0 to 1 (0.3) | glow around bright parts (compositor) |
+| `look.bloom` | 0 to 1 (0.2) | glow around really bright parts only (threshold 1.0: neon, highlights), so text edges stay crisp |
 | `sound.voiceAt` | 0 to 15 s (0.3) | when the voice-over starts |
 | `sound.voiceVolume`, `sound.musicVolume` | 0 to 2 (1), 0 to 1 (0.18 under a voice, 0.7 alone) | |
 | `sound.voice`, `sound.music` | paths, hand-written scenes only | dropped by `normalizeBlenderScene`; the studio passes the files to the runner instead |
@@ -183,6 +185,70 @@ unless `fstop` is set; about a fifth of the frame time) and glass.
 - Render time: minutes, not seconds. One render at a time (`renderBlenderScene` queues them). The job runner stops a
   render after 15 minutes.
 - Mac only for now (the path to Blender). Elsewhere set `BLENDER_BIN`; Linux servers need Blender with a GPU for Eevee.
+
+## Premium looks
+
+Every clip also gets these, whatever its look:
+- **A plinth:** the product stands on it, like in a product shoot, with a contact shadow and a reflection on the floor.
+- **A thick card:** a product without a cut-out is printed on a rounded card 0.14 thick, with a 5-step bevel, glossy
+  edges and a thin clear coat.
+- **A sweep:** a tall, thin light crosses in front of the product once, between 22 % and 62 % of the clip. It makes
+  highlights only (no diffuse light) and does not touch the floor, so a bright streak glides over the card, the
+  plinth and the letters.
+- **Glow only on really bright parts:** neon and highlights glow (bloom threshold 1.0), so text edges stay crisp.
+
+The three looks:
+
+| Look | Set | Light | For |
+| --- | --- | --- | --- |
+| `studio` (dark showroom) | near-black sweep, a soft glow of the brand colour on the wall behind the product, mirror-like floor | key, fill, two rim strips, top softbox | phones, electronics, cosmetics, watches, luxury |
+| `daylight` | warm-white sweep under a white sky, a rounded accent wall in the brand colour behind the product, satin floor, white matte plinth | one big soft key (clear soft shadow), the sky as fill | homes, food, fashion, beauty, family and everyday products |
+| `neon` | near-black sweep, a neon arch behind the product, two neon tubes and coloured light from them, mirror floor | dramatic, rim in the neon colour, bloom 0.4 | launches, offers, tech, fashion drops, young audiences |
+
+`lookForTemplate(templateId, productName)` recommends the look, and the brief tells Claude:
+- `neon` for title-drop, confetti/launch, hypermotion, glass cards, colour pop, offers and TikTok formats;
+- `daylight` for homes, food and fashion products, and for the market, golden-hour, marketplace, UGC and brand-story
+  templates;
+- `studio` otherwise.
+
+**Staging repairs** (`stage`, every Claude scene, each listed in `warnings`):
+- The product stands on a plinth (a gloss dark one, or matte white in daylight; size = the product's width + 0.6,
+  at least 2.4; height 0.95). The plinth grows if the price and the phone bar need more room on its front.
+- The product swings 10 to 22 degrees.
+- The camera never stays still (dolly in 0.35), unless the lens is fixed.
+- Titles face the camera more (0.8 or more) and are less deep (0.35 or less), so the letters stay crisp while the
+  camera moves.
+- The phone number becomes a flat bar:
+  - poppins regular, 0.3 to 0.4, on the brand colour;
+  - white or near-black text, whichever contrasts with the bar;
+  - grouped as `+250 788 300 400`;
+  - at the bottom of the plinth's front, with the price above it.
+- The camera turns around a point a third of the way to the plinth's front, so an orbit barely slides the price and
+  the bar.
+- Glow is capped at 0.2 (0.4 for neon).
+
+**Tested on 17 October 2026** (loop 2). The same three briefs as before: the Galaxy A56 with `3d-title-drop` (neon)
+and `showroom-turntable` (studio), and the Kibagabaga house (daylight). Claude on the owner's subscription.
+- **Final quality:** 540p, 16 samples, 6 s (144 frames).
+- **Design per clip:** 23 to 57 s; 19,500 to 21,100 tokens in and 1,500 to 2,200 out; **$0.081 to $0.095 on the API**;
+  one attempt each; no fact warnings.
+- **Render, final quality:** 422 to 517 s (2.9 to 3.6 s a frame) while other agents kept the Mac busy (load average 57
+  to 100). The older, simpler scenes rendered at 0.9 s a frame on a quiet Mac. The new looks have not been timed on a
+  quiet Mac yet; expect about 2.5 to 4 minutes there.
+- **Contact sheets:**
+  - final: `video-lab/data/blender/design/r8/contact-sheet.jpg`;
+  - the first final round: r6;
+  - quick stills: `r7/sheet-stills.jpg`.
+- **What loop 2 fixed:**
+  - the flat card in a black void (now a thick card on a plinth, in three looks);
+  - the phone number as cramped 3D letters (now a flat bar);
+  - a still camera and product;
+  - soft glow on every edge;
+  - the neon arch crossing the title;
+  - the product too small once the plinth was added (camera margins and an orbit pivot nearer the front);
+  - a plinth label turning into the plinth (labels on the plinth now stay flat to it).
+- **Still soft:** thin gold anton titles at 540p (their bevel catches little light). A bigger title, poppins bold or
+  720p reads better.
 
 ## Claude designs the scene (`lib/video-engine/blender-design.ts`)
 
@@ -305,7 +371,7 @@ const result = await renderBlenderScene(design.scene, `video-lab/data/blender/vi
 - Site (`video-lab/site/**`):
   - a "Premium 3D" choice on the 3D motion page and the template pages `3d-title-drop`, `showroom-turntable`,
     `chrome-luxe` and `confetti-launch`;
-  - the expected wait (2 to 4 minutes for 6 s at 540p);
+  - the expected wait (about 3 to 4 minutes for 6 s at 540p on a quiet Mac, up to 9 minutes when it is busy);
   - the progress bar, and the still as the poster image.
 
 ## Sound (voice-over and music, mixed by Blender)

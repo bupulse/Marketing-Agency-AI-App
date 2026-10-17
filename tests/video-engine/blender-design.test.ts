@@ -1,6 +1,6 @@
 // Premium 3D design (docs/BLENDER.md): Claude writes a Blender scene from the brief. Claude is mocked here.
 import { describe, expect, it } from "vitest";
-import { blenderBriefText, blenderSystemPrompt, designBlenderScene, fitLayout, fixSpelling, textHeight, textWidth } from "@/lib/video-engine/blender-design";
+import { blenderBriefText, blenderSystemPrompt, designBlenderScene, fitLayout, fixSpelling, lookForTemplate, stage, textHeight, textWidth } from "@/lib/video-engine/blender-design";
 import { DesignError, type ClaudeTransport, type DesignBrief } from "@/lib/video-engine/designer";
 import { normalizeBlenderScene } from "@/tools/blender/scene";
 
@@ -201,5 +201,79 @@ describe("fixSpelling", () => {
   it("leaves other words alone", () => {
     expect(fixSpelling("Discover luxury", facts)).toBe("Discover luxury");
     expect(fixSpelling("Kigoma", facts)).toBe("Kigoma");
+  });
+});
+
+describe("premium staging", () => {
+  const raw = (extra: Record<string, unknown> = {}) =>
+    normalizeBlenderScene(
+      {
+        background: { kind: "studio", colors: ["#0b0d12", "#0b5fff"] },
+        camera: { move: "static", intensity: 0.1 },
+        look: { bloom: 0.8 },
+        product: { image: "a.jpg", height: 2.6, position: [0, 0, 0.9], idle: "float" },
+        texts: [
+          { text: "GALAXY A56", font: "anton", size: 0.9, position: [0, -0.3, 4.0] },
+          { text: "420,000 RWF", font: "anton", size: 0.6, position: [0, -0.5, 0.42] },
+          { text: "+250788300400", font: "anton", size: 0.6, position: [0, -0.5, 0.1], material: "metal" },
+        ],
+        ...extra,
+      },
+      { allowPaths: true },
+    ).scene;
+
+  it("puts the product on a plinth, moves the camera and the product, and keeps the glow soft", () => {
+    const scene = raw();
+    const warnings: string[] = [];
+    stage(scene, brief, 1, warnings);
+    const plinth = scene.props.find((p) => p.kind === "plinth")!;
+    expect(plinth.material).toBe("gloss");
+    expect(plinth.height).toBeGreaterThanOrEqual(0.95);
+    expect(plinth.size).toBeCloseTo(3.2);
+    expect(scene.product?.position[2]).toBe(plinth.height);
+    expect(scene.product?.idle).toBe("swing");
+    expect(scene.camera).toMatchObject({ move: "dollyIn", intensity: 0.35 });
+    expect(scene.look.bloom).toBe(0.2);
+    expect(warnings.join(" ")).toMatch(/plinth/);
+  });
+
+  it("makes the phone number a flat bar in the brand colour, in front of the plinth", () => {
+    const scene = raw();
+    const warnings: string[] = [];
+    stage(scene, brief, 1, warnings);
+    fitLayout(scene, 1, warnings);
+    const bar = scene.texts.find((t) => t.plate)!;
+    expect(bar).toMatchObject({ plate: "#0b5fff", font: "poppins", weight: "regular", depth: 0, color: "#ffffff" });
+    expect(bar.size).toBeLessThanOrEqual(0.4);
+    const plinth = scene.props.find((p) => p.kind === "plinth")!;
+    const price = scene.texts.find((t) => t.text === "420,000 RWF")!;
+    // Both on the front of the plinth: the bar at the bottom, the price above it, both under the product.
+    expect(price.position[1]).toBeLessThanOrEqual(-plinth.size / 2 - 0.12 + 1e-9);
+    expect(bar.position[1]).toBeLessThanOrEqual(-plinth.size / 2 - 0.12 + 1e-9);
+    expect(bar.text).toBe("+250 788 300 400");
+    expect([bar.face, price.face]).toEqual([0, 0]);
+    expect(price.position[2] - textHeight(price) / 2).toBeGreaterThan(bar.position[2]);
+    expect(price.position[2] + textHeight(price) / 2).toBeLessThanOrEqual(scene.product!.position[2] + 1e-9);
+  });
+
+  it("uses a white plinth and dark text on a light bar in daylight", () => {
+    const scene = raw({ background: { kind: "daylight", colors: ["#f4f1ec", "#2f6b4f"] } });
+    stage(scene, { ...brief, business: { ...brief.business, colors: ["#ffd84d"] } }, 1, []);
+    expect(scene.props.find((p) => p.kind === "plinth")).toMatchObject({ material: "matte", color: "#ffffff" });
+    expect(scene.texts.find((t) => t.plate)).toMatchObject({ plate: "#ffd84d", color: "#111111" });
+  });
+
+  it("keeps a fixed lens still and the neon glow stronger", () => {
+    const scene = raw({ background: { kind: "neon", colors: ["#07060f", "#7b5cff"] } });
+    stage(scene, { ...brief, fixedLens: true }, 1, []);
+    expect(scene.camera.move).toBe("static");
+    expect(scene.look.bloom).toBe(0.4);
+  });
+
+  it("recommends a look for the template and the product", () => {
+    expect(lookForTemplate("3d-title-drop")).toBe("neon");
+    expect(lookForTemplate("showroom-turntable", "Samsung Galaxy A56")).toBe("studio");
+    expect(lookForTemplate("showroom-turntable", "3-bedroom house with garden, Kibagabaga")).toBe("daylight");
+    expect(blenderBriefText(brief)).toMatch(/Recommended look for this template: "neon"/);
   });
 });

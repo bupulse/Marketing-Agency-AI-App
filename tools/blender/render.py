@@ -26,15 +26,17 @@ REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 
 RATIOS = {"9:16": (9, 16), "3:4": (3, 4), "4:5": (4, 5), "1:1": (1, 1), "4:3": (4, 3), "16:9": (16, 9)}
 QUALITIES = {"480p": 480, "540p": 540, "720p": 720, "1080p": 1080}
+# The studio's fonts (public/fonts/video): (bold, regular) for each. Anton and DM Serif have one weight.
 FONTS = {
-    "inter": "inter-latin-800-normal.woff2",
-    "poppins": "poppins-latin-800-normal.woff2",
-    "nunito": "nunito-latin-800-normal.woff2",
-    "space-grotesk": "space-grotesk-latin-700-normal.woff2",
-    "anton": "anton-latin-400-normal.woff2",
-    "playfair": "playfair-display-latin-700-normal.woff2",
-    "dm-serif": "dm-serif-display-latin-400-normal.woff2",
+    "inter": ("inter-latin-800-normal.woff2", "inter-latin-600-normal.woff2"),
+    "poppins": ("poppins-latin-800-normal.woff2", "poppins-latin-600-normal.woff2"),
+    "nunito": ("nunito-latin-800-normal.woff2", "nunito-latin-600-normal.woff2"),
+    "space-grotesk": ("space-grotesk-latin-700-normal.woff2", "space-grotesk-latin-500-normal.woff2"),
+    "anton": ("anton-latin-400-normal.woff2", "anton-latin-400-normal.woff2"),
+    "playfair": ("playfair-display-latin-700-normal.woff2", "playfair-display-latin-600-normal.woff2"),
+    "dm-serif": ("dm-serif-display-latin-400-normal.woff2", "dm-serif-display-latin-400-normal.woff2"),
 }
+BACKGROUNDS = ("solid", "gradient", "studio", "daylight", "neon")
 MATERIALS = ("metal", "glass", "matte", "gloss", "neon", "chrome")
 
 
@@ -159,7 +161,7 @@ def normalize(raw):
         "seed": int(num(s.get("seed"), 1, 0, 1_000_000)),
     }
     bg = s.get("background") or {}
-    kind = pick(bg.get("kind"), ("solid", "gradient", "studio"), "studio")
+    kind = pick(bg.get("kind"), BACKGROUNDS, "studio")
     colors = [c for c in (bg.get("colors") or []) if isinstance(c, str)][:2] or ["#1a1d24", "#3a4255"]
     if len(colors) == 1:
         colors.append(colors[0])
@@ -217,6 +219,8 @@ def normalize(raw):
                 "material": pick(t.get("material"), MATERIALS, "metal"),
                 "color": t.get("color") if isinstance(t.get("color"), str) else "#ffffff",
                 "face": num(t.get("face"), 0.6, 0, 1),
+                "weight": pick(t.get("weight"), ("bold", "regular"), "bold"),
+                "plate": t.get("plate") if isinstance(t.get("plate"), str) else None,
                 **motion(t, "spinIn", "none"),
             }
         )
@@ -255,7 +259,7 @@ def normalize(raw):
     out["look"] = {
         "contrast": pick(look.get("contrast"), ("base", "medium", "high", "punchy"), "medium"),
         "exposure": num(look.get("exposure"), 0, -3, 3),
-        "bloom": num(look.get("bloom"), 0.3, 0, 1),
+        "bloom": num(look.get("bloom"), 0.2, 0, 1),
     }
     sound = s.get("sound") or {}
     out["sound"] = {
@@ -323,7 +327,8 @@ def surface(kind, color, name):
 
 
 def photo_material(name, path, cutout):
-    m, b = principled(name, "#ffffff", roughness=0.4)  # no clear coat: its streaks hid the photo
+    # A thin clear coat: the moving sweep light glides over it; the studio sky's softboxes stay faint (coat 0.12).
+    m, b = principled(name, "#ffffff", roughness=0.4, coat=0.0 if cutout else 0.12)
     nodes, links = m.node_tree.nodes, m.node_tree.links
     tex = nodes.new("ShaderNodeTexImage")
     tex.image = bpy.data.images.load(path, check_existing=True)
@@ -389,8 +394,8 @@ def slab(name, w, h, thick, radius, front_mat, side_mat):
     me.materials.append(side_mat)
     obj = link(bpy.data.objects.new(name, me))
     bev = obj.modifiers.new("edge", "BEVEL")
-    bev.width = min(0.02, thick * 0.3)
-    bev.segments = 3
+    bev.width = min(0.04, thick * 0.3)
+    bev.segments = 5
     bev.limit_method = "ANGLE"
     bev.harden_normals = False
     return obj
@@ -449,9 +454,9 @@ def backdrop_material(bg):
     els[0].position = 0.0
     els[0].color = rgba(floor["color"])
     els[1].position = 1.0
-    if bg["kind"] == "gradient":
+    if bg["kind"] in ("gradient", "neon"):
         els.new(0.08).color = rgba(c0)
-        els[-1].color = rgba(c1)
+        els[-1].color = rgba(c1 if bg["kind"] == "gradient" else c0)
     else:
         els.new(0.08).color = rgba(c0)
         els[-1].color = rgba(c0)
@@ -553,6 +558,11 @@ def setup_world(bg):
     mix.inputs["B"].default_value = (6.0, 6.0, 6.2, 1)
     links.new(mix.outputs["Result"], out_bg.inputs["Color"])
     out_bg.inputs["Strength"].default_value = 0.5
+    if bg["kind"] == "daylight":
+        # A bright day: a white sky all around lights the set softly from everywhere.
+        els[0].color = (0.25, 0.25, 0.26, 1)
+        els[1].color = (1.0, 1.0, 1.0, 1)
+        out_bg.inputs["Strength"].default_value = 1.1
 
 
 def area(name, loc, target, energy, size, color=(1, 1, 1), shape="RECTANGLE", size_y=None):
@@ -598,6 +608,9 @@ def setup_lights(bg, target):
         "dramatic": (1300, 40, 1500, 80),
         "warm": (950, 220, 700, 220),
     }[L["preset"]]
+    if bg["kind"] == "daylight":
+        # Daylight: one big soft key for a clear, soft shadow; the sky does the fill.
+        key_e, fill_e, rim_e, top_e = 1100, 200, 250, 300
     t = Vector(target)
     # Only the key and the top light cast shadows: soft shadows from every light cost the most render time.
     area("Key", (side * 4.5, -4.5, 6.5), t, key_e * k, 3.5, warm)
@@ -610,6 +623,45 @@ def setup_lights(bg, target):
         rim.data.use_shadow = False
         rim.data.spread = math.radians(50)
         exclude_backdrop(rim)
+
+
+def setup_set(bg, target, duration, fps, frames):
+    """What makes each look: the daylight accent wall, the neon arch and tubes, and for every look a soft light that
+    sweeps once across the product, so its surfaces catch a moving highlight."""
+    c0, c1 = bg["colors"]
+    t = Vector(target)
+    if bg["kind"] == "daylight":
+        wall_m, wb = principled("AccentWall", c1, roughness=0.85)
+        wb.inputs["Specular IOR Level"].default_value = 0.2
+        edge_m, _ = principled("AccentEdge", c1, roughness=0.6)
+        wall = slab("AccentWall", 7.5, 8.2, 0.12, 0.3, wall_m, edge_m)
+        wall.location = (0, 3.4, 0)
+    if bg["kind"] == "neon":
+        tube = principled("Neon", "#000000", emission=c1, strength=12)[0]
+        soft = principled("NeonSoft", "#000000", emission=c1, strength=5)[0]
+        bpy.ops.mesh.primitive_torus_add(major_radius=1.75, minor_radius=0.035, major_segments=96, minor_segments=12, location=(0, 1.3, t.z), rotation=(math.radians(90), 0, 0))
+        arch = bpy.context.object
+        arch.name = "NeonArch"
+        arch.data.materials.append(tube)
+        arch.visible_shadow = False
+        for x in (-3.1, 3.1):
+            bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=0.03, depth=6.5, location=(x, 1.6, 3.25))
+            ob = bpy.context.object
+            ob.data.materials.append(soft)
+            ob.visible_shadow = False
+            lt = area(f"NeonLight{x}", (x, 1.4, t.z), t, 450 * bg["light"]["intensity"], 0.3, hex_rgb(c1), size_y=5)
+            lt.data.use_shadow = False
+    # The sweep: a tall, thin light that only makes highlights (no diffuse), crossing in front of the product once.
+    sw = area("Sweep", (-4.5, t.y - 3.0, t.z), (-4.5, t.y + 10, t.z), 900, 0.35, (1, 1, 1), size_y=6)
+    sw.data.diffuse_factor = 0.0
+    sw.data.use_shadow = False
+    exclude_backdrop(sw)
+    start, end = 0.22 * duration, 0.62 * duration
+    locs = []
+    for f in range(frames):
+        u = clamp((f / fps - start) / max(0.1, end - start), 0, 1)
+        locs.append((-4.5 + 9.0 * ease("inOut", u), t.y - 3.0, t.z + 0.3))
+    bake(sw, "location", locs)
 
 
 def setup_look(look):
@@ -628,7 +680,8 @@ def setup_look(look):
         glare = tree.nodes.new("CompositorNodeGlare")
         glare.inputs["Type"].default_value = "Bloom"
         glare.inputs["Quality"].default_value = "Medium"
-        glare.inputs["Threshold"].default_value = 0.85
+        # Only really bright parts glow (neon, the sweep's highlight): text edges stay crisp.
+        glare.inputs["Threshold"].default_value = 1.0
         glare.inputs["Strength"].default_value = 0.5 * look["bloom"]
         glare.inputs["Size"].default_value = 0.6
         out = tree.nodes.new("NodeGroupOutput")
@@ -790,7 +843,7 @@ def add_product(p, base_dir):
         me.materials.append(mat)
         obj = link(bpy.data.objects.new("Product", me))
     else:
-        thick = 0.06 if p["shape"] == "card" else w * 0.45
+        thick = 0.14 if p["shape"] == "card" else w * 0.45
         side = surface("gloss", p["frame"], "ProductFrame")
         obj = slab("Product", w, h, thick, p["radius"], mat, side)
     obj.location = p["position"]
@@ -801,20 +854,61 @@ def add_text(t, i, fonts_dir):
     cu = bpy.data.curves.new(f"Text{i}", "FONT")
     cu.body = t["text"]
     try:
-        cu.font = bpy.data.fonts.load(os.path.join(fonts_dir, FONTS[t["font"]]), check_existing=True)
+        cu.font = bpy.data.fonts.load(os.path.join(fonts_dir, FONTS[t["font"]][0 if t["weight"] == "bold" else 1]), check_existing=True)
     except RuntimeError:
         print(f"BLENDER_WARN font {t['font']} not found, using Blender's", flush=True)
     cu.size = t["size"]
     cu.align_x = "CENTER"
     cu.align_y = "CENTER"
-    cu.extrude = t["depth"] * t["size"] * 0.5
-    cu.bevel_depth = t["bevel"] * t["size"] * 0.035
-    cu.bevel_resolution = 3
-    cu.offset = -cu.bevel_depth * 0.5
-    cu.materials.append(surface(t["material"], t["color"], f"TextMat{i}"))
+    plate = t["plate"]
+    if plate:
+        # A clean flat label on a rounded bar (a phone number, a call to action): no extrusion, no bevel.
+        cu.extrude = 0.0
+        cu.bevel_depth = 0.0
+        m, _ = principled(f"TextMat{i}", t["color"], roughness=0.5, emission=t["color"], strength=0.6)
+    else:
+        cu.extrude = t["depth"] * t["size"] * 0.5
+        cu.bevel_depth = t["bevel"] * t["size"] * 0.035
+        cu.bevel_resolution = 4
+        cu.offset = -cu.bevel_depth * 0.5
+        m = surface(t["material"], t["color"], f"TextMat{i}")
+    cu.materials.append(m)
     obj = link(bpy.data.objects.new(f"Text{i}", cu))
     obj.location = t["position"]
     obj.rotation_euler = (math.radians(90), 0, math.radians(t["rotation"]))
+    if plate:
+        add_plate(obj, t, i)
+    return obj
+
+
+def add_plate(text_obj, t, i):
+    """The rounded bar behind a flat label, sized to the text, parented to it so it moves with it."""
+    bpy.context.view_layer.update()
+    xs = [c[0] for c in text_obj.bound_box]
+    ys = [c[1] for c in text_obj.bound_box]
+    pad = 0.32 * t["size"]
+    w = max(xs) - min(xs) + 2 * pad
+    h = max(ys) - min(ys) + 1.4 * pad
+    cx, cy = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
+    bm = bmesh.new()
+    pts = rounded_rect(w, h, h / 2, seg=10)
+    front = [bm.verts.new((cx + x, cy - h / 2 + z, -0.012)) for x, z in pts]
+    back = [bm.verts.new((cx + x, cy - h / 2 + z, -0.07)) for x, z in pts]
+    bm.faces.new(front)
+    bm.faces.new(back)
+    n = len(pts)
+    for k in range(n):
+        f = bm.faces.new((front[k], front[(k + 1) % n], back[(k + 1) % n], back[k]))
+        f.smooth = True
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    me = bpy.data.meshes.new(f"Plate{i}")
+    bm.to_mesh(me)
+    bm.free()
+    m, _ = principled(f"PlateMat{i}", t["plate"], roughness=0.35, coat=0.3, emission=t["plate"], strength=0.15)
+    me.materials.append(m)
+    obj = link(bpy.data.objects.new(f"Plate{i}", me))
+    obj.parent = text_obj
+    obj.visible_shadow = True
     return obj
 
 
@@ -971,6 +1065,7 @@ def build(sc, base_dir, fonts_dir):
     bowl("Backdrop", backdrop_material(bg))
     # No planar light probe: in Blender 5.2 it hid the objects' reflections on the floor; screen tracing shows them.
     setup_lights(bg, sc["camera"]["target"])
+    setup_set(bg, sc["camera"]["target"], sc["duration"], fps, frames)
     cam_path = setup_camera(sc["camera"], frames, fps)
 
     if sc["product"]:

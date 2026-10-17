@@ -50,19 +50,32 @@ export function blenderSystemPrompt(): string {
     "",
     "Rules:",
     "- Facts: every word, number and price on screen comes from the brief; copy names and places letter for letter. Never invent prices, discounts, dates, guarantees, 'new', 'best', 'original' or any number. Write a price exactly as the brief gives it (\"420,000 RWF\"). No price in the brief: no price on screen. The business description is about the shop, not this product.",
-    "- The product: \"product\": { \"photo\": n } with the best photo of the product itself. When that photo is marked 'cut-out available' the product stands free in the set: use \"idle\": \"swing\" (angle 15 to 30, spin 0.5) or \"float\", never \"turntable\" or \"spin\" (it is a flat picture and would show its edge). Without a cut-out it is printed on a rounded card (\"shape\": \"card\"): also swing or float. Photos of rooms, houses or streets are shown on a card, large.",
-    "- The product is the hero: large, centred (x 0), visible from about 0.3 s, and still clearly visible in the last frame. The clip ends on the product with its name (and the price, if given).",
-    "- Layout that works for 9:16 (start from it; the frame factors in the brief scale it for other ratios): camera target [0, 0, 2.2], distance 9.5, height 1.6, lens 50 (the frame is then about 3.8 wide and 6.8 tall, from z -1.2 to 5.6 around the target). Product height 2.6 at position [0, 0, 0.9] (its bottom at z 0.9, top at 3.5): floating with idle float, or standing on a plinth of height 0.9. Title above it: position [0, -0.3, 4.15], size 0.8 to 1.0. Price (or one short line) below it, in front: position [0, -1.0, 0.45], size 0.6 to 0.7. One more short line, if really needed, goes above the title ([0, -0.3, 5.0], size 0.5 to 0.6), never lower than the price. A wide photo (a house, a room) is wider than tall: height 2.2 so it fits the width.",
-    "- Texts: at most 3, one line each (no line breaks): the product's name or hook (1 to 3 words), the price if given, and at most one more short line (3 to 4 words). size is the font size (capitals are about 0.65 x size tall): titles 0.8 to 1.0, other lines 0.5 to 0.7 (smaller does not read on a phone). A line is about 0.26 x size x characters wide in anton, 0.36 in poppins and 0.47 in inter, nunito, space-grotesk, playfair or dm-serif: keep it narrower than the frame width minus 0.6.",
-    "- Never put a text over the product: texts sit above its top or below its bottom, never at the same height in front of it. Leave 0.2 between texts. The phone number and long sentences belong in the caption, not in the clip.",
-    "- Readability: text contrasts with the background behind it (light text on dark sets, dark or saturated text on light sets). Metal and chrome text only on dark sets (chrome only for big titles, size 0.8 or more; gold metal or white gloss read best); on light sets use gloss or matte in a strong brand colour. Never gold or silver text on a white set.",
-    "- Props: only when the template asks for them (a plinth for posters, a ring or spheres for launches and luxury); otherwise none. At most 3, small (size 0.3 to 0.6), beside the product (|x| = half the product's width + 0.5), never in front of it or across a text. Particles: confetti only for launches and offers; sparkles or dust otherwise (count 20 to 50).",
-    "- Camera: keep the layout's target and distance unless the content needs more room. Moves: orbitRight or orbitLeft (intensity 0.3 to 0.45) to show depth, dollyIn (0.3 to 0.5) to build, craneUp (0.2 to 0.3) for a poster reveal. fstop 0.",
-    "- Timing: the product enters first (enterAt 0 to 0.3), the title by 0.6 s, the other lines by 40 % of the clip; everything has entered by 60 % so the end holds still and readable for at least 1.5 s.",
-    "- Look: use the brand colours for the set (background colours, glow, props, text). Dark studio sets (\"studio\" with a near-black backdrop and a brand-colour glow, floor reflect 0.7 to 0.85) suit phones, electronics, cosmetics and luxury; bright gradient sets (light floor, reflect 0.3 to 0.5, light preset soft) suit food, fashion, homes and family products.",
+    "- The product: \"product\": { \"photo\": n } with the best photo of the product itself. When that photo is marked 'cut-out available' the product stands free on its plinth; otherwise it is printed on a thick rounded card (\"shape\": \"card\"). Either way it is flat: \"idle\": \"swing\" (angle 12 to 20, spin 0.5), never \"turntable\" or \"spin\". Photos of rooms, houses or streets are shown on a card, large.",
+    "- The product is the hero: large, centred (x 0), standing on a plinth (the podium of a product shoot), visible from about 0.3 s and still clearly visible in the last frame. The clip ends on the product with its name and the price (if given).",
+    "- Three looks (background.kind); the brief recommends one for its template, use it unless the brand clearly asks for another:",
+    "  - \"studio\": the dark showroom. colors [a near-black such as #0b0d12, the brand colour as the glow behind the product], floor the near-black with reflect 0.75 to 0.85, light \"studio\". For phones, electronics, cosmetics, watches, luxury. Plinth: gloss in a very dark brand shade.",
+    "  - \"daylight\": a bright, soft studio. colors [a warm white such as #f4f1ec, the brand colour for the accent wall behind the product], floor the same white with reflect 0.25 to 0.35, light \"soft\". For homes, food, fashion, beauty, family and everyday products. Plinth: matte white. Text over the accent wall: white when the wall is a strong colour, the dark brand colour when it is pale.",
+    "  - \"neon\": a dark set lit by a neon arch and tubes. colors [a near-black such as #07060f, a bright brand colour for the neon], floor the near-black with reflect 0.85, light \"dramatic\" with rim the neon colour. For launches, offers, tech, fashion drops and young audiences. Plinth: gloss near-black.",
+    "- Layout that works for 9:16 (the frame factors in the brief scale it for other ratios): camera target [0, 0, 2.4], distance 10.5, height 1.6, lens 50. A plinth prop at [0, 0, 0], size = the product's width + 0.6 (at least 2.4), height 0.95. The product on it at [0, 0, 0.95], height 2.8 (2.4 for a wide photo such as a house). Title above: [0, -0.3, 4.35], size 0.8 to 1.0, weight bold, depth 0.3, face 0.85. Price on the front of the plinth: [0, -(plinth size / 2 + 0.12), 0.62], size 0.5 to 0.6, weight bold. One more short line, if needed, above the title: [0, -0.3, 5.15], size 0.45 to 0.55, weight regular. The phone number (or 'Order on WhatsApp' when only that is in the facts) last, as a clean flat bar on the plinth under the price: font poppins, weight regular, size 0.32, plate = the brand colour, color white or the dark brand colour (whichever contrasts with the plate), position [0, -(plinth size / 2 + 0.12), 0.22], enter pop at about half the clip.",
+    "- Texts: at most 4 (title, price, one short line, the phone bar), one line each (no line breaks). Two weights: the title and the price bold (anton, or poppins bold), the other lines regular (inter or poppins, weight regular). size is the font size (capitals are about 0.65 x size tall); smaller than 0.45 does not read on a phone, except the phone bar (0.32 on its plate). A line is about 0.26 x size x characters wide in anton, 0.36 in poppins and 0.47 in inter, nunito, space-grotesk, playfair or dm-serif: keep it narrower than the frame width minus 0.6.",
+    "- Never put a text over the product: texts sit above its top or on or in front of the plinth below it, never at the product's height in front of it. Leave 0.2 between texts.",
+    "- Text materials: \"metal\" (gold, for prices and titles on dark sets) and \"gloss\" (clean coloured or white letters) read best; \"chrome\" only for big titles (size 0.8 or more) on dark sets; \"neon\" only in the neon look; on daylight sets gloss or matte, never gold or silver. depth 0.3 to 0.5, bevel 0.4 to 0.6.",
+    "- Props besides the plinth: only when the template asks (a ring or spheres for launches and luxury), at most 2, small (size 0.3 to 0.6), beside the product (|x| = half its width + 0.5), never in front of it or across a text. Particles: confetti only for launches and offers; sparkles or dust otherwise (count 20 to 40).",
+    "- Motion: every clip moves. Camera: orbitRight or orbitLeft (intensity 0.3 to 0.45) or dollyIn (0.3 to 0.5), never static. The product swings gently (above). The title floats (idle float) after it enters. A light sweeps across the product by itself.",
+    "- Timing: the product enters first (enterAt 0 to 0.3), the title by 0.6 s, the other lines by 40 % of the clip, the phone bar at about half; everything has entered by 60 % so the end holds still and readable for at least 1.5 s.",
+    "- look: contrast \"medium\", bloom 0.15 (0.35 for neon), exposure 0 (0.2 for daylight). fstop 0.",
     "- Follow the template's art direction (written for the 2D engine: translate its spirit, colours, camera and materials to this 3D scene) and the research block where they fit these rules.",
     "- canvas: the ratio from the brief, quality \"540p\", fps 24. duration: the seconds from the brief. A seed of your choice.",
   ].join("\n");
+}
+
+/** The look a template asks for: launches and drops in neon, homes, food, fashion and everyday products in daylight,
+ * phones, electronics and luxury in the dark showroom. */
+export function lookForTemplate(templateId: string, productName = ""): "studio" | "daylight" | "neon" {
+  if (/title-drop|confetti|launch|hypermotion|glass-cards|colour-pop|tiktok|offer|price-drop/.test(templateId)) return "neon";
+  if (/house|home|apartment|plot|room|food|dress|fashion|kitenge|shoe|bag|cake|coffee|juice/i.test(productName)) return "daylight";
+  if (/kigali-market|golden-hour|marketplace|ugc|brand-story|ice-splash|colour-options/.test(templateId)) return "daylight";
+  return "studio";
 }
 
 /** The user message: the motion engine's brief (business, product, photos, template, research), plus the 3D frame size. */
@@ -74,6 +87,7 @@ export function blenderBriefText(brief: DesignBrief): string {
   const extra = [
     `This is a Premium 3D clip: answer with a Blender scene (not a MotionSpec). Ratio ${ratio}, ${seconds} seconds.`,
     `Frame size with a 50 mm lens: about ${f.width.toFixed(2)} x distance wide and ${f.height.toFixed(2)} x distance tall (at distance 9: ${(9 * f.width).toFixed(1)} wide, ${(9 * f.height).toFixed(1)} tall), centred on the camera target.`,
+    `Recommended look for this template: "${lookForTemplate(brief.styleId, brief.product.name)}".`,
     brief.fixedLens ? "Fixed lens: camera move static." : "",
     brief.mode === "text" || !brief.photos.length ? "No photos: \"product\": null; the clip is 3D text, props and particles, with the product's name as the hero." : "",
   ].filter(Boolean);
@@ -174,8 +188,8 @@ function repair(scene: BlenderScene, brief: DesignBrief, seconds: number, opts: 
       t.material = "gloss";
       warnings.push(`"${t.text}" is gloss instead of chrome so it reads at this size.`);
     }
-    // Smaller letters do not read on a phone at 540p.
-    if (t.size < 0.5) {
+    // Smaller letters do not read on a phone at 540p (a label on its bar reads at 0.3).
+    if (t.size < 0.5 && !t.plate) {
       t.size = 0.5;
       warnings.push(`"${t.text}" made bigger so it reads on a phone.`);
     }
@@ -194,7 +208,9 @@ function repair(scene: BlenderScene, brief: DesignBrief, seconds: number, opts: 
     }
   }
   const photo = scene.product?.photo ? brief.photos[scene.product.photo - 1] : undefined;
-  fitLayout(scene, photo && photo.height ? photo.width / photo.height : 1, warnings);
+  const aspect = photo && photo.height ? photo.width / photo.height : 1;
+  stage(scene, brief, aspect, warnings);
+  fitLayout(scene, aspect, warnings);
   // Entrances never cross the product: a text above it drops in (a rise would come up through it), one below rises.
   const p = scene.product;
   if (p) {
@@ -206,11 +222,121 @@ function repair(scene: BlenderScene, brief: DesignBrief, seconds: number, opts: 
   }
 }
 
+/** How light a colour is, 0 (black) to 1 (white). */
+function lightness(hex: string): number {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16) / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/**
+ * The premium staging every clip gets, whatever Claude wrote: the product stands on a plinth, the camera and the
+ * product move, the phone number is a clean flat bar in the brand colour, and the glow stays soft (text stays crisp).
+ */
+export function stage(scene: BlenderScene, brief: DesignBrief, aspect: number, warnings: string[]): void {
+  const look = scene.background.kind;
+  const cam = scene.camera;
+  if (!brief.fixedLens && cam.move === "static") {
+    cam.move = "dollyIn";
+    cam.intensity = 0.35;
+    warnings.push("The camera moves (dolly in): a still camera looks flat.");
+  }
+  if (cam.move !== "static" && cam.intensity < 0.25) cam.intensity = 0.3;
+  const maxBloom = look === "neon" ? 0.4 : 0.2;
+  if (scene.look.bloom > maxBloom) scene.look.bloom = maxBloom;
+  const p = scene.product;
+  if (p) {
+    if (p.idle !== "swing") {
+      warnings.push(`The product swings gently instead of "${p.idle}".`);
+      p.idle = "swing";
+      p.spin = 0.5;
+    }
+    p.angle = Math.min(22, Math.max(10, p.angle));
+    const width = p.height * aspect;
+    let plinth = scene.props.find((pr) => pr.kind === "plinth" && Math.abs(pr.position[0] - p.position[0]) < 0.6 && Math.abs(pr.position[1] - p.position[1]) < 0.6);
+    if (!plinth) {
+      const dark = look === "daylight" ? null : look === "studio" ? "#15171c" : "#0c0b14";
+      plinth = {
+        kind: "plinth",
+        position: [p.position[0], p.position[1], 0],
+        size: round2(Math.max(2.4, width + 0.6)),
+        height: 0.95,
+        material: dark ? "gloss" : "matte",
+        color: dark ?? "#ffffff",
+        enter: "none",
+        enterAt: 0,
+        enterFor: 0.9,
+        idle: "none",
+        spin: 1,
+        angle: 30,
+      };
+      scene.props.unshift(plinth);
+      warnings.push("The product stands on a plinth.");
+    }
+    if (plinth.size < width + 0.5) plinth.size = round2(width + 0.6);
+    if (plinth.height < 0.3) plinth.height = 0.95;
+    if (Math.abs(p.position[2] - plinth.height) > 0.01) p.position = [p.position[0], p.position[1], plinth.height];
+  }
+  // The phone number: a flat bar in the brand colour, at the front, not shouting 3D letters.
+  const phone = (brief.business.phone ?? "").replace(/\D/g, "");
+  const plate = brief.business.colors?.[0] && /^#[0-9a-f]{6}$/i.test(brief.business.colors[0]) ? brief.business.colors[0] : scene.background.colors[1];
+  for (const t of scene.texts) {
+    const digits = t.text.replace(/\D/g, "");
+    if (!(phone.length >= 9 && digits.length >= 9 && (phone.endsWith(digits) || digits.endsWith(phone))) && !t.plate) continue;
+    if (!t.plate) warnings.push(`"${t.text}" is a flat bar, not 3D letters.`);
+    t.plate = t.plate ?? plate;
+    t.font = "poppins";
+    t.weight = "regular";
+    t.size = Math.min(0.4, Math.max(0.3, t.size));
+    t.depth = 0;
+    t.bevel = 0;
+    t.color = lightness(t.plate) < 0.55 ? "#ffffff" : "#111111";
+    if (t.enter === "spinIn" || t.enter === "drop") t.enter = "pop";
+    t.text = groupPhone(t.text);
+  }
+  if (!p) return;
+  // Titles face the camera more and are less deep, so the letters stay crisp while the camera moves.
+  for (const t of scene.texts) {
+    if (t.plate || t.position[2] < p.position[2] + p.height / 2) continue;
+    t.face = Math.max(t.face, 0.8);
+    t.depth = Math.min(t.depth, 0.35);
+  }
+  // On the front of the plinth: the bar at the bottom, the price (and any low line) above it; the plinth grows to hold them.
+  const plinth = scene.props.find((pr) => pr.kind === "plinth")!;
+  const front = round2(plinth.position[1] - plinth.size / 2 - 0.12);
+  let top = 0.05;
+  const low = scene.texts.filter((t) => t.position[2] < p.position[2] + p.height / 2).sort((a, b) => Number(!!b.plate) - Number(!!a.plate) || a.position[2] - b.position[2]);
+  for (const t of low) {
+    const h = t.plate ? textHeight(t) + 0.45 * t.size : textHeight(t);
+    const z = Math.max(top + h / 2, t.plate ? 0 : t.position[2]);
+    t.position = [t.position[0], Math.min(t.position[1], front), round2(z)];
+    // A label on the plinth's front stays flat to it: turning to the camera would push its ends into the plinth.
+    t.face = 0;
+    top = z + h / 2 + 0.12;
+  }
+  const needed = round2(Math.max(plinth.height, top + 0.02));
+  if (needed > plinth.height) {
+    plinth.height = needed;
+    warnings.push("The plinth grew to hold the price and the phone bar.");
+  }
+  p.position = [p.position[0], p.position[1], plinth.height];
+  // The camera turns around a point a third of the way to the plinth's front, so an orbit slides the price and the bar
+  // less (they are nearest the camera) while the product still turns.
+  if (low.length) scene.camera.target = [scene.camera.target[0], round2(front * 0.35), scene.camera.target[2]];
+}
+
+/** A Rwandan number in groups ("+250788300400" becomes "+250 788 300 400"); other numbers stay as they are. */
+export function groupPhone(text: string): string {
+  const m = /^\s*(\+?250)\s*(\d{3})\s*(\d{3})\s*(\d{3})\s*$/.exec(text);
+  return m ? `+250 ${m[2]} ${m[3]} ${m[4]}` : text;
+}
+
 /** Width of one character at size 1, measured in Blender 5.2 on "GALAXY A56 420,000 RWF" (capitals and digits). */
 const CHAR_WIDTH: Record<BlenderScene["texts"][number]["font"], number> = { anton: 0.26, poppins: 0.36, inter: 0.47, nunito: 0.47, "space-grotesk": 0.47, playfair: 0.49, "dm-serif": 0.45 };
 type TextBox = Pick<BlenderScene["texts"][number], "font" | "size" | "text">;
 /** About how wide a line of 3D text is, in scene units. */
-export const textWidth = (t: TextBox) => CHAR_WIDTH[t.font] * t.size * t.text.length;
+export const textWidth = (t: TextBox & { plate?: string | null }) => CHAR_WIDTH[t.font] * t.size * t.text.length + (t.plate ? 0.64 * t.size + 0.1 : 0);
 /** How tall its capitals are (size is the font size: capitals are about 0.6 to 0.7 of it). */
 export const textHeight = (t: Pick<BlenderScene["texts"][number], "size">) => 0.7 * t.size;
 
@@ -250,6 +376,21 @@ export function fitLayout(scene: BlenderScene, aspect: number, warnings: string[
       }
       topZ = Math.max(topZ, t.position[2] + textHeight(t) / 2 + 0.2);
     }
+    // The plinth under the product: it rises with the product, and the texts low down stand in front of it (the
+    // phone bar further forward, so it shows below the price).
+    const plinth = scene.props.find((pr) => pr.kind === "plinth" && Math.abs(pr.position[0] - box.x) < 0.6 && Math.abs(pr.position[1] - box.y) < 0.6);
+    if (plinth) {
+      if (box.z0 > 0.3 && Math.abs(plinth.height - box.z0) > 0.01) plinth.height = round2(box.z0);
+      const r = plinth.size / 2;
+      for (const t of texts) {
+        if (t.position[2] - textHeight(t) / 2 > plinth.height + 0.05 || !overlapsX(t.position[0], textWidth(t), plinth.position[0], plinth.size)) continue;
+        const front = round2(plinth.position[1] - r - 0.12);
+        if (t.position[1] > front) {
+          t.position = [t.position[0], front, t.position[2]];
+          warnings.push(`"${t.text}" moved in front of the plinth.`);
+        }
+      }
+    }
     // Props (not the plinth under it) never hide the product or hide behind it: they go to its sides.
     for (const pr of scene.props) {
       if (pr.kind === "plinth" || !overlapsX(pr.position[0], pr.size, box.x, box.w) || pr.position[2] > box.z1 || pr.position[2] + pr.size < box.z0) continue;
@@ -263,7 +404,7 @@ export function fitLayout(scene: BlenderScene, aspect: number, warnings: string[
     const a = texts[i - 1];
     const b = texts[i];
     const gap = b.position[2] - textHeight(b) / 2 - (a.position[2] + textHeight(a) / 2);
-    if (gap < 0.15 && overlapsX(a.position[0], textWidth(a), b.position[0], textWidth(b)) && Math.abs(a.position[1] - b.position[1]) < 1) {
+    if (gap < 0.15 && overlapsX(a.position[0], textWidth(a), b.position[0], textWidth(b)) && Math.abs(a.position[1] - b.position[1]) < 0.6) {
       b.position = [b.position[0], b.position[1], round2(b.position[2] + 0.15 - gap)];
       warnings.push(`"${b.text}" moved up so it does not touch "${a.text}".`);
     }
@@ -277,9 +418,10 @@ export function fitLayout(scene: BlenderScene, aspect: number, warnings: string[
     // Texts in front of the target are nearer the camera, so they look bigger too.
     ...scene.texts.map((t) => {
       const nearer = Math.max(0, cam.target[1] - t.position[1]);
-      return { z0: t.position[2] - textHeight(t) / 2, z1: t.position[2] + textHeight(t) / 2, half: (Math.abs(t.position[0]) + textWidth(t) / 2) * (1 + nearer / cam.distance) + nearer * slide };
+      return { z0: t.position[2] - textHeight(t) / 2, z1: t.position[2] + textHeight(t) / 2, half: (Math.abs(t.position[0]) + textWidth(t) / 2) * (1 + nearer / cam.distance) + 1.2 * nearer * slide };
     }),
     ...scene.props.filter((pr) => pr.kind === "sphere" || pr.kind === "ring").map((pr) => ({ z0: pr.position[2] - pr.size / 2, z1: pr.position[2] + pr.size / 2, half: Math.abs(pr.position[0]) + pr.size / 2 })),
+    ...scene.props.filter((pr) => pr.kind === "plinth").map((pr) => ({ z0: pr.position[2], z1: pr.position[2] + pr.height, half: Math.abs(pr.position[0]) + pr.size / 2 })),
   ];
   if (!parts.length) return;
   const z0 = Math.min(...parts.map((x) => x.z0));
@@ -287,7 +429,7 @@ export function fitLayout(scene: BlenderScene, aspect: number, warnings: string[
   const half = Math.max(...parts.map((x) => x.half));
   const f = framePerDistance(scene.canvas.ratio);
   const k = 50 / cam.lens;
-  const needed = Math.max((z1 - z0 + 0.9) / (f.height * k), (2 * half + 0.6) / (f.width * k));
+  const needed = Math.max((z1 - z0 + 0.6) / (f.height * k), (2 * half + 0.4) / (f.width * k));
   const endFactor = cam.move === "dollyIn" ? 1 - 0.12 * cam.intensity : 1;
   const distance = Math.min(18, needed / endFactor);
   const centre = round2((z0 + z1) / 2);

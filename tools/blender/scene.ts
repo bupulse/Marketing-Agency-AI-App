@@ -5,7 +5,9 @@
 export const BLENDER_RATIOS = ["9:16", "3:4", "4:5", "1:1", "4:3", "16:9"] as const;
 export const BLENDER_QUALITIES = ["480p", "540p", "720p", "1080p"] as const;
 export const BLENDER_FPS = [24, 25, 30] as const;
-export const BLENDER_BACKGROUNDS = ["solid", "gradient", "studio"] as const;
+/** studio: the dark showroom; daylight: a bright white set with a brand-colour accent wall; neon: a dark set lit by a
+ * neon arch and tubes in the brand colour; gradient and solid: plain sets. */
+export const BLENDER_BACKGROUNDS = ["solid", "gradient", "studio", "daylight", "neon"] as const;
 export const BLENDER_LIGHTS = ["studio", "soft", "dramatic", "warm"] as const;
 /** The studio's camera moves (lib/video-engine/spec.ts, CAMERA_MOVES) that a real 3D camera does well. */
 export const BLENDER_CAMERA_MOVES = ["static", "orbitLeft", "orbitRight", "dollyIn", "dollyOut", "craneUp", "craneDown", "pushPull"] as const;
@@ -70,6 +72,10 @@ export interface BlenderText extends BlenderMotion {
   color: string;
   /** How much the text turns to face the camera as it moves, 0 to 1 (default 0.6). */
   face: number;
+  /** bold (title) or regular (lines): the font's two weights (anton and dm-serif have one). */
+  weight: "bold" | "regular";
+  /** A clean flat label on a rounded bar of this colour (a phone number, a call to action), or null for 3D letters. */
+  plate: string | null;
 }
 
 export interface BlenderProp extends BlenderMotion {
@@ -104,7 +110,8 @@ export interface BlenderScene {
   seed: number;
   background: {
     kind: Of<typeof BLENDER_BACKGROUNDS>;
-    /** solid: [colour]; gradient: [low, high]; studio: [backdrop, glow behind the product]. */
+    /** solid: [colour]; gradient: [low, high]; studio: [backdrop, glow behind the product]; daylight: [light set, accent
+     * wall]; neon: [dark set, neon colour]. */
     colors: [string, string];
     floor: { color: string; reflect: number };
     light: { preset: Of<typeof BLENDER_LIGHTS>; intensity: number; rim: string; side: "left" | "right" };
@@ -230,7 +237,7 @@ export function normalizeBlenderScene(input: unknown, opts: NormalizeOptions = {
     particles: [],
     look: (() => {
       const look = isObj(s.look) ? s.look : {};
-      return { contrast: pick(look.contrast, BLENDER_CONTRASTS, "medium"), exposure: num(look.exposure, 0, -3, 3), bloom: num(look.bloom, 0.3, 0, 1) };
+      return { contrast: pick(look.contrast, BLENDER_CONTRASTS, "medium"), exposure: num(look.exposure, 0, -3, 3), bloom: num(look.bloom, 0.2, 0, 1) };
     })(),
     sound: { voiceAt: 0.3, voiceVolume: 1, musicVolume: null },
   };
@@ -298,6 +305,8 @@ export function normalizeBlenderScene(input: unknown, opts: NormalizeOptions = {
       material: pick(t.material, BLENDER_MATERIALS, "metal"),
       color: color(t.color, "#ffffff"),
       face: num(t.face, 0.6, 0, 1),
+      weight: t.weight === "regular" ? "regular" : "bold",
+      plate: t.plate === undefined || t.plate === null ? null : color(t.plate, "#111111"),
       ...motion(t, "spinIn", "none"),
     });
   }
@@ -430,7 +439,7 @@ export const BLENDER_SCENE_FORMAT = `A Blender 3D scene, one JSON object. Units:
   "canvas": { "ratio": "9:16"|"3:4"|"4:5"|"1:1"|"4:3"|"16:9", "quality": "540p"|"720p"|"1080p", "fps": 24|25|30 },
   "duration": seconds 2 to 8,
   "seed": integer,
-  "background": { "kind": "studio"|"gradient"|"solid", "colors": [hex, hex] (studio: backdrop and the glow behind the product; gradient: low and high; solid: one colour),
+  "background": { "kind": "studio"|"daylight"|"neon"|"gradient"|"solid", "colors": [hex, hex] (studio: near-black backdrop and the brand-colour glow behind the product; daylight: a light set colour and the brand-colour accent wall behind the product; neon: a near-black set and the neon colour; gradient: low and high; solid: one colour),
     "floor": { "color": hex, "reflect": 0 to 1 (0.6 to 0.85 for a glossy studio floor) },
     "light": { "preset": "studio"|"soft"|"dramatic"|"warm", "intensity": 0.5 to 1.5, "rim": hex (edge light colour), "side": "left"|"right" (key light side) } },
   "camera": { "move": "orbitRight"|"orbitLeft"|"dollyIn"|"dollyOut"|"craneUp"|"craneDown"|"pushPull"|"static", "intensity": 0 to 1, "ease": "inOut"|"out"|"in"|"linear"|"back",
@@ -439,7 +448,8 @@ export const BLENDER_SCENE_FORMAT = `A Blender 3D scene, one JSON object. Units:
     "enter": "rise"|"drop"|"pop"|"scale"|"spinIn"|"none", "enterAt": seconds, "enterFor": seconds, "idle": "swing"|"float"|"turntable"|"none", "angle": swing degrees (15 to 35), "spin": swings over the clip (0.5 to 1) } or null,
   "texts": up to 6 of { "text": short words (at most 60 characters, only facts from the brief), "font": "anton"|"poppins"|"inter"|"nunito"|"space-grotesk"|"playfair"|"dm-serif",
     "size": font size 0.5 to 2 (capitals are about 0.65 x size tall), "position": [x, y, z] (centre), "depth": extrusion 0 to 1, "bevel": 0 to 1, "material": "metal"|"chrome"|"gloss"|"matte"|"glass"|"neon", "color": hex,
-    "enter": "spinIn"|"rise"|"drop"|"pop"|"scale"|"none", "enterAt": seconds, "enterFor": seconds, "idle": "float"|"none", "face": 0 to 1 (how much it turns to the camera) },
+    "enter": "spinIn"|"rise"|"drop"|"pop"|"scale"|"none", "enterAt": seconds, "enterFor": seconds, "idle": "float"|"none", "face": 0 to 1 (how much it turns to the camera),
+    "weight": "bold"|"regular", "plate": null or hex (a flat label on a rounded bar of that colour, for the phone number or a call to action) },
   "props": up to 12 of { "kind": "plinth"|"sphere"|"ring"|"box"|"cylinder", "position": [x, y, z] (sphere and ring: centre; others: bottom centre), "size": diameter or width, "height": for plinth, box, cylinder,
     "material": as texts, "color": hex, "enter": as texts, "enterAt", "enterFor", "idle": "float"|"spin"|"swing"|"none" },
   "particles": up to 3 of { "kind": "confetti"|"sparkles"|"bubbles"|"dust", "count": 10 to 80, "colors": [hex], "center": [x, y, z], "area": [width, depth, height], "speed": 0.3 to 1.5 },
