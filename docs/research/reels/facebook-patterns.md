@@ -245,3 +245,45 @@ Also seen: "RENT A CAR, RENT FREEDOM", "New and improved breastfeeding Diras", "
 3. For services and considered purchases, the offer can be "book a consultation / visit us / free quote" instead of a price; require a price only for goods. Show the price when there is a real one (from 20,000 RWF a night, 40,000 RWF + free delivery).
 4. Put the ordering route in two places: the platform button (WhatsApp, Call now, or Messages) and the caption (number and landmark address). Never rely on the button alone.
 5. Default to English with Kinyarwanda touches for services, hotels, clinics and schools, and Kinyarwanda for plots, household goods and baby products; offer the language switch per ad, not per account. And do not use "long running" as a quality signal on its own: filter out income-claim chains and recruiters before the engine learns from them.
+
+---
+
+# Organic reels (round 6, 17 Oct 2026)
+
+## What this is and its limits
+
+- 20 recent reels from 12 well-known Rwandan business pages, opened directly on their Reels tab: RwandAir (3), Simba Supermarket (3), Inyange Industries (2), Skol Brewery Rwanda (2), Bourbon Coffee Rwanda (2), CANAL+ Rwanda (2), and one each from Bralirwa, ONOMO Hotel Kigali, Piramie 4G+, Inzovu Supermarket, Abby Home Kigali and Java House Rwanda. All 20 were played muted (5 frames over about 12 s). They are in `facebook.jsonl` with `organic: true`, `round: 4`, view counts from the page's Reels grid, and likes, comments and shares as shown under the caption.
+- I picked the most viewed reels on each page, so this is the best of what each page posts, not a random sample. Reactions are small numbers: the median reel has about 2,150 views.
+- Pages I could not use: Magic Chef Kigali (page with no reels), Derma Skin Clinic Rwanda (page not available under the guessed address), Java House Kigali and the "Bra Lirwa" and "Rwanda Airlines" pages I opened first (fan or unofficial pages; I switched to the official ones). KIBO Electronics and the "Ikaze" page from the brief did not load before the browser got slow, so I covered 12 pages, not 15.
+- Like and comment numbers sit in a line of digits under the caption, and shares are not always shown, so `likes`, `comments` and `shares` are as read and some are blank.
+
+## How organic differs from ads
+
+| | Organic reels (20) | Rwandan ads (same set of rows) |
+| --- | --- | --- |
+| Length | median 20 s (8 to 85 s, one 6-minute outlier); 15 of 20 are 30 s or less | median 34 s |
+| Hook | a place, a face or a product shown, no price: staff in the cabin, a pour, a shop walk | a price strip, badge or question in the first frame |
+| Price or number on screen | 1 of 20 (Piramie, a re-used ad poster); "FAIR PRICES" (no number) and one buy-one-get-one offer in a caption | in most |
+| Phone number | 1 of 20 | in about two thirds of ad captions |
+| Language | English, one Kinyarwanda-tagged caption (#amajyambere, #Abakobwa), CANAL+ in English | English, with Kinyarwanda in about a third |
+| Hashtags | 0 on 14 of 20; the rest 1 to 5 | 49 percent none; median 5 when used |
+| Music | original audio on 16; licensed songs on 4 (Dean Martin, Alex Warren, Aqyila, a "Pink + White" track) | mostly unknown (muted) |
+| Caption | median 13 words, often "…See more"; one reel has none | a spec list with price, address and number |
+| CTA | none, or "visit the online store" (Abby Home) | button plus number |
+| Cuts per 10 s | 1 to 5, median 3 | 0 to 4 |
+
+What gets reach is not the commercial reels:
+- ONOMO Hotel Kigali: 310K views for a silent 23 s film of the dining room (no people, no price). The same video also ran as a paid ad.
+- CANAL+ Rwanda: 54K views on national-team football highlights. The page's sports and national-pride posts beat its pay-TV offers.
+- RwandAir: 18K and 11K on staff moments, an expo recap and a customer-service-week celebration.
+- Simba: 2.5K at best, for bread and restocking slides. Commercial posts with a real offer (Java House, buy a burger and get another free) got 163 views.
+
+Organic posts are brand, event and national-calendar content (Kwibuka 32 remembrance, a marathon, a sponsored basketball camp, a press conference), not offers.
+
+## 5 rules for the engine's "post" mode (organic, not ad)
+
+1. A post is not an ad: no price strip, no phone bar, no "order now" overlay by default. Put the offer, price and contact in the caption and let the owner switch an overlay on only for a promo post.
+2. Keep it short and visual: 12 to 25 s, 3 beats of about 5 s, open on the most beautiful or most human frame (a real face, a pour, the venue at golden hour), end on a clean logo card or the shop sign.
+3. Write a short caption (10 to 25 words, a friendly line plus 0 to 3 hashtags; add city and brand tags only). Put the phone, price and location in a second line only when there is a real offer or an event. Use the owner's language mix and keep Kinyarwanda tags (#amajyambere, #Kigali) where they fit.
+4. Use people and moments over products: staff greetings, a customer-service week, a sponsored match, a shop walk-through. Offer a "moment" template (event recap, staff greeting, behind the scenes) next to the product templates.
+5. Audio: keep the original sound or a licensed song of the platform (16 of 20 use the native or original sound; the others use trending tracks). In the engine, default to the platform's own library and keep captions readable when muted. Do not make a hard sell: the posts that reach are warm and local, and the one organic post with a real offer got 163 views.
