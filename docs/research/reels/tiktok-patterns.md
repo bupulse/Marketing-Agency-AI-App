@@ -99,6 +99,39 @@ Two parts. **A** is first-hand: I watched 67 videos in the owner's logged-in Tik
 - 12-16 s: the final hold plus the service and price.
 - 16-20 s: "Book: WhatsApp [number]".
 
+## A2. Motion graphics and 3D (26 more watched videos)
+
+From the searches "3D product animation", "motion graphics ad", "product reveal animation", "kinetic typography ad", "unboxing", "Nairobi business" and "Kampala business". Same method and limits as A (about 7 s, three frames, muted, so **sound design was not heard**; timing numbers are estimates). Rows are in `tiktok.jsonl` as `q3`.
+
+**What the 3D and motion-graphics clips do:**
+- **Floating product plus particles.** The best 3D ads suspend the product in air with ingredients or liquid around it (a serum bottle in a bubble splash, a bottle among coconuts, a cup with milk-tea splashes, bread slices spinning). Depth of field is shallow, the background is simple.
+- **Three-beat reveal.** Detail or macro (a gold cap, rim light) then the product in a set (columns, a mossy island on water) then the logo as a clean card. A 17 s and 24 s example both end on the brand name in wide-spaced capitals.
+- **Giant text behind or through the product.** "BLURE", "BREAD", "FRUIT / MILKTEA" are huge, partly hidden behind the product or extruded in 3D. They are cut by the frame edge and swap colour with each flavour or colour beat (green, pink, orange; blueberry blue, pomegranate red).
+- **Colour themes per beat.** The commissioned drink ad changes colour about once a second.
+- **Kinetic typography.** One phrase per beat, 2-4 words at a time, with one key word in a highlight colour (red on white, purple on white, white and blue on dark navy). Words pop in with overshoot, slide in with motion blur, or "stomp" on a beat between black frames. Rows of repeated words ("MINDSET" stack, slanted "EMPIRE" stripes) fill the frame.
+- **UI motion.** Smooth push-in zooms between phone screens (745.2K likes for a student UI animation).
+- **How-to wrapper.** Many AI-ad clips show the prompt first ("Cinematic 3D action-packed advertisement for ...") then the output, and ask people to comment a word ("Comment: PROMPT"). Three-step recipes ("Upload a photo", "the prompt", "the style you want") are captioned in time with speech.
+- **Length and cuts:** 13-31 s for finished ads. The fastest are about 8-10 cuts per 10 s (colour changes and word beats), the premium 3D ones about 3-5.
+- **Light versus dark:** Light backgrounds go with bright flavour colours and fast beats; dark backgrounds with premium perfume and skincare and slow orbits.
+- **Unboxing (4 videos):** Top-down or handheld hands only, no voice needed. The colour or the reveal of the item is the reward (a pink MacBook got 1.1M likes). A Kampala shop shows boxes of new stock arriving (5.5K likes).
+
+**What the Nairobi and Kampala business clips do:**
+- Price on every product shot. A hand holds each item with a white or outlined label ("150/=", "160/=", "KSH 35", "Glow oil 1litre 85,000"), a new product about every 2 s.
+- A phone number stays on screen for the whole clip, in a serif or outlined font ("0761 487 464", "+256708735746 Retail and wholesale").
+- A real shop is the proof: wall of stock, customers, a worker packing. A caption states the offer at 0 s ("Start your cosmetics business with us", "POV: Kenyan brands are stepping into global markets with our packaging").
+- Wholesale and "start your business" are common hooks; stock and price matter more than polish.
+- Uganda: bilingual subtitles (English and Luganda) in a numbered series ("Step-by-Step Series").
+- Likes are 2K-30K for these, and 59K-745K for the pure visuals or trend formats.
+
+**5 rules for the engine from the motion-graphics and 3D clips:**
+1. **Float the product, add particles.** For a 3D look, put the product in the middle with 4-8 floating ingredients, splashes or bubbles around it. Keep the background to one colour or a simple set, with shallow depth of field.
+2. **Use a three-beat reveal.** Beat 1 (0-2 s) macro or detail with a rim light. Beat 2 (2-5 s) the full product in a themed set with a slow orbit or push-in. Beat 3 (last 2-3 s) the brand or price card on a clean background.
+3. **Make giant text part of the scene.** Put the product name or the flavour/colour word huge, behind or beside the product, cut by the frame edge and swapped per beat (colour theme per beat; up to one change per second for drink and snack ads).
+4. **Animate text on the beat.** One phrase per beat, 2-4 words, one highlighted key word, pop-in with overshoot or a slide with motion blur; hold each card about 0.5-1.5 s. Use a locked camera for text clips and a moving camera for products.
+5. **Put the price and contact into the motion too.** In East African business clips the price label rides on each product and the phone number never leaves the frame. A motion-graphics ad for a Rwandan shop should do the same: price tag animates onto each product shot and the number sits in a fixed lower-middle band to the end.
+
+Not verified: the audio. Sound design (whooshes on text, hits on reveals, music tempo) should be checked unmuted by the owner or in a follow-up pass.
+
 ## B. Patterns from public sources (read, not watched)
 
 These come from 46 rows (`secondary: true`, `watched: false`) built from articles and case studies written before I had a logged-in session. Many numbers are brand or agency claims and some sources conflict (best length is given as 9-15 s, 15-25 s and a 39 s median), so treat them as ranges.
