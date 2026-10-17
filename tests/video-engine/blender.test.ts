@@ -10,6 +10,7 @@ import {
   BLENDER_SCENE_FORMAT,
   blenderCanvasSize,
   blenderCommand,
+  checkSoundPath,
   normalizeBlenderScene,
   parseBlenderProgress,
 } from "@/tools/blender/scene";
@@ -115,6 +116,35 @@ describe("normalizeBlenderScene", () => {
   });
 });
 
+describe("Premium 3D sound (scene side)", () => {
+  it("keeps the voice cue and volumes, never sound paths from the scene", () => {
+    expect(normalizeBlenderScene({}).scene.sound).toEqual({ voiceAt: 0.3, voiceVolume: 1, musicVolume: null });
+    const { scene, warnings } = normalizeBlenderScene({ sound: { voiceAt: 99, voiceVolume: 5, musicVolume: 0.25, voice: "/etc/passwd", music: "../x.mp3" } });
+    expect(scene.sound).toEqual({ voiceAt: 15, voiceVolume: 2, musicVolume: 0.25 });
+    expect(JSON.stringify(scene)).not.toMatch(/passwd|x\.mp3/);
+    expect(warnings.join(" ")).toMatch(/Sound files are not taken from the scene/);
+  });
+
+  it("accepts sound files only inside the job's folder, with a sound extension", () => {
+    expect(checkSoundPath("/data/jobs/bl-1/voice.mp3", "/data/jobs/bl-1")).toBe("/data/jobs/bl-1/voice.mp3");
+    expect(checkSoundPath("/data/jobs/bl-1/./sub/../music.WAV", "/data/jobs/bl-1/")).toBe("/data/jobs/bl-1/music.WAV");
+    expect(() => checkSoundPath("/data/jobs/bl-1/../bl-2/voice.mp3", "/data/jobs/bl-1")).toThrow(/inside the job's folder/);
+    expect(() => checkSoundPath("/data/jobs/bl-10/voice.mp3", "/data/jobs/bl-1")).toThrow(/inside the job's folder/);
+    expect(() => checkSoundPath("/etc/passwd", "/data/jobs/bl-1")).toThrow(/inside the job's folder/);
+    expect(() => checkSoundPath("voice.mp3", "/data/jobs/bl-1")).toThrow(/absolute/);
+    expect(() => checkSoundPath("/data/jobs/bl-1/voice.exe", "/data/jobs/bl-1")).toThrow(/must be .mp3/);
+    expect(() => checkSoundPath("/data/jobs/bl-1/voice.mp3", "/")).toThrow(/inside the job's folder/);
+  });
+
+  it("passes the voice and music to Blender, but not for stills", () => {
+    const { args } = blenderCommand({ scenePath: "/t/s.json", outPath: "/t/o.mp4", repoDir: "/repo", audio: "/t/voice.mp3", music: "/t/music.mp3", voiceAt: 0.5, musicVolume: 3 });
+    expect(args.join(" ")).toContain("--audio /t/voice.mp3 --music /t/music.mp3 --voice-at 0.5 --music-volume 1");
+    const stills = blenderCommand({ scenePath: "/t/s.json", outPath: "/t/o.mp4", repoDir: "/repo", audio: "/t/voice.mp3", stills: [0.5] });
+    expect(stills.args).not.toContain("--audio");
+    expect(blenderCommand({ scenePath: "/t/s.json", outPath: "/t/o.mp4", repoDir: "/repo" }).args).not.toContain("--audio");
+  });
+});
+
 describe("Blender helpers", () => {
   it("sizes the canvas with even numbers", () => {
     expect(blenderCanvasSize({ ratio: "9:16", quality: "540p", fps: 24, samples: 16 })).toEqual({ width: 540, height: 960 });
@@ -207,6 +237,29 @@ describe("renderBlenderScene (Blender mocked)", () => {
   it("refuses a scene whose product photo is not in the photo list", async () => {
     behaviour.render = (_args, child) => child.emit("close", 0);
     await expect(renderBlenderScene({ product: { photo: 2 } }, path.join(dir, "nophoto.mp4"), { photos: [{ image: "/x/a.jpg" }] })).rejects.toThrow(/product photo is missing/);
+  });
+
+  it("hands Blender the checked voice and music, and refuses sound outside the job's folder", async () => {
+    const job = path.join(dir, "job-1");
+    await fs.mkdir(job, { recursive: true });
+    await fs.writeFile(path.join(job, "voice.mp3"), "x");
+    await fs.writeFile(path.join(job, "music.mp3"), "x");
+    await fs.writeFile(path.join(dir, "outside.mp3"), "x");
+    behaviour.render = (args, child) => {
+      const out = args[args.indexOf("--out") + 1];
+      void fs.writeFile(out, Buffer.alloc(10)).then(() => child.emit("close", 0));
+    };
+    await renderBlenderScene({}, path.join(job, "clip.mp4"), { audio: path.join(job, "voice.mp3"), music: path.join(job, "music.mp3"), voiceAt: 0.4 });
+    const args = calls.find((a) => a.includes("--audio"))!;
+    expect(args[args.indexOf("--audio") + 1]).toMatch(/job-1\/voice\.mp3$/);
+    expect(args[args.indexOf("--music") + 1]).toMatch(/job-1\/music\.mp3$/);
+    expect(args[args.indexOf("--voice-at") + 1]).toBe("0.4");
+    calls.length = 0;
+    await expect(renderBlenderScene({}, path.join(job, "clip2.mp4"), { audio: path.join(dir, "outside.mp3") })).rejects.toThrow(/inside the job's folder/);
+    await expect(renderBlenderScene({}, path.join(job, "clip3.mp4"), { audio: path.join(job, "missing.mp3") })).rejects.toThrow(/does not exist/);
+    await fs.symlink(path.join(dir, "outside.mp3"), path.join(job, "link.mp3"));
+    await expect(renderBlenderScene({}, path.join(job, "clip4.mp4"), { audio: path.join(job, "link.mp3") })).rejects.toThrow(/inside the job's folder/);
+    expect(calls.filter((a) => a.includes("--scene"))).toHaveLength(0);
   });
 
   it("fails when Blender wrote nothing", async () => {

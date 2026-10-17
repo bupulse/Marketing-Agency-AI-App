@@ -257,6 +257,16 @@ def normalize(raw):
         "exposure": num(look.get("exposure"), 0, -3, 3),
         "bloom": num(look.get("bloom"), 0.3, 0, 1),
     }
+    sound = s.get("sound") or {}
+    out["sound"] = {
+        # Paths only in hand-written scenes; the studio passes them as --audio and --music (checked by the job runner).
+        "voice": sound.get("voice") if isinstance(sound.get("voice"), str) else None,
+        "music": sound.get("music") if isinstance(sound.get("music"), str) else None,
+        "voiceAt": num(sound.get("voiceAt"), 0.3, 0, 15),
+        "voiceVolume": num(sound.get("voiceVolume"), 1, 0, 2),
+        # None: 0.18 under a voice, 0.7 for music alone (decided in add_sound).
+        "musicVolume": None if sound.get("musicVolume") is None else num(sound.get("musicVolume"), 0.18, 0, 1),
+    }
     return out
 
 
@@ -975,6 +985,45 @@ def build(sc, base_dir, fonts_dir):
     return frames
 
 
+def add_sound(sc, base_dir, frames):
+    """The voice and the music as sound strips in the sequencer, trimmed to the clip: the voice from its cue time, the
+    music from the start, low under the voice and faded out over the last half second. Returns True when there is sound.
+    Sound-only strips do not replace the 3D render (Blender renders the sequencer only when it has picture strips)."""
+    snd = sc["sound"]
+    fps = sc["canvas"]["fps"]
+    s = bpy.context.scene
+    added = False
+    for kind in ("music", "voice"):
+        path = snd[kind]
+        if not path:
+            continue
+        full = full_path(path, base_dir)
+        if not os.path.isfile(full):
+            raise SystemExit(f"BLENDER_ERROR {kind} file not found: {path}")
+        ed = s.sequence_editor_create()
+        start = 1 + (round(snd["voiceAt"] * fps) if kind == "voice" else 0)
+        if start > frames:
+            print(f"BLENDER_WARN the voice starts after the end of the clip: no voice", flush=True)
+            continue
+        strip = ed.strips.new_sound(kind, full, channel=1 if kind == "music" else 2, frame_start=start)
+        # Trim to the clip (a strip may also be shorter than the clip).
+        if strip.right_handle > frames + 1:
+            strip.right_handle = frames + 1
+        if kind == "voice":
+            strip.volume = snd["voiceVolume"]
+        else:
+            vol = snd["musicVolume"] if snd["musicVolume"] is not None else (0.18 if snd["voice"] else 0.7)
+            fade = max(1, round(0.5 * fps))
+            end = strip.right_handle
+            strip.volume = vol
+            strip.keyframe_insert("volume", frame=max(start, end - fade))
+            strip.volume = 0.0
+            strip.keyframe_insert("volume", frame=end)
+            strip.volume = vol
+        added = True
+    return added
+
+
 def main():
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
     ap = argparse.ArgumentParser(prog="render.py")
@@ -985,9 +1034,21 @@ def main():
     ap.add_argument("--fonts-dir", default=os.path.join(REPO, "public", "fonts", "video"))
     ap.add_argument("--base-dir", default=REPO, help="folder that relative image paths start from")
     ap.add_argument("--preview", action="store_true", help="quick look: 480p and 8 samples")
+    ap.add_argument("--audio", default="", help="the voice-over (MP3, WAV, M4A...): overrides the scene's sound.voice")
+    ap.add_argument("--music", default="", help="the music bed: overrides the scene's sound.music")
+    ap.add_argument("--voice-at", type=float, default=None, help="seconds into the clip when the voice starts")
+    ap.add_argument("--music-volume", type=float, default=None, help="0 to 1 (default 0.18 under a voice)")
     a = ap.parse_args(argv)
     with open(a.scene, encoding="utf-8") as fh:
         sc = normalize(json.load(fh))
+    if a.audio:
+        sc["sound"]["voice"] = a.audio
+    if a.music:
+        sc["sound"]["music"] = a.music
+    if a.voice_at is not None:
+        sc["sound"]["voiceAt"] = num(a.voice_at, 0.3, 0, 15)
+    if a.music_volume is not None:
+        sc["sound"]["musicVolume"] = num(a.music_volume, 0.18, 0, 1)
     if a.preview:
         sc["canvas"]["quality"] = "480p"
         sc["canvas"]["samples"] = min(sc["canvas"]["samples"], 8)
@@ -1020,7 +1081,16 @@ def main():
     ff.constant_rate_factor = "HIGH"
     ff.ffmpeg_preset = "GOOD"
     ff.gopsize = sc["canvas"]["fps"]
-    ff.audio_codec = "NONE"
+    if add_sound(sc, a.base_dir, frames):
+        # Blender's own FFmpeg muxes the mixed sound into the MP4: AAC, stereo, 48 kHz.
+        ff.audio_codec = "AAC"
+        ff.audio_bitrate = 160
+        ff.audio_channels = "STEREO"
+        ff.audio_mixrate = 48000
+        s.render.use_sequencer = True
+        print(f"BLENDER_SOUND voice={bool(sc['sound']['voice'])} music={bool(sc['sound']['music'])}", flush=True)
+    else:
+        ff.audio_codec = "NONE"
     s.render.filepath = os.path.abspath(a.out)
     s.render.use_file_extension = False
 

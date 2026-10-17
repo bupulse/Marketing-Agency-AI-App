@@ -125,6 +125,9 @@ same again in `render.py`). Claude gets the short version, `BLENDER_SCENE_FORMAT
 | `look.contrast` | base, medium, high, punchy (medium) | AgX looks |
 | `look.exposure` | -3 to 3 (0) | |
 | `look.bloom` | 0 to 1 (0.3) | glow around bright parts (compositor) |
+| `sound.voiceAt` | 0 to 15 s (0.3) | when the voice-over starts |
+| `sound.voiceVolume`, `sound.musicVolume` | 0 to 2 (1), 0 to 1 (0.18 under a voice, 0.7 alone) | |
+| `sound.voice`, `sound.music` | paths, hand-written scenes only | dropped by `normalizeBlenderScene`; the studio passes the files to the runner instead |
 
 **Framing:** in 9:16 at distance 10 with a 50 mm lens the frame is about 4 wide and 7 tall around the target. Keep
 things within x -1.6 to 1.6, texts in front of or above the product (never inside it or a plinth).
@@ -174,7 +177,8 @@ unless `fstop` is set; about a fifth of the frame time) and glass.
   taken in a shop.
 - A cutout is a flat plane: keep `idle` to swing (15 to 35 degrees) or float; a full turntable shows its edge.
 - Reflections are screen-traced: the floor mirrors what is on screen, not what is behind the camera.
-- No sound: the studio adds music and the ElevenLabs voice-over afterwards, as for the other engines.
+- Sound is one voice-over and one music bed, mixed by Blender (see "Sound"). A voice longer than the clip is cut at the
+  end of the clip, so keep `say` to about 2.5 words a second of the clip.
 - Text is one line per entry (no wrapping); Latin letters only (the latin and latin-ext fonts).
 - Render time: minutes, not seconds. One render at a time (`renderBlenderScene` queues them). The job runner stops a
   render after 15 minutes.
@@ -282,7 +286,8 @@ const photos = photoIds.map((id, i) => ({
 }));
 const design = await designBlenderScene(brief, transport, DESIGNER_MODEL, { photos }); // transport: apiTransport(key) or subscriptionTransport()
 // record design.usage in the ledger, show design.warnings / design.factWarnings, keep design.caption, .hashtags, .say
-const result = await renderBlenderScene(design.scene, `video-lab/data/blender/videos/${jobId}.mp4`, { photos, onProgress: (p) => (job.progress = p) });
+// sound (optional): the server copies the voice take (made from design.say) and a music track into the job's folder
+const result = await renderBlenderScene(design.scene, `video-lab/data/blender/videos/${jobId}.mp4`, { photos, audio: `${jobFolder}/voice.mp3`, music: `${jobFolder}/music.mp3`, jobDir: jobFolder, onProgress: (p) => (job.progress = p) });
 // result: { path, bytes, seconds, log, warnings, scene }
 ```
 
@@ -303,9 +308,45 @@ const result = await renderBlenderScene(design.scene, `video-lab/data/blender/vi
   - the expected wait (2 to 4 minutes for 6 s at 540p);
   - the progress bar, and the still as the poster image.
 
+## Sound (voice-over and music, mixed by Blender)
+
+Premium 3D clips get their sound from Blender itself: no separate ffmpeg, no re-encode in the browser.
+- `render.py` puts the voice and the music in the video sequencer as sound strips:
+  - the voice starts at `sound.voiceAt` (default 0.3 s);
+  - the music starts at 0, at 0.18 under a voice (0.7 alone), and fades out over the last half second;
+  - both are trimmed to the clip.
+- Blender's built-in FFmpeg then writes them into the MP4 as AAC (stereo, 48 kHz, 160 kb/s).
+- Sound-only strips do not replace the 3D picture.
+- By hand: `--audio voice.mp3 --music music.mp3 [--voice-at 0.5] [--music-volume 0.2]`. Stills ignore the sound.
+
+**The runner's options**:
+`renderBlenderScene(scene, outPath, { photos, audio, music, voiceAt, musicVolume, jobDir, onProgress })`.
+- `audio`: the voice file. `music`: the music file. Both are absolute paths to MP3, WAV, M4A, AAC, OGG or FLAC.
+- They must be inside `jobDir`, the job's own folder (default: the folder of `outPath`). Links are resolved first, so
+  a link cannot point outside it.
+- Anything else is refused with a plain-English error before Blender starts (`checkSoundPath` in
+  `tools/blender/scene.ts`).
+- The server copies the take and the track into the job's folder, as it does for the photos. For example
+  `video-lab/data/blender/photos/<job id>/voice.mp3` and `music.mp3`, then
+  `{ audio, music, jobDir: <that folder> }`.
+- Never paths from the browser or from Claude.
+
+**Tested on 17 October 2026**:
+- The round-5 Kibagabaga house clip, 8 s at 540p (192 frames), with its real ElevenLabs take from the cache
+  (`video-lab/data/voice/d3bd...mp3`, 12.7 s, no new cost) and the library's "corporate inspiring" track.
+- The MP4 has an H.264 track of 8.00 s and an AAC track of 8.02 s. The voice is cut at 8 s, after its third line.
+- Level in a gap between two voice lines: 0.024, against 0.133 for the music file at the same moment. That is the
+  0.18 music level; the fade at the end goes down to 0.007.
+- Render: 546 s at load average about 110 (other agents were busy).
+- What the sound costs: with a nearly free picture (1 sample, 480p, 192 frames), with sound took 157 s and 400 s, and
+  without sound took 145 s and 178 s, back to back at load average 90 to 100. Mixing the sound adds no measurable time;
+  the differences are the load.
+
 ## Tests
 
-`npx vitest run tests/video-engine/blender.test.ts tests/video-engine/blender-design.test.ts`. Design tests, with
+`npx vitest run tests/video-engine/blender.test.ts tests/video-engine/blender-design.test.ts`. Sound: the scene's
+sound fields (paths dropped), the job-folder check (`..`, a neighbouring folder, links, extensions), the command line
+and the runner refusing sound from outside the job's folder. Design tests, with
 Claude mocked: the call, the retry with the problems, a refusal, fact warnings, the spelling, phone, chrome, length,
 entrance and layout repairs, and the brief text. Runner tests: photo paths, limits, the three example
 scenes (no repairs needed), canvas sizes, the command line, progress lines, and the job runner with Blender mocked

@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { BLENDER_APP, blenderCommand, normalizeBlenderScene, parseBlenderProgress, type BlenderScene, type NormalizeOptions } from "@/tools/blender/scene";
+import { BLENDER_APP, blenderCommand, checkSoundPath, normalizeBlenderScene, parseBlenderProgress, type BlenderScene, type NormalizeOptions } from "@/tools/blender/scene";
 
 export const BLENDER_TIMEOUT_MS = 15 * 60_000;
 
@@ -53,6 +53,18 @@ export type BlenderRenderOptions = NormalizeOptions & {
   timeoutMs?: number;
   /** The repository folder (render.py, fonts, relative image paths). Default: the current folder. */
   repoDir?: string;
+  /**
+   * The voice-over (MP3, WAV, M4A, AAC, OGG or FLAC) mixed into the MP4 as AAC, from the scene's `sound.voiceAt`
+   * (default 0.3 s), trimmed to the clip. Must be a file the server put in `jobDir`.
+   */
+  audio?: string;
+  /** A music bed, low under the voice (0.18; 0.7 alone), faded out over the last half second. Also inside `jobDir`. */
+  music?: string;
+  /** Overrides for the scene's `sound.voiceAt` (seconds) and the music volume (0 to 1). */
+  voiceAt?: number;
+  musicVolume?: number;
+  /** The job's own folder: `audio` and `music` must be inside it. Default: the folder of `outPath`. */
+  jobDir?: string;
 };
 
 export type BlenderRenderResult = {
@@ -87,6 +99,8 @@ async function renderNow(input: unknown, outPath: string, opts: BlenderRenderOpt
   const asked = (input as { product?: unknown } | null)?.product;
   if (asked && !scene.product) throw new Error(`The 3D scene's product photo is missing (${warnings.join(" ") || "no photo list given"}).`);
   const out = path.resolve(outPath);
+  // Sound files are checked before anything is written or started.
+  const sound = await soundFiles(opts, out);
   const base = out.replace(/\.mp4$/i, "");
   const scenePath = `${base}.scene.json`;
   const logPath = `${base}.log`;
@@ -94,7 +108,7 @@ async function renderNow(input: unknown, outPath: string, opts: BlenderRenderOpt
   await fs.mkdir(path.dirname(out), { recursive: true });
   await fs.writeFile(scenePath, JSON.stringify(scene, null, 2));
 
-  const { bin, args } = blenderCommand({ scenePath, outPath: out, repoDir: path.resolve(opts.repoDir ?? "."), bin: blenderBin(), stills: opts.stills, stillsDir, preview: opts.preview });
+  const { bin, args } = blenderCommand({ scenePath, outPath: out, repoDir: path.resolve(opts.repoDir ?? "."), bin: blenderBin(), stills: opts.stills, stillsDir, preview: opts.preview, ...sound, voiceAt: opts.voiceAt, musicVolume: opts.musicVolume });
   const started = Date.now();
   const log = createWriteStream(logPath);
   const lastError = await new Promise<string | null>((resolve, reject) => {
@@ -134,4 +148,27 @@ async function renderNow(input: unknown, outPath: string, opts: BlenderRenderOpt
   const stat = await fs.stat(out).catch(() => null);
   if (!stat?.size) throw new Error(`Blender finished but wrote no video. See ${logPath}.`);
   return { path: out, bytes: stat.size, seconds, log: logPath, warnings, scene };
+}
+
+/**
+ * The voice and music files for Blender, checked: inside the job's folder (links resolved, so a link cannot point
+ * outside it), with a sound extension, and existing files. Never paths from the browser or from Claude.
+ */
+async function soundFiles(opts: BlenderRenderOptions, out: string): Promise<{ audio?: string; music?: string }> {
+  if (!opts.audio && !opts.music) return {};
+  const dir = path.resolve(opts.jobDir ?? path.dirname(out));
+  const realDir = await fs.realpath(dir).catch(() => {
+    throw new Error("The job's folder for the sound does not exist.");
+  });
+  const one = async (file: string | undefined, what: string) => {
+    if (!file) return undefined;
+    checkSoundPath(path.resolve(file), dir);
+    const real = await fs.realpath(path.resolve(file)).catch(() => {
+      throw new Error(`The ${what} file does not exist.`);
+    });
+    const checked = checkSoundPath(real, realDir);
+    if (!(await fs.stat(checked)).isFile()) throw new Error(`The ${what} is not a file.`);
+    return checked;
+  };
+  return { audio: await one(opts.audio, "voice-over"), music: await one(opts.music, "music") };
 }

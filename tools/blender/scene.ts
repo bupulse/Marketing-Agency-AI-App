@@ -127,6 +127,11 @@ export interface BlenderScene {
   props: BlenderProp[];
   particles: BlenderParticles[];
   look: { contrast: Of<typeof BLENDER_CONTRASTS>; exposure: number; bloom: number };
+  /**
+   * When the voice starts and how loud each track is. The sound files themselves never come from the scene: the
+   * server passes them to renderBlenderScene (`audio`, `music`), from the job's own folder.
+   */
+  sound: { voiceAt: number; voiceVolume: number; musicVolume: number | null };
 }
 
 /** A photo the designer was given: the photo and, when one was made, its cutout (transparent PNG). */
@@ -227,7 +232,17 @@ export function normalizeBlenderScene(input: unknown, opts: NormalizeOptions = {
       const look = isObj(s.look) ? s.look : {};
       return { contrast: pick(look.contrast, BLENDER_CONTRASTS, "medium"), exposure: num(look.exposure, 0, -3, 3), bloom: num(look.bloom, 0.3, 0, 1) };
     })(),
+    sound: { voiceAt: 0.3, voiceVolume: 1, musicVolume: null },
   };
+  if (isObj(s.sound)) {
+    const snd = s.sound;
+    scene.sound = {
+      voiceAt: num(snd.voiceAt, 0.3, 0, BLENDER_LIMITS.maxSeconds),
+      voiceVolume: num(snd.voiceVolume, 1, 0, 2),
+      musicVolume: snd.musicVolume === undefined || snd.musicVolume === null ? null : num(snd.musicVolume, 0.18, 0, 1),
+    };
+    if (snd.voice !== undefined || snd.music !== undefined) warnings.push("Sound files are not taken from the scene: the server passes them (audio, music).");
+  }
   if (cam.move !== undefined && scene.camera.move !== cam.move) warnings.push(`Camera move "${String(cam.move)}" is not available in 3D: using ${scene.camera.move}.`);
 
   if (isObj(s.product)) {
@@ -336,14 +351,64 @@ export function blenderCanvasSize(canvas: BlenderScene["canvas"]): { width: numb
 
 export const BLENDER_APP = "/Applications/Blender.app/Contents/MacOS/Blender";
 
-/** The headless Blender command for a scene file: an MP4, or PNG stills at clip fractions (0 to 1) when given. */
-export function blenderCommand(o: { scenePath: string; outPath: string; repoDir: string; bin?: string; stills?: number[]; stillsDir?: string; preview?: boolean }): { bin: string; args: string[] } {
+/** Sound files Blender's FFmpeg reads well. */
+export const BLENDER_SOUND_EXTENSIONS = [".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"] as const;
+
+/** An absolute POSIX path with "." and ".." resolved, or null when it is not absolute. Pure (no file system). */
+function cleanAbsolute(p: string): string | null {
+  if (!p.startsWith("/")) return null;
+  const parts: string[] = [];
+  for (const seg of p.split("/")) {
+    if (!seg || seg === ".") continue;
+    if (seg === "..") parts.pop();
+    else parts.push(seg);
+  }
+  return `/${parts.join("/")}`;
+}
+
+/**
+ * Checks a sound file for a render: an absolute path inside the job's folder, with a sound extension. Returns the clean
+ * path, or throws a plain-English error. Pure: the runner also checks the real file (links resolved) before rendering.
+ */
+export function checkSoundPath(file: string, jobDir: string): string {
+  const f = cleanAbsolute(file);
+  const dir = cleanAbsolute(jobDir);
+  if (!f || !dir) throw new Error("A sound file and the job folder must be absolute paths.");
+  if (dir === "/" || !f.startsWith(`${dir}/`)) throw new Error(`The sound file must be inside the job's folder (${dir}).`);
+  const ext = f.slice(f.lastIndexOf(".")).toLowerCase();
+  if (!(BLENDER_SOUND_EXTENSIONS as readonly string[]).includes(ext)) throw new Error(`The sound file must be ${BLENDER_SOUND_EXTENSIONS.join(", ")}.`);
+  return f;
+}
+
+/**
+ * The headless Blender command for a scene file: an MP4, or PNG stills at clip fractions (0 to 1) when given. With
+ * `audio` (the voice) and/or `music` (checked paths), the MP4 carries an AAC track mixed by Blender's own FFmpeg.
+ */
+export function blenderCommand(o: {
+  scenePath: string;
+  outPath: string;
+  repoDir: string;
+  bin?: string;
+  stills?: number[];
+  stillsDir?: string;
+  preview?: boolean;
+  audio?: string;
+  music?: string;
+  voiceAt?: number;
+  musicVolume?: number;
+}): { bin: string; args: string[] } {
   const args = ["-b", "--factory-startup", "-noaudio", "-P", `${o.repoDir}/tools/blender/render.py`, "--", "--scene", o.scenePath, "--out", o.outPath, "--base-dir", o.repoDir];
   if (o.stills?.length) {
     args.push("--stills", o.stills.map((f) => Math.min(1, Math.max(0, f)).toFixed(3)).join(","));
     if (o.stillsDir) args.push("--stills-dir", o.stillsDir);
   }
   if (o.preview) args.push("--preview");
+  if (!o.stills?.length) {
+    if (o.audio) args.push("--audio", o.audio);
+    if (o.music) args.push("--music", o.music);
+    if (o.voiceAt !== undefined && Number.isFinite(o.voiceAt)) args.push("--voice-at", String(Math.min(BLENDER_LIMITS.maxSeconds, Math.max(0, o.voiceAt))));
+    if (o.musicVolume !== undefined && Number.isFinite(o.musicVolume)) args.push("--music-volume", String(Math.min(1, Math.max(0, o.musicVolume))));
+  }
   return { bin: o.bin || BLENDER_APP, args };
 }
 
@@ -378,6 +443,7 @@ export const BLENDER_SCENE_FORMAT = `A Blender 3D scene, one JSON object. Units:
   "props": up to 12 of { "kind": "plinth"|"sphere"|"ring"|"box"|"cylinder", "position": [x, y, z] (sphere and ring: centre; others: bottom centre), "size": diameter or width, "height": for plinth, box, cylinder,
     "material": as texts, "color": hex, "enter": as texts, "enterAt", "enterFor", "idle": "float"|"spin"|"swing"|"none" },
   "particles": up to 3 of { "kind": "confetti"|"sparkles"|"bubbles"|"dust", "count": 10 to 80, "colors": [hex], "center": [x, y, z], "area": [width, depth, height], "speed": 0.3 to 1.5 },
-  "look": { "contrast": "medium"|"high"|"punchy"|"base", "exposure": -1 to 1, "bloom": 0 to 1 }
+  "look": { "contrast": "medium"|"high"|"punchy"|"base", "exposure": -1 to 1, "bloom": 0 to 1 },
+  "sound": { "voiceAt": seconds when the voice-over starts (0.2 to 1; the voice and music files are added by the studio) }
 }
 Framing: in 9:16 at distance 10 with lens 50 the frame is about 4 wide and 7 tall around the target; keep everything within x -1.6 to 1.6. Keep texts in front of the product (y -0.2 to -2) or above it, never inside it or a plinth. Use the brand colours.`;
