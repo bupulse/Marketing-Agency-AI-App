@@ -5,7 +5,7 @@
 import { drawSpecFrame, type Img } from "@/lib/video-engine/draw";
 import { encodeSpecMp4, loadPhotos, loadSpecFonts } from "@/lib/video-engine/encode";
 import { canvasSize, totalMs, type MotionSpec, type Quality } from "@/lib/video-engine/spec";
-import { MODELS, loadPricing, modelById, wireExamples } from "./models";
+import { loadPricing, modelById, wireExamples } from "./models";
 import { $, api, el, refreshWallet } from "./site";
 
 type Engine = "seedance" | "claude";
@@ -24,7 +24,11 @@ type Options = {
   seedance: { tiers: { id: string; name: string; blurb: string; resolutions: string[] }[]; ratios: string[]; limits: { minSeconds: number; maxSeconds: number } };
 };
 type ClaudeJob = { id: string; createdAt: string; productName: string; styleId: string; ratio: string; photoIds: string[]; spec: MotionSpec | null; usage: unknown[]; apiEquivalentUsd?: number; status: string; error: string | null; video: { bytes: number; quality?: string } | null; mode?: string };
-type SdJob = { id: string; createdAt: string; status: string; credits: number; estimateUsd: number; costUsd: number; tokens: number; videoFile: string | null; error: string | null; title: string; request: { prompt: string; tier: string; resolution: string; ratio: string; seconds: number; referenceNotes: string[] } };
+type SdJob = { id: string; createdAt: string; status: string; credits: number; estimateUsd: number; costUsd: number; tokens: number; videoFile: string | null; error: string | null; title: string; request: { prompt: string; tier: string; resolution: string; ratio: string; seconds: number; referenceNotes: string[] }; preview?: { notice: string; readyAt: string; wouldCostCredits: number } };
+type Issue = { level: "error" | "warning" | "info"; code: string; message: string };
+type StoryShot = { n: number; from: number; to: number; shot: string; camera: string; action: string; sound: string | null; spoken: string | null; references: string[] };
+type Storyboard = { notice: string; model: string; resolution: string; ratio: string; seconds: number; audio: boolean; setting: string | null; shots: StoryShot[]; frames: { at: number; shot: number; caption: string; svg: string }[]; references: { label: string; kind: string; thumb: string | null }[]; estimate: { usd: number; credits: number; wait: string }; issues: Issue[] };
+type PreviewAnswer = { ready: false; readyInMs: number; notice: string } | { ready: true; storyboard: Storyboard };
 type Gen = { engine: Engine; id: string; title: string; status: string; at: string; videoUrl: string | null; claude?: ClaudeJob; sd?: SdJob };
 type Product = { id: string; name: string; summary: string; price: string | null; photos: { assetId: string; description: string | null }[] };
 type Preview = { spec: MotionSpec; photoIds: string[] };
@@ -62,6 +66,8 @@ const state = {
   open: null as Gen | null,
   credits: 0,
   claudeCredits: 0,
+  planVariant: 0,
+  checkErrors: [] as Issue[],
   photos: new Map<number, Img>(),
   playing: false,
 };
@@ -136,8 +142,45 @@ function renderPills() {
   $("pVersionsV").textContent = `${state.versions}/4`;
   $("go").className = `genBtn${sd ? " bp" : ""}`;
   $("pWrite").hidden = !sd;
+  $("pPlan").hidden = !sd;
   $("tAvatar").hidden = false;
   void quote();
+  scheduleCheck();
+}
+
+// ---- Seedance checks (lib/video-engine/seedance-brain.ts, through /api/seedance/check) -------------------------------
+
+/** What Generate would send to Seedance. */
+const seedanceBody = () => ({ prompt: $<HTMLTextAreaElement>("prompt").value.trim(), refs: state.refs.map((r) => ({ id: r.id, kind: r.kind, role: r.role, label: r.label })), tier: state.tier, resolution: state.resolution, ratio: state.ratio, seconds: state.seconds, audio: state.audio, fixedLens: state.fixedLens, flex: state.flex, draft: state.draft, seed: state.seed ? Number(state.seed) : null, versions: state.versions, businessId: state.businessId, productId: state.productId, mode: state.mode });
+
+function showIssues(issues: Issue[]) {
+  const box = $("sdChecks");
+  // An empty prompt is normal while the owner is still setting up: Generate says so when pressed.
+  const shown = issues.filter((i) => i.level !== "info" && i.code !== "prompt-empty");
+  box.hidden = !shown.length || state.engine !== "seedance";
+  box.replaceChildren(...shown.map((i) => el("div", { className: `issue ${i.level}`, textContent: `${i.level === "error" ? "Fix before Generate: " : "Note: "}${i.message}` })));
+}
+
+/** Runs the check; errors block Generate (and are returned), warnings are shown beside it. */
+async function checkSeedance(): Promise<Issue[]> {
+  if (state.engine !== "seedance") {
+    $("sdChecks").hidden = true;
+    return [];
+  }
+  try {
+    const out = await api<{ ok: boolean; issues: Issue[] }>("/api/seedance/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(seedanceBody()) });
+    state.checkErrors = out.issues.filter((i) => i.level === "error");
+    showIssues(out.issues);
+    return state.checkErrors;
+  } catch {
+    return [];
+  }
+}
+
+let checkTimer = 0;
+function scheduleCheck() {
+  clearTimeout(checkTimer);
+  checkTimer = window.setTimeout(() => void checkSeedance(), 700);
 }
 
 async function quote() {
@@ -220,6 +263,8 @@ function setupPills() {
   $("tProduct").onclick = () => openPicker("product");
   $("tAvatar").onclick = () => openPicker("avatar");
   $("pWrite").onclick = () => void writeWithClaude();
+  $("pPlan").onclick = () => void quickPlan();
+  $<HTMLTextAreaElement>("prompt").addEventListener("input", scheduleCheck);
   document.querySelectorAll<HTMLButtonElement>("#engineSw button").forEach((b) => {
     b.onclick = () => {
       setEngine(b.dataset.engine as Engine);
@@ -266,6 +311,7 @@ function renderRefs() {
   if (state.avatar?.thumb) ta.prepend(el("img", { src: state.avatar.thumb }));
   ta.classList.toggle("on", !!state.avatar);
   void quote();
+  scheduleCheck();
 }
 
 function addRef(r: Ref) {
@@ -402,18 +448,53 @@ async function writeWithClaude() {
   b.disabled = true;
   msg("Claude is writing the shot list…");
   try {
-    const out = await api<{ prompt: string }>("/api/seedance/prompt", {
+    const out = await api<{ prompt: string; issues: Issue[]; fallback: string | null }>("/api/seedance/prompt", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ businessId: state.businessId, productId: state.productId, templateId: state.templateId, note: $<HTMLTextAreaElement>("prompt").value, seconds: state.seconds, ratio: state.ratio, audio: state.audio, references: state.refs.map((r) => ({ kind: r.kind, label: r.label })), presenter: state.avatar?.label ?? null }),
     });
     $<HTMLTextAreaElement>("prompt").value = out.prompt;
-    msg("Prompt written. Change anything, then Generate.", "ok");
+    msg(out.fallback ? `Claude could not be reached, so BuPulse's own shot plan was used: ${out.fallback}` : "Prompt written. Change anything, then Generate.", out.fallback ? "" : "ok");
+    showIssues(out.issues ?? []);
+    scheduleCheck();
   } catch (e) {
     msg((e as Error).message, "err");
   } finally {
     b.disabled = false;
   }
+}
+
+/** BuPulse's own shot plan (no AI, free, instant); each press tries another template of the same kind. */
+async function quickPlan() {
+  if (!state.productId) return msg("Pick a product first (the PRODUCT tile).", "err");
+  try {
+    const plan = await api<{ prompt: string; templateName: string; notes: string[] }>("/api/seedance/plan", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ businessId: state.businessId, productId: state.productId, templateId: state.planVariant ? null : state.templateId, variant: state.planVariant, seconds: state.seconds, ratio: state.ratio, audio: state.audio, fixedLens: state.fixedLens, references: state.refs.map((r) => ({ kind: r.kind, label: r.label })), presenter: state.avatar?.label ?? null }),
+    });
+    state.planVariant += 1;
+    $<HTMLTextAreaElement>("prompt").value = plan.prompt;
+    msg(`Quick plan: ${plan.templateName}.${plan.notes.length ? ` ${plan.notes.join(" ")}` : ""} Press again for another plan.`, "ok");
+    scheduleCheck();
+  } catch (e) {
+    msg((e as Error).message, "err");
+  }
+}
+
+/** Sends the prompt to Claude's Motion engine instead (the prompt stays as the brief). */
+function asMotion(prompt: string) {
+  $("drawer").classList.remove("open");
+  state.open = null;
+  setEngine("claude");
+  $<HTMLTextAreaElement>("prompt").value = prompt;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  if (!state.productId) {
+    msg("Motion videos start from a product: pick one, then press Generate.", "ok");
+    void openPicker("product");
+    return;
+  }
+  void generate();
 }
 
 async function generate() {
@@ -422,16 +503,14 @@ async function generate() {
   const prompt = $<HTMLTextAreaElement>("prompt").value.trim();
   try {
     if (state.engine === "seedance") {
-      if (!state.o?.seedanceReady) return seedancePreview();
-      if (!prompt) throw new Error("Write a prompt, or press Write with Claude.");
+      if (!prompt) throw new Error("Write a prompt, or press Quick plan or Write with Claude.");
       if ((state.mode === "edit" || state.mode === "extend") && !state.refs.some((r) => r.kind === "video")) throw new Error("Add the video to edit or extend as a reference (+ then My videos).");
-      msg("Sending to Seedance…");
-      const out = await api<{ jobs: SdJob[] }>("/api/seedance/submit", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt, refs: state.refs.map((r) => ({ id: r.id, kind: r.kind, role: r.role, label: r.label })), tier: state.tier, resolution: state.resolution, ratio: state.ratio, seconds: state.seconds, audio: state.audio, fixedLens: state.fixedLens, flex: state.flex, draft: state.draft, seed: state.seed ? Number(state.seed) : null, versions: state.versions, businessId: state.businessId, productId: state.productId, mode: state.mode }),
-      });
-      msg(`Seedance is making ${out.jobs.length > 1 ? `${out.jobs.length} videos` : "your video"}. Usually 1 to 5 minutes; you can keep working.`, "ok");
+      const errors = await checkSeedance();
+      if (errors.length) throw new Error(`Fix this first: ${errors[0].message}`);
+      msg(state.o?.seedanceReady ? "Sending to Seedance…" : "Making the free preview…");
+      const out = await api<{ jobs: SdJob[] }>("/api/seedance/submit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(seedanceBody()) });
+      const preview = out.jobs[0]?.status.startsWith("preview");
+      msg(preview ? "Preview: Seedance arrives with the BytePlus key. This is the shot plan it will film, with the price; no credits were taken." : `Seedance is making ${out.jobs.length > 1 ? `${out.jobs.length} videos` : "your video"}. Usually 1 to 5 minutes; you can keep working.`, "ok");
       await loadGens();
       openDrawer(state.gens.find((g) => g.id === out.jobs[0].id) ?? null);
     } else {
@@ -453,53 +532,6 @@ async function generate() {
   } finally {
     go.disabled = false;
   }
-}
-
-/**
- * Until the BytePlus key is in, Generate on Real video shows what the clip would be (settings, credits, example
- * prompts) and offers the same idea as a Motion video, instead of failing.
- */
-function seedancePreview() {
-  const o = state.o as Options;
-  const dlg = $("sdDlg") as HTMLDialogElement;
-  const tier = o.seedance.tiers.find((t) => t.id === state.tier);
-  const images = state.refs.filter((r) => r.kind === "image").length;
-  const others = state.refs.length - images;
-  const rows: [string, string][] = [
-    ["Model", tier?.name ?? "Seedance 2.0"],
-    ["Mode", MODES.seedance.find((m) => m.id === state.mode)?.name ?? state.mode],
-    ["Clip", `${state.seconds} s · ${state.ratio} · ${state.draft ? "480p draft" : state.resolution}${state.audio ? " · with sound" : " · no sound"}${state.fixedLens ? " · fixed lens" : ""}`],
-    ["References", state.refs.length ? `${images} photo${images === 1 ? "" : "s"}${others ? `, ${others} video or audio` : ""}` : "none (text to video)"],
-    ["Versions", String(state.versions)],
-    ["Credits", `${state.credits || "…"} credits (${((state.credits || 0) * 10).toLocaleString()} RWF), taken only when it runs`],
-  ];
-  $("sdWhat").replaceChildren(...rows.flatMap(([k, v]) => [el("span", { className: "k", textContent: k }), el("span", { textContent: v })]));
-  const model = modelById(document.body.dataset.model) ?? MODELS.find((m) => m.tier === state.tier) ?? MODELS[0];
-  $("sdExamples").replaceChildren(
-    ...model.examples.slice(0, 3).map((text) => {
-      const b = el("button", { className: "example" }, el("span", { textContent: text }), el("small", { textContent: "Use this prompt" }));
-      b.onclick = () => {
-        $<HTMLTextAreaElement>("prompt").value = text;
-        dlg.close();
-        msg("Example prompt added. Change it for your product.", "ok");
-      };
-      return b;
-    }),
-  );
-  $("sdMotionNote").textContent = `A Motion video is designed by Claude from your product photos: ${state.claudeCredits || "…"} credits, about a minute. Your prompt is kept as the brief.`;
-  $("sdToMotion").onclick = () => {
-    dlg.close();
-    setEngine("claude");
-    if (!state.productId) {
-      msg("Motion videos start from a product: pick one, then press Generate.", "ok");
-      void openPicker("product");
-      return;
-    }
-    void generate();
-  };
-  $("sdKeep").onclick = () => dlg.close();
-  $("sdDlgClose").onclick = () => dlg.close();
-  dlg.showModal();
 }
 
 // ---- Generations and the drawer ------------------------------------------------------------------------------------
@@ -537,13 +569,82 @@ async function loadGens() {
       c.height = size.height;
       card.append(c);
       void loadPhotos((g.claude.photoIds ?? []).map((id) => `/api/photo/${id}?size=thumb`)).then((ph) => drawSpecFrame(c.getContext("2d") as CanvasRenderingContext2D, g.claude?.spec as MotionSpec, ph, 1500, { quality: "480p" }));
+    } else if (g.sd?.preview) {
+      // A free preview (no BytePlus key yet): its first storyboard frame, or a spinner while it is drawn.
+      if (g.status === "preview-ready") {
+        const img = el("img", { className: "frame", alt: "Storyboard" });
+        card.append(img);
+        void storyboard(g.id).then((sb) => sb?.frames[0] && (img.src = svgSrc(sb.frames[0].svg)));
+      } else card.append(el("div", { className: "wait" }, el("span", { className: "spin" }), el("span", { textContent: "Drawing the storyboard…" })));
     } else {
       card.append(el("div", { className: "wait" }, g.status === "failed" || g.status === "cancelled" ? el("span", { textContent: g.sd?.error ?? g.claude?.error ?? g.status }) : el("span", { className: "spin" }), el("span", { textContent: g.status === "queued" ? "Queued at Seedance" : g.status === "running" ? "Seedance is filming…" : g.status })));
     }
-    card.append(el("span", { className: `st ${g.status}`, textContent: g.engine === "seedance" ? "Seedance" : "Motion" }), el("div", { className: "cap", textContent: g.title }));
+    card.append(el("span", { className: `st ${g.status}`, textContent: g.sd?.preview ? "Seedance preview" : g.engine === "seedance" ? "Seedance" : "Motion" }), el("div", { className: "cap", textContent: g.title }));
     card.onclick = () => openDrawer(g);
     grid.append(card);
   }
+}
+
+/** SVG frames are shown as images, so nothing inside them can run. */
+const svgSrc = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+const storyboards = new Map<string, Storyboard>();
+async function storyboard(id: string): Promise<Storyboard | null> {
+  if (storyboards.has(id)) return storyboards.get(id) as Storyboard;
+  const pv = await api<PreviewAnswer>(`/api/seedance/jobs/${id}/preview`).catch(() => null);
+  if (!pv?.ready) return null;
+  storyboards.set(id, pv.storyboard);
+  return pv.storyboard;
+}
+
+/** The drawer for a free Seedance preview: waits for the storyboard, then shows its frames, shots and price. */
+async function showPreview(g: Gen, j: SdJob) {
+  const media = $("dMedia");
+  const pv = await api<PreviewAnswer>(`/api/seedance/jobs/${j.id}/preview`).catch((e: Error) => {
+    media.replaceChildren(el("p", { className: "err", textContent: e.message }));
+    return null;
+  });
+  if (!pv || state.open !== g) return;
+  if (!pv.ready) {
+    media.replaceChildren(el("div", { className: "wait", style: "padding:40px;text-align:center" }, el("span", { className: "spin" }), el("div", { className: "muted", textContent: "Drawing the storyboard Seedance will film…" })));
+    setTimeout(async () => {
+      if (state.open?.id !== j.id) return;
+      await loadGens();
+      openDrawer(state.gens.find((x) => x.id === j.id) ?? null);
+    }, Math.max(800, pv.readyInMs + 300));
+    return;
+  }
+  const sb = pv.storyboard;
+  storyboards.set(j.id, sb);
+  const frames = el("div", { className: "frames" }, ...sb.frames.map((f) => el("figure", {}, el("img", { src: svgSrc(f.svg), alt: f.caption }), el("figcaption", { textContent: f.caption }))));
+  const shots = el("table", { className: "shots" }, el("tr", {}, ...["Time", "Shot", "Camera", "What happens"].map((h) => el("th", { textContent: h }))));
+  for (const sh of sb.shots) {
+    const what = el("td", {}, sh.action);
+    if (sh.spoken) what.append(el("div", { className: "muted", textContent: `Says: "${sh.spoken}"` }));
+    if (sh.sound) what.append(el("div", { className: "muted", textContent: `Sound: ${sh.sound}` }));
+    if (sh.references.length) what.append(el("div", { className: "muted", textContent: `Uses: ${sh.references.join(", ")}` }));
+    shots.append(el("tr", {}, el("td", { textContent: `${sh.from}–${sh.to} s` }), el("td", { textContent: sh.shot }), el("td", { textContent: sh.camera }), what));
+  }
+  media.replaceChildren(el("div", { className: "pvNotice", textContent: sb.notice }), frames, ...(sb.setting ? [el("p", { className: "muted small", textContent: `Setting: ${sb.setting}` })] : []), shots);
+  if (sb.issues.length) media.append(el("div", { className: "checks" }, ...sb.issues.filter((i) => i.level !== "info").map((i) => el("div", { className: `issue ${i.level}`, textContent: i.message }))));
+  $("dInfo").replaceChildren(
+    ...([
+      ["Status", "Preview (free)"],
+      ["Model", `${sb.model} · ${sb.resolution} · ${sb.seconds} s · ${sb.ratio}${sb.audio ? " · sound" : ""}`],
+      ["With the key it costs", `${sb.estimate.credits} credits (${(sb.estimate.credits * 10).toLocaleString()} RWF), about $${sb.estimate.usd.toFixed(2)}`],
+      ["Usual wait", sb.estimate.wait],
+    ] as [string, string][]).flatMap(([k, v]) => [el("span", { className: "k", textContent: k }), el("span", { textContent: v })]),
+  );
+  const motion = el("button", { className: "btn sm primary", textContent: "Make it as a Motion video instead" });
+  motion.onclick = () => asMotion(j.request.prompt);
+  const edit = el("button", { className: "btn sm", textContent: "Edit the prompt" });
+  edit.onclick = () => {
+    $<HTMLTextAreaElement>("prompt").value = j.request.prompt;
+    $("drawer").classList.remove("open");
+    state.open = null;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    scheduleCheck();
+  };
+  $("dActions").replaceChildren(motion, edit);
 }
 
 let drawerAnim = 0;
@@ -568,7 +669,11 @@ function openDrawer(g: Gen | null) {
   $("dEdit").hidden = true;
   const info: [string, string][] = [];
   cancelAnimationFrame(drawerAnim);
-  if (g.engine === "seedance" && g.sd) {
+  if (g.engine === "seedance" && g.sd?.preview) {
+    $("dPrompt").textContent = g.sd.request.prompt;
+    void showPreview(g, g.sd);
+    return;
+  } else if (g.engine === "seedance" && g.sd) {
     const j = g.sd;
     if (g.videoUrl) media.append(el("video", { src: g.videoUrl, controls: true, autoplay: true, loop: true, playsInline: true }));
     else media.append(el("div", { className: "wait", style: "padding:40px;text-align:center" }, el("span", { className: "spin" }), el("div", { className: "muted", textContent: j.error ?? (j.status === "queued" ? "Queued at Seedance…" : j.status === "running" ? "Seedance is filming… this page updates by itself." : j.status) })));
@@ -855,7 +960,7 @@ async function start() {
   const show = await api<{ items: { id: string; engine: Engine; title: string; videoUrl: string | null }[] }>("/api/showcase");
   carousel(show.items.filter((i) => i.videoUrl).map((i) => ({ videoUrl: i.videoUrl as string, title: i.title, engine: i.engine })));
   setInterval(async () => {
-    if (state.gens.some((g) => g.engine === "seedance" && (g.status === "queued" || g.status === "running" || g.status === "submitting"))) {
+    if (state.gens.some((g) => g.engine === "seedance" && (g.status === "queued" || g.status === "running" || g.status === "submitting" || g.status === "preview"))) {
       await loadGens();
       if (state.open?.engine === "seedance") openDrawer(state.gens.find((g) => g.id === state.open?.id) ?? null);
       await refreshWallet();

@@ -16,10 +16,11 @@ import { closeDb, getBusiness, loadSavedKeys, listBusinesses, listProducts, musi
 import { IMAGE_RATIOS, INFLUENCERS, SHOT_ACTIONS, addImage, generateImage, listImages, listInfluencers, makePortrait, makeShot, portraitBytes } from "./influencers";
 import MODELS from "./site/models.json";
 import { DAILY_CAP_USD, getJob, listJobs, listPreviews, newJobId, readVideo, record, savePreview, saveJob, saveVideo, spentToday, type LabJob } from "./store";
-import { SEEDANCE_LIMITS, SEEDANCE_MODELS, SEEDANCE_RATIOS, SEEDANCE_RESOLUTIONS, estimateSeedanceUsd, type SeedanceReference, type SeedanceRequest, type SeedanceResolution, type SeedanceTier } from "@/lib/video-engine/seedance";
+import { SEEDANCE_LIMITS, SEEDANCE_MODELS, SEEDANCE_RATIOS, SEEDANCE_RESOLUTIONS, checkSeedanceConnection, estimateSeedanceUsd, type SeedanceConnection, type SeedanceReference, type SeedanceRequest, type SeedanceResolution, type SeedanceTier } from "@/lib/video-engine/seedance";
+import { checkSeedanceRequest, planSeedanceShots } from "@/lib/video-engine/seedance-brain";
 import { writeSeedancePrompt } from "@/lib/video-engine/seedance-prompt";
 import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PRESENTER_IMAGE_CREDITS, charge, readWallet, refund, seedanceCredits, topUp } from "./credits";
-import { cancelSeedance, getSeedanceJob, imageDataUrl, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
+import { cancelSeedance, getSeedanceJob, getSeedancePreview, imageDataUrl, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
 import { mediaBytes, saveMedia } from "./data-source";
 import { RateLimiter, clearCookieHeader, clientIp, cookieValue, isLocal, loadSecret, loginPage, safeNext, sameText, setCookieHeader, tokenFor } from "./gate";
 
@@ -289,6 +290,29 @@ async function resolveReferences(refs: { id: string; kind: string; role?: string
   return { references, notes };
 }
 
+/** The page's Seedance settings as a BytePlus request (shared by submit and check). The prompt may be empty here. */
+async function seedanceRequestFrom(body: Record<string, unknown>) {
+  const tier = (String(body.tier) in SEEDANCE_MODELS ? body.tier : "fast") as SeedanceTier;
+  const allowed = SEEDANCE_MODELS[tier].resolutions as readonly string[];
+  // The resolution is passed as asked, so the check can say when a quality cannot make it.
+  const resolution = ((SEEDANCE_RESOLUTIONS as readonly string[]).includes(String(body.resolution)) ? body.resolution : allowed[allowed.length - 1]) as SeedanceResolution;
+  const ratio = (SEEDANCE_RATIOS as readonly string[]).includes(String(body.ratio)) ? (body.ratio as SeedanceRequest["ratio"]) : "9:16";
+  const seconds = Math.min(SEEDANCE_LIMITS.maxSeconds, Math.max(SEEDANCE_LIMITS.minSeconds, Math.round(Number(body.seconds) || 5)));
+  const businessId = String(body.businessId ?? "");
+  const product = businessId ? (await listProducts(businessId)).find((x) => x.id === String(body.productId ?? "")) : undefined;
+  const { references, notes } = await resolveReferences(Array.isArray(body.refs) ? body.refs : [], businessId);
+  const seed = Number.isFinite(Number(body.seed)) && body.seed !== null && body.seed !== "" ? Number(body.seed) : null;
+  const request: SeedanceRequest = { tier, prompt: String(body.prompt ?? "").trim(), references, ratio, seconds, resolution, audio: body.audio !== false, fixedLens: body.fixedLens === true, seed, flex: body.flex === true, draft: body.draft === true };
+  return { request, notes, product, businessId, versions: Math.min(3, Math.max(1, Number(body.versions) || 1)) };
+}
+
+/** The BytePlus connection, checked at most every 5 minutes (the check lists one task: free). */
+let seedanceStatus: { at: number; value: SeedanceConnection } | null = null;
+async function seedanceConnection(): Promise<SeedanceConnection> {
+  if (!seedanceStatus || Date.now() - seedanceStatus.at > 5 * 60_000) seedanceStatus = { at: Date.now(), value: await checkSeedanceConnection() };
+  return seedanceStatus.value;
+}
+
 const loginTries = new RateLimiter(10, 10 * 60_000);
 let gateSecret: Buffer | null = null;
 const html = (res: http.ServerResponse, status: number, body: string) => {
@@ -404,7 +428,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && p === "/api/showcase") {
       const [cl, sd] = await Promise.all([listJobs(), listSeedanceJobs()]);
       const items = [
-        ...sd.map((j) => ({ id: j.id, engine: "seedance", title: j.title, createdAt: j.createdAt, status: j.status, videoUrl: j.videoFile ? `/videos/seedance/${j.id}.mp4` : null, prompt: j.request.prompt, info: { Quality: `${j.request.tier} · ${j.request.resolution} · ${j.request.seconds} s`, Credits: String(j.credits), "Provider cost": j.costUsd ? `$${j.costUsd.toFixed(3)}` : `about $${j.estimateUsd.toFixed(2)}` } })),
+        // Preview jobs (no key yet) are storyboards, not videos: they stay out of the showcase.
+        ...sd.filter((j) => !j.preview).map((j) => ({ id: j.id, engine: "seedance", title: j.title, createdAt: j.createdAt, status: j.status, videoUrl: j.videoFile ? `/videos/seedance/${j.id}.mp4` : null, prompt: j.request.prompt, info: { Quality: `${j.request.tier} · ${j.request.resolution} · ${j.request.seconds} s`, Credits: String(j.credits), "Provider cost": j.costUsd ? `$${j.costUsd.toFixed(3)}` : `about $${j.estimateUsd.toFixed(2)}` } })),
         ...cl.filter((j) => j.styleId !== "sample").map((j) => ({ id: j.id, engine: "claude", title: j.productName, createdAt: j.createdAt, status: j.video ? "succeeded" : j.status, videoUrl: j.video ? `/videos/${j.id}.mp4` : null, prompt: j.note ?? "", info: { Template: j.styleId, Shape: j.ratio, "API-equivalent cost": `$${(j.apiEquivalentUsd ?? 0).toFixed(3)}` } })),
       ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       return json(res, 200, { items });
@@ -438,37 +463,66 @@ const server = http.createServer(async (req, res) => {
         model,
       );
       await record(newJobId(), "claude-seedance-prompt", [out.usage]);
-      return json(res, 200, { prompt: out.prompt });
+      return json(res, 200, { prompt: out.prompt, issues: out.issues, fallback: out.fallback ?? null });
+    }
+    if (req.method === "POST" && p === "/api/seedance/plan") {
+      // BuPulse's own shot plan from the product (lib/video-engine/seedance-brain.ts): free and instant, no AI.
+      const body = JSON.parse((await readBody(req, 32 * 1024)).toString("utf8") || "{}");
+      const business = await getBusiness(String(body.businessId ?? ""));
+      const product = business ? (await listProducts(business.id)).find((x) => x.id === String(body.productId ?? "")) : undefined;
+      if (!business || !product) return fail(res, 404, "Pick a product first.");
+      const refs = Array.isArray(body.references) ? (body.references as { kind: string; label?: unknown }[]) : [];
+      const counts = { image: 0, video: 0, audio: 0 };
+      const references = refs.map((r) => labelFor(r, (counts[r.kind as "image" | "video" | "audio"] = (counts[r.kind as "image" | "video" | "audio"] ?? 0) + 1)));
+      const plan = planSeedanceShots({
+        business: { name: business.name, description: business.description, language: business.language, country: business.country },
+        product: { name: product.name, summary: product.summary, description: product.description, price: product.price, usps: product.usps, features: product.features },
+        references,
+        templateId: typeof body.templateId === "string" ? body.templateId : null,
+        seconds: Number(body.seconds) || 5,
+        ratio: String(body.ratio ?? "9:16"),
+        audio: body.audio !== false,
+        fixedLens: body.fixedLens === true,
+        presenter: typeof body.presenter === "string" ? body.presenter : null,
+        variant: Number(body.variant) || 0,
+      });
+      return json(res, 200, plan);
+    }
+    if (req.method === "POST" && p === "/api/seedance/check") {
+      // The same request Generate would send, checked before anything is paid (errors block Generate).
+      const body = JSON.parse((await readBody(req, 64 * 1024)).toString("utf8") || "{}");
+      const { request, notes } = await seedanceRequestFrom(body);
+      return json(res, 200, checkSeedanceRequest(request, { referenceNotes: notes }));
+    }
+    if (req.method === "GET" && p === "/api/seedance/status") {
+      const c = await seedanceConnection();
+      return json(res, 200, { state: c.state, message: c.message, mode: seedanceReady() ? "live" : "preview" });
     }
     if (req.method === "POST" && p === "/api/seedance/submit") {
-      if (!seedanceReady()) return fail(res, 503, "Seedance is waiting for the BytePlus key (SEEDANCE_API_KEY in .env).");
+      // Without the BytePlus key this makes a free preview (a storyboard); with it, a real paid job.
       const body = JSON.parse((await readBody(req, 64 * 1024)).toString("utf8") || "{}");
-      const prompt = String(body.prompt ?? "").trim();
-      if (!prompt) return fail(res, 400, "Write a prompt first.");
-      const tier = (body.tier in SEEDANCE_MODELS ? body.tier : "fast") as SeedanceTier;
-      const allowed = SEEDANCE_MODELS[tier].resolutions as readonly string[];
-      const resolution = (allowed.includes(body.resolution) ? body.resolution : allowed[allowed.length - 1]) as SeedanceResolution;
-      const ratio = (SEEDANCE_RATIOS as readonly string[]).includes(body.ratio) ? body.ratio : "9:16";
-      const seconds = Math.min(SEEDANCE_LIMITS.maxSeconds, Math.max(SEEDANCE_LIMITS.minSeconds, Math.round(Number(body.seconds) || 5)));
-      const versions = Math.min(3, Math.max(1, Number(body.versions) || 1));
-      const businessId = String(body.businessId ?? "");
-      const product = businessId ? (await listProducts(businessId)).find((x) => x.id === String(body.productId ?? "")) : undefined;
-      const { references, notes } = await resolveReferences(Array.isArray(body.refs) ? body.refs : [], businessId);
-      const request: SeedanceRequest = { tier, prompt, references, ratio, seconds, resolution, audio: body.audio !== false, fixedLens: body.fixedLens === true, seed: Number.isFinite(Number(body.seed)) && body.seed !== null && body.seed !== "" ? Number(body.seed) : null, flex: body.flex === true, draft: body.draft === true };
+      const { request, notes, product, businessId, versions } = await seedanceRequestFrom(body);
+      if (!request.prompt) return fail(res, 400, "Write a prompt first.");
+      const check = checkSeedanceRequest(request, { referenceNotes: notes });
+      if (!check.ok) return json(res, 400, { error: check.issues.find((i) => i.level === "error")?.message ?? "This request cannot be sent.", issues: check.issues });
       const jobs = [];
       for (let i = 0; i < versions; i++) {
-        jobs.push(await submitSeedance({ ...request, seed: i === 0 ? request.seed : null }, { businessId: businessId || null, productId: product?.id ?? null, title: product?.name ?? prompt.slice(0, 40), referenceNotes: notes }));
+        jobs.push(await submitSeedance({ ...request, seed: i === 0 ? request.seed : null }, { businessId: businessId || null, productId: product?.id ?? null, title: product?.name ?? request.prompt.slice(0, 40), referenceNotes: notes }));
       }
       return json(res, 200, { jobs });
     }
     if (req.method === "GET" && p === "/api/seedance/jobs") return json(res, 200, { jobs: await listSeedanceJobs() });
-    const sdJob = p.match(/^\/api\/seedance\/jobs\/(sd-[0-9a-f]{12})(\/cancel)?$/);
+    const sdJob = p.match(/^\/api\/seedance\/jobs\/(sd-[0-9a-f]{12})(\/cancel|\/preview)?$/);
     if (sdJob) {
+      if (req.method === "GET" && sdJob[2] === "/preview") {
+        const pv = await getSeedancePreview(sdJob[1]);
+        return pv ? json(res, 200, pv) : fail(res, 404, "No preview for this job.");
+      }
       if (req.method === "GET" && !sdJob[2]) {
         const j = await getSeedanceJob(sdJob[1]);
         return j ? json(res, 200, j) : fail(res, 404, "Not found");
       }
-      if (req.method === "POST" && sdJob[2]) {
+      if (req.method === "POST" && sdJob[2] === "/cancel") {
         const j = await cancelSeedance(sdJob[1]);
         return j ? json(res, 200, j) : fail(res, 404, "Not found");
       }
@@ -499,7 +553,7 @@ const server = http.createServer(async (req, res) => {
         capUsd: DAILY_CAP_USD,
         spentUsd: await spentToday(),
         estimateUsd: [0, 1, 2, 3, 4].map((n) => estimateDesignCost(n)),
-        seedanceReady: !!process.env.SEEDANCE_API_KEY,
+        seedanceReady: seedanceReady(),
         seedance: { tiers: (Object.keys(SEEDANCE_MODELS) as SeedanceTier[]).map((tier) => ({ ...SEEDANCE_MODELS[tier], id: tier, model: SEEDANCE_MODELS[tier].id })), ratios: SEEDANCE_RATIOS, limits: { minSeconds: SEEDANCE_LIMITS.minSeconds, maxSeconds: SEEDANCE_LIMITS.maxSeconds } },
         claudeReady: true,
         claudeMode: claudeMode(),

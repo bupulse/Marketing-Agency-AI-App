@@ -43,11 +43,15 @@ export async function refreshWallet(): Promise<Wallet | null> {
   document.querySelectorAll<HTMLButtonElement>("[data-lang]").forEach((b) => (b.onclick = () => setLang(b.dataset.lang as Lang)));
   applyLang(currentLang());
   void refreshWallet();
-  void api<{ claudeMode: string; seedanceReady: boolean }>("/api/options").then((o) => {
+  // The notice bar: whether Seedance is connected (or why not, checked by the server every 5 minutes) and how Claude
+  // is reached.
+  void Promise.all([api<{ claudeMode: string }>("/api/options"), api<{ state: string; message: string }>("/api/seedance/status").catch(() => null)]).then(([o, sd]) => {
     const n = document.getElementById("labNotice");
     if (!n) return;
     const parts = [];
-    if (!o.seedanceReady) parts.push("Seedance (real video) is waiting for the BytePlus key: add SEEDANCE_API_KEY to .env and restart the studio.");
+    if (sd?.state === "connected") parts.push("Seedance connected.");
+    else if (sd?.state === "no key") parts.push("Seedance runs in free preview mode (storyboards with the price) until the BytePlus key is added.");
+    else if (sd) parts.push(`Seedance: ${sd.message}`);
     if (o.claudeMode === "subscription") parts.push("Claude runs on your subscription (tests only). Switch to the API key before deploying.");
     if (parts.length) {
       n.textContent = parts.join("  ·  ");
