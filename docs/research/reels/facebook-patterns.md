@@ -110,3 +110,82 @@ Longest-running East African video ads I found (to 17 Oct 2026):
 - 2-8 s: a pain line ("Tired of ...?") and the product fixing it.
 - 8-15 s: three benefit ticks, one per 2 s.
 - 15-20 s: "Free delivery in Kigali. Pay on delivery. WhatsApp: [number]".
+
+---
+
+# Rwanda playbook (round 2, 17 Oct 2026)
+
+## What round 2 added
+
+- 33 more Rwandan video ads from the Ad Library (`round: 2` in `facebook.jsonl`). The file now has 73 rows; 51 are Rwandan Ad Library ads.
+- Searches that worked, all with the Rwanda filter and active video ads, 8 scrolls: "Kigali" (115 ads), "Rwanda" (203), "RWF" (90), "Kigali delivery" (56), "Kigali hotel" (25), "Kigali shop" (26), "Kigali clinic" (17), "Kigali house" (16), "Kicukiro", "igiciro", "Nyarugenge", "Gasabo". "Kigali salon" returned nothing; "Kigali restaurant" and "Kigali phones" returned very few. A sector word on its own ("salon", "restaurant") pulls global ads, so the local word has to be in the query.
+- Of the 33, 28 were watched (5 frames over about 12 s) and 5 are text-only (`watched: false`): the video did not load, or only the card was captured. New fields on every round-2 row: `offer_wording`, `price_position`, `ordering_route`, `language_mix`, `visual_style`.
+- **Honest limit on "longest running".** Almost all Rwandan video ads in the library are young: most started in the last two weeks, because small advertisers turn ads on and off. Only 8 of 51 have run more than 5 months: tuza_officall (shoes, since 9 Jun 2025, 16 months, text-only), homeofhybrid (car hire, since 6 Jul 2025, 15 months), Derma Skin Clinic Rwanda (since Mar 2026, 15+ ads), petal_florist_kigali (since 3 Mar 2026), Dilara Collection (4 May 2026), FRAMEG Cargo and Tours (6 May 2026), British English Language Institute (13 May 2026). So for Rwanda, "number of variants live at once" is a better signal than age: Derma (15), Piramie 4G+ (6 ads in 11 days), Elohome (8), Magic Chef (7), Kenlina-style copycats.
+
+## What the longest-running and most-repeated Rwandan ads have in common
+
+1. **One idea, one price or one offer, on screen from frame 0.** Piramie's pill ("20 Mbps | 20K / month") stays on every frame. Others: "COMMERCIAL BLENDER / 48,000RWF / 0784695549", "Price: 500k" (spin bike), "350M RWF" (house), "Price: 16M" (plots).
+2. **Phone or WhatsApp is the ordering route in nearly every ad.** Of 51 Rwandan ads: 22 have a "Send WhatsApp message" button, 13 send to an Instagram profile, 4 use "Call now". 35 put a phone number in the caption. Only 1 uses a website sign-up (Piramie) and 1 a booking site (Kigali Rwanda Car Hire).
+3. **A landmark address, not a street.** "Next to DELIGHT HOTEL", "opposite IPRC traffic lights", "Makuza Peace Plaza, Room 35", "same building as boho, door 8". This is how Kigali people find places, and the engine should ask for the landmark.
+4. **Real people, real places, phone-filmed.** Most are phone selfies, a shop counter, a workshop or a walk-through. The polished ones (ONOMO hotel, Piramie, Dilara) are brands with budgets, and they have no price or number in the video. Only the budget brands skip a number; small sellers never do.
+5. **Language mix.** Roughly: Kinyarwanda caption and English on-screen words (13 of 51 ads are Kinyarwanda in the caption), pure English (the majority), French only on 1 ad (HT26 Paris, in a Kigali shop post). Cleopatra Home writes the same caption twice, English then Kinyarwanda. Property and cheap-goods ads lean Kinyarwanda ("Ibibanza byiza ... Bigurishwa", "TERA NEZA MUGIHE..."). Hotels, clinics, tech and beauty lean English.
+6. **Length.** Median 34 s; about half under 30 s. Under 20 s for product and offer ads, 40 to 90 s for a talking person (clinic, property, school).
+7. **Captions carry the spec list.** Checklist emojis with price, size, area, water and power, title, delivery. The video is the proof, the caption is the contract.
+8. **Delivery and payment trust lines.** "Free delivery in Kigali", "Payment after delivery", "Delivery anywhere in Rwanda", "Warranty and direct home delivery". None of the 51 mentions MoMo in the caption.
+9. **Series by sector.** Magic Chef (one dish per ad), Derma (one condition per ad), Elohome (one gadget), Piramie (same template six times), Kigali TOP SHOES (one pair per ad).
+10. **Sector patterns:**
+    - Food: overhead plate, steam, price ladder in caption (BestPilau).
+    - Phones and electronics: model name in a sticker or badge, shop counter, hand fan of phones, unboxing.
+    - Beauty and clinic: a talking expert or a skin close-up, a pain question as hook, WhatsApp to book.
+    - Real estate: location stack and price label, agent on camera, 4 to 5 rooms.
+    - Schools and training: students doing the work, branch phones listed.
+    - Cars and travel: vehicles walk-around with website bar; poster-then-footage with a discount badge.
+    - Events and bars: poster first frame, then 3 to 4 night clips, offer as a multiplier ("Buy 4, get 5").
+
+## The 10 most common opening lines and badges (verbatim where readable)
+
+1. A price strip at the top: "COMMERCIAL BLENDER / 48,000RWF / 0784695549" (EHA 250).
+2. A promo headline with a number: "BEST BURGERS IN KIGALI / PROMO FOR 5K / DON'T MISS"; "PROMO! - HAPPY 3RD ANNIVERSARY" (BestPilau, 35K to 27K).
+3. A new-arrival badge: "Now available!" with "Spinning Bikes Have Arrived in Kigali!"; "BETTER INTERNET HAS ARRIVED" (Piramie 4G+).
+4. A model-plus-discount badge: "iPhone 18pro and 18pro max are available On discount"; "IPHONE 13 PRO 256GB".
+5. A location stack or location in the first line: "KIGALI KICUKIRO / KANOMBE KABEZA / MWITUNDA"; "One bedroom In Gasogi Full furnished 400k | Month".
+6. A plain question in Kinyarwanda or English: "Ufite gahunda yo gukora urugendo" ("Do you have a plan to travel?"); "Ready to see your skin exactly how it used to be?"
+7. A friendly address to the city: "Kigali, we need to talk." (Inzovu Supermarket).
+8. A POV story: "POV: She says 'I'm close' and you have NOTHING at home" (Ando delivery app).
+9. A service claim in capitals: "Available 24/7" (Prime Wellness); "FRIDAY UNLOCKED / Buy 4, get 5" (Elevee Lounge).
+10. A scare or loss line for B2B: "STOP LOSING CUSTOMERS ONLINE!" (Website Design Rwanda); "Old railing rusting? Staircase looking tired?" (Royal Aluminium).
+
+Also seen: "RENT A CAR, RENT FREEDOM", "New and improved breastfeeding Diras", "Fish lovers!! This is your time to enjoy muhazi tilapia fish!!", and Kinyarwanda price openers such as "KURI 38000FRW TUGUHA IYI TWO IN ONE SMARTWATCH...".
+
+## 5 shot lists the engine can copy
+
+**1. Price-pill service (15 s, internet, solar, installers, subscriptions) - Piramie pattern**
+- 0-3 s: price pill pinned at the top for the whole video ("20 Mbps | 20K / month"). Hero image: technician or product holding the item. Text "BETTER [THING] HAS ARRIVED".
+- 3-6 s: the freebie ("FREE WIFI ROUTER"), people using it at home.
+- 6-9 s: the quality claim ("FAST, RELIABLE").
+- 9-12 s: trust ("TRUSTED INSTALLATIONS", a Kigali road or skyline).
+- 12-15 s: "Sign up" button, free installation line. Ratio 1:1 or 4:5. Make 6 variants with different hero shots.
+
+**2. Counter seller with a price bar (25 s, phones, gadgets, cosmetics, electronics) - Elohome / EHA 250 / Thierry Phones pattern**
+- 0-2 s: seller at the shop counter holds the item up. Blue or yellow bar across the lower third: "[PRODUCT] | [PRICE] RWF | [two numbers]".
+- 2-10 s: three uses shown (juice, mango, grains for a blender; ceiling stars, remote, base for a projector). A one-word sticker each.
+- 10-20 s: seller says the one reason to buy, in Kinyarwanda. Captions follow.
+- 20-25 s: "Free delivery in Kigali. Call or WhatsApp" and the address with a landmark.
+
+**3. Property with a location stack (30 s, houses, plots, rooms) - Hills Props / Samkay / IBRA pattern**
+- 0-3 s: three-row location label (city / sector / cell). Agent or presenter in frame, price label in a yellow box top-right.
+- 3-8 s: street and gate, plot size sign.
+- 8-22 s: 4 to 5 rooms, 3 s each, label each ("4 BEDROOMS", "373SQM"). For plots, a site plan overlaid on the road.
+- 22-30 s: WhatsApp badge and number, "Title ready", Property ID.
+
+**4. Weekly event or promo poster (15 s, bar, lounge, restaurant) - Elevee Friday Unlocked / BestPilau pattern**
+- 0-3 s: poster with the offer as the headline ("FRIDAY UNLOCKED - Buy 4, get 5"), times, location with landmark.
+- 3-10 s: three phone clips of the place and the food (hand pour, plate, crowd).
+- 10-15 s: price ladder or offer repeated in a big caption; WhatsApp button, "every Friday" tag.
+- Same layout every week; swap offer and picture.
+
+**5. Expert or trade in action (40 s, clinics, schools, repair, beauty) - Derma / Action College / Lou Aesthetic pattern**
+- 0-3 s: question card or name card ("DR. [NAME], [CLINIC]", or "Ready to see your skin exactly how it used to be?").
+- 3-25 s: either the expert explaining one thing in Kinyarwanda with sentence captions, or the students doing the work (hands, tools, close-ups).
+- 25-35 s: one proof beat (before/after, a student result, a certificate).
+- 35-40 s: phone numbers per branch in the lower third, WhatsApp book button, landmark address.
