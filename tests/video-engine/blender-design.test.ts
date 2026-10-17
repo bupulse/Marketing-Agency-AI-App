@@ -107,7 +107,7 @@ describe("designBlenderScene", () => {
     expect(d.scene.texts[0].text).toBe("50% OFF TODAY");
     expect(d.scene.texts[0].material).toBe("gloss");
     expect(d.scene.texts[1].text).toBe("KIBAGABAGA");
-    expect(d.scene.texts[1].size).toBe(0.5);
+    expect(d.scene.texts[1].size).toBeGreaterThanOrEqual(0.6);
     const found = d.factWarnings.map((w) => w.found);
     expect(found).toContain("50%");
     expect(found).toContain("best");
@@ -268,6 +268,20 @@ describe("premium staging", () => {
     stage(scene, { ...brief, fixedLens: true }, 1, []);
     expect(scene.camera.move).toBe("static");
     expect(scene.look.bloom).toBe(0.4);
+  });
+
+  it("shows the product and the main title on the first frame, in a crisp bold sans that fits", () => {
+    const scene = raw();
+    scene.texts[0] = { ...scene.texts[0], text: "GALAXY A56 5G", font: "anton", size: 1.2, enter: "spinIn", enterAt: 0.8 };
+    const warnings: string[] = [];
+    stage(scene, brief, 1, warnings);
+    expect(scene.product).toMatchObject({ enter: "settle", enterAt: 0, enterFor: 0.6 });
+    const title = scene.texts[0];
+    expect(title).toMatchObject({ font: "poppins", weight: "bold", enter: "settle", enterAt: 0 });
+    // Narrower than the frame at the layout's distance (about 4.25 wide), but never below 0.6.
+    expect(textWidth(title)).toBeLessThanOrEqual(10.5 * 0.405 - 0.6 + 1e-6);
+    expect(title.size).toBeGreaterThanOrEqual(0.6);
+    expect(warnings.join(" ")).toMatch(/first frame/);
   });
 
   it("recommends a look for the template and the product", () => {

@@ -210,7 +210,7 @@ def normalize(raw):
         out["texts"].append(
             {
                 "text": t["text"][:60],
-                "font": pick(t.get("font"), FONTS, "anton"),
+                "font": pick(t.get("font"), FONTS, "poppins"),
                 "size": num(t.get("size"), 0.6, 0.1, 3),
                 "position": vec3(t.get("position"), (0, 0, 3)),
                 "rotation": num(t.get("rotation"), 0, -90, 90),
@@ -276,7 +276,7 @@ def normalize(raw):
 
 def motion(o, enter_default, idle_default):
     return {
-        "enter": pick(o.get("enter"), ("none", "spinIn", "rise", "drop", "scale", "pop"), enter_default),
+        "enter": pick(o.get("enter"), ("none", "settle", "spinIn", "rise", "drop", "scale", "pop"), enter_default),
         "enterAt": num(o.get("enterAt"), 0, 0, 15),
         "enterFor": num(o.get("enterFor"), 0.9, 0.1, 5),
         "idle": pick(o.get("idle"), ("none", "float", "turntable", "swing", "spin"), idle_default),
@@ -705,7 +705,14 @@ def motion_at(m, t, duration, base_loc, base_rot, phase=0.0):
         if e_raw < 0:
             hidden = True
         e = clamp(e_raw, 0, 1)
-        if m["enter"] == "spinIn":
+        if m["enter"] == "settle":
+            # Visible from the first frame (the thumbnail): a small turn, lift and scale that settle into place.
+            hidden = False
+            k = 1 - ease("out", e)
+            rot.z += k * math.radians(-14)
+            loc.z += k * 0.18
+            sc *= 0.9 + 0.1 * ease("out", e)
+        elif m["enter"] == "spinIn":
             rot.z += (1 - ease("out", e)) * math.radians(-160)
             sc *= 0.35 + 0.65 * ease("back", e)
         elif m["enter"] == "rise":
@@ -831,23 +838,47 @@ def add_product(p, base_dir):
     h = p["height"]
     w = h * aspect
     if cutout:
-        me = bpy.data.meshes.new("Product")
-        bm = bmesh.new()
-        uv = bm.loops.layers.uv.new("UVMap")
-        vs = [bm.verts.new(v) for v in ((-w / 2, 0, 0), (w / 2, 0, 0), (w / 2, 0, h), (-w / 2, 0, h))]
-        f = bm.faces.new(vs)
-        for loop, co in zip(f.loops, ((0, 0), (1, 0), (1, 1), (0, 1))):
-            loop[uv].uv = co
-        bm.to_mesh(me)
-        bm.free()
-        me.materials.append(mat)
-        obj = link(bpy.data.objects.new("Product", me))
+        obj = cutout_stack(w, h, mat, path)
     else:
         thick = 0.14 if p["shape"] == "card" else w * 0.45
         side = surface("gloss", p["frame"], "ProductFrame")
         obj = slab("Product", w, h, thick, p["radius"], mat, side)
     obj.location = p["position"]
     return obj, (w, h)
+
+
+def cutout_stack(w, h, mat, path, layers=7, depth=0.07):
+    """A cut-out with a little thickness: the picture in front and copies of its silhouette stacked behind it in a darker
+    tone, so its edge shows as it swings (an "extruded" alpha). All one mesh, so it moves as one."""
+    edge, eb = principled("ProductEdge", "#ffffff", roughness=0.6)
+    tex = edge.node_tree.nodes.new("ShaderNodeTexImage")
+    tex.image = bpy.data.images.load(path, check_existing=True)
+    tex.extension = "EXTEND"
+    dark = edge.node_tree.nodes.new("ShaderNodeMix")
+    dark.data_type = "RGBA"
+    dark.blend_type = "MULTIPLY"
+    dark.inputs["Factor"].default_value = 1.0
+    dark.inputs["B"].default_value = (0.55, 0.55, 0.55, 1)
+    edge.node_tree.links.new(tex.outputs["Color"], dark.inputs["A"])
+    edge.node_tree.links.new(dark.outputs["Result"], eb.inputs["Base Color"])
+    edge.node_tree.links.new(tex.outputs["Alpha"], eb.inputs["Alpha"])
+    edge.surface_render_method = "DITHERED"
+    edge.use_transparent_shadow = True
+    me = bpy.data.meshes.new("Product")
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    for k in range(layers):
+        y = depth * k / (layers - 1)
+        vs = [bm.verts.new(v) for v in ((-w / 2, y, 0), (w / 2, y, 0), (w / 2, y, h), (-w / 2, y, h))]
+        f = bm.faces.new(vs)
+        f.material_index = 0 if k == 0 else 1
+        for loop, co in zip(f.loops, ((0, 0), (1, 0), (1, 1), (0, 1))):
+            loop[uv].uv = co
+    bm.to_mesh(me)
+    bm.free()
+    me.materials.append(mat)
+    me.materials.append(edge)
+    return link(bpy.data.objects.new("Product", me))
 
 
 def add_text(t, i, fonts_dir):

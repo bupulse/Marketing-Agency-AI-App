@@ -250,6 +250,37 @@ and `showroom-turntable` (studio), and the Kibagabaga house (daylight). Claude o
 - **Still soft:** thin gold anton titles at 540p (their bevel catches little light). A bigger title, poppins bold or
   720p reads better.
 
+**Loop 3** (17 October 2026):
+- **Cut-outs stand on the plinth.** A photo with a cut-out is shown as the cut-out itself, with a little thickness:
+  7 copies of its silhouette, 0.07 deep, the back ones darker. The edge shows as it swings, and it casts its own
+  shadow (`cutout_stack` in `render.py`). Tall, narrow products (aspect under 0.7) stand 3.2 tall. The card is kept
+  only for photos without a cut-out.
+- **Crisp titles:**
+  - The default font is poppins.
+  - A title in anton longer than 4 letters becomes poppins bold.
+  - Bold titles are at least 0.75, but shrink to fit the frame at the layout's distance, never below 0.6.
+  - Labels on the plinth's front are shallow (depth 0.12 or less) and flat to it, so they do not smear when seen at an
+    angle.
+- **Frame 0 is the thumbnail:**
+  - A new entrance, `settle`, is visible from the first frame: a small turn, lift and scale that settles by 0.6 s.
+  - The product and the main title always use it, from 0 s.
+  - The look's accent (glow, accent wall, neon arch) is part of the set, so it shows from frame 0 as well.
+- **Tested:**
+  - The Kitenge summer dress (E2E Starter Test, 25,000 RWF, three cut-outs) on the daylight look, plus the three
+    earlier briefs. Every word comes from the brief, and there were no fact warnings.
+  - Final contact sheet: `video-lab/data/blender/design/r11/contact-sheet.jpg`. The first column is frame 0.
+  - Quick stills: `r9`, `r10`.
+- **Design:** 18 to 36 s per clip, $0.086 to $0.099 on the API, one attempt each.
+- **Render at 540p, final quality (6 s, 144 frames):**
+  - neon 112 s and dress 151 s, at load average about 5 to 30;
+  - showroom 481 s and house 285 s, while the Mac was busier.
+- **720p, measured back to back on the dress at load average 5 to 10:**
+  - 540p took 113 s (0.79 s a frame, 0.83 MB);
+  - 720p took 198 s (1.37 s a frame, 1.23 MB);
+  - so 720p costs **1.75 times** the render time of 540p.
+  - Titles are visibly sharper (`r11/title-540-vs-720.jpg`).
+  - On a quiet Mac a 6 s clip takes about 2 minutes at 540p and about 3.5 minutes at 720p.
+
 ## Claude designs the scene (`lib/video-engine/blender-design.ts`)
 
 `designBlenderScene(brief, send, model?, { photos, quality? })` takes the motion engine's `DesignBrief` (business,
@@ -371,7 +402,8 @@ const result = await renderBlenderScene(design.scene, `video-lab/data/blender/vi
 - Site (`video-lab/site/**`):
   - a "Premium 3D" choice on the 3D motion page and the template pages `3d-title-drop`, `showroom-turntable`,
     `chrome-luxe` and `confetti-launch`;
-  - the expected wait (about 3 to 4 minutes for 6 s at 540p on a quiet Mac, up to 9 minutes when it is busy);
+  - the expected wait for 6 s: about 2 minutes at 540p and 3.5 minutes at 720p on a quiet Mac, up to 8 to 10 minutes
+    when it is busy;
   - the progress bar, and the still as the poster image.
 
 ## Sound (voice-over and music, mixed by Blender)

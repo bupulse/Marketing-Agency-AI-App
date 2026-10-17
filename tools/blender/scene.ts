@@ -15,7 +15,8 @@ export const BLENDER_EASES = ["linear", "in", "out", "inOut", "back", "elastic",
 export const BLENDER_MATERIALS = ["metal", "chrome", "glass", "matte", "gloss", "neon"] as const;
 /** The studio's fonts (lib/video-engine/spec.ts, FONTS), read from public/fonts/video. */
 export const BLENDER_FONTS = ["inter", "poppins", "nunito", "space-grotesk", "anton", "playfair", "dm-serif"] as const;
-export const BLENDER_ENTERS = ["none", "spinIn", "rise", "drop", "scale", "pop"] as const;
+/** settle: visible from the first frame (the thumbnail), a small turn, lift and scale settling into place. */
+export const BLENDER_ENTERS = ["none", "settle", "spinIn", "rise", "drop", "scale", "pop"] as const;
 export const BLENDER_IDLES = ["none", "float", "turntable", "swing", "spin"] as const;
 export const BLENDER_PROPS = ["sphere", "box", "ring", "cylinder", "plinth"] as const;
 export const BLENDER_PARTICLES = ["confetti", "sparkles", "bubbles", "dust"] as const;
@@ -296,7 +297,7 @@ export function normalizeBlenderScene(input: unknown, opts: NormalizeOptions = {
     if (t.text.length > BLENDER_LIMITS.textLength) warnings.push(`Text "${t.text.slice(0, 20)}..." was cut to ${BLENDER_LIMITS.textLength} characters.`);
     scene.texts.push({
       text: t.text.slice(0, BLENDER_LIMITS.textLength),
-      font: pick(t.font, BLENDER_FONTS, "anton"),
+      font: pick(t.font, BLENDER_FONTS, "poppins"),
       size: num(t.size, 0.6, 0.1, 3),
       position: vec3(t.position, [0, 0, 3]),
       rotation: num(t.rotation, 0, -90, 90),
@@ -445,10 +446,10 @@ export const BLENDER_SCENE_FORMAT = `A Blender 3D scene, one JSON object. Units:
   "camera": { "move": "orbitRight"|"orbitLeft"|"dollyIn"|"dollyOut"|"craneUp"|"craneDown"|"pushPull"|"static", "intensity": 0 to 1, "ease": "inOut"|"out"|"in"|"linear"|"back",
     "target": [x, y, z] (usually [0, 0, 1.6 to 2.4]), "distance": 7 to 12, "height": 1 to 3, "lens": 35 to 85, "fstop": 0 (sharp) or 2 to 8 (blurred background) },
   "product": { "photo": 1-based photo number, "shape": "card"|"box" (when there is no cutout), "height": 2 to 3, "position": [x, y, z] (bottom centre; on a plinth z = its height),
-    "enter": "rise"|"drop"|"pop"|"scale"|"spinIn"|"none", "enterAt": seconds, "enterFor": seconds, "idle": "swing"|"float"|"turntable"|"none", "angle": swing degrees (15 to 35), "spin": swings over the clip (0.5 to 1) } or null,
-  "texts": up to 6 of { "text": short words (at most 60 characters, only facts from the brief), "font": "anton"|"poppins"|"inter"|"nunito"|"space-grotesk"|"playfair"|"dm-serif",
+    "enter": "settle"|"rise"|"drop"|"pop"|"scale"|"spinIn"|"none", "enterAt": seconds, "enterFor": seconds, "idle": "swing"|"float"|"turntable"|"none", "angle": swing degrees (15 to 35), "spin": swings over the clip (0.5 to 1) } or null,
+  "texts": up to 6 of { "text": short words (at most 60 characters, only facts from the brief), "font": "poppins"|"inter"|"anton"|"nunito"|"space-grotesk"|"playfair"|"dm-serif",
     "size": font size 0.5 to 2 (capitals are about 0.65 x size tall), "position": [x, y, z] (centre), "depth": extrusion 0 to 1, "bevel": 0 to 1, "material": "metal"|"chrome"|"gloss"|"matte"|"glass"|"neon", "color": hex,
-    "enter": "spinIn"|"rise"|"drop"|"pop"|"scale"|"none", "enterAt": seconds, "enterFor": seconds, "idle": "float"|"none", "face": 0 to 1 (how much it turns to the camera),
+    "enter": "settle"|"spinIn"|"rise"|"drop"|"pop"|"scale"|"none" (settle is already visible on the first frame), "enterAt": seconds, "enterFor": seconds, "idle": "float"|"none", "face": 0 to 1 (how much it turns to the camera),
     "weight": "bold"|"regular", "plate": null or hex (a flat label on a rounded bar of that colour, for the phone number or a call to action) },
   "props": up to 12 of { "kind": "plinth"|"sphere"|"ring"|"box"|"cylinder", "position": [x, y, z] (sphere and ring: centre; others: bottom centre), "size": diameter or width, "height": for plinth, box, cylinder,
     "material": as texts, "color": hex, "enter": as texts, "enterAt", "enterFor", "idle": "float"|"spin"|"swing"|"none" },
