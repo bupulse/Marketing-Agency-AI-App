@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { scoreDesign } from "@/lib/video-engine/brain/score";
-import type { PhotoLayer } from "@/lib/video-engine/spec";
-import { cutoutBox, sceneSubject } from "@/lib/video-engine/subject";
+import type { PhotoLayer, TextLayer } from "@/lib/video-engine/spec";
+import { cutoutBox, drawnHeight, productBox, restingHeight, sceneSubject } from "@/lib/video-engine/subject";
 import { productMinHeight } from "@/lib/video-engine/templates";
 import { validateSpec, type ValidateOptions } from "@/lib/video-engine/validate";
 
@@ -224,5 +224,31 @@ describe("the quiet line over a full-frame photo", () => {
     const line = spec.scenes[0].layers.find((l) => l.kind === "text" && l.text === "WhatsApp 0788 300 400") as { box?: { color: string }; color: string } | undefined;
     expect(line?.box?.color).toBe("rgba(0,0,0,0.55)");
     expect(line?.color).toBe("#ffffff");
+  });
+});
+
+
+describe("a 1:1 re-shape of the Galaxy 3d-title-drop (studio job 20261017-915e05db, its scenes 2 and 4)", () => {
+  // The parent design's two scenes, as saved (the jobs folder is not in git); the photo is a 1024 x 1024 square.
+  const SCENES = [{"seconds":2.6,"transition":"blurZoom","camera":{"move":"orbitRight","intensity":0.7},"background":{"kind":"gradient","colors":["#0B5FFF","#020a24"],"angle":200,"texture":"none"},"layers":[{"kind":"text","x":0.5,"y":0.18,"w":0.86,"h":0.13,"from":0,"to":1,"depth":0.9,"text":"12-month warranty","font":"anton","weight":400,"size":0.1,"color":"#ffffff","align":"center","uppercase":true,"box":null,"highlight":null,"shadow":false,"text3d":{"depth":0.4,"side":"#0a3a99","bevel":true,"spin":false},"animate":"pop"},{"kind":"photo","x":0.5,"y":0.56,"w":0.9,"h":0.58,"from":0,"to":1,"depth":0.55,"photo":1,"fit":"contain","shadow":false,"border":null,"focusX":0.5,"focusY":0.55,"turntable":{"spin":1,"angle":30,"reflection":0.5,"sweep":true}}]},{"seconds":2.2,"transition":"flash","camera":{"move":"orbitRight","intensity":0.7},"background":{"kind":"gradient","colors":["#0B5FFF","#020818"],"angle":170,"texture":"none"},"layers":[{"kind":"shape","x":0.5,"y":0.2,"w":0.3,"h":0.14,"from":0,"to":1,"keyframes":[{"at":0,"scale":0.8},{"at":1,"scale":1.1,"rotate":8}],"depth":0.7,"shape":"burst","color":"#F4B400","draw":false,"material":"metal"},{"kind":"text","x":0.5,"y":0.2,"w":0.86,"h":0.13,"from":0,"to":1,"depth":0.9,"text":"420,000 RWF","font":"anton","weight":400,"size":0.12,"color":"#F4B400","align":"center","uppercase":false,"box":null,"highlight":null,"shadow":false,"text3d":{"depth":0.4,"side":"#6b4a00","bevel":true,"spin":false,"material":"metal"},"animate":"pop"},{"kind":"photo","x":0.5,"y":0.52,"w":0.8,"h":0.44,"from":0,"to":1,"depth":0.55,"photo":1,"fit":"contain","shadow":false,"border":null,"turntable":{"spin":1,"angle":30,"reflection":0.5,"sweep":true}},{"kind":"text","x":0.5,"y":0.79,"w":0.84,"h":0.06,"from":0.3,"to":1,"depth":0.85,"text":"Pay with MoMo, instalments available","font":"poppins","weight":600,"size":0.045,"color":"#ffffff","align":"center","uppercase":false,"box":null,"highlight":null,"shadow":false,"text3d":null,"animate":"rise"}]}];
+  const photo = { width: 1024, height: 1024, subject: null };
+  const spec = validateSpec({ palette: {}, ratio: "1:1", scenes: SCENES }, { ratio: "1:1", photoCount: 1, seconds: 4.8, photos: [photo], platform: "facebook", phone: "+250 788 300 400", productMin: productMinHeight("3d-title-drop") });
+
+  it("the turntable photo fills about half the square (it was about 30%)", () => {
+    const [two, four] = spec.scenes.map((s) => s.layers.find((l) => l.kind === "photo") as PhotoLayer);
+    // Scene 2: the minimum at rest. Scene 4 has the price above it and two lines below (the MoMo line and the quiet
+    // number), so the room decides: 40% at rest, 45% or more at the turntable's tallest swing.
+    expect(restingHeight(two, "1:1", photo)!).toBeGreaterThanOrEqual(0.45 * 0.95);
+    expect(restingHeight(four, "1:1", photo)!).toBeGreaterThanOrEqual(0.4);
+    expect(productBox(four, "1:1", photo)!.h).toBeGreaterThanOrEqual(0.45);
+  });
+
+  it("the price on its burst stays one line (smaller letters, a bigger burst) instead of a column filling the square", () => {
+    const layers = spec.scenes[1].layers;
+    const price = layers.find((l) => l.kind === "text" && l.text === "420,000 RWF") as TextLayer;
+    const burst = layers.find((l) => l.kind === "shape") as { w: number; h: number };
+    expect(drawnHeight(price, "1:1")).toBeLessThan(0.15);
+    expect(burst.w / burst.h).toBeCloseTo(0.3 / 0.14, 1);
+    expect(burst.w).toBeGreaterThan(0.3);
   });
 });

@@ -4,7 +4,7 @@
 import { safeAreaFor as brainSafeArea, type SafeArea } from "@/lib/video-engine/brain";
 import { cameraAt } from "./animate";
 import { luminance, rgba } from "./draw3d";
-import { CONTACT, badgesOffProduct, cutoutBox, drawnHeight, isBackdropWord, keepOffSubject, productArea, productBox, sceneSubject, type PhotoInfo } from "./subject";
+import { CONTACT, badgesOffProduct, cutoutBox, drawnHeight, isBackdropWord, keepOffSubject, productArea, productBox, restingHeight, sceneSubject, type PhotoInfo } from "./subject";
 import {
   CAMERA_MOVES,
   CHARACTER_HAIR,
@@ -340,7 +340,7 @@ export function legible(input: Layer[]): Layer[] {
       layers.splice(first, 0, s);
     }
   }
-  return layers.map((l, i) => {
+  const out = layers.map((l, i) => {
     if (l.kind === "photo" && l.turntable && (l.w < 0.6 || l.h < 0.42)) return { ...l, w: Math.max(l.w, 0.6), h: Math.max(l.h, 0.42) };
     if (((l.kind === "photo" && !l.turntable) || l.kind === "video") && Math.min(l.w, 1) * Math.min(l.h, 1) >= 0.6) {
       const lightTextOver = layers.slice(i + 1).some((t) => t.kind === "text" && !t.box && luminance(t.color) > 0.6 && covers(l, t));
@@ -360,17 +360,35 @@ export function legible(input: Layer[]): Layer[] {
         const clash = shapes.some((s) => s !== behind && overlaps(s, l) && (colourDistance(out.color, s.color) < 90 || (out.highlight && colourDistance(out.highlight.color, s.color) < 90)));
         if (clash && !out.shadow) out = { ...out, shadow: true };
         // Text on a badge fits inside the badge (a price half on a yellow burst, half on the pink behind it vanished on
-        // the pink): round badges keep it to 80% of their width, rectangles 92%.
+        // the pink): round badges keep it to 80% of their width, rectangles 92%. A short line (a price, a word or
+        // three) is not squeezed into a column of one word per line: its letters get smaller (to 60% at most) and a
+        // round badge grows to hold the rest (below). A longer line wraps inside the badge.
         if (behind) {
           const room = Math.round(behind.w * (behind.shape === "rect" ? 0.92 : 0.8) * 1000) / 1000;
-          if (out.w > room + 1e-9) out = { ...out, w: room, x: behind.x };
+          if (out.w > room + 1e-9) {
+            const wide = oneLineWidth(out);
+            const k = out.text.trim().split(/\s+/).length <= 3 && wide > room ? Math.max(0.6, room / wide) : 1;
+            out = { ...out, w: k < 1 ? Math.round(Math.max(room, wide * k) * 1000) / 1000 : room, x: behind.x, size: Math.round(out.size * k * 1000) / 1000 };
+          }
         }
         return out;
       }
     }
     return l;
   });
+  // A round badge too small for its short line grows evenly around it (a 0.3-wide burst under a 0.12 price).
+  return out.map((s) => {
+    if (s.kind !== "shape" || !["circle", "burst", "blob"].includes(s.shape)) return s;
+    const t = out.find((x): x is TextLayer => x.kind === "text" && !x.box && covers(s, x) && x.text.trim().split(/\s+/).length <= 3);
+    if (!t) return s;
+    const grow = Math.min(oneLineWidth(t) / (s.w * 0.8), 0.9 / s.w);
+    if (grow <= 1.02) return s;
+    return { ...s, w: Math.round(s.w * grow * 1000) / 1000, h: Math.round(s.h * grow * 1000) / 1000 };
+  });
 }
+
+/** The width of a text set on one line (its letters at its size, a little generous for bold), at most its box. */
+const oneLineWidth = (t: TextLayer) => Math.min(t.w, t.text.length * t.size * 0.62);
 
 const VERTICAL = new Set<Ratio>(["9:16", "3:4", "4:5"]);
 /**
@@ -557,8 +575,10 @@ function bigEnough(layers: Layer[], ratio: Ratio, photos: (PhotoInfo | undefined
   // Only the lines over or under the product take height from it: a column of text beside it (a side-by-side layout)
   // does not, as long as the grown product stays clear of it.
   // Measured as it first shows: a slow zoom (zoomTo) grows a cut-out past that by the end of the scene.
+  // A product on a turntable is measured at rest (its card swings taller only for a moment).
   const z = l.turntable || !cutoutBox(l, ratio, photos[l.photo - 1]) ? 1 : Math.max(1, l.zoomTo ?? 1);
-  const want = b.h / z < min * 0.95 ? min * z : b.h;
+  const shown = restingHeight(l, ratio, photos[l.photo - 1]) ?? b.h / z;
+  const want = shown < min * 0.95 ? (b.h * min) / shown : b.h;
   const half = Math.min(0.9, (b.w * want) / b.h) / 2;
   const pcx = b.x + b.w / 2;
   const texts = layers.filter((t): t is TextLayer => t.kind === "text" && !isBackdropWord(t) && Math.min(t.x + t.w / 2, pcx + half) - Math.max(t.x - t.w / 2, pcx - half) > 0.03);

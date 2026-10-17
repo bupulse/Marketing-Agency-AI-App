@@ -88,6 +88,17 @@ export function productBox(l: PhotoLayer, ratio: Ratio, photo: PhotoInfo | undef
   return l.turntable || (l.fit === "contain" && inset) ? drawnBox({ ...l, zoomTo: undefined }, ratio, photo, { x: 0, y: 0, w: 1, h: 1 }) : null;
 }
 
+/**
+ * How tall a product on a turntable looks most of the time (its card at rest, without the near edge swung forward),
+ * as a share of the frame height; null when it is not on a turntable or the photo is not known.
+ */
+export function restingHeight(l: PhotoLayer, ratio: Ratio, photo: PhotoInfo | undefined): number | null {
+  if (!l.turntable || !photo?.width || !photo.height) return null;
+  const s = l.cutout && photo.subject ? photo.subject : { x: 0, y: 0, w: 1, h: 1 };
+  const { width: W, height: H } = RATIOS[ratio] ?? RATIOS["9:16"];
+  return turntableFit({ w: l.w * W, h: l.h * H }, s.w * photo.width, s.h * photo.height, l.turntable.angle ?? 35).h / H;
+}
+
 function drawnBox(l: PhotoLayer, ratio: Ratio, photo: PhotoInfo | undefined, s: Box): Box | null {
   if (!photo?.width || !photo.height || (!l.turntable && l.fit !== "contain")) return null;
   const { width: W, height: H } = RATIOS[ratio] ?? RATIOS["9:16"];
