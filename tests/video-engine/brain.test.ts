@@ -193,7 +193,7 @@ describe("brainContext", () => {
     const phone = brainFor({ platform: "facebook", sector: sectorFromText("Kigali Phones, iPhone 13 and Samsung Galaxy"), format: null, engine: "claude", language: "Kinyarwanda", hasPrice: true, hasPhone: true, seconds: 15 });
     expect(phone.sector).toBe("phone-shop");
     expect(phone.format.id).toBe("product-reveal");
-    expect(phone.hooks.map((h) => h.id)).toEqual(["number-in-hand", "spec-words", "price-banner"]);
+    expect(phone.hooks.map((h) => h.id)).toEqual(["number-in-hand", "price-banner", "counter-price-bar"]);
     const house = brainFor({ platform: "tiktok", sector: sectorFromText("4 bedroom house for sale in Kibagabaga"), format: null, engine: "seedance", language: "English", hasPrice: true, hasPhone: true, hasLocation: true, seconds: 15 });
     expect(house.sector).toBe("real-estate");
     expect(house.format.id).toBe("tour");

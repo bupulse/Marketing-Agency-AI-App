@@ -10,8 +10,8 @@
     "formats": ["product-reveal", "offer", "tour"],
     "engines": ["claude", "seedance"],
     "needs": ["price"],
-    "examples": ["48,000RWF", "PRICE 28K", "COMMERCIAL BLENDER PRICE: 48,000RWF", "One bedroom In Gasogi Full furnished 400k / Month"],
-    "evidence": ["fb-011", "tt-079", "fb-029", "fb-005", "fb-012"]
+    "examples": ["48,000RWF", "PRICE 28K", "COMMERCIAL BLENDER PRICE: 48,000RWF", "One bedroom In Gasogi Full furnished 400k / Month", "Spinning bike / Price: 500k / Home workout Gym", "Price: 16M"],
+    "evidence": ["fb-011", "tt-079", "fb-029", "fb-005", "fb-012", "fb-049", "fb-068", "fb-067"]
   },
   {
     "id": "promo-price",
@@ -24,8 +24,8 @@
     "formats": ["offer"],
     "engines": ["claude", "seedance"],
     "needs": ["price", "offer"],
-    "examples": ["BEST BURGERS IN KIGALI / PROMO FOR 5K - DON'T MISS", "hurry! hurry! special offer any style 1800 (inclusive of braids & free wash)"],
-    "evidence": ["fb-006", "fb-013"],
+    "examples": ["BEST BURGERS IN KIGALI / PROMO FOR 5K - DON'T MISS", "hurry! hurry! special offer any style 1800 (inclusive of braids & free wash)", "PROMO! - HAPPY 3RD ANNIVERSARY"],
+    "evidence": ["fb-006", "fb-013", "fb-051"],
     "note": "The longest-running local ad in the research (a Nairobi salon, 982 days) is this hook with one flat price that includes a free extra."
   },
   {
@@ -82,8 +82,8 @@
     "formats": ["product-reveal", "tour"],
     "engines": ["claude", "seedance"],
     "needs": ["phone"],
-    "examples": ["+250 785 478 140", "Whatsapp/Call: 0796148484", "0761 487 464", "+256708735746 Retail and wholesale"],
-    "evidence": ["tt-096", "fb-001", "fb-005", "tt-136", "tt-137"]
+    "examples": ["+250 785 478 140", "Whatsapp/Call: 0796148484", "0761 487 464", "+256708735746 Retail and wholesale", "KIGALI RWANDA CAR HIRE / +250 78 233 6854 / WWW.KIGALIRWANDACARHIRE.COM"],
+    "evidence": ["tt-096", "fb-001", "fb-005", "tt-136", "tt-137", "fb-065"]
   },
   {
     "id": "offer-badge-day",
@@ -96,8 +96,8 @@
     "formats": ["offer"],
     "engines": ["claude", "seedance"],
     "needs": ["offer"],
-    "examples": ["BUY 1 GET 1 FREE", "BUY ONE PIZZA GET ONE FREE EVERY TU", "YOU GET ONE FREE EVERY TUESDAY", "MONDAY - FRIDAY, 11 AM - 2 PM, LUNCH TIME Promo"],
-    "evidence": ["tt-090", "tt-093", "tt-095", "tt-091"]
+    "examples": ["BUY 1 GET 1 FREE", "BUY ONE PIZZA GET ONE FREE EVERY TU", "YOU GET ONE FREE EVERY TUESDAY", "MONDAY - FRIDAY, 11 AM - 2 PM, LUNCH TIME Promo", "FRIDAY UNLOCKED / Buy 4, get 5"],
+    "evidence": ["tt-090", "tt-093", "tt-095", "tt-091", "fb-069"]
   },
   {
     "id": "percent-free-delivery",
@@ -183,8 +183,8 @@
     "formats": ["offer", "ugc-testimonial", "product-reveal", "kinetic-typography"],
     "engines": ["claude", "seedance"],
     "needs": [],
-    "examples": ["Urgent order?", "Bulk orders?", "Why keep watching others upgrade?", "ese wakwitwika kubera urukundo?"],
-    "evidence": ["tt-064", "tt-097", "tt-058"]
+    "examples": ["Urgent order?", "Bulk orders?", "Why keep watching others upgrade?", "ese wakwitwika kubera urukundo?", "Ufite gahunda yo gukora urugendo"],
+    "evidence": ["tt-064", "tt-097", "tt-058", "fb-056"]
   },
   {
     "id": "pain-question",
@@ -197,8 +197,8 @@
     "formats": ["before-after", "product-reveal"],
     "engines": ["claude", "seedance"],
     "needs": [],
-    "examples": ["Tired of Snoring Ruining Your Sleep?", "Nobody warns you how annoying juicers are to actually clean", "Say goodbye to: Smudged polish, Chipped nails"],
-    "evidence": ["fb-034", "tt-018", "fb-018", "tt-003"]
+    "examples": ["Tired of Snoring Ruining Your Sleep?", "Nobody warns you how annoying juicers are to actually clean", "Say goodbye to: Smudged polish, Chipped nails", "Ready to see your skin exactly how it used to be?", "Still dealing with razor bumps and ingrown hairs?"],
+    "evidence": ["fb-034", "tt-018", "fb-018", "tt-003", "fb-071"]
   },
   {
     "id": "result-first",
@@ -256,7 +256,7 @@
     "engines": ["claude", "seedance"],
     "needs": [],
     "examples": ["Unboxing my new Blush MacBookNeo", "I’m absolutely in love with our new arrivals.", "Our Mystery Box came packed with 9 amazing items"],
-    "evidence": ["tt-128", "tt-129", "tt-130", "tt-131", "fb-012"]
+    "evidence": ["tt-128", "tt-129", "tt-130", "tt-131", "fb-012", "fb-073", "fb-054"]
   },
   {
     "id": "now-available",
@@ -265,12 +265,12 @@
     "pattern": "{product} is here / Now available in {city}",
     "visual": "The new item held up by real staff in front of real stock, or a flag and the product.",
     "platforms": ["facebook", "tiktok"],
-    "sectors": ["phone-shop", "shop", "fashion"],
+    "sectors": ["phone-shop", "shop", "fashion", "services"],
     "formats": ["product-reveal", "offer", "unboxing"],
     "engines": ["claude", "seedance"],
     "needs": [],
-    "examples": ["🇰🇪 Now Available in Kenya! 🇰🇪", "#GalaxyS26 Ultra is here.", "New Ankara ARRIVALS", "Allow to me reINTRODUCE", "Sasa inapatikana Tanzania"],
-    "evidence": ["fb-017", "fb-019", "fb-021", "fb-027", "fb-016", "tt-063"],
+    "examples": ["🇰🇪 Now Available in Kenya! 🇰🇪", "#GalaxyS26 Ultra is here.", "New Ankara ARRIVALS", "Allow to me reINTRODUCE", "Sasa inapatikana Tanzania", "Now available! Spinning Bikes Have Arrived in Kigali!", "BETTER INTERNET HAS ARRIVED"],
+    "evidence": ["fb-017", "fb-019", "fb-021", "fb-027", "fb-016", "tt-063", "fb-049", "fb-058"],
     "note": "The cash-on-delivery sellers ran this template 7 to 12 variants for up to 24 months."
   },
   {
@@ -284,8 +284,8 @@
     "formats": ["tour"],
     "engines": ["claude", "seedance"],
     "needs": ["location"],
-    "examples": ["KIGALI KICUKIRO / KANOMBE KABEZA / MWITUNDA", "4 BEDROOMS", "373SQM", "Iragurishwa 4M ni Iremera Ku muhanda"],
-    "evidence": ["fb-007", "fb-029", "tt-080"]
+    "examples": ["KIGALI KICUKIRO / KANOMBE KABEZA / MWITUNDA", "4 BEDROOMS", "373SQM", "Iragurishwa 4M ni Iremera Ku muhanda", "Ibibanza byiza Masaka inyuma Ya Gare Bigurishwa / Price: 16M", "350M RWF"],
+    "evidence": ["fb-007", "fb-029", "tt-080", "fb-068", "fb-067"]
   },
   {
     "id": "whip-in-tour",
@@ -313,7 +313,7 @@
     "engines": ["seedance", "claude"],
     "needs": ["person"],
     "examples": ["DR. BOSCO / DERMA SKIN CLINIC", "And I'm A Dermatologist Here At Derma Skin Clinic."],
-    "evidence": ["fb-002", "fb-031", "tt-081"],
+    "evidence": ["fb-002", "fb-031", "tt-081", "fb-062"],
     "note": "Needs a real or digital-library presenter the owner chose; never invent a doctor or a title."
   },
   {
@@ -545,5 +545,166 @@
     "needs": [],
     "examples": ["that's my job", "ever had problem?", "WEAK CTAS: Losing poten...", "One single source of truth"],
     "evidence": ["tt-120", "tt-124", "tt-127", "tt-125"]
+  },
+  {
+    "id": "price-pill",
+    "name": "Price pill pinned on every frame",
+    "type": "price-first",
+    "pattern": "{product} | {claim} | {price} / month",
+    "visual": "A rounded pill at the top with the plan and the price, on every frame; a person holding the product below and one benefit line per beat.",
+    "platforms": ["facebook"],
+    "sectors": ["services", "shop"],
+    "formats": ["offer", "product-reveal"],
+    "engines": ["claude"],
+    "needs": ["price"],
+    "examples": ["PIRAMIE 4G+ | 20 Mbps | 20K / month", "BETTER INTERNET HAS ARRIVED", "FREE WIFI ROUTER"],
+    "evidence": ["fb-058"],
+    "note": "Piramie ran 6 variants of this template in 11 days: make several hero shots of the same layout."
+  },
+  {
+    "id": "counter-price-bar",
+    "name": "Seller at the counter, price bar below",
+    "type": "price-first",
+    "pattern": "{product} | {price} RWF | {phone}",
+    "visual": "The seller behind the shop counter holds the item up; a blue or yellow bar across the lower third with the product, the price and two numbers.",
+    "platforms": ["facebook", "tiktok"],
+    "sectors": ["phone-shop", "shop"],
+    "formats": ["product-reveal", "ugc-testimonial"],
+    "engines": ["claude", "seedance"],
+    "needs": ["price", "phone"],
+    "examples": ["COMMERCIAL BLENDER / 48,000RWF / 0784695549", "TURN YOUR ROOM INTO A GALAXY"],
+    "evidence": ["fb-063", "fb-011", "fb-027"],
+    "note": "The bar sits above the app's bottom 15%."
+  },
+  {
+    "id": "model-badge",
+    "name": "Model name badge",
+    "type": "announcement",
+    "pattern": "{product} available {offer}",
+    "visual": "A yellow badge or sticker with the exact model over the boxes on the counter, or a hand fanning several phones.",
+    "platforms": ["facebook", "tiktok"],
+    "sectors": ["phone-shop"],
+    "formats": ["product-reveal", "offer", "unboxing"],
+    "engines": ["claude"],
+    "needs": [],
+    "examples": ["iPhone 18pro and 18pro max are available On discount", "IPHONE 13 PRO 256GB", "IN THIERRY PHONES"],
+    "evidence": ["fb-066", "fb-072"],
+    "note": "'On discount' only when the owner gives the discount."
+  },
+  {
+    "id": "kinyarwanda-price-line",
+    "name": "Kinyarwanda offer line",
+    "type": "price-first",
+    "pattern": "KURI {price} TUGUHA {product}",
+    "visual": "One line in capitals over the product in use, the numbers in a bar below.",
+    "platforms": ["facebook"],
+    "sectors": ["shop", "real-estate", "services"],
+    "formats": ["offer", "product-reveal"],
+    "engines": ["claude"],
+    "needs": ["price"],
+    "examples": ["KURI 38000FRW TUGUHA IYI TWO IN ONE SMARTWATCH", "HA AHANTU HAWE ISURA YIHARIYE WIGURIRA INTEBE NZIZA KUGICIRO CYIZA", "TERA NEZA MUGIHE..."],
+    "evidence": ["fb-005", "fb-064"],
+    "note": "For Kinyarwanda businesses: written on screen and in the caption only (the voice speaks English). Use the owner's own wording when given."
+  },
+  {
+    "id": "talk-to-city",
+    "name": "Kigali, we need to talk",
+    "type": "curiosity",
+    "pattern": "{city}, we need to talk.",
+    "visual": "The new product on a tray or counter, the line in big text, the logo small in a corner; then 'made fresh' proof shots.",
+    "platforms": ["facebook", "instagram"],
+    "sectors": ["restaurant", "shop"],
+    "formats": ["product-reveal", "offer"],
+    "engines": ["claude", "seedance"],
+    "needs": [],
+    "examples": ["Kigali, we need to talk.", "Rwanda's First Chimney Cone 🇷🇼🔥"],
+    "evidence": ["fb-053"],
+    "note": "'First in Rwanda' is a claim: only the owner's."
+  },
+  {
+    "id": "service-claim",
+    "name": "Service claim in capitals, address on screen",
+    "type": "bold-claim",
+    "pattern": "{claim} | {area}, next to {landmark}",
+    "visual": "The service being done in close-up, the claim in capitals and a map pin with the landmark address at the bottom of the safe area.",
+    "platforms": ["facebook"],
+    "sectors": ["salon", "services", "clinic", "events"],
+    "formats": ["tour", "offer"],
+    "engines": ["claude"],
+    "needs": ["location"],
+    "examples": ["Available 24/7", "Kigali, Gacuriro KG 414 st, KG486st, Next to DELIGHT HOTEL"],
+    "evidence": ["fb-062"]
+  },
+  {
+    "id": "loss-line",
+    "name": "Stop losing ... (a loss or scare line)",
+    "type": "problem",
+    "pattern": "STOP {problem}! / {problem}?",
+    "visual": "The problem in one bold line (a rusty railing, an empty shop page), then the fix and the free quote or consultation.",
+    "platforms": ["facebook"],
+    "sectors": ["services"],
+    "formats": ["before-after", "offer"],
+    "engines": ["claude", "seedance"],
+    "needs": [],
+    "examples": ["STOP LOSING CUSTOMERS ONLINE!", "Old railing rusting? Staircase looking tired?"],
+    "evidence": ["fb-046", "fb-052"],
+    "note": "For business-to-business services. No income promises."
+  },
+  {
+    "id": "how-it-changes",
+    "name": "How {product} changes your space",
+    "type": "demo",
+    "pattern": "How {product} can change your {place}!",
+    "visual": "The product transforms the scene in one move: a rug unrolls across the floor, a projector fills the ceiling with stars.",
+    "platforms": ["facebook", "tiktok"],
+    "sectors": ["shop"],
+    "formats": ["product-reveal", "3d-motion"],
+    "engines": ["claude", "seedance"],
+    "needs": [],
+    "examples": ["How rugs can change your space !", "Transform your space into pure luxury"],
+    "evidence": ["fb-048", "fb-043", "fb-063"]
+  },
+  {
+    "id": "search-bar",
+    "name": "Search bar question",
+    "type": "curiosity",
+    "pattern": "why choose {product}",
+    "visual": "A search bar types the question over the product in close-up, then the answer in two or three short cards.",
+    "platforms": ["facebook", "instagram"],
+    "sectors": ["shop", "clinic"],
+    "formats": ["tutorial", "product-reveal"],
+    "engines": ["claude"],
+    "needs": [],
+    "examples": ["why choose Anua Niacinamide Serum", "Gentle yet effective formula"],
+    "evidence": ["fb-060"],
+    "note": "Skip the skin before/after this ad also shows."
+  },
+  {
+    "id": "trade-in-action",
+    "name": "Students or workers doing the work",
+    "type": "demo",
+    "pattern": "Master the skills of {claim} at {business}",
+    "visual": "Hands on tools in the real workshop or classroom, matching uniforms; the branch numbers in the lower third.",
+    "platforms": ["facebook"],
+    "sectors": ["school", "services"],
+    "formats": ["tutorial", "tour"],
+    "engines": ["seedance", "claude"],
+    "needs": [],
+    "examples": ["Master the skills of a professional mechanic"],
+    "evidence": ["fb-059"]
+  },
+  {
+    "id": "poster-first",
+    "name": "Poster first, then real clips",
+    "type": "offer-badge",
+    "pattern": "{offer} | {day} {claim} | {area}, opposite {landmark}",
+    "visual": "A designed poster as the first frame (offer, times, landmark, number), then 3 or 4 phone clips of the place.",
+    "platforms": ["facebook", "instagram"],
+    "sectors": ["events", "restaurant", "services"],
+    "formats": ["offer", "tour"],
+    "engines": ["claude"],
+    "needs": ["offer"],
+    "examples": ["FRIDAY UNLOCKED / BUY 4 GET 5 / 6PM-10PM / KICUKIRO, KN 432 opposite IPRC traffic lights", "EXPLORE THE WORLD / UP TO 35% OFF / BOOK NOW"],
+    "evidence": ["fb-069", "fb-044"]
   }
 ]

@@ -10,19 +10,20 @@ points back to the real videos it came from.
 
 Code: `lib/video-engine/brain/` (data in `brain/data/*.json`). Tests: `tests/video-engine/brain.test.ts`.
 
-## What is in it (17 October 2026)
+## What is in it (17 October 2026, after Facebook round 2)
 
 | Part | Count | What it holds |
 | --- | --- | --- |
-| Research rows | 179 (123 watched first-hand: 93 TikTok, 30 Facebook) | One line per video or ad, pointing back at the researchers' notes |
-| Hooks (openings) | 38 | The first 2 seconds: the line, what is on screen, where it was seen, real example lines |
+| Research rows | 212 (150 watched first-hand: 93 TikTok, 57 Facebook; 51 Rwandan Facebook ads) | One line per video or ad, pointing back at the researchers' notes |
+| Hooks (openings) | 49 | The first 2 seconds: the line, what is on screen, where it was seen, real example lines |
 | Formats | 10 | Product reveal, UGC testimonial, before/after, unboxing, tour, offer, 3D motion, kinetic typography, tutorial, list or price list |
-| Captions | 4 platforms, 12 formulas, 7 ways to order | How to write the post under the video, and the hashtags |
-| Rules | 52 (40 do, 12 don't) | Each with why, the videos behind it, and which engine it binds |
+| Captions | 4 platforms, 17 formulas, 8 ways to order, with the Rwanda counts (22 of 51 WhatsApp button, 13 Instagram, 35 number in the caption, 13 Kinyarwanda captions) | How to write the post under the video, and the hashtags |
+| Rules | 54 (41 do, 13 don't) | Each with why, the videos behind it, and which engine it binds |
 | Sectors | 11 | Restaurant, phone shop, salon, fashion, real estate, school, car rental, clinic, events, services, and "shop" for everything else |
 
-118 of the 179 research rows are cited somewhere in the brain. The rest (mostly entertainment from the For You feed)
-were watched but taught nothing an ad should copy.
+The Facebook "Rwanda playbook" (round 2) is folded in: its verbatim opening lines (the price pill, the counter seller
+with a price bar, the model badge, Kinyarwanda offer lines, "Kigali, we need to talk.", "Available 24/7", the loss line,
+the poster first frame), the ordering routes and caption counts, landmark addresses, and the sector patterns.
 
 ## The pipeline, step by step
 
@@ -95,11 +96,11 @@ Brief: "Kigali Phones", iPhone 13 and Samsung Galaxy, price given, WhatsApp numb
 - **Sector**: phone shop. **Format**: product reveal (the phone shop's first choice). 15 s is inside Facebook's 15 to
   25 s for this format.
 - **Hooks offered**:
-  1. *Number on screen, product in hand* (129 points): hands turn the phone, the WhatsApp number fixed on screen from
+  1. *Number on screen, product in hand* (130 points): hands turn the phone, the WhatsApp number fixed on screen from
      the first frame. Seen: "+250 785 478 140" (kigaliphones), "Whatsapp/Call: 0796148484" (homeofhybrid, 468 days).
-  2. *Spec words as the seller speaks* (119): "Iphone 13 USA version 128 GB", "Accessories included (Cover, protector,
-     charger)".
-  3. *Price banner from frame 0* (117): "48,000RWF", "PRICE 28K".
+  2. *Price banner from frame 0* (118): "48,000RWF", "PRICE 28K", "Spinning bike / Price: 500k".
+  3. *Seller at the counter, price bar below* (116): the seller holds the phone up behind the counter, a blue or yellow
+     bar in the lower third with the model, the price and two numbers (Elohome, 8 ads live; EHA 250).
 - **Timeline**: 0-2 s the phone moving in a hand with the price strip and phone bar; 2-5 s close-up doing its job;
   5-10 s two more angles or colours; 10-13 s the price card and what is included; 13-15 s a clean hero shot with
   "WhatsApp {number}" big in the middle.
@@ -117,11 +118,11 @@ Brief: "4 bedroom house for sale in Kibagabaga", price given, WhatsApp given, En
 - **Sector**: real estate. **Format**: tour. TikTok tours that work are 16 to 45 s; Seedance films at most 15 s, so the
   brain keeps the same beats, shorter (it says so in the brief).
 - **Hooks offered**:
-  1. *Where, what size, how much* (135): three stacked labels "KIGALI / GASABO / KIBAGABAGA" style, then "4 BEDROOMS",
+  1. *Where, what size, how much* (144): three stacked labels "KIGALI / GASABO / KIBAGABAGA" style, then "4 BEDROOMS",
      then the price. Seen: Hills Props ("KIGALI KICUKIRO / KANOMBE KABEZA / MWITUNDA", "4 BEDROOMS", "373SQM") and
-     Samkay ("One bedroom In Gasogi Full furnished 400k / Month").
-  2. *Price banner from frame 0* (124).
-  3. *Whip pan into the tour* (113): a fast move or a gimbal glide into the best room at dusk (the top US tours had
+     Samkay ("One bedroom In Gasogi Full furnished 400k / Month"), IBRA ("Ibibanza byiza Masaka inyuma Ya Gare Bigurishwa / Price: 16M").
+  2. *Price banner from frame 0* (125).
+  3. *Whip pan into the tour* (108): a fast move or a gimbal glide into the best room at dusk (the top US tours had
      427K and 433K likes).
 - **Timeline for Seedance**: 0-3 s the best view or a whip pan into the living room; 3-10 s the rooms one by one, 2 to
   3 s each, smooth gimbal moves; 10-12 s the outside again; 12-15 s the entrance or the gate. BuPulse overlays the
@@ -130,13 +131,36 @@ Brief: "4 bedroom house for sale in Kibagabaga", price given, WhatsApp given, En
   frame; a real place; end on a clean shot with space above it.
 - **Don'ts**: as above; nothing invented (no "plot 500 m²" unless the owner gave it).
 
+## Scoring a design
+
+After Claude answers, the brain can mark the result out of 100 (`brain/score.ts`), so the studio can show it and the
+engine can compare templates. It only checks what a program can measure; taste is still the owner's eye.
+
+- **Motion design** (`scoreDesign`): the hook is on screen within 1.5 s and short; the price is shown (and early, top
+  third, on Facebook by 1.5 s) when the brief has one; the number (or another way to order) is in the last scene and,
+  when there is a number, in every scene; the last scene has a call to action; every scene moves; all text is inside
+  the platform's safe area; the length and the number of scenes fit the format; every scene has a voice line (when the
+  voice is on) that fits its length; text lines are short and scenes not crowded; the post caption has the number and
+  the price; nothing from the do-not-copy list; no number, discount, stock line or delivery promise that the brief
+  does not give.
+- **Seedance prompt** (`scoreSeedancePrompt`): time codes from 0 to the clip's length in 2 to 5 shots; motion in the
+  first shot (by 2 to 3 s); the "exactly as in the photo" sentence when a product photo is attached; no famous,
+  lookalike or child subjects; no invented facts; 60 to 160 words; no text asked for in the frames; references that
+  exist; no spoken line without sound or in Kinyarwanda or Swahili; a clean hero shot at the end.
+
+Each failed check says which rule it enforces, why, and in which scene. Checks that do not apply (a price check with
+no price) are left out of the 100. BuPulse's own Seedance shot plans score 100; the hand-made sample design scores 85
+(the price comes late, one line sits too low, and its caption lacks the price).
+
 ## What the brain does not know yet
 
 - **Sound.** All TikTok and Facebook videos were watched muted. Music tempo, whooshes and voice style are from articles,
   not heard. The owner (or a later pass) should check sound on the top 10 rows.
 - **Instagram** is not in yet; its caption guide is "interim" (borrowed from TikTok). **YouTube Shorts** has no research.
-- **Thin sectors**: car rental (one advertiser), school (lesson reels only, no school ad), events (one venue ad whose
-  video did not load), salon (no Rwandan salon ad; Nairobi and Johannesburg). Clinic rules are education-only by
-  policy.
+- **Thin sectors**: car rental (two advertisers), school (two Rwandan ads, one read as text only), salon ("Kigali
+  salon" returns no ads; the Kigali examples are spas and aesthetic centres). Clinic rules are education-only by policy.
+- **Rwandan ads are young**: most started in the last two weeks, so days running says little in Rwanda; the number of
+  variants live at once (Derma 15, Elohome 8, Magic Chef 7, Piramie 6) is the better signal but is not yet a field in the
+  research rows, so it does not count in a row's strength.
 - **"Works" is a proxy**: TikTok likes and Facebook days running, not sales. When BuPulse clients post, their own
   results (views, WhatsApp messages) should be added as a new kind of evidence and weighted above everything else.

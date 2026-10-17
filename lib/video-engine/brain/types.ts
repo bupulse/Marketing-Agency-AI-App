@@ -111,6 +111,8 @@ export type PlatformCaptions = {
   formulas: CaptionFormula[];
   hashtags: { count: SecondsRange; practice: string[]; local: string[]; examples: string[] };
   language: string;
+  /** Counted findings from the research (how many ads use each route, caption languages, lengths). */
+  findings?: string[];
   evidence: string[];
 };
 export type CaptionsData = { platforms: PlatformCaptions[]; tradeRoutes: { id: string; words: string; when: string }[] };
