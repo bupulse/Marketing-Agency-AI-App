@@ -33,11 +33,16 @@
     "formats": ["before-after", "offer", "ugc-testimonial", "list"],
     "hooks": ["result-first", "promo-price", "service-claim", "home-service", "pain-question", "local-greeting", "step-routine", "price-card-split", "before-after-word"],
     "settings": ["the salon chair with a ring light", "close-ups of hands braiding", "a 2x2 grid of nail colours", "the salon sign and mirrors", "a close-up of a real treatment in soft light, the landmark address baked in"],
-    "offers": ["special offer any style {price} (inclusive of braids & free wash)", "Book your nails home service", "Book your appointment on WhatsApp", "Available 24/7", "Book your session today", "Private packages available", "MICROBLADING OFFER 20K", "Book your slot today"],
+    "offers": ["special offer any style {price} (inclusive of braids & free wash)", "Book your nails home service", "Book your appointment on WhatsApp", "Available 24/7", "Book your session today", "Private packages available", "MICROBLADING OFFER 20K", "Book your slot today", "28k only, with extension"],
     "cta": "Book on WhatsApp {phone}; the street (Roysambu, Lumumba Drive style).",
-    "longestRunning": "SPOT SALON (Nairobi) ran one flat price including a free wash for 982 days; in Kigali, Prime Wellness shows a real massage with 'Available 24/7' and 'Next to DELIGHT HOTEL' on screen; Lou Aesthetic opens on a question card ('Ready to see your skin exactly how it used to be?'). Round 3 (10 Kigali spa, nail, wig and brow ads, all young): a real treatment close-up with the hours and a landmark address burned in, a black-and-gold offer card ('MICROBLADING OFFER 20K'), the number printed under the video.",
+    "longestRunning": "SPOT SALON (Nairobi) ran one flat price including a free wash for 982 days; in Kigali, Prime Wellness shows a real massage with 'Available 24/7' and 'Next to DELIGHT HOTEL' on screen; Lou Aesthetic opens on a question card ('Ready to see your skin exactly how it used to be?'). Round 3 (10 Kigali spa, nail, wig and brow ads, all young): a real treatment close-up with the hours and a landmark address burned in, a black-and-gold offer card ('MICROBLADING OFFER 20K'), the number printed under the video. On Kigali TikTok the best salon clips show the client in front of the salon's logo wall and put the price in the first frame ('28k only, with extension', '36k rwf'); a printed menu with prices as frame 1 is a strong simple opener.",
     "gaps": "Kigali salon ads are young (at most 24 days live) and few show a price; the long-running examples are Nairobi's.",
-    "evidence": ["fb-013", "fb-018", "tt-102", "tt-103", "tt-105", "tt-106", "tt-107", "fb-062", "fb-071", "fb-047", "yt-028", "fb-074", "fb-076", "fb-078", "fb-079", "fb-080", "fb-083", "ig-030", "ig-031", "ig-033"]
+    "evidence": ["fb-013", "fb-018", "tt-102", "tt-103", "tt-105", "tt-106", "tt-107", "fb-062", "fb-071", "fb-047", "yt-028", "fb-074", "fb-076", "fb-078", "fb-079", "fb-080", "fb-083", "ig-030", "ig-031", "ig-033", "tt-142", "tt-145", "tt-147", "tt-143"],
+    "music": {
+      "moods": ["afro"],
+      "note": "mid-tempo Afrobeats or amapiano loops"
+    },
+    "voice": "A voice-over with word-by-word captions for a client story; otherwise the text carries it."
   },
   {
     "id": "fashion",
@@ -45,12 +50,17 @@
     "words": ["fashion", "dress", "dresses", "clothes", "clothing", "kitenge", "ankara", "shoes", "boutique", "shirt", "shirts", "bag", "bags", "outfit", "wear", "jewelry", "jewellery", "earrings", "sneaker", "sneakers", "watch", "necklace"],
     "seedanceKind": "fashion",
     "formats": ["product-reveal", "list", "ugc-testimonial", "unboxing"],
-    "hooks": ["demo-first", "now-available", "price-on-each", "direct-question", "occasion-title", "unwrap-reveal", "door-open-walk", "spec-words", "before-after-word"],
+    "hooks": ["demo-first", "now-available", "price-on-each", "direct-question", "occasion-title", "unwrap-reveal", "door-open-walk", "spec-words", "before-after-word", "colour-swap"],
     "settings": ["a real wearer outdoors in daylight", "a clothes rack in the boutique", "a mannequin showing the detail", "boxes of new arrivals being opened", "one sneaker turned 360 degrees in one hand outdoors"],
-    "offers": ["{product} kuri {price} gusa", "Different sizes and colors available", "We do deliveries countrywide", "New arrivals", "Payment after delivery", "Delivery anywhere in Rwanda", "Sizes EUR 39 to 45"],
+    "offers": ["{product} kuri {price} gusa", "Different sizes and colors available", "We do deliveries countrywide", "New arrivals", "Payment after delivery", "Delivery anywhere in Rwanda", "Sizes EUR 39 to 45", "from 7.5K RWF", "All sizes available"],
     "cta": "Send a WhatsApp message {phone}; the shop area.",
-    "longestRunning": "A 5 s loop of one model walking (Modesees, 353 days) and four colours in 10 s on a real wearer (NILA BABY SHOP, 439 days) are enough; Trendy.Wear.Kigali shows one feature (a breastfeeding opening) for the whole clip with the price in the caption. Kigali sneaker sellers (9 round-3 ads) show one pair in a hand or being laced, a model label on screen ('Hoka Clifton 9'), and put the sizes and 'Call&Whatsapp' in the caption; almost none shows the price in the video. On Instagram an East African label shoots on a model in a styled showroom and makes the caption the sales page: the price in local currency, the stock ('ORANGE SOLD'), the place and 'SHOP NOW'.",
-    "evidence": ["fb-010", "fb-016", "fb-026", "tt-064", "tt-129", "tt-134", "tt-137", "fb-041", "fb-055", "fb-054", "yt-018", "yt-019", "fb-084", "fb-085", "fb-090", "fb-091", "fb-092", "ig-035"]
+    "longestRunning": "A 5 s loop of one model walking (Modesees, 353 days) and four colours in 10 s on a real wearer (NILA BABY SHOP, 439 days) are enough; Trendy.Wear.Kigali shows one feature (a breastfeeding opening) for the whole clip with the price in the caption. Kigali sneaker sellers (9 round-3 ads) show one pair in a hand or being laced, a model label on screen ('Hoka Clifton 9'), and put the sizes and 'Call&Whatsapp' in the caption; almost none shows the price in the video. On Instagram an East African label shoots on a model in a styled showroom and makes the caption the sales page: the price in local currency, the stock ('ORANGE SOLD'), the place and 'SHOP NOW'. Kigali TikTok fashion: a locked shot with the price on the product ('8k') and the number in a lower corner, one mannequin swapping colour every 1 to 2 s, a 'MONDAY... outfit per day' week series, and street-wear tours with 'from 7.5K RWF' and the landmark ('Kisimenti Remera Behind Eco Bank').",
+    "evidence": ["fb-010", "fb-016", "fb-026", "tt-064", "tt-129", "tt-134", "tt-137", "fb-041", "fb-055", "fb-054", "yt-018", "yt-019", "fb-084", "fb-085", "fb-090", "fb-091", "fb-092", "ig-035", "tt-150", "tt-154", "tt-152", "tt-153"],
+    "music": {
+      "moods": ["afro", "energetic"],
+      "note": "afro for boutiques, energetic (a harder beat) for street wear"
+    },
+    "voice": "Usually none: the text and the picture carry it."
   },
   {
     "id": "real-estate",
@@ -69,16 +79,21 @@
   {
     "id": "school",
     "name": "School, training, courses",
-    "words": ["school", "course", "courses", "training", "class", "classes", "academy", "lesson", "lessons", "tutoring", "university", "bootcamp", "learn", "english", "college", "institute", "summer camp"],
+    "words": ["school", "course", "courses", "training", "class", "classes", "academy", "lesson", "lessons", "tutoring", "university", "bootcamp", "learn", "english", "college", "institute", "summer camp", "intake", "secondary", "nursery", "primary"],
     "seedanceKind": "education",
     "formats": ["tutorial", "list", "ugc-testimonial"],
-    "hooks": ["trade-in-action", "dont-say-say", "numbered-list", "curiosity", "expert-card", "series-episode"],
+    "hooks": ["trade-in-action", "dont-say-say", "numbered-list", "curiosity", "expert-card", "series-episode", "trust-number"],
     "settings": ["a teacher in uniform pointing at the lesson", "a classroom with students working", "a notepad list filled from frame 0", "students in matching overalls working on a car in the real workshop"],
-    "offers": ["Start now", "Use the app to practise", "One lesson per video", "Enrol today", "Theory and practical", "Branch phones: CHIC, Musanze, Remera"],
+    "offers": ["Start now", "Use the app to practise", "One lesson per video", "Enrol today", "Theory and practical", "Branch phones: CHIC, Musanze, Remera", "The September intake is here, grab your seat now"],
     "cta": "WhatsApp {phone} to register; the campus area.",
-    "longestRunning": "Action College Rwanda shows students doing the work in the real workshop, with three branch numbers in the lower third; British English Language Institute (157 days) lists the camp's specifics in the caption; Fluently's 'Don't say / Say' lesson is a before/after in one frame.",
-    "gaps": "Two Rwandan school ads now (one only read as text); no price is shown by any of them.",
-    "evidence": ["fb-040", "fb-036", "fb-038", "tt-139", "fb-059", "fb-045"]
+    "longestRunning": "Action College Rwanda shows students doing the work in the real workshop, with three branch numbers in the lower third; British English Language Institute (157 days) lists the camp's specifics in the caption; Fluently's 'Don't say / Say' lesson is a before/after in one frame. Kigali school TikTok: brand-film style (the logo, the building, students walking, a drone over the campus), a student speaking to camera with subtitles, ranked lists ('Top 9 Best Secondary Schools in Rwanda') and a title card with numbers ('17 SCHOOLS | 52 DEBATES TEAMS'); the enrolment call lives in the caption ('The September intake is here, grab your seat now').",
+    "gaps": "Two Rwandan school ads on Facebook and 8 Kigali school TikToks; none shows a price.",
+    "evidence": ["fb-040", "fb-036", "fb-038", "tt-139", "fb-059", "fb-045", "tt-164", "tt-165", "tt-166", "tt-167", "tt-170"],
+    "music": {
+      "moods": ["calm", "inspiring"],
+      "note": "quiet and clean; inspiring for a brand film"
+    },
+    "voice": "A student or a teacher speaking, always subtitled."
   },
   {
     "id": "car-rental",
@@ -86,27 +101,37 @@
     "words": ["car", "cars", "car rental", "rent a car", "hire", "vehicle", "vehicles", "taxi", "moto", "transport", "fleet", "hybrid", "driver", "car hire", "travel", "tours", "tour operator", "safari", "safaris", "flight", "flights", "visa", "trek", "hike", "hiking", "airline", "agency", "jeep"],
     "seedanceKind": "services",
     "formats": ["tour", "product-reveal", "offer"],
-    "hooks": ["number-in-hand", "price-banner", "location-stack", "kinetic-phrase", "spec-words", "expert-card", "poster-first"],
+    "hooks": ["number-in-hand", "price-banner", "location-stack", "kinetic-phrase", "spec-words", "expert-card", "poster-first", "numbered-list"],
     "settings": ["the real fleet parked in the compound", "a car driving on a Kigali road", "the interior and the boot opened", "a walk-around of the vehicle in the showroom with the website bar on screen"],
-    "offers": ["RENT A CAR, RENT FREEDOM", "{price} per day", "With or without a driver", "Self-drive or professional driver", "Family holiday discounts", "Self-drive or chauffeur", "HIKING EVERY DAY MONDAY - SUNDAY", "Up to 35% off"],
+    "offers": ["RENT A CAR, RENT FREEDOM", "{price} per day", "With or without a driver", "Self-drive or professional driver", "Family holiday discounts", "Self-drive or chauffeur", "HIKING EVERY DAY MONDAY - SUNDAY", "Up to 35% off", "Save this for your Kigali trip"],
     "cta": "WhatsApp / Call {phone}, burned in from second 1 to the end.",
-    "longestRunning": "homeofhybrid (Kigali, 468 days) runs raw phone footage of the cars with one word sticker per beat and a permanent yellow phone bar; Judith Safaris (565 days, the longest-running Rwandan ad found) is a corporate interview with a name card and subtitles; travel agencies use a poster first frame with a schedule and a phone bar ('HIKE MOUNT JALI … HIKING EVERY DAY'), and a car dealer floats spec labels over a walk-around ('Engine size 3,604 cc'). A Nairobi car dealer's comedy skit (an influencer asking for a free car) works on Instagram.",
-    "gaps": "Car hire and travel together (12 Rwandan ads); few show a price.",
-    "evidence": ["fb-001", "fb-065", "fb-093", "fb-094", "fb-095", "fb-097", "fb-098", "fb-099", "fb-044", "ig-040"]
+    "longestRunning": "homeofhybrid (Kigali, 468 days) runs raw phone footage of the cars with one word sticker per beat and a permanent yellow phone bar; Judith Safaris (565 days, the longest-running Rwandan ad found) is a corporate interview with a name card and subtitles; travel agencies use a poster first frame with a schedule and a phone bar ('HIKE MOUNT JALI … HIKING EVERY DAY'), and a car dealer floats spec labels over a walk-around ('Engine size 3,604 cc'). A Nairobi car dealer's comedy skit (an influencer asking for a free car) works on Instagram. Kigali travel TikTok puts the price per day or per activity in the opening text ('50,000 RWF per day', '7$ FOR 15 MIN'), uses numbered titles ('6 THINGS TO DO IN KIGALI') with 'save this' as the call to action, and a budget in the title ('600k UGX for 3 days').",
+    "gaps": "Car hire and travel together: 12 Rwandan Facebook ads and 8 Kigali TikToks; few show a price outside the car-hire clips.",
+    "evidence": ["fb-001", "fb-065", "fb-093", "fb-094", "fb-095", "fb-097", "fb-098", "fb-099", "fb-044", "ig-040", "tt-160", "tt-161", "tt-156", "tt-159"],
+    "music": {
+      "moods": ["afro"],
+      "note": "mid-tempo Afrobeats"
+    },
+    "voice": "A vlogger's voice-over with subtitles for lists and budgets; none for the price-per-day ads."
   },
   {
     "id": "clinic",
     "name": "Clinic, pharmacy, health",
-    "words": ["clinic", "doctor", "dermatologist", "dental", "dentist", "pharmacy", "health", "hospital", "skin clinic", "treatment", "physiotherapy", "medical"],
+    "words": ["clinic", "doctor", "dermatologist", "dental", "dentist", "pharmacy", "health", "hospital", "skin clinic", "treatment", "physiotherapy", "medical", "pharmacies", "insurance"],
     "seedanceKind": "services",
     "formats": ["tutorial", "ugc-testimonial"],
-    "hooks": ["expert-card", "search-bar", "pain-question", "happy-customer", "comment-reply"],
+    "hooks": ["expert-card", "search-bar", "pain-question", "happy-customer", "comment-reply", "trust-number"],
     "settings": ["the doctor in a white coat in the real consulting room", "the clinic front and its sign", "the reception desk", "a white question card, then a soft macro of the treated area"],
-    "offers": ["Free consultation (only if true)", "Call or WhatsApp to book", "Book your session today"],
+    "offers": ["Free consultation (only if true)", "Call or WhatsApp to book", "Book your session today", "We work with {insurers}", "Send a message to book your consultation"],
     "cta": "Call or WhatsApp {phone} (two numbers); the address with a landmark (Gishushu, Lemigo Hotel).",
-    "longestRunning": "Derma Skin Clinic Rwanda runs 15+ variants since March 2026: a named doctor explains one condition in 60 s, boxed captions, the address and two numbers in every caption, the WhatsApp button; English and Kinyarwanda versions. It is the advertiser with the most live ads among the long runners (17 seen).",
+    "longestRunning": "Derma Skin Clinic Rwanda runs 15+ variants since March 2026: a named doctor explains one condition in 60 s, boxed captions, the address and two numbers in every caption, the WhatsApp button; English and Kinyarwanda versions. It is the advertiser with the most live ads among the long runners (17 seen). Kigali clinic and pharmacy TikTok leads with trust: 'First Private Pharmacy In Rwanda since 1969 | 6 Branches across Kigali', the insurers ('We work with EDENCARE, SONARWA, and RSSB'), a doctor in scrubs, and ends on a clean 'CONTACT US +250 ...' card; prices appear only on shelf tags.",
     "gaps": "Health claims and before/after are restricted: education and booking only.",
-    "evidence": ["fb-002", "fb-031", "fb-028", "fb-071", "fb-060"]
+    "evidence": ["fb-002", "fb-031", "fb-028", "fb-071", "fb-060", "tt-172", "tt-173", "tt-174", "tt-177"],
+    "music": {
+      "moods": ["calm"],
+      "note": "quiet, clean ambient"
+    },
+    "voice": "The doctor or the owner explaining, always subtitled."
   },
   {
     "id": "events",

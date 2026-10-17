@@ -11,11 +11,12 @@ import { looksKinyarwanda, voiceLanguage } from "../voice-language";
  * spellings are kept: "tuyikujyezaho", "uduhamagare".
  */
 export const KINYARWANDA_COMMERCE = {
-  callToAction: ["duhamagare", "hamagara", "uhamagare", "uduhamagare", "twandikire", "utwandikire", "tuvugishe", "gura", "iyandikishe"],
+  callToAction: ["duhamagare", "hamagara", "uhamagare", "uduhamagare", "waduhamagara", "twandikire", "utwandikire", "ukatwandikira", "tuvugishe", "gura", "iyandikishe"],
   price: ["igiciro", "kuri", "gusa", "kiraganirwaho", "ubuntu"],
   selling: ["igurishwa", "bigurishwa", "iragurishwa", "tuguha", "tuyikujyezaho", "ibyangombwa", "birahari"],
   urgency: ["ntucikwe", "amahirwe"],
-  greeting: ["murakaza neza", "murakazaneza", "muraho"],
+  /** "Karibu" is Swahili, used as a welcome by Kigali sellers next to the number. */
+  greeting: ["murakaza neza", "murakazaneza", "muraho", "karibu"],
   people: ["abakiriya", "barishimye", "nawe"],
   /** Grammar words, used to tell a Kinyarwanda clause from an English one. */
   grammar: ["ni", "na", "kuri", "mu", "ku", "iyi", "izi", "kandi", "cyangwa", "cg", "aya", "uyu", "ibi", "iki", "ariko", "muri", "yawe", "wawe", "yose", "aho"],
@@ -40,14 +41,15 @@ export const PREFERRED_PHRASES: { say: string; for: string }[] = [
   { say: "Kiraganirwaho", for: "negotiable" },
   { say: "Ntucikwe!", for: "don't miss it" },
   { say: "Free delivery / tuyikujyezaho", for: "free delivery / we bring it to you" },
-  { say: "Murakaza neza", for: "welcome" },
+  { say: "Murakaza neza / Karibu", for: "welcome" },
+  { say: "Waduhamagara cg ukatwandikira {phone}", for: "call or write to us" },
   { say: "Abakiriya bacu barishimye", for: "our customers are happy" },
   { say: "Iragurishwa / bigurishwa", for: "for sale" },
   { say: "Ibyangombwa birahari", for: "the papers are ready (property)" },
 ];
 
 /** Kinyarwanda in a text: a sentence that reads as Kinyarwanda, or two of the sellers' own words (a mixed caption counts). */
-const CAPTION_RW = /\b(duhamagare|hamagara|uhamagare|uduhamagare|twandikire|utwandikire|tuvugishe|igiciro|igurishwa|bigurishwa|iragurishwa|ntucikwe|gusa|ubuntu|tuguha|tuyikujyezaho|kiraganirwaho|abakiriya|barishimye|murakaza|murakazaneza|ibyangombwa|birahari|ushaka|cyangwa|nziza|inzu|ibibanza|iyi|izi|kandi|ariko|igihe|ese|ufite|waba|uburyo|amahirwe|muri|yawe|wawe|yose|ubu|aho|umwana|ubucuruzi|uramutse|kuri|mu|ku|ni|na)\b/gi;
+const CAPTION_RW = /\b(duhamagare|hamagara|uhamagare|uduhamagare|waduhamagara|twandikire|utwandikire|ukatwandikira|dukorera|tuvugishe|igiciro|igurishwa|bigurishwa|iragurishwa|ntucikwe|gusa|ubuntu|tuguha|tuyikujyezaho|kiraganirwaho|abakiriya|barishimye|murakaza|murakazaneza|ibyangombwa|birahari|ushaka|cyangwa|nziza|inzu|ibibanza|iyi|izi|kandi|ariko|igihe|ese|ufite|waba|uburyo|amahirwe|muri|yawe|wawe|yose|ubu|aho|umwana|ubucuruzi|uramutse|kuri|mu|ku|ni|na)\b/gi;
 export function hasKinyarwanda(text: string): boolean {
   const plain = text.replace(/#[\p{L}\p{N}_]+/gu, " ");
   if (plain.split(/[.!?\n]+/).some((x) => looksKinyarwanda(x))) return true;

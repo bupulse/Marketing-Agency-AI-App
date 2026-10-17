@@ -340,6 +340,8 @@ export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: 
   const doLines = (list: Rule[], max: number) => list.slice(0, max).map(line);
   const local = `East Africa: ${p.format.eastAfrica.slice(0, 2).join(" ")} Settings that fit: ${p.sectorInfo.settings.slice(0, 2).join("; ")}.`;
   const offers = `Offer wording seen (only if true for this business): ${p.sectorInfo.offers.slice(0, 3).join("; ")}.`;
+  // The music and voice for this sector (TikTok sounds research): a library mood, never a track; the clip works muted.
+  const sound = p.sectorInfo.music || p.sectorInfo.voice ? `Sound: ${p.sectorInfo.music ? `music mood ${p.sectorInfo.music.moods.join(" or ")} (${p.sectorInfo.music.note}) from BuPulse's library, never a trending track` : "any calm library mood"}${p.sectorInfo.voice ? `; voice: ${p.sectorInfo.voice.charAt(0).toLowerCase()}${p.sectorInfo.voice.slice(1).replace(/\.$/, "")}` : ""}. The clip must work muted.` : "";
   const cta = seedance ? `Call to action (BuPulse overlays it on the last shot; keep that shot clean): ${p.cta}` : `Call to action: ${p.cta}`;
   const example = p.caption.formula.examples[0];
   const caption = `Caption: ${p.caption.formula.pattern} (e.g. "${example.length > 100 ? `${example.slice(0, 97)}...` : example}"). Include: ${p.caption.mustInclude.join("; ")}. Hashtags ${p.caption.hashtags}.`;
@@ -355,6 +357,7 @@ export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: 
     { lines: lengthNote ? [lengthNote] : [], optional: 1 },
     { lines: [seedance ? "Shots and sound:" : "On-screen text and look:", ...doLines(textRules, 6)], optional: 0, trim: true },
     { lines: [cta], optional: 0 },
+    { lines: sound ? [sound] : [], optional: 2 },
     { lines: mixed ? [line(mixed)] : [], optional: 0 },
     { lines: seedance ? [] : [caption], optional: 0 },
     { lines: donts, optional: 0, trim: true },

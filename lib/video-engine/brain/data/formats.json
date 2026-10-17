@@ -146,7 +146,7 @@
     "cta": "'WhatsApp {phone}', the area, a landmark and the property ID if there is one.",
     "eastAfrica": ["Kigali buyers filter on district, sector and size first: put them in the first 3 s.", "The caption lists price in RWF, rooms, plot size, parking, the area and the number (Hills Props, Samkay).", "Rwandan property ads: a yellow price box top-right ('350M RWF', 'Price: 16M') and a Kinyarwanda checklist caption; 30 s with an agent on camera."],
     "hooks": ["location-stack", "whip-in-tour", "local-greeting", "series-episode", "price-banner", "service-claim", "door-open-walk", "key-in-door", "what-x-buys"],
-    "evidence": ["fb-007", "fb-029", "tt-108", "tt-109", "tt-111", "fb-001", "fb-003", "fb-067", "fb-068", "fb-062", "fb-065", "yt-035", "fb-107", "fb-099", "fb-095", "ig-024", "ig-034"]
+    "evidence": ["fb-007", "fb-029", "tt-108", "tt-109", "tt-111", "fb-001", "fb-003", "fb-067", "fb-068", "fb-062", "fb-065", "yt-035", "fb-107", "fb-099", "fb-095", "ig-024", "ig-034", "tt-164", "tt-165"]
   },
   {
     "id": "offer",
@@ -262,8 +262,8 @@
     "music": "Very low or none.",
     "cta": "'WhatsApp {phone}', the address and the hours.",
     "eastAfrica": ["Derma Skin Clinic Rwanda runs 15+ variants of the doctor-explains format, in English and Kinyarwanda, with the address and two numbers in every caption."],
-    "hooks": ["expert-card", "dont-say-say", "numbered-list", "curiosity", "comment-reply", "trade-in-action", "search-bar"],
-    "evidence": ["fb-002", "fb-031", "fb-040", "fb-036", "fb-038", "tt-114", "fb-059", "fb-071", "fb-060", "fb-093", "fb-108"]
+    "hooks": ["expert-card", "dont-say-say", "numbered-list", "curiosity", "comment-reply", "trade-in-action", "search-bar", "trust-number"],
+    "evidence": ["fb-002", "fb-031", "fb-040", "fb-036", "fb-038", "tt-114", "fb-059", "fb-071", "fb-060", "fb-093", "fb-108", "tt-172", "tt-177", "tt-166"]
   },
   {
     "id": "list",
@@ -290,7 +290,7 @@
     "music": "A quick beat; one tick per item.",
     "cta": "'Call / WhatsApp {phone}'.",
     "eastAfrica": ["Nairobi and Kampala sellers put a price on every product shot (150/=, KSH 35, 85,000) and keep the number on screen."],
-    "hooks": ["price-on-each", "price-list-card", "numbered-list", "occasion-title", "menu-card-loop", "step-routine"],
-    "evidence": ["tt-101", "tt-132", "tt-134", "tt-138", "fb-023", "yt-027", "yt-028", "yt-014", "ig-053"]
+    "hooks": ["price-on-each", "price-list-card", "numbered-list", "occasion-title", "menu-card-loop", "step-routine", "colour-swap"],
+    "evidence": ["tt-101", "tt-132", "tt-134", "tt-138", "fb-023", "yt-027", "yt-028", "yt-014", "ig-053", "tt-154", "tt-156"]
   }
 ]

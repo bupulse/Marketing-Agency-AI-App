@@ -10,8 +10,8 @@
     "formats": ["product-reveal", "offer", "tour"],
     "engines": ["claude", "seedance"],
     "needs": ["price"],
-    "examples": ["48,000RWF", "PRICE 28K", "COMMERCIAL BLENDER PRICE: 48,000RWF", "One bedroom In Gasogi Full furnished 400k / Month", "Spinning bike / Price: 500k / Home workout Gym", "Price: 16M", "*199/- (with a 'Flipkart Finds' badge)", "299 (Meesho badge, top-left, whole clip)"],
-    "evidence": ["fb-011", "tt-079", "fb-029", "fb-005", "fb-012", "fb-049", "fb-068", "fb-067", "ig-003", "ig-010"]
+    "examples": ["48,000RWF", "PRICE 28K", "COMMERCIAL BLENDER PRICE: 48,000RWF", "One bedroom In Gasogi Full furnished 400k / Month", "Spinning bike / Price: 500k / Home workout Gym", "Price: 16M", "*199/- (with a 'Flipkart Finds' badge)", "299 (Meesho badge, top-left, whole clip)", "Your next ride for only 50,000 RWF per day!", "7$ FOR 15 MIN"],
+    "evidence": ["fb-011", "tt-079", "fb-029", "fb-005", "fb-012", "fb-049", "fb-068", "fb-067", "ig-003", "ig-010", "tt-160", "tt-161"]
   },
   {
     "id": "promo-price",
@@ -24,8 +24,8 @@
     "formats": ["offer"],
     "engines": ["claude", "seedance"],
     "needs": ["price", "offer"],
-    "examples": ["BEST BURGERS IN KIGALI / PROMO FOR 5K - DON'T MISS", "hurry! hurry! special offer any style 1800 (inclusive of braids & free wash)", "PROMO! - HAPPY 3RD ANNIVERSARY"],
-    "evidence": ["fb-006", "fb-013", "fb-051"],
+    "examples": ["BEST BURGERS IN KIGALI / PROMO FOR 5K - DON'T MISS", "hurry! hurry! special offer any style 1800 (inclusive of braids & free wash)", "PROMO! - HAPPY 3RD ANNIVERSARY", "28k only, with extension"],
+    "evidence": ["fb-006", "fb-013", "fb-051", "tt-145"],
     "note": "The longest-running local ad in the research (a Nairobi salon, 982 days) is this hook with one flat price that includes a free extra."
   },
   {
@@ -54,8 +54,8 @@
     "formats": ["list", "product-reveal"],
     "engines": ["claude"],
     "needs": ["price"],
-    "examples": ["150/=", "KSH 35", "Glow oil 1litre 85,000", "Caramel cream 1kg 100,000", "Flower keychain with pearls 150/-"],
-    "evidence": ["tt-132", "tt-134", "tt-138", "tt-133", "ig-053"]
+    "examples": ["150/=", "KSH 35", "Glow oil 1litre 85,000", "Caramel cream 1kg 100,000", "Flower keychain with pearls 150/-", "8k"],
+    "evidence": ["tt-132", "tt-134", "tt-138", "tt-133", "ig-053", "tt-150"]
   },
   {
     "id": "price-list-card",
@@ -64,12 +64,12 @@
     "pattern": "{product} {price} / {product} {price} / ... + {phone}",
     "visual": "One product in hand in front of a solid card listing every model and its price, the phone number at the bottom; it stays up.",
     "platforms": ["tiktok"],
-    "sectors": ["phone-shop", "shop", "fashion"],
+    "sectors": ["phone-shop", "shop", "fashion", "salon"],
     "formats": ["list"],
     "engines": ["claude"],
     "needs": ["price", "phone"],
-    "examples": ["iPhone 11 320,000 ... 14 Pro Max 1,250,000", "📍Vintage shirt: 14,000 📍Greg shirt: 25,000"],
-    "evidence": ["tt-101", "tt-064"]
+    "examples": ["iPhone 11 320,000 ... 14 Pro Max 1,250,000", "📍Vintage shirt: 14,000 📍Greg shirt: 25,000", "a printed MENU of nails and lashes: 1k to 7k, lashes 20k to 30k"],
+    "evidence": ["tt-101", "tt-064", "tt-147"]
   },
   {
     "id": "number-in-hand",
@@ -265,12 +265,12 @@
     "pattern": "{product} is here / Now available in {city}",
     "visual": "The new item held up by real staff in front of real stock, or a flag and the product.",
     "platforms": ["facebook", "tiktok"],
-    "sectors": ["phone-shop", "shop", "fashion", "services"],
+    "sectors": ["phone-shop", "shop", "fashion", "services", "salon"],
     "formats": ["product-reveal", "offer", "unboxing"],
     "engines": ["claude", "seedance"],
     "needs": [],
-    "examples": ["🇰🇪 Now Available in Kenya! 🇰🇪", "#GalaxyS26 Ultra is here.", "New Ankara ARRIVALS", "Allow to me reINTRODUCE", "Sasa inapatikana Tanzania", "Now available! Spinning Bikes Have Arrived in Kigali!", "BETTER INTERNET HAS ARRIVED"],
-    "evidence": ["fb-017", "fb-019", "fb-021", "fb-027", "fb-016", "tt-063", "fb-049", "fb-058"],
+    "examples": ["🇰🇪 Now Available in Kenya! 🇰🇪", "#GalaxyS26 Ultra is here.", "New Ankara ARRIVALS", "Allow to me reINTRODUCE", "Sasa inapatikana Tanzania", "Now available! Spinning Bikes Have Arrived in Kigali!", "BETTER INTERNET HAS ARRIVED", "NOW AVAILABLE IN RWANDA."],
+    "evidence": ["fb-017", "fb-019", "fb-021", "fb-027", "fb-016", "tt-063", "fb-049", "fb-058", "tt-145"],
     "note": "The cash-on-delivery sellers ran this template 7 to 12 variants for up to 24 months."
   },
   {
@@ -280,12 +280,12 @@
     "pattern": "{city} / {area} | {count} BEDROOMS | {price}",
     "visual": "Three stacked labels (district, sector, street) over the first shot, then a pill with the rooms; the price follows.",
     "platforms": ["facebook", "tiktok"],
-    "sectors": ["real-estate", "events"],
+    "sectors": ["real-estate", "events", "fashion"],
     "formats": ["tour"],
     "engines": ["claude", "seedance"],
     "needs": ["location"],
-    "examples": ["KIGALI KICUKIRO / KANOMBE KABEZA / MWITUNDA", "4 BEDROOMS", "373SQM", "Iragurishwa 4M ni Iremera Ku muhanda", "Ibibanza byiza Masaka inyuma Ya Gare Bigurishwa / Price: 16M", "350M RWF"],
-    "evidence": ["fb-007", "fb-029", "tt-080", "fb-068", "fb-067"]
+    "examples": ["KIGALI KICUKIRO / KANOMBE KABEZA / MWITUNDA", "4 BEDROOMS", "373SQM", "Iragurishwa 4M ni Iremera Ku muhanda", "Ibibanza byiza Masaka inyuma Ya Gare Bigurishwa / Price: 16M", "350M RWF", "Kisimenti Remera Behind Eco Bank"],
+    "evidence": ["fb-007", "fb-029", "tt-080", "fb-068", "fb-067", "tt-152"]
   },
   {
     "id": "whip-in-tour",
@@ -312,8 +312,8 @@
     "formats": ["tutorial", "ugc-testimonial"],
     "engines": ["seedance", "claude"],
     "needs": ["person"],
-    "examples": ["DR. BOSCO / DERMA SKIN CLINIC", "And I'm A Dermatologist Here At Derma Skin Clinic.", "JUDITH SAFARIS | INGABIRE DORICE FINANCE & ADMINISTRATION OFFICER"],
-    "evidence": ["fb-002", "fb-031", "tt-081", "fb-062", "fb-093"],
+    "examples": ["DR. BOSCO / DERMA SKIN CLINIC", "And I'm A Dermatologist Here At Derma Skin Clinic.", "JUDITH SAFARIS | INGABIRE DORICE FINANCE & ADMINISTRATION OFFICER", "The September intake is here, grab your seat now"],
+    "evidence": ["fb-002", "fb-031", "tt-081", "fb-062", "fb-093", "tt-166", "tt-177"],
     "note": "Needs a real or digital-library presenter the owner chose; never invent a doctor or a title."
   },
   {
@@ -426,12 +426,12 @@
     "pattern": "{count} {product} you need / 1. ... 2. ... 3. ...",
     "visual": "Item 1 on screen at 0 s, one item per beat with a big number.",
     "platforms": ["tiktok", "facebook", "instagram", "shorts"],
-    "sectors": ["school", "shop", "services", "phone-shop"],
+    "sectors": ["school", "shop", "services", "phone-shop", "car-rental"],
     "formats": ["list", "tutorial"],
     "engines": ["claude"],
     "needs": [],
-    "examples": ["1. Perfumes business", "4/20 Business ya products", "1. Build a portfolio", "English to Kinyarwanda", "1. RWANDA", "5 reasons to invest in Rwanda"],
-    "evidence": ["tt-088", "fb-036", "yt-014"]
+    "examples": ["1. Perfumes business", "4/20 Business ya products", "1. Build a portfolio", "English to Kinyarwanda", "1. RWANDA", "5 reasons to invest in Rwanda", "6 THINGS TO DO IN KIGALI", "Top 9 Best Secondary Schools in Rwanda"],
+    "evidence": ["tt-088", "fb-036", "yt-014", "tt-156", "tt-167", "tt-157"]
   },
   {
     "id": "dont-say-say",
@@ -501,8 +501,8 @@
     "formats": ["tour", "offer", "tutorial"],
     "engines": ["claude", "seedance"],
     "needs": ["series"],
-    "examples": ["Shop finds S1 Ep 2", "Road to 100k • Day 9", "How to Sell on Jumia Uganda (Step-by-Step Series)"],
-    "evidence": ["tt-082", "tt-130", "tt-139", "fb-032"]
+    "examples": ["Shop finds S1 Ep 2", "Road to 100k • Day 9", "How to Sell on Jumia Uganda (Step-by-Step Series)", "MONDAY ... (one outfit a day)", "Kigali braid audit part 1", "Day 3 in Kigali"],
+    "evidence": ["tt-082", "tt-130", "tt-139", "fb-032", "tt-153", "tt-143", "tt-163"]
   },
   {
     "id": "giant-word",
@@ -691,7 +691,7 @@
     "engines": ["seedance", "claude"],
     "needs": [],
     "examples": ["Master the skills of a professional mechanic"],
-    "evidence": ["fb-059", "fb-103"]
+    "evidence": ["fb-059", "fb-103", "tt-169", "tt-171"]
   },
   {
     "id": "poster-first",
@@ -862,5 +862,34 @@
     "needs": ["person"],
     "examples": ["iPhone Pro Series Ka Buffet… 13 Pro to 16 Pro Max.", "Still paying for AI assistants."],
     "evidence": ["ig-022", "ig-023", "ig-037", "fb-027", "fb-090"]
+  },
+  {
+    "id": "trust-number",
+    "name": "Trust and numbers first",
+    "type": "authority",
+    "pattern": "{claim} since {year} | {count} branches",
+    "visual": "The place at its best (a lit pharmacy, the campus from above, the owner or a doctor in scrubs) with one line of trust numbers: the founding year, the branches, the insurers accepted, the schools taking part.",
+    "platforms": ["tiktok", "facebook"],
+    "sectors": ["clinic", "school"],
+    "formats": ["tutorial", "tour"],
+    "engines": ["claude", "seedance"],
+    "needs": [],
+    "examples": ["First Private Pharmacy In Rwanda since 1969 | 6 Branches across Kigali", "We work with EDENCARE, SONARWA, and RSSB", "17 SCHOOLS | 52 DEBATES TEAMS"],
+    "evidence": ["tt-172", "tt-177", "tt-170"],
+    "note": "Only the numbers the owner gives; never an invented year, branch count or insurer."
+  },
+  {
+    "id": "colour-swap",
+    "name": "One mannequin, a new colour every beat",
+    "type": "list",
+    "pattern": "{product} | {phone} (the colour changes every 1 to 2 s)",
+    "visual": "A locked shot of one mannequin or one pair of hands; the outfit swaps colour every 1 to 2 s while the number stays on screen for the whole clip.",
+    "platforms": ["tiktok", "facebook"],
+    "sectors": ["fashion"],
+    "formats": ["list", "product-reveal"],
+    "engines": ["claude", "seedance"],
+    "needs": [],
+    "examples": ["Original complete 0787789066", "Karibu guys all sizes available"],
+    "evidence": ["tt-154", "tt-149"]
   }
 ]

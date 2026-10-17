@@ -15,18 +15,18 @@ testing; clients do not see it yet.
 
 ## The numbers
 
-The one place to update when new research comes in (last updated 17 October 2026, after the Instagram research):
+The one place to update when new research comes in (last updated 17 October 2026, after TikTok round 2):
 
 | What | Count |
 | --- | --- |
-| Research rows (videos, ads and captions) | 468: TikTok 139, Facebook 110, Instagram 58, YouTube Shorts 36, post captions 125 |
-| Watched first-hand by a researcher | 304: TikTok 93, Facebook 90, Instagram 58, YouTube 36, TikTok captions 27 |
-| Rwandan rows | 241 |
+| Research rows (videos, ads and captions) | 508: TikTok 179, Facebook 110, Instagram 58, YouTube Shorts 36, post captions 125 |
+| Watched first-hand by a researcher | 344: TikTok 133, Facebook 90, Instagram 58, YouTube 36, TikTok captions 27 |
+| Rwandan rows | 275 |
 | Rows set aside as income-chain or scam posts | 8 |
-| Openings (hooks) | 60 |
+| Openings (hooks) | 62 |
 | Video formats | 10 |
 | Business sectors | 11 |
-| Rules | 69 (55 do, 14 don't) |
+| Rules | 75 (61 do, 14 don't) |
 | Caption formulas | 28, plus 10 ways to order |
 
 ## What you see
@@ -66,12 +66,15 @@ place, the right number of hashtags).
    - Facebook: above the bottom 15%.
    - YouTube Shorts: between the top 10% and the bottom 25%.
    - TikTok and Shorts also keep the right edge free.
-5. **Gives the rules and the don'ts.** For example: put the price in the first frame; keep the number on screen to the
+5. **Chooses the sound.** A music mood from BuPulse's own library for the sector (afro for salons, fashion and
+   travel; calm for clinics and schools), never a trending song, and a voice only when a person carries the clip. The
+   video must work with the sound off: everything said is also on screen.
+6. **Gives the rules and the don'ts.** For example: put the price in the first frame; keep the number on screen to the
    end; name one way to order. And never: a fake Mobile Money "income" screenshot, "the cheapest in Kigali" unless you
    wrote it, or a skin or weight before-and-after.
-6. **Checks the result.** When Claude's design comes back, the Brain gives it the research score (below). The fact
+7. **Checks the result.** When Claude's design comes back, the Brain gives it the research score (below). The fact
    check lists any number or claim that is not in your facts.
-7. **For Seedance clips**, it also tells the prompt writer to keep the clip free of text, because BuPulse adds the
+8. **For Seedance clips**, it also tells the prompt writer to keep the clip free of text, because BuPulse adds the
    price and the number on top afterwards, and it scores the prompt the same way.
 
 ## What the scores mean

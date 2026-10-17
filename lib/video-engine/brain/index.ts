@@ -53,7 +53,7 @@ export const sectorById = (id: string | null | undefined): Sector | null => (id 
 export const evidenceById = (id: string): Evidence | null => EVIDENCE.get(id) ?? null;
 
 /** Lists from the engines the brain refers to (passed in by the test so this file stays dependency-free). */
-export type BrainRefs = { claudeTemplates?: string[]; seedanceFormats?: string[]; seedanceKinds?: string[] };
+export type BrainRefs = { claudeTemplates?: string[]; seedanceFormats?: string[]; seedanceKinds?: string[]; musicMoods?: readonly string[] };
 
 /** Every problem in the database, in plain English; [] when it is sound. Pure. */
 export function checkBrain(data: BrainData = BRAIN, refs: BrainRefs = {}): string[] {
@@ -199,6 +199,7 @@ export function checkBrain(data: BrainData = BRAIN, refs: BrainRefs = {}): strin
     if (!s.hooks.length) say(where, "has no hooks");
     for (const id of s.hooks) if (!hooks.has(id)) say(where, `hook "${id}" does not exist`);
     if (refs.seedanceKinds && s.seedanceKind !== null && !refs.seedanceKinds.includes(s.seedanceKind)) say(where, `Seedance business kind "${s.seedanceKind}" does not exist`);
+    if (s.music && refs.musicMoods) for (const m of s.music.moods) if (!refs.musicMoods.includes(m)) say(where, `music mood "${m}" is not in the music library`);
     cites(where, s.evidence);
   }
   return problems;

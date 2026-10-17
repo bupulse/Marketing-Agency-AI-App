@@ -160,6 +160,10 @@ export type Sector = {
   longestRunning: string;
   /** What the research is thin on for this sector. */
   gaps?: string;
+  /** The music kind for this sector: BuPulse library moods (lib/music/tracks.ts MOODS), never a named track. */
+  music?: { moods: string[]; note: string };
+  /** When a voice-over helps in this sector. */
+  voice?: string;
   evidence: string[];
 };
 

@@ -14,11 +14,11 @@ Code: `lib/video-engine/brain/` (data in `brain/data/*.json`). Tests: `tests/vid
 
 | Part | Count | What it holds |
 | --- | --- | --- |
-| Research rows | 468: 343 videos and ads (277 watched first-hand: TikTok 93, Facebook 90, Instagram 58, YouTube Shorts 36) and 125 post captions (111 Rwandan); 8 income-chain posts kept only as what not to copy |
-| Hooks (openings) | 60 | The first 2 seconds: the line, what is on screen, where it was seen, real example lines |
+| Research rows | 508: 383 videos and ads (317 watched first-hand: TikTok 133, Facebook 90, Instagram 58, YouTube Shorts 36) and 125 post captions (111 Rwandan); 8 income-chain posts kept only as what not to copy |
+| Hooks (openings) | 62 | The first 2 seconds: the line, what is on screen, where it was seen, real example lines |
 | Formats | 10 | Product reveal, UGC testimonial, before/after, unboxing, tour, offer, 3D motion, kinetic typography, tutorial, list or price list |
 | Captions | 4 platforms, all researched, 28 formulas including 5 model captions by sector, 10 ways to order, the caption corpus counts |
-| Rules | 69 (55 do, 14 don't) |
+| Rules | 75 (61 do, 14 don't) |
 | Sectors | 11 | Restaurant, phone shop, salon, fashion, real estate, school, car rental, clinic, events, services, and "shop" for everything else |
 
 The Facebook "Rwanda playbook" (round 2) is folded in: its verbatim opening lines (the price pill, the counter seller
@@ -34,6 +34,12 @@ the before shown first with one lowercase word on Instagram (the result first on
 to the app's buttons (a small shop or phone line in the lower-left corner is the one exception), a comment keyword beside
 the number, the platform's own "AI-generated" label, and the empty-frame, owner-with-stock and "this is what {price}
 buys you" hooks. East Africa is thin there (7 rows).
+TikTok round 2 (40 Kigali clips for salons, fashion, transport and travel, schools, clinics and pharmacies) added: product
+sectors lead with the price, clinics and schools with trust and numbers ("since 1969", "6 Branches", the insurers, "17
+SCHOOLS"); a clean CONTACT US card at the end; and the sound rules from 30 clips (12 carried by text, 11 by the picture,
+7 by a subtitled speaker): never depend on audio, a library music mood per sector (afro for salons, fashion and travel;
+calm for clinics and schools; never a trending track), a voice only when a person carries the clip. Each sector's mood
+and voice go into the designer's brief as a "Sound:" line.
 
 ## The pipeline, step by step
 
@@ -221,8 +227,8 @@ translator, and it only flags forms the corpus never uses:
 
 ## What the brain does not know yet
 
-- **Sound.** All TikTok and Facebook videos were watched muted. Music tempo, whooshes and voice style are from articles,
-  not heard. The owner (or a later pass) should check sound on the top 10 rows.
+- **Sound.** Everything was watched muted. The sound rules come from TikTok's printed sound labels and from what the
+  picture shows (a speaker, burned-in text), not from listening. The owner (or a later pass) should check sound on the top 10 rows.
 - **Instagram** and **YouTube Shorts** are thin on East Africa (7 of 58 reels; few local Shorts): Facebook stays the main evidence for Rwandan ads.
 - **Thin sectors**: events is now the thinnest (6 event and venue rows, plus 2 hotels and residences); Kigali salon
   ads are young (at most 24 days live). Transport and travel (car hire, tours, travel agencies) has 12 Rwandan ads.

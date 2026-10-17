@@ -11,9 +11,10 @@ import { sampleSpec } from "@/lib/video-engine/sample";
 import type { MotionSpec, Scene } from "@/lib/video-engine/spec";
 import type { PromptBrief } from "@/lib/video-engine/seedance-prompt";
 import { VIDEO_TEMPLATES, templateById } from "@/lib/video-engine/templates";
+import { MOODS } from "@/lib/music/tracks";
 
 const REELS = path.join(process.cwd(), "docs/research/reels");
-const refs = { claudeTemplates: VIDEO_TEMPLATES.map((t) => t.id), seedanceFormats: SEEDANCE_FORMATS.map((f) => f.id), seedanceKinds: BUSINESS_KINDS.map((k) => k.id) };
+const refs = { claudeTemplates: VIDEO_TEMPLATES.map((t) => t.id), seedanceFormats: SEEDANCE_FORMATS.map((f) => f.id), seedanceKinds: BUSINESS_KINDS.map((k) => k.id), musicMoods: MOODS };
 const base: BrainBrief = { platform: "tiktok", sector: "shop", format: null, engine: "claude", language: "English", hasPrice: true, hasPhone: true, seconds: 15 };
 
 describe("the brain database", () => {
@@ -231,6 +232,13 @@ describe("brainContext", () => {
               expect(text).toContain("Don't:");
             }
   }, 30_000);
+
+  it("gives the sector's music mood and voice, so the designer's music and voice choices follow the research", () => {
+    const salon = brainContext({ ...base, sector: "salon", format: "before-after" });
+    expect(salon).toMatch(/Sound: music mood afro/);
+    expect(brainContext({ ...base, sector: "clinic", format: "tutorial" })).toMatch(/Sound: music mood calm/);
+    expect(hasKinyarwanda("📍0791869972 waduhamagara cg ukatwandikira dukorera muri chic")).toBe(true);
+  });
 
   it("tells Seedance the text is an overlay, and Claude what goes on screen and in the caption", () => {
     const seedance = brainContext({ ...base, engine: "seedance" });

@@ -15,7 +15,7 @@ Brief: Nova Phones Kigali, Samsung Galaxy A56, 420,000 RWF, WhatsApp 0788 300 40
 3328 characters, about 832 tokens.
 
 ```text
-What works: phone and electronics shop, product reveal, TikTok, 15 s (from 304 ads and reels BuPulse watched).
+What works: phone and electronics shop, product reveal, TikTok, 15 s (from 344 ads and reels BuPulse watched).
 Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):
 1. Number on screen, product in hand: "{phone} (top or lower-middle, whole clip) over {product} in a hand". First 2 s: Hands turn the product to show front and back; the phone or WhatsApp number is fixed on screen from the first frame to the last. Seen: "+250 785 478 140", "Whatsapp/Call: 0796148484".
 2. Seller at the counter, price bar below: "{product} | {price} RWF | {phone}". First 2 s: The seller behind the shop counter holds the item up; a blue or yellow bar across the lower third with the product, the price and two numbers. Seen: "COMMERCIAL BLENDER / 48,000RWF / 0784695549", "TURN YOUR ROOM INTO A GALAXY".
@@ -52,7 +52,7 @@ Brief: The same shop and phone, content in Kinyarwanda (the voice speaks English
 3561 characters, about 890 tokens.
 
 ```text
-What works: phone and electronics shop, product reveal, Facebook, 15 s (from 304 ads and reels BuPulse watched).
+What works: phone and electronics shop, product reveal, Facebook, 15 s (from 344 ads and reels BuPulse watched).
 Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):
 1. Number on screen, product in hand: "{phone} (top or lower-middle, whole clip) over {product} in a hand". First 2 s: Hands turn the product to show front and back; the phone or WhatsApp number is fixed on screen from the first frame to the last. Seen: "+250 785 478 140", "Whatsapp/Call: 0796148484".
 2. Seller at the counter, price bar below: "{product} | {price} RWF | {phone}". First 2 s: The seller behind the shop counter holds the item up; a blue or yellow bar across the lower third with the product, the price and two numbers. Seen: "COMMERCIAL BLENDER / 48,000RWF / 0784695549", "TURN YOUR ROOM INTO A GALAXY".
@@ -86,10 +86,10 @@ Don't:
 
 Brief: Ikaze Homes, 4 bedroom house in Kibagabaga, 180,000,000 RWF, Seedance tour, 15 s, with sound. The phone is overlaid by BuPulse.
 
-3334 characters, about 834 tokens.
+3315 characters, about 829 tokens.
 
 ```text
-What works: real estate (sale and rent), tour, Instagram Reels, 15 s (from 304 ads and reels BuPulse watched).
+What works: real estate (sale and rent), tour, Instagram Reels, 15 s (from 344 ads and reels BuPulse watched).
 Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):
 1. Where, what size, how much: "{city} / {area} | {count} BEDROOMS | {price}". First 2 s: Three stacked labels (district, sector, street) over the first shot, then a pill with the rooms; the price follows. Seen: "KIGALI KICUKIRO / KANOMBE KABEZA / MWITUNDA", "4 BEDROOMS".
 2. Price banner from frame 0: "{product} {price}". First 2 s: The product (or the place) already moving, in a hand or in use, with a large price strip in the top third and the phone bar below; no intro. Seen: "48,000RWF", "PRICE 28K".
@@ -114,10 +114,10 @@ Don't:
 - No film, TV, football clips or copyrighted songs.
 Also:
 - Generated footage keeps the 'AI-generated' label; a generated person is never a real customer.
+- Never depend on audio: the message is in text and picture; sound goes under it.
 - A new shot or text change every 2 to 4 s.
 - One product, one idea, one offer per video.
 - Put proof in the middle: a real customer reacting, the product working, a real shop full of stock, a real number from the owner.
-- One trust line only if the owner gave it: pay after delivery, free delivery, returns, the address.
 East Africa: Kigali buyers filter on district, sector and size first: put them in the first 3 s. The caption lists price in RWF, rooms, plot size, parking, the area and the number (Hills Props, Samkay). Settings that fit: the gate and the front of the house at golden hour; a smooth gimbal walk-through of the living room, kitchen and bedrooms.
 ```
 
@@ -128,7 +128,7 @@ Brief: The same house, made from the listing photos, template Brand story (a tou
 3521 characters, about 880 tokens.
 
 ```text
-What works: real estate (sale and rent), tour, Instagram Reels, 20 s (from 304 ads and reels BuPulse watched).
+What works: real estate (sale and rent), tour, Instagram Reels, 20 s (from 344 ads and reels BuPulse watched).
 Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):
 1. Where, what size, how much: "{city} / {area} | {count} BEDROOMS | {price}". First 2 s: Three stacked labels (district, sector, street) over the first shot, then a pill with the rooms; the price follows. Seen: "KIGALI KICUKIRO / KANOMBE KABEZA / MWITUNDA", "4 BEDROOMS".
 2. Price banner from frame 0: "{product} {price}". First 2 s: The product (or the place) already moving, in a hand or in use, with a large price strip in the top third and the phone bar below; no intro. Seen: "48,000RWF", "PRICE 28K".
@@ -165,7 +165,7 @@ Brief: Cave Kitchen Kicukiro, 'Buy one pizza, get one free every Tuesday', pizza
 3402 characters, about 851 tokens.
 
 ```text
-What works: restaurant, café, bakery, offer, Facebook, 15 s (from 304 ads and reels BuPulse watched).
+What works: restaurant, café, bakery, offer, Facebook, 15 s (from 344 ads and reels BuPulse watched).
 Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):
 1. Offer badge with the day: "{offer} EVERY {day}". First 2 s: Top-down table with the food; a solid badge with the offer and the day sits on screen for the whole clip. Seen: "BUY 1 GET 1 FREE", "BUY ONE PIZZA GET ONE FREE EVERY TU".
 2. Promo for one price: "{claim} | PROMO FOR {price} | DON'T MISS". First 2 s: A hand unwraps or lifts the one product; the header text and the number stay up the whole clip. Seen: "BEST BURGERS IN KIGALI / PROMO FOR 5K - DON'T MISS", "hurry! hurry! special offer any style 1800 (inclusive of braids & free wash)".
@@ -204,10 +204,10 @@ Don't:
 
 Brief: Amahoro Braids, knotless braids, from 25,000 RWF, Seedance transformation, 10 s, with sound. The phone is overlaid by BuPulse.
 
-3304 characters, about 826 tokens.
+3490 characters, about 873 tokens.
 
 ```text
-What works: salon, barber, nails, beauty, before and after, TikTok, 10 s (from 304 ads and reels BuPulse watched).
+What works: salon, barber, nails, beauty, before and after, TikTok, 10 s (from 344 ads and reels BuPulse watched).
 Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):
 1. Wait for it ... (the result first): "Wait for it... ({result} first, then the before)". First 2 s: The finished result (the hairstyle, the room, the car) for 1 to 2 s with 'Wait for it...' or 'After', then the before. Seen: "Wait for it...", "After". Never a body, skin or medical before/after.
 2. Tired of ...? / Still ...?: "Tired of {problem}?". First 2 s: The everyday problem on screen first (dull, real), then a hard cut to the product fixing it. Seen: "Tired of Snoring Ruining Your Sleep?", "Nobody warns you how annoying juicers are to actually clean".
@@ -223,6 +223,7 @@ Shots and sound:
 - Labels, prices and menus are drawn as text on top, never left to a generated image.
 - Open on the best visual in frame 0, never a logo card.
 Call to action (BuPulse overlays it on the last shot; keep that shot clean): Book on WhatsApp {phone}; the street (Roysambu, Lumumba Drive style).
+Sound: music mood afro (mid-tempo Afrobeats or amapiano loops) from BuPulse's library, never a trending track; voice: a voice-over with word-by-word captions for a client story; otherwise the text carries it. The clip must work muted.
 Don't:
 - No income proof: no fake M-Money or bank SMS, no cash piles, no 'get rich' lines.
 - No 'best', 'cheapest', 'most affordable in Kigali' unless the owner wrote it.
@@ -234,9 +235,9 @@ Don't:
 Also:
 - In a before/after, show the result first ('After' or 'Wait for it...'), then the before, then the process, then the offer.
 - Generated footage keeps the 'AI-generated' label; a generated person is never a real customer.
+- Never depend on audio: the message is in text and picture; sound goes under it.
 - A new shot or text change every 2 to 4 s.
 - One product, one idea, one offer per video.
-- Put proof in the middle: a real customer reacting, the product working, a real shop full of stock, a real number from the owner.
 East Africa: One flat price that includes a free extra (braids and a free wash) ran 982 days in Nairobi. Never a body, skin or medical before/after (Meta and TikTok policy, owner rule). Settings that fit: the salon chair with a ring light; close-ups of hands braiding.
 ```
 
@@ -244,14 +245,14 @@ East Africa: One flat price that includes a free extra (braids and a free wash) 
 
 Brief: Bright Future Academy, evening English course, 30,000 RWF a month, WhatsApp 0782 000 333, template 3 reasons, 15 s.
 
-3266 characters, about 817 tokens.
+3480 characters, about 870 tokens.
 
 ```text
-What works: school, training, courses, list or price list, YouTube Shorts, 15 s (from 304 ads and reels BuPulse watched).
+What works: school, training, courses, list or price list, YouTube Shorts, 15 s (from 344 ads and reels BuPulse watched).
 Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):
 1. Numbered list: "{count} {product} you need / 1. ... 2. ... 3. ...". First 2 s: Item 1 on screen at 0 s, one item per beat with a big number. Seen: "1. Perfumes business", "4/20 Business ya products".
-2. More than you think: "Your {product} can do more than you think!". First 2 s: The device's screen or a surprising feature in close-up. Seen: "Your phone can do more than you think!".
-3. Students or workers doing the work: "Master the skills of {claim} at {business}". First 2 s: Hands on tools in the real workshop or classroom, matching uniforms; the branch numbers in the lower third. Seen: "Master the skills of a professional mechanic".
+2. Students or workers doing the work: "Master the skills of {claim} at {business}". First 2 s: Hands on tools in the real workshop or classroom, matching uniforms; the branch numbers in the lower third. Seen: "Master the skills of a professional mechanic".
+3. More than you think: "Your {product} can do more than you think!". First 2 s: The device's screen or a surprising feature in close-up. Seen: "Your phone can do more than you think!".
 Timeline (15 s, 5 to 8 changes per 10 s):
 - 0-1.5 s hook: Item 1 already on screen (in a hand, or the full price list card). On screen: Number 1 or the list title, the phone number.
 - 1.5-12 s body: One item per beat, about 2 s each: a product in a hand in front of the stock, or one reason or lesson point. On screen: A big number and the item; a price label on each product.
@@ -264,6 +265,7 @@ On-screen text and look:
 - Shorts: top 10% clear (auto-captions), bottom 25% clear (title, Subscribe); price and number at 40 to 60% height.
 - Labels, prices and menus are drawn as text on top, never left to a generated image.
 Call to action: WhatsApp {phone} to register; the campus area.
+Sound: music mood calm or inspiring (quiet and clean; inspiring for a brand film) from BuPulse's library, never a trending track; voice: a student or a teacher speaking, always subtitled. The clip must work muted.
 Caption: {count} reasons to {claim} / {product} in {city}: {offer} (e.g. "5 reasons to invest in Rwanda"). Include: the promise, the number or the product name in the first 40 characters; the shop name and the city (people search for them); the phone number in the title for a local shop; 1 to 3 hashtags at the end (#shorts and the city). Hashtags 1 to 3, local first: #shorts #kigali #kigali_250 #rwanda.
 Don't:
 - No income proof: no fake M-Money or bank SMS, no cash piles, no 'get rich' lines.
