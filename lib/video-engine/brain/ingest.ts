@@ -25,6 +25,12 @@ const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "
 type Row = Record<string, unknown>;
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
 
+/**
+ * The first `n` characters by code point, never splitting an emoji: a cut through a surrogate pair writes a lone
+ * "\\ud83d" into evidence.json, which Node accepts but Turbopack's JSON parser rejects.
+ */
+export const firstChars = (text: string, n: number) => Array.from(text).slice(0, n).join("").replace(/[\uD800-\uDBFF]$/, "");
+
 /** "16.6K" -> 16600, "1.1M" -> 1100000, "1615" -> 1615; null when there is no number. */
 export function parseCount(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -93,7 +99,7 @@ export function rowCountry(row: Row): string | null {
 }
 
 export const rowKey = (row: Row): string =>
-  [str(row.url) ?? str(row.clip_url) ?? "", str(row.author) ?? str(row.page) ?? str(row.channel) ?? str(row.page_or_account) ?? "", (str(row.hook) ?? str(row.caption) ?? str(row.title) ?? str(row.structure) ?? "").slice(0, 40)].join(" | ");
+  [str(row.url) ?? str(row.clip_url) ?? "", str(row.author) ?? str(row.page) ?? str(row.channel) ?? str(row.page_or_account) ?? "", firstChars(str(row.hook) ?? str(row.caption) ?? str(row.title) ?? str(row.structure) ?? "", 40)].join(" | ");
 
 /**
  * Ads an advertiser had live at once, as the researchers counted them in the Ad Library

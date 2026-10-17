@@ -4,7 +4,7 @@ import { loadOutcomes, recordOutcome } from "@/lib/video-engine/brain/outcomes-s
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { BRAIN, FORMATS, MAX_HOOK_WORDS, PLATFORMS, firstCommentFor, planSeries, RESEARCH_SOURCES, SECTORS, checkBrain, checkLanguage, checkOutcome, languageTextsOf, outcomesLine, performance, rankWithOutcomes, safeAreaFor, suggestHooks, type Outcome, type SuggestBrief, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
-import { evidenceFromRows, looksLikeScam, parseCount, parseDate, parseJsonl, rowCountry, rowKey, rowStrength, tiktokDate, variantsLive } from "@/lib/video-engine/brain/ingest";
+import { evidenceFromRows, firstChars, looksLikeScam, parseCount, parseDate, parseJsonl, rowCountry, rowKey, rowStrength, tiktokDate, variantsLive } from "@/lib/video-engine/brain/ingest";
 import { SAFE_AREAS, amounts, hasKinyarwanda, scoreCaption, scoreDesign, scoreSeedancePrompt, templateStyle, type ScoreBrief } from "@/lib/video-engine/brain/score";
 import { CONTEXT_MAX_CHARS, ENGINE_SECONDS, rankHooks, brainBriefFromDesign, brainBriefFromPrompt, brainContext, brainFor, formatFromTemplate, scaleTimeline, sectorFromText } from "@/lib/video-engine/brain/select";
 import type { DesignBrief } from "@/lib/video-engine/designer";
@@ -31,6 +31,18 @@ describe("the brain database", () => {
     expect(BRAIN.rules.filter((r) => r.kind === "do").length).toBeGreaterThanOrEqual(30);
     expect(BRAIN.rules.filter((r) => r.kind === "dont").length).toBeGreaterThanOrEqual(10);
     expect(BRAIN.captions.platforms.map((p) => p.platform).sort()).toEqual([...PLATFORMS].sort());
+  });
+
+  it("no data file holds a lone surrogate (half an emoji breaks Turbopack's JSON parser)", () => {
+    const dir = path.join(process.cwd(), "lib/video-engine/brain/data");
+    const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    const strings = (v: unknown): string[] => (typeof v === "string" ? [v] : Array.isArray(v) ? v.flatMap(strings) : v && typeof v === "object" ? Object.entries(v).flatMap(([k, x]) => [k, ...strings(x)]) : []);
+    for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".json"))) {
+      const bad = strings(JSON.parse(fs.readFileSync(path.join(dir, file), "utf8"))).filter((x) => lone.test(x));
+      expect(bad, file).toEqual([]);
+    }
+    expect(firstChars("Pure Luxury 🏡🏡", 13)).toBe("Pure Luxury 🏡");
+    expect(firstChars("ab\uD83D", 3)).toBe("ab");
   });
 
   it("every evidence row points at the researcher's row it came from", () => {
