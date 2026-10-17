@@ -676,13 +676,16 @@ function seedanceAudit(): string {
     "",
     "### The most common misses",
     "",
-    ...top.slice(0, 3).map(([id, m], i) => `${i + 1}. **${id}** in ${m.n} of ${all.length} prompts. Example: ${m.reason}`),
+    ...(top.length ? top.slice(0, 3).map(([id, m], i) => `${i + 1}. **${id}** in ${m.n} of ${all.length} prompts. Example: ${m.reason}`) : [`None: all ${all.length} prompts pass every check.`]),
     "",
     SEEDANCE_FINDINGS,
   ].join("\n");
 }
 
 const SEEDANCE_FINDINGS = `### Whose fault (17 October 2026)
+
+Both prompt-writer issues below were fixed by the Seedance agent on 17 October (commit db5fe6d: prompts within 160 words
+with every shot, before/after opens on the result, examples regenerated); this audit was rerun after it.
 
 **The prompt writer's** (the Seedance agent's files: seedance-brain.ts planSeedanceShots and its templates, seedance-prompt.ts
 SEEDANCE_SYSTEM and writeSeedancePrompt):

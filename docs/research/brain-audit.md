@@ -6,14 +6,14 @@ research block on) scored with the brain's own scorers (`lib/video-engine/brain/
 otherwise. **The sweep briefs carried no platform**, so the designer used its default safe area (y 0.12 to 0.82, x 0.07 to 0.93)
 and default hashtags; the column "outside own box" counts text outside that default, which is the designer's own rule.
 
-Made by `BRAIN_AUDIT=<sweep dir> npx vitest run tests/video-engine/brain.test.ts -t "brain audit"`. Means: design 91.7, caption 96.3.
+Made by `BRAIN_AUDIT=<sweep dir> npx vitest run tests/video-engine/brain.test.ts -t "brain audit"`. Means: design 91, caption 96.3.
 
 | Template | Category | Platform | Style | Design | Caption | Outside own box | Design misses | Caption misses |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 3d-title-drop | 3d | instagram | showcase | 90 | 100 | 5 | safe-area-contact, safe-area, say-length | none |
 | brand-story | ads | facebook | brand | 96 | 92 | 0 | phone-bar | hashtag-count |
 | chrome-luxe | 3d | instagram | luxury | 95 | 100 | 0 | safe-area-contact | none |
-| colour-options | marketplace | facebook | list | 90 | 92 | 8 | safe-area-contact, safe-area, say-length | hashtag-count |
+| colour-options | marketplace | facebook | list | 86 | 92 | 8 | safe-area-contact, safe-area, length, say-length | hashtag-count |
 | colour-pop | motion | instagram | showcase | 93 | 100 | 6 | safe-area-contact, safe-area | none |
 | confetti-launch | 3d | instagram | showcase | 93 | 100 | 5 | safe-area-contact, safe-area | none |
 | dark-minimal | motion | instagram | luxury | 89 | 85 | 1 | phone-bar, safe-area, caption | first-line, caption-price |
@@ -27,20 +27,20 @@ Made by `BRAIN_AUDIT=<sweep dir> npx vitest run tests/video-engine/brain.test.ts
 | kigali-price-first | ads | facebook | direct | 97 | 92 | 1 | say-length | hashtag-count |
 | kinetic-type | motion | instagram | showcase | 92 | 100 | 10 | safe-area-contact, say-length | none |
 | macro-detail | product | instagram | showcase | 90 | 100 | 9 | safe-area-contact, safe-area, say-length | none |
-| marketplace-listing | marketplace | facebook | list | 97 | 92 | 1 | say-length | hashtag-count |
-| offer-flash | ads | facebook | direct | 96 | 80 | 0 | phone-bar | caption-cta, hashtag-count |
+| marketplace-listing | marketplace | facebook | list | 93 | 92 | 1 | length, say-length | hashtag-count |
+| offer-flash | ads | facebook | direct | 92 | 80 | 0 | phone-bar, length | caption-cta, hashtag-count |
 | price-drop | promo | instagram | direct | 95 | 100 | 0 | safe-area-contact | none |
 | product-hero | product | instagram | list | 93 | 100 | 9 | safe-area-contact, safe-area | none |
 | showroom-turntable | 3d | instagram | showcase | 90 | 100 | 8 | safe-area-contact, safe-area, say-length | none |
 | story-cinematic | cinematic | instagram | luxury | 93 | 100 | 0 | phone-bar, say-length | none |
 | studio-turntable | product | instagram | showcase | 86 | 100 | 0 | phone-bar, safe-area-contact, safe-area, say-length | none |
 | tiktok-3-reasons | tiktok | tiktok | list | 90 | 100 | 0 | safe-area-contact, safe-area, say-length | none |
-| tiktok-gadget | tiktok | tiktok | direct | 90 | 89 | 1 | safe-area-contact, safe-area, say-length | first-line |
-| tiktok-secret | tiktok | tiktok | direct | 93 | 100 | 0 | safe-area-contact, safe-area | none |
+| tiktok-gadget | tiktok | tiktok | direct | 86 | 89 | 1 | safe-area-contact, safe-area, length, say-length | first-line |
+| tiktok-secret | tiktok | tiktok | direct | 89 | 100 | 0 | safe-area-contact, safe-area, length | none |
 | tv-spot | ads | facebook | brand | 88 | 92 | 1 | phone-bar, safe-area-contact, say-length | hashtag-count |
 | typography-poster | motion | instagram | list | 92 | 100 | 1 | safe-area-contact, say-length | none |
 | ugc-before-after | ugc | instagram | showcase | 90 | 100 | 1 | safe-area-contact, safe-area, text-crowd | none |
-| ugc-pov | ugc | instagram | showcase | 89 | 100 | 2 | phone-bar, safe-area-contact, safe-area | none |
+| ugc-pov | ugc | instagram | showcase | 85 | 100 | 2 | phone-bar, safe-area-contact, safe-area, length | none |
 | ugc-review | ugc | instagram | showcase | 93 | 100 | 1 | safe-area-contact, safe-area | none |
 | ugc-unboxing | ugc | instagram | showcase | 92 | 100 | 0 | safe-area-contact, say-length | none |
 
@@ -48,9 +48,9 @@ Made by `BRAIN_AUDIT=<sweep dir> npx vitest run tests/video-engine/brain.test.ts
 
 1. **design safe-area-contact** in 27 of 33 designs. Example: "Call / WhatsApp 0788 300 400" in scene 1 and 1 more: the price, number or call to action goes under the app's buttons (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
 2. **design safe-area** in 17 of 33 designs. Example: "6.7-inch AMOLED screen" in scene 2 and 1 more goes outside the safe area (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
-3. **design say-length** in 15 of 33 designs. Example: The say line of scene 5 has 9 words for 2 s (about 2.5 words a second).
+3. **design say-length** in 15 of 33 designs. Example: The say line of scene 2 has 8 words for 2 s (about 2.5 words a second).
 
-All misses by count: design safe-area-contact 27, design safe-area 17, design say-length 15, design phone-bar 10, caption hashtag-count 6, caption first-line 5, design text-crowd 3, caption caption-price 2, design caption 2, caption caption-cta 1.
+All misses by count: design safe-area-contact 27, design safe-area 17, design say-length 15, design phone-bar 10, caption hashtag-count 6, design length 6, caption first-line 5, design text-crowd 3, caption caption-price 2, design caption 2, caption caption-cta 1.
 
 ## The five lowest designs
 
@@ -62,6 +62,21 @@ All misses by count: design safe-area-contact 27, design safe-area 17, design sa
 - text-crowd (scene 4): Scene 4 has 4 text lines besides the price and number; a luxury template keeps to 2.
 - first-line: Put the product and the price or offer in the first 60 characters ("Jumpsuit Diras kuri 18k gusa", "Commercial blender, 48,000 RWF").
 
+**ugc-pov** (ugc, instagram, showcase): design 85, caption 100.
+
+- phone-bar (scene 1): The number is missing from scenes 1, 2, 3; keep it on screen from 0 s to the end (a small quiet line is enough).
+- safe-area-contact (scene 1): "420,000 RWF" in scene 1 and 1 more: the price, number or call to action goes under the app's buttons (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
+- safe-area (scene 2): "6.7-inch AMOLED screen" in scene 2 and 1 more goes outside the safe area (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
+- length: 12 s is outside 15 to 25 s for ugc testimonial on instagram.
+
+**colour-options** (marketplace, facebook, list): design 86, caption 92.
+
+- safe-area-contact (scene 5): "WhatsApp 0788 300 400" in scene 5: the price, number or call to action goes under the app's buttons (facebook: y 0.08 to 0.85, x 0.07 to 0.93).
+- safe-area (scene 2): "Black" in scene 2 and 1 more goes outside the safe area (facebook: y 0.08 to 0.85, x 0.07 to 0.93).
+- length: 10 s is outside 15 to 25 s for product reveal on facebook.
+- say-length (scene 2): The say line of scene 2 has 8 words for 2 s (about 2.5 words a second).
+- hashtag-count: 5 hashtags; captions that work on Facebook use 0 to 3.
+
 **studio-turntable** (product, instagram, showcase): design 86, caption 100.
 
 - phone-bar (scene 1): The number is missing from scenes 1, 2, 3, 4; keep it on screen from 0 s to the end (a small quiet line is enough).
@@ -69,26 +84,13 @@ All misses by count: design safe-area-contact 27, design safe-area 17, design sa
 - safe-area (scene 3): "5,000 mAh battery" in scene 3 goes outside the safe area (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
 - say-length (scene 5): The say line of scene 5 has 9 words for 2 s (about 2.5 words a second).
 
-**hypermotion** (motion, instagram, showcase): design 88, caption 85.
+**tiktok-gadget** (tiktok, tiktok, direct): design 86, caption 89.
 
-- safe-area-contact (scene 1): "📞 0788 300 400" in scene 1 and 5 more: the price, number or call to action goes under the app's buttons (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
-- say-length (scene 4): The say line of scene 4 has 8 words for 2 s (about 2.5 words a second).
-- caption: The post caption is missing the price.
+- safe-area-contact (scene 1): "WhatsApp / Call 0788 300 400" in scene 1 and 8 more: the price, number or call to action goes under the app's buttons (tiktok: y 0.12 to 0.78, x 0.07 to 0.85).
+- safe-area (scene 1): "Genuine with 12-month warranty" in scene 1 and 9 more goes outside the safe area (tiktok: y 0.12 to 0.78, x 0.07 to 0.85).
+- length: 12 s is outside 15 to 25 s for product reveal on tiktok.
+- say-length (scene 4): The say line of scene 4 has 9 words for 1.7 s (about 2.5 words a second).
 - first-line: Put the product and the price or offer in the first 60 characters ("Jumpsuit Diras kuri 18k gusa", "Commercial blender, 48,000 RWF").
-- caption-price: Add the price (420,000 RWF).
-
-**kigali-market** (cinematic, instagram, brand): design 88, caption 100.
-
-- phone-bar (scene 2): The number is missing from scenes 2, 3, 4; keep it on screen from 0 s to the end (a small quiet line is enough for this template).
-- safe-area-contact (scene 1): "Call or WhatsApp 0788 300 400" in scene 1: the price, number or call to action goes under the app's buttons (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
-- safe-area (scene 2): "In stock now: black, light blue, pink" in scene 2 and 1 more goes outside the safe area (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
-
-**tv-spot** (ads, facebook, brand): design 88, caption 92.
-
-- phone-bar (scene 2): The number is missing from scenes 2, 3, 4, 5; keep it on screen from 0 s to the end (a small quiet line is enough for this template).
-- safe-area-contact (scene 6): "WhatsApp / Call 0788 300 400" in scene 6: the price, number or call to action goes under the app's buttons (facebook: y 0.08 to 0.85, x 0.07 to 0.93).
-- say-length (scene 4): The say line of scene 4 has 11 words for 3 s (about 2.5 words a second).
-- hashtag-count: 6 hashtags; captions that work on Facebook use 0 to 3.
 
 ## Whose fault (17 October 2026)
 
@@ -145,63 +147,65 @@ starting shot plan `planSeedanceShots` makes for each of the 31 Seedance templat
 (English, 420,000 RWF) and a Kitenge summer dress (Kitenge Corner Kigali, Kinyarwanda, 25,000 RWF, a sample brief), with one product
 photo and sound on. A Seedance prompt has no on-screen text (BuPulse overlays the price, the number and the caption, in the
 platform's safe area), so nothing in it depends on the platform: each prompt's score is the same for TikTok, Instagram and
-Facebook, and is listed once. Means: examples 97.7, plans 98.
+Facebook, and is listed once. Means: examples 100, plans 100.
 
 | Example | Template | Seconds | Words | Score | Misses |
 | --- | --- | --- | --- | --- | --- |
-| fashion-before-after-kitenge-summer-dress | fashion-outfit-switch | 10 | 145 | 93 | result-first |
-| fashion-product-reveal-kitenge-summer-dress | fashion-lookbook | 8 | 125 | 100 | none |
-| fashion-ugc-testimonial-kitenge-summer-dress | fashion-try-on | 10 | 168 | 93 | length-words |
-| phone-shop-offer-samsung-galaxy-a56 | phone-offer | 8 | 132 | 100 | none |
-| phone-shop-product-reveal-samsung-galaxy-a56 | phone-hero | 8 | 151 | 100 | none |
-| phone-shop-ugc-testimonial-samsung-galaxy-a56 | phone-ugc-review | 10 | 199 | 93 | length-words |
-| phone-shop-unboxing-samsung-galaxy-a56 | phone-unboxing | 10 | 164 | 93 | length-words |
-| real-estate-product-reveal-3-bedroom-house-with-garden-kibagabaga | realestate-golden | 8 | 117 | 100 | none |
-| real-estate-tour-3-bedroom-house-with-garden-kibagabaga | realestate-tour | 12 | 132 | 100 | none |
-| services-before-after-home-cleaning-after-moving-in | services-before-after | 10 | 127 | 100 | none |
-| services-tour-home-cleaning-after-moving-in | services-at-work | 12 | 123 | 100 | none |
-| services-ugc-testimonial-home-cleaning-after-moving-in | services-ugc | 10 | 147 | 100 | none |
+| fashion-before-after-kitenge-summer-dress | fashion-outfit-switch | 10 | 147 | 100 | none |
+| fashion-product-reveal-kitenge-summer-dress | fashion-lookbook | 8 | 121 | 100 | none |
+| fashion-ugc-testimonial-kitenge-summer-dress | fashion-try-on | 10 | 151 | 100 | none |
+| phone-shop-offer-samsung-galaxy-a56 | phone-offer | 8 | 127 | 100 | none |
+| phone-shop-product-reveal-samsung-galaxy-a56 | phone-hero | 8 | 146 | 100 | none |
+| phone-shop-ugc-testimonial-samsung-galaxy-a56 | phone-ugc-review | 10 | 148 | 100 | none |
+| phone-shop-unboxing-samsung-galaxy-a56 | phone-unboxing | 10 | 158 | 100 | none |
+| real-estate-product-reveal-3-bedroom-house-with-garden-kibagabaga | realestate-golden | 8 | 112 | 100 | none |
+| real-estate-tour-3-bedroom-house-with-garden-kibagabaga | realestate-tour | 12 | 127 | 100 | none |
+| services-before-after-home-cleaning-after-moving-in | services-before-after | 10 | 121 | 100 | none |
+| services-tour-home-cleaning-after-moving-in | services-at-work | 12 | 118 | 100 | none |
+| services-ugc-testimonial-home-cleaning-after-moving-in | services-ugc | 10 | 116 | 100 | none |
 
 | Template | Format | Seconds | Galaxy A56 (words) | Kitenge dress (words) | Misses |
 | --- | --- | --- | --- | --- | --- |
-| shop-new-stock | product-reveal | 8 | 100 (145) | 100 (133) | none |
-| shop-ugc-find | ugc-testimonial | 10 | 93 (205) | 93 (177) | length-words |
-| shop-offer | offer | 8 | 100 (126) | 100 (114) | none |
-| restaurant-dish-hero | product-reveal | 8 | 100 (133) | 100 (121) | none |
-| restaurant-menu-tour | tour | 12 | 100 (160) | 100 (145) | none |
-| restaurant-ugc-taste | ugc-testimonial | 10 | 93 (193) | 93 (165) | length-words |
-| restaurant-offer | offer | 8 | 100 (126) | 100 (114) | none |
-| salon-transformation | before-after | 10 | 93 (182) | 93 (167) | length-words |
-| salon-process | tour | 10 | 100 (159) | 100 (145) | none |
-| phone-unboxing | unboxing | 10 | 93 (164) | 100 (153) | length-words |
-| phone-hero | product-reveal | 8 | 100 (151) | 100 (139) | none |
-| phone-ugc-review | ugc-testimonial | 12 | 93 (199) | 93 (169) | length-words |
-| phone-offer | offer | 8 | 100 (132) | 100 (120) | none |
-| realestate-tour | tour | 15 | 93 (166) | 100 (151) | length-words |
-| realestate-golden | product-reveal | 8 | 100 (136) | 100 (122) | none |
-| fashion-lookbook | product-reveal | 10 | 93 (161) | 100 (148) | length-words |
-| fashion-outfit-switch | before-after | 8 | 93 (145) | 93 (133) | result-first |
-| fashion-try-on | ugc-testimonial | 12 | 93 (198) | 93 (168) | length-words |
-| events-hype | offer | 10 | 100 (154) | 100 (140) | none |
-| events-venue-tour | tour | 12 | 100 (150) | 100 (136) | none |
-| services-before-after | before-after | 10 | 100 (152) | 100 (138) | none |
-| services-at-work | tour | 10 | 100 (141) | 100 (127) | none |
-| services-ugc | ugc-testimonial | 10 | 93 (173) | 100 (142) | length-words |
-| education-ugc | ugc-testimonial | 12 | 93 (168) | 100 (142) | length-words |
-| education-tour | tour | 10 | 100 (146) | 100 (131) | none |
-| any-product-hero | product-reveal | 6 | 100 (130) | 100 (118) | none |
-| any-unboxing | unboxing | 10 | 100 (147) | 100 (136) | none |
-| any-ugc-review | ugc-testimonial | 10 | 93 (170) | 100 (142) | length-words |
-| any-offer | offer | 6 | 100 (103) | 100 (91) | none |
-| any-before-after | before-after | 10 | 100 (142) | 100 (131) | none |
-| any-tour | tour | 12 | 100 (140) | 100 (125) | none |
+| shop-new-stock | product-reveal | 8 | 100 (140) | 100 (129) | none |
+| shop-ugc-find | ugc-testimonial | 10 | 100 (149) | 100 (154) | none |
+| shop-offer | offer | 8 | 100 (121) | 100 (110) | none |
+| restaurant-dish-hero | product-reveal | 8 | 100 (128) | 100 (117) | none |
+| restaurant-menu-tour | tour | 12 | 100 (155) | 100 (141) | none |
+| restaurant-ugc-taste | ugc-testimonial | 10 | 100 (155) | 100 (143) | none |
+| restaurant-offer | offer | 8 | 100 (121) | 100 (110) | none |
+| salon-transformation | before-after | 10 | 100 (157) | 100 (142) | none |
+| salon-process | tour | 10 | 100 (154) | 100 (141) | none |
+| phone-unboxing | unboxing | 10 | 100 (158) | 100 (148) | none |
+| phone-hero | product-reveal | 8 | 100 (146) | 100 (135) | none |
+| phone-ugc-review | ugc-testimonial | 12 | 100 (148) | 100 (154) | none |
+| phone-offer | offer | 8 | 100 (127) | 100 (116) | none |
+| realestate-tour | tour | 15 | 100 (160) | 100 (146) | none |
+| realestate-golden | product-reveal | 8 | 100 (131) | 100 (118) | none |
+| fashion-lookbook | product-reveal | 10 | 100 (157) | 100 (144) | none |
+| fashion-outfit-switch | before-after | 8 | 100 (143) | 100 (131) | none |
+| fashion-try-on | ugc-testimonial | 12 | 100 (148) | 100 (151) | none |
+| events-hype | offer | 10 | 100 (149) | 100 (136) | none |
+| events-venue-tour | tour | 12 | 100 (145) | 100 (132) | none |
+| services-before-after | before-after | 10 | 100 (146) | 100 (133) | none |
+| services-at-work | tour | 10 | 100 (136) | 100 (123) | none |
+| services-ugc | ugc-testimonial | 10 | 100 (141) | 100 (126) | none |
+| education-ugc | ugc-testimonial | 12 | 100 (158) | 100 (137) | none |
+| education-tour | tour | 10 | 100 (141) | 100 (127) | none |
+| any-product-hero | product-reveal | 6 | 100 (125) | 100 (114) | none |
+| any-unboxing | unboxing | 10 | 100 (140) | 100 (130) | none |
+| any-ugc-review | ugc-testimonial | 10 | 100 (138) | 100 (126) | none |
+| any-offer | offer | 6 | 100 (98) | 100 (87) | none |
+| any-before-after | before-after | 10 | 100 (134) | 100 (124) | none |
+| any-tour | tour | 12 | 100 (135) | 100 (121) | none |
 
 ### The most common misses
 
-1. **length-words** in 19 of 74 prompts. Example: 168 words; Seedance follows 60 to 160 words best.
-2. **result-first** in 3 of 74 prompts. Example: A before/after shows the result first, then the before (the first shot here is the before).
+None: all 74 prompts pass every check.
 
 ### Whose fault (17 October 2026)
+
+Both prompt-writer issues below were fixed by the Seedance agent on 17 October (commit db5fe6d: prompts within 160 words
+with every shot, before/after opens on the result, examples regenerated); this audit was rerun after it.
 
 **The prompt writer's** (the Seedance agent's files: seedance-brain.ts planSeedanceShots and its templates, seedance-prompt.ts
 SEEDANCE_SYSTEM and writeSeedancePrompt):
