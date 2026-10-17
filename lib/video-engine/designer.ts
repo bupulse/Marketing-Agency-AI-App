@@ -7,7 +7,7 @@ import { estimateCostUsd } from "@/lib/ai/pricing";
 import { hookById } from "./styles";
 import { templateById } from "./templates";
 import { castById } from "./cast";
-import { CAMERA_MOVES, GRADES, RATIOS, SPEC_LIMITS, totalMs, type MotionSpec, type Ratio } from "./spec";
+import { CAMERA_MOVES, GRADES, MATERIALS, PARTICLE_KINDS, RATIOS, SPEC_LIMITS, totalMs, type MotionSpec, type Ratio } from "./spec";
 import { SpecError, extractJson, validateSpec } from "./validate";
 
 const MESSAGES_URL = "https://api.anthropic.com/v1/messages";
@@ -64,6 +64,8 @@ export class DesignError extends Error {
 }
 
 /** The format Claude must answer in: the spec types, condensed. Kept in step with spec.ts (a test checks the keys). */
+const MATERIAL = MATERIALS.map((m) => `"${m}"`).join(" | ");
+
 export const SPEC_FORMAT = `type MotionSpec = {
   title: string;                       // short internal name
   ratio: ${Object.keys(RATIOS).map((r) => `"${r}"`).join(" | ")};
@@ -79,18 +81,20 @@ type Scene = {
   transition: "cut" | "fade" | "slideUp" | "slideLeft" | "zoom" | "wipe" | "flash" | "whip" | "blurZoom" | "spin" | "dip";  // how it arrives
   background: { kind: "solid" | "gradient" | "photo"; colors: Hex[]; angle?: number; photo?: number; blur?: number /*0-40*/; dim?: number /*0-0.8*/; texture?: "none" | "dots" | "grain" | "lines" };
   layers: Layer[];                     // drawn in order, first = bottom; at most ${SPEC_LIMITS.maxLayers}
-  say?: string;                        // optional voice-over line for this scene
+  say?: string;                        // the voice-over line spoken during this scene (about 2.5 words per second of scene)
   camera?: { move: ${CAMERA_MOVES.map((m) => `"${m}"`).join(" | ")}; intensity?: number /*0-1, default 0.5*/; shake?: number /*0-1 handheld*/; ease?: string; focusFrom?: number; focusTo?: number /*depth in focus 0 far - 1 near: a focus pull*/ };
+  light?: { x?: number; y?: number /*where the key light is, fractions of the canvas, may be just outside (-0.5 to 1.5); default 0.25, 0.15*/; intensity?: number /*0-1*/; color?: Hex; fog?: number /*0-1 depth fog: far layers fade into fogColor*/; fogColor?: Hex };  // the scene's key light: lights 3D text, turntables, materials and photos
 };
 // Every layer has a box: x, y = its CENTRE, w, h = its size, all as fractions of the canvas (0.5 = middle).
 // from/to = when it is on screen, as fractions of the scene (default 0 and 1).
 // depth = distance from the camera, 0 far (background) to 1 near: camera moves shift near layers more (parallax). Defaults: photo 0.45, shape 0.6, text 0.85.
 // keyframes = motion over the scene: { at: 0..1, dx?, dy? (offset, fractions of canvas), scale?, rotate? (degrees), opacity?, ease?: "linear"|"in"|"out"|"inOut"|"back"|"elastic"|"bounce" }
 type Layer =
-  | { kind: "photo"; photo: number /*1-based*/; x; y; w; h; from?; to?; keyframes?; depth?; fit?: "cover" | "contain"; radius?: number /*0-0.5*/; shadow?: boolean; border?: Hex | null; zoomTo?: number /*1-1.4 slow zoom inside*/; focusX?: number; focusY?: number }
-  | { kind: "text"; text: string /*max ${SPEC_LIMITS.maxText} chars*/; font: "inter" | "poppins" | "nunito" | "space-grotesk" | "anton" | "playfair" | "dm-serif"; weight?: number; size: number /*fraction of canvas WIDTH, 0.02-0.22*/; color: Hex; x; y; w; h; from?; to?; keyframes?; depth?; align?: "left" | "center" | "right"; uppercase?: boolean; lineHeight?: number; box?: { color: Hex; padding?: number; radius?: number } | null; highlight?: { words: string[]; color: Hex } | null; shadow?: boolean; animate?: "none" | "fade" | "rise" | "drop" | "pop" | "zoom" | "slideLeft" | "slideRight" | "typewriter" | "words" | "wordsPop" | "blurIn"; animateFor?: number /*seconds*/ }
+  | { kind: "photo"; photo: number /*1-based*/; x; y; w; h; from?; to?; keyframes?; depth?; fit?: "cover" | "contain"; radius?: number /*0-0.5*/; shadow?: boolean; border?: Hex | null; zoomTo?: number /*1-1.4 slow zoom inside*/; focusX?: number; focusY?: number; turntable?: { spin?: number /*swings over the scene, 0.2-3, default 1*/; angle?: number /*how far it turns each way, 10-60 degrees*/; reflection?: number /*0-1 glossy floor, 0 = none*/; sweep?: boolean /*moving shine, default true*/ } | null /*the photo turns in 3D on a reflective floor with a contact shadow; leave room below it (the floor reflection takes the lower fifth of the box)*/ }
+  | { kind: "text"; text: string /*max ${SPEC_LIMITS.maxText} chars*/; font: "inter" | "poppins" | "nunito" | "space-grotesk" | "anton" | "playfair" | "dm-serif"; weight?: number; size: number /*fraction of canvas WIDTH, 0.02-0.22*/; color: Hex; x; y; w; h; from?; to?; keyframes?; depth?; align?: "left" | "center" | "right"; uppercase?: boolean; lineHeight?: number; box?: { color: Hex; padding?: number; radius?: number; material?: ${MATERIAL} } | null; highlight?: { words: string[]; color: Hex } | null; shadow?: boolean; text3d?: { depth?: number /*0-1 extrusion, default 0.5*/; side?: Hex /*side colour, darker than the text*/; bevel?: boolean /*bright rim towards the light*/; spin?: boolean /*turns in during the entrance*/; material?: ${MATERIAL} /*face*/ } | null /*extruded 3D letters*/; animate?: "none" | "fade" | "rise" | "drop" | "pop" | "zoom" | "slideLeft" | "slideRight" | "typewriter" | "words" | "wordsPop" | "blurIn"; animateFor?: number /*seconds*/ }
   | { kind: "character" /*cartoon presenter, only when the brief names one*/; x; y; w; h /*the whole body: h 0.4-0.7, w about h*0.6*/; from?; to?; keyframes?; depth?; skin: Hex; hair: "short" | "afro" | "braids" | "bun" | "twists" | "long" | "bald"; hairColor: Hex; outfit: Hex; accent?: Hex; glasses?: boolean; pose?: "stand" | "wave" | "point" | "present" | "thumbsUp" | "hold"; side?: "left" | "right" /*where the gesture goes*/; talk?: [number, number][] /*when the mouth moves, scene fractions*/ }
-  | { kind: "shape"; shape: "rect" | "circle" | "ring" | "line" | "burst" | "blob" | "arrow"; color: Hex; x; y; w; h; from?; to?; keyframes?; depth?; stroke?: number; radius?: number; draw?: boolean /*draws itself in*/ };
+  | { kind: "shape"; shape: "rect" | "circle" | "ring" | "line" | "burst" | "blob" | "arrow"; color: Hex; x; y; w; h; from?; to?; keyframes?; depth?; stroke?: number; radius?: number; draw?: boolean /*draws itself in*/; material?: ${MATERIAL} /*glass: frosted see-through panel; metal: brushed metal lit by the light*/ }
+  | { kind: "particles"; particle: ${PARTICLE_KINDS.map((k) => `"${k}"`).join(" | ")}; x?; y?; w?; h? /*the area, default the whole frame*/; from?; to?; depth?; count?: number /*4-80, default 30*/; colors?: Hex[] /*up to 5*/; size?: number /*fraction of canvas width, 0.002-0.08*/; speed?: number /*0-2*/; seed?: number };
 type Hex = string; // "#rrggbb" or "#rrggbbaa" or "rgba(r,g,b,a)"`;
 
 export function systemPrompt(): string {
@@ -111,6 +115,8 @@ export function systemPrompt(): string {
     "- Photos: you can see them. Use fit \"contain\" for a product shot on a plain background (place it on a solid or gradient background), \"cover\" for lifestyle shots. Set focusX/focusY on the product. Use each good photo at least once; never stretch a bad one full-screen.",
     "- Camera: you are also the director of photography. Give every scene a camera move that serves it (dollyIn to build interest, orbit to show a product in 3D, crashZoom for a punch, pan or tilt to reveal, craneUp for an opening or ending, handheld for UGC realism, pushPull for drama). Set layer depth so the camera creates parallax: background photos 0 to 0.3, the product 0.5 to 0.7, text 0.8 to 1. Use focus pulls (focusFrom/focusTo) for reveals. Vary moves between scenes.",
     "- Film look: choose a look for the whole video that suits the template and the brand (grade, glow, vignette, grain, light leaks, letterbox for cinematic).",
+    "- 3D look (you are a 3D motion designer too): give scenes a key light (light) where it suits the mood; it shades 3D letters, turntables, glass and metal, and photos. Use text3d for big hooks, prices and end cards (1 to 4 words, size 0.1 or more, a side colour clearly darker than the text, bevel true; spin true for the hook) and keep body text flat. Pair text3d with an orbit or pan camera so its sides turn. Use turntable for a product photo with a plain or studio background (fit contain, dark or graded background so the floor reflection shows). Particles add depth: bokeh far (depth 0.1 to 0.2), dust or sparkles near (0.7 to 1), confetti for launches and offers, bubbles for drinks and cosmetics; 15 to 50 is plenty. Glass suits feature cards and captions over rich backgrounds; metal suits premium badges and prices. Fog (0.2 to 0.4) deepens dark scenes. Not every scene needs 3D: one or two strong 3D moments per video, unless the template is a 3D one.",
+    "- Voice-over: write a say line for every scene, in the content language, spoken like a friendly advert (only facts from the brief). About 2.5 words per second of the scene (a 3-second scene: at most 7 words); the scene is stretched a little if the line is longer. The last line is the call to action.",
     "- Motion: every scene must move. Combine entrances (animate), keyframes (scale 0.92 to 1.05, small rotate, dx/dy drifts), slow zoomTo on photos, and varied transitions. Stagger layers with from (0, 0.1, 0.2...) so they arrive one after another.",
     "- Pacing: scenes of 1.5 to 4 seconds; the scene lengths should add up to the requested length. Transitions: match the energy (whip, flash and blurZoom for fast, fade and dip for calm).",
     "- No people's faces are drawn by you; only the business's own photos show people, if any.",

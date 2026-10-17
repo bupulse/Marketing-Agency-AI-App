@@ -4,8 +4,10 @@
 //
 // A frame: each scene is drawn through its virtual camera (cameraAt): layers move by their depth, so near ones shift
 // more than far ones (parallax), with an optional focus pull. Between scenes, a transition. Over everything, the film
-// look (colour grade, glow, light leaks, vignette, grain, cinema bars), drawn from an off-screen buffer.
-import { cameraAt, clamp01, ease, layerWindow, noise, parallax, poseAt, scenesAt, textEntrance, type ActiveScene, type CameraState } from "./animate";
+// look (colour grade, glow, light leaks, vignette, grain, cinema bars), drawn from an off-screen buffer. The 3D look
+// (key light, fog, extruded text, turntables, particles, glass and metal) is drawn by draw3d.ts.
+import { cameraAt, clamp01, ease, layerWindow, lightState, noise, parallax, poseAt, scenesAt, spinAngle, textEntrance, towardLight, vanishingPoint, type ActiveScene, type CameraState } from "./animate";
+import { drawFogHaze, drawLightGlow, drawParticles, drawTurntable, fogFilter, lightPhoto, materialFill, materialFinish, paintText3d, text3dPaint, type Env } from "./draw3d";
 import { FONTS, canvasSize, type Background, type CharacterLayer, type Layer, type Look, type MotionSpec, type PhotoLayer, type Quality, type Scene, type ShapeLayer, type TextLayer } from "./spec";
 
 export type Img = CanvasImageSource & { width: number; height: number };
@@ -21,16 +23,18 @@ export type DrawOptions = {
 };
 
 const buffers = new WeakMap<object, { canvas: AnyCanvas; ctx: Ctx }>();
+/** The 3D look's scratch buffers (turntable reflections), one per target canvas. */
+const scratchBuffers = new WeakMap<object, { canvas: AnyCanvas; ctx: Ctx }>();
 const defaultCanvas = (w: number, h: number): AnyCanvas | null => (typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : null);
 
-function bufferFor(owner: object, w: number, h: number, make: (w: number, h: number) => AnyCanvas | null): { canvas: AnyCanvas; ctx: Ctx } | null {
-  const have = buffers.get(owner);
+function bufferFor(owner: object, w: number, h: number, make: (w: number, h: number) => AnyCanvas | null, map = buffers): { canvas: AnyCanvas; ctx: Ctx } | null {
+  const have = map.get(owner);
   if (have && have.canvas.width === w && have.canvas.height === h) return have;
   const canvas = make(w, h);
   const ctx = canvas?.getContext("2d") as Ctx | null | undefined;
   if (!canvas || !ctx) return null;
   const made = { canvas, ctx };
-  buffers.set(owner, made);
+  map.set(owner, made);
   return made;
 }
 
@@ -43,12 +47,13 @@ export function drawSpecFrame(ctx: Ctx, spec: MotionSpec, photos: Map<number, Im
   const make = opts.makeCanvas === undefined ? defaultCanvas : opts.makeCanvas;
   const buffer = needsBuffer(spec.look) && make ? bufferFor(ctx, W, H, make) : null;
   const target = buffer ? buffer.ctx : ctx;
-  drawScenes(target, spec, photos, tMs, W, H);
+  const scratch = () => (make ? bufferFor(target, W, H, make, scratchBuffers) : null);
+  drawScenes(target, spec, photos, tMs, W, H, scratch);
   if (buffer) composite(ctx, buffer.canvas, spec.look as Look, W, H);
   drawOverlays(ctx, spec.look, W, H, tMs);
 }
 
-function drawScenes(ctx: Ctx, spec: MotionSpec, photos: Map<number, Img>, tMs: number, W: number, H: number): void {
+function drawScenes(ctx: Ctx, spec: MotionSpec, photos: Map<number, Img>, tMs: number, W: number, H: number, scratch: Env["scratch"]): void {
   const { current, previous, transition } = scenesAt(spec, tMs);
   const kind = spec.scenes[current.index].transition ?? "fade";
   ctx.save();
@@ -57,8 +62,8 @@ function drawScenes(ctx: Ctx, spec: MotionSpec, photos: Map<number, Img>, tMs: n
   ctx.fillStyle = kind === "dip" && previous ? "#000000" : spec.palette.background;
   ctx.fillRect(0, 0, W, H);
   const tf = previous ? transitionTransforms(kind, transition, W, H) : null;
-  if (previous && tf) withTransform(ctx, tf.prev, W, H, () => drawScene(ctx, spec, spec.scenes[previous.index], previous, photos, W, H, tMs));
-  withTransform(ctx, tf?.cur ?? IDENTITY, W, H, () => drawScene(ctx, spec, spec.scenes[current.index], current, photos, W, H, tMs));
+  if (previous && tf) withTransform(ctx, tf.prev, W, H, () => drawScene(ctx, spec, spec.scenes[previous.index], previous, photos, W, H, tMs, scratch));
+  withTransform(ctx, tf?.cur ?? IDENTITY, W, H, () => drawScene(ctx, spec, spec.scenes[current.index], current, photos, W, H, tMs, scratch));
   if (previous && kind === "flash") {
     ctx.globalAlpha = Math.sin(transition * Math.PI) * 0.9;
     ctx.fillStyle = "#ffffff";
@@ -123,9 +128,9 @@ function withTransform(ctx: Ctx, tf: Tf, W: number, H: number, draw: () => void)
   ctx.restore();
 }
 
-const DEFAULT_DEPTH = { photo: 0.45, text: 0.85, shape: 0.6, character: 0.7 } as const;
+const DEFAULT_DEPTH = { photo: 0.45, text: 0.85, shape: 0.6, character: 0.7, particles: 0.5 } as const;
 
-function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene, photos: Map<number, Img>, W: number, H: number, tMs: number): void {
+function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene, photos: Map<number, Img>, W: number, H: number, tMs: number, scratch: Env["scratch"]): void {
   const cam = cameraAt(scene.camera, active.progress, tMs);
   const k = Math.min(W, H) / 1080;
   const outerFilter = ctx.filter && ctx.filter !== "none" ? ctx.filter : "";
@@ -142,9 +147,15 @@ function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene
   ctx.translate(W / 2 + bg.dx * W, H / 2 + bg.dy * H);
   ctx.scale(bg.scale * over, bg.scale * over);
   ctx.translate(-W / 2, -H / 2);
-  ctx.filter = joinFilters(outerFilter, focusBlur(cam, 0, k));
+  const light = lightState(scene.light);
+  ctx.filter = joinFilters(outerFilter, focusBlur(cam, 0, k), fogFilter(light, 0));
   drawBackground(ctx, scene.background, active.progress, photos, W, H, tMs, k);
   ctx.restore();
+  ctx.filter = outerFilter || "none";
+  drawLightGlow(ctx, light, W, H);
+  drawFogHaze(ctx, light, W, H);
+  const vp = vanishingPoint(cam, W, H);
+  const lightPx = { x: light.x * W, y: light.y * H };
 
   for (const layer of scene.layers) {
     const win = layerWindow(layer, active.progress, scene.seconds, layer.kind === "text" ? (layer.animateFor ?? 0.6) : 0.4);
@@ -159,17 +170,22 @@ function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene
     const cy = H / 2 + (rect.y + rect.h / 2 + pose.dy * H - H / 2) * par.scale + par.dy * H;
     const ownOpacity = layer.keyframes?.some((f) => f.opacity !== undefined) ? 1 : layer.kind === "text" ? 1 : ease("out", win.enter);
     ctx.globalAlpha *= clamp01(pose.opacity * ownOpacity * win.exit);
-    // Text is a graphic on top of the shot, as in real ads: it moves with the camera but always stays sharp.
-    ctx.filter = joinFilters(outerFilter, layer.kind === "text" ? "" : focusBlur(cam, depth, k));
+    // Text is a graphic on top of the shot, as in real ads: it moves with the camera but always stays sharp (no focus
+    // blur, no fog).
+    ctx.filter = joinFilters(outerFilter, layer.kind === "text" ? "" : focusBlur(cam, depth, k), layer.kind === "text" ? "" : fogFilter(light, depth));
+    const env: Env = { W, H, k, tMs, cam, light, lightPx, toLight: towardLight(cx, cy, light, W, H), centre: { x: cx, y: cy }, vp, palette: spec.palette, scratch };
     ctx.translate(cx, cy);
     if (pose.rotate) ctx.rotate((pose.rotate * Math.PI) / 180);
     const scale = Math.max(0.0001, pose.scale * par.scale);
     if (scale !== 1) ctx.scale(scale, scale);
     const local: Rect = { x: -rect.w / 2, y: -rect.h / 2, w: rect.w, h: rect.h };
-    if (layer.kind === "photo") drawPhoto(ctx, layer, local, photos.get(layer.photo), active.progress, spec);
-    else if (layer.kind === "text") drawText(ctx, layer, local, win.enter, W);
+    if (layer.kind === "photo") {
+      if (layer.turntable) drawTurntable(ctx, layer, local, photos.get(layer.photo), active.progress, env);
+      else drawPhoto(ctx, layer, local, photos.get(layer.photo), active.progress, spec, env);
+    } else if (layer.kind === "text") drawText(ctx, layer, local, win.enter, W, env);
     else if (layer.kind === "character") drawCharacter(ctx, layer, local, active.progress, tMs);
-    else drawShape(ctx, layer, local, win.enter, W, tMs);
+    else if (layer.kind === "particles") drawParticles(ctx, layer, local, env);
+    else drawShape(ctx, layer, local, win.enter, W, tMs, env);
     ctx.restore();
   }
   ctx.restore();
@@ -373,13 +389,15 @@ function drawTexture(ctx: Ctx, texture: Background["texture"], W: number, H: num
   ctx.restore();
 }
 
-function drawPhoto(ctx: Ctx, layer: PhotoLayer, r: Rect, img: Img | undefined, progress: number, spec: MotionSpec): void {
+function drawPhoto(ctx: Ctx, layer: PhotoLayer, r: Rect, img: Img | undefined, progress: number, spec: MotionSpec, env: Env): void {
   const radius = (layer.radius ?? 0) * Math.min(r.w, r.h);
   if (layer.shadow) {
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,0.45)";
     ctx.shadowBlur = Math.min(r.w, r.h) * 0.08;
-    ctx.shadowOffsetY = Math.min(r.w, r.h) * 0.03;
+    // With a key light the shadow falls away from it; without one, straight down.
+    ctx.shadowOffsetX = env.light.set ? -env.toLight.x * Math.min(r.w, r.h) * 0.05 : 0;
+    ctx.shadowOffsetY = env.light.set ? -env.toLight.y * Math.min(r.w, r.h) * 0.05 : Math.min(r.w, r.h) * 0.03;
     ctx.fillStyle = layer.fit === "contain" ? "rgba(0,0,0,0)" : spec.palette.primary;
     roundRectPath(ctx, r, radius);
     ctx.fill();
@@ -395,6 +413,7 @@ function drawPhoto(ctx: Ctx, layer: PhotoLayer, r: Rect, img: Img | undefined, p
     ctx.fillStyle = spec.palette.primary;
     ctx.fillRect(r.x, r.y, r.w, r.h);
   }
+  lightPhoto(ctx, r, env);
   ctx.restore();
   if (layer.border) {
     ctx.save();
@@ -429,7 +448,7 @@ export function layoutWords(words: string[], measure: (s: string) => number, max
   return { lines, widths };
 }
 
-function drawText(ctx: Ctx, layer: TextLayer, r: Rect, enter: number, W: number): void {
+function drawText(ctx: Ctx, layer: TextLayer, r: Rect, enter: number, W: number, env: Env): void {
   const font = FONTS[layer.font];
   const text = layer.uppercase ? layer.text.toUpperCase() : layer.text;
   let px = layer.size * W;
@@ -470,6 +489,13 @@ function drawText(ctx: Ctx, layer: TextLayer, r: Rect, enter: number, W: number)
   }
   ctx.globalAlpha *= whole.opacity;
   if (whole.blur > 0.5) ctx.filter = `blur(${whole.blur.toFixed(1)}px)`;
+  // 3D letters spinning in: the block turns round its vertical axis (narrower while turned, more side showing).
+  const td = layer.text3d ? text3dPaint(layer.text3d, layer.color, px, enter, layer.shadow === true, env) : null;
+  if (td && td.spin > 0.001) {
+    ctx.translate(r.x + r.w / 2, 0);
+    ctx.scale(Math.max(0.05, Math.cos(spinAngle(enter))), 1);
+    ctx.translate(-(r.x + r.w / 2), 0);
+  }
 
   if (layer.box) {
     const pad = (layer.box.padding ?? 0.025) * W;
@@ -478,12 +504,19 @@ function drawText(ctx: Ctx, layer: TextLayer, r: Rect, enter: number, W: number)
     const bx = align === "left" ? r.x : align === "right" ? r.x + r.w - widest : r.x + (r.w - widest) / 2;
     const boxRect = { x: bx - pad, y: top - pad * 0.6, w: widest + pad * 2, h: blockH + pad * 1.2 };
     ctx.save();
-    ctx.fillStyle = layer.box.color;
+    const material = layer.box.material;
+    if (material === "glass") {
+      ctx.shadowColor = "rgba(0,0,0,0.25)";
+      ctx.shadowBlur = pad * 1.2;
+      ctx.shadowOffsetY = pad * 0.3;
+    }
+    ctx.fillStyle = material ? materialFill(ctx, material, layer.box.color, boxRect, env) : layer.box.color;
     roundRectPath(ctx, boxRect, (layer.box.radius ?? 0.2) * Math.min(boxRect.w, boxRect.h));
     ctx.fill();
+    if (material) materialFinish(ctx, material, layer.box.color, boxRect, env);
     ctx.restore();
   }
-  if (layer.shadow) {
+  if (layer.shadow && !td) {
     ctx.shadowColor = "rgba(0,0,0,0.5)";
     ctx.shadowBlur = px * 0.25;
     ctx.shadowOffsetY = px * 0.06;
@@ -493,6 +526,8 @@ function drawText(ctx: Ctx, layer: TextLayer, r: Rect, enter: number, W: number)
   const total = placed.length;
   const chars = text.length;
   let shownChars = anim === "typewriter" ? Math.floor(enter * chars + 0.0001) : Infinity;
+  // One word (or part of one, for the typewriter): flat, or in 3D with its sides and lit face.
+  const paint = (s: string, x: number, y: number, width: number, color: string) => (td ? paintText3d(ctx, s, x, y, width, color, td, env) : ctx.fillText(s, x, y));
   for (const w of placed) {
     const y = top + w.line * lineH() + lineH() / 2;
     ctx.fillStyle = w.color;
@@ -506,28 +541,34 @@ function drawText(ctx: Ctx, layer: TextLayer, r: Rect, enter: number, W: number)
         const s = 0.5 + 0.5 * ease("back", slice);
         ctx.translate(w.x + w.width / 2, y);
         ctx.scale(s, s);
-        ctx.fillText(w.text, -w.width / 2, 0);
+        paint(w.text, -w.width / 2, 0, w.width, w.color);
       } else {
-        ctx.fillText(w.text, w.x, y + (1 - ease("out", slice)) * px * 0.3);
+        paint(w.text, w.x, y + (1 - ease("out", slice)) * px * 0.3, w.width, w.color);
       }
       ctx.restore();
     } else if (anim === "typewriter") {
       if (shownChars <= 0) break;
       const part = w.text.slice(0, shownChars);
-      ctx.fillText(part, w.x, y);
+      paint(part, w.x, y, ctx.measureText(part).width, w.color);
       shownChars -= w.text.length + 1;
     } else {
-      ctx.fillText(w.text, w.x, y);
+      paint(w.text, w.x, y, w.width, w.color);
     }
   }
   ctx.restore();
 }
 
-function drawShape(ctx: Ctx, layer: ShapeLayer, r: Rect, enter: number, W: number, tMs: number): void {
+function drawShape(ctx: Ctx, layer: ShapeLayer, r: Rect, enter: number, W: number, tMs: number, env: Env): void {
   const progress = layer.draw ? ease("inOut", enter) : 1;
   const stroke = (layer.stroke ?? 0.008) * W;
-  ctx.fillStyle = layer.color;
-  ctx.strokeStyle = layer.color;
+  const paint = layer.material ? materialFill(ctx, layer.material, layer.color, r, env) : layer.color;
+  if (layer.material === "glass") {
+    ctx.shadowColor = "rgba(0,0,0,0.22)";
+    ctx.shadowBlur = Math.min(r.w, r.h) * 0.08;
+    ctx.shadowOffsetY = Math.min(r.w, r.h) * 0.03;
+  }
+  ctx.fillStyle = paint;
+  ctx.strokeStyle = paint;
   ctx.lineWidth = stroke;
   ctx.lineCap = "round";
   switch (layer.shape) {
@@ -603,6 +644,8 @@ function drawShape(ctx: Ctx, layer: ShapeLayer, r: Rect, enter: number, W: numbe
       roundRectPath(ctx, { x: r.x, y: r.y, w: r.w * (layer.draw ? progress : 1), h: r.h }, (layer.radius ?? 0) * Math.min(r.w, r.h));
       ctx.fill();
   }
+  // Filled shapes get the material's rim on the path just drawn (strokes are already the material).
+  if (layer.material && layer.shape !== "ring" && layer.shape !== "line" && layer.shape !== "arrow") materialFinish(ctx, layer.material, layer.color, r, env);
 }
 
 // ---- Cartoon presenter ----------------------------------------------------------------------------------------------

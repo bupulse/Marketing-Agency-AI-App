@@ -8,6 +8,8 @@ import {
   EASES,
   FONTS,
   GRADES,
+  MATERIALS,
+  PARTICLE_KINDS,
   SHAPES,
   SPEC_LIMITS,
   TEXT_ANIMATIONS,
@@ -19,10 +21,14 @@ import {
   type FontId,
   type Keyframe,
   type Layer,
+  type Light,
   type Look,
+  type Material,
   type MotionSpec,
   type Ratio,
   type Scene,
+  type Text3d,
+  type Turntable,
 } from "./spec";
 
 export class SpecError extends Error {
@@ -117,6 +123,40 @@ function look(v: unknown): Look | undefined {
   };
 }
 
+const material = (v: unknown): Material | undefined => (typeof v === "string" && (MATERIALS as readonly string[]).includes(v) ? (v as Material) : undefined);
+
+function light(v: unknown): Light | undefined {
+  if (!isObj(v)) return undefined;
+  const fog = optNum(v.fog, 0, 1);
+  return {
+    // The light may sit just outside the frame (a sun above, a lamp at the side).
+    x: num(v.x, -0.5, 1.5, 0.25),
+    y: num(v.y, -0.5, 1.5, 0.15),
+    intensity: num(v.intensity, 0, 1, 0.6),
+    color: color(v.color, "#ffffff"),
+    fog,
+    fogColor: fog ? color(v.fogColor, "#c8d2e6") : undefined,
+  };
+}
+
+function text3d(v: unknown): Text3d | null {
+  if (v === true) return { depth: 0.5 };
+  if (!isObj(v)) return null;
+  return {
+    depth: num(v.depth, 0.05, 1, 0.5),
+    side: v.side ? color(v.side, "#333333") : undefined,
+    bevel: v.bevel === true,
+    spin: v.spin === true,
+    material: material(v.material),
+  };
+}
+
+function turntable(v: unknown): Turntable | null {
+  if (v === true) return { spin: 1, angle: 35, reflection: 0.35, sweep: true };
+  if (!isObj(v)) return null;
+  return { spin: num(v.spin, 0.2, 3, 1), angle: num(v.angle, 10, 60, 35), reflection: num(v.reflection, 0, 1, 0.35), sweep: v.sweep !== false };
+}
+
 function layer(v: unknown, photoCount: number, palette: MotionSpec["palette"]): Layer | null {
   if (!isObj(v)) return null;
   if (v.kind === "photo") {
@@ -133,6 +173,7 @@ function layer(v: unknown, photoCount: number, palette: MotionSpec["palette"]): 
       zoomTo: optNum(v.zoomTo, 1, 1.4),
       focusX: optNum(v.focusX, 0, 1),
       focusY: optNum(v.focusY, 0, 1),
+      turntable: turntable(v.turntable),
     };
   }
   if (v.kind === "text") {
@@ -154,11 +195,12 @@ function layer(v: unknown, photoCount: number, palette: MotionSpec["palette"]): 
       align: oneOf(v.align, ["left", "center", "right"] as const, "center"),
       uppercase: v.uppercase === true,
       lineHeight: optNum(v.lineHeight, 0.8, 1.8),
-      box: isObj(v.box) ? { color: color(v.box.color, palette.primary), padding: optNum(v.box.padding, 0, 0.1), radius: optNum(v.box.radius, 0, 0.5) } : null,
+      box: isObj(v.box) ? { color: color(v.box.color, palette.primary), padding: optNum(v.box.padding, 0, 0.1), radius: optNum(v.box.radius, 0, 0.5), material: material(v.box.material) } : null,
       highlight: hl
         ? { words: (hl.words as unknown[]).map((w) => cleanText(w, 30).toLowerCase()).filter(Boolean).slice(0, 6), color: color(hl.color, palette.accent) }
         : null,
       shadow: v.shadow === true,
+      text3d: text3d(v.text3d),
       animate: oneOf(v.animate, TEXT_ANIMATIONS, "fade"),
       animateFor: optNum(v.animateFor, 0.1, 3),
     };
@@ -194,6 +236,22 @@ function layer(v: unknown, photoCount: number, palette: MotionSpec["palette"]): 
       stroke: optNum(v.stroke, 0.001, 0.05),
       radius: optNum(v.radius, 0, 0.5),
       draw: v.draw === true,
+      material: material(v.material),
+    };
+  }
+  if (v.kind === "particles") {
+    const colors = (Array.isArray(v.colors) ? v.colors : []).slice(0, 5).map((c) => color(c, "#ffffff"));
+    // A particle field is usually the whole frame: without a box it fills the canvas.
+    const b = box({ x: 0.5, y: 0.5, w: 1, h: 1, ...v });
+    return {
+      kind: "particles",
+      ...b,
+      particle: oneOf(v.particle, PARTICLE_KINDS, "dust"),
+      count: Math.round(num(v.count, 4, 80, 30)),
+      colors: colors.length ? colors : undefined,
+      size: optNum(v.size, 0.002, 0.08),
+      speed: optNum(v.speed, 0, 2),
+      seed: Math.round(num(v.seed, 0, 9999, 1)),
     };
   }
   return null;
@@ -239,6 +297,7 @@ export function validateSpec(raw: unknown, opts: { ratio: Ratio; photoCount: num
       transition: i === 0 ? "cut" : oneOf(s.transition, TRANSITIONS, "fade"),
       say: cleanText(s.say, 160) || undefined,
       camera: camera(s.camera, opts.fixedLens === true),
+      light: light(s.light),
     }));
   if (scenes.length < SPEC_LIMITS.minScenes) throw new SpecError("The design had too few scenes.");
   fitLength(scenes, opts.seconds);

@@ -195,7 +195,7 @@ describe("spec, styles and sample", () => {
   it("the sample uses every layer kind and passes validation unchanged", () => {
     const sample = sampleSpec({ business: "B", product: "P", photoCount: 2 });
     const kinds = new Set(sample.scenes.flatMap((s) => s.layers.map((l) => l.kind)));
-    expect(kinds).toEqual(new Set(["text", "shape", "photo", "character"]));
+    expect(kinds).toEqual(new Set(["text", "shape", "photo", "character", "particles"]));
     const checked = validateSpec(sample, { ratio: "9:16", photoCount: 2, seconds: totalMs(sample) / 1000 });
     expect(checked.scenes.map((s) => s.layers.length)).toEqual(sample.scenes.map((s) => s.layers.length));
   });

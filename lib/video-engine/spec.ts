@@ -97,6 +97,58 @@ export const SHAPES = ["rect", "circle", "ring", "line", "burst", "blob", "arrow
 export type ShapeKind = (typeof SHAPES)[number];
 
 /**
+ * Surface presets for shapes, text boxes and 3D letters (docs/VIDEO_ENGINE.md, "3D look"). glass: a frosted see-through
+ * panel with a bright rim and a sheen; metal: brushed metal bands lit by the scene's key light, tinted by the colour.
+ */
+export const MATERIALS = ["glass", "metal"] as const;
+export type Material = (typeof MATERIALS)[number];
+
+/**
+ * The key light of a scene: where it shines from (fractions of the canvas, may sit outside it), how strong and what
+ * colour. It lights 3D text, turntable photos, materials and photo layers (highlight on the near side, shade and cast
+ * shadow on the far side). `fog` fades far layers (low depth) into `fogColor`, like haze in a deep set.
+ */
+export interface Light {
+  x?: number;
+  y?: number;
+  /** 0 to 1 (default 0.6). */
+  intensity?: number;
+  color?: string;
+  /** Depth fog, 0 to 1 (default 0: none). */
+  fog?: number;
+  fogColor?: string;
+}
+
+/** Extruded 3D letters: a stack of offset copies for depth, a lit front face, an optional bevel rim. */
+export interface Text3d {
+  /** Extrusion length, 0 to 1 (default 0.5; 1 is about a third of the letter height). */
+  depth?: number;
+  /** Colour of the sides (default: the text colour, darkened). */
+  side?: string;
+  /** A bright rim on the edge facing the light. */
+  bevel?: boolean;
+  /** The letters turn in (around the vertical axis) during the entrance. */
+  spin?: boolean;
+  /** Face material (default: a lit gradient of the text colour). */
+  material?: Material;
+}
+
+/** A product photo on a 3D turntable: it swings round on a reflective floor with a contact shadow and a moving shine. */
+export interface Turntable {
+  /** Swings over the scene (0.2 to 3, default 1). */
+  spin?: number;
+  /** How far it turns each way, in degrees (10 to 60, default 35). */
+  angle?: number;
+  /** Floor reflection strength, 0 to 1 (default 0.35; 0 = no floor). */
+  reflection?: number;
+  /** The light sweep across the surface (default true). */
+  sweep?: boolean;
+}
+
+export const PARTICLE_KINDS = ["dust", "sparkles", "bokeh", "confetti", "bubbles"] as const;
+export type ParticleKind = (typeof PARTICLE_KINDS)[number];
+
+/**
  * A change over the scene. `at` is the moment in the scene, 0 (its start) to 1 (its end). Positions are fractions of
  * the canvas (0.5 = middle); `dx`/`dy` move a layer from its own position; `scale` 1 = its size; `rotate` in degrees.
  */
@@ -137,6 +189,8 @@ export interface PhotoLayer extends LayerBase {
   zoomTo?: number;
   focusX?: number;
   focusY?: number;
+  /** Show the photo on a 3D turntable (best with fit contain on a clean background). */
+  turntable?: Turntable | null;
 }
 
 export interface TextLayer extends LayerBase {
@@ -150,11 +204,13 @@ export interface TextLayer extends LayerBase {
   align?: "left" | "center" | "right";
   uppercase?: boolean;
   lineHeight?: number;
-  /** A box behind the text. */
-  box?: { color: string; padding?: number; radius?: number } | null;
+  /** A box behind the text, optionally glass or metal. */
+  box?: { color: string; padding?: number; radius?: number; material?: Material } | null;
   /** Words (exact, case-insensitive) painted in another colour. */
   highlight?: { words: string[]; color: string } | null;
   shadow?: boolean;
+  /** Extruded 3D letters (null or absent: flat). */
+  text3d?: Text3d | null;
   animate?: TextAnimation;
   /** Length of the entrance animation in seconds (default 0.6). */
   animateFor?: number;
@@ -169,6 +225,25 @@ export interface ShapeLayer extends LayerBase {
   radius?: number;
   /** Draw the shape progressively (lines, rings) over the entrance. */
   draw?: boolean;
+  material?: Material;
+}
+
+/**
+ * Floating particles inside the layer's box (usually the whole frame): each has its own depth, so near ones are larger,
+ * faster and softer. Seeded: the same frame always shows the same particles.
+ */
+export interface ParticlesLayer extends LayerBase {
+  kind: "particles";
+  particle: ParticleKind;
+  /** How many (4 to 80, default 30). */
+  count?: number;
+  /** Up to 5 colours (default: white, or the palette for confetti). */
+  colors?: string[];
+  /** Particle size, fraction of the canvas width (0.002 to 0.08). */
+  size?: number;
+  /** 0 to 2 (default 1). */
+  speed?: number;
+  seed?: number;
 }
 
 /** A cartoon presenter drawn by the engine (no AI image): flat illustration, blinks, breathes, talks and gestures. */
@@ -190,7 +265,7 @@ export interface CharacterLayer extends LayerBase {
   side?: "left" | "right";
 }
 
-export type Layer = PhotoLayer | TextLayer | ShapeLayer | CharacterLayer;
+export type Layer = PhotoLayer | TextLayer | ShapeLayer | CharacterLayer | ParticlesLayer;
 
 export interface Background {
   kind: "solid" | "gradient" | "photo";
@@ -216,6 +291,8 @@ export interface Scene {
   say?: string;
   /** The camera move over this scene (default static). */
   camera?: Camera;
+  /** The key light (and depth fog) of this scene. */
+  light?: Light;
 }
 
 export interface MotionSpec {

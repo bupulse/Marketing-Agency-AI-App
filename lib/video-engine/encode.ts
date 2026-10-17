@@ -1,9 +1,13 @@
 // Turns a motion spec into an MP4 in the browser (docs/VIDEO_ENGINE.md): WebCodecs H.264 + mp4-muxer, the same path
-// as the slideshow renderer (components/visuals/video-renderer.ts), with an optional music track mixed in at 85%.
-// Client-only. Fonts are loaded from the self-hosted files in public/fonts/video before the first frame.
+// as the slideshow renderer (components/visuals/video-renderer.ts), with an optional soundtrack: the voice-over
+// (voice.ts cues, each placed at its scene) at full level and the music at 85%, ducked to 20% while the voice speaks
+// (lib/voice/mix.ts, the same mixer as the slideshow videos). Client-only. Fonts are loaded from the self-hosted files
+// in public/fonts/video before the first frame.
+import { mixSamples } from "@/lib/voice/mix";
 import { frameCount, frameUs } from "./animate";
 import { drawSpecFrame, type Img } from "./draw";
 import { FONTS, canvasSize, totalMs, type FontId, type MotionSpec, type Quality } from "./spec";
+import { cueTimings, placeVoice, type VoiceCue } from "./voice";
 
 const FONT_RANGES = {
   latin: "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
@@ -47,7 +51,15 @@ export async function loadPhotos(urls: string[]): Promise<Map<number, Img>> {
   return map;
 }
 
-export type EncodeOptions = { musicUrl?: string | null; quality?: Quality; bitrate?: number; onProgress?: (fraction: number) => void; signal?: AbortSignal };
+export type EncodeOptions = {
+  musicUrl?: string | null;
+  /** The voice-over take (MP3 URL) and where each piece of it plays (fitSpecToVoice); the spec must be the fitted one. */
+  voice?: { url: string; cues: VoiceCue[] } | null;
+  quality?: Quality;
+  bitrate?: number;
+  onProgress?: (fraction: number) => void;
+  signal?: AbortSignal;
+};
 
 /** Encodes the whole spec to an MP4 Blob. Throws when this browser has no H.264 encoder. */
 export async function encodeSpecMp4(spec: MotionSpec, photos: Map<number, Img>, options: EncodeOptions = {}): Promise<Blob> {
@@ -68,7 +80,7 @@ export async function encodeSpecMp4(spec: MotionSpec, photos: Map<number, Img>, 
     }
   }
   if (!config) throw new Error("This browser has no H.264 encoder. Use the latest Chrome or Edge.");
-  const audio = options.musicUrl ? await encodeMusic(options.musicUrl, totalMs(spec)).catch(() => null) : null;
+  const audio = options.musicUrl || options.voice?.cues.length ? await encodeSoundtrack(options.musicUrl ?? null, options.voice ?? null, totalMs(spec)).catch(() => null) : null;
 
   const muxer = new Muxer({
     target: new ArrayBufferTarget(),
@@ -113,28 +125,36 @@ export async function encodeSpecMp4(spec: MotionSpec, photos: Map<number, Img>, 
 type EncodedAudio = { chunks: { chunk: EncodedAudioChunk; meta?: EncodedAudioChunkMetadata }[]; sampleRate: number; numberOfChannels: number };
 const RATE = 44_100;
 
-/** The music track looped to the video's length, faded in 1 s and out 1.5 s, at 85%, encoded to AAC. */
-async function encodeMusic(url: string, ms: number): Promise<EncodedAudio | null> {
+async function decode(context: AudioContext, url: string | null): Promise<Float32Array[] | null> {
+  if (!url) return null;
+  try {
+    const buffer = await context.decodeAudioData(await (await fetch(url)).arrayBuffer());
+    return Array.from({ length: Math.min(2, buffer.numberOfChannels) }, (_, c) => buffer.getChannelData(c));
+  } catch {
+    // A track that does not load leaves the video without it (never fails the video).
+    return null;
+  }
+}
+
+/**
+ * The soundtrack, encoded to AAC: the voice cues placed at their scenes, and the music looped to the video's length,
+ * faded in 1 s and out 1.5 s, at 85% and ducked under the voice. Null when neither loads.
+ */
+async function encodeSoundtrack(musicUrl: string | null, voice: { url: string; cues: VoiceCue[] } | null, ms: number): Promise<EncodedAudio | null> {
   if (typeof AudioEncoder === "undefined" || typeof AudioContext === "undefined") return null;
   const context = new AudioContext({ sampleRate: RATE });
-  let buffer: AudioBuffer;
+  let take: Float32Array[] | null;
+  let music: Float32Array[] | null;
   try {
-    buffer = await context.decodeAudioData(await (await fetch(url)).arrayBuffer());
+    [take, music] = await Promise.all([decode(context, voice?.cues.length ? voice.url : null), decode(context, musicUrl)]);
   } finally {
     void context.close().catch(() => undefined);
   }
-  const channels = Math.min(2, buffer.numberOfChannels);
-  const frames = Math.round((ms / 1000) * RATE);
-  const out = Array.from({ length: channels }, (_, c) => {
-    const src = buffer.getChannelData(c);
-    const dst = new Float32Array(frames);
-    for (let i = 0; i < frames; i++) {
-      const fadeIn = Math.min(1, i / RATE);
-      const fadeOut = Math.min(1, (frames - i) / (RATE * 1.5));
-      dst[i] = src[i % src.length] * 0.85 * fadeIn * fadeOut;
-    }
-    return dst;
-  });
+  const placed = take && voice ? placeVoice(take, voice.cues, RATE, ms) : null;
+  const out = mixSamples({ voice: placed, music, sampleRate: RATE, totalMs: ms, speech: voice ? cueTimings(voice.cues) : [] });
+  if (!out) return null;
+  const channels = out.length;
+  const frames = out[0].length;
   const config: AudioEncoderConfig = { codec: "mp4a.40.2", sampleRate: RATE, numberOfChannels: channels, bitrate: 128_000 };
   if (!(await AudioEncoder.isConfigSupported(config)).supported) return null;
   const chunks: EncodedAudio["chunks"] = [];
