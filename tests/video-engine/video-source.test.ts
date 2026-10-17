@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { ArrayBufferTarget, Muxer } from "mp4-muxer";
 import { describe, expect, it, vi } from "vitest";
-import { FrameCache, frameIndexAt, keyframeFor, planDecode, readMp4Table, type Mp4Sample } from "@/lib/video-engine/video-source";
+import { FrameCache, VideoSource, frameIndexAt, keyframeFor, planDecode, readMp4Table, type Mp4Sample } from "@/lib/video-engine/video-source";
 
 // A minimal avcC record (one SPS, one PPS): enough for mp4box to read the track; the frames are not real H.264.
 const AVCC = new Uint8Array([1, 0x64, 0x00, 0x1f, 0xff, 0xe1, 0x00, 0x04, 0x67, 0x64, 0x00, 0x1f, 0x01, 0x00, 0x04, 0x68, 0xee, 0x3c, 0x80]);
@@ -117,5 +117,91 @@ describe("the frame cache", () => {
     cache.put(0, b);
     expect(a.close).toHaveBeenCalledTimes(1);
     expect(cache.get(0)).toBe(b);
+  });
+});
+
+/**
+ * A stand-in for WebCodecs' VideoDecoder that behaves like a cold hardware decoder: its first frame comes `coldMs` after
+ * configure, then it outputs everything it holds in one burst, in presentation order (as Chrome's decoder did with a
+ * real 1080p clip). Its queue is always reported empty (hardware takes the samples at once), the case that fed the old
+ * source a dozen frames ahead and pushed the frame asked for out of its 8-frame cache.
+ */
+class ColdDecoder {
+  static coldMs = 260;
+  static isConfigSupported = async () => ({ supported: true });
+  static frames: { timestamp: number; closed: boolean; close(): void }[] = [];
+  state = "unconfigured";
+  decodeQueueSize = 0;
+  private pending: number[] = [];
+  private readyAt = 0;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  constructor(private readonly init: { output: (f: unknown) => void; error: (e: unknown) => void }) {}
+  configure() {
+    this.state = "configured";
+    this.readyAt = Date.now() + ColdDecoder.coldMs;
+  }
+  decode(chunk: { timestamp: number }) {
+    this.pending.push(chunk.timestamp);
+    this.pending.sort((a, b) => a - b);
+    this.pump();
+  }
+  private pump() {
+    if (this.timer || this.state === "closed") return;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      if (this.state === "closed") return;
+      for (const timestamp of this.pending.splice(0)) {
+        const frame = { timestamp, closed: false, close() { this.closed = true; } };
+        ColdDecoder.frames.push(frame);
+        this.init.output(frame);
+      }
+    }, Math.max(1, this.readyAt - Date.now()));
+  }
+  async flush() {
+    while (this.pending.length) await new Promise((r) => setTimeout(r, 5));
+  }
+  close() {
+    this.state = "closed";
+  }
+}
+
+describe("decoding a clip for drawing (a cold decoder)", () => {
+  it("never closes the frame asked for while a slow first frame lets samples pile up, and does not flood the decoder", async () => {
+    vi.stubGlobal("VideoDecoder", ColdDecoder);
+    vi.stubGlobal("EncodedVideoChunk", class { timestamp: number; constructor(init: { timestamp: number }) { this.timestamp = init.timestamp; } });
+    ColdDecoder.frames = [];
+    const bytes = tinyMp4();
+    const source = await VideoSource.open("https://x.test/clip.mp4", (async () => new Response(bytes)) as unknown as typeof fetch);
+    const table = readMp4Table(bytes);
+    try {
+      // An encode's requests: every output frame of the first second (30 fps), with a transition's earlier time asked
+      // for between them (the scene going out), as a 3-scene overlay does.
+      for (let i = 0; i < 30; i++) {
+        const t = (i * 1000) / 30;
+        const frame = (await source.frameAt(t)) as unknown as { timestamp: number; closed: boolean };
+        expect(frame.closed, `frame at ${Math.round(t)} ms`).toBe(false);
+        expect(frame.timestamp).toBe(table.samples[frameIndexAt(table, t)].ptsUs);
+      }
+      // The cold start fed no more than the lookahead: the decoder did not run a dozen frames ahead of the first one.
+      expect(ColdDecoder.frames.filter((f) => f.timestamp <= 400_000).length).toBeLessThanOrEqual(13);
+    } finally {
+      source.close();
+      vi.unstubAllGlobals();
+    }
+  }, 20_000);
+
+  it("the cache keeps the frame asked for and the ones after it, whatever its capacity", () => {
+    const closed: number[] = [];
+    const frame = (ts: number) => ({ ts, close: () => closed.push(ts) });
+    const cache = new FrameCache<ReturnType<typeof frame>>(2, 6);
+    cache.keepAtOrAfter(10);
+    for (const ts of [0, 5, 10, 11, 12, 13]) cache.put(ts, frame(ts));
+    // Room is made from the frames before 10 only.
+    expect(closed).toEqual([0, 5]);
+    expect(cache.get(10)).not.toBeNull();
+    // Past the hard limit the frame furthest ahead goes, never the one asked for.
+    for (const ts of [14, 15, 16]) cache.put(ts, frame(ts));
+    expect(cache.get(10)).not.toBeNull();
+    expect(cache.size).toBeLessThanOrEqual(6);
   });
 });

@@ -104,21 +104,51 @@ export function planDecode(samples: Mp4Sample[], fed: { from: number; next: numb
 }
 
 type Closable = { close(): void };
-/** A few decoded frames by presentation time; the oldest is closed when a new one comes in over capacity. */
+/**
+ * A few decoded frames by presentation time. Over capacity the oldest frame before the kept time is closed; frames at
+ * or after it (the frame being waited for or just handed out, and the ones after it) are never closed for room, so a
+ * decoder that runs ahead cannot push out the frame asked for. Only past `hardLimit` is the frame furthest ahead
+ * dropped (it is decoded again when it is needed).
+ */
 export class FrameCache<F extends Closable> {
   private frames = new Map<number, F>();
-  constructor(readonly capacity = 8) {}
+  // Infinity: nothing is kept (no request yet).
+  private keepFrom = Infinity;
+  constructor(
+    readonly capacity = 8,
+    readonly hardLimit = capacity * 8,
+  ) {}
   get size(): number {
     return this.frames.size;
+  }
+  /** Keeps every frame at or after `ts` (the time being asked for); earlier ones may be closed for room. */
+  keepAtOrAfter(ts: number): void {
+    this.keepFrom = ts;
+    this.trim();
   }
   put(ts: number, frame: F): void {
     const old = this.frames.get(ts);
     if (old && old !== frame) old.close();
     this.frames.delete(ts);
     this.frames.set(ts, frame);
+    this.trim();
+  }
+  private trim(): void {
     while (this.frames.size > this.capacity) {
-      const [first, f] = this.frames.entries().next().value as [number, F];
-      this.frames.delete(first);
+      let victim: number | null = null;
+      for (const k of this.frames.keys()) {
+        if (k < this.keepFrom) {
+          victim = k;
+          break;
+        }
+      }
+      if (victim === null) {
+        if (this.frames.size <= this.hardLimit) return;
+        victim = Math.max(...this.frames.keys());
+        if (victim <= this.keepFrom) return;
+      }
+      const f = this.frames.get(victim) as F;
+      this.frames.delete(victim);
       f.close();
     }
   }
@@ -139,12 +169,16 @@ export class FrameCache<F extends Closable> {
   clear(): void {
     for (const f of this.frames.values()) f.close();
     this.frames.clear();
+    this.keepFrom = Infinity;
   }
 }
 
 /** Samples fed past the target, so a decoder that reorders (B-frames) or holds a few frames can output the target. */
 const LOOKAHEAD = 6;
+/** How long without any output before a decoder counts as stalled (fed one more sample, or flushed at the end). */
 const OUTPUT_WAIT_MS = 1500;
+/** How often a waiting request looks at the decoder. */
+const STEP_MS = 30;
 
 /**
  * An MP4 opened for drawing (browser only). `frameAt(tMs)` gives the frame shown at that time; the frame belongs to
@@ -155,6 +189,8 @@ export class VideoSource {
   private cache = new FrameCache<VideoFrame>(8);
   private fed: { from: number; next: number } | null = null;
   private waiters: (() => void)[] = [];
+  /** Frames output by the current decoder (0: it is still cold, its first frame takes a few hundred ms). */
+  private outputs = 0;
   private failure: Error | null = null;
   private closed = false;
 
@@ -193,9 +229,11 @@ export class VideoSource {
     this.decoder?.close();
     this.cache.clear();
     this.failure = null;
+    this.outputs = 0;
     this.decoder = new VideoDecoder({
       output: (frame) => {
         if (this.closed) return frame.close();
+        this.outputs += 1;
         this.cache.put(frame.timestamp, frame);
         for (const w of this.waiters.splice(0)) w();
       },
@@ -236,23 +274,43 @@ export class VideoSource {
       this.fed = { from: plan.from, next: plan.from };
     }
     const fed = this.fed as { from: number; next: number };
+    // The target and everything after it stay in the cache while the decoder catches up.
+    this.cache.keepAtOrAfter(ts);
     const until = Math.min(samples.length, target + 1 + LOOKAHEAD);
     while (fed.next < until) this.feed(fed.next++);
+    // Then wait for output. One more sample is fed only when a warm decoder is hungry (nothing queued, no output for a
+    // step: it holds frames until it gets more input) or when it is stalled; a cold decoder, whose first frame takes a
+    // few hundred ms, is not fed more meanwhile (it would run ahead of the frame asked for).
+    let seen = this.outputs;
+    let progressAt = Date.now();
     while (!this.cache.reached(ts) && !this.failure) {
+      await this.waitOutput(STEP_MS);
+      if (this.cache.reached(ts) || this.failure) break;
+      const decoder = this.decoder as VideoDecoder;
+      if (this.outputs !== seen) {
+        seen = this.outputs;
+        progressAt = Date.now();
+        continue;
+      }
+      const stalled = Date.now() - progressAt > OUTPUT_WAIT_MS;
+      const hungry = this.outputs > 0 && decoder.decodeQueueSize === 0;
+      if (!hungry && !stalled) continue;
       if (fed.next < samples.length) {
         this.feed(fed.next++);
-        await this.waitOutput(30);
+        progressAt = Date.now();
         continue;
       }
       // The end of the clip: flush out what the decoder holds. After a flush it needs a keyframe, so the next
       // request starts a new run.
-      await Promise.race([(this.decoder as VideoDecoder).flush(), this.waitOutput(OUTPUT_WAIT_MS)]);
+      await Promise.race([decoder.flush(), this.waitOutput(OUTPUT_WAIT_MS)]);
       this.fed = null;
       break;
     }
     if (this.failure) throw new Error(`The clip could not be decoded: ${this.failure.message}`);
     const frame = this.cache.get(ts) ?? this.cache.atOrBefore(ts);
     if (!frame) throw new Error("The clip's frame did not decode in time.");
+    // The frame handed out stays valid until the next request: frames still arriving cannot close it.
+    this.cache.keepAtOrAfter(frame.timestamp);
     return frame;
   }
 
