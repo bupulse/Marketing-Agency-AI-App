@@ -201,3 +201,58 @@ Outside Kigali: Naivas (Nairobi) for retail price-badge motion graphics, House o
 3. **Build the price badge into every product and offer template** (RWF, big numerals, orange or brand-colour shape, "Free delivery in Kigali" line). Only 3 of 34 Kigali reels show the price on screen, so this is a free advantage over their competitors. Put the same text in the caption the engine writes.
 4. **Generate bilingual hook text, Kinyarwanda first**, with an English line below ("Turi kuri Promotion / We are on promotion"). Only 4 Kinyarwanda rows exist in the sample, so this is a bet rather than a measurement: the best of them (La Paix, 161K plays on 751 followers) pairs a Kinyarwanda promotion line with the number on screen. Offer a Swahili variant for Nairobi and Dar es Salaam.
 5. **Caption generator = a shop card**: offer line, price in local currency, sizes or options, "Limited" stock line, delivery terms, payment (MoMo code or "payment after delivery"), landmark address, phone/WhatsApp, a comment keyword ("Comment PRICE") and local hashtags (#kigali #rwanda #kigaliupdates #<niche>). Pair it with a vendor-tagging line when other businesses appear (the proposal story with five tagged vendors had 97.6K plays).
+
+## What viewers ask (round 3: comments under Kigali business reels)
+
+### How I got it
+
+- 20 Kigali reels from the account round, picked by comment count across sectors (shoes and clothes, skincare and beauty, wigs and hair, phones and laptops, spa, food delivery, events, a school), plus one food-tour creator reel. I opened each reel's comment panel in the same logged-in tab, expanded the reply threads, and read the top comments (Instagram's default "top" order). No likes, follows, replies or comments.
+- 177 comments recorded in `instagram-comments.jsonl` (20 `clip_summary` rows plus 177 `comment` rows, same shape as `tiktok-comments.jsonl`). Commenter names are removed, @mentions are `@[user]`, language is rw / en / emoji. Each question has `seller_reply` (replied, how, text).
+- Comment counts on Instagram are small compared with TikTok: only 5 of the 20 reels have more than 40 comments and 5 have fewer than 10, so 11 of the 20 yielded fewer than 10 usable comments. One reel (a skincare reel) showed an empty comment panel.
+- I skipped spam: about 7 copy-pasted job adverts, a French health-supplement paste with a phone number, and foreign-language "massage service" bait on the spa reel.
+- The classification (price / location / delivery / phone-DM / praise / other) is mine, by keyword rules plus a read-through. Kinyarwanda price words (angahe, nangahe, igura, agurangahe, hangaye) are the largest share.
+
+### Category shares per sector
+
+| Sector | Comments | Price | Location | Delivery | Phone/DM | Praise | Other |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Shoes and fashion (250cityshoes x2, Albatross) | 44 | 61% | 5% | 5% | 2% | 2% | 25% |
+| Skincare and beauty (Sera x2, Zuri, Carlyvine, Metro) | 45 | 62% | 2% | 4% | 2% | 11% | 18% |
+| Salons and hair (microlocs x2) | 16 | 63% | 0% | 0% | 0% | 13% | 25% |
+| Phones and electronics (La Paix x2) | 14 | 50% | 0% | 0% | 14% | 14% | 21% |
+| Spa (Elysian) | 5 | 0% | 20% | 0% | 40% | 40% | 0% |
+| Food delivery and food tour (Ando x2, a creator reel) | 33 | 0% | 0% | 0% | 0% | 97% | 3% |
+| Events and florist (proposal story, dance group) | 19 | 0% | 0% | 0% | 0% | 100% | 0% |
+| School (Pharo) | 1 | 0% | 0% | 0% | 0% | 100% | 0% |
+
+Overall: 177 comments, 49% are a question or a request (86), 41% are price questions (72), 36% are praise, 15% other (mostly "I need this" buying signals and greetings). Language of the questions: Kinyarwanda 45, English 40.
+
+### What it means
+
+1. **Wherever there is a product, the first comment is the price.** 61-63% of all comments on shoes, clothes, skincare, wigs and hair reels, 50% on phone reels. Entertainment, event and food-brand reels get praise only (97-100%), so there is nothing to answer but also nothing to sell.
+2. **Questions that mean something was missing from the video** (counted among the 86):
+   - "How much / Angahe / Nangahe / Agurangahe / Igura angahe": 72 times. The price was missing from the video and often from the caption too.
+   - "Mujye muvuga n'ibiciro" (say the prices too) and "Ese mwajyiye muvuga ibiciro" (you never say the prices): explicit complaints under a shoes reel and a skincare reel.
+   - "Mukorerahe / Ukorerahe / Mukorera he / Location please": 4 times, on reels with the address only in the caption.
+   - "Mukora delivery", "Nayibona gute", "You deliver in Kenya?", "Is it in Rusizi?": delivery terms missing.
+   - "Number plz", "Nimero", "Contact?", "Contact detail address communication please": the contact missing from the video even on reels that have it in the caption.
+   - "Jyuvuga cyane twumve" (speak up so we can hear): the voice in the shoes reel is hard to follow.
+   - "Can it be done on very short soft hair?", "Is it extension?", "Does the price include the wig?": product suitability and what is included.
+   - "I need this / I want this shoe / Ndashaka aka miroire": buying signals with no way to act (no link, no price).
+3. **Replies answer less than half the questions.** Sellers replied to 46 of the 86 questions (53%). Among the price questions, 38 of 72 got a reply: 15 gave the price in the comment, 19 sent the asker to DM or "inbox".
+4. **Reply habits that work, from the accounts that reply:**
+   - Serabeauty (10 of 11 and 8 of 9 questions answered): replies with a one-word "inbox", the price ("30k") for the early commenters, or "Delivery" and the location ("MIC building").
+   - Rwanda microlocs: gives the price and the terms in the comment ("microlocs installation is 150k", "25k, grow between 3-9 weeks", "our prices are fixed") and answers suitability questions in full.
+   - Zuri: a polite fixed line ("Thank you for your interest in our wigs! Kindly check DMs for more info") and a direct "yes we do" for delivery to Kenya.
+   - Carlyvine: answers each "Kagura angahe" with "35k" (3 of 3).
+   - 250cityshoes: three different habits on two reels. On the "summer combo" reel 8 of 8 questions got "Dm please" or the address (and one "welcome" per commenter). On the "New arrivals / Limited size" reel, 14 questions (nearly all prices) got one reply (the address) and none for the price: 227K plays turned into 14 unanswered price questions.
+5. **A "Dm please" reply works only if the DM is answered**, which I could not check. It does keep the price off public view, which hurts the next 20 viewers who ask the same question (the same "How much" appears 6-10 times under one reel).
+6. **The most-liked comments are a signal.** 37 comments have 2+ likes; they are a mix of praise and repeated "How much" questions; a liked question is the same question asked by many.
+
+### 5 rules for the engine
+
+1. **Put the price on the video itself, and the same price in the caption.** 41% of all comments and 61-63% of comments in selling sectors are "How much?" Show the price as a badge on the product shot, plus "from 30,000 RWF" in the caption. A price on screen removes the most common comment and the commonest reason to DM.
+2. **Generate a four-line answer card for every post** and put it where it cannot be missed: price, address (landmark), delivery (where, how much), phone/WhatsApp. These are the four things the 86 questions ask for. Put the card on the last 2 seconds of the video and in the first comment (pinned) so the seller can paste it.
+3. **Write the pinned first comment for the seller**, in Kinyarwanda and English: "Prices: ... / Location: ... / Delivery: ... / WhatsApp: ...". Pinning the answer once avoids the pattern of the same "How much" repeated 10 times under one reel.
+4. **Provide a reply kit with one-click answers in Kinyarwanda**: "Igiciro ni 30,000 RWF", "Turi i ..., hafi ya ...", "Turohereza i Kigali kandi n'ahandi", "Nandikira kuri WhatsApp ...", "Murakoze cyane". Remind the seller to answer the "buying signal" comments ("I need this"), which currently get "welcome" or nothing. A seller who answers 8 of 9 questions (Sera) gets visible demand; one who answers 1 of 14 (250cityshoes new arrivals) loses it.
+5. **Make the voice clear and short**, and add Kinyarwanda captions when someone speaks (one comment asked the speaker to talk louder). For entertainment and brand reels (praise only), add a visible call to action, because 97-100% praise with zero questions means no buying path was shown.
