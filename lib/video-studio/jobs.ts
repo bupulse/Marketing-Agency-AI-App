@@ -77,6 +77,8 @@ export type VideoJobView = {
   seconds: number;
   /** The MP4 in the Gallery, once the browser made it (status "ready"). */
   videoPath: string | null;
+  /** Whether the owner asked for a voice-over (the MP4 step then records it). */
+  voice: boolean;
   createdAt: string;
 };
 
@@ -102,7 +104,7 @@ export async function designUnavailable(env: Record<string, string | undefined> 
   return null;
 }
 
-export type JobRow = { id: string; status: string; engine: string; spec: unknown; caption: string; hashtags: string[]; warnings: unknown; score: unknown; captionScore: unknown; credits: number; error: string | null; parentId: string | null; productId?: string | null; templateId?: string | null; platform?: string | null; ratio?: string; seconds?: number; videoPath?: string | null; createdAt: Date };
+export type JobRow = { id: string; status: string; engine: string; spec: unknown; caption: string; hashtags: string[]; warnings: unknown; score: unknown; captionScore: unknown; credits: number; error: string | null; parentId: string | null; productId?: string | null; templateId?: string | null; platform?: string | null; ratio?: string; seconds?: number; videoPath?: string | null; brief?: unknown; createdAt: Date };
 
 export const view = (j: JobRow): VideoJobView => ({
   id: j.id,
@@ -123,6 +125,7 @@ export const view = (j: JobRow): VideoJobView => ({
   ratio: j.ratio ?? "9:16",
   seconds: j.seconds ?? 15,
   videoPath: j.videoPath ?? null,
+  voice: (j.brief as { voice?: unknown } | null | undefined)?.voice !== false,
   createdAt: j.createdAt.toISOString(),
 });
 

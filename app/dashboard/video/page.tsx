@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui";
 import { CreateStudio, type StudioTemplate } from "@/components/video-studio/create-studio";
 import { subjectOptions } from "@/lib/knowledge/service";
-import { CLAUDE_VIDEO_CREDITS } from "@/lib/video-engine/credits";
+import { CLAUDE_VIDEO_CREDITS, VOICE_OVER_CREDITS } from "@/lib/video-engine/credits";
 import { TEMPLATE_CATEGORIES, VIDEO_TEMPLATES } from "@/lib/video-engine/templates";
 import { listStudioJobs } from "@/lib/video-studio/library";
 
@@ -42,6 +42,7 @@ export default async function VideoStudioPage() {
           initialJobs={jobs}
           credits={{ used: usage.used.videoCredits, limit: usage.limits.videoCredits ?? 0, resetsAt: usage.resetsAt ? new Date(usage.resetsAt).toISOString() : null }}
           price={CLAUDE_VIDEO_CREDITS}
+          voicePrice={VOICE_OVER_CREDITS}
           timeZone={business.timezone || "Africa/Kigali"}
         />
       )}

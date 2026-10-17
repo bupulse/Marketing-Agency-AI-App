@@ -118,7 +118,7 @@ async function speak(owner: Owner, text: string, voiceId: string): Promise<TtsRe
 type Clip = { status: string; path: string | null; pendingAudio: Uint8Array | null; durationMs: number; timings: unknown; updatedAt: Date };
 
 /** Whether a stored voiceover file is really there (a plan or a cache row is not trusted on its own). */
-async function fileExists(path: string | null | undefined): Promise<boolean> {
+export async function fileExists(path: string | null | undefined): Promise<boolean> {
   if (!path) return false;
   const info = await createAdminClient()
     .storage.from("media")
@@ -128,7 +128,7 @@ async function fileExists(path: string | null | undefined): Promise<boolean> {
 }
 
 /** Stores audio that was paid for (quota checked) and marks the clip ready. Throws when it cannot. */
-async function storeAudio(owner: Owner, hash: string, audio: Uint8Array): Promise<string> {
+export async function storeAudio(owner: Owner, hash: string, audio: Uint8Array): Promise<string> {
   const problem = quotaProblem(await mediaUsage(owner.businessId), { count: 1, bytes: audio.length });
   if (problem) throw new MediaError(problem);
   await assertPlatformRoom(audio.length);
@@ -144,7 +144,7 @@ async function storeAudio(owner: Owner, hash: string, audio: Uint8Array): Promis
  * state "speaking"); another render of the same text waits for it, then uses what it made. Returns the clip someone
  * already made, "claimed" when this render must speak, or "busy" when the other render is still at it.
  */
-async function claimClip(owner: Owner, hash: string, voiceId: string, characters: number): Promise<Clip | "claimed" | "busy"> {
+export async function claimClip(owner: Owner, hash: string, voiceId: string, characters: number): Promise<Clip | "claimed" | "busy"> {
   const deadline = Date.now() + WAIT_MS;
   for (;;) {
     try {

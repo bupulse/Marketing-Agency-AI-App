@@ -16,6 +16,7 @@
  *   initialJobs  the latest Motion jobs (lib/video-studio/library.ts listStudioJobs)
  *   credits      { used, limit, resetsAt } of the plan's video credits, for "N left" and the paywall
  *   price        video credits per design (CLAUDE_VIDEO_CREDITS)
+ *   voicePrice   video credits for a new voice-over take (VOICE_OVER_CREDITS); the same take again is free
  *   timeZone     the business's time zone, for the times on the job cards (the same on the server and in the browser)
  */
 
@@ -33,7 +34,9 @@ import type { DesignScore, CaptionScore } from "@/lib/video-engine/brain/score";
 import type { FactWarning } from "@/lib/video-engine/factcheck";
 import type { Photos } from "@/lib/video-engine/draw";
 import { canvasSize, totalMs, type MotionSpec, type Ratio } from "@/lib/video-engine/spec";
+import type { VoiceCue } from "@/lib/video-engine/voice";
 import type { StudioJob } from "@/lib/video-studio/library";
+import type { JobVoice } from "@/lib/video-studio/voice";
 
 export type StudioTemplate = { id: string; category: string; name: string; blurb: string; seconds: number | null; hook: string | null };
 
@@ -44,6 +47,7 @@ type Props = {
   initialJobs: StudioJob[];
   credits: { used: number; limit: number; resetsAt: string | null };
   price: number;
+  voicePrice: number;
   timeZone: string;
 };
 
@@ -113,7 +117,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   );
 }
 
-export function CreateStudio({ products, templates, categories, initialJobs, credits, price, timeZone }: Props) {
+export function CreateStudio({ products, templates, categories, initialJobs, credits, price, voicePrice, timeZone }: Props) {
   const { toast } = useToast();
   const { handleBody, dialog } = useUsageBlock({ limit: credits.limit, resetsAt: credits.resetsAt });
   const [productId, setProductId] = useState(products[0].id);
@@ -247,11 +251,11 @@ export function CreateStudio({ products, templates, categories, initialJobs, cre
           </Section>
         )}
 
-        <Section title="Voice-over">
+        <Section title="Voice-over" hint={`A voice reads the video's lines in your company's voice: ${voicePrice} video credits when you make the MP4, free when you make it again.`}>
           <Pills
             label="Voice-over"
             options={[
-              { id: "on", label: "With voice-over lines" },
+              { id: "on", label: "With a voice-over" },
               { id: "off", label: "Text only" },
             ]}
             value={voice ? "on" : "off"}
@@ -279,7 +283,7 @@ export function CreateStudio({ products, templates, categories, initialJobs, cre
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
             {jobs.map((j) => (
-              <JobCard key={j.id} job={j} templateName={templates.find((t) => t.id === j.templateId)?.name ?? j.templateId ?? "Template"} productName={productName} timeZone={timeZone} onSaved={replaceJob} />
+              <JobCard key={j.id} job={j} templateName={templates.find((t) => t.id === j.templateId)?.name ?? j.templateId ?? "Template"} productName={productName} timeZone={timeZone} voicePrice={voicePrice} onSaved={replaceJob} onCharged={(n) => setUsed((u) => u + n)} onBlocked={handleBody} />
             ))}
           </div>
         )}
@@ -292,10 +296,39 @@ export function CreateStudio({ products, templates, categories, initialJobs, cre
 const asScore = (v: unknown): DesignScore | null => (v && typeof v === "object" && typeof (v as DesignScore).score === "number" ? (v as DesignScore) : null);
 const asWarnings = (v: unknown): FactWarning[] => (Array.isArray(v) ? (v as FactWarning[]).filter((w) => w && typeof w.message === "string") : []);
 
-function JobCard({ job, templateName, productName, timeZone, onSaved }: { job: StudioJob; templateName: string; productName: (id: string) => string; timeZone: string; onSaved: (job: StudioJob) => void }) {
+type CardProps = {
+  job: StudioJob;
+  templateName: string;
+  productName: (id: string) => string;
+  timeZone: string;
+  voicePrice: number;
+  onSaved: (job: StudioJob) => void;
+  /** Video credits a voice-over took (for "N left"). */
+  onCharged: (credits: number) => void;
+  /** The paywall for a 402 answer; true when it took over. */
+  onBlocked: (body: unknown) => boolean;
+};
+
+/** The voice-over of a design (POST /api/video/jobs/<id>/voice): null with the reason when the MP4 is made without one. */
+async function fetchVoice(jobId: string): Promise<{ voice: JobVoice | null; credits: number; problem: string | null; blocked?: unknown }> {
+  try {
+    const res = await fetch(`/api/video/jobs/${encodeURIComponent(jobId)}/voice`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    const body = (await res.json().catch(() => null)) as { voice?: JobVoice | null; credits?: number; message?: string } | null;
+    if (res.status === 402) return { voice: null, credits: 0, problem: "Your video credits are used up, so this MP4 has no voice-over.", blocked: body };
+    if (!res.ok) return { voice: null, credits: 0, problem: body?.message ?? "The voice-over could not be made, so this MP4 has none." };
+    return { voice: body?.voice ?? null, credits: body?.credits ?? 0, problem: null };
+  } catch {
+    return { voice: null, credits: 0, problem: "The voice-over could not be reached, so this MP4 has none." };
+  }
+}
+
+function JobCard({ job, templateName, productName, timeZone, voicePrice, onSaved, onCharged, onBlocked }: CardProps) {
   const { toast } = useToast();
   const [progress, setProgress] = useState<number | null>(null);
   const [step, setStep] = useState("");
+  const [voiceNote, setVoiceNote] = useState<string | null>(null);
+  // The designer always writes say lines; they are spoken only when the owner asked for a voice-over.
+  const hasLines = job.voice && !!job.spec?.scenes.some((s) => s.say?.trim());
   const busy = useRef(false);
   const status = STATUS[job.status] ?? { label: job.status, tone: "neutral" as const };
   const score = asScore(job.score);
@@ -311,12 +344,29 @@ function JobCard({ job, templateName, productName, timeZone, onSaved }: { job: S
       setStep("Loading the photos and fonts…");
       const drawing = await loadJobForDrawing(job.id);
       if (!drawing.ok) throw new Error(drawing.error);
-      const { spec } = drawing;
+      // The voice-over first: the design is stretched to fit its lines. Without it the MP4 is still made.
+      let spec = drawing.spec;
+      let voice: { url: string; cues: VoiceCue[] } | null = null;
+      const notes: string[] = [];
+      if (hasLines) {
+        setStep("Recording the voice-over…");
+        const v = await fetchVoice(job.id);
+        if (v.blocked) onBlocked(v.blocked);
+        if (v.voice) {
+          spec = v.voice.spec;
+          voice = { url: v.voice.url, cues: v.voice.cues };
+          if (v.credits) onCharged(v.credits);
+          notes.push(v.voice.cached ? "Voice-over reused (free)." : `Voice-over: ${v.credits} credits.`);
+          if (!v.voice.fits) notes.push("Some voice lines were cut to fit 30 seconds.");
+          if (v.voice.note) notes.push(v.voice.note);
+        } else if (v.problem) notes.push(v.problem);
+        setVoiceNote(notes.join(" ") || null);
+      }
       // Loaded only here: the encoder and the drawing code are large and only this button needs them.
       const [{ encodeSpecMp4, loadPhotos, loadSpecFonts }, { drawSpecFrame }] = await Promise.all([import("@/lib/video-engine/encode"), import("@/lib/video-engine/draw")]);
       const [photos] = await Promise.all([loadPhotos(drawing.photoUrls, drawing.cutoutUrls), loadSpecFonts(spec)]);
       setStep("Making the MP4 in this browser…");
-      const blob = await encodeSpecMp4(spec, photos, { quality: MP4_QUALITY, bitrate: MP4_BITRATE, onProgress: (f) => setProgress(f) });
+      const blob = await encodeSpecMp4(spec, photos, { voice, quality: MP4_QUALITY, bitrate: MP4_BITRATE, onProgress: (f) => setProgress(f) });
       const poster = await posterOf(spec, photos, drawSpecFrame);
       setStep("Saving it to your Gallery…");
       const start = await startJobVideoUpload(job.id, blob.size);
@@ -332,7 +382,7 @@ function JobCard({ job, templateName, productName, timeZone, onSaved }: { job: S
       if (!done.ok) throw new Error(done.error);
       uploaded = null;
       onSaved(done.job);
-      toast(`MP4 ready (${(blob.size / 1024 / 1024).toFixed(1)} MB), saved in your Gallery.`, "success");
+      toast(`MP4 ready (${(blob.size / 1024 / 1024).toFixed(1)} MB), saved in your Gallery.${notes.length ? ` ${notes.join(" ")}` : ""}`, "success");
     } catch (error) {
       if (uploaded) void discardUpload(uploaded);
       toast(error instanceof Error ? error.message : "The MP4 could not be made. Please try again.", "error");
@@ -420,8 +470,8 @@ function JobCard({ job, templateName, productName, timeZone, onSaved }: { job: S
           <span className="text-xs text-muted">{step || "Made in this browser: free, about a minute. Use Chrome or Edge."}</span>
         </div>
       )}
-      {(job.status === "designed" || job.status === "ready") && job.spec?.scenes.some((s) => s.say?.trim()) && (
-        <p className="text-xs text-muted">The voice-over lines are written; recording them comes in the next update, so this MP4 has no voice yet.</p>
+      {(job.status === "designed" || job.status === "ready") && hasLines && (
+        <p className="text-xs text-muted">{voiceNote ?? `With a voice-over: ${voicePrice} video credits the first time, free when made again.`}</p>
       )}
     </GlassCard>
   );

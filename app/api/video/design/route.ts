@@ -5,6 +5,7 @@ import { checkActiveUser } from "@/lib/auth/require-user";
 import { assertFeature, FeatureRequiredError, featureErrorResponse } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { RATE_LIMITS, rateLimit, rateLimitMessage, RateLimitError } from "@/lib/rate-limit";
+import { can } from "@/lib/team/roles";
 import { UsageLimitError } from "@/lib/usage";
 import { DESIGN_MODES, PLATFORMS } from "@/lib/video-engine/designer";
 import { RATIOS } from "@/lib/video-engine/spec";
@@ -42,6 +43,8 @@ export async function POST(request: Request) {
   if (check.status === "signed_out") return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   if (check.status !== "ok") return NextResponse.json({ error: "account_locked" }, { status: 403 });
   const user = check.user;
+  // The same permission as the Create page's actions (app/dashboard/video/actions.ts).
+  if (!can(user.role, "content")) return NextResponse.json({ error: "forbidden", message: "Ask your company owner for access to videos." }, { status: 403 });
 
   const parsed = body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid request", issues: parsed.error.issues }, { status: 400 });

@@ -21,7 +21,7 @@ type Ctx = { userId: string; businessId: string };
 
 export type StudioJob = VideoJobView & { videoUrl: string | null; posterUrl: string | null };
 
-const JOB_SELECT = { id: true, status: true, engine: true, spec: true, caption: true, hashtags: true, warnings: true, score: true, captionScore: true, credits: true, error: true, parentId: true, productId: true, templateId: true, platform: true, ratio: true, seconds: true, videoPath: true, posterPath: true, createdAt: true } as const;
+const JOB_SELECT = { id: true, status: true, engine: true, spec: true, caption: true, hashtags: true, warnings: true, score: true, captionScore: true, credits: true, error: true, parentId: true, productId: true, templateId: true, platform: true, ratio: true, seconds: true, videoPath: true, posterPath: true, brief: true, createdAt: true } as const;
 
 /** The company's latest Motion jobs, with signed links to the MP4s already made. */
 export async function listStudioJobs(businessId: string, limit = STUDIO_JOBS_SHOWN): Promise<StudioJob[]> {

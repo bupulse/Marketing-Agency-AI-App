@@ -17,7 +17,8 @@ export const RATE_LIMITS = {
   interviewAi: { limit: 60, windowSeconds: 60 * 60 }, // marketing interview AI calls (next question, summary), per company
   contentEdit: { limit: 120, windowSeconds: 60 * 60 },
   contentRegenerate: { limit: 60, windowSeconds: 60 * 60 }, // "Generate again" on one post or piece, per company (each also uses a text generation)
-  videoDesign: { limit: 30, windowSeconds: 60 * 60 }, // Video Studio designs (Claude), per company; each also uses video credits
+  videoDesign: { limit: 30, windowSeconds: 60 * 60 },
+  videoVoice: { limit: 30, windowSeconds: 60 * 60 }, // Video Studio designs (Claude), per company; each also uses video credits
   canvaOpen: { limit: 20, windowSeconds: 60 * 60 },
   canvaReturn: { limit: 30, windowSeconds: 60 * 60 },
   socialConnect: { limit: 30, windowSeconds: 60 * 60 }, // starting a social connection (OAuth or reminder account)

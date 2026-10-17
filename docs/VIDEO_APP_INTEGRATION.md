@@ -66,8 +66,18 @@ Provisional; the owner may change them.
       needs.
     - **Actions:** `app/dashboard/video/actions.ts` (`content` permission, `videoStudio` feature);
       `lib/video-studio/library.ts`.
-    - **Not yet:** recording the voice-over (`/api/video/jobs/<id>/voice`), so MP4s have no voice; music; the live
-      preview; edit and extend; scheduling (task 7).
+    - **Not yet:** music; the live preview; edit and extend; scheduling (task 7).
+  - Voice-over: **`POST /api/video/jobs/<id>/voice`** (`lib/video-studio/voice.ts`).
+    - **What it does:** speaks the design's `say` lines in the company's voice (the content settings' voice) through
+      `lib/ai/tts.ts` and `withLedger` (`video-voice`, so the ElevenLabs switch).
+    - **The take is a `VoiceClip`:** shared with content videos by its hash, with the same claim protocol
+      (`claimClip`, `storeAudio`, now exported from `lib/voice/service.ts`). A take the company already has is free.
+      A new one costs 15 video credits, taken first and given back when nothing was spoken.
+    - **Language:** Kinyarwanda and Swahili businesses get the voice in English, with the lab's note. Lines still in
+      Kinyarwanda are refused before paying.
+    - **The page:** when the owner chose a voice-over, "Make the MP4" asks for it first, encodes the fitted spec with
+      `voice` (url and cues), and makes the MP4 without a voice (saying why) when it cannot be had.
+    - **Permission:** `POST /api/video/design` now checks the `content` permission too, as the page's actions do.
 
 ## 0. THE CLAUDE KEY
 
@@ -265,6 +275,8 @@ add-ons, so the studio becomes one more metric:
    - How many credits each plan includes. For example, Business at 50,000 RWF with 500 credits (5,000 RWF of video)
      would cost about 2,000 to 2,600 RWF in providers at the mixes in `docs/AI_COSTS.md`, "Video".
    - Whether the trial gets a few credits.
+   - **The company video cap:** Gallery videos share 100 MB per company (`MEDIA_COMPANY_VIDEO_MAX_BYTES`), about 10
+     to 13 studio MP4s of 15 s. Kept for now (17 October); raise it for video plans.
 
 ## 4. Routes: lab → app
 
