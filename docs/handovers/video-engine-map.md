@@ -129,3 +129,21 @@ brief.
   render worker for Premium 3D, Admin cards, Autopilot videos.
 - End of the motion engine day: a fresh 33-template Galaxy sweep through the whole committed pipeline scores a mean of 99.9 (32 at 100), with one true fact warning and one true language warning; other products 99.3 to 99.6; the 1080p clip-sound proof passes unpatched. Sheets and score table in /private/tmp/claude-502/-Users-macbook1-BuPulse-video/quality/loop10/.
 - Closing checks (17 October, 16:50): `npx tsc --noEmit -p .` exit 0; eslint clean on every touched file; vitest: tests/video-engine 407 passed, app suites 830 passed (20 db-only skipped); `npx next build` exit 0, no warnings, 125 static pages, 10 min 44 s under load. Two blockers found and fixed on the way: lone surrogates in the Brain data (ingest now cuts by code point, with a test) and a demo route exporting constants (moved to lib/demo/ics-config.ts).
+
+## End of 17 October: where to start next time
+All eight agents are finished and idle; everything is committed on `video-engine` (nothing pushed). The studio keeps
+running on localhost:3100 under the supervisor; the Mac stays awake under caffeinate.
+
+Owner's list, in order:
+1. Run `~/BuPulse-video/tools/bin/studio-online.sh` in a Terminal and leave it open: https://video.bupulse.com
+   (password STUDIO_PASSWORD in .env). Then follow "Try it in five minutes" in docs/guide/features/20-video-studio.md.
+2. Play the Kitenge Premium 3D clip with sound (My videos) and one Motion MP4 with voice; the agents cannot listen.
+3. Clear the TikTok slider captcha in the research Chrome tab (or close the tab).
+4. Clean the LEAF Hydro Tower product's price field (it holds a paragraph).
+5. The Seedance key day: docs/SEEDANCE_KEY_DAY.md.
+6. Before any deploy of the lab or the app: ANTHROPIC_API_KEY (the amber bar on the studio says when it is still the
+   subscription), the ElevenLabs key in Admin -> Services on TEST, raise AI_MONTHLY_BUDGET_USD.
+
+Next session's work: Seedance in the app (plan task 8), the library page, the guide page, the Mac render worker for
+Premium 3D, then a real browser trial on TEST before `videoStudio` leaves "coming soon". Research gaps are listed in
+docs/research/RESEARCH_SUMMARY.md and the Brain's changelog in docs/research/BRAIN.md.
