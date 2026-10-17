@@ -1,6 +1,9 @@
-// Claude as the director for Seedance (docs/VIDEO_ENGINE.md, "Studio"): writes the shot list a video model needs from
-// the product facts, the template's art direction and the owner's line. Claude writes the prompt; Seedance films it.
-import type { ClaudeTransport } from "./designer";
+// Claude as the director for Seedance (docs/VIDEO_ENGINE.md, "Studio" and "Seedance brain"): writes the shot list a
+// video model needs from the product facts, the template's art direction and the owner's line. Claude writes the
+// prompt; Seedance films it. The rules, the camera words and a starting shot plan come from the brain
+// (seedance-brain.ts); when Claude is unavailable, the plan itself is the prompt.
+import type { ClaudeTransport, DesignUsage } from "./designer";
+import { cameraLanguageText, lintSeedancePrompt, planSeedanceShots, seedanceRulesText, seedanceTemplateById, shotTypesText, type BusinessKind, type SeedanceFormat, type SeedanceIssue } from "./seedance-brain";
 import { templateById } from "./templates";
 
 export type PromptBrief = {
@@ -8,34 +11,36 @@ export type PromptBrief = {
   product: { name: string; summary?: string | null; description?: string | null; price?: string | null; usps?: string[]; features?: string[] };
   /** What each reference is, in order: "Image 1: the product photo (blue phone on a stand)". */
   references: string[];
+  /** A Claude engine template id (lib/video-engine/templates.ts) or a Seedance template id (seedance-brain.ts). */
   templateId: string;
   note?: string | null;
   seconds: number;
   ratio: string;
   audio: boolean;
   presenter?: string | null;
+  fixedLens?: boolean;
+  businessKind?: BusinessKind | null;
+  format?: SeedanceFormat | null;
 };
 
-const SYSTEM = [
+export const SEEDANCE_SYSTEM = [
   "You write prompts for Seedance 2.0, a video generation model, for small-business ads in Rwanda and East Africa. You answer with the prompt text only: no title, no explanation, no quotes around it.",
   "Rules of a good Seedance prompt:",
-  "- Structure by time: '0-2s: ...; 2-5s: ...' adding up to the requested length. One clear subject, one place, 2 to 4 shots.",
-  "- Name the subject, the action, the place, the light, the camera move (dolly in, slow orbit, handheld, close-up, pull back) and the sound (ambient sound, music mood, a spoken line in quotes if the presenter talks).",
-  "- Refer to references by number exactly as given (Image 1, Video 1, Audio 1). The product must stay exactly as in its photo: 'same shape, colours and label as Image N'.",
-  "- Use ONLY facts in the brief. No invented prices, discounts, claims or ingredients. Spoken lines are short and in the business's content language.",
-  "- People: only a presenter the brief names (from the character library) or a fictional adult described generally (no real or famous people). Respectful everyday clothing. Nothing medical.",
-  "- End the clip on the product, clearly visible, as a natural hero shot (no on-screen text: text is added later).",
-  "- 60 to 160 words.",
+  seedanceRulesText(),
+  `Camera moves Seedance knows: ${cameraLanguageText()}.`,
+  `Shot types: ${shotTypesText()}.`,
+  "The brief has a starting shot plan made from a proven template. Keep its timing and structure unless the owner asks for something else; improve the actions, the light and the sound with what you see in the facts.",
 ].join("\n");
 
 export function promptBriefText(b: PromptBrief): string {
-  const t = templateById(b.templateId);
+  const sd = seedanceTemplateById(b.templateId);
+  const t = sd ? null : templateById(b.templateId);
+  const plan = planSeedanceShots(b);
   return [
-    `Length ${b.seconds} seconds, ratio ${b.ratio}, ${b.audio ? "with sound" : "no sound"}.`,
-    `Template "${t.name}": ${t.direction}`,
+    `Length ${b.seconds} seconds, ratio ${b.ratio}, ${b.audio ? "with sound" : "no sound"}${b.fixedLens ? ", fixed lens (no camera moves)" : ""}.`,
+    t ? `Template "${t.name}": ${t.direction}` : `Template "${plan.templateName}".`,
     b.presenter ? `Presenter: ${b.presenter}.` : "No presenter: show hands, the product and the place; a person may appear from behind or at a distance only.",
     b.note ? `The owner asks: <<<${b.note.replace(/<<<|>>>/g, "")}>>>` : "",
-    "",
     "<<<BUSINESS",
     `Name: ${b.business.name}`,
     b.business.description ? `What it does: ${b.business.description}` : "",
@@ -51,14 +56,40 @@ export function promptBriefText(b: PromptBrief): string {
     b.product.features?.length ? `Features: ${b.product.features.join("; ")}` : "",
     "PRODUCT>>>",
     b.references.length ? `References, in order: ${b.references.join("; ")}.` : "No references: describe the product from the facts.",
+    `Starting shot plan ("${plan.templateName}", ${plan.format}):`,
+    plan.prompt,
+    plan.notes.length ? `Notes: ${plan.notes.join(" ")}` : "",
     "Write the Seedance prompt now.",
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-export async function writeSeedancePrompt(b: PromptBrief, send: ClaudeTransport, model: string): Promise<{ prompt: string; usage: { model: string; inputTokens: number; outputTokens: number; costUsd: number } }> {
-  const answer = await send({ model, system: SYSTEM, content: [{ type: "text", text: promptBriefText(b) }], maxTokens: 800 });
+const counts = (refs: string[]) => ({
+  images: refs.filter((r) => /^\s*image\b/i.test(r)).length,
+  videos: refs.filter((r) => /^\s*video\b/i.test(r)).length,
+  audios: refs.filter((r) => /^\s*audio\b/i.test(r)).length,
+});
+
+export type WrittenPrompt = {
+  prompt: string;
+  usage: DesignUsage;
+  /** Rule checks on the prompt (references that do not exist, timing, text in the video...). */
+  issues: SeedanceIssue[];
+  /** Set when Claude could not be reached and BuPulse's own shot plan was used instead. */
+  fallback?: string;
+};
+
+export async function writeSeedancePrompt(b: PromptBrief, send: ClaudeTransport, model: string): Promise<WrittenPrompt> {
+  const lint = (prompt: string) => lintSeedancePrompt(prompt, { seconds: b.seconds, ...counts(b.references), fixedLens: b.fixedLens, audio: b.audio });
+  let answer: Awaited<ReturnType<ClaudeTransport>>;
+  try {
+    answer = await send({ model, system: SEEDANCE_SYSTEM, content: [{ type: "text", text: promptBriefText(b) }], maxTokens: 800 });
+  } catch (error) {
+    const plan = planSeedanceShots(b);
+    const why = error instanceof Error ? error.message : "no answer";
+    return { prompt: plan.prompt, usage: { model, inputTokens: 0, outputTokens: 0, costUsd: 0 }, issues: lint(plan.prompt), fallback: `Claude was unavailable (${why.slice(0, 160)}), so this is BuPulse's own shot plan "${plan.templateName}". Change anything you like.` };
+  }
   const prompt = answer.text.replace(/^```[a-z]*\n?|```$/g, "").trim().slice(0, 1800);
-  return { prompt, usage: answer.usage };
+  return { prompt, usage: answer.usage, issues: lint(prompt) };
 }

@@ -114,8 +114,11 @@ async function fail(res: Response): Promise<never> {
   } catch {
     // No JSON body.
   }
-  const text =
-    res.status === 401 || res.status === 403
+  const text = /NotOpen|NotActivated|ModelAccess/i.test(code)
+    ? "Seedance 2.0 is not activated on this BytePlus account: open ModelArk, Model activation, and activate it."
+    : /overdue|balance|quota|insufficient/i.test(code) && res.status !== 429
+      ? "The BytePlus balance or prepaid pack is used up."
+      : res.status === 401 || res.status === 403
       ? "The BytePlus key is not valid or Seedance is not activated on the account."
       : res.status === 429
         ? "BytePlus is busy or the Seedance limit is reached. Try again in a minute."
@@ -174,6 +177,49 @@ export async function cancelSeedanceTask(id: string, o: Opts): Promise<void> {
   const f = o.fetchImpl ?? fetch;
   const res = await f(`${o.baseUrl ?? SEEDANCE_BASE_URL}/contents/generations/tasks/${encodeURIComponent(id)}`, { method: "DELETE", headers: headers(o.apiKey), signal: AbortSignal.timeout(30_000) }).catch(() => null);
   if (res && !res.ok && res.status !== 404) await fail(res);
+}
+
+export type SeedanceConnection = {
+  state: "connected" | "key invalid" | "not activated" | "unreachable" | "no key";
+  /** Plain English for the owner: what is wrong and what to do. */
+  message: string;
+  httpStatus?: number;
+  code?: string;
+};
+
+/**
+ * Readiness check: lists one task (GET /contents/generations/tasks?page_size=1), which costs nothing. A key that
+ * lists tasks is a working key; Seedance 2.0's own activation is confirmed by the first test clip.
+ */
+export async function checkSeedanceConnection(o: Partial<Opts> = {}): Promise<SeedanceConnection> {
+  const apiKey = o.apiKey ?? process.env.SEEDANCE_API_KEY ?? "";
+  if (!apiKey.trim()) return { state: "no key", message: "No BytePlus key yet: add SEEDANCE_API_KEY to .env (docs/VIDEO_ENGINE.md, \"Going live\")." };
+  const f = o.fetchImpl ?? fetch;
+  const base = o.baseUrl ?? process.env.SEEDANCE_BASE_URL ?? SEEDANCE_BASE_URL;
+  let res: Response;
+  try {
+    res = await f(`${base}/contents/generations/tasks?page_num=1&page_size=1`, { headers: headers(apiKey.trim()), signal: AbortSignal.timeout(20_000) });
+  } catch {
+    return { state: "unreachable", message: `BytePlus did not answer at ${new URL(base).host}. Check the internet connection, or SEEDANCE_BASE_URL (ap-southeast).` };
+  }
+  let code = "";
+  let total: number | null = null;
+  try {
+    const body = (await res.json()) as { error?: { code?: string; type?: string }; total?: number };
+    code = String(body.error?.code ?? body.error?.type ?? "");
+    total = typeof body.total === "number" ? body.total : null;
+  } catch {
+    // No JSON body.
+  }
+  const extra = { httpStatus: res.status, ...(code ? { code } : {}) };
+  if (res.ok) return { state: "connected", message: `Connected to BytePlus ModelArk${total !== null ? ` (${total} video task${total === 1 ? "" : "s"} so far)` : ""}. Run the test clip (--make-clip) to confirm Seedance 2.0 itself is activated.`, ...extra };
+  if (/NotOpen|NotActivated|ModelAccess/i.test(code)) return { state: "not activated", message: "The key works, but Seedance 2.0 is not activated: in ModelArk open Model activation (ap-southeast-1) and activate Seedance 2.0, Fast and Mini.", ...extra };
+  if (/overdue|balance|insufficient/i.test(code)) return { state: "not activated", message: "The key works, but the BytePlus account has no balance or is overdue: top up the prepaid pack in Billing.", ...extra };
+  if (res.status === 401 || /authentication|apikey|api_key|invalid.?key/i.test(code)) return { state: "key invalid", message: "BytePlus does not accept this key. Copy it again from ModelArk, API keys (region ap-southeast-1) into SEEDANCE_API_KEY, with no spaces or quotes.", ...extra };
+  if (res.status === 403) return { state: "not activated", message: "The key is known but not allowed to use ModelArk yet: activate ModelArk and Seedance 2.0 on the account, or check the key's permissions.", ...extra };
+  if (res.status === 429) return { state: "connected", message: "Connected, but BytePlus says it is busy right now (rate limit). Try again in a minute.", ...extra };
+  if (res.status === 404) return { state: "unreachable", message: `BytePlus answered, but this address is not the ModelArk API (${res.status}). Check SEEDANCE_BASE_URL; the key must be from the same region (ap-southeast-1).`, ...extra };
+  return { state: "unreachable", message: `BytePlus had a problem (${res.status}${code ? `, ${code}` : ""}). Try again in a few minutes.`, ...extra };
 }
 
 /** Keeps the ledger's model naming for Seedance usage rows (lib/ai/pricing.ts prices Claude; Seedance is priced here). */
