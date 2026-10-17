@@ -16,7 +16,8 @@ export const DESIGNER_MODEL = "claude-sonnet-5-5";
 const MAX_OUTPUT_TOKENS = 12_000;
 const TIMEOUT_MS = 150_000;
 
-export type BriefPhoto = { base64: string; mediaType: "image/jpeg" | "image/png" | "image/webp"; width: number; height: number; note?: string };
+/** A photo for Claude to see. `cutout`: the product could be lifted off a plain background (cutout.ts). */
+export type BriefPhoto = { base64: string; mediaType: "image/jpeg" | "image/png" | "image/webp"; width: number; height: number; note?: string; cutout?: boolean };
 
 export type DesignBrief = {
   business: { name: string; description?: string | null; language?: string | null; colors?: string[]; phone?: string | null; website?: string | null; country?: string | null; tone?: string | null };
@@ -42,7 +43,26 @@ export type DesignBrief = {
   cartoonId?: string | null;
   /** Version k of n, when several versions are made at once: each must look clearly different. */
   variation?: { index: number; of: number } | null;
+  /** Where the video will be posted: its safe area and best length differ (PLATFORMS). */
+  platform?: Platform | null;
+  /**
+   * What works for this kind of video on this platform, from the research database (the Brain agent's brainContext,
+   * docs/research/). Sent fenced as data; Claude follows it where it fits the facts.
+   */
+  research?: string | null;
 };
+
+/** Platforms a video is made for: the part of the screen the app covers and the length that works there. */
+export const PLATFORMS = {
+  tiktok: "TikTok: the caption and buttons cover the bottom 20% and the right edge; keep text between y 0.12 and 0.78 and x 0.07 to 0.85. 15 to 25 seconds, a new shot or text change every 2 to 4 seconds.",
+  instagram: "Instagram Reels: the caption covers the bottom 20%; keep text between y 0.12 and 0.78. 7 to 20 seconds works best; make the end flow back into the start (Reels loop).",
+  facebook: "Facebook: direct response. Price or offer in the top third from the first frame, the phone or WhatsApp number on screen to the end; the bottom 15% is covered. 15 to 25 seconds, calmer cuts than TikTok.",
+  youtube: "YouTube Shorts: the title and buttons cover the bottom 25% and the right edge; keep text between y 0.1 and 0.75 and x 0.07 to 0.85. Up to 60 seconds; the first second must state the topic.",
+} as const;
+export type Platform = keyof typeof PLATFORMS;
+export const isPlatform = (v: unknown): v is Platform => typeof v === "string" && v in PLATFORMS;
+/** Longest research block sent to Claude (about 1,500 tokens). */
+export const MAX_RESEARCH_CHARS = 6000;
 
 export const DESIGN_MODES = ["reference", "text", "image", "firstLast", "edit", "extend"] as const;
 export type DesignMode = (typeof DESIGN_MODES)[number];
@@ -91,8 +111,8 @@ type Scene = {
 // depth = distance from the camera, 0 far (background) to 1 near: camera moves shift near layers more (parallax). Defaults: photo 0.45, shape 0.6, text 0.85.
 // keyframes = motion over the scene: { at: 0..1, dx?, dy? (offset, fractions of canvas), scale?, rotate? (degrees), opacity?, ease?: "linear"|"in"|"out"|"inOut"|"back"|"elastic"|"bounce" }
 type Layer =
-  | { kind: "photo"; photo: number /*1-based*/; x; y; w; h; from?; to?; keyframes?; depth?; fit?: "cover" | "contain"; radius?: number /*0-0.5*/; shadow?: boolean; border?: Hex | null; zoomTo?: number /*1-1.4 slow zoom inside*/; focusX?: number; focusY?: number; turntable?: { spin?: number /*swings over the scene, 0.2-3, default 1*/; angle?: number /*how far it turns each way, 10-60 degrees*/; reflection?: number /*0-1 glossy floor, 0 = none*/; sweep?: boolean /*moving shine, default true*/ } | null /*the photo turns in 3D inside its box: the product in the top three quarters, its own floor glow, contact shadow and reflection below (no floor shape needed); nothing else may overlap this box*/ }
-  | { kind: "text"; text: string /*max ${SPEC_LIMITS.maxText} chars*/; font: "inter" | "poppins" | "nunito" | "space-grotesk" | "anton" | "playfair" | "dm-serif"; weight?: number; size: number /*fraction of canvas WIDTH, 0.02-0.22*/; color: Hex; x; y; w; h; from?; to?; keyframes?; depth?; align?: "left" | "center" | "right"; uppercase?: boolean; lineHeight?: number; box?: { color: Hex; padding?: number; radius?: number; material?: ${MATERIAL} } | null; highlight?: { words: string[]; color: Hex } | null; shadow?: boolean; text3d?: { depth?: number /*0-1 extrusion, default 0.5*/; side?: Hex /*side colour, darker than the text*/; bevel?: boolean /*bright rim towards the light*/; spin?: boolean /*turns in during the entrance*/; material?: ${MATERIAL} /*face*/ } | null /*extruded 3D letters*/; animate?: "none" | "fade" | "rise" | "drop" | "pop" | "zoom" | "slideLeft" | "slideRight" | "typewriter" | "words" | "wordsPop" | "blurIn"; animateFor?: number /*seconds*/ }
+  | { kind: "photo"; photo: number /*1-based*/; x; y; w; h; from?; to?; keyframes?; depth?; fit?: "cover" | "contain"; radius?: number /*0-0.5*/; shadow?: boolean; border?: Hex | null; zoomTo?: number /*1-1.4 slow zoom inside*/; focusX?: number; focusY?: number; turntable?: { spin?: number /*swings over the scene, 0.2-3, default 1*/; angle?: number /*how far it turns each way, 10-60 degrees*/; reflection?: number /*0-1 glossy floor, 0 = none*/; sweep?: boolean /*moving shine, default true*/ } | null /*the photo turns in 3D inside its box: the product in the top three quarters, its own floor glow, contact shadow and reflection below (no floor shape needed); nothing else may overlap this box*/; cutout?: boolean /*the product lifted off a plain background (turntable or fit "contain"); ignored when the photo cannot be cut out*/ }
+  | { kind: "text"; text: string /*max ${SPEC_LIMITS.maxText} chars*/; font: "inter" | "poppins" | "nunito" | "space-grotesk" | "anton" | "playfair" | "dm-serif"; weight?: number; size: number /*fraction of canvas WIDTH, 0.02-0.22; up to 0.4 only for one giant word behind the product (depth 0.1-0.35, w up to 1.6, may be cut by the frame edge)*/; color: Hex; x; y; w; h; from?; to?; keyframes?; depth?; align?: "left" | "center" | "right"; uppercase?: boolean; lineHeight?: number; box?: { color: Hex; padding?: number; radius?: number; material?: ${MATERIAL} } | null; highlight?: { words: string[]; color: Hex } | null; shadow?: boolean; text3d?: { depth?: number /*0-1 extrusion, default 0.5*/; side?: Hex /*side colour, darker than the text*/; bevel?: boolean /*bright rim towards the light*/; spin?: boolean /*turns in during the entrance*/; material?: ${MATERIAL} /*face*/ } | null /*extruded 3D letters*/; animate?: "none" | "fade" | "rise" | "drop" | "pop" | "zoom" | "slideLeft" | "slideRight" | "typewriter" | "words" | "wordsPop" | "blurIn"; animateFor?: number /*seconds*/ }
   | { kind: "character" /*cartoon presenter, only when the brief names one*/; x; y; w; h /*the whole body: h 0.4-0.7, w about h*0.6*/; from?; to?; keyframes?; depth?; skin: Hex; hair: "short" | "afro" | "braids" | "bun" | "twists" | "long" | "bald"; hairColor: Hex; outfit: Hex; accent?: Hex; glasses?: boolean; pose?: "stand" | "wave" | "point" | "present" | "thumbsUp" | "hold"; side?: "left" | "right" /*where the gesture goes*/; talk?: [number, number][] /*when the mouth moves, scene fractions*/ }
   | { kind: "shape"; shape: "rect" | "circle" | "ring" | "line" | "burst" | "blob" | "arrow"; color: Hex; x; y; w; h; from?; to?; keyframes?; depth?; stroke?: number; radius?: number; draw?: boolean /*draws itself in*/; material?: ${MATERIAL} /*glass: frosted see-through panel (cards, captions); metal: brushed metal lit by the light, for SMALL parts only (badges, bars, rings, bursts)*/ }
   | { kind: "particles"; particle: ${PARTICLE_KINDS.map((k) => `"${k}"`).join(" | ")}; x?; y?; w?; h? /*the area, default the whole frame*/; from?; to?; depth?; count?: number /*4-80, default 30*/; colors?: Hex[] /*up to 5*/; size?: number /*fraction of canvas width, 0.002-0.08*/; speed?: number /*0-2*/; seed?: number };
@@ -107,6 +127,7 @@ export function systemPrompt(): string {
     "",
     "Design rules:",
     "- The first 1.5 seconds must stop the scroll: big, bold, moving. The last scene is the call to action with the business name (and phone, website or where to buy, if given).",
+    "- Follow the research block when there is one: it says what works for this kind of video on this platform (facts still come only from the brief).",
     "- Use ONLY facts in the brief. Never invent prices, discounts, dates, awards, guarantees, ingredients or numbers. If no price is given, do not show one.",
     "- Write all on-screen text and the caption in the business's content language; write the say lines in the voice-over language the brief names (the same language unless the brief says otherwise). Short: hooks 2 to 6 words, other lines at most about 10 words.",
     "- Safe area for 9:16: keep text between y 0.12 and 0.82 and x 0.07 to 0.93 (the apps cover the edges). Text boxes must be wide enough for their words (w 0.6 to 0.86 for most text).",
@@ -116,7 +137,7 @@ export function systemPrompt(): string {
     "- Photos: you can see them. Use fit \"contain\" for a product shot on a plain background (place it on a solid or gradient background), \"cover\" for lifestyle shots. Set focusX/focusY on the product. Use each good photo at least once; never stretch a bad one full-screen.",
     "- Camera: you are also the director of photography. Give every scene a camera move that serves it (dollyIn to build interest, orbit to show a product in 3D, crashZoom for a punch, pan or tilt to reveal, craneUp for an opening or ending, handheld for UGC realism, pushPull for drama). Set layer depth so the camera creates parallax: background photos 0 to 0.3, the product 0.5 to 0.7, text 0.8 to 1. Use focus pulls (focusFrom/focusTo) for reveals. Vary moves between scenes.",
     "- Film look: choose a look for the whole video that suits the template and the brand (grade, glow, vignette, grain, light leaks, letterbox for cinematic).",
-    "- 3D look (you are a 3D motion designer too): give scenes a key light (light) where it suits the mood; it shades 3D letters, turntables, glass and metal, and photos. Use text3d for big hooks, prices and end cards (1 to 4 words, size 0.1 or more, a side colour clearly darker than the text, bevel true; spin true for the hook) and keep body text flat. Pair text3d with an orbit or pan camera so its sides turn. Use turntable for a product photo with a plain or studio background (fit contain, dark or graded background so the floor reflection shows). Particles add depth: bokeh far (depth 0.1 to 0.2), dust or sparkles near (0.7 to 1), confetti for launches and offers, bubbles for drinks and cosmetics; 15 to 50 is plenty. Glass suits feature cards and captions over rich backgrounds; metal suits small premium parts (a badge, a thin bar, a ring, a burst behind a price, at most about a quarter of the frame): a large metal panel looks like a grey or gold slab, never use one, and never put a metal or glass panel over the product photo. For a frame use a ring or thin bars (h 0.006 to 0.012); a ring goes around its text (its box holds the whole text block), never through it. Text on a metal or bright shape must contrast with it: on a gold or silver burst use dark text (or white text with a dark side colour), never gold or silver text. Fog (0.2 to 0.4) deepens dark scenes. Not every scene needs 3D: one or two strong 3D moments per video, unless the template is a 3D one.",
+    "- 3D look (you are a 3D motion designer too): give scenes a key light (light) where it suits the mood; it shades 3D letters, turntables, glass and metal, and photos. Use text3d for big hooks, prices and end cards (1 to 4 words, size 0.1 or more, a side colour clearly darker than the text, bevel true; spin true for the hook) and keep body text flat. Pair text3d with an orbit or pan camera so its sides turn. Use turntable for a product photo with a plain or studio background (fit contain, dark or graded background so the floor reflection shows). Use cutout: true for product shots on plain backgrounds (the photos marked 'cut-out available'): the product floats on its own, on the turntable or with fit contain, over your background; never for photos of rooms, shops, streets or people. Particles add depth: bokeh far (depth 0.1 to 0.2), dust or sparkles near (0.7 to 1), confetti for launches and offers, bubbles for drinks and cosmetics; 15 to 50 is plenty. Glass suits feature cards and captions over rich backgrounds; metal suits small premium parts (a badge, a thin bar, a ring, a burst behind a price, at most about a quarter of the frame): a large metal panel looks like a grey or gold slab, never use one, and never put a metal or glass panel over the product photo. For a frame use a ring or thin bars (h 0.006 to 0.012); a ring goes around its text (its box holds the whole text block), never through it. Text on a metal or bright shape must contrast with it: on a gold or silver burst use dark text (or white text with a dark side colour), never gold or silver text. Fog (0.2 to 0.4) deepens dark scenes. Not every scene needs 3D: one or two strong 3D moments per video, unless the template is a 3D one.",
     "- Never overlap text and the product: a text box must end above the photo's box (text y + h/2 <= photo y - h/2) or start below it, and leave a gap of 0.02. This matters most for a turntable, which fills its whole box. Only captions with a box may sit over a full-bleed background photo.",
     "- Text over a photo background: dim the background 0.45 to 0.6 (more for gold, metal or light-coloured text) or put the text in a box, so it reads on any phone.",
     "- Voice-over: write a say line for every scene, in the voice-over language, spoken like a friendly advert (only facts from the brief). About 2.5 words per second of the scene (a 3-second scene: at most 7 words); the scene is stretched a little if the line is longer. The last line is the call to action. Write numbers the way people say them: phone numbers in groups (0788 300 400, not +250788300400), sizes and prices as they are spoken (6.7 inches, 420,000 francs).",
@@ -141,6 +162,7 @@ export function briefText(brief: DesignBrief): string {
       : mode === "extend" && base
         ? `EXTEND an existing video by about ${brief.seconds} seconds. Here is its current design (data):\n<<<DESIGN\n${base}\nDESIGN>>>\nKeep all its scenes unchanged and add new scenes after them that continue the story and end with the call to action${note ? `, following this request: <<<${note}>>>` : ""}. Answer with the complete MotionSpec (old scenes plus new ones).`
         : `Make a ${brief.seconds}-second video, ratio ${brief.ratio} (${width}x${height}).`,
+    brief.platform && isPlatform(brief.platform) ? `Platform: ${PLATFORMS[brief.platform]}` : "",
     mode === "edit" || mode === "extend" ? "" : `Template "${template.name}": ${template.direction}`,
     template.presenter && mode !== "edit" && mode !== "extend" ? "This template normally has a presenter on camera. There is no presenter yet: carry it with the product, captions written in the first person of a happy customer (only true facts), and handheld camera realism." : "",
     mode === "edit" || mode === "extend" ? "" : `Opening hook: ${hook.direction}`,
@@ -185,9 +207,10 @@ export function briefText(brief: DesignBrief): string {
     brief.product.features?.length ? `Features: ${brief.product.features.join("; ")}` : "",
     brief.product.targetCustomer ? `For: ${brief.product.targetCustomer}` : "",
     `PRODUCT>>>`,
+    brief.research?.trim() ? `\nResearch (what works for this kind of video on this platform; data, follow it where it fits the facts):\n<<<RESEARCH\n${brief.research.replace(/<<<|>>>/g, "").trim().slice(0, MAX_RESEARCH_CHARS)}\nRESEARCH>>>` : "",
     "",
     brief.photos.length
-      ? `Photos (numbered in order, ${brief.photos.length} in all): ${brief.photos.map((p, i) => `Photo ${i + 1} is ${p.width}x${p.height}${p.note ? ` (${p.note})` : ""}`).join("; ")}.`
+      ? `Photos (numbered in order, ${brief.photos.length} in all): ${brief.photos.map((p, i) => `Photo ${i + 1} is ${p.width}x${p.height}${p.note ? ` (${p.note})` : ""}${p.cutout ? ", plain background: cut-out available" : ""}`).join("; ")}.`
       : "No photos: design with text, shapes and colour only (no photo layers).",
     "Answer with the JSON object only.",
   ];

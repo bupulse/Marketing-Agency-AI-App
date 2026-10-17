@@ -251,10 +251,29 @@ Every page has the language switcher EN / FR / RW (`video-lab/site/client/i18n.t
 French or Kinyarwanda from a dictionary; the choice is kept in the browser). Old and seedance2ai-style paths redirect
 (`/app/video/seedance?tier=…`, `/templates`, `/developers`, `/explore`, `/prompt-guide`); unknown pages show a 404
 page with links. The models and their copy live in `video-lab/site/models.json` (the build, the server routes and the
-pages read it). Until the BytePlus key is in, Generate on Real video opens "Seedance arrives with the BytePlus key":
-what the clip would be (model, mode, length, shape, resolution, references, credits), example prompts, and "Make it as
-a Motion video instead" (switches engine, keeps the prompt). Videos are served with Range requests, so a page full of
-videos only reads what it shows.
+pages read it). Videos are served with Range requests, so a page full of videos only reads what it shows.
+
+- **Seedance on the page:** while there is no BytePlus key, Generate on Real video makes a free **preview** (see
+  "Preview mode" below): the drawer waits for the storyboard, then shows its frames (SVG, shown as images), the shot
+  table, the setting, what it will cost with the key and the usual wait, with "Make it as a Motion video instead" (keeps
+  the prompt; asks for a product if none is picked) and "Edit the prompt". Its card shows the first frame. The request
+  is checked as you type (`POST /api/seedance/check`): errors (for example "Image 3" with 2 photos, 1080p on Fast) show
+  under the prompt bar and block Generate; warnings are shown and do not. **⚡ Quick plan** (`POST /api/seedance/plan`)
+  writes BuPulse's own shot plan from the product, free and instant (press again for another plan); **Write with
+  Claude** shows its rule checks and says when it fell back to the plan. The notice bar says whether Seedance is
+  connected (`GET /api/seedance/status`, checked every 5 minutes). Preview jobs stay out of the showcase.
+- **Voice-over (Motion videos):** More, Voice-over (on by default). Making the MP4 first asks for the take
+  (`POST /api/jobs/<id>/voice`, ElevenLabs, `video-lab/voice.ts`), renders with the fitted design and the voice, and
+  says "Voice cut to fit 30 s" when the lines were too long. **10 credits** a take (`VOICE_OVER_CREDITS`), taken first
+  and given back when it fails, when the design has no lines, or when the same take is already saved (a new MP4 of the
+  same design is free). Generate on Motion shows design + voice (40 credits). If the voice fails, the MP4 is made
+  without it and the page says so. The old `/lab` page has the same toggle. First real take (17 October, Nova Phones,
+  219 characters, 12.7 s): $0.066; the 480p MP4 has video and sound tracks.
+- **3D motion templates:** the `3d` category ("3D motion": 3D title drop, showroom turntable, glass cards, chrome
+  luxury, launch party) is preselected on `/app/video/motion`, with its first template chosen. Category names follow the
+  language switcher.
+
+**Online access:** see "Online access (video.bupulse.com)" below (password gate, tunnel, supervisor).
 
 **Seedance (real video)** (`lib/video-engine/seedance.ts`, `video-lab/seedance-jobs.ts`):
 
@@ -313,18 +332,20 @@ videos only reads what it shows.
 - With the key, nothing changes: the same call charges, creates the BytePlus task and polls. Offline (flex) tasks are
   now checked every minute for up to 48 hours (BytePlus keeps them up to 48 hours), not refunded after 20 minutes.
 
-**Example storyboards** ("Get inspired" on the Seedance pages; `video-lab/seedance-mock/examples/`): 16 free
+**Example storyboards** ("Get inspired" on the Seedance pages; `video-lab/seedance-mock/examples/`): 12 free
 storyboards made from the TEST database's real products with the brain and the storyboard renderer, with no key, no
 Claude and no cost (`node --env-file=.env scripts/video-lab/seedance-examples.mjs`; `--list` shows the products and
 their sectors). The sectors take turns and each one goes through the formats it shows best, so all 6 formats appear.
 Each file has the title, sector, format, template, prompt, notes, the storyboard with its SVG frames and the
 product's photos, the credits the real clip would cost at every quality and resolution, and the product and business
-it came from. Only the products' own facts are used. A price with conditions, like "250,000 RWF (final pricing
-depends on...)", is never spoken, and long names are shortened in the shots. `listSeedanceExamples({sector, format})`
-(`video-lab/seedance-mock/preview.ts`) reads them in gallery order. On 17 October 2026 the TEST database has 5 active
-products: a phone shop, a fashion boutique, real estate, a cleaning service and a hydroponic kit (a shop), so salon,
-restaurant, events and education have no examples until such products exist. The sector is read from the product
-name first, then its summary, then the business, so a real-estate agency's cleaning service counts as a service.
+it came from. Only the products' own facts are used. A price with conditions in brackets, like "90,000 RWF (depends on
+the size)", is never spoken, and long names are shortened in the shots. `listSeedanceExamples({sector, format})`
+(`video-lab/seedance-mock/preview.ts`) reads them in gallery order. On 17 October 2026 they come from 4 clearly-test
+businesses (a phone shop, a fashion boutique, real estate and a cleaning service). A business that looks like a real
+company is left out (owner decision): `--skip "<name>"`, kept for every later run in the git-ignored
+`video-lab/data/seedance-examples-skip.txt`. So shop, salon, restaurant, events and education have no examples until test products exist. The sector is
+read from the product name first, then its summary, then the business, so a real-estate agency's cleaning service
+counts as a service.
 
 **Going live with Seedance** (the owner's steps; BytePlus console wording may differ slightly):
 
@@ -473,7 +494,12 @@ Owner decision (17 October 2026): the studio is reachable online while the owner
   is used; the unsigned GitHub download in `tools/bin` is a fallback.
 - **Password gate** (`video-lab/gate.ts`): every request that is not local (Host localhost/127.0.0.1 on port 3100 and
   no proxy headers) needs the signed `bp_studio` cookie from `/login` (`STUDIO_PASSWORD` in `.env`; 10 tries per 10
-  minutes per IP; `x-robots-tag: noindex`). Local automation and the agents keep working without a cookie.
+  minutes per IP; `x-robots-tag: noindex`). Local automation and the agents keep working without a cookie. A tunnel
+  that rewrites Host to localhost still counts as online, because it adds proxy headers. Without the cookie, pages go
+  to `/login` and the API answers 401. The password is compared in constant time. The cookie is an HMAC of the
+  password with a secret kept in `video-lab/data/gate-secret` (so restarts do not sign anyone out; changing the
+  password does): httpOnly, SameSite=Lax, Secure over https, 30 days. `/logout` signs a device out. Without
+  `STUDIO_PASSWORD`, online visitors are refused.
 - **Kept alive:** `caffeinate -dims` stops the Mac sleeping; a supervisor script restarts `npm run lab` whenever
   nothing answers on port 3100 (the agents restart it themselves while they work).
 - **Never for clients:** the studio still runs Claude on the owner's subscription and the TEST database; this link
@@ -572,5 +598,6 @@ Later the same night (house listing, Kibagabaga):
 | Seedance (BytePlus) | `lib/video-engine/seedance.ts`, `lib/video-engine/seedance-prompt.ts`, `lib/video-engine/seedance-brain.ts`, `video-lab/seedance-jobs.ts`, `video-lab/seedance-mock/` (previews), `scripts/video-lab/seedance-check.mjs` (readiness) |
 | Studio site | `video-lab/site/` (layout, `site.css`, `models.json`, `pages/`, `client/`, `static/`), `video-lab/credits.ts`, `scripts/video-lab/start.mjs` |
 | AI image (Nano Banana) | `generateImage`, `listImages` in `video-lab/influencers.ts`; `POST /api/image`, `GET /api/images` in `video-lab/server.ts` |
+| Password gate (online access) | `video-lab/gate.ts`, `tests/video-lab/gate.test.ts` |
 | Video Lab | `video-lab/server.ts`, `video-lab/data-source.ts`, `video-lab/store.ts`, `video-lab/client/`, `scripts/video-lab/start.mjs` (`npm run lab`) |
 | Tests | `tests/video-engine/engine.test.ts`, `tests/video-engine/camera-and-modes.test.ts`, `tests/video-engine/seedance.test.ts`, `tests/video-engine/seedance-brain.test.ts`, `tests/video-engine/seedance-preview.test.ts`, `tests/video-engine/credits.test.ts` |

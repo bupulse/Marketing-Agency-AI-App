@@ -196,8 +196,8 @@ describe("Get inspired examples", () => {
       expect(new Set(e.storyboard.frames.map((f) => f.label)).size).toBe(e.storyboard.frames.length);
       expect(e.storyboard.issues.filter((i) => i.level === "error"), e.id).toEqual([]);
       expect(e.credits).toHaveLength(7);
-      // A price with conditions in the product is never spoken.
-      expect(e.prompt, e.id).not.toMatch(/Final pricing|Confirm the production/);
+      // A price with conditions in brackets is never spoken.
+      expect(e.prompt, e.id).not.toMatch(/"[^"]*\([^"]*"/);
     }
   });
 });
