@@ -39,7 +39,7 @@
   - Talking-head and owner videos: 1-2 (one long take, text changes instead).
   - Motion graphics and 3D: 6-8, cuts on the beat.
   - Tours (real estate, restaurant, shop): 3-4.
-- First text on screen at 0.0 s in about 60% of the reels. The rest (ASMR unboxing, pure product macro) have no text at all.
+- Any text on screen in 42 of 58 reels (72%), mostly from the first second. The rest (ASMR unboxing, pure product macro) have no text at all.
 - Looping: many 6-11 s reels end on their first frame, so the loop is invisible.
 - Price or offer on screen for the whole clip, not at the end, in shop and fashion reels.
 - Talking-head reels over 40 s keep the viewer by changing text every 1-3 words (Grant Cardone, 91 s) or every sentence (50 s fitness coach), not by cutting.
@@ -154,19 +154,21 @@ All 9:16, text in the top third, price or contact line persistent in the lower-l
 | | Global reels (first 58) | Kigali accounts (34) |
 | --- | --- | --- |
 | Median length | 13 s (64% under 16 s) | 27 s (only 8 of 34 under 21 s; 23 are 21-60 s) |
-| First-frame hook line | about 60% have text at 0 s | 13 of 34 have no text on screen at all; the first text is usually a phone number, a brand or a place |
-| Phone number on screen | rare | 13 of 34, always from frame 0 and for the whole clip |
-| Phone, WhatsApp or DM line in the caption | 7 of 58 | 14 of 34, plus address, delivery and payment terms |
-| Price shown on screen | common in the shop and fashion reels from India and the US | 3 of 34 (price sits in the caption, if at all) |
+| Any text on screen | 42 of 58 (72%) | 21 of 34 (62%); 13 of 34 have no text on screen at all, and when there is text it is usually a phone number, a brand or a place |
+| Phone number on screen | rare | 10 of 34 for all or most of the clip, 12 of 34 at any point (two show it only in a banner or end card) |
+| Phone number or DM / inbox / WhatsApp line in the caption | 9 of 58 | 17 of 34 (13 contain a phone number), plus address, delivery and payment terms |
+| Price amount shown on screen | common in the shop and fashion reels from India and the US | 0 of 34 (an amount is in the caption of only 3: 60k, 65,000 RWF, 5M) |
 | Language | English, some local | English 29 of 34; Kinyarwanda in 4 (promotion lines, a cream recommendation, a land sale) |
 | Typical format | one idea, hook, loop | in-shop walk-through, product held in hand, treatment filmed in one take, template slide plus raw phone footage |
 | Editing | 4-8 cuts per 10 s for demos | 1-4 cuts per 10 s, mostly one continuous shot |
+
+How these were counted (all from `instagram.jsonl`; repeatable): the 34 Kigali rows are `found_by == "account"` minus these accounts: naivas_supermarket, javahouseafrica, house_of_cars_kenya, meraki_the_brand, brimat.computers, royal_cakestz, greatkidzstores, fancy_store_ug, online_baby_shop_kampala. Length is the median of `duration` (27 s). Plays per follower is the median of `stats_as_reported.views` divided by `account_followers` (21.1, n=34). Likes per play is the median of `stats_as_reported.likes` divided by `stats_as_reported.views` (0.55%, n=33; 0.62% when summed over all reels). "No text on screen" is `on_screen_text` starting with "none" (13). "Phone number on screen" is a manual read of `on_screen_text` plus the montages: the field names a phone number and the number is persistent (10), or appears only in a banner or end card (2: kigalirealestate, urbandentalclinickigali). "Phone/DM in the caption" is `caption` containing a Rwandan phone number (regex `\b0?7[\d ]{8,}`, or `+250`) or the words dm, inbox or whatsapp (17; 13 have a number). "Price amount on screen" is an amount or discount figure in `on_screen_text`: none. "Price in the caption" is a figure with k, a thousands comma, RWF or "price" after removing phone numbers (3). The global column uses the same rules on the 58 rows where `found_by != "account"`. The earlier values 13, 14 and 3 came from a looser keyword check that also matched the words "phone" and "number"; they are replaced above.
 
 Typical categories among the 34: offers 10, product reveals 6, before/after 6, tours 5, UGC 4, tutorials 2.
 
 ### What stands out
 
-1. **The phone number is the hook.** On the best shop reels the number is the first thing on screen and stays there (La Paix Technology 161K plays on 751 followers, Home of Hybrid 110K plays on 59 followers, Metro Cosmetics 98.6K plays on 662 followers, Lou Aesthetic EmSculpt 40.9K). Reels with the number on screen had median 58.8K plays against 39.7K without, in this biased sample of top reels, and the gap is the right sign, not proof.
+1. **The phone number is the hook.** On the best shop reels the number is the first thing on screen and stays there (La Paix Technology 161K plays on 751 followers, Home of Hybrid 110K plays on 59 followers, Metro Cosmetics 98.6K plays on 662 followers, Lou Aesthetic EmSculpt 40.9K). The 10 reels with the number on screen for all or most of the clip had median 73.4K plays against 36.0K for the other 24 (median plays per follower 46 against 6.5), in this biased sample of top reels; the gap is the right sign, not proof.
 2. **Reach comes from the format, not the follower count.** Median plays are about 21 times the follower count. The top plays-to-followers ratios (59-follower car rental 110K plays, Sera Beauty 513K plays on 2.3K followers, La Paix 161K on 751, Elysian Spa 286K on 4.1K) all come from tiny accounts. Instagram is pushing local product and treatment reels to far more people than the account has.
 3. **Likes are low compared with plays.** Median likes-to-plays is about 0.55%. People watch and then WhatsApp or call, they do not like. Success should be measured in messages, not likes.
 4. **Services film one satisfying process in one take.** Spa scrub (286K and 88K plays), facial (32K), microlocs hair flip (193K and 171K), nails (5.6K), acne cream "Day 1 / Day 7" (98K and 74K). The treatment is the proof, the booking line is a text strip at the bottom.
@@ -198,7 +200,7 @@ Outside Kigali: Naivas (Nairobi) for retail price-badge motion graphics, House o
 
 1. **Phone or WhatsApp number on screen from frame 0 to the last frame**, in a bar at the top or in the lower third (not the bottom 12%). Make it a required field of every Kigali template, with the area or landmark next to it. This single element matches the best reels in the sample.
 2. **Default to 15-30 s, one continuous process or walk-through, 1-4 cuts per 10 s** for Rwandan business templates. Put the hook text (claim, "Promotion", "New arrivals", "Day 7") on screen at 0 s, then show the process once, then the contact. Do not use the 8-cut-per-10-s global recipe for services.
-3. **Build the price badge into every product and offer template** (RWF, big numerals, orange or brand-colour shape, "Free delivery in Kigali" line). Only 3 of 34 Kigali reels show the price on screen, so this is a free advantage over their competitors. Put the same text in the caption the engine writes.
+3. **Build the price badge into every product and offer template** (RWF, big numerals, orange or brand-colour shape, "Free delivery in Kigali" line). None of the 34 Kigali reels shows a price amount on screen, so this is a free advantage over their competitors. Put the same text in the caption the engine writes.
 4. **Generate bilingual hook text, Kinyarwanda first**, with an English line below ("Turi kuri Promotion / We are on promotion"). Only 4 Kinyarwanda rows exist in the sample, so this is a bet rather than a measurement: the best of them (La Paix, 161K plays on 751 followers) pairs a Kinyarwanda promotion line with the number on screen. Offer a Swahili variant for Nairobi and Dar es Salaam.
 5. **Caption generator = a shop card**: offer line, price in local currency, sizes or options, "Limited" stock line, delivery terms, payment (MoMo code or "payment after delivery"), landmark address, phone/WhatsApp, a comment keyword ("Comment PRICE") and local hashtags (#kigali #rwanda #kigaliupdates #<niche>). Pair it with a vendor-tagging line when other businesses appear (the proposal story with five tagged vendors had 97.6K plays).
 
