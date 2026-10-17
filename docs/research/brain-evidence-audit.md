@@ -1,6 +1,6 @@
 # Brain evidence audit
 
-Date: 17 October 2026. Scope: every rule (83) and every hook (63) in `lib/video-engine/brain/data/rules.json` and `hooks.json`, as they stood when I ran the audit (the lead's brief said 81 rules; the file has 83, so two rules were added meanwhile). The 28 caption formulas in `captions.json` were not audited. No browsing: files only.
+Date: 17 October 2026. Scope: every rule (83) and every hook (63) in `lib/video-engine/brain/data/rules.json` and `hooks.json`, as they stood when I ran the audit (the lead's brief said 81 rules; the file has 83, so two rules were added meanwhile). The caption formulas in `captions.json` are audited in the last section. No browsing: files only.
 
 ## Result
 
@@ -198,3 +198,100 @@ Sector/country thinness worth knowing: hooks for clinics, schools and events lea
 | trust-number | Trust and numbers first: {claim} since {year} / {count} branches | tt-172 tt-177 tt-170<br>(3 rows: 2 RW, 3 watched, 0 article) | supported | Pharmacy since 1969, insurers poster, debate tournament numbers. |
 | colour-swap | One mannequin, a new colour every beat: {product} / {phone} (the colour changes every 1 to 2 s) | tt-154 tt-149<br>(2 rows: 2 RW, 2 watched, 0 article) | partly | tt-154 matches; tt-149 is a mannequin pan without a swap. |
 | insurers-accepted | The insurers you take: We take {insurers} | tt-177 cm-026<br>(2 rows: 2 RW, 1 watched, 0 article) | partly | Both rows are the same clinic (video and its comments). |
+
+
+---
+
+# Caption formulas audit (added the same day)
+
+Scope: `lib/video-engine/brain/data/captions.json`: 32 formula entries across 4 platforms (TikTok 6, Facebook 16, Instagram 5, Shorts 5), plus the per-platform hashtag ranges, the phone format and the 10 trade routes. The formula `page-post` appears under all four platforms with the same three rows, so there are 29 different formulas (the brief said 28). Method as above, plus: does each example appear word for word in a caption in `captions.jsonl`, and is that caption Rwandan? No browsing.
+
+## Formula counts
+
+| | Entries (32) | Different formulas (29) |
+| --- | --- | --- |
+| Supported | 8 | 7 |
+| Partly | 24 | 22 |
+| Not supported | 0 | 0 |
+| Row missing | 0 | 0 |
+
+All 66 evidence ids in the formulas map to real rows. Of the 47 distinct example lines, 45 appear word for word in some row and 2 are paraphrases; 23 appear in a Rwandan caption of `captions.jsonl`, 3 only in a non-Rwandan caption there (Kenya, Uganda), and the rest in other files (organic Facebook reels, TikTok, Instagram, YouTube).
+
+Main findings:
+1. **Facebook and TikTok formulas are mostly Rwandan and verbatim; Instagram and Shorts formulas are not.** Every Instagram formula (4 plus page-post) and every Shorts formula rests on Indian, Kenyan, Tanzanian, US or New Zealand rows, although 43 Kigali Instagram reels are in `instagram.jsonl`. None of these formulas has a Rwandan example.
+2. **Three TikTok formulas lean on non-Rwandan rows**: `price-list-caption` (a "090" Nigerian number), `question-then-offer` (Ghana; its "Drop 40% or 60%" is the vague discount the Brain forbids) and `book-service` (South Africa).
+3. **Four Facebook "model" templates are the Brain's synthesis**: `model-shop` (none of the cited captions has the five lines), `model-salon` (Kenyan examples), `model-school` (real school captions are 445 to 990 characters, 17 to 19 lines, against a five-line template; one breaks the 600-character cap) and `now-available-cod` (no Rwandan "Now available in Rwanda" caption exists).
+4. **Two examples are paraphrases, not captions**: the Nairobi line in `ig-owner-contact` (the real Brimat caption says "Call/WhatsApp: 0711 179 871 ... Tom Mboya Street ...") and the "branches" example.
+5. `page-post`'s examples come from three of the organic Facebook reels, which are not in `captions.jsonl`.
+
+## Formulas
+
+| Platform | Id | Pattern | Cited rows | Examples | Verdict | Reason |
+| --- | --- | --- | --- | --- | --- | --- |
+| tiktok | page-post | {one friendly line about the moment or the place} {0 to 3 tags: city, brand} | fb-155 fb-141 fb-144<br>(3 rows, 3 RW) | 3/3 verbatim, 3 only in another jsonl | partly | Three organic Facebook reels (ONOMO, RwandAir, Simba; Rwandan, watched) match the examples word for word, but none is a TikTok caption; the same three rows are cited for TikTok, Instagram and Shorts. The examples are in facebook.jsonl, not in captions.jsonl. |
+| tiktok | offer-then-route | {offer} at {business} {emoji} {phone} / {area} | tt-090 tt-093<br>(2 rows, 2 RW) | 2/2 verbatim, 2 in a Rwandan caption of captions.jsonl | supported | Both Rwandan TikTok captions (Dare, Cave Coffee) match verbatim and are in captions.jsonl (cp-111, cp-112); only Cave Coffee has the phone in the first lines; no events row for the "events" sector. |
+| tiktok | price-list-caption | 📍{product}: {price} 📍{product}: {price} 📍 DM {phone} on WhatsApp to order | tt-064<br>(1 rows, 0 RW) | 1/1 verbatim, 1 only in another jsonl | partly | One row (tt-064, country unknown); the caption is real but ends with a "090..." number, which is a Nigerian format, so the example is not Rwandan; no phone-shop row for the phone-shop sector; example is truncated. |
+| tiktok | available-now | {product}: {claim}. Available now at {business} 📞 {phone} 🚚 {offer} | tt-099 tt-100<br>(2 rows, 2 RW) | 2/2 verbatim, 2 in a Rwandan caption of captions.jsonl | supported | KIBO Electronics and MPS (Rwandan phone shops), both verbatim and in captions.jsonl; only phone shops, none for "shop". |
+| tiktok | question-then-offer | {problem}? {offer}. Send us a DM or call {phone} | tt-097<br>(1 rows, 0 RW) | 1/1 verbatim, 1 only in another jsonl | partly | One row, a Ghanaian store (#GhanaBusiness): not Rwandan, and its "Drop 40% or 60%" is the vague discount that rule no-vague-discount forbids. |
+| tiktok | book-service | {claim} 😌 Book your appointment on WhatsApp {phone} | tt-102<br>(1 rows, 0 RW) | 1/1 verbatim, 1 only in another jsonl | partly | One row, a Johannesburg salon with a +27 number: not Rwandan, no clinic or services row. |
+| facebook | page-post | {one friendly line about the moment or the place} {0 to 3 tags: city, brand} | fb-155 fb-141 fb-144<br>(3 rows, 3 RW) | 3/3 verbatim, 3 only in another jsonl | supported | Three organic Rwandan reels (hotel, airline, supermarket) with verbatim examples; short captions of 1 to 2 lines. |
+| facebook | model-shop | 🔥 {product} kuri {price} gusa / ✅ {claim} · {claim} / 🚚 {offer} / 📍 {area} / 📞 Call/WhatsApp: {phone} / #K | cp-023 cp-083 cp-028 cp-038<br>(4 rows, 4 RW) | 2/2 verbatim, 2 in a Rwandan caption of captions.jsonl | partly | All four examples are real Rwandan captions in captions.jsonl, but none has the five-line layout (one-liner, 4-line, 6-line); the template is the Brain's synthesis. The "price + free delivery + phone" parts are all present. |
+| facebook | model-restaurant | 🍔 {product} for only {price} {day} / Abakiriya bacu barishimye 😍 ntucikwe! / 🚚 Delivery in {area} / 📍 {are | cp-025 cp-012 cp-111<br>(3 rows, 3 RW) | 2/2 verbatim, 2 in a Rwandan caption of captions.jsonl | supported | Best Burgers is a near-exact match (promo, Kinyarwanda line, place, phone); Magic Chef and Dare are shorter; no delivery-in-area line in the cited captions. |
+| facebook | model-real-estate | 🏡 INZU NZIZA IGURISHWA I {area}, KIGALI / 💰 Igiciro: {price} / Kiraganirwaho / 🛏️ Ibyumba {count} · 🚿 Ubwo | cp-044 cp-047 cp-048<br>(3 rows, 3 RW) | 2/2 verbatim, 2 in a Rwandan caption of captions.jsonl | supported | Hills Props follows the layout almost line by line (10 lines, price, rooms, area, title, phone); IBRA and Samkay also match. |
+| facebook | model-salon | ✨ {product} at {business}, {area} / 💆 {product} {price} · {product} {price} / 🕘 Open {claim} / 📍 {landmark} | cp-056 cp-095 cp-094<br>(3 rows, 1 RW) | 2/2 verbatim, 2 in a non-Rwandan caption of captions.jsonl | partly | Both examples are Kenyan (Tawali Glamour, SPOT SALON); only Prime Wellness (Rwandan, 646 characters, no phone) is a Rwandan cited row, and none ends with "Murakaza neza". |
+| facebook | model-school | 🎓 {product} intake open: starts {day} / ✅ {claim} · {claim} / 💰 Fee: {price} / 📍 {area}, {landmark} / 📞 Ca | cp-073 cp-071 cp-008<br>(3 rows, 3 RW) | 2/2 verbatim, 2 in a Rwandan caption of captions.jsonl | partly | The three cited Rwandan school captions are 445 to 990 characters and 17 to 19 lines (two with no price, one with no phone), not the five-line template; BELI (990 characters) breaks the Brain's own 600-character cap. |
+| facebook | price-tel-address | {product} PRICE: {price} TEL: {phone} ADDRESS: {area} | fb-011 fb-012 fb-049<br>(3 rows, 3 RW) | 2/2 verbatim, 2 in a Rwandan caption of captions.jsonl | supported | EHA 250 matches exactly (price, TEL, ADDRESS); Kex and Titanium match in part. |
+| facebook | spec-list | 🏡 {product} 📍 {area} 💰 {price} 📞 Call/WhatsApp: {phone} | fb-029 fb-007 fb-068 fb-067<br>(4 rows, 4 RW) | 3/3 verbatim, 3 in a Rwandan caption of captions.jsonl | supported | Four Rwandan property captions; no car-rental row for the car-rental sector. |
+| facebook | promo-urgency | 🔥 {offer} 🔥 {claim} for as low as {price}! {phone} | fb-006<br>(1 rows, 1 RW) | 1/1 verbatim, 1 in a Rwandan caption of captions.jsonl | partly | One row (Best Burgers), verbatim and Rwandan. |
+| facebook | now-available-cod | 🇷🇼 Now available in Rwanda! 🇷🇼 {product} ✅ {claim} 🚚 {offer} 👉 {phone} | fb-019 fb-017 fb-021<br>(3 rows, 0 RW) | 2/2 verbatim, 1 in a non-Rwandan caption of captions.jsonl, 1 only in another jsonl | partly | The three cited rows are Kenya, Uganda and Tanzania (text-only, unwatched); the pattern says "Now available in Rwanda" and no Rwandan caption uses it. |
+| facebook | story-proof | From {problem} to {result}! ... {business} is located at {area}. Call or WhatsApp {phone} | fb-002<br>(1 rows, 1 RW) | 1/1 verbatim, 1 only in another jsonl | partly | One row (Derma, Rwandan, verbatim), found in facebook.jsonl, not in captions.jsonl. |
+| facebook | price-ladder | 🎉 {offer} 🎉 🍗 {old_price} → {price} 🍗 {old_price} → {price} ... 📲 {phone} | fb-051<br>(1 rows, 1 RW) | 1/1 verbatim, 1 in a Rwandan caption of captions.jsonl | partly | One row (BestPilau), verbatim and Rwandan. |
+| facebook | dm-delivery-price | DM us to order / {offer} 💰 Price: {price} | fb-054 fb-055 fb-041<br>(3 rows, 3 RW) | 2/2 verbatim, 2 in a Rwandan caption of captions.jsonl | supported | Timeless Luxuries, albatross_designer, tuza_officall: three Rwandan captions, two verbatim. |
+| facebook | stock-list | 💻 {business} STOCK 🔹 {product} 💰 {price} 🔹 {product} 💰 {price} | fb-073<br>(1 rows, 1 RW) | 1/1 verbatim, 1 in a Rwandan caption of captions.jsonl | partly | One row (La Paix Technology), verbatim and Rwandan. |
+| facebook | bilingual-twice | {claim} (English) ... {claim} (Kinyarwanda) | fb-048<br>(1 rows, 1 RW) | 1/1 verbatim, 1 in a Rwandan caption of captions.jsonl | partly | One row (Cleopatra Home), verbatim and Rwandan. |
+| facebook | branches | {claim} at {business}. 📍 {area}: {phone} 📍 {area}: {phone} | fb-059<br>(1 rows, 1 RW) | 0/1 verbatim, 1 paraphrase | partly | One row (Action College); the example is a paraphrase "(CHIC, Musanze, Remera branch phones)", the real caption lists the three branch phones. |
+| instagram | page-post | {one friendly line about the moment or the place} {0 to 3 tags: city, brand} | fb-155 fb-141 fb-144<br>(3 rows, 3 RW) | 3/3 verbatim, 3 only in another jsonl | partly | Same three Facebook reels; not an Instagram caption. |
+| instagram | ig-owner-contact | {product} {price} {offer} Call or WhatsApp {phone} 📍 {area} | ig-023 ig-037<br>(2 rows, 0 RW) | 1/2 verbatim, 1 only in another jsonl, 1 paraphrase | partly | A Delhi phone store and a Nairobi shop (no Rwandan row); the Nairobi example is a paraphrase: the real caption reads "Call/WhatsApp: 0711 179 871 ... Located in Old Nation hse, ... Tom Mboya Street". |
+| instagram | ig-price-stock | 📍 {area} {product} {price} ✅ {claim} LIMITED PIECES, SHOP NOW | ig-035<br>(1 rows, 0 RW) | 1/1 verbatim, 1 only in another jsonl | partly | One row, Meraki (Dar es Salaam), verbatim; no Rwandan row. |
+| instagram | ig-dm-order | {offer} ✨ {claim} 📍 {area} 💬 DM to order or WhatsApp {phone} | ig-053 tt-063<br>(2 rows, 0 RW) | 2/2 verbatim, 2 only in another jsonl | partly | A crochet shop and a TikTok caption (not Instagram, not East African); the phrases are generic. |
+| instagram | ig-owner-question | {claim} Any other small business feel me? | ig-051 ig-054<br>(2 rows, 0 RW) | 2/2 verbatim, 2 only in another jsonl | partly | Two small-business owner posts (not ads, not East African); the examples are real. |
+| shorts | page-post | {one friendly line about the moment or the place} {0 to 3 tags: city, brand} | fb-155 fb-141 fb-144<br>(3 rows, 3 RW) | 3/3 verbatim, 3 only in another jsonl | partly | Same three Facebook reels; not YouTube titles. |
+| shorts | promise-number-title | {count} reasons to {claim} / {product} in {city}: {offer} | yt-014 yt-008<br>(2 rows, 1 RW) | 2/2 verbatim, 2 only in another jsonl | partly | "5 reasons to invest in Rwanda" is an investment clip by a non-business page; the other is an Indian AI-ads Short; no Rwandan shop. |
+| shorts | shop-number-title | {business} {city} ({phone}) #shorts #{city} | yt-018<br>(1 rows, 0 RW) | 1/1 verbatim, 1 only in another jsonl | partly | One row, a Kenyan thrift shop with 4 likes. |
+| shorts | store-list-title | {business}: {product}, {product} / {area} | yt-035<br>(1 rows, 0 RW) | 1/1 verbatim, 1 only in another jsonl | partly | One row, an Indian phone store. |
+| shorts | series-title | {claim} - DAY {count} / {product} | yt-005<br>(1 rows, 0 RW) | 1/1 verbatim, 1 only in another jsonl | partly | One row, a Blender showreel series, not a business ad. |
+
+## Hashtag ranges, phone format and statistics against the 125-caption corpus
+
+| Claim in `captions.json` | Recomputed | Verdict |
+| --- | --- | --- |
+| TikTok: 4 to 6 hashtags, median 5, never 10 or more | `captions.jsonl` TikTok (21): median 5, range 0 to 8, 17 within 4 to 6, none at 10+; `tiktok.jsonl` (165 with captions): median 5, 118 within 4 to 6, 7 at 10 or more | supported (7 captions of 165 do use 10+; the rule is advice) |
+| Facebook: 0 to 3 hashtags, median 1, 49% none, 5 when used | Facebook ads (98): median 1, 48 of 98 none (49%), range 0 to 15; 56 of 98 within 0 to 3, 33 within 4 to 6, 7 at 10 or more; when used the median is 5 | supported (the 0 to 3 band holds for 57% of ads) |
+| "#MadeInRwanda appeared in none of 125 captions" | 0 of 125 | supported |
+| Instagram: 3 to 6 hashtags, median 5, 11 of 58 none | First 58 reels: median 5, 11 none ✓; 31 of 58 within 3 to 6; range 0 to 19; all 101 reels: median 5, 29 none, 52 within 3 to 6 | supported (median and count exact; the band covers about half) |
+| Shorts: 1 to 3 hashtags (#shorts plus city) | 36 Shorts: median 1, range 0 to 9; 14 have none, 10 are within 1 to 3, 12 use more than 3; no cited row for "#shorts plus city" | partly |
+| Phone numbers: mostly 10-digit local with no spaces (0788218567), 22 with +250 and spaces | Rwandan captions: 115 numbers, 73 local without spaces (63%), 7 local with spaces, 22 "+250 xxx" with spaces, 10 "+250" without spaces, 3 with dashes (all 125 captions: 78 local no spaces, same 22) | supported (the "78" counts also include Kenyan and Ugandan numbers) |
+| Two numbers are common | 20 of 111 Rwandan captions have two or more numbers (18%) | supported ("common" is generous) |
+| Label "Call/WhatsApp:" | Rwandan captions: "Call/WhatsApp" 10, "Call or WhatsApp" 6, "Call&WhatsApp" 1, "Info:" 2, "Phone:" 1, "TEL:" 1 | supported (the commonest label, but only about half of labelled numbers) |
+| Corpus: 63% phone, 77% place, 58% price, 71% call to action, 30% delivery, 30 rows with all four | Recomputed on the 111 Rwandan captions: 63, 77, 58, 71, 30 percent; all four in 29 rows | supported (29, not 30, by the flags in the file) |
+| Median 48 words, 316 characters, 7 lines (Facebook); TikTok median 25 words, 184 characters | Facebook ads: 48 / 316 / 7 ✓; TikTok: 25 / 184 ✓ | supported |
+| "Never over 600 characters" | 19 of 125 captions are longer than 600 (school, clinic, service and property captions) | partly: the cap is advice; real Rwandan captions go over it 15% of the time |
+| Language: 13 of 51 Rwandan Facebook ads in Kinyarwanda, French on 1; corpus English 77, mixed 19, Kinyarwanda 14, French 1 | 13 of the 51 ad rows are Kinyarwanda (the 51 have no row labelled French); corpus language counts match exactly | supported |
+| Median video length 34 s | 34 s on the 51 ad rows | supported |
+| Facebook findings: "None of the 51 mentions MoMo" | 0 of the 51, 0 of 125 captions, but the Sofar Kigali ad (id 981129234484465) has "MoMo: 0788617015" | partly (see the earlier "momo" finding) |
+| Long runners: 11 of 20 number in caption; hashtags 0 to 12, median 2 to 3, 8 of 20 none | verified earlier from the 20 rows | supported |
+
+## Trade routes (10)
+
+| Route | Claim | Recomputed | Verdict |
+| --- | --- | --- | --- |
+| whatsapp | 22 of 51 use the WhatsApp button; 35 of 51 put the number in the caption | 22 of 51 ✓; 34 of 51 by a broad phone regex (32 by a stricter one) | supported (35 is within the regex tolerance) |
+| twandikire | Duhamagare 9, Twandikire 8 | Duhamagare/uhamagare/hamagara 10, Twandikire/utwandikire 8 | supported |
+| instagram | 13 of 51 send to the Instagram profile | 13 ✓ | supported |
+| call | "Call now" on 4 of 51 | 4 ✓ | supported |
+| vubavuba | Order on VubaVuba | one caption in the whole corpus (Cave Coffee, TikTok) | partly (one row) |
+| location | landmarks, not streets | 23 of 111 Rwandan captions use a landmark word (next to, opposite, near, building, room); examples verbatim | supported |
+| dm | DM to order | 11 of 111 Rwandan captions say DM | supported |
+| cod | Free delivery, pay after delivery | "free delivery" in 16 and "pay after/on delivery" in 4 of 111 Rwandan captions; the pair together is the Kenya/Uganda/Tanzania template | supported (the pairing is not Rwandan-typical) |
+| momo | None of 51 mention MoMo | one Facebook ad (Sofar Kigali) does | partly |
+| qr | QR code | one YouTube Short (a Blender showreel) | partly (one non-Rwandan row) |
