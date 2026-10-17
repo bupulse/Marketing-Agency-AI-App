@@ -80,3 +80,12 @@ organic reels, Instagram East African accounts, TikTok thin sectors and sounds).
 
 Incident: an agent's `pkill -f cat` killed Chrome and the supervisor at 09:48; both relaunched, rule added to the team
 brief.
+
+### Midday, 17 October: decisions the owner may reverse
+- Prices from measured costs (docs/AI_COSTS.md): Motion 35 credits (was 30), voice-over 15 (was 10); Premium 3D 100 at
+  540p, 150 at 720p, re-render 70; Seedance by formula at 2.2x.
+- Video credits per plan (docs/VIDEO_APP_INTEGRATION.md): Starter 100, Business 500, top plan 1,500 a month, no
+  roll-over; trial 50; presenter images from video credits.
+- App integration started on this branch: pure lib/video-engine/credits.ts and the Prisma migration
+  20261022100000_video_studio (TEST database only). The app must use ANTHROPIC_API_KEY, never the subscription.
+- Guide pages 19 (Video Brain) and 20 (Video Studio), docs/SEEDANCE_KEY_DAY.md for the key day.
