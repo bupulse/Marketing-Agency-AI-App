@@ -139,3 +139,65 @@ All 9:16, text in the top third, price or contact line persistent in the lower-l
 - 1-4 s: packshot drops in with motion blur and a colour wipe to the second colour.
 - 4-8 s: slow dolly macro of the product with floating UI labels (price, benefit), cuts on the beat at 2 s intervals.
 - 8-10 s: logo tile and a one-line CTA. This follows the Pringles, Duolingo and Notion motion-graphics rows (77.8K likes on the Duolingo concept) and the Blender watch macro, and needs no footage at all.
+
+## East Africa, first-hand (round 2, accounts visited directly)
+
+### How I got it
+
+- I opened about 45 business accounts' Reels tabs in the owner's logged-in Chrome and got watched reels from 36 of them: 27 in Kigali (phone and laptop shops, salons, spas, nail and wig makers, restaurants and bars, delivery app, real estate, shoes and clothes, jewellery, furniture, clinics, a school, a florist, an events dancer group, a car-rental firm), plus Nairobi (Naivas, Java House, House of Cars, Brimat Computers), Dar es Salaam (Meraki, Royal Cakes) and Kampala (three baby and kids shops). Handles came from the Facebook advertisers in `facebook.jsonl` and from Instagram's own account search ("kigali real estate", "kigali clinic", "kigali school", "kigali events" and so on).
+- For each account I read the play count on the reel tiles and watched the top one or two reels (about 7 s each, muted, 4 frames). 43 rows were added to `instagram.jsonl` with `found_by: "account"`, `account`, `account_followers` and the tile play count in `stats_as_reported.views`. Four rows are collab or customer posts by another handle (`collab_post_by`).
+- Bias to keep in mind: I chose each account's best reels by plays, so these are the winners, not the average post. The Kigali rows (34) are the base for the numbers below.
+- Several candidate accounts had no usable Reels tab or did not exist under the guessed handle (for example a supermarket, a hotel and a clinic from the Facebook list). No notice, challenge or block appeared. For about an hour the machine was so loaded that Instagram's tab stopped responding, which cost time but no data.
+
+### What Kigali businesses post compared with the global reels
+
+| | Global reels (first 58) | Kigali accounts (34) |
+| --- | --- | --- |
+| Median length | 13 s (64% under 16 s) | 27 s (only 8 of 34 under 21 s; 23 are 21-60 s) |
+| First-frame hook line | about 60% have text at 0 s | 13 of 34 have no text on screen at all; the first text is usually a phone number, a brand or a place |
+| Phone number on screen | rare | 13 of 34, always from frame 0 and for the whole clip |
+| Phone, WhatsApp or DM line in the caption | 7 of 58 | 14 of 34, plus address, delivery and payment terms |
+| Price shown on screen | common in the shop and fashion reels from India and the US | 3 of 34 (price sits in the caption, if at all) |
+| Language | English, some local | English 29 of 34; Kinyarwanda in 4 (promotion lines, a cream recommendation, a land sale) |
+| Typical format | one idea, hook, loop | in-shop walk-through, product held in hand, treatment filmed in one take, template slide plus raw phone footage |
+| Editing | 4-8 cuts per 10 s for demos | 1-4 cuts per 10 s, mostly one continuous shot |
+
+Typical categories among the 34: offers 10, product reveals 6, before/after 6, tours 5, UGC 4, tutorials 2.
+
+### What stands out
+
+1. **The phone number is the hook.** On the best shop reels the number is the first thing on screen and stays there (La Paix Technology 161K plays on 751 followers, Home of Hybrid 110K plays on 59 followers, Metro Cosmetics 98.6K plays on 662 followers, Lou Aesthetic EmSculpt 40.9K). Reels with the number on screen had median 58.8K plays against 39.7K without, in this biased sample of top reels, and the gap is the right sign, not proof.
+2. **Reach comes from the format, not the follower count.** Median plays are about 21 times the follower count. The top plays-to-followers ratios (59-follower car rental 110K plays, Sera Beauty 513K plays on 2.3K followers, La Paix 161K on 751, Elysian Spa 286K on 4.1K) all come from tiny accounts. Instagram is pushing local product and treatment reels to far more people than the account has.
+3. **Likes are low compared with plays.** Median likes-to-plays is about 0.55%. People watch and then WhatsApp or call, they do not like. Success should be measured in messages, not likes.
+4. **Services film one satisfying process in one take.** Spa scrub (286K and 88K plays), facial (32K), microlocs hair flip (193K and 171K), nails (5.6K), acne cream "Day 1 / Day 7" (98K and 74K). The treatment is the proof, the booking line is a text strip at the bottom.
+5. **Shops use staff or the owner as presenter.** A shop assistant in a branded polo presenting a "summer combo" (250cityshoes: 300K and 227K plays on 42K followers), the seller holding boots (Albatross), the owner at the stock wall (the Indian examples earlier).
+6. **Template slides are everywhere.** Photo-card animations with a "VISIT US" button (Elevée Lounge), "RENT A CAR" slides (Home of Hybrid), "Turi kuri Promotion" over a laptop pan (La Paix), phone-number bars. These are what the engine can generate from photos.
+7. **Stories with a local joke work best on the biggest accounts.** Ando's "POV: She says 'I'm close' and you have NOTHING at home" skit (275K plays), the Nairobi car-lot skit about influencers asking for freebies (5K likes), a proposal story where five vendors are tagged (97.6K plays).
+8. **Corporates use motion graphics, not footage.** Naivas: orange price badges with packshots and the offer end date in the footer (80K plays on 243K followers: low relative reach, but zero filming).
+9. **Captions are the sales page.** Price in local currency (TSh, UGX, RWF, KSh), sizes, "Limited size", "Free delivery in Kigali", landmarks as directions (opposite Canabella, below Rebero Resort, TCB Building room 25AB), MoMo or "payment after delivery". Almost never on the video itself.
+10. **Weak spots**: dark openings (Lou), no price anywhere (nearly all), small unreadable captions, 50-290 s videos with no hook (Pharo School, Java House), reposted foreign clips (a Kampala baby shop reposts a Brazilian Shopee affiliate video), landscape footage letterboxed.
+
+### Accounts that do it best (Kigali first)
+
+| Account | Followers | What they do | Best plays I saw |
+| --- | --- | --- | --- |
+| @serabeauty.rw | 2.3K | Face first, product in hand, application, smile; watermark on every frame; "DM to order, delivery available" | 513K, 348K |
+| @elysian_spa_kigali | 4.1K | One continuous treatment shot with a booking line (area plus phone) on screen the whole time | 286K, 88K |
+| @250cityshoes_ | 42.3K | Staff presenter in the shop, "New arrivals / Limited size", three numbers, address, free delivery in the caption | 300K, 227K |
+| @ando_kigali | 3.4K | Relatable POV skits and event promos (World Cup code) with a visible branded bag | 275K, 86.5K |
+| @rwanda_microlocs | 4.6K | Hair flip from behind, question hook text, "Rwandan queens" line | 193K, 171K |
+| @lapaixtechnologyltd | 751 | Promotion line in Kinyarwanda, number on top for the whole clip, yellow caption box with address | 161K, 55K |
+| @metro_cosmetics_12 | 662 | "Day 1 / Day 3 / Day 5 / Day 7" result counters, headline box with phone on screen | 98.6K, 74.3K |
+| @homeofhybrid | 59 | Template slides plus raw car footage, phone bar for the whole video | 110K |
+| @petal_florist_kigali | 16.8K | Cake-bouquet products and vendor-tagged story posts | 97.6K |
+| @kigali_sneaker_gallery, @shoes._gallery_, @albatross_designer | 8.4K / 20.3K / 2.8K | Sneaker macro, sizes and phone in caption; customer testimonial with kinetic text; boots held by the seller with number tag | 40K, 42K, 59K |
+
+Outside Kigali: Naivas (Nairobi) for retail price-badge motion graphics, House of Cars Kenya (172K plays, drone film, price and salesperson number in the caption), Brimat Computers (Nairobi, 46K plays, "MEGA SALE 30% OFF" paper signs, directions with landmarks), Meraki (Dar es Salaam, 236K followers, kaftan catalogue with TSh price in the caption), Royal Cakes (Dar es Salaam, "Only TSh 10,000", area, delivery, number).
+
+### 5 rules for the engine, from the East African accounts
+
+1. **Phone or WhatsApp number on screen from frame 0 to the last frame**, in a bar at the top or in the lower third (not the bottom 12%). Make it a required field of every Kigali template, with the area or landmark next to it. This single element matches the best reels in the sample.
+2. **Default to 15-30 s, one continuous process or walk-through, 1-4 cuts per 10 s** for Rwandan business templates. Put the hook text (claim, "Promotion", "New arrivals", "Day 7") on screen at 0 s, then show the process once, then the contact. Do not use the 8-cut-per-10-s global recipe for services.
+3. **Build the price badge into every product and offer template** (RWF, big numerals, orange or brand-colour shape, "Free delivery in Kigali" line). Only 3 of 34 Kigali reels show the price on screen, so this is a free advantage over their competitors. Put the same text in the caption the engine writes.
+4. **Generate bilingual hook text, Kinyarwanda first**, with an English line below ("Turi kuri Promotion / We are on promotion"). Only 4 Kinyarwanda rows exist in the sample, so this is a bet rather than a measurement: the best of them (La Paix, 161K plays on 751 followers) pairs a Kinyarwanda promotion line with the number on screen. Offer a Swahili variant for Nairobi and Dar es Salaam.
+5. **Caption generator = a shop card**: offer line, price in local currency, sizes or options, "Limited" stock line, delivery terms, payment (MoMo code or "payment after delivery"), landmark address, phone/WhatsApp, a comment keyword ("Comment PRICE") and local hashtags (#kigali #rwanda #kigaliupdates #<niche>). Pair it with a vendor-tagging line when other businesses appear (the proposal story with five tagged vendors had 97.6K plays).
