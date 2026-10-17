@@ -87,6 +87,9 @@ function sendMedia(req: http.IncomingMessage, res: http.ServerResponse, bytes: B
  */
 const claudeMode = (): "api" | "subscription" => (process.env.VIDEO_LAB_CLAUDE === "subscription" || !process.env.ANTHROPIC_API_KEY ? "subscription" : "api");
 
+/** The designer's research score (lib/video-engine, coming): 0-100 with the rules it passed and failed. */
+type DesignScore = { score: number; passed: unknown[]; failed: { rule: string; reason: string; scene?: number | null }[] };
+
 type DesignRequest = {
   businessId: string;
   productId: string;
@@ -202,6 +205,9 @@ async function designOne(req: DesignRequest, variation: { index: number; of: num
     );
     await record(job.id, "claude-design", result.usage);
     Object.assign(job, { spec: result.spec, usage: result.usage, costUsd: result.costUsd, apiEquivalentUsd: result.apiEquivalentUsd, billedTo: mode });
+    // The fact check's warnings, and the research score once the designer returns one; saved with the job for the page.
+    const checked = result as typeof result & { score?: DesignScore };
+    Object.assign(job, { warnings: checked.warnings ?? [], ...(checked.score ? { score: checked.score } : {}) });
   } catch (error) {
     const usage = error instanceof DesignError ? error.usage : [];
     await record(job.id, "claude-design", usage);

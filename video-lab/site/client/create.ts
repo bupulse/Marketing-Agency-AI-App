@@ -26,7 +26,9 @@ type Options = {
   cast: { id: string; name: string; about: string }[];
   seedance: { tiers: { id: string; name: string; blurb: string; resolutions: string[] }[]; ratios: string[]; limits: { minSeconds: number; maxSeconds: number } };
 };
-type ClaudeJob = { id: string; createdAt: string; productName: string; styleId: string; ratio: string; photoIds: string[]; spec: MotionSpec | null; usage: unknown[]; apiEquivalentUsd?: number; status: string; error: string | null; video: { bytes: number; quality?: string } | null; mode?: string };
+type FactWarning = { where: string; found: string; problem: "not-in-brief" | "business-only"; message: string };
+type DesignScore = { score: number; failed: { rule: string; reason: string; scene?: number | null }[] };
+type ClaudeJob = { warnings?: FactWarning[]; score?: DesignScore; id: string; createdAt: string; productName: string; styleId: string; ratio: string; photoIds: string[]; spec: MotionSpec | null; usage: unknown[]; apiEquivalentUsd?: number; status: string; error: string | null; video: { bytes: number; quality?: string } | null; mode?: string };
 type SdJob = { id: string; createdAt: string; status: string; credits: number; estimateUsd: number; costUsd: number; tokens: number; videoFile: string | null; error: string | null; title: string; request: { prompt: string; tier: string; resolution: string; ratio: string; seconds: number; referenceNotes: string[] }; preview?: { notice: string; readyAt: string; wouldCostCredits: number } };
 type Issue = { level: "error" | "warning" | "info"; code: string; message: string };
 type StoryShot = { n: number; from: number; to: number; shot: string; camera: string; action: string; sound: string | null; spoken: string | null; references: string[] };
@@ -607,6 +609,8 @@ async function loadGens() {
       card.append(el("div", { className: "wait" }, g.status === "failed" || g.status === "cancelled" ? el("span", { textContent: g.sd?.error ?? g.claude?.error ?? g.status }) : el("span", { className: "spin" }), el("span", { textContent: g.status === "queued" ? "Queued at Seedance" : g.status === "running" ? "Seedance is filming…" : g.status })));
     }
     card.append(el("span", { className: `st ${g.status}`, textContent: g.sd?.preview ? "Seedance preview" : g.engine === "seedance" ? "Seedance" : "Motion" }), el("div", { className: "cap", textContent: g.title }));
+    if (g.claude?.score) card.append(el("span", { className: "scoreTag", textContent: `Research score ${g.claude.score.score}/100` }));
+    if (g.claude?.warnings?.length) card.append(el("span", { className: "factTag", textContent: `${g.claude.warnings.length} fact${g.claude.warnings.length === 1 ? "" : "s"} to check` }));
     card.onclick = () => openDrawer(g);
     grid.append(card);
   }
@@ -674,6 +678,21 @@ async function showPreview(g: Gen, j: SdJob) {
   $("dActions").replaceChildren(motion, edit);
 }
 
+/**
+ * "Check these facts": claims the fact check could not find in the product's facts (red) or found only in the
+ * business's general description (amber), and the research rules the design missed.
+ */
+function showFacts(j: ClaudeJob) {
+  const box = $("dFacts");
+  const warnings = j.warnings ?? [];
+  const failed = j.score?.failed ?? [];
+  box.hidden = !warnings.length && !failed.length;
+  box.replaceChildren(
+    ...(warnings.length ? [el("h5", { textContent: "Check these facts" }), ...warnings.map((w) => el("div", { className: `issue ${w.problem === "not-in-brief" ? "error" : "warning"}`, textContent: `${w.where}: ${w.message}` }))] : []),
+    ...(failed.length ? [el("h5", { textContent: `Research score ${j.score?.score}/100: what it missed` }), ...failed.map((f) => el("div", { className: "issue warning", textContent: `${f.scene ? `Scene ${f.scene}: ` : ""}${f.reason}` }))] : []),
+  );
+}
+
 let drawerAnim = 0;
 function openDrawer(g: Gen | null) {
   if (!g) return;
@@ -694,6 +713,7 @@ function openDrawer(g: Gen | null) {
   const actions = $("dActions");
   actions.replaceChildren();
   $("dEdit").hidden = true;
+  $("dFacts").hidden = true;
   const info: [string, string][] = [];
   cancelAnimationFrame(drawerAnim);
   if (g.engine === "seedance" && g.sd?.preview) {
@@ -773,6 +793,8 @@ function openDrawer(g: Gen | null) {
       $("dEditBtn").onclick = () => void editClaude(g, "edit");
       $("dExtendBtn").onclick = () => void editClaude(g, "extend");
       info.push(["Length", `${(totalMs(spec) / 1000).toFixed(1)} s · ${spec.scenes.length} scenes`], ["Camera", [...new Set(spec.scenes.map((s) => s.camera?.move ?? "static"))].join(", ")], ["Look", spec.look?.grade ?? "none"], ["API-equivalent cost", `$${(j.apiEquivalentUsd ?? 0).toFixed(3)}`]);
+      if (j.score) info.push(["Research score", `${j.score.score}/100`]);
+      showFacts(j);
       const v = voices.get(j.id);
       if (v) info.push(["Voice-over", `spoken in ${v.spokenLanguage}${v.fits ? "" : ", cut to fit 30 s"}`]);
       $("dPrompt").textContent = `${spec.caption}\n\n${spec.hashtags.map((h) => `#${h}`).join(" ")}`;

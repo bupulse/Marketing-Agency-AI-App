@@ -69,7 +69,8 @@ export type BlenderRenderResult = {
 let queue: Promise<unknown> = Promise.resolve();
 
 /**
- * Renders a scene (checked and completed first, see normalizeBlenderScene) to `outPath` (an .mp4). Writes the scene
+ * Renders a scene (checked and completed first, see normalizeBlenderScene) to `outPath` (an .mp4). Pass the same
+ * `photos` the scene was designed with: the product is found by its photo number. Writes the scene
  * next to it (`.scene.json`) and Blender's output to `.log`, and stops Blender after 15 minutes. Renders wait for each
  * other. Rejects with a plain-English message when Blender is missing, fails or times out.
  */
@@ -82,6 +83,9 @@ export function renderBlenderScene(input: unknown, outPath: string, opts: Blende
 async function renderNow(input: unknown, outPath: string, opts: BlenderRenderOptions): Promise<BlenderRenderResult> {
   if (!(await blenderAvailable())) throw new Error(`Blender is not installed (looked for ${blenderBin()}). Install it from blender.org or set BLENDER_BIN.`);
   const { scene, warnings } = normalizeBlenderScene(input, opts);
+  // A scene from designBlenderScene names its photo by number: render it with the same photo list it was designed with.
+  const asked = (input as { product?: unknown } | null)?.product;
+  if (asked && !scene.product) throw new Error(`The 3D scene's product photo is missing (${warnings.join(" ") || "no photo list given"}).`);
   const out = path.resolve(outPath);
   const base = out.replace(/\.mp4$/i, "");
   const scenePath = `${base}.scene.json`;
