@@ -24,7 +24,7 @@ export type HookType = (typeof HOOK_TYPES)[number];
 export const HOOK_NEEDS = ["price", "phone", "offer", "old-price", "location", "result", "claim", "person", "series"] as const;
 export type HookNeed = (typeof HOOK_NEEDS)[number];
 
-export const RESEARCH_SOURCES = ["tiktok", "facebook", "instagram", "youtube", "captions"] as const;
+export const RESEARCH_SOURCES = ["tiktok", "facebook", "instagram", "youtube", "captions", "comments"] as const;
 export type ResearchSource = (typeof RESEARCH_SOURCES)[number];
 
 /**
@@ -135,8 +135,8 @@ export type Rule = {
   engine: RuleEngine;
   /** 1 must, 2 should, 3 nice to have. */
   priority: 1 | 2 | 3;
-  /** Where the rule came from: tiktok-A (watched), tiktok-B (articles), tiktok-3d, facebook, rwanda, instagram, youtube, captions (the caption corpus), engine (owner and policy). */
-  origin: "tiktok-A" | "tiktok-B" | "tiktok-3d" | "facebook" | "rwanda" | "instagram" | "youtube" | "captions" | "engine";
+  /** Where the rule came from: tiktok-A (watched), tiktok-B (articles), tiktok-3d, facebook, rwanda, instagram, youtube, captions (the caption corpus), comments (what viewers ask), engine (owner and policy). */
+  origin: "tiktok-A" | "tiktok-B" | "tiktok-3d" | "facebook" | "rwanda" | "instagram" | "youtube" | "captions" | "comments" | "engine";
   platforms?: Platform[];
   sectors?: SectorId[];
   formats?: FormatId[];
@@ -207,4 +207,32 @@ export type BrainPick = {
   caption: { formula: CaptionFormula; mustInclude: string[]; hashtags: string };
   cta: string;
   sectorInfo: Sector;
+};
+
+// ---- What BuPulse's own posted videos did (outcomes.ts)
+
+/** A post's numbers as the publisher reads them (Prisma PostMetrics: every field may be missing on some networks). */
+export type OutcomeStats = { views: number | null; reach: number | null; likes: number | null; comments: number | null; saves: number | null; shares: number | null };
+
+/**
+ * One video BuPulse made and a client posted, with what it did after 24 hours and after 7 days. The lab keeps these in
+ * video-lab/data/outcomes.jsonl; the app will keep them in a database table with the same fields (docs/research/BRAIN.md,
+ * "Learning from our own results").
+ */
+export type Outcome = {
+  videoId: string;
+  businessId: string;
+  sector: SectorId;
+  platform: Platform;
+  templateId: string | null;
+  hookId: string | null;
+  formatId: FormatId | null;
+  captionFormulaId: string | null;
+  seconds: number;
+  language: string | null;
+  /** ISO date-time the post went out. */
+  postedAt: string;
+  stats24h: OutcomeStats | null;
+  stats7d: OutcomeStats | null;
+  source: "bupulse";
 };

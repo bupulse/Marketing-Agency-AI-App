@@ -225,6 +225,46 @@ translator, and it only flags forms the corpus never uses:
 `PREFERRED_PHRASES` lists what sellers write instead ("Duhamagare cyangwa utwandikire kuri WhatsApp: {phone}",
 "{product} kuri {price} gusa", "Ntucikwe!", "Kiraganirwaho", "Ibyangombwa birahari"...), for the designer's brief.
 
+## Learning from our own results
+
+The research tells the brain what works for other sellers. Once clients post through BuPulse, the brain also learns
+from what BuPulse's own videos did (`brain/outcomes.ts`).
+
+- **The record.** Each posted video becomes an `Outcome` row (`brain/types.ts`): the video, the business, its sector,
+  the platform, the template, hook, format and caption formula used, the length, the language, when it was posted, and
+  the post's numbers after 24 hours and after 7 days (views, reach, likes, comments, saves, shares, the same fields the
+  publisher reads into `PostMetrics`). The lab keeps them in `video-lab/data/outcomes.jsonl` (`recordOutcome`,
+  `loadOutcomes` in `brain/outcomes-store.ts`; the latest row of a video wins).
+- **How a post is judged.** Against the other BuPulse posts on the same platform: its views (or reach) and its
+  engagement per view (comments, saves and shares count more than a like), each as a percentile, averaged. 0.5 is the
+  middle. A post without numbers yet is left out.
+- **How a hook (or format, or template) is re-ranked** (`rankWithOutcomes`):
+  - The research gives it an expected result, 0.4 for the weakest candidate to 0.7 for the strongest, worth 10 posts.
+  - Each of its posts on that platform moves the expectation towards what really happened. The business's own posts
+    count 3, posts from the same sector 1, posts from other sectors 0.5.
+  - It needs at least **5 posted videos** before its own results count at all.
+  - Below **20 posts**, it may move up and down, but it never pushes a research top-three hook out of the top three.
+  - Worked out in the tests: a weak research hook rises into the top three after 20 strong posts, while a 2-post fluke
+    stays where the research put it.
+- **What Claude is told.** `brainContext(brief, { outcomes, businessId })` re-ranks the hook options. When the business
+  has 5 or more posted videos on the platform (or its sector has 10), it also adds one line, for example: "What has
+  worked for you (12 posted videos on TikTok): the "Number on screen, product in hand" opening (5 videos), product
+  reveal videos (8), videos of 11 to 20 s did better than the rest."
+
+**What the app's database migration will need** (the lab file has the same fields):
+
+- A `VideoOutcome` table: `id`, `videoId` (unique), `postId` (unique, the `Post` that published it), `businessId`,
+  `sector`, `platform`, `templateId`, `hookId`, `formatId`, `captionFormulaId`, `seconds`, `language`, `postedAt`,
+  `source` (`"bupulse"`), `createdAt`, and indexes on (`platform`, `sector`) and (`businessId`, `platform`).
+- The numbers do not need their own columns: the publisher already stores `PostMetrics` snapshots. The 24-hour and 7-day
+  stats are the snapshots captured closest to `postedAt` + 24 h and + 7 days (or two `Json` columns, `stats24h` and
+  `stats7d`, filled by the hourly metrics job, if reading snapshots is too slow).
+- The video job must save which template, hook and caption formula it used. The designer knows the template and the hook
+  (`styleId`, `hookId`) and the format follows from the template (`formatFromTemplate`). The caption formula is not
+  recorded yet; `scoreCaption` or the designer will have to note it.
+- Outcomes are read per platform and per sector, at most a few thousand rows: load them once per design request, or
+  cache them per platform for an hour.
+
 ## What the brain does not know yet
 
 - **Sound.** Everything was watched muted. The sound rules come from TikTok's printed sound labels and from what the
@@ -236,5 +276,6 @@ translator, and it only flags forms the corpus never uses:
 - **Rwandan ads are young**: most started in the last two weeks, so days running says little in Rwanda; the number of
   variants live at once (Derma 15, Elohome 8, Magic Chef 7, Piramie 6) is the better signal but is not yet a field in the
   research rows, so it does not count in a row's strength.
-- **"Works" is a proxy**: TikTok likes and Facebook days running, not sales. When BuPulse clients post, their own
-  results (views, WhatsApp messages) should be added as a new kind of evidence and weighted above everything else.
+- **"Works" is a proxy**: TikTok likes and Facebook days running, not sales. BuPulse's own results now feed the
+  ranking (see "Learning from our own results"), but views and likes are not orders either; WhatsApp messages and
+  sales would be the next signal to record.

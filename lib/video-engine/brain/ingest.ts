@@ -10,8 +10,15 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Evidence, ResearchSource } from "./types";
 
-const PREFIX: Record<ResearchSource, string> = { tiktok: "tt", facebook: "fb", instagram: "ig", youtube: "yt", captions: "cp" };
-const SOURCES: ResearchSource[] = ["tiktok", "facebook", "instagram", "youtube", "captions"];
+const PREFIX: Record<ResearchSource, string> = { tiktok: "tt", facebook: "fb", instagram: "ig", youtube: "yt", captions: "cp", comments: "cm" };
+const SOURCES: ResearchSource[] = ["tiktok", "facebook", "instagram", "youtube", "captions", "comments"];
+/** The file each source lives in (docs/research/reels/), when it is not "<source>.jsonl". */
+const FILES: Partial<Record<ResearchSource, string>> = { comments: "tiktok-comments.jsonl" };
+/**
+ * Which rows of a file are evidence. The comments file has one summary per clip and 15 comments under it: the
+ * summaries are indexed, the comments stay in the file as their detail.
+ */
+const INDEXED: Partial<Record<ResearchSource, (row: Row) => boolean>> = { comments: (row) => row.type === "clip_summary" };
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 type Row = Record<string, unknown>;
@@ -58,6 +65,8 @@ const COUNTRY_WORDS: [string, RegExp][] = [
 export function rowCountry(row: Row): string | null {
   const own = str(row.country);
   if (own && /^[A-Z]{2}$/.test(own)) return own;
+  const NAMES: Record<string, string> = { rwanda: "RW", kenya: "KE", uganda: "UG", tanzania: "TZ", nigeria: "NG", "south africa": "ZA", china: "CN", "united states": "US", usa: "US" };
+  if (own && NAMES[own.toLowerCase()]) return NAMES[own.toLowerCase()];
   const text = [row.author, row.page, row.channel, row.title, row.caption, row.on_screen_text, row.hook, row.why_it_works, (row.hashtags as unknown[] | null)?.join(" ")].filter((x) => typeof x === "string").join(" ");
   if (row.language === "rw") return "RW";
   // The country named most often (a caption listing stockists abroad still belongs to its own country); ties go to
@@ -73,7 +82,7 @@ export function rowCountry(row: Row): string | null {
 }
 
 export const rowKey = (row: Row): string =>
-  [str(row.url) ?? "", str(row.author) ?? str(row.page) ?? str(row.channel) ?? str(row.page_or_account) ?? "", (str(row.hook) ?? str(row.caption) ?? str(row.title) ?? str(row.structure) ?? "").slice(0, 40)].join(" | ");
+  [str(row.url) ?? str(row.clip_url) ?? "", str(row.author) ?? str(row.page) ?? str(row.channel) ?? str(row.page_or_account) ?? "", (str(row.hook) ?? str(row.caption) ?? str(row.title) ?? str(row.structure) ?? "").slice(0, 40)].join(" | ");
 
 /**
  * Ads an advertiser had live at once, as the researchers counted them in the Ad Library
@@ -145,14 +154,15 @@ export function evidenceFromRows(source: ResearchSource, rows: Row[], existing: 
   const used = new Set<string>();
   const out: Evidence[] = [];
   rows.forEach((row, i) => {
+    if (INDEXED[source] && !INDEXED[source]!(row)) return;
     const key = rowKey(row);
-    const rowUrl = str(row.url);
+    const rowUrl = str(row.url) ?? str(row.clip_url);
     let id = known.get(key) ?? (rowUrl && rowUrls.get(rowUrl) === 1 ? byUrl.get(rowUrl) : undefined);
     if (id && used.has(id)) id = undefined;
     if (!id && opts.addNew === false) return;
     if (!id) id = `${prefix}-${String(++next).padStart(3, "0")}`;
     used.add(id);
-    const url = str(row.url);
+    const url = str(row.url) ?? str(row.clip_url);
     const stats = (row.stats_as_reported ?? {}) as Row;
     const likes = parseCount(stats.likes ?? row.likes);
     const runningDays = typeof row.running_days === "number" ? row.running_days : null;
@@ -198,7 +208,7 @@ function main() {
   const existing: Evidence[] = fs.existsSync(out) ? JSON.parse(fs.readFileSync(out, "utf8")) : [];
   const all: Evidence[] = [];
   for (const source of SOURCES) {
-    const file = path.join(root, `docs/research/reels/${source}.jsonl`);
+    const file = path.join(root, `docs/research/reels/${FILES[source] ?? `${source}.jsonl`}`);
     if (!fs.existsSync(file) || skip.includes(source)) {
       all.push(...existing.filter((e) => e.source === source));
       continue;

@@ -11,6 +11,7 @@ import sectorsJson from "./data/sectors.json";
 import { ENGINES, FORMATS, HOOK_NEEDS, HOOK_TYPES, PLATFORMS, RESEARCH_SOURCES, RULE_STAGES, SECTORS, type BrainData, type CaptionsData, type Evidence, type Format, type FormatId, type Hook, type Rule, type Sector } from "./types";
 
 export * from "./types";
+export { MIN_POSTS, PRIOR_POSTS, STRONG_POSTS, WEIGHTS, checkOutcome, outcomesLine, performance, rankWithOutcomes, type Candidate, type CandidateKind, type RankedCandidate } from "./outcomes";
 export { FRENCH_COMMERCE, KINYARWANDA_COMMERCE, PREFERRED_PHRASES, checkLanguage, hasKinyarwanda, languageTextsOf, type LanguageIssue, type LanguageText } from "./language";
 
 /** A box of the frame, as fractions of the canvas: text must sit between top and bottom, left and right. */
@@ -176,7 +177,7 @@ export function checkBrain(data: BrainData = BRAIN, refs: BrainRefs = {}): strin
     oneOf(where, "kind", r.kind, ["do", "dont"]);
     oneOf(where, "stage", r.stage, RULE_STAGES);
     oneOf(where, "engine", r.engine, [...ENGINES, "both"]);
-    oneOf(where, "origin", r.origin, ["tiktok-A", "tiktok-B", "tiktok-3d", "facebook", "rwanda", "instagram", "youtube", "captions", "engine"]);
+    oneOf(where, "origin", r.origin, ["tiktok-A", "tiktok-B", "tiktok-3d", "facebook", "rwanda", "instagram", "youtube", "captions", "comments", "engine"]);
     if (![1, 2, 3].includes(r.priority)) say(where, "priority must be 1, 2 or 3");
     if (r.platforms) allOf(where, "platforms", r.platforms, PLATFORMS);
     if (r.sectors) allOf(where, "sectors", r.sectors, SECTORS);

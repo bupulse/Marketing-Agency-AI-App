@@ -115,6 +115,19 @@ These habits come from 125 real Rwandan and East African captions.
 **Fact warnings** are not part of the score. They are there so nobody posts a price, a discount or a "free delivery"
 that the business never offered.
 
+## Learning from your own videos
+
+Once your videos are posted through BuPulse, the Brain also learns from what they did. It reads the views, likes,
+comments, saves and shares after one day and after one week.
+
+- **Re-ranking.** Openings, formats and templates that worked for you move up, and so do those that worked for
+  businesses like yours.
+- **Your own results count most.** Your own videos weigh three times as much as other businesses'.
+- **No fluke changes the advice.** An opening needs at least 5 posted videos before its results count. Below 20 videos
+  it can move up, but it never pushes one of the research's top three out of the top three.
+- **What Claude reads.** When there is enough, Claude's brief gets one line such as "What has worked for you (12 posted
+  videos on TikTok): …".
+
 ## How the scam filter protects you
 
 About half of the longest-running Rwandan ads in Facebook's ad library are income-chain posts ("Tajyira Akakanya

@@ -1,10 +1,12 @@
 import fs from "node:fs";
+import os from "node:os";
+import { loadOutcomes, recordOutcome } from "@/lib/video-engine/brain/outcomes-store";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { BRAIN, FORMATS, PLATFORMS, RESEARCH_SOURCES, SECTORS, checkBrain, checkLanguage, languageTextsOf, safeAreaFor, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
+import { BRAIN, FORMATS, PLATFORMS, RESEARCH_SOURCES, SECTORS, checkBrain, checkLanguage, checkOutcome, languageTextsOf, outcomesLine, rankWithOutcomes, safeAreaFor, type Outcome, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
 import { evidenceFromRows, looksLikeScam, parseCount, parseDate, parseJsonl, rowKey, rowStrength, tiktokDate, variantsLive } from "@/lib/video-engine/brain/ingest";
 import { SAFE_AREAS, amounts, hasKinyarwanda, scoreCaption, scoreDesign, scoreSeedancePrompt, templateStyle, type ScoreBrief } from "@/lib/video-engine/brain/score";
-import { CONTEXT_MAX_CHARS, ENGINE_SECONDS, brainBriefFromDesign, brainBriefFromPrompt, brainContext, brainFor, formatFromTemplate, scaleTimeline, sectorFromText } from "@/lib/video-engine/brain/select";
+import { CONTEXT_MAX_CHARS, ENGINE_SECONDS, rankHooks, brainBriefFromDesign, brainBriefFromPrompt, brainContext, brainFor, formatFromTemplate, scaleTimeline, sectorFromText } from "@/lib/video-engine/brain/select";
 import type { DesignBrief } from "@/lib/video-engine/designer";
 import { BUSINESS_KINDS, SEEDANCE_FORMATS, SEEDANCE_TEMPLATES, planSeedanceShots } from "@/lib/video-engine/seedance-brain";
 import { sampleSpec } from "@/lib/video-engine/sample";
@@ -33,7 +35,7 @@ describe("the brain database", () => {
 
   it("every evidence row points at the researcher's row it came from", () => {
     for (const source of RESEARCH_SOURCES) {
-      const file = path.join(REELS, `${source}.jsonl`);
+      const file = path.join(REELS, source === "comments" ? "tiktok-comments.jsonl" : `${source}.jsonl`);
       const index = BRAIN.evidence.filter((e) => e.source === source);
       if (!fs.existsSync(file)) {
         expect(index).toEqual([]);
@@ -44,7 +46,8 @@ describe("the brain database", () => {
         // The row at its line, or (when the file was reordered) the row with its key: run ingest.ts to refresh lines.
         const row = rows[e.line - 1];
         // A row whose hook was filled in since is still found by its URL (run ingest.ts to refresh the key).
-        const found = row && (rowKey(row) === e.key || (e.url && row.url === e.url)) ? row : rows.find((r) => rowKey(r) === e.key || (e.url && r.url === e.url));
+        const urlOf = (r: Record<string, unknown>) => r.url ?? r.clip_url;
+        const found = row && (rowKey(row) === e.key || (e.url && urlOf(row) === e.url)) ? row : rows.find((r) => rowKey(r) === e.key || (e.url && urlOf(r) === e.url));
         expect(found, `${e.id} (${source} line ${e.line}) no longer matches a research row`).toBeTruthy();
       }
     }
@@ -621,6 +624,77 @@ describe("the language check", () => {
     const rows = parseJsonl(fs.readFileSync(path.join(REELS, "captions.jsonl"), "utf8")).filter((r) => r.country === "RW");
     const flagged = rows.filter((r) => checkLanguage([{ where: "caption", text: String(r.caption), kind: "caption" }], r.language_mix === "en" ? "English" : r.language_mix === "fr" ? "French" : "Kinyarwanda").length);
     expect(flagged.length).toBeLessThanOrEqual(MAX_CORPUS_FLAGS);
+  });
+});
+
+describe("learning from BuPulse's own results", () => {
+  const brief: BrainBrief = { platform: "tiktok", sector: "phone-shop", format: "product-reveal", engine: "claude", language: "English", hasPrice: true, hasPhone: true, seconds: 15 };
+  const format = BRAIN.formats.find((f) => f.id === "product-reveal")!;
+  const research = rankHooks(brief, "phone-shop", format);
+  const researchTop = research.slice(0, 3).map((h) => h.id);
+  let n = 0;
+  // `liked`: the share of viewers who like it (strong posts are watched more and liked more).
+  const post = (hookId: string, views: number, o: Partial<Outcome> = {}, liked = 0.05): Outcome => ({
+    videoId: `v${++n}`, businessId: "other", sector: "phone-shop", platform: "tiktok", templateId: "kigali-price-first", hookId, formatId: "product-reveal", captionFormulaId: null, seconds: 15, language: "English", postedAt: "2026-11-01T10:00:00Z",
+    stats24h: null, stats7d: { views, reach: null, likes: Math.round(views * liked), comments: Math.round(views * liked / 10), saves: 0, shares: Math.round(views * liked / 20) }, source: "bupulse", ...o,
+  });
+  // 40 ordinary posts on the research top hooks: 1,000 to 2,950 views.
+  const background = Array.from({ length: 40 }, (_, i) => post(researchTop[i % 3], 1000 + 50 * i));
+  const rank = (outcomes: Outcome[], businessId: string | null = null) => rankWithOutcomes(research, outcomes, { sector: "phone-shop", platform: "tiktok", businessId }).map((c) => c.id);
+
+  it("a weak research hook rises into the top three after 20 strong posts", () => {
+    const weak = research[8].id;
+    const strong = Array.from({ length: 20 }, () => post(weak, 20_000, {}, 0.12));
+    expect(rank(background).slice(0, 3)).not.toContain(weak);
+    expect(rank([...background, ...strong]).slice(0, 3)).toContain(weak);
+    expect(brainFor(brief, { outcomes: [...background, ...strong] }).hooks.map((h) => h.id)).toContain(weak);
+  });
+
+  it("a two-post fluke does not rise", () => {
+    const fluke = research[9].id;
+    const ranked = rankWithOutcomes(research, [...background, post(fluke, 90_000), post(fluke, 95_000)], { sector: "phone-shop", platform: "tiktok" });
+    const f = ranked.find((c) => c.id === fluke)!;
+    expect(f.results).toMatchObject({ posts: 2, weight: 0 });
+    expect(ranked.slice(0, 3).map((c) => c.id)).not.toContain(fluke);
+    expect(f.why).toContain("not enough yet");
+  });
+
+  it("a small strong sample never pushes a research top-three hook out of the top three", () => {
+    const small = research[10].id;
+    const eight = Array.from({ length: 8 }, () => post(small, 40_000, { businessId: "nova" }, 0.12));
+    const top = rank([...background, ...eight], "nova").slice(0, 3);
+    expect([...top].sort()).toEqual([...researchTop].sort());
+  });
+
+  it("the business's own results weigh more than other businesses'", () => {
+    const id = research[6].id;
+    const six = (businessId: string) => Array.from({ length: 6 }, () => post(id, 30_000, { businessId }, 0.12));
+    const blended = (businessId: string) => rankWithOutcomes(research, [...background, ...six(businessId)], { sector: "phone-shop", platform: "tiktok", businessId: "nova" }).find((c) => c.id === id)!.blended;
+    expect(blended("nova")).toBeGreaterThan(blended("someone-else"));
+  });
+
+  it("adds a 'What has worked for you' line only when there is enough data", () => {
+    const own = Array.from({ length: 6 }, (_, i) => post(research[4].id, 25_000 + i, { businessId: "nova", seconds: 10 }, 0.1));
+    const line = outcomesLine([...background, ...own], { sector: "phone-shop", platform: "tiktok", businessId: "nova" })!;
+    expect(line).toContain("What has worked for you (6 posted videos on TikTok)");
+    expect(line).toContain(BRAIN.hooks.find((h) => h.id === research[4].id)!.name);
+    expect(outcomesLine([...own.slice(0, 3)], { sector: "phone-shop", platform: "tiktok", businessId: "nova" })).toBeNull();
+    expect(brainContext(brief, { outcomes: [...background, ...own], businessId: "nova" })).toContain("What has worked for you");
+    expect(brainContext(brief)).not.toContain("What has worked");
+  });
+
+  it("checks rows, and the lab store keeps each video's latest row", () => {
+    const row = post(research[0].id, 1500, { videoId: "store-1", stats7d: null, stats24h: { views: 1500, reach: null, likes: 60, comments: 4, saves: 1, shares: 2 } });
+    expect(checkOutcome(row)).toEqual([]);
+    expect(checkOutcome({ ...row, sector: "bakery" as never, hookId: "no-such-hook" }).length).toBe(2);
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "outcomes-")), "outcomes.jsonl");
+    recordOutcome(row, file);
+    recordOutcome({ ...row, stats7d: { views: 4200, reach: null, likes: 180, comments: 9, saves: 3, shares: 5 } }, file);
+    fs.appendFileSync(file, '{"videoId": "half-writ');
+    const loaded = loadOutcomes(file);
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].stats7d?.views).toBe(4200);
+    expect(() => recordOutcome({ ...row, seconds: -1 }, file)).toThrow(/cannot be stored/);
   });
 });
 

@@ -7,7 +7,8 @@ import type { PromptBrief } from "../seedance-prompt";
 import { seedanceTemplateById } from "../seedance-brain";
 import { voiceLanguage } from "../voice-language";
 import { BRAIN, evidenceById, formatById, formatForTemplate, hookById, sectorById } from "./index";
-import { SECTORS, type BeatRole, type BrainBrief, type BrainPick, type Engine, type Evidence, type Format, type FormatId, type Hook, type Platform, type Rule, type ScoredHook, type SectorId, type SecondsRange, type TimedBeat } from "./types";
+import { outcomesLine, rankWithOutcomes } from "./outcomes";
+import { SECTORS, type BeatRole, type BrainBrief, type BrainPick, type Engine, type Evidence, type Format, type FormatId, type Hook, type Outcome, type Platform, type Rule, type ScoredHook, type SectorId, type SecondsRange, type TimedBeat } from "./types";
 
 /** Length limits of the two engines (validate.ts scales Claude videos to 6-30 s; Seedance films 4-15 s). */
 export const ENGINE_SECONDS: Record<Engine, SecondsRange> = { claude: [6, 30], seedance: [4, 15] };
@@ -195,6 +196,16 @@ export function rankHooks(b: FullBrief, sector: SectorId, format: Format): Score
   return pool.map((h) => scoreHook(h, { platform, sector, format })).sort((a, z) => z.score - a.score || a.id.localeCompare(z.id));
 }
 
+/** The research ranking moved by our own results, when there are any (rankWithOutcomes keeps its safeguards). */
+function withOutcomes(hooks: ScoredHook[], opts: OutcomeOptions, sector: SectorId, platform: Platform | "any"): ScoredHook[] {
+  if (!opts.outcomes?.length) return hooks;
+  const ranked = rankWithOutcomes(hooks, opts.outcomes, { sector, platform, businessId: opts.businessId, kind: "hook" });
+  return ranked.map((r) => {
+    const h = hooks.find((x) => x.id === r.id)!;
+    return r.results && r.results.weight ? { ...h, why: [...h.why, r.why] } : h;
+  });
+}
+
 const round = (n: number) => Math.round(n * 2) / 2;
 
 /**
@@ -247,8 +258,11 @@ function ruleApplies(r: Rule, b: FullBrief, platform: Platform | "any", sector: 
   return true;
 }
 
-/** Everything the brain says for one brief. Pure. */
-export function brainFor(brief: BrainBrief): BrainPick {
+/** BuPulse's own posted results to blend in (outcomes.ts), and whose brief this is (their own results weigh more). */
+export type OutcomeOptions = { outcomes?: Outcome[] | null; businessId?: string | null };
+
+/** Everything the brain says for one brief; with outcomes, the hooks are re-ranked by our own results too. Pure. */
+export function brainFor(brief: BrainBrief, opts: OutcomeOptions = {}): BrainPick {
   const b = brief as FullBrief;
   const platform = b.platform ?? "any";
   const sector: SectorId = b.sector && (SECTORS as readonly string[]).includes(b.sector) ? b.sector : "shop";
@@ -281,7 +295,7 @@ export function brainFor(brief: BrainBrief): BrainPick {
       voice: b.engine === "seedance" ? (reliable ? v.spokenLanguage : "none (music and ambient sound only)") : v.spokenLanguage,
       note: v.note,
     },
-    hooks: rankHooks(b, sector, format).slice(0, HOOK_OPTIONS),
+    hooks: withOutcomes(rankHooks(b, sector, format), opts, sector, platform).slice(0, HOOK_OPTIONS),
     timeline: scaleTimeline(format, seconds),
     length: { range, ok: seconds >= range[0] && seconds <= range[1] },
     rules: rules.filter((r) => r.kind === "do"),
@@ -316,9 +330,13 @@ export const CONTEXT_SKIP: Record<Engine, string[]> = {
  * timeline, the on-screen rules, the call to action, the caption and the don'ts that the engine's own system prompt
  * does not already give. Deterministic. Lower-priority lines are dropped first when it runs long. `ownerHook`: the
  * owner already chose the opener (a styles.ts hook other than "auto"), so the hooks are wording and layout ideas only.
+ * `outcomes` (and `businessId`): BuPulse's own posted results; they re-rank the hooks and add one "What has worked for
+ * you" line when there are enough.
  */
-export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: boolean } = {}): string {
-  const p = "timeline" in brief ? brief : brainFor(brief);
+export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: boolean } & OutcomeOptions = {}): string {
+  const p = "timeline" in brief ? brief : brainFor(brief, opts);
+  // What our own posted videos say, when there are enough of them (outcomes.ts).
+  const worked = opts.outcomes?.length ? outcomesLine(opts.outcomes, { sector: p.sector, platform: p.platform, businessId: opts.businessId }) : null;
   const seedance = p.engine === "seedance";
   const covered = new Set(CONTEXT_SKIP[p.engine]);
   const rules = p.rules.filter((r) => !covered.has(r.id));
@@ -352,6 +370,7 @@ export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: 
   // Sections in order of importance; when over budget the last optional ones go first.
   const parts: { lines: string[]; optional: number; trim?: boolean }[] = [
     { lines: [head], optional: 0 },
+    { lines: worked ? [worked] : [], optional: 0 },
     { lines: hooks, optional: 0 },
     { lines: timeline, optional: 0 },
     { lines: lengthNote ? [lengthNote] : [], optional: 1 },
