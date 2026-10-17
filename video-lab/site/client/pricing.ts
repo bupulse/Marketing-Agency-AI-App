@@ -29,6 +29,9 @@ async function start() {
   for (const r of p.seedance) t.append(el("tr", {}, el("td", { textContent: r.name }), el("td", { textContent: r.resolution }), el("td", { textContent: `${r.credits5s}` }), el("td", { textContent: `${r.credits10s}` }), el("td", { textContent: `${r.credits15s}` })));
   $("clCredits").textContent = String(p.claudeCredits);
   $("presCredits").textContent = String(p.presenterCredits);
+  const p3 = p.premium3dCredits;
+  $("p3dCredits").textContent = p3 ? `${p3["540p"]} credits at 540p, ${p3["720p"]} at 720p, ${p3.rerender} to render again` : "…";
+  $("voiceCredits").textContent = String(p.voiceCredits ?? "…");
   await wallet();
 }
 

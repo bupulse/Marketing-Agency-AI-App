@@ -75,6 +75,8 @@ export const T: Record<string, Entry> = {
   "home.stat.inputsV": { fr: "Texte · Image · Vidéo · Audio", rw: "Inyandiko · Ifoto · Video · Amajwi" },
   "home.stat.best": { fr: "Idéal pour", rw: "Ibyiza kuri" },
   "home.stat.bestV": { fr: "Boutiques · Restauration · Beauté · Immobilier", rw: "Amaduka · Ibiryo · Ubwiza · Inzu" },
+  "home.made.kicker": { fr: "Fait avec BuPulse", rw: "Byakozwe na BuPulse" },
+  "home.made.h2": { fr: "De vrais clips du studio", rw: "Video nyazo zakozwe muri studio" },
   "home.models.kicker": { fr: "Modèles", rw: "Uburyo" },
   "home.models.h2": { fr: "Choisissez un modèle et allez droit à son générateur", rw: "Hitamo uburyo, ujye aho ukorera video" },
   "home.models.video": { fr: "Vidéo IA", rw: "Video za AI" },
@@ -165,6 +167,9 @@ export const T: Record<string, Entry> = {
   "price.motion": { fr: "Vidéos animées 3D par Claude :", rw: "Video za 3D za Claude:" },
   "price.each": { fr: "crédits chacune.", rw: "credits buri imwe." },
   "price.image": { fr: "Images IA (Nano Banana) et images de présentateurs réalistes :", rw: "Amafoto ya AI (Nano Banana) n'ay'abamamaza:" },
+  "price.premium": { fr: "Clips Premium 3D (Blender) :", rw: "Video za Premium 3D (Blender):" },
+  "price.voice": { fr: "Une voix off ajoute", rw: "Ijwi rivuga ryongeraho" },
+  "price.credits": { fr: "crédits.", rw: "credits." },
   "price.note": { fr: "Les prix Seedance viennent des tarifs publiés par BytePlus et seront vérifiés sur la première facture.", rw: "Ibiciro bya Seedance biva ku biciro bya BytePlus, bizagenzurwa kuri fagitire ya mbere." },
   "price.wallet": { fr: "Votre portefeuille", rw: "Ikofi yawe" },
 

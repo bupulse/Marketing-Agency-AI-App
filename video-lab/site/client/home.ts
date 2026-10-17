@@ -1,4 +1,5 @@
 // Home: the hero video, the model cards' prices, the showcase grid and the credit packs.
+import { carousel } from "./carousel";
 import { loadPricing } from "./models";
 import { $, api, el, rwf } from "./site";
 
@@ -19,6 +20,7 @@ async function start() {
   player.onended = next;
   player.loop = false;
   next();
+  carousel($("homeCarousel"), done.map((i) => ({ id: i.id, videoUrl: i.videoUrl as string, engine: i.engine })));
   const grid = $("showcaseGrid");
   for (const i of done.slice(0, 12)) {
     const v = el("video", { src: `${i.videoUrl}#t=1`, muted: true, loop: true, playsInline: true, preload: "metadata" });

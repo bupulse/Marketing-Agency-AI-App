@@ -382,3 +382,5 @@ dialog.narrow { width:min(640px, 94vw); }
 .genCard.pv .cap { background:var(--panel2); height:34px; padding:9px 10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .genCard .capTag { background:rgba(42,36,18,.92); color:var(--warn); }
 #dFacts .capText { white-space:pre-wrap; font-size:13px; color:#d6d6dc; background:var(--panel2); border-radius:10px; padding:9px 11px; margin:0; }
+.madeWith .carousel { margin-top:18px; }
+.madeWith { overflow-x:clip; }
