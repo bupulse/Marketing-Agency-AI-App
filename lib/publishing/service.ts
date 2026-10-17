@@ -18,6 +18,7 @@ import { readyMedia } from "@/lib/visuals/service";
 import { CONTEST_NOTE, contestAfterEdit, contestBlocked } from "@/lib/content-flow/contest";
 import { addVersion, keepBaseline } from "@/lib/content-flow/post-versions";
 import { piecesOf } from "@/lib/content-flow/versions";
+import { recordStudioOutcome } from "@/lib/video-studio/outcomes";
 
 /** A problem the owner can fix. `code` tells the action layer whether it was a missing thing, bad input or a race. */
 export class PublishingError extends Error {
@@ -468,6 +469,11 @@ export async function markPosted(businessId: string, postId: string, now = new D
     where: { id: postId, businessId, status: "NEEDS_ACTION" },
     data: { status: "PUBLISHED", publishedAt: now, lastError: null },
   });
+  if (count === 1) {
+    // The owner posted a reminder by hand: a Video Studio MP4's outcome is recorded for the Brain (never fails this).
+    const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, businessId: true, network: true, mediaPaths: true } });
+    if (post) await recordStudioOutcome(post, now);
+  }
   if (count === 0) {
     const post = await prisma.post.findFirst({ where: { id: postId, businessId }, select: { status: true } });
     if (!post) throw NOT_FOUND();

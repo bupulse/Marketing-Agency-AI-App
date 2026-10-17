@@ -23,10 +23,12 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clapperboard, ExternalLink, Loader2, Pause, Play, Sparkles } from "lucide-react";
-import { Badge, Button, Field, GlassCard, Select, Textarea, useToast } from "@/components/ui";
+import { AlertTriangle, CalendarClock, CheckCircle2, Clapperboard, ExternalLink, Loader2, Pause, Play, Sparkles } from "lucide-react";
+import { Badge, Button, Field, GlassCard, Input, Select, Textarea, useToast } from "@/components/ui";
 import { useUsageBlock } from "@/components/billing/upgrade-dialog";
-import { finishJobVideoUpload, loadJobForDrawing, loadOpeningLines, startJobVideoUpload } from "@/app/dashboard/video/actions";
+import { finishJobVideoUpload, loadJobForDrawing, loadOpeningLines, loadScheduleOptions, scheduleStudioVideo, startJobVideoUpload } from "@/app/dashboard/video/actions";
+import type { Network } from "@/lib/social/types";
+import type { ScheduleOptions } from "@/lib/video-studio/schedule";
 import { discardUpload } from "@/app/dashboard/gallery/actions";
 import { cn } from "@/lib/cn";
 import { GALLERY_VIDEO_BUCKET, POSTER_MAX_BYTES } from "@/lib/media/rules";
@@ -174,7 +176,7 @@ export function CreateStudio({ products, templates, categories, initialJobs, cre
       const res = await fetch("/api/video/design", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request) });
       const body = (await res.json().catch(() => null)) as { jobs?: StudioJob[]; message?: string } | null;
       if (res.status === 402 && handleBody(body)) return false;
-      const made = (body?.jobs ?? []).map((j) => ({ ...j, videoUrl: null, posterUrl: null }));
+      const made = (body?.jobs ?? []).map((j) => ({ ...j, videoUrl: null, posterUrl: null, posts: { count: 0, next: null } }));
       if (made.length) setJobs((list) => [...made, ...list.filter((j) => !made.some((m) => m.id === j.id))]);
       if (!res.ok) {
         toast(body?.message ?? "The video could not be designed. Please try again.", "error");
@@ -521,6 +523,7 @@ function JobCard({ job, templateName, productName, timeZone, voicePrice, tracks,
       {(job.status === "designed" || job.status === "ready") && hasLines && (
         <p className="text-xs text-muted">{voiceNote ?? `With a voice-over: ${voicePrice} video credits the first time, free when made again.`}</p>
       )}
+      {job.status === "ready" && <SchedulePanel job={job} timeZone={timeZone} onScheduled={(n, next) => onSaved({ ...job, posts: { count: job.posts.count + n, next: job.posts.next && next && job.posts.next < next ? job.posts.next : (next ?? job.posts.next) } })} />}
       {(job.status === "designed" || job.status === "ready") && (
         <details className="rounded-xl border border-line p-3 text-sm">
           <summary className="cursor-pointer font-semibold">Change this video</summary>
@@ -541,6 +544,119 @@ function JobCard({ job, templateName, productName, timeZone, voicePrice, tracks,
         </details>
       )}
     </GlassCard>
+  );
+}
+
+const NETWORK_LABEL: Record<Network, string> = { instagram: "Instagram Reels", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube Shorts", linkedin: "LinkedIn" };
+
+/**
+ * "Schedule": the MP4 on the company's accounts, one post each (createPosts, like the composer), each network with its
+ * own caption (the design's for its platform, else the Brain's), which the owner can change. Every caption must pass
+ * the caption check, done again when scheduling. TikTok and YouTube get the reminder email with the video at the time.
+ */
+function SchedulePanel({ job, timeZone, onScheduled }: { job: StudioJob; timeZone: string; onScheduled: (count: number, next: string | null) => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [options, setOptions] = useState<ScheduleOptions | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [captions, setCaptions] = useState<Partial<Record<Network, { text: string; tags: string }>>>({});
+  const [mode, setMode] = useState<"queue" | "schedule">("queue");
+  const [local, setLocal] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    setOpen(true);
+    if (options) return;
+    const res = await loadScheduleOptions(job.id);
+    if (!res.ok) return setProblem(res.error);
+    const o: ScheduleOptions = { accounts: res.accounts, captions: res.captions, credit: res.credit, timezone: res.timezone };
+    setOptions(o);
+    setPicked(o.accounts.filter((a) => a.usable).map((a) => a.id));
+    setCaptions(Object.fromEntries(Object.entries(o.captions).map(([n, c]) => [n, { text: c!.text, tags: c!.hashtags.join(" ") }])));
+  };
+
+  const schedule = async () => {
+    if (!options || saving) return;
+    setSaving(true);
+    setProblem(null);
+    const networks = new Set(options.accounts.filter((a) => picked.includes(a.id)).map((a) => a.network));
+    const sent = Object.fromEntries(
+      [...networks].map((n) => [n, { text: captions[n]?.text ?? "", hashtags: (captions[n]?.tags ?? "").split(/[\s,]+/).filter(Boolean) }]),
+    );
+    const res = await scheduleStudioVideo(job.id, { connectionIds: picked, when: mode === "queue" ? { mode: "queue" } : { mode: "schedule", local }, captions: sent });
+    setSaving(false);
+    if (!res.ok) return setProblem(res.error);
+    onScheduled(res.postIds.length, res.scheduledAt);
+    setOpen(false);
+    const at = res.scheduledAt ? new Date(res.scheduledAt).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone }) : "";
+    toast(`Scheduled on ${res.postIds.length} ${res.postIds.length === 1 ? "account" : "accounts"}${at ? ` for ${at}` : ""}. It is in your calendar.`, "success");
+  };
+
+  const networks = options ? [...new Set(options.accounts.filter((a) => picked.includes(a.id)).map((a) => a.network))] : [];
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-line p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-muted">
+          {job.posts.count > 0
+            ? `${job.posts.count} ${job.posts.count === 1 ? "post" : "posts"}${job.posts.next ? `, next ${new Date(job.posts.next).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone })}` : ""}.`
+            : "Not scheduled yet."}
+        </span>
+        {!open && (
+          <Button size="sm" onClick={load} leading={<CalendarClock className="size-4" aria-hidden />}>
+            Schedule
+          </Button>
+        )}
+      </div>
+      {open && !options && !problem && <Loader2 className="size-4 animate-spin" aria-label="Loading" />}
+      {open && options && options.accounts.length === 0 && <p className="text-muted">Connect Instagram, Facebook, TikTok or YouTube in Channels first.</p>}
+      {open && options && options.accounts.length > 0 && (
+        <>
+          <div role="group" aria-label="Accounts" className="flex flex-wrap gap-2">
+            {options.accounts.map((a) => (
+              <label key={a.id} className={cn("inline-flex min-h-11 items-center gap-2 rounded-full border px-4", a.usable ? "cursor-pointer border-line" : "border-line opacity-60")}>
+                <input type="checkbox" className="accent-[var(--color-pulse-blue)]" disabled={!a.usable} checked={picked.includes(a.id)} onChange={(e) => setPicked((p) => (e.target.checked ? [...p, a.id] : p.filter((x) => x !== a.id)))} />
+                {a.name} <span className="text-xs text-muted">{NETWORK_LABEL[a.network]}</span>
+                {!a.usable && <span className="text-xs text-danger">reconnect it in Channels</span>}
+              </label>
+            ))}
+          </div>
+          {networks.map((n) => {
+            const c = options.captions[n];
+            return (
+              <div key={n} className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold">{NETWORK_LABEL[n]} caption</span>
+                  {c && <Badge tone={c.score >= 70 ? "success" : "neutral"}>Check {c.score}/100</Badge>}
+                </div>
+                <Textarea rows={4} value={captions[n]?.text ?? ""} onChange={(e) => setCaptions((m) => ({ ...m, [n]: { text: e.target.value, tags: m[n]?.tags ?? "" } }))} aria-label={`${NETWORK_LABEL[n]} caption`} />
+                <Input value={captions[n]?.tags ?? ""} onChange={(e) => setCaptions((m) => ({ ...m, [n]: { text: m[n]?.text ?? "", tags: e.target.value } }))} aria-label={`${NETWORK_LABEL[n]} hashtags`} placeholder="#kigali #yourshop" />
+                {c && c.missed.length > 0 && <p className="text-xs text-muted">The check would like: {c.missed.slice(0, 2).join(" ")}</p>}
+                {(n === "tiktok" || n === "youtube") && <p className="text-xs text-muted">At the time, you get an email with the video and this caption to post it yourself.</p>}
+              </div>
+            );
+          })}
+          {options.credit && <p className="text-xs text-muted">The music credit goes at the end of every post: “{options.credit}”.</p>}
+          <div className="flex flex-wrap items-end gap-3">
+            <Pills label="When" options={[{ id: "queue" as const, label: "Next free time" }, { id: "schedule" as const, label: "Pick a time" }]} value={mode} onChange={setMode} />
+            {mode === "schedule" && (
+              <Field label={`Date and time (${options.timezone})`}>
+                <Input type="datetime-local" value={local} onChange={(e) => setLocal(e.target.value)} />
+              </Field>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={schedule} disabled={saving || picked.length === 0 || (mode === "schedule" && !local)} leading={saving ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <CalendarClock className="size-4" aria-hidden />}>
+              Schedule
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </>
+      )}
+      {problem && <p className="text-sm text-danger">{problem}</p>}
+    </div>
   );
 }
 

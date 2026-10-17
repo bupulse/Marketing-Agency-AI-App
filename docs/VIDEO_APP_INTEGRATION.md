@@ -72,7 +72,22 @@ Provisional; the owner may change them.
       while the total stays at 30 s at most). Each is a new design at the usual price, next to the parent. It keeps the
       parent's photos (the design's photo numbers refer to them) and refuses in plain words when one was deleted
       since. The route now takes `seconds` from 4, for an extend.
-    - **Not yet:** scheduling (task 7).
+  - Task 7, scheduling (`lib/video-studio/schedule.ts`; "Schedule" on a ready video).
+    - **Posts:** one post per chosen account through `createPosts`, like the composer, so every network rule
+      applies. The MP4 is the post's one media path and the product is its subject. "Next free time" or a picked time.
+    - **Accounts:** Instagram, Facebook, TikTok and YouTube only. LinkedIn is refused in plain words. An account that
+      needs reconnecting is shown but cannot be ticked.
+    - **Captions:** one per network. The design's own goes on the platform it was made for (or on all, for
+      "Anywhere"); the others get the Brain's (`seedanceOverlayCaption` for that network). The owner can change any
+      of them. Each must score at least `CAPTION_PASS` (60) on `scoreCaption`; otherwise nothing is scheduled and the
+      owner is told what it misses. A music credit line goes at the end of every post (`withMusicCredit`).
+    - **The card:** how many posts the MP4 is on, and when the next one goes out (`scheduledPostsOf`, by its file).
+    - **Feature and permission:** `calendar` and `videoStudio` features, `content` permission, the composer's rate
+      limit.
+    - **Outcomes:** `recordStudioOutcome` writes a `VideoOutcome` (sector, the Brain's platform, template, hook,
+      format, seconds, language), once per post. It runs when the publisher saves a success (`saveSuccess`) or the owner
+      marks a reminder posted (`markPosted`), and never fails either. The metrics cron then fills `stats24h` and
+      `stats7d` from the post's latest `PostMetrics` (`fillOutcomeStats`).
   - Music: a picker on each design (the library's active tracks, `lib/video-studio/library.ts` `studioTracks`).
     - **Default:** the track matching the design's mood (`pickTrack` with `spec.music`, varied by the job), any track,
       or no music; a short preview plays in the card.

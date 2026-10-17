@@ -1,6 +1,7 @@
 import { recordCron } from "@/lib/admin/cron-run";
 import { NextResponse, type NextRequest } from "next/server";
 import { collectMetrics } from "@/lib/publishing/metrics";
+import { fillOutcomeStats } from "@/lib/video-studio/outcomes";
 
 // Compares without stopping at the first different character.
 function safeEqual(a: string, b: string): boolean {
@@ -18,5 +19,6 @@ export async function POST(request: NextRequest) {
   if (!safeEqual(request.headers.get("authorization") ?? "", `Bearer ${secret}`)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return NextResponse.json(await recordCron("metrics", () => collectMetrics()));
+  // Then the numbers of posted Video Studio videos after 24 hours and 7 days, from the metrics just read (the Brain's outcomes).
+  return NextResponse.json(await recordCron("metrics", async () => ({ ...(await collectMetrics()), videoOutcomes: await fillOutcomeStats() })));
 }

@@ -6,6 +6,7 @@ const prisma = vi.hoisted(() => ({
   mediaAsset: { findMany: vi.fn() },
   mediaFolder: { findUnique: vi.fn() },
   musicTrack: { findUnique: vi.fn() },
+  post: { findMany: vi.fn(async () => [] as { mediaPaths: string[]; scheduledAt: Date | null; status: string }[]) },
 }));
 const music = vi.hoisted(() => ({
   activeTracks: vi.fn(async () => [
@@ -68,10 +69,16 @@ beforeEach(() => {
 describe("the Create page's library", () => {
   it("lists the company's Motion jobs, newest first, with signed links to finished MP4s", async () => {
     prisma.videoJob.findMany.mockResolvedValue([row({ id: "j2", status: "ready", videoPath: "u1/clips/v.mp4", posterPath: "u1/clips/v-poster.jpg" }), row()]);
+    // Its MP4 is on two posts: one scheduled, one already out (a cancelled one is not asked for).
+    prisma.post.findMany.mockResolvedValueOnce([
+      { mediaPaths: ["u1/clips/v.mp4"], scheduledAt: new Date("2026-10-19T07:00:00Z"), status: "SCHEDULED" },
+      { mediaPaths: ["u1/clips/v.mp4"], scheduledAt: new Date("2026-10-18T07:00:00Z"), status: "PUBLISHED" },
+    ]);
     const jobs = await listStudioJobs("b1");
     expect(prisma.videoJob.findMany.mock.calls[0][0]).toMatchObject({ where: { businessId: "b1", engine: "motion" }, orderBy: { createdAt: "desc" } });
+    expect(jobs[0].posts).toEqual({ count: 2, next: "2026-10-19T07:00:00.000Z" });
     expect(jobs[0]).toMatchObject({ id: "j2", status: "ready", videoUrl: "https://signed.test/u1/clips/v.mp4", posterUrl: "https://signed.test/u1/clips/v-poster.jpg", productId: "p1", templateId: "product-hero" });
-    expect(jobs[1]).toMatchObject({ id: "j1", videoUrl: null, posterUrl: null, createdAt: "2026-10-17T10:00:00.000Z" });
+    expect(jobs[1]).toMatchObject({ id: "j1", videoUrl: null, posterUrl: null, createdAt: "2026-10-17T10:00:00.000Z", posts: { count: 0, next: null } });
   });
 
   it("opening lines come from the Brain for the product (YouTube is the Brain's Shorts)", async () => {

@@ -10,6 +10,7 @@ import type { Platform } from "@/lib/video-engine/designer";
 import type { MotionSpec } from "@/lib/video-engine/spec";
 import { loadBriefFacts, type StoredPhoto } from "./brief";
 import { view, VideoStudioError, type VideoJobView } from "./jobs";
+import { scheduledPostsOf } from "./schedule";
 
 // The Create page's side of the Video Studio (docs/VIDEO_APP_INTEGRATION.md, task 6): the job list, the Brain's
 // opening lines, what the browser needs to draw a design, and the finished MP4 saved into the Gallery. The MP4 goes
@@ -24,15 +25,26 @@ export const STUDIO_JOBS_SHOWN = 20;
 
 type Ctx = { userId: string; businessId: string };
 
-export type StudioJob = VideoJobView & { videoUrl: string | null; posterUrl: string | null };
+export type StudioJob = VideoJobView & {
+  videoUrl: string | null;
+  posterUrl: string | null;
+  /** Posts made from its MP4 (not cancelled), and when the next scheduled one goes out (ISO). */
+  posts: { count: number; next: string | null };
+};
+
+const NO_POSTS = { count: 0, next: null };
 
 const JOB_SELECT = { id: true, status: true, engine: true, spec: true, caption: true, hashtags: true, warnings: true, score: true, captionScore: true, credits: true, error: true, parentId: true, productId: true, templateId: true, platform: true, ratio: true, seconds: true, videoPath: true, posterPath: true, brief: true, music: true, createdAt: true } as const;
 
 /** The company's latest Motion jobs, with signed links to the MP4s already made. */
 export async function listStudioJobs(businessId: string, limit = STUDIO_JOBS_SHOWN): Promise<StudioJob[]> {
   const rows = await prisma.videoJob.findMany({ where: { businessId, engine: "motion" }, orderBy: { createdAt: "desc" }, take: limit, select: JOB_SELECT });
-  const urls = await signedUrls(rows.flatMap((r) => [r.videoPath, r.posterPath].filter((p): p is string => !!p)));
-  return rows.map((r) => ({ ...view(r), videoUrl: r.videoPath ? (urls.get(r.videoPath) ?? null) : null, posterUrl: r.posterPath ? (urls.get(r.posterPath) ?? null) : null }));
+  const videos = rows.flatMap((r) => (r.videoPath ? [r.videoPath] : []));
+  const [urls, posts] = await Promise.all([signedUrls(rows.flatMap((r) => [r.videoPath, r.posterPath].filter((p): p is string => !!p))), scheduledPostsOf(businessId, videos)]);
+  return rows.map((r) => {
+    const p = r.videoPath ? posts.get(r.videoPath) : null;
+    return { ...view(r), videoUrl: r.videoPath ? (urls.get(r.videoPath) ?? null) : null, posterUrl: r.posterPath ? (urls.get(r.posterPath) ?? null) : null, posts: p ? { count: p.count, next: p.next?.toISOString() ?? null } : NO_POSTS };
+  });
 }
 
 /** A music track the owner can put under an MP4: the library's public file, mixed in the browser (free). */
@@ -165,5 +177,6 @@ export async function saveJobVideo(ctx: Ctx, jobId: string, input: { path: strin
     if (count === 0) await uncount();
   }
   const row = await prisma.videoJob.update({ where: { id: jobId }, data, select: JOB_SELECT });
-  return { item, job: { ...view(row), videoUrl: item.url, posterUrl: item.posterUrl } };
+  const posts = (await scheduledPostsOf(ctx.businessId, [item.path])).get(item.path);
+  return { item, job: { ...view(row), videoUrl: item.url, posterUrl: item.posterUrl, posts: posts ? { count: posts.count, next: posts.next?.toISOString() ?? null } : NO_POSTS } };
 }
