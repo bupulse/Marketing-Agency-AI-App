@@ -9,7 +9,7 @@ import { CLAUDE_VIDEO_CREDITS } from "@/lib/video-engine/credits";
 import { DESIGNER_MODEL, DesignError, apiTransport, designVideo, type ClaudeTransport, type DesignBrief, type DesignMode, type Platform } from "@/lib/video-engine/designer";
 import { VIDEO_LEDGER_FEATURES } from "@/lib/video-engine/ledger-features";
 import type { MotionSpec, Ratio } from "@/lib/video-engine/spec";
-import { choosePhotos, loadBriefFacts, readPhotos, type StoredPhoto } from "./brief";
+import { BriefError, choosePhotos, loadBriefFacts, readPhotos, type StoredPhoto } from "./brief";
 
 // Video Studio jobs in the app (docs/VIDEO_APP_INTEGRATION.md, task 5): a Motion design is a VideoJob. The credits are
 // reserved first (consumeUsage "videoCredits"), the job rows are written next, then Claude designs each version
@@ -150,12 +150,21 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
 
   const facts = await loadBriefFacts(owner.businessId, input.productId);
   let base: MotionSpec | null = null;
+  let parentPhotos: string[] | null = null;
   if (input.mode === "edit" || input.mode === "extend") {
-    const parent = input.parentId ? await prisma.videoJob.findFirst({ where: { id: input.parentId, businessId: owner.businessId, engine: "motion" }, select: { spec: true } }) : null;
+    const parent = input.parentId ? await prisma.videoJob.findFirst({ where: { id: input.parentId, businessId: owner.businessId, engine: "motion" }, select: { spec: true, brief: true } }) : null;
     if (!parent?.spec) throw new VideoStudioError("Choose the video to change: it was not found.", "not_found", 404);
     base = parent.spec as unknown as MotionSpec;
+    // The design's photo numbers refer to the parent's photos: an edit or extend keeps them, whatever the album says now.
+    parentPhotos = ((parent.brief as { photos?: StoredPhoto[] } | null)?.photos ?? []).map((p) => p.path);
   }
-  const chosen = input.mode === "text" ? [] : await choosePhotos(owner.businessId, facts.productId, input.photoPaths ?? null);
+  const chosen =
+    input.mode === "text"
+      ? []
+      : await choosePhotos(owner.businessId, facts.productId, parentPhotos ?? input.photoPaths ?? null).catch((error: unknown) => {
+          if (parentPhotos && error instanceof BriefError) throw new VideoStudioError("A photo this video uses was deleted from your Gallery, so it cannot be changed. Make a new video instead.", "invalid", 400);
+          throw error;
+        });
   const photos = await readPhotos(chosen);
   const stored: StoredPhoto[] = chosen.map(({ path, width, height, note }) => ({ path, width, height, note }));
 

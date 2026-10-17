@@ -66,7 +66,13 @@ Provisional; the owner may change them.
       needs.
     - **Actions:** `app/dashboard/video/actions.ts` (`content` permission, `videoStudio` feature);
       `lib/video-studio/library.ts`.
-    - **Not yet:** the live preview; edit and extend; scheduling (task 7).
+    - **Live preview:** each design plays on a canvas (480p, looping, silent, `drawSpecFrame`) before any MP4. It is
+      free and never refused: `loadJobForDrawing(id, "preview")` skips the videos cap.
+    - **Edit and extend:** "Change this video" asks what to change ("Change it") or adds 5 s ("Make it 5 s longer",
+      while the total stays at 30 s at most). Each is a new design at the usual price, next to the parent. It keeps the
+      parent's photos (the design's photo numbers refer to them) and refuses in plain words when one was deleted
+      since. The route now takes `seconds` from 4, for an extend.
+    - **Not yet:** scheduling (task 7).
   - Music: a picker on each design (the library's active tracks, `lib/video-studio/library.ts` `studioTracks`).
     - **Default:** the track matching the design's mood (`pickTrack` with `spec.music`, varied by the job), any track,
       or no music; a short preview plays in the card.

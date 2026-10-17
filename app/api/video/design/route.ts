@@ -21,7 +21,8 @@ const body = z.object({
   templateId: z.string().min(1).max(40).default("product-hero"),
   hookId: z.string().min(1).max(40).default("auto"),
   ratio: z.enum(Object.keys(RATIOS) as [keyof typeof RATIOS, ...(keyof typeof RATIOS)[]]).default("9:16"),
-  seconds: z.number().int().min(6).max(30).default(15),
+  // A new video is 6 to 30 s; an extend adds 4 or more seconds to the parent (the designer keeps the total at 30 s).
+  seconds: z.number().int().min(4).max(30).default(15),
   note: z.string().max(600).nullish(),
   mode: z.enum(DESIGN_MODES).default("reference"),
   parentId: z.string().min(1).max(40).nullish(),

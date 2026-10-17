@@ -66,10 +66,10 @@ export async function loadOpeningLines(input: z.input<typeof linesSchema>): Prom
   return studio("video.lines", async ({ businessId }) => ({ lines: await openingLines(businessId, parsed.data) }));
 }
 
-/** The spec and photo links the browser draws the MP4 from. */
-export async function loadJobForDrawing(jobId: string): Promise<Result<{ spec: MotionSpec; photoUrls: string[]; cutoutUrls: (string | null)[] }>> {
-  if (!id.safeParse(jobId).success) return { ok: false, error: "We could not find that video." };
-  return studio("video.draw", (ctx) => jobForDrawing(ctx, jobId));
+/** The spec and photo links the browser draws from: the live preview (free, never refused) or the MP4 (cap checked). */
+export async function loadJobForDrawing(jobId: string, purpose: "preview" | "mp4" = "mp4"): Promise<Result<{ spec: MotionSpec; photoUrls: string[]; cutoutUrls: (string | null)[] }>> {
+  if (!id.safeParse(jobId).success || (purpose !== "preview" && purpose !== "mp4")) return { ok: false, error: "We could not find that video." };
+  return studio("video.draw", (ctx) => jobForDrawing(ctx, jobId, purpose));
 }
 
 /** A signed upload for the MP4 made in this browser (the Gallery's checks: size, quota, video cap). */

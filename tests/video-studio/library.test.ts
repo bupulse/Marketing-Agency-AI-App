@@ -167,6 +167,9 @@ describe("the Create page's library", () => {
     expect(media.prepareUploads).not.toHaveBeenCalled();
     prisma.videoJob.findFirst.mockResolvedValue({ id: "j1", status: "ready", spec: SPEC, productId: "p1", brief: {}, videoPath: "u1/clips/old.mp4" });
     await expect(jobForDrawing(ctx, "j1")).resolves.toMatchObject({ spec: SPEC });
+    // The live preview saves nothing, so a full day never stops it.
+    prisma.videoJob.findFirst.mockResolvedValue({ id: "j1", status: "designed", spec: SPEC, productId: "p1", brief: {}, videoPath: null });
+    await expect(jobForDrawing(ctx, "j1", "preview")).resolves.toMatchObject({ spec: SPEC });
   });
 
   it("counts go back when the upload is not confirmed, when the day is full at save time, or when a parallel save won", async () => {

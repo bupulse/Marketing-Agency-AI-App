@@ -195,6 +195,27 @@ describe("POST /api/video/design", () => {
     expect(usage.consumeUsage).not.toHaveBeenCalled();
   });
 
+  it("an edit or extend keeps the parent's photos (the design's photo numbers), whatever the album holds now", async () => {
+    vi.stubGlobal("fetch", claudeAnswer());
+    const parentSpec = sampleSpec({ business: "Nova Phones Kigali", product: "Samsung Galaxy A56", price: "420,000 RWF", photoCount: 1 });
+    prisma.videoJob.findFirst.mockResolvedValue({ spec: parentSpec, brief: { photos: [{ path: "u1/gallery/a.jpg" }] } });
+    prisma.mediaAsset.findMany.mockResolvedValue([{ path: "u1/gallery/a.jpg", kind: "photo", width: 64, height: 96, description: null, cutoutPath: null, cutoutBox: null }]);
+    const res = await call({ productId: "p1", mode: "extend", parentId: "vj-parent", seconds: 5 });
+    expect(res.status).toBe(200);
+    expect(prisma.productPhoto.findMany).not.toHaveBeenCalled();
+    expect((prisma.mediaAsset.findMany.mock.calls[0] as unknown as [{ where: { path: { in: string[] } } }])[0].where.path.in).toEqual(["u1/gallery/a.jpg"]);
+    expect((prisma.videoJob.create.mock.calls[0] as unknown as [{ data: Record<string, unknown> }])[0].data).toMatchObject({ parentId: "vj-parent", mode: "extend" });
+    // The parent's photo was deleted since: a plain refusal, nothing charged.
+    vi.clearAllMocks();
+    prisma.mediaAsset.findMany.mockResolvedValue([]);
+    const gone = await call({ productId: "p1", mode: "edit", parentId: "vj-parent", note: "bigger price" });
+    expect(gone.status).toBe(400);
+    expect(((await gone.json()) as { message: string }).message).toBe("A photo this video uses was deleted from your Gallery, so it cannot be changed. Make a new video instead.");
+    expect(usage.consumeUsage).not.toHaveBeenCalled();
+    prisma.videoJob.findFirst.mockResolvedValue(null);
+    prisma.mediaAsset.findMany.mockResolvedValue([]);
+  });
+
   it("refuses a bad request and a signed-out caller", async () => {
     expect((await call({ productId: "p1", seconds: 99 })).status).toBe(400);
     const { checkActiveUser } = await import("@/lib/auth/require-user");

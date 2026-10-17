@@ -6,8 +6,9 @@
  * (the Brain's suggestions) and the voice-over, and presses Generate: Claude designs it (POST /api/video/design, video
  * credits, given back for a design that fails). Each design shows its research score, its caption check and the facts
  * to check; "Make the MP4" draws and encodes it in this browser (lib/video-engine/encode.ts) and saves it into the
- * Gallery's "Video Studio" folder. A port of the lab's video-lab/site/client/create.ts, without Seedance, Premium 3D,
- * presenters, edit and extend (later releases).
+ * Gallery's "Video Studio" folder. Each design plays as a live preview first (drawn here, free, silent), and can be
+ * changed ("edit": the owner says what to change) or made 5 s longer ("extend"), each a new design at the same price.
+ * A port of the lab's video-lab/site/client/create.ts, without Seedance, Premium 3D and presenters (later releases).
  *
  * Props:
  *   products     the company's products and services ({ id, name }), at least one
@@ -22,8 +23,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clapperboard, ExternalLink, Loader2, Sparkles } from "lucide-react";
-import { Badge, Button, Field, GlassCard, Select, useToast } from "@/components/ui";
+import { AlertTriangle, CheckCircle2, Clapperboard, ExternalLink, Loader2, Pause, Play, Sparkles } from "lucide-react";
+import { Badge, Button, Field, GlassCard, Select, Textarea, useToast } from "@/components/ui";
 import { useUsageBlock } from "@/components/billing/upgrade-dialog";
 import { finishJobVideoUpload, loadJobForDrawing, loadOpeningLines, startJobVideoUpload } from "@/app/dashboard/video/actions";
 import { discardUpload } from "@/app/dashboard/gallery/actions";
@@ -71,6 +72,10 @@ const SHAPES: { id: Ratio; label: string; box: string }[] = [
   { id: "16:9", label: "Wide 16:9", box: "h-[9px] w-4" },
 ];
 const LENGTHS = [8, 10, 12, 15, 20, 30];
+/** Seconds "Make it longer" adds (the designer keeps every video at 30 s at most). */
+const EXTEND_SECONDS = 5;
+/** The live preview's size: light enough to play smoothly on a phone. */
+const PREVIEW_QUALITY = "480p" as const;
 /** The MP4's quality: what Reels, TikTok and Shorts show best. */
 const MP4_QUALITY = "1080p" as const;
 /**
@@ -161,31 +166,40 @@ export function CreateStudio({ products, templates, categories, initialJobs, cre
     if (t.seconds && LENGTHS.includes(t.seconds)) setSeconds(t.seconds);
   };
 
-  const generate = async () => {
-    if (generating) return;
+  /** One design request (new, edit or extend); true when a design came back. */
+  const design = async (request: Record<string, unknown>, done: string): Promise<boolean> => {
+    if (generating) return false;
     setGenerating(true);
     try {
-      const res = await fetch("/api/video/design", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ productId, templateId, hookId: chosen?.hookId ?? template.hook ?? "auto", ratio, seconds, platform, voice, chosenHook: chosen ? { hookId: chosen.hookId, line: chosen.line } : null }),
-      });
+      const res = await fetch("/api/video/design", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request) });
       const body = (await res.json().catch(() => null)) as { jobs?: StudioJob[]; message?: string } | null;
-      if (res.status === 402 && handleBody(body)) return;
+      if (res.status === 402 && handleBody(body)) return false;
       const made = (body?.jobs ?? []).map((j) => ({ ...j, videoUrl: null, posterUrl: null }));
       if (made.length) setJobs((list) => [...made, ...list.filter((j) => !made.some((m) => m.id === j.id))]);
       if (!res.ok) {
         toast(body?.message ?? "The video could not be designed. Please try again.", "error");
-        return;
+        return false;
       }
       setUsed((u) => u + made.filter((j) => j.status === "designed").length * price);
-      toast("Your video is designed. Check it, then make the MP4.", "success");
+      toast(done, "success");
+      return true;
     } catch {
       toast("The video could not be designed. Check your connection and try again.", "error");
+      return false;
     } finally {
       setGenerating(false);
     }
   };
+
+  const generate = () =>
+    design({ productId, templateId, hookId: chosen?.hookId ?? template.hook ?? "auto", ratio, seconds, platform, voice, chosenHook: chosen ? { hookId: chosen.hookId, line: chosen.line } : null }, "Your video is designed. Play the preview, then make the MP4.");
+
+  /** A changed (edit) or longer (extend) version of a design: a new job next to it, with the same product and look. */
+  const redesign = (job: StudioJob, mode: "edit" | "extend", note: string) =>
+    design(
+      { mode, parentId: job.id, productId: job.productId, templateId: job.templateId ?? "product-hero", hookId: "auto", ratio: job.ratio, seconds: mode === "extend" ? EXTEND_SECONDS : job.seconds, platform: job.platform, voice: job.voice, note: note.trim() || null },
+      mode === "edit" ? "The changed version is ready: it is the first video below." : `The longer version is ready (${EXTEND_SECONDS} s more): it is the first video below.`,
+    );
 
   const replaceJob = useCallback((job: StudioJob) => setJobs((list) => list.map((j) => (j.id === job.id ? job : j))), []);
   const productName = (id: string) => products.find((p) => p.id === id)?.name ?? "Product";
@@ -286,7 +300,7 @@ export function CreateStudio({ products, templates, categories, initialJobs, cre
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
             {jobs.map((j) => (
-              <JobCard key={j.id} job={j} templateName={templates.find((t) => t.id === j.templateId)?.name ?? j.templateId ?? "Template"} productName={productName} timeZone={timeZone} voicePrice={voicePrice} tracks={tracks} onSaved={replaceJob} onCharged={(n) => setUsed((u) => u + n)} onBlocked={handleBody} />
+              <JobCard key={j.id} job={j} templateName={templates.find((t) => t.id === j.templateId)?.name ?? j.templateId ?? "Template"} productName={productName} timeZone={timeZone} voicePrice={voicePrice} tracks={tracks} onSaved={replaceJob} onCharged={(n) => setUsed((u) => u + n)} onBlocked={handleBody} price={price} designing={generating} onRedesign={redesign} />
             ))}
           </div>
         )}
@@ -311,6 +325,11 @@ type CardProps = {
   onCharged: (credits: number) => void;
   /** The paywall for a 402 answer; true when it took over. */
   onBlocked: (body: unknown) => boolean;
+  /** Video credits per design (an edit or extend is a new design). */
+  price: number;
+  /** A design request is running (one at a time). */
+  designing: boolean;
+  onRedesign: (job: StudioJob, mode: "edit" | "extend", note: string) => Promise<boolean>;
 };
 
 /** The voice-over of a design (POST /api/video/jobs/<id>/voice): null with the reason when the MP4 is made without one. */
@@ -326,7 +345,9 @@ async function fetchVoice(jobId: string): Promise<{ voice: JobVoice | null; cred
   }
 }
 
-function JobCard({ job, templateName, productName, timeZone, voicePrice, tracks, onSaved, onCharged, onBlocked }: CardProps) {
+function JobCard({ job, templateName, productName, timeZone, voicePrice, tracks, onSaved, onCharged, onBlocked, price, designing, onRedesign }: CardProps) {
+  const [note, setNote] = useState("");
+  const canExtend = job.seconds + EXTEND_SECONDS <= 30;
   const { toast } = useToast();
   const [progress, setProgress] = useState<number | null>(null);
   const [step, setStep] = useState("");
@@ -417,9 +438,12 @@ function JobCard({ job, templateName, productName, timeZone, voicePrice, tracks,
         </div>
       </div>
 
-      {job.videoUrl && (
+      {job.videoUrl ? (
         <video src={job.videoUrl} poster={job.posterUrl ?? undefined} controls playsInline loop className="max-h-[480px] w-full rounded-xl bg-black object-contain" />
+      ) : (
+        job.status === "designed" && job.spec && <LivePreview job={job} spec={job.spec} />
       )}
+      {job.parentId && <p className="text-xs text-muted">A changed version of an earlier design.</p>}
 
       {job.status === "failed" && job.error && (
         <p className="flex items-start gap-2 text-sm text-danger">
@@ -497,7 +521,109 @@ function JobCard({ job, templateName, productName, timeZone, voicePrice, tracks,
       {(job.status === "designed" || job.status === "ready") && hasLines && (
         <p className="text-xs text-muted">{voiceNote ?? `With a voice-over: ${voicePrice} video credits the first time, free when made again.`}</p>
       )}
+      {(job.status === "designed" || job.status === "ready") && (
+        <details className="rounded-xl border border-line p-3 text-sm">
+          <summary className="cursor-pointer font-semibold">Change this video</summary>
+          <div className="mt-3 flex flex-col gap-3">
+            <Field label="What should change?" hint={`A new version is designed next to this one: ${price} video credits, given back if it fails. This one stays as it is.`}>
+              <Textarea value={note} onChange={(e) => setNote(e.target.value.slice(0, 600))} rows={2} placeholder="For example: make the price bigger, and end on the WhatsApp number." />
+            </Field>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" disabled={designing || !note.trim()} onClick={async () => (await onRedesign(job, "edit", note)) && setNote("")}>
+                Change it
+              </Button>
+              <Button size="sm" variant="outline" disabled={designing || !canExtend} onClick={async () => (await onRedesign(job, "extend", note)) && setNote("")} title={canExtend ? undefined : "Videos are 30 seconds at most."}>
+                Make it {EXTEND_SECONDS} s longer
+              </Button>
+              {designing && <span className="inline-flex items-center gap-1.5 text-xs text-muted"><Loader2 className="size-3.5 animate-spin" aria-hidden />Designing… (up to a minute)</span>}
+            </div>
+          </div>
+        </details>
+      )}
     </GlassCard>
+  );
+}
+
+/**
+ * The live preview of a design: drawn on a canvas in this browser, frame by frame (lib/video-engine/draw.ts), looping,
+ * silent. Free and never refused: nothing is saved. The photos and fonts load on the first press of Play.
+ */
+function LivePreview({ job, spec }: { job: StudioJob; spec: MotionSpec }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const clockRef = useRef<HTMLSpanElement>(null);
+  const [state, setState] = useState<"idle" | "loading" | "playing" | "paused">("idle");
+  const [error, setError] = useState<string | null>(null);
+  const loaded = useRef<{ photos: Photos; draw: typeof import("@/lib/video-engine/draw").drawSpecFrame } | null>(null);
+  const run = useRef({ raf: 0, t: 0, last: 0 });
+  const size = canvasSize(spec, PREVIEW_QUALITY);
+  const total = totalMs(spec);
+
+  useEffect(() => () => cancelAnimationFrame(run.current.raf), []);
+
+  const play = async () => {
+    setError(null);
+    if (!loaded.current) {
+      setState("loading");
+      const drawing = await loadJobForDrawing(job.id, "preview");
+      if (!drawing.ok) {
+        setError(drawing.error);
+        setState("idle");
+        return;
+      }
+      try {
+        const [{ loadPhotos, loadSpecFonts }, { drawSpecFrame }] = await Promise.all([import("@/lib/video-engine/encode"), import("@/lib/video-engine/draw")]);
+        const [photos] = await Promise.all([loadPhotos(drawing.photoUrls, drawing.cutoutUrls), loadSpecFonts(spec)]);
+        loaded.current = { photos, draw: drawSpecFrame };
+      } catch {
+        setError("The preview could not be drawn in this browser. The MP4 can still be made.");
+        setState("idle");
+        return;
+      }
+    }
+    const ctx = canvasRef.current?.getContext("2d");
+    const { photos, draw } = loaded.current;
+    if (!ctx) return;
+    const r = run.current;
+    r.last = performance.now();
+    const tick = (now: number) => {
+      r.t = (r.t + now - r.last) % total;
+      r.last = now;
+      draw(ctx, spec, photos, r.t, { quality: PREVIEW_QUALITY });
+      if (clockRef.current) clockRef.current.textContent = `${(r.t / 1000).toFixed(1)} / ${(total / 1000).toFixed(1)} s`;
+      r.raf = requestAnimationFrame(tick);
+    };
+    cancelAnimationFrame(r.raf);
+    r.raf = requestAnimationFrame(tick);
+    setState("playing");
+  };
+
+  const pause = () => {
+    cancelAnimationFrame(run.current.raf);
+    setState("paused");
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div className="relative w-full overflow-hidden rounded-xl bg-black">
+        <canvas ref={canvasRef} width={size.width} height={size.height} className="mx-auto block max-h-[480px] w-auto max-w-full" style={{ aspectRatio: `${size.width} / ${size.height}` }} aria-label="Live preview of the video" />
+        {state !== "playing" && (
+          <button type="button" onClick={play} disabled={state === "loading"} className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-2 text-sm font-semibold text-white">
+            {state === "loading" ? <Loader2 className="size-8 animate-spin" aria-hidden /> : <Play className="size-10" aria-hidden />}
+            {state === "loading" ? "Loading the photos…" : state === "paused" ? "Play" : "Play the preview"}
+          </button>
+        )}
+      </div>
+      <div className="flex items-center gap-3 text-xs text-muted">
+        {state === "playing" && (
+          <button type="button" onClick={pause} className="inline-flex cursor-pointer items-center gap-1 font-semibold text-text">
+            <Pause className="size-3.5" aria-hidden /> Pause
+          </button>
+        )}
+        <span ref={clockRef} />
+        <span>Preview without sound; the MP4 has the voice and music.</span>
+      </div>
+      {error && <p className="text-sm text-danger">{error}</p>}
+    </div>
   );
 }
 

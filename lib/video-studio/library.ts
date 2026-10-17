@@ -76,11 +76,12 @@ async function assertVideoRoom(userId: string, first: boolean): Promise<void> {
  * What the browser needs to draw a design: the spec, and signed links to its photos (1-based, the order the designer
  * saw them) and their cut-outs (null where there is none).
  */
-export async function jobForDrawing(ctx: Ctx, jobId: string): Promise<{ spec: MotionSpec; photoUrls: string[]; cutoutUrls: (string | null)[] }> {
+export async function jobForDrawing(ctx: Ctx, jobId: string, purpose: "preview" | "mp4" = "mp4"): Promise<{ spec: MotionSpec; photoUrls: string[]; cutoutUrls: (string | null)[] }> {
   const { businessId } = ctx;
   const job = await designedJob(businessId, jobId);
-  // Before the browser spends a minute encoding: a first MP4 that the plan could not count is refused now.
-  await assertVideoRoom(ctx.userId, !job.videoPath);
+  // Before the browser spends a minute encoding: a first MP4 that the plan could not count is refused now. The live
+  // preview is never refused (it saves nothing).
+  if (purpose === "mp4") await assertVideoRoom(ctx.userId, !job.videoPath);
   const photos = ((job.brief as { photos?: StoredPhoto[] } | null)?.photos ?? []).map((p) => p.path);
   const assets = photos.length ? await prisma.mediaAsset.findMany({ where: { businessId, path: { in: photos } }, select: { path: true, cutoutPath: true } }) : [];
   const cutouts = new Map(assets.map((a) => [a.path, a.cutoutPath]));
