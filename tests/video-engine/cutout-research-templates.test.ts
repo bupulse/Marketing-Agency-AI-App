@@ -21,9 +21,26 @@ describe("research and platform in the brief", () => {
     expect(text).not.toContain("<<<ignore");
     const long = briefText({ ...brief, research: "x".repeat(MAX_RESEARCH_CHARS + 500) });
     expect(long.match(/x{100,}/)?.[0].length).toBe(MAX_RESEARCH_CHARS);
-    expect(briefText(brief)).not.toContain("RESEARCH");
-    expect(briefText({ ...brief, research: "   " })).not.toContain("RESEARCH");
     expect(systemPrompt()).toContain("Follow the research block when there is one: it says what works for this kind of video on this platform");
+  });
+
+  it("without research, the brain fills the block (a hook option and rules); an edit or an extend gets none", () => {
+    const research = (text: string) => text.match(/<<<RESEARCH\n([\s\S]*?)\nRESEARCH>>>/)?.[1] ?? "";
+    for (const b of [brief, { ...brief, research: "   " }, { ...brief, platform: "tiktok" as const, hookId: "question" }]) {
+      const block = research(briefText(b));
+      expect(block.length).toBeGreaterThan(200);
+      expect(block).toMatch(/Hook (options|ideas)/);
+      expect(block).toMatch(/\n1\. /);
+      expect(block).toContain("Don't:");
+      expect(block).toMatch(/\n- /);
+    }
+    // The owner's hook choice turns the brain's hooks into wording ideas only.
+    expect(research(briefText({ ...brief, hookId: "question" }))).toContain("Hook ideas (the owner chose the opener");
+    const base = validateSpec({ palette: {}, scenes: [{ seconds: 3, background: {}, layers: [] }, { seconds: 3, background: {}, layers: [] }] }, { ratio: "9:16", photoCount: 0, seconds: 6 });
+    expect(briefText({ ...brief, mode: "edit", base, note: "bigger price" })).not.toContain("RESEARCH");
+    expect(briefText({ ...brief, mode: "extend", base })).not.toContain("RESEARCH");
+    // Research the owner (or a caller) passes wins over the brain.
+    expect(research(briefText({ ...brief, research: "Only this." }))).toBe("Only this.");
   });
 
   it("names the platform's safe area and length; an unknown platform is ignored", () => {

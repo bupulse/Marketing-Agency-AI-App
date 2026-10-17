@@ -10,6 +10,8 @@ import { castById } from "./cast";
 import { CAMERA_MOVES, GRADES, MATERIALS, PARTICLE_KINDS, RATIOS, SPEC_LIMITS, totalMs, type MotionSpec, type Ratio } from "./spec";
 import { SpecError, extractJson, validateSpec } from "./validate";
 import { voiceLanguage } from "./voice-language";
+import { factCheck, type FactWarning } from "./factcheck";
+import { brainBriefFromDesign, brainContext } from "./brain/select";
 
 const MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 export const DESIGNER_MODEL = "claude-sonnet-5-5";
@@ -75,7 +77,8 @@ export type DesignUsage = { model: string; inputTokens: number; outputTokens: nu
 
 /** One call to Claude: the API (default) or another way in, such as the Video Lab's Claude Code subscription. */
 export type ClaudeTransport = (call: { model: string; system: string; content: unknown[]; maxTokens: number }) => Promise<{ text: string; usage: DesignUsage; stop: string | null | undefined }>;
-export type DesignResult = { spec: MotionSpec; usage: DesignUsage[]; costUsd: number; apiEquivalentUsd: number; attempts: number };
+/** `warnings`: numbers and claims in the design that the brief does not give (factcheck.ts), for the owner to check. */
+export type DesignResult = { spec: MotionSpec; usage: DesignUsage[]; costUsd: number; apiEquivalentUsd: number; attempts: number; warnings: FactWarning[] };
 
 export class DesignError extends Error {
   constructor(message: string, readonly usage: DesignUsage[] = []) {
@@ -128,6 +131,7 @@ export function systemPrompt(): string {
     "Design rules:",
     "- The first 1.5 seconds must stop the scroll: big, bold, moving. The last scene is the call to action with the business name (and phone, website or where to buy, if given).",
     "- Follow the research block when there is one: it says what works for this kind of video on this platform (facts still come only from the brief).",
+    "- Every number, price, percentage, duration (1-year, 12-month) and claim word (new, refurbished, genuine, original, free, guarantee, warranty, discount, award, best, number one, certified) you write must come from the product facts or the owner's note. The business description is about the shop in general: a claim found only there (\"we sell new and refurbished phones\") is not a claim about this product. A checker compares every text, say line and the caption with the brief and shows the owner anything it cannot find.",
     "- Use ONLY facts in the brief. Never invent prices, discounts, dates, awards, guarantees, ingredients or numbers. If no price is given, do not show one.",
     "- Write all on-screen text and the caption in the business's content language; write the say lines in the voice-over language the brief names (the same language unless the brief says otherwise). Short: hooks 2 to 6 words, other lines at most about 10 words.",
     "- Safe area for 9:16: keep text between y 0.12 and 0.82 and x 0.07 to 0.93 (the apps cover the edges). Text boxes must be wide enough for their words (w 0.6 to 0.86 for most text).",
@@ -156,6 +160,9 @@ export function briefText(brief: DesignBrief): string {
   const mode = brief.mode ?? "reference";
   const note = brief.note ? brief.note.replace(/<<<|>>>/g, "") : "";
   const base = brief.base ? JSON.stringify(brief.base) : "";
+  // What works for this kind of video: the owner's research block, or the brain's pick (docs/research/BRAIN.md). An edit or
+  // an extend keeps the video it changes, so it gets none.
+  const research = brief.research?.trim() || (mode === "edit" || mode === "extend" ? "" : brainContext(brainBriefFromDesign(brief), { ownerHook: brief.hookId !== "auto" }));
   const lines = [
     mode === "edit" && base
       ? `EDIT an existing video. Here is its current design (data):\n<<<DESIGN\n${base}\nDESIGN>>>\nApply this change and keep everything else as it is: <<<${note || "make it better"}>>>. Answer with the complete updated MotionSpec.`
@@ -207,7 +214,7 @@ export function briefText(brief: DesignBrief): string {
     brief.product.features?.length ? `Features: ${brief.product.features.join("; ")}` : "",
     brief.product.targetCustomer ? `For: ${brief.product.targetCustomer}` : "",
     `PRODUCT>>>`,
-    brief.research?.trim() ? `\nResearch (what works for this kind of video on this platform; data, follow it where it fits the facts):\n<<<RESEARCH\n${brief.research.replace(/<<<|>>>/g, "").trim().slice(0, MAX_RESEARCH_CHARS)}\nRESEARCH>>>` : "",
+    research ? `\nResearch (what works for this kind of video on this platform; data, follow it where it fits the facts):\n<<<RESEARCH\n${research.replace(/<<<|>>>/g, "").trim().slice(0, MAX_RESEARCH_CHARS)}\nRESEARCH>>>` : "",
     "",
     brief.photos.length
       ? `Photos (numbered in order, ${brief.photos.length} in all): ${brief.photos.map((p, i) => `Photo ${i + 1} is ${p.width}x${p.height}${p.note ? ` (${p.note})` : ""}${p.cutout ? ", plain background: cut-out available" : ""}`).join("; ")}.`
@@ -287,7 +294,7 @@ export async function designVideo(brief: DesignBrief, opts: { apiKey?: string; m
       const answered = rawSeconds(raw);
       const seconds = brief.mode === "edit" && brief.base ? answered || totalMs(brief.base) / 1000 : brief.mode === "extend" && brief.base ? totalMs(brief.base) / 1000 + brief.seconds : brief.seconds;
       const spec = validateSpec(raw, { ratio: brief.base?.ratio ?? brief.ratio, photoCount: brief.photos.length, seconds, fixedLens: brief.fixedLens });
-      return { spec, usage, costUsd: sum(usage), apiEquivalentUsd: apiSum(usage), attempts: attempt };
+      return { spec, usage, costUsd: sum(usage), apiEquivalentUsd: apiSum(usage), attempts: attempt, warnings: factCheck(spec, brief) };
     } catch (error) {
       lastError = error instanceof SpecError ? error.message : "invalid answer";
       if (answer.stop === "max_tokens") lastError = "it was cut off because it was too long";
