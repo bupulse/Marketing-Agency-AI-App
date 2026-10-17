@@ -56,7 +56,7 @@ export interface BlenderProduct extends BlenderMotion {
 export interface BlenderText extends BlenderMotion {
   text: string;
   font: Of<typeof BLENDER_FONTS>;
-  /** Letter height in scene units (the product is about 2.5 tall). */
+  /** Font size in scene units (capitals are about 0.65 x size tall; the product is about 2.5 tall). */
   size: number;
   /** Centre of the text. */
   position: Vec3;
@@ -373,7 +373,7 @@ export const BLENDER_SCENE_FORMAT = `A Blender 3D scene, one JSON object. Units:
   "product": { "photo": 1-based photo number, "shape": "card"|"box" (when there is no cutout), "height": 2 to 3, "position": [x, y, z] (bottom centre; on a plinth z = its height),
     "enter": "rise"|"drop"|"pop"|"scale"|"spinIn"|"none", "enterAt": seconds, "enterFor": seconds, "idle": "swing"|"float"|"turntable"|"none", "angle": swing degrees (15 to 35), "spin": swings over the clip (0.5 to 1) } or null,
   "texts": up to 6 of { "text": short words (at most 60 characters, only facts from the brief), "font": "anton"|"poppins"|"inter"|"nunito"|"space-grotesk"|"playfair"|"dm-serif",
-    "size": letter height 0.3 to 2, "position": [x, y, z] (centre), "depth": extrusion 0 to 1, "bevel": 0 to 1, "material": "metal"|"chrome"|"gloss"|"matte"|"glass"|"neon", "color": hex,
+    "size": font size 0.5 to 2 (capitals are about 0.65 x size tall), "position": [x, y, z] (centre), "depth": extrusion 0 to 1, "bevel": 0 to 1, "material": "metal"|"chrome"|"gloss"|"matte"|"glass"|"neon", "color": hex,
     "enter": "spinIn"|"rise"|"drop"|"pop"|"scale"|"none", "enterAt": seconds, "enterFor": seconds, "idle": "float"|"none", "face": 0 to 1 (how much it turns to the camera) },
   "props": up to 12 of { "kind": "plinth"|"sphere"|"ring"|"box"|"cylinder", "position": [x, y, z] (sphere and ring: centre; others: bottom centre), "size": diameter or width, "height": for plinth, box, cylinder,
     "material": as texts, "color": hex, "enter": as texts, "enterAt", "enterFor", "idle": "float"|"spin"|"swing"|"none" },

@@ -204,6 +204,11 @@ describe("renderBlenderScene (Blender mocked)", () => {
     await expect(renderBlenderScene({}, path.join(dir, "slow.mp4"), { timeoutMs: 30 })).rejects.toThrow(/longer than/);
   });
 
+  it("refuses a scene whose product photo is not in the photo list", async () => {
+    behaviour.render = (_args, child) => child.emit("close", 0);
+    await expect(renderBlenderScene({ product: { photo: 2 } }, path.join(dir, "nophoto.mp4"), { photos: [{ image: "/x/a.jpg" }] })).rejects.toThrow(/product photo is missing/);
+  });
+
   it("fails when Blender wrote nothing", async () => {
     behaviour.render = (_args, child) => child.emit("close", 0);
     await expect(renderBlenderScene({}, path.join(dir, "empty.mp4"))).rejects.toThrow(/wrote no video/);

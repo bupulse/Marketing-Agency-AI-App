@@ -49,13 +49,13 @@ export function blenderSystemPrompt(): string {
     BLENDER_SCENE_FORMAT,
     "",
     "Rules:",
-    "- Facts: every word, number and price on screen comes from the brief. Never invent prices, discounts, dates, guarantees, 'new', 'best', 'original' or any number. Write a price exactly as the brief gives it (\"420,000 RWF\"). No price in the brief: no price on screen. The business description is about the shop, not this product.",
+    "- Facts: every word, number and price on screen comes from the brief; copy names and places letter for letter. Never invent prices, discounts, dates, guarantees, 'new', 'best', 'original' or any number. Write a price exactly as the brief gives it (\"420,000 RWF\"). No price in the brief: no price on screen. The business description is about the shop, not this product.",
     "- The product: \"product\": { \"photo\": n } with the best photo of the product itself. When that photo is marked 'cut-out available' the product stands free in the set: use \"idle\": \"swing\" (angle 15 to 30, spin 0.5) or \"float\", never \"turntable\" or \"spin\" (it is a flat picture and would show its edge). Without a cut-out it is printed on a rounded card (\"shape\": \"card\"): also swing or float. Photos of rooms, houses or streets are shown on a card, large.",
     "- The product is the hero: large, centred (x 0), visible from about 0.3 s, and still clearly visible in the last frame. The clip ends on the product with its name (and the price, if given).",
-    "- Layout that works for 9:16 (start from it; the frame factors in the brief scale it for other ratios): camera target [0, 0, 2.2], distance 9.5, height 1.6, lens 50 (the frame is then about 3.8 wide and 6.8 tall, from z -1.2 to 5.6 around the target). Product height 2.6 at position [0, 0, 0.9] (its bottom at z 0.9, top at 3.5): floating with idle float, or standing on a plinth of height 0.9. Title above it: position [0, -0.3, 4.15], size 0.6 to 0.75. Price (or one short line) below it, in front: position [0, -1.0, 0.45], size 0.45 to 0.55. A second small line, if really needed, at [0, -1.0, -0.15] is too low: put it above the title instead ([0, -0.3, 4.95], size 0.45). A wide photo (a house, a room) is wider than tall: height 2.2 so it fits the width.",
-    "- Texts: at most 3, one line each (no line breaks): the product's name or hook (1 to 3 words), the price if given, and at most one more short line (3 to 4 words). Sizes: titles 0.55 to 0.8, other lines 0.45 to 0.55 (smaller does not read on a phone). A line is about 0.5 x size x characters wide in anton and 0.68 x size x characters in poppins or inter: keep it narrower than the frame width minus 0.6.",
+    "- Layout that works for 9:16 (start from it; the frame factors in the brief scale it for other ratios): camera target [0, 0, 2.2], distance 9.5, height 1.6, lens 50 (the frame is then about 3.8 wide and 6.8 tall, from z -1.2 to 5.6 around the target). Product height 2.6 at position [0, 0, 0.9] (its bottom at z 0.9, top at 3.5): floating with idle float, or standing on a plinth of height 0.9. Title above it: position [0, -0.3, 4.15], size 0.8 to 1.0. Price (or one short line) below it, in front: position [0, -1.0, 0.45], size 0.6 to 0.7. One more short line, if really needed, goes above the title ([0, -0.3, 5.0], size 0.5 to 0.6), never lower than the price. A wide photo (a house, a room) is wider than tall: height 2.2 so it fits the width.",
+    "- Texts: at most 3, one line each (no line breaks): the product's name or hook (1 to 3 words), the price if given, and at most one more short line (3 to 4 words). size is the font size (capitals are about 0.65 x size tall): titles 0.8 to 1.0, other lines 0.5 to 0.7 (smaller does not read on a phone). A line is about 0.26 x size x characters wide in anton, 0.36 in poppins and 0.47 in inter, nunito, space-grotesk, playfair or dm-serif: keep it narrower than the frame width minus 0.6.",
     "- Never put a text over the product: texts sit above its top or below its bottom, never at the same height in front of it. Leave 0.2 between texts. The phone number and long sentences belong in the caption, not in the clip.",
-    "- Readability: text contrasts with the background behind it (light text on dark sets, dark or saturated text on light sets). Metal and chrome text only on dark sets; on light sets use gloss or matte in a strong brand colour. Never gold or silver text on a white set.",
+    "- Readability: text contrasts with the background behind it (light text on dark sets, dark or saturated text on light sets). Metal and chrome text only on dark sets (chrome only for big titles, size 0.8 or more; gold metal or white gloss read best); on light sets use gloss or matte in a strong brand colour. Never gold or silver text on a white set.",
     "- Props: only when the template asks for them (a plinth for posters, a ring or spheres for launches and luxury); otherwise none. At most 3, small (size 0.3 to 0.6), beside the product (|x| = half the product's width + 0.5), never in front of it or across a text. Particles: confetti only for launches and offers; sparkles or dust otherwise (count 20 to 50).",
     "- Camera: keep the layout's target and distance unless the content needs more room. Moves: orbitRight or orbitLeft (intensity 0.3 to 0.45) to show depth, dollyIn (0.3 to 0.5) to build, craneUp (0.2 to 0.3) for a poster reveal. fstop 0.",
     "- Timing: the product enters first (enterAt 0 to 0.3), the title by 0.6 s, the other lines by 40 % of the clip; everything has entered by 60 % so the end holds still and readable for at least 1.5 s.",
@@ -124,7 +124,7 @@ export async function designBlenderScene(brief: DesignBrief, send: ClaudeTranspo
       continue;
     }
     const { scene, warnings } = normalizeBlenderScene(raw, { photos });
-    const found = problems(raw, scene, warnings, brief);
+    const found = problems(raw, scene, warnings, brief).map((x) => x.replace(/\.$/, ""));
     if (found.length) {
       lastError = found.join("; ");
       continue;
@@ -156,10 +156,27 @@ function repair(scene: BlenderScene, brief: DesignBrief, seconds: number, opts: 
     scene.product.angle = Math.min(scene.product.angle, 30);
     scene.product.spin = Math.min(scene.product.spin, 1);
   }
+  const facts = factWords(brief);
+  const phoneDigits = (brief.business.phone ?? "").replace(/\D/g, "");
   for (const t of scene.texts) {
+    // The business's phone number, written the way the brief writes it (groups of digits read better).
+    const digits = t.text.replace(/\D/g, "");
+    if (phoneDigits.length >= 9 && digits.length >= 9 && (phoneDigits.endsWith(digits) || digits.endsWith(phoneDigits)) && t.text !== brief.business.phone) {
+      t.text = brief.business.phone as string;
+    }
+    const fixed = fixSpelling(t.text, facts);
+    if (fixed !== t.text) {
+      warnings.push(`"${t.text}" corrected to "${fixed}" (the spelling in the brief).`);
+      t.text = fixed;
+    }
+    // Chrome mirrors the dark set: only big titles catch enough light to read.
+    if (t.material === "chrome" && t.size < 0.8) {
+      t.material = "gloss";
+      warnings.push(`"${t.text}" is gloss instead of chrome so it reads at this size.`);
+    }
     // Smaller letters do not read on a phone at 540p.
-    if (t.size < 0.45) {
-      t.size = 0.45;
+    if (t.size < 0.5) {
+      t.size = 0.5;
       warnings.push(`"${t.text}" made bigger so it reads on a phone.`);
     }
     if (/[\r\n]/.test(t.text)) {
@@ -178,10 +195,24 @@ function repair(scene: BlenderScene, brief: DesignBrief, seconds: number, opts: 
   }
   const photo = scene.product?.photo ? brief.photos[scene.product.photo - 1] : undefined;
   fitLayout(scene, photo && photo.height ? photo.width / photo.height : 1, warnings);
+  // Entrances never cross the product: a text above it drops in (a rise would come up through it), one below rises.
+  const p = scene.product;
+  if (p) {
+    for (const t of scene.texts) {
+      const above = t.position[2] > p.position[2] + p.height / 2;
+      if (above && t.enter === "rise") t.enter = "drop";
+      if (!above && t.enter === "drop") t.enter = "rise";
+    }
+  }
 }
 
-/** About how wide a line of 3D text is, in scene units (anton is condensed). */
-export const textWidth = (t: Pick<BlenderScene["texts"][number], "font" | "size" | "text">) => (t.font === "anton" ? 0.5 : 0.68) * t.size * t.text.length;
+/** Width of one character at size 1, measured in Blender 5.2 on "GALAXY A56 420,000 RWF" (capitals and digits). */
+const CHAR_WIDTH: Record<BlenderScene["texts"][number]["font"], number> = { anton: 0.26, poppins: 0.36, inter: 0.47, nunito: 0.47, "space-grotesk": 0.47, playfair: 0.49, "dm-serif": 0.45 };
+type TextBox = Pick<BlenderScene["texts"][number], "font" | "size" | "text">;
+/** About how wide a line of 3D text is, in scene units. */
+export const textWidth = (t: TextBox) => CHAR_WIDTH[t.font] * t.size * t.text.length;
+/** How tall its capitals are (size is the font size: capitals are about 0.6 to 0.7 of it). */
+export const textHeight = (t: Pick<BlenderScene["texts"][number], "size">) => 0.7 * t.size;
 
 /**
  * Keeps the ad readable whatever Claude placed: texts in front of the product move above or below it (the product rises
@@ -196,13 +227,13 @@ export function fitLayout(scene: BlenderScene, aspect: number, warnings: string[
   const texts = [...scene.texts].sort((a, b) => a.position[2] - b.position[2]);
   if (box && p) {
     const mid = (box.z0 + box.z1) / 2;
-    const covering = (t: (typeof texts)[number]) => t.position[1] < box.y + 0.3 && overlapsX(t.position[0], textWidth(t), box.x, box.w) && Math.abs(t.position[2] - mid) < (t.size + p.height) / 2;
+    const covering = (t: (typeof texts)[number]) => t.position[1] < box.y + 0.3 && overlapsX(t.position[0], textWidth(t), box.x, box.w) && Math.abs(t.position[2] - mid) < (textHeight(t) + p.height) / 2;
     // Texts below the middle go under the product, lowest first; the product rises if they need the room.
     let floorZ = 0.12;
     for (const t of texts.filter((t) => covering(t) && t.position[2] < mid)) {
-      const z = Math.max(floorZ + t.size / 2, Math.min(t.position[2], box.z0 - 0.15 - t.size / 2));
+      const z = Math.max(floorZ + textHeight(t) / 2, Math.min(t.position[2], box.z0 - 0.15 - textHeight(t) / 2));
       t.position = [t.position[0], t.position[1], round2(z)];
-      floorZ = z + t.size / 2 + 0.2;
+      floorZ = z + textHeight(t) / 2 + 0.2;
       if (floorZ - 0.05 > box.z0) {
         const lift = floorZ - 0.05 - box.z0;
         box.z0 += lift;
@@ -213,11 +244,11 @@ export function fitLayout(scene: BlenderScene, aspect: number, warnings: string[
     }
     let topZ = box.z1 + 0.2;
     for (const t of texts.filter((t) => t.position[2] >= mid)) {
-      if (t.position[1] < box.y + 0.3 && overlapsX(t.position[0], textWidth(t), box.x, box.w) && t.position[2] - t.size / 2 < topZ) {
-        t.position = [t.position[0], t.position[1], round2(topZ + t.size / 2)];
+      if (t.position[1] < box.y + 0.3 && overlapsX(t.position[0], textWidth(t), box.x, box.w) && t.position[2] - textHeight(t) / 2 < topZ) {
+        t.position = [t.position[0], t.position[1], round2(topZ + textHeight(t) / 2)];
         warnings.push(`"${t.text}" moved above the product so it does not cover it.`);
       }
-      topZ = Math.max(topZ, t.position[2] + t.size / 2 + 0.2);
+      topZ = Math.max(topZ, t.position[2] + textHeight(t) / 2 + 0.2);
     }
     // Props (not the plinth under it) never hide the product or hide behind it: they go to its sides.
     for (const pr of scene.props) {
@@ -231,23 +262,29 @@ export function fitLayout(scene: BlenderScene, aspect: number, warnings: string[
   for (let i = 1; i < texts.length; i++) {
     const a = texts[i - 1];
     const b = texts[i];
-    const gap = b.position[2] - b.size / 2 - (a.position[2] + a.size / 2);
+    const gap = b.position[2] - textHeight(b) / 2 - (a.position[2] + textHeight(a) / 2);
     if (gap < 0.15 && overlapsX(a.position[0], textWidth(a), b.position[0], textWidth(b)) && Math.abs(a.position[1] - b.position[1]) < 1) {
       b.position = [b.position[0], b.position[1], round2(b.position[2] + 0.15 - gap)];
       warnings.push(`"${b.text}" moved up so it does not touch "${a.text}".`);
     }
   }
   // The camera: aim at the middle of everything and stand back far enough (at the end of its move) to see it all.
+  // An orbit slides things in front of the target sideways (parallax): give them that much more room.
+  const cam = scene.camera;
+  const slide = cam.move === "orbitLeft" || cam.move === "orbitRight" ? Math.sin(((8 + 42 * cam.intensity) * Math.PI) / 180) : 0;
   const parts = [
     ...(box ? [{ z0: box.z0, z1: box.z1, half: Math.abs(box.x) + box.w / 2 }] : []),
-    ...scene.texts.map((t) => ({ z0: t.position[2] - t.size / 2, z1: t.position[2] + t.size / 2, half: Math.abs(t.position[0]) + textWidth(t) / 2 })),
+    // Texts in front of the target are nearer the camera, so they look bigger too.
+    ...scene.texts.map((t) => {
+      const nearer = Math.max(0, cam.target[1] - t.position[1]);
+      return { z0: t.position[2] - textHeight(t) / 2, z1: t.position[2] + textHeight(t) / 2, half: (Math.abs(t.position[0]) + textWidth(t) / 2) * (1 + nearer / cam.distance) + nearer * slide };
+    }),
     ...scene.props.filter((pr) => pr.kind === "sphere" || pr.kind === "ring").map((pr) => ({ z0: pr.position[2] - pr.size / 2, z1: pr.position[2] + pr.size / 2, half: Math.abs(pr.position[0]) + pr.size / 2 })),
   ];
   if (!parts.length) return;
   const z0 = Math.min(...parts.map((x) => x.z0));
   const z1 = Math.max(...parts.map((x) => x.z1));
   const half = Math.max(...parts.map((x) => x.half));
-  const cam = scene.camera;
   const f = framePerDistance(scene.canvas.ratio);
   const k = 50 / cam.lens;
   const needed = Math.max((z1 - z0 + 0.9) / (f.height * k), (2 * half + 0.6) / (f.width * k));
@@ -265,6 +302,48 @@ export function fitLayout(scene: BlenderScene, aspect: number, warnings: string[
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** The words of the brief's facts (business and product names, product facts, the owner's note), lower case. */
+function factWords(brief: DesignBrief): Set<string> {
+  const p = brief.product;
+  const text = [brief.business.name, p.name, p.summary, p.description, p.price, ...(p.usps ?? []), ...(p.features ?? []), p.targetCustomer, brief.note].filter(Boolean).join(" ");
+  return new Set(text.toLowerCase().match(/\p{L}+/gu) ?? []);
+}
+
+function editDistance(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const keep = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = keep;
+    }
+  }
+  return row[b.length];
+}
+
+/**
+ * Puts back the brief's spelling of a word Claude got slightly wrong ("KIBAGABARA" for Kibagabaga): a word of 5 letters
+ * or more that is not in the facts but is 1 or 2 letters away from a fact word with the same first letter. The case of
+ * Claude's word is kept (all capitals stay capitals).
+ */
+export function fixSpelling(text: string, facts: Set<string>): string {
+  return text.replace(/\p{L}{5,}/gu, (word) => {
+    const w = word.toLowerCase();
+    if (facts.has(w) || facts.has(w.replace(/s$/, ""))) return word;
+    let best: string | null = null;
+    for (const f of facts) {
+      if (f.length < 5 || f[0] !== w[0] || Math.abs(f.length - w.length) > 2) continue;
+      const d = editDistance(w, f);
+      if (d <= (w.length >= 8 ? 2 : 1) && (!best || d < editDistance(w, best))) best = f;
+    }
+    if (!best) return word;
+    if (word === word.toUpperCase()) return best.toUpperCase();
+    return word[0] === word[0].toUpperCase() ? best[0].toUpperCase() + best.slice(1) : best;
+  });
+}
 
 /** factCheck (factcheck.ts) on the scene's texts, the voice line and the caption. */
 export function blenderFactCheck(scene: BlenderScene, caption: string, say: string, brief: DesignBrief): FactWarning[] {
