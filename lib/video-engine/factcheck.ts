@@ -19,9 +19,13 @@ export type FactWarning = {
   where: string;
   /** What was found ("refurbished", "15%", "2-year"). */
   found: string;
-  /** not-in-brief: nowhere in the facts; business-only: only in the business's general description. */
-  problem: "not-in-brief" | "business-only";
+  /**
+   * not-in-brief: nowhere in the facts; business-only: only in the business's general description; language: a form
+   * Rwandan sellers do not write (brain/language.ts checkLanguage), with what they write instead in `suggestion`.
+   */
+  problem: "not-in-brief" | "business-only" | "language";
   message: string;
+  suggestion?: string | null;
 };
 
 /** Claim words a design may only use when the facts say so (the owner's note counts as a fact). */

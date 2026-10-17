@@ -13,6 +13,7 @@ import { voiceLanguage } from "./voice-language";
 import { factCheck, type FactWarning } from "./factcheck";
 import { brainBriefFromDesign, brainContext } from "./brain/select";
 import { scoreDesign, type DesignScore } from "./brain/score";
+import { PREFERRED_PHRASES, checkLanguage, languageTextsOf } from "./brain";
 
 const MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 export const DESIGNER_MODEL = "claude-sonnet-5-5";
@@ -208,9 +209,13 @@ export function briefText(brief: DesignBrief): string {
     `Content language: ${brief.business.language || "English"}`,
     (() => {
       const v = voiceLanguage(brief.business.language);
-      return v.note
+      const phrases =
+        v.captionLanguage === "Kinyarwanda"
+          ? `\nKinyarwanda the way Rwandan sellers write it (use these phrases instead of translating English; fill the {placeholders} with facts from the brief): ${PREFERRED_PHRASES.map((p) => `'${p.say}' (${p.for})`).join("; ")}. Prices as '420,000 RWF', never 'francs' on screen or in the caption.`
+          : "";
+      return (v.note
         ? `Voice-over language: ${v.spokenLanguage}. The voice cannot speak ${v.captionLanguage}: write every say line in natural ${v.spokenLanguage} (the same message as the scene), and keep all on-screen text and the caption in ${v.captionLanguage}.`
-        : `Voice-over language: ${v.spokenLanguage}`;
+        : `Voice-over language: ${v.spokenLanguage}`) + phrases;
     })(),
     brief.business.country ? `Country: ${brief.business.country}` : "",
     brief.business.tone ? `Brand voice: ${brief.business.tone}` : "",
@@ -309,7 +314,9 @@ export async function designVideo(brief: DesignBrief, opts: { apiKey?: string; m
       const answered = rawSeconds(raw);
       const seconds = brief.mode === "edit" && brief.base ? answered || totalMs(brief.base) / 1000 : brief.mode === "extend" && brief.base ? totalMs(brief.base) / 1000 + brief.seconds : brief.seconds;
       const spec = validateSpec(raw, { ratio: brief.base?.ratio ?? brief.ratio, photoCount: brief.photos.length, seconds, fixedLens: brief.fixedLens, photos: brief.photos.map((p) => ({ width: p.width, height: p.height, subject: p.subject ?? null })), platform: brief.platform ?? null, phone: brief.business.phone ?? null });
-      const warnings = factCheck(spec, brief);
+      // Facts first, then the language: price forms, English calls to action in a Kinyarwanda video, word-for-word lines.
+      const language = checkLanguage(languageTextsOf(spec), brief.business.language).map((i) => ({ where: i.where, found: i.found, problem: "language" as const, message: i.message, suggestion: i.suggestion }));
+      const warnings = [...factCheck(spec, brief), ...language];
       const score = scoreDesign(spec, brief, { platform: brief.platform ?? null, voice: brief.voice ?? true });
       return { spec, usage, costUsd: sum(usage), apiEquivalentUsd: apiSum(usage), attempts: attempt, warnings, score };
     } catch (error) {

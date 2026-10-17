@@ -8,11 +8,18 @@
 // (key light, fog, extruded text, turntables, particles, glass and metal) is drawn by draw3d.ts.
 import { cameraAt, clamp01, ease, layerWindow, lightState, noise, parallax, poseAt, scenesAt, spinAngle, textEntrance, towardLight, vanishingPoint, type ActiveScene, type CameraState } from "./animate";
 import { drawCutout, drawFogHaze, drawLightGlow, drawParticles, drawTurntable, fogFilter, lightPhoto, materialFill, materialFinish, paintText3d, text3dPaint, type Env } from "./draw3d";
-import { FONTS, canvasSize, type Background, type CharacterLayer, type Layer, type Look, type MotionSpec, type PhotoLayer, type Quality, type Scene, type ShapeLayer, type TextLayer } from "./spec";
+import { FONTS, canvasSize, type Background, type CharacterLayer, type Layer, type Look, type MotionSpec, type PhotoLayer, type Quality, type Scene, type ShapeLayer, type TextLayer, type VideoLayer } from "./spec";
 
 export type Img = CanvasImageSource & { width: number; height: number };
-/** Decoded photos by the spec's 1-based number; a product cut-out (cutout.ts) of photo n under the key `${n}:cutout`. */
-export type Photos = Map<number | string, Img>;
+/**
+ * Decoded photos by the spec's 1-based number; a product cut-out (cutout.ts) of photo n under the key `${n}:cutout`;
+ * the current frame of a video layer under videoFrameKey(scene, layer) (video-frames.ts fills it before each frame).
+ */
+export type Photos = Map<number | string, Img | VideoFrame>;
+/** Where the frame of the video layer `layer` of scene `scene` is kept in the photos map (video-frames.ts fills it). */
+export const videoFrameKey = (scene: number, layer: number) => `video:${scene}:${layer}`;
+/** A photo by its number or key (clip frames are only read by video layers). */
+const photoOf = (photos: Photos, key: number | string): Img | undefined => photos.get(key) as Img | undefined;
 type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 type Rect = { x: number; y: number; w: number; h: number };
 type AnyCanvas = OffscreenCanvas | HTMLCanvasElement;
@@ -130,7 +137,7 @@ function withTransform(ctx: Ctx, tf: Tf, W: number, H: number, draw: () => void)
   ctx.restore();
 }
 
-const DEFAULT_DEPTH = { photo: 0.45, text: 0.85, shape: 0.6, character: 0.7, particles: 0.5 } as const;
+const DEFAULT_DEPTH = { photo: 0.45, text: 0.85, shape: 0.6, character: 0.7, particles: 0.5, video: 0 } as const;
 
 function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene, photos: Photos, W: number, H: number, tMs: number, scratch: Env["scratch"]): void {
   const cam = cameraAt(scene.camera, active.progress, tMs);
@@ -201,7 +208,8 @@ function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene
     ctx.save();
     const depth = layer.depth ?? DEFAULT_DEPTH[layer.kind];
     const { pose, rect, par, cx, cy } = place(layer);
-    const ownOpacity = layer.keyframes?.some((f) => f.opacity !== undefined) ? 1 : layer.kind === "text" ? 1 : ease("out", win.enter);
+    // Layers fade in at their entrance; text has its own entrances, and a video clip plays straight through its cuts.
+    const ownOpacity = layer.keyframes?.some((f) => f.opacity !== undefined) ? 1 : layer.kind === "text" || layer.kind === "video" ? 1 : ease("out", win.enter);
     ctx.globalAlpha *= clamp01(pose.opacity * ownOpacity * win.exit);
     // Text is a graphic on top of the shot, as in real ads: it moves with the camera but always stays sharp (no focus
     // blur, no fog).
@@ -214,10 +222,12 @@ function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene
     const local: Rect = { x: -rect.w / 2, y: -rect.h / 2, w: rect.w, h: rect.h };
     if (layer.kind === "photo") {
       // The cut-out (product without its background) when the design asks for it and the page loaded one.
-      const cut = layer.cutout && (layer.turntable || layer.fit === "contain") ? photos.get(`${layer.photo}:cutout`) : undefined;
-      if (layer.turntable) drawTurntable(ctx, layer, local, cut ?? photos.get(layer.photo), active.progress, env, !!cut);
+      const cut = layer.cutout && (layer.turntable || layer.fit === "contain") ? photoOf(photos, `${layer.photo}:cutout`) : undefined;
+      if (layer.turntable) drawTurntable(ctx, layer, local, cut ?? photoOf(photos, layer.photo), active.progress, env, !!cut);
       else if (cut) drawCutout(ctx, layer, local, cut, active.progress, env);
-      else drawPhoto(ctx, layer, local, photos.get(layer.photo), active.progress, spec, env);
+      else drawPhoto(ctx, layer, local, photoOf(photos, layer.photo), active.progress, spec, env);
+    } else if (layer.kind === "video") {
+      drawVideo(ctx, layer, local, photos.get(videoFrameKey(active.index, scene.layers.indexOf(layer))));
     } else if (layer.kind === "text") drawText(ctx, layer, local, win.enter, W, env);
     else if (layer.kind === "character") drawCharacter(ctx, layer, local, active.progress, tMs);
     else if (layer.kind === "particles") drawParticles(ctx, layer, local, env);
@@ -360,7 +370,7 @@ function drawImageInto(ctx: Ctx, img: Img, r: Rect, fit: "cover" | "contain", zo
 
 function drawBackground(ctx: Ctx, bg: Background, progress: number, photos: Photos, W: number, H: number, tMs: number, k = 1): void {
   const full: Rect = { x: 0, y: 0, w: W, h: H };
-  const img = bg.kind === "photo" && bg.photo ? photos.get(bg.photo) : undefined;
+  const img = bg.kind === "photo" && bg.photo ? photoOf(photos, bg.photo) : undefined;
   if (img && img.width > 0) {
     ctx.save();
     const blur = (bg.blur ?? 0) * k;
@@ -462,6 +472,37 @@ function drawPhoto(ctx: Ctx, layer: PhotoLayer, r: Rect, img: Img | undefined, p
     roundRectPath(ctx, r, radius);
     ctx.stroke();
     ctx.restore();
+  }
+}
+
+/**
+ * A video layer: the clip's frame for this moment (put in the photos map by video-frames.ts), cover or contain, with
+ * its veil. Black until the frame is there (a clip that could not be opened).
+ */
+function drawVideo(ctx: Ctx, layer: VideoLayer, r: Rect, frame: Img | VideoFrame | undefined): void {
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(r.x, r.y, r.w, r.h);
+  if (frame) {
+    // A VideoFrame has display sizes; images have width and height.
+    const size = "displayWidth" in frame ? { width: frame.displayWidth, height: frame.displayHeight } : { width: frame.width, height: frame.height };
+    if (size.width > 0 && size.height > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(r.x, r.y, r.w, r.h);
+      ctx.clip();
+      if (layer.fit === "contain") {
+        const s = Math.min(r.w / size.width, r.h / size.height);
+        ctx.drawImage(frame, r.x + (r.w - size.width * s) / 2, r.y + (r.h - size.height * s) / 2, size.width * s, size.height * s);
+      } else {
+        const c = coverRect(size, r);
+        ctx.drawImage(frame, c.sx, c.sy, c.sw, c.sh, r.x, r.y, r.w, r.h);
+      }
+      ctx.restore();
+    }
+  }
+  if (layer.dim) {
+    ctx.fillStyle = `rgba(0,0,0,${layer.dim})`;
+    ctx.fillRect(r.x, r.y, r.w, r.h);
   }
 }
 

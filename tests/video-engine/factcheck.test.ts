@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { designVideo, systemPrompt, type DesignBrief } from "@/lib/video-engine/designer";
+import { briefText, designVideo, systemPrompt, type DesignBrief } from "@/lib/video-engine/designer";
 import { factCheck, normalise, numbersIn, wordsToNumber, type FactBrief } from "@/lib/video-engine/factcheck";
 import type { MotionSpec } from "@/lib/video-engine/spec";
 
@@ -104,5 +104,31 @@ describe("fact check: a phone number said digit by digit", () => {
     expect(said("Call zero seven eight eight, one two three, four five six.")).toEqual([]);
     expect(said("Call zero seven eight eight, nine nine nine.")).toEqual(["999"]);
     expect(said("Call 0788 123 456.")).toEqual([]);
+  });
+});
+
+describe("language warnings and preferred phrases (the brain's language check)", () => {
+  const rwBrief: DesignBrief = { business: { name: "E2E Starter Test", language: "Kinyarwanda", phone: "+250 788 123 456" }, product: { name: "Kitenge summer dress", price: "25,000 RWF" }, photos: [], styleId: "kigali-price-first", hookId: "auto", ratio: "9:16", seconds: 6 };
+  it("a Kinyarwanda design with an English call to action and 'francs' gets language warnings with what sellers write", async () => {
+    const raw = {
+      palette: {},
+      caption: "Ikanzu nziza ya kitenge: 25.000 francs",
+      scenes: [
+        { seconds: 3, background: {}, layers: [{ kind: "text", text: "Call now 0788 123 456", font: "inter", size: 0.06, color: "#fff", x: 0.5, y: 0.5, w: 0.8, h: 0.1 }] },
+        { seconds: 3, background: {}, layers: [{ kind: "text", text: "Ikanzu nziza", font: "inter", size: 0.06, color: "#fff", x: 0.5, y: 0.3, w: 0.8, h: 0.1 }] },
+      ],
+    };
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ model: "claude-sonnet-5-5", content: [{ type: "text", text: JSON.stringify(raw) }], usage: { input_tokens: 1, output_tokens: 1 } }), { status: 200 }));
+    const result = await designVideo(rwBrief, { apiKey: "k", fetchImpl: fetchImpl as unknown as typeof fetch });
+    const language = result.warnings.filter((w) => w.problem === "language");
+    expect(language.map((w) => w.where)).toEqual(expect.arrayContaining(["scene 1 text", "caption"]));
+    expect(language.find((w) => w.where === "scene 1 text")?.suggestion).toContain("Duhamagare");
+  });
+
+  it("the brief of a Kinyarwanda business carries the sellers' phrases; an English one does not", () => {
+    const text = briefText(rwBrief);
+    expect(text).toContain("Kinyarwanda the way Rwandan sellers write it");
+    expect(text).toContain("Duhamagare cyangwa utwandikire kuri WhatsApp");
+    expect(briefText({ ...rwBrief, business: { name: "Nova", language: "English" } })).not.toContain("Rwandan sellers write it");
   });
 });

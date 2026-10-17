@@ -8,6 +8,7 @@ import { frameCount, frameUs } from "./animate";
 import { drawSpecFrame, type Img, type Photos } from "./draw";
 import { FONTS, canvasSize, totalMs, type FontId, type MotionSpec, type Quality } from "./spec";
 import { cueTimings, placeVoice, type VoiceCue } from "./voice";
+import { clipSoundCues, openVideoFrames } from "./video-frames";
 
 const FONT_RANGES = {
   latin: "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD",
@@ -85,7 +86,11 @@ export async function encodeSpecMp4(spec: MotionSpec, photos: Photos, options: E
     }
   }
   if (!config) throw new Error("This browser has no H.264 encoder. Use the latest Chrome or Edge.");
-  const audio = options.musicUrl || options.voice?.cues.length ? await encodeSoundtrack(options.musicUrl ?? null, options.voice ?? null, totalMs(spec)).catch(() => null) : null;
+  const clips = clipSoundCues(spec);
+  const audio = options.musicUrl || options.voice?.cues.length || clips.length ? await encodeSoundtrack(options.musicUrl ?? null, options.voice ?? null, totalMs(spec), clips).catch(() => null) : null;
+  // Video layers (a Seedance clip under BuPulse's text): each clip opened once, its frames fetched in time order.
+  const videos = await openVideoFrames(spec);
+  const frames: Photos = new Map(photos);
 
   const muxer = new Muxer({
     target: new ArrayBufferTarget(),
@@ -106,7 +111,8 @@ export async function encodeSpecMp4(spec: MotionSpec, photos: Photos, options: E
     for (let i = 0; i < total; i++) {
       if (options.signal?.aborted) throw new Error("Cancelled");
       if (failure) throw failure;
-      drawSpecFrame(ctx, spec, photos, (i * 1000) / spec.fps, { quality });
+      await videos.prepare((i * 1000) / spec.fps, frames);
+      drawSpecFrame(ctx, spec, frames, (i * 1000) / spec.fps, { quality });
       const frame = new VideoFrame(canvas, { timestamp: frameUs(i, spec.fps), duration });
       try {
         encoder.encode(frame, { keyFrame: i % (spec.fps * 2) === 0 });
@@ -124,11 +130,26 @@ export async function encodeSpecMp4(spec: MotionSpec, photos: Photos, options: E
     return new Blob([muxer.target.buffer], { type: "video/mp4" });
   } finally {
     if (encoder.state !== "closed") encoder.close();
+    videos.close();
   }
 }
 
 type EncodedAudio = { chunks: { chunk: EncodedAudioChunk; meta?: EncodedAudioChunkMetadata }[]; sampleRate: number; numberOfChannels: number };
 const RATE = 44_100;
+
+/** Placed tracks added together (mono and stereo mixed: a mono track plays on both channels). */
+export function sumTracks(tracks: Float32Array[][]): Float32Array[] {
+  const channels = Math.max(...tracks.map((t) => t.length));
+  const frames = Math.max(...tracks.map((t) => t[0]?.length ?? 0));
+  return Array.from({ length: channels }, (_, c) => {
+    const out = new Float32Array(frames);
+    for (const t of tracks) {
+      const src = t[Math.min(c, t.length - 1)];
+      for (let i = 0; i < src.length; i++) out[i] += src[i];
+    }
+    return out;
+  });
+}
 
 async function decode(context: AudioContext, url: string | null): Promise<Float32Array[] | null> {
   if (!url) return null;
@@ -142,21 +163,26 @@ async function decode(context: AudioContext, url: string | null): Promise<Float3
 }
 
 /**
- * The soundtrack, encoded to AAC: the voice cues placed at their scenes, and the music looped to the video's length,
- * faded in 1 s and out 1.5 s, at 85% and ducked under the voice. Null when neither loads.
+ * The soundtrack, encoded to AAC: the voice cues placed at their scenes, the clips' own sound (video layers with
+ * `sound`) placed at theirs, and the music looped to the video's length, faded in 1 s and out 1.5 s, at 85% and ducked
+ * under the voice and the clips' sound. Null when nothing loads.
  */
-async function encodeSoundtrack(musicUrl: string | null, voice: { url: string; cues: VoiceCue[] } | null, ms: number): Promise<EncodedAudio | null> {
+async function encodeSoundtrack(musicUrl: string | null, voice: { url: string; cues: VoiceCue[] } | null, ms: number, clips: { url: string; cues: VoiceCue[] }[] = []): Promise<EncodedAudio | null> {
   if (typeof AudioEncoder === "undefined" || typeof AudioContext === "undefined") return null;
   const context = new AudioContext({ sampleRate: RATE });
   let take: Float32Array[] | null;
   let music: Float32Array[] | null;
+  let clipTakes: (Float32Array[] | null)[];
   try {
-    [take, music] = await Promise.all([decode(context, voice?.cues.length ? voice.url : null), decode(context, musicUrl)]);
+    // decodeAudioData reads the AAC track of an MP4 clip too; a clip without sound decodes to nothing.
+    [take, music, ...clipTakes] = await Promise.all([decode(context, voice?.cues.length ? voice.url : null), decode(context, musicUrl), ...clips.map((c) => decode(context, c.url))]);
   } finally {
     void context.close().catch(() => undefined);
   }
-  const placed = take && voice ? placeVoice(take, voice.cues, RATE, ms) : null;
-  const out = mixSamples({ voice: placed, music, sampleRate: RATE, totalMs: ms, speech: voice ? cueTimings(voice.cues) : [] });
+  const tracks = [take && voice ? placeVoice(take, voice.cues, RATE, ms) : null, ...clips.map((c, i) => (clipTakes[i] ? placeVoice(clipTakes[i] as Float32Array[], c.cues, RATE, ms) : null))].filter((t): t is Float32Array[] => !!t);
+  const placed = tracks.length ? sumTracks(tracks) : null;
+  const speech = [...(voice ? cueTimings(voice.cues) : []), ...clips.flatMap((c, i) => (clipTakes[i] ? cueTimings(c.cues) : []))];
+  const out = mixSamples({ voice: placed, music, sampleRate: RATE, totalMs: ms, speech });
   if (!out) return null;
   const channels = out.length;
   const frames = out[0].length;
