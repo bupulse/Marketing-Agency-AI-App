@@ -431,7 +431,7 @@
     "engines": ["claude"],
     "needs": [],
     "examples": ["1. Perfumes business", "4/20 Business ya products", "1. Build a portfolio", "English to Kinyarwanda", "1. RWANDA", "5 reasons to invest in Rwanda"],
-    "evidence": ["tt-084", "tt-088", "tt-076", "fb-036", "yt-014"]
+    "evidence": ["tt-088", "fb-036", "yt-014"]
   },
   {
     "id": "dont-say-say",

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { BRAIN, FORMATS, PLATFORMS, RESEARCH_SOURCES, SECTORS, checkBrain, safeAreaFor, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
-import { evidenceFromRows, parseCount, parseDate, parseJsonl, rowKey, rowStrength, tiktokDate, variantsLive } from "@/lib/video-engine/brain/ingest";
+import { evidenceFromRows, looksLikeScam, parseCount, parseDate, parseJsonl, rowKey, rowStrength, tiktokDate, variantsLive } from "@/lib/video-engine/brain/ingest";
 import { SAFE_AREAS, amounts, hasKinyarwanda, scoreCaption, scoreDesign, scoreSeedancePrompt, templateStyle, type ScoreBrief } from "@/lib/video-engine/brain/score";
 import { CONTEXT_MAX_CHARS, ENGINE_SECONDS, brainBriefFromDesign, brainBriefFromPrompt, brainContext, brainFor, formatFromTemplate, scaleTimeline, sectorFromText } from "@/lib/video-engine/brain/select";
 import type { DesignBrief } from "@/lib/video-engine/designer";
@@ -42,7 +42,8 @@ describe("the brain database", () => {
       for (const e of index) {
         // The row at its line, or (when the file was reordered) the row with its key: run ingest.ts to refresh lines.
         const row = rows[e.line - 1];
-        const found = row && rowKey(row) === e.key ? row : rows.find((r) => rowKey(r) === e.key);
+        // A row whose hook was filled in since is still found by its URL (run ingest.ts to refresh the key).
+        const found = row && (rowKey(row) === e.key || (e.url && row.url === e.url)) ? row : rows.find((r) => rowKey(r) === e.key || (e.url && r.url === e.url));
         expect(found, `${e.id} (${source} line ${e.line}) no longer matches a research row`).toBeTruthy();
       }
     }
@@ -91,6 +92,32 @@ describe("ingest (research rows to the evidence index)", () => {
     expect(again.map((e) => e.id)).toEqual(["tt-003", "tt-002", "tt-001"]);
     expect(again[2].line).toBe(3);
     expect(again[0].strength).toBe(0.3);
+  });
+});
+
+describe("income-chain and scam rows", () => {
+  it("are flagged, their age and variants do not count, and only the fake-income don'ts may cite them", () => {
+    const chain = { url: "https://www.facebook.com/ads/library/?id=1", page: "Akayabo Network", caption: "Tajyira Akakanya Gukorere Akayabo Kama Faranga! Earn 30K a day", running_days: 120, watched: true };
+    const shop = { url: "https://www.facebook.com/ads/library/?id=2", page: "Shop", caption: "Galaxy A56 420,000 RWF", running_days: 120, watched: true };
+    expect(looksLikeScam(chain)).toBe(true);
+    expect(looksLikeScam(shop)).toBe(false);
+    const [c, s2] = evidenceFromRows("facebook", [chain, shop]);
+    expect(c.scam).toBe(true);
+    expect(c.strength).toBe(0.2);
+    expect(s2.scam).toBeUndefined();
+    expect(s2.strength).toBeGreaterThan(0.3);
+    const scam = BRAIN.evidence.find((e) => e.scam)!;
+    const broken: BrainData = structuredClone(BRAIN);
+    broken.hooks[0].evidence.push(scam.id);
+    expect(checkBrain(broken, refs).some((p) => p.includes(`"${scam.id}" is an income-chain`))).toBe(true);
+  });
+
+  it("keeps a row's id when its hook is filled in later (found by its URL), and --no-new leaves new rows out", () => {
+    const row = { url: "https://www.facebook.com/ads/library/?id=9", page: "Salon", hook: null, caption: "Book your braids" };
+    const [first] = evidenceFromRows("facebook", [row]);
+    const again = evidenceFromRows("facebook", [{ ...row, hook: "Braids in progress, price on screen" }, { url: "https://www.facebook.com/ads/library/?id=10", page: "New" }], [first], { addNew: false });
+    expect(again.map((e) => e.id)).toEqual([first.id]);
+    expect(again[0].key).not.toBe(first.key);
   });
 });
 

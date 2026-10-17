@@ -68,10 +68,16 @@ export function checkBrain(data: BrainData = BRAIN, refs: BrainRefs = {}): strin
     if (nonEmpty && !values.length) say(where, `${field} is empty`);
     values.forEach((v) => oneOf(where, field, v, allowed));
   };
+  const scams = new Set(data.evidence.filter((e) => e.scam).map((e) => e.id));
+  /** Rules that may cite an income-chain or scam row (as what not to copy); nothing else learns from them. */
+  const SCAM_CITERS = new Set(["rule no-fake-income", "rule no-income-promise"]);
   const cites = (where: string, ids: unknown, allowEmpty = false) => {
     if (!Array.isArray(ids)) return say(where, "evidence must be a list");
     if (!ids.length && !allowEmpty) say(where, "has no evidence");
-    for (const id of ids) if (!evidence.has(id)) say(where, `evidence "${id}" is not in evidence.json`);
+    for (const id of ids) {
+      if (!evidence.has(id)) say(where, `evidence "${id}" is not in evidence.json`);
+      else if (scams.has(id) && !SCAM_CITERS.has(where)) say(where, `evidence "${id}" is an income-chain or scam post; only the fake-income and income-promise don'ts may cite it`);
+    }
   };
   const unique = (name: string, ids: string[]) => {
     const seen = new Set<string>();

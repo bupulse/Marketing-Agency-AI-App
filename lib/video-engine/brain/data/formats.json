@@ -263,7 +263,7 @@
     "cta": "'WhatsApp {phone}', the address and the hours.",
     "eastAfrica": ["Derma Skin Clinic Rwanda runs 15+ variants of the doctor-explains format, in English and Kinyarwanda, with the address and two numbers in every caption."],
     "hooks": ["expert-card", "dont-say-say", "numbered-list", "curiosity", "comment-reply", "trade-in-action", "search-bar"],
-    "evidence": ["fb-002", "fb-031", "fb-040", "fb-036", "fb-038", "tt-114", "tt-076", "fb-059", "fb-071", "fb-060"]
+    "evidence": ["fb-002", "fb-031", "fb-040", "fb-036", "fb-038", "tt-114", "fb-059", "fb-071", "fb-060"]
   },
   {
     "id": "list",
@@ -291,6 +291,6 @@
     "cta": "'Call / WhatsApp {phone}'.",
     "eastAfrica": ["Nairobi and Kampala sellers put a price on every product shot (150/=, KSH 35, 85,000) and keep the number on screen."],
     "hooks": ["price-on-each", "price-list-card", "numbered-list", "occasion-title", "menu-card-loop", "step-routine"],
-    "evidence": ["tt-101", "tt-132", "tt-134", "tt-138", "fb-023", "tt-084", "yt-027", "yt-028", "yt-014"]
+    "evidence": ["tt-101", "tt-132", "tt-134", "tt-138", "fb-023", "yt-027", "yt-028", "yt-014"]
   }
 ]

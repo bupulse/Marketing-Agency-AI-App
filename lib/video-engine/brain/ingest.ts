@@ -1,6 +1,6 @@
 // Folds the researchers' rows (docs/research/reels/<source>.jsonl) into the brain's evidence index
 // (lib/video-engine/brain/data/evidence.json). Run after new research lands:
-//   node lib/video-engine/brain/ingest.ts
+//   node lib/video-engine/brain/ingest.ts            (or --no-new: refresh the indexed rows only)
 // Safe to re-run at any time: ids already given keep their number (found again by `key`, even if a row moves), new
 // rows get the next number, a missing file keeps its old index. The researchers' files are only read, never written. Plain erasable TypeScript with no project imports, so
 // Node runs it directly.
@@ -106,23 +106,49 @@ export function rowStrength(source: ResearchSource, row: Row, likes: number | nu
   return Math.round(Math.max(0.2, fromLikes, fromDays, fromVariants) * 100) / 100;
 }
 
-/** The index entries for one research file's rows, keeping the ids already given. Pure. */
-export function evidenceFromRows(source: ResearchSource, rows: Row[], existing: Evidence[] = []): Evidence[] {
+/**
+ * Income-chain and recruiter posts ("Tajyira Akakanya Gukorere Akayabo...", "earn 30K a day", MoMo or M-Money
+ * screenshots, "get rich" lines). They run long because they are cheap and re-posted, not because they work
+ * (facebook-patterns.md, "Long runners"), so their age and variants never count as strength, and the brain may cite them
+ * only for the fake-income and income-promise don'ts (index.ts checkBrain).
+ */
+export const SCAM_PATTERN = /tajyira|akakanya|akayabo|kama faranga|earn [\d,.]+\s*k?\s*(rwf|frw)?\s*(a|per) day|work and earn|you have received [\d,.]+|m-?money|momo (sms|screenshot)|mobile money received|income proof|passive income|make (your first )?\$?\d+k|u(g|ga)sezera k.ubukene|get rich|wifimoney|millionaire ?mindset/i;
+export function looksLikeScam(row: Row): boolean {
+  const text = [row.caption, row.title, row.hook, row.on_screen_text, row.structure, (row.hashtags as unknown[] | null)?.join(" ")].filter((x) => typeof x === "string").join(" \n ");
+  return SCAM_PATTERN.test(text);
+}
+
+/**
+ * The index entries for one research file's rows, keeping the ids already given: a row is found again by its URL (when
+ * the URL is unique), else by its key, so filling in a row's hook later keeps its id. `addNew: false` refreshes the
+ * rows already indexed and leaves new ones out (for rows a researcher is still writing). Pure.
+ */
+export function evidenceFromRows(source: ResearchSource, rows: Row[], existing: Evidence[] = [], opts: { addNew?: boolean } = {}): Evidence[] {
   const prefix = PREFIX[source];
-  const known = new Map(existing.filter((e) => e.source === source).map((e) => [e.key, e.id]));
-  let next = Math.max(0, ...existing.filter((e) => e.source === source).map((e) => Number(e.id.split("-")[1]) || 0));
+  const mine = existing.filter((e) => e.source === source);
+  const known = new Map(mine.map((e) => [e.key, e.id]));
+  const count = (urls: (string | null)[]) => urls.reduce((m, u) => (u ? m.set(u, (m.get(u) ?? 0) + 1) : m), new Map<string, number>());
+  const rowUrls = count(rows.map((r) => str(r.url)));
+  const oldUrls = count(mine.map((e) => e.url));
+  const byUrl = new Map(mine.filter((e) => e.url && oldUrls.get(e.url) === 1).map((e) => [e.url as string, e.id]));
+  let next = Math.max(0, ...mine.map((e) => Number(e.id.split("-")[1]) || 0));
   const used = new Set<string>();
-  return rows.map((row, i) => {
+  const out: Evidence[] = [];
+  rows.forEach((row, i) => {
     const key = rowKey(row);
-    let id = known.get(key);
-    if (!id || used.has(id)) id = `${prefix}-${String(++next).padStart(3, "0")}`;
+    const rowUrl = str(row.url);
+    let id = known.get(key) ?? (rowUrl && rowUrls.get(rowUrl) === 1 ? byUrl.get(rowUrl) : undefined);
+    if (id && used.has(id)) id = undefined;
+    if (!id && opts.addNew === false) return;
+    if (!id) id = `${prefix}-${String(++next).padStart(3, "0")}`;
     used.add(id);
     const url = str(row.url);
     const stats = (row.stats_as_reported ?? {}) as Row;
     const likes = parseCount(stats.likes ?? row.likes);
     const runningDays = typeof row.running_days === "number" ? row.running_days : null;
     const variants = variantsLive(source, row, rows);
-    return {
+    const scam = looksLikeScam(row);
+    out.push({
       id,
       source,
       line: i + 1,
@@ -138,9 +164,12 @@ export function evidenceFromRows(source: ResearchSource, rows: Row[], existing: 
       likes,
       runningDays,
       variantsLive: variants,
-      strength: rowStrength(source, row, likes, runningDays, variants),
-    };
+      // A scam row's age and variants say nothing about what works: only its likes (if any) count.
+      strength: scam ? rowStrength(source, row, likes, null, null) : rowStrength(source, row, likes, runningDays, variants),
+      ...(scam ? { scam: true as const } : {}),
+    });
   });
+  return out;
 }
 
 export const parseJsonl = (text: string): Row[] =>
@@ -150,6 +179,8 @@ export const parseJsonl = (text: string): Row[] =>
     .map((l) => JSON.parse(l) as Row);
 
 function main() {
+  // --no-new: refresh the rows already indexed, leave rows the researchers are still writing out.
+  const noNew = process.argv.includes("--no-new");
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
   const out = path.join(root, "lib/video-engine/brain/data/evidence.json");
   const existing: Evidence[] = fs.existsSync(out) ? JSON.parse(fs.readFileSync(out, "utf8")) : [];
@@ -160,8 +191,8 @@ function main() {
       all.push(...existing.filter((e) => e.source === source));
       continue;
     }
-    const rows = evidenceFromRows(source, parseJsonl(fs.readFileSync(file, "utf8")), existing);
-    console.log(`${source}: ${rows.length} rows (${rows.filter((r) => r.watched).length} watched)`);
+    const rows = evidenceFromRows(source, parseJsonl(fs.readFileSync(file, "utf8")), existing, { addNew: !noNew });
+    console.log(`${source}: ${rows.length} rows (${rows.filter((r) => r.watched).length} watched, ${rows.filter((r) => r.scam).length} income-chain or scam)`);
     all.push(...rows);
   }
   fs.writeFileSync(out, `[\n${all.map((e) => JSON.stringify(e)).join(",\n")}\n]\n`);

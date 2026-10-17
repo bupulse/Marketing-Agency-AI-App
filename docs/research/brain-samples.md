@@ -49,7 +49,7 @@ Don't:
 
 Brief: The same shop and phone, content in Kinyarwanda (the voice speaks English), Facebook, 15 s.
 
-3566 characters, about 892 tokens.
+3561 characters, about 890 tokens.
 
 ```text
 What works: phone and electronics shop, product reveal, Facebook, 15 s (from 213 ads and reels BuPulse watched).
@@ -69,9 +69,8 @@ On-screen text and look:
 - Burn in captions for every spoken line (most people watch muted).
 - A real place behind the product (shelf, counter, table, compound) and real people or hands; no blank studio.
 - Labels, prices and menus are drawn as text on top, never left to a generated image.
-- A first caption of about 5 words at 0.0 s, upper-middle.
 Call to action: WhatsApp or call {phone}; the shop address and room number (Makuza Peace Plaza, Room 35).
-- Rwanda: English for products and prices, Kinyarwanda for the hook and the invitation; money the local way (38,000 RWF, 48K).
+- Rwanda: English with Kinyarwanda touches for services; Kinyarwanda for plots, household and baby goods; a mix for food, phones and fashion; money the local way (38,000 RWF, 48K).
 Caption: 💻 {business} STOCK 🔹 {product} 💰 {price} 🔹 {product} 💰 {price} (e.g. "💻 MICROSOFT SURFACE STOCK — LA PAIX TECHNOLOGY 🔹 Surface Pro 4 — i5 6th | 8/256 | 12.3” Touch �..."). Include: the product and the price or offer in the first 60 characters; the phone or WhatsApp number labelled 'Call/WhatsApp:' (a second number is fine); the area and a landmark on a 📍 line; the delivery line when the owner delivers; 0 to 3 hashtags (the city plus the sector). Hashtags 0 to 3, local first: #Kigali #Rwanda #KigaliRwanda #RwandaBusiness.
 Don't:
 - No income proof: no fake M-Money or bank SMS, no cash piles, no 'get rich' lines.

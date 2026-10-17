@@ -18,7 +18,7 @@ Code: `lib/video-engine/brain/` (data in `brain/data/*.json`). Tests: `tests/vid
 | Hooks (openings) | 54 | The first 2 seconds: the line, what is on screen, where it was seen, real example lines |
 | Formats | 10 | Product reveal, UGC testimonial, before/after, unboxing, tour, offer, 3D motion, kinetic typography, tutorial, list or price list |
 | Captions | 4 platforms (TikTok, Facebook and YouTube Shorts researched; Instagram interim), 25 formulas including 5 model captions by sector, 10 ways to order, the caption corpus counts |
-| Rules | 62 (48 do, 14 don't) |
+| Rules | 64 (50 do, 14 don't) |
 | Sectors | 11 | Restaurant, phone shop, salon, fashion, real estate, school, car rental, clinic, events, services, and "shop" for everything else |
 
 The Facebook "Rwanda playbook" (round 2) is folded in: its verbatim opening lines (the price pill, the counter seller
@@ -69,6 +69,13 @@ stays the main evidence for Rwandan ads.
    TikTok link holds its upload date; the Ad Library shows when an ad started), and its **strength** (0 to 1: likes on
    TikTok on a log scale, days running on Facebook, where a year counts 1). Ids never change once given, even if rows
    move.
+   A row is found again by its URL, so filling in its hook later keeps its id. `--no-new` refreshes the rows already
+   indexed and leaves out rows a researcher is still writing.
+   **Income chains and scams are filtered before the brain learns from age.** About half of the longest-running Rwandan
+   ads in the Ad Library are income-chain posts ("Tajyira Akakanya Gukorere Akayabo…", "earn 30K a day" recruiters) and
+   MoMo-screenshot "proof": they run long because they are cheap and re-posted, not because they sell. Such a row is marked
+   `scam`, its days running and variants never count as strength, and only the fake-income and income-promise don'ts may
+   cite it (the test fails otherwise).
 3. New hooks, rules and sector notes are added by hand to the JSON files (this is the curating step: the brain agent
    reads the new patterns and folds them in). The test fails if any hook, rule or sector cites a row that does not
    exist, or if a row the brain cites no longer matches the researcher's file.
