@@ -30,17 +30,24 @@ describe("seedance request", () => {
     expect(content[2]).toMatchObject({ type: "image_url", role: "reference_image" });
     expect(content[3]).toMatchObject({ type: "video_url", role: "reference_video" });
     expect(content[4]).toMatchObject({ type: "audio_url", role: "reference_audio" });
-    expect(b).toMatchObject({ generate_audio: true, ratio: "9:16", duration: 5, resolution: "720p", camera_fixed: false, watermark: false, seed: 42, service_tier: "flex" });
-    expect(b.draft).toBeUndefined();
+    expect(b).toMatchObject({ generate_audio: true, ratio: "9:16", duration: 5, resolution: "720p", watermark: false, seed: 42, execution_expires_after: 3600 });
+    // Not on the Seedance 2.0 series (API reference, 17 October 2026): no camera_fixed, draft or flex tier.
+    expect("camera_fixed" in b || "draft" in b || "service_tier" in b).toBe(false);
   });
 
-  it("clamps the duration, forces 480p for drafts and leaves the seed out when absent", () => {
+  it("clamps the duration, makes a 'draft' a 480p clip, leaves the seed out when absent", () => {
     const b = seedanceBody({ ...req, seconds: 40, draft: true, seed: null, flex: false }) as Record<string, unknown>;
     expect(b.duration).toBe(15);
     expect(b.resolution).toBe("480p");
-    expect(b.draft).toBe(true);
+    expect("draft" in b).toBe(false);
     expect("seed" in b).toBe(false);
-    expect("service_tier" in b).toBe(false);
+  });
+
+  it("a fixed lens is asked for in the prompt (2.0 has no camera_fixed), once", () => {
+    const text = (r: SeedanceRequest) => ((seedanceBody(r) as { content: { text?: string }[] }).content[0].text ?? "");
+    expect(text({ ...req, fixedLens: true })).toMatch(/Locked-off static camera throughout/);
+    expect(text({ ...req, fixedLens: true, prompt: "0-5s: static camera on the phone." })).toBe("0-5s: static camera on the phone.");
+    expect(text(req)).toBe(req.prompt);
   });
 
   it("estimates by tier, resolution and seconds", () => {

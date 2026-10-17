@@ -627,7 +627,8 @@ export function planSeedanceShots(brief: SeedanceBrief): SeedancePlan {
         const l = LINES[k];
         if (used.has(k) || (l.needs === "price" && !price) || (l.needs === "usp" && !usp)) continue;
         used.add(k);
-        return l[lang as "en" | "fr"].replace("{product}", shortName).replace("{business}", brief.business.name.trim()).replace("{price}", price ?? "").replace("{usp}", usp ?? "");
+        const said = l[lang as "en" | "fr"].replace("{product}", shortName).replace("{business}", brief.business.name.trim()).replace("{price}", price ?? "").replace("{usp}", usp ?? "");
+        return `${said[0].toUpperCase()}${said.slice(1)}`;
       }
       return null;
     };
@@ -752,7 +753,8 @@ export function checkSeedanceRequest(req: SeedanceRequest, ctx: { referenceNotes
     warn("seconds", `Seedance makes clips of ${SEEDANCE_LIMITS.minSeconds} to ${SEEDANCE_LIMITS.maxSeconds} whole seconds; ${req.seconds} s will be sent as ${sent} s. Longer videos are joined from several clips.`);
   }
   if (model && !(model.resolutions as readonly string[]).includes(req.resolution) && !req.draft) err("resolution", `${model.name} makes ${model.resolutions.join(" or ")}; ${req.resolution} needs ${SEEDANCE_MODELS.pro.name} (Pro).`);
-  if (req.draft && req.resolution !== "480p") warn("draft-resolution", `A draft is always a 480p preview, so ${req.resolution} is ignored for it. Make the final ${req.resolution} clip from the draft you like.`);
+  // BytePlus's draft mode is Seedance 2.5 and 1.5 pro only: on the 2.0 series a "draft" is a normal 480p clip.
+  if (req.draft) warn("draft-resolution", `Seedance 2.0 has no draft mode: this is made as a normal 480p clip${req.resolution !== "480p" ? ` (not ${req.resolution})` : ""} and costs as one. Make the ${req.resolution === "480p" ? "final" : req.resolution} clip after.`);
   if (req.seed !== undefined && req.seed !== null && (!Number.isInteger(req.seed) || req.seed < -1 || req.seed > 4294967295)) err("seed", "The seed must be a whole number from -1 to 4294967295 (or empty for a random one).");
 
   const imgs = req.references.filter((r) => r.kind === "image");
@@ -766,12 +768,19 @@ export function checkSeedanceRequest(req: SeedanceRequest, ctx: { referenceNotes
   const lasts = imgs.filter((r) => r.role === "last_frame").length;
   if (firsts > 1 || lasts > 1) err("frames", "Only one opening frame and one closing frame can be set.");
   if (lasts && !firsts) err("last-without-first", "A closing frame needs an opening frame too (first + last mode).");
-  if ((firsts || lasts) && (imgs.length > firsts + lasts || vids.length || auds.length)) warn("mixed-modes", "Opening/closing frames and other references are different Seedance modes; BytePlus may refuse the mix. Use either first/last frames or references.");
+  // The API reference: first frame, first + last frames and omni reference (images, videos, audio) cannot be mixed;
+  // reference images may still be marked first/last frame, so only videos and audio with frames are refused.
+  if ((firsts || lasts) && (vids.length || auds.length)) err("mixed-modes", "Opening/closing frames cannot be mixed with reference videos or audio (different Seedance modes). Use either the frames or the references.");
+  else if ((firsts || lasts) && imgs.length > firsts + lasts) warn("mixed-modes", "Opening/closing frames with other reference images: BytePlus treats this as an omni reference and may refuse the mix. Use either first/last frames or references.");
+  for (const v of vids) if (v.url.startsWith("data:")) err("video-inline", "BytePlus takes reference videos only as a public link or a digital character (asset://), not uploaded inside the request. Start the video.bupulse.com tunnel (STUDIO_PUBLIC_URL) or remove the video.");
+  for (const a of auds) if (a.url.startsWith("data:") && !/^data:audio\/(wav|mp3);base64,/.test(a.url)) err("audio-format", "Seedance takes .mp3 or .wav audio (sent as data:audio/mp3 or data:audio/wav).");
+  for (const i of imgs) if (i.url.startsWith("data:") && !/^data:image\/(jpeg|png|webp|bmp|tiff|gif|heic|heif);base64,/.test(i.url)) err("image-format", "Seedance takes jpeg, png, webp, bmp, tiff, gif or heic photos (the format written in lowercase).");
   if (req.ratio === "adaptive" && !imgs.length && !vids.length) warn("adaptive-text", "Adaptive takes the shape from the first photo; with text only, choose 9:16 for Reels and TikTok.");
   const bigImage = imgs.find((r) => r.url.startsWith("data:") && (r.url.length * 3) / 4 > 30 * 1024 * 1024);
   if (bigImage) err("image-size", "A photo is over 30 MB; BytePlus refuses it. Use a smaller photo.");
   const totalBytes = req.references.reduce((a, r) => a + (r.url.startsWith("data:") ? (r.url.length * 3) / 4 : 0), 0);
-  if (totalBytes > 50 * 1024 * 1024) warn("request-size", `The references add up to about ${Math.round(totalBytes / 1024 / 1024)} MB. Very large requests are refused; use fewer or shorter files.`);
+  if (totalBytes > 64 * 1024 * 1024) err("request-size", `The references add up to about ${Math.round(totalBytes / 1024 / 1024)} MB; BytePlus takes a request of 64 MB at most. Use fewer or smaller files.`);
+  else if (totalBytes > 48 * 1024 * 1024) warn("request-size", `The references add up to about ${Math.round(totalBytes / 1024 / 1024)} MB, close to BytePlus's 64 MB limit.`);
 
   const notes = ctx.referenceNotes ?? [];
   const people = notes.filter((n, i) => PERSON_REF.test(n) && !/asset:/i.test(n) && !/asset:\/\//.test(req.references[i]?.url ?? ""));
@@ -779,6 +788,7 @@ export function checkSeedanceRequest(req: SeedanceRequest, ctx: { referenceNotes
   else if (imgs.some((r) => !r.url.startsWith("asset://"))) issues.push({ level: "info", code: "faces-unchecked", message: "Photos with a real person's face are refused by BytePlus. We cannot check faces here: use photos of products and places only." });
 
   issues.push(...lintSeedancePrompt(req.prompt, { seconds: Math.round(req.seconds), images: imgs.length, videos: vids.length, audios: auds.length, fixedLens: req.fixedLens, audio: req.audio }));
-  if (req.flex) issues.push({ level: "info", code: "flex", message: "Offline (flex) is cheaper but can take hours; the studio keeps checking until it is ready." });
+  if (req.flex) warn("flex", "Offline (flex, half price) is not available on Seedance 2.0 yet: it runs online at the normal price.");
+  if (req.fixedLens) issues.push({ level: "info", code: "fixed-lens", message: "Seedance 2.0 has no fixed-camera switch; BuPulse asks for a static camera in the prompt instead." });
   return { ok: !issues.some((i) => i.level === "error"), issues, estimateUsd: model ? estimateSeedanceUsd({ tier: req.tier, resolution: req.draft ? "480p" : req.resolution, seconds: Math.min(SEEDANCE_LIMITS.maxSeconds, Math.max(SEEDANCE_LIMITS.minSeconds, Math.round(req.seconds))) }) : 0 };
 }

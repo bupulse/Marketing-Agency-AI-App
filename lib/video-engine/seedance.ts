@@ -5,9 +5,12 @@
 //   running | succeeded | failed | expired, content.video_url (valid 24 hours), usage.completion_tokens;
 //   DELETE cancels a queued task.
 // - content: text, image_url (role first_frame | last_frame | reference_image), video_url (reference_video),
-//   audio_url (reference_audio); images 1-9, videos 0-3, audio 0-3; prompts refer to "Image 1", "Video 2"...
+//   audio_url (reference_audio); images 0-9, videos 0-3, audio 0-3; prompts refer to "Image 1", "Video 2"...
 // - ratio 21:9 16:9 4:3 1:1 3:4 9:16 adaptive; duration 4-15 s; resolution 480p 720p 1080p (4k on 2.0 only);
-//   generate_audio, camera_fixed, seed, watermark, service_tier "flex" (slow, cheaper), draft (480p preview).
+//   generate_audio, seed, watermark, execution_expires_after.
+// Checked against the API reference on 17 October 2026 (docs/VIDEO_ENGINE.md, "What Seedance 2.0 takes"): the 2.0
+// series has no camera_fixed (1.x only), no draft (2.5 and 1.5 pro only) and no service_tier "flex" yet, so none of
+// them is sent; a fixed lens is asked for in the prompt instead. Reference limits: video-lab/seedance-references.ts.
 // - No real human faces in reference images or videos: use the digital character library (asset://<id>) instead.
 // Server-side; no app imports, so the Video Lab can run it outside Next.js. The key never leaves process.env here.
 import { estimateCostUsd } from "@/lib/ai/pricing";
@@ -52,7 +55,7 @@ export type SeedanceRequest = {
   fixedLens: boolean;
   seed?: number | null;
   watermark?: boolean;
-  /** "flex": offline, slower and cheaper; default online. */
+  /** "flex" (offline, half price): not on the 2.0 series yet, so not sent; kept for when BytePlus adds it. */
   flex?: boolean;
   draft?: boolean;
 };
@@ -79,9 +82,15 @@ export class SeedanceError extends Error {
 
 export const estimateSeedanceUsd = (r: Pick<SeedanceRequest, "tier" | "resolution" | "seconds">) => Math.round(SEEDANCE_USD_PER_SECOND[r.tier][r.resolution] * r.seconds * 1000) / 1000;
 
+/** BytePlus ends a task still queued or running after this long (and bills nothing); the studio waits a little longer. */
+export const SEEDANCE_TASK_EXPIRES_SECONDS = 3600;
+const STATIC_CAMERA = /static camera|locked-off|fixed camera|camera (stays|is) still/i;
+
 /** Builds the BytePlus request body. References keep their order: the prompt says "Image 1", "Video 1"... */
 export function seedanceBody(r: SeedanceRequest): Record<string, unknown> {
-  const content: Record<string, unknown>[] = [{ type: "text", text: r.prompt.slice(0, 4000) }];
+  // Seedance 2.0 has no fixed-camera switch: the prompt asks for it.
+  const prompt = r.fixedLens && !STATIC_CAMERA.test(r.prompt) ? `${r.prompt.trim()}\nLocked-off static camera throughout: no camera movement.` : r.prompt;
+  const content: Record<string, unknown>[] = [{ type: "text", text: prompt.slice(0, 4000) }];
   for (const ref of r.references.slice(0, SEEDANCE_LIMITS.maxImages + SEEDANCE_LIMITS.maxVideos + SEEDANCE_LIMITS.maxAudio)) {
     if (ref.kind === "image") content.push({ type: "image_url", image_url: { url: ref.url }, role: ref.role ?? "reference_image" });
     else if (ref.kind === "video") content.push({ type: "video_url", video_url: { url: ref.url }, role: "reference_video" });
@@ -93,12 +102,11 @@ export function seedanceBody(r: SeedanceRequest): Record<string, unknown> {
     generate_audio: r.audio,
     ratio: r.ratio,
     duration: Math.min(SEEDANCE_LIMITS.maxSeconds, Math.max(SEEDANCE_LIMITS.minSeconds, Math.round(r.seconds))),
+    // "Draft" on the 2.0 series is a cheap 480p clip (BytePlus's draft mode is 2.5 and 1.5 pro only).
     resolution: r.draft ? "480p" : r.resolution,
-    camera_fixed: r.fixedLens,
     watermark: r.watermark ?? false,
+    execution_expires_after: SEEDANCE_TASK_EXPIRES_SECONDS,
     ...(r.seed !== undefined && r.seed !== null ? { seed: r.seed } : {}),
-    ...(r.flex ? { service_tier: "flex" } : {}),
-    ...(r.draft ? { draft: true } : {}),
   };
 }
 

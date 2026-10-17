@@ -6,7 +6,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
-import { SEEDANCE_BASE_URL, cancelSeedanceTask, createSeedanceTask, estimateSeedanceUsd, getSeedanceTask, seedanceUsage, type SeedanceRequest, type SeedanceTask } from "@/lib/video-engine/seedance";
+import { SEEDANCE_BASE_URL, SEEDANCE_TASK_EXPIRES_SECONDS, cancelSeedanceTask, createSeedanceTask, estimateSeedanceUsd, getSeedanceTask, seedanceUsage, type SeedanceRequest, type SeedanceTask } from "@/lib/video-engine/seedance";
 import { charge, refund, seedanceCredits } from "./credits";
 import { PREVIEW_NOTICE, buildStoryboard, type Storyboard } from "./seedance-mock/storyboard";
 import { previewDelayMs, previewThumbs } from "./seedance-mock/preview";
@@ -18,10 +18,9 @@ const JOBS = path.join(DATA, "jobs");
 const VIDEOS = path.join(DATA, "videos");
 const PREVIEWS = path.join(DATA, "previews");
 const POLL_MS = 10_000;
-const MAX_WAIT_MS = 20 * 60_000;
-// Offline (flex) tasks can wait hours at BytePlus (its default task expiry is 48 hours): check every minute.
-const FLEX_POLL_MS = 60_000;
-const FLEX_MAX_WAIT_MS = 48 * 3600_000;
+// BytePlus expires a task it has not finished in SEEDANCE_TASK_EXPIRES_SECONDS (and bills nothing); the studio waits
+// a little longer, so it never refunds a task BytePlus may still finish and bill.
+const MAX_WAIT_MS = SEEDANCE_TASK_EXPIRES_SECONDS * 1000 + 5 * 60_000;
 
 export type SeedanceJob = {
   id: string;
@@ -202,19 +201,16 @@ async function poll(id: string): Promise<void> {
   if (polling.has(id)) return;
   polling.add(id);
   const started = Date.now();
-  const first = await getSeedanceJob(id);
-  const pollMs = first?.request.flex ? FLEX_POLL_MS : POLL_MS;
-  const maxWaitMs = first?.request.flex ? FLEX_MAX_WAIT_MS : MAX_WAIT_MS;
   try {
     for (;;) {
-      await new Promise((r) => setTimeout(r, pollMs));
+      await new Promise((r) => setTimeout(r, POLL_MS));
       const job = await getSeedanceJob(id);
       if (!job || !job.taskId || job.status === "cancelled" || job.status === "succeeded" || job.status === "failed") return;
       let task: SeedanceTask;
       try {
         task = await getSeedanceTask(job.taskId, opts());
       } catch {
-        if (Date.now() - started > maxWaitMs) {
+        if (Date.now() - started > MAX_WAIT_MS) {
           job.status = "failed";
           job.error = "BytePlus stopped answering. The credits are given back.";
           await saveSeedanceJob(job);
@@ -250,9 +246,9 @@ async function poll(id: string): Promise<void> {
       }
       job.status = task.status === "queued" ? "queued" : "running";
       await saveSeedanceJob(job);
-      if (Date.now() - started > maxWaitMs) {
+      if (Date.now() - started > MAX_WAIT_MS) {
         job.status = "failed";
-        job.error = `Seedance took more than ${job.request.flex ? "48 hours" : "20 minutes"}. The credits are given back.`;
+        job.error = "Seedance did not finish within the hour (BytePlus ended the task and bills nothing). The credits are given back.";
         await saveSeedanceJob(job);
         await refund(job.credits, "Seedance timeout", id);
         return;

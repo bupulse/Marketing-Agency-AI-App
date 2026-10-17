@@ -292,8 +292,12 @@ pages read it). Videos are served with Range requests, so a page full of videos 
   subscription).
 - **Premium 3D (Blender)** (Motion, Quality menu; \`video-lab/premium-jobs.ts\`): Claude designs one Blender scene from
   the same brief as a Motion video (\`designBlenderScene\`), then Blender renders it on this Mac (\`renderBlenderScene\`,
-  540p, 4 to 8 s, one render at a time). **120 credits** (\`PREMIUM_3D_CREDITS\`), taken first and given back when the
-  design or the render fails, or when the studio restarts during it. The server copies the photos it already holds
+  540p or 720p, 4 to 8 s, one render at a time). **100 credits at 540p, 150 at 720p** (\`PREMIUM_3D_CREDITS\`, owner
+  decision 17 October from the Blender measurements), taken first and given back when the design or the render fails,
+  or when the studio restarts during it. **Render again** (\`POST /api/blender/jobs/<id>/rerender\`, 540p or 720p) renders
+  a finished clip's saved scene with the same photos and no new design: **70 credits**. Measured: a 6 s 540p re-render
+  took 9 min 37 s while the Mac's load average was about 100 (other agents rendering). The drawer lists the fact
+  warnings and the scene repairs the studio made to Claude's scene. The server copies the photos it already holds
   (and their cut-outs) into the job's own folder and gives Blender only those paths: nothing from the browser or from
   Claude becomes a file path. Routes: \`GET /api/blender/status\` (the option is disabled with a note when Blender is
   missing), \`POST /api/blender/render\` (the Motion design body; answers the job at once), \`GET /api/blender/jobs\`,
@@ -329,7 +333,8 @@ pages read it). Videos are served with Range requests, so a page full of videos 
 
 - Modes: reference (up to 9 images, 3 videos, 3 audio), text, image to video (first frame), first and last frame,
   edit (the finished video as Video 1 plus the change) and extend. Quality Mini, Fast or Pro; 480p, 720p, 1080p;
-  7 ratios; 4 to 15 s; sound; fixed lens; offline (flex, cheaper); draft (480p preview); seed; 1 to 3 versions.
+  7 ratios; 4 to 15 s; sound; fixed lens (asked for in the prompt); draft (a cheap 480p clip); seed; 1 to 3
+  versions. Offline (flex) is kept in the settings for when BytePlus adds it to the 2.0 series; today it runs online.
 - A job charges credits first, creates the BytePlus task, polls every 10 s, downloads the MP4 as soon as it is ready
   (the BytePlus link lasts 24 hours) and refunds the credits when the task fails or is cancelled. Polling resumes after
   a restart. References go as embedded data (the lab has no public address); real usage tokens are priced and logged.
@@ -416,9 +421,45 @@ returned passes `scoreCaption` on TikTok, Instagram, Facebook and Shorts in Engl
 `VideoSource.open(url)` / `frameAt(ms)` gives the renderer the clip's frames: mp4box reads the sample table (npm
 `mp4box`, exact 2.4.1), WebCodecs decodes front to back from the nearest keyframe, and a small cache closes old frames.
 
+**What Seedance 2.0 takes** (the ModelArk API reference "Create a video generation task" and the Seedance 2.0 tutorial,
+read 17 October 2026; `video-lab/seedance-references.ts` applies it):
+
+| Input | How it can be sent | Limits (Seedance 2.0, Fast, Mini) |
+| --- | --- | --- |
+| Text prompt | in the request | English (also Spanish, Indonesian, Portuguese, Japanese); up to about 1,000 words, best 60 to 160 |
+| Images (`image_url`, role `reference_image`) | public URL, Base64 `data:image/<format>;base64,...` (lowercase format), or `asset://<id>` | 0 to 9; jpeg, png, webp, bmp, tiff, gif, heic, heif; 300 to 6,000 px a side; width/height 0.4 to 2.5; under 30 MB each |
+| First frame / first + last frames (roles `first_frame`, `last_frame`) | as images | 1 or 2 images; cannot be mixed with reference videos or audio (different modes) |
+| Videos (`video_url`, role `reference_video`) | public URL or `asset://<id>` only, never Base64 | 0 to 3; mp4 or mov; 2 to 15 s each and 15 s in all; 300 to 6,000 px; 407,696 to 8,295,044 pixels; 24 to 60 fps; under 200 MB |
+| Audio (`audio_url`, role `reference_audio`) | public URL, Base64 `data:audio/wav` or `data:audio/mp3`, or `asset://<id>` | 0 to 3; wav or mp3; 2 to 15 s each and 15 s in all; under 15 MB; never alone (an image or video with it) |
+| The whole request | | 64 MB at most ("do not use Base64 for large files") |
+
+- **Not on the 2.0 series:**
+  - `camera_fixed` (1.x only): BuPulse writes "static camera" into the prompt instead.
+  - `draft` (2.5 and 1.5 pro only): a BuPulse "draft" is a normal 480p clip.
+  - `service_tier: "flex"` (not yet): it runs online.
+  - None of these are sent.
+- **Tasks:** BuPulse sets `execution_expires_after` to 1 hour, so a task BytePlus has not finished by then ends unbilled
+  and the studio gives the credits back. Prompts name references as "Image 1", "Video 1", "Audio 1", counted per kind
+  in the request's order. Real human faces are refused; digital characters (`asset://`) and authorized real-person
+  assets are the way.
+- **Images from the studio go inline:**
+  - product photos as JPEG; cut-outs (`co:<photo>`) as PNG, keeping the transparency; presenter portraits
+    (`pp:<presenter>`) as JPEG;
+  - turned upright, padded into 0.4 to 2.5 (a cut-out with transparency), the long side kept to 2,048 px and the short
+    side at least 300 px;
+  - made smaller (1,536, then 1,024, then 768 px) if all the inline data would pass 48 MB.
+- **Videos go as a public link only through the tunnel:** `STUDIO_PUBLIC_URL`, e.g. `https://video.bupulse.com`.
+  The link must be https and not local, and it is used only when the file answers there. Otherwise the video is left
+  out and the owner is told why. Each kind keeps the page's order, so the labels the prompt writer saw ("Image 1: …")
+  match.
+- **Dry run:** `node scripts/video-lab/seedance-check.mjs --dry [--image photo.jpg] [--cutout product.png] [--audio
+  song.mp3]` prints the exact request body with each file summarised (format, size, pixels), the checks and the
+  estimated cost. It needs no key and sends nothing.
+
 **Going live with Seedance** (the owner's steps; BytePlus console wording may differ slightly):
 
-1. Sign in at console.byteplus.com with the BuPulse account that has the prepaid pack.
+1. Sign in at console.byteplus.com with the BuPulse account. ModelArk activates Seedance 2.0 only with a balance over
+   USD 30, an AI Savings Plan of USD 30 or more, or a Seedance resource pack with quota (the prepaid pack).
 2. Open **ModelArk** and choose the region **Asia Pacific (ap-southeast-1)** at the top. The key and the models must
    be in this region (the studio calls `https://ark.ap-southeast.bytepluses.com/api/v3`).
 3. **Activate the models:** ModelArk, Model activation (or Model management), find **Seedance 2.0**, **Seedance 2.0
@@ -431,7 +472,8 @@ returned passes `scoreCaption` on TikTok, Instagram, Facebook and Shorts in Engl
    quotes, no spaces). Do not paste it in a chat.
 7. In Terminal, in that folder: `node --env-file=.env scripts/video-lab/seedance-check.mjs`. It lists one task at
    BytePlus (free) and says **connected**, **key invalid**, **not activated** or **unreachable**, with what to do.
-8. When it says connected: `node --env-file=.env scripts/video-lab/seedance-check.mjs --make-clip`. This makes the
+8. Optional, free: `node scripts/video-lab/seedance-check.mjs --dry` shows exactly what will be sent.
+   When it says connected: `node --env-file=.env scripts/video-lab/seedance-check.mjs --make-clip`. This makes the
    first real clip (Seedance 2.0 Mini, 480p, 4 s, text only, with sound, about **$0.14**), waits for it (usually 1 to 4
    minutes), saves it in `video-lab/data/seedance/videos/check-....mp4` and writes the real cost to the lab ledger.
    It respects the lab's daily cap. Ctrl+C cancels a queued task.
