@@ -54,3 +54,5 @@ Lead: Claude (Fable 5.1). Team agents run on smaller models with these roles. Re
 | Research | `docs/research/reels/**` only |
 | Brain | `lib/video-engine/brain/**` (new), `docs/research/BRAIN.md` |
 | Blender | `tools/blender/**` (new), `docs/BLENDER.md` |
+
+- Never stop processes by pattern (`pkill -f`, `killall`): on 17 October a `pkill -f cat` matched "Applications" and killed the owner's Chrome and the studio supervisor. Stop only your own process by its exact PID.
