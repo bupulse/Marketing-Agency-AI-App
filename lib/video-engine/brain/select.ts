@@ -69,11 +69,14 @@ function factsFrom(texts: (string | null | undefined)[], price: string | null | 
 
 type FullBrief = BrainBrief & { hasClaim?: boolean; hasSeries?: boolean };
 
-/** A BrainBrief from the Claude designer's brief. The platform is not in DesignBrief yet; pass it when known. */
+/** The brain's platform for the designer's (designer.ts PLATFORMS calls Shorts "youtube"). */
+const DESIGN_PLATFORMS: Record<string, Platform> = { tiktok: "tiktok", instagram: "instagram", facebook: "facebook", youtube: "shorts", shorts: "shorts" };
+
+/** A BrainBrief from the Claude designer's brief (its platform unless one is passed). */
 export function brainBriefFromDesign(b: DesignBrief, platform: Platform | "any" | null = null): FullBrief {
   const texts = [b.business.description, b.product.summary, b.product.description, ...(b.product.usps ?? []), ...(b.product.features ?? []), b.note];
   return {
-    platform,
+    platform: platform ?? (b.platform ? (DESIGN_PLATFORMS[b.platform] ?? null) : null),
     sector: sectorFromText([b.business.name, b.business.description, b.product.name, b.product.summary].filter(Boolean).join(" ")),
     format: formatFromTemplate(b.styleId),
     engine: "claude",
@@ -86,12 +89,15 @@ export function brainBriefFromDesign(b: DesignBrief, platform: Platform | "any" 
   };
 }
 
-/** A BrainBrief from the Seedance prompt writer's brief. PromptBrief has no phone; the overlay adds it when the business has one. */
-export function brainBriefFromPrompt(b: PromptBrief, opts: { platform?: Platform | "any" | null; hasPhone?: boolean } = {}): FullBrief {
+/**
+ * A BrainBrief from the Seedance prompt writer's brief. PromptBrief has no phone or platform yet: pass them (the
+ * platform as the brain's or designer.ts's key; BuPulse overlays the phone when the business has one).
+ */
+export function brainBriefFromPrompt(b: PromptBrief, opts: { platform?: string | null; hasPhone?: boolean } = {}): FullBrief {
   const texts = [b.business.description, b.product.summary, b.product.description, ...(b.product.usps ?? []), ...(b.product.features ?? []), b.note];
   const kindSector: Partial<Record<string, SectorId>> = { education: "school" };
   return {
-    platform: opts.platform ?? null,
+    platform: opts.platform === "any" ? "any" : opts.platform ? (DESIGN_PLATFORMS[opts.platform] ?? null) : null,
     sector: (b.businessKind && (kindSector[b.businessKind] ?? sectorById(b.businessKind)?.id)) || sectorFromText([b.business.name, b.business.description, b.product.name, b.product.summary].filter(Boolean).join(" ")),
     format: (b.format ? SEEDANCE_TO_FORMAT[b.format] : null) ?? formatFromTemplate(b.templateId),
     engine: "seedance",
@@ -289,14 +295,17 @@ const WATCHED = BRAIN.evidence.filter((e) => e.watched).length;
 /**
  * The brain as a compact plain-text block for Claude's brief (at most about 900 tokens): what works for this kind of
  * video, the hook options, the timeline, the on-screen text rules, the call to action, the caption and the don'ts.
- * Deterministic. Lower-priority lines are dropped first when it runs long.
+ * Deterministic. Lower-priority lines are dropped first when it runs long. `ownerHook`: the owner already chose the
+ * opener (a styles.ts hook other than "auto"), so the brain's hooks are offered as wording and layout ideas only.
  */
-export function brainContext(brief: BrainBrief | BrainPick): string {
+export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: boolean } = {}): string {
   const p = "timeline" in brief ? brief : brainFor(brief);
   const seedance = p.engine === "seedance";
   const head = `What works for this kind of video (BuPulse research, ${WATCHED} winning ads and reels watched): ${p.sectorInfo.name.toLowerCase()}, ${p.format.name.toLowerCase()}, ${PLATFORM_NAMES[p.platform]}, ${p.seconds} s.`;
   const hooks = [
-    "Hook options (pick one; fill the {placeholders} only with facts from the brief and leave out any you do not have):",
+    opts.ownerHook
+      ? "Hook ideas (the owner chose the opener above: use these only for its wording and first-frame layout; fill the {placeholders} only with facts from the brief):"
+      : "Hook options (pick one; fill the {placeholders} only with facts from the brief and leave out any you do not have):",
     ...p.hooks.map((h, i) => `${i + 1}. ${h.name}: "${h.pattern}". First 2 s: ${h.visual} Seen: ${h.examples.slice(0, 2).map((e) => `"${e}"`).join(", ")}.${h.note ? ` ${h.note}` : ""}`),
   ];
   const timeline = [
@@ -320,15 +329,15 @@ export function brainContext(brief: BrainBrief | BrainPick): string {
     { lines: [head], optional: 0 },
     { lines: hooks, optional: 0 },
     { lines: timeline, optional: 0 },
-    { lines: lengthNote ? [lengthNote] : [], optional: 4 },
+    { lines: lengthNote ? [lengthNote] : [], optional: 1 },
     { lines: [seedance ? "Shots and sound:" : "On-screen text and look:", ...doLines(textRules, 6)], optional: 0, trim: true },
     { lines: [cta], optional: 0 },
     { lines: language ? [language] : [], optional: 0 },
     { lines: seedance ? [] : [caption], optional: 0 },
     { lines: donts, optional: 0, trim: true },
-    { lines: ["Also:", ...doLines(otherRules, 5)], optional: 3, trim: true },
-    { lines: [offers], optional: 2 },
-    { lines: [local], optional: 1 },
+    { lines: ["Also:", ...doLines(otherRules, 5)], optional: 5, trim: true },
+    { lines: [offers], optional: 4 },
+    { lines: [local], optional: 3 },
   ];
   const render = () => parts.filter((x) => x.lines.length).map((x) => x.lines.join("\n")).join("\n");
   let out = render();

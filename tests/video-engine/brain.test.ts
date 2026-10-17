@@ -169,7 +169,7 @@ describe("brainContext", () => {
             for (const facts of [true, false]) {
               const text = brainContext({ ...base, sector, format, engine, platform, hasPrice: facts, hasPhone: facts, language: facts ? "English" : "Kinyarwanda" });
               expect(text.length, `${sector} ${format} ${engine} ${platform}`).toBeLessThanOrEqual(CONTEXT_MAX_CHARS);
-              expect(text).toContain("Hook options");
+              expect(text).toMatch(/Hook (options|ideas)/);
               expect(text).toContain("Timeline to follow");
               expect(text).toContain("Call to action");
               expect(text).toContain("Don't:");
@@ -183,6 +183,7 @@ describe("brainContext", () => {
     const claude = brainContext(base);
     expect(claude).toContain("On screen:");
     expect(claude).toContain("Caption:");
+    expect(brainContext(base, { ownerHook: true })).toContain("the owner chose the opener");
   });
 
   it("the worked examples of BRAIN.md: a Kigali phone shop and a Kibagabaga house", () => {
@@ -229,8 +230,12 @@ describe("reading briefs", () => {
     };
     expect(brainBriefFromDesign(design, "tiktok")).toMatchObject({ platform: "tiktok", sector: "phone-shop", format: "offer", engine: "claude", hasPrice: true, hasPhone: true, hasOffer: true, hasOldPrice: true, hasLocation: true });
     expect(brainFor(brainBriefFromDesign(design, "facebook")).hooks.map((h) => h.id)).toContain("was-now");
+    expect(brainBriefFromDesign({ ...design, platform: "youtube" }).platform).toBe("shorts");
+    expect(formatFromTemplate("kigali-price-first")).toBe("product-reveal");
+    expect(formatFromTemplate("floating-product-reveal")).toBe("3d-motion");
 
     const prompt: PromptBrief = { business: { name: "Bright Academy", language: "French" }, product: { name: "English course" }, references: [], templateId: "education-tour", seconds: 10, ratio: "9:16", audio: true, businessKind: "education" };
     expect(brainBriefFromPrompt(prompt)).toMatchObject({ sector: "school", format: "tour", engine: "seedance", hasPrice: false, hasPhone: false });
+    expect(brainBriefFromPrompt(prompt, { platform: "youtube", hasPhone: true })).toMatchObject({ platform: "shorts", hasPhone: true });
   });
 });
