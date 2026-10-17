@@ -228,3 +228,67 @@ Recurring patterns
 - 2-12 s: 4-5 beats of 2 s each (dish, dish, kitchen, customer reaction, place).
 - 12-17 s: the offer of the week or the room features, big caption.
 - 17-20 s: CTA with location (Kigali neighbourhood) and phone, and a "part 2 next week" tag.
+
+## C. Round 2: thin sectors (40 more watched rows, `round: 2`)
+
+40 Kigali-area videos, 8 each for salons, fashion, transport/travel, schools and clinics/pharmacies (`sector` field in `tiktok.jsonl`). Same method as A (about 7 s, three frames, muted). No Kenyan or Ugandan rows were needed except one Uganda travel account. I skipped income claims and scams.
+
+- **Salons:** the best ones show the client in front of the salon's logo wall (a pixie cut, boho curls) and put the price in the first frame ("28k only, with extension", "NOW AVAILABLE IN RWANDA.", "36k rwf" in a caption). A printed menu with prices as frame 1 is a strong simple opener. Some are only a room tour with no price or contact (weak).
+- **Fashion:** a locked shot with the price tag on the product ("8k") and a phone number in the lower corner, or one mannequin that swaps colour every 1-2 s with "Original complete 0787789066". A "MONDAY ... outfit per day" week format and a street-wear tour with "from 7.5K RWF" and the area ("Kisimenti Remera Behind Eco Bank").
+- **Transport and travel:** the car-rental clip puts the price per day in the opening text ("50,000 RWF per day") with three car shots; activity clips put the price on the shot ("7$ FOR 15 MIN"); list videos ("6 THINGS TO DO IN KIGALI", "5 beautiful places") use numbered titles and "save this" as the call to action. A budget in the title ("600k UGX for 3 days") works.
+- **Schools:** brand-film style (logo, building, students walking, drone shot of a big campus), a student speaking to camera with subtitles ("so he recommended me to come here"), ranked lists ("Top 9 Best Secondary Schools in Rwanda") and a title card with numbers ("17 SCHOOLS | 52 DEBATES TEAMS"). Enrolment CTA lives in the caption ("The September intake is here, grab your seat now"). Most are 26-47 s; lists and events are 118-266 s.
+- **Clinics and pharmacies:** shelf pans (Dove, Strepsils, Aptamil), a lit modern interior, owners explaining ("First Private Pharmacy In Rwanda since 1969 / 6 Branches across Kigali"), a clinic answering the insurance question with a poster ("We work with EDENCARE, SONARWA, and RSSB") and ending on a clean "CONTACT US +250 ..." card. Trust cues (since 1969, insurers, doctor in scrubs) are the hook; prices appear only on shelf tags.
+
+**What these add to the rules in A:**
+- Service sectors (clinic, school) lead with trust and numbers, not price; product sectors (fashion, salon, car hire) lead with price.
+- A clean contact card in the last 2-3 seconds is used by the clinics and works better than a number in the caption.
+- Local words in the CTA ("Karibu", "waduhamagara cg ukatwandikira") sit next to the phone number.
+
+## D. Sounds and voice (30 watched clips)
+
+**Limit:** I watched muted and cannot hear. For each clip I used TikTok's sound label under the caption (when one was shown) and what the picture shows (a visible talker, burned-in text, or neither). "Voice" below means a visible speaker or a voice-over implied by subtitles, not something I heard. Eight clips showed no sound label at all.
+
+| Clip | Sound label shown (kind) | What carries the message |
+| --- | --- | --- |
+| fyp_5 evana.kz_ (outfit change) | original sound "SHOGUN" (trend sound) | picture and the beat; no text |
+| fyp_10 benitarelates (skit) | original sound "Xduppy" | text (the joke is the first-frame sentence) |
+| fyp_16 songclubz (lyrics) | original sound "suara asli - ilham" | text (lyric subtitles) |
+| q1_8 zana.cosmetics.ng | "sonido original - Brenda Yuridhia Mart" | text ("Using this capcut template...") |
+| q2_1 sitony_sniper (Kigali skincare) | original sound "NEMZZZ" | text (POV + offer) |
+| q2_3 kigali.business.i (shop for sale) | "son original - WOOD PROMO" | text (Kinyarwanda sentence, price) |
+| q2_17 cohvisuals (Wings n More) | original sound "CØHVISUALS" (the studio's own) | picture |
+| q2_20 21strepublicphonestore | original sound "zombeans" | picture; offer in the caption |
+| q2_21 rujamaphones | Ukrainian creator sound "ріжочек.ua!!" (reused) | text spec cards plus a visible speaker |
+| q2_32 americas_realtor | original sound "Lyrics0674" | picture; voice-over probable (61 s) |
+| q2_35 chadhomes | original sound (own company) | picture; plain tour |
+| q3_15 yajairay10 (unboxing) | original sound "Hillel Barak" | picture and sound; no text |
+| q3_16 sheglow_shopug (stock arriving) | "The Wealthy Women Hub" (reused creator audio) | picture |
+| q3_17 by.manka_ (unboxing) | "Heaven Baby - Ayra Starr" (Afrobeats track) | music and picture |
+| q3_24 pieces_ug (jewellery) | "Nze Ani? - Maurice Kirya" (Ugandan artist) | music and a phone-line text |
+| r2_clinic_6 thegrandmtwapahospital | same Ukrainian sound "ріжочек.ua!!" as q2_21 | picture only |
+| r2_fashion_5 cinacrafoord (street wear) | "I Get the Bag (feat. Migos) - Gucci Mane" (hip-hop track) | text (location, price) and music |
+| r2_fashion_7 u_judy03 | original sound (own) | picture and day labels |
+| r2_salon_6 sheane.beauty | "SLICK - Victony" (Afrobeats track) | text ("28k only") and music |
+| r2_travel_2 living_in_rwanda_now | original sound "LIVING IN RWANDA" | text names; voice-over probable |
+| r2_travel_6 homelandtourstravel | "its plenty - Ken" (music) | text (price per day) |
+| r2_travel_8 pearlofafrica.ug | original sound "Player1505" | picture only |
+| q2_2 josiane625beddings | no label shown | voice (presenter speaks) plus price card |
+| q2_13 darerwanda | no label shown | picture and offer badge; no voice |
+| q2_14 biko_group | no label shown | text and picture |
+| q2_19 kigaliphones | no label shown | text (phone number) and picture |
+| r2_fashion_9 kigali_fashion_hub | no label shown | text (number) and picture |
+| r2_school_3 bluelakes.int.sch.rw | no label shown | voice (student) plus subtitles |
+| r2_clinic_7 dermaskinclinicrwanda | no label shown | voice plus text and a contact card |
+| r2_salon_4 harriet_yusuf | no label shown | voice-over plus word captions |
+
+**Counts (30 clips):**
+- Sound kind: 15 original sounds under the creator's name, 5 named music tracks (Afrobeats: Ayra Starr, Victony; Ugandan artist: Maurice Kirya; hip-hop: Gucci Mane; "its plenty" by Ken), 2 reused foreign creator sounds (the same Ukrainian sound on two different Rwandan shops), 8 with no label shown.
+- Carrier: text-led 12, voice-led 7, picture or sound only 11.
+- Named tracks were used by salon, travel, fashion and unboxing clips; shop and phone ads mostly used original or reused sounds.
+
+**5 rules for the engine's music and voice-over:**
+1. **Text first, sound second.** 12 of 30 clips carried the message in on-screen text alone, and the other 11 relied on picture. Never let a clip depend on its audio; build the message in text and picture and add sound under it.
+2. **Pick the music kind by sector.** Mid-tempo Afrobeats-style or amapiano-style loops for salon, fashion, travel and unboxing (the named tracks seen were Afrobeats and East African); a harder beat for street wear; quiet, clean ambient for clinics, pharmacies and schools (those clips used picture, calm sound or a speaker).
+3. **Voice-over only when a person or a story is needed.** The 7 voice-led clips were a presenter, a student, a doctor or a vlogger, and all had burned-in subtitles. For shop, menu and price clips skip voice-over and use text; where voice is used, keep it to one short line per beat and have it match the on-screen caption.
+4. **Make text change land on the beat.** In text-led clips the phrase or price changes every 2-4 s; cut the music loop so a beat falls on each text change and on the product reveal (a sound hit on the reveal is common in 3D and kinetic clips, not verified by ear).
+5. **Language by role.** Spoken or hook line in Kinyarwanda for local trust, product, price and contact in English or numerals, and the CTA bilingual ("Karibu", "waduhamagara cg ukatwandikira"). Never use a trending sound just for reach: BuPulse uses its own royalty-free music, so choose the kind (tempo and mood above), not a specific track, and always burn in captions.
