@@ -65,13 +65,45 @@ export function rowCountry(row: Row): string | null {
 export const rowKey = (row: Row): string =>
   [str(row.url) ?? "", str(row.author) ?? str(row.page) ?? "", (str(row.hook) ?? str(row.caption) ?? str(row.structure) ?? "").slice(0, 40)].join(" | ");
 
-/** 0 to 1: likes on a log scale (1M likes = 1, 10K = 0.67), days running (a year = 1), a low fixed value for articles. */
-export function rowStrength(source: ResearchSource, row: Row, likes: number | null, runningDays: number | null): number {
+/**
+ * Ads an advertiser had live at once, as the researchers counted them in the Ad Library
+ * (docs/research/reels/facebook-patterns.md: round 1 and the Rwanda playbook). Lower-case advertiser name -> count.
+ */
+export const STATED_VARIANTS: Record<string, number> = {
+  "derma skin clinic rwanda": 15,
+  elohome: 8,
+  "magic chef kigali": 7,
+  "piramie 4g+": 6,
+  ugalina: 10,
+  "kenlina-b": 7,
+  tnzstore: 7,
+  "nila baby shop": 3,
+  "spot salon & beauty studio": 3,
+};
+const advertiser = (row: Row) => (str(row.page) ?? str(row.author) ?? "").toLowerCase().replace(/\s+/g, " ");
+
+/**
+ * Facebook only: how many ads the advertiser has live, the larger of the rows sharing its name in the file and the
+ * researchers' stated count; null for other sources.
+ */
+export function variantsLive(source: ResearchSource, row: Row, rows: Row[]): number | null {
+  if (source !== "facebook") return null;
+  const name = advertiser(row);
+  if (!name) return 1;
+  return Math.max(rows.filter((r) => advertiser(r) === name).length, STATED_VARIANTS[name] ?? 0);
+}
+
+/**
+ * 0 to 1: likes on a log scale (1M likes = 1, 10K = 0.67), days running (a year = 1), and on Facebook the variants
+ * live at once (one ad = 0, 10 or more = 1): Rwandan ads are young, so the playbook counts variants above age.
+ * Articles get a low fixed value.
+ */
+export function rowStrength(source: ResearchSource, row: Row, likes: number | null, runningDays: number | null, variants: number | null = null): number {
   if (row.secondary === true) return 0.3;
   const fromLikes = likes ? Math.min(1, Math.log10(Math.max(1, likes)) / 6) : 0;
   const fromDays = runningDays ? Math.min(1, runningDays / 365) : 0;
-  const s = source === "facebook" ? Math.max(fromDays, fromLikes) : Math.max(fromLikes, fromDays);
-  return Math.round(Math.max(0.2, s) * 100) / 100;
+  const fromVariants = variants && variants > 1 ? Math.min(1, (variants - 1) / 9) : 0;
+  return Math.round(Math.max(0.2, fromLikes, fromDays, fromVariants) * 100) / 100;
 }
 
 /** The index entries for one research file's rows, keeping the ids already given. Pure. */
@@ -89,6 +121,7 @@ export function evidenceFromRows(source: ResearchSource, rows: Row[], existing: 
     const stats = (row.stats_as_reported ?? {}) as Row;
     const likes = parseCount(stats.likes ?? row.likes);
     const runningDays = typeof row.running_days === "number" ? row.running_days : null;
+    const variants = variantsLive(source, row, rows);
     return {
       id,
       source,
@@ -104,7 +137,8 @@ export function evidenceFromRows(source: ResearchSource, rows: Row[], existing: 
       date: source === "tiktok" ? (tiktokDate(url) ?? parseDate(row.posted)) : (parseDate(row.posted_or_started) ?? parseDate(row.posted)),
       likes,
       runningDays,
-      strength: rowStrength(source, row, likes, runningDays),
+      variantsLive: variants,
+      strength: rowStrength(source, row, likes, runningDays, variants),
     };
   });
 }

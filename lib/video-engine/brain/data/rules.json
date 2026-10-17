@@ -201,7 +201,7 @@
     "short": "No 'best', 'cheapest', 'most affordable in Kigali' unless the owner wrote it.",
     "why": "Superlatives are common in the research (BEST BURGERS IN KIGALI, THE MOST CHEAPEST IPHONES) but only the business can stand behind them.",
     "evidence": ["fb-006", "tt-096", "tt-133", "tt-078"] },
-  { "id": "no-body-before-after", "kind": "dont", "stage": "claims", "engine": "both", "priority": 1, "origin": "engine",
+  { "id": "no-body-before-after", "kind": "dont", "stage": "claims", "engine": "both", "priority": 1, "origin": "engine", "sectors": ["salon", "clinic", "shop", "services", "fashion"],
     "rule": "No skin, body, weight or medical before/after and no health promises (tummy trimming, curing snoring, clearing acne).",
     "short": "No skin, body, weight or medical before/after, no health promises.",
     "why": "Seen in the research (split-face breakouts, body massager claims) but against Meta and TikTok policy and the owner's rules.",

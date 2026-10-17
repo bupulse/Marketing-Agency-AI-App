@@ -187,9 +187,9 @@
           "id": "shorts-title",
           "name": "Title with city",
           "pattern": "{product} in {city}: {offer} | {phone}",
-          "examples": ["THE MOST CHEAPEST IPHONES IN KIGALI RWANDA IN 2026"],
+          "examples": ["Aquos Sense 7 available at MPS 📱Clean design + powerful performance"],
           "sectors": ["any"],
-          "evidence": ["tt-096"]
+          "evidence": ["tt-100"]
         }
       ],
       "hashtags": {
@@ -199,7 +199,7 @@
         "examples": ["#kigali #rwanda #shorts"]
       },
       "language": "As TikTok.",
-      "evidence": ["tt-096"]
+      "evidence": ["tt-100"]
     }
   ],
   "tradeRoutes": [

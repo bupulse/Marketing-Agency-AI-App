@@ -321,12 +321,12 @@
     "name": "Greeting in Kinyarwanda",
     "type": "greeting",
     "pattern": "Muraho! Murakaza neza kuri {business}",
-    "visual": "A shop assistant walks the aisle and greets the camera; the price entry point and delivery line follow.",
+    "visual": "A host (a shop assistant or the owner) walks the aisle and greets the camera; the price entry point and delivery line follow.",
     "platforms": ["facebook", "tiktok"],
     "sectors": ["shop", "restaurant", "salon", "fashion"],
     "formats": ["tour", "ugc-testimonial"],
     "engines": ["claude", "seedance"],
-    "needs": [],
+    "needs": ["person"],
     "examples": ["Hello, Murahe", "Tubahe..."],
     "evidence": ["fb-003"],
     "note": "On-screen and caption only for Kinyarwanda: the voice model cannot speak it (owner rule, 17 October 2026)."
@@ -459,8 +459,8 @@
     "formats": ["tutorial", "list"],
     "engines": ["claude"],
     "needs": [],
-    "examples": ["Your phone can do more than you think!", "How to make this :"],
-    "evidence": ["fb-038", "tt-069"]
+    "examples": ["Your phone can do more than you think!"],
+    "evidence": ["fb-038"]
   },
   {
     "id": "occasion-title",

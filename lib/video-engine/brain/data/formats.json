@@ -69,8 +69,8 @@
     "refSeconds": 15,
     "timeline": [
       {"from":  0, "to":  2, "role":  "hook", "beat":  "The finished result, held still and bright.", "onScreen":  "'Wait for it...' or 'After'"},
-      {"from":  2, "to":  4, "role":  "body", "beat":  "The before, dull and real.", "onScreen":  "'Before'"},
-      {"from":  4, "to":  10, "role":  "proof", "beat":  "Three quick process cuts or a time-lapse of the work.", "onScreen":  "One step name per cut"},
+      {"from":  2, "to":  4, "role":  "proof", "beat":  "The before, dull and real.", "onScreen":  "'Before'"},
+      {"from":  4, "to":  10, "role":  "body", "beat":  "Three quick process cuts or a time-lapse of the work.", "onScreen":  "One step name per cut"},
       {"from":  10, "to":  13, "role":  "offer", "beat":  "The full result again, held.", "onScreen":  "The service name and the price"},
       {"from":  13, "to":  15, "role":  "cta", "beat":  "The result with the business sign or the chair.", "onScreen":  "'Book: WhatsApp {phone}'"}
     ],
@@ -161,7 +161,7 @@
       {"from":  2, "to":  6, "role":  "proof", "beat":  "A real person bites, opens or uses it.", "onScreen":  "The badge stays"},
       {"from":  6, "to":  10, "role":  "body", "beat":  "A second item or a close-up.", "onScreen":  "Its name and price next to it"},
       {"from":  10, "to":  13, "role":  "body", "beat":  "The place: the venue, the counter, the shop front.", "onScreen":  "The area or the address"},
-      {"from":  13, "to":  15, "role":  "cta", "beat":  "The offer item again, clean.", "onScreen":  "'Order on {route}' or 'Call {phone}', in the middle"}
+      {"from":  13, "to":  15, "role":  "cta", "beat":  "The offer item again, clean.", "onScreen":  "'Order on {app}' or 'Call {phone}', in the middle"}
     ],
     "length": {
       "tiktok": [15, 20],
@@ -274,9 +274,9 @@
     "seedanceFormat": null,
     "refSeconds": 12,
     "timeline": [
-      {"from":  0, "to":  1.5, "role":  "hook", "beat":  "Item 1 already in a hand, or the full price list card.", "onScreen":  "Number 1 or the list title, the phone number"},
-      {"from":  1.5, "to":  9, "role":  "body", "beat":  "One item every 2 s, each in a hand in front of the stock.", "onScreen":  "A price label riding on each item"},
-      {"from":  9, "to":  12, "role":  "cta", "beat":  "The wall of stock.", "onScreen":  "'Call / WhatsApp {phone}', retail and wholesale if true"}
+      {"from":  0, "to":  1.5, "role":  "hook", "beat":  "Item 1 already on screen (in a hand, or the full price list card).", "onScreen":  "Number 1 or the list title, the phone number"},
+      {"from":  1.5, "to":  9, "role":  "body", "beat":  "One item per beat, about 2 s each: a product in a hand in front of the stock, or one reason or lesson point.", "onScreen":  "A big number and the item; a price label on each product"},
+      {"from":  9, "to":  12, "role":  "cta", "beat":  "The shop, the class or the team.", "onScreen":  "'Call / WhatsApp {phone}'"}
     ],
     "length": {
       "tiktok": [8, 20],

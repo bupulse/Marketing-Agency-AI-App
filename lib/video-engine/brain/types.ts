@@ -51,7 +51,9 @@ export type Evidence = {
   date: string | null;
   likes: number | null;
   runningDays: number | null;
-  /** 0 to 1: how strongly the row shows "this works" (likes on TikTok, days running on Facebook). */
+  /** Facebook: ads the advertiser has live at once (rows sharing its name, or the researchers' count); null elsewhere. */
+  variantsLive: number | null;
+  /** 0 to 1: how strongly the row shows "this works" (likes on TikTok; days running or variants live on Facebook). */
   strength: number;
 };
 

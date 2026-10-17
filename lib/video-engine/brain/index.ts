@@ -72,6 +72,8 @@ export function checkBrain(data: BrainData = BRAIN, refs: BrainRefs = {}): strin
     if (!Number.isInteger(e.line) || e.line < 1) say(`evidence ${e.id}`, "line must be a positive whole number");
     if (!(e.strength >= 0 && e.strength <= 1)) say(`evidence ${e.id}`, "strength must be between 0 and 1");
     if (e.date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(e.date)) say(`evidence ${e.id}`, `date "${e.date}" is not YYYY-MM-DD`);
+    if (e.variantsLive !== null && !(Number.isInteger(e.variantsLive) && e.variantsLive >= 1)) say(`evidence ${e.id}`, "variantsLive must be null or a whole number from 1");
+    if (e.source !== "facebook" && e.variantsLive !== null) say(`evidence ${e.id}`, "variantsLive is only for Facebook rows");
   }
 
   unique("hooks", data.hooks.map((h) => h.id));

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { BRAIN, FORMATS, PLATFORMS, SECTORS, checkBrain, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
-import { evidenceFromRows, parseCount, parseDate, parseJsonl, rowKey, tiktokDate } from "@/lib/video-engine/brain/ingest";
+import { evidenceFromRows, parseCount, parseDate, parseJsonl, rowKey, rowStrength, tiktokDate, variantsLive } from "@/lib/video-engine/brain/ingest";
 import { amounts, scoreDesign, scoreSeedancePrompt, type ScoreBrief } from "@/lib/video-engine/brain/score";
 import { CONTEXT_MAX_CHARS, ENGINE_SECONDS, brainBriefFromDesign, brainBriefFromPrompt, brainContext, brainFor, formatFromTemplate, scaleTimeline, sectorFromText } from "@/lib/video-engine/brain/select";
 import type { DesignBrief } from "@/lib/video-engine/designer";
@@ -94,6 +94,20 @@ describe("ingest (research rows to the evidence index)", () => {
   });
 });
 
+describe("variants live (Facebook)", () => {
+  it("counts rows sharing an advertiser, or the researchers' stated count, and raises strength with it", () => {
+    const rows = [{ page: "Shop A" }, { page: "shop a" }, { page: "Elohome" }, { page: "Solo" }];
+    expect(variantsLive("facebook", rows[0], rows)).toBe(2);
+    expect(variantsLive("facebook", rows[2], rows)).toBe(8);
+    expect(variantsLive("facebook", rows[3], rows)).toBe(1);
+    expect(variantsLive("tiktok", rows[0], rows)).toBeNull();
+    expect(rowStrength("facebook", {}, null, 5, 8)).toBeGreaterThan(rowStrength("facebook", {}, null, 5, 1));
+    expect(rowStrength("facebook", {}, null, 5, 15)).toBe(1);
+    expect(BRAIN.evidence.find((e) => e.who === "Derma Skin Clinic Rwanda")!.variantsLive).toBe(15);
+    expect(BRAIN.evidence.filter((e) => e.source !== "facebook").every((e) => e.variantsLive === null)).toBe(true);
+  });
+});
+
 describe("brainFor", () => {
   it("is deterministic", () => {
     expect(brainFor(base)).toEqual(brainFor(base));
@@ -150,6 +164,18 @@ describe("brainFor", () => {
     expect(short.length).toBeLessThanOrEqual(tour.timeline.length);
   });
 
+  it("a short before/after keeps its before beat", () => {
+    const ba = BRAIN.formats.find((f) => f.id === "before-after")!;
+    expect(scaleTimeline(ba, 10).map((b) => b.beat)).toContain(ba.timeline[1].beat);
+  });
+
+  it("offers only hooks made for the sector when it has enough of its own", () => {
+    for (const sector of SECTORS) {
+      const s = BRAIN.sectors.find((x) => x.id === sector)!;
+      for (const h of brainFor({ ...base, sector, hasLocation: true } as BrainBrief).hooks) expect(h.sectors.includes(sector) || h.sectors.includes("any") || s.hooks.includes(h.id), `${sector}: ${h.id}`).toBe(true);
+    }
+  });
+
   it("falls back to the sector's best format for the engine", () => {
     expect(brainFor({ ...base, sector: "real-estate", format: null }).format.id).toBe("tour");
     // Seedance cannot make kinetic typography: the sector's first Seedance format is used.
@@ -173,7 +199,7 @@ describe("brainContext", () => {
               const text = brainContext({ ...base, sector, format, engine, platform, hasPrice: facts, hasPhone: facts, language: facts ? "English" : "Kinyarwanda" });
               expect(text.length, `${sector} ${format} ${engine} ${platform}`).toBeLessThanOrEqual(CONTEXT_MAX_CHARS);
               expect(text).toMatch(/Hook (options|ideas)/);
-              expect(text).toContain("Timeline to follow");
+              expect(text).toContain("Timeline (");
               expect(text).toContain("Call to action");
               expect(text).toContain("Don't:");
             }
@@ -193,7 +219,7 @@ describe("brainContext", () => {
     const phone = brainFor({ platform: "facebook", sector: sectorFromText("Kigali Phones, iPhone 13 and Samsung Galaxy"), format: null, engine: "claude", language: "Kinyarwanda", hasPrice: true, hasPhone: true, seconds: 15 });
     expect(phone.sector).toBe("phone-shop");
     expect(phone.format.id).toBe("product-reveal");
-    expect(phone.hooks.map((h) => h.id)).toEqual(["number-in-hand", "price-banner", "counter-price-bar"]);
+    expect(phone.hooks.map((h) => h.id)).toEqual(["number-in-hand", "counter-price-bar", "price-banner"]);
     const house = brainFor({ platform: "tiktok", sector: sectorFromText("4 bedroom house for sale in Kibagabaga"), format: null, engine: "seedance", language: "English", hasPrice: true, hasPhone: true, hasLocation: true, seconds: 15 });
     expect(house.sector).toBe("real-estate");
     expect(house.format.id).toBe("tour");
@@ -333,5 +359,49 @@ describe("scoring a Seedance prompt", () => {
     const rw = { ...brief, business: { ...brief.business, language: "Kinyarwanda" } };
     const prompt = planSeedanceShots({ ...brief }).prompt;
     expect(scoreSeedancePrompt(prompt, rw).failed.map((f) => f.id)).toContain("sound");
+  });
+});
+
+// Writes docs/research/brain-samples.md (what Claude is told for six briefs). Run after changing the brain data:
+//   BRAIN_SAMPLES=1 npx vitest run tests/video-engine/brain.test.ts -t "brain samples"
+describe.runIf(process.env.BRAIN_SAMPLES)("brain samples", () => {
+  it("writes docs/research/brain-samples.md", () => {
+    const photo = [{ base64: "", mediaType: "image/jpeg" as const, width: 1080, height: 1080 }];
+    const design = (b: Partial<DesignBrief> & Pick<DesignBrief, "business" | "product" | "styleId" | "seconds">): DesignBrief => ({ photos: photo, hookId: "auto", ratio: "9:16", ...b });
+    const phoneShop = { name: "Nova Phones Kigali", description: "Phone shop in Kigali: Samsung and iPhone, accessories", phone: "0788 300 400", country: "Rwanda" };
+    const galaxy = { name: "Samsung Galaxy A56", summary: "5G phone, 256 GB", price: "420,000 RWF", usps: ["Big battery", "Cover and charger included"] };
+    const house = { name: "4 bedroom house for sale in Kibagabaga", summary: "4 bedrooms, 3 bathrooms, garden, parking for 2 cars", price: "180,000,000 RWF" };
+    const realtor = { name: "Ikaze Homes", description: "Real estate agency, Gasabo, Kigali", language: "English" };
+    const samples: { title: string; brief: string; text: string }[] = [
+      { title: "1. Kigali phone shop on TikTok (Claude motion engine)", brief: "Nova Phones Kigali, Samsung Galaxy A56, 420,000 RWF, WhatsApp 0788 300 400, English, template Kigali price-first, 15 s.",
+        text: brainContext(brainBriefFromDesign(design({ business: { ...phoneShop, language: "English" }, product: galaxy, styleId: "kigali-price-first", seconds: 15, platform: "tiktok" }))) },
+      { title: "2. Kigali phone shop on Facebook (Claude motion engine, Kinyarwanda)", brief: "The same shop and phone, content in Kinyarwanda (the voice speaks English), Facebook, 15 s.",
+        text: brainContext(brainBriefFromDesign(design({ business: { ...phoneShop, language: "Kinyarwanda" }, product: galaxy, styleId: "kigali-price-first", seconds: 15, platform: "facebook" }))) },
+      { title: "3a. Kibagabaga house on Instagram (Seedance)", brief: "Ikaze Homes, 4 bedroom house in Kibagabaga, 180,000,000 RWF, Seedance tour, 15 s, with sound. The phone is overlaid by BuPulse.",
+        text: brainContext(brainBriefFromPrompt({ business: realtor, product: house, references: ["Image 1: the front of the house"], templateId: "realestate-tour", seconds: 15, ratio: "9:16", audio: true, businessKind: "real-estate" }, { platform: "instagram", hasPhone: true })) },
+      { title: "3b. Kibagabaga house on Instagram (Claude motion engine, from photos)", brief: "The same house, made from the listing photos, template Brand story (a tour), 20 s.",
+        text: brainContext(brainBriefFromDesign(design({ business: { ...realtor, phone: "0788 111 222" }, product: house, styleId: "brand-story", seconds: 20, platform: "instagram" }))) },
+      { title: "4. Restaurant offer on Facebook (Claude motion engine)", brief: "Cave Kitchen Kicukiro, 'Buy one pizza, get one free every Tuesday', pizza 12,000 RWF, call 0791 000 111, template Offer flash, 15 s.",
+        text: brainContext(brainBriefFromDesign(design({ business: { name: "Cave Kitchen", description: "Pizza restaurant in Kicukiro, Kigali, with delivery", language: "English", phone: "0791 000 111" }, product: { name: "Pepperoni pizza", price: "12,000 RWF" }, note: "Buy one pizza, get one free every Tuesday", styleId: "offer-flash", seconds: 15, platform: "facebook" }))) },
+      { title: "5. Salon on TikTok (Seedance, before and after)", brief: "Amahoro Braids, knotless braids, from 25,000 RWF, Seedance transformation, 10 s, with sound. The phone is overlaid by BuPulse.",
+        text: brainContext(brainBriefFromPrompt({ business: { name: "Amahoro Braids", description: "Braids and hair salon in Remera, Kigali", language: "English" }, product: { name: "Knotless braids", price: "from 25,000 RWF" }, references: [], templateId: "salon-transformation", seconds: 10, ratio: "9:16", audio: true, businessKind: "salon" }, { platform: "tiktok", hasPhone: true })) },
+      { title: "6. School on YouTube Shorts (Claude motion engine)", brief: "Bright Future Academy, evening English course, 30,000 RWF a month, WhatsApp 0782 000 333, template 3 reasons, 15 s.",
+        text: brainContext(brainBriefFromDesign(design({ business: { name: "Bright Future Academy", description: "English and computer school in Nyarugenge, Kigali", language: "English", phone: "0782 000 333" }, product: { name: "Evening English course", price: "30,000 RWF a month", usps: ["Small classes", "Certificate"] }, styleId: "tiktok-3-reasons", seconds: 15, platform: "youtube" }))) },
+    ];
+    const doc = [
+      "# What Claude is told: brain samples",
+      "",
+      "The exact research block (`brainContext`, `lib/video-engine/brain/select.ts`) that goes into Claude's brief for six example",
+      "briefs. It sits inside the brief as data, after the template and before the business facts; Claude still sees the photos",
+      "and the system prompt (which already covers the scroll-stopping opening, only-true facts, the safe area and the voice",
+      "language, so the block does not repeat them). Placeholders like {phone} are filled by Claude from the brief's facts.",
+      "",
+      "Made by `BRAIN_SAMPLES=1 npx vitest run tests/video-engine/brain.test.ts -t \"brain samples\"`; rerun it after the brain",
+      "data changes.",
+      "",
+      ...samples.flatMap((s) => [`## ${s.title}`, "", `Brief: ${s.brief}`, "", `${s.text.length} characters, about ${Math.round(s.text.length / 4)} tokens.`, "", "```text", s.text, "```", ""]),
+    ].join("\n");
+    fs.writeFileSync(path.join(process.cwd(), "docs/research/brain-samples.md"), doc);
+    for (const s of samples) expect(s.text.length).toBeLessThanOrEqual(CONTEXT_MAX_CHARS);
   });
 });

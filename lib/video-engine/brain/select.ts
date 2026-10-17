@@ -188,10 +188,11 @@ export function scoreHook(h: Hook, ctx: { platform: Platform | "any"; sector: Se
 /** The ranked hooks a brief can use (needs met, made by the engine), best first; ties by id. */
 export function rankHooks(b: FullBrief, sector: SectorId, format: Format): ScoredHook[] {
   const platform = b.platform ?? "any";
-  return BRAIN.hooks
-    .filter((h) => h.engines.includes(b.engine) && needsMet(h, b, format.id, sector))
-    .map((h) => scoreHook(h, { platform, sector, format }))
-    .sort((a, z) => z.score - a.score || a.id.localeCompare(z.id));
+  const usable = BRAIN.hooks.filter((h) => h.engines.includes(b.engine) && needsMet(h, b, format.id, sector));
+  // Hooks made for another sector only come in when this sector has too few of its own.
+  const fits = (h: Hook) => h.sectors.includes(sector) || h.sectors.includes("any") || sectorById(sector)!.hooks.includes(h.id);
+  const pool = usable.filter(fits).length >= HOOK_OPTIONS ? usable.filter(fits) : usable;
+  return pool.map((h) => scoreHook(h, { platform, sector, format })).sort((a, z) => z.score - a.score || a.id.localeCompare(z.id));
 }
 
 const round = (n: number) => Math.round(n * 2) / 2;
@@ -199,7 +200,8 @@ const round = (n: number) => Math.round(n * 2) / 2;
 /**
  * A format's timeline at the brief's length. The hook and the call to action keep their reference length (at most a
  * fifth of the video each, at least 1.5 s); the beats between share the rest in proportion. Middle beats that would
- * be shorter than 1.5 s are dropped (body first, then proof; the offer stays). Boundaries are rounded to 0.5 s.
+ * be shorter than 1.5 s are dropped (body first, even a longer one, then proof; the offer stays). Boundaries are
+ * rounded to 0.5 s.
  */
 export function scaleTimeline(format: Format, seconds: number): TimedBeat[] {
   const total = Math.max(1, seconds);
@@ -213,7 +215,9 @@ export function scaleTimeline(format: Format, seconds: number): TimedBeat[] {
     const room = Math.max(0, total - fixed);
     const short = ref ? middle().filter((b) => (b.len / ref) * room < 1.5) : [];
     if (!short.length || middle().length === 0) break;
-    const drop = [...short].sort((a, z) => order(a.role) - order(z.role))[0];
+    // A short proof or offer beat (the "before" of a before/after) is kept by dropping a body beat instead.
+    const body = middle().filter((x) => x.role === "body").sort((a, z) => a.len - z.len)[0];
+    const drop = short.some((x) => x.role !== "body") && body ? body : [...short].sort((a, z) => order(a.role) - order(z.role))[0];
     if (middle().length === 1 && drop.role === "offer") break;
     beats.splice(beats.indexOf(drop), 1);
   }
@@ -259,7 +263,9 @@ export function brainFor(brief: BrainBrief): BrainPick {
   const rules = BRAIN.rules.filter((r) => ruleApplies(r, b, platform, sector, format.id)).sort((a, z) => a.priority - z.priority);
 
   const captions = BRAIN.captions.platforms.find((p) => p.platform === (platform === "any" ? "tiktok" : platform))!;
-  const formula = captions.formulas.find((f) => f.sectors.includes(sector)) ?? captions.formulas.find((f) => f.sectors.includes("any")) ?? captions.formulas[0];
+  // The formula that names this sector earliest (its main sector first), else a general one.
+  const rank = (f: { sectors: string[] }) => (f.sectors.includes(sector) ? f.sectors.indexOf(sector) : f.sectors.includes("any") ? 50 : 99);
+  const formula = [...captions.formulas].sort((a, z) => rank(a) - rank(z))[0];
   const v = voiceLanguage(b.language);
   const reliable = v.spokenLanguage === v.captionLanguage && ["English", "French"].includes(v.spokenLanguage);
   const route = b.hasPhone ? "WhatsApp {phone}" : b.hasLocation ? "Find us at {area}" : "DM to order";
@@ -281,7 +287,7 @@ export function brainFor(brief: BrainBrief): BrainPick {
     rules: rules.filter((r) => r.kind === "do"),
     donts: rules.filter((r) => r.kind === "dont"),
     caption: { formula, mustInclude: captions.mustInclude, hashtags: `${captions.hashtags.count[0]} to ${captions.hashtags.count[1]}, local first: ${captions.hashtags.local.slice(0, 4).join(" ")}` },
-    cta: `${route}. ${format.cta}`,
+    cta: b.hasPhone ? sectorInfo.cta : `${route} (the brief has no number), with the area and a landmark if it gives them.`,
     sectorInfo,
   };
 }
@@ -291,38 +297,55 @@ export function brainFor(brief: BrainBrief): BrainPick {
 const PLATFORM_NAMES: Record<Platform | "any", string> = { tiktok: "TikTok", facebook: "Facebook", instagram: "Instagram Reels", shorts: "YouTube Shorts", any: "TikTok, Reels and Facebook" };
 const fmt = (n: number) => String(Math.round(n * 10) / 10);
 const WATCHED = BRAIN.evidence.filter((e) => e.watched).length;
+/** Hook notes that limit the hook (only, never, not...) go into the brief; background notes stay in the database. */
+const CONSTRAINT = /\b(only|never|no|not|skip|without)\b/i;
 
 /**
- * The brain as a compact plain-text block for Claude's brief (at most about 900 tokens): what works for this kind of
- * video, the hook options, the timeline, the on-screen text rules, the call to action, the caption and the don'ts.
- * Deterministic. Lower-priority lines are dropped first when it runs long. `ownerHook`: the owner already chose the
- * opener (a styles.ts hook other than "auto"), so the brain's hooks are offered as wording and layout ideas only.
+ * Rules left out of brainContext (brainFor and the scorer still use them): either the engine's own system prompt
+ * already gives them to Claude (designer.ts systemPrompt and its voice-language line; seedance-brain.ts SEEDANCE_RULES),
+ * or they are the studio's or the owner's decision rather than the writer's (the length, versions, series, posting),
+ * or, for Seedance, they are about the text BuPulse overlays afterwards.
+ */
+export const CONTEXT_SKIP: Record<Engine, string[]> = {
+  claude: ["hook-3s", "no-invented-facts", "text-placement", "voice-language", "length", "variants", "series", "weekly-series", "one-clip-two-platforms", "no-borrowed-footage", "no-watermarks"],
+  seedance: ["hook-3s", "demo-first", "no-invented-facts", "no-lookalikes", "no-body-before-after", "voice-language", "real-place", "plain-words", "native-look", "one-price-frame-0", "length", "variants", "series", "weekly-series", "one-clip-two-platforms"],
+};
+
+/**
+ * The brain as a compact plain-text block for Claude's brief (at most about 900 tokens): the hook options, the
+ * timeline, the on-screen rules, the call to action, the caption and the don'ts that the engine's own system prompt
+ * does not already give. Deterministic. Lower-priority lines are dropped first when it runs long. `ownerHook`: the
+ * owner already chose the opener (a styles.ts hook other than "auto"), so the hooks are wording and layout ideas only.
  */
 export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: boolean } = {}): string {
   const p = "timeline" in brief ? brief : brainFor(brief);
   const seedance = p.engine === "seedance";
-  const head = `What works for this kind of video (BuPulse research, ${WATCHED} winning ads and reels watched): ${p.sectorInfo.name.toLowerCase()}, ${p.format.name.toLowerCase()}, ${PLATFORM_NAMES[p.platform]}, ${p.seconds} s.`;
+  const covered = new Set(CONTEXT_SKIP[p.engine]);
+  const rules = p.rules.filter((r) => !covered.has(r.id));
+  const head = `What works: ${p.sectorInfo.name.toLowerCase()}, ${p.format.name.toLowerCase()}, ${PLATFORM_NAMES[p.platform]}, ${p.seconds} s (from ${WATCHED} ads and reels BuPulse watched).`;
   const hooks = [
     opts.ownerHook
-      ? "Hook ideas (the owner chose the opener above: use these only for its wording and first-frame layout; fill the {placeholders} only with facts from the brief):"
-      : "Hook options (pick one; fill the {placeholders} only with facts from the brief and leave out any you do not have):",
-    ...p.hooks.map((h, i) => `${i + 1}. ${h.name}: "${h.pattern}". First 2 s: ${h.visual} Seen: ${h.examples.slice(0, 2).map((e) => `"${e}"`).join(", ")}.${h.note ? ` ${h.note}` : ""}`),
+      ? "Hook ideas (the owner chose the opener above: use these for its wording and first frame only):"
+      : "Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):",
+    ...p.hooks.map((h, i) => `${i + 1}. ${h.name}: "${h.pattern}". First 2 s: ${h.visual} Seen: ${h.examples.slice(0, 2).map((e) => `"${e}"`).join(", ")}.${h.note && CONSTRAINT.test(h.note) ? ` ${h.note}` : ""}`),
   ];
   const timeline = [
-    `Timeline to follow (${p.seconds} s, about ${p.format.cutsPer10s[0]} to ${p.format.cutsPer10s[1]} changes per 10 s):`,
-    ...p.timeline.map((t) => `- ${fmt(t.from)}-${fmt(t.to)} s (${t.role}): ${t.beat} ${seedance ? "BuPulse overlays" : "On screen"}: ${t.onScreen}.`),
+    `Timeline (${p.seconds} s, ${p.format.cutsPer10s[0]} to ${p.format.cutsPer10s[1]} changes per 10 s):`,
+    ...p.timeline.map((t) => `- ${fmt(t.from)}-${fmt(t.to)} s ${t.role}: ${t.beat} ${seedance ? "BuPulse overlays" : "On screen"}: ${t.onScreen}.`),
   ];
   const lengthNote = p.length.ok ? "" : `Research length for this format: ${p.length.range[0]} to ${p.length.range[1]} s; keep the same beats at this length.`;
-  const textRules = p.rules.filter((r) => r.stage === "text" || r.stage === "hook" || r.stage === "visual");
-  const otherRules = p.rules.filter((r) => !textRules.includes(r) && r.stage !== "caption" && r.stage !== "cta");
+  const textRules = rules.filter((r) => r.stage === "text" || r.stage === "hook" || r.stage === "visual");
+  const otherRules = rules.filter((r) => !textRules.includes(r) && r.stage !== "caption" && r.stage !== "cta" && r.id !== "language-mix");
   const line = (r: Rule) => `- ${r.short ?? r.rule}`;
   const doLines = (list: Rule[], max: number) => list.slice(0, max).map(line);
-  const language = p.language.note ? `Language: on-screen text and caption in ${p.language.screen}; voice ${p.language.voice}.` : "";
   const local = `East Africa: ${p.format.eastAfrica.slice(0, 2).join(" ")} Settings that fit: ${p.sectorInfo.settings.slice(0, 2).join("; ")}.`;
   const offers = `Offer wording seen (only if true for this business): ${p.sectorInfo.offers.slice(0, 3).join("; ")}.`;
-  const cta = `Call to action: ${p.cta}`;
-  const caption = `Caption: ${p.caption.formula.pattern} (e.g. "${p.caption.formula.examples[0].slice(0, 140)}"). Include: ${p.caption.mustInclude.join("; ")}. Hashtags ${p.caption.hashtags}.`;
-  const donts = ["Don't:", ...p.donts.slice(0, 7).map(line)];
+  const cta = seedance ? `Call to action (BuPulse overlays it on the last shot; keep that shot clean): ${p.cta}` : `Call to action: ${p.cta}`;
+  const example = p.caption.formula.examples[0];
+  const caption = `Caption: ${p.caption.formula.pattern} (e.g. "${example.length > 100 ? `${example.slice(0, 97)}...` : example}"). Include: ${p.caption.mustInclude.join("; ")}. Hashtags ${p.caption.hashtags}.`;
+  // For Kinyarwanda and Swahili content the language mix is part of the design, so it is never cut for length.
+  const mixed = /kinyarwanda|swahili/i.test(p.language.screen) ? rules.find((r) => r.id === "language-mix") : undefined;
+  const donts = ["Don't:", ...p.donts.filter((r) => !covered.has(r.id)).slice(0, 7).map(line)];
 
   // Sections in order of importance; when over budget the last optional ones go first.
   const parts: { lines: string[]; optional: number; trim?: boolean }[] = [
@@ -332,14 +355,14 @@ export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: 
     { lines: lengthNote ? [lengthNote] : [], optional: 1 },
     { lines: [seedance ? "Shots and sound:" : "On-screen text and look:", ...doLines(textRules, 6)], optional: 0, trim: true },
     { lines: [cta], optional: 0 },
-    { lines: language ? [language] : [], optional: 0 },
+    { lines: mixed ? [line(mixed)] : [], optional: 0 },
     { lines: seedance ? [] : [caption], optional: 0 },
     { lines: donts, optional: 0, trim: true },
     { lines: ["Also:", ...doLines(otherRules, 5)], optional: 5, trim: true },
-    { lines: [offers], optional: 4 },
+    { lines: seedance ? [] : [offers], optional: 4 },
     { lines: [local], optional: 3 },
   ];
-  const render = () => parts.filter((x) => x.lines.length).map((x) => x.lines.join("\n")).join("\n");
+  const render = () => parts.filter((x) => x.lines.length > (x.trim ? 1 : 0)).map((x) => x.lines.join("\n")).join("\n");
   let out = render();
   for (let level = 5; level >= 1 && out.length > CONTEXT_MAX_CHARS; level--) {
     for (const part of parts) if (part.optional === level) part.lines = [];
