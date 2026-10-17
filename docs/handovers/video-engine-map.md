@@ -38,3 +38,23 @@ for Seedance, RWF credits and a test wallet. Seedance cannot run until `SEEDANCE
   3. Add voice-over from `say` lines.
   4. Add Seedance tasks in the lab.
   5. Then wire it into the app ("Make a video", Autopilot, robot, quotas, guide).
+
+## 17 October, overnight team run (lead: Fable 5.1; agents on Opus 5.5 / Sonnet)
+
+Owner away; decisions taken by the lead. Team brief: docs/handovers/video-studio-team.md. Done and committed so far:
+
+- **Research:** TikTok 93 watched + 46 public rows; Facebook 73 rows (51 Rwandan Ad Library video ads) with a Rwanda
+  playbook; Instagram and YouTube Shorts in progress. Files: docs/research/reels/*.
+- **Brain:** lib/video-engine/brain (38 hooks, 10 formats, 52 rules, 11 sectors, 179 evidence rows), brainContext for
+  Claude briefs, docs/research/BRAIN.md "How the engine operates". A design scorer is in progress.
+- **Motion engine:** 3D look (extruded text, turntables, light, particles, glass/metal), ElevenLabs voice-over with
+  the Kinyarwanda rule, free product cut-outs, research hook and platform in the brief, 33 templates, several quality
+  loops on real designs. Loop 4 (fact checker + sweep of all templates) in progress.
+- **Seedance:** brain (30 templates, rules, checks, plans), free storyboard previews, readiness check, 12 example
+  storyboards. Waits for SEEDANCE_API_KEY.
+- **Blender:** premium 3D pipeline (scene JSON -> Eevee MP4, about 2 minutes per 5 s clip at 540p). Claude-written
+  scenes in progress; studio wiring queued.
+- **Studio site:** home, create (one bar for both engines), model pages, Nano Banana image page, API page, EN/FR/RW,
+  password gate, Seedance previews, voice-over, last-good-build restarts, QA 92/92.
+- **Online:** gate live; the tunnel command (tools/bin/studio-online.sh) must be run by the owner (the lead's
+  environment refuses to start tunnels). Password in .env (STUDIO_PASSWORD).
