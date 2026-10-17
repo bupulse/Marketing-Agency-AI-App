@@ -93,3 +93,23 @@ brief.
 - 14:20: TikTok showed a slider captcha in the researcher's tab (the shared Chrome on port 9334). The agents stopped browsing TikTok and did not touch it; the owner should clear the slider in that tab, or close it.
 
 - App integration task 4: video ledger features (video-design, video-premium, video-seedance-prompt, video-seedance, video-voice, video-image) are left out of a company's monthly AI allowance (metered by video credits instead) but still count against the platform cap AI_MONTHLY_BUDGET_USD: RAISE THAT CAP WHEN VIDEO GOES LIVE. A test forbids app/, lib/ and components/ from importing video-lab or the subscription transport.
+
+### Afternoon, 17 October
+- Research closed for the day: 687 rows (TikTok 216, Facebook 159, Instagram 101, Shorts 36, captions 125, comment
+  studies 30 + 20), docs/research/RESEARCH_SUMMARY.md for the owner, an evidence audit of every rule, hook and
+  caption formula (docs/research/brain-evidence-audit.md) with its fixes folded in; weak evidence marked and weighed at
+  half; ads and organic posts split by `purpose`.
+- Brain: suggestHooks (opening-line chips, live on /create), planSeries (a week of distinct videos), firstCommentFor,
+  outcomes learning, language check, SAFE_AREAS per platform.
+- Motion engine: 60-design run on three products and two shapes (mean 98), video layer for Seedance overlays, language
+  check in every design. Loop 8 open: cut-out product size, labelled number, re-shape glitches on 1:1.
+- Premium 3D: three looks, plinth, flat phone bar, sound mixed by Blender; loop 3 open (cut-outs on the plinth,
+  crisper titles, frame 0).
+- Studio: Premium 3D voice live, Seedance references and characters, test-mode bar, free re-shapes to 1:1 and 4:5,
+  "Add BuPulse text" for Seedance clips in progress.
+- App: VideoJob/VideoOutcome models (migration applied to TEST), plan video credits, add-on, ledger features, Seedance
+  token pricing, POST /api/video/design, the video-jobs cron sweep; task 6 (the dashboard Create page) in progress.
+  The videoStudio feature stays "coming soon" until the owner decides to sell it.
+- Still for the owner: run tools/bin/studio-online.sh for video.bupulse.com; clear the TikTok captcha tab; play the
+  Kitenge Premium 3D clip with sound; clean the LEAF Hydro Tower price field; the SEEDANCE_API_KEY day
+  (docs/SEEDANCE_KEY_DAY.md); switch to ANTHROPIC_API_KEY before any deploy.
