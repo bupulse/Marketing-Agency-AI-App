@@ -10,15 +10,15 @@ points back to the real videos it came from.
 
 Code: `lib/video-engine/brain/` (data in `brain/data/*.json`). Tests: `tests/video-engine/brain.test.ts`.
 
-## What is in it (17 October 2026, after Facebook round 2 and YouTube Shorts)
+## What is in it (17 October 2026: Facebook round 2, YouTube Shorts and the caption corpus in)
 
 | Part | Count | What it holds |
 | --- | --- | --- |
-| Research rows | 248 (186 watched first-hand: 93 TikTok, 57 Facebook, 36 YouTube Shorts; 51 Rwandan Facebook ads) |
+| Research rows | 373: 248 videos and ads (186 watched first-hand: 93 TikTok, 57 Facebook, 36 YouTube Shorts) and 125 post captions (111 Rwandan) |
 | Hooks (openings) | 54 | The first 2 seconds: the line, what is on screen, where it was seen, real example lines |
 | Formats | 10 | Product reveal, UGC testimonial, before/after, unboxing, tour, offer, 3D motion, kinetic typography, tutorial, list or price list |
-| Captions | 4 platforms (TikTok, Facebook and YouTube Shorts researched; Instagram interim), 20 formulas, 9 ways to order, with the Rwanda counts (22 of 51 WhatsApp button, 13 Instagram, 35 number in the caption, 13 Kinyarwanda captions) |
-| Rules | 60 (46 do, 14 don't) |
+| Captions | 4 platforms (TikTok, Facebook and YouTube Shorts researched; Instagram interim), 25 formulas including 5 model captions by sector, 10 ways to order, the caption corpus counts |
+| Rules | 62 (48 do, 14 don't) |
 | Sectors | 11 | Restaurant, phone shop, salon, fashion, real estate, school, car rental, clinic, events, services, and "shop" for everything else |
 
 The Facebook "Rwanda playbook" (round 2) is folded in: its verbatim opening lines (the price pill, the counter seller
@@ -159,13 +159,26 @@ no price) are left out of the 100. BuPulse's own Seedance shot plans score 100; 
 
 ## Scoring a caption
 
-`scoreCaption(caption, hashtags, brief, { platform })` marks the post text out of 100 the same way: does the first line
-name the product, the offer or the price (on Shorts, the first 40 characters); does it say how to order; is the number
-there (twice on Facebook) and the price; does it say where the business is when the brief has a place; are there as many
-hashtags as the platform's winners use (TikTok 3 to 6, Facebook 3 to 4, Shorts 1 to 3) with a local tag and at most two
-broad ones (#fyp, #viral); is a Kinyarwanda business's caption in Kinyarwanda; is it short enough (a Short's title under
-100 characters); and is it free of forbidden lines (made-up superlatives, fake income, "subscribe" on Shorts) and of facts
-the brief does not give. It returns the score, what passed, and `missed`: what to fix, in plain English.
+`scoreCaption(caption, hashtags, brief, { platform })` marks the post text out of 100. It is built on the caption corpus
+(`docs/research/reels/captions.jsonl`: 125 real captions, 111 Rwandan), not on guesses:
+
+- the product, and the price or offer, in the first 60 characters (a Short's title: the first 40);
+- how to order, including the Kinyarwanda forms sellers use ("Duhamagare", "Twandikire");
+- the phone number, in any form the corpus shows (0788218567, 0788 218 567, +250 788 218 567, +250-788-218-567). The
+  check found the number in all 74 corpus captions that have one;
+- the price, in any form (20,000 RWF, 48,000RWF, 38000FRW, 18k gusa, Price:3.5M);
+- where the business is (a 📍 line, a landmark), when the brief has a place, and the delivery line when it delivers;
+- hashtags as the platform's sellers use them: Facebook 0 to 3 (half of Rwandan ads use none), TikTok and Instagram 4 to
+  6, Shorts 1 to 3, with a local tag and at most two broad ones. #MadeInRwanda is never required, and only allowed for
+  goods made in Rwanda;
+- a Kinyarwanda business's caption has Kinyarwanda in it (a mixed caption counts). The detector agrees with the
+  researcher's labels on 14 of 14 Kinyarwanda, 18 of 19 mixed and 76 of 77 English Rwandan captions;
+- the length (Facebook under 600 characters, TikTok and Instagram under 300, a Short's title under 100);
+- no made-up superlatives, income claims ("earn X a day", MoMo screenshots), cures, "subscribe" on Shorts, or facts the
+  brief does not give.
+
+It returns the score, what passed, and `missed`: what to fix, in plain English. The strongest Rwandan captions in the
+corpus (price, phone, place and a call to action) average 75 or more.
 
 ## What the brain does not know yet
 

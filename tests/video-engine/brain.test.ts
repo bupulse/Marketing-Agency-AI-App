@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { BRAIN, FORMATS, PLATFORMS, RESEARCH_SOURCES, SECTORS, checkBrain, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
 import { evidenceFromRows, parseCount, parseDate, parseJsonl, rowKey, rowStrength, tiktokDate, variantsLive } from "@/lib/video-engine/brain/ingest";
-import { amounts, scoreCaption, scoreDesign, scoreSeedancePrompt, type ScoreBrief } from "@/lib/video-engine/brain/score";
+import { amounts, hasKinyarwanda, scoreCaption, scoreDesign, scoreSeedancePrompt, type ScoreBrief } from "@/lib/video-engine/brain/score";
 import { CONTEXT_MAX_CHARS, ENGINE_SECONDS, brainBriefFromDesign, brainBriefFromPrompt, brainContext, brainFor, formatFromTemplate, scaleTimeline, sectorFromText } from "@/lib/video-engine/brain/select";
 import type { DesignBrief } from "@/lib/video-engine/designer";
 import { BUSINESS_KINDS, SEEDANCE_FORMATS, planSeedanceShots } from "@/lib/video-engine/seedance-brain";
@@ -381,11 +381,20 @@ describe("scoring a caption", () => {
     expect(r.failed.find((f) => f.id === "caption-do-not-copy")!.rule).toBe("no-made-up-superlative");
   });
 
-  it("Facebook wants the number twice and 3 to 4 hashtags", () => {
-    const once = scoreCaption(good, ["Kigali", "KigaliRwanda", "Rwanda"], { ...brief, platform: "facebook" });
-    expect(once.failed.map((f) => f.id)).toEqual(["caption-phone-twice"]);
-    expect(scoreCaption(`${good}. Call 0788 300 400`, ["Kigali", "KigaliRwanda", "Rwanda"], { ...brief, platform: "facebook" }).failed).toEqual([]);
-    expect(scoreCaption(good, ["Kigali", "KigaliRwanda", "Rwanda", "phones", "samsung", "deals"], { ...brief, platform: "facebook" }).failed.map((f) => f.id)).toContain("hashtag-count");
+  it("Facebook: 0 to 3 hashtags (most Rwandan ads use none), never a stack", () => {
+    const fb = { ...brief, platform: "facebook" };
+    expect(scoreCaption(good, [], fb).failed).toEqual([]);
+    expect(scoreCaption(good, ["Kigali", "KigaliRwanda"], fb).failed).toEqual([]);
+    expect(scoreCaption(good, ["Kigali", "KigaliRwanda", "Rwanda", "phones", "samsung", "deals"], fb).failed.map((f) => f.id)).toEqual(["hashtag-count"]);
+    expect(scoreCaption(good, ["phones", "samsung"], fb).failed.map((f) => f.id)).toEqual(["hashtag-mix"]);
+  });
+
+  it("delivery, Kinyarwanda calls to action and #MadeInRwanda", () => {
+    const delivers = { ...brief, note: "Free delivery in Kigali", platform: "facebook" };
+    expect(scoreCaption(good, [], delivers).failed.map((f) => f.id)).toEqual(["caption-delivery"]);
+    expect(scoreCaption(`${good}. Free delivery in Kigali`, [], delivers).failed).toEqual([]);
+    expect(scoreCaption("Samsung Galaxy A56 kuri 420,000 RWF gusa. Duhamagare 0788 300 400, Kigali", [], { ...brief, platform: "facebook" }).passed.map((p) => p.id)).toContain("caption-cta");
+    expect(scoreCaption(good, ["Kigali", "MadeInRwanda"], { ...brief, platform: "facebook" }).failed.map((f) => f.id)).toEqual(["caption-facts"]);
   });
 
   it("a Kinyarwanda business gets a Kinyarwanda caption", () => {
@@ -401,6 +410,54 @@ describe("scoring a caption", () => {
     expect(scoreCaption(title, [], shorts).failed).toEqual([]);
     const ids = scoreCaption(`Wait till the end, you will not believe this: ${title} Subscribe for more!`, [], shorts).failed.map((f) => f.id);
     expect(ids).toEqual(expect.arrayContaining(["first-line", "caption-length", "caption-do-not-copy"]));
+  });
+});
+
+describe("the caption check against the caption corpus", () => {
+  const rows = parseJsonl(fs.readFileSync(path.join(REELS, "captions.jsonl"), "utf8")) as Record<string, unknown>[];
+  const rwanda = rows.filter((r) => r.country === "RW");
+
+  it("finds Kinyarwanda the way the researcher labelled it", () => {
+    const share = (lang: string, expected: boolean) => {
+      const sel = rwanda.filter((r) => r.language_mix === lang);
+      return sel.filter((r) => hasKinyarwanda(String(r.caption)) === expected).length / sel.length;
+    };
+    expect(share("rw", true)).toBeGreaterThanOrEqual(0.9);
+    expect(share("mixed", true)).toBeGreaterThanOrEqual(0.85);
+    expect(share("en", false)).toBeGreaterThanOrEqual(0.95);
+  });
+
+  it("finds the number in every caption that has one, however it is written", () => {
+    const withPhone = rows.filter((r) => r.has_phone === true && (r.phones_as_written as string[]).length);
+    expect(withPhone.length).toBeGreaterThan(60);
+    for (const r of withPhone) {
+      const phone = (r.phones_as_written as string[])[0];
+      const res = scoreCaption(String(r.caption), r.hashtags as string[], { business: { name: String(r.page_or_account), phone }, product: { name: "item" } });
+      expect(res.passed.map((p) => p.id), `${r.page_or_account}: ${phone}`).toContain("caption-phone");
+    }
+  });
+
+  it("reads every price form the corpus uses", () => {
+    expect(amounts("20,000 RWF 48,000RWF 38000FRW 18k gusa Price:3.5M 35K → 27K 12,000 rfw RWF 20K/month")).toEqual([20_000, 48_000, 38_000, 18_000, 3_500_000, 35_000, 27_000, 12_000, 20_000]);
+  });
+
+  it("the hashtag ranges hold the corpus medians", () => {
+    const median = (xs: number[]) => [...xs].sort((a, z) => a - z)[Math.floor(xs.length / 2)];
+    const count = (platform: string) => median(rows.filter((r) => r.platform === platform).map((r) => Number(r.hashtag_count)));
+    const range = (p: string) => BRAIN.captions.platforms.find((x) => x.platform === p)!.hashtags.count;
+    const [fbLo, fbHi] = range("facebook");
+    const [ttLo, ttHi] = range("tiktok");
+    expect(count("facebook_ad")).toBeGreaterThanOrEqual(fbLo);
+    expect(count("facebook_ad")).toBeLessThanOrEqual(fbHi);
+    expect(count("tiktok")).toBeGreaterThanOrEqual(ttLo);
+    expect(count("tiktok")).toBeLessThanOrEqual(ttHi);
+  });
+
+  it("the strongest Rwandan captions (price, phone, place and a call to action) score well", () => {
+    const full = rwanda.filter((r) => r.has_phone && r.has_price && r.has_location && r.has_cta && r.platform === "facebook_ad" && (r.phones_as_written as string[]).length);
+    expect(full.length).toBeGreaterThan(10);
+    const scores = full.map((r) => scoreCaption(String(r.caption), r.hashtags as string[], { business: { name: String(r.page_or_account), phone: (r.phones_as_written as string[])[0], language: r.language_mix === "rw" ? "Kinyarwanda" : "English" }, product: { name: String(r.caption).split(/\s+/).slice(0, 3).join(" ") } }, { platform: "facebook" }).score);
+    expect(scores.reduce((a, b) => a + b, 0) / scores.length).toBeGreaterThanOrEqual(75);
   });
 });
 

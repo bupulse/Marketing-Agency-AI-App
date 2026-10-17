@@ -3,8 +3,8 @@
     {
       "platform": "tiktok",
       "status": "researched",
-      "length": "One to three short lines; the offer or the product first, then how to order.",
-      "mustInclude": ["the offer or the product in the first line", "the route to order (WhatsApp, call, DM, the app)", "the area in the city", "3 to 5 hashtags with the city"],
+      "length": "One or two lines (median 25 words, 184 characters), then the hashtags.",
+      "mustInclude": ["the offer or the product in the first line", "the route to order (WhatsApp, call, DM, the app)", "the area in the city", "4 to 6 hashtags with the city"],
       "formulas": [
         {
           "id": "offer-then-route",
@@ -48,20 +48,60 @@
         }
       ],
       "hashtags": {
-        "count": [3, 6],
-        "practice": ["Local city and country tags first, then the product, then one broad tag (#fyp).", "Kigali sellers mix English and Kinyarwanda words in the caption, numbers in digits."],
+        "count": [4, 6],
+        "practice": ["Median 5: #Kigali or #KigaliTikTok, #RwandaBusiness, one sector tag, one brand tag, #fyp if wanted.", "Never a stack of 10 or more; hashtags alone are a weak caption."],
         "local": ["#kigalitiktok", "#rwandatiktok", "#KigaliRwanda", "#KigaliBusiness", "#KigaliShopping", "#RwandaBusiness", "#tiktokrwanda"],
         "examples": ["#RwandaTikTok #KigaliTikTok #KigaliRwanda #KigaliShopping #RwandaBusiness", "#ShopSmartWithMPS #aquosrwanda #phoneshop #rwandamarketplace"]
       },
       "language": "English for products and prices; Kinyarwanda for the hook and the invitation where the audience is local.",
-      "evidence": ["tt-079", "tt-090", "tt-093", "tt-099", "tt-100", "tt-064"]
+      "evidence": ["tt-079", "tt-090", "tt-093", "tt-099", "tt-100", "tt-064", "cp-111", "cp-112", "cp-116"]
     },
     {
       "platform": "facebook",
       "status": "researched",
-      "length": "Longer than TikTok: a headline line, a checklist of specs, then price, area with a landmark, delivery and the number (often twice).",
-      "mustInclude": ["the price in RWF", "the area and a landmark (next to / opposite a known place), not only a street", "the delivery or payment promise, only if the owner offers it", "the phone number, twice", "3 to 4 hashtags with the city"],
+      "length": "Facebook ad captions: median 48 words (316 characters), 7 lines. One fact per line with an icon for property, clinic and school; a single line for a plain product. 150 to 350 characters for shops and food, 250 to 500 for property and services, never over 600.",
+      "mustInclude": ["the product and the price or offer in the first 60 characters", "the phone or WhatsApp number labelled 'Call/WhatsApp:' (a second number is fine)", "the area and a landmark on a 📍 line", "the delivery line when the owner delivers", "0 to 3 hashtags (the city plus the sector)"],
       "formulas": [
+        {
+          "id": "model-shop",
+          "name": "Shop: product and price, features, delivery, place, number",
+          "pattern": "🔥 {product} kuri {price} gusa\n✅ {claim} · {claim}\n🚚 {offer}\n📍 {area}\n📞 Call/WhatsApp: {phone}\n#Kigali #{sector}",
+          "examples": ["Jumpsuit Diras kuri 18k gusa .Different sizes and colors available .0795578202", "Strong portable wardrobe 0786550503 Price 65000frw Free delivery"],
+          "sectors": ["shop", "fashion", "phone-shop"],
+          "evidence": ["cp-023", "cp-083", "cp-028", "cp-038"]
+        },
+        {
+          "id": "model-restaurant",
+          "name": "Restaurant: dish and price, the day, a Kinyarwanda line, delivery areas, numbers",
+          "pattern": "🍔 {product} for only {price} {day}\nAbakiriya bacu barishimye 😍 ntucikwe!\n🚚 Delivery in {area}\n📍 {area}, {landmark}\n📲 Order: {phone}\n#KigaliFood #{business}",
+          "examples": ["🔥 PROMO DISCOUNT 37.5% OFF! 🔥5K Abakiriya bacu barishimye 😍 nawe ntucikwe!", "Wednesday Promotion 🍔Buy One Burger, Get One Free!"],
+          "sectors": ["restaurant", "events"],
+          "evidence": ["cp-025", "cp-012", "cp-111"]
+        },
+        {
+          "id": "model-real-estate",
+          "name": "Property checklist in Kinyarwanda",
+          "pattern": "🏡 INZU NZIZA IGURISHWA I {area}, KIGALI\n💰 Igiciro: {price} | Kiraganirwaho\n🛏️ Ibyumba {count} · 🚿 Ubwogero {count}\n📍 {area} · {landmark}\n✅ Ibyangombwa birahari\n📞 Duhamagare cyangwa utwandikire kuri WhatsApp: {phone}",
+          "examples": ["🏡 INZU NZIZA IGURISHWA I KABEZA, KIGALI 💰 Igiciro: 130,000,000 RWF | Kiraganirwaho", "⚠️IBIBANZA 28 BIGURISHWA ⚠️ 📍KICUKIRO-MASAKA (CYERU)"],
+          "sectors": ["real-estate"],
+          "evidence": ["cp-044", "cp-047", "cp-048"]
+        },
+        {
+          "id": "model-salon",
+          "name": "Salon: services and prices, hours, place, book on WhatsApp",
+          "pattern": "✨ {product} at {business}, {area}\n💆 {product} {price} · {product} {price}\n🕘 Open {claim}\n📍 {landmark}, {area}\n📲 Book on WhatsApp: {phone}\nMurakaza neza! 💕",
+          "examples": ["Get Salon-Perfect Nails at Home!", "hurry! hurry! for dope hairstyle 💯💯💯🔥🔥🔥🔥only @ spot hair studio roysambu lumumba drive"],
+          "sectors": ["salon", "clinic"],
+          "evidence": ["cp-056", "cp-095", "cp-094"]
+        },
+        {
+          "id": "model-school",
+          "name": "School: intake, what you get, fee, campus, call to enrol",
+          "pattern": "🎓 {product} intake open: starts {day}\n✅ {claim} · {claim}\n💰 Fee: {price}\n📍 {area}, {landmark}\n📞 Call/WhatsApp to enrol: {phone}",
+          "examples": ["GERMAN CLASSES – NOVEMBER INTAKE OPEN! 🇩🇪", "Master the skills of a professional mechanic"],
+          "sectors": ["school"],
+          "evidence": ["cp-073", "cp-071", "cp-008"]
+        },
         {
           "id": "price-tel-address",
           "name": "Product, price, tel, address",
@@ -144,20 +184,20 @@
         }
       ],
       "hashtags": {
-        "count": [3, 4],
-        "practice": ["Fewer than TikTok: 3 to 4 with the city.", "The caption, not the hashtags, carries the number and the area."],
-        "local": ["#Kigali", "#KigaliRwanda", "#Rwanda", "#KigaliBusiness", "#KigaliRealEstate", "#HouseForRentKigali"],
-        "examples": ["#carrental #kigali #kigalirwanda #fyp", "#homedecor #Rwanda #Kigali"]
+        "count": [0, 3],
+        "practice": ["Facebook business captions mostly skip hashtags: median 1, 49% of ads use none.", "When used: the city plus the sector (#Kigali #KigaliFood), at the end; never a stack of 10 or more.", "#MadeInRwanda appeared in none of 125 captions: only for goods made in Rwanda."],
+        "local": ["#Kigali", "#Rwanda", "#KigaliRwanda", "#RwandaBusiness", "#KigaliFood", "#KigaliHomes", "#KigaliRealEstate"],
+        "examples": ["#Kigali #KigaliFood", "#carrental #kigali #kigalirwanda"]
       },
       "language": "Rwanda: 13 of 51 captions in Kinyarwanda, most English, French on 1. Property and cheap-goods ads lean Kinyarwanda; hotels, clinics, tech and beauty lean English. Tanzania: Swahili. Kenya and Uganda: English. Numbers as people write them (38,000 RWF, 48K, 400K, 350M RWF).",
-      "evidence": ["fb-011", "fb-012", "fb-029", "fb-007", "fb-006", "fb-002", "fb-019", "fb-051", "fb-054", "fb-068", "fb-048", "fb-062", "fb-069"],
-      "findings": ["Of 51 Rwandan video ads: 22 use a 'Send WhatsApp message' button, 13 send to an Instagram profile, 4 'Call now'; 1 website sign-up, 1 booking site.", "35 of 51 put the phone number in the caption.", "Addresses are landmarks, not streets: 'Next to DELIGHT HOTEL', 'opposite IPRC traffic lights', 'Makuza Peace Plaza, Room 35', 'same building as boho, door 8'.", "13 of 51 captions are in Kinyarwanda; most are English; 1 is French. Cleopatra Home writes the caption twice, English then Kinyarwanda.", "Median video length 34 s; about half under 30 s (under 20 s for products and offers, 40 to 90 s with a talking person).", "The caption carries the spec list (checklist emojis: price, size, area, water and power, title, delivery); the video is the proof, the caption is the contract.", "None of the 51 mentions MoMo."]
+      "evidence": ["fb-011", "fb-012", "fb-029", "fb-007", "fb-006", "fb-002", "fb-019", "fb-051", "fb-054", "fb-068", "fb-048", "fb-062", "fb-069", "cp-044", "cp-023", "cp-025", "cp-059"],
+      "findings": ["Caption corpus (125 captions, 111 Rwandan): phone or WhatsApp in 63%, a place in 77%, a price or offer in 58%, a call to action in 71%, a delivery promise in 30%; all four of phone, price, place and call to action in 30 rows.", "Hashtags: Facebook ads median 1 (49% none; 5 when used), Facebook reels 0, TikTok 5.", "Numbers: mostly 10-digit local with no spaces (0788218567); 22 with +250 and spaces; two numbers are common; the label is 'Call/WhatsApp:'.", "Prices: '20,000 RWF', '48,000RWF', '38000FRW', '18k gusa', 'Price:3.5M', '35K → 27K'; the currency comes as RWF, FRW, Rwf, rfw, frw.", "Language (Rwandan rows): English 77, mixed 19, Kinyarwanda 14, French 1. Kinyarwanda for plots, houses, cheap goods and baby products; mixed for food, phones and fashion; English for hotels, clinics, tech and beauty.", "Kinyarwanda calls to action: Duhamagare, Twandikire, uhamagare kuri, twandikire cg uduhamagare; 'kuri {price} gusa' before a price.", "Addresses are landmarks, not streets: 'Next to DELIGHT HOTEL', 'opposite IPRC traffic lights', 'Makuza Peace Plaza, Room 35', 'same building as boho, door 8'.", "13 of 51 captions are in Kinyarwanda; most are English; 1 is French. Cleopatra Home writes the caption twice, English then Kinyarwanda.", "Median video length 34 s; about half under 30 s (under 20 s for products and offers, 40 to 90 s with a talking person).", "The caption carries the spec list (checklist emojis: price, size, area, water and power, title, delivery); the video is the proof, the caption is the contract.", "None of the 51 mentions MoMo."]
     },
     {
       "platform": "instagram",
       "status": "interim",
       "length": "Until the Instagram research is folded in: TikTok's formulas, with the route 'DM to order' and the location tag.",
-      "mustInclude": ["the offer or the product first", "'DM to order' or the WhatsApp number", "the area", "3 to 6 hashtags with the city"],
+      "mustInclude": ["the offer or the product first", "'DM to order' or the WhatsApp number", "the area", "4 to 6 hashtags with the city"],
       "formulas": [
         {
           "id": "ig-dm-order",
@@ -169,8 +209,8 @@
         }
       ],
       "hashtags": {
-        "count": [3, 6],
-        "practice": ["Interim: the TikTok practice with #kigali tags."],
+        "count": [4, 6],
+        "practice": ["Interim, from the caption corpus: as TikTok, 4 to 6 with the city."],
         "local": ["#kigali", "#kigalirwanda", "#rwanda"],
         "examples": ["#kigali #kigalirwanda #fyp"]
       },
@@ -230,8 +270,13 @@
   "tradeRoutes": [
     {
       "id": "whatsapp",
-      "words": "WhatsApp {phone}",
+      "words": "Call/WhatsApp: {phone}",
       "when": "The default in Rwanda: 22 of 51 Rwandan Facebook video ads use the 'Send WhatsApp message' button, and 35 of 51 put the number in the caption."
+    },
+    {
+      "id": "twandikire",
+      "words": "Duhamagare cyangwa utwandikire kuri WhatsApp: {phone}",
+      "when": "Kinyarwanda captions: the corpus's own call to action (Duhamagare 9, Twandikire 8), never a translation of 'click the link'."
     },
     {
       "id": "instagram",
@@ -240,7 +285,7 @@
     },
     {
       "id": "call",
-      "words": "Call {phone}",
+      "words": "Call {phone} / Duhamagare {phone}",
       "when": "Services, car hire, travel, restaurants taking orders by phone ('Call now' on 4 of 51)."
     },
     {

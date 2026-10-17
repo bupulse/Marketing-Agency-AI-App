@@ -15,7 +15,7 @@ Brief: Nova Phones Kigali, Samsung Galaxy A56, 420,000 RWF, WhatsApp 0788 300 40
 3328 characters, about 832 tokens.
 
 ```text
-What works: phone and electronics shop, product reveal, TikTok, 15 s (from 186 ads and reels BuPulse watched).
+What works: phone and electronics shop, product reveal, TikTok, 15 s (from 213 ads and reels BuPulse watched).
 Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):
 1. Number on screen, product in hand: "{phone} (top or lower-middle, whole clip) over {product} in a hand". First 2 s: Hands turn the product to show front and back; the phone or WhatsApp number is fixed on screen from the first frame to the last. Seen: "+250 785 478 140", "Whatsapp/Call: 0796148484".
 2. Seller at the counter, price bar below: "{product} | {price} RWF | {phone}". First 2 s: The seller behind the shop counter holds the item up; a blue or yellow bar across the lower third with the product, the price and two numbers. Seen: "COMMERCIAL BLENDER / 48,000RWF / 0784695549", "TURN YOUR ROOM INTO A GALAXY".
@@ -34,7 +34,7 @@ On-screen text and look:
 - Labels, prices and menus are drawn as text on top, never left to a generated image.
 - A first caption of about 5 words at 0.0 s, upper-middle.
 Call to action: WhatsApp or call {phone}; the shop address and room number (Makuza Peace Plaza, Room 35).
-Caption: {product}: {claim}. Available now at {business} 📞 {phone} 🚚 {offer} (e.g. "✨ AQUOS Sense 9 — compact, powerful and seriously impressive. Available now at KIBO Electronics �..."). Include: the offer or the product in the first line; the route to order (WhatsApp, call, DM, the app); the area in the city; 3 to 5 hashtags with the city. Hashtags 3 to 6, local first: #kigalitiktok #rwandatiktok #KigaliRwanda #KigaliBusiness.
+Caption: {product}: {claim}. Available now at {business} 📞 {phone} 🚚 {offer} (e.g. "✨ AQUOS Sense 9 — compact, powerful and seriously impressive. Available now at KIBO Electronics �..."). Include: the offer or the product in the first line; the route to order (WhatsApp, call, DM, the app); the area in the city; 4 to 6 hashtags with the city. Hashtags 4 to 6, local first: #kigalitiktok #rwandatiktok #KigaliRwanda #KigaliBusiness.
 Don't:
 - No income proof: no fake M-Money or bank SMS, no cash piles, no 'get rich' lines.
 - No 'best', 'cheapest', 'most affordable in Kigali' unless the owner wrote it.
@@ -49,10 +49,10 @@ Don't:
 
 Brief: The same shop and phone, content in Kinyarwanda (the voice speaks English), Facebook, 15 s.
 
-3511 characters, about 878 tokens.
+3566 characters, about 892 tokens.
 
 ```text
-What works: phone and electronics shop, product reveal, Facebook, 15 s (from 186 ads and reels BuPulse watched).
+What works: phone and electronics shop, product reveal, Facebook, 15 s (from 213 ads and reels BuPulse watched).
 Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):
 1. Number on screen, product in hand: "{phone} (top or lower-middle, whole clip) over {product} in a hand". First 2 s: Hands turn the product to show front and back; the phone or WhatsApp number is fixed on screen from the first frame to the last. Seen: "+250 785 478 140", "Whatsapp/Call: 0796148484".
 2. Seller at the counter, price bar below: "{product} | {price} RWF | {phone}". First 2 s: The seller behind the shop counter holds the item up; a blue or yellow bar across the lower third with the product, the price and two numbers. Seen: "COMMERCIAL BLENDER / 48,000RWF / 0784695549", "TURN YOUR ROOM INTO A GALAXY".
@@ -72,7 +72,7 @@ On-screen text and look:
 - A first caption of about 5 words at 0.0 s, upper-middle.
 Call to action: WhatsApp or call {phone}; the shop address and room number (Makuza Peace Plaza, Room 35).
 - Rwanda: English for products and prices, Kinyarwanda for the hook and the invitation; money the local way (38,000 RWF, 48K).
-Caption: 💻 {business} STOCK 🔹 {product} 💰 {price} 🔹 {product} 💰 {price} (e.g. "💻 MICROSOFT SURFACE STOCK — LA PAIX TECHNOLOGY 🔹 Surface Pro 4 — i5 6th | 8/256 | 12.3” Touch �..."). Include: the price in RWF; the area and a landmark (next to / opposite a known place), not only a street; the delivery or payment promise, only if the owner offers it; the phone number, twice; 3 to 4 hashtags with the city. Hashtags 3 to 4, local first: #Kigali #KigaliRwanda #Rwanda #KigaliBusiness.
+Caption: 💻 {business} STOCK 🔹 {product} 💰 {price} 🔹 {product} 💰 {price} (e.g. "💻 MICROSOFT SURFACE STOCK — LA PAIX TECHNOLOGY 🔹 Surface Pro 4 — i5 6th | 8/256 | 12.3” Touch �..."). Include: the product and the price or offer in the first 60 characters; the phone or WhatsApp number labelled 'Call/WhatsApp:' (a second number is fine); the area and a landmark on a 📍 line; the delivery line when the owner delivers; 0 to 3 hashtags (the city plus the sector). Hashtags 0 to 3, local first: #Kigali #Rwanda #KigaliRwanda #RwandaBusiness.
 Don't:
 - No income proof: no fake M-Money or bank SMS, no cash piles, no 'get rich' lines.
 - No 'best', 'cheapest', 'most affordable in Kigali' unless the owner wrote it.
@@ -90,7 +90,7 @@ Brief: Ikaze Homes, 4 bedroom house in Kibagabaga, 180,000,000 RWF, Seedance tou
 3364 characters, about 841 tokens.
 
 ```text
-What works: real estate (sale and rent), tour, Instagram Reels, 15 s (from 186 ads and reels BuPulse watched).
+What works: real estate (sale and rent), tour, Instagram Reels, 15 s (from 213 ads and reels BuPulse watched).
 Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):
 1. Where, what size, how much: "{city} / {area} | {count} BEDROOMS | {price}". First 2 s: Three stacked labels (district, sector, street) over the first shot, then a pill with the rooms; the price follows. Seen: "KIGALI KICUKIRO / KANOMBE KABEZA / MWITUNDA", "4 BEDROOMS".
 2. Price banner from frame 0: "{product} {price}". First 2 s: The product (or the place) already moving, in a hand or in use, with a large price strip in the top third and the phone bar below; no intro. Seen: "48,000RWF", "PRICE 28K".
@@ -129,7 +129,7 @@ Brief: The same house, made from the listing photos, template Brand story (a tou
 3480 characters, about 870 tokens.
 
 ```text
-What works: real estate (sale and rent), tour, Instagram Reels, 20 s (from 186 ads and reels BuPulse watched).
+What works: real estate (sale and rent), tour, Instagram Reels, 20 s (from 213 ads and reels BuPulse watched).
 Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):
 1. Where, what size, how much: "{city} / {area} | {count} BEDROOMS | {price}". First 2 s: Three stacked labels (district, sector, street) over the first shot, then a pill with the rooms; the price follows. Seen: "KIGALI KICUKIRO / KANOMBE KABEZA / MWITUNDA", "4 BEDROOMS".
 2. Price banner from frame 0: "{product} {price}". First 2 s: The product (or the place) already moving, in a hand or in use, with a large price strip in the top third and the phone bar below; no intro. Seen: "48,000RWF", "PRICE 28K".
@@ -147,7 +147,7 @@ On-screen text and look:
 - Labels, prices and menus are drawn as text on top, never left to a generated image.
 - A first caption of about 5 words at 0.0 s, upper-middle.
 Call to action: WhatsApp {phone}; district, sector and street (Kicukiro, Kanombe, Kabeza); the property ID.
-Caption: {offer} ✨ {claim} 📍 {area} 💬 DM to order or WhatsApp {phone} (e.g. "Send a dm on ig to place an order."). Include: the offer or the product first; 'DM to order' or the WhatsApp number; the area; 3 to 6 hashtags with the city. Hashtags 3 to 6, local first: #kigali #kigalirwanda #rwanda.
+Caption: {offer} ✨ {claim} 📍 {area} 💬 DM to order or WhatsApp {phone} (e.g. "Send a dm on ig to place an order."). Include: the offer or the product first; 'DM to order' or the WhatsApp number; the area; 4 to 6 hashtags with the city. Hashtags 4 to 6, local first: #kigali #kigalirwanda #rwanda.
 Don't:
 - No income proof: no fake M-Money or bank SMS, no cash piles, no 'get rich' lines.
 - No 'best', 'cheapest', 'most affordable in Kigali' unless the owner wrote it.
@@ -164,10 +164,10 @@ East Africa: Kigali buyers filter on district, sector and size first: put them i
 
 Brief: Cave Kitchen Kicukiro, 'Buy one pizza, get one free every Tuesday', pizza 12,000 RWF, call 0791 000 111, template Offer flash, 15 s.
 
-3566 characters, about 892 tokens.
+3402 characters, about 851 tokens.
 
 ```text
-What works: restaurant, café, bakery, offer, Facebook, 15 s (from 186 ads and reels BuPulse watched).
+What works: restaurant, café, bakery, offer, Facebook, 15 s (from 213 ads and reels BuPulse watched).
 Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):
 1. Offer badge with the day: "{offer} EVERY {day}". First 2 s: Top-down table with the food; a solid badge with the offer and the day sits on screen for the whole clip. Seen: "BUY 1 GET 1 FREE", "BUY ONE PIZZA GET ONE FREE EVERY TU".
 2. Promo for one price: "{claim} | PROMO FOR {price} | DON'T MISS". First 2 s: A hand unwraps or lifts the one product; the header text and the number stay up the whole clip. Seen: "BEST BURGERS IN KIGALI / PROMO FOR 5K - DON'T MISS", "hurry! hurry! special offer any style 1800 (inclusive of braids & free wash)".
@@ -186,7 +186,12 @@ On-screen text and look:
 - Labels, prices and menus are drawn as text on top, never left to a generated image.
 - A first caption of about 5 words at 0.0 s, upper-middle.
 Call to action: Order on {app} or call {phone}; the area (Kicukiro Sonatube, Kimironko).
-Caption: 🔥 {offer} 🔥 {claim} for as low as {price}! {phone} (e.g. "🔥 PROMO DISCOUNT 37.5% OFF! 🔥5K Abakiriya bacu barishimye 😍 nawe ntucikwe! ... for as low as 5..."). Include: the price in RWF; the area and a landmark (next to / opposite a known place), not only a street; the delivery or payment promise, only if the owner offers it; the phone number, twice; 3 to 4 hashtags with the city. Hashtags 3 to 4, local first: #Kigali #KigaliRwanda #Rwanda #KigaliBusiness.
+Caption: 🍔 {product} for only {price} {day}
+Abakiriya bacu barishimye 😍 ntucikwe!
+🚚 Delivery in {area}
+📍 {area}, {landmark}
+📲 Order: {phone}
+#KigaliFood #{business} (e.g. "🔥 PROMO DISCOUNT 37.5% OFF! 🔥5K Abakiriya bacu barishimye 😍 nawe ntucikwe!"). Include: the product and the price or offer in the first 60 characters; the phone or WhatsApp number labelled 'Call/WhatsApp:' (a second number is fine); the area and a landmark on a 📍 line; the delivery line when the owner delivers; 0 to 3 hashtags (the city plus the sector). Hashtags 0 to 3, local first: #Kigali #Rwanda #KigaliRwanda #RwandaBusiness.
 Don't:
 - No income proof: no fake M-Money or bank SMS, no cash piles, no 'get rich' lines.
 - No 'best', 'cheapest', 'most affordable in Kigali' unless the owner wrote it.
@@ -195,7 +200,6 @@ Don't:
 - No 'how I made this' / 'Comment PROMPT' wrapper in a client ad.
 - No vague discounts ('40% or 60%'): one clear offer at a real price.
 - No polished brand film without a price and number for a small seller.
-East Africa: Kigali restaurants run the same weekday offer every week (Tuesday pizza, Wednesday burger, lunch Monday to Friday). 'Hurry before the promo ends' only when the owner gave an end date. Settings that fit: a top-down wooden table in a Kigali restaurant; a night venue terrace with warm lights.
 ```
 
 ## 5. Salon on TikTok (Seedance, before and after)
@@ -205,7 +209,7 @@ Brief: Amahoro Braids, knotless braids, from 25,000 RWF, Seedance transformation
 3164 characters, about 791 tokens.
 
 ```text
-What works: salon, barber, nails, beauty, before and after, TikTok, 10 s (from 186 ads and reels BuPulse watched).
+What works: salon, barber, nails, beauty, before and after, TikTok, 10 s (from 213 ads and reels BuPulse watched).
 Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):
 1. Wait for it ... (the result first): "Wait for it... ({result} first, then the before)". First 2 s: The finished result (the hairstyle, the room, the car) for 1 to 2 s with 'Wait for it...' or 'After', then the before. Seen: "Wait for it...", "After". Never a body, skin or medical before/after.
 2. Tired of ...? / Still ...?: "Tired of {problem}?". First 2 s: The everyday problem on screen first (dull, real), then a hard cut to the product fixing it. Seen: "Tired of Snoring Ruining Your Sleep?", "Nobody warns you how annoying juicers are to actually clean".
@@ -245,7 +249,7 @@ Brief: Bright Future Academy, evening English course, 30,000 RWF a month, WhatsA
 3221 characters, about 805 tokens.
 
 ```text
-What works: school, training, courses, list or price list, YouTube Shorts, 15 s (from 186 ads and reels BuPulse watched).
+What works: school, training, courses, list or price list, YouTube Shorts, 15 s (from 213 ads and reels BuPulse watched).
 Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):
 1. Numbered list: "{count} {product} you need / 1. ... 2. ... 3. ...". First 2 s: Item 1 on screen at 0 s, one item per beat with a big number. Seen: "1. Perfumes business", "4/20 Business ya products".
 2. More than you think: "Your {product} can do more than you think!". First 2 s: The device's screen or a surprising feature in close-up. Seen: "Your phone can do more than you think!".

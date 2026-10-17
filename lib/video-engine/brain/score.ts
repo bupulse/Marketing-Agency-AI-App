@@ -81,7 +81,7 @@ function moneyAmounts(text: string): number[] {
 }
 
 const ROUTE = /\b(whats\s?app|call|order|dm|inbox|book|visit|find us|shop now|buy|tel|phone|contact|vubavuba|location|website|www\.|\.com|\.rw|commandez|appelez|réservez|hamagara|twandikire|tumiza|gura|sura|ahantu)\b/i;
-const CTA_VERB = /\b(order|call|whats\s?app|book|visit|buy|shop|dm|get yours|come|reserve|register|join|message|commandez|appelez|réservez|venez|hamagara|tumiza|gura|iyandikishe|ngwino|muze|sura|twandikire)\b/i;
+const CTA_VERB = /\b(order|call|whats\s?app|book|visit|buy|shop|dm|get yours|come|reserve|register|enrol|join|message|commandez|appelez|réservez|venez|hamagara|duhamagare|uhamagare|uduhamagare|tumiza|gura|iyandikishe|ngwino|muze|sura|twandikire|utwandikire|tuvugishe)\b/i;
 
 const isText = (l: Layer): l is TextLayer => l.kind === "text";
 const texts = (s: Scene) => s.layers.filter(isText).filter((l) => l.text.trim());
@@ -104,8 +104,8 @@ function sceneMoves(s: Scene): boolean {
 
 // Phrases the do-not-copy rules forbid. Superlatives and urgency only pass when the brief itself says them.
 const NEVER: [string, RegExp][] = [
-  ["no-fake-income", /you have received|received \d[\d,.]*\s*(rwf|frw)|m-?money|mobile money received|get rich|passive income|make \$?\d+k|ugusezera k.ubukene|income proof/i],
-  ["no-body-before-after", /\b(cure[sd]?|lose weight|weight loss|burn fat|acne[- ]free|clears? (your )?acne|guaranteed results|tummy trimming|stop snoring)\b/i],
+  ["no-fake-income", /you have received|received \d[\d,.]*\s*(rwf|frw)|m-?money|mobile money received|get rich|passive income|make \$?\d+k|earn [\d,.]+\s*k?\s*(rwf |frw )?(a|per) day|work and earn|akayabo|ugusezera k.ubukene|income proof/i],
+  ["no-body-before-after", /\b(cure[sd]?|miracle|lose weight|weight loss|burn fat|acne[- ]free|clears? (your )?acne|guaranteed results|tummy trimming|stop snoring)\b/i],
   ["no-fake-customers", /\b(5|five)[- ]stars?\b|\b\d+\s*(happy|satisfied) (customers|clients)\b|\breplying to @/i],
   ["no-prompt-wrapper", /comment\s*["“]?prompt|how (i|to) made? this|made with ai|link in bio/i],
   ["no-watermarks", /\b(capcut|tiktok\.com|@tiktok)\b/i],
@@ -348,6 +348,7 @@ export function scoreSeedancePrompt(prompt: string, brief: PromptScoreBrief): De
 }
 
 // ---- The post caption and hashtags
+// Based on the caption corpus (docs/research/reels/captions.jsonl, 125 captions, 111 Rwandan, and captions-patterns.md).
 
 export type CaptionScore = DesignScore & { /** The failed checks' reasons, in order: what the caption misses. */ missed: string[] };
 
@@ -361,79 +362,95 @@ const LOCAL_TAGS: Record<string, RegExp> = {
 const COUNTRY_CODES: [RegExp, string][] = [[/kenya/i, "KE"], [/uganda/i, "UG"], [/tanzania/i, "TZ"], [/rwanda/i, "RW"]];
 /** Broad reach tags: one or two are normal, a pile of them is the low-view habit. */
 const BROAD_TAGS = /^(fyp\w*|foryou\w*|viral\w*|trending\w*|explore\w*|reels\w*|tiktok\w*|instagood|xyzbca|capcut)$/;
-const PLACE_WORDS = /📍|\b(next to|opposite|near|behind|in front of|same building|located|plaza|house|room \d+|building|street|road|av(e|enue)?\.?|KK \d+|KG \d+|KN \d+|kigali|kicukiro|gasabo|nyarugenge|kimironko|remera|kacyiru|kiyovu|nyamirambo|gishushu|kibagabaga|kabeza|kanombe|gikondo|nyarutarama|musanze|rubavu|huye)\b/i;
+const PLACE_WORDS = /📍|\b(next to|opposite|near|behind|in front of|same building|located|location|loc|plaza|house|room \d+|building|street|st|road|av(e|enue)?\.?|KK \d+|KG \d+|KN \d+|kigali|kicukiro|gasabo|nyarugenge|kimironko|remera|kacyiru|kiyovu|nyamirambo|gishushu|kibagabaga|kabeza|kanombe|gikondo|nyarutarama|muhima|downtown|musanze|rubavu|huye)\b/i;
+const DELIVERY_WORDS = /\b(deliver(y|ies|ed)?|tuyikujyezaho|tubagezaho|tukugezaho|kugeza)\b/i;
 const NO_SUBSCRIBE = /\b(subscribe|like and follow|hit the bell|turn on notifications|abonne[zr]?)\b/i;
+/** Kinyarwanda words Rwandan sellers write in captions (captions-patterns.md, "Recurring words"). */
+const CAPTION_RW = /\b(duhamagare|hamagara|uhamagare|uduhamagare|twandikire|utwandikire|tuvugishe|igiciro|igurishwa|bigurishwa|iragurishwa|ntucikwe|gusa|ubuntu|tuguha|tuyikujyezaho|kiraganirwaho|abakiriya|barishimye|murakaza|murakazaneza|ibyangombwa|birahari|ushaka|cyangwa|nziza|inzu|ibibanza|iyi|izi|kandi|ariko|igihe|ese|ufite|waba|uburyo|amahirwe|muri|yawe|wawe|yose|ubu|aho|umwana|ubucuruzi|uramutse|kuri|mu|ku|ni|na)\b/gi;
+const MAX_CHARS: Record<Platform | "any", number> = { facebook: 600, tiktok: 300, instagram: 300, shorts: 100, any: 600 };
+
+/** Kinyarwanda in a caption: a sentence that reads as Kinyarwanda, or two of the sellers' own words (a mixed caption counts). */
+export function hasKinyarwanda(text: string): boolean {
+  const plain = text.replace(/#[\p{L}\p{N}_]+/gu, " ");
+  if (plain.split(/[.!?\n]+/).some((x) => looksKinyarwanda(x))) return true;
+  return new Set((plain.match(CAPTION_RW) ?? []).map((w) => w.toLowerCase())).size >= 2;
+}
 
 const tagsOf = (caption: string, hashtags: string[]) => [...new Set([...hashtags, ...(caption.match(/#[\p{L}\p{N}_]+/gu) ?? [])].map((t) => t.replace(/^#/, "").trim().toLowerCase()).filter(Boolean))];
-const phoneCount = (text: string, phone: string) => {
-  const key = phoneKey(phone);
-  if (key.length < 6) return 0;
-  return digits(text).split(key).length - 1;
-};
 
 /**
- * Grades a post caption and its hashtags against the caption formulas and the platform's habits from the research
- * (brain/data/captions.json): the first line, the way to order and the number, the price and the place, the hashtag
- * count and mix, the Kinyarwanda / English mix, the length, and the forbidden lines. Pure.
+ * Grades a post caption and its hashtags against the caption corpus and the platform's habits
+ * (brain/data/captions.json): the product and price up front, the way to order and the number, the price, the place,
+ * delivery when the owner delivers, the hashtag count and mix, Kinyarwanda for a Kinyarwanda business, the length, and
+ * the forbidden lines. Pure.
  */
 export function scoreCaption(caption: string, hashtags: string[], brief: ScoreBrief, options: ScoreOptions = {}): CaptionScore {
   const checks: Check[] = [];
   const add = (c: Omit<Check, "scene">) => checks.push({ ...c, scene: null });
   const text = (caption ?? "").trim();
   const platform = platformOf(options.platform ?? brief.platform);
+  const where = platform === "any" ? "TikTok" : platform === "shorts" ? "YouTube Shorts" : platform[0].toUpperCase() + platform.slice(1);
   const guide = BRAIN.captions.platforms.find((p) => p.platform === (platform === "any" ? "tiktok" : platform))!;
   const facts = briefText(brief);
   const phone = brief.business.phone?.trim() || "";
   const price = brief.product.price?.trim() || "";
   const shorts = platform === "shorts";
+  const body = text.replace(/#[\p{L}\p{N}_]+/gu, " ").trim();
 
-  add({ id: "caption-present", rule: "caption-complete", points: 10, ok: !!text, reason: text ? "There is a caption." : `There is no caption; write one (${guide.length})` });
+  add({ id: "caption-present", rule: "caption-complete", points: 10, ok: body.length > 0, reason: body ? "There is a caption." : text ? "The caption is hashtags only; write what is sold, the price and how to order." : "There is no caption; write one." });
 
-  // The first line names the product, the offer or the price (on Shorts, within the first 40 characters).
-  const head = shorts ? text.slice(0, 40) : (text.split("\n")[0] ?? "").slice(0, 120);
+  // The product, and the price or offer, in the first 60 characters (a Short's title: 40).
+  const head = text.slice(0, shorts ? 40 : 60).toLowerCase();
   const nameWords = brief.product.name.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3);
+  const named = nameWords.some((w) => head.includes(w));
   const offerWords = (brief.note ?? "").toLowerCase().split(/[^\p{L}\p{N}%]+/u).filter((w) => w.length >= 4);
-  const lead = head.toLowerCase();
-  const leads = nameWords.some((w) => lead.includes(w)) || (price !== "" && amounts(head).some((v) => amounts(price).includes(v))) || offerWords.some((w) => lead.includes(w)) || (shorts && /\d/.test(head));
-  add({ id: "first-line", rule: shorts ? "shorts-title" : "caption-complete", points: 10, ok: leads, reason: leads ? (shorts ? "The product or the promise is in the first 40 characters." : "The first line names the product, the offer or the price.") : shorts ? "Put the product, the promise or a number in the first 40 characters (what YouTube search shows)." : "Start with the product, the offer or the price, not a greeting or a slogan." });
+  const priced = (price !== "" && amounts(head).some((v) => amounts(price).includes(v))) || offerWords.some((w) => head.includes(w)) || (shorts && /\d/.test(head));
+  const wantsPrice = (price !== "" || offerWords.length > 0) && !shorts;
+  const leads = (named || (shorts && priced)) && (!wantsPrice || priced);
+  add({ id: "first-line", rule: shorts ? "shorts-title" : "caption-complete", points: 10, ok: leads, reason: leads ? `The product${wantsPrice ? " and the price or offer" : ""} come first.` : `Put the product${wantsPrice ? " and the price or offer" : ""} in the first ${shorts ? 40 : 60} characters ("Jumpsuit Diras kuri 18k gusa", "Commercial blender, 48,000 RWF").` });
 
-  // The way to order, and the number when the business has one.
+  // The way to order, and the number when the business has one (any written form: 0788218567, 0788 218 567, +250 788 218 567).
   const routed = CTA_VERB.test(text) || ROUTE.test(text);
-  add({ id: "caption-cta", rule: shorts ? "shorts-pointer" : "cta-route", points: 12, ok: routed, reason: routed ? "The caption says how to order." : "Say how to order: 'WhatsApp …', 'Call …', 'DM to order' or where to find you." });
+  add({ id: "caption-cta", rule: shorts ? "shorts-pointer" : "cta-route", points: 12, ok: routed, reason: routed ? "The caption says how to order." : `Say how to order: "Call/WhatsApp: ${phone || "…"}", "DM to order"${/kinyarwanda/i.test(brief.business.language ?? "") ? ', "Duhamagare cyangwa utwandikire kuri WhatsApp"' : ""}.` });
   if (phone) {
-    const n = phoneCount(text, phone);
-    add({ id: "caption-phone", rule: "caption-complete", points: 12, ok: n >= 1, reason: n >= 1 ? "The phone number is in the caption." : `Add the phone number (${phone}): most Rwandan sellers put it in the caption.` });
-    if (platform === "facebook") add({ id: "caption-phone-twice", rule: "caption-complete", points: 4, ok: n >= 2, reason: n >= 2 ? "The number is there twice." : "On Facebook, give the number twice (once near the top, once at the end)." });
+    const ok = hasPhone(text, phone);
+    add({ id: "caption-phone", rule: "caption-complete", points: 12, ok, reason: ok ? "The phone number is in the caption." : `Add the number: "Call/WhatsApp: ${phone}".` });
   }
   if (price) {
     const shown = amounts(text).some((v) => amounts(price).includes(v));
-    add({ id: "caption-price", rule: "caption-complete", points: platform === "facebook" ? 8 : 4, ok: shown, reason: shown ? "The price is in the caption." : `Add the price (${price}) in RWF.` });
+    add({ id: "caption-price", rule: "caption-complete", points: platform === "facebook" ? 8 : 4, ok: shown, reason: shown ? "The price is in the caption." : `Add the price (${price}).` });
   }
   if (PLACE_WORDS.test([brief.business.description, brief.note].filter(Boolean).join(" "))) {
     const placed = PLACE_WORDS.test(text);
-    add({ id: "caption-place", rule: "landmark", points: 6, ok: placed, reason: placed ? "The caption says where the business is." : "Add the area and a landmark ('next to …', 'opposite …'), the way people in Kigali find places." });
+    add({ id: "caption-place", rule: "landmark", points: 6, ok: placed, reason: placed ? "The caption says where the business is." : "Add a 📍 line with the area and a landmark ('next to …', 'opposite …')." });
+  }
+  if (DELIVERY_WORDS.test(facts)) {
+    const said = DELIVERY_WORDS.test(text);
+    add({ id: "caption-delivery", rule: "trust-line", points: 6, ok: said, reason: said ? "The delivery line is there." : "The business delivers: say it ('Free delivery in Kigali', 'Delivery available')." });
   }
 
-  // Hashtags: the platform's count, local first, few broad tags (#shorts is Shorts' own and does not count as broad).
+  // Hashtags: the platform's count (Facebook 0 to 3, TikTok and Instagram 4 to 6, Shorts 1 to 3); when there are any, a
+  // local one and at most two broad ones (#shorts is Shorts' own tag, not a broad one).
   const tags = tagsOf(text, hashtags ?? []);
   const [lo, hi] = guide.hashtags.count;
-  add({ id: "hashtag-count", rule: "local-hashtags", points: 8, ok: tags.length >= lo && tags.length <= hi, reason: tags.length >= lo && tags.length <= hi ? `${tags.length} hashtags (${lo} to ${hi} on ${platform === "any" ? "TikTok" : platform}).` : `${tags.length} hashtags; ${platform === "any" ? "TikTok" : platform} posts that work use ${lo} to ${hi}.` });
-  const country = COUNTRY_CODES.find(([re]) => re.test(brief.business.description ?? "") || re.test(brief.business.country ?? ""))?.[1] ?? "RW";
-  const local = tags.filter((t) => LOCAL_TAGS[country].test(t));
-  const broad = tags.filter((t) => BROAD_TAGS.test(t));
-  const mixed = local.length >= 1 && broad.length <= 2;
-  add({ id: "hashtag-mix", rule: "local-hashtags", points: 8, ok: mixed, reason: mixed ? `Local tags (${local.map((t) => `#${t}`).join(" ")}) with ${broad.length} broad tag${broad.length === 1 ? "" : "s"}.` : !local.length ? `Add a local tag (${guide.hashtags.local.slice(0, 3).join(" ")}).` : `${broad.length} broad tags (${broad.map((t) => `#${t}`).join(" ")}); keep at most 2 and lead with the city.` });
-
-  // Kinyarwanda businesses: the caption speaks Kinyarwanda (prices, models and sizes may stay in English).
-  if (/kinyarwanda|^rw$|^kin$/i.test((brief.business.language ?? "").trim())) {
-    // A mixed caption counts: one sentence in Kinyarwanda is enough (product names and prices stay as they are).
-    const rw = text.replace(/#[\p{L}\p{N}_]+/gu, " ").split(/[.!?\n]+/).some((x) => looksKinyarwanda(x));
-    add({ id: "caption-language", rule: "language-mix", points: 8, ok: rw, reason: rw ? "The caption is in Kinyarwanda (with English for the product and the price)." : "This business writes in Kinyarwanda: write the invitation and the offer in Kinyarwanda, keep the model and the price as they are." });
+  add({ id: "hashtag-count", rule: "local-hashtags", points: 8, ok: tags.length >= lo && tags.length <= hi, reason: tags.length >= lo && tags.length <= hi ? `${tags.length} hashtags (${lo} to ${hi} on ${where}).` : `${tags.length} hashtags; captions that work on ${where} use ${lo} to ${hi}.` });
+  if (tags.length) {
+    const country = COUNTRY_CODES.find(([re]) => re.test(brief.business.description ?? "") || re.test(brief.business.country ?? ""))?.[1] ?? "RW";
+    const local = tags.filter((t) => LOCAL_TAGS[country].test(t));
+    const broad = tags.filter((t) => BROAD_TAGS.test(t));
+    const mixed = local.length >= 1 && broad.length <= 2;
+    add({ id: "hashtag-mix", rule: "local-hashtags", points: 8, ok: mixed, reason: mixed ? `Local tags (${local.map((t) => `#${t}`).join(" ")}) with ${broad.length} broad tag${broad.length === 1 ? "" : "s"}.` : !local.length ? `Add a local tag (${guide.hashtags.local.slice(0, 3).join(" ")}).` : `${broad.length} broad tags (${broad.map((t) => `#${t}`).join(" ")}); keep at most 2 and lead with the city.` });
   }
 
-  // Length: a Short's title under 100 characters, other captions under 600.
-  const max = shorts ? 100 : 600;
-  add({ id: "caption-length", rule: shorts ? "shorts-title" : null, points: 4, ok: text.length <= max, reason: text.length <= max ? `${text.length} characters.` : `${text.length} characters; keep it under ${max}${shorts ? " (the Short's title)" : ""}.` });
+  // Kinyarwanda businesses: Kinyarwanda in the caption (mixed is fine; models, sizes and RWF stay as they are).
+  if (/kinyarwanda|^rw$|^kin$/i.test((brief.business.language ?? "").trim())) {
+    const rw = hasKinyarwanda(text);
+    add({ id: "caption-language", rule: "language-mix", points: 8, ok: rw, reason: rw ? "The caption speaks Kinyarwanda." : "This business writes in Kinyarwanda: write the offer and the invitation in Kinyarwanda ('kuri … gusa', 'Duhamagare'), keep the model and the price as they are." });
+  }
+
+  // Length: a Short's title under 100 characters, TikTok and Instagram one or two lines, Facebook under 600.
+  const max = MAX_CHARS[platform];
+  add({ id: "caption-length", rule: shorts ? "shorts-title" : "caption-layout", points: 4, ok: text.length <= max, reason: text.length <= max ? `${text.length} characters.` : `${text.length} characters; keep it under ${max} on ${where}.` });
 
   // Forbidden lines and facts the brief does not give.
   const banned = NEVER.map(([rule, re]) => ({ rule, m: text.match(re) })).filter((x) => x.m);
@@ -443,7 +460,8 @@ export function scoreCaption(caption: string, hashtags: string[], brief: ScoreBr
   if (sub) banned.push({ rule: "no-subscribe", m: sub });
   add({ id: "caption-do-not-copy", rule: banned[0]?.rule ?? "no-made-up-superlative", points: 10, ok: !banned.length, reason: banned.length ? `"${banned[0].m![0]}" breaks the do-not-copy list (${banned[0].rule}).` : "No forbidden lines." });
   const known = new Set(amounts(facts));
-  const invented = [...moneyAmounts(text).filter((v) => !known.has(v)).map(String), ...[text.match(URGENCY)?.[0], text.match(CLAIMS)?.[0]].filter((m): m is string => !!m && !facts.toLowerCase().includes(m.toLowerCase()))];
+  const madeIn = tags.includes("madeinrwanda") && !/made in rwanda/i.test(facts) ? ["#MadeInRwanda (only for goods made in Rwanda)"] : [];
+  const invented = [...moneyAmounts(text).filter((v) => !known.has(v)).map(String), ...[text.match(URGENCY)?.[0], text.match(CLAIMS)?.[0]].filter((m): m is string => !!m && !facts.toLowerCase().includes(m.toLowerCase())), ...madeIn];
   add({ id: "caption-facts", rule: "no-invented-facts", points: 10, ok: !invented.length, reason: invented.length ? `"${invented[0]}" is not in the brief.` : "Every number and promise comes from the brief." });
 
   const r = result(checks);
