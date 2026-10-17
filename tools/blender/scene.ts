@@ -54,6 +54,12 @@ export interface BlenderProduct extends BlenderMotion {
   position: Vec3;
   radius: number;
   frame: string;
+  /** The card's width / height (the photo is cropped to it from its centre); null: the photo's own shape. */
+  crop: number | null;
+  /** More photos of the product (1-based numbers, at most 2), shown by flipping the card; not for a cut-out. */
+  more: number[];
+  /** Their files (from the server's photo list). */
+  gallery: string[];
 }
 
 export interface BlenderText extends BlenderMotion {
@@ -272,9 +278,18 @@ export function normalizeBlenderScene(input: unknown, opts: NormalizeOptions = {
     } else if (p.image !== undefined || p.cutout !== undefined) {
       warnings.push("Product paths are not allowed here: use \"photo\": 1 for the first photo.");
     }
+    // More photos for the card's flips: numbers into the server's list (or paths in hand-written scenes).
+    const more = (Array.isArray(p.more) ? p.more : [])
+      .map((n) => Math.round(num(n, 0, 0, 99)))
+      .filter((n, i, all) => n >= 1 && n !== photoNumber && !!opts.photos?.[n - 1] && all.indexOf(n) === i)
+      .slice(0, 2);
+    const gallery = more.length ? more.map((n) => opts.photos![n - 1].image) : opts.allowPaths && Array.isArray(p.gallery) ? p.gallery.filter((g): g is string => typeof g === "string").slice(0, 2) : [];
     if (image || cutout) {
       scene.product = {
         photo: photoNumber,
+        crop: p.crop === undefined || p.crop === null ? null : num(p.crop, 1, 0.5, 2),
+        more,
+        gallery,
         image,
         cutout,
         shape: p.shape === "box" ? "box" : "card",
@@ -446,7 +461,8 @@ export const BLENDER_SCENE_FORMAT = `A Blender 3D scene, one JSON object. Units:
   "camera": { "move": "orbitRight"|"orbitLeft"|"dollyIn"|"dollyOut"|"craneUp"|"craneDown"|"pushPull"|"static", "intensity": 0 to 1, "ease": "inOut"|"out"|"in"|"linear"|"back",
     "target": [x, y, z] (usually [0, 0, 1.6 to 2.4]), "distance": 7 to 12, "height": 1 to 3, "lens": 35 to 85, "fstop": 0 (sharp) or 2 to 8 (blurred background) },
   "product": { "photo": 1-based photo number, "shape": "card"|"box" (when there is no cutout), "height": 2 to 3, "position": [x, y, z] (bottom centre; on a plinth z = its height),
-    "enter": "settle"|"rise"|"drop"|"pop"|"scale"|"spinIn"|"none", "enterAt": seconds, "enterFor": seconds, "idle": "swing"|"float"|"turntable"|"none", "angle": swing degrees (15 to 35), "spin": swings over the clip (0.5 to 1) } or null,
+    "enter": "settle"|"rise"|"drop"|"pop"|"scale"|"spinIn"|"none", "enterAt": seconds, "enterFor": seconds, "idle": "swing"|"float"|"turntable"|"none", "angle": swing degrees (15 to 35), "spin": swings over the clip (0.5 to 1),
+    "crop": null or the card's width / height (1.25 for a wide subject in 9:16), "more": [other photo numbers, at most 2: the card flips to them] } or null,
   "texts": up to 6 of { "text": short words (at most 60 characters, only facts from the brief), "font": "poppins"|"inter"|"anton"|"nunito"|"space-grotesk"|"playfair"|"dm-serif",
     "size": font size 0.5 to 2 (capitals are about 0.65 x size tall), "position": [x, y, z] (centre), "depth": extrusion 0 to 1, "bevel": 0 to 1, "material": "metal"|"chrome"|"gloss"|"matte"|"glass"|"neon", "color": hex,
     "enter": "settle"|"spinIn"|"rise"|"drop"|"pop"|"scale"|"none" (settle is already visible on the first frame), "enterAt": seconds, "enterFor": seconds, "idle": "float"|"none", "face": 0 to 1 (how much it turns to the camera),

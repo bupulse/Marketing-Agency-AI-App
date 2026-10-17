@@ -281,6 +281,37 @@ and `showroom-turntable` (studio), and the Kibagabaga house (daylight). Claude o
   - Titles are visibly sharper (`r11/title-540-vs-720.jpg`).
   - On a quiet Mac a 6 s clip takes about 2 minutes at 540p and about 3.5 minutes at 720p.
 
+**Loop 4** (17 October 2026):
+- **Photo cards fill the frame.** `fillFrame` grows a card (not a cut-out) until it fills at least 40 % of the
+  frame's height at the widest moment of the camera move. The title moves up with it and the camera steps back if it
+  must.
+- **Wide subjects get a wide card.** A house, a room or a landscape photo gets a wide card, cropped from the photo's
+  centre (`crop`, the card's width / height): 1.15 in a tall frame, 1.6 in square and wide frames, with an orbit
+  instead of a dolly.
+  - Why not 16:10 in 9:16: a 16:10 card as wide as a 9:16 frame is only 35 % of its height. 40 % needs a card no
+    wider than about 1.2 : 1 once the plinth and margins are counted.
+- **More photos.** With 2 or 3 photos, the card flips half a turn to the next photo, at the middle or at the thirds
+  (`product.more`, resolved to `gallery`). Each flip comes with a small camera push.
+  - Front: photo 1, then photo 3, switched while the back faces the camera. Back: photo 2.
+  - Every photo is cropped to the card's shape.
+  - A cut-out stays single.
+- **The phone bar says what it is for:**
+  - "WhatsApp +250 ..." when the facts mention WhatsApp;
+  - otherwise "Call +250 ..." ("Hamagara" in Kinyarwanda, "Appelez le" in French, "Piga simu" in Swahili);
+  - a business without a phone keeps a line such as "Find us at Kibagabaga".
+  - The plinth is at least as wide as the bar.
+- **Lines inside the daylight accent wall.** A line over the wall shrinks to the wall's width as seen from the
+  text's depth, minus an orbit's slide and a margin. Below 0.4 it wraps to two lines (`wrapInTwo`; the render keeps
+  the line break).
+- **The last 0.8 s hold still.** The camera finishes its move 0.8 s before the end, and the flips are over by then.
+  The price and the bar have no idle motion.
+- **Tested:**
+  - Final contact sheet: `video-lab/data/blender/design/r13/contact-sheet.jpg`, at 0, 45 %, 80 % and 98 % of each
+    clip.
+  - The house flips through its 3 photos (garden, living room, pool).
+  - Design: 19 to 23 s per clip, $0.091 to $0.102 on the API.
+  - Render (540p final, 6 s): house 198 s, showroom 252 s, neon 274 s, dress 289 s, at load average 25 to 50.
+
 ## Claude designs the scene (`lib/video-engine/blender-design.ts`)
 
 `designBlenderScene(brief, send, model?, { photos, quality? })` takes the motion engine's `DesignBrief` (business,

@@ -1,6 +1,6 @@
 // Premium 3D design (docs/BLENDER.md): Claude writes a Blender scene from the brief. Claude is mocked here.
 import { describe, expect, it } from "vitest";
-import { blenderBriefText, blenderSystemPrompt, designBlenderScene, fitLayout, fixSpelling, lookForTemplate, stage, textHeight, textWidth } from "@/lib/video-engine/blender-design";
+import { blenderBriefText, blenderSystemPrompt, designBlenderScene, fillFrame, fitLayout, fixSpelling, lookForTemplate, phoneLabel, stage, textHeight, textWidth, wrapInTwo } from "@/lib/video-engine/blender-design";
 import { DesignError, type ClaudeTransport, type DesignBrief } from "@/lib/video-engine/designer";
 import { normalizeBlenderScene } from "@/tools/blender/scene";
 
@@ -116,7 +116,7 @@ describe("designBlenderScene", () => {
   it("writes the phone number the way the brief does", async () => {
     const { send } = mock(answer({ ...good, texts: [...good.texts, { text: "+250788300400", size: 0.5, position: [0, -0.3, 5] }] }));
     const d = await designBlenderScene(brief, send);
-    expect(d.scene.texts.map((t) => t.text)).toContain("+250 788 300 400");
+    expect(d.scene.texts.map((t) => t.text)).toContain("Call +250 788 300 400");
   });
 
   it("holds the end still: entrances finish by 60 % of the clip", async () => {
@@ -229,7 +229,8 @@ describe("premium staging", () => {
     const plinth = scene.props.find((p) => p.kind === "plinth")!;
     expect(plinth.material).toBe("gloss");
     expect(plinth.height).toBeGreaterThanOrEqual(0.95);
-    expect(plinth.size).toBeCloseTo(3.2);
+    // As wide as the product + 0.6, or the phone bar + 0.4 when that is wider.
+    expect(plinth.size).toBeGreaterThanOrEqual(3.2);
     expect(scene.product?.position[2]).toBe(plinth.height);
     expect(scene.product?.idle).toBe("swing");
     expect(scene.camera).toMatchObject({ move: "dollyIn", intensity: 0.35 });
@@ -250,7 +251,7 @@ describe("premium staging", () => {
     // Both on the front of the plinth: the bar at the bottom, the price above it, both under the product.
     expect(price.position[1]).toBeLessThanOrEqual(-plinth.size / 2 - 0.12 + 1e-9);
     expect(bar.position[1]).toBeLessThanOrEqual(-plinth.size / 2 - 0.12 + 1e-9);
-    expect(bar.text).toBe("+250 788 300 400");
+    expect(bar.text).toBe("Call +250 788 300 400");
     expect([bar.face, price.face]).toEqual([0, 0]);
     expect(price.position[2] - textHeight(price) / 2).toBeGreaterThan(bar.position[2]);
     expect(price.position[2] + textHeight(price) / 2).toBeLessThanOrEqual(scene.product!.position[2] + 1e-9);
@@ -289,5 +290,68 @@ describe("premium staging", () => {
     expect(lookForTemplate("showroom-turntable", "Samsung Galaxy A56")).toBe("studio");
     expect(lookForTemplate("showroom-turntable", "3-bedroom house with garden, Kibagabaga")).toBe("daylight");
     expect(blenderBriefText(brief)).toMatch(/Recommended look for this template: "neon"/);
+  });
+});
+
+describe("loop 4: photo cards, labels, the accent wall", () => {
+  const house: DesignBrief = { ...brief, product: { name: "3-bedroom house with garden, Kibagabaga", price: "120,000,000 RWF" }, photos: [brief.photos[0], { ...brief.photos[0], base64: "C" }, { ...brief.photos[0], base64: "D" }] };
+  const photos = [{ image: "/p/1.jpg" }, { image: "/p/2.jpg" }, { image: "/p/3.jpg" }];
+  const scene = () =>
+    normalizeBlenderScene(
+      {
+        background: { kind: "daylight", colors: ["#f4f1ec", "#2f6b4f"] },
+        camera: { move: "dollyIn", intensity: 0.5, target: [0, 0, 2.4], distance: 10.5 },
+        product: { photo: 1, height: 2.4, position: [0, 0, 0.95] },
+        texts: [
+          { text: "Kibagabaga", size: 0.9, position: [0, -0.3, 4.35] },
+          { text: "Three bedrooms with a private garden", weight: "regular", size: 0.5, position: [0, -0.3, 5.2] },
+          { text: "120,000,000 RWF", size: 0.55, position: [0, -1.5, 0.6] },
+        ],
+      },
+      { photos },
+    ).scene;
+
+  it("shows every photo on a wide card that fills 40 % of the frame", () => {
+    const s1 = scene();
+    const warnings: string[] = [];
+    const aspect = stage(s1, house, 1, warnings, photos);
+    fitLayout(s1, aspect, warnings);
+    fillFrame(s1, aspect, warnings);
+    const p = s1.product!;
+    expect(p.more).toEqual([2, 3]);
+    expect(p.gallery).toEqual(["/p/2.jpg", "/p/3.jpg"]);
+    expect(p.crop).toBe(1.15);
+    expect(aspect).toBe(1.15);
+    expect(s1.camera.move).toBe("orbitRight");
+    const widest = 1;
+    expect(p.height / (0.72 * s1.camera.distance * widest)).toBeGreaterThanOrEqual(0.399);
+    // The title stays clear above the bigger card.
+    const title = s1.texts.find((t) => t.text === "Kibagabaga")!;
+    expect(title.position[2] - textHeight(title) / 2).toBeGreaterThanOrEqual(p.position[2] + p.height - 1e-9);
+  });
+
+  it("keeps a cut-out single", () => {
+    const s1 = scene();
+    s1.product!.cutout = "/p/1-cut.png";
+    stage(s1, house, 0.55, [], photos);
+    expect(s1.product!.more).toEqual([]);
+    expect(s1.product!.crop).toBeNull();
+  });
+
+  it("keeps lines inside the daylight accent wall: smaller, then on two lines", () => {
+    const s1 = scene();
+    stage(s1, house, 1, [], photos);
+    const line = s1.texts.find((t) => t.text.startsWith("Three"))!;
+    expect(line.text).toContain("\n");
+    expect(line.size).toBeGreaterThanOrEqual(0.4);
+    // Narrower than the wall seen from the text's depth (about 5.5) minus the dolly-free margin.
+    expect(textWidth(line)).toBeLessThanOrEqual(5.6);
+    expect(wrapInTwo("Byakorewe mu Rwanda")).toBe("Byakorewe\nmu Rwanda");
+  });
+
+  it("labels the phone number with what it is for", () => {
+    expect(phoneLabel(brief)).toBe("Call");
+    expect(phoneLabel({ ...brief, product: { ...brief.product, usps: ["Order on WhatsApp"] } })).toBe("WhatsApp");
+    expect(phoneLabel({ ...brief, business: { ...brief.business, language: "rw" } })).toBe("Hamagara");
   });
 });

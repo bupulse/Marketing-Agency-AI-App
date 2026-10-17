@@ -199,6 +199,10 @@ def normalize(raw):
             "position": vec3(p.get("position"), (0, 0, 0)),
             "radius": num(p.get("radius"), 0.08, 0, 0.5),
             "frame": p.get("frame") if isinstance(p.get("frame"), str) else "#f4f4f4",
+            # The card's width / height (the photo is cropped to it from its centre); None: the photo's own shape.
+            "crop": num(p.get("crop"), 1, 0.5, 2) if p.get("crop") is not None else None,
+            # More photos of the product, shown by flipping the card (not for a cut-out).
+            "gallery": [g for g in (p.get("gallery") or []) if isinstance(g, str)][:2],
             **motion(p, "rise", "float"),
         }
     else:
@@ -326,6 +330,55 @@ def surface(kind, color, name):
     return m
 
 
+def cropped_texture(m, path, card_aspect):
+    """An image texture cropped from its centre to the card's shape (width / height), so any photo fills the card."""
+    nodes, links = m.node_tree.nodes, m.node_tree.links
+    tex = nodes.new("ShaderNodeTexImage")
+    tex.image = bpy.data.images.load(path, check_existing=True)
+    tex.interpolation = "Cubic"
+    tex.extension = "EXTEND"
+    iw, ih = tex.image.size
+    ia = iw / ih if ih else 1
+    if card_aspect and abs(ia - card_aspect) > 0.01:
+        coord = nodes.new("ShaderNodeTexCoord")
+        mapping = nodes.new("ShaderNodeMapping")
+        if ia > card_aspect:  # wider photo: keep the middle columns
+            k = card_aspect / ia
+            mapping.inputs["Scale"].default_value = (k, 1, 1)
+            mapping.inputs["Location"].default_value = ((1 - k) / 2, 0, 0)
+        else:  # taller photo: keep the middle rows
+            k = ia / card_aspect
+            mapping.inputs["Scale"].default_value = (1, k, 1)
+            mapping.inputs["Location"].default_value = (0, (1 - k) / 2, 0)
+        links.new(coord.outputs["UV"], mapping.inputs["Vector"])
+        links.new(mapping.outputs["Vector"], tex.inputs["Vector"])
+    return tex
+
+
+def card_material(name, paths, card_aspect, switch_frame=None):
+    """The photo side of a card: one photo, or two that switch at `switch_frame` (while this side faces away)."""
+    m, b = principled(name, "#ffffff", roughness=0.4, coat=0.12)
+    nodes, links = m.node_tree.nodes, m.node_tree.links
+    texs = [cropped_texture(m, pth, card_aspect) for pth in paths[:2]]
+    colour = texs[0].outputs["Color"]
+    if len(texs) == 2 and switch_frame:
+        mix = nodes.new("ShaderNodeMix")
+        mix.name = "Switch"
+        mix.data_type = "RGBA"
+        links.new(texs[0].outputs["Color"], mix.inputs["A"])
+        links.new(texs[1].outputs["Color"], mix.inputs["B"])
+        fac = mix.inputs["Factor"]
+        fac.default_value = 0.0
+        fac.keyframe_insert("default_value", frame=switch_frame - 1)
+        fac.default_value = 1.0
+        fac.keyframe_insert("default_value", frame=switch_frame)
+        colour = mix.outputs["Result"]
+    links.new(colour, b.inputs["Base Color"])
+    links.new(colour, b.inputs["Emission Color"])
+    b.inputs["Emission Strength"].default_value = 0.18
+    return m, texs[0].image
+
+
 def photo_material(name, path, cutout):
     # A thin clear coat: the moving sweep light glides over it; the studio sky's softboxes stay faint (coat 0.12).
     m, b = principled(name, "#ffffff", roughness=0.4, coat=0.0 if cutout else 0.12)
@@ -365,7 +418,7 @@ def rounded_rect(w, h, r, seg=8):
     return pts
 
 
-def slab(name, w, h, thick, radius, front_mat, side_mat):
+def slab(name, w, h, thick, radius, front_mat, side_mat, back_mat=None):
     """A rounded card (or box): the photo on the front and back faces (UV 0..1), the side material around."""
     bm = bmesh.new()
     uv = bm.loops.layers.uv.new("UVMap")
@@ -375,7 +428,7 @@ def slab(name, w, h, thick, radius, front_mat, side_mat):
     f_front = bm.faces.new(front)
     f_back = bm.faces.new(back)
     for f, mirror in ((f_front, False), (f_back, True)):
-        f.material_index = 0
+        f.material_index = 2 if (mirror and back_mat) else 0
         for loop in f.loops:
             x, _, z = loop.vert.co
             u = (x + w / 2) / w
@@ -392,6 +445,8 @@ def slab(name, w, h, thick, radius, front_mat, side_mat):
     bm.free()
     me.materials.append(front_mat)
     me.materials.append(side_mat)
+    if back_mat:
+        me.materials.append(back_mat)
     obj = link(bpy.data.objects.new(name, me))
     bev = obj.modifiers.new("edge", "BEVEL")
     bev.width = min(0.04, thick * 0.3)
@@ -724,6 +779,9 @@ def motion_at(m, t, duration, base_loc, base_rot, phase=0.0):
             sc *= ease("out", e)
         elif m["enter"] == "pop":
             sc *= ease("back", e)
+    # Card flips to the next photo: half a turn each, eased.
+    for start, length in m.get("flips", []):
+        rot.z += math.pi * ease("inOut", (t - start) / length)
     idle = m["idle"]
     tt = t + phase
     if idle == "float":
@@ -796,7 +854,9 @@ def camera_at(c, u):
     return pos, target, lens
 
 
-def setup_camera(c, frames, fps):
+def setup_camera(c, frames, fps, duration=None, bumps=()):
+    """The camera move, finished 0.8 s before the end (the last moments hold still), with a small push-in on each
+    photo change (`bumps`: times in seconds)."""
     cam = bpy.data.cameras.new("Camera")
     cam.sensor_fit = "AUTO"
     # Depth of field only when asked (fstop > 0): it costs about a fifth of the render time.
@@ -805,9 +865,14 @@ def setup_camera(c, frames, fps):
     obj = link(bpy.data.objects.new("Camera", cam))
     bpy.context.scene.camera = obj
     locs, rots, lenses, focus = [], [], [], []
+    hold = max(1.0, (duration or frames / fps) - 0.8)
     for f in range(frames):
-        u = f / max(1, frames - 1)
+        t = f / fps
+        u = clamp(t / hold, 0, 1)
         pos, tgt, lens = camera_at(c, u)
+        push = sum(math.sin(math.pi * clamp((t - (b - 0.3)) / 1.0, 0, 1)) for b in bumps)
+        if push:
+            pos = tgt + (pos - tgt) * (1 - 0.06 * push)
         obj.location = pos
         look_at(obj, tgt)
         locs.append(tuple(pos))
@@ -827,22 +892,42 @@ def setup_camera(c, frames, fps):
 # ---------------------------------------------------------------- objects
 
 
-def add_product(p, base_dir):
+def flip_times(n, duration):
+    """When the card flips to its next photo: at the middle for 2 photos, at the thirds for 3 (start, length)."""
+    return [(duration * k / n - 0.3, 0.6) for k in range(1, n)]
+
+
+def add_product(p, base_dir, duration, fps):
     cutout = bool(p["cutout"]) and os.path.isfile(full_path(p["cutout"], base_dir))
     if p["cutout"] and not cutout:
         print(f"BLENDER_WARN cutout not found, showing the photo on a card: {p['cutout']}", flush=True)
     path = resolve(p["cutout"] if cutout else p["image"], base_dir)
-    mat, img = photo_material("Product", path, cutout)
-    iw, ih = img.size
-    aspect = iw / ih if ih else 1
-    h = p["height"]
-    w = h * aspect
+    p["flips"] = []
     if cutout:
+        mat, img = photo_material("Product", path, cutout)
+        iw, ih = img.size
+        aspect = iw / ih if ih else 1
+        h = p["height"]
+        w = h * aspect
         obj = cutout_stack(w, h, mat, path)
     else:
+        gallery = [path] + [resolve(g, base_dir) for g in p["gallery"]]
+        probe = bpy.data.images.load(path, check_existing=True)
+        aspect = p["crop"] or (probe.size[0] / probe.size[1] if probe.size[1] else 1)
+        h = p["height"]
+        w = h * aspect
+        p["flips"] = flip_times(len(gallery), duration)
+        # Front: photo 1, then photo 3 (switched while the back faces the camera); back: photo 2.
+        switch = None
+        if len(gallery) == 3:
+            mid = (p["flips"][0][0] + p["flips"][0][1] + p["flips"][1][0]) / 2
+            switch = 1 + round(mid * fps)
+        front = [gallery[0], gallery[2]] if len(gallery) == 3 else [gallery[0]]
+        mat, _ = card_material("Product", front, aspect, switch)
+        back = card_material("ProductBack", [gallery[1]], aspect)[0] if len(gallery) >= 2 else None
         thick = 0.14 if p["shape"] == "card" else w * 0.45
         side = surface("gloss", p["frame"], "ProductFrame")
-        obj = slab("Product", w, h, thick, p["radius"], mat, side)
+        obj = slab("Product", w, h, thick, p["radius"], mat, side, back)
     obj.location = p["position"]
     return obj, (w, h)
 
@@ -1097,10 +1182,12 @@ def build(sc, base_dir, fonts_dir):
     # No planar light probe: in Blender 5.2 it hid the objects' reflections on the floor; screen tracing shows them.
     setup_lights(bg, sc["camera"]["target"])
     setup_set(bg, sc["camera"]["target"], sc["duration"], fps, frames)
-    cam_path = setup_camera(sc["camera"], frames, fps)
+    n_photos = 1 + len(sc["product"]["gallery"]) if sc["product"] and not sc["product"]["cutout"] else 1
+    bumps = [start + length / 2 for start, length in flip_times(n_photos, sc["duration"])]
+    cam_path = setup_camera(sc["camera"], frames, fps, sc["duration"], bumps)
 
     if sc["product"]:
-        obj, _ = add_product(sc["product"], base_dir)
+        obj, _ = add_product(sc["product"], base_dir, sc["duration"], fps)
         animate(obj, sc["product"], sc["duration"], fps, frames)
     for i, t in enumerate(sc["texts"]):
         animate(add_text(t, i, fonts_dir), t, sc["duration"], fps, frames, phase=i * 0.7, cam_path=cam_path, face=t["face"])
