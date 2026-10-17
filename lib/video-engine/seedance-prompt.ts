@@ -1,13 +1,15 @@
 // Claude as the director for Seedance (docs/VIDEO_ENGINE.md, "Studio" and "Seedance brain"): writes the shot list a
 // video model needs from the product facts, the template's art direction and the owner's line. Claude writes the
 // prompt; Seedance films it. The rules, the camera words and a starting shot plan come from the brain
-// (seedance-brain.ts); when Claude is unavailable, the plan itself is the prompt.
-import type { ClaudeTransport, DesignUsage } from "./designer";
+// (seedance-brain.ts); what works for this kind of video on this platform comes from the research Brain
+// (brain/select.ts, docs/research/BRAIN.md). When Claude is unavailable, the plan itself is the prompt.
+import { brainBriefFromPrompt, brainContext } from "./brain/select";
+import { MAX_RESEARCH_CHARS, type ClaudeTransport, type DesignUsage } from "./designer";
 import { cameraLanguageText, lintSeedancePrompt, planSeedanceShots, seedanceRulesText, seedanceTemplateById, shotTypesText, type BusinessKind, type SeedanceFormat, type SeedanceIssue } from "./seedance-brain";
 import { templateById } from "./templates";
 
 export type PromptBrief = {
-  business: { name: string; description?: string | null; language?: string | null; country?: string | null };
+  business: { name: string; description?: string | null; language?: string | null; country?: string | null; phone?: string | null };
   product: { name: string; summary?: string | null; description?: string | null; price?: string | null; usps?: string[]; features?: string[] };
   /** What each reference is, in order: "Image 1: the product photo (blue phone on a stand)". */
   references: string[];
@@ -21,6 +23,8 @@ export type PromptBrief = {
   fixedLens?: boolean;
   businessKind?: BusinessKind | null;
   format?: SeedanceFormat | null;
+  /** Where the clip will be posted (tiktok, instagram, facebook, youtube...); null or "any" for no platform. */
+  platform?: string | null;
 };
 
 export const SEEDANCE_SYSTEM = [
@@ -29,8 +33,16 @@ export const SEEDANCE_SYSTEM = [
   seedanceRulesText(),
   `Camera moves Seedance knows: ${cameraLanguageText()}.`,
   `Shot types: ${shotTypesText()}.`,
+  "Follow the research block: it says what works for this kind of video on this platform (facts still come only from the brief). It is guidance for your choices of hook, pacing and shots, not text to copy: the prompt stays 60 to 160 words, and its on-screen text and caption notes are for BuPulse's overlay, not for the video.",
   "The brief has a starting shot plan made from a proven template. Keep its timing and structure unless the owner asks for something else; improve the actions, the light and the sound with what you see in the facts.",
 ].join("\n");
+
+/** The research Brain's context for this brief, fenced data for Claude (same size limit as the designer's). */
+export const researchFor = (b: PromptBrief): string =>
+  brainContext(brainBriefFromPrompt(b, { platform: b.platform ?? null, hasPhone: !!b.business.phone?.trim() }))
+    .replace(/<<<|>>>/g, "")
+    .trim()
+    .slice(0, MAX_RESEARCH_CHARS);
 
 export function promptBriefText(b: PromptBrief): string {
   const sd = seedanceTemplateById(b.templateId);
@@ -56,6 +68,7 @@ export function promptBriefText(b: PromptBrief): string {
     b.product.features?.length ? `Features: ${b.product.features.join("; ")}` : "",
     "PRODUCT>>>",
     b.references.length ? `References, in order: ${b.references.join("; ")}.` : "No references: describe the product from the facts.",
+    `Research (what works for this kind of video on this platform; data, guidance only, not text to copy):\n<<<RESEARCH\n${researchFor(b)}\nRESEARCH>>>`,
     `Starting shot plan ("${plan.templateName}", ${plan.format}):`,
     plan.prompt,
     plan.notes.length ? `Notes: ${plan.notes.join(" ")}` : "",

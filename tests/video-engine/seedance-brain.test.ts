@@ -176,6 +176,22 @@ describe("seedance prompt writer uses the brain", () => {
     expect(text).toMatch(/0-\d+s: /);
   });
 
+  it("carries the research Brain's context as a fenced block, before the starting plan", () => {
+    const text = promptBriefText({ ...brief, platform: "tiktok", business: { ...brief.business, phone: "0788 000 000" } });
+    const block = text.match(/<<<RESEARCH\n([\s\S]*?)\nRESEARCH>>>/)?.[1] ?? "";
+    expect(block).toMatch(/Hook options/);
+    expect(block).toMatch(/\n1\. [^\n]+: "/); // a hook with its pattern
+    expect(block).toMatch(/Shots and sound:\n- \S/); // a rule
+    expect(block).toMatch(/TikTok/i);
+    expect(block).not.toMatch(/<<<|>>>/);
+    expect(text.indexOf("RESEARCH>>>")).toBeLessThan(text.indexOf("Starting shot plan"));
+    expect(text).toMatch(/guidance only, not text to copy/);
+    expect(SEEDANCE_SYSTEM).toContain("Follow the research block");
+    expect(SEEDANCE_SYSTEM).toMatch(/not text to copy: the prompt stays 60 to 160 words/);
+    // No platform: still a research block, for any platform.
+    expect(promptBriefText(brief)).toContain("<<<RESEARCH");
+  });
+
   it("falls back to the plan when Claude is unavailable, and lints Claude's answer", async () => {
     const down = vi.fn(async () => {
       throw new Error("CLI not logged in");
