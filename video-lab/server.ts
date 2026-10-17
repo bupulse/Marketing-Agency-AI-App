@@ -13,7 +13,8 @@ import { CAMERA_MOVES, GRADES, QUALITIES, RATIOS, isRatio, SPEC_LIMITS, totalMs,
 import { validateSpec } from "@/lib/video-engine/validate";
 import { sampleSpec } from "@/lib/video-engine/sample";
 import { closeDb, getBusiness, loadSavedKeys, listBusinesses, listProducts, musicBytes, musicFor, photoJpeg, saveUpload, uploadExists, uploadNote } from "./data-source";
-import { INFLUENCERS, SHOT_ACTIONS, listInfluencers, makePortrait, makeShot, portraitBytes } from "./influencers";
+import { IMAGE_RATIOS, INFLUENCERS, SHOT_ACTIONS, addImage, generateImage, listImages, listInfluencers, makePortrait, makeShot, portraitBytes } from "./influencers";
+import MODELS from "./site/models.json";
 import { DAILY_CAP_USD, getJob, listJobs, listPreviews, newJobId, readVideo, record, savePreview, saveJob, saveVideo, spentToday, type LabJob } from "./store";
 import { SEEDANCE_LIMITS, SEEDANCE_MODELS, SEEDANCE_RATIOS, SEEDANCE_RESOLUTIONS, estimateSeedanceUsd, type SeedanceReference, type SeedanceRequest, type SeedanceResolution, type SeedanceTier } from "@/lib/video-engine/seedance";
 import { writeSeedancePrompt } from "@/lib/video-engine/seedance-prompt";
@@ -52,6 +53,27 @@ async function file(res: http.ServerResponse, full: string, type: string, cache 
   } catch {
     fail(res, 404, "Not found");
   }
+}
+
+/**
+ * Serves a video or audio file with Range support: the browser then reads only what it shows (a few KB for a
+ * thumbnail) instead of downloading every MP4 on a page and holding all its connections to the studio open.
+ */
+function sendMedia(req: http.IncomingMessage, res: http.ServerResponse, bytes: Buffer, type: string, extra: Record<string, string> = {}) {
+  const size = bytes.length;
+  const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? ""));
+  if (range && (range[1] || range[2])) {
+    const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+    const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+    if (start >= size || start > end) {
+      res.writeHead(416, { "content-range": `bytes */${size}` });
+      return res.end();
+    }
+    res.writeHead(206, { ...extra, "content-type": type, "accept-ranges": "bytes", "content-range": `bytes ${start}-${end}/${size}`, "content-length": String(end - start + 1) });
+    return res.end(bytes.subarray(start, end + 1));
+  }
+  res.writeHead(200, { ...extra, "content-type": type, "accept-ranges": "bytes", "content-length": String(size) });
+  res.end(bytes);
 }
 
 /**
@@ -206,8 +228,29 @@ async function design(body: Record<string, unknown>): Promise<{ status: number; 
 }
 
 const PAGES = path.join(BUILD, "pages");
-const PAGE_ROUTES: Record<string, string> = { "/": "home", "/create": "create", "/showcase": "showcase", "/videos": "videos", "/pricing": "pricing", "/guide": "guide" };
-const REDIRECTS: Record<string, string> = { "/app/video/seedance": "/create", "/app/video/motion": "/create?engine=claude", "/templates": "/create#tgrid", "/app": "/create" };
+const PAGE_ROUTES: Record<string, string> = {
+  "/": "home",
+  "/create": "create",
+  "/showcase": "showcase",
+  "/videos": "videos",
+  "/pricing": "pricing",
+  "/guide": "guide",
+  "/api-docs": "api-docs",
+  // One generator page per model (built by scripts/video-lab/start.mjs from video-lab/site/models.json).
+  ...Object.fromEntries(MODELS.map((m) => [m.route, m.group === "image" ? "image" : `model-${m.id}`])),
+};
+/** Old links and seedance2ai-style paths, so no link ends on "Not found". */
+const REDIRECTS: Record<string, string> = {
+  "/app/video/seedance": "/app/video/seedance-2-0",
+  "/app/video": "/app/video/seedance-2-0",
+  "/app/image": "/app/image/nano-banana",
+  "/templates": "/create#tgrid",
+  "/app": "/create",
+  "/developers": "/api-docs",
+  "/explore": "/showcase",
+  "/prompt-guide": "/guide",
+};
+const TIER_PAGES: Record<string, string> = { pro: "/app/video/seedance-2-0", fast: "/app/video/seedance-2-0-fast", mini: "/app/video/seedance-2-0-mini" };
 
 const labelFor = (r: { kind: string; label?: unknown }, n: number) => `${r.kind === "image" ? "Image" : r.kind === "video" ? "Video" : "Audio"} ${n}: ${typeof r.label === "string" ? r.label.slice(0, 120) : r.kind}`;
 
@@ -251,9 +294,16 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "GET" && PAGE_ROUTES[p]) return file(res, path.join(PAGES, `${PAGE_ROUTES[p]}.html`), "text/html; charset=utf-8");
     if (req.method === "GET" && REDIRECTS[p]) {
-      res.writeHead(302, { location: REDIRECTS[p] });
+      // Keeps the query (the old ?tier= links go to that model's page; ?prompt= and ?ref= pass through).
+      const tier = url.searchParams.get("tier");
+      const target = p === "/app/video/seedance" && tier && TIER_PAGES[tier] ? TIER_PAGES[tier] : REDIRECTS[p];
+      url.searchParams.delete("tier");
+      const query = url.searchParams.toString();
+      res.writeHead(302, { location: query && !target.includes("#") ? `${target}?${query}` : target });
       return res.end();
     }
+    const stat = p.match(/^\/static\/([a-z0-9-]{1,60})\.(png|jpg|webp)$/);
+    if (req.method === "GET" && stat) return file(res, path.join(BUILD, "static", `${stat[1]}.${stat[2]}`), stat[2] === "jpg" ? "image/jpeg" : `image/${stat[2]}`, "max-age=3600");
     if (req.method === "GET" && p === "/lab") return file(res, path.join(BUILD, "lab.html"), "text/html; charset=utf-8");
     if (req.method === "GET" && p === "/app.js") return file(res, path.join(BUILD, "js", "lab.js"), "text/javascript; charset=utf-8");
     if (req.method === "GET" && p === "/site.css") return file(res, path.join(BUILD, "site.css"), "text/css; charset=utf-8");
@@ -305,8 +355,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && media) {
       const m = await mediaBytes(media[1]);
       if (!m) return fail(res, 404, "Not found");
-      res.writeHead(200, { "content-type": m.mimeType });
-      return res.end(m.bytes);
+      return sendMedia(req, res, m.bytes, m.mimeType);
     }
     if (req.method === "POST" && p === "/api/seedance/prompt") {
       const body = JSON.parse((await readBody(req, 32 * 1024)).toString("utf8") || "{}");
@@ -364,8 +413,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && sdVideo) {
       const bytes = await seedanceVideoBytes(sdVideo[1]);
       if (!bytes) return fail(res, 404, "Not found");
-      res.writeHead(200, { "content-type": "video/mp4", "content-disposition": `inline; filename="bupulse-${sdVideo[1]}.mp4"` });
-      return res.end(bytes);
+      return sendMedia(req, res, bytes, "video/mp4", { "content-disposition": `inline; filename="bupulse-${sdVideo[1]}.mp4"` });
     }
     if (req.method === "GET" && p.startsWith("/fonts/video/")) {
       const name = path.basename(p);
@@ -440,6 +488,45 @@ const server = http.createServer(async (req, res) => {
         await record(jobId, "gemini-shot", [out.call]);
         return json(res, 200, { uploadId: out.uploadId, costUsd: out.call.costUsd });
       }
+    }
+    if (req.method === "GET" && p === "/api/images") return json(res, 200, { images: (await listImages()).map((i) => ({ ...i, url: `/api/photo/${i.id}` })) });
+    if (req.method === "POST" && p === "/api/image") {
+      // The AI image page (Nano Banana): a prompt and up to 3 reference photos. Charged like a presenter image,
+      // taken first and given back when Gemini fails; the image is saved as an upload so videos can use it.
+      const body = JSON.parse((await readBody(req, 16 * 1024)).toString("utf8") || "{}");
+      const prompt = String(body.prompt ?? "").trim().slice(0, 1500);
+      if (!prompt) return fail(res, 400, "Describe the image first.");
+      const ratio = (IMAGE_RATIOS as readonly string[]).includes(body.ratio) ? String(body.ratio) : "1:1";
+      const businessId = String(body.businessId ?? "");
+      const refs = (Array.isArray(body.refs) ? body.refs : []).map(String).slice(0, 3);
+      const references: Buffer[] = [];
+      for (const r of refs) {
+        const [kind, id] = r.split(":");
+        if (kind !== "ph" && kind !== "up") continue;
+        references.push((await photoJpeg(id, 1280, kind === "ph" ? businessId : undefined)).bytes);
+      }
+      const spent = await spentToday();
+      if (spent + 0.05 > DAILY_CAP_USD) return fail(res, 429, `Today's test budget is used: $${spent.toFixed(2)} of $${DAILY_CAP_USD.toFixed(2)}.`);
+      const jobId = newJobId();
+      try {
+        await charge(PRESENTER_IMAGE_CREDITS, "AI image (Nano Banana)", jobId);
+      } catch (error) {
+        return fail(res, 402, error instanceof Error ? error.message : "Not enough credits.");
+      }
+      let made: Awaited<ReturnType<typeof generateImage>>;
+      try {
+        made = await generateImage(prompt, references, ratio);
+      } catch (error) {
+        const call = (error as { call?: DesignUsage }).call;
+        if (call) await record(jobId, "gemini-image", [call]);
+        await refund(PRESENTER_IMAGE_CREDITS, "AI image failed", jobId);
+        return fail(res, 502, `${error instanceof Error ? error.message : "The image could not be made."} The credits are given back.`);
+      }
+      await record(jobId, "gemini-image", [made.call]);
+      const up = await saveUpload(made.bytes, `AI image (Nano Banana): ${prompt}`);
+      const image = { id: up.id, at: new Date().toISOString(), prompt, ratio, references: references.length, costUsd: made.call.costUsd };
+      await addImage(image);
+      return json(res, 200, { image: { ...image, url: `/api/photo/${up.id}` }, credits: PRESENTER_IMAGE_CREDITS });
     }
     if (req.method === "GET" && p === "/api/template-previews") return json(res, 200, await listPreviews());
     if (req.method === "POST" && p === "/api/template-previews") {
@@ -522,8 +609,15 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && video) {
       const bytes = await readVideo(video[1]);
       if (!bytes) return fail(res, 404, "Not found");
-      res.writeHead(200, { "content-type": "video/mp4", "content-disposition": `inline; filename="bupulse-${video[1]}.mp4"` });
-      return res.end(bytes);
+      return sendMedia(req, res, bytes, "video/mp4", { "content-disposition": `inline; filename="bupulse-${video[1]}.mp4"` });
+    }
+    if (req.method === "GET" && !p.startsWith("/api/") && (req.headers.accept ?? "").includes("text/html")) {
+      // A person on a wrong link gets the studio's 404 page with links, not a bare JSON error.
+      const html = await fs.readFile(path.join(PAGES, "notfound.html")).catch(() => null);
+      if (html) {
+        res.writeHead(404, { "content-type": "text/html; charset=utf-8" });
+        return res.end(html);
+      }
     }
     fail(res, 404, "Not found");
   } catch (error) {

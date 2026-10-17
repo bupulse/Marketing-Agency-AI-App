@@ -39,9 +39,14 @@ function open(i: Item) {
   dlg.onclose = () => v.pause();
 }
 
+let first = true;
 async function load() {
   items = (await api<{ items: Item[] }>("/api/showcase")).items;
   render();
+  // /showcase#<id> (the home page's tiles) opens that video.
+  const wanted = first && location.hash.length > 1 ? items.find((i) => i.id === location.hash.slice(1) && i.videoUrl) : undefined;
+  first = false;
+  if (wanted) open(wanted);
 }
 
 $("viewerClose").onclick = () => ($("viewer") as HTMLDialogElement).close();

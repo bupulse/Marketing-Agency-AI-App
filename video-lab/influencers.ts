@@ -71,6 +71,39 @@ async function geminiImage(prompt: string, references: Buffer[], aspectRatio: st
   return { bytes: Buffer.from(image.data, "base64"), call };
 }
 
+// ---- AI image page (Nano Banana, /app/image/nano-banana) -------------------------------------------------------------
+const IMAGES = path.resolve("video-lab/data/images/index.json");
+/** Shapes Gemini makes natively. */
+export const IMAGE_RATIOS = ["1:1", "4:5", "3:4", "9:16", "16:9"] as const;
+const IMAGE_RULES = "Any person shown is a fictional adult, not a real or famous person and not a lookalike of anyone, in respectful everyday clothing. No watermark. Never add or change a brand logo: only marks already on a reference photo.";
+
+/**
+ * A generic image: a prompt and up to 3 reference photos (JPEG), with the same safety rules as the presenters. One
+ * image (about $0.039). Products in the references keep their look.
+ */
+export async function generateImage(prompt: string, references: Buffer[], aspectRatio: string): Promise<{ bytes: Buffer; call: ImageCall }> {
+  const refs = references.slice(0, 3);
+  const names = refs.map((_, k) => `Image ${k + 1}`).join(", ");
+  const text = `${refs.length ? `The reference photos are ${names}, in that order. Any product in them must stay exactly as photographed: same shape, colours and labels, not redrawn. ` : ""}${prompt.slice(0, 1500)}\n\nPhotorealistic, unless the request asks for another style. ${IMAGE_RULES}`;
+  return geminiImage(text, refs, aspectRatio);
+}
+
+export type GalleryImage = { id: string; at: string; prompt: string; ratio: string; references: number; costUsd: number };
+
+export async function listImages(): Promise<GalleryImage[]> {
+  try {
+    return JSON.parse(await fs.readFile(IMAGES, "utf8")) as GalleryImage[];
+  } catch {
+    return [];
+  }
+}
+
+export async function addImage(image: GalleryImage): Promise<void> {
+  const all = [image, ...(await listImages())].slice(0, 200);
+  await fs.mkdir(path.dirname(IMAGES), { recursive: true });
+  await fs.writeFile(IMAGES, JSON.stringify(all, null, 2));
+}
+
 export type InfluencerView = Influencer & { portrait: boolean; shots: { id: string; product: string; action: string }[] };
 
 export async function listInfluencers(): Promise<InfluencerView[]> {

@@ -1,4 +1,6 @@
-// Shared by every studio page: the active nav link, the wallet chip and the lab notice.
+// Shared by every studio page: the active nav link, the mobile menu, the language switcher, the wallet chip and the
+// lab notice.
+import { applyLang, currentLang, setLang, type Lang } from "./i18n";
 export const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 type Props<K extends keyof HTMLElementTagNameMap> = Partial<Omit<HTMLElementTagNameMap[K], "style">> & { style?: string };
 export const el = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Props<K> = {}, ...children: (Node | string)[]): HTMLElementTagNameMap[K] => {
@@ -32,6 +34,14 @@ export async function refreshWallet(): Promise<Wallet | null> {
 (function start() {
   const page = document.body.dataset.page;
   document.querySelectorAll<HTMLAnchorElement>("[data-nav]").forEach((a) => a.classList.toggle("on", a.dataset.nav === page));
+  const toggle = document.getElementById("navToggle");
+  if (toggle)
+    toggle.onclick = () => {
+      const open = document.body.classList.toggle("navOpen");
+      toggle.setAttribute("aria-expanded", String(open));
+    };
+  document.querySelectorAll<HTMLButtonElement>("[data-lang]").forEach((b) => (b.onclick = () => setLang(b.dataset.lang as Lang)));
+  applyLang(currentLang());
   void refreshWallet();
   void api<{ claudeMode: string; seedanceReady: boolean }>("/api/options").then((o) => {
     const n = document.getElementById("labNotice");

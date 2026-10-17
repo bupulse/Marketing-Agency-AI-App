@@ -1,9 +1,11 @@
 // The Create page (docs/VIDEO_ENGINE.md, "Studio"): one prompt bar for both engines, in the style of Higgsfield's
 // Marketing Studio and Seedance's app. Real video goes to BytePlus through the lab server (submit, then poll);
 // Motion videos are designed by Claude and drawn here (lib/video-engine), with the MP4 made in this browser.
+// The model pages (/app/video/<model>) are this page with the model preselected (body data-model, models.json).
 import { drawSpecFrame, type Img } from "@/lib/video-engine/draw";
 import { encodeSpecMp4, loadPhotos, loadSpecFonts } from "@/lib/video-engine/encode";
 import { canvasSize, totalMs, type MotionSpec, type Quality } from "@/lib/video-engine/spec";
+import { MODELS, loadPricing, modelById, wireExamples } from "./models";
 import { $, api, el, refreshWallet } from "./site";
 
 type Engine = "seedance" | "claude";
@@ -58,6 +60,8 @@ const state = {
   previews: {} as Record<string, Preview>,
   category: "all",
   open: null as Gen | null,
+  credits: 0,
+  claudeCredits: 0,
   photos: new Map<number, Img>(),
   playing: false,
 };
@@ -144,6 +148,7 @@ async function quote() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(sd ? { engine: "seedance", tier: state.tier, resolution: state.draft ? "480p" : state.resolution, seconds: state.seconds, versions: state.versions } : { engine: "claude", versions: state.versions, photos: state.refs.filter((r) => r.kind === "image").length }),
     });
+    state.credits = q.credits;
     $("goCredits").textContent = `✦ ${q.credits}`;
     $("go").title = `About $${q.usd.toFixed(2)} of provider cost`;
   } catch {
@@ -217,16 +222,21 @@ function setupPills() {
   $("pWrite").onclick = () => void writeWithClaude();
   document.querySelectorAll<HTMLButtonElement>("#engineSw button").forEach((b) => {
     b.onclick = () => {
-      state.engine = b.dataset.engine as Engine;
-      document.querySelectorAll("#engineSw button").forEach((x) => x.classList.toggle("on", x === b));
-      state.mode = "reference";
-      state.seconds = state.engine === "seedance" ? 5 : 15;
-      $<HTMLTextAreaElement>("prompt").placeholder = state.engine === "seedance" ? "Describe the scene, the camera and the sound. Refer to references as Image 1, Video 1, Audio 1…" : "Describe the video you want (optional). Claude designs it from your product and template.";
+      setEngine(b.dataset.engine as Engine);
       msg(state.engine === "seedance" ? "Real video with Seedance 2.0: moving people, places and sound. 1 to 10 minutes." : "Motion video designed by Claude: instant, a few credits.");
-      renderPills();
-      renderRefs();
     };
   });
+}
+
+/** Switches the engine (the prompt and the references stay). */
+function setEngine(engine: Engine) {
+  state.engine = engine;
+  document.querySelectorAll<HTMLButtonElement>("#engineSw button").forEach((x) => x.classList.toggle("on", x.dataset.engine === engine));
+  state.mode = "reference";
+  state.seconds = engine === "seedance" ? 5 : 15;
+  $<HTMLTextAreaElement>("prompt").placeholder = engine === "seedance" ? "Describe the scene, the camera and the sound. Refer to references as Image 1, Video 1, Audio 1…" : "Describe the video you want (optional). Claude designs it from your product and template.";
+  renderPills();
+  renderRefs();
 }
 
 // ---- References, product and avatar ----------------------------------------------------------------------------------
@@ -268,7 +278,11 @@ function addRef(r: Ref) {
   renderRefs();
 }
 
+/** Businesses and products, loaded after the controls are ready; the pickers wait for them. */
+let dataReady: Promise<void> = Promise.resolve();
+
 async function openPicker(kind: "refs" | "product" | "avatar") {
+  await dataReady;
   const dlg = $("pickDlg") as HTMLDialogElement;
   const top = $("pickTop");
   const grid = $("pickGrid");
@@ -408,6 +422,7 @@ async function generate() {
   const prompt = $<HTMLTextAreaElement>("prompt").value.trim();
   try {
     if (state.engine === "seedance") {
+      if (!state.o?.seedanceReady) return seedancePreview();
       if (!prompt) throw new Error("Write a prompt, or press Write with Claude.");
       if ((state.mode === "edit" || state.mode === "extend") && !state.refs.some((r) => r.kind === "video")) throw new Error("Add the video to edit or extend as a reference (+ then My videos).");
       msg("Sending to Seedance…");
@@ -438,6 +453,53 @@ async function generate() {
   } finally {
     go.disabled = false;
   }
+}
+
+/**
+ * Until the BytePlus key is in, Generate on Real video shows what the clip would be (settings, credits, example
+ * prompts) and offers the same idea as a Motion video, instead of failing.
+ */
+function seedancePreview() {
+  const o = state.o as Options;
+  const dlg = $("sdDlg") as HTMLDialogElement;
+  const tier = o.seedance.tiers.find((t) => t.id === state.tier);
+  const images = state.refs.filter((r) => r.kind === "image").length;
+  const others = state.refs.length - images;
+  const rows: [string, string][] = [
+    ["Model", tier?.name ?? "Seedance 2.0"],
+    ["Mode", MODES.seedance.find((m) => m.id === state.mode)?.name ?? state.mode],
+    ["Clip", `${state.seconds} s · ${state.ratio} · ${state.draft ? "480p draft" : state.resolution}${state.audio ? " · with sound" : " · no sound"}${state.fixedLens ? " · fixed lens" : ""}`],
+    ["References", state.refs.length ? `${images} photo${images === 1 ? "" : "s"}${others ? `, ${others} video or audio` : ""}` : "none (text to video)"],
+    ["Versions", String(state.versions)],
+    ["Credits", `${state.credits || "…"} credits (${((state.credits || 0) * 10).toLocaleString()} RWF), taken only when it runs`],
+  ];
+  $("sdWhat").replaceChildren(...rows.flatMap(([k, v]) => [el("span", { className: "k", textContent: k }), el("span", { textContent: v })]));
+  const model = modelById(document.body.dataset.model) ?? MODELS.find((m) => m.tier === state.tier) ?? MODELS[0];
+  $("sdExamples").replaceChildren(
+    ...model.examples.slice(0, 3).map((text) => {
+      const b = el("button", { className: "example" }, el("span", { textContent: text }), el("small", { textContent: "Use this prompt" }));
+      b.onclick = () => {
+        $<HTMLTextAreaElement>("prompt").value = text;
+        dlg.close();
+        msg("Example prompt added. Change it for your product.", "ok");
+      };
+      return b;
+    }),
+  );
+  $("sdMotionNote").textContent = `A Motion video is designed by Claude from your product photos: ${state.claudeCredits || "…"} credits, about a minute. Your prompt is kept as the brief.`;
+  $("sdToMotion").onclick = () => {
+    dlg.close();
+    setEngine("claude");
+    if (!state.productId) {
+      msg("Motion videos start from a product: pick one, then press Generate.", "ok");
+      void openPicker("product");
+      return;
+    }
+    void generate();
+  };
+  $("sdKeep").onclick = () => dlg.close();
+  $("sdDlgClose").onclick = () => dlg.close();
+  dlg.showModal();
 }
 
 // ---- Generations and the drawer ------------------------------------------------------------------------------------
@@ -737,15 +799,40 @@ async function start() {
     document.querySelectorAll<HTMLButtonElement>("#engineSw button").forEach((b) => b.classList.toggle("on", b.dataset.engine === "claude"));
   }
   if (q.get("tier")) state.tier = q.get("tier") as string;
-  if (!o.seedanceReady && state.engine === "seedance") msg("Seedance is waiting for the BytePlus key. You can prepare prompts and references; Motion videos work now.", "err");
-  state.businesses = await api<{ id: string; name: string }[]>("/api/businesses");
-  state.businessId = state.businesses[0]?.id ?? "";
-  state.products = state.businessId ? await api<Product[]>(`/api/products?business=${encodeURIComponent(state.businessId)}`) : [];
-  state.previews = await api<Record<string, Preview>>("/api/template-previews").catch(() => ({}));
+  // A model page (/app/video/<model>) preselects its engine and quality.
+  const model = modelById(document.body.dataset.model);
+  if (model?.engine === "claude") {
+    state.engine = "claude";
+    state.seconds = 15;
+  } else if (model?.tier) {
+    state.engine = "seedance";
+    state.tier = model.tier;
+  }
+  document.querySelectorAll<HTMLButtonElement>("#engineSw button").forEach((b) => b.classList.toggle("on", b.dataset.engine === state.engine));
+  const allowed = o.seedance.tiers.find((t) => t.id === state.tier)?.resolutions ?? [];
+  if (allowed.length && !allowed.includes(state.resolution)) state.resolution = allowed[allowed.length - 1];
+  if (q.get("prompt")) $<HTMLTextAreaElement>("prompt").value = (q.get("prompt") as string).slice(0, 4000);
+  if (!o.seedanceReady && state.engine === "seedance") msg("Seedance is waiting for the BytePlus key: set everything up now; Generate shows what it will make, or makes it as a Motion video.");
+  // The controls work at once; the products and template previews (slower, from the database) follow.
   setupPills();
+  // ?ref=<upload id> (an AI image's "Use in a video"): that image is the first reference.
+  const ref = q.get("ref");
+  if (ref && /^up-[0-9a-f]{12}$/.test(ref)) state.refs.push({ id: `up:${ref}`, kind: "image", thumb: `/api/photo/${ref}?size=thumb`, label: "AI image (Nano Banana)" });
   renderPills();
   renderRefs();
-  renderTemplates();
+  dataReady = (async () => {
+    state.businesses = await api<{ id: string; name: string }[]>("/api/businesses");
+    state.businessId = state.businesses[0]?.id ?? "";
+    state.products = state.businessId ? await api<Product[]>(`/api/products?business=${encodeURIComponent(state.businessId)}`) : [];
+  })();
+  wireExamples((text) => {
+    $<HTMLTextAreaElement>("prompt").value = text;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    msg("Example prompt added. Change it for your product, then Generate.", "ok");
+  });
+  void loadPricing()
+    .then((p) => (state.claudeCredits = p.claudeCredits))
+    .catch(() => undefined);
   $<HTMLInputElement>("tsearch").oninput = renderTemplates;
   $("go").onclick = () => void generate();
   $("pickClose").onclick = () => ($("pickDlg") as HTMLDialogElement).close();
@@ -758,6 +845,12 @@ async function start() {
     if (f) void upload(f);
     (e.target as HTMLInputElement).value = "";
   };
+  state.previews = await api<Record<string, Preview>>("/api/template-previews").catch(() => ({}));
+  renderTemplates();
+  if (location.hash === "#tgrid") document.getElementById("tgrid")?.scrollIntoView({ block: "start" });
+  if (location.hash === "#influencers") void openPicker("avatar");
+  await dataReady;
+  renderRefs();
   await loadGens();
   const show = await api<{ items: { id: string; engine: Engine; title: string; videoUrl: string | null }[] }>("/api/showcase");
   carousel(show.items.filter((i) => i.videoUrl).map((i) => ({ videoUrl: i.videoUrl as string, title: i.title, engine: i.engine })));

@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { MotionSpec } from "@/lib/video-engine/spec";
-import { VOICE_MODEL, VoiceError, fitSpecToVoice, speakSpec, voiceCostUsd, voiceLines, voiceScript, type SpokenLine, type VoiceCue } from "@/lib/video-engine/voice";
+import { VOICE_MODEL, VoiceError, fitSpecToVoice, looksKinyarwanda, speakSpec, voiceCostUsd, voiceLanguage, voiceLines, voiceScript, type SpokenLine, type VoiceCue } from "@/lib/video-engine/voice";
 import { DEFAULT_VOICE_ID, isVoiceId } from "@/lib/voice/voices";
 import { DAILY_CAP_USD, record, spentToday } from "./store";
 
@@ -27,6 +27,9 @@ export type JobVoice = {
   /** What this call cost (0 when the take came from the cache). */
   costUsd: number;
   cached: boolean;
+  /** The language the voice speaks, and a line for the owner when it is not the content language (Kinyarwanda). */
+  spokenLanguage: string;
+  note: string | null;
 };
 
 type Saved = { voiceId: string; model: string; characters: number; durationMs: number; lines: SpokenLine[] };
@@ -45,17 +48,23 @@ export const VOICE_ROUTE = /^\/api\/voice\/([0-9a-f]{40})\.mp3$/;
 
 /**
  * The voice-over of a design: from the cache, or one ElevenLabs call (recorded in the ledger under `jobId`). Null when
- * the design has no `say` lines. Throws an Error with a plain message (no key, budget used, service refused).
+ * the design has no `say` lines. `language` is the business's content language: for Kinyarwanda (which the voice cannot
+ * speak) the lines must be in English, and lines that still look like Kinyarwanda (a design made before this rule) are
+ * refused before anything is paid. Throws an Error with a plain message (no key, budget used, service refused).
  */
-export async function makeVoiceForJob(spec: MotionSpec, jobId: string, opts: { voiceId?: string | null; fetchImpl?: typeof fetch } = {}): Promise<JobVoice | null> {
+export async function makeVoiceForJob(spec: MotionSpec, jobId: string, opts: { voiceId?: string | null; language?: string | null; fetchImpl?: typeof fetch } = {}): Promise<JobVoice | null> {
   const lines = voiceLines(spec);
   if (lines.length === 0) return null;
+  const { spokenLanguage, note } = voiceLanguage(opts.language);
+  if (note && looksKinyarwanda(lines.map((l) => l.text).join(" "))) {
+    throw new Error(`The voice lines are in a language the voice cannot speak yet. Make the design again (its voice lines will be in ${spokenLanguage}) or write the say lines in ${spokenLanguage}.`);
+  }
   const voiceId = opts.voiceId && isVoiceId(opts.voiceId) ? opts.voiceId : DEFAULT_VOICE_ID;
   const { text } = voiceScript(lines);
   const hash = voiceHash(voiceId, VOICE_MODEL, text);
   const result = (saved: Saved, costUsd: number, cached: boolean): JobVoice => {
     const fitted = fitSpecToVoice(spec, saved);
-    return { hash, url: `/api/voice/${hash}.mp3`, spec: fitted.spec, cues: fitted.cues, fits: fitted.fits, voiceId, characters: saved.characters, durationMs: saved.durationMs, costUsd, cached };
+    return { hash, url: `/api/voice/${hash}.mp3`, spec: fitted.spec, cues: fitted.cues, fits: fitted.fits, voiceId, characters: saved.characters, durationMs: saved.durationMs, costUsd, cached, spokenLanguage, note };
   };
 
   const cached = await fs

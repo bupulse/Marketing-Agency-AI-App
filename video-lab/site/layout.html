@@ -6,32 +6,44 @@
 <title>{{title}} · BuPulse Video Studio</title>
 <link rel="stylesheet" href="/site.css">
 </head>
-<body data-page="{{page}}">
+<body data-page="{{page}}" data-model="{{model}}">
 <header class="nav">
   <a class="brand" href="/"><span class="logo">B</span> BuPulse <b>Video Studio</b></a>
-  <nav>
-    <a href="/app/video/seedance" data-nav="seedance">Seedance 2.0</a>
-    <a href="/app/video/motion" data-nav="motion">Motion (Claude)</a>
-    <a href="/templates" data-nav="templates">Templates</a>
-    <a href="/showcase" data-nav="showcase">Showcase</a>
-    <a href="/pricing" data-nav="pricing">Pricing</a>
-    <a href="/guide" data-nav="guide">Guide</a>
+  <button class="navToggle" id="navToggle" aria-label="Menu" aria-expanded="false">☰</button>
+  <nav id="mainNav">
+    <div class="dd">
+      <a href="/app/video/seedance-2-0" data-nav="video" class="ddTop"><span data-i18n="nav.video">AI video</span> <span class="muted">▾</span></a>
+      <div class="ddMenu">
+        <a href="/app/video/seedance-2-0"><b>Seedance 2.0</b><small data-i18n="nav.pro">Best quality, real video</small></a>
+        <a href="/app/video/seedance-2-0-fast"><b>Seedance 2.0 Fast</b><small data-i18n="nav.fast">Quicker and cheaper</small></a>
+        <a href="/app/video/seedance-2-0-mini"><b>Seedance 2.0 Mini</b><small data-i18n="nav.mini">Best value</small></a>
+        <a href="/app/video/seedance-2-5"><b>Seedance 2.5 <span class="tag soon">SOON</span></b><small data-i18n="nav.next">The next model</small></a>
+        <a href="/app/video/motion"><b>Claude 3D motion</b><small data-i18n="nav.motion">Instant animated videos</small></a>
+      </div>
+    </div>
+    <a href="/app/image/nano-banana" data-nav="image" data-i18n="nav.image">AI image</a>
+    <a href="/templates" data-nav="templates" data-i18n="nav.templates">Templates</a>
+    <a href="/showcase" data-nav="showcase" data-i18n="nav.showcase">Showcase</a>
+    <a href="/pricing" data-nav="pricing" data-i18n="nav.pricing">Pricing</a>
+    <a href="/guide" data-nav="guide" data-i18n="nav.guide">Guide</a>
+    <a href="/api-docs" data-nav="api">API <span class="tag">NEW</span></a>
   </nav>
   <div class="navRight">
+    <div class="lang" id="langSw" title="Language"><button data-lang="en">EN</button><button data-lang="fr">FR</button><button data-lang="rw">RW</button></div>
     <a class="wallet" href="/pricing" id="walletChip">… credits</a>
-    <a class="btn primary" href="/app/video/seedance">Start creating</a>
+    <a class="btn primary" href="/app/video/seedance-2-0" data-i18n="nav.start">Start creating</a>
   </div>
 </header>
 <div class="notice" id="labNotice"></div>
 {{content}}
 <footer class="foot">
   <div class="cols">
-    <div><h4>AI video</h4><a href="/app/video/seedance">Seedance 2.0</a><a href="/app/video/seedance?tier=fast">Seedance 2.0 Fast</a><a href="/app/video/seedance?tier=mini">Seedance 2.0 Mini</a><a href="/app/video/motion">Motion videos (Claude)</a></div>
-    <div><h4>Create</h4><a href="/templates">Templates</a><a href="/app/video/motion#influencers">AI influencers</a><a href="/videos">My videos</a><a href="/showcase">Showcase</a></div>
-    <div><h4>Account</h4><a href="/pricing">Pricing and credits</a><a href="/guide">Guide</a><a href="/guide#faq">FAQ</a></div>
-    <div><h4>BuPulse</h4><p class="muted">AI marketing for businesses in Rwanda and East Africa. Video Studio is in testing: the TEST database only, no client sees it.</p></div>
+    <div><h4 data-i18n="foot.video">AI video</h4><a href="/app/video/seedance-2-0">Seedance 2.0</a><a href="/app/video/seedance-2-0-fast">Seedance 2.0 Fast</a><a href="/app/video/seedance-2-0-mini">Seedance 2.0 Mini</a><a href="/app/video/seedance-2-5">Seedance 2.5 (soon)</a><a href="/app/video/motion">Claude 3D motion</a></div>
+    <div><h4 data-i18n="foot.create">Create</h4><a href="/app/image/nano-banana" data-i18n="nav.image">AI image</a><a href="/templates" data-i18n="nav.templates">Templates</a><a href="/app/video/motion#influencers" data-i18n="foot.influencers">AI influencers</a><a href="/videos" data-i18n="foot.myvideos">My videos</a><a href="/showcase" data-i18n="nav.showcase">Showcase</a></div>
+    <div><h4 data-i18n="foot.help">Help</h4><a href="/pricing" data-i18n="foot.pricing">Pricing and credits</a><a href="/guide" data-i18n="nav.guide">Guide</a><a href="/guide#faq">FAQ</a><a href="/api-docs" data-i18n="foot.api">API for developers</a><a href="/lab" data-i18n="foot.lab">Developer lab</a></div>
+    <div><h4>BuPulse</h4><p class="muted" data-i18n="foot.about">AI marketing for businesses in Rwanda and East Africa. Video Studio is in testing: the TEST database only, no client sees it.</p></div>
   </div>
-  <p class="muted small">© 2026 BuPulse. Seedance is a model by ByteDance, used through BytePlus ModelArk; Claude is by Anthropic. BuPulse is not affiliated with them.</p>
+  <p class="muted small" data-i18n="foot.legal">© 2026 BuPulse. Seedance is a model by ByteDance, used through BytePlus ModelArk; Claude is by Anthropic; Nano Banana is Google's Gemini image model. BuPulse is not affiliated with them.</p>
 </footer>
 <script src="/js/site.js"></script>
 {{scripts}}

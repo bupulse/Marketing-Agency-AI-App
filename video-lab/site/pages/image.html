@@ -1,0 +1,38 @@
+<section class="studioHero">
+  {{pill}}
+  {{title1}}
+</section>
+
+<section class="imgApp">
+  <div class="panel imgForm">
+    <label class="l" for="imgPrompt">Prompt</label>
+    <textarea id="imgPrompt" maxlength="1500" placeholder="Describe the picture: the product, the place, the light, the person (fictional), the style…"></textarea>
+    <label class="l">Reference photos <span class="muted" id="imgRefCount">0/3</span></label>
+    <div class="refStrip left" id="imgRefs"></div>
+    <div class="row" style="margin-top:8px"><button class="btn sm" id="imgAddProduct">+ Product photo</button><button class="btn sm" id="imgUpload">+ Upload a photo</button></div>
+    <p class="hint">Refer to them in the prompt as Image 1, Image 2, Image 3. Products keep their shape, colours and labels.</p>
+    <label class="l">Shape</label>
+    <div class="row" id="imgRatios"></div>
+    <button class="genBtn bp wide" id="imgGo">GENERATE IMAGE<small id="imgCredits">✦ …</small></button>
+    <div class="msg left" id="imgMsg"></div>
+  </div>
+  <div class="panel imgResult">
+    <div class="imgStage" id="imgStage"><p class="muted">Your image appears here. Generating takes about 10 to 30 seconds.</p></div>
+    <div class="row" id="imgActions" hidden>
+      <a class="btn primary" id="imgUse" href="/create">Use in a video</a>
+      <a class="btn" id="imgUseMotion" href="/app/video/motion">Use in a 3D motion video</a>
+      <a class="btn" id="imgDl" download>Download</a>
+    </div>
+    <p class="muted small" id="imgInfo"></p>
+  </div>
+</section>
+
+<section class="gens">
+  <h2>Your images</h2>
+  <div class="imgGrid" id="imgGallery"></div>
+</section>
+
+{{modelInfo}}
+
+<input type="file" id="imgFile" accept="image/*" hidden>
+<dialog id="imgPick"><div class="dlgHead"><h3>Choose a product photo</h3><button class="btn sm" id="imgPickClose">Close</button></div><div class="dlgBody"><div class="row" id="imgPickTop"></div><div class="picker" id="imgPickGrid" style="margin-top:12px"></div></div></dialog>

@@ -1,7 +1,7 @@
 <section class="studioHero">
-  <span class="pill">BuPulse Video Studio</span>
+  {{pill}}
   <div class="carousel" id="carousel"></div>
-  <h1>Turn any product<span>into ready to post video</span></h1>
+  {{title1}}
 
   <div class="bar">
     <div class="engineSw" id="engineSw">
@@ -32,6 +32,8 @@
   <div class="msg" id="msg"></div>
 </section>
 
+{{modelInfo}}
+
 <section class="gens" id="gens" hidden>
   <h2>Your generations</h2>
   <div class="genGrid" id="genGrid"></div>
@@ -43,6 +45,20 @@
 </section>
 
 <input type="file" id="file" accept="image/*,video/mp4,video/quicktime,audio/mpeg,audio/wav" hidden>
+
+<dialog id="sdDlg" class="narrow">
+  <div class="dlgHead"><h3>Seedance arrives with the BytePlus key</h3><button class="btn sm" id="sdDlgClose">Close</button></div>
+  <div class="dlgBody">
+    <p>Real video with Seedance is ready in the studio but waits for the BytePlus key (<code>SEEDANCE_API_KEY</code>). Your prompt, references and settings are kept.</p>
+    <h5>What this Generate will make</h5>
+    <div class="kv" id="sdWhat"></div>
+    <p class="muted small">Seedance films the scene: people and products really move, the camera travels and the clip has sound. It takes 1 to 10 minutes. A failed video gives the credits back.</p>
+    <h5>Example prompts</h5>
+    <div class="examples compact" id="sdExamples"></div>
+    <div class="row" style="margin-top:16px"><button class="btn primary" id="sdToMotion">Make it as a Motion video instead</button><button class="btn" id="sdKeep">Keep preparing</button></div>
+    <p class="muted small" id="sdMotionNote"></p>
+  </div>
+</dialog>
 
 <dialog id="pickDlg"><div class="dlgHead"><h3 id="pickTitle">Choose</h3><button class="btn sm" id="pickClose">Close</button></div><div class="dlgBody"><div class="row" id="pickTop"></div><div class="picker" id="pickGrid" style="margin-top:12px"></div></div></dialog>
 

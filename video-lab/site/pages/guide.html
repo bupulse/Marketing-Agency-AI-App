@@ -1,17 +1,18 @@
 <article class="guide">
-  <p class="kicker">Guide</p>
-  <h1>How to make videos in the <span class="grad">studio</span></h1>
-  <h2>1. Two engines</h2>
-  <p><b>Seedance 2.0 (real video)</b> makes real-looking footage: people move, hands hold the product, the camera travels through a place, and the clip has sound. It takes 1 to 10 minutes and costs the most credits. <b>Motion (Claude)</b> designs an animated video from your photos in about a minute: camera moves, text, shapes, music and captions. It is instant and cheap. Use Seedance when you need people and action; use Motion for offers, lists, product reveals and everything you post every week.</p>
-  <h2>2. Making a Seedance video</h2>
+  <p class="kicker" data-i18n="nav.guide">Guide</p>
+  <h1><span data-i18n="guide.h1a">How to make videos in the</span> <span class="grad" data-i18n="guide.h1b">studio</span></h1>
+  <h2 data-i18n="guide.h2a">1. Three ways to make content</h2>
+  <p data-i18n="guide.p1"><b>Seedance 2.0 (real video)</b> makes real-looking footage: people move, hands hold the product, the camera travels through a place, and the clip has sound. It takes 1 to 10 minutes and costs the most credits. <b>Claude 3D motion</b> designs an animated video from your photos in about a minute: camera moves, 3D text, shapes, music and captions. It is instant and cheap. <b>Nano Banana</b> makes a realistic image from a prompt and up to 3 photos. Use Seedance when you need people and action; use Motion for offers, lists, product reveals and everything you post every week; use images for posts and as the first frame of a video.</p>
+  <p><a href="/app/video/seedance-2-0">Seedance 2.0</a> · <a href="/app/video/seedance-2-0-fast">Seedance 2.0 Fast</a> · <a href="/app/video/seedance-2-0-mini">Seedance 2.0 Mini</a> · <a href="/app/video/motion">Claude 3D motion</a> · <a href="/app/image/nano-banana">Nano Banana</a></p>
+  <h2 data-i18n="guide.h2b">2. Making a Seedance video</h2>
   <ol>
     <li><b>Mode.</b> Text (describe everything), Image (a photo is the first frame), Reference (photos, videos and audio the model should follow), First + last frame, Edit (change a video you made) or Extend (continue it).</li>
-    <li><b>References.</b> Pick product photos, or upload photos, videos and audio. Refer to them in the prompt as <code>Image 1</code>, <code>Video 1</code>, <code>Audio 1</code>, in the order shown. No real faces: Seedance refuses them. Presenters come from the character library.</li>
-    <li><b>Prompt.</b> Say what happens, in what order, with what camera and sound. Press <b>Write it with Claude</b> to get a shot list from your product's facts.</li>
+    <li><b>References.</b> Pick product photos, or upload photos, videos and audio. Refer to them in the prompt as <code>Image 1</code>, <code>Video 1</code>, <code>Audio 1</code>, in the order shown. No real faces: Seedance refuses them. Presenters are fictional.</li>
+    <li><b>Prompt.</b> Say what happens, in what order, with what camera and sound. Press <b>Write with Claude</b> to get a shot list from your product's facts.</li>
     <li><b>Quality.</b> Mini (cheapest), Fast, Pro (best, up to 1080p). Duration 4 to 15 s. Resolution and aspect ratio. Sound on or off. Fixed lens keeps the camera still. Offline is slower and cheaper. Draft makes a quick 480p preview you can then upgrade.</li>
-    <li><b>Generate.</b> The credits are taken; a failed video gives them back. You can leave the page.</li>
+    <li><b>Generate.</b> The credits are taken; a failed video gives them back. You can leave the page. Until the BytePlus key is added, Generate shows what the clip will be and offers a Motion video instead.</li>
   </ol>
-  <h2>3. Writing good Seedance prompts</h2>
+  <h2 data-i18n="guide.h2c">3. Writing good Seedance prompts</h2>
   <ul>
     <li>Structure by time: "0–2 s: …; 2–5 s: …".</li>
     <li>Name the subject, the action, the place, the light, the camera move and the sound.</li>
@@ -19,15 +20,18 @@
     <li>Keep the product exactly as in its photo: "same shape, colours and label as Image 2".</li>
     <li>Ask for dialogue with quotes: Character speaks: "…".</li>
   </ul>
-  <h2>4. Making a Motion video</h2>
-  <p>Open <a href="/app/video/motion">Motion</a>. Pick a product, up to 4 photos, a template, a hook, the shape and the length. Add a cartoon presenter (free) or a realistic AI presenter shot. Press Generate; play it; edit or extend it by describing the change; make the MP4 at 480p, 720p or 1080p.</p>
-  <h2>5. Credits</h2>
-  <p>1 credit = 10 RWF. See <a href="/pricing">Pricing</a> for the rates. The lab wallet is pretend money for testing.</p>
-  <h2 id="faq">6. FAQ</h2>
+  <h2 data-i18n="guide.h2d">4. Making a 3D motion video</h2>
+  <p data-i18n="guide.p4">Open Claude 3D motion. Pick a product, up to 4 photos, a template, a hook, the shape and the length. Add a cartoon presenter (free) or a realistic AI presenter shot. Press Generate; play it; edit or extend it by describing the change; make the MP4 at 480p, 720p or 1080p.</p>
+  <h2 data-i18n="guide.h2e">5. Making an AI image</h2>
+  <p data-i18n="guide.p5">Open Nano Banana. Describe the picture, add up to 3 product photos or uploads, choose the shape and press Generate. The image is saved in Your images; press "Use in a video" to send it to the generator as a reference.</p>
+  <h2 data-i18n="guide.h2f">6. Credits</h2>
+  <p data-i18n="guide.p6">1 credit = 10 RWF. See Pricing for the rates. The test wallet is pretend money for testing.</p>
+  <h2 id="faq" data-i18n="guide.h2g">7. FAQ</h2>
   <div class="faq">
-    <details><summary>Why does Seedance refuse my photo?</summary><p>It contains a real person's face, or something its content rules do not allow. Use the product on its own, or a presenter from the character library.</p></details>
+    <details><summary>Why does Seedance refuse my photo?</summary><p>It contains a real person's face, or something its content rules do not allow. Use the product on its own, or a fictional presenter.</p></details>
     <details><summary>Why are motion videos so much cheaper?</summary><p>Claude only writes the design; BuPulse draws the video itself. Seedance runs a large video model on GPUs for every second of footage.</p></details>
     <details><summary>Can I use a Seedance video as a reference?</summary><p>Yes: Edit and Extend use the finished video as Video 1. Any video you made can be a reference for a new one.</p></details>
     <details><summary>Where do finished videos go?</summary><p>They are saved in the studio (My videos) and will go to the BuPulse gallery and scheduler when the studio joins the app.</p></details>
+    <details><summary>Can I call the studio from my own software?</summary><p>Yes, see the <a href="/api-docs">API page</a>. Keys per business come when the studio joins the app.</p></details>
   </div>
 </article>

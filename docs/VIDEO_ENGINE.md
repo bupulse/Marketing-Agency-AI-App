@@ -152,12 +152,26 @@ today; it joins the app once the design is approved.
 
 | Page | What it is |
 | --- | --- |
-| `/` | Home like seedance2ai.io: hero video, the two engines, showcase, features, use cases, how it works, pricing, FAQ |
+| `/` | Home like seedance2ai.io: hero video with a quick prompt box, the model cards (AI video, AI image, Claude 3D motion) with their credit prices, showcase, "How to create" in 3 steps with studio screenshots (`video-lab/site/static/`), features, use cases, example quotes (labelled as examples), pricing, FAQ |
+| `/app/video/seedance-2-0`, `-fast`, `-mini` | One generator page per Seedance tier: the Create page with that tier preselected, plus the model's blurb, what it is good at, its credits per 5 s and example prompts that fill the prompt box |
+| `/app/video/seedance-2-5` | Coming soon: same look, explains it arrives with the BytePlus key; its example prompts open Seedance 2.0 |
+| `/app/video/motion` | Claude 3D motion: the Create page with the Motion engine preselected |
+| `/app/image/nano-banana` | AI image (Gemini): a prompt and up to 3 reference photos (product photos or uploads), 5 shapes, 15 credits an image (charged first, refunded on failure). Each image is saved as an upload with a gallery; "Use in a video" opens `/create?ref=<id>` with it as Image 1 |
+| `/api-docs` | The studio's JSON API for developers (quote, uploads, Seedance submit and jobs, motion design, image, showcase, errors); keys per business come with the app |
 | `/create` | The studio, like Higgsfield's Marketing Studio: a hero carousel of videos, one prompt bar for both engines (Real video / Motion), pill settings (mode, template, ratio, duration, quality, more, versions), Avatar and Product tiles, Generate with the credits, your generations, the template gallery with live previews. A drawer shows each video with edit and extend |
 | `/showcase`, `/videos` | Every finished video of both engines, with a viewer showing the prompt or caption and the cost |
 | `/pricing` | Credit packs in RWF (test wallet top-ups, no payment), the Seedance rate table, the wallet |
 | `/guide` | How to use it, prompt tips, FAQ |
 | `/lab` | The earlier developer lab page, kept |
+
+Every page has the language switcher EN / FR / RW (`video-lab/site/client/i18n.ts`: elements marked `data-i18n` take
+French or Kinyarwanda from a dictionary; the choice is kept in the browser). Old and seedance2ai-style paths redirect
+(`/app/video/seedance?tier=…`, `/templates`, `/developers`, `/explore`, `/prompt-guide`); unknown pages show a 404
+page with links. The models and their copy live in `video-lab/site/models.json` (the build, the server routes and the
+pages read it). Until the BytePlus key is in, Generate on Real video opens "Seedance arrives with the BytePlus key":
+what the clip would be (model, mode, length, shape, resolution, references, credits), example prompts, and "Make it as
+a Motion video instead" (switches engine, keeps the prompt). Videos are served with Range requests, so a page full of
+videos only reads what it shows.
 
 **Seedance (real video)** (`lib/video-engine/seedance.ts`, `video-lab/seedance-jobs.ts`):
 
@@ -169,14 +183,189 @@ today; it joins the app once the design is approved.
   a restart. References go as embedded data (the lab has no public address); real usage tokens are priced and logged.
 - **Write it with Claude** (`lib/video-engine/seedance-prompt.ts`): Claude writes the Seedance shot list from the
   product facts, the template and the references (only facts, references by number, product fidelity, no real faces).
-- Waiting for `SEEDANCE_API_KEY` (BytePlus ModelArk, ap-southeast-1) and the digital character library. Everything
-  else is built and unit-tested against the documented API; the first real clip will confirm it.
+  Its system prompt is the brain's rules and camera words; its brief carries the brain's starting shot plan. If Claude
+  cannot be reached, the plan itself becomes the prompt (`fallback` says so), and every answer is checked
+  (`issues`).
+- Waiting for `SEEDANCE_API_KEY` (BytePlus ModelArk, ap-southeast-1) and the digital character library. Until then
+  every Seedance request becomes a free **preview** (below). Everything else is built and unit-tested against the
+  documented API; the first real clip will confirm it.
+
+**Seedance brain** (`lib/video-engine/seedance-brain.ts`, no AI, instant):
+
+- **Shot types and camera words** Seedance responds to: 13 shot types (macro, close-up, selfie, POV, top-down, hero end
+  shot...) and 15 camera moves (slow push-in, orbit, gimbal walk-through, drone, handheld, whip pan, rack focus...),
+  each with what it is good for.
+- **30 templates** by business (shop, restaurant, salon, phone shop, real estate, fashion, events, services,
+  education, plus 6 for any business) and format (product reveal, UGC testimonial with a fictional presenter, before
+  and after, unboxing, tour, offer). Each is 3 to 5 timed shots with a Rwandan setting, light, music, sounds and the
+  spoken lines it may use.
+- **Rules** for Claude (`SEEDANCE_RULES`): time structure, one camera move per shot, a hook in the first 1 to 2 s, the
+  product exactly as in its photo, references by number, only facts from the brief, no real faces (fictional adults or
+  library characters), no text in the video (captions are added afterwards), sound lines in quotes, and **no spoken
+  line in Kinyarwanda or Swahili** (Seedance does not speak them reliably; the ElevenLabs voice-over goes on top).
+- **`planSeedanceShots(brief)`**: picks a template (asked for, or by the business kind it reads from the product and
+  business text, and the format of the chosen Claude template) and fills it: whole-second time codes adding up to the
+  length, one shot every 2.5 to 3 s, the product named with its photo ("the Galaxy A56 from Image 1" plus one fidelity
+  sentence), the house or venue photo as the place, at most 1 spoken line up to 8 s and 2 above, only the price, the
+  first "why buy" and the business name as facts. It returns notes for the owner (no photo, fictional presenter, no
+  price, no Kinyarwanda line).
+- **`checkSeedanceRequest(req)`**: before anything is paid, in plain English. Errors (BytePlus would refuse): a
+  quality that cannot make the resolution (Fast or Mini at 1080p), more than 9 photos, 3 videos or 3 audio, audio
+  without a photo or video, a closing frame without an opening frame, a ratio Seedance does not make, a bad seed, an
+  empty prompt, a prompt naming "Image 3" when 2 photos are attached. Warnings: durations outside 4 to 15 whole
+  seconds, a draft at 720p or 1080p (drafts are 480p), labels that look like a person (faces cannot be detected here),
+  text asked for in the video, camera moves with a fixed lens, a spoken line with sound off, time codes that do not add
+  up, very large references. It also returns the estimated cost.
+
+**Preview mode** (`video-lab/seedance-mock/`, while there is no key):
+
+- `submitSeedance` does not throw without the key: it makes a job with status `preview` (credits 0, the real price in
+  `preview.wouldCostCredits`, the notice "Preview: Seedance arrives with the BytePlus key...") that becomes
+  `preview-ready` after 3 to 8 seconds. No credits are charged, cancelling refunds nothing.
+- The storyboard (`getSeedancePreview(id)`) is read from the prompt itself, whoever wrote it: the setting, each shot
+  (time, shot type, camera move, action, sound, spoken line, which reference it uses), 3 or 4 sketched frames as SVG
+  (the reference photo inside when the shot uses one, the camera move drawn on top), the reference list with small
+  photos, the estimate (dollars, credits, the usual wait: Mini about 3 to 4 minutes, Fast 4 to 5, Pro 6 to 7) and the
+  checks above.
+- With the key, nothing changes: the same call charges, creates the BytePlus task and polls. Offline (flex) tasks are
+  now checked every minute for up to 48 hours (BytePlus keeps them up to 48 hours), not refunded after 20 minutes.
+
+**Going live with Seedance** (the owner's steps; BytePlus console wording may differ slightly):
+
+1. Sign in at console.byteplus.com with the BuPulse account that has the prepaid pack.
+2. Open **ModelArk** and choose the region **Asia Pacific (ap-southeast-1)** at the top. The key and the models must
+   be in this region (the studio calls `https://ark.ap-southeast.bytepluses.com/api/v3`).
+3. **Activate the models:** ModelArk, Model activation (or Model management), find **Seedance 2.0**, **Seedance 2.0
+   Fast** and **Seedance 2.0 Mini**, and activate each (accept the terms).
+4. **Digital character library:** in ModelArk, open the digital character (virtual human) assets, apply or activate
+   if asked, and pick or create the presenters BuPulse will use. Each one has an id like `asset://...`: send the ids
+   to Claude to add them to the presenter list. Without it, people are only fictional and described in words.
+5. **API key:** ModelArk, API keys, Create API key. Copy it.
+6. Open `.env` in `/Users/macbook1/BuPulse-video` and add one line: `SEEDANCE_API_KEY=` followed by the key (no
+   quotes, no spaces). Do not paste it in a chat.
+7. In Terminal, in that folder: `node --env-file=.env scripts/video-lab/seedance-check.mjs`. It lists one task at
+   BytePlus (free) and says **connected**, **key invalid**, **not activated** or **unreachable**, with what to do.
+8. When it says connected: `node --env-file=.env scripts/video-lab/seedance-check.mjs --make-clip`. This makes the
+   first real clip (Seedance 2.0 Mini, 480p, 4 s, text only, with sound, about **$0.14**), waits for it (usually 1 to 4
+   minutes), saves it in `video-lab/data/seedance/videos/check-....mp4` and writes the real cost to the lab ledger.
+   It respects the lab's daily cap. Ctrl+C cancels a queued task.
+9. Restart `npm run lab`. The studio now sends real Seedance jobs; previews stop.
+
+Checked on 17 October 2026: the ModelArk address answers, and a made-up key gets `401 AuthenticationError`, which the
+check reports as "key invalid".
 
 **Credits** (`video-lab/credits.ts`): 1 credit = 10 RWF. A price is the estimated provider cost x 2.2 margin, rounded
 to 5 credits: for example Seedance Fast 720p 5 s = 190 credits (1,900 RWF), Mini 480p 5 s = 55, Pro 1080p 5 s = 590;
 a Motion video = 30 credits; a presenter image = 15. Packs: 1,000 credits for 10,000 RWF, 3,500 for 30,000, 7,500 for
 60,000. The lab wallet starts with 5,000 test credits (`VIDEO_LAB_START_CREDITS`). In the app these become plan
 allowances and MoMo add-ons.
+
+## Studio pages and buttons (QA 17 Oct)
+
+A Playwright pass over every studio page (Chrome, 1440 px and 390 px wide): every link on every page was opened, and
+every button that does not spend credits was clicked. **86 of 86 work**, with no script errors on any page. Fixed during
+the pass: links that lost their query (`/app/video/seedance?tier=mini` opened the default tier), `#influencers` that
+opened nothing, the quality and options menus cut off by the hero, pill buttons that did nothing until the database
+had answered, the nav wrapping at 1280 px, and pages full of videos that downloaded every MP4 in full (no Range support)
+and blocked the browser's connections to the studio.
+
+| Page | Button or link | Where it goes / what it does | Works |
+| --- | --- | --- | --- |
+| every page (nav/footer) | link "B BuPulse Video Studio" | / | yes |
+| every page (nav/footer) | link "AI video ▾" | /app/video/seedance-2-0 | yes |
+| every page (nav/footer) | link "Seedance 2.0 Fast (Quicker and cheaper)" | /app/video/seedance-2-0-fast | yes |
+| every page (nav/footer) | link "Seedance 2.0 Mini (Best value)" | /app/video/seedance-2-0-mini | yes |
+| every page (nav/footer) | link "Seedance 2.5  (soon, the next model)" | /app/video/seedance-2-5 | yes |
+| every page (nav/footer) | link "Claude 3D motion (Instant animated videos)" | /app/video/motion | yes |
+| every page (nav/footer) | link "AI image" | /app/image/nano-banana | yes |
+| every page (nav/footer) | link "Templates" | /templates (lands on /create) | yes |
+| every page (nav/footer) | link "Showcase" | /showcase | yes |
+| every page (nav/footer) | link "Pricing" | /pricing | yes |
+| every page (nav/footer) | link "Guide" | /guide | yes |
+| every page (nav/footer) | link "API NEW" | /api-docs | yes |
+| / | link "Video tile: 3-bedroom house with garden, Kibag" | /showcase#20261016-3a334e91 (lands on /showcase) | yes |
+| / | link "Video tile: Samsung Galaxy A56" | /showcase#20261016-f0ba04ce (lands on /showcase) | yes |
+| / | link "Get credits" | /pricing#pack-starter (lands on /pricing) | yes |
+| / | link "Get credits" | /pricing#pack-business (lands on /pricing) | yes |
+| / | link "Get credits" | /pricing#pack-studio (lands on /pricing) | yes |
+| every page (nav/footer) | link "AI influencers" | /app/video/motion#influencers (lands on /app/video/motion) | yes |
+| every page (nav/footer) | link "My videos" | /videos | yes |
+| every page (nav/footer) | link "FAQ" | /guide#faq (lands on /guide) | yes |
+| every page (nav/footer) | link "Developer lab" | /lab | yes |
+| /app/image/nano-banana | link "Use in a video" | /create?ref=up-d3db27b561aa | yes |
+| /app/image/nano-banana | link "Use in a 3D motion video" | /app/video/motion?ref=up-d3db27b561aa | yes |
+| every page | AI video menu (hover) | shows 5 models | yes |
+| every page | Language FR | page text in French | yes |
+| every page | Language RW | page text in Kinyarwanda; kept on the next page | yes |
+| every page | Language EN | back to English | yes |
+| every page | Wallet chip | /pricing | yes |
+| every page (phone width) | Menu button ☰ | opens the nav; page width 390px | yes |
+| / | Make a real video (quick prompt) | /app/video/seedance-2-0?prompt=… | yes |
+| / | Make a 3D motion video (quick prompt) | /app/video/motion?prompt=… | yes |
+| / | Model card prices | credits from /api/pricing; 90 to 190 credits per 5 s (by resolution) | yes |
+| / | Showcase tile | /showcase#<id> opens the video | yes |
+| / | How to create screenshots | /static/step-1..3.jpg load | yes |
+| / | FAQ items | open and close | yes |
+| /app/video/seedance-2-0 | Opens preselected | seedance, Seedance 2.0 ·; quality Seedance 2.0 · 720p, Generate shows ✦ 240 | yes |
+| /app/video/seedance-2-0 | Example prompt | fills the prompt box | yes |
+| /app/video/seedance-2-0-fast | Opens preselected | seedance, Fast ·; quality Fast · 720p, Generate shows ✦ 190 | yes |
+| /app/video/seedance-2-0-fast | Example prompt | fills the prompt box | yes |
+| /app/video/seedance-2-0-mini | Opens preselected | seedance, Mini ·; quality Mini · 720p, Generate shows ✦ 120 | yes |
+| /app/video/seedance-2-0-mini | Example prompt | fills the prompt box | yes |
+| /app/video/motion | Opens preselected | claude, 1080p; quality 1080p, Generate shows ✦ 30 | yes |
+| /app/video/motion | Example prompt | fills the prompt box | yes |
+| /create | Opens preselected | seedance, Fast ·; quality Fast · 720p, Generate shows ✦ 190 | yes |
+| /app/video/<model>, /create | Mode pill | opens its menu, a choice applies | yes |
+| /app/video/<model>, /create | Ratio pill | opens its menu, a choice applies | yes |
+| /app/video/<model>, /create | Duration pill | opens its menu, a choice applies | yes |
+| /app/video/<model>, /create | Quality pill | opens its menu, a choice applies | yes |
+| /app/video/<model>, /create | More options pill | opens its menu, a choice applies | yes |
+| /app/video/<model> | Versions − / + | 1 to 4 | yes |
+| /app/video/<model> | Template pill | scrolls to the templates | yes |
+| /app/video/<model> | Template card | selects the template; Macro details | yes |
+| /app/video/<model> | Engine Motion / Real video | switches engine | yes |
+| /app/video/<model> | + (references) | picker with upload, videos and photos; 6 choices | yes |
+| /app/video/<model> | Reference tile (click) | removes it | yes |
+| /app/video/<model> | Upload (in + picker) | opens the file chooser | yes |
+| /app/video/<model> | PRODUCT tile | product picker, sets product and photos | yes |
+| /app/video/<model> | AVATAR tile | presenter picker (closed without choosing: a choice can cost credits); 8 presenters | yes |
+| /app/video/<model> | GENERATE (Real video, no BytePlus key) | opens 'Seedance arrives with the BytePlus key' | yes |
+| /app/video/<model> | Modal: example prompt | fills the prompt, closes | yes |
+| /app/video/<model> | Modal: Keep preparing / Close | closes | yes |
+| /app/video/seedance-2-0-mini | Modal: Make it as a Motion video instead (no product) | switches to Motion, keeps the prompt, opens the product picker; with a product picked it starts the Motion design (30 credits), not clicked | yes |
+| /create | Generation card | opens the drawer; Close; drawer actions: Make MP4 (1080p) | yes |
+| /create | Drawer Download | the MP4 file; /videos/20261016-3a334e91.mp4 | yes |
+| /templates | Templates link | /create#tgrid scrolled to the gallery | yes |
+| /app/video/motion#influencers | AI influencers link | opens the presenter picker | yes |
+| /app/video/seedance-2-5 | Example prompt | opens Seedance 2.0 with the prompt | yes |
+| /app/image/nano-banana | + Product photo | picker, adds Image 1 | yes |
+| /app/image/nano-banana | Reference tile (click) | removes it | yes |
+| /app/image/nano-banana | + Upload a photo | opens the file chooser | yes |
+| /app/image/nano-banana | Shape chips | select 9:16 | yes |
+| /app/image/nano-banana | GENERATE with empty prompt | says 'Describe the image first' | yes |
+| /app/image/nano-banana | Gallery image | shows it large; 2 images | yes |
+| /app/image/nano-banana | Download | the JPEG | yes |
+| /app/image/nano-banana | Example prompt | fills the prompt | yes |
+| /app/image/nano-banana | Use in a video | /create?ref=<image> with it as Image 1 | yes |
+| /app/image/nano-banana | Use in a 3D motion video | /app/video/motion?ref=<image> | yes |
+| /pricing | Buy (test: adds credits) | adds the pack to the test wallet; 6910 -> 7910 test credits | yes |
+| /showcase | Filters | All / Seedance / Motion | yes |
+| /showcase | Video tile | viewer with Download; Close; 2 videos | yes |
+| /videos | Filters | All / Seedance / Motion / In progress | yes |
+| /videos | Video tile | viewer with Download; Close; 2 videos | yes |
+| /guide | FAQ items | open | yes |
+| /api-docs | Contents links | jump to each section | yes |
+| /api-docs | Rates table | filled from /api/pricing | yes |
+| /nope-404 | Unknown page | 404 page with links | yes |
+
+**Not clicked, because they spend credits or call a paid model** (each was built to the same pattern and checked by
+reading the code): Generate on Motion (30 credits a version), Generate on the AI image page (15 credits; tested for real
+twice on 17 October: a product photo on a marble table, and a fictional presenter holding the Samsung A56, about /bin/zsh.04
+each, both fine), choosing a realistic AI presenter (portrait or shot, 15 credits), "Make it as a Motion video instead"
+when a product is picked (starts a Motion design), the drawer's Apply change and Extend +5 s, Make MP4 (free, but slow),
+Cancel (refund) on a queued Seedance job (no job exists until the key), Write with Claude (a Claude call on the owner's
+subscription), and Seedance Generate with the key (waits for `SEEDANCE_API_KEY`). The test wallet gained 1,000 credits
+per QA run from the "Buy (test)" check; it is pretend money.
 
 ## The Video Lab (developer page, `/lab`)
 
@@ -268,7 +457,8 @@ Later the same night (house listing, Kibagabaga):
 | Free sample design | `lib/video-engine/sample.ts` |
 | Cartoon presenters | `lib/video-engine/cast.ts` (drawn in `draw.ts`) |
 | Realistic influencers (lab) | `video-lab/influencers.ts` |
-| Seedance (BytePlus) | `lib/video-engine/seedance.ts`, `lib/video-engine/seedance-prompt.ts`, `video-lab/seedance-jobs.ts` |
-| Studio site | `video-lab/site/` (layout, `site.css`, `pages/`, `client/`), `video-lab/credits.ts`, `scripts/video-lab/start.mjs` |
+| Seedance (BytePlus) | `lib/video-engine/seedance.ts`, `lib/video-engine/seedance-prompt.ts`, `lib/video-engine/seedance-brain.ts`, `video-lab/seedance-jobs.ts`, `video-lab/seedance-mock/` (previews), `scripts/video-lab/seedance-check.mjs` (readiness) |
+| Studio site | `video-lab/site/` (layout, `site.css`, `models.json`, `pages/`, `client/`, `static/`), `video-lab/credits.ts`, `scripts/video-lab/start.mjs` |
+| AI image (Nano Banana) | `generateImage`, `listImages` in `video-lab/influencers.ts`; `POST /api/image`, `GET /api/images` in `video-lab/server.ts` |
 | Video Lab | `video-lab/server.ts`, `video-lab/data-source.ts`, `video-lab/store.ts`, `video-lab/client/`, `scripts/video-lab/start.mjs` (`npm run lab`) |
-| Tests | `tests/video-engine/engine.test.ts`, `tests/video-engine/camera-and-modes.test.ts`, `tests/video-engine/seedance.test.ts`, `tests/video-engine/credits.test.ts` |
+| Tests | `tests/video-engine/engine.test.ts`, `tests/video-engine/camera-and-modes.test.ts`, `tests/video-engine/seedance.test.ts`, `tests/video-engine/seedance-brain.test.ts`, `tests/video-engine/seedance-preview.test.ts`, `tests/video-engine/credits.test.ts` |

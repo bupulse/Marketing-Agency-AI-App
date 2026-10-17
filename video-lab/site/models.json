@@ -1,0 +1,104 @@
+[
+  {
+    "id": "seedance-2-0",
+    "group": "video",
+    "route": "/app/video/seedance-2-0",
+    "engine": "seedance",
+    "tier": "pro",
+    "name": "Seedance 2.0",
+    "tag": "PRO",
+    "tagline": "Real AI video with precise reference control",
+    "blurb": "The best quality: real moving people, products and places, with sound, up to 1080p.",
+    "goodAt": ["Hero ads and launch videos", "People using or wearing your product", "Places: shops, restaurants, houses", "Dialogue and sound in one clip"],
+    "examples": [
+      "0-2 s: close-up of the phone from Image 1 turning slowly on a wooden table in a sunny Kigali cafe; 2-5 s: a hand picks it up and the camera pushes in on the screen. Soft afrobeat in the background.",
+      "A young woman in a bright ankara top walks through a busy Kigali market holding the handbag from Image 1, turns and smiles at the camera. Handheld tracking shot, natural market sounds.",
+      "Slow dolly through the living room of the house in Image 1 at golden hour, curtains moving in the breeze, then out to the balcony with a view of the Kigali hills. Calm piano."
+    ]
+  },
+  {
+    "id": "seedance-2-0-fast",
+    "group": "video",
+    "route": "/app/video/seedance-2-0-fast",
+    "engine": "seedance",
+    "tier": "fast",
+    "name": "Seedance 2.0 Fast",
+    "tag": "HOT",
+    "tagline": "Real AI video, quicker and cheaper",
+    "blurb": "Seedance 2.0 at a lower price and faster: the everyday choice for social posts.",
+    "goodAt": ["Weekly Reels and TikToks", "Product in action", "Testing several ideas quickly", "720p clips for phones"],
+    "examples": [
+      "Fresh passion-fruit juice is poured into a glass full of ice, slow-motion splash, macro shot, warm morning light; the bottle from Image 1 stands beside it. Sound of pouring and ice.",
+      "The sneakers from Image 1 step onto a wet street at night, neon reflections, the camera follows low at ground level, then rises to show the full shoe. Bass-heavy beat.",
+      "A barber finishes a fade haircut, brushes the client's shoulders and turns the chair to the mirror; the client smiles. Warm salon light, clippers buzzing."
+    ]
+  },
+  {
+    "id": "seedance-2-0-mini",
+    "group": "video",
+    "route": "/app/video/seedance-2-0-mini",
+    "engine": "seedance",
+    "tier": "mini",
+    "name": "Seedance 2.0 Mini",
+    "tag": "VALUE",
+    "tagline": "Real AI video at the best price",
+    "blurb": "The cheapest real video: about half the price of Seedance 2.0, good for drafts and simple scenes.",
+    "goodAt": ["Drafts before a Pro version", "Simple product shots", "Backgrounds and B-roll", "Many variations"],
+    "examples": [
+      "The perfume bottle from Image 1 stands on a mirror surface, soft light sweeps across it, petals fall slowly around it. Fixed camera.",
+      "Steam rises from a plate of brochettes and fried plantains on a restaurant table, the camera slowly pushes in. Sizzling sound.",
+      "A delivery rider on a moto stops in front of a shop, takes a box from the bag and hands it over with a smile. Daylight, street sounds."
+    ]
+  },
+  {
+    "id": "seedance-2-5",
+    "group": "video",
+    "route": "/app/video/seedance-2-5",
+    "engine": "seedance",
+    "tier": null,
+    "soon": true,
+    "name": "Seedance 2.5",
+    "tag": "SOON",
+    "tagline": "The next Seedance model",
+    "blurb": "ByteDance's next video model. It arrives in the studio with the BytePlus key.",
+    "goodAt": ["Longer, steadier shots", "Better hands and text", "Sharper product detail"],
+    "examples": [
+      "A 15-second launch film: the phone from Image 1 rises out of the dark, light traces its edges, then a hand takes it into a bright Kigali street.",
+      "A chef plates a dish in three moves, each a new camera angle, ending on the restaurant's sign. Kitchen sounds."
+    ]
+  },
+  {
+    "id": "motion",
+    "group": "motion",
+    "route": "/app/video/motion",
+    "engine": "claude",
+    "tier": null,
+    "name": "Claude 3D motion",
+    "tag": "INSTANT",
+    "tagline": "3D motion videos designed by Claude",
+    "blurb": "Claude designs an animated 3D-style video from your photos: camera moves, text, music and captions, in about a minute.",
+    "goodAt": ["Offers, price drops and promos", "Product reveals with 3D depth", "Lists: 3 reasons, top features", "Videos you post every week"],
+    "examples": [
+      "Price drop reveal: the old price crossed out, the new price in big 3D letters, then the phone turning with a light sweep.",
+      "Three reasons to choose us, one per scene, with bold text and a smooth camera push on each photo.",
+      "New arrival: start on a close-up detail, pull back to the full product, end with the WhatsApp number."
+    ]
+  },
+  {
+    "id": "nano-banana",
+    "group": "image",
+    "route": "/app/image/nano-banana",
+    "engine": "gemini",
+    "tier": null,
+    "name": "Nano Banana",
+    "tag": "NEW",
+    "tagline": "Realistic AI images from text and your photos",
+    "blurb": "Google's Gemini image model: describe a picture, add up to 3 photos, get a realistic image to post or to use in a video.",
+    "goodAt": ["Product photos in new places", "Fictional presenters with your product", "Posters and flat-lays", "First frames for videos"],
+    "examples": [
+      "The product from Image 1 on a clean white marble table, soft morning light, green plants behind, a premium advert photo.",
+      "A fictional young Rwandan woman holding the product from Image 1 on a sunny Kigali street, smiling, smartphone photo.",
+      "Top-view flat-lay of the product from Image 1 with fresh fruit and leaves around it, bright colours."
+    ]
+  }
+]
