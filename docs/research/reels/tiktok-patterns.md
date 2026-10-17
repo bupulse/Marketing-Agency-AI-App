@@ -292,3 +292,49 @@ Recurring patterns
 3. **Voice-over only when a person or a story is needed.** The 7 voice-led clips were a presenter, a student, a doctor or a vlogger, and all had burned-in subtitles. For shop, menu and price clips skip voice-over and use text; where voice is used, keep it to one short line per beat and have it match the on-screen caption.
 4. **Make text change land on the beat.** In text-led clips the phrase or price changes every 2-4 s; cut the music loop so a beat falls on each text change and on the product reveal (a sound hit on the reveal is common in 3D and kinetic clips, not verified by ear).
 5. **Language by role.** Spoken or hook line in Kinyarwanda for local trust, product, price and contact in English or numerals, and the CTA bilingual ("Karibu", "waduhamagara cg ukatwandikira"). Never use a trending sound just for reach: BuPulse uses its own royalty-free music, so choose the kind (tempo and mood above), not a specific track, and always burn in captions.
+
+## E. What viewers ask (comments on 30 clips)
+
+**Data:** `tiktok-comments.jsonl` has 30 `clip_summary` rows and 450 `comment` rows (the first 15 non-seller comments per clip in TikTok's default order, read in the owner's logged-in tab, no replies, likes or follows from me). Commenter names are not recorded and `@` mentions are replaced with `@[user]`. One comment with a child's name and one with personal details were left out. Category and language are my keyword rules plus a manual pass, so treat the percentages as rough. Counts are small (15 comments per clip), so use them for direction, not exact shares.
+
+**Not all 30 clips are Rwandan business clips.** The pharmacy search returned Kenyan (2), Nigerian (1) and Tanzanian (1) pharmacies, the travel clips include a Ugandan account and an international audience, one "school" clip is a Chinese campus posted as Rwanda, and two clips are lists and trips, not sellers. The `country` field says which. Rwandan sellers: the phone, fashion, salon, skincare, bedding and Kigali clinic clips.
+
+**Share of each category per sector** (first 15 non-seller comments per clip):
+
+| Sector | Comments | Price | Location | Delivery | Phone/DM | Trust doubt | Praise | Tag a friend | Other |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Phones/electronics (4 clips) | 60 | 48% | 7% | 0% | 5% | 3% | 0% | 0% | 37% |
+| Skincare retail (1) | 15 | 67% | 7% | 0% | 0% | 7% | 0% | 0% | 20% |
+| Fashion (4) | 60 | 25% | 13% | 5% | 5% | 7% | 12% | 3% | 30% |
+| Salons (7) | 105 | 23% | 10% | 0% | 8% | 1% | 34% | 0% | 24% |
+| Home goods / bedding (1) | 15 | 13% | 7% | 20% | 0% | 0% | 7% | 0% | 53% |
+| Transport/travel (4) | 60 | 13% | 5% | 0% | 3% | 0% | 28% | 3% | 47% |
+| Clinics/pharmacies (6) | 90 | 7% | 14% | 1% | 3% | 0% | 21% | 0% | 53% |
+| Schools (3) | 45 | 0% | 4% | 0% | 2% | 11% | 18% | 0% | 64% |
+| All 30 clips | 450 | 21% | 10% | 2% | 4% | 3% | 20% | 1% | 40% |
+
+"Other" in order of size: one-word or reaction comments (32), "do you have it?" availability questions (about 30), service or product detail questions (20), banter on a ranking list (13), insurance coverage questions (12, all on one clinic clip), job requests (10), buying intent such as "I want it" (7), requirements questions for a trip (6), price guesses or complaints (6). Language of the 450 comments (heuristic): about 27% Kinyarwanda, 2% Swahili, a few French and Arabic, the rest English or emoji.
+
+**Questions that mean something was missing from the video:**
+- **Price not shown (the biggest gap).** 94 of 450 comments (21%) ask the price ("Nangahe?", "How much?", "Price please"), and 69 of those 94 are on clips that show no price on screen: the Kigali phone clips, the skincare vendor (offer given as a percent, so 8 of 15 comments ask "How much ?"), a hair-extension clip where 15 of 20 comments are "angahe", and three fashion clips. Phone clips also drew trade-in questions ("I have Airtel/Samsung, how much should I add?"), which a "swap" line in the video would answer.
+- **Price shown but not believed.** A fashion clip showed "8k" on screen; the seller answered "18k" in a comment, and three viewers called it a lie ("Urabeshya", "is that really the actual price", "try to be truthful to the prices you post"). Another clip had "28k only" and viewers asked "is the price real?" A price that has conditions (with hair, with extension, per night vs per three nights) must show the condition on screen: "133k for a night?" got 88 likes, and the answer ("No, for 3 nights") got 188.
+- **Location not shown.** 43 comments (10%) ask where ("Mukorerahe?", "Location please"). Clips with no address in the video drew the most: a fashion clip ("Kigali is big, say the area") and a hair-extension clip. Several clinics and salons were asked "location please" again and again.
+- **Phone/DM request.** 20 comments ("your number please", "duhe number"). Even where a number was on screen or in the caption, viewers asked ("is that number WhatsApp?"), so label what the number is for.
+- **Delivery.** 7 comments, mostly on one bedding clip ("payment after delivery", "do you deliver to the provinces") and one fashion clip. Pay-on-delivery and delivery zones were not stated.
+- **Availability and detail.** "Do you have X?", "still available?", colour/size ("Black irimo", "size ntoya"), "is it boarding?", "does it tangle?", "do you open on Sunday?". These fit a one-line caption.
+- **Insurance.** One clinic clip drew 12 questions about insurers (RSSB, MMI, Old Mutual, Mituelle). The video listed insurers in a poster that was on screen for only a few seconds.
+- **"Is it AI?"** Two clips drew "ni AI" and "is this AI generated?": a Chinese school presented as Rwanda, and a fashion clip. If BuPulse videos use AI visuals, people will ask, and a school or shop must not look invented.
+- **Trust doubt otherwise:** 13 comments (3%) in total: price honesty, "is it a real shop?", AI. Real shop, real person and real stock in the picture answer most of them.
+
+**Reply habits:**
+- 27 of 30 clips had a seller reply somewhere in the first 30 comments. But only 44 of the 177 question comments (25%) had a seller reply right beside them, so about three of four questions got no visible answer.
+- Replies that worked were specific: a price ("Ubu ihagaze 280k yonyine", "30k", "32k"), an address ("GATE 6 Chic building Ground Floor Shop DE011", "City tower", "Downtown opposite ... S1" with a phone number), or one clear route ("Kindly whatsapp us on ...", "You may call or text for us on WhatsApp under +250785478140 +250792518922"). One skincare seller answered the authenticity question with "Korea, USA, France." and "It's a physical shop, you're welcome, anytime to scan them yourselves".
+- The weak habit is "Inbox" or "Twandikire kuri WhatsApp" repeated under every price question (one fashion hub gave the same WhatsApp redirect four times in a row); it moves the work to a DM and nobody sees the price. Viewers answered it with "Is the price a secret???".
+- A clarifying reply can be the most-liked comment of the video (188 likes for "No, for 3 nights").
+
+**5 rules for the engine so these questions never need asking:**
+1. **Show the full price on screen**, as a solid label that stays up, with its condition in the same label ("28k with extension", "133k for 3 nights", "from 7.5K RWF"). Never leave the price for the comments or DM.
+2. **Show where.** Put the place name (area plus a landmark: "City tower", "Chic building, ground floor, shop DE011", "Kimironko behind Eco Bank") and the opening hours in the last 3 seconds, and repeat the area in the caption's first line (the part before "more").
+3. **One contact line, large and held until the end:** a WhatsApp or call number with "WhatsApp" written next to it, not a number in the caption alone. For delivery sellers add one line: "Delivery in Kigali / to provinces. Pay on delivery" (or "Pay first").
+4. **Pre-answer the standard questions in the first line of the caption** (the part visible before "more"): price, area, what is included, sizes or colours, delivery, how to order. Also give the seller a ready-made reply text to paste as the first comment ("Price: ... Location: ... WhatsApp: ..."); I did not check whether pinning was used on these clips.
+5. **Prove it is real.** Keep a real shop, real stock and a real person in frame (not a generic or fully generated scene), show the product with the price tag or the shelf, and when a service takes insurance, say the insurers on screen for at least 2-3 seconds and in the caption. For AI-assisted visuals, keep the real product photo recognisable and do not invent locations (the "is this AI?" comments appeared on exactly those).
