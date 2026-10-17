@@ -30,7 +30,7 @@ type Options = {
 };
 type FactWarning = { where: string; found: string; problem: "not-in-brief" | "business-only"; message: string };
 type DesignScore = { score: number; failed: { rule: string; reason: string; scene?: number | null }[] };
-type ClaudeJob = { warnings?: FactWarning[]; score?: DesignScore; captionScore?: number; captionMissed?: string[]; id: string; createdAt: string; productName: string; styleId: string; ratio: string; photoIds: string[]; spec: MotionSpec | null; usage: unknown[]; apiEquivalentUsd?: number; status: string; error: string | null; video: { bytes: number; quality?: string } | null; mode?: string };
+type ClaudeJob = { purpose?: "ad" | "post"; warnings?: FactWarning[]; score?: DesignScore; captionScore?: number; captionMissed?: string[]; id: string; createdAt: string; productName: string; styleId: string; ratio: string; photoIds: string[]; spec: MotionSpec | null; usage: unknown[]; apiEquivalentUsd?: number; status: string; error: string | null; video: { bytes: number; quality?: string } | null; mode?: string };
 type SdJob = { id: string; createdAt: string; status: string; credits: number; estimateUsd: number; costUsd: number; tokens: number; videoFile: string | null; error: string | null; title: string; request: { prompt: string; tier: string; resolution: string; ratio: string; seconds: number; referenceNotes: string[] }; preview?: { notice: string; readyAt: string; wouldCostCredits: number } };
 /** An opening line from the Brain (lib/video-engine/brain/suggest.ts). */
 type HookSuggestion = { hookId: string; name: string; line: string; why: string };
@@ -105,6 +105,8 @@ const state = {
   hooks: [] as HookSuggestion[],
   chosenHook: null as HookSuggestion | null,
   hooksKey: "",
+  /** Motion videos: an ad (price, how to order) or an organic post on the business's page. */
+  purpose: "ad" as "ad" | "post",
   /** Motion videos: where the video will be posted (optional; null = any). */
   platform: null as string | null,
   playing: false,
@@ -182,6 +184,9 @@ function renderPills() {
   $("pWrite").hidden = !sd;
   $("pPlan").hidden = !sd;
   $("pPlatform").hidden = sd;
+  $("pPurpose").hidden = sd;
+  $("pPurpose").textContent = state.purpose === "post" ? "Post" : "Ad";
+  $("pPurpose").classList.toggle("on", state.purpose === "post");
   $("pPlatformV").textContent = PLATFORMS.find((x) => x.id === state.platform)?.name ?? "Any platform";
   $("tAvatar").hidden = false;
   void quote();
@@ -198,10 +203,10 @@ async function loadHooks() {
     box.hidden = true;
     return;
   }
-  const key = [state.businessId, state.productId, state.templateId, state.platform, state.seconds].join("|");
+  const key = [state.businessId, state.productId, state.templateId, state.platform, state.seconds, state.purpose].join("|");
   if (key === state.hooksKey) return renderHooks();
   state.hooksKey = key;
-  const q = new URLSearchParams({ business: state.businessId, product: state.productId, template: state.templateId, seconds: String(state.seconds), platform: state.platform ?? "" });
+  const q = new URLSearchParams({ business: state.businessId, product: state.productId, template: state.templateId, seconds: String(state.seconds), platform: state.platform ?? "", purpose: state.purpose });
   const out = await api<{ hooks: HookSuggestion[] }>(`/api/hooks?${q}`).catch(() => ({ hooks: [] as HookSuggestion[] }));
   if (key !== state.hooksKey) return;
   state.hooks = out.hooks;
@@ -297,6 +302,11 @@ function setupPills() {
       box.append(b);
     }
   });
+  $("pPurpose").onclick = () => {
+    state.purpose = state.purpose === "ad" ? "post" : "ad";
+    msg(state.purpose === "post" ? "Post: a page post for your followers, with no price or contact push; it ends on the shop sign." : "Ad: the price and how to order are part of the video.", "ok");
+    renderPills();
+  };
   pop("pPlatform", (box) => {
     box.append(el("h6", { textContent: "Made for" }), chips(PLATFORMS.map((x) => x.id), state.platform ?? "", (v) => (state.platform = v || null), (v) => PLATFORMS.find((x) => x.id === v)?.name ?? v));
     box.append(el("p", { className: "hint", textContent: "Claude keeps text clear of the app's buttons and picks the length that works there." }));
@@ -699,7 +709,7 @@ async function generate() {
       const out = await api<{ jobs: ClaudeJob[]; error: string | null }>("/api/design", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: state.mode, businessId: state.businessId, productId: state.productId, photoIds: state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]), styleId: state.templateId, hookId: state.hookId, ratio: state.ratio, seconds: state.seconds, note: prompt, fixedLens: state.fixedLens, cartoonId: state.avatar?.kind === "cartoon" ? state.avatar.id : null, versions: state.versions, platform: state.platform, chosenHook: state.chosenHook ? { hookId: state.chosenHook.hookId, line: state.chosenHook.line } : null }),
+        body: JSON.stringify({ mode: state.mode, businessId: state.businessId, productId: state.productId, photoIds: state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]), styleId: state.templateId, hookId: state.hookId, ratio: state.ratio, seconds: state.seconds, note: prompt, fixedLens: state.fixedLens, cartoonId: state.avatar?.kind === "cartoon" ? state.avatar.id : null, versions: state.versions, platform: state.platform, purpose: state.purpose, chosenHook: state.chosenHook ? { hookId: state.chosenHook.hookId, line: state.chosenHook.line } : null }),
       });
       if (out.error) throw new Error(out.error);
       msg("Designed. Press a generation to play it and make the MP4.", "ok");
@@ -772,6 +782,7 @@ async function loadGens() {
     const badges: HTMLElement[] = [];
     if (g.claude?.score) badges.push(el("span", { className: "scoreTag", textContent: `Research score ${g.claude.score.score}/100` }));
     if (g.claude?.warnings?.length) badges.push(el("span", { className: "factTag", textContent: `${g.claude.warnings.length} fact${g.claude.warnings.length === 1 ? "" : "s"} to check` }));
+    if (g.claude?.purpose === "post") badges.push(el("span", { className: "postTag", textContent: "Post" }));
     if (g.claude?.captionScore !== undefined && g.claude.captionScore < 70) badges.push(el("span", { className: "capTag", textContent: `Caption ${g.claude.captionScore}/100` }));
     if (badges.length) card.append(el("div", { className: "badges" }, ...badges));
     // The shape, so feed versions (1:1, 4:5) stand out from the vertical ones.

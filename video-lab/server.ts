@@ -117,6 +117,8 @@ type DesignRequest = {
   platform: Platform | null;
   /** An opening line the owner chose from the Brain's suggestions (GET /api/hooks). */
   chosenHook: { hookId: string; line: string } | null;
+  /** An ad (the default) or an organic post on the business's own page: no price or contact hooks, a quieter caption. */
+  purpose: "ad" | "post";
 };
 
 /** The opening line the page sent (both parts must be text), or null. */
@@ -158,6 +160,8 @@ async function readRequest(body: Record<string, unknown>): Promise<DesignRequest
     cartoonId: castById(String(body.cartoonId ?? ""))?.id ?? null,
     platform: isPlatform(body.platform) ? body.platform : null,
     chosenHook: chosenHookOf(body.chosenHook),
+    // An edit or extend keeps its parent's purpose.
+    purpose: ((base as { purpose?: string } | null)?.purpose ?? body.purpose) === "post" ? "post" : "ad",
   };
 }
 
@@ -198,6 +202,8 @@ async function briefFor(req: DesignRequest, variation: { index: number; of: numb
     variation,
     platform: req.platform,
   };
+  // The Brain (context, design score, hooks) reads `purpose` off the brief: "post" means a page post, not an ad.
+  Object.assign(brief, { purpose: req.purpose });
   return { brief, files };
 }
 
@@ -242,14 +248,14 @@ async function designOne(req: DesignRequest, variation: { index: number; of: num
     Object.assign(job, { spec: result.spec, usage: result.usage, costUsd: result.costUsd, apiEquivalentUsd: result.apiEquivalentUsd, billedTo: mode });
     // The fact check's warnings, and the research score once the designer returns one; saved with the job for the page.
     const checked = result as typeof result & { score?: DesignScore };
-    Object.assign(job, { warnings: checked.warnings ?? [], ...(checked.score ? { score: checked.score } : {}) });
+    Object.assign(job, { warnings: checked.warnings ?? [], purpose: req.purpose, ...(checked.score ? { score: checked.score } : {}) });
     // The caption check (lib/video-engine/brain/score.ts). An edit or extend that kept the caption keeps its check.
     const parent = req.base as (LabJob & { captionScore?: number; captionMissed?: string[] }) | null;
     const sameCaption = parent?.spec && parent.captionScore !== undefined && parent.spec.caption === result.spec.caption && parent.spec.hashtags.join(" ") === result.spec.hashtags.join(" ");
     if (sameCaption) Object.assign(job, { captionScore: parent.captionScore, captionMissed: parent.captionMissed ?? [] });
     else {
       // The Brain's "mode" means ad or post, not the design mode: our designs are ads (its default).
-      const cap = scoreCaption(result.spec.caption, result.spec.hashtags, brief, { platform: brief.platform });
+      const cap = scoreCaption(result.spec.caption, result.spec.hashtags, brief, { platform: brief.platform, purpose: req.purpose });
       Object.assign(job, { captionScore: cap.score, captionMissed: cap.missed });
     }
   } catch (error) {
@@ -816,7 +822,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && p === "/api/hooks") {
       // The Brain's three opening lines for this product, template and platform (lib/video-engine/brain/suggest.ts).
       const q = Object.fromEntries(url.searchParams);
-      const reqd = await readRequest({ businessId: q.business, productId: q.product, styleId: q.template, seconds: Number(q.seconds) || 15, platform: q.platform, mode: "text" });
+      const reqd = await readRequest({ businessId: q.business, productId: q.product, styleId: q.template, seconds: Number(q.seconds) || 15, platform: q.platform, mode: "text", purpose: q.purpose });
       if ("error" in reqd) return fail(res, reqd.status, reqd.error);
       const { brief } = await briefFor(reqd, null, { photos: false });
       // The Brain calls YouTube Shorts "shorts".
