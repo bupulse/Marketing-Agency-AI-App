@@ -4,7 +4,7 @@
 // the centre 60% of the photo. Its place on the canvas follows the layer's crop (cover or contain, focus point).
 // Pure and stable: a repaired scene repairs to itself. Used by validate.ts.
 import { coverRect } from "./draw";
-import { luminance } from "./draw3d";
+import { luminance, turntableFit } from "./draw3d";
 import { RATIOS, type Layer, type PhotoLayer, type Ratio, type Scene, type TextLayer, type VideoLayer } from "./spec";
 
 /** A box as fractions (of a photo or of the canvas): left, top, width, height. */
@@ -66,7 +66,50 @@ export function subjectOnCanvas(layerBox: Box, ratio: Ratio, photo: PhotoInfo | 
 }
 
 const boxOf = (l: Pick<Layer, "x" | "y" | "w" | "h">): Box => ({ x: l.x - l.w / 2, y: l.y - l.h / 2, w: l.w, h: l.h });
+
+/**
+ * Where a cut-out product is drawn (canvas fractions, at its largest): the trimmed product, the shape of the photo's
+ * subject box, fitted into the layer's box (draw3d.ts drawCutout) and grown by its slow zoom (zoomTo, which takes a
+ * cut-out past its box), or standing on its turntable. Null when the layer does not draw a cut-out (no cut-out asked,
+ * or none known for the photo: only cut-out photos carry a subject box).
+ */
+export function cutoutBox(l: PhotoLayer, ratio: Ratio, photo: PhotoInfo | undefined): Box | null {
+  const s = photo?.subject;
+  if (!l.cutout || !s || !photo?.width || !photo.height || (!l.turntable && l.fit !== "contain")) return null;
+  const { width: W, height: H } = RATIOS[ratio] ?? RATIOS["9:16"];
+  const cw = s.w * photo.width;
+  const ch = s.h * photo.height;
+  if (cw <= 0 || ch <= 0) return null;
+  const bw = l.w * W;
+  const bh = l.h * H;
+  let w: number;
+  let h: number;
+  let cy: number;
+  if (l.turntable) {
+    // Its tallest moment: the near edge swung forward (centre = that height / 2 + 3% of the box).
+    const f = turntableFit({ w: bw, h: bh }, cw, ch, l.turntable.angle ?? 35);
+    h = 2 * (f.centre - bh * 0.03);
+    w = (f.w * h) / f.h;
+    cy = (l.y - l.h / 2) * H + f.centre;
+  } else {
+    const k = Math.min(bw / cw, bh / ch) * Math.max(1, l.zoomTo ?? 1);
+    w = cw * k;
+    h = ch * k;
+    cy = l.y * H;
+  }
+  return { x: l.x - w / W / 2, y: cy / H - h / H / 2, w: w / W, h: h / H };
+}
 const area = (b: Box) => b.w * b.h;
+
+/**
+ * What text must keep off for a cut-out: the product, and on a turntable its contact shadow and the top of its floor
+ * reflection too (the reflection fades out below; text may sit on its faint end). Null when it is not a cut-out.
+ */
+export function productArea(l: PhotoLayer, ratio: Ratio, photo: PhotoInfo | undefined): Box | null {
+  const b = cutoutBox(l, ratio, photo);
+  if (!b || !l.turntable) return b;
+  return { ...b, h: Math.min(l.y + l.h / 2 - b.y, b.h + l.h * 0.1) };
+}
 const overlap = (a: Box, b: Box) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
 /** A giant word behind the product on purpose (validate.ts lets it be bigger than 0.22): it stays. */
 /** A price, a phone number or a call to action: never a backdrop, always kept readable and inside the frame. */
@@ -80,7 +123,8 @@ export function sceneSubject(scene: Pick<Scene, "layers" | "background">, ratio:
   const layers = scene.layers.filter((l): l is PhotoLayer | VideoLayer => (l.kind === "photo" || l.kind === "video") && area(clip(boxOf(l)) ?? { x: 0, y: 0, w: 0, h: 0 }) >= 0.02);
   const boxes = layers
     // A turntable fills its own box (product, floor and reflection): the box is the subject.
-    .map((l) => (l.kind === "video" ? subjectOnCanvas(boxOf(l), ratio, undefined, l.fit) : l.turntable ? clip(boxOf(l)) : subjectOnCanvas(boxOf(l), ratio, photos[l.photo - 1], l.fit ?? "cover", l.focusX ?? 0.5, l.focusY ?? 0.5)))
+    // A cut-out fills its box with the product alone (not the product's place in the whole photo).
+    .map((l) => (l.kind === "video" ? subjectOnCanvas(boxOf(l), ratio, undefined, l.fit) : cutoutBox(l, ratio, photos[l.photo - 1]) ? clip(productArea(l, ratio, photos[l.photo - 1]) as Box) : l.turntable ? clip(boxOf(l)) : subjectOnCanvas(boxOf(l), ratio, photos[l.photo - 1], l.fit ?? "cover", l.focusX ?? 0.5, l.focusY ?? 0.5)))
     .filter((b): b is Box => !!b);
   if (boxes.length) {
     const x0 = Math.min(...boxes.map((b) => b.x));
@@ -184,6 +228,17 @@ export function keepOffSubject(layers: Layer[], subject: Box | null, safe: { top
   // down to about the text's size, or it would stay behind covering the product (a yellow burst hid the house).
   const backing = (t: TextLayer) =>
     layers.filter((s) => s.kind === "shape" && ((Math.abs(s.x - t.x) <= t.w / 2 && Math.abs(s.y - t.y) <= t.h / 2 && s.h <= t.h * 2) || (["burst", "circle", "blob", "rect"].includes(s.shape) && Math.abs(t.x - s.x) <= s.w / 2 && Math.abs(t.y - s.y) <= s.h / 2)));
+  // A thin rule just above or below a text (a gold line under the price, h up to 0.015) belongs to its nearest text and
+  // keeps its distance when that text is restacked (it would otherwise cross the text that moves onto it).
+  const ruleOf = new Map<Layer, TextLayer>();
+  for (const r of layers) {
+    if (r.kind !== "shape" || r.h > 0.015) continue;
+    const near = texts
+      .map((t) => ({ t: t.l, d: Math.abs(r.y - t.l.y) - t.l.h / 2 }))
+      .filter((n) => n.d <= 0.04 && Math.abs(r.x - n.t.x) <= (n.t.w + r.w) / 2)
+      .sort((a, b) => a.d - b.d)[0];
+    if (near && !backing(near.t).includes(r)) ruleOf.set(r, near.t);
+  }
   // Stacked by the height the letters are drawn at (a short box with big letters would overlap its neighbour).
   const tight = (m: { l: TextLayer }) => Math.max(drawnHeight(m.l, ratio), ...backing(m.l).map((s) => Math.min(s.h, drawnHeight(m.l, ratio) * 1.6)));
   // Members: the overlapping texts sent to a band, and the texts already in it (they are restacked with them).
@@ -214,7 +269,26 @@ export function keepOffSubject(layers: Layer[], subject: Box | null, safe: { top
       // Its backing shape travels with it.
       for (const b of backing(m.l)) {
         const j = layers.indexOf(b);
-        out[j] = { ...b, x: b.h > m.l.h * 2 ? m.l.x : b.x, y: round(b.y + dy), h: round(Math.min(b.h, h * (b.h > m.l.h * 2 ? 1.6 : 1))), w: b.h > m.l.h * 2 ? round(Math.min(b.w, m.l.w * 1.15)) : b.w };
+        const big = b.h > m.l.h * 2;
+        const nh = Math.min(b.h, h * (big ? 1.6 : 1));
+        // A burst, circle or blob keeps its shape (squashed flat it turns and leaves the price on the bare background):
+        // it shrinks evenly to the text's height.
+        const even = b.kind === "shape" && ["burst", "circle", "blob"].includes(b.shape) ? Math.min(1, nh / b.h) : null;
+        out[j] =
+          even !== null
+            ? { ...b, x: big ? m.l.x : b.x, y: round(b.y + dy), h: round(b.h * even), w: round(b.w * even) }
+            : { ...b, x: big ? m.l.x : b.x, y: round(b.y + dy), h: round(nh), w: big ? round(Math.min(b.w, m.l.w * 1.15)) : b.w };
+        // Still too small to hold the whole line: the text gets a box in the badge's colour, so no letter falls on the bare
+        // background (its colour was chosen for the badge).
+        const moved = out[m.i] as TextLayer;
+        if (even !== null && b.kind === "shape" && !moved.box && b.w * even * 0.65 < m.l.w) out[m.i] = { ...moved, box: { color: b.color, padding: 0.015, radius: 0.3 } };
+      }
+      // Its rule keeps the same side and gap (scaled with the text).
+      for (const [r, t] of ruleOf) {
+        if (t !== m.l) continue;
+        const side = r.y < m.l.y ? -1 : 1;
+        const edgeGap = Math.max(0, Math.abs(r.y - m.l.y) - m.l.h / 2);
+        out[layers.indexOf(r)] = { ...r, y: round(ny + side * (h / 2 + edgeGap)) };
       }
       y += h + GAP;
     }

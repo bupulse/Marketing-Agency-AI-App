@@ -2,8 +2,9 @@
 // unchecked: unknown values fall back to safe defaults, numbers are clamped to the canvas, text is cut to length,
 // layers pointing at photos we do not have are dropped, and the scenes are fitted to the length that was asked for.
 import { safeAreaFor as brainSafeArea, type SafeArea } from "@/lib/video-engine/brain";
+import { cameraAt } from "./animate";
 import { luminance, rgba } from "./draw3d";
-import { CONTACT, badgesOffProduct, drawnHeight, isBackdropWord, keepOffSubject, sceneSubject, type PhotoInfo } from "./subject";
+import { CONTACT, badgesOffProduct, cutoutBox, drawnHeight, isBackdropWord, keepOffSubject, productArea, sceneSubject, type PhotoInfo } from "./subject";
 import {
   CAMERA_MOVES,
   CHARACTER_HAIR,
@@ -29,9 +30,11 @@ import {
   type Look,
   type Material,
   type MotionSpec,
+  type PhotoLayer,
   type Ratio,
   type Scene,
   type Text3d,
+  type TextLayer,
   type Turntable,
 } from "./spec";
 
@@ -518,10 +521,75 @@ const ORDER_WORDS = /\b(?:order|call|whatsapp|book|visit|buy|shop|dm|message|con
  */
 function withOrderWords(layers: Layer[]): Layer[] {
   const texts = layers.filter((l): l is Extract<Layer, { kind: "text" }> => l.kind === "text");
-  if (texts.some((t) => ORDER_WORDS.test(t.text))) return layers;
+  // A bare number on the end card says what it is for (viewers ask "is that WhatsApp?"; the scorer's number-labelled):
+  // "WhatsApp 0788 …" next to an order line, "Call or WhatsApp 0788 …" when the scene has none.
   const phone = texts.find((t) => t.text.replace(/\D/g, "").length >= 9 && /^[+\d\s().-]+$/.test(t.text.trim()));
   if (!phone) return layers;
-  return layers.map((l) => (l === phone ? { ...phone, text: cleanText(`Call or WhatsApp ${phone.text}`, SPEC_LIMITS.maxText) } : l));
+  const label = texts.some((t) => t !== phone && ORDER_WORDS.test(t.text)) ? "WhatsApp" : "Call or WhatsApp";
+  return layers.map((l) => (l === phone ? { ...phone, text: cleanText(`${label} ${phone.text.trim()}`, SPEC_LIMITS.maxText) } : l));
+}
+
+/**
+ * A cut-out product big enough to sell (lead's review of the dress sheets, 17 October 2026): when a scene's one
+ * cut-out fills less than `min` of the frame height, its box grows (the product no wider than 90% of the frame) into
+ * the room the scene's text leaves: the lines above the product keep a band at the top of the safe area, the lines
+ * below (and the quiet phone line still to come) a band at the bottom; with no text on a side the product may reach
+ * the frame's edge. A cut-out too big for its text shrinks to that room (not below 35% of the frame). The product
+ * repair that follows settles the text in those bands. Scenes with two or more cut-outs
+ * (colour options side by side) are left as designed.
+ */
+function bigEnough(layers: Layer[], ratio: Ratio, photos: (PhotoInfo | undefined)[], min: number, area: SafeArea, phone: boolean, camera?: Camera): Layer[] {
+  if (min <= 0) return layers;
+  const cuts = layers.filter((l): l is PhotoLayer => l.kind === "photo" && !!cutoutBox(l, ratio, photos[l.photo - 1]));
+  if (cuts.length !== 1) return layers;
+  const l = cuts[0];
+  const b = cutoutBox(l, ratio, photos[l.photo - 1]) as NonNullable<ReturnType<typeof cutoutBox>>;
+  // What the text must clear: the product (on a turntable with its shadow and the top of its reflection), as the
+  // product repair (subject.ts sceneSubject) sees it.
+  const o = productArea(l, ratio, photos[l.photo - 1]) as NonNullable<ReturnType<typeof productArea>>;
+  const gap = 0.02;
+  const pcy = o.y + o.h / 2;
+  // Only the lines over or under the product take height from it: a column of text beside it (a side-by-side layout)
+  // does not, as long as the grown product stays clear of it.
+  // Measured as it first shows: a slow zoom (zoomTo) grows a cut-out past that by the end of the scene.
+  const z = l.turntable ? 1 : Math.max(1, l.zoomTo ?? 1);
+  const want = b.h / z < min * 0.95 ? min * z : b.h;
+  const half = Math.min(0.9, (b.w * want) / b.h) / 2;
+  const pcx = b.x + b.w / 2;
+  const texts = layers.filter((t): t is TextLayer => t.kind === "text" && !isBackdropWord(t) && Math.min(t.x + t.w / 2, pcx + half) - Math.max(t.x - t.w / 2, pcx - half) > 0.03);
+  // The height the letters are drawn at (as the product repair stacks them), not a roomy box.
+  const need = (list: TextLayer[]) => (list.length ? list.reduce((s, t) => s + drawnHeight(t, ratio) + gap, 0) : 0);
+  const above = need(texts.filter((t) => t.y < pcy));
+  // The quiet phone line (withPhoneLine) goes at the bottom of the safe area when the scene has no number yet.
+  const quiet = phone && !texts.some((t) => /\d{3}[\s-]?\d{3}/.test(t.text)) ? 0.04 + gap : 0;
+  const below = need(texts.filter((t) => t.y >= pcy)) + quiet;
+  // One more gap between the product and its nearest line (the letters' entrances and shadows need it).
+  // A camera zoom spreads the product out from the frame's centre while the text holds its place: the room shrinks
+  // by the scene's largest zoom.
+  const zoom = Math.max(cameraAt(camera, 0, 0).zoom, cameraAt(camera, 1, 0).zoom, 1);
+  const top = 0.5 + ((above ? area.top + above + gap : 0.04) - 0.5) / zoom;
+  const bottom = 0.5 + ((below ? area.bottom - below - gap : 0.96) - 0.5) / zoom;
+  const room = bottom - top;
+  // Grown to the minimum when smaller; shrunk to the room when the text cannot fit around it (never below 35% of the
+  // frame: the text gives way after that).
+  const fit = Math.max(Math.min(want / b.h, 0.9 / b.w, room / o.h), Math.min(1, (0.35 * z) / b.h));
+  const k = Math.abs(fit - 1) <= 0.03 ? 1 : fit;
+  // The product area's centre keeps its offset from the layer's centre, scaled (a turntable stands it above its
+  // floor), and the area moves into the room left by the text.
+  const nx = l.x + (pcx - l.x) * k;
+  const ny = l.y + (pcy - l.y) * k;
+  const w = b.w * k;
+  const h = o.h * k;
+  const dx = Math.max(0.05 - (nx - w / 2), Math.min(0, 0.95 - (nx + w / 2)));
+  // Into its room; when even the smallest product is taller than the room, centred on it, inside the frame.
+  const dy = h <= room ? Math.max(top - (ny - h / 2), Math.min(0, bottom - (ny + h / 2))) : Math.min(0.98 - h / 2, Math.max(0.02 + h / 2, (top + bottom) / 2)) - ny;
+  // The right size already and inside its room: as designed. Otherwise it moves into the room (the text needs it).
+  if (k === 1 && Math.abs(dx) < 0.005 && Math.abs(dy) < 0.005) return layers;
+  const r3 = (v: number) => Math.round(v * 1000) / 1000;
+  const grown: PhotoLayer = { ...l, w: r3(Math.min(2, l.w * k)), h: r3(Math.min(2, l.h * k)), x: r3(l.x + dx), y: r3(l.y + dy) };
+  // A card or frame made for the photo (a shape on the same centre, about its size) grows and moves with it.
+  const card = (x: Layer) => x.kind === "shape" && Math.abs(x.x - l.x) <= 0.05 && Math.abs(x.y - l.y) <= 0.05 && x.w >= l.w * 0.7 && x.w <= l.w * 1.4 && x.h >= l.h * 0.7 && x.h <= l.h * 1.4;
+  return layers.map((x) => (x === l ? grown : card(x) ? { ...x, w: r3(Math.min(2, x.w * k)), h: r3(Math.min(2, x.h * k)), x: r3(grown.x + (x.x - l.x) * k), y: r3(grown.y + (x.y - l.y) * k) } : x));
 }
 
 /** The phone number as people read it in Rwanda: "+250 788 300 400" -> "0788 300 400"; other numbers as given. */
@@ -602,7 +670,17 @@ function readable(l: Layer, sceneSeconds: number): Layer {
  * `photos`: what is known about photo n (index n - 1): its size and the product's box in it (the cut-out's box), so
  * text can be kept off the product. `platform`: the safe area to keep text in (designer.ts PLATFORMS keys).
  */
-export type ValidateOptions = { ratio: Ratio; photoCount: number; seconds: number; fixedLens?: boolean; photos?: (PhotoInfo | undefined)[]; platform?: string | null; phone?: string | null };
+export type ValidateOptions = {
+  ratio: Ratio;
+  photoCount: number;
+  seconds: number;
+  fixedLens?: boolean;
+  photos?: (PhotoInfo | undefined)[];
+  platform?: string | null;
+  phone?: string | null;
+  /** The smallest share of the frame height a cut-out product fills (templates.ts productMinHeight); 0 or none: as designed. */
+  productMin?: number;
+};
 
 export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
   if (!isObj(raw)) throw new SpecError("The design was not a JSON object.");
@@ -650,8 +728,18 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
   // anything the restack widened.
   const safe = (layers: Layer[]) => inSafeArea(layers, ratio, opts.platform ?? null);
   for (const s of scenes) {
-    const subject = VERTICAL.has(ratio) || ratio === "1:1" ? sceneSubject(s, ratio, opts.photos ?? []) : null;
-    s.layers = safe(keepOffSubject(apartTexts(safe(badgesOffProduct(s.layers, subject)), ratio, area), subject, area, ratio));
+    const tall = VERTICAL.has(ratio) || ratio === "1:1";
+    const sized = (layers: Layer[]) => (tall ? bigEnough(layers, ratio, opts.photos ?? [], opts.productMin ?? 0, area, !!opts.phone, s.camera) : layers);
+    // The product's size depends on where the text sits, and each text move can make room for (or push into) another:
+    // repeated until nothing moves (at most four times), so a second check of the result changes nothing.
+    for (let pass = 0, before = ""; pass < 4; pass++) {
+      s.layers = sized(s.layers);
+      const subject = tall ? sceneSubject(s, ratio, opts.photos ?? []) : null;
+      s.layers = safe(keepOffSubject(apartTexts(safe(badgesOffProduct(s.layers, subject)), ratio, area), subject, area, ratio));
+      const now = JSON.stringify(s.layers);
+      if (now === before) break;
+      before = now;
+    }
   }
   fitLength(scenes, opts.seconds, hasVideo ? SPEC_LIMITS.minSceneSeconds * scenes.length : SPEC_LIMITS.minTotalSeconds);
   for (const s of scenes) {

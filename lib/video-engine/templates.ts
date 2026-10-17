@@ -109,4 +109,12 @@ export const VIDEO_TEMPLATES: VideoTemplate[] = [
     direction: "Warm and local. Earthy palette (terracotta, ochre, deep green, cream) unless the brand says otherwise, textured backgrounds (dots or lines), rounded photo frames, friendly Nunito text, handheld camera shake 0.25. Speak like a neighbour recommending a good shop. A greeting in the business's language may open the video (for Kinyarwanda: Muraho!). End with where to find the business. Look: warm, grain 0.25, light leaks 0.25." }),
 ];
 
+/**
+ * The smallest share of the frame height a cut-out product fills on a template (validate.ts bigEnough): the product
+ * templates 55%, text-led ones as designed, every other 45%.
+ */
+const PRODUCT_LED = new Set(["product-hero", "studio-turntable", "showroom-turntable", "floating-product-reveal"]);
+const TEXT_LED = new Set(["kinetic-type", "typography-poster", "event-poster"]);
+export const productMinHeight = (id: string): number => (TEXT_LED.has(id) ? 0 : PRODUCT_LED.has(id) ? 0.55 : 0.45);
+
 export const templateById = (id: string): VideoTemplate => VIDEO_TEMPLATES.find((t) => t.id === id) ?? VIDEO_TEMPLATES[0];

@@ -5,7 +5,7 @@
 // will call it through withLedger (lib/ai/ledger.ts) like every other AI call.
 import { estimateCostUsd } from "@/lib/ai/pricing";
 import { hookById } from "./styles";
-import { templateById } from "./templates";
+import { productMinHeight, templateById } from "./templates";
 import { castById } from "./cast";
 import { CAMERA_MOVES, GRADES, MATERIALS, PARTICLE_KINDS, RATIOS, SPEC_LIMITS, totalMs, type MotionSpec, type Ratio } from "./spec";
 import { SpecError, extractJson, validateSpec } from "./validate";
@@ -142,6 +142,8 @@ export function systemPrompt(): string {
     "- The first 1.5 seconds must stop the scroll: big, bold, moving. The last scene is the call to action with the business name and an ordering word with the contact ('Order on WhatsApp 0788 300 400', 'Call 0788 300 400', 'Visit us in Kimironko'; never a bare number).",
     "- Follow the research block when there is one: it says what works for this kind of video on this platform (facts still come only from the brief). The template sets the look, layout, colours and camera; the research sets the hook, pacing, text rules and call to action inside that look. When they conflict the template wins: a phone or price bar on every scene only when the template asks for it or the platform is Facebook; otherwise the contact sits in the last scene (and may open the first). Luxury, minimal and cinematic templates keep few words on screen.",
     "- Phone numbers, prices and the call to action: size at least 0.045 (they must read on a phone at a glance).",
+    "- The phone number says what it is for in the same line at least once, always on the end card ('WhatsApp 0788 300 400', 'Call or WhatsApp 0788 300 400'): viewers ask whether a bare number is WhatsApp. A quiet number line in the other scenes may stay bare. A price that comes with a condition in the brief (per night, for 3 nights, with extension, per kg, from) carries it in the same label ('133k for 3 nights', '28k with extension'), never the bare amount.",
+    "- A cut-out product is the star of its scene: give its layer a box that makes the product at least 45% of the frame height (55% on product-hero, studio and showroom turntable and floating-reveal templates), with the text above and below it, never a small product in a field of empty colour. Text-led templates (Bold words, Typography poster, Event poster) may keep it smaller.",
     "- At least one scene for every 4 seconds of video (12 s: 3 scenes; 15 s: 4; 20 s: 5): a 7-second scene feels stuck.",
     "- Never repeat a layout in consecutive scenes: alternate full-frame photo, framed photo, detail crop (zoomTo with focusX/focusY), text-only, split and turntable layouts, and vary the background between scenes. With few photos, crop them differently.",
     "- Every number, price, percentage, duration (1-year, 12-month) and claim word (new, refurbished, genuine, original, free, guarantee, warranty, discount, award, best, number one, certified) you write must come from the product facts or the owner's note. The business description is about the shop in general: a claim found only there (\"we sell new and refurbished phones\") is not a claim about this product. A checker compares every text, say line and the caption with the brief and shows the owner anything it cannot find.",
@@ -313,7 +315,7 @@ export async function designVideo(brief: DesignBrief, opts: { apiKey?: string; m
       // An edit may lengthen or shorten the video (Claude's own scene lengths, 6 to 30 s); an extend adds the asked seconds.
       const answered = rawSeconds(raw);
       const seconds = brief.mode === "edit" && brief.base ? answered || totalMs(brief.base) / 1000 : brief.mode === "extend" && brief.base ? totalMs(brief.base) / 1000 + brief.seconds : brief.seconds;
-      const spec = validateSpec(raw, { ratio: brief.base?.ratio ?? brief.ratio, photoCount: brief.photos.length, seconds, fixedLens: brief.fixedLens, photos: brief.photos.map((p) => ({ width: p.width, height: p.height, subject: p.subject ?? null })), platform: brief.platform ?? null, phone: brief.business.phone ?? null });
+      const spec = validateSpec(raw, { ratio: brief.base?.ratio ?? brief.ratio, photoCount: brief.photos.length, seconds, fixedLens: brief.fixedLens, photos: brief.photos.map((p) => ({ width: p.width, height: p.height, subject: p.subject ?? null })), platform: brief.platform ?? null, phone: brief.business.phone ?? null, productMin: productMinHeight(brief.styleId) });
       // Facts first, then the language: price forms, English calls to action in a Kinyarwanda video, word-for-word lines.
       const language = checkLanguage(languageTextsOf(spec), brief.business.language).map((i) => ({ where: i.where, found: i.found, problem: "language" as const, message: i.message, suggestion: i.suggestion }));
       const warnings = [...factCheck(spec, brief), ...language];

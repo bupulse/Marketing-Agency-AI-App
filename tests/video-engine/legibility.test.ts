@@ -132,10 +132,11 @@ describe("empty scenes and the last scene's call to action", () => {
     expect(two.scenes[0].transition).toBe("cut");
   });
 
-  it("a bare number on the last scene gets the ordering words; a scene that already says how to order is left", () => {
+  it("a bare number on the last scene gets the ordering words, or just its label next to an order line", () => {
     const end = (layers: unknown[]) => validateSpec({ palette: {}, scenes: [{ seconds: 3, background: {}, layers: [t({ text: "Galaxy A56" })] }, { seconds: 3, background: {}, layers }] }, { ratio: "9:16", photoCount: 0, seconds: 6 }).scenes[1].layers;
     expect(end([t({ text: "+250 788 300 400" })])[0]).toMatchObject({ text: "Call or WhatsApp +250 788 300 400" });
-    expect(end([t({ text: "Order on WhatsApp", y: 0.3 }), t({ text: "+250 788 300 400" })])[1]).toMatchObject({ text: "+250 788 300 400" });
+    expect(end([t({ text: "Order on WhatsApp", y: 0.3 }), t({ text: "+250 788 300 400" })])[1]).toMatchObject({ text: "WhatsApp +250 788 300 400" });
+    expect(end([t({ text: "WhatsApp 0788 300 400" })])[0]).toMatchObject({ text: "WhatsApp 0788 300 400" });
     expect(end([t({ text: "Nova Phones Kigali" })])[0]).toMatchObject({ text: "Nova Phones Kigali" });
   });
 });
