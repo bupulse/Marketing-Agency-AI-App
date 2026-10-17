@@ -269,9 +269,10 @@ pages read it). Videos are served with Range requests, so a page full of videos 
   connected (`GET /api/seedance/status`, checked every 5 minutes). Preview jobs stay out of the showcase.
 - **Voice-over (Motion videos):** More, Voice-over (on by default). Making the MP4 first asks for the take
   (`POST /api/jobs/<id>/voice`, ElevenLabs, `video-lab/voice.ts`), renders with the fitted design and the voice, and
-  says "Voice cut to fit 30 s" when the lines were too long. **10 credits** a take (`VOICE_OVER_CREDITS`), taken first
+  says "Voice cut to fit 30 s" when the lines were too long. **15 credits** a take (`VOICE_OVER_CREDITS`, now in
+  `lib/video-engine/credits.ts` with the other prices), taken first
   and given back when it fails, when the design has no lines, or when the same take is already saved (a new MP4 of the
-  same design is free). Generate on Motion shows design + voice (40 credits). If the voice fails, the MP4 is made
+  same design is free). Generate on Motion shows design + voice (35 + 15 = 50 credits). If the voice fails, the MP4 is made
   without it and the page says so. The old `/lab` page has the same toggle. First real take (17 October, Nova Phones,
   219 characters, 12.7 s): $0.066; the 480p MP4 has video and sound tracks.
 - **3D motion templates:** the `3d` category ("3D motion": 3D title drop, showroom turntable, glass cards, chrome

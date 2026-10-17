@@ -3,8 +3,8 @@
 // (video-lab/blender-jobs.ts), one render at a time. A job is charged first and given back when the design or the
 // render fails. The photos Blender reads are copied by the server into the job's own folder: no path ever comes from
 // the browser or from Claude. Before the render, the scene's spoken line becomes an ElevenLabs voice-over (charged like a
-// Motion video's, given back when it fails) and a library track can be chosen; both are kept in the job's folder for
-// Blender to mix in (renderBlenderScene's audio options, being added by the Blender pipeline).
+// Motion video's, given back when it fails) and a library track is chosen; both are copied into the job's photo
+// folder and Blender mixes them into the MP4 (renderBlenderScene's audio, music and jobDir).
 import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -21,10 +21,13 @@ import { record } from "./store";
 
 const DATA = path.resolve("video-lab/data/blender");
 /**
- * Whether renderBlenderScene mixes a voice and music into the clip yet (the Blender pipeline is adding it). Until it
- * does, no voice is made (it would be charged but not heard) and the page says the sound comes later.
+ * Whether renderBlenderScene mixes a voice and music into the clip (docs/BLENDER.md, "Sound"; on since 17 October).
+ * Off, no voice is made (it would be charged but not heard) and the page says the sound comes later.
  */
-export const BLENDER_MIXES_AUDIO = false;
+export const BLENDER_MIXES_AUDIO = true;
+/** Words a second the voice can say before Blender cuts it at the clip's end (docs/BLENDER.md, "Sound"). */
+const WORDS_PER_SECOND = 2.5;
+const NO_AUDIO = { voice: false, music: false, voiceFile: null, voiceNote: null, voiceCredits: 0, musicFile: null, musicTitle: null };
 const JOBS = path.join(DATA, "jobs");
 const VIDEOS = path.join(DATA, "videos");
 
@@ -41,6 +44,8 @@ export type PremiumJob = {
   parentId: string | null;
   /** The photo files Blender reads, in the order the scene numbers them (server-made paths, in a job's folder). */
   photoFiles: BlenderPhoto[];
+  /** The business's content language (the voice speaks Kinyarwanda lines in English, with a note). */
+  language?: string | null;
   businessId: string;
   productId: string;
   title: string;
@@ -110,6 +115,7 @@ export async function startPremium3d(input: { brief: DesignBrief; files: { jpeg:
     quality: input.quality,
     parentId: null,
     photoFiles: [],
+    language: input.brief.business.language ?? null,
     ...input.meta,
     templateId: input.brief.styleId,
     ratio: input.brief.ratio,
@@ -164,13 +170,22 @@ async function run(job: PremiumJob, input: Parameters<typeof startPremium3d>[0])
   }
 }
 
+/** The folder holding a job's photos and sound (a re-render uses its source's). */
+const jobFolder = (job: PremiumJob) => (job.photoFiles[0] ? path.dirname(job.photoFiles[0].image) : path.join(DATA, "photos", job.id));
+
 /** Renders a scene for a job (progress saved as it goes), then marks the job done. Throws when Blender fails. */
 async function render(job: PremiumJob, scene: BlenderScene): Promise<void> {
   job.status = "rendering";
   await save(job);
   let saved = 0;
+  // The sound files sit in the folder with the photos; Blender refuses any path outside jobDir.
+  const dir = jobFolder(job);
+  const audio = job.audio ?? NO_AUDIO;
   const out = await renderBlenderScene(scene, premiumVideoPath(job.id), {
     photos: job.photoFiles,
+    jobDir: dir,
+    ...(BLENDER_MIXES_AUDIO && audio.voiceFile ? { audio: path.join(dir, audio.voiceFile) } : {}),
+    ...(BLENDER_MIXES_AUDIO && audio.musicFile ? { music: path.join(dir, audio.musicFile) } : {}),
     onProgress: (f) => {
       job.progress = Math.round(f * 100) / 100;
       // At most every 5%, so the job file is not rewritten for every frame.
@@ -196,7 +211,7 @@ async function photosInFolder(id: string): Promise<BlenderPhoto[]> {
  * Renders a finished clip's scene again (no new design, the same photos and sound), at either resolution:
  * PREMIUM_RERENDER_CREDITS, given back when it fails. Throws in plain English when the clip cannot be re-rendered.
  */
-export async function rerenderPremium(sourceId: string, quality: PremiumQuality): Promise<PremiumJob> {
+export async function rerenderPremium(sourceId: string, quality: PremiumQuality, sound: { voice: boolean; music: boolean } = { voice: false, music: false }): Promise<PremiumJob> {
   const source = await getPremiumJob(sourceId);
   if (!source || source.status !== "succeeded") throw new Error("Only a finished 3D clip can be rendered again.");
   // renderBlenderScene keeps the checked scene next to the MP4.
@@ -210,12 +225,18 @@ export async function rerenderPremium(sourceId: string, quality: PremiumQuality)
   const id = `bl-${randomBytes(6).toString("hex")}`;
   await charge(PREMIUM_RERENDER_CREDITS, `Premium 3D re-render ${quality}`, id);
   const at = new Date().toISOString();
-  const job: PremiumJob = { ...source, photoFiles, id, createdAt: at, updatedAt: at, status: "rendering", progress: 0, credits: PREMIUM_RERENDER_CREDITS, quality, parentId: source.id, apiEquivalentUsd: 0, audio: { ...source.audio, voiceCredits: 0 }, renderSeconds: null, bytes: null, videoFile: null, error: null };
+  // The source's sound is kept; a silent clip can get a voice-over and music now (the voice charged as usual).
+  const kept = { ...NO_AUDIO, ...source.audio, voiceCredits: 0 };
+  const audio = { ...kept, voice: !!kept.voiceFile || sound.voice, music: !!kept.musicFile || sound.music };
+  const job: PremiumJob = { ...source, photoFiles, id, createdAt: at, updatedAt: at, status: "rendering", progress: 0, credits: PREMIUM_RERENDER_CREDITS, quality, parentId: source.id, apiEquivalentUsd: 0, audio, renderSeconds: null, bytes: null, videoFile: null, error: null };
   await save(job);
-  void render(job, { ...scene, canvas: { ...scene.canvas, quality } }).catch(async (error) => {
+  void (async () => {
+    if ((audio.voice && !audio.voiceFile) || (audio.music && !audio.musicFile)) await addAudio(job, jobFolder(job), job.say ?? "", job.language ?? null);
+    await render(job, { ...scene, canvas: { ...scene.canvas, quality } });
+  })().catch(async (error) => {
     Object.assign(job, { status: "failed", error: `${error instanceof Error ? error.message : "The 3D clip could not be made."} The credits are given back.` });
     await save(job);
-    await refund(job.credits, "Premium 3D re-render failed", job.id);
+    await refund(job.credits + job.audio.voiceCredits, "Premium 3D re-render failed", job.id);
   });
   return job;
 }
@@ -227,7 +248,7 @@ export async function rerenderPremium(sourceId: string, quality: PremiumQuality)
  */
 async function addAudio(job: PremiumJob, dir: string, say: string, language: string | null): Promise<void> {
   if (!BLENDER_MIXES_AUDIO) return;
-  if (job.audio.voice && say.trim()) {
+  if (job.audio.voice && !job.audio.voiceFile && say.trim()) {
     job.status = "voicing";
     await save(job);
     try {
@@ -243,19 +264,21 @@ async function addAudio(job: PremiumJob, dir: string, say: string, language: str
         job.audio.voiceCredits = 0;
       }
       await fs.writeFile(path.join(dir, "voice.mp3"), mp3);
-      Object.assign(job.audio, { voiceFile: "voice.mp3", voiceNote: v.note ?? (v.fits ? null : "The voice is longer than the clip; it is cut at the end.") });
+      // Blender cuts a voice at the clip's end: about 2.5 words a second fit.
+      const tooLong = say.trim().split(/\s+/).length > job.seconds * WORDS_PER_SECOND;
+      Object.assign(job.audio, { voiceFile: "voice.mp3", voiceNote: v.note ?? (tooLong ? "The line is long for the clip, so the voice may be cut at the end." : null) });
     } catch (error) {
       if (job.audio.voiceCredits) await refund(job.audio.voiceCredits, "Premium 3D voice-over failed", job.id);
       Object.assign(job.audio, { voiceCredits: 0, voiceNote: `No voice-over: ${error instanceof Error ? error.message : "it failed"} The clip is made without it.` });
     }
   }
-  if (job.audio.music) {
+  if (job.audio.music && !job.audio.musicFile) {
     const track = await musicFor("upbeat").catch(() => null);
     if (track) {
+      // The library files have no extension; Blender needs one it knows.
       const t = await musicBytes(track.id);
-      const file = `music.${t.mimeType.includes("wav") ? "wav" : "mp3"}`;
-      await fs.writeFile(path.join(dir, file), t.bytes);
-      Object.assign(job.audio, { musicFile: file, musicTitle: track.title });
+      await fs.writeFile(path.join(dir, "music.mp3"), t.bytes);
+      Object.assign(job.audio, { musicFile: "music.mp3", musicTitle: track.title });
     }
   }
 }

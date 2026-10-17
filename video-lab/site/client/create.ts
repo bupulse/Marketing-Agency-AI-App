@@ -38,7 +38,9 @@ type PreviewAnswer = { ready: false; readyInMs: number; notice: string } | { rea
 /** A Premium 3D clip (Blender), video-lab/premium-jobs.ts. */
 type PremiumJob = { quality?: string; parentId?: string | null; repairs?: string[]; photoFiles?: unknown[]; audio?: { voice: boolean; music: boolean; voiceFile: string | null; voiceNote: string | null; musicTitle: string | null }; id: string; createdAt: string; status: "designing" | "voicing" | "rendering" | "succeeded" | "failed"; progress: number; credits: number; title: string; seconds: number; caption: string | null; hashtags: string[]; say: string | null; warnings: FactWarning[]; renderSeconds: number | null; videoFile: string | null; error: string | null };
 type Gen = { engine: Engine; id: string; title: string; status: string; at: string; videoUrl: string | null; claude?: ClaudeJob; sd?: SdJob; pm?: PremiumJob };
-type Product = { id: string; name: string; summary: string; price: string | null; photos: { assetId: string; description: string | null }[] };
+type Product = { id: string; name: string; summary: string; price: string | null; photos: { assetId: string; description: string | null; cutout?: boolean | null }[] };
+/** A ModelArk digital character (lib/video-engine/seedance-characters.ts): a presenter Seedance accepts. */
+type Character = { id: string; name: string; description: string; uri: string; portraitUrl: string | null; source: "byteplus" | "picked" | "preview" };
 type Preview = { spec: MotionSpec; photoIds: string[] };
 type Influencer = { id: string; name: string; age: number; vibe: string; portrait: boolean; shots: { id: string; product: string; action: string }[] };
 
@@ -87,12 +89,12 @@ const state = {
   claudeCredits: 0,
   /** Motion's "Premium 3D (Blender)" quality: Claude designs a Blender scene, rendered on the studio computer. */
   premium: false,
-  blender: { available: false, credits: { "540p": 100, "720p": 150, rerender: 70 }, sound: false, voiceReady: false, voiceCredits: 10 },
+  blender: { available: false, credits: { "540p": 100, "720p": 150, rerender: 70 }, sound: false, voiceReady: false, voiceCredits: 15 },
   premiumQuality: "540p" as "540p" | "720p",
   /** Premium 3D sound (once Blender mixes it): the ElevenLabs voice-over of the scene's line, and library music. */
   premiumVoice: true,
   premiumMusic: true,
-  voiceCredits: 10,
+  voiceCredits: 15,
   planVariant: 0,
   checkErrors: [] as Issue[],
   photos: new Map() as Photos,
@@ -199,9 +201,10 @@ async function checkSeedance(): Promise<Issue[]> {
     return [];
   }
   try {
-    const out = await api<{ ok: boolean; issues: Issue[] }>("/api/seedance/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(seedanceBody()) });
+    const out = await api<{ ok: boolean; issues: Issue[]; problems?: string[] }>("/api/seedance/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(seedanceBody()) });
     state.checkErrors = out.issues.filter((i) => i.level === "error");
-    showIssues(out.issues);
+    // References the loader had to leave out (a cut-out that cannot be made, a video that needs the public address).
+    showIssues([...out.issues, ...(out.problems ?? []).map((m): Issue => ({ level: "warning", code: "reference", message: m }))]);
     return state.checkErrors;
   } catch {
     return [];
@@ -303,7 +306,7 @@ function setupPills() {
     };
     box.append(el("h6", { textContent: "Options" }));
     if (state.engine === "seedance") {
-      box.append(toggle("Generate sound", () => state.audio, (v) => (state.audio = v)), toggle("Fixed lens (no camera move)", () => state.fixedLens, (v) => (state.fixedLens = v)), toggle("Offline: slower, cheaper", () => state.flex, (v) => (state.flex = v)), toggle("Draft preview (480p)", () => state.draft, (v) => { state.draft = v; void quote(); }));
+      box.append(toggle("Generate sound", () => state.audio, (v) => (state.audio = v)), toggle("Fixed lens (no camera move)", () => state.fixedLens, (v) => (state.fixedLens = v)), toggle("Offline (not on Seedance 2.0 yet)", () => state.flex, (v) => (state.flex = v)), toggle("Draft (cheap 480p clip)", () => state.draft, (v) => { state.draft = v; void quote(); }));
       const seed = el("input", { type: "text", placeholder: "Seed (optional, a number)", value: state.seed, style: "margin-top:8px" });
       seed.oninput = () => (state.seed = seed.value.replace(/\D/g, "").slice(0, 10));
       seed.onclick = (e) => e.stopPropagation();
@@ -451,16 +454,58 @@ async function openPicker(kind: "refs" | "product" | "avatar") {
               dlg.close();
             };
             grid.append(pk);
+            // Seedance: the product alone, lifted off its background (when the photo has a plain one).
+            if (state.engine === "seedance" && ph.cutout !== false) {
+              const co = el("div", { className: "pk cut" }, el("img", { src: `/api/photo/${ph.assetId}?cutout=1` }), el("span", { textContent: `${p.name} · cut out` }));
+              (co.firstElementChild as HTMLImageElement).onerror = () => co.remove();
+              co.onclick = () => {
+                if (!state.productId) state.productId = p.id;
+                addRef({ id: `co:${ph.assetId}`, kind: "image", thumb: `/api/photo/${ph.assetId}?cutout=1`, label: `${p.name} cut out on a transparent background` });
+                dlg.close();
+              };
+              grid.append(co);
+            }
           }
         }
       }
     };
     sel.onchange = () => void show();
     await show();
+    // Seedance: a presenter's portrait as a reference (fictional AI presenters; Seedance refuses real faces).
+    if (kind === "refs" && state.engine === "seedance") {
+      const inf = await api<{ influencers: Influencer[] }>("/api/influencers").catch(() => ({ influencers: [] as Influencer[] }));
+      for (const i of inf.influencers.filter((x) => x.portrait)) {
+        const pk = el("div", { className: "pk" }, el("img", { src: `/api/influencers/${i.id}/portrait` }), el("span", { textContent: `${i.name} · presenter portrait` }));
+        pk.onclick = () => {
+          addRef({ id: `pp:${i.id}`, kind: "image", thumb: `/api/influencers/${i.id}/portrait`, label: `${i.name}, the presenter (portrait)` });
+          dlg.close();
+        };
+        grid.append(pk);
+      }
+    }
   } else {
     const inf = await api<{ influencers: Influencer[]; actions: { id: string; text: string }[] }>("/api/influencers");
     grid.replaceChildren();
-    const note = el("p", { className: "hint", textContent: state.engine === "seedance" ? "Seedance refuses real faces. Realistic AI presenters are photos (Gemini); a presenter shot is used as Image reference. Talking presenters from the BytePlus character library come next." : "Cartoon presenters are free and drawn by the engine. Realistic AI presenters are photos (15 credits each)." });
+    // Seedance: the ModelArk digital characters first (presenters it accepts). Preview ones arrive with the key.
+    if (state.engine === "seedance") {
+      const chars = await api<{ characters: Character[]; notice: string }>("/api/seedance/characters").catch(() => null);
+      if (chars) {
+        top.append(el("p", { className: "hint", textContent: chars.notice }));
+        for (const c of chars.characters) {
+          const preview = c.source === "preview";
+          const pk = el("div", { className: `pk${preview ? " off" : ""}${state.avatar?.id === c.id ? " on" : ""}`, title: c.description }, c.portraitUrl ? el("img", { src: c.portraitUrl }) : el("div", { className: "plus", textContent: c.name[0] }), el("span", { textContent: preview ? `${c.name} · arrives with the key` : `${c.name} · digital character` }));
+          if (!preview)
+            pk.onclick = () => {
+              state.avatar = { kind: "influencer", id: c.id, label: c.name, thumb: c.portraitUrl };
+              addRef({ id: `asset:${c.id}`, kind: "image", thumb: c.portraitUrl, label: `${c.name} (digital character, presenter)` });
+              renderRefs();
+              dlg.close();
+            };
+          grid.append(pk);
+        }
+      }
+    }
+    const note = el("p", { className: "hint", textContent: state.engine === "seedance" ? "Seedance refuses real faces. Choose a digital character above, or a fictional AI presenter below: a photo (Gemini) of them holding your product becomes an Image reference." : "Cartoon presenters are free and drawn by the engine. Realistic AI presenters are photos (15 credits each)." });
     top.append(note);
     if (state.engine === "claude") {
       for (const c of (state.o as Options).cast) {
@@ -581,9 +626,10 @@ async function generate() {
       const errors = await checkSeedance();
       if (errors.length) throw new Error(`Fix this first: ${errors[0].message}`);
       msg(state.o?.seedanceReady ? "Sending to Seedance…" : "Making the free preview…");
-      const out = await api<{ jobs: SdJob[] }>("/api/seedance/submit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(seedanceBody()) });
+      const out = await api<{ jobs: SdJob[]; problems?: string[] }>("/api/seedance/submit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(seedanceBody()) });
       const preview = out.jobs[0]?.status.startsWith("preview");
-      msg(preview ? "Preview: Seedance arrives with the BytePlus key. This is the shot plan it will film, with the price; no credits were taken." : `Seedance is making ${out.jobs.length > 1 ? `${out.jobs.length} videos` : "your video"}. Usually 1 to 5 minutes; you can keep working.`, "ok");
+      const leftOut = out.problems?.length ? ` Left out: ${out.problems.join(" ")}` : "";
+      msg(`${preview ? "Preview: Seedance arrives with the BytePlus key. This is the shot plan it will film, with the price; no credits were taken." : `Seedance is making ${out.jobs.length > 1 ? `${out.jobs.length} videos` : "your video"}. Usually 1 to 5 minutes; you can keep working.`}${leftOut}`, "ok");
       await loadGens();
       openDrawer(state.gens.find((g) => g.id === out.jobs[0].id) ?? null);
     } else {
@@ -778,12 +824,15 @@ function showPremium(g: Gen, j: PremiumJob): [string, string][] {
   // The same scene again, without a new design: a sharper 720p, or a 540p.
   if (j.status === "succeeded" && g.videoUrl) {
     const actions = $("dActions");
-    for (const q of ["720p", "540p"] as const) {
-      const b = el("button", { className: "btn sm", textContent: `Render again at ${q} (${state.blender.credits.rerender} credits)` });
+    // A silent clip can get its voice-over and music in the same re-render.
+    const addSound = state.blender.sound && !j.audio?.voiceFile && !!j.say;
+    const options: { q: "720p" | "540p"; sound: boolean }[] = [{ q: "720p", sound: false }, { q: "540p", sound: false }, ...(addSound ? [{ q: "540p" as const, sound: true }] : [])];
+    for (const { q, sound } of options) {
+      const b = el("button", { className: "btn sm", textContent: sound ? `Render again with voice and music (${state.blender.credits.rerender} + ${state.blender.voiceCredits} credits)` : `Render again at ${q} (${state.blender.credits.rerender} credits)` });
       b.onclick = async () => {
         b.disabled = true;
         try {
-          const out = await api<{ job: PremiumJob }>(`/api/blender/jobs/${j.id}/rerender`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quality: q }) });
+          const out = await api<{ job: PremiumJob }>(`/api/blender/jobs/${j.id}/rerender`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quality: q, voice: sound, music: sound }) });
           await loadGens();
           openDrawer(state.gens.find((x) => x.id === out.job.id) ?? null);
           await refreshWallet();

@@ -6,6 +6,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { DESIGNER_MODEL, DESIGN_MODES, DesignError, apiSum, apiTransport, designVideo, estimateDesignCost, isPlatform, maxDesignCost, type BriefPhoto, type DesignBrief, type DesignMode, type DesignUsage, type Platform } from "@/lib/video-engine/designer";
 import { cutoutForPhoto } from "./cutouts";
+import { loadReferenceSources, type StudioRef } from "./seedance-sources";
+import { prepareSeedanceReferences, type ReferenceSummary } from "./seedance-references";
 import { scoreCaption } from "@/lib/video-engine/brain/score";
 import { blenderAvailable } from "./blender-jobs";
 import { BLENDER_MIXES_AUDIO, getPremiumJob, listPremiumJobs, premiumVideoBytes, recoverPremiumJobs, rerenderPremium, startPremium3d } from "./premium-jobs";
@@ -23,10 +25,11 @@ import { DAILY_CAP_USD, getJob, listJobs, listPreviews, newJobId, readVideo, rec
 import { SEEDANCE_LIMITS, SEEDANCE_MODELS, SEEDANCE_RATIOS, SEEDANCE_RESOLUTIONS, checkSeedanceConnection, estimateSeedanceUsd, type SeedanceConnection, type SeedanceReference, type SeedanceRequest, type SeedanceResolution, type SeedanceTier } from "@/lib/video-engine/seedance";
 import { BUSINESS_KINDS, SEEDANCE_FORMATS, checkSeedanceRequest, planSeedanceShots, type BusinessKind, type SeedanceFormat } from "@/lib/video-engine/seedance-brain";
 import { listSeedanceExamples } from "./seedance-mock/preview";
+import { listCharacters, previewPortraitPng } from "@/lib/video-engine/seedance-characters";
 import { writeSeedancePrompt } from "@/lib/video-engine/seedance-prompt";
 import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PREMIUM_3D_CREDITS, PREMIUM_RERENDER_CREDITS, PRESENTER_IMAGE_CREDITS, isPremiumQuality, type PremiumQuality, VOICE_OVER_CREDITS, charge, readWallet, refund, seedanceCredits, topUp } from "./credits";
 import { VOICE_ROUTE, makeVoiceForJob, readVoiceMp3 } from "./voice";
-import { cancelSeedance, getSeedanceJob, getSeedancePreview, imageDataUrl, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
+import { cancelSeedance, getSeedanceJob, getSeedancePreview, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
 import { mediaBytes, saveMedia } from "./data-source";
 import { RateLimiter, clearCookieHeader, clientIp, cookieValue, isLocal, loadSecret, loginPage, safeNext, sameText, setCookieHeader, tokenFor } from "./gate";
 
@@ -295,38 +298,15 @@ const TIER_PAGES: Record<string, string> = { pro: "/app/video/seedance-2-0", fas
 
 const labelFor = (r: { kind: string; label?: unknown }, n: number) => `${r.kind === "image" ? "Image" : r.kind === "video" ? "Video" : "Audio"} ${n}: ${typeof r.label === "string" ? r.label.slice(0, 120) : r.kind}`;
 
-/** Turns the page's reference ids (ph:<asset>, up:<upload>, um:<media>, vid:<engine>:<job>) into BytePlus data URLs. */
-async function resolveReferences(refs: { id: string; kind: string; role?: string }[], businessId: string): Promise<{ references: SeedanceReference[]; notes: string[] }> {
-  const references: SeedanceReference[] = [];
-  const notes: string[] = [];
-  const counts = { image: 0, video: 0, audio: 0 };
-  for (const r of refs.slice(0, 15)) {
-    const [kind, a, b] = r.id.split(":");
-    if (r.kind === "image" && (kind === "ph" || kind === "up")) {
-      if (counts.image >= SEEDANCE_LIMITS.maxImages) continue;
-      const photo = await photoJpeg(a, 1600, kind === "ph" ? businessId : undefined);
-      const role = r.role === "first_frame" || r.role === "last_frame" ? r.role : "reference_image";
-      references.push({ kind: "image", url: await imageDataUrl(photo.bytes), role });
-      counts.image += 1;
-      notes.push(labelFor(r, counts.image));
-    } else if (r.kind === "video" || r.kind === "audio") {
-      let bytes: Buffer | null = null;
-      let mime = r.kind === "video" ? "video/mp4" : "audio/mpeg";
-      if (kind === "um") {
-        const m = await mediaBytes(a);
-        bytes = m?.bytes ?? null;
-        mime = m?.mimeType ?? mime;
-      } else if (kind === "vid") bytes = a === "seedance" ? await seedanceVideoBytes(b) : await readVideo(b);
-      if (!bytes) continue;
-      if (bytes.length > 40 * 1024 * 1024) throw new Error("A reference video or audio file must be under 40 MB.");
-      if (r.kind === "video" && counts.video >= SEEDANCE_LIMITS.maxVideos) continue;
-      if (r.kind === "audio" && counts.audio >= SEEDANCE_LIMITS.maxAudio) continue;
-      references.push({ kind: r.kind, url: `data:${mime};base64,${bytes.toString("base64")}` });
-      counts[r.kind] += 1;
-      notes.push(labelFor(r, counts[r.kind]));
-    }
-  }
-  return { references, notes };
+/**
+ * Turns the page's reference ids (ph: product photo, up: upload, co: cut-out, pp: presenter portrait, asset: digital
+ * character, um: media, vid: a studio video) into BytePlus references (video-lab/seedance-sources.ts loads them,
+ * video-lab/seedance-references.ts fits them to BytePlus's limits). `problems` says what was left out and why.
+ */
+async function resolveReferences(refs: StudioRef[], businessId: string): Promise<{ references: SeedanceReference[]; notes: string[]; problems: string[]; summary: ReferenceSummary[] }> {
+  const src = await loadReferenceSources(refs, businessId);
+  const p = await prepareSeedanceReferences(src.sources);
+  return { references: p.references, notes: p.notes, problems: [...src.problems, ...p.problems], summary: p.summary };
 }
 
 /** The page's Seedance settings as a BytePlus request (shared by submit and check). The prompt may be empty here. */
@@ -339,10 +319,10 @@ async function seedanceRequestFrom(body: Record<string, unknown>) {
   const seconds = Math.min(SEEDANCE_LIMITS.maxSeconds, Math.max(SEEDANCE_LIMITS.minSeconds, Math.round(Number(body.seconds) || 5)));
   const businessId = String(body.businessId ?? "");
   const product = businessId ? (await listProducts(businessId)).find((x) => x.id === String(body.productId ?? "")) : undefined;
-  const { references, notes } = await resolveReferences(Array.isArray(body.refs) ? body.refs : [], businessId);
+  const { references, notes, problems } = await resolveReferences(Array.isArray(body.refs) ? body.refs : [], businessId);
   const seed = Number.isFinite(Number(body.seed)) && body.seed !== null && body.seed !== "" ? Number(body.seed) : null;
   const request: SeedanceRequest = { tier, prompt: String(body.prompt ?? "").trim(), references, ratio, seconds, resolution, audio: body.audio !== false, fixedLens: body.fixedLens === true, seed, flex: body.flex === true, draft: body.draft === true };
-  return { request, notes, product, businessId, versions: Math.min(3, Math.max(1, Number(body.versions) || 1)) };
+  return { request, notes, problems, product, businessId, versions: Math.min(3, Math.max(1, Number(body.versions) || 1)) };
 }
 
 /**
@@ -547,8 +527,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && p === "/api/seedance/check") {
       // The same request Generate would send, checked before anything is paid (errors block Generate).
       const body = JSON.parse((await readBody(req, 64 * 1024)).toString("utf8") || "{}");
-      const { request, notes } = await seedanceRequestFrom(body);
-      return json(res, 200, checkSeedanceRequest(request, { referenceNotes: notes }));
+      const { request, notes, problems } = await seedanceRequestFrom(body);
+      return json(res, 200, { ...checkSeedanceRequest(request, { referenceNotes: notes }), problems });
     }
     if (req.method === "GET" && p === "/api/seedance/examples") {
       // The "Get inspired" storyboards (made by scripts/video-lab/seedance-examples.mjs), read fresh each time.
@@ -560,6 +540,17 @@ const server = http.createServer(async (req, res) => {
         formats: SEEDANCE_FORMATS.map(({ id, name }) => ({ id, name })),
       });
     }
+    if (req.method === "GET" && p === "/api/seedance/characters") {
+      // ModelArk digital characters (presenters Seedance accepts), or drawn previews until the BytePlus keys are in.
+      return json(res, 200, await listCharacters());
+    }
+    const charPortrait = p.match(/^\/api\/seedance\/characters\/(preview-[a-z]+)\/portrait\.png$/);
+    if (req.method === "GET" && charPortrait) {
+      const png = await previewPortraitPng(charPortrait[1]);
+      if (!png) return fail(res, 404, "Not found");
+      res.writeHead(200, { "content-type": "image/png", "cache-control": "max-age=86400" });
+      return res.end(png);
+    }
     if (req.method === "GET" && p === "/api/seedance/status") {
       const c = await seedanceConnection();
       return json(res, 200, { state: c.state, message: c.message, mode: seedanceReady() ? "live" : "preview" });
@@ -567,7 +558,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && p === "/api/seedance/submit") {
       // Without the BytePlus key this makes a free preview (a storyboard); with it, a real paid job.
       const body = JSON.parse((await readBody(req, 64 * 1024)).toString("utf8") || "{}");
-      const { request, notes, product, businessId, versions } = await seedanceRequestFrom(body);
+      const { request, notes, problems, product, businessId, versions } = await seedanceRequestFrom(body);
       if (!request.prompt) return fail(res, 400, "Write a prompt first.");
       const check = checkSeedanceRequest(request, { referenceNotes: notes });
       if (!check.ok) return json(res, 400, { error: check.issues.find((i) => i.level === "error")?.message ?? "This request cannot be sent.", issues: check.issues });
@@ -575,7 +566,7 @@ const server = http.createServer(async (req, res) => {
       for (let i = 0; i < versions; i++) {
         jobs.push(await submitSeedance({ ...request, seed: i === 0 ? request.seed : null }, { businessId: businessId || null, productId: product?.id ?? null, title: product?.name ?? request.prompt.slice(0, 40), referenceNotes: notes }));
       }
-      return json(res, 200, { jobs });
+      return json(res, 200, { jobs, problems });
     }
     if (req.method === "GET" && p === "/api/seedance/jobs") return json(res, 200, { jobs: await listSeedanceJobs() });
     const sdJob = p.match(/^\/api\/seedance\/jobs\/(sd-[0-9a-f]{12})(\/cancel|\/preview)?$/);
@@ -717,7 +708,8 @@ const server = http.createServer(async (req, res) => {
       if (!(await blenderAvailable())) return fail(res, 503, "Premium 3D needs Blender on the studio computer, and it is not installed.");
       const body = JSON.parse((await readBody(req, 4096)).toString("utf8") || "{}");
       try {
-        return json(res, 200, { job: await rerenderPremium(blRe[1], isPremiumQuality(body.quality) ? body.quality : "720p") });
+        const sound = { voice: body.voice === true && !!process.env.ELEVENLABS_API_KEY, music: body.music === true };
+        return json(res, 200, { job: await rerenderPremium(blRe[1], isPremiumQuality(body.quality) ? body.quality : "720p", sound) });
       } catch (error) {
         const message = error instanceof Error ? error.message : "It could not be rendered again.";
         return fail(res, /credits/i.test(message) ? 402 : 400, message);
@@ -900,7 +892,7 @@ const server = http.createServer(async (req, res) => {
 // Designs can take minutes (several versions, template previews): no request time limit on this local server.
 server.requestTimeout = 0;
 
-const LAB_KEYS = ["ANTHROPIC_API_KEY", "SEEDANCE_API_KEY", "SEEDANCE_MODEL", "SEEDANCE_BASE_URL", "ELEVENLABS_API_KEY"];
+const LAB_KEYS = ["ANTHROPIC_API_KEY", "SEEDANCE_API_KEY", "SEEDANCE_MODEL", "SEEDANCE_BASE_URL", "ELEVENLABS_API_KEY", "BYTEPLUS_ACCESS_KEY_ID", "BYTEPLUS_SECRET_ACCESS_KEY", "STUDIO_PUBLIC_URL"];
 // An empty value in .env ("") counts as missing, so a key saved in Admin -> Services can fill it.
 for (const name of LAB_KEYS) if (!process.env[name]) delete process.env[name];
 void loadSavedKeys(LAB_KEYS)

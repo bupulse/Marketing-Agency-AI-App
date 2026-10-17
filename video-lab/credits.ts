@@ -4,35 +4,9 @@
 // local file for the lab; in the app it becomes plan allowances and add-ons (lib/usage.ts).
 import fs from "node:fs/promises";
 import path from "node:path";
-import { SEEDANCE_USD_PER_SECOND, type SeedanceResolution, type SeedanceTier } from "@/lib/video-engine/seedance";
 
-export const RWF_PER_CREDIT = 10;
-export const USD_PER_RWF = 1 / 1450;
-/** Margin over the estimated provider cost (Seedance clips; Claude designs are priced the same way). */
-const MARGIN = 2.2;
-
-const roundCredits = (usd: number) => Math.max(5, Math.round((usd * MARGIN) / USD_PER_RWF / RWF_PER_CREDIT / 5) * 5);
-
-/** Credits for a Seedance clip: seconds x rate, with the margin, rounded to 5. */
-export function seedanceCredits(tier: SeedanceTier, resolution: SeedanceResolution, seconds: number): number {
-  return roundCredits(SEEDANCE_USD_PER_SECOND[tier][resolution] * seconds);
-}
-
-/** Credits for one Claude-designed video (about $0.10 on the API). */
-export const CLAUDE_VIDEO_CREDITS = roundCredits(0.1);
-/** Credits for one realistic presenter image (Gemini, about $0.04). */
-export const PRESENTER_IMAGE_CREDITS = roundCredits(0.04);
-/** Credits for one voice-over take (ElevenLabs, a 15 to 30 s script costs about $0.05 to $0.15). Cached takes are free. */
-export const VOICE_OVER_CREDITS = 10;
-/**
- * Credits for one Premium 3D clip, by resolution (up to 8 s): Claude designs a Blender scene (about $0.10) and this Mac
- * renders it (1.5 to 3.5 minutes at 540p, about twice that at 720p). Owner decision, 17 October 2026.
- */
-export const PREMIUM_3D_CREDITS = { "540p": 100, "720p": 150 } as const;
-export type PremiumQuality = keyof typeof PREMIUM_3D_CREDITS;
-export const isPremiumQuality = (v: unknown): v is PremiumQuality => typeof v === "string" && v in PREMIUM_3D_CREDITS;
-/** Rendering a finished Premium 3D scene again (no new design), at either resolution. */
-export const PREMIUM_RERENDER_CREDITS = 70;
+// The prices live in lib/video-engine/credits.ts (shared with the app); the lab keeps only its wallet.
+export { CLAUDE_VIDEO_CREDITS, PREMIUM_3D_CREDITS, PREMIUM_RERENDER_CREDITS, PRESENTER_IMAGE_CREDITS, RWF_PER_CREDIT, USD_PER_RWF, VOICE_OVER_CREDITS, isPremiumQuality, seedanceCredits, type PremiumQuality } from "@/lib/video-engine/credits";
 
 const WALLET = path.resolve("video-lab/data/wallet.json");
 const START_CREDITS = Number(process.env.VIDEO_LAB_START_CREDITS) || 5000;

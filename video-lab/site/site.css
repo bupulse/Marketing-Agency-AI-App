@@ -384,3 +384,5 @@ dialog.narrow { width:min(640px, 94vw); }
 #dFacts .capText { white-space:pre-wrap; font-size:13px; color:#d6d6dc; background:var(--panel2); border-radius:10px; padding:9px 11px; margin:0; }
 .madeWith .carousel { margin-top:18px; }
 .madeWith { overflow-x:clip; }
+.picker .pk.cut img { object-fit:contain; background:repeating-conic-gradient(#22222a 0% 25%, #2c2c36 0% 50%) 50% / 16px 16px; }
+.picker .pk.off { opacity:.55; cursor:not-allowed; }
