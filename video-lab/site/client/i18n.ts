@@ -10,6 +10,7 @@ type Entry = { fr: string; rw: string };
 
 export const T: Record<string, Entry> = {
   // Nav and footer
+  "mode.subscription": { fr: "Mode test : les vidéos sont conçues avec l'abonnement Claude. Passez à la clé API (ANTHROPIC_API_KEY) avant tout déploiement ou usage client.", rw: "Uburyo bw'igerageza: video zikorwa hakoreshejwe ifatabuguzi rya Claude. Koresha urufunguzo rwa API (ANTHROPIC_API_KEY) mbere yo kuyishyira ahagaragara cyangwa kuyiha abakiriya." },
   "nav.video": { fr: "Vidéo IA", rw: "Video za AI" },
   "nav.pro": { fr: "Meilleure qualité, vraie vidéo", rw: "Ubwiza buhanitse, video nyayo" },
   "nav.fast": { fr: "Plus rapide et moins chère", rw: "Yihuta kandi ihendutse" },

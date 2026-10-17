@@ -52,7 +52,9 @@ export async function refreshWallet(): Promise<Wallet | null> {
     if (sd?.state === "connected") parts.push("Seedance connected.");
     else if (sd?.state === "no key") parts.push("Seedance runs in free preview mode (storyboards with the price) until the BytePlus key is added.");
     else if (sd) parts.push(`Seedance: ${sd.message}`);
-    if (o.claudeMode === "subscription") parts.push("Claude runs on your subscription (tests only). Switch to the API key before deploying.");
+    // The subscription reminder has its own bar (it must never be missed); API mode shows no bar.
+    const mode = document.getElementById("modeBar");
+    if (mode) mode.hidden = o.claudeMode !== "subscription";
     if (parts.length) {
       n.textContent = parts.join("  ·  ");
       n.classList.add("show");

@@ -15,11 +15,35 @@ http://localhost:3100/create when it runs on the Mac). Also: **Showcase** (`/sho
 **Plans:** the Video Studio is still in testing; clients do not see it yet. The lab wallet starts with 5,000 test
 credits; top-ups on Pricing are test packs with no payment.
 
+## Try it in five minutes
+
+1. **Open the studio.** Go to video.bupulse.com and sign in with the studio password (`STUDIO_PASSWORD` in `.env` on
+   the Mac). On the Mac itself, http://localhost:3100 needs no password. The amber bar at the top means Claude runs
+   on your subscription: fine for testing, switch to the API key before any client uses it.
+2. **A Motion video (35 credits, plus 15 for the voice-over).** Open **Create**, choose **Motion**, press **PRODUCT**
+   and pick **Nova Phones Kigali → Samsung Galaxy A56**. Click one of the three **opening lines** above the prompt (for
+   example "Samsung Galaxy A56 · 420,000 RWF"), then **Generate**. In about a minute the design plays; press **Make
+   MP4** (the voice-over is on).
+   *Look and listen for:* your chosen line as the opening, the real phone photo, the exact price and WhatsApp number,
+   the voice speaking clearly over the music, and under the video the **Caption check** and **Research score** (aim
+   for 70 or more) and any **Check these facts** lines (red means a claim the product's facts do not support).
+3. **Premium 3D with voice (100 + 15 credits, about 5 to 8 minutes).** Pick **E2E Starter Test → Kitenge summer
+   dress**, then **Quality → Premium 3D (Blender)** at 540p with **Voice-over** and **Music** on, and **Generate**. You
+   can keep working; the card shows the progress.
+   *Look and listen for:* the dress standing free (cut out) on a plinth, 3D lettering and the 3D price, smooth camera
+   movement, and the voice starting just after the first beat with the music lower underneath and fading at the end.
+   The finished Kitenge clip already in **My videos** ("Premium 3D", 540p) has sound too: start there if time is short.
+4. **A Seedance preview (free until the BytePlus key).** Switch to **Real video**, keep the Galaxy A56, press
+   **⚡ Quick plan**, then **Generate**.
+   *Look for:* the storyboard frames with your photo inside and the camera move drawn on top, the shot list, and the
+   price the real clip will cost. No credits are taken. Under **Get inspired**, any example's **Use this** fills the
+   whole form for you.
+
 ## The three engines
 
 | Engine | What you get | Best for | Time | Credits |
 | --- | --- | --- | --- | --- |
-| **Motion** (✦) | Your photos, animated text, shapes, camera moves and a film look, 8 to 30 s; library music; an optional voice-over | Most posts: offers, new stock, prices, lists, "3 reasons" | Design about 30 to 60 s, MP4 about 30 s | 30 a design, + 10 for the voice-over |
+| **Motion** (✦) | Your photos, animated text, shapes, camera moves and a film look, 8 to 30 s; library music; an optional voice-over | Most posts: offers, new stock, prices, lists, "3 reasons" | Design about 30 to 60 s, MP4 about 30 s | 35 a design, + 15 for the voice-over |
 | **Premium 3D** (Motion → Quality → Premium 3D) | A real 3D scene: the product on a turntable, 3D titles, glass and chrome, 4 to 8 s | Launches and premium products, where the look matters most | About 3 to 6 minutes (720p about twice as long), one clip at a time | 100 at 540p, 150 at 720p; render again 70 |
 | **Real video** (🎬, Seedance 2.0) | A filmed-looking clip of 4 to 15 s: people, hands, places, real camera work, with sound | UGC-style reviews, unboxings, tours, food, fashion on a person | Usually 1 to 5 minutes | By quality, resolution and length: Mini 480p 5 s 55, Fast 720p 5 s 190, Pro 1080p 5 s 590 |
 
@@ -48,7 +72,7 @@ credits; top-ups on Pricing are test packs with no payment.
    - **Real video:** Mini (best value), Fast or Pro (best; only Pro makes 1080p), and the resolution.
 7. **More.**
    - **Motion:**
-     - **Voice-over:** 10 credits, added when the MP4 is made. It is reused for free if nothing changed.
+     - **Voice-over:** 15 credits, added when the MP4 is made. It is reused for free if nothing changed.
      - **Fixed lens:** no camera moves.
      - **Opening hook:** the first seconds' style, or let Claude choose.
    - **Real video:**

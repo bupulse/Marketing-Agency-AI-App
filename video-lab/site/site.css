@@ -391,3 +391,5 @@ dialog.narrow { width:min(640px, 94vw); }
 .hookChip { background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:7px 13px; color:var(--text); font:inherit; font-size:13px; font-weight:600; cursor:pointer; }
 .hookChip:hover { border-color:var(--violet); }
 .hookChip.on { background:var(--brand); border-color:transparent; color:#fff; }
+/* Test-mode reminder (Claude on the owner's subscription): a slim amber bar at the very top */
+.modeBar { background:var(--warn); color:#1a1405; font-size:12.5px; font-weight:700; text-align:center; padding:5px 16px; }
