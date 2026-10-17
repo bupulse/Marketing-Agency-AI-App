@@ -6,7 +6,7 @@ import type { DesignBrief } from "../designer";
 import type { PromptBrief } from "../seedance-prompt";
 import { seedanceTemplateById } from "../seedance-brain";
 import { voiceLanguage } from "../voice-language";
-import { BRAIN, evidenceById, formatById, formatForTemplate, hookById, sectorById } from "./index";
+import { BRAIN, evidenceById, formatById, formatForTemplate, hookById, sectorById } from "./database";
 import { outcomesLine, rankWithOutcomes } from "./outcomes";
 import { SECTORS, type BeatRole, type BrainBrief, type BrainPick, type Engine, type Evidence, type Format, type FormatId, type Hook, type Outcome, type Platform, type Rule, type ScoredHook, type SectorId, type SecondsRange, type TimedBeat } from "./types";
 
@@ -331,9 +331,9 @@ export const CONTEXT_SKIP: Record<Engine, string[]> = {
  * does not already give. Deterministic. Lower-priority lines are dropped first when it runs long. `ownerHook`: the
  * owner already chose the opener (a styles.ts hook other than "auto"), so the hooks are wording and layout ideas only.
  * `outcomes` (and `businessId`): BuPulse's own posted results; they re-rank the hooks and add one "What has worked for
- * you" line when there are enough.
+ * you" line when there are enough. `chosenHook`: the line the owner picked from suggestHooks; it replaces the options.
  */
-export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: boolean } & OutcomeOptions = {}): string {
+export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: boolean; chosenHook?: { hookId: string; line: string } | null } & OutcomeOptions = {}): string {
   const p = "timeline" in brief ? brief : brainFor(brief, opts);
   // What our own posted videos say, when there are enough of them (outcomes.ts).
   const worked = opts.outcomes?.length ? outcomesLine(opts.outcomes, { sector: p.sector, platform: p.platform, businessId: opts.businessId }) : null;
@@ -341,12 +341,16 @@ export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: 
   const covered = new Set(CONTEXT_SKIP[p.engine]);
   const rules = p.rules.filter((r) => !covered.has(r.id));
   const head = `What works: ${p.sectorInfo.name.toLowerCase()}, ${p.format.name.toLowerCase()}, ${PLATFORM_NAMES[p.platform]}, ${p.seconds} s (from ${WATCHED} ads and reels BuPulse watched).`;
-  const hooks = [
+  // The owner clicked one of the suggested lines (suggest.ts): it is the opening, with its hook's first-frame picture.
+  const chosen = opts.chosenHook ? hookById(opts.chosenHook.hookId) : null;
+  const hooks = chosen
+    ? [`Opening (the owner chose it; use these words on screen at 0.0 s): "${opts.chosenHook!.line.replace(/"/g, "'")}". First 2 s: ${chosen.visual}`]
+    : [
     opts.ownerHook
       ? "Hook ideas (the owner chose the opener above: use these for its wording and first frame only):"
       : "Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):",
     ...p.hooks.map((h, i) => `${i + 1}. ${h.name}: "${h.pattern}". First 2 s: ${h.visual} Seen: ${h.examples.slice(0, 2).map((e) => `"${e}"`).join(", ")}.${h.note && CONSTRAINT.test(h.note) ? ` ${h.note}` : ""}`),
-  ];
+      ];
   const timeline = [
     `Timeline (${p.seconds} s, ${p.format.cutsPer10s[0]} to ${p.format.cutsPer10s[1]} changes per 10 s):`,
     ...p.timeline.map((t) => `- ${fmt(t.from)}-${fmt(t.to)} s ${t.role}: ${t.beat} ${seedance ? "BuPulse overlays" : "On screen"}: ${t.onScreen}.`),

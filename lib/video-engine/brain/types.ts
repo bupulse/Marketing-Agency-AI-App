@@ -42,6 +42,8 @@ export type Evidence = {
   /** ISO country code where known (RW, KE, UG, TZ, NG...), else null. */
   country: string | null;
   category: string | null;
+  /** The researcher's sector label for the row ("salons", "clinics/pharmacies"), when the row has one. */
+  sector?: string | null;
   language: string | null;
   /** Watched first-hand by a researcher (true) or only read about (false). */
   watched: boolean;

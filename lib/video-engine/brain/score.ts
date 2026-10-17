@@ -5,7 +5,7 @@
 import { detectCamera, lintSeedancePrompt, promptTimecodes } from "../seedance-brain";
 import type { Layer, MotionSpec, Scene, TextLayer } from "../spec";
 import { voiceLanguage } from "../voice-language";
-import { BRAIN, SAFE_AREAS, formatById } from "./index";
+import { BRAIN, SAFE_AREAS, formatById } from "./database";
 import { hasKinyarwanda } from "./language";
 import { brainFor, formatFromTemplate } from "./select";
 import type { FormatId, Platform } from "./types";

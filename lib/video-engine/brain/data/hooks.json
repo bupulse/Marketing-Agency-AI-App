@@ -280,12 +280,12 @@
     "pattern": "{city} / {area} | {count} BEDROOMS | {price}",
     "visual": "Three stacked labels (district, sector, street) over the first shot, then a pill with the rooms; the price follows.",
     "platforms": ["facebook", "tiktok"],
-    "sectors": ["real-estate", "events", "fashion"],
+    "sectors": ["real-estate", "events"],
     "formats": ["tour"],
     "engines": ["claude", "seedance"],
     "needs": ["location"],
-    "examples": ["KIGALI KICUKIRO / KANOMBE KABEZA / MWITUNDA", "4 BEDROOMS", "373SQM", "Iragurishwa 4M ni Iremera Ku muhanda", "Ibibanza byiza Masaka inyuma Ya Gare Bigurishwa / Price: 16M", "350M RWF", "Kisimenti Remera Behind Eco Bank"],
-    "evidence": ["fb-007", "fb-029", "tt-080", "fb-068", "fb-067", "tt-152"]
+    "examples": ["KIGALI KICUKIRO / KANOMBE KABEZA / MWITUNDA", "4 BEDROOMS", "373SQM", "Iragurishwa 4M ni Iremera Ku muhanda", "Ibibanza byiza Masaka inyuma Ya Gare Bigurishwa / Price: 16M", "350M RWF"],
+    "evidence": ["fb-007", "fb-029", "tt-080", "fb-068", "fb-067"]
   },
   {
     "id": "whip-in-tour",

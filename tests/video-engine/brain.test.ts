@@ -3,7 +3,7 @@ import os from "node:os";
 import { loadOutcomes, recordOutcome } from "@/lib/video-engine/brain/outcomes-store";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { BRAIN, FORMATS, PLATFORMS, RESEARCH_SOURCES, SECTORS, checkBrain, checkLanguage, checkOutcome, languageTextsOf, outcomesLine, rankWithOutcomes, safeAreaFor, type Outcome, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
+import { BRAIN, FORMATS, MAX_HOOK_WORDS, PLATFORMS, RESEARCH_SOURCES, SECTORS, checkBrain, checkLanguage, checkOutcome, languageTextsOf, outcomesLine, rankWithOutcomes, safeAreaFor, suggestHooks, type Outcome, type SuggestBrief, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
 import { evidenceFromRows, looksLikeScam, parseCount, parseDate, parseJsonl, rowKey, rowStrength, tiktokDate, variantsLive } from "@/lib/video-engine/brain/ingest";
 import { SAFE_AREAS, amounts, hasKinyarwanda, scoreCaption, scoreDesign, scoreSeedancePrompt, templateStyle, type ScoreBrief } from "@/lib/video-engine/brain/score";
 import { CONTEXT_MAX_CHARS, ENGINE_SECONDS, rankHooks, brainBriefFromDesign, brainBriefFromPrompt, brainContext, brainFor, formatFromTemplate, scaleTimeline, sectorFromText } from "@/lib/video-engine/brain/select";
@@ -719,6 +719,59 @@ describe("learning from BuPulse's own results", () => {
     expect(loaded).toHaveLength(1);
     expect(loaded[0].stats7d?.views).toBe(4200);
     expect(() => recordOutcome({ ...row, seconds: -1 }, file)).toThrow(/cannot be stored/);
+  });
+});
+
+describe("opening lines for the owner (suggestHooks)", () => {
+  const phone: SuggestBrief = { business: { name: "Nova Phones Kigali", description: "Phone shop in Kigali, Makuza Peace Plaza", language: "English", phone: "+250 788 300 400" }, product: { name: "Samsung Galaxy A56", price: "420,000 RWF", features: ["50 MP camera", "6.7-inch AMOLED screen"], usps: ["Genuine with 12-month warranty"] } };
+  const house: SuggestBrief = { business: { name: "Ikaze Homes", description: "Real estate agency in Gasabo, Kigali", language: "Kinyarwanda", phone: "0788 111 222" }, product: { name: "Inzu y'ibyumba 4 i Kibagabaga", summary: "4 bedroom house for sale in Kibagabaga", price: "180,000,000 RWF" } };
+  const clinic: SuggestBrief = { business: { name: "Derma Skin Clinic", description: "Skin clinic at Gishushu, Kigali, since 2015. We work with RSSB, MMI and Old Mutual.", language: "English", phone: "0795 528 376" }, product: { name: "Acne treatment", price: "30,000 RWF" } };
+  const words = (line: string) => line.split(/\s+/).filter((w) => !/^[·|/:+]+$/.test(w)).length;
+  const sound = (s: ReturnType<typeof suggestHooks>, language: string) => {
+    for (const h of s) {
+      expect(words(h.line), h.line).toBeLessThanOrEqual(MAX_HOOK_WORDS);
+      expect(checkLanguage([{ where: "hook", text: h.line, kind: "screen" }], language), h.line).toEqual([]);
+      expect(h.why).toMatch(/^Seen in \d+ research video/);
+      expect(h.evidence.length).toBeGreaterThan(0);
+      for (const id of h.evidence) expect(BRAIN.evidence.find((e) => e.id === id)?.scam).toBeUndefined();
+    }
+  };
+
+  it("a Kigali phone shop gets three filled-in lines from its own facts", () => {
+    const s = suggestHooks(phone, { platform: "facebook" });
+    expect(s.map((x) => x.line)).toEqual(["Samsung Galaxy A56 · WhatsApp 0788 300 400", "Samsung Galaxy A56 · 420,000 RWF", "Samsung Galaxy A56 · 50 MP camera"]);
+    sound(s, "English");
+    expect(s[1].why).toContain("viewers ask the price");
+  });
+
+  it("a Kinyarwanda house listing gets Kinyarwanda lines in the corpus's own forms", () => {
+    const s = suggestHooks(house, { platform: "instagram" });
+    expect(s[0]).toMatchObject({ hookId: "location-stack", line: "INZU IGURISHWA I KIBAGABAGA · 180M RWF" });
+    expect(s.map((x) => x.line)).toContain("Inzu y'ibyumba 4 kuri 180M RWF gusa");
+    sound(s, "Kinyarwanda");
+  });
+
+  it("a clinic leads with trust and is never offered a price hook, even with a price", () => {
+    const s = suggestHooks(clinic, { platform: "tiktok" });
+    expect(s.slice(0, 2).map((x) => x.line)).toEqual(["Since 2015 in Kigali", "We take RSSB, MMI, Old Mutual"]);
+    for (const h of s) expect(BRAIN.hooks.find((x) => x.id === h.hookId)!.type).not.toBe("price-first");
+    sound(s, "English");
+  });
+
+  it("no price, no price hook; no number, no number hook", () => {
+    const noPrice = suggestHooks({ ...phone, product: { ...phone.product, price: null } }, { platform: "facebook" });
+    for (const h of noPrice) expect(h.line).not.toMatch(/RWF/);
+    expect(noPrice.map((h) => h.hookId)).not.toContain("price-banner");
+    const noPhone = suggestHooks({ ...phone, business: { ...phone.business, phone: null } }, { platform: "facebook" });
+    expect(noPhone.map((h) => h.hookId)).not.toContain("number-in-hand");
+    for (const h of noPhone) expect(h.line).not.toMatch(/0788/);
+  });
+
+  it("the chosen line goes into the brief as the opening", () => {
+    const [first] = suggestHooks(phone, { platform: "facebook" });
+    const text = brainContext({ ...base, sector: "phone-shop" }, { chosenHook: first });
+    expect(text).toContain(`Opening (the owner chose it; use these words on screen at 0.0 s): "${first.line}"`);
+    expect(text).not.toContain("Hook options");
   });
 });
 

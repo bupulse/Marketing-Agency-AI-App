@@ -178,6 +178,7 @@ export function evidenceFromRows(source: ResearchSource, rows: Row[], existing: 
       url,
       country: rowCountry(row),
       category: str(row.category) ?? str(row.sector),
+      ...(str(row.sector) ? { sector: str(row.sector) } : {}),
       language: str(row.language),
       watched: row.watched === true,
       secondary: row.secondary === true,

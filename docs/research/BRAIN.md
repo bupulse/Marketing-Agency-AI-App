@@ -232,6 +232,23 @@ translator, and it only flags forms the corpus never uses:
 `PREFERRED_PHRASES` lists what sellers write instead ("Duhamagare cyangwa utwandikire kuri WhatsApp: {phone}",
 "{product} kuri {price} gusa", "Ntucikwe!", "Kiraganirwaho", "Ibyangombwa birahari"...), for the designer's brief.
 
+## Opening lines for the owner
+
+`suggestHooks(brief, { platform, count = 3 })` (`brain/suggest.ts`) turns the best hooks into lines the owner can click
+on the Create page. Each line is filled in from the brief's facts only: the product, the price with its condition
+("from 25,000 RWF", "50,000 RWF per day"), the area (the product's own place first, neighbourhoods before districts), the
+number grouped as Rwandans read it, the offer ("BUY 1 GET 1 FREE EVERY TUESDAY"), and for clinics the founding year and
+the insurers. A hook whose facts are missing is skipped, so no price means no price hook. Lines are in the business's
+language, using the corpus's own Kinyarwanda forms ("{product} kuri {price} gusa", "INZU IGURISHWA I {AREA}", "KURI
+{price} TUGUHA ..."), at most 7 words on screen, and each passes `checkLanguage`. Clinics and schools never get a price
+hook. Each line comes with one sentence on why ("Seen in 8 research videos for phone and electronics shop, 4 of them
+Rwandan; homeofhybrid ran it for 468 days on Facebook.") and its research rows. The line the owner picks goes into
+Claude's brief through `brainContext(brief, { chosenHook })`, as the opening to use.
+
+Examples: a Kigali phone shop gets "Samsung Galaxy A56 · WhatsApp 0788 300 400", "Samsung Galaxy A56 · 420,000 RWF" and
+"Samsung Galaxy A56 · 50 MP camera"; a Kinyarwanda house listing "INZU IGURISHWA I KIBAGABAGA · 180M RWF"; a clinic
+"Since 2015 in Kigali" and "We take RSSB, MMI, Old Mutual".
+
 ## Learning from our own results
 
 The research tells the brain what works for other sellers. Once clients post through BuPulse, the brain also learns

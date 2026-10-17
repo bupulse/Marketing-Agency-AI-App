@@ -2,7 +2,7 @@
 // through BuPulse come back with their views, likes, comments, saves and shares, and the brain blends those with the
 // research when it ranks hooks, formats and templates. Pure and browser-safe (the brain index re-exports it); the file
 // store for the lab is outcomes-store.ts.
-import { hookById, formatById } from "./index";
+import { hookById, formatById } from "./database";
 import { FORMATS, PLATFORMS, SECTORS, type Outcome, type OutcomeStats, type Platform, type SectorId } from "./types";
 
 /** A hook (or format, or template) needs this many posted videos before its own results count at all. */
