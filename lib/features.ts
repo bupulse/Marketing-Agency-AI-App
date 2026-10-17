@@ -25,6 +25,8 @@ export const FEATURE_KEYS = [
   "managed",
   "video",
   "voice",
+  "videoStudio",
+  "aiVideo",
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
@@ -230,6 +232,29 @@ export const FEATURES: readonly FeatureDef[] = [
     metric: "voiceCharacters",
     services: ["elevenlabs"],
     status: "built",
+    kind: "app",
+    routes: [],
+  },
+  {
+    key: "videoStudio",
+    label: "Video Studio",
+    description: "Animated and 3D marketing videos that Claude designs from your products, with your prices, number and a voice-over, paid with video credits.",
+    requires: ["video"],
+    metric: "videoCredits",
+    // Claude designs every Motion and Premium 3D video (docs/VIDEO_APP_INTEGRATION.md); the API key only.
+    services: ["claude"],
+    status: "coming_soon",
+    kind: "app",
+    routes: [],
+  },
+  {
+    key: "aiVideo",
+    label: "AI video",
+    description: "Filmed-looking clips with people, hands and real places (Seedance 2.0), with your text added on top, paid with video credits.",
+    requires: ["videoStudio"],
+    metric: "videoCredits",
+    services: ["seedance"],
+    status: "coming_soon",
     kind: "app",
     routes: [],
   },

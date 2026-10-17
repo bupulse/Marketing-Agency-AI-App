@@ -6,6 +6,7 @@ import {
   ChartLine,
   ChartNoAxesColumn,
   Clapperboard,
+  Film,
   CreditCard,
   HardDrive,
   House,
@@ -80,4 +81,6 @@ export const FEATURE_ICONS: Record<FeatureKey, LucideIcon> = {
   managed: Store,
   video: Clapperboard,
   voice: Mic,
+  videoStudio: Clapperboard,
+  aiVideo: Film,
 };

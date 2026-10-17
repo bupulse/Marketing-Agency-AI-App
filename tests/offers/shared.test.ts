@@ -44,7 +44,7 @@ describe("pricing totals", () => {
 
   it("limits above what is included are bought in blocks; add-ons bring their own allowance", () => {
     const q = quote({ features: ["websiteChat"], limits: { text: 450, image: 100, chat: 1500, seats: 5 } });
-    expect(q.included).toEqual({ text: 200, image: 100, chat: 500, seats: 3, postsPerAppPerDay: 1 });
+    expect(q.included).toEqual({ text: 200, image: 100, chat: 500, videoCredits: 0, seats: 3, postsPerAppPerDay: 1 });
     const line = (k: string) => q.lines.find((l) => l.key === k);
     expect(line("block:text")).toMatchObject({ quantity: 3, totalMinor: 9000 }); // 250 more texts = 3 blocks of 100
     expect(line("block:chat")).toMatchObject({ quantity: 1, totalMinor: 3000 }); // 1,000 more replies

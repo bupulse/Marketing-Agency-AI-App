@@ -58,7 +58,7 @@ export function OfferEditor({ businessId, offerId, region, bases, prices, initia
   // chat replies, not the base plan's 0).
   const [limits, setLimits] = useState<Record<keyof OfferLimits, string>>(() => {
     const inc = offerIncluded(bases.find((b) => b.key === initial.basePlanKey) ?? null, initial.features, initial.managedTier);
-    return { text: String(Math.max(initial.limits.text, inc.text)), image: String(Math.max(initial.limits.image, inc.image)), chat: String(Math.max(initial.limits.chat, inc.chat)), seats: String(Math.max(initial.limits.seats, inc.seats)), postsPerAppPerDay: String(initial.limits.postsPerAppPerDay) };
+    return { text: String(Math.max(initial.limits.text, inc.text)), image: String(Math.max(initial.limits.image, inc.image)), chat: String(Math.max(initial.limits.chat, inc.chat)), videoCredits: String(Math.max(initial.limits.videoCredits ?? 0, inc.videoCredits)), seats: String(Math.max(initial.limits.seats, inc.seats)), postsPerAppPerDay: String(initial.limits.postsPerAppPerDay) };
   });
   const [tier, setTier] = useState<ManagedTier>(initial.managedTier);
   const [interval, setInterval] = useState<"MONTH" | "YEAR">(initial.interval);

@@ -5,13 +5,15 @@ import { Badge, GlassCard, Meter } from "@/components/ui";
 export const metadata = { title: "Usage" };
 
 export default async function UsagePage() {
-  const { usage, isTrial } = await getAppContext();
+  const { usage, isTrial, entitlements } = await getAppContext();
   const { used, limits, plan, subscription } = usage;
   const rows = [
     { label: "Text generations", unit: "generations", key: "text" as const },
     { label: "Images", unit: "images", key: "image" as const },
     { label: "Videos", unit: "videos", key: "videos" as const },
     { label: "Voice characters", unit: "characters", key: "voiceCharacters" as const },
+    // Video Studio credits (docs/VIDEO_APP_INTEGRATION.md): only for plans with the studio; unused ones do not roll over.
+    ...(entitlements.inPlan.has("videoStudio") ? [{ label: "Video Studio credits", unit: "credits", key: "videoCredits" as const }] : []),
   ];
   const periodEnd = subscription.currentPeriodEnd;
 

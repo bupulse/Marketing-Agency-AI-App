@@ -32,8 +32,11 @@ describe("the feature registry", () => {
 
   it("covers the catalog of the launch plan (section 4)", () => {
     expect(BUILT_FEATURE_KEYS).toEqual(["content", "designs", "aiPhotos", "calendar", "gallery", "websiteChat", "autopilot", "analytics", "canva", "storeImport", "driveImport", "webhooks", "apiAccess", "ownComposio", "managed", "video", "voice"]);
-    // Voiceover was the last "coming soon" feature (built 13 October 2026, docs/VOICE_AND_MUSIC.md).
-    expect(FEATURES.filter((f) => f.status === "coming_soon").map((f) => f.key)).toEqual([]);
+    // Voiceover was built 13 October 2026 (docs/VOICE_AND_MUSIC.md). The Video Studio's two features are coming soon
+    // until the studio moves into the app (docs/VIDEO_APP_INTEGRATION.md): they cannot be put in a plan yet.
+    expect(FEATURES.filter((f) => f.status === "coming_soon").map((f) => f.key)).toEqual(["videoStudio", "aiVideo"]);
+    expect(FEATURES.find((f) => f.key === "videoStudio")).toMatchObject({ requires: ["video"], metric: "videoCredits", services: ["claude"] });
+    expect(FEATURES.find((f) => f.key === "aiVideo")).toMatchObject({ requires: ["videoStudio"], metric: "videoCredits", services: ["seedance"] });
     expect(FEATURES.filter((f) => f.kind === "service").map((f) => f.key)).toEqual(["ownComposio", "managed"]);
     expect(FEATURES.find((f) => f.key === "autopilot")!.requires).toEqual(["content", "designs", "calendar", "gallery"]);
     expect(FEATURES.find((f) => f.key === "aiPhotos")!.requires).toEqual(["designs"]);

@@ -25,7 +25,7 @@ const quote = (over: Partial<Parameters<typeof quoteOffer>[0]> = {}) => quoteOff
 
 describe("included amounts", () => {
   it("what the base plan and the added features include: website chat brings 500 replies, AI photos 30 images", () => {
-    expect(offerIncluded(BUSINESS, ["websiteChat", "aiPhotos"])).toEqual({ text: 200, image: 130, chat: 500, seats: 3, postsPerAppPerDay: 1 });
+    expect(offerIncluded(BUSINESS, ["websiteChat", "aiPhotos"])).toEqual({ text: 200, image: 130, chat: 500, videoCredits: 0, seats: 3, postsPerAppPerDay: 1 });
     expect(offerIncluded(null, ["websiteChat"])).toMatchObject({ chat: 500, image: 0, seats: 1 });
     // A feature already in the base plan adds nothing on top of it.
     expect(offerIncluded({ ...BUSINESS, features: [...BUSINESS.features, "websiteChat"], limits: { ...BUSINESS.limits, chat: 800 } }, ["websiteChat"]).chat).toBe(800);
