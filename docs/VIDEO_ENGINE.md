@@ -29,7 +29,9 @@ It is in testing in the **Video Lab**, outside the app. Clients do not see it ye
    - unknown fonts, animations, transitions and shapes fall back to defaults;
    - colours must be hex or rgb(a), numbers are clamped and text is cut to length;
    - layers that point at photos we do not have are dropped;
-   - the scenes are scaled to the requested length (each 1.2 to 8 s, 2 to 8 scenes).
+   - the scenes are scaled to the requested length (each 1.2 to 8 s, 2 to 8 scenes; a video clip layer may make one
+     scene and skips the 6-second floor);
+   - layout repairs, described under "Validator repairs" in Templates below.
 4. **Drawn** (`lib/video-engine/draw.ts`, `animate.ts`): plain 2D canvas calls, the same in every browser and in
    headless Chrome.
    - **Layers:** photo (cover or contain, rounded, shadow, border, slow zoom towards a focus point), text (7
@@ -86,7 +88,7 @@ Claude is also the director of photography: every scene can have a **camera** (`
 
 ## Templates
 
-`lib/video-engine/templates.ts`: 31 templates in 9 categories, like Higgsfield's Marketing Studio:
+`lib/video-engine/templates.ts`: 33 templates in 9 categories, like Higgsfield's Marketing Studio:
 
 | Category | Templates |
 | --- | --- |
@@ -94,17 +96,47 @@ Claude is also the director of photography: every scene can have a **camera** (`
 | Motion | Bold words, Hypermotion, Dark minimal, Colour pop, Typography poster |
 | UGC | Customer review, Unboxing, POV moment, Problem to fix |
 | TikTok | This saved me, 3 reasons, Secret hack |
-| Ads | Offer flash, TV spot, Brand story |
+| Ads | Offer flash, Kigali price-first, TV spot, Brand story |
 | Posters & offers | Event poster, Price drop |
 | Marketplace | Listing video, Colour options |
 | Cinematic | Cinematic story, Golden hour, Local market |
-| 3D motion | 3D title drop, Showroom turntable, Glass cards, Chrome luxe, Confetti launch |
+| 3D motion | 3D title drop, Showroom turntable, Glass cards, Chrome luxe, Confetti launch, Floating product reveal |
 
 - **Art direction:** each template gives the layout, the camera language, the look and the pacing.
 - **UGC templates:** these are marked `presenter`. Until AI influencers exist, they are carried by the product and
   first-person captions.
 - **Gallery previews:** each template has a live example video, made once (`POST /api/template-previews`, kept in
   `video-lab/data/template-previews/`). It plays when the mouse is over its card.
+- **Per-template limits:** the Brain's `templateStyle` and `STYLE_LIMITS` (`brain/score.ts`) set how many text lines a
+  scene may hold (luxury 2, direct and showcase 3, lists 5); `productMinHeight` (`templates.ts`) sets how much of the
+  frame height the product fills (55% on product hero, studio and showroom turntable and floating reveal, nothing
+  forced on text-led templates, 45% on the rest).
+
+### Validator repairs
+
+`validateSpec` (`validate.ts`, `subject.ts`) repairs what a design gets wrong, so the same rules hold for every design,
+edit and re-shape. `designVideo` passes it the photos (size and cut-out box), platform, phone, `productMin`, `maxLines`,
+`facts` and `purpose`.
+
+- **Safe areas:** text, and the pill or badge behind it, stays inside the platform's area from the Brain
+  (`safeAreaFor`); price, phone and call to action sit in the middle band on Shorts.
+- **Legibility:** contrast-checked colours, a veil on photos and clips under light text, minimum sizes, reading time,
+  texts kept apart by the height they are drawn at (wrapped word by word).
+- **Product:** text and badges are moved off the product (a cut-out, a turntable, or a photo card kept clear whole).
+  A product photo grows to the template's minimum height, or shrinks to the room its text leaves.
+- **Shapes in the frame:** a ring, circle, burst or blob meant to sit inside the frame stays inside it at its largest
+  keyframe scale and under camera moves. A badge that carries a price is centred on it and arrives with it.
+- **Line limits:** a scene over its template's limit sends its smallest line to a neighbouring scene with room, or
+  drops it (the price and the number do not count).
+- **Ratings:** star ratings, review counts, "rated", "customers love" and a drawn row of 4 or 5 stars are removed
+  (with the spoken and caption sentences) unless the facts give them.
+- **Phone:** a quiet number line in every scene of a vertical ad, and the end card's number labelled ("WhatsApp …",
+  "Call or WhatsApp …"). A page post (`purpose: "post"`) keeps the number for its end card only, unlabelled.
+- **Re-shape:** see "Re-shape (another ratio)" below.
+
+### QA (17 October 2026)
+
+QA_NUMBERS_HERE
 
 ## 3D look
 

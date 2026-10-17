@@ -8,14 +8,14 @@ import { DESIGNER_MODEL, DESIGN_MODES, DesignError, apiSum, apiTransport, design
 import { cutoutForPhoto } from "./cutouts";
 import { loadReferenceSources, type StudioRef } from "./seedance-sources";
 import { prepareSeedanceReferences, type ReferenceSummary } from "./seedance-references";
-import { scoreCaption } from "@/lib/video-engine/brain/score";
+import { STYLE_LIMITS, scoreCaption, templateStyle } from "@/lib/video-engine/brain/score";
 import { firstCommentFor, planSeries, suggestHooks } from "@/lib/video-engine/brain";
 import { brainBriefFromDesign, brainContext } from "@/lib/video-engine/brain/select";
 import { blenderAvailable } from "./blender-jobs";
 import { BLENDER_MIXES_AUDIO, getPremiumJob, listPremiumJobs, premiumVideoBytes, recoverPremiumJobs, rerenderPremium, startPremium3d } from "./premium-jobs";
 import { subscriptionTransport } from "./claude-cli";
 import { VIDEO_HOOKS } from "@/lib/video-engine/styles";
-import { TEMPLATE_CATEGORIES, VIDEO_TEMPLATES } from "@/lib/video-engine/templates";
+import { TEMPLATE_CATEGORIES, VIDEO_TEMPLATES, productMinHeight } from "@/lib/video-engine/templates";
 import { CARTOON_CAST, castById } from "@/lib/video-engine/cast";
 import { CAMERA_MOVES, GRADES, QUALITIES, RATIOS, isRatio, SPEC_LIMITS, totalMs, type MotionSpec, type Ratio } from "@/lib/video-engine/spec";
 import { validateSpec } from "@/lib/video-engine/validate";
@@ -351,13 +351,15 @@ async function seedanceRequestFrom(body: Record<string, unknown>) {
 }
 
 /**
- * The cut-outs already made (<id>.png) and refused (<id>.json) in video-lab/cutouts.ts's cache folder: a directory
- * listing, so nothing is computed here.
+ * The cut-outs already made (<id>.png) and refused (<id>.json alone) in video-lab/cutouts.ts's cache folder: a
+ * directory listing, so nothing is computed here.
  */
 async function knownCutouts(): Promise<{ ok: Set<string>; refused: Set<string> }> {
   const files = await fs.readdir(path.resolve("video-lab/data/cutouts")).catch(() => [] as string[]);
   const ids = (ext: string) => new Set(files.filter((f) => f.endsWith(ext)).map((f) => f.slice(0, -ext.length)));
-  return { ok: ids(".png"), refused: ids(".json") };
+  const ok = ids(".png");
+  // A made cut-out also keeps its product box in <id>.json: refused means a .json with no .png.
+  return { ok, refused: new Set([...ids(".json")].filter((id) => !ok.has(id))) };
 }
 
 /**
@@ -974,7 +976,9 @@ const server = http.createServer(async (req, res) => {
             return { width: ph.width, height: ph.height, subject: cut.ok ? cut.box : null };
           }),
         );
-        const spec = validateSpec({ ...job.spec, ratio: body.ratio }, { ratio: body.ratio as Ratio, photoCount: job.photoIds.length, seconds: totalMs(job.spec) / 1000, fixedLens: job.fixedLens, photos, platform: shape.platform, phone: business?.phone ?? null });
+        // The same checks as a new design (designer.ts), except `facts`: a re-shape keeps what the owner wrote.
+        const purpose = (job as LabJob & { purpose?: "ad" | "post" }).purpose ?? "ad";
+        const spec = validateSpec({ ...job.spec, ratio: body.ratio }, { ratio: body.ratio as Ratio, photoCount: job.photoIds.length, seconds: totalMs(job.spec) / 1000, fixedLens: job.fixedLens, photos, platform: shape.platform, phone: business?.phone ?? null, purpose, productMin: productMinHeight(job.styleId), maxLines: STYLE_LIMITS[templateStyle(job.styleId)].maxLines });
         const parent = job as LabJob & { warnings?: unknown; captionScore?: number; captionMissed?: string[] };
         const child: LabJob & { warnings?: unknown; captionScore?: number; captionMissed?: string[] } = {
           ...parent,
