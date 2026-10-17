@@ -659,7 +659,8 @@ const backs = (s: Layer, t: TextLayer) => s.kind === "shape" && Math.abs(s.x - t
  * dropped when none has (the voice line says the scene's message anyway). The smallest lines go first.
  */
 function keepLineLimit(scenes: Scene[], max: number): void {
-  const fixed = (t: TextLayer) => /\d{3}[\s-]?\d{3}/.test(t.text) || /\d{1,3}(?:,\d{3})+|\b\d+(?:\.\d+)?\s*k\b|\b(?:rwf|frw)\b/i.test(t.text);
+  // The number, and a price (an amount with its currency or a k: "5,000 mAh" is a feature line, not a price).
+  const fixed = (t: TextLayer) => /\d{3}[\s-]?\d{3}[\s-]?\d{3}/.test(t.text) || /\d[\d,.]*\s*(?:k\b|rwf\b|frw\b|ksh\b|ugx\b|tsh\b)|\b(?:rwf|frw)\s*\d/i.test(t.text);
   const lines = (s: Scene) => s.layers.filter((l): l is TextLayer => l.kind === "text" && l.text.trim() !== "" && !fixed(l));
   scenes.forEach((s, i) => {
     const extra = lines(s).length - max;
@@ -724,8 +725,18 @@ function withPhoneLine(scene: Scene, phone: string, palette: MotionSpec["palette
     const hitsProduct = subject ? Math.abs(y - (subject.y + subject.h / 2)) < (h + subject.h) / 2 : false;
     return !hitsText && !hitsProduct;
   };
-  const spots = platform === "youtube" ? [YOUTUBE_MIDDLE_BAND.bottom - h / 2] : [area.bottom - h / 2, area.top + h / 2];
-  const y = spots.find(free);
+  // The bottom of the safe area, else its top; when lines hold both, just above the lowest line or under the highest.
+  const lines = scene.layers.filter((l): l is TextLayer => l.kind === "text").map((t) => ({ top: t.y - drawnHeight(t, ratio) / 2, bottom: t.y + drawnHeight(t, ratio) / 2 }));
+  const lowest = Math.min(...lines.filter((l) => l.bottom > 0.5).map((l) => l.top), 2);
+  const highest = Math.max(...lines.filter((l) => l.top < 0.5).map((l) => l.bottom), -1);
+  const between = [lowest - 0.01 - h / 2, highest + 0.01 + h / 2].filter((y) => y - h / 2 >= area.top && y + h / 2 <= area.bottom);
+  const spots = platform === "youtube" ? [YOUTUBE_MIDDLE_BAND.bottom - h / 2] : [area.bottom - h / 2, area.top + h / 2, ...between];
+  // A photo filling the frame leaves no free spot off the product: the line then goes on the photo, in a dark caption
+  // box like the scene's other lines there (only clear of the text).
+  const clearOfText = (y: number) => !scene.layers.some((l) => l.kind === "text" && overlaps(l, { x: 0.5, y, w: 0.7, h } as Layer));
+  const fullFrame = !!subject && subject.h >= 0.5 && subject.w >= 0.5;
+  const onProduct = spots.find(free) === undefined && fullFrame ? spots.find(clearOfText) : undefined;
+  const y = spots.find(free) ?? onProduct;
   if (y === undefined) return scene.layers;
   const line: Layer = {
     kind: "text",
@@ -741,10 +752,10 @@ function withPhoneLine(scene: Scene, phone: string, palette: MotionSpec["palette
     font: "inter",
     weight: 600,
     size: 0.03,
-    color: `rgba(${r},${g},${b},0.85)`,
+    color: onProduct === undefined ? `rgba(${r},${g},${b},0.85)` : "#ffffff",
     align: "center",
     uppercase: false,
-    box: null,
+    box: onProduct === undefined ? null : { color: "rgba(0,0,0,0.55)", padding: 0.012, radius: 0.4 },
     highlight: null,
     shadow: true,
     text3d: null,

@@ -136,7 +136,22 @@ edit and re-shape. `designVideo` passes it the photos (size and cut-out box), pl
 
 ### QA (17 October 2026)
 
-QA_NUMBERS_HERE
+- **Galaxy A56 sweep, all 33 templates:**
+  - Run through `designVideo` with the platform set by category (TikTok for TikTok templates, Facebook for ads and
+    marketplace, Instagram for the rest), then validated again with today's engine.
+  - Mean score 99.9: 32 at 100, and kigali-market at 98 for one long voice line. Studio-turntable scored 96 as
+    designed and 100 after the quiet-line fix below.
+  - Warnings: one fact ("new" from the shop description in ugc-review) and one language ("420,000 francs" on screen in
+    ugc-review); the prompt now keeps "francs" for the voice only.
+  - 30 of 33 come back unchanged when validated again. Sheets: `quality/loop10/sheets/<category>.jpg` in the lab's
+    scratch folder.
+- **Other products (dress, restaurant offer, Kibagabaga house, and the dress at 1:1 and 4:5, 12 templates each):**
+  means 99.3 to 99.6, none below 95.
+- **Fixed by the sweep:** a quiet phone line now finds room above the lowest line (or on a full-frame photo in a dark
+  caption box); "5,000 mAh" counts as a feature line, not a price, for the line limit; the fact checker reads "four
+  twenty thousand" as 420,000.
+- **Clip sound (Seedance overlay):** a 1080p studio MP4 with a voice track under a 3-scene overlay encodes in headless
+  Chrome; the output's audio is at the clip's level and its loudness follows the clip (correlation 0.915).
 
 ## 3D look
 

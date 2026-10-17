@@ -75,7 +75,8 @@ export function wordsToNumber(run: string): number {
     if (afterPoint) decimals += small >= 0 ? String(small) : "";
     else if (w === "point") afterPoint = true;
     else if (small >= 0) current += small;
-    else if (TENS.includes(w)) current += TENS.indexOf(w) * 10;
+    // "four twenty thousand" is how a price is said aloud: four hundred and twenty thousand.
+    else if (TENS.includes(w)) current = current >= 1 && current <= 9 ? current * 100 + TENS.indexOf(w) * 10 : current + TENS.indexOf(w) * 10;
     else if (w === "hundred") current = (current || 1) * 100;
     else if (w === "thousand") {
       total += (current || 1) * 1000;

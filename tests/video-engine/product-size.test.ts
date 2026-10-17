@@ -188,3 +188,41 @@ describe("drawn star ratings and badges off their price", () => {
     expect(validateSpec(spec, o)).toEqual(spec);
   });
 });
+
+describe("sweep fixes (loop 10)", () => {
+  const o = { ratio: "9:16" as const, photoCount: 0, seconds: 6 };
+  it("a feature amount ('5,000 mAh battery') counts as a line, a price ('420,000 RWF') does not", () => {
+    const spec = validateSpec(
+      {
+        palette: {},
+        scenes: [
+          { seconds: 3, background: {}, layers: [text({ text: "8 GB RAM", size: 0.13, y: 0.2 }), text({ text: "256 GB", size: 0.13, y: 0.32 }), text({ text: "5,000 mAh battery", size: 0.08, y: 0.45 }), text({ text: "In black, light blue and pink", size: 0.055, y: 0.55 }), text({ text: "420,000 RWF", size: 0.08, y: 0.65 })] },
+          { seconds: 3, background: {}, layers: [text({ text: "Nova Phones Kigali", y: 0.3 })] },
+        ],
+      },
+      { ...o, maxLines: 3 },
+    );
+    expect(spec.scenes[0].layers.filter((l) => l.kind === "text").map((l) => (l as { text: string }).text)).toEqual(["8 GB RAM", "256 GB", "5,000 mAh battery", "420,000 RWF"]);
+  });
+
+  it("the quiet phone line finds room above the lowest line when the top and bottom of the safe area are taken", () => {
+    const spec = validateSpec(
+      { palette: {}, scenes: [{ seconds: 3, background: {}, layers: [text({ text: "50 MP camera", size: 0.095, y: 0.162, h: 0.1 }), text({ text: "Sharp. Bright. 5G.", size: 0.055, y: 0.751, h: 0.06 })] }, { seconds: 3, background: {}, layers: [text({ text: "Order on WhatsApp" })] }] },
+      { ...o, phone: "+250 788 300 400" },
+    );
+    expect(spec.scenes[0].layers.some((l) => l.kind === "text" && l.text === "WhatsApp 0788 300 400")).toBe(true);
+  });
+});
+
+describe("the quiet line over a full-frame photo", () => {
+  it("goes on the photo in a dark caption box when the frame has no free spot off the product", () => {
+    const square = { width: 1024, height: 1024 };
+    const spec = validateSpec(
+      { palette: {}, scenes: [{ seconds: 3, background: {}, layers: [{ kind: "photo", photo: 1, x: 0.5, y: 0.5, w: 1, h: 1 }, text({ text: "50 MP camera", size: 0.095, y: 0.162, h: 0.083 }), text({ text: "Sharp. Bright. 5G.", size: 0.055, y: 0.751, h: 0.058 })] }, { seconds: 3, background: {}, layers: [text({ text: "Order on WhatsApp" })] }] },
+      { ratio: "9:16", photoCount: 1, seconds: 6, photos: [square], phone: "+250 788 300 400" },
+    );
+    const line = spec.scenes[0].layers.find((l) => l.kind === "text" && l.text === "WhatsApp 0788 300 400") as { box?: { color: string }; color: string } | undefined;
+    expect(line?.box?.color).toBe("rgba(0,0,0,0.55)");
+    expect(line?.color).toBe("#ffffff");
+  });
+});

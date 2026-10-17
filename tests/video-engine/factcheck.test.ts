@@ -57,6 +57,10 @@ describe("fact check", () => {
   it("reads numbers the way they are written or spoken", () => {
     expect(wordsToNumber("four hundred and twenty thousand")).toBe(420_000);
     expect(wordsToNumber("six point seven")).toBe(6.7);
+    // A price said the short way, and plain counts that must not change.
+    expect(wordsToNumber("four twenty thousand")).toBe(420_000);
+    expect(wordsToNumber("twenty five")).toBe(25);
+    expect(wordsToNumber("one hundred twenty")).toBe(120);
     expect(wordsToNumber("fifty")).toBe(50);
     expect(normalise("A one-year warranty")).toBe("a 1-year warranty");
     expect(normalise("the one for you")).toBe("the one for you");
