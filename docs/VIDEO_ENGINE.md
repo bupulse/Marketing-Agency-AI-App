@@ -367,6 +367,22 @@ Cancel (refund) on a queued Seedance job (no job exists until the key), Write wi
 subscription), and Seedance Generate with the key (waits for `SEEDANCE_API_KEY`). The test wallet gained 1,000 credits
 per QA run from the "Buy (test)" check; it is pretend money.
 
+## Online access (video.bupulse.com)
+
+Owner decision (17 October 2026): the studio is reachable online while the owner is away, from this Mac.
+
+- **Tunnel:** `tools/bin/studio-online.sh` (git-ignored folder) creates its own Cloudflare tunnel `bupulse-video`
+  (separate from the app's `bupulse-test` tunnel on port 3001), points `video.bupulse.com` at it and runs it to
+  `http://localhost:3100`. The owner runs it in a Terminal and leaves the window open. `~/bin/cloudflared` (signed)
+  is used; the unsigned GitHub download in `tools/bin` is a fallback.
+- **Password gate** (`video-lab/gate.ts`): every request that is not local (Host localhost/127.0.0.1 on port 3100 and
+  no proxy headers) needs the signed `bp_studio` cookie from `/login` (`STUDIO_PASSWORD` in `.env`; 10 tries per 10
+  minutes per IP; `x-robots-tag: noindex`). Local automation and the agents keep working without a cookie.
+- **Kept alive:** `caffeinate -dims` stops the Mac sleeping; a supervisor script restarts `npm run lab` whenever
+  nothing answers on port 3100 (the agents restart it themselves while they work).
+- **Never for clients:** the studio still runs Claude on the owner's subscription and the TEST database; this link
+  is the owner's own remote access, not a deployment.
+
 ## The Video Lab (developer page, `/lab`)
 
 A small local site for testing the engine, separate from the app (`video-lab/`, `scripts/video-lab/start.mjs`).
