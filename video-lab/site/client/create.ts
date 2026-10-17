@@ -620,10 +620,11 @@ async function loadGens() {
   $("gens").hidden = gens.length === 0;
   grid.replaceChildren();
   for (const g of gens.slice(0, 24)) {
-    const card = el("div", { className: "genCard" });
+    const card = el("div", { className: `genCard${g.sd?.preview ? " pv" : ""}` });
     card.dataset.id = g.id;
     if (g.videoUrl) {
-      const v = el("video", { src: g.videoUrl, muted: true, loop: true, playsInline: true, preload: "metadata" });
+      // "#t=1": the card shows a frame one second in, not the (often black) first frame.
+      const v = el("video", { src: `${g.videoUrl}#t=1`, muted: true, loop: true, playsInline: true, preload: "metadata" });
       card.onmouseenter = () => void v.play().catch(() => undefined);
       card.onmouseleave = () => v.pause();
       card.append(v);
@@ -647,7 +648,9 @@ async function loadGens() {
     } else {
       card.append(el("div", { className: "wait" }, g.status === "failed" || g.status === "cancelled" ? el("span", { textContent: g.sd?.error ?? g.claude?.error ?? g.status }) : el("span", { className: "spin" }), el("span", { textContent: g.status === "queued" ? "Queued at Seedance" : g.status === "running" ? "Seedance is filming…" : g.status })));
     }
-    card.append(el("span", { className: `st ${g.status}`, textContent: g.pm ? "Premium 3D" : g.sd?.preview ? "Seedance preview" : g.engine === "seedance" ? "Seedance" : "Motion" }), el("div", { className: "cap", textContent: g.title }));
+    // A preview's storyboard frame draws its own labels: its name goes in a bar under the frame instead of over it.
+    if (g.sd?.preview) card.append(el("div", { className: "cap", textContent: `Seedance preview · ${g.title}` }));
+    else card.append(el("span", { className: `st ${g.status}`, textContent: g.pm ? "Premium 3D" : g.engine === "seedance" ? "Seedance" : "Motion" }), el("div", { className: "cap", textContent: g.title }));
     if (g.claude?.score) card.append(el("span", { className: "scoreTag", textContent: `Research score ${g.claude.score.score}/100` }));
     if (g.claude?.warnings?.length) card.append(el("span", { className: "factTag", textContent: `${g.claude.warnings.length} fact${g.claude.warnings.length === 1 ? "" : "s"} to check` }));
     card.onclick = () => openDrawer(g);
@@ -835,6 +838,13 @@ function openDrawer(g: Gen | null) {
     $("dPrompt").textContent = j.request.prompt;
   } else if (g.pm) {
     info.push(...showPremium(g, g.pm));
+  } else if (g.claude && !g.claude.spec && g.claude.status !== "failed") {
+    // The jobs list leaves the design out (finished videos especially): fetch it, then show the drawer.
+    media.append(el("span", { className: "spin" }));
+    void api<ClaudeJob>(`/api/jobs/${g.id}`).then((full) => {
+      fullClaude.set(g.id, full);
+      if (state.open === g) openDrawer({ ...g, claude: full });
+    });
   } else if (g.claude) {
     const j = g.claude;
     if (j.spec) {
@@ -843,7 +853,9 @@ function openDrawer(g: Gen | null) {
       const size = canvasSize(spec, "720p");
       c.width = size.width;
       c.height = size.height;
-      media.append(c);
+      // A finished MP4 (with its music and voice-over) plays; the live preview is drawn while there is none.
+      if (g.videoUrl) media.append(el("video", { src: g.videoUrl, controls: true, autoplay: true, loop: true, playsInline: true }));
+      else media.append(c);
       const ctx = c.getContext("2d") as CanvasRenderingContext2D;
       void Promise.all([loadPhotos(j.photoIds.map((id) => `/api/photo/${id}`), j.photoIds.map(cutoutUrl)), loadSpecFonts(spec)]).then(([ph]) => {
         state.photos = ph;
@@ -851,7 +863,7 @@ function openDrawer(g: Gen | null) {
         let t = 0;
         const total = totalMs(spec);
         const loop = (now: number) => {
-          if (state.open !== g) return;
+          if (state.open !== g || !c.isConnected) return;
           t = (t + now - last) % total;
           last = now;
           drawSpecFrame(ctx, spec, ph, t, { quality: "720p" });
@@ -915,9 +927,10 @@ async function makeMp4(g: Gen) {
     const started = performance.now();
     const blob = await encodeSpecMp4(spec, state.photos, { musicUrl: track ? `/api/music/${track.id}` : null, voice, quality: state.quality, onProgress: (f) => (fill.style.width = `${Math.round(f * 100)}%`) });
     await api(`/api/jobs/${j.id}/video?ms=${Math.round(performance.now() - started)}&q=${state.quality}`, { method: "POST", headers: { "content-type": "video/mp4" }, body: blob });
-    $("dMsg").textContent = `MP4 ready (${(blob.size / 1024 / 1024).toFixed(1)} MB). ${notes.join(" ")}`;
     await loadGens();
     openDrawer(state.gens.find((x) => x.id === g.id) ?? null);
+    // After the drawer is redrawn (it clears its message), so the owner sees the result.
+    $("dMsg").textContent = `MP4 ready (${(blob.size / 1024 / 1024).toFixed(1)} MB). ${notes.join(" ")}`;
   } catch (e) {
     $("dMsg").textContent = (e as Error).message;
   } finally {
@@ -941,8 +954,12 @@ async function editClaude(g: Gen, mode: "edit" | "extend") {
   }
 }
 
-/** The product lifted off its background, for turntables and floating products; a photo without one just skips it. */
-const cutoutUrl = (id: string) => `/api/photo/${id}?cutout=1`;
+/**
+ * The product lifted off its background, for turntables and floating products. Asked for only when it exists or was
+ * never tried (GET /api/cutouts, loaded at start), so photos known to have none cause no 404.
+ */
+let cutoutsRefused = new Set<string>();
+const cutoutUrl = (id: string): string | null => (cutoutsRefused.has(id) ? null : `/api/photo/${id}?cutout=1`);
 
 // ---- Templates and carousel ------------------------------------------------------------------------------------------
 
@@ -1021,7 +1038,7 @@ function carousel(items: { videoUrl: string; title: string; engine: Engine }[]) 
     return;
   }
   const cards = items.slice(0, 7).map((i) => {
-    const c = el("a", { className: "cardV", href: "/showcase" }, el("video", { src: i.videoUrl, muted: true, loop: true, playsInline: true, autoplay: true, preload: "metadata" }), el("span", { className: "lbl", textContent: i.engine === "seedance" ? "Real video" : "Motion" }));
+    const c = el("a", { className: "cardV", href: "/showcase" }, el("video", { src: i.videoUrl, muted: true, loop: true, playsInline: true, autoplay: true, preload: "metadata" }), el("span", { className: "lbl", textContent: i.engine === "seedance" ? "Real video" : (i.engine as string) === "blender" ? "Premium 3D" : "Motion" }));
     box.append(c);
     return c;
   });
@@ -1047,8 +1064,9 @@ function carousel(items: { videoUrl: string; title: string; engine: Engine }[]) 
 // ---- Start -----------------------------------------------------------------------------------------------------------
 
 async function start() {
-  const o = await api<Options>("/api/options");
+  const [o, cut] = await Promise.all([api<Options>("/api/options"), api<{ refused: string[] }>("/api/cutouts").catch(() => ({ refused: [] as string[] }))]);
   state.o = o;
+  cutoutsRefused = new Set(cut.refused);
   const q = new URLSearchParams(location.search);
   if (q.get("engine") === "claude") {
     state.engine = "claude";

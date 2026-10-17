@@ -21,7 +21,7 @@ async function start() {
   next();
   const grid = $("showcaseGrid");
   for (const i of done.slice(0, 12)) {
-    const v = el("video", { src: i.videoUrl as string, muted: true, loop: true, playsInline: true, preload: "metadata" });
+    const v = el("video", { src: `${i.videoUrl}#t=1`, muted: true, loop: true, playsInline: true, preload: "metadata" });
     const tile = el("a", { className: "tile", href: `/showcase#${i.id}` }, v, el("span", { className: `eng ${i.engine === "seedance" ? "sd" : "cl"}`, textContent: i.engine === "seedance" ? "Seedance" : i.engine === "blender" ? "Premium 3D" : "Motion" }), el("div", { className: "cap", textContent: i.title }));
     tile.onmouseenter = () => void v.play().catch(() => undefined);
     tile.onmouseleave = () => v.pause();

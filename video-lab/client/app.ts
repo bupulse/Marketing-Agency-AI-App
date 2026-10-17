@@ -166,7 +166,7 @@ async function loadJob(job: Job, siblings: Job[] = []) {
   canvas.width = size.width;
   canvas.height = size.height;
   status("Loading photos and fonts…");
-  const [photos] = await Promise.all([loadPhotos(job.photoIds.map((id) => `/api/photo/${id}`), job.photoIds.map((id) => `/api/photo/${id}?cutout=1`)), loadSpecFonts(job.spec)]);
+  const [photos] = await Promise.all([loadPhotos(job.photoIds.map((id) => `/api/photo/${id}`), job.photoIds.map(cutoutUrl)), loadSpecFonts(job.spec)]);
   state.photos = photos;
   const track = job.spec.music ? await api<{ id: string; title: string } | null>(`/api/music?mood=${encodeURIComponent(job.spec.music)}`).catch(() => null) : null;
   state.musicUrl = track ? `/api/music/${track.id}` : null;
@@ -398,10 +398,14 @@ async function influencerCall(kind: "portrait" | "shot") {
 
 // ---- Templates gallery ----------------------------------------------------------------------------------------------
 
+/** Cut-outs are asked for only when one exists or was never tried (GET /api/cutouts), so there is no 404 per photo. */
+let cutoutsRefused = new Set<string>();
+const cutoutUrl = (id: string): string | null => (cutoutsRefused.has(id) ? null : `/api/photo/${id}?cutout=1`);
+
 const previewPhotos = new Map<string, Promise<Photos>>();
 function photosFor(ids: string[]) {
   const key = ids.join(",");
-  if (!previewPhotos.has(key)) previewPhotos.set(key, loadPhotos(ids.map((id) => `/api/photo/${id}?size=thumb`), ids.map((id) => `/api/photo/${id}?cutout=1`)));
+  if (!previewPhotos.has(key)) previewPhotos.set(key, loadPhotos(ids.map((id) => `/api/photo/${id}?size=thumb`), ids.map(cutoutUrl)));
   return previewPhotos.get(key) as Promise<Photos>;
 }
 
@@ -603,7 +607,8 @@ async function upload(file: File) {
 // ---- Start ----------------------------------------------------------------------------------------------------------
 
 async function init() {
-  const options = await api<Options>("/api/options");
+  const [options, cut] = await Promise.all([api<Options>("/api/options"), api<{ refused: string[] }>("/api/cutouts").catch(() => ({ refused: [] as string[] }))]);
+  cutoutsRefused = new Set(cut.refused);
   state.options = options;
   $("mode").textContent = options.claudeMode === "subscription" ? "· Claude: your subscription (switch to the API key before deploying)" : "· Claude: API key";
   renderModes();

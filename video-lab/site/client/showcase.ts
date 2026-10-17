@@ -13,7 +13,7 @@ function render() {
   for (const i of list) {
     const tile = el("div", { className: "tile" });
     if (i.videoUrl) {
-      const v = el("video", { src: i.videoUrl, muted: true, loop: true, playsInline: true, preload: "metadata" });
+      const v = el("video", { src: `${i.videoUrl}#t=1`, muted: true, loop: true, playsInline: true, preload: "metadata" });
       tile.onmouseenter = () => void v.play().catch(() => undefined);
       tile.onmouseleave = () => v.pause();
       tile.append(v);

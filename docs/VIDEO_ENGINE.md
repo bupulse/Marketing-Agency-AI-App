@@ -305,6 +305,13 @@ pages read it). Videos are served with Range requests, so a page full of videos 
   under "Check these facts" (red: not in the product's facts; amber: only in the business description) and cards show
   "N facts to check". When the designer returns a \`score\`, the drawer and cards show "Research score N/100" and what
   it missed.
+- **Generations and the drawer:** every card shows a poster (the MP4 one second in, the live first frame of a design,
+  or a storyboard frame with its name in a bar underneath). The drawer is two columns: the player as tall as the screen
+  allows on the left (the finished MP4 with its voice when there is one, else the live preview), the details on the
+  right. The hero carousel shows 7 real clips (5 MP4s were made on 17 October through the page, 1080p with voice-over:
+  Launch party, 3D title drop, Kigali price-first, Showroom turntable and Floating product reveal). Cut-outs are asked
+  for only when they exist or were never tried (`GET /api/cutouts`; `/api/products` marks each photo `cutout`
+  true, false or null), so the console shows no 404 per photo.
 - **Builds never take the studio down:** `npm run lab` builds into `video-lab/.build-next` and swaps it in only when
   every step worked; when a build fails (an agent mid-edit in a shared file) it prints the error and starts the last
   good build.
@@ -416,9 +423,9 @@ allowances and MoMo add-ons.
 ## Studio pages and buttons (QA 17 Oct)
 
 A Playwright pass over every studio page (Chrome, 1440 px and 390 px wide): every link on every page was opened, and
-every button that does not spend credits was clicked, plus the sign-in page as an online visitor. **101 of 101 work**,
-with no script errors on any page (fourth pass, after the Seedance previews and gallery, voice-over, 3D templates,
-cut-outs, the platform picker, Premium 3D, the fact checks and the password gate). Fixed during the passes: links that lost their query (`/app/video/seedance?tier=mini` opened the
+every button that does not spend credits was clicked, plus the sign-in page as an online visitor. **110 of 110 work**,
+with no script errors on any page (fifth pass, after the Seedance previews and gallery, voice-over, 3D templates,
+cut-outs, the platform picker, Premium 3D, the fact checks, the password gate and the visual pass on /create). Fixed during the passes: links that lost their query (`/app/video/seedance?tier=mini` opened the
 default tier), `#influencers` that opened nothing, the quality and options menus cut off by the hero, pill buttons
 that did nothing until the database had answered, pickers that opened only after their data arrived, the nav wrapping
 at 1280 px, and pages full of videos that downloaded every MP4 in full (no Range support) and blocked the browser's
@@ -439,6 +446,11 @@ connections to the studio.
 | every page (nav/footer) | link "Guide" | /guide | yes |
 | every page (nav/footer) | link "API NEW" | /api-docs | yes |
 | / | link "Premium 3DKitenge summer dress" | /showcase#bl-ccf2f2564cd3 (lands on /showcase) | yes |
+| / | link "Video tile: Samsung Galaxy A56" | /showcase#20261017-f81fcb95 (lands on /showcase) | yes |
+| / | link "Video tile: Samsung Galaxy A56" | /showcase#20261017-a7150886 (lands on /showcase) | yes |
+| / | link "Video tile: Kitenge summer dress" | /showcase#20261017-6cade78f (lands on /showcase) | yes |
+| / | link "Video tile: Kitenge summer dress" | /showcase#20261017-843b1a68 (lands on /showcase) | yes |
+| / | link "Video tile: Samsung Galaxy A56" | /showcase#20261017-89f68a6a (lands on /showcase) | yes |
 | / | link "Video tile: 3-bedroom house with garden, Kibag" | /showcase#20261017-a87cc367 (lands on /showcase) | yes |
 | / | link "Video tile: 3-bedroom house with garden, Kibag" | /showcase#20261016-3a334e91 (lands on /showcase) | yes |
 | / | link "Video tile: Samsung Galaxy A56" | /showcase#20261016-f0ba04ce (lands on /showcase) | yes |
@@ -481,7 +493,7 @@ connections to the studio.
 | /app/video/<model> | Template pill | scrolls to the templates | yes |
 | /app/video/<model> | Template card | selects the template; Macro details | yes |
 | /app/video/<model> | Engine Motion / Real video | switches engine | yes |
-| /app/video/<model> | + (references) | picker with upload, videos and photos; 8 choices | yes |
+| /app/video/<model> | + (references) | picker with upload, videos and photos; 1 choices | yes |
 | /app/video/<model> | Reference tile (click) | removes it | yes |
 | /app/video/<model> | Upload (in + picker) | opens the file chooser | yes |
 | /app/video/<model> | PRODUCT tile | product picker, sets product and photos | yes |
@@ -501,6 +513,10 @@ connections to the studio.
 | /app/video/motion | Platform pill | Any / Instagram / TikTok / Facebook / YouTube; only for Motion | yes |
 | /app/video/motion | Quality: Premium 3D (Blender) | Generate shows 120 credits; lengths 4 to 8 s; the wait is stated | yes |
 | /app/video/motion | Premium 3D clip card | drawer with the video, length, credits, render time; StatusReadyLength6 sCredits120Render time4 min 31 sVoice lineBright ki | yes |
+| /create | Hero carousel | at least 7 real clips; 7 clips | yes |
+| /create | Finished Motion video card | drawer plays the MP4 (with voice) beside the details; player 675 x 800 px | yes |
+| /create | Every generation card | shows a poster (video, live frame or storyboard frame) | yes |
+| /create | Cut-outs | no 404 for photos known to have none | yes |
 | /api/photo/<id>?cutout=1 | Cut-out of a product photo | PNG for a plain background, 404 with the reason otherwise | yes |
 | /create | Generation card | opens the drawer; Close; drawer actions: Make it as a Motion video instead, Edit the prompt | yes |
 | /create | Drawer Download | the MP4 file; /videos/blender/bl-ccf2f2564cd3.mp4 | yes |
@@ -517,11 +533,11 @@ connections to the studio.
 | /app/image/nano-banana | Example prompt | fills the prompt | yes |
 | /app/image/nano-banana | Use in a video | /create?ref=<image> with it as Image 1 | yes |
 | /app/image/nano-banana | Use in a 3D motion video | /app/video/motion?ref=<image> | yes |
-| /pricing | Buy (test: adds credits) | adds the pack to the test wallet; 10750 -> 11750 test credits | yes |
+| /pricing | Buy (test: adds credits) | adds the pack to the test wallet; 12700 -> 13700 test credits | yes |
 | /showcase | Filters | All / Seedance / Motion | yes |
-| /showcase | Video tile | viewer with Download; Close; 4 videos | yes |
+| /showcase | Video tile | viewer with Download; Close; 9 videos | yes |
 | /videos | Filters | All / Seedance / Motion / In progress | yes |
-| /videos | Video tile | viewer with Download; Close; 4 videos | yes |
+| /videos | Video tile | viewer with Download; Close; 9 videos | yes |
 | /guide | FAQ items | open | yes |
 | /api-docs | Contents links | jump to each section | yes |
 | /api-docs | Rates table | filled from /api/pricing | yes |

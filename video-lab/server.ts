@@ -335,6 +335,16 @@ async function seedanceRequestFrom(body: Record<string, unknown>) {
   return { request, notes, product, businessId, versions: Math.min(3, Math.max(1, Number(body.versions) || 1)) };
 }
 
+/**
+ * The cut-outs already made (<id>.png) and refused (<id>.json) in video-lab/cutouts.ts's cache folder: a directory
+ * listing, so nothing is computed here.
+ */
+async function knownCutouts(): Promise<{ ok: Set<string>; refused: Set<string> }> {
+  const files = await fs.readdir(path.resolve("video-lab/data/cutouts")).catch(() => [] as string[]);
+  const ids = (ext: string) => new Set(files.filter((f) => f.endsWith(ext)).map((f) => f.slice(0, -ext.length)));
+  return { ok: ids(".png"), refused: ids(".json") };
+}
+
 /** The BytePlus connection, checked at most every 5 minutes (the check lists one task: free). */
 let seedanceStatus: { at: number; value: SeedanceConnection } | null = null;
 async function seedanceConnection(): Promise<SeedanceConnection> {
@@ -605,7 +615,17 @@ const server = http.createServer(async (req, res) => {
       });
     }
     if (req.method === "GET" && p === "/api/businesses") return json(res, 200, await listBusinesses());
-    if (req.method === "GET" && p === "/api/products") return json(res, 200, await listProducts(url.searchParams.get("business") ?? ""));
+    if (req.method === "GET" && p === "/api/products") {
+      // Each photo says whether its cut-out is known (true), known to be impossible (false) or not checked yet (null).
+      const known = await knownCutouts();
+      const products = await listProducts(url.searchParams.get("business") ?? "");
+      return json(res, 200, products.map((x) => ({ ...x, photos: x.photos.map((ph) => ({ ...ph, cutout: known.ok.has(ph.assetId) ? true : known.refused.has(ph.assetId) ? false : null })) })));
+    }
+    if (req.method === "GET" && p === "/api/cutouts") {
+      // So the page asks for a cut-out only when one exists or was never tried (no 404 per photo in the console).
+      const known = await knownCutouts();
+      return json(res, 200, { ok: [...known.ok], refused: [...known.refused] });
+    }
     const photo = p.match(/^\/api\/photo\/([A-Za-z0-9-]{8,40})$/);
     if (req.method === "GET" && photo && url.searchParams.get("cutout") === "1") {
       // The product lifted off its background (video-lab/cutouts.ts), for 3D turntables and floating products.
