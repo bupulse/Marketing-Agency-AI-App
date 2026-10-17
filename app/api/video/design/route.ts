@@ -29,12 +29,13 @@ const body = z.object({
   platform: z.enum(Object.keys(PLATFORMS) as [keyof typeof PLATFORMS, ...(keyof typeof PLATFORMS)[]]).nullish(),
   versions: z.number().int().min(1).max(4).default(1),
   voice: z.boolean().optional(),
+  chosenHook: z.object({ hookId: z.string().min(1).max(60), line: z.string().min(1).max(120) }).nullish(),
 });
 
 // Designs a Motion video with Claude (docs/VIDEO_APP_INTEGRATION.md, task 5). Costs CLAUDE_VIDEO_CREDITS video credits
 // per version, taken before Claude is called and given back for a version that fails. Body: { productId, photoPaths?,
 // templateId, hookId, ratio, seconds, note?, mode, parentId? (edit, extend), fixedLens?, cartoonId?, platform?,
-// versions?, voice? }. Answers { jobs } (each designed, or failed with its reason); 503 when video design is
+// versions?, voice?, chosenHook? }. Answers { jobs } (each designed, or failed with its reason); 503 when video design is
 // unavailable (no Claude key, or Claude switched off in Admin -> Services), before anything is charged.
 export async function POST(request: Request) {
   const check = await checkActiveUser();
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const jobs = await designMotionJobs({ userId: user.id, actorId: user.actorId, businessId: business.id }, { ...input, note: input.note ?? null, parentId: input.parentId ?? null, cartoonId: input.cartoonId ?? null, platform: input.platform ?? null });
+    const jobs = await designMotionJobs({ userId: user.id, actorId: user.actorId, businessId: business.id }, { ...input, note: input.note ?? null, parentId: input.parentId ?? null, cartoonId: input.cartoonId ?? null, platform: input.platform ?? null, chosenHook: input.chosenHook ?? null });
     const designed = jobs.filter((j) => j.status === "designed");
     if (!designed.length) return NextResponse.json({ error: "design_failed", message: jobs[0]?.error ?? "The design could not be made.", jobs }, { status: 502 });
     return NextResponse.json({ jobs });

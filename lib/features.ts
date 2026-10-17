@@ -245,7 +245,7 @@ export const FEATURES: readonly FeatureDef[] = [
     services: ["claude"],
     status: "coming_soon",
     kind: "app",
-    routes: [],
+    routes: ["/dashboard/video"],
   },
   {
     key: "aiVideo",

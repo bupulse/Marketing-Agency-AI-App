@@ -134,6 +134,16 @@ describe("POST /api/video/design", () => {
     expect(usage.refundUsage).not.toHaveBeenCalled();
   });
 
+  it("an opening line the owner picked reaches Claude in the research block", async () => {
+    const fetchMock = claudeAnswer();
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await call({ productId: "p1", platform: "tiktok", hookId: "price-banner", chosenHook: { hookId: "price-banner", line: "Galaxy A56 at 420,000 RWF" } });
+    expect(res.status).toBe(200);
+    const sent = String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body);
+    expect(sent).toContain("Galaxy A56 at 420,000 RWF");
+    expect(sent).toContain("RESEARCH");
+  });
+
   it("503 in plain English without the Claude key, before charging anything", async () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "");
     const res = await call({ productId: "p1" });

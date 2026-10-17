@@ -51,6 +51,7 @@ export const NAV_ITEMS: NavItem[] = [
   item("/dashboard/autopilot", "Autopilot", Sparkles),
   item("/dashboard/gallery", "Gallery", Images),
   item("/dashboard/designs", "Designs", ImageIcon),
+  item("/dashboard/video", "Video Studio", Clapperboard),
   item("/dashboard/leads", "Leads", Users),
   item("/dashboard/widget", "Website chat", MessageCircle, "widget"),
   item("/dashboard/connections", "Channels", Plug, "channels"),

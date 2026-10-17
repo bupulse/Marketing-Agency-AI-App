@@ -53,6 +53,21 @@ Provisional; the owner may change them.
     - **What it does:** fails a "designing" job whose lease passed and refunds its credits to the company account,
       exactly once. The sweep and the design request both claim the job with a conditional update (still "designing",
       never refunded), and only the winner refunds or finishes it.
+  - Task 6 (first release, Motion only): **`/dashboard/video`** (Video Studio in the sidebar, hidden while the
+    feature is "coming soon").
+    - **Page:** `app/dashboard/video/page.tsx` and `components/video-studio/create-studio.tsx`. Product, template
+      gallery (no presenter templates), platform, shape (9:16, 4:5, 1:1, 16:9), length, the Brain's opening lines
+      (`chosenHook` now reaches the designer as research), voice-over lines on or off, Generate (`POST
+      /api/video/design`, the paywall on 402), and the job list with research score, caption check and "Check before
+      posting".
+    - **MP4:** "Make the MP4" draws and encodes in the browser (1080p, 4 Mbit/s) and saves it through the Gallery's own
+      upload (`prepareUploads` / `finalizeUpload`) into a "Video Studio" folder. The job becomes "ready" with
+      `videoPath`, `posterPath`, `bytes` and `durationMs`. This also gives the `MediaAsset` row that scheduling
+      needs.
+    - **Actions:** `app/dashboard/video/actions.ts` (`content` permission, `videoStudio` feature);
+      `lib/video-studio/library.ts`.
+    - **Not yet:** recording the voice-over (`/api/video/jobs/<id>/voice`), so MP4s have no voice; music; the live
+      preview; edit and extend; scheduling (task 7).
 
 ## 0. THE CLAUDE KEY
 

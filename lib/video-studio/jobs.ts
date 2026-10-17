@@ -4,6 +4,7 @@ import { assertServiceEnabled, ServiceDisabledError } from "@/lib/admin/switch";
 import { withLedger } from "@/lib/ai/ledger";
 import { consumeUsage, refundUsage } from "@/lib/usage";
 import { scoreCaption } from "@/lib/video-engine/brain/score";
+import { brainBriefFromDesign, brainContext } from "@/lib/video-engine/brain/select";
 import { CLAUDE_VIDEO_CREDITS } from "@/lib/video-engine/credits";
 import { DESIGNER_MODEL, DesignError, apiTransport, designVideo, type ClaudeTransport, type DesignBrief, type DesignMode, type Platform } from "@/lib/video-engine/designer";
 import { VIDEO_LEDGER_FEATURES } from "@/lib/video-engine/ledger-features";
@@ -52,6 +53,8 @@ export type DesignJobInput = {
   versions?: number;
   /** Whether the video will get a voice-over (the score then checks the spoken lines). */
   voice?: boolean;
+  /** An opening line the owner picked from the Brain's suggestions (lib/video-studio/library.ts openingLines). */
+  chosenHook?: { hookId: string; line: string } | null;
 };
 
 export type VideoJobView = {
@@ -67,6 +70,13 @@ export type VideoJobView = {
   credits: number;
   error: string | null;
   parentId: string | null;
+  productId: string | null;
+  templateId: string | null;
+  platform: string | null;
+  ratio: string;
+  seconds: number;
+  /** The MP4 in the Gallery, once the browser made it (status "ready"). */
+  videoPath: string | null;
   createdAt: string;
 };
 
@@ -92,7 +102,9 @@ export async function designUnavailable(env: Record<string, string | undefined> 
   return null;
 }
 
-const view = (j: { id: string; status: string; engine: string; spec: unknown; caption: string; hashtags: string[]; warnings: unknown; score: unknown; captionScore: unknown; credits: number; error: string | null; parentId: string | null; createdAt: Date }): VideoJobView => ({
+export type JobRow = { id: string; status: string; engine: string; spec: unknown; caption: string; hashtags: string[]; warnings: unknown; score: unknown; captionScore: unknown; credits: number; error: string | null; parentId: string | null; productId?: string | null; templateId?: string | null; platform?: string | null; ratio?: string; seconds?: number; videoPath?: string | null; createdAt: Date };
+
+export const view = (j: JobRow): VideoJobView => ({
   id: j.id,
   status: j.status,
   engine: j.engine,
@@ -105,6 +117,12 @@ const view = (j: { id: string; status: string; engine: string; spec: unknown; ca
   credits: j.credits,
   error: j.error,
   parentId: j.parentId,
+  productId: j.productId ?? null,
+  templateId: j.templateId ?? null,
+  platform: j.platform ?? null,
+  ratio: j.ratio ?? "9:16",
+  seconds: j.seconds ?? 15,
+  videoPath: j.videoPath ?? null,
   createdAt: j.createdAt.toISOString(),
 });
 
@@ -149,6 +167,8 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
     platform: input.platform ?? null,
     voice: input.voice ?? true,
   };
+  // The opening line the owner picked: the Brain's context for it goes in as research (Claude follows it), as in the lab.
+  if (input.chosenHook && input.mode !== "edit" && input.mode !== "extend") brief.research = brainContext(brainBriefFromDesign(brief), { chosenHook: input.chosenHook });
   // The job keeps the brief without the image bytes (photos as their Storage paths).
   const storedBrief = { ...brief, photos: stored, base: undefined };
   const jobs = await prisma.$transaction(
