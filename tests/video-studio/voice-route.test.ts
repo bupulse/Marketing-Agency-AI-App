@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/entitlements", () => import("@/tests/stubs/entitlements"));
 
 type Clip = Record<string, unknown> & { businessId: string; hash: string; status: string };
-const db = vi.hoisted(() => ({ clips: [] as Clip[], language: "English" as string | null, spec: null as unknown, voiceClipId: null as string | null }));
+const db = vi.hoisted(() => ({ clips: [] as Clip[], language: "English" as string | null, spec: null as unknown, voiceClipId: null as string | null, job: { voiceCredits: 0, voicePeriodStart: null as Date | null, voiceReservedAt: null as Date | null }, heldDuringSpeak: 0 }));
 const prisma = vi.hoisted(() => ({
   business: { findUnique: vi.fn(async (args: { where: { userId?: string; id?: string } }) => (args.where.userId ? { id: "b1" } : { contentLanguage: db.language })) },
   videoJob: {
@@ -10,6 +10,13 @@ const prisma = vi.hoisted(() => ({
     update: vi.fn(async ({ data }: { data: { voiceClipId: string } }) => {
       db.voiceClipId = data.voiceClipId;
       return {};
+    }),
+    updateMany: vi.fn(async ({ where, data }: { where: { id: string; voiceCredits?: number | { gt: number }; voiceReservedAt?: Date }; data: typeof db.job }) => {
+      const j = db.job;
+      if (where.voiceCredits === 0 && j.voiceCredits !== 0) return { count: 0 };
+      if (typeof where.voiceCredits === "object" && !(j.voiceCredits > 0 && j.voiceReservedAt?.getTime() === where.voiceReservedAt?.getTime())) return { count: 0 };
+      Object.assign(j, data);
+      return { count: 1 };
     }),
   },
   voiceClip: {
@@ -96,11 +103,16 @@ beforeEach(() => {
   db.clips = [];
   db.language = "English";
   db.voiceClipId = null;
+  db.job = { voiceCredits: 0, voicePeriodStart: null, voiceReservedAt: null };
+  db.heldDuringSpeak = 0;
   db.spec = spec(["Galaxy A56, 420,000 RWF.", "WhatsApp us today."]);
   ledger.calls.length = 0;
   switchState.off = false;
   storage.files.clear();
-  speak.mockImplementation(async ({ text }) => answer(text));
+  speak.mockImplementation(async ({ text }) => {
+    db.heldDuringSpeak = db.job.voiceCredits;
+    return answer(text);
+  });
   setTtsProvider(tts);
 });
 
@@ -119,6 +131,29 @@ describe("POST /api/video/jobs/<id>/voice", () => {
     expect(out.voice.cues).toHaveLength(2);
     expect(db.clips[0]).toMatchObject({ status: "ready", pendingAudio: null });
     expect(db.voiceClipId).toBe("vc1");
+    expect(usage.refundUsage).not.toHaveBeenCalled();
+    // The credits were held on the job while the take was made, and settled once it was paid for.
+    expect(db.heldDuringSpeak).toBe(VOICE_OVER_CREDITS);
+    expect(db.job).toEqual({ voiceCredits: 0, voicePeriodStart: null, voiceReservedAt: null });
+  });
+
+  it("a second voice-over of the same video while one is held: credits back at once, 409", async () => {
+    db.job = { voiceCredits: 15, voicePeriodStart: new Date("2026-10-01T00:00:00Z"), voiceReservedAt: new Date() };
+    const res = await call();
+    expect(res.status).toBe(409);
+    expect(usage.refundUsage).toHaveBeenCalledTimes(1);
+    expect(speak).not.toHaveBeenCalled();
+    expect(db.job.voiceCredits).toBe(15);
+  });
+
+  it("a reservation the sweep already gave back is not refunded again when the request fails late", async () => {
+    speak.mockImplementationOnce(async () => {
+      // The request was slow: the sweep cleared and refunded the reservation meanwhile.
+      Object.assign(db.job, { voiceCredits: 0, voicePeriodStart: null, voiceReservedAt: null });
+      throw new Error("The voice service did not answer");
+    });
+    const res = await call();
+    expect(res.status).toBe(502);
     expect(usage.refundUsage).not.toHaveBeenCalled();
   });
 
@@ -146,7 +181,9 @@ describe("POST /api/video/jobs/<id>/voice", () => {
     expect(res.status).toBe(502);
     expect(((await res.json()) as { message: string }).message).toContain("Your credits are back");
     expect(usage.refundUsage).toHaveBeenCalledWith("u1", "videoCredits", new Date("2026-10-01T00:00:00Z"), VOICE_OVER_CREDITS);
+    expect(usage.refundUsage).toHaveBeenCalledTimes(1);
     expect(db.clips).toEqual([]);
+    expect(db.job.voiceCredits).toBe(0);
   });
 
   it("503 in plain English when ElevenLabs is switched off or has no key, before charging", async () => {

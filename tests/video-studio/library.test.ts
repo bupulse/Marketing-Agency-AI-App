@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 const prisma = vi.hoisted(() => ({
-  videoJob: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
+  videoJob: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn(async () => ({ count: 1 })) },
   mediaAsset: { findMany: vi.fn() },
   mediaFolder: { findUnique: vi.fn() },
   musicTrack: { findUnique: vi.fn() },
@@ -28,7 +28,23 @@ vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("@/lib/media/service", () => media);
 vi.mock("@/lib/admin/switch", () => ({ assertServiceEnabled: vi.fn(), ServiceDisabledError: class extends Error {} }));
 vi.mock("@/lib/ai/ledger", () => ({ withLedger: vi.fn() }));
-vi.mock("@/lib/usage", () => ({ consumeUsage: vi.fn(), refundUsage: vi.fn() }));
+const usage = vi.hoisted(() => {
+  class UsageLimitError extends Error {
+    constructor(public reason = "limit_reached") {
+      super(reason);
+    }
+  }
+  return {
+    UsageLimitError,
+    summary: { limits: { videos: 120 }, used: { videos: 3 }, videosPerDay: 4, videosToday: 1 },
+    consumeUsage: vi.fn(async () => ({ periodStart: new Date("2026-10-01T00:00:00Z") })),
+    refundUsage: vi.fn(async () => {}),
+    consumeDailyVideo: vi.fn(async () => ({ day: "2026-10-17" })),
+    refundDailyVideo: vi.fn(async () => {}),
+    getUsageSummary: vi.fn(async () => usage.summary),
+  };
+});
+vi.mock("@/lib/usage", () => usage);
 vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: vi.fn() }));
 vi.mock("@/lib/video-studio/brief", () => ({
   loadBriefFacts: vi.fn(async () => ({ productId: "p1", business: { name: "Nova Phones Kigali", phone: "+250 788 300 400", language: "English", country: "Rwanda" }, product: { name: "Samsung Galaxy A56", price: "420,000 RWF", usps: ["Genuine"] } })),
@@ -43,6 +59,8 @@ const ctx = { userId: "u1", businessId: "b1" };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  usage.summary = { limits: { videos: 120 }, used: { videos: 3 }, videosPerDay: 4, videosToday: 1 };
+  prisma.videoJob.updateMany.mockResolvedValue({ count: 1 });
   prisma.videoJob.findFirst.mockResolvedValue({ id: "j1", status: "designed", spec: SPEC, productId: "p1", brief: { photos: [{ path: "u1/gallery/a.jpg" }, { path: "u1/gallery/b.jpg" }] } });
   prisma.mediaFolder.findUnique.mockResolvedValue(null);
 });
@@ -64,7 +82,7 @@ describe("the Create page's library", () => {
 
   it("gives the browser the spec and its photos in the designer's order, with the cut-outs that exist", async () => {
     prisma.mediaAsset.findMany.mockResolvedValue([{ path: "u1/gallery/b.jpg", cutoutPath: "u1/gallery/b-cutout.png" }, { path: "u1/gallery/a.jpg", cutoutPath: null }]);
-    const out = await jobForDrawing("b1", "j1");
+    const out = await jobForDrawing(ctx, "j1");
     expect(prisma.videoJob.findFirst.mock.calls[0][0]).toMatchObject({ where: { id: "j1", businessId: "b1", engine: "motion" } });
     expect(out.photoUrls).toEqual(["https://signed.test/u1/gallery/a.jpg", "https://signed.test/u1/gallery/b.jpg"]);
     expect(out.cutoutUrls).toEqual([null, "https://signed.test/u1/gallery/b-cutout.png"]);
@@ -73,7 +91,7 @@ describe("the Create page's library", () => {
 
   it("refuses a job of another company or one not designed yet", async () => {
     prisma.videoJob.findFirst.mockResolvedValueOnce(null);
-    await expect(jobForDrawing("b1", "nope")).rejects.toBeInstanceOf(VideoStudioError);
+    await expect(jobForDrawing(ctx, "nope")).rejects.toBeInstanceOf(VideoStudioError);
     prisma.videoJob.findFirst.mockResolvedValueOnce({ id: "j1", status: "designing", spec: null, brief: {} });
     await expect(prepareJobVideo(ctx, "j1", { bytes: 100 })).rejects.toBeInstanceOf(VideoStudioError);
     expect(media.prepareUploads).not.toHaveBeenCalled();
@@ -122,6 +140,54 @@ describe("the Create page's library", () => {
     prisma.musicTrack.findUnique.mockResolvedValue(null);
     const none = await saveJobVideo(ctx, "j1", { path: "u1/clips/x.mp4", destination: "folder:f1", name: "n", width: 1080, height: 1920, musicTrackId: "gone" });
     expect(none.job.music).toBeNull();
+  });
+
+  it("a job's first MP4 uses one video of the month and one of the day; making it again uses none", async () => {
+    prisma.videoJob.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => row({ ...data }));
+    const input = { path: "u1/clips/x.mp4", destination: "folder:f1", name: "n", width: 1080, height: 1920 };
+    await saveJobVideo(ctx, "j1", input);
+    expect(usage.consumeUsage).toHaveBeenCalledWith("u1", "videos", 1);
+    expect(usage.consumeDailyVideo).toHaveBeenCalledWith("u1", 4);
+    expect(usage.consumeUsage.mock.invocationCallOrder[0]).toBeLessThan(media.finalizeUpload.mock.invocationCallOrder[0]);
+    // Claimed as the first MP4 only while the job still has none.
+    expect((prisma.videoJob.updateMany.mock.calls[0] as unknown as [{ where: unknown }])[0]).toMatchObject({ where: { id: "j1", videoPath: null } });
+    vi.clearAllMocks();
+    prisma.videoJob.findFirst.mockResolvedValue({ id: "j1", status: "ready", spec: SPEC, productId: "p1", brief: {}, videoPath: "u1/clips/old.mp4" });
+    await saveJobVideo(ctx, "j1", input);
+    expect(usage.consumeUsage).not.toHaveBeenCalled();
+    expect(usage.consumeDailyVideo).not.toHaveBeenCalled();
+  });
+
+  it("the cap is checked before the browser encodes, with a plain message; a remake is never refused", async () => {
+    usage.summary = { limits: { videos: 120 }, used: { videos: 3 }, videosPerDay: 4, videosToday: 4 };
+    await expect(jobForDrawing(ctx, "j1")).rejects.toThrow("4 videos a day is the most, and today's are made. Your design is kept: make this MP4 tomorrow.");
+    await expect(prepareJobVideo(ctx, "j1", { bytes: 100 })).rejects.toThrow(/tomorrow/);
+    usage.summary = { limits: { videos: 120 }, used: { videos: 120 }, videosPerDay: 4, videosToday: 0 };
+    await expect(jobForDrawing(ctx, "j1")).rejects.toThrow("Your plan's 120 videos for this month are used up, so this MP4 cannot be made yet. Your design is kept: make it next month, or add more video to your plan.");
+    expect(media.prepareUploads).not.toHaveBeenCalled();
+    prisma.videoJob.findFirst.mockResolvedValue({ id: "j1", status: "ready", spec: SPEC, productId: "p1", brief: {}, videoPath: "u1/clips/old.mp4" });
+    await expect(jobForDrawing(ctx, "j1")).resolves.toMatchObject({ spec: SPEC });
+  });
+
+  it("counts go back when the upload is not confirmed, when the day is full at save time, or when a parallel save won", async () => {
+    const input = { path: "u1/clips/x.mp4", destination: "folder:f1", name: "n", width: 1080, height: 1920 };
+    media.finalizeUpload.mockRejectedValueOnce(new media.MediaError("The video is larger than 50 MB."));
+    await expect(saveJobVideo(ctx, "j1", input)).rejects.toThrow("50 MB");
+    expect(usage.refundUsage).toHaveBeenCalledWith("u1", "videos", new Date("2026-10-01T00:00:00Z"), 1);
+    expect(usage.refundDailyVideo).toHaveBeenCalledWith("u1", "2026-10-17");
+    vi.clearAllMocks();
+    usage.consumeDailyVideo.mockRejectedValueOnce(new usage.UsageLimitError());
+    usage.summary = { limits: { videos: 120 }, used: { videos: 3 }, videosPerDay: 4, videosToday: 4 };
+    await expect(saveJobVideo(ctx, "j1", input)).rejects.toThrow(/tomorrow/);
+    expect(usage.refundUsage).toHaveBeenCalledTimes(1);
+    expect(media.finalizeUpload).not.toHaveBeenCalled();
+    vi.clearAllMocks();
+    usage.summary = { limits: { videos: 120 }, used: { videos: 3 }, videosPerDay: 4, videosToday: 1 };
+    prisma.videoJob.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => row({ ...data }));
+    prisma.videoJob.updateMany.mockResolvedValueOnce({ count: 0 });
+    await saveJobVideo(ctx, "j1", input);
+    expect(usage.refundUsage).toHaveBeenCalledTimes(1);
+    expect(usage.refundDailyVideo).toHaveBeenCalledTimes(1);
   });
 
   it("does not put a photo on a job as its video", async () => {

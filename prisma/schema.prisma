@@ -2188,6 +2188,11 @@ model VideoJob {
   music          Json?
   credits        Int               @default(0) // video credits taken (0 for previews)
   periodStart    DateTime? // the UsageRecord window they were taken from, for the refund
+  // A voice-over's credits while its take is being made (lib/video-studio/voice.ts): set when they are taken, cleared
+  // when the take is paid for or the credits are given back. The video-jobs sweep refunds one left older than the lease.
+  voiceCredits     Int             @default(0)
+  voicePeriodStart DateTime?
+  voiceReservedAt  DateTime?
   refundedAt     DateTime?
   costUsd        Decimal           @default(0) @db.Decimal(12, 6) // provider cost (its AiCall rows)
   warnings       Json              @default("[]") // fact warnings (lib/video-engine/factcheck.ts)

@@ -74,7 +74,7 @@ Provisional; the owner may change them.
       `music` bucket is public, so the file's public URL (`musicUrl`) is used, as the content videos do; there is no
       signed link.
     - **Credit line:** the track is read from the library when the MP4 is saved and kept in the new `VideoJob.music`
-      (`{ trackId, title, attribution, owned }`, migration `20261023100000_video_job_music`). Scheduling (task 7)
+      (`{ trackId, title, attribution, owned }`, migration `20261023100000_video_job_sound`). Scheduling (task 7)
       then adds the credit line its licence asks for (`withMusicCredit`).
   - Voice-over: **`POST /api/video/jobs/<id>/voice`** (`lib/video-studio/voice.ts`).
     - **What it does:** speaks the design's `say` lines in the company's voice (the content settings' voice) through
@@ -87,6 +87,14 @@ Provisional; the owner may change them.
     - **The page:** when the owner chose a voice-over, "Make the MP4" asks for it first, encodes the fitted spec with
       `voice` (url and cues), and makes the MP4 without a voice (saying why) when it cannot be had.
     - **Permission:** `POST /api/video/design` now checks the `content` permission too, as the page's actions do.
+    - **Held credits:** a new take's 15 credits are held on the job (`voiceCredits`, `voicePeriodStart`,
+      `voiceReservedAt`; one at a time per job, a second request gets 409 with its credits back). Whoever clears the
+      hold settles it: the request when the take is paid for (kept) or not spoken (refunded), or the video-jobs sweep
+      after `VOICE_LEASE_MS` (10 minutes; refunded once).
+  - Plan videos: a job's **first MP4** uses one `videos` of the month and one `VideoDayUsage` day, counted before the
+    file is confirmed and given back if it is not, or if a parallel save of the same job won. Making it again uses none.
+    The cap is checked when the browser asks to draw (before encoding) and again before the upload, with a plain
+    message ("4 videos a day is the most, and today's are made. Your design is kept: make this MP4 tomorrow.").
 
 ## 0. THE CLAUDE KEY
 

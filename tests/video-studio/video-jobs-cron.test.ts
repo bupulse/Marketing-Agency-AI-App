@@ -1,18 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-type Row = { id: string; status: string; leaseUntil: Date | null; refundedAt: Date | null; credits: number; periodStart: Date | null; businessId: string; error?: string };
+type Row = { id: string; status: string; leaseUntil: Date | null; refundedAt: Date | null; credits: number; periodStart: Date | null; businessId: string; error?: string; voiceCredits?: number; voicePeriodStart?: Date | null; voiceReservedAt?: Date | null };
+type Where = { id?: string; status?: string; leaseUntil?: { lt: Date }; refundedAt?: null; voiceCredits?: { gt: number }; voiceReservedAt?: { lt: Date } | Date | null };
 const db = vi.hoisted(() => ({ rows: [] as Row[] }));
 const prisma = vi.hoisted(() => ({
   videoJob: {
-    findMany: vi.fn(async ({ where, take }: { where: { status: string; leaseUntil: { lt: Date }; refundedAt: null }; take: number }) =>
-      db.rows
-        .filter((r) => r.status === where.status && r.leaseUntil && r.leaseUntil < where.leaseUntil.lt && r.refundedAt === null)
+    findMany: vi.fn(async ({ where, take }: { where: Where; take: number }) =>
+      (where.voiceCredits
+        ? db.rows.filter((r) => (r.voiceCredits ?? 0) > 0 && r.voiceReservedAt && r.voiceReservedAt < (where.voiceReservedAt as { lt: Date }).lt)
+        : db.rows.filter((r) => r.status === where.status && r.leaseUntil && r.leaseUntil < where.leaseUntil!.lt && r.refundedAt === null)
+      )
         .slice(0, take)
-        .map((r) => ({ id: r.id, credits: r.credits, periodStart: r.periodStart, business: { userId: `owner-of-${r.businessId}` } })),
+        .map((r) => ({ id: r.id, credits: r.credits, periodStart: r.periodStart, voiceCredits: r.voiceCredits ?? 0, voicePeriodStart: r.voicePeriodStart ?? null, voiceReservedAt: r.voiceReservedAt ?? null, business: { userId: `owner-of-${r.businessId}` } })),
     ),
-    updateMany: vi.fn(async ({ where, data }: { where: { id: string; status: string; leaseUntil: { lt: Date }; refundedAt: null }; data: Partial<Row> }) => {
+    updateMany: vi.fn(async ({ where, data }: { where: Where; data: Partial<Row> }) => {
       const r = db.rows.find((x) => x.id === where.id);
-      if (!r || r.status !== where.status || !r.leaseUntil || !(r.leaseUntil < where.leaseUntil.lt) || r.refundedAt !== null) return { count: 0 };
+      if (!r) return { count: 0 };
+      if (where.voiceCredits) {
+        if (!((r.voiceCredits ?? 0) > 0) || r.voiceReservedAt?.getTime() !== (where.voiceReservedAt as Date).getTime()) return { count: 0 };
+      } else if (r.status !== where.status || !r.leaseUntil || !(r.leaseUntil < where.leaseUntil!.lt) || r.refundedAt !== null) return { count: 0 };
       Object.assign(r, data);
       return { count: 1 };
     }),
@@ -44,12 +50,12 @@ beforeEach(() => {
 
 describe("the Video Studio sweep", () => {
   it("fails a design whose lease passed and gives its credits back to the company account, exactly once", async () => {
-    expect(await sweepVideoJobs(NOW)).toEqual({ stranded: 1, refunded: 1, credits: 35, refundErrors: 0 });
+    expect(await sweepVideoJobs(NOW)).toEqual({ stranded: 1, refunded: 1, credits: 35, refundErrors: 0, voiceRefunded: 0, voiceCredits: 0 });
     expect(usage.refundUsage).toHaveBeenCalledTimes(1);
     expect(usage.refundUsage).toHaveBeenCalledWith("owner-of-b1", "videoCredits", PERIOD, 35);
     expect(db.rows.find((r) => r.id === "stranded")).toMatchObject({ status: "failed", error: STRANDED_MESSAGE, refundedAt: NOW, leaseUntil: null });
     // A second run (or two runs at once) finds nothing more to refund.
-    expect(await sweepVideoJobs(NOW)).toEqual({ stranded: 0, refunded: 0, credits: 0, refundErrors: 0 });
+    expect(await sweepVideoJobs(NOW)).toEqual({ stranded: 0, refunded: 0, credits: 0, refundErrors: 0, voiceRefunded: 0, voiceCredits: 0 });
     expect(usage.refundUsage).toHaveBeenCalledTimes(1);
     // Untouched: the design still in its lease, the finished one, the one already refunded.
     expect(db.rows.find((r) => r.id === "working")?.status).toBe("designing");
@@ -68,9 +74,34 @@ describe("the Video Studio sweep", () => {
 
   it("a refund that fails is counted and logged, never retried into a double refund", async () => {
     usage.refundUsage.mockRejectedValueOnce(new Error("db blip"));
-    expect(await sweepVideoJobs(NOW)).toEqual({ stranded: 1, refunded: 0, credits: 0, refundErrors: 1 });
+    expect(await sweepVideoJobs(NOW)).toEqual({ stranded: 1, refunded: 0, credits: 0, refundErrors: 1, voiceRefunded: 0, voiceCredits: 0 });
     expect(await sweepVideoJobs(NOW)).toMatchObject({ stranded: 0 });
     expect(usage.refundUsage).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives back a voice-over reservation whose request died, exactly once, and leaves a fresh one alone", async () => {
+    const VPERIOD = new Date("2026-10-01T00:00:00Z");
+    db.rows = [
+      { id: "voice-stale", status: "designed", leaseUntil: null, refundedAt: null, credits: 35, periodStart: PERIOD, businessId: "b1", voiceCredits: 15, voicePeriodStart: VPERIOD, voiceReservedAt: ago(11) },
+      { id: "voice-fresh", status: "ready", leaseUntil: null, refundedAt: null, credits: 35, periodStart: PERIOD, businessId: "b2", voiceCredits: 15, voicePeriodStart: VPERIOD, voiceReservedAt: ago(2) },
+    ];
+    expect(await sweepVideoJobs(NOW)).toMatchObject({ stranded: 0, voiceRefunded: 1, voiceCredits: 15 });
+    expect(usage.refundUsage).toHaveBeenCalledTimes(1);
+    expect(usage.refundUsage).toHaveBeenCalledWith("owner-of-b1", "videoCredits", VPERIOD, 15);
+    expect(db.rows[0]).toMatchObject({ voiceCredits: 0, voicePeriodStart: null, voiceReservedAt: null, status: "designed" });
+    expect(db.rows[1]).toMatchObject({ voiceCredits: 15 });
+    expect(await sweepVideoJobs(NOW)).toMatchObject({ voiceRefunded: 0 });
+    expect(usage.refundUsage).toHaveBeenCalledTimes(1);
+  });
+
+  it("a voice reservation its request settled between the look and the claim is not refunded", async () => {
+    db.rows = [{ id: "v", status: "designed", leaseUntil: null, refundedAt: null, credits: 35, periodStart: PERIOD, businessId: "b1", voiceCredits: 15, voicePeriodStart: PERIOD, voiceReservedAt: ago(11) }];
+    prisma.videoJob.updateMany.mockImplementationOnce(async () => {
+      Object.assign(db.rows[0], { voiceCredits: 0, voicePeriodStart: null, voiceReservedAt: null });
+      return { count: 0 };
+    });
+    expect(await sweepVideoJobs(NOW)).toMatchObject({ voiceRefunded: 0 });
+    expect(usage.refundUsage).not.toHaveBeenCalled();
   });
 
   it("the cron route needs the cron secret", async () => {

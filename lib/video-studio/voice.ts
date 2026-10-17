@@ -22,7 +22,10 @@ import { VideoStudioError, type StudioOwner } from "./jobs";
 // design's `say` lines spoken in the company's voice by ElevenLabs (lib/ai/tts.ts), through the cost ledger
 // ("video-voice", and so the ElevenLabs switch). The take is a VoiceClip, shared with the content videos by its hash
 // (voice, model and exact text): a take the company already has is free; a new one costs VOICE_OVER_CREDITS video
-// credits, taken first and given back when it is not spoken. The browser then mixes it into the MP4 (encodeSpecMp4).
+// credits, taken first and given back when it is not spoken. While the take is being made the job holds the
+// reservation (voiceCredits, voicePeriodStart, voiceReservedAt): this request clears it when the take is paid for or
+// the credits go back, and the video-jobs sweep gives back one left after VOICE_LEASE_MS (sweep.ts; the request died), so a
+// reservation is settled exactly once. The browser then mixes the take into the MP4 (encodeSpecMp4).
 
 /** How long the browser may fetch the take (it encodes right after asking). */
 const VOICE_URL_SECONDS = 30 * 60;
@@ -107,9 +110,26 @@ export async function makeJobVoice(owner: StudioOwner, jobId: string, opts: { vo
   const known = await prisma.voiceClip.findUnique({ where: { businessId_hash: { businessId: owner.businessId, hash } } });
   if (known?.status === "ready" && (await fileExists(known.path))) return answer(known, true);
 
-  // Credits first; given back whenever the voice service is not paid by this request.
+  // Credits first, held on the job (one voice reservation per job at a time); given back whenever the voice service is
+  // not paid by this request, and only by whoever clears the reservation (this request, or the sweep once it is stale).
   const reservation = await consumeUsage(owner.userId, "videoCredits", VOICE_OVER_CREDITS);
-  const giveBack = () => refundUsage(owner.userId, "videoCredits", reservation.periodStart, VOICE_OVER_CREDITS).catch(() => {});
+  const reservedAt = new Date();
+  const held = await prisma.videoJob
+    .updateMany({ where: { id: job.id, voiceCredits: 0 }, data: { voiceCredits: VOICE_OVER_CREDITS, voicePeriodStart: reservation.periodStart, voiceReservedAt: reservedAt } })
+    .catch(async (error: unknown) => {
+      await refundUsage(owner.userId, "videoCredits", reservation.periodStart, VOICE_OVER_CREDITS).catch(() => {});
+      throw error;
+    });
+  if (held.count !== 1) {
+    await refundUsage(owner.userId, "videoCredits", reservation.periodStart, VOICE_OVER_CREDITS).catch(() => {});
+    throw new VideoStudioError("The voice-over of this video is being made right now. Try again in a moment.", "unavailable", 409);
+  }
+  const release = () => prisma.videoJob.updateMany({ where: { id: job.id, voiceReservedAt: reservedAt, voiceCredits: { gt: 0 } }, data: { voiceCredits: 0, voicePeriodStart: null, voiceReservedAt: null } });
+  const giveBack = async () => {
+    // Not cleared (a database blip): the reservation stays, and the sweep gives it back later.
+    const { count } = await release().catch(() => ({ count: 0 }));
+    if (count === 1) await refundUsage(owner.userId, "videoCredits", reservation.periodStart, VOICE_OVER_CREDITS).catch(() => {});
+  };
   let claim: Awaited<ReturnType<typeof claimClip>>;
   try {
     claim = await claimClip(clipOwner, hash, voiceId, text.length);
@@ -160,8 +180,10 @@ export async function makeJobVoice(owner: StudioOwner, jobId: string, opts: { vo
     await logError(error, { source: "video.voice.ledger", level: "warn", businessId: owner.businessId });
   }
 
-  // Paid from here on: the credits stay taken, and the audio is kept before anything else can fail.
+  // Paid from here on: the credits stay taken (the reservation is settled), and the audio is kept before anything else.
   const result = spoken as TtsResult;
+  const settled = await release().catch(() => ({ count: 0 }));
+  if (settled.count !== 1) await logError(new Error("voice reservation already settled"), { source: "video.voice.settle", level: "warn", businessId: owner.businessId, jobId: job.id });
   const timings = lineTimings(ranges, result.charStartsMs, result.charEndsMs);
   await prisma.voiceClip.updateMany({
     where: { businessId: owner.businessId, hash },
