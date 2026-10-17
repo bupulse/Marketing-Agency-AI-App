@@ -978,6 +978,23 @@ describe("opening lines for the owner (suggestHooks)", () => {
   });
 });
 
+describe("opening lines for a page post (suggestHooks with purpose)", () => {
+  const shop: SuggestBrief = { business: { name: "Nova Phones Kigali", description: "Phone shop in Kigali, Makuza Peace Plaza", language: "English", phone: "+250 788 300 400" }, product: { name: "Samsung Galaxy A56", price: "420,000 RWF", features: ["50 MP camera", "6.7-inch AMOLED screen", "5,000 mAh battery"] } };
+  it("a post gets no price or contact lines, and leads with moments; an ad keeps them", () => {
+    const ad = suggestHooks(shop, { count: 5 });
+    expect(ad.some((h) => /420,000|0788 300 400/.test(h.line))).toBe(true);
+    for (const post of [suggestHooks({ ...shop, purpose: "post" }, { count: 5 }), suggestHooks(shop, { count: 5, purpose: "post", platform: "facebook" })]) {
+      expect(post.length).toBeGreaterThanOrEqual(3);
+      for (const h of post) {
+        expect(h.line).not.toMatch(/420,000|RWF|0788 300 400/);
+        expect(["price-first", "contact-first"]).not.toContain(BRAIN.hooks.find((x) => x.id === h.hookId)!.type);
+      }
+    }
+    const top = suggestHooks({ ...shop, purpose: "post" }).map((h) => BRAIN.hooks.find((x) => x.id === h.hookId)!.type);
+    expect(top.filter((type) => ["pov", "greeting", "social-proof", "reveal", "series", "authority", "curiosity"].includes(type)).length).toBeGreaterThanOrEqual(2);
+  });
+});
+
 describe("a week of videos (planSeries)", () => {
   const phone: SuggestBrief = { business: { name: "Nova Phones Kigali", description: "Phone shop in Kigali, Makuza Peace Plaza", language: "English", phone: "+250 788 300 400" }, product: { name: "Samsung Galaxy A56", price: "420,000 RWF", features: ["50 MP camera", "6.7-inch AMOLED screen", "5,000 mAh battery"], usps: ["Genuine with 12-month warranty", "Pay with MoMo"] } };
   const clinic: SuggestBrief = { business: { name: "Derma Skin Clinic", description: "Skin clinic at Gishushu, Kigali, since 2015. We work with RSSB, MMI and Old Mutual.", language: "English", phone: "0795 528 376" }, product: { name: "Acne treatment", price: "30,000 RWF", usps: ["Dermatologist on site", "Results in 4 weeks", "Free first consultation"] } };

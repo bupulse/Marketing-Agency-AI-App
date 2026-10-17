@@ -148,6 +148,8 @@ function needsMet(h: Hook, b: FullBrief, format: FormatId, sector: SectorId): bo
 const rows = (h: Hook, purpose: Purpose = "ad"): Evidence[] => h.evidence.map(evidenceById).filter((e): e is Evidence => !!e && (purpose === "post" || !e.organic));
 /** Hook types that sell on screen; a page post leaves them out (the offer and the contact go in its caption). */
 const AD_HOOK_TYPES = new Set(["price-first", "contact-first"]);
+/** Hook types a page post leads with: a moment, a person, a place or a story (post-moments). */
+const POST_HOOK_TYPES = new Set(["pov", "greeting", "social-proof", "reveal", "series", "authority", "curiosity"]);
 
 /**
  * The hook score (docs/research/BRAIN.md, "How hooks are ranked"):
@@ -159,7 +161,8 @@ const AD_HOOK_TYPES = new Set(["price-first", "contact-first"]);
  *   presenter, series);
  * - local: up to 10 for Rwandan rows (East African rows count half);
  * - recency: up to 10 for rows from the newest year of research.
- * For a page post, the pages' own organic reels count half again as much; an ad leaves them out.
+ * For a page post, the pages' own organic reels count half again as much (an ad leaves them out), and a moment hook
+ * (a POV, a greeting, social proof, a reveal, a series, a person, curiosity) gets 30 more.
  */
 export function scoreHook(h: Hook, ctx: { platform: Platform | "any"; sector: SectorId; format: Format; purpose?: Purpose }): ScoredHook {
   const why: string[] = [];
@@ -192,7 +195,11 @@ export function scoreHook(h: Hook, ctx: { platform: Platform | "any"; sector: Se
   const specific = h.needs.reduce((s, n) => s + (n === "price" || n === "phone" || n === "offer" ? 3 : 12), 0);
   if (specific >= 12) why.push("made for the facts in this brief");
 
-  const score = Math.round((evidence + platform + sector + format + local + recency + specific) * 10) / 10;
+  // A page post leads with a moment, a person or a place rather than the product's specs.
+  const moment = ctx.purpose === "post" && POST_HOOK_TYPES.has(h.type) ? 30 : 0;
+  if (moment) why.push("a moment for a page post");
+
+  const score = Math.round((evidence + platform + sector + format + local + recency + specific + moment) * 10) / 10;
   return { ...h, score, why };
 }
 

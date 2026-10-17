@@ -6,7 +6,7 @@ import { BRAIN, evidenceById, formatById, hookById, sectorById } from "./databas
 import { checkLanguage } from "./language";
 import { rankWithOutcomes } from "./outcomes";
 import { formatFromTemplate, rankHooks, sectorFromText } from "./select";
-import type { Evidence, Hook, Outcome, Platform, SectorId } from "./types";
+import type { Evidence, Hook, Outcome, Platform, Purpose, SectorId } from "./types";
 
 /** The facts a suggestion may use. A DesignBrief fits this shape. */
 export type SuggestBrief = {
@@ -15,6 +15,8 @@ export type SuggestBrief = {
   note?: string | null;
   styleId?: string | null;
   seconds?: number;
+  /** An ad (the default) or a post on the business's own page: a post gets no price or contact lines. */
+  purpose?: Purpose | null;
 };
 export type HookSuggestion = {
   hookId: string;
@@ -141,6 +143,10 @@ const LINES: Record<string, Template> = {
   "percent-free-delivery": { en: "{offer} + free delivery in {city}" },
   "poster-first": { any: "{offer} · {area}" },
   "pov-local-find": { en: "POV: you found {product} in {city}" },
+  // Moments for page posts (a walk in, a look around, a relatable line); facts only, no price or number.
+  "door-open-walk": { en: "Step inside our shop in {city}" },
+  "whip-in-tour": { en: "A quick look around {area}" },
+  "me-when": { en: "Me when {product} finally arrives" },
   "now-available": { en: "{product} is here" },
   "model-badge": { en: "{product} available now" },
   "location-stack": { any: ["{CITY} · {AREA} | {bedrooms} BEDROOMS | {price}", "{CITY} · {AREA} | {price}"], rw: "INZU IGURISHWA I {AREA} · {price}" },
@@ -247,15 +253,19 @@ function whyOf(h: Hook, sector: SectorId): { why: string; evidence: string[] } {
  * MAX_HOOK_WORDS words and passing checkLanguage. Clinics and schools never get a price hook (they lead with trust).
  * Pure and deterministic.
  */
-export function suggestHooks(brief: SuggestBrief, opts: { platform?: Platform | "any" | null; count?: number; outcomes?: Outcome[] | null; businessId?: string | null; sector?: SectorId | null; presenter?: boolean } = {}): HookSuggestion[] {
+export function suggestHooks(brief: SuggestBrief, opts: { platform?: Platform | "any" | null; count?: number; outcomes?: Outcome[] | null; businessId?: string | null; sector?: SectorId | null; presenter?: boolean; purpose?: Purpose | null } = {}): HookSuggestion[] {
   const count = opts.count ?? 3;
   const f = briefFacts(brief);
   const sector = opts.sector ?? briefSector(brief);
-  const format = formatById(formatFromTemplate(brief.styleId)) ?? formatById(sectorById(sector)!.formats.find((id) => formatById(id)?.engines.includes("claude")) ?? "product-reveal")!;
+  // A page post (Ads and page posts, BRAIN.md): no price or contact hooks and no offer format without an offer, as brainFor.
+  const purpose: Purpose = (opts.purpose ?? brief.purpose) === "post" ? "post" : "ad";
+  const post = purpose === "post";
+  const sectorFormat = sectorById(sector)!.formats.find((id) => formatById(id)?.engines.includes("claude") && !(post && id === "offer" && !f.offer));
+  const format = formatById(formatFromTemplate(brief.styleId)) ?? formatById(sectorFormat ?? (post ? "tour" : "product-reveal"))!;
   const platform = opts.platform ?? "any";
   const lang = langKey(brief.business.language);
   const ranked = rankHooks(
-    { platform, sector, format: format.id, engine: "claude", language: brief.business.language, hasPrice: !!f.price, hasPhone: !!f.phone, hasOffer: !!f.offer, hasOldPrice: !!f.oldPrice, hasLocation: !!f.area, hasPresenter: !!opts.presenter, seconds: brief.seconds ?? format.refSeconds },
+    { platform, sector, format: format.id, engine: "claude", language: brief.business.language, hasPrice: !!f.price, hasPhone: !!f.phone, hasOffer: !!f.offer, hasOldPrice: !!f.oldPrice, hasLocation: !!f.area, hasPresenter: !!opts.presenter, seconds: brief.seconds ?? format.refSeconds, purpose },
     sector,
     format,
   );
@@ -271,6 +281,8 @@ export function suggestHooks(brief: SuggestBrief, opts: { platform?: Platform | 
       .map((o) => fill(o, f))
       .find((l): l is string => !!l && wordCount(l) <= MAX_HOOK_WORDS && !checkLanguage([{ where: "hook", text: l, kind: "screen" }], brief.business.language).length && !out.some((x) => x.line === l));
     if (!line) continue;
+    // A post keeps the price and the number in the caption, never in the opening line.
+    if (post && ((f.price && line.includes(f.price)) || (f.phone && line.includes(f.phone)))) continue;
     out.push({ hookId: h.id, name: hookById(h.id)!.name, line, ...whyOf(h, sector) });
   }
   return out;
