@@ -338,3 +338,37 @@ Recurring patterns
 3. **One contact line, large and held until the end:** a WhatsApp or call number with "WhatsApp" written next to it, not a number in the caption alone. For delivery sellers add one line: "Delivery in Kigali / to provinces. Pay on delivery" (or "Pay first").
 4. **Pre-answer the standard questions in the first line of the caption** (the part visible before "more"): price, area, what is included, sizes or colours, delivery, how to order. Also give the seller a ready-made reply text to paste as the first comment ("Price: ... Location: ... WhatsApp: ..."); I did not check whether pinning was used on these clips.
 5. **Prove it is real.** Keep a real shop, real stock and a real person in frame (not a generic or fully generated scene), show the product with the price tag or the shelf, and when a service takes insurance, say the insurers on screen for at least 2-3 seconds and in the caption. For AI-assisted visuals, keep the real product photo recognisable and do not invent locations (the "is this AI?" comments appeared on exactly those).
+
+## F. AI-made videos (partial: comments not captured because TikTok showed a captcha at 14:20)
+
+**What this section is built on:** 37 clips watched in round 4 (`round: 4` in `tiktok.jsonl`, each marked `comments_missing: true`) and 10 round-3 comments about "is this AI?" (`category: "ai-remark"` in `tiktok-comments.jsonl`, `round: 3`). **The planned 10 comments per AI clip were not collected**, so nothing here says what viewers wrote under the AI clips themselves. Where I describe reception I mean likes and comment counts only, and I say so. The slider captcha was left for the owner; I stopped all TikTok browsing.
+
+**The clips:** 20 are AI-made by my judgement (12 with generated people, 6 generated scenes, 2 motion graphics around a product), 12 are real-shop or real-presenter controls (`ai: none`), 5 I could not judge (`ai: unknown`). Of the 20, 13 have a clear East African signal (Rwandan or Ugandan hashtags and Kinyarwanda text, a Kampala sign, a Kenyan number), 7 have none I could see (the AI studio's country is not shown). 15 of the 37 carry TikTok's label ("Contains AI-generated media" or "Creator labeled as AI-generated").
+
+**Important limit:** I did not find a single East African retail business that I could confirm used AI for its own advert. The AI-made business-style clips are mostly **AI studios selling AI ads** (demos for a boutique, a salon, a drink, a restaurant). The real businesses that look generated or heavily edited (a Kampala kitchenware seller, a Nairobi kids-wear shop, a Kigali chicken shop's end card) have no label and I could not verify them, so I marked them `unknown`.
+
+**What I can say from the numbers** (likes and comments as TikTok showed them; medians over small groups, so rough):
+
+| Group | Clips | Median likes | Median comments | Labelled |
+| --- | --- | --- | --- | --- |
+| AI-made entertainment (AI babies, pigs, a village scene) | 5 | 6,242 | 72 | 5 of 5 |
+| AI-made sales demos from studios (boutique, salon, drink, restaurant, fashion) | 14 | 309 | 5 | 8 of 14 |
+| Real Rwandan shop clips with price and number on screen | 7 | 1,213 | 42 | 0 of 7 |
+
+- **A label does not stop reach.** All five AI entertainment clips carried the label and still got the most likes (the best: 32.7K likes and 591 comments for AI babies in a hospital corridor; 8.1K for an AI pig comedy in Kinyarwanda).
+- **AI sales demos get little response.** The generated-boutique, salon and fashion ads got a median of 5 comments, even where they had thousands of likes (an AI fashion commercial: 2,454 likes, 4 comments). Real shop clips with a visible price and phone number drew 8 times more comments (up to 286 on a real phone-shop clip). So AI visuals are not what customers react to; price and contact are.
+- **Labels are not reliable.** A generated real-estate scene and a generated salon ad had no label on the page, while a real-looking school dance carried "Contains AI-generated media". Do not count on the label to tell viewers anything.
+
+**Accepted or called out (from round 3 only, 10 comments):**
+- A clip of a Chinese school presented as a Rwandan one drew "Ai", "ni Ai aha nimurwandax no way", "Does this school really look like this or it's AI generated?", "is this true?", "wht a scamm", "this is not true, I study there" and "that is not the real school". The poster answered "not ai, school from china", which did not settle it. The clip still had 11.2K likes.
+- A fashion clip drew "menya ari Ai" (I think it's AI) and "subona ko ar murugo" (it looks like it's at home, not a shop).
+- These are the only "ni AI" remarks I have. They cluster on clips where the **place or the shop** looked impossible or invented. There were no AI remarks on the AI-labelled entertainment clips in the part of the data I saw, but I did not read those comments.
+
+**Not answered by my data:** whether an AI voice is accepted (the only AI-voice clip was a Kinyarwanda tutorial with 1 comment), whether motion graphics around a real product photo are accepted (one example, 77 likes, 3 comments), and whether the label hurts a sales clip (no comments captured). Ask the owner to clear the captcha if these matter, and re-run the comment pass.
+
+**5 rules for the engine (provisional; the first four rest on round 3 and on the counts above):**
+1. **Keep the product real.** Always start from the real product photo or a real clip of the product; motion, light, background and camera moves can be generated. I have one product-photo-plus-motion example (3 comments, not read); the AI-doubt comments I do have all concern places, not products.
+2. **Keep the shop, the place and the proof real.** Do not generate a shop front, a school or a street (the Chinese school and the "is it a shop?" comments); use the owner's own photo of the shop or the stock, and generate only what is around it.
+3. **Keep price, phone number and location as real text on screen** (rule set from the round 3 comments). Generated frames never carry the price; typed, exact text does.
+4. **Prefer the owner's real face and voice for trust; generate presenters only for non-trust content.** Generated people appeared in 12 of 20 AI clips, but their reach (median 5 comments) was far below real shop clips; a generated customer or "owner" invites "is this real?". For an AI voice, I have no evidence either way: use it only as a plain, clearly neutral voice-over and always with burned-in captions.
+5. **Disclose in a way that costs nothing.** Where the video uses generated visuals, add a short caption line ("AI-assisted visuals, real product") and let TikTok's own label show; labelled clips still reached thousands of likes, and an honest line is the cheapest answer to "is it AI?" (my guess, not tested). Unverified: how a label changes the response to a sales clip.
