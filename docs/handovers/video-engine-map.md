@@ -113,3 +113,4 @@ brief.
 - Still for the owner: run tools/bin/studio-online.sh for video.bupulse.com; clear the TikTok captcha tab; play the
   Kitenge Premium 3D clip with sound; clean the LEAF Hydro Tower price field; the SEEDANCE_API_KEY day
   (docs/SEEDANCE_KEY_DAY.md); switch to ANTHROPIC_API_KEY before any deploy.
+- App Video Studio voice-overs need ELEVENLABS_API_KEY in Admin -> Services on TEST before a first real take (about $0.30 per 1,000 characters; a 15 s video is about 150).
