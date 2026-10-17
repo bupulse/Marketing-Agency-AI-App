@@ -3,9 +3,12 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { BRAIN, FORMATS, PLATFORMS, SECTORS, checkBrain, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
 import { evidenceFromRows, parseCount, parseDate, parseJsonl, rowKey, tiktokDate } from "@/lib/video-engine/brain/ingest";
+import { amounts, scoreDesign, scoreSeedancePrompt, type ScoreBrief } from "@/lib/video-engine/brain/score";
 import { CONTEXT_MAX_CHARS, ENGINE_SECONDS, brainBriefFromDesign, brainBriefFromPrompt, brainContext, brainFor, formatFromTemplate, scaleTimeline, sectorFromText } from "@/lib/video-engine/brain/select";
 import type { DesignBrief } from "@/lib/video-engine/designer";
-import { BUSINESS_KINDS, SEEDANCE_FORMATS } from "@/lib/video-engine/seedance-brain";
+import { BUSINESS_KINDS, SEEDANCE_FORMATS, planSeedanceShots } from "@/lib/video-engine/seedance-brain";
+import { sampleSpec } from "@/lib/video-engine/sample";
+import type { MotionSpec, Scene } from "@/lib/video-engine/spec";
 import type { PromptBrief } from "@/lib/video-engine/seedance-prompt";
 import { VIDEO_TEMPLATES } from "@/lib/video-engine/templates";
 
@@ -237,5 +240,98 @@ describe("reading briefs", () => {
     const prompt: PromptBrief = { business: { name: "Bright Academy", language: "French" }, product: { name: "English course" }, references: [], templateId: "education-tour", seconds: 10, ratio: "9:16", audio: true, businessKind: "education" };
     expect(brainBriefFromPrompt(prompt)).toMatchObject({ sector: "school", format: "tour", engine: "seedance", hasPrice: false, hasPhone: false });
     expect(brainBriefFromPrompt(prompt, { platform: "youtube", hasPhone: true })).toMatchObject({ platform: "shorts", hasPhone: true });
+  });
+});
+
+describe("scoring a design", () => {
+  const brief: ScoreBrief = { business: { name: "Nova Phones", phone: "0788 300 400", language: "English" }, product: { name: "Galaxy A56", price: "420,000 RWF", usps: ["Big battery"] }, styleId: "kigali-price-first", platform: "facebook" };
+  const bar = { kind: "text" as const, text: "WhatsApp 0788 300 400", font: "inter" as const, size: 0.045, color: "#ffffff", x: 0.5, y: 0.72, w: 0.8, h: 0.06, box: { color: "#16a34a" } };
+  const scene = (seconds: number, layers: Scene["layers"], say: string, extra: Partial<Scene> = {}): Scene => ({ seconds, background: { kind: "solid", colors: ["#111111"] }, layers, say, camera: { move: "dollyIn", intensity: 0.4 }, ...extra });
+  const good: MotionSpec = {
+    version: 1, title: "Galaxy A56", ratio: "9:16", fps: 30, music: "upbeat", look: { grade: "vivid" },
+    palette: { background: "#111111", primary: "#2f6bff", accent: "#f5b700", text: "#ffffff" },
+    scenes: [
+      scene(2, [{ kind: "text", text: "Galaxy A56: 420,000 RWF", font: "anton", size: 0.09, color: "#ffffff", x: 0.5, y: 0.22, w: 0.84, h: 0.14, animate: "pop" }, bar], "Galaxy A56, four hundred twenty thousand francs."),
+      scene(3, [{ kind: "photo", photo: 1, x: 0.5, y: 0.45, w: 0.7, h: 0.4, fit: "contain", zoomTo: 1.1 }, { kind: "text", text: "Big battery", font: "inter", size: 0.06, color: "#ffffff", x: 0.5, y: 0.2, w: 0.7, h: 0.08, animate: "rise" }, bar], "A big battery for the whole day."),
+      scene(4, [{ kind: "photo", photo: 1, x: 0.5, y: 0.45, w: 0.7, h: 0.4, fit: "contain", turntable: { spin: 1 } }, { kind: "text", text: "420,000 RWF", font: "anton", size: 0.08, color: "#f5b700", x: 0.5, y: 0.2, w: 0.7, h: 0.1, animate: "pop" }, bar], "Four hundred twenty thousand francs at Nova Phones."),
+      scene(3, [{ kind: "text", text: "Order on WhatsApp", font: "poppins", size: 0.07, color: "#ffffff", x: 0.5, y: 0.4, w: 0.8, h: 0.1, animate: "wordsPop" }, bar], "Order on WhatsApp: 0788 300 400.", { camera: { move: "orbitRight" } }),
+      scene(3, [{ kind: "text", text: "Nova Phones", font: "poppins", size: 0.07, color: "#ffffff", x: 0.5, y: 0.4, w: 0.8, h: 0.1, animate: "rise" }, bar], "Nova Phones. Order now."),
+    ],
+    caption: "Galaxy A56 PRICE: 420,000 RWF TEL: 0788 300 400. WhatsApp 0788 300 400.",
+    hashtags: ["Kigali", "KigaliRwanda", "Rwanda"],
+  };
+  const bad: MotionSpec = {
+    ...good,
+    scenes: [
+      { seconds: 2, background: { kind: "solid", colors: ["#000000"] }, layers: [{ kind: "text", text: "You have received 85000 RWF", font: "inter", size: 0.05, color: "#ffffff", x: 0.5, y: 0.93, w: 0.8, h: 0.06, from: 0.9 }] },
+      { seconds: 2, background: { kind: "solid", colors: ["#000000"] }, layers: [{ kind: "text", text: "Only 3 left, 50% off today", font: "inter", size: 0.05, color: "#ffffff", x: 0.5, y: 0.5, w: 0.8, h: 0.06 }] },
+    ],
+    caption: "",
+    hashtags: [],
+  };
+
+  it("a good design passes every check", () => {
+    const r = scoreDesign(good, brief, { voice: true });
+    expect(r.failed).toEqual([]);
+    expect(r.score).toBe(100);
+    expect(r.passed.map((p) => p.id)).toEqual(expect.arrayContaining(["hook-text", "price-shown", "price-early", "contact-last", "phone-bar", "cta", "motion", "safe-area", "length", "scene-count", "say-lines", "caption", "do-not-copy", "facts"]));
+  });
+
+  it("a bad design fails with the rule, a plain reason and the scene", () => {
+    const r = scoreDesign(bad, brief, { voice: true });
+    expect(r.score).toBeLessThan(20);
+    const failed = Object.fromEntries(r.failed.map((f) => [f.id, f]));
+    expect(Object.keys(failed)).toEqual(expect.arrayContaining(["hook-text", "price-shown", "contact-last", "phone-bar", "cta", "motion", "safe-area", "length", "say-lines", "caption", "do-not-copy", "facts"]));
+    expect(failed["do-not-copy"]).toMatchObject({ rule: "no-fake-income", scene: 0 });
+    expect(failed["do-not-copy"].reason).toContain("You have received");
+    expect(failed.facts).toMatchObject({ rule: "no-invented-facts", scene: 0 });
+    expect(failed["safe-area"]).toMatchObject({ rule: "text-placement", scene: 0 });
+    expect(failed.motion.reason).toContain("Scenes 1, 2");
+    for (const f of r.failed) expect(f.reason.length).toBeGreaterThan(10);
+  });
+
+  it("scores the committed sample spec, and leaves out checks that do not apply", () => {
+    const spec = sampleSpec({ business: "Nova Phones", product: "Galaxy A56", price: "420,000 RWF", photoCount: 2 });
+    const r = scoreDesign(spec, { business: { name: "Nova Phones" }, product: { name: "Galaxy A56", price: "420,000 RWF" } }, { voice: true });
+    expect(r.failed.map((f) => f.id).sort()).toEqual(["caption", "price-early", "safe-area"]);
+    expect(r.failed.find((f) => f.id === "safe-area")!.scene).toBe(1);
+    expect(r.score).toBe(85);
+    const noPrice = scoreDesign(spec, { business: { name: "Nova Phones" }, product: { name: "Galaxy A56" } });
+    expect([...noPrice.passed, ...noPrice.failed].map((c) => c.id)).not.toContain("price-shown");
+    expect([...noPrice.passed, ...noPrice.failed].map((c) => c.id)).not.toContain("say-lines");
+  });
+
+  it("a superlative or a delivery promise passes only when the brief says it", () => {
+    const withClaim: MotionSpec = { ...good, scenes: good.scenes.map((s, i) => (i === 1 ? { ...s, layers: [...s.layers, { kind: "text" as const, text: "Free delivery in Kigali", font: "inter" as const, size: 0.05, color: "#ffffff", x: 0.5, y: 0.6, w: 0.8, h: 0.06 }] } : s)) };
+    expect(scoreDesign(withClaim, brief).failed.map((f) => f.id)).toContain("facts");
+    expect(scoreDesign(withClaim, { ...brief, note: "free delivery in Kigali this week" }).failed).toEqual([]);
+  });
+
+  it("reads amounts and skips phone numbers", () => {
+    expect(amounts("420K, 420,000 RWF, 1.2M, 15%")).toEqual([420_000, 420_000, 1_200_000, 15]);
+    expect(amounts("Call 0788 300 400 or +250 788 300 400")).toEqual([]);
+  });
+});
+
+describe("scoring a Seedance prompt", () => {
+  const brief = { business: { name: "Nova Phones", language: "English" }, product: { name: "Galaxy A56", price: "420,000 RWF", summary: "5G phone" }, references: ["Image 1: the product photo"], seconds: 10, audio: true, templateId: "phone-hero", ratio: "9:16" };
+
+  it("BuPulse's own shot plan scores 100", () => {
+    const r = scoreSeedancePrompt(planSeedanceShots(brief).prompt, brief);
+    expect(r.failed).toEqual([]);
+    expect(r.score).toBe(100);
+  });
+
+  it("a bad prompt fails the time codes, hook, fidelity, people, facts, length and text checks", () => {
+    const r = scoreSeedancePrompt("A famous footballer holds the phone in a shop with the text SALE on screen. Only 2 left at 300,000 RWF, free delivery.", brief);
+    expect(r.failed.map((f) => f.id)).toEqual(expect.arrayContaining(["timecodes", "hook-shot", "fidelity", "people", "facts", "length-words", "clean-frames", "hero-end"]));
+    expect(r.score).toBeLessThan(25);
+    expect(r.failed.find((f) => f.id === "facts")!.reason).toContain("300000");
+  });
+
+  it("refuses a spoken line for Kinyarwanda", () => {
+    const rw = { ...brief, business: { ...brief.business, language: "Kinyarwanda" } };
+    const prompt = planSeedanceShots({ ...brief }).prompt;
+    expect(scoreSeedancePrompt(prompt, rw).failed.map((f) => f.id)).toContain("sound");
   });
 });
