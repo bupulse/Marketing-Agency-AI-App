@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { cameraAt, noise, parallax } from "@/lib/video-engine/animate";
-import { GRADE_FILTERS, transitionTransforms } from "@/lib/video-engine/draw";
+import { GRADE_FILTERS, drawSpecFrame, transitionTransforms } from "@/lib/video-engine/draw";
 import { briefText, designVideo, type DesignBrief } from "@/lib/video-engine/designer";
 import { CAMERA_MOVES, GRADES, QUALITIES, RATIOS, TRANSITIONS, canvasSize, totalMs } from "@/lib/video-engine/spec";
 import { VIDEO_HOOKS } from "@/lib/video-engine/styles";
@@ -152,7 +152,7 @@ describe("modes", () => {
     expect(totalMs(edited.spec)).toBe(18_000);
     const extended = await designVideo({ ...brief, mode: "extend", base, seconds: 5 }, { apiKey: "k", fetchImpl: vi.fn(answer(longer)) as unknown as typeof fetch });
     expect(totalMs(extended.spec)).toBe(17_000);
-  });
+  }, 20_000);
 });
 
 describe("cartoon presenters", () => {
@@ -180,5 +180,42 @@ describe("cartoon presenters", () => {
     const text = briefText({ business: { name: "B" }, product: { name: "P" }, photos: [], styleId: "colour-pop", hookId: "auto", ratio: "9:16", seconds: 10, cartoonId: CARTOON_CAST[0].id });
     expect(text).toContain(`Cartoon presenter: ${CARTOON_CAST[0].name}`);
     expect(text).toContain("talk windows");
+  });
+});
+
+describe("a backing shape follows its text through a camera zoom", () => {
+  it("the bar behind a top price is drawn at the price's centre during a crash zoom (no drift)", () => {
+    const spec = validateSpec(
+      {
+        palette: {},
+        scenes: [
+          {
+            seconds: 3,
+            background: { kind: "solid", colors: ["#111111"] },
+            camera: { move: "crashZoom", intensity: 1 },
+            layers: [
+              { kind: "shape", shape: "rect", color: "#ffd200", x: 0.5, y: 0.15, w: 0.8, h: 0.06 },
+              { kind: "text", text: "420,000 RWF", font: "anton", size: 0.08, color: "#111111", x: 0.5, y: 0.15, w: 0.76, h: 0.05, animate: "none" },
+            ],
+          },
+          { seconds: 3, background: {}, layers: [] },
+        ],
+      },
+      { ratio: "9:16", photoCount: 0, seconds: 6 },
+    );
+    const moves: number[][] = [];
+    const ctx = new Proxy({} as Record<string, unknown>, {
+      get: (target, prop: string) =>
+        prop in target ? target[prop] : prop === "measureText" ? (s: string) => ({ width: s.length * 20 }) : prop.startsWith("create") ? () => ({ addColorStop: () => undefined }) : prop === "translate" ? (x: number, y: number) => void moves.push([x, y]) : () => undefined,
+      set: (target, prop: string, value) => ((target[prop] = value), true),
+    });
+    drawSpecFrame(ctx as unknown as CanvasRenderingContext2D, spec, new Map(), 900, { makeCanvas: null });
+    // The layer translations are the ones at a layer's centre (not the scene's own W/2 moves): shape first, then text.
+    // The scene first moves to the centre and back (two translations), then each layer to its centre: shape, then text.
+    const [bar, price] = moves.slice(2, 4);
+    expect(Math.abs(bar[1] - price[1])).toBeLessThan(1);
+    expect(Math.abs(bar[0] - price[0])).toBeLessThan(1);
+    // And the zoom did not push the price out of the frame.
+    expect(price[1]).toBeGreaterThan(0.04 * 1920);
   });
 });

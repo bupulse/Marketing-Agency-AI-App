@@ -3,7 +3,7 @@
 // layers pointing at photos we do not have are dropped, and the scenes are fitted to the length that was asked for.
 import { safeAreaFor as brainSafeArea, type SafeArea } from "@/lib/video-engine/brain";
 import { luminance, rgba } from "./draw3d";
-import { keepOffSubject, sceneSubject, type PhotoInfo } from "./subject";
+import { CONTACT, badgesOffProduct, drawnHeight, isBackdropWord, keepOffSubject, sceneSubject, type PhotoInfo } from "./subject";
 import {
   CAMERA_MOVES,
   CHARACTER_HAIR,
@@ -68,6 +68,14 @@ export function cleanText(v: unknown, max: number): string {
   const cut = s.slice(0, max);
   const space = cut.lastIndexOf(" ");
   return (space >= max * 0.5 ? cut.slice(0, space) : cut).trim();
+}
+
+/** A post caption: its line breaks kept (captions are written as 2 to 4 short lines), each line cleaned, at most one blank line in a row. */
+export function cleanCaption(v: unknown): string {
+  if (typeof v !== "string") return "";
+  const lines = v.replace(/\r\n?/g, "\n").split("\n").map((l) => cleanText(l, SPEC_LIMITS.caption));
+  const text = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return text.length <= SPEC_LIMITS.caption ? text : cleanText(text.replace(/\n/g, " "), SPEC_LIMITS.caption);
 }
 
 function keyframes(v: unknown): Keyframe[] | undefined {
@@ -199,7 +207,7 @@ function layer(v: unknown, photoCount: number, palette: MotionSpec["palette"]): 
       // Up to 0.22 of the width; a short word far back (depth <= 0.35) may be giant, up to 0.4, behind the product.
       // At least 0.03 of the width (smaller is unreadable on a phone); the display serifs, whose hairlines vanish at
       // small sizes, at least 0.065.
-      size: num(v.size, font === "playfair" || font === "dm-serif" ? 0.065 : 0.03, text.length <= 16 && num(v.depth, 0, 1, 1) <= 0.35 ? 0.4 : 0.22, 0.07),
+      size: num(v.size, font === "playfair" || font === "dm-serif" ? 0.065 : 0.03, text.length <= 16 && num(v.depth, 0, 1, 1) <= 0.35 && !CONTACT.test(text) ? 0.4 : 0.22, 0.07),
       color: color(v.color, palette.text),
       align: oneOf(v.align, ["left", "center", "right"] as const, "center"),
       uppercase: v.uppercase === true,
@@ -246,6 +254,20 @@ function layer(v: unknown, photoCount: number, palette: MotionSpec["palette"]): 
       radius: optNum(v.radius, 0, 0.5),
       draw: v.draw === true,
       material: material(v.material),
+    };
+  }
+  if (v.kind === "video") {
+    // A clip the studio serves (/videos/...), an https address or a blob: from the page; nothing else is loaded.
+    const url = typeof v.url === "string" ? v.url.trim() : "";
+    if (!/^(?:\/[\w./%-]+|https:\/\/[\w.-]+(?::\d+)?\/[\w./%?=&-]*|blob:[\w:/.-]+)$/.test(url) || url.length > 500) return null;
+    return {
+      kind: "video",
+      ...box({ x: 0.5, y: 0.5, w: 1, h: 1, ...v }),
+      url,
+      fit: v.fit === "contain" ? "contain" : "cover",
+      start: Math.round(num(v.start, 0, 600, 0) * 1000) / 1000,
+      sound: v.sound === true,
+      dim: optNum(v.dim, 0, 0.8),
     };
   }
   if (v.kind === "particles") {
@@ -317,7 +339,7 @@ export function legible(input: Layer[]): Layer[] {
   }
   return layers.map((l, i) => {
     if (l.kind === "photo" && l.turntable && (l.w < 0.6 || l.h < 0.42)) return { ...l, w: Math.max(l.w, 0.6), h: Math.max(l.h, 0.42) };
-    if (l.kind === "photo" && !l.turntable && Math.min(l.w, 1) * Math.min(l.h, 1) >= 0.6) {
+    if (((l.kind === "photo" && !l.turntable) || l.kind === "video") && Math.min(l.w, 1) * Math.min(l.h, 1) >= 0.6) {
       const lightTextOver = layers.slice(i + 1).some((t) => t.kind === "text" && !t.box && luminance(t.color) > 0.6 && covers(l, t));
       if (lightTextOver && (l.dim ?? 0) < 0.4) return { ...l, dim: 0.4 };
     }
@@ -334,6 +356,12 @@ export function legible(input: Layer[]): Layer[] {
         // Partly over a shape of its own colour (the clash is only at one end): a shadow keeps the letters apart from it.
         const clash = shapes.some((s) => s !== behind && overlaps(s, l) && (colourDistance(out.color, s.color) < 90 || (out.highlight && colourDistance(out.highlight.color, s.color) < 90)));
         if (clash && !out.shadow) out = { ...out, shadow: true };
+        // Text on a badge fits inside the badge (a price half on a yellow burst, half on the pink behind it vanished on
+        // the pink): round badges keep it to 80% of their width, rectangles 92%.
+        if (behind) {
+          const room = Math.round(behind.w * (behind.shape === "rect" ? 0.92 : 0.8) * 1000) / 1000;
+          if (out.w > room + 1e-9) out = { ...out, w: room, x: behind.x };
+        }
         return out;
       }
     }
@@ -349,10 +377,13 @@ const VERTICAL = new Set<Ratio>(["9:16", "3:4", "4:5"]);
  */
 export const STRICT_AREA: SafeArea = { top: 0.12, bottom: 0.78, left: 0.07, right: 0.85 };
 export const safeAreaFor = (platform: string | null | undefined): SafeArea => (platform ? brainSafeArea(platform) : STRICT_AREA);
+/** Square and wide videos (feeds, YouTube) have no app buttons over them: text only keeps a small margin (the brain's). */
+export const WIDE_AREA: SafeArea = { top: 0.05, bottom: 0.95, left: 0.04, right: 0.96 };
+const areaFor = (ratio: Ratio, platform: string | null | undefined): SafeArea => (VERTICAL.has(ratio) ? safeAreaFor(platform) : WIDE_AREA);
 /** Most hashtags per platform (the brain audit: Facebook 0 to 3, TikTok and Instagram 4 to 6, Shorts 1 to 3). */
 const HASHTAGS: Record<string, number> = { facebook: 3, tiktok: 6, instagram: 6, youtube: 3 };
 /** A price, a phone number or a call to action (on YouTube Shorts it goes in the middle band). */
-const CONTACT = /\d{3}[\s-]?\d{3}|\d{1,3}(?:,\d{3})+|\b(?:whatsapp|call|order|contact|rwf|frw|ksh|tsh|ugx|price)\b/i;
+
 
 /**
  * Moves text boxes into the platform's safe area of a vertical video (the template sweep found contact lines at y
@@ -361,17 +392,18 @@ const CONTACT = /\d{3}[\s-]?\d{3}|\d{1,3}(?:,\d{3})+|\b(?:whatsapp|call|order|co
  * it is. Stable: a moved box stays put on the next check.
  */
 export function inSafeArea(layers: Layer[], ratio: Ratio, platform: string | null = null): Layer[] {
-  if (!VERTICAL.has(ratio)) return layers;
-  const area = safeAreaFor(platform);
+  const area = areaFor(ratio, platform);
   const round = (n: number) => Math.round(n * 1000) / 1000;
   const out = [...layers];
   layers.forEach((l, i) => {
-    if (l.kind !== "text" || l.size > 0.22) return;
-    const A = platform === "youtube" && CONTACT.test(l.text) ? { ...area, ...YOUTUBE_MIDDLE_BAND } : area;
+    if (l.kind !== "text" || isBackdropWord(l)) return;
+    const A = platform === "youtube" && VERTICAL.has(ratio) && CONTACT.test(l.text) ? { ...area, ...YOUTUBE_MIDDLE_BAND } : area;
     const w = Math.min(l.w, round(A.right - A.left));
     const h = Math.min(l.h, round(A.bottom - A.top));
+    // Keep what is drawn inside, not just the box: a short box with big letters spills over its edges.
+    const half = Math.min(round(A.bottom - A.top) / 2, Math.max(h, drawnHeight({ ...l, w }, ratio)) / 2);
     const x = round(Math.min(A.right - w / 2, Math.max(A.left + w / 2, l.x)));
-    const y = round(Math.min(A.bottom - h / 2, Math.max(A.top + h / 2, l.y)));
+    const y = round(Math.min(A.bottom - half, Math.max(A.top + half, l.y)));
     if (x === l.x && y === l.y && w === l.w && h === l.h) return;
     out[i] = { ...l, x, y, w, h };
     // The shape right behind it (a phone bar, a price pill) moves with it, or the bar is left empty below the number.
@@ -380,6 +412,48 @@ export function inSafeArea(layers: Layer[], ratio: Ratio, platform: string | nul
       out[j] = { ...s, x: round(s.x + x - l.x), y: round(s.y + y - l.y), w: Math.min(s.w, round(A.right - A.left)) };
     });
   });
+  return out;
+}
+
+/**
+ * Text never lies on other text: two texts on screen together whose letters (as drawn) overlap are pulled apart, the
+ * lower one moved down under the upper, or, without room below, the upper one moved up (a square video put a price
+ * behind its own headline). A backing shape moves with its text. Giant backdrop words are left alone.
+ */
+export function apartTexts(layers: Layer[], ratio: Ratio, area: SafeArea): Layer[] {
+  const out = [...layers];
+  const gap = 0.01;
+  const texts = () =>
+    out
+      .map((l, i) => ({ l, i }))
+      .filter((t): t is { l: Extract<Layer, { kind: "text" }>; i: number } => t.l.kind === "text" && !isBackdropWord(t.l))
+      .sort((a, b) => a.l.y - b.l.y);
+  const together = (a: Layer, b: Layer) => Math.max(a.from ?? 0, b.from ?? 0) < Math.min(a.to ?? 1, b.to ?? 1);
+  const move = (i: number, dy: number) => {
+    const t = out[i];
+    out[i] = { ...t, y: Math.round((t.y + dy) * 1000) / 1000 };
+    layers.forEach((s, j) => {
+      if (s.kind === "shape" && Math.abs(s.x - t.x) <= t.w / 2 && Math.abs(s.y - t.y) <= t.h / 2 && s.h <= t.h * 2) out[j] = { ...s, y: Math.round((s.y + dy) * 1000) / 1000 };
+    });
+  };
+  for (let pass = 0; pass < 3; pass++) {
+    let moved = false;
+    const list = texts();
+    for (let k = 1; k < list.length; k++) {
+      const a = out[list[k - 1].i] as Extract<Layer, { kind: "text" }>;
+      const b = out[list[k].i] as Extract<Layer, { kind: "text" }>;
+      if (!together(a, b) || Math.abs(a.x - b.x) >= (a.w + b.w) / 2) continue;
+      const ha = drawnHeight(a, ratio) / 2;
+      const hb = drawnHeight(b, ratio) / 2;
+      const overlapBy = a.y + ha + gap - (b.y - hb);
+      if (overlapBy <= 0.002) continue;
+      if (b.y + hb + overlapBy <= area.bottom) move(list[k].i, overlapBy);
+      else if (a.y - ha - overlapBy >= area.top) move(list[k - 1].i, -overlapBy);
+      else continue;
+      moved = true;
+    }
+    if (!moved) break;
+  }
   return out;
 }
 
@@ -417,13 +491,14 @@ export const WORDS_PER_SECOND = 2.5;
 
 /**
  * A say line far longer than its scene (more than 1.3 times the words it has time for) is cut back to its first whole
- * clauses that fit; a line with no clause that fits is kept (the voice-over then stretches the scene, voice.ts).
+ * sentences that fit; a line with no clause that fits is kept (the voice-over then stretches the scene, voice.ts).
  */
 export function fitSay(say: string, seconds: number): string {
   const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
   const most = Math.floor(seconds * WORDS_PER_SECOND * 1.3) + 1;
   if (words(say) <= most) return say;
-  const clauses = say.split(/(?<=[.!?;,])\s+/);
+  // Whole sentences only: a comma can sit inside a spoken phone number ("zero seven eight eight, one two three...").
+  const clauses = say.split(/(?<=[.!?;])\s+/);
   let out = "";
   for (const c of clauses) {
     const next = out ? `${out} ${c}` : c;
@@ -489,7 +564,8 @@ function withPhoneLine(scene: Scene, phone: string, palette: MotionSpec["palette
     from: 0,
     to: 1,
     depth: 0.95,
-    text: localPhone(phone),
+    // Labelled, so viewers know it takes WhatsApp (the brief's phone is its "Phone / WhatsApp" line).
+    text: `WhatsApp ${localPhone(phone)}`,
     font: "inter",
     weight: 600,
     size: 0.03,
@@ -554,19 +630,30 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
       camera: camera(s.camera, opts.fixedLens === true),
       light: light(s.light),
     }));
+  // A video clip (a Seedance overlay) brings its own pacing: one shot may be the whole video, and a clip of 4 or 5
+  // seconds is not stretched to the 6-second floor. At most one clip per scene.
+  for (const s of all) {
+    const first = s.layers.findIndex((l) => l.kind === "video");
+    if (first >= 0) s.layers = s.layers.filter((l, i) => l.kind !== "video" || i === first);
+  }
+  const hasVideo = all.some((s) => s.layers.some((l) => l.kind === "video"));
+  const minScenes = hasVideo ? 1 : SPEC_LIMITS.minScenes;
   // A scene with nothing in it (no layer, no voice line) is a dead second at most: dropped, keeping at least two.
   let empty = all.filter((s) => s.layers.length === 0 && !s.say).length;
-  const scenes = all.filter((s) => (s.layers.length > 0 || !!s.say || all.length - empty-- < SPEC_LIMITS.minScenes ? true : false));
-  if (scenes.length < SPEC_LIMITS.minScenes) throw new SpecError("The design had too few scenes.");
+  const scenes = all.filter((s) => (s.layers.length > 0 || !!s.say || all.length - empty-- < minScenes ? true : false));
+  if (scenes.length < minScenes) throw new SpecError("The design had too few scenes.");
   // The first scene arrives with a cut, whichever scene it was.
   scenes[0].transition = "cut";
   const ratio = isRatio(raw.ratio) ? raw.ratio : opts.ratio;
-  const area = safeAreaFor(opts.platform);
+  const area = areaFor(ratio, opts.platform);
   // Into the safe area first, then off the product (it restacks inside the safe bands), then the safe area again for
   // anything the restack widened.
   const safe = (layers: Layer[]) => inSafeArea(layers, ratio, opts.platform ?? null);
-  for (const s of scenes) s.layers = safe(keepOffSubject(safe(s.layers), VERTICAL.has(ratio) ? sceneSubject(s, ratio, opts.photos ?? []) : null, area, ratio));
-  fitLength(scenes, opts.seconds);
+  for (const s of scenes) {
+    const subject = VERTICAL.has(ratio) || ratio === "1:1" ? sceneSubject(s, ratio, opts.photos ?? []) : null;
+    s.layers = safe(keepOffSubject(apartTexts(safe(badgesOffProduct(s.layers, subject)), ratio, area), subject, area, ratio));
+  }
+  fitLength(scenes, opts.seconds, hasVideo ? SPEC_LIMITS.minSceneSeconds * scenes.length : SPEC_LIMITS.minTotalSeconds);
   for (const s of scenes) {
     s.layers = s.layers.map((l) => readable(l, s.seconds));
     if (s.say) s.say = fitSay(s.say, s.seconds);
@@ -582,7 +669,7 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
     palette,
     scenes,
     music: typeof raw.music === "string" ? cleanText(raw.music, 30).toLowerCase() || null : null,
-    caption: cleanText(raw.caption, SPEC_LIMITS.caption),
+    caption: cleanCaption(raw.caption),
     hashtags: (Array.isArray(raw.hashtags) ? raw.hashtags : [])
       .map((h) => cleanText(h, 40).replace(/^#*/, "").replace(/[^\p{L}\p{N}_]/gu, ""))
       .filter(Boolean)
@@ -592,8 +679,8 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
 }
 
 /** Scales scene lengths so the video lasts `seconds` (within the limits), keeping each scene between its bounds. */
-export function fitLength(scenes: Scene[], seconds: number): void {
-  const target = Math.min(SPEC_LIMITS.maxTotalSeconds, Math.max(SPEC_LIMITS.minTotalSeconds, seconds));
+export function fitLength(scenes: Scene[], seconds: number, minTotal: number = SPEC_LIMITS.minTotalSeconds): void {
+  const target = Math.min(SPEC_LIMITS.maxTotalSeconds, Math.max(minTotal, seconds));
   for (let pass = 0; pass < 4; pass++) {
     const total = scenes.reduce((sum, s) => sum + s.seconds, 0);
     if (Math.abs(total - target) < 0.05) break;

@@ -83,3 +83,26 @@ describe("fact check", () => {
     expect(quiet.score.failed.some((f) => f.id === "say-lines")).toBe(false);
   });
 });
+
+describe("fact check: big prices and units (the Kibagabaga house)", () => {
+  const house: FactBrief = { business: { name: "E2E Business Test" }, product: { name: "3-bedroom house", price: "120,000,000 RWF", features: ["Plot of 600 m²", "3 bedrooms, 2 bathrooms"] } };
+  const said = (say: string) => factCheck({ caption: "", scenes: [{ seconds: 3, background: { kind: "solid", colors: ["#000"] }, layers: [], say }] }, house);
+  it("'120 million francs' is the price; '600 square metres' is the plot (m² is not 'million')", () => {
+    expect(said("Kibagabaga home, 120 million francs.")).toEqual([]);
+    expect(said("600 square metres, title ready.")).toEqual([]);
+    expect(said("One hundred and twenty million francs.")).toEqual([]);
+    expect(said("Only 110 million francs.").map((w) => w.found)).toEqual(["110000000"]);
+    expect(normalise("120 million")).toBe("120000000");
+  });
+});
+
+describe("fact check: a phone number said digit by digit", () => {
+  it("is read as digits, so a cut or wrong number shows", () => {
+    const facts: FactBrief = { business: { name: "Shop", phone: "+250 788 123 456" }, product: { name: "Dress" } };
+    const said = (say: string) => factCheck({ caption: "", scenes: [{ seconds: 3, background: { kind: "solid", colors: ["#000"] }, layers: [], say }] }, facts).map((w) => w.found);
+    expect(normalise("zero seven eight eight")).toBe("0788");
+    expect(said("Call zero seven eight eight, one two three, four five six.")).toEqual([]);
+    expect(said("Call zero seven eight eight, nine nine nine.")).toEqual(["999"]);
+    expect(said("Call 0788 123 456.")).toEqual([]);
+  });
+});

@@ -126,3 +126,74 @@ describe("safe areas per platform and reading time", () => {
     expect(early.from).toBe(0.1);
   });
 });
+
+describe("loop 6: other products", () => {
+  const check = (layers: unknown[], background: unknown = { kind: "solid", colors: ["#000"] }, photos = [square, square]) =>
+    validateSpec({ palette: {}, scenes: [{ seconds: 4, background, layers }, { seconds: 4, background: {}, layers: [] }] }, { ratio: "9:16", photoCount: 2, seconds: 8, photos }).scenes[0].layers;
+
+  it("a price is never a giant backdrop word: at most 0.22 and kept inside the safe area", () => {
+    const [price, word] = check([text({ text: "25,000 RWF", font: "anton", size: 0.36, depth: 0.2, w: 1.2, y: 0.2, h: 0.2 }), text({ text: "KITENGE", font: "anton", size: 0.36, depth: 0.2, w: 1.4, y: 0.4, h: 0.25 })]);
+    expect(price).toMatchObject({ size: 0.22 });
+    expect(price.x - price.w / 2).toBeGreaterThanOrEqual(0.07 - 1e-9);
+    expect(price.x + price.w / 2).toBeLessThanOrEqual(0.85 + 1e-9);
+    expect(word).toMatchObject({ size: 0.36, w: 1.4 });
+  });
+
+  it("text on a badge fits inside it", () => {
+    const [, onBurst] = check([{ kind: "shape", shape: "burst", color: "#ffd200", x: 0.5, y: 0.3, w: 0.5, h: 0.25 }, text({ text: "25,000 RWF", color: "#7a0010", x: 0.45, y: 0.3, w: 0.8, h: 0.1 })]);
+    expect(onBurst).toMatchObject({ w: 0.4, x: 0.5 });
+  });
+
+  it("with two products side by side, text keeps off both", () => {
+    const layers = check([
+      { kind: "photo", photo: 1, x: 0.3, y: 0.5, w: 0.35, h: 0.3, fit: "contain" },
+      { kind: "photo", photo: 2, x: 0.7, y: 0.5, w: 0.35, h: 0.3, fit: "contain" },
+      text({ text: "New every week", x: 0.5, y: 0.55, w: 0.8, h: 0.06 }),
+    ]);
+    const caption = layers.find((l) => l.kind === "text")!;
+    expect(caption.y + caption.h / 2 <= 0.35 + 0.01 || caption.y - caption.h / 2 >= 0.65 - 0.01).toBe(true);
+  });
+
+  it("text that must stay over a full-frame product gets a caption box, and the scene repairs to itself", () => {
+    const bg = { kind: "photo", colors: ["#000"], photo: 1 };
+    const layers = check([{ kind: "photo", photo: 1, x: 0.5, y: 0.5, w: 1, h: 1 }, text({ text: "Ikanzu y'icyi", y: 0.5, color: "#ffffff" })], bg);
+    const caption = layers.find((l) => l.kind === "text") as TextLayer;
+    expect(caption.box).toMatchObject({ color: "rgba(0,0,0,0.55)" });
+    const subject = sceneSubject({ background: bg as never, layers }, "9:16", [square, square]);
+    expect(keepOffSubject(layers, subject, safeAreaFor(null))).toEqual(layers);
+  });
+});
+
+describe("a badge moves with its text off the product", () => {
+  it("a big burst holding the price leaves the house with the price, cut down to its size", () => {
+    const layers = validateSpec(
+      {
+        palette: {},
+        scenes: [
+          { seconds: 4, background: { kind: "photo", photo: 1 }, layers: [{ kind: "shape", shape: "burst", color: "#ffd200", x: 0.5, y: 0.45, w: 0.8, h: 0.4 }, text({ text: "120,000,000 RWF", color: "#111111", y: 0.45, w: 0.7, h: 0.08 })] },
+          { seconds: 4, background: {}, layers: [] },
+        ],
+      },
+      { ratio: "9:16", photoCount: 1, seconds: 8, photos: [square] },
+    ).scenes[0].layers;
+    const [burst, price] = layers;
+    expect(price.y < 0.36 || price.y > 0.62).toBe(true);
+    expect(Math.abs(burst.y - price.y)).toBeLessThan(1e-9);
+    expect(burst.h).toBeLessThan(0.4);
+    expect(burst.w).toBeLessThanOrEqual(0.7 * 1.15 + 1e-9);
+  });
+});
+
+describe("a stray badge over the product", () => {
+  it("moves behind the price when there is one, and is dropped when there is none", () => {
+    const run = (layers: unknown[]) =>
+      validateSpec({ palette: {}, scenes: [{ seconds: 4, background: { kind: "photo", photo: 1 }, layers }, { seconds: 4, background: {}, layers: [] }] }, { ratio: "9:16", photoCount: 1, seconds: 8, photos: [square] }).scenes[0].layers;
+    const burst = { kind: "shape", shape: "burst", color: "#ffd200", x: 0.5, y: 0.5, w: 0.8, h: 0.4 };
+    const moved = run([burst, text({ text: "120,000,000 RWF", color: "#111111", y: 0.15, w: 0.7, h: 0.08 })]);
+    const [b, price] = moved;
+    expect(b.kind).toBe("shape");
+    expect(Math.abs(b.y - price.y)).toBeLessThan(0.02);
+    expect(b.h).toBeLessThan(0.4);
+    expect(run([burst, text({ text: "Ready to move in", y: 0.15, h: 0.08 })]).some((l) => l.kind === "shape")).toBe(false);
+  });
+});

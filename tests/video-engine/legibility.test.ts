@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { factCheck } from "@/lib/video-engine/factcheck";
 import { legible, validateSpec } from "@/lib/video-engine/validate";
-import type { Layer } from "@/lib/video-engine/spec";
+import { drawnHeight } from "@/lib/video-engine/subject";
+import type { Layer, TextLayer } from "@/lib/video-engine/spec";
 
 const text = (over: Record<string, unknown> = {}) => ({ kind: "text", text: "Nova Phones Kigali", font: "inter", size: 0.06, color: "#f5b700", x: 0.5, y: 0.5, w: 0.8, h: 0.1, ...over });
 const check = (layers: unknown[]) => validateSpec({ palette: {}, scenes: [{ seconds: 3, background: { kind: "photo", photo: 1, dim: 0.5 }, layers }, { seconds: 3, background: {}, layers: [] }] }, { ratio: "9:16", photoCount: 1, seconds: 6 }).scenes[0].layers;
@@ -68,7 +69,10 @@ describe("safe area", () => {
     expect(wide).toMatchObject({ w: 0.78, x: 0.46 });
     expect(giant).toMatchObject({ y: 0.95, w: 1.4 });
     const landscape = validateSpec({ palette: {}, scenes: [{ seconds: 3, background: {}, layers: [text({ y: 0.9, h: 0.06 })] }, { seconds: 3, background: {}, layers: [] }] }, { ratio: "16:9", photoCount: 0, seconds: 6 });
-    expect(landscape.scenes[0].layers[0]).toMatchObject({ y: 0.9 });
+    // Wide shapes only keep a small margin (y 0.05 to 0.95), measured on the letters as drawn, not the box.
+    const onWide = landscape.scenes[0].layers[0] as TextLayer;
+    expect(onWide.y + drawnHeight(onWide, "16:9") / 2).toBeLessThanOrEqual(0.95 + 1e-9);
+    expect(onWide.y).toBeGreaterThan(0.8);
   });
 });
 
@@ -89,7 +93,7 @@ describe("phone line, voice lines and hashtags", () => {
 
   it("a scene without the number gets a small quiet phone line; a scene with it, or a wide video, does not", () => {
     const spec = run([scene([text({ text: "Nova Phones Kigali", y: 0.3, h: 0.08 })]), scene([text({ text: "WhatsApp 0788 300 400", y: 0.5, h: 0.08 })])]);
-    const added = spec.scenes[0].layers.find((l) => l.kind === "text" && l.text === "0788 300 400");
+    const added = spec.scenes[0].layers.find((l) => l.kind === "text" && l.text === "WhatsApp 0788 300 400");
     expect(added).toMatchObject({ size: 0.03, box: null, animate: "none", y: 0.76, color: "rgba(255,255,255,0.85)" });
     expect(spec.scenes[1].layers).toHaveLength(1);
     expect(validateSpec(JSON.parse(JSON.stringify(spec)), { ratio: "9:16", photoCount: 0, seconds: 6, phone: "+250 788 300 400" })).toEqual(spec);
@@ -150,5 +154,42 @@ describe("phone bars and quiet lines", () => {
     expect((faded as { color: string }).color).toBe("#111111");
     const [kept] = validateSpec({ palette: {}, scenes: [{ seconds: 3, background: { kind: "solid", colors: ["#0b0b0f"] }, layers: [text({ text: "0788 300 400", size: 0.03, color: "#ffffff", y: 0.75, h: 0.04 })] }, { seconds: 3, background: {}, layers: [] }] }, { ratio: "9:16", photoCount: 0, seconds: 6 }).scenes[0].layers;
     expect((kept as { color: string }).color).toBe("#ffffff");
+  });
+});
+
+describe("loop 6: square videos and spoken numbers", () => {
+  it("on 1:1 text keeps a small margin inside the frame (a price at the very top was cut)", () => {
+    const spec = validateSpec({ palette: {}, scenes: [{ seconds: 3, background: {}, layers: [text({ text: "25,000 RWF", y: 0.02, h: 0.1 })] }, { seconds: 3, background: {}, layers: [] }] }, { ratio: "1:1", photoCount: 0, seconds: 6 });
+    const [price] = spec.scenes[0].layers;
+    expect(price.y - price.h / 2).toBeGreaterThanOrEqual(0.05 - 1e-9);
+  });
+
+  it("a long voice line is cut at a sentence, never inside a spoken phone number", () => {
+    const spec = validateSpec(
+      { palette: {}, scenes: [{ seconds: 2, background: {}, layers: [text({})], say: "Order on WhatsApp, zero seven eight eight, one two three, four five six." }, { seconds: 2, background: {}, layers: [text({})], say: "Ikanzu nziza. Yakorewe mu Rwanda, ingano zose kuva S kugeza XL ku giciro cyiza cyane." }] },
+      { ratio: "9:16", photoCount: 0, seconds: 6 },
+    );
+    expect(spec.scenes[0].say).toBe("Order on WhatsApp, zero seven eight eight, one two three, four five six.");
+    expect(spec.scenes[1].say).toBe("Ikanzu nziza.");
+  });
+});
+
+describe("captions keep their lines", () => {
+  it("line breaks survive, each line is cleaned, blank runs shrink to one", () => {
+    const spec = validateSpec(
+      { palette: {}, caption: "Kitenge dress: 25,000 RWF\r\n\n\n\nMade in Kigali,   S to XL.\nOrder on WhatsApp 0788 123 456", scenes: [{ seconds: 3, background: {}, layers: [] }, { seconds: 3, background: {}, layers: [] }] },
+      { ratio: "9:16", photoCount: 0, seconds: 6 },
+    );
+    expect(spec.caption).toBe("Kitenge dress: 25,000 RWF\n\nMade in Kigali, S to XL.\nOrder on WhatsApp 0788 123 456");
+  });
+});
+
+describe("text never lies on other text", () => {
+  it("a price behind its own headline is pulled apart; texts at different times may share a place", () => {
+    const run = (layers: unknown[]) => validateSpec({ palette: {}, scenes: [{ seconds: 3, background: {}, layers }, { seconds: 3, background: {}, layers: [] }] }, { ratio: "1:1", photoCount: 0, seconds: 6 }).scenes[0].layers as TextLayer[];
+    const [price, head] = run([text({ text: "25,000 RWF", size: 0.07, y: 0.12, h: 0.06 }), text({ text: "YAKOREWE MU RWANDA", font: "anton", size: 0.12, y: 0.2, h: 0.12, w: 0.8 })]);
+    expect(price.y + drawnHeight(price, "1:1") / 2).toBeLessThanOrEqual(head.y - drawnHeight(head, "1:1") / 2 + 1e-9);
+    const [a, b] = run([text({ text: "First", y: 0.5, to: 0.5 }), text({ text: "Second", y: 0.5, from: 0.5 })]);
+    expect(a.y).toBe(b.y);
   });
 });

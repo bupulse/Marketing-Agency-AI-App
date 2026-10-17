@@ -86,9 +86,14 @@ export function normalise(text: string): string {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
+    // "120 million", "1.5 thousand": digits followed by a multiplier word.
+    .replace(/(\d+(?:\.\d+)?)\s*(thousand|million|billion)\b/g, (_m: string, n: string, w: string) => String(Number(n) * (w === "thousand" ? 1e3 : w === "million" ? 1e6 : 1e9)))
     .replace(NUMBER_RUN, (run: string, at: number, all: string) => {
       // "one" on its own is usually a pronoun ("the one for you"), a number only before a unit ("one-year", "one %").
       if (run === "one" && !/^[\s-]*(?:years?|months?|weeks?|days?|hours?|%|percent)\b/.test(all.slice(at + run.length))) return run;
+      // Digits said one by one ("zero seven eight eight") are a digit string ("0788"), not a sum.
+      const words = run.split(/[\s-]+/).filter((w) => w !== "and");
+      if (words.length >= 3 && words.every((w) => SMALL.indexOf(w) >= 0 && SMALL.indexOf(w) <= 9)) return words.map((w) => SMALL.indexOf(w)).join("");
       return String(wordsToNumber(run));
     })
     .replace(/\s+/g, " ")
@@ -110,7 +115,10 @@ export function numbersIn(text: string): Found[] {
   // Phone numbers first (7+ digits with spaces, dashes or a +), so their groups are not read as separate numbers.
   rest = rest.replace(/\+?\d[\d\s-]{5,}\d/g, (m) => {
     const digits = m.replace(/\D/g, "");
-    if (digits.length >= 7 && !/[,.]/.test(m)) {
+    // A phone shows separators, a "+" or a leading 0 ("0788 300 400", "+250788300400", "0788300400"); a bare run of
+    // digits ("120000000", a spoken price) is a number.
+    const t = m.trim();
+    if (digits.length >= 7 && !/[,.]/.test(m) && (/[\s+-]/.test(t) || t.startsWith("0"))) {
       out.push({ text: m.trim(), kind: "phone", value: Number(digits) });
       return " ";
     }
@@ -120,7 +128,8 @@ export function numbersIn(text: string): Found[] {
     out.push({ text: m.trim(), kind: "duration", value: value(n) * HOURS[unit.replace(/s$/, "")] });
     return " ";
   });
-  for (const m of rest.matchAll(/(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k|m)?\b/g)) out.push({ text: m[0].trim(), kind: "number", value: value(m[1], m[2] ?? "") });
+  // "420k" and "1.2m" only when the letter is stuck to the number (so "600 m²" stays 600).
+  for (const m of rest.matchAll(/(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(k|m)?(?![²³a-z0-9])/g)) out.push({ text: m[0].trim(), kind: "number", value: value(m[1], m[2] ?? "") });
   return out;
 }
 
@@ -185,6 +194,8 @@ export function factCheck(spec: Pick<MotionSpec, "scenes" | "caption">, brief: F
         continue;
       }
       if (n.kind === "number" && Number.isInteger(n.value) && listSizes.has(n.value) && /^\d+$/.test(n.text)) continue;
+      // A group of the business's phone number said on its own ("0788", "123", "456").
+      if (n.kind === "number" && phone && /^\d{3,}$/.test(n.text) && `0${phone}`.includes(n.text)) continue;
       const inProduct = productNumbers.some((f) => f.kind === n.kind && same(f.value, n.value));
       if (inProduct) continue;
       const inAny = factNumbers.some((f) => f.kind === n.kind && same(f.value, n.value));

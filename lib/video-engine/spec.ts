@@ -272,7 +272,22 @@ export interface CharacterLayer extends LayerBase {
   side?: "left" | "right";
 }
 
-export type Layer = PhotoLayer | TextLayer | ShapeLayer | CharacterLayer | ParticlesLayer;
+/**
+ * A video clip as a layer (docs/VIDEO_ENGINE.md, "Seedance overlay"): a finished Seedance clip with BuPulse's price,
+ * phone bar and call to action drawn on top. One per scene, full frame. `start` is where in the clip the scene begins
+ * (seconds), so consecutive scenes play the clip straight through; `sound` keeps the clip's own audio.
+ */
+export interface VideoLayer extends LayerBase {
+  kind: "video";
+  url: string;
+  fit: "cover" | "contain";
+  start: number;
+  sound?: boolean;
+  /** A dark veil over the clip, 0 to 0.8 (set by the validator under light text, like a photo's). */
+  dim?: number;
+}
+
+export type Layer = PhotoLayer | TextLayer | ShapeLayer | CharacterLayer | ParticlesLayer | VideoLayer;
 
 export interface Background {
   kind: "solid" | "gradient" | "photo";

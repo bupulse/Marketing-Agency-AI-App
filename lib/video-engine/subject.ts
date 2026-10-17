@@ -4,7 +4,8 @@
 // the centre 60% of the photo. Its place on the canvas follows the layer's crop (cover or contain, focus point).
 // Pure and stable: a repaired scene repairs to itself. Used by validate.ts.
 import { coverRect } from "./draw";
-import { RATIOS, type Layer, type PhotoLayer, type Ratio, type Scene, type TextLayer } from "./spec";
+import { luminance } from "./draw3d";
+import { RATIOS, type Layer, type PhotoLayer, type Ratio, type Scene, type TextLayer, type VideoLayer } from "./spec";
 
 /** A box as fractions (of a photo or of the canvas): left, top, width, height. */
 export type Box = { x: number; y: number; w: number; h: number };
@@ -68,17 +69,25 @@ const boxOf = (l: Pick<Layer, "x" | "y" | "w" | "h">): Box => ({ x: l.x - l.w / 
 const area = (b: Box) => b.w * b.h;
 const overlap = (a: Box, b: Box) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
 /** A giant word behind the product on purpose (validate.ts lets it be bigger than 0.22): it stays. */
-const isBackdropWord = (t: TextLayer) => t.size > 0.22 && (t.depth ?? 1) <= 0.35;
+/** A price, a phone number or a call to action: never a backdrop, always kept readable and inside the frame. */
+export const CONTACT = /\d{3}[\s-]?\d{3}|\d{1,3}(?:,\d{3})+|\b(?:whatsapp|call|order|contact|rwf|frw|ksh|tsh|ugx|price)\b/i;
+export const isBackdropWord = (t: Pick<TextLayer, "size" | "depth" | "text">) => t.size > 0.22 && (t.depth ?? 1) <= 0.35 && !CONTACT.test(t.text);
 
 /** The product's box on the canvas in a scene: the biggest photo layer, else the background photo (if not blurred). */
 export function sceneSubject(scene: Pick<Scene, "layers" | "background">, ratio: Ratio, photos: (PhotoInfo | undefined)[]): Box | null {
-  const layers = scene.layers.filter((l): l is PhotoLayer => l.kind === "photo");
-  const biggest = layers.map((l) => ({ l, a: area(clip(boxOf(l)) ?? { x: 0, y: 0, w: 0, h: 0 }) })).sort((a, b) => b.a - a.a)[0]?.l;
-  if (biggest) {
+  // Every photo layer that is not a small inset: with two products side by side, the subject covers both.
+  // A video clip counts like a full-frame photo of unknown content: its centre 60%.
+  const layers = scene.layers.filter((l): l is PhotoLayer | VideoLayer => (l.kind === "photo" || l.kind === "video") && area(clip(boxOf(l)) ?? { x: 0, y: 0, w: 0, h: 0 }) >= 0.02);
+  const boxes = layers
     // A turntable fills its own box (product, floor and reflection): the box is the subject.
-    if (biggest.turntable) return clip(boxOf(biggest));
-    return subjectOnCanvas(boxOf(biggest), ratio, photos[biggest.photo - 1], biggest.fit ?? "cover", biggest.focusX ?? 0.5, biggest.focusY ?? 0.5);
+    .map((l) => (l.kind === "video" ? subjectOnCanvas(boxOf(l), ratio, undefined, l.fit) : l.turntable ? clip(boxOf(l)) : subjectOnCanvas(boxOf(l), ratio, photos[l.photo - 1], l.fit ?? "cover", l.focusX ?? 0.5, l.focusY ?? 0.5)))
+    .filter((b): b is Box => !!b);
+  if (boxes.length) {
+    const x0 = Math.min(...boxes.map((b) => b.x));
+    const y0 = Math.min(...boxes.map((b) => b.y));
+    return { x: x0, y: y0, w: Math.max(...boxes.map((b) => b.x + b.w)) - x0, h: Math.max(...boxes.map((b) => b.y + b.h)) - y0 };
   }
+  if (layers.length) return null;
   const bg = scene.background;
   if (bg.kind === "photo" && bg.photo && (bg.blur ?? 0) < 12) return subjectOnCanvas({ x: 0, y: 0, w: 1, h: 1 }, ratio, photos[bg.photo - 1]);
   return null;
@@ -98,10 +107,42 @@ const CHAR_WIDTH: Record<string, number> = { anton: 0.43, inter: 0.55, poppins: 
  * Designs often give a text box much taller than its words; restacking the real heights keeps the type large.
  */
 export function textHeight(t: TextLayer, ratio: Ratio): number {
+  return Math.min(t.h, drawnHeight(t, ratio));
+}
+
+/** The height the renderer will actually draw (it lets text grow past a short box rather than shrink it to nothing). */
+export function drawnHeight(t: Pick<TextLayer, "text" | "size" | "font" | "w" | "lineHeight" | "box">, ratio: Ratio): number {
   const { width: W, height: H } = RATIOS[ratio] ?? RATIOS["9:16"];
   const lines = Math.max(1, Math.ceil((t.text.length * t.size * (CHAR_WIDTH[t.font] ?? 0.55)) / Math.max(0.1, t.w)));
   const pad = t.box ? 1.2 * (t.box.padding ?? 0.025) : 0;
-  return Math.min(t.h, ((lines * t.size * (t.lineHeight ?? 1.12) + pad) * W) / H + 0.01);
+  return ((lines * t.size * (t.lineHeight ?? 1.12) + pad) * W) / H + 0.01;
+}
+
+/**
+ * A big badge shape (burst, circle, blob) lying over the product with no text on it hides the product for nothing
+ * (a yellow burst covered the house): it moves behind the scene's price or phone text, cut to that text's size, or
+ * is dropped when there is none.
+ */
+export function badgesOffProduct(layers: Layer[], subject: Box | null): Layer[] {
+  if (!subject) return layers;
+  const texts = layers.filter((t): t is TextLayer => t.kind === "text");
+  const holder = texts.find((t) => CONTACT.test(t.text) && !layers.some((s) => s.kind === "shape" && ["burst", "circle", "blob"].includes(s.shape) && Math.abs(t.x - s.x) <= s.w / 2 && Math.abs(t.y - s.y) <= s.h / 2));
+  const out: Layer[] = [];
+  let used = false;
+  for (const s of layers) {
+    const badge = s.kind === "shape" && ["burst", "circle", "blob"].includes(s.shape) && s.material !== "glass";
+    const holds = badge && texts.some((t) => Math.abs(t.x - s.x) <= s.w / 2 && Math.abs(t.y - s.y) <= s.h / 2);
+    if (!badge || holds || overlap(boxOf(s), subject) < area(subject) * 0.25) {
+      out.push(s);
+      continue;
+    }
+    if (holder && !used) {
+      used = true;
+      // Behind the price: put first in the list so the text stays on top.
+      out.unshift({ ...s, x: holder.x, y: holder.y, w: round(Math.min(s.w, holder.w * 1.15)), h: round(Math.min(s.h, holder.h * 2.2)) });
+    }
+  }
+  return out;
 }
 
 export function keepOffSubject(layers: Layer[], subject: Box | null, safe: { top: number; bottom: number }, ratio: Ratio = "9:16"): Layer[] {
@@ -111,7 +152,8 @@ export function keepOffSubject(layers: Layer[], subject: Box | null, safe: { top
   if (hits.length === 0) return layers;
   let top: [number, number] = [safe.top, subject.y - GAP];
   let bottom: [number, number] = [subject.y + subject.h + GAP, safe.bottom];
-  if (top[1] - top[0] < 0.12 && bottom[1] - bottom[0] < 0.12) {
+  const fullFrame = top[1] - top[0] < 0.12 && bottom[1] - bottom[0] < 0.12;
+  if (fullFrame) {
     top = [safe.top, Math.max(safe.top + 0.1, FULL_FRAME_BANDS.top[1])];
     bottom = [Math.min(safe.bottom - 0.1, FULL_FRAME_BANDS.bottom[0]), safe.bottom];
   }
@@ -125,9 +167,25 @@ export function keepOffSubject(layers: Layer[], subject: Box | null, safe: { top
   };
   const inBand = (t: TextLayer, b: [number, number]) => t.y >= b[0] && t.y <= b[1];
   const out = [...layers];
+  // When the product fills the frame, text in the bands still lies on it: it gets a caption box (dark behind light
+  // text, light behind dark) so a busy pattern or a bright plate never eats the letters. Decided before stacking, so
+  // the heights stay the same on a second check.
+  if (fullFrame) {
+    for (const h of hits) {
+      if (h.l.box) continue;
+      const light = luminance(h.l.color) > 0.5;
+      const boxed: TextLayer = { ...h.l, box: { color: light ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.75)", padding: 0.02, radius: 0.3 } };
+      h.l = boxed;
+      out[h.i] = boxed;
+    }
+  }
   // A shape right behind a text (its centre inside the text box, not much taller: a phone bar, a price badge).
-  const backing = (t: TextLayer) => layers.filter((s) => s.kind === "shape" && Math.abs(s.x - t.x) <= t.w / 2 && Math.abs(s.y - t.y) <= t.h / 2 && s.h <= t.h * 2);
-  const tight = (m: { l: TextLayer }) => Math.max(textHeight(m.l, ratio), ...backing(m.l).map((s) => s.h));
+  // And a badge it sits on (a burst, circle, blob or rect whose box holds the text's centre): it moves with the text, cut
+  // down to about the text's size, or it would stay behind covering the product (a yellow burst hid the house).
+  const backing = (t: TextLayer) =>
+    layers.filter((s) => s.kind === "shape" && ((Math.abs(s.x - t.x) <= t.w / 2 && Math.abs(s.y - t.y) <= t.h / 2 && s.h <= t.h * 2) || (["burst", "circle", "blob", "rect"].includes(s.shape) && Math.abs(t.x - s.x) <= s.w / 2 && Math.abs(t.y - s.y) <= s.h / 2)));
+  // Stacked by the height the letters are drawn at (a short box with big letters would overlap its neighbour).
+  const tight = (m: { l: TextLayer }) => Math.max(drawnHeight(m.l, ratio), ...backing(m.l).map((s) => Math.min(s.h, drawnHeight(m.l, ratio) * 1.6)));
   // Members: the overlapping texts sent to a band, and the texts already in it (they are restacked with them).
   const groups = {
     top: texts.filter((t) => (hits.includes(t) ? bandOf(t.l) === "top" : inBand(t.l, top))).sort((a, b) => a.l.y - b.l.y),
@@ -156,7 +214,7 @@ export function keepOffSubject(layers: Layer[], subject: Box | null, safe: { top
       // Its backing shape travels with it.
       for (const b of backing(m.l)) {
         const j = layers.indexOf(b);
-        out[j] = { ...b, y: round(b.y + dy), h: round(Math.min(b.h, h)) };
+        out[j] = { ...b, x: b.h > m.l.h * 2 ? m.l.x : b.x, y: round(b.y + dy), h: round(Math.min(b.h, h * (b.h > m.l.h * 2 ? 1.6 : 1))), w: b.h > m.l.h * 2 ? round(Math.min(b.w, m.l.w * 1.15)) : b.w };
       }
       y += h + GAP;
     }

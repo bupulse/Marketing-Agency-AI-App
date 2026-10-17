@@ -113,6 +113,37 @@ export function backgroundMask(rgb: Uint8Array | Buffer, w: number, h: number, l
   }
   for (const i of touch) mask[i] = 1;
   tail += touch.length;
+  // Keep the product, not specks: the largest separate part of the foreground and any part at least 15% of its size
+  // (a pair of shoes, a set); small separate ones (a caption printed on the photo, dust) go with the background.
+  const part = new Int32Array(w * h).fill(-1);
+  const sizes: number[] = [];
+  for (let start = 0; start < w * h; start++) {
+    if (mask[start] || part[start] >= 0) continue;
+    const id = sizes.length;
+    let n = 0;
+    let qh = 0;
+    let qt = 0;
+    queue[qt++] = start;
+    part[start] = id;
+    while (qh < qt) {
+      const i = queue[qh++];
+      n++;
+      const x = i % w;
+      for (const nb of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i >= w ? i - w : -1, i < w * h - w ? i + w : -1]) {
+        if (nb < 0 || mask[nb] || part[nb] >= 0) continue;
+        part[nb] = id;
+        queue[qt++] = nb;
+      }
+    }
+    sizes.push(n);
+  }
+  const biggest = Math.max(0, ...sizes);
+  for (let i = 0; i < w * h; i++) {
+    if (!mask[i] && sizes[part[i]] < biggest * 0.15) {
+      mask[i] = 1;
+      tail++;
+    }
+  }
   const coverage = 1 - tail / (w * h);
   if (coverage < limits.minCoverage) return { ok: false, reason: "No product was found in front of the background." };
   if (coverage > limits.maxCoverage) return { ok: false, reason: "The product fills the photo: there is no background to remove." };

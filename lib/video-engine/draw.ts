@@ -159,17 +159,11 @@ function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene
   const vp = vanishingPoint(cam, W, H);
   const lightPx = { x: light.x * W, y: light.y * H };
 
-  for (const layer of scene.layers) {
-    const shown = layerWindow(layer, active.progress, scene.seconds, layer.kind === "text" ? (layer.animateFor ?? 0.6) : 0.4);
-    if (!shown.visible) continue;
-    // The video's first frame is its thumbnail and the scroll-stop moment: what opens the first scene is already 40%
-    // into its entrance there, so the hook shows (still moving) from frame 0.
-    const win = active.index === 0 && (layer.from ?? 0) === 0 ? { ...shown, enter: 0.4 + 0.6 * shown.enter } : shown;
-    ctx.save();
-    const depth = layer.depth ?? DEFAULT_DEPTH[layer.kind];
+  // Where the camera puts a layer this frame: its pose, box, parallax and centre in pixels.
+  const place = (layer: Layer): { pose: ReturnType<typeof poseAt>; rect: Rect; par: { scale: number; dx: number; dy: number }; cx: number; cy: number } => {
     const pose = poseAt(layer.keyframes, active.progress);
     const rect = boxOf(layer, W, H);
-    const par = { ...parallax(cam, depth) };
+    const par = { ...parallax(cam, layer.depth ?? DEFAULT_DEPTH[layer.kind]) };
     // A camera zoom moves text with the shot but never pushes it past the safe area: at most 92% of the width.
     if (layer.kind === "text") par.scale = Math.min(par.scale, Math.max(1, (W * 0.92) / Math.max(1, rect.w)));
     // Camera: positions spread out from the centre by the zoom and shift by the pan, both weighted by depth.
@@ -184,7 +178,29 @@ function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene
       const keep = (v: number, base: number, lo: number, hi: number) => (base >= lo && base <= hi && lo <= hi ? Math.min(hi, Math.max(lo, v)) : v);
       cx = keep(cx, bx, half.x + 0.02 * W, W - half.x - 0.02 * W);
       cy = keep(cy, by, half.y + 0.04 * H, H - half.y - 0.04 * H);
+    } else if (layer.kind === "shape") {
+      // A shape right behind a text (a phone bar, a price pill) follows that text's camera hold and scale, or the
+      // zoom would pull them apart.
+      const text = scene.layers.find((t): t is TextLayer => t.kind === "text" && Math.abs(layer.x - t.x) <= t.w / 2 && Math.abs(layer.y - t.y) <= t.h / 2 && layer.h <= t.h * 2);
+      if (text) {
+        const t = place(text);
+        const ox = (layer.x - text.x) * W + pose.dx * W;
+        const oy = (layer.y - text.y) * H + pose.dy * H;
+        return { pose, rect, par: { ...par, scale: t.par.scale }, cx: t.cx + ox * t.par.scale, cy: t.cy + oy * t.par.scale };
+      }
     }
+    return { pose, rect, par, cx, cy };
+  };
+
+  for (const layer of scene.layers) {
+    const shown = layerWindow(layer, active.progress, scene.seconds, layer.kind === "text" ? (layer.animateFor ?? 0.6) : 0.4);
+    if (!shown.visible) continue;
+    // The video's first frame is its thumbnail and the scroll-stop moment: what opens the first scene is already 40%
+    // into its entrance there, so the hook shows (still moving) from frame 0.
+    const win = active.index === 0 && (layer.from ?? 0) === 0 ? { ...shown, enter: 0.4 + 0.6 * shown.enter } : shown;
+    ctx.save();
+    const depth = layer.depth ?? DEFAULT_DEPTH[layer.kind];
+    const { pose, rect, par, cx, cy } = place(layer);
     const ownOpacity = layer.keyframes?.some((f) => f.opacity !== undefined) ? 1 : layer.kind === "text" ? 1 : ease("out", win.enter);
     ctx.globalAlpha *= clamp01(pose.opacity * ownOpacity * win.exit);
     // Text is a graphic on top of the shot, as in real ads: it moves with the camera but always stays sharp (no focus

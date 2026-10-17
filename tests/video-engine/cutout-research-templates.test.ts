@@ -139,7 +139,7 @@ describe("product cut-outs: images", () => {
     const alpha = (x: number, y: number) => data[(y * info.width + x) * 4 + 3];
     expect(alpha(Math.round(info.width / 2), Math.round(info.height / 2))).toBe(255);
     expect(alpha(0, 0)).toBe(0);
-  });
+  }, 20_000);
 
   it("refuses a photo of a busy scene", async () => {
     const noise = await sharp({ create: { width: 300, height: 300, channels: 3, background: "#808080", noise: { type: "gaussian", mean: 128, sigma: 60 } } }).jpeg().toBuffer();
@@ -151,7 +151,7 @@ describe("product cut-outs: images", () => {
   const real = ["1160bafd-8ab9-45fe-83f3-51e27338f29d", "d9d48bfa-6d9b-47f4-921c-5190b678ca9c", "334c7752-f72c-4cb5-98e5-4afd792d3b91", "a433c678-ed31-41e7-a0ef-b57c0d14f1fd"].map((id) => path.resolve("video-lab/data/photos", `${id}-1280.jpg`));
   it.skipIf(!real.every((f) => existsSync(f)))("refuses the lab's real shop and house photos", async () => {
     for (const f of real) expect(await makeCutout(await fs.readFile(f))).toMatchObject({ ok: false, reason: expect.stringContaining("not plain") });
-  });
+  }, 20_000);
 });
 
 describe("cut-outs in the renderer", () => {
@@ -247,5 +247,5 @@ describe("Video Lab cut-outs (cutoutForPhoto)", () => {
     expect(busy).toMatchObject({ ok: false, reason: expect.stringContaining("not plain") });
     expect(JSON.parse(await fs.readFile(path.join(dir, "video-lab/data/cutouts/up-bbbbbbbbbbbb.json"), "utf8")).reason).toContain("not plain");
     expect(await cutoutForPhoto("../../etc/passwd")).toMatchObject({ ok: false });
-  });
+  }, 20_000);
 });

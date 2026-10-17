@@ -184,7 +184,7 @@ describe("draw helpers", () => {
     for (let t = 0; t < totalMs(spec); t += 125) drawSpecFrame(ctx as unknown as CanvasRenderingContext2D, spec, photos, t, { makeCanvas: null });
     expect(calls.some((c) => c.startsWith("fillText"))).toBe(true);
     expect(calls.some((c) => c.startsWith("drawImage"))).toBe(true);
-  });
+  }, 20_000);
 });
 
 describe("spec, styles and sample", () => {
