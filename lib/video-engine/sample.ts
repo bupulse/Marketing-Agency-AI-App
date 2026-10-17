@@ -38,9 +38,8 @@ export function sampleSpec(input: { business: string; product: string; price?: s
         light: { x: 0.85, y: 0.05, intensity: 0.9, color: "#e8f0ff" },
         background: { kind: "gradient", colors: ["#2a3142", "#11141c", "#06070a"], angle: 0 },
         layers: [
-          { kind: "shape", shape: "circle", color: "rgba(120,150,255,0.18)", x: 0.5, y: 0.66, w: 1.1, h: 0.14, depth: 0.3 },
           hasPhoto
-            ? { kind: "photo", photo: 1, x: 0.5, y: 0.47, w: 0.62, h: 0.52, fit: "contain", turntable: { spin: 1, angle: 38, reflection: 0.45 }, depth: 0.6, keyframes: [{ at: 0, dy: 0.06, opacity: 0 }, { at: 0.2, dy: 0, opacity: 1, ease: "out" }] }
+            ? { kind: "photo", photo: 1, x: 0.5, y: 0.45, w: 0.76, h: 0.62, fit: "contain", turntable: { spin: 1, angle: 38, reflection: 0.45 }, depth: 0.6, keyframes: [{ at: 0, dy: 0.06, opacity: 0 }, { at: 0.2, dy: 0, opacity: 1, ease: "out" }] }
             : { kind: "shape", shape: "ring", color: "#2f6bff", x: 0.5, y: 0.45, w: 0.6, h: 0.34, stroke: 0.02, draw: true },
           { kind: "particles", particle: "dust", count: 40, colors: ["#ffffff"], x: 0.5, y: 0.45, w: 1, h: 0.8, seed: 11, depth: 0.7 },
           { kind: "text", text: "Made for everyday life", font: "poppins", weight: 800, size: 0.062, color: "#ffffff", x: 0.5, y: 0.86, w: 0.84, h: 0.1, animate: "words", from: 0.25, highlight: { words: ["everyday"], color: "#7fb0ff" }, box: { color: "#9fb8ff", padding: 0.03, radius: 0.4, material: "glass" } },

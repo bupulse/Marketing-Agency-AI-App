@@ -88,16 +88,20 @@ export function drawFogHaze(ctx: Ctx, light: LightState, W: number, H: number): 
   ctx.restore();
 }
 
-/** A soft beam from the key light (only when the scene sets a light): makes the light's position visible. */
-export function drawLightGlow(ctx: Ctx, light: LightState, W: number, H: number): void {
+/**
+ * A soft beam from the key light (only when the scene sets a light): makes the light's position visible. Fainter over a
+ * photo background, which was dimmed so text reads on it.
+ */
+export function drawLightGlow(ctx: Ctx, light: LightState, W: number, H: number, overPhoto = false): void {
   if (!light.set || light.intensity < 0.05) return;
+  const k = overPhoto ? 0.35 : 0.75;
   ctx.save();
   ctx.globalCompositeOperation = "screen";
   const x = light.x * W;
   const y = light.y * H;
   const g = ctx.createRadialGradient(x, y, 0, x, y, Math.max(W, H) * 0.75);
-  g.addColorStop(0, mix(light.color, light.color, 0, 0.32 * light.intensity));
-  g.addColorStop(0.35, mix(light.color, light.color, 0, 0.1 * light.intensity));
+  g.addColorStop(0, mix(light.color, light.color, 0, 0.32 * k * light.intensity));
+  g.addColorStop(0.35, mix(light.color, light.color, 0, 0.1 * k * light.intensity));
   g.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
@@ -210,6 +214,11 @@ export function paintText3d(ctx: Ctx, text: string, x: number, y: number, width:
   // The face: lit on the side facing the light, a little darker away from it (turned faces get darker).
   const r = { x, y: y - p.px * 0.5, w: width, h: p.px };
   if (p.material) {
+    // Metal and glass faces have bright bands: a dark outline keeps the letters readable on any background.
+    ctx.strokeStyle = mix(p.side, "#000000", 0.55);
+    ctx.lineWidth = Math.max(1.5, p.px * 0.04);
+    ctx.lineJoin = "round";
+    ctx.strokeText(text, x, y);
     ctx.fillStyle = materialFill(ctx, p.material, color, r, env);
   } else {
     const lx = env.toLight.x;
@@ -229,6 +238,19 @@ export function paintText3d(ctx: Ctx, text: string, x: number, y: number, width:
 // ---- Turntable -----------------------------------------------------------------------------------------------------------
 
 const COLUMNS = 24;
+
+/**
+ * The size of a turntable's picture in its box (`r` in pixels) and its centre (from the box's top): contained, leaving
+ * the lower part of the box for the floor and reflection, and small enough that its near edge (taller in perspective at
+ * the widest swing, and while it floats up) never leaves the box, so text placed outside the box is never covered. Pure.
+ */
+export function turntableFit(r: { w: number; h: number }, imgW: number, imgH: number, angleDeg: number): { w: number; h: number; centre: number } {
+  const grow = turntableColumn(0, (angleDeg * Math.PI) / 180).scale;
+  const fit = Math.min((r.w * 0.98) / imgW, (r.h * 0.76) / imgH) / grow;
+  const h = imgH * fit;
+  // Its tallest edge (h * grow) fits between the top of the box and the floor, with room for the float (2.5%).
+  return { w: imgW * fit, h, centre: (h * grow) / 2 + r.h * 0.03 };
+}
 const BANDS = 6;
 
 /**
@@ -241,16 +263,28 @@ export function drawTurntable(ctx: Ctx, layer: PhotoLayer, r: Rect, img: Img | u
   const { yaw, lift, sweep } = turntableAt(tt, progress);
   const iw0 = img && img.width > 0 ? img.width : 1;
   const ih0 = img && img.width > 0 ? img.height : 1;
-  // Contained in the box, leaving room under it for the floor.
-  const fit = Math.min(r.w / iw0, (r.h * 0.82) / ih0);
-  const w = iw0 * fit;
-  const h = ih0 * fit;
+  const { w, h, centre } = turntableFit(r, iw0, ih0, tt.angle ?? 35);
   const float = lift * r.h * 0.025;
-  const cy = r.y + r.h * 0.41 - float;
-  const floorY = r.y + r.h * 0.41 + h / 2 + r.h * 0.01;
+  const cy = r.y + centre - float;
+  const floorY = r.y + centre + h / 2 + r.h * 0.01;
   const cols = Array.from({ length: COLUMNS + 1 }, (_, i) => turntableColumn(i / COLUMNS, yaw));
   const X = (i: number) => cols[i].x * w;
   const half = (i: number) => (h * cols[i].scale) / 2;
+
+  // The floor: a soft pool of the key light's colour where the product stands (no floor shape needed in the design).
+  ctx.save();
+  const poolRx = Math.max(8, w * 0.75);
+  ctx.translate(0, floorY);
+  ctx.scale(1, 0.16);
+  const pool = ctx.createRadialGradient(0, 0, 0, 0, 0, poolRx);
+  pool.addColorStop(0, mix(env.light.color, env.light.color, 0, 0.22 * (0.4 + 0.6 * env.light.intensity)));
+  pool.addColorStop(0.6, mix(env.light.color, env.light.color, 0, 0.08 * (0.4 + 0.6 * env.light.intensity)));
+  pool.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = pool;
+  ctx.beginPath();
+  ctx.arc(0, 0, poolRx, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 
   // Contact shadow on the floor, shifted away from the light, softer while the product floats up.
   ctx.save();

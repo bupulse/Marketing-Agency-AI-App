@@ -152,7 +152,7 @@ function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene
   drawBackground(ctx, scene.background, active.progress, photos, W, H, tMs, k);
   ctx.restore();
   ctx.filter = outerFilter || "none";
-  drawLightGlow(ctx, light, W, H);
+  drawLightGlow(ctx, light, W, H, scene.background.kind === "photo");
   drawFogHaze(ctx, light, W, H);
   const vp = vanishingPoint(cam, W, H);
   const lightPx = { x: light.x * W, y: light.y * H };
@@ -162,9 +162,11 @@ function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene
     if (!win.visible) continue;
     ctx.save();
     const depth = layer.depth ?? DEFAULT_DEPTH[layer.kind];
-    const par = parallax(cam, depth);
     const pose = poseAt(layer.keyframes, active.progress);
     const rect = boxOf(layer, W, H);
+    const par = { ...parallax(cam, depth) };
+    // A camera zoom moves text with the shot but never pushes it past the safe area: at most 92% of the width.
+    if (layer.kind === "text") par.scale = Math.min(par.scale, Math.max(1, (W * 0.92) / Math.max(1, rect.w)));
     // Camera: positions spread out from the centre by the zoom and shift by the pan, both weighted by depth.
     const cx = W / 2 + (rect.x + rect.w / 2 + pose.dx * W - W / 2) * par.scale + par.dx * W;
     const cy = H / 2 + (rect.y + rect.h / 2 + pose.dy * H - H / 2) * par.scale + par.dy * H;

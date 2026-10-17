@@ -8,6 +8,8 @@ import { lineTimings, speechText } from "@/lib/voice/speech";
 import { DEFAULT_VOICE_ID } from "@/lib/voice/voices";
 import { SPEC_LIMITS, type MotionSpec } from "./spec";
 
+export { SPOKEN_LANGUAGES, looksKinyarwanda, voiceLanguage, type VoiceLanguage } from "./voice-language";
+
 export const VOICE_MODEL = "eleven_multilingual_v2";
 /** ElevenLabs list price for this model, per 1,000 characters (the lab's ledger uses it). */
 export const VOICE_USD_PER_1000_CHARS = 0.3;

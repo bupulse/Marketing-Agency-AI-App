@@ -4,13 +4,13 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { extrusion, extrusionSteps, fogAmount, lightState, particleAt, spinAngle, towardLight, turntableAt, turntableColumn, vanishingPoint } from "@/lib/video-engine/animate";
 import { drawSpecFrame } from "@/lib/video-engine/draw";
-import { fogFilter, mix, rgba } from "@/lib/video-engine/draw3d";
-import { SPEC_FORMAT, systemPrompt } from "@/lib/video-engine/designer";
+import { fogFilter, mix, rgba, turntableFit } from "@/lib/video-engine/draw3d";
+import { SPEC_FORMAT, briefText, systemPrompt, type DesignBrief } from "@/lib/video-engine/designer";
 import { sampleSpec } from "@/lib/video-engine/sample";
 import { MATERIALS, PARTICLE_KINDS, SPEC_LIMITS, totalMs, type MotionSpec } from "@/lib/video-engine/spec";
 import { TEMPLATE_CATEGORIES, VIDEO_TEMPLATES } from "@/lib/video-engine/templates";
 import { validateSpec } from "@/lib/video-engine/validate";
-import { MAX_VOICE_CHARS, VOICE_MODEL, VOICE_TIMING, cueTimings, fitSpecToVoice, placeVoice, speakSpec, voiceCostUsd, voiceLines, type SpokenLine } from "@/lib/video-engine/voice";
+import { MAX_VOICE_CHARS, VOICE_MODEL, VOICE_TIMING, cueTimings, fitSpecToVoice, looksKinyarwanda, placeVoice, speakSpec, voiceCostUsd, voiceLanguage, voiceLines, type SpokenLine } from "@/lib/video-engine/voice";
 import { mixSamples } from "@/lib/voice/mix";
 import { DEFAULT_VOICE_ID } from "@/lib/voice/voices";
 
@@ -443,5 +443,59 @@ describe("Video Lab voice-overs (makeVoiceForJob, mocked ElevenLabs)", () => {
     expect((await readVoiceMp3(first!.hash))?.toString()).toBe("ID3audio");
     expect(await readVoiceMp3("../../etc/passwd")).toBeNull();
     expect(await makeVoiceForJob(specOf(scene(3), scene(3)), "20261017-cccccccc", { fetchImpl: fetchImpl as unknown as typeof fetch })).toBeNull();
+    // A Kinyarwanda business: English lines are spoken (cached take) and the page is told why.
+    const rw = await makeVoiceForJob(spec, "20261017-dddddddd", { language: "Kinyarwanda", fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(rw).toMatchObject({ cached: true, spokenLanguage: "English" });
+    expect(rw?.note).toContain("Kinyarwanda");
+    expect(first).toMatchObject({ spokenLanguage: "English", note: null });
+    // Kinyarwanda lines (a design from before the rule) are refused before anything is paid.
+    const kin = specOf(scene(3, "Telefoni nshya ya Samsung, igiciro cyiza cyane"), scene(3, "Murakaza neza kuri Nova Phones"));
+    await expect(makeVoiceForJob(kin, "20261017-eeeeeeee", { language: "Kinyarwanda", fetchImpl: fetchImpl as unknown as typeof fetch })).rejects.toThrow("cannot speak");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("turntable fit", () => {
+  it("the turned picture never leaves its box, at any swing, float or photo shape", () => {
+    const box = { w: 700, h: 960 };
+    for (const [iw, ih] of [[1280, 1280], [1280, 720], [720, 1280], [400, 1600]]) {
+      for (const angle of [10, 35, 60]) {
+        const { w, h, centre } = turntableFit(box, iw, ih, angle);
+        expect(w).toBeLessThanOrEqual(box.w);
+        const tallest = h * turntableColumn(0, (angle * Math.PI) / 180).scale;
+        // The near edge at the widest swing, floated up 2.5% of the box: still inside the top.
+        expect(centre - tallest / 2 - box.h * 0.025).toBeGreaterThanOrEqual(0);
+        // The floor (the picture's foot) leaves room in the box for the reflection.
+        expect(centre + h / 2).toBeLessThan(box.h * 0.85);
+      }
+    }
+  });
+});
+
+describe("voice-over language (Kinyarwanda)", () => {
+  it("speaks the content language when the voice can, English otherwise, and says so", () => {
+    expect(voiceLanguage("English")).toEqual({ spokenLanguage: "English", captionLanguage: "English", note: null });
+    expect(voiceLanguage("French")).toMatchObject({ spokenLanguage: "French", note: null });
+    expect(voiceLanguage("Spanish")).toMatchObject({ spokenLanguage: "Spanish", note: null });
+    const rw = voiceLanguage("Kinyarwanda");
+    expect(rw).toMatchObject({ spokenLanguage: "English", captionLanguage: "Kinyarwanda" });
+    expect(rw.note).toContain("Kinyarwanda");
+    expect(voiceLanguage(" rw ")).toMatchObject({ spokenLanguage: "English", captionLanguage: "Kinyarwanda" });
+    expect(voiceLanguage("Swahili").spokenLanguage).toBe("English");
+    expect(voiceLanguage(null)).toMatchObject({ spokenLanguage: "English", note: null });
+  });
+
+  it("recognises Kinyarwanda lines, not English or French ones", () => {
+    for (const rw of ["Telefoni nshya ya Samsung, igiciro cyiza cyane.", "Murakaza neza kuri Nova Phones.", "Ishyura na MoMo, garanti y'amezi 12 kandi ni nziza."]) expect(looksKinyarwanda(rw)).toBe(true);
+    for (const other of ["The Samsung Galaxy A56 5G has arrived in Kigali!", "Order on WhatsApp from Nova Phones Kigali.", "Commandez sur WhatsApp chez Nova Phones à Kigali.", "A banana a day, in Rwanda."]) expect(looksKinyarwanda(other)).toBe(false);
+  });
+
+  it("the brief asks for English voice lines and Kinyarwanda captions; other briefs name their language", () => {
+    const brief: DesignBrief = { business: { name: "Nova Phones", language: "Kinyarwanda" }, product: { name: "Galaxy A56" }, photos: [], styleId: "3d-title-drop", hookId: "auto", ratio: "9:16", seconds: 12 };
+    const rw = briefText(brief);
+    expect(rw).toContain("Voice-over language: English");
+    expect(rw).toContain("keep all on-screen text and the caption in Kinyarwanda");
+    expect(briefText({ ...brief, business: { name: "B", language: "French" } })).toContain("Voice-over language: French\n");
+    expect(systemPrompt()).toContain("say lines in the voice-over language");
   });
 });

@@ -86,7 +86,7 @@ Claude is also the director of photography: every scene can have a **camera** (`
 
 ## Templates
 
-`lib/video-engine/templates.ts`: 26 templates in 8 categories, like Higgsfield's Marketing Studio:
+`lib/video-engine/templates.ts`: 31 templates in 9 categories, like Higgsfield's Marketing Studio:
 
 | Category | Templates |
 | --- | --- |
@@ -98,12 +98,95 @@ Claude is also the director of photography: every scene can have a **camera** (`
 | Posters & offers | Event poster, Price drop |
 | Marketplace | Listing video, Colour options |
 | Cinematic | Cinematic story, Golden hour, Local market |
+| 3D motion | 3D title drop, Showroom turntable, Glass cards, Chrome luxe, Confetti launch |
 
 - **Art direction:** each template gives the layout, the camera language, the look and the pacing.
 - **UGC templates:** these are marked `presenter`. Until AI influencers exist, they are carried by the product and
   first-person captions.
 - **Gallery previews:** each template has a live example video, made once (`POST /api/template-previews`, kept in
   `video-lab/data/template-previews/`). It plays when the mouse is over its card.
+
+## 3D look
+
+Claude is the specialist in 3D motion graphics. The renderer draws a "3D look" on the plain 2D canvas (no WebGL), so
+the owner's browser and the video robot's headless Chrome draw the same pixels. Every value comes from the frame time,
+so a re-render of a frame is identical (a test draws the same frame twice and compares every canvas call). Fields
+(`lib/video-engine/spec.ts`, checked and repaired by `validate.ts`, taught to Claude in `SPEC_FORMAT`):
+
+| Field | What it draws |
+| --- | --- |
+| `scene.light` `{ x, y, intensity, color, fog, fogColor }` | The key light. It lights 3D letters, turntables, glass and metal, and photos (a highlight on the near side, shade and a cast shadow on the far side), with a soft beam where it shines from (fainter over photo backgrounds). `fog` fades far layers (low depth) and adds haze. |
+| `text.text3d` `{ depth, side, bevel, spin, material }` (or `true`) | Extruded letters: stacked copies run back towards the camera's vanishing point and away from the light, so the sides turn as the camera orbits or pans. A lit face, an optional bevel rim, a spin-in on entrance, and a metal or glass face (with a dark outline so it reads on any background). |
+| `photo.turntable` `{ spin, angle, reflection, sweep }` (or `true`) | The photo swings round in true perspective (columns clipped to a straight-edged trapezoid) with a card edge. It stands on its own lit floor, with a contact shadow and a reflection that fades out, and a shine glides across it. It always stays inside its box, so text placed outside it is never covered. |
+| `kind: "particles"` `{ particle, count, colors, size, speed, seed }` | `dust`, `sparkles`, `bokeh`, `confetti` or `bubbles`, seeded. Each particle has its own depth (its own parallax); confetti flips in 3D; bubble glints follow the light. |
+| `material: "glass" \| "metal"` (shapes, `text.box`) | Glass: a frosted see-through tint with a bright rim and a sheen. Metal: brushed bands lit by the key light, for small parts only (badges, bars, rings, bursts). |
+
+- **Code:** the maths is in `animate.ts` (`extrusion`, `vanishingPoint`, `turntableAt`, `turntableColumn`,
+  `particleAt`, `fogAmount`); the drawing is in `draw3d.ts` (`turntableFit` keeps the turntable in its box). A camera
+  zoom never pushes text past 92% of the width.
+- **Templates:** a "3D motion" category with 3D title drop, Showroom turntable, Glass cards, Chrome luxury and Launch
+  party; Studio turntable uses `turntable` too.
+- **Rules for Claude (`systemPrompt`):**
+  - 3D for hooks, prices and end cards, with an orbit or pan camera so the sides turn.
+  - Never a large metal or glass panel, and never over the product.
+  - Rings go around their text.
+  - Text on a gold or silver shape must contrast with it.
+  - Text boxes never overlap the product's box.
+  - Photo backgrounds under text are dimmed 0.45 to 0.6.
+- **Quality loop (17 October 2026):** three rounds of real designs (3D title drop and Showroom turntable for Nova Phones
+  Galaxy A56, Chrome luxury for the Kibagabaga house, plus a Kinyarwanda version), rendered and checked frame by
+  frame. The rounds fixed:
+  - text over the turntable;
+  - floor glow in the wrong place;
+  - metal slabs;
+  - gold on gold;
+  - silver on light photos;
+  - phone numbers in the voice;
+  - captions pushed to the edges by a crash zoom.
+- **Limits:**
+  - The turntable turns the whole photo like a card; it looks best with product photos on plain backgrounds (there
+    is no background removal).
+  - Glass has no real backdrop blur, and fog is a filter approximation.
+- **Speed:** 2 to 27 ms per frame at 720p in headless Chrome. A 13-second 480p MP4 with sound takes about 20 s.
+
+## Voice-over
+
+Each scene's `say` line is spoken by ElevenLabs (`eleven_multilingual_v2`, the default voice JB Pro from
+`lib/voice/voices.ts`) in one take "with timestamps" (the time of every character). The take is cut into one cue per
+scene, and the scenes are stretched so each lasts at least its line.
+
+- **`lib/video-engine/voice.ts`:** has no `"server-only"` import, because `lib/ai/tts.ts` cannot be bundled into the
+  lab.
+  - `speakSpec(spec, { apiKey, voiceId?, model?, fetchImpl? })`: the take and each line's timing.
+  - `fitSpecToVoice(spec, voice)`: returns `{ spec, cues, fits }`. Each line plays 0.15 to 0.25 s after its scene
+    starts, a scene shorter than its line is stretched (up to 8 s), and a line that still does not fit runs into the
+    next scene. Over 30 s, scenes without a line are shortened first; the voice is cut only as a last resort
+    (`fits: false`).
+  - `placeVoice` and `cueTimings` are pure and shared with the browser.
+- **`video-lab/voice.ts`:** `makeVoiceForJob(spec, jobId, { voiceId?, language? })` returns `{ hash, url, spec, cues,
+  fits, voiceId, characters, durationMs, costUsd, cached, spokenLanguage, note }`.
+  - It keeps the take in `video-lab/data/voice/<hash>.mp3` (+ `.json`), so the same lines in the same voice are never
+    paid for twice.
+  - It checks the daily cap and records `elevenlabs-voice` in the ledger before the take is used.
+  - `readVoiceMp3(hash)` and `VOICE_ROUTE` (`/api/voice/<hash>.mp3`) serve the take.
+- **Mixing (`encode.ts`):** `encodeSpecMp4(fittedSpec, photos, { musicUrl, voice: { url, cues } })` mixes with
+  `lib/voice/mix.ts`. The voice plays at full level; the music at 85%, ducked to 20% under speech, fading in over 1 s
+  and out over 1.5 s.
+- **Kinyarwanda (owner rule, 17 October 2026):** the voice model cannot speak Kinyarwanda or Swahili.
+  - For those businesses the on-screen text and the caption stay in the content language, and the `say` lines are
+    written and spoken in English. French stays French, and the other content languages the model speaks keep their
+    own language (`voice-language.ts`, `voiceLanguage`).
+  - The designer's brief names the voice-over language.
+  - The page gets `spokenLanguage` and a `note` to show the owner.
+  - Lines that still look like Kinyarwanda (a design made before this rule) are refused before anything is paid.
+- **Writing rules for Claude:**
+  - A `say` line on every scene, about 2.5 words per second.
+  - The last line is the call to action.
+  - Numbers written as people say them (phone numbers in groups).
+- **Measured cost:** the sample's four lines were 120 characters, $0.036 (list price $0.30 per 1,000 characters),
+  8.8 s of speech; the same lines again cost $0 (cache). A 3D design costs $0.12 to $0.14 API-equivalent (Sonnet 5.5),
+  so a 12 to 15 s 3D video with a voice-over is about $0.16 to $0.20.
+- **Limits:** the live preview has no sound (the voice is in the exported MP4).
 
 ## AI influencers (owner decision: both kinds)
 
