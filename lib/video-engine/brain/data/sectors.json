@@ -5,12 +5,12 @@
     "words": ["restaurant", "cafe", "café", "food", "menu", "dish", "brochette", "coffee", "bakery", "cake", "pizza", "burger", "shawarma", "juice", "catering", "lunch", "dinner", "buffet", "chicken", "fish", "tilapia", "pilau", "ribs", "cone", "supermarket"],
     "seedanceKind": "restaurant",
     "formats": ["offer", "product-reveal", "ugc-testimonial", "tour"],
-    "hooks": ["offer-badge-day", "appetite-shot", "promo-price", "bold-local-claim", "talk-to-city", "poster-first", "cards-in-hand", "pov-rescue"],
+    "hooks": ["offer-badge-day", "appetite-shot", "promo-price", "bold-local-claim", "talk-to-city", "poster-first", "cards-in-hand", "pov-rescue", "menu-card-loop", "splash-hero"],
     "settings": ["a top-down wooden table in a Kigali restaurant", "a night venue terrace with warm lights", "a counter with pizza boxes ready for delivery", "a home kitchen with a pan of food steaming", "an overhead plate on a tray with a hand pouring the sauce"],
     "offers": ["BUY 1 GET 1 FREE EVERY {day}", "PROMO FOR {price}", "LUNCH TIME promo, Monday to Friday, 11 AM to 2 PM", "Order on VubaVuba", "Contact us for fast delivery", "PROMO! - HAPPY 3RD ANNIVERSARY (a price ladder: 35K → 27K)", "Free bread and free salad", "Same fast delivery"],
     "cta": "Order on {app} or call {phone}; the area (Kicukiro Sonatube, Kimironko).",
     "longestRunning": "Magic Chef Kigali runs one dish per video (7+ ads) with the same two delivery numbers; Best Burgers shows one burger, one price (PROMO FOR 5K) and two numbers for the whole clip; BestPilau's anniversary promo puts a price ladder (35K → 27K, 20K → 15K) in the caption over a plain overhead plate.",
-    "evidence": ["tt-090", "tt-093", "tt-095", "tt-091", "tt-092", "fb-004", "fb-006", "fb-032", "fb-039", "tt-094", "fb-051", "fb-053", "fb-070", "fb-061"]
+    "evidence": ["tt-090", "tt-093", "tt-095", "tt-091", "tt-092", "fb-004", "fb-006", "fb-032", "fb-039", "tt-094", "fb-051", "fb-053", "fb-070", "fb-061", "yt-027", "yt-030", "yt-032"]
   },
   {
     "id": "phone-shop",
@@ -18,12 +18,12 @@
     "words": ["phone", "phones", "smartphone", "iphone", "samsung", "galaxy", "tecno", "infinix", "itel", "aquos", "laptop", "electronics", "charger", "earbuds", "tablet", "smartwatch", "gadget", "surface", "projector"],
     "seedanceKind": "phone-shop",
     "formats": ["product-reveal", "list", "unboxing", "offer"],
-    "hooks": ["number-in-hand", "counter-price-bar", "model-badge", "spec-words", "price-list-card", "now-available", "direct-question", "price-banner", "demo-first"],
+    "hooks": ["number-in-hand", "counter-price-bar", "model-badge", "spec-words", "price-list-card", "now-available", "direct-question", "price-banner", "demo-first", "explode-reassemble", "door-open-walk"],
     "settings": ["the shop counter with boxed phones and a wall of brand logos", "a seller holding the phone in the shop", "hands turning two phones to show front and back", "a hand fanning four phones in front of the shop shelves", "an overhead unboxing on a white table, hands only"],
     "offers": ["Accessories included (cover, protector, charger)", "{product} is here", "DM now before stock ends (only when stock is really limited)", "fast and easy delivery", "Warranty and direct home delivery", "Available in abundance"],
     "cta": "WhatsApp or call {phone}; the shop address and room number (Makuza Peace Plaza, Room 35).",
     "longestRunning": "Real staff, real stock and the shop address with a landmark (Makuza Peace Plaza, Room 35) build trust where phone scams are common; a seller behind the counter with a lower-third price bar and two numbers (Elohome, 8 ads live); a model badge ('iPhone 18pro and 18pro max are available On discount', 'IPHONE 13 PRO 256GB').",
-    "evidence": ["tt-096", "tt-097", "tt-098", "tt-099", "tt-100", "tt-101", "fb-027", "fb-005", "fb-038", "fb-063", "fb-066", "fb-072", "fb-073"]
+    "evidence": ["tt-096", "tt-097", "tt-098", "tt-099", "tt-100", "tt-101", "fb-027", "fb-005", "fb-038", "fb-063", "fb-066", "fb-072", "fb-073", "yt-023", "yt-035", "yt-036", "yt-033"]
   },
   {
     "id": "salon",
@@ -31,13 +31,13 @@
     "words": ["salon", "hair", "braid", "braids", "barber", "barbershop", "nails", "beauty", "makeup", "make-up", "spa", "wig", "wigs", "lashes", "massage", "aesthetic", "laser", "hair removal", "skincare"],
     "seedanceKind": "salon",
     "formats": ["before-after", "offer", "ugc-testimonial", "list"],
-    "hooks": ["result-first", "promo-price", "service-claim", "home-service", "pain-question", "local-greeting"],
+    "hooks": ["result-first", "promo-price", "service-claim", "home-service", "pain-question", "local-greeting", "step-routine"],
     "settings": ["the salon chair with a ring light", "close-ups of hands braiding", "a 2x2 grid of nail colours", "the salon sign and mirrors", "a close-up of a real treatment in soft light, the landmark address baked in"],
     "offers": ["special offer any style {price} (inclusive of braids & free wash)", "Book your nails home service", "Book your appointment on WhatsApp", "Available 24/7", "Book your session today", "Private packages available"],
     "cta": "Book on WhatsApp {phone}; the street (Roysambu, Lumumba Drive style).",
     "longestRunning": "SPOT SALON (Nairobi) ran one flat price including a free wash for 982 days; in Kigali, Prime Wellness shows a real massage with 'Available 24/7' and 'Next to DELIGHT HOTEL' on screen; Lou Aesthetic opens on a question card ('Ready to see your skin exactly how it used to be?').",
     "gaps": "'Kigali salon' returned no ads in the Ad Library; the Kigali examples are spas and aesthetic centres.",
-    "evidence": ["fb-013", "fb-018", "tt-102", "tt-103", "tt-105", "tt-106", "tt-107", "fb-062", "fb-071", "fb-047"]
+    "evidence": ["fb-013", "fb-018", "tt-102", "tt-103", "tt-105", "tt-106", "tt-107", "fb-062", "fb-071", "fb-047", "yt-028"]
   },
   {
     "id": "fashion",
@@ -45,12 +45,12 @@
     "words": ["fashion", "dress", "dresses", "clothes", "clothing", "kitenge", "ankara", "shoes", "boutique", "shirt", "shirts", "bag", "bags", "outfit", "wear", "jewelry", "jewellery", "earrings", "sneaker", "sneakers", "watch", "necklace"],
     "seedanceKind": "fashion",
     "formats": ["product-reveal", "list", "ugc-testimonial", "unboxing"],
-    "hooks": ["demo-first", "now-available", "price-on-each", "direct-question", "occasion-title", "unwrap-reveal"],
+    "hooks": ["demo-first", "now-available", "price-on-each", "direct-question", "occasion-title", "unwrap-reveal", "door-open-walk"],
     "settings": ["a real wearer outdoors in daylight", "a clothes rack in the boutique", "a mannequin showing the detail", "boxes of new arrivals being opened", "one sneaker turned 360 degrees in one hand outdoors"],
     "offers": ["{product} kuri {price} gusa", "Different sizes and colors available", "We do deliveries countrywide", "New arrivals", "Payment after delivery", "Delivery anywhere in Rwanda", "Sizes EUR 39 to 45"],
     "cta": "Send a WhatsApp message {phone}; the shop area.",
     "longestRunning": "A 5 s loop of one model walking (Modesees, 353 days) and four colours in 10 s on a real wearer (NILA BABY SHOP, 439 days) are enough; Trendy.Wear.Kigali shows one feature (a breastfeeding opening) for the whole clip with the price in the caption.",
-    "evidence": ["fb-010", "fb-016", "fb-026", "tt-064", "tt-129", "tt-134", "tt-137", "fb-041", "fb-055", "fb-054"]
+    "evidence": ["fb-010", "fb-016", "fb-026", "tt-064", "tt-129", "tt-134", "tt-137", "fb-041", "fb-055", "fb-054", "yt-018", "yt-019"]
   },
   {
     "id": "real-estate",
@@ -141,11 +141,11 @@
     "words": ["shop", "store", "supermarket", "cosmetics", "skincare", "perfume", "kitchenware", "home", "decor", "wholesale", "retail", "bedding", "products", "furniture", "rug", "rugs", "appliance", "bike"],
     "seedanceKind": "shop",
     "formats": ["product-reveal", "list", "offer", "unboxing"],
-    "hooks": ["price-banner", "demo-first", "counter-price-bar", "how-it-changes", "kinyarwanda-price-line", "pov-local-find", "price-on-each", "percent-free-delivery", "now-available", "start-a-business"],
+    "hooks": ["price-banner", "demo-first", "counter-price-bar", "how-it-changes", "kinyarwanda-price-line", "pov-local-find", "price-on-each", "percent-free-delivery", "now-available", "start-a-business", "splash-hero", "step-routine"],
     "settings": ["a tidy shop counter in a Kigali shop", "a wall of stock with a hand holding one item", "the shop floor with a greeting assistant", "boxes of new stock", "the product doing its job in a plain room, all the facts in one text block at the top"],
     "offers": ["Starting from {price}", "Free delivery from 50k", "Free delivery, pay after delivery", "Retail and wholesale", "Now available!", "Price: {price}", "Free delivery in Kigali"],
     "cta": "WhatsApp {phone}; the shop's building and room number.",
     "longestRunning": "In Kigali, EHA 250, Titanium Smart Life and Elohome keep the price and the number on screen from frame 0 (a top text block or a lower-third bar); the cash-on-delivery sellers (Kenlina-B, Ugalina, TnzStore) ran one template for up to 24 months with 'Free delivery, pay after delivery'; Bahnasawi writes the offer in Kinyarwanda capitals over the furniture.",
-    "evidence": ["fb-011", "fb-005", "fb-012", "fb-003", "fb-017", "fb-019", "tt-078", "tt-079", "tt-132", "tt-136", "tt-138", "fb-049", "fb-063", "fb-048", "fb-043", "fb-057", "fb-064", "fb-053"]
+    "evidence": ["fb-011", "fb-005", "fb-012", "fb-003", "fb-017", "fb-019", "tt-078", "tt-079", "tt-132", "tt-136", "tt-138", "fb-049", "fb-063", "fb-048", "fb-043", "fb-057", "fb-064", "fb-053", "yt-026", "yt-021", "yt-028"]
   }
 ]

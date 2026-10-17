@@ -150,7 +150,7 @@ export function checkBrain(data: BrainData = BRAIN, refs: BrainRefs = {}): strin
     oneOf(where, "kind", r.kind, ["do", "dont"]);
     oneOf(where, "stage", r.stage, RULE_STAGES);
     oneOf(where, "engine", r.engine, [...ENGINES, "both"]);
-    oneOf(where, "origin", r.origin, ["tiktok-A", "tiktok-B", "tiktok-3d", "facebook", "rwanda", "instagram", "engine"]);
+    oneOf(where, "origin", r.origin, ["tiktok-A", "tiktok-B", "tiktok-3d", "facebook", "rwanda", "instagram", "youtube", "captions", "engine"]);
     if (![1, 2, 3].includes(r.priority)) say(where, "priority must be 1, 2 or 3");
     if (r.platforms) allOf(where, "platforms", r.platforms, PLATFORMS);
     if (r.sectors) allOf(where, "sectors", r.sectors, SECTORS);

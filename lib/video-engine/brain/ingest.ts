@@ -1,16 +1,16 @@
 // Folds the researchers' rows (docs/research/reels/<source>.jsonl) into the brain's evidence index
 // (lib/video-engine/brain/data/evidence.json). Run after new research lands:
 //   node lib/video-engine/brain/ingest.ts
-// Ids already given keep their number (they are found again by `key`, even if a row moves); new rows get the next
-// number. The researchers' files are only read, never written. Plain erasable TypeScript with no project imports, so
+// Safe to re-run at any time: ids already given keep their number (found again by `key`, even if a row moves), new
+// rows get the next number, a missing file keeps its old index. The researchers' files are only read, never written. Plain erasable TypeScript with no project imports, so
 // Node runs it directly.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Evidence, ResearchSource } from "./types";
 
-const PREFIX: Record<ResearchSource, string> = { tiktok: "tt", facebook: "fb", instagram: "ig" };
-const SOURCES: ResearchSource[] = ["tiktok", "facebook", "instagram"];
+const PREFIX: Record<ResearchSource, string> = { tiktok: "tt", facebook: "fb", instagram: "ig", youtube: "yt", captions: "cp" };
+const SOURCES: ResearchSource[] = ["tiktok", "facebook", "instagram", "youtube", "captions"];
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 type Row = Record<string, unknown>;
@@ -57,13 +57,13 @@ const COUNTRY_WORDS: [string, RegExp][] = [
 export function rowCountry(row: Row): string | null {
   const own = str(row.country);
   if (own && /^[A-Z]{2}$/.test(own)) return own;
-  const text = [row.author, row.page, row.caption, row.on_screen_text, row.hook, row.why_it_works, (row.hashtags as unknown[] | null)?.join(" ")].filter((x) => typeof x === "string").join(" ");
+  const text = [row.author, row.page, row.channel, row.title, row.caption, row.on_screen_text, row.hook, row.why_it_works, (row.hashtags as unknown[] | null)?.join(" ")].filter((x) => typeof x === "string").join(" ");
   if (row.language === "rw") return "RW";
   return COUNTRY_WORDS.find(([, re]) => re.test(text))?.[0] ?? null;
 }
 
 export const rowKey = (row: Row): string =>
-  [str(row.url) ?? "", str(row.author) ?? str(row.page) ?? "", (str(row.hook) ?? str(row.caption) ?? str(row.structure) ?? "").slice(0, 40)].join(" | ");
+  [str(row.url) ?? "", str(row.author) ?? str(row.page) ?? str(row.channel) ?? str(row.page_or_account) ?? "", (str(row.hook) ?? str(row.caption) ?? str(row.title) ?? str(row.structure) ?? "").slice(0, 40)].join(" | ");
 
 /**
  * Ads an advertiser had live at once, as the researchers counted them in the Ad Library
@@ -127,10 +127,10 @@ export function evidenceFromRows(source: ResearchSource, rows: Row[], existing: 
       source,
       line: i + 1,
       key,
-      who: str(row.author) ?? str(row.page) ?? str(row.account) ?? "unknown",
+      who: str(row.author) ?? str(row.page) ?? str(row.channel) ?? str(row.page_or_account) ?? str(row.account) ?? "unknown",
       url,
       country: rowCountry(row),
-      category: str(row.category),
+      category: str(row.category) ?? str(row.sector),
       language: str(row.language),
       watched: row.watched === true,
       secondary: row.secondary === true,

@@ -24,7 +24,7 @@ export type HookType = (typeof HOOK_TYPES)[number];
 export const HOOK_NEEDS = ["price", "phone", "offer", "old-price", "location", "result", "claim", "person", "series"] as const;
 export type HookNeed = (typeof HOOK_NEEDS)[number];
 
-export const RESEARCH_SOURCES = ["tiktok", "facebook", "instagram"] as const;
+export const RESEARCH_SOURCES = ["tiktok", "facebook", "instagram", "youtube", "captions"] as const;
 export type ResearchSource = (typeof RESEARCH_SOURCES)[number];
 
 /**
@@ -133,8 +133,8 @@ export type Rule = {
   engine: RuleEngine;
   /** 1 must, 2 should, 3 nice to have. */
   priority: 1 | 2 | 3;
-  /** Where the rule came from: tiktok-A (watched), tiktok-B (articles), tiktok-3d, facebook, rwanda, engine (owner and policy). */
-  origin: "tiktok-A" | "tiktok-B" | "tiktok-3d" | "facebook" | "rwanda" | "instagram" | "engine";
+  /** Where the rule came from: tiktok-A (watched), tiktok-B (articles), tiktok-3d, facebook, rwanda, instagram, youtube, captions (the caption corpus), engine (owner and policy). */
+  origin: "tiktok-A" | "tiktok-B" | "tiktok-3d" | "facebook" | "rwanda" | "instagram" | "youtube" | "captions" | "engine";
   platforms?: Platform[];
   sectors?: SectorId[];
   formats?: FormatId[];

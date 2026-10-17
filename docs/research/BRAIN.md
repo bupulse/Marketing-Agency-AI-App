@@ -10,20 +10,25 @@ points back to the real videos it came from.
 
 Code: `lib/video-engine/brain/` (data in `brain/data/*.json`). Tests: `tests/video-engine/brain.test.ts`.
 
-## What is in it (17 October 2026, after Facebook round 2)
+## What is in it (17 October 2026, after Facebook round 2 and YouTube Shorts)
 
 | Part | Count | What it holds |
 | --- | --- | --- |
-| Research rows | 212 (150 watched first-hand: 93 TikTok, 57 Facebook; 51 Rwandan Facebook ads) | One line per video or ad, pointing back at the researchers' notes |
-| Hooks (openings) | 49 | The first 2 seconds: the line, what is on screen, where it was seen, real example lines |
+| Research rows | 248 (186 watched first-hand: 93 TikTok, 57 Facebook, 36 YouTube Shorts; 51 Rwandan Facebook ads) |
+| Hooks (openings) | 54 | The first 2 seconds: the line, what is on screen, where it was seen, real example lines |
 | Formats | 10 | Product reveal, UGC testimonial, before/after, unboxing, tour, offer, 3D motion, kinetic typography, tutorial, list or price list |
-| Captions | 4 platforms, 17 formulas, 8 ways to order, with the Rwanda counts (22 of 51 WhatsApp button, 13 Instagram, 35 number in the caption, 13 Kinyarwanda captions) | How to write the post under the video, and the hashtags |
-| Rules | 54 (41 do, 13 don't) | Each with why, the videos behind it, and which engine it binds |
+| Captions | 4 platforms (TikTok, Facebook and YouTube Shorts researched; Instagram interim), 20 formulas, 9 ways to order, with the Rwanda counts (22 of 51 WhatsApp button, 13 Instagram, 35 number in the caption, 13 Kinyarwanda captions) |
+| Rules | 60 (46 do, 14 don't) |
 | Sectors | 11 | Restaurant, phone shop, salon, fashion, real estate, school, car rental, clinic, events, services, and "shop" for everything else |
 
 The Facebook "Rwanda playbook" (round 2) is folded in: its verbatim opening lines (the price pill, the counter seller
 with a price bar, the model badge, Kinyarwanda offer lines, "Kigali, we need to talk.", "Available 24/7", the loss line,
 the poster first frame), the ordering routes and caption counts, landmark addresses, and the sector patterns.
+YouTube Shorts (36 watched) added: Shorts lengths (median 15 s), the title as the hook and the caption, the safe middle
+(YouTube's own auto-captions at the top, title and Subscribe button over the bottom quarter), the end pointer (a number, a
+QR code, a name to search), no "subscribe" lines, and the splash, explode-and-reassemble, menu-card, step-routine and
+door-opening hooks. Real local marketing Shorts are rare (1 Kigali lead-offer clip, 2 Nairobi shop clips), so Facebook
+stays the main evidence for Rwandan ads.
 
 ## The pipeline, step by step
 
@@ -152,11 +157,21 @@ Each failed check says which rule it enforces, why, and in which scene. Checks t
 no price) are left out of the 100. BuPulse's own Seedance shot plans score 100; the hand-made sample design scores 85
 (the price comes late, one line sits too low, and its caption lacks the price).
 
+## Scoring a caption
+
+`scoreCaption(caption, hashtags, brief, { platform })` marks the post text out of 100 the same way: does the first line
+name the product, the offer or the price (on Shorts, the first 40 characters); does it say how to order; is the number
+there (twice on Facebook) and the price; does it say where the business is when the brief has a place; are there as many
+hashtags as the platform's winners use (TikTok 3 to 6, Facebook 3 to 4, Shorts 1 to 3) with a local tag and at most two
+broad ones (#fyp, #viral); is a Kinyarwanda business's caption in Kinyarwanda; is it short enough (a Short's title under
+100 characters); and is it free of forbidden lines (made-up superlatives, fake income, "subscribe" on Shorts) and of facts
+the brief does not give. It returns the score, what passed, and `missed`: what to fix, in plain English.
+
 ## What the brain does not know yet
 
 - **Sound.** All TikTok and Facebook videos were watched muted. Music tempo, whooshes and voice style are from articles,
   not heard. The owner (or a later pass) should check sound on the top 10 rows.
-- **Instagram** is not in yet; its caption guide is "interim" (borrowed from TikTok). **YouTube Shorts** has no research.
+- **Instagram** is not in yet; its caption guide is "interim" (borrowed from TikTok). **YouTube Shorts** has 36 rows, but few are local ads.
 - **Thin sectors**: car rental (two advertisers), school (two Rwandan ads, one read as text only), salon ("Kigali
   salon" returns no ads; the Kigali examples are spas and aesthetic centres). Clinic rules are education-only by policy.
 - **Rwandan ads are young**: most started in the last two weeks, so days running says little in Rwanda; the number of

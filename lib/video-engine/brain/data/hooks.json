@@ -77,13 +77,13 @@
     "type": "contact-first",
     "pattern": "{phone} (top or lower-middle, whole clip) over {product} in a hand",
     "visual": "Hands turn the product to show front and back; the phone or WhatsApp number is fixed on screen from the first frame to the last.",
-    "platforms": ["tiktok", "facebook"],
+    "platforms": ["tiktok", "facebook", "shorts"],
     "sectors": ["phone-shop", "shop", "car-rental", "fashion"],
     "formats": ["product-reveal", "tour"],
     "engines": ["claude", "seedance"],
     "needs": ["phone"],
-    "examples": ["+250 785 478 140", "Whatsapp/Call: 0796148484", "0761 487 464", "+256708735746 Retail and wholesale", "KIGALI RWANDA CAR HIRE / +250 78 233 6854 / WWW.KIGALIRWANDACARHIRE.COM"],
-    "evidence": ["tt-096", "fb-001", "fb-005", "tt-136", "tt-137", "fb-065"]
+    "examples": ["+250 785 478 140", "Whatsapp/Call: 0796148484", "0761 487 464", "+256708735746 Retail and wholesale", "KIGALI RWANDA CAR HIRE / +250 78 233 6854 / WWW.KIGALIRWANDACARHIRE.COM", "Nairobi Thrift shop(0757233779)"],
+    "evidence": ["tt-096", "fb-001", "fb-005", "tt-136", "tt-137", "fb-065", "yt-018", "yt-033"]
   },
   {
     "id": "offer-badge-day",
@@ -163,13 +163,13 @@
     "type": "pov",
     "pattern": "Me after {result}",
     "visual": "One full-sentence line at the top, white bold, over a person reacting.",
-    "platforms": ["tiktok", "instagram"],
+    "platforms": ["tiktok", "instagram", "shorts"],
     "sectors": ["any"],
     "formats": ["ugc-testimonial"],
     "engines": ["claude", "seedance"],
     "needs": [],
-    "examples": ["Me after checking my result and realizing I passed despite all the nonsense I wrote in the exam."],
-    "evidence": ["tt-055"],
+    "examples": ["Me after checking my result and realizing I passed despite all the nonsense I wrote in the exam.", "I'm a small business owner but I'm also a..."],
+    "evidence": ["tt-055", "yt-003"],
     "note": "Seen on an entertainment clip (446K likes), not an ad: a format idea, keep it light and true."
   },
   {
@@ -236,13 +236,13 @@
     "type": "reveal",
     "pattern": "{product} in macro: steam, a pull, a bite (price at the top)",
     "visual": "Food macro in the first second: steam, a cheese pull, a foil unwrap, a first bite by a real person.",
-    "platforms": ["tiktok", "facebook", "instagram"],
+    "platforms": ["tiktok", "facebook", "instagram", "shorts"],
     "sectors": ["restaurant"],
     "formats": ["product-reveal", "offer"],
     "engines": ["claude", "seedance"],
     "needs": [],
     "examples": ["Fish lovers!! This is your time to enjoy muhazi tilapia fish !!", "Mozzarella-stick cheese pull readable in under 1 s with no sound"],
-    "evidence": ["fb-004", "fb-006", "tt-094", "fb-039", "tt-090", "tt-014"]
+    "evidence": ["fb-004", "fb-006", "tt-094", "fb-039", "tt-090", "tt-014", "yt-032", "yt-031"]
   },
   {
     "id": "unwrap-reveal",
@@ -425,13 +425,13 @@
     "type": "list",
     "pattern": "{count} {product} you need / 1. ... 2. ... 3. ...",
     "visual": "Item 1 on screen at 0 s, one item per beat with a big number.",
-    "platforms": ["tiktok", "facebook", "instagram"],
+    "platforms": ["tiktok", "facebook", "instagram", "shorts"],
     "sectors": ["school", "shop", "services", "phone-shop"],
     "formats": ["list", "tutorial"],
     "engines": ["claude"],
     "needs": [],
-    "examples": ["1. Perfumes business", "4/20 Business ya products", "1. Build a portfolio", "English to Kinyarwanda"],
-    "evidence": ["tt-084", "tt-088", "tt-076", "fb-036"]
+    "examples": ["1. Perfumes business", "4/20 Business ya products", "1. Build a portfolio", "English to Kinyarwanda", "1. RWANDA", "5 reasons to invest in Rwanda"],
+    "evidence": ["tt-084", "tt-088", "tt-076", "fb-036", "yt-014"]
   },
   {
     "id": "dont-say-say",
@@ -524,13 +524,13 @@
     "type": "reveal",
     "pattern": "(a detail of {product} in the dark, then the whole product, then the name)",
     "visual": "Beat 1 a gold cap or a label edge in macro with a rim light; beat 2 the product in a set with a slow orbit; beat 3 the name on a clean card.",
-    "platforms": ["tiktok", "instagram"],
+    "platforms": ["tiktok", "instagram", "shorts"],
     "sectors": ["shop", "fashion", "phone-shop"],
     "formats": ["3d-motion", "product-reveal"],
     "engines": ["claude", "seedance"],
     "needs": [],
-    "examples": ["KAVALA 1997", "RELANCE", "EAU DE PARFUM"],
-    "evidence": ["tt-117", "tt-116", "tt-073", "tt-072"]
+    "examples": ["KAVALA 1997", "RELANCE", "EAU DE PARFUM", "Dior | SAUVAGE EAU DE PARFUM"],
+    "evidence": ["tt-117", "tt-116", "tt-073", "tt-072", "yt-005", "yt-022", "yt-024"]
   },
   {
     "id": "kinetic-phrase",
@@ -538,13 +538,13 @@
     "type": "bold-claim",
     "pattern": "{claim} (2 to 4 words per beat, the key word highlighted)",
     "visual": "Words pop in with overshoot or stomp on the beat between solid frames; one word per phrase in the highlight colour.",
-    "platforms": ["tiktok", "instagram"],
+    "platforms": ["tiktok", "instagram", "shorts"],
     "sectors": ["any"],
     "formats": ["kinetic-typography"],
     "engines": ["claude"],
     "needs": [],
-    "examples": ["that's my job", "ever had problem?", "WEAK CTAS: Losing poten...", "One single source of truth"],
-    "evidence": ["tt-120", "tt-124", "tt-127", "tt-125"]
+    "examples": ["that's my job", "ever had problem?", "WEAK CTAS: Losing poten...", "One single source of truth", "YOUR / COOKING / FOR / CHINA'S / INGREDIENTS", "LET US CREATE"],
+    "evidence": ["tt-120", "tt-124", "tt-127", "tt-125", "yt-002", "yt-025"]
   },
   {
     "id": "price-pill",
@@ -706,5 +706,76 @@
     "needs": ["offer"],
     "examples": ["FRIDAY UNLOCKED / BUY 4 GET 5 / 6PM-10PM / KICUKIRO, KN 432 opposite IPRC traffic lights", "EXPLORE THE WORLD / UP TO 35% OFF / BOOK NOW"],
     "evidence": ["fb-069", "fb-044"]
+  },
+  {
+    "id": "splash-hero",
+    "name": "The product in a splash",
+    "type": "reveal",
+    "pattern": "(no words, or one) {product} hit by a splash or flying ingredients",
+    "visual": "The can, bottle or tube in frame 0 with a splash or its ingredients flying round it on a colour that matches the label; the logo small.",
+    "platforms": ["shorts", "tiktok", "instagram"],
+    "sectors": ["shop", "restaurant"],
+    "formats": ["3d-motion", "product-reveal"],
+    "engines": ["claude", "seedance"],
+    "needs": [],
+    "examples": ["Fanta can with an orange splash", "a lime soda can with flying lime slices"],
+    "evidence": ["yt-026", "yt-021", "yt-007", "tt-118"],
+    "note": "Draw the label and the price as text over the picture; never let a generated image write them."
+  },
+  {
+    "id": "explode-reassemble",
+    "name": "Explode and reassemble",
+    "type": "reveal",
+    "pattern": "{product}: what is inside",
+    "visual": "The device floats on a dark floor glow, then its parts fly apart (screen, camera, battery) each with a two-word label, and lock back together.",
+    "platforms": ["shorts", "tiktok"],
+    "sectors": ["phone-shop"],
+    "formats": ["3d-motion"],
+    "engines": ["claude"],
+    "needs": [],
+    "examples": ["3D iPhone Disassembly: Product Concept Animation"],
+    "evidence": ["yt-023"]
+  },
+  {
+    "id": "menu-card-loop",
+    "name": "Menu card loop",
+    "type": "list",
+    "pattern": "{product} {price} | ORDER NOW (dish after dish)",
+    "visual": "A menu card with an 'ORDER NOW' button; the dish and its price slide to the next dish every 3 s and loop back.",
+    "platforms": ["shorts", "instagram", "facebook"],
+    "sectors": ["restaurant"],
+    "formats": ["list", "offer"],
+    "engines": ["claude"],
+    "needs": ["price"],
+    "examples": ["Super Delicious PIZZA | ORDER NOW | BBQ Chicken Pizza 470 $", "SHISH KKIAA 400 g $7.99"],
+    "evidence": ["yt-027", "yt-030"]
+  },
+  {
+    "id": "step-routine",
+    "name": "Step 1, 2, 3 (one verb each)",
+    "type": "list",
+    "pattern": "STEP 1 {claim} | STEP 2 {claim} | STEP 3 {claim}",
+    "visual": "The product on a coloured circle with 'STEP 1' typing in; one verb per step (CLEANSE, TREAT, NOURISH), then the result close-up.",
+    "platforms": ["shorts", "instagram", "tiktok"],
+    "sectors": ["salon", "shop", "services"],
+    "formats": ["list", "tutorial"],
+    "engines": ["claude"],
+    "needs": [],
+    "examples": ["STEP 1", "STEP 3 NOURISH NIGHT CREAM"],
+    "evidence": ["yt-028"]
+  },
+  {
+    "id": "door-open-walk",
+    "name": "Open the door, walk the shop",
+    "type": "reveal",
+    "pattern": "{business}, {area}",
+    "visual": "A hand pulls the door open into the bright shop; the shop name and the area on screen, then pans of the counter and the wall of stock.",
+    "platforms": ["shorts", "tiktok", "facebook"],
+    "sectors": ["phone-shop", "fashion", "shop"],
+    "formats": ["tour"],
+    "engines": ["seedance", "claude"],
+    "needs": [],
+    "examples": ["Jp mobiles and services | Duburi jajpur", "Big mobile store Samsung,Vivo,Realme,iPhone"],
+    "evidence": ["yt-035", "yt-036", "fb-003"]
   }
 ]

@@ -18,7 +18,7 @@
       "tiktok": [15, 25],
       "facebook": [15, 25],
       "instagram": [12, 20],
-      "shorts": [10, 20]
+      "shorts": [10, 15]
     },
     "cutsPer10s": [3, 5],
     "text": ["The first line on screen at 0.0 s, about 5 words, upper-middle.", "Spec words animate in one phrase at a time, white bold with an outline or in rounded boxes.", "Never more than 2 lines of text at once."],
@@ -26,8 +26,8 @@
     "music": "Upbeat and secondary to the voice; one whoosh or hit on the reveal.",
     "cta": "One route, named: 'WhatsApp {phone}', 'Call {phone}' or 'DM now before stock ends'.",
     "eastAfrica": ["The price and the phone number are on screen from second 0 to the last frame.", "Real hands, real shop shelves behind the product beat a blank studio for local trust.", "A full address or landmark (T2000 House, Room 213B) makes a small seller credible.", "Rwandan Facebook video ads run a median 34 s; for products and offers keep under 20 to 25 s."],
-    "hooks": ["price-banner", "demo-first", "number-in-hand", "spec-words", "now-available", "macro-rim-light", "counter-price-bar", "model-badge", "how-it-changes"],
-    "evidence": ["fb-011", "fb-005", "fb-012", "tt-071", "tt-096", "tt-098", "tt-100", "fb-024", "fb-063", "fb-049", "fb-072"]
+    "hooks": ["price-banner", "demo-first", "number-in-hand", "spec-words", "now-available", "macro-rim-light", "counter-price-bar", "model-badge", "how-it-changes", "splash-hero"],
+    "evidence": ["fb-011", "fb-005", "fb-012", "tt-071", "tt-096", "tt-098", "tt-100", "fb-024", "fb-063", "fb-049", "fb-072", "yt-005", "yt-026"]
   },
   {
     "id": "ugc-testimonial",
@@ -48,7 +48,7 @@
       "tiktok": [15, 25],
       "facebook": [20, 45],
       "instagram": [15, 25],
-      "shorts": [15, 30]
+      "shorts": [8, 20]
     },
     "cutsPer10s": [2, 4],
     "text": ["Word-by-word captions are always burned in; most people watch muted.", "Plain person-style words ('I found...', 'Nobody tells you...'), not slogans."],
@@ -78,7 +78,7 @@
       "tiktok": [14, 20],
       "facebook": [15, 25],
       "instagram": [12, 20],
-      "shorts": [12, 20]
+      "shorts": [10, 15]
     },
     "cutsPer10s": [3, 4],
     "text": ["The 'After' or 'Wait for it...' line is the only text in the first 2 s.", "Label Before and After plainly so a muted viewer follows."],
@@ -108,7 +108,7 @@
       "tiktok": [12, 20],
       "facebook": [15, 30],
       "instagram": [10, 20],
-      "shorts": [10, 20]
+      "shorts": [10, 15]
     },
     "cutsPer10s": [3, 4],
     "text": ["Little text during the reveal; the label and price come after it."],
@@ -137,7 +137,7 @@
       "tiktok": [16, 45],
       "facebook": [15, 60],
       "instagram": [15, 30],
-      "shorts": [15, 45]
+      "shorts": [13, 30]
     },
     "cutsPer10s": [2, 3],
     "text": ["Labels name each space; the price and the rooms are on screen in the first 3 s for property."],
@@ -145,8 +145,8 @@
     "music": "Calm, warm; the room's own sound for restaurants.",
     "cta": "'WhatsApp {phone}', the area, a landmark and the property ID if there is one.",
     "eastAfrica": ["Kigali buyers filter on district, sector and size first: put them in the first 3 s.", "The caption lists price in RWF, rooms, plot size, parking, the area and the number (Hills Props, Samkay).", "Rwandan property ads: a yellow price box top-right ('350M RWF', 'Price: 16M') and a Kinyarwanda checklist caption; 30 s with an agent on camera."],
-    "hooks": ["location-stack", "whip-in-tour", "local-greeting", "series-episode", "price-banner", "service-claim"],
-    "evidence": ["fb-007", "fb-029", "tt-108", "tt-109", "tt-111", "fb-001", "fb-003", "fb-067", "fb-068", "fb-062", "fb-065"]
+    "hooks": ["location-stack", "whip-in-tour", "local-greeting", "series-episode", "price-banner", "service-claim", "door-open-walk"],
+    "evidence": ["fb-007", "fb-029", "tt-108", "tt-109", "tt-111", "fb-001", "fb-003", "fb-067", "fb-068", "fb-062", "fb-065", "yt-035"]
   },
   {
     "id": "offer",
@@ -167,7 +167,7 @@
       "tiktok": [15, 20],
       "facebook": [15, 25],
       "instagram": [10, 20],
-      "shorts": [10, 20]
+      "shorts": [10, 15]
     },
     "cutsPer10s": [3, 4],
     "text": ["The offer is a solid badge that stays up; the same badge every week makes a series.", "A percentage always comes with the real price ('37.5% off: 5K')."],
@@ -196,16 +196,16 @@
       "tiktok": [12, 24],
       "facebook": [10, 30],
       "instagram": [10, 20],
-      "shorts": [10, 20]
+      "shorts": [8, 15]
     },
     "cutsPer10s": [3, 5],
     "text": ["Giant words are part of the scene (behind or beside the product).", "Even in 3D, the price label and the phone number appear for a Rwandan shop."],
     "voice": "Optional; short and premium.",
     "music": "Cinematic or a clean beat; hits on each colour change.",
     "cta": "The brand card, then the number and the route.",
-    "eastAfrica": ["Premium 3D clips earned fewer local likes (3K to 7K) than real shops with real people: use 3D for premium products, and keep the price and the number in the motion."],
-    "hooks": ["giant-word", "macro-rim-light", "demo-first"],
-    "evidence": ["tt-116", "tt-117", "tt-118", "tt-121", "tt-123", "fb-025", "tt-066", "tt-073"]
+    "eastAfrica": ["Premium 3D clips earned fewer local likes (3K to 7K) than real shops with real people: use 3D for premium products, and keep the price and the number in the motion.", "On YouTube Shorts the craft clips (3D products, splashes, motion graphics) collect the likes (5K to 32K) while shop footage gets few: the clearest opening for the motion engine there."],
+    "hooks": ["giant-word", "macro-rim-light", "demo-first", "splash-hero", "explode-reassemble"],
+    "evidence": ["tt-116", "tt-117", "tt-118", "tt-121", "tt-123", "fb-025", "tt-066", "tt-073", "yt-026", "yt-021", "yt-005", "yt-023"]
   },
   {
     "id": "kinetic-typography",
@@ -234,7 +234,7 @@
     "cta": "The last card is the route and the number.",
     "eastAfrica": ["Use for launches and offers; keep the price and number as words in the motion."],
     "hooks": ["kinetic-phrase", "direct-question", "bold-local-claim", "giant-word"],
-    "evidence": ["tt-120", "tt-124", "tt-125", "tt-126", "tt-127", "tt-118"]
+    "evidence": ["tt-120", "tt-124", "tt-125", "tt-126", "tt-127", "tt-118", "yt-025", "yt-002"]
   },
   {
     "id": "tutorial",
@@ -254,7 +254,7 @@
       "tiktok": [20, 60],
       "facebook": [30, 90],
       "instagram": [20, 45],
-      "shorts": [20, 45]
+      "shorts": [15, 30]
     },
     "cutsPer10s": [0, 2],
     "text": ["Captions box each sentence as it is said: the video must work muted.", "A red 'Don't say' and a green 'Say' is a before/after in one frame."],
@@ -282,7 +282,7 @@
       "tiktok": [8, 20],
       "facebook": [5, 20],
       "instagram": [8, 15],
-      "shorts": [8, 20]
+      "shorts": [10, 30]
     },
     "cutsPer10s": [5, 8],
     "text": ["A price label on every item; the number never leaves the frame.", "A full price list is a solid card that stays up long enough to read (or to screenshot)."],
@@ -290,7 +290,7 @@
     "music": "A quick beat; one tick per item.",
     "cta": "'Call / WhatsApp {phone}'.",
     "eastAfrica": ["Nairobi and Kampala sellers put a price on every product shot (150/=, KSH 35, 85,000) and keep the number on screen."],
-    "hooks": ["price-on-each", "price-list-card", "numbered-list", "occasion-title"],
-    "evidence": ["tt-101", "tt-132", "tt-134", "tt-138", "fb-023", "tt-084"]
+    "hooks": ["price-on-each", "price-list-card", "numbered-list", "occasion-title", "menu-card-loop", "step-routine"],
+    "evidence": ["tt-101", "tt-132", "tt-134", "tt-138", "fb-023", "tt-084", "yt-027", "yt-028", "yt-014"]
   }
 ]

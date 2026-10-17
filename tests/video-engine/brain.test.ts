@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { BRAIN, FORMATS, PLATFORMS, SECTORS, checkBrain, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
+import { BRAIN, FORMATS, PLATFORMS, RESEARCH_SOURCES, SECTORS, checkBrain, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
 import { evidenceFromRows, parseCount, parseDate, parseJsonl, rowKey, rowStrength, tiktokDate, variantsLive } from "@/lib/video-engine/brain/ingest";
-import { amounts, scoreDesign, scoreSeedancePrompt, type ScoreBrief } from "@/lib/video-engine/brain/score";
+import { amounts, scoreCaption, scoreDesign, scoreSeedancePrompt, type ScoreBrief } from "@/lib/video-engine/brain/score";
 import { CONTEXT_MAX_CHARS, ENGINE_SECONDS, brainBriefFromDesign, brainBriefFromPrompt, brainContext, brainFor, formatFromTemplate, scaleTimeline, sectorFromText } from "@/lib/video-engine/brain/select";
 import type { DesignBrief } from "@/lib/video-engine/designer";
 import { BUSINESS_KINDS, SEEDANCE_FORMATS, planSeedanceShots } from "@/lib/video-engine/seedance-brain";
@@ -31,7 +31,7 @@ describe("the brain database", () => {
   });
 
   it("every evidence row points at the researcher's row it came from", () => {
-    for (const source of ["tiktok", "facebook", "instagram"] as const) {
+    for (const source of RESEARCH_SOURCES) {
       const file = path.join(REELS, `${source}.jsonl`);
       const index = BRAIN.evidence.filter((e) => e.source === source);
       if (!fs.existsSync(file)) {
@@ -359,6 +359,48 @@ describe("scoring a Seedance prompt", () => {
     const rw = { ...brief, business: { ...brief.business, language: "Kinyarwanda" } };
     const prompt = planSeedanceShots({ ...brief }).prompt;
     expect(scoreSeedancePrompt(prompt, rw).failed.map((f) => f.id)).toContain("sound");
+  });
+});
+
+describe("scoring a caption", () => {
+  const brief: ScoreBrief = { business: { name: "Nova Phones", description: "Phone shop in Kigali", phone: "0788 300 400", language: "English" }, product: { name: "Samsung Galaxy A56", price: "420,000 RWF", usps: ["Cover and charger included"] } };
+  const good = "Samsung Galaxy A56 is here at Nova Phones 📱 420,000 RWF, cover and charger included. WhatsApp 0788 300 400 📍 Makuza Peace Plaza, Kigali";
+
+  it("a good TikTok caption passes every check", () => {
+    const r = scoreCaption(good, ["KigaliTikTok", "RwandaTikTok", "#KigaliBusiness", "fyp"], { ...brief, platform: "tiktok" });
+    expect(r.missed).toEqual([]);
+    expect(r.score).toBe(100);
+  });
+
+  it("a bad caption lists what it misses in plain English", () => {
+    const r = scoreCaption("BEST phones in town!!! Only 2 left, 50% off", ["fyp", "viral", "trending", "foryou", "explore", "tiktokshop", "xyzbca"], { ...brief, platform: "tiktok" });
+    const ids = r.failed.map((f) => f.id);
+    expect(ids).toEqual(expect.arrayContaining(["first-line", "caption-cta", "caption-phone", "caption-price", "caption-place", "hashtag-count", "hashtag-mix", "caption-do-not-copy", "caption-facts"]));
+    expect(r.score).toBeLessThan(25);
+    expect(r.missed.join(" ")).toContain("0788 300 400");
+    expect(r.failed.find((f) => f.id === "caption-do-not-copy")!.rule).toBe("no-made-up-superlative");
+  });
+
+  it("Facebook wants the number twice and 3 to 4 hashtags", () => {
+    const once = scoreCaption(good, ["Kigali", "KigaliRwanda", "Rwanda"], { ...brief, platform: "facebook" });
+    expect(once.failed.map((f) => f.id)).toEqual(["caption-phone-twice"]);
+    expect(scoreCaption(`${good}. Call 0788 300 400`, ["Kigali", "KigaliRwanda", "Rwanda"], { ...brief, platform: "facebook" }).failed).toEqual([]);
+    expect(scoreCaption(good, ["Kigali", "KigaliRwanda", "Rwanda", "phones", "samsung", "deals"], { ...brief, platform: "facebook" }).failed.map((f) => f.id)).toContain("hashtag-count");
+  });
+
+  it("a Kinyarwanda business gets a Kinyarwanda caption", () => {
+    const rw = { ...brief, business: { ...brief.business, language: "Kinyarwanda" }, platform: "facebook" };
+    const kin = "Samsung Galaxy A56 iraboneka kuri Nova Phones! Igiciro: 420,000 RWF. Hamagara cyangwa ukandikire kuri WhatsApp 0788 300 400. Turi i Kigali, Makuza Peace Plaza. Twandikire 0788 300 400.";
+    expect(scoreCaption(kin, ["Kigali", "KigaliRwanda", "Rwanda"], rw).failed.map((f) => f.id)).not.toContain("caption-language");
+    expect(scoreCaption(good, ["Kigali", "KigaliRwanda", "Rwanda"], rw).failed.map((f) => f.id)).toContain("caption-language");
+  });
+
+  it("a Short's title: the product first, under 100 characters, no 'subscribe'", () => {
+    const shorts = { ...brief, platform: "youtube" };
+    const title = "Samsung Galaxy A56 in Kigali: 420,000 RWF | Nova Phones WhatsApp 0788 300 400 #shorts #kigali";
+    expect(scoreCaption(title, [], shorts).failed).toEqual([]);
+    const ids = scoreCaption(`Wait till the end, you will not believe this: ${title} Subscribe for more!`, [], shorts).failed.map((f) => f.id);
+    expect(ids).toEqual(expect.arrayContaining(["first-line", "caption-length", "caption-do-not-copy"]));
   });
 });
 

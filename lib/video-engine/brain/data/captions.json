@@ -179,27 +179,52 @@
     },
     {
       "platform": "shorts",
-      "status": "interim",
-      "length": "A title line under 70 characters that names the product and the city, then the number.",
-      "mustInclude": ["the product and the city in the title", "the route to order", "2 to 3 hashtags"],
+      "status": "researched",
+      "length": "The Short's title is the caption: the promise or the number in the first 40 characters (what search shows), under 100 characters, a few hashtags at the end.",
+      "mustInclude": ["the promise, the number or the product name in the first 40 characters", "the shop name and the city (people search for them)", "the phone number in the title for a local shop", "1 to 3 hashtags at the end (#shorts and the city)"],
       "formulas": [
         {
-          "id": "shorts-title",
-          "name": "Title with city",
-          "pattern": "{product} in {city}: {offer} | {phone}",
-          "examples": ["Aquos Sense 7 available at MPS 📱Clean design + powerful performance"],
+          "id": "promise-number-title",
+          "name": "Promise or number first",
+          "pattern": "{count} reasons to {claim} / {product} in {city}: {offer}",
+          "examples": ["5 reasons to invest in Rwanda", "Turn your product into ads in seconds"],
           "sectors": ["any"],
-          "evidence": ["tt-100"]
+          "evidence": ["yt-014", "yt-008"]
+        },
+        {
+          "id": "shop-number-title",
+          "name": "Shop, city and number",
+          "pattern": "{business} {city} ({phone}) #shorts #{city}",
+          "examples": ["Nairobi Thrift shop(0757233779)🇰🇪 #kenya #nairobi"],
+          "sectors": ["shop", "fashion", "phone-shop"],
+          "evidence": ["yt-018"]
+        },
+        {
+          "id": "store-list-title",
+          "name": "The store and what it sells",
+          "pattern": "{business}: {product}, {product} | {area}",
+          "examples": ["Big mobile store Samsung,Vivo,Realme,iPhone #shorts"],
+          "sectors": ["phone-shop", "shop"],
+          "evidence": ["yt-035"]
+        },
+        {
+          "id": "series-title",
+          "name": "Series title",
+          "pattern": "{claim} - DAY {count} | {product}",
+          "examples": ["MAKING PRODUCT ADS IN BLENDER - DAY 8 | DIOR - SAUVAGE"],
+          "sectors": ["any"],
+          "evidence": ["yt-005"]
         }
       ],
       "hashtags": {
-        "count": [2, 3],
-        "practice": ["Interim: no Shorts research yet."],
-        "local": ["#kigali", "#rwanda"],
-        "examples": ["#kigali #rwanda #shorts"]
+        "count": [1, 3],
+        "practice": ["#shorts plus 1 or 2 city tags at the end of the title.", "Piles of hashtags (#viral #fyp #trending ...) are common on low-view Shorts."],
+        "local": ["#shorts", "#kigali", "#kigali_250", "#rwanda", "#visitrwanda"],
+        "examples": ["#visitrwanda #kigali_250", "#shorts"]
       },
-      "language": "As TikTok.",
-      "evidence": ["tt-100"]
+      "language": "English titles; Kinyarwanda shows up in auto-captions on Kigali city clips and in one lead-generation title (which is also the income-proof pattern the engine refuses).",
+      "evidence": ["yt-014", "yt-018", "yt-035", "yt-005", "yt-010", "yt-008"],
+      "findings": ["Median 15 s, range 8 to 51 s; 23 of 36 are 15 s or shorter; the most-liked (32K, 27K, 9.3K) are 10 s.", "None of the 36 says or writes 'subscribe': YouTube draws its own Subscribe button.", "Shorts have no ad button: the ad is a pointer (a number, a QR code, a name to search).", "Local shop Shorts put the phone number in the title."]
     }
   ],
   "tradeRoutes": [
@@ -242,6 +267,11 @@
       "id": "momo",
       "words": "Pay with MoMo",
       "when": "None of 51 Rwandan Facebook ads mentions MoMo: an opening. Only when the owner accepts MoMo."
+    },
+    {
+      "id": "qr",
+      "words": "Scan the QR code / search {business}",
+      "when": "YouTube Shorts have no ad button: end on a QR code, the number or the name to search."
     }
   ]
 }
