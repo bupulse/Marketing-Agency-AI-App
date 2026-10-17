@@ -390,6 +390,25 @@ company is left out (owner decision): `--skip "<name>"`, kept for every later ru
 read from the product name first, then its summary, then the business, so a real-estate agency's cleaning service
 counts as a service.
 
+**Seedance overlay** (BuPulse's text over a finished clip; `lib/video-engine/seedance-overlay.ts`,
+`lib/video-engine/video-source.ts`): a Seedance clip has clean frames, so the price, the number, the hook and the call
+to action are drawn on top by the motion engine. `seedanceOverlaySpec({ brief, clipUrl, prompt?, shots?, seconds? })`
+builds a MotionSpec with these parts:
+
+- **Scenes:** one scene per shot, all cuts, each with a full-frame `video` layer (`start` = where in the clip the scene
+  begins, `sound` = keep the clip's own audio). Shots under 1.2 s join a neighbour.
+- **Text:** the hook in the first 3 s (the Brain's best hook that the facts can fill), the price on the product shot,
+  the number on every scene and the call to action on the last. A calm template shows a small quiet number on its first
+  shot, then the bar.
+- **Placement and language:** everything is inside `safeAreaFor(platform)` (on Shorts the price, number and call to
+  action sit in the middle band), with sizes at or above the validator's 0.03, so `validateSpec` moves nothing. Text is
+  in Kinyarwanda for a Kinyarwanda business ("Kuri … gusa", "Duhamagare").
+
+`seedanceOverlayCaption(brief)` fills the Brain's caption formula and falls back to BuPulse's complete form; the one
+returned passes `scoreCaption` on TikTok, Instagram, Facebook and Shorts in English, French and Kinyarwanda.
+`VideoSource.open(url)` / `frameAt(ms)` gives the renderer the clip's frames: mp4box reads the sample table (npm
+`mp4box`, exact 2.4.1), WebCodecs decodes front to back from the nearest keyframe, and a small cache closes old frames.
+
 **Going live with Seedance** (the owner's steps; BytePlus console wording may differ slightly):
 
 1. Sign in at console.byteplus.com with the BuPulse account that has the prepaid pack.
