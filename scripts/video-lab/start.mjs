@@ -1,6 +1,8 @@
 // Starts the BuPulse Video Studio (docs/VIDEO_ENGINE.md): bundles the server, the pages and their scripts with esbuild
 // (the engine code in lib/video-engine is shared with the app), then runs the server on http://localhost:3100.
 // Run: npm run lab   (reads .env; the database must be the TEST project)
+// The build goes to video-lab/.build-next and replaces video-lab/.build only when every step worked. When a build fails
+// (an agent mid-edit in a shared file), the error is printed and the last good build starts, so the studio stays up.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -8,7 +10,8 @@ import { build } from "esbuild";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 process.chdir(root);
-const out = path.join(root, "video-lab/.build");
+const live = path.join(root, "video-lab/.build");
+const out = path.join(root, "video-lab/.build-next");
 const site = path.join(root, "video-lab/site");
 
 const TEST_PROJECT = "rzlcizxnhtfqminqkphp";
@@ -60,36 +63,56 @@ const CREATE_HEAD = {
   title1: `<h1><b data-i18n="create.h1a">Turn any product</b><span data-i18n="create.h1b">into ready to post video</span></h1>`,
 };
 
-await fs.rm(out, { recursive: true, force: true });
-await fs.mkdir(path.join(out, "pages"), { recursive: true });
-await fs.mkdir(path.join(out, "js"), { recursive: true });
-const common = { absWorkingDir: root, tsconfig: "tsconfig.json", bundle: true, logLevel: "warning", legalComments: "none" };
-await build({ ...common, entryPoints: ["video-lab/server.ts"], outfile: path.join(out, "server.mjs"), platform: "node", format: "esm", target: "node22", packages: "external" });
-await build({
-  ...common,
-  entryPoints: { site: "video-lab/site/client/site.ts", home: "video-lab/site/client/home.ts", create: "video-lab/site/client/create.ts", showcase: "video-lab/site/client/showcase.ts", pricing: "video-lab/site/client/pricing.ts", image: "video-lab/site/client/image.ts", model: "video-lab/site/client/model.ts", lab: "video-lab/client/app.ts" },
-  outdir: path.join(out, "js"),
-  platform: "browser",
-  format: "iife",
-  target: "chrome120",
-  minify: false,
-  sourcemap: "inline",
-});
-const layout = await fs.readFile(path.join(site, "layout.html"), "utf8");
-const fragment = async (name) => fs.readFile(path.join(site, "pages", `${name}.html`), "utf8");
-const fill = (text, values) => text.replace(/\{\{(\w+)\}\}/g, (all, k) => (k in values ? values[k] : all));
-const page = (content, p) => fill(layout, { title: esc(p.title), page: p.page, model: p.model ?? "", content, scripts: p.scripts.map((s) => `<script src="/js/${s}.js"></script>`).join("\n") });
-for (const [name, p] of Object.entries(PAGES)) {
-  const content = fill(await fragment(name), { ...CREATE_HEAD, modelInfo: "", modelCards });
-  await fs.writeFile(path.join(out, "pages", `${name}.html`), page(content, p));
+/** The whole build, into video-lab/.build-next. Throws on the first failure. */
+async function buildAll() {
+  await fs.rm(out, { recursive: true, force: true });
+  await fs.mkdir(path.join(out, "pages"), { recursive: true });
+  await fs.mkdir(path.join(out, "js"), { recursive: true });
+  const common = { absWorkingDir: root, tsconfig: "tsconfig.json", bundle: true, logLevel: "warning", legalComments: "none" };
+  await build({ ...common, entryPoints: ["video-lab/server.ts"], outfile: path.join(out, "server.mjs"), platform: "node", format: "esm", target: "node22", packages: "external" });
+  await build({
+    ...common,
+    entryPoints: { site: "video-lab/site/client/site.ts", home: "video-lab/site/client/home.ts", create: "video-lab/site/client/create.ts", showcase: "video-lab/site/client/showcase.ts", pricing: "video-lab/site/client/pricing.ts", image: "video-lab/site/client/image.ts", model: "video-lab/site/client/model.ts", lab: "video-lab/client/app.ts" },
+    outdir: path.join(out, "js"),
+    platform: "browser",
+    format: "iife",
+    target: "chrome120",
+    minify: false,
+    sourcemap: "inline",
+  });
+  const layout = await fs.readFile(path.join(site, "layout.html"), "utf8");
+  const fragment = async (name) => fs.readFile(path.join(site, "pages", `${name}.html`), "utf8");
+  const fill = (text, values) => text.replace(/\{\{(\w+)\}\}/g, (all, k) => (k in values ? values[k] : all));
+  const page = (content, p) => fill(layout, { title: esc(p.title), page: p.page, model: p.model ?? "", content, scripts: p.scripts.map((s) => `<script src="/js/${s}.js"></script>`).join("\n") });
+  for (const [name, p] of Object.entries(PAGES)) {
+    const content = fill(await fragment(name), { ...CREATE_HEAD, modelInfo: "", modelCards });
+    await fs.writeFile(path.join(out, "pages", `${name}.html`), page(content, p));
+  }
+  for (const m of MODELS) {
+    const values = { pill: pill(m), title1: title1(m), modelInfo: modelInfo(m) };
+    const [name, frag, scripts] = m.group === "image" ? [`image`, "image", ["image"]] : m.soon ? [`model-${m.id}`, "soon", ["model"]] : [`model-${m.id}`, "create", ["create"]];
+    const p = { title: `${m.name}: ${m.tagline}`, page: m.group === "image" ? "image" : "video", model: m.id, scripts };
+    await fs.writeFile(path.join(out, "pages", `${name}.html`), page(fill(await fragment(frag), values), p));
+  }
+  await fs.copyFile(path.join(site, "site.css"), path.join(out, "site.css"));
+  await fs.cp(path.join(site, "static"), path.join(out, "static"), { recursive: true }).catch(() => undefined);
+  await fs.copyFile(path.join(root, "video-lab/client/index.html"), path.join(out, "lab.html"));
 }
-for (const m of MODELS) {
-  const values = { pill: pill(m), title1: title1(m), modelInfo: modelInfo(m) };
-  const [name, frag, scripts] = m.group === "image" ? [`image`, "image", ["image"]] : m.soon ? [`model-${m.id}`, "soon", ["model"]] : [`model-${m.id}`, "create", ["create"]];
-  const p = { title: `${m.name}: ${m.tagline}`, page: m.group === "image" ? "image" : "video", model: m.id, scripts };
-  await fs.writeFile(path.join(out, "pages", `${name}.html`), page(fill(await fragment(frag), values), p));
+
+const exists = (p) => fs.access(p).then(() => true, () => false);
+try {
+  await buildAll();
+  // Swap in the new build only now that every step has worked.
+  await fs.rm(`${live}-old`, { recursive: true, force: true });
+  if (await exists(live)) await fs.rename(live, `${live}-old`);
+  await fs.rename(out, live);
+  await fs.rm(`${live}-old`, { recursive: true, force: true });
+} catch (error) {
+  console.log(`[lab] The build failed: ${error instanceof Error ? error.message : error}`);
+  if (!(await exists(path.join(live, "server.mjs")))) {
+    console.log("[lab] There is no earlier build to start. Fix the error above and run npm run lab again.");
+    process.exit(1);
+  }
+  console.log("[lab] Starting the last good build instead (the change above is not in it yet).");
 }
-await fs.copyFile(path.join(site, "site.css"), path.join(out, "site.css"));
-await fs.cp(path.join(site, "static"), path.join(out, "static"), { recursive: true }).catch(() => undefined);
-await fs.copyFile(path.join(root, "video-lab/client/index.html"), path.join(out, "lab.html"));
-await import(pathToFileURL(path.join(out, "server.mjs")).href);
+await import(pathToFileURL(path.join(live, "server.mjs")).href);
