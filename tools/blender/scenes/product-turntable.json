@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "title": "Phone turntable with a floating 3D title",
+  "canvas": { "ratio": "9:16", "quality": "540p", "fps": 24, "samples": 16 },
+  "duration": 4,
+  "seed": 11,
+  "background": {
+    "kind": "studio",
+    "colors": ["#14161c", "#3f6fd8"],
+    "floor": { "color": "#0b0c10", "reflect": 0.85 },
+    "light": { "preset": "studio", "intensity": 1, "rim": "#9cc2ff", "side": "left" }
+  },
+  "camera": { "move": "orbitRight", "intensity": 0.45, "ease": "inOut", "target": [0, 0, 1.9], "distance": 9, "height": 1.4, "lens": 50 },
+  "product": {
+    "image": "video-lab/data/photos/1160bafd-8ab9-45fe-83f3-51e27338f29d-1280.jpg",
+    "shape": "card", "height": 2.6, "position": [0, 0, 0.05], "radius": 0.06, "frame": "#f2f2f2",
+    "enter": "rise", "enterAt": 0, "enterFor": 0.9, "idle": "swing", "angle": 25, "spin": 0.5
+  },
+  "texts": [
+    { "text": "GALAXY A56", "font": "anton", "size": 0.62, "position": [0, -0.4, 3.55], "depth": 0.35, "bevel": 0.6,
+      "material": "chrome", "color": "#dfe6f0", "enter": "spinIn", "enterAt": 0.5, "enterFor": 1.0, "idle": "float" }
+  ],
+  "props": [],
+  "particles": [
+    { "kind": "dust", "count": 40, "colors": ["#cfe0ff"], "center": [0, 0.5, 2.5], "area": [7, 4, 5], "speed": 0.6 }
+  ],
+  "look": { "contrast": "medium", "exposure": 0, "bloom": 0.35 }
+}
