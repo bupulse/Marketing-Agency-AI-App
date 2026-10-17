@@ -60,7 +60,8 @@ describe("validateSpec", () => {
     expect(text.size).toBe(0.22);
     expect(text.text.length).toBeLessThanOrEqual(140);
     expect(text.animate).toBe("fade");
-    expect(text.x).toBe(1.5);
+    // Clamped to the canvas, then moved into the apps' safe area of a vertical video.
+    expect(text.x + text.w / 2).toBeLessThanOrEqual(0.93 + 1e-9);
     expect(spec.scenes[1].layers[0]).toMatchObject({ kind: "shape", shape: "rect" });
     expect(spec.scenes.every((s) => s.seconds >= 1.2 && s.seconds <= 8)).toBe(true);
   });

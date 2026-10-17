@@ -43,7 +43,7 @@ export const VIDEO_TEMPLATES: VideoTemplate[] = [
     direction: "Fresh and cool. Light blue and white gradients, many small circle shapes as bubbles rising (keyframes dy -0.4 over the scene, varied sizes, depth 0.2 to 0.9 so they parallax), blob shapes as splashes behind the product. Camera craneUp intensity 0.5. Look: cool grade, glow 0.4." }),
   // ---- Motion
   T({ id: "kinetic-type", category: "motion", name: "Bold words", blurb: "Huge words punch in on the beat; photos flash between them.", seconds: 10, hook: "bold-claim",
-    direction: "Kinetic typography. Short scenes (1.2 to 2 s) with 1 to 4 huge words (size 0.12 to 0.2) in Anton or Poppins 800, uppercase, wordsPop, pop or zoom. Alternate strong backgrounds, whip and flash transitions, crashZoom cameras on the words. Quick photo scenes between. Look: vivid, grain 0.2." }),
+    direction: "Kinetic typography. 4 to 6 scenes of 1.5 to 2.5 s with 1 to 4 huge words (size 0.12 to 0.2) in Anton or Poppins 800, uppercase, wordsPop, pop or zoom. Alternate strong backgrounds, whip and flash transitions, crashZoom cameras on the words. Quick photo scenes between. Look: vivid, grain 0.2." }),
   T({ id: "hypermotion", category: "motion", name: "Hypermotion", blurb: "Fast, glossy and dynamic, like Higgsfield's Hypermotion.", seconds: 12,
     direction: "Hyper-dynamic product motion. Every scene has a strong camera (crashZoom, orbitLeft/Right intensity 0.8, dutchRoll), whip and blurZoom transitions, the product rotating 10 to 20 degrees with ease back, speed lines (line shapes drawn in fast, depth 0.9). Glossy gradients from the brand colours. Look: vivid, glow 0.45, vignette 0.3." }),
   T({ id: "dark-minimal", category: "motion", name: "Dark minimal", blurb: "Black background, elegant serif, slow and luxurious.", seconds: 15,
@@ -93,7 +93,7 @@ export const VIDEO_TEMPLATES: VideoTemplate[] = [
   // ---- Posters & offers
   T({ id: "event-poster", category: "promo", name: "Event poster", blurb: "An animated event or launch poster: date, place, CTA.", seconds: 10,
     direction: "Animated poster. One strong composition built up over the video: title, big date and place (only if in the facts), product photo cut into a shape, bursts and lines. Each element animates in staggered; camera slow dollyIn on the whole poster. Look: vivid, grain 0.2." }),
-  T({ id: "price-drop", category: "promo", name: "Price drop", blurb: "Big price, big badge, countdown energy.", seconds: 8, hook: "price-reveal",
+  T({ id: "price-drop", category: "promo", name: "Price drop", blurb: "Big price, big badge, countdown energy.", seconds: 12, hook: "price-reveal",
     direction: "Price-led promo. The price huge in Anton inside a spinning burst, the product beside it, 'Limited stock' style urgency only if true in the facts. Flash and whip transitions, crashZoom, handheld shake 0.3. Look: vivid." }),
   // ---- Marketplace
   T({ id: "marketplace-listing", category: "marketplace", name: "Listing video", blurb: "Clean e-commerce listing: product, features, price, delivery.", seconds: 12,

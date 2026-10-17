@@ -58,6 +58,17 @@ describe("legible: the validator keeps text readable", () => {
   });
 });
 
+describe("safe area", () => {
+  it("text boxes move into the safe area of a vertical video; giant background words and wide videos are left alone", () => {
+    const [low, wide, giant] = check([text({ y: 0.9, h: 0.06 }), text({ x: 0.5, w: 1.2 }), text({ text: "NOVA", size: 0.4, depth: 0.2, y: 0.95, w: 1.4 })]);
+    expect(low).toMatchObject({ y: 0.79 });
+    expect(wide).toMatchObject({ w: 0.86, x: 0.5 });
+    expect(giant).toMatchObject({ y: 0.95, w: 1.4 });
+    const landscape = validateSpec({ palette: {}, scenes: [{ seconds: 3, background: {}, layers: [text({ y: 0.9, h: 0.06 })] }, { seconds: 3, background: {}, layers: [] }] }, { ratio: "16:9", photoCount: 0, seconds: 6 });
+    expect(landscape.scenes[0].layers[0]).toMatchObject({ y: 0.9 });
+  });
+});
+
 describe("fact check: list markers", () => {
   const facts = { business: { name: "Nova Phones Kigali" }, product: { name: "Samsung Galaxy A56", usps: ["Genuine with 12-month warranty"] } };
   const said = (say: string) => factCheck({ caption: "", scenes: [{ seconds: 3, background: { kind: "solid", colors: ["#000"] }, layers: [], say }] }, facts);

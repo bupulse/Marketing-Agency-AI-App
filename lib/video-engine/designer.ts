@@ -12,6 +12,7 @@ import { SpecError, extractJson, validateSpec } from "./validate";
 import { voiceLanguage } from "./voice-language";
 import { factCheck, type FactWarning } from "./factcheck";
 import { brainBriefFromDesign, brainContext } from "./brain/select";
+import { scoreDesign, type DesignScore } from "./brain/score";
 
 const MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 export const DESIGNER_MODEL = "claude-sonnet-5-5";
@@ -52,6 +53,8 @@ export type DesignBrief = {
    * docs/research/). Sent fenced as data; Claude follows it where it fits the facts.
    */
   research?: string | null;
+  /** Whether the video will get a voice-over (default true): the score then checks the say lines. */
+  voice?: boolean;
 };
 
 /** Platforms a video is made for: the part of the screen the app covers and the length that works there. */
@@ -59,7 +62,7 @@ export const PLATFORMS = {
   tiktok: "TikTok: the caption and buttons cover the bottom 20% and the right edge; keep text between y 0.12 and 0.78 and x 0.07 to 0.85. 15 to 25 seconds, a new shot or text change every 2 to 4 seconds.",
   instagram: "Instagram Reels: the caption covers the bottom 20%; keep text between y 0.12 and 0.78. 7 to 20 seconds works best; make the end flow back into the start (Reels loop).",
   facebook: "Facebook: direct response. Price or offer in the top third from the first frame, the phone or WhatsApp number on screen to the end; the bottom 15% is covered. 15 to 25 seconds, calmer cuts than TikTok.",
-  youtube: "YouTube Shorts: the title and buttons cover the bottom 25% and the right edge; keep text between y 0.1 and 0.75 and x 0.07 to 0.85. Up to 60 seconds; the first second must state the topic.",
+  youtube: "YouTube Shorts: the title, auto-captions, channel name and Subscribe button cover the top and the bottom 25% and the right edge; keep text between y 0.1 and 0.75 and x 0.07 to 0.85, and put the price, the phone number and the call to action in the middle band (y 0.3 to 0.7). The end card says the phone number or 'Contact us', never 'subscribe'. Up to 60 seconds; the first second must state the topic.",
 } as const;
 export type Platform = keyof typeof PLATFORMS;
 export const isPlatform = (v: unknown): v is Platform => typeof v === "string" && v in PLATFORMS;
@@ -77,8 +80,11 @@ export type DesignUsage = { model: string; inputTokens: number; outputTokens: nu
 
 /** One call to Claude: the API (default) or another way in, such as the Video Lab's Claude Code subscription. */
 export type ClaudeTransport = (call: { model: string; system: string; content: unknown[]; maxTokens: number }) => Promise<{ text: string; usage: DesignUsage; stop: string | null | undefined }>;
-/** `warnings`: numbers and claims in the design that the brief does not give (factcheck.ts), for the owner to check. */
-export type DesignResult = { spec: MotionSpec; usage: DesignUsage[]; costUsd: number; apiEquivalentUsd: number; attempts: number; warnings: FactWarning[] };
+/**
+ * `warnings`: numbers and claims in the design that the brief does not give (factcheck.ts), for the owner to check.
+ * `score`: the brain's checks of the design, 0 to 100, with what passed and failed (brain/score.ts).
+ */
+export type DesignResult = { spec: MotionSpec; usage: DesignUsage[]; costUsd: number; apiEquivalentUsd: number; attempts: number; warnings: FactWarning[]; score: DesignScore };
 
 export class DesignError extends Error {
   constructor(message: string, readonly usage: DesignUsage[] = []) {
@@ -96,7 +102,7 @@ export const SPEC_FORMAT = `type MotionSpec = {
   palette: { background: Hex; primary: Hex; accent: Hex; text: Hex };
   scenes: Scene[];                     // ${SPEC_LIMITS.minScenes} to ${SPEC_LIMITS.maxScenes} scenes
   music: "upbeat" | "calm" | "corporate" | "inspiring" | "afro" | "acoustic" | "warm" | "energetic" | null;
-  caption: string;                     // the social post text (2 to 4 short lines, a call to action, no hashtags)
+  caption: string;                     // the social post text (2 to 4 short lines: the price if given, a call to action with the phone or WhatsApp; no hashtags)
   hashtags: string[];                  // 4 to 8, without #
   look?: { grade?: ${GRADES.map((g) => `"${g}"`).join(" | ")}; grain?: number; vignette?: number; glow?: number; lightLeak?: number /*all 0-1*/; letterbox?: boolean };  // film look over the whole video
 };
@@ -146,6 +152,8 @@ export function systemPrompt(): string {
     "- 3D look (you are a 3D motion designer too): give scenes a key light (light) where it suits the mood; it shades 3D letters, turntables, glass and metal, and photos. Use text3d for big hooks, prices and end cards (1 to 4 words, size 0.1 or more, a side colour clearly darker than the text, bevel true; spin true for the hook) and keep body text flat. Pair text3d with an orbit or pan camera so its sides turn. Use turntable for a product photo with a plain or studio background (fit contain, dark or graded background so the floor reflection shows). Use cutout: true for product shots on plain backgrounds (the photos marked 'cut-out available'): the product floats on its own, on the turntable or with fit contain, over your background; never for photos of rooms, shops, streets or people. Particles add depth: bokeh far (depth 0.1 to 0.2), dust or sparkles near (0.7 to 1), confetti for launches and offers, bubbles for drinks and cosmetics; 15 to 50 is plenty. Glass suits feature cards and captions over rich backgrounds; metal suits small premium parts (a badge, a thin bar, a ring, a burst behind a price, at most about a quarter of the frame): a large metal panel looks like a grey or gold slab, never use one, and never put a metal or glass panel over the product photo. For a frame use a ring or thin bars (h 0.006 to 0.012); a ring goes around its text (its box holds the whole text block), never through it. Text on a metal or bright shape must contrast with it: on a gold or silver burst use dark text (or white text with a dark side colour), never gold or silver text. Fog (0.2 to 0.4) deepens dark scenes. Not every scene needs 3D: one or two strong 3D moments per video, unless the template is a 3D one.",
     "- Never overlap text and the product: a text box must end above the photo's box (text y + h/2 <= photo y - h/2) or start below it, and leave a gap of 0.02. This matters most for a turntable, which fills its whole box. Only captions with a box may sit over a full-bleed background photo.",
     "- Text over a photo background: dim the background 0.45 to 0.6 (more for gold, metal or light-coloured text) or put the text in a box, so it reads on any phone.",
+    "- Count the words of every say line: at most the scene's seconds times 2.5 (a 2-second scene: 5 words; 3 seconds: 7 words). A longer line makes the video longer than asked.",
+    "- At most 3 lines of text in a scene besides the price and the phone number; split more into another scene. The caption carries the price (if given) and the phone or WhatsApp number.",
     "- Voice-over: write a say line for every scene, in the voice-over language, spoken like a friendly advert (only facts from the brief). About 2.5 words per second of the scene (a 3-second scene: at most 7 words); the scene is stretched a little if the line is longer. The last line is the call to action. Write numbers the way people say them: phone numbers in groups (0788 300 400, not +250788300400), sizes and prices as they are spoken (6.7 inches, 420,000 francs).",
     "- Motion: every scene must move. Combine entrances (animate), keyframes (scale 0.92 to 1.05, small rotate, dx/dy drifts), slow zoomTo on photos, and varied transitions. Stagger layers with from (0, 0.1, 0.2...) so they arrive one after another.",
     "- Pacing: scenes of 1.5 to 4 seconds; the scene lengths should add up to the requested length. Transitions: match the energy (whip, flash and blurZoom for fast, fade and dip for calm).",
@@ -296,7 +304,9 @@ export async function designVideo(brief: DesignBrief, opts: { apiKey?: string; m
       const answered = rawSeconds(raw);
       const seconds = brief.mode === "edit" && brief.base ? answered || totalMs(brief.base) / 1000 : brief.mode === "extend" && brief.base ? totalMs(brief.base) / 1000 + brief.seconds : brief.seconds;
       const spec = validateSpec(raw, { ratio: brief.base?.ratio ?? brief.ratio, photoCount: brief.photos.length, seconds, fixedLens: brief.fixedLens });
-      return { spec, usage, costUsd: sum(usage), apiEquivalentUsd: apiSum(usage), attempts: attempt, warnings: factCheck(spec, brief) };
+      const warnings = factCheck(spec, brief);
+      const score = scoreDesign(spec, brief, { platform: brief.platform ?? null, voice: brief.voice ?? true });
+      return { spec, usage, costUsd: sum(usage), apiEquivalentUsd: apiSum(usage), attempts: attempt, warnings, score };
     } catch (error) {
       lastError = error instanceof SpecError ? error.message : "invalid answer";
       if (answer.stop === "max_tokens") lastError = "it was cut off because it was too long";

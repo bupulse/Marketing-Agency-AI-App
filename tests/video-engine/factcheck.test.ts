@@ -74,5 +74,12 @@ describe("fact check", () => {
     const result = await designVideo(brief, { apiKey: "k", fetchImpl: fetchImpl as unknown as typeof fetch });
     expect(result.warnings.map((w) => w.found)).toEqual(expect.arrayContaining(["50%", "brand new", "new"]));
     expect(systemPrompt()).toContain("A checker compares every text, say line and the caption with the brief");
+    // The brain's score comes with it: 0 to 100, what passed and what failed.
+    expect(result.score.score).toBeGreaterThanOrEqual(0);
+    expect(result.score.score).toBeLessThanOrEqual(100);
+    expect(result.score.passed.length + result.score.failed.length).toBeGreaterThan(0);
+    expect(result.score.failed.some((f) => f.id === "say-lines")).toBe(true);
+    const quiet = await designVideo({ ...brief, voice: false }, { apiKey: "k", fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(quiet.score.failed.some((f) => f.id === "say-lines")).toBe(false);
   });
 });

@@ -337,6 +337,29 @@ export function legible(input: Layer[]): Layer[] {
   });
 }
 
+/** Where the apps leave text visible on a vertical video (their captions and buttons cover the edges). */
+export const SAFE_TEXT_AREA = { top: 0.12, bottom: 0.82, left: 0.07, right: 0.93 } as const;
+const VERTICAL = new Set<Ratio>(["9:16", "3:4", "4:5"]);
+
+/**
+ * Moves text boxes into the safe area of a vertical video (the template sweep found contact lines at y 0.85 to 0.9,
+ * under TikTok's and Instagram's own captions). A giant background word (bigger than 0.22, cut by the frame edge on
+ * purpose) is left where it is. Stable: a moved box stays put on the next check.
+ */
+export function inSafeArea(layers: Layer[], ratio: Ratio): Layer[] {
+  if (!VERTICAL.has(ratio)) return layers;
+  const A = SAFE_TEXT_AREA;
+  const round = (n: number) => Math.round(n * 1000) / 1000;
+  return layers.map((l) => {
+    if (l.kind !== "text" || l.size > 0.22) return l;
+    const w = Math.min(l.w, round(A.right - A.left));
+    const h = Math.min(l.h, round(A.bottom - A.top));
+    const x = round(Math.min(A.right - w / 2, Math.max(A.left + w / 2, l.x)));
+    const y = round(Math.min(A.bottom - h / 2, Math.max(A.top + h / 2, l.y)));
+    return x === l.x && y === l.y && w === l.w && h === l.h ? l : { ...l, x, y, w, h };
+  });
+}
+
 /**
  * Repairs Claude's answer into a spec the renderer can always draw. Throws SpecError only when nothing usable is left
  * (no scenes). `photoCount` is how many photos the designer was given; `seconds` is the length that was asked for.
@@ -368,6 +391,8 @@ export function validateSpec(raw: unknown, opts: { ratio: Ratio; photoCount: num
       light: light(s.light),
     }));
   if (scenes.length < SPEC_LIMITS.minScenes) throw new SpecError("The design had too few scenes.");
+  const ratio = isRatio(raw.ratio) ? raw.ratio : opts.ratio;
+  for (const s of scenes) s.layers = inSafeArea(s.layers, ratio);
   fitLength(scenes, opts.seconds);
   return {
     version: 1,
