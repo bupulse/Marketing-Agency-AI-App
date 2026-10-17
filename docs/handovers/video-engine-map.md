@@ -89,3 +89,5 @@ brief.
 - App integration started on this branch: pure lib/video-engine/credits.ts and the Prisma migration
   20261022100000_video_studio (TEST database only). The app must use ANTHROPIC_API_KEY, never the subscription.
 - Guide pages 19 (Video Brain) and 20 (Video Studio), docs/SEEDANCE_KEY_DAY.md for the key day.
+
+- 14:20: TikTok showed a slider captcha in the researcher's tab (the shared Chrome on port 9334). The agents stopped browsing TikTok and did not touch it; the owner should clear the slider in that tab, or close it.
