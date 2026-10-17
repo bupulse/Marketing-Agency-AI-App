@@ -70,7 +70,7 @@ same again in `render.py`). Claude gets the short version, `BLENDER_SCENE_FORMAT
 | `canvas.samples` | 1 to 128 (16) | Eevee samples: render time grows with it; 16 is clean, 32 to 64 for finals |
 | `duration` | 1 to 15 s (4) | |
 | `seed` | integer (1) | the only source of randomness (particles): same scene, same video |
-| `background.kind` | studio, daylight, neon, gradient, solid (studio) | the set is always a round "infinite" studio sweep (floor curving into a wall), so the camera can orbit anywhere. studio: the dark showroom with a soft glow of the second colour behind the product; daylight: a bright set under a white sky with a brand-colour accent wall (7.5 x 8.2, rounded) behind the product; neon: a dark set with a neon arch behind the product and two neon tubes, in the second colour (see "Premium looks") |
+| `background.kind` | studio, daylight, neon, gradient, solid (studio) | the set is always a round "infinite" studio sweep (floor curving into a wall), so the camera can orbit anywhere. studio: the dark showroom with a soft glow of the second colour behind the product; daylight: a bright set under a white sky with a brand-colour accent wall (7.5 x 11, rounded) behind the product; neon: a dark set with a neon arch behind the product and two neon tubes, in the second colour (see "Premium looks") |
 | `background.colors` | [hex, hex] (#1a1d24, #3a4255) | studio: the backdrop and the glow; daylight: the light set and the accent wall; neon: the dark set and the neon colour; gradient: low and high wall colours; solid: one colour |
 | `background.floor.color` | hex (the first colour) | |
 | `background.floor.reflect` | 0 to 1 (0.55) | 0 = matte, 1 = mirror; 0.6 to 0.85 is the glossy studio floor |
@@ -202,14 +202,11 @@ The three looks:
 | Look | Set | Light | For |
 | --- | --- | --- | --- |
 | `studio` (dark showroom) | near-black sweep, a soft glow of the brand colour on the wall behind the product, mirror-like floor | key, fill, two rim strips, top softbox | phones, electronics, cosmetics, watches, luxury |
-| `daylight` | warm-white sweep under a white sky, a rounded accent wall in the brand colour behind the product, satin floor, white matte plinth | one big soft key (clear soft shadow), the sky as fill | homes, food, fashion, beauty, family and everyday products |
+| `daylight` | warm-white sweep under a white sky, a rounded accent wall (7.5 x 11) in the brand colour behind the product, satin floor, white matte plinth | one big soft key (clear soft shadow), the sky as fill | homes, food, fashion, beauty, family and everyday products |
 | `neon` | near-black sweep, a neon arch behind the product, two neon tubes and coloured light from them, mirror floor | dramatic, rim in the neon colour, bloom 0.4 | launches, offers, tech, fashion drops, young audiences |
 
-`lookForTemplate(templateId, productName)` recommends the look, and the brief tells Claude:
-- `neon` for title-drop, confetti/launch, hypermotion, glass cards, colour pop, offers and TikTok formats;
-- `daylight` for homes, food and fashion products, and for the market, golden-hour, marketplace, UGC and brand-story
-  templates;
-- `studio` otherwise.
+`lookForTemplate(templateId, productName)` recommends the look and the brief tells Claude (see "Looks per
+template" for the full list).
 
 **Staging repairs** (`stage`, every Claude scene, each listed in `warnings`):
 - The product stands on a plinth (a gloss dark one, or matte white in daylight; size = the product's width + 0.6,
@@ -311,6 +308,32 @@ and `showroom-turntable` (studio), and the Kibagabaga house (daylight). Claude o
   - The house flips through its 3 photos (garden, living room, pool).
   - Design: 19 to 23 s per clip, $0.091 to $0.102 on the API.
   - Render (540p final, 6 s): house 198 s, showroom 252 s, neon 274 s, dress 289 s, at load average 25 to 50.
+
+**Loop 5** (17 October 2026):
+- **The price is a flat plate too.** Every line on the plinth's front is now a flat plate in poppins bold. The price
+  is white with dark letters on dark sets, and the accent-wall colour with contrasting letters on daylight sets. It
+  sits above the phone bar, which is in the brand colour.
+- **Orbits end front-on.** An orbit now goes from its side to straight in front (the end of the move, 0.8 s before
+  the clip ends), so the labels on the plinth read straight in the final hold.
+- **Cut-outs reach 40 % too.** `fillFrame` also grows a cut-out. Its width comes from the cut-out PNG itself
+  (`BlenderPhoto.cutoutAspect`: the server passes it from the PNG's size, for example sharp's metadata of
+  `video-lab/data/cutouts/<id>.png`).
+- **Final contact sheet:** `video-lab/data/blender/design/r15/contact-sheet.jpg`; quick stills: `r14/sheet-stills.jpg`.
+
+## Looks per template
+
+`TEMPLATE_LOOKS` in `lib/video-engine/blender-design.ts` gives every engine template its Premium 3D look. A test
+checks that each template in `templates.ts` has one. `lookForTemplate(templateId, productName)` returns it, with one
+exception: homes, food and fashion products (house, room, dress, kitenge, shoes, bags, cake, coffee, juice...) get
+daylight unless the template is a neon one. `BLENDER_LOOK_NAMES` gives the name the site shows in the Premium 3D menu.
+
+| Look (`BLENDER_LOOK_NAMES`) | Templates |
+| --- | --- |
+| Neon (`neon`) | Bold words (`kinetic-type`), Hypermotion (`hypermotion`), Colour pop (`colour-pop`), 3D title drop (`3d-title-drop`), Glass cards (`glass-cards`), Launch party (`confetti-launch`), This saved me (`tiktok-gadget`), 3 reasons (`tiktok-3-reasons`), Secret hack (`tiktok-secret`), Offer flash (`offer-flash`), Kigali price-first (`kigali-price-first`), Event poster (`event-poster`), Price drop (`price-drop`) |
+| Daylight studio (`daylight`) | Studio turntable (`studio-turntable`), Fresh splash (`ice-splash`), Typography poster (`typography-poster`), Customer review (`ugc-review`), Unboxing (`ugc-unboxing`), POV moment (`ugc-pov`), Problem → fix (`ugc-before-after`), Brand story (`brand-story`), Listing video (`marketplace-listing`), Colour options (`colour-options`), Golden hour (`golden-hour`), Local market (`kigali-market`) |
+| Dark showroom (`studio`) | Product hero (`product-hero`), Macro details (`macro-detail`), Dark minimal (`dark-minimal`), Showroom turntable (`showroom-turntable`), Chrome luxury (`chrome-luxe`), Floating product reveal (`floating-product-reveal`), TV spot (`tv-spot`), Cinematic story (`story-cinematic`) |
+
+A template that is not in the table gets the dark showroom.
 
 ## Claude designs the scene (`lib/video-engine/blender-design.ts`)
 

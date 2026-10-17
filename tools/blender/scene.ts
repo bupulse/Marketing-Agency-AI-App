@@ -149,7 +149,12 @@ export interface BlenderScene {
 }
 
 /** A photo the designer was given: the photo and, when one was made, its cutout (transparent PNG). */
-export type BlenderPhoto = { image: string; cutout?: string | null };
+export type BlenderPhoto = {
+  image: string;
+  cutout?: string | null;
+  /** The cut-out PNG's width / height (it is trimmed to the product, so it differs from the photo's). */
+  cutoutAspect?: number | null;
+};
 
 export type NormalizeOptions = {
   /** The photos Claude may use, in order: `product.photo` 1 is the first. */

@@ -69,13 +69,58 @@ export function blenderSystemPrompt(): string {
   ].join("\n");
 }
 
-/** The look a template asks for: launches and drops in neon, homes, food, fashion and everyday products in daylight,
- * phones, electronics and luxury in the dark showroom. */
-export function lookForTemplate(templateId: string, productName = ""): "studio" | "daylight" | "neon" {
-  if (/title-drop|confetti|launch|hypermotion|glass-cards|colour-pop|tiktok|offer|price-drop/.test(templateId)) return "neon";
-  if (/house|home|apartment|plot|room|food|dress|fashion|kitenge|shoe|bag|cake|coffee|juice/i.test(productName)) return "daylight";
-  if (/kigali-market|golden-hour|marketplace|ugc|brand-story|ice-splash|colour-options/.test(templateId)) return "daylight";
-  return "studio";
+export const BLENDER_LOOK_NAMES = { studio: "Dark showroom", daylight: "Daylight studio", neon: "Neon" } as const;
+export type BlenderLook = keyof typeof BLENDER_LOOK_NAMES;
+
+/**
+ * The look each engine template gets in Premium 3D (docs/BLENDER.md, "Looks per template"): launches, offers, bold
+ * type and TikTok formats in neon; soft, natural and everyday templates in daylight; products, luxury and cinematic
+ * templates in the dark showroom. A test checks every template in templates.ts has an entry.
+ */
+export const TEMPLATE_LOOKS: Record<string, BlenderLook> = {
+  "product-hero": "studio",
+  "studio-turntable": "daylight",
+  "macro-detail": "studio",
+  "ice-splash": "daylight",
+  "kinetic-type": "neon",
+  hypermotion: "neon",
+  "dark-minimal": "studio",
+  "colour-pop": "neon",
+  "typography-poster": "daylight",
+  "3d-title-drop": "neon",
+  "showroom-turntable": "studio",
+  "glass-cards": "neon",
+  "chrome-luxe": "studio",
+  "confetti-launch": "neon",
+  "floating-product-reveal": "studio",
+  "ugc-review": "daylight",
+  "ugc-unboxing": "daylight",
+  "ugc-pov": "daylight",
+  "ugc-before-after": "daylight",
+  "tiktok-gadget": "neon",
+  "tiktok-3-reasons": "neon",
+  "tiktok-secret": "neon",
+  "offer-flash": "neon",
+  "kigali-price-first": "neon",
+  "tv-spot": "studio",
+  "brand-story": "daylight",
+  "event-poster": "neon",
+  "price-drop": "neon",
+  "marketplace-listing": "daylight",
+  "colour-options": "daylight",
+  "story-cinematic": "studio",
+  "golden-hour": "daylight",
+  "kigali-market": "daylight",
+};
+
+/** Products that look best in daylight whatever the template (unless the template is a neon one). */
+const DAYLIGHT_PRODUCTS = /\b(house|home|apartment|villa|plot|room|food|dress|fashion|kitenge|shoes?|bags?|cake|coffee|juice|restaurant|garden)\b/i;
+
+/** The look for a template and product: the template's look; daylight for homes, food and fashion unless it is neon. */
+export function lookForTemplate(templateId: string, productName = ""): BlenderLook {
+  const look = TEMPLATE_LOOKS[templateId] ?? "studio";
+  if (look !== "neon" && DAYLIGHT_PRODUCTS.test(productName)) return "daylight";
+  return look;
 }
 
 /** The user message: the motion engine's brief (business, product, photos, template, research), plus the 3D frame size. */
@@ -208,7 +253,8 @@ function repair(scene: BlenderScene, brief: DesignBrief, seconds: number, opts: 
     }
   }
   const photo = scene.product?.photo ? brief.photos[scene.product.photo - 1] : undefined;
-  const aspect = stage(scene, brief, photo && photo.height ? photo.width / photo.height : 1, warnings, opts.photos);
+  const cutAspect = scene.product?.cutout && scene.product.photo ? opts.photos?.[scene.product.photo - 1]?.cutoutAspect : null;
+  const aspect = stage(scene, brief, cutAspect || (photo && photo.height ? photo.width / photo.height : 1), warnings, opts.photos);
   fitLayout(scene, aspect, warnings);
   fillFrame(scene, aspect, warnings);
   // fitLayout runs once per size step: keep each repair once.
@@ -381,6 +427,19 @@ export function stage(scene: BlenderScene, brief: DesignBrief, aspect: number, w
   const front = round2(plinth.position[1] - plinth.size / 2 - 0.12);
   let top = 0.05;
   const low = scene.texts.filter((t) => t.position[2] < p.position[2] + p.height / 2).sort((a, b) => Number(!!b.plate) - Number(!!a.plate) || a.position[2] - b.position[2]);
+  // The price (and any other line on the plinth) is a flat plate too, so it reads on a dark plinth: white with dark
+  // letters on dark sets, the accent colour on daylight sets.
+  for (const t of low) {
+    if (t.plate) continue;
+    t.plate = look === "daylight" ? scene.background.colors[1] : "#ffffff";
+    t.color = lightness(t.plate) < 0.55 ? "#ffffff" : "#111111";
+    t.font = t.font === "anton" ? "poppins" : t.font;
+    t.weight = "bold";
+    t.size = round2(Math.min(0.55, Math.max(0.42, t.size)));
+    t.depth = 0;
+    t.bevel = 0;
+    warnings.push(`"${t.text}" is a flat plate so it reads on the plinth.`);
+  }
   for (const t of low) {
     const h = t.plate ? textHeight(t) + 0.45 * t.size : textHeight(t);
     const z = Math.max(top + h / 2, t.plate ? 0 : t.position[2]);
@@ -427,12 +486,12 @@ export function wrapInTwo(text: string): string {
 }
 
 /**
- * A photo card fills at least 40 % of the frame's height, even at the widest moment of the camera move: the product
+ * The product (a photo card or a cut-out) fills at least 40 % of the frame's height, even at the widest moment of the camera move: the product
  * grows (the title moves up with it and the camera steps back if it must), a few times until it settles.
  */
 export function fillFrame(scene: BlenderScene, aspect: number, warnings: string[]): void {
   const p = scene.product;
-  if (!p || p.cutout) return;
+  if (!p) return;
   const cam = scene.camera;
   const f = framePerDistance(scene.canvas.ratio);
   for (let i = 0; i < 4; i++) {
@@ -442,7 +501,7 @@ export function fillFrame(scene: BlenderScene, aspect: number, warnings: string[
     p.height = round2(Math.min(5, (p.height * 0.42) / share));
     const plinth = scene.props.find((pr) => pr.kind === "plinth");
     if (plinth && plinth.size < p.height * aspect + 0.3) plinth.size = round2(p.height * aspect + 0.3);
-    if (i === 0) warnings.push("The photo card is bigger: it fills at least 40 % of the frame.");
+    if (i === 0) warnings.push(`The ${p.cutout ? "cut-out" : "photo card"} is bigger: it fills at least 40 % of the frame.`);
     fitLayout(scene, aspect, warnings);
   }
 }

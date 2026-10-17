@@ -1,8 +1,9 @@
 // Premium 3D design (docs/BLENDER.md): Claude writes a Blender scene from the brief. Claude is mocked here.
 import { describe, expect, it } from "vitest";
-import { blenderBriefText, blenderSystemPrompt, designBlenderScene, fillFrame, fitLayout, fixSpelling, lookForTemplate, phoneLabel, stage, textHeight, textWidth, wrapInTwo } from "@/lib/video-engine/blender-design";
+import { BLENDER_LOOK_NAMES, TEMPLATE_LOOKS, blenderBriefText, blenderSystemPrompt, designBlenderScene, fillFrame, fitLayout, fixSpelling, lookForTemplate, phoneLabel, stage, textHeight, textWidth, wrapInTwo } from "@/lib/video-engine/blender-design";
 import { DesignError, type ClaudeTransport, type DesignBrief } from "@/lib/video-engine/designer";
 import { normalizeBlenderScene } from "@/tools/blender/scene";
+import { VIDEO_TEMPLATES } from "@/lib/video-engine/templates";
 
 const brief: DesignBrief = {
   business: { name: "Nova Phones Kigali", language: "English", colors: ["#0b5fff", "#f4b400"], phone: "+250 788 300 400" },
@@ -243,7 +244,7 @@ describe("premium staging", () => {
     const warnings: string[] = [];
     stage(scene, brief, 1, warnings);
     fitLayout(scene, 1, warnings);
-    const bar = scene.texts.find((t) => t.plate)!;
+    const bar = scene.texts.find((t) => t.text.includes("+250"))!;
     expect(bar).toMatchObject({ plate: "#0b5fff", font: "poppins", weight: "regular", depth: 0, color: "#ffffff" });
     expect(bar.size).toBeLessThanOrEqual(0.4);
     const plinth = scene.props.find((p) => p.kind === "plinth")!;
@@ -253,6 +254,8 @@ describe("premium staging", () => {
     expect(bar.position[1]).toBeLessThanOrEqual(-plinth.size / 2 - 0.12 + 1e-9);
     expect(bar.text).toBe("Call +250 788 300 400");
     expect([bar.face, price.face]).toEqual([0, 0]);
+    // On a dark plinth the price is a white plate with dark letters.
+    expect(price).toMatchObject({ plate: "#ffffff", color: "#111111", depth: 0 });
     expect(price.position[2] - textHeight(price) / 2).toBeGreaterThan(bar.position[2]);
     expect(price.position[2] + textHeight(price) / 2).toBeLessThanOrEqual(scene.product!.position[2] + 1e-9);
   });
@@ -261,7 +264,9 @@ describe("premium staging", () => {
     const scene = raw({ background: { kind: "daylight", colors: ["#f4f1ec", "#2f6b4f"] } });
     stage(scene, { ...brief, business: { ...brief.business, colors: ["#ffd84d"] } }, 1, []);
     expect(scene.props.find((p) => p.kind === "plinth")).toMatchObject({ material: "matte", color: "#ffffff" });
-    expect(scene.texts.find((t) => t.plate)).toMatchObject({ plate: "#ffd84d", color: "#111111" });
+    expect(scene.texts.find((t) => t.text.includes("+250"))).toMatchObject({ plate: "#ffd84d", color: "#111111" });
+    // The price: a plate in the accent wall's colour with contrasting letters.
+    expect(scene.texts.find((t) => t.text === "420,000 RWF")).toMatchObject({ plate: "#2f6b4f", color: "#ffffff", depth: 0, weight: "bold" });
   });
 
   it("keeps a fixed lens still and the neon glow stronger", () => {
@@ -353,5 +358,34 @@ describe("loop 4: photo cards, labels, the accent wall", () => {
     expect(phoneLabel(brief)).toBe("Call");
     expect(phoneLabel({ ...brief, product: { ...brief.product, usps: ["Order on WhatsApp"] } })).toBe("WhatsApp");
     expect(phoneLabel({ ...brief, business: { ...brief.business, language: "rw" } })).toBe("Hamagara");
+  });
+});
+
+describe("loop 5: looks per template, cut-outs fill the frame", () => {
+  it("has a look for every engine template, with a name the site can show", () => {
+    for (const t of VIDEO_TEMPLATES) {
+      expect(TEMPLATE_LOOKS[t.id], t.id).toBeDefined();
+      expect(BLENDER_LOOK_NAMES[lookForTemplate(t.id)]).toMatch(/showroom|Daylight|Neon/);
+    }
+    expect(lookForTemplate("confetti-launch", "Kitenge summer dress")).toBe("neon");
+    expect(lookForTemplate("chrome-luxe", "Kitenge summer dress")).toBe("daylight");
+    expect(lookForTemplate("golden-hour")).toBe("daylight");
+    expect(lookForTemplate("dark-minimal")).toBe("studio");
+    expect(lookForTemplate("unknown-template")).toBe("studio");
+  });
+
+  it("grows a cut-out to 40 % of the frame too, using the cut-out's own shape", () => {
+    const photos = [{ image: "/p/1.jpg", cutout: "/p/1.png", cutoutAspect: 0.55 }];
+    const s1 = normalizeBlenderScene(
+      { background: { kind: "daylight", colors: ["#f4f1ec", "#e84a7f"] }, camera: { move: "orbitRight", intensity: 0.35, distance: 13 }, product: { photo: 1, height: 2.8, position: [0, 0, 0.95] }, texts: [{ text: "Kitenge", size: 0.9, position: [0, -0.3, 4.3] }] },
+      { photos },
+    ).scene;
+    const warnings: string[] = [];
+    const aspect = stage(s1, { ...brief, photos: [brief.photos[0]] }, 0.55, warnings, photos);
+    fitLayout(s1, aspect, warnings);
+    fillFrame(s1, aspect, warnings);
+    expect(s1.product!.more).toEqual([]);
+    expect(s1.product!.height / (0.72 * s1.camera.distance)).toBeGreaterThanOrEqual(0.399);
+    expect(warnings.join(" ")).toMatch(/cut-out is bigger/);
   });
 });

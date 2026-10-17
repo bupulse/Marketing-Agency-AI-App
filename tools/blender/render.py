@@ -689,7 +689,7 @@ def setup_set(bg, target, duration, fps, frames):
         wall_m, wb = principled("AccentWall", c1, roughness=0.85)
         wb.inputs["Specular IOR Level"].default_value = 0.2
         edge_m, _ = principled("AccentEdge", c1, roughness=0.6)
-        wall = slab("AccentWall", 7.5, 8.2, 0.12, 0.3, wall_m, edge_m)
+        wall = slab("AccentWall", 7.5, 11.0, 0.12, 0.3, wall_m, edge_m)
         wall.location = (0, 3.4, 0)
     if bg["kind"] == "neon":
         tube = principled("Neon", "#000000", emission=c1, strength=12)[0]
@@ -829,10 +829,11 @@ def camera_at(c, u):
     d, h, lens, az = c["distance"], c["height"], c["lens"], 0.0
     mv = c["move"]
     half = math.radians(8 + 42 * I)
+    # Orbits end front-on, so the labels on the plinth's front read straight in the final hold.
     if mv == "orbitRight":
-        az = -half + 2 * half * e
+        az = -half + half * e
     elif mv == "orbitLeft":
-        az = half - 2 * half * e
+        az = half - half * e
     elif mv == "dollyIn":
         d = d * (1 + 0.55 * I) + (d * (1 - 0.12 * I) - d * (1 + 0.55 * I)) * e
     elif mv == "dollyOut":
