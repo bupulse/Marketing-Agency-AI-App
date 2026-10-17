@@ -571,7 +571,7 @@ export function planSeedanceShots(brief: SeedanceBrief): SeedancePlan {
   const presenterText = personImg ? `the presenter from Image ${personImg.n}` : brief.presenter?.trim() || t.cast || "a friendly fictional adult";
   if (!images.length && !placeFirst) notes.push(`No product photo: Seedance will imagine the ${product} from the words. Add a photo as Image 1 so it looks exactly like yours.`);
   if (t.presenter && !personImg && !brief.presenter) notes.push("The presenter is a fictional person described in words, so the face changes between clips. Pick a digital character from the library for the same face every time.");
-  if (personImg && !/asset:/i.test(personImg.label)) notes.push(`Image ${personImg.n} shows a person: BytePlus refuses photos with real-looking faces. Use a digital character from the library (asset://...) instead.`);
+  if (personImg && !/asset:|digital character/i.test(personImg.label)) notes.push(`Image ${personImg.n} shows a person: BytePlus refuses photos with real-looking faces. Use a digital character from the library (asset://...) instead.`);
 
   // Beats: drop optional ones first, then from the middle, so each shot has about 2 s or more.
   // About one shot per 2.5 to 3 s (the TikTok research: a cut every 2-3 s).
