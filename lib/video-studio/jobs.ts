@@ -79,6 +79,8 @@ export type VideoJobView = {
   videoPath: string | null;
   /** Whether the owner asked for a voice-over (the MP4 step then records it). */
   voice: boolean;
+  /** The library track in the MP4 (its title, and the credit line its licence asks for, if any). */
+  music: { trackId: string; title: string; credit: string | null } | null;
   createdAt: string;
 };
 
@@ -104,7 +106,13 @@ export async function designUnavailable(env: Record<string, string | undefined> 
   return null;
 }
 
-export type JobRow = { id: string; status: string; engine: string; spec: unknown; caption: string; hashtags: string[]; warnings: unknown; score: unknown; captionScore: unknown; credits: number; error: string | null; parentId: string | null; productId?: string | null; templateId?: string | null; platform?: string | null; ratio?: string; seconds?: number; videoPath?: string | null; brief?: unknown; createdAt: Date };
+export type JobRow = { id: string; status: string; engine: string; spec: unknown; caption: string; hashtags: string[]; warnings: unknown; score: unknown; captionScore: unknown; credits: number; error: string | null; parentId: string | null; productId?: string | null; templateId?: string | null; platform?: string | null; ratio?: string; seconds?: number; videoPath?: string | null; brief?: unknown; music?: unknown; createdAt: Date };
+
+function musicOf(v: unknown): VideoJobView["music"] {
+  const m = v as { trackId?: unknown; title?: unknown; attribution?: unknown; owned?: unknown } | null | undefined;
+  if (!m || typeof m.trackId !== "string" || typeof m.title !== "string") return null;
+  return { trackId: m.trackId, title: m.title, credit: m.owned === false && typeof m.attribution === "string" && m.attribution.trim() ? m.attribution : null };
+}
 
 export const view = (j: JobRow): VideoJobView => ({
   id: j.id,
@@ -126,6 +134,7 @@ export const view = (j: JobRow): VideoJobView => ({
   seconds: j.seconds ?? 15,
   videoPath: j.videoPath ?? null,
   voice: (j.brief as { voice?: unknown } | null | undefined)?.voice !== false,
+  music: musicOf(j.music),
   createdAt: j.createdAt.toISOString(),
 });
 

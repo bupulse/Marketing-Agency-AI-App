@@ -84,6 +84,7 @@ const finishSchema = z.object({
   name: z.string().min(1).max(120),
   width: z.number().int().positive().nullable(),
   height: z.number().int().positive().nullable(),
+  musicTrackId: z.string().min(1).max(40).nullish(),
 });
 
 /** Confirms the uploaded MP4: it goes into the Gallery's "Video Studio" folder and the video is ready. */

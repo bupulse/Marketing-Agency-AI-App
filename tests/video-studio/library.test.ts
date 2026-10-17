@@ -5,7 +5,15 @@ const prisma = vi.hoisted(() => ({
   videoJob: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
   mediaAsset: { findMany: vi.fn() },
   mediaFolder: { findUnique: vi.fn() },
+  musicTrack: { findUnique: vi.fn() },
 }));
+const music = vi.hoisted(() => ({
+  activeTracks: vi.fn(async () => [
+    { id: "t1", title: "Kigali Sunrise", moods: ["upbeat"], attribution: "", licence: "Original — generated with ElevenLabs Music for BuPulse (commercial use, paid plan)", path: "t1.mp3", url: "https://pub.test/music/t1.mp3" },
+    { id: "t2", title: "Night Market", moods: ["afro"], attribution: "Music by A. Artist (CC BY 4.0)", licence: "CC BY 4.0", path: "t2.mp3", url: "https://pub.test/music/t2.mp3" },
+  ]),
+}));
+vi.mock("@/lib/music/service", () => music);
 const media = vi.hoisted(() => {
   class MediaError extends Error {}
   return {
@@ -26,7 +34,7 @@ vi.mock("@/lib/video-studio/brief", () => ({
   loadBriefFacts: vi.fn(async () => ({ productId: "p1", business: { name: "Nova Phones Kigali", phone: "+250 788 300 400", language: "English", country: "Rwanda" }, product: { name: "Samsung Galaxy A56", price: "420,000 RWF", usps: ["Genuine"] } })),
 }));
 
-import { jobForDrawing, listStudioJobs, openingLines, prepareJobVideo, saveJobVideo, STUDIO_FOLDER } from "@/lib/video-studio/library";
+import { jobForDrawing, listStudioJobs, openingLines, prepareJobVideo, saveJobVideo, STUDIO_FOLDER, studioTracks } from "@/lib/video-studio/library";
 import { VideoStudioError } from "@/lib/video-studio/jobs";
 
 const SPEC = { ratio: "9:16", scenes: [{ seconds: 5, layers: [] }] };
@@ -93,6 +101,27 @@ describe("the Create page's library", () => {
     expect(media.finalizeUpload).toHaveBeenCalledWith(ctx, { path: "u1/clips/x.mp4", name: "Samsung Galaxy A56 - Product hero", destination: "folder:f1", width: 1080, height: 1920 });
     expect(prisma.videoJob.update.mock.calls[0][0]).toMatchObject({ where: { id: "j1" }, data: { status: "ready", videoPath: "u1/clips/x.mp4", posterPath: "u1/clips/x-poster.jpg", bytes: 5_000_000, durationMs: 15_000 } });
     expect(out.job).toMatchObject({ status: "ready", videoUrl: "https://signed.test/u1/clips/x.mp4", posterUrl: "https://signed.test/poster" });
+  });
+
+  it("music: the library's tracks with their public files, and a credit only where the licence asks for one", async () => {
+    expect(await studioTracks()).toEqual([
+      { id: "t1", title: "Kigali Sunrise", moods: ["upbeat"], url: "https://pub.test/music/t1.mp3", attribution: null },
+      { id: "t2", title: "Night Market", moods: ["afro"], url: "https://pub.test/music/t2.mp3", attribution: "Music by A. Artist (CC BY 4.0)" },
+    ]);
+    music.activeTracks.mockRejectedValueOnce(new Error("db down"));
+    expect(await studioTracks()).toEqual([]);
+  });
+
+  it("the track mixed into the MP4 is read from the library and kept on the job, with its credit line", async () => {
+    prisma.videoJob.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => row({ ...data }));
+    prisma.musicTrack.findUnique.mockResolvedValue({ id: "t2", title: "Night Market", attribution: "Music by A. Artist (CC BY 4.0)", licence: "CC BY 4.0" });
+    const out = await saveJobVideo(ctx, "j1", { path: "u1/clips/x.mp4", destination: "folder:f1", name: "n", width: 1080, height: 1920, musicTrackId: "t2" });
+    expect(prisma.videoJob.update.mock.calls[0][0].data.music).toEqual({ trackId: "t2", title: "Night Market", attribution: "Music by A. Artist (CC BY 4.0)", owned: false });
+    expect(out.job.music).toEqual({ trackId: "t2", title: "Night Market", credit: "Music by A. Artist (CC BY 4.0)" });
+    // No music (or a track that is gone): the column is cleared.
+    prisma.musicTrack.findUnique.mockResolvedValue(null);
+    const none = await saveJobVideo(ctx, "j1", { path: "u1/clips/x.mp4", destination: "folder:f1", name: "n", width: 1080, height: 1920, musicTrackId: "gone" });
+    expect(none.job.music).toBeNull();
   });
 
   it("does not put a photo on a job as its video", async () => {

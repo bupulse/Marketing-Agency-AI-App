@@ -66,7 +66,16 @@ Provisional; the owner may change them.
       needs.
     - **Actions:** `app/dashboard/video/actions.ts` (`content` permission, `videoStudio` feature);
       `lib/video-studio/library.ts`.
-    - **Not yet:** music; the live preview; edit and extend; scheduling (task 7).
+    - **Not yet:** the live preview; edit and extend; scheduling (task 7).
+  - Music: a picker on each design (the library's active tracks, `lib/video-studio/library.ts` `studioTracks`).
+    - **Default:** the track matching the design's mood (`pickTrack` with `spec.music`, varied by the job), any track,
+      or no music; a short preview plays in the card.
+    - **Mixing:** the browser mixes it into the MP4 with `encodeSpecMp4`'s `musicUrl`, under the voice. Free. The
+      `music` bucket is public, so the file's public URL (`musicUrl`) is used, as the content videos do; there is no
+      signed link.
+    - **Credit line:** the track is read from the library when the MP4 is saved and kept in the new `VideoJob.music`
+      (`{ trackId, title, attribution, owned }`, migration `20261023100000_video_job_music`). Scheduling (task 7)
+      then adds the credit line its licence asks for (`withMusicCredit`).
   - Voice-over: **`POST /api/video/jobs/<id>/voice`** (`lib/video-studio/voice.ts`).
     - **What it does:** speaks the design's `say` lines in the company's voice (the content settings' voice) through
       `lib/ai/tts.ts` and `withLedger` (`video-voice`, so the ElevenLabs switch).

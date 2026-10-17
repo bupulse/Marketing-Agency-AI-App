@@ -1,5 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/lib/generated/prisma/client";
+import { activeTracks } from "@/lib/music/service";
+import { isOwnedLicence } from "@/lib/music/tracks";
 import { createFolder, finalizeUpload, MediaError, prepareUploads, signedUrls, type MediaItem, type UploadTarget } from "@/lib/media/service";
 import { suggestHooks, type HookSuggestion } from "@/lib/video-engine/brain/suggest";
 import type { Platform } from "@/lib/video-engine/designer";
@@ -21,13 +24,22 @@ type Ctx = { userId: string; businessId: string };
 
 export type StudioJob = VideoJobView & { videoUrl: string | null; posterUrl: string | null };
 
-const JOB_SELECT = { id: true, status: true, engine: true, spec: true, caption: true, hashtags: true, warnings: true, score: true, captionScore: true, credits: true, error: true, parentId: true, productId: true, templateId: true, platform: true, ratio: true, seconds: true, videoPath: true, posterPath: true, brief: true, createdAt: true } as const;
+const JOB_SELECT = { id: true, status: true, engine: true, spec: true, caption: true, hashtags: true, warnings: true, score: true, captionScore: true, credits: true, error: true, parentId: true, productId: true, templateId: true, platform: true, ratio: true, seconds: true, videoPath: true, posterPath: true, brief: true, music: true, createdAt: true } as const;
 
 /** The company's latest Motion jobs, with signed links to the MP4s already made. */
 export async function listStudioJobs(businessId: string, limit = STUDIO_JOBS_SHOWN): Promise<StudioJob[]> {
   const rows = await prisma.videoJob.findMany({ where: { businessId, engine: "motion" }, orderBy: { createdAt: "desc" }, take: limit, select: JOB_SELECT });
   const urls = await signedUrls(rows.flatMap((r) => [r.videoPath, r.posterPath].filter((p): p is string => !!p)));
   return rows.map((r) => ({ ...view(r), videoUrl: r.videoPath ? (urls.get(r.videoPath) ?? null) : null, posterUrl: r.posterPath ? (urls.get(r.posterPath) ?? null) : null }));
+}
+
+/** A music track the owner can put under an MP4: the library's public file, mixed in the browser (free). */
+export type StudioTrack = { id: string; title: string; moods: string[]; url: string; attribution: string | null };
+
+/** The library's active tracks; empty when the library is empty or cannot be read (MP4s are then made without music). */
+export async function studioTracks(): Promise<StudioTrack[]> {
+  const tracks = await activeTracks().catch(() => []);
+  return tracks.map((t) => ({ id: t.id, title: t.title, moods: t.moods, url: t.url, attribution: isOwnedLicence(t.licence) ? null : t.attribution || null }));
 }
 
 /** The Brain's three opening lines for this product, template, length and platform (pure, free). */
@@ -90,13 +102,16 @@ export async function prepareJobVideo(ctx: Ctx, jobId: string, file: { bytes: nu
  * Confirms the uploaded MP4 (the Gallery's checks) and puts it on the job, which becomes "ready". Making the MP4 again
  * replaces the job's video; the earlier file stays in the Gallery.
  */
-export async function saveJobVideo(ctx: Ctx, jobId: string, input: { path: string; destination: string; name: string; width: number | null; height: number | null }): Promise<{ item: MediaItem; job: StudioJob }> {
+export async function saveJobVideo(ctx: Ctx, jobId: string, input: { path: string; destination: string; name: string; width: number | null; height: number | null; musicTrackId?: string | null }): Promise<{ item: MediaItem; job: StudioJob }> {
   await designedJob(ctx.businessId, jobId);
+  // The track the browser mixed in, read from the library (not the browser's word), for its credit line on the posts.
+  const track = input.musicTrackId ? await prisma.musicTrack.findUnique({ where: { id: input.musicTrackId }, select: { id: true, title: true, attribution: true, licence: true } }) : null;
+  const music = track ? { trackId: track.id, title: track.title, attribution: track.attribution, owned: isOwnedLicence(track.licence) } : null;
   const item = await finalizeUpload(ctx, { path: input.path, name: input.name, destination: input.destination, width: input.width, height: input.height });
   if (item.kind !== "video") throw new MediaError("That file is not a video.");
   const row = await prisma.videoJob.update({
     where: { id: jobId },
-    data: { status: "ready", videoPath: item.path, posterPath: item.posterPath, bytes: item.bytes, durationMs: item.durationMs },
+    data: { status: "ready", videoPath: item.path, posterPath: item.posterPath, bytes: item.bytes, durationMs: item.durationMs, music: music ?? Prisma.DbNull },
     select: JOB_SELECT,
   });
   return { item, job: { ...view(row), videoUrl: item.url, posterUrl: item.posterUrl } };

@@ -8,7 +8,7 @@ import { CreateStudio, type StudioTemplate } from "@/components/video-studio/cre
 import { subjectOptions } from "@/lib/knowledge/service";
 import { CLAUDE_VIDEO_CREDITS, VOICE_OVER_CREDITS } from "@/lib/video-engine/credits";
 import { TEMPLATE_CATEGORIES, VIDEO_TEMPLATES } from "@/lib/video-engine/templates";
-import { listStudioJobs } from "@/lib/video-studio/library";
+import { listStudioJobs, studioTracks } from "@/lib/video-studio/library";
 
 export const metadata = { title: "Video Studio" };
 
@@ -19,7 +19,7 @@ export default async function VideoStudioPage() {
   const blocked = await featureGate("videoStudio");
   if (blocked) return blocked;
   const { business, usage } = await getAppContext();
-  const [options, jobs] = await Promise.all([subjectOptions(business.id), listStudioJobs(business.id)]);
+  const [options, jobs, tracks] = await Promise.all([subjectOptions(business.id), listStudioJobs(business.id), studioTracks()]);
   // Presenter templates wait for the AI presenters (a later release); the designer would fall back to the product anyway.
   const templates: StudioTemplate[] = VIDEO_TEMPLATES.filter((t) => !t.presenter).map(({ id, category, name, blurb, seconds, hook }) => ({ id, category, name, blurb, seconds: seconds ?? null, hook: hook ?? null }));
   const categories = TEMPLATE_CATEGORIES.filter((c) => templates.some((t) => t.category === c.id)).map((c) => ({ id: c.id as string, name: c.name as string }));
@@ -43,6 +43,7 @@ export default async function VideoStudioPage() {
           credits={{ used: usage.used.videoCredits, limit: usage.limits.videoCredits ?? 0, resetsAt: usage.resetsAt ? new Date(usage.resetsAt).toISOString() : null }}
           price={CLAUDE_VIDEO_CREDITS}
           voicePrice={VOICE_OVER_CREDITS}
+          tracks={tracks}
           timeZone={business.timezone || "Africa/Kigali"}
         />
       )}

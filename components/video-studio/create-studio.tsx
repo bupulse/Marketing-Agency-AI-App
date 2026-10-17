@@ -17,6 +17,7 @@
  *   credits      { used, limit, resetsAt } of the plan's video credits, for "N left" and the paywall
  *   price        video credits per design (CLAUDE_VIDEO_CREDITS)
  *   voicePrice   video credits for a new voice-over take (VOICE_OVER_CREDITS); the same take again is free
+ *   tracks       the music library's active tracks (public files, mixed into the MP4 in the browser, free)
  *   timeZone     the business's time zone, for the times on the job cards (the same on the server and in the browser)
  */
 
@@ -35,7 +36,8 @@ import type { FactWarning } from "@/lib/video-engine/factcheck";
 import type { Photos } from "@/lib/video-engine/draw";
 import { canvasSize, totalMs, type MotionSpec, type Ratio } from "@/lib/video-engine/spec";
 import type { VoiceCue } from "@/lib/video-engine/voice";
-import type { StudioJob } from "@/lib/video-studio/library";
+import { pickTrack } from "@/lib/music/tracks";
+import type { StudioJob, StudioTrack } from "@/lib/video-studio/library";
 import type { JobVoice } from "@/lib/video-studio/voice";
 
 export type StudioTemplate = { id: string; category: string; name: string; blurb: string; seconds: number | null; hook: string | null };
@@ -48,6 +50,7 @@ type Props = {
   credits: { used: number; limit: number; resetsAt: string | null };
   price: number;
   voicePrice: number;
+  tracks: StudioTrack[];
   timeZone: string;
 };
 
@@ -117,7 +120,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   );
 }
 
-export function CreateStudio({ products, templates, categories, initialJobs, credits, price, voicePrice, timeZone }: Props) {
+export function CreateStudio({ products, templates, categories, initialJobs, credits, price, voicePrice, tracks, timeZone }: Props) {
   const { toast } = useToast();
   const { handleBody, dialog } = useUsageBlock({ limit: credits.limit, resetsAt: credits.resetsAt });
   const [productId, setProductId] = useState(products[0].id);
@@ -283,7 +286,7 @@ export function CreateStudio({ products, templates, categories, initialJobs, cre
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
             {jobs.map((j) => (
-              <JobCard key={j.id} job={j} templateName={templates.find((t) => t.id === j.templateId)?.name ?? j.templateId ?? "Template"} productName={productName} timeZone={timeZone} voicePrice={voicePrice} onSaved={replaceJob} onCharged={(n) => setUsed((u) => u + n)} onBlocked={handleBody} />
+              <JobCard key={j.id} job={j} templateName={templates.find((t) => t.id === j.templateId)?.name ?? j.templateId ?? "Template"} productName={productName} timeZone={timeZone} voicePrice={voicePrice} tracks={tracks} onSaved={replaceJob} onCharged={(n) => setUsed((u) => u + n)} onBlocked={handleBody} />
             ))}
           </div>
         )}
@@ -302,6 +305,7 @@ type CardProps = {
   productName: (id: string) => string;
   timeZone: string;
   voicePrice: number;
+  tracks: StudioTrack[];
   onSaved: (job: StudioJob) => void;
   /** Video credits a voice-over took (for "N left"). */
   onCharged: (credits: number) => void;
@@ -322,11 +326,15 @@ async function fetchVoice(jobId: string): Promise<{ voice: JobVoice | null; cred
   }
 }
 
-function JobCard({ job, templateName, productName, timeZone, voicePrice, onSaved, onCharged, onBlocked }: CardProps) {
+function JobCard({ job, templateName, productName, timeZone, voicePrice, tracks, onSaved, onCharged, onBlocked }: CardProps) {
   const { toast } = useToast();
   const [progress, setProgress] = useState<number | null>(null);
   const [step, setStep] = useState("");
   const [voiceNote, setVoiceNote] = useState<string | null>(null);
+  // "auto": the design's mood (spec.music), varied by the job; a track id; or "none".
+  const [musicChoice, setMusicChoice] = useState<string>(job.music?.trackId ?? (job.status === "ready" ? "none" : "auto"));
+  const suggested = useMemo(() => pickTrack(tracks, job.spec?.music ?? null, job.id), [tracks, job.spec, job.id]);
+  const track = musicChoice === "none" ? null : musicChoice === "auto" ? suggested : (tracks.find((t) => t.id === musicChoice) ?? suggested);
   // The designer always writes say lines; they are spoken only when the owner asked for a voice-over.
   const hasLines = job.voice && !!job.spec?.scenes.some((s) => s.say?.trim());
   const busy = useRef(false);
@@ -366,7 +374,7 @@ function JobCard({ job, templateName, productName, timeZone, voicePrice, onSaved
       const [{ encodeSpecMp4, loadPhotos, loadSpecFonts }, { drawSpecFrame }] = await Promise.all([import("@/lib/video-engine/encode"), import("@/lib/video-engine/draw")]);
       const [photos] = await Promise.all([loadPhotos(drawing.photoUrls, drawing.cutoutUrls), loadSpecFonts(spec)]);
       setStep("Making the MP4 in this browser…");
-      const blob = await encodeSpecMp4(spec, photos, { voice, quality: MP4_QUALITY, bitrate: MP4_BITRATE, onProgress: (f) => setProgress(f) });
+      const blob = await encodeSpecMp4(spec, photos, { voice, musicUrl: track?.url ?? null, quality: MP4_QUALITY, bitrate: MP4_BITRATE, onProgress: (f) => setProgress(f) });
       const poster = await posterOf(spec, photos, drawSpecFrame);
       setStep("Saving it to your Gallery…");
       const start = await startJobVideoUpload(job.id, blob.size);
@@ -378,7 +386,7 @@ function JobCard({ job, templateName, productName, timeZone, voicePrice, onSaved
       uploaded = target.path;
       if (target.poster && poster) await bucket.uploadToSignedUrl(target.poster.path, target.poster.token, poster, { contentType: "image/jpeg" }).catch(() => null);
       const size = canvasSize(spec, MP4_QUALITY);
-      const done = await finishJobVideoUpload(job.id, { path: target.path, destination, name: `${productName(job.productId ?? "")} - ${templateName}`.slice(0, 120), width: size.width, height: size.height });
+      const done = await finishJobVideoUpload(job.id, { path: target.path, destination, name: `${productName(job.productId ?? "")} - ${templateName}`.slice(0, 120), width: size.width, height: size.height, musicTrackId: track?.id ?? null });
       if (!done.ok) throw new Error(done.error);
       uploaded = null;
       onSaved(done.job);
@@ -468,6 +476,22 @@ function JobCard({ job, templateName, productName, timeZone, voicePrice, onSaved
             </Button>
           )}
           <span className="text-xs text-muted">{step || "Made in this browser: free, about a minute. Use Chrome or Edge."}</span>
+        </div>
+      )}
+      {(job.status === "designed" || job.status === "ready") && tracks.length > 0 && (
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label="Music" className="min-w-56 flex-1" hint={track?.attribution ? `Its licence asks for a credit: “${track.attribution}” goes on the posts.` : "Free. Mixed under the voice, quieter while it speaks."}>
+            <Select value={musicChoice} onChange={(e) => setMusicChoice(e.target.value)} disabled={progress !== null}>
+              <option value="auto">{suggested ? `Matches the design: ${suggested.title}` : "Matches the design"}</option>
+              {tracks.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+              <option value="none">No music</option>
+            </Select>
+          </Field>
+          {track && <audio key={track.id} src={track.url} controls preload="none" className="h-10 max-w-full" aria-label={`Listen to ${track.title}`} />}
         </div>
       )}
       {(job.status === "designed" || job.status === "ready") && hasLines && (

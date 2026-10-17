@@ -2177,12 +2177,15 @@ model VideoJob {
   storyboard     Json? // a free preview's storyboard (no key yet)
   caption        String            @default("")
   hashtags       String[]          @default([])
-  videoPath      String? // media bucket: video/<businessId>/<id>.mp4
+  videoPath      String? // the MP4 in the Gallery (a MediaAsset, gallery-videos bucket: <userId>/clips/<id>.mp4)
   posterPath     String?
   bytes          Int               @default(0) // counted toward the media quota
   durationMs     Int?
   voiceClipId    String?
   voiceClip      VoiceClip?        @relation(fields: [voiceClipId], references: [id], onDelete: SetNull)
+  // The library track mixed into the MP4: { trackId, title, attribution, owned }. A track whose licence asks for a
+  // credit puts its attribution on the posts (withMusicCredit). Null: no music.
+  music          Json?
   credits        Int               @default(0) // video credits taken (0 for previews)
   periodStart    DateTime? // the UsageRecord window they were taken from, for the refund
   refundedAt     DateTime?
