@@ -114,3 +114,16 @@ brief.
   Kitenge Premium 3D clip with sound; clean the LEAF Hydro Tower price field; the SEEDANCE_API_KEY day
   (docs/SEEDANCE_KEY_DAY.md); switch to ANTHROPIC_API_KEY before any deploy.
 - App Video Studio voice-overs need ELEVENLABS_API_KEY in Admin -> Services on TEST before a first real take (about $0.30 per 1,000 characters; a 15 s video is about 150).
+
+### Late afternoon, 17 October: the app's Motion first release is in code
+- /dashboard/video (hidden behind the coming-soon `videoStudio` feature): design on credits through the API key only,
+  opening-line chips, live preview, edit/extend, voice-over (15 credits, cached takes free, credits held on the job
+  and refunded by the sweep), music from the library, the MP4 encoded in the browser into the Gallery (counts a plan
+  video and a day), schedule through the composer with one checked caption per network (CAPTION_PASS 70) and the music
+  credit, VideoOutcome rows for the Brain filled by the metrics cron. Migrations applied to TEST only:
+  20261022100000_video_studio and 20261023100000_video_job_sound.
+- To open it to clients: take `videoStudio` out of "coming soon" in lib/features.ts, add it to the plans, set
+  ANTHROPIC_API_KEY and the ElevenLabs key in Admin -> Services, raise AI_MONTHLY_BUDGET_USD, and test one video in a
+  browser on TEST first (none of the app page has been opened in a browser yet; it is covered by mocked tests only).
+- Still planned (docs/VIDEO_APP_INTEGRATION.md tasks 9 to 16): Seedance in the app, cut-outs in the browser, the Mac
+  render worker for Premium 3D, Admin cards, Autopilot videos.
