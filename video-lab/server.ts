@@ -4,7 +4,8 @@
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { DESIGNER_MODEL, DESIGN_MODES, DesignError, apiSum, apiTransport, designVideo, estimateDesignCost, maxDesignCost, type BriefPhoto, type DesignMode, type DesignUsage } from "@/lib/video-engine/designer";
+import { DESIGNER_MODEL, DESIGN_MODES, DesignError, apiSum, apiTransport, designVideo, estimateDesignCost, isPlatform, maxDesignCost, type BriefPhoto, type DesignMode, type DesignUsage, type Platform } from "@/lib/video-engine/designer";
+import { cutoutForPhoto } from "./cutouts";
 import { subscriptionTransport } from "./claude-cli";
 import { VIDEO_HOOKS } from "@/lib/video-engine/styles";
 import { TEMPLATE_CATEGORIES, VIDEO_TEMPLATES } from "@/lib/video-engine/templates";
@@ -17,7 +18,8 @@ import { IMAGE_RATIOS, INFLUENCERS, SHOT_ACTIONS, addImage, generateImage, listI
 import MODELS from "./site/models.json";
 import { DAILY_CAP_USD, getJob, listJobs, listPreviews, newJobId, readVideo, record, savePreview, saveJob, saveVideo, spentToday, type LabJob } from "./store";
 import { SEEDANCE_LIMITS, SEEDANCE_MODELS, SEEDANCE_RATIOS, SEEDANCE_RESOLUTIONS, checkSeedanceConnection, estimateSeedanceUsd, type SeedanceConnection, type SeedanceReference, type SeedanceRequest, type SeedanceResolution, type SeedanceTier } from "@/lib/video-engine/seedance";
-import { checkSeedanceRequest, planSeedanceShots } from "@/lib/video-engine/seedance-brain";
+import { BUSINESS_KINDS, SEEDANCE_FORMATS, checkSeedanceRequest, planSeedanceShots, type BusinessKind, type SeedanceFormat } from "@/lib/video-engine/seedance-brain";
+import { listSeedanceExamples } from "./seedance-mock/preview";
 import { writeSeedancePrompt } from "@/lib/video-engine/seedance-prompt";
 import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PRESENTER_IMAGE_CREDITS, VOICE_OVER_CREDITS, charge, readWallet, refund, seedanceCredits, topUp } from "./credits";
 import { VOICE_ROUTE, makeVoiceForJob, readVoiceMp3 } from "./voice";
@@ -98,6 +100,8 @@ type DesignRequest = {
   fixedLens: boolean;
   base: LabJob | null;
   cartoonId: string | null;
+  /** Where the video will be posted (optional): its safe area and best length go in the brief. */
+  platform: Platform | null;
 };
 
 /** Reads and checks a design request (new video, or edit / extend of an earlier test). */
@@ -131,6 +135,7 @@ async function readRequest(body: Record<string, unknown>): Promise<DesignRequest
     fixedLens: body.fixedLens === true,
     base,
     cartoonId: castById(String(body.cartoonId ?? ""))?.id ?? null,
+    platform: isPlatform(body.platform) ? body.platform : null,
   };
 }
 
@@ -172,7 +177,9 @@ async function designOne(req: DesignRequest, variation: { index: number; of: num
       const p = await photoJpeg(id, 1280, req.businessId);
       const meta = product.photos.find((x) => x.assetId === id);
       const note = meta?.description ?? (id.startsWith("up-") ? ((await uploadNote(id)) ?? "uploaded by the owner") : undefined);
-      photos.push({ base64: p.bytes.toString("base64"), mediaType: "image/jpeg", width: p.width, height: p.height, note });
+      // Whether the product can be lifted off its background (cached after the first time, 100 to 800 ms).
+      const cut = await cutoutForPhoto(id, id.startsWith("up-") ? undefined : req.businessId);
+      photos.push({ base64: p.bytes.toString("base64"), mediaType: "image/jpeg", width: p.width, height: p.height, note, cutout: cut.ok });
     }
     const result = await designVideo(
       {
@@ -189,6 +196,7 @@ async function designOne(req: DesignRequest, variation: { index: number; of: num
         fixedLens: req.fixedLens,
         cartoonId: req.cartoonId,
         variation,
+        platform: req.platform,
       },
       mode === "api" ? { apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL } : { transport: subscriptionTransport(), model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL },
     );
@@ -498,6 +506,16 @@ const server = http.createServer(async (req, res) => {
       const { request, notes } = await seedanceRequestFrom(body);
       return json(res, 200, checkSeedanceRequest(request, { referenceNotes: notes }));
     }
+    if (req.method === "GET" && p === "/api/seedance/examples") {
+      // The "Get inspired" storyboards (made by scripts/video-lab/seedance-examples.mjs), read fresh each time.
+      const sector = BUSINESS_KINDS.find((k) => k.id === url.searchParams.get("sector"))?.id ?? null;
+      const format = SEEDANCE_FORMATS.find((f) => f.id === url.searchParams.get("format"))?.id ?? null;
+      return json(res, 200, {
+        examples: await listSeedanceExamples({ sector: sector as BusinessKind | null, format: format as SeedanceFormat | null }),
+        sectors: BUSINESS_KINDS.map(({ id, name }) => ({ id, name })),
+        formats: SEEDANCE_FORMATS.map(({ id, name }) => ({ id, name })),
+      });
+    }
     if (req.method === "GET" && p === "/api/seedance/status") {
       const c = await seedanceConnection();
       return json(res, 200, { state: c.state, message: c.message, mode: seedanceReady() ? "live" : "preview" });
@@ -566,6 +584,13 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && p === "/api/businesses") return json(res, 200, await listBusinesses());
     if (req.method === "GET" && p === "/api/products") return json(res, 200, await listProducts(url.searchParams.get("business") ?? ""));
     const photo = p.match(/^\/api\/photo\/([A-Za-z0-9-]{8,40})$/);
+    if (req.method === "GET" && photo && url.searchParams.get("cutout") === "1") {
+      // The product lifted off its background (video-lab/cutouts.ts), for 3D turntables and floating products.
+      const c = await cutoutForPhoto(photo[1]).catch(() => ({ ok: false as const, reason: "Photo not found." }));
+      if (!c.ok) return json(res, 404, { error: c.reason });
+      res.writeHead(200, { "content-type": "image/png", "cache-control": "max-age=86400" });
+      return res.end(c.png);
+    }
     if (req.method === "GET" && photo) {
       const size = url.searchParams.get("size") === "thumb" ? 360 : 1600;
       const out = await photoJpeg(photo[1], size);

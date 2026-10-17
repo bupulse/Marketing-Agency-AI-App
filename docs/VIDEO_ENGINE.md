@@ -278,6 +278,22 @@ pages read it). Videos are served with Range requests, so a page full of videos 
   luxury, launch party) is preselected on `/app/video/motion`, with its first template chosen. Category names follow the
   language switcher.
 
+- **Get inspired** (Seedance model pages and `/create` on Real video): the example storyboards
+  (`GET /api/seedance/examples`, optional `sector` and `format`, read fresh from `video-lab/seedance-mock/examples/`)
+  as a grid: the first frame, title, sector and format, "from X credits"; hover flips through the frames; filter chips
+  by sector and format; a card opens the frames, shot list, notes, the price per quality, the product it was made from
+  and the preview notice. **Use this** opens `/create` with Seedance, the prompt, 9:16, its length, its product and as
+  many of the product's photos as the prompt uses (`?engine=seedance&prompt=…&ratio=…&seconds=…&business=…&product=…&photos=…`).
+- **Cut-outs and platforms (Motion):** `GET /api/photo/<id>?cutout=1` serves the product lifted off a plain background
+  (`video-lab/cutouts.ts`; 404 with the reason otherwise, for example "The background is not plain"). Each design tells
+  Claude which photos can be cut out, and the page loads the cut-outs with the photos (a photo without one just skips
+  it). A **platform** pill (Any, Instagram, TikTok, Facebook, YouTube Shorts) goes into the design brief. Every
+  template has a live preview, including the six 3D ones and Kigali price-first (made 17 October with Claude on the
+  subscription).
+- **Builds never take the studio down:** `npm run lab` builds into `video-lab/.build-next` and swaps it in only when
+  every step worked; when a build fails (an agent mid-edit in a shared file) it prints the error and starts the last
+  good build.
+
 **Online access:** see "Online access (video.bupulse.com)" below (password gate, tunnel, supervisor).
 
 **Seedance (real video)** (`lib/video-engine/seedance.ts`, `video-lab/seedance-jobs.ts`):
@@ -385,9 +401,9 @@ allowances and MoMo add-ons.
 ## Studio pages and buttons (QA 17 Oct)
 
 A Playwright pass over every studio page (Chrome, 1440 px and 390 px wide): every link on every page was opened, and
-every button that does not spend credits was clicked, plus the sign-in page as an online visitor. **92 of 92 work**,
-with no script errors on any page (second pass, after the Seedance previews, voice-over, 3D templates and the
-password gate). Fixed during the passes: links that lost their query (`/app/video/seedance?tier=mini` opened the
+every button that does not spend credits was clicked, plus the sign-in page as an online visitor. **98 of 98 work**,
+with no script errors on any page (third pass, after the Seedance previews and gallery, voice-over, 3D templates,
+cut-outs, the platform picker and the password gate). Fixed during the passes: links that lost their query (`/app/video/seedance?tier=mini` opened the
 default tier), `#influencers` that opened nothing, the quality and options menus cut off by the hero, pill buttons
 that did nothing until the database had answered, pickers that opened only after their data arrived, the nav wrapping
 at 1280 px, and pages full of videos that downloaded every MP4 in full (no Range support) and blocked the browser's
@@ -449,7 +465,7 @@ connections to the studio.
 | /app/video/<model> | Template pill | scrolls to the templates | yes |
 | /app/video/<model> | Template card | selects the template; Macro details | yes |
 | /app/video/<model> | Engine Motion / Real video | switches engine | yes |
-| /app/video/<model> | + (references) | picker with upload, videos and photos; 7 choices | yes |
+| /app/video/<model> | + (references) | picker with upload, videos and photos; 1 choices | yes |
 | /app/video/<model> | Reference tile (click) | removes it | yes |
 | /app/video/<model> | Upload (in + picker) | opens the file chooser | yes |
 | /app/video/<model> | PRODUCT tile | product picker, sets product and photos | yes |
@@ -462,8 +478,14 @@ connections to the studio.
 | /app/video/motion | Opens on 3D templates | category 3D motion, template 3D title drop; 3D motion, 3D title drop | yes |
 | /app/video/motion | More: Voice-over toggle | on by default; Generate shows design + voice credits; ✦ 40 with voice, ✦ 30 without | yes |
 | /app/video/motion | Language RW | template categories in Kinyarwanda | yes |
-| /create | Generation card | opens the drawer; Close; drawer actions: Make it as a Motion video instead, Edit the prompt | yes |
-| /create | Drawer Download | the MP4 file; /videos/20261017-a87cc367.mp4 | yes |
+| /app/video/seedance-2-0 | Get inspired: cards | example storyboards; hover flips frames; 12 examples | yes |
+| /app/video/seedance-2-0 | Get inspired: sector and format chips | filter the cards; real estate 2, tour 2 | yes |
+| /app/video/seedance-2-0 | Get inspired: card | detail: frames, shot list, notes, credits per quality, product | yes |
+| /app/video/seedance-2-0 | Get inspired: Use this | /create with Seedance, the prompt, 9:16, the length, the product and its photos; 12s, 2 photo(s) | yes |
+| /app/video/motion | Platform pill | Any / Instagram / TikTok / Facebook / YouTube; only for Motion | yes |
+| /api/photo/<id>?cutout=1 | Cut-out of a product photo | PNG for a plain background, 404 with the reason otherwise | yes |
+| /create | Generation card | opens the drawer; Close; no generations | yes |
+| /create | Drawer Download | the MP4 file; no finished video | yes |
 | /templates | Templates link | /create#tgrid scrolled to the gallery | yes |
 | /app/video/motion#influencers | AI influencers link | opens the presenter picker | yes |
 | /app/video/seedance-2-5 | Example prompt | opens Seedance 2.0 with the prompt | yes |
@@ -477,7 +499,7 @@ connections to the studio.
 | /app/image/nano-banana | Example prompt | fills the prompt | yes |
 | /app/image/nano-banana | Use in a video | /create?ref=<image> with it as Image 1 | yes |
 | /app/image/nano-banana | Use in a 3D motion video | /app/video/motion?ref=<image> | yes |
-| /pricing | Buy (test: adds credits) | adds the pack to the test wallet; 8900 -> 9900 test credits | yes |
+| /pricing | Buy (test: adds credits) | adds the pack to the test wallet; 9900 -> 10900 test credits | yes |
 | /showcase | Filters | All / Seedance / Motion | yes |
 | /showcase | Video tile | viewer with Download; Close; 3 videos | yes |
 | /videos | Filters | All / Seedance / Motion / In progress | yes |

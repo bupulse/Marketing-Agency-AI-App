@@ -1,7 +1,7 @@
 // Video Lab page (docs/VIDEO_ENGINE.md): a test studio built like Seedance's and Higgsfield's editors. Plain DOM, no
 // framework. The live preview uses the engine's own renderer (lib/video-engine/draw.ts) and the MP4 is made in this
 // browser (encode.ts), then saved by the lab server.
-import { drawSpecFrame, type Img } from "@/lib/video-engine/draw";
+import { drawSpecFrame, type Photos } from "@/lib/video-engine/draw";
 import { encodeSpecMp4, loadPhotos, loadSpecFonts } from "@/lib/video-engine/encode";
 import { canvasSize, totalMs, type MotionSpec, type Quality } from "@/lib/video-engine/spec";
 import type { VoiceCue } from "@/lib/video-engine/voice";
@@ -88,7 +88,7 @@ const state = {
   quality: "1080p" as Quality,
   job: null as Job | null,
   siblings: [] as Job[],
-  photos: new Map<number, Img>(),
+  photos: new Map() as Photos,
   musicUrl: null as string | null,
   playing: false,
   t: 0,
@@ -166,7 +166,7 @@ async function loadJob(job: Job, siblings: Job[] = []) {
   canvas.width = size.width;
   canvas.height = size.height;
   status("Loading photos and fonts…");
-  const [photos] = await Promise.all([loadPhotos(job.photoIds.map((id) => `/api/photo/${id}`)), loadSpecFonts(job.spec)]);
+  const [photos] = await Promise.all([loadPhotos(job.photoIds.map((id) => `/api/photo/${id}`), job.photoIds.map((id) => `/api/photo/${id}?cutout=1`)), loadSpecFonts(job.spec)]);
   state.photos = photos;
   const track = job.spec.music ? await api<{ id: string; title: string } | null>(`/api/music?mood=${encodeURIComponent(job.spec.music)}`).catch(() => null) : null;
   state.musicUrl = track ? `/api/music/${track.id}` : null;
@@ -398,11 +398,11 @@ async function influencerCall(kind: "portrait" | "shot") {
 
 // ---- Templates gallery ----------------------------------------------------------------------------------------------
 
-const previewPhotos = new Map<string, Promise<Map<number, Img>>>();
+const previewPhotos = new Map<string, Promise<Photos>>();
 function photosFor(ids: string[]) {
   const key = ids.join(",");
-  if (!previewPhotos.has(key)) previewPhotos.set(key, loadPhotos(ids.map((id) => `/api/photo/${id}?size=thumb`)));
-  return previewPhotos.get(key) as Promise<Map<number, Img>>;
+  if (!previewPhotos.has(key)) previewPhotos.set(key, loadPhotos(ids.map((id) => `/api/photo/${id}?size=thumb`), ids.map((id) => `/api/photo/${id}?cutout=1`)));
+  return previewPhotos.get(key) as Promise<Photos>;
 }
 
 function renderTemplates() {

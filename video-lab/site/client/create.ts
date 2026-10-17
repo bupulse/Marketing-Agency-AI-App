@@ -2,11 +2,12 @@
 // Marketing Studio and Seedance's app. Real video goes to BytePlus through the lab server (submit, then poll);
 // Motion videos are designed by Claude and drawn here (lib/video-engine), with the MP4 made in this browser.
 // The model pages (/app/video/<model>) are this page with the model preselected (body data-model, models.json).
-import { drawSpecFrame, type Img } from "@/lib/video-engine/draw";
+import { drawSpecFrame, type Photos } from "@/lib/video-engine/draw";
 import { encodeSpecMp4, loadPhotos, loadSpecFonts } from "@/lib/video-engine/encode";
 import { canvasSize, totalMs, type MotionSpec, type Quality } from "@/lib/video-engine/spec";
 import type { VoiceCue } from "@/lib/video-engine/voice";
 import { categoryName } from "./i18n";
+import { setupInspire, showInspire } from "./inspire";
 import { loadPricing, modelById, wireExamples } from "./models";
 import { $, api, el, refreshWallet } from "./site";
 
@@ -36,6 +37,14 @@ type Product = { id: string; name: string; summary: string; price: string | null
 type Preview = { spec: MotionSpec; photoIds: string[] };
 type Influencer = { id: string; name: string; age: number; vibe: string; portrait: boolean; shots: { id: string; product: string; action: string }[] };
 
+/** Where a Motion video will be posted (lib/video-engine/designer.ts PLATFORMS); "" = any. */
+const PLATFORMS = [
+  { id: "", name: "Any platform" },
+  { id: "instagram", name: "Instagram" },
+  { id: "tiktok", name: "TikTok" },
+  { id: "facebook", name: "Facebook" },
+  { id: "youtube", name: "YouTube Shorts" },
+];
 const SEEDANCE_SECONDS = [4, 5, 6, 8, 10, 12, 15];
 const CLAUDE_SECONDS = [8, 10, 12, 15, 20, 30];
 
@@ -73,7 +82,9 @@ const state = {
   voiceCredits: 10,
   planVariant: 0,
   checkErrors: [] as Issue[],
-  photos: new Map<number, Img>(),
+  photos: new Map() as Photos,
+  /** Motion videos: where the video will be posted (optional; null = any). */
+  platform: null as string | null,
   playing: false,
 };
 
@@ -148,6 +159,8 @@ function renderPills() {
   $("go").className = `genBtn${sd ? " bp" : ""}`;
   $("pWrite").hidden = !sd;
   $("pPlan").hidden = !sd;
+  $("pPlatform").hidden = sd;
+  $("pPlatformV").textContent = PLATFORMS.find((x) => x.id === state.platform)?.name ?? "Any platform";
   $("tAvatar").hidden = false;
   void quote();
   scheduleCheck();
@@ -220,6 +233,10 @@ function setupPills() {
       box.append(b);
     }
   });
+  pop("pPlatform", (box) => {
+    box.append(el("h6", { textContent: "Made for" }), chips(PLATFORMS.map((x) => x.id), state.platform ?? "", (v) => (state.platform = v || null), (v) => PLATFORMS.find((x) => x.id === v)?.name ?? v));
+    box.append(el("p", { className: "hint", textContent: "Claude keeps text clear of the app's buttons and picks the length that works there." }));
+  });
   pop("pRatio", (box) => {
     box.append(el("h6", { textContent: "Aspect ratio" }), chips(state.engine === "seedance" ? o.seedance.ratios : o.ratios, state.ratio, (v) => (state.ratio = v)));
   });
@@ -285,6 +302,7 @@ function setEngine(engine: Engine) {
   document.querySelectorAll<HTMLButtonElement>("#engineSw button").forEach((x) => x.classList.toggle("on", x.dataset.engine === engine));
   state.mode = "reference";
   state.seconds = engine === "seedance" ? 5 : 15;
+  void showInspire(engine === "seedance");
   $<HTMLTextAreaElement>("prompt").placeholder = engine === "seedance" ? "Describe the scene, the camera and the sound. Refer to references as Image 1, Video 1, Audio 1…" : "Describe the video you want (optional). Claude designs it from your product and template.";
   renderPills();
   renderRefs();
@@ -527,7 +545,7 @@ async function generate() {
       const out = await api<{ jobs: ClaudeJob[]; error: string | null }>("/api/design", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: state.mode, businessId: state.businessId, productId: state.productId, photoIds: state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]), styleId: state.templateId, hookId: state.hookId, ratio: state.ratio, seconds: state.seconds, note: prompt, fixedLens: state.fixedLens, cartoonId: state.avatar?.kind === "cartoon" ? state.avatar.id : null, versions: state.versions }),
+        body: JSON.stringify({ mode: state.mode, businessId: state.businessId, productId: state.productId, photoIds: state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]), styleId: state.templateId, hookId: state.hookId, ratio: state.ratio, seconds: state.seconds, note: prompt, fixedLens: state.fixedLens, cartoonId: state.avatar?.kind === "cartoon" ? state.avatar.id : null, versions: state.versions, platform: state.platform }),
       });
       if (out.error) throw new Error(out.error);
       msg("Designed. Press a generation to play it and make the MP4.", "ok");
@@ -577,7 +595,7 @@ async function loadGens() {
       c.width = size.width;
       c.height = size.height;
       card.append(c);
-      void loadPhotos((g.claude.photoIds ?? []).map((id) => `/api/photo/${id}?size=thumb`)).then((ph) => drawSpecFrame(c.getContext("2d") as CanvasRenderingContext2D, g.claude?.spec as MotionSpec, ph, 1500, { quality: "480p" }));
+      void photosFor(g.claude.photoIds ?? []).then((ph) => drawSpecFrame(c.getContext("2d") as CanvasRenderingContext2D, g.claude?.spec as MotionSpec, ph, 1500, { quality: "480p" }));
     } else if (g.sd?.preview) {
       // A free preview (no BytePlus key yet): its first storyboard frame, or a spinner while it is drawn.
       if (g.status === "preview-ready") {
@@ -734,7 +752,7 @@ function openDrawer(g: Gen | null) {
       c.height = size.height;
       media.append(c);
       const ctx = c.getContext("2d") as CanvasRenderingContext2D;
-      void Promise.all([loadPhotos(j.photoIds.map((id) => `/api/photo/${id}`)), loadSpecFonts(spec)]).then(([ph]) => {
+      void Promise.all([loadPhotos(j.photoIds.map((id) => `/api/photo/${id}`), j.photoIds.map(cutoutUrl)), loadSpecFonts(spec)]).then(([ph]) => {
         state.photos = ph;
         let last = performance.now();
         let t = 0;
@@ -828,13 +846,16 @@ async function editClaude(g: Gen, mode: "edit" | "extend") {
   }
 }
 
+/** The product lifted off its background, for turntables and floating products; a photo without one just skips it. */
+const cutoutUrl = (id: string) => `/api/photo/${id}?cutout=1`;
+
 // ---- Templates and carousel ------------------------------------------------------------------------------------------
 
-const previewPhotos = new Map<string, Promise<Map<number, Img>>>();
+const previewPhotos = new Map<string, Promise<Photos>>();
 const photosFor = (ids: string[]) => {
   const key = ids.join(",");
-  if (!previewPhotos.has(key)) previewPhotos.set(key, loadPhotos(ids.map((id) => `/api/photo/${id}?size=thumb`)));
-  return previewPhotos.get(key) as Promise<Map<number, Img>>;
+  if (!previewPhotos.has(key)) previewPhotos.set(key, loadPhotos(ids.map((id) => `/api/photo/${id}?size=thumb`), ids.map(cutoutUrl)));
+  return previewPhotos.get(key) as Promise<Photos>;
 };
 
 function renderTemplates() {
@@ -961,6 +982,15 @@ async function start() {
   const allowed = o.seedance.tiers.find((t) => t.id === state.tier)?.resolutions ?? [];
   if (allowed.length && !allowed.includes(state.resolution)) state.resolution = allowed[allowed.length - 1];
   if (q.get("prompt")) $<HTMLTextAreaElement>("prompt").value = (q.get("prompt") as string).slice(0, 4000);
+  // "Use this" on an example: its shape and length (Seedance), and its product (below, once products are loaded).
+  if (q.get("engine") === "seedance") {
+    state.engine = "seedance";
+    document.querySelectorAll<HTMLButtonElement>("#engineSw button").forEach((b) => b.classList.toggle("on", b.dataset.engine === "seedance"));
+  }
+  const ratio = q.get("ratio");
+  if (ratio && (state.engine === "seedance" ? o.seedance.ratios : o.ratios).includes(ratio)) state.ratio = ratio;
+  const seconds = Number(q.get("seconds"));
+  if (state.engine === "seedance" && seconds >= o.seedance.limits.minSeconds && seconds <= o.seedance.limits.maxSeconds) state.seconds = Math.round(seconds);
   if (!o.seedanceReady && state.engine === "seedance") msg("Seedance is waiting for the BytePlus key: set everything up now; Generate shows what it will make, or makes it as a Motion video.");
   // The controls work at once; the products and template previews (slower, from the database) follow.
   setupPills();
@@ -971,8 +1001,16 @@ async function start() {
   renderRefs();
   dataReady = (async () => {
     state.businesses = await api<{ id: string; name: string }[]>("/api/businesses");
-    state.businessId = state.businesses[0]?.id ?? "";
+    const wanted = q.get("business");
+    state.businessId = state.businesses.find((b) => b.id === wanted)?.id ?? state.businesses[0]?.id ?? "";
     state.products = state.businessId ? await api<Product[]>(`/api/products?business=${encodeURIComponent(state.businessId)}`) : [];
+    // ?product= (an example's "Use this"): that product, with as many of its photos as the prompt uses (at least 1).
+    const product = state.products.find((x) => x.id === q.get("product"));
+    if (product) {
+      state.productId = product.id;
+      const count = Math.min(9, Math.max(1, Number(q.get("photos")) || 1));
+      for (const ph of product.photos.slice(0, count)) state.refs.push({ id: `ph:${ph.assetId}`, kind: "image", thumb: `/api/photo/${ph.assetId}?size=thumb`, label: `${product.name} photo${ph.description ? `: ${ph.description}` : ""}` });
+    }
   })();
   if (location.hash === "#influencers") void openPicker("avatar");
   wireExamples((text) => {
@@ -988,6 +1026,8 @@ async function start() {
     .catch(() => undefined);
   $<HTMLInputElement>("tsearch").oninput = renderTemplates;
   window.addEventListener("studio:lang", renderTemplates);
+  setupInspire();
+  void showInspire(state.engine === "seedance");
   $("go").onclick = () => void generate();
   $("pickClose").onclick = () => ($("pickDlg") as HTMLDialogElement).close();
   $("dClose").onclick = () => {

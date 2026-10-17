@@ -14,6 +14,7 @@
         <button class="pillBtn" id="pAdd" title="Add a reference">+</button>
         <button class="pillBtn" id="pMode"><span id="pModeV">Reference</span><div class="pop" id="popMode"></div></button>
         <button class="pillBtn" id="pTemplate"><span id="pTemplateV">Product hero</span></button>
+        <button class="pillBtn" id="pPlatform" hidden><span id="pPlatformV">Any platform</span><div class="pop" id="popPlatform"></div></button>
         <button class="pillBtn" id="pRatio"><span id="pRatioV">9:16</span><div class="pop" id="popRatio"></div></button>
         <button class="pillBtn" id="pSeconds"><span id="pSecondsV">5s</span><div class="pop" id="popSeconds"></div></button>
         <button class="pillBtn" id="pQuality"><span id="pQualityV">Fast · 720p</span><div class="pop" id="popQuality"></div></button>
@@ -40,6 +41,14 @@
   <h2>Your generations</h2>
   <div class="genGrid" id="genGrid"></div>
 </section>
+
+<section class="explore" id="inspire" hidden>
+  <div class="head"><h2>Get inspired</h2><span class="muted small">Seedance storyboards made from real products. Hover to flip through the shots; open one to use it.</span></div>
+  <div id="inspireFilters" class="inspireFilters"></div>
+  <div class="inGrid" id="inspireGrid"></div>
+</section>
+
+<dialog id="inspireDlg"><div class="dlgHead"><h3 id="inspireTitle">Example</h3><button class="btn sm" id="inspireClose">Close</button></div><div class="dlgBody" id="inspireBody"></div></dialog>
 
 <section class="explore">
   <div class="head"><h2>Explore templates</h2><div class="pills" id="cats"></div><input type="text" id="tsearch" placeholder="Search" style="width:200px"></div>
