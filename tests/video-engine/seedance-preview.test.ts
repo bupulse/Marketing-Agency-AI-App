@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import type { SeedanceRequest } from "@/lib/video-engine/seedance";
 import { buildStoryboard, frameSize, parseShots } from "@/video-lab/seedance-mock/storyboard";
 import { listSeedanceExamples, previewDelayMs } from "@/video-lab/seedance-mock/preview";
-import { pickExamples, type Candidate } from "@/video-lab/seedance-mock/examples";
+import { clearExamples, pickExamples, readExampleSkips, type Candidate } from "@/video-lab/seedance-mock/examples";
 
 const wallet = vi.hoisted(() => ({ charge: vi.fn(async () => ({})), refund: vi.fn(async () => ({})) }));
 vi.mock("@/video-lab/credits", () => ({ charge: wallet.charge, refund: wallet.refund, seedanceCredits: () => 55 }));
@@ -182,6 +182,22 @@ describe("Get inspired examples", () => {
     expect((await listSeedanceExamples({ sector: "salon" }, tmp)).map((e) => e.id)).toEqual(["ex-b"]);
     expect((await listSeedanceExamples({ format: "offer" }, tmp)).map((e) => e.id)).toEqual(["ex-a"]);
     expect(await listSeedanceExamples({}, path.join(tmp, "missing"))).toEqual([]);
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  it("no saved example comes from a skipped business, and no old file is left behind", async () => {
+    const skips = (await readExampleSkips()).map((x) => x.toLowerCase());
+    const all = await listSeedanceExamples();
+    for (const e of all) for (const name of skips) expect(JSON.stringify(e).toLowerCase(), `${e.id} names a skipped business`).not.toContain(name);
+    // One run writes orders 0..n-1 once each: a file from an older run would repeat or skip one.
+    expect(all.map((e) => e.order)).toEqual(all.map((_, i) => i));
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "seedance-skip-"));
+    await fs.writeFile(path.join(tmp, "skip.txt"), "Acme Ltd\n\n  Real Co  \n");
+    expect(await readExampleSkips(path.join(tmp, "skip.txt"))).toEqual(["Acme Ltd", "Real Co"]);
+    expect(await readExampleSkips(path.join(tmp, "none.txt"))).toEqual([]);
+    await fs.writeFile(path.join(tmp, "ex-old.json"), "{}");
+    await clearExamples(tmp);
+    expect(await fs.readdir(tmp)).toEqual([]);
     await fs.rm(tmp, { recursive: true, force: true });
   });
 

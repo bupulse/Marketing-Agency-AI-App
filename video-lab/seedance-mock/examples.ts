@@ -14,6 +14,19 @@ import { previewThumbs } from "./preview";
 export { closeDb } from "../data-source";
 
 export const EXAMPLES_DIR = path.resolve("video-lab/seedance-mock/examples");
+/** Git-ignored: businesses (by name) never used for examples, one per line, e.g. real companies in the TEST database. */
+export const SKIP_FILE = path.resolve("video-lab/data/seedance-examples-skip.txt");
+
+export async function readExampleSkips(file = SKIP_FILE): Promise<string[]> {
+  const text = await fs.readFile(file, "utf8").catch(() => "");
+  return text.split("\n").map((l) => l.trim()).filter(Boolean);
+}
+
+/** Empties the examples folder, so a business left out (or a product removed) leaves no old file behind. */
+export async function clearExamples(dir = EXAMPLES_DIR): Promise<void> {
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.mkdir(dir, { recursive: true });
+}
 
 export type SeedanceExample = {
   id: string;
@@ -126,8 +139,7 @@ export async function writeSeedanceExamples(max = 16, skip: string[] = []): Prom
   const examples: SeedanceExample[] = [];
   const candidates = (await loadCandidates()).filter((c) => !skip.some((s) => c.business.name.toLowerCase().includes(s.toLowerCase())));
   for (const [i, pick] of pickExamples(candidates, max).entries()) examples.push(await makeExample(pick, i));
-  await fs.rm(EXAMPLES_DIR, { recursive: true, force: true });
-  await fs.mkdir(EXAMPLES_DIR, { recursive: true });
+  await clearExamples();
   for (const e of examples) await fs.writeFile(path.join(EXAMPLES_DIR, `${e.id}.json`), JSON.stringify(e, null, 1));
   return examples;
 }

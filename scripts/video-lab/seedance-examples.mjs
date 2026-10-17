@@ -39,8 +39,9 @@ try {
   if (process.argv.includes("--list")) {
     for (const c of await ex.loadCandidates()) console.log(`${c.kind.padEnd(12)} ${c.business.name} / ${c.product.name} | ${c.product.price ?? "no price"} | ${c.product.photos.length} photos | ${c.business.language}`);
   } else {
-    const saved = (await fs.readFile(path.join(root, "video-lab/data/seedance-examples-skip.txt"), "utf8").catch(() => "")).split("\n").map((l) => l.trim()).filter(Boolean);
-    const skip = [...saved, ...process.argv.flatMap((a, i) => (a === "--skip" && process.argv[i + 1] ? [process.argv[i + 1]] : []))];
+    const skip = [...(await ex.readExampleSkips()), ...process.argv.flatMap((a, i) => (a === "--skip" && process.argv[i + 1] ? [process.argv[i + 1]] : []))];
+    // Old files go first: an example of a business now skipped must not stay on disk.
+    await ex.clearExamples();
     const written = await ex.writeSeedanceExamples(16, skip);
     for (const e of written) console.log(`${e.id}: ${e.sector} / ${e.format} - ${e.source.businessName}, ${e.source.productName}`);
     console.log(`\n${written.length} examples saved in video-lab/seedance-mock/examples/.`);
