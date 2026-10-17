@@ -20,7 +20,8 @@ export type StoryShot = {
   spoken: string | null;
   references: string[];
 };
-export type StoryFrame = { at: number; shot: number; caption: string; svg: string };
+/** `label` is "2" for a whole shot, "2a" / "2b" for parts of a long shot that gets two frames; from/to are its times. */
+export type StoryFrame = { at: number; shot: number; label: string; from: number; to: number; caption: string; svg: string };
 export type StoryReference = { label: string; kind: "image" | "video" | "audio"; thumb: string | null };
 export type Storyboard = {
   kind: "seedance-storyboard";
@@ -96,16 +97,31 @@ export function parseShots(prompt: string, seconds: number, fixedLens = false): 
   return { setting: null, shots };
 }
 
-/** 3 or 4 key moments: one per shot when there are 3 or 4, else spread over the clip. */
-function keyMoments(shots: StoryShot[], seconds: number): { at: number; shot: StoryShot }[] {
-  if (shots.length >= 3 && shots.length <= 4) return shots.map((s) => ({ at: (s.from + s.to) / 2, shot: s }));
-  if (shots.length > 4) {
-    const pick = [0, Math.round((shots.length - 1) / 3), Math.round(((shots.length - 1) * 2) / 3), shots.length - 1];
-    return [...new Set(pick)].map((i) => ({ at: (shots[i].from + shots[i].to) / 2, shot: shots[i] }));
+type Moment = { at: number; shot: StoryShot; label: string; from: number; to: number };
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
+/**
+ * The frames follow the shots: one per shot up to 4 (with 5, the first, two middle ones and the last). With fewer
+ * than 3 shots, the longest shots are split so there are 3 frames, each part with its own label (2a, 2b) and times.
+ */
+function keyMoments(shots: StoryShot[]): Moment[] {
+  const picked = shots.length > 4 ? [...new Set([0, Math.round((shots.length - 1) / 3), Math.round(((shots.length - 1) * 2) / 3), shots.length - 1])].map((i) => shots[i]) : shots;
+  const parts = picked.map(() => 1);
+  while (parts.reduce((a, k) => a + k, 0) < 3) {
+    let best = 0;
+    picked.forEach((s, i) => {
+      if ((s.to - s.from) / parts[i] > (picked[best].to - picked[best].from) / parts[best]) best = i;
+    });
+    parts[best] += 1;
   }
-  return [0.15, 0.5, 0.85].map((f) => {
-    const at = Math.round(seconds * f * 10) / 10;
-    return { at, shot: shots.find((s) => at >= s.from && at <= s.to) ?? shots[shots.length - 1] };
+  return picked.flatMap((shot, i) => {
+    const k = parts[i];
+    const step = (shot.to - shot.from) / k;
+    return Array.from({ length: k }, (_, j) => {
+      const from = round1(shot.from + step * j);
+      const to = round1(shot.from + step * (j + 1));
+      return { at: round1((from + to) / 2), shot, label: k > 1 ? `${shot.n}${String.fromCharCode(97 + j)}` : String(shot.n), from, to };
+    });
   });
 }
 
@@ -174,7 +190,7 @@ function subjectSketch(shot: StoryShot, w: number, h: number): string {
 
 const PALETTE = [["#20264a", "#0c0f20"], ["#2a1f45", "#110c1f"], ["#173444", "#0a1820"], ["#3a2a1c", "#150e08"]];
 
-export function frameSvg(shot: StoryShot, o: { ratio: string; uid: string; index: number; at: number; thumb: string | null }): string {
+export function frameSvg(shot: StoryShot, o: { ratio: string; uid: string; index: number; at: number; thumb: string | null; label?: string; from?: number; to?: number }): string {
   const { w, h } = frameSize(o.ratio);
   const [c1, c2] = PALETTE[o.index % PALETTE.length];
   const g = `g-${o.uid}`;
@@ -194,7 +210,7 @@ export function frameSvg(shot: StoryShot, o: { ratio: string; uid: string; index
     photo,
     `<g fill="none" stroke="#ffd166" stroke-width="2.2" stroke-linecap="round">${cameraGlyph(shot.cameraId, w / 2, h * 0.45, r, m)}</g>`,
     `<rect width="${w}" height="22" fill="#000" fill-opacity="0.45"/>`,
-    `<text x="8" y="15" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff">${esc(`SHOT ${shot.n} · ${shot.from}–${shot.to} s`)}</text>`,
+    `<text x="8" y="15" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff">${esc(`SHOT ${o.label ?? shot.n} · ${o.from ?? shot.from}–${o.to ?? shot.to} s`)}</text>`,
     `<text x="${w - 8}" y="15" text-anchor="end" font-family="Inter, Arial, sans-serif" font-size="9" font-weight="700" fill="#ffd166">PREVIEW</text>`,
     `<rect y="${h - band}" width="${w}" height="${band}" fill="#000" fill-opacity="0.6"/>`,
     `<text x="8" y="${h - band + 17}" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="700" fill="#fff">${esc(cut(shot.shot, chars))}</text>`,
@@ -221,10 +237,10 @@ export function buildStoryboard(input: { id: string; title: string; request: See
     thumb: ref.kind === "image" ? (input.thumbs[image++] ?? null) : null,
   }));
   const imageThumbs = references.filter((x) => x.kind === "image").map((x) => x.thumb);
-  const frames = keyMoments(shots, seconds).map(({ at, shot }, i) => {
+  const frames = keyMoments(shots).map(({ at, shot, label, from, to }, i) => {
     const imageRef = shot.references.find((x) => x.startsWith("Image "));
     const thumb = imageRef ? (imageThumbs[Number(imageRef.split(" ")[1]) - 1] ?? null) : null;
-    return { at, shot: shot.n, caption: `${shot.shot}, ${shot.camera}: ${shot.action}`, svg: frameSvg(shot, { ratio: r.ratio, uid: `${input.id}-${i}`, index: i, at, thumb }) };
+    return { at, shot: shot.n, label, from, to, caption: `${shot.shot}, ${shot.camera}: ${shot.action}`, svg: frameSvg(shot, { ratio: r.ratio, uid: `${input.id}-${i}`, index: i, at, thumb, label, from, to }) };
   });
   const check = checkSeedanceRequest(r, { referenceNotes: input.referenceNotes });
   return {

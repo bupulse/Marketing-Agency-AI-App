@@ -74,6 +74,21 @@ describe("storyboard", () => {
     expect(frameSize("16:9")).toEqual({ w: 320, h: 180 });
   });
 
+  it("frames follow the shots: one per shot, a long shot split into 2a/2b, never a repeated label", () => {
+    const sb = (prompt: string, seconds = 5) => buildStoryboard({ id: "sd-000000000002", title: "x", request: { ...req(), prompt, seconds }, referenceNotes: [], thumbs: [], credits: 55 });
+    const two = sb("0-2s: a hand lifts the phone. 2-5s: slow orbit around the phone.");
+    expect(two.frames.map((f) => [f.label, f.from, f.to])).toEqual([["1", 0, 2], ["2a", 2, 3.5], ["2b", 3.5, 5]]);
+    expect(two.frames[1].svg).toContain("SHOT 2a · 2–3.5 s");
+    expect(two.frames[2].svg).toContain("SHOT 2b · 3.5–5 s");
+    const four = sb("0-2s: a. 2-4s: b. 4-6s: c. 6-8s: d.", 8);
+    expect(four.frames.map((f) => f.label)).toEqual(["1", "2", "3", "4"]);
+    const five = sb("0-2s: a. 2-4s: b. 4-6s: c. 6-8s: d. 8-10s: e.", 10);
+    expect(new Set(five.frames.map((f) => f.label)).size).toBe(five.frames.length);
+    expect(five.frames.map((f) => f.label)).toEqual(["1", "2", "4", "5"]);
+    const one = sb("0-8s: a slow orbit around the phone.", 8);
+    expect(one.frames.map((f) => f.label)).toEqual(["1a", "1b", "1c"]);
+  });
+
   it("waits 3 to 8 seconds, the same for the same job", () => {
     for (const id of ["sd-aaaaaaaaaaaa", "sd-0123456789ab", "sd-ffffffffffff"]) {
       expect(previewDelayMs(id)).toBeGreaterThanOrEqual(3000);
