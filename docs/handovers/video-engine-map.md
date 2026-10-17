@@ -91,3 +91,5 @@ brief.
 - Guide pages 19 (Video Brain) and 20 (Video Studio), docs/SEEDANCE_KEY_DAY.md for the key day.
 
 - 14:20: TikTok showed a slider captcha in the researcher's tab (the shared Chrome on port 9334). The agents stopped browsing TikTok and did not touch it; the owner should clear the slider in that tab, or close it.
+
+- App integration task 4: video ledger features (video-design, video-premium, video-seedance-prompt, video-seedance, video-voice, video-image) are left out of a company's monthly AI allowance (metered by video credits instead) but still count against the platform cap AI_MONTHLY_BUDGET_USD: RAISE THAT CAP WHEN VIDEO GOES LIVE. A test forbids app/, lib/ and components/ from importing video-lab or the subscription transport.

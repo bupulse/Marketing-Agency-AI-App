@@ -4,6 +4,7 @@ import { logError } from "@/lib/errors";
 import { resolvePrice } from "./pricing";
 import { AIProviderError } from "./types";
 import { kigaliMonthOf, kigaliMonthStart } from "@/lib/time/kigali";
+import { VIDEO_LEDGER_PREFIX, isVideoLedgerFeature } from "@/lib/video-engine/ledger-features";
 
 /** Monthly safety cap on BuPulse's own AI spend (AI_MONTHLY_BUDGET_USD, default $20). */
 export function monthlyBudgetUsd(): number {
@@ -150,11 +151,14 @@ export async function companySpentThisMonthUsd(businessId: string, now = new Dat
 
 export type CompanySpend = { totalUsd: number; widgetUsd: number; ownerUsd: number; allowanceUsd: number; widgetCapUsd: number };
 
-/** One company's spend this month split into website chat (visitors) and everything the owner started. */
+/**
+ * One company's spend this month split into website chat (visitors) and everything the owner started. Video Studio
+ * calls (feature "video-…") are left out: video is metered in video credits, not in the AI allowance.
+ */
 export async function companySpendThisMonth(businessId: string, now = new Date()): Promise<CompanySpend> {
   const since = monthStart(now);
   const [total, widget] = await Promise.all([
-    prisma.aiCall.aggregate({ where: { businessId, createdAt: { gte: since } }, _sum: { costUsd: true } }),
+    prisma.aiCall.aggregate({ where: { businessId, createdAt: { gte: since }, NOT: { feature: { startsWith: VIDEO_LEDGER_PREFIX } } }, _sum: { costUsd: true } }),
     prisma.aiCall.aggregate({ where: { businessId, feature: WIDGET_FEATURE, createdAt: { gte: since } }, _sum: { costUsd: true } }),
   ]);
   const totalUsd = Number(total._sum.costUsd ?? 0);
@@ -175,6 +179,8 @@ export function companyCallAllowed(spend: CompanySpend, feature: string): boolea
 
 /** Refuses an AI call for a company over its monthly allowance, or the website chat over its share (before calling, and paying, the provider). */
 export async function assertCompanyWithinBudget(businessId: string, provider: string, now = new Date(), feature = ""): Promise<void> {
+  // Video Studio calls are paid with video credits (checked before the call, lib/usage.ts): the platform cap still applies.
+  if (isVideoLedgerFeature(feature)) return;
   if (companyCallAllowed(await companySpendThisMonth(businessId, now), feature)) return;
   throw feature === WIDGET_FEATURE ? new WidgetBudgetExceededError(provider) : new CompanyBudgetExceededError(provider);
 }

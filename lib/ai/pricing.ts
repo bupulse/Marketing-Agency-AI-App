@@ -37,6 +37,11 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   // ElevenLabs Sound Effects (sales screen sounds), per 1M seconds (seconds recorded as input tokens): an estimate of
   // about 40 credits a second, $0.012 a second at the overage rate; check it against the ElevenLabs invoice.
   sound_effects: { input: 12_000, output: 0 },
+  // Seedance 2.0 video (BytePlus ModelArk), per 1M output tokens as the task reports them; estimates until the first
+  // BytePlus invoice (lib/video-engine/seedance.ts SEEDANCE_USD_PER_M_TOKENS, docs/AI_COSTS.md "Video").
+  "dreamina-seedance-2-0-260128": { input: 0, output: 7 },
+  "dreamina-seedance-2-0-fast-260128": { input: 0, output: 5.6 },
+  "dreamina-seedance-2-0-mini-260615": { input: 0, output: 3.5 },
 };
 
 /** Lower case, no "models/" prefix, no "-preview", "-latest", "-exp", "-001" or date suffix. */
@@ -66,6 +71,9 @@ const FAMILIES: [RegExp, string][] = [
   [/claude.*sonnet/, "claude-sonnet-5-5"],
   [/claude/, "claude-opus-5-5"],
   [/^eleven_|elevenlabs/, "eleven_multilingual_v2"],
+  [/seedance.*mini/, "dreamina-seedance-2-0-mini-260615"],
+  [/seedance.*fast/, "dreamina-seedance-2-0-fast-260128"],
+  [/seedance/, "dreamina-seedance-2-0-260128"],
   [/^music/, "music_v1"],
 ];
 

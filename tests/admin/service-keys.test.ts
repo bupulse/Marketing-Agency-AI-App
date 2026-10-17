@@ -55,7 +55,8 @@ describe("which keys can be saved", () => {
   it("lists Seedance 2.0 and Composio with their keys", () => {
     const seedance = SERVICES.find((s) => s.id === "seedance")!;
     expect(seedance.env).toEqual(["SEEDANCE_API_KEY"]);
-    expect(seedance.optionalEnv).toEqual(["SEEDANCE_MODEL", "SEEDANCE_BASE_URL"]);
+    // The Video Studio's cost estimate and the BytePlus Access Key for the digital characters (docs/VIDEO_APP_INTEGRATION.md).
+    expect(seedance.optionalEnv).toEqual(["SEEDANCE_MODEL", "SEEDANCE_BASE_URL", "SEEDANCE_USD_PER_M_TOKENS", "BYTEPLUS_ACCESS_KEY_ID", "BYTEPLUS_SECRET_ACCESS_KEY"]);
     expect(SERVICES.find((s) => s.id === "composio")!.env).toEqual(["COMPOSIO_API_KEY"]);
   });
 

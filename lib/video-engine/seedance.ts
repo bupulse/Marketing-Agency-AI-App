@@ -39,8 +39,18 @@ export const SEEDANCE_USD_PER_SECOND: Record<SeedanceTier, Record<SeedanceResolu
   fast: { "480p": 0.056, "720p": 0.12, "1080p": 0.3 },
   mini: { "480p": 0.035, "720p": 0.075, "1080p": 0.19 },
 };
-/** USD per million output tokens, used to price the real usage BytePlus reports (SEEDANCE_USD_PER_M_TOKENS to adjust). */
-export const seedanceTokenRate = () => Number(process.env.SEEDANCE_USD_PER_M_TOKENS) || 7;
+/**
+ * USD per million output tokens, used to price the real usage BytePlus reports, by tier. Derived from the per-second
+ * estimates above (a 720p 5 s clip is about 108,000 tokens: Pro $0.75 ≈ $7/M; Fast 80% of that; Mini half), until the
+ * first invoice. SEEDANCE_USD_PER_M_TOKENS overrides the Pro rate (Fast and Mini follow it).
+ */
+export const SEEDANCE_USD_PER_M_TOKENS: Record<SeedanceTier, number> = { pro: 7, fast: 5.6, mini: 3.5 };
+export const seedanceTokenRate = (tier: SeedanceTier = "pro") => {
+  const pro = Number(process.env.SEEDANCE_USD_PER_M_TOKENS) || SEEDANCE_USD_PER_M_TOKENS.pro;
+  return Math.round(pro * (SEEDANCE_USD_PER_M_TOKENS[tier] / SEEDANCE_USD_PER_M_TOKENS.pro) * 1000) / 1000;
+};
+/** The tier of a BytePlus model id (null for an unknown one). */
+export const seedanceTierOf = (model: string | null | undefined): SeedanceTier | null => (Object.keys(SEEDANCE_MODELS) as SeedanceTier[]).find((t) => SEEDANCE_MODELS[t].id === model) ?? null;
 
 export type SeedanceReference = { kind: "image" | "video" | "audio"; url: string; role?: "first_frame" | "last_frame" | "reference_image" | "reference_video" | "reference_audio" };
 
@@ -152,7 +162,7 @@ export async function createSeedanceTask(r: SeedanceRequest, o: Opts): Promise<s
   return body.id;
 }
 
-type TaskBody = { id?: string; status?: string; content?: { video_url?: string }; usage?: { completion_tokens?: number; total_tokens?: number }; seed?: number; resolution?: string; ratio?: string; duration?: number; error?: { code?: string; message?: string } };
+type TaskBody = { id?: string; model?: string; status?: string; content?: { video_url?: string }; usage?: { completion_tokens?: number; total_tokens?: number }; seed?: number; resolution?: string; ratio?: string; duration?: number; error?: { code?: string; message?: string } };
 
 export async function getSeedanceTask(id: string, o: Opts): Promise<SeedanceTask> {
   const f = o.fetchImpl ?? fetch;
@@ -172,7 +182,8 @@ export async function getSeedanceTask(id: string, o: Opts): Promise<SeedanceTask
     status,
     videoUrl: b.content?.video_url ?? null,
     tokens,
-    costUsd: Math.round(((tokens * seedanceTokenRate()) / 1_000_000) * 10_000) / 10_000,
+    // Priced at the task's own tier (its model id), Pro when BytePlus does not say.
+    costUsd: Math.round(((tokens * seedanceTokenRate(seedanceTierOf(b.model) ?? "pro")) / 1_000_000) * 10_000) / 10_000,
     seed: typeof b.seed === "number" ? b.seed : null,
     resolution: b.resolution ?? null,
     ratio: b.ratio ?? null,
@@ -230,8 +241,11 @@ export async function checkSeedanceConnection(o: Partial<Opts> = {}): Promise<Se
   return { state: "unreachable", message: `BytePlus had a problem (${res.status}${code ? `, ${code}` : ""}). Try again in a few minutes.`, ...extra };
 }
 
+/** A finished task as withLedger describes it in the app (provider "byteplus", priced by lib/ai/pricing.ts per tier). */
+export const seedanceLedgerUsage = (tier: SeedanceTier, tokens: number) => ({ provider: "byteplus", model: SEEDANCE_MODELS[tier].id, usage: { inputTokens: 0, outputTokens: tokens } });
+
 /** Keeps the ledger's model naming for Seedance usage rows (lib/ai/pricing.ts prices Claude; Seedance is priced here). */
-export const seedanceUsage = (tier: SeedanceTier, tokens: number) => ({ model: SEEDANCE_MODELS[tier].id, inputTokens: 0, outputTokens: tokens, costUsd: Math.round(((tokens * seedanceTokenRate()) / 1_000_000) * 10_000) / 10_000 });
+export const seedanceUsage = (tier: SeedanceTier, tokens: number) => ({ model: SEEDANCE_MODELS[tier].id, inputTokens: 0, outputTokens: tokens, costUsd: Math.round(((tokens * seedanceTokenRate(tier)) / 1_000_000) * 10_000) / 10_000 });
 
 // estimateCostUsd is Claude's table; re-exported so callers price both engines from one place.
 export { estimateCostUsd as estimateClaudeUsd };

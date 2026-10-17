@@ -25,6 +25,18 @@ Provisional; the owner may change them.
   - `lib/video-engine/credits.ts` (task 1);
   - the models and migration `20261022100000_video_studio`, applied to the TEST database (task 2);
   - `PLAN_VIDEO_CREDITS` and the `videoCredits` metric in `lib/plans.ts` and `lib/usage.ts`.
+  - Task 3: the `block:videoCredits` add-on, `videoCredits` as an offer metric (optional in old offers), the
+    `videoStudio` and `aiVideo` features (coming soon), and the credits row on Usage and Billing (only with the studio).
+  - Task 4:
+    - the ledger names (`lib/video-engine/ledger-features.ts`, all `video-…`);
+    - Seedance priced per tier in `lib/ai/pricing.ts`;
+    - BytePlus mapped to the `seedance` switch and to Provider bills;
+    - the Claude, ElevenLabs and Seedance service entries;
+    - the test that nothing in the app imports `video-lab/claude-cli.ts`.
+    - **Video calls skip the company's AI allowance** (credits meter them); the platform's monthly cap
+      (`AI_MONTHLY_BUDGET_USD`) still applies. Raise that cap when video goes live: Seedance at volume would otherwise
+      stop every AI call for the month.
+    - The `premium-renderer` heartbeat card waits for task 11, when the renderer exists.
 
 ## 0. THE CLAUDE KEY
 

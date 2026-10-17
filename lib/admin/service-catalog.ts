@@ -39,7 +39,7 @@ export const NETWORK_SERVICE: Record<string, ServiceId> = {
 export const networksOf = (service: ServiceId): string[] => Object.entries(NETWORK_SERVICE).filter(([, s]) => s === service).map(([n]) => n);
 
 /** AI provider names in the AiCall ledger -> service. */
-export const AI_PROVIDER_SERVICE: Record<string, ServiceId> = { gemini: "gemini", claude: "claude", elevenlabs: "elevenlabs" };
+export const AI_PROVIDER_SERVICE: Record<string, ServiceId> = { gemini: "gemini", claude: "claude", elevenlabs: "elevenlabs", byteplus: "seedance" };
 
 export type ServiceInfo = {
   id: ServiceId;
@@ -74,7 +74,7 @@ export const SERVICES: ServiceInfo[] = [
     purpose: "Speaks the voiceover of content videos (text to speech).",
     env: ["ELEVENLABS_API_KEY"],
     optionalEnv: ["ELEVENLABS_MODEL"],
-    features: ["Voiceover on videos"],
+    features: ["Voiceover on videos", "Video Studio voice-overs (coming soon)"],
     killable: true,
     whenOff: "Videos are made without a voiceover, with captions and music only.",
   },
@@ -92,12 +92,12 @@ export const SERVICES: ServiceInfo[] = [
   {
     id: "claude",
     name: "Anthropic Claude",
-    purpose: "Alternative text model, used only when AI_TEXT_PROVIDER=claude.",
+    purpose: "Alternative text model, used only when AI_TEXT_PROVIDER=claude. The Video Studio (coming soon) designs its videos and writes its Seedance prompts with it, through ANTHROPIC_API_KEY only (docs/VIDEO_APP_INTEGRATION.md).",
     env: ["ANTHROPIC_API_KEY"],
     optionalEnv: ["CLAUDE_TEXT_MODEL", "CLAUDE_EFFORT"],
-    features: ["Content generation (when selected)"],
+    features: ["Content generation (when selected)", "Video Studio design (coming soon)"],
     killable: true,
-    whenOff: "Text generation pauses with a friendly message while Claude is the selected provider.",
+    whenOff: "Text generation pauses with a friendly message while Claude is the selected provider. Once the Video Studio is live, video design pauses too; finished videos and scheduled posts are not affected.",
   },
   {
     id: "resend",
@@ -250,10 +250,10 @@ export const SERVICES: ServiceInfo[] = [
   {
     id: "seedance",
     name: "Seedance 2.0 (BytePlus ModelArk)",
-    purpose: "ByteDance's AI video model: makes short videos from text or a photo. Kept ready here; no BuPulse feature calls it yet.",
+    purpose: "ByteDance's AI video model: filmed-looking clips from text, photos and digital characters. The Video Studio's AI video (coming soon) uses it; no client feature calls it yet. SEEDANCE_USD_PER_M_TOKENS sets the cost estimate; the BytePlus Access Key (BYTEPLUS_ACCESS_KEY_ID and BYTEPLUS_SECRET_ACCESS_KEY) lists the account's digital characters.",
     env: ["SEEDANCE_API_KEY"],
-    optionalEnv: ["SEEDANCE_MODEL", "SEEDANCE_BASE_URL"],
-    features: ["AI video generation (not built yet)"],
+    optionalEnv: ["SEEDANCE_MODEL", "SEEDANCE_BASE_URL", "SEEDANCE_USD_PER_M_TOKENS", "BYTEPLUS_ACCESS_KEY_ID", "BYTEPLUS_SECRET_ACCESS_KEY"],
+    features: ["AI video (Video Studio, coming soon)"],
     killable: true,
     whenOff: "Nothing changes for clients today: no feature uses Seedance yet. Once AI video is built, it pauses with a friendly message.",
   },
