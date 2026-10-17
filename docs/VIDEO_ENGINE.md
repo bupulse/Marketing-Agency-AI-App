@@ -313,6 +313,19 @@ videos only reads what it shows.
 - With the key, nothing changes: the same call charges, creates the BytePlus task and polls. Offline (flex) tasks are
   now checked every minute for up to 48 hours (BytePlus keeps them up to 48 hours), not refunded after 20 minutes.
 
+**Example storyboards** ("Get inspired" on the Seedance pages; `video-lab/seedance-mock/examples/`): 16 free
+storyboards made from the TEST database's real products with the brain and the storyboard renderer, with no key, no
+Claude and no cost (`node --env-file=.env scripts/video-lab/seedance-examples.mjs`; `--list` shows the products and
+their sectors). The sectors take turns and each one goes through the formats it shows best, so all 6 formats appear.
+Each file has the title, sector, format, template, prompt, notes, the storyboard with its SVG frames and the
+product's photos, the credits the real clip would cost at every quality and resolution, and the product and business
+it came from. Only the products' own facts are used. A price with conditions, like "250,000 RWF (final pricing
+depends on...)", is never spoken, and long names are shortened in the shots. `listSeedanceExamples({sector, format})`
+(`video-lab/seedance-mock/preview.ts`) reads them in gallery order. On 17 October 2026 the TEST database has 5 active
+products: a phone shop, a fashion boutique, real estate, a cleaning service and a hydroponic kit (a shop), so salon,
+restaurant, events and education have no examples until such products exist. The sector is read from the product
+name first, then its summary, then the business, so a real-estate agency's cleaning service counts as a service.
+
 **Going live with Seedance** (the owner's steps; BytePlus console wording may differ slightly):
 
 1. Sign in at console.byteplus.com with the BuPulse account that has the prepaid pack.

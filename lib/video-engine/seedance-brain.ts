@@ -398,6 +398,7 @@ const KIND_PATTERNS: [BusinessKind, RegExp][] = [
   ["events", /\b(events?|concert|wedding|party|festival|conference|tickets?|venue)\b/i],
   ["education", /\b(school|courses?|training|class(es)?|academy|lessons?|tutoring|university|bootcamp)\b/i],
   ["services", /\b(cleaning|repairs?|plumb(ing|er)|garage|car wash|printing|laundry|mechanic|tailor(ing)?|moving|installation)\b/i],
+  ["shop", /\b(hydroponic|farming|seeds?|tools?|equipment|appliances?|furniture|soap|cosmetics|groceries)\b/i],
 ];
 
 export type SeedanceBrief = {
@@ -418,10 +419,16 @@ export type SeedanceBrief = {
   variant?: number;
 };
 
-/** The business kind from the business and product text; "shop" when nothing matches. */
+/**
+ * The business kind, read from the product's name first, then its summary, then the business (a real-estate agency
+ * that sells a cleaning service is a service here); "shop" when nothing matches.
+ */
 export function detectBusinessKind(b: Pick<SeedanceBrief, "business" | "product">): BusinessKind {
-  const text = [b.business.name, b.business.description, b.product.name, b.product.summary].filter(Boolean).join(" ");
-  return KIND_PATTERNS.find(([, re]) => re.test(text))?.[0] ?? "shop";
+  for (const text of [b.product.name, b.product.summary, `${b.business.name} ${b.business.description ?? ""}`]) {
+    const hit = text && KIND_PATTERNS.find(([, re]) => re.test(text));
+    if (hit) return hit[0];
+  }
+  return "shop";
 }
 
 /** Picks the template for a brief: the one asked for, else one for the business kind and format, else a fallback. */
@@ -534,13 +541,17 @@ export function planSeedanceShots(brief: SeedanceBrief): SeedancePlan {
   let productImg = images.find((r) => r !== personImg && r !== placeImg);
   const placeFirst = kind === "real-estate" || kind === "events";
   const placeRef = placeImg ?? (placeFirst ? productImg : undefined);
-  if (placeFirst && placeRef === productImg) productImg = undefined;
+  // For a house or a venue every photo shows the place: none is a "product" with a logo and a label.
+  if (placeFirst) productImg = undefined;
+  const morePlace = placeFirst ? images.filter((r) => r !== personImg && r !== placeRef) : [];
   const product = brief.product.name.trim();
+  // In the shots, a long name is shortened to the part before " – " or a comma; the full name stays in the fidelity line.
+  const shortName = product.split(/\s+[–—-]\s+|,\s*/)[0].trim() || product;
   let productMentioned = false;
   const P = () => {
-    if (!productImg || productMentioned) return `the ${product}`;
+    if (!productImg || productMentioned) return `the ${shortName}`;
     productMentioned = true;
-    return `the ${product} from Image ${productImg.n}`;
+    return `the ${shortName} from Image ${productImg.n}`;
   };
   const place = placeRef ? `the place in Image ${placeRef.n}` : t.place;
   const presenterText = personImg ? `the presenter from Image ${personImg.n}` : brief.presenter?.trim() || t.cast || "a friendly fictional adult";
@@ -564,11 +575,14 @@ export function planSeedanceShots(brief: SeedanceBrief): SeedancePlan {
   }
 
   // Spoken lines: only facts, only languages Seedance speaks well.
-  const usp = brief.product.usps?.find((u) => u.trim())?.trim().replace(/[.!]+$/, "") ?? null;
-  const price = brief.product.price?.trim() || null;
+  // Spoken facts stay short: the first selling point under 12 words, a price without conditions, the name before " – ".
+  const usp = brief.product.usps?.map((u) => u.trim().replace(/[.,;:!]+$/, "")).find((u) => u && u.split(/\s+/).length <= 12) ?? null;
+  const rawPrice = brief.product.price?.trim() || null;
+  const price = rawPrice && !/[(]/.test(rawPrice) && rawPrice.length <= 40 ? rawPrice : null;
+  if (audio && rawPrice && !price) notes.push("The price has conditions, so it is not spoken; show it in the caption instead.");
   const speaks = audio && (lang === "en" || lang === "fr");
   if (audio && !speaks) notes.push(`No spoken line: Seedance does not speak ${LANG_NAMES[lang]} reliably. Music and sound only; add the ${LANG_NAMES[lang]} voice-over afterwards with ElevenLabs.`);
-  if (audio && !price && beats.some((b) => b.say?.includes("price"))) notes.push("No price in the product details, so no price is spoken.");
+  if (audio && !rawPrice && beats.some((b) => b.say?.includes("price"))) notes.push("No price in the product details, so no price is spoken.");
   const used = new Set<SayKey>();
   const line = (keys: SayKey[] | undefined): string | null => {
     if (!speaks || !keys) return null;
@@ -576,7 +590,7 @@ export function planSeedanceShots(brief: SeedanceBrief): SeedancePlan {
       const l = LINES[k];
       if (used.has(k) || (l.needs === "price" && !price) || (l.needs === "usp" && !usp)) continue;
       used.add(k);
-      return l[lang as "en" | "fr"].replace("{product}", product).replace("{business}", brief.business.name.trim()).replace("{price}", price ?? "").replace("{usp}", usp ?? "");
+      return l[lang as "en" | "fr"].replace("{product}", shortName).replace("{business}", brief.business.name.trim()).replace("{price}", price ?? "").replace("{usp}", usp ?? "");
     }
     return null;
   };
@@ -588,7 +602,7 @@ export function planSeedanceShots(brief: SeedanceBrief): SeedancePlan {
   const times = timeline(beats.map((b) => b.weight), seconds);
   const shots: PlannedShot[] = beats.map((b, i) => {
     const camera = brief.fixedLens ? cameraById("static") : cameraById(b.camera);
-    const action = b.action.replace(/\{P\}/g, P).replace(/\{product\}/g, `the ${product}`).replace(/\{name\}/g, product).replace(/\{presenter\}/g, presenter).replace(/\{place\}/g, place);
+    const action = b.action.replace(/\{P\}/g, P).replace(/\{product\}/g, `the ${shortName}`).replace(/\{name\}/g, shortName).replace(/\{presenter\}/g, presenter).replace(/\{place\}/g, place);
     const spoken = keepSay.has(i) ? line(b.say) : null;
     const references = [...new Set((action.match(/(Image|Video|Audio) \d+/g) ?? []) as string[])];
     return { from: times[i][0], to: times[i][1], shot: shotById(b.shot).words, camera: camera.words, action, sound: audio && b.sound ? b.sound : null, spoken, references };
@@ -604,7 +618,7 @@ export function planSeedanceShots(brief: SeedanceBrief): SeedancePlan {
   const formatWords = SEEDANCE_FORMATS.find((f) => f.id === t.format)?.words ?? "ad";
   const kindWords = BUSINESS_KINDS.find((k) => k.id === kind)?.words ?? "a local business";
   const lines = [
-    `A ${ratioWords ? `${ratioWords} ` : ""}${formatWords} for ${kindWords} in ${brief.business.country?.trim() || "Rwanda"}. Setting: ${placeRef ? `${place}, exactly as in the photo` : place}. Light: ${t.light}.${audio ? ` Music: ${t.music}.` : ""}`,
+    `A ${ratioWords ? `${ratioWords} ` : ""}${formatWords} for ${kindWords} in ${brief.business.country?.trim() || "Rwanda"}. Setting: ${placeRef ? `${place}, exactly as in the photo${morePlace.length ? ` (${morePlace.map((r) => `Image ${r.n}`).join(" and ")} show${morePlace.length > 1 ? "" : "s"} more of it)` : ""}` : place}. Light: ${t.light}.${audio ? ` Music: ${t.music}.` : ""}`,
     productImg ? `The ${product} must look exactly as in Image ${productImg.n}: same shape, colours, logo and label.` : "",
     ...shots.map((s) => {
       const lead = `${s.shot[0].toUpperCase()}${s.shot.slice(1)}, ${s.camera}`;

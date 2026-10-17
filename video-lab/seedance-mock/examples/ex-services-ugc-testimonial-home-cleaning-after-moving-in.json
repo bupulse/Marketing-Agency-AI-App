@@ -1,0 +1,153 @@
+{
+ "id": "ex-services-ugc-testimonial-home-cleaning-after-moving-in",
+ "order": 13,
+ "title": "Happy client: Home cleaning after moving in",
+ "sector": "services",
+ "format": "ugc-testimonial",
+ "templateId": "services-ugc",
+ "seconds": 10,
+ "ratio": "9:16",
+ "prompt": "A vertical 9:16 UGC-style testimonial ad filmed on a phone for a local service business in Rwanda. Setting: a bright Kigali home. Light: natural window light. Music: warm, light beat.\n0-4s: Handheld selfie-style shot at arm's length, natural handheld phone camera with a slight shake: a friendly fictional Rwandan woman in her twenties in a bright everyday top shows the finished Home cleaning after moving in result to the camera, delighted. The presenter says to the camera in English: \"Look what I found at Urugo Homes!\"\n4-8s: Medium shot, waist up, natural handheld phone camera with a slight shake: the presenter walks around and points at the details.\n8-10s: Clean hero shot, subject centred, locked-off static camera: the presenter gives a thumbs up. The presenter says to the camera in English: \"Book your spot at Urugo Homes.\"\nClean frames with no on-screen text, captions or added logos.",
+ "notes": [
+  "No product photo: Seedance will imagine the Home cleaning after moving in from the words. Add a photo as Image 1 so it looks exactly like yours.",
+  "The presenter is a fictional person described in words, so the face changes between clips. Pick a digital character from the library for the same face every time."
+ ],
+ "storyboard": {
+  "kind": "seedance-storyboard",
+  "notice": "Preview: Seedance arrives with the BytePlus key. This is the shot plan Seedance will film; no credits were taken.",
+  "title": "Home cleaning after moving in: Happy client",
+  "model": "Seedance 2.0 Fast",
+  "tier": "fast",
+  "resolution": "720p",
+  "ratio": "9:16",
+  "seconds": 10,
+  "audio": true,
+  "fixedLens": false,
+  "setting": "A vertical 9:16 UGC-style testimonial ad filmed on a phone for a local service business in Rwanda. Setting: a bright Kigali home. Light: natural window light. Music: warm, light beat.",
+  "prompt": "A vertical 9:16 UGC-style testimonial ad filmed on a phone for a local service business in Rwanda. Setting: a bright Kigali home. Light: natural window light. Music: warm, light beat.\n0-4s: Handheld selfie-style shot at arm's length, natural handheld phone camera with a slight shake: a friendly fictional Rwandan woman in her twenties in a bright everyday top shows the finished Home cleaning after moving in result to the camera, delighted. The presenter says to the camera in English: \"Look what I found at Urugo Homes!\"\n4-8s: Medium shot, waist up, natural handheld phone camera with a slight shake: the presenter walks around and points at the details.\n8-10s: Clean hero shot, subject centred, locked-off static camera: the presenter gives a thumbs up. The presenter says to the camera in English: \"Book your spot at Urugo Homes.\"\nClean frames with no on-screen text, captions or added logos.",
+  "shots": [
+   {
+    "n": 1,
+    "from": 0,
+    "to": 4,
+    "shot": "Selfie",
+    "camera": "natural handheld phone camera with a slight shake",
+    "cameraId": "handheld",
+    "action": "Handheld selfie-style shot at arm's length, natural handheld phone camera with a slight shake: a friendly fictional Rwandan woman in her twenties in a bright everyday top shows the finished Home cleaning after moving in result to the camera",
+    "sound": null,
+    "spoken": "Look what I found at Urugo Homes!",
+    "references": []
+   },
+   {
+    "n": 2,
+    "from": 4,
+    "to": 8,
+    "shot": "Medium shot",
+    "camera": "natural handheld phone camera with a slight shake",
+    "cameraId": "handheld",
+    "action": "Medium shot, waist up, natural handheld phone camera with a slight shake: the presenter walks around and points at the details.",
+    "sound": null,
+    "spoken": null,
+    "references": []
+   },
+   {
+    "n": 3,
+    "from": 8,
+    "to": 10,
+    "shot": "Hero end shot",
+    "camera": "locked-off static camera",
+    "cameraId": "static",
+    "action": "Clean hero shot, subject centred, locked-off static camera: the presenter gives a thumbs up. Clean frames with no on-screen text, captions or added logos.",
+    "sound": null,
+    "spoken": "Book your spot at Urugo Homes.",
+    "references": []
+   }
+  ],
+  "frames": [
+   {
+    "at": 2,
+    "shot": 1,
+    "label": "1",
+    "from": 0,
+    "to": 4,
+    "caption": "Selfie, natural handheld phone camera with a slight shake: Handheld selfie-style shot at arm's length, natural handheld phone camera with a slight shake: a friendly fictional Rwandan woman in her twenties in a bright everyday top shows the finished Home cleaning after moving in result to the camera",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 180 320\" width=\"180\" height=\"320\" role=\"img\" aria-label=\"Shot 1: Selfie, natural handheld phone camera with a slight shake. Handheld selfie-style shot at arm&#39;s length, natural handheld phone camera with a slight shake: a friendly fictional Rwandan woman in her twenties in a bright everyday top shows the finished Home cleaning after moving in result to the camera\"><defs><linearGradient id=\"g-ex-services-ugc-testimonial-home-cleaning-after-moving-in-0\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#20264a\"/><stop offset=\"1\" stop-color=\"#0c0f20\"/></linearGradient><marker id=\"m-ex-services-ugc-testimonial-home-cleaning-after-moving-in-0\" viewBox=\"0 0 8 8\" refX=\"6\" refY=\"4\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M0,0 L8,4 L0,8 z\" fill=\"#ffd166\"/></marker></defs><rect width=\"180\" height=\"320\" fill=\"url(#g-ex-services-ugc-testimonial-home-cleaning-after-moving-in-0)\"/><g fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.35\" stroke-width=\"2\"><circle cx=\"90\" cy=\"115.19999999999999\" r=\"18\"/><path d=\"M50.4,249.60000000000002 Q54,150.39999999999998 90,153.6 Q126,150.39999999999998 129.6,249.60000000000002\"/></g><g fill=\"none\" stroke=\"#ffd166\" stroke-width=\"2.2\" stroke-linecap=\"round\"><path d=\"M57.24,144 q8.19,-9.360000000000001 16.38,0 t16.38,0 t16.38,0 t16.38,0\"/></g><rect width=\"180\" height=\"22\" fill=\"#000\" fill-opacity=\"0.45\"/><text x=\"8\" y=\"15\" font-family=\"Inter, Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#fff\">SHOT 1 · 0–4 s</text><text x=\"172\" y=\"15\" text-anchor=\"end\" font-family=\"Inter, Arial, sans-serif\" font-size=\"9\" font-weight=\"700\" fill=\"#ffd166\">PREVIEW</text><rect y=\"266\" width=\"180\" height=\"54\" fill=\"#000\" fill-opacity=\"0.6\"/><text x=\"8\" y=\"283\" font-family=\"Inter, Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#fff\">Selfie</text><text x=\"8\" y=\"298\" font-family=\"Inter, Arial, sans-serif\" font-size=\"10\" fill=\"#ffd166\">natural handheld phone camer…</text><text x=\"8\" y=\"312\" font-family=\"Inter, Arial, sans-serif\" font-size=\"9\" fill=\"#cfd3e6\">at 2 s</text></svg>"
+   },
+   {
+    "at": 6,
+    "shot": 2,
+    "label": "2",
+    "from": 4,
+    "to": 8,
+    "caption": "Medium shot, natural handheld phone camera with a slight shake: Medium shot, waist up, natural handheld phone camera with a slight shake: the presenter walks around and points at the details.",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 180 320\" width=\"180\" height=\"320\" role=\"img\" aria-label=\"Shot 2: Medium shot, natural handheld phone camera with a slight shake. Medium shot, waist up, natural handheld phone camera with a slight shake: the presenter walks around and points at the details.\"><defs><linearGradient id=\"g-ex-services-ugc-testimonial-home-cleaning-after-moving-in-1\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#2a1f45\"/><stop offset=\"1\" stop-color=\"#110c1f\"/></linearGradient><marker id=\"m-ex-services-ugc-testimonial-home-cleaning-after-moving-in-1\" viewBox=\"0 0 8 8\" refX=\"6\" refY=\"4\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M0,0 L8,4 L0,8 z\" fill=\"#ffd166\"/></marker></defs><rect width=\"180\" height=\"320\" fill=\"url(#g-ex-services-ugc-testimonial-home-cleaning-after-moving-in-1)\"/><g fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.35\" stroke-width=\"2\"><circle cx=\"90\" cy=\"115.19999999999999\" r=\"18\"/><path d=\"M50.4,249.60000000000002 Q54,150.39999999999998 90,153.6 Q126,150.39999999999998 129.6,249.60000000000002\"/></g><g fill=\"none\" stroke=\"#ffd166\" stroke-width=\"2.2\" stroke-linecap=\"round\"><path d=\"M57.24,144 q8.19,-9.360000000000001 16.38,0 t16.38,0 t16.38,0 t16.38,0\"/></g><rect width=\"180\" height=\"22\" fill=\"#000\" fill-opacity=\"0.45\"/><text x=\"8\" y=\"15\" font-family=\"Inter, Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#fff\">SHOT 2 · 4–8 s</text><text x=\"172\" y=\"15\" text-anchor=\"end\" font-family=\"Inter, Arial, sans-serif\" font-size=\"9\" font-weight=\"700\" fill=\"#ffd166\">PREVIEW</text><rect y=\"266\" width=\"180\" height=\"54\" fill=\"#000\" fill-opacity=\"0.6\"/><text x=\"8\" y=\"283\" font-family=\"Inter, Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#fff\">Medium shot</text><text x=\"8\" y=\"298\" font-family=\"Inter, Arial, sans-serif\" font-size=\"10\" fill=\"#ffd166\">natural handheld phone camer…</text><text x=\"8\" y=\"312\" font-family=\"Inter, Arial, sans-serif\" font-size=\"9\" fill=\"#cfd3e6\">at 6 s</text></svg>"
+   },
+   {
+    "at": 9,
+    "shot": 3,
+    "label": "3",
+    "from": 8,
+    "to": 10,
+    "caption": "Hero end shot, locked-off static camera: Clean hero shot, subject centred, locked-off static camera: the presenter gives a thumbs up. Clean frames with no on-screen text, captions or added logos.",
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 180 320\" width=\"180\" height=\"320\" role=\"img\" aria-label=\"Shot 3: Hero end shot, locked-off static camera. Clean hero shot, subject centred, locked-off static camera: the presenter gives a thumbs up. Clean frames with no on-screen text, captions or added logos.\"><defs><linearGradient id=\"g-ex-services-ugc-testimonial-home-cleaning-after-moving-in-2\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#173444\"/><stop offset=\"1\" stop-color=\"#0a1820\"/></linearGradient><marker id=\"m-ex-services-ugc-testimonial-home-cleaning-after-moving-in-2\" viewBox=\"0 0 8 8\" refX=\"6\" refY=\"4\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M0,0 L8,4 L0,8 z\" fill=\"#ffd166\"/></marker></defs><rect width=\"180\" height=\"320\" fill=\"url(#g-ex-services-ugc-testimonial-home-cleaning-after-moving-in-2)\"/><g fill=\"none\" stroke=\"#ffffff\" stroke-opacity=\"0.35\" stroke-width=\"2\"><circle cx=\"90\" cy=\"115.19999999999999\" r=\"18\"/><path d=\"M50.4,249.60000000000002 Q54,150.39999999999998 90,153.6 Q126,150.39999999999998 129.6,249.60000000000002\"/></g><g fill=\"none\" stroke=\"#ffd166\" stroke-width=\"2.2\" stroke-linecap=\"round\"><rect x=\"73.62\" y=\"122.94\" width=\"32.76\" height=\"21.060000000000002\" rx=\"3\"/><path d=\"M90,144 l-16.38,28.080000000000002 M90,144 v28.080000000000002 M90,144 l16.38,28.080000000000002\"/></g><rect width=\"180\" height=\"22\" fill=\"#000\" fill-opacity=\"0.45\"/><text x=\"8\" y=\"15\" font-family=\"Inter, Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#fff\">SHOT 3 · 8–10 s</text><text x=\"172\" y=\"15\" text-anchor=\"end\" font-family=\"Inter, Arial, sans-serif\" font-size=\"9\" font-weight=\"700\" fill=\"#ffd166\">PREVIEW</text><rect y=\"266\" width=\"180\" height=\"54\" fill=\"#000\" fill-opacity=\"0.6\"/><text x=\"8\" y=\"283\" font-family=\"Inter, Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#fff\">Hero end shot</text><text x=\"8\" y=\"298\" font-family=\"Inter, Arial, sans-serif\" font-size=\"10\" fill=\"#ffd166\">locked-off static camera</text><text x=\"8\" y=\"312\" font-family=\"Inter, Arial, sans-serif\" font-size=\"9\" fill=\"#cfd3e6\">at 9 s</text></svg>"
+   }
+  ],
+  "references": [],
+  "estimate": {
+   "usd": 1.2,
+   "credits": 385,
+   "wait": "about 4 to 5 minutes"
+  },
+  "issues": []
+ },
+ "credits": [
+  {
+   "tier": "pro",
+   "name": "Seedance 2.0",
+   "resolution": "480p",
+   "credits": 225
+  },
+  {
+   "tier": "pro",
+   "name": "Seedance 2.0",
+   "resolution": "720p",
+   "credits": 480
+  },
+  {
+   "tier": "pro",
+   "name": "Seedance 2.0",
+   "resolution": "1080p",
+   "credits": 1180
+  },
+  {
+   "tier": "fast",
+   "name": "Seedance 2.0 Fast",
+   "resolution": "480p",
+   "credits": 180
+  },
+  {
+   "tier": "fast",
+   "name": "Seedance 2.0 Fast",
+   "resolution": "720p",
+   "credits": 385
+  },
+  {
+   "tier": "mini",
+   "name": "Seedance 2.0 Mini",
+   "resolution": "480p",
+   "credits": 110
+  },
+  {
+   "tier": "mini",
+   "name": "Seedance 2.0 Mini",
+   "resolution": "720p",
+   "credits": 240
+  }
+ ],
+ "source": {
+  "businessId": "c8d21b4b4f52711aa6d4d1e67",
+  "businessName": "Urugo Homes",
+  "productId": "cmv6c3rf50007ll45m26c12rj",
+  "productName": "Home cleaning after moving in"
+ }
+}

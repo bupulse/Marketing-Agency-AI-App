@@ -52,6 +52,9 @@ describe("seedance brain catalogue", () => {
     expect(detectBusinessKind({ business: { name: "Inzozi Salon", description: "Braids and hair care" }, product: { name: "Knotless braids" } })).toBe("salon");
     expect(detectBusinessKind({ business: { name: "Kibagabaga Homes" }, product: { name: "3-bedroom house for rent" } })).toBe("real-estate");
     expect(detectBusinessKind({ business: { name: "Duka" }, product: { name: "Soap" } })).toBe("shop");
+    // The product decides before the business: a cleaning service from a real-estate agency, a farming kit from a food business.
+    expect(detectBusinessKind({ business: { name: "Urugo Homes", description: "We sell and rent houses" }, product: { name: "Home cleaning after moving in" } })).toBe("services");
+    expect(detectBusinessKind({ business: { name: "LEAF", description: "Grow healthy food" }, product: { name: "Vertical Hydroponic Growing System" } })).toBe("shop");
     expect(pickSeedanceTemplate({ ...phone, templateId: "ugc-unboxing" }).id).toBe("phone-unboxing");
     expect(pickSeedanceTemplate({ ...phone, templateId: "salon-transformation" }).id).toBe("salon-transformation");
     expect(pickSeedanceTemplate({ ...phone, businessKind: "education", format: "unboxing" }).id).toBe("any-unboxing");
@@ -84,6 +87,17 @@ describe("planSeedanceShots", () => {
         expect(plan.words).toBeLessThan(300);
       }
     }
+  });
+
+  it("never speaks a price with conditions, shortens long names, and treats every house photo as the place", () => {
+    const leaf = planSeedanceShots({ ...phone, product: { name: "LEAF Hydro Tower – Vertical Hydroponic Growing System", price: "250,000 RWF (final pricing depends on the size)" }, templateId: "shop-offer" });
+    expect(leaf.prompt).not.toContain("250,000");
+    expect(leaf.notes.join(" ")).toMatch(/price has conditions/);
+    expect(leaf.prompt).toContain("The LEAF Hydro Tower – Vertical Hydroponic Growing System must look exactly as in Image 1");
+    expect(leaf.prompt).toContain("the LEAF Hydro Tower from Image 1");
+    const house = planSeedanceShots({ business: { name: "Homes" }, product: { name: "3-bedroom house with garden, Kibagabaga" }, references: ["Image 1: photo of the house", "Image 2: photo of the house"], format: "tour", seconds: 12 });
+    expect(house.prompt).toContain("(Image 2 shows more of it)");
+    expect(house.prompt).not.toContain("logo and label");
   });
 
   it("speaks no price that is not given, French for French businesses, nothing in Kinyarwanda", () => {

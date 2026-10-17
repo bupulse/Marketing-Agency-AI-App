@@ -5,11 +5,14 @@ import sharp from "sharp";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { SeedanceRequest } from "@/lib/video-engine/seedance";
 import { buildStoryboard, frameSize, parseShots } from "@/video-lab/seedance-mock/storyboard";
-import { previewDelayMs } from "@/video-lab/seedance-mock/preview";
+import { listSeedanceExamples, previewDelayMs } from "@/video-lab/seedance-mock/preview";
+import { pickExamples, type Candidate } from "@/video-lab/seedance-mock/examples";
 
 const wallet = vi.hoisted(() => ({ charge: vi.fn(async () => ({})), refund: vi.fn(async () => ({})) }));
 vi.mock("@/video-lab/credits", () => ({ charge: wallet.charge, refund: wallet.refund, seedanceCredits: () => 55 }));
 vi.mock("@/video-lab/store", () => ({ record: vi.fn(async () => undefined) }));
+// examples.ts reads the TEST database only when the generator runs; the tests use its pure parts.
+vi.mock("@/video-lab/data-source", () => ({}));
 
 const PROMPT = [
   "A vertical 9:16 product reveal ad for a phone shop in Rwanda. Light: rim light.",
@@ -89,6 +92,12 @@ describe("storyboard", () => {
     expect(one.frames.map((f) => f.label)).toEqual(["1a", "1b", "1c"]);
   });
 
+  it("takes the camera from the shot's lead words, and carries the last photo into shots that name none", () => {
+    const sb = buildStoryboard({ id: "sd-000000000003", title: "x", request: { ...req(), prompt: "0-3s: POV, static camera: the phone from Image 1 in its box. 3-6s: Close-up, slow push-in: a hand tilts the phone. 6-8s: Clean hero shot, slow orbit: the phone." }, referenceNotes: [], thumbs: ["data:image/jpeg;base64,T1"], credits: 55 });
+    expect(sb.shots.map((s) => s.cameraId)).toEqual(["static", "push-in", "orbit"]);
+    expect(sb.frames.every((f) => f.svg.includes("base64,T1"))).toBe(true);
+  });
+
   it("waits 3 to 8 seconds, the same for the same job", () => {
     for (const id of ["sd-aaaaaaaaaaaa", "sd-0123456789ab", "sd-ffffffffffff"]) {
       expect(previewDelayMs(id)).toBeGreaterThanOrEqual(3000);
@@ -146,5 +155,49 @@ describe("preview jobs (no BytePlus key)", () => {
     expect(job.preview).toBeUndefined();
     expect(wallet.charge).toHaveBeenCalledWith(55, "Seedance mini 480p 8s", job.id);
     expect(String((fetchMock.mock.calls[0] as unknown as [string])[0])).toContain("/contents/generations/tasks");
+  });
+});
+
+describe("Get inspired examples", () => {
+  const cand = (kind: Candidate["kind"], id: string, photos = 1): Candidate =>
+    ({ kind, business: { id: `b-${id}`, name: `B ${id}`, description: null, language: "English", colors: [], phone: null, website: null, country: "Rwanda", tone: null }, product: { id, name: `P ${id}`, summary: "", description: null, price: null, usps: [], features: [], targetCustomer: null, photos: Array.from({ length: photos }, (_, i) => ({ assetId: `a${i}`, width: 1, height: 1, description: null })) } }) as unknown as Candidate;
+
+  it("picks sectors in turn, each through its own formats, at most 16", () => {
+    const picks = pickExamples([cand("phone-shop", "p1"), cand("salon", "s1", 0), cand("phone-shop", "p2", 3), cand("real-estate", "r1")]);
+    expect(new Set(picks.slice(0, 3).map((p) => p.c.kind)).size).toBe(3); // neighbours differ
+    expect(picks[0].c.product.id).toBe("p2"); // more photos first
+    expect(picks.filter((p) => p.c.kind === "salon").map((p) => p.format)).toEqual(["before-after", "tour"]);
+    expect(new Set(picks.map((p) => `${p.c.product.id}:${p.format}`)).size).toBe(picks.length);
+    const many = pickExamples(["shop", "restaurant", "salon", "phone-shop", "real-estate", "fashion", "events", "services", "education"].map((k, i) => cand(k as Candidate["kind"], `x${i}`)));
+    expect(many).toHaveLength(16);
+  });
+
+  it("lists examples in gallery order, filtered by sector or format; none made yet is an empty list", async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "seedance-ex-"));
+    const ex = (id: string, order: number, sector: string, format: string) => fs.writeFile(path.join(tmp, `${id}.json`), JSON.stringify({ id, order, sector, format }));
+    await ex("ex-b", 1, "salon", "tour");
+    await ex("ex-a", 0, "shop", "offer");
+    await fs.writeFile(path.join(tmp, "notes.txt"), "ignored");
+    expect((await listSeedanceExamples({}, tmp)).map((e) => e.id)).toEqual(["ex-a", "ex-b"]);
+    expect((await listSeedanceExamples({ sector: "salon" }, tmp)).map((e) => e.id)).toEqual(["ex-b"]);
+    expect((await listSeedanceExamples({ format: "offer" }, tmp)).map((e) => e.id)).toEqual(["ex-a"]);
+    expect(await listSeedanceExamples({}, path.join(tmp, "missing"))).toEqual([]);
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  it("the saved examples are complete and honest", async () => {
+    const all = await listSeedanceExamples();
+    expect(all.length).toBeGreaterThanOrEqual(12);
+    expect(all.length).toBeLessThanOrEqual(16);
+    expect(new Set(all.map((e) => e.format)).size).toBe(6);
+    for (const e of all) {
+      expect(e.source.productId && e.source.businessName, e.id).toBeTruthy();
+      expect(e.storyboard.frames.length).toBeGreaterThanOrEqual(3);
+      expect(new Set(e.storyboard.frames.map((f) => f.label)).size).toBe(e.storyboard.frames.length);
+      expect(e.storyboard.issues.filter((i) => i.level === "error"), e.id).toEqual([]);
+      expect(e.credits).toHaveLength(7);
+      // A price with conditions in the product is never spoken.
+      expect(e.prompt, e.id).not.toMatch(/Final pricing|Confirm the production/);
+    }
   });
 });

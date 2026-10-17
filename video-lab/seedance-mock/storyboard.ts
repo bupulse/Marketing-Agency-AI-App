@@ -56,8 +56,11 @@ function describe(text: string, n: number, from: number, to: number, fixedLens: 
       .replace(/"[^"]*"|“[^”]*”/g, "")
       .replace(/Sound:\s*[^."“]+\.?/gi, ""),
   ).slice(0, 240);
-  const shot = detectShotType(text);
-  const camera = fixedLens ? null : detectCamera(text);
+  // "Close-up, slow push-in: a hand tilts it" - the lead before the first colon names the shot and the camera;
+  // the action's own verbs ("tilts") only count when the lead names none.
+  const lead = text.split(":")[0];
+  const shot = detectShotType(lead) ?? detectShotType(text);
+  const camera = fixedLens ? null : (detectCamera(lead) ?? detectCamera(text));
   return {
     n,
     from,
@@ -237,8 +240,15 @@ export function buildStoryboard(input: { id: string; title: string; request: See
     thumb: ref.kind === "image" ? (input.thumbs[image++] ?? null) : null,
   }));
   const imageThumbs = references.filter((x) => x.kind === "image").map((x) => x.thumb);
+  // A shot that names no photo keeps the last one named before it (prompts name a photo once, then "the product").
+  let lastImage: string | null = null;
+  const imageOf = new Map<number, string | null>();
+  for (const s of shots) {
+    lastImage = s.references.find((x) => x.startsWith("Image ")) ?? lastImage;
+    imageOf.set(s.n, lastImage);
+  }
   const frames = keyMoments(shots).map(({ at, shot, label, from, to }, i) => {
-    const imageRef = shot.references.find((x) => x.startsWith("Image "));
+    const imageRef = imageOf.get(shot.n);
     const thumb = imageRef ? (imageThumbs[Number(imageRef.split(" ")[1]) - 1] ?? null) : null;
     return { at, shot: shot.n, label, from, to, caption: `${shot.shot}, ${shot.camera}: ${shot.action}`, svg: frameSvg(shot, { ratio: r.ratio, uid: `${input.id}-${i}`, index: i, at, thumb, label, from, to }) };
   });
