@@ -28,7 +28,7 @@ export async function recordStudioOutcome(post: { id: string; businessId: string
     const platform = BRAIN_PLATFORM[post.network];
     const path = post.mediaPaths.find(isVideoPath);
     if (!platform || !path) return false;
-    const job = await prisma.videoJob.findFirst({ where: { businessId: post.businessId, videoPath: path }, select: { id: true, templateId: true, hookId: true, seconds: true, brief: true } });
+    const job = await prisma.videoJob.findFirst({ where: { businessId: post.businessId, videoPath: path }, select: { id: true, templateId: true, hookId: true, seconds: true, brief: true, captionScore: true } });
     if (!job) return false;
     const brief = (job.brief ?? {}) as Brief;
     const sector = sectorFromText([brief.business?.name, brief.business?.description, brief.product?.name, brief.product?.summary].filter(Boolean).join(" "));
@@ -43,7 +43,8 @@ export async function recordStudioOutcome(post: { id: string; businessId: string
           templateId: job.templateId,
           hookId: job.hookId && hookById(job.hookId) ? job.hookId : null,
           formatId: formatFromTemplate(job.templateId),
-          captionFormulaId: null,
+          // The Brain's caption formula for the design, saved with its caption check (lib/video-studio/jobs.ts).
+          captionFormulaId: formulaOf(job.captionScore),
           seconds: job.seconds,
           language: brief.business?.language ?? null,
           postedAt,
@@ -57,6 +58,11 @@ export async function recordStudioOutcome(post: { id: string; businessId: string
     return false;
   }
 }
+
+const formulaOf = (v: unknown): string | null => {
+  const id = (v as { formulaId?: unknown } | null)?.formulaId;
+  return typeof id === "string" && id ? id : null;
+};
 
 const statsOf = (m: { views: number | null; reach: number | null; likes: number | null; comments: number | null; saves: number | null; shares: number | null }): OutcomeStats => ({ views: m.views, reach: m.reach, likes: m.likes, comments: m.comments, saves: m.saves, shares: m.shares });
 

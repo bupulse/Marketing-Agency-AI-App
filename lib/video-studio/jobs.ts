@@ -4,7 +4,7 @@ import { assertServiceEnabled, ServiceDisabledError } from "@/lib/admin/switch";
 import { withLedger } from "@/lib/ai/ledger";
 import { consumeUsage, refundUsage } from "@/lib/usage";
 import { scoreCaption } from "@/lib/video-engine/brain/score";
-import { brainBriefFromDesign, brainContext } from "@/lib/video-engine/brain/select";
+import { brainBriefFromDesign, brainContext, brainFor } from "@/lib/video-engine/brain/select";
 import { CLAUDE_VIDEO_CREDITS } from "@/lib/video-engine/credits";
 import { DESIGNER_MODEL, DesignError, apiTransport, designVideo, type ClaudeTransport, type DesignBrief, type DesignMode, type Platform } from "@/lib/video-engine/designer";
 import { VIDEO_LEDGER_FEATURES } from "@/lib/video-engine/ledger-features";
@@ -190,6 +190,9 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
   };
   // The opening line the owner picked: the Brain's context for it goes in as research (Claude follows it), as in the lab.
   if (input.chosenHook && input.mode !== "edit" && input.mode !== "extend") brief.research = brainContext(brainBriefFromDesign(brief), { chosenHook: input.chosenHook });
+  // The caption formula the Brain picks for this brief (the one its research block gives Claude): kept with the
+  // caption check, so the video's outcome says which formula it was (lib/video-studio/outcomes.ts).
+  const captionFormulaId = brainFor(brainBriefFromDesign(brief)).caption.formula.id;
   // The job keeps the brief without the image bytes (photos as their Storage paths).
   const storedBrief = { ...brief, photos: stored, base: undefined };
   const jobs = await prisma.$transaction(
@@ -214,7 +217,7 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
         // Finished only if still ours: once the lease passed, the sweep may have failed and refunded it (then it stays so).
         await prisma.videoJob.updateMany({
           where: { id, status: "designing", refundedAt: null },
-          data: { status: "designed", spec: result.spec as object, caption: result.spec.caption, hashtags: result.spec.hashtags, warnings: (result.warnings ?? []) as object, score: (result.score ?? null) as object, captionScore: captionScore as object, costUsd: result.apiEquivalentUsd, seconds: Math.min(30, Math.max(4, Math.round(result.spec.scenes.reduce((s, x) => s + x.seconds, 0)))), leaseUntil: null, error: null },
+          data: { status: "designed", spec: result.spec as object, caption: result.spec.caption, hashtags: result.spec.hashtags, warnings: (result.warnings ?? []) as object, score: (result.score ?? null) as object, captionScore: { ...captionScore, formulaId: captionFormulaId } as object, costUsd: result.apiEquivalentUsd, seconds: Math.min(30, Math.max(4, Math.round(result.spec.scenes.reduce((s, x) => s + x.seconds, 0)))), leaseUntil: null, error: null },
         });
         return await prisma.videoJob.findUniqueOrThrow({ where: { id } });
       } catch (error) {

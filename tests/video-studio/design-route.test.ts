@@ -111,7 +111,8 @@ describe("POST /api/video/design", () => {
       expect((j.spec as { scenes: unknown[] }).scenes.length).toBeGreaterThan(1);
       expect(typeof j.caption).toBe("string");
       expect(j.score).toMatchObject({ score: expect.any(Number) });
-      expect(j.captionScore).toMatchObject({ score: expect.any(Number) });
+      // With the Brain's caption formula for the brief, for the video's outcome later.
+      expect(j.captionScore).toMatchObject({ score: expect.any(Number), formulaId: expect.stringMatching(/\S/) });
     }
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(ledger.calls).toEqual([{ feature: "video-design", provider: "claude" }, { feature: "video-design", provider: "claude" }]);

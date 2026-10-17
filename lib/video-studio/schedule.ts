@@ -19,8 +19,11 @@ import { VideoStudioError } from "./jobs";
 
 /** The networks a studio video can go to. LinkedIn takes photos only from BuPulse. */
 export const STUDIO_NETWORKS: readonly Network[] = ["instagram", "facebook", "tiktok", "youtube"];
-/** The lowest caption check score a post may be scheduled with (the Brain's checks, lib/video-engine/brain/score.ts). */
-export const CAPTION_PASS = 60;
+/**
+ * The lowest caption check score a post may be scheduled with (the Brain's checks, lib/video-engine/brain/score.ts):
+ * the studio warns under 70, and nothing under it is scheduled (owner decision, 17 October 2026).
+ */
+export const CAPTION_PASS = 70;
 
 const LABEL: Record<Network, string> = { instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube Shorts", linkedin: "LinkedIn" };
 

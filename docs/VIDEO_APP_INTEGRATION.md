@@ -79,13 +79,15 @@ Provisional; the owner may change them.
       needs reconnecting is shown but cannot be ticked.
     - **Captions:** one per network. The design's own goes on the platform it was made for (or on all, for
       "Anywhere"); the others get the Brain's (`seedanceOverlayCaption` for that network). The owner can change any
-      of them. Each must score at least `CAPTION_PASS` (60) on `scoreCaption`; otherwise nothing is scheduled and the
+      of them. Each must score at least `CAPTION_PASS` (70, owner decision: the studio's own "under 70" warning) on `scoreCaption`; otherwise nothing is scheduled and the
       owner is told what it misses. A music credit line goes at the end of every post (`withMusicCredit`).
     - **The card:** how many posts the MP4 is on, and when the next one goes out (`scheduledPostsOf`, by its file).
     - **Feature and permission:** `calendar` and `videoStudio` features, `content` permission, the composer's rate
       limit.
+    - **No "Post now":** the scheduler and Autopilot are the path (owner decision).
     - **Outcomes:** `recordStudioOutcome` writes a `VideoOutcome` (sector, the Brain's platform, template, hook,
-      format, seconds, language), once per post. It runs when the publisher saves a success (`saveSuccess`) or the owner
+      format, caption formula, seconds, language), once per post. The caption formula is the Brain's pick for the
+      brief, saved at design time with the caption check (`captionScore.formulaId`). It runs when the publisher saves a success (`saveSuccess`) or the owner
       marks a reminder posted (`markPosted`), and never fails either. The metrics cron then fills `stats24h` and
       `stats7d` from the post's latest `PostMetrics` (`fillOutcomeStats`).
   - Music: a picker on each design (the library's active tracks, `lib/video-studio/library.ts` `studioTracks`).
@@ -420,27 +422,32 @@ A studio video is a normal post with one video in `mediaPaths`:
 
 Sizes: **S** up to half a day, **M** 1 to 2 days, **L** 3 to 5 days.
 
-| # | Task | Size | Depends on |
-| --- | --- | --- | --- |
-| 1 | Move the pricing to `lib/video-engine/credits.ts` (pure), lab imports it; examples to `lib/video-engine/examples/` | S | |
-| 2 | Migration `…_video_studio` (section 2), Prisma models, `prisma generate`; deploy the migration before the code | M | |
-| 3 | `videoCredits` metric (plans, usage, usage summary, Billing → Usage), `block:videoCredits` add-on, features `videoStudio` and `aiVideo` (coming soon) | M | 2 |
-| 4 | `withLedger` features and Seedance token pricing; Admin → Services entries (section 6); the test that nothing imports `claude-cli.ts` | S | 2 |
-| 5 | Motion: `/api/video/design` (+ edit, extend, versions, sample), jobs routes, fact check and scores saved | L | 3, 4 |
-| 6 | The Create page and library in the dashboard (port of `create.ts`: engines, pills, templates, platform, drawer, live preview with `draw.ts`) | L (largest) | 5 |
-| 7 | MP4 upload and complete (Storage, usage, `MediaAsset`), voice-over route on `VoiceClip` | M | 5 |
-| 8 | Seedance: submit with signed-URL references and `@jsquash` padding, the `video-jobs` cron (also in `worker-crons.ts` and `wrangler.jsonc`), the callback route, streaming download, refunds | L | 3, 4 |
-| 9 | The overlay step for Seedance clips (needs the motion engine's `video` layer in `spec.ts`, `draw.ts`, `encode.ts`) | M | 7, 8 |
-| 10 | Cut-outs in the browser (canvas port of `cutout.ts`) and their route | M | 6 |
-| 11 | Premium 3D: routes, the render worker on the Mac (video-robot pattern), its Admin card | L | 5 |
-| 12 | Scheduling from the drawer: posts per network with per-network captions, reminders for TikTok, YouTube and LinkedIn | M | 7 |
-| 13 | `VideoOutcome` on publish and in the metrics cron | M | 12 |
-| 14 | Characters in Admin (picks in `AdminSetting`), presenters and AI images on credits | S | 8 |
-| 15 | Autopilot: Motion MP4s made by the video robot (a second page entry running `encode.ts`) | L | 7 |
-| 16 | Tests (routes, cron, refunds, quotas, publishing) and docs: the guide page, `docs/VIDEO_ENGINE.md`, `docs/AI_COSTS.md` | M | all |
+Status on 17 October (the app side, branch `video-engine`): tasks 1 to 7, 12 and 13 are built; task 8 is built in
+part. The rest is left.
+
+| # | Task | Size | Depends on | Status |
+| --- | --- | --- | --- | --- |
+| 1 | Move the pricing to `lib/video-engine/credits.ts` (pure), lab imports it; examples to `lib/video-engine/examples/` | S | | Pricing done; the examples move waits for task 8 (they serve the Seedance page) |
+| 2 | Migration `…_video_studio` (section 2), Prisma models, `prisma generate`; deploy the migration before the code | M | | Done (applied on TEST) |
+| 3 | `videoCredits` metric (plans, usage, usage summary, Billing → Usage), `block:videoCredits` add-on, features `videoStudio` and `aiVideo` (coming soon) | M | 2 | Done |
+| 4 | `withLedger` features and Seedance token pricing; Admin → Services entries (section 6); the test that nothing imports `claude-cli.ts` | S | 2 | Done |
+| 5 | Motion: `/api/video/design` (+ edit, extend, versions, sample), jobs routes, fact check and scores saved | L | 3, 4 | Done (sample design not ported) |
+| 6 | The Create page and library in the dashboard (port of `create.ts`: engines, pills, templates, platform, drawer, live preview with `draw.ts`) | L (largest) | 5 | Done: Create page, live preview, edit, extend; the library page `/dashboard/videos` is left |
+| 7 | MP4 upload and complete (Storage, usage, `MediaAsset`), voice-over route on `VoiceClip` | M | 5 | Done (the MP4 through the Gallery's upload; voice on `VoiceClip`; music) |
+| 8 | Seedance: submit with signed-URL references and `@jsquash` padding, the `video-jobs` cron (also in `worker-crons.ts` and `wrangler.jsonc`), the callback route, streaming download, refunds | L | 3, 4 | In part: the `video-jobs` cron (design and voice refunds). Left: submit, callback, polling, download, refunds |
+| 9 | The overlay step for Seedance clips (needs the motion engine's `video` layer in `spec.ts`, `draw.ts`, `encode.ts`) | M | 7, 8 | Left |
+| 10 | Cut-outs in the browser (canvas port of `cutout.ts`) and their route | M | 6 | Left |
+| 11 | Premium 3D: routes, the render worker on the Mac (video-robot pattern), its Admin card | L | 5 | Left |
+| 12 | Scheduling from the drawer: posts per network with per-network captions, reminders for TikTok, YouTube and LinkedIn | M | 7 | Done (task 7 of the build: `createPosts`, captions per network, music credit) |
+| 13 | `VideoOutcome` on publish and in the metrics cron | M | 12 | Done |
+| 14 | Characters in Admin (picks in `AdminSetting`), presenters and AI images on credits | S | 8 | Left |
+| 15 | Autopilot: Motion MP4s made by the video robot (a second page entry running `encode.ts`) | L | 7 | Left |
+| 16 | Tests (routes, cron, refunds, quotas, publishing) and docs: the guide page, `docs/VIDEO_ENGINE.md`, `docs/AI_COSTS.md` | M | all | In part: route, cron, refund, quota and publishing tests. Left: the guide page and the engine and cost docs |
 
 **The first useful release:**
 - **What it contains:** tasks 1 to 8 and 12. Motion and Seedance with credits, the MP4 in the library, scheduling to
   Instagram and Facebook, and reminders elsewhere.
 - **About:** 3 to 4 weeks for one developer.
-- **Later:** Premium 3D, cut-outs, outcomes and Autopilot.
+- **Later:** Premium 3D, cut-outs and Autopilot.
+- **Left for the first release:** task 8 (Seedance in the app), the library page, the guide page, and switching the
+  `videoStudio` feature from "coming soon" to built once it has been tried on TEST with the real keys.

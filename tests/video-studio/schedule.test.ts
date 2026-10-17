@@ -45,6 +45,7 @@ describe("scheduling a studio MP4", () => {
     expect(o.captions.tiktok).toMatchObject({ text: GOOD, own: true });
     expect(o.captions.instagram?.own).toBe(false);
     expect(o.captions.instagram?.text).toContain("420,000 RWF");
+    expect(CAPTION_PASS).toBe(70);
     expect(o.captions.instagram?.score).toBeGreaterThanOrEqual(CAPTION_PASS);
     expect(o.credit).toBe("Music by A. Artist (CC BY 4.0)");
     expect(o.timezone).toBe("Africa/Kigali");

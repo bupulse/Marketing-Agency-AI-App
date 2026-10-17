@@ -41,7 +41,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   db.outcomes = [];
   db.metrics.clear();
-  db.job = { id: "j1", videoPath: "u1/clips/v.mp4", templateId: "product-hero", hookId: "price-banner", seconds: 15, brief: { business: { name: "Nova Phones Kigali", description: "Phones and accessories", language: "English" }, product: { name: "Samsung Galaxy A56", summary: "A 5G phone" } } };
+  db.job = { id: "j1", videoPath: "u1/clips/v.mp4", templateId: "product-hero", hookId: "price-banner", seconds: 15, captionScore: { score: 86, formulaId: "price-place-route" }, brief: { business: { name: "Nova Phones Kigali", description: "Phones and accessories", language: "English" }, product: { name: "Samsung Galaxy A56", summary: "A 5G phone" } } };
 });
 
 describe("Video Studio outcomes", () => {
@@ -49,8 +49,12 @@ describe("Video Studio outcomes", () => {
     expect(await recordStudioOutcome(post(), new Date("2026-10-20T08:00:00Z"))).toBe(true);
     expect(await recordStudioOutcome(post(), new Date("2026-10-20T08:00:00Z"))).toBe(false);
     expect(db.outcomes).toHaveLength(1);
-    expect(db.outcomes[0]).toMatchObject({ videoJobId: "j1", postId: "post1", businessId: "b1", platform: "shorts", templateId: "product-hero", hookId: "price-banner", seconds: 15, language: "English" });
+    expect(db.outcomes[0]).toMatchObject({ videoJobId: "j1", postId: "post1", businessId: "b1", platform: "shorts", templateId: "product-hero", hookId: "price-banner", seconds: 15, language: "English", captionFormulaId: "price-place-route" });
     expect(typeof db.outcomes[0].sector).toBe("string");
+    // A design made before the formula was kept: no formula.
+    db.job = { ...db.job!, captionScore: { score: 80 } };
+    await recordStudioOutcome(post({ id: "post2" }), new Date("2026-10-20T09:00:00Z"));
+    expect(db.outcomes[1].captionFormulaId).toBeNull();
   });
 
   it("ignores posts that are not studio videos (no video, another file, LinkedIn) and never throws", async () => {
