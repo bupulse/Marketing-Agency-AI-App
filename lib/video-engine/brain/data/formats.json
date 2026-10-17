@@ -27,7 +27,7 @@
     "cta": "One route, named: 'WhatsApp {phone}', 'Call {phone}' or 'DM now before stock ends'.",
     "eastAfrica": ["The price and the phone number are on screen from second 0 to the last frame.", "Real hands, real shop shelves behind the product beat a blank studio for local trust.", "A full address or landmark (T2000 House, Room 213B) makes a small seller credible.", "Rwandan Facebook video ads run a median 34 s; for products and offers keep under 20 to 25 s."],
     "hooks": ["price-banner", "demo-first", "number-in-hand", "spec-words", "now-available", "macro-rim-light", "counter-price-bar", "model-badge", "how-it-changes", "splash-hero"],
-    "evidence": ["fb-011", "fb-005", "fb-012", "tt-071", "tt-096", "tt-098", "tt-100", "fb-024", "fb-063", "fb-049", "fb-072", "yt-005", "yt-026"]
+    "evidence": ["fb-011", "fb-005", "fb-012", "tt-071", "tt-096", "tt-098", "tt-100", "fb-024", "fb-063", "fb-049", "fb-072", "yt-005", "yt-026", "fb-098", "fb-091"]
   },
   {
     "id": "ugc-testimonial",
@@ -145,8 +145,8 @@
     "music": "Calm, warm; the room's own sound for restaurants.",
     "cta": "'WhatsApp {phone}', the area, a landmark and the property ID if there is one.",
     "eastAfrica": ["Kigali buyers filter on district, sector and size first: put them in the first 3 s.", "The caption lists price in RWF, rooms, plot size, parking, the area and the number (Hills Props, Samkay).", "Rwandan property ads: a yellow price box top-right ('350M RWF', 'Price: 16M') and a Kinyarwanda checklist caption; 30 s with an agent on camera."],
-    "hooks": ["location-stack", "whip-in-tour", "local-greeting", "series-episode", "price-banner", "service-claim", "door-open-walk"],
-    "evidence": ["fb-007", "fb-029", "tt-108", "tt-109", "tt-111", "fb-001", "fb-003", "fb-067", "fb-068", "fb-062", "fb-065", "yt-035"]
+    "hooks": ["location-stack", "whip-in-tour", "local-greeting", "series-episode", "price-banner", "service-claim", "door-open-walk", "key-in-door"],
+    "evidence": ["fb-007", "fb-029", "tt-108", "tt-109", "tt-111", "fb-001", "fb-003", "fb-067", "fb-068", "fb-062", "fb-065", "yt-035", "fb-107", "fb-099", "fb-095"]
   },
   {
     "id": "offer",
@@ -175,8 +175,8 @@
     "music": "Energetic; a drum hit on the badge.",
     "cta": "Named route: 'Order on VubaVuba', 'Call {phone}', 'WhatsApp {phone}', with the end date if there is one.",
     "eastAfrica": ["Kigali restaurants run the same weekday offer every week (Tuesday pizza, Wednesday burger, lunch Monday to Friday).", "'Hurry before the promo ends' only when the owner gave an end date."],
-    "hooks": ["offer-badge-day", "promo-price", "was-now", "percent-free-delivery", "cards-in-hand", "free-but", "start-a-business", "poster-first", "price-pill", "kinyarwanda-price-line"],
-    "evidence": ["tt-090", "tt-093", "tt-095", "tt-091", "tt-092", "fb-006", "fb-015", "fb-008", "fb-051", "fb-069", "fb-058"]
+    "hooks": ["offer-badge-day", "promo-price", "was-now", "percent-free-delivery", "cards-in-hand", "free-but", "start-a-business", "poster-first", "price-pill", "kinyarwanda-price-line", "price-card-split"],
+    "evidence": ["tt-090", "tt-093", "tt-095", "tt-091", "tt-092", "fb-006", "fb-015", "fb-008", "fb-051", "fb-069", "fb-058", "fb-083", "fb-106"]
   },
   {
     "id": "3d-motion",
@@ -263,7 +263,7 @@
     "cta": "'WhatsApp {phone}', the address and the hours.",
     "eastAfrica": ["Derma Skin Clinic Rwanda runs 15+ variants of the doctor-explains format, in English and Kinyarwanda, with the address and two numbers in every caption."],
     "hooks": ["expert-card", "dont-say-say", "numbered-list", "curiosity", "comment-reply", "trade-in-action", "search-bar"],
-    "evidence": ["fb-002", "fb-031", "fb-040", "fb-036", "fb-038", "tt-114", "fb-059", "fb-071", "fb-060"]
+    "evidence": ["fb-002", "fb-031", "fb-040", "fb-036", "fb-038", "tt-114", "fb-059", "fb-071", "fb-060", "fb-093", "fb-108"]
   },
   {
     "id": "list",

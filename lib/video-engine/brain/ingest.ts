@@ -1,6 +1,7 @@
 // Folds the researchers' rows (docs/research/reels/<source>.jsonl) into the brain's evidence index
 // (lib/video-engine/brain/data/evidence.json). Run after new research lands:
-//   node lib/video-engine/brain/ingest.ts            (or --no-new: refresh the indexed rows only)
+//   node lib/video-engine/brain/ingest.ts            (or --no-new: refresh the indexed rows only;
+//                                                     --skip=instagram: leave a source as it is)
 // Safe to re-run at any time: ids already given keep their number (found again by `key`, even if a row moves), new
 // rows get the next number, a missing file keeps its old index. The researchers' files are only read, never written. Plain erasable TypeScript with no project imports, so
 // Node runs it directly.
@@ -181,13 +182,15 @@ export const parseJsonl = (text: string): Row[] =>
 function main() {
   // --no-new: refresh the rows already indexed, leave rows the researchers are still writing out.
   const noNew = process.argv.includes("--no-new");
+  // --skip=instagram,youtube: leave these sources as they are in the index (a file still being written).
+  const skip = (process.argv.find((a) => a.startsWith("--skip="))?.slice(7) ?? "").split(",").filter(Boolean);
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
   const out = path.join(root, "lib/video-engine/brain/data/evidence.json");
   const existing: Evidence[] = fs.existsSync(out) ? JSON.parse(fs.readFileSync(out, "utf8")) : [];
   const all: Evidence[] = [];
   for (const source of SOURCES) {
     const file = path.join(root, `docs/research/reels/${source}.jsonl`);
-    if (!fs.existsSync(file)) {
+    if (!fs.existsSync(file) || skip.includes(source)) {
       all.push(...existing.filter((e) => e.source === source));
       continue;
     }

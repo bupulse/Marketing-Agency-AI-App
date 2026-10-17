@@ -28,16 +28,16 @@
   {
     "id": "salon",
     "name": "Salon, barber, nails, beauty",
-    "words": ["salon", "hair", "braid", "braids", "barber", "barbershop", "nails", "beauty", "makeup", "make-up", "spa", "wig", "wigs", "lashes", "massage", "aesthetic", "laser", "hair removal", "skincare"],
+    "words": ["salon", "hair", "braid", "braids", "barber", "barbershop", "nails", "beauty", "makeup", "make-up", "spa", "wig", "wigs", "lashes", "massage", "aesthetic", "laser", "hair removal", "skincare", "microlocs", "locs", "microblading", "brows"],
     "seedanceKind": "salon",
     "formats": ["before-after", "offer", "ugc-testimonial", "list"],
-    "hooks": ["result-first", "promo-price", "service-claim", "home-service", "pain-question", "local-greeting", "step-routine"],
+    "hooks": ["result-first", "promo-price", "service-claim", "home-service", "pain-question", "local-greeting", "step-routine", "price-card-split"],
     "settings": ["the salon chair with a ring light", "close-ups of hands braiding", "a 2x2 grid of nail colours", "the salon sign and mirrors", "a close-up of a real treatment in soft light, the landmark address baked in"],
-    "offers": ["special offer any style {price} (inclusive of braids & free wash)", "Book your nails home service", "Book your appointment on WhatsApp", "Available 24/7", "Book your session today", "Private packages available"],
+    "offers": ["special offer any style {price} (inclusive of braids & free wash)", "Book your nails home service", "Book your appointment on WhatsApp", "Available 24/7", "Book your session today", "Private packages available", "MICROBLADING OFFER 20K", "Book your slot today"],
     "cta": "Book on WhatsApp {phone}; the street (Roysambu, Lumumba Drive style).",
-    "longestRunning": "SPOT SALON (Nairobi) ran one flat price including a free wash for 982 days; in Kigali, Prime Wellness shows a real massage with 'Available 24/7' and 'Next to DELIGHT HOTEL' on screen; Lou Aesthetic opens on a question card ('Ready to see your skin exactly how it used to be?').",
-    "gaps": "'Kigali salon' returned no ads in the Ad Library; the Kigali examples are spas and aesthetic centres.",
-    "evidence": ["fb-013", "fb-018", "tt-102", "tt-103", "tt-105", "tt-106", "tt-107", "fb-062", "fb-071", "fb-047", "yt-028"]
+    "longestRunning": "SPOT SALON (Nairobi) ran one flat price including a free wash for 982 days; in Kigali, Prime Wellness shows a real massage with 'Available 24/7' and 'Next to DELIGHT HOTEL' on screen; Lou Aesthetic opens on a question card ('Ready to see your skin exactly how it used to be?'). Round 3 (10 Kigali spa, nail, wig and brow ads, all young): a real treatment close-up with the hours and a landmark address burned in, a black-and-gold offer card ('MICROBLADING OFFER 20K'), the number printed under the video.",
+    "gaps": "Kigali salon ads are young (at most 24 days live) and few show a price; the long-running examples are Nairobi's.",
+    "evidence": ["fb-013", "fb-018", "tt-102", "tt-103", "tt-105", "tt-106", "tt-107", "fb-062", "fb-071", "fb-047", "yt-028", "fb-074", "fb-076", "fb-078", "fb-079", "fb-080", "fb-083"]
   },
   {
     "id": "fashion",
@@ -45,12 +45,12 @@
     "words": ["fashion", "dress", "dresses", "clothes", "clothing", "kitenge", "ankara", "shoes", "boutique", "shirt", "shirts", "bag", "bags", "outfit", "wear", "jewelry", "jewellery", "earrings", "sneaker", "sneakers", "watch", "necklace"],
     "seedanceKind": "fashion",
     "formats": ["product-reveal", "list", "ugc-testimonial", "unboxing"],
-    "hooks": ["demo-first", "now-available", "price-on-each", "direct-question", "occasion-title", "unwrap-reveal", "door-open-walk"],
+    "hooks": ["demo-first", "now-available", "price-on-each", "direct-question", "occasion-title", "unwrap-reveal", "door-open-walk", "spec-words"],
     "settings": ["a real wearer outdoors in daylight", "a clothes rack in the boutique", "a mannequin showing the detail", "boxes of new arrivals being opened", "one sneaker turned 360 degrees in one hand outdoors"],
     "offers": ["{product} kuri {price} gusa", "Different sizes and colors available", "We do deliveries countrywide", "New arrivals", "Payment after delivery", "Delivery anywhere in Rwanda", "Sizes EUR 39 to 45"],
     "cta": "Send a WhatsApp message {phone}; the shop area.",
-    "longestRunning": "A 5 s loop of one model walking (Modesees, 353 days) and four colours in 10 s on a real wearer (NILA BABY SHOP, 439 days) are enough; Trendy.Wear.Kigali shows one feature (a breastfeeding opening) for the whole clip with the price in the caption.",
-    "evidence": ["fb-010", "fb-016", "fb-026", "tt-064", "tt-129", "tt-134", "tt-137", "fb-041", "fb-055", "fb-054", "yt-018", "yt-019"]
+    "longestRunning": "A 5 s loop of one model walking (Modesees, 353 days) and four colours in 10 s on a real wearer (NILA BABY SHOP, 439 days) are enough; Trendy.Wear.Kigali shows one feature (a breastfeeding opening) for the whole clip with the price in the caption. Kigali sneaker sellers (9 round-3 ads) show one pair in a hand or being laced, a model label on screen ('Hoka Clifton 9'), and put the sizes and 'Call&Whatsapp' in the caption; almost none shows the price in the video.",
+    "evidence": ["fb-010", "fb-016", "fb-026", "tt-064", "tt-129", "tt-134", "tt-137", "fb-041", "fb-055", "fb-054", "yt-018", "yt-019", "fb-084", "fb-085", "fb-090", "fb-091", "fb-092"]
   },
   {
     "id": "real-estate",
@@ -82,17 +82,17 @@
   },
   {
     "id": "car-rental",
-    "name": "Car rental, cars, transport",
-    "words": ["car", "cars", "car rental", "rent a car", "hire", "vehicle", "vehicles", "taxi", "moto", "transport", "fleet", "hybrid", "driver", "car hire"],
+    "name": "Transport and travel (car hire, cars, tours, travel agencies)",
+    "words": ["car", "cars", "car rental", "rent a car", "hire", "vehicle", "vehicles", "taxi", "moto", "transport", "fleet", "hybrid", "driver", "car hire", "travel", "tours", "tour operator", "safari", "safaris", "flight", "flights", "visa", "trek", "hike", "hiking", "airline", "agency", "jeep"],
     "seedanceKind": "services",
     "formats": ["tour", "product-reveal", "offer"],
-    "hooks": ["number-in-hand", "price-banner", "location-stack", "kinetic-phrase"],
+    "hooks": ["number-in-hand", "price-banner", "location-stack", "kinetic-phrase", "spec-words", "expert-card", "poster-first"],
     "settings": ["the real fleet parked in the compound", "a car driving on a Kigali road", "the interior and the boot opened", "a walk-around of the vehicle in the showroom with the website bar on screen"],
-    "offers": ["RENT A CAR, RENT FREEDOM", "{price} per day", "With or without a driver", "Self-drive or professional driver", "Family holiday discounts"],
+    "offers": ["RENT A CAR, RENT FREEDOM", "{price} per day", "With or without a driver", "Self-drive or professional driver", "Family holiday discounts", "Self-drive or chauffeur", "HIKING EVERY DAY MONDAY - SUNDAY", "Up to 35% off"],
     "cta": "WhatsApp / Call {phone}, burned in from second 1 to the end.",
-    "longestRunning": "homeofhybrid (Kigali) has run 468 days with raw phone footage of the cars, one word sticker per beat and a permanent yellow phone bar; Kigali Rwanda Car Hire walks around a Land Cruiser with the number and the website on screen and a 'Book now' button.",
-    "gaps": "Two Rwandan advertisers.",
-    "evidence": ["fb-001", "fb-065"]
+    "longestRunning": "homeofhybrid (Kigali, 468 days) runs raw phone footage of the cars with one word sticker per beat and a permanent yellow phone bar; Judith Safaris (565 days, the longest-running Rwandan ad found) is a corporate interview with a name card and subtitles; travel agencies use a poster first frame with a schedule and a phone bar ('HIKE MOUNT JALI … HIKING EVERY DAY'), and a car dealer floats spec labels over a walk-around ('Engine size 3,604 cc').",
+    "gaps": "Car hire and travel together (12 Rwandan ads); few show a price.",
+    "evidence": ["fb-001", "fb-065", "fb-093", "fb-094", "fb-095", "fb-097", "fb-098", "fb-099", "fb-044"]
   },
   {
     "id": "clinic",
@@ -111,16 +111,16 @@
   {
     "id": "events",
     "name": "Events, venues, hotels, gifts",
-    "words": ["event", "events", "concert", "wedding", "party", "festival", "conference", "ticket", "tickets", "venue", "hall", "hotel", "graduation", "birthday", "flowers", "gift", "lounge", "bar", "travel", "flight", "tour"],
+    "words": ["event", "events", "concert", "wedding", "party", "festival", "conference", "ticket", "tickets", "venue", "hall", "hotel", "graduation", "birthday", "flowers", "gift", "lounge", "bar", "travel", "flight", "tour", "residence", "apartment", "guest house", "lodge", "resort"],
     "seedanceKind": "events",
     "formats": ["offer", "tour", "list"],
-    "hooks": ["poster-first", "free-but", "offer-badge-day", "occasion-title", "location-stack", "whip-in-tour", "cards-in-hand"],
+    "hooks": ["poster-first", "free-but", "offer-badge-day", "occasion-title", "location-stack", "whip-in-tour", "cards-in-hand", "key-in-door"],
     "settings": ["the hall dressed and lit before guests arrive", "a terrace with tables set", "a grid of four gift options", "a poster first frame, then 3 or 4 night clips of the lounge"],
     "offers": ["Free hall and free decoration, you only pay for food and drink", "BIRTHDAY GIFT OPTIONS", "Book your date", "FRIDAY UNLOCKED: Buy 4, get 5", "Every Friday, 6PM-10PM", "Up to 35% off"],
     "cta": "WhatsApp {phone} to book; the area (Kiyovu).",
     "longestRunning": "One Click Hotel offers the hall and decoration free (pay only food and drink); Élevée Lounge's 'FRIDAY UNLOCKED / Buy 4, get 5' poster names the landmark ('opposite IPRC traffic lights') and runs every Friday; flowerbar_zanzibar's 5 s gift grid ran 652 days. Among the long runners, a Kigali residence states 'from 20,000 RWF a night' with a WhatsApp button (124 days).",
-    "gaps": "Hotels with budgets (ONOMO) run polished brand films with no price or number; small venues should not copy that.",
-    "evidence": ["fb-008", "fb-023", "fb-022", "fb-069", "fb-050", "fb-044", "fb-056"]
+    "gaps": "The thinnest sector: 6 event and venue rows (One Click Hotel's video did not load); hotels and residences add 2 more.",
+    "evidence": ["fb-008", "fb-023", "fb-022", "fb-069", "fb-050", "fb-044", "fb-056", "fb-107", "fb-100"]
   },
   {
     "id": "services",

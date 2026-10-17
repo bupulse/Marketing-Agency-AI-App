@@ -4,12 +4,13 @@
 // share of the remaining points that passed, 0 to 100. Pure and deterministic, for the studio and the template sweep.
 import { detectCamera, lintSeedancePrompt, promptTimecodes } from "../seedance-brain";
 import type { Layer, MotionSpec, Scene, TextLayer } from "../spec";
-import { looksKinyarwanda, voiceLanguage } from "../voice-language";
+import { voiceLanguage } from "../voice-language";
 import { BRAIN, SAFE_AREAS, formatById } from "./index";
+import { hasKinyarwanda } from "./language";
 import { brainFor, formatFromTemplate } from "./select";
 import type { FormatId, Platform } from "./types";
 
-export { SAFE_AREAS };
+export { SAFE_AREAS, hasKinyarwanda };
 
 /** One check: the brain rule it enforces (null for an engine limit), why it passed or failed, and the scene (0-based). */
 export type ScoreItem = { id: string; rule: string | null; points: number; reason: string; scene: number | null };
@@ -435,16 +436,7 @@ const BROAD_TAGS = /^(fyp\w*|foryou\w*|viral\w*|trending\w*|explore\w*|reels\w*|
 const PLACE_WORDS = /📍|\b(next to|opposite|near|behind|in front of|same building|located|location|loc|plaza|house|room \d+|building|street|st|road|av(e|enue)?\.?|KK \d+|KG \d+|KN \d+|kigali|kicukiro|gasabo|nyarugenge|kimironko|remera|kacyiru|kiyovu|nyamirambo|gishushu|kibagabaga|kabeza|kanombe|gikondo|nyarutarama|muhima|downtown|musanze|rubavu|huye)\b/i;
 const DELIVERY_WORDS = /\b(deliver(y|ies|ed)?|tuyikujyezaho|tubagezaho|tukugezaho|kugeza)\b/i;
 const NO_SUBSCRIBE = /\b(subscribe|like and follow|hit the bell|turn on notifications|abonne[zr]?)\b/i;
-/** Kinyarwanda words Rwandan sellers write in captions (captions-patterns.md, "Recurring words"). */
-const CAPTION_RW = /\b(duhamagare|hamagara|uhamagare|uduhamagare|twandikire|utwandikire|tuvugishe|igiciro|igurishwa|bigurishwa|iragurishwa|ntucikwe|gusa|ubuntu|tuguha|tuyikujyezaho|kiraganirwaho|abakiriya|barishimye|murakaza|murakazaneza|ibyangombwa|birahari|ushaka|cyangwa|nziza|inzu|ibibanza|iyi|izi|kandi|ariko|igihe|ese|ufite|waba|uburyo|amahirwe|muri|yawe|wawe|yose|ubu|aho|umwana|ubucuruzi|uramutse|kuri|mu|ku|ni|na)\b/gi;
 const MAX_CHARS: Record<Platform | "any", number> = { facebook: 600, tiktok: 300, instagram: 300, shorts: 100, any: 600 };
-
-/** Kinyarwanda in a caption: a sentence that reads as Kinyarwanda, or two of the sellers' own words (a mixed caption counts). */
-export function hasKinyarwanda(text: string): boolean {
-  const plain = text.replace(/#[\p{L}\p{N}_]+/gu, " ");
-  if (plain.split(/[.!?\n]+/).some((x) => looksKinyarwanda(x))) return true;
-  return new Set((plain.match(CAPTION_RW) ?? []).map((w) => w.toLowerCase())).size >= 2;
-}
 
 const tagsOf = (caption: string, hashtags: string[]) => [...new Set([...hashtags, ...(caption.match(/#[\p{L}\p{N}_]+/gu) ?? [])].map((t) => t.replace(/^#/, "").trim().toLowerCase()).filter(Boolean))];
 

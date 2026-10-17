@@ -11,6 +11,7 @@ import sectorsJson from "./data/sectors.json";
 import { ENGINES, FORMATS, HOOK_NEEDS, HOOK_TYPES, PLATFORMS, RESEARCH_SOURCES, RULE_STAGES, SECTORS, type BrainData, type CaptionsData, type Evidence, type Format, type FormatId, type Hook, type Rule, type Sector } from "./types";
 
 export * from "./types";
+export { FRENCH_COMMERCE, KINYARWANDA_COMMERCE, PREFERRED_PHRASES, checkLanguage, hasKinyarwanda, languageTextsOf, type LanguageIssue, type LanguageText } from "./language";
 
 /** A box of the frame, as fractions of the canvas: text must sit between top and bottom, left and right. */
 export type SafeArea = { top: number; bottom: number; left: number; right: number };

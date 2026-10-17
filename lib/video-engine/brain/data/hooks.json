@@ -256,7 +256,7 @@
     "engines": ["claude", "seedance"],
     "needs": [],
     "examples": ["Unboxing my new Blush MacBookNeo", "I’m absolutely in love with our new arrivals.", "Our Mystery Box came packed with 9 amazing items"],
-    "evidence": ["tt-128", "tt-129", "tt-130", "tt-131", "fb-012", "fb-073", "fb-054"]
+    "evidence": ["tt-128", "tt-129", "tt-130", "tt-131", "fb-012", "fb-073", "fb-054", "fb-084"]
   },
   {
     "id": "now-available",
@@ -308,12 +308,12 @@
     "pattern": "{business}: {claim} (a named expert talks to camera)",
     "visual": "The expert in the real place (white coat, the classroom, the workshop) with a name and role card at second 0, boxed captions sentence by sentence.",
     "platforms": ["facebook"],
-    "sectors": ["clinic", "school", "services"],
+    "sectors": ["clinic", "school", "services", "car-rental"],
     "formats": ["tutorial", "ugc-testimonial"],
     "engines": ["seedance", "claude"],
     "needs": ["person"],
-    "examples": ["DR. BOSCO / DERMA SKIN CLINIC", "And I'm A Dermatologist Here At Derma Skin Clinic."],
-    "evidence": ["fb-002", "fb-031", "tt-081", "fb-062"],
+    "examples": ["DR. BOSCO / DERMA SKIN CLINIC", "And I'm A Dermatologist Here At Derma Skin Clinic.", "JUDITH SAFARIS | INGABIRE DORICE FINANCE & ADMINISTRATION OFFICER"],
+    "evidence": ["fb-002", "fb-031", "tt-081", "fb-062", "fb-093"],
     "note": "Needs a real or digital-library presenter the owner chose; never invent a doctor or a title."
   },
   {
@@ -363,17 +363,17 @@
   },
   {
     "id": "spec-words",
-    "name": "Spec words as the seller speaks",
+    "name": "Spec label per beat",
     "type": "demo",
     "pattern": "{product} | {claim} | accessories included",
-    "visual": "The seller holds the phone in the shop; three spec phrases animate in one after another in white rounded boxes.",
+    "visual": "The seller holds the product (or the camera walks round it); one spec label per beat, in a white rounded box or a coloured tag: model, then the key specs.",
     "platforms": ["tiktok", "facebook"],
-    "sectors": ["phone-shop", "shop"],
-    "formats": ["product-reveal"],
+    "sectors": ["phone-shop", "shop", "car-rental", "fashion"],
+    "formats": ["product-reveal", "tour"],
     "engines": ["claude"],
     "needs": [],
-    "examples": ["Iphone 13 USA version 128 GB", "Accessories included (Cover, protector, charger)", "One SIM + eSIM", "MAIN AND ULTRA CAMERA 50.3MP"],
-    "evidence": ["tt-098", "tt-100", "tt-099"]
+    "examples": ["Iphone 13 USA version 128 GB", "Accessories included (Cover, protector, charger)", "One SIM + eSIM", "MAIN AND ULTRA CAMERA 50.3MP", "Drive system 4WD / 4x4 | Engine size 3,604 cc | Cylinders 6 (V6)", "Hoka Clifton 9"],
+    "evidence": ["tt-098", "tt-100", "tt-099", "fb-098", "fb-091", "fb-085"]
   },
   {
     "id": "cards-in-hand",
@@ -691,21 +691,21 @@
     "engines": ["seedance", "claude"],
     "needs": [],
     "examples": ["Master the skills of a professional mechanic"],
-    "evidence": ["fb-059"]
+    "evidence": ["fb-059", "fb-103"]
   },
   {
     "id": "poster-first",
     "name": "Poster first, then real clips",
     "type": "offer-badge",
     "pattern": "{offer} | {day} {claim} | {area}, opposite {landmark}",
-    "visual": "A designed poster as the first frame (offer, times, landmark, number), then 3 or 4 phone clips of the place.",
+    "visual": "A designed poster as the first frame: the offer or activity as the headline, a schedule block (days, times), the landmark, and a phone bar at the bottom; then 3 or 4 phone clips of the place.",
     "platforms": ["facebook", "instagram"],
-    "sectors": ["events", "restaurant", "services"],
+    "sectors": ["events", "restaurant", "services", "car-rental"],
     "formats": ["offer", "tour"],
     "engines": ["claude"],
     "needs": ["offer"],
-    "examples": ["FRIDAY UNLOCKED / BUY 4 GET 5 / 6PM-10PM / KICUKIRO, KN 432 opposite IPRC traffic lights", "EXPLORE THE WORLD / UP TO 35% OFF / BOOK NOW"],
-    "evidence": ["fb-069", "fb-044"]
+    "examples": ["FRIDAY UNLOCKED / BUY 4 GET 5 / 6PM-10PM / KICUKIRO, KN 432 opposite IPRC traffic lights", "EXPLORE THE WORLD / UP TO 35% OFF / BOOK NOW", "HIKE MOUNT JALI WITH CAMP & EXPLORER | HIKING EVERY DAY MONDAY - SUNDAY | CONTACT US ON +250…"],
+    "evidence": ["fb-069", "fb-044", "fb-099"]
   },
   {
     "id": "splash-hero",
@@ -777,5 +777,33 @@
     "needs": [],
     "examples": ["Jp mobiles and services | Duburi jajpur", "Big mobile store Samsung,Vivo,Realme,iPhone"],
     "evidence": ["yt-035", "yt-036", "fb-003"]
+  },
+  {
+    "id": "price-card-split",
+    "name": "Red price block beside the product",
+    "type": "price-first",
+    "pattern": "{product} | RWF {price} | {product} | RWF {price}",
+    "visual": "A split card: the product picture on the left, the price in a red (or black and gold) block on the right; one card per model, the presenter or the real stock before and after it.",
+    "platforms": ["facebook"],
+    "sectors": ["shop", "salon", "services"],
+    "formats": ["product-reveal", "offer", "list"],
+    "engines": ["claude"],
+    "needs": ["price"],
+    "examples": ["Standard Eco Heater 40°C - 45°C | RWF 70,000 | Premium Rapid Heat | RWF 75,000", "MICROBLADING OFFER | 20K"],
+    "evidence": ["fb-106", "fb-083"]
+  },
+  {
+    "id": "key-in-door",
+    "name": "A key turns in the door",
+    "type": "reveal",
+    "pattern": "(a hand turns the key) {product} | from {price} a night",
+    "visual": "POV: a hand turns a key in the wooden door, the door opens on the room; the phone strip at the bottom, the rates in the caption.",
+    "platforms": ["facebook", "instagram"],
+    "sectors": ["events", "real-estate"],
+    "formats": ["tour"],
+    "engines": ["seedance", "claude"],
+    "needs": [],
+    "examples": ["LUNA | Tel: 07… / 07…", "Not A Hotel Room | Your Private Apartment"],
+    "evidence": ["fb-107", "fb-100"]
   }
 ]

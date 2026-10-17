@@ -14,8 +14,8 @@ Code: `lib/video-engine/brain/` (data in `brain/data/*.json`). Tests: `tests/vid
 
 | Part | Count | What it holds |
 | --- | --- | --- |
-| Research rows | 373: 248 videos and ads (186 watched first-hand: 93 TikTok, 57 Facebook, 36 YouTube Shorts) and 125 post captions (111 Rwandan) |
-| Hooks (openings) | 54 | The first 2 seconds: the line, what is on screen, where it was seen, real example lines |
+| Research rows | 410: 285 videos and ads (219 watched first-hand: TikTok 93, Facebook 90, YouTube Shorts 36) and 125 post captions (111 Rwandan); 6 income-chain posts kept only as what not to copy |
+| Hooks (openings) | 56 | The first 2 seconds: the line, what is on screen, where it was seen, real example lines |
 | Formats | 10 | Product reveal, UGC testimonial, before/after, unboxing, tour, offer, 3D motion, kinetic typography, tutorial, list or price list |
 | Captions | 4 platforms (TikTok, Facebook and YouTube Shorts researched; Instagram interim), 25 formulas including 5 model captions by sector, 10 ways to order, the caption corpus counts |
 | Rules | 64 (50 do, 14 don't) |
@@ -192,13 +192,36 @@ and TikTok and Shorts leave the right 15% to the app's buttons.
 It returns the score, what passed, and `missed`: what to fix, in plain English. The strongest Rwandan captions in the
 corpus (price, phone, place and a call to action) average 75 or more.
 
+## Checking the language
+
+`checkLanguage(texts, language)` (`brain/language.ts`) reads what an engine wrote (on-screen lines, voice lines, the
+caption; `languageTextsOf(spec)` collects them from a design) and lists plain-English issues. It is a word-list check
+built from how Rwandan sellers actually write (the caption corpus and the Kinyarwanda and French rows), not a
+translator, and it only flags forms the corpus never uses:
+
+- **Prices** written "420,000 francs", "Frs", "amafaranga y'u Rwanda" or "420.000 RWF" on screen or in the caption; the
+  corpus writes RWF (38), k (26), M (11) and Frw, with commas. Voice lines are left alone (the voice says "francs" on purpose).
+- **An English call to action in a Kinyarwanda caption or video** ("Call now", "Order now", "Contact us", "DM us"...):
+  none of the 63 Kinyarwanda and mixed Rwandan texts uses one; they write "Duhamagare", "Twandikire kuri WhatsApp",
+  "uduhamagare". "Call/WhatsApp:" is used, and allowed. The same for a French caption.
+- **One sentence built from two languages' grammar** ("Gura the best phone kuri iyi price for you"). The corpus switches
+  language between sentences, or keeps a product name or "free delivery" inside a Kinyarwanda sentence, but almost never
+  mixes the grammar (3 sentences in 63 texts, two of them in an income-chain post).
+- **Web words on a video frame** ("Kanda hano", "Click the link", "Swipe up"): nobody can click a video.
+- **Two literal translations** the corpus never uses ("amafaranga y'u Rwanda", "kohereza ku buntu"). The list is kept
+  short on purpose: the corpus does use "Iyandikishe nonaha" and "Kanda kuri link", which a guess would have flagged.
+
+`PREFERRED_PHRASES` lists what sellers write instead ("Duhamagare cyangwa utwandikire kuri WhatsApp: {phone}",
+"{product} kuri {price} gusa", "Ntucikwe!", "Kiraganirwaho", "Ibyangombwa birahari"...), for the designer's brief.
+
 ## What the brain does not know yet
 
 - **Sound.** All TikTok and Facebook videos were watched muted. Music tempo, whooshes and voice style are from articles,
   not heard. The owner (or a later pass) should check sound on the top 10 rows.
 - **Instagram** is not in yet; its caption guide is "interim" (borrowed from TikTok). **YouTube Shorts** has 36 rows, but few are local ads.
-- **Thin sectors**: car rental (two advertisers), school (two Rwandan ads, one read as text only), salon ("Kigali
-  salon" returns no ads; the Kigali examples are spas and aesthetic centres). Clinic rules are education-only by policy.
+- **Thin sectors**: events is now the thinnest (6 event and venue rows, plus 2 hotels and residences); Kigali salon
+  ads are young (at most 24 days live). Transport and travel (car hire, tours, travel agencies) has 12 Rwandan ads.
+  Clinic rules are education-only by policy.
 - **Rwandan ads are young**: most started in the last two weeks, so days running says little in Rwanda; the number of
   variants live at once (Derma 15, Elohome 8, Magic Chef 7, Piramie 6) is the better signal but is not yet a field in the
   research rows, so it does not count in a row's strength.

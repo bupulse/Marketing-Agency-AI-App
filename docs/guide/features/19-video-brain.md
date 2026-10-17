@@ -19,13 +19,12 @@ The one place to update when new research comes in (last updated 17 October 2026
 
 | What | Count |
 | --- | --- |
-| Research rows (videos, ads and captions) | 373: TikTok 139, Facebook 73, YouTube Shorts 36, post captions 125 |
-| Watched first-hand by a researcher | 213: TikTok 93, Facebook 57, YouTube 36, TikTok captions 27 |
-| Rwandan rows | 202 |
+| Research rows (videos, ads and captions) | 410: TikTok 139, Facebook 110, YouTube Shorts 36, post captions 125 |
+| Watched first-hand by a researcher | 246: TikTok 93, Facebook 90, YouTube 36, TikTok captions 27 |
+| Rwandan rows | 239 |
 | Rows set aside as income-chain or scam posts | 6 |
-| Facebook rows waiting to be added | 37 (still being watched) |
-| Instagram rows | 0 (research in progress) |
-| Openings (hooks) | 54 |
+| Instagram rows | 58 written, not yet added (waiting for the researcher's patterns file) |
+| Openings (hooks) | 56 |
 | Video formats | 10 |
 | Business sectors | 11 |
 | Rules | 64 (50 do, 14 don't) |
@@ -154,7 +153,8 @@ missed".
    node lib/video-engine/brain/ingest.ts --no-new
    ```
 
-   It refreshes the rows already in the index and leaves the unfinished ones out until they are ready.
+   It refreshes the rows already in the index and leaves the unfinished ones out until they are ready. To leave a whole file
+   out while it is being written (Instagram now), add `--skip=instagram`.
 4. New openings, rules and sector notes are added by hand from the researchers' findings (the Brain agent does this).
    The automatic checks make sure every rule points at real rows.
 5. Update **The numbers** above.

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { BRAIN, FORMATS, PLATFORMS, RESEARCH_SOURCES, SECTORS, checkBrain, safeAreaFor, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
+import { BRAIN, FORMATS, PLATFORMS, RESEARCH_SOURCES, SECTORS, checkBrain, checkLanguage, languageTextsOf, safeAreaFor, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
 import { evidenceFromRows, looksLikeScam, parseCount, parseDate, parseJsonl, rowKey, rowStrength, tiktokDate, variantsLive } from "@/lib/video-engine/brain/ingest";
 import { SAFE_AREAS, amounts, hasKinyarwanda, scoreCaption, scoreDesign, scoreSeedancePrompt, templateStyle, type ScoreBrief } from "@/lib/video-engine/brain/score";
 import { CONTEXT_MAX_CHARS, ENGINE_SECONDS, brainBriefFromDesign, brainBriefFromPrompt, brainContext, brainFor, formatFromTemplate, scaleTimeline, sectorFromText } from "@/lib/video-engine/brain/select";
@@ -530,6 +530,59 @@ describe("the caption check against the caption corpus", () => {
     expect(full.length).toBeGreaterThan(10);
     const scores = full.map((r) => scoreCaption(String(r.caption), r.hashtags as string[], { business: { name: String(r.page_or_account), phone: (r.phones_as_written as string[])[0], language: r.language_mix === "rw" ? "Kinyarwanda" : "English" }, product: { name: String(r.caption).split(/\s+/).slice(0, 3).join(" ") } }, { platform: "facebook" }).score);
     expect(scores.reduce((a, b) => a + b, 0) / scores.length).toBeGreaterThanOrEqual(75);
+  });
+});
+
+// The one corpus caption the language check flags: "Website design Rwanda", labelled French in captions.jsonl although
+// its caption is English, so its "Send us a message" reads as an English call to action in a French caption.
+const MAX_CORPUS_FLAGS = 1;
+
+describe("the language check", () => {
+  const codes = (texts: Parameters<typeof checkLanguage>[0], language: string) => checkLanguage(texts, language).map((x) => x.code);
+
+  it("flags price forms the corpus never writes, on screen and in the caption only", () => {
+    expect(codes([{ where: "caption", text: "Galaxy A56 kuri 420.000 RWF gusa", kind: "caption" }], "Kinyarwanda")).toEqual(["price-format"]);
+    expect(codes([{ where: "scene 1 text", text: "420,000 francs", kind: "screen" }], "English")).toEqual(["price-format"]);
+    expect(codes([{ where: "scene 1 voice", text: "Four hundred twenty thousand francs.", kind: "voice" }], "English")).toEqual([]);
+    expect(codes([{ where: "caption", text: "Igiciro: 420,000 RWF. Jumpsuit kuri 18k gusa. Price: 3.5M Frw", kind: "caption" }], "Kinyarwanda")).toEqual([]);
+    const issue = checkLanguage([{ where: "caption", text: "Galaxy A56 kuri 420.000 RWF gusa", kind: "caption" }], "Kinyarwanda")[0];
+    expect(issue.suggestion).toBe("420,000 RWF");
+  });
+
+  it("flags an English call to action in a Kinyarwanda or French caption, not in an English one", () => {
+    const rw = checkLanguage([{ where: "caption", text: "Samsung Galaxy A56 iraboneka kuri Nova Phones! Call now 0788 300 400", kind: "caption" }], "Kinyarwanda");
+    expect(rw.map((x) => x.code)).toEqual(["english-cta"]);
+    expect(rw[0].suggestion).toContain("Duhamagare");
+    expect(codes([{ where: "caption", text: "Samsung Galaxy A56 kuri 420k gusa. Call/WhatsApp: 0788 300 400", kind: "caption" }], "Kinyarwanda")).toEqual([]);
+    expect(codes([{ where: "caption", text: "Galaxy A56 at Nova Phones. Call now 0788 300 400", kind: "caption" }], "English")).toEqual([]);
+    expect(codes([{ where: "caption", text: "Galaxy A56 disponible chez Nova Phones. Order now!", kind: "caption" }], "French")).toEqual(["english-cta"]);
+  });
+
+  it("flags one sentence built from two languages' grammar, not a product name or 'free delivery' inside Kinyarwanda", () => {
+    expect(codes([{ where: "caption", text: "Gura the best phone kuri iyi price for you", kind: "caption" }], "Kinyarwanda")).toEqual(["mixed-line"]);
+    expect(codes([{ where: "caption", text: "GURA NAWE ni free delivery twandikire cg uduhamagare 0790 583 341", kind: "caption" }], "Kinyarwanda")).toEqual([]);
+    expect(codes([{ where: "caption", text: "Samsung Galaxy A56 kuri 420k gusa. Different sizes and colours available.", kind: "caption" }], "Kinyarwanda")).toEqual([]);
+  });
+
+  it("flags web words on a video frame and the literal translations it knows", () => {
+    expect(codes([{ where: "scene 5 text", text: "Kanda hano", kind: "screen" }], "Kinyarwanda")).toEqual(["not-clickable"]);
+    expect(codes([{ where: "caption", text: "Kanda kuri link iri muri bio", kind: "caption" }], "Kinyarwanda")).toEqual([]);
+    expect(codes([{ where: "caption", text: "Igiciro: 420,000 amafaranga y'u Rwanda", kind: "caption" }], "Kinyarwanda")).toEqual(["price-format", "literal-translation"]);
+  });
+
+  it("checks a Kinyarwanda business's voice lines only when the voice speaks Kinyarwanda (it speaks English)", () => {
+    expect(codes([{ where: "scene 1 voice", text: "Call now on 0788 300 400", kind: "voice" }], "Kinyarwanda")).toEqual([]);
+    const spec = sampleSpec({ business: "Nova Phones", product: "Galaxy A56", price: "420,000 RWF", photoCount: 1 });
+    const kinds = languageTextsOf(spec).map((t) => t.kind);
+    expect(kinds).toContain("screen");
+    expect(kinds).toContain("voice");
+    expect(kinds[kinds.length - 1]).toBe("caption");
+  });
+
+  it("raises almost no false alarms on the 111 real Rwandan captions", () => {
+    const rows = parseJsonl(fs.readFileSync(path.join(REELS, "captions.jsonl"), "utf8")).filter((r) => r.country === "RW");
+    const flagged = rows.filter((r) => checkLanguage([{ where: "caption", text: String(r.caption), kind: "caption" }], r.language_mix === "en" ? "English" : r.language_mix === "fr" ? "French" : "Kinyarwanda").length);
+    expect(flagged.length).toBeLessThanOrEqual(MAX_CORPUS_FLAGS);
   });
 });
 
