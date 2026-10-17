@@ -22,6 +22,8 @@ export function seedanceCredits(tier: SeedanceTier, resolution: SeedanceResoluti
 export const CLAUDE_VIDEO_CREDITS = roundCredits(0.1);
 /** Credits for one realistic presenter image (Gemini, about $0.04). */
 export const PRESENTER_IMAGE_CREDITS = roundCredits(0.04);
+/** Credits for one voice-over take (ElevenLabs, a 15 to 30 s script costs about $0.05 to $0.15). Cached takes are free. */
+export const VOICE_OVER_CREDITS = 10;
 
 const WALLET = path.resolve("video-lab/data/wallet.json");
 const START_CREDITS = Number(process.env.VIDEO_LAB_START_CREDITS) || 5000;

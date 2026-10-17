@@ -3,7 +3,7 @@
 import list from "../models.json";
 import { api, el } from "./site";
 
-export type Model = { id: string; group: "video" | "motion" | "image"; route: string; engine: "seedance" | "claude" | "gemini"; tier: "pro" | "fast" | "mini" | null; soon?: boolean; name: string; tag: string; tagline: string; blurb: string; goodAt: string[]; examples: string[] };
+export type Model = { id: string; group: "video" | "motion" | "image"; route: string; engine: "seedance" | "claude" | "gemini"; tier: "pro" | "fast" | "mini" | null; soon?: boolean; name: string; tag: string; tagline: string; blurb: string; goodAt: string[]; examples: string[]; featureCategory?: string };
 export const MODELS = list as Model[];
 export const modelById = (id: string | undefined) => MODELS.find((m) => m.id === id);
 
@@ -12,6 +12,7 @@ export type Pricing = {
   seedance: { tier: string; name: string; resolution: string; credits5s: number; credits10s: number; credits15s: number }[];
   claudeCredits: number;
   presenterCredits: number;
+  voiceCredits?: number;
 };
 
 /** "55 to 120 credits per 5 s", "30 credits a video", "15 credits an image". */

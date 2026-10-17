@@ -4,6 +4,7 @@
 import { drawSpecFrame, type Img } from "@/lib/video-engine/draw";
 import { encodeSpecMp4, loadPhotos, loadSpecFonts } from "@/lib/video-engine/encode";
 import { canvasSize, totalMs, type MotionSpec, type Quality } from "@/lib/video-engine/spec";
+import type { VoiceCue } from "@/lib/video-engine/voice";
 
 type Photo = { assetId: string; width: number | null; height: number | null; description: string | null };
 type Product = { id: string; name: string; summary: string; price: string | null; photos: Photo[] };
@@ -540,7 +541,22 @@ async function exportMp4() {
   status(`Making the ${state.quality} MP4 in this browser…`);
   try {
     const music = $<HTMLInputElement>("sound").checked ? state.musicUrl : null;
-    const blob = await encodeSpecMp4(job.spec, state.photos, { musicUrl: music, quality: state.quality, onProgress: (f) => (fill.style.width = `${Math.round(f * 100)}%`) });
+    // The voice-over (ElevenLabs) first: the design may be stretched to fit it. Without it the MP4 is still made.
+    let spec = job.spec;
+    let voice: { url: string; cues: VoiceCue[] } | null = null;
+    if ($<HTMLInputElement>("voiceOver").checked) {
+      try {
+        const out = await api<{ voice: { url: string; cues: VoiceCue[]; spec: MotionSpec; fits: boolean } | null }>(`/api/jobs/${job.id}/voice`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+        if (out.voice) {
+          spec = out.voice.spec;
+          voice = { url: out.voice.url, cues: out.voice.cues };
+        }
+        if (out.voice && !out.voice.fits) status("Voice cut to fit 30 s. Making the MP4…");
+      } catch (error) {
+        status(`No voice-over: ${error instanceof Error ? error.message : "it failed"}. Making the MP4 without it…`);
+      }
+    }
+    const blob = await encodeSpecMp4(spec, state.photos, { musicUrl: music, voice, quality: state.quality, onProgress: (f) => (fill.style.width = `${Math.round(f * 100)}%`) });
     const ms = Math.round(performance.now() - started);
     const saved = await api<Job>(`/api/jobs/${job.id}/video?ms=${ms}&q=${state.quality}`, { method: "POST", headers: { "content-type": "video/mp4" }, body: blob });
     state.job = { ...saved, spec: job.spec };

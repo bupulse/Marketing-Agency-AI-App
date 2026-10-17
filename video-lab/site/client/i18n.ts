@@ -47,7 +47,7 @@ export const T: Record<string, Entry> = {
   "model.seedance-2-5.tagline": { fr: "Le prochain modèle Seedance", rw: "Seedance nshya iraje" },
   "model.seedance-2-5.blurb": { fr: "Le prochain modèle vidéo de ByteDance. Il arrive dans le studio avec la clé BytePlus.", rw: "Uburyo bushya bwa ByteDance bwo gukora video. Buzaza muri studio hamwe n'urufunguzo rwa BytePlus." },
   "model.motion.tagline": { fr: "Vidéos animées 3D conçues par Claude", rw: "Video za 3D zishushanywa na Claude" },
-  "model.motion.blurb": { fr: "Claude conçoit une vidéo animée en 3D à partir de vos photos : mouvements de caméra, texte, musique et sous-titres, en une minute environ.", rw: "Claude ikora video ya 3D ivuye ku mafoto yawe: kamera igenda, inyandiko, umuziki n'amagambo, mu munota umwe." },
+  "model.motion.blurb": { fr: "Claude conçoit une vidéo animée en 3D à partir de vos photos : mouvements de caméra, texte 3D, musique, sous-titres et voix off, en une minute environ.", rw: "Claude ikora video ya 3D ivuye ku mafoto yawe: kamera igenda, inyandiko za 3D, umuziki, amagambo n'ijwi rivuga, mu munota umwe." },
   "model.nano-banana.tagline": { fr: "Images IA réalistes à partir de texte et de vos photos", rw: "Amafoto ya AI asa n'ay'ukuri, ava ku nyandiko n'amafoto yawe" },
   "model.nano-banana.blurb": { fr: "Le modèle d'images Gemini de Google : décrivez une image, ajoutez jusqu'à 3 photos, obtenez une image réaliste à publier ou à utiliser dans une vidéo.", rw: "Gemini ya Google: sobanura ifoto ushaka, ongeraho amafoto agera kuri 3, ubone ifoto isa n'iy'ukuri yo gushyira ku mbuga cyangwa muri video." },
   "soon.h3": { fr: "Il arrive avec la clé BytePlus", rw: "Izaza hamwe n'urufunguzo rwa BytePlus" },
@@ -188,6 +188,26 @@ export const T: Record<string, Entry> = {
   "api.lead": { fr: "Tout ce que font les pages du studio passe par une petite API JSON. Vous pouvez l'appeler vous-même pour obtenir un prix, générer et récupérer vidéos et images.", rw: "Ibyo paji za studio zikora byose binyura muri API ntoya ya JSON. Nawe ushobora kuyikoresha ubona igiciro, ukora video n'amafoto." },
 };
 
+/** Template category names (lib/video-engine/templates.ts), drawn by the pages' scripts rather than written in HTML. */
+const CATEGORY_NAMES: Record<string, Entry> = {
+  all: { fr: "Tous", rw: "Byose" },
+  product: { fr: "Produit", rw: "Igicuruzwa" },
+  motion: { fr: "Animation", rw: "Animation" },
+  "3d": { fr: "Animation 3D", rw: "Video za 3D" },
+  ugc: { fr: "Avis clients (UGC)", rw: "Ubuhamya (UGC)" },
+  tiktok: { fr: "TikTok", rw: "TikTok" },
+  ads: { fr: "Publicités", rw: "Kwamamaza" },
+  promo: { fr: "Affiches et offres", rw: "Amatangazo n'ibiciro" },
+  marketplace: { fr: "Marketplace", rw: "Isoko" },
+  cinematic: { fr: "Cinéma", rw: "Nka filime" },
+};
+
+/** A category's name in the current language (English from the engine otherwise). */
+export function categoryName(id: string, english: string): string {
+  const lang = currentLang();
+  return lang === "en" ? english : (CATEGORY_NAMES[id]?.[lang] ?? english);
+}
+
 export function currentLang(): Lang {
   try {
     const v = localStorage.getItem(KEY);
@@ -221,4 +241,6 @@ export function setLang(lang: Lang): void {
     // Private window: the choice lasts for this page only.
   }
   applyLang(lang);
+  // Pages that draw text from data (template categories) redraw it.
+  window.dispatchEvent(new Event("studio:lang"));
 }

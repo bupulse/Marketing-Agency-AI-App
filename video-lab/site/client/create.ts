@@ -5,6 +5,8 @@
 import { drawSpecFrame, type Img } from "@/lib/video-engine/draw";
 import { encodeSpecMp4, loadPhotos, loadSpecFonts } from "@/lib/video-engine/encode";
 import { canvasSize, totalMs, type MotionSpec, type Quality } from "@/lib/video-engine/spec";
+import type { VoiceCue } from "@/lib/video-engine/voice";
+import { categoryName } from "./i18n";
 import { loadPricing, modelById, wireExamples } from "./models";
 import { $, api, el, refreshWallet } from "./site";
 
@@ -49,6 +51,8 @@ const state = {
   quality: "1080p" as Quality,
   versions: 1,
   audio: true,
+  /** Motion videos: an ElevenLabs voice-over of the design's lines when the MP4 is made. */
+  voice: true,
   fixedLens: false,
   flex: false,
   draft: false,
@@ -66,6 +70,7 @@ const state = {
   open: null as Gen | null,
   credits: 0,
   claudeCredits: 0,
+  voiceCredits: 10,
   planVariant: 0,
   checkErrors: [] as Issue[],
   photos: new Map<number, Img>(),
@@ -189,7 +194,7 @@ async function quote() {
     const q = await api<{ credits: number; usd: number }>("/api/quote", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(sd ? { engine: "seedance", tier: state.tier, resolution: state.draft ? "480p" : state.resolution, seconds: state.seconds, versions: state.versions } : { engine: "claude", versions: state.versions, photos: state.refs.filter((r) => r.kind === "image").length }),
+      body: JSON.stringify(sd ? { engine: "seedance", tier: state.tier, resolution: state.draft ? "480p" : state.resolution, seconds: state.seconds, versions: state.versions } : { engine: "claude", versions: state.versions, photos: state.refs.filter((r) => r.kind === "image").length, voice: state.voice }),
     });
     state.credits = q.credits;
     $("goCredits").textContent = `✦ ${q.credits}`;
@@ -249,6 +254,7 @@ function setupPills() {
       box.append(seed);
     } else {
       box.append(toggle("Fixed lens (no camera move)", () => state.fixedLens, (v) => (state.fixedLens = v)));
+      box.append(toggle(`Voice-over (${state.voiceCredits} credits, added when the MP4 is made)`, () => state.voice, (v) => { state.voice = v; void quote(); }));
       box.append(el("h6", { textContent: "Opening hook" }), chips(o.hooks.map((h) => h.id), state.hookId, (v) => (state.hookId = v), (v) => o.hooks.find((h) => h.id === v)?.name ?? v));
     }
   });
@@ -328,13 +334,15 @@ function addRef(r: Ref) {
 let dataReady: Promise<void> = Promise.resolve();
 
 async function openPicker(kind: "refs" | "product" | "avatar") {
-  await dataReady;
   const dlg = $("pickDlg") as HTMLDialogElement;
   const top = $("pickTop");
   const grid = $("pickGrid");
   top.replaceChildren();
-  grid.replaceChildren();
+  grid.replaceChildren(el("span", { className: "spin" }));
   $("pickTitle").textContent = kind === "product" ? "Choose a product" : kind === "avatar" ? "Choose a presenter" : "Add references";
+  // Open at once; the choices fill in as they arrive.
+  if (!dlg.open) dlg.showModal();
+  await dataReady;
   if (kind === "product" || kind === "refs") {
     const sel = el("select", { style: "width:auto" });
     sel.append(...state.businesses.map((b) => new Option(b.name, b.id)));
@@ -386,7 +394,8 @@ async function openPicker(kind: "refs" | "product" | "avatar") {
     await show();
   } else {
     const inf = await api<{ influencers: Influencer[]; actions: { id: string; text: string }[] }>("/api/influencers");
-    const note = el("p", { className: "hint", textContent: state.engine === "seedance" ? "Seedance refuses real faces. Realistic AI presenters are photos (Gemini); a presenter shot is used as Image reference. Talking presenters from the BytePlus character library come next." : "Cartoon presenters are free and drawn by the engine. Realistic AI presenters are photos (about 5 credits each)." });
+    grid.replaceChildren();
+    const note = el("p", { className: "hint", textContent: state.engine === "seedance" ? "Seedance refuses real faces. Realistic AI presenters are photos (Gemini); a presenter shot is used as Image reference. Talking presenters from the BytePlus character library come next." : "Cartoon presenters are free and drawn by the engine. Realistic AI presenters are photos (15 credits each)." });
     top.append(note);
     if (state.engine === "claude") {
       for (const c of (state.o as Options).cast) {
@@ -411,7 +420,7 @@ async function openPicker(kind: "refs" | "product" | "avatar") {
         renderRefs();
         dlg.close();
         if (state.productId) {
-          msg(`Making a shot of ${i.name} with the product (about 5 credits)…`);
+          msg(`Making a shot of ${i.name} with the product (15 credits)…`);
           try {
             const out = await api<{ uploadId: string }>(`/api/influencers/${i.id}/shot`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ businessId: state.businessId, productId: state.productId, action: "holding", ratio: "9:16" }) });
             addRef({ id: `up:${out.uploadId}`, kind: "image", thumb: `/api/photo/${out.uploadId}?size=thumb`, label: `${i.name} (AI presenter) holding the product` });
@@ -425,7 +434,6 @@ async function openPicker(kind: "refs" | "product" | "avatar") {
       grid.append(pk);
     }
   }
-  dlg.showModal();
 }
 
 async function upload(file: File) {
@@ -557,6 +565,7 @@ async function loadGens() {
   grid.replaceChildren();
   for (const g of gens.slice(0, 24)) {
     const card = el("div", { className: "genCard" });
+    card.dataset.id = g.id;
     if (g.videoUrl) {
       const v = el("video", { src: g.videoUrl, muted: true, loop: true, playsInline: true, preload: "metadata" });
       card.onmouseenter = () => void v.play().catch(() => undefined);
@@ -739,13 +748,15 @@ function openDrawer(g: Gen | null) {
         };
         drawerAnim = requestAnimationFrame(loop);
       });
-      const mk = el("button", { className: "btn sm primary", textContent: `Make MP4 (${state.quality})` });
+      const mk = el("button", { className: "btn sm primary", textContent: `Make MP4 (${state.quality}${state.voice ? " + voice-over" : ""})` });
       mk.onclick = () => void makeMp4(g);
       actions.append(mk);
       $("dEdit").hidden = false;
       $("dEditBtn").onclick = () => void editClaude(g, "edit");
       $("dExtendBtn").onclick = () => void editClaude(g, "extend");
       info.push(["Length", `${(totalMs(spec) / 1000).toFixed(1)} s · ${spec.scenes.length} scenes`], ["Camera", [...new Set(spec.scenes.map((s) => s.camera?.move ?? "static"))].join(", ")], ["Look", spec.look?.grade ?? "none"], ["API-equivalent cost", `$${(j.apiEquivalentUsd ?? 0).toFixed(3)}`]);
+      const v = voices.get(j.id);
+      if (v) info.push(["Voice-over", `spoken in ${v.spokenLanguage}${v.fits ? "" : ", cut to fit 30 s"}`]);
       $("dPrompt").textContent = `${spec.caption}\n\n${spec.hashtags.map((h) => `#${h}`).join(" ")}`;
     } else {
       media.append(el("div", { className: "muted", textContent: j.error ?? "This design failed." }));
@@ -753,6 +764,9 @@ function openDrawer(g: Gen | null) {
   }
   $("dInfo").replaceChildren(...info.flatMap(([k, v]) => [el("span", { className: "k", textContent: k }), el("span", { textContent: v })]));
 }
+
+/** The voice-over each design was rendered with in this visit (for the drawer's info rows). */
+const voices = new Map<string, { spokenLanguage: string; fits: boolean }>();
 
 async function makeMp4(g: Gen) {
   const j = g.claude;
@@ -763,10 +777,32 @@ async function makeMp4(g: Gen) {
   $("dMsg").textContent = "Making the MP4 in this browser…";
   try {
     const track = j.spec.music ? await api<{ id: string } | null>(`/api/music?mood=${encodeURIComponent(j.spec.music)}`).catch(() => null) : null;
+    // The voice-over first (the design may be stretched to fit the lines); without it the MP4 is still made.
+    let spec = j.spec;
+    let voice: { url: string; cues: VoiceCue[] } | null = null;
+    const notes: string[] = [];
+    if (state.voice) {
+      $("dMsg").textContent = "Recording the voice-over…";
+      try {
+        const out = await api<{ voice: { url: string; cues: VoiceCue[]; spec: MotionSpec; fits: boolean; note: string | null; cached: boolean; spokenLanguage: string } | null; credits: number }>(`/api/jobs/${j.id}/voice`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+        if (out.voice) {
+          spec = out.voice.spec;
+          voice = { url: out.voice.url, cues: out.voice.cues };
+          voices.set(j.id, { spokenLanguage: out.voice.spokenLanguage, fits: out.voice.fits });
+          notes.push(out.voice.cached ? "Voice-over reused (free)." : `Voice-over: ${out.credits} credits.`);
+          if (!out.voice.fits) notes.push("Voice cut to fit 30 s.");
+          if (out.voice.note) notes.push(out.voice.note);
+        } else notes.push("This design has no voice lines, so no voice-over (no credits taken).");
+        await refreshWallet();
+      } catch (e) {
+        notes.push(`No voice-over: ${(e as Error).message} The MP4 is made without voice.`);
+      }
+      $("dMsg").textContent = `${notes.join(" ")} Making the MP4 in this browser…`;
+    }
     const started = performance.now();
-    const blob = await encodeSpecMp4(j.spec, state.photos, { musicUrl: track ? `/api/music/${track.id}` : null, quality: state.quality, onProgress: (f) => (fill.style.width = `${Math.round(f * 100)}%`) });
+    const blob = await encodeSpecMp4(spec, state.photos, { musicUrl: track ? `/api/music/${track.id}` : null, voice, quality: state.quality, onProgress: (f) => (fill.style.width = `${Math.round(f * 100)}%`) });
     await api(`/api/jobs/${j.id}/video?ms=${Math.round(performance.now() - started)}&q=${state.quality}`, { method: "POST", headers: { "content-type": "video/mp4" }, body: blob });
-    $("dMsg").textContent = `MP4 ready (${(blob.size / 1024 / 1024).toFixed(1)} MB).`;
+    $("dMsg").textContent = `MP4 ready (${(blob.size / 1024 / 1024).toFixed(1)} MB). ${notes.join(" ")}`;
     await loadGens();
     openDrawer(state.gens.find((x) => x.id === g.id) ?? null);
   } catch (e) {
@@ -806,7 +842,7 @@ function renderTemplates() {
   const cats = [{ id: "all", name: "All" }, ...o.categories];
   $("cats").replaceChildren(
     ...cats.map((c) => {
-      const b = el("button", { className: `btn sm${c.id === state.category ? " on" : ""}`, textContent: c.name });
+      const b = el("button", { className: `btn sm${c.id === state.category ? " on" : ""}`, textContent: categoryName(c.id, c.name) });
       b.onclick = () => {
         state.category = c.id;
         renderTemplates();
@@ -818,7 +854,7 @@ function renderTemplates() {
   const grid = $("tgrid");
   grid.replaceChildren();
   for (const t of o.templates.filter((t) => (state.category === "all" || t.category === state.category) && (!q || `${t.name} ${t.blurb}`.toLowerCase().includes(q)))) {
-    const thumb = el("div", { className: "thumb" }, el("span", { className: "cat", textContent: o.categories.find((c) => c.id === t.category)?.name ?? "" }));
+    const thumb = el("div", { className: "thumb" }, el("span", { className: "cat", textContent: categoryName(t.category, o.categories.find((c) => c.id === t.category)?.name ?? "") }));
     const card = el("button", { className: `tcard${t.id === state.templateId ? " on" : ""}` }, thumb, el("div", { className: "nm" }, el("b", { textContent: t.name }), el("span", { textContent: t.blurb })));
     card.onclick = () => {
       state.templateId = t.id;
@@ -909,6 +945,14 @@ async function start() {
   if (model?.engine === "claude") {
     state.engine = "claude";
     state.seconds = 15;
+    // The Claude 3D motion page opens on the 3D templates, the first one chosen.
+    const featured = model.featureCategory ? o.templates.find((t) => t.category === model.featureCategory) : undefined;
+    if (featured) {
+      state.category = featured.category;
+      state.templateId = featured.id;
+      if (featured.seconds) state.seconds = featured.seconds;
+      if (featured.hook) state.hookId = featured.hook;
+    }
   } else if (model?.tier) {
     state.engine = "seedance";
     state.tier = model.tier;
@@ -930,15 +974,20 @@ async function start() {
     state.businessId = state.businesses[0]?.id ?? "";
     state.products = state.businessId ? await api<Product[]>(`/api/products?business=${encodeURIComponent(state.businessId)}`) : [];
   })();
+  if (location.hash === "#influencers") void openPicker("avatar");
   wireExamples((text) => {
     $<HTMLTextAreaElement>("prompt").value = text;
     window.scrollTo({ top: 0, behavior: "smooth" });
     msg("Example prompt added. Change it for your product, then Generate.", "ok");
   });
   void loadPricing()
-    .then((p) => (state.claudeCredits = p.claudeCredits))
+    .then((p) => {
+      state.claudeCredits = p.claudeCredits;
+      state.voiceCredits = p.voiceCredits ?? state.voiceCredits;
+    })
     .catch(() => undefined);
   $<HTMLInputElement>("tsearch").oninput = renderTemplates;
+  window.addEventListener("studio:lang", renderTemplates);
   $("go").onclick = () => void generate();
   $("pickClose").onclick = () => ($("pickDlg") as HTMLDialogElement).close();
   $("dClose").onclick = () => {
@@ -953,7 +1002,6 @@ async function start() {
   state.previews = await api<Record<string, Preview>>("/api/template-previews").catch(() => ({}));
   renderTemplates();
   if (location.hash === "#tgrid") document.getElementById("tgrid")?.scrollIntoView({ block: "start" });
-  if (location.hash === "#influencers") void openPicker("avatar");
   await dataReady;
   renderRefs();
   await loadGens();

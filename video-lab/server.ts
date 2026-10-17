@@ -19,7 +19,8 @@ import { DAILY_CAP_USD, getJob, listJobs, listPreviews, newJobId, readVideo, rec
 import { SEEDANCE_LIMITS, SEEDANCE_MODELS, SEEDANCE_RATIOS, SEEDANCE_RESOLUTIONS, checkSeedanceConnection, estimateSeedanceUsd, type SeedanceConnection, type SeedanceReference, type SeedanceRequest, type SeedanceResolution, type SeedanceTier } from "@/lib/video-engine/seedance";
 import { checkSeedanceRequest, planSeedanceShots } from "@/lib/video-engine/seedance-brain";
 import { writeSeedancePrompt } from "@/lib/video-engine/seedance-prompt";
-import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PRESENTER_IMAGE_CREDITS, charge, readWallet, refund, seedanceCredits, topUp } from "./credits";
+import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PRESENTER_IMAGE_CREDITS, VOICE_OVER_CREDITS, charge, readWallet, refund, seedanceCredits, topUp } from "./credits";
+import { VOICE_ROUTE, makeVoiceForJob, readVoiceMp3 } from "./voice";
 import { cancelSeedance, getSeedanceJob, getSeedancePreview, imageDataUrl, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
 import { mediaBytes, saveMedia } from "./data-source";
 import { RateLimiter, clearCookieHeader, clientIp, cookieValue, isLocal, loadSecret, loginPage, safeNext, sameText, setCookieHeader, tokenFor } from "./gate";
@@ -412,6 +413,7 @@ const server = http.createServer(async (req, res) => {
         seedance: tiers.flatMap((tier) => SEEDANCE_MODELS[tier].resolutions.map((resolution) => ({ tier, name: SEEDANCE_MODELS[tier].name, resolution, credits5s: seedanceCredits(tier, resolution as SeedanceResolution, 5), credits10s: seedanceCredits(tier, resolution as SeedanceResolution, 10), credits15s: seedanceCredits(tier, resolution as SeedanceResolution, 15) }))),
         claudeCredits: CLAUDE_VIDEO_CREDITS,
         presenterCredits: PRESENTER_IMAGE_CREDITS,
+        voiceCredits: VOICE_OVER_CREDITS,
       });
     }
     if (req.method === "POST" && p === "/api/quote") {
@@ -423,7 +425,9 @@ const server = http.createServer(async (req, res) => {
         const seconds = Math.min(SEEDANCE_LIMITS.maxSeconds, Math.max(SEEDANCE_LIMITS.minSeconds, Number(body.seconds) || 5));
         return json(res, 200, { credits: seedanceCredits(tier, resolution, seconds) * versions, usd: estimateSeedanceUsd({ tier, resolution, seconds }) * versions });
       }
-      return json(res, 200, { credits: CLAUDE_VIDEO_CREDITS * versions, usd: estimateDesignCost(Math.min(4, Number(body.photos) || 0)) * versions });
+      // A Motion video with a voice-over: the design now, the voice when the MP4 is made.
+      const voice = body.voice === true ? VOICE_OVER_CREDITS : 0;
+      return json(res, 200, { credits: (CLAUDE_VIDEO_CREDITS + voice) * versions, usd: estimateDesignCost(Math.min(4, Number(body.photos) || 0)) * versions, voiceCredits: voice * versions });
     }
     if (req.method === "GET" && p === "/api/showcase") {
       const [cl, sd] = await Promise.all([listJobs(), listSeedanceJobs()]);
@@ -700,7 +704,12 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, job);
     }
     if (req.method === "GET" && p === "/api/jobs") return json(res, 200, { jobs: await listJobs(), spentUsd: await spentToday(), capUsd: DAILY_CAP_USD });
-    const jobMatch = p.match(/^\/api\/jobs\/([0-9]{8}-[0-9a-f]{8})(\/video|\/spec)?$/);
+    const voiceFile = p.match(VOICE_ROUTE);
+    if (req.method === "GET" && voiceFile) {
+      const bytes = await readVoiceMp3(voiceFile[1]);
+      return bytes ? sendMedia(req, res, bytes, "audio/mpeg") : fail(res, 404, "Not found");
+    }
+    const jobMatch = p.match(/^\/api\/jobs\/([0-9]{8}-[0-9a-f]{8})(\/video|\/spec|\/voice)?$/);
     if (jobMatch) {
       const job = await getJob(jobMatch[1]);
       if (!job) return fail(res, 404, "Test not found.");
@@ -712,6 +721,26 @@ const server = http.createServer(async (req, res) => {
         job.edited = true;
         await saveJob(job);
         return json(res, 200, job);
+      }
+      if (req.method === "POST" && jobMatch[2] === "/voice") {
+        // The voice-over of a design (ElevenLabs, video-lab/voice.ts). Credits are taken first and given back when it
+        // fails, when the design has no voice lines, or when the same take is already saved (a new MP4 of it is free).
+        if (!job.spec) return fail(res, 400, "This design failed, so it has no voice lines.");
+        const body = JSON.parse((await readBody(req, 4096)).toString("utf8") || "{}");
+        try {
+          await charge(VOICE_OVER_CREDITS, "Voice-over", job.id);
+        } catch (error) {
+          return fail(res, 402, error instanceof Error ? error.message : "Not enough credits.");
+        }
+        try {
+          const business = await getBusiness(job.businessId);
+          const v = await makeVoiceForJob(job.spec, job.id, { voiceId: typeof body.voiceId === "string" ? body.voiceId : null, language: business?.language ?? null });
+          if (!v || v.cached) await refund(VOICE_OVER_CREDITS, v ? "Voice-over already made (free)" : "No voice lines", job.id);
+          return json(res, 200, { voice: v, credits: v && !v.cached ? VOICE_OVER_CREDITS : 0 });
+        } catch (error) {
+          await refund(VOICE_OVER_CREDITS, "Voice-over failed", job.id);
+          return fail(res, 502, `${error instanceof Error ? error.message : "The voice-over could not be made."} The credits are given back.`);
+        }
       }
       if (req.method === "POST" && jobMatch[2] === "/video") {
         const bytes = await readBody(req, MAX_UPLOAD);
@@ -749,7 +778,7 @@ const server = http.createServer(async (req, res) => {
 // Designs can take minutes (several versions, template previews): no request time limit on this local server.
 server.requestTimeout = 0;
 
-const LAB_KEYS = ["ANTHROPIC_API_KEY", "SEEDANCE_API_KEY", "SEEDANCE_MODEL", "SEEDANCE_BASE_URL"];
+const LAB_KEYS = ["ANTHROPIC_API_KEY", "SEEDANCE_API_KEY", "SEEDANCE_MODEL", "SEEDANCE_BASE_URL", "ELEVENLABS_API_KEY"];
 // An empty value in .env ("") counts as missing, so a key saved in Admin -> Services can fill it.
 for (const name of LAB_KEYS) if (!process.env[name]) delete process.env[name];
 void loadSavedKeys(LAB_KEYS)
