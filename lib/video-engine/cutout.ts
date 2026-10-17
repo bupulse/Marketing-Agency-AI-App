@@ -6,7 +6,8 @@
 // colour), the mask is feathered, and the picture is trimmed to the product. Server side (sharp).
 import sharp from "sharp";
 
-export type Cutout = { ok: true; png: Buffer; width: number; height: number; coverage: number } | { ok: false; reason: string };
+/** `box`: where the product is in the photo (fractions: left, top, width, height), for keeping text off it. */
+export type Cutout = { ok: true; png: Buffer; width: number; height: number; coverage: number; box: { x: number; y: number; w: number; h: number } } | { ok: false; reason: string };
 
 /** How strict the detection is. Distances are in RGB units (0 to 441). */
 export const CUTOUT_LIMITS = {
@@ -168,5 +169,6 @@ export async function makeCutout(photo: Buffer): Promise<Cutout> {
     rgba[i * 4 + 3] = soft[i];
   }
   const png = await sharp(rgba, { raw: { width: w, height: h, channels: 4 } }).extract(box).png({ compressionLevel: 9 }).toBuffer();
-  return { ok: true, png, width: box.width, height: box.height, coverage: Math.round(found.coverage * 1000) / 1000 };
+  const r = (n: number) => Math.round(n * 1000) / 1000;
+  return { ok: true, png, width: box.width, height: box.height, coverage: r(found.coverage), box: { x: r(box.left / w), y: r(box.top / h), w: r(box.width / w), h: r(box.height / h) } };
 }

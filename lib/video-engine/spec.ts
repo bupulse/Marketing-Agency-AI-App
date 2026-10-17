@@ -318,6 +318,22 @@ export interface MotionSpec {
   look?: Look;
 }
 
+/**
+ * Where each platform's app leaves text visible on a vertical video (its captions, buttons and names cover the
+ * rest), as fractions of the frame; "any" when the platform is not known. The same numbers as the brain's
+ * SAFE_AREAS (brain/score.ts, where YouTube Shorts is "shorts"); a test keeps them equal. On Shorts the price, the
+ * phone number and the call to action sit in the middle band (docs/research/reels/youtube-patterns.md).
+ */
+export const SAFE_AREAS = {
+  any: { top: 0.12, bottom: 0.82, left: 0.07, right: 0.93 },
+  tiktok: { top: 0.12, bottom: 0.78, left: 0.07, right: 0.85 },
+  instagram: { top: 0.12, bottom: 0.78, left: 0.07, right: 0.93 },
+  facebook: { top: 0.08, bottom: 0.85, left: 0.07, right: 0.93 },
+  youtube: { top: 0.1, bottom: 0.75, left: 0.07, right: 0.85 },
+} as const;
+export const YOUTUBE_MIDDLE_BAND = { top: 0.3, bottom: 0.7 } as const;
+export const safeAreaFor = (platform: string | null | undefined) => SAFE_AREAS[(platform ?? "any") as keyof typeof SAFE_AREAS] ?? SAFE_AREAS.any;
+
 export const SPEC_LIMITS = {
   minScenes: 2,
   maxScenes: 8,

@@ -2,6 +2,7 @@
 // unchecked: unknown values fall back to safe defaults, numbers are clamped to the canvas, text is cut to length,
 // layers pointing at photos we do not have are dropped, and the scenes are fitted to the length that was asked for.
 import { luminance, rgba } from "./draw3d";
+import { keepOffSubject, sceneSubject, type PhotoInfo } from "./subject";
 import {
   CAMERA_MOVES,
   CHARACTER_HAIR,
@@ -11,6 +12,8 @@ import {
   GRADES,
   MATERIALS,
   PARTICLE_KINDS,
+  YOUTUBE_MIDDLE_BAND,
+  safeAreaFor,
   SHAPES,
   SPEC_LIMITS,
   TEXT_ANIMATIONS,
@@ -194,8 +197,9 @@ function layer(v: unknown, photoCount: number, palette: MotionSpec["palette"]): 
       font,
       weight,
       // Up to 0.22 of the width; a short word far back (depth <= 0.35) may be giant, up to 0.4, behind the product.
-      // At least 0.03 of the width (smaller is unreadable on a phone).
-      size: num(v.size, 0.03, text.length <= 16 && num(v.depth, 0, 1, 1) <= 0.35 ? 0.4 : 0.22, 0.07),
+      // At least 0.03 of the width (smaller is unreadable on a phone); the display serifs, whose hairlines vanish at
+      // small sizes, at least 0.065.
+      size: num(v.size, font === "playfair" || font === "dm-serif" ? 0.065 : 0.03, text.length <= 16 && num(v.depth, 0, 1, 1) <= 0.35 ? 0.4 : 0.22, 0.07),
       color: color(v.color, palette.text),
       align: oneOf(v.align, ["left", "center", "right"] as const, "center"),
       uppercase: v.uppercase === true,
@@ -337,21 +341,23 @@ export function legible(input: Layer[]): Layer[] {
   });
 }
 
-/** Where the apps leave text visible on a vertical video (their captions and buttons cover the edges). */
-export const SAFE_TEXT_AREA = { top: 0.12, bottom: 0.82, left: 0.07, right: 0.93 } as const;
 const VERTICAL = new Set<Ratio>(["9:16", "3:4", "4:5"]);
+/** A price, a phone number or a call to action (on YouTube Shorts it goes in the middle band). */
+const CONTACT = /\d{3}[\s-]?\d{3}|\d{1,3}(?:,\d{3})+|\b(?:whatsapp|call|order|contact|rwf|frw|ksh|tsh|ugx|price)\b/i;
 
 /**
- * Moves text boxes into the safe area of a vertical video (the template sweep found contact lines at y 0.85 to 0.9,
- * under TikTok's and Instagram's own captions). A giant background word (bigger than 0.22, cut by the frame edge on
- * purpose) is left where it is. Stable: a moved box stays put on the next check.
+ * Moves text boxes into the platform's safe area of a vertical video (the template sweep found contact lines at y
+ * 0.85 to 0.9, under TikTok's and Instagram's own captions); on YouTube Shorts the price, phone and call to action
+ * go in the middle band. A giant background word (bigger than 0.22, cut by the frame edge on purpose) is left where
+ * it is. Stable: a moved box stays put on the next check.
  */
-export function inSafeArea(layers: Layer[], ratio: Ratio): Layer[] {
+export function inSafeArea(layers: Layer[], ratio: Ratio, platform: string | null = null): Layer[] {
   if (!VERTICAL.has(ratio)) return layers;
-  const A = SAFE_TEXT_AREA;
+  const area = safeAreaFor(platform);
   const round = (n: number) => Math.round(n * 1000) / 1000;
   return layers.map((l) => {
     if (l.kind !== "text" || l.size > 0.22) return l;
+    const A = platform === "youtube" && CONTACT.test(l.text) ? { ...area, ...YOUTUBE_MIDDLE_BAND } : area;
     const w = Math.min(l.w, round(A.right - A.left));
     const h = Math.min(l.h, round(A.bottom - A.top));
     const x = round(Math.min(A.right - w / 2, Math.max(A.left + w / 2, l.x)));
@@ -360,11 +366,30 @@ export function inSafeArea(layers: Layer[], ratio: Ratio): Layer[] {
   });
 }
 
+/** The shortest time a text stays fully on screen after its entrance, in seconds (the sweep found lines arriving too late to read). */
+export const MIN_READ_SECONDS = 1.2;
+
+/** A text that would arrive too late to be read appears earlier, so it is fully on screen for MIN_READ_SECONDS. */
+function readable(l: Layer, sceneSeconds: number): Layer {
+  if (l.kind !== "text") return l;
+  const from = l.from ?? 0;
+  const to = l.to ?? 1;
+  const need = (MIN_READ_SECONDS + (l.animate === "none" ? 0 : (l.animateFor ?? 0.6))) / sceneSeconds;
+  if (to - from >= need - 1e-9) return l;
+  return { ...l, from: Math.max(0, Math.round((to - need) * 1000) / 1000) };
+}
+
 /**
  * Repairs Claude's answer into a spec the renderer can always draw. Throws SpecError only when nothing usable is left
  * (no scenes). `photoCount` is how many photos the designer was given; `seconds` is the length that was asked for.
  */
-export function validateSpec(raw: unknown, opts: { ratio: Ratio; photoCount: number; seconds: number; fixedLens?: boolean }): MotionSpec {
+/**
+ * `photos`: what is known about photo n (index n - 1): its size and the product's box in it (the cut-out's box), so
+ * text can be kept off the product. `platform`: the safe area to keep text in (designer.ts PLATFORMS keys).
+ */
+export type ValidateOptions = { ratio: Ratio; photoCount: number; seconds: number; fixedLens?: boolean; photos?: (PhotoInfo | undefined)[]; platform?: string | null };
+
+export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
   if (!isObj(raw)) throw new SpecError("The design was not a JSON object.");
   const p = isObj(raw.palette) ? raw.palette : {};
   const palette = {
@@ -392,8 +417,13 @@ export function validateSpec(raw: unknown, opts: { ratio: Ratio; photoCount: num
     }));
   if (scenes.length < SPEC_LIMITS.minScenes) throw new SpecError("The design had too few scenes.");
   const ratio = isRatio(raw.ratio) ? raw.ratio : opts.ratio;
-  for (const s of scenes) s.layers = inSafeArea(s.layers, ratio);
+  const area = safeAreaFor(opts.platform);
+  // Into the safe area first, then off the product (it restacks inside the safe bands), then the safe area again for
+  // anything the restack widened.
+  const safe = (layers: Layer[]) => inSafeArea(layers, ratio, opts.platform ?? null);
+  for (const s of scenes) s.layers = safe(keepOffSubject(safe(s.layers), VERTICAL.has(ratio) ? sceneSubject(s, ratio, opts.photos ?? []) : null, area, ratio));
   fitLength(scenes, opts.seconds);
+  for (const s of scenes) s.layers = s.layers.map((l) => readable(l, s.seconds));
   return {
     version: 1,
     title: cleanText(raw.title, 80) || "Video",

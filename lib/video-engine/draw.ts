@@ -160,8 +160,11 @@ function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene
   const lightPx = { x: light.x * W, y: light.y * H };
 
   for (const layer of scene.layers) {
-    const win = layerWindow(layer, active.progress, scene.seconds, layer.kind === "text" ? (layer.animateFor ?? 0.6) : 0.4);
-    if (!win.visible) continue;
+    const shown = layerWindow(layer, active.progress, scene.seconds, layer.kind === "text" ? (layer.animateFor ?? 0.6) : 0.4);
+    if (!shown.visible) continue;
+    // The video's first frame is its thumbnail and the scroll-stop moment: what opens the first scene is already 40%
+    // into its entrance there, so the hook shows (still moving) from frame 0.
+    const win = active.index === 0 && (layer.from ?? 0) === 0 ? { ...shown, enter: 0.4 + 0.6 * shown.enter } : shown;
     ctx.save();
     const depth = layer.depth ?? DEFAULT_DEPTH[layer.kind];
     const pose = poseAt(layer.keyframes, active.progress);
@@ -170,8 +173,18 @@ function drawScene(ctx: Ctx, spec: MotionSpec, scene: Scene, active: ActiveScene
     // A camera zoom moves text with the shot but never pushes it past the safe area: at most 92% of the width.
     if (layer.kind === "text") par.scale = Math.min(par.scale, Math.max(1, (W * 0.92) / Math.max(1, rect.w)));
     // Camera: positions spread out from the centre by the zoom and shift by the pan, both weighted by depth.
-    const cx = W / 2 + (rect.x + rect.w / 2 + pose.dx * W - W / 2) * par.scale + par.dx * W;
-    const cy = H / 2 + (rect.y + rect.h / 2 + pose.dy * H - H / 2) * par.scale + par.dy * H;
+    let cx = W / 2 + (rect.x + rect.w / 2 + pose.dx * W - W / 2) * par.scale + par.dx * W;
+    let cy = H / 2 + (rect.y + rect.h / 2 + pose.dy * H - H / 2) * par.scale + par.dy * H;
+    if (layer.kind === "text") {
+      // A camera zoom spreads layers out from the centre; it never pushes a text that was in the frame out of it
+      // (a crash zoom cut the top price off). Keyframed slides from off-screen are left as they are.
+      const half = { x: (rect.w * par.scale) / 2, y: (rect.h * par.scale) / 2 };
+      const bx = rect.x + rect.w / 2 + pose.dx * W;
+      const by = rect.y + rect.h / 2 + pose.dy * H;
+      const keep = (v: number, base: number, lo: number, hi: number) => (base >= lo && base <= hi && lo <= hi ? Math.min(hi, Math.max(lo, v)) : v);
+      cx = keep(cx, bx, half.x + 0.02 * W, W - half.x - 0.02 * W);
+      cy = keep(cy, by, half.y + 0.04 * H, H - half.y - 0.04 * H);
+    }
     const ownOpacity = layer.keyframes?.some((f) => f.opacity !== undefined) ? 1 : layer.kind === "text" ? 1 : ease("out", win.enter);
     ctx.globalAlpha *= clamp01(pose.opacity * ownOpacity * win.exit);
     // Text is a graphic on top of the shot, as in real ads: it moves with the camera but always stays sharp (no focus

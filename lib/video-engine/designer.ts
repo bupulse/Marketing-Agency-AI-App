@@ -19,8 +19,11 @@ export const DESIGNER_MODEL = "claude-sonnet-5-5";
 const MAX_OUTPUT_TOKENS = 12_000;
 const TIMEOUT_MS = 150_000;
 
-/** A photo for Claude to see. `cutout`: the product could be lifted off a plain background (cutout.ts). */
-export type BriefPhoto = { base64: string; mediaType: "image/jpeg" | "image/png" | "image/webp"; width: number; height: number; note?: string; cutout?: boolean };
+/**
+ * A photo for Claude to see. `cutout`: the product could be lifted off a plain background (cutout.ts). `subject`:
+ * where the product is in the photo (fractions; the cut-out's box), so the validator keeps text off it.
+ */
+export type BriefPhoto = { base64: string; mediaType: "image/jpeg" | "image/png" | "image/webp"; width: number; height: number; note?: string; cutout?: boolean; subject?: { x: number; y: number; w: number; h: number } | null };
 
 export type DesignBrief = {
   business: { name: string; description?: string | null; language?: string | null; colors?: string[]; phone?: string | null; website?: string | null; country?: string | null; tone?: string | null };
@@ -150,7 +153,7 @@ export function systemPrompt(): string {
     "- Camera: you are also the director of photography. Give every scene a camera move that serves it (dollyIn to build interest, orbit to show a product in 3D, crashZoom for a punch, pan or tilt to reveal, craneUp for an opening or ending, handheld for UGC realism, pushPull for drama). Set layer depth so the camera creates parallax: background photos 0 to 0.3, the product 0.5 to 0.7, text 0.8 to 1. Use focus pulls (focusFrom/focusTo) for reveals. Vary moves between scenes.",
     "- Film look: choose a look for the whole video that suits the template and the brand (grade, glow, vignette, grain, light leaks, letterbox for cinematic).",
     "- 3D look (you are a 3D motion designer too): give scenes a key light (light) where it suits the mood; it shades 3D letters, turntables, glass and metal, and photos. Use text3d for big hooks, prices and end cards (1 to 4 words, size 0.1 or more, a side colour clearly darker than the text, bevel true; spin true for the hook) and keep body text flat. Pair text3d with an orbit or pan camera so its sides turn. Use turntable for a product photo with a plain or studio background (fit contain, dark or graded background so the floor reflection shows). Use cutout: true for product shots on plain backgrounds (the photos marked 'cut-out available'): the product floats on its own, on the turntable or with fit contain, over your background; never for photos of rooms, shops, streets or people. Particles add depth: bokeh far (depth 0.1 to 0.2), dust or sparkles near (0.7 to 1), confetti for launches and offers, bubbles for drinks and cosmetics; 15 to 50 is plenty. Glass suits feature cards and captions over rich backgrounds; metal suits small premium parts (a badge, a thin bar, a ring, a burst behind a price, at most about a quarter of the frame): a large metal panel looks like a grey or gold slab, never use one, and never put a metal or glass panel over the product photo. For a frame use a ring or thin bars (h 0.006 to 0.012); a ring goes around its text (its box holds the whole text block), never through it. Text on a metal or bright shape must contrast with it: on a gold or silver burst use dark text (or white text with a dark side colour), never gold or silver text. Fog (0.2 to 0.4) deepens dark scenes. Not every scene needs 3D: one or two strong 3D moments per video, unless the template is a 3D one.",
-    "- Never overlap text and the product: a text box must end above the photo's box (text y + h/2 <= photo y - h/2) or start below it, and leave a gap of 0.02. This matters most for a turntable, which fills its whole box. Only captions with a box may sit over a full-bleed background photo.",
+    "- Never overlap text and the product: a text box must end above the photo's box (text y + h/2 <= photo y - h/2) or start below it, and leave a gap of 0.02. This matters most for a turntable, which fills its whole box. The product is the point of the video: never lay text across it. With a full-frame photo (background or a big photo layer) the product is in the middle, so put text in the top band (y 0.12 to 0.3) or the bottom band (y 0.66 to 0.82), never across the middle; with a framed photo, above or below the frame. A checker moves text that covers the product.",
     "- Text over a photo background: dim the background 0.45 to 0.6 (more for gold, metal or light-coloured text) or put the text in a box, so it reads on any phone.",
     "- Count the words of every say line: at most the scene's seconds times 2.5 (a 2-second scene: 5 words; 3 seconds: 7 words). A longer line makes the video longer than asked.",
     "- At most 3 lines of text in a scene besides the price and the phone number; split more into another scene. The caption carries the price (if given) and the phone or WhatsApp number.",
@@ -303,7 +306,7 @@ export async function designVideo(brief: DesignBrief, opts: { apiKey?: string; m
       // An edit may lengthen or shorten the video (Claude's own scene lengths, 6 to 30 s); an extend adds the asked seconds.
       const answered = rawSeconds(raw);
       const seconds = brief.mode === "edit" && brief.base ? answered || totalMs(brief.base) / 1000 : brief.mode === "extend" && brief.base ? totalMs(brief.base) / 1000 + brief.seconds : brief.seconds;
-      const spec = validateSpec(raw, { ratio: brief.base?.ratio ?? brief.ratio, photoCount: brief.photos.length, seconds, fixedLens: brief.fixedLens });
+      const spec = validateSpec(raw, { ratio: brief.base?.ratio ?? brief.ratio, photoCount: brief.photos.length, seconds, fixedLens: brief.fixedLens, photos: brief.photos.map((p) => ({ width: p.width, height: p.height, subject: p.subject ?? null })), platform: brief.platform ?? null });
       const warnings = factCheck(spec, brief);
       const score = scoreDesign(spec, brief, { platform: brief.platform ?? null, voice: brief.voice ?? true });
       return { spec, usage, costUsd: sum(usage), apiEquivalentUsd: apiSum(usage), attempts: attempt, warnings, score };

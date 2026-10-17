@@ -60,7 +60,9 @@ describe("legible: the validator keeps text readable", () => {
 
 describe("safe area", () => {
   it("text boxes move into the safe area of a vertical video; giant background words and wide videos are left alone", () => {
-    const [low, wide, giant] = check([text({ y: 0.9, h: 0.06 }), text({ x: 0.5, w: 1.2 }), text({ text: "NOVA", size: 0.4, depth: 0.2, y: 0.95, w: 1.4 })]);
+    // A plain background, so only the safe area moves text (a photo would also keep text off the product).
+    const plain = (layers: unknown[]) => validateSpec({ palette: {}, scenes: [{ seconds: 3, background: {}, layers }, { seconds: 3, background: {}, layers: [] }] }, { ratio: "9:16", photoCount: 0, seconds: 6 }).scenes[0].layers;
+    const [low, wide, giant] = plain([text({ y: 0.9, h: 0.06 }), text({ x: 0.5, w: 1.2 }), text({ text: "NOVA", size: 0.4, depth: 0.2, y: 0.95, w: 1.4 })]);
     expect(low).toMatchObject({ y: 0.79 });
     expect(wide).toMatchObject({ w: 0.86, x: 0.5 });
     expect(giant).toMatchObject({ y: 0.95, w: 1.4 });
