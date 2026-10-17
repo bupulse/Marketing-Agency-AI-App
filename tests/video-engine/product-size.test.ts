@@ -163,3 +163,28 @@ describe("page posts (purpose post)", () => {
     expect(texts(ad, 2)).toContain("Call or WhatsApp 0788 123 456");
   });
 });
+
+describe("drawn star ratings and badges off their price", () => {
+  const o = { ratio: "9:16" as const, photoCount: 0, seconds: 6 };
+  const star = (x: number) => ({ kind: "shape", shape: "burst", color: "#f5b301", x, y: 0.255, w: 0.07, h: 0.04 });
+  const two = (layers: unknown[]) => ({ palette: {}, scenes: [{ seconds: 3, background: {}, layers }, { seconds: 3, background: {}, layers: [text({ text: "Visit us in Kibagabaga" })] }] });
+
+  it("a row of five small identical stars is dropped like a rating when the facts give none; one star or a facts rating stays", () => {
+    const row = [0.3, 0.4, 0.5, 0.6, 0.7].map(star);
+    const dropped = validateSpec(two([text({ text: "120,000,000 RWF", y: 0.18 }), ...row]), { ...o, facts: "3-bedroom house in Kibagabaga" });
+    expect(dropped.scenes[0].layers.some((l) => l.kind === "shape")).toBe(false);
+    expect(validateSpec(two([text({ text: "120,000,000 RWF", y: 0.18 }), ...row]), { ...o, facts: "Rated 5 stars by our tenants" }).scenes[0].layers.filter((l) => l.kind === "shape")).toHaveLength(5);
+    expect(validateSpec(two([text({ text: "New", y: 0.18 }), star(0.5)]), { ...o, facts: "house" }).scenes[0].layers.filter((l) => l.kind === "shape")).toHaveLength(1);
+  });
+
+  it("a burst centred below its price is centred on it, fits the frame, and arrives with it", () => {
+    const spec = validateSpec(two([{ kind: "shape", shape: "burst", color: "#ffd400", x: 0.5, y: 0.33, w: 0.92, h: 0.42 }, text({ text: "120,000,000 RWF", color: "#111111", y: 0.155, w: 0.7, h: 0.07, from: 0.1 })]), o);
+    const [burst, price] = spec.scenes[0].layers as unknown as [{ x: number; y: number; w: number; h: number; from: number }, { y: number; from: number; box?: { color: string } }];
+    expect(Math.abs(burst.y - price.y)).toBeLessThan(0.03);
+    expect(burst.y - burst.h / 2).toBeGreaterThanOrEqual(-0.001);
+    expect(burst.from).toBe(price.from);
+    // Cut down to fit the frame, it can no longer hold the whole line: the price gets a box in the burst's colour.
+    expect(price.box?.color).toBe("#ffd400");
+    expect(validateSpec(spec, o)).toEqual(spec);
+  });
+});

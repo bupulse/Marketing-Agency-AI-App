@@ -608,6 +608,48 @@ const withoutRatings = (caption: string) =>
     .filter((line, i, all) => line.trim() || (i > 0 && all[i - 1].trim()))
     .join("\n")
     .trim();
+/**
+ * A row of 4 or 5 small identical stars, bursts or circles side by side: a drawn star rating (the house ugc-review
+ * showed five yellow bursts under its price). Empty when there is none.
+ */
+function starRow(layers: Layer[]): Layer[] {
+  const small = layers.filter((l): l is Extract<Layer, { kind: "shape" }> => l.kind === "shape" && ["star", "burst", "circle"].includes(l.shape) && l.w <= 0.12 && l.h <= 0.12);
+  for (const a of small) {
+    const row = small.filter((b) => b.shape === a.shape && b.color === a.color && Math.abs(b.y - a.y) <= 0.02 && Math.abs(b.w - a.w) <= 0.01 && Math.abs(b.h - a.h) <= 0.01).sort((p, q) => p.x - q.x);
+    if (row.length < 4 || row.length > 5) continue;
+    const steps = row.slice(1).map((b, i) => b.x - row[i].x);
+    if (Math.max(...steps) - Math.min(...steps) <= 0.03 && Math.max(...steps) <= a.w * 3) return row;
+  }
+  return [];
+}
+
+/**
+ * A badge (burst, circle, blob) that carries a price, a number or a call to action but sits off it (a big burst
+ * centred below the price, its spikes behind the top line only) is centred on that text, cut down evenly to about the
+ * text's size and shown from when the text is: the badge and its price arrive together.
+ */
+function badgesOnTheirText(layers: Layer[], ratio: Ratio): Layer[] {
+  const out = [...layers];
+  const r3 = (v: number) => Math.round(v * 1000) / 1000;
+  layers.forEach((b, i) => {
+    if (b.kind !== "shape" || !["burst", "circle", "blob"].includes(b.shape)) return;
+    const t = layers
+      .filter((x): x is TextLayer => x.kind === "text" && CONTACT.test(x.text) && Math.abs(x.x - b.x) <= b.w / 2 && Math.abs(x.y - b.y) <= b.h / 2)
+      .sort((p, q) => Math.abs(p.y - b.y) - Math.abs(q.y - b.y))[0];
+    if (!t || (Math.abs(t.x - b.x) <= b.w * 0.2 && Math.abs(t.y - b.y) <= b.h * 0.2)) return;
+    // The inner part of a burst (inside its spikes) is about two thirds of its box: it holds the text's line. It
+    // stays inside the frame around its text.
+    const wide = Math.min(t.w, t.text.length * t.size * 0.62);
+    const fits = Math.min((2 * Math.min(t.y, 1 - t.y)) / b.h, (2 * Math.min(t.x, 1 - t.x)) / b.w);
+    const k = Math.min(1, fits, Math.max(wide / 0.65 / b.w, (drawnHeight(t, ratio) * 1.6) / b.h));
+    out[i] = { ...b, x: t.x, y: t.y, w: r3(b.w * k), h: r3(b.h * k), from: t.from ?? 0, to: Math.max(t.to ?? 1, b.to ?? 1) };
+    // Too small now to hold the whole line: the text gets a box in the badge's colour (its colour was chosen for it).
+    const j = layers.indexOf(t);
+    if (!t.box && b.w * k * 0.65 < wide) out[j] = { ...t, box: { color: b.color, padding: 0.015, radius: 0.3 } };
+  });
+  return out;
+}
+
 /** A shape right behind a text (a pill, a badge): its centre inside the text's box, not much taller than it. */
 const backs = (s: Layer, t: TextLayer) => s.kind === "shape" && Math.abs(s.x - t.x) <= t.w / 2 && Math.abs(s.y - t.y) <= t.h / 2 && s.h <= t.h * 2.2;
 
@@ -793,7 +835,8 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
   if (opts.facts !== undefined && !RATING.test(opts.facts)) {
     for (const s of all) {
       const fake = s.layers.filter((l): l is TextLayer => l.kind === "text" && RATING.test(l.text));
-      s.layers = s.layers.filter((l) => !fake.includes(l as TextLayer) && !fake.some((t) => backs(l, t)));
+      const stars = starRow(s.layers);
+      s.layers = s.layers.filter((l) => !fake.includes(l as TextLayer) && !fake.some((t) => backs(l, t)) && !stars.includes(l));
       if (s.say && RATING.test(s.say)) s.say = sentences(s.say).filter((x) => !RATING.test(x)).join(" ").trim() || undefined;
     }
   }
@@ -827,7 +870,7 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
     // the size repair still changes something (at most three times). Not until nothing moves at all: a band of text
     // over a full-frame photo is restacked on every pass and would shrink a little more each time.
     for (let pass = 0; pass === 0 || (pass < 3 && sized(s.layers) !== s.layers); pass++) {
-      s.layers = sized(s.layers);
+      s.layers = badgesOnTheirText(sized(s.layers), ratio);
       const subject = tall ? sceneSubject(s, ratio, opts.photos ?? []) : null;
       s.layers = shapesInFrame(safe(keepOffSubject(apartTexts(safe(badgesOffProduct(s.layers, subject)), ratio, area), subject, area, ratio)));
     }
