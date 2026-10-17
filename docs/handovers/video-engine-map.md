@@ -58,3 +58,25 @@ Owner away; decisions taken by the lead. Team brief: docs/handovers/video-studio
   password gate, Seedance previews, voice-over, last-good-build restarts, QA 92/92.
 - **Online:** gate live; the tunnel command (tools/bin/studio-online.sh) must be run by the owner (the lead's
   environment refuses to start tunnels). Password in .env (STUDIO_PASSWORD).
+
+## 17 October, the team's morning (lead: Fable 5.1, agents on Sonnet)
+
+Committed in order: Brain live-variants and samples (10ce46f), YouTube Shorts research (ad61959), captions corpus
+(a6e293e), motion engine fact checker and legibility (76f6b5f), Brain YouTube fold-in and caption check (41f901b),
+studio Premium 3D (57f2040), Brain caption tuning (07104f4), motion engine scores and safe area (e80a785), Brain audit
+(036c940, 8bc3435), research rounds (126d304, d5fed72, ca130e5), motion engine text off the product (284467a), studio
+visual pass (febe4fc), Seedance prompts within 160 words (db5fe6d), Blender scene designer (78ce0e4), Brain language
+check (047ad40), guide page 19 (da730ec).
+
+Decisions made for the owner while away: luxury templates carry a small quiet phone line in every scene; safe areas
+are per platform (YouTube: price and phone in the middle band); six short templates raised to 15 s; Premium 3D
+credits 100 at 540p, 150 at 720p, re-render 70; Premium 3D clips get sound through Blender's own muxing (no ffmpeg);
+Seedance clips get BuPulse's text overlaid in the browser through a "video" layer in the motion engine.
+
+In progress: motion engine loop 6 (other products, 1:1 and 4:5), then the video layer and the language check;
+Seedance overlay spec and frame source (mp4box); Blender audio mux, then the "expensive look" loop; studio caption
+check, Premium 3D voice step, credits; Brain Instagram ingest; research rounds (Facebook events/schools/clinics and
+organic reels, Instagram East African accounts, TikTok thin sectors and sounds).
+
+Incident: an agent's `pkill -f cat` killed Chrome and the supervisor at 09:48; both relaunched, rule added to the team
+brief.
