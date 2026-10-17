@@ -11,13 +11,14 @@ Two parts. **A** is first-hand: I watched 67 videos in the owner's logged-in Tik
 
 ## A. What I saw
 
-**The Rwandan and East African business ads (17 shop, restaurant and phone-shop ads):**
-- 11 of 17 show the price, the offer or a phone number in the first 3 seconds. Examples: a Kigali skincare vendor ("POV: You just found the most affordable skincare vendor in Kigali" plus "15% OFF regular prices + FREE DELIVERY in KGL."), a bedding shop (a card with "PRICE 28K", a phone number and "LOCATION: DOWNTOWN S-82"), a phone shop (the phone number on top for the whole clip), a phone price list of iPhone 11 to 14 Pro Max in one frame.
-- Restaurant ads in Kigali use an offer badge in frame 1: "BUY 1 GET 1 FREE", "Buy one pizza. Get one FREE. Every Tuesday", "YOU GET ONE FREE EVERY TUESDAY", "Lunch Time Promo ... 130 includes flavored iced tea". A real person eating is the common shot. The call to action names the route: "Order on VubaVuba" or "Call us: +250 791 448 670".
+**The Rwandan business ads (10 seller ads from the search batch):**
+- 6 of 10 show the price, the offer or a phone number in the first 3 seconds. Examples: a Kigali skincare vendor ("POV: You just found the most affordable skincare vendor in Kigali" plus "15% OFF regular prices + FREE DELIVERY in KGL."), a bedding shop (a card with "PRICE 28K", a phone number and "LOCATION: DOWNTOWN S-82"), a Kigali phone shop (the phone number on top for the whole clip). The other 4 (a stamp-tool seller, whose price word comes at about 6 s, and three phone shops that open on spec cards) show no price or number in the first 3 s.
+- *How counted:* `tiktok.jsonl`, the 24 watched rows of the searches "Kigali business", "Rwanda business ad", "restaurant promo" and "phone shop" (from `@sitony_sniper` to `@gadget.tribe.ug`, no `round` field). I kept a row if (a) a shop, restaurant or phone seller advertises its own goods or services and (b) a Rwandan signal is in `caption`, `hashtags`, `on_screen_text`, `hook`, `structure` or `cta` (Kigali, Rwanda, RWF, +250, KGL, a 07[2389] number, #tiktokrwanda). 10 rows pass: sitony_sniper, josiane625beddings, cpagripmoney, darerwanda, cave.coffee1, elite_paradise26, kigaliphones, rujamaphones, kibo_electronics, mukunziphonessolutions. Yes = `on_screen_text` or `hook` shows a price, offer or phone number in the frames at about 0.8 s and 3 s: sitony_sniper, josiane625beddings, darerwanda, cave.coffee1, elite_paradise26, kigaliphones (6). No = cpagripmoney, rujamaphones, kibo_electronics, mukunziphonessolutions (4). Excluded: creators and non-sellers (vivianmariefrance, pisco_dubaishopper, yonzaliving, sandramushambokazi, oliver_tips_acc, online_manager12 twice, kigali.business.i for-sale post, marvel.kigali.gorin B2B tour), non-Rwandan (21strepublicphonestore is #GhanaBusiness, gadget.tribe.ug is Ugandan), and clips with no country shown (biko_group, thebistrogroup, cohvisuals). The yes/no is my reading of three frames, not a text match. An earlier version of this line said "11 of 17" and wrongly included a Ghanaian and a Ugandan shop and four non-sellers.
+- Restaurant ads in Kigali use an offer badge in frame 1: "BUY 1 GET 1 FREE", "Buy one pizza. Get one FREE. Every Tuesday", "YOU GET ONE FREE EVERY TUESDAY", a lunch promo with hours and price on frame 1 (country not confirmed). A real person eating is the common shot. The call to action names the route: "Order on VubaVuba" or "Call us: +250 791 448 670".
 - Phone shops show the real shop behind the seller (shelves, boxes), then animate spec words in as they speak ("One SIM + eSIM", "Cover, Screen protector + charger", "MAIN AND ULTRA CAMERA 50.3MP").
 - Language is mixed: English on screen for products and prices, Kinyarwanda for business-idea and "for sale" posts ("Iragurishwa 4M ... Imari ntigucike", "Business wakora uyu munsi", "Muze twikorere business").
-- Most are 13-25 s. The most-liked Rwandan phone-shop video is a phone shop's 13 s offer clip (67.8K likes) with a staff-at-the-counter scene and a "Drop 40% or 60%" caption.
-- Production is phone-handheld or static selfie in the real shop. Polished ones (Wings n More by a visuals studio, The Bistro Group, Biko Group) use styled top-down food shots and a short text overlay.
+- Most are 13-25 s. The most-liked Rwandan phone-shop video in the set is Rujama Phones Shop's 25 s clip (5,200 likes): a seller in the shop holding three boxed phones with spec cards ("Iphone 13 USA version 128 GB", "Accessories included"). The 13 s "Drop 40% or 60%" clip (67.8K likes) is a Ghanaian store (#GhanaBusiness) and is not counted.
+- Production is phone-handheld or static selfie in the real shop. Polished ones (Wings n More by a visuals studio, The Bistro Group, Biko Group; country not confirmed) use styled top-down food shots and a short text overlay.
 - Some sellers use AI "income proof" clips with an M-Money SMS overlay and a WhatsApp number (labelled AI-generated). This is a questionable claim format. The engine should not copy it.
 
 **Hooks I saw repeat (all 67):**
@@ -55,7 +56,7 @@ Two parts. **A** is first-hand: I watched 67 videos in the owner's logged-in Tik
 
 ## 10 rules the engine should follow (from what I saw)
 
-1. Put the price, the offer or the phone number on screen in the first 3 seconds (11 of 17 Rwandan ads do).
+1. Put the price, the offer or the phone number on screen in the first 3 seconds (6 of 10 Rwandan seller ads do, see "how counted" in A).
 2. Make the first caption a question or a POV line in plain words ("Urgent order?", "POV: you just found ...").
 3. Show a real person and a real place (the shop shelf, the table, the counter) behind every product. Do not use a blank studio.
 4. Keep 15-25 s, a new shot or text change every 2-4 s. Use one idea per clip.
