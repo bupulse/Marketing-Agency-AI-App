@@ -20,7 +20,7 @@ const RW: AddonPriceRow[] = [
   ["block:text", 3000], ["block:image", 5000], ["block:chat", 3000], ["seat", 3000], ["aiPhotos", 8000], ["websiteChat", 10000], ["autopilot", 20000], ["analytics", 5000],
   ["canva", 5000], ["storeImport", 10000], ["driveImport", 3000], ["webhooks", 5000], ["apiAccess", 15000],
 ].map(([addonKey, monthlyMinor]) => ({ addonKey: String(addonKey), regionKey: "RW", currency: "RWF", monthlyMinor: Number(monthlyMinor) }));
-const BUSINESS: OfferBase = { key: "BUSINESS", name: "Business", monthlyMinor: 35000, yearlyMinor: 350000, features: ["content", "designs", "calendar", "gallery"], limits: { text: 200, image: 100, chat: 0, videos: 0, voiceCharacters: 0, seats: 3 } };
+const BUSINESS: OfferBase = { key: "BUSINESS", name: "Business", monthlyMinor: 35000, yearlyMinor: 350000, features: ["content", "designs", "calendar", "gallery"], limits: { text: 200, image: 100, chat: 0, videos: 0, voiceCharacters: 0, videoCredits: 0, seats: 3 } };
 const quote = (over: Partial<Parameters<typeof quoteOffer>[0]> = {}) => quoteOffer({ base: BUSINESS, features: [], limits: { text: 200, image: 100, chat: 0, seats: 3 }, interval: "MONTH", currency: "RWF", regionKey: "RW", prices: RW, ...over });
 
 describe("included amounts", () => {
@@ -56,7 +56,7 @@ describe("included amounts", () => {
   });
 
   it("a plan made from an older offer (0 chat replies) gets the included amount back; other limits stay", () => {
-    const stored = { text: 200, image: 100, chat: 0, videos: 0, voiceCharacters: 0, seats: 3 };
+    const stored = { text: 200, image: 100, chat: 0, videos: 0, voiceCharacters: 0, videoCredits: 0, seats: 3 };
     expect(withIncludedLimits(stored, ["content", "websiteChat", "aiPhotos"])).toEqual({ ...stored, chat: 500 });
     expect(withIncludedLimits({ ...stored, chat: 2000 }, ["websiteChat"]).chat).toBe(2000);
     expect(withIncludedLimits(stored, ["content"])).toEqual(stored);

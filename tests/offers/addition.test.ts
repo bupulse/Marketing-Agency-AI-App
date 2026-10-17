@@ -59,7 +59,7 @@ const audits = (action: string) => h.db.auditLog.rows.filter((r) => r.action ===
 
 const PRICES: [string, number][] = [["aiPhotos", 8000], ["websiteChat", 10000], ["autopilot", 20000], ["analytics", 5000]];
 const RW_PRICES: AddonPriceRow[] = PRICES.map(([addonKey, monthlyMinor]) => ({ addonKey, regionKey: "RW", currency: "RWF", monthlyMinor }));
-const CURRENT = { key: "STANDARD", name: "Business", priceMinor: 35000, features: ["content", "designs", "calendar", "gallery"] as const, limits: { text: 200, image: 100, chat: 0, videos: 0, voiceCharacters: 0, seats: 3 } };
+const CURRENT = { key: "STANDARD", name: "Business", priceMinor: 35000, features: ["content", "designs", "calendar", "gallery"] as const, limits: { text: 200, image: 100, chat: 0, videos: 0, voiceCharacters: 0, videoCredits: 0, seats: 3 } };
 
 function seed(over: Record<string, unknown> = {}) {
   h.db.user.rows.push({ id: USER, email: "biz1@example.rw", name: "Aline Uwase", suspendedAt: null });

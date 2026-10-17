@@ -147,6 +147,8 @@ model Business {
   testimonials     Testimonial[]
   interview        MarketingInterview?
   postVersions     PostVersion[]
+  videoJobs        VideoJob[]
+  videoOutcomes    VideoOutcome[]
 
   @@index([industryId])
   // The sales staff member the company is assigned to (StaffMember.id), from a referral link at sign-up or a sales
@@ -220,6 +222,7 @@ model GeneratedContent {
   model       String
   createdAt   DateTime  @default(now())
   visuals     ContentVisual[]
+  videoJobs   VideoJob[]
 
   @@index([projectId, createdAt])
   @@index([productId, createdAt])
@@ -289,6 +292,7 @@ model Product {
   posts        Post[]
   storeSync    ProductSync?
   testimonials Testimonial[]
+  videoJobs    VideoJob[]
 
   @@index([businessId, status, createdAt])
 }
@@ -314,6 +318,7 @@ model Campaign {
   contents GeneratedContent[]
   designs  Design[]
   posts    Post[]
+  videoJobs VideoJob[]
 
   @@index([businessId, status, createdAt])
 }
@@ -722,6 +727,7 @@ model UsageRecord {
   videos           Int      @default(0) // videos made this month (each up to 30 s; until 14 Oct 2026: seconds)
   voiceCharacters  Int      @default(0)
   chatMessages     Int      @default(0) // AI replies of the website chat widget
+  videoCredits     Int      @default(0) // Video Studio credits used this month (lib/video-engine/credits.ts)
   updatedAt        DateTime @updatedAt
 
   @@unique([userId, periodStart])
@@ -874,6 +880,7 @@ model Post {
   updatedAt      DateTime      @updatedAt
   metrics        PostMetrics[]
   versions       PostVersion[]
+  videoOutcome   VideoOutcome?
 
   @@unique([connectionId, externalId])
   @@index([status, scheduledAt])
@@ -1046,6 +1053,7 @@ model VoiceClip {
   timings    Json
   createdAt  DateTime @default(now())
   updatedAt  DateTime @default(now()) @updatedAt
+  videoJobs  VideoJob[]
 
   @@unique([businessId, hash])
 }
@@ -1177,6 +1185,11 @@ model MediaAsset {
   // The owner's "What's in this video?" (or photo): the AI writes captions about it.
   description String?
   source     String? // where an import came from: "google_drive" | "dropbox" | "canva" | "store"; null for uploads
+  // A product photo's cut-out (lib/video-engine/cutout.ts): the PNG next to it and the product's box in it, or why it
+  // cannot be cut out (then it is not tried again).
+  cutoutPath    String?
+  cutoutBox     Json?
+  cutoutRefused String?
   createdAt  DateTime        @default(now())
   products   ProductPhoto[]
   campaigns  CampaignPhoto[]
@@ -2125,4 +2138,98 @@ model CustomPlanRequest {
 
   @@index([status, createdAt])
   @@index([businessId, createdAt])
+}
+
+// ---- Video Studio (docs/VIDEO_APP_INTEGRATION.md) ----
+
+// One video the studio makes: a Motion design (the browser draws the MP4), a Premium 3D clip (the render worker) or a
+// Seedance clip (BytePlus), with its credits, scores and file. engine and status are text with CHECK constraints in the
+// migration (20261022100000_video_studio), like ContentVisual.
+model VideoJob {
+  id             String            @id @default(cuid())
+  businessId     String
+  business       Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId         String?           @db.Uuid // who pressed Generate; null for Autopilot
+  productId      String?
+  product        Product?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  campaignId     String?
+  campaign       Campaign?         @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contentId      String? // the GeneratedContent it belongs to, when made from a post
+  content        GeneratedContent? @relation(fields: [contentId], references: [id], onDelete: SetNull)
+  parentId       String? // the job an edit, extend, re-render or overlay came from
+  parent         VideoJob?         @relation("VideoJobParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children       VideoJob[]        @relation("VideoJobParent")
+  engine         String // "motion" | "premium3d" | "seedance"
+  mode           String? // "reference" | "text" | "image" | "first-last" | "edit" | "extend"
+  status         String            @default("designing") // designing, designed, rendering, submitted, queued, running, ready, failed, cancelled, preview, preview-ready
+  templateId     String?
+  hookId         String?
+  platform       String? // "tiktok" | "instagram" | "facebook" | "youtube"; null for any
+  ratio          String            @default("9:16")
+  seconds        Int
+  quality        String? // MP4 size, Premium 540p/720p, or "<tier> <resolution>" for Seedance
+  brief          Json // the DesignBrief or PromptBrief, photos as Storage paths (no image bytes)
+  spec           Json? // MotionSpec, or the overlay spec of a Seedance clip
+  scene          Json? // BlenderScene (Premium 3D)
+  prompt         String? // the Seedance prompt as sent
+  references     Json              @default("[]") // what was sent: [{ name, label, path, role }]
+  providerTaskId String?           @unique // BytePlus task id
+  storyboard     Json? // a free preview's storyboard (no key yet)
+  caption        String            @default("")
+  hashtags       String[]          @default([])
+  videoPath      String? // media bucket: video/<businessId>/<id>.mp4
+  posterPath     String?
+  bytes          Int               @default(0) // counted toward the media quota
+  durationMs     Int?
+  voiceClipId    String?
+  voiceClip      VoiceClip?        @relation(fields: [voiceClipId], references: [id], onDelete: SetNull)
+  credits        Int               @default(0) // video credits taken (0 for previews)
+  periodStart    DateTime? // the UsageRecord window they were taken from, for the refund
+  refundedAt     DateTime?
+  costUsd        Decimal           @default(0) @db.Decimal(12, 6) // provider cost (its AiCall rows)
+  warnings       Json              @default("[]") // fact warnings (lib/video-engine/factcheck.ts)
+  score          Json? // research score (brain scoreDesign / scoreSeedancePrompt)
+  captionScore   Json? // brain scoreCaption
+  error          String?
+  attempts       Int               @default(0)
+  leaseUntil     DateTime? // the design sweep, render worker or poller holding it
+  nextPollAt     DateTime? // Seedance: when the cron checks BytePlus next
+  expiresAt      DateTime? // Seedance: execution_expires_after (BytePlus ends it unbilled)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  outcomes       VideoOutcome[]
+
+  @@index([businessId, createdAt])
+  @@index([status, nextPollAt])
+  @@index([engine, status, leaseUntil])
+  @@index([contentId])
+}
+
+// What a posted studio video did 24 hours and 7 days after it went out (lib/video-engine/brain/types.ts Outcome); the
+// Brain learns from these (docs/research/BRAIN.md, "Learning from our own results").
+model VideoOutcome {
+  id               String   @id @default(cuid())
+  videoJobId       String
+  videoJob         VideoJob @relation(fields: [videoJobId], references: [id], onDelete: Cascade)
+  postId           String?  @unique
+  post             Post?    @relation(fields: [postId], references: [id], onDelete: SetNull)
+  businessId       String
+  business         Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sector           String
+  platform         String
+  templateId       String?
+  hookId           String?
+  formatId         String?
+  captionFormulaId String?
+  seconds          Int
+  language         String?
+  postedAt         DateTime
+  stats24h         Json? // OutcomeStats: views, reach, likes, comments, saves, shares
+  stats7d          Json?
+  source           String   @default("bupulse")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([sector, platform])
+  @@index([businessId, postedAt])
 }

@@ -12,6 +12,7 @@ const FIELD = {
   videos: "videos",
   voiceCharacters: "voiceCharacters",
   chat: "chatMessages",
+  videoCredits: "videoCredits",
 } as const satisfies Record<UsageMetric, string>;
 
 export type UsageBlockReason = "no_subscription" | "pending_demo" | "trial_expired" | "inactive" | "past_due" | "limit_reached";
@@ -123,6 +124,7 @@ export async function getUsageSummary(userId: string) {
       videos: record?.videos ?? 0,
       voiceCharacters: record?.voiceCharacters ?? 0,
       chat: record?.chatMessages ?? 0,
+      videoCredits: record?.videoCredits ?? 0,
     },
     limits,
     /** Videos made today (Kigali day) and the plan's daily cap. */

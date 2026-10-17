@@ -7,6 +7,25 @@ into BuPulse itself. Written 17 October 2026 from `prisma/schema.prisma`, `lib/u
 `wrangler.jsonc`, `docs/VIDEO_ROBOT.md` and `video-lab/server.ts`. Nothing here is built yet. The engine code in
 `lib/video-engine/` is already shared, and it moves as it is.
 
+## Decisions taken on 17 October
+
+Provisional; the owner may change them.
+
+- **Video credits per plan, each month:**
+  - TRIAL 50 (one Motion video with a voice-over: 35 + 15);
+  - STARTER and STANDARD 100;
+  - BUSINESS 500;
+  - PRO (the top plan) 1,500;
+  - other plans 0 until Admin → Plans sets them.
+- **No roll-over:** unused credits do not roll over (the `UsageRecord` window resets monthly, as for the other
+  metrics).
+- **Presenter images** come out of video credits (15 each), not the AI image allowance.
+- **Prices:** Motion 35 credits and voice-over 15 (`lib/video-engine/credits.ts`).
+- **Built so far:**
+  - `lib/video-engine/credits.ts` (task 1);
+  - the models and migration `20261022100000_video_studio`, applied to the TEST database (task 2);
+  - `PLAN_VIDEO_CREDITS` and the `videoCredits` metric in `lib/plans.ts` and `lib/usage.ts`.
+
 ## 0. THE CLAUDE KEY
 
 **THE APP MUST CALL CLAUDE WITH `ANTHROPIC_API_KEY` ONLY. IT MUST NEVER USE THE SUBSCRIPTION TRANSPORT
@@ -47,8 +66,9 @@ The app is a Cloudflare Worker (OpenNext, `wrangler.jsonc`):
 
 ## 2. Database (draft migration, not in `prisma/migrations`)
 
-The latest migration is `20261021100000_connection_method_composio`; the draft below follows its naming as
-**`20261022100000_video_studio`**. Like `20261015090000_content_visuals`, it only adds tables and columns, nothing
+Now built as **`prisma/migrations/20261022100000_video_studio/migration.sql`** (the SQL Prisma generates for the
+models, plus the checks, RLS and an audited plan update with the credits decided above, instead of 0 for every plan).
+The draft as first written: Like `20261015090000_content_visuals`, it only adds tables and columns, nothing
 is rewritten, and RLS is on with no policies (the app uses Prisma only).
 
 ```sql

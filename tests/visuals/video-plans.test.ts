@@ -53,7 +53,7 @@ describe("video by plan", () => {
     expect(SQL).toContain('ON CONFLICT ("addonKey", "regionKey") DO NOTHING');
 
     const prices: AddonPriceRow[] = [{ addonKey: "video", regionKey: "RW", currency: "RWF", monthlyMinor: 10000 }];
-    const starter: OfferBase = { key: "STARTER", name: "Starter", monthlyMinor: 15000, yearlyMinor: 150000, features: ["content", "designs", "calendar", "gallery"], limits: { text: 60, image: 30, chat: 0, videos: 0, voiceCharacters: 0, seats: 1 } };
+    const starter: OfferBase = { key: "STARTER", name: "Starter", monthlyMinor: 15000, yearlyMinor: 150000, features: ["content", "designs", "calendar", "gallery"], limits: { text: 60, image: 30, chat: 0, videos: 0, voiceCharacters: 0, videoCredits: 0, seats: 1 } };
     const q = quoteOffer({ base: starter, features: ["video"], limits: { text: 60, image: 30, chat: 0, seats: 1 }, interval: "MONTH", currency: "RWF", regionKey: "RW", prices });
     expect(q.added).toEqual(["video"]);
     expect(q.limits.videos).toBe(120);

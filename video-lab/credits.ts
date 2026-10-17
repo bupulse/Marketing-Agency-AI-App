@@ -57,7 +57,7 @@ export async function topUp(credits: number, note: string): Promise<Wallet> {
 
 /** The Rwanda credit packs shown on Pricing (lab values; the app's plans come from Admin -> Plans). */
 export const CREDIT_PACKS = [
-  { id: "starter", name: "Starter pack", credits: 1000, rwf: 10_000, blurb: "About 7 Seedance Fast clips at 480p, or 60 Claude videos" },
+  { id: "starter", name: "Starter pack", credits: 1000, rwf: 10_000, blurb: "About 11 Seedance Fast clips (5 s, 480p), or 28 Claude 3D motion videos" },
   { id: "business", name: "Business pack", credits: 3500, rwf: 30_000, blurb: "Best for weekly posting", popular: true },
   { id: "studio", name: "Studio pack", credits: 7500, rwf: 60_000, blurb: "For agencies and busy shops" },
 ] as const;

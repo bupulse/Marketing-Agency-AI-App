@@ -109,7 +109,7 @@ function priceOf(prices: readonly AddonPriceRow[], key: string, regionKey: strin
   return row && Number.isInteger(row.monthlyMinor) && row.monthlyMinor >= 0 ? row.monthlyMinor : null;
 }
 
-const EMPTY_LIMITS: PlanLimits = { text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0, seats: SEATS_MIN };
+const EMPTY_LIMITS: PlanLimits = { text: 0, image: 0, videos: 0, voiceCharacters: 0, chat: 0, videoCredits: 0, seats: SEATS_MIN };
 
 /**
  * What a custom plan includes before any block is bought: the base plan's limits plus what each added feature brings

@@ -60,7 +60,7 @@ function report(over: Partial<MoneyReport> = {}): MoneyReport {
 const row = (over: Partial<ClientRow> = {}): ClientRow => ({
   businessId: "b1", userId: "u1", name: "Kigali Salon", email: "owner@example.com", phone: "0788123456", plan: "STANDARD", status: "PAST_DUE",
   trialEndsAt: null, periodStart: "2026-10-01T00:00:00Z", lastActiveAt: null,
-  used: { text: 5, image: 1, videos: 0, voiceCharacters: 0, chat: 3 }, limits: { text: 100, image: 30, videos: 0, voiceCharacters: 0, chat: 1000 },
+  used: { text: 5, image: 1, videos: 0, voiceCharacters: 0, chat: 3, videoCredits: 0 }, limits: { text: 100, image: 30, videos: 0, voiceCharacters: 0, chat: 1000, videoCredits: 0 },
   usageShare: 0.05, aiCostMonthCents: 250, mrrCents: 2000, flags: ["past_due", "inactive"], risk: "high", score: 5, ...over,
 });
 

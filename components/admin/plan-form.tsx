@@ -35,6 +35,7 @@ const METRIC_LABELS: Record<string, string> = {
   chat: "Chat widget replies",
   videos: "Videos a month",
   voiceCharacters: "Voice characters",
+  videoCredits: "Video Studio credits",
   seats: "Team seats",
   postsPerAppPerDay: "Posts per app per day",
   videosPerDay: "Videos per day",
@@ -217,7 +218,7 @@ export function PlanForm({ mode, initial, paddleConnected, subscribers, version 
           <h2 className="text-lg font-semibold tracking-[-0.02em]">Limits {initial.isTrial ? "(for the whole trial)" : "(per month)"}</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {([...USAGE_METRICS, "seats"] as const).map((m) => (
-              <Field key={m} label={METRIC_LABELS[m]} hint={m === "seats" ? "Users per company (1 to 1000)." : undefined}><Input name={`limit_${m}`} type="number" min={m === "seats" ? 1 : 0} max={m === "seats" ? 1000 : undefined} step={1} value={limits[m]} onChange={(e) => setLimits({ ...limits, [m]: e.target.value })} required /></Field>
+              <Field key={m} label={METRIC_LABELS[m]} hint={m === "seats" ? "Users per company (1 to 1000)." : m === "videoCredits" ? "Video Studio credits; unused ones do not roll over (1 credit = 10 RWF)." : undefined}><Input name={`limit_${m}`} type="number" min={m === "seats" ? 1 : 0} max={m === "seats" ? 1000 : undefined} step={1} value={limits[m]} onChange={(e) => setLimits({ ...limits, [m]: e.target.value })} required /></Field>
             ))}
             <Field label={METRIC_LABELS.postsPerAppPerDay} hint={`Posts "Create today's content" and Autopilot make per app a day for one product or campaign (${POSTS_PER_APP_MIN} to ${POSTS_PER_APP_MAX}).`}><Input name="limit_postsPerAppPerDay" type="number" min={POSTS_PER_APP_MIN} max={POSTS_PER_APP_MAX} step={1} value={limits.postsPerAppPerDay} onChange={(e) => setLimits({ ...limits, postsPerAppPerDay: e.target.value })} required /></Field>
             <Field label={METRIC_LABELS.videosPerDay} hint="Videos BuPulse makes a day at most (Kigali day). Each video is at most 30 seconds; the monthly number is Videos a month."><Input name="limit_videosPerDay" type="number" min={0} max={100} step={1} value={limits.videosPerDay} onChange={(e) => setLimits({ ...limits, videosPerDay: e.target.value })} required /></Field>

@@ -41,11 +41,11 @@ API-equivalent cost even when Claude ran on the subscription); the rest says whe
 
 | What | Provider cost (USD) | RWF | Client pays | RWF | Margin (price ÷ cost) | Source of the cost |
 | --- | --- | --- | --- | --- | --- | --- |
-| **Motion** video (one Claude design) | 0.107 median (0.087 to 0.161, mean 0.114) | 155 | 30 credits | 300 | 1.9× (1.8× at the mean) | measured, 43 `claude-design` rows (Sonnet 5.5); rendering and MP4 are free (the browser) |
+| **Motion** video (one Claude design) | 0.107 median (0.087 to 0.161, mean 0.114) | 155 | 35 credits | 350 | 2.3× (2.1× at the mean) | measured, 43 `claude-design` rows (Sonnet 5.5); rendering and MP4 are free (the browser) |
 | **Premium 3D**, 540p, up to 8 s | 0.085 design + Mac time | 123 | 100 credits | 1,000 | 8.1× on cash | measured, 1 `claude-blender-design` row; `docs/BLENDER.md` "Premium 3D credits" says $0.08 to $0.09 |
 | **Premium 3D**, 720p | 0.085 + about twice the Mac time | 123 | 150 credits | 1,500 | 12.2× on cash | as above; 720p render time not yet measured |
 | Premium 3D **re-render** | 0 (Mac time only) | 0 | 70 credits | 700 | (machine slot) | `PREMIUM_RERENDER_CREDITS`; the 70 pays the Mac, about 1.5 to 3.5 min for 6 s at 540p (`docs/BLENDER.md`) |
-| **Voice-over**, one take | 0.059 median (0.036 to 0.078) | 86 | 10 credits | 100 | **1.2× (0.9× for the longest take)** | measured, 7 `elevenlabs-voice` rows at the list price ($0.30 per 1,000 characters); a reused take is free and its credits are given back |
+| **Voice-over**, one take | 0.059 median (0.036 to 0.078) | 86 | 15 credits | 150 | 1.7× (1.3× for the longest take) | measured, 7 `elevenlabs-voice` rows at the list price ($0.30 per 1,000 characters); a reused take is free and its credits are given back |
 | **Presenter or AI image** (Gemini) | 0.039 | 57 | 15 credits | 150 | 2.6× | measured, 5 `gemini-*` rows (`gemini-2.5-flash-image`) |
 
 **Seedance** clips: seconds × the rate in `SEEDANCE_USD_PER_SECOND` (`lib/video-engine/seedance.ts`, public price pages
@@ -72,12 +72,11 @@ Seedance credits are computed in `seedanceCredits`, so this table is exact for t
 expired clips are given back and BytePlus does not bill them. Free previews (no key) cost nothing.
 
 **What the margins say:**
-- **Voice-over:** 10 credits is about cost. A 15 s script is about $0.06 to $0.07 (85 to 100 RWF) against 100 RWF; the
-  longest take measured ($0.078) loses money. On a subscription plan ElevenLabs' characters cost less than the list
-  price, so the real margin is better, but at list price 15 credits would give the 2.2× the other items have. Owner
-  decision.
-- **Motion:** at 30 credits it is under the 2.2× target, because the measured design ($0.107) is above the $0.10
-  budget the price was set from. 35 credits would restore 2.2× at the median.
+- **Voice-over:** 15 credits since 17 October (owner decision; it was 10, about cost). A 15 s script is about $0.06 to
+  $0.07 (85 to 100 RWF) against 150 RWF, and even the longest take measured ($0.078, 113 RWF) is covered. On a
+  subscription plan ElevenLabs' characters cost less than the list price, so the real margin is better.
+- **Motion:** 35 credits since 17 October (owner decision; it was 30, under the 2.2× target because the measured design,
+  $0.107, is above the $0.10 budget the price was set from). 35 gives 2.3× at the median.
 - **Premium 3D:** its cash margin is large because the price mostly pays for the Mac's time: one render at a time,
   about 20 clips an hour at most.
 

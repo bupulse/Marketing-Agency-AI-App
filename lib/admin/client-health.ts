@@ -80,7 +80,7 @@ export async function getClientRows(now = new Date()): Promise<ClientRow[]> {
       const sub = c.user.subscription;
       const periodStart = sub ? usageWindowStart(sub.currentPeriodStart, now) : null;
       const record = periodStart ? usage.find((u) => u.userId === c.userId && u.periodStart.getTime() === periodStart.getTime()) : undefined;
-      const used: Record<UsageMetric, number> = { text: record?.textGenerations ?? 0, image: record?.imageGenerations ?? 0, videos: record?.videos ?? 0, voiceCharacters: record?.voiceCharacters ?? 0, chat: record?.chatMessages ?? 0 };
+      const used: Record<UsageMetric, number> = { text: record?.textGenerations ?? 0, image: record?.imageGenerations ?? 0, videos: record?.videos ?? 0, voiceCharacters: record?.voiceCharacters ?? 0, chat: record?.chatMessages ?? 0, videoCredits: record?.videoCredits ?? 0 };
       const planLimits = sub ? limitsOf.get(sub.plan) : undefined;
       const limits = Object.fromEntries(USAGE_METRICS.map((m) => [m, planLimits?.[m] ?? 0])) as Record<UsageMetric, number>;
       const usageShare = usageShareOf(used, limits);

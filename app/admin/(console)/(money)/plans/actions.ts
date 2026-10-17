@@ -37,7 +37,10 @@ function readForm(f: FormData, isTrial: boolean, priced = true): Partial<PlanInp
     sortOrder: numberOf(f, "sortOrder", "The order"),
     highlight: f.get("highlight") === "on",
     limits: {
-      ...(Object.fromEntries([...USAGE_METRICS, "seats"].map((m) => [m, numberOf(f, `limit_${m}`, m === "seats" ? "Team seats" : `The ${m} limit`)])) as Record<UsageMetric | "seats", number>),
+      ...(Object.fromEntries([...USAGE_METRICS.filter((m) => m !== "videoCredits"), "seats"].map((m) => [m, numberOf(f, `limit_${m}`, m === "seats" ? "Team seats" : `The ${m} limit`)])) as Record<Exclude<UsageMetric, "videoCredits"> | "seats", number>),
+      // Video Studio credits (docs/VIDEO_APP_INTEGRATION.md): only when the form sends it, so a form opened before they
+      // existed still saves (the plan keeps its credits).
+      ...(text(f, "limit_videoCredits") ? { videoCredits: numberOf(f, "limit_videoCredits", "Video Studio credits") } : {}),
       // Posts per app per day (docs/CONTENT.md): only when the form sends it.
       ...(text(f, "limit_postsPerAppPerDay") ? { postsPerAppPerDay: numberOf(f, "limit_postsPerAppPerDay", "Posts per app per day") } : {}),
       // Videos a day (docs/CONTENT_VISUALS.md): only when the form sends it.
