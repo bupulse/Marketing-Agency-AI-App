@@ -13,7 +13,7 @@ export type Pricing = {
   claudeCredits: number;
   presenterCredits: number;
   voiceCredits?: number;
-  premium3dCredits?: number;
+  premium3dCredits?: { "540p": number; "720p": number; rerender: number };
 };
 
 /** "55 to 120 credits per 5 s", "30 credits a video", "15 credits an image". */

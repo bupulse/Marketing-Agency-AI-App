@@ -6,6 +6,7 @@ import { drawSpecFrame, type Photos } from "@/lib/video-engine/draw";
 import { encodeSpecMp4, loadPhotos, loadSpecFonts } from "@/lib/video-engine/encode";
 import { canvasSize, totalMs, type MotionSpec, type Quality } from "@/lib/video-engine/spec";
 import type { VoiceCue } from "@/lib/video-engine/voice";
+import { carousel } from "./carousel";
 import { categoryName } from "./i18n";
 import { setupInspire, showInspire } from "./inspire";
 import { loadPricing, modelById, wireExamples } from "./models";
@@ -35,7 +36,7 @@ type StoryShot = { n: number; from: number; to: number; shot: string; camera: st
 type Storyboard = { notice: string; model: string; resolution: string; ratio: string; seconds: number; audio: boolean; setting: string | null; shots: StoryShot[]; frames: { at: number; shot: number; caption: string; svg: string }[]; references: { label: string; kind: string; thumb: string | null }[]; estimate: { usd: number; credits: number; wait: string }; issues: Issue[] };
 type PreviewAnswer = { ready: false; readyInMs: number; notice: string } | { ready: true; storyboard: Storyboard };
 /** A Premium 3D clip (Blender), video-lab/premium-jobs.ts. */
-type PremiumJob = { audio?: { voice: boolean; music: boolean; voiceFile: string | null; voiceNote: string | null; musicTitle: string | null }; id: string; createdAt: string; status: "designing" | "voicing" | "rendering" | "succeeded" | "failed"; progress: number; credits: number; title: string; seconds: number; caption: string | null; hashtags: string[]; say: string | null; warnings: FactWarning[]; renderSeconds: number | null; videoFile: string | null; error: string | null };
+type PremiumJob = { quality?: string; parentId?: string | null; repairs?: string[]; photoFiles?: unknown[]; audio?: { voice: boolean; music: boolean; voiceFile: string | null; voiceNote: string | null; musicTitle: string | null }; id: string; createdAt: string; status: "designing" | "voicing" | "rendering" | "succeeded" | "failed"; progress: number; credits: number; title: string; seconds: number; caption: string | null; hashtags: string[]; say: string | null; warnings: FactWarning[]; renderSeconds: number | null; videoFile: string | null; error: string | null };
 type Gen = { engine: Engine; id: string; title: string; status: string; at: string; videoUrl: string | null; claude?: ClaudeJob; sd?: SdJob; pm?: PremiumJob };
 type Product = { id: string; name: string; summary: string; price: string | null; photos: { assetId: string; description: string | null }[] };
 type Preview = { spec: MotionSpec; photoIds: string[] };
@@ -86,7 +87,8 @@ const state = {
   claudeCredits: 0,
   /** Motion's "Premium 3D (Blender)" quality: Claude designs a Blender scene, rendered on the studio computer. */
   premium: false,
-  blender: { available: false, credits: 120, sound: false, voiceReady: false, voiceCredits: 10 },
+  blender: { available: false, credits: { "540p": 100, "720p": 150, rerender: 70 }, sound: false, voiceReady: false, voiceCredits: 10 },
+  premiumQuality: "540p" as "540p" | "720p",
   /** Premium 3D sound (once Blender mixes it): the ElevenLabs voice-over of the scene's line, and library music. */
   premiumVoice: true,
   premiumMusic: true,
@@ -165,7 +167,7 @@ function renderPills() {
   $("pTemplateV").textContent = o.templates.find((t) => t.id === state.templateId)?.name ?? "Template";
   $("pRatioV").textContent = state.ratio;
   $("pSecondsV").textContent = `${state.seconds}s`;
-  $("pQualityV").textContent = sd ? `${o.seedance.tiers.find((t) => t.id === state.tier)?.name.replace("Seedance 2.0 ", "") || "Pro"} · ${state.resolution}` : state.premium ? "Premium 3D (Blender)" : state.quality;
+  $("pQualityV").textContent = sd ? `${o.seedance.tiers.find((t) => t.id === state.tier)?.name.replace("Seedance 2.0 ", "") || "Pro"} · ${state.resolution}` : state.premium ? `Premium 3D · ${state.premiumQuality}` : state.quality;
   $("pVersionsV").textContent = `${state.versions}/4`;
   $("go").className = `genBtn${sd ? " bp" : ""}`;
   $("pWrite").hidden = !sd;
@@ -218,7 +220,7 @@ async function quote() {
     const q = await api<{ credits: number; usd: number }>("/api/quote", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(sd ? { engine: "seedance", tier: state.tier, resolution: state.draft ? "480p" : state.resolution, seconds: state.seconds, versions: state.versions } : state.premium ? { engine: "blender", photos: state.refs.filter((r) => r.kind === "image").length } : { engine: "claude", versions: state.versions, photos: state.refs.filter((r) => r.kind === "image").length, voice: state.voice }),
+      body: JSON.stringify(sd ? { engine: "seedance", tier: state.tier, resolution: state.draft ? "480p" : state.resolution, seconds: state.seconds, versions: state.versions } : state.premium ? { engine: "blender", quality: state.premiumQuality, photos: state.refs.filter((r) => r.kind === "image").length } : { engine: "claude", versions: state.versions, photos: state.refs.filter((r) => r.kind === "image").length, voice: state.voice }),
     });
     state.credits = q.credits;
     $("goCredits").textContent = `✦ ${q.credits}`;
@@ -283,11 +285,13 @@ function setupPills() {
             toggleRow("Music from the library", () => state.premiumMusic, (v) => (state.premiumMusic = v)),
           ]
         : [el("p", { className: "hint", textContent: "Sound (voice-over and music) comes with the next Blender update; clips are silent for now." })];
+      const c = state.blender.credits;
+      const resolution = chips(["540p", "720p"], state.premiumQuality, (v) => (state.premiumQuality = v as "540p" | "720p"), (v) => `${v} · ${c[v as "540p" | "720p"]} credits`);
       box.append(
         el("h6", { textContent: "Premium 3D" }),
         premium,
-        ...(state.premium ? sound : []),
-        el("p", { className: "hint", textContent: state.blender.available ? `A real 3D scene rendered in Blender on the studio computer: about 3 to 6 minutes, 4 to 8 seconds long, ${state.blender.credits} credits.` : "Not available: Blender is not installed on the studio computer." }),
+        ...(state.premium ? [resolution, ...sound] : []),
+        el("p", { className: "hint", textContent: state.blender.available ? `A real 3D scene rendered in Blender on the studio computer: about 3 to 6 minutes (720p takes about twice as long), 4 to 8 seconds long. ${c["540p"]} credits at 540p, ${c["720p"]} at 720p.` : "Not available: Blender is not installed on the studio computer." }),
       );
     }
   });
@@ -589,7 +593,7 @@ async function generate() {
         const out = await api<{ job: PremiumJob }>("/api/blender/render", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ businessId: state.businessId, productId: state.productId, photoIds: state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]), styleId: state.templateId, hookId: state.hookId, ratio: state.ratio, seconds: state.seconds, note: prompt, platform: state.platform, voice: state.premiumVoice, music: state.premiumMusic }),
+          body: JSON.stringify({ businessId: state.businessId, productId: state.productId, photoIds: state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]), styleId: state.templateId, hookId: state.hookId, ratio: state.ratio, seconds: state.seconds, note: prompt, platform: state.platform, voice: state.premiumVoice, music: state.premiumMusic, quality: state.premiumQuality }),
         });
         await loadGens();
         openDrawer(state.gens.find((g) => g.id === out.job.id) ?? null);
@@ -764,11 +768,37 @@ function showPremium(g: Gen, j: PremiumJob): [string, string][] {
     }, 4000);
   }
   $("dPrompt").textContent = j.caption ? `${j.caption}\n\n${j.hashtags.map((h) => `#${h}`).join(" ")}` : "";
-  showFacts(j);
+  showFacts({ warnings: j.warnings, caption: j.caption ? `${j.caption}\n${j.hashtags.map((h) => `#${h}`).join(" ")}` : null });
+  // What the studio changed in Claude's scene to keep it within the rules (amber, for information).
+  if (j.repairs?.length) {
+    const box = $("dFacts");
+    box.hidden = false;
+    box.append(el("h5", { textContent: "Scene repairs" }), ...j.repairs.map((r) => el("div", { className: "issue warning", textContent: r })));
+  }
+  // The same scene again, without a new design: a sharper 720p, or a 540p.
+  if (j.status === "succeeded" && g.videoUrl) {
+    const actions = $("dActions");
+    for (const q of ["720p", "540p"] as const) {
+      const b = el("button", { className: "btn sm", textContent: `Render again at ${q} (${state.blender.credits.rerender} credits)` });
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          const out = await api<{ job: PremiumJob }>(`/api/blender/jobs/${j.id}/rerender`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quality: q }) });
+          await loadGens();
+          openDrawer(state.gens.find((x) => x.id === out.job.id) ?? null);
+          await refreshWallet();
+        } catch (e) {
+          $("dMsg").textContent = (e as Error).message;
+          b.disabled = false;
+        }
+      };
+      actions.append(b);
+    }
+  }
   return [
     ["Status", j.status === "succeeded" ? "Ready" : j.status],
-    ["Length", `${j.seconds} s`],
-    ["Credits", String(j.credits)],
+    ["Length", `${j.seconds} s${j.quality ? ` · ${j.quality}` : ""}`],
+    ["Credits", `${j.credits}${j.parentId ? " (re-render)" : ""}`],
     ...(j.renderSeconds ? ([["Render time", `${Math.floor(j.renderSeconds / 60)} min ${j.renderSeconds % 60} s`]] as [string, string][]) : []),
     ...(j.say ? ([["Voice line", j.say]] as [string, string][]) : []),
     ...(j.audio?.voiceFile ? ([["Voice-over", "yes"]] as [string, string][]) : []),
@@ -1065,42 +1095,6 @@ async function mountPreview(host: HTMLElement, pv: Preview, card: HTMLElement) {
   card.onmouseleave = () => (hover = false);
 }
 
-function carousel(items: { id: string; videoUrl: string; title: string; engine: Engine }[]) {
-  const box = $("carousel");
-  box.replaceChildren();
-  if (!items.length) {
-    box.style.height = "40px";
-    return;
-  }
-  const cards = items.slice(0, 7).map((i) => {
-    // Only the centre card plays (place() below); the others show a still one second in. Seven videos playing at once
-    // is heavy for a phone.
-    const c = el("a", { className: "cardV", href: `/showcase#${i.id}` }, el("video", { src: `${i.videoUrl}#t=1`, muted: true, loop: true, playsInline: true, preload: "metadata" }), el("span", { className: "lbl", textContent: i.engine === "seedance" ? "Real video" : (i.engine as string) === "blender" ? "Premium 3D" : "Motion" }));
-    box.append(c);
-    return c;
-  });
-  let centre = 0;
-  const place = () => {
-    cards.forEach((c, k) => {
-      const d = ((k - centre) % cards.length + cards.length) % cards.length;
-      const off = d > cards.length / 2 ? d - cards.length : d;
-      const a = Math.abs(off);
-      c.style.transform = `translateX(${off * 250}px) scale(${1 - a * 0.12}) rotateY(${-off * 8}deg)`;
-      c.style.opacity = a > 2 ? "0" : String(1 - a * 0.25);
-      c.style.zIndex = String(10 - a);
-      c.style.filter = a ? "brightness(.6)" : "none";
-      const v = c.querySelector("video") as HTMLVideoElement;
-      if (a === 0) void v.play().catch(() => undefined);
-      else v.pause();
-    });
-  };
-  place();
-  setInterval(() => {
-    centre = (centre + 1) % cards.length;
-    place();
-  }, 3500);
-}
-
 // ---- Start -----------------------------------------------------------------------------------------------------------
 
 async function start() {
@@ -1203,7 +1197,7 @@ async function start() {
   renderRefs();
   await loadGens();
   const show = await api<{ items: { id: string; engine: Engine; title: string; videoUrl: string | null }[] }>("/api/showcase");
-  carousel(show.items.filter((i) => i.videoUrl).map((i) => ({ id: i.id, videoUrl: i.videoUrl as string, title: i.title, engine: i.engine })));
+  carousel($("carousel"), show.items.filter((i) => i.videoUrl).map((i) => ({ id: i.id, videoUrl: i.videoUrl as string, engine: i.engine })));
   setInterval(async () => {
     if (state.gens.some((g) => (g.engine === "seedance" && (g.status === "queued" || g.status === "running" || g.status === "submitting" || g.status === "preview")) || (g.pm && (g.status === "designing" || g.status === "voicing" || g.status === "rendering")))) {
       await loadGens();

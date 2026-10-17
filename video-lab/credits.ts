@@ -25,10 +25,14 @@ export const PRESENTER_IMAGE_CREDITS = roundCredits(0.04);
 /** Credits for one voice-over take (ElevenLabs, a 15 to 30 s script costs about $0.05 to $0.15). Cached takes are free. */
 export const VOICE_OVER_CREDITS = 10;
 /**
- * Credits for one Premium 3D clip (Claude designs a Blender scene, rendered on this Mac in minutes). Blender is free;
- * the price covers the design and the machine time. 120 until docs/BLENDER.md proposes a figure.
+ * Credits for one Premium 3D clip, by resolution (up to 8 s): Claude designs a Blender scene (about $0.10) and this Mac
+ * renders it (1.5 to 3.5 minutes at 540p, about twice that at 720p). Owner decision, 17 October 2026.
  */
-export const PREMIUM_3D_CREDITS = 120;
+export const PREMIUM_3D_CREDITS = { "540p": 100, "720p": 150 } as const;
+export type PremiumQuality = keyof typeof PREMIUM_3D_CREDITS;
+export const isPremiumQuality = (v: unknown): v is PremiumQuality => typeof v === "string" && v in PREMIUM_3D_CREDITS;
+/** Rendering a finished Premium 3D scene again (no new design), at either resolution. */
+export const PREMIUM_RERENDER_CREDITS = 70;
 
 const WALLET = path.resolve("video-lab/data/wallet.json");
 const START_CREDITS = Number(process.env.VIDEO_LAB_START_CREDITS) || 5000;

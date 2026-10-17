@@ -8,7 +8,7 @@ import { DESIGNER_MODEL, DESIGN_MODES, DesignError, apiSum, apiTransport, design
 import { cutoutForPhoto } from "./cutouts";
 import { scoreCaption } from "@/lib/video-engine/brain/score";
 import { blenderAvailable } from "./blender-jobs";
-import { BLENDER_MIXES_AUDIO, getPremiumJob, listPremiumJobs, premiumVideoBytes, recoverPremiumJobs, startPremium3d } from "./premium-jobs";
+import { BLENDER_MIXES_AUDIO, getPremiumJob, listPremiumJobs, premiumVideoBytes, recoverPremiumJobs, rerenderPremium, startPremium3d } from "./premium-jobs";
 import { subscriptionTransport } from "./claude-cli";
 import { VIDEO_HOOKS } from "@/lib/video-engine/styles";
 import { TEMPLATE_CATEGORIES, VIDEO_TEMPLATES } from "@/lib/video-engine/templates";
@@ -24,7 +24,7 @@ import { SEEDANCE_LIMITS, SEEDANCE_MODELS, SEEDANCE_RATIOS, SEEDANCE_RESOLUTIONS
 import { BUSINESS_KINDS, SEEDANCE_FORMATS, checkSeedanceRequest, planSeedanceShots, type BusinessKind, type SeedanceFormat } from "@/lib/video-engine/seedance-brain";
 import { listSeedanceExamples } from "./seedance-mock/preview";
 import { writeSeedancePrompt } from "@/lib/video-engine/seedance-prompt";
-import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PREMIUM_3D_CREDITS, PRESENTER_IMAGE_CREDITS, VOICE_OVER_CREDITS, charge, readWallet, refund, seedanceCredits, topUp } from "./credits";
+import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PREMIUM_3D_CREDITS, PREMIUM_RERENDER_CREDITS, PRESENTER_IMAGE_CREDITS, isPremiumQuality, type PremiumQuality, VOICE_OVER_CREDITS, charge, readWallet, refund, seedanceCredits, topUp } from "./credits";
 import { VOICE_ROUTE, makeVoiceForJob, readVoiceMp3 } from "./voice";
 import { cancelSeedance, getSeedanceJob, getSeedancePreview, imageDataUrl, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
 import { mediaBytes, saveMedia } from "./data-source";
@@ -462,7 +462,7 @@ const server = http.createServer(async (req, res) => {
         claudeCredits: CLAUDE_VIDEO_CREDITS,
         presenterCredits: PRESENTER_IMAGE_CREDITS,
         voiceCredits: VOICE_OVER_CREDITS,
-        premium3dCredits: PREMIUM_3D_CREDITS,
+        premium3dCredits: { ...PREMIUM_3D_CREDITS, rerender: PREMIUM_RERENDER_CREDITS },
       });
     }
     if (req.method === "POST" && p === "/api/quote") {
@@ -474,7 +474,7 @@ const server = http.createServer(async (req, res) => {
         const seconds = Math.min(SEEDANCE_LIMITS.maxSeconds, Math.max(SEEDANCE_LIMITS.minSeconds, Number(body.seconds) || 5));
         return json(res, 200, { credits: seedanceCredits(tier, resolution, seconds) * versions, usd: estimateSeedanceUsd({ tier, resolution, seconds }) * versions });
       }
-      if (body.engine === "blender") return json(res, 200, { credits: PREMIUM_3D_CREDITS, usd: estimateDesignCost(Math.min(4, Number(body.photos) || 0)) });
+      if (body.engine === "blender") return json(res, 200, { credits: PREMIUM_3D_CREDITS[(isPremiumQuality(body.quality) ? body.quality : "540p") as PremiumQuality], usd: estimateDesignCost(Math.min(4, Number(body.photos) || 0)) });
       // A Motion video with a voice-over: the design now, the voice when the MP4 is made.
       const voice = body.voice === true ? VOICE_OVER_CREDITS : 0;
       return json(res, 200, { credits: (CLAUDE_VIDEO_CREDITS + voice) * versions, usd: estimateDesignCost(Math.min(4, Number(body.photos) || 0)) * versions, voiceCredits: voice * versions });
@@ -689,7 +689,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { uploadId: out.uploadId, costUsd: out.call.costUsd });
       }
     }
-    if (req.method === "GET" && p === "/api/blender/status") return json(res, 200, { available: await blenderAvailable(), credits: PREMIUM_3D_CREDITS, sound: BLENDER_MIXES_AUDIO, voiceReady: !!process.env.ELEVENLABS_API_KEY, voiceCredits: VOICE_OVER_CREDITS });
+    if (req.method === "GET" && p === "/api/blender/status") return json(res, 200, { available: await blenderAvailable(), credits: { ...PREMIUM_3D_CREDITS, rerender: PREMIUM_RERENDER_CREDITS }, sound: BLENDER_MIXES_AUDIO, voiceReady: !!process.env.ELEVENLABS_API_KEY, voiceCredits: VOICE_OVER_CREDITS });
     if (req.method === "POST" && p === "/api/blender/render") {
       // Premium 3D: Claude designs a Blender scene from the same brief as a Motion video, then Blender renders it here.
       if (!(await blenderAvailable())) return fail(res, 503, "Premium 3D needs Blender on the studio computer, and it is not installed.");
@@ -703,13 +703,25 @@ const server = http.createServer(async (req, res) => {
       const { brief, files } = await briefFor(reqd, null);
       const product = (await listProducts(reqd.businessId)).find((x) => x.id === reqd.productId);
       try {
-        const job = await startPremium3d({ brief, files, send: claudeMode() === "api" ? apiTransport(process.env.ANTHROPIC_API_KEY as string) : subscriptionTransport(), model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL, meta: { businessId: reqd.businessId, productId: reqd.productId, title: product?.name ?? "Premium 3D" }, voice: body.voice !== false && !!process.env.ELEVENLABS_API_KEY, music: body.music !== false });
+        const job = await startPremium3d({ brief, files, send: claudeMode() === "api" ? apiTransport(process.env.ANTHROPIC_API_KEY as string) : subscriptionTransport(), model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL, meta: { businessId: reqd.businessId, productId: reqd.productId, title: product?.name ?? "Premium 3D" }, voice: body.voice !== false && !!process.env.ELEVENLABS_API_KEY, music: body.music !== false, quality: isPremiumQuality(body.quality) ? body.quality : "540p" });
         return json(res, 200, { job });
       } catch (error) {
         return fail(res, 402, error instanceof Error ? error.message : "Not enough credits.");
       }
     }
     if (req.method === "GET" && p === "/api/blender/jobs") return json(res, 200, { jobs: await listPremiumJobs() });
+    const blRe = p.match(/^\/api\/blender\/jobs\/(bl-[0-9a-f]{12})\/rerender$/);
+    if (req.method === "POST" && blRe) {
+      // The same scene rendered again (no new design), at 540p or 720p.
+      if (!(await blenderAvailable())) return fail(res, 503, "Premium 3D needs Blender on the studio computer, and it is not installed.");
+      const body = JSON.parse((await readBody(req, 4096)).toString("utf8") || "{}");
+      try {
+        return json(res, 200, { job: await rerenderPremium(blRe[1], isPremiumQuality(body.quality) ? body.quality : "720p") });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "It could not be rendered again.";
+        return fail(res, /credits/i.test(message) ? 402 : 400, message);
+      }
+    }
     const blJob = p.match(/^\/api\/blender\/jobs\/(bl-[0-9a-f]{12})$/);
     if (req.method === "GET" && blJob) {
       const j = await getPremiumJob(blJob[1]);

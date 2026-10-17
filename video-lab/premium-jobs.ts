@@ -12,9 +12,9 @@ import { designBlenderScene } from "@/lib/video-engine/blender-design";
 import type { ClaudeTransport, DesignBrief } from "@/lib/video-engine/designer";
 import type { MotionSpec } from "@/lib/video-engine/spec";
 import type { FactWarning } from "@/lib/video-engine/factcheck";
-import type { BlenderPhoto } from "@/tools/blender/scene";
+import type { BlenderPhoto, BlenderScene } from "@/tools/blender/scene";
 import { renderBlenderScene } from "./blender-jobs";
-import { PREMIUM_3D_CREDITS, VOICE_OVER_CREDITS, charge, refund } from "./credits";
+import { PREMIUM_3D_CREDITS, PREMIUM_RERENDER_CREDITS, VOICE_OVER_CREDITS, charge, refund, type PremiumQuality } from "./credits";
 import { musicBytes, musicFor } from "./data-source";
 import { makeVoiceForJob, readVoiceMp3 } from "./voice";
 import { record } from "./store";
@@ -36,6 +36,11 @@ export type PremiumJob = {
   /** 0 to 1 while Blender renders. */
   progress: number;
   credits: number;
+  quality: PremiumQuality;
+  /** A re-render of this job's scene (no new design). */
+  parentId: string | null;
+  /** The photo files Blender reads, in the order the scene numbers them (server-made paths, in a job's folder). */
+  photoFiles: BlenderPhoto[];
   businessId: string;
   productId: string;
   title: string;
@@ -91,9 +96,9 @@ export async function premiumVideoBytes(id: string): Promise<Buffer | null> {
  * Starts a Premium 3D clip: charges the credits (throws in plain English when there are not enough), saves the job and
  * returns it at once; the design and the render run on. The page polls getPremiumJob.
  */
-export async function startPremium3d(input: { brief: DesignBrief; files: { jpeg: Buffer; cutout: Buffer | null }[]; send: ClaudeTransport; model: string; meta: { businessId: string; productId: string; title: string }; voice: boolean; music: boolean }): Promise<PremiumJob> {
+export async function startPremium3d(input: { brief: DesignBrief; files: { jpeg: Buffer; cutout: Buffer | null }[]; send: ClaudeTransport; model: string; meta: { businessId: string; productId: string; title: string }; voice: boolean; music: boolean; quality: PremiumQuality }): Promise<PremiumJob> {
   const id = `bl-${randomBytes(6).toString("hex")}`;
-  await charge(PREMIUM_3D_CREDITS, "Premium 3D (Blender)", id);
+  await charge(PREMIUM_3D_CREDITS[input.quality], `Premium 3D ${input.quality} (Blender)`, id);
   const at = new Date().toISOString();
   const job: PremiumJob = {
     id,
@@ -101,7 +106,10 @@ export async function startPremium3d(input: { brief: DesignBrief; files: { jpeg:
     updatedAt: at,
     status: "designing",
     progress: 0,
-    credits: PREMIUM_3D_CREDITS,
+    credits: PREMIUM_3D_CREDITS[input.quality],
+    quality: input.quality,
+    parentId: null,
+    photoFiles: [],
     ...input.meta,
     templateId: input.brief.styleId,
     ratio: input.brief.ratio,
@@ -140,34 +148,76 @@ async function run(job: PremiumJob, input: Parameters<typeof startPremium3d>[0])
       }
       photos.push({ image, cutout });
     }
-    const design = await designBlenderScene(input.brief, input.send, input.model, { photos, quality: "540p" }).catch(async (error: Error & { usage?: [] }) => {
+    job.photoFiles = photos;
+    const design = await designBlenderScene(input.brief, input.send, input.model, { photos, quality: input.quality }).catch(async (error: Error & { usage?: [] }) => {
       if (error.usage) await record(job.id, "claude-blender-design", error.usage);
       throw error;
     });
     await record(job.id, "claude-blender-design", design.usage);
     Object.assign(job, { seconds: design.scene.duration, caption: design.caption, hashtags: design.hashtags, say: design.say || null, repairs: design.warnings, warnings: design.factWarnings, apiEquivalentUsd: design.apiEquivalentUsd });
     await addAudio(job, dir, design.say, input.brief.business.language ?? null);
-    job.status = "rendering";
-    await save(job);
-    let saved = 0;
-    const out = await renderBlenderScene(design.scene, premiumVideoPath(job.id), {
-      photos,
-      onProgress: (f) => {
-        job.progress = Math.round(f * 100) / 100;
-        // At most every 5%, so the job file is not rewritten for every frame.
-        if (job.progress - saved >= 0.05) {
-          saved = job.progress;
-          void save(job);
-        }
-      },
-    });
-    Object.assign(job, { status: "succeeded", progress: 1, renderSeconds: Math.round(out.seconds), bytes: out.bytes, videoFile: `${job.id}.mp4` });
-    await save(job);
+    await render(job, design.scene);
   } catch (error) {
     Object.assign(job, { status: "failed", error: `${error instanceof Error ? error.message : "The 3D clip could not be made."} The credits are given back.` });
     await save(job);
     await refund(job.credits + job.audio.voiceCredits, "Premium 3D failed", job.id);
   }
+}
+
+/** Renders a scene for a job (progress saved as it goes), then marks the job done. Throws when Blender fails. */
+async function render(job: PremiumJob, scene: BlenderScene): Promise<void> {
+  job.status = "rendering";
+  await save(job);
+  let saved = 0;
+  const out = await renderBlenderScene(scene, premiumVideoPath(job.id), {
+    photos: job.photoFiles,
+    onProgress: (f) => {
+      job.progress = Math.round(f * 100) / 100;
+      // At most every 5%, so the job file is not rewritten for every frame.
+      if (job.progress - saved >= 0.05) {
+        saved = job.progress;
+        void save(job);
+      }
+    },
+  });
+  Object.assign(job, { status: "succeeded", progress: 1, renderSeconds: Math.round(out.seconds), bytes: out.bytes, videoFile: `${job.id}.mp4` });
+  await save(job);
+}
+
+/** The photos written for a job (photo-N.jpg, and photo-N-cutout.png when there is one), in order. */
+async function photosInFolder(id: string): Promise<BlenderPhoto[]> {
+  const dir = path.join(DATA, "photos", id);
+  const files = await fs.readdir(dir).catch(() => [] as string[]);
+  const numbers = files.map((f) => /^photo-(\d+)\.jpg$/.exec(f)?.[1]).filter((n): n is string => !!n).map(Number).sort((a, b) => a - b);
+  return numbers.map((n) => ({ image: path.join(dir, `photo-${n}.jpg`), cutout: files.includes(`photo-${n}-cutout.png`) ? path.join(dir, `photo-${n}-cutout.png`) : null }));
+}
+
+/**
+ * Renders a finished clip's scene again (no new design, the same photos and sound), at either resolution:
+ * PREMIUM_RERENDER_CREDITS, given back when it fails. Throws in plain English when the clip cannot be re-rendered.
+ */
+export async function rerenderPremium(sourceId: string, quality: PremiumQuality): Promise<PremiumJob> {
+  const source = await getPremiumJob(sourceId);
+  if (!source || source.status !== "succeeded") throw new Error("Only a finished 3D clip can be rendered again.");
+  // renderBlenderScene keeps the checked scene next to the MP4.
+  const scene = await fs
+    .readFile(premiumVideoPath(source.id).replace(/\.mp4$/, ".scene.json"), "utf8")
+    .then((t) => JSON.parse(t) as BlenderScene)
+    .catch(() => null);
+  // Clips made before the photo list was kept: the same files, found in the job's own folder.
+  const photoFiles = source.photoFiles?.length ? source.photoFiles : await photosInFolder(source.id);
+  if (!scene || !photoFiles.length) throw new Error("This clip's scene was not kept, so it cannot be rendered again.");
+  const id = `bl-${randomBytes(6).toString("hex")}`;
+  await charge(PREMIUM_RERENDER_CREDITS, `Premium 3D re-render ${quality}`, id);
+  const at = new Date().toISOString();
+  const job: PremiumJob = { ...source, photoFiles, id, createdAt: at, updatedAt: at, status: "rendering", progress: 0, credits: PREMIUM_RERENDER_CREDITS, quality, parentId: source.id, apiEquivalentUsd: 0, audio: { ...source.audio, voiceCredits: 0 }, renderSeconds: null, bytes: null, videoFile: null, error: null };
+  await save(job);
+  void render(job, { ...scene, canvas: { ...scene.canvas, quality } }).catch(async (error) => {
+    Object.assign(job, { status: "failed", error: `${error instanceof Error ? error.message : "The 3D clip could not be made."} The credits are given back.` });
+    await save(job);
+    await refund(job.credits, "Premium 3D re-render failed", job.id);
+  });
+  return job;
 }
 
 /**
