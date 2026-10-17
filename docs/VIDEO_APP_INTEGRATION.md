@@ -37,6 +37,16 @@ Provisional; the owner may change them.
       (`AI_MONTHLY_BUDGET_USD`) still applies. Raise that cap when video goes live: Seedance at volume would otherwise
       stop every AI call for the month.
     - The `premium-renderer` heartbeat card waits for task 11, when the renderer exists.
+  - Task 5: **`POST /api/video/design`** (`app/api/video/design/route.ts`), built on `lib/video-studio/brief.ts` and
+    `lib/video-studio/jobs.ts`.
+    - **Order:** session → body → business → feature `videoStudio` → rate limit (`videoDesign`, 30 an hour) → key and
+      Claude switch (503 before any charge) → product, parent and photos (each photo must be the company's
+      `MediaAsset`) → `consumeUsage("videoCredits", 35 × versions)` → `VideoJob` rows ("designing", 5-minute lease) →
+      Claude through `apiTransport(ANTHROPIC_API_KEY)` wrapped in `withLedger("video-design")` → each job "designed"
+      (spec, caption, hashtags, warnings, score, captionScore, cost) or "failed" with its 35 credits given back.
+    - **Errors:** 401 / 403 / 400 / 404 / 402 / 429 / 503; 502 when every version failed.
+    - **Still open:** a job left "designing" when the request dies (the Worker stops) keeps its credits until the cron
+      sweep of task 8 refunds jobs whose lease has passed.
 
 ## 0. THE CLAUDE KEY
 
