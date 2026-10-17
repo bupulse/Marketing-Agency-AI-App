@@ -5,7 +5,7 @@
 // (brain/select.ts, docs/research/BRAIN.md). When Claude is unavailable, the plan itself is the prompt.
 import { brainBriefFromPrompt, brainContext } from "./brain/select";
 import { MAX_RESEARCH_CHARS, type ClaudeTransport, type DesignUsage } from "./designer";
-import { cameraLanguageText, lintSeedancePrompt, planSeedanceShots, seedanceRulesText, seedanceTemplateById, shotTypesText, type BusinessKind, type SeedanceFormat, type SeedanceIssue } from "./seedance-brain";
+import { cameraLanguageText, limitPromptWords, lintSeedancePrompt, planSeedanceShots, seedanceRulesText, seedanceTemplateById, shotTypesText, type BusinessKind, type SeedanceFormat, type SeedanceIssue } from "./seedance-brain";
 import { templateById } from "./templates";
 
 export type PromptBrief = {
@@ -103,6 +103,7 @@ export async function writeSeedancePrompt(b: PromptBrief, send: ClaudeTransport,
     const why = error instanceof Error ? error.message : "no answer";
     return { prompt: plan.prompt, usage: { model, inputTokens: 0, outputTokens: 0, costUsd: 0 }, issues: lint(plan.prompt), fallback: `Claude was unavailable (${why.slice(0, 160)}), so this is BuPulse's own shot plan "${plan.templateName}". Change anything you like.` };
   }
-  const prompt = answer.text.replace(/^```[a-z]*\n?|```$/g, "").trim().slice(0, 1800);
+  // Cut by words (about 170), not characters: the 160-word rule, with a little room, at a sentence end.
+  const prompt = limitPromptWords(answer.text.replace(/^```[a-z]*\n?|```$/g, "").trim());
   return { prompt, usage: answer.usage, issues: lint(prompt) };
 }

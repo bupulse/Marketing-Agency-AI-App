@@ -9,6 +9,7 @@ import {
   checkSeedanceRequest,
   detectBusinessKind,
   detectCamera,
+  limitPromptWords,
   lintSeedancePrompt,
   pickSeedanceTemplate,
   planSeedanceShots,
@@ -71,7 +72,7 @@ describe("planSeedanceShots", () => {
     expect(plan.prompt.match(/must look exactly as in Image 1/g)).toHaveLength(1);
     expect(plan.prompt).toContain("Galaxy A56 from Image 1");
     expect(plan.prompt).toContain('"Galaxy A56: 420,000 RWF."');
-    expect(plan.prompt).toContain("no on-screen text");
+    expect(plan.prompt).toContain("No on-screen text");
     expect(plan.prompt).not.toContain("Nova Phones Kigali, a"); // the name is spoken, never filmed
     expect(lintSeedancePrompt(plan.prompt, { seconds: 8, images: 1, videos: 0, audios: 0, audio: true }).filter((i) => i.level !== "info")).toEqual([]);
   });
@@ -81,10 +82,11 @@ describe("planSeedanceShots", () => {
       for (const seconds of [4, 5, 8, 10, 12, 15]) {
         const plan = planSeedanceShots({ ...phone, templateId: t.id, seconds });
         expect(promptTimecodes(plan.prompt).at(-1)?.[1], `${t.id} ${seconds}`).toBe(seconds);
-        expect(plan.shots.length).toBeLessThanOrEqual(Math.max(2, Math.floor(seconds / 2)));
         const issues = lintSeedancePrompt(plan.prompt, { seconds, images: 1, videos: 0, audios: 0, audio: true }).filter((i) => i.level !== "info");
         expect(issues, `${t.id} ${seconds}`).toEqual([]);
-        expect(plan.words).toBeLessThan(300);
+        // The 160-word rule holds without losing shots.
+        expect(plan.words, `${t.id} ${seconds}`).toBeLessThanOrEqual(160);
+        expect(plan.shots.length, `${t.id} ${seconds}`).toBe(Math.min(t.beats.length, Math.max(t.format === "before-after" ? 3 : 2, Math.min(5, Math.floor(seconds / 2.5)))));
       }
     }
   });
@@ -98,6 +100,28 @@ describe("planSeedanceShots", () => {
     const house = planSeedanceShots({ business: { name: "Homes" }, product: { name: "3-bedroom house with garden, Kibagabaga" }, references: ["Image 1: photo of the house", "Image 2: photo of the house"], format: "tour", seconds: 12 });
     expect(house.prompt).toContain("(Image 2 shows more of it)");
     expect(house.prompt).not.toContain("logo and label");
+  });
+
+  it("fits 160 words: camera words said once in full, one spoken line under 12 s, two from 12 s", () => {
+    const ugc = planSeedanceShots({ ...phone, templateId: "shop-ugc-find", seconds: 10 });
+    expect(ugc.words).toBeLessThanOrEqual(160);
+    expect(ugc.prompt.match(/natural handheld phone camera with a slight shake/g) ?? []).toHaveLength(ugc.prompt.includes("Selfie shot, handheld") ? 0 : 1);
+    expect(ugc.shots.filter((s) => s.spoken)).toHaveLength(1);
+    const long = planSeedanceShots({ ...phone, templateId: "phone-ugc-review", seconds: 12 });
+    expect(long.words).toBeLessThanOrEqual(160);
+    expect(long.shots.filter((s) => s.spoken).length).toBeGreaterThanOrEqual(1);
+    expect(long.shots.filter((s) => s.spoken).length).toBeLessThanOrEqual(2);
+    expect(lintSeedancePrompt(`0-5s: ${"a slow orbit around the phone ".repeat(30)}.`, { seconds: 5, images: 0, videos: 0, audios: 0 }).map((i) => i.code)).toContain("prompt-wordy");
+  });
+
+  it("a before/after opens on the result, and keeps its before when it must shorten", () => {
+    for (const id of ["fashion-outfit-switch", "salon-transformation", "services-before-after", "any-before-after"]) {
+      for (const seconds of [4, 8, 10, 15]) {
+        const plan = planSeedanceShots({ ...phone, templateId: id, seconds });
+        expect(plan.shots[0].action, `${id} ${seconds}`).toMatch(/result first|happy result/);
+        expect(plan.shots.slice(1).some((s) => /earlier|before/.test(s.action)), `${id} ${seconds}`).toBe(true);
+      }
+    }
   });
 
   it("speaks no price that is not given, French for French businesses, nothing in Kinyarwanda", () => {
@@ -190,6 +214,16 @@ describe("seedance prompt writer uses the brain", () => {
     expect(SEEDANCE_SYSTEM).toMatch(/not text to copy: the prompt stays 60 to 160 words/);
     // No platform: still a research block, for any platform.
     expect(promptBriefText(brief)).toContain("<<<RESEARCH");
+  });
+
+  it("cuts Claude's answer by words at a sentence end, not by characters", async () => {
+    const sentence = "0-5s: a slow orbit around the phone from Image 1 on a wooden counter in Kigali. ";
+    const wordy = vi.fn(async () => ({ text: sentence.repeat(20), usage: { model: "m", inputTokens: 1, outputTokens: 1, costUsd: 0 }, stop: "end_turn" }));
+    const out = await writeSeedancePrompt(brief, wordy, "m");
+    expect(out.prompt.split(/\s+/).length).toBeLessThanOrEqual(170);
+    expect(out.prompt.endsWith(".")).toBe(true);
+    expect(limitPromptWords("one two three four five six. seven eight", 7)).toBe("one two three four five six.");
+    expect(limitPromptWords("short one", 7)).toBe("short one");
   });
 
   it("falls back to the plan when Claude is unavailable, and lints Claude's answer", async () => {

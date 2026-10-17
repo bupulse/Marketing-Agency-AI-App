@@ -10,40 +10,42 @@ import { SEEDANCE_LIMITS, SEEDANCE_MODELS, SEEDANCE_RATIOS, estimateSeedanceUsd,
 
 // ---- (a) Shot types and camera language Seedance responds to
 
-export type ShotType = { id: string; name: string; words: string; use: string };
+/** `short` is used for a repeated shot type, or everywhere when a prompt must be compacted to fit 160 words. */
+export type ShotType = { id: string; name: string; words: string; short: string; use: string };
 export const SHOT_TYPES: ShotType[] = [
-  { id: "ecu", name: "Extreme close-up", words: "extreme close-up", use: "a label, a stitch, a screen edge, steam" },
-  { id: "macro", name: "Macro", words: "macro shot, shallow depth of field", use: "drops, fabric weave, sizzle, texture" },
-  { id: "cu", name: "Close-up", words: "close-up", use: "the product in a hand, a reaction" },
-  { id: "mcu", name: "Medium close-up", words: "medium close-up, chest up", use: "a presenter talking to camera" },
-  { id: "ms", name: "Medium shot", words: "medium shot, waist up", use: "a person using or wearing the product" },
-  { id: "ws", name: "Wide shot", words: "wide shot", use: "the shop, the room, the venue" },
-  { id: "ews", name: "Establishing shot", words: "wide establishing shot", use: "the street, the building, the hills" },
-  { id: "top", name: "Top-down", words: "overhead top-down shot", use: "food on a table, a flat-lay, unboxing on a desk" },
-  { id: "low", name: "Low angle", words: "low-angle shot", use: "a product or building that should look big" },
-  { id: "pov", name: "POV", words: "first-person POV shot, hands in frame", use: "unboxing, choosing, trying" },
-  { id: "ots", name: "Over the shoulder", words: "over-the-shoulder shot", use: "someone looking at a screen, a menu, a mirror" },
-  { id: "selfie", name: "Selfie", words: "handheld selfie-style shot at arm's length", use: "UGC testimonials" },
-  { id: "hero", name: "Hero end shot", words: "clean hero shot, subject centred", use: "the last 1-2 s; BuPulse adds the text on top later" },
+  { id: "ecu", name: "Extreme close-up", words: "extreme close-up", short: "extreme close-up", use: "a label, a stitch, a screen edge, steam" },
+  { id: "macro", name: "Macro", words: "macro shot, shallow depth of field", short: "macro", use: "drops, fabric weave, sizzle, texture" },
+  { id: "cu", name: "Close-up", words: "close-up", short: "close-up", use: "the product in a hand, a reaction" },
+  { id: "mcu", name: "Medium close-up", words: "medium close-up, chest up", short: "medium close-up", use: "a presenter talking to camera" },
+  { id: "ms", name: "Medium shot", words: "medium shot, waist up", short: "medium shot", use: "a person using or wearing the product" },
+  { id: "ws", name: "Wide shot", words: "wide shot", short: "wide shot", use: "the shop, the room, the venue" },
+  { id: "ews", name: "Establishing shot", words: "wide establishing shot", short: "establishing shot", use: "the street, the building, the hills" },
+  { id: "top", name: "Top-down", words: "overhead top-down shot", short: "top-down shot", use: "food on a table, a flat-lay, unboxing on a desk" },
+  { id: "low", name: "Low angle", words: "low-angle shot", short: "low-angle shot", use: "a product or building that should look big" },
+  { id: "pov", name: "POV", words: "first-person POV shot, hands in frame", short: "POV shot", use: "unboxing, choosing, trying" },
+  { id: "ots", name: "Over the shoulder", words: "over-the-shoulder shot", short: "over-the-shoulder shot", use: "someone looking at a screen, a menu, a mirror" },
+  { id: "selfie", name: "Selfie", words: "handheld selfie-style shot at arm's length", short: "selfie shot", use: "UGC testimonials" },
+  { id: "hero", name: "Hero end shot", words: "clean hero shot, subject centred", short: "hero shot", use: "the last 1-2 s; BuPulse adds the text on top later" },
 ];
 
-export type CameraMove = { id: string; words: string; feel: string };
+/** `short` is used when the same move comes back in a later shot (the prompt stays within 160 words). */
+export type CameraMove = { id: string; words: string; short: string; feel: string };
 export const CAMERA_LANGUAGE: CameraMove[] = [
-  { id: "static", words: "locked-off static camera", feel: "calm; lets the action speak" },
-  { id: "push-in", words: "slow push-in", feel: "focus, desire, a reveal" },
-  { id: "pull-out", words: "slow pull-back revealing the scene", feel: "context, an ending" },
-  { id: "orbit", words: "slow orbit around the subject", feel: "premium, shows the product in 3D" },
-  { id: "pan", words: "smooth pan from left to right", feel: "a row of products, a room" },
-  { id: "tilt-up", words: "slow tilt up", feel: "revealing a building or an outfit" },
-  { id: "tracking", words: "tracking shot following the subject", feel: "energy, movement" },
-  { id: "gimbal", words: "smooth gimbal walk-through", feel: "house, venue and shop tours" },
-  { id: "crane-up", words: "crane up and over", feel: "a grand opening or ending" },
-  { id: "drone", words: "slow aerial drone shot", feel: "property, location, events" },
-  { id: "handheld", words: "natural handheld phone camera with a slight shake", feel: "UGC, honest, TikTok" },
-  { id: "whip-pan", words: "fast whip pan", feel: "an energetic change between two shots" },
-  { id: "rack-focus", words: "rack focus from the foreground to the subject", feel: "guides the eye" },
-  { id: "dolly-zoom", words: "dolly zoom", feel: "the 'wow' moment (once per clip)" },
-  { id: "slow-motion", words: "in slow motion", feel: "pours, splashes, hair, fabric" },
+  { id: "static", words: "locked-off static camera", short: "static camera", feel: "calm; lets the action speak" },
+  { id: "push-in", words: "slow push-in", short: "slow push-in", feel: "focus, desire, a reveal" },
+  { id: "pull-out", words: "slow pull-back revealing the scene", short: "slow pull-back", feel: "context, an ending" },
+  { id: "orbit", words: "slow orbit around the subject", short: "slow orbit", feel: "premium, shows the product in 3D" },
+  { id: "pan", words: "smooth pan from left to right", short: "slow pan", feel: "a row of products, a room" },
+  { id: "tilt-up", words: "slow tilt up", short: "tilt up", feel: "revealing a building or an outfit" },
+  { id: "tracking", words: "tracking shot following the subject", short: "tracking shot", feel: "energy, movement" },
+  { id: "gimbal", words: "smooth gimbal walk-through", short: "gimbal walk-through", feel: "house, venue and shop tours" },
+  { id: "crane-up", words: "crane up and over", short: "crane up", feel: "a grand opening or ending" },
+  { id: "drone", words: "slow aerial drone shot", short: "drone shot", feel: "property, location, events" },
+  { id: "handheld", words: "natural handheld phone camera with a slight shake", short: "handheld", feel: "UGC, honest, TikTok" },
+  { id: "whip-pan", words: "fast whip pan", short: "whip pan", feel: "an energetic change between two shots" },
+  { id: "rack-focus", words: "rack focus from the foreground to the subject", short: "rack focus", feel: "guides the eye" },
+  { id: "dolly-zoom", words: "dolly zoom", short: "dolly zoom", feel: "the 'wow' moment (once per clip)" },
+  { id: "slow-motion", words: "in slow motion", short: "slow motion", feel: "pours, splashes, hair, fabric" },
 ];
 
 const SHOT_PATTERNS: [RegExp, string][] = [
@@ -52,8 +54,8 @@ const SHOT_PATTERNS: [RegExp, string][] = [
   [/overhead|top-down|flat-?lay/i, "top"],
   [/selfie/i, "selfie"],
   [/\bpov\b|first-person/i, "pov"],
-  [/over-the-shoulder/i, "ots"],
-  [/low-?angle/i, "low"],
+  [/over[- ]the[- ]shoulder/i, "ots"],
+  [/low[- ]?angle/i, "low"],
   [/hero shot/i, "hero"],
   [/medium close/i, "mcu"],
   [/close-?up/i, "cu"],
@@ -150,8 +152,8 @@ export type SeedanceTemplate = {
 };
 
 const S = (t: SeedanceTemplate) => t;
-const FICTIONAL_WOMAN = "a friendly fictional Rwandan woman in her twenties in a bright everyday top";
-const FICTIONAL_MAN = "a friendly fictional Rwandan man in his twenties in a casual shirt";
+const FICTIONAL_WOMAN = "a friendly fictional Rwandan woman in her twenties";
+const FICTIONAL_MAN = "a friendly fictional Rwandan man in his twenties";
 
 export const SEEDANCE_TEMPLATES: SeedanceTemplate[] = [
   // ---- Shops
@@ -271,10 +273,10 @@ export const SEEDANCE_TEMPLATES: SeedanceTemplate[] = [
     ] }),
   S({ id: "fashion-outfit-switch", name: "Outfit switch", business: ["fashion"], format: "before-after", seconds: 8, presenter: true, cast: "a fictional young woman in her twenties", place: "a bright bedroom with a tall mirror", light: "soft window light", music: "beat drop on the switch",
     beats: [
-      { weight: 2, shot: "ms", camera: "static", action: "{presenter} in plain everyday clothes faces the mirror and shrugs" },
-      { weight: 1, shot: "ms", camera: "whip-pan", action: "{presenter} spins", sound: "a whoosh and a beat drop" },
-      { weight: 2, shot: "ms", camera: "static", action: "{presenter} now wears {P}, a confident pose" },
-      { weight: 2, shot: "hero", camera: "push-in", action: "on {product}, its colours and pattern exactly as in the photo", say: ["usp", "intro"] },
+      { weight: 2, shot: "ms", camera: "static", action: "the result first: {presenter} in {P}, a confident pose, then turns to the mirror" },
+      { weight: 2, shot: "ms", camera: "static", action: "earlier: {presenter} in plain everyday clothes faces the mirror and shrugs" },
+      { weight: 1, shot: "ms", camera: "whip-pan", action: "{presenter} spins", sound: "a whoosh and a beat drop", optional: true },
+      { weight: 2, shot: "hero", camera: "push-in", action: "on {product} after the switch, its colours and pattern exactly as in the photo", say: ["usp", "intro"] },
     ] }),
   S({ id: "fashion-try-on", name: "Try-on haul", business: ["fashion"], format: "ugc-testimonial", seconds: 12, presenter: true, cast: FICTIONAL_WOMAN, place: "a fitting room with a big mirror", light: "warm, even light", music: "light pop beat",
     beats: [
@@ -464,6 +466,24 @@ export const SEEDANCE_RULES: { id: string; rule: string }[] = [
   { id: "length", rule: "60 to 160 words of plain sentences. Describe what should be seen, not lists of what to avoid. No contradictions (a static camera that also orbits)." },
 ];
 
+/** The prompt length Seedance follows best (the "length" rule): 60 to 160 words. */
+export const MIN_PROMPT_WORDS = 60;
+export const MAX_PROMPT_WORDS = 160;
+
+/**
+ * Cuts a prompt to at most `max` words, at the last sentence end inside the limit when that keeps most of it, so
+ * Seedance never gets a half sentence. Line breaks are kept.
+ */
+export function limitPromptWords(text: string, max = MAX_PROMPT_WORDS + 10): string {
+  const tokens = text.trim().match(/\S+\s*/g) ?? [];
+  if (tokens.length <= max) return text.trim();
+  const kept = tokens.slice(0, max).join("");
+  const ends = [...kept.matchAll(/[.!?]["”]?(?=\s|$)/g)];
+  const last = ends.at(-1);
+  const cut = last && last.index !== undefined && last.index + last[0].length > kept.length * 0.6 ? kept.slice(0, last.index + last[0].length) : kept;
+  return cut.trim();
+}
+
 export const seedanceRulesText = () => SEEDANCE_RULES.map((r) => `- ${r.rule}`).join("\n");
 export const cameraLanguageText = () => CAMERA_LANGUAGE.map((c) => `${c.words} (${c.feel})`).join("; ");
 export const shotTypesText = () => SHOT_TYPES.map((s) => `${s.words} (${s.use})`).join("; ");
@@ -547,32 +567,24 @@ export function planSeedanceShots(brief: SeedanceBrief): SeedancePlan {
   const product = brief.product.name.trim();
   // In the shots, a long name is shortened to the part before " – " or a comma; the full name stays in the fidelity line.
   const shortName = product.split(/\s+[–—-]\s+|,\s*/)[0].trim() || product;
-  let productMentioned = false;
-  const P = () => {
-    if (!productImg || productMentioned) return `the ${shortName}`;
-    productMentioned = true;
-    return `the ${shortName} from Image ${productImg.n}`;
-  };
   const place = placeRef ? `the place in Image ${placeRef.n}` : t.place;
   const presenterText = personImg ? `the presenter from Image ${personImg.n}` : brief.presenter?.trim() || t.cast || "a friendly fictional adult";
-  let presenterMentioned = false;
-  const presenter = () => {
-    if (presenterMentioned) return "the presenter";
-    presenterMentioned = true;
-    return presenterText;
-  };
   if (!images.length && !placeFirst) notes.push(`No product photo: Seedance will imagine the ${product} from the words. Add a photo as Image 1 so it looks exactly like yours.`);
   if (t.presenter && !personImg && !brief.presenter) notes.push("The presenter is a fictional person described in words, so the face changes between clips. Pick a digital character from the library for the same face every time.");
   if (personImg && !/asset:/i.test(personImg.label)) notes.push(`Image ${personImg.n} shows a person: BytePlus refuses photos with real-looking faces. Use a digital character from the library (asset://...) instead.`);
 
   // Beats: drop optional ones first, then from the middle, so each shot has about 2 s or more.
   // About one shot per 2.5 to 3 s (the TikTok research: a cut every 2-3 s).
-  const maxShots = Math.max(2, Math.min(5, Math.floor(seconds / 2.5)));
+  // The opening shot, the end shot and (in a before/after) the "before" are never dropped: optional shots go first,
+  // then middle ones.
+  const keep = t.format === "before-after" ? 2 : 1;
+  const maxShots = Math.max(keep + 1, Math.min(5, Math.floor(seconds / 2.5)));
+  const dropBeat = (list: SeedanceBeat[]) => {
+    const i = list.findIndex((b, j) => j >= keep && j < list.length - 1 && b.optional);
+    list.splice(i >= 0 ? i : Math.max(keep, Math.floor(list.length / 2)), 1);
+  };
   const beats = [...t.beats];
-  while (beats.length > maxShots) {
-    const i = beats.findIndex((b) => b.optional);
-    beats.splice(i >= 0 ? i : Math.floor(beats.length / 2), 1);
-  }
+  while (beats.length > maxShots) dropBeat(beats);
 
   // Spoken lines: only facts, only languages Seedance speaks well.
   // Spoken facts stay short: the first selling point under 12 words, a price without conditions, the name before " – ".
@@ -583,55 +595,102 @@ export function planSeedanceShots(brief: SeedanceBrief): SeedancePlan {
   const speaks = audio && (lang === "en" || lang === "fr");
   if (audio && !speaks) notes.push(`No spoken line: Seedance does not speak ${LANG_NAMES[lang]} reliably. Music and sound only; add the ${LANG_NAMES[lang]} voice-over afterwards with ElevenLabs.`);
   if (audio && !rawPrice && beats.some((b) => b.say?.includes("price"))) notes.push("No price in the product details, so no price is spoken.");
-  const used = new Set<SayKey>();
-  const line = (keys: SayKey[] | undefined): string | null => {
-    if (!speaks || !keys) return null;
-    for (const k of keys) {
-      const l = LINES[k];
-      if (used.has(k) || (l.needs === "price" && !price) || (l.needs === "usp" && !usp)) continue;
-      used.add(k);
-      return l[lang as "en" | "fr"].replace("{product}", shortName).replace("{business}", brief.business.name.trim()).replace("{price}", price ?? "").replace("{usp}", usp ?? "");
-    }
-    return null;
-  };
-  const speaker = t.presenter || personImg || brief.presenter ? "The presenter says to the camera" : "A warm, friendly voice-over says";
-
-  // At most one spoken line up to 8 s and two above (the opening hook and the end), so the words fit the time.
-  const sayAt = beats.flatMap((b, i) => (b.say?.length ? [i] : []));
-  const keepSay = new Set(seconds <= 8 || sayAt.length < 2 ? sayAt.slice(-1) : [sayAt[0], sayAt[sayAt.length - 1]]);
-  const times = timeline(beats.map((b) => b.weight), seconds);
-  const shots: PlannedShot[] = beats.map((b, i) => {
-    const camera = brief.fixedLens ? cameraById("static") : cameraById(b.camera);
-    const action = b.action.replace(/\{P\}/g, P).replace(/\{product\}/g, `the ${shortName}`).replace(/\{name\}/g, shortName).replace(/\{presenter\}/g, presenter).replace(/\{place\}/g, place);
-    const spoken = keepSay.has(i) ? line(b.say) : null;
-    const references = [...new Set((action.match(/(Image|Video|Audio) \d+/g) ?? []) as string[])];
-    return { from: times[i][0], to: times[i][1], shot: shotById(b.shot).words, camera: camera.words, action, sound: audio && b.sound ? b.sound : null, spoken, references };
-  });
-  // A short clip may have dropped every shot that names the product: the end shot carries its photo then.
-  if (productImg && !productMentioned) {
-    const end = shots[shots.length - 1];
-    end.action = `${end.action}, with ${P()} in view`;
-    end.references = [...new Set([...end.references, `Image ${productImg.n}`])];
-  }
+  const presents = !!(t.presenter || personImg || brief.presenter);
 
   const ratioWords = RATIO_WORDS[ratio] ?? "";
   const formatWords = SEEDANCE_FORMATS.find((f) => f.id === t.format)?.words ?? "ad";
   const kindWords = BUSINESS_KINDS.find((k) => k.id === kind)?.words ?? "a local business";
-  const lines = [
-    `A ${ratioWords ? `${ratioWords} ` : ""}${formatWords} for ${kindWords} in ${brief.business.country?.trim() || "Rwanda"}. Setting: ${placeRef ? `${place}, exactly as in the photo${morePlace.length ? ` (${morePlace.map((r) => `Image ${r.n}`).join(" and ")} show${morePlace.length > 1 ? "" : "s"} more of it)` : ""}` : place}. Light: ${t.light}.${audio ? ` Music: ${t.music}.` : ""}`,
-    productImg ? `The ${product} must look exactly as in Image ${productImg.n}: same shape, colours, logo and label.` : "",
-    ...shots.map((s) => {
-      const lead = `${s.shot[0].toUpperCase()}${s.shot.slice(1)}, ${s.camera}`;
-      return `${s.from}-${s.to}s: ${lead}: ${s.action}.${s.sound ? ` Sound: ${s.sound}.` : ""}${s.spoken ? ` ${speaker} in ${LANG_NAMES[lang]}: "${s.spoken}"` : ""}`;
-    }),
-  ];
-  for (const r of refs) {
-    if (r.kind === "Video") lines.push(`Follow the camera motion and pacing of Video ${r.n}.`);
-    if (r.kind === "Audio" && audio) lines.push(`Use Audio ${r.n} as the soundtrack.`);
+  const wordCount = (text: string) => text.split(/\s+/).filter(Boolean).length;
+
+  /**
+   * Writes the prompt from a set of beats. `lines` is the number of spoken lines (the opening hook and the end when
+   * 2); `sounds` false keeps a sound on the first shot only. Names, references and camera moves are said in full
+   * once, then shortly.
+   */
+  const compose = (list: SeedanceBeat[], o: { lines: number; sounds: boolean; compact: boolean }) => {
+    let productMentioned = false;
+    const P = () => {
+      if (!productImg || productMentioned) return `the ${shortName}`;
+      productMentioned = true;
+      return `the ${shortName} from Image ${productImg.n}`;
+    };
+    let presenterMentioned = false;
+    const presenter = () => {
+      if (presenterMentioned) return "the presenter";
+      presenterMentioned = true;
+      return presenterText;
+    };
+    const used = new Set<SayKey>();
+    const line = (keys: SayKey[] | undefined): string | null => {
+      if (!speaks || !keys) return null;
+      for (const k of keys) {
+        const l = LINES[k];
+        if (used.has(k) || (l.needs === "price" && !price) || (l.needs === "usp" && !usp)) continue;
+        used.add(k);
+        return l[lang as "en" | "fr"].replace("{product}", shortName).replace("{business}", brief.business.name.trim()).replace("{price}", price ?? "").replace("{usp}", usp ?? "");
+      }
+      return null;
+    };
+    const sayAt = list.flatMap((b, i) => (b.say?.length ? [i] : []));
+    const keepSay = new Set(o.lines >= 2 && sayAt.length >= 2 ? [sayAt[0], sayAt[sayAt.length - 1]] : sayAt.slice(-1));
+    const times = timeline(list.map((b) => b.weight), seconds);
+    const shots: PlannedShot[] = list.map((b, i) => {
+      const camera = brief.fixedLens ? cameraById("static") : cameraById(b.camera);
+      const action = b.action.replace(/\{P\}/g, P).replace(/\{product\}/g, `the ${shortName}`).replace(/\{name\}/g, shortName).replace(/\{presenter\}/g, presenter).replace(/\{place\}/g, place);
+      const spoken = keepSay.has(i) ? line(b.say) : null;
+      const references = [...new Set((action.match(/(Image|Video|Audio) \d+/g) ?? []) as string[])];
+      return { from: times[i][0], to: times[i][1], shot: shotById(b.shot).words, camera: camera.words, action, sound: audio && b.sound && (o.sounds || i === 0) ? b.sound : null, spoken, references };
+    });
+    // A short clip may have dropped every shot that names the product: the end shot carries its photo then.
+    if (productImg && !productMentioned) {
+      const end = shots[shots.length - 1];
+      end.action = `${end.action}, with ${P()} in view`;
+      end.references = [...new Set([...end.references, `Image ${productImg.n}`])];
+    }
+    const cameraSaid = new Set<string>();
+    const shotSaid = new Set<string>();
+    let spokenSaid = false;
+    const lines = [
+      `A ${ratioWords ? `${ratioWords} ` : ""}${formatWords} for ${kindWords} in ${brief.business.country?.trim() || "Rwanda"}. Setting: ${placeRef ? `${place}, exactly as in the photo${morePlace.length ? ` (${morePlace.map((r) => `Image ${r.n}`).join(" and ")} show${morePlace.length > 1 ? "" : "s"} more of it)` : ""}` : place}. Light: ${t.light}.${audio ? ` Music: ${t.music}.` : ""}`,
+      productImg ? `The ${product} must look exactly as in Image ${productImg.n}: same shape, colours, logo and label.` : "",
+      ...shots.map((s, i) => {
+        const move = brief.fixedLens ? cameraById("static") : cameraById(list[i].camera);
+        const cam = o.compact || cameraSaid.has(move.id) ? move.short : move.words;
+        cameraSaid.add(move.id);
+        const type = shotById(list[i].shot);
+        const shotWords = o.compact || shotSaid.has(type.id) ? type.short : type.words;
+        shotSaid.add(type.id);
+        let said = "";
+        if (s.spoken) {
+          said = spokenSaid ? ` ${presents ? "The presenter" : "The voice-over"} says: "${s.spoken}"` : ` ${presents ? "The presenter says to the camera" : "A warm voice-over says"} in ${LANG_NAMES[lang]}: "${s.spoken}"`;
+          spokenSaid = true;
+        }
+        return `${s.from}-${s.to}s: ${shotWords[0].toUpperCase()}${shotWords.slice(1)}, ${cam}: ${s.action}.${s.sound ? ` Sound: ${s.sound}.` : ""}${said}`;
+      }),
+    ];
+    for (const r of refs) {
+      if (r.kind === "Video") lines.push(`Follow the camera motion and pacing of Video ${r.n}.`);
+      if (r.kind === "Audio" && audio) lines.push(`Use Audio ${r.n} as the soundtrack.`);
+    }
+    lines.push("No on-screen text or added logos.");
+    return { shots, prompt: lines.filter(Boolean).join("\n") };
+  };
+
+  // The 160-word rule: fewer sounds, then one spoken line, then short shot and camera words, then fewer shots until
+  // it fits.
+  const opts = { lines: seconds >= 12 ? 2 : 1, sounds: true, compact: false };
+  let out = compose(beats, opts);
+  for (const squeeze of [() => (opts.sounds = false), () => (opts.lines = 1), () => (opts.compact = true)]) {
+    if (wordCount(out.prompt) <= MAX_PROMPT_WORDS) break;
+    squeeze();
+    out = compose(beats, opts);
   }
-  lines.push("Clean frames with no on-screen text, captions or added logos.");
-  const prompt = lines.filter(Boolean).join("\n");
-  return { templateId: t.id, templateName: t.name, businessKind: kind, format: t.format, language: lang, seconds, ratio, shots, prompt, words: prompt.split(/\s+/).filter(Boolean).length, notes };
+  while (wordCount(out.prompt) > MAX_PROMPT_WORDS && beats.length > keep + 1) {
+    dropBeat(beats);
+    out = compose(beats, opts);
+  }
+  const { shots, prompt } = out;
+  return { templateId: t.id, templateName: t.name, businessKind: kind, format: t.format, language: lang, seconds, ratio, shots, prompt, words: wordCount(prompt), notes };
 }
 
 // ---- (e) Checks before we pay: what BytePlus will refuse, and what will disappoint
@@ -651,7 +710,7 @@ export function lintSeedancePrompt(prompt: string, ctx: { seconds: number; image
   if (text.length > 4000) issues.push({ level: "warning", code: "prompt-long", message: `The prompt is ${text.length} characters; only the first 4,000 are sent. Keep it to 60 to 160 words.` });
   const words = text.split(/\s+/).length;
   if (words < 15) issues.push({ level: "warning", code: "prompt-short", message: "The prompt is very short. Say what is shown, the camera move, the place, the light and the sound." });
-  else if (words > 300) issues.push({ level: "warning", code: "prompt-wordy", message: `The prompt has ${words} words. Seedance follows 60 to 160 words best; long prompts lose details.` });
+  else if (words > MAX_PROMPT_WORDS) issues.push({ level: "warning", code: "prompt-wordy", message: `The prompt has ${words} words. Seedance follows ${MIN_PROMPT_WORDS} to ${MAX_PROMPT_WORDS} words best; long prompts lose details.` });
   for (const [kind, count] of [["Image", ctx.images], ["Video", ctx.videos], ["Audio", ctx.audios]] as const) {
     const named = [...new Set([...text.matchAll(new RegExp(`\\b${kind}\\s*(\\d+)`, "gi"))].map((m) => Number(m[1])))];
     const missing = named.filter((n) => n < 1 || n > count);
