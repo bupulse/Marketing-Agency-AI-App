@@ -9,7 +9,7 @@ import { cutoutForPhoto } from "./cutouts";
 import { loadReferenceSources, type StudioRef } from "./seedance-sources";
 import { prepareSeedanceReferences, type ReferenceSummary } from "./seedance-references";
 import { scoreCaption } from "@/lib/video-engine/brain/score";
-import { planSeries, suggestHooks } from "@/lib/video-engine/brain";
+import { firstCommentFor, planSeries, suggestHooks } from "@/lib/video-engine/brain";
 import { brainBriefFromDesign, brainContext } from "@/lib/video-engine/brain/select";
 import { blenderAvailable } from "./blender-jobs";
 import { BLENDER_MIXES_AUDIO, getPremiumJob, listPremiumJobs, premiumVideoBytes, recoverPremiumJobs, rerenderPremium, startPremium3d } from "./premium-jobs";
@@ -827,6 +827,14 @@ const server = http.createServer(async (req, res) => {
       const { brief } = await briefFor(reqd, null, { photos: false });
       // The Brain calls YouTube Shorts "shorts".
       return json(res, 200, { hooks: suggestHooks(brief, { platform: reqd.platform === "youtube" ? "shorts" : (reqd.platform ?? "any") }) });
+    }
+    if (req.method === "GET" && p === "/api/first-comment") {
+      // The seller's pinned first comment for a product (price, place, delivery, WhatsApp; or the Kinyarwanda reply kit).
+      const q = Object.fromEntries(url.searchParams);
+      const reqd = await readRequest({ businessId: q.business, productId: q.product, mode: "text" });
+      if ("error" in reqd) return fail(res, reqd.status, reqd.error);
+      const { brief } = await briefFor(reqd, null, { photos: false });
+      return json(res, 200, { comment: firstCommentFor(brief) });
     }
     if (req.method === "GET" && p === "/api/plan") {
       // "Plan a week": seven distinct posts for this product (the Brain's planSeries; free, no AI). Each row is then

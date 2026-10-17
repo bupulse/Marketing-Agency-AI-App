@@ -193,6 +193,30 @@ scene, and the scenes are stretched so each lasts at least its line.
   so a 12 to 15 s 3D video with a voice-over is about $0.16 to $0.20.
 - **Limits:** the live preview has no sound (the voice is in the exported MP4).
 
+## Re-shape (another ratio)
+
+The studio re-shapes a finished design (9:16 to 1:1 or 4:5) by running `validateSpec` again on the stored spec with the
+new `ratio`. No new design is made and nothing is paid. Positions are fractions of the canvas, so every layer keeps its
+place, and the validator repairs what the new shape breaks.
+
+- **Pass the same options as `designVideo`:** `photos` (each photo's size and its cut-out box), `platform`, `phone`,
+  `productMin: productMinHeight(styleId)` (`templates.ts`) and `maxLines: STYLE_LIMITS[templateStyle(styleId)].maxLines`
+  (`brain/score.ts`), `purpose`. Leave `facts` out, so lines the owner wrote are kept.
+- **Safe area:** vertical shapes (9:16, 3:4, 4:5) use the platform's area from the Brain (`safeAreaFor`); 1:1 and wider
+  shapes use the wide area (5% from each edge). Text, and the pill or badge behind it, moves inside it.
+- **Product:**
+  - A product photo (a cut-out, a turntable or a photo card) is grown to the template's minimum height (45%, 55% on
+    product templates) or shrunk to the room the text leaves.
+  - Text and badges are then moved off it: lines go to the bands above and below, a photo card is kept clear whole.
+- **Text:** lines are kept apart by the height they are drawn at (wrapped word by word, wider for bold). A square
+  canvas has less height, so a narrow column of words grows taller.
+- **Shapes:** a ring, circle, burst or blob meant to sit inside the frame stays inside it at its largest keyframe scale
+  and under camera moves (a ring around a title ran off the left edge at 1:1).
+- **Phone and end card:** the quiet phone line is added only on vertical shapes. The end card's bare number gets
+  "WhatsApp" or "Call or WhatsApp", except on page posts.
+- **Repeatable:** most designs come back unchanged when validated again (45 of the 60 loop-6 designs). The others move a
+  line by a few hundredths.
+
 ## AI influencers (owner decision: both kinds)
 
 - **Realistic photo influencers** (`video-lab/influencers.ts`): 8 fictional East African presenters (Aline, Eric,
@@ -320,6 +344,18 @@ pages read it). Videos are served with Range requests, so a page full of videos 
   a **stand-in**, a finished studio MP4 with sound of the same product when there is one, labelled "Stand-in clip" in
   the drawer only. Tested 17 October on a Galaxy A56 preview: 5.09 s MP4 with video and sound tracks, the stand-in's
   frames moving under the hook, price, call to action and phone bar, caption check 100.
+- **Ad or post (Motion):** an "Ad / Post" pill next to the platform. Post means an organic post on the business's
+  page: the brief carries \`purpose: "post"\` (read by the Brain's context, the design score and the caption check),
+  the job keeps it and its card shows "Post". Tested: a Galaxy A56 post scored caption 85 with the post rule (0 to 3
+  hashtags) and research 94. Still open: the opening-line chips ignore purpose, and the validator puts the number on
+  every scene of a post too (reported to the Brain and the motion engine).
+- **Plan a week (Motion):** "📅 Plan a week" (at the end of the opening-line chips) runs the Brain's \`planSeries\` for
+  the product (\`GET /api/plan\`, free): seven days with platform, opening line, template, length and a note. Each row's
+  **Generate** fills the form (template, platform, length, voice, the chosen line) and makes it as a normal Motion
+  design (35 credits).
+- **First comment (Motion and Seedance):** under the caption, "First comment (pin it)" with a Copy button: the Brain's
+  \`firstCommentFor\` (\`GET /api/first-comment\`): the price, the place and the WhatsApp number, or the Kinyarwanda kit
+  ("Igiciro ni … / Turi i … / Nandikira kuri WhatsApp …") for a Kinyarwanda business.
 - **Opening lines (Motion):** once a product is chosen, three chips above the prompt bar give the Brain's opening
   lines for that product, template, platform and length (\`GET /api/hooks\` → \`suggestHooks\`; the reason is the
   tooltip). A click chooses one (a second click lets Claude choose); the design then gets the Brain's context for it

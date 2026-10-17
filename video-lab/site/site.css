@@ -401,3 +401,4 @@ dialog.narrow { width:min(640px, 94vw); }
 .hookChip.plan { border-style:dashed; color:var(--accent); }
 .planTable td { vertical-align:top; }
 .planTable td:nth-child(3) { font-weight:600; }
+#dFacts .firstComment { display:flex; flex-direction:column; gap:6px; align-items:flex-start; margin-top:6px; }

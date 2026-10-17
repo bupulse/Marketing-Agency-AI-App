@@ -30,8 +30,8 @@ type Options = {
 };
 type FactWarning = { where: string; found: string; problem: "not-in-brief" | "business-only"; message: string };
 type DesignScore = { score: number; failed: { rule: string; reason: string; scene?: number | null }[] };
-type ClaudeJob = { purpose?: "ad" | "post"; warnings?: FactWarning[]; score?: DesignScore; captionScore?: number; captionMissed?: string[]; id: string; createdAt: string; productName: string; styleId: string; ratio: string; photoIds: string[]; spec: MotionSpec | null; usage: unknown[]; apiEquivalentUsd?: number; status: string; error: string | null; video: { bytes: number; quality?: string } | null; mode?: string };
-type SdJob = { id: string; createdAt: string; status: string; credits: number; estimateUsd: number; costUsd: number; tokens: number; videoFile: string | null; error: string | null; title: string; request: { prompt: string; tier: string; resolution: string; ratio: string; seconds: number; referenceNotes: string[] }; preview?: { notice: string; readyAt: string; wouldCostCredits: number } };
+type ClaudeJob = { businessId?: string; productId?: string; purpose?: "ad" | "post"; warnings?: FactWarning[]; score?: DesignScore; captionScore?: number; captionMissed?: string[]; id: string; createdAt: string; productName: string; styleId: string; ratio: string; photoIds: string[]; spec: MotionSpec | null; usage: unknown[]; apiEquivalentUsd?: number; status: string; error: string | null; video: { bytes: number; quality?: string } | null; mode?: string };
+type SdJob = { businessId?: string | null; productId?: string | null; id: string; createdAt: string; status: string; credits: number; estimateUsd: number; costUsd: number; tokens: number; videoFile: string | null; error: string | null; title: string; request: { prompt: string; tier: string; resolution: string; ratio: string; seconds: number; referenceNotes: string[] }; preview?: { notice: string; readyAt: string; wouldCostCredits: number } };
 /** An opening line from the Brain (lib/video-engine/brain/suggest.ts). */
 type HookSuggestion = { hookId: string; name: string; line: string; why: string };
 type Issue = { level: "error" | "warning" | "info"; code: string; message: string };
@@ -1099,6 +1099,30 @@ async function showOverlay(g: Gen, o: Overlay) {
   showFacts({ captionScore: o.captionScore, captionMissed: o.captionMissed, caption: `${spec.caption}\n${spec.hashtags.map((h) => `#${h}`).join(" ")}` });
 }
 
+/**
+ * "First comment (pin it)": what the seller posts as the first comment under the video (price, place, delivery,
+ * WhatsApp; the Brain's firstCommentFor), with a copy button. Added under the caption when the job has a product.
+ */
+async function showFirstComment(g: Gen, businessId: string | null | undefined, productId: string | null | undefined) {
+  if (!businessId || !productId) return;
+  const q = new URLSearchParams({ business: businessId, product: productId });
+  const out = await api<{ comment: { text: string; lines: string[] } | null }>(`/api/first-comment?${q}`).catch(() => null);
+  if (!out?.comment || state.open?.id !== g.id) return;
+  const text = out.comment.text;
+  const copy = el("button", { className: "btn sm", textContent: "Copy" });
+  copy.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      copy.textContent = "Copied";
+    } catch {
+      copy.textContent = "Select the text to copy";
+    }
+  };
+  const box = $("dFacts");
+  box.hidden = false;
+  box.append(el("div", { className: "firstComment" }, el("h5", { textContent: "First comment (pin it)" }), el("p", { className: "capText", textContent: text }), copy));
+}
+
 let drawerAnim = 0;
 function openDrawer(g: Gen | null) {
   if (!g) return;
@@ -1126,6 +1150,7 @@ function openDrawer(g: Gen | null) {
   if (g.engine === "seedance" && g.sd?.preview) {
     $("dPrompt").textContent = g.sd.request.prompt;
     void showPreview(g, g.sd);
+    void showFirstComment(g, g.sd.businessId, g.sd.productId);
     return;
   } else if (g.engine === "seedance" && g.sd) {
     const j = g.sd;
@@ -1170,6 +1195,7 @@ function openDrawer(g: Gen | null) {
       };
     }
     $("dPrompt").textContent = j.request.prompt;
+    void showFirstComment(g, j.businessId, j.productId);
   } else if (g.pm) {
     info.push(...showPremium(g, g.pm));
   } else if (g.claude && !g.claude.spec && g.claude.status !== "failed") {
@@ -1238,6 +1264,7 @@ function openDrawer(g: Gen | null) {
       if (j.score) info.push(["Research score", `${j.score.score}/100`]);
       if (j.captionScore !== undefined) info.push(["Caption check", `${j.captionScore}/100`]);
       showFacts({ ...j, caption: [spec.caption, spec.hashtags.map((h) => `#${h}`).join(" ")].filter(Boolean).join("\n") });
+      void showFirstComment(g, j.businessId, j.productId);
       const v = voices.get(j.id);
       if (v) info.push(["Voice-over", `spoken in ${v.spokenLanguage}${v.fits ? "" : ", cut to fit 30 s"}`]);
       $("dPrompt").textContent = `${spec.caption}\n\n${spec.hashtags.map((h) => `#${h}`).join(" ")}`;
