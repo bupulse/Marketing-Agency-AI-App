@@ -1,6 +1,7 @@
 // Checks and repairs a motion spec from Claude (docs/VIDEO_ENGINE.md). Pure. Nothing Claude writes reaches the renderer
 // unchecked: unknown values fall back to safe defaults, numbers are clamped to the canvas, text is cut to length,
 // layers pointing at photos we do not have are dropped, and the scenes are fitted to the length that was asked for.
+import { luminance, rgba } from "./draw3d";
 import {
   CAMERA_MOVES,
   CHARACTER_HAIR,
@@ -171,6 +172,7 @@ function layer(v: unknown, photoCount: number, palette: MotionSpec["palette"]): 
       shadow: v.shadow === true,
       border: v.border ? color(v.border, palette.accent) : null,
       zoomTo: optNum(v.zoomTo, 1, 1.4),
+      dim: optNum(v.dim, 0, 0.8),
       focusX: optNum(v.focusX, 0, 1),
       focusY: optNum(v.focusY, 0, 1),
       turntable: turntable(v.turntable),
@@ -192,7 +194,8 @@ function layer(v: unknown, photoCount: number, palette: MotionSpec["palette"]): 
       font,
       weight,
       // Up to 0.22 of the width; a short word far back (depth <= 0.35) may be giant, up to 0.4, behind the product.
-      size: num(v.size, 0.02, text.length <= 16 && num(v.depth, 0, 1, 1) <= 0.35 ? 0.4 : 0.22, 0.07),
+      // At least 0.03 of the width (smaller is unreadable on a phone).
+      size: num(v.size, 0.03, text.length <= 16 && num(v.depth, 0, 1, 1) <= 0.35 ? 0.4 : 0.22, 0.07),
       color: color(v.color, palette.text),
       align: oneOf(v.align, ["left", "center", "right"] as const, "center"),
       uppercase: v.uppercase === true,
@@ -273,6 +276,67 @@ function background(v: unknown, photoCount: number, palette: MotionSpec["palette
   return { kind: "solid", colors: [colors[0] ?? palette.background], texture: oneOf(b.texture, ["none", "dots", "grain", "lines"] as const, "none") };
 }
 
+const colourDistance = (a: string, b: string) => {
+  const x = rgba(a);
+  const y = rgba(b);
+  return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+};
+const covers = (outer: Layer, inner: Layer) => Math.abs(inner.x - outer.x) <= outer.w / 2 && Math.abs(inner.y - outer.y) <= outer.h / 2;
+const overlaps = (a: Layer, b: Layer) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 && Math.abs(a.y - b.y) < (a.h + b.h) / 2;
+const FILLED = new Set(["rect", "circle", "burst", "blob"]);
+/** Text colour that reads on `behind`: near-black or white, whichever has the higher contrast ratio (WCAG). */
+function readableOn(behind: string): string {
+  const lin = (c: number) => (c / 255 <= 0.03928 ? c / 255 / 12.92 : ((c / 255 + 0.055) / 1.055) ** 2.4);
+  const [r, g, b] = rgba(behind);
+  const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return (L + 0.05) / 0.056 >= 1.05 / (L + 0.05) ? "#111111" : "#ffffff";
+}
+
+/**
+ * Keeps a scene's text readable, whatever the design says (the template sweep of 17 October 2026 found each case):
+ * a filled shape listed after text it covers goes under that text; text the same colour as the shape or solid box
+ * behind it gets a colour that reads on it; a large photo under light text gets a dark veil (a background dim does
+ * nothing when a full-frame photo layer covers it); a turntable is never smaller than about half the frame. Repairs
+ * are stable: a checked spec checks the same again.
+ */
+export function legible(input: Layer[]): Layer[] {
+  // A decorative shape drawn over text hides it: move each such shape to just before the first text it covers.
+  const layers = [...input];
+  for (let i = 1; i < layers.length; i++) {
+    const s = layers[i];
+    if (s.kind !== "shape" || !FILLED.has(s.shape) || s.material === "glass") continue;
+    const first = layers.findIndex((t, j) => j < i && t.kind === "text" && overlaps(s, t));
+    if (first >= 0) {
+      layers.splice(i, 1);
+      layers.splice(first, 0, s);
+    }
+  }
+  return layers.map((l, i) => {
+    if (l.kind === "photo" && l.turntable && (l.w < 0.6 || l.h < 0.42)) return { ...l, w: Math.max(l.w, 0.6), h: Math.max(l.h, 0.42) };
+    if (l.kind === "photo" && !l.turntable && Math.min(l.w, 1) * Math.min(l.h, 1) >= 0.6) {
+      const lightTextOver = layers.slice(i + 1).some((t) => t.kind === "text" && !t.box && luminance(t.color) > 0.6 && covers(l, t));
+      if (lightTextOver && (l.dim ?? 0) < 0.4) return { ...l, dim: 0.4 };
+    }
+    if (l.kind === "text") {
+      // A see-through box (alpha under 0.6) shows what is behind it, so its own colour says little: left alone.
+      if (l.box && !l.box.material && rgba(l.box.color)[3] >= 0.6 && colourDistance(l.color, l.box.color) < 90) return { ...l, color: readableOn(l.box.color) };
+      if (!l.box) {
+        const shapes = layers.slice(0, i).reverse().filter((s): s is Extract<Layer, { kind: "shape" }> => s.kind === "shape" && FILLED.has(s.shape) && s.material !== "glass");
+        const behind = shapes.find((s) => covers(s, l));
+        let out = l;
+        if (behind && colourDistance(l.color, behind.color) < 90) out = { ...out, color: readableOn(behind.color) };
+        // Highlighted words in the shape's own colour vanish into it: they take the colour that reads on it.
+        if (behind && out.highlight && colourDistance(out.highlight.color, behind.color) < 90) out = { ...out, highlight: { ...out.highlight, color: readableOn(behind.color) } };
+        // Partly over a shape of its own colour (the clash is only at one end): a shadow keeps the letters apart from it.
+        const clash = shapes.some((s) => s !== behind && overlaps(s, l) && (colourDistance(out.color, s.color) < 90 || (out.highlight && colourDistance(out.highlight.color, s.color) < 90)));
+        if (clash && !out.shadow) out = { ...out, shadow: true };
+        return out;
+      }
+    }
+    return l;
+  });
+}
+
 /**
  * Repairs Claude's answer into a spec the renderer can always draw. Throws SpecError only when nothing usable is left
  * (no scenes). `photoCount` is how many photos the designer was given; `seconds` is the length that was asked for.
@@ -292,10 +356,12 @@ export function validateSpec(raw: unknown, opts: { ratio: Ratio; photoCount: num
     .map((s, i) => ({
       seconds: num(s.seconds, SPEC_LIMITS.minSceneSeconds, SPEC_LIMITS.maxSceneSeconds, 3),
       background: background(s.background, opts.photoCount, palette),
-      layers: (Array.isArray(s.layers) ? s.layers : [])
-        .slice(0, SPEC_LIMITS.maxLayers)
-        .map((l) => layer(l, opts.photoCount, palette))
-        .filter((l): l is Layer => l !== null),
+      layers: legible(
+        (Array.isArray(s.layers) ? s.layers : [])
+          .slice(0, SPEC_LIMITS.maxLayers)
+          .map((l) => layer(l, opts.photoCount, palette))
+          .filter((l): l is Layer => l !== null),
+      ),
       transition: i === 0 ? "cut" : oneOf(s.transition, TRANSITIONS, "fade"),
       say: cleanText(s.say, 160) || undefined,
       camera: camera(s.camera, opts.fixedLens === true),

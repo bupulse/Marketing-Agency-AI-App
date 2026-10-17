@@ -175,7 +175,10 @@ export function factCheck(spec: Pick<MotionSpec, "scenes" | "caption">, brief: F
     const t = normalise(text);
     // A text that is only a small number is a list marker ("1", "#2", "3."), not a fact.
     if (/^#?\d{1,2}[.):]?$/.test(t) && Number(t.replace(/\D/g, "")) <= 10) continue;
+    // Spoken or written list markers ("Two. Pay with MoMo", "Reason 3:", "Step 2") count items, not facts.
+    const markers = new Set([...t.matchAll(/(?:^|[.!?]\s+|\b(?:reason|step|tip|number|no\.?|#)\s*)(\d{1,2})(?=[.:)]|\b)/g)].map((m) => m[1]).filter((d) => Number(d) <= 10));
     for (const n of numbersIn(t)) {
+      if (n.kind === "number" && markers.has(n.text) && Number(n.text) <= 10) continue;
       if (n.kind === "phone") {
         const d = phoneDigits(String(n.value));
         if (!(phone && d.length >= 6 && (phone.endsWith(d) || d.endsWith(phone)))) warn(where, n.text, "not-in-brief");

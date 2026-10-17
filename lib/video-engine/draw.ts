@@ -421,6 +421,10 @@ function drawPhoto(ctx: Ctx, layer: PhotoLayer, r: Rect, img: Img | undefined, p
     ctx.fillRect(r.x, r.y, r.w, r.h);
   }
   lightPhoto(ctx, r, env);
+  if (layer.dim) {
+    ctx.fillStyle = `rgba(0,0,0,${layer.dim})`;
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+  }
   ctx.restore();
   if (layer.border) {
     ctx.save();

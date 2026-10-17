@@ -189,6 +189,8 @@ export interface PhotoLayer extends LayerBase {
   zoomTo?: number;
   focusX?: number;
   focusY?: number;
+  /** A dark veil over the photo, 0 to 0.8, so text on it reads (set by the validator under light text). */
+  dim?: number;
   /** Show the photo on a 3D turntable (best with fit contain on a clean background). */
   turntable?: Turntable | null;
   /**

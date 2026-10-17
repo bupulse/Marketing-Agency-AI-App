@@ -38,8 +38,8 @@ describe("validation of the 3D look", () => {
         { kind: "text", text: "Big", font: "anton", size: 0.15, color: "#ffffff", x: 0.5, y: 0.4, w: 0.8, h: 0.2, text3d: { depth: 5, side: "blue", bevel: "yes", spin: true, material: "gold" }, box: { color: "#ffffff", material: "glass" } },
         { kind: "text", text: "Small", font: "inter", size: 0.05, color: "#ffffff", x: 0.5, y: 0.7, w: 0.8, h: 0.1, text3d: true },
         { kind: "text", text: "Flat", font: "inter", size: 0.05, color: "#ffffff", x: 0.5, y: 0.8, w: 0.8, h: 0.1, text3d: "no" },
-        { kind: "shape", shape: "rect", color: "#ffffff", x: 0.5, y: 0.5, w: 0.5, h: 0.2, material: "metal" },
-        { kind: "shape", shape: "rect", color: "#ffffff", x: 0.5, y: 0.5, w: 0.5, h: 0.2, material: "wood" },
+        { kind: "shape", shape: "rect", color: "#ffffff", x: 0.5, y: 0.95, w: 0.5, h: 0.05, material: "metal" },
+        { kind: "shape", shape: "rect", color: "#ffffff", x: 0.5, y: 0.95, w: 0.5, h: 0.05, material: "wood" },
       ]),
       opts,
     );
