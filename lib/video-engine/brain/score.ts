@@ -5,9 +5,11 @@
 import { detectCamera, lintSeedancePrompt, promptTimecodes } from "../seedance-brain";
 import type { Layer, MotionSpec, Scene, TextLayer } from "../spec";
 import { looksKinyarwanda, voiceLanguage } from "../voice-language";
-import { BRAIN, formatById } from "./index";
+import { BRAIN, SAFE_AREAS, formatById } from "./index";
 import { brainFor, formatFromTemplate } from "./select";
 import type { FormatId, Platform } from "./types";
+
+export { SAFE_AREAS };
 
 /** One check: the brain rule it enforces (null for an engine limit), why it passed or failed, and the scene (0-based). */
 export type ScoreItem = { id: string; rule: string | null; points: number; reason: string; scene: number | null };
@@ -26,14 +28,6 @@ export type ScoreBrief = {
 };
 export type ScoreOptions = { platform?: string | null; format?: FormatId | null; voice?: boolean };
 
-/** The text area each platform leaves free on a vertical video (designer.ts PLATFORMS), as fractions of the frame. */
-export const SAFE_AREAS: Record<Platform | "any", { top: number; bottom: number; left: number; right: number }> = {
-  tiktok: { top: 0.12, bottom: 0.78, left: 0.07, right: 0.85 },
-  instagram: { top: 0.12, bottom: 0.78, left: 0.07, right: 0.93 },
-  facebook: { top: 0.08, bottom: 0.85, left: 0.07, right: 0.93 },
-  shorts: { top: 0.1, bottom: 0.75, left: 0.07, right: 0.85 },
-  any: { top: 0.12, bottom: 0.82, left: 0.07, right: 0.93 },
-};
 /** Wide and square shapes only keep a small margin. */
 const WIDE_AREA = { top: 0.05, bottom: 0.95, left: 0.04, right: 0.96 };
 const TOLERANCE = 0.01;
@@ -62,11 +56,13 @@ export const templateStyle = (id: string | null | undefined): TemplateStyle => S
  * how many text lines a scene may hold besides the price and the number, and whether the price must come early.
  */
 export const STYLE_LIMITS: Record<TemplateStyle, { phoneEveryScene: "always" | "facebook" | "never"; maxLines: number; priceEarly: boolean }> = {
+  // Owner decision (17 October 2026): every template keeps the number on screen in every scene; luxury, cinematic and
+  // minimal ones as a small quiet line (size about 0.03) with the full contact at the end. Any size counts.
   direct: { phoneEveryScene: "always", maxLines: 3, priceEarly: true },
-  list: { phoneEveryScene: "facebook", maxLines: 5, priceEarly: true },
-  showcase: { phoneEveryScene: "facebook", maxLines: 3, priceEarly: true },
-  brand: { phoneEveryScene: "never", maxLines: 3, priceEarly: false },
-  luxury: { phoneEveryScene: "never", maxLines: 2, priceEarly: false },
+  list: { phoneEveryScene: "always", maxLines: 5, priceEarly: true },
+  showcase: { phoneEveryScene: "always", maxLines: 3, priceEarly: true },
+  brand: { phoneEveryScene: "always", maxLines: 3, priceEarly: false },
+  luxury: { phoneEveryScene: "always", maxLines: 2, priceEarly: false },
 };
 
 // ---- Reading text
@@ -86,10 +82,14 @@ const hasPhone = (text: string, phone: string) => {
 const PHONE_RUN = /\(?\+?\d{1,4}\)?(?:[ \t-]+\d{2,6}(?![\d,.]))+|\b\d{9,13}\b/g;
 const withoutPhones = (text: string) => text.replace(PHONE_RUN, (m) => (digits(m).length >= 9 ? " " : m));
 
-/** Money-like amounts in a text (420,000 / 420.000 / 420K / 1.2M / 15%), as numbers; phone numbers are skipped. */
+/**
+ * Money-like amounts in a text (420,000 / 420.000 / 420K / 1.2M / 15%), as numbers, read the way factcheck.ts reads
+ * them: phone numbers are taken out first, a space or a bullet never joins two numbers, and digits glued to letters
+ * (A56, 5G, 256GB) are model names, not amounts; a K, an M or a currency (48,000RWF, 18k) still counts.
+ */
 export function amounts(text: string): number[] {
   const out: number[] = [];
-  for (const m of withoutPhones(text).matchAll(/(\d{1,3}(?:[,.]\d{3})+|\d+(?:\.\d+)?)\s*([kKmM]\b|%)?/g)) {
+  for (const m of withoutPhones(text).matchAll(/(?<![\p{L}\d.,])(\d{1,3}(?:[,.]\d{3})+|\d+(?:\.\d+)?)\s*([kKmM]\b|%)?(?!(?!(?:rwf|frw|rfw|ksh|kes|ugx|tzs)\b|[km]\b)\p{L})/giu)) {
     const raw = m[1];
     if (digits(raw).length >= 9) continue;
     const grouped = /^\d{1,3}([,.]\d{3})+$/.test(raw);
@@ -103,7 +103,7 @@ export function amounts(text: string): number[] {
 /** Amounts that look like money or a discount: 1,000 and up, anything with K/M, RWF/FRW or %. */
 function moneyAmounts(text: string): number[] {
   const out: number[] = [];
-  for (const m of withoutPhones(text).matchAll(/(\d{1,3}(?:[,.]\d{3})+|\d+(?:\.\d+)?)\s*([kKmM]\b|%|rwf|frw|ksh|kes|ugx|tzs)?/gi)) {
+  for (const m of withoutPhones(text).matchAll(/(?<![\p{L}\d.,])(\d{1,3}(?:[,.]\d{3})+|\d+(?:\.\d+)?)\s*([kKmM]\b|%|rwf|frw|rfw|ksh|kes|ugx|tzs)?(?!(?!(?:rwf|frw|rfw|ksh|kes|ugx|tzs)\b|[km]\b)\p{L})/giu)) {
     const value = amounts(m[0])[0];
     if (value === undefined) continue;
     if (m[2] || value >= 1000) out.push(value);
@@ -225,7 +225,7 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
       : { id: "contact-last", rule: "cta-route", points: 12, ok: false, reason: `The last scene does not show the number (${phone}).`, scene: last });
     const missing = scenes.map((s, i) => (texts(s).some((l) => hasPhone(l.text, phone)) ? -1 : i)).filter((i) => i >= 0);
     const everyScene = limits.phoneEveryScene === "always" || (limits.phoneEveryScene === "facebook" && platform === "facebook");
-    if (everyScene) add({ id: "phone-bar", rule: "phone-bar", points: 6, ok: missing.length === 0, reason: missing.length ? `The number is missing from scene${missing.length > 1 ? "s" : ""} ${missing.map((i) => i + 1).join(", ")}; keep it on screen from 0 s to the end.` : "The number stays on screen in every scene.", scene: missing[0] ?? null });
+    if (everyScene) add({ id: "phone-bar", rule: "phone-bar", points: 6, ok: missing.length === 0, reason: missing.length ? `The number is missing from scene${missing.length > 1 ? "s" : ""} ${missing.map((i) => i + 1).join(", ")}; keep it on screen from 0 s to the end (a small quiet line is enough${style === "luxury" || style === "brand" ? " for this template" : ""}).` : "The number stays on screen in every scene.", scene: missing[0] ?? null });
   } else {
     add({ id: "contact-last", rule: "cta-route", points: 12, ok: ROUTE.test(lastText), reason: ROUTE.test(lastText) ? "The last scene names a way to order." : "The last scene does not say how to order (WhatsApp, call, visit, the website).", scene: last });
   }
@@ -245,9 +245,11 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
   const box = `${platform === "any" ? "the apps' edges" : platform}: y ${area.top} to ${area.bottom}, x ${area.left} to ${area.right}`;
   const describe = (list: typeof outside) => `"${snippet(list[0].l.text)}" in scene ${list[0].i + 1}${list.length > 1 ? ` and ${list.length - 1} more` : ""}`;
   // The price, the number and the call to action must never sit under the app's buttons; other text matters less, and
-  // a giant word that runs off the canvas on purpose (cut by the frame edge) is a design choice, not a mistake.
+  // a giant word that runs off the canvas on purpose, or a giant background word behind the product (size above 0.22,
+  // depth 0.35 or less: "GALAXY", "5G" in the 3D templates), is a design choice, not a mistake.
   const hidden = outside.filter((x) => contact(x.l));
-  const strays = outside.filter((x) => !contact(x.l) && !offCanvas(x.l));
+  const backdrop = (l: TextLayer) => l.size > 0.22 && (l.depth ?? 0.8) <= 0.35;
+  const strays = outside.filter((x) => !contact(x.l) && !offCanvas(x.l) && !backdrop(x.l));
   add({ id: "safe-area-contact", rule: "text-placement", points: 7, ok: hidden.length === 0, reason: hidden.length ? `${describe(hidden)}: the price, number or call to action goes under the app's buttons (${box}).` : "The price, number and call to action are inside the safe area.", scene: hidden[0]?.i ?? null });
   add({ id: "safe-area", rule: "text-placement", points: 3, ok: strays.length === 0, reason: strays.length ? `${describe(strays)} goes outside the safe area (${box}).` : "All other text is inside the safe area.", scene: strays[0]?.i ?? null });
 

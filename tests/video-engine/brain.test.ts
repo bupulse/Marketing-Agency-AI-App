@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { BRAIN, FORMATS, PLATFORMS, RESEARCH_SOURCES, SECTORS, checkBrain, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
+import { BRAIN, FORMATS, PLATFORMS, RESEARCH_SOURCES, SECTORS, checkBrain, safeAreaFor, type BrainBrief, type BrainData, type Engine } from "@/lib/video-engine/brain";
 import { evidenceFromRows, parseCount, parseDate, parseJsonl, rowKey, rowStrength, tiktokDate, variantsLive } from "@/lib/video-engine/brain/ingest";
 import { SAFE_AREAS, amounts, hasKinyarwanda, scoreCaption, scoreDesign, scoreSeedancePrompt, templateStyle, type ScoreBrief } from "@/lib/video-engine/brain/score";
 import { CONTEXT_MAX_CHARS, ENGINE_SECONDS, brainBriefFromDesign, brainBriefFromPrompt, brainContext, brainFor, formatFromTemplate, scaleTimeline, sectorFromText } from "@/lib/video-engine/brain/select";
@@ -327,6 +327,33 @@ describe("scoring a design", () => {
     expect([...noPrice.passed, ...noPrice.failed].map((c) => c.id)).not.toContain("say-lines");
   });
 
+  it("model numbers, bullets and phone numbers are not read as invented amounts", () => {
+    const withBullets: MotionSpec = { ...good, scenes: good.scenes.map((sc, i) => (i === 4 ? { ...sc, layers: [...sc.layers, { kind: "text" as const, text: "Samsung Galaxy A56 • 420,000 RWF", font: "inter" as const, size: 0.05, color: "#ffffff", x: 0.5, y: 0.6, w: 0.8, h: 0.06 }] } : sc)) };
+    expect(scoreDesign(withBullets, brief).failed.map((f) => f.id)).not.toContain("facts");
+  });
+
+  it("a giant background word behind the product is not a safe-area miss", () => {
+    const word = (depth: number) => ({ kind: "text" as const, text: "GALAXY", font: "anton" as const, size: 0.3, depth, color: "#ffffff", x: 0.5, y: 0.5, w: 0.98, h: 0.3 });
+    const withWord = (depth: number): MotionSpec => ({ ...good, scenes: good.scenes.map((sc, i) => (i === 1 ? { ...sc, layers: [word(depth), ...sc.layers] } : sc)) });
+    expect(scoreDesign(withWord(0.2), brief).failed.map((f) => f.id)).not.toContain("safe-area");
+    expect(scoreDesign(withWord(0.9), brief).failed.map((f) => f.id)).toContain("safe-area");
+  });
+
+  it("a small quiet phone line counts as the number on screen (luxury templates)", () => {
+    const quiet = { kind: "text" as const, text: "0788 300 400", font: "inter" as const, size: 0.03, color: "#cccccc", x: 0.5, y: 0.74, w: 0.4, h: 0.03 };
+    const luxe: MotionSpec = { ...good, scenes: good.scenes.map((sc) => ({ ...sc, layers: [...sc.layers.filter((l) => !(l.kind === "text" && l.text.includes("0788"))), quiet] })) };
+    const r = scoreDesign(luxe, { ...brief, styleId: "dark-minimal" });
+    expect(r.passed.map((p) => p.id)).toContain("phone-bar");
+    expect(scoreDesign({ ...luxe, scenes: luxe.scenes.map((sc, i) => (i === 1 ? { ...sc, layers: sc.layers.filter((l) => l !== quiet) } : sc)) }, { ...brief, styleId: "dark-minimal" }).failed.map((f) => f.id)).toContain("phone-bar");
+  });
+
+  it("exports the safe areas per platform (youtube is Shorts)", () => {
+    expect(safeAreaFor("youtube")).toEqual(SAFE_AREAS.shorts);
+    expect(safeAreaFor("tiktok")).toEqual({ top: 0.12, bottom: 0.78, left: 0.07, right: 0.85 });
+    expect(safeAreaFor(null)).toEqual(SAFE_AREAS.any);
+    expect(safeAreaFor("myspace")).toEqual(SAFE_AREAS.any);
+  });
+
   it("a superlative or a delivery promise passes only when the brief says it", () => {
     const withClaim: MotionSpec = { ...good, scenes: good.scenes.map((s, i) => (i === 1 ? { ...s, layers: [...s.layers, { kind: "text" as const, text: "Free delivery in Kigali", font: "inter" as const, size: 0.05, color: "#ffffff", x: 0.5, y: 0.6, w: 0.8, h: 0.06 }] } : s)) };
     expect(scoreDesign(withClaim, brief).failed.map((f) => f.id)).toContain("facts");
@@ -337,7 +364,8 @@ describe("scoring a design", () => {
     expect(amounts("420K, 420,000 RWF, 1.2M, 15%")).toEqual([420_000, 420_000, 1_200_000, 15]);
     expect(amounts("Call 0788 300 400 or +250 788 300 400")).toEqual([]);
     expect(amounts("WhatsApp 0788 300 400\n420,000 RWF")).toEqual([420_000]);
-    expect(amounts("Samsung Galaxy A56 420,000 RWF")).toEqual([56, 420_000]);
+    expect(amounts("Samsung Galaxy A56 420,000 RWF")).toEqual([420_000]);
+    expect(amounts("Samsung Galaxy A56 • 420,000 RWF · 5G · 8 GB")).toEqual([420_000, 8]);
     expect(amounts("+250-739-095040 or (+250)788861575")).toEqual([250]);
   });
 });
@@ -539,9 +567,10 @@ const AUDIT_FINDINGS = `## Whose fault (17 October 2026)
 
 Before these fixes the same 33 designs averaged 89.3 (design) and 96.3 (caption).
 
-1. **The number in every scene** is now asked only of direct-response templates (and of list and showcase templates on
-   Facebook). Luxury, brand and cinematic templates (dark-minimal, chrome-luxe, golden-hour, story-cinematic, brand-story,
-   tv-spot, kigali-market) only need it in the last scene: 9 false misses gone.
+1. **The number in every scene:** owner decision (17 October): every template keeps the number on screen in every scene;
+   luxury, cinematic and minimal templates (dark-minimal, chrome-luxe, golden-hour, story-cinematic, brand-story, tv-spot,
+   kigali-market) as a small quiet line (size about 0.03) with the full contact at the end. The check accepts any size, so
+   a quiet line passes; until the templates change, these designs still miss it (the misses below are real for now).
 2. **Lines per scene** by style: luxury 2, direct, brand and showcase 3, list, poster and card templates 5 (glass-cards,
    typography-poster, event-poster, product-hero, tiktok-3-reasons, the marketplace templates).
 3. **The price early** follows the format: in the hook only when the format's first beat carries it (1.5 s on Facebook for
@@ -550,9 +579,11 @@ Before these fixes the same 33 designs averaged 89.3 (design) and 96.3 (caption)
 4. **Length:** a design that keeps the requested length passes; the research range is a template question, not the design's.
 5. **Scene count** follows the format's cut rhythm (kinetic typography may use up to 8 scenes in 10 s).
 6. **Safe area** is split: the price, the number or the call to action under the app's buttons costs 7 points; other text 3;
-   a giant word that runs off the canvas on purpose is not counted.
-7. **Two reading bugs:** "Galaxy A56 420,000 RWF" was read as 56,420,000, and a phone number on one line swallowed the price
-   on the next. Both made false "invented fact" misses.
+   a giant word that runs off the canvas on purpose, or a giant background word behind the product (size above 0.22, depth
+   0.35 or less: "GALAXY", "5G"), is not counted.
+7. **Reading numbers** the way factcheck.ts does: "Samsung Galaxy A56 • 420,000 RWF" was read as 56,420,000, and a phone
+   number on one line swallowed the price on the next (the "0" in showroom-turntable). A space or a bullet never joins two
+   numbers now, phone numbers are taken out first, and digits glued to letters (A56, 5G) are model names, not amounts.
 `;
 
 // Writes docs/research/brain-audit.md: the brain's scorers over the motion engine's template sweep. Run with the sweep:

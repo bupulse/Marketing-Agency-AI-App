@@ -157,6 +157,10 @@ Each failed check says which rule it enforces, why, and in which scene. Checks t
 no price) are left out of the 100. BuPulse's own Seedance shot plans score 100; the hand-made sample design scores 90
 (the price comes late, one line sits too low, and its caption lacks the price).
 
+The safe area per platform (`SAFE_AREAS` and `safeAreaFor(platform)` in `brain/index.ts`) is the one both the scorer and
+the validator use: TikTok and Instagram keep text above 78% of the height, Facebook above 85%, Shorts between 10% and 75%,
+and TikTok and Shorts leave the right 15% to the app's buttons.
+
 ## Scoring a caption
 
 `scoreCaption(caption, hashtags, brief, { platform })` marks the post text out of 100. It is built on the caption corpus
