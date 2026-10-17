@@ -8,7 +8,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { BLENDER_APP, blenderCommand, checkSoundPath, normalizeBlenderScene, parseBlenderProgress, type BlenderScene, type NormalizeOptions } from "@/tools/blender/scene";
 
-export const BLENDER_TIMEOUT_MS = 15 * 60_000;
+/** How long one render may take (30 minutes: a busy Mac renders slowly; BLENDER_TIMEOUT_MS overrides it). */
+export const BLENDER_TIMEOUT_MS = Number(process.env.BLENDER_TIMEOUT_MS) || 30 * 60_000;
 
 /** The Blender program: BLENDER_BIN, else the app in /Applications. */
 export const blenderBin = () => process.env.BLENDER_BIN || BLENDER_APP;
@@ -83,7 +84,7 @@ let queue: Promise<unknown> = Promise.resolve();
 /**
  * Renders a scene (checked and completed first, see normalizeBlenderScene) to `outPath` (an .mp4). Pass the same
  * `photos` the scene was designed with: the product is found by its photo number. Writes the scene
- * next to it (`.scene.json`) and Blender's output to `.log`, and stops Blender after 15 minutes. Renders wait for each
+ * next to it (`.scene.json`) and Blender's output to `.log`, and stops Blender after BLENDER_TIMEOUT_MS (30 minutes). Renders wait for each
  * other. Rejects with a plain-English message when Blender is missing, fails or times out.
  */
 export function renderBlenderScene(input: unknown, outPath: string, opts: BlenderRenderOptions = {}): Promise<BlenderRenderResult> {

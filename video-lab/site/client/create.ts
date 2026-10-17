@@ -39,7 +39,7 @@ type StoryShot = { n: number; from: number; to: number; shot: string; camera: st
 type Storyboard = { notice: string; model: string; resolution: string; ratio: string; seconds: number; audio: boolean; setting: string | null; shots: StoryShot[]; frames: { at: number; shot: number; caption: string; svg: string }[]; references: { label: string; kind: string; thumb: string | null }[]; estimate: { usd: number; credits: number; wait: string }; issues: Issue[] };
 type PreviewAnswer = { ready: false; readyInMs: number; notice: string } | { ready: true; storyboard: Storyboard };
 /** A Premium 3D clip (Blender), video-lab/premium-jobs.ts. */
-type PremiumJob = { quality?: string; parentId?: string | null; repairs?: string[]; photoFiles?: unknown[]; audio?: { voice: boolean; music: boolean; voiceFile: string | null; voiceNote: string | null; musicTitle: string | null }; id: string; createdAt: string; status: "designing" | "voicing" | "rendering" | "succeeded" | "failed"; progress: number; credits: number; title: string; seconds: number; caption: string | null; hashtags: string[]; say: string | null; warnings: FactWarning[]; renderSeconds: number | null; videoFile: string | null; error: string | null };
+type PremiumJob = { quality?: string; parentId?: string | null; repairs?: string[]; photoFiles?: unknown[]; audio?: { voice: boolean; music: boolean; voiceFile: string | null; voiceNote: string | null; musicTitle: string | null }; id: string; createdAt: string; status: "designing" | "voicing" | "queued" | "rendering" | "succeeded" | "failed"; progress: number; credits: number; title: string; seconds: number; caption: string | null; hashtags: string[]; say: string | null; warnings: FactWarning[]; renderSeconds: number | null; videoFile: string | null; error: string | null };
 type Gen = { engine: Engine; id: string; title: string; status: string; at: string; videoUrl: string | null; claude?: ClaudeJob; sd?: SdJob; pm?: PremiumJob };
 type Product = { id: string; name: string; summary: string; price: string | null; photos: { assetId: string; description: string | null; cutout?: boolean | null }[] };
 /** A ModelArk digital character (lib/video-engine/seedance-characters.ts): a presenter Seedance accepts. */
@@ -834,7 +834,7 @@ async function loadGens() {
       void photosFor(g.claude.photoIds ?? []).then((ph) => drawSpecFrame(c.getContext("2d") as CanvasRenderingContext2D, g.claude?.spec as MotionSpec, ph, 1500, { quality: "480p" }));
     } else if (g.pm) {
       const j = g.pm;
-      card.append(el("div", { className: "wait" }, j.status === "failed" ? el("span", { textContent: `Failed: ${j.error ?? "the 3D clip could not be made."}` }) : el("span", { className: "spin" }), el("span", { textContent: j.status === "designing" ? "Designing the 3D scene…" : j.status === "voicing" ? "Recording the voice-over…" : j.status === "rendering" ? `Rendering in Blender… ${Math.round(j.progress * 100)}%` : "" })));
+      card.append(el("div", { className: "wait" }, j.status === "failed" ? el("span", { textContent: `Failed: ${j.error ?? "the 3D clip could not be made."}` }) : el("span", { className: "spin" }), el("span", { textContent: j.status === "designing" ? "Designing the 3D scene…" : j.status === "voicing" ? "Recording the voice-over…" : j.status === "queued" ? "Waiting for the previous 3D render…" : j.status === "rendering" ? `Rendering in Blender… ${Math.round(j.progress * 100)}%` : "" })));
     } else if (g.sd?.preview) {
       // A free preview (no BytePlus key yet): its first storyboard frame, or a spinner while it is drawn.
       if (g.status === "preview-ready") {
@@ -931,7 +931,7 @@ function showPremium(g: Gen, j: PremiumJob): [string, string][] {
   if (g.videoUrl) media.append(el("video", { src: g.videoUrl, controls: true, autoplay: true, loop: true, playsInline: true }));
   else if (j.status === "failed") media.append(el("p", { className: "err", textContent: j.error ?? "The 3D clip could not be made." }));
   else {
-    media.append(el("div", { className: "wait", style: "padding:30px;text-align:center" }, el("span", { className: "spin" }), el("div", { className: "muted", textContent: j.status === "designing" ? "Claude is designing the 3D scene…" : j.status === "voicing" ? "Recording the voice-over…" : `Blender is rendering: ${Math.round(j.progress * 100)}%. About 3 to 6 minutes in all; this updates by itself.` })));
+    media.append(el("div", { className: "wait", style: "padding:30px;text-align:center" }, el("span", { className: "spin" }), el("div", { className: "muted", textContent: j.status === "designing" ? "Claude is designing the 3D scene…" : j.status === "voicing" ? "Recording the voice-over…" : j.status === "queued" ? "Waiting for the previous 3D render… Blender makes one clip at a time; this one starts by itself." : `Blender is rendering: ${Math.round(j.progress * 100)}%. About 3 to 6 minutes in all; this updates by itself.` })));
     const bar = $("dProgress");
     bar.hidden = false;
     (bar.firstElementChild as HTMLElement).style.width = `${Math.round((j.status === "designing" ? 0.03 : j.progress) * 100)}%`;
@@ -942,7 +942,7 @@ function showPremium(g: Gen, j: PremiumJob): [string, string][] {
       if (!fresh || state.open?.id !== j.id) return;
       await loadGens();
       openDrawer(state.gens.find((x) => x.id === j.id) ?? null);
-      if (fresh.status !== "designing" && fresh.status !== "rendering") await refreshWallet();
+      if (fresh.status === "succeeded" || fresh.status === "failed") await refreshWallet();
     }, 4000);
   }
   $("dPrompt").textContent = j.caption ? `${j.caption}\n\n${j.hashtags.map((h) => `#${h}`).join(" ")}` : "";
@@ -1536,7 +1536,7 @@ async function start() {
   const show = await api<{ items: { id: string; engine: Engine; title: string; videoUrl: string | null }[] }>("/api/showcase");
   carousel($("carousel"), show.items.filter((i) => i.videoUrl).map((i) => ({ id: i.id, videoUrl: i.videoUrl as string, engine: i.engine })));
   setInterval(async () => {
-    if (state.gens.some((g) => (g.engine === "seedance" && (g.status === "queued" || g.status === "running" || g.status === "submitting" || g.status === "preview")) || (g.pm && (g.status === "designing" || g.status === "voicing" || g.status === "rendering")))) {
+    if (state.gens.some((g) => (g.engine === "seedance" && (g.status === "queued" || g.status === "running" || g.status === "submitting" || g.status === "preview")) || (g.pm && (g.status === "designing" || g.status === "voicing" || g.status === "queued" || g.status === "rendering")))) {
       await loadGens();
       if (state.open?.engine === "seedance") openDrawer(state.gens.find((g) => g.id === state.open?.id) ?? null);
       await refreshWallet();

@@ -182,8 +182,9 @@ unless `fstop` is set; about a fifth of the frame time) and glass.
 - Sound is one voice-over and one music bed, mixed by Blender (see "Sound"). A voice longer than the clip is cut at the
   end of the clip, so keep `say` to about 2.5 words a second of the clip.
 - Text is one line per entry (no wrapping); Latin letters only (the latin and latin-ext fonts).
-- Render time: minutes, not seconds. One render at a time (`renderBlenderScene` queues them). The job runner stops a
-  render after 15 minutes.
+- Render time: minutes, not seconds. One render at a time: `video-lab/premium-jobs.ts` queues the jobs (a second job shows
+  "queued", "Waiting for the previous 3D render…") and `renderBlenderScene` queues its own calls. A render is stopped
+  after 30 minutes (`BLENDER_TIMEOUT_MS`; the wait in the queue does not count) and its credits are given back.
 - Mac only for now (the path to Blender). Elsewhere set `BLENDER_BIN`; Linux servers need Blender with a GPU for Eevee.
 
 ## Premium looks
@@ -510,7 +511,7 @@ scenes (no repairs needed), canvas sizes, the command line, progress lines, and 
 - **Pipeline:**
   - Claude writes a JSON scene; `tools/blender/render.py` renders it in Eevee with Blender 5.2 and writes an H.264 MP4
     with Blender's own FFmpeg.
-  - `video-lab/blender-jobs.ts` runs one render at a time, with progress, a log and a 15-minute limit.
+  - `video-lab/blender-jobs.ts` runs one render at a time, with progress, a log and a 30-minute limit.
   - `designBlenderScene` (`lib/video-engine/blender-design.ts`) designs the scene from the motion engine's brief, with
     a retry, a fact check and house repairs.
 - **Three looks:**

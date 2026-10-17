@@ -1,6 +1,7 @@
 // Video Studio: Premium 3D jobs (docs/BLENDER.md, "Wiring it into the studio"). Claude designs one Blender scene from
 // the same brief as a Motion video (lib/video-engine/blender-design.ts), then Blender renders it on this Mac
-// (video-lab/blender-jobs.ts), one render at a time. A job is charged first and given back when the design or the
+// (video-lab/blender-jobs.ts), one render at a time: a second job waits as "queued" until the first is done, so two
+// renders never share a busy Mac and run past the time limit together. A job is charged first and given back when the design or the
 // render fails. The photos Blender reads are copied by the server into the job's own folder: no path ever comes from
 // the browser or from Claude. Before the render, the scene's spoken line becomes an ElevenLabs voice-over (charged like a
 // Motion video's, given back when it fails) and a library track is chosen; both are copied into the job's photo
@@ -36,7 +37,7 @@ export type PremiumJob = {
   id: string;
   createdAt: string;
   updatedAt: string;
-  status: "designing" | "voicing" | "rendering" | "succeeded" | "failed";
+  status: "designing" | "voicing" | "queued" | "rendering" | "succeeded" | "failed";
   /** 0 to 1 while Blender renders. */
   progress: number;
   credits: number;
@@ -174,8 +175,38 @@ async function run(job: PremiumJob, input: Parameters<typeof startPremium3d>[0])
 /** The folder holding a job's photos and sound (a re-render uses its source's). */
 const jobFolder = (job: PremiumJob) => (job.photoFiles[0] ? path.dirname(job.photoFiles[0].image) : path.join(DATA, "photos", job.id));
 
-/** Renders a scene for a job (progress saved as it goes), then marks the job done. Throws when Blender fails. */
+/** Renders started and not finished yet (the one running and the ones queued behind it). */
+let rendersInLine = 0;
+let lastRender: Promise<unknown> = Promise.resolve();
+
+/**
+ * Runs `work` once every render started before it has finished (one Blender render at a time). `onWait` is called,
+ * at once, when another render is ahead. A render that fails does not stop the ones behind it.
+ */
+export function oneRenderAtATime<T>(work: () => Promise<T>, onWait?: () => void): Promise<T> {
+  if (rendersInLine > 0) onWait?.();
+  rendersInLine += 1;
+  const turn = lastRender.then(work).finally(() => (rendersInLine -= 1));
+  lastRender = turn.catch(() => undefined);
+  return turn;
+}
+
+/** Renders a scene for a job when its turn comes (queued till then), then marks the job done. Throws when Blender fails. */
 async function render(job: PremiumJob, scene: BlenderScene): Promise<void> {
+  let queued: Promise<void> = Promise.resolve();
+  await oneRenderAtATime(
+    async () => {
+      await queued;
+      await renderNow(job, scene);
+    },
+    () => {
+      job.status = "queued";
+      queued = save(job);
+    },
+  );
+}
+
+async function renderNow(job: PremiumJob, scene: BlenderScene): Promise<void> {
   job.status = "rendering";
   await save(job);
   let saved = 0;
@@ -304,7 +335,7 @@ async function addAudio(job: PremiumJob, dir: string, say: string, language: str
 export async function recoverPremiumJobs(): Promise<number> {
   let n = 0;
   for (const job of await listPremiumJobs()) {
-    if (job.status !== "designing" && job.status !== "voicing" && job.status !== "rendering") continue;
+    if (job.status !== "designing" && job.status !== "voicing" && job.status !== "queued" && job.status !== "rendering") continue;
     Object.assign(job, { status: "failed", error: "The studio restarted during this 3D clip. The credits are given back." });
     await save(job);
     await refund(job.credits + (job.audio?.voiceCredits ?? 0), "Premium 3D stopped by a restart", job.id);
