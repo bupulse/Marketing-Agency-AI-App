@@ -6,7 +6,7 @@ import { evidenceFromRows, parseCount, parseDate, parseJsonl, rowKey, rowStrengt
 import { SAFE_AREAS, amounts, hasKinyarwanda, scoreCaption, scoreDesign, scoreSeedancePrompt, templateStyle, type ScoreBrief } from "@/lib/video-engine/brain/score";
 import { CONTEXT_MAX_CHARS, ENGINE_SECONDS, brainBriefFromDesign, brainBriefFromPrompt, brainContext, brainFor, formatFromTemplate, scaleTimeline, sectorFromText } from "@/lib/video-engine/brain/select";
 import type { DesignBrief } from "@/lib/video-engine/designer";
-import { BUSINESS_KINDS, SEEDANCE_FORMATS, planSeedanceShots } from "@/lib/video-engine/seedance-brain";
+import { BUSINESS_KINDS, SEEDANCE_FORMATS, SEEDANCE_TEMPLATES, planSeedanceShots } from "@/lib/video-engine/seedance-brain";
 import { sampleSpec } from "@/lib/video-engine/sample";
 import type { MotionSpec, Scene } from "@/lib/video-engine/spec";
 import type { PromptBrief } from "@/lib/video-engine/seedance-prompt";
@@ -386,6 +386,20 @@ describe("scoring a Seedance prompt", () => {
     expect(r.failed.find((f) => f.id === "facts")!.reason).toContain("300000");
   });
 
+  it("a before/after opens on the result (held still is fine), a tour may end on the view", () => {
+    const ba = (first: string) => `A vertical 9:16 before-and-after ad for a salon in Kigali. The braids must look exactly as in Image 1: same shape, colours.\n0-3s: ${first}\n3-6s: Close-up, slow push-in: the stylist braids, hands moving quickly.\n6-10s: Clean hero shot, subject centred: the finished braids, space above. Music: a light beat. Clean frames with no on-screen text, captions or added logos. Warm salon light, a ring light, a mirror behind the chair, the stylist smiling at the client.`;
+    const brief2 = { business: { name: "Amahoro Braids", language: "English" }, product: { name: "Knotless braids" }, references: ["Image 1: the braids"], seconds: 10, audio: true, templateId: "salon-transformation" };
+    const held = scoreSeedancePrompt(ba("Medium shot, locked-off static camera: the result first: the finished braids, bright and still."), brief2);
+    expect(held.failed.map((f) => f.id)).not.toContain("hook-shot");
+    expect(held.passed.map((f) => f.id)).toContain("result-first");
+    expect(scoreSeedancePrompt(ba("Medium shot, locked-off static camera: the client with untidy hair before the visit."), brief2).failed.map((f) => f.id)).toContain("result-first");
+    const tour = "A vertical 9:16 walk-through tour of a house in Kibagabaga, Kigali, exactly as in Image 1: same shape, colours.\n0-4s: Wide establishing shot, slow aerial drone shot towards the house on the green hillside.\n4-9s: Smooth gimbal walk-through of the living room and the kitchen, warm morning light.\n9-12s: Wide shot, slow pull-back out onto the balcony as the view opens up. Music: calm piano. Clean frames with no on-screen text, captions or added logos.";
+    const t = scoreSeedancePrompt(tour, { business: { name: "Ikaze Homes" }, product: { name: "4 bedroom house" }, references: ["Image 1: the house"], seconds: 12, audio: true, templateId: "realestate-tour" });
+    expect(t.failed.map((f) => f.id)).not.toContain("hero-end");
+    expect(t.failed.map((f) => f.id)).not.toContain("hook-shot");
+    expect(scoreSeedancePrompt(tour, { business: { name: "Ikaze Homes" }, product: { name: "4 bedroom house" }, references: ["Image 1: the house"], seconds: 20, audio: true, templateId: "realestate-tour" }).failed.map((f) => f.id)).toContain("clip-length");
+  });
+
   it("refuses a spoken line for Kinyarwanda", () => {
     const rw = { ...brief, business: { ...brief.business, language: "Kinyarwanda" } };
     const prompt = planSeedanceShots({ ...brief }).prompt;
@@ -586,6 +600,87 @@ Before these fixes the same 33 designs averaged 89.3 (design) and 96.3 (caption)
    numbers now, phone numbers are taken out first, and digits glued to letters (A56, 5G) are model names, not amounts.
 `;
 
+/** The Seedance part of the audit: the 12 gallery examples and the starting shot plan of every Seedance template. */
+function seedanceAudit(): string {
+  const nova = { business: { name: "Nova Phones Kigali", description: "We sell new and refurbished smartphones, chargers and accessories in Kigali, with a one-year warranty.", language: "English", country: "Rwanda" }, product: { name: "Samsung Galaxy A56", summary: "Samsung Galaxy A56 5G, 8 GB RAM, 256 GB, in stock now in black, light blue and pink.", price: "420,000 RWF", usps: ["Genuine with 12-month warranty", "Pay with MoMo, instalments available"], features: ["6.7-inch AMOLED screen", "50 MP camera", "5,000 mAh battery"] } };
+  const kitenge = { business: { name: "Kitenge Corner Kigali", description: "Fashion boutique in Kigali: kitenge dresses and shirts", language: "Kinyarwanda", country: "Rwanda" }, product: { name: "Kitenge summer dress", summary: "Light cotton kitenge dress, sizes S to XL", price: "25,000 RWF", usps: ["Made to measure in 3 days"] } };
+  const dir = path.join(process.cwd(), "video-lab/seedance-mock/examples");
+  const examples = fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".json"))
+    .sort()
+    .map((f) => {
+      const d = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+      const language = d.notes.some((n: string) => /Kinyarwanda/.test(n)) ? "Kinyarwanda" : "English";
+      const facts = d.source.businessName === "Nova Phones Kigali" ? nova : { business: { name: d.source.businessName }, product: { name: d.source.productName } };
+      const r = scoreSeedancePrompt(d.prompt, { ...facts, business: { ...facts.business, language }, references: (d.storyboard.references ?? []).map((x: { label: string }) => x.label), seconds: d.seconds, audio: d.storyboard.audio !== false, templateId: d.templateId });
+      return { id: d.id as string, template: d.templateId as string, seconds: d.seconds as number, words: String(d.prompt).split(/\s+/).length, r };
+    });
+  const plans = SEEDANCE_TEMPLATES.map((t) => {
+    const score = (b: typeof nova | typeof kitenge) => {
+      const brief = { ...b, references: ["Image 1: the product photo"], templateId: t.id, seconds: t.seconds, ratio: "9:16", audio: true };
+      const plan = planSeedanceShots(brief);
+      return { words: plan.words, r: scoreSeedancePrompt(plan.prompt, brief) };
+    };
+    return { t, nova: score(nova), kitenge: score(kitenge) };
+  });
+  const all = [...examples.map((e) => e.r), ...plans.flatMap((p) => [p.nova.r, p.kitenge.r])];
+  const counts = new Map<string, { n: number; reason: string }>();
+  for (const r of all) for (const f of r.failed) counts.set(f.id, { n: (counts.get(f.id)?.n ?? 0) + 1, reason: counts.get(f.id)?.reason ?? f.reason });
+  const top = [...counts.entries()].sort((a, z) => z[1].n - a[1].n || a[0].localeCompare(z[0]));
+  const mean = (xs: number[]) => Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10;
+  return [
+    "## Seedance",
+    "",
+    `\`scoreSeedancePrompt\` over the ${examples.length} gallery examples (video-lab/seedance-mock/examples, scored with their own references) and the`,
+    `starting shot plan \`planSeedanceShots\` makes for each of the ${SEEDANCE_TEMPLATES.length} Seedance templates, for the Samsung Galaxy A56 at Nova Phones Kigali`,
+    "(English, 420,000 RWF) and a Kitenge summer dress (Kitenge Corner Kigali, Kinyarwanda, 25,000 RWF, a sample brief), with one product",
+    "photo and sound on. A Seedance prompt has no on-screen text (BuPulse overlays the price, the number and the caption, in the",
+    "platform's safe area), so nothing in it depends on the platform: each prompt's score is the same for TikTok, Instagram and",
+    `Facebook, and is listed once. Means: examples ${mean(examples.map((e) => e.r.score))}, plans ${mean(plans.flatMap((p) => [p.nova.r.score, p.kitenge.r.score]))}.`,
+    "",
+    "| Example | Template | Seconds | Words | Score | Misses |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...examples.map((e) => `| ${e.id.replace(/^ex-/, "")} | ${e.template} | ${e.seconds} | ${e.words} | ${e.r.score} | ${e.r.failed.map((f) => f.id).join(", ") || "none"} |`),
+    "",
+    "| Template | Format | Seconds | Galaxy A56 (words) | Kitenge dress (words) | Misses |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...plans.map((p) => `| ${p.t.id} | ${p.t.format} | ${p.t.seconds} | ${p.nova.r.score} (${p.nova.words}) | ${p.kitenge.r.score} (${p.kitenge.words}) | ${[...new Set([...p.nova.r.failed, ...p.kitenge.r.failed].map((f) => f.id))].join(", ") || "none"} |`),
+    "",
+    "### The most common misses",
+    "",
+    ...top.slice(0, 3).map(([id, m], i) => `${i + 1}. **${id}** in ${m.n} of ${all.length} prompts. Example: ${m.reason}`),
+    "",
+    SEEDANCE_FINDINGS,
+  ].join("\n");
+}
+
+const SEEDANCE_FINDINGS = `### Whose fault (17 October 2026)
+
+**The prompt writer's** (the Seedance agent's files: seedance-brain.ts planSeedanceShots and its templates, seedance-prompt.ts
+SEEDANCE_SYSTEM and writeSeedancePrompt):
+
+1. **Too long.** The Seedance rule (SEEDANCE_RULES "length") says 60 to 160 words, but the planner does not enforce it: every
+   presenter and UGC template runs over (shop-ugc-find 205 words, phone-ugc-review 199, fashion-try-on 198,
+   restaurant-ugc-taste 193, salon-transformation 182, any-ugc-review 170, education-ugc 168). The words come from the
+   presenter description, two spoken lines, "with the product from Image 1 in view" on several shots and the closing
+   clean-frames sentence. Trim to 160 in the planner, and make lintSeedancePrompt warn above 160 words (it warns above
+   300 today). writeSeedancePrompt cuts Claude's answer at 1,800 characters (about 300 words), not at 160 words.
+2. **fashion-outfit-switch opens on the "before"** (plain clothes, then the spin, then the dress). SEEDANCE_RULES "hook" and
+   the research say a before/after shows the result first: open on the dress, then the plain clothes, the spin, the dress.
+3. Kinyarwanda briefs are handled correctly: no spoken lines, music and ambience only.
+
+**The scorer's** (fixed in brain/score.ts):
+
+1. A before/after may open on the result held still ("Wait for it..."): that is the hook, not a missing motion. A new
+   check asks that the result comes first.
+2. More action verbs count as motion in the first shot (a hand places the parcel, the presenter shrugs, a rug unrolls).
+3. The first shot may last up to 4 s (Seedance's rule is a shot every 2 to 4 s); the hook is motion in the first frame.
+4. A tour may end on a wide reveal of the place (the balcony view, the front) instead of a product hero shot.
+5. New checks from the Seedance rules: a length Seedance films (4 to 15 whole seconds) and a real place (a Kigali shop,
+   a salon, a home, a street; a studio only for a product reveal's hero shots).
+`;
+
 // Writes docs/research/brain-audit.md: the brain's scorers over the motion engine's template sweep. Run with the sweep:
 //   BRAIN_AUDIT=/path/to/quality/sweep/final npx vitest run tests/video-engine/brain.test.ts -t "brain audit"
 describe.runIf(process.env.BRAIN_AUDIT)("brain audit", () => {
@@ -648,6 +743,7 @@ describe.runIf(process.env.BRAIN_AUDIT)("brain audit", () => {
       "",
       ...rows.slice(0, 5).flatMap((r) => [`**${r.template}** (${r.category}, ${r.platform}, ${r.style}): design ${r.design.score}, caption ${r.caption.score}.`, "", ...[...r.design.failed, ...r.caption.failed].map((f) => `- ${f.id}${f.scene !== null ? ` (scene ${f.scene + 1})` : ""}: ${f.reason}`), ""]),
       AUDIT_FINDINGS,
+      seedanceAudit(),
     ].join("\n");
     fs.writeFileSync(path.join(process.cwd(), "docs/research/brain-audit.md"), `${doc}\n`);
     expect(rows.length).toBe(33);

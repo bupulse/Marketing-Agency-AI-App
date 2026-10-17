@@ -149,7 +149,8 @@ engine can compare templates. It only checks what a program can measure; taste i
   the price; nothing from the do-not-copy list; no number, discount, stock line or delivery promise that the brief
   does not give.
 - **Seedance prompt** (`scoreSeedancePrompt`): time codes from 0 to the clip's length in 2 to 5 shots; motion in the
-  first shot (by 2 to 3 s); the "exactly as in the photo" sentence when a product photo is attached; no famous,
+  first shot (a shot of 2 to 4 s; a before/after opens on the result, which must come first); a clip length Seedance
+  films (4 to 15 s); a real place; the "exactly as in the photo" sentence when a product photo is attached; no famous,
   lookalike or child subjects; no invented facts; 60 to 160 words; no text asked for in the frames; references that
   exist; no spoken line without sound or in Kinyarwanda or Swahili; a clean hero shot at the end.
 

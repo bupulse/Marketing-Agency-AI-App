@@ -138,3 +138,91 @@ Before these fixes the same 33 designs averaged 89.3 (design) and 96.3 (caption)
    number on one line swallowed the price on the next (the "0" in showroom-turntable). A space or a bullet never joins two
    numbers now, phone numbers are taken out first, and digits glued to letters (A56, 5G) are model names, not amounts.
 
+## Seedance
+
+`scoreSeedancePrompt` over the 12 gallery examples (video-lab/seedance-mock/examples, scored with their own references) and the
+starting shot plan `planSeedanceShots` makes for each of the 31 Seedance templates, for the Samsung Galaxy A56 at Nova Phones Kigali
+(English, 420,000 RWF) and a Kitenge summer dress (Kitenge Corner Kigali, Kinyarwanda, 25,000 RWF, a sample brief), with one product
+photo and sound on. A Seedance prompt has no on-screen text (BuPulse overlays the price, the number and the caption, in the
+platform's safe area), so nothing in it depends on the platform: each prompt's score is the same for TikTok, Instagram and
+Facebook, and is listed once. Means: examples 97.7, plans 98.
+
+| Example | Template | Seconds | Words | Score | Misses |
+| --- | --- | --- | --- | --- | --- |
+| fashion-before-after-kitenge-summer-dress | fashion-outfit-switch | 10 | 145 | 93 | result-first |
+| fashion-product-reveal-kitenge-summer-dress | fashion-lookbook | 8 | 125 | 100 | none |
+| fashion-ugc-testimonial-kitenge-summer-dress | fashion-try-on | 10 | 168 | 93 | length-words |
+| phone-shop-offer-samsung-galaxy-a56 | phone-offer | 8 | 132 | 100 | none |
+| phone-shop-product-reveal-samsung-galaxy-a56 | phone-hero | 8 | 151 | 100 | none |
+| phone-shop-ugc-testimonial-samsung-galaxy-a56 | phone-ugc-review | 10 | 199 | 93 | length-words |
+| phone-shop-unboxing-samsung-galaxy-a56 | phone-unboxing | 10 | 164 | 93 | length-words |
+| real-estate-product-reveal-3-bedroom-house-with-garden-kibagabaga | realestate-golden | 8 | 117 | 100 | none |
+| real-estate-tour-3-bedroom-house-with-garden-kibagabaga | realestate-tour | 12 | 132 | 100 | none |
+| services-before-after-home-cleaning-after-moving-in | services-before-after | 10 | 127 | 100 | none |
+| services-tour-home-cleaning-after-moving-in | services-at-work | 12 | 123 | 100 | none |
+| services-ugc-testimonial-home-cleaning-after-moving-in | services-ugc | 10 | 147 | 100 | none |
+
+| Template | Format | Seconds | Galaxy A56 (words) | Kitenge dress (words) | Misses |
+| --- | --- | --- | --- | --- | --- |
+| shop-new-stock | product-reveal | 8 | 100 (145) | 100 (133) | none |
+| shop-ugc-find | ugc-testimonial | 10 | 93 (205) | 93 (177) | length-words |
+| shop-offer | offer | 8 | 100 (126) | 100 (114) | none |
+| restaurant-dish-hero | product-reveal | 8 | 100 (133) | 100 (121) | none |
+| restaurant-menu-tour | tour | 12 | 100 (160) | 100 (145) | none |
+| restaurant-ugc-taste | ugc-testimonial | 10 | 93 (193) | 93 (165) | length-words |
+| restaurant-offer | offer | 8 | 100 (126) | 100 (114) | none |
+| salon-transformation | before-after | 10 | 93 (182) | 93 (167) | length-words |
+| salon-process | tour | 10 | 100 (159) | 100 (145) | none |
+| phone-unboxing | unboxing | 10 | 93 (164) | 100 (153) | length-words |
+| phone-hero | product-reveal | 8 | 100 (151) | 100 (139) | none |
+| phone-ugc-review | ugc-testimonial | 12 | 93 (199) | 93 (169) | length-words |
+| phone-offer | offer | 8 | 100 (132) | 100 (120) | none |
+| realestate-tour | tour | 15 | 93 (166) | 100 (151) | length-words |
+| realestate-golden | product-reveal | 8 | 100 (136) | 100 (122) | none |
+| fashion-lookbook | product-reveal | 10 | 93 (161) | 100 (148) | length-words |
+| fashion-outfit-switch | before-after | 8 | 93 (145) | 93 (133) | result-first |
+| fashion-try-on | ugc-testimonial | 12 | 93 (198) | 93 (168) | length-words |
+| events-hype | offer | 10 | 100 (154) | 100 (140) | none |
+| events-venue-tour | tour | 12 | 100 (150) | 100 (136) | none |
+| services-before-after | before-after | 10 | 100 (152) | 100 (138) | none |
+| services-at-work | tour | 10 | 100 (141) | 100 (127) | none |
+| services-ugc | ugc-testimonial | 10 | 93 (173) | 100 (142) | length-words |
+| education-ugc | ugc-testimonial | 12 | 93 (168) | 100 (142) | length-words |
+| education-tour | tour | 10 | 100 (146) | 100 (131) | none |
+| any-product-hero | product-reveal | 6 | 100 (130) | 100 (118) | none |
+| any-unboxing | unboxing | 10 | 100 (147) | 100 (136) | none |
+| any-ugc-review | ugc-testimonial | 10 | 93 (170) | 100 (142) | length-words |
+| any-offer | offer | 6 | 100 (103) | 100 (91) | none |
+| any-before-after | before-after | 10 | 100 (142) | 100 (131) | none |
+| any-tour | tour | 12 | 100 (140) | 100 (125) | none |
+
+### The most common misses
+
+1. **length-words** in 19 of 74 prompts. Example: 168 words; Seedance follows 60 to 160 words best.
+2. **result-first** in 3 of 74 prompts. Example: A before/after shows the result first, then the before (the first shot here is the before).
+
+### Whose fault (17 October 2026)
+
+**The prompt writer's** (the Seedance agent's files: seedance-brain.ts planSeedanceShots and its templates, seedance-prompt.ts
+SEEDANCE_SYSTEM and writeSeedancePrompt):
+
+1. **Too long.** The Seedance rule (SEEDANCE_RULES "length") says 60 to 160 words, but the planner does not enforce it: every
+   presenter and UGC template runs over (shop-ugc-find 205 words, phone-ugc-review 199, fashion-try-on 198,
+   restaurant-ugc-taste 193, salon-transformation 182, any-ugc-review 170, education-ugc 168). The words come from the
+   presenter description, two spoken lines, "with the product from Image 1 in view" on several shots and the closing
+   clean-frames sentence. Trim to 160 in the planner, and make lintSeedancePrompt warn above 160 words (it warns above
+   300 today). writeSeedancePrompt cuts Claude's answer at 1,800 characters (about 300 words), not at 160 words.
+2. **fashion-outfit-switch opens on the "before"** (plain clothes, then the spin, then the dress). SEEDANCE_RULES "hook" and
+   the research say a before/after shows the result first: open on the dress, then the plain clothes, the spin, the dress.
+3. Kinyarwanda briefs are handled correctly: no spoken lines, music and ambience only.
+
+**The scorer's** (fixed in brain/score.ts):
+
+1. A before/after may open on the result held still ("Wait for it..."): that is the hook, not a missing motion. A new
+   check asks that the result comes first.
+2. More action verbs count as motion in the first shot (a hand places the parcel, the presenter shrugs, a rug unrolls).
+3. The first shot may last up to 4 s (Seedance's rule is a shot every 2 to 4 s); the hook is motion in the first frame.
+4. A tour may end on a wide reveal of the place (the balcony view, the front) instead of a product hero shot.
+5. New checks from the Seedance rules: a length Seedance films (4 to 15 whole seconds) and a real place (a Kigali shop,
+   a salon, a home, a street; a studio only for a product reveal's hero shots).
+

@@ -322,9 +322,17 @@ export type PromptScoreBrief = {
   audio?: boolean;
   fixedLens?: boolean;
   note?: string | null;
+  /** The template (Seedance or Claude engine id) or the format, so before/after and tour prompts are judged as such. */
+  templateId?: string | null;
+  format?: string | null;
 };
 
-const MOTION_WORDS = /\b(pulls?|reveals?|turns?|turning|lifts?|pours?|opens?|slides?|rises?|spins?|unwraps?|bites?|walks?|glides?|swings?|splash(es)?|steam|drops?|flies|whips?|rotates?)\b/i;
+/** Action verbs that make a first shot move (a hand places, a presenter shrugs, the cloth pulls away). */
+const MOTION_WORDS = /\b(pulls?|reveals?|turns?|turning|lifts?|pours?|opens?|slides?|rises?|spins?|unwraps?|unrolls?|bites?|walks?|steps?|enters?|glides?|swings?|splash(es)?|steam(ing)?|sizzl\w*|drops?|flies|whips?|rotates?|places?|puts?|picks?|holds? up|shows?|waves?|shrugs?|dances?|twirls?|cuts?|slices?|dips?|sprinkles?|stirs?|fills?|lights? up|glows?|emerges?|appears?)\b/i;
+/** Real places a Seedance clip can be set in (seedance-brain.ts "place" rule). */
+const PLACE_WORDS_SEEDANCE = /\b(kigali|rwanda\w*|east african|hillside|hills|market|shop|store|boutique|salon|barber|kitchen|street|counter|home|house|room|bedroom|restaurant|caf[eé]|office|compound|garden|balcony|venue|hall|workshop|classroom|school|table|terrace|yard)\b/i;
+/** A before/after's first shot is the result (the research's "Wait for it...", tt-102). */
+const RESULT_WORDS = /\b(result|after|finished|transformed|spotless|shining|new look|the final)\b/i;
 // A child as the subject; "baby clothes" or "a baby carrier" (the product) is fine.
 const FACE_WORDS = /\b(famous|celebrit\w*|lookalike|look-alike|resembl\w+|real (person|face|people)|the actor|the singer|the footballer)\b|\b(children|kids)\b|\b(a|the|young|little) (child|kid|toddler|baby|boy|girl)\b(?! (clothes|shoes|carrier|products?|shop|food|bottle|formula|wear))/i;
 
@@ -343,12 +351,16 @@ export function scoreSeedancePrompt(prompt: string, brief: PromptScoreBrief): De
   const timeOk = codes.length >= 2 && codes.length <= 5 && codes[0][0] === 0 && Math.abs(end - brief.seconds) <= 1 && gaps === 0;
   add({ id: "timecodes", rule: "cut-rhythm", points: 15, ok: timeOk, reason: !codes.length ? "No time codes: write '0-2s: ...; 2-5s: ...' covering the whole clip." : timeOk ? `${codes.length} shots from 0 to ${end} s.` : `The time codes (${codes.map((c) => `${c[0]}-${c[1]}s`).join(", ")}) should start at 0, follow on, end at ${brief.seconds} s and hold 2 to 5 shots.`, scene: null });
 
-  // 2. The hook: motion or a reveal in the first shot, which ends by 3 s.
+  // 2. The hook: motion or a reveal in the first shot (a shot lasts 2 to 4 s); in a before/after, the result itself
+  // (held still is fine: "Wait for it...") is the hook, and it must come first.
+  const format = brief.format ?? formatFromTemplate(brief.templateId) ?? null;
   const shots = text.split(/(?=\b\d+(?:\.\d+)?\s*(?:-|–|to)\s*\d+(?:\.\d+)?\s*s)/i).filter((s) => promptTimecodes(s).length);
   const first = shots[0] ?? text;
   const firstEnd = codes[0]?.[1] ?? Infinity;
-  const moving = MOTION_WORDS.test(first) || (detectCamera(first)?.id ?? "static") !== "static";
-  add({ id: "hook-shot", rule: "hook-3s", points: 15, ok: moving && firstEnd <= 3, reason: !moving ? "The first shot has no motion or reveal; open with an action (a hand lifts, the cloth pulls away) or a camera move." : firstEnd > 3 ? `The first shot runs to ${firstEnd} s; the hook should land in the first 2 s.` : "The first shot opens on motion within 2 to 3 s.", scene: 0 });
+  const resultFirst = format === "before-after" && RESULT_WORDS.test(first);
+  const moving = resultFirst || MOTION_WORDS.test(first) || (detectCamera(first)?.id ?? "static") !== "static";
+  add({ id: "hook-shot", rule: "hook-3s", points: 15, ok: moving && firstEnd <= 4, reason: !moving ? "The first shot has no motion or reveal; open with an action (a hand lifts, the cloth pulls away) or a camera move." : firstEnd > 4 ? `The first shot runs to ${firstEnd} s; open with a shot of 2 to 4 s.` : resultFirst ? "It opens on the result." : "The first shot opens on motion.", scene: 0 });
+  if (format === "before-after") add({ id: "result-first", rule: "result-first", points: 8, ok: RESULT_WORDS.test(first), reason: RESULT_WORDS.test(first) ? "The result comes first." : "A before/after shows the result first, then the before (the first shot here is the before).", scene: 0 });
 
   // 3. Product fidelity, when a product image is attached.
   if (images) {
@@ -368,6 +380,14 @@ export function scoreSeedancePrompt(prompt: string, brief: PromptScoreBrief): De
   const claim = [noCodes.match(CLAIMS)?.[0], noCodes.match(URGENCY)?.[0], noCodes.match(SUPERLATIVE)?.[0]].filter((m): m is string => !!m && !facts.toLowerCase().includes(m.toLowerCase()));
   const bad = [...invented, ...claim];
   add({ id: "facts", rule: "no-invented-facts", points: 12, ok: bad.length === 0, reason: bad.length ? `"${bad[0]}" is not in the brief.` : "Every number and promise comes from the brief.", scene: null });
+
+  // Seedance films 4 to 15 whole seconds (seedance.ts SEEDANCE_LIMITS); longer videos are joined from clips.
+  const clipOk = Number.isInteger(brief.seconds) && brief.seconds >= 4 && brief.seconds <= 15;
+  add({ id: "clip-length", rule: null, points: 5, ok: clipOk, reason: clipOk ? `${brief.seconds} s is a length Seedance films.` : `Seedance films 4 to 15 whole seconds; ${brief.seconds} s must be split into clips.`, scene: null });
+
+  // A real place: a Kigali shop, a street, a salon, a home; a plain studio only for a product reveal's hero shots.
+  const placed = PLACE_WORDS_SEEDANCE.test(text) || (format === "product-reveal" && /\bstudio\b/i.test(text));
+  add({ id: "real-place", rule: "real-place", points: 6, ok: placed, reason: placed ? "The clip is set in a real place." : "Set the clip in a real place (a Kigali shop counter, a market stall, a salon chair, a home, a street), not an empty void.", scene: null });
 
   // 6. 60 to 160 words.
   const n = words(text);
@@ -390,7 +410,8 @@ export function scoreSeedancePrompt(prompt: string, brief: PromptScoreBrief): De
 
   // 9. A clean hero end shot.
   const lastShot = shots[shots.length - 1] ?? "";
-  const hero = /\bhero\b|centred|centered|space above|clean (end|final|shot)/i.test(lastShot);
+  // A tour ends on the place: a wide reveal of the view or the front has the same clean space for the overlay.
+  const hero = /\bhero\b|centred|centered|space above|clean (end|final|shot)/i.test(lastShot) || (format === "tour" && /\b(wide|pull-?back|view|front|exterior|establishing)\b/i.test(lastShot));
   add({ id: "hero-end", rule: "seedance-clean-frames", points: 5, ok: hero, reason: hero ? "It ends on a clean hero shot." : "End on a clean hero shot of the product with space above it for BuPulse's text.", scene: shots.length ? shots.length - 1 : null });
 
   return result(checks);
