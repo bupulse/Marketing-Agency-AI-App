@@ -195,27 +195,52 @@
     },
     {
       "platform": "instagram",
-      "status": "interim",
-      "length": "Until the Instagram research is folded in: TikTok's formulas, with the route 'DM to order' and the location tag.",
-      "mustInclude": ["the offer or the product first", "'DM to order' or the WhatsApp number", "the area", "4 to 6 hashtags with the city"],
+      "status": "researched",
+      "length": "The caption is the sales page for East African sellers: the offer or price, one benefit line, the contact (phone, WhatsApp or DM), the place, then the hashtags.",
+      "mustInclude": ["the offer or the price first", "one line of benefit", "the contact: phone, WhatsApp or 'DM to order'", "the place (street, neighbourhood or a location tag)", "3 to 6 hashtags: 2 broad, 2 local (#kigali, #rwanda), 1 or 2 niche"],
       "formulas": [
+        {
+          "id": "ig-owner-contact",
+          "name": "Offer, then call or WhatsApp and the address",
+          "pattern": "{product} {price} {offer} Call or WhatsApp {phone} 📍 {area}",
+          "examples": ["Samsung s22 ₹10000/- Downpayment Call or whatsapp📞 =99108450…", "Talk to us 0711 179 871 ... Tom Mboya street, Old Nation House Nairobi"],
+          "sectors": ["phone-shop", "shop", "any"],
+          "evidence": ["ig-023", "ig-037"]
+        },
+        {
+          "id": "ig-price-stock",
+          "name": "Price and stock status (fashion)",
+          "pattern": "📍 {area} {product} {price} ✅ {claim} LIMITED PIECES, SHOP NOW",
+          "examples": ["Kinondoni, Dar Es Salaam, Tanzania ORANGE SOLD❌❌ available in green colour 70,000tzs LIMITED PIECE'S SHOP NOW"],
+          "sectors": ["fashion", "shop"],
+          "evidence": ["ig-035"]
+        },
         {
           "id": "ig-dm-order",
           "name": "Offer, then DM to order",
           "pattern": "{offer} ✨ {claim} 📍 {area} 💬 DM to order or WhatsApp {phone}",
-          "examples": ["Send a dm on ig to place an order.", "Delivery available, DM to order"],
+          "examples": ["📩us to place your orders or for enquires!", "Send a dm on ig to place an order."],
           "sectors": ["any"],
-          "evidence": ["tt-063", "fb-028"]
+          "evidence": ["ig-053", "tt-063"]
+        },
+        {
+          "id": "ig-owner-question",
+          "name": "A question owners answer",
+          "pattern": "{claim} Any other small business feel me?",
+          "examples": ["Small business owner means a WHOLE lot more than just selling…", "Any other small business feel me?"],
+          "sectors": ["any"],
+          "evidence": ["ig-051", "ig-054"]
         }
       ],
       "hashtags": {
-        "count": [4, 6],
-        "practice": ["Interim, from the caption corpus: as TikTok, 4 to 6 with the city."],
-        "local": ["#kigali", "#kigalirwanda", "#rwanda"],
-        "examples": ["#kigali #kigalirwanda #fyp"]
+        "count": [3, 6],
+        "practice": ["Median 5 on the 58 reels (11 use none); the biggest hits mostly use few, at the end.", "Mix: 2 broad (#smallbusiness, #fyp), 2 local (#kigali, #rwanda), 1 or 2 niche; never a keyword dump."],
+        "local": ["#kigali", "#rwanda", "#kigalirwanda", "#kigalifood", "#rwandabusiness"],
+        "examples": ["#livingroom #house #remodel #diy", "#madeintanzania #merakithebranddesigns #newprints2026"]
       },
-      "language": "As TikTok until the Instagram research is in.",
-      "evidence": ["tt-063", "fb-028"]
+      "language": "English captions for Kenya, Tanzania and Rwanda in the sample; Kinyarwanda and Swahili are mostly absent, so local-language text stands out (as Tamil and Arabic do in their markets).",
+      "evidence": ["ig-023", "ig-035", "ig-053", "ig-051", "ig-037", "ig-025"],
+      "findings": ["58 reels watched: median 13 s, 37 of 58 at 15 s or under; the biggest small-business hits are 6.7 s and 7.6 s.", "First text on screen at 0.0 s in about 60%; the rest are ASMR or pure product macro with no text.", "7 of 58 put a phone number, WhatsApp or a DM instruction in the caption; East African sellers make the caption the sales page (price in local currency, stock, place, number).", "Hashtags median 5 (11 none).", "Instagram shows AI labels itself on generated videos (6 rows)."]
     },
     {
       "platform": "shorts",

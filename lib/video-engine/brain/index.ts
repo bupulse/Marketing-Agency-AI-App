@@ -17,13 +17,13 @@ export { FRENCH_COMMERCE, KINYARWANDA_COMMERCE, PREFERRED_PHRASES, checkLanguage
 export type SafeArea = { top: number; bottom: number; left: number; right: number };
 /**
  * The text area each platform leaves free on a vertical video (9:16, 3:4, 4:5), from designer.ts PLATFORMS and the
- * research: TikTok and Instagram cover the bottom 20%, TikTok and Shorts the right edge, Shorts the top 10% (auto
+ * research: TikTok and Instagram cover the bottom 20% and the right 15% (instagram-patterns.md), Shorts the top 10% (auto
  * captions) and the bottom 25%, Facebook the bottom 15%. "youtube" (designer.ts's key) is the same as "shorts"; "any" is
  * the designer's default when no platform is given.
  */
 export const SAFE_AREAS: Record<"tiktok" | "instagram" | "facebook" | "shorts" | "youtube" | "any", SafeArea> = {
   tiktok: { top: 0.12, bottom: 0.78, left: 0.07, right: 0.85 },
-  instagram: { top: 0.12, bottom: 0.78, left: 0.07, right: 0.93 },
+  instagram: { top: 0.12, bottom: 0.78, left: 0.07, right: 0.85 },
   facebook: { top: 0.08, bottom: 0.85, left: 0.07, right: 0.93 },
   shorts: { top: 0.1, bottom: 0.75, left: 0.07, right: 0.85 },
   youtube: { top: 0.1, bottom: 0.75, left: 0.07, right: 0.85 },

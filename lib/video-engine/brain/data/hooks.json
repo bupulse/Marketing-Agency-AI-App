@@ -5,13 +5,13 @@
     "type": "price-first",
     "pattern": "{product} {price}",
     "visual": "The product (or the place) already moving, in a hand or in use, with a large price strip in the top third and the phone bar below; no intro.",
-    "platforms": ["facebook", "tiktok"],
+    "platforms": ["facebook", "tiktok", "instagram"],
     "sectors": ["shop", "phone-shop", "restaurant", "fashion", "real-estate", "car-rental"],
     "formats": ["product-reveal", "offer", "tour"],
     "engines": ["claude", "seedance"],
     "needs": ["price"],
-    "examples": ["48,000RWF", "PRICE 28K", "COMMERCIAL BLENDER PRICE: 48,000RWF", "One bedroom In Gasogi Full furnished 400k / Month", "Spinning bike / Price: 500k / Home workout Gym", "Price: 16M"],
-    "evidence": ["fb-011", "tt-079", "fb-029", "fb-005", "fb-012", "fb-049", "fb-068", "fb-067"]
+    "examples": ["48,000RWF", "PRICE 28K", "COMMERCIAL BLENDER PRICE: 48,000RWF", "One bedroom In Gasogi Full furnished 400k / Month", "Spinning bike / Price: 500k / Home workout Gym", "Price: 16M", "*199/- (with a 'Flipkart Finds' badge)", "299 (Meesho badge, top-left, whole clip)"],
+    "evidence": ["fb-011", "tt-079", "fb-029", "fb-005", "fb-012", "fb-049", "fb-068", "fb-067", "ig-003", "ig-010"]
   },
   {
     "id": "promo-price",
@@ -49,13 +49,13 @@
     "type": "price-first",
     "pattern": "{product} {price} (one item every 2 s, each with its own label)",
     "visual": "A hand holds item after item in front of a wall of stock; a white or outlined price label rides on each one.",
-    "platforms": ["tiktok"],
+    "platforms": ["tiktok", "instagram"],
     "sectors": ["shop", "fashion"],
     "formats": ["list", "product-reveal"],
     "engines": ["claude"],
     "needs": ["price"],
-    "examples": ["150/=", "KSH 35", "Glow oil 1litre 85,000", "Caramel cream 1kg 100,000"],
-    "evidence": ["tt-132", "tt-134", "tt-138", "tt-133"]
+    "examples": ["150/=", "KSH 35", "Glow oil 1litre 85,000", "Caramel cream 1kg 100,000", "Flower keychain with pearls 150/-"],
+    "evidence": ["tt-132", "tt-134", "tt-138", "tt-133", "ig-053"]
   },
   {
     "id": "price-list-card",
@@ -139,8 +139,8 @@
     "formats": ["ugc-testimonial", "product-reveal", "offer", "tour"],
     "engines": ["claude", "seedance"],
     "needs": [],
-    "examples": ["POV: You just found the most affordable skincare vendor in Kigali", "POV: Kenyan brands are stepping into global markets with our packaging", "POV: You're about to make someone smile for just 15Tsh"],
-    "evidence": ["tt-078", "tt-135", "fb-022"],
+    "examples": ["POV: You just found the most affordable skincare vendor in Kigali", "POV: Kenyan brands are stepping into global markets with our packaging", "POV: You're about to make someone smile for just 15Tsh", "POV: you're in Kigali, Rwanda... of course you're going to try the famous street food."],
+    "evidence": ["tt-078", "tt-135", "fb-022", "ig-034", "ig-032", "ig-026"],
     "note": "'Most affordable' is a claim: use it only when the owner says so, else 'POV: you just found {product} in {city}'."
   },
   {
@@ -168,8 +168,8 @@
     "formats": ["ugc-testimonial"],
     "engines": ["claude", "seedance"],
     "needs": [],
-    "examples": ["Me after checking my result and realizing I passed despite all the nonsense I wrote in the exam.", "I'm a small business owner but I'm also a..."],
-    "evidence": ["tt-055", "yt-003"],
+    "examples": ["Me after checking my result and realizing I passed despite all the nonsense I wrote in the exam.", "I'm a small business owner but I'm also a...", "when your business is small, EVERY order feels like a win", "I'M A SMALL BIZ OWNER but I'm also a..."],
+    "evidence": ["tt-055", "yt-003", "ig-054", "ig-051", "ig-052"],
     "note": "Seen on an entertainment clip (446K likes), not an ad: a format idea, keep it light and true."
   },
   {
@@ -183,8 +183,8 @@
     "formats": ["offer", "ugc-testimonial", "product-reveal", "kinetic-typography"],
     "engines": ["claude", "seedance"],
     "needs": [],
-    "examples": ["Urgent order?", "Bulk orders?", "Why keep watching others upgrade?", "ese wakwitwika kubera urukundo?", "Ufite gahunda yo gukora urugendo"],
-    "evidence": ["tt-064", "tt-097", "tt-058", "fb-056"]
+    "examples": ["Urgent order?", "Bulk orders?", "Why keep watching others upgrade?", "ese wakwitwika kubera urukundo?", "Ufite gahunda yo gukora urugendo", "Still paying for AI assistants."],
+    "evidence": ["tt-064", "tt-097", "tt-058", "fb-056", "ig-037"]
   },
   {
     "id": "pain-question",
@@ -227,7 +227,7 @@
     "engines": ["claude", "seedance"],
     "needs": [],
     "examples": ["New and improved breastfeeding Diras", "Watch this stain lift in 8 seconds"],
-    "evidence": ["tt-071", "fb-011", "fb-024", "fb-010", "fb-012"],
+    "evidence": ["tt-071", "fb-011", "fb-024", "fb-010", "fb-012", "ig-005", "ig-029", "ig-003"],
     "note": "The steamer demo (235.8K likes) has no on-screen text at all: the picture is the hook."
   },
   {
@@ -255,8 +255,8 @@
     "formats": ["unboxing"],
     "engines": ["claude", "seedance"],
     "needs": [],
-    "examples": ["Unboxing my new Blush MacBookNeo", "I’m absolutely in love with our new arrivals.", "Our Mystery Box came packed with 9 amazing items"],
-    "evidence": ["tt-128", "tt-129", "tt-130", "tt-131", "fb-012", "fb-073", "fb-054", "fb-084"]
+    "examples": ["Unboxing my new Blush MacBookNeo", "I’m absolutely in love with our new arrivals.", "Our Mystery Box came packed with 9 amazing items", "the prettiest pink MacBook unboxing"],
+    "evidence": ["tt-128", "tt-129", "tt-130", "tt-131", "fb-012", "fb-073", "fb-054", "fb-084", "ig-006", "ig-007", "ig-008"]
   },
   {
     "id": "now-available",
@@ -515,8 +515,8 @@
     "formats": ["3d-motion", "kinetic-typography"],
     "engines": ["claude"],
     "needs": [],
-    "examples": ["BREAD", "BLURE", "FRUIT", "MILKTEA", "COOL DOWN WITH EVEREST BY SESKY"],
-    "evidence": ["tt-121", "tt-123", "tt-118", "fb-025"]
+    "examples": ["BREAD", "BLURE", "FRUIT", "MILKTEA", "COOL DOWN WITH EVEREST BY SESKY", "FAVORITAS"],
+    "evidence": ["tt-121", "tt-123", "tt-118", "fb-025", "ig-047"]
   },
   {
     "id": "macro-rim-light",
@@ -544,7 +544,7 @@
     "engines": ["claude"],
     "needs": [],
     "examples": ["that's my job", "ever had problem?", "WEAK CTAS: Losing poten...", "One single source of truth", "YOUR / COOKING / FOR / CHINA'S / INGREDIENTS", "LET US CREATE"],
-    "evidence": ["tt-120", "tt-124", "tt-127", "tt-125", "yt-002", "yt-025"]
+    "evidence": ["tt-120", "tt-124", "tt-127", "tt-125", "yt-002", "yt-025", "ig-048", "ig-050", "ig-049"]
   },
   {
     "id": "price-pill",
@@ -805,5 +805,62 @@
     "needs": [],
     "examples": ["LUNA | Tel: 07… / 07…", "Not A Hotel Room | Your Private Apartment"],
     "evidence": ["fb-107", "fb-100"]
+  },
+  {
+    "id": "before-after-word",
+    "name": "before... / after (one word each)",
+    "type": "before-after",
+    "pattern": "before... | after",
+    "visual": "The same framing twice: the old state with one lowercase word 'before...' held 2 to 3 s, a hard cut, the finished state with 'after' and a slow push-in.",
+    "platforms": ["instagram"],
+    "sectors": ["salon", "services", "real-estate", "fashion"],
+    "formats": ["before-after"],
+    "engines": ["claude", "seedance"],
+    "needs": ["result"],
+    "examples": ["before...", "Before... / After"],
+    "evidence": ["ig-011", "ig-015", "ig-012", "ig-013"],
+    "note": "Never a body, weight or face before/after: rooms, hair, shops and renovations only."
+  },
+  {
+    "id": "empty-frame",
+    "name": "Something is missing (an empty frame, then the product)",
+    "type": "curiosity",
+    "pattern": "{claim}! (over an empty space, then the products pop in)",
+    "visual": "An empty shelf, vanity or room with one big line ('miss, you forgot something!'), or a 3, 2 countdown on black; then the products pop in or the room is revealed.",
+    "platforms": ["instagram"],
+    "sectors": ["shop", "events", "restaurant"],
+    "formats": ["product-reveal", "tour"],
+    "engines": ["claude", "seedance"],
+    "needs": [],
+    "examples": ["miss, you forgot something!", "3, 2..."],
+    "evidence": ["ig-004", "ig-016"]
+  },
+  {
+    "id": "what-x-buys",
+    "name": "This is what {price} buys you",
+    "type": "price-first",
+    "pattern": "This is what {price} buys you in {city}",
+    "visual": "The agent or owner walks towards the camera in front of the house or the stock; the line stacked in huge text, the price word coloured.",
+    "platforms": ["instagram", "facebook"],
+    "sectors": ["real-estate", "shop", "phone-shop"],
+    "formats": ["tour", "ugc-testimonial"],
+    "engines": ["claude"],
+    "needs": ["price"],
+    "examples": ["This is what $10M just under buys you here in Lake Nona", "$575,000 | Dallas Texas"],
+    "evidence": ["ig-024", "ig-025"]
+  },
+  {
+    "id": "owner-with-stock",
+    "name": "The owner in front of the stock",
+    "type": "authority",
+    "pattern": "{product}: {claim} (the owner talks)",
+    "visual": "The owner or a staff member in a branded shirt talks to the camera over a spread of boxed stock, peeling the film off a phone or lifting the box.",
+    "platforms": ["instagram", "facebook", "tiktok"],
+    "sectors": ["phone-shop", "shop"],
+    "formats": ["ugc-testimonial", "product-reveal"],
+    "engines": ["seedance", "claude"],
+    "needs": ["person"],
+    "examples": ["iPhone Pro Series Ka Buffet… 13 Pro to 16 Pro Max.", "Still paying for AI assistants."],
+    "evidence": ["ig-022", "ig-023", "ig-037", "fb-027", "fb-090"]
   }
 ]

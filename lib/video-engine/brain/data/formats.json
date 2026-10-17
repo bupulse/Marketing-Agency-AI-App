@@ -17,7 +17,7 @@
     "length": {
       "tiktok": [15, 25],
       "facebook": [15, 25],
-      "instagram": [12, 20],
+      "instagram": [6, 16],
       "shorts": [10, 15]
     },
     "cutsPer10s": [3, 5],
@@ -26,8 +26,8 @@
     "music": "Upbeat and secondary to the voice; one whoosh or hit on the reveal.",
     "cta": "One route, named: 'WhatsApp {phone}', 'Call {phone}' or 'DM now before stock ends'.",
     "eastAfrica": ["The price and the phone number are on screen from second 0 to the last frame.", "Real hands, real shop shelves behind the product beat a blank studio for local trust.", "A full address or landmark (T2000 House, Room 213B) makes a small seller credible.", "Rwandan Facebook video ads run a median 34 s; for products and offers keep under 20 to 25 s."],
-    "hooks": ["price-banner", "demo-first", "number-in-hand", "spec-words", "now-available", "macro-rim-light", "counter-price-bar", "model-badge", "how-it-changes", "splash-hero"],
-    "evidence": ["fb-011", "fb-005", "fb-012", "tt-071", "tt-096", "tt-098", "tt-100", "fb-024", "fb-063", "fb-049", "fb-072", "yt-005", "yt-026", "fb-098", "fb-091"]
+    "hooks": ["price-banner", "demo-first", "number-in-hand", "spec-words", "now-available", "macro-rim-light", "counter-price-bar", "model-badge", "how-it-changes", "splash-hero", "empty-frame"],
+    "evidence": ["fb-011", "fb-005", "fb-012", "tt-071", "tt-096", "tt-098", "tt-100", "fb-024", "fb-063", "fb-049", "fb-072", "yt-005", "yt-026", "fb-098", "fb-091", "ig-005", "ig-003"]
   },
   {
     "id": "ugc-testimonial",
@@ -47,7 +47,7 @@
     "length": {
       "tiktok": [15, 25],
       "facebook": [20, 45],
-      "instagram": [15, 25],
+      "instagram": [6, 20],
       "shorts": [8, 20]
     },
     "cutsPer10s": [2, 4],
@@ -56,8 +56,8 @@
     "music": "Light and low under the voice, or the room's own sound.",
     "cta": "Spoken and written: 'Order yours on WhatsApp {phone}'.",
     "eastAfrica": ["A host who greets in Kinyarwanda ('Muraho') builds trust (on screen and in the caption; the voice speaks English).", "Real customers eating or trying the product beat polished studio clips for local engagement."],
-    "hooks": ["pov-local-find", "direct-question", "happy-customer", "pov-rescue", "me-when", "comment-reply"],
-    "evidence": ["tt-078", "fb-004", "fb-003", "fb-009", "tt-131", "tt-002", "tt-018"]
+    "hooks": ["pov-local-find", "direct-question", "happy-customer", "pov-rescue", "me-when", "comment-reply", "owner-with-stock"],
+    "evidence": ["tt-078", "fb-004", "fb-003", "fb-009", "tt-131", "tt-002", "tt-018", "ig-022", "ig-054"]
   },
   {
     "id": "before-after",
@@ -77,7 +77,7 @@
     "length": {
       "tiktok": [14, 20],
       "facebook": [15, 25],
-      "instagram": [12, 20],
+      "instagram": [8, 12],
       "shorts": [10, 15]
     },
     "cutsPer10s": [3, 4],
@@ -85,9 +85,9 @@
     "voice": "Optional; a short line on the result, then the booking line.",
     "music": "A beat with a hit on the reveal of the result.",
     "cta": "Booking, named: 'Book on WhatsApp {phone}'.",
-    "eastAfrica": ["One flat price that includes a free extra (braids and a free wash) ran 982 days in Nairobi.", "Never a body, skin or medical before/after (Meta and TikTok policy, owner rule)."],
-    "hooks": ["result-first", "pain-question", "dont-say-say", "loss-line"],
-    "evidence": ["tt-102", "tt-103", "tt-104", "tt-105", "tt-106", "tt-107", "fb-013", "fb-052"]
+    "eastAfrica": ["One flat price that includes a free extra (braids and a free wash) ran 982 days in Nairobi.", "Never a body, skin or medical before/after (Meta and TikTok policy, owner rule).", "On Instagram the winners show the before first, with one lowercase word and the same framing, then hard-cut to the after (255K and 1.4M likes); on TikTok the result comes first."],
+    "hooks": ["result-first", "pain-question", "dont-say-say", "loss-line", "before-after-word"],
+    "evidence": ["tt-102", "tt-103", "tt-104", "tt-105", "tt-106", "tt-107", "fb-013", "fb-052", "ig-011", "ig-014"]
   },
   {
     "id": "unboxing",
@@ -107,7 +107,7 @@
     "length": {
       "tiktok": [12, 20],
       "facebook": [15, 30],
-      "instagram": [10, 20],
+      "instagram": [8, 16],
       "shorts": [10, 15]
     },
     "cutsPer10s": [3, 4],
@@ -136,7 +136,7 @@
     "length": {
       "tiktok": [16, 45],
       "facebook": [15, 60],
-      "instagram": [15, 30],
+      "instagram": [15, 45],
       "shorts": [13, 30]
     },
     "cutsPer10s": [2, 3],
@@ -145,8 +145,8 @@
     "music": "Calm, warm; the room's own sound for restaurants.",
     "cta": "'WhatsApp {phone}', the area, a landmark and the property ID if there is one.",
     "eastAfrica": ["Kigali buyers filter on district, sector and size first: put them in the first 3 s.", "The caption lists price in RWF, rooms, plot size, parking, the area and the number (Hills Props, Samkay).", "Rwandan property ads: a yellow price box top-right ('350M RWF', 'Price: 16M') and a Kinyarwanda checklist caption; 30 s with an agent on camera."],
-    "hooks": ["location-stack", "whip-in-tour", "local-greeting", "series-episode", "price-banner", "service-claim", "door-open-walk", "key-in-door"],
-    "evidence": ["fb-007", "fb-029", "tt-108", "tt-109", "tt-111", "fb-001", "fb-003", "fb-067", "fb-068", "fb-062", "fb-065", "yt-035", "fb-107", "fb-099", "fb-095"]
+    "hooks": ["location-stack", "whip-in-tour", "local-greeting", "series-episode", "price-banner", "service-claim", "door-open-walk", "key-in-door", "what-x-buys"],
+    "evidence": ["fb-007", "fb-029", "tt-108", "tt-109", "tt-111", "fb-001", "fb-003", "fb-067", "fb-068", "fb-062", "fb-065", "yt-035", "fb-107", "fb-099", "fb-095", "ig-024", "ig-034"]
   },
   {
     "id": "offer",
@@ -166,7 +166,7 @@
     "length": {
       "tiktok": [15, 20],
       "facebook": [15, 25],
-      "instagram": [10, 20],
+      "instagram": [6, 16],
       "shorts": [10, 15]
     },
     "cutsPer10s": [3, 4],
@@ -195,7 +195,7 @@
     "length": {
       "tiktok": [12, 24],
       "facebook": [10, 30],
-      "instagram": [10, 20],
+      "instagram": [8, 12],
       "shorts": [8, 15]
     },
     "cutsPer10s": [3, 5],
@@ -205,7 +205,7 @@
     "cta": "The brand card, then the number and the route.",
     "eastAfrica": ["Premium 3D clips earned fewer local likes (3K to 7K) than real shops with real people: use 3D for premium products, and keep the price and the number in the motion.", "On YouTube Shorts the craft clips (3D products, splashes, motion graphics) collect the likes (5K to 32K) while shop footage gets few: the clearest opening for the motion engine there."],
     "hooks": ["giant-word", "macro-rim-light", "demo-first", "splash-hero", "explode-reassemble"],
-    "evidence": ["tt-116", "tt-117", "tt-118", "tt-121", "tt-123", "fb-025", "tt-066", "tt-073", "yt-026", "yt-021", "yt-005", "yt-023"]
+    "evidence": ["tt-116", "tt-117", "tt-118", "tt-121", "tt-123", "fb-025", "tt-066", "tt-073", "yt-026", "yt-021", "yt-005", "yt-023", "ig-047", "ig-043"]
   },
   {
     "id": "kinetic-typography",
@@ -224,7 +224,7 @@
     "length": {
       "tiktok": [8, 15],
       "facebook": [10, 20],
-      "instagram": [8, 15],
+      "instagram": [6, 12],
       "shorts": [8, 15]
     },
     "cutsPer10s": [6, 10],
@@ -234,7 +234,7 @@
     "cta": "The last card is the route and the number.",
     "eastAfrica": ["Use for launches and offers; keep the price and number as words in the motion."],
     "hooks": ["kinetic-phrase", "direct-question", "bold-local-claim", "giant-word"],
-    "evidence": ["tt-120", "tt-124", "tt-125", "tt-126", "tt-127", "tt-118", "yt-025", "yt-002"]
+    "evidence": ["tt-120", "tt-124", "tt-125", "tt-126", "tt-127", "tt-118", "yt-025", "yt-002", "ig-048", "ig-027"]
   },
   {
     "id": "tutorial",
@@ -253,7 +253,7 @@
     "length": {
       "tiktok": [20, 60],
       "facebook": [30, 90],
-      "instagram": [20, 45],
+      "instagram": [20, 50],
       "shorts": [15, 30]
     },
     "cutsPer10s": [0, 2],
@@ -281,7 +281,7 @@
     "length": {
       "tiktok": [8, 20],
       "facebook": [5, 20],
-      "instagram": [8, 15],
+      "instagram": [12, 15],
       "shorts": [10, 30]
     },
     "cutsPer10s": [5, 8],
@@ -291,6 +291,6 @@
     "cta": "'Call / WhatsApp {phone}'.",
     "eastAfrica": ["Nairobi and Kampala sellers put a price on every product shot (150/=, KSH 35, 85,000) and keep the number on screen."],
     "hooks": ["price-on-each", "price-list-card", "numbered-list", "occasion-title", "menu-card-loop", "step-routine"],
-    "evidence": ["tt-101", "tt-132", "tt-134", "tt-138", "fb-023", "yt-027", "yt-028", "yt-014"]
+    "evidence": ["tt-101", "tt-132", "tt-134", "tt-138", "fb-023", "yt-027", "yt-028", "yt-014", "ig-053"]
   }
 ]

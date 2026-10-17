@@ -60,7 +60,16 @@ export function rowCountry(row: Row): string | null {
   if (own && /^[A-Z]{2}$/.test(own)) return own;
   const text = [row.author, row.page, row.channel, row.title, row.caption, row.on_screen_text, row.hook, row.why_it_works, (row.hashtags as unknown[] | null)?.join(" ")].filter((x) => typeof x === "string").join(" ");
   if (row.language === "rw") return "RW";
-  return COUNTRY_WORDS.find(([, re]) => re.test(text))?.[0] ?? null;
+  // The country named most often (a caption listing stockists abroad still belongs to its own country); ties go to
+  // the one named first.
+  let best: { code: string; n: number; at: number } | null = null;
+  for (const [code, re] of COUNTRY_WORDS) {
+    const hits = [...text.matchAll(new RegExp(re.source, "gi"))];
+    if (!hits.length) continue;
+    const c = { code, n: hits.length, at: hits[0].index ?? 0 };
+    if (!best || c.n > best.n || (c.n === best.n && c.at < best.at)) best = c;
+  }
+  return best?.code ?? null;
 }
 
 export const rowKey = (row: Row): string =>
@@ -113,7 +122,7 @@ export function rowStrength(source: ResearchSource, row: Row, likes: number | nu
  * (facebook-patterns.md, "Long runners"), so their age and variants never count as strength, and the brain may cite them
  * only for the fake-income and income-promise don'ts (index.ts checkBrain).
  */
-export const SCAM_PATTERN = /tajyira|akakanya|akayabo|kama faranga|earn [\d,.]+\s*k?\s*(rwf|frw)?\s*(a|per) day|work and earn|you have received [\d,.]+|m-?money|momo (sms|screenshot)|mobile money received|income proof|passive income|make (your first )?\$?\d+k|u(g|ga)sezera k.ubukene|get rich|wifimoney|millionaire ?mindset/i;
+export const SCAM_PATTERN = /tajyira|akakanya|akayabo|kama faranga|earn [\d,.]+\s*k?\s*(rwf|frw)?\s*(a|per) day|work and earn|you have received [\d,.]+|m-?money|momo (sms|screenshot)|mobile money received|income proof|passive income|make (your first )?\$?\d+k|(your|my) first \$?\d+ ?(k|m)\b|becoming (a )?(millionaire|billionaire)|u(g|ga)sezera k.ubukene|get rich|wifimoney|millionaire ?mindset/i;
 export function looksLikeScam(row: Row): boolean {
   const text = [row.caption, row.title, row.hook, row.on_screen_text, row.structure, (row.hashtags as unknown[] | null)?.join(" ")].filter((x) => typeof x === "string").join(" \n ");
   return SCAM_PATTERN.test(text);

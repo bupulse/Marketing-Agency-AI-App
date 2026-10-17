@@ -248,7 +248,10 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
   // The price, the number and the call to action must never sit under the app's buttons; other text matters less, and
   // a giant word that runs off the canvas on purpose, or a giant background word behind the product (size above 0.22,
   // depth 0.35 or less: "GALAXY", "5G" in the 3D templates), is a design choice, not a mistake.
-  const hidden = outside.filter((x) => contact(x.l));
+  // Instagram's exception (instagram-patterns.md): a small shop name or phone line kept in the lower-left corner in
+  // every scene reads fine, because it is small and constant.
+  const cornerLine = (l: TextLayer) => platform === "instagram" && l.size <= 0.035 && l.x - l.w / 2 >= 0.03 && l.x + l.w / 2 <= 0.6 && l.y + l.h / 2 <= 0.95 && scenes.every((sc) => texts(sc).some((t) => t.text === l.text));
+  const hidden = outside.filter((x) => contact(x.l) && !cornerLine(x.l));
   const backdrop = (l: TextLayer) => l.size > 0.22 && (l.depth ?? 0.8) <= 0.35;
   const strays = outside.filter((x) => !contact(x.l) && !offCanvas(x.l) && !backdrop(x.l));
   add({ id: "safe-area-contact", rule: "text-placement", points: 7, ok: hidden.length === 0, reason: hidden.length ? `${describe(hidden)}: the price, number or call to action goes under the app's buttons (${box}).` : "The price, number and call to action are inside the safe area.", scene: hidden[0]?.i ?? null });
@@ -434,7 +437,8 @@ const COUNTRY_CODES: [RegExp, string][] = [[/kenya/i, "KE"], [/uganda/i, "UG"], 
 /** Broad reach tags: one or two are normal, a pile of them is the low-view habit. */
 const BROAD_TAGS = /^(fyp\w*|foryou\w*|viral\w*|trending\w*|explore\w*|reels\w*|tiktok\w*|instagood|xyzbca|capcut)$/;
 const PLACE_WORDS = /📍|\b(next to|opposite|near|behind|in front of|same building|located|location|loc|plaza|house|room \d+|building|street|st|road|av(e|enue)?\.?|KK \d+|KG \d+|KN \d+|kigali|kicukiro|gasabo|nyarugenge|kimironko|remera|kacyiru|kiyovu|nyamirambo|gishushu|kibagabaga|kabeza|kanombe|gikondo|nyarutarama|muhima|downtown|musanze|rubavu|huye)\b/i;
-const DELIVERY_WORDS = /\b(deliver(y|ies|ed)?|tuyikujyezaho|tubagezaho|tukugezaho|kugeza)\b/i;
+/** Delivery in English, French ("livraison", "livré", "à domicile") and Kinyarwanda (both spellings of "we bring it to you"). */
+const DELIVERY_WORDS = /(?<![\p{L}])(deliver(y|ies|ed)?|livraisons?|livr(é|e)(e?s?)|livrons|livrer|à domicile|tuyikujyezaho|tuyikugezaho|tubagezaho|tukugezaho|kugeza)(?![\p{L}])/iu;
 const NO_SUBSCRIBE = /\b(subscribe|like and follow|hit the bell|turn on notifications|abonne[zr]?)\b/i;
 const MAX_CHARS: Record<Platform | "any", number> = { facebook: 600, tiktok: 300, instagram: 300, shorts: 100, any: 600 };
 

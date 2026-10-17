@@ -374,9 +374,20 @@ describe("scoring a design", () => {
     expect(scoreDesign({ ...luxe, scenes: luxe.scenes.map((sc, i) => (i === 1 ? { ...sc, layers: sc.layers.filter((l) => l !== quiet) } : sc)) }, { ...brief, styleId: "dark-minimal" }).failed.map((f) => f.id)).toContain("phone-bar");
   });
 
+  it("on Instagram a small phone line kept in the lower-left corner is not a safe-area miss", () => {
+    const corner = { kind: "text" as const, text: "0788 300 400", font: "inter" as const, size: 0.03, color: "#ffffff", x: 0.22, y: 0.88, w: 0.34, h: 0.03 };
+    // The other lines narrowed to fit every box, so the corner line is the only text outside the safe area.
+    const narrow = (l: Scene["layers"][number]) => (l.kind === "text" ? { ...l, x: 0.46, w: 0.7 } : l);
+    const spec: MotionSpec = { ...good, scenes: good.scenes.map((sc) => ({ ...sc, layers: [...sc.layers.filter((l) => !(l.kind === "text" && l.text.includes("0788"))).map(narrow), corner] })) };
+    const ids = (platform: string) => scoreDesign(spec, { ...brief, platform }).failed.map((f) => f.id);
+    expect(ids("instagram")).not.toContain("safe-area-contact");
+    expect(ids("tiktok")).toContain("safe-area-contact");
+  });
+
   it("exports the safe areas per platform (youtube is Shorts)", () => {
     expect(safeAreaFor("youtube")).toEqual(SAFE_AREAS.shorts);
     expect(safeAreaFor("tiktok")).toEqual({ top: 0.12, bottom: 0.78, left: 0.07, right: 0.85 });
+    expect(safeAreaFor("instagram").right).toBe(0.85);
     expect(safeAreaFor(null)).toEqual(SAFE_AREAS.any);
     expect(safeAreaFor("myspace")).toEqual(SAFE_AREAS.any);
   });
@@ -461,6 +472,16 @@ describe("scoring a caption", () => {
     expect(scoreCaption(good, ["phones", "samsung"], fb).failed.map((f) => f.id)).toEqual(["hashtag-mix"]);
   });
 
+  it("recognises delivery in French and both Kinyarwanda spellings", () => {
+    const fr = { business: { name: "Maison Kigali", description: "Boutique à Kigali, livraison disponible", phone: "0788 300 400", language: "French" }, product: { name: "Robe kitenge", price: "25,000 RWF" }, platform: "facebook" };
+    const ids = (caption: string, b: ScoreBrief = fr) => scoreCaption(caption, [], b).failed.map((f) => f.id);
+    expect(ids("Robe kitenge 25,000 RWF. Livraison disponible à Kigali. Appelez 0788 300 400")).not.toContain("caption-delivery");
+    expect(ids("Robe kitenge 25,000 RWF, livrée chez vous à Kigali. Appelez 0788 300 400")).not.toContain("caption-delivery");
+    expect(ids("Robe kitenge 25,000 RWF à Kigali. Appelez 0788 300 400")).toContain("caption-delivery");
+    const rw = { ...fr, business: { ...fr.business, description: "Iduka i Kigali, tuyikugezaho aho uri", language: "Kinyarwanda" } };
+    expect(ids("Robe kitenge kuri 25,000 RWF gusa, tuyikugezaho i Kigali. Duhamagare 0788 300 400", rw)).not.toContain("caption-delivery");
+  });
+
   it("delivery, Kinyarwanda calls to action and #MadeInRwanda", () => {
     const delivers = { ...brief, note: "Free delivery in Kigali", platform: "facebook" };
     expect(scoreCaption(good, [], delivers).failed.map((f) => f.id)).toEqual(["caption-delivery"]);
@@ -523,6 +544,15 @@ describe("the caption check against the caption corpus", () => {
     expect(count("facebook_ad")).toBeLessThanOrEqual(fbHi);
     expect(count("tiktok")).toBeGreaterThanOrEqual(ttLo);
     expect(count("tiktok")).toBeLessThanOrEqual(ttHi);
+  });
+
+  it("the Instagram hashtag range holds the reels' median", () => {
+    const reels = parseJsonl(fs.readFileSync(path.join(REELS, "instagram.jsonl"), "utf8"));
+    const counts = reels.map((r) => ((r.hashtags as string[] | null) ?? []).length).sort((a, z) => a - z);
+    const median = counts[Math.floor(counts.length / 2)];
+    const [lo, hi] = BRAIN.captions.platforms.find((p) => p.platform === "instagram")!.hashtags.count;
+    expect(median).toBeGreaterThanOrEqual(lo);
+    expect(median).toBeLessThanOrEqual(hi);
   });
 
   it("the strongest Rwandan captions (price, phone, place and a call to action) score well", () => {

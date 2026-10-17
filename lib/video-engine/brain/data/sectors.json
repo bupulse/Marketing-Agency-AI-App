@@ -5,12 +5,12 @@
     "words": ["restaurant", "cafe", "café", "food", "menu", "dish", "brochette", "coffee", "bakery", "cake", "pizza", "burger", "shawarma", "juice", "catering", "lunch", "dinner", "buffet", "chicken", "fish", "tilapia", "pilau", "ribs", "cone", "supermarket"],
     "seedanceKind": "restaurant",
     "formats": ["offer", "product-reveal", "ugc-testimonial", "tour"],
-    "hooks": ["offer-badge-day", "appetite-shot", "promo-price", "bold-local-claim", "talk-to-city", "poster-first", "cards-in-hand", "pov-rescue", "menu-card-loop", "splash-hero"],
+    "hooks": ["offer-badge-day", "appetite-shot", "promo-price", "bold-local-claim", "talk-to-city", "poster-first", "cards-in-hand", "pov-rescue", "menu-card-loop", "splash-hero", "empty-frame"],
     "settings": ["a top-down wooden table in a Kigali restaurant", "a night venue terrace with warm lights", "a counter with pizza boxes ready for delivery", "a home kitchen with a pan of food steaming", "an overhead plate on a tray with a hand pouring the sauce"],
     "offers": ["BUY 1 GET 1 FREE EVERY {day}", "PROMO FOR {price}", "LUNCH TIME promo, Monday to Friday, 11 AM to 2 PM", "Order on VubaVuba", "Contact us for fast delivery", "PROMO! - HAPPY 3RD ANNIVERSARY (a price ladder: 35K → 27K)", "Free bread and free salad", "Same fast delivery"],
     "cta": "Order on {app} or call {phone}; the area (Kicukiro Sonatube, Kimironko).",
-    "longestRunning": "Magic Chef Kigali runs one dish per video (7+ ads) with the same two delivery numbers; Best Burgers shows one burger, one price (PROMO FOR 5K) and two numbers for the whole clip; BestPilau's anniversary promo puts a price ladder (35K → 27K, 20K → 15K) in the caption over a plain overhead plate.",
-    "evidence": ["tt-090", "tt-093", "tt-095", "tt-091", "tt-092", "fb-004", "fb-006", "fb-032", "fb-039", "tt-094", "fb-051", "fb-053", "fb-070", "fb-061", "yt-027", "yt-030", "yt-032"]
+    "longestRunning": "Magic Chef Kigali runs one dish per video (7+ ads) with the same two delivery numbers; Best Burgers shows one burger, one price (PROMO FOR 5K) and two numbers for the whole clip; BestPilau's anniversary promo puts a price ladder (35K → 27K, 20K → 15K) in the caption over a plain overhead plate. On Instagram, Kigali street food is shot hand-held in neon colour with a POV line ('POV: you're in Kigali, Rwanda... of course you're going to try the famous street food', Nyamirambo).",
+    "evidence": ["tt-090", "tt-093", "tt-095", "tt-091", "tt-092", "fb-004", "fb-006", "fb-032", "fb-039", "tt-094", "fb-051", "fb-053", "fb-070", "fb-061", "yt-027", "yt-030", "yt-032", "ig-034", "ig-041"]
   },
   {
     "id": "phone-shop",
@@ -18,12 +18,12 @@
     "words": ["phone", "phones", "smartphone", "iphone", "samsung", "galaxy", "tecno", "infinix", "itel", "aquos", "laptop", "electronics", "charger", "earbuds", "tablet", "smartwatch", "gadget", "surface", "projector"],
     "seedanceKind": "phone-shop",
     "formats": ["product-reveal", "list", "unboxing", "offer"],
-    "hooks": ["number-in-hand", "counter-price-bar", "model-badge", "spec-words", "price-list-card", "now-available", "direct-question", "price-banner", "demo-first", "explode-reassemble", "door-open-walk"],
+    "hooks": ["number-in-hand", "counter-price-bar", "model-badge", "spec-words", "price-list-card", "now-available", "direct-question", "price-banner", "demo-first", "explode-reassemble", "door-open-walk", "owner-with-stock"],
     "settings": ["the shop counter with boxed phones and a wall of brand logos", "a seller holding the phone in the shop", "hands turning two phones to show front and back", "a hand fanning four phones in front of the shop shelves", "an overhead unboxing on a white table, hands only"],
     "offers": ["Accessories included (cover, protector, charger)", "{product} is here", "DM now before stock ends (only when stock is really limited)", "fast and easy delivery", "Warranty and direct home delivery", "Available in abundance"],
     "cta": "WhatsApp or call {phone}; the shop address and room number (Makuza Peace Plaza, Room 35).",
-    "longestRunning": "Real staff, real stock and the shop address with a landmark (Makuza Peace Plaza, Room 35) build trust where phone scams are common; a seller behind the counter with a lower-third price bar and two numbers (Elohome, 8 ads live); a model badge ('iPhone 18pro and 18pro max are available On discount', 'IPHONE 13 PRO 256GB').",
-    "evidence": ["tt-096", "tt-097", "tt-098", "tt-099", "tt-100", "tt-101", "fb-027", "fb-005", "fb-038", "fb-063", "fb-066", "fb-072", "fb-073", "yt-023", "yt-035", "yt-036", "yt-033"]
+    "longestRunning": "Real staff, real stock and the shop address with a landmark (Makuza Peace Plaza, Room 35) build trust where phone scams are common; a seller behind the counter with a lower-third price bar and two numbers (Elohome, 8 ads live); a model badge ('iPhone 18pro and 18pro max are available On discount', 'IPHONE 13 PRO 256GB'). On Instagram the owner talks over a spread of boxed phones (90.7K likes) or peels the film off a Samsung (52.4K), with 'Call or whatsapp' and the number in the caption.",
+    "evidence": ["tt-096", "tt-097", "tt-098", "tt-099", "tt-100", "tt-101", "fb-027", "fb-005", "fb-038", "fb-063", "fb-066", "fb-072", "fb-073", "yt-023", "yt-035", "yt-036", "yt-033", "ig-022", "ig-023", "ig-019"]
   },
   {
     "id": "salon",
@@ -31,13 +31,13 @@
     "words": ["salon", "hair", "braid", "braids", "barber", "barbershop", "nails", "beauty", "makeup", "make-up", "spa", "wig", "wigs", "lashes", "massage", "aesthetic", "laser", "hair removal", "skincare", "microlocs", "locs", "microblading", "brows"],
     "seedanceKind": "salon",
     "formats": ["before-after", "offer", "ugc-testimonial", "list"],
-    "hooks": ["result-first", "promo-price", "service-claim", "home-service", "pain-question", "local-greeting", "step-routine", "price-card-split"],
+    "hooks": ["result-first", "promo-price", "service-claim", "home-service", "pain-question", "local-greeting", "step-routine", "price-card-split", "before-after-word"],
     "settings": ["the salon chair with a ring light", "close-ups of hands braiding", "a 2x2 grid of nail colours", "the salon sign and mirrors", "a close-up of a real treatment in soft light, the landmark address baked in"],
     "offers": ["special offer any style {price} (inclusive of braids & free wash)", "Book your nails home service", "Book your appointment on WhatsApp", "Available 24/7", "Book your session today", "Private packages available", "MICROBLADING OFFER 20K", "Book your slot today"],
     "cta": "Book on WhatsApp {phone}; the street (Roysambu, Lumumba Drive style).",
     "longestRunning": "SPOT SALON (Nairobi) ran one flat price including a free wash for 982 days; in Kigali, Prime Wellness shows a real massage with 'Available 24/7' and 'Next to DELIGHT HOTEL' on screen; Lou Aesthetic opens on a question card ('Ready to see your skin exactly how it used to be?'). Round 3 (10 Kigali spa, nail, wig and brow ads, all young): a real treatment close-up with the hours and a landmark address burned in, a black-and-gold offer card ('MICROBLADING OFFER 20K'), the number printed under the video.",
     "gaps": "Kigali salon ads are young (at most 24 days live) and few show a price; the long-running examples are Nairobi's.",
-    "evidence": ["fb-013", "fb-018", "tt-102", "tt-103", "tt-105", "tt-106", "tt-107", "fb-062", "fb-071", "fb-047", "yt-028", "fb-074", "fb-076", "fb-078", "fb-079", "fb-080", "fb-083"]
+    "evidence": ["fb-013", "fb-018", "tt-102", "tt-103", "tt-105", "tt-106", "tt-107", "fb-062", "fb-071", "fb-047", "yt-028", "fb-074", "fb-076", "fb-078", "fb-079", "fb-080", "fb-083", "ig-030", "ig-031", "ig-033"]
   },
   {
     "id": "fashion",
@@ -45,12 +45,12 @@
     "words": ["fashion", "dress", "dresses", "clothes", "clothing", "kitenge", "ankara", "shoes", "boutique", "shirt", "shirts", "bag", "bags", "outfit", "wear", "jewelry", "jewellery", "earrings", "sneaker", "sneakers", "watch", "necklace"],
     "seedanceKind": "fashion",
     "formats": ["product-reveal", "list", "ugc-testimonial", "unboxing"],
-    "hooks": ["demo-first", "now-available", "price-on-each", "direct-question", "occasion-title", "unwrap-reveal", "door-open-walk", "spec-words"],
+    "hooks": ["demo-first", "now-available", "price-on-each", "direct-question", "occasion-title", "unwrap-reveal", "door-open-walk", "spec-words", "before-after-word"],
     "settings": ["a real wearer outdoors in daylight", "a clothes rack in the boutique", "a mannequin showing the detail", "boxes of new arrivals being opened", "one sneaker turned 360 degrees in one hand outdoors"],
     "offers": ["{product} kuri {price} gusa", "Different sizes and colors available", "We do deliveries countrywide", "New arrivals", "Payment after delivery", "Delivery anywhere in Rwanda", "Sizes EUR 39 to 45"],
     "cta": "Send a WhatsApp message {phone}; the shop area.",
-    "longestRunning": "A 5 s loop of one model walking (Modesees, 353 days) and four colours in 10 s on a real wearer (NILA BABY SHOP, 439 days) are enough; Trendy.Wear.Kigali shows one feature (a breastfeeding opening) for the whole clip with the price in the caption. Kigali sneaker sellers (9 round-3 ads) show one pair in a hand or being laced, a model label on screen ('Hoka Clifton 9'), and put the sizes and 'Call&Whatsapp' in the caption; almost none shows the price in the video.",
-    "evidence": ["fb-010", "fb-016", "fb-026", "tt-064", "tt-129", "tt-134", "tt-137", "fb-041", "fb-055", "fb-054", "yt-018", "yt-019", "fb-084", "fb-085", "fb-090", "fb-091", "fb-092"]
+    "longestRunning": "A 5 s loop of one model walking (Modesees, 353 days) and four colours in 10 s on a real wearer (NILA BABY SHOP, 439 days) are enough; Trendy.Wear.Kigali shows one feature (a breastfeeding opening) for the whole clip with the price in the caption. Kigali sneaker sellers (9 round-3 ads) show one pair in a hand or being laced, a model label on screen ('Hoka Clifton 9'), and put the sizes and 'Call&Whatsapp' in the caption; almost none shows the price in the video. On Instagram an East African label shoots on a model in a styled showroom and makes the caption the sales page: the price in local currency, the stock ('ORANGE SOLD'), the place and 'SHOP NOW'.",
+    "evidence": ["fb-010", "fb-016", "fb-026", "tt-064", "tt-129", "tt-134", "tt-137", "fb-041", "fb-055", "fb-054", "yt-018", "yt-019", "fb-084", "fb-085", "fb-090", "fb-091", "fb-092", "ig-035"]
   },
   {
     "id": "real-estate",
@@ -58,13 +58,13 @@
     "words": ["house", "houses", "home", "apartment", "apartments", "plot", "plots", "land", "rent", "rental", "real estate", "property", "villa", "bedroom", "bedrooms", "inzu", "igurishwa", "ibibanza"],
     "seedanceKind": "real-estate",
     "formats": ["tour", "product-reveal"],
-    "hooks": ["location-stack", "price-banner", "kinyarwanda-price-line", "whip-in-tour", "series-episode"],
+    "hooks": ["location-stack", "price-banner", "kinyarwanda-price-line", "whip-in-tour", "series-episode", "what-x-buys"],
     "settings": ["the gate and the front of the house at golden hour", "a smooth gimbal walk-through of the living room, kitchen and bedrooms", "the plot-size sign and the parking", "the view from the terrace over the Kigali hills", "the agent introduces the house in a selfie, then a gimbal walk-through", "a site plan laid over the roadside for plots"],
     "offers": ["{count} BEDROOMS", "{price} / month", "Fully furnished", "Property ID {claim}", "Title ready, mutation immediately", "{price} (yellow box, top-right)", "Water and power on site"],
     "cta": "WhatsApp {phone}; district, sector and street (Kicukiro, Kanombe, Kabeza); the property ID.",
-    "longestRunning": "Hills Props and IBRA open on a location stack and a yellow price box ('Ibibanza byiza Masaka inyuma Ya Gare Bigurishwa / Price: 16M'); Bosco shows '350M RWF' top-right from second 3 with a WhatsApp overlay; captions are Kinyarwanda checklists (rooms, plot size, water and power, title).",
+    "longestRunning": "Hills Props and IBRA open on a location stack and a yellow price box ('Ibibanza byiza Masaka inyuma Ya Gare Bigurishwa / Price: 16M'); Bosco shows '350M RWF' top-right from second 3 with a WhatsApp overlay; captions are Kinyarwanda checklists (rooms, plot size, water and power, title). On Instagram the agent walks towards the camera with the price burned in ('$575,000', 325K likes) or 'This is what $10M just under buys you here', and a comment keyword in the caption.",
     "gaps": "The highest-liked tours are American luxury homes; Kigali property ads are 30 to 90 s Facebook ads, mostly young (days to weeks).",
-    "evidence": ["fb-007", "fb-029", "tt-080", "tt-108", "tt-109", "tt-111", "tt-112", "tt-113", "fb-067", "fb-068"]
+    "evidence": ["fb-007", "fb-029", "tt-080", "tt-108", "tt-109", "tt-111", "tt-112", "tt-113", "fb-067", "fb-068", "ig-024", "ig-025"]
   },
   {
     "id": "school",
@@ -90,9 +90,9 @@
     "settings": ["the real fleet parked in the compound", "a car driving on a Kigali road", "the interior and the boot opened", "a walk-around of the vehicle in the showroom with the website bar on screen"],
     "offers": ["RENT A CAR, RENT FREEDOM", "{price} per day", "With or without a driver", "Self-drive or professional driver", "Family holiday discounts", "Self-drive or chauffeur", "HIKING EVERY DAY MONDAY - SUNDAY", "Up to 35% off"],
     "cta": "WhatsApp / Call {phone}, burned in from second 1 to the end.",
-    "longestRunning": "homeofhybrid (Kigali, 468 days) runs raw phone footage of the cars with one word sticker per beat and a permanent yellow phone bar; Judith Safaris (565 days, the longest-running Rwandan ad found) is a corporate interview with a name card and subtitles; travel agencies use a poster first frame with a schedule and a phone bar ('HIKE MOUNT JALI … HIKING EVERY DAY'), and a car dealer floats spec labels over a walk-around ('Engine size 3,604 cc').",
+    "longestRunning": "homeofhybrid (Kigali, 468 days) runs raw phone footage of the cars with one word sticker per beat and a permanent yellow phone bar; Judith Safaris (565 days, the longest-running Rwandan ad found) is a corporate interview with a name card and subtitles; travel agencies use a poster first frame with a schedule and a phone bar ('HIKE MOUNT JALI … HIKING EVERY DAY'), and a car dealer floats spec labels over a walk-around ('Engine size 3,604 cc'). A Nairobi car dealer's comedy skit (an influencer asking for a free car) works on Instagram.",
     "gaps": "Car hire and travel together (12 Rwandan ads); few show a price.",
-    "evidence": ["fb-001", "fb-065", "fb-093", "fb-094", "fb-095", "fb-097", "fb-098", "fb-099", "fb-044"]
+    "evidence": ["fb-001", "fb-065", "fb-093", "fb-094", "fb-095", "fb-097", "fb-098", "fb-099", "fb-044", "ig-040"]
   },
   {
     "id": "clinic",
@@ -141,11 +141,11 @@
     "words": ["shop", "store", "supermarket", "cosmetics", "skincare", "perfume", "kitchenware", "home", "decor", "wholesale", "retail", "bedding", "products", "furniture", "rug", "rugs", "appliance", "bike"],
     "seedanceKind": "shop",
     "formats": ["product-reveal", "list", "offer", "unboxing"],
-    "hooks": ["price-banner", "demo-first", "counter-price-bar", "how-it-changes", "kinyarwanda-price-line", "pov-local-find", "price-on-each", "percent-free-delivery", "now-available", "start-a-business", "splash-hero", "step-routine"],
+    "hooks": ["price-banner", "demo-first", "counter-price-bar", "how-it-changes", "kinyarwanda-price-line", "pov-local-find", "price-on-each", "percent-free-delivery", "now-available", "start-a-business", "splash-hero", "step-routine", "empty-frame", "owner-with-stock"],
     "settings": ["a tidy shop counter in a Kigali shop", "a wall of stock with a hand holding one item", "the shop floor with a greeting assistant", "boxes of new stock", "the product doing its job in a plain room, all the facts in one text block at the top"],
     "offers": ["Starting from {price}", "Free delivery from 50k", "Free delivery, pay after delivery", "Retail and wholesale", "Now available!", "Price: {price}", "Free delivery in Kigali"],
     "cta": "WhatsApp {phone}; the shop's building and room number.",
     "longestRunning": "In Kigali, EHA 250, Titanium Smart Life and Elohome keep the price and the number on screen from frame 0 (a top text block or a lower-third bar); the cash-on-delivery sellers (Kenlina-B, Ugalina, TnzStore) ran one template for up to 24 months with 'Free delivery, pay after delivery'; Bahnasawi writes the offer in Kinyarwanda capitals over the furniture.",
-    "evidence": ["fb-011", "fb-005", "fb-012", "fb-003", "fb-017", "fb-019", "tt-078", "tt-079", "tt-132", "tt-136", "tt-138", "fb-049", "fb-063", "fb-048", "fb-043", "fb-057", "fb-064", "fb-053", "yt-026", "yt-021", "yt-028"]
+    "evidence": ["fb-011", "fb-005", "fb-012", "fb-003", "fb-017", "fb-019", "tt-078", "tt-079", "tt-132", "tt-136", "tt-138", "fb-049", "fb-063", "fb-048", "fb-043", "fb-057", "fb-064", "fb-053", "yt-026", "yt-021", "yt-028", "ig-004", "ig-005", "ig-053", "ig-037"]
   }
 ]

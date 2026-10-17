@@ -1,7 +1,7 @@
 # Video Brain
 
 The research behind every video the Video Studio makes. BuPulse's researchers watch real marketing videos on TikTok,
-Facebook and YouTube Shorts (Instagram is next) and write down how each one is made: the opening line, the timing, what
+Facebook, Instagram and YouTube Shorts and write down how each one is made: the opening line, the timing, what
 is on screen, how it asks people to order, and the post text under it. The Brain turns those notes into choices and
 checks. Before Claude designs a video, the Brain tells it what works for this kind of business on this platform. After
 Claude answers, the Brain marks the design out of 100 and lists what it missed.
@@ -15,20 +15,19 @@ testing; clients do not see it yet.
 
 ## The numbers
 
-The one place to update when new research comes in (last updated 17 October 2026):
+The one place to update when new research comes in (last updated 17 October 2026, after the Instagram research):
 
 | What | Count |
 | --- | --- |
-| Research rows (videos, ads and captions) | 410: TikTok 139, Facebook 110, YouTube Shorts 36, post captions 125 |
-| Watched first-hand by a researcher | 246: TikTok 93, Facebook 90, YouTube 36, TikTok captions 27 |
-| Rwandan rows | 239 |
-| Rows set aside as income-chain or scam posts | 6 |
-| Instagram rows | 58 written, not yet added (waiting for the researcher's patterns file) |
-| Openings (hooks) | 56 |
+| Research rows (videos, ads and captions) | 468: TikTok 139, Facebook 110, Instagram 58, YouTube Shorts 36, post captions 125 |
+| Watched first-hand by a researcher | 304: TikTok 93, Facebook 90, Instagram 58, YouTube 36, TikTok captions 27 |
+| Rwandan rows | 241 |
+| Rows set aside as income-chain or scam posts | 8 |
+| Openings (hooks) | 60 |
 | Video formats | 10 |
 | Business sectors | 11 |
-| Rules | 64 (50 do, 14 don't) |
-| Caption formulas | 25, plus 10 ways to order |
+| Rules | 69 (55 do, 14 don't) |
+| Caption formulas | 28, plus 10 ways to order |
 
 ## What you see
 
@@ -154,7 +153,7 @@ missed".
    ```
 
    It refreshes the rows already in the index and leaves the unfinished ones out until they are ready. To leave a whole file
-   out while it is being written (Instagram now), add `--skip=instagram`.
+   out while it is being written, add `--skip=` and its name (for example `--skip=instagram`).
 4. New openings, rules and sector notes are added by hand from the researchers' findings (the Brain agent does this).
    The automatic checks make sure every rule points at real rows.
 5. Update **The numbers** above.
@@ -165,8 +164,8 @@ missed".
   each design.
 - The Brain only advises and checks. It never changes a design, and a low score never stops you from downloading or
   posting.
-- Instagram advice borrows from TikTok until the Instagram research is in. YouTube Shorts has 36 rows, but few of them
-  are local ads.
+- East Africa is thin on Instagram (7 of 58 reels) and YouTube Shorts (few local ads); Facebook stays the main evidence
+  for Rwandan ads.
 - All the videos were watched with the sound off, so music and voice advice comes from articles, not from listening.
 
 ## For developers

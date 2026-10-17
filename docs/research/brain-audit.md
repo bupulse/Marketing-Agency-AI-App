@@ -6,68 +6,77 @@ research block on) scored with the brain's own scorers (`lib/video-engine/brain/
 otherwise. **The sweep briefs carried no platform**, so the designer used its default safe area (y 0.12 to 0.82, x 0.07 to 0.93)
 and default hashtags; the column "outside own box" counts text outside that default, which is the designer's own rule.
 
-Made by `BRAIN_AUDIT=<sweep dir> npx vitest run tests/video-engine/brain.test.ts -t "brain audit"`. Means: design 91, caption 96.3.
+Made by `BRAIN_AUDIT=<sweep dir> npx vitest run tests/video-engine/brain.test.ts -t "brain audit"`. Means: design 90.1, caption 96.3.
 
 | Template | Category | Platform | Style | Design | Caption | Outside own box | Design misses | Caption misses |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 3d-title-drop | 3d | instagram | showcase | 90 | 100 | 5 | safe-area-contact, safe-area, say-length | none |
 | brand-story | ads | facebook | brand | 96 | 92 | 0 | phone-bar | hashtag-count |
-| chrome-luxe | 3d | instagram | luxury | 95 | 100 | 0 | safe-area-contact | none |
+| chrome-luxe | 3d | instagram | luxury | 93 | 100 | 0 | safe-area-contact, safe-area | none |
 | colour-options | marketplace | facebook | list | 86 | 92 | 8 | safe-area-contact, safe-area, length, say-length | hashtag-count |
 | colour-pop | motion | instagram | showcase | 93 | 100 | 6 | safe-area-contact, safe-area | none |
 | confetti-launch | 3d | instagram | showcase | 93 | 100 | 5 | safe-area-contact, safe-area | none |
-| dark-minimal | motion | instagram | luxury | 89 | 85 | 1 | phone-bar, safe-area, caption | first-line, caption-price |
-| event-poster | promo | instagram | list | 91 | 89 | 0 | phone-bar, safe-area-contact | first-line |
-| floating-product-reveal | 3d | instagram | showcase | 95 | 100 | 1 | safe-area-contact | none |
-| glass-cards | 3d | instagram | list | 95 | 100 | 1 | safe-area-contact | none |
+| dark-minimal | motion | instagram | luxury | 84 | 85 | 1 | phone-bar, safe-area-contact, safe-area, caption | first-line, caption-price |
+| event-poster | promo | instagram | list | 89 | 89 | 0 | phone-bar, safe-area-contact, safe-area | first-line |
+| floating-product-reveal | 3d | instagram | showcase | 93 | 100 | 1 | safe-area-contact, safe-area | none |
+| glass-cards | 3d | instagram | list | 93 | 100 | 1 | safe-area-contact, safe-area | none |
 | golden-hour | cinematic | instagram | luxury | 85 | 89 | 2 | phone-bar, safe-area-contact, safe-area, text-crowd | first-line |
-| hypermotion | motion | instagram | showcase | 88 | 85 | 1 | safe-area-contact, say-length, caption | first-line, caption-price |
-| ice-splash | product | instagram | showcase | 92 | 100 | 1 | safe-area-contact, text-crowd | none |
+| hypermotion | motion | instagram | showcase | 86 | 85 | 1 | safe-area-contact, safe-area, say-length, caption | first-line, caption-price |
+| ice-splash | product | instagram | showcase | 90 | 100 | 1 | safe-area-contact, safe-area, text-crowd | none |
 | kigali-market | cinematic | instagram | brand | 88 | 100 | 1 | phone-bar, safe-area-contact, safe-area | none |
 | kigali-price-first | ads | facebook | direct | 97 | 92 | 1 | say-length | hashtag-count |
-| kinetic-type | motion | instagram | showcase | 92 | 100 | 10 | safe-area-contact, say-length | none |
+| kinetic-type | motion | instagram | showcase | 90 | 100 | 10 | safe-area-contact, safe-area, say-length | none |
 | macro-detail | product | instagram | showcase | 90 | 100 | 9 | safe-area-contact, safe-area, say-length | none |
 | marketplace-listing | marketplace | facebook | list | 93 | 92 | 1 | length, say-length | hashtag-count |
 | offer-flash | ads | facebook | direct | 92 | 80 | 0 | phone-bar, length | caption-cta, hashtag-count |
-| price-drop | promo | instagram | direct | 95 | 100 | 0 | safe-area-contact | none |
+| price-drop | promo | instagram | direct | 93 | 100 | 0 | safe-area-contact, safe-area | none |
 | product-hero | product | instagram | list | 93 | 100 | 9 | safe-area-contact, safe-area | none |
 | showroom-turntable | 3d | instagram | showcase | 90 | 100 | 8 | safe-area-contact, safe-area, say-length | none |
-| story-cinematic | cinematic | instagram | luxury | 93 | 100 | 0 | phone-bar, say-length | none |
+| story-cinematic | cinematic | instagram | luxury | 85 | 100 | 0 | phone-bar, safe-area-contact, safe-area, say-length | none |
 | studio-turntable | product | instagram | showcase | 86 | 100 | 0 | phone-bar, safe-area-contact, safe-area, say-length | none |
 | tiktok-3-reasons | tiktok | tiktok | list | 90 | 100 | 0 | safe-area-contact, safe-area, say-length | none |
 | tiktok-gadget | tiktok | tiktok | direct | 86 | 89 | 1 | safe-area-contact, safe-area, length, say-length | first-line |
 | tiktok-secret | tiktok | tiktok | direct | 89 | 100 | 0 | safe-area-contact, safe-area, length | none |
 | tv-spot | ads | facebook | brand | 88 | 92 | 1 | phone-bar, safe-area-contact, say-length | hashtag-count |
-| typography-poster | motion | instagram | list | 92 | 100 | 1 | safe-area-contact, say-length | none |
+| typography-poster | motion | instagram | list | 90 | 100 | 1 | safe-area-contact, safe-area, say-length | none |
 | ugc-before-after | ugc | instagram | showcase | 90 | 100 | 1 | safe-area-contact, safe-area, text-crowd | none |
-| ugc-pov | ugc | instagram | showcase | 85 | 100 | 2 | phone-bar, safe-area-contact, safe-area, length | none |
+| ugc-pov | ugc | instagram | showcase | 89 | 100 | 2 | phone-bar, safe-area-contact, safe-area | none |
 | ugc-review | ugc | instagram | showcase | 93 | 100 | 1 | safe-area-contact, safe-area | none |
-| ugc-unboxing | ugc | instagram | showcase | 92 | 100 | 0 | safe-area-contact, say-length | none |
+| ugc-unboxing | ugc | instagram | showcase | 90 | 100 | 0 | safe-area-contact, safe-area, say-length | none |
 
 ## The three most common misses
 
-1. **design safe-area-contact** in 27 of 33 designs. Example: "Call / WhatsApp 0788 300 400" in scene 1 and 1 more: the price, number or call to action goes under the app's buttons (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
-2. **design safe-area** in 17 of 33 designs. Example: "6.7-inch AMOLED screen" in scene 2 and 1 more goes outside the safe area (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
-3. **design say-length** in 15 of 33 designs. Example: The say line of scene 2 has 8 words for 2 s (about 2.5 words a second).
+1. **design safe-area-contact** in 29 of 33 designs. Example: "0788 300 400" in scene 5: the price, number or call to action goes under the app's buttons (instagram: y 0.12 to 0.78, x 0.07 to 0.85).
+2. **design safe-area** in 28 of 33 designs. Example: "Samsung Galaxy A56" in scene 1 and 4 more goes outside the safe area (instagram: y 0.12 to 0.78, x 0.07 to 0.85).
+3. **design say-length** in 15 of 33 designs. Example: The say line of scene 5 has 13 words for 3 s (about 2.5 words a second).
 
-All misses by count: design safe-area-contact 27, design safe-area 17, design say-length 15, design phone-bar 10, caption hashtag-count 6, design length 6, caption first-line 5, design text-crowd 3, caption caption-price 2, design caption 2, caption caption-cta 1.
+All misses by count: design safe-area-contact 29, design safe-area 28, design say-length 15, design phone-bar 10, caption hashtag-count 6, caption first-line 5, design length 5, design text-crowd 3, caption caption-price 2, design caption 2, caption caption-cta 1.
 
 ## The five lowest designs
+
+**dark-minimal** (motion, instagram, luxury): design 84, caption 85.
+
+- phone-bar (scene 1): The number is missing from scenes 1, 2, 3, 4; keep it on screen from 0 s to the end (a small quiet line is enough for this template).
+- safe-area-contact (scene 5): "0788 300 400" in scene 5: the price, number or call to action goes under the app's buttons (instagram: y 0.12 to 0.78, x 0.07 to 0.85).
+- safe-area (scene 1): "Samsung Galaxy A56" in scene 1 and 4 more goes outside the safe area (instagram: y 0.12 to 0.78, x 0.07 to 0.85).
+- caption: The post caption is missing the price.
+- first-line: Put the product and the price or offer in the first 60 characters ("Jumpsuit Diras kuri 18k gusa", "Commercial blender, 48,000 RWF").
+- caption-price: Add the price (420,000 RWF).
 
 **golden-hour** (cinematic, instagram, luxury): design 85, caption 89.
 
 - phone-bar (scene 2): The number is missing from scenes 2, 3, 4; keep it on screen from 0 s to the end (a small quiet line is enough for this template).
-- safe-area-contact (scene 1): "Call / WhatsApp 0788 300 400" in scene 1 and 1 more: the price, number or call to action goes under the app's buttons (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
-- safe-area (scene 2): "6.7-inch AMOLED screen" in scene 2 and 1 more goes outside the safe area (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
+- safe-area-contact (scene 1): "420,000 RWF" in scene 1 and 3 more: the price, number or call to action goes under the app's buttons (instagram: y 0.12 to 0.78, x 0.07 to 0.85).
+- safe-area (scene 1): "Samsung Galaxy A56 5G" in scene 1 and 9 more goes outside the safe area (instagram: y 0.12 to 0.78, x 0.07 to 0.85).
 - text-crowd (scene 4): Scene 4 has 4 text lines besides the price and number; a luxury template keeps to 2.
 - first-line: Put the product and the price or offer in the first 60 characters ("Jumpsuit Diras kuri 18k gusa", "Commercial blender, 48,000 RWF").
 
-**ugc-pov** (ugc, instagram, showcase): design 85, caption 100.
+**story-cinematic** (cinematic, instagram, luxury): design 85, caption 100.
 
-- phone-bar (scene 1): The number is missing from scenes 1, 2, 3; keep it on screen from 0 s to the end (a small quiet line is enough).
-- safe-area-contact (scene 1): "420,000 RWF" in scene 1 and 1 more: the price, number or call to action goes under the app's buttons (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
-- safe-area (scene 2): "6.7-inch AMOLED screen" in scene 2 and 1 more goes outside the safe area (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
-- length: 12 s is outside 15 to 25 s for ugc testimonial on instagram.
+- phone-bar (scene 2): The number is missing from scenes 2, 3, 4; keep it on screen from 0 s to the end (a small quiet line is enough for this template).
+- safe-area-contact (scene 1): "420,000 RWF" in scene 1 and 2 more: the price, number or call to action goes under the app's buttons (instagram: y 0.12 to 0.78, x 0.07 to 0.85).
+- safe-area (scene 1): "Galaxy A56 5G" in scene 1 and 7 more goes outside the safe area (instagram: y 0.12 to 0.78, x 0.07 to 0.85).
+- say-length (scene 5): The say line of scene 5 has 13 words for 3 s (about 2.5 words a second).
 
 **colour-options** (marketplace, facebook, list): design 86, caption 92.
 
@@ -77,20 +86,14 @@ All misses by count: design safe-area-contact 27, design safe-area 17, design sa
 - say-length (scene 2): The say line of scene 2 has 8 words for 2 s (about 2.5 words a second).
 - hashtag-count: 5 hashtags; captions that work on Facebook use 0 to 3.
 
-**studio-turntable** (product, instagram, showcase): design 86, caption 100.
+**hypermotion** (motion, instagram, showcase): design 86, caption 85.
 
-- phone-bar (scene 1): The number is missing from scenes 1, 2, 3, 4; keep it on screen from 0 s to the end (a small quiet line is enough).
-- safe-area-contact (scene 5): "0788 300 400" in scene 5: the price, number or call to action goes under the app's buttons (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
-- safe-area (scene 3): "5,000 mAh battery" in scene 3 goes outside the safe area (instagram: y 0.12 to 0.78, x 0.07 to 0.93).
-- say-length (scene 5): The say line of scene 5 has 9 words for 2 s (about 2.5 words a second).
-
-**tiktok-gadget** (tiktok, tiktok, direct): design 86, caption 89.
-
-- safe-area-contact (scene 1): "WhatsApp / Call 0788 300 400" in scene 1 and 8 more: the price, number or call to action goes under the app's buttons (tiktok: y 0.12 to 0.78, x 0.07 to 0.85).
-- safe-area (scene 1): "Genuine with 12-month warranty" in scene 1 and 9 more goes outside the safe area (tiktok: y 0.12 to 0.78, x 0.07 to 0.85).
-- length: 12 s is outside 15 to 25 s for product reveal on tiktok.
-- say-length (scene 4): The say line of scene 4 has 9 words for 1.7 s (about 2.5 words a second).
+- safe-area-contact (scene 1): "420,000 RWF" in scene 1 and 8 more: the price, number or call to action goes under the app's buttons (instagram: y 0.12 to 0.78, x 0.07 to 0.85).
+- safe-area (scene 1): "Found your next 5G phone?" in scene 1 and 9 more goes outside the safe area (instagram: y 0.12 to 0.78, x 0.07 to 0.85).
+- say-length (scene 4): The say line of scene 4 has 8 words for 2 s (about 2.5 words a second).
+- caption: The post caption is missing the price.
 - first-line: Put the product and the price or offer in the first 60 characters ("Jumpsuit Diras kuri 18k gusa", "Commercial blender, 48,000 RWF").
+- caption-price: Add the price (420,000 RWF).
 
 ## Whose fault (17 October 2026)
 
