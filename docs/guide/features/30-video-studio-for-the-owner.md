@@ -1,7 +1,7 @@
 # The Video Studio, for the owner
 
 What you (the BuPulse owner) switch, watch and pay for in the Video Studio. The client side is in
-[The Video Studio, for clients](23-video-studio-for-clients.md); how the engine works is in
+[The Video Studio, for clients](29-video-studio-for-clients.md); how the engine works is in
 [Video Studio](20-video-studio.md), [Viral recipes](22-viral-recipes.md) and [AI clips](21-ai-clips.md).
 
 ## The two sites
