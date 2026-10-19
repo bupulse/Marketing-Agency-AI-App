@@ -110,6 +110,8 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
   const [busy, setBusy] = useState(false);
   const [serverProblems, setServerProblems] = useState<GraphProblem[]>([]);
   const [preview, setPreview] = useState(false);
+  // The size React Flow measured for each box: kept apart from the graph, because the canvas hides boxes it has not measured.
+  const [dims, setDims] = useState<Record<string, { width: number; height: number }>>({});
 
   const problems = useMemo(() => {
     const parsed = graphSchema.safeParse(graph);
@@ -125,6 +127,15 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
   }
 
   function onNodesChange(changes: NodeChange<StepNode>[]) {
+    const sized = changes.filter((c) => c.type === "dimensions" && c.dimensions);
+    if (sized.length) {
+      setDims((cur) => {
+        const next = { ...cur };
+        for (const c of sized) if (c.type === "dimensions" && c.dimensions) next[c.id] = c.dimensions;
+        return next;
+      });
+    }
+    if (sized.length === changes.length) return;
     // Positions and deletions come from the canvas; the graph stays the single source of truth.
     const applied = applyNodeChanges(changes, flow.nodes);
     const removed = changes.filter((c) => c.type === "remove").map((c) => c.id);
@@ -212,6 +223,8 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
     router.refresh();
   }
 
+  // Live with nothing new to publish.
+  const upToDate = automation.status === "LIVE" && !dirty && !automation.changed;
   const allProblems = [...problems, ...serverProblems.filter((s) => !problems.some((p) => p.message === s.message))];
 
   return (
@@ -243,8 +256,8 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
               <Play className="size-4" aria-hidden /> Resume
             </Button>
           ) : (
-            <Button size="sm" disabled={busy || allProblems.length > 0} onClick={onPublish} title={allProblems.length ? "Fix the points listed first" : undefined}>
-              {automation.status === "DRAFT" ? "Publish" : "Publish changes"}
+            <Button size="sm" disabled={busy || allProblems.length > 0 || upToDate} onClick={onPublish} title={allProblems.length ? "Fix the points listed first" : undefined}>
+              {automation.status === "DRAFT" ? "Publish" : upToDate ? "Published" : "Publish changes"}
             </Button>
           )}
         </span>
@@ -282,7 +295,7 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
             })}
           </div>
           <ReactFlow
-            nodes={flow.nodes.map((n) => ({ ...n, selected: n.id === selectedId }))}
+            nodes={flow.nodes.map((n) => ({ ...n, selected: n.id === selectedId, measured: dims[n.id] }))}
             edges={flow.edges}
             nodeTypes={NODE_TYPES}
             onNodesChange={onNodesChange}
@@ -298,7 +311,7 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
           >
             <Background gap={18} size={1} />
             <Controls showInteractive={false} />
-            <MiniMap pannable zoomable className="!hidden md:!block" />
+            <MiniMap pannable zoomable style={{ width: 150, height: 100 }} className="!hidden md:!block" />
           </ReactFlow>
         </GlassCard>
 

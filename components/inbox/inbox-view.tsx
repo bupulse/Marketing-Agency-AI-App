@@ -65,6 +65,8 @@ export function InboxView({ items, hasMore, counts, view, channel, q, channels, 
         if (!alive) return;
         if (result.ok) setThread(result.thread);
         else if (!quiet) toast(result.error, "error");
+        // Opening marks it read: refresh the list so its "new" badge goes at once.
+        if (!quiet && result.ok) router.refresh();
       });
     void load(false);
     const timer = setInterval(() => {
@@ -74,7 +76,7 @@ export function InboxView({ items, hasMore, counts, view, channel, q, channels, 
       alive = false;
       clearInterval(timer);
     };
-  }, [openId, toast]);
+  }, [openId, toast, router]);
   const loading = !!openId && thread?.id !== openId;
 
   useEffect(() => {
@@ -194,10 +196,11 @@ function ThreadPanel({ thread, team, actorId, onBack, onChanged, afterChange }: 
   const [mode, setMode] = useState<"reply" | "note">("reply");
   const [busy, setBusy] = useState(false);
   const [newTag, setNewTag] = useState("");
-  const bottom = useRef<HTMLDivElement | null>(null);
+  const list = useRef<HTMLOListElement | null>(null);
 
+  // Keep the newest message in view inside the message list (never scroll the whole page).
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: "end" });
+    if (list.current) list.current.scrollTop = list.current.scrollHeight;
   }, [thread.messages.length]);
 
   // Meta channels only allow replies within 24 hours of the person's last message (worked out on the server).
@@ -247,7 +250,7 @@ function ThreadPanel({ thread, team, actorId, onBack, onChanged, afterChange }: 
         <button type="button" onClick={onBack} className="flex size-9 items-center justify-center rounded-full hover:bg-soft lg:hidden" aria-label="Back to conversations">
           <ArrowLeft className="size-5" aria-hidden />
         </button>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-[calc(100%-3.5rem)] sm:basis-auto">
           <Link href={`/dashboard/contacts/${thread.contact.id}`} className="block truncate text-[16px] font-semibold hover:underline">
             {thread.contact.name}
           </Link>
@@ -317,7 +320,7 @@ function ThreadPanel({ thread, team, actorId, onBack, onChanged, afterChange }: 
         </span>
       </div>
 
-      <ol className="flex flex-1 flex-col gap-2 overflow-y-auto px-4 py-4" aria-live="polite">
+      <ol ref={list} className="flex max-h-[60vh] min-h-[240px] flex-1 flex-col gap-2 overflow-y-auto px-4 py-4" aria-live="polite">
         {thread.messages.map((m) => (
           <li key={m.id} className={cn("flex flex-col gap-1", m.direction === "INBOUND" ? "items-start" : "items-end")}>
             <div
@@ -341,13 +344,12 @@ function ThreadPanel({ thread, team, actorId, onBack, onChanged, afterChange }: 
               )}
             </div>
             <span className="px-1 text-[11px] text-muted">
-              {m.direction === "OUTBOUND" ? (m.author === "AGENT" ? "Team" : m.author === "BOT" ? "Automation" : "BuPulse") + " · " : ""}
+              {m.direction === "OUTBOUND" ? (m.author === "AGENT" ? "Team" : m.author === "BOT" ? "Automatic reply" : "BuPulse") + " · " : ""}
               {timeAgo(m.at)}
               {m.status === "FAILED" && <span className="text-red-600"> · Not sent{m.error ? `: ${m.error}` : ""}</span>}
             </span>
           </li>
         ))}
-        <div ref={bottom} />
       </ol>
 
       <footer className="flex flex-col gap-2 border-t border-line p-3">
