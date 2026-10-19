@@ -43,6 +43,9 @@ COMMIT;
 ```
 (The partners migration creates no enum types.)
 
+Also applied (19 Oct): `20261025500000_first_post_preview` (one table). Rollback: `DROP TABLE IF EXISTS "FirstPostPreview" CASCADE;`
+and delete its `_prisma_migrations` row.
+
 ## Rollback of the two engine migrations on TEST (only if needed)
 ```sql
 BEGIN;
