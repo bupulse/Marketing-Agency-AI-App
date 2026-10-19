@@ -3,7 +3,7 @@
 The Instagram and Facebook channels of the conversations engine (the engine and its contract: `docs/INBOX.md`). A
 business switches **Answer comments and messages** on per account on the Channels page; from then on that account's
 new comments and DMs come into the inbox through `ingestInbound()`, and automations, the AI and the team answer through
-the channel adapters. Owner steps: [guide page 20](guide/features/24-social-inbox.md).
+the channel adapters. Owner steps: [guide page 24](guide/features/24-social-inbox.md).
 
 ## Two routes, one switch
 
