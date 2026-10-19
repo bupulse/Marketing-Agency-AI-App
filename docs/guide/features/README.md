@@ -33,6 +33,7 @@ trial and Inzu Fashion waiting for its demo. All names and numbers in them are m
 | 26 | Revenue goal tracker (Admin) | `/admin/revenue`, `/admin/settings#goal` | [26-revenue-goal-tracker.md](26-revenue-goal-tracker.md) |
 | 27 | Inbox and contacts | `/dashboard/inbox`, `/dashboard/contacts`, `/dashboard/contacts/[id]` | [27-inbox-and-contacts.md](27-inbox-and-contacts.md) |
 | 28 | Automations | `/dashboard/automations`, `/dashboard/automations/[id]` | [28-automations.md](28-automations.md) |
+| 29 | Free first-post preview (before the demo) | the demo screen, Admin → Settings → Free first-post preview | [29-first-post-preview.md](29-first-post-preview.md) |
 
 ## Which plan has what
 

@@ -23,6 +23,8 @@ export async function saveSettingsAction(f: FormData) {
     for (const name of NAMES) if (f.has(name)) await setSetting(ctx, name, text(f, name));
     // A checkbox is absent when unticked: the currency panel says it carries the switch.
     if (f.has("currencyPanel")) await setSetting(ctx, "eurRateAuto", f.get("eurRateAuto") === "on");
+    // The first-post preview switch spends AI money: its panel says it carries the switch, like the currency panel.
+    if (f.has("previewPanel")) await setSetting(ctx, "firstPostPreview", f.get("firstPostPreview") === "on");
   });
 }
 
