@@ -34,8 +34,8 @@ cannot make gives its credits back.
 - 2 or 3 clips a video, 4, 6 or 8 seconds each, 720p, 24 frames a second.
 - Google can refuse a clip under its safety rules (for example a photo that shows a real person's face). That clip's
   credits come back and the message says so; try another photo.
-- When the admin switches **Google Veo AI clips** off (Admin -> Services), the choice is replaced by a short note:
-  videos are then made from your photos and your own clips.
+- **Google Veo AI clips** (Admin -> Services) is **off until the owner switches it on**, because Veo is paid per second.
+  While it is off, the choice is replaced by a short note: videos are then made from your photos and your own clips.
 
 ## For developers
 
@@ -57,7 +57,7 @@ More: `docs/VIDEO_ENGINE.md` "Veo AI clips", costs in `docs/AI_COSTS.md` "Veo AI
 | Symptom | Where to look | Usual fix |
 | --- | --- | --- |
 | "AI clips are not available right now: they are waiting for their Google key." | `GEMINI_API_KEY` in `.env` or Admin -> Services | Add the Gemini key. |
-| "AI clips are paused right now." | Admin -> Services, Google Veo AI clips | Switch it on. |
+| "AI clips are paused right now." | Admin -> Services, Google Veo AI clips (off until switched on) | Switch it on. |
 | "Google Veo needs billing turned on…" | Google AI Studio, Billing, for the key's project | Turn billing on (Veo has no free tier) or top up the prepaid credit. |
 | "Google Veo is at its limit right now…" | Google's per-minute or per-day quota | Wait a few minutes; fewer clips at once. |
 | "Google declined this clip under its safety rules." | The photo (a real person's face?) or the shot | Use a product-only photo; the credits are already back. |
