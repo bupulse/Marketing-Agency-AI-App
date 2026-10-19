@@ -154,8 +154,12 @@ stay in your generations as previews.
 
 ## Limits
 
-- **Premium 3D:** renders one clip at a time on the studio computer (about 20 an hour at most). Its clips are silent
-  until Blender mixes sound.
+- **Premium 3D:** renders one clip at a time on the studio computer (about 20 an hour at most), the owner's and the
+  clients' clips in one queue. For clients it is **"coming soon" until the owner switches Premium 3D (Blender) on** in
+  Admin -> Services. A client's clip: 100 credits at 540p, 150 at 720p, 70 to render again (a new clip in the list);
+  the credits come back if the design, the render or the save fails, or if the studio restarts during the design. It
+  waits as "queued" while another clip renders, and appears in the Gallery's "Video Studio" folder and in BuPulse's
+  Videos library when ready. Client clips get library music; their voice-over comes later.
 - **Real video:**
   - **Faces:** no photos of real people's faces; use the character library.
   - **Kinyarwanda:** Seedance does not speak Kinyarwanda reliably, so a Kinyarwanda business gets music and sound only,

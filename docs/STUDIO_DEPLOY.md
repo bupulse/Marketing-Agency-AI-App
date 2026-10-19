@@ -398,6 +398,20 @@ keys file and the real BuPulse database, while the test studio (port 3100, `vide
 What is not in the first release: Seedance real video (waits for the BytePlus key, free previews until then) and Premium 3D
 ("coming soon"). Both can be switched on later without any change for clients' existing videos.
 
+### Owner checks to run (on TEST, before switching these on for clients)
+
+These change shared TEST data (a service switch, a test business's credits), so they are yours to run; the code is built
+and covered by mocked tests.
+1. **Premium 3D for clients (item 9):** in Admin -> Services switch **Premium 3D (Blender)** on for TEST. Open the test
+   studio as **E2E Starter Test** (it has 100 video credits), pick Premium 3D at **540p** and Generate. Expect: 100 credits
+   taken, "Designing", "Waiting", "Rendering" (about 3 to 10 minutes on this Mac), then the clip in the drawer, in the
+   Gallery's "Video Studio" folder and in BuPulse's Videos library. Switch it off again afterwards if clients should not
+   see it yet.
+2. **Veo AI clips for a client:** give a TEST business **230 video credits or more** and 1 monthly video, switch **Google
+   Veo AI clips** on in Admin -> Services, then make a viral video with **3 AI clips** (about $0.60 of Veo). Expect: 230
+   credits taken (35 + 195), "Making AI clip 1 of 3…", the three clips in the Gallery's "AI clips" folder, and the MP4
+   saved as ready in the Videos library with no clip sound in it. Switch Veo off again if it should stay off.
+
 ## Questions for the owner
 
 1. Which hosting option to start with (A to open sooner, B when clients depend on it every day)?
