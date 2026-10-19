@@ -55,7 +55,7 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/dash
     };
   });
   // Instagram and Facebook accounts carry the "Answer comments and messages" switch (lib/social/inbox/accounts.ts).
-  const inbox = business ? await inboxStates(business.id) : {};
+  const inbox = business ? await inboxStates(business.id, entitlements.inPlan.has("inbox")) : {};
   const accounts: AccountInfo[] = social.map((a) => ({ id: a.id, network: a.network, displayName: a.displayName, externalAccountId: a.externalAccountId, accountType: a.accountType, avatarUrl: a.avatarUrl, status: a.status, postingMode: a.postingMode, inbox: inbox[a.id] }));
 
   // After OAuth with several accounts, the encrypted cookie holds them until the user picks.

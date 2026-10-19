@@ -11,7 +11,9 @@ const mocks = vi.hoisted(() => ({
   ingest: vi.fn(),
   scheduleJob: vi.fn(),
   isServiceEnabled: vi.fn(),
+  hasFeature: vi.fn(),
 }));
+vi.mock("@/lib/entitlements", () => ({ hasFeature: mocks.hasFeature }));
 vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/crypto", () => ({ decrypt: async (v: string) => v }));
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
@@ -181,6 +183,7 @@ describe("runPoll (the due job)", () => {
   beforeEach(() => {
     process.env.COMPOSIO_API_KEY = "test-key";
     mocks.isServiceEnabled.mockResolvedValue(true);
+    mocks.hasFeature.mockResolvedValue(true);
     mocks.prisma.adminSetting.findMany.mockResolvedValue([]);
     mocks.prisma.adminSetting.findUnique.mockResolvedValue(null);
     mocks.prisma.connection.count.mockResolvedValue(1);
@@ -215,6 +218,14 @@ describe("runPoll (the due job)", () => {
     mocks.prisma.adminSetting.findUnique.mockResolvedValue({ key: "composio.calls.2026-10", value: 17_499 });
     const r = await runPoll("c1", KIGALI_NOON);
     expect(r.outcome).toBe("limit");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("makes no calls for a business whose plan lost the Inbox feature", async () => {
+    mocks.prisma.connection.findUnique.mockResolvedValue(row());
+    mocks.hasFeature.mockResolvedValue(false);
+    expect((await runPoll("c1", KIGALI_NOON)).outcome).toBe("stopped");
+    expect(mocks.hasFeature).toHaveBeenCalledWith("biz", "inbox");
     expect(fetch).not.toHaveBeenCalled();
   });
 

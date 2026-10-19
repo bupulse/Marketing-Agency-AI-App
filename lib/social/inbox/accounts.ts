@@ -1,6 +1,7 @@
 import "server-only";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { hasFeature } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { newCursor, parseCursor } from "./cursor";
 import { subscribeToWebhooks } from "./meta-subscribe";
@@ -11,6 +12,8 @@ import { routeFor } from "./transport";
 // The "Answer comments and messages" switch on the Channels page, per Instagram or Facebook account.
 
 export const INBOX_NETWORKS = ["instagram", "facebook"] as const;
+
+const NOT_IN_PLAN = "Answering comments and messages is part of the Inbox feature. Add it in Billing → Add features.";
 
 export type InboxState = {
   enabled: boolean;
@@ -28,8 +31,11 @@ const ago = (iso: string, now: Date) => {
   return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} days ago`;
 };
 
-/** The switch's state for each of the business's Instagram and Facebook accounts, by connection id. */
-export async function inboxStates(businessId: string, now = new Date()): Promise<Record<string, InboxState>> {
+/**
+ * The switch's state for each of the business's Instagram and Facebook accounts, by connection id. `inPlan`: the plan
+ * includes the Inbox feature (without it the switch can only be turned off).
+ */
+export async function inboxStates(businessId: string, inPlan: boolean, now = new Date()): Promise<Record<string, InboxState>> {
   const [rows, settings] = await Promise.all([
     prisma.connection.findMany({ where: { businessId, kind: "SOCIAL", provider: { in: [...INBOX_NETWORKS] } }, select: { id: true, method: true, inboxEnabled: true, inboxCursor: true } }),
     getInboxSettings(),
@@ -39,11 +45,12 @@ export async function inboxStates(businessId: string, now = new Date()): Promise
     const usable = routeFor(r.method, settings.transport).ok;
     const cursor = r.inboxCursor ? parseCursor(r.inboxCursor, now) : null;
     let note: string | null = null;
-    if (!usable) note = "Reconnect this account to answer its comments and messages in BuPulse.";
+    if (!inPlan) note = NOT_IN_PLAN;
+    else if (!usable) note = "Reconnect this account to answer its comments and messages in BuPulse.";
     else if (r.inboxEnabled && settings.transport === "composio") {
       note = cursor?.lastError ? `Last check had a problem: ${cursor.lastError}` : cursor?.checkedAt ? `New comments and messages are checked every few minutes. Last check ${ago(cursor.checkedAt, now)}.` : "The first check runs within a few minutes.";
     } else if (r.inboxEnabled) note = "New comments and messages arrive as they happen.";
-    out[r.id] = { enabled: r.inboxEnabled, usable, note };
+    out[r.id] = { enabled: r.inboxEnabled, usable: usable && inPlan, note };
   }
   return out;
 }
@@ -60,6 +67,7 @@ export async function setInboxEnabled(businessId: string, connectionId: string, 
     await stopPolling(row.id);
     return { ok: true, message: "BuPulse no longer answers this account's comments and messages." };
   }
+  if (!(await hasFeature(businessId, "inbox"))) return { ok: false, message: NOT_IN_PLAN };
   const { transport } = await getInboxSettings();
   if (!routeFor(row.method, transport).ok) return { ok: false, message: "Reconnect this account first, then switch this on." };
   if (row.status !== "ACTIVE" && row.status !== "EXPIRING") return { ok: false, message: "Reconnect this account first, then switch this on." };

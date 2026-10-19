@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { hasFeature } from "@/lib/entitlements";
 import { ingestInbound } from "@/lib/inbox/ingest";
 import type { WebhookItem } from "./meta-webhook";
 
@@ -13,10 +14,13 @@ export async function deliverWebhookItems(items: WebhookItem[]): Promise<{ store
     const key = `${item.network}:${item.accountId}`;
     let accounts = cache.get(key);
     if (!accounts) {
-      accounts = await prisma.connection.findMany({
+      const rows = await prisma.connection.findMany({
         where: { provider: item.network, externalAccountId: item.accountId, inboxEnabled: true, method: "DIRECT" },
         select: { id: true, businessId: true },
       });
+      // Only businesses whose plan includes the Inbox feature.
+      accounts = [];
+      for (const r of rows) if (await hasFeature(r.businessId, "inbox")) accounts.push(r);
       cache.set(key, accounts);
     }
     if (!accounts.length) skipped++;

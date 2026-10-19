@@ -2,6 +2,7 @@ import "server-only";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
+import { hasFeature } from "@/lib/entitlements";
 import { logError } from "@/lib/errors";
 import { ingestInbound } from "@/lib/inbox/ingest";
 import { cancelJob, registerJobHandler, scheduleJob } from "@/lib/jobs/due";
@@ -67,7 +68,7 @@ export async function sweep(now = new Date()): Promise<number> {
   const have = new Set(jobs.map((j) => j.dedupeKey));
   let started = 0;
   for (const r of rows) {
-    if (have.has(pollKey(r.id))) continue;
+    if (have.has(pollKey(r.id)) || !(await hasFeature(r.businessId, "inbox"))) continue;
     await scheduleJob({ kind: POLL_KIND, runAt: now, businessId: r.businessId, dedupeKey: pollKey(r.id), payload: { connectionId: r.id } });
     started++;
   }
@@ -87,6 +88,8 @@ export async function runPoll(connectionId: string, now = new Date()): Promise<H
   if (!row || !row.inboxEnabled || !INBOX_NETWORKS.includes(row.provider) || row.method !== "COMPOSIO" || !row.accessTokenEncrypted || (row.status !== "ACTIVE" && row.status !== "EXPIRING") || settings.transport !== "composio") {
     return { outcome: "stopped", next: null };
   }
+  // The plan lost the Inbox feature: no more calls for this business (switching it back on restarts the checks).
+  if (!(await hasFeature(row.businessId, "inbox"))) return { outcome: "stopped", next: null };
   if (!(await composioReady())) return { outcome: "waiting", next: new Date(now.getTime() + WAIT_MINUTES * 60_000) };
   const tz = row.business.timezone || "UTC";
   if (isNight(now, tz)) return { outcome: "night", next: new Date(now.getTime() + minutesUntilMorning(now, tz) * 60_000) };

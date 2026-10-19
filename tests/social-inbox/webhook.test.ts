@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/errors", () => ({ logError: vi.fn() }));
 vi.mock("@/lib/inbox/ingest", () => ({ ingestInbound: mocks.ingest }));
+vi.mock("@/lib/entitlements", () => ({ hasFeature: async () => true }));
 
 import { GET, POST } from "@/app/api/meta/webhook/route";
 import { readWebhook, verifySignature } from "@/lib/social/inbox/meta-webhook";
