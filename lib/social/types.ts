@@ -90,8 +90,11 @@ export interface SocialProvider {
   readonly rules: NetworkRules;
   /** True when this network's developer app keys are set; the Connect button is hidden otherwise. */
   isConfigured(): boolean;
-  /** URL of the network's consent page. `state` is opaque and signed by the caller. */
-  authorizeUrl(input: { state: string; codeChallenge?: string; redirectUri: string; variant?: string }): string;
+  /**
+   * URL of the network's consent page. `state` is opaque and signed by the caller. `extraScopes`: permissions asked for
+   * on top of the network's own (the social inbox's, only on the direct Meta route: lib/social/inbox/scopes.ts).
+   */
+  authorizeUrl(input: { state: string; codeChallenge?: string; redirectUri: string; variant?: string; extraScopes?: string[] }): string;
   /** Exchanges the OAuth code and lists the accounts the user may connect. */
   finishOAuth(input: { code: string; codeVerifier?: string; redirectUri: string; variant?: string }): Promise<OAuthResult>;
   /** Refreshes tokens before they expire; undefined for networks whose tokens do not need it. */

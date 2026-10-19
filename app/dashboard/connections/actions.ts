@@ -11,6 +11,7 @@ import { logError } from "@/lib/errors";
 import { disconnect, saveConnections } from "@/lib/social/connections";
 import { openPending, PENDING_PATH, pendingCookieNames } from "@/lib/social/oauth";
 import { deleteConnectedAccount, isComposioResult, scopeAccount } from "@/lib/social/composio/client";
+import { setInboxEnabled } from "@/lib/social/inbox/accounts";
 
 async function businessIdFor(userId: string) {
   return (await prisma.business.findUnique({ where: { userId }, select: { id: true } }))?.id ?? null;
@@ -61,4 +62,23 @@ export async function cancelPickAction() {
   if (pending && composioAccount) await deleteConnectedAccount(pending.network, composioAccount);
   await clearPending();
   redirect("/dashboard/connections");
+}
+
+/**
+ * "Answer comments and messages" on an Instagram or Facebook account (docs/SOCIAL_INBOX.md). Only the business's own
+ * accounts; the result is a plain message for the switch.
+ */
+export async function setInboxEnabledAction(id: string, enabled: boolean): Promise<{ ok: boolean; message: string }> {
+  const user = await requireActiveUser("channels");
+  const parsed = z.object({ id: z.string().min(1).max(64), enabled: z.boolean() }).safeParse({ id, enabled });
+  const businessId = await businessIdFor(user.id);
+  if (!parsed.success || !businessId) return { ok: false, message: "That account is not connected." };
+  try {
+    const result = await setInboxEnabled(businessId, parsed.data.id, parsed.data.enabled);
+    revalidatePath("/dashboard/connections");
+    return result;
+  } catch (error) {
+    await logError(error, { source: "social.inbox.switch", userId: user.id });
+    return { ok: false, message: "That did not work. Please try again." };
+  }
 }

@@ -1,6 +1,7 @@
 import "server-only";
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { countComposioCalls } from "../inbox/budget";
 import { SocialError, type Network } from "../types";
 
 // "BuPulse-Socials": BuPulse's own Composio account (COMPOSIO_API_KEY, Admin -> Services -> Composio) connects the
@@ -39,10 +40,17 @@ export function viaComposio(network: Network): boolean {
 
 type ApiError = { error?: { message?: string; code?: string | number } | string; message?: string };
 
-/** One Composio API call. Composio itself failing (bad key, outage) is never the client's fault: "temporary". */
-export async function composioApi<T>(network: Network, method: "GET" | "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
+/** `reserved`: the caller already counted this call against the monthly limit (lib/social/inbox/budget.ts). */
+export type CallOptions = { reserved?: boolean };
+
+/**
+ * One Composio API call. Composio itself failing (bad key, outage) is never the client's fault: "temporary".
+ * Every call is counted for the month (lib/social/inbox/budget.ts) so BuPulse stays inside Composio's free calls.
+ */
+export async function composioApi<T>(network: Network, method: "GET" | "POST" | "DELETE", path: string, body?: unknown, options: CallOptions = {}): Promise<T> {
   const key = process.env.COMPOSIO_API_KEY;
   if (!key) throw new SocialError("BuPulse-Socials is not set up yet", "temporary", network);
+  if (!options.reserved) await countComposioCalls(1);
   let response: Response;
   try {
     response = await fetch(`${COMPOSIO_API}${path}`, {
@@ -80,9 +88,46 @@ export function toolError(network: Network, message: string): SocialError {
 type ExecuteResponse = { data?: unknown; successful?: boolean; error?: string | null };
 
 /** Runs one Composio tool for a business's connected account and returns its `data`. */
-export async function runTool<T = Record<string, unknown>>(network: Network, slug: string, connectedAccountId: string, userId: string | undefined, args: Record<string, unknown>): Promise<T> {
-  const r = await composioApi<ExecuteResponse>(network, "POST", `/tools/execute/${slug}`, { connected_account_id: connectedAccountId, ...(userId ? { user_id: userId } : {}), arguments: args });
+export async function runTool<T = Record<string, unknown>>(
+  network: Network,
+  slug: string,
+  connectedAccountId: string,
+  userId: string | undefined,
+  args: Record<string, unknown>,
+  options: CallOptions = {},
+): Promise<T> {
+  const r = await composioApi<ExecuteResponse>(network, "POST", `/tools/execute/${slug}`, { connected_account_id: connectedAccountId, ...(userId ? { user_id: userId } : {}), arguments: args }, options);
   if (!r.successful) throw toolError(network, r.error || `${slug} failed`);
+  return (r.data ?? {}) as T;
+}
+
+type ProxyResponse = { data?: unknown; status?: number };
+
+/**
+ * Calls a network endpoint Composio has no tool for, with the connected account's own sign-in (Composio's proxy,
+ * POST /tools/execute/proxy). `endpoint` is a full URL or a path relative to the account's base URL. A network error
+ * comes back as a SocialError, the same as a tool's.
+ */
+export async function proxyRequest<T = Record<string, unknown>>(
+  network: Network,
+  connectedAccountId: string,
+  userId: string | undefined,
+  request: { endpoint: string; method: "GET" | "POST"; body?: Record<string, unknown> },
+  options: CallOptions = {},
+): Promise<T> {
+  const r = await composioApi<ProxyResponse>(
+    network,
+    "POST",
+    "/tools/execute/proxy",
+    { connected_account_id: connectedAccountId, ...(userId ? { user_id: userId } : {}), endpoint: request.endpoint, method: request.method, ...(request.body ? { body: request.body } : {}) },
+    options,
+  );
+  const status = typeof r.status === "number" ? r.status : 200;
+  if (status >= 400) {
+    const err = (r.data && typeof r.data === "object" ? (r.data as { error?: { message?: string; code?: number; error_subcode?: number } }).error : undefined) ?? {};
+    const detail = [err.message, err.code !== undefined ? `(#${err.code})` : "", err.error_subcode ? `subcode ${err.error_subcode}` : ""].filter(Boolean).join(" ");
+    throw toolError(network, detail || `error ${status}`);
+  }
   return (r.data ?? {}) as T;
 }
 

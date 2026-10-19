@@ -19,6 +19,7 @@ import { isInstagramViaFacebookConfigured } from "@/lib/social/providers/instagr
 import { allProviders, isNetwork } from "@/lib/social/registry";
 import { viaComposio } from "@/lib/social/composio/client";
 import { isServiceEnabled } from "@/lib/admin/switch";
+import { inboxStates } from "@/lib/social/inbox/accounts";
 
 export const metadata = { title: "Channels" };
 
@@ -53,7 +54,9 @@ export default async function ConnectionsPage({ searchParams }: PageProps<"/dash
       viaComposio: composio || undefined,
     };
   });
-  const accounts: AccountInfo[] = social.map((a) => ({ id: a.id, network: a.network, displayName: a.displayName, externalAccountId: a.externalAccountId, accountType: a.accountType, avatarUrl: a.avatarUrl, status: a.status, postingMode: a.postingMode }));
+  // Instagram and Facebook accounts carry the "Answer comments and messages" switch (lib/social/inbox/accounts.ts).
+  const inbox = business ? await inboxStates(business.id, entitlements.inPlan.has("inbox")) : {};
+  const accounts: AccountInfo[] = social.map((a) => ({ id: a.id, network: a.network, displayName: a.displayName, externalAccountId: a.externalAccountId, accountType: a.accountType, avatarUrl: a.avatarUrl, status: a.status, postingMode: a.postingMode, inbox: inbox[a.id] }));
 
   // After OAuth with several accounts, the encrypted cookie holds them until the user picks.
   const pick = (await searchParams).pick;
