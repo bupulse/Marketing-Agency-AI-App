@@ -8,7 +8,7 @@ software and its agents never send messages, post or contact anyone. Copy, adapt
 - **Kinyarwanda phrases are marked [RW, check]**: short greetings and polite phrases written by an AI. Read them once
   and correct them before using them. Where a whole message should be in Kinyarwanda, write it yourself in your own
   words: owners trust a message that sounds like a person from Kigali.
-- Replace everything in `<angle brackets>`. Keep `?ref=YOURCODE` on every link: it is how a sale counts for you (staff
+- Replace everything in `<angle brackets>`. Keep `?ref=YOURCODE` on every link (partners: after the partner programme opens): it is how a sale counts for you (staff
   links in Admin -> Sales -> My clients; partner links on your partner page).
 
 **On this page:** [The one-line pitch](#the-one-line-pitch) · [5-minute demo](#the-5-minute-demo) ·
@@ -187,9 +187,9 @@ Print it, or send it as an image on WhatsApp. Prices from the app on 19 October 
 2. **Free trial** right after the demo.
 3. **Pay with MoMo** in francs from your phone (or by card). Cancel any time; nothing is deleted.
 
-**Want only some features, more posts, or Instagram auto-replies?** Ask for a custom plan.
+**Want only some features or more posts?** Ask for a custom plan. **Instagram auto-replies: coming soon.**
 
-**Contact:** <your name> · <your WhatsApp number> · bupulse.com/?ref=<YOURCODE>
+**Contact:** <your name> · <your WhatsApp number> · bupulse.com/?ref=<YOURCODE> (partners: after the partner programme opens)
 
 ---
 
