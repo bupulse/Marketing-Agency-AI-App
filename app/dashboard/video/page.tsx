@@ -1,52 +1,45 @@
-import { Clapperboard } from "lucide-react";
 import { getAppContext } from "@/components/app/context";
-import { EmptyState } from "@/components/app/empty-state";
-import { featureGate } from "@/components/app/no-access";
+import { pageGate } from "@/components/app/no-access";
 import { PageHeader } from "@/components/app/page-header";
-import { Button } from "@/components/ui";
-import { CreateStudio, type StudioTemplate } from "@/components/video-studio/create-studio";
-import { subjectOptions } from "@/lib/knowledge/service";
-import { CLAUDE_VIDEO_CREDITS, VOICE_OVER_CREDITS } from "@/lib/video-engine/credits";
-import { TEMPLATE_CATEGORIES, VIDEO_TEMPLATES } from "@/lib/video-engine/templates";
-import { listStudioJobs, studioTracks } from "@/lib/video-studio/library";
+import { VideoLibrary, type StudioState } from "@/components/video-library/video-library";
+import { isServiceEnabled } from "@/lib/admin/switch";
+import { can } from "@/lib/team/roles";
+import { listLibraryVideos, markStudioVideosSeen } from "@/lib/video-library/service";
 
-export const metadata = { title: "Video Studio" };
+export const metadata = { title: "Videos" };
 
-// The Video Studio's Create page (docs/VIDEO_APP_INTEGRATION.md, task 6), first release: Motion videos only. Claude
-// designs the video (POST /api/video/design, video credits), this browser draws and encodes the MP4, and the MP4 is
-// saved into the Gallery's "Video Studio" folder.
-export default async function VideoStudioPage() {
-  const blocked = await featureGate("videoStudio");
+const REASONS = new Set(["off", "permission", "plan", "error"]);
+
+// The Videos library (docs/VIDEO_STUDIO_SPLIT.md): every video BuPulse made for the company, from the Video Studio
+// (studio.bupulse.com, opened in a new tab) and the daily post slideshows, to watch, download, schedule or delete.
+// ?v=<job id> opens on one video (the "Your video is ready" email); ?studio=<reason> says why the studio did not open.
+export default async function VideosPage({ searchParams }: PageProps<"/dashboard/video">) {
+  const blocked = await pageGate("content");
   if (blocked) return blocked;
-  const { business, usage } = await getAppContext();
-  const [options, jobs, tracks] = await Promise.all([subjectOptions(business.id), listStudioJobs(business.id), studioTracks()]);
-  // Presenter templates wait for the AI presenters (a later release); the designer would fall back to the product anyway.
-  const templates: StudioTemplate[] = VIDEO_TEMPLATES.filter((t) => !t.presenter).map(({ id, category, name, blurb, seconds, hook }) => ({ id, category, name, blurb, seconds: seconds ?? null, hook: hook ?? null }));
-  const categories = TEMPLATE_CATEGORIES.filter((c) => templates.some((t) => t.category === c.id)).map((c) => ({ id: c.id as string, name: c.name as string }));
+  const { business, role, usage } = await getAppContext();
+  const params = await searchParams;
+  const reason = typeof params.studio === "string" && REASONS.has(params.studio) ? params.studio : null;
+  const focus = typeof params.v === "string" ? params.v.slice(0, 40) : null;
+
+  const [videos, studioOn] = await Promise.all([listLibraryVideos(business.id), isServiceEnabled("studio")]);
+  // Opening the library is what "seen" means for the bell; the cards still say "New" this once.
+  await markStudioVideosSeen(business.id, videos.filter((v) => v.isNew).map((v) => v.id)).catch(() => {});
+
+  const credits = { used: usage.used.videoCredits ?? 0, limit: usage.limits.videoCredits ?? 0, resetsAt: usage.resetsAt ? new Date(usage.resetsAt).toISOString() : null };
+  const studio: StudioState = !studioOn ? "off" : credits.limit > 0 ? "open" : "plan";
 
   return (
     <>
-      <PageHeader title="Video Studio" description={`Animated product videos designed by AI from your products, prices and photos. Each video uses ${CLAUDE_VIDEO_CREDITS} video credits; making the MP4 is free.`} />
-      {options.products.length === 0 ? (
-        <EmptyState
-          icon={Clapperboard}
-          title="Add a product first"
-          text="Videos are made from a product or service: its name, price and photos. Add one to your knowledge base, then come back."
-          action={<Button href="/dashboard/knowledge/products">Add a product</Button>}
-        />
-      ) : (
-        <CreateStudio
-          products={options.products.map((p) => ({ id: p.id, name: p.name }))}
-          templates={templates}
-          categories={categories}
-          initialJobs={jobs}
-          credits={{ used: usage.used.videoCredits, limit: usage.limits.videoCredits ?? 0, resetsAt: usage.resetsAt ? new Date(usage.resetsAt).toISOString() : null }}
-          price={CLAUDE_VIDEO_CREDITS}
-          voicePrice={VOICE_OVER_CREDITS}
-          tracks={tracks}
-          timeZone={business.timezone || "Africa/Kigali"}
-        />
-      )}
+      <PageHeader title="Videos" description="Every video BuPulse made for you, from the Video Studio and your daily posts. Make new ones in the Video Studio; they appear here when they are ready." />
+      <VideoLibrary
+        initialVideos={videos}
+        studio={studio}
+        credits={credits}
+        canBuy={can(role, "billing")}
+        reason={reason}
+        focus={focus}
+        timeZone={business.timezone || "Africa/Kigali"}
+      />
     </>
   );
 }

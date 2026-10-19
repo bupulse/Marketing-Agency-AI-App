@@ -245,7 +245,9 @@ export const FEATURES: readonly FeatureDef[] = [
     services: ["claude"],
     status: "coming_soon",
     kind: "app",
-    routes: ["/dashboard/video"],
+    // Videos are made on the Video Studio's own site (studio.bupulse.com, docs/VIDEO_STUDIO_SPLIT.md). The Videos
+    // library (/dashboard/video) is every plan's: it shows their videos, or says how to get video credits.
+    routes: [],
   },
   {
     key: "aiVideo",
