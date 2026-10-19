@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { VEO_MODELS, VeoError, checkVeoConnection, defaultClipPlan, downloadVeo, getVeoOperation, makeVeoClip, submitVeo, veoBody, veoClipUsd, veoLedgerUsage, veoPrompt, veoUsdPerSecond, type VeoRequest } from "@/lib/video-engine/veo";
 import { creditsForUsd, veoClipCredits } from "@/lib/video-engine/credits";
 import { estimateCostUsd } from "@/lib/ai/pricing";
+import { clipSoundCues, isAiClipUrl, videoClips } from "@/lib/video-engine/video-frames";
+import type { MotionSpec } from "@/lib/video-engine/spec";
 
 // All Veo calls are mocked: no test spends money.
 const ok = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -153,5 +155,19 @@ describe("veo calls", () => {
     expect((await checkVeoConnection({ apiKey: "k", fetchImpl: (async () => ok({ name: "models/veo" })) as unknown as typeof fetch })).state).toBe("connected");
     expect((await checkVeoConnection({ apiKey: "k", fetchImpl: (async () => ok({}, 404)) as unknown as typeof fetch })).state).toBe("no model");
     expect((await checkVeoConnection({ apiKey: "k", fetchImpl: (async () => ok({}, 403)) as unknown as typeof fetch })).state).toBe("key invalid");
+  });
+});
+
+describe("AI clips in the mix", () => {
+  it("never plays a Veo clip's own sound, even when a design or a hand edit asks for it; other clips keep theirs", () => {
+    const layer = (url: string, sound: boolean) => ({ kind: "video", url, fit: "cover", start: 0, sound, x: 0.5, y: 0.5, w: 1, h: 1 });
+    const spec = { scenes: [{ seconds: 4, layers: [layer("/videos/veo/vc-0123456789ab.mp4", true)] }, { seconds: 4, layers: [layer("/api/clip/um-0123456789ab", true)] }] } as unknown as Pick<MotionSpec, "scenes">;
+    expect(isAiClipUrl("/videos/veo/vc-0123456789ab.mp4")).toBe(true);
+    expect(isAiClipUrl("/videos/seedance/sd-0123456789ab.mp4")).toBe(false);
+    expect(videoClips(spec)).toEqual([
+      { url: "/videos/veo/vc-0123456789ab.mp4", sound: false },
+      { url: "/api/clip/um-0123456789ab", sound: true },
+    ]);
+    expect(clipSoundCues(spec).map((c) => c.url)).toEqual(["/api/clip/um-0123456789ab"]);
   });
 });

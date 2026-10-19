@@ -22,10 +22,17 @@ export function videoFramesAt(spec: Pick<MotionSpec, "scenes">, tMs: number): { 
   return out;
 }
 
+/**
+ * AI clips (Google Veo, /videos/veo/<id>.mp4) never keep their own sound, whatever a design or a hand edit says: Veo's
+ * audio is always on and is not the business's (owner decision, 19 October 2026). The music and voice-over are used.
+ */
+export const isAiClipUrl = (url: string) => /\/videos\/veo\/vc-[0-9a-f]{12}\.mp4(\?|$)/.test(url);
+const keepsSound = (l: { url: string; sound?: boolean }) => l.sound === true && !isAiClipUrl(l.url);
+
 /** The distinct clips of a spec, and whether each keeps its own sound. */
 export function videoClips(spec: Pick<MotionSpec, "scenes">): { url: string; sound: boolean }[] {
   const clips = new Map<string, boolean>();
-  for (const s of spec.scenes) for (const l of s.layers) if (l.kind === "video") clips.set(l.url, (clips.get(l.url) ?? false) || l.sound === true);
+  for (const s of spec.scenes) for (const l of s.layers) if (l.kind === "video") clips.set(l.url, (clips.get(l.url) ?? false) || keepsSound(l));
   return [...clips].map(([url, sound]) => ({ url, sound }));
 }
 
@@ -39,7 +46,7 @@ export function clipSoundCues(spec: Pick<MotionSpec, "scenes">): { url: string; 
   spec.scenes.forEach((s, scene) => {
     const ms = Math.round(s.seconds * 1000);
     for (const l of s.layers) {
-      if (l.kind !== "video" || !l.sound) continue;
+      if (l.kind !== "video" || !keepsSound(l)) continue;
       const from = Math.round(l.start * 1000);
       byUrl.set(l.url, [...(byUrl.get(l.url) ?? []), { scene, fromMs: from, toMs: from + ms, atMs: at }]);
     }

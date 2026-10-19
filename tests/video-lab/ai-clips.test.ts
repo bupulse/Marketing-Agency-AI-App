@@ -37,7 +37,7 @@ process.env.GEMINI_API_KEY = "test-key";
 delete process.env.VEO_MODEL;
 delete process.env.VEO_USD_PER_SECOND;
 
-const { aiClipRecipe, aiClipRunView, aiClipsForBrief, aiClipsRecord, firstFrame, getAiClipRun, readNeeds, runMessage, startAiClips } = await import("@/video-lab/ai-clips");
+const { aiClipsUnavailable, aiClipRecipe, getAiClip, resumeAiClips, aiClipRunView, aiClipsForBrief, aiClipsRecord, firstFrame, getAiClipRun, readNeeds, runMessage, startAiClips } = await import("@/video-lab/ai-clips");
 
 afterAll(() => fs.rm(dir, { recursive: true, force: true }));
 
@@ -168,6 +168,34 @@ describe("AI clips (Veo) in the studio", () => {
     expect(view.clips.map((c) => c.shot)).toEqual(aiShots.slice(0, 3).map((x) => x.replace(/\s+/g, " ").trim().slice(0, 400)));
     expect(await aiClipRecipe(view.ready, "biz-1")).toEqual(run.recipe);
     expect(await aiClipRecipe(view.ready, "biz-2")).toBeNull();
+  });
+
+  it("after a restart: picks up a clip Google already accepted, refunds one never sent, and never refunds twice", async () => {
+    const base = { runId: "vr-aaaaaaaaaaaa", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), businessId: "biz-1", productId: "p-1", userId: "owner-1", actorId: "person-1", need: { shot: "Hands use it", seconds: 4 }, prompt: "p", photoId: null, model: "veo-3.1-lite-generate-preview", ratio: "9:16", seconds: 4, resolution: "720p", tries: 1, credits: 65, costUsd: 0, bytes: null, width: 720, height: 1280, error: null, payer: PAYER, refunded: false };
+    await fs.mkdir(path.join(dir, "clips"), { recursive: true });
+    const write = (c: Record<string, unknown>) => fs.writeFile(path.join(dir, "clips", `${c.id}.json`), JSON.stringify(c));
+    await write({ ...base, id: "vc-aaaaaaaaaaa1", status: "making", operation: "models/veo/operations/op1", submittedAt: new Date().toISOString() });
+    await write({ ...base, id: "vc-aaaaaaaaaaa2", status: "queued", operation: null, submittedAt: null });
+    await write({ ...base, id: "vc-aaaaaaaaaaa3", status: "failed", operation: null, submittedAt: null, refunded: true, error: "x" });
+    const g = google([]);
+    await resumeAiClips({ fetchImpl: g.f as unknown as typeof fetch, sleep: async () => {} });
+    expect(await getAiClip("vc-aaaaaaaaaaa1")).toMatchObject({ status: "ready", costUsd: 0.2 });
+    expect(await getAiClip("vc-aaaaaaaaaaa2")).toMatchObject({ status: "failed", refunded: true, error: expect.stringMatching(/restarted.*credits are back/) });
+    expect(m.refund).toHaveBeenCalledTimes(1);
+    expect(m.refund).toHaveBeenCalledWith(65, "AI clip failed", "vc-aaaaaaaaaaa2", PAYER);
+    // The picked-up clip still goes through the cost ledger as the client's.
+    expect(m.ledger).toHaveBeenCalledWith({ userId: "person-1", businessId: "biz-1", feature: "video-veo" }, expect.anything(), expect.any(Function), expect.any(Function));
+    // Nothing left open: a second start does nothing more.
+    await resumeAiClips({ fetchImpl: g.f as unknown as typeof fetch, sleep: async () => {} });
+    expect(m.refund).toHaveBeenCalledTimes(1);
+  });
+
+  it("the Create page's status says in plain English why AI clips are not offered (Veo off, or no key)", async () => {
+    expect(await aiClipsUnavailable({ GEMINI_API_KEY: "k" })).toBeNull();
+    m.enabled.mockResolvedValueOnce(false);
+    expect(await aiClipsUnavailable({ GEMINI_API_KEY: "k" })).toBe("AI clips are paused right now. Your video is made from your photos and your own clips.");
+    expect(m.enabled).toHaveBeenLastCalledWith("veo");
+    expect(await aiClipsUnavailable({})).toMatch(/waiting for their Google key/);
   });
 
   it("reads clip needs from a recipe, and words the progress", () => {
