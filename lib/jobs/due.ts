@@ -84,7 +84,9 @@ export async function runDueJobs(now = () => new Date()): Promise<{ ran: number;
     }
     try {
       await handler({ id: job.id, businessId: job.businessId, payload: job.payload, attempts: job.attempts });
-      await prisma.dueJob.update({ where: { id: job.id }, data: { status: "DONE", doneAt: now(), dedupeKey: null } });
+      // Only a job still RUNNING is finished: a handler that scheduled its own key again (scheduleJob upserts the
+      // same row back to PENDING) keeps that new run.
+      await prisma.dueJob.updateMany({ where: { id: job.id, status: "RUNNING" }, data: { status: "DONE", doneAt: now(), dedupeKey: null } });
       result.ran++;
     } catch (error) {
       const message = (error instanceof Error ? error.message : String(error)).slice(0, 500);

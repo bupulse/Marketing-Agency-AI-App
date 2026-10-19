@@ -96,6 +96,18 @@ async function say(run: RunRow, node: GraphNode, message: OutboundMessage, pass:
     return "waiting";
   }
   const commentStart = !!ctx.trigger.commentId && ctx.awaitingDmOpen === undefined;
+  if (commentStart && !channelAdapter(ctx.channel)?.capabilities.privateReply) {
+    // No private replies on this channel yet (Meta access, docs/SOCIAL_INBOX.md): answer publicly under the comment,
+    // then wait for the person to write a DM before going on.
+    const reply = await sendToConversation(run.conversationId, { text: message.text }, { author: "BOT", automationRunId: run.id, kind: "COMMENT_REPLY", commentExternalId: ctx.trigger.commentId });
+    if (!reply.ok) {
+      await finish(run.id, "FAILED", reply.error);
+      return "failed";
+    }
+    ctx.awaitingDmOpen = true;
+    pass.replies.push(message);
+    return "sent";
+  }
   const result = await sendToConversation(run.conversationId, message, {
     author: "BOT",
     automationRunId: run.id,

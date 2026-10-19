@@ -17,6 +17,8 @@ vi.mock("@/lib/leads/notify", () => ({ notifyNewLead: async () => ({ emailed: fa
 vi.mock("@/lib/webhooks/emit", () => ({ emitWebhookEvent: async () => 0, queueWebhookEvent: async () => {} }));
 
 const tag = randomUUID().slice(0, 8);
+// The fake Instagram channel's capabilities; the last test switches private replies off.
+const caps = { buttons: false, quickReplies: false, images: false, commentReply: true, privateReply: true, windowHours: 24 };
 
 describe.skipIf(!enabled)("automations engine against the database", { timeout: 120_000 }, () => {
   let prisma: typeof import("@/lib/db").prisma;
@@ -40,7 +42,7 @@ describe.skipIf(!enabled)("automations engine against the database", { timeout: 
     const { registerChannel } = await import("@/lib/inbox/channels");
     registerChannel({
       kind: "INSTAGRAM",
-      capabilities: { buttons: false, quickReplies: false, images: false, commentReply: true, privateReply: true, windowHours: 24 },
+      capabilities: caps,
       available: async () => true,
       send: async (target, message) => (sent.dms.push({ to: target.recipientExternalId, text: message.text }), { externalId: `dm${sent.dms.length}` }),
       replyToComment: async (_t, commentId, text) => (sent.publicReplies.push({ commentId, text }), { externalId: `r${sent.publicReplies.length}` }),
@@ -172,5 +174,16 @@ describe.skipIf(!enabled)("automations engine against the database", { timeout: 
     expect(dm.conversationId).not.toBe(comment.conversationId);
     expect(sent.dms.map((d) => d.text)).toEqual(["Your phone?"]);
     expect(sent.dms[0].to).toBe(`ig${tag}`);
+  });
+
+  it("without private replies the first message goes out as a public reply, then waits for a DM", async () => {
+    caps.privateReply = false;
+    const who = { externalId: `ig2${tag}`, handle: "eric.rw" };
+    const before = sent.publicReplies.length;
+    const comment = await ingest({ businessId: biz, channel: "INSTAGRAM", kind: "COMMENT", contact: who, text: "price?", externalMessageId: `c2${tag}`, postExternalId: "post1" });
+    expect(comment.handled).toBe(true);
+    expect(sent.publicReplies.slice(before).map((r) => r.text)).toEqual(["Sent you a DM!", "The dress is 25,000 RWF.\n\n1. Buy"]);
+    const run = await prisma.automationRun.findFirstOrThrow({ where: { businessId: biz, contactId: comment.contactId } });
+    expect(run.status).toBe("WAITING");
   });
 });
