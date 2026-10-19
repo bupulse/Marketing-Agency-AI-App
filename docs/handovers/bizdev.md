@@ -32,7 +32,7 @@ Branch `bizdev` (worktree `/Users/macbook1/BuPulse-bizdev`). Local commits only;
   - `sales`: `docs/bizdev/PLAN.md` (9.05M RWF at month 4 = 156 clients; capacity and no-add-on scenarios; RDB by
     13 Nov 2026), `docs/bizdev/SALES_KIT.md`, pricing quiz + MoMo steps (guide 23), partner programme (guide 25,
     migration `20261025400000_partners`), revenue goal tracker in Admin (guide 26), free first-post preview behind an
-    Admin switch that is OFF (guide 29, migration `20261025500000_first_post_preview`).
+    Admin switch that is OFF (guide 31, migration `20261025500000_first_post_preview`).
 - QA (19 Oct, production build, throwaway Pro company, 1440 and 390 px): template → canvas → preview → publish →
   website chat answered by the automation with buttons → team reply from the Inbox reaches the chat bubble → bot quiet
   while the team answers → notes, tags, contact page, custom field. Fixed on the way: canvas boxes were hidden (React

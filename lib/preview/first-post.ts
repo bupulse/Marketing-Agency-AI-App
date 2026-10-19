@@ -1,5 +1,5 @@
 import "server-only";
-// The free first-post preview (docs/guide/features/29-first-post-preview.md, docs/bizdev/PLAN.md): while a company waits
+// The free first-post preview (docs/guide/features/31-first-post-preview.md, docs/bizdev/PLAN.md): while a company waits
 // for its demo it may ask BuPulse for one post about its business (caption, hashtags, an ad headline), so it sees the
 // value before the call. Off until the owner switches it on in Admin -> Settings, because it spends AI money.
 //
