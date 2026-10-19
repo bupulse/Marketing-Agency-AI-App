@@ -857,7 +857,11 @@ video), Google Veo (AI clips inside a Motion video).
   "attention" crop picked a fruit bowl and a control box on the LEAF photos, and Veo then invented its own tower), so
   the real product is in it. The prompt (`veoPrompt`) asks for no text, letters, logos or brand names (BuPulse overlays its
   own text), adults only and East African where people appear, no famous people, no speech. Veo's audio is always on
-  and always dropped (`placeClips` sets `sound: false`): the video's music and voice-over are used.
+  and always dropped: `placeClips` sets `sound: false`, and the mixer (`lib/video-engine/video-frames.ts`,
+  `isAiClipUrl`) never plays a `/videos/veo/` clip's sound even if a design or a hand edit asks for it. The video's
+  music and voice-over are used. Checked on a rendered MP4 (19 October 2026, LEAF, viral recipe, 3 AI clips, music,
+  no voice): the MP4's sound correlates with each clip's own audio at 0.004 to 0.09 where the clip plays, the same as
+  at places it does not (0.003 to 0.099); the same MP4 with one clip's audio mixed in at half volume scores 0.55.
 - **Which shots:** the viral recipe's clip needs (`lib/video-engine/brain/viral.ts`, the beats marked `ai`) when the
   page sends them; otherwise a default plan (`defaultClipPlan`): the product in use (hands), the product in a Kigali
   setting, a close detail.
