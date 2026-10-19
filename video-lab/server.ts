@@ -49,6 +49,7 @@ import { OWNER_PAGES, isOwnerOnly, owns, withoutOwnerFields } from "./scope";
 import { viralFrame, viralLibrary } from "./viral";
 import { clearSessionCookieHeader, clientSession, safeStudioNext, sessionCookieHeader, sessionSecret, signSession, type StudioIdentity } from "./session";
 import { openStudioHref } from "@/lib/video-studio/ticket";
+import { recentRecipes } from "@/lib/video-studio/jobs";
 import { BLOCK_MESSAGE, blockFor, redeemTicket } from "./tickets";
 import { RateLimiter, clearCookieHeader, clientIp, noticePage, cookieValue, isLocal, loadSecret, loginPage, safeNext, sameText, setCookieHeader, tokenFor } from "./gate";
 
@@ -258,6 +259,11 @@ async function briefFor(req: DesignRequest, variation: { index: number; of: numb
 }
 
 /** The business's last viral recipes in the owner's tests, newest first (a new one avoids them). */
+/** The recent recipes a new AI clips recipe avoids: the client's VideoJobs, or the owner's lab tests of that business. */
+const recentClipRecipes = async (req: http.IncomingMessage, businessId: string) => {
+  const c = clientOf(req);
+  return c ? recentRecipes(c.businessId) : recentLabRecipes(businessId);
+};
 async function recentLabRecipes(businessId: string): Promise<ViralRecipe[]> {
   const jobs = (await listJobs()) as (LabJob & { recipe?: ViralRecipe | null })[];
   return jobs
@@ -975,7 +981,7 @@ const server = http.createServer(async (req, res) => {
       await limit(req, "ai-clips", RATE_LIMITS.videoDesign);
       const body = await readJson(req, 16 * 1024);
       try {
-        const run = await startAiClips(clientOf(req), { businessId: String(body.businessId ?? ""), productId: String(body.productId ?? ""), count: Number(body.count), seconds: Number(body.seconds), ratio: String(body.ratio ?? "9:16"), photoIds: Array.isArray(body.photoIds) ? body.photoIds.map(String) : undefined, needs: body.needs, recipe: body.recipe && typeof body.recipe === "object" ? body.recipe : null });
+        const run = await startAiClips(clientOf(req), { businessId: String(body.businessId ?? ""), productId: String(body.productId ?? ""), count: Number(body.count), seconds: Number(body.seconds), ratio: String(body.ratio ?? "9:16"), photoIds: Array.isArray(body.photoIds) ? body.photoIds.map(String) : undefined, needs: body.needs, recipe: body.recipe && typeof body.recipe === "object" ? body.recipe : null, recent: body.recipe ? await recentClipRecipes(req, String(body.businessId ?? "")) : [] });
         return json(res, 200, { run: await aiClipRunView(run) });
       } catch (error) {
         if (error instanceof AiClipError) return fail(res, error.status, error.message);

@@ -168,6 +168,10 @@ describe("AI clips (Veo) in the studio", () => {
     expect(view.clips.map((c) => c.shot)).toEqual(aiShots.slice(0, 3).map((x) => x.replace(/\s+/g, " ").trim().slice(0, 400)));
     expect(await aiClipRecipe(view.ready, "biz-1")).toEqual(run.recipe);
     expect(await aiClipRecipe(view.ready, "biz-2")).toBeNull();
+    // A second run that is told the first recipe is recent gets another one (as a design would).
+    const again = await startAiClips(me, { businessId: "biz-1", productId: "p-1", count: 3, recipe: { styleId: "viral", platform: "tiktok", purpose: "ad", seconds: 15, ratio: "9:16" }, recent: [run.recipe!] }, { fetchImpl: google(["ok", "ok", "ok"]).f as unknown as typeof fetch, sleep: async () => {} });
+    await settle(again.id);
+    expect(again.recipe?.layout === run.recipe?.layout && again.recipe?.opening.hookType === run.recipe?.opening.hookType).toBe(false);
   });
 
   it("after a restart: picks up a clip Google already accepted, refunds one never sent, and never refunds twice", async () => {
