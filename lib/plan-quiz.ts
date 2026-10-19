@@ -1,4 +1,4 @@
-// "Pick your plan in 30 seconds" on /pricing (docs/bizdev/PLAN.md, docs/guide/features/19-pricing-page-and-plan-quiz.md).
+// "Pick your plan in 30 seconds" on /pricing (docs/bizdev/PLAN.md, docs/guide/features/23-pricing-page-and-plan-quiz.md).
 // Pure: three answers and the visitor's region plans (lib/region-prices.ts) give one recommendation. Nothing here knows a
 // price or a plan name: the cheapest plan of the region whose features and limits fit wins, so the quiz follows every
 // change made in Admin -> Plans and Admin -> Regions and prices.

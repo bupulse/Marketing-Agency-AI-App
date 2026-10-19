@@ -1,4 +1,4 @@
--- Partner programme (docs/bizdev/PLAN.md section 6, docs/guide/features/21-partner-programme.md): outside partners,
+-- Partner programme (docs/bizdev/PLAN.md section 6, docs/guide/features/25-partners.md): outside partners,
 -- the companies they referred and the commission paid to them. Only new tables: nothing existing is changed. New tables
 -- are locked like every other (row level security on, no Data API grants).
 

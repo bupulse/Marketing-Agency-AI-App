@@ -2423,7 +2423,7 @@ model DueJob {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Partner programme (docs/bizdev/PLAN.md section 6, docs/guide/features/21-partner-programme.md): agencies, co-working
+// Partner programme (docs/bizdev/PLAN.md section 6, docs/guide/features/25-partners.md): agencies, co-working
 // spaces, MoMo agents and happy clients who refer companies for a commission on confirmed payments.
 
 // A partner, from the application on /partners to approval in Admin -> Sales -> Partners. Only an approved partner has
