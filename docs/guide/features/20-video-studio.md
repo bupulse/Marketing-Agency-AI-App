@@ -53,6 +53,19 @@ credits; top-ups on Pricing are test packs with no payment.
 - **Real video** is for when you need people or real places moving. BuPulse adds the price, the number and the
   caption on top afterwards: Seedance clips have no text.
 
+**Real video for clients (coming soon).** Until BuPulse's Seedance account has its key, a client who presses Generate
+on Real video gets the free storyboard of what Seedance will film ("Real video is coming soon"), and no credits are
+taken. While Seedance is paused in Admin, Generate says so and takes nothing.
+
+From key day:
+- the credits are taken when you press Generate;
+- the clip is made in 1 to 5 minutes, and you can close the page meanwhile;
+- the clip lands in your BuPulse Gallery ("Video Studio" folder) and in the Videos library;
+- a clip Seedance cannot make gives its credits back.
+
+**Add BuPulse text** puts the price, the WhatsApp number and the call to action on the clip, free, as a second video.
+Like Motion videos, Real video prompts are made from viral techniques by default.
+
 ## Making a video, step by step
 
 1. **Pick the product.** Press the **PRODUCT** tile and choose the business and the product. Its first photos become

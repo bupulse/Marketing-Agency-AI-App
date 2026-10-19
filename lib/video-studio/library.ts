@@ -63,9 +63,17 @@ export async function openingLines(businessId: string, input: { productId: strin
   return suggestHooks({ business: facts.business, product: facts.product, styleId: input.templateId, seconds: input.seconds }, { platform: input.platform === "youtube" ? "shorts" : (input.platform ?? "any") });
 }
 
-async function designedJob(businessId: string, jobId: string) {
-  const job = await prisma.videoJob.findFirst({ where: { id: jobId, businessId, engine: "motion" }, select: { id: true, status: true, spec: true, brief: true, productId: true, videoPath: true } });
-  if (!job?.spec || (job.status !== "designed" && job.status !== "ready")) throw new VideoStudioError("That video is not ready to be made yet.", "not_found", 404);
+/** The engines whose MP4 is saved here: Motion (made in the browser), and the clips made by a provider or a renderer. */
+export type SavedEngine = "motion" | "seedance" | "premium3d";
+/** The statuses a provider's or renderer's job is saved in, while its MP4 is being finalised (or saved again). */
+const SAVING: Record<Exclude<SavedEngine, "motion">, string[]> = { seedance: ["submitted", "queued", "running", "ready"], premium3d: ["rendering", "ready"] };
+
+async function designedJob(businessId: string, jobId: string, engine: SavedEngine = "motion") {
+  const job = await prisma.videoJob.findFirst({ where: { id: jobId, businessId, engine }, select: { id: true, status: true, spec: true, brief: true, productId: true, videoPath: true } });
+  // A Seedance or Premium 3D clip has no Motion design: it is saved while its task or render is finishing
+  // (lib/video-studio/seedance-jobs.ts, premium-jobs.ts).
+  const ready = engine === "motion" ? !!job?.spec && (job.status === "designed" || job.status === "ready") : SAVING[engine].includes(job?.status ?? "");
+  if (!job || !ready) throw new VideoStudioError("That video is not ready to be made yet.", "not_found", 404);
   return job;
 }
 
@@ -109,7 +117,7 @@ export async function jobForDrawing(ctx: Ctx, jobId: string, purpose: "preview" 
 }
 
 /** The Gallery folder studio videos go to, made the first time. */
-async function studioFolder(businessId: string): Promise<string> {
+export async function studioFolder(businessId: string): Promise<string> {
   const found = await prisma.mediaFolder.findUnique({ where: { businessId_name: { businessId, name: STUDIO_FOLDER } }, select: { id: true } });
   if (found) return `folder:${found.id}`;
   try {
@@ -134,10 +142,12 @@ export async function prepareJobVideo(ctx: Ctx, jobId: string, file: { bytes: nu
 
 /**
  * Confirms the uploaded MP4 (the Gallery's checks) and puts it on the job, which becomes "ready". Making the MP4 again
- * replaces the job's video; the earlier file stays in the Gallery.
+ * replaces the job's video; the earlier file stays in the Gallery. `engine` "seedance" or "premium3d": a finished clip,
+ * already paid for in video credits, so it does not use one of the plan's videos.
  */
-export async function saveJobVideo(ctx: Ctx, jobId: string, input: { path: string; destination: string; name: string; width: number | null; height: number | null; musicTrackId?: string | null }): Promise<{ item: MediaItem; job: StudioJob }> {
-  const job = await designedJob(ctx.businessId, jobId);
+export async function saveJobVideo(ctx: Ctx, jobId: string, input: { path: string; destination: string; name: string; width: number | null; height: number | null; musicTrackId?: string | null }, opts: { engine?: SavedEngine } = {}): Promise<{ item: MediaItem; job: StudioJob }> {
+  const engine = opts.engine ?? "motion";
+  const job = await designedJob(ctx.businessId, jobId, engine);
   // The track the browser mixed in, read from the library (not the browser's word), for its credit line on the posts.
   const track = input.musicTrackId ? await prisma.musicTrack.findUnique({ where: { id: input.musicTrackId }, select: { id: true, title: true, attribution: true, licence: true } }) : null;
   const music = track ? { trackId: track.id, title: track.title, attribution: track.attribution, owned: isOwnedLicence(track.licence) } : null;
@@ -150,7 +160,7 @@ export async function saveJobVideo(ctx: Ctx, jobId: string, input: { path: strin
     if (counted.day) await refundDailyVideo(ctx.userId, counted.day).catch(() => {});
     counted = null;
   };
-  if (!job.videoPath) {
+  if (!job.videoPath && engine === "motion") {
     try {
       counted = { ...(await consumeUsage(ctx.userId, "videos", 1)), day: null };
       counted.day = (await consumeDailyVideo(ctx.userId, (await getUsageSummary(ctx.userId)).videosPerDay)).day;

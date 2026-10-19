@@ -258,6 +258,35 @@ the first release).
 3. **Scoping:** `video-lab/scope.ts`; check with `node --env-file=.env scripts/video-lab/qa-scope.mjs` against a studio started
    with `STUDIO_SESSION_SECRET` and `STUDIO_DEV_TICKETS=1` (30 checks). Until item 7, a client's uploads, AI images and
    presenter shots answer 503; Premium 3D answers "coming soon" while the `premium3d` service is off (item 9).
+- **Item 8, Seedance as `VideoJob` (built 20 October 2026; real clips wait for the BytePlus key):**
+  `lib/video-studio/seedance-jobs.ts` (`submitSeedanceJob`, `pollSeedanceJob`, `pollDueSeedanceJobs`,
+  `startSeedancePoller`, `sweepSeedanceJobs`, `cancelSeedanceJob`, `createSeedancePreview`, `saveSeedanceOverlayJob`) and
+  its studio side `video-lab/client-seedance.ts`.
+  - **Submit:** credits are taken first (`seedanceCredits`). Then a `seedance` row is written ("submitting"), and the
+    BytePlus task is created through the cost ledger (`withLedger`: the `seedance` switch and the platform cap), which
+    makes the row "submitted" with `providerTaskId`, `nextPollAt` and `expiresAt` (BytePlus ends unfinished tasks after
+    an hour and bills nothing).
+  - **Polling:** the studio checks due rows every 10 s, only while the key is set. The rows are in the database, so it
+    resumes by itself after a restart. Each check claims the job with a lease. When the clip is ready, the poller
+    downloads the MP4 (BytePlus's own host only, at most 200 MB), uploads it into the Gallery's "Video Studio" folder and
+    finalises it with `saveJobVideo` (engine "seedance"). The job is then "ready" in BuPulse's Videos library, the clip's
+    real tokens go to the ledger (`recordAiCall`), and the clip does not use one of the plan's videos.
+  - **Refunds:** a refused request, a failed or expired task, a download that keeps failing (5 tries), a cancel before
+    the task starts, and the cron sweep (`sweepSeedanceJobs` in `/api/cron/video-jobs`) each give the credits back
+    exactly once (`failOnce`, a conditional update). The sweep covers a submit that died before BytePlus answered, and
+    a task past its expiry plus 5 minutes.
+  - **Previews:** without the key, a submission is a free preview row ("preview", the storyboard, 0 credits), with the
+    notice "Real video is coming soon". While the `seedance` switch is off, a client is refused before anything is
+    charged.
+  - **BuPulse's text:** the overlay is a child Motion job (`mode` "overlay", 0 credits), drawn and saved like any Motion
+    MP4.
+  - **The owner's door** keeps its local jobs (`video-lab/seedance-jobs.ts`).
+  - **Viral recipes:** the prompt follows the recipe (`recipeForPrompt`, `seedanceRecipeText`; the quick plan takes
+    its shots and camera), and the clip keeps it in `VideoJob.brief.recipe`.
+  - **Schema:** no change (`VideoJob` already had `providerTaskId`, `nextPollAt`, `expiresAt`, `storyboard`).
+  - **Tests:** `tests/video-studio/seedance-jobs.test.ts` and `tests/video-lab/client-seedance.test.ts` (BytePlus
+    mocked: submit, queued, running, succeeded with the download, failed, no answer, resume, sweep, cancel, previews,
+    switch off). Key day: `docs/SEEDANCE_KEY_DAY.md`.
 - **Item 9, Premium 3D as `VideoJob` (built 19 October 2026, off for clients):** `lib/video-studio/premium-jobs.ts`
   (`startPremiumJob`, `rerenderPremiumJob`, `renderNextPremiumJob`, `startPremiumRenderLoop`, `recoverPremiumJobs`,
   `failPremiumOnce`) and its studio side `video-lab/client-premium.ts`. Credits reserved first (`PREMIUM_3D_CREDITS` 100

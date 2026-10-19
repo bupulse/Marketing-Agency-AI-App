@@ -419,7 +419,14 @@ export type SeedanceBrief = {
   format?: SeedanceFormat | null;
   /** Picks another template of the same kind and format (for versions). */
   variant?: number;
+  /** A viral recipe (brain/viral.ts): the plan takes its number of shots, their timing and its camera. */
+  shotRecipe?: SeedanceRecipe | null;
 };
+
+/** The parts of a viral recipe the shot plan follows. */
+export type SeedanceRecipe = { beats: { from: number; to: number }[]; camera: { moves: readonly string[] } };
+/** The video engine's camera moves (spec.ts) in Seedance's camera language (CAMERA_LANGUAGE ids). */
+const RECIPE_CAMERA: Record<string, string> = { static: "static", dollyIn: "push-in", dollyOut: "pull-out", panLeft: "pan", panRight: "pan", tiltUp: "tilt-up", tiltDown: "tilt-up", orbitLeft: "orbit", orbitRight: "orbit", craneUp: "crane-up", craneDown: "crane-up", crashZoom: "push-in", pushPull: "dolly-zoom", dutchRoll: "handheld", handheld: "handheld" };
 
 /**
  * The business kind, read from the product's name first, then its summary, then the business (a real-estate agency
@@ -585,6 +592,16 @@ export function planSeedanceShots(brief: SeedanceBrief): SeedancePlan {
   };
   const beats = [...t.beats];
   while (beats.length > maxShots) dropBeat(beats);
+  // A viral recipe: as many shots as its beats (within the clip's limit), timed like them, with its camera moves.
+  const recipe = brief.shotRecipe;
+  if (recipe?.beats.length) {
+    while (beats.length > Math.max(keep + 1, Math.min(maxShots, recipe.beats.length))) dropBeat(beats);
+    const lengths = recipe.beats.map((b) => Math.max(0.5, b.to - b.from));
+    const moves = recipe.camera.moves.map((m) => RECIPE_CAMERA[m]).filter((m): m is string => !!m);
+    const pick = (i: number) => lengths[Math.round((i * (lengths.length - 1)) / Math.max(1, beats.length - 1))];
+    beats.splice(0, beats.length, ...beats.map((b, i) => ({ ...b, weight: pick(i) ?? b.weight, camera: moves.length ? moves[i % moves.length] : b.camera })));
+    notes.push("The shots follow the viral recipe: its number of shots, their timing and its camera.");
+  }
 
   // Spoken lines: only facts, only languages Seedance speaks well.
   // Spoken facts stay short: the first selling point under 12 words, a price without conditions, the name before " – ".

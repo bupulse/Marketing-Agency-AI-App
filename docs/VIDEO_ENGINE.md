@@ -450,6 +450,20 @@ pages read it). Videos are served with Range requests, so a page full of videos 
 - Waiting for `SEEDANCE_API_KEY` (BytePlus ModelArk, ap-southeast-1) and the digital character library. Until then
   every Seedance request becomes a free **preview** (below). Everything else is built and unit-tested against the
   documented API; the first real clip will confirm it.
+- **A client's clips are `VideoJob` rows** (`lib/video-studio/seedance-jobs.ts`, `video-lab/client-seedance.ts`; the
+  owner's door keeps the local jobs above):
+  - credits from the plan, the task through the cost ledger ("video-seedance");
+  - a poller in the studio every 10 s, which resumes from the database after a restart;
+  - the MP4 uploaded into the Gallery and finalised with `saveJobVideo`, so it shows in BuPulse's Videos library;
+  - refunds exactly once, and the cron sweep for stuck and expired tasks;
+  - free previews while there is no key;
+  - BuPulse's text as a child Motion job.
+  See `docs/STUDIO_DEPLOY.md`, item 8.
+- **Viral recipes:** with the page on viral techniques (the default), `recipeForPrompt` makes a recipe in which every
+  technique can be filmed, because Seedance makes the footage. Claude's brief gets `seedanceRecipeText` (its opening,
+  shots and camera, no words in the frames) in place of the template line, and the free quick plan takes the recipe's
+  number of shots, their timing and its camera (`planSeedanceShots` `shotRecipe`). A client's clip keeps the recipe, so
+  the next video avoids it (docs/VIRAL_RECIPES.md).
 
 **Seedance brain** (`lib/video-engine/seedance-brain.ts`, no AI, instant):
 

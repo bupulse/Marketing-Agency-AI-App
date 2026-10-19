@@ -313,7 +313,7 @@ export function placeClips(raw: unknown, clips: BriefClip[]): void {
 }
 
 /** Products that stand on the floor or the ground: their clips never hold them up to the camera. */
-const LARGE_PRODUCT = /\b(tower|growing system|hydroponic system|machine|fridge|freezer|sofa|couch|bed|mattress|wardrobe|table|desk|car|vehicle|truck|motorbike|motorcycle|bicycle|house|apartment|plot|land|tank|generator|solar|cabinet|shelf|shelves|oven|cooker|washing|furniture|greenhouse|container)\b/i;
+export const LARGE_PRODUCT = /\b(tower|growing system|hydroponic system|machine|fridge|freezer|sofa|couch|bed|mattress|wardrobe|table|desk|car|vehicle|truck|motorbike|motorcycle|bicycle|house|apartment|plot|land|tank|generator|solar|cabinet|shelf|shelves|oven|cooker|washing|furniture|greenhouse|container)\b/i;
 
 /**
  * The viral recipe for a brief (brain/viral.ts): its sector, facts, platform, length and footage. `seed`: one per job

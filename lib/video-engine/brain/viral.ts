@@ -46,7 +46,11 @@ export type RecipeInput = {
   /** The product stands on the floor or the ground (a tower, a sofa, a car): clips never have it held up to the camera. */
   large?: boolean;
   /** What footage there is: photos always; the client's phone clips (0 to 4); AI clips once the Veo step is on. */
-  footage?: { phoneClips?: number; aiClips?: boolean; /** AI clips already made (at most 3 beats then take one); none given: up to 3. */ aiCount?: number };
+  /**
+   * What footage there is: photos always; the client's phone clips (0 to 4); AI clips once the Veo step is on.
+   * `generated`: the whole video is filmed by a video model (Seedance), so every technique can be remade.
+   */
+  footage?: { phoneClips?: number; aiClips?: boolean; /** AI clips already made (at most 3 beats then take one); none given: up to 3. */ aiCount?: number; generated?: boolean };
   /** The business's recent recipes (newest first; about 5 are read): the new one avoids their opening, layout and beat order. */
   recent?: ViralRecipe[];
   /** Any text: the same seed gives the same recipe; a new job gets a new seed. */
@@ -187,6 +191,7 @@ const toFormat = (f: string): FormatId => ((FORMATS as readonly string[]).includ
 
 /** Whether a video's look can be remade with what the brief has (its opening and beats need its footage). */
 export function feasible(v: ViralVideo, footage: RecipeInput["footage"] = {}): boolean {
+  if (footage.generated) return true;
   const phone = (footage.phoneClips ?? 0) > 0;
   if (v.needs.includes("person")) return phone;
   if (v.needs.includes("filmed")) return phone || (!!footage.aiClips && v.needs.includes("ai-ok"));
@@ -582,6 +587,26 @@ export function recipeText(r: ViralRecipe, opts: { clips?: number } = {}): strin
     "Where the recipe and the research block disagree, the recipe wins on look and order; an opening line the owner chose, and the research block's don'ts, win over the recipe.",
   ];
   return lines.filter(Boolean).join("\n");
+}
+
+/**
+ * The recipe for a Seedance prompt (seedance-prompt.ts): the opening, the shots scaled to the clip's length and the
+ * camera, with no words in the frames (BuPulse adds the price and the number on top afterwards).
+ */
+export function seedanceRecipeText(r: ViralRecipe, seconds: number): string {
+  const k = seconds / r.seconds;
+  const t = (n: number) => fmt(Math.round(n * k * 2) / 2);
+  return [
+    `Viral recipe: an original mix of techniques from ${r.sources.length} viral videos BuPulse studied (ids in brackets). Follow its opening, its shots and its camera; never the other videos' products, people, words or prices.`,
+    `- Opening (0 to ${t(r.beats[0].to)} s, from ${ref(r.opening.source)}): ${r.opening.idea}. Seen there: ${withoutFigures(r.opening.seen)}`,
+    `- Shots (from ${r.beats[1]?.source ?? r.opening.source}): ${r.beats.map((b, i) => `${t(b.from)}-${i === r.beats.length - 1 ? fmt(seconds) : t(b.to)} s ${b.role}: ${b.what}`).join("; ")}.`,
+    `- Camera: feels like "${r.camera.feel}" (from ${r.camera.source}).`,
+    r.loop.on ? `- Loop: the last shot flows back into the first (from ${r.loop.source}).` : "",
+    `- Sound: music mood ${r.sound.mood}.`,
+    "- No words, prices, numbers or logos in the frames: BuPulse adds the price and the number on top afterwards. End on a clean shot of the product with space above it.",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /** "Why this video" for the client, in plain English: what each technique was borrowed from (no names, no frames). */

@@ -36,7 +36,10 @@ import { listSeedanceExamples } from "./seedance-mock/preview";
 import { seedanceOverlayCaption, seedanceOverlaySpec } from "@/lib/video-engine/seedance-overlay";
 import { getOverlay, mp4Tracks, overlayVideoBytes, saveOverlay, saveOverlayVideo } from "./seedance-overlays";
 import { listCharacters, previewPortraitPng } from "@/lib/video-engine/seedance-characters";
-import { writeSeedancePrompt } from "@/lib/video-engine/seedance-prompt";
+import { recipeForPrompt, writeSeedancePrompt, type PromptBrief } from "@/lib/video-engine/seedance-prompt";
+import { viralById } from "@/lib/video-engine/brain/viral";
+import { startSeedancePoller } from "@/lib/video-studio/seedance-jobs";
+import { CLIENT_SEEDANCE_ID, addClientSeedanceOverlay, cancelClientSeedanceJob, clientSeedanceOverlay, clientSeedancePreview, getClientSeedanceJob, listClientSeedanceJobs, overlayChildId, submitSeedanceForClient } from "./client-seedance";
 import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PREMIUM_3D_CREDITS, PREMIUM_RERENDER_CREDITS, PRESENTER_IMAGE_CREDITS, isPremiumQuality, type PremiumQuality, VOICE_OVER_CREDITS, charge, readWallet, refund, seedanceCredits, topUp , creditsLeft, enterRequest, type Payer } from "./credits";
 import { VOICE_ROUTE, makeVoiceForJob, readVoiceMp3 } from "./voice";
 import { AiClipError, aiClipBytes, aiClipPrices, aiClipRunView, aiClipView, aiClipsUnavailable, getAiClip, getAiClipRun, listAiClips, resumeAiClips, startAiClips } from "./ai-clips";
@@ -541,6 +544,14 @@ async function isExamplePhoto(id: string): Promise<boolean> {
   return previewPhotos.ids.has(id);
 }
 /** Whether a client may use this job: always for the owner (no lookup), only a job of the client's business for a client. */
+/** The business's recent viral recipes (a new one avoids them): a client's VideoJobs, or the owner's local tests. */
+const recentFor = async (req: http.IncomingMessage, businessId: string): Promise<ViralRecipe[]> => (clientOf(req) ? recentRecipes(businessId).catch(() => []) : recentLabRecipes(businessId));
+/** A recipe the page sends back with a Seedance submission (the one its prompt was written from), if it is one. */
+function recipeFrom(v: unknown): ViralRecipe | null {
+  const r = v as Partial<ViralRecipe> | null | undefined;
+  const ok = !!r && r.version === 1 && Array.isArray(r.beats) && Array.isArray(r.sources) && r.sources.length > 0 && r.sources.every((x) => !!x && typeof x.id === "string" && !!viralById(x.id)) && typeof r.opening?.hookType === "string";
+  return ok && JSON.stringify(r).length < 30_000 ? (r as ViralRecipe) : null;
+}
 const sdOwned = async (req: http.IncomingMessage, id: string) => !scopeOf(req) || ownsBusiness(req, (await getSeedanceJob(id))?.businessId);
 const plOwned = async (req: http.IncomingMessage, id: string) => !scopeOf(req) || ownsBusiness(req, (await getPremiumJob(id))?.businessId);
 const clOwned = async (req: http.IncomingMessage, id: string) => !scopeOf(req) || ownsBusiness(req, (await getJob(id))?.businessId);
@@ -821,13 +832,13 @@ const server = http.createServer(async (req, res) => {
       const mode = claudeMode();
       const model = process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL;
       const send = mode === "api" ? apiTransport(process.env.ANTHROPIC_API_KEY as string) : subscriptionTransport();
-      const out = await writeSeedancePrompt(
-        { business: { name: business.name, description: business.description, language: business.language, country: business.country }, product: { name: product.name, summary: product.summary, description: product.description, price: product.price, usps: product.usps, features: product.features }, references, templateId: String(body.templateId ?? "product-hero"), note: typeof body.note === "string" ? body.note.slice(0, 600) : null, seconds: Number(body.seconds) || 5, ratio: String(body.ratio ?? "9:16"), audio: body.audio !== false, presenter: typeof body.presenter === "string" ? body.presenter : null },
-        send,
-        model,
-      );
+      const brief: PromptBrief = { business: { name: business.name, description: business.description, language: business.language, country: business.country, phone: business.phone }, product: { name: product.name, summary: product.summary, description: product.description, price: product.price, usps: product.usps, features: product.features }, references, templateId: String(body.templateId || "viral"), note: typeof body.note === "string" ? body.note.slice(0, 600) : null, seconds: Number(body.seconds) || 5, ratio: String(body.ratio ?? "9:16"), audio: body.audio !== false, presenter: typeof body.presenter === "string" ? body.presenter : null, platform: typeof body.platform === "string" ? body.platform : null };
+      // Viral techniques by default: the prompt follows a recipe's opening, shots and camera; the page sends it back with
+      // the submission, so the clip keeps it (and the next video avoids it).
+      const recipe = isViralStyle(brief.templateId) ? recipeForPrompt(brief, { seed: newJobId(), recent: await recentFor(req, business.id) }) : null;
+      const out = await writeSeedancePrompt({ ...brief, recipe }, send, model);
       await record(newJobId(), "claude-seedance-prompt", [out.usage]);
-      return json(res, 200, { prompt: out.prompt, issues: out.issues, fallback: out.fallback ?? null });
+      return json(res, 200, { prompt: out.prompt, issues: out.issues, fallback: out.fallback ?? null, recipe });
     }
     if (req.method === "POST" && p === "/api/seedance/plan") {
       // BuPulse's own shot plan from the product (lib/video-engine/seedance-brain.ts): free and instant, no AI.
@@ -838,6 +849,9 @@ const server = http.createServer(async (req, res) => {
       const refs = Array.isArray(body.references) ? (body.references as { kind: string; label?: unknown }[]) : [];
       const counts = { image: 0, video: 0, audio: 0 };
       const references = refs.map((r) => labelFor(r, (counts[r.kind as "image" | "video" | "audio"] = (counts[r.kind as "image" | "video" | "audio"] ?? 0) + 1)));
+      const recipe = !body.variant && (body.templateId === null || body.templateId === undefined || isViralStyle(String(body.templateId)))
+        ? recipeForPrompt({ business: { name: business.name, description: business.description, language: business.language, country: business.country, phone: business.phone }, product: { name: product.name, summary: product.summary, description: product.description, price: product.price, usps: product.usps, features: product.features }, references, templateId: "viral", seconds: Number(body.seconds) || 5, ratio: String(body.ratio ?? "9:16"), audio: body.audio !== false }, { seed: newJobId(), recent: await recentFor(req, business.id) })
+        : null;
       const plan = planSeedanceShots({
         business: { name: business.name, description: business.description, language: business.language, country: business.country },
         product: { name: product.name, summary: product.summary, description: product.description, price: product.price, usps: product.usps, features: product.features },
@@ -849,8 +863,10 @@ const server = http.createServer(async (req, res) => {
         fixedLens: body.fixedLens === true,
         presenter: typeof body.presenter === "string" ? body.presenter : null,
         variant: Number(body.variant) || 0,
+        // The quick plan follows a viral recipe's shots and camera too when the page is on viral techniques.
+        shotRecipe: recipe,
       });
-      return json(res, 200, plan);
+      return json(res, 200, { ...plan, recipe });
     }
     if (req.method === "POST" && p === "/api/seedance/check") {
       // The same request Generate would send, checked before anything is paid (errors block Generate).
@@ -893,13 +909,81 @@ const server = http.createServer(async (req, res) => {
       if (!request.prompt) return fail(res, 400, "Write a prompt first.");
       const check = checkSeedanceRequest(request, { referenceNotes: notes });
       if (!check.ok) return json(res, 400, { error: check.issues.find((i) => i.level === "error")?.message ?? "This request cannot be sent.", issues: check.issues });
+      const c = clientOf(req);
+      if (c) {
+        // A client's clip is a VideoJob (lib/video-studio/seedance-jobs.ts): credits from the plan, free previews until
+        // the BytePlus key is set, nothing charged while Seedance is switched off.
+        await limit(req, "seedance", RATE_LIMITS.videoDesign);
+        try {
+          const recipe = recipeFrom(body.recipe);
+          const out = await submitSeedanceForClient(c, { productId: product?.id ?? null, request, referenceNotes: notes, title: product?.name ?? request.prompt.slice(0, 40), templateId: recipe ? "viral" : typeof body.templateId === "string" ? body.templateId.slice(0, 40) : null, platform: isPlatform(body.platform) ? body.platform : null, brief: recipe ? { recipe } : null, versions });
+          return json(res, 200, { jobs: out, problems });
+        } catch (error) {
+          const e = await asClientError(error, 0, c.companyUserId);
+          return fail(res, e.status, e.message);
+        }
+      }
       const jobs = [];
       for (let i = 0; i < versions; i++) {
         jobs.push(await submitSeedance({ ...request, seed: i === 0 ? request.seed : null }, { businessId: businessId || null, productId: product?.id ?? null, title: product?.name ?? request.prompt.slice(0, 40), referenceNotes: notes }));
       }
       return json(res, 200, { jobs, problems });
     }
+    if (req.method === "GET" && p === "/api/seedance/jobs" && clientOf(req)) return json(res, 200, { jobs: await listClientSeedanceJobs(clientOf(req) as StudioIdentity) });
     if (req.method === "GET" && p === "/api/seedance/jobs") return json(res, 200, { jobs: (await listSeedanceJobs()).filter((j) => ownsBusiness(req, j.businessId)) });
+    // A client's Seedance VideoJobs (cuids): the job, its preview, cancel, BuPulse's text over it and the MP4s.
+    const csd = p.match(/^\/api\/seedance\/jobs\/(c[a-z0-9]{20,30})(\/cancel|\/preview|\/overlay|\/overlay\/video)?$/);
+    if (csd && clientOf(req)) {
+      const c = clientOf(req) as StudioIdentity;
+      const [, jobId, sub = ""] = csd;
+      if (req.method === "GET" && !sub) {
+        const j = await getClientSeedanceJob(c, jobId);
+        return j ? json(res, 200, j) : fail(res, 404, "Not found");
+      }
+      if (req.method === "GET" && sub === "/preview") {
+        const pv = await clientSeedancePreview(c, jobId);
+        return pv ? json(res, 200, pv) : fail(res, 404, "No preview for this job.");
+      }
+      if (req.method === "POST" && sub === "/cancel") {
+        const j = await cancelClientSeedanceJob(c, jobId);
+        return j ? json(res, 200, j) : fail(res, 404, "Not found");
+      }
+      if (req.method === "GET" && sub === "/overlay") {
+        const o = await clientSeedanceOverlay(c, jobId);
+        return o ? json(res, 200, o) : fail(res, 404, "No text added yet.");
+      }
+      if (req.method === "POST" && sub === "/overlay") {
+        try {
+          return json(res, 200, await addClientSeedanceOverlay(c, jobId, await readJson(req, 4096)));
+        } catch (error) {
+          const e = await asClientError(error, 0, c.companyUserId);
+          return fail(res, e.status, e.message);
+        }
+      }
+      if (req.method === "POST" && sub === "/overlay/video") {
+        // The overlay's MP4 is its child Motion job's video: saved into the Gallery like any Motion MP4.
+        const child = await overlayChildId(c, jobId);
+        if (!child) return fail(res, 404, "Add the text first.");
+        try {
+          await saveClientVideo(c, child, await readBody(req, MAX_UPLOAD), { musicTrackId: url.searchParams.get("track") });
+          return json(res, 200, { ...(await clientSeedanceOverlay(c, jobId)), tracks: ["vide", "soun"] });
+        } catch (error) {
+          const e = await asClientError(error, 0, c.companyUserId);
+          return fail(res, e.status, e.message);
+        }
+      }
+      return fail(res, 404, "Not found");
+    }
+    const csdVideo = p.match(/^\/videos\/seedance\/(c[a-z0-9]{20,30})(-text)?\.mp4$/);
+    if (req.method === "GET" && csdVideo && clientOf(req)) {
+      // A client's clip (or its "with text" MP4, the overlay child's): a short signed link to the Gallery file.
+      const c = clientOf(req) as StudioIdentity;
+      const id = csdVideo[2] ? await overlayChildId(c, csdVideo[1]) : CLIENT_SEEDANCE_ID.test(csdVideo[1]) ? csdVideo[1] : null;
+      const link = id ? await clientVideoUrl(c, id) : null;
+      if (!link) return fail(res, 404, "Not found");
+      res.writeHead(302, { location: link, "cache-control": "private, no-store" });
+      return res.end();
+    }
     const sdOverlay = p.match(/^\/api\/seedance\/jobs\/(sd-[0-9a-f]{12})\/overlay(\/video)?$/);
     if (sdOverlay) {
       const id = sdOverlay[1];
@@ -1547,6 +1631,8 @@ void loadSavedKeys(LAB_KEYS)
     server.listen(PORT, "127.0.0.1", () => {
       console.log(`BuPulse Video Studio: http://localhost:${PORT}  (daily test budget $${DAILY_CAP_USD}; the old lab page is /lab)`);
       void resumeSeedanceJobs();
+      // Clients' Seedance clips (VideoJob rows): checked every 10 s while the key is set; nothing is lost on a restart.
+      startSeedancePoller();
       void resumeAiClips().catch((error: unknown) => console.log(`[lab] AI clips could not be resumed: ${error instanceof Error ? error.message : error}`));
       void recoverPremiumJobs().then((n) => n && console.log(`[lab] ${n} Premium 3D job(s) stopped by the restart: credits given back.`));
       // Clients' Premium 3D clips (VideoJob rows): the ones a restart stopped, then this computer's render loop.
