@@ -223,6 +223,8 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
     router.refresh();
   }
 
+  // Live with nothing new to publish.
+  const upToDate = automation.status === "LIVE" && !dirty && !automation.changed;
   const allProblems = [...problems, ...serverProblems.filter((s) => !problems.some((p) => p.message === s.message))];
 
   return (
@@ -254,8 +256,8 @@ export function AutomationEditor({ automation, fields, tags, businessName }: Edi
               <Play className="size-4" aria-hidden /> Resume
             </Button>
           ) : (
-            <Button size="sm" disabled={busy || allProblems.length > 0} onClick={onPublish} title={allProblems.length ? "Fix the points listed first" : undefined}>
-              {automation.status === "DRAFT" ? "Publish" : "Publish changes"}
+            <Button size="sm" disabled={busy || allProblems.length > 0 || upToDate} onClick={onPublish} title={allProblems.length ? "Fix the points listed first" : undefined}>
+              {automation.status === "DRAFT" ? "Publish" : upToDate ? "Published" : "Publish changes"}
             </Button>
           )}
         </span>

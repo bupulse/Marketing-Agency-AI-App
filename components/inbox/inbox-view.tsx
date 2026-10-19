@@ -65,6 +65,8 @@ export function InboxView({ items, hasMore, counts, view, channel, q, channels, 
         if (!alive) return;
         if (result.ok) setThread(result.thread);
         else if (!quiet) toast(result.error, "error");
+        // Opening marks it read: refresh the list so its "new" badge goes at once.
+        if (!quiet && result.ok) router.refresh();
       });
     void load(false);
     const timer = setInterval(() => {
@@ -74,7 +76,7 @@ export function InboxView({ items, hasMore, counts, view, channel, q, channels, 
       alive = false;
       clearInterval(timer);
     };
-  }, [openId, toast]);
+  }, [openId, toast, router]);
   const loading = !!openId && thread?.id !== openId;
 
   useEffect(() => {
@@ -248,7 +250,7 @@ function ThreadPanel({ thread, team, actorId, onBack, onChanged, afterChange }: 
         <button type="button" onClick={onBack} className="flex size-9 items-center justify-center rounded-full hover:bg-soft lg:hidden" aria-label="Back to conversations">
           <ArrowLeft className="size-5" aria-hidden />
         </button>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-[calc(100%-3.5rem)] sm:basis-auto">
           <Link href={`/dashboard/contacts/${thread.contact.id}`} className="block truncate text-[16px] font-semibold hover:underline">
             {thread.contact.name}
           </Link>
