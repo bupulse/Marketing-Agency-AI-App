@@ -7,7 +7,7 @@ import path from "node:path";
 import { DESIGNER_MODEL, DESIGN_MODES, DesignError, apiSum, apiTransport, designVideo, estimateDesignCost, isPlatform, maxDesignCost, recipeForBrief, type BriefClip, type BriefPhoto, type DesignBrief, type DesignMode, type DesignUsage, type Platform } from "@/lib/video-engine/designer";
 import { recipeWhy, type ViralRecipe } from "@/lib/video-engine/brain/viral";
 import { CLIP_MAX_BYTES, clientClipBytes, ownerBriefClips, saveOwnerClip, uploadClipForClient } from "./client-clips";
-import { aiClipsForBrief, aiClipsRecord } from "./ai-clips";
+import { aiClipRecipe, aiClipsForBrief, aiClipsRecord } from "./ai-clips";
 import { cutoutForPhoto } from "./cutouts";
 import { loadReferenceSources, type StudioRef } from "./seedance-sources";
 import { prepareSeedanceReferences, type ReferenceSummary } from "./seedance-references";
@@ -359,7 +359,9 @@ async function design(body: Record<string, unknown>, scope: string | null): Prom
     try {
       const recent = await recentLabRecipes(req.businessId);
       const { brief } = await briefFor(req, null, { photos: false });
-      for (let i = 0; i < versions; i++) recipes.push(recipeForBrief(brief, { seed: `${newJobId()}-${i}`, recent: [...recipes.slice().reverse(), ...recent] }));
+      // The AI clips were made for a recipe's AI beats (video-lab/ai-clips.ts): version 1 follows that same recipe.
+      const clipRecipe = await aiClipRecipe(req.aiClipIds, scope);
+      for (let i = 0; i < versions; i++) recipes.push(i === 0 && clipRecipe ? clipRecipe : recipeForBrief(brief, { seed: `${newJobId()}-${i}`, recent: [...recipes.slice().reverse(), ...recent] }));
     } catch (error) {
       await refund(CLAUDE_VIDEO_CREDITS * versions, "Motion video failed", undefined, payer);
       return { status: 500, body: { error: error instanceof Error ? error.message : "The viral recipe could not be made." } };

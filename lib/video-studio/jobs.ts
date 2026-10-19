@@ -65,6 +65,8 @@ export type DesignJobInput = {
   aiClips?: boolean;
   /** What the AI clips in `clips` were asked for and cost (the studio's video-lab/ai-clips.ts), kept in the job's brief. */
   aiClipsRecord?: object | null;
+  /** The viral recipe the AI clips were made for (video-lab/ai-clips.ts aiClipRecipe): version 1 follows it. */
+  aiClipRecipe?: ViralRecipe | null;
 };
 
 export type VideoJobView = {
@@ -231,7 +233,7 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
   // A viral video: one recipe per version, each avoiding the business's recent ones and the versions before it. An
   // edit or extend keeps its parent's recipe for "Why this video" but designs from the parent itself.
   const recipes: ViralRecipe[] = [];
-  if (viral && !changing) for (let i = 0; i < versions; i++) recipes.push(recipeForBrief(brief, { seed: globalThis.crypto.randomUUID(), recent: [...recipes.slice().reverse(), ...recent], aiClips: input.aiClips }));
+  if (viral && !changing) for (let i = 0; i < versions; i++) recipes.push(i === 0 && input.aiClipRecipe ? input.aiClipRecipe : recipeForBrief(brief, { seed: globalThis.crypto.randomUUID(), recent: [...recipes.slice().reverse(), ...recent], aiClips: input.aiClips }));
   // The opening line the owner picked: the Brain's context for it goes in as research (Claude follows it), as in the lab.
   if (input.chosenHook && !changing) brief.research = brainContext(brainBriefFromDesign({ ...brief, recipe: recipes[0] ?? null }), { chosenHook: input.chosenHook, viral: viral });
   // The caption formula the Brain picks for this brief (the one its research block gives Claude): kept with the

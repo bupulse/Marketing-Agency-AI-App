@@ -23,7 +23,7 @@ import { RateLimitError, rateLimitMessage } from "@/lib/rate-limit";
 import { CLAUDE_VIDEO_CREDITS, usageMessage } from "./credits";
 import type { StudioIdentity } from "./session";
 import { MAX_CLIPS, clientClipPath, clipLengthOk } from "./clip-rules";
-import { aiClipsForBrief, aiClipsRecord } from "./ai-clips";
+import { aiClipRecipe, aiClipsForBrief, aiClipsRecord } from "./ai-clips";
 
 /** A failure with the HTTP status and the plain-English message the page shows. */
 export class ClientJobError extends Error {
@@ -195,6 +195,7 @@ export async function designInput(id: StudioIdentity, body: Record<string, unkno
     purpose: body.purpose === "post" ? "post" : "ad",
     clips,
     aiClipsRecord: aiIds.length ? await aiClipsRecord(aiIds) : null,
+    aiClipRecipe: aiIds.length ? await aiClipRecipe(aiIds, id.businessId) : null,
   };
 }
 
