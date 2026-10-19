@@ -877,8 +877,9 @@ video), Google Veo (AI clips inside a Motion video).
 - **API facts checked with the real key** (the docs' REST examples differ for Lite): the image goes as
   `{ bytesBase64Encoded, mimeType }` (`inlineData` is refused), `numberOfVideos` is refused, `durationSeconds` is a
   number. The first real clip took 47 s and cost $0.20.
-- **Off switch:** Admin -> Services, "Google Veo AI clips". When off (or without the key), the choice is replaced by a
-  plain note and `POST /api/ai-clips` answers 503; finished clips stay.
+- **Off switch:** Admin -> Services, "Google Veo AI clips". **Off until the owner switches it on** (`defaultOff`: Veo is
+  paid per second). When off (or without the key), the choice is replaced by a plain note and `POST /api/ai-clips`
+  answers 503 before anything is charged; finished clips stay.
 
 ## Costs
 
