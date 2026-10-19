@@ -85,7 +85,8 @@ Rules for the fields:
 
 ## House rules for the collecting agents
 
-- Use your own tab in the research Chrome (DevTools port 9334); never touch the owner's other tabs or windows.
+- Use exactly one tab of your own in the research Chrome (DevTools port 9334) and reuse it for every page; never touch
+  the owner's or other agents' tabs. At most two collectors browse at the same time; the lead says who.
 - Scrolling is encouraged (owner, 19 October): besides searches, scroll the platform's own feeds (TikTok For You,
   Instagram Reels and Explore, Facebook Reels and Watch, YouTube Shorts) to find more viral videos, and watch each
   one you keep all the way through (muted) so the breakdown describes the whole video, not the first seconds.
