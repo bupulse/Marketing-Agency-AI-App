@@ -1,6 +1,7 @@
 # Video Studio at studio.bupulse.com: the plan
 
-Status: a plan to review. Nothing here is built yet. 19 October 2026.
+Status: built and tested on the TEST database, not switched on (19 October 2026). Items 1 to 7, 10, 11, 12 (prepared)
+and 14 are done; Seedance (8) and Premium 3D (9) come after launch. "Going live" below is the owner's checklist.
 
 The contract with the BuPulse side is `docs/VIDEO_STUDIO_SPLIT.md` (in the `videos-library` worktree). In short: a client
 arrives from BuPulse with a one-use ticket, gets a studio session tied to their business, spends `videoCredits` through
@@ -338,6 +339,12 @@ Everything below is prepared and switched OFF: nothing runs the tunnel or loads 
 steps, in this order. The production studio is separate from your test studio: it uses its own port (3110), its own
 keys file and the real BuPulse database, while the test studio (port 3100, `video.bupulse.com`) keeps working as it does now.
 
+0. **Release BuPulse first (your go).** The live site and the live database need the studio's side before anything
+   here can work: merge the `videos-library` and `video-engine` branches into `main`, push and deploy when you say go
+   (the usual signed release), and check that production has run `prisma migrate deploy` with these migrations:
+   `20261022100000_video_studio`, `20261023100000_video_job_sound`, `20261024100000_studio_tickets` and
+   `20261024100500_studio_lockdown`. Without them the live database has no `VideoJob` or `StudioTicket` tables and
+   bupulse.com has no "Open Video Studio" route, so every sign-in would fail.
 1. **Put the studio's code where it will run.** The files below point at `/Users/macbook1/BuPulse-video`, the folder
    that holds the `video-engine` branch today. Once that branch is merged into the main BuPulse folder, change the folder
    in `tools/launchd/com.bupulse.studio.plist` (and the tunnel plist if you use it) to `/Users/macbook1/BuPulse` and run
