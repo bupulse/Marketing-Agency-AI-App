@@ -120,7 +120,9 @@ describe("the viral index (viral-ingest.ts)", () => {
         // A plain substring test first (fast); the word-boundary test only for the few that contain the name.
         if (name.length >= 4 && all.includes(name.toLowerCase())) expect(new RegExp(`(?<![\\p{L}\\p{N}])${esc(name.toLowerCase())}(?![\\p{L}\\p{N}])`, "u").test(all), `${r.id} name`).toBe(false);
       }
-      for (const c of (r.top_comments as { text?: string }[] | undefined) ?? []) if ((c.text ?? "").length > 15) expect(all.includes(c.text!.toLowerCase()), `${r.id} comment`).toBe(false);
+      // A comment that only repeats the video's own on-screen title ("Boho French curls") is not a copied comment.
+      const ownText = [r.hook_text, ...((r.on_screen_text as string[] | undefined) ?? [])].map((x) => String(x ?? "").toLowerCase()).join(" \n ");
+      for (const c of (r.top_comments as { text?: string }[] | undefined) ?? []) if ((c.text ?? "").length > 15 && !ownText.includes(c.text!.toLowerCase())) expect(all.includes(c.text!.toLowerCase()), `${r.id} comment`).toBe(false);
       const caption = String(r.caption ?? "");
       if (caption.length > 80) expect(all.includes(caption.toLowerCase())).toBe(false);
     }
@@ -136,7 +138,17 @@ describe("the viral recipe (viral.ts)", () => {
     expect(viralRecipe(leaf)).toEqual(viralRecipe(leaf));
     const many = Array.from({ length: 8 }, (_, i) => viralRecipe({ ...leaf, seed: `job-${i}` }));
     expect(new Set(many.map((r) => r.sources.map((s) => s.id).sort().join())).size).toBeGreaterThanOrEqual(6);
-    expect(new Set(many.map((r) => r.opening.source)).size).toBeGreaterThanOrEqual(4);
+    // Photos only on Instagram leaves few openings a farm can remake: at least 3 of 8 jobs differ (recent recipes are
+    // avoided on top of this, tested below).
+    expect(new Set(many.map((r) => r.opening.source)).size).toBeGreaterThanOrEqual(3);
+  });
+
+  it("draws TikTok's own viral videos for a TikTok video, and still varies them", () => {
+    const tiktok = Array.from({ length: 8 }, (_, i) => viralRecipe({ ...leaf, platform: "tiktok", footage: { phoneClips: 2 }, seed: `tt-${i}` }));
+    const ids = tiktok.flatMap((r) => r.sources.map((s) => s.id));
+    expect(ids.filter((id) => id.startsWith("vt-tt-")).length / ids.length).toBeGreaterThan(0.6);
+    expect(new Set(tiktok.map((r) => r.opening.source)).size).toBeGreaterThanOrEqual(4);
+    expect(new Set(ids).size).toBeGreaterThanOrEqual(10);
   });
 
   it("picks 3 to 5 videos from different accounts, close sectors first, East Africa first", () => {

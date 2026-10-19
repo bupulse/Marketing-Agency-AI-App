@@ -155,7 +155,7 @@ Everything is committed locally on `video-engine` (nothing pushed); bupulse-fe t
 
 What was built:
 - **Viral library** (`docs/research/viral/`, README has the rules): YouTube 100, Facebook 100 (43 long-running ads),
-  Instagram 100 (72 East African), TikTok in progress (79 rows at 20:40; notes file follows). Notes per platform in
+  Instagram 100 (72 East African), TikTok 100 (82 East African incl. 21 Kenya, 18 global; a787b1b), index refreshed with all 400 (118aebb). Notes per platform in
   `<platform>-notes.md`. Frames stay on this Mac (`video-lab/data/viral/frames`, git-ignored). Owner-only page `/viral`.
 - **Viral-first videos** (docs/VIRAL_RECIPES.md, guide 22): every Motion and Seedance design follows a recipe mixed from
   3 to 5 matching viral videos (index `lib/video-engine/brain/data/viral.json`, built by `viral-ingest.ts`, no
@@ -193,5 +193,5 @@ For the owner when back:
 5. Research Chrome: DevTools port 9334, profile `video-lab/data/research-chrome` (logins kept). TikTok showed a slider
    captcha once; solve it there if it returns.
 
-Next work: TikTok to 100 rows, then re-run `node lib/video-engine/brain/viral-ingest.ts` and commit viral.json; voice-over
-for clients' Premium 3D clips; a second viral round (Kenya, Explore/For You scrolling) if the owner wants it.
+Next work: voice-over
+for clients' Premium 3D clips; a second viral round if the owner wants it (more global TikTok business videos, farm/agriculture videos: only 1 so far, so LEAF's photo-only recipes repeat openings; Explore/For You scrolling).
