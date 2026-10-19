@@ -21,6 +21,7 @@ export const SERVICE_IDS = [
   "whatsapp",
   "seedance",
   "composio",
+  "studio",
 ] as const;
 export type ServiceId = (typeof SERVICE_IDS)[number];
 
@@ -266,6 +267,17 @@ export const SERVICES: ServiceInfo[] = [
     features: ["Connecting Facebook, Instagram, LinkedIn and YouTube (BuPulse-Socials)", "Posting and post numbers for accounts connected that way"],
     killable: true,
     whenOff: "New social connections use BuPulse's own apps instead (\"Coming soon\" where those are not set up). Accounts already connected through BuPulse-Socials keep posting through it.",
+  },
+  {
+    id: "studio",
+    name: "Video Studio",
+    purpose: "BuPulse's own video site (studio.bupulse.com, docs/VIDEO_STUDIO_SPLIT.md), where clients make their marketing videos. \"Open Video Studio\" in BuPulse signs them in with one click, and every video it finishes appears in their Videos library. STUDIO_URL changes the address (default https://studio.bupulse.com).",
+    env: [],
+    optionalEnv: ["STUDIO_URL"],
+    features: ["Open Video Studio (one-click sign-in)", "Making new studio videos"],
+    killable: true,
+    defaultOff: true,
+    whenOff: "Clients see \"Video Studio: coming soon\" instead of the button, and nobody new can sign in to the studio. Their Videos library, scheduled videos and credits stay as they are.",
   },
 ];
 
