@@ -22,15 +22,30 @@ Branch `bizdev` (worktree `/Users/macbook1/BuPulse-bizdev`). Local commits only;
   PRO; automations in PRO; RW add-on prices inbox 5,000 RWF (guess) and automations 25,000 RWF ("Social replies",
   docs/bizdev/PLAN.md). Both migrations are applied to the TEST database (19 Oct, `prisma migrate deploy` only).
 
-## Agents (worktrees under /Users/macbook1/BuPulse/.claude/worktrees)
-- `sales`: PLAN.md (b6c2273, d4f605f), SALES_KIT.md (561adb7, c5a2ae0), pricing quiz + MoMo steps (a3034ed), partner
-  programme next (migration `20261025400000_partners`).
-- `social`: Instagram/Facebook channels (Composio polling capped at 18,000 calls a month, Meta webhooks off), migration
-  `20261025300000_social_inbox`.
+- Inbox and Contacts pages (`/dashboard/inbox`, `/dashboard/contacts`), the Automations list with six Rwanda templates
+  and the visual canvas (`/dashboard/automations/[id]`, React Flow 12.12.0) with publish checks and a phone preview.
+  Guide pages 27 (Inbox and contacts) and 28 (Automations); developer notes `docs/INBOX.md`, `docs/AUTOMATIONS.md`.
+- Merged from the agents (both finished):
+  - `social` (docs/SOCIAL_INBOX.md, guide 24): Instagram/Facebook comments and DMs into the inbox through Composio
+    (one `social.poll` job per switched-on account; hard budget 18,000 calls a month, Admin max 20,000), Meta webhooks
+    built but off, private replies off by default; migration `20261025300000_social_inbox`.
+  - `sales`: `docs/bizdev/PLAN.md` (9.05M RWF at month 4 = 156 clients; capacity and no-add-on scenarios; RDB by
+    13 Nov 2026), `docs/bizdev/SALES_KIT.md`, pricing quiz + MoMo steps (guide 23), partner programme (guide 25,
+    migration `20261025400000_partners`), revenue goal tracker in Admin (guide 26), free first-post preview behind an
+    Admin switch that is OFF (guide 29, migration `20261025500000_first_post_preview`).
+- QA (19 Oct, production build, throwaway Pro company, 1440 and 390 px): template → canvas → preview → publish →
+  website chat answered by the automation with buttons → team reply from the Inbox reaches the chat bubble → bot quiet
+  while the team answers → notes, tags, contact page, custom field. Fixed on the way: canvas boxes were hidden (React
+  Flow measurements), page scroll in the inbox, phone header, Published state, unread badge.
 
 ## Next
-- Inbox, Contacts and Automations pages (canvas with @xyflow/react), templates for Rwanda, docs/AUTOMATIONS.md, guide
-  pages, engine tests on TEST data; merge the agents' branches into bizdev.
+- Owner decisions (on bupulse-fe's list): register with RDB (top: unlocks Meta messaging and private replies); partner
+  rates; Social replies packaging (25,000 RWF add-on recommended); USD rate; agents' pay; launch month; Kinyarwanda check;
+  Composio beyond about 6–9 accounts (Meta route or a paid plan).
+- When Meta approves: Admin → Services → Instagram and Facebook replies → route "meta", then test private replies on a
+  test account and switch the flag on.
+- Later phases of `docs/bizdev/manychat-parity-plan.md`: follow-up sequences UI, broadcasts (email + WhatsApp-ready),
+  links/QR growth tools, automation analytics per step, agency workspaces, WhatsApp (after verification), Telegram.
 
 ## Also applied to TEST (19 Oct): `20261025300000_social_inbox` and `20261025400000_partners`
 Rollback (only if needed):
