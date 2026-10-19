@@ -27,7 +27,10 @@ export function PartnerForm() {
 
   return (
     <GlassCard strong padding="lg">
-      <form action={action} noValidate className="flex flex-col gap-5">
+      {/* Keyed by what came back: React resets a form after its action, and a select (or checkbox) reset that way falls
+          back to the first default it had, so the kind chosen would be lost after an error. A new key remounts the
+          fields with the values the server returned. */}
+      <form key={JSON.stringify(values)} action={action} noValidate className="flex flex-col gap-5">
         {/* Honeypot: hidden from people and assistive tech, bots fill it in. */}
         <div aria-hidden className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
           <label>
