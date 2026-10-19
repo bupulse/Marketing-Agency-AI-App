@@ -295,3 +295,11 @@ Rough total: about 3 to 4 weeks of focused work for one person, shorter if items
 1. Which hosting option to start with (A to open sooner, B when clients depend on it every day)?
 2. Does Premium 3D open at launch, or after Seedance and Motion are live?
 3. Should clients keep AI images and the AI influencers in the first release, or only video?
+
+## Owner decisions (19 October 2026)
+
+1. **Hosting: this Mac first** (option A), behind a Cloudflare tunnel, with a process manager and the Mac kept awake.
+   Move to a server when clients rely on it every day.
+2. **Premium 3D opens after Motion is live.** At launch it shows as "coming soon"; build item 9 follows the first loop.
+3. **AI images and AI influencers are in the first release** for clients, priced in video credits (presenter image 15),
+   so build item 7 is part of the launch.
