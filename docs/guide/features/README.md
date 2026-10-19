@@ -31,6 +31,8 @@ trial and Inzu Fashion waiting for its demo. All names and numbers in them are m
 | 20 | Video Studio (Motion, Premium 3D and Real video) | Video Studio `/create`, `/showcase`, `/videos`, `/pricing`, `/app/video/*` | [20-video-studio.md](20-video-studio.md) |
 | 21 | AI clips (Google Veo) in Motion videos | Video Studio `/create`, Options, "AI makes the clips" | [21-ai-clips.md](21-ai-clips.md) |
 | 22 | Viral recipes (videos made from viral techniques, phone clips) | Video Studio `/create`, Motion | [22-viral-recipes.md](22-viral-recipes.md) |
+| 23 | The Video Studio, for clients (open it, credits per action, where videos go) | studio.bupulse.com; BuPulse Videos | [23-video-studio-for-clients.md](23-video-studio-for-clients.md) |
+| 24 | The Video Studio, for the owner (switches, costs, viral library, checks) | Admin → Services, Plans, Usage; studio `/viral` | [24-video-studio-for-the-owner.md](24-video-studio-for-the-owner.md) |
 
 ## Which plan has what
 
