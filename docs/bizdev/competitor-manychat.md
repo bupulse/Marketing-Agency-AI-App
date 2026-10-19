@@ -169,6 +169,35 @@ addresses are built at run time, so REA could not list them all (**unknown**). I
 
 Positioning line to test (guess): *"BuPulse makes your posts and answers your customers. Pay with MoMo, in Kinyarwanda."*
 
+## 10. BuPulse vs ManyChat (checked against BuPulse's code, 19 Oct 2026)
+
+They do different jobs. **BuPulse works before the post** (writes it, designs it, publishes it). **ManyChat works after
+the post** (answers the comments and DMs and turns them into sales). They overlap only in AI replies and the leads list.
+
+| Area | ManyChat | BuPulse today | Better for a Rwandan shop |
+| --- | --- | --- | --- |
+| Making posts (text, designs, AI photos, video, voice, weekly Autopilot) | None | Full set (`lib/features.ts`, all built) | **BuPulse** |
+| Publishing to Instagram, Facebook, LinkedIn, TikTok, YouTube | No (it only messages) | Yes (direct, or through BuPulse-Socials on Composio) | **BuPulse** |
+| Replying to Instagram/Facebook comments and DMs | Its core product | **None**: BuPulse only publishes and reads like/comment counts (`lib/social/providers/*`, `lib/social/composio/networks.ts`) | **ManyChat** |
+| WhatsApp automation | Yes (extra fees, new number) | Only lead alerts to the owner, built but switched off | **ManyChat** |
+| AI replies | On Instagram, WhatsApp, TikTok, Messenger | On the business's website (website chat), from the knowledge base | ManyChat (where the customers are) |
+| Leads list | Contacts with tags, segments, broadcasts | Leads page with statuses, notes, call/WhatsApp buttons, CSV, phone alerts | Even (ManyChat deeper, BuPulse simpler) |
+| Sign-up to first result | 1 step (log in with Instagram), live in minutes | 3-step form, email link, 4-step brand set-up, book a demo, wait for the trial to be started | **ManyChat** |
+| Free use | Free plan forever + 14-day trial | No free plan; 3-day trial after a demo | ManyChat |
+| Paying | Card in USD only | MoMo/Airtel in RWF or card | **BuPulse** |
+| Price for a small business | Pro ~$39/month monthly (~57,000 RWF, guess) + WhatsApp fees | Starter 15,000, Business 50,000 RWF | **BuPulse** |
+| Language | EN/ES/PT | Content in Kinyarwanda included | **BuPulse** |
+| Human help | Self-serve; agencies directory | Demo, custom plans, "Managed by BuPulse" | **BuPulse** |
+| Referral / partners | 30–50% for 12 months, PartnerStack | Sales-staff referral links only (`lib/sales/referral.ts`), no outside partners | ManyChat |
+| Proof on the site | Creator quotes with numbers everywhere | None yet (pre-launch) | ManyChat |
+
+**Biggest gaps for BuPulse:** (1) no replies on social, where Rwandan customers actually ask "how much?"; (2) slow
+time to first result. **Biggest strengths:** content creation, MoMo and RWF, Kinyarwanda, and human set-up.
+
+**Reuse note:** the website chat already answers from the knowledge base and saves leads. Instagram/Facebook comment and
+DM replies could reuse that same engine and the Leads page; the new part is receiving comments/DMs (Meta permissions
+`instagram_manage_comments` / `instagram_business_manage_messages`, or Composio triggers if they exist: **to check**).
+
 ## Open questions (not answered by this teardown)
 
 - Real conversion rates (sign-up → paid) and churn: private. Unknown.
