@@ -9,6 +9,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
   channels: { OWNER: true, ADMIN: true, MEMBER: false },
   connectors: { OWNER: true, ADMIN: true, MEMBER: false },
   widget: { OWNER: true, ADMIN: true, MEMBER: false },
+  automations: { OWNER: true, ADMIN: true, MEMBER: false },
   webhooks: { OWNER: true, ADMIN: true, MEMBER: false },
   settings: { OWNER: true, ADMIN: true, MEMBER: false },
   team: { OWNER: true, ADMIN: true, MEMBER: false },
