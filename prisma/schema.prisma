@@ -149,6 +149,7 @@ model Business {
   postVersions     PostVersion[]
   videoJobs        VideoJob[]
   videoOutcomes    VideoOutcome[]
+  studioTickets    StudioTicket[]
 
   @@index([industryId])
   // The sales staff member the company is assigned to (StaffMember.id), from a referral link at sign-up or a sales
@@ -2203,6 +2204,10 @@ model VideoJob {
   leaseUntil     DateTime? // the design sweep, render worker or poller holding it
   nextPollAt     DateTime? // Seedance: when the cron checks BytePlus next
   expiresAt      DateTime? // Seedance: execution_expires_after (BytePlus ends it unbilled)
+  // "Your video is ready" (docs/VIDEO_STUDIO_SPLIT.md): when the video-jobs sweep sent the email, and when the client
+  // first opened the video in BuPulse's Videos library (the bell shows ready videos not seen yet).
+  readyNoticeAt  DateTime?
+  seenAt         DateTime?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   outcomes       VideoOutcome[]
@@ -2211,6 +2216,23 @@ model VideoJob {
   @@index([status, nextPollAt])
   @@index([engine, status, leaseUntil])
   @@index([contentId])
+  @@index([status, readyNoticeAt])
+}
+
+// One-click sign-in from BuPulse to the Video Studio (studio.bupulse.com, docs/VIDEO_STUDIO_SPLIT.md): BuPulse writes
+// a ticket and sends the client to the studio with its token; the studio redeems it once, within 2 minutes. Only the
+// token's SHA-256 is stored.
+model StudioTicket {
+  id         String    @id @default(cuid())
+  tokenHash  String    @unique
+  userId     String    @db.Uuid // who pressed "Open Video Studio"
+  businessId String
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([expiresAt])
 }
 
 // What a posted studio video did 24 hours and 7 days after it went out (lib/video-engine/brain/types.ts Outcome); the
