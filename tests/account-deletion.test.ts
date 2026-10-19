@@ -16,7 +16,7 @@ const { queryRaw, memberFind, bizFind, eventsUpdate, notesDelete, subFindUnique,
   createClient: vi.fn(),
 }));
 
-vi.mock("@/lib/db", () => ({ prisma: { business: { findUnique: bizFind }, analyticsEvent: { updateMany: eventsUpdate }, adminNote: { deleteMany: notesDelete }, user: { findMany, findFirst }, membership: { findMany: memberFind }, invite: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) }, subscription: { findUnique: subFindUnique }, $executeRaw: executeRaw, $queryRaw: queryRaw } }));
+vi.mock("@/lib/db", () => ({ prisma: { business: { findUnique: bizFind }, analyticsEvent: { updateMany: eventsUpdate }, adminNote: { deleteMany: notesDelete }, firstPostPreview: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) }, user: { findMany, findFirst }, membership: { findMany: memberFind }, invite: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) }, subscription: { findUnique: subFindUnique }, $executeRaw: executeRaw, $queryRaw: queryRaw } }));
 vi.mock("@/lib/errors", () => ({ logError }));
 vi.mock("@supabase/supabase-js", () => ({ createClient }));
 

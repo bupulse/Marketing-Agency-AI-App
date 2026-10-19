@@ -56,6 +56,8 @@ export type Settings = {
   revenueGoalRwf: number;
   /** Month 1 of the launch, YYYY-MM (Kigali): the goal tracker counts months from it. */
   goalStartMonth: string;
+  /** The free first-post preview while a company waits for its demo (one AI post each; lib/preview/first-post.ts). Off by default: it spends AI money. */
+  firstPostPreview: boolean;
 };
 export type SettingName = keyof Settings;
 
@@ -75,6 +77,7 @@ const KEYS: Record<SettingName, string> = {
   eurRateAuto: "pricing.usdToEurAuto",
   revenueGoalRwf: "sales.revenueGoalRwf",
   goalStartMonth: "sales.goalStartMonth",
+  firstPostPreview: "sales.firstPostPreview",
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -93,6 +96,7 @@ export const DEFAULT_SETTINGS: Settings = {
   eurRateAuto: false,
   revenueGoalRwf: DEFAULT_REVENUE_GOAL_RWF,
   goalStartMonth: DEFAULT_GOAL_START_MONTH,
+  firstPostPreview: false,
 };
 
 const number = (field: string, min: number, max: number, integer = true) => (value: unknown) => {
@@ -145,6 +149,7 @@ export const cleanSetting: { [K in SettingName]: (value: unknown) => Settings[K]
   usdToEur: number("The USD to EUR rate", 0.1, 10, false),
   eurRateAuto: (value) => value === true || value === "on" || value === "true" || value === "1",
   revenueGoalRwf: number("The monthly income goal (RWF)", 0, 10_000_000_000),
+  firstPostPreview: (value) => value === true || value === "on" || value === "true" || value === "1",
   goalStartMonth: (value) => {
     const v = String(value ?? "").trim();
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(v)) throw new AdminError("invalid", "The launch month must look like 2026-11 (year and month).");

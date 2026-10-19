@@ -94,6 +94,19 @@ export function featurePlanKey(sub: SubscriptionBits | null): string | null {
   return sub.plan;
 }
 
+/**
+ * The first-post preview (lib/preview/first-post.ts) is the only thing a company waiting for its demo may make, and
+ * only then: once the trial starts the whole app is open instead. Pure, like featurePlanKey.
+ */
+export function previewAllowed(sub: Pick<SubscriptionBits, "status"> | null): boolean {
+  return sub?.status === "PENDING_DEMO";
+}
+
+/** previewAllowed for a company. */
+export async function companyMayPreview(businessId: string): Promise<boolean> {
+  return previewAllowed(await subscriptionOf(businessId));
+}
+
 /** Pure: whether a subscription makes the account read-only right now (see AccountBlock), or null when it may act. */
 export function accountBlock(sub: SubscriptionBits | null, now: Date = new Date()): AccountBlock | null {
   if (!sub) return null;

@@ -2485,3 +2485,24 @@ model PartnerPayout {
 
   @@index([partnerId, paidAt])
 }
+
+// The free first-post preview (docs/guide/features/29-first-post-preview.md): one AI post a company may make while it
+// waits for its demo, when Admin -> Settings switches it on. One row per company (unique businessId) is what keeps it to
+// one. No foreign key (like PartnerReferral); the account purge deletes it by userId.
+model FirstPostPreview {
+  id         String   @id @default(cuid())
+  businessId String   @unique
+  userId     String   @db.Uuid // the company owner
+  status     String   @default("making") // making | ready | failed
+  attempts   Int      @default(1) // a failed preview may be tried once more (FIRST_POST_MAX_ATTEMPTS)
+  caption    String?
+  hashtags   String[]
+  headline   String?
+  provider   String?
+  model      String?
+  error      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId])
+}
