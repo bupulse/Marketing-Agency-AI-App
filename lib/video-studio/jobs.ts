@@ -55,6 +55,8 @@ export type DesignJobInput = {
   voice?: boolean;
   /** An opening line the owner picked from the Brain's suggestions (lib/video-studio/library.ts openingLines). */
   chosenHook?: { hookId: string; line: string } | null;
+  /** An ad (the default) or an organic post on the business's own page: no price or contact hooks, a quieter caption. */
+  purpose?: "ad" | "post";
 };
 
 export type VideoJobView = {
@@ -187,6 +189,7 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
     cartoonId: input.cartoonId ?? null,
     platform: input.platform ?? null,
     voice: input.voice ?? true,
+    purpose: input.purpose === "post" ? "post" : "ad",
   };
   // The opening line the owner picked: the Brain's context for it goes in as research (Claude follows it), as in the lab.
   if (input.chosenHook && input.mode !== "edit" && input.mode !== "extend") brief.research = brainContext(brainBriefFromDesign(brief), { chosenHook: input.chosenHook });
@@ -213,7 +216,7 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
     jobs.map(async ({ id }, i) => {
       try {
         const result = await designVideo({ ...brief, variation: versions > 1 ? { index: i + 1, of: versions } : null }, { transport, model });
-        const captionScore = scoreCaption(result.spec.caption, result.spec.hashtags, { business: brief.business, product: brief.product, styleId: brief.styleId, seconds: brief.seconds, platform: brief.platform ?? null, note: brief.note ?? null }, { platform: brief.platform ?? null });
+        const captionScore = scoreCaption(result.spec.caption, result.spec.hashtags, { business: brief.business, product: brief.product, styleId: brief.styleId, seconds: brief.seconds, platform: brief.platform ?? null, note: brief.note ?? null }, { platform: brief.platform ?? null, purpose: brief.purpose ?? "ad" });
         // Finished only if still ours: once the lease passed, the sweep may have failed and refunded it (then it stays so).
         await prisma.videoJob.updateMany({
           where: { id, status: "designing", refundedAt: null },

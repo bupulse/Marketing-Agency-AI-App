@@ -88,7 +88,7 @@ async function buildAll() {
   await fs.mkdir(path.join(out, "pages"), { recursive: true });
   await fs.mkdir(path.join(out, "js"), { recursive: true });
   const common = { absWorkingDir: root, tsconfig: "tsconfig.json", bundle: true, logLevel: "warning", legalComments: "none" };
-  await build({ ...common, entryPoints: ["video-lab/server.ts"], outfile: path.join(out, "server.mjs"), platform: "node", format: "esm", target: "node22", packages: "external", alias: { "server-only": path.join(root, "video-lab/server-only-stub.js") }, plugins: [nextJs] });
+  await build({ ...common, entryPoints: ["video-lab/server.ts"], outfile: path.join(out, "server.mjs"), platform: "node", format: "esm", target: "node22", packages: "external", alias: { "server-only": path.join(root, "video-lab/server-only-stub.js"), "@/lib/supabase/server": path.join(root, "video-lab/supabase-server-stub.ts") }, plugins: [nextJs] });
   await build({
     ...common,
     entryPoints: { site: "video-lab/site/client/site.ts", home: "video-lab/site/client/home.ts", create: "video-lab/site/client/create.ts", showcase: "video-lab/site/client/showcase.ts", viral: "video-lab/site/client/viral.ts", pricing: "video-lab/site/client/pricing.ts", image: "video-lab/site/client/image.ts", model: "video-lab/site/client/model.ts", lab: "video-lab/client/app.ts" },

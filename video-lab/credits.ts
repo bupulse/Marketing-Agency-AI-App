@@ -67,21 +67,30 @@ export async function creditsLeft(companyUserId: string): Promise<{ left: number
   }
 }
 
+/**
+ * The plain-English message for a plan that cannot pay (lib/usage.ts UsageLimitError), or null for any other error:
+ * "needs N and you have M" when the credits ran out, or why the plan cannot be used.
+ */
+export async function usageMessage(error: unknown, credits: number, companyUserId: string): Promise<string | null> {
+  const { UsageLimitError } = await import("@/lib/usage");
+  if (!(error instanceof UsageLimitError)) return null;
+  if (error.reason === "limit_reached" && error.metric === "videoCredits") {
+    const left = await creditsLeft(companyUserId);
+    return `Not enough video credits: this needs ${credits} and you have ${"left" in left ? left.left : 0}. Buy more credits on BuPulse.`;
+  }
+  return `Videos cannot be made right now: ${BLOCKED[error.reason] ?? "the plan cannot be used"}. Open BuPulse billing to fix it.`;
+}
+
 /** Takes credits before a generation; throws in plain English when there are not enough. Returns what to give back to. */
 export async function charge(credits: number, note: string, jobId?: string): Promise<Payer> {
   const who = requestIdentity.getStore();
   if (who) {
-    const { consumeUsage, UsageLimitError } = await import("@/lib/usage");
+    const { consumeUsage } = await import("@/lib/usage");
     try {
       const { periodStart } = await consumeUsage(who.companyUserId, "videoCredits", credits);
       return { userId: who.companyUserId, periodStart: periodStart.toISOString() };
     } catch (error) {
-      if (!(error instanceof UsageLimitError)) throw error;
-      if (error.reason === "limit_reached") {
-        const left = await creditsLeft(who.companyUserId);
-        throw new Error(`Not enough video credits: this needs ${credits} and you have ${"left" in left ? left.left : 0}. Buy more credits on BuPulse.`);
-      }
-      throw new Error(`Videos cannot be made right now: ${BLOCKED[error.reason] ?? "the plan cannot be used"}. Open BuPulse billing to fix it.`);
+      throw new Error((await usageMessage(error, credits, who.companyUserId)) ?? (error instanceof Error ? error.message : "Credits could not be taken."), { cause: error });
     }
   }
   const w = await readWallet();

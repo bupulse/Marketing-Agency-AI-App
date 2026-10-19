@@ -36,6 +36,7 @@ import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PREMIUM_3D_CREDITS, PREMIUM_RERENDE
 import { VOICE_ROUTE, makeVoiceForJob, readVoiceMp3 } from "./voice";
 import { cancelSeedance, getSeedanceJob, getSeedancePreview, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
 import { mediaBytes, saveMedia } from "./data-source";
+import { asClientError, clientVideoUrl, createClientReshape, designForClient, getClientJob, keepPoster, listClientJobs, saveClientSpec, saveClientVideo, voiceForClient } from "./client-jobs";
 import { OWNER_PAGES, isOwnerOnly, owns, withoutOwnerFields } from "./scope";
 import { viralFrame, viralLibrary } from "./viral";
 import { clearSessionCookieHeader, clientSession, safeStudioNext, sessionCookieHeader, sessionSecret, signSession, type StudioIdentity } from "./session";
@@ -557,6 +558,62 @@ async function gate(req: http.IncomingMessage, res: http.ServerResponse, url: UR
   return false;
 }
 
+/** One of a client's Motion videos: read it, edit its design, re-shape it, add a voice-over, save its poster and its MP4. */
+async function clientJobRoute(req: http.IncomingMessage, res: http.ServerResponse, url: URL, c: StudioIdentity, jobId: string, sub: string): Promise<void> {
+  try {
+    const job = await getClientJob(c, jobId);
+    if (!job) return void fail(res, 404, "Test not found.");
+    if (req.method === "GET" && !sub) return void json(res, 200, job);
+    if (req.method === "PUT" && sub === "/spec") {
+      // The client edited the design by hand: checked like Claude's answer, no AI call, no cost.
+      const raw = JSON.parse((await readBody(req, 512 * 1024)).toString("utf8"));
+      const spec = validateSpec(raw, { ratio: isRatio(raw?.ratio) ? raw.ratio : (job.ratio as "9:16"), photoCount: job.photoIds.length, seconds: (raw?.scenes ?? []).reduce((s: number, x: { seconds?: number }) => s + (Number(x?.seconds) || 0), 0) || job.seconds });
+      await saveClientSpec(c, jobId, spec);
+      return void json(res, 200, await getClientJob(c, jobId));
+    }
+    if (req.method === "POST" && sub === "/reshape") {
+      // The same design for another network's shape (no Claude call, no charge): saved as a child job.
+      if (!job.spec) return void fail(res, 400, "This design failed, so it has nothing to re-shape.");
+      const body = await readJson(req, 4096);
+      const shape = RESHAPES[String(body.ratio)];
+      if (!shape) return void fail(res, 400, "Choose 1:1 (Facebook feed) or 4:5 (Instagram feed).");
+      const business = await getBusiness(c.businessId);
+      const photos = await Promise.all(
+        job.photoIds.map(async (id) => {
+          const ph = await photoJpeg(id, 1280, c.businessId);
+          const cut = await cutoutForPhoto(id, c.businessId);
+          return { width: ph.width, height: ph.height, subject: cut.ok ? cut.box : null };
+        }),
+      );
+      const spec = validateSpec({ ...job.spec, ratio: body.ratio }, { ratio: body.ratio as Ratio, photoCount: job.photoIds.length, seconds: totalMs(job.spec) / 1000, fixedLens: job.fixedLens, photos, platform: shape.platform, phone: business?.phone ?? null, purpose: job.purpose, productMin: productMinHeight(job.styleId), maxLines: STYLE_LIMITS[templateStyle(job.styleId)].maxLines });
+      return void json(res, 200, await createClientReshape(c, job, spec));
+    }
+    if (req.method === "POST" && sub === "/voice") {
+      if (await studioClosed(req, res)) return;
+      if (!job.spec) return void fail(res, 400, "This design failed, so it has no voice lines.");
+      const body = await readJson(req, 4096);
+      return void json(res, 200, await voiceForClient(c, jobId, typeof body.voiceId === "string" ? body.voiceId : null));
+    }
+    if (req.method === "POST" && sub === "/poster") {
+      // The first frame, a small JPEG, kept for the MP4 that follows.
+      const bytes = await readBody(req, 600 * 1024);
+      if (bytes.length > 400 * 1024 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return void fail(res, 400, "That is not a JPEG poster.");
+      keepPoster(jobId, bytes);
+      return void json(res, 200, { ok: true });
+    }
+    if (req.method === "POST" && sub === "/video") {
+      if (await studioClosed(req, res)) return;
+      const bytes = await readBody(req, MAX_UPLOAD);
+      const num = (k: string) => (Number.isInteger(Number(url.searchParams.get(k))) && Number(url.searchParams.get(k)) > 0 ? Number(url.searchParams.get(k)) : null);
+      return void json(res, 200, await saveClientVideo(c, jobId, bytes, { musicTrackId: url.searchParams.get("music"), width: num("w"), height: num("h") }));
+    }
+    return void fail(res, 404, "Not found");
+  } catch (error) {
+    const e = await asClientError(error, 0, c.companyUserId);
+    fail(res, e.status, e.message);
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
   const p = url.pathname;
@@ -639,8 +696,9 @@ const server = http.createServer(async (req, res) => {
       return res.end(bytes);
     }
     if (req.method === "GET" && p === "/api/showcase") {
-      const [cl0, sd0, pm0] = await Promise.all([listJobs(), listSeedanceJobs(), listPremiumJobs()]);
-      const [cl, sd, pm] = [cl0.filter((j) => ownsBusiness(req, j.businessId)), sd0.filter((j) => ownsBusiness(req, j.businessId)), pm0.filter((j) => ownsBusiness(req, j.businessId))];
+      const c = clientOf(req);
+      const [cl0, sd0, pm0] = await Promise.all([c ? listClientJobs(c, 40) : listJobs(), listSeedanceJobs(), listPremiumJobs()]);
+      const [cl, sd, pm] = [(cl0 as { businessId: string; styleId: string; id: string; productName: string; createdAt: string; video: unknown; status: string; note: string | null; ratio: string; apiEquivalentUsd?: number }[]).filter((j) => ownsBusiness(req, j.businessId)), sd0.filter((j) => ownsBusiness(req, j.businessId)), pm0.filter((j) => ownsBusiness(req, j.businessId))];
       const items = [
         // Preview jobs (no key yet) are storyboards, not videos: they stay out of the showcase.
         ...sd.filter((j) => !j.preview).map((j) => ({ id: j.id, engine: "seedance", title: j.title, createdAt: j.createdAt, status: j.status, videoUrl: j.videoFile ? `/videos/seedance/${j.id}.mp4` : null, prompt: j.request.prompt, info: { Quality: `${j.request.tier} · ${j.request.resolution} · ${j.request.seconds} s`, Credits: String(j.credits), "Provider cost": j.costUsd ? `$${j.costUsd.toFixed(3)}` : `about $${j.estimateUsd.toFixed(2)}` } })),
@@ -648,7 +706,9 @@ const server = http.createServer(async (req, res) => {
         ...pm.filter((j) => j.videoFile && !pm.some((x) => x.parentId === j.id && x.videoFile)).map((j) => ({ id: j.id, engine: "blender", title: j.title, createdAt: j.createdAt, status: j.status, videoUrl: `/videos/blender/${j.id}.mp4`, prompt: j.caption ?? j.note ?? "", info: { Engine: "Premium 3D (Blender)", Length: `${j.seconds} s`, Credits: String(j.credits), "Render time": j.renderSeconds ? `${j.renderSeconds} s` : "" } })),
         ...cl.filter((j) => j.styleId !== "sample").map((j) => ({ id: j.id, engine: "claude", title: j.productName, createdAt: j.createdAt, status: j.video ? "succeeded" : j.status, videoUrl: j.video ? `/videos/${j.id}.mp4` : null, prompt: j.note ?? "", info: { Template: j.styleId, Shape: j.ratio, "API-equivalent cost": `$${(j.apiEquivalentUsd ?? 0).toFixed(3)}` } })),
       ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      return json(res, 200, { items });
+      // Provider costs are the owner's: the info rows that print them are left out for a client.
+      const ownerRows = new Set(["Provider cost", "API-equivalent cost"]);
+      return json(res, 200, { items: c ? items.map((i) => ({ ...i, info: Object.fromEntries(Object.entries(i.info).filter(([k]) => !ownerRows.has(k))) })) : items });
     }
     if (req.method === "POST" && p === "/api/media") {
       if (scopeOf(req)) return notYetForClients(res);
@@ -1102,6 +1162,17 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && p === "/api/design") {
       if (await studioClosed(req, res)) return;
       const body = await readJson(req, 64 * 1024);
+      const c = clientOf(req);
+      if (c) {
+        // A client's designs are VideoJobs (credits from the plan, Claude by the API key): video-lab/client-jobs.ts.
+        try {
+          const out = await designForClient(c, body);
+          return json(res, out.error ? 502 : 200, out);
+        } catch (error) {
+          const e = await asClientError(error, 0, c.companyUserId);
+          return fail(res, e.status, e.message);
+        }
+      }
       const out = await design(body, scopeOf(req));
       return json(res, out.status, out.body);
     }
@@ -1117,6 +1188,7 @@ const server = http.createServer(async (req, res) => {
       await saveJob(job);
       return json(res, 200, job);
     }
+    if (req.method === "GET" && p === "/api/jobs" && clientOf(req)) return json(res, 200, { jobs: await listClientJobs(clientOf(req) as StudioIdentity) });
     if (req.method === "GET" && p === "/api/jobs") {
       const jobs = (await listJobs()).filter((j) => ownsBusiness(req, j.businessId));
       // The test budget is the owner's: a client sees neither the spend nor the cap.
@@ -1127,6 +1199,8 @@ const server = http.createServer(async (req, res) => {
       const bytes = await readVoiceMp3(voiceFile[1]);
       return bytes ? sendMedia(req, res, bytes, "audio/mpeg") : fail(res, 404, "Not found");
     }
+    const clientJob = p.match(/^\/api\/jobs\/([a-z0-9]{20,32})(\/video|\/spec|\/voice|\/reshape|\/poster)?$/);
+    if (clientJob && clientOf(req)) return clientJobRoute(req, res, url, clientOf(req) as StudioIdentity, clientJob[1], clientJob[2] ?? "");
     const jobMatch = p.match(/^\/api\/jobs\/([0-9]{8}-[0-9a-f]{8})(\/video|\/spec|\/voice|\/reshape)?$/);
     if (jobMatch) {
       const job = await getJob(jobMatch[1]);
@@ -1210,6 +1284,14 @@ const server = http.createServer(async (req, res) => {
         await saveJob(job);
         return json(res, 200, job);
       }
+    }
+    const clientVideo = p.match(/^\/videos\/(c[a-z0-9]{20,30})\.mp4$/);
+    if (req.method === "GET" && clientVideo && clientOf(req)) {
+      // A client's video lives in their Gallery: Storage serves it (Range included) through a short-lived link.
+      const link = await clientVideoUrl(clientOf(req) as StudioIdentity, clientVideo[1]);
+      if (!link) return fail(res, 404, "Not found");
+      res.writeHead(302, { location: link, "cache-control": "private, no-store" });
+      return res.end();
     }
     const video = p.match(/^\/videos\/([0-9]{8}-[0-9a-f]{8})\.mp4$/);
     if (req.method === "GET" && video) {

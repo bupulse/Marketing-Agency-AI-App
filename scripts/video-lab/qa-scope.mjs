@@ -70,7 +70,7 @@ const jobA = await (await post("/api/sample", undefined, { businessId: A.b, prod
 const jobB = await (await post("/api/sample", undefined, { businessId: B.b, productId: B.product })).json();
 check("the owner can make test samples", !!jobA.id && !!jobB.id);
 const list = (await (await get("/api/jobs", ca)).json()).jobs ?? [];
-check("the client's job list holds only business A", list.length > 0 && list.every((j) => j.businessId === A.b));
+check("the client's job list (their VideoJobs) holds only business A", list.every((j) => j.businessId === A.b) && !list.some((j) => j.id === jobB.id));
 check("the client can open their own job", (await get(`/api/jobs/${jobA.id}`, ca)).status === 200);
 check("the client cannot open B's job", (await get(`/api/jobs/${jobB.id}`, ca)).status === 404);
 check("the client cannot edit B's job spec", (await get(`/api/jobs/${jobB.id}/spec`, ca, { method: "PUT", body: "{}" })).status === 404);

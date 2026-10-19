@@ -1327,7 +1327,15 @@ async function makeMp4(g: Gen) {
     }
     const started = performance.now();
     const blob = await encodeSpecMp4(spec, state.photos, { musicUrl: track ? `/api/music/${track.id}` : null, voice, quality: state.quality, onProgress: (f) => (fill.style.width = `${Math.round(f * 100)}%`) });
-    await api(`/api/jobs/${j.id}/video?ms=${Math.round(performance.now() - started)}&q=${state.quality}`, { method: "POST", headers: { "content-type": "video/mp4" }, body: blob });
+    // A client's MP4 goes to their Gallery (with its poster, the frame at one second, and the music it used).
+    const client = (await getSession()).kind === "client";
+    if (client) {
+      const poster = await posterOf(spec);
+      if (poster) await api(`/api/jobs/${j.id}/poster`, { method: "POST", headers: { "content-type": "image/jpeg" }, body: poster }).catch(() => undefined);
+    }
+    const size = canvasSize(spec, state.quality);
+    const extra = client ? `&w=${size.width}&h=${size.height}${track ? `&music=${encodeURIComponent(track.id)}` : ""}` : "";
+    await api(`/api/jobs/${j.id}/video?ms=${Math.round(performance.now() - started)}&q=${state.quality}${extra}`, { method: "POST", headers: { "content-type": "video/mp4" }, body: blob });
     await loadGens();
     openDrawer(state.gens.find((x) => x.id === g.id) ?? null);
     // After the drawer is redrawn (it clears its message), so the owner sees the result.
@@ -1337,6 +1345,23 @@ async function makeMp4(g: Gen) {
   } finally {
     bar.hidden = true;
     fill.style.width = "0";
+  }
+}
+
+/** The poster: a small JPEG of the frame at one second (or a third of the way in), drawn from the loaded photos. */
+async function posterOf(spec: MotionSpec): Promise<Blob | null> {
+  try {
+    const { width, height } = canvasSize(spec, "480p");
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    drawSpecFrame(ctx, spec, state.photos, Math.min(1000, totalMs(spec) / 3), { quality: "480p" });
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.75));
+    return blob && blob.size <= 400 * 1024 ? blob : null;
+  } catch {
+    return null;
   }
 }
 
