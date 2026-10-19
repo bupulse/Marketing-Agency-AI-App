@@ -21,9 +21,14 @@ export function keysWhere(id: ServiceId): KeysWhere {
   return "here";
 }
 
-/** Every variable that can be saved on a service card, mapped to its service. */
+/**
+ * Every variable that can be saved on a service card, mapped to its service. A key two services share (Veo AI clips run
+ * on Gemini's GEMINI_API_KEY) belongs to the first service that lists it: the one it was made for.
+ */
 export const SAVABLE_KEYS: ReadonlyMap<string, ServiceId> = new Map(
-  SERVICES.filter((s) => keysWhere(s.id) === "here").flatMap((s) => [...s.env, ...(s.optionalEnv ?? [])].map((name) => [name, s.id] as const)),
+  SERVICES.filter((s) => keysWhere(s.id) === "here")
+    .flatMap((s) => [...s.env, ...(s.optionalEnv ?? [])].map((name) => [name, s.id] as const))
+    .reverse(),
 );
 
 export const isSavableKey = (name: string) => SAVABLE_KEYS.has(name);
