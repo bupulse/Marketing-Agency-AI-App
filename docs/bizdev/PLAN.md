@@ -26,6 +26,11 @@ there to be replaced by our own numbers from Admin after the first weeks. Money 
 - **Honest view:** 9M a month by month 4 is a stretch. 4M to 6M is a strong result for a first market
   (`docs/RWANDA_LAUNCH_PLAN.md`, section 6). What decides it is the number of demos held each week and the Managed
   clients, not new features.
+- **Who does it:** the owner alone can hold about 10 demos a week and run 3 to 4 Managed clients. The goal needs 2 to 3
+  sales agents, 15 to 25 partners and 2 content assistants (section 8). With only the owner and one agent, month 4 is
+  about **4.3M RWF**.
+- **Without the Social replies add-on** (it needs RDB registration and Meta verification) month 4 is about **8.3M RWF**.
+  RDB registration must start by **13 November 2026** for the add-on to count in months 3 and 4 (section 9).
 
 ## 2. Who buys: sectors, sizes and places
 
@@ -253,14 +258,90 @@ the same rates, paid on their own clients).
   assistant. If Meta verification is done, launch Social replies (Instagram and Facebook comment replies).
 - **Target:** 109 paying clients and 6.3M at day 90; **152 clients and about 8.8M to 9M at the end of month 4**.
 
-## 8. Costs (free first)
+## 8. Who does the work (capacity)
+
+35 demos a week **and** 21 Managed clients is more than one person can do. The time each job takes (all **guesses**,
+to be replaced by the owner's own timings after the first month):
+
+| Job | Time | Source |
+| --- | --- | --- |
+| One in-person demo, with travel and the follow-up message | about 45 minutes | guess |
+| One Managed Light client (12 posts a month): photos, approvals, posting, a monthly check-in | about 8 hours a month | guess |
+| One Managed Full client (20 posts, comment replies, monthly report) | about 16 hours a month | guess |
+| Average Managed client (the goal mix) | about 12 hours a month | derived |
+| Confirming MoMo payments, trials, renewals in Admin | about 5 minutes a client a month | guess |
+
+**What the owner can do alone.** With about 45 working hours a week: 10 demos (about 8 hours), Admin and payments
+(about 5 hours), partners and agents (about 5 hours), the daily video (about 4 hours), and about **10 hours a week for
+Managed, which is 3 to 4 Managed clients** (10 h x 4.3 weeks / 12 h). Everything above that needs other people.
+
+**Who does the rest at the goal (month 4):**
+
+| Who | Does | How many | Paid by |
+| --- | --- | --- | --- |
+| The owner | 10 demos a week, closes every Custom and Managed deal, runs 3 to 4 Managed clients, approves payments | 1 | |
+| Sales agents | 8 to 10 in-person demos a week each, with the 5-minute script (`docs/bizdev/SALES_KIT.md`) | 2 to 3 | commission on their clients' confirmed payments (decision 5) |
+| Partners | Bring warm introductions; agencies and co-working spaces also demo with the same script on their own | 15 to 25 | partner commission (section 6) |
+| A recorded demo | The existing narrated walkthrough (`Demo/Full walkthrough/...short, for social media`, `docs/guide/README.md`) sent on WhatsApp and pinned on Instagram and TikTok, ending on "Book a free demo" or "Pay now" on /pricing (the plan quiz) | replaces about 1 in 10 live demos (guess) | free |
+| Content assistants | Run Managed clients with BuPulse, 10 to 13 clients each at about 12 hours a client | 2 by month 4 (17 Managed clients beyond the owner's 4) | about 200,000 RWF a month each (guess); hire when 6 Managed clients pay |
+
+So the 35 demos a week are about 10 by the owner, 20 to 25 by agents, and the rest by partners and the recorded demo.
+
+### Lower-capacity scenario: the owner and one agent, no assistants
+
+If agents and assistants are not found in time:
+
+| | Main plan | Lower capacity |
+| --- | --- | --- |
+| Demos held a week | 35 | 20 (owner 10, one agent 10) |
+| New paying clients a month (months 1 to 4) | 30, 40, 45, 50 | 20, 25, 28, 29 |
+| Paying clients at the end of month 4 (6% churn) | 152 | 94 (derived) |
+| Managed clients | 21 | 4 (the owner's own limit) |
+| Custom clients | 15 | 8 |
+| Starter / Business | 60 / 60 | 41 / 41 |
+| Social replies add-on | 20 | 10 |
+| **Revenue a month at the end of month 4** | **about 8.8M to 9.05M RWF** | **about 4.3M RWF** (4 x 150,000 + 8 x 100,000 + 41 x 15,000 + 41 x 50,000 + 10 x 25,000) |
+
+The difference is almost all Managed and the number of demos: **people, not features, decide the goal.**
+
+## 9. Without the Social replies add-on
+
+The add-on's Instagram and Facebook parts need RDB registration, then Meta Business Verification and App Review (3 to
+6 weeks, `docs/bizdev/manychat-parity-plan.md`, `docs/META_APP_REVIEW.md`). If that is not done in time:
+
+| | With the add-on | Without it |
+| --- | --- | --- |
+| Goal mix (156 clients) | 9,050,000 RWF | **8,550,000 RWF** (minus 20 x 25,000) |
+| Pace plan, end of month 4 (152 clients) | about 8.8M RWF | **about 8.3M RWF** (derived: same share) |
+| Lower-capacity scenario | about 4.3M RWF | **about 4.07M RWF** |
+
+The gap (0.5M a month) can be closed with **4 more Managed clients** instead.
+
+**When RDB registration must start.** Count back from the day the add-on goes on sale. Month 1 is taken as **November
+2026** (guess: the pilot started mid-October, paid sales from November), so month 3 starts on 1 January 2027 and month
+4 on 1 February 2027.
+
+| Step | Time | Source |
+| --- | --- | --- |
+| RDB registration (sole proprietorship) | hours to 2 days | [S11] |
+| Meta Business Verification and App Review (comments and messages permissions) | 3 to 6 weeks | `docs/bizdev/manychat-parity-plan.md` |
+| Switching BuPulse to Meta's own permissions, testing with a real account | about 1 week | guess |
+| **Total, worst case** | **about 7 weeks** | derived |
+
+- To sell the add-on for **all of months 3 and 4** (the 20 clients in the goal mix): start RDB registration by
+  **Friday 13 November 2026** (7 weeks before 1 January 2027).
+- To sell it in **month 4 only** (about 10 clients, +250,000 RWF): start by **Monday 14 December 2026**.
+- After that it does not count in month 4. **Register with RDB now** stays the owner's top decision (section 12): it
+  costs nothing reported [S11] and also unlocks Paddle live and an automatic MoMo provider.
+
+## 10. Costs (free first)
 
 | Item | Cost | Free alternative | Needs the owner's OK |
 | --- | --- | --- | --- |
 | Hosting (Netlify free), database (Supabase free), email (Resend free tier) | 0 | | no |
 | AI (Gemini) at the goal | about 30% of Business price at average use (guess); watch Admin -> Usage per client | lower limits per plan | no (already in the budget cap) |
 | Partner and agent commission | about 500,000 RWF a month at the goal (section 6) | | yes (the rates) |
-| Content assistants for Managed | 2 to 3 people, about 200,000 RWF each a month **(guess)** | the owner does the first 6 Managed clients | yes |
+| Content assistants for Managed | 2 to 3 people, about 200,000 RWF each a month **(guess)** | the owner runs the first 3 to 4 Managed clients (section 8) | yes |
 | Transport for in-person demos | about 3,000 RWF a day per agent **(guess)** | agents cover it from commission | yes |
 | Workshop snacks and printing | about 50,000 RWF each **(guess)** | co-working space's free event room, no printing | yes |
 | Boosted posts | any | organic short videos | yes |
@@ -272,7 +353,7 @@ the same rates, paid on their own clients).
 month spread over many small payments fits, but confirm the monthly limit with MTN or use MoMo Pay (merchant code
 002450 is already set up).
 
-## 9. Numbers to watch every week
+## 11. Numbers to watch every week
 
 Most are already in Admin; the goal tracker (step 3 of this work) puts the key ones on one card.
 
@@ -288,12 +369,13 @@ Most are already in Admin; the goal tracker (step 3 of this work) puts the key o
 | Partners: applications, active, clients brought, commission owed | Admin -> Sales -> Partners | 15 active by day 60 |
 | AI cost per client against price | Admin -> Usage per client | under 40% of price |
 
-## 10. Decisions for the owner
+## 12. Decisions for the owner
 
-1. **Partner rates:** 20/25/30% for 12 months (recommended), or 30% flat, or a free month per referral only.
-2. **Social replies add-on at 25,000 RWF** (recommended), included in Business, or a 75,000 RWF Business Plus plan now.
-3. **Register the business with RDB now** (recommended: free and it unlocks Meta, Paddle live and automatic MoMo), or
-   wait until revenue arrives.
+1. **Register the business with RDB now** (recommended: reported free [S11]; it unlocks Meta verification for the
+   Social replies add-on, Paddle live and automatic MoMo). It must start by 13 November 2026 for the add-on to sell in
+   months 3 and 4 (section 9). Or wait until revenue arrives.
+2. **Partner rates:** 20/25/30% for 12 months (recommended), or 30% flat, or a free month per referral only.
+3. **Social replies add-on at 25,000 RWF** (recommended), included in Business, or a 75,000 RWF Business Plus plan now.
 4. **The USD rate in Admin -> Settings:** 1,470 (today's rate [S7]) or keep 1,450.
 5. **Sales agents' pay:** commission only at the partner rates (recommended), or a small base plus commission.
 
