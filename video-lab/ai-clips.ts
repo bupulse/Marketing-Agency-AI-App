@@ -18,7 +18,9 @@ import { GALLERY_VIDEO_BUCKET } from "@/lib/media/rules";
 import { MediaError, createFolder, finalizeUpload, prepareUploads, setAssetDescription } from "@/lib/media/service";
 import { prisma } from "@/lib/db";
 import { veoClipCredits } from "@/lib/video-engine/credits";
-import type { BriefClip } from "@/lib/video-engine/designer";
+import { isPlatform, recipeForBrief, type BriefClip, type DesignBrief } from "@/lib/video-engine/designer";
+import type { ViralRecipe } from "@/lib/video-engine/brain/viral";
+import { isRatio } from "@/lib/video-engine/spec";
 import { VIDEO_LEDGER_FEATURES } from "@/lib/video-engine/ledger-features";
 import {
   VEO_CLIPS_PER_VIDEO,
@@ -104,7 +106,11 @@ export type AiClip = {
   galleryPath?: string | null;
 };
 
-export type AiClipRun = { id: string; createdAt: string; businessId: string; productId: string; clipIds: string[] };
+/**
+ * `recipe`: the viral recipe the clips were made for (its AI beats), when the page asked for one: the design then uses
+ * this same recipe, so Clip 1..n land on the beats they were made for (aiClipRecipe).
+ */
+export type AiClipRun = { id: string; createdAt: string; businessId: string; productId: string; clipIds: string[]; recipe?: ViralRecipe | null };
 
 // ---- Files ----------------------------------------------------------------------------------------------------------
 
@@ -234,7 +240,35 @@ export function readNeeds(raw: unknown, seconds: VeoSeconds): ClipNeed[] | null 
   return needs.length ? needs : null;
 }
 
-export type StartInput = { businessId: string; productId: string; count?: number; seconds?: number; ratio?: string; photoIds?: string[]; needs?: unknown };
+/**
+ * What the design will be, when the clips should follow its viral recipe (brain/viral.ts): the same fields the design
+ * request sends. The recipe is made here first (text only, no photos), its AI beats become the clips, and the design
+ * reuses it.
+ */
+export type RecipeRequest = { styleId?: string; platform?: string | null; purpose?: string | null; seconds?: number; ratio?: string; phoneClips?: number };
+
+export type StartInput = { businessId: string; productId: string; count?: number; seconds?: number; ratio?: string; photoIds?: string[]; needs?: unknown; recipe?: RecipeRequest | null };
+
+type Product = Awaited<ReturnType<typeof listProducts>>[number];
+type Business = Awaited<ReturnType<typeof getBusiness>>;
+
+/** The viral recipe for the video the clips are for (a text-only brief, like the design's), with AI clips on. */
+export function recipeForClips(business: NonNullable<Business>, product: Product, r: RecipeRequest, seed: string): ViralRecipe {
+  const brief: DesignBrief = {
+    business: { name: business.name, description: business.description, language: business.language, colors: business.colors, phone: business.phone, website: business.website, country: business.country, tone: business.tone },
+    product: { name: product.name, summary: product.summary, description: product.description, price: product.price, usps: product.usps, features: product.features, targetCustomer: product.targetCustomer },
+    photos: [],
+    styleId: r.styleId ?? "viral",
+    hookId: "auto",
+    ratio: isRatio(r.ratio) ? r.ratio : "9:16",
+    seconds: Math.max(4, Math.min(30, Number(r.seconds) || 15)),
+    platform: isPlatform(r.platform) ? r.platform : null,
+    purpose: r.purpose === "post" ? "post" : "ad",
+    // The client's phone clips count as footage too (they take the filmed beats first).
+    clips: Array.from({ length: Math.max(0, Math.min(4, Number(r.phoneClips) || 0)) }, () => ({ path: "/videos/phone.mp4", source: "phone" as const, seconds: 6, width: 1080, height: 1920 })),
+  };
+  return recipeForBrief(brief, { seed, aiClips: true });
+}
 
 /**
  * Starts a run of 1 to 3 clips: checks, credits taken, clips written, then made in the background. Returns at once.
@@ -251,7 +285,11 @@ export async function startAiClips(who: StudioIdentity | null, input: StartInput
   const business = await getBusiness(businessId);
   const facts = { productName: product.name, summary: product.summary, country: business?.country ?? null };
   const count = Math.max(1, Math.min(VEO_CLIPS_PER_VIDEO.max, Math.round(Number(input.count) || VEO_CLIPS_PER_VIDEO.max)));
-  const needs = readNeeds(input.needs, seconds)?.slice(0, count) ?? defaultClipPlan(facts, count, seconds);
+  const runId = newId("vr");
+  // The shots: the page's own, else the viral recipe's AI beats (the design then follows that recipe), else the default plan.
+  const recipe = !readNeeds(input.needs, seconds) && input.recipe && business ? recipeForClips(business, product, input.recipe, runId) : null;
+  const recipeNeeds = recipe ? readNeeds(recipe.clipNeeds, seconds) : null;
+  const needs = readNeeds(input.needs, seconds)?.slice(0, count) ?? recipeNeeds?.slice(0, count) ?? defaultClipPlan(facts, count, seconds);
   // Photos: the ones the page chose (the product's, or the owner's uploads), else the product's album; one per clip in turn.
   const wanted = (Array.isArray(input.photoIds) ? input.photoIds.map(String) : []).filter((id) => product.photos.some((p) => p.assetId === id) || (!who && id.startsWith("up-")));
   const photoIds = wanted.length ? wanted : product.photos.map((p) => p.assetId);
@@ -264,7 +302,7 @@ export async function startAiClips(who: StudioIdentity | null, input: StartInput
     const worst = needs.reduce((s, n) => s + veoClipUsd(n.seconds ?? seconds, model), 0);
     if (spent + worst > DAILY_CAP_USD) throw new AiClipError(`Today's test budget is used: $${spent.toFixed(2)} of $${DAILY_CAP_USD.toFixed(2)}. More tomorrow (Kigali time).`, 429);
   }
-  const run: AiClipRun = { id: newId("vr"), createdAt: new Date().toISOString(), businessId, productId: product.id, clipIds: [] };
+  const run: AiClipRun = { id: runId, createdAt: new Date().toISOString(), businessId, productId: product.id, clipIds: [], recipe: recipeNeeds ? recipe : null };
   let payer: Payer;
   try {
     payer = await charge(total, `AI clips (Veo) x${needs.length}`, run.id);
@@ -478,6 +516,17 @@ export async function aiClipsForBrief(ids: unknown, businessId: string | null) {
   const wanted = (Array.isArray(ids) ? ids.map(String) : []).filter((id) => AI_CLIP_ID.test(id)).slice(0, VEO_CLIPS_PER_VIDEO.max);
   const clips = (await Promise.all(wanted.map(getAiClip))).filter((c): c is AiClip => !!c && c.status === "ready" && (!businessId || c.businessId === businessId));
   return clips.map((c): BriefClip => ({ path: `/videos/veo/${c.id}.mp4`, source: "ai", seconds: c.seconds, width: c.width, height: c.height, note: c.need.shot }));
+}
+
+/**
+ * The viral recipe a set of AI clips was made for (their run's), so the design follows the same beats; null when the
+ * clips were made from the page's shots or the default plan, or the run is another business's.
+ */
+export async function aiClipRecipe(ids: unknown, businessId: string | null): Promise<ViralRecipe | null> {
+  const first = (Array.isArray(ids) ? ids.map(String) : []).find((id) => AI_CLIP_ID.test(id));
+  const clip = first ? await getAiClip(first) : null;
+  const run = clip ? await getAiClipRun(clip.runId) : null;
+  return run && (!businessId || run.businessId === businessId) ? (run.recipe ?? null) : null;
 }
 
 /** What a design records about its AI clips (the job's brief): which clips, what was asked, the credits and the cost. */

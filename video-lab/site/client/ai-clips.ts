@@ -47,9 +47,13 @@ export function aiClipsOptions(onChange: () => void): HTMLElement {
 
 /**
  * Makes the clips and waits for them, saying where it is through `say`. Returns the ready clips' ids; throws when none
- * could be made (the credits are already back then). `needs`: a viral recipe's clip needs, when the page has them.
+ * could be made (the credits are already back then). `recipe`: the design request's fields, so the studio makes the
+ * clips for the viral recipe's AI beats (and the design then follows that recipe); `needs`: shots of the page's own.
  */
-export async function makeAiClips(input: { businessId: string; productId: string; ratio: string; photoIds: string[]; needs?: unknown[] }, say: (text: string) => void): Promise<string[]> {
+export async function makeAiClips(
+  input: { businessId: string; productId: string; ratio: string; photoIds: string[]; needs?: unknown[]; recipe?: { styleId: string; platform: string | null; purpose: string; seconds: number; ratio: string; phoneClips: number } },
+  say: (text: string) => void,
+): Promise<string[]> {
   if (!aiClips.count) return [];
   say(`Asking Google Veo for ${aiClips.count} AI clips…`);
   let { run } = await api<{ run: RunView }>("/api/ai-clips", {

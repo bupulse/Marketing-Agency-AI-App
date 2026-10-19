@@ -973,7 +973,7 @@ const server = http.createServer(async (req, res) => {
       await limit(req, "ai-clips", RATE_LIMITS.videoDesign);
       const body = await readJson(req, 16 * 1024);
       try {
-        const run = await startAiClips(clientOf(req), { businessId: String(body.businessId ?? ""), productId: String(body.productId ?? ""), count: Number(body.count), seconds: Number(body.seconds), ratio: String(body.ratio ?? "9:16"), photoIds: Array.isArray(body.photoIds) ? body.photoIds.map(String) : undefined, needs: body.needs });
+        const run = await startAiClips(clientOf(req), { businessId: String(body.businessId ?? ""), productId: String(body.productId ?? ""), count: Number(body.count), seconds: Number(body.seconds), ratio: String(body.ratio ?? "9:16"), photoIds: Array.isArray(body.photoIds) ? body.photoIds.map(String) : undefined, needs: body.needs, recipe: body.recipe && typeof body.recipe === "object" ? body.recipe : null });
         return json(res, 200, { run: await aiClipRunView(run) });
       } catch (error) {
         if (error instanceof AiClipError) return fail(res, error.status, error.message);

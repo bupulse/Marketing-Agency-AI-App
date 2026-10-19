@@ -27,7 +27,7 @@ vi.mock("@/video-lab/store", () => ({ DAILY_CAP_USD: 5, record: m.record, spentT
 vi.mock("@/video-lab/cutouts", () => ({ cutoutForPhoto: vi.fn(async () => ({ ok: false, reason: "scene" })) }));
 vi.mock("@/video-lab/data-source", () => ({
   listProducts: vi.fn(async (businessId: string) => (businessId === "biz-1" ? [{ id: "p-1", name: "LEAF Hydro Tower", summary: "Grow greens at home.", photos: [{ assetId: "ph-1" }, { assetId: "ph-2" }] }] : [])),
-  getBusiness: vi.fn(async () => ({ country: "Rwanda" })),
+  getBusiness: vi.fn(async () => ({ name: "LEAF Business", description: "Hydroponic towers for homes and schools", language: "en", colors: [], phone: "0788000000", website: null, country: "Rwanda", tone: null })),
   photoJpeg: vi.fn(async () => ({ bytes: await sharp({ create: { width: 400, height: 220, channels: 3, background: "#3a6" } }).jpeg().toBuffer(), width: 400, height: 220 })),
 }));
 
@@ -37,7 +37,7 @@ process.env.GEMINI_API_KEY = "test-key";
 delete process.env.VEO_MODEL;
 delete process.env.VEO_USD_PER_SECOND;
 
-const { aiClipRunView, aiClipsForBrief, aiClipsRecord, firstFrame, getAiClipRun, readNeeds, runMessage, startAiClips } = await import("@/video-lab/ai-clips");
+const { aiClipRecipe, aiClipRunView, aiClipsForBrief, aiClipsRecord, firstFrame, getAiClipRun, readNeeds, runMessage, startAiClips } = await import("@/video-lab/ai-clips");
 
 afterAll(() => fs.rm(dir, { recursive: true, force: true }));
 
@@ -157,6 +157,17 @@ describe("AI clips (Veo) in the studio", () => {
     expect(m.record).toHaveBeenCalledWith(expect.stringMatching(/^vc-/), "veo-clip", [expect.objectContaining({ inputTokens: 6, costUsd: 0.3 })]);
     expect(m.ledger).not.toHaveBeenCalled();
     expect(m.prepareUploads).not.toHaveBeenCalled();
+  });
+
+  it("makes the clips for a viral recipe's AI beats, and the design gets that same recipe back", async () => {
+    const g = google(["ok", "ok", "ok"]);
+    const run = await startAiClips(me, { businessId: "biz-1", productId: "p-1", count: 3, recipe: { styleId: "viral", platform: "tiktok", purpose: "ad", seconds: 15, ratio: "9:16" } }, { fetchImpl: g.f as unknown as typeof fetch, sleep: async () => {} });
+    expect(run.recipe?.clipNeeds.some((n) => n.source === "ai")).toBe(true);
+    const aiShots = run.recipe!.clipNeeds.filter((n) => n.source === "ai").map((n) => n.shot);
+    const view = await settle(run.id);
+    expect(view.clips.map((c) => c.shot)).toEqual(aiShots.slice(0, 3).map((x) => x.replace(/\s+/g, " ").trim().slice(0, 400)));
+    expect(await aiClipRecipe(view.ready, "biz-1")).toEqual(run.recipe);
+    expect(await aiClipRecipe(view.ready, "biz-2")).toBeNull();
   });
 
   it("reads clip needs from a recipe, and words the progress", () => {
