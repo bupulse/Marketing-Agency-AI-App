@@ -38,6 +38,8 @@ import { cancelSeedance, getSeedanceJob, getSeedancePreview, listSeedanceJobs, r
 import { mediaBytes, saveMedia } from "./data-source";
 import { asClientError, clientVideoUrl, createClientReshape, designForClient, getClientJob, keepPoster, listClientJobs, saveClientSpec, saveClientVideo, voiceForClient } from "./client-jobs";
 import { aiImageForClient, listAiImages, presenterShotForClient, uploadForClient } from "./client-images";
+import { RATE_LIMITS, RateLimitError, rateLimit, rateLimitMessage, type RateLimitRule } from "@/lib/rate-limit";
+import { checkStudioEnv } from "./startup-check";
 import { OWNER_PAGES, isOwnerOnly, owns, withoutOwnerFields } from "./scope";
 import { viralFrame, viralLibrary } from "./viral";
 import { clearSessionCookieHeader, clientSession, safeStudioNext, sessionCookieHeader, sessionSecret, signSession, type StudioIdentity } from "./session";
@@ -118,7 +120,17 @@ function sendMedia(req: http.IncomingMessage, res: http.ServerResponse, bytes: B
  * How the lab reaches Claude. "subscription" (the owner's Claude Code login, tests only) when there is no API key or
  * VIDEO_LAB_CLAUDE=subscription; "api" otherwise. Before deploying anything, switch to the API key (docs/VIDEO_ENGINE.md).
  */
-const claudeMode = (): "api" | "subscription" => (process.env.VIDEO_LAB_CLAUDE === "subscription" || !process.env.ANTHROPIC_API_KEY ? "subscription" : "api");
+const claudeMode = (): "api" | "subscription" => (process.env.STUDIO_ENV !== "production" && (process.env.VIDEO_LAB_CLAUDE === "subscription" || !process.env.ANTHROPIC_API_KEY) ? "subscription" : "api");
+
+/** A failure to answer with its own status and message (the message is meant for the person). */
+class HttpError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 /** The designer's research score (lib/video-engine, coming): 0-100 with the rules it passed and failed. */
 type DesignScore = { score: number; passed: unknown[]; failed: { rule: string; reason: string; scene?: number | null }[] };
@@ -455,6 +467,14 @@ async function studioClosed(req: http.IncomingMessage, res: http.ServerResponse)
   fail(res, 403, BLOCK_MESSAGE[block]);
   return true;
 }
+/**
+ * One more try of a costly action for the client's company, within the platform's hourly limit (lib/rate-limit.ts, kept
+ * in the database like the app's): throws RateLimitError (answered as 429 with the wait) when it is used up.
+ */
+async function limit(req: http.IncomingMessage, name: string, rule: RateLimitRule): Promise<void> {
+  const c = clientOf(req);
+  if (c) await rateLimit(`studio-${name}:${c.companyUserId}`, rule);
+}
 /** True when the request may see something of this business: always for the owner, only the client's own for a client. */
 const ownsBusiness = (req: http.IncomingMessage, businessId: string | null | undefined): boolean => owns(scopeOf(req), businessId);
 /**
@@ -496,7 +516,9 @@ async function gate(req: http.IncomingMessage, res: http.ServerResponse, url: UR
       fail(res, 503, "The studio's sign-in is not set up: STUDIO_SESSION_SECRET is missing (32 or more characters).");
       return false;
     }
-    if (!ticketTries.hit(clientIp(req))) {
+    // Per address in this process, and in the database (it survives a restart and counts every try of an address).
+    const tooMany = !ticketTries.hit(clientIp(req)) || (await rateLimit(`studio-ticket:${clientIp(req)}`, { limit: 60, windowSeconds: 600 }).then(() => false, () => true));
+    if (tooMany) {
       fail(res, 429, "Too many sign-in tries. Wait a few minutes.");
       return false;
     }
@@ -589,6 +611,7 @@ async function clientJobRoute(req: http.IncomingMessage, res: http.ServerRespons
     }
     if (req.method === "POST" && sub === "/voice") {
       if (await studioClosed(req, res)) return;
+      await limit(req, "voice", RATE_LIMITS.videoVoice);
       if (!job.spec) return void fail(res, 400, "This design failed, so it has no voice lines.");
       const body = await readJson(req, 4096);
       return void json(res, 200, await voiceForClient(c, jobId, typeof body.voiceId === "string" ? body.voiceId : null));
@@ -617,7 +640,14 @@ const server = http.createServer(async (req, res) => {
   const p = url.pathname;
   // The studio is a private test site: never in search results, online or not.
   res.setHeader("x-robots-tag", "noindex, nofollow");
+  res.setHeader("x-content-type-options", "nosniff");
+  res.setHeader("referrer-policy", "same-origin");
+  res.setHeader("x-frame-options", "DENY");
+  res.setHeader("content-security-policy", "frame-ancestors 'none'");
+  if (PRODUCTION && String(req.headers["x-forwarded-proto"] ?? "").startsWith("https")) res.setHeader("strict-transport-security", "max-age=31536000");
   try {
+    // For the tunnel's and the process manager's checks: no session, no data.
+    if (req.method === "GET" && p === "/healthz") return json(res, 200, { ok: true });
     if (!(await gate(req, res, url))) return;
     // Who pays for what this request spends: a client's plan credits, or the owner's test wallet.
     enterRequest(clientOf(req));
@@ -713,7 +743,7 @@ const server = http.createServer(async (req, res) => {
       // Video or audio reference uploads for Seedance (kept in video-lab/data/media).
       const bytes = await readBody(req, 60 * 1024 * 1024);
       const type = String(req.headers["content-type"] ?? "");
-      return json(res, 200, await saveMedia(bytes, type));
+      return json(res, 200, await saveMedia(bytes, type).catch((e: Error) => Promise.reject(new HttpError(400, e.message))));
     }
     const media = p.match(/^\/api\/media\/(um-[0-9a-f]{12})$/);
     if (req.method === "GET" && media) {
@@ -944,7 +974,7 @@ const server = http.createServer(async (req, res) => {
       const example = !!scopeOf(req) && (await isExamplePhoto(photo[1]));
       const c = await cutoutForPhoto(photo[1], example ? undefined : (scopeOf(req) ?? undefined)).catch(() => ({ ok: false as const, reason: "Photo not found." }));
       if (!c.ok) return json(res, 404, { error: c.reason });
-      res.writeHead(200, { "content-type": "image/png", "cache-control": "max-age=86400" });
+      res.writeHead(200, { "content-type": "image/png", "cache-control": "private, max-age=86400" });
       return res.end(c.png);
     }
     if (req.method === "GET" && photo) {
@@ -970,6 +1000,7 @@ const server = http.createServer(async (req, res) => {
         if (clientOf(req)) {
           if (await studioClosed(req, res)) return;
           if (infl[2] !== "shot") return fail(res, 404, "Not found");
+          await limit(req, "image", RATE_LIMITS.aiImage);
           try {
             return json(res, 200, await presenterShotForClient(clientOf(req) as StudioIdentity, infl[1], await readJson(req, 16 * 1024)));
           } catch (error) {
@@ -1094,6 +1125,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && p === "/api/image") {
       if (clientOf(req)) {
         if (await studioClosed(req, res)) return;
+        await limit(req, "image", RATE_LIMITS.aiImage);
         try {
           return json(res, 200, await aiImageForClient(clientOf(req) as StudioIdentity, await readJson(req, 16 * 1024)));
         } catch (error) {
@@ -1164,6 +1196,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && p === "/api/upload") {
       if (clientOf(req)) {
+        await limit(req, "upload", RATE_LIMITS.photoUpload);
         try {
           const name = decodeURIComponent(String(req.headers["x-file-name"] ?? "photo"));
           return json(res, 200, await uploadForClient(clientOf(req) as StudioIdentity, await readBody(req, 15 * 1024 * 1024), name));
@@ -1174,12 +1207,13 @@ const server = http.createServer(async (req, res) => {
       }
       // The owner's own photo (Seedance lets you upload references too): resized, kept in video-lab/data/uploads.
       const bytes = await readBody(req, 15 * 1024 * 1024);
-      return json(res, 200, await saveUpload(bytes));
+      return json(res, 200, await saveUpload(bytes).catch((e: Error) => Promise.reject(new HttpError(400, e.message))));
     }
     if (req.method === "GET" && p === "/api/music") return json(res, 200, await musicFor(url.searchParams.get("mood")));
     const track = p.match(/^\/api\/music\/([A-Za-z0-9_-]{6,60})$/);
     if (req.method === "GET" && track) {
-      const t = await musicBytes(track[1]);
+      const t = await musicBytes(track[1]).catch(() => null);
+      if (!t) return fail(res, 404, "Not found");
       res.writeHead(200, { "content-type": t.mimeType, "cache-control": "max-age=3600" });
       return res.end(t.bytes);
     }
@@ -1188,6 +1222,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req, 64 * 1024);
       const c = clientOf(req);
       if (c) {
+        await limit(req, "design", RATE_LIMITS.videoDesign);
         // A client's designs are VideoJobs (credits from the plan, Claude by the API key): video-lab/client-jobs.ts.
         try {
           const out = await designForClient(c, body);
@@ -1334,10 +1369,13 @@ const server = http.createServer(async (req, res) => {
     }
     fail(res, 404, "Not found");
   } catch (error) {
-    // Plain message only: no stack traces or secrets reach the page or the log.
+    // Plain message only: no stack traces or secrets reach the page or the log. A client (and production) sees a general
+    // line for a fault of ours; the real message goes to the log.
+    if (error instanceof HttpError) return void fail(res, error.status, error.message);
+    if (error instanceof RateLimitError) return void fail(res, 429, rateLimitMessage(error));
     const message = error instanceof Error ? error.message : "Something went wrong.";
     console.log(`[lab] ${req.method} ${p} failed: ${message}`);
-    fail(res, 500, message);
+    fail(res, 500, PRODUCTION || scopeOf(req) ? "Something went wrong. Please try again." : message);
   }
 });
 
@@ -1350,6 +1388,15 @@ for (const name of LAB_KEYS) if (!process.env[name]) delete process.env[name];
 void loadSavedKeys(LAB_KEYS)
   .catch(() => [] as string[])
   .then((loaded) => {
+    // Opening to clients: every required variable set (after the keys saved in Admin -> Services were loaded), or no start.
+    if (PRODUCTION) {
+      const { errors, warnings } = checkStudioEnv(process.env);
+      for (const w of warnings) console.log(`[lab] ${w}`);
+      if (errors.length) {
+        console.log(`[lab] The studio cannot start in production:\n${errors.map((e) => `  - ${e}`).join("\n")}`);
+        process.exit(1);
+      }
+    }
     server.listen(PORT, "127.0.0.1", () => {
       console.log(`BuPulse Video Studio: http://localhost:${PORT}  (daily test budget $${DAILY_CAP_USD}; the old lab page is /lab)`);
       void resumeSeedanceJobs();

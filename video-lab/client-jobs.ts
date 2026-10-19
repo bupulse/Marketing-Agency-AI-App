@@ -18,6 +18,7 @@ import { VideoStudioError, designMotionJobs, type DesignJobInput, type StudioOwn
 import { prepareJobVideo, saveJobVideo } from "@/lib/video-studio/library";
 import { makeJobVoice } from "@/lib/video-studio/voice";
 import { UsageLimitError } from "@/lib/usage";
+import { RateLimitError, rateLimitMessage } from "@/lib/rate-limit";
 import { CLAUDE_VIDEO_CREDITS, usageMessage } from "./credits";
 import type { StudioIdentity } from "./session";
 
@@ -206,6 +207,7 @@ export async function designForClient(id: StudioIdentity, body: Record<string, u
 /** The plain-English error for the page: the lib's own messages, the plan's credits, or a general line. */
 export async function asClientError(error: unknown, credits: number, companyUserId: string): Promise<ClientJobError> {
   if (error instanceof ClientJobError) return error;
+  if (error instanceof RateLimitError) return new ClientJobError(rateLimitMessage(error), 429);
   if (error instanceof VideoStudioError) return new ClientJobError(error.message, error.status);
   if (error instanceof BriefError) return new ClientJobError(error.message, error.code === "not_found" ? 404 : 400);
   if (error instanceof MediaError) return new ClientJobError(error.message, 400);
