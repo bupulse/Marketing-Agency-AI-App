@@ -8,6 +8,7 @@ import { briefText, clipsText, designVideo, placeClips, recipeForBrief, type Cla
 import { sampleSpec } from "@/lib/video-engine/sample";
 import type { MotionSpec } from "@/lib/video-engine/spec";
 import { VIRAL_STYLE_ID } from "@/lib/video-engine/templates";
+import { validateSpec } from "@/lib/video-engine/validate";
 
 const VIRAL_DIR = path.join(process.cwd(), "docs/research/viral");
 const rawRows = () => ["tiktok", "instagram", "facebook", "youtube"].flatMap((p) => (fs.existsSync(path.join(VIRAL_DIR, `${p}.jsonl`)) ? parseRows(fs.readFileSync(path.join(VIRAL_DIR, `${p}.jsonl`), "utf8")).rows : []));
@@ -116,14 +117,15 @@ describe("the viral index (viral-ingest.ts)", () => {
     const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     for (const r of rows) {
       for (const name of [String(r.account_name ?? ""), String(r.account ?? "").replace(/^@/, "")]) {
-        if (name.length >= 4) expect(new RegExp(`(?<![\\p{L}\\p{N}])${esc(name.toLowerCase())}(?![\\p{L}\\p{N}])`, "u").test(all), `${r.id} name`).toBe(false);
+        // A plain substring test first (fast); the word-boundary test only for the few that contain the name.
+        if (name.length >= 4 && all.includes(name.toLowerCase())) expect(new RegExp(`(?<![\\p{L}\\p{N}])${esc(name.toLowerCase())}(?![\\p{L}\\p{N}])`, "u").test(all), `${r.id} name`).toBe(false);
       }
       for (const c of (r.top_comments as { text?: string }[] | undefined) ?? []) if ((c.text ?? "").length > 15) expect(all.includes(c.text!.toLowerCase()), `${r.id} comment`).toBe(false);
       const caption = String(r.caption ?? "");
       if (caption.length > 80) expect(all.includes(caption.toLowerCase())).toBe(false);
     }
     expect(all).not.toMatch(/\.jpg|https?:\/\//);
-  });
+  }, 30_000);
 });
 
 const leaf: RecipeInput = { sector: "agriculture", product: "LEAF Hydro Tower", platform: "instagram", country: "Rwanda", language: "English", purpose: "ad", seconds: 15, hasPrice: true, hasPhone: true, seed: "job-1" };
@@ -197,6 +199,17 @@ describe("the viral recipe (viral.ts)", () => {
     expect(feasible(opening(ai), { aiClips: true })).toBe(true);
     expect(ai.clipNeeds.filter((n) => n.source === "ai").length).toBeLessThanOrEqual(3);
     for (const n of ai.clipNeeds) expect(ai.beats[n.beat - 1].footage).toBe("ai");
+  });
+
+  it("a floor-standing product is never held up to the camera, and no two clips show the same shot", () => {
+    for (let i = 0; i < 10; i++) {
+      const r = viralRecipe({ ...leaf, large: true, seed: `big${i}`, footage: { phoneClips: 1, aiClips: true } });
+      expect(r.clipNeeds.map((n) => n.shot).join(" ")).not.toMatch(/holds the .* up to the camera/);
+      expect(r.beats.map((b) => b.what).join(" ")).not.toMatch(/holds the .* up to the camera/);
+      const shots = r.clipNeeds.map((n) => n.shot.replace(/^Your phone clip: /, "").replace(/ \(the shop.*$/, "").replace(/\.$/, ""));
+      expect(new Set(shots).size).toBe(shots.length);
+    }
+    expect(recipeForBrief(brief(), { seed: "big", aiClips: true }).clipNeeds.map((n) => n.shot).join(" ")).not.toMatch(/holds the .* up to the camera/);
   });
 
   it("only uses facts the brief has: no price opening without a price, no price or contact push in a page post", () => {
@@ -308,6 +321,27 @@ describe("designing from a viral recipe", () => {
     expect(check({ ...base, opening: { ...base.opening, check: "text" } })["recipe-opening"]).toBe(true);
     // A recipe that keeps the price for the end is checked by recipe-price, not by the Brain's price-early.
     expect(check({ ...base, price: { ...base.price, at: "end" } })["price-early"]).toBeUndefined();
+  });
+});
+
+describe("text that cannot be moved apart", () => {
+  it("a quiet number line buried under another line moves to where the scene has room", () => {
+    const text = (t: string, y: number, h: number, size: number) => ({ kind: "text", text: t, font: "inter", size, color: "#ffffff", x: 0.48, y, w: 0.76, h });
+    const raw = {
+      ratio: "9:16",
+      palette: { background: "#0b3d2e", primary: "#1f8a5b", accent: "#f2c94c", text: "#ffffff" },
+      scenes: [0, 1, 2].map(() => ({ seconds: 5, transition: "cut", background: { kind: "solid", colors: ["#0b3d2e"] }, layers: [text("LEAF Hydro Tower", 0.2, 0.16, 0.11), text("250,000 RWF", 0.666, 0.052, 0.056), text("No soil · Saves space · Fresh all year", 0.739, 0.074, 0.046), text("WhatsApp 0791 954 277", 0.759, 0.031, 0.03)], camera: { move: "dollyIn" } })),
+      caption: "LEAF Hydro Tower 250,000 RWF. WhatsApp 0791 954 277",
+      hashtags: [],
+    };
+    const spec = validateSpec(raw, { ratio: "9:16", photoCount: 0, seconds: 15, platform: "instagram", phone: "0791 954 277", purpose: "ad" });
+    for (const s of spec.scenes) {
+      const lines = s.layers.filter((l) => l.kind === "text");
+      const number = lines.filter((l) => l.text.includes("954 277"));
+      expect(number.length).toBeLessThanOrEqual(1);
+      const benefit = lines.find((l) => l.text.startsWith("No soil"))!;
+      for (const n of number) expect(Math.abs(n.y - benefit.y)).toBeGreaterThan(0.03);
+    }
   });
 });
 

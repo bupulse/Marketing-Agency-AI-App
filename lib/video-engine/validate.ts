@@ -483,6 +483,21 @@ export function apartTexts(layers: Layer[], ratio: Ratio, area: SafeArea): Layer
   return out;
 }
 
+/**
+ * A small quiet number line still lying on another line once the layout is done (no room to move either: a viral
+ * design's three-benefit line over "WhatsApp 0791 …") goes; withPhoneLine then puts the number back where the scene
+ * has room (above the lowest line or under the highest), so the two never print on top of each other.
+ */
+export function dropBuriedNumber(layers: Layer[], ratio: Ratio): Layer[] {
+  type T = Extract<Layer, { kind: "text" }>;
+  const texts = layers.filter((l): l is T => l.kind === "text");
+  const quiet = (l: T) => l.size <= 0.035 && l.text.replace(/\D/g, "").length >= 9;
+  const together = (a: Layer, b: Layer) => Math.max(a.from ?? 0, b.from ?? 0) < Math.min(a.to ?? 1, b.to ?? 1);
+  const clash = (a: T, b: T) => together(a, b) && Math.abs(a.x - b.x) < (a.w + b.w) / 2 && Math.abs(a.y - b.y) < (drawnHeight(a, ratio) + drawnHeight(b, ratio)) / 2;
+  const buried = texts.filter((l) => quiet(l) && texts.some((o) => o !== l && !quiet(o) && clash(l, o)));
+  return buried.length ? layers.filter((l) => !buried.includes(l as T)) : layers;
+}
+
 /** WCAG contrast ratio of two colours (1 to 21). */
 function contrast(a: string, b: string): number {
   const L = (c: string) => {
@@ -910,7 +925,10 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
   for (const s of scenes) {
     s.layers = s.layers.map((l) => readable(l, s.seconds));
     if (s.say) s.say = fitSay(s.say, s.seconds);
-    if (VERTICAL.has(ratio) && opts.phone && !post) s.layers = withPhoneLine(s, opts.phone, palette, area, opts.platform ?? null, ratio, opts.photos ?? []);
+    if (VERTICAL.has(ratio) && opts.phone && !post) {
+      s.layers = dropBuriedNumber(s.layers, ratio);
+      s.layers = withPhoneLine(s, opts.phone, palette, area, opts.platform ?? null, ratio, opts.photos ?? []);
+    }
     s.layers = readableOnBackground(s.layers, s.background);
   }
   if (!post) scenes[scenes.length - 1].layers = withOrderWords(scenes[scenes.length - 1].layers);

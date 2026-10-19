@@ -43,6 +43,8 @@ export type RecipeInput = {
   /** The brief names a place (an area, a street) or a real offer: openings built on them need them. */
   hasLocation?: boolean;
   hasOffer?: boolean;
+  /** The product stands on the floor or the ground (a tower, a sofa, a car): clips never have it held up to the camera. */
+  large?: boolean;
   /** What footage there is: photos always; the client's phone clips (0 to 4); AI clips once the Veo step is on. */
   footage?: { phoneClips?: number; aiClips?: boolean; /** AI clips already made (at most 3 beats then take one); none given: up to 3. */ aiCount?: number };
   /** The business's recent recipes (newest first; about 5 are read): the new one avoids their opening, layout and beat order. */
@@ -314,15 +316,18 @@ const BEAT_JOBS: Record<ViralRole, string> = { hook: "stop the scroll", show: "s
 
 /** A clip of 4, 6 or 8 seconds (Veo's lengths) for a beat. */
 const clipSeconds = (len: number): 4 | 6 | 8 => (len <= 4.5 ? 4 : len <= 6.5 ? 6 : 8);
-/** What a clip for this beat should show, in the engine's words (never the other video's product). */
-export function shotFor(what: string, role: ViralRole, product: string, camera: string, index = 0): string {
+/**
+ * What a clip for this beat should show, in the engine's words (never the other video's product). `large`: a product
+ * that stands on the floor or the ground (a hydroponic tower, a sofa, a car) is never "held up to the camera".
+ */
+export function shotFor(what: string, role: ViralRole, product: string, camera: string, index = 0, large = false): string {
   const w = what.toLowerCase();
   const cam = /handheld|selfie|walk/i.test(camera) ? ", handheld" : /static|locked|tripod/i.test(camera) ? ", steady camera" : "";
   if (/unbox|unwrap|opens? the (box|bag|package)|package/.test(w)) return `Hands open the package and lift out the ${product}${cam}.`;
   if (/pour|serv|plate|bite|eat|cook|sizzl|steam/.test(w)) return `The ${product} served close up, steam or movement in the frame${cam}.`;
   if (/walk|door|enter|tour|room|shop floor|aisle|counter|outside|street/.test(w)) return `A slow walk through the shop or farm to the ${product}${cam}.`;
   if (/appl|spray|wash|use[sd]?\b|demo|install|plant|water|grow|fill|test/.test(w)) return `The ${product} in use, close on the hands${cam}.`;
-  if (/hold|hand|turn|rotat|show|lift|up to the camera/.test(w)) return `A hand holds the ${product} up to the camera and turns it slowly${cam}.`;
+  if (/hold|hand|turn|rotat|show|lift|up to the camera/.test(w)) return large ? `Hands rest on the ${product} where it stands, the camera moving slowly around it${cam}.` : `A hand holds the ${product} up to the camera and turns it slowly${cam}.`;
   if (role === "hook") return `A close, moving first look at the ${product}${cam}.`;
   const plain = [`A slow push in on the ${product} in a real setting${cam}.`, `A close detail of the ${product}: its texture, its parts, its label${cam}.`, `The ${product} from a low angle, the light moving across it${cam}.`, `The ${product} beside a hand or a person, so its size reads${cam}.`];
   return plain[index % plain.length];
@@ -477,7 +482,7 @@ export function viralRecipe(input: RecipeInput): ViralRecipe {
     if (footage === "ai") aiLeft--;
     // What to show, for this product; the viral video's own beat stays as the example.
     const lower = (t: string) => t.charAt(0).toLowerCase() + t.slice(1).replace(/\.$/, "");
-    const what = i === 0 ? opening.idea : b.role === "cta" ? `${BEAT_JOBS.cta}: ${ctaEnd}` : `${BEAT_JOBS[b.role]}: ${lower(shotFor(b.what, b.role, product, camV.camera, i))}`;
+    const what = i === 0 ? opening.idea : b.role === "cta" ? `${BEAT_JOBS.cta}: ${ctaEnd}` : `${BEAT_JOBS[b.role]}: ${lower(shotFor(b.what, b.role, product, camV.camera, i, !!input.large))}`;
     return { ...b, what, seen: withoutFigures(i === 0 ? opening.seen : short(b.what, 160)), footage };
   });
   // Phone clips the client added are used even when the sources were made from photos: the show beats take them.
@@ -486,9 +491,19 @@ export function viralRecipe(input: RecipeInput): ViralRecipe {
     b.footage = "phone";
     phoneLeft--;
   }
-  const clipNeeds: ClipNeed[] = beats.flatMap((b, i) =>
-    b.footage === "photo" ? [] : [{ beat: i + 1, seconds: clipSeconds(b.to - b.from), shot: b.footage === "phone" ? `Your phone clip: ${shotFor(b.seen, b.role, product, camV.camera).replace(/\.$/, "")} (the shop, the hands with the product, or the owner talking).` : shotFor(b.seen, b.role, product, camV.camera), source: b.footage }],
-  );
+  // Each clip shows something different: a shot already given to another beat makes way for the next plain one.
+  const shots = new Set<string>();
+  const shotOf = (b: RecipeBeat, i: number) => {
+    let shot = shotFor(b.seen, b.role, product, camV.camera, i, !!input.large);
+    for (let k = 0; shots.has(shot) && k < 4; k++) shot = shotFor("", "show", product, camV.camera, i + k, !!input.large);
+    shots.add(shot);
+    return shot;
+  };
+  const clipNeeds: ClipNeed[] = beats.flatMap((b, i) => {
+    if (b.footage === "photo") return [];
+    const shot = shotOf(b, i);
+    return [{ beat: i + 1, seconds: clipSeconds(b.to - b.from), shot: b.footage === "phone" ? `Your phone clip: ${shot.replace(/\.$/, "")} (the shop, the hands with the product, or the owner talking).` : shot, source: b.footage }];
+  });
 
   const sources = picks.filter((p) => uses.has(p.v.id)).map((p) => ({ id: p.v.id, uses: uses.get(p.v.id)! }));
   // A pick that lent nothing yet lends its lesson to the text (every pick is in the mix).
