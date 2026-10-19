@@ -36,6 +36,7 @@ import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PREMIUM_3D_CREDITS, PREMIUM_RERENDE
 import { VOICE_ROUTE, makeVoiceForJob, readVoiceMp3 } from "./voice";
 import { cancelSeedance, getSeedanceJob, getSeedancePreview, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
 import { mediaBytes, saveMedia } from "./data-source";
+import { OWNER_PAGES, isOwnerOnly, owns, withoutOwnerFields } from "./scope";
 import { viralFrame, viralLibrary } from "./viral";
 import { clearSessionCookieHeader, clientSession, safeStudioNext, sessionCookieHeader, sessionSecret, signInUrl, signSession, type StudioIdentity } from "./session";
 import { redeemTicket } from "./tickets";
@@ -47,11 +48,26 @@ const FONTS = path.resolve("public/fonts/video");
 const MAX_PHOTOS = 4;
 const MAX_UPLOAD = 40 * 1024 * 1024;
 
+/** Responses to clients: provider costs and the test budget are the owner's, so they are taken out of every JSON answer. */
+const clientResponses = new WeakSet<http.ServerResponse>();
 const json = (res: http.ServerResponse, status: number, body: unknown) => {
+  if (clientResponses.has(res)) body = withoutOwnerFields(body);
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   res.end(JSON.stringify(body));
 };
 const fail = (res: http.ServerResponse, status: number, message: string) => json(res, status, { error: message });
+
+/**
+ * A JSON request body. A client's `businessId` is always their own (set here, whatever the page sent), so no route can be
+ * pointed at another business; the owner chooses one.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- the pages' bodies are read field by field, as before
+async function readJson(req: http.IncomingMessage, limit: number): Promise<Record<string, any>> {
+  const body = JSON.parse((await readBody(req, limit)).toString("utf8") || "{}") as Record<string, unknown>;
+  const scope = scopeOf(req);
+  if (scope && body && typeof body === "object") body.businessId = scope;
+  return body;
+}
 
 async function readBody(req: http.IncomingMessage, limit: number): Promise<Buffer> {
   const parts: Buffer[] = [];
@@ -132,18 +148,20 @@ function chosenHookOf(v: unknown): { hookId: string; line: string } | null {
 }
 
 /** Reads and checks a design request (new video, or edit / extend of an earlier test). */
-async function readRequest(body: Record<string, unknown>): Promise<DesignRequest | { error: string; status: number }> {
+async function readRequest(body: Record<string, unknown>, scope: string | null = null): Promise<DesignRequest | { error: string; status: number }> {
   const mode: DesignMode = (DESIGN_MODES as readonly string[]).includes(String(body.mode)) ? (body.mode as DesignMode) : "reference";
-  const base = mode === "edit" || mode === "extend" ? await getJob(String(body.baseJobId ?? "")) : null;
+  const found = mode === "edit" || mode === "extend" ? await getJob(String(body.baseJobId ?? "")) : null;
+  // A client can only edit or extend a video of their own business.
+  const base = found && (!scope || found.businessId === scope) ? found : null;
   if ((mode === "edit" || mode === "extend") && !base?.spec) return { status: 404, error: "Pick a finished video to edit or extend." };
   const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 600) : null;
   if (mode === "edit" && !note) return { status: 400, error: "Describe the change you want." };
-  const businessId = base?.businessId ?? String(body.businessId ?? "");
+  const businessId = scope ?? base?.businessId ?? String(body.businessId ?? "");
   const productId = base?.productId ?? String(body.productId ?? "");
   const product = (await listProducts(businessId)).find((p) => p.id === productId);
   if (!product) return { status: 404, error: "Product not found." };
   const wanted = base ? base.photoIds : Array.isArray(body.photoIds) ? body.photoIds.map(String) : product.photos.map((p) => p.assetId);
-  const photoIds = (await Promise.all(wanted.map(async (id) => ((product.photos.some((p) => p.assetId === id) || (await uploadExists(id))) ? id : null)))).filter((id): id is string => !!id).slice(0, MAX_PHOTOS);
+  const photoIds = (await Promise.all(wanted.map(async (id) => ((product.photos.some((p) => p.assetId === id) || (!scope && (await uploadExists(id)))) ? id : null)))).filter((id): id is string => !!id).slice(0, MAX_PHOTOS);
   if (mode === "image" && photoIds.length < 1) return { status: 400, error: "Image to video needs one photo: pick it first." };
   if (mode === "firstLast" && photoIds.length < 2) return { status: 400, error: "First and last frame needs two photos: pick the first, then the last." };
   const maxExtra = base ? Math.max(0, SPEC_LIMITS.maxTotalSeconds - totalMs(base.spec as MotionSpec) / 1000) : 0;
@@ -272,8 +290,8 @@ async function designOne(req: DesignRequest, variation: { index: number; of: num
 }
 
 /** One request: 1 to 4 versions (like Higgsfield's batch), two at a time. */
-async function design(body: Record<string, unknown>): Promise<{ status: number; body: unknown }> {
-  const req = await readRequest(body);
+async function design(body: Record<string, unknown>, scope: string | null): Promise<{ status: number; body: unknown }> {
+  const req = await readRequest(body, scope);
   if ("error" in req) return { status: req.status, body: { error: req.error } };
   const versions = req.mode === "edit" || req.mode === "extend" ? 1 : Math.min(4, Math.max(1, Math.round(Number(body.versions) || 1)));
   if (claudeMode() === "api") {
@@ -333,23 +351,25 @@ const labelFor = (r: { kind: string; label?: unknown }, n: number) => `${r.kind 
  * character, um: media, vid: a studio video) into BytePlus references (video-lab/seedance-sources.ts loads them,
  * video-lab/seedance-references.ts fits them to BytePlus's limits). `problems` says what was left out and why.
  */
-async function resolveReferences(refs: StudioRef[], businessId: string): Promise<{ references: SeedanceReference[]; notes: string[]; problems: string[]; summary: ReferenceSummary[] }> {
-  const src = await loadReferenceSources(refs, businessId);
+async function resolveReferences(refs: StudioRef[], businessId: string, scope: string | null): Promise<{ references: SeedanceReference[]; notes: string[]; problems: string[]; summary: ReferenceSummary[] }> {
+  // A client's references are checked against their business: photos and cut-outs by owner, no uploads yet, and a
+  // finished video only when it is theirs.
+  const src = await loadReferenceSources(refs, businessId, scope ? { videoOwned: async (engine, id) => owns(scope, engine === "seedance" ? (await getSeedanceJob(id))?.businessId : (await getJob(id))?.businessId) } : undefined);
   const p = await prepareSeedanceReferences(src.sources);
   return { references: p.references, notes: p.notes, problems: [...src.problems, ...p.problems], summary: p.summary };
 }
 
 /** The page's Seedance settings as a BytePlus request (shared by submit and check). The prompt may be empty here. */
-async function seedanceRequestFrom(body: Record<string, unknown>) {
+async function seedanceRequestFrom(body: Record<string, unknown>, scope: string | null) {
   const tier = (String(body.tier) in SEEDANCE_MODELS ? body.tier : "fast") as SeedanceTier;
   const allowed = SEEDANCE_MODELS[tier].resolutions as readonly string[];
   // The resolution is passed as asked, so the check can say when a quality cannot make it.
   const resolution = ((SEEDANCE_RESOLUTIONS as readonly string[]).includes(String(body.resolution)) ? body.resolution : allowed[allowed.length - 1]) as SeedanceResolution;
   const ratio = (SEEDANCE_RATIOS as readonly string[]).includes(String(body.ratio)) ? (body.ratio as SeedanceRequest["ratio"]) : "9:16";
   const seconds = Math.min(SEEDANCE_LIMITS.maxSeconds, Math.max(SEEDANCE_LIMITS.minSeconds, Math.round(Number(body.seconds) || 5)));
-  const businessId = String(body.businessId ?? "");
+  const businessId = scope ?? String(body.businessId ?? "");
   const product = businessId ? (await listProducts(businessId)).find((x) => x.id === String(body.productId ?? "")) : undefined;
-  const { references, notes, problems } = await resolveReferences(Array.isArray(body.refs) ? body.refs : [], businessId);
+  const { references, notes, problems } = await resolveReferences(Array.isArray(body.refs) ? body.refs : [], businessId, scope);
   const seed = Number.isFinite(Number(body.seed)) && body.seed !== null && body.seed !== "" ? Number(body.seed) : null;
   const request: SeedanceRequest = { tier, prompt: String(body.prompt ?? "").trim(), references, ratio, seconds, resolution, audio: body.audio !== false, fixedLens: body.fixedLens === true, seed, flex: body.flex === true, draft: body.draft === true };
   return { request, notes, problems, product, businessId, versions: Math.min(3, Math.max(1, Number(body.versions) || 1)) };
@@ -405,12 +425,6 @@ export type Actor = { kind: "owner" } | { kind: "client"; identity: StudioIdenti
 const actors = new WeakMap<http.IncomingMessage, Actor>();
 const actorOf = (req: http.IncomingMessage): Actor | null => actors.get(req) ?? null;
 const isOwner = (req: http.IncomingMessage) => actorOf(req)?.kind === "owner";
-/** Owner-only routes (research, tests, the shared wallet): a client gets the same 404 as for a route that does not exist. */
-const requireOwner = (req: http.IncomingMessage, res: http.ServerResponse): boolean => {
-  if (isOwner(req)) return true;
-  fail(res, 404, "Not found");
-  return false;
-};
 /** The client's session, or null for the owner. Routes use it to scope reads and writes to the client's business. */
 const clientOf = (req: http.IncomingMessage): StudioIdentity | null => {
   const a = actorOf(req);
@@ -420,6 +434,25 @@ const BUPULSE_URL = (process.env.BUPULSE_URL ?? "").trim();
 /** The first path segments the studio serves as pages: what a sign-in may send a client back to. */
 const PAGE_SEGMENTS = new Set([...Object.keys(PAGE_ROUTES), ...Object.keys(REDIRECTS)].map((k) => k.split("/")[1]).filter(Boolean));
 const studioNext = (next: unknown) => safeStudioNext(next, (first) => PAGE_SEGMENTS.has(first));
+/** The client's business, or null for the owner (who chooses one). */
+const scopeOf = (req: http.IncomingMessage): string | null => clientOf(req)?.businessId ?? null;
+/** True when the request may see something of this business: always for the owner, only the client's own for a client. */
+const ownsBusiness = (req: http.IncomingMessage, businessId: string | null | undefined): boolean => owns(scopeOf(req), businessId);
+/**
+ * The photos in the template example videos (video-lab/store.ts previews, made by the owner): every client sees those
+ * examples, so those photos (and their cut-outs) are readable by any client, and nothing else of another business is.
+ */
+let previewPhotos: { at: number; ids: Set<string> } | null = null;
+async function isExamplePhoto(id: string): Promise<boolean> {
+  if (!previewPhotos || Date.now() - previewPhotos.at > 60_000) previewPhotos = { at: Date.now(), ids: new Set(Object.values(await listPreviews()).flatMap((x) => x.photoIds)) };
+  return previewPhotos.ids.has(id);
+}
+/** Whether a client may use this job: always for the owner (no lookup), only a job of the client's business for a client. */
+const sdOwned = async (req: http.IncomingMessage, id: string) => !scopeOf(req) || ownsBusiness(req, (await getSeedanceJob(id))?.businessId);
+const plOwned = async (req: http.IncomingMessage, id: string) => !scopeOf(req) || ownsBusiness(req, (await getPremiumJob(id))?.businessId);
+const clOwned = async (req: http.IncomingMessage, id: string) => !scopeOf(req) || ownsBusiness(req, (await getJob(id))?.businessId);
+/** Uploads, AI images and presenter shots are being moved to the business's Gallery (docs/STUDIO_DEPLOY.md, item 7). */
+const notYetForClients = (res: http.ServerResponse) => fail(res, 503, "This is being moved into your BuPulse Gallery and opens soon.");
 
 /**
  * Who may go on (docs/STUDIO_DEPLOY.md, section 2). True when the request may continue (the actor is set); otherwise it
@@ -464,6 +497,7 @@ async function gate(req: http.IncomingMessage, res: http.ServerResponse, url: UR
   const actor: Actor | null = client ? { kind: "client", identity: client } : ownerSignedIn || (!PRODUCTION && isLocal(req.headers, PORT)) ? { kind: "owner" } : null;
   if (actor) {
     actors.set(req, actor);
+    if (actor.kind === "client") clientResponses.add(res);
     if (p !== "/login") return true;
     res.writeHead(303, { location: safeNext(url.searchParams.get("next")) });
     res.end();
@@ -513,7 +547,8 @@ const server = http.createServer(async (req, res) => {
   res.setHeader("x-robots-tag", "noindex, nofollow");
   try {
     if (!(await gate(req, res, url))) return;
-    if (req.method === "GET" && PAGE_ROUTES[p]) return file(res, path.join(PAGES, `${PAGE_ROUTES[p]}.html`), "text/html; charset=utf-8");
+    if (!isOwner(req) && isOwnerOnly(req.method ?? "", p)) return fail(res, 404, "Not found");
+    if (req.method === "GET" && PAGE_ROUTES[p] && (!OWNER_PAGES.has(p) || isOwner(req))) return file(res, path.join(PAGES, `${PAGE_ROUTES[p]}.html`), "text/html; charset=utf-8");
     if (req.method === "GET" && REDIRECTS[p]) {
       // Keeps the query (the old ?tier= links go to that model's page; ?prompt= and ?ref= pass through).
       const tier = url.searchParams.get("tier");
@@ -525,19 +560,20 @@ const server = http.createServer(async (req, res) => {
     }
     const stat = p.match(/^\/static\/([a-z0-9-]{1,60})\.(png|jpg|webp)$/);
     if (req.method === "GET" && stat) return file(res, path.join(BUILD, "static", `${stat[1]}.${stat[2]}`), stat[2] === "jpg" ? "image/jpeg" : `image/${stat[2]}`, "max-age=3600");
-    if (req.method === "GET" && p === "/lab") return file(res, path.join(BUILD, "lab.html"), "text/html; charset=utf-8");
-    if (req.method === "GET" && p === "/app.js") return file(res, path.join(BUILD, "js", "lab.js"), "text/javascript; charset=utf-8");
+    if (req.method === "GET" && p === "/lab" && isOwner(req)) return file(res, path.join(BUILD, "lab.html"), "text/html; charset=utf-8");
+    if (req.method === "GET" && p === "/app.js" && isOwner(req)) return file(res, path.join(BUILD, "js", "lab.js"), "text/javascript; charset=utf-8");
     if (req.method === "GET" && p === "/site.css") return file(res, path.join(BUILD, "site.css"), "text/css; charset=utf-8");
     const js = p.match(/^\/js\/([a-z]+)\.js$/);
     if (req.method === "GET" && js) return file(res, path.join(BUILD, "js", `${js[1]}.js`), "text/javascript; charset=utf-8");
     if (req.method === "GET" && p === "/api/session") {
       const c = clientOf(req);
-      return json(res, 200, c ? { kind: "client", businessId: c.businessId, role: c.role } : { kind: "owner" });
+      const name = c ? ((await getBusiness(c.businessId))?.name ?? "") : "";
+      return json(res, 200, c ? { kind: "client", businessId: c.businessId, businessName: name, role: c.role } : { kind: "owner" });
     }
     if (req.method === "GET" && p === "/api/wallet") return json(res, 200, await readWallet());
     if (req.method === "POST" && p === "/api/wallet/topup") {
       // Test wallet only: no payment. In the app, MoMo and plan allowances take over (docs/MOMO.md).
-      const body = JSON.parse((await readBody(req, 4096)).toString("utf8") || "{}");
+      const body = await readJson(req, 4096);
       const pack = CREDIT_PACKS.find((x) => x.id === String(body.pack));
       if (!pack) return fail(res, 404, "Unknown pack.");
       return json(res, 200, await topUp(pack.credits, `${pack.name} (test, no payment)`));
@@ -554,7 +590,7 @@ const server = http.createServer(async (req, res) => {
       });
     }
     if (req.method === "POST" && p === "/api/quote") {
-      const body = JSON.parse((await readBody(req, 4096)).toString("utf8") || "{}");
+      const body = await readJson(req, 4096);
       const versions = Math.min(4, Math.max(1, Number(body.versions) || 1));
       if (body.engine === "seedance") {
         const tier = (body.tier in SEEDANCE_MODELS ? body.tier : "fast") as SeedanceTier;
@@ -567,16 +603,17 @@ const server = http.createServer(async (req, res) => {
       const voice = body.voice === true ? VOICE_OVER_CREDITS : 0;
       return json(res, 200, { credits: (CLAUDE_VIDEO_CREDITS + voice) * versions, usd: estimateDesignCost(Math.min(4, Number(body.photos) || 0)) * versions, voiceCredits: voice * versions });
     }
-    if (req.method === "GET" && p === "/api/viral") return json(res, 200, await viralLibrary());
+    if (req.method === "GET" && p === "/api/viral" && isOwner(req)) return json(res, 200, await viralLibrary());
     const vframe = p.match(/^\/viral\/frames\/([^/]+)\/([^/]+)\/([^/]+)$/);
-    if (req.method === "GET" && vframe) {
+    if (req.method === "GET" && vframe && isOwner(req)) {
       const bytes = await viralFrame(vframe[1], vframe[2], vframe[3]);
       if (!bytes) return fail(res, 404, "Not found");
       res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "max-age=86400" });
       return res.end(bytes);
     }
     if (req.method === "GET" && p === "/api/showcase") {
-      const [cl, sd, pm] = await Promise.all([listJobs(), listSeedanceJobs(), listPremiumJobs()]);
+      const [cl0, sd0, pm0] = await Promise.all([listJobs(), listSeedanceJobs(), listPremiumJobs()]);
+      const [cl, sd, pm] = [cl0.filter((j) => ownsBusiness(req, j.businessId)), sd0.filter((j) => ownsBusiness(req, j.businessId)), pm0.filter((j) => ownsBusiness(req, j.businessId))];
       const items = [
         // Preview jobs (no key yet) are storyboards, not videos: they stay out of the showcase.
         ...sd.filter((j) => !j.preview).map((j) => ({ id: j.id, engine: "seedance", title: j.title, createdAt: j.createdAt, status: j.status, videoUrl: j.videoFile ? `/videos/seedance/${j.id}.mp4` : null, prompt: j.request.prompt, info: { Quality: `${j.request.tier} · ${j.request.resolution} · ${j.request.seconds} s`, Credits: String(j.credits), "Provider cost": j.costUsd ? `$${j.costUsd.toFixed(3)}` : `about $${j.estimateUsd.toFixed(2)}` } })),
@@ -587,6 +624,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { items });
     }
     if (req.method === "POST" && p === "/api/media") {
+      if (scopeOf(req)) return notYetForClients(res);
       // Video or audio reference uploads for Seedance (kept in video-lab/data/media).
       const bytes = await readBody(req, 60 * 1024 * 1024);
       const type = String(req.headers["content-type"] ?? "");
@@ -594,12 +632,13 @@ const server = http.createServer(async (req, res) => {
     }
     const media = p.match(/^\/api\/media\/(um-[0-9a-f]{12})$/);
     if (req.method === "GET" && media) {
+      if (scopeOf(req)) return fail(res, 404, "Not found");
       const m = await mediaBytes(media[1]);
       if (!m) return fail(res, 404, "Not found");
       return sendMedia(req, res, m.bytes, m.mimeType);
     }
     if (req.method === "POST" && p === "/api/seedance/prompt") {
-      const body = JSON.parse((await readBody(req, 32 * 1024)).toString("utf8") || "{}");
+      const body = await readJson(req, 32 * 1024);
       const business = await getBusiness(String(body.businessId ?? ""));
       const product = business ? (await listProducts(business.id)).find((x) => x.id === String(body.productId ?? "")) : undefined;
       if (!business || !product) return fail(res, 404, "Pick a product first.");
@@ -619,7 +658,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && p === "/api/seedance/plan") {
       // BuPulse's own shot plan from the product (lib/video-engine/seedance-brain.ts): free and instant, no AI.
-      const body = JSON.parse((await readBody(req, 32 * 1024)).toString("utf8") || "{}");
+      const body = await readJson(req, 32 * 1024);
       const business = await getBusiness(String(body.businessId ?? ""));
       const product = business ? (await listProducts(business.id)).find((x) => x.id === String(body.productId ?? "")) : undefined;
       if (!business || !product) return fail(res, 404, "Pick a product first.");
@@ -642,8 +681,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && p === "/api/seedance/check") {
       // The same request Generate would send, checked before anything is paid (errors block Generate).
-      const body = JSON.parse((await readBody(req, 64 * 1024)).toString("utf8") || "{}");
-      const { request, notes, problems } = await seedanceRequestFrom(body);
+      const body = await readJson(req, 64 * 1024);
+      const { request, notes, problems } = await seedanceRequestFrom(body, scopeOf(req));
       return json(res, 200, { ...checkSeedanceRequest(request, { referenceNotes: notes }), problems });
     }
     if (req.method === "GET" && p === "/api/seedance/examples") {
@@ -669,12 +708,14 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "GET" && p === "/api/seedance/status") {
       const c = await seedanceConnection();
+      // A client never sees keys or provider messages: only whether real video is on.
+      if (scopeOf(req)) return json(res, 200, { state: seedanceReady() ? "connected" : "preview", message: seedanceReady() ? "" : "Seedance is in preview mode for now.", mode: seedanceReady() ? "live" : "preview" });
       return json(res, 200, { state: c.state, message: c.message, mode: seedanceReady() ? "live" : "preview" });
     }
     if (req.method === "POST" && p === "/api/seedance/submit") {
       // Without the BytePlus key this makes a free preview (a storyboard); with it, a real paid job.
-      const body = JSON.parse((await readBody(req, 64 * 1024)).toString("utf8") || "{}");
-      const { request, notes, problems, product, businessId, versions } = await seedanceRequestFrom(body);
+      const body = await readJson(req, 64 * 1024);
+      const { request, notes, problems, product, businessId, versions } = await seedanceRequestFrom(body, scopeOf(req));
       if (!request.prompt) return fail(res, 400, "Write a prompt first.");
       const check = checkSeedanceRequest(request, { referenceNotes: notes });
       if (!check.ok) return json(res, 400, { error: check.issues.find((i) => i.level === "error")?.message ?? "This request cannot be sent.", issues: check.issues });
@@ -684,10 +725,11 @@ const server = http.createServer(async (req, res) => {
       }
       return json(res, 200, { jobs, problems });
     }
-    if (req.method === "GET" && p === "/api/seedance/jobs") return json(res, 200, { jobs: await listSeedanceJobs() });
+    if (req.method === "GET" && p === "/api/seedance/jobs") return json(res, 200, { jobs: (await listSeedanceJobs()).filter((j) => ownsBusiness(req, j.businessId)) });
     const sdOverlay = p.match(/^\/api\/seedance\/jobs\/(sd-[0-9a-f]{12})\/overlay(\/video)?$/);
     if (sdOverlay) {
       const id = sdOverlay[1];
+      if (!(await sdOwned(req, id))) return fail(res, 404, "Not found");
       if (req.method === "GET" && !sdOverlay[2]) {
         const o = await getOverlay(id);
         return o ? json(res, 200, o) : fail(res, 404, "No text added yet.");
@@ -704,7 +746,7 @@ const server = http.createServer(async (req, res) => {
         // Until a real clip exists (preview mode), a finished studio MP4 with sound stands in, so the step can be tried.
         const clipUrl = preview ? await standInClip(product.id, job.request.ratio === "adaptive" ? "9:16" : job.request.ratio) : `/videos/seedance/${id}.mp4`;
         if (!clipUrl) return fail(res, 400, "There is no finished studio video to stand in for the Seedance clip yet.");
-        const body = JSON.parse((await readBody(req, 4096)).toString("utf8") || "{}");
+        const body = await readJson(req, 4096);
         const platform = isPlatform(body.platform) ? body.platform : null;
         const brief = {
           business: { name: business.name, description: business.description, language: business.language, country: business.country, phone: business.phone },
@@ -737,11 +779,13 @@ const server = http.createServer(async (req, res) => {
     }
     const sdText = p.match(/^\/videos\/seedance\/(sd-[0-9a-f]{12})-text\.mp4$/);
     if (req.method === "GET" && sdText) {
+      if (!(await sdOwned(req, sdText[1]))) return fail(res, 404, "Not found");
       const bytes = await overlayVideoBytes(sdText[1]);
       return bytes ? sendMedia(req, res, bytes, "video/mp4", { "content-disposition": `inline; filename="bupulse-${sdText[1]}-text.mp4"` }) : fail(res, 404, "Not found");
     }
     const sdJob = p.match(/^\/api\/seedance\/jobs\/(sd-[0-9a-f]{12})(\/cancel|\/preview)?$/);
     if (sdJob) {
+      if (!(await sdOwned(req, sdJob[1]))) return fail(res, 404, "Not found");
       if (req.method === "GET" && sdJob[2] === "/preview") {
         const pv = await getSeedancePreview(sdJob[1]);
         return pv ? json(res, 200, pv) : fail(res, 404, "No preview for this job.");
@@ -757,6 +801,7 @@ const server = http.createServer(async (req, res) => {
     }
     const sdVideo = p.match(/^\/videos\/seedance\/(sd-[0-9a-f]{12})\.mp4$/);
     if (req.method === "GET" && sdVideo) {
+      if (!(await sdOwned(req, sdVideo[1]))) return fail(res, 404, "Not found");
       const bytes = await seedanceVideoBytes(sdVideo[1]);
       if (!bytes) return fail(res, 404, "Not found");
       return sendMedia(req, res, bytes, "video/mp4", { "content-disposition": `inline; filename="bupulse-${sdVideo[1]}.mp4"` });
@@ -767,7 +812,7 @@ const server = http.createServer(async (req, res) => {
       return file(res, path.join(FONTS, name), "font/woff2", "max-age=86400");
     }
     if (req.method === "GET" && p === "/api/options") {
-      return json(res, 200, {
+      const options = {
         categories: TEMPLATE_CATEGORIES,
         templates: VIDEO_TEMPLATES.map(({ id, category, name, blurb, seconds, hook, presenter }) => ({ id, category, name, blurb, seconds, hook, presenter: !!presenter })),
         hooks: VIDEO_HOOKS.map(({ id, name }) => ({ id, name })),
@@ -785,32 +830,44 @@ const server = http.createServer(async (req, res) => {
         seedance: { tiers: (Object.keys(SEEDANCE_MODELS) as SeedanceTier[]).map((tier) => ({ ...SEEDANCE_MODELS[tier], id: tier, model: SEEDANCE_MODELS[tier].id })), ratios: SEEDANCE_RATIOS, limits: { minSeconds: SEEDANCE_LIMITS.minSeconds, maxSeconds: SEEDANCE_LIMITS.maxSeconds } },
         claudeReady: true,
         claudeMode: claudeMode(),
-      });
+      };
+      // A client sees neither which Claude is used nor the model (the test notice is the owner's).
+      if (scopeOf(req)) return json(res, 200, Object.fromEntries(Object.entries(options).filter(([k]) => k !== "model" && k !== "claudeMode")));
+      return json(res, 200, options);
     }
     if (req.method === "GET" && p === "/api/businesses") return json(res, 200, await listBusinesses());
     if (req.method === "GET" && p === "/api/products") {
       // Each photo says whether its cut-out is known (true), known to be impossible (false) or not checked yet (null).
       const known = await knownCutouts();
-      const products = await listProducts(url.searchParams.get("business") ?? "");
+      const products = await listProducts(scopeOf(req) ?? url.searchParams.get("business") ?? "");
       return json(res, 200, products.map((x) => ({ ...x, photos: x.photos.map((ph) => ({ ...ph, cutout: known.ok.has(ph.assetId) ? true : known.refused.has(ph.assetId) ? false : null })) })));
     }
     if (req.method === "GET" && p === "/api/cutouts") {
       // So the page asks for a cut-out only when one exists or was never tried (no 404 per photo in the console).
       const known = await knownCutouts();
-      return json(res, 200, { ok: [...known.ok], refused: [...known.refused] });
+      const scope = scopeOf(req);
+      // A client is told only about their own business's photos.
+      const mine = scope ? new Set((await listProducts(scope)).flatMap((x) => x.photos.map((ph) => ph.assetId))) : null;
+      const keep = (ids: Set<string>) => [...ids].filter((id) => !mine || mine.has(id));
+      return json(res, 200, { ok: keep(known.ok), refused: keep(known.refused) });
     }
     const photo = p.match(/^\/api\/photo\/([A-Za-z0-9-]{8,40})$/);
     if (req.method === "GET" && photo && url.searchParams.get("cutout") === "1") {
       // The product lifted off its background (video-lab/cutouts.ts), for 3D turntables and floating products.
-      const c = await cutoutForPhoto(photo[1]).catch(() => ({ ok: false as const, reason: "Photo not found." }));
+      if (scopeOf(req) && photo[1].startsWith("up-")) return fail(res, 404, "Not found");
+      const example = !!scopeOf(req) && (await isExamplePhoto(photo[1]));
+      const c = await cutoutForPhoto(photo[1], example ? undefined : (scopeOf(req) ?? undefined)).catch(() => ({ ok: false as const, reason: "Photo not found." }));
       if (!c.ok) return json(res, 404, { error: c.reason });
       res.writeHead(200, { "content-type": "image/png", "cache-control": "max-age=86400" });
       return res.end(c.png);
     }
     if (req.method === "GET" && photo) {
       const size = url.searchParams.get("size") === "thumb" ? 360 : 1600;
-      const out = await photoJpeg(photo[1], size);
-      res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "max-age=3600" });
+      if (scopeOf(req) && photo[1].startsWith("up-")) return fail(res, 404, "Not found");
+      const example = !!scopeOf(req) && (await isExamplePhoto(photo[1]));
+      const out = await photoJpeg(photo[1], size, example ? undefined : (scopeOf(req) ?? undefined)).catch(() => null);
+      if (!out) return fail(res, 404, "Not found");
+      res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "private, max-age=3600" });
       return res.end(out.bytes);
     }
     if (req.method === "GET" && p === "/api/influencers") return json(res, 200, { influencers: await listInfluencers(), actions: SHOT_ACTIONS });
@@ -823,6 +880,7 @@ const server = http.createServer(async (req, res) => {
         return res.end(bytes);
       }
       if (req.method === "POST") {
+        if (scopeOf(req)) return notYetForClients(res);
         // Gemini images cost real money (about $0.039 each): checked against the daily cap and recorded first.
         const spent = await spentToday();
         if (spent + 0.08 > DAILY_CAP_USD) return fail(res, 429, `Today's test budget is used: $${spent.toFixed(2)} of $${DAILY_CAP_USD.toFixed(2)}.`);
@@ -837,7 +895,7 @@ const server = http.createServer(async (req, res) => {
           await record(jobId, "gemini-portrait", [call]);
           return json(res, 200, { ok: true, costUsd: call.costUsd });
         }
-        const body = JSON.parse((await readBody(req, 16 * 1024)).toString("utf8") || "{}");
+        const body = await readJson(req, 16 * 1024);
         const product = (await listProducts(String(body.businessId ?? ""))).find((x) => x.id === String(body.productId ?? ""));
         if (!product) return fail(res, 404, "Product not found.");
         const photoId = String(body.photoId ?? product.photos[0]?.assetId ?? "");
@@ -861,8 +919,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && p === "/api/blender/render") {
       // Premium 3D: Claude designs a Blender scene from the same brief as a Motion video, then Blender renders it here.
       if (!(await blenderAvailable())) return fail(res, 503, "Premium 3D needs Blender on the studio computer, and it is not installed.");
-      const body = JSON.parse((await readBody(req, 64 * 1024)).toString("utf8") || "{}");
-      const reqd = await readRequest({ ...body, mode: "reference" });
+      const body = await readJson(req, 64 * 1024);
+      const reqd = await readRequest({ ...body, mode: "reference" }, scopeOf(req));
       if ("error" in reqd) return fail(res, reqd.status, reqd.error);
       if (claudeMode() === "api") {
         const spent = await spentToday();
@@ -877,12 +935,13 @@ const server = http.createServer(async (req, res) => {
         return fail(res, 402, error instanceof Error ? error.message : "Not enough credits.");
       }
     }
-    if (req.method === "GET" && p === "/api/blender/jobs") return json(res, 200, { jobs: await listPremiumJobs() });
+    if (req.method === "GET" && p === "/api/blender/jobs") return json(res, 200, { jobs: (await listPremiumJobs()).filter((j) => ownsBusiness(req, j.businessId)) });
     const blRe = p.match(/^\/api\/blender\/jobs\/(bl-[0-9a-f]{12})\/rerender$/);
     if (req.method === "POST" && blRe) {
+      if (!(await plOwned(req, blRe[1]))) return fail(res, 404, "Not found");
       // The same scene rendered again (no new design), at 540p or 720p.
       if (!(await blenderAvailable())) return fail(res, 503, "Premium 3D needs Blender on the studio computer, and it is not installed.");
-      const body = JSON.parse((await readBody(req, 4096)).toString("utf8") || "{}");
+      const body = await readJson(req, 4096);
       try {
         const sound = { voice: body.voice === true && !!process.env.ELEVENLABS_API_KEY, music: body.music === true };
         return json(res, 200, { job: await rerenderPremium(blRe[1], isPremiumQuality(body.quality) ? body.quality : "720p", sound) });
@@ -894,17 +953,19 @@ const server = http.createServer(async (req, res) => {
     const blJob = p.match(/^\/api\/blender\/jobs\/(bl-[0-9a-f]{12})$/);
     if (req.method === "GET" && blJob) {
       const j = await getPremiumJob(blJob[1]);
-      return j ? json(res, 200, j) : fail(res, 404, "Not found");
+      return j && ownsBusiness(req, j.businessId) ? json(res, 200, j) : fail(res, 404, "Not found");
     }
     const blVideo = p.match(/^\/videos\/blender\/(bl-[0-9a-f]{12})\.mp4$/);
     if (req.method === "GET" && blVideo) {
+      if (!(await plOwned(req, blVideo[1]))) return fail(res, 404, "Not found");
       const bytes = await premiumVideoBytes(blVideo[1]);
       return bytes ? sendMedia(req, res, bytes, "video/mp4", { "content-disposition": `inline; filename="bupulse-${blVideo[1]}.mp4"` }) : fail(res, 404, "Not found");
     }
     if (req.method === "GET" && p === "/api/hooks") {
       // The Brain's three opening lines for this product, template and platform (lib/video-engine/brain/suggest.ts).
       const q = Object.fromEntries(url.searchParams);
-      const reqd = await readRequest({ businessId: q.business, productId: q.product, styleId: q.template, seconds: Number(q.seconds) || 15, platform: q.platform, mode: "text", purpose: q.purpose });
+      if (scopeOf(req)) q.business = scopeOf(req) as string;
+      const reqd = await readRequest({ businessId: q.business, productId: q.product, styleId: q.template, seconds: Number(q.seconds) || 15, platform: q.platform, mode: "text", purpose: q.purpose }, scopeOf(req));
       if ("error" in reqd) return fail(res, reqd.status, reqd.error);
       const { brief } = await briefFor(reqd, null, { photos: false });
       // The Brain calls YouTube Shorts "shorts".
@@ -913,7 +974,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && p === "/api/first-comment") {
       // The seller's pinned first comment for a product (price, place, delivery, WhatsApp; or the Kinyarwanda reply kit).
       const q = Object.fromEntries(url.searchParams);
-      const reqd = await readRequest({ businessId: q.business, productId: q.product, mode: "text" });
+      if (scopeOf(req)) q.business = scopeOf(req) as string;
+      const reqd = await readRequest({ businessId: q.business, productId: q.product, mode: "text" }, scopeOf(req));
       if ("error" in reqd) return fail(res, reqd.status, reqd.error);
       const { brief } = await briefFor(reqd, null, { photos: false });
       return json(res, 200, { comment: firstCommentFor(brief) });
@@ -922,7 +984,8 @@ const server = http.createServer(async (req, res) => {
       // "Plan a week": seven distinct posts for this product (the Brain's planSeries; free, no AI). Each row is then
       // generated as a normal Motion design.
       const q = Object.fromEntries(url.searchParams);
-      const reqd = await readRequest({ businessId: q.business, productId: q.product, styleId: q.template, seconds: Number(q.seconds) || 15, platform: q.platform, mode: "text", purpose: q.purpose });
+      if (scopeOf(req)) q.business = scopeOf(req) as string;
+      const reqd = await readRequest({ businessId: q.business, productId: q.product, styleId: q.template, seconds: Number(q.seconds) || 15, platform: q.platform, mode: "text", purpose: q.purpose }, scopeOf(req));
       if ("error" in reqd) return fail(res, reqd.status, reqd.error);
       const { brief } = await briefFor(reqd, null, { photos: false });
       const today = kigaliDay();
@@ -930,11 +993,12 @@ const server = http.createServer(async (req, res) => {
       // The page speaks designer.ts's platform keys: the Brain's "shorts" is YouTube.
       return json(res, 200, { posts: posts.map((x) => ({ ...x, platform: x.platform === "shorts" ? "youtube" : x.platform })) });
     }
-    if (req.method === "GET" && p === "/api/images") return json(res, 200, { images: (await listImages()).map((i) => ({ ...i, url: `/api/photo/${i.id}` })) });
+    if (req.method === "GET" && p === "/api/images") return json(res, 200, { images: (scopeOf(req) ? [] : await listImages()).map((i) => ({ ...i, url: `/api/photo/${i.id}` })) });
     if (req.method === "POST" && p === "/api/image") {
+      if (scopeOf(req)) return notYetForClients(res);
       // The AI image page (Nano Banana): a prompt and up to 3 reference photos. Charged like a presenter image,
       // taken first and given back when Gemini fails; the image is saved as an upload so videos can use it.
-      const body = JSON.parse((await readBody(req, 16 * 1024)).toString("utf8") || "{}");
+      const body = await readJson(req, 16 * 1024);
       const prompt = String(body.prompt ?? "").trim().slice(0, 1500);
       if (!prompt) return fail(res, 400, "Describe the image first.");
       const ratio = (IMAGE_RATIOS as readonly string[]).includes(body.ratio) ? String(body.ratio) : "1:1";
@@ -972,7 +1036,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && p === "/api/template-previews") return json(res, 200, await listPreviews());
     if (req.method === "POST" && p === "/api/template-previews") {
       // Makes one example video per template (or the ids given) for the gallery, two at a time. Long: run it once.
-      const body = JSON.parse((await readBody(req, 16 * 1024)).toString("utf8") || "{}");
+      const body = await readJson(req, 16 * 1024);
       const ids: string[] = Array.isArray(body.templateIds) && body.templateIds.length ? body.templateIds.map(String) : VIDEO_TEMPLATES.map((t) => t.id);
       const made: string[] = [];
       const failed: string[] = [];
@@ -994,6 +1058,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { made, failed });
     }
     if (req.method === "POST" && p === "/api/upload") {
+      if (scopeOf(req)) return notYetForClients(res);
       // The owner's own photo (Seedance lets you upload references too): resized, kept in video-lab/data/uploads.
       const bytes = await readBody(req, 15 * 1024 * 1024);
       return json(res, 200, await saveUpload(bytes));
@@ -1006,13 +1071,13 @@ const server = http.createServer(async (req, res) => {
       return res.end(t.bytes);
     }
     if (req.method === "POST" && p === "/api/design") {
-      const body = JSON.parse((await readBody(req, 64 * 1024)).toString("utf8") || "{}");
-      const out = await design(body);
+      const body = await readJson(req, 64 * 1024);
+      const out = await design(body, scopeOf(req));
       return json(res, out.status, out.body);
     }
     if (req.method === "POST" && p === "/api/sample") {
       // The hand-made sample design with this product's photos: checks drawing and MP4 export without any AI cost.
-      const body = JSON.parse((await readBody(req, 16 * 1024)).toString("utf8") || "{}");
+      const body = await readJson(req, 16 * 1024);
       const business = await getBusiness(String(body.businessId ?? ""));
       const product = business ? (await listProducts(business.id)).find((x) => x.id === String(body.productId ?? "")) : undefined;
       if (!business || !product) return fail(res, 404, "Product not found.");
@@ -1022,7 +1087,11 @@ const server = http.createServer(async (req, res) => {
       await saveJob(job);
       return json(res, 200, job);
     }
-    if (req.method === "GET" && p === "/api/jobs") return json(res, 200, { jobs: await listJobs(), spentUsd: await spentToday(), capUsd: DAILY_CAP_USD });
+    if (req.method === "GET" && p === "/api/jobs") {
+      const jobs = (await listJobs()).filter((j) => ownsBusiness(req, j.businessId));
+      // The test budget is the owner's: a client sees neither the spend nor the cap.
+      return json(res, 200, scopeOf(req) ? { jobs } : { jobs, spentUsd: await spentToday(), capUsd: DAILY_CAP_USD });
+    }
     const voiceFile = p.match(VOICE_ROUTE);
     if (req.method === "GET" && voiceFile) {
       const bytes = await readVoiceMp3(voiceFile[1]);
@@ -1031,7 +1100,7 @@ const server = http.createServer(async (req, res) => {
     const jobMatch = p.match(/^\/api\/jobs\/([0-9]{8}-[0-9a-f]{8})(\/video|\/spec|\/voice|\/reshape)?$/);
     if (jobMatch) {
       const job = await getJob(jobMatch[1]);
-      if (!job) return fail(res, 404, "Test not found.");
+      if (!job || !ownsBusiness(req, job.businessId)) return fail(res, 404, "Test not found.");
       if (req.method === "GET" && !jobMatch[2]) return json(res, 200, job);
       if (req.method === "PUT" && jobMatch[2] === "/spec") {
         // The owner edited the design by hand: checked like Claude's answer, no AI call, no cost.
@@ -1045,7 +1114,7 @@ const server = http.createServer(async (req, res) => {
         // The same design for another network's shape: the validator re-lays it for the new canvas (safe area, no
         // overlaps, the product kept clear). No Claude call and no charge; saved as a child job.
         if (!job.spec) return fail(res, 400, "This design failed, so it has nothing to re-shape.");
-        const body = JSON.parse((await readBody(req, 4096)).toString("utf8") || "{}");
+        const body = await readJson(req, 4096);
         const shape = RESHAPES[String(body.ratio)];
         if (!shape) return fail(res, 400, "Choose 1:1 (Facebook feed) or 4:5 (Instagram feed).");
         const business = await getBusiness(job.businessId);
@@ -1084,7 +1153,7 @@ const server = http.createServer(async (req, res) => {
         // The voice-over of a design (ElevenLabs, video-lab/voice.ts). Credits are taken first and given back when it
         // fails, when the design has no voice lines, or when the same take is already saved (a new MP4 of it is free).
         if (!job.spec) return fail(res, 400, "This design failed, so it has no voice lines.");
-        const body = JSON.parse((await readBody(req, 4096)).toString("utf8") || "{}");
+        const body = await readJson(req, 4096);
         try {
           await charge(VOICE_OVER_CREDITS, "Voice-over", job.id);
         } catch (error) {
@@ -1112,6 +1181,7 @@ const server = http.createServer(async (req, res) => {
     }
     const video = p.match(/^\/videos\/([0-9]{8}-[0-9a-f]{8})\.mp4$/);
     if (req.method === "GET" && video) {
+      if (!(await clOwned(req, video[1]))) return fail(res, 404, "Not found");
       const bytes = await readVideo(video[1]);
       if (!bytes) return fail(res, 404, "Not found");
       return sendMedia(req, res, bytes, "video/mp4", { "content-disposition": `inline; filename="bupulse-${video[1]}.mp4"` });

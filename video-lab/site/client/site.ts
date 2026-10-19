@@ -16,6 +16,15 @@ export const api = async <T>(url: string, init?: RequestInit): Promise<T> => {
   if (!res.ok && !(body as { jobs?: unknown }).jobs) throw new Error((body as { error?: string }).error || `Request failed (${res.status})`);
   return body as T;
 };
+export type Session = { kind: "owner" } | { kind: "client"; businessId: string; businessName: string; role: string };
+let sessionRequest: Promise<Session> | null = null;
+/** Who is using the studio: the owner (every business, test tools) or a client (their own business only). */
+export const getSession = () => (sessionRequest ??= api<Session>("/api/session").catch(() => ({ kind: "owner" }) as Session));
+/** The businesses the page may offer: a client's own (no picker), or every business for the owner. */
+export async function loadBusinesses(): Promise<{ id: string; name: string }[]> {
+  const s = await getSession();
+  return s.kind === "client" ? [{ id: s.businessId, name: s.businessName }] : api<{ id: string; name: string }[]>("/api/businesses");
+}
 export const credits = (n: number) => `${n.toLocaleString()} credits`;
 export const rwf = (n: number) => `${n.toLocaleString()} RWF`;
 
@@ -45,7 +54,11 @@ export async function refreshWallet(): Promise<Wallet | null> {
   void refreshWallet();
   // The notice bar: whether Seedance is connected (or why not, checked by the server every 5 minutes) and how Claude
   // is reached.
-  void Promise.all([api<{ claudeMode: string }>("/api/options"), api<{ state: string; message: string }>("/api/seedance/status").catch(() => null)]).then(([o, sd]) => {
+  // A client's pages hide the owner's links (viral library, API page, developer lab) and the test notices.
+  void getSession().then((sess) => {
+    document.body.dataset.kind = sess.kind;
+  });
+  void Promise.all([api<{ claudeMode?: string }>("/api/options"), api<{ state: string; message: string }>("/api/seedance/status").catch(() => null)]).then(([o, sd]) => {
     const n = document.getElementById("labNotice");
     if (!n) return;
     const parts = [];

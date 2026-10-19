@@ -17,14 +17,25 @@ const labelOf = (r: StudioRef, fallback: string) => (typeof r.label === "string"
 /** The photo size read before fitting: large enough for the 2048 px BytePlus copy. */
 const SOURCE_PX = 2048;
 
+/**
+ * What a client's request may use (docs/STUDIO_DEPLOY.md, item 3): product photos and cut-outs only of their business,
+ * a finished studio video only when it is theirs, and no uploads (up:, um:) until those live in their Gallery. The owner
+ * passes nothing and may use everything.
+ */
+export type ReferenceScope = { videoOwned: (engine: string, jobId: string) => Promise<boolean> };
+
 /** Loads each reference, in the page's order. A missing one is skipped and named in `problems`. */
-export async function loadReferenceSources(refs: StudioRef[], businessId: string): Promise<{ sources: ReferenceSource[]; problems: string[] }> {
+export async function loadReferenceSources(refs: StudioRef[], businessId: string, scope?: ReferenceScope): Promise<{ sources: ReferenceSource[]; problems: string[] }> {
   const sources: ReferenceSource[] = [];
   const problems: string[] = [];
   for (const r of refs.slice(0, 15)) {
     const [prefix, a, b] = r.id.split(":");
     const missing = (what: string) => problems.push(`${labelOf(r, what)}: not found, left out.`);
     try {
+      if (scope && (prefix === "up" || prefix === "um" || (prefix === "vid" && !(await scope.videoOwned(a, b))))) {
+        missing("A reference");
+        continue;
+      }
       if (prefix === "ph" || prefix === "up") {
         const photo = await photoJpeg(a, SOURCE_PX, prefix === "ph" ? businessId : undefined);
         sources.push({ kind: "image", type: "photo", bytes: photo.bytes, label: labelOf(r, "the product photo"), role: imageRole(r) });

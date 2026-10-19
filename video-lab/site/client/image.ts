@@ -1,7 +1,7 @@
 // The AI image page (/app/image/nano-banana): a prompt and up to 3 reference photos (product photos or uploads) make a
 // realistic image with Gemini. Each image is kept as an upload, so "Use in a video" sends it to the generator.
 import { loadPricing, wireExamples } from "./models";
-import { $, api, el, refreshWallet } from "./site";
+import { $, api, el, getSession, loadBusinesses, refreshWallet } from "./site";
 
 type Ref = { id: string; thumb: string; label: string };
 type Image = { id: string; at: string; prompt: string; ratio: string; references: number; costUsd: number; url: string };
@@ -57,7 +57,7 @@ function renderRatios() {
 }
 
 /** The businesses, loaded once at start; the picker waits for them (a click can come before they arrive). */
-const businessesReady: Promise<{ id: string; name: string }[]> = api<{ id: string; name: string }[]>("/api/businesses").catch(() => []);
+const businessesReady: Promise<{ id: string; name: string }[]> = loadBusinesses().catch(() => []);
 
 async function pickProduct() {
   if (!state.businesses.length) {
@@ -68,7 +68,8 @@ async function pickProduct() {
   const sel = el("select", { style: "width:auto" });
   sel.append(...state.businesses.map((b) => new Option(b.name, b.id)));
   sel.value = state.businessId;
-  $("imgPickTop").replaceChildren(sel);
+  // A client has one business: no picker.
+  $("imgPickTop").replaceChildren(...((await getSession()).kind === "client" ? [] : [sel]));
   const grid = $("imgPickGrid");
   const show = async () => {
     state.businessId = sel.value;

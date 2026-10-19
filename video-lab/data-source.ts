@@ -152,12 +152,24 @@ export async function uploadExists(id: string): Promise<boolean> {
   return fs.access(uploadFile(id)).then(() => true, () => false);
 }
 
+/** True when the photo (a MediaAsset) belongs to the business. */
+export async function photoBelongsTo(assetId: string, businessId: string): Promise<boolean> {
+  if (!/^[a-z0-9-]{10,40}$/i.test(assetId)) return false;
+  const r = await db().query(`select 1 from "MediaAsset" where id = $1 and kind = 'photo' and "businessId" = $2`, [assetId, businessId]);
+  return r.rows.length > 0;
+}
+
 export async function photoJpeg(assetId: string, max: number, businessId?: string): Promise<{ bytes: Buffer; width: number; height: number }> {
   if (UPLOAD_ID.test(assetId)) {
     const out = await sharp(await fs.readFile(uploadFile(assetId))).resize({ width: max, height: max, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 86 }).toBuffer({ resolveWithObject: true });
     return { bytes: out.data, width: out.info.width, height: out.info.height };
   }
   if (!/^[a-z0-9-]{10,40}$/i.test(assetId)) throw new Error("Bad photo id");
+  // Ownership first, before the disk cache: a cached photo must never be handed to another business.
+  if (businessId) {
+    const owner = await db().query(`select "businessId" from "MediaAsset" where id = $1 and kind = 'photo'`, [assetId]);
+    if (owner.rows[0]?.businessId !== businessId) throw new Error("Photo not found");
+  }
   const file = path.join(DATA, "photos", `${assetId}-${max}.jpg`);
   try {
     const bytes = await fs.readFile(file);

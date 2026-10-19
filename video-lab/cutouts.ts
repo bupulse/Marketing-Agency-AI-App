@@ -4,7 +4,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { makeCutout } from "@/lib/video-engine/cutout";
-import { photoJpeg } from "./data-source";
+import { photoBelongsTo, photoJpeg } from "./data-source";
 
 const DIR = path.resolve("video-lab/data/cutouts");
 const SAFE_ID = /^(?:up-[0-9a-f]{12}|[a-z0-9-]{10,40})$/i;
@@ -15,6 +15,8 @@ export type LabCutout = { ok: true; png: Buffer; box: { x: number; y: number; w:
 /** The cut-out of a photo (a product photo id, or an upload "up-..."), made once and then read from the cache. */
 export async function cutoutForPhoto(id: string, businessId?: string): Promise<LabCutout> {
   if (!SAFE_ID.test(id)) return { ok: false, reason: "Unknown photo." };
+  // Ownership first, before the cache: a cut-out must never be handed to another business.
+  if (businessId && !(await photoBelongsTo(id, businessId))) return { ok: false, reason: "Photo not found." };
   const png = path.join(DIR, `${id}.png`);
   const refused = path.join(DIR, `${id}.json`);
   const meta = await fs

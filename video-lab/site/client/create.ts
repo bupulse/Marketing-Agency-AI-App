@@ -11,7 +11,7 @@ import { carousel } from "./carousel";
 import { categoryName, translate } from "./i18n";
 import { setupInspire, showInspire } from "./inspire";
 import { loadPricing, modelById, wireExamples } from "./models";
-import { $, api, el, refreshWallet } from "./site";
+import { $, api, el, getSession, loadBusinesses, refreshWallet } from "./site";
 
 type Engine = "seedance" | "claude";
 type RefKind = "image" | "video" | "audio";
@@ -544,7 +544,8 @@ async function openPicker(kind: "refs" | "product" | "avatar") {
     const sel = el("select", { style: "width:auto" });
     sel.append(...state.businesses.map((b) => new Option(b.name, b.id)));
     sel.value = state.businessId;
-    top.append(sel);
+    // A client has one business: no picker.
+    if ((await getSession()).kind !== "client") top.append(sel);
     const show = async () => {
       state.businessId = sel.value;
       state.products = await api<Product[]>(`/api/products?business=${encodeURIComponent(sel.value)}`);
@@ -1171,7 +1172,7 @@ function openDrawer(g: Gen | null) {
     const j = g.sd;
     if (g.videoUrl) media.append(el("video", { src: g.videoUrl, controls: true, autoplay: true, loop: true, playsInline: true }));
     else media.append(el("div", { className: "wait", style: "padding:40px;text-align:center" }, el("span", { className: "spin" }), el("div", { className: "muted", textContent: j.error ?? (j.status === "queued" ? "Queued at Seedance…" : j.status === "running" ? "Seedance is filming… this page updates by itself." : j.status) })));
-    info.push(["Status", j.status], ["Quality", `${j.request.tier} · ${j.request.resolution} · ${j.request.seconds} s · ${j.request.ratio}`], ["Credits", String(j.credits)], ["Provider cost", j.costUsd ? `$${j.costUsd.toFixed(3)} (${j.tokens.toLocaleString()} tokens)` : `about $${j.estimateUsd.toFixed(2)}`]);
+    info.push(["Status", j.status], ["Quality", `${j.request.tier} · ${j.request.resolution} · ${j.request.seconds} s · ${j.request.ratio}`], ["Credits", String(j.credits)], ...(j.estimateUsd === undefined ? [] : ([["Provider cost", j.costUsd ? `$${j.costUsd.toFixed(3)} (${j.tokens.toLocaleString()} tokens)` : `about $${j.estimateUsd.toFixed(2)}`]] as [string, string][])));
     if (j.status === "queued") {
       const c = el("button", { className: "btn sm", textContent: "Cancel (refund)" });
       c.onclick = async () => {
@@ -1275,7 +1276,7 @@ function openDrawer(g: Gen | null) {
       $("dEdit").hidden = false;
       $("dEditBtn").onclick = () => void editClaude(g, "edit");
       $("dExtendBtn").onclick = () => void editClaude(g, "extend");
-      info.push(["Length", `${(totalMs(spec) / 1000).toFixed(1)} s · ${spec.scenes.length} scenes`], ["Camera", [...new Set(spec.scenes.map((s) => s.camera?.move ?? "static"))].join(", ")], ["Look", spec.look?.grade ?? "none"], ["API-equivalent cost", `$${(j.apiEquivalentUsd ?? 0).toFixed(3)}`]);
+      info.push(["Length", `${(totalMs(spec) / 1000).toFixed(1)} s · ${spec.scenes.length} scenes`], ["Camera", [...new Set(spec.scenes.map((s) => s.camera?.move ?? "static"))].join(", ")], ["Look", spec.look?.grade ?? "none"], ...(j.apiEquivalentUsd === undefined ? [] : ([["API-equivalent cost", `$${j.apiEquivalentUsd.toFixed(3)}`]] as [string, string][])));
       if (j.score) info.push(["Research score", `${j.score.score}/100`]);
       if (j.captionScore !== undefined) info.push(["Caption check", `${j.captionScore}/100`]);
       showFacts({ ...j, caption: [spec.caption, spec.hashtags.map((h) => `#${h}`).join(" ")].filter(Boolean).join("\n") });
@@ -1482,7 +1483,7 @@ async function start() {
   renderPills();
   renderRefs();
   dataReady = (async () => {
-    state.businesses = await api<{ id: string; name: string }[]>("/api/businesses");
+    state.businesses = await loadBusinesses();
     const wanted = q.get("business");
     state.businessId = state.businesses.find((b) => b.id === wanted)?.id ?? state.businesses[0]?.id ?? "";
     state.products = state.businessId ? await api<Product[]>(`/api/products?business=${encodeURIComponent(state.businessId)}`) : [];
