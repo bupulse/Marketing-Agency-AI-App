@@ -566,7 +566,7 @@ async function openPicker(kind: "refs" | "product" | "avatar") {
       }
       for (const p of state.products) {
         if (kind === "product") {
-          const pk = el("div", { className: `pk${p.id === state.productId ? " on" : ""}` }, p.photos[0] ? el("img", { src: `/api/photo/${p.photos[0].assetId}?size=thumb` }) : el("div", { className: "plus", textContent: "—" }), el("span", { textContent: `${p.name}${p.price ? ` · ${p.price}` : ""}` }));
+          const pk = el("div", { className: `pk${p.id === state.productId ? " on" : ""}` }, p.photos[0] ? el("img", { src: `/api/photo/${p.photos[0].assetId}?size=thumb` }) : el("div", { className: "plus", textContent: "—" }), el("span", { textContent: `${p.name}${p.price ? ` · ${shortPrice(p.price)}` : ""}` }));
           pk.onclick = () => {
             state.productId = p.id;
             state.refs = state.refs.filter((r) => !r.id.startsWith("ph:"));
@@ -1021,6 +1021,15 @@ let overlayFrames: { close(): void } | null = null;
 function closeOverlayFrames() {
   overlayFrames?.close();
   overlayFrames = null;
+}
+
+/**
+ * A product's price for a small card: the amount only, without the notes some owners write after it
+ * ("250,000 RWF (Final pricing depends on…)" shows "250,000 RWF").
+ */
+function shortPrice(price: string): string {
+  const head = price.split(/\s*[(·|\n]|\s+-\s+|\.\s/)[0].trim();
+  return head.length > 28 ? `${head.slice(0, 27).trimEnd()}…` : head;
 }
 
 /** The button that adds (or opens) BuPulse's text over a clip: the hook, price, phone bar and call to action. */
