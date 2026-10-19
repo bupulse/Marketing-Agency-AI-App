@@ -197,16 +197,16 @@ export const instagramProvider: SocialProvider = {
   network: "instagram",
   rules,
   isConfigured: isInstagramConfigured,
-  authorizeUrl({ state, redirectUri, variant }) {
+  authorizeUrl({ state, redirectUri, variant, extraScopes = [] }) {
     if (variant === "facebook") {
       if (!isInstagramViaFacebookConfigured()) throw new SocialError("Facebook login is not set up yet", "invalid", E);
       const url = new URL(`https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`);
-      url.search = new URLSearchParams({ client_id: fbId()!, redirect_uri: redirectUri, state, response_type: "code", scope: INSTAGRAM_VIA_FACEBOOK_SCOPES.join(",") }).toString();
+      url.search = new URLSearchParams({ client_id: fbId()!, redirect_uri: redirectUri, state, response_type: "code", scope: [...new Set([...INSTAGRAM_VIA_FACEBOOK_SCOPES, ...extraScopes])].join(",") }).toString();
       return url.toString();
     }
     if (!isInstagramConfigured()) throw new SocialError("Instagram is not set up yet", "invalid", E);
     const url = new URL(IG_AUTHORIZE);
-    url.search = new URLSearchParams({ client_id: appId()!, redirect_uri: redirectUri, response_type: "code", scope: INSTAGRAM_SCOPES.join(","), state }).toString();
+    url.search = new URLSearchParams({ client_id: appId()!, redirect_uri: redirectUri, response_type: "code", scope: [...new Set([...INSTAGRAM_SCOPES, ...extraScopes])].join(","), state }).toString();
     return url.toString();
   },
   finishOAuth: ({ code, redirectUri, variant }) => (variant === "facebook" ? finishFacebookLogin(code, redirectUri) : finishInstagramLogin(code, redirectUri)),

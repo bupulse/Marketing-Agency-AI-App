@@ -798,6 +798,8 @@ model Connection {
   accountType                String? // network-specific, e.g. "business" | "creator" | "personal" | "page" | "organization"
   avatarUrl                  String?
   lastError                  String?
+  inboxEnabled               Boolean          @default(false) // "Answer comments and messages" (Instagram, Facebook): docs/SOCIAL_INBOX.md
+  inboxCursor                Json? // what the inbox check has seen so far (lib/social/inbox/cursor.ts)
   createdAt                  DateTime         @default(now())
   updatedAt                  DateTime         @updatedAt
   conversations              Conversation[]
