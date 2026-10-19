@@ -2,7 +2,7 @@
 
 ManyChat-style automations on BuPulse: automatic answers to messages, comments and Story mentions, drawn on a canvas.
 Contacts, conversations and channels are in `docs/INBOX.md`; Instagram and Facebook in `docs/SOCIAL_INBOX.md`. Owner
-steps: [guide page 27](guide/features/27-automations.md). The plan behind it: `docs/bizdev/manychat-parity-plan.md`.
+steps: [guide page 28](guide/features/28-automations.md). The plan behind it: `docs/bizdev/manychat-parity-plan.md`.
 
 ## The graph (`lib/automations/graph.ts`, shared by the canvas and the engine)
 

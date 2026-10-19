@@ -209,6 +209,20 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </Panel>
       </div>
 
+      <div id="goal">
+        <Panel title="Revenue goal" description="The monthly income the goal tracker on Revenue and profit measures against, and the launch month it counts months from (docs/bizdev/PLAN.md).">
+          <form action={saveSettingsAction} className="flex flex-wrap items-end gap-3">
+            <Field label="Goal, RWF a month" required>
+              <Input name="revenueGoalRwf" type="number" min={0} step={100000} defaultValue={s.revenueGoalRwf} required className="w-44" />
+            </Field>
+            <Field label="Launch month (month 1)" required hint="Year and month, for example 2026-11.">
+              <Input name="goalStartMonth" pattern={"\\d{4}-\\d{2}"} defaultValue={s.goalStartMonth} required className="w-32" />
+            </Field>
+            <Button type="submit">Save</Button>
+          </form>
+        </Panel>
+      </div>
+
       <Panel title="Demo calls" description={`What clients see when they book: the meeting link in every invite, the call length, the gap kept between calls, and days with no calls. Times are ${DEMO_TIME_ZONE.replace("_", " ")}.`}>
         <form action={saveSettingsAction} className="flex flex-col gap-4">
           <Field label="Meeting link" hint="Your reusable Google Meet (or other) link, sent with every invite while Google Calendar (below) is not connected, or if it fails. Optional until you have one.">

@@ -2421,3 +2421,67 @@ model DueJob {
   @@index([status, runAt])
   @@index([businessId])
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Partner programme (docs/bizdev/PLAN.md section 6, docs/guide/features/25-partners.md): agencies, co-working
+// spaces, MoMo agents and happy clients who refer companies for a commission on confirmed payments.
+
+// A partner, from the application on /partners to approval in Admin -> Sales -> Partners. Only an approved partner has
+// a code; its ?ref= link reuses the staff referral cookie (lib/sales/ref-cookie.ts).
+model Partner {
+  id           String            @id @default(cuid())
+  status       String            @default("applied") // applied | approved | rejected | paused
+  kind         String // agency | coworking | momo_agent | client | consultant | other
+  name         String
+  organisation String?
+  email        String // lower case
+  phone        String // E.164 when it parses, else as typed
+  city         String?
+  message      String? // how they will find clients, in their words
+  // 7 unambiguous characters (staff codes are 5 or 6, so the two never clash); set on approval.
+  refCode      String?           @unique
+  // The partner's private page /partners/me/<token> (32 random bytes, base64url); set on approval.
+  viewToken    String?           @unique
+  rejectReason String?
+  decidedBy    String? // AuditLog actor
+  decidedAt    DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  referrals    PartnerReferral[]
+  payouts      PartnerPayout[]
+
+  @@index([status])
+  @@index([email])
+}
+
+// A company that signed up with a partner's link. No foreign key to Business or User (like BillingEvent): the
+// commission history stays when an account is deleted. One partner per company.
+model PartnerReferral {
+  id         String   @id @default(cuid())
+  partnerId  String
+  partner    Partner  @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  businessId String   @unique
+  userId     String   @db.Uuid // the company owner: payments (BillingEvent) carry it
+  code       String
+  createdAt  DateTime @default(now())
+
+  @@index([partnerId])
+  @@index([userId])
+}
+
+// Commission paid to a partner by hand (Mobile Money), recorded from Admin. The payout's MoMo transaction id is unique,
+// so one payment is never recorded twice.
+model PartnerPayout {
+  id          String   @id @default(cuid())
+  partnerId   String
+  partner     Partner  @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  amountMinor Int
+  currency    String   @default("RWF")
+  reference   String   @unique // upper case
+  note        String?
+  paidAt      DateTime
+  createdBy   String // AuditLog actor
+  createdAt   DateTime @default(now())
+
+  @@index([partnerId, paidAt])
+}

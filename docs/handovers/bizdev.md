@@ -24,7 +24,7 @@ Branch `bizdev` (worktree `/Users/macbook1/BuPulse-bizdev`). Local commits only;
 
 ## Agents (worktrees under /Users/macbook1/BuPulse/.claude/worktrees)
 - `sales`: PLAN.md (b6c2273, d4f605f), SALES_KIT.md (561adb7, c5a2ae0), pricing quiz + MoMo steps (a3034ed), partner
-  programme next (migration `20261025200000_partners`).
+  programme next (migration `20261025400000_partners`).
 - `social`: Instagram/Facebook channels (Composio polling capped at 18,000 calls a month, Meta webhooks off), migration
   `20261025300000_social_inbox`.
 

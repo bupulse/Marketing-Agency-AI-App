@@ -27,9 +27,12 @@ trial and Inzu Fashion waiting for its demo. All names and numbers in them are m
 | 16 | Domains | `/dashboard/domains` | [16-domains.md](16-domains.md) |
 | 17 | Billing, plans and usage | `/dashboard/billing`, `/dashboard/upgrade`, `/dashboard/usage`, `/custom-plan`, `/custom-plan/call` | [17-billing-plans-and-usage.md](17-billing-plans-and-usage.md) |
 | 18 | Team, settings and brand | `/dashboard/settings`, `/dashboard/settings/team`, `/dashboard/brand`, `/account/deletion` | [18-team-settings-and-brand.md](18-team-settings-and-brand.md) |
+| 23 | Pricing page: plan quiz and Mobile Money steps | `/pricing` | [23-pricing-page-and-plan-quiz.md](23-pricing-page-and-plan-quiz.md) |
 | 24 | Instagram and Facebook replies (social inbox) | `/dashboard/connections` (the switch per account), Admin → Services | [24-social-inbox.md](24-social-inbox.md) |
-| 26 | Inbox and contacts | `/dashboard/inbox`, `/dashboard/contacts`, `/dashboard/contacts/[id]` | [26-inbox-and-contacts.md](26-inbox-and-contacts.md) |
-| 27 | Automations | `/dashboard/automations`, `/dashboard/automations/[id]` | [27-automations.md](27-automations.md) |
+| 25 | Partner programme | `/partners`, `/partners/me/[token]`, Admin → Sales → Partners | [25-partners.md](25-partners.md) |
+| 26 | Revenue goal tracker (Admin) | `/admin/revenue`, `/admin/settings#goal` | [26-revenue-goal-tracker.md](26-revenue-goal-tracker.md) |
+| 27 | Inbox and contacts | `/dashboard/inbox`, `/dashboard/contacts`, `/dashboard/contacts/[id]` | [27-inbox-and-contacts.md](27-inbox-and-contacts.md) |
+| 28 | Automations | `/dashboard/automations`, `/dashboard/automations/[id]` | [28-automations.md](28-automations.md) |
 
 ## Which plan has what
 

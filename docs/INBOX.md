@@ -1,7 +1,7 @@
 # Conversations engine: contacts, inbox, channels (developer notes)
 
 The engine behind the ManyChat-style features (plan: `docs/bizdev/manychat-parity-plan.md`). Automations:
-`docs/AUTOMATIONS.md`. Owner steps: [guide page 26](guide/features/26-inbox-and-contacts.md) and [27](guide/features/27-automations.md).
+`docs/AUTOMATIONS.md`. Owner steps: [guide page 27](guide/features/27-inbox-and-contacts.md) and [28](guide/features/28-automations.md).
 
 ## Tables (migration `20261025100000_conversations_engine`)
 
