@@ -60,7 +60,7 @@ BuPulse never contacts a partner by itself: no email, no message. You send the p
 | Public pages | `app/(marketing)/partners/page.tsx`, `partner-form.tsx`, `actions.ts`; `app/(marketing)/partners/me/[token]/page.tsx` (noindex) |
 | Admin | `app/admin/(console)/(sales)/sales/partners/page.tsx` and `actions.ts`; menu entry in `components/admin/nav.ts` |
 | Limits | `PUBLIC_LIMITS.partnerApply` in `lib/request-limits.ts` (5 an hour per address, 3 a day per email), a honeypot field |
-| Tables | `Partner`, `PartnerReferral` (unique `businessId`; no foreign key to Business or User so history stays after an account is deleted), `PartnerPayout` (unique `reference`). Migration `20261025200000_partners`: RLS on, all grants revoked from the Data API roles |
+| Tables | `Partner`, `PartnerReferral` (unique `businessId`; no foreign key to Business or User so history stays after an account is deleted), `PartnerPayout` (unique `reference`). Migration `20261025400000_partners`: RLS on, all grants revoked from the Data API roles |
 | Audit | `approve_partner`, `reject_partner`, `pause_partner`, `resume_partner`, `partner_payout` (each in the same transaction as the change) |
 | Tests | `tests/partners/commission.test.ts`, `tests/partners/service.test.ts`; `tests/security/rls-coverage.test.ts` covers the tables |
 
