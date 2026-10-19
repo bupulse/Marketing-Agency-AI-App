@@ -8,6 +8,7 @@ import { INDUSTRY_DESCRIPTION_MIN } from "@/lib/industries/shared";
 import { phoneCountry, toE164 } from "@/lib/phone";
 import { regionFromCountryName } from "@/lib/region";
 import { noteRegionMismatch } from "@/lib/region-check";
+import { assignPartnerReferral } from "@/lib/partners/service";
 import { assignReferral, refFromCookie } from "@/lib/sales/referral";
 import { timezoneForCountryName } from "@/lib/region-format";
 
@@ -149,8 +150,12 @@ export async function ensureAccount(authUser: AuthUser, opts: { visitSession?: s
     // Soft region check: the sign-up's IP country in a dearer region than the declared country is flagged for the
     // admin (docs/REGIONS.md). Google sign-ups pick their country on /welcome, which checks then.
     if (created.business?.id && details.country) await noteRegionMismatch(created.business.id, "signup");
-    // A sales agent's link: the code saved at sign-up, else the cookie (Google). Never fails the sign-up.
-    if (created.business?.id) await assignReferral({ businessId: created.business.id, userId: authUser.id, email: authUser.email, code: text(authUser.user_metadata?.ref_code, 8) ?? (await refFromCookie()) });
+    // A sales agent's or a partner's link: the code saved at sign-up, else the cookie (Google). Never fails the sign-up.
+    // Staff codes are 5 or 6 characters and partners' 7, so a code is one or the other (lib/partners/service.ts).
+    if (created.business?.id) {
+      const ref = { businessId: created.business.id, userId: authUser.id, email: authUser.email, code: text(authUser.user_metadata?.ref_code, 8) ?? (await refFromCookie()) };
+      if (!(await assignReferral(ref))) await assignPartnerReferral(ref);
+    }
   }
   return true;
 }

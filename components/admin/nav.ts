@@ -71,6 +71,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { href: "/admin/sales", perm: "clients.own", label: "My clients", icon: Contact, description: "Your clients: contact, plan, trial days left, last sign-in, posts and payment status, and your referral link.", keywords: "agent referral link whatsapp" },
       { href: "/admin/sales/team", perm: "sales.team", label: "Sales team", icon: Users, description: "Every agent and every client's agent; reassign a client with a reason.", keywords: "reassign agents manager" },
       { href: "/admin/sales/leaderboard", perm: "sales.board", label: "Leaderboard", icon: Medal, description: "This month's sales per agent: own sales, team share and total.", keywords: "ranking performance" },
+      { href: "/admin/sales/partners", perm: ["sales.team", "money.revenue"], label: "Partners", icon: Network, description: "Outside partners: applications, their links, the companies they brought, commission owed and paid.", keywords: "affiliate referral commission agency coworking momo agent payout" },
     ],
   },
   {
