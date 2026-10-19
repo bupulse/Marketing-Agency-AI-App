@@ -28,8 +28,15 @@ export const RESULTS_ACCOUNT_TYPES: Partial<Record<Network, "all" | readonly str
   linkedin: ["organization"],
 };
 
-/** Whether the network shares post results for this kind of account. */
-export function sharesResults(network: string, accountType: string | null | undefined): boolean {
+/**
+ * Accounts connected through BuPulse-Socials (Composio) share fewer results: Facebook likes, comments and shares and
+ * Instagram likes and comments; LinkedIn and YouTube there have no metrics (lib/social/composio/networks.ts).
+ */
+export const SOCIALS_RESULTS: readonly Network[] = ["facebook", "instagram"];
+
+/** Whether the network shares post results for this kind of account (and the way it was connected). */
+export function sharesResults(network: string, accountType: string | null | undefined, method?: string | null): boolean {
+  if (method === "COMPOSIO" && !SOCIALS_RESULTS.includes(network as Network)) return false;
   const types = RESULTS_ACCOUNT_TYPES[network as Network];
   return types === "all" || Boolean(types && accountType && types.includes(accountType));
 }
@@ -41,7 +48,8 @@ export type ResultCounts = Record<ResultKey, number | null>;
  * What a published post shows about its results:
  * - ready: the numbers of its newest snapshot, taken at `updatedAt`; `stale` says why they no longer update
  * - waiting: none yet; they arrive within a day of publishing
- * - unsupported: the network (or this kind of account) does not share results
+ * - unsupported: the network (or this kind of account) does not share results; `via: "socials"` when it is the
+ *   BuPulse-Socials connection that cannot read them
  * - by_hand: the owner posted it ("Post it yourself" reminders), so there is no post for BuPulse to read
  * - reconnect: the account must be reconnected before results can be read
  * - disconnected: the account was removed from BuPulse
@@ -49,7 +57,8 @@ export type ResultCounts = Record<ResultKey, number | null>;
  */
 export type PostResults =
   | ({ state: "ready"; updatedAt: string; stale: "reconnect" | "disconnected" | "final" | null } & ResultCounts)
-  | { state: "waiting" | "unsupported" | "by_hand" | "reconnect" | "disconnected" | "none" };
+  | { state: "waiting" | "unsupported" | "by_hand" | "reconnect" | "disconnected" | "none" }
+  | { state: "unsupported"; via: "socials" };
 
 /** The post fields the results depend on. */
 export type ResultsPost = {
@@ -58,7 +67,7 @@ export type ResultsPost = {
   externalId: string | null;
   publishedAt: Date | null;
   remindOnly: boolean;
-  connection: { postingMode: string; accountType: string | null; status: string } | null;
+  connection: { postingMode: string; accountType: string | null; status: string; method?: string | null } | null;
 };
 
 export type ResultsSnapshot = ResultCounts & { capturedAt: Date };
@@ -81,7 +90,7 @@ export function postResults(post: ResultsPost, latest: ResultsSnapshot | null, n
   }
   if (c?.postingMode === "NOTIFY" || (!c && post.remindOnly) || !post.externalId) return { state: "by_hand" };
   if (!c) return { state: "disconnected" };
-  if (!sharesResults(post.network, c.accountType)) return { state: "unsupported" };
+  if (!sharesResults(post.network, c.accountType, c.method)) return c.method === "COMPOSIO" && !SOCIALS_RESULTS.includes(post.network as Network) ? { state: "unsupported", via: "socials" } : { state: "unsupported" };
   if (MUST_RECONNECT.has(c.status)) return { state: "reconnect" };
   if (latest || pastWindow) return { state: "none" };
   return { state: "waiting" };
@@ -126,6 +135,7 @@ export function resultsNote(results: PostResults, network: string, label: string
     case "waiting":
       return "Results appear within a day of publishing.";
     case "unsupported":
+      if ("via" in results) return `${label} accounts connected through BuPulse-Socials don't share post results with BuPulse yet.`;
       return network === "linkedin" ? "LinkedIn shares results for company pages only, not personal profiles." : `${label} doesn't share post results with BuPulse.`;
     case "by_hand":
       return `You posted this yourself ("Post it yourself" mode), so BuPulse can't read its results. Check them on ${label}.`;

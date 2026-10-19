@@ -22,8 +22,9 @@ BuPulse team does in the admin console when it is needed.
 ## Before you start
 
 The client needs: an email address they can open, a phone (for Mobile Money), and ideally their logo, opening hours,
-head office address and a WhatsApp or phone number. To connect Instagram automatically they need an Instagram
-**Business or Creator** account linked to a Facebook Page.
+head office address and a WhatsApp or phone number. To connect Instagram they need an Instagram **Business or
+Creator** account (a personal account can be switched for free in the Instagram app). For Facebook they need to manage
+the Facebook Page they want to post to.
 
 Prices are on `/pricing`. They follow where the visitor is (Rwanda shows RWF; East Africa and the rest of the world
 have their own prices). "Use my location" on that page corrects a wrong guess.
@@ -139,22 +140,30 @@ Owner or Admin only. **Channels** in the sidebar (`/dashboard/connections`).
 
 ![Channels](../images/client/connections.jpg)
 
+Facebook, Instagram, LinkedIn and YouTube connect through **BuPulse-Socials**: BuPulse's Composio account, which uses
+Composio's approved apps while BuPulse's own apps wait for Meta, LinkedIn and Google. The client needs no Composio
+account; they sign in on a secure Composio page, then on the network. TikTok uses BuPulse's own TikTok app.
+
 | Network | How it connects | What BuPulse does today |
 |---|---|---|
-| Instagram, **Professional** (Business or Creator) | Sign in with Instagram (or "through Facebook") | Posts by itself at the scheduled time. Pictures are turned into JPEG automatically. |
-| Instagram, **Personal** | Type the username, no login | Sends a reminder with the caption and photos ready; the client posts by hand and presses "I posted it" |
-| Facebook Pages | Sign in with Facebook, tick the Pages | Posts by itself |
-| LinkedIn | Sign in with LinkedIn | Posts to the person's profile; company Pages only once LinkedIn approves BuPulse (Community Management) |
+| Instagram (Business or Creator only) | Sign in through BuPulse-Socials | Posts by itself at the scheduled time: one photo, a carousel of up to 10, or one MP4 video as a Reel. Pictures are turned into JPEG automatically. A personal account is refused: switch it to professional in the Instagram app first. |
+| Facebook Pages | Sign in through BuPulse-Socials, tick the Pages | Posts by itself |
+| LinkedIn | Sign in through BuPulse-Socials | Posts text and photos to the person's profile; company Pages they administer appear too when Composio's app may list them |
 | TikTok | Sign in with TikTok | Photo posts once TikTok approves BuPulse; until TikTok's audit passes, posts are private |
-| YouTube | Sign in with Google | Video scripts and reminders; BuPulse does not upload videos yet |
+| YouTube | Sign in through BuPulse-Socials (Google) | Video scripts and reminders; BuPulse does not upload videos yet |
 
-1. Press **Connect** on the network and approve BuPulse on the network's own page.
-2. If the login has several accounts (for example several Pages), tick the ones to add and save.
-3. The account shows **Active**. **Expires soon** or **Needs reconnect** means: press **Reconnect**.
+1. Press **Connect** on the network. A window says what happens; press its **Connect** button.
+2. Sign in on the secure Composio page and the network's page, and approve.
+3. If the login has several accounts (for example several Pages), tick the ones to add and save.
+4. The account shows **Active**. **Expires soon** or **Needs reconnect** means: press **Reconnect**.
 
-**Coming soon** instead of Connect means BuPulse's own app keys for that network are not set yet. **Facebook and
-Instagram for real clients** wait for Meta's Business Verification and App Review: until then only people with a role on
-BuPulse's Meta app can connect, and clients use reminders plus copy-and-post (`docs/META_APP_REVIEW.md`).
+**Coming soon** instead of Connect means the network can be connected neither through BuPulse-Socials nor through
+BuPulse's own app yet. **BuPulse team:** BuPulse-Socials needs the Composio key in Admin → Services → Composio, with
+Composio switched on. Switched off, new connections fall back to BuPulse's own apps; for Facebook and Instagram those wait
+for Meta's Business Verification and App Review (`docs/META_APP_REVIEW.md`).
+
+A personal Instagram account saved earlier for reminder posting shows **Reminder posting** and keeps getting reminders
+until it is disconnected; new ones cannot be added.
 
 More: [Social connections](../features/13-social-connections.md).
 
@@ -192,7 +201,8 @@ team. Every AI answer uses one chat credit from the plan; when they run out, vis
 3. Or **Calendar** → **Create post**: tick the accounts, write the text once (change it per network in its tab), add
    photos or a video from the Gallery or Designs, choose **when**, and schedule.
 4. The post goes out at its time (within 5 minutes on the current host). It shows **Published** on the calendar.
-   **Post it yourself** means a reminder email was sent (personal Instagram, YouTube scripts); **Failed** shows the
+   **Post it yourself** means a reminder email was sent (YouTube scripts, or an older personal Instagram account);
+   **Failed** shows the
    reason and a **Retry** button.
 
 More: [Calendar and publishing](../features/07-calendar-and-publishing.md).
@@ -229,7 +239,7 @@ from the same page.
 | Trial end | | `processTrialReminders` (`lib/demo/trial-reminders.ts`), cron `/api/cron/trial-reminders` |
 | Mobile Money | `app/dashboard/billing/actions.ts` (`startMomoPayment`, `startMomoProofUpload`, `submitMomoProof`, `cancelMomoPayment`, `momoPaymentStatus`), `components/billing/momo-payment.tsx`, `components/billing/pay-choice.tsx` | `lib/billing/momo.ts` (`startManualPayment`, `submitManualProof`, `confirmManualPayment`, `rejectManualPayment`), `lib/billing/momo-proofs.ts`, `lib/billing/pay-methods.ts`; admin `app/admin/(console)/(money)/payments/` |
 | Card | `startCheckout`, `changePlan`, `cancelSubscription`, `resumeSubscription`, `checkoutActivated` in `app/dashboard/billing/actions.ts` | `lib/billing/paddle.ts`, webhook `app/api/billing/webhooks/paddle/route.ts` → `processPaddleEvent` (`lib/billing/paddle-events.ts`) → `applyProviderSubscription` (`lib/billing/apply.ts`); readiness `lib/billing/card-ready.ts` |
-| Channels | `app/dashboard/connections/page.tsx`, `actions.ts` (`disconnectAction`, `connectReminderAction`, `savePickedAccountsAction`, `cancelPickAction`), `app/api/social/[network]/connect/route.ts`, `app/api/social/[network]/callback/route.ts` | `lib/social/registry.ts`, `lib/social/oauth.ts` (`redirectUri`), `lib/social/providers/*.ts` |
+| Channels | `app/dashboard/connections/page.tsx`, `actions.ts` (`disconnectAction`, `savePickedAccountsAction`, `cancelPickAction`), `app/api/social/[network]/connect/route.ts`, `app/api/social/[network]/callback/route.ts`, `app/api/social/[network]/composio/route.ts` | `lib/social/registry.ts`, `lib/social/oauth.ts` (`redirectUri`), `lib/social/providers/*.ts`, `lib/social/composio/client.ts` (`viaComposio`, `createConnectLink`), `lib/social/composio/networks.ts` |
 | Website chat | `app/dashboard/widget/page.tsx`, `actions.ts` (`saveWidgetSettings`), `check-action.ts`, `components/widget/install-check.tsx`; `app/dashboard/domains/` | `lib/widget/install.ts` (platform guides), `lib/widget/chat.ts` (`handleChat`, `handleLead`), `public/widget.js`, `app/widget/[key]/route.ts`; Cloudflare install `lib/cloudflare/zaraz.ts` |
 | First post | `app/dashboard/content/`, `app/dashboard/calendar/` | `lib/content-flow/service.ts`, `lib/publishing/service.ts`, `lib/publishing/engine.ts` (`publishDue`) |
 | Team | `app/dashboard/settings/team/actions.ts` (`inviteAction`, `resendInviteAction`, `cancelInviteAction`, `changeRoleAction`, `removeMemberAction`, `transferOwnershipAction`), `app/invite/[token]/` | `lib/team/service.ts` (`seatLimit`), roles `lib/team/roles.ts` (`ROLES`, `ROLE_LABEL`) |

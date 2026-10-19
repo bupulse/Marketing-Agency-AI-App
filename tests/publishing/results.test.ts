@@ -78,6 +78,11 @@ describe("postResults", () => {
   it("says why there are none", () => {
     expect(postResults(post({ network: "linkedin", connection: { postingMode: "AUTO", accountType: "personal", status: "ACTIVE" } }), null, now)).toEqual({ state: "unsupported" });
     expect(postResults(post({ network: "tiktok", connection: { postingMode: "AUTO", accountType: null, status: "ACTIVE" } }), null, now)).toEqual({ state: "unsupported" });
+    // BuPulse-Socials (Composio) reads Facebook and Instagram only, so a LinkedIn Page or YouTube channel there has none.
+    const socials = (network: string, accountType: string) => post({ network, connection: { postingMode: "AUTO", accountType, status: "ACTIVE", method: "COMPOSIO" } });
+    expect(postResults(socials("linkedin", "organization"), null, now)).toEqual({ state: "unsupported", via: "socials" });
+    expect(postResults(socials("youtube", "channel"), null, now)).toEqual({ state: "unsupported", via: "socials" });
+    expect(postResults(socials("instagram", "business"), null, now)).toEqual({ state: "waiting" });
     // "Post it yourself": a reminder account, an app that was never connected, or a post marked as posted by hand.
     expect(postResults(post({ connection: { postingMode: "NOTIFY", accountType: "personal", status: "ACTIVE" }, externalId: null }), null, now)).toEqual({ state: "by_hand" });
     expect(postResults(post({ connection: null, remindOnly: true, externalId: null }), null, now)).toEqual({ state: "by_hand" });
@@ -119,6 +124,7 @@ describe("what the screens show", () => {
     expect(resultsNote({ state: "waiting" }, "instagram", "Instagram")).toBe("Results appear within a day of publishing.");
     expect(resultsNote({ state: "unsupported" }, "tiktok", "TikTok")).toBe("TikTok doesn't share post results with BuPulse.");
     expect(resultsNote({ state: "unsupported" }, "linkedin", "LinkedIn")).toMatch(/company pages only/);
+    expect(resultsNote({ state: "unsupported", via: "socials" }, "linkedin", "LinkedIn")).toMatch(/through BuPulse-Socials/);
     expect(resultsNote({ state: "by_hand" }, "instagram", "Instagram")).toMatch(/"Post it yourself"/);
     expect(resultsNote({ state: "reconnect" }, "facebook", "Facebook")).toMatch(/Facebook needs to be reconnected/);
     expect(resultsNote(ready, "instagram", "Instagram")).toBeNull();
