@@ -39,7 +39,7 @@ describe("a client sees only their own business", () => {
 });
 
 describe("a client's references", () => {
-  it("leaves out uploads, other businesses' videos and keeps their own photos and videos", async () => {
+  it("leaves out uploaded video and audio and other businesses' videos, and keeps their own photos (uploads are Gallery photos) and videos", async () => {
     const { loadReferenceSources } = await import("@/video-lab/seedance-sources");
     const scope = { videoOwned: async (_engine: string, id: string) => id === "sd-mine" };
     const refs = [
@@ -51,8 +51,8 @@ describe("a client's references", () => {
       { id: "vid:claude:20261019-abcdef12", kind: "video" },
     ];
     const client = await loadReferenceSources(refs, "b-1", scope);
-    expect(client.sources.map((s) => s.label)).toEqual(["the product photo", "the video"]);
-    expect(client.problems).toHaveLength(4);
+    expect(client.sources.map((s) => s.label)).toEqual(["the product photo", "the product photo", "the video"]);
+    expect(client.problems).toHaveLength(3);
     const owner = await loadReferenceSources(refs, "b-1");
     expect(owner.sources).toHaveLength(6);
   });

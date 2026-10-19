@@ -1504,7 +1504,7 @@ async function start() {
   setupPills();
   // ?ref=<upload id> (an AI image's "Use in a video"): that image is the first reference.
   const ref = q.get("ref");
-  if (ref && /^up-[0-9a-f]{12}$/.test(ref)) state.refs.push({ id: `up:${ref}`, kind: "image", thumb: `/api/photo/${ref}?size=thumb`, label: "AI image (Nano Banana)" });
+  if (ref && /^(up-[0-9a-f]{12}|[A-Za-z0-9-]{10,40})$/.test(ref)) state.refs.push({ id: `up:${ref}`, kind: "image", thumb: `/api/photo/${ref}?size=thumb`, label: "AI image (Nano Banana)" });
   renderPills();
   renderRefs();
   dataReady = (async () => {

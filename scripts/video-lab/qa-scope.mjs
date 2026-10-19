@@ -94,7 +94,8 @@ check("the owner still has the viral library", (await get("/api/viral")).status 
 
 const options = await (await get("/api/options", ca)).json();
 check("a client is not told the Claude mode, model or budget", !("claudeMode" in options) && !("model" in options) && !("capUsd" in options) && !("spentUsd" in options) && !("estimateUsd" in options));
-check("uploads wait for the Gallery move (503 for a client)", (await post("/api/upload", ca, {})).status === 503);
+check("a client's upload must be a real photo (400 for anything else)", (await post("/api/upload", ca, {})).status === 400);
+check("video and audio references wait for Seedance (503 for a client)", (await post("/api/media", ca, {})).status === 503);
 check("a forged cookie is refused", (await get("/api/session", `${ca.slice(0, -3)}abc`, { headers: { "x-forwarded-for": "9.9.9.9" } })).status === 401);
 
 console.log(`\n${pass} of ${pass + fail} checks passed.`);

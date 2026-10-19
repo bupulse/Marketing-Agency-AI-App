@@ -81,11 +81,15 @@ const IMAGE_RULES = "Any person shown is a fictional adult, not a real or famous
  * A generic image: a prompt and up to 3 reference photos (JPEG), with the same safety rules as the presenters. One
  * image (about $0.039). Products in the references keep their look.
  */
-export async function generateImage(prompt: string, references: Buffer[], aspectRatio: string): Promise<{ bytes: Buffer; call: ImageCall }> {
+/** Runs one Gemini call for a caller that wants to wrap it (the cost ledger for a client's request). */
+export type ImageRun = <T extends { call: ImageCall }>(call: () => Promise<T>) => Promise<T>;
+const direct: ImageRun = (call) => call();
+
+export async function generateImage(prompt: string, references: Buffer[], aspectRatio: string, run: ImageRun = direct): Promise<{ bytes: Buffer; call: ImageCall }> {
   const refs = references.slice(0, 3);
   const names = refs.map((_, k) => `Image ${k + 1}`).join(", ");
   const text = `${refs.length ? `The reference photos are ${names}, in that order. Any product in them must stay exactly as photographed: same shape, colours and labels, not redrawn. ` : ""}${prompt.slice(0, 1500)}\n\nPhotorealistic, unless the request asks for another style. ${IMAGE_RULES}`;
-  return geminiImage(text, refs, aspectRatio);
+  return run(() => geminiImage(text, refs, aspectRatio));
 }
 
 export type GalleryImage = { id: string; at: string; prompt: string; ratio: string; references: number; costUsd: number };
@@ -106,7 +110,7 @@ export async function addImage(image: GalleryImage): Promise<void> {
 
 export type InfluencerView = Influencer & { portrait: boolean; shots: { id: string; product: string; action: string }[] };
 
-export async function listInfluencers(): Promise<InfluencerView[]> {
+export async function listInfluencers(opts: { shots?: boolean } = {}): Promise<InfluencerView[]> {
   return Promise.all(
     INFLUENCERS.map(async (i) => {
       const portrait = await fs.access(path.join(dir(i.id), "portrait.jpg")).then(() => true, () => false);
@@ -116,7 +120,7 @@ export async function listInfluencers(): Promise<InfluencerView[]> {
       } catch {
         // No shots yet.
       }
-      return { ...i, portrait, shots };
+      return { ...i, portrait, shots: opts.shots === false ? [] : shots };
     }),
   );
 }
@@ -142,7 +146,15 @@ export async function makePortrait(id: string): Promise<ImageCall> {
  * A shot of the presenter with the product (both references, so the face and the product stay the same). Saved as an
  * upload, so it appears in the lab's references with a note Claude reads. One image.
  */
-export async function makeShot(id: string, product: { name: string; photo: Buffer }, actionId: string, setting: string | null, aspectRatio: string): Promise<{ uploadId: string; call: ImageCall }> {
+export async function makeShot(
+  id: string,
+  product: { name: string; photo: Buffer },
+  actionId: string,
+  setting: string | null,
+  aspectRatio: string,
+  /** A client's shot is saved in their own Gallery and wrapped in the cost ledger, not in the owner's local folders. */
+  opts: { save?: (bytes: Buffer, description: string) => Promise<{ id: string }>; run?: ImageRun } = {},
+): Promise<{ uploadId: string; call: ImageCall }> {
   const i = known(id);
   if (!i) throw new Error("Unknown influencer.");
   const portrait = await portraitBytes(id);
@@ -150,8 +162,10 @@ export async function makeShot(id: string, product: { name: string; photo: Buffe
   const action = SHOT_ACTIONS.find((a) => a.id === actionId) ?? SHOT_ACTIONS[0];
   const place = (setting || i.place).replace(/[^\p{L}\p{N} ,.'-]/gu, "").slice(0, 120);
   const prompt = `Photorealistic vertical UGC-style smartphone photo. The person is exactly the same person as in the first image (same face, hair, skin tone and age, and the same clothes). The product is exactly the product in the second image (${product.name.replace(/[^\p{L}\p{N} ,.'-]/gu, "").slice(0, 80)}): same shape, colours and labels, not redrawn. ${i.name} is ${action.text}, in ${place}, Rwanda. Candid, natural light, realistic, a little handheld. ${SAFETY}`;
-  const { bytes, call } = await geminiImage(prompt, [portrait, product.photo], aspectRatio);
-  const up = await saveUpload(bytes, `${i.name} (AI presenter) ${action.text}, with ${product.name}`);
+  const { bytes, call } = await (opts.run ?? direct)(() => geminiImage(prompt, [portrait, product.photo], aspectRatio));
+  const note = `${i.name} (AI presenter) ${action.text}, with ${product.name}`;
+  if (opts.save) return { uploadId: (await opts.save(bytes, note)).id, call };
+  const up = await saveUpload(bytes, note);
   const shots = (await listInfluencers()).find((x) => x.id === id)?.shots ?? [];
   shots.unshift({ id: up.id, product: product.name, action: action.id });
   await fs.writeFile(path.join(dir(id), "shots.json"), JSON.stringify(shots.slice(0, 50)));

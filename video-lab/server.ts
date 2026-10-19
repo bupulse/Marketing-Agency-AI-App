@@ -37,6 +37,7 @@ import { VOICE_ROUTE, makeVoiceForJob, readVoiceMp3 } from "./voice";
 import { cancelSeedance, getSeedanceJob, getSeedancePreview, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
 import { mediaBytes, saveMedia } from "./data-source";
 import { asClientError, clientVideoUrl, createClientReshape, designForClient, getClientJob, keepPoster, listClientJobs, saveClientSpec, saveClientVideo, voiceForClient } from "./client-jobs";
+import { aiImageForClient, listAiImages, presenterShotForClient, uploadForClient } from "./client-images";
 import { OWNER_PAGES, isOwnerOnly, owns, withoutOwnerFields } from "./scope";
 import { viralFrame, viralLibrary } from "./viral";
 import { clearSessionCookieHeader, clientSession, safeStudioNext, sessionCookieHeader, sessionSecret, signSession, type StudioIdentity } from "./session";
@@ -469,8 +470,6 @@ async function isExamplePhoto(id: string): Promise<boolean> {
 const sdOwned = async (req: http.IncomingMessage, id: string) => !scopeOf(req) || ownsBusiness(req, (await getSeedanceJob(id))?.businessId);
 const plOwned = async (req: http.IncomingMessage, id: string) => !scopeOf(req) || ownsBusiness(req, (await getPremiumJob(id))?.businessId);
 const clOwned = async (req: http.IncomingMessage, id: string) => !scopeOf(req) || ownsBusiness(req, (await getJob(id))?.businessId);
-/** Uploads, AI images and presenter shots are being moved to the business's Gallery (docs/STUDIO_DEPLOY.md, item 7). */
-const notYetForClients = (res: http.ServerResponse) => fail(res, 503, "This is being moved into your BuPulse Gallery and opens soon.");
 
 /**
  * Who may go on (docs/STUDIO_DEPLOY.md, section 2). True when the request may continue (the actor is set); otherwise it
@@ -711,7 +710,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { items: c ? items.map((i) => ({ ...i, info: Object.fromEntries(Object.entries(i.info).filter(([k]) => !ownerRows.has(k))) })) : items });
     }
     if (req.method === "POST" && p === "/api/media") {
-      if (scopeOf(req)) return notYetForClients(res);
+      if (scopeOf(req)) return fail(res, 503, "Video and audio references open when Seedance does.");
       // Video or audio reference uploads for Seedance (kept in video-lab/data/media).
       const bytes = await readBody(req, 60 * 1024 * 1024);
       const type = String(req.headers["content-type"] ?? "");
@@ -958,7 +957,8 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "private, max-age=3600" });
       return res.end(out.bytes);
     }
-    if (req.method === "GET" && p === "/api/influencers") return json(res, 200, { influencers: await listInfluencers(), actions: SHOT_ACTIONS });
+    // A client sees the presenters but not the owner's test shots; their own shots are photos in their Gallery.
+    if (req.method === "GET" && p === "/api/influencers") return json(res, 200, { influencers: await listInfluencers({ shots: !scopeOf(req) }), actions: SHOT_ACTIONS });
     const infl = p.match(/^\/api\/influencers\/([a-z-]{2,20})\/(portrait|shot)$/);
     if (infl && INFLUENCERS.some((i) => i.id === infl[1])) {
       if (req.method === "GET" && infl[2] === "portrait") {
@@ -968,7 +968,16 @@ const server = http.createServer(async (req, res) => {
         return res.end(bytes);
       }
       if (req.method === "POST") {
-        if (scopeOf(req)) return notYetForClients(res);
+        if (clientOf(req)) {
+          if (await studioClosed(req, res)) return;
+          if (infl[2] !== "shot") return fail(res, 404, "Not found");
+          try {
+            return json(res, 200, await presenterShotForClient(clientOf(req) as StudioIdentity, infl[1], await readJson(req, 16 * 1024)));
+          } catch (error) {
+            const e = await asClientError(error, 0, (clientOf(req) as StudioIdentity).companyUserId);
+            return fail(res, e.status, e.message);
+          }
+        }
         // Gemini images cost real money (about $0.039 each): checked against the daily cap and recorded first.
         const spent = await spentToday();
         if (spent + 0.08 > DAILY_CAP_USD) return fail(res, 429, `Today's test budget is used: $${spent.toFixed(2)} of $${DAILY_CAP_USD.toFixed(2)}.`);
@@ -1082,9 +1091,17 @@ const server = http.createServer(async (req, res) => {
       // The page speaks designer.ts's platform keys: the Brain's "shorts" is YouTube.
       return json(res, 200, { posts: posts.map((x) => ({ ...x, platform: x.platform === "shorts" ? "youtube" : x.platform })) });
     }
-    if (req.method === "GET" && p === "/api/images") return json(res, 200, { images: (scopeOf(req) ? [] : await listImages()).map((i) => ({ ...i, url: `/api/photo/${i.id}` })) });
+    if (req.method === "GET" && p === "/api/images") return json(res, 200, { images: (clientOf(req) ? await listAiImages(clientOf(req) as StudioIdentity) : await listImages()).map((i) => ({ ...i, url: `/api/photo/${i.id}` })) });
     if (req.method === "POST" && p === "/api/image") {
-      if (scopeOf(req)) return notYetForClients(res);
+      if (clientOf(req)) {
+        if (await studioClosed(req, res)) return;
+        try {
+          return json(res, 200, await aiImageForClient(clientOf(req) as StudioIdentity, await readJson(req, 16 * 1024)));
+        } catch (error) {
+          const e = await asClientError(error, 0, (clientOf(req) as StudioIdentity).companyUserId);
+          return fail(res, e.status, e.message);
+        }
+      }
       // The AI image page (Nano Banana): a prompt and up to 3 reference photos. Charged like a presenter image,
       // taken first and given back when Gemini fails; the image is saved as an upload so videos can use it.
       const body = await readJson(req, 16 * 1024);
@@ -1147,7 +1164,15 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { made, failed });
     }
     if (req.method === "POST" && p === "/api/upload") {
-      if (scopeOf(req)) return notYetForClients(res);
+      if (clientOf(req)) {
+        try {
+          const name = decodeURIComponent(String(req.headers["x-file-name"] ?? "photo"));
+          return json(res, 200, await uploadForClient(clientOf(req) as StudioIdentity, await readBody(req, 15 * 1024 * 1024), name));
+        } catch (error) {
+          const e = await asClientError(error, 0, (clientOf(req) as StudioIdentity).companyUserId);
+          return fail(res, e.status, e.message);
+        }
+      }
       // The owner's own photo (Seedance lets you upload references too): resized, kept in video-lab/data/uploads.
       const bytes = await readBody(req, 15 * 1024 * 1024);
       return json(res, 200, await saveUpload(bytes));

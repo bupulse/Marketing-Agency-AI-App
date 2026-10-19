@@ -261,6 +261,17 @@ the first release).
    wallet. `/api/wallet` shows the plan's credits left; "Buy credits" and Pricing link to `https://bupulse.com/dashboard/billing`.
    Not yet checked against a live paid account (the test database has only an ended trial): the charge and refund are
    covered by mocked tests, and the balance by the real plan data.
+5. **Motion designs as `VideoJob`** (`video-lab/client-jobs.ts`): a client's `/api/design`, jobs, hand edits, re-shapes and
+   voice-overs go through `lib/video-studio/jobs.ts` and `voice.ts`; the owner keeps the local jobs. For a client on the
+   owner's test studio with no `ANTHROPIC_API_KEY`, the Claude subscription is used (never in production).
+6. **Motion MP4 into the Gallery:** the browser sends the poster, then the MP4; the server uploads with the Gallery's signed
+   target and `saveJobVideo` makes the job "ready" (video, poster, size, length, ratio, product, caption, hashtags). The
+   studio's bundle aliases `lib/supabase/server` to `video-lab/supabase-server-stub.ts` (the admin Storage client), because
+   `lib/media/service.ts` otherwise needs a signed-in person's cookies.
+7. **Photos** (`video-lab/client-images.ts`): a client's uploads, AI images (Nano Banana) and presenter shots are photos in their
+   Gallery ("Studio images" folder, the Gallery's checks and quota); AI images and presenter shots cost 15 credits from the
+   plan, refunded when Gemini fails, through the cost ledger ("video-image"). Video and audio references (`um:`) wait for
+   Seedance (item 8).
 
 ## 6. Build list, in order
 

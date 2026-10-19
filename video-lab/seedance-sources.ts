@@ -18,9 +18,9 @@ const labelOf = (r: StudioRef, fallback: string) => (typeof r.label === "string"
 const SOURCE_PX = 2048;
 
 /**
- * What a client's request may use (docs/STUDIO_DEPLOY.md, item 3): product photos and cut-outs only of their business,
- * a finished studio video only when it is theirs, and no uploads (up:, um:) until those live in their Gallery. The owner
- * passes nothing and may use everything.
+ * What a client's request may use (docs/STUDIO_DEPLOY.md, items 3 and 7): photos (product photos, uploads and AI images
+ * are all Gallery photos, up: and ph: alike) and cut-outs only of their business, a finished studio video only when it
+ * is theirs, and no uploaded video or audio (um:) until Seedance goes live. The owner passes nothing and may use everything.
  */
 export type ReferenceScope = { videoOwned: (engine: string, jobId: string) => Promise<boolean> };
 
@@ -32,12 +32,12 @@ export async function loadReferenceSources(refs: StudioRef[], businessId: string
     const [prefix, a, b] = r.id.split(":");
     const missing = (what: string) => problems.push(`${labelOf(r, what)}: not found, left out.`);
     try {
-      if (scope && (prefix === "up" || prefix === "um" || (prefix === "vid" && !(await scope.videoOwned(a, b))))) {
+      if (scope && (prefix === "um" || (prefix === "vid" && !(await scope.videoOwned(a, b))))) {
         missing("A reference");
         continue;
       }
       if (prefix === "ph" || prefix === "up") {
-        const photo = await photoJpeg(a, SOURCE_PX, prefix === "ph" ? businessId : undefined);
+        const photo = await photoJpeg(a, SOURCE_PX, prefix === "ph" || scope ? businessId : undefined);
         sources.push({ kind: "image", type: "photo", bytes: photo.bytes, label: labelOf(r, "the product photo"), role: imageRole(r) });
       } else if (prefix === "co") {
         const cut = await cutoutForPhoto(a, businessId || undefined);
