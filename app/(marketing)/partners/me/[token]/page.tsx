@@ -61,7 +61,7 @@ export default async function PartnerPage({ params }: PageProps<"/partners/me/[t
               <li key={c.businessId} className="flex flex-wrap items-center justify-between gap-2 py-3">
                 <span className="flex flex-col">
                   <span className="font-medium">{c.name}</span>
-                  <span className="text-xs text-muted">Signed up {day(c.signedUpAt)} · first payment {day(c.firstPaidAt)}{c.earnUntil ? ` · earning until ${day(c.earnUntil)}` : ""}</span>
+                  <span className="text-xs text-muted">Signed up {day(c.signedUpAt)} · first payment {c.firstPaidAt ? day(c.firstPaidAt) : "not yet"}{c.earnUntil ? ` · earning until ${day(c.earnUntil)}` : ""}</span>
                 </span>
                 <span className="flex items-center gap-2">
                   {c.qualified ? <Badge tone="success">Paying</Badge> : c.firstPaidAt ? <Badge tone="neutral">Paid too late</Badge> : <Badge tone="neutral">Not paid yet</Badge>}
