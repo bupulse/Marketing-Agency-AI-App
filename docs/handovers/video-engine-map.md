@@ -147,3 +147,51 @@ Owner's list, in order:
 Next session's work: Seedance in the app (plan task 8), the library page, the guide page, the Mac render worker for
 Premium 3D, then a real browser trial on TEST before `videoStudio` leaves "coming soon". Research gaps are listed in
 docs/research/RESEARCH_SUMMARY.md and the Brain's changelog in docs/research/BRAIN.md.
+
+## 19 October: viral library, viral-first videos, AI clips, the studio split (lead: Opus 5.5; agents Opus 5.5 / Sonnet)
+
+The owner was away from about 15:00; the lead and BuPulse's main session (bupulse-fe) decided within the house rules.
+Everything is committed locally on `video-engine` (nothing pushed); bupulse-fe took 6082574 into its launch candidate.
+
+What was built:
+- **Viral library** (`docs/research/viral/`, README has the rules): YouTube 100, Facebook 100 (43 long-running ads),
+  Instagram 100 (72 East African), TikTok in progress (79 rows at 20:40; notes file follows). Notes per platform in
+  `<platform>-notes.md`. Frames stay on this Mac (`video-lab/data/viral/frames`, git-ignored). Owner-only page `/viral`.
+- **Viral-first videos** (docs/VIRAL_RECIPES.md, guide 22): every Motion and Seedance design follows a recipe mixed from
+  3 to 5 matching viral videos (index `lib/video-engine/brain/data/viral.json`, built by `viral-ingest.ts`, no
+  captions, comments, frames or account names). Templates behind "Use a template instead". The business's last 5
+  recipes are avoided. Five recipe checks in the score. Two LEAF proofs: different sources, scores 97 and 96.
+- **Phone clips**: 5 to 10 s MP4/MOV, 30 MB, Gallery "Studio clips", placed as video layers.
+- **AI clips (Google Veo 3.1 Lite)**, guide 21: image-to-video from the product photo, 9:16 720p, $0.05/s; 65/95/130
+  credits for 4/6/8 s; 2 to 3 per video; clip audio never mixed in (tested on a real MP4). Uses GEMINI_API_KEY.
+- **Short price everywhere** (`lib/video-engine/price.ts`); the LEAF fixes (agriculture sector, 7-post weeks).
+- **Studio split for studio.bupulse.com** (docs/STUDIO_DEPLOY.md): tickets, sessions, scoping, credits through
+  lib/usage, Motion / Seedance (item 8) / Premium 3D (item 9) as VideoJobs into BuPulse's Videos library, hardening,
+  the going-live files (switched off). Guide pages 29 (clients) and 30 (owner).
+
+Switches in Admin -> Services and their defaults:
+| Service | Default | Off means |
+|---|---|---|
+| Video Studio (`studio`) | off | "Video Studio: coming soon" in BuPulse |
+| Google Veo AI clips (`veo`) | off | "AI clips are paused"; photos and phone clips only |
+| Premium 3D (Blender) (`premium3d`) | off | "coming soon" for clients |
+| Seedance (`seedance`) | on, but no key yet | free storyboard previews, "Real video is coming soon" |
+| ElevenLabs, Gemini, Anthropic | on | voice-over / AI images / design pause |
+
+Spend: Veo **$1.80 of the owner's $5** test budget (9 clips of 4 s, logged in docs/AI_COSTS.md). Claude designs ran on
+the subscription.
+
+For the owner when back:
+1. The owner checks in docs/STUDIO_DEPLOY.md "Owner checks to run (on TEST)": a Premium 3D 540p clip as E2E Starter
+   Test, and the Veo client check (a TEST business needs 230+ video credits). The lead's attempt to raise LEAF's TEST
+   credits was blocked by the session's safety check (shared data), correctly: it is the owner's call.
+2. LEAF's Custom plan on TEST has videoCredits 100 (raised from 0 with the owner's OK on 19 October, all used): keep or
+   set back.
+3. Turn billing on for the Gemini key in Google AI Studio before switching Veo on (Veo has no free tier).
+4. Going live: docs/STUDIO_DEPLOY.md "Going live (for the owner)", step 0 first (merge and release with the studio
+   migrations). Switch the studio to ANTHROPIC_API_KEY before any deploy.
+5. Research Chrome: DevTools port 9334, profile `video-lab/data/research-chrome` (logins kept). TikTok showed a slider
+   captcha once; solve it there if it returns.
+
+Next work: TikTok to 100 rows, then re-run `node lib/video-engine/brain/viral-ingest.ts` and commit viral.json; voice-over
+for clients' Premium 3D clips; a second viral round (Kenya, Explore/For You scrolling) if the owner wants it.

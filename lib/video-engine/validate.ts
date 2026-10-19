@@ -498,6 +498,65 @@ export function dropBuriedNumber(layers: Layer[], ratio: Ratio): Layer[] {
   return buried.length ? layers.filter((l) => !buried.includes(l as T)) : layers;
 }
 
+/**
+ * Room kept between a line of text and a framed photo's edge: the camera moves layers of different depths apart
+ * (parallax), so a line that only touches the edge in the design crosses it on screen.
+ */
+export const PHOTO_EDGE_MARGIN = 0.02;
+
+/**
+ * Text never straddles the edge of a framed photo (the first LEAF end-to-end video, 19 October 2026: the WhatsApp bar
+ * lay across the bottom edge of a framed photo once the handheld camera moved). A text whose drawn box, with the shape
+ * behind it, crosses or touches a framed photo's top or bottom edge (within PHOTO_EDGE_MARGIN) moves fully clear of it,
+ * to the nearer side with room (in the safe area and not on another line); or fully inside it when it has something to
+ * read on (its own box, or the bar behind it) and the photo has room for its lines, or when there is no room outside.
+ * The shape behind it moves with it. Full-frame
+ * photos, cut-outs and giant backdrop words are left alone. Only new designs, edits and re-shapes go through this:
+ * saved videos keep their layout.
+ */
+export function offPhotoEdges(layers: Layer[], ratio: Ratio, area: SafeArea): Layer[] {
+  const M = PHOTO_EDGE_MARGIN;
+  const round = (n: number) => Math.round(n * 1000) / 1000;
+  const together = (a: Layer, b: Layer) => Math.max(a.from ?? 0, b.from ?? 0) < Math.min(a.to ?? 1, b.to ?? 1);
+  const framed = layers.filter((l): l is Extract<Layer, { kind: "photo" }> => l.kind === "photo" && !l.cutout && !l.turntable && (l.w < 0.95 || l.h < 0.95));
+  if (!framed.length) return layers;
+  const out = [...layers];
+  layers.forEach((l, i) => {
+    if (l.kind !== "text" || isBackdropWord(l)) return;
+    for (const p of framed) {
+      const t = out[i] as TextLayer;
+      if (!together(t, p) || Math.abs(t.x - p.x) >= (t.w + p.w) / 2 - 0.01) continue;
+      const behind = out.map((s, j) => ({ s, j })).filter(({ s }) => backs(s, t));
+      const half = Math.max(drawnHeight(t, ratio), ...behind.map(({ s }) => s.h)) / 2;
+      const top = p.y - p.h / 2;
+      const bottom = p.y + p.h / 2;
+      const inside = t.y - half >= top + M && t.y + half <= bottom - M;
+      const clear = t.y + half <= top - M || t.y - half >= bottom + M;
+      if (inside || clear) continue;
+      // A place is free when it is in the safe area and no other line shown at the same time is printed there.
+      const others = out.filter((o): o is TextLayer => o !== t && o.kind === "text" && !isBackdropWord(o) && together(o, t) && Math.abs(o.x - t.x) < (o.w + t.w) / 2);
+      const free = (y: number) => y - half >= area.top && y + half <= area.bottom && others.every((o) => Math.abs(o.y - y) >= half + drawnHeight(o, ratio) / 2 + 0.01);
+      const outside = [top - M - half, bottom + M + half].filter(free);
+      const roomInside = bottom - top >= 2 * (half + M);
+      const within = roomInside ? Math.min(bottom - M - half, Math.max(top + M + half, t.y)) : null;
+      // Inside the photo only with something to read on: its own box, or the bar behind it.
+      const readsOnPhoto = !!t.box || behind.length > 0;
+      const nearest = (ys: number[]) => ys.sort((a, b) => Math.abs(a - t.y) - Math.abs(b - t.y))[0];
+      const y =
+        within !== null && readsOnPhoto && free(within) && (!outside.length || Math.abs(within - t.y) <= Math.abs(nearest(outside) - t.y))
+          ? within
+          : outside.length
+            ? nearest(outside)
+            : within;
+      if (y === null || y === undefined) continue;
+      const dy = round(y) - t.y;
+      out[i] = { ...t, y: round(y) };
+      for (const { s, j } of behind) out[j] = { ...s, y: round(s.y + dy) };
+    }
+  });
+  return out;
+}
+
 /** WCAG contrast ratio of two colours (1 to 21). */
 function contrast(a: string, b: string): number {
   const L = (c: string) => {
@@ -918,7 +977,7 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
     for (let pass = 0; pass === 0 || (pass < 3 && sized(s.layers) !== s.layers); pass++) {
       s.layers = badgesOnTheirText(sized(s.layers), ratio);
       const subject = tall ? sceneSubject(s, ratio, opts.photos ?? []) : null;
-      s.layers = shapesInFrame(safe(keepOffSubject(apartTexts(safe(badgesOffProduct(s.layers, subject)), ratio, area), subject, area, ratio)));
+      s.layers = shapesInFrame(safe(offPhotoEdges(keepOffSubject(apartTexts(safe(badgesOffProduct(s.layers, subject)), ratio, area), subject, area, ratio), ratio, area)));
     }
   }
   fitLength(scenes, opts.seconds, hasVideo ? SPEC_LIMITS.minSceneSeconds * scenes.length : SPEC_LIMITS.minTotalSeconds);
@@ -928,6 +987,10 @@ export function validateSpec(raw: unknown, opts: ValidateOptions): MotionSpec {
     if (VERTICAL.has(ratio) && opts.phone && !post) {
       s.layers = dropBuriedNumber(s.layers, ratio);
       s.layers = withPhoneLine(s, opts.phone, palette, area, opts.platform ?? null, ratio, opts.photos ?? []);
+      // The phone line is placed last: it too stays off a framed photo's edge, and, when a line moved, the lines it then
+      // meets move apart (a scene without a framed photo is left exactly as it was).
+      const offEdges = offPhotoEdges(s.layers, ratio, area);
+      if (offEdges !== s.layers && offEdges.some((l, i) => l !== s.layers[i])) s.layers = apartTexts(offEdges, ratio, area);
     }
     s.layers = readableOnBackground(s.layers, s.background);
   }

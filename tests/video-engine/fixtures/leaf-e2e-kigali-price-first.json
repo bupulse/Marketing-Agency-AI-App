@@ -1,0 +1,738 @@
+{
+ "fps": 30,
+ "look": {
+  "grade": "vivid",
+  "grain": 0.1,
+  "letterbox": false
+ },
+ "music": "upbeat",
+ "ratio": "9:16",
+ "title": "LEAF Hydro Tower price-first",
+ "scenes": [
+  {
+   "say": "LEAF Hydro Tower, from 250,000 francs.",
+   "camera": {
+    "move": "dollyIn",
+    "intensity": 0.4
+   },
+   "layers": [
+    {
+     "h": 1,
+     "w": 1,
+     "x": 0.5,
+     "y": 0.5,
+     "to": 1,
+     "dim": 0.45,
+     "fit": "cover",
+     "from": 0,
+     "kind": "photo",
+     "depth": 0.3,
+     "photo": 1,
+     "border": null,
+     "focusX": 0.5,
+     "focusY": 0.5,
+     "shadow": false,
+     "zoomTo": 1.15,
+     "turntable": null
+    },
+    {
+     "h": 0.116,
+     "w": 0.76,
+     "x": 0.46,
+     "y": 0.178,
+     "to": 1,
+     "box": {
+      "color": "#ffd200",
+      "radius": 0.15,
+      "padding": 0.02
+     },
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.053,
+     "text": "LEAF Hydro Tower \u00b7 from 250,000 RWF",
+     "align": "center",
+     "color": "#0D4D2A",
+     "depth": 0.9,
+     "shadow": true,
+     "text3d": null,
+     "weight": 800,
+     "animate": "pop",
+     "highlight": null,
+     "uppercase": false,
+     "animateFor": 0.4
+    },
+    {
+     "h": 0.13,
+     "w": 0.24,
+     "x": 0.7,
+     "y": 0.3,
+     "to": 1,
+     "draw": false,
+     "from": 0,
+     "kind": "shape",
+     "color": "#ffd200",
+     "depth": 0.8,
+     "shape": "burst",
+     "keyframes": [
+      {
+       "at": 0,
+       "scale": 0.9,
+       "rotate": -6
+      },
+      {
+       "at": 1,
+       "scale": 1.1,
+       "rotate": 6
+      }
+     ]
+    },
+    {
+     "h": 0.088,
+     "w": 0.192,
+     "x": 0.7,
+     "y": 0.3,
+     "to": 1,
+     "box": {
+      "color": "rgba(255,255,255,0.75)",
+      "radius": 0.3,
+      "padding": 0.02
+     },
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.031,
+     "text": "No soil",
+     "align": "center",
+     "color": "#0D4D2A",
+     "depth": 0.85,
+     "shadow": false,
+     "text3d": null,
+     "weight": 800,
+     "animate": "none",
+     "highlight": null,
+     "uppercase": false
+    },
+    {
+     "h": 0.049,
+     "w": 0.76,
+     "x": 0.46,
+     "y": 0.756,
+     "to": 1,
+     "box": {
+      "color": "rgba(0,0,0,0.55)",
+      "radius": 0.3,
+      "padding": 0.02
+     },
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.04,
+     "text": "Find us: LEAF Hydro Tower",
+     "align": "center",
+     "color": "#ffffff",
+     "depth": 0.9,
+     "shadow": true,
+     "text3d": null,
+     "weight": 600,
+     "animate": "fade",
+     "highlight": null,
+     "uppercase": false
+    },
+    {
+     "h": 0.065,
+     "w": 0.76,
+     "x": 0.46,
+     "y": 0.679,
+     "to": 1,
+     "draw": false,
+     "from": 0,
+     "kind": "shape",
+     "color": "#25D366",
+     "depth": 1,
+     "shape": "rect",
+     "radius": 0.5
+    },
+    {
+     "h": 0.065,
+     "w": 0.699,
+     "x": 0.46,
+     "y": 0.679,
+     "to": 1,
+     "box": {
+      "color": "rgba(255,255,255,0.75)",
+      "radius": 0.3,
+      "padding": 0.02
+     },
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.05,
+     "text": "WhatsApp 0788 000 111",
+     "align": "center",
+     "color": "#0b2a17",
+     "depth": 1,
+     "shadow": false,
+     "text3d": null,
+     "weight": 800,
+     "animate": "none",
+     "highlight": null,
+     "uppercase": false
+    }
+   ],
+   "seconds": 3,
+   "background": {
+    "kind": "solid",
+    "colors": [
+     "#0D4D2A"
+    ],
+    "texture": "none"
+   },
+   "transition": "cut"
+  },
+  {
+   "say": "Grow fresh vegetables without soil.",
+   "camera": {
+    "move": "handheld",
+    "shake": 0.2,
+    "intensity": 0.3
+   },
+   "layers": [
+    {
+     "h": 1,
+     "w": 1,
+     "x": 0.5,
+     "y": 0.5,
+     "to": 1,
+     "dim": 0.45,
+     "fit": "cover",
+     "from": 0,
+     "kind": "photo",
+     "depth": 0.3,
+     "photo": 4,
+     "border": null,
+     "focusX": 0.6,
+     "focusY": 0.5,
+     "shadow": false,
+     "zoomTo": 1.12,
+     "turntable": null
+    },
+    {
+     "h": 0.124,
+     "w": 0.76,
+     "x": 0.46,
+     "y": 0.182,
+     "to": 1,
+     "box": {
+      "color": "rgba(0,0,0,0.55)",
+      "radius": 0.3,
+      "padding": 0.02
+     },
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.08,
+     "text": "Soil-free growing",
+     "align": "center",
+     "color": "#ffffff",
+     "depth": 0.9,
+     "shadow": true,
+     "text3d": null,
+     "weight": 800,
+     "animate": "rise",
+     "highlight": {
+      "color": "#ffd200",
+      "words": [
+       "soil-free"
+      ]
+     },
+     "uppercase": false
+    },
+    {
+     "h": 0.049,
+     "w": 0.76,
+     "x": 0.46,
+     "y": 0.756,
+     "to": 1,
+     "box": {
+      "color": "rgba(0,0,0,0.55)",
+      "radius": 0.3,
+      "padding": 0.02
+     },
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.04,
+     "text": "Find us: LEAF Hydro Tower",
+     "align": "center",
+     "color": "#ffffff",
+     "depth": 0.9,
+     "shadow": true,
+     "text3d": null,
+     "weight": 600,
+     "animate": "fade",
+     "highlight": null,
+     "uppercase": false
+    },
+    {
+     "h": 0.065,
+     "w": 0.76,
+     "x": 0.46,
+     "y": 0.679,
+     "to": 1,
+     "draw": false,
+     "from": 0,
+     "kind": "shape",
+     "color": "#25D366",
+     "depth": 1,
+     "shape": "rect",
+     "radius": 0.5
+    },
+    {
+     "h": 0.065,
+     "w": 0.699,
+     "x": 0.46,
+     "y": 0.679,
+     "to": 1,
+     "box": {
+      "color": "rgba(255,255,255,0.75)",
+      "radius": 0.3,
+      "padding": 0.02
+     },
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.05,
+     "text": "WhatsApp 0788 000 111",
+     "align": "center",
+     "color": "#0b2a17",
+     "depth": 1,
+     "shadow": false,
+     "text3d": null,
+     "weight": 800,
+     "animate": "none",
+     "highlight": null,
+     "uppercase": false
+    }
+   ],
+   "seconds": 3,
+   "background": {
+    "kind": "solid",
+    "colors": [
+     "#0D4D2A"
+    ],
+    "texture": "none"
+   },
+   "transition": "whip"
+  },
+  {
+   "say": "Fits homes, schools and restaurants.",
+   "camera": {
+    "move": "handheld",
+    "shake": 0.2,
+    "intensity": 0.3
+   },
+   "layers": [
+    {
+     "h": 0.43,
+     "w": 0.86,
+     "x": 0.5,
+     "y": 0.46,
+     "to": 1,
+     "fit": "cover",
+     "from": 0,
+     "kind": "photo",
+     "depth": 0.5,
+     "photo": 2,
+     "border": null,
+     "focusX": 0.7,
+     "focusY": 0.5,
+     "radius": 0.04,
+     "shadow": true,
+     "zoomTo": 1.1,
+     "turntable": null
+    },
+    {
+     "h": 0.1,
+     "w": 0.78,
+     "x": 0.46,
+     "y": 0.17,
+     "to": 1,
+     "box": null,
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.062,
+     "text": "Homes, schools, restaurants",
+     "align": "center",
+     "color": "#ffffff",
+     "depth": 0.9,
+     "shadow": true,
+     "text3d": null,
+     "weight": 800,
+     "animate": "words",
+     "highlight": null,
+     "uppercase": false
+    },
+    {
+     "h": 0.03,
+     "w": 0.76,
+     "x": 0.46,
+     "y": 0.762,
+     "to": 1,
+     "box": null,
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.04,
+     "text": "Find us: LEAF Hydro Tower",
+     "align": "center",
+     "color": "#ffffff",
+     "depth": 0.9,
+     "shadow": true,
+     "text3d": null,
+     "weight": 600,
+     "animate": "fade",
+     "highlight": null,
+     "uppercase": false
+    },
+    {
+     "h": 0.065,
+     "w": 0.76,
+     "x": 0.46,
+     "y": 0.714,
+     "to": 1,
+     "draw": false,
+     "from": 0,
+     "kind": "shape",
+     "color": "#25D366",
+     "depth": 1,
+     "shape": "rect",
+     "radius": 0.5
+    },
+    {
+     "h": 0.06,
+     "w": 0.699,
+     "x": 0.46,
+     "y": 0.714,
+     "to": 1,
+     "box": null,
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.05,
+     "text": "WhatsApp 0788 000 111",
+     "align": "center",
+     "color": "#0b2a17",
+     "depth": 1,
+     "shadow": false,
+     "text3d": null,
+     "weight": 800,
+     "animate": "none",
+     "highlight": null,
+     "uppercase": false
+    }
+   ],
+   "seconds": 3,
+   "background": {
+    "kind": "gradient",
+    "angle": 160,
+    "colors": [
+     "#0D4D2A",
+     "#2D8956"
+    ],
+    "texture": "none"
+   },
+   "transition": "slideLeft"
+  },
+  {
+   "say": "Installation and training available.",
+   "camera": {
+    "move": "handheld",
+    "shake": 0.2,
+    "intensity": 0.3
+   },
+   "layers": [
+    {
+     "h": 1,
+     "w": 1,
+     "x": 0.5,
+     "y": 0.5,
+     "to": 1,
+     "dim": 0.45,
+     "fit": "cover",
+     "from": 0,
+     "kind": "photo",
+     "depth": 0.3,
+     "photo": 3,
+     "border": null,
+     "focusX": 0.5,
+     "focusY": 0.4,
+     "shadow": false,
+     "zoomTo": 1.25,
+     "turntable": null
+    },
+    {
+     "h": 0.099,
+     "w": 0.78,
+     "x": 0.46,
+     "y": 0.17,
+     "to": 1,
+     "box": {
+      "color": "rgba(0,0,0,0.55)",
+      "radius": 0.3,
+      "padding": 0.02
+     },
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.06,
+     "text": "Installation and training available",
+     "align": "center",
+     "color": "#ffffff",
+     "depth": 0.9,
+     "shadow": true,
+     "text3d": null,
+     "weight": 800,
+     "animate": "pop",
+     "highlight": {
+      "color": "#ffd200",
+      "words": [
+       "training"
+      ]
+     },
+     "uppercase": false
+    },
+    {
+     "h": 0.049,
+     "w": 0.76,
+     "x": 0.46,
+     "y": 0.756,
+     "to": 1,
+     "box": {
+      "color": "rgba(0,0,0,0.55)",
+      "radius": 0.3,
+      "padding": 0.02
+     },
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.04,
+     "text": "Find us: LEAF Hydro Tower",
+     "align": "center",
+     "color": "#ffffff",
+     "depth": 0.9,
+     "shadow": true,
+     "text3d": null,
+     "weight": 600,
+     "animate": "fade",
+     "highlight": null,
+     "uppercase": false
+    },
+    {
+     "h": 0.065,
+     "w": 0.76,
+     "x": 0.46,
+     "y": 0.679,
+     "to": 1,
+     "draw": false,
+     "from": 0,
+     "kind": "shape",
+     "color": "#25D366",
+     "depth": 1,
+     "shape": "rect",
+     "radius": 0.5
+    },
+    {
+     "h": 0.065,
+     "w": 0.699,
+     "x": 0.46,
+     "y": 0.679,
+     "to": 1,
+     "box": {
+      "color": "rgba(255,255,255,0.75)",
+      "radius": 0.3,
+      "padding": 0.02
+     },
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.05,
+     "text": "WhatsApp 0788 000 111",
+     "align": "center",
+     "color": "#0b2a17",
+     "depth": 1,
+     "shadow": false,
+     "text3d": null,
+     "weight": 800,
+     "animate": "none",
+     "highlight": null,
+     "uppercase": false
+    }
+   ],
+   "seconds": 3,
+   "background": {
+    "kind": "solid",
+    "colors": [
+     "#0D4D2A"
+    ],
+    "texture": "none"
+   },
+   "transition": "zoom"
+  },
+  {
+   "say": "Order on WhatsApp, 0788 000 111.",
+   "camera": {
+    "move": "dollyIn",
+    "intensity": 0.3
+   },
+   "layers": [
+    {
+     "h": 0.119,
+     "w": 0.78,
+     "x": 0.46,
+     "y": 0.181,
+     "to": 1,
+     "box": {
+      "color": "rgba(0,0,0,0.55)",
+      "radius": 0.3,
+      "padding": 0.02
+     },
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.078,
+     "text": "Order on WhatsApp",
+     "align": "center",
+     "color": "#ffffff",
+     "depth": 0.9,
+     "shadow": true,
+     "text3d": null,
+     "weight": 800,
+     "animate": "pop",
+     "highlight": null,
+     "uppercase": false
+    },
+    {
+     "h": 0.061,
+     "w": 0.76,
+     "x": 0.46,
+     "y": 0.29,
+     "to": 1,
+     "box": {
+      "color": "#ffd200",
+      "radius": 0.15,
+      "padding": 0.02
+     },
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.065,
+     "text": "from 250,000 RWF",
+     "align": "center",
+     "color": "#0D4D2A",
+     "depth": 0.9,
+     "shadow": true,
+     "text3d": null,
+     "weight": 800,
+     "animate": "rise",
+     "highlight": null,
+     "uppercase": false
+    },
+    {
+     "h": 0.071,
+     "w": 0.78,
+     "x": 0.46,
+     "y": 0.676,
+     "to": 1,
+     "box": {
+      "color": "rgba(0,0,0,0.55)",
+      "radius": 0.3,
+      "padding": 0.02
+     },
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.042,
+     "text": "Find us at LEAF Hydro Tower",
+     "align": "center",
+     "color": "#ffffff",
+     "depth": 0.9,
+     "shadow": true,
+     "text3d": null,
+     "weight": 600,
+     "animate": "fade",
+     "highlight": null,
+     "uppercase": false
+    },
+    {
+     "h": 0.049,
+     "w": 0.76,
+     "x": 0.46,
+     "y": 0.756,
+     "to": 1,
+     "draw": false,
+     "from": 0,
+     "kind": "shape",
+     "color": "#25D366",
+     "depth": 1,
+     "shape": "rect",
+     "radius": 0.5
+    },
+    {
+     "h": 0.049,
+     "w": 0.699,
+     "x": 0.46,
+     "y": 0.756,
+     "to": 1,
+     "box": {
+      "color": "rgba(255,255,255,0.75)",
+      "radius": 0.3,
+      "padding": 0.02
+     },
+     "font": "poppins",
+     "from": 0,
+     "kind": "text",
+     "size": 0.038,
+     "text": "WhatsApp 0788 000 111",
+     "align": "center",
+     "color": "#0b2a17",
+     "depth": 1,
+     "shadow": false,
+     "text3d": null,
+     "weight": 800,
+     "animate": "none",
+     "highlight": null,
+     "uppercase": false
+    }
+   ],
+   "seconds": 3,
+   "background": {
+    "dim": 0.6,
+    "blur": 10,
+    "kind": "photo",
+    "photo": 1,
+    "colors": [
+     "#0D4D2A"
+    ],
+    "texture": "none"
+   },
+   "transition": "flash"
+  }
+ ],
+ "caption": "LEAF Hydro Tower, from 250,000 RWF. Grow fresh vegetables without soil.\nOrder on WhatsApp or call 0788 000 111.\nFind us at LEAF Hydro Tower.",
+ "palette": {
+  "text": "#ffffff",
+  "accent": "#ffd200",
+  "primary": "#2D8956",
+  "background": "#0D4D2A"
+ },
+ "version": 1,
+ "hashtags": [
+  "kigalitiktok",
+  "rwandatiktok",
+  "KigaliBusiness",
+  "hydroponics",
+  "urbanfarming"
+ ]
+}
