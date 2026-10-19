@@ -32,7 +32,18 @@ Branch `bizdev` (worktree `/Users/macbook1/BuPulse-bizdev`). Local commits only;
 - Inbox, Contacts and Automations pages (canvas with @xyflow/react), templates for Rwanda, docs/AUTOMATIONS.md, guide
   pages, engine tests on TEST data; merge the agents' branches into bizdev.
 
-## Rollback of the two migrations on TEST (only if needed)
+## Also applied to TEST (19 Oct): `20261025300000_social_inbox` and `20261025400000_partners`
+Rollback (only if needed):
+```sql
+BEGIN;
+DROP TABLE IF EXISTS "PartnerPayout", "PartnerReferral", "Partner" CASCADE;
+ALTER TABLE "Connection" DROP COLUMN IF EXISTS "inboxEnabled", DROP COLUMN IF EXISTS "inboxCursor";
+DELETE FROM "_prisma_migrations" WHERE "migration_name" IN ('20261025300000_social_inbox', '20261025400000_partners');
+COMMIT;
+```
+(The partners migration creates no enum types.)
+
+## Rollback of the two engine migrations on TEST (only if needed)
 ```sql
 BEGIN;
 DELETE FROM "AddonPrice" WHERE "addonKey" IN ('inbox', 'automations') AND "regionKey" = 'RW';
