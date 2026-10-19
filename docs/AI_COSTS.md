@@ -107,6 +107,7 @@ input tokens and priced per second in `lib/ai/pricing.ts`) for a client.
 | 4 | 19 Oct 2026 | 4 s, studio route, centre crop (`vc-f70f242ef185`) | the real kitchen tower stays in frame; an adult East African man smiles and presents it with his hands | 0.20 | 0.80 |
 | 5 | 19 Oct 2026 | 4 s, studio route, centre crop (`vc-1475999cf352`) | the greenhouse rack, then the scene morphs into a street shop and the rack changes shape (the "Kigali setting" asked for a new place; prompt fixed after this) | 0.20 | 1.00 |
 | 6 | 19 Oct 2026 | 4 s, studio route, fixed prompt (`vc-fbd17b278a07`) | the same rack stays in its greenhouse; slow orbit, the sun flares through; the product and its LEAF base unchanged | 0.20 | 1.20 |
+| 7-9 | 19 Oct 2026 | 3 clips of 4 s made together from the Create page for a viral recipe's AI beats (run `vr-32e2d800bc09`, 55 to 74 s) | the spiral, terracotta and sculpture towers from their own photos, hands reaching in; then designed (same recipe), rendered to a 15 s MP4 with music: clips placed in scenes 2 to 4, their sound absent from the mix | 0.60 | 1.80 |
 
 **What the margins say:**
 - **Voice-over:** 15 credits since 17 October (owner decision; it was 10, about cost). A 15 s script is about $0.06 to
