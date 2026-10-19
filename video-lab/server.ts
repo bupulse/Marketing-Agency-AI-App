@@ -595,9 +595,8 @@ async function clientJobRoute(req: http.IncomingMessage, res: http.ServerRespons
     }
     if (req.method === "POST" && sub === "/poster") {
       // The first frame, a small JPEG, kept for the MP4 that follows.
-      const bytes = await readBody(req, 600 * 1024);
-      if (bytes.length > 400 * 1024 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return void fail(res, 400, "That is not a JPEG poster.");
-      keepPoster(jobId, bytes);
+      const bytes = await readBody(req, 2 * 1024 * 1024);
+      if (!(await keepPoster(jobId, bytes))) return void fail(res, 400, "That is not a poster image.");
       return void json(res, 200, { ok: true });
     }
     if (req.method === "POST" && sub === "/video") {

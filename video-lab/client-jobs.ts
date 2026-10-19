@@ -229,10 +229,29 @@ export async function voiceForClient(id: StudioIdentity, jobId: string, voiceId:
 
 /** The poster the page sent before the MP4 (a small JPEG), kept a few minutes for the save that follows. */
 const posters = new Map<string, { bytes: Buffer; at: number }>();
-export function keepPoster(jobId: string, bytes: Buffer) {
-  const now = Date.now();
-  for (const [k, v] of posters) if (now - v.at > 10 * 60_000) posters.delete(k);
-  posters.set(jobId, { bytes, at: now });
+/** The poster kept for a job (tests, and the save). */
+export const keptPoster = (jobId: string) => posters.get(jobId)?.bytes ?? null;
+/** The Gallery drops a poster over 1,280 px on its long side (lib/media/service.ts), leaving the video without one. */
+const POSTER_MAX_SIDE = 1280;
+/**
+ * Keeps the poster for the job's MP4, shrunk to at most 1,280 px on the long side (a JPEG the Gallery will accept) when
+ * the page sent a larger one. Returns false when the bytes are not a readable image.
+ */
+export async function keepPoster(jobId: string, bytes: Buffer): Promise<boolean> {
+  try {
+    const { default: sharp } = await import("sharp");
+    const meta = await sharp(bytes).metadata();
+    const big = Math.max(meta.width ?? 0, meta.height ?? 0) > POSTER_MAX_SIDE;
+    const out = big || meta.format !== "jpeg" ? await sharp(bytes).resize({ width: POSTER_MAX_SIDE, height: POSTER_MAX_SIDE, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 75 }).toBuffer() : bytes;
+    // The Gallery also drops a poster over 400 KB: a smaller copy then.
+    const small = out.length > 400 * 1024 ? await sharp(out).resize({ width: 720, height: 720, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 60 }).toBuffer() : out;
+    const now = Date.now();
+    for (const [k, v] of posters) if (now - v.at > 10 * 60_000) posters.delete(k);
+    posters.set(jobId, { bytes: small, at: now });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

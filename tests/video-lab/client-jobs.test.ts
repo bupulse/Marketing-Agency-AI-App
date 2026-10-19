@@ -6,7 +6,8 @@ const db = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ prisma: db }));
 
-import { CLIENT_JOB_ID, ClientJobError, designInput, labJob } from "@/video-lab/client-jobs";
+import sharp from "sharp";
+import { CLIENT_JOB_ID, ClientJobError, designInput, keepPoster, keptPoster, labJob } from "@/video-lab/client-jobs";
 
 const me = { userId: "person-1", businessId: "biz-1", companyUserId: "owner-1", role: "MEMBER" };
 const PARENT = "c" + "a".repeat(24);
@@ -79,5 +80,23 @@ describe("a VideoJob as the Create page reads it", () => {
   it("knows a real job id from the owner's local test ids", () => {
     expect(CLIENT_JOB_ID.test(PARENT)).toBe(true);
     expect(CLIENT_JOB_ID.test("20261019-1a2b3c4d")).toBe(false);
+  });
+});
+
+describe("the poster for a client's MP4", () => {
+  it("is shrunk to at most 1,280 px on the long side, as a JPEG, so the Gallery keeps it", async () => {
+    const big = await sharp({ create: { width: 3000, height: 2000, channels: 3, background: "#369" } }).png().toBuffer();
+    expect(await keepPoster("job-big", big)).toBe(true);
+    const meta = await sharp(keptPoster("job-big") as Buffer).metadata();
+    expect(meta.format).toBe("jpeg");
+    expect(Math.max(meta.width ?? 0, meta.height ?? 0)).toBeLessThanOrEqual(1280);
+  });
+
+  it("keeps a small JPEG as it is, and refuses what is not an image", async () => {
+    const small = await sharp({ create: { width: 405, height: 720, channels: 3, background: "#963" } }).jpeg().toBuffer();
+    expect(await keepPoster("job-small", small)).toBe(true);
+    expect(keptPoster("job-small")).toEqual(small);
+    expect(await keepPoster("job-bad", Buffer.from("not an image"))).toBe(false);
+    expect(keptPoster("job-bad")).toBeNull();
   });
 });
