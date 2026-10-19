@@ -8,6 +8,8 @@ export const MODELS = list as Model[];
 export const modelById = (id: string | undefined) => MODELS.find((m) => m.id === id);
 
 export type Pricing = {
+  /** Where a client buys more credits (BuPulse billing); null for the owner. */
+  buyCreditsUrl?: string | null;
   packs: { id: string; name: string; credits: number; rwf: number; blurb: string; popular?: boolean }[];
   seedance: { tier: string; name: string; resolution: string; credits5s: number; credits10s: number; credits15s: number }[];
   claudeCredits: number;

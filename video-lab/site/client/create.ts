@@ -412,7 +412,7 @@ function setupPills() {
         el("h6", { textContent: "Premium 3D" }),
         premium,
         ...(state.premium ? [resolution, lookLine(), ...sound] : []),
-        el("p", { className: "hint", textContent: state.blender.available ? `A real 3D scene rendered in Blender on the studio computer: about 3 to 6 minutes (720p takes about twice as long), 4 to 8 seconds long. ${c["540p"]} credits at 540p, ${c["720p"]} at 720p.` : "Not available: Blender is not installed on the studio computer." }),
+        el("p", { className: "hint", textContent: (state.blender as { comingSoon?: boolean }).comingSoon ? "Premium 3D is coming soon." : state.blender.available ? `A real 3D scene rendered in Blender on the studio computer: about 3 to 6 minutes (720p takes about twice as long), 4 to 8 seconds long. ${c["540p"]} credits at 540p, ${c["720p"]} at 720p.` : "Not available: Blender is not installed on the studio computer." }),
       );
     }
   });

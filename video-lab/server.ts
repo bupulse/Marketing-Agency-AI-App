@@ -32,7 +32,7 @@ import { seedanceOverlayCaption, seedanceOverlaySpec } from "@/lib/video-engine/
 import { getOverlay, mp4Tracks, overlayVideoBytes, saveOverlay, saveOverlayVideo } from "./seedance-overlays";
 import { listCharacters, previewPortraitPng } from "@/lib/video-engine/seedance-characters";
 import { writeSeedancePrompt } from "@/lib/video-engine/seedance-prompt";
-import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PREMIUM_3D_CREDITS, PREMIUM_RERENDER_CREDITS, PRESENTER_IMAGE_CREDITS, isPremiumQuality, type PremiumQuality, VOICE_OVER_CREDITS, charge, readWallet, refund, seedanceCredits, topUp } from "./credits";
+import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PREMIUM_3D_CREDITS, PREMIUM_RERENDER_CREDITS, PRESENTER_IMAGE_CREDITS, isPremiumQuality, type PremiumQuality, VOICE_OVER_CREDITS, charge, readWallet, refund, seedanceCredits, topUp , creditsLeft, enterRequest, type Payer } from "./credits";
 import { VOICE_ROUTE, makeVoiceForJob, readVoiceMp3 } from "./voice";
 import { cancelSeedance, getSeedanceJob, getSeedancePreview, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
 import { mediaBytes, saveMedia } from "./data-source";
@@ -300,8 +300,9 @@ async function design(body: Record<string, unknown>, scope: string | null): Prom
     if (spent + worst > DAILY_CAP_USD) return { status: 429, body: { error: `Today's test budget is used: $${spent.toFixed(2)} of $${DAILY_CAP_USD.toFixed(2)}. More tomorrow (Kigali time).` } };
   }
   // Credits are taken first and given back for every failed version.
+  let payer: Payer;
   try {
-    await charge(CLAUDE_VIDEO_CREDITS * versions, `Motion video${versions > 1 ? ` x${versions}` : ""} (${req.mode})`);
+    payer = await charge(CLAUDE_VIDEO_CREDITS * versions, `Motion video${versions > 1 ? ` x${versions}` : ""} (${req.mode})`);
   } catch (error) {
     return { status: 402, body: { error: error instanceof Error ? error.message : "Not enough credits." } };
   }
@@ -311,7 +312,7 @@ async function design(body: Record<string, unknown>, scope: string | null): Prom
     jobs.push(...(await Promise.all(batch)));
   }
   const failed = jobs.filter((j) => j.status === "failed");
-  if (failed.length) await refund(CLAUDE_VIDEO_CREDITS * failed.length, "Motion video failed");
+  if (failed.length) await refund(CLAUDE_VIDEO_CREDITS * failed.length, "Motion video failed", undefined, payer);
   const ok = jobs.filter((j) => j.status !== "failed");
   return { status: ok.length ? 200 : 502, body: { jobs, error: ok.length ? null : jobs[0]?.error } };
 }
@@ -431,6 +432,8 @@ const clientOf = (req: http.IncomingMessage): StudioIdentity | null => {
   return a?.kind === "client" ? a.identity : null;
 };
 const BUPULSE_URL = (process.env.BUPULSE_URL ?? "").trim();
+/** Where a client buys more video credits: BuPulse's billing page (MoMo top-ups happen there). */
+const BUY_CREDITS_URL = `${(BUPULSE_URL || "https://bupulse.com").replace(/\/+$/, "")}/dashboard/billing`;
 /** The first path segments the studio serves as pages: what a sign-in may send a client back to. */
 const PAGE_SEGMENTS = new Set([...Object.keys(PAGE_ROUTES), ...Object.keys(REDIRECTS)].map((k) => k.split("/")[1]).filter(Boolean));
 const studioNext = (next: unknown) => safeStudioNext(next, (first) => PAGE_SEGMENTS.has(first));
@@ -547,6 +550,8 @@ const server = http.createServer(async (req, res) => {
   res.setHeader("x-robots-tag", "noindex, nofollow");
   try {
     if (!(await gate(req, res, url))) return;
+    // Who pays for what this request spends: a client's plan credits, or the owner's test wallet.
+    enterRequest(clientOf(req));
     if (!isOwner(req) && isOwnerOnly(req.method ?? "", p)) return fail(res, 404, "Not found");
     if (req.method === "GET" && PAGE_ROUTES[p] && (!OWNER_PAGES.has(p) || isOwner(req))) return file(res, path.join(PAGES, `${PAGE_ROUTES[p]}.html`), "text/html; charset=utf-8");
     if (req.method === "GET" && REDIRECTS[p]) {
@@ -568,9 +573,15 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && p === "/api/session") {
       const c = clientOf(req);
       const name = c ? ((await getBusiness(c.businessId))?.name ?? "") : "";
-      return json(res, 200, c ? { kind: "client", businessId: c.businessId, businessName: name, role: c.role } : { kind: "owner" });
+      return json(res, 200, c ? { kind: "client", businessId: c.businessId, businessName: name, role: c.role, buyCreditsUrl: BUY_CREDITS_URL } : { kind: "owner" });
     }
-    if (req.method === "GET" && p === "/api/wallet") return json(res, 200, await readWallet());
+    if (req.method === "GET" && p === "/api/wallet") {
+      const c = clientOf(req);
+      if (!c) return json(res, 200, await readWallet());
+      // A client's balance is the plan's video credits left this month (the number BuPulse shows in Usage and Billing).
+      const left = await creditsLeft(c.companyUserId);
+      return json(res, 200, "blocked" in left ? { balance: 0, spent: 0, history: [], blocked: left.blocked, buyUrl: BUY_CREDITS_URL } : { balance: left.left, spent: left.used, history: [], buyUrl: BUY_CREDITS_URL });
+    }
     if (req.method === "POST" && p === "/api/wallet/topup") {
       // Test wallet only: no payment. In the app, MoMo and plan allowances take over (docs/MOMO.md).
       const body = await readJson(req, 4096);
@@ -581,7 +592,9 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && p === "/api/pricing") {
       const tiers = Object.keys(SEEDANCE_MODELS) as SeedanceTier[];
       return json(res, 200, {
-        packs: CREDIT_PACKS,
+        // The test packs are the owner's; a client buys credits on BuPulse (buyCreditsUrl).
+        packs: scopeOf(req) ? [] : CREDIT_PACKS,
+        buyCreditsUrl: scopeOf(req) ? BUY_CREDITS_URL : null,
         seedance: tiers.flatMap((tier) => SEEDANCE_MODELS[tier].resolutions.map((resolution) => ({ tier, name: SEEDANCE_MODELS[tier].name, resolution, credits5s: seedanceCredits(tier, resolution as SeedanceResolution, 5), credits10s: seedanceCredits(tier, resolution as SeedanceResolution, 10), credits15s: seedanceCredits(tier, resolution as SeedanceResolution, 15) }))),
         claudeCredits: CLAUDE_VIDEO_CREDITS,
         presenterCredits: PRESENTER_IMAGE_CREDITS,
@@ -910,12 +923,13 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { uploadId: out.uploadId, costUsd: out.call.costUsd });
       }
     }
-    if (req.method === "GET" && p === "/api/blender/status") return json(res, 200, { available: await blenderAvailable(), credits: { ...PREMIUM_3D_CREDITS, rerender: PREMIUM_RERENDER_CREDITS }, sound: BLENDER_MIXES_AUDIO, voiceReady: !!process.env.ELEVENLABS_API_KEY, voiceCredits: VOICE_OVER_CREDITS });
+    if (req.method === "GET" && p === "/api/blender/status") return json(res, 200, { comingSoon: !!scopeOf(req), available: !scopeOf(req) && (await blenderAvailable()), credits: { ...PREMIUM_3D_CREDITS, rerender: PREMIUM_RERENDER_CREDITS }, sound: BLENDER_MIXES_AUDIO, voiceReady: !!process.env.ELEVENLABS_API_KEY, voiceCredits: VOICE_OVER_CREDITS });
     if (req.method === "GET" && p === "/api/blender/look") {
       // The look a Premium 3D clip gets for this template and product (dark showroom, daylight studio or neon).
       const look = lookForTemplate(url.searchParams.get("template") ?? "", url.searchParams.get("product") ?? "");
       return json(res, 200, { look, name: BLENDER_LOOK_NAMES[look] });
     }
+    if (req.method === "POST" && /^\/api\/blender\/(render|jobs\/bl-[0-9a-f]{12}\/rerender)$/.test(p) && scopeOf(req)) return fail(res, 503, "Premium 3D is coming soon.");
     if (req.method === "POST" && p === "/api/blender/render") {
       // Premium 3D: Claude designs a Blender scene from the same brief as a Motion video, then Blender renders it here.
       if (!(await blenderAvailable())) return fail(res, 503, "Premium 3D needs Blender on the studio computer, and it is not installed.");
@@ -1154,18 +1168,19 @@ const server = http.createServer(async (req, res) => {
         // fails, when the design has no voice lines, or when the same take is already saved (a new MP4 of it is free).
         if (!job.spec) return fail(res, 400, "This design failed, so it has no voice lines.");
         const body = await readJson(req, 4096);
+        let payer: Payer;
         try {
-          await charge(VOICE_OVER_CREDITS, "Voice-over", job.id);
+          payer = await charge(VOICE_OVER_CREDITS, "Voice-over", job.id);
         } catch (error) {
           return fail(res, 402, error instanceof Error ? error.message : "Not enough credits.");
         }
         try {
           const business = await getBusiness(job.businessId);
           const v = await makeVoiceForJob(job.spec, job.id, { voiceId: typeof body.voiceId === "string" ? body.voiceId : null, language: business?.language ?? null });
-          if (!v || v.cached) await refund(VOICE_OVER_CREDITS, v ? "Voice-over already made (free)" : "No voice lines", job.id);
+          if (!v || v.cached) await refund(VOICE_OVER_CREDITS, v ? "Voice-over already made (free)" : "No voice lines", job.id, payer);
           return json(res, 200, { voice: v, credits: v && !v.cached ? VOICE_OVER_CREDITS : 0 });
         } catch (error) {
-          await refund(VOICE_OVER_CREDITS, "Voice-over failed", job.id);
+          await refund(VOICE_OVER_CREDITS, "Voice-over failed", job.id, payer);
           return fail(res, 502, `${error instanceof Error ? error.message : "The voice-over could not be made."} The credits are given back.`);
         }
       }

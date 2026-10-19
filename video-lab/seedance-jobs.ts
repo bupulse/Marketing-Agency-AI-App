@@ -7,7 +7,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { SEEDANCE_BASE_URL, SEEDANCE_TASK_EXPIRES_SECONDS, cancelSeedanceTask, createSeedanceTask, estimateSeedanceUsd, getSeedanceTask, seedanceUsage, type SeedanceRequest, type SeedanceTask } from "@/lib/video-engine/seedance";
-import { charge, refund, seedanceCredits } from "./credits";
+import { charge, refund, seedanceCredits, type Payer } from "./credits";
 import { PREVIEW_NOTICE, buildStoryboard, type Storyboard } from "./seedance-mock/storyboard";
 import { previewDelayMs, previewThumbs } from "./seedance-mock/preview";
 import { record } from "./store";
@@ -41,6 +41,8 @@ export type SeedanceJob = {
   businessId: string | null;
   productId: string | null;
   title: string;
+  /** Where the credits were taken from (a client's plan, or null for the test wallet), so every refund goes back there. */
+  payer?: Payer;
   /** Preview jobs only: nothing was charged; `credits` above is 0 and the real price is here. */
   preview?: { notice: string; readyAt: string; wouldCostCredits: number };
 };
@@ -143,7 +145,7 @@ export async function submitSeedance(req: SeedanceRequest, meta: SubmitMeta): Pr
     productId: meta.productId,
     title: meta.title,
   };
-  await charge(credits, `Seedance ${req.tier} ${req.resolution} ${req.seconds}s`, id);
+  job.payer = await charge(credits, `Seedance ${req.tier} ${req.resolution} ${req.seconds}s`, id);
   await saveSeedanceJob(job);
   try {
     job.taskId = await createSeedanceTask(req, opts());
@@ -153,7 +155,7 @@ export async function submitSeedance(req: SeedanceRequest, meta: SubmitMeta): Pr
     job.status = "failed";
     job.error = error instanceof Error ? error.message : "The request was refused.";
     await saveSeedanceJob(job);
-    await refund(credits, "Seedance request refused", id);
+    await refund(credits, "Seedance request refused", id, job.payer ?? null);
     throw error;
   }
   void poll(job.id);
@@ -214,7 +216,7 @@ async function poll(id: string): Promise<void> {
           job.status = "failed";
           job.error = "BytePlus stopped answering. The credits are given back.";
           await saveSeedanceJob(job);
-          await refund(job.credits, "Seedance lost", id);
+          await refund(job.credits, "Seedance lost", id, job.payer ?? null);
           return;
         }
         continue;
@@ -241,7 +243,7 @@ async function poll(id: string): Promise<void> {
         job.error = task.error ?? "Seedance could not make this video.";
         await saveSeedanceJob(job);
         // BytePlus bills only successful videos: the credits go back.
-        await refund(job.credits, "Seedance failed", id);
+        await refund(job.credits, "Seedance failed", id, job.payer ?? null);
         return;
       }
       job.status = task.status === "queued" ? "queued" : "running";
@@ -250,7 +252,7 @@ async function poll(id: string): Promise<void> {
         job.status = "failed";
         job.error = "Seedance did not finish within the hour (BytePlus ended the task and bills nothing). The credits are given back.";
         await saveSeedanceJob(job);
-        await refund(job.credits, "Seedance timeout", id);
+        await refund(job.credits, "Seedance timeout", id, job.payer ?? null);
         return;
       }
     }
@@ -280,7 +282,7 @@ export async function cancelSeedance(id: string): Promise<SeedanceJob | null> {
     if (job.taskId) await cancelSeedanceTask(job.taskId, opts()).catch(() => undefined);
     job.status = "cancelled";
     await saveSeedanceJob(job);
-    await refund(job.credits, "Seedance cancelled", id);
+    await refund(job.credits, "Seedance cancelled", id, job.payer ?? null);
   }
   return job;
 }

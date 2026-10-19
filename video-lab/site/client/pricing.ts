@@ -1,10 +1,18 @@
 // Pricing: packs (test wallet top-ups), the Seedance rate table and the wallet.
 import { type Pricing } from "./models";
-import { $, api, el, refreshWallet, rwf } from "./site";
+import { $, api, el, getSession, refreshWallet, rwf } from "./site";
 
 async function start() {
   const p = await api<Pricing>("/api/pricing");
   const packs = $("packs");
+  // A client buys credits on BuPulse (MoMo there); the test packs and the "test wallet" notes are the owner's.
+  if (p.buyCreditsUrl && (await getSession()).kind === "client") {
+    packs.append(
+      el("div", { className: "card pack hl" }, el("h3", { textContent: "Video credits" }), el("p", { className: "muted", textContent: "Your plan includes video credits every month. Need more? Add credits on BuPulse and pay with MoMo; they show here at once." }), el("a", { className: "btn primary", href: p.buyCreditsUrl, textContent: "Buy credits on BuPulse" })),
+    );
+    const intro = document.querySelector("[data-i18n='price.p']");
+    if (intro) intro.textContent = "Every video shows its credits before you generate. Failed videos are refunded.";
+  }
   for (const pack of p.packs) {
     const buy = el("button", { className: "btn primary", textContent: "Buy (test: adds credits)" });
     const done = el("p", { className: "hint ok" });
@@ -36,8 +44,8 @@ async function start() {
 }
 
 async function wallet() {
-  const w = await api<{ balance: number; spent: number; history: { at: string; delta: number; note: string }[] }>("/api/wallet");
-  const rows: [string, string][] = [["Balance", `${w.balance.toLocaleString()} credits`], ["Spent", `${w.spent.toLocaleString()} credits`], ...w.history.slice(-8).reverse().map((h): [string, string] => [new Date(h.at).toLocaleString(), `${h.delta > 0 ? "+" : ""}${h.delta} · ${h.note}`])];
+  const w = await api<{ balance: number; spent: number; history: { at: string; delta: number; note: string }[]; blocked?: string }>("/api/wallet");
+  const rows: [string, string][] = [...(w.blocked ? ([["Plan", `Videos cannot be made right now: ${w.blocked}.`]] as [string, string][]) : []), ["Balance", `${w.balance.toLocaleString()} credits`], ["Spent", `${w.spent.toLocaleString()} credits`], ...w.history.slice(-8).reverse().map((h): [string, string] => [new Date(h.at).toLocaleString(), `${h.delta > 0 ? "+" : ""}${h.delta} · ${h.note}`])];
   $("walletInfo").replaceChildren(...rows.flatMap(([k, v]) => [el("span", { className: "k", textContent: k }), el("span", { textContent: v })]));
 }
 void start();

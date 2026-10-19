@@ -243,6 +243,22 @@ Risks:
 
 Not decided: hosting. Both options need the same code changes (section 6); only items 12 and 13 differ.
 
+## Build status (19 October 2026)
+
+Items 1 to 4 are built (owner decisions: this Mac first, Premium 3D "coming soon" at launch, AI images and influencers in
+the first release).
+1. **Bundling:** `scripts/video-lab/start.mjs` (`server-only` alias, `next/<name>.js` plugin, `STUDIO_ENV`).
+2. **Sessions:** `video-lab/session.ts`, `tickets.ts` (the real redeemer replaces `devRedeemer` when `ticket.ts` lands;
+   `STUDIO_DEV_TICKETS=1` gives test tickets `dev-<businessId>`), the gate in `server.ts`.
+3. **Scoping:** `video-lab/scope.ts`; check with `node --env-file=.env scripts/video-lab/qa-scope.mjs` against a studio started
+   with `STUDIO_SESSION_SECRET` and `STUDIO_DEV_TICKETS=1` (30 checks). Until item 7, a client's uploads, AI images and
+   presenter shots answer 503; until item 9, Premium 3D answers "coming soon".
+4. **Credits:** `video-lab/credits.ts` takes a client's credits from the company owner's `videoCredits` (`consumeUsage`) and gives
+   them back to the same place (`Payer`, kept on Seedance jobs so a background refund finds it); the owner keeps the local test
+   wallet. `/api/wallet` shows the plan's credits left; "Buy credits" and Pricing link to `https://bupulse.com/dashboard/billing`.
+   Not yet checked against a live paid account (the test database has only an ended trial): the charge and refund are
+   covered by mocked tests, and the balance by the real plan data.
+
 ## 6. Build list, in order
 
 Sizes: S = under half a day, M = about a day, L = two to three days.
