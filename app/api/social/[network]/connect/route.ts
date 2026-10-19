@@ -13,6 +13,8 @@ import { NETWORK_SERVICE } from "@/lib/admin/service-catalog";
 import { isServiceEnabled } from "@/lib/admin/switch";
 import { hasFeature, upgradeHref } from "@/lib/entitlements";
 import { createConnectLink, viaComposio } from "@/lib/social/composio/client";
+import { inboxScopesFor } from "@/lib/social/inbox/scopes";
+import { getInboxSettings } from "@/lib/social/inbox/settings";
 
 async function back(next: string, error: ConnectErrorCode) {
   const url = new URL(next, await requestSiteUrl());
@@ -72,7 +74,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ netw
   try {
     const state = newState();
     const verifier = newCodeVerifier();
-    const url = getProvider(network).authorizeUrl({ state, codeChallenge: await codeChallenge(verifier), redirectUri: redirectUri(network), variant });
+    // The social inbox's permissions only once its Admin switch says "Meta direct" (lib/social/inbox/scopes.ts).
+    const extraScopes = inboxScopesFor(network, variant, (await getInboxSettings()).transport);
+    const url = getProvider(network).authorizeUrl({ state, codeChallenge: await codeChallenge(verifier), redirectUri: redirectUri(network), variant, extraScopes });
     const response = NextResponse.redirect(url);
     // sameSite lax so the cookie comes back on the network's redirect to the callback.
     response.cookies.set(STATE_COOKIE, await sealState({ state, verifier, userId: user.id, network, variant, next }), await cookieOptions("/api/social"));

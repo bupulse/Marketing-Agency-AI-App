@@ -21,7 +21,7 @@ export const RATE_LIMITS = {
   videoVoice: { limit: 30, windowSeconds: 60 * 60 }, // Video Studio designs (Claude), per company; each also uses video credits
   canvaOpen: { limit: 20, windowSeconds: 60 * 60 },
   canvaReturn: { limit: 30, windowSeconds: 60 * 60 },
-  socialConnect: { limit: 30, windowSeconds: 60 * 60 }, // starting a social connection (OAuth or reminder account)
+  socialConnect: { limit: 30, windowSeconds: 60 * 60 }, // starting a social connection (OAuth or BuPulse-Socials)
   storeConnect: { limit: 30, windowSeconds: 60 * 60 }, // starting a Shopify/WooCommerce/Cloudflare connection
   storeImport: { limit: 150, windowSeconds: 60 * 60 }, // import/list calls (5 products each)
   momo: { limit: 10, windowSeconds: 60 * 60 }, // Mobile Money start / "I've paid" / cancel, together, per company

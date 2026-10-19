@@ -84,10 +84,10 @@ export const facebookProvider: SocialProvider = {
   network: "facebook",
   rules,
   isConfigured: isFacebookConfigured,
-  authorizeUrl({ state, redirectUri }) {
+  authorizeUrl({ state, redirectUri, extraScopes = [] }) {
     if (!isFacebookConfigured()) throw new SocialError("Facebook is not set up yet", "invalid", E);
     const url = new URL(`https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`);
-    url.search = new URLSearchParams({ client_id: id()!, redirect_uri: redirectUri, state, response_type: "code", scope: FACEBOOK_SCOPES.join(",") }).toString();
+    url.search = new URLSearchParams({ client_id: id()!, redirect_uri: redirectUri, state, response_type: "code", scope: [...new Set([...FACEBOOK_SCOPES, ...extraScopes])].join(",") }).toString();
     return url.toString();
   },
   finishOAuth,

@@ -31,9 +31,9 @@ describe("the feature registry", () => {
   });
 
   it("covers the catalog of the launch plan (section 4)", () => {
-    expect(BUILT_FEATURE_KEYS).toEqual(["content", "designs", "aiPhotos", "calendar", "gallery", "websiteChat", "autopilot", "analytics", "canva", "storeImport", "driveImport", "webhooks", "apiAccess", "ownComposio", "managed", "video", "voice"]);
-    // Voiceover was built 13 October 2026 (docs/VOICE_AND_MUSIC.md). The Video Studio's two features are coming soon
-    // until the studio moves into the app (docs/VIDEO_APP_INTEGRATION.md): they cannot be put in a plan yet.
+    expect(BUILT_FEATURE_KEYS).toEqual(["content", "designs", "aiPhotos", "calendar", "gallery", "websiteChat", "autopilot", "analytics", "canva", "storeImport", "driveImport", "webhooks", "apiAccess", "ownComposio", "managed", "video", "voice", "inbox", "automations"]);
+    // The Video Studio's two features stay "coming soon" in plans: videos are made on the studio's own site
+    // (docs/VIDEO_STUDIO_SPLIT.md), and plans with video credits open it.
     expect(FEATURES.filter((f) => f.status === "coming_soon").map((f) => f.key)).toEqual(["videoStudio", "aiVideo"]);
     expect(FEATURES.find((f) => f.key === "videoStudio")).toMatchObject({ requires: ["video"], metric: "videoCredits", services: ["claude"] });
     expect(FEATURES.find((f) => f.key === "aiVideo")).toMatchObject({ requires: ["videoStudio"], metric: "videoCredits", services: ["seedance"] });
@@ -140,8 +140,10 @@ describe("the seed plans and the plan_features migration agree", () => {
   const sql = readFileSync("prisma/migrations/20261009110000_plan_features/migration.sql", "utf8");
 
   it("core = every built app feature but the API; Pro = all of them plus own Composio; Managed is sold apart", () => {
-    expect(CORE_FEATURES).toEqual(BUILT_APP_FEATURE_KEYS.filter((k) => k !== "apiAccess" && k !== "video" && k !== "voice"));
-    expect(PRO_FEATURES).toEqual(sortFeatureKeys([...BUILT_APP_FEATURE_KEYS, "ownComposio"]));
+    // Inbox and automations came after the plan builder: plans get them from their own migration, not from the seeds.
+    const later = ["inbox", "automations"];
+    expect(CORE_FEATURES).toEqual(BUILT_APP_FEATURE_KEYS.filter((k) => k !== "apiAccess" && k !== "video" && k !== "voice" && !later.includes(k)));
+    expect(PRO_FEATURES).toEqual(sortFeatureKeys([...BUILT_APP_FEATURE_KEYS.filter((k) => !later.includes(k)), "ownComposio"]));
     expect(PRO_FEATURES).not.toContain("managed");
     expect(SEED_PLANS.TRIAL.features).toEqual(sortFeatureKeys([...CORE_FEATURES, "video", "voice"])); // one sample video
     expect(SEED_PLANS.STANDARD.features).toEqual(CORE_FEATURES);

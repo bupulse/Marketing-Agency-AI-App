@@ -5,6 +5,8 @@ import { PlanComparison } from "@/components/marketing/pages/plan-comparison";
 import { pageMetadata } from "@/components/marketing/pages/seo";
 import { Accordion, Badge, Button, Container, GlassCard, SectionHeading } from "@/components/ui";
 import { Reveal } from "@/components/motion";
+import { MomoSteps } from "./momo-steps";
+import { PlanQuiz } from "./plan-quiz";
 import { PricingPlans } from "./pricing-plans";
 import { UseMyLocation } from "./use-my-location";
 import { faqs, fillFaq } from "@/lib/content/site";
@@ -56,6 +58,13 @@ export default async function PricingPage({ searchParams }: { searchParams: Prom
           <Link href="/refund-policy" className="font-semibold text-[color:var(--bp-link)] underline">refund policy</Link>.
         </p>
       </Container>
+
+      {plans.length > 0 && (
+        <Container size="narrow" className="flex flex-col gap-6 pb-20">
+          <PlanQuiz plans={plans} />
+          <MomoSteps plans={plans} paymentMethods={region.paymentMethods} />
+        </Container>
+      )}
 
       <Container size="narrow" className="pb-20">
         <Reveal>

@@ -31,6 +31,12 @@ trial and Inzu Fashion waiting for its demo. All names and numbers in them are m
 | 20 | Video Studio (Motion, Premium 3D and Real video) | Video Studio `/create`, `/showcase`, `/videos`, `/pricing`, `/app/video/*` | [20-video-studio.md](20-video-studio.md) |
 | 21 | AI clips (Google Veo) in Motion videos | Video Studio `/create`, Options, "AI makes the clips" | [21-ai-clips.md](21-ai-clips.md) |
 | 22 | Viral recipes (videos made from viral techniques, phone clips) | Video Studio `/create`, Motion | [22-viral-recipes.md](22-viral-recipes.md) |
+| 23 | Pricing page: plan quiz and Mobile Money steps | `/pricing` | [23-pricing-page-and-plan-quiz.md](23-pricing-page-and-plan-quiz.md) |
+| 24 | Instagram and Facebook replies (social inbox) | `/dashboard/connections` (the switch per account), Admin → Services | [24-social-inbox.md](24-social-inbox.md) |
+| 25 | Partner programme | `/partners`, `/partners/me/[token]`, Admin → Sales → Partners | [25-partners.md](25-partners.md) |
+| 26 | Revenue goal tracker (Admin) | `/admin/revenue`, `/admin/settings#goal` | [26-revenue-goal-tracker.md](26-revenue-goal-tracker.md) |
+| 27 | Inbox and contacts | `/dashboard/inbox`, `/dashboard/contacts`, `/dashboard/contacts/[id]` | [27-inbox-and-contacts.md](27-inbox-and-contacts.md) |
+| 28 | Automations | `/dashboard/automations`, `/dashboard/automations/[id]` | [28-automations.md](28-automations.md) |
 
 ## Which plan has what
 

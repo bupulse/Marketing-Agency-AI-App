@@ -24,12 +24,13 @@ Admin → Add-on prices) or in a custom plan, and it is in Pro. The admin can ch
 - **Website chat**: Conversations, Leads, "Became a lead" (the share of chats that gave a lead), and "Pages leads came
   from".
 - Notes when needed: no channel connected yet, results still on their way (they arrive within a day), or posts sent as
-  reminders (personal Instagram, scripts), which have no results because they were posted by hand.
+  reminders (personal Instagram accounts saved before that option was removed, scripts), which have no results because
+  they were posted by hand.
 
 ## How to use it
 
-1. Connect your accounts in [Social connections](13-social-connections.md) as business or creator accounts: personal
-   accounts are "reminder only" and BuPulse cannot read their results.
+1. Connect your accounts in [Social connections](13-social-connections.md). Instagram connects Business and Creator
+   accounts only; an older personal Instagram account on reminder posting has no results.
 2. Publish posts through the [Calendar](07-calendar-and-publishing.md) or [Autopilot](08-autopilot.md).
 3. Come back a day later: results arrive within a day of publishing.
 4. Switch between 7, 30 and 90 days to compare. Look at **Best posts** and **What worked**, and make more posts like
@@ -48,6 +49,9 @@ Admin → Add-on prices) or in a custom plan, and it is in Pro. The admin can ch
   account per run.
 - Days are counted in the business's time zone. A post counts on the day it was published, with its latest numbers.
 - Only posts BuPulse published are counted; posts made directly on the network are not.
+- Accounts connected through BuPulse-Socials (Composio) send fewer numbers: Facebook gives likes, comments and shares,
+  Instagram likes and comments, and LinkedIn and YouTube none. With no reach or views, their posts add to Engagement but
+  not to Reach, the engagement rate or Best posts (which are ranked by engagement rate).
 - What the admin can change: plans and add-on prices (Admin → Plans, Admin → Add-on prices) and the social network
   switches (Admin → Services). BuPulse's own platform analytics (visitors of the BuPulse website, sign-ups, revenue) are
   a different thing, in the admin console, not on this page.
@@ -61,8 +65,8 @@ Admin → Add-on prices) or in a custom plan, and it is in Pro. The admin can ch
 | Page | `app/dashboard/analytics/page.tsx` (`featureGate("analytics")`, `?range=7|30|90`) |
 | Server actions | none (read-only page) |
 | Components | `components/analytics/stat-card.tsx` (`StatCard`), `components/analytics/trend-chart.tsx` (`TrendChart`), `components/analytics/format.ts`, `components/publishing/network-icon.tsx` |
-| Logic | `lib/analytics/service.ts` (`loadClientAnalytics`), `lib/analytics/compute.ts` (pure maths), `lib/publishing/metrics.ts` (collecting results), `lib/publishing/results.ts`, provider metrics in `lib/social/providers/` |
-| Database | `Post` (`status` PUBLISHED, `publishedAt`), `PostMetrics` (views, reach, likes, comments, saves, shares, `capturedAt`), `Connection` (`postingMode` NOTIFY = reminder only), `ChatSession`, `Lead` (`pageUrl`), `Business.timezone` |
+| Logic | `lib/analytics/service.ts` (`loadClientAnalytics`), `lib/analytics/compute.ts` (pure maths), `lib/publishing/metrics.ts` (collecting results), `lib/publishing/results.ts`, provider metrics in `lib/social/providers/` and, for BuPulse-Socials accounts, `metrics` in `lib/social/composio/networks.ts` (Facebook and Instagram) |
+| Database | `Post` (`status` PUBLISHED, `publishedAt`), `PostMetrics` (views, reach, likes, comments, saves, shares, `capturedAt`), `Connection` (`postingMode` NOTIFY = reminder only, `method` COMPOSIO = BuPulse-Socials), `ChatSession`, `Lead` (`pageUrl`), `Business.timezone` |
 | API routes | `POST /api/cron/metrics` (`app/api/cron/metrics/route.ts`) |
 | Cron jobs | `METRICS_CRON` hourly at :23 (`worker-crons.ts`, `wrangler.jsonc`), Netlify `netlify/functions/cron-metrics.mts`. (`/api/cron/analytics-rollup` and `/api/collect` are the platform analytics for the admin console, not this page.) |
 | Tests | `tests/client-analytics.test.ts`, `tests/publishing/metrics.test.ts`, `tests/publishing/results.test.ts`, `tests/publishing/results-query.test.ts` |
@@ -85,7 +89,10 @@ Admin → Add-on prices) or in a custom plan, and it is in Pro. The admin can ch
 
 1. A post is published by the [publish cron](07-calendar-and-publishing.md) → `Post` is `PUBLISHED` with `publishedAt`.
 2. Hourly, `POST /api/cron/metrics` (bearer `CRON_SECRET`) → `recordCron("metrics", collectMetrics)` → each
-   network provider's metrics call → a new `PostMetrics` snapshot (at most once every 20 hours per post, for 30 days).
+   network provider's metrics call (`getProvider` follows the account's `method`: BuPulse's own app, or Composio for
+   BuPulse-Socials accounts) → a new `PostMetrics` snapshot (at most once every 20 hours per post, for 30 days). An
+   account whose way cannot read numbers (a BuPulse-Socials LinkedIn or YouTube account) gives an empty answer, which is
+   skipped, not saved.
 3. The owner opens Analytics → `loadClientAnalytics(businessId, days)` reads posts with their newest snapshot,
    chat sessions and leads for this period and the one before → `lib/analytics/compute.ts` builds cards, trend,
    network split, best posts and tips.
@@ -96,7 +103,8 @@ Admin → Add-on prices) or in a custom plan, and it is in Pro. The admin can ch
 | Symptom | First place to look | Usual fix |
 |---|---|---|
 | "Connect a channel to see your results" | Channels page; `data.hasChannels` in `loadClientAnalytics` | Connect a social account |
-| "All your connected channels are reminder-only" | Channels (account type); `Connection.postingMode` | Reconnect as a business or creator account |
+| "All your connected channels are reminder-only" | Channels (account type); `Connection.postingMode` | Disconnect the personal Instagram and connect a Business or Creator account |
+| Reach and engagement rate stay empty, but likes come in | `Connection.method` COMPOSIO; `metrics` in `lib/social/composio/networks.ts` | Expected for BuPulse-Socials accounts: they give no reach or views |
 | Posts published but all numbers 0 | Admin → Health (last `metrics` run); `collectMetrics` | Wait a day; check `CRON_SECRET` and that the account token is still valid (reconnect) |
 | One network never has results | `sharesResults` / `RESULTS_ACCOUNT_TYPES` in `lib/publishing/results.ts` | Some account types do not share results through the API |
 | Page shows "Add to your plan" | Billing → Add features; `featureGate("analytics")` | Add the Analytics add-on |

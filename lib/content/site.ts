@@ -45,6 +45,7 @@ export const footerLinks = [
   { label: "Industries", href: "/industries" },
   { label: "About", href: "/about" },
   { label: "Contact", href: "/contact" },
+  { label: "Partners", href: "/partners" },
   { label: "Blog", href: "/blog" },
   { label: "Privacy", href: "/privacy" },
   { label: "Terms", href: "/terms" },

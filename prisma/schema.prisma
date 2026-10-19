@@ -54,6 +54,7 @@ model User {
   pushSubscriptions    PushSubscription[]
 
   @@index([lastSeenAt])
+  assignedConversations Conversation[] @relation("ConversationAssignee")
 }
 
 // One business per user for now. Industry-neutral: a phone shop, a school,
@@ -129,6 +130,11 @@ model Business {
   autopilotRuns    AutopilotRun[]
   chatWidgets      ChatWidget[]
   chatSessions     ChatSession[]
+  contacts         Contact[]
+  contactTags      ContactTag[]
+  contactFields    ContactField[]
+  conversations    Conversation[]
+  automations      Automation[]
   webhookEndpoints WebhookEndpoint[]
   apiKeys          ApiKey[]
   storeConnections StoreConnection[]
@@ -481,6 +487,8 @@ model Lead {
   sessionId        String?      @unique // the chat it came from
   session          ChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   pageUrl          String? // page the visitor was on
+  contactId        String? // the contact this lead belongs to (docs/INBOX.md); set when the lead is saved
+  contact          Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
   notifiedAt       DateTime? // instant email sent
   webhookPendingAt DateTime? // set when the lead.created webhook failed; the hourly cron retries it for 24 hours
   createdAt        DateTime     @default(now())
@@ -489,6 +497,7 @@ model Lead {
   @@index([businessId, createdAt])
   @@index([businessId, status])
   @@index([webhookPendingAt])
+  @@index([contactId])
 }
 
 // The website chat widget's settings. Created on first visit to the widget settings page.
@@ -549,6 +558,7 @@ model ChatSession {
   lastMessageAt DateTime      @default(now())
   messages      ChatMessage[]
   lead          Lead?
+  conversation  Conversation?
 
   @@index([businessId, lastMessageAt])
   @@index([businessId, visitorId])
@@ -795,8 +805,11 @@ model Connection {
   accountType                String? // network-specific, e.g. "business" | "creator" | "personal" | "page" | "organization"
   avatarUrl                  String?
   lastError                  String?
+  inboxEnabled               Boolean          @default(false) // "Answer comments and messages" (Instagram, Facebook): docs/SOCIAL_INBOX.md
+  inboxCursor                Json? // what the inbox check has seen so far (lib/social/inbox/cursor.ts)
   createdAt                  DateTime         @default(now())
   updatedAt                  DateTime         @updatedAt
+  conversations              Conversation[]
   posts                      Post[]
 
   @@unique([businessId, provider, externalAccountId])
@@ -2262,4 +2275,350 @@ model VideoOutcome {
 
   @@index([sector, platform])
   @@index([businessId, postedAt])
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Conversations engine (docs/INBOX.md, docs/AUTOMATIONS.md): contacts, the shared inbox and automations, for every
+// channel (website chat now; Instagram and Facebook through Composio or Meta; WhatsApp and others later).
+
+// Where a message comes from or goes to.
+enum ChannelKind {
+  WEBSITE
+  INSTAGRAM
+  FACEBOOK
+  WHATSAPP
+  TELEGRAM
+  TIKTOK
+  EMAIL
+  SMS
+}
+
+// One real person a business talks to, on any channel. Several ContactIdentity rows join their channels together.
+model Contact {
+  id             String            @id @default(cuid())
+  businessId     String
+  business       Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name           String?
+  email          String?
+  phone          String? // normalised (lib/leads/normalize.ts)
+  avatarUrl      String?
+  language       String? // last detected language, e.g. "rw", "en", "fr"
+  // Custom field values, keyed by ContactField.key, e.g. {"budget": "200000", "district": "Gasabo"}.
+  fields         Json              @default("{}")
+  emailOptIn     Boolean           @default(false) // agreed to receive broadcasts by email
+  unsubscribedAt DateTime? // asked to stop broadcasts (any channel)
+  lastChannel    ChannelKind?
+  lastSeenAt     DateTime          @default(now()) // last message from them
+  mergedIntoId   String? // set when merged into another contact; the row is kept for old links, hidden from lists
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @default(now()) @updatedAt
+  identities     ContactIdentity[]
+  tags           ContactTagLink[]
+  conversations  Conversation[]
+  leads          Lead[]
+  runs           AutomationRun[]
+
+  @@index([businessId, lastSeenAt])
+  @@index([businessId, email])
+  @@index([businessId, phone])
+  @@index([businessId, createdAt])
+}
+
+// How a contact is known on one channel: the Instagram-scoped id, a Facebook PSID, the website visitor id, a phone.
+model ContactIdentity {
+  id           String      @id @default(cuid())
+  businessId   String
+  contactId    String
+  contact      Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel      ChannelKind
+  externalId   String
+  connectionId String? // the connected account (Connection.id) the person wrote to, for social channels
+  handle       String? // @username on Instagram, etc.
+  displayName  String?
+  createdAt    DateTime    @default(now())
+
+  @@unique([businessId, channel, externalId])
+  @@index([contactId])
+}
+
+model ContactTag {
+  id         String           @id @default(cuid())
+  businessId String
+  business   Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  color      String?
+  createdAt  DateTime         @default(now())
+  links      ContactTagLink[]
+
+  @@unique([businessId, name])
+}
+
+model ContactTagLink {
+  contactId String
+  contact   Contact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tagId     String
+  tag       ContactTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+
+  @@id([contactId, tagId])
+  @@index([tagId])
+}
+
+// A custom field the business defines for its contacts ("Budget", "District", "Size").
+model ContactField {
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  key        String // lower_snake, unique per business, used in Contact.fields and in automation variables
+  label      String
+  type       String   @default("text") // "text" | "number" | "date" | "choice" | "yes_no"
+  options    String[] // for "choice"
+  createdAt  DateTime @default(now())
+
+  @@unique([businessId, key])
+}
+
+enum ConversationStatus {
+  OPEN
+  CLOSED
+}
+
+// One thread with a contact on one channel (one website chat session, one Instagram DM thread, the comments of one
+// person). The inbox lists these.
+model Conversation {
+  id               String             @id @default(cuid())
+  businessId       String
+  business         Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  contactId        String
+  contact          Contact            @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel          ChannelKind
+  connectionId     String? // the connected social account, null for the website
+  connection       Connection?        @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  externalThreadId String? // the platform's thread id; null for the website (chatSessionId is used)
+  chatSessionId    String?            @unique // the website chat session this mirrors
+  chatSession      ChatSession?       @relation(fields: [chatSessionId], references: [id], onDelete: SetNull)
+  status           ConversationStatus @default(OPEN)
+  assigneeId       String?            @db.Uuid // the teammate (User.id) it is assigned to
+  assignee         User?              @relation("ConversationAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  botPausedUntil   DateTime? // a person took over: automations and AI stay quiet until then
+  unread           Int                @default(0) // messages from the contact not yet opened by the team
+  preview          String? // the last message, shortened, for the list
+  lastMessageAt    DateTime           @default(now())
+  lastInboundAt    DateTime? // the contact's last message: starts the 24-hour window on Meta channels
+  createdAt        DateTime           @default(now())
+  messages         Message[]
+  runs             AutomationRun[]
+
+  @@unique([businessId, channel, externalThreadId])
+  @@index([businessId, status, lastMessageAt])
+  @@index([businessId, assigneeId, status])
+  @@index([contactId])
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+// Who wrote a message: the contact, an automation or the AI, a teammate, or BuPulse itself (a note in the thread).
+enum MessageAuthor {
+  CONTACT
+  BOT
+  AGENT
+  SYSTEM
+}
+
+// "MESSAGE" is a chat or DM; "COMMENT" a comment under a post; "COMMENT_REPLY" the public answer to one; "NOTE" a team
+// note only the business sees.
+enum MessageKind {
+  MESSAGE
+  COMMENT
+  COMMENT_REPLY
+  STORY_MENTION
+  NOTE
+}
+
+enum MessageStatus {
+  RECEIVED
+  QUEUED
+  SENT
+  FAILED
+}
+
+model Message {
+  id              String           @id @default(cuid())
+  businessId      String
+  conversationId  String
+  conversation    Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction       MessageDirection
+  author          MessageAuthor
+  kind            MessageKind      @default(MESSAGE)
+  agentId         String?          @db.Uuid // the teammate who wrote it (author AGENT)
+  text            String
+  // Buttons, quick replies, images, link cards: {buttons: [{id, title, url?}], image?: url, quickReplies?: [...]}
+  payload         Json?
+  externalId      String? // the platform's message or comment id (dedupe)
+  postExternalId  String? // the post a comment is under
+  status          MessageStatus    @default(RECEIVED)
+  error           String?
+  automationRunId String?
+  createdAt       DateTime         @default(now())
+
+  @@unique([conversationId, externalId])
+  @@index([conversationId, createdAt])
+  @@index([businessId, createdAt])
+}
+
+enum AutomationStatus {
+  DRAFT
+  LIVE
+  PAUSED
+}
+
+// An automation drawn on the canvas: a trigger node and steps joined by lines (docs/AUTOMATIONS.md). `graph` is the
+// draft being edited; `liveGraph` is the published copy that runs, so editing never changes a running automation.
+model Automation {
+  id          String           @id @default(cuid())
+  businessId  String
+  business    Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name        String
+  status      AutomationStatus @default(DRAFT)
+  triggerType String? // copied from the live graph's trigger node, for fast lookup: "keyword", "comment_keyword", ...
+  channels    ChannelKind[] // channels the live trigger listens on
+  graph       Json // {nodes: [...], edges: [...]}
+  liveGraph   Json?
+  version     Int              @default(0) // bumped on every publish
+  templateKey String? // the template it was made from
+  createdById String?          @db.Uuid
+  publishedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @default(now()) @updatedAt
+  runs        AutomationRun[]
+
+  @@index([businessId, status, triggerType])
+}
+
+enum AutomationRunStatus {
+  RUNNING
+  WAITING // waiting for a reply, a delay or a button
+  DONE
+  STOPPED // replaced by a newer run, a person took over, or the automation was paused
+  FAILED
+}
+
+// One contact going through one automation.
+model AutomationRun {
+  id             String              @id @default(cuid())
+  businessId     String
+  automationId   String
+  automation     Automation          @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  version        Int // the automation version it runs
+  contactId      String
+  contact        Contact             @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  conversationId String?
+  conversation   Conversation?       @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  status         AutomationRunStatus @default(RUNNING)
+  nodeId         String? // the step it is on (waiting at)
+  waitingFor     String? // "reply" | "button" | "delay"
+  // Answers and variables collected so far, and the trigger's data (comment id, post id, matched keyword).
+  context        Json                @default("{}")
+  error          String?
+  startedAt      DateTime            @default(now())
+  updatedAt      DateTime            @default(now()) @updatedAt
+  finishedAt     DateTime?
+
+  @@index([automationId, status])
+  @@index([contactId, status])
+  @@index([businessId, startedAt])
+}
+
+enum DueJobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+// Work to do at a time: resume an automation after a delay, send a follow-up, check a social account for new comments.
+// The every-minute cron (/api/cron/due-jobs) claims due rows.
+model DueJob {
+  id         String       @id @default(cuid())
+  businessId String?
+  kind       String // "automation.resume" | "automation.timeout" | "social.poll" | ...
+  runAt      DateTime
+  payload    Json         @default("{}")
+  status     DueJobStatus @default(PENDING)
+  attempts   Int          @default(0)
+  dedupeKey  String?      @unique // one pending job per key (e.g. "poll:<connectionId>")
+  lastError  String?
+  claimedAt  DateTime?
+  createdAt  DateTime     @default(now())
+  doneAt     DateTime?
+
+  @@index([status, runAt])
+  @@index([businessId])
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Partner programme (docs/bizdev/PLAN.md section 6, docs/guide/features/25-partners.md): agencies, co-working
+// spaces, MoMo agents and happy clients who refer companies for a commission on confirmed payments.
+
+// A partner, from the application on /partners to approval in Admin -> Sales -> Partners. Only an approved partner has
+// a code; its ?ref= link reuses the staff referral cookie (lib/sales/ref-cookie.ts).
+model Partner {
+  id           String            @id @default(cuid())
+  status       String            @default("applied") // applied | approved | rejected | paused
+  kind         String // agency | coworking | momo_agent | client | consultant | other
+  name         String
+  organisation String?
+  email        String // lower case
+  phone        String // E.164 when it parses, else as typed
+  city         String?
+  message      String? // how they will find clients, in their words
+  // 7 unambiguous characters (staff codes are 5 or 6, so the two never clash); set on approval.
+  refCode      String?           @unique
+  // The partner's private page /partners/me/<token> (32 random bytes, base64url); set on approval.
+  viewToken    String?           @unique
+  rejectReason String?
+  decidedBy    String? // AuditLog actor
+  decidedAt    DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  referrals    PartnerReferral[]
+  payouts      PartnerPayout[]
+
+  @@index([status])
+  @@index([email])
+}
+
+// A company that signed up with a partner's link. No foreign key to Business or User (like BillingEvent): the
+// commission history stays when an account is deleted. One partner per company.
+model PartnerReferral {
+  id         String   @id @default(cuid())
+  partnerId  String
+  partner    Partner  @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  businessId String   @unique
+  userId     String   @db.Uuid // the company owner: payments (BillingEvent) carry it
+  code       String
+  createdAt  DateTime @default(now())
+
+  @@index([partnerId])
+  @@index([userId])
+}
+
+// Commission paid to a partner by hand (Mobile Money), recorded from Admin. The payout's MoMo transaction id is unique,
+// so one payment is never recorded twice.
+model PartnerPayout {
+  id          String   @id @default(cuid())
+  partnerId   String
+  partner     Partner  @relation(fields: [partnerId], references: [id], onDelete: Restrict)
+  amountMinor Int
+  currency    String   @default("RWF")
+  reference   String   @unique // upper case
+  note        String?
+  paidAt      DateTime
+  createdBy   String // AuditLog actor
+  createdAt   DateTime @default(now())
+
+  @@index([partnerId, paidAt])
 }

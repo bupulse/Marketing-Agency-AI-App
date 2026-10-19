@@ -60,6 +60,9 @@ button,input,textarea{font:inherit;color:inherit}
 .msg.visitor{align-self:flex-end;background:var(--accent);color:var(--accent-text);border-bottom-right-radius:5px}
 [dir=rtl] .msg.assistant{border-bottom-left-radius:16px;border-bottom-right-radius:5px}
 [dir=rtl] .msg.visitor{border-bottom-right-radius:16px;border-bottom-left-radius:5px}
+.chips{align-self:flex-start;display:flex;flex-wrap:wrap;gap:6px;max-width:92%}
+.chip{min-height:36px;padding:0 14px;border-radius:18px;border:1px solid var(--accent);background:#fff;color:#1d1d1f;font:inherit;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;text-decoration:none}
+.chip:disabled{opacity:.5;cursor:default}
 .dots{align-self:flex-start;display:flex;gap:4px;padding:12px 14px;background:#fff;border:1px solid #e6e8ec;border-radius:16px}
 .dots i{width:7px;height:7px;border-radius:50%;background:#9aa0aa;animation:b 1.2s infinite ease-in-out}
 .dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}

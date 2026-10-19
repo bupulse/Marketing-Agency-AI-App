@@ -9,6 +9,8 @@ import { listServicesWithKeys, type EnvState, type ServiceView } from "@/lib/adm
 import type { CustomKeyView } from "@/lib/admin/service-keys";
 import { isSecretName } from "@/lib/admin/service-keys-rules";
 import { robotStatus } from "@/lib/visuals/robot";
+import { inboxAdminView } from "@/lib/social/inbox/admin";
+import { SocialInboxPanel } from "@/components/admin/social-inbox-panel";
 import { setServiceEnabledAction, testServiceAction } from "@/app/admin/(console)/actions";
 import { removeCustomKeyAction, removeServiceKeyAction, saveCustomKeyAction, saveServiceKeyAction } from "./actions";
 
@@ -27,7 +29,7 @@ const HEALTH: Record<ServiceView["health"], { label: string; tone: "success" | "
 export default async function ServicesPage({ searchParams }: PageProps<"/admin/services">) {
   await requirePermission("system"); // pages render alongside the layout, so check here too
   const sp = await searchParams;
-  const [{ services, custom, unreadable }, robot] = await Promise.all([listServicesWithKeys(), robotStatus()]);
+  const [{ services, custom, unreadable }, robot, inbox] = await Promise.all([listServicesWithKeys(), robotStatus(), inboxAdminView()]);
   return (
     <>
       <PageHeader
@@ -82,6 +84,7 @@ export default async function ServicesPage({ searchParams }: PageProps<"/admin/s
             </Panel>
           );
         })}
+        <SocialInboxPanel view={inbox} />
         <CustomKeys custom={custom} />
         <Panel
           title="Video robot"

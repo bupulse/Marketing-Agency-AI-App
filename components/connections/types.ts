@@ -22,6 +22,15 @@ export type AccountInfo = {
   avatarUrl: string | null;
   status: "ACTIVE" | "EXPIRING" | "EXPIRED" | "REVOKED" | "ERROR";
   postingMode: "AUTO" | "NOTIFY";
+  /** Instagram and Facebook: the "Answer comments and messages" switch (docs/SOCIAL_INBOX.md). */
+  inbox?: InboxInfo;
+};
+
+export type InboxInfo = {
+  enabled: boolean;
+  /** False when the account must be reconnected before it can answer (connected another way than the current route). */
+  usable: boolean;
+  note: string | null;
 };
 
 /** Instagram: automatic posting needs Instagram Login keys or, failing that, Facebook Login keys. */

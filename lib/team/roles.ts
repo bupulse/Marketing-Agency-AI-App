@@ -7,8 +7,8 @@ export type Role = (typeof ROLES)[number];
 export const ROLE_LABEL: Record<Role, string> = { OWNER: "Owner", ADMIN: "Admin", MEMBER: "Member" };
 export const ROLE_HELP: Record<Role, string> = {
   OWNER: "Billing, the plan and deleting the company, plus everything an Admin can do.",
-  ADMIN: "Everything except billing and deleting the company: team, channels, connectors, widget and settings.",
-  MEMBER: "Create, edit and schedule content and designs, and see leads. No billing, channels or settings.",
+  ADMIN: "Everything except billing and deleting the company: team, channels, connectors, widget, automations and settings.",
+  MEMBER: "Create, edit and schedule content and designs, see leads and answer in the inbox. No billing, channels or settings.",
 };
 
 /** Rank for comparisons: a higher number can manage a lower one. */
@@ -26,6 +26,8 @@ export const PERMISSIONS = {
   connectors: "ADMIN",
   /** Website chat widget settings and its check. */
   widget: "ADMIN",
+  /** Create, change, publish and pause automations (answering in the inbox follows `content`). */
+  automations: "ADMIN",
   /** Webhooks and API keys. */
   webhooks: "ADMIN",
   /** Brand, business details and company settings. */

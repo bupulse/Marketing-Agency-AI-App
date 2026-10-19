@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Badge, Button, GlassCard, type BadgeTone } from "@/components/ui";
 import { ConnectDialog } from "./connect-dialog";
 import { DisconnectButton } from "./disconnect-button";
+import { InboxSwitch } from "./inbox-switch";
 import { NetworkIcon } from "./network-icon";
 import { canConnect, connectHref, primaryVariant, type AccountInfo, type ChannelInfo } from "./types";
 
@@ -48,6 +49,7 @@ function AccountRow({ account, variant }: { account: AccountInfo; variant?: stri
         )}
         <DisconnectButton id={account.id} name={name} reminder={account.postingMode === "NOTIFY"} />
       </div>
+      {account.inbox && <InboxSwitch id={account.id} name={name} inbox={account.inbox} />}
     </li>
   );
 }

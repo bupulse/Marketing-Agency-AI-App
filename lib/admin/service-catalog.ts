@@ -157,7 +157,7 @@ export const SERVICES: ServiceInfo[] = [
     name: "Meta (Facebook and Instagram)",
     purpose: "Publishes to Facebook Pages and Instagram.",
     env: ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"],
-    optionalEnv: ["INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET", "META_APP_SECRET"],
+    optionalEnv: ["INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET", "META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN"],
     features: ["Facebook posts", "Instagram posts", "Connecting Facebook and Instagram"],
     killable: true,
     whenOff: "Facebook and Instagram posts wait as scheduled (not failed) and publish when it is back on.",

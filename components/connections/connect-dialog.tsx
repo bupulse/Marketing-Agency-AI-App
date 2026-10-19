@@ -8,7 +8,8 @@ import { connectHref, primaryVariant, showFacebookLink, type ChannelInfo } from 
 // BuPulse-Socials: the sign-in page is Composio's, so say who that is before the person sees its name.
 const COMPOSIO_NOTE = "You sign in on a secure page from Composio, the partner BuPulse uses to connect social accounts. We never see your password.";
 
-const PROFESSIONAL = ["Posts automatically at the time you choose", "Photos and carousels of up to 10 images", "Reach, likes and saves in your reports", "For Business and Creator accounts"];
+// BuPulse-Socials reads likes and comments only; a direct connection also reads reach and saves (lib/publishing/results.ts).
+const professional = (viaComposio: boolean) => ["Posts automatically at the time you choose", "Photos and carousels of up to 10 images", viaComposio ? "Likes and comments in your reports" : "Reach, likes and saves in your reports", "For Business and Creator accounts"];
 
 function Checklist({ items }: { items: string[] }) {
   return (
@@ -30,7 +31,7 @@ function InstagramBody({ channel }: { channel: ChannelInfo }) {
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-3 rounded-2xl border-2 border-pulse-blue bg-ok-bg/40 p-4 shadow-glass">
         <span className="font-semibold">Professional account</span>
-        <Checklist items={PROFESSIONAL} />
+        <Checklist items={professional(Boolean(channel.viaComposio))} />
         {viaFacebookOnly && (
           <p className="text-sm text-muted">
             Log in with Facebook and choose your Instagram account. It must be a Business or Creator account linked to a Facebook Page.

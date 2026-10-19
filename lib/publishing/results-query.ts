@@ -5,7 +5,7 @@ import { logError } from "@/lib/errors";
 import { POST_RESULTS_FEATURE, postResults, type PostResults, type ResultsPost, type ResultsSnapshot } from "./results";
 
 /** The connection fields a post's results depend on; add to a post query's `connection.select`. */
-export const resultsConnectionSelect = { postingMode: true, accountType: true, status: true } as const;
+export const resultsConnectionSelect = { postingMode: true, accountType: true, status: true, method: true } as const;
 
 /**
  * The results of the published posts among `rows`, keyed by post id: the newest snapshot of each, read in one

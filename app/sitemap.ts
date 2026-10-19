@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 import { getAllPosts } from "@/lib/content/blog";
 import { site } from "@/lib/content/site";
 
-const pages = ["", "/pricing", "/done-for-you", "/industries", "/about", "/contact", "/blog", "/login", "/privacy", "/terms", "/refund-policy", "/data-deletion"];
+const pages = ["", "/pricing", "/done-for-you", "/industries", "/about", "/contact", "/partners", "/blog", "/login", "/privacy", "/terms", "/refund-policy", "/data-deletion"];
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
