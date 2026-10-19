@@ -35,7 +35,7 @@
   } catch {}
   function persist() {
     state.ts = Date.now();
-    set(STORE, JSON.stringify({ sessionId: state.sessionId, messages: state.messages.slice(-60), leadDone: state.leadDone, ts: state.ts }));
+    set(STORE, JSON.stringify({ sessionId: state.sessionId, messages: state.messages.slice(-60), leadDone: state.leadDone, ts: state.ts, after: state.after }));
   }
 
   // ---- DOM helpers ----
@@ -160,6 +160,34 @@
     scroll();
   }
   function add(role, text) { state.messages.push({ role: role, text: text }); persist(); bubble(role, text); }
+  // A reply from an automation or the team, with up to 3 buttons: a link opens it, the others send their title.
+  var chips = null;
+  function clearChips() { if (chips) { chips.remove(); chips = null; } }
+  function addReply(m) {
+    if (!m || typeof m.text !== "string" || !m.text) return;
+    clearChips();
+    add("assistant", m.text);
+    var list = Array.isArray(m.buttons) ? m.buttons.slice(0, 3) : [];
+    if (!list.length) return;
+    chips = el("div", "chips");
+    list.forEach(function (b) {
+      if (!b || typeof b.title !== "string") return;
+      if (typeof b.url === "string" && /^https?:\/\//.test(b.url)) {
+        var a = el("a", "chip", b.title);
+        a.href = b.url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        chips.appendChild(a);
+      } else {
+        var c = el("button", "chip", b.title);
+        c.type = "button";
+        c.onclick = function () { sendText(b.title); };
+        chips.appendChild(c);
+      }
+    });
+    log.insertBefore(chips, typing && typing.parentNode ? typing : card && card.parentNode ? card : null);
+    scroll();
+  }
 
   // ---- contact card ----
   function field(type, ph, name, ac) {
@@ -308,6 +336,12 @@
     e.preventDefault();
     var text = input.value.trim();
     if (!text || busy) return;
+    sendText(text);
+  };
+  function sendText(text) {
+    if (busy) return;
+    clearChips();
+    epoch++;
     busy = true;
     send.disabled = true;
     input.value = "";
@@ -320,10 +354,13 @@
         showTyping(false);
         busy = false;
         send.disabled = false;
-        if (r.ok && r.data && r.data.reply) {
+        if (r.ok && r.data && (r.data.reply || r.data.waiting || (r.data.replies && r.data.replies.length))) {
           state.sessionId = r.data.sessionId;
+          if (typeof r.data.at === "string") state.after = r.data.at;
           if (r.data.leadCaptured) state.leadDone = true;
-          add("assistant", r.data.reply);
+          if (Array.isArray(r.data.replies) && r.data.replies.length) r.data.replies.forEach(addReply);
+          else if (r.data.reply) add("assistant", r.data.reply);
+          startPolling();
           var since = visitorCount() - dismissedAt;
           if (r.data.askContact && !state.leadDone && (since > 3 || r.data.limited)) showCard(r.data.interest);
         } else if (r.status === 429) {
@@ -335,13 +372,40 @@
         persist();
       }, wait);
     });
-  };
+  }
+
+  // ---- new replies (a teammate answering from the inbox, an automation after a wait) ----
+  // Checked every 8 s while the chat is open and recent; a reply in flight wins (epoch), so nothing shows twice.
+  var epoch = 0;
+  var pollTimer = null;
+  var pollUntil = 0;
+  function startPolling() {
+    pollUntil = Date.now() + 10 * 60 * 1000;
+    if (!pollTimer) pollTimer = setTimeout(poll, 8000);
+  }
+  function poll() {
+    pollTimer = null;
+    if (!state.sessionId || Date.now() > pollUntil) return;
+    if (busy || document.hidden) { pollTimer = setTimeout(poll, 8000); return; }
+    var mine = epoch;
+    api("/api/widget/messages", { key: cfg.key, visitorId: visitorId, sessionId: state.sessionId, after: state.after || undefined, origin: cfg.origin }).then(function (r) {
+      if (r.status === 404 || r.status === 403) return;
+      if (mine === epoch && !busy && r.ok && r.data) {
+        var list = Array.isArray(r.data.messages) ? r.data.messages : [];
+        if (typeof r.data.at === "string") state.after = r.data.at;
+        if (list.length) { list.forEach(addReply); pollUntil = Date.now() + 10 * 60 * 1000; }
+        persist();
+      }
+      pollTimer = setTimeout(poll, r.status === 429 ? 30000 : 8000);
+    });
+  }
   input.addEventListener("focus", function () { if (cfg.turnstileSiteKey) loadTurnstile(); }, { once: true });
 
   // ---- start ----
   if (state.messages.length === 0) state.messages.push({ role: "assistant", text: cfg.greeting });
   state.messages.forEach(function (m) { bubble(m.role, m.text); });
   if (state.sessionId && !state.leadDone && visitorCount() >= 3) { /* the card is offered again with the next reply */ }
+  if (state.sessionId) startPolling();
   post({ type: "ready" });
   resize();
   window.addEventListener("resize", resize);

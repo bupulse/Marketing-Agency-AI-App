@@ -15,4 +15,5 @@ export const WIDGET_LIMITS = {
   ipFlood: { limit: 600, windowSeconds: 10 * 60 }, // per address across all businesses
   aiPerIpDay: { limit: 30, windowSeconds: 24 * 60 * 60 }, // AI replies per business and visitor address per day
   lead: { limit: 6, windowSeconds: 10 * 60 }, // contact card submits per visitor
+  poll: { limit: 90, windowSeconds: 10 * 60 }, // "any new replies?" checks per visitor (the bubble asks every 8 s while open)
 } satisfies Record<string, RateLimitRule>;

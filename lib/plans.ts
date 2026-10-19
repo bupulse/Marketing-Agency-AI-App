@@ -89,9 +89,11 @@ export function videosLeftNow(usage: { used: { videos: number }; limits: { video
  * Every built feature of the app except the API and videos: what the trial and Standard had before plans carried
  * features. Videos came later (docs/CONTENT_VISUALS.md) and come with videos a month, which only Pro has.
  */
-export const CORE_FEATURES: FeatureKey[] = BUILT_APP_FEATURE_KEYS.filter((k) => k !== "apiAccess" && k !== "video" && k !== "voice");
+/** Features added after the plan builder (October 2026): plans get them from their own migrations, never from these seeds. */
+const LATER_FEATURES: FeatureKey[] = ["inbox", "automations"];
+export const CORE_FEATURES: FeatureKey[] = BUILT_APP_FEATURE_KEYS.filter((k) => k !== "apiAccess" && k !== "video" && k !== "voice" && !LATER_FEATURES.includes(k));
 /** Every built feature of the app plus the client's own Composio account: Pro. (Managed by BuPulse is sold apart.) */
-export const PRO_FEATURES: FeatureKey[] = sortFeatureKeys([...BUILT_APP_FEATURE_KEYS, "ownComposio"]);
+export const PRO_FEATURES: FeatureKey[] = sortFeatureKeys([...BUILT_APP_FEATURE_KEYS.filter((k) => !LATER_FEATURES.includes(k)), "ownComposio"]);
 
 /**
  * The plans as they were when the plan builder was introduced (9 October 2026). They are the seed of the PlanDefinition

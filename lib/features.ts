@@ -25,6 +25,8 @@ export const FEATURE_KEYS = [
   "managed",
   "video",
   "voice",
+  "inbox",
+  "automations",
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
@@ -232,6 +234,27 @@ export const FEATURES: readonly FeatureDef[] = [
     status: "built",
     kind: "app",
     routes: [],
+  },
+  {
+    key: "inbox",
+    label: "Inbox and contacts",
+    description: "One inbox for website chats and social messages, where your team answers, plus every contact with tags and details.",
+    requires: [],
+    services: [],
+    status: "built",
+    kind: "app",
+    routes: ["/dashboard/inbox", "/dashboard/contacts"],
+  },
+  {
+    key: "automations",
+    label: "Automations",
+    description: "Automatic replies to messages and comments: keywords, questions, AI conversations and follow-ups, drawn on a canvas.",
+    requires: ["inbox"],
+    metric: "chat",
+    services: [],
+    status: "built",
+    kind: "app",
+    routes: ["/dashboard/automations"],
   },
 ];
 

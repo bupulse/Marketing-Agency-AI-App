@@ -3,7 +3,7 @@
 // (the lead.created shape is the one the old per-widget webhook sent, so existing receivers keep working).
 // Documented in docs/WEBHOOKS.md.
 
-export const WEBHOOK_EVENTS = ["lead.created", "content.generated", "post.published", "post.failed"] as const;
+export const WEBHOOK_EVENTS = ["lead.created", "content.generated", "post.published", "post.failed", "automation.action"] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
 /** "webhook.test" is only sent by the Send test button. */
@@ -14,6 +14,7 @@ export const EVENT_LABELS: Record<WebhookEvent, { label: string; text: string }>
   "content.generated": { label: "Content generated", text: "The AI wrote a new caption, script or headlines." },
   "post.published": { label: "Post published", text: "A scheduled post went live on a network." },
   "post.failed": { label: "Post failed", text: "A post could not be published and needs your attention." },
+  "automation.action": { label: "Automation step", text: "An automation reached a \"Send to webhook\" step." },
 };
 
 export function isWebhookEvent(value: unknown): value is WebhookEvent {
@@ -25,6 +26,7 @@ const KEY: Record<WebhookEventName, string> = {
   "content.generated": "content",
   "post.published": "post",
   "post.failed": "post",
+  "automation.action": "automation",
   "webhook.test": "test",
 };
 

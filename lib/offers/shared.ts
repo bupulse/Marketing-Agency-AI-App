@@ -37,6 +37,8 @@ export type AddonDef =
 const FEATURE_INCLUDES: Partial<Record<FeatureKey, { metric: OfferMetric; amount: number }>> = {
   aiPhotos: { metric: "image", amount: 30 },
   websiteChat: { metric: "chat", amount: 500 },
+  // "Social replies" in docs/bizdev/PLAN.md: the automations' AI replies.
+  automations: { metric: "chat", amount: 1000 },
 };
 
 /**

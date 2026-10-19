@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { normalizeEmail, normalizePhone } from "@/lib/leads/normalize";
 import { dispatchInbound } from "@/lib/automations/dispatch";
+import type { OutboundMessage } from "./types";
 import { MAX_TEXT, previewOf } from "./text";
 import type { ChannelKind, InboundEvent } from "./types";
 
@@ -12,7 +13,11 @@ export { MAX_TEXT, previewOf };
 // message once (the same platform id twice is a duplicate, so polling twice is harmless), updates the inbox counters
 // and then lets the automations (and the AI) answer. docs/INBOX.md.
 
-export type IngestResult = { duplicate: boolean; contactId: string; conversationId: string; messageId: string | null };
+/**
+ * `handled`: an automation answered (or a teammate took over: `paused`), so the website chat must not add its own AI
+ * reply. `replies`: what the automation sent during this call, for the website chat to show at once.
+ */
+export type IngestResult = { duplicate: boolean; contactId: string; conversationId: string; messageId: string | null; handled: boolean; paused: boolean; replies: OutboundMessage[] };
 
 const isUnique = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 
@@ -121,7 +126,7 @@ export async function ingestInbound(event: InboundEvent): Promise<IngestResult> 
     });
     messageId = message.id;
   } catch (error) {
-    if (isUnique(error)) return { duplicate: true, contactId, conversationId: conversation.id, messageId: null };
+    if (isUnique(error)) return { duplicate: true, contactId, conversationId: conversation.id, messageId: null, handled: true, paused: false, replies: [] };
     throw error;
   }
 
@@ -136,11 +141,13 @@ export async function ingestInbound(event: InboundEvent): Promise<IngestResult> 
     }),
   ]);
 
+  const botPaused = !!conversation.botPausedUntil && conversation.botPausedUntil > new Date();
   try {
-    await dispatchInbound({ event: { ...event, text }, contactId, conversationId: conversation.id, messageId, botPaused: !!conversation.botPausedUntil && conversation.botPausedUntil > new Date() });
+    const result = await dispatchInbound({ event: { ...event, text }, contactId, conversationId: conversation.id, messageId, botPaused });
+    return { duplicate: false, contactId, conversationId: conversation.id, messageId, handled: result.handled, paused: !!result.paused, replies: result.replies };
   } catch (error) {
     // The message is saved and visible in the inbox even when an automation fails.
     console.error("[inbox.dispatch]", error instanceof Error ? error.message : error);
+    return { duplicate: false, contactId, conversationId: conversation.id, messageId, handled: botPaused, paused: botPaused, replies: [] };
   }
-  return { duplicate: false, contactId, conversationId: conversation.id, messageId };
 }

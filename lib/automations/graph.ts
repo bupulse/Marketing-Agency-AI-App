@@ -226,7 +226,12 @@ export function graphProblems(graph: Graph): GraphProblem[] {
     const queue = [trigger.id];
     while (queue.length) {
       const at = queue.shift()!;
-      for (const e of graph.edges) if (e.source === at && !seen.has(e.target)) (seen.add(e.target), queue.push(e.target));
+      for (const e of graph.edges) {
+        if (e.source === at && !seen.has(e.target)) {
+          seen.add(e.target);
+          queue.push(e.target);
+        }
+      }
     }
     for (const n of graph.nodes) if (!seen.has(n.id)) problems.push({ nodeId: n.id, message: "This step is not connected to the trigger." });
   }

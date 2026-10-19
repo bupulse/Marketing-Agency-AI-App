@@ -1,6 +1,9 @@
 import {
   Blocks,
   BookOpen,
+  BookUser,
+  Inbox,
+  Workflow,
   Camera,
   CalendarDays,
   ChartLine,
@@ -50,6 +53,9 @@ export const NAV_ITEMS: NavItem[] = [
   item("/dashboard/autopilot", "Autopilot", Sparkles),
   item("/dashboard/gallery", "Gallery", Images),
   item("/dashboard/designs", "Designs", ImageIcon),
+  item("/dashboard/inbox", "Inbox", Inbox),
+  item("/dashboard/contacts", "Contacts", BookUser),
+  item("/dashboard/automations", "Automations", Workflow),
   item("/dashboard/leads", "Leads", Users),
   item("/dashboard/widget", "Website chat", MessageCircle, "widget"),
   item("/dashboard/connections", "Channels", Plug, "channels"),
@@ -80,4 +86,6 @@ export const FEATURE_ICONS: Record<FeatureKey, LucideIcon> = {
   managed: Store,
   video: Clapperboard,
   voice: Mic,
+  inbox: Inbox,
+  automations: Workflow,
 };
