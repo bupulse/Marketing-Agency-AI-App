@@ -32,6 +32,7 @@
       <button class="genBtn bp" id="go">GENERATE<small id="goCredits">✦ …</small></button>
     </div>
   </div>
+  <div class="viralRow" id="viralRow" hidden></div>
   <div class="refStrip" id="refStrip"></div>
   <div class="checks" id="sdChecks" hidden></div>
   <div class="msg" id="msg"></div>
@@ -52,12 +53,13 @@
 
 <dialog id="inspireDlg"><div class="dlgHead"><h3 id="inspireTitle">Example</h3><button class="btn sm" id="inspireClose">Close</button></div><div class="dlgBody" id="inspireBody"></div></dialog>
 
-<section class="explore">
+<section class="explore" id="tplSection">
   <div class="head"><h2>Explore templates</h2><div class="pills" id="cats"></div><input type="text" id="tsearch" placeholder="Search" style="width:200px"></div>
   <div class="tgrid" id="tgrid"></div>
 </section>
 
 <input type="file" id="file" accept="image/*,video/mp4,video/quicktime,audio/mpeg,audio/wav" hidden>
+<input type="file" id="clipFile" accept="video/mp4,video/quicktime,.mp4,.mov" multiple hidden>
 
 <dialog id="planDlg"><div class="dlgHead"><h3 id="planTitle">Plan a week</h3><button class="btn sm" id="planClose">Close</button></div><div class="dlgBody"><p class="muted small" id="planNote"></p><table class="rates planTable" id="planTable"></table></div></dialog>
 

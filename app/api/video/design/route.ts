@@ -9,6 +9,7 @@ import { can } from "@/lib/team/roles";
 import { UsageLimitError } from "@/lib/usage";
 import { DESIGN_MODES, PLATFORMS } from "@/lib/video-engine/designer";
 import { RATIOS } from "@/lib/video-engine/spec";
+import { VIRAL_STYLE_ID } from "@/lib/video-engine/templates";
 import { BriefError, MAX_DESIGN_PHOTOS } from "@/lib/video-studio/brief";
 import { designMotionJobs, VideoStudioError } from "@/lib/video-studio/jobs";
 
@@ -18,7 +19,8 @@ export const maxDuration = 300;
 const body = z.object({
   productId: z.string().min(1).max(40),
   photoPaths: z.array(z.string().min(1).max(300)).max(MAX_DESIGN_PHOTOS, `Use up to ${MAX_DESIGN_PHOTOS} photos.`).optional(),
-  templateId: z.string().min(1).max(40).default("product-hero"),
+  // "viral" (the default): designed from viral techniques (docs/VIRAL_RECIPES.md); or a template id (templates.ts).
+  templateId: z.string().min(1).max(40).default(VIRAL_STYLE_ID),
   hookId: z.string().min(1).max(40).default("auto"),
   ratio: z.enum(Object.keys(RATIOS) as [keyof typeof RATIOS, ...(keyof typeof RATIOS)[]]).default("9:16"),
   // A new video is 6 to 30 s; an extend adds 4 or more seconds to the parent (the designer keeps the total at 30 s).

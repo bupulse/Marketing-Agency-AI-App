@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { MotionSpec } from "@/lib/video-engine/spec";
 import type { DesignUsage } from "@/lib/video-engine/designer";
+import type { ViralRecipe } from "@/lib/video-engine/brain/viral";
 
 const DATA = path.resolve("video-lab/data");
 const JOBS = path.join(DATA, "jobs");
@@ -43,6 +44,12 @@ export type LabJob = {
   fixedLens?: boolean;
   parentId?: string | null;
   version?: string | null;
+  /** A viral video's recipe (lib/video-engine/brain/viral.ts), its "Why this video" lines and its viral source ids. */
+  recipe?: ViralRecipe | null;
+  why?: string[];
+  viralSources?: string[];
+  /** The owner's phone clips the design could place (video-lab/data/media ids). */
+  clipIds?: string[];
 };
 
 type LedgerRow = { at: string; jobId: string; kind: string; model: string; inputTokens: number; outputTokens: number; costUsd: number; billedTo?: string; apiEquivalentUsd?: number };

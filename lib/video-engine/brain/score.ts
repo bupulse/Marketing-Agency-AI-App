@@ -9,6 +9,7 @@ import { BRAIN, SAFE_AREAS, formatById } from "./database";
 import { hasKinyarwanda } from "./language";
 import { brainFor, formatFromTemplate, sectorFromText } from "./select";
 import type { FormatId, Purpose, Platform, SectorId } from "./types";
+import type { ViralRecipe } from "./viral";
 
 export { SAFE_AREAS, hasKinyarwanda };
 
@@ -28,6 +29,8 @@ export type ScoreBrief = {
   fixedLens?: boolean;
   /** An ad (the default) or a post on the business's own page (no price strip, phone bar or order line expected). */
   purpose?: Purpose | null;
+  /** A viral video's recipe (styleId "viral", brain/viral.ts): the design is also checked against it. */
+  recipe?: Pick<ViralRecipe, "seconds" | "opening" | "cuts" | "price" | "phone" | "format"> | null;
 };
 export type ScoreOptions = { platform?: string | null; format?: FormatId | null; voice?: boolean; purpose?: Purpose | null };
 const purposeOf = (brief: ScoreBrief, options: ScoreOptions): Purpose => ((options.purpose ?? brief.purpose) === "post" ? "post" : "ad");
@@ -192,7 +195,7 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
   const at = starts(spec);
   const total = Math.round(scenes.reduce((s, x) => s + x.seconds, 0) * 10) / 10;
   const platform = platformOf(options.platform ?? brief.platform);
-  const format = formatById(options.format) ?? formatById(formatFromTemplate(brief.styleId)) ?? null;
+  const format = formatById(options.format) ?? formatById(formatFromTemplate(brief.styleId)) ?? formatById(brief.recipe?.format) ?? null;
   const purpose = purposeOf(brief, options);
   const post = purpose === "post";
   const pick = brainFor({ platform, sector: null, format: format?.id ?? null, engine: "claude", language: brief.business.language, hasPrice: !!brief.product.price, hasPhone: !!brief.business.phone, seconds: total, purpose });
@@ -348,7 +351,61 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
   const bad = [...invented, ...claims];
   add({ id: "facts", rule: "no-invented-facts", points: 10, ok: bad.length === 0, reason: bad.length ? `"${bad[0].what}" in ${where(bad[0].i)} is not in the brief (prices, discounts, stock and delivery come only from the owner).` : "Every number and promise comes from the brief.", scene: bad.length ? sceneOf(bad[0].i) : null });
 
+  // 11. A viral video follows its recipe (brain/viral.ts): its opening in the first 3 s, its pace, the price and the
+  // number where it puts them, its length. Template videos have no recipe, so their score is unchanged.
+  if (brief.recipe) checks.push(...recipeChecks(spec, brief.recipe, { at, total, price, phone, post }));
+
   return result(checks);
+}
+
+/** Bands of the frame a recipe places the price in (score: the first price line's centre). */
+const BAND_Y = { top: [0, 0.45], middle: [0.3, 0.7], bottom: [0.55, 1] } as const;
+
+/** The recipe checks (scoreDesign 11). */
+function recipeChecks(spec: MotionSpec, recipe: NonNullable<ScoreBrief["recipe"]>, ctx: { at: number[]; total: number; price: string; phone: string; post: boolean }): Check[] {
+  const scenes = spec.scenes;
+  const out: Check[] = [];
+  const startOf = (i: number, l: { from?: number }) => ctx.at[i] + (l.from ?? 0) * scenes[i].seconds;
+  const early = scenes.flatMap((s, i) => texts(s).filter((l) => startOf(i, l) <= 3).map((l) => l.text));
+  const wanted = amounts(ctx.price);
+  const showsPrice = (t: string) => (wanted.length ? amounts(t).some((v) => wanted.includes(v)) : !!ctx.price && t.toLowerCase().includes(ctx.price.toLowerCase()));
+
+  // The opening idea in the first 3 s.
+  const kind = recipe.opening.check === "price" && !ctx.price ? "text" : recipe.opening.check;
+  const big = (l: Layer) => (l.kind === "photo" || l.kind === "video") && Math.min(l.w, 1) * Math.min(l.h, 1) >= 0.25;
+  const visual = scenes.some((s, i) => ctx.at[i] <= 3 && (s.background.kind === "photo" || s.layers.some((l) => big(l) && startOf(i, l) <= 3)));
+  const opened = { price: early.some(showsPrice), question: early.some((t) => t.includes("?")) || (scenes[0].say ?? "").includes("?"), number: early.some((t) => /\d/.test(t)), visual, text: early.length > 0 }[kind];
+  const idea = { price: "the price on screen", question: "a question on screen", number: "a number on screen", visual: "the product big in the frame", text: "the opening line on screen" }[kind];
+  out.push({ id: "recipe-opening", rule: null, points: 8, ok: opened, reason: opened ? `The recipe's opening (${recipe.opening.hookType}) is in the first 3 s.` : `The recipe opens with ${recipe.opening.hookType}: show ${idea} in the first 3 s.`, scene: 0 });
+
+  // The pace: scene changes per 10 s inside the recipe's range (half a change of slack).
+  const rate = (scenes.length / Math.max(1, ctx.total)) * 10;
+  const [lo, hi] = recipe.cuts.per10s;
+  const paced = rate >= lo - 0.5 && rate <= hi + 0.5;
+  out.push({ id: "recipe-pace", rule: null, points: 6, ok: paced, reason: paced ? `${Math.round(rate * 10) / 10} changes per 10 s (the recipe: ${lo} to ${hi}).` : `${Math.round(rate * 10) / 10} changes per 10 s; the recipe asks for ${lo} to ${hi} (${recipe.cuts.scenes[0]} to ${recipe.cuts.scenes[1]} scenes).`, scene: null });
+
+  // The price where the recipe puts it: when, and in which band.
+  if (ctx.price && !ctx.post && recipe.price.at !== "none") {
+    const with_ = scenes.map((s, i) => ({ i, l: texts(s).find((l) => showsPrice(l.text)) })).filter((x): x is { i: number; l: TextLayer } => !!x.l);
+    const first = with_[0];
+    const when = { opening: !!first && startOf(first.i, first.l) <= 3, "every-scene": with_.length >= scenes.length - 1, end: with_.some((x) => x.i === scenes.length - 1), middle: with_.length > 0 }[recipe.price.at];
+    const [y0, y1] = BAND_Y[recipe.price.band];
+    const placed = !!first && first.l.y >= y0 && first.l.y <= y1;
+    const label = { opening: "in the first 3 s", "every-scene": "in every scene", end: "in the last scene", middle: "on screen" }[recipe.price.at];
+    out.push({ id: "recipe-price", rule: null, points: 6, ok: when && placed, reason: !first ? "The recipe shows the price, but it is never on screen." : !when ? `The recipe puts the price ${label}.` : !placed ? `The recipe puts the price in the ${recipe.price.band} band; it sits at y ${Math.round(first.l.y * 100) / 100}.` : `The price is ${label}, in the ${recipe.price.band} band, as the recipe says.`, scene: first?.i ?? null });
+  }
+
+  // The number where the recipe puts it.
+  if (ctx.phone && !ctx.post && recipe.phone.at !== "none") {
+    const scenesWith = scenes.filter((s) => texts(s).some((l) => hasPhone(l.text, ctx.phone))).length;
+    const ok = recipe.phone.at === "every-scene" ? scenesWith === scenes.length : texts(scenes[scenes.length - 1]).some((l) => hasPhone(l.text, ctx.phone));
+    out.push({ id: "recipe-phone", rule: null, points: 5, ok, reason: ok ? `The number is ${recipe.phone.at === "every-scene" ? "on screen in every scene" : "on the end card"}, as the recipe says.` : recipe.phone.at === "every-scene" ? "The recipe keeps the number on screen in every scene." : "The recipe puts the number on the end card.", scene: null });
+  }
+
+  // The length the recipe was made for.
+  const sized = Math.abs(ctx.total - recipe.seconds) <= 1.5;
+  out.push({ id: "recipe-length", rule: null, points: 5, ok: sized, reason: sized ? `${ctx.total} s, the recipe's length.` : `${ctx.total} s; the recipe was made for ${recipe.seconds} s.`, scene: null });
+  return out;
 }
 
 // ---- The Seedance prompt

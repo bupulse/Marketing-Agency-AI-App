@@ -9,9 +9,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { GALLERY_VIDEO_BUCKET } from "@/lib/media/rules";
 import { MediaError, signedUrls } from "@/lib/media/service";
 import { subscriptionTransport } from "./claude-cli";
-import { DESIGN_MODES, isPlatform, type DesignMode } from "@/lib/video-engine/designer";
+import { DESIGN_MODES, isPlatform, type BriefClip, type DesignMode } from "@/lib/video-engine/designer";
+import { recipeWhy, type ViralRecipe } from "@/lib/video-engine/brain/viral";
 import { SPEC_LIMITS, isRatio, totalMs, type MotionSpec } from "@/lib/video-engine/spec";
-import { VIDEO_TEMPLATES } from "@/lib/video-engine/templates";
+import { VIRAL_STYLE_ID } from "@/lib/video-engine/templates";
 import { castById } from "@/lib/video-engine/cast";
 import { BriefError, type StoredPhoto } from "@/lib/video-studio/brief";
 import { VideoStudioError, designMotionJobs, type DesignJobInput, type StudioOwner } from "@/lib/video-studio/jobs";
@@ -21,6 +22,8 @@ import { UsageLimitError } from "@/lib/usage";
 import { RateLimitError, rateLimitMessage } from "@/lib/rate-limit";
 import { CLAUDE_VIDEO_CREDITS, usageMessage } from "./credits";
 import type { StudioIdentity } from "./session";
+import { MAX_CLIPS, clientClipPath, clipLengthOk } from "./clip-rules";
+import { aiClipsForBrief, aiClipsRecord } from "./ai-clips";
 
 /** A failure with the HTTP status and the plain-English message the page shows. */
 export class ClientJobError extends Error {
@@ -45,7 +48,7 @@ const ROW = {
 } as const satisfies Prisma.VideoJobSelect;
 type Row = Prisma.VideoJobGetPayload<{ select: typeof ROW }>;
 
-type Brief = { photos?: StoredPhoto[]; note?: string | null; fixedLens?: boolean; purpose?: "ad" | "post"; variation?: { index: number; of: number } | null };
+type Brief = { photos?: StoredPhoto[]; note?: string | null; fixedLens?: boolean; purpose?: "ad" | "post"; variation?: { index: number; of: number } | null; recipe?: ViralRecipe | null; clips?: BriefClip[] };
 
 /** Asset ids of the photos a set of rows used, by Storage path (the page draws them through /api/photo/<id>). */
 async function assetIdsByPath(businessId: string, rows: Row[]): Promise<Map<string, string>> {
@@ -88,6 +91,10 @@ export function labJob(row: Row, ids: Map<string, string>, withSpec = true) {
     score: row.score ?? undefined,
     captionScore: caption?.score,
     captionMissed: caption?.missed ?? [],
+    // A viral video's "Why this video" (plain English, no names or frames) and the clips it could place.
+    why: brief.recipe?.version === 1 ? recipeWhy(brief.recipe) : undefined,
+    viralSources: brief.recipe?.version === 1 ? brief.recipe.sources.map((s) => s.id) : undefined,
+    clipIds: (brief.clips ?? []).map((c) => c.path.replace(/^\/api\/clip\//, "")),
   };
 }
 
@@ -165,10 +172,14 @@ export async function designInput(id: StudioIdentity, body: Record<string, unkno
     if (!photoPaths.length) throw new ClientJobError("Use photos from your BuPulse gallery.", 400);
   }
   const hook = body.chosenHook as { hookId?: unknown; line?: unknown } | null | undefined;
+  // The client's phone clips, then the AI clips made for this video (video-lab/ai-clips.ts: their own, ready, at most 3).
+  const clips = editing || mode === "text" ? [] : [...(await clipsForDesign(id, body.clipIds)), ...(await aiClipsForBrief(body.aiClipIds, id.businessId))];
+  const aiIds = clips.filter((c) => c.source === "ai").map((c) => c.path.replace(/^\/videos\/veo\/|\.mp4$/g, ""));
   return {
     productId: str(body.productId, 40),
     photoPaths,
-    templateId: str(body.styleId, 40) || VIDEO_TEMPLATES[0].id,
+    // Viral techniques by default (owner decision, 19 October 2026); a template only when the page picked one.
+    templateId: str(body.styleId, 40) || VIRAL_STYLE_ID,
     hookId: str(body.hookId, 40) || "auto",
     ratio: isRatio(body.ratio) ? body.ratio : "9:16",
     seconds,
@@ -182,7 +193,22 @@ export async function designInput(id: StudioIdentity, body: Record<string, unkno
     voice: body.voice !== false,
     chosenHook: hook && typeof hook.hookId === "string" && typeof hook.line === "string" ? { hookId: hook.hookId.slice(0, 60), line: hook.line.slice(0, 120) } : null,
     purpose: body.purpose === "post" ? "post" : "ad",
+    clips,
+    aiClipsRecord: aiIds.length ? await aiClipsRecord(aiIds) : null,
   };
+}
+
+/** The phone clips a client's design may place: their own Gallery videos of 5 to 10 s, in the page's order, at most 4. */
+export async function clipsForDesign(id: StudioIdentity, ids: unknown): Promise<BriefClip[]> {
+  const wanted = (Array.isArray(ids) ? ids : []).map(String).filter((x) => /^[A-Za-z0-9-]{10,40}$/.test(x)).slice(0, MAX_CLIPS);
+  if (!wanted.length) return [];
+  const assets = await prisma.mediaAsset.findMany({ where: { id: { in: wanted }, businessId: id.businessId, kind: "video" }, select: { id: true, width: true, height: true, durationMs: true, description: true } });
+  return wanted.flatMap((w) => {
+    const a = assets.find((x) => x.id === w);
+    const seconds = (a?.durationMs ?? 0) / 1000;
+    if (!a || !clipLengthOk(seconds)) return [];
+    return [{ path: clientClipPath(a.id), source: "phone" as const, seconds, width: a.width ?? 1080, height: a.height ?? 1920, ...(a.description ? { note: a.description } : {}) }];
+  });
 }
 
 /**

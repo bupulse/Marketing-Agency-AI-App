@@ -76,6 +76,8 @@ export const ROUTES: RoutePolicy[] = [
   { method: "GET", path: "/api/template-previews", who: "any", sample: "/api/template-previews" },
   { method: "POST", path: "/api/template-previews", who: "owner", sample: "/api/template-previews" },
   { method: "POST", path: "/api/upload", who: "any", sample: "/api/upload" },
+  { method: "POST", path: "/api/clip", who: "any", sample: "/api/clip" },
+  { method: "GET", path: /^\/api\/clip\/([A-Za-z0-9-]{10,40})$/, who: "any", sample: "/api/clip/00000000-0000-0000-0000-000000000000" },
   { method: "GET", path: "/api/music", who: "any", sample: "/api/music" },
   { method: "GET", path: /^\/api\/music\/([A-Za-z0-9_-]{6,60})$/, who: "any", sample: "/api/music/nothing-here" },
   { method: "POST", path: "/api/design", who: "any", sample: "/api/design" },

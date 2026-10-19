@@ -6,7 +6,9 @@ import { consumeUsage, refundUsage } from "@/lib/usage";
 import { scoreCaption } from "@/lib/video-engine/brain/score";
 import { brainBriefFromDesign, brainContext, brainFor } from "@/lib/video-engine/brain/select";
 import { CLAUDE_VIDEO_CREDITS } from "@/lib/video-engine/credits";
-import { DESIGNER_MODEL, DesignError, apiTransport, designVideo, type ClaudeTransport, type DesignBrief, type DesignMode, type Platform } from "@/lib/video-engine/designer";
+import { DESIGNER_MODEL, DesignError, apiTransport, designVideo, recipeForBrief, type BriefClip, type ClaudeTransport, type DesignBrief, type DesignMode, type Platform } from "@/lib/video-engine/designer";
+import { recipeWhy, type ViralRecipe } from "@/lib/video-engine/brain/viral";
+import { isViralStyle } from "@/lib/video-engine/templates";
 import { VIDEO_LEDGER_FEATURES } from "@/lib/video-engine/ledger-features";
 import type { MotionSpec, Ratio } from "@/lib/video-engine/spec";
 import { BriefError, choosePhotos, loadBriefFacts, readPhotos, type StoredPhoto } from "./brief";
@@ -57,6 +59,12 @@ export type DesignJobInput = {
   chosenHook?: { hookId: string; line: string } | null;
   /** An ad (the default) or an organic post on the business's own page: no price or contact hooks, a quieter caption. */
   purpose?: "ad" | "post";
+  /** Video clips the design may place (the client's phone clips, AI clips), already checked as the business's own. */
+  clips?: BriefClip[];
+  /** The AI clip step is on: a viral recipe may ask for AI clips (the veo step makes them). */
+  aiClips?: boolean;
+  /** What the AI clips in `clips` were asked for and cost (the studio's video-lab/ai-clips.ts), kept in the job's brief. */
+  aiClipsRecord?: object | null;
 };
 
 export type VideoJobView = {
@@ -83,6 +91,8 @@ export type VideoJobView = {
   voice: boolean;
   /** The library track in the MP4 (its title, and the credit line its licence asks for, if any). */
   music: { trackId: string; title: string; credit: string | null } | null;
+  /** A viral video's "Why this video" lines (plain English, no names) and the viral ids its techniques came from. */
+  viral: { why: string[]; sources: string[] } | null;
   createdAt: string;
 };
 
@@ -137,8 +147,28 @@ export const view = (j: JobRow): VideoJobView => ({
   videoPath: j.videoPath ?? null,
   voice: (j.brief as { voice?: unknown } | null | undefined)?.voice !== false,
   music: musicOf(j.music),
+  viral: viralOf(j.brief),
   createdAt: j.createdAt.toISOString(),
 });
+
+/** The recipe a job's brief keeps (styleId "viral"), or null. */
+export function recipeOf(brief: unknown): ViralRecipe | null {
+  const r = (brief as { recipe?: ViralRecipe } | null | undefined)?.recipe;
+  return r && r.version === 1 && Array.isArray(r.sources) && Array.isArray(r.beats) ? r : null;
+}
+function viralOf(brief: unknown): VideoJobView["viral"] {
+  const r = recipeOf(brief);
+  return r ? { why: recipeWhy(r), sources: r.sources.map((s) => s.id) } : null;
+}
+
+/** How many of the business's recent recipes a new one avoids (another opening, layout and beat order). */
+export const RECENT_RECIPES = 5;
+
+/** The business's last viral recipes, newest first: a new video avoids repeating them. */
+export async function recentRecipes(businessId: string): Promise<ViralRecipe[]> {
+  const rows = await prisma.videoJob.findMany({ where: { businessId, engine: "motion", templateId: "viral", mode: { notIn: ["edit", "extend"] } }, orderBy: { createdAt: "desc" }, take: RECENT_RECIPES, select: { brief: true } });
+  return rows.map((r) => recipeOf(r.brief)).filter((r): r is ViralRecipe => !!r);
+}
 
 /**
  * Designs 1 to 4 versions of a Motion video. Order: checks (key, switch, product, photos, parent) → credits reserved →
@@ -153,12 +183,14 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
   const facts = await loadBriefFacts(owner.businessId, input.productId);
   let base: MotionSpec | null = null;
   let parentPhotos: string[] | null = null;
+  let parentRecipe: ViralRecipe | null = null;
   if (input.mode === "edit" || input.mode === "extend") {
     const parent = input.parentId ? await prisma.videoJob.findFirst({ where: { id: input.parentId, businessId: owner.businessId, engine: "motion" }, select: { spec: true, brief: true } }) : null;
     if (!parent?.spec) throw new VideoStudioError("Choose the video to change: it was not found.", "not_found", 404);
     base = parent.spec as unknown as MotionSpec;
     // The design's photo numbers refer to the parent's photos: an edit or extend keeps them, whatever the album says now.
     parentPhotos = ((parent.brief as { photos?: StoredPhoto[] } | null)?.photos ?? []).map((p) => p.path);
+    parentRecipe = recipeOf(parent.brief);
   }
   const chosen =
     input.mode === "text"
@@ -171,6 +203,10 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
   const stored: StoredPhoto[] = chosen.map(({ path, width, height, note }) => ({ path, width, height, note }));
 
   const versions = Math.min(4, Math.max(1, Math.round(input.versions ?? 1)));
+  // A viral video (the default) avoids the business's recent recipes: read before anything is charged.
+  const changing = input.mode === "edit" || input.mode === "extend";
+  const viral = isViralStyle(input.templateId);
+  const recent = viral && !changing ? await recentRecipes(owner.businessId) : [];
   // Credits first: a blocked company leaves nothing behind (no job, no call).
   const reservation = await consumeUsage(owner.userId, "videoCredits", CLAUDE_VIDEO_CREDITS * versions);
 
@@ -190,18 +226,24 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
     platform: input.platform ?? null,
     voice: input.voice ?? true,
     purpose: input.purpose === "post" ? "post" : "ad",
+    clips: input.mode === "text" ? [] : (input.clips ?? []),
   };
+  // A viral video: one recipe per version, each avoiding the business's recent ones and the versions before it. An
+  // edit or extend keeps its parent's recipe for "Why this video" but designs from the parent itself.
+  const recipes: ViralRecipe[] = [];
+  if (viral && !changing) for (let i = 0; i < versions; i++) recipes.push(recipeForBrief(brief, { seed: globalThis.crypto.randomUUID(), recent: [...recipes.slice().reverse(), ...recent], aiClips: input.aiClips }));
   // The opening line the owner picked: the Brain's context for it goes in as research (Claude follows it), as in the lab.
-  if (input.chosenHook && input.mode !== "edit" && input.mode !== "extend") brief.research = brainContext(brainBriefFromDesign(brief), { chosenHook: input.chosenHook });
+  if (input.chosenHook && !changing) brief.research = brainContext(brainBriefFromDesign({ ...brief, recipe: recipes[0] ?? null }), { chosenHook: input.chosenHook, viral: viral });
   // The caption formula the Brain picks for this brief (the one its research block gives Claude): kept with the
   // caption check, so the video's outcome says which formula it was (lib/video-studio/outcomes.ts).
   const captionFormulaId = brainFor(brainBriefFromDesign(brief)).caption.formula.id;
   // The job keeps the brief without the image bytes (photos as their Storage paths).
-  const storedBrief = { ...brief, photos: stored, base: undefined };
+  const storedBrief = { ...brief, photos: stored, base: undefined, ...(input.aiClipsRecord ? { aiClips: input.aiClipsRecord } : {}) };
+  const recipeFor = (i: number) => recipes[i] ?? (viral ? parentRecipe : null);
   const jobs = await prisma.$transaction(
-    Array.from({ length: versions }, () =>
+    Array.from({ length: versions }, (_, i) =>
       prisma.videoJob.create({
-        data: { businessId: owner.businessId, userId: owner.actorId, productId: facts.productId, parentId: input.parentId ?? null, engine: "motion", mode: input.mode, status: "designing", templateId: input.templateId, hookId: input.hookId, platform: input.platform ?? null, ratio: brief.ratio, seconds: Math.min(30, Math.max(4, Math.round(input.seconds))), brief: storedBrief as object, credits: CLAUDE_VIDEO_CREDITS, periodStart: reservation.periodStart, leaseUntil: new Date(Date.now() + DESIGN_LEASE_MS) },
+        data: { businessId: owner.businessId, userId: owner.actorId, productId: facts.productId, parentId: input.parentId ?? null, engine: "motion", mode: input.mode, status: "designing", templateId: input.templateId, hookId: input.hookId, platform: input.platform ?? null, ratio: brief.ratio, seconds: Math.min(30, Math.max(4, Math.round(input.seconds))), brief: { ...storedBrief, ...(recipeFor(i) ? { recipe: recipeFor(i) } : {}) } as object, credits: CLAUDE_VIDEO_CREDITS, periodStart: reservation.periodStart, leaseUntil: new Date(Date.now() + DESIGN_LEASE_MS) },
         select: { id: true },
       }),
     ),
@@ -215,7 +257,7 @@ export async function designMotionJobs(owner: StudioOwner, input: DesignJobInput
   const done = await Promise.all(
     jobs.map(async ({ id }, i) => {
       try {
-        const result = await designVideo({ ...brief, variation: versions > 1 ? { index: i + 1, of: versions } : null }, { transport, model });
+        const result = await designVideo({ ...brief, recipe: recipes[i] ?? null, variation: versions > 1 ? { index: i + 1, of: versions } : null }, { transport, model });
         const captionScore = scoreCaption(result.spec.caption, result.spec.hashtags, { business: brief.business, product: brief.product, styleId: brief.styleId, seconds: brief.seconds, platform: brief.platform ?? null, note: brief.note ?? null }, { platform: brief.platform ?? null, purpose: brief.purpose ?? "ad" });
         // Finished only if still ours: once the lease passed, the sweep may have failed and refunded it (then it stays so).
         await prisma.videoJob.updateMany({

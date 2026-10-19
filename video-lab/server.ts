@@ -4,7 +4,10 @@
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { DESIGNER_MODEL, DESIGN_MODES, DesignError, apiSum, apiTransport, designVideo, estimateDesignCost, isPlatform, maxDesignCost, type BriefPhoto, type DesignBrief, type DesignMode, type DesignUsage, type Platform } from "@/lib/video-engine/designer";
+import { DESIGNER_MODEL, DESIGN_MODES, DesignError, apiSum, apiTransport, designVideo, estimateDesignCost, isPlatform, maxDesignCost, recipeForBrief, type BriefClip, type BriefPhoto, type DesignBrief, type DesignMode, type DesignUsage, type Platform } from "@/lib/video-engine/designer";
+import { recipeWhy, type ViralRecipe } from "@/lib/video-engine/brain/viral";
+import { CLIP_MAX_BYTES, clientClipBytes, ownerBriefClips, saveOwnerClip, uploadClipForClient } from "./client-clips";
+import { aiClipsForBrief, aiClipsRecord } from "./ai-clips";
 import { cutoutForPhoto } from "./cutouts";
 import { loadReferenceSources, type StudioRef } from "./seedance-sources";
 import { prepareSeedanceReferences, type ReferenceSummary } from "./seedance-references";
@@ -16,7 +19,7 @@ import { BLENDER_LOOK_NAMES, lookForTemplate } from "@/lib/video-engine/blender-
 import { BLENDER_MIXES_AUDIO, getPremiumJob, listPremiumJobs, premiumVideoBytes, recoverPremiumJobs, rerenderPremium, startPremium3d } from "./premium-jobs";
 import { subscriptionTransport } from "./claude-cli";
 import { VIDEO_HOOKS } from "@/lib/video-engine/styles";
-import { TEMPLATE_CATEGORIES, VIDEO_TEMPLATES, productMinHeight } from "@/lib/video-engine/templates";
+import { TEMPLATE_CATEGORIES, VIDEO_TEMPLATES, VIRAL_STYLE_ID, isViralStyle, productMinHeight } from "@/lib/video-engine/templates";
 import { CARTOON_CAST, castById } from "@/lib/video-engine/cast";
 import { CAMERA_MOVES, GRADES, QUALITIES, RATIOS, isRatio, SPEC_LIMITS, totalMs, type MotionSpec, type Ratio } from "@/lib/video-engine/spec";
 import { validateSpec } from "@/lib/video-engine/validate";
@@ -38,7 +41,7 @@ import { AiClipError, aiClipBytes, aiClipPrices, aiClipRunView, aiClipView, aiCl
 import { VEO_CLIPS_PER_VIDEO, isVeoSeconds, veoClipUsd } from "@/lib/video-engine/veo";
 import { cancelSeedance, getSeedanceJob, getSeedancePreview, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
 import { mediaBytes, saveMedia } from "./data-source";
-import { asClientError, clientVideoUrl, createClientReshape, designForClient, getClientJob, keepPoster, listClientJobs, saveClientSpec, saveClientVideo, voiceForClient } from "./client-jobs";
+import { ClientJobError, asClientError, clientVideoUrl, createClientReshape, designForClient, getClientJob, keepPoster, listClientJobs, saveClientSpec, saveClientVideo, voiceForClient } from "./client-jobs";
 import { aiImageForClient, listAiImages, presenterShotForClient, uploadForClient } from "./client-images";
 import { RATE_LIMITS, RateLimitError, rateLimit, rateLimitMessage, type RateLimitRule } from "@/lib/rate-limit";
 import { checkStudioEnv } from "./startup-check";
@@ -156,6 +159,10 @@ type DesignRequest = {
   chosenHook: { hookId: string; line: string } | null;
   /** An ad (the default) or an organic post on the business's own page: no price or contact hooks, a quieter caption. */
   purpose: "ad" | "post";
+  /** The phone clips (video-lab/client-clips.ts) and AI clips (video-lab/ai-clips.ts) the design may place. */
+  clips: BriefClip[];
+  /** The AI clips asked for (vc- ids), recorded on the job with what they cost. */
+  aiClipIds: string[];
 };
 
 /** The opening line the page sent (both parts must be text), or null. */
@@ -188,7 +195,8 @@ async function readRequest(body: Record<string, unknown>, scope: string | null =
     businessId,
     productId,
     photoIds,
-    styleId: base?.styleId ?? String(body.styleId ?? VIDEO_TEMPLATES[0].id),
+    // Viral techniques by default (owner decision, 19 October 2026); a template only when the page picked one.
+    styleId: base?.styleId ?? String(body.styleId || VIRAL_STYLE_ID),
     hookId: base?.hookId ?? String(body.hookId ?? "auto"),
     ratio: (base?.spec?.ratio as Ratio) ?? (isRatio(body.ratio) ? body.ratio : "9:16"),
     seconds,
@@ -201,6 +209,8 @@ async function readRequest(body: Record<string, unknown>, scope: string | null =
     chosenHook: chosenHookOf(body.chosenHook),
     // An edit or extend keeps its parent's purpose.
     purpose: ((base as { purpose?: string } | null)?.purpose ?? body.purpose) === "post" ? "post" : "ad",
+    clips: base || mode === "text" ? [] : [...(scope ? [] : await ownerBriefClips(body.clipIds)), ...(await aiClipsForBrief(body.aiClipIds, scope))],
+    aiClipIds: base || mode === "text" || !Array.isArray(body.aiClipIds) ? [] : body.aiClipIds.map(String).slice(0, 3),
   };
 }
 
@@ -240,14 +250,25 @@ async function briefFor(req: DesignRequest, variation: { index: number; of: numb
     cartoonId: req.cartoonId,
     variation,
     platform: req.platform,
+    clips: req.clips,
   };
   // The Brain (context, design score, hooks) reads `purpose` off the brief: "post" means a page post, not an ad.
   Object.assign(brief, { purpose: req.purpose });
   return { brief, files };
 }
 
+/** The business's last viral recipes in the owner's tests, newest first (a new one avoids them). */
+async function recentLabRecipes(businessId: string): Promise<ViralRecipe[]> {
+  const jobs = (await listJobs()) as (LabJob & { recipe?: ViralRecipe | null })[];
+  return jobs
+    .filter((j) => j.businessId === businessId && isViralStyle(j.styleId) && j.recipe && j.mode !== "edit" && j.mode !== "extend")
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 5)
+    .map((j) => j.recipe as ViralRecipe);
+}
+
 /** One design (one version). Records the usage before anything else, saves the test, never throws. */
-async function designOne(req: DesignRequest, variation: { index: number; of: number } | null): Promise<LabJob> {
+async function designOne(req: DesignRequest, variation: { index: number; of: number } | null, recipe: ViralRecipe | null = null): Promise<LabJob> {
   const mode = claudeMode();
   const business = await getBusiness(req.businessId);
   const product = (await listProducts(req.businessId)).find((p) => p.id === req.productId);
@@ -280,14 +301,21 @@ async function designOne(req: DesignRequest, variation: { index: number; of: num
   try {
     if (!business || !product) throw new Error("Product not found.");
     const { brief } = await briefFor(req, variation);
+    brief.recipe = recipe;
     // The opening line the owner picked: the Brain's context for it goes in as research (Claude follows it).
-    if (req.chosenHook) brief.research = brainContext(brainBriefFromDesign(brief, req.platform === "youtube" ? "shorts" : req.platform), { chosenHook: req.chosenHook });
+    if (req.chosenHook) brief.research = brainContext(brainBriefFromDesign(brief, req.platform === "youtube" ? "shorts" : req.platform), { chosenHook: req.chosenHook, viral: !!recipe });
     const result = await designVideo(brief, mode === "api" ? { apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL } : { transport: subscriptionTransport(), model: process.env.VIDEO_LAB_MODEL || DESIGNER_MODEL });
     await record(job.id, "claude-design", result.usage);
     Object.assign(job, { spec: result.spec, usage: result.usage, costUsd: result.costUsd, apiEquivalentUsd: result.apiEquivalentUsd, billedTo: mode });
     // The fact check's warnings, and the research score once the designer returns one; saved with the job for the page.
     const checked = result as typeof result & { score?: DesignScore };
     Object.assign(job, { warnings: checked.warnings ?? [], purpose: req.purpose, ...(checked.score ? { score: checked.score } : {}) });
+    // The viral recipe it followed (an edit or extend keeps its parent's), its "Why this video" lines, its clips.
+    const used = result.recipe ?? recipe ?? (req.base as (LabJob & { recipe?: ViralRecipe | null }) | null)?.recipe ?? null;
+    if (used) Object.assign(job, { recipe: used, why: recipeWhy(used), viralSources: used.sources.map((s) => s.id) });
+    if (req.clips.length) Object.assign(job, { clipIds: req.clips.filter((c) => c.source === "phone").map((c) => c.path.replace(/^\/api\/media\//, "")) });
+    // The AI clips it could place, with what was asked and what they cost (video-lab/ai-clips.ts).
+    if (req.aiClipIds.length) Object.assign(job, { aiClips: await aiClipsRecord(req.aiClipIds) });
     // The caption check (lib/video-engine/brain/score.ts). An edit or extend that kept the caption keeps its check.
     const parent = req.base as (LabJob & { captionScore?: number; captionMissed?: string[] }) | null;
     const sameCaption = parent?.spec && parent.captionScore !== undefined && parent.spec.caption === result.spec.caption && parent.spec.hashtags.join(" ") === result.spec.hashtags.join(" ");
@@ -299,6 +327,7 @@ async function designOne(req: DesignRequest, variation: { index: number; of: num
     }
   } catch (error) {
     const usage = error instanceof DesignError ? error.usage : [];
+    if (recipe) Object.assign(job, { recipe, why: recipeWhy(recipe), viralSources: recipe.sources.map((s) => s.id) });
     await record(job.id, "claude-design", usage);
     Object.assign(job, { status: "failed", usage, costUsd: usage.reduce((s, u) => s + u.costUsd, 0), apiEquivalentUsd: apiSum(usage), billedTo: mode, error: error instanceof Error ? error.message : "Design failed." });
   }
@@ -323,9 +352,22 @@ async function design(body: Record<string, unknown>, scope: string | null): Prom
   } catch (error) {
     return { status: 402, body: { error: error instanceof Error ? error.message : "Not enough credits." } };
   }
+  // A viral video: one recipe per version, each avoiding the business's recent ones and the versions before it. An
+  // edit or extend keeps its parent's recipe (for "Why this video") and designs from the parent itself.
+  const recipes: ViralRecipe[] = [];
+  if (isViralStyle(req.styleId) && req.mode !== "edit" && req.mode !== "extend") {
+    try {
+      const recent = await recentLabRecipes(req.businessId);
+      const { brief } = await briefFor(req, null, { photos: false });
+      for (let i = 0; i < versions; i++) recipes.push(recipeForBrief(brief, { seed: `${newJobId()}-${i}`, recent: [...recipes.slice().reverse(), ...recent] }));
+    } catch (error) {
+      await refund(CLAUDE_VIDEO_CREDITS * versions, "Motion video failed", undefined, payer);
+      return { status: 500, body: { error: error instanceof Error ? error.message : "The viral recipe could not be made." } };
+    }
+  }
   const jobs: LabJob[] = [];
   for (let i = 0; i < versions; i += 2) {
-    const batch = [i, i + 1].filter((n) => n < versions).map((n) => designOne(req, versions > 1 ? { index: n + 1, of: versions } : null));
+    const batch = [i, i + 1].filter((n) => n < versions).map((n) => designOne(req, versions > 1 ? { index: n + 1, of: versions } : null, recipes[n] ?? null));
     jobs.push(...(await Promise.all(batch)));
   }
   const failed = jobs.filter((j) => j.status === "failed");
@@ -1246,6 +1288,30 @@ const server = http.createServer(async (req, res) => {
       // The owner's own photo (Seedance lets you upload references too): resized, kept in video-lab/data/uploads.
       const bytes = await readBody(req, 15 * 1024 * 1024);
       return json(res, 200, await saveUpload(bytes).catch((e: Error) => Promise.reject(new HttpError(400, e.message))));
+    }
+    if (req.method === "POST" && p === "/api/clip") {
+      // A phone clip for a viral video (5 to 10 s, MP4 or MOV): a client's goes into their Gallery, the owner's stays
+      // in video-lab/data/media (video-lab/client-clips.ts).
+      const name = decodeURIComponent(String(req.headers["x-file-name"] ?? "clip"));
+      const type = String(req.headers["content-type"] ?? "video/mp4");
+      const c = clientOf(req);
+      if (c) await limit(req, "upload", RATE_LIMITS.photoUpload);
+      try {
+        const bytes = await readBody(req, CLIP_MAX_BYTES + 64 * 1024).catch(() => {
+          throw new ClientJobError(`That clip is over ${CLIP_MAX_BYTES / 1024 / 1024} MB. Film a shorter clip (5 to 10 seconds).`, 400);
+        });
+        return json(res, 200, c ? await uploadClipForClient(c, bytes, name, type) : await saveOwnerClip(bytes, type));
+      } catch (error) {
+        const e = c ? await asClientError(error, 0, c.companyUserId) : error instanceof ClientJobError ? error : new ClientJobError(error instanceof Error ? error.message : "The clip could not be saved.", 400);
+        return fail(res, e.status, e.message);
+      }
+    }
+    const clipFile = p.match(/^\/api\/clip\/([A-Za-z0-9-]{10,40})$/);
+    if (req.method === "GET" && clipFile) {
+      // A client's own clip, for the renderer (the owner's test clips are served at /api/media/<id>).
+      const c = clientOf(req);
+      const bytes = c ? await clientClipBytes(c, clipFile[1]) : null;
+      return bytes ? sendMedia(req, res, bytes, "video/mp4", { "cache-control": "private, max-age=3600" }) : fail(res, 404, "Not found");
     }
     if (req.method === "GET" && p === "/api/music") return json(res, 200, await musicFor(url.searchParams.get("mood")));
     const track = p.match(/^\/api\/music\/([A-Za-z0-9_-]{6,60})$/);

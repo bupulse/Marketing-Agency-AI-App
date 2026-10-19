@@ -79,7 +79,8 @@ export function brainBriefFromDesign(b: DesignBrief, platform: Platform | "any" 
   return {
     platform: platform ?? (b.platform ? (DESIGN_PLATFORMS[b.platform] ?? null) : null),
     sector: sectorFromText([b.business.name, b.business.description, b.product.name, b.product.summary].filter(Boolean).join(" ")),
-    format: formatFromTemplate(b.styleId),
+    // A viral video (styleId "viral") has no template: its recipe names the format closest to it.
+    format: formatFromTemplate(b.styleId) ?? b.recipe?.format ?? null,
     engine: "claude",
     language: b.business.language ?? null,
     hasPrice: !!b.product.price?.trim(),
@@ -364,8 +365,10 @@ export const CONTEXT_SKIP: Record<Engine, string[]> = {
  * owner already chose the opener (a styles.ts hook other than "auto"), so the hooks are wording and layout ideas only.
  * `outcomes` (and `businessId`): BuPulse's own posted results; they re-rank the hooks and add one "What has worked for
  * you" line when there are enough. `chosenHook`: the line the owner picked from suggestHooks; it replaces the options.
+ * `viral`: the video follows a viral recipe (brain/viral.ts), which sets the opening and the beats: the hooks become
+ * wording ideas and the timeline is left out.
  */
-export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: boolean; chosenHook?: { hookId: string; line: string } | null } & OutcomeOptions = {}): string {
+export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: boolean; chosenHook?: { hookId: string; line: string } | null; viral?: boolean } & OutcomeOptions = {}): string {
   const p = "timeline" in brief ? brief : brainFor(brief, opts);
   // What our own posted videos say, when there are enough of them (outcomes.ts).
   const worked = opts.outcomes?.length ? outcomesLine(opts.outcomes, { sector: p.sector, platform: p.platform, businessId: opts.businessId }) : null;
@@ -380,7 +383,9 @@ export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: 
     : [
     opts.ownerHook
       ? "Hook ideas (the owner chose the opener above: use these for its wording and first frame only):"
-      : "Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):",
+      : opts.viral
+        ? "Hook wording ideas (the viral recipe sets the opening: use these for its words only; fill {placeholders} only with facts from the brief):"
+        : "Hook options (pick one; fill {placeholders} only with facts from the brief, drop the rest):",
     ...p.hooks.map((h, i) => `${i + 1}. ${h.name}${h.weak ? " (early evidence)" : ""}: "${h.pattern}". First 2 s: ${h.visual} Seen: ${h.examples.slice(0, 2).map((e) => `"${e}"`).join(", ")}.${h.note && CONSTRAINT.test(h.note) ? ` ${h.note}` : ""}`),
       ];
   const timeline = [
@@ -411,7 +416,7 @@ export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: 
     { lines: [head], optional: 0 },
     { lines: worked ? [worked] : [], optional: 0 },
     { lines: hooks, optional: 0 },
-    { lines: timeline, optional: 0 },
+    { lines: opts.viral ? [] : timeline, optional: 0 },
     { lines: lengthNote ? [lengthNote] : [], optional: 1 },
     { lines: [seedance ? "Shots and sound:" : "On-screen text and look:", ...doLines(textRules, 6)], optional: 0, trim: true },
     { lines: [cta], optional: 0 },

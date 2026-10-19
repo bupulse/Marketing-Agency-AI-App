@@ -42,7 +42,8 @@ export async function recordStudioOutcome(post: { id: string; businessId: string
           platform,
           templateId: job.templateId,
           hookId: job.hookId && hookById(job.hookId) ? job.hookId : null,
-          formatId: formatFromTemplate(job.templateId),
+          // A viral video has no template: its recipe names the format closest to it.
+          formatId: formatFromTemplate(job.templateId) ?? (brief as { recipe?: { format?: string } }).recipe?.format ?? null,
           // The Brain's caption formula for the design, saved with its caption check (lib/video-studio/jobs.ts).
           captionFormulaId: formulaOf(job.captionScore),
           seconds: job.seconds,

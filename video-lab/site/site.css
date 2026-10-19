@@ -447,3 +447,16 @@ dialog.narrow { width:min(640px, 94vw); }
 
 /* A client never sees the owner's links and test notices (the page learns who is signed in from /api/session). */
 body[data-kind="client"] [data-owner] { display:none !important; }
+/* Made from viral videos (Motion): the line under the prompt bar, the template link and the phone clip drop zone */
+.viralRow { max-width:1100px; margin:12px auto 0; display:flex; flex-direction:column; gap:10px; text-align:left; }
+.viralRow[hidden] { display:none; }
+.viralHead { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+.linkBtn { background:none; border:0; padding:0; color:var(--accent); font:inherit; font-size:12.5px; text-decoration:underline; cursor:pointer; }
+.clipZone { display:flex; gap:10px; align-items:center; flex-wrap:wrap; border:1px dashed var(--line); border-radius:14px; padding:10px 12px; color:var(--muted); cursor:pointer; }
+.clipZone:hover, .clipZone.over { border-color:var(--violet); color:var(--text); }
+.clipTile { position:relative; width:54px; height:96px; border-radius:10px; overflow:hidden; background:var(--panel2); border:1px solid var(--line); flex:none; }
+.clipTile video { width:100%; height:100%; object-fit:cover; }
+.clipTile b, .clipTile i { position:absolute; left:4px; font-size:10px; font-style:normal; background:rgba(0,0,0,.6); color:#fff; border-radius:6px; padding:0 4px; }
+.clipTile b { top:4px; }
+.clipTile i { bottom:4px; }
+.whyList { margin:0 0 6px; padding-left:18px; font-size:13px; color:#d6d6dc; display:flex; flex-direction:column; gap:4px; }

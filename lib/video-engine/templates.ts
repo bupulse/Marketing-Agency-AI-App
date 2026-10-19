@@ -118,3 +118,10 @@ const TEXT_LED = new Set(["kinetic-type", "typography-poster", "event-poster"]);
 export const productMinHeight = (id: string): number => (TEXT_LED.has(id) ? 0 : PRODUCT_LED.has(id) ? 0.55 : 0.45);
 
 export const templateById = (id: string): VideoTemplate => VIDEO_TEMPLATES.find((t) => t.id === id) ?? VIDEO_TEMPLATES[0];
+
+/**
+ * The style id of a video designed from viral techniques instead of a template (docs/VIRAL_RECIPES.md): the default for
+ * every new studio and Autopilot video (owner decision, 19 October 2026). The templates stay one link away.
+ */
+export const VIRAL_STYLE_ID = "viral";
+export const isViralStyle = (id: string | null | undefined): boolean => id === VIRAL_STYLE_ID;

@@ -6,7 +6,7 @@
 import { formatById, hookById, sectorById } from "./database";
 import { brainFor } from "./select";
 import { briefFacts, briefSector, suggestHooks, type SuggestBrief } from "./suggest";
-import { VIDEO_TEMPLATES } from "../templates";
+import { VIDEO_TEMPLATES, VIRAL_STYLE_ID } from "../templates";
 import { FORMATS, type FormatId, type Outcome, type Platform, type SectorId } from "./types";
 
 export type SeriesPost = {
@@ -19,8 +19,13 @@ export type SeriesPost = {
   hookId: string;
   /** The opening line, ready to use (suggestHooks). */
   line: string;
-  /** A Claude engine template (lib/video-engine/templates.ts). */
+  /** A Claude engine template (lib/video-engine/templates.ts): the format this day's post takes. */
   templateId: string;
+  /**
+   * How the post is designed: Autopilot always designs from viral techniques (owner decision, 19 October 2026), so
+   * this is "viral"; templateId stays the day's format, which keeps the week varied.
+   */
+  styleId: typeof VIRAL_STYLE_ID;
   formatId: FormatId;
   seconds: number;
   /** The caption formula for this platform and sector (brain/data/captions.json). */
@@ -142,7 +147,7 @@ export function planSeries(brief: SuggestBrief, opts: SeriesOptions = {}): Serie
       date = d.toISOString().slice(0, 10);
       weekday = WEEKDAYS[d.getUTCDay()];
     }
-    posts.push({ day, date, weekday, platform, hookId: s.hookId, line: s.line, templateId, formatId: format, seconds, captionFormulaId: pick.caption.formula.id, musicMood, voice: presenter && (format === "ugc-testimonial" || format === "tutorial"), note, why: s.why, evidence: s.evidence });
+    posts.push({ day, date, weekday, platform, hookId: s.hookId, line: s.line, templateId, styleId: VIRAL_STYLE_ID, formatId: format, seconds, captionFormulaId: pick.caption.formula.id, musicMood, voice: presenter && (format === "ugc-testimonial" || format === "tutorial"), note, why: s.why, evidence: s.evidence });
   }
   return posts;
 }

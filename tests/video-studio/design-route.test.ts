@@ -32,6 +32,8 @@ const prisma = vi.hoisted(() => ({
     }),
     findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => store.jobs.get(where.id)!),
     findFirst: vi.fn(async (): Promise<Record<string, unknown> | null> => null),
+    // The business's recent viral recipes (a viral design avoids repeating them).
+    findMany: vi.fn(async (): Promise<Record<string, unknown>[]> => []),
   },
   $transaction: vi.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
 }));
@@ -120,6 +122,35 @@ describe("POST /api/video/design", () => {
     // The lease outlasts the route's 300 s, so the sweep never takes a request that is still working.
     const lease = (prisma.videoJob.create.mock.calls[0] as unknown as [{ data: { leaseUntil: Date } }])[0].data.leaseUntil;
     expect(lease.getTime() - Date.now()).toBeGreaterThan(300_000);
+  });
+
+  it("designs from viral techniques by default: each version its own recipe, kept in the job, avoiding the recent ones", async () => {
+    const fetchMock = claudeAnswer();
+    vi.stubGlobal("fetch", fetchMock);
+    const { viralRecipe } = await import("@/lib/video-engine/brain/viral");
+    const old = viralRecipe({ sector: "phone-shop", product: "Samsung Galaxy A56", platform: "tiktok", seconds: 15, hasPrice: true, hasPhone: true, seed: "an older video" });
+    prisma.videoJob.findMany.mockResolvedValueOnce([{ brief: { recipe: old } }]);
+    const res = await call({ productId: "p1", seconds: 15, platform: "tiktok", versions: 2 });
+    expect(res.status).toBe(200);
+    // The recent recipes are read before anything is charged.
+    expect(prisma.videoJob.findMany.mock.invocationCallOrder[0]).toBeLessThan(usage.consumeUsage.mock.invocationCallOrder[0]);
+    expect(prisma.videoJob.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ businessId: "b1", templateId: "viral" }), take: 5 }));
+    const created = (prisma.videoJob.create.mock.calls as unknown as [{ data: { templateId: string; brief: { recipe?: { seed: string; opening: { hookType: string }; sources: { id: string }[] } } } }][]).map((c) => c[0].data);
+    expect(created.map((d) => d.templateId)).toEqual(["viral", "viral"]);
+    const [a, b] = created.map((d) => d.brief.recipe!);
+    expect(a.seed).not.toBe(b.seed);
+    expect(a.sources.length).toBeGreaterThanOrEqual(3);
+    expect(a.opening.hookType).not.toBe(old.opening.hookType);
+    expect(b.opening.hookType).not.toBe(a.opening.hookType);
+    // Claude gets the recipe, not a template line.
+    const sent = (fetchMock.mock.calls as unknown as [string, RequestInit][]).map(([, init]) => JSON.stringify(JSON.parse(String(init.body)).messages[0].content));
+    for (const text of sent) {
+      expect(text).toContain("Viral recipe:");
+      expect(text).not.toContain('Template \\"');
+    }
+    const { jobs } = (await res.json()) as { jobs: Job[] };
+    expect((jobs[0].viral as { why: string[]; sources: string[] }).why[0]).toMatch(/^Opens like /);
+    expect((jobs[0].score as { passed: { id: string }[]; failed: { id: string }[] }).passed.concat((jobs[0].score as { failed: { id: string }[] }).failed).map((x) => x.id)).toContain("recipe-opening");
   });
 
   it("a design the sweep already failed and refunded stays failed: finishing late refunds and charges nothing again", async () => {

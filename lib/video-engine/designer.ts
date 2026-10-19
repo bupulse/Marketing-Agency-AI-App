@@ -5,7 +5,7 @@
 // will call it through withLedger (lib/ai/ledger.ts) like every other AI call.
 import { estimateCostUsd } from "@/lib/ai/pricing";
 import { hookById } from "./styles";
-import { productMinHeight, templateById } from "./templates";
+import { isViralStyle, productMinHeight, templateById } from "./templates";
 import { castById } from "./cast";
 import { CAMERA_MOVES, GRADES, MATERIALS, PARTICLE_KINDS, RATIOS, SPEC_LIMITS, totalMs, type MotionSpec, type Ratio } from "./spec";
 import { SpecError, extractJson, validateSpec } from "./validate";
@@ -14,6 +14,7 @@ import { factCheck, type FactWarning } from "./factcheck";
 import { brainBriefFromDesign, brainContext } from "./brain/select";
 import { STYLE_LIMITS, scoreDesign, templateStyle, type DesignScore } from "./brain/score";
 import { PREFERRED_PHRASES, checkLanguage, languageTextsOf } from "./brain";
+import { recipeText, viralRecipe, type RecipePlatform, type ViralRecipe } from "./brain/viral";
 
 const MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 export const DESIGNER_MODEL = "claude-sonnet-5-5";
@@ -25,6 +26,14 @@ const TIMEOUT_MS = 150_000;
  * where the product is in the photo (fractions; the cut-out's box), so the validator keeps text off it.
  */
 export type BriefPhoto = { base64: string; mediaType: "image/jpeg" | "image/png" | "image/webp"; width: number; height: number; note?: string; cutout?: boolean; subject?: { x: number; y: number; w: number; h: number } | null };
+
+/**
+ * A video clip Claude may place as a "video" layer (docs/VIRAL_RECIPES.md): a phone clip the client added (5 to 10 s:
+ * the shop, hands with the product, the owner talking) or an AI clip (Veo, image-to-video from the product photo).
+ * `path` is where the renderer loads it from (a studio path such as /api/clip/<id>, or https); Claude never sees the
+ * clip itself, only its length, size and `note`.
+ */
+export type BriefClip = { path: string; source: "phone" | "ai"; seconds: number; width: number; height: number; note?: string };
 
 export type DesignBrief = {
   business: { name: string; description?: string | null; language?: string | null; colors?: string[]; phone?: string | null; website?: string | null; country?: string | null; tone?: string | null };
@@ -61,6 +70,13 @@ export type DesignBrief = {
   research?: string | null;
   /** Whether the video will get a voice-over (default true): the score then checks the say lines. */
   voice?: boolean;
+  /**
+   * The viral recipe (brain/viral.ts) when styleId is "viral": sent in place of the template line. Made by the caller
+   * (recipeForBrief, with a seed per job and the business's recent recipes); designVideo makes one when it is missing.
+   */
+  recipe?: ViralRecipe | null;
+  /** Video clips Claude may place as "video" layers (phone clips, AI clips), numbered Clip 1, Clip 2... */
+  clips?: BriefClip[];
 };
 
 /** Platforms a video is made for: the part of the screen the app covers and the length that works there. */
@@ -90,7 +106,7 @@ export type ClaudeTransport = (call: { model: string; system: string; content: u
  * `warnings`: numbers and claims in the design that the brief does not give (factcheck.ts), for the owner to check.
  * `score`: the brain's checks of the design, 0 to 100, with what passed and failed (brain/score.ts).
  */
-export type DesignResult = { spec: MotionSpec; usage: DesignUsage[]; costUsd: number; apiEquivalentUsd: number; attempts: number; warnings: FactWarning[]; score: DesignScore };
+export type DesignResult = { spec: MotionSpec; usage: DesignUsage[]; costUsd: number; apiEquivalentUsd: number; attempts: number; warnings: FactWarning[]; score: DesignScore; /** The viral recipe the design followed (styleId "viral"). */ recipe?: ViralRecipe };
 
 export class DesignError extends Error {
   constructor(message: string, readonly usage: DesignUsage[] = []) {
@@ -182,7 +198,11 @@ export function briefText(brief: DesignBrief): string {
   const base = brief.base ? JSON.stringify(brief.base) : "";
   // What works for this kind of video: the owner's research block, or the brain's pick (docs/research/BRAIN.md). An edit or
   // an extend keeps the video it changes, so it gets none.
-  const research = brief.research?.trim() || (mode === "edit" || mode === "extend" ? "" : brainContext(brainBriefFromDesign(brief), { ownerHook: brief.hookId !== "auto" }));
+  // A viral video's recipe sets the opening and the beats, so the research block then gives hook wording and rules only.
+  const changing = mode === "edit" || mode === "extend";
+  const viral = isViralStyle(brief.styleId) && !changing ? (brief.recipe ?? null) : null;
+  const research = brief.research?.trim() || (changing ? "" : brainContext(brainBriefFromDesign(brief), { ownerHook: brief.hookId !== "auto", viral: !!viral }));
+  const clips = brief.clips ?? [];
   const lines = [
     mode === "edit" && base
       ? `EDIT an existing video. Here is its current design (data):\n<<<DESIGN\n${base}\nDESIGN>>>\nApply this change and keep everything else as it is: <<<${note || "make it better"}>>>. Answer with the complete updated MotionSpec.`
@@ -195,9 +215,10 @@ export function briefText(brief: DesignBrief): string {
     brief.purpose === "post"
       ? "Purpose: a POST on the business's own page, for its followers (not an ad). Show the product and its story; no price push and no contact push: no phone line or 'call now' in the scenes, the number at most once on the end card. End on the shop sign (the shop name, its place). The caption may end on the shop name instead of how to order."
       : "",
-    mode === "edit" || mode === "extend" ? "" : `Template "${template.name}": ${template.direction}`,
-    template.presenter && mode !== "edit" && mode !== "extend" ? "This template normally has a presenter on camera. There is no presenter yet: carry it with the product, captions written in the first person of a happy customer (only true facts), and handheld camera realism." : "",
-    mode === "edit" || mode === "extend" ? "" : `Opening hook: ${hook.direction}`,
+    changing ? "" : viral ? recipeText(viral, { clips: clips.length }) : `Template "${template.name}": ${template.direction}`,
+    template.presenter && !changing && !viral ? "This template normally has a presenter on camera. There is no presenter yet: carry it with the product, captions written in the first person of a happy customer (only true facts), and handheld camera realism." : "",
+    // The recipe has its own opening; a hook the owner picked still goes in (it wins over the recipe's).
+    changing || (viral && brief.hookId === "auto") ? "" : `Opening hook: ${hook.direction}`,
     mode === "text" ? "Mode: TEXT TO VIDEO. Do not use any photo: design with text, shapes, colour and camera only." : "",
     mode === "image" ? "Mode: IMAGE TO VIDEO. The first scene must open on Photo 1 as a full-frame background (no blur, no dim at the start), then bring it to life with the camera, layers and text." : "",
     mode === "firstLast" ? "Mode: FIRST AND LAST FRAME. The first scene opens on Photo 1 full frame; the last scene ends on Photo 2 full frame (both as backgrounds, no blur). Everything between connects them." : "",
@@ -248,9 +269,67 @@ export function briefText(brief: DesignBrief): string {
     brief.photos.length
       ? `Photos (numbered in order, ${brief.photos.length} in all): ${brief.photos.map((p, i) => `Photo ${i + 1} is ${p.width}x${p.height}${p.note ? ` (${p.note})` : ""}${p.cutout ? ", plain background: cut-out available" : ""}`).join("; ")}.`
       : "No photos: design with text, shapes and colour only (no photo layers).",
+    clips.length && !changing ? clipsText(clips) : "",
     "Answer with the JSON object only.",
   ];
   return lines.filter((l) => l !== "").join("\n").replace(/\n(?=Business|Product|Photos)/g, "\n\n");
+}
+
+/** The clips Claude may place, and the layer that places one (spec.ts VideoLayer, with the clip's number for its url). */
+export function clipsText(clips: BriefClip[]): string {
+  return [
+    `Clips (real video you can place, numbered in order, ${clips.length} in all; Claude does not see them): ${clips.map((c, i) => `Clip ${i + 1} is a ${Math.round(c.seconds * 10) / 10} s ${c.source === "phone" ? "phone clip the owner filmed" : "AI clip made from the product photo"}, ${c.width}x${c.height}${c.note ? ` (${c.note.replace(/<<<|>>>/g, "").slice(0, 160)})` : ""}`).join("; ")}.`,
+    `Place a clip with this layer, as the scene's first (bottom) layer: { kind: "video"; clip: number /*1-based*/; x: 0.5; y: 0.5; w: 1; h: 1; fit?: "cover" | "contain"; start?: number /*seconds into the clip where this scene begins*/; dim?: number /*0-0.8: at least 0.4 under light text*/ }. At most one clip per scene; a scene with a clip lasts no longer than the clip's length minus its start (cut it into two scenes with different starts rather than stretching it). Use each clip once or twice, on the beats the recipe marks for a clip; the other scenes use the photos. Text over a clip sits in a box or on a dim veil; never cover the product in the clip.`,
+  ].join("\n");
+}
+
+/**
+ * Turns Claude's clip numbers into the clips' paths (the renderer loads `url`), and drops video layers that name no
+ * clip of the brief: Claude may only place the clips it was given. Changes the raw answer in place, before validation.
+ */
+export function placeClips(raw: unknown, clips: BriefClip[]): void {
+  const scenes = (raw as { scenes?: { layers?: unknown[] }[] } | null)?.scenes;
+  if (!Array.isArray(scenes)) return;
+  for (const s of scenes) {
+    if (!s || !Array.isArray(s.layers)) continue;
+    s.layers = s.layers.flatMap((l) => {
+      const layer = l as { kind?: unknown; clip?: unknown; url?: unknown; start?: unknown; sound?: unknown } | null;
+      if (layer?.kind !== "video") return [l];
+      const clip = typeof layer.clip === "number" && Number.isInteger(layer.clip) ? clips[layer.clip - 1] : undefined;
+      if (!clip) return [];
+      const start = typeof layer.start === "number" && Number.isFinite(layer.start) ? Math.min(Math.max(0, layer.start), Math.max(0, clip.seconds - 1)) : 0;
+      // The clip's own sound stays off: the music and the voice-over are the video's sound.
+      return [{ ...layer, url: clip.path, start, sound: false, clip: undefined }];
+    });
+  }
+}
+
+/**
+ * The viral recipe for a brief (brain/viral.ts): its sector, facts, platform, length and footage. `seed`: one per job
+ * (two jobs for one product get different recipes); `recent`: the business's last recipes, newest first;
+ * `aiClips`: the AI clip step is on, so beats that want filmed footage may get one.
+ */
+export function recipeForBrief(brief: DesignBrief, opts: { seed: string; recent?: ViralRecipe[]; aiClips?: boolean }): ViralRecipe {
+  const b = brainBriefFromDesign(brief);
+  const phoneClips = (brief.clips ?? []).filter((c) => c.source === "phone").length;
+  // AI clips already made (the Veo step runs before the design): that many beats take one.
+  const aiCount = (brief.clips ?? []).filter((c) => c.source === "ai").length;
+  return viralRecipe({
+    sector: b.sector ?? "shop",
+    product: brief.product.name,
+    platform: brief.platform && isPlatform(brief.platform) ? (brief.platform as RecipePlatform) : null,
+    country: brief.business.country ?? null,
+    language: brief.business.language ?? null,
+    purpose: brief.purpose === "post" ? "post" : "ad",
+    seconds: brief.seconds,
+    hasPrice: b.hasPrice,
+    hasPhone: b.hasPhone,
+    hasLocation: !!b.hasLocation,
+    hasOffer: !!b.hasOffer,
+    footage: { phoneClips, aiClips: !!opts.aiClips || aiCount > 0, ...(aiCount ? { aiCount } : {}) },
+    recent: opts.recent ?? [],
+    seed: opts.seed,
+  });
 }
 
 type ClaudeResponse = { model?: string; stop_reason?: string | null; content?: { type: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number } };
@@ -304,6 +383,8 @@ export async function designVideo(brief: DesignBrief, opts: { apiKey?: string; m
   const apiKey = opts.apiKey;
   if (!opts.transport && !apiKey) throw new DesignError("The Claude API key is not set.");
   const send: ClaudeTransport = opts.transport ?? ((call) => callClaude(apiKey as string, call.model, call.system, call.content, fetchImpl));
+  // A viral video without a recipe from its caller gets one here (a fresh seed: no recent recipes to avoid).
+  if (isViralStyle(brief.styleId) && !brief.recipe && brief.mode !== "edit" && brief.mode !== "extend") brief = { ...brief, recipe: recipeForBrief(brief, { seed: `${brief.product.name}|${brief.variation?.index ?? 1}|${Math.random()}` }) };
   const system = systemPrompt();
   const content: unknown[] = [
     { type: "text", text: briefText(brief) },
@@ -323,6 +404,7 @@ export async function designVideo(brief: DesignBrief, opts: { apiKey?: string; m
     if (answer.stop === "refusal") throw new DesignError("Claude declined to design this video.", usage);
     try {
       const raw = extractJson(answer.text);
+      placeClips(raw, brief.clips ?? []);
       // An edit may lengthen or shorten the video (Claude's own scene lengths, 6 to 30 s); an extend adds the asked seconds.
       const answered = rawSeconds(raw);
       const seconds = brief.mode === "edit" && brief.base ? answered || totalMs(brief.base) / 1000 : brief.mode === "extend" && brief.base ? totalMs(brief.base) / 1000 + brief.seconds : brief.seconds;
@@ -331,7 +413,7 @@ export async function designVideo(brief: DesignBrief, opts: { apiKey?: string; m
       const language = checkLanguage(languageTextsOf(spec), brief.business.language).map((i) => ({ where: i.where, found: i.found, problem: "language" as const, message: i.message, suggestion: i.suggestion }));
       const warnings = [...factCheck(spec, brief), ...language];
       const score = scoreDesign(spec, brief, { platform: brief.platform ?? null, voice: brief.voice ?? true, purpose: brief.purpose ?? "ad" });
-      return { spec, usage, costUsd: sum(usage), apiEquivalentUsd: apiSum(usage), attempts: attempt, warnings, score };
+      return { spec, usage, costUsd: sum(usage), apiEquivalentUsd: apiSum(usage), attempts: attempt, warnings, score, ...(brief.recipe && isViralStyle(brief.styleId) ? { recipe: brief.recipe } : {}) };
     } catch (error) {
       lastError = error instanceof SpecError ? error.message : "invalid answer";
       if (answer.stop === "max_tokens") lastError = "it was cut off because it was too long";

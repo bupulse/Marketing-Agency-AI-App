@@ -6,6 +6,7 @@ import { drawSpecFrame, type Photos } from "@/lib/video-engine/draw";
 import { encodeSpecMp4, loadPhotos, loadSpecFonts } from "@/lib/video-engine/encode";
 import { canvasSize, totalMs, type MotionSpec, type Quality } from "@/lib/video-engine/spec";
 import { openVideoFrames } from "@/lib/video-engine/video-frames";
+import { VIRAL_STYLE_ID } from "@/lib/video-engine/templates";
 import type { VoiceCue } from "@/lib/video-engine/voice";
 import { carousel } from "./carousel";
 import { categoryName, translate } from "./i18n";
@@ -30,7 +31,7 @@ type Options = {
 };
 type FactWarning = { where: string; found: string; problem: "not-in-brief" | "business-only"; message: string };
 type DesignScore = { score: number; failed: { rule: string; reason: string; scene?: number | null }[] };
-type ClaudeJob = { businessId?: string; productId?: string; purpose?: "ad" | "post"; warnings?: FactWarning[]; score?: DesignScore; captionScore?: number; captionMissed?: string[]; id: string; createdAt: string; productName: string; styleId: string; ratio: string; photoIds: string[]; spec: MotionSpec | null; usage: unknown[]; apiEquivalentUsd?: number; status: string; error: string | null; video: { bytes: number; quality?: string } | null; mode?: string };
+type ClaudeJob = { why?: string[]; viralSources?: string[]; businessId?: string; productId?: string; purpose?: "ad" | "post"; warnings?: FactWarning[]; score?: DesignScore; captionScore?: number; captionMissed?: string[]; id: string; createdAt: string; productName: string; styleId: string; ratio: string; photoIds: string[]; spec: MotionSpec | null; usage: unknown[]; apiEquivalentUsd?: number; status: string; error: string | null; video: { bytes: number; quality?: string } | null; mode?: string };
 type SdJob = { businessId?: string | null; productId?: string | null; id: string; createdAt: string; status: string; credits: number; estimateUsd: number; costUsd: number; tokens: number; videoFile: string | null; error: string | null; title: string; request: { prompt: string; tier: string; resolution: string; ratio: string; seconds: number; referenceNotes: string[] }; preview?: { notice: string; readyAt: string; wouldCostCredits: number } };
 /** An opening line from the Brain (lib/video-engine/brain/suggest.ts). */
 type HookSuggestion = { hookId: string; name: string; line: string; why: string };
@@ -63,7 +64,12 @@ const state = {
   o: null as Options | null,
   engine: "seedance" as Engine,
   mode: "reference",
-  templateId: "product-hero",
+  /** "viral" (the default): designed from viral techniques; a template id once the owner picks one. */
+  templateId: VIRAL_STYLE_ID as string,
+  /** The template picker, shown after "Use a template instead" (Motion); Real video always shows it. */
+  showTemplates: false,
+  /** Phone clips for a viral video: 2 to 4 of 5 to 10 s. */
+  clips: [] as Clip[],
   ratio: "9:16",
   seconds: 5,
   tier: "fast",
@@ -175,7 +181,7 @@ function renderPills() {
   if (!o) return;
   const sd = state.engine === "seedance";
   $("pModeV").textContent = MODES[state.engine].find((m) => m.id === state.mode)?.name ?? "Reference";
-  $("pTemplateV").textContent = o.templates.find((t) => t.id === state.templateId)?.name ?? "Template";
+  $("pTemplateV").textContent = state.templateId === VIRAL_STYLE_ID ? (sd ? "Template" : "Viral techniques") : (o.templates.find((t) => t.id === state.templateId)?.name ?? "Template");
   $("pRatioV").textContent = state.ratio;
   $("pSecondsV").textContent = `${state.seconds}s`;
   $("pQualityV").textContent = sd ? `${o.seedance.tiers.find((t) => t.id === state.tier)?.name.replace("Seedance 2.0 ", "") || "Pro"} · ${state.resolution}` : state.premium ? `Premium 3D · ${state.premiumQuality}` : state.quality;
@@ -189,9 +195,91 @@ function renderPills() {
   $("pPurpose").classList.toggle("on", state.purpose === "post");
   $("pPlatformV").textContent = PLATFORMS.find((x) => x.id === state.platform)?.name ?? "Any platform";
   $("tAvatar").hidden = false;
+  renderViral();
   void quote();
   scheduleCheck();
   void loadHooks();
+}
+
+// ---- Made from viral videos (lib/video-engine/brain/viral.ts) ---------------------------------------------------------
+
+/** Motion: "Made from viral videos" with the template link, and the phone clip drop zone; the template picker below. */
+function renderViral() {
+  const box = $("viralRow");
+  const motion = state.engine === "claude";
+  const viral = state.templateId === VIRAL_STYLE_ID;
+  box.hidden = !motion;
+  $("tplSection").hidden = motion && viral && !state.showTemplates;
+  if (!motion) return;
+  const link = el("button", { className: "linkBtn", textContent: viral ? "Use a template instead" : "Back to viral techniques" });
+  link.onclick = () => {
+    if (viral) {
+      state.showTemplates = true;
+      renderViral();
+      document.getElementById("tgrid")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      msg("Pick a template below. Your video will follow it instead of viral techniques.");
+    } else {
+      state.templateId = VIRAL_STYLE_ID;
+      state.showTemplates = false;
+      renderPills();
+      renderTemplates();
+      msg("Back to viral techniques: every video gets its own mix from real viral videos.", "ok");
+    }
+  };
+  const head = el(
+    "div",
+    { className: "viralHead" },
+    el("b", { textContent: viral ? "✦ Made from viral videos" : `Template: ${state.o?.templates.find((t) => t.id === state.templateId)?.name ?? state.templateId}` }),
+    el("span", { className: "muted small", textContent: viral ? "BuPulse mixes the openings, pacing and layouts of real viral videos into a new video for your product. Each video is different." : "This video follows the template." }),
+    link,
+  );
+  const clips = viral && state.mode !== "text" ? clipZone() : null;
+  box.replaceChildren(head, ...(clips ? [clips] : []));
+}
+
+/** The phone clip drop zone: 2 to 4 clips of 5 to 10 s, free. */
+function clipZone(): HTMLElement {
+  const zone = el("div", { className: "clipZone", title: "Drop MP4 or MOV clips here, or click to choose" });
+  const tiles = state.clips.map((c, i) => {
+    const t = el("div", { className: "clipTile", title: `${c.label}. Click to remove.` }, el("video", { src: c.url, muted: true, playsInline: true, preload: "metadata" }), el("b", { textContent: `Clip ${i + 1}` }), el("i", { textContent: `${c.seconds} s` }));
+    t.onclick = (e) => {
+      e.stopPropagation();
+      state.clips.splice(i, 1);
+      renderViral();
+    };
+    return t;
+  });
+  const hint = el("span", { className: "small", textContent: state.clips.length ? (state.clips.length < 4 ? "Add another clip (up to 4)." : "4 clips: that is the most.") : "Add 2 to 4 phone clips (5 to 10 s each): your shop, hands holding the product, you talking. Free. With clips, BuPulse can use viral techniques that need real footage." });
+  zone.append(...tiles, hint);
+  const input = $<HTMLInputElement>("clipFile");
+  zone.onclick = () => state.clips.length < 4 && input.click();
+  zone.ondragover = (e) => {
+    e.preventDefault();
+    zone.classList.add("over");
+  };
+  zone.ondragleave = () => zone.classList.remove("over");
+  zone.ondrop = (e) => {
+    e.preventDefault();
+    zone.classList.remove("over");
+    void addClips([...(e.dataTransfer?.files ?? [])]);
+  };
+  return zone;
+}
+
+/** Uploads phone clips one by one (the server checks their length and format). */
+async function addClips(files: File[]) {
+  for (const file of files.filter((f) => /video\/(mp4|quicktime)|\.(mp4|mov)$/i.test(`${f.type} ${f.name}`))) {
+    if (state.clips.length >= 4) return msg("At most 4 phone clips.", "err");
+    msg(`Uploading ${file.name}…`);
+    try {
+      const out = await api<{ id: string; url: string; seconds: number }>("/api/clip", { method: "POST", headers: { "content-type": file.type || "video/mp4", "x-file-name": encodeURIComponent(file.name) }, body: file });
+      state.clips.push({ id: out.id, url: out.url, seconds: out.seconds, label: file.name });
+      msg(`Clip added (${out.seconds} s).`, "ok");
+    } catch (e) {
+      msg((e as Error).message, "err");
+    }
+    renderViral();
+  }
 }
 
 // ---- Opening lines (the Brain's suggestions, Motion only for now) -----------------------------------------------------
@@ -239,7 +327,9 @@ function renderHooks() {
 
 // ---- Plan a week (the Brain's planSeries) -----------------------------------------------------------------------------
 
-type SeriesPost = { day: number; date: string | null; weekday: string | null; platform: string; hookId: string; line: string; templateId: string; seconds: number; voice: boolean; note: string; why: string };
+type SeriesPost = { day: number; date: string | null; weekday: string | null; platform: string; hookId: string; line: string; templateId: string; styleId?: string; seconds: number; voice: boolean; note: string; why: string };
+/** A phone clip the client added for a viral video (video-lab/client-clips.ts). */
+type Clip = { id: string; url: string; seconds: number; label: string };
 const PLATFORM_NAMES: Record<string, string> = { tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook", youtube: "YouTube Shorts" };
 
 /** Seven distinct posts for the product (free); each row's Generate makes it as a normal Motion design. */
@@ -260,14 +350,15 @@ async function planWeek() {
     return;
   }
   const o = state.o as Options;
-  table.replaceChildren(el("tr", {}, ...["Day", "Platform", "Opening line", "Template", "Length", "Note", ""].map((h) => el("th", { textContent: h }))));
+  table.replaceChildren(el("tr", {}, ...["Day", "Platform", "Opening line", "Made from", "Length", "Note", ""].map((h) => el("th", { textContent: h }))));
   for (const post of posts) {
     const go = el("button", { className: "btn sm primary", textContent: `Generate (${state.claudeCredits || "…"})` });
     go.onclick = () => {
       dlg.close();
       // The row fills the form, then it is made like any Motion design.
       setEngine("claude");
-      state.templateId = post.templateId;
+      // Autopilot designs every post from viral techniques; the day's template is its format only.
+      state.templateId = post.styleId ?? post.templateId;
       state.platform = post.platform && post.platform !== "any" ? post.platform : null;
       state.seconds = post.seconds;
       state.voice = post.voice;
@@ -284,7 +375,7 @@ async function planWeek() {
         el("td", { textContent: post.weekday ? `${post.weekday.slice(0, 3)} ${post.date?.slice(5) ?? ""}` : `Day ${post.day}` }),
         el("td", { textContent: PLATFORM_NAMES[post.platform] ?? "Any" }),
         el("td", { textContent: post.line, title: post.why }),
-        el("td", { textContent: o.templates.find((t) => t.id === post.templateId)?.name ?? post.templateId }),
+        el("td", { textContent: post.styleId === VIRAL_STYLE_ID ? "Viral techniques" : (o.templates.find((t) => t.id === post.templateId)?.name ?? post.templateId), title: `Format: ${o.templates.find((t) => t.id === post.templateId)?.name ?? post.templateId}` }),
         el("td", { textContent: `${post.seconds} s${post.voice ? " · voice" : ""}` }),
         el("td", { className: "muted small", textContent: post.note }),
         el("td", {}, go),
@@ -441,7 +532,11 @@ function setupPills() {
     state.versions = Math.max(1, Math.min(4, state.versions + (x < w / 2 ? -1 : 1)));
     renderPills();
   };
-  $("pTemplate").onclick = () => document.getElementById("tgrid")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  $("pTemplate").onclick = () => {
+    state.showTemplates = true;
+    renderViral();
+    document.getElementById("tgrid")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   $("pAdd").onclick = () => openPicker("refs");
   $("tProduct").onclick = () => openPicker("product");
   $("tAvatar").onclick = () => openPicker("avatar");
@@ -776,11 +871,11 @@ async function generate() {
         await refreshWallet();
         return;
       }
-      msg(`Claude is designing ${state.versions > 1 ? `${state.versions} versions` : "the video"}… (about 1 to 2 minutes)`);
+      msg(`${state.templateId === VIRAL_STYLE_ID ? "BuPulse is mixing viral techniques and Claude is designing" : "Claude is designing"} ${state.versions > 1 ? `${state.versions} versions` : "the video"}… (about 1 to 2 minutes)`);
       const out = await api<{ jobs: ClaudeJob[]; error: string | null }>("/api/design", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: state.mode, businessId: state.businessId, productId: state.productId, photoIds: state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]), styleId: state.templateId, hookId: state.hookId, ratio: state.ratio, seconds: state.seconds, note: prompt, fixedLens: state.fixedLens, cartoonId: state.avatar?.kind === "cartoon" ? state.avatar.id : null, versions: state.versions, platform: state.platform, purpose: state.purpose, chosenHook: state.chosenHook ? { hookId: state.chosenHook.hookId, line: state.chosenHook.line } : null }),
+        body: JSON.stringify({ mode: state.mode, businessId: state.businessId, productId: state.productId, photoIds: state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]), styleId: state.templateId, hookId: state.hookId, ratio: state.ratio, seconds: state.seconds, note: prompt, fixedLens: state.fixedLens, cartoonId: state.avatar?.kind === "cartoon" ? state.avatar.id : null, versions: state.versions, platform: state.platform, purpose: state.purpose, chosenHook: state.chosenHook ? { hookId: state.chosenHook.hookId, line: state.chosenHook.line } : null, clipIds: state.templateId === VIRAL_STYLE_ID ? state.clips.map((c) => c.id) : [] }),
       });
       if (out.error) throw new Error(out.error);
       msg("Designed. Press a generation to play it and make the MP4.", "ok");
@@ -993,13 +1088,16 @@ function showPremium(g: Gen, j: PremiumJob): [string, string][] {
  * "Check these facts": claims the fact check could not find in the product's facts (red) or found only in the
  * business's general description (amber), and the research rules the design missed.
  */
-function showFacts(j: { warnings?: FactWarning[]; score?: DesignScore; captionScore?: number; captionMissed?: string[]; caption?: string | null }) {
+function showFacts(j: { warnings?: FactWarning[]; score?: DesignScore; captionScore?: number; captionMissed?: string[]; caption?: string | null; why?: string[]; viralSources?: string[] }) {
   const box = $("dFacts");
   const warnings = j.warnings ?? [];
   const failed = j.score?.failed ?? [];
   const hasCaption = j.captionScore !== undefined;
-  box.hidden = !warnings.length && !failed.length && !hasCaption;
+  const why = j.why ?? [];
+  box.hidden = !warnings.length && !failed.length && !hasCaption && !why.length;
   box.replaceChildren(
+    // A viral video: what each technique was borrowed from, in plain words (never other people's names or frames).
+    ...(why.length ? [el("h5", { textContent: "Why this video" }), el("ul", { className: "whyList" }, ...why.map((w) => el("li", { textContent: w })))] : []),
     // The post caption, with the Brain's caption check under it.
     ...(hasCaption
       ? [
@@ -1426,6 +1524,7 @@ function renderTemplates() {
     const card = el("button", { className: `tcard${t.id === state.templateId ? " on" : ""}` }, thumb, el("div", { className: "nm" }, el("b", { textContent: t.name }), el("span", { textContent: t.blurb })));
     card.onclick = () => {
       state.templateId = t.id;
+      state.showTemplates = true;
       if (t.seconds && state.engine === "claude") state.seconds = t.seconds;
       if (t.hook) state.hookId = t.hook;
       renderPills();
@@ -1509,6 +1608,8 @@ async function start() {
   const seconds = Number(q.get("seconds"));
   if (state.engine === "seedance" && seconds >= o.seedance.limits.minSeconds && seconds <= o.seedance.limits.maxSeconds) state.seconds = Math.round(seconds);
   if (!o.seedanceReady && state.engine === "seedance") msg("Seedance is waiting for the BytePlus key: set everything up now; Generate shows what it will make, or makes it as a Motion video.");
+  // The template picker opens straight away from a template link (/templates is /create#tgrid) or a model page's template.
+  if (location.hash === "#tgrid" || state.templateId !== VIRAL_STYLE_ID) state.showTemplates = true;
   // The controls work at once; the products and template previews (slower, from the database) follow.
   setupPills();
   // ?ref=<upload id> (an AI image's "Use in a video"): that image is the first reference.
@@ -1556,6 +1657,11 @@ async function start() {
     $("drawer").classList.remove("open");
     state.open = null;
     closeOverlayFrames();
+  };
+  $<HTMLInputElement>("clipFile").onchange = (e) => {
+    const files = [...((e.target as HTMLInputElement).files ?? [])];
+    (e.target as HTMLInputElement).value = "";
+    void addClips(files);
   };
   $<HTMLInputElement>("file").onchange = (e) => {
     const f = (e.target as HTMLInputElement).files?.[0];
