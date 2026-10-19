@@ -1,4 +1,4 @@
-// Partner programme: the parts with no I/O, safe for client components (docs/guide/features/20-partner-programme.md).
+// Partner programme: the parts with no I/O, safe for client components (docs/guide/features/21-partner-programme.md).
 import { z } from "zod";
 import { REF_ALPHABET } from "@/lib/staff/permissions";
 

@@ -1,5 +1,5 @@
 import "server-only";
-// The partner programme (docs/bizdev/PLAN.md section 6, docs/guide/features/20-partner-programme.md): applications from
+// The partner programme (docs/bizdev/PLAN.md section 6, docs/guide/features/21-partner-programme.md): applications from
 // /partners, approval and payouts in Admin -> Sales -> Partners, the referral at sign-up and the partner's own page.
 // Nothing here sends a message to anyone outside BuPulse: the owner sends the partner its link.
 import { randomBytes, randomInt } from "node:crypto";
