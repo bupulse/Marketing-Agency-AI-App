@@ -6,8 +6,8 @@ switch on the Channels page: **Answer comments and messages**. Only comments and
 is turned on come in; older ones are never answered.
 
 **Page:** `/dashboard/connections` (the switch under each Instagram and Facebook account); the admin side is in
-**Admin → Services → Instagram and Facebook replies**. **Plans:** the switch shows for every account on the Channels
-page (which needs the `calendar` feature); which plans include the inbox itself is set by the inbox and automations.
+**Admin → Services → Instagram and Facebook replies**. **Plans:** feature key `inbox` (Inbox and contacts). Without
+it the switch is shown greyed out with "Add it in Billing → Add features", and BuPulse makes no checks for that client.
 
 ## What the client sees
 

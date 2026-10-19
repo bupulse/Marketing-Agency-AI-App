@@ -140,7 +140,8 @@ the person's token instead of the Page's. Switch the flag on only after a privat
 
 ## Open points
 
-- Which plans include the inbox is the engine's decision (no feature key gates the switch yet).
+- Plans: the switch, the checks and webhook deliveries need the `inbox` feature (`hasFeature`); a business that loses
+  it stops being checked at its next run.
 - Composio bills by its own monthly cycle; BuPulse counts by UTC calendar month, with a 2,000-call margin under 20,000.
 - `proxy.ts` still runs on `/api/meta/webhook` (one Supabase session read per delivery); adding `api/meta/webhook` to
   its matcher exclusions would save it.
