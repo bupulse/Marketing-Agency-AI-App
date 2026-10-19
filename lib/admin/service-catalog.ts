@@ -267,7 +267,9 @@ export const SERVICES: ServiceInfo[] = [
     optionalEnv: ["VEO_MODEL", "VEO_USD_PER_SECOND"],
     features: ["AI clips in Video Studio videos (\"AI makes the clips\")"],
     killable: true,
-    whenOff: "The \"AI makes the clips\" choice is hidden in the Video Studio, with a short note that AI clips are paused. Videos are made from the client's photos and their own clips; clips already made stay in their videos and Gallery.",
+    // Paid per second: off until the owner switches it on.
+    defaultOff: true,
+    whenOff: "The \"AI makes the clips\" choice is hidden in the Video Studio, with a short note that AI clips are paused. Videos are made from the client's photos and their own clips; clips already made stay in their videos and Gallery. Off until the owner switches it on (Veo is paid per second of video).",
   },
   {
     id: "composio",

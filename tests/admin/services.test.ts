@@ -11,7 +11,7 @@ import { effectiveBudgetUsd, assertWithinBudget, clearBudgetCache, AIBudgetExcee
 import { withLedger } from "@/lib/ai/ledger";
 import { getAiBudgetStatus, monthBounds, projectMonthEnd, setAiBudget } from "@/lib/admin/ai-usage";
 import { scrubSecrets } from "@/lib/admin/scrub";
-import { NETWORK_SERVICE, SERVICES, SERVICE_IDS } from "@/lib/admin/service-catalog";
+import { NETWORK_SERVICE, SERVICES, SERVICE_IDS, serviceInfo } from "@/lib/admin/service-catalog";
 import { getServicesAttention, listServices, setServiceEnabled, testService } from "@/lib/admin/services";
 import { clearSwitchCache, disabledNetworks, isServiceEnabled, ServiceDisabledError } from "@/lib/admin/switch";
 import { AdminError, apiContext, consoleContext } from "@/lib/admin/types";
@@ -153,6 +153,16 @@ describe("kill switch", () => {
 
     await setServiceEnabled(CONSOLE, { service: "whatsapp", enabled: false, reason: "pause the cost" });
     expect(await isServiceEnabled("whatsapp")).toBe(false);
+  });
+
+  it("Veo AI clips (paid per second) are off until the owner switches them on, while Gemini on the same key stays on", async () => {
+    expect(serviceInfo("veo")).toMatchObject({ defaultOff: true, killable: true, env: ["GEMINI_API_KEY"] });
+    expect(serviceInfo("veo").whenOff).toMatch(/Off until the owner switches it on/);
+    expect(await isServiceEnabled("veo")).toBe(false);
+    expect(await isServiceEnabled("gemini")).toBe(true);
+    expect((await listServices()).find((v) => v.id === "veo")).toMatchObject({ enabled: false, health: "off" });
+    await setServiceEnabled(CONSOLE, { service: "veo", enabled: true });
+    expect(await isServiceEnabled("veo")).toBe(true);
   });
 
   it("a read failure keeps features on when nothing was ever read, keeps the last good answer otherwise, and does not hammer the database", async () => {
