@@ -3,6 +3,7 @@
 // every video the same way. 1 credit = 10 RWF for the Rwanda launch (100 credits = 1,000 RWF, about $0.69). A credit
 // price is the estimated provider cost × 2.2, rounded to 5 credits, except the prices the owner set directly.
 import { SEEDANCE_USD_PER_SECOND, type SeedanceResolution, type SeedanceTier } from "./seedance";
+import { veoClipUsd, veoModel, type VeoResolution } from "./veo";
 
 export const RWF_PER_CREDIT = 10;
 export const USD_PER_RWF = 1 / 1450;
@@ -15,6 +16,15 @@ export const creditsForUsd = (usd: number): number => Math.max(5, Math.round((us
 /** Credits for a Seedance clip: seconds × the tier's rate at that resolution, with the margin, rounded to 5. */
 export function seedanceCredits(tier: SeedanceTier, resolution: SeedanceResolution, seconds: number): number {
   return creditsForUsd(SEEDANCE_USD_PER_SECOND[tier][resolution] * seconds);
+}
+
+/**
+ * Credits for one Veo AI clip (lib/video-engine/veo.ts): its seconds at the model's per-second price, with the margin.
+ * Owner decision, 19 October 2026: Veo 3.1 Lite at 720p, $0.05 a second, so 4 s is 65 credits, 6 s 95, 8 s 130.
+ * A clip Google blocks or fails to make is given back (Google bills only clips it makes).
+ */
+export function veoClipCredits(seconds: number, model: string = veoModel(), resolution: VeoResolution = "720p", env: Record<string, string | undefined> = process.env): number {
+  return creditsForUsd(veoClipUsd(seconds, model, resolution, env));
 }
 
 /**

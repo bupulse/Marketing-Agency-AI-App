@@ -92,6 +92,16 @@ const PROBES: Partial<Record<ServiceId, Probe>> = {
     if (res.status === 401 || res.status === 403) return { ok: false, message: `BytePlus ModelArk rejected the key (${res.status}).` };
     return { ok: false, message: `BytePlus ModelArk returned ${res.status}.` };
   },
+  veo: async () => {
+    // Reading the Veo model's card is free and proves the Gemini key can see it (a clip costs money; billing is only
+    // confirmed by the first clip).
+    const model = env("VEO_MODEL") || "veo-3.1-lite-generate-preview";
+    const res = await get(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}`, { "x-goog-api-key": env("GEMINI_API_KEY") });
+    if (res.ok) return { ok: true, message: `Google accepted the Gemini key and it can see ${model}.` };
+    if (res.status === 404) return { ok: false, message: `The Gemini key cannot see ${model} (404). Check VEO_MODEL.` };
+    if (res.status === 400 || res.status === 401 || res.status === 403) return { ok: false, message: `Google rejected the Gemini key for Veo (${res.status}).` };
+    return { ok: false, message: `Google returned ${res.status}.` };
+  },
   composio: async () => {
     const res = await get("https://backend.composio.dev/api/v3/toolkits?limit=1", { "x-api-key": env("COMPOSIO_API_KEY") });
     if (res.ok) return { ok: true, message: "Composio accepted the key (toolkits list)." };

@@ -34,6 +34,8 @@ import { listCharacters, previewPortraitPng } from "@/lib/video-engine/seedance-
 import { writeSeedancePrompt } from "@/lib/video-engine/seedance-prompt";
 import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PREMIUM_3D_CREDITS, PREMIUM_RERENDER_CREDITS, PRESENTER_IMAGE_CREDITS, isPremiumQuality, type PremiumQuality, VOICE_OVER_CREDITS, charge, readWallet, refund, seedanceCredits, topUp , creditsLeft, enterRequest, type Payer } from "./credits";
 import { VOICE_ROUTE, makeVoiceForJob, readVoiceMp3 } from "./voice";
+import { AiClipError, aiClipBytes, aiClipPrices, aiClipRunView, aiClipView, aiClipsUnavailable, getAiClip, getAiClipRun, listAiClips, resumeAiClips, startAiClips } from "./ai-clips";
+import { VEO_CLIPS_PER_VIDEO, isVeoSeconds, veoClipUsd } from "@/lib/video-engine/veo";
 import { cancelSeedance, getSeedanceJob, getSeedancePreview, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
 import { mediaBytes, saveMedia } from "./data-source";
 import { asClientError, clientVideoUrl, createClientReshape, designForClient, getClientJob, keepPoster, listClientJobs, saveClientSpec, saveClientVideo, voiceForClient } from "./client-jobs";
@@ -713,7 +715,11 @@ const server = http.createServer(async (req, res) => {
       if (body.engine === "blender") return json(res, 200, { credits: PREMIUM_3D_CREDITS[(isPremiumQuality(body.quality) ? body.quality : "540p") as PremiumQuality], usd: estimateDesignCost(Math.min(4, Number(body.photos) || 0)) });
       // A Motion video with a voice-over: the design now, the voice when the MP4 is made.
       const voice = body.voice === true ? VOICE_OVER_CREDITS : 0;
-      return json(res, 200, { credits: (CLAUDE_VIDEO_CREDITS + voice) * versions, usd: estimateDesignCost(Math.min(4, Number(body.photos) || 0)) * versions, voiceCredits: voice * versions });
+      // "AI makes the clips": 2 or 3 Veo clips, made once before the design (shared by the versions).
+      const clipCount = Math.max(0, Math.min(VEO_CLIPS_PER_VIDEO.max, Math.round(Number(body.aiClips) || 0)));
+      const clipSeconds = isVeoSeconds(Number(body.aiClipSeconds)) ? (Number(body.aiClipSeconds) as 4 | 6 | 8) : 4;
+      const clips = clipCount * aiClipPrices()[clipSeconds];
+      return json(res, 200, { credits: (CLAUDE_VIDEO_CREDITS + voice) * versions + clips, usd: estimateDesignCost(Math.min(4, Number(body.photos) || 0)) * versions + clipCount * veoClipUsd(clipSeconds), voiceCredits: voice * versions, aiClipCredits: clips });
     }
     if (req.method === "GET" && p === "/api/viral" && isOwner(req)) return json(res, 200, await viralLibrary());
     const vframe = p.match(/^\/viral\/frames\/([^/]+)\/([^/]+)\/([^/]+)$/);
@@ -914,6 +920,38 @@ const server = http.createServer(async (req, res) => {
         const j = await cancelSeedance(sdJob[1]);
         return j ? json(res, 200, j) : fail(res, 404, "Not found");
       }
+    }
+    // AI clips (Google Veo, video-lab/ai-clips.ts): the price and whether they can be made, a run of 1 to 3 clips (the
+    // Create page's "AI makes the clips", or one clip on its own), its progress, the business's clips and each MP4.
+    if (req.method === "GET" && p === "/api/ai-clips/status") {
+      const reason = await aiClipsUnavailable();
+      return json(res, 200, { available: !reason, reason, credits: aiClipPrices(), perVideo: VEO_CLIPS_PER_VIDEO });
+    }
+    if (req.method === "POST" && p === "/api/ai-clips") {
+      await limit(req, "ai-clips", RATE_LIMITS.videoDesign);
+      const body = await readJson(req, 16 * 1024);
+      try {
+        const run = await startAiClips(clientOf(req), { businessId: String(body.businessId ?? ""), productId: String(body.productId ?? ""), count: Number(body.count), seconds: Number(body.seconds), ratio: String(body.ratio ?? "9:16"), photoIds: Array.isArray(body.photoIds) ? body.photoIds.map(String) : undefined, needs: body.needs });
+        return json(res, 200, { run: await aiClipRunView(run) });
+      } catch (error) {
+        if (error instanceof AiClipError) return fail(res, error.status, error.message);
+        throw error;
+      }
+    }
+    if (req.method === "GET" && p === "/api/ai-clips") return json(res, 200, { clips: (await listAiClips(scopeOf(req))).map(aiClipView) });
+    const clipRun = p.match(/^\/api\/ai-clips\/runs\/(vr-[0-9a-f]{12})$/);
+    if (req.method === "GET" && clipRun) {
+      const run = await getAiClipRun(clipRun[1]);
+      if (!run || !ownsBusiness(req, run.businessId)) return fail(res, 404, "Not found");
+      return json(res, 200, { run: await aiClipRunView(run) });
+    }
+    const clipVideo = p.match(/^\/videos\/veo\/(vc-[0-9a-f]{12})\.mp4$/);
+    if (req.method === "GET" && clipVideo) {
+      const clip = await getAiClip(clipVideo[1]);
+      if (!clip || !ownsBusiness(req, clip.businessId)) return fail(res, 404, "Not found");
+      const bytes = await aiClipBytes(clip.id);
+      if (!bytes) return fail(res, 404, "Not found");
+      return sendMedia(req, res, bytes, "video/mp4", { "content-disposition": `inline; filename="bupulse-${clip.id}.mp4"` });
     }
     const sdVideo = p.match(/^\/videos\/seedance\/(sd-[0-9a-f]{12})\.mp4$/);
     if (req.method === "GET" && sdVideo) {
@@ -1400,6 +1438,7 @@ void loadSavedKeys(LAB_KEYS)
     server.listen(PORT, "127.0.0.1", () => {
       console.log(`BuPulse Video Studio: http://localhost:${PORT}  (daily test budget $${DAILY_CAP_USD}; the old lab page is /lab)`);
       void resumeSeedanceJobs();
+      void resumeAiClips().catch((error: unknown) => console.log(`[lab] AI clips could not be resumed: ${error instanceof Error ? error.message : error}`));
       void recoverPremiumJobs().then((n) => n && console.log(`[lab] ${n} Premium 3D job(s) stopped by the restart: credits given back.`));
       if (loaded.length) console.log(`Keys from Admin -> Services: ${loaded.join(", ")}`);
       console.log(

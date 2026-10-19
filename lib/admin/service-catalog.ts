@@ -20,6 +20,7 @@ export const SERVICE_IDS = [
   "elevenlabs",
   "whatsapp",
   "seedance",
+  "veo",
   "composio",
   "studio",
 ] as const;
@@ -40,7 +41,7 @@ export const NETWORK_SERVICE: Record<string, ServiceId> = {
 export const networksOf = (service: ServiceId): string[] => Object.entries(NETWORK_SERVICE).filter(([, s]) => s === service).map(([n]) => n);
 
 /** AI provider names in the AiCall ledger -> service. */
-export const AI_PROVIDER_SERVICE: Record<string, ServiceId> = { gemini: "gemini", claude: "claude", elevenlabs: "elevenlabs", byteplus: "seedance" };
+export const AI_PROVIDER_SERVICE: Record<string, ServiceId> = { gemini: "gemini", claude: "claude", elevenlabs: "elevenlabs", byteplus: "seedance", veo: "veo" };
 
 export type ServiceInfo = {
   id: ServiceId;
@@ -257,6 +258,16 @@ export const SERVICES: ServiceInfo[] = [
     features: ["AI video (Video Studio, coming soon)"],
     killable: true,
     whenOff: "Nothing changes for clients today: no feature uses Seedance yet. Once AI video is built, it pauses with a friendly message.",
+  },
+  {
+    id: "veo",
+    name: "Google Veo AI clips",
+    purpose: "Google's AI video model (Veo 3.1 Lite through the Gemini API): short real moving clips of the client's product, mixed into Video Studio videos when the client picks \"AI makes the clips\" (docs/VIDEO_ENGINE.md, \"Veo AI clips\"). It uses the Gemini key (GEMINI_API_KEY, billing must be on: Veo has no free tier) and is billed per second of video ($0.05 at 720p). VEO_MODEL changes the model (default veo-3.1-lite-generate-preview); VEO_USD_PER_SECOND overrides the price used for credits and costs.",
+    env: ["GEMINI_API_KEY"],
+    optionalEnv: ["VEO_MODEL", "VEO_USD_PER_SECOND"],
+    features: ["AI clips in Video Studio videos (\"AI makes the clips\")"],
+    killable: true,
+    whenOff: "The \"AI makes the clips\" choice is hidden in the Video Studio, with a short note that AI clips are paused. Videos are made from the client's photos and their own clips; clips already made stay in their videos and Gallery.",
   },
   {
     id: "composio",

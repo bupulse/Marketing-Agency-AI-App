@@ -42,6 +42,12 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   "dreamina-seedance-2-0-260128": { input: 0, output: 7 },
   "dreamina-seedance-2-0-fast-260128": { input: 0, output: 5.6 },
   "dreamina-seedance-2-0-mini-260615": { input: 0, output: 3.5 },
+  // Google Veo 3.1 AI clips with audio, per 1M seconds of video (the ledger records seconds as input tokens): the
+  // Gemini API list price at 720p, 19 October 2026 (Lite $0.05 a second, Fast $0.10, Veo 3.1 $0.40;
+  // lib/video-engine/veo.ts VEO_USD_PER_SECOND, docs/AI_COSTS.md "Veo AI clips"). Only clips Google makes are billed.
+  "veo-3.1-lite-generate": { input: 50_000, output: 0 },
+  "veo-3.1-fast-generate": { input: 100_000, output: 0 },
+  "veo-3.1-generate": { input: 400_000, output: 0 },
 };
 
 /** Lower case, no "models/" prefix, no "-preview", "-latest", "-exp", "-001" or date suffix. */
@@ -74,6 +80,9 @@ const FAMILIES: [RegExp, string][] = [
   [/seedance.*mini/, "dreamina-seedance-2-0-mini-260615"],
   [/seedance.*fast/, "dreamina-seedance-2-0-fast-260128"],
   [/seedance/, "dreamina-seedance-2-0-260128"],
+  [/veo.*lite/, "veo-3.1-lite-generate"],
+  [/veo.*fast/, "veo-3.1-fast-generate"],
+  [/veo/, "veo-3.1-generate"],
   [/^music/, "music_v1"],
 ];
 

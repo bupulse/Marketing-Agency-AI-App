@@ -15,6 +15,8 @@ export const VIDEO_LEDGER_FEATURES = {
   voice: "video-voice",
   /** A presenter or AI image (Gemini). */
   image: "video-image",
+  /** An AI clip mixed into a video (Google Veo, priced per second). */
+  veo: "video-veo",
 } as const;
 export type VideoLedgerFeature = (typeof VIDEO_LEDGER_FEATURES)[keyof typeof VIDEO_LEDGER_FEATURES];
 export const isVideoLedgerFeature = (feature: string | null | undefined): boolean => !!feature && feature.startsWith(VIDEO_LEDGER_PREFIX);
