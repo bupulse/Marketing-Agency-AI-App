@@ -190,6 +190,8 @@ export function briefText(brief: DesignBrief): string {
         ? `EXTEND an existing video by about ${brief.seconds} seconds. Here is its current design (data):\n<<<DESIGN\n${base}\nDESIGN>>>\nKeep all its scenes unchanged and add new scenes after them that continue the story and end with the call to action${note ? `, following this request: <<<${note}>>>` : ""}. Answer with the complete MotionSpec (old scenes plus new ones).`
         : `Make a ${brief.seconds}-second video, ratio ${brief.ratio} (${width}x${height}).`,
     brief.platform && isPlatform(brief.platform) ? `Platform: ${PLATFORMS[brief.platform]}` : "",
+    // No street, area or city in the brief: a "Find us" or "Visit us" line would have to make a place up (often the product's name).
+    brief.purpose !== "post" && !brainBriefFromDesign(brief).hasLocation ? "Place: none given (no street, area or city). Leave out any \"Find us\", \"Visit us\" or address line; the contact line is the phone only. Never use the product's or the business's name as a place." : "",
     brief.purpose === "post"
       ? "Purpose: a POST on the business's own page, for its followers (not an ad). Show the product and its story; no price push and no contact push: no phone line or 'call now' in the scenes, the number at most once on the end card. End on the shop sign (the shop name, its place). The caption may end on the shop name instead of how to order."
       : "",

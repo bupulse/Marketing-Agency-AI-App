@@ -161,6 +161,23 @@
     "evidence": ["tt-104", "fb-009", "tt-083", "tt-135", "fb-018", "fb-058", "fb-046", "fb-052", "fb-044", "fb-056"]
   },
   {
+    "id": "agriculture",
+    "name": "Agriculture (farm inputs, hydroponics, seeds, irrigation, poultry)",
+    "words": ["agriculture", "agricultural", "agro", "agribusiness", "farm", "farms", "farmer", "farmers", "farming", "hydroponic", "hydroponics", "aquaponics", "greenhouse", "greenhouses", "crop", "crops", "vegetable", "vegetables", "seed", "seeds", "seedling", "seedlings", "nursery", "irrigation", "fertilizer", "fertiliser", "manure", "compost", "harvest", "livestock", "poultry", "broilers", "feed", "cattle", "dairy", "tractor", "agrovet", "urban farming", "vertical farming", "food production", "agro-processing"],
+    "seedanceKind": "shop",
+    "formats": ["product-reveal", "tutorial", "list", "offer", "tour"],
+    "hooks": ["price-banner", "demo-first", "how-it-changes", "spec-words", "numbered-list", "number-in-hand", "counter-price-bar", "start-a-business", "pain-question", "direct-question", "kinyarwanda-price-line", "pov-local-find", "now-available", "macro-rim-light", "empty-frame", "step-routine"],
+    "settings": ["a greenhouse or a backyard in Rwanda with the equipment running and green plants close up", "a hand harvesting fresh produce into a basket", "a close-up of the product doing its job (water running, plants growing, seeds sprouting)", "a farm or a school garden in daylight with the equipment in the middle of the frame", "a market stall or a kitchen with the fresh produce next to the price"],
+    "offers": ["Starting from {price}", "Installation and training included", "Free delivery", "Ask for a quote"],
+    "cta": "WhatsApp {phone} to order or book a visit; the farm, shop or office area when the brief gives one.",
+    "longestRunning": "No research rows for agriculture yet. Until they come from the viral library, the sector borrows what works for equipment and fresh produce: the price and the number on screen from the first frame, one clear result of the product (what it grows, saves or feeds), and a short how-it-works demo.",
+    "gaps": "No research rows yet: the hooks, formats and music here are borrowed from the shop and school sectors and are early evidence only. Replace them when agriculture clips are collected.",
+    "music": {"moods": ["calm", "upbeat"], "note": "calm and fresh for growing equipment, upbeat for produce and offers"},
+    "voice": "A voice-over helps explain how it works in plain words (what it grows, what it saves).",
+    "weak": true,
+    "evidence": []
+  },
+  {
     "id": "shop",
     "name": "Shop (general retail, cosmetics, kitchenware, wholesale)",
     "words": ["shop", "store", "supermarket", "cosmetics", "skincare", "perfume", "kitchenware", "home", "decor", "wholesale", "retail", "bedding", "products", "furniture", "rug", "rugs", "appliance", "bike"],

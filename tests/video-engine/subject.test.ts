@@ -167,6 +167,29 @@ describe("loop 6: other products", () => {
     const subject = sceneSubject({ background: bg as never, layers }, "9:16", [square, square]);
     expect(keepOffSubject(layers, subject, safeAreaFor(null))).toEqual(layers);
   });
+
+  it("text that already sits on its own bar or badge gets no second box (no pill in a pill)", () => {
+    const bg = { kind: "photo", colors: ["#000"], photo: 1 };
+    const layers = check(
+      [
+        { kind: "photo", photo: 1, x: 0.5, y: 0.5, w: 1, h: 1 },
+        { kind: "shape", shape: "rect", color: "#25D366", x: 0.5, y: 0.7, w: 0.76, h: 0.065, radius: 0.5 },
+        text({ text: "WhatsApp 0791 954 277", y: 0.7, h: 0.065, w: 0.7, color: "#0b2a17" }),
+        { kind: "shape", shape: "burst", color: "#ffd200", x: 0.7, y: 0.3, w: 0.24, h: 0.13 },
+        text({ text: "No soil", y: 0.3, x: 0.7, w: 0.19, h: 0.088, color: "#0D4D2A" }),
+        text({ text: "Order on WhatsApp", y: 0.5, color: "#ffffff" }),
+      ],
+      bg,
+    );
+    const by = (t: string) => layers.find((l) => l.kind === "text" && l.text === t) as TextLayer;
+    expect(by("WhatsApp 0791 954 277").box).toBeFalsy();
+    // (A badge too small for its line gets a box in its own colour from another repair, never the white caption box.)
+    expect(by("No soil").box?.color).not.toBe("rgba(255,255,255,0.75)");
+    // A text on nothing still gets its caption box.
+    expect(by("Order on WhatsApp").box).toBeTruthy();
+    const subject = sceneSubject({ background: bg as never, layers }, "9:16", [square, square]);
+    expect(keepOffSubject(layers, subject, safeAreaFor(null))).toEqual(layers);
+  });
 });
 
 describe("a badge moves with its text off the product", () => {

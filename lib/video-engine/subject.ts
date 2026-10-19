@@ -249,6 +249,9 @@ export function keepOffSubject(layers: Layer[], subject: Box | null, safe: { top
   let top: [number, number] = [safe.top, subject.y - GAP];
   let bottom: [number, number] = [subject.y + subject.h + GAP, safe.bottom];
   const fullFrame = top[1] - top[0] < 0.12 && bottom[1] - bottom[0] < 0.12;
+  // A text that already sits on its own backing shape (a phone bar, a price badge) is boxed by that shape: a second
+  // rounded box inside it would only draw a pill in a pill.
+  const onShape = (t: TextLayer) => layers.some((s) => s.kind === "shape" && ["rect", "circle", "burst", "blob"].includes(s.shape) && s.material !== "glass" && Math.abs(t.x - s.x) <= s.w / 2 && Math.abs(t.y - s.y) <= s.h / 2);
   if (fullFrame) {
     top = [safe.top, Math.max(safe.top + 0.1, FULL_FRAME_BANDS.top[1])];
     bottom = [Math.min(safe.bottom - 0.1, FULL_FRAME_BANDS.bottom[0]), safe.bottom];
@@ -256,7 +259,7 @@ export function keepOffSubject(layers: Layer[], subject: Box | null, safe: { top
     // Restacked again on each check (an edit, a re-shape), the band would shrink a little more every time.
     const settled = (t: TextLayer) => {
       const half = drawnHeight(t, ratio) / 2;
-      return !!t.box && [top, bottom].some((b) => t.y - half >= b[0] - 0.005 && t.y + half <= b[1] + 0.005);
+      return (!!t.box || onShape(t)) && [top, bottom].some((b) => t.y - half >= b[0] - 0.005 && t.y + half <= b[1] + 0.005);
     };
     hits = hits.filter((t) => !settled(t.l));
     if (hits.length === 0) return layers;
@@ -276,7 +279,7 @@ export function keepOffSubject(layers: Layer[], subject: Box | null, safe: { top
   // the heights stay the same on a second check.
   if (fullFrame) {
     for (const h of hits) {
-      if (h.l.box) continue;
+      if (h.l.box || onShape(h.l)) continue;
       const light = luminance(h.l.color) > 0.5;
       const boxed: TextLayer = { ...h.l, box: { color: light ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.75)", padding: 0.02, radius: 0.3 } };
       h.l = boxed;

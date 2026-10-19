@@ -96,6 +96,21 @@ export type Facts = {
   /** A named building or landmark ("Makuza Peace Plaza", "T2000 House", "Room 35"), the way Kigali gives directions. */
   landmark: string | null;
 };
+const LANDMARK = /\b((?:[A-Z][\w']*|\d+)(?:\s+(?:[A-Z][\w']*|\d+)){0,3}\s+(?:Plaza|House|Building|Mall|Tower|Centre|Center|Market|Arcade))\b(?:,?\s+(Room\s+\d+\w?))?/g;
+/**
+ * A named building the text gives ("Makuza Peace Plaza", "Room 35"). A product or business name that ends in a building
+ * word ("LEAF Hydro Tower") is a name, never a place: a candidate that is part of one of `names` is skipped.
+ */
+export function landmarkOf(text: string, names: (string | null | undefined)[]): string | null {
+  const own = names.filter((n): n is string => !!n?.trim()).map((n) => n.toLowerCase());
+  for (const m of text.matchAll(LANDMARK)) {
+    const building = m[1].toLowerCase();
+    if (own.some((n) => n.includes(building) || building.includes(n))) continue;
+    return [m[1], m[2]].filter(Boolean).join(", ");
+  }
+  return null;
+}
+
 /** The brief's facts as suggestions use them (the series planner shares the number and the area). */
 export function briefFacts(b: SuggestBrief): Facts {
   const text = factsText(b);
@@ -119,7 +134,7 @@ export function briefFacts(b: SuggestBrief): Facts {
     bedrooms: text.match(/\b(\d) ?(?:-| )?bed(?:room)?s?\b|\bibyumba (\d)\b/i)?.slice(1).find(Boolean) ?? null,
     spec,
     reasons: (b.product.usps ?? []).length + (b.product.features ?? []).length,
-    landmark: text.match(/\b((?:[A-Z][\w']*|\d+)(?:\s+(?:[A-Z][\w']*|\d+)){0,3}\s+(?:Plaza|House|Building|Mall|Tower|Centre|Center|Market|Arcade))\b(?:,?\s+(Room\s+\d+\w?))?/)?.slice(1).filter(Boolean).join(", ") ?? null,
+    landmark: landmarkOf(text, [b.product.name, shortProduct(b.product.name), b.business.name]),
     problem: b.product.name.match(/^(.{2,30}?)\s+(treatment|removal|repair|therapy|care)$/i)?.[1].toLowerCase() ?? null,
   };
 }
@@ -253,7 +268,7 @@ function whyOf(h: Hook, sector: SectorId): { why: string; evidence: string[] } {
  * MAX_HOOK_WORDS words and passing checkLanguage. Clinics and schools never get a price hook (they lead with trust).
  * Pure and deterministic.
  */
-export function suggestHooks(brief: SuggestBrief, opts: { platform?: Platform | "any" | null; count?: number; outcomes?: Outcome[] | null; businessId?: string | null; sector?: SectorId | null; presenter?: boolean; purpose?: Purpose | null } = {}): HookSuggestion[] {
+export function suggestHooks(brief: SuggestBrief, opts: { platform?: Platform | "any" | null; count?: number; outcomes?: Outcome[] | null; businessId?: string | null; sector?: SectorId | null; presenter?: boolean; purpose?: Purpose | null; wide?: boolean } = {}): HookSuggestion[] {
   const count = opts.count ?? 3;
   const f = briefFacts(brief);
   const sector = opts.sector ?? briefSector(brief);
@@ -268,6 +283,7 @@ export function suggestHooks(brief: SuggestBrief, opts: { platform?: Platform | 
     { platform, sector, format: format.id, engine: "claude", language: brief.business.language, hasPrice: !!f.price, hasPhone: !!f.phone, hasOffer: !!f.offer, hasOldPrice: !!f.oldPrice, hasLocation: !!f.area, hasPresenter: !!opts.presenter, seconds: brief.seconds ?? format.refSeconds, purpose },
     sector,
     format,
+    { wide: opts.wide },
   );
   const order = opts.outcomes?.length ? rankWithOutcomes(ranked, opts.outcomes, { sector, platform, businessId: opts.businessId, kind: "hook" }).map((r) => ranked.find((h) => h.id === r.id)!) : ranked;
   const out: HookSuggestion[] = [];

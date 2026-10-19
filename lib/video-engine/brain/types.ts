@@ -11,7 +11,7 @@ export type Engine = (typeof ENGINES)[number];
 export type RuleEngine = Engine | "both";
 
 /** Business sectors. "shop" is the general fallback (cosmetics, gadgets, kitchenware, jewellery, wholesale). */
-export const SECTORS = ["restaurant", "phone-shop", "salon", "fashion", "real-estate", "school", "car-rental", "clinic", "events", "services", "shop"] as const;
+export const SECTORS = ["restaurant", "phone-shop", "salon", "fashion", "real-estate", "school", "car-rental", "clinic", "events", "services", "agriculture", "shop"] as const;
 export type SectorId = (typeof SECTORS)[number];
 
 export const FORMATS = ["product-reveal", "ugc-testimonial", "before-after", "unboxing", "tour", "offer", "3d-motion", "kinetic-typography", "tutorial", "list"] as const;
@@ -207,6 +207,8 @@ export type Sector = {
   music?: { moods: string[]; note: string };
   /** When a voice-over helps in this sector. */
   voice?: string;
+  /** Early evidence: no research rows for this sector yet (its hooks, formats and music are borrowed); brainContext says so. */
+  weak?: true;
   evidence: string[];
 };
 

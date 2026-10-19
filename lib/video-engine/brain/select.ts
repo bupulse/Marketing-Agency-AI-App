@@ -204,13 +204,14 @@ export function scoreHook(h: Hook, ctx: { platform: Platform | "any"; sector: Se
 }
 
 /** The ranked hooks a brief can use (needs met, made by the engine), best first; ties by id. */
-export function rankHooks(b: FullBrief, sector: SectorId, format: Format): ScoredHook[] {
+export function rankHooks(b: FullBrief, sector: SectorId, format: Format, opts: { wide?: boolean } = {}): ScoredHook[] {
   const platform = b.platform ?? "any";
   const post = b.purpose === "post";
   const usable = BRAIN.hooks.filter((h) => h.engines.includes(b.engine) && needsMet(h, b, format.id, sector) && !(post && (AD_HOOK_TYPES.has(h.type) || (h.type === "offer-badge" && !b.hasOffer))));
-  // Hooks made for another sector only come in when this sector has too few of its own.
+  // Hooks made for another sector only come in when this sector has too few of its own (or when `wide` asks for them all,
+  // after the sector's own: a week of videos needs more hooks than the three the owner is shown).
   const fits = (h: Hook) => h.sectors.includes(sector) || h.sectors.includes("any") || sectorById(sector)!.hooks.includes(h.id);
-  const pool = usable.filter(fits).length >= HOOK_OPTIONS ? usable.filter(fits) : usable;
+  const pool = !opts.wide && usable.filter(fits).length >= HOOK_OPTIONS ? usable.filter(fits) : usable;
   return pool.map((h) => scoreHook(h, { platform, sector, format, purpose: b.purpose })).sort((a, z) => z.score - a.score || a.id.localeCompare(z.id));
 }
 
@@ -371,7 +372,7 @@ export function brainContext(brief: BrainBrief | BrainPick, opts: { ownerHook?: 
   const seedance = p.engine === "seedance";
   const covered = new Set(CONTEXT_SKIP[p.engine]);
   const rules = p.rules.filter((r) => !covered.has(r.id));
-  const head = `What works: ${p.sectorInfo.name.toLowerCase()}, ${p.format.name.toLowerCase()}, ${PLATFORM_NAMES[p.platform]}, ${p.seconds} s (from ${WATCHED} ads and reels BuPulse watched).${p.purpose === "post" ? " This is a post on the business's own page, not an ad: no price strip, no phone bar, no order line on screen." : ""}`;
+  const head = `What works: ${p.sectorInfo.name.toLowerCase()}, ${p.format.name.toLowerCase()}, ${PLATFORM_NAMES[p.platform]}, ${p.seconds} s (from ${WATCHED} ads and reels BuPulse watched).${p.sectorInfo.weak ? " Early evidence: BuPulse has no research for this sector yet, so these picks are borrowed from similar sectors." : ""}${p.purpose === "post" ? " This is a post on the business's own page, not an ad: no price strip, no phone bar, no order line on screen." : ""}`;
   // The owner clicked one of the suggested lines (suggest.ts): it is the opening, with its hook's first-frame picture.
   const chosen = opts.chosenHook ? hookById(opts.chosenHook.hookId) : null;
   const hooks = chosen

@@ -182,7 +182,7 @@ export function checkBrain(data: BrainData = BRAIN, refs: BrainRefs = {}): strin
     for (const id of s.hooks) if (!hooks.has(id)) say(where, `hook "${id}" does not exist`);
     if (refs.seedanceKinds && s.seedanceKind !== null && !refs.seedanceKinds.includes(s.seedanceKind)) say(where, `Seedance business kind "${s.seedanceKind}" does not exist`);
     if (s.music && refs.musicMoods) for (const m of s.music.moods) if (!refs.musicMoods.includes(m)) say(where, `music mood "${m}" is not in the music library`);
-    cites(where, s.evidence);
+    cites(where, s.evidence, s.weak === true);
   }
   return problems;
 }

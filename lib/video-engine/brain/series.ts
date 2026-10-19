@@ -7,7 +7,7 @@ import { formatById, hookById, sectorById } from "./database";
 import { brainFor } from "./select";
 import { briefFacts, briefSector, suggestHooks, type SuggestBrief } from "./suggest";
 import { VIDEO_TEMPLATES } from "../templates";
-import { type FormatId, type Outcome, type Platform, type SectorId } from "./types";
+import { FORMATS, type FormatId, type Outcome, type Platform, type SectorId } from "./types";
 
 export type SeriesPost = {
   /** 1 to count, in posting order. */
@@ -40,6 +40,8 @@ export type SeriesOptions = {
   businessId?: string | null;
   /** ISO date of the first post (each post one day later). */
   startDay?: string | null;
+  /** The sector to plan for, when the caller knows it better than the words of the brief. */
+  sector?: SectorId | null;
   /** The business has a presenter (an AI influencer or a cartoon presenter): presenter-led templates are allowed. */
   presenter?: boolean;
 };
@@ -65,10 +67,14 @@ const MOOD_BY_FORMAT: Partial<Record<FormatId, string>> = { "kinetic-typography"
 export function planSeries(brief: SuggestBrief, opts: SeriesOptions = {}): SeriesPost[] {
   const count = opts.count ?? 7;
   const presenter = !!opts.presenter;
-  const sector = briefSector(brief);
+  const sector = opts.sector ?? briefSector(brief);
   const sectorInfo = sectorById(sector)!;
   const facts = briefFacts(brief);
-  const pool = suggestHooks(brief, { platform: opts.platform ?? "any", count: 60, outcomes: opts.outcomes, businessId: opts.businessId, sector, presenter }).filter((s, i, all) => all.findIndex((x) => x.hookId === s.hookId) === i);
+  const ask = (wide: boolean) => suggestHooks(brief, { platform: opts.platform ?? "any", count: 60, outcomes: opts.outcomes, businessId: opts.businessId, sector, presenter, wide }).filter((s, i, all) => all.findIndex((x) => x.hookId === s.hookId) === i);
+  // The sector's own hooks first; when they are fewer than the days (a sector with few usable hooks for these facts),
+  // the other sectors' hooks that the facts allow follow, best first.
+  let pool = ask(false);
+  if (pool.length < count) pool = [...pool, ...ask(true).filter((s) => !pool.some((p) => p.hookId === s.hookId))];
   const hookOf = (id: string) => hookById(id)!;
 
   // The order of hooks: the opener, then the rest by rank, with the middle post's hook moved to the middle.
@@ -92,7 +98,10 @@ export function planSeries(brief: SuggestBrief, opts: SeriesOptions = {}): Serie
   };
   const posts: SeriesPost[] = [];
   // The same number and place in every post: a landmark when the brief names one, else the area, else the city.
-  const place = facts.landmark ? [facts.landmark, facts.area, facts.city].filter(Boolean).join(", ") : facts.area ? [facts.area, facts.city].filter((x, i, a) => x && a.indexOf(x) === i).join(", ") : facts.city;
+  const placeLine = facts.landmark ? [facts.landmark, facts.area, facts.city].filter(Boolean).join(", ") : facts.area ? [facts.area, facts.city].filter((x, i, a) => x && a.indexOf(x) === i).join(", ") : facts.city;
+  // A product or business name is never a place: with no landmark, area or city the place is left out.
+  const names = [brief.product.name, facts.product, brief.business.name].map((n) => n.trim().toLowerCase());
+  const place = placeLine && !names.includes(placeLine.trim().toLowerCase()) ? placeLine : "";
   const shared = [facts.phone && `the number (${facts.phone})`, place && `the place (${place})`].filter(Boolean).join(" and ");
   for (const s of order) {
     if (posts.length >= count) break;
@@ -103,9 +112,14 @@ export function planSeries(brief: SuggestBrief, opts: SeriesOptions = {}): Serie
     // presenter-led UGC post without a presenter, and no offer video without an offer or a previous price. The format
     // used least so far comes first, so the week varies.
     const wanted = isMiddle ? middleFormats.filter((f) => h.formats.includes(f)) : [];
-    const candidates = [...wanted, ...sectorInfo.formats.filter((f) => h.formats.includes(f)), ...h.formats].filter((f, i, all) => all.indexOf(f) === i && formatById(f)!.engines.includes("claude") && (presenter || f !== "ugc-testimonial") && !NEVER_FORMATS[sector]?.includes(f) && (f !== "offer" || !!facts.offer || !!facts.oldPrice));
+    const usable = (f: FormatId) => formatById(f)!.engines.includes("claude") && (presenter || f !== "ugc-testimonial") && !NEVER_FORMATS[sector]?.includes(f) && (f !== "offer" || !!facts.offer || !!facts.oldPrice);
+    const unique = (list: FormatId[]) => list.filter((f, i, all) => all.indexOf(f) === i && usable(f));
+    const candidates = unique([...wanted, ...sectorInfo.formats.filter((f) => h.formats.includes(f)), ...h.formats]);
     const uses = (f: FormatId) => (wanted.includes(f) ? -1 : (usedFormats.get(f) ?? 0));
-    const format = [...candidates].sort((a, b) => uses(a) - uses(b)).find((f) => templateFor(f));
+    const byUse = (list: FormatId[]) => [...list].sort((a, b) => uses(a) - uses(b)).find((f) => templateFor(f));
+    // When none of the hook's formats has a free template (or the brief lacks the facts for it), the sector's own formats,
+    // then any other Claude format: a week fills up with sensible posts instead of stopping at the first hook that does not fit.
+    const format = byUse(candidates) ?? byUse(unique([...sectorInfo.formats, ...FORMATS]));
     if (!format) continue;
     const templateId = templateFor(format)!;
     usedTemplates.add(templateId);
