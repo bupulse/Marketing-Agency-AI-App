@@ -242,7 +242,9 @@ export function scoreDesign(spec: MotionSpec, brief: ScoreBrief, options: ScoreO
     // ads, else 3 s); otherwise by the beat that first shows it (a before/after shows it after the result). Luxury and
     // brand templates may keep it for the end.
     const beat = pick.timeline.find((b) => /price/i.test(b.onScreen));
-    if (i !== null && limits.priceEarly && beat) {
+    // A viral recipe that keeps the price for later (seen in the video it came from) is checked by recipe-price instead.
+    const recipeLater = !!brief.recipe && (brief.recipe.price.at === "middle" || brief.recipe.price.at === "end");
+    if (i !== null && limits.priceEarly && beat && !recipeLater) {
       const t = at[i] + Math.min(...texts(scenes[i]).filter((l) => shows(l.text)).map((l) => (l.from ?? 0) * scenes[i].seconds));
       const by = beat.role === "hook" ? (platform === "facebook" && style === "direct" ? 1.5 : 3) : beat.from + 1;
       add({ id: "price-early", rule: "price-first-frame", points: platform === "facebook" ? 8 : 5, ok: t <= by, reason: t <= by ? `The price appears at ${t.toFixed(1)} s.` : `The price first appears at ${t.toFixed(1)} s; for this format show it by ${by} s${beat.role === "hook" ? " (top third)" : ""}.`, scene: i });

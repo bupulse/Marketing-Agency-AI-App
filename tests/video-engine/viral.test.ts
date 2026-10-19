@@ -306,6 +306,8 @@ describe("designing from a viral recipe", () => {
     expect(check({ ...base, seconds: 30, cuts: { ...base.cuts, per10s: [rate + 3, rate + 4] } })).toMatchObject({ "recipe-pace": false, "recipe-length": false });
     expect(check({ ...base, opening: { ...base.opening, check: "question" } })["recipe-opening"]).toBe(spec.scenes[0].layers.some((l) => l.kind === "text" && l.text.includes("?")));
     expect(check({ ...base, opening: { ...base.opening, check: "text" } })["recipe-opening"]).toBe(true);
+    // A recipe that keeps the price for the end is checked by recipe-price, not by the Brain's price-early.
+    expect(check({ ...base, price: { ...base.price, at: "end" } })["price-early"]).toBeUndefined();
   });
 });
 

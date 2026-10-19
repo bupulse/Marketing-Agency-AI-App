@@ -41,7 +41,7 @@ API-equivalent cost even when Claude ran on the subscription); the rest says whe
 
 | What | Provider cost (USD) | RWF | Client pays | RWF | Margin (price ÷ cost) | Source of the cost |
 | --- | --- | --- | --- | --- | --- | --- |
-| **Motion** video (one Claude design) | 0.107 median (0.087 to 0.161, mean 0.114) | 155 | 35 credits | 350 | 2.3× (2.1× at the mean) | measured, 43 `claude-design` rows (Sonnet 5.5); rendering and MP4 are free (the browser) |
+| **Motion** video (one Claude design) | 0.107 median (0.087 to 0.161, mean 0.114) | 155 | 35 credits | 350 | 2.3× (2.1× at the mean) | measured, 43 `claude-design` rows (Sonnet 5.5); rendering and MP4 are free (the browser); a viral recipe (the default since 19 October, docs/VIRAL_RECIPES.md) adds about 1,000 input tokens, about $0.003, and phone clips are free |
 | **Premium 3D**, 540p, up to 8 s | 0.085 design + Mac time | 123 | 100 credits | 1,000 | 8.1× on cash | measured, 1 `claude-blender-design` row; `docs/BLENDER.md` "Premium 3D credits" says $0.08 to $0.09 |
 | **Premium 3D**, 720p | 0.085 + about twice the Mac time | 123 | 150 credits | 1,500 | 12.2× on cash | as above; 720p render time not yet measured |
 | Premium 3D **re-render** | 0 (Mac time only) | 0 | 70 credits | 700 | (machine slot) | `PREMIUM_RERENDER_CREDITS`; the 70 pays the Mac, about 1.5 to 3.5 min for 6 s at 540p (`docs/BLENDER.md`) |
