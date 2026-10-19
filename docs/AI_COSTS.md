@@ -71,6 +71,38 @@ fps, 5 s clip is about 108,000 tokens, about $0.76, close to the Pro 720p rate.
 Seedance credits are computed in `seedanceCredits`, so this table is exact for the estimate. Failed, cancelled and
 expired clips are given back and BytePlus does not bill them. Free previews (no key) cost nothing.
 
+### Veo AI clips (Google, 19 October 2026)
+
+"AI makes the clips" adds 2 or 3 real moving clips of the product to a Motion video, made by **Google Veo 3.1 Lite**
+through the Gemini API (the existing `GEMINI_API_KEY`; Veo has no free tier, so billing must be on). Owner decision,
+19 October 2026. Price: **$0.05 a second at 720p**, audio always on (BuPulse mutes it and uses its own music and
+voice-over), from the Gemini API pricing page read that day. Google bills **only clips it makes**: a blocked or failed
+clip costs nothing, and its credits are given back. Credits use the usual formula (`veoClipCredits` in
+`lib/video-engine/credits.ts`, × 2.2, rounded to 5); `VEO_USD_PER_SECOND` overrides the rate if Google changes it.
+
+| One clip (720p, 9:16) | Provider cost (USD) | RWF | Client pays (credits) | RWF | Margin |
+| --- | --- | --- | --- | --- | --- |
+| 4 s | 0.20 | 290 | 65 | 650 | 2.2× |
+| 6 s | 0.30 | 435 | 95 | 950 | 2.2× |
+| 8 s | 0.40 | 580 | 130 | 1,300 | 2.2× |
+
+| A whole Motion video with AI clips | Provider cost (USD) | Client pays (credits) | RWF |
+| --- | --- | --- | --- |
+| Design + 2 clips of 4 s | 0.107 + 0.40 = about 0.51 | 35 + 130 = 165 | 1,650 |
+| Design + 3 clips of 4 s | 0.107 + 0.60 = about 0.71 | 35 + 195 = 230 | 2,300 |
+| Design + 3 clips of 6 s | 0.107 + 0.90 = about 1.01 | 35 + 285 = 320 | 3,200 |
+| (+ voice-over) | + about 0.06 | + 15 | + 150 |
+
+The clips are made once per request and shared by every version of the design. Recorded: in the lab ledger as
+`veo-clip` rows for the owner's tests, through `withLedger` (provider `veo`, feature `video-veo`, seconds recorded as
+input tokens and priced per second in `lib/ai/pricing.ts`) for a client.
+
+**Real test clips** (owner-approved test budget: $5 in total, about 15 clips of 4 s; LEAF Hydro Tower, TEST database):
+
+| # | Date | Clip | What it shows | Provider cost (USD) | Running total |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 19 Oct 2026 | 4 s, 9:16, 720p, Veo 3.1 Lite, 47 s to make | first frame the product photo; slow push-in while an adult's hands pick lettuce from the tower | 0.20 | 0.20 |
+
 **What the margins say:**
 - **Voice-over:** 15 credits since 17 October (owner decision; it was 10, about cost). A 15 s script is about $0.06 to
   $0.07 (85 to 100 RWF) against 150 RWF, and even the longest take measured ($0.078, 113 RWF) is covered. On a
@@ -103,5 +135,6 @@ staff and MoMo fees.
 
 While in the Video Lab, every paid call is written to `video-lab/data/ledger.jsonl` with its tokens and cost (the
 API-equivalent cost when Claude runs on the subscription), under a $5 daily cap (`VIDEO_LAB_DAILY_USD`). Seedance
-clips add their real token cost when they finish (`seedanceUsage`). Once in the app, designs, voice takes, images and
-Seedance clips go through `withLedger` like every other AI call.
+clips add their real token cost when they finish (`seedanceUsage`), and Veo AI clips a `veo-clip` row each. Once in the
+app, designs, voice takes, images, Seedance clips and a client's Veo clips go through `withLedger` like every other AI
+call.

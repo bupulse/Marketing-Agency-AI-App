@@ -111,7 +111,7 @@ describe("AI clips (Veo) in the studio", () => {
     // Into the design: the business's own ready clips, sound off; another business gets none.
     const brief = await aiClipsForBrief(view.ready, "biz-1");
     expect(brief).toHaveLength(3);
-    expect(brief[0]).toMatchObject({ source: "ai", seconds: 4, width: 720, height: 1280, sound: false });
+    expect(brief[0]).toMatchObject({ path: expect.stringMatching(/^\/videos\/veo\/vc-[0-9a-f]{12}\.mp4$/), source: "ai", seconds: 4, width: 720, height: 1280 });
     expect(await aiClipsForBrief(view.ready, "biz-2")).toEqual([]);
     expect(await aiClipsRecord(view.ready)).toMatchObject({ provider: "veo", credits: 195, costUsd: 0.6 });
   });
@@ -165,6 +165,8 @@ describe("AI clips (Veo) in the studio", () => {
       { shot: "A close detail of the roots", setting: null, camera: null, seconds: 4 },
     ]);
     expect(readNeeds([], 4)).toBeNull();
+    // A viral recipe's needs: the phone and photo beats are not made here.
+    expect(readNeeds([{ beat: 1, seconds: 6, shot: "Your phone clip: the shop", source: "phone" }, { beat: 2, seconds: 6, shot: "Hands pick lettuce", source: "ai" }], 4)).toEqual([{ shot: "Hands pick lettuce", setting: null, camera: null, seconds: 6 }]);
     expect(runMessage([{ status: "ready", error: null }, { status: "making", error: null }, { status: "queued", error: null }])).toMatch(/^Making AI clip 2 of 3/);
     expect(runMessage([{ status: "failed", error: "Google said no." }])).toBe("The AI clip could not be made: Google said no. Your credits are back.");
   });

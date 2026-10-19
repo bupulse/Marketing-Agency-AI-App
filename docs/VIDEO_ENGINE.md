@@ -844,6 +844,37 @@ plus the worst case of one design (`maxDesignCost`, two full calls) fits; otherw
 The lab reads the database only (`video-lab/data-source.ts`, `pg` with default TLS checks) and listens on 127.0.0.1
 only.
 
+## Veo AI clips (19 October 2026)
+
+Owner decision, 19 October 2026: a client can pick **"AI makes the clips"** on the Create page. The studio then asks
+**Google Veo 3.1 Lite** (Gemini API, `veo-3.1-lite-generate-preview`, the existing `GEMINI_API_KEY`) for 2 or 3 short
+real moving clips of the product, never a slideshow of photos, and the Motion design mixes them in as full-frame
+`video` layers. Video providers in the studio: Claude (Motion design), Blender (Premium 3D), BytePlus Seedance (Real
+video), Google Veo (AI clips inside a Motion video).
+
+- **Each clip:** 4, 6 or 8 s, 9:16 (16:9 for a 16:9 video), 720p, 24 fps, a SynthID watermark. The product photo is the
+  first frame (cropped to the clip's shape around the product: its cut-out box, or sharp's "attention" crop), so the
+  real product is in it. The prompt (`veoPrompt`) asks for no text, letters, logos or brand names (BuPulse overlays its
+  own text), adults only and East African where people appear, no famous people, no speech. Veo's audio is always on
+  and always dropped (`placeClips` sets `sound: false`): the video's music and voice-over are used.
+- **Which shots:** the viral recipe's clip needs (`lib/video-engine/brain/viral.ts`, the beats marked `ai`) when the
+  page sends them; otherwise a default plan (`defaultClipPlan`): the product in use (hands), the product in a Kigali
+  setting, a close detail.
+- **Flow:** `POST /api/ai-clips` checks (Gemini key, the **veo** switch in Admin -> Services, the product), takes the
+  credits and returns a run at once; the clips are made in the background, at most 3 at once, each tried once more on
+  a temporary error (Google busy, timeout, network); a blocked or failed clip is refunded with a plain message. The
+  page polls `GET /api/ai-clips/runs/<id>` ("Making AI clip 2 of 3…"), then designs with `aiClipIds`. A clip is kept in
+  `video-lab/data/veo/` and served same-origin at `/videos/veo/<id>.mp4` (scoped to its business); a client's clip is
+  also saved into their Gallery ("AI clips" folder). After a restart, a clip Google already accepted is picked up again
+  (`resumeAiClips`); one never sent is refunded.
+- **Price:** $0.05 a second (Google bills only clips it makes): 65 credits for 4 s, 95 for 6 s, 130 for 8 s
+  (`veoClipCredits`). A video with 3 clips of 4 s is 35 + 195 = 230 credits. Details: `docs/AI_COSTS.md`, "Veo AI clips".
+- **API facts checked with the real key** (the docs' REST examples differ for Lite): the image goes as
+  `{ bytesBase64Encoded, mimeType }` (`inlineData` is refused), `numberOfVideos` is refused, `durationSeconds` is a
+  number. The first real clip took 47 s and cost $0.20.
+- **Off switch:** Admin -> Services, "Google Veo AI clips". When off (or without the key), the choice is replaced by a
+  plain note and `POST /api/ai-clips` answers 503; finished clips stay.
+
 ## Costs
 
 | Video | Cost | Where it goes |
@@ -853,6 +884,7 @@ only.
 | Music | free | the library (`MusicTrack`) |
 | Voice-over (next) | ElevenLabs characters, as today (docs/VOICE_AND_MUSIC.md) | |
 | Seedance clip (next, premium) | about $0.35 (480p) to $0.76 (720p) per 5 s, BytePlus estimate | |
+| Veo AI clip (Google) | $0.05 a second at 720p: $0.20 for 4 s (only clips Google makes) | the lab ledger (`veo-clip`); a client's through `withLedger` (`video-veo`) |
 
 The lab shows the real tokens and cost of every test (`docs/AI_COSTS.md`).
 
@@ -899,6 +931,7 @@ Later the same night (house listing, Kibagabaga):
 | Cartoon presenters | `lib/video-engine/cast.ts` (drawn in `draw.ts`) |
 | Realistic influencers (lab) | `video-lab/influencers.ts` |
 | Seedance (BytePlus) | `lib/video-engine/seedance.ts`, `lib/video-engine/seedance-prompt.ts`, `lib/video-engine/seedance-brain.ts`, `video-lab/seedance-jobs.ts`, `video-lab/seedance-mock/` (previews), `scripts/video-lab/seedance-check.mjs` (readiness) |
+| Veo AI clips (Google) | `lib/video-engine/veo.ts` (API, prompts, prices), `veoClipCredits` in `lib/video-engine/credits.ts`, `video-lab/ai-clips.ts` (runs, refunds, Gallery copies), `video-lab/site/client/ai-clips.ts` (the Create page's choice), tests `tests/video-engine/veo.test.ts`, `tests/video-lab/ai-clips.test.ts` |
 | Studio site | `video-lab/site/` (layout, `site.css`, `models.json`, `pages/`, `client/`, `static/`), `video-lab/credits.ts`, `scripts/video-lab/start.mjs` |
 | AI image (Nano Banana) | `generateImage`, `listImages` in `video-lab/influencers.ts`; `POST /api/image`, `GET /api/images` in `video-lab/server.ts` |
 | Password gate (online access) | `video-lab/gate.ts`, `tests/video-lab/gate.test.ts` |

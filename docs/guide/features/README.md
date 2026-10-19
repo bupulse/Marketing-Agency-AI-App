@@ -29,6 +29,7 @@ trial and Inzu Fashion waiting for its demo. All names and numbers in them are m
 | 18 | Team, settings and brand | `/dashboard/settings`, `/dashboard/settings/team`, `/dashboard/brand`, `/account/deletion` | [18-team-settings-and-brand.md](18-team-settings-and-brand.md) |
 | 19 | Video Brain (research behind every video) | Video Studio `/create` | [19-video-brain.md](19-video-brain.md) |
 | 20 | Video Studio (Motion, Premium 3D and Real video) | Video Studio `/create`, `/showcase`, `/videos`, `/pricing`, `/app/video/*` | [20-video-studio.md](20-video-studio.md) |
+| 21 | AI clips (Google Veo) in Motion videos | Video Studio `/create`, Options, "AI makes the clips" | [21-ai-clips.md](21-ai-clips.md) |
 
 ## Which plan has what
 

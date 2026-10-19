@@ -18,6 +18,7 @@ import { GALLERY_VIDEO_BUCKET } from "@/lib/media/rules";
 import { MediaError, createFolder, finalizeUpload, prepareUploads, setAssetDescription } from "@/lib/media/service";
 import { prisma } from "@/lib/db";
 import { veoClipCredits } from "@/lib/video-engine/credits";
+import type { BriefClip } from "@/lib/video-engine/designer";
 import { VIDEO_LEDGER_FEATURES } from "@/lib/video-engine/ledger-features";
 import {
   VEO_CLIPS_PER_VIDEO,
@@ -221,10 +222,13 @@ export function readNeeds(raw: unknown, seconds: VeoSeconds): ClipNeed[] | null 
   if (!Array.isArray(raw) || !raw.length) return null;
   const str = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
   const needs = raw
-    .slice(0, VEO_CLIPS_PER_VIDEO.max)
+    .slice(0, 12)
     .map((n) => (typeof n === "string" ? { shot: n } : (n as Record<string, unknown>)))
+    // A viral recipe's needs (brain/viral.ts ClipNeed) name their footage: only the AI ones are made here.
+    .filter((n) => n?.source === undefined || n.source === "ai")
     .map((n) => ({ shot: str(n?.shot, 400), setting: str(n?.setting, 200) || null, camera: str(n?.camera, 120) || null, seconds: isVeoSeconds(n?.seconds) ? n.seconds : seconds, ...(n?.people === false ? { people: false } : {}) }))
-    .filter((n) => n.shot.length >= 3);
+    .filter((n) => n.shot.length >= 3)
+    .slice(0, VEO_CLIPS_PER_VIDEO.max);
   return needs.length ? needs : null;
 }
 
@@ -465,12 +469,13 @@ async function saveToGallery(who: StudioIdentity, clip: AiClip, bytes: Buffer): 
 
 /**
  * The finished clips a design may use, as the designer's brief takes them (lib/video-engine/designer.ts BriefClip):
- * same-origin addresses, their own audio off. Only the business's own ready clips (any for the owner); at most 3.
+ * same-origin addresses (placeClips keeps their own audio off). Only the business's own ready clips (any for the
+ * owner); at most 3.
  */
 export async function aiClipsForBrief(ids: unknown, businessId: string | null) {
   const wanted = (Array.isArray(ids) ? ids.map(String) : []).filter((id) => AI_CLIP_ID.test(id)).slice(0, VEO_CLIPS_PER_VIDEO.max);
   const clips = (await Promise.all(wanted.map(getAiClip))).filter((c): c is AiClip => !!c && c.status === "ready" && (!businessId || c.businessId === businessId));
-  return clips.map((c) => ({ id: c.id, url: `/videos/veo/${c.id}.mp4`, source: "ai" as const, seconds: c.seconds, width: c.width, height: c.height, note: `AI clip: ${c.need.shot}`, sound: false }));
+  return clips.map((c): BriefClip => ({ path: `/videos/veo/${c.id}.mp4`, source: "ai", seconds: c.seconds, width: c.width, height: c.height, note: c.need.shot }));
 }
 
 /** What a design records about its AI clips (the job's brief): which clips, what was asked, the credits and the cost. */
