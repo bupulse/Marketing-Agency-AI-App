@@ -98,8 +98,9 @@ async function shaped(businessId: string, rows: Row[], withSpec = true) {
 
 /** The business's Motion videos, newest first (the list leaves the designs out, as the owner's does). */
 export async function listClientJobs(id: StudioIdentity, limit = 40) {
-  const rows = await prisma.videoJob.findMany({ where: { businessId: id.businessId, engine: "motion" }, orderBy: { createdAt: "desc" }, take: limit, select: ROW });
-  return shaped(id.businessId, rows, false);
+  // Without the design (it is large, and the list leaves it out): the page reads one job's design when it needs it.
+  const rows = await prisma.videoJob.findMany({ where: { businessId: id.businessId, engine: "motion" }, orderBy: { createdAt: "desc" }, take: limit, select: { ...ROW, spec: false } });
+  return shaped(id.businessId, rows.map((r) => ({ ...r, spec: null })) as Row[], false);
 }
 
 export async function getClientJob(id: StudioIdentity, jobId: string) {

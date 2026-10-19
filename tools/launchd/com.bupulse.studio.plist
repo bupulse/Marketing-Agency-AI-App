@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Keeps the production Video Studio (studio.bupulse.com) running on this Mac: starts at login, restarts if it stops.
+  NOT loaded by anything yet: see "Going live" in docs/STUDIO_DEPLOY.md. Install:
+    cp tools/launchd/com.bupulse.studio.plist ~/Library/LaunchAgents/
+    launchctl load -w ~/Library/LaunchAgents/com.bupulse.studio.plist
+  Stop for good:  launchctl unload -w ~/Library/LaunchAgents/com.bupulse.studio.plist
+  Edit the folder below (the repo that holds the studio) and the node folder if they differ on your Mac.
+  The env file with the keys is OUTSIDE the repo: ~/.bupulse/studio.env (tools/launchd/studio.env.example).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.bupulse.studio</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/macbook1/BuPulse-video/tools/bin/studio-run.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/macbook1/BuPulse-video</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/macbook1/.nvm/versions/node/v24.21.0/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <!-- A start that fails its checks (a missing key) is retried every 30 seconds, not in a tight loop. -->
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/macbook1/Library/Logs/bupulse-studio.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/macbook1/Library/Logs/bupulse-studio.log</string>
+</dict>
+</plist>

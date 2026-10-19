@@ -272,6 +272,18 @@ the first release).
    Gallery ("Studio images" folder, the Gallery's checks and quota); AI images and presenter shots cost 15 credits from the
    plan, refunded when Gemini fails, through the cost ledger ("video-image"). Video and audio references (`um:`) wait for
    Seedance (item 8).
+8. **Closed doors, hardening, going live (items 10 to 12):** `video-lab/scope.ts` lists every route and who may use it
+   (`tests/video-lab/routes.test.ts` fails for a route without an entry; `node --env-file=.env scripts/video-lab/qa-routes.mjs`
+   walks all of them as a visitor, a client and the owner). `STUDIO_ENV=production` means the API key only, no loopback
+   shortcut, a startup check of every required variable (`video-lab/startup-check.ts`), security headers, hourly limits
+   per company on designs, voice-overs, AI images and uploads, a general message instead of any internal error, and
+   `/healthz`. The files to go live are prepared and switched off (next section).
+9. **QA as a client (item 14):** `node --env-file=.env scripts/video-lab/qa-client.mjs` (a studio started with
+   `STUDIO_SESSION_SECRET` and `STUDIO_DEV_TICKETS=1`; it uses the installed Chrome, which can make the MP4, and one Claude
+   design). It checks every client page at 1440 and 390 px, a real design through the page (plan credits down by 35, a
+   `VideoJob` row), a second business seeing nothing of it, a real in-browser MP4 saved to the Gallery with the `VideoJob`
+   "ready" (video, poster, size, length, ratio, product, caption, hashtags: what BuPulse's library reads), playable by its
+   owner only, and the phone drawer; it then removes its test data and gives the credits back (76 of 76 on 19 October).
 
 ## 6. Build list, in order
 
@@ -319,6 +331,52 @@ Sizes: S = under half a day, M = about a day, L = two to three days.
 Rough total: about 3 to 4 weeks of focused work for one person, shorter if items 5 to 7 are split between agents. Items 1 to
 6 give the first working loop (Motion videos only); Seedance (8) can wait for the key, and Premium 3D (9) can open later as
 "coming soon" without blocking the launch.
+
+## Going live (for the owner)
+
+Everything below is prepared and switched OFF: nothing runs the tunnel or loads the launchd files until you do these
+steps, in this order. The production studio is separate from your test studio: it uses its own port (3110), its own
+keys file and the real BuPulse database, while the test studio (port 3100, `video.bupulse.com`) keeps working as it does now.
+
+1. **Put the studio's code where it will run.** The files below point at `/Users/macbook1/BuPulse-video`, the folder
+   that holds the `video-engine` branch today. Once that branch is merged into the main BuPulse folder, change the folder
+   in `tools/launchd/com.bupulse.studio.plist` (and the tunnel plist if you use it) to `/Users/macbook1/BuPulse` and run
+   `npm install` there.
+2. **Fill in the production keys file.** Copy `tools/launchd/studio.env.example` to `~/.bupulse/studio.env` (make the
+   `.bupulse` folder first), fill in every value, then lock it with `chmod 600 ~/.bupulse/studio.env`. It is never in git.
+   - `STUDIO_SESSION_SECRET`: make one with `openssl rand -hex 32`.
+   - `STUDIO_PASSWORD`: your own password for the owner's door (`https://studio.bupulse.com/login`).
+   - `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `ENCRYPTION_KEY`: the same values the live BuPulse
+     app uses (the production database, not the TEST one: the studio refuses the TEST one in production).
+   - `ANTHROPIC_API_KEY`: required (the Claude subscription is never used online).
+   - `ELEVENLABS_API_KEY`, `GEMINI_API_KEY`, `SEEDANCE_API_KEY`: optional; empty means voice-overs, AI images and
+     presenter shots, or real Seedance video stay off. The studio opens fine without the Seedance key (free previews).
+3. **Copy the presenters.** The ten AI presenters' portraits are files: copy `video-lab/data/influencers` from the test
+   studio's folder into the same place in the folder the production studio runs from. (The example videos in the template
+   gallery were made from test photos; online they show without pictures until you make new examples with a real business.)
+4. **Try it once in a Terminal** (before any launchd file): `tools/bin/studio-run.sh`. It prints a list of anything missing
+   and stops, or starts the studio on port 3110. Check `curl http://localhost:3110/healthz` answers `{"ok":true}`, then press
+   Ctrl+C.
+5. **Start the tunnel.** In a Terminal run `tools/bin/studio-tunnel.sh` and leave the window open. The first time it creates
+   the tunnel `bupulse-studio` and the address `studio.bupulse.com` (it needs your Cloudflare login on this Mac, as the
+   video tunnel does). Then `https://studio.bupulse.com/healthz` should answer `{"ok":true}` once the studio runs.
+6. **Keep the studio running.** Install the launchd job so it starts at login and restarts if it stops:
+   `cp tools/launchd/com.bupulse.studio.plist ~/Library/LaunchAgents/` then
+   `launchctl load -w ~/Library/LaunchAgents/com.bupulse.studio.plist`. Its log is `~/Library/Logs/bupulse-studio.log`.
+   Optional: the same for `com.bupulse.studio-tunnel.plist`, so the tunnel needs no open Terminal window.
+7. **Keep the Mac awake and online.** System Settings: never sleep while plugged in, start up after a power cut, and
+   log in automatically. If the Mac is off or offline, the studio is off for every client.
+8. **Turn the "studio" service on** in BuPulse's Admin, under Services ("Video Studio"), with the address
+   `https://studio.bupulse.com`. Until then BuPulse hides the "Open Video Studio" button.
+9. **Sign in once from BuPulse** with a test client that has video credits: click "Open Video Studio". You should land on
+   the studio's Create page already signed in, see your own products, and be able to make a Motion video. It then appears
+   in BuPulse's Videos library.
+10. **If something is wrong, switch off in this order:** turn the "studio" service off in Admin (new sign-ins stop at once),
+    then `launchctl unload -w ~/Library/LaunchAgents/com.bupulse.studio.plist` and stop the tunnel window. Clients' videos
+    stay safe in their Gallery.
+
+What is not in the first release: Seedance real video (waits for the BytePlus key, free previews until then) and Premium 3D
+("coming soon"). Both can be switched on later without any change for clients' existing videos.
 
 ## Questions for the owner
 
