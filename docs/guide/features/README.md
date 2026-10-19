@@ -28,6 +28,7 @@ trial and Inzu Fashion waiting for its demo. All names and numbers in them are m
 | 17 | Billing, plans and usage | `/dashboard/billing`, `/dashboard/upgrade`, `/dashboard/usage`, `/custom-plan`, `/custom-plan/call` | [17-billing-plans-and-usage.md](17-billing-plans-and-usage.md) |
 | 18 | Team, settings and brand | `/dashboard/settings`, `/dashboard/settings/team`, `/dashboard/brand`, `/account/deletion` | [18-team-settings-and-brand.md](18-team-settings-and-brand.md) |
 | 24 | Instagram and Facebook replies (social inbox) | `/dashboard/connections` (the switch per account), Admin → Services | [24-social-inbox.md](24-social-inbox.md) |
+| 19 | Pricing page: plan quiz and Mobile Money steps | `/pricing` | [19-pricing-page-and-plan-quiz.md](19-pricing-page-and-plan-quiz.md) |
 
 ## Which plan has what
 
