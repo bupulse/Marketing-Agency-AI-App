@@ -329,8 +329,9 @@ async function resume(runId: string, event: InboundEvent, conversationId: string
     run.conversationId = conversationId;
     await prisma.automationRun.update({ where: { id: run.id }, data: { conversationId } });
   }
+  // Any DM from the person opens the conversation after a private reply: Meta allows normal replies again.
+  if (event.kind === "MESSAGE" && run.context.awaitingDmOpen) run.context.awaitingDmOpen = false;
   if (waitingFor === "dm_open") {
-    run.context.awaitingDmOpen = false;
     await advance(run, node.id, pass); // send the step that was waiting for the door to open
     return true;
   }
