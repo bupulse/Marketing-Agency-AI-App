@@ -97,5 +97,7 @@ Rules for the fields:
 - Batches of 8 or fewer searches or pages; pause between batches. A crashed tab: open a new one.
 - Skip scams and income claims ("earn X a day", MoMo screenshots, akayabo chains), adult content, anything with
   children as the subject, hate or political campaigning.
+- Keep your scripts and working files in your own subfolder of the scratchpad (`scratchpad/tt/`, `ig/`, `fb/`, `yt/`):
+  the scratchpad root is shared and other agents overwrite files there.
 - Stop only your own processes, by their exact PID. Never `pkill -f` or `killall`.
 - Write rows as you go (append to the JSONL; one valid JSON object per line). Never commit; the lead commits.
