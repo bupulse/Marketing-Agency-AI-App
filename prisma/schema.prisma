@@ -28,33 +28,33 @@ enum SignUpMethod {
 }
 
 model User {
-  id                    String             @id @db.Uuid
-  email                 String             @unique
-  name                  String?
-  signUpMethod          SignUpMethod       @default(PASSWORD)
+  id                   String           @id @db.Uuid
+  email                String           @unique
+  name                 String?
+  signUpMethod         SignUpMethod     @default(PASSWORD)
   // Set when the owner asks to delete the account; everything is erased after this date
   // unless they sign in and cancel (30-day grace period).
-  deletionScheduledFor  DateTime?
+  deletionScheduledFor DateTime?
   // Set by the admin console (suspend_user). A suspended user cannot sign in or use the app; data is kept.
-  suspendedAt           DateTime?
-  suspendedReason       String?
+  suspendedAt          DateTime?
+  suspendedReason      String?
   // Last time this person used the dashboard (a throttled heartbeat, lib/staff/heartbeat.ts): "active now" on the
   // sales screen counts the last 5 minutes.
-  lastSeenAt            DateTime?
-  createdAt             DateTime           @default(now())
-  business              Business?
-  membership            Membership?
-  subscription          Subscription?
-  usage                 UsageRecord[]
-  videoDays             VideoDayUsage[]
-  canva                 CanvaConnection?
-  canvaEdits            CanvaEdit[]
-  manualPayments        ManualPayment[]
-  renewalNotices        RenewalNotice[]
-  pushSubscriptions     PushSubscription[]
-  assignedConversations Conversation[]     @relation("ConversationAssignee")
+  lastSeenAt           DateTime?
+  createdAt            DateTime         @default(now())
+  business             Business?
+  membership           Membership?
+  subscription         Subscription?
+  usage                UsageRecord[]
+  videoDays            VideoDayUsage[]
+  canva                CanvaConnection?
+  canvaEdits           CanvaEdit[]
+  manualPayments       ManualPayment[]
+  renewalNotices       RenewalNotice[]
+  pushSubscriptions    PushSubscription[]
 
   @@index([lastSeenAt])
+  assignedConversations Conversation[] @relation("ConversationAssignee")
 }
 
 // One business per user for now. Industry-neutral: a phone shop, a school,
@@ -113,51 +113,51 @@ model Business {
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
-  projects          Project[]
-  products          Product[]
-  campaigns         Campaign[]
-  contents          GeneratedContent[]
-  demoBookings      DemoBooking[]
-  designs           Design[]
-  contentVisuals    ContentVisual[]
-  voiceClips        VoiceClip[]
-  leads             Lead[]
-  connections       Connection[]
-  posts             Post[]
-  mediaFolders      MediaFolder[]
-  mediaAssets       MediaAsset[]
-  autopilot         AutopilotSettings?
-  autopilotRuns     AutopilotRun[]
-  chatWidgets       ChatWidget[]
-  chatSessions      ChatSession[]
-  contacts          Contact[]
-  contactTags       ContactTag[]
-  contactFields     ContactField[]
-  conversations     Conversation[]
-  automations       Automation[]
-  webhookEndpoints  WebhookEndpoint[]
-  apiKeys           ApiKey[]
-  storeConnections  StoreConnection[]
-  pendingStores     StoreConnectionPending[]
-  cloudflare        CloudflareConnection?
-  memberships       Membership[]
+  projects         Project[]
+  products         Product[]
+  campaigns        Campaign[]
+  contents         GeneratedContent[]
+  demoBookings     DemoBooking[]
+  designs          Design[]
+  contentVisuals   ContentVisual[]
+  voiceClips       VoiceClip[]
+  leads            Lead[]
+  connections      Connection[]
+  posts            Post[]
+  mediaFolders     MediaFolder[]
+  mediaAssets      MediaAsset[]
+  autopilot        AutopilotSettings?
+  autopilotRuns    AutopilotRun[]
+  chatWidgets      ChatWidget[]
+  chatSessions     ChatSession[]
+  contacts         Contact[]
+  contactTags      ContactTag[]
+  contactFields    ContactField[]
+  conversations    Conversation[]
+  automations      Automation[]
+  webhookEndpoints WebhookEndpoint[]
+  apiKeys          ApiKey[]
+  storeConnections StoreConnection[]
+  pendingStores    StoreConnectionPending[]
+  cloudflare       CloudflareConnection?
+  memberships      Membership[]
   pushSubscriptions PushSubscription[]
-  invites           Invite[]
-  invoices          Invoice[]
-  customPlans       PlanDefinition[]
-  planOffers        PlanOffer[]
-  planRequests      CustomPlanRequest[]
-  personas          Persona[]
-  competitors       Competitor[]
-  faqs              KnowledgeFaq[]
-  testimonials      Testimonial[]
-  interview         MarketingInterview?
-  postVersions      PostVersion[]
-  // The sales staff member the company is assigned to (StaffMember.id), from a referral link at sign-up or a sales
-  // manager's reassignment; null = unassigned (its revenue is the sales team's shared). History: ClientAssignment.
-  salesAgentId      String?
+  invites          Invite[]
+  invoices         Invoice[]
+  customPlans      PlanDefinition[]
+  planOffers       PlanOffer[]
+  planRequests     CustomPlanRequest[]
+  personas         Persona[]
+  competitors      Competitor[]
+  faqs             KnowledgeFaq[]
+  testimonials     Testimonial[]
+  interview        MarketingInterview?
+  postVersions     PostVersion[]
 
   @@index([industryId])
+  // The sales staff member the company is assigned to (StaffMember.id), from a referral link at sign-up or a sales
+  // manager's reassignment; null = unassigned (its revenue is the sales team's shared). History: ClientAssignment.
+  salesAgentId            String?
   @@index([regionMismatchAt])
   @@index([salesAgentId])
 }
@@ -189,43 +189,43 @@ model Project {
 // Every generation is kept, so users can regenerate and compare versions.
 // Belongs to one product or one campaign. projectId is the legacy link, kept readable.
 model GeneratedContent {
-  id             String          @id @default(cuid())
-  businessId     String
-  business       Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  productId      String?
-  product        Product?        @relation(fields: [productId], references: [id], onDelete: Cascade)
-  campaignId     String?
-  campaign       Campaign?       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  projectId      String?
-  project        Project?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  caption        String
-  hashtags       String[]
-  videoScript    String
-  adHeadlines    String[]
-  language       String          @default("English")
+  id          String    @id @default(cuid())
+  businessId  String
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  campaignId  String?
+  campaign    Campaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  projectId   String?
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  caption     String
+  hashtags    String[]
+  videoScript String
+  adHeadlines String[]
+  language    String    @default("English")
   // Per-network versions (caption length, hashtags, aspect ratio) prepared for publishing.
-  variants       Json?
-  edited         Boolean         @default(false) // true once the owner changed the AI's text
+  variants    Json?
+  edited      Boolean   @default(false) // true once the owner changed the AI's text
   // When its posts to review were drafted (lib/content-board/drafts.ts); null for content from before, which is drafted
   // once when its product or campaign is opened.
   postsDraftedAt DateTime?
   // Content packs (docs/CONTENT_PACKS.md): the posts written together share packId; each has its angle
   // (lib/studio/angles.ts) and the one app it is for. All null for content from before packs (one post for every app).
-  packId         String?
-  angle          String?
-  network        String?
+  packId      String?
+  angle       String?
+  network     String?
   // Content flow v3 (docs/CONTENT.md, lib/content-flow/): the business-local day a post was made for on the day view,
   // how it was made ("ai" | "describe" | "own") and the owner's brief or caption. Null on content from before.
-  forDate        DateTime?       @db.Date
-  mode           String?
-  brief          String?
+  forDate     DateTime? @db.Date
+  mode        String?
+  brief       String?
   // The post's format as BuPulse decided it ("image" | "carousel" | "video", lib/content-flow/format.ts), so the next
   // days vary it per app. Null on content from before.
-  format         String?
-  provider       String // "gemini" | "claude" | "edit"
-  model          String
-  createdAt      DateTime        @default(now())
-  visuals        ContentVisual[]
+  format      String?
+  provider    String // "gemini" | "claude" | "edit"
+  model       String
+  createdAt   DateTime  @default(now())
+  visuals     ContentVisual[]
 
   @@index([projectId, createdAt])
   @@index([productId, createdAt])
@@ -834,57 +834,57 @@ enum PostSource {
 
 // One post for one connected account. Posts written together for several accounts share a groupId.
 model Post {
-  id              String        @id @default(cuid())
-  businessId      String
-  business        Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  connectionId    String? // null for a draft without an account, or after the account was disconnected
-  connection      Connection?   @relation(fields: [connectionId], references: [id], onDelete: SetNull)
-  network         String // "instagram" | "facebook" | "linkedin" | "tiktok" | "youtube"; kept if the connection goes
-  groupId         String?
-  projectId       String? // legacy; new posts set productId or campaignId
-  project         Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  productId       String?
-  product         Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
-  campaignId      String?
-  campaign        Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  contentId       String? // GeneratedContent it came from
-  status          PostStatus    @default(DRAFT)
-  format          PostFormat    @default(POST)
-  source          PostSource    @default(MANUAL)
-  title           String? // ARTICLE title
-  text            String        @default("")
-  hashtags        String[]
-  mediaPaths      String[] // storage object paths ("media" or "designs" bucket), in order
-  link            String?
-  scheduledAt     DateTime?
-  publishedAt     DateTime?
-  externalId      String?
-  permalink       String?
-  attempts        Int           @default(0)
-  nextAttemptAt   DateTime?
-  lockedAt        DateTime? // set while the publisher works on it; stale locks are retaken
-  lastError       String?
-  autopilotRunId  String?
-  autopilotRun    AutopilotRun? @relation(fields: [autopilotRunId], references: [id], onDelete: SetNull)
-  playbookId      String? // the playbook idea Autopilot used, for learning what works
+  id             String        @id @default(cuid())
+  businessId     String
+  business       Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  connectionId   String? // null for a draft without an account, or after the account was disconnected
+  connection     Connection?   @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  network        String // "instagram" | "facebook" | "linkedin" | "tiktok" | "youtube"; kept if the connection goes
+  groupId        String?
+  projectId      String? // legacy; new posts set productId or campaignId
+  project        Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  productId      String?
+  product        Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  campaignId     String?
+  campaign       Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  contentId      String? // GeneratedContent it came from
+  status         PostStatus    @default(DRAFT)
+  format         PostFormat    @default(POST)
+  source         PostSource    @default(MANUAL)
+  title          String? // ARTICLE title
+  text           String        @default("")
+  hashtags       String[]
+  mediaPaths     String[] // storage object paths ("media" or "designs" bucket), in order
+  link           String?
+  scheduledAt    DateTime?
+  publishedAt    DateTime?
+  externalId     String?
+  permalink      String?
+  attempts       Int           @default(0)
+  nextAttemptAt  DateTime?
+  lockedAt       DateTime? // set while the publisher works on it; stale locks are retaken
+  lastError      String?
+  autopilotRunId String?
+  autopilotRun   AutopilotRun? @relation(fields: [autopilotRunId], references: [id], onDelete: SetNull)
+  playbookId     String? // the playbook idea Autopilot used, for learning what works
   // Why a post that could have been scheduled on its own still waits for review ("Video needs to be made").
-  reviewNote      String?
+  reviewNote     String?
   // Set when auto-approval (Content -> Settings) scheduled the post; the daily summary email lists these.
   autoScheduledAt DateTime?
   // Set when the owner changed the post (text, media, time, review state): BuPulse then never replaces or redraws it.
-  ownerEditedAt   DateTime?
+  ownerEditedAt  DateTime?
   // For an app that is not connected (yet): at its time the owner gets the reminder to post it by hand, like a NOTIFY
   // account (lib/publishing/engine.ts). False on posts that lost their account later: those fail as before.
-  remindOnly      Boolean       @default(false)
+  remindOnly     Boolean       @default(false)
   // A challenge or contest the AI suggested (lib/content-flow/contest.ts): {} until the owner confirms the prize, end
   // date and how the winner is chosen ({ prize, endsOn, howChosen, confirmedAt }). Never auto-approved.
-  contest         Json?
+  contest        Json?
   // "post" | "carousel" | "video" | "article": kept by a database trigger from format and mediaPaths, for the type filter.
-  mediaKind       String        @default("post")
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  metrics         PostMetrics[]
-  versions        PostVersion[]
+  mediaKind      String        @default("post")
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  metrics        PostMetrics[]
+  versions       PostVersion[]
 
   @@unique([connectionId, externalId])
   @@index([status, scheduledAt])
@@ -1003,31 +1003,31 @@ model Design {
 // by contentId; an Autopilot post group (Post.groupId) by groupId. Designs keep their own rows; a video is a file in
 // the media bucket (<userId>/videos/<id>.mp4) whose size counts toward the company's media quota.
 model ContentVisual {
-  id              String            @id @default(cuid())
-  businessId      String
-  business        Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  contentId       String?
-  content         GeneratedContent? @relation(fields: [contentId], references: [id], onDelete: Cascade)
-  groupId         String?
-  kind            String // "image" | "carousel" | "video"
-  status          String            @default("pending") // "pending" | "ready" | "failed"
-  items           Json              @default("[]") // ordered [{ designId?, path }]
-  plan            Json // ImagePlan or VideoPlan (lib/visuals/types.ts)
-  bytes           Int               @default(0) // the video file, counted toward the media quota
-  seconds         Int               @default(0) // the video's length, counted toward the plan's video seconds
-  error           String?
-  renderedAt      DateTime?
+  id         String            @id @default(cuid())
+  businessId String
+  business   Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  contentId  String?
+  content    GeneratedContent? @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  groupId    String?
+  kind       String // "image" | "carousel" | "video"
+  status     String            @default("pending") // "pending" | "ready" | "failed"
+  items      Json              @default("[]") // ordered [{ designId?, path }]
+  plan       Json // ImagePlan or VideoPlan (lib/visuals/types.ts)
+  bytes      Int               @default(0) // the video file, counted toward the media quota
+  seconds    Int               @default(0) // the video's length, counted toward the plan's video seconds
+  error      String?
+  renderedAt DateTime?
   // A render in progress (lease, so two tabs cannot both pay for the same AI photo).
   renderingUntil  DateTime?
   // A video upload the server allowed and has not confirmed yet: counted toward the quotas until it expires.
   uploadPath      String?
-  uploadBytes     Int               @default(0)
+  uploadBytes     Int       @default(0)
   uploadExpiresAt DateTime?
   // The video robot (docs/VIDEO_ROBOT.md): its job while it holds the render lease, and its failed renders (3 = left to the browser).
-  robotJobId      String?           @unique
-  robotAttempts   Int               @default(0)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  robotJobId      String?   @unique
+  robotAttempts   Int       @default(0)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
 
   @@index([contentId])
   @@index([uploadExpiresAt])
@@ -1039,24 +1039,24 @@ model ContentVisual {
 // A voiceover made by the text-to-speech provider (docs/VOICE_AND_MUSIC.md): the MP3 in the media bucket at
 // <userId>/voice/<hash>.mp3, reused for the same text and voice (hash), counted toward the media quota.
 model VoiceClip {
-  id           String   @id @default(cuid())
-  businessId   String
-  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  hash         String // sha-256 of voice id, model, take and text
-  voiceId      String
+  id         String   @id @default(cuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  hash       String // sha-256 of voice id, model, take and text
+  voiceId    String
   // speaking: one render is asking the voice service now (others wait); ready: the file is stored; spoken: paid for
   // but not stored yet (the audio waits in pendingAudio, so a retry stores it instead of paying again); too_long: the
   // voice ran past 30 seconds (never spoken again).
-  status       String   @default("ready")
-  path         String? // voice/<businessId>/<hash>.mp3 in the media bucket, once stored
+  status     String   @default("ready")
+  path       String? // voice/<businessId>/<hash>.mp3 in the media bucket, once stored
   pendingAudio Bytes?
-  bytes        Int
-  characters   Int
-  durationMs   Int
+  bytes      Int
+  characters Int
+  durationMs Int
   // Start and end of each spoken sentence in milliseconds, in order: [{ startMs, endMs }]
-  timings      Json
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @default(now()) @updatedAt
+  timings    Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
 
   @@unique([businessId, hash])
 }
@@ -1170,27 +1170,27 @@ model MediaUploadReservation {
 }
 
 model MediaAsset {
-  id          String          @id @default(cuid())
-  businessId  String
-  business    Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  folderId    String? // null = not in a folder
-  folder      MediaFolder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  path        String          @unique // <userId>/gallery/<id>.<ext> in the "media" bucket
-  name        String
+  id         String          @id @default(cuid())
+  businessId String
+  business   Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  folderId   String? // null = not in a folder
+  folder     MediaFolder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  path       String          @unique // <userId>/gallery/<id>.<ext> in the "media" bucket
+  name       String
   // "photo" or "video" (docs/MEDIA.md). A video's poster is <id>-poster.jpg next to it; bytes include the poster.
-  kind        String          @default("photo")
-  mimeType    String
-  bytes       Int
-  width       Int?
-  height      Int?
-  durationMs  Int?
-  posterPath  String?
+  kind       String          @default("photo")
+  mimeType   String
+  bytes      Int
+  width      Int?
+  height     Int?
+  durationMs Int?
+  posterPath String?
   // The owner's "What's in this video?" (or photo): the AI writes captions about it.
   description String?
-  source      String? // where an import came from: "google_drive" | "dropbox" | "canva" | "store"; null for uploads
-  createdAt   DateTime        @default(now())
-  products    ProductPhoto[]
-  campaigns   CampaignPhoto[]
+  source     String? // where an import came from: "google_drive" | "dropbox" | "canva" | "store"; null for uploads
+  createdAt  DateTime        @default(now())
+  products   ProductPhoto[]
+  campaigns  CampaignPhoto[]
 
   @@index([businessId, folderId, createdAt])
 }
@@ -1618,19 +1618,19 @@ model AdminApproval {
 
 // Bearer keys for the Jarvis REST API and MCP server. Only a peppered hash (HMAC-SHA256, lib/api/keys.ts) is stored.
 model AdminApiKey {
-  id               String    @id @default(cuid())
-  name             String
-  prefix           String
-  hash             String    @unique
-  ipAllowList      String[] // empty = any address
+  id          String    @id @default(cuid())
+  name        String
+  prefix      String
+  hash        String    @unique
+  ipAllowList String[] // empty = any address
   // A key made by a staff member (not the owner) is scoped: it may run only the tools its permissions allow, and only
   // while that person is enabled and still holds them (lib/admin/api-auth.ts). An owner's key has every permission.
-  scoped           Boolean   @default(false)
-  permissions      String[]  @default([])
+  scoped           Boolean  @default(false)
+  permissions      String[] @default([])
   createdByStaffId String?
-  lastUsedAt       DateTime?
-  revokedAt        DateTime?
-  createdAt        DateTime  @default(now())
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
 }
 
 model FeatureFlag {
