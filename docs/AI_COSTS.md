@@ -102,6 +102,11 @@ input tokens and priced per second in `lib/ai/pricing.ts`) for a client.
 | # | Date | Clip | What it shows | Provider cost (USD) | Running total |
 | --- | --- | --- | --- | --- | --- |
 | 1 | 19 Oct 2026 | 4 s, 9:16, 720p, Veo 3.1 Lite, 47 s to make | first frame the product photo; slow push-in while an adult's hands pick lettuce from the tower | 0.20 | 0.20 |
+| 2 | 19 Oct 2026 | 4 s, through the studio route (`vc-a18e0373e375`), 51 s | kitchen photo cropped by sharp's "attention" crop to the counter: Veo panned and invented its own tower (crop fixed after this) | 0.20 | 0.40 |
+| 3 | 19 Oct 2026 | 4 s, studio route (`vc-d77f4dfe9d50`), 45 s | "attention" crop on the greenhouse photo picked the control box; peppers and a new tower slide in (crop fixed after this) | 0.20 | 0.60 |
+| 4 | 19 Oct 2026 | 4 s, studio route, centre crop (`vc-f70f242ef185`) | the real kitchen tower stays in frame; an adult East African man smiles and presents it with his hands | 0.20 | 0.80 |
+| 5 | 19 Oct 2026 | 4 s, studio route, centre crop (`vc-1475999cf352`) | the greenhouse rack, then the scene morphs into a street shop and the rack changes shape (the "Kigali setting" asked for a new place; prompt fixed after this) | 0.20 | 1.00 |
+| 6 | 19 Oct 2026 | 4 s, studio route, fixed prompt (`vc-fbd17b278a07`) | the same rack stays in its greenhouse; slow orbit, the sun flares through; the product and its LEAF base unchanged | 0.20 | 1.20 |
 
 **What the margins say:**
 - **Voice-over:** 15 credits since 17 October (owner decision; it was 10, about cost). A 15 s script is about $0.06 to

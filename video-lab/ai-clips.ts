@@ -213,8 +213,10 @@ export async function firstFrame(photo: Buffer, ratio: VeoRatio, box: { x: numbe
     const top = Math.max(0, Math.min(h - ch, Math.round(cy - ch / 2)));
     return sharp(photo).rotate().extract({ left, top, width: cw, height: ch }).resize(width, height).jpeg({ quality: 88 }).toBuffer();
   }
-  // No cut-out (a photo with a scene behind the product): sharp keeps the most interesting part.
-  return img.resize(width, height, { fit: "cover", position: sharp.strategy.attention }).jpeg({ quality: 88 }).toBuffer();
+  // No cut-out (a photo with a scene behind the product): the centre, where product photos put the product. sharp's
+  // "attention" crop was tried on 19 October 2026 and picked a fruit bowl and a control box instead of the tower (Veo then
+  // invented a tower of its own), so it is not used.
+  return img.resize(width, height, { fit: "cover", position: "centre" }).jpeg({ quality: 88 }).toBuffer();
 }
 
 /** Clip needs from the page or a recipe, checked: 1 to 3 shots of plain text. */

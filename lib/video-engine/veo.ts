@@ -302,13 +302,13 @@ export const defaultSetting = (f: Pick<ClipFacts, "city" | "country">) => {
   return `a bright, tidy shop in ${city ? `${city}, ` : ""}${/^rw$/i.test(country) ? "Rwanda" : country}`;
 };
 
-/** The default plan for 2 or 3 clips: the product in use, the product in a Kigali setting, a close detail. */
+/** The default plan for 2 or 3 clips: the product in use, the product in everyday Kigali life, a close detail. */
 export function defaultClipPlan(f: ClipFacts, count = 3, seconds: VeoSeconds = 4): ClipNeed[] {
   const name = clean(f.productName, 80) || "the product";
   const city = clean(f.city, 40) || "Kigali";
   const plan: ClipNeed[] = [
     { shot: `A customer's hands pick up and use the ${name} the way a real customer would, in one smooth, natural action.`, setting: defaultSetting(f), camera: "slow handheld push-in, eye level", people: true, seconds },
-    { shot: `The ${name} in a real ${city} setting: everyday life moves softly in the background while the product stays in focus.`, setting: `a sunny street-side shop in ${city}, green hills softly out of focus`, camera: "slow orbit around the product", people: false, seconds },
+    { shot: `The ${name} where it stands, in everyday ${city} life: soft natural movement and light around it while the product stays in focus.`, setting: `a sunny ${city} day`, camera: "slow orbit around the product", people: false, seconds },
     { shot: `A slow close-up gliding over the ${name}'s details, texture and finish.`, setting: "soft window light on a clean surface", camera: "slow macro slide, shallow depth of field", people: false, seconds },
   ];
   return plan.slice(0, Math.max(1, Math.min(VEO_CLIPS_PER_VIDEO.max, count)));
@@ -329,7 +329,11 @@ export function veoPrompt(need: ClipNeed, facts: ClipFacts, opts: { withImage?: 
       ? `The first frame shows the real product: ${name}${summary ? ` (${summary})` : ""}. Keep the product exactly as it is in that frame: same shape, colours and details. It stays clearly visible.`
       : `The product: ${name}${summary ? ` (${summary})` : ""}.`,
     `Shot: ${clean(need.shot, 400)}`,
-    `Setting: ${clean(need.setting, 200) || defaultSetting(facts)}.`,
+    // With a first frame, a different setting makes Veo morph the scene mid-clip (tested 19 October 2026: the greenhouse
+    // turned into a street shop and the tower changed shape), so the photo's place is kept and the setting is a mood.
+    opts.withImage !== false
+      ? `One continuous shot in the place shown in the first frame: no cut, no change of scene, and the product never changes shape.${need.setting ? ` Mood: ${clean(need.setting, 200)}.` : ""}`
+      : `Setting: ${clean(need.setting, 200) || defaultSetting(facts)}.`,
     `Camera: ${clean(need.camera, 120) || "slow, steady push-in"}.`,
     need.people === false
       ? "No people in the shot, or only hands."

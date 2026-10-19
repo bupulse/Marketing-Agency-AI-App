@@ -60,7 +60,8 @@ describe("veo prompts", () => {
     expect(p).toMatch(/adults only, East African/);
     expect(p).toMatch(/no famous people/);
     expect(p).toMatch(/No dialogue/);
-    expect(p).toMatch(/Kigali, Rwanda/);
+    expect(p).toMatch(/no change of scene/);
+    expect(veoPrompt({ shot: "x" }, facts, { withImage: false })).toMatch(/Setting: a bright, tidy shop in Kigali, Rwanda/);
     expect(p.length).toBeLessThan(2400);
   });
 

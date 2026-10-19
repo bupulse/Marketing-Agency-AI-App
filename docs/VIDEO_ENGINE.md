@@ -853,8 +853,9 @@ real moving clips of the product, never a slideshow of photos, and the Motion de
 video), Google Veo (AI clips inside a Motion video).
 
 - **Each clip:** 4, 6 or 8 s, 9:16 (16:9 for a 16:9 video), 720p, 24 fps, a SynthID watermark. The product photo is the
-  first frame (cropped to the clip's shape around the product: its cut-out box, or sharp's "attention" crop), so the
-  real product is in it. The prompt (`veoPrompt`) asks for no text, letters, logos or brand names (BuPulse overlays its
+  first frame (cropped to the clip's shape around the product: its cut-out box, else the photo's centre; sharp's
+  "attention" crop picked a fruit bowl and a control box on the LEAF photos, and Veo then invented its own tower), so
+  the real product is in it. The prompt (`veoPrompt`) asks for no text, letters, logos or brand names (BuPulse overlays its
   own text), adults only and East African where people appear, no famous people, no speech. Veo's audio is always on
   and always dropped (`placeClips` sets `sound: false`): the video's music and voice-over are used.
 - **Which shots:** the viral recipe's clip needs (`lib/video-engine/brain/viral.ts`, the beats marked `ai`) when the
