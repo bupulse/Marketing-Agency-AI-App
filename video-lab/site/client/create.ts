@@ -7,12 +7,15 @@ import { encodeSpecMp4, loadPhotos, loadSpecFonts } from "@/lib/video-engine/enc
 import { canvasSize, totalMs, type MotionSpec, type Quality } from "@/lib/video-engine/spec";
 import { openVideoFrames } from "@/lib/video-engine/video-frames";
 import { VIRAL_STYLE_ID } from "@/lib/video-engine/templates";
+import { shortPrice as sharedShortPrice } from "@/lib/video-engine/price";
 import type { VoiceCue } from "@/lib/video-engine/voice";
 import { carousel } from "./carousel";
 import { categoryName, translate } from "./i18n";
 import { setupInspire, showInspire } from "./inspire";
 import { loadPricing, modelById, wireExamples } from "./models";
 import { $, api, el, getSession, loadBusinesses, refreshWallet } from "./site";
+// "AI makes the clips" (Google Veo): its own file; this page only calls it (veo-clips block, marked below).
+import { aiClips, aiClipsOptions, loadAiClipsStatus, makeAiClips } from "./ai-clips";
 
 type Engine = "seedance" | "claude";
 type RefKind = "image" | "video" | "audio";
@@ -427,7 +430,7 @@ async function quote() {
     const q = await api<{ credits: number; usd: number }>("/api/quote", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(sd ? { engine: "seedance", tier: state.tier, resolution: state.draft ? "480p" : state.resolution, seconds: state.seconds, versions: state.versions } : state.premium ? { engine: "blender", quality: state.premiumQuality, photos: state.refs.filter((r) => r.kind === "image").length } : { engine: "claude", versions: state.versions, photos: state.refs.filter((r) => r.kind === "image").length, voice: state.voice }),
+      body: JSON.stringify(sd ? { engine: "seedance", tier: state.tier, resolution: state.draft ? "480p" : state.resolution, seconds: state.seconds, versions: state.versions } : state.premium ? { engine: "blender", quality: state.premiumQuality, photos: state.refs.filter((r) => r.kind === "image").length } : { engine: "claude", versions: state.versions, photos: state.refs.filter((r) => r.kind === "image").length, voice: state.voice, aiClips: aiClips.count, aiClipSeconds: aiClips.seconds }),
     });
     state.credits = q.credits;
     $("goCredits").textContent = `✦ ${q.credits}`;
@@ -524,6 +527,8 @@ function setupPills() {
       box.append(toggle("Fixed lens (no camera move)", () => state.fixedLens, (v) => (state.fixedLens = v)));
       box.append(toggle(`Voice-over (${state.voiceCredits} credits, added when the MP4 is made)`, () => state.voice, (v) => { state.voice = v; void quote(); }));
       box.append(el("h6", { textContent: "Opening hook" }), chips(o.hooks.map((h) => h.id), state.hookId, (v) => (state.hookId = v), (v) => o.hooks.find((h) => h.id === v)?.name ?? v));
+      // veo-clips: AI clips for a Motion video (not Premium 3D); a plain note instead when Veo is off or has no key.
+      if (!state.premium) box.append(aiClipsOptions(() => void quote()));
     }
   });
   $("pVersions").onclick = (e) => {
@@ -871,11 +876,17 @@ async function generate() {
         await refreshWallet();
         return;
       }
+      // veo-clips: the AI clips first (Google Veo, about a minute each, made together), for the viral recipe's AI beats;
+      // the design then places them. None chosen, or a text-only video: nothing is made.
+      const photoIds = state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]);
+      const viralRecipe = state.templateId === VIRAL_STYLE_ID ? { styleId: state.templateId, platform: state.platform, purpose: state.purpose, seconds: state.seconds, ratio: state.ratio, phoneClips: state.clips.length } : undefined;
+      const aiClipIds = state.mode === "text" ? [] : await makeAiClips({ businessId: state.businessId, productId: state.productId, ratio: state.ratio, photoIds, recipe: viralRecipe }, (text) => msg(text));
+      if (aiClipIds.length) await refreshWallet();
       msg(`${state.templateId === VIRAL_STYLE_ID ? "BuPulse is mixing viral techniques and Claude is designing" : "Claude is designing"} ${state.versions > 1 ? `${state.versions} versions` : "the video"}… (about 1 to 2 minutes)`);
       const out = await api<{ jobs: ClaudeJob[]; error: string | null }>("/api/design", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: state.mode, businessId: state.businessId, productId: state.productId, photoIds: state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]), styleId: state.templateId, hookId: state.hookId, ratio: state.ratio, seconds: state.seconds, note: prompt, fixedLens: state.fixedLens, cartoonId: state.avatar?.kind === "cartoon" ? state.avatar.id : null, versions: state.versions, platform: state.platform, purpose: state.purpose, chosenHook: state.chosenHook ? { hookId: state.chosenHook.hookId, line: state.chosenHook.line } : null, clipIds: state.templateId === VIRAL_STYLE_ID ? state.clips.map((c) => c.id) : [] }),
+        body: JSON.stringify({ mode: state.mode, businessId: state.businessId, productId: state.productId, photoIds: state.refs.filter((r) => r.kind === "image").map((r) => r.id.split(":")[1]), styleId: state.templateId, hookId: state.hookId, ratio: state.ratio, seconds: state.seconds, note: prompt, fixedLens: state.fixedLens, cartoonId: state.avatar?.kind === "cartoon" ? state.avatar.id : null, versions: state.versions, platform: state.platform, purpose: state.purpose, chosenHook: state.chosenHook ? { hookId: state.chosenHook.hookId, line: state.chosenHook.line } : null, clipIds: state.templateId === VIRAL_STYLE_ID ? state.clips.map((c) => c.id) : [], aiClipIds }),
       });
       if (out.error) throw new Error(out.error);
       msg("Designed. Press a generation to play it and make the MP4.", "ok");
@@ -1122,11 +1133,11 @@ function closeOverlayFrames() {
 }
 
 /**
- * A product's price for a small card: the amount only, without the notes some owners write after it
- * ("250,000 RWF (Final pricing depends on…)" shows "250,000 RWF").
+ * A product's price for a small card: the amount with its condition only (lib/video-engine/price.ts), without the notes
+ * some owners write after it ("250,000 RWF (Final pricing depends on…)" shows "250,000 RWF").
  */
 function shortPrice(price: string): string {
-  const head = price.split(/\s*[(·|\n]|\s+-\s+|\.\s/)[0].trim();
+  const head = sharedShortPrice(price) ?? "";
   return head.length > 28 ? `${head.slice(0, 27).trimEnd()}…` : head;
 }
 
@@ -1612,6 +1623,8 @@ async function start() {
   if (location.hash === "#tgrid" || state.templateId !== VIRAL_STYLE_ID) state.showTemplates = true;
   // The controls work at once; the products and template previews (slower, from the database) follow.
   setupPills();
+  // veo-clips: whether AI clips can be made (the Veo switch, the key) and their price, for the Options pill.
+  void loadAiClipsStatus();
   // ?ref=<upload id> (an AI image's "Use in a video"): that image is the first reference.
   const ref = q.get("ref");
   if (ref && /^(up-[0-9a-f]{12}|[A-Za-z0-9-]{10,40})$/.test(ref)) state.refs.push({ id: `up:${ref}`, kind: "image", thumb: `/api/photo/${ref}?size=thumb`, label: "AI image (Nano Banana)" });

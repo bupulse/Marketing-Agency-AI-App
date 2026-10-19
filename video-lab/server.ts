@@ -237,7 +237,7 @@ async function briefFor(req: DesignRequest, variation: { index: number; of: numb
   }
   const brief: DesignBrief = {
     business: { name: business.name, description: business.description, language: business.language, colors: business.colors, phone: business.phone, website: business.website, country: business.country, tone: business.tone },
-    product: { name: product.name, summary: product.summary, description: product.description, price: product.price, usps: product.usps, features: product.features, targetCustomer: product.targetCustomer },
+    product: { name: product.name, summary: product.summary, description: product.description, price: product.price, priceNotes: product.priceNotes ?? null, usps: product.usps, features: product.features, targetCustomer: product.targetCustomer },
     photos,
     styleId: req.styleId,
     hookId: req.hookId,

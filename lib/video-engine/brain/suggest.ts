@@ -2,6 +2,7 @@
 // best hooks for the sector and platform, each filled in from the brief's own facts (product, price, area, number,
 // offer...), in the business's language, at most 7 words on screen, and passing the language check. A hook that needs
 // a fact the brief lacks is skipped. Pure, no I/O.
+import { shortPrice } from "../price";
 import { BRAIN, evidenceById, formatById, hookById, sectorById } from "./database";
 import { checkLanguage } from "./language";
 import { rankWithOutcomes } from "./outcomes";
@@ -51,7 +52,8 @@ function rwf(value: number): string {
 }
 /** The price as a short label with its condition ("from 25,000 RWF", "50,000 RWF per day"); null when there is none. */
 function priceLabel(price: string | null | undefined): string | null {
-  const p = price?.trim();
+  // The amount with its condition only: numbers in the owner's notes after it are not the price.
+  const p = shortPrice(price)?.trim();
   if (!p) return null;
   const nums = [...p.matchAll(/(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([kKmM]\b)?/g)].map((m) => Number(m[1].replace(/,/g, "")) * (m[2] ? (/k/i.test(m[2]) ? 1000 : 1_000_000) : 1));
   if (!nums.length) return null;

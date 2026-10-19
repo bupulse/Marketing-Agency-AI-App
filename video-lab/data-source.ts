@@ -7,6 +7,7 @@ import pg from "pg";
 import sharp from "sharp";
 import { createClient } from "@supabase/supabase-js";
 import { decrypt } from "@/lib/crypto";
+import { splitPrice } from "@/lib/video-engine/price";
 
 const DATA = path.resolve("video-lab/data");
 let pool: pg.Pool | null = null;
@@ -34,7 +35,9 @@ export type LabProduct = {
   name: string;
   summary: string;
   description: string | null;
+  /** The amount with its condition ("from 250,000 RWF"); `priceNotes`: what the owner wrote after it (lib/video-engine/price.ts). */
   price: string | null;
+  priceNotes: string | null;
   usps: string[];
   features: string[];
   targetCustomer: string | null;
@@ -84,7 +87,7 @@ export async function listProducts(businessId: string): Promise<LabProduct[]> {
     name: row.name,
     summary: row.summary,
     description: row.description,
-    price: priceText(row.priceModel, row.priceAmount, row.currency, row.priceNote),
+    ...(({ short, notes }) => ({ price: short, priceNotes: notes }))(splitPrice(priceText(row.priceModel, row.priceAmount, row.currency, row.priceNote))),
     usps: row.usps ?? [],
     features: row.features ?? [],
     targetCustomer: row.targetCustomer,

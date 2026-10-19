@@ -10,7 +10,7 @@ import type { MotionSpec } from "./spec";
 /** The facts the check compares with: the brief's business and product, and the owner's own line. */
 export type FactBrief = {
   business: { name: string; description?: string | null; phone?: string | null; website?: string | null; country?: string | null };
-  product: { name: string; summary?: string | null; description?: string | null; price?: string | null; usps?: string[]; features?: string[]; targetCustomer?: string | null };
+  product: { name: string; summary?: string | null; description?: string | null; price?: string | null; priceNotes?: string | null; usps?: string[]; features?: string[]; targetCustomer?: string | null };
   note?: string | null;
 };
 
@@ -155,7 +155,7 @@ const has = (text: string, word: string) => new RegExp(`(?:^|[^a-z0-9])${word.re
  */
 export function factCheck(spec: Pick<MotionSpec, "scenes" | "caption">, brief: FactBrief): FactWarning[] {
   const p = brief.product;
-  const productFacts = normalise([p.name, p.summary, p.description, p.price, ...(p.usps ?? []), ...(p.features ?? []), p.targetCustomer, brief.business.name, brief.business.website, brief.note].filter(Boolean).join(" \n "));
+  const productFacts = normalise([p.name, p.summary, p.description, p.price, p.priceNotes, ...(p.usps ?? []), ...(p.features ?? []), p.targetCustomer, brief.business.name, brief.business.website, brief.note].filter(Boolean).join(" \n "));
   const businessFacts = normalise([brief.business.description, brief.business.country].filter(Boolean).join(" \n "));
   const allFacts = `${productFacts} \n ${businessFacts}`;
   const factNumbers = numbersIn(allFacts);

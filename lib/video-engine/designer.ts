@@ -15,6 +15,7 @@ import { brainBriefFromDesign, brainContext } from "./brain/select";
 import { STYLE_LIMITS, scoreDesign, templateStyle, type DesignScore } from "./brain/score";
 import { PREFERRED_PHRASES, checkLanguage, languageTextsOf } from "./brain";
 import { recipeText, viralRecipe, type RecipePlatform, type ViralRecipe } from "./brain/viral";
+import { withShortPrice } from "./price";
 
 const MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 export const DESIGNER_MODEL = "claude-sonnet-5-5";
@@ -37,7 +38,11 @@ export type BriefClip = { path: string; source: "phone" | "ai"; seconds: number;
 
 export type DesignBrief = {
   business: { name: string; description?: string | null; language?: string | null; colors?: string[]; phone?: string | null; website?: string | null; country?: string | null; tone?: string | null };
-  product: { name: string; summary?: string | null; description?: string | null; price?: string | null; usps?: string[]; features?: string[]; targetCustomer?: string | null };
+  /**
+   * `price`: the amount with its condition ("from 250,000 RWF"); `priceNotes`: what the owner wrote after it (price.ts).
+   * A price field holding a paragraph is split before Claude sees it.
+   */
+  product: { name: string; summary?: string | null; description?: string | null; price?: string | null; priceNotes?: string | null; usps?: string[]; features?: string[]; targetCustomer?: string | null };
   photos: BriefPhoto[];
   /** Template id (templates.ts); "styleId" is its older name. */
   styleId: string;
@@ -189,7 +194,8 @@ export function systemPrompt(): string {
 }
 
 /** The user message: the brief as text, followed by the photos. */
-export function briefText(brief: DesignBrief): string {
+export function briefText(given: DesignBrief): string {
+  const brief = { ...given, product: withShortPrice(given.product) };
   const template = templateById(brief.styleId);
   const hook = hookById(brief.hookId);
   const { width, height } = RATIOS[brief.ratio];
@@ -260,6 +266,8 @@ export function briefText(brief: DesignBrief): string {
     brief.product.summary ? `Summary: ${brief.product.summary}` : "",
     brief.product.description ? `Description: ${brief.product.description}` : "",
     brief.product.price ? `Price: ${brief.product.price}` : "Price: not given (do not show a price)",
+    // The rest of a long price field: true, but never on screen, and never in the caption's first line.
+    brief.product.price && brief.product.priceNotes ? `Price notes (facts for the voice or the caption's later lines only; never on screen, the caption opens with the price above): ${brief.product.priceNotes}` : "",
     brief.product.usps?.length ? `Why buy it: ${brief.product.usps.join("; ")}` : "",
     brief.product.features?.length ? `Features: ${brief.product.features.join("; ")}` : "",
     brief.product.targetCustomer ? `For: ${brief.product.targetCustomer}` : "",
@@ -375,14 +383,16 @@ export const apiTransport = (apiKey: string, fetchImpl: typeof fetch = fetch): C
  */
 /** Everything the brief states (the product, the business, the owner's note), for the validator's fact checks. */
 const briefFacts = (b: DesignBrief): string =>
-  [b.product.name, b.product.summary, b.product.description, b.product.price, ...(b.product.usps ?? []), ...(b.product.features ?? []), b.business.description, b.note].filter(Boolean).join("\n");
+  [b.product.name, b.product.summary, b.product.description, b.product.price, b.product.priceNotes, ...(b.product.usps ?? []), ...(b.product.features ?? []), b.business.description, b.note].filter(Boolean).join("\n");
 
-export async function designVideo(brief: DesignBrief, opts: { apiKey?: string; model?: string; fetchImpl?: typeof fetch; transport?: ClaudeTransport }): Promise<DesignResult> {
+export async function designVideo(given: DesignBrief, opts: { apiKey?: string; model?: string; fetchImpl?: typeof fetch; transport?: ClaudeTransport }): Promise<DesignResult> {
   const model = opts.model || DESIGNER_MODEL;
   const fetchImpl = opts.fetchImpl ?? fetch;
   const apiKey = opts.apiKey;
   if (!opts.transport && !apiKey) throw new DesignError("The Claude API key is not set.");
   const send: ClaudeTransport = opts.transport ?? ((call) => callClaude(apiKey as string, call.model, call.system, call.content, fetchImpl));
+  // The short price everywhere (Claude, the checks, the recipe); the owner's notes stay facts for the caption.
+  let brief: DesignBrief = { ...given, product: withShortPrice(given.product) };
   // A viral video without a recipe from its caller gets one here (a fresh seed: no recent recipes to avoid).
   if (isViralStyle(brief.styleId) && !brief.recipe && brief.mode !== "edit" && brief.mode !== "extend") brief = { ...brief, recipe: recipeForBrief(brief, { seed: `${brief.product.name}|${brief.variation?.index ?? 1}|${Math.random()}` }) };
   const system = systemPrompt();

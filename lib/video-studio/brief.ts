@@ -4,6 +4,7 @@ import { priceLine } from "@/lib/knowledge/products";
 import { imageSize, sniffMediaType } from "@/lib/media/rules";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { BriefPhoto, DesignBrief } from "@/lib/video-engine/designer";
+import { splitPrice } from "@/lib/video-engine/price";
 
 // The Video Studio's brief from the company's own data (docs/VIDEO_APP_INTEGRATION.md, task 5): the business, one of
 // its products and up to 4 of its photos, read from Storage for Claude to see. Photos must be the company's own
@@ -46,7 +47,8 @@ export async function loadBriefFacts(businessId: string, productId: string): Pro
   return {
     productId: product.id,
     business: { name: business.name, description: business.description ?? business.industryDescription, language: business.contentLanguage, colors: business.brandColors, phone: business.phone, website: business.website, country: business.country, tone: business.tone },
-    product: { name: product.name, summary: product.summary, description: product.description, price: briefPrice(product as ProductRow), usps: product.usps, features: product.features, targetCustomer: product.targetCustomer },
+    // The short price for the video and the caption's first line; the owner's notes after it stay facts (price.ts).
+    product: { name: product.name, summary: product.summary, description: product.description, ...(({ short, notes }) => ({ price: short, priceNotes: notes }))(splitPrice(briefPrice(product as ProductRow))), usps: product.usps, features: product.features, targetCustomer: product.targetCustomer },
   };
 }
 

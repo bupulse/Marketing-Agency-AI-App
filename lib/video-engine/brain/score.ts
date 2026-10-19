@@ -20,7 +20,7 @@ export type DesignScore = { score: number; passed: ScoreItem[]; failed: ScoreIte
 /** The facts a design is checked against. A DesignBrief fits this shape. */
 export type ScoreBrief = {
   business: { name: string; phone?: string | null; website?: string | null; description?: string | null; language?: string | null; country?: string | null };
-  product: { name: string; price?: string | null; summary?: string | null; description?: string | null; usps?: string[]; features?: string[] };
+  product: { name: string; price?: string | null; priceNotes?: string | null; summary?: string | null; description?: string | null; usps?: string[]; features?: string[] };
   styleId?: string | null;
   seconds?: number;
   /** The brain's or designer.ts's platform key (youtube = Shorts). */
@@ -159,7 +159,7 @@ const URGENCY = /\b(only \d+ left|few left|limited stock|while stocks? last|hurr
 const CLAIMS = /\b(free delivery|pay (after|on) delivery|\d+\s*% off|discount|guarantee[d]?|warranty)\b/i;
 
 function briefText(b: ScoreBrief): string {
-  return [b.business.name, b.business.description, b.product.name, b.product.price, b.product.summary, b.product.description, ...(b.product.usps ?? []), ...(b.product.features ?? []), b.note].filter(Boolean).join(" \n ");
+  return [b.business.name, b.business.description, b.product.name, b.product.price, b.product.priceNotes, b.product.summary, b.product.description, ...(b.product.usps ?? []), ...(b.product.features ?? []), b.note].filter(Boolean).join(" \n ");
 }
 
 type Check = { id: string; rule: string | null; points: number; ok: boolean; reason: string; scene?: number | null };
