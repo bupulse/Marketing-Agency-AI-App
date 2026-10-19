@@ -68,6 +68,10 @@ export const ROUTES: RoutePolicy[] = [
   { method: "POST", path: /^\/api\/blender\/jobs\/(bl-[0-9a-f]{12})\/rerender$/, who: "any", sample: "/api/blender/jobs/bl-0123456789ab/rerender" },
   { method: "GET", path: /^\/api\/blender\/jobs\/(bl-[0-9a-f]{12})$/, who: "any", sample: "/api/blender/jobs/bl-0123456789ab" },
   { method: "GET", path: /^\/videos\/blender\/(bl-[0-9a-f]{12})\.mp4$/, who: "any", sample: "/videos/blender/bl-0123456789ab.mp4" },
+  // A client's Premium 3D clips (VideoJob rows, video-lab/client-premium.ts): their own only.
+  { method: "GET", path: /^\/api\/blender\/jobs\/(c[a-z0-9]{20,30})(\/rerender)?$/, who: "any", sample: "/api/blender/jobs/cnothingnothingnothing1" },
+  { method: "POST", path: /^\/api\/blender\/jobs\/(c[a-z0-9]{20,30})(\/rerender)?$/, who: "any", sample: "/api/blender/jobs/cnothingnothingnothing1/rerender" },
+  { method: "GET", path: /^\/videos\/blender\/(c[a-z0-9]{20,30})\.mp4$/, who: "any", sample: "/videos/blender/cnothingnothingnothing1.mp4" },
   { method: "GET", path: "/api/hooks", who: "any", sample: "/api/hooks" },
   { method: "GET", path: "/api/first-comment", who: "any", sample: "/api/first-comment" },
   { method: "GET", path: "/api/plan", who: "any", sample: "/api/plan" },

@@ -175,7 +175,7 @@ stay in your generations as previews.
 | Server and routes | `video-lab/server.ts` (`/api/design`, `/api/jobs/*`, `/api/seedance/*`, `/api/blender/*`, `/api/quote`, `/api/showcase`, `/api/wallet`) |
 | Credits and wallet | `video-lab/credits.ts` (`CLAUDE_VIDEO_CREDITS`, `seedanceCredits`, `PREMIUM_3D_CREDITS`, `VOICE_OVER_CREDITS`, `charge`, `refund`) |
 | Motion engine | `lib/video-engine/` (`designer.ts`, `spec.ts`, `validate.ts`, `draw.ts`, `animate.ts`, `encode.ts`, `templates.ts`, `styles.ts`, `cast.ts`) |
-| Premium 3D | `lib/video-engine/blender-design.ts`, `video-lab/premium-jobs.ts`, `tools/blender/`, [docs/BLENDER.md](../../BLENDER.md) |
+| Premium 3D | `lib/video-engine/blender-design.ts`, `video-lab/premium-jobs.ts` (the owner's clips), `lib/video-studio/premium-jobs.ts` and `video-lab/client-premium.ts` (a client's clips as VideoJobs, the render loop), `tools/blender/`, [docs/BLENDER.md](../../BLENDER.md) |
 | Voice-over | `video-lab/voice.ts` (ElevenLabs) |
 | Research Brain | `lib/video-engine/brain/` ([Video Brain](19-video-brain.md)) |
 | Seedance | `lib/video-engine/seedance.ts` (BytePlus calls), `seedance-brain.ts` (templates, rules, plans, checks), `seedance-prompt.ts` (Claude's prompt writer), `seedance-overlay.ts` (BuPulse's text over a clip), `seedance-characters.ts` (presenters), `video-lab/seedance-jobs.ts` (jobs and previews), `video-lab/seedance-references.ts` and `seedance-sources.ts` (photos and files for BytePlus), `video-lab/seedance-mock/` (storyboards, examples) |
@@ -193,5 +193,7 @@ stay in your generations as previews.
 | Generate is greyed out on Real video | The red check under the prompt bar | Do what it says (for example remove "Image 3", or pick Pro for 1080p). |
 | "BytePlus declined the content" | The references: a person's face? | Use product photos and a digital character; the credits come back by themselves. |
 | Premium 3D is disabled | `GET /api/blender/status` | Blender is missing or not found on this Mac ([docs/BLENDER.md](../../BLENDER.md)). |
+| A client sees "Premium 3D is coming soon" | Admin -> Services, Premium 3D (Blender) | It is off until the owner switches it on (planned after Motion is live). |
+| A client's 3D clip stays "queued" | The studio computer: is the studio running and Blender installed? | Clips render one at a time on this Mac; they start when it is on. After a restart a stopped render goes back in the queue once. |
 | The MP4 has no voice | The drawer's message; ElevenLabs in Admin → Services | Check `ELEVENLABS_API_KEY`; the MP4 is made without the voice when the take fails, and the credits come back. |
 | A video's price or number is wrong | The drawer's "Check these facts" | Fix the product's facts in the knowledge base and generate again; Claude only uses what is there. |

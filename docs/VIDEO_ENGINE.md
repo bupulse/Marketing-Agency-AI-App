@@ -377,6 +377,11 @@ pages read it). Videos are served with Range requests, so a page full of videos 
   the progress, then the video, the caption and the fact warnings; finished clips appear in the showcase as
   "Premium 3D". First real clip (17 October, Kitenge summer dress, Showroom turntable, 6 s, with the cut-out): 5
   minutes in all, 4 min 31 s of it Blender, while other agents used the Mac.
+  **For clients (19 October, docs/STUDIO_DEPLOY.md item 9):** a client's clip is a `VideoJob` (engine `premium3d`,
+  `lib/video-studio/premium-jobs.ts`, `video-lab/client-premium.ts`) with the plan's credits, rendered by the same
+  one-at-a-time queue and saved into their Gallery and Videos library; its routes take the job's cuid
+  (`/api/blender/jobs/<cuid>`, `/rerender`, `/videos/blender/<cuid>.mp4`, a link to Storage). Off for clients until the
+  owner switches the `premium3d` service on (Admin -> Services); music only for now, no voice-over.
 - **Fact check and research score (Motion):** each design keeps the designer's \`warnings\`; the drawer lists them
   under "Check these facts" (red: not in the product's facts; amber: only in the business description) and cards show
   "N facts to check". When the designer returns a \`score\`, the drawer and cards show "Research score N/100" and what

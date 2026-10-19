@@ -8,6 +8,8 @@ import { DESIGNER_MODEL, DESIGN_MODES, DesignError, apiSum, apiTransport, design
 import { recipeWhy, type ViralRecipe } from "@/lib/video-engine/brain/viral";
 import { CLIP_MAX_BYTES, clientClipBytes, ownerBriefClips, saveOwnerClip, uploadClipForClient } from "./client-clips";
 import { aiClipRecipe, aiClipsForBrief, aiClipsRecord } from "./ai-clips";
+import { getClientPremium, listClientPremium, premiumForClient, rerenderForClient, startClientPremiumLoop } from "./client-premium";
+import { isServiceEnabled } from "@/lib/admin/switch";
 import { cutoutForPhoto } from "./cutouts";
 import { loadReferenceSources, type StudioRef } from "./seedance-sources";
 import { prepareSeedanceReferences, type ReferenceSummary } from "./seedance-references";
@@ -1125,13 +1127,46 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { uploadId: out.uploadId, costUsd: out.call.costUsd });
       }
     }
-    if (req.method === "GET" && p === "/api/blender/status") return json(res, 200, { comingSoon: !!scopeOf(req), available: !scopeOf(req) && (await blenderAvailable()), credits: { ...PREMIUM_3D_CREDITS, rerender: PREMIUM_RERENDER_CREDITS }, sound: BLENDER_MIXES_AUDIO, voiceReady: !!process.env.ELEVENLABS_API_KEY, voiceCredits: VOICE_OVER_CREDITS });
+    if (req.method === "GET" && p === "/api/blender/status") {
+      // A client sees "coming soon" until the owner switches Premium 3D on (Admin -> Services, "premium3d"); their clips
+      // get library music, not a voice-over yet (lib/video-studio/premium-jobs.ts).
+      const open = !scopeOf(req) || (await isServiceEnabled("premium3d"));
+      return json(res, 200, { comingSoon: !open, available: open && (await blenderAvailable()), credits: { ...PREMIUM_3D_CREDITS, rerender: PREMIUM_RERENDER_CREDITS }, sound: BLENDER_MIXES_AUDIO, voiceReady: !scopeOf(req) && !!process.env.ELEVENLABS_API_KEY, voiceCredits: VOICE_OVER_CREDITS });
+    }
     if (req.method === "GET" && p === "/api/blender/look") {
       // The look a Premium 3D clip gets for this template and product (dark showroom, daylight studio or neon).
       const look = lookForTemplate(url.searchParams.get("template") ?? "", url.searchParams.get("product") ?? "");
       return json(res, 200, { look, name: BLENDER_LOOK_NAMES[look] });
     }
-    if (req.method === "POST" && /^\/api\/blender\/(render|jobs\/bl-[0-9a-f]{12}\/rerender)$/.test(p) && scopeOf(req)) return fail(res, 503, "Premium 3D is coming soon.");
+    // A client's Premium 3D clips are VideoJob rows (video-lab/client-premium.ts, build item 9), never the owner's files.
+    const cpJob = p.match(/^\/api\/blender\/jobs\/(c[a-z0-9]{20,30})(\/rerender)?$/);
+    const cpVideo = p.match(/^\/videos\/blender\/(c[a-z0-9]{20,30})\.mp4$/);
+    const client = clientOf(req);
+    if (client && (p === "/api/blender/render" || p === "/api/blender/jobs" || cpJob || cpVideo || /^\/api\/blender\/jobs\/bl-/.test(p))) {
+      try {
+        if (req.method === "GET" && p === "/api/blender/jobs") return json(res, 200, { jobs: await listClientPremium(client) });
+        if (req.method === "GET" && cpVideo) {
+          const link = await clientVideoUrl(client, cpVideo[1]);
+          if (!link) return fail(res, 404, "Not found");
+          res.writeHead(302, { location: link, "cache-control": "private, no-store" });
+          return res.end();
+        }
+        if (req.method === "GET" && cpJob && !cpJob[2]) {
+          const j = await getClientPremium(client, cpJob[1]);
+          return j ? json(res, 200, j) : fail(res, 404, "Not found");
+        }
+        if (req.method === "POST" && (p === "/api/blender/render" || cpJob?.[2])) {
+          if (!(await blenderAvailable())) return fail(res, 503, "Premium 3D is not available right now. Please try again later.");
+          await limit(req, "premium", RATE_LIMITS.videoDesign);
+          const body = await readJson(req, 64 * 1024);
+          return json(res, 200, { job: cpJob ? await rerenderForClient(client, cpJob[1], body) : await premiumForClient(client, body) });
+        }
+        return fail(res, 404, "Not found");
+      } catch (error) {
+        const e = await asClientError(error, 0, client.companyUserId);
+        return fail(res, e.status, e.message);
+      }
+    }
     if (req.method === "POST" && p === "/api/blender/render") {
       // Premium 3D: Claude designs a Blender scene from the same brief as a Motion video, then Blender renders it here.
       if (!(await blenderAvailable())) return fail(res, 503, "Premium 3D needs Blender on the studio computer, and it is not installed.");
@@ -1514,6 +1549,10 @@ void loadSavedKeys(LAB_KEYS)
       void resumeSeedanceJobs();
       void resumeAiClips().catch((error: unknown) => console.log(`[lab] AI clips could not be resumed: ${error instanceof Error ? error.message : error}`));
       void recoverPremiumJobs().then((n) => n && console.log(`[lab] ${n} Premium 3D job(s) stopped by the restart: credits given back.`));
+      // Clients' Premium 3D clips (VideoJob rows): the ones a restart stopped, then this computer's render loop.
+      void startClientPremiumLoop()
+        .then((r) => (r.failed || r.requeued) && console.log(`[lab] Client Premium 3D after the restart: ${r.requeued} back in the queue, ${r.failed} failed (credits given back).`))
+        .catch((error: unknown) => console.log(`[lab] Client Premium 3D loop not started: ${error instanceof Error ? error.message : error}`));
       if (loaded.length) console.log(`Keys from Admin -> Services: ${loaded.join(", ")}`);
       console.log(
         claudeMode() === "subscription"

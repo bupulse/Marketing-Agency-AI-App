@@ -1,7 +1,8 @@
 # Video Studio at studio.bupulse.com: the plan
 
 Status: built and tested on the TEST database, not switched on (19 October 2026). Items 1 to 7, 10, 11, 12 (prepared)
-and 14 are done; Seedance (8) and Premium 3D (9) come after launch. "Going live" below is the owner's checklist.
+and 14 are done; Premium 3D (9) is built and off for clients until the owner switches it on; Seedance (8) comes after
+launch. "Going live" below is the owner's checklist.
 
 The contract with the BuPulse side is `docs/VIDEO_STUDIO_SPLIT.md` (in the `videos-library` worktree). In short: a client
 arrives from BuPulse with a one-use ticket, gets a studio session tied to their business, spends `videoCredits` through
@@ -256,7 +257,19 @@ the first release).
    `https://bupulse.com`) + `openStudioHref(next)`; the owner's door is `/login`.
 3. **Scoping:** `video-lab/scope.ts`; check with `node --env-file=.env scripts/video-lab/qa-scope.mjs` against a studio started
    with `STUDIO_SESSION_SECRET` and `STUDIO_DEV_TICKETS=1` (30 checks). Until item 7, a client's uploads, AI images and
-   presenter shots answer 503; until item 9, Premium 3D answers "coming soon".
+   presenter shots answer 503; Premium 3D answers "coming soon" while the `premium3d` service is off (item 9).
+- **Item 9, Premium 3D as `VideoJob` (built 19 October 2026, off for clients):** `lib/video-studio/premium-jobs.ts`
+  (`startPremiumJob`, `rerenderPremiumJob`, `renderNextPremiumJob`, `startPremiumRenderLoop`, `recoverPremiumJobs`,
+  `failPremiumOnce`) and its studio side `video-lab/client-premium.ts`. Credits reserved first (`PREMIUM_3D_CREDITS` 100
+  at 540p, 150 at 720p), a `premium3d` row "designing", the scene designed through `ledgeredClaude` (the subscription on
+  the test studio), then "queued"; this Mac's loop claims the oldest queued row (conditional update), renders it through
+  the shared `oneRenderAtATime` (one Blender at a time, with the owner's own tests), uploads the MP4 into the Gallery's
+  "Video Studio" folder and finalises it with `saveJobVideo` ("ready": BuPulse's Videos library shows it). A re-render is
+  a child row (`PREMIUM_RERENDER_CREDITS` 70). Every failure refunds once. After a restart, a design that was running is
+  failed and refunded and a render goes back in the queue once. No schema change (VideoJob already has `scene`,
+  `quality`, `attempts`, `leaseUntil`). **Client switch:** the `premium3d` service in Admin -> Services, off until the
+  owner switches it on; until then clients see "coming soon". Not yet for clients: the voice-over (music only). Tests:
+  `tests/video-studio/premium-jobs.test.ts` (no Blender, no Claude).
 4. **Credits:** `video-lab/credits.ts` takes a client's credits from the company owner's `videoCredits` (`consumeUsage`) and gives
    them back to the same place (`Payer`, kept on Seedance jobs so a background refund finds it); the owner keeps the local test
    wallet. `/api/wallet` shows the plan's credits left; "Buy credits" and Pricing link to `https://bupulse.com/dashboard/billing`.

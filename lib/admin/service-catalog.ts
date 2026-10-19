@@ -21,6 +21,7 @@ export const SERVICE_IDS = [
   "whatsapp",
   "seedance",
   "veo",
+  "premium3d",
   "composio",
   "studio",
 ] as const;
@@ -280,6 +281,18 @@ export const SERVICES: ServiceInfo[] = [
     features: ["Connecting Facebook, Instagram, LinkedIn and YouTube (BuPulse-Socials)", "Posting and post numbers for accounts connected that way"],
     killable: true,
     whenOff: "New social connections use BuPulse's own apps instead (\"Coming soon\" where those are not set up). Accounts already connected through BuPulse-Socials keep posting through it.",
+  },
+  {
+    id: "premium3d",
+    name: "Premium 3D (Blender)",
+    purpose: "Real 3D product clips in the Video Studio: Claude designs a Blender scene from the product and Blender renders it on the studio computer, one clip at a time (docs/BLENDER.md, docs/STUDIO_DEPLOY.md item 9). Clients pay 100 credits at 540p, 150 at 720p, 70 for a re-render. BLENDER_BIN points at Blender when it is not in /Applications; BLENDER_TIMEOUT_MS stops a render that runs too long (default 30 minutes).",
+    env: [],
+    optionalEnv: ["BLENDER_BIN", "BLENDER_TIMEOUT_MS"],
+    features: ["Premium 3D clips for clients in the Video Studio"],
+    killable: true,
+    // The studio computer renders one clip at a time: off until the owner opens it to clients after Motion is live.
+    defaultOff: true,
+    whenOff: "Clients see Premium 3D as \"coming soon\" in the Video Studio and cannot start a clip. Clips already queued still render, and finished ones stay in their library. The owner's own tests on the studio are not affected. Off until the owner switches it on.",
   },
   {
     id: "studio",
