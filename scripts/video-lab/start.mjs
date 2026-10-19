@@ -14,9 +14,16 @@ const live = path.join(root, "video-lab/.build");
 const out = path.join(root, "video-lab/.build-next");
 const site = path.join(root, "video-lab/site");
 
+// STUDIO_ENV=production is studio.bupulse.com (docs/STUDIO_DEPLOY.md): the shared production database. Everywhere else
+// (the owner's tests) the studio refuses anything but the TEST database.
+const PRODUCTION = process.env.STUDIO_ENV === "production";
 const TEST_PROJECT = "rzlcizxnhtfqminqkphp";
-if (!(process.env.DATABASE_URL ?? "").includes(TEST_PROJECT)) {
+if (!PRODUCTION && !(process.env.DATABASE_URL ?? "").includes(TEST_PROJECT)) {
   console.log("The Video Studio only runs against the TEST database. Check DATABASE_URL in .env.");
+  process.exit(1);
+}
+if (PRODUCTION && (process.env.DATABASE_URL ?? "").includes(TEST_PROJECT)) {
+  console.log("STUDIO_ENV=production must not use the TEST database. Check DATABASE_URL.");
   process.exit(1);
 }
 
@@ -64,13 +71,24 @@ const CREATE_HEAD = {
   title1: `<h1><b data-i18n="create.h1a">Turn any product</b><span data-i18n="create.h1b">into ready to post video</span></h1>`,
 };
 
+/**
+ * lib/ files import "server-only" (it throws outside Next): an empty file stands in. next/<name> files are CommonJS
+ * without an export-map entry, so Node's ESM loader needs the ".js" written out (tested in docs/STUDIO_DEPLOY.md, section 3).
+ */
+const nextJs = {
+  name: "next-js",
+  setup(b) {
+    b.onResolve({ filter: /^next\/[a-z-]+$/ }, (a) => ({ path: `${a.path}.js`, external: true }));
+  },
+};
+
 /** The whole build, into video-lab/.build-next. Throws on the first failure. */
 async function buildAll() {
   await fs.rm(out, { recursive: true, force: true });
   await fs.mkdir(path.join(out, "pages"), { recursive: true });
   await fs.mkdir(path.join(out, "js"), { recursive: true });
   const common = { absWorkingDir: root, tsconfig: "tsconfig.json", bundle: true, logLevel: "warning", legalComments: "none" };
-  await build({ ...common, entryPoints: ["video-lab/server.ts"], outfile: path.join(out, "server.mjs"), platform: "node", format: "esm", target: "node22", packages: "external" });
+  await build({ ...common, entryPoints: ["video-lab/server.ts"], outfile: path.join(out, "server.mjs"), platform: "node", format: "esm", target: "node22", packages: "external", alias: { "server-only": path.join(root, "video-lab/server-only-stub.js") }, plugins: [nextJs] });
   await build({
     ...common,
     entryPoints: { site: "video-lab/site/client/site.ts", home: "video-lab/site/client/home.ts", create: "video-lab/site/client/create.ts", showcase: "video-lab/site/client/showcase.ts", viral: "video-lab/site/client/viral.ts", pricing: "video-lab/site/client/pricing.ts", image: "video-lab/site/client/image.ts", model: "video-lab/site/client/model.ts", lab: "video-lab/client/app.ts" },

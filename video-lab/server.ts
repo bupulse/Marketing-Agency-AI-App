@@ -37,6 +37,8 @@ import { VOICE_ROUTE, makeVoiceForJob, readVoiceMp3 } from "./voice";
 import { cancelSeedance, getSeedanceJob, getSeedancePreview, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
 import { mediaBytes, saveMedia } from "./data-source";
 import { viralFrame, viralLibrary } from "./viral";
+import { clearSessionCookieHeader, clientSession, safeStudioNext, sessionCookieHeader, sessionSecret, signInUrl, signSession, type StudioIdentity } from "./session";
+import { redeemTicket } from "./tickets";
 import { RateLimiter, clearCookieHeader, clientIp, cookieValue, isLocal, loadSecret, loginPage, safeNext, sameText, setCookieHeader, tokenFor } from "./gate";
 
 const PORT = Number(process.env.VIDEO_LAB_PORT || 3100);
@@ -389,42 +391,90 @@ async function seedanceConnection(): Promise<SeedanceConnection> {
 }
 
 const loginTries = new RateLimiter(10, 10 * 60_000);
+const ticketTries = new RateLimiter(30, 10 * 60_000);
 let gateSecret: Buffer | null = null;
 const html = (res: http.ServerResponse, status: number, body: string) => {
   res.writeHead(status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
   res.end(body);
 };
 
+/** studio.bupulse.com (STUDIO_ENV=production): no loopback shortcut, the production database, API-key Claude only. */
+const PRODUCTION = process.env.STUDIO_ENV === "production";
+/** Who a request is: a client (the 12-hour cookie from BuPulse's ticket) or the owner (the password door, or this computer). */
+export type Actor = { kind: "owner" } | { kind: "client"; identity: StudioIdentity };
+const actors = new WeakMap<http.IncomingMessage, Actor>();
+const actorOf = (req: http.IncomingMessage): Actor | null => actors.get(req) ?? null;
+const isOwner = (req: http.IncomingMessage) => actorOf(req)?.kind === "owner";
+/** Owner-only routes (research, tests, the shared wallet): a client gets the same 404 as for a route that does not exist. */
+const requireOwner = (req: http.IncomingMessage, res: http.ServerResponse): boolean => {
+  if (isOwner(req)) return true;
+  fail(res, 404, "Not found");
+  return false;
+};
+/** The client's session, or null for the owner. Routes use it to scope reads and writes to the client's business. */
+const clientOf = (req: http.IncomingMessage): StudioIdentity | null => {
+  const a = actorOf(req);
+  return a?.kind === "client" ? a.identity : null;
+};
+const BUPULSE_URL = (process.env.BUPULSE_URL ?? "").trim();
+/** The first path segments the studio serves as pages: what a sign-in may send a client back to. */
+const PAGE_SEGMENTS = new Set([...Object.keys(PAGE_ROUTES), ...Object.keys(REDIRECTS)].map((k) => k.split("/")[1]).filter(Boolean));
+const studioNext = (next: unknown) => safeStudioNext(next, (first) => PAGE_SEGMENTS.has(first));
+
 /**
- * The password gate (video-lab/gate.ts) for online access. True when the request may go on; otherwise it has been
- * answered: the sign-in page, the sign-in itself, a redirect to it, or 401 for the API.
+ * Who may go on (docs/STUDIO_DEPLOY.md, section 2). True when the request may continue (the actor is set); otherwise it
+ * has been answered: the ticket sign-in, the owner's sign-in page, a redirect to BuPulse or to it, or 401 for the API.
  */
 async function gate(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<boolean> {
   const p = url.pathname;
   const password = process.env.STUDIO_PASSWORD ?? "";
   const secret = (gateSecret ??= await loadSecret());
-  const signedIn = !!password && sameText(cookieValue(req.headers) ?? "", tokenFor(password, secret));
+  const sessionKey = sessionSecret();
+  const ownerSignedIn = !!password && sameText(cookieValue(req.headers) ?? "", tokenFor(password, secret));
+  const client = clientSession(req.headers, sessionKey);
   if (p === "/logout") {
-    res.writeHead(303, { "set-cookie": clearCookieHeader(req.headers), location: "/login" });
+    res.writeHead(303, { "set-cookie": [clearCookieHeader(req.headers), clearSessionCookieHeader(req.headers)], location: client && BUPULSE_URL ? BUPULSE_URL : "/login" });
     res.end();
     return false;
   }
-  if (isLocal(req.headers, PORT) || signedIn) {
+  if (req.method === "GET" && p === "/auth/bupulse") {
+    // The one-click sign-in: redeem the ticket (once), set the 12-hour cookie, go to `next` (studio pages only).
+    const next = studioNext(url.searchParams.get("next"));
+    const back = BUPULSE_URL ? signInUrl(BUPULSE_URL, next) : "/login";
+    const ticket = url.searchParams.get("ticket") ?? "";
+    if (!sessionKey) {
+      fail(res, 503, "The studio's sign-in is not set up: STUDIO_SESSION_SECRET is missing (32 or more characters).");
+      return false;
+    }
+    if (!ticketTries.hit(clientIp(req))) {
+      fail(res, 429, "Too many sign-in tries. Wait a few minutes.");
+      return false;
+    }
+    const identity = ticket.length >= 8 && ticket.length <= 200 ? await redeemTicket(ticket).catch(() => null) : null;
+    if (!identity) {
+      res.writeHead(302, { location: back });
+      res.end();
+      return false;
+    }
+    res.writeHead(303, { "set-cookie": sessionCookieHeader(signSession(identity, sessionKey), req.headers), location: next, "cache-control": "no-store", "referrer-policy": "no-referrer" });
+    res.end();
+    return false;
+  }
+  // A client's session counts first, so a client cookie is tried as a client even on the owner's own computer.
+  const actor: Actor | null = client ? { kind: "client", identity: client } : ownerSignedIn || (!PRODUCTION && isLocal(req.headers, PORT)) ? { kind: "owner" } : null;
+  if (actor) {
+    actors.set(req, actor);
     if (p !== "/login") return true;
     res.writeHead(303, { location: safeNext(url.searchParams.get("next")) });
     res.end();
     return false;
   }
   if (req.method === "GET" && p === "/site.css") return true;
-  if (!password) {
-    fail(res, 503, "The studio is locked: STUDIO_PASSWORD is not set on the studio computer.");
-    return false;
-  }
-  if (p === "/login" && req.method === "GET") {
+  if (p === "/login" && req.method === "GET" && password) {
     html(res, 200, loginPage(safeNext(url.searchParams.get("next")), null));
     return false;
   }
-  if (p === "/login" && req.method === "POST") {
+  if (p === "/login" && req.method === "POST" && password) {
     const form = new URLSearchParams((await readBody(req, 4096)).toString("utf8"));
     const next = safeNext(form.get("next"));
     if (!loginTries.hit(clientIp(req))) {
@@ -440,10 +490,18 @@ async function gate(req: http.IncomingMessage, res: http.ServerResponse, url: UR
     return false;
   }
   if (p.startsWith("/api/") || req.method !== "GET") {
-    fail(res, 401, "Sign in first: open the studio and enter the password.");
+    const next = studioNext(req.headers.referer ? new URL(req.headers.referer, "http://x").pathname : "/create");
+    json(res, 401, { error: "Sign in first: open the studio from BuPulse.", signInUrl: BUPULSE_URL ? signInUrl(BUPULSE_URL, next) : "/login" });
     return false;
   }
-  res.writeHead(302, { location: `/login?next=${encodeURIComponent(p + url.search)}` });
+  // A page with no session: BuPulse checks the plan and sends the client back with a ticket. Without BUPULSE_URL (the
+  // owner's tests) it is the owner's password page.
+  const back = studioNext(p + url.search);
+  if (BUPULSE_URL) res.writeHead(302, { location: signInUrl(BUPULSE_URL, back) });
+  else if (!password) {
+    fail(res, 503, "The studio is locked: STUDIO_PASSWORD is not set on the studio computer.");
+    return false;
+  } else res.writeHead(302, { location: `/login?next=${encodeURIComponent(p + url.search)}` });
   res.end();
   return false;
 }
@@ -472,6 +530,10 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && p === "/site.css") return file(res, path.join(BUILD, "site.css"), "text/css; charset=utf-8");
     const js = p.match(/^\/js\/([a-z]+)\.js$/);
     if (req.method === "GET" && js) return file(res, path.join(BUILD, "js", `${js[1]}.js`), "text/javascript; charset=utf-8");
+    if (req.method === "GET" && p === "/api/session") {
+      const c = clientOf(req);
+      return json(res, 200, c ? { kind: "client", businessId: c.businessId, role: c.role } : { kind: "owner" });
+    }
     if (req.method === "GET" && p === "/api/wallet") return json(res, 200, await readWallet());
     if (req.method === "POST" && p === "/api/wallet/topup") {
       // Test wallet only: no payment. In the app, MoMo and plan allowances take over (docs/MOMO.md).
