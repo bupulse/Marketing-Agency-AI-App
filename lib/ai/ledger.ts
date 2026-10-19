@@ -79,6 +79,14 @@ export async function withLedger<T>(
   }
 }
 
+/**
+ * Records a call whose usage is known only later (a Seedance task: submitted through withLedger, billed when it
+ * finishes). Recording never throws.
+ */
+export async function recordAiCall(context: LedgerContext, entry: { provider: string; model: string; usage: TokenUsage; success: boolean; error?: string; durationMs: number }): Promise<void> {
+  await record(context, entry);
+}
+
 /** A failed call's row: the usage a provider billed before failing (blocked, unparsable, timed out) when it is known. */
 function failureEntry(meta: { provider: string; model: string }, error: unknown, started: number) {
   const billed = error instanceof AIProviderError ? error : undefined;

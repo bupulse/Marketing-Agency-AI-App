@@ -29,6 +29,8 @@ vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("@/lib/usage", () => usage);
 vi.mock("@/lib/errors", () => ({ logError: vi.fn(async () => {}) }));
 vi.mock("@/lib/admin/cron-run", () => ({ recordCron: vi.fn(async (_job: string, run: () => Promise<unknown>) => run()) }));
+// The Seedance part of the sweep has its own tests (tests/video-studio/seedance-jobs.test.ts).
+vi.mock("@/lib/video-studio/seedance-jobs", () => ({ sweepSeedanceJobs: vi.fn(async () => ({ stranded: 0, expired: 0 })) }));
 
 import { sweepVideoJobs, STRANDED_MESSAGE } from "@/lib/video-studio/sweep";
 import { POST } from "@/app/api/cron/video-jobs/route";
@@ -50,12 +52,12 @@ beforeEach(() => {
 
 describe("the Video Studio sweep", () => {
   it("fails a design whose lease passed and gives its credits back to the company account, exactly once", async () => {
-    expect(await sweepVideoJobs(NOW)).toEqual({ stranded: 1, refunded: 1, credits: 35, refundErrors: 0, voiceRefunded: 0, voiceCredits: 0 });
+    expect(await sweepVideoJobs(NOW)).toEqual({ stranded: 1, refunded: 1, credits: 35, refundErrors: 0, voiceRefunded: 0, voiceCredits: 0, seedance: { stranded: 0, expired: 0 } });
     expect(usage.refundUsage).toHaveBeenCalledTimes(1);
     expect(usage.refundUsage).toHaveBeenCalledWith("owner-of-b1", "videoCredits", PERIOD, 35);
     expect(db.rows.find((r) => r.id === "stranded")).toMatchObject({ status: "failed", error: STRANDED_MESSAGE, refundedAt: NOW, leaseUntil: null });
     // A second run (or two runs at once) finds nothing more to refund.
-    expect(await sweepVideoJobs(NOW)).toEqual({ stranded: 0, refunded: 0, credits: 0, refundErrors: 0, voiceRefunded: 0, voiceCredits: 0 });
+    expect(await sweepVideoJobs(NOW)).toEqual({ stranded: 0, refunded: 0, credits: 0, refundErrors: 0, voiceRefunded: 0, voiceCredits: 0, seedance: { stranded: 0, expired: 0 } });
     expect(usage.refundUsage).toHaveBeenCalledTimes(1);
     // Untouched: the design still in its lease, the finished one, the one already refunded.
     expect(db.rows.find((r) => r.id === "working")?.status).toBe("designing");
@@ -74,7 +76,7 @@ describe("the Video Studio sweep", () => {
 
   it("a refund that fails is counted and logged, never retried into a double refund", async () => {
     usage.refundUsage.mockRejectedValueOnce(new Error("db blip"));
-    expect(await sweepVideoJobs(NOW)).toEqual({ stranded: 1, refunded: 0, credits: 0, refundErrors: 1, voiceRefunded: 0, voiceCredits: 0 });
+    expect(await sweepVideoJobs(NOW)).toEqual({ stranded: 1, refunded: 0, credits: 0, refundErrors: 1, voiceRefunded: 0, voiceCredits: 0, seedance: { stranded: 0, expired: 0 } });
     expect(await sweepVideoJobs(NOW)).toMatchObject({ stranded: 0 });
     expect(usage.refundUsage).toHaveBeenCalledTimes(1);
   });

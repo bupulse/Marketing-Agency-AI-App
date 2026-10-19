@@ -374,3 +374,41 @@ describe("clips in a design", () => {
     expect(out.spec.scenes[1].layers.find((l) => l.kind === "video")).toMatchObject({ kind: "video", url: "/api/clip/abc1234567" });
   });
 });
+
+describe("Seedance prompts from a viral recipe", async () => {
+  const { promptBriefText, recipeForPrompt } = await import("@/lib/video-engine/seedance-prompt");
+  const { planSeedanceShots } = await import("@/lib/video-engine/seedance-brain");
+  const pb = { business: { name: "LEAF Rwanda", language: "English", country: "Rwanda", phone: "0788 300 400" }, product: { name: "LEAF Hydro Tower", summary: "A vertical hydroponic tower", price: "From 250,000 RWF · delivery extra" }, references: ["Image 1: the tower on a balcony"], templateId: VIRAL_STYLE_ID, seconds: 8, ratio: "9:16", audio: true, platform: "tiktok" };
+
+  it("every technique can be filmed (Seedance makes the footage), and a floor-standing product is never held up", () => {
+    for (let i = 0; i < 6; i++) {
+      const r = recipeForPrompt(pb, { seed: `sd${i}` });
+      expect(r.clipNeeds).toEqual([]);
+      expect(r.beats.map((b) => b.what).join(" ")).not.toMatch(/holds the .* up to the camera/);
+    }
+  });
+
+  it("the prompt brief follows the recipe's opening, shots and camera instead of a template, with the short price", () => {
+    const recipe = recipeForPrompt(pb, { seed: "brief" });
+    const text = promptBriefText({ ...pb, recipe });
+    expect(text).toContain("Viral recipe:");
+    expect(text).not.toContain('Template "');
+    expect(text).toContain(recipe.opening.source);
+    expect(text).toMatch(/No words, prices, numbers or logos in the frames/);
+    expect(text).toContain("Price: From 250,000 RWF\n");
+    // The shots are scaled to the clip: the last one ends at 8 s.
+    expect(text).toMatch(/-8 s cta:/);
+    // A template keeps its own line.
+    expect(promptBriefText({ ...pb, templateId: "product-hero" })).toContain('Template "Product hero"');
+  });
+
+  it("the free shot plan takes the recipe's number of shots, timing and camera", () => {
+    const plain = planSeedanceShots({ ...pb, seconds: 10 });
+    const recipe = { beats: [{ from: 0, to: 2 }, { from: 2, to: 8 }, { from: 8, to: 10 }], camera: { moves: ["handheld"] } };
+    const plan = planSeedanceShots({ ...pb, seconds: 10, shotRecipe: recipe });
+    expect(plan.shots.length).toBeLessThanOrEqual(3);
+    expect(plan.shots.every((s) => /handheld/i.test(s.camera))).toBe(true);
+    expect(plan.notes.join(" ")).toContain("viral recipe");
+    expect(plain.notes.join(" ")).not.toContain("viral recipe");
+  });
+});

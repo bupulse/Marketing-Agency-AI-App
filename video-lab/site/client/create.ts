@@ -73,6 +73,8 @@ const state = {
   showTemplates: false,
   /** Phone clips for a viral video: 2 to 4 of 5 to 10 s. */
   clips: [] as Clip[],
+  /** Real video: the viral recipe the prompt was written from (sent back with the submission). */
+  sdRecipe: null as unknown,
   ratio: "9:16",
   seconds: 5,
   tier: "fast",
@@ -391,7 +393,7 @@ async function planWeek() {
 // ---- Seedance checks (lib/video-engine/seedance-brain.ts, through /api/seedance/check) -------------------------------
 
 /** What Generate would send to Seedance. */
-const seedanceBody = () => ({ prompt: $<HTMLTextAreaElement>("prompt").value.trim(), refs: state.refs.map((r) => ({ id: r.id, kind: r.kind, role: r.role, label: r.label })), tier: state.tier, resolution: state.resolution, ratio: state.ratio, seconds: state.seconds, audio: state.audio, fixedLens: state.fixedLens, flex: state.flex, draft: state.draft, seed: state.seed ? Number(state.seed) : null, versions: state.versions, businessId: state.businessId, productId: state.productId, mode: state.mode });
+const seedanceBody = () => ({ prompt: $<HTMLTextAreaElement>("prompt").value.trim(), refs: state.refs.map((r) => ({ id: r.id, kind: r.kind, role: r.role, label: r.label })), tier: state.tier, resolution: state.resolution, ratio: state.ratio, seconds: state.seconds, audio: state.audio, fixedLens: state.fixedLens, flex: state.flex, draft: state.draft, seed: state.seed ? Number(state.seed) : null, versions: state.versions, businessId: state.businessId, productId: state.productId, mode: state.mode, platform: state.platform, templateId: state.templateId, recipe: state.sdRecipe });
 
 function showIssues(issues: Issue[]) {
   const box = $("sdChecks");
@@ -796,12 +798,14 @@ async function writeWithClaude() {
   b.disabled = true;
   msg("Claude is writing the shot list…");
   try {
-    const out = await api<{ prompt: string; issues: Issue[]; fallback: string | null }>("/api/seedance/prompt", {
+    const out = await api<{ prompt: string; issues: Issue[]; fallback: string | null; recipe?: unknown }>("/api/seedance/prompt", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ businessId: state.businessId, productId: state.productId, templateId: state.templateId, note: $<HTMLTextAreaElement>("prompt").value, seconds: state.seconds, ratio: state.ratio, audio: state.audio, references: state.refs.map((r) => ({ kind: r.kind, label: r.label })), presenter: state.avatar?.label ?? null }),
+      body: JSON.stringify({ businessId: state.businessId, productId: state.productId, templateId: state.templateId, note: $<HTMLTextAreaElement>("prompt").value, seconds: state.seconds, ratio: state.ratio, audio: state.audio, references: state.refs.map((r) => ({ kind: r.kind, label: r.label })), presenter: state.avatar?.label ?? null, platform: state.platform }),
     });
     $<HTMLTextAreaElement>("prompt").value = out.prompt;
+    // The viral recipe the prompt was written from goes back with the submission (the clip keeps it).
+    state.sdRecipe = out.recipe ?? null;
     msg(out.fallback ? `Claude could not be reached, so BuPulse's own shot plan was used: ${out.fallback}` : "Prompt written. Change anything, then Generate.", out.fallback ? "" : "ok");
     showIssues(out.issues ?? []);
     scheduleCheck();
@@ -816,13 +820,14 @@ async function writeWithClaude() {
 async function quickPlan() {
   if (!state.productId) return msg("Pick a product first (the PRODUCT tile).", "err");
   try {
-    const plan = await api<{ prompt: string; templateName: string; notes: string[] }>("/api/seedance/plan", {
+    const plan = await api<{ prompt: string; templateName: string; notes: string[]; recipe?: unknown }>("/api/seedance/plan", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ businessId: state.businessId, productId: state.productId, templateId: state.planVariant ? null : state.templateId, variant: state.planVariant, seconds: state.seconds, ratio: state.ratio, audio: state.audio, fixedLens: state.fixedLens, references: state.refs.map((r) => ({ kind: r.kind, label: r.label })), presenter: state.avatar?.label ?? null }),
     });
     state.planVariant += 1;
     $<HTMLTextAreaElement>("prompt").value = plan.prompt;
+    state.sdRecipe = plan.recipe ?? null;
     msg(`Quick plan: ${plan.templateName}.${plan.notes.length ? ` ${plan.notes.join(" ")}` : ""} Press again for another plan.`, "ok");
     scheduleCheck();
   } catch (e) {

@@ -69,6 +69,11 @@ takes"). Never paste a key into a chat, an email or a screenshot.
    - **What stays:** earlier previews stay in "My videos" as previews, and the "Get inspired" examples stay storyboards
      (they are examples, not jobs).
    - **In the app:** Admin → Services → Seedance must be switched on (it can be paused there at any time).
+   - **Clients:** from the restart, a client's Generate on Real video sends a real clip, with credits from their plan
+     (a `VideoJob`, `lib/video-studio/seedance-jobs.ts`). The studio checks running clips every 10 s, saves each
+     finished MP4 into the client's Gallery and BuPulse's Videos library, and gives the credits back when a clip fails.
+     The app's video-jobs cron gives back the credits of a clip BytePlus ended. Before the restart, clients only got
+     free storyboards ("Real video is coming soon").
 
 10. **Optional, for video references (edit and extend).** BytePlus downloads reference videos from the internet. They
     work only while the video.bupulse.com tunnel runs and `.env` has `STUDIO_PUBLIC_URL=https://video.bupulse.com`.

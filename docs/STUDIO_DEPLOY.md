@@ -1,7 +1,8 @@
 # Video Studio at studio.bupulse.com: the plan
 
 Status: built and tested on the TEST database, not switched on (19 October 2026). Items 1 to 7, 10, 11, 12 (prepared)
-and 14 are done; Seedance (8) and Premium 3D (9) come after launch. "Going live" below is the owner's checklist.
+and 14 are done; Premium 3D (9) is built and off for clients until the owner switches it on; Seedance (8) comes after
+launch. "Going live" below is the owner's checklist.
 
 The contract with the BuPulse side is `docs/VIDEO_STUDIO_SPLIT.md` (in the `videos-library` worktree). In short: a client
 arrives from BuPulse with a one-use ticket, gets a studio session tied to their business, spends `videoCredits` through
@@ -256,7 +257,48 @@ the first release).
    `https://bupulse.com`) + `openStudioHref(next)`; the owner's door is `/login`.
 3. **Scoping:** `video-lab/scope.ts`; check with `node --env-file=.env scripts/video-lab/qa-scope.mjs` against a studio started
    with `STUDIO_SESSION_SECRET` and `STUDIO_DEV_TICKETS=1` (30 checks). Until item 7, a client's uploads, AI images and
-   presenter shots answer 503; until item 9, Premium 3D answers "coming soon".
+   presenter shots answer 503; Premium 3D answers "coming soon" while the `premium3d` service is off (item 9).
+- **Item 8, Seedance as `VideoJob` (built 20 October 2026; real clips wait for the BytePlus key):**
+  `lib/video-studio/seedance-jobs.ts` (`submitSeedanceJob`, `pollSeedanceJob`, `pollDueSeedanceJobs`,
+  `startSeedancePoller`, `sweepSeedanceJobs`, `cancelSeedanceJob`, `createSeedancePreview`, `saveSeedanceOverlayJob`) and
+  its studio side `video-lab/client-seedance.ts`.
+  - **Submit:** credits are taken first (`seedanceCredits`). Then a `seedance` row is written ("submitting"), and the
+    BytePlus task is created through the cost ledger (`withLedger`: the `seedance` switch and the platform cap), which
+    makes the row "submitted" with `providerTaskId`, `nextPollAt` and `expiresAt` (BytePlus ends unfinished tasks after
+    an hour and bills nothing).
+  - **Polling:** the studio checks due rows every 10 s, only while the key is set. The rows are in the database, so it
+    resumes by itself after a restart. Each check claims the job with a lease. When the clip is ready, the poller
+    downloads the MP4 (BytePlus's own host only, at most 200 MB), uploads it into the Gallery's "Video Studio" folder and
+    finalises it with `saveJobVideo` (engine "seedance"). The job is then "ready" in BuPulse's Videos library, the clip's
+    real tokens go to the ledger (`recordAiCall`), and the clip does not use one of the plan's videos.
+  - **Refunds:** a refused request, a failed or expired task, a download that keeps failing (5 tries), a cancel before
+    the task starts, and the cron sweep (`sweepSeedanceJobs` in `/api/cron/video-jobs`) each give the credits back
+    exactly once (`failOnce`, a conditional update). The sweep covers a submit that died before BytePlus answered, and
+    a task past its expiry plus 5 minutes.
+  - **Previews:** without the key, a submission is a free preview row ("preview", the storyboard, 0 credits), with the
+    notice "Real video is coming soon". While the `seedance` switch is off, a client is refused before anything is
+    charged.
+  - **BuPulse's text:** the overlay is a child Motion job (`mode` "overlay", 0 credits), drawn and saved like any Motion
+    MP4.
+  - **The owner's door** keeps its local jobs (`video-lab/seedance-jobs.ts`).
+  - **Viral recipes:** the prompt follows the recipe (`recipeForPrompt`, `seedanceRecipeText`; the quick plan takes
+    its shots and camera), and the clip keeps it in `VideoJob.brief.recipe`.
+  - **Schema:** no change (`VideoJob` already had `providerTaskId`, `nextPollAt`, `expiresAt`, `storyboard`).
+  - **Tests:** `tests/video-studio/seedance-jobs.test.ts` and `tests/video-lab/client-seedance.test.ts` (BytePlus
+    mocked: submit, queued, running, succeeded with the download, failed, no answer, resume, sweep, cancel, previews,
+    switch off). Key day: `docs/SEEDANCE_KEY_DAY.md`.
+- **Item 9, Premium 3D as `VideoJob` (built 19 October 2026, off for clients):** `lib/video-studio/premium-jobs.ts`
+  (`startPremiumJob`, `rerenderPremiumJob`, `renderNextPremiumJob`, `startPremiumRenderLoop`, `recoverPremiumJobs`,
+  `failPremiumOnce`) and its studio side `video-lab/client-premium.ts`. Credits reserved first (`PREMIUM_3D_CREDITS` 100
+  at 540p, 150 at 720p), a `premium3d` row "designing", the scene designed through `ledgeredClaude` (the subscription on
+  the test studio), then "queued"; this Mac's loop claims the oldest queued row (conditional update), renders it through
+  the shared `oneRenderAtATime` (one Blender at a time, with the owner's own tests), uploads the MP4 into the Gallery's
+  "Video Studio" folder and finalises it with `saveJobVideo` ("ready": BuPulse's Videos library shows it). A re-render is
+  a child row (`PREMIUM_RERENDER_CREDITS` 70). Every failure refunds once. After a restart, a design that was running is
+  failed and refunded and a render goes back in the queue once. No schema change (VideoJob already has `scene`,
+  `quality`, `attempts`, `leaseUntil`). **Client switch:** the `premium3d` service in Admin -> Services, off until the
+  owner switches it on; until then clients see "coming soon". Not yet for clients: the voice-over (music only). Tests:
+  `tests/video-studio/premium-jobs.test.ts` (no Blender, no Claude).
 4. **Credits:** `video-lab/credits.ts` takes a client's credits from the company owner's `videoCredits` (`consumeUsage`) and gives
    them back to the same place (`Payer`, kept on Seedance jobs so a background refund finds it); the owner keeps the local test
    wallet. `/api/wallet` shows the plan's credits left; "Buy credits" and Pricing link to `https://bupulse.com/dashboard/billing`.
@@ -384,6 +426,20 @@ keys file and the real BuPulse database, while the test studio (port 3100, `vide
 
 What is not in the first release: Seedance real video (waits for the BytePlus key, free previews until then) and Premium 3D
 ("coming soon"). Both can be switched on later without any change for clients' existing videos.
+
+### Owner checks to run (on TEST, before switching these on for clients)
+
+These change shared TEST data (a service switch, a test business's credits), so they are yours to run; the code is built
+and covered by mocked tests.
+1. **Premium 3D for clients (item 9):** in Admin -> Services switch **Premium 3D (Blender)** on for TEST. Open the test
+   studio as **E2E Starter Test** (it has 100 video credits), pick Premium 3D at **540p** and Generate. Expect: 100 credits
+   taken, "Designing", "Waiting", "Rendering" (about 3 to 10 minutes on this Mac), then the clip in the drawer, in the
+   Gallery's "Video Studio" folder and in BuPulse's Videos library. Switch it off again afterwards if clients should not
+   see it yet.
+2. **Veo AI clips for a client:** give a TEST business **230 video credits or more** and 1 monthly video, switch **Google
+   Veo AI clips** on in Admin -> Services, then make a viral video with **3 AI clips** (about $0.60 of Veo). Expect: 230
+   credits taken (35 + 195), "Making AI clip 1 of 3…", the three clips in the Gallery's "AI clips" folder, and the MP4
+   saved as ready in the Videos library with no clip sound in it. Switch Veo off again if it should stay off.
 
 ## Questions for the owner
 

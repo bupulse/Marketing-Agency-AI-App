@@ -6,7 +6,10 @@
 import { brainBriefFromPrompt, brainContext } from "./brain/select";
 import { MAX_RESEARCH_CHARS, type ClaudeTransport, type DesignUsage } from "./designer";
 import { cameraLanguageText, limitPromptWords, lintSeedancePrompt, planSeedanceShots, seedanceRulesText, seedanceTemplateById, shotTypesText, type BusinessKind, type SeedanceFormat, type SeedanceIssue } from "./seedance-brain";
-import { templateById } from "./templates";
+import { isViralStyle, templateById } from "./templates";
+import { seedanceRecipeText, viralRecipe, type RecipePlatform, type ViralRecipe } from "./brain/viral";
+import { withShortPrice } from "./price";
+import { LARGE_PRODUCT } from "./designer";
 
 export type PromptBrief = {
   business: { name: string; description?: string | null; language?: string | null; country?: string | null; phone?: string | null };
@@ -25,7 +28,19 @@ export type PromptBrief = {
   format?: SeedanceFormat | null;
   /** Where the clip will be posted (tiktok, instagram, facebook, youtube...); null or "any" for no platform. */
   platform?: string | null;
+  /** The viral recipe (templateId "viral", recipeForPrompt): its opening, shots and camera replace the template's. */
+  recipe?: ViralRecipe | null;
 };
+
+/**
+ * The viral recipe for a Seedance clip: like a Motion video's (designer.ts recipeForBrief), but every technique can
+ * be filmed (Seedance makes the footage), at least 6 s (it is scaled to the clip's 4 to 15 s when written).
+ */
+export function recipeForPrompt(b: PromptBrief, opts: { seed: string; recent?: ViralRecipe[] }): ViralRecipe {
+  const bb = brainBriefFromPrompt(b, { platform: b.platform ?? null, hasPhone: !!b.business.phone?.trim() });
+  const platform = ["tiktok", "instagram", "facebook", "youtube"].includes(b.platform ?? "") ? (b.platform as RecipePlatform) : null;
+  return viralRecipe({ sector: bb.sector ?? "shop", product: b.product.name, platform, country: b.business.country ?? null, language: b.business.language ?? null, purpose: "ad", seconds: Math.max(6, b.seconds), hasPrice: bb.hasPrice, hasPhone: bb.hasPhone, hasLocation: !!bb.hasLocation, hasOffer: !!bb.hasOffer, large: LARGE_PRODUCT.test([b.product.name, b.product.summary].filter(Boolean).join(" ")), footage: { generated: true }, recent: opts.recent ?? [], seed: opts.seed });
+}
 
 export const SEEDANCE_SYSTEM = [
   "You write prompts for Seedance 2.0, a video generation model, for small-business ads in Rwanda and East Africa. You answer with the prompt text only: no title, no explanation, no quotes around it.",
@@ -39,18 +54,21 @@ export const SEEDANCE_SYSTEM = [
 
 /** The research Brain's context for this brief, fenced data for Claude (same size limit as the designer's). */
 export const researchFor = (b: PromptBrief): string =>
-  brainContext(brainBriefFromPrompt(b, { platform: b.platform ?? null, hasPhone: !!b.business.phone?.trim() }))
+  brainContext(brainBriefFromPrompt(b, { platform: b.platform ?? null, hasPhone: !!b.business.phone?.trim() }), { viral: !!b.recipe })
     .replace(/<<<|>>>/g, "")
     .trim()
     .slice(0, MAX_RESEARCH_CHARS);
 
-export function promptBriefText(b: PromptBrief): string {
+export function promptBriefText(given: PromptBrief): string {
+  // The short price only (price.ts): a paragraph in the price field is never spoken or filmed.
+  const b = { ...given, product: withShortPrice(given.product) };
+  const recipe = isViralStyle(b.templateId) ? (b.recipe ?? null) : null;
   const sd = seedanceTemplateById(b.templateId);
-  const t = sd ? null : templateById(b.templateId);
-  const plan = planSeedanceShots(b);
+  const t = sd || recipe ? null : templateById(b.templateId);
+  const plan = planSeedanceShots({ ...b, shotRecipe: recipe });
   return [
     `Length ${b.seconds} seconds, ratio ${b.ratio}, ${b.audio ? "with sound" : "no sound"}${b.fixedLens ? ", fixed lens (no camera moves)" : ""}.`,
-    t ? `Template "${t.name}": ${t.direction}` : `Template "${plan.templateName}".`,
+    recipe ? seedanceRecipeText(recipe, b.seconds) : t ? `Template "${t.name}": ${t.direction}` : `Template "${plan.templateName}".`,
     b.presenter ? `Presenter: ${b.presenter}.` : "No presenter: show hands, the product and the place; a person may appear from behind or at a distance only.",
     b.note ? `The owner asks: <<<${b.note.replace(/<<<|>>>/g, "")}>>>` : "",
     "<<<BUSINESS",
@@ -99,7 +117,7 @@ export async function writeSeedancePrompt(b: PromptBrief, send: ClaudeTransport,
   try {
     answer = await send({ model, system: SEEDANCE_SYSTEM, content: [{ type: "text", text: promptBriefText(b) }], maxTokens: 800 });
   } catch (error) {
-    const plan = planSeedanceShots(b);
+    const plan = planSeedanceShots({ ...b, shotRecipe: isViralStyle(b.templateId) ? (b.recipe ?? null) : null });
     const why = error instanceof Error ? error.message : "no answer";
     return { prompt: plan.prompt, usage: { model, inputTokens: 0, outputTokens: 0, costUsd: 0 }, issues: lint(plan.prompt), fallback: `Claude was unavailable (${why.slice(0, 160)}), so this is BuPulse's own shot plan "${plan.templateName}". Change anything you like.` };
   }

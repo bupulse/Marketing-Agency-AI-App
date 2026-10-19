@@ -168,7 +168,8 @@ export const RECENT_RECIPES = 5;
 
 /** The business's last viral recipes, newest first: a new video avoids repeating them. */
 export async function recentRecipes(businessId: string): Promise<ViralRecipe[]> {
-  const rows = await prisma.videoJob.findMany({ where: { businessId, engine: "motion", templateId: "viral", mode: { notIn: ["edit", "extend"] } }, orderBy: { createdAt: "desc" }, take: RECENT_RECIPES, select: { brief: true } });
+  // Motion designs and Seedance clips share the business's recipes: a Seedance clip avoids the last Motion video's too.
+  const rows = await prisma.videoJob.findMany({ where: { businessId, engine: { in: ["motion", "seedance"] }, templateId: "viral", mode: { notIn: ["edit", "extend"] } }, orderBy: { createdAt: "desc" }, take: RECENT_RECIPES, select: { brief: true } });
   return rows.map((r) => recipeOf(r.brief)).filter((r): r is ViralRecipe => !!r);
 }
 
