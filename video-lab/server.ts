@@ -38,9 +38,10 @@ import { cancelSeedance, getSeedanceJob, getSeedancePreview, listSeedanceJobs, r
 import { mediaBytes, saveMedia } from "./data-source";
 import { OWNER_PAGES, isOwnerOnly, owns, withoutOwnerFields } from "./scope";
 import { viralFrame, viralLibrary } from "./viral";
-import { clearSessionCookieHeader, clientSession, safeStudioNext, sessionCookieHeader, sessionSecret, signInUrl, signSession, type StudioIdentity } from "./session";
-import { redeemTicket } from "./tickets";
-import { RateLimiter, clearCookieHeader, clientIp, cookieValue, isLocal, loadSecret, loginPage, safeNext, sameText, setCookieHeader, tokenFor } from "./gate";
+import { clearSessionCookieHeader, clientSession, safeStudioNext, sessionCookieHeader, sessionSecret, signSession, type StudioIdentity } from "./session";
+import { openStudioHref } from "@/lib/video-studio/ticket";
+import { BLOCK_MESSAGE, blockFor, redeemTicket } from "./tickets";
+import { RateLimiter, clearCookieHeader, clientIp, noticePage, cookieValue, isLocal, loadSecret, loginPage, safeNext, sameText, setCookieHeader, tokenFor } from "./gate";
 
 const PORT = Number(process.env.VIDEO_LAB_PORT || 3100);
 const BUILD = path.resolve("video-lab/.build");
@@ -431,14 +432,27 @@ const clientOf = (req: http.IncomingMessage): StudioIdentity | null => {
   const a = actorOf(req);
   return a?.kind === "client" ? a.identity : null;
 };
-const BUPULSE_URL = (process.env.BUPULSE_URL ?? "").trim();
+const BUPULSE_URL = ((process.env.BUPULSE_URL ?? "").trim() || "https://bupulse.com").replace(/\/+$/, "");
+/** BuPulse's route that sends a signed-in client back with a fresh ticket (and a signed-out one to its sign-in and back). */
+const signInUrl = (next: string) => `${BUPULSE_URL}${openStudioHref(next)}`;
 /** Where a client buys more video credits: BuPulse's billing page (MoMo top-ups happen there). */
-const BUY_CREDITS_URL = `${(BUPULSE_URL || "https://bupulse.com").replace(/\/+$/, "")}/dashboard/billing`;
+const BUY_CREDITS_URL = `${BUPULSE_URL}/dashboard/billing`;
 /** The first path segments the studio serves as pages: what a sign-in may send a client back to. */
 const PAGE_SEGMENTS = new Set([...Object.keys(PAGE_ROUTES), ...Object.keys(REDIRECTS)].map((k) => k.split("/")[1]).filter(Boolean));
 const studioNext = (next: unknown) => safeStudioNext(next, (first) => PAGE_SEGMENTS.has(first));
 /** The client's business, or null for the owner (who chooses one). */
 const scopeOf = (req: http.IncomingMessage): string | null => clientOf(req)?.businessId ?? null;
+/**
+ * Paid work is refused for a client the studio is closed to now (switched off in Admin -> Services, no permission, no
+ * plan credits), the same check as at sign-in. True when it has answered.
+ */
+async function studioClosed(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+  const c = clientOf(req);
+  const block = c ? await blockFor(c).catch(() => null) : null;
+  if (!block) return false;
+  fail(res, 403, BLOCK_MESSAGE[block]);
+  return true;
+}
 /** True when the request may see something of this business: always for the owner, only the client's own for a client. */
 const ownsBusiness = (req: http.IncomingMessage, businessId: string | null | undefined): boolean => owns(scopeOf(req), businessId);
 /**
@@ -469,14 +483,14 @@ async function gate(req: http.IncomingMessage, res: http.ServerResponse, url: UR
   const ownerSignedIn = !!password && sameText(cookieValue(req.headers) ?? "", tokenFor(password, secret));
   const client = clientSession(req.headers, sessionKey);
   if (p === "/logout") {
-    res.writeHead(303, { "set-cookie": [clearCookieHeader(req.headers), clearSessionCookieHeader(req.headers)], location: client && BUPULSE_URL ? BUPULSE_URL : "/login" });
+    res.writeHead(303, { "set-cookie": [clearCookieHeader(req.headers), clearSessionCookieHeader(req.headers)], location: client ? BUPULSE_URL : "/login" });
     res.end();
     return false;
   }
   if (req.method === "GET" && p === "/auth/bupulse") {
     // The one-click sign-in: redeem the ticket (once), set the 12-hour cookie, go to `next` (studio pages only).
     const next = studioNext(url.searchParams.get("next"));
-    const back = BUPULSE_URL ? signInUrl(BUPULSE_URL, next) : "/login";
+    const back = signInUrl(next);
     const ticket = url.searchParams.get("ticket") ?? "";
     if (!sessionKey) {
       fail(res, 503, "The studio's sign-in is not set up: STUDIO_SESSION_SECRET is missing (32 or more characters).");
@@ -490,6 +504,12 @@ async function gate(req: http.IncomingMessage, res: http.ServerResponse, url: UR
     if (!identity) {
       res.writeHead(302, { location: back });
       res.end();
+      return false;
+    }
+    // The studio switched off in Admin -> Services, no permission for videos, or a plan without video credits: no session.
+    const block = await blockFor(identity).catch(() => null);
+    if (block) {
+      html(res, 403, noticePage(BLOCK_MESSAGE[block], `${BUPULSE_URL}/dashboard`, "Back to BuPulse"));
       return false;
     }
     res.writeHead(303, { "set-cookie": sessionCookieHeader(signSession(identity, sessionKey), req.headers), location: next, "cache-control": "no-store", "referrer-policy": "no-referrer" });
@@ -528,17 +548,11 @@ async function gate(req: http.IncomingMessage, res: http.ServerResponse, url: UR
   }
   if (p.startsWith("/api/") || req.method !== "GET") {
     const next = studioNext(req.headers.referer ? new URL(req.headers.referer, "http://x").pathname : "/create");
-    json(res, 401, { error: "Sign in first: open the studio from BuPulse.", signInUrl: BUPULSE_URL ? signInUrl(BUPULSE_URL, next) : "/login" });
+    json(res, 401, { error: "Sign in first: open the studio from BuPulse.", signInUrl: signInUrl(next) });
     return false;
   }
-  // A page with no session: BuPulse checks the plan and sends the client back with a ticket. Without BUPULSE_URL (the
-  // owner's tests) it is the owner's password page.
-  const back = studioNext(p + url.search);
-  if (BUPULSE_URL) res.writeHead(302, { location: signInUrl(BUPULSE_URL, back) });
-  else if (!password) {
-    fail(res, 503, "The studio is locked: STUDIO_PASSWORD is not set on the studio computer.");
-    return false;
-  } else res.writeHead(302, { location: `/login?next=${encodeURIComponent(p + url.search)}` });
+  // A page with no session: BuPulse checks the plan and sends the client back with a ticket (the owner's door is /login).
+  res.writeHead(302, { location: signInUrl(studioNext(p + url.search)) });
   res.end();
   return false;
 }
@@ -726,6 +740,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { state: c.state, message: c.message, mode: seedanceReady() ? "live" : "preview" });
     }
     if (req.method === "POST" && p === "/api/seedance/submit") {
+      if (await studioClosed(req, res)) return;
       // Without the BytePlus key this makes a free preview (a storyboard); with it, a real paid job.
       const body = await readJson(req, 64 * 1024);
       const { request, notes, problems, product, businessId, versions } = await seedanceRequestFrom(body, scopeOf(req));
@@ -1085,6 +1100,7 @@ const server = http.createServer(async (req, res) => {
       return res.end(t.bytes);
     }
     if (req.method === "POST" && p === "/api/design") {
+      if (await studioClosed(req, res)) return;
       const body = await readJson(req, 64 * 1024);
       const out = await design(body, scopeOf(req));
       return json(res, out.status, out.body);
@@ -1164,6 +1180,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, child);
       }
       if (req.method === "POST" && jobMatch[2] === "/voice") {
+        if (await studioClosed(req, res)) return;
         // The voice-over of a design (ElevenLabs, video-lab/voice.ts). Credits are taken first and given back when it
         // fails, when the design has no voice lines, or when the same take is already saved (a new MP4 of it is free).
         if (!job.spec) return fail(res, 400, "This design failed, so it has no voice lines.");

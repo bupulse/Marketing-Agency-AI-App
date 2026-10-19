@@ -123,3 +123,27 @@ export function loginPage(next: string, error: string | null): string {
 </body>
 </html>`;
 }
+
+/** A plain page for a person the studio is closed to (switched off, no permission, no video credits), with a way back. */
+export function noticePage(message: string, href: string, linkText: string): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Video Studio · BuPulse</title>
+<link rel="stylesheet" href="/site.css">
+</head>
+<body>
+<main class="login">
+  <a class="brand" href="${esc(href)}"><span class="logo">B</span> BuPulse <b>Video Studio</b></a>
+  <div class="card">
+    <h1>The studio is not open to you yet</h1>
+    <p class="muted">${esc(message)}</p>
+    <a class="btn primary big" href="${esc(href)}">${esc(linkText)}</a>
+  </div>
+</main>
+</body>
+</html>`;
+}

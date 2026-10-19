@@ -248,8 +248,11 @@ Not decided: hosting. Both options need the same code changes (section 6); only 
 Items 1 to 4 are built (owner decisions: this Mac first, Premium 3D "coming soon" at launch, AI images and influencers in
 the first release).
 1. **Bundling:** `scripts/video-lab/start.mjs` (`server-only` alias, `next/<name>.js` plugin, `STUDIO_ENV`).
-2. **Sessions:** `video-lab/session.ts`, `tickets.ts` (the real redeemer replaces `devRedeemer` when `ticket.ts` lands;
-   `STUDIO_DEV_TICKETS=1` gives test tickets `dev-<businessId>`), the gate in `server.ts`.
+2. **Sessions:** `video-lab/session.ts`, `tickets.ts` (the real `redeemStudioTicket` and `studioBlock` from
+   `lib/video-studio/ticket.ts`; `STUDIO_DEV_TICKETS=1` adds test tickets `dev-<businessId>`, never in production), the gate in
+   `server.ts`. A person the studio is closed to (service off in Admin, no permission, no video credits) gets a plain page
+   and no session; the same check runs before paid work. No session redirects to `BUPULSE_URL` (default
+   `https://bupulse.com`) + `openStudioHref(next)`; the owner's door is `/login`.
 3. **Scoping:** `video-lab/scope.ts`; check with `node --env-file=.env scripts/video-lab/qa-scope.mjs` against a studio started
    with `STUDIO_SESSION_SECRET` and `STUDIO_DEV_TICKETS=1` (30 checks). Until item 7, a client's uploads, AI images and
    presenter shots answer 503; until item 9, Premium 3D answers "coming soon".

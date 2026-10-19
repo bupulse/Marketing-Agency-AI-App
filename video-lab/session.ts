@@ -63,9 +63,6 @@ export function safeStudioNext(next: unknown, isPage: (firstSegment: string) => 
   return first !== "" && isPage(first) ? next : fallback;
 }
 
-/** BuPulse's sign-in route for the studio: it checks the plan and sends the client back with a new ticket. */
-export const signInUrl = (bupulseUrl: string, next: string) => `${bupulseUrl.replace(/\/+$/, "")}/dashboard/video/open?next=${encodeURIComponent(next)}`;
-
 /** The secret, or null when it is missing or too short (no session can then be made or read). */
 export const sessionSecret = (env: Record<string, string | undefined> = process.env): string | null => {
   const s = (env.STUDIO_SESSION_SECRET ?? "").trim();
