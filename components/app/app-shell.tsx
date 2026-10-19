@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, ChevronDown, LogOut, Menu, Plus, Settings, X } from "lucide-react";
+import { Bell, ChevronDown, Clapperboard, ExternalLink, LogOut, Menu, Plus, Settings, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Logo } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme";
@@ -42,6 +42,12 @@ type ShellProps = {
   features: FeatureKey[];
   /** Things that need the owner's attention, shown under the bell (for example apps to connect). */
   notices?: ShellNotice[];
+  /**
+   * The Video Studio link in the sidebar (docs/VIDEO_STUDIO_SPLIT.md): "open" opens studio.bupulse.com in a new tab,
+   * signed in; "upgrade" goes to the Videos library, which says the plan has no video credits; null hides it (the
+   * studio is switched off, or the role may not make content).
+   */
+  studio?: "open" | "upgrade" | null;
   children: ReactNode;
 };
 
@@ -140,6 +146,7 @@ function Sidebar({
   brand,
   role,
   features,
+  studio,
   onNavigate,
 }: {
   pathname: string;
@@ -148,6 +155,7 @@ function Sidebar({
   businessName: string;
   brand: ShellBrand;
   features: FeatureKey[];
+  studio: ShellProps["studio"];
   onNavigate?: () => void;
 }) {
   // Members get no purchase prompts; Admins see what could be added so they can ask the owner (lib/team/roles.ts).
@@ -201,6 +209,31 @@ function Sidebar({
             </Link>
           );
         })}
+        {studio === "open" && (
+          // A plain link, not next/link: it must never be prefetched (each visit writes a sign-in ticket).
+          <a
+            href="/dashboard/video/open"
+            target="_blank"
+            rel="noopener"
+            onClick={onNavigate}
+            className="flex min-h-11 items-center gap-3 rounded-2xl px-3.5 text-[15px] font-medium text-muted no-underline transition-colors duration-200 hover:bg-soft hover:text-text"
+          >
+            <Clapperboard aria-hidden className="size-[18px] shrink-0" />
+            Video Studio
+            <ExternalLink aria-hidden className="ml-auto size-4 shrink-0" />
+            <span className="sr-only">(opens in a new tab)</span>
+          </a>
+        )}
+        {studio === "upgrade" && (
+          <Link
+            href="/dashboard/video?studio=plan"
+            onClick={onNavigate}
+            className="flex min-h-11 items-center gap-3 rounded-2xl px-3.5 text-[15px] font-medium text-muted no-underline transition-colors duration-200 hover:bg-soft hover:text-text"
+          >
+            <Clapperboard aria-hidden className="size-[18px] shrink-0" />
+            Video Studio
+          </Link>
+        )}
       </nav>
       {missing.length > 0 && (
         <nav aria-label="Add to your plan" className="flex flex-col gap-1">
@@ -309,6 +342,7 @@ function Drawer({
   brand,
   role,
   features,
+  studio,
   onClose,
 }: {
   pathname: string;
@@ -317,6 +351,7 @@ function Drawer({
   businessName: string;
   brand: ShellBrand;
   features: FeatureKey[];
+  studio: ShellProps["studio"];
   onClose: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -367,13 +402,13 @@ function Drawer({
         >
           <X aria-hidden className="size-5" />
         </button>
-        <Sidebar pathname={pathname} plan={plan} role={role} features={features} businessName={businessName} brand={brand} onNavigate={onClose} />
+        <Sidebar pathname={pathname} plan={plan} role={role} features={features} studio={studio} businessName={businessName} brand={brand} onNavigate={onClose} />
       </div>
     </div>
   );
 }
 
-export function AppShell({ brand, displayName, firstName, email, businessName, plan, role, features, notices = [], children }: ShellProps) {
+export function AppShell({ brand, displayName, firstName, email, businessName, plan, role, features, notices = [], studio = null, children }: ShellProps) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -408,10 +443,10 @@ export function AppShell({ brand, displayName, firstName, email, businessName, p
         aria-label="Sidebar"
         className="glass-strong hidden w-[248px] shrink-0 flex-col rounded-[28px] p-3.5 lg:sticky lg:top-5 lg:flex lg:max-h-[calc(100dvh-2.5rem)] lg:self-start lg:overflow-y-auto"
       >
-        <Sidebar pathname={pathname} plan={plan} role={role} features={features} businessName={businessName} brand={brand} />
+        <Sidebar pathname={pathname} plan={plan} role={role} features={features} studio={studio} businessName={businessName} brand={brand} />
       </aside>
 
-      {drawerOpen && <Drawer pathname={pathname} plan={plan} role={role} features={features} businessName={businessName} brand={brand} onClose={closeDrawer} />}
+      {drawerOpen && <Drawer pathname={pathname} plan={plan} role={role} features={features} studio={studio} businessName={businessName} brand={brand} onClose={closeDrawer} />}
 
       <div className="flex min-w-0 flex-1 basis-[min(100%,560px)] flex-col gap-5">
         <div className="flex flex-wrap items-center justify-between gap-3 px-1">

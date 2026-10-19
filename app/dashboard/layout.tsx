@@ -20,6 +20,8 @@ import { OfferBanner } from "@/components/app/offer-banner";
 import { clientOffer } from "@/lib/offers/service";
 import { currentManualPayment } from "@/lib/billing/momo";
 import { offerCheckingReference } from "@/lib/billing/momo-shared";
+import { isServiceEnabled } from "@/lib/admin/switch";
+import { unseenStudioVideos } from "@/lib/video-library/service";
 
 export const metadata: Metadata = {
   title: { default: "Dashboard", template: "%s · BuPulse" },
@@ -83,6 +85,20 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         },
       ]
     : [];
+  // Studio videos that finished and were not opened in the Videos library yet (docs/VIDEO_STUDIO_SPLIT.md).
+  const newVideos = await unseenStudioVideos(business.id).catch(() => 0);
+  if (newVideos > 0) {
+    notices.push({
+      id: "videos-ready",
+      title: newVideos === 1 ? "Your video is ready" : `${newVideos} new videos are ready`,
+      text: "The Video Studio finished it. Watch it, download it or schedule it on your channels.",
+      href: "/dashboard/video",
+      action: newVideos === 1 ? "View video" : "View videos",
+    });
+  }
+  // The Video Studio link in the sidebar: shown once the studio is switched on, to those who may make content.
+  const studioOn = can(role, "content") && (await isServiceEnabled("studio").catch(() => false));
+  const studio = studioOn ? ((usage.limits.videoCredits ?? 0) > 0 ? "open" : "upgrade") : null;
 
   return (
     <>
@@ -96,6 +112,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         role={role}
         features={[...entitlements.inPlan]}
         notices={notices}
+        studio={studio}
         plan={{
           name: usage.plan.name,
           trialLabel,
