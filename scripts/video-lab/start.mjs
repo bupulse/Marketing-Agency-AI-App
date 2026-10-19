@@ -25,6 +25,7 @@ const PAGES = {
   home: { title: "Real AI videos for your business", page: "home", scripts: ["home"] },
   create: { title: "Create", page: "video", scripts: ["create"] },
   showcase: { title: "Showcase", page: "showcase", scripts: ["showcase"] },
+  viral: { title: "Viral library", page: "viral", scripts: ["viral"] },
   videos: { title: "My videos", page: "videos", scripts: ["showcase"] },
   pricing: { title: "Pricing", page: "pricing", scripts: ["pricing"] },
   guide: { title: "Guide", page: "guide", scripts: [] },
@@ -72,7 +73,7 @@ async function buildAll() {
   await build({ ...common, entryPoints: ["video-lab/server.ts"], outfile: path.join(out, "server.mjs"), platform: "node", format: "esm", target: "node22", packages: "external" });
   await build({
     ...common,
-    entryPoints: { site: "video-lab/site/client/site.ts", home: "video-lab/site/client/home.ts", create: "video-lab/site/client/create.ts", showcase: "video-lab/site/client/showcase.ts", pricing: "video-lab/site/client/pricing.ts", image: "video-lab/site/client/image.ts", model: "video-lab/site/client/model.ts", lab: "video-lab/client/app.ts" },
+    entryPoints: { site: "video-lab/site/client/site.ts", home: "video-lab/site/client/home.ts", create: "video-lab/site/client/create.ts", showcase: "video-lab/site/client/showcase.ts", viral: "video-lab/site/client/viral.ts", pricing: "video-lab/site/client/pricing.ts", image: "video-lab/site/client/image.ts", model: "video-lab/site/client/model.ts", lab: "video-lab/client/app.ts" },
     outdir: path.join(out, "js"),
     platform: "browser",
     format: "iife",

@@ -36,6 +36,7 @@ import { CLAUDE_VIDEO_CREDITS, CREDIT_PACKS, PREMIUM_3D_CREDITS, PREMIUM_RERENDE
 import { VOICE_ROUTE, makeVoiceForJob, readVoiceMp3 } from "./voice";
 import { cancelSeedance, getSeedanceJob, getSeedancePreview, listSeedanceJobs, resumeSeedanceJobs, seedanceReady, seedanceVideoBytes, submitSeedance } from "./seedance-jobs";
 import { mediaBytes, saveMedia } from "./data-source";
+import { viralFrame, viralLibrary } from "./viral";
 import { RateLimiter, clearCookieHeader, clientIp, cookieValue, isLocal, loadSecret, loginPage, safeNext, sameText, setCookieHeader, tokenFor } from "./gate";
 
 const PORT = Number(process.env.VIDEO_LAB_PORT || 3100);
@@ -300,6 +301,7 @@ const PAGE_ROUTES: Record<string, string> = {
   "/": "home",
   "/create": "create",
   "/showcase": "showcase",
+  "/viral": "viral",
   "/videos": "videos",
   "/pricing": "pricing",
   "/guide": "guide",
@@ -502,6 +504,14 @@ const server = http.createServer(async (req, res) => {
       // A Motion video with a voice-over: the design now, the voice when the MP4 is made.
       const voice = body.voice === true ? VOICE_OVER_CREDITS : 0;
       return json(res, 200, { credits: (CLAUDE_VIDEO_CREDITS + voice) * versions, usd: estimateDesignCost(Math.min(4, Number(body.photos) || 0)) * versions, voiceCredits: voice * versions });
+    }
+    if (req.method === "GET" && p === "/api/viral") return json(res, 200, await viralLibrary());
+    const vframe = p.match(/^\/viral\/frames\/([^/]+)\/([^/]+)\/([^/]+)$/);
+    if (req.method === "GET" && vframe) {
+      const bytes = await viralFrame(vframe[1], vframe[2], vframe[3]);
+      if (!bytes) return fail(res, 404, "Not found");
+      res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "max-age=86400" });
+      return res.end(bytes);
     }
     if (req.method === "GET" && p === "/api/showcase") {
       const [cl, sd, pm] = await Promise.all([listJobs(), listSeedanceJobs(), listPremiumJobs()]);

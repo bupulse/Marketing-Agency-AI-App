@@ -766,6 +766,27 @@ Found and fixed in the regression:
 - **Open, not in the site's files:** Premium 3D's 15-minute render limit is reached when the Mac is busy (another 6 s
   clip took 1 min 31 s when quiet). The failed try refunded correctly.
 
+## Viral library (19 October 2026)
+
+`/viral` in the studio: a browsable library of viral short videos from TikTok, Instagram, Facebook and YouTube Shorts,
+saved by the research agents so the engines (and the owner) can learn what works. Row format and collecting rules:
+`docs/research/viral/README.md`.
+- **Data:** one row per video in `docs/research/viral/<platform>.jsonl` (in git). **Frames:** `video-lab/data/viral/frames/<platform>/<id>/f1.jpg`
+  and up (local only, never committed). No videos are downloaded; "Play on <platform>" loads the official embed only
+  when clicked.
+- **Server:** `video-lab/viral.ts`. `GET /api/viral` gives `{ rows, counts }` (latest row per id, each with
+  `framesAvailable`; counts per platform, country, sector, format and hook type); files are re-read when they change and
+  a half-written line is skipped. `GET /viral/frames/<platform>/<id>/<file>.jpg` serves a frame (platform one of the
+  four, id `vt-(tt|ig|fb|yt)-NNN`, file `fN.jpg`, path kept inside the frames folder, cached a day; anything else is 404).
+  Both sit behind the studio password gate like every page.
+- **Page:** `video-lab/site/pages/viral.html` and `client/viral.ts` (labels EN/FR/RW in `client/i18n.ts`): platform tabs,
+  filters (region, sector, format, hook type, ads only, search), sorting, phone-shaped cards that cycle frames on
+  hover, a drawer with the breakdown, and "Make a video like this", which opens `/create?prompt=...` with the format,
+  hook and structure filled in. It refreshes every 60 s. `/viral#<id>` opens that video.
+- **Check:** `node scripts/video-lab/qa-viral.mjs` (studio running; `STUDIO_URL` to point elsewhere) tests the page at 1440
+  and 390 px and the frame route's refusals. To try the page with made-up rows, start the studio with `VIRAL_ROWS_DIR`
+  and `VIRAL_FRAMES_DIR` set to other folders.
+
 ## Online access (video.bupulse.com)
 
 Owner decision (17 October 2026): the studio is reachable online while the owner is away, from this Mac.
