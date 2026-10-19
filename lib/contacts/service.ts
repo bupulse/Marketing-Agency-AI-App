@@ -4,6 +4,7 @@ import type { ChannelKind, Prisma } from "@/lib/generated/prisma/client";
 import { cleanText, normalizeEmail, normalizePhone } from "@/lib/leads/normalize";
 import { displayName } from "@/lib/inbox/service";
 import { ContactError, MAX_FIELDS_PER_BUSINESS, ensureTag, fieldKeyOf, readFields } from "./core";
+import { parseCsv } from "./csv-parse";
 
 // The Contacts pages (app/dashboard/contacts): every person a business talks to, on any channel, with tags, custom
 // fields, their conversations and leads. Scoped by businessId everywhere. docs/INBOX.md.
@@ -254,40 +255,6 @@ export async function exportCsv(businessId: string, filters: ContactFilters): Pr
       .join(",");
   });
   return [head.join(","), ...lines].join("\r\n");
-}
-
-/** Splits CSV text into rows (quotes, commas and new lines inside quotes). */
-export function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = "";
-  let quoted = false;
-  const endCell = () => {
-    row.push(cell);
-    cell = "";
-  };
-  const endRow = () => {
-    endCell();
-    rows.push(row);
-    row = [];
-  };
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (quoted) {
-      if (ch === '"' && text[i + 1] === '"') {
-        cell += '"';
-        i++;
-      } else if (ch === '"') quoted = false;
-      else cell += ch;
-    } else if (ch === '"') quoted = true;
-    else if (ch === ",") endCell();
-    else if (ch === "\n" || ch === "\r") {
-      if (ch === "\r" && text[i + 1] === "\n") i++;
-      endRow();
-    } else cell += ch;
-  }
-  if (cell || row.length) endRow();
-  return rows.filter((r) => r.some((c) => c.trim()));
 }
 
 /**
