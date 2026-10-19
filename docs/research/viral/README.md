@@ -86,6 +86,10 @@ Rules for the fields:
 ## House rules for the collecting agents
 
 - Use your own tab in the research Chrome (DevTools port 9334); never touch the owner's other tabs or windows.
+- Scrolling is encouraged (owner, 19 October): besides searches, scroll the platform's own feeds (TikTok For You,
+  Instagram Reels and Explore, Facebook Reels and Watch, YouTube Shorts) to find more viral videos, and watch each
+  one you keep all the way through (muted) so the breakdown describes the whole video, not the first seconds.
+  Scroll at a human pace (a few seconds per video, longer on the ones you study).
 - Watch muted. Never like, follow, comment, save, share or message. Never download video files: frames are
   screenshots of the playing video.
 - If a login page, a captcha or a "suspicious activity" notice appears: stop, do not solve it, report to the lead.
