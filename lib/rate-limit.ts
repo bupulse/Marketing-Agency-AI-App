@@ -35,6 +35,7 @@ export const RATE_LIMITS = {
   videoRobot: { limit: 120, windowSeconds: 60 * 60 }, // video robot API calls (a run makes about 10), per IP
   pushDevice: { limit: 20, windowSeconds: 60 * 60 }, // "Alerts on this device" switched on (per person)
   firstPostPreview: { limit: 6, windowSeconds: 60 * 60 }, // the free first-post preview button (at most 2 AI calls ever), per company
+  bioSave: { limit: 60, windowSeconds: 60 * 60 }, // Link in bio saves (each may make small copies of up to 12 photos), per company
 } satisfies Record<string, RateLimitRule>;
 
 export class RateLimitError extends Error {

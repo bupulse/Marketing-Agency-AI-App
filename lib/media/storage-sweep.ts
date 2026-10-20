@@ -48,14 +48,21 @@ export async function listTree(bucket: Bucket, prefix: string, depth = MAX_DEPTH
 
 const old = (entries: Entry[], now: number) => entries.filter((e) => !e.folder && e.createdAt !== null && now - e.createdAt > ORPHAN_AGE_MS).map((e) => e.path);
 
-/** The paths among `paths` some row still needs: a photo or video (and its poster and Instagram copy), an open upload, a waiting post. */
+/**
+ * The paths among `paths` some row still needs: a photo or video (and its poster and Instagram copy), an open upload, a
+ * waiting post, a link-in-bio copy.
+ */
 async function recorded(businessId: string, paths: string[], now: Date): Promise<Set<string>> {
   if (paths.length === 0) return new Set();
   const bases = [...new Set(paths.map((p) => p.replace(/\.jpg$/, "")).concat(paths.map((p) => p.replace(/-poster\.jpg$/, ""))))];
-  const [assets, reservations, posts] = await Promise.all([
+  // The link-in-bio page's small copies (lib/bio/service.ts) live in <userId>/bio/, so only that folder needs the look-up.
+  const bio = paths.filter((p) => p.includes("/bio/"));
+  const [assets, reservations, posts, bioPages, bioItems] = await Promise.all([
     prisma.mediaAsset.findMany({ where: { businessId, OR: [{ path: { in: [...paths, ...bases] } }, { posterPath: { in: paths } }] }, select: { path: true, posterPath: true } }),
     prisma.mediaUploadReservation.findMany({ where: { businessId, expiresAt: { gt: now }, path: { in: [...paths, ...bases] } }, select: { path: true } }),
     prisma.post.findMany({ where: { businessId, mediaPaths: { hasSome: paths }, status: { in: [...WAITING] } }, select: { mediaPaths: true } }),
+    bio.length ? prisma.bioPage.findMany({ where: { businessId, logoPath: { in: bio } }, select: { logoPath: true } }) : [],
+    bio.length ? prisma.bioPageItem.findMany({ where: { businessId, photoPath: { in: bio } }, select: { photoPath: true } }) : [],
   ]);
   const keep = new Set<string>();
   for (const a of assets) {
@@ -68,6 +75,7 @@ async function recorded(businessId: string, paths: string[], now: Date): Promise
     keep.add(posterPathFor(r.path));
   }
   for (const p of posts) for (const m of p.mediaPaths) keep.add(m);
+  for (const p of [...bioPages.map((b) => b.logoPath), ...bioItems.map((i) => i.photoPath)]) if (p) keep.add(p);
   return keep;
 }
 

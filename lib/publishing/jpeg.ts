@@ -237,3 +237,45 @@ export async function toJpeg(bytes: Uint8Array): Promise<Uint8Array | null> {
   if (kind !== "png" && kind !== "webp") return null;
   return prepareForInstagram(bytes);
 }
+
+// ---- small copies ----
+
+/** The middle square of an image (the largest one that fits). */
+export function cropSquare(image: Pixels): Pixels {
+  const side = Math.min(image.width, image.height);
+  if (image.width === side && image.height === side) return image;
+  const left = Math.floor((image.width - side) / 2);
+  const top = Math.floor((image.height - side) / 2);
+  const data = new Uint8ClampedArray(side * side * 4);
+  for (let y = 0; y < side; y++) {
+    const from = ((y + top) * image.width + left) * 4;
+    data.set(image.data.subarray(from, from + side * 4), y * side * 4);
+  }
+  return { data, width: side, height: side };
+}
+
+/** Downscale to `width` in halving steps first, so a big photo is averaged rather than sampled (no jagged edges). */
+function shrinkTo(image: Pixels, width: number): Pixels {
+  let out = image;
+  while (out.width >= width * 2) out = downscale(out, Math.ceil(out.width / 2));
+  return downscale(out, width);
+}
+
+/**
+ * A small JPEG of a photo or logo for public pages (the link-in-bio page, lib/bio): at most `maxSide` pixels on a side,
+ * cut to the middle square when `square`, transparency on white. Throws ImageTooLargeError above 4096 pixels on a side
+ * (before decoding), and an Error when the bytes are not a PNG, WebP or JPEG.
+ */
+export async function smallJpeg(bytes: Uint8Array, opts: { maxSide: number; square?: boolean; quality?: number }): Promise<Uint8Array> {
+  const kind = sniffImage(bytes);
+  if (kind === "unknown") throw new Error("Not a PNG, WebP or JPEG image");
+  const size = imageSize(bytes);
+  if (size && (size.width > MAX_SIDE || size.height > MAX_SIDE)) throw new ImageTooLargeError(TOO_LARGE);
+  let image = await decodeImage(bytes, kind);
+  if (image.width > MAX_SIDE || image.height > MAX_SIDE) throw new ImageTooLargeError(TOO_LARGE);
+  flattenOnWhite(image);
+  if (opts.square) image = cropSquare(image);
+  const scale = Math.min(1, opts.maxSide / Math.max(image.width, image.height));
+  image = shrinkTo(image, Math.max(1, Math.round(image.width * scale)));
+  return encodeJpeg(image, opts.quality ?? 78);
+}
