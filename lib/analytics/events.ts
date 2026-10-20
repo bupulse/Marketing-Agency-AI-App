@@ -17,6 +17,7 @@ export const EVENT_NAMES = {
   postScheduled: "post_scheduled",
   postPublished: "post_published",
   leadCaptured: "lead_captured",
+  whatsappShare: "whatsapp_share", // props.what: "post" | "video"; props.how: "share" (phone share menu) | "download" (file + wa.me link)
   upgrade: "upgrade", // props.plan, props.interval
   planChange: "plan_change", // a paying customer switched plan or interval (not a new customer)
   cancel: "cancel",

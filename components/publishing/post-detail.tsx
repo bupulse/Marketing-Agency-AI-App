@@ -16,6 +16,8 @@ import {
   unschedulePostAction,
 } from "@/app/dashboard/calendar/actions";
 import { PostWriting } from "@/components/content-flow/post-writing";
+import { WhatsAppShare } from "@/components/share/whatsapp-share";
+import { postShareCaption } from "@/lib/share/whatsapp";
 import { EDITABLE, STATUS_LABEL, STATUS_STYLE } from "@/lib/publishing/status";
 import { parseLocalInput, toLocalInput } from "@/lib/publishing/time";
 import type { CalendarPost, PostOutcome } from "@/lib/publishing/types";
@@ -167,7 +169,7 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = []
 
       {error && <p role="alert" className="text-[14px] font-medium text-danger">{error}</p>}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-start gap-2">
         {post.status === "PENDING_APPROVAL" && (
           <Button size="sm" leading={<CheckCheck aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => approvePostsAction([post.id]), (res) => (Number(res.skipped ?? 0) > 0 ? { text: "No free time was found for it. Open it, pick a time with Move, then approve.", tone: "error" } : { text: "Approved. It will go out at its time.", tone: "success" }))}>Approve</Button>
         )}
@@ -189,6 +191,7 @@ function DetailBody({ post, zone, onClose, onEdit, visualHref, autoNetworks = []
               <Download aria-hidden className="size-4" /> {/\.(mp4|webm)$/i.test(m.path) ? "Video" : post.media.length > 1 ? `Image ${i + 1}` : "Image"}
             </a>
           ))}
+        <WhatsAppShare media={post.media} caption={postShareCaption(post)} what="post" />
         {post.status === "SCHEDULED" && (
           <Button variant="outline" size="sm" leading={<Undo2 aria-hidden className="size-4" />} disabled={pending} onClick={() => act(() => unschedulePostAction(post.id), "Back in review. It will not go out until you approve it.")}>Back to review</Button>
         )}

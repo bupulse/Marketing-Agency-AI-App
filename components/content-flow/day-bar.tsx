@@ -31,7 +31,7 @@ export function DayBar({ path, day, today, label, query }: { path: string; day: 
       <Link href={href(prev)} aria-label="Previous day" aria-disabled={prev < min} className={arrow} scroll={false}>
         <ChevronLeft aria-hidden className="size-5" />
       </Link>
-      <h2 className="min-w-0 flex-1 truncate text-center text-[16px] font-semibold tracking-[-0.01em]" aria-live="polite">
+      <h2 className="min-w-0 flex-[1_1_10rem] truncate text-center text-[16px] font-semibold tracking-[-0.01em]" aria-live="polite">
         {label}
       </h2>
       <Link href={href(next)} aria-label="Next day" aria-disabled={next > max} className={arrow} scroll={false}>

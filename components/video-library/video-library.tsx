@@ -20,7 +20,9 @@ import { useEffect, useMemo, useState } from "react";
 import { CalendarClock, Clapperboard, Download, ExternalLink, Film, Loader2, Trash2 } from "lucide-react";
 import { Badge, Button, buttonClasses, Field, GlassCard, Input, Meter, Textarea, useToast } from "@/components/ui";
 import { deleteLibraryVideo, loadLibrary, loadScheduleOptions, scheduleStudioVideo } from "@/app/dashboard/video/actions";
+import { WhatsAppShare } from "@/components/share/whatsapp-share";
 import { cn } from "@/lib/cn";
+import { whatsappCaption } from "@/lib/share/whatsapp";
 import type { Network } from "@/lib/social/types";
 import type { LibraryVideo } from "@/lib/video-library/service";
 import type { ScheduleOptions } from "@/lib/video-studio/schedule";
@@ -282,7 +284,7 @@ function VideoCard({ video, focused, timeZone, onChange, onDeleted }: { video: L
         <br />
         {video.posts.count > 0 ? `In ${video.posts.count} ${video.posts.count === 1 ? "post" : "posts"}${next ? `, next ${next}` : ""}.` : "Not posted yet."}
       </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-start gap-2">
         {video.source === "studio" && <SchedulePanel video={video} timeZone={timeZone} onScheduled={(n, at) => onChange({ ...video, posts: { count: video.posts.count + n, next: video.posts.next && at && video.posts.next < at ? video.posts.next : (at ?? video.posts.next) } })} />}
         {video.downloadUrl && (
           <a href={video.downloadUrl} className={buttonClasses({ size: "sm", variant: "ghost" })}>
@@ -290,6 +292,7 @@ function VideoCard({ video, focused, timeZone, onChange, onDeleted }: { video: L
             Download
           </a>
         )}
+        <WhatsAppShare media={[{ path: video.videoUrl, url: video.videoUrl }]} caption={whatsappCaption({ text: video.caption })} what="video" />
         {video.source === "slideshow" && video.postHref && (
           <Button size="sm" variant="ghost" href={video.postHref}>
             Open its post

@@ -40,6 +40,7 @@ trial and Inzu Fashion waiting for its demo. All names and numbers in them are m
 | 29 | The Video Studio, for clients (open it, credits per action, where videos go) | studio.bupulse.com; BuPulse Videos | [29-video-studio-for-clients.md](29-video-studio-for-clients.md) |
 | 30 | The Video Studio, for the owner (switches, costs, viral library, checks) | Admin → Services, Plans, Usage; studio `/viral` | [30-video-studio-for-the-owner.md](30-video-studio-for-the-owner.md) |
 | 31 | Free first-post preview (before the demo) | the demo screen, Admin → Settings → Free first-post preview | [31-first-post-preview.md](31-first-post-preview.md) |
+| 32 | BuPulse on the phone (install it like an app) and Share to WhatsApp (posts and videos to Status or a chat) | the dashboard on a phone; Share to WhatsApp on posts and in Videos | [32-phone-app-and-whatsapp-share.md](32-phone-app-and-whatsapp-share.md) |
 
 ## Which plan has what
 

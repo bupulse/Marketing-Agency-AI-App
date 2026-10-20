@@ -9,13 +9,15 @@ import { cn } from "@/lib/cn";
 import type { ContentPost } from "@/lib/content-board/queries";
 import { kindLabel } from "@/lib/content-board/kind";
 import { CHIP_STYLE, networkLabel, statusChip, UNPOSTED, unpostedReason } from "@/lib/content-board/labels";
+import { WhatsAppShare } from "@/components/share/whatsapp-share";
+import { postShareCaption } from "@/lib/share/whatsapp";
 
 const dateOnly = (iso: string, zone: string) => new Intl.DateTimeFormat("en-US", { timeZone: zone, month: "short", day: "numeric" }).format(new Date(iso));
 
 /**
  * One post as a card: its picture, carousel (dots) or video (still with a play mark), the app and post type, the start
  * of the caption, its status and when it was made. Like a social post at a glance, in BuPulse's own look. The whole
- * top part opens the post; `actions` (approve, edit...) sit below it as separate buttons.
+ * top part opens the post; `actions` (approve, edit...) and "Share to WhatsApp" sit below it as separate buttons.
  */
 export function PostCard({ post, zone, onOpen, actions, showSubject = false }: { post: ContentPost; zone: string; onOpen: () => void; actions?: ReactNode; showSubject?: boolean }) {
   const chip = statusChip(post, (iso) => (post.status === "PUBLISHED" ? dateOnly(iso, zone) : formatDateTime(iso, zone)));
@@ -108,7 +110,10 @@ export function PostCard({ post, zone, onOpen, actions, showSubject = false }: {
           )}
         </p>
       )}
-      {actions && <div className="flex flex-wrap gap-2 border-t border-line p-3">{actions}</div>}
+      <div className="flex flex-wrap gap-2 border-t border-line p-3">
+        {actions}
+        <WhatsAppShare media={post.media} caption={postShareCaption(post)} what="post" />
+      </div>
     </article>
   );
 }
