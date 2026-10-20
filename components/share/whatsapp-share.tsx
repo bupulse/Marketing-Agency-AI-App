@@ -131,7 +131,7 @@ export function WhatsAppShare({ media, caption, what, className }: { media: read
   }
 
   return (
-    <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
+    <div className={cn("flex min-w-0 flex-col items-start gap-1.5", className)}>
       <Button
         size="sm"
         variant="outline"

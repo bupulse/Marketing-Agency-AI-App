@@ -138,14 +138,11 @@ export function InstallPrompt() {
           <p className="text-[14px] text-muted">Open it from your Home Screen like any app: full screen, one tap away.</p>
         ) : (
           <ol className="flex flex-col gap-1 text-[14px] text-muted">
-            <li className="flex flex-wrap items-center gap-1">
-              1. Tap <strong className="font-semibold text-text">Share</strong>
-              <Share aria-hidden className="size-4 text-pulse-blue" /> in the browser bar.
+            <li>
+              1. Tap <strong className="font-semibold text-text">Share</strong> <Share aria-hidden className="inline size-4 align-text-bottom text-pulse-blue" /> in the browser bar.
             </li>
-            <li className="flex flex-wrap items-center gap-1">
-              2. Choose <strong className="font-semibold text-text">Add to Home Screen</strong>
-              <SquarePlus aria-hidden className="size-4 text-pulse-blue" />
-              (scroll down the list if you do not see it).
+            <li>
+              2. Choose <strong className="font-semibold text-text">Add to Home Screen</strong> <SquarePlus aria-hidden className="inline size-4 align-text-bottom text-pulse-blue" />. Scroll down the list if you do not see it.
             </li>
           </ol>
         )}
