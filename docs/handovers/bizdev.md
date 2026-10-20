@@ -38,6 +38,15 @@ Branch `bizdev` (worktree `/Users/macbook1/BuPulse-bizdev`). Local commits only;
   while the team answers → notes, tags, contact page, custom field. Fixed on the way: canvas boxes were hidden (React
   Flow measurements), page scroll in the inbox, phone header, Published state, unread badge.
 
+- Live Instagram test (19 Oct, @bu.pulse on TEST, company LEAF Business GROUP LTD): reading DMs through Composio
+  works (after "Allow access to messages"), the inbox and the BPTEST7 automation work, but every reply through
+  Composio's shared Meta app is refused by Meta (2534022), a known Composio issue (#4847). Messages for Composio:
+  `docs/bizdev/composio-instagram-issue.md`. Test switched off afterwards: inbox off on both accounts, the two
+  "BPTEST7 …" automations PAUSED; LEAF's custom plan keeps inbox + automations (TEST only). 130 Composio calls used.
+  The throwaway driver `tests/_live/social-live.db.test.ts` is not committed (delete it when no longer needed).
+- After the test, reconnect @bu.pulse on Channels: a raw Graph API answer printed during the test contained its access
+  token (not stored anywhere); reconnecting replaces it.
+
 ## Next
 - Owner decisions (on bupulse-fe's list): register with RDB (top: unlocks Meta messaging and private replies); partner
   rates; Social replies packaging (25,000 RWF add-on recommended); USD rate; agents' pay; launch month; Kinyarwanda check;

@@ -90,12 +90,15 @@ describe("Instagram and Facebook adapters", () => {
     expect(mocks.prisma.$executeRaw).not.toHaveBeenCalled();
   });
 
-  it("explains the 24-hour window when Meta refuses", async () => {
+  it("explains the window (or missing access) when Meta refuses, and never shows an access token", async () => {
     composioAnswers(null, false, "(#10) This message is sent outside of allowed window. subcode 2534022");
     const error = await channelAdapter("INSTAGRAM")!.send(target(), { text: "Hello again" }).catch((e) => e);
     expect(error).toBeInstanceOf(ChannelSendError);
     expect(error).toMatchObject({ code: "window", retry: false });
-    expect(error.message).toMatch(/within 24 hours/);
+    expect(error.message).toMatch(/more than 24 hours ago, or this connection is not yet allowed/);
+    composioAnswers(null, false, "Bad request https://graph.instagram.com/v21.0/x/messages?access_token=IGAAsecret123&limit=25");
+    const leaky = await channelAdapter("INSTAGRAM")!.send(target(), { text: "Hello again" }).catch((e) => e);
+    expect(leaky.message).not.toContain("IGAAsecret123");
   });
 
   it("refuses a DM to someone who only commented", async () => {

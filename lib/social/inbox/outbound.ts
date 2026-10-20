@@ -40,8 +40,11 @@ const PRIVATE_DONE = /already.*(replied|sent)|only one (private )?reply|2018108|
 export function sendError(network: SocialNetwork, error: unknown): ChannelSendError {
   if (error instanceof ChannelSendError) return error;
   const label = network === "instagram" ? "Instagram" : "Facebook";
-  const message = error instanceof Error ? error.message : String(error);
-  if (WINDOW.test(message)) return new ChannelSendError(`${label} only allows replies within 24 hours of the person's last message.`, false, "window");
+  // Network answers can carry links with the access token: never let one reach a message the inbox shows or logs.
+  const message = (error instanceof Error ? error.message : String(error)).replace(/access_token=[^&"\s]+/gi, "access_token=[hidden]");
+  // Meta gives the same "outside of allowed window" answer when the person wrote too long ago and when the app behind
+  // the connection is not yet allowed to message people (seen live on 19 Oct 2026 through Composio's shared app).
+  if (WINDOW.test(message)) return new ChannelSendError(`${label} refused the reply ("outside the allowed window"). Either the person wrote more than 24 hours ago, or this connection is not yet allowed to send messages.`, false, "window");
   if (PRIVATE_DONE.test(message)) return new ChannelSendError(`${label} allows one private reply per comment, and this comment already has one.`, false, "private_reply_used");
   if (error instanceof SocialError) {
     if (error.kind === "auth") return new ChannelSendError(`This ${label} account needs to be reconnected on the Channels page.`, false, "auth");
