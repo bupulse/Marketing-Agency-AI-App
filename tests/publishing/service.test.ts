@@ -471,7 +471,7 @@ describe("owner edits are remembered, so BuPulse never replaces or redraws them"
     await createPosts(owner, compose({ contentId: "content-1" }), now);
     const ops = prisma.$transaction.mock.calls[0][0] as unknown[];
     expect(ops).toHaveLength(3);
-    const drafts = { businessId: "b1", contentId: "content-1", source: "STUDIO", status: "PENDING_APPROVAL", connectionId: { in: ["c-fb"] } };
+    const drafts = { businessId: "b1", contentId: "content-1", source: { in: ["STUDIO", "DAILY"] }, status: "PENDING_APPROVAL", connectionId: { in: ["c-fb"] } };
     expect(prisma.post.deleteMany).toHaveBeenCalledWith({ where: { ...drafts, ownerEditedAt: null } });
     // A draft the owner edited for the same account is cancelled as superseded, never left as a second post.
     expect(prisma.post.updateMany).toHaveBeenCalledWith({ where: { ...drafts, ownerEditedAt: { not: null } }, data: { status: "CANCELLED", reviewNote: "Replaced by the post you scheduled." } });
