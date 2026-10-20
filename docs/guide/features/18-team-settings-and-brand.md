@@ -39,7 +39,7 @@ interview), it sets the voice and the preset is only a fallback.
 ## How to use it
 
 **Invite a colleague**
-1. Open **Team** (sidebar, or Settings → Team).
+1. Open **Team** (menu: **Account & settings → Team**, or Settings → Team).
 2. Type their email, choose **Admin** or **Member**, press **Send invitation**.
 3. They get an email "<you> invited you to <business> on BuPulse". The link opens `/invite/<token>`, where they choose a
    name and password and press **Join the team** ([Sign-up and account states](02-sign-up-onboarding-and-account-states.md)).

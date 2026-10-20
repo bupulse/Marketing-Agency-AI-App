@@ -43,7 +43,7 @@ function Body({ destinations, onPick, canCreateFolder }: { destinations: Destina
   return (
     <div className="flex flex-col gap-3">
       {destinations.length === 0 ? (
-        <p className="text-[15px] text-muted">You have no folders or products yet. Start a folder below, or add a product in the Knowledge base.</p>
+        <p className="text-[15px] text-muted">You have no folders or products yet. Start a folder below, or add a product in Business info.</p>
       ) : (
         <div className="flex max-h-[45vh] flex-col gap-3 overflow-y-auto">
           {(["Folders", "Products", "Campaigns"] as const).map((group) => {

@@ -27,7 +27,7 @@ BuPulse's own keys for that service are set.
 
 Upload:
 
-1. Open **Gallery**, or a product's album in the Knowledge base.
+1. Open **Photos** (once called Gallery), or a product's album in Business info.
 2. Click **Upload**. If you are in "All photos", first choose where the files go: a folder, or a product or campaign
    album (you can make a new folder there).
 3. Pick photos (JPG, PNG, WebP) or videos (MP4, MOV, WebM, up to 60 seconds).

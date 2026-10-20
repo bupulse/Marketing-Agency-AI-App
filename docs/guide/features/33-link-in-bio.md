@@ -14,8 +14,8 @@ it only shows the numbers, place, links and products you pick.
 
 ## Set it up
 
-1. Fill in your business first: **Knowledge base → Locations, hours & contacts** (your WhatsApp number, your address,
-   your opening hours, your Instagram or TikTok) and **Knowledge base → Products** (name, price and at least one
+1. Fill in your business first: **Business info → Locations, hours & contacts** (your WhatsApp number, your address,
+   your opening hours, your Instagram or TikTok) and **Business info → Products** (name, price and at least one
    photo in each product's album). The page is built from these; you never type them twice.
 2. Open **Link in bio**. BuPulse suggests an address from your business name, for example `bupulse.com/b/kigali-shoes`.
    Change it if you like: 3 to 30 small letters, numbers and dashes. Some words are kept for BuPulse (`admin`,

@@ -44,7 +44,7 @@ Two videos of the same product come out different, and BuPulse avoids repeating 
 
 - Clips: MP4 or MOV, 5 to 10 seconds, at most 30 MB, at most 4 per video. On iPhone, set Camera, Formats, **Most
   Compatible** if a clip is refused for its format.
-- A client's clips are saved in their BuPulse **Gallery**, folder **Studio clips**, and count toward the Gallery's video
+- A client's clips are saved in their BuPulse **Photos**, folder **Studio clips**, and count toward the Photos video
   space.
 - The viral library holds TikTok rows as they are collected; until then most techniques come from Instagram, Facebook
   and YouTube.

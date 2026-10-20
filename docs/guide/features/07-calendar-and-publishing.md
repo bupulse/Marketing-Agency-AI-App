@@ -57,7 +57,7 @@ On a phone the same page stacks into one column:
 
 ## Limits and settings
 
-- Posting and scheduling are free: they do not use AI credits. Writing posts with AI (on the Content page or
+- Posting and scheduling are free: they do not use AI credits. Writing posts with AI (on the Posts page or
   Autopilot) uses text credits; see [Projects and content](04-projects-and-content.md).
 - Per person per hour: 120 create, edit, move or approve actions, and 40 "Post now" or "Retry" calls
   (`PUBLISHING_LIMITS`).

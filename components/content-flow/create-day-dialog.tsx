@@ -10,8 +10,8 @@
  *     Bring my own               the owner's photos or videos and one caption, adapted per app
  */
 
-import { useState, useTransition, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ImagePlus, PenLine, Sparkles, Upload, Wand2, X } from "lucide-react";
 import { createDayContentAction } from "@/app/dashboard/content/day-actions";
 import { MediaPicker, type PickedPhoto } from "@/components/media/media-picker";
@@ -64,7 +64,7 @@ function Option({ selected, onSelect, icon, title, text, disabled }: { selected:
   );
 }
 
-export function CreateDayContent({ scope, path, subjectName, networks, allowance, album, label = "Create today's content" }: { scope: ContentScope; path: string; subjectName: string; networks: NetworkChoice[]; allowance: Allowance; album?: string; label?: string }) {
+export function CreateDayContent({ scope, path, subjectName, networks, allowance, album, label = "Create today's content", openOnAsk = false }: { scope: ContentScope; path: string; subjectName: string; networks: NetworkChoice[]; allowance: Allowance; album?: string; label?: string; /** Opens by itself on ?create=1 (+ Create → New post, components/app/nav.ts). */ openOnAsk?: boolean }) {
   const router = useRouter();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -85,6 +85,23 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
   const [pending, start] = useTransition();
   // A new key each time the dialog opens: a double click or a retry of the same request is not run twice.
   const [requestKey, setRequestKey] = useState("");
+  // ?create=1 opens the dialog once, then leaves the address (a reload or Back does not open it again).
+  const params = useSearchParams();
+  const asked = openOnAsk && params.get("create") === "1";
+  const [seenAsk, setSeenAsk] = useState(false);
+  if (asked !== seenAsk) {
+    setSeenAsk(asked);
+    if (asked) {
+      setRequestKey(globalThis.crypto.randomUUID());
+      setOpen(true);
+    }
+  }
+  useEffect(() => {
+    if (!asked) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("create");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+  }, [asked]);
 
   const toggle = (n: Network) => setChosen((list) => (list.includes(n) ? list.filter((x) => x !== n) : [...list, n]));
   const each = mode === "own" ? 1 : Math.min(perApp, allowance.postsPerApp);
@@ -146,7 +163,7 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
       <Dialog open={open} onOpenChange={(o) => !pending && setOpen(o)} title="Create today's content" description={`Posts for ${subjectName}, for today. They wait for your OK on this page (or go out on their own where your settings say so).`}>
         <div className="@container flex flex-col gap-5">
           <div role="radiogroup" aria-label="How to make it" className="grid gap-3 @md:grid-cols-2">
-            <Option selected={!manual} onSelect={() => { setManual(false); setMode("ai"); }} icon={<Wand2 className="size-5" />} title="AI makes it for me" text="A caption, a 30-second video script and 3 ad headlines for each app, from your Knowledge base; then pictures and videos, your Gallery first." />
+            <Option selected={!manual} onSelect={() => { setManual(false); setMode("ai"); }} icon={<Wand2 className="size-5" />} title="AI makes it for me" text="A caption, a 30-second video script and 3 ad headlines for each app, from your Business info; then pictures and videos, your own Photos first." />
             <Option selected={manual} onSelect={() => { setManual(true); setMode("describe"); }} icon={<PenLine className="size-5" />} title="I'll create it" text="Describe what to post today, or bring your own photos and caption." />
           </div>
 
@@ -182,7 +199,7 @@ export function CreateDayContent({ scope, path, subjectName, networks, allowance
                   </span>
                 ))}
                 <Button variant="outline" size="sm" onClick={() => setPicking(true)} leading={<ImagePlus aria-hidden className="size-4" />}>
-                  {media.length ? "Change" : "Choose from Gallery"}
+                  {media.length ? "Change" : "Choose from Photos"}
                 </Button>
               </div>
               {mode === "own" && (

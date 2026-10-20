@@ -19,7 +19,7 @@ cannot make gives its credits back.
 3. Press **Generate**. The message line says "Making AI clip 1 of 3…", then 2 of 3, then 3 of 3: about one minute a
    clip (up to 6 minutes at Google's busy times). The clips are made at the same time.
 4. Claude then designs the video with the clips in it, and you make the MP4 as usual.
-5. A client's clips are also saved in their BuPulse **Gallery**, folder **AI clips**, so they can use them again.
+5. A client's clips are also saved in their BuPulse **Photos**, folder **AI clips**, so they can use them again.
 
 ## What the clips will and will not show
 

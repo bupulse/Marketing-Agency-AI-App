@@ -43,6 +43,7 @@ trial and Inzu Fashion waiting for its demo. All names and numbers in them are m
 | 32 | BuPulse on the phone (install it like an app) and Share to WhatsApp (posts and videos to Status or a chat) | the dashboard on a phone; Share to WhatsApp on posts and in Videos | [32-phone-app-and-whatsapp-share.md](32-phone-app-and-whatsapp-share.md) |
 | 33 | Link in bio (a free public page for the Instagram or TikTok bio) | `/dashboard/bio`, `/b/[slug]` | [33-link-in-bio.md](33-link-in-bio.md) |
 | 34 | Testimonials on the website (Admin) | `/admin/testimonials`, shown on `/` and `/pricing` | [34-testimonials.md](34-testimonials.md) |
+| 35 | Finding your way (grouped menu, + Create, the phone bar, Find a page) | every dashboard page; ⌘K / Ctrl+K | [35-finding-your-way.md](35-finding-your-way.md) |
 
 ## Which plan has what
 

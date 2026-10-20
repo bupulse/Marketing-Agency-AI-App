@@ -192,7 +192,7 @@ The admin console's route groups (the sidebar folders; the map is `components/ad
 ## components/
 
 One folder per area, matching `app/` and `lib/`: `admin/` (console pieces, `nav.ts` = the admin sidebar),
-`app/` (dashboard shell, `nav.ts` = the client sidebar, `context.ts` = `getAppContext`, `demo-lock.tsx`,
+`app/` (dashboard shell, `nav.ts` = the client menu groups, + Create, phone bar and Find a page; `bottom-bar.tsx`, `create-menu.tsx`, `page-finder.tsx`, `context.ts` = `getAppContext`, `demo-lock.tsx`,
 `no-access.tsx` with `pageGate` and `featureGate`), `auth/`, `billing/`, `brand/`, `brand-profile/`, `connections/`,
 `connectors/`, `content-board/`, `content-flow/`, `designs/`, `domains/`, `invoices/`, `knowledge/`, `leads/`,
 `marketing/`, `media/`, `offers/`, `onboarding/`, `publishing/`, `screen/`, `settings/`, `stores/`, `studio/`, `team/`,
